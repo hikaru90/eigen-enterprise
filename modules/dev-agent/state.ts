@@ -47,7 +47,7 @@ export function assertTransition(from: DevAgentRunStatus, to: DevAgentRunStatus)
  * KernelErrorCode union is closed (src/lib/kernel/errors.ts, outside this
  * workstream's file scope), so the code is attached via the same union type.
  */
-export const RUN_IN_PROGRESS: KernelErrorCode = 'run_in_progress' as KernelErrorCode
+export const RUN_IN_PROGRESS: KernelErrorCode = 'run_in_progress'
 
 export function runInProgressError(activeRunId: string): KernelError {
   return new KernelError(RUN_IN_PROGRESS, `a dev-agent run is already in progress: ${activeRunId}`)
