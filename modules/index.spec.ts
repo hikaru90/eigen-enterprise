@@ -65,21 +65,21 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     ).resolves.toEqual({ count: 0, results: [] })
   })
 
-  it('wires StaticApprovalPolicy({email.send_mail}); the mutate-only kernel gate lets the external send_mail through to the handler', async () => {
-    // Kernel Phase-0 semantics: the approval gate fires for auditClass 'mutate'
-    // only. email.send_mail is 'external' per the approved module surface, so
-    // the policy entry is wired but currently inert — flagged to the
-    // orchestrator (kernel semantic change needed to gate external tools).
+  it('wires StaticApprovalPolicy({email.send_mail}); the kernel gate stops the external send_mail at approval', async () => {
+    // Orchestrator decision (2026-09-07): the approval gate fires for every
+    // non-read tool, so the external send_mail halts as approval_required and
+    // the handler never runs until an owner approves the pending request.
     expect([...APPROVAL_REQUIRED_TOOLS]).toEqual(['email.send_mail'])
     const { kernel, approvalStore } = makeInMemoryKernel()
     await kernel.activations.set('email', true)
 
     const input = { to: 'a@b.co', subject: 's', html: 'h', text: 't' }
-    // The pipeline runs the handler, which fails loud on the unconfigured owlery env.
-    await expect(kernel.registry.execute('email.send_mail', input, ctx)).rejects.toThrow(
-      /not configured/,
-    )
-    await expect(approvalStore.listPending()).resolves.toEqual([])
+    await expect(kernel.registry.execute('email.send_mail', input, ctx)).rejects.toMatchObject({
+      code: 'approval_required',
+    })
+    const pending = await approvalStore.listPending()
+    expect(pending).toHaveLength(1)
+    expect(pending[0]).toMatchObject({ toolName: 'email.send_mail', status: 'pending' })
   })
 
   it('runs mutate email tools through the full pipeline (fail loud at the owlery boundary)', async () => {
