@@ -40,7 +40,8 @@
 ## Repo map
 
 - `plan/` — plans + progress (this governs everything)
-- `src/lib/kernel/` — action registry, principals, events, modules, vcs (Phase 0)
+- `src/lib/kernel/` — action registry, principals, events, modules, vcs, approvals, admin tools
+- `src/cli/` — `ee` CLI: thin dispatcher over kernel registry tools (agents' native hands, no MCP hop)
 - `src/lib/server/` — existing eigen services being promoted into modules (memory, owlery client, llm, job-queue, mcp)
-- `modules/` — module manifests + implementations (Phase 0 pilots: memory, email, chat-gateway)
+- `modules/` — module manifests + implementations (baseline: website, orchestrator/agent, chat-gateway, memory, email)
 - `drizzle/` — SQL migrations + journal (see guardrails)
