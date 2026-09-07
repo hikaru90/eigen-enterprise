@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
-import { tenantUserAsyncLocal } from '$lib/server/billing/context'
+import { tenantUserAsyncLocal } from './tenant-context'
 import { appDbAsyncLocal, appReservedSqlAsyncLocal, type AppDatabase } from './context'
 import { getRuntimeDatabaseUrl } from './runtime-url'
 import * as schema from './schema'

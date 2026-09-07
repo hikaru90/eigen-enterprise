@@ -47,8 +47,5 @@ export async function ensureHarnessCredentialAccount(
       .where(eq(account.id, existingAccount.id))
   }
 
-  const { ensureHarnessWalletCredits } = await import('$lib/server/billing/ensure-harness-credits')
-  await ensureHarnessWalletCredits(trimmedId)
-
   return { email: row.email, password: HARNESS_E2E_PASSWORD }
 }

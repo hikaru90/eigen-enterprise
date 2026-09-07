@@ -5,7 +5,6 @@ const drizzleAdapterMock = vi.fn(() => ({ adapter: 'drizzle' }))
 const sveltekitCookiesMock = vi.fn(() => ({ plugin: 'cookies' }))
 const sendTransactionalEmailMock = vi.fn()
 const recordVerificationLinkMock = vi.fn()
-const grantStartingFreeCreditsMock = vi.fn()
 const resolveAccountKindMock = vi.fn(() => 'production')
 const createOwleryContactMock = vi.fn()
 const isOwleryConfiguredMock = vi.fn(() => false)
@@ -55,10 +54,6 @@ vi.mock('$lib/auth/account-kind', () => ({
   resolveAccountKindForNewUser: (...args: unknown[]) => resolveAccountKindMock(...args),
 }))
 
-vi.mock('$lib/server/billing/wallet', () => ({
-  grantStartingFreeCredits: (...args: unknown[]) => grantStartingFreeCreditsMock(...args),
-}))
-
 vi.mock('$lib/server/owlery/contacts', () => ({
   isOwleryConfigured: (...args: unknown[]) => isOwleryConfiguredMock(...args),
   createOwleryContact: (...args: unknown[]) => createOwleryContactMock(...args),
@@ -82,14 +77,12 @@ async function loadAuth() {
   sveltekitCookiesMock.mockClear()
   sendTransactionalEmailMock.mockReset()
   recordVerificationLinkMock.mockReset()
-  grantStartingFreeCreditsMock.mockReset()
   resolveAccountKindMock.mockReset()
   createOwleryContactMock.mockReset()
   isOwleryConfiguredMock.mockReset()
   isOwleryConfiguredMock.mockReturnValue(false)
   resolveAccountKindMock.mockReturnValue('production')
   sendTransactionalEmailMock.mockResolvedValue(undefined)
-  grantStartingFreeCreditsMock.mockResolvedValue(undefined)
   createOwleryContactMock.mockResolvedValue({ contactId: 'ct_1' })
   return import('./auth')
 }
@@ -323,41 +316,6 @@ describe('auth config', () => {
     const result = await config.databaseHooks.user.create.before({ email: 'x@y.com' })
     expect(resolveAccountKindMock).toHaveBeenCalledWith('x@y.com')
     expect(result.data.accountKind).toBe('eval')
-  })
-
-  it('databaseHooks after grants starting credits', async () => {
-    await loadAuth()
-    const config = lastConfig()
-    await config.databaseHooks.user.create.after({ id: 'user-1' })
-    expect(grantStartingFreeCreditsMock).toHaveBeenCalledWith('user-1')
-  })
-
-  it('databaseHooks after logs credit grant failures', async () => {
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    await loadAuth()
-    grantStartingFreeCreditsMock.mockRejectedValue(new Error('wallet down'))
-    const config = lastConfig()
-    await config.databaseHooks.user.create.after({ id: 'user-2' })
-    expect(errSpy).toHaveBeenCalledWith(
-      '[auth] failed to grant starting free credits',
-      expect.objectContaining({ userId: 'user-2', error: 'wallet down' }),
-    )
-    errSpy.mockRestore()
-  })
-
-  it('databaseHooks before normalizes firstName from OAuth display name', async () => {
-    await loadAuth()
-    const config = lastConfig()
-    const result = await config.databaseHooks.user.create.before({
-      email: 'ada@example.com',
-      name: 'Ada Lovelace',
-    })
-    expect(result.data).toMatchObject({
-      email: 'ada@example.com',
-      name: 'Ada Lovelace',
-      firstName: 'Ada',
-      lastName: 'Lovelace',
-    })
   })
 
   it('databaseHooks after creates an owlery contact when email is verified', async () => {

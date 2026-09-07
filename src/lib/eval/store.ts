@@ -473,9 +473,6 @@ export async function insertEvalUserRow(userId: string, name: string): Promise<v
       accountKind: 'harness',
     })
   }
-
-  const { ensureHarnessWalletCredits } = await import('$lib/server/billing/ensure-harness-credits')
-  await ensureHarnessWalletCredits(userId)
 }
 
 export async function deleteEvalUserRow(userId: string): Promise<void> {

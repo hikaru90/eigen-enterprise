@@ -1,6 +1,6 @@
 <script lang="ts">
   import ActivityIcon from '@lucide/svelte/icons/activity'
-  import BarChart3 from '@lucide/svelte/icons/bar-chart-3'
+
   import ClipboardCheck from '@lucide/svelte/icons/clipboard-check'
   import Cpu from '@lucide/svelte/icons/cpu'
   import HeartPulse from '@lucide/svelte/icons/heart-pulse'
@@ -122,7 +122,7 @@
           class="flex items-center gap-2.5 rounded-sm px-2 py-1.5 text-base font-normal text-foreground hover:bg-white/25 dark:hover:bg-white/10"
         >
           <Cpu class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
-          Credits
+          LLM
         </a>
         {#if isAdmin}
           <a
@@ -131,13 +131,6 @@
           >
             <Layers class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
             Admin queue
-          </a>
-          <a
-            href={resolve('/admin/spend')}
-            class="flex items-center gap-2.5 rounded-sm px-2 py-1.5 text-base font-normal text-foreground hover:bg-white/25 dark:hover:bg-white/10"
-          >
-            <BarChart3 class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
-            Admin spend
           </a>
         {/if}
         {#if dev}

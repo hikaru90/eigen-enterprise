@@ -143,23 +143,6 @@
   }
 }
 
-html.pwa-standalone,
-html.pwa-standalone body {
-  background-color: var(--background);
-  min-height: 100dvh;
-}
-
-/* Paint the webview top edge to match theme-color (Android title bar seam). */
-html.pwa-standalone::before {
-  content: '';
-  position: fixed;
-  inset: 0 0 auto 0;
-  height: max(env(safe-area-inset-top, 0px), 1px);
-  background-color: var(--theme-color);
-  z-index: 9999;
-  pointer-events: none;
-}
-
 .dark {
   /* Soft dark with a hint of eigen green (hue ~152), not cool zinc gray */
   --background: oklch(0.215 0.015 152);

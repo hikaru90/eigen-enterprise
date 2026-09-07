@@ -1,4 +1,4 @@
-import { billingUserAsyncLocal, tenantUserAsyncLocal } from '$lib/server/billing/context'
+import { billingUserAsyncLocal, tenantUserAsyncLocal } from './tenant-context'
 import { appDbAsyncLocal, appReservedSqlAsyncLocal, type AppDatabase } from './context'
 import { activateTenantDbSession } from './tenant-session'
 

@@ -105,10 +105,6 @@ vi.mock('$lib/server/capture/apply-thought-edit', async (importOriginal) => {
   }
 })
 
-vi.mock('$lib/server/billing/usage-gate', () => ({
-  assertCapturePipelineAffordable: vi.fn(async () => undefined),
-}))
-
 vi.mock('$lib/server/memory/entity-graph-hints', () => ({
   loadIngestKnownEntityHints: vi.fn(async () => []),
 }))

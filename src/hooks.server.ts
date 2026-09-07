@@ -8,7 +8,7 @@ import { paraglideMiddleware } from '$lib/paraglide/server'
 import { captureServerException } from '$lib/server/analytics/posthog-server'
 import { hashApiKey } from '$lib/server/api-keys/api-key-utils'
 import { auth } from '$lib/server/auth'
-import { tenantUserAsyncLocal } from '$lib/server/billing/context'
+import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import {
   appSql,
   appDbAsyncLocal,

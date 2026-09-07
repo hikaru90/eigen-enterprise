@@ -1,10 +1,6 @@
 import type { RequestHandler } from './$types'
 import { error, json } from '@sveltejs/kit'
 import { runWithTrace } from '$lib/server/activity/trace-context'
-import {
-  isInsufficientCreditsError,
-  insufficientCreditsPayload,
-} from '$lib/server/billing/insufficient-credits'
 import { captureThought } from '$lib/server/capture/service'
 import type { CaptureProgressEvent } from '$lib/server/capture/service'
 import { parseOptionalIsoTimestamp } from '$lib/server/datetime/parse-iso'
@@ -15,7 +11,6 @@ import {
   activateTenantDbSession,
   deactivateTenantDbSession,
 } from '$lib/server/db'
-import { captureGateHttpStatus, captureGateJsonBody } from '$lib/server/onboarding/capture-gate'
 
 function collectErrorMessages(input: unknown): string[] {
   const parts: string[] = []
@@ -81,10 +76,7 @@ export const POST: RequestHandler = async (event) => {
       const details = collectErrorMessages(err)
       const message = details[0] ?? 'Failed to capture thought'
       console.error('capture submit failed', { userId: user.id, message, details })
-      return json(
-        { ...captureGateJsonBody(err, message), details },
-        { status: captureGateHttpStatus(err) },
-      )
+      return json({ error: message, details }, { status: 500 })
     }
   }
 
@@ -130,7 +122,6 @@ export const POST: RequestHandler = async (event) => {
         type: 'error',
         error: message,
         details,
-        ...(isInsufficientCreditsError(err) ? insufficientCreditsPayload(err) : {}),
       })
     } finally {
       if (reserved) {

@@ -4,7 +4,6 @@
  * community artifacts on the same row — see docs/planning/ingest-retrieval-timing.md.
  */
 import { and, asc, eq, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm'
-import { assertCapturePipelineAffordable } from '$lib/server/billing/usage-gate'
 import { scheduleCaptureEnrichWorker } from '$lib/server/capture/capture-enrich-worker'
 import { normalizeThoughtText } from '$lib/server/capture/service'
 import { encryptTenantValue } from '$lib/server/crypto/tenant-encryption'
@@ -95,7 +94,6 @@ export async function queueCapture(
   rawInput: string,
   options?: QueueCaptureOptions,
 ): Promise<QueueCaptureResult> {
-  await assertCapturePipelineAffordable(userId)
   const { normalized, metadata } = normalizeThoughtText(rawInput)
   const lexicalText = computeLexicalText(normalized)
   const ontologyEntityKindId = await resolvePlaceholderOntologyKindId(userId)

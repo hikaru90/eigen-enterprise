@@ -17,12 +17,10 @@
   import favicon from '$lib/assets/favicon.png'
   import { startCaptureQueueRunner } from '$lib/capture/queue'
   import AppHeader from '$lib/components/app-header.svelte'
-  import InstallPromptToast from '$lib/components/install-prompt-toast.svelte'
   import type { AuthorLayerMeta } from '$lib/graph/graph-author-layers'
   import { m } from '$lib/paraglide/messages.js'
   import { getLocale, setLocale } from '$lib/paraglide/runtime'
   import { startPushNavigationFromServiceWorker } from '$lib/push/navigation-from-sw'
-  import { initDeferredInstallStore } from '$lib/pwa/deferred-install-store.svelte'
   import { initCurrentUserViewStore } from '$lib/stores/current-user-view.svelte'
   import { startThoughtSync } from '$lib/stores/thought-sync'
   import { cn } from '$lib/utils'
@@ -60,7 +58,6 @@
 
   let themePreference = 'system'
   let lastIdentifiedUserId: string | null | undefined = undefined
-  let stopInstallStore: (() => void) | null = null
 
   function syncPostHogIdentity() {
     if (!browser) return
@@ -100,10 +97,6 @@
     if (layoutUser) {
       const layers = (page.data as { authorLayers?: AuthorLayerMeta[] }).authorLayers ?? []
       initCurrentUserViewStore(layers)
-      // Capture the beforeinstallprompt event app-wide so the install banner
-      // and the onboarding overlay share one deferred event (Chrome/Edge only
-      // fires it once per session).
-      stopInstallStore = initDeferredInstallStore()
     }
 
     const posthogReady = isPostHogEnabled()
@@ -132,17 +125,6 @@
     if (preferredUiLocale && getLocale() !== preferredUiLocale) {
       setLocale(preferredUiLocale as 'en' | 'de')
     }
-
-    void (async () => {
-      try {
-        const { pwaInfo } = await import('virtual:pwa-info')
-        if (!pwaInfo) return
-        const { registerSW } = await import('virtual:pwa-register')
-        registerSW({ immediate: true })
-      } catch {
-        /* PWA plugin unavailable (e.g. test env) */
-      }
-    })()
 
     const media = window.matchMedia('(prefers-color-scheme: dark)')
     const syncThemeColorMeta = () => {
@@ -180,8 +162,6 @@
     window.addEventListener('theme-preference-change', handlePreferenceChange)
     return () => {
       stopPushNavigation()
-      stopInstallStore?.()
-      stopInstallStore = null
       media.removeEventListener('change', handleChange)
       window.removeEventListener('theme-preference-change', handlePreferenceChange)
     }
@@ -199,10 +179,6 @@
   {/if}
   {@render children()}
 </div>
-
-{#if !hideAppChrome && layoutUserId}
-  <InstallPromptToast userId={layoutUserId} />
-{/if}
 
 {#if !hideAppChrome}
   <nav

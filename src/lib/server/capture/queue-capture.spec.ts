@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const {
   getDbMock,
   scheduleCaptureEnrichWorkerMock,
-  assertAffordableMock,
   ensureOntologyMock,
   loadOntologyMock,
   encryptMock,
@@ -16,7 +15,6 @@ const {
 } = vi.hoisted(() => ({
   getDbMock: vi.fn(),
   scheduleCaptureEnrichWorkerMock: vi.fn(),
-  assertAffordableMock: vi.fn(),
   ensureOntologyMock: vi.fn(),
   loadOntologyMock: vi.fn(),
   encryptMock: vi.fn(),
@@ -34,10 +32,6 @@ vi.mock('$lib/server/db', () => ({
 
 vi.mock('$lib/server/capture/capture-enrich-worker', () => ({
   scheduleCaptureEnrichWorker: scheduleCaptureEnrichWorkerMock,
-}))
-
-vi.mock('$lib/server/billing/usage-gate', () => ({
-  assertCapturePipelineAffordable: assertAffordableMock,
 }))
 
 vi.mock('$lib/server/ontology-db', () => ({
@@ -74,7 +68,6 @@ import {
 describe('queueCapture', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    assertAffordableMock.mockResolvedValue(undefined)
     ensureOntologyMock.mockResolvedValue(undefined)
     loadOntologyMock.mockResolvedValue({
       entityKindsByKey: new Map([['observation', { id: 'kind-obs' }]]),
@@ -118,7 +111,6 @@ describe('queueCapture', () => {
       status: 'queued',
       normalizedText: 'hello world',
     })
-    expect(assertAffordableMock).toHaveBeenCalledWith('u1')
     expect(upsertThoughtNodeMock).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'thought-1', userId: 'u1', category: 'observation' }),
     )

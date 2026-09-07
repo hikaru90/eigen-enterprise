@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm'
-import { totalCostUsdToCredits } from '$lib/billing/platform-pricing'
+import { totalCostUsdToCredits } from '$lib/pricing/credits'
 import type { AppDatabase } from '$lib/server/db'
 import { activityCallLog } from '$lib/server/db/schema'
 

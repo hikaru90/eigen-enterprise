@@ -2,7 +2,7 @@ import type { RequestHandler } from './$types'
 import { json } from '@sveltejs/kit'
 import { completeAgentAssignment } from '$lib/server/agents/complete-assignment'
 import { resolveConnectedAgentFromCallbackToken } from '$lib/server/agents/resolve-callback'
-import { tenantUserAsyncLocal } from '$lib/server/billing/context'
+import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { withDbUser } from '$lib/server/db'
 
 export const POST: RequestHandler = async (event) => {

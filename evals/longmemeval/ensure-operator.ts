@@ -1,5 +1,5 @@
 import { insertEvalUserRow } from '$lib/eval/store'
-import { assertByokConfigured } from '$lib/server/billing/preferences'
+import { assertByokConfigured } from '$lib/server/llm/preferences'
 import { llmActiveProvider, llmProviderConfig, userPreference } from '$lib/server/db/schema'
 import { withEvalDb } from '../harness/eval-context'
 import { resolveLongMemEvalRoot } from './paths'

@@ -17,7 +17,7 @@
  * Judge LLM config uses EVAL_JUDGE_USER_ID; activity rows are stored under the eval
  * tenant (RLS session) while platform credits debit the operator via billingUserId.
  */
-import { billingUserAsyncLocal } from '$lib/server/billing/context'
+import { billingUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { extractBatchChatContent, parseBatchJsonArray } from '$lib/server/llm/batch-json'
 import { llmChatCompletion, type ChatMessage } from '$lib/server/llm/llm-client'
 import { EVAL_JUDGE_USER_ID } from './eval-config'

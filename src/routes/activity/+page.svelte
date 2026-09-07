@@ -10,7 +10,7 @@
     utcDateKey,
     type ActivitySpendBucket,
   } from '$lib/activity/spend-chart'
-  import { formatActivityCredits } from '$lib/billing/platform-pricing'
+  import { formatActivityCredits } from '$lib/pricing/credits'
   import AiDateRangePicker from '$lib/components/ai-date-range-picker.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
@@ -244,7 +244,6 @@
 
   // --- Derived: display labels ---
   const pageTotalCredits = $derived(formatActivityCredits(pageTotals.totalCostUsd))
-  const availableCreditsLabel = $derived(data.walletAvailableCredits.toLocaleString('en-US'))
 
   // --- Fetch all data once on mount ---
   onMount(async () => {
@@ -274,10 +273,7 @@
   </header>
 
   <div class="mt-4 flex items-center justify-between">
-    <div class="flex items-center gap-2">
-      <span class="text-xs font-medium">Available credits:</span>
-      <span class="font-mono text-sm font-semibold tabular-nums">{availableCreditsLabel}</span>
-    </div>
+    <div></div>
     <AiDateRangePicker
       from={fromDate ?? undefined}
       to={toDate ?? undefined}

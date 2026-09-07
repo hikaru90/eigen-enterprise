@@ -8,8 +8,6 @@ export type ProductUserRow = {
 	createdAt: string | null
 	accountKind: string | null
 	billingMode: string | null
-	availableCredits: number | null
-	totalCreditsDebited: number | null
 	totalGatewayCostUsd: number | null
 	thoughtCount: number | null
 	chatCount: number | null
@@ -25,7 +23,6 @@ export type ProductUserDetail = ProductUserRow & {
 export type AdminUsersSortKey =
 	| 'createdAt'
 	| 'email'
-	| 'totalCreditsDebited'
 	| 'totalGatewayCostUsd'
 	| 'lastActivityAt'
 
@@ -46,7 +43,6 @@ export type AdminUsersListResult = {
 	limit: number
 	totals: {
 		users: number
-		creditsUsed: number
 		spendUsd: number
 	}
 }
@@ -57,7 +53,6 @@ const MAX_LIMIT = 200
 const SORT_KEYS: AdminUsersSortKey[] = [
 	'createdAt',
 	'email',
-	'totalCreditsDebited',
 	'totalGatewayCostUsd',
 	'lastActivityAt',
 ]
@@ -110,8 +105,6 @@ type AdminUserDbRow = {
 	created_at: Date | string | null
 	account_kind: string | null
 	billing_mode: string | null
-	available_credits: number | null
-	total_credits_debited: string | number | null
 	total_gateway_cost_usd: string | number | null
 	thought_count: number | null
 	chat_count: number | null
@@ -128,11 +121,6 @@ function mapProductUserRow(row: AdminUserDbRow): ProductUserRow {
 		createdAt: toIso(row.created_at),
 		accountKind: row.account_kind,
 		billingMode: row.billing_mode,
-		availableCredits: row.available_credits == null ? null : Number(row.available_credits),
-		totalCreditsDebited:
-			row.total_credits_debited == null
-				? null
-				: Math.round(Number(row.total_credits_debited)),
 		totalGatewayCostUsd: toGatewayUsd(row.total_gateway_cost_usd),
 		thoughtCount: row.thought_count == null ? null : Number(row.thought_count),
 		chatCount: row.chat_count == null ? null : Number(row.chat_count),
@@ -179,19 +167,16 @@ export async function listAdminUsers(
 	const orderColumn =
 		sort === 'email'
 			? sql`u.email`
-			: sort === 'totalCreditsDebited'
-				? sql`COALESCE(ledger.total_credits_debited, 0)`
-				: sort === 'totalGatewayCostUsd'
-					? sql`COALESCE(act.total_gateway_cost_usd, 0)`
-					: sort === 'lastActivityAt'
-						? sql`act.last_activity_at`
-						: sql`u.created_at`
+			: sort === 'totalGatewayCostUsd'
+				? sql`COALESCE(act.total_gateway_cost_usd, 0)`
+				: sort === 'lastActivityAt'
+					? sql`act.last_activity_at`
+					: sql`u.created_at`
 	const orderDirection = dir === 'asc' ? sql`ASC` : sql`DESC`
 
 	const baseFrom = sql`
 		FROM "user" u
 		LEFT JOIN user_preference up ON up.user_id = u.id
-		LEFT JOIN user_wallet uw ON uw.user_id = u.id
 		LEFT JOIN (
 			SELECT
 				acl.user_id,
@@ -201,14 +186,6 @@ export async function listAdminUsers(
 			WHERE acl.total_cost_usd::numeric > 0
 			GROUP BY acl.user_id
 		) act ON act.user_id = u.id
-		LEFT JOIN (
-			SELECT
-				wle.user_id,
-				SUM(ABS(wle.amount_credits)) AS total_credits_debited
-			FROM wallet_ledger_entry wle
-			WHERE wle.kind = 'usage_debit'
-			GROUP BY wle.user_id
-		) ledger ON ledger.user_id = u.id
 		LEFT JOIN (
 			SELECT t.user_id, COUNT(*)::int AS thought_count
 			FROM thought t
@@ -232,13 +209,11 @@ export async function listAdminUsers(
 			Array<{
 				user_count: number
 				total_gateway_cost_usd: string | number | null
-				total_credits_debited: string | number | null
 			}>
 		>`
 			SELECT
 				COUNT(*)::int AS user_count,
-				COALESCE(SUM(COALESCE(act.total_gateway_cost_usd, 0)), 0) AS total_gateway_cost_usd,
-				COALESCE(SUM(COALESCE(ledger.total_credits_debited, 0)), 0) AS total_credits_debited
+				COALESCE(SUM(COALESCE(act.total_gateway_cost_usd, 0)), 0) AS total_gateway_cost_usd
 			${baseFrom}
 		`
 
@@ -256,8 +231,6 @@ export async function listAdminUsers(
 				u.account_kind,
 				u.onboarding_completed,
 				up.billing_mode,
-				uw.available_credits,
-				ledger.total_credits_debited,
 				act.total_gateway_cost_usd,
 				thoughts.thought_count,
 				chats.chat_count,
@@ -270,7 +243,6 @@ export async function listAdminUsers(
 		`
 
 		const gatewayUsd = Number(countRow?.total_gateway_cost_usd ?? 0)
-		const creditsDebited = Number(countRow?.total_credits_debited ?? 0)
 
 		return {
 			users: rows.map(mapProductUserRow),
@@ -279,7 +251,6 @@ export async function listAdminUsers(
 			limit,
 			totals: {
 				users: totalCount,
-				creditsUsed: Number.isFinite(creditsDebited) ? Math.round(creditsDebited) : 0,
 				spendUsd: Number.isFinite(gatewayUsd) ? Number(gatewayUsd.toFixed(6)) : 0,
 			},
 		}
@@ -303,8 +274,6 @@ export async function getAdminUserDetail(id: string): Promise<ProductUserDetail 
 				u.account_kind,
 				u.onboarding_completed,
 				up.billing_mode,
-				uw.available_credits,
-				ledger.total_credits_debited,
 				act.total_gateway_cost_usd,
 				thoughts.thought_count,
 				chats.chat_count,
@@ -312,7 +281,6 @@ export async function getAdminUserDetail(id: string): Promise<ProductUserDetail 
 				act.last_activity_at
 			FROM "user" u
 			LEFT JOIN user_preference up ON up.user_id = u.id
-			LEFT JOIN user_wallet uw ON uw.user_id = u.id
 			LEFT JOIN (
 				SELECT
 					acl.user_id,
@@ -322,14 +290,6 @@ export async function getAdminUserDetail(id: string): Promise<ProductUserDetail 
 				WHERE acl.total_cost_usd::numeric > 0
 				GROUP BY acl.user_id
 			) act ON act.user_id = u.id
-			LEFT JOIN (
-				SELECT
-					wle.user_id,
-					SUM(ABS(wle.amount_credits)) AS total_credits_debited
-				FROM wallet_ledger_entry wle
-				WHERE wle.kind = 'usage_debit'
-				GROUP BY wle.user_id
-			) ledger ON ledger.user_id = u.id
 			LEFT JOIN (
 				SELECT t.user_id, COUNT(*)::int AS thought_count
 				FROM thought t

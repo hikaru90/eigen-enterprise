@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { tenantUserAsyncLocal } from '$lib/server/billing/context'
+import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { logActivityCall } from './log-call'
 
 vi.mock('$lib/server/pricing', () => ({

@@ -5,22 +5,17 @@ import { env } from '$lib/server/env/private-env'
 import { activityProviderForLlmConfig } from '$lib/server/activity/gateway-providers'
 import { logActivityCall } from '$lib/server/activity/log-call'
 import { captureServerEvent } from '$lib/server/analytics/posthog-server'
-import { resolveBillingUserId } from '$lib/server/billing/context'
 import {
   loadPlatformLlmConfig,
   loadPlatformOpenRouterSttConfig,
-} from '$lib/server/billing/platform-llm'
-import { isByokBilling } from '$lib/server/billing/preferences'
-import { withPlatformBilling } from '$lib/server/billing/usage-gate'
+} from '$lib/server/llm/platform-llm'
+import { isByokBilling } from '$lib/server/llm/preferences'
 import { decryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import { getDb, withDbUser } from '$lib/server/db'
+import { resolveBillingUserId } from '$lib/server/db/tenant-context'
 import { llmProviderConfig, llmActiveProvider } from '$lib/server/db/schema'
 import { LlmHttpError } from '$lib/server/llm/errors'
-import {
-  gatewayReportedCostUsdForLog,
-  requireGatewayReportedCostUsd,
-  type TokenUsage,
-} from '$lib/server/llm/gateway-cost'
+import { gatewayReportedCostUsdForLog, type TokenUsage } from '$lib/server/llm/gateway-cost'
 import {
   assertEurouterGatewayConfigured,
   routingRuleLookupErrorMessage,
@@ -619,14 +614,9 @@ export async function llmChatCompletion(input: {
   /** Optional turn-level identifier for PostHog AI observability trace grouping. */
   aiTraceId?: string
 }): Promise<unknown> {
-  return withPlatformBilling(
-    input.userId,
-    (body) => requireGatewayReportedCostUsd(body),
-    () =>
-      serialLlmRequestsEnabled()
-        ? runLlmRequestGated(input.userId, () => llmChatCompletionInner(input))
-        : llmChatCompletionInner(input),
-  )
+  return serialLlmRequestsEnabled()
+    ? runLlmRequestGated(input.userId, () => llmChatCompletionInner(input))
+    : llmChatCompletionInner(input)
 }
 
 async function llmChatCompletionInner(input: {
@@ -832,14 +822,9 @@ export async function llmCreateEmbeddings(input: {
   userId: string
   input: string | string[]
 }): Promise<unknown> {
-  return withPlatformBilling(
-    input.userId,
-    (body) => requireGatewayReportedCostUsd(body),
-    () =>
-      serialLlmRequestsEnabled()
-        ? runLlmRequestGated(input.userId, () => llmCreateEmbeddingsInner(input))
-        : llmCreateEmbeddingsInner(input),
-  )
+  return serialLlmRequestsEnabled()
+    ? runLlmRequestGated(input.userId, () => llmCreateEmbeddingsInner(input))
+    : llmCreateEmbeddingsInner(input)
 }
 
 async function llmCreateEmbeddingsInner(input: {
@@ -980,15 +965,9 @@ export async function llmCreateTranscription(input: {
   model: string
   audio: LlmTranscriptionAudio
 }): Promise<unknown> {
-  return withPlatformBilling(
-    input.userId,
-    (body) => requireGatewayReportedCostUsd(body),
-    async () => {
-      const config = await loadOpenRouterSttConfig(input.userId)
-      const run = () => llmCreateTranscriptionDedicated(input, config)
-      return serialLlmRequestsEnabled() ? runLlmRequestGated(input.userId, run) : run()
-    },
-  )
+  const config = await loadOpenRouterSttConfig(input.userId)
+  const run = () => llmCreateTranscriptionDedicated(input, config)
+  return serialLlmRequestsEnabled() ? runLlmRequestGated(input.userId, run) : run()
 }
 
 async function llmCreateTranscriptionDedicated(

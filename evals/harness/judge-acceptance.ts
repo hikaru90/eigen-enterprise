@@ -1,7 +1,7 @@
 /**
  * LLM judge: does the answer satisfy natural-language acceptance criteria?
  */
-import { billingUserAsyncLocal } from '$lib/server/billing/context'
+import { billingUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { llmChatCompletion, type ChatMessage } from '$lib/server/llm/llm-client'
 import { EVAL_JUDGE_USER_ID } from './eval-config'
 

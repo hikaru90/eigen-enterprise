@@ -17,39 +17,9 @@ export async function getPushServiceWorkerRegistration(): Promise<ServiceWorkerR
     throw new Error('Service workers are not supported')
   }
 
-  let registration = await navigator.serviceWorker.getRegistration()
+  const registration = await navigator.serviceWorker.getRegistration()
   if (!registration) {
-    try {
-      const { registerSW } = await import('virtual:pwa-register')
-      await withTimeout(
-        new Promise<void>((resolve, reject) => {
-          registerSW({
-            immediate: true,
-            onRegistered(r) {
-              if (r) resolve()
-              else reject(new Error('Service worker registration returned no registration'))
-            },
-            onRegisterError(error) {
-              reject(error instanceof Error ? error : new Error(String(error)))
-            },
-          })
-        }),
-        'Service worker registration timed out. Reload the page and try again.',
-      )
-      registration = await navigator.serviceWorker.getRegistration()
-    } catch (e) {
-      if (e instanceof Error && e.message.includes('virtual:pwa-register')) {
-        throw new Error(
-          'Service worker is not available. Reload the page once, then try enabling push again.',
-          { cause: e },
-        )
-      }
-      throw e
-    }
-  }
-
-  if (!registration) {
-    throw new Error('No service worker registration. Reload the page and try again.')
+    throw new Error('Service worker is not available. Reload the page, then try enabling push again.')
   }
 
   if (registration.active) return registration

@@ -1,18 +1,14 @@
 import type { PageServerLoad } from './$types'
 import { redirect } from '@sveltejs/kit'
 import { ACTIVITY_PAGE_LLM_PROVIDERS } from '$lib/server/activity/gateway-providers'
-import { getOrCreateWallet } from '$lib/server/billing/wallet'
 
 export const load: PageServerLoad = async (event) => {
   if (!event.locals.user) {
     throw redirect(302, '/login')
   }
 
-  const wallet = await getOrCreateWallet(event.locals.user.id)
-
   return {
     user: event.locals.user,
-    walletAvailableCredits: wallet.availableCredits,
     gatewayProviders: [...ACTIVITY_PAGE_LLM_PROVIDERS],
     calls: [],
     groups: undefined,

@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { InsufficientCreditsError } from '$lib/server/billing/wallet'
 import { INGEST_MAX_RETRIES } from '$lib/server/ingest/retry'
 
 const {
@@ -204,20 +203,7 @@ describe('repairEntityRelationsForUser', () => {
     )
   })
 
-  it('aborts the overnight batch immediately on InsufficientCreditsError', async () => {
-    mockSelectWhere([...twoEntityRows('t1'), ...twoEntityRows('t2')])
-    extractEntityTriplesMock
-      .mockRejectedValueOnce(
-        new InsufficientCreditsError({ availableCredits: 0, requiredCredits: 1 }),
-      )
-      .mockResolvedValue([])
-
-    await expect(repairEntityRelationsForUser('u1')).rejects.toBeInstanceOf(InsufficientCreditsError)
-
-    expect(extractEntityTriplesMock).toHaveBeenCalledTimes(1)
-  })
-
-  it('counts a non-billing LLM failure as one attempt and continues other thoughts', async () => {
+  it('counts an LLM failure as one attempt and continues other thoughts', async () => {
     const updateSet = vi.fn(() => ({
       where: vi.fn(async () => undefined),
     }))

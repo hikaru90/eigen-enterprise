@@ -2,7 +2,6 @@ import { paraglideVitePlugin } from '@inlang/paraglide-js'
 import { sveltekit } from '@sveltejs/kit/vite'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vitest/config'
-import { svelteKitPwaForVite8 } from './src/lib/build/sveltekit-pwa-vite8'
 
 /** Watch / file-scoped re-runs only instrument a subset; thresholds would false-fail. */
 const enforceCoverageThresholds = process.env.CI === 'true' || process.argv.includes('run')
@@ -26,22 +25,6 @@ export default defineConfig({
   plugins: [
     tailwindcss(),
     sveltekit(),
-    svelteKitPwaForVite8({
-      strategies: 'injectManifest',
-      srcDir: 'src',
-      filename: 'service-worker.ts',
-      registerType: 'autoUpdate',
-      manifest: false,
-      injectManifest: {
-        // No Workbox precache in the SW — push + capture queue only. Avoids __WB_MANIFEST deploy bugs.
-        injectionPoint: undefined,
-        globPatterns: [],
-      },
-      devOptions: {
-        enabled: true,
-        type: 'module',
-      },
-    }),
     paraglideVitePlugin({ project: './project.inlang', outdir: './src/lib/paraglide' }),
   ],
   test: {
@@ -88,7 +71,6 @@ export default defineConfig({
         'src/routes/api/keys/**',
         'src/routes/api/chat/sessions/**',
         'src/routes/graph/**',
-        'src/service-worker.ts',
         '**/*.e2e.ts',
         '**/*.config.*',
       ],

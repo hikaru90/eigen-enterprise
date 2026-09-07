@@ -8,39 +8,12 @@
   import * as Card from '$lib/components/ui/card'
   import { ONBOARDING_GROUNDING_PUSH_DELAY_MS } from '$lib/grounding/onboarding-welcome-constants'
   import { getPushSupportState, postSubscribe, subscribeToPush } from '$lib/push/client'
-  import { deferredInstallState, clearDeferredInstall } from '$lib/pwa/deferred-install-store.svelte'
-  import {
-    isIosDevice,
-    isPwaStandalone,
-    listenForAppInstalled,
-    promptPwaInstall,
-  } from '$lib/pwa/install'
 
-  let {
-    open,
-    walletAvailableCredits = 0,
-    minCaptureCredits = 5,
-    creditsGatePassed = false,
-    startingFreeCredits = 100,
-  }: {
-    open: boolean
-    walletAvailableCredits?: number
-    minCaptureCredits?: number
-    creditsGatePassed?: boolean
-    startingFreeCredits?: number
-  } = $props()
+  let { open }: { open: boolean } = $props()
 
-  /** 0 welcome · 1 capture · 2 install · 3 notifications */
+  /** 0 welcome · 1 capture · 2 notifications */
   let step = $state(0)
-  const lastStep = 3
-
-  /** Deferred install event comes from the shared app-wide store (see layout). */
-  const deferredInstall = $derived(deferredInstallState.deferred)
-  let installDone = $state(false)
-  let installBusy = $state(false)
-  let installError = $state<string | null>(null)
-  let installConfirmedAt = $state<number | null>(null)
-  let ios = $state(false)
+  const lastStep = 2
 
   let pushDone = $state(false)
   let pushBusy = $state(false)
@@ -50,14 +23,8 @@
 
   function resetOnOpen() {
     step = 0
-    installError = null
     pushError = null
     welcomePushScheduled = false
-    ios = isIosDevice()
-    installDone = isPwaStandalone()
-    if (installDone && installConfirmedAt === null) {
-      installConfirmedAt = Date.now()
-    }
     const support = getPushSupportState()
     if (!support.supported) {
       pushUnsupportedReason = support.reason
@@ -84,52 +51,20 @@
     if (!open) return
 
     resetOnOpen()
-
-    // beforeinstallprompt is captured app-wide by the shared store (layout);
-    // this overlay reads `deferredInstall` from it. We still listen for
-    // appinstalled here to fire onboarding-specific analytics + push scheduling.
-    const stopInstalled = listenForAppInstalled(() => {
-      installDone = true
-      installConfirmedAt = Date.now()
-      installError = null
-      capture('onboarding_pwa_installed', { via: 'appinstalled' })
-      void maybeScheduleWelcomePush()
-    })
-
-    const standalonePoll = window.setInterval(() => {
-      if (!installDone && isPwaStandalone()) {
-        installDone = true
-        if (installConfirmedAt === null) installConfirmedAt = Date.now()
-        void maybeScheduleWelcomePush()
-      }
-    }, 1000)
-
-    return () => {
-      stopInstalled()
-      window.clearInterval(standalonePoll)
-    }
   })
-
-  const localWalletCredits = $derived(walletAvailableCredits)
-  const creditsOk = $derived(localWalletCredits >= minCaptureCredits || creditsGatePassed)
 
   const titles = [
     'Your memory, not theirs.',
     'Just drop it in.',
-    'Install Eigen Mesh',
     'Stay in the loop',
   ] as const
   const title = $derived(titles[step] ?? titles[0])
 
   async function maybeScheduleWelcomePush(): Promise<void> {
     if (welcomePushScheduled) return
-    if (!installDone || installConfirmedAt === null) return
     if (!pushDone) return
 
-    const remaining = Math.max(
-      0,
-      installConfirmedAt + ONBOARDING_GROUNDING_PUSH_DELAY_MS - Date.now(),
-    )
+    const remaining = ONBOARDING_GROUNDING_PUSH_DELAY_MS
     welcomePushScheduled = true
     try {
       const res = await fetch('/api/grounding/onboarding-welcome-push', {
@@ -154,46 +89,6 @@
     }
   }
 
-  async function onInstallClick(): Promise<void> {
-    if (installBusy) return
-    installBusy = true
-    installError = null
-    try {
-      if (deferredInstall) {
-        const outcome = await promptPwaInstall(deferredInstall)
-        clearDeferredInstall()
-        if (outcome === 'accepted') {
-          installDone = true
-          installConfirmedAt = Date.now()
-          capture('onboarding_pwa_installed', { via: 'beforeinstallprompt' })
-          void maybeScheduleWelcomePush()
-        } else {
-          installError = 'Install was dismissed — try again, or continue without installing.'
-        }
-      } else if (isPwaStandalone()) {
-        installDone = true
-        if (installConfirmedAt === null) installConfirmedAt = Date.now()
-        void maybeScheduleWelcomePush()
-      } else {
-        installError = ios
-          ? 'Use Share → Add to Home Screen, then return here.'
-          : 'Use your browser menu to install Eigen Mesh, then return here.'
-      }
-    } catch (e) {
-      installError = e instanceof Error ? e.message : String(e)
-    } finally {
-      installBusy = false
-    }
-  }
-
-  function markInstalledManually(): void {
-    installDone = true
-    if (installConfirmedAt === null) installConfirmedAt = Date.now()
-    installError = null
-    capture('onboarding_pwa_installed', { via: 'manual_confirm' })
-    void maybeScheduleWelcomePush()
-  }
-
   async function onEnableNotifications(): Promise<void> {
     if (pushBusy) return
     pushBusy = true
@@ -211,21 +106,12 @@
     }
   }
 
-  function advanceFromInstall(): void {
-    if (!installDone) return
-    step = 3
-  }
-
   const completeOnboardingEnhance: SubmitFunction =
     () =>
     async ({ result, update }) => {
       await update({ reset: false })
       if (result.type === 'success') {
-        capture('onboarding_completed', {
-          credits_available: localWalletCredits,
-          pwa_installed: installDone,
-          push_enabled: pushDone,
-        })
+        capture('onboarding_completed', { push_enabled: pushDone })
         await invalidateAll()
       }
     }
@@ -265,10 +151,6 @@
             Your memory shouldn't live inside one chat vendor or hyperscaler. Eigen Mesh is yours —
             portable across every AI tool you use, not locked to theirs.
           </p>
-          <p class="text-xs leading-relaxed">
-            You start with {startingFreeCredits.toLocaleString('en-US')} free credits to try it — no card
-            needed.
-          </p>
         {:else if step === 1}
           <p class="text-xs leading-relaxed">
             Eigen Mesh captures what's on your mind and keeps it organized and searchable. Nothing
@@ -278,79 +160,6 @@
             Type it or say it. It files it away and remembers it for you — so next time you ask, it
             already knows what you knew.
           </p>
-          {#if !creditsOk}
-            <p class="text-xs text-muted-foreground leading-relaxed">
-              Add credits on the next screen if capture is blocked — Settings → LLM also works.
-            </p>
-          {/if}
-        {:else if step === 2}
-          <p class="text-xs leading-relaxed">
-            Install Eigen Mesh on your device so capture and reminders are one tap away.
-          </p>
-          {#if installDone}
-            <p class="text-xs leading-relaxed text-emerald-700 dark:text-emerald-400">
-              Installed. You're ready for the next step.
-            </p>
-          {:else}
-            {#if ios}
-              <ol class="list-decimal space-y-1.5 pl-4 text-xs leading-relaxed">
-                <li>Tap the Share button in Safari</li>
-                <li>Choose <span class="font-medium">Add to Home Screen</span></li>
-                <li>Open Eigen Mesh from your home screen, then confirm below</li>
-              </ol>
-            {:else if deferredInstall}
-              <p class="text-xs text-muted-foreground leading-relaxed">
-                Tap Install — your browser will ask you to confirm.
-              </p>
-            {:else}
-              <p class="text-xs text-muted-foreground leading-relaxed">
-                Tap Install to add Eigen Mesh to your device. If nothing appears, use your browser’s
-                Install app / Add to dock menu, then confirm.
-              </p>
-            {/if}
-            {#if installError}
-              <p class="text-destructive text-xs">{installError}</p>
-            {/if}
-            <div class="flex flex-col gap-2 pt-1">
-              {#if ios}
-                <Button
-                  type="button"
-                  class="h-11 w-full rounded-[4px] text-sm font-medium"
-                  onclick={markInstalledManually}
-                >
-                  I've installed it
-                </Button>
-              {:else}
-                <Button
-                  type="button"
-                  class="h-11 w-full rounded-[4px] text-sm font-medium"
-                  disabled={installBusy}
-                  onclick={() => void onInstallClick()}
-                >
-                  {installBusy ? 'Installing…' : 'Install app'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  class="h-9 w-full rounded-[4px] text-xs"
-                  onclick={markInstalledManually}
-                >
-                  I've already installed it
-                </Button>
-              {/if}
-              <Button
-                type="button"
-                variant="ghost"
-                class="h-8 w-full rounded-[4px] text-xs text-muted-foreground"
-                onclick={() => {
-                  capture('onboarding_pwa_skipped', {})
-                  step = 3
-                }}
-              >
-                Continue without installing
-              </Button>
-            </div>
-          {/if}
         {:else}
           <p class="text-xs leading-relaxed">
             Enable notifications so Eigen Mesh can nudge you with a quick question after setup — and
@@ -378,39 +187,21 @@
               >
                 {pushBusy ? 'Enabling…' : 'Enable notifications'}
               </Button>
-              {#if creditsOk}
-                <form
-                  method="post"
-                  action="?/completeOnboarding"
-                  use:enhance={completeOnboardingEnhance}
-                  class="w-full"
+              <form
+                method="post"
+                action="?/completeOnboarding"
+                use:enhance={completeOnboardingEnhance}
+                class="w-full"
+              >
+                <Button
+                  type="submit"
+                  variant="ghost"
+                  class="h-8 w-full rounded-[4px] text-xs text-muted-foreground"
+                  onclick={() => capture('onboarding_push_skipped', {})}
                 >
-                  <Button
-                    type="submit"
-                    variant="ghost"
-                    class="h-8 w-full rounded-[4px] text-xs text-muted-foreground"
-                    onclick={() => capture('onboarding_push_skipped', {})}
-                  >
-                    Continue without notifications
-                  </Button>
-                </form>
-              {:else}
-                <form
-                  method="post"
-                  action="?/skipOnboarding"
-                  use:enhance={skipOnboardingEnhance}
-                  class="w-full"
-                >
-                  <Button
-                    type="submit"
-                    variant="ghost"
-                    class="h-8 w-full rounded-[4px] text-xs text-muted-foreground"
-                    onclick={() => capture('onboarding_push_skipped', {})}
-                  >
-                    Continue without notifications
-                  </Button>
-                </form>
-              {/if}
+                  Continue without notifications
+                </Button>
+              </form>
             </div>
           {/if}
         {/if}
@@ -445,26 +236,14 @@
           <Button type="button" class="rounded-[4px] text-xs" onclick={() => (step += 1)}
             >Next</Button
           >
-        {:else if step === 2}
-          {#if installDone}
-            <Button type="button" class="rounded-[4px] text-xs" onclick={advanceFromInstall}>
-              Next
-            </Button>
-          {/if}
         {:else if pushDone || pushUnsupportedReason}
-          {#if creditsOk}
-            <form
-              method="post"
-              action="?/completeOnboarding"
-              use:enhance={completeOnboardingEnhance}
-            >
-              <Button type="submit" class="rounded-[4px] text-xs">Start capturing →</Button>
-            </form>
-          {:else}
-            <form method="post" action="?/skipOnboarding" use:enhance={skipOnboardingEnhance}>
-              <Button type="submit" class="rounded-[4px] text-xs">Start capturing →</Button>
-            </form>
-          {/if}
+          <form
+            method="post"
+            action="?/completeOnboarding"
+            use:enhance={completeOnboardingEnhance}
+          >
+            <Button type="submit" class="rounded-[4px] text-xs">Start capturing →</Button>
+          </form>
         {/if}
       </Card.Footer>
     </Card.Root>

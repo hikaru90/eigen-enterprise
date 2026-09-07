@@ -1,21 +1,12 @@
 import type { Actions, PageServerLoad } from './$types'
 import { fail, redirect } from '@sveltejs/kit'
 import { eq } from 'drizzle-orm'
-import { isByokUiEnabled } from '$lib/server/billing/byok-ui'
-import { MIN_CAPTURE_PIPELINE_CREDITS, STARTING_FREE_CREDITS } from '$lib/server/billing/credits'
-import {
-  getPayPalClientId,
-  getPayPalWebSdkUrl,
-  isPayPalConfigured,
-} from '$lib/server/billing/paypal'
-import { getOrCreateWallet, grantStartingFreeCredits } from '$lib/server/billing/wallet'
 import { loadRecentCaptureThoughts } from '$lib/server/capture/load-recent-capture-thoughts'
 import { getDb } from '$lib/server/db'
 import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
 import { userPreference } from '$lib/server/db/schema'
 import { isGroundingQuestionDue } from '$lib/server/grounding/question-due'
-import { checkCaptureAllowed } from '$lib/server/onboarding/capture-gate'
 import { ensureUserOntologySeeded } from '$lib/server/ontology-db'
 
 export const load: PageServerLoad = async (event) => {
@@ -34,33 +25,15 @@ export const load: PageServerLoad = async (event) => {
 
   const isHarness = authUser?.accountKind === 'harness'
 
-  if (!isHarness) {
-    await grantStartingFreeCredits(userId)
-  }
-
-  const [pref, captureGate, wallet, groundingQuestionEligible] = await Promise.all([
+  const [pref, groundingQuestionEligible] = await Promise.all([
     getDb()
-      .select({
-        preferredLanguage: userPreference.preferredLanguage,
-        billingMode: userPreference.billingMode,
-      })
+      .select({ preferredLanguage: userPreference.preferredLanguage })
       .from(userPreference)
       .where(eq(userPreference.userId, userId))
       .limit(1)
       .then((rows) => rows[0]),
-    checkCaptureAllowed(userId),
-    getOrCreateWallet(userId),
     isGroundingQuestionDue(userId), // shared check-in cadence (grounding | relevance)
   ])
-
-  const paypalConfigured = isPayPalConfigured()
-  const byokUiEnabled = isByokUiEnabled()
-  const paypalClientId = paypalConfigured ? getPayPalClientId() : null
-  const paypalSdkUrl = paypalConfigured ? getPayPalWebSdkUrl() : null
-
-  const billingMode = (pref?.billingMode ?? 'platform_credits') as 'platform_credits' | 'byok'
-  const creditsGatePassed =
-    isHarness || billingMode === 'byok' || wallet.availableCredits >= MIN_CAPTURE_PIPELINE_CREDITS
 
   const { recentThoughts, recentThoughtDetails } = await loadRecentCaptureThoughts(userId)
 
@@ -69,17 +42,6 @@ export const load: PageServerLoad = async (event) => {
     isHarness,
     onboardingCompleted: isHarness || authUser?.onboardingCompleted === true,
     preferredLanguage: pref?.preferredLanguage ?? 'en',
-    billingMode,
-    walletAvailableCredits: wallet.availableCredits,
-    minCaptureCredits: MIN_CAPTURE_PIPELINE_CREDITS,
-    startingFreeCredits: STARTING_FREE_CREDITS,
-    paypalConfigured,
-    paypalClientId,
-    paypalSdkUrl,
-    byokUiEnabled,
-    creditsGatePassed,
-    captureAllowed: captureGate.allowed,
-    captureGateReason: captureGate.allowed ? null : captureGate.reason,
     groundingQuestionEligible,
     recentThoughts,
     recentThoughtDetails,
@@ -90,13 +52,6 @@ export const actions: Actions = {
   completeOnboarding: async (event) => {
     if (!event.locals.user) {
       return fail(401, { message: 'Unauthorized' })
-    }
-
-    const gate = await checkCaptureAllowed(event.locals.user.id)
-    if (!gate.allowed) {
-      return fail(400, {
-        message: 'Add credits before finishing onboarding.',
-      })
     }
 
     await authDb

@@ -62,12 +62,8 @@ vi.mock('$lib/server/analytics/posthog-server', () => ({
   captureServerEvent: captureServerEventMock,
 }))
 
-vi.mock('$lib/server/billing/preferences', () => ({
+vi.mock('$lib/server/llm/preferences', () => ({
   isByokBilling: vi.fn(async () => true),
-}))
-
-vi.mock('$lib/server/billing/usage-gate', () => ({
-  withPlatformBilling: vi.fn(async (_userId, _settle, fn) => fn()),
 }))
 
 vi.mock('$lib/server/crypto/tenant-encryption', () => ({
@@ -705,7 +701,7 @@ describe('llmCreateTranscription', () => {
   })
 
   it('BYOK uses saved OpenRouter credentials for speech-to-text', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(true)
     const fetchMock = vi.fn(async () =>
       response(true, 200, { text: 'from db', usage: { cost: 0.001 } }),
@@ -745,7 +741,7 @@ describe('llmCreateTranscription', () => {
   })
 
   it('BYOK falls back to OPENROUTER_* env when no DB credentials', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(true)
     const fetchMock = vi.fn(async () =>
       response(true, 200, { text: 'from env', usage: { cost: 0.001 } }),
@@ -762,7 +758,7 @@ describe('llmCreateTranscription', () => {
   })
 
   it('platform credits uses SERVICE_API_KEY_OPENROUTER for speech-to-text', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(false)
     const fetchMock = vi.fn(async () =>
       response(true, 200, { text: 'platform', usage: { cost: 0.001 } }),
@@ -958,7 +954,7 @@ describe('llmCreateTranscription', () => {
   })
 
   it('BYOK STT fails when OPENROUTER_BASE_URL is missing', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(true)
     mockEnv.OPENROUTER_BASE_URL = ''
     await expect(
@@ -971,7 +967,7 @@ describe('llmCreateTranscription', () => {
   })
 
   it('BYOK STT fails when OPENROUTER_API_KEY is missing', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(true)
     mockEnv.OPENROUTER_API_KEY = ''
     await expect(
@@ -984,7 +980,7 @@ describe('llmCreateTranscription', () => {
   })
 
   it('platform STT fails when SERVICE_API_KEY_OPENROUTER is missing', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(false)
     mockEnv.SERVICE_API_KEY_OPENROUTER = ''
     await expect(
@@ -1010,92 +1006,7 @@ describe('llmCreateTranscription', () => {
   })
 })
 
-describe('llm client platform billing settlement', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mockEnv.LLM_BASE_URL = 'https://example.test'
-    mockEnv.LLM_RULE_CHAT = 'rule-chat'
-    mockEnv.LLM_RULE_EMBEDDING = 'rule-embed'
-    mockEnv.LLM_MODEL_CHAT = 'gpt-test'
-    mockEnv.LLM_MODEL_EMBEDDING = 'text-embedding-3-small'
-    mockEnv.LLM_MIN_REQUEST_INTERVAL_MS = '0'
-    mockEnv.LLM_REQUEST_TIMEOUT_MS = ''
-    mockEnv.LLM_API_KEY = 'key-1'
-    mockEnv.SERVICE_API_KEY_EUROUTER = 'service-eurouter-key'
-  })
-
-  it('settles provider-reported chat cost for platform billing', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
-    const { withPlatformBilling } = await import('$lib/server/billing/usage-gate')
-    vi.mocked(isByokBilling).mockResolvedValue(false)
-    vi.mocked(withPlatformBilling).mockImplementation(async (_userId, settle, fn) => {
-      const result = await fn()
-      expect(settle(result)).toBe(0.005)
-      return result
-    })
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        response(true, 200, { usage: { prompt_tokens: 1, cost: 0.005 }, choices: [] }),
-      ),
-    )
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
-  })
-
-  it('settles provider-reported embedding cost for platform billing', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
-    const { withPlatformBilling } = await import('$lib/server/billing/usage-gate')
-    vi.mocked(isByokBilling).mockResolvedValue(false)
-    vi.mocked(withPlatformBilling).mockImplementation(async (_userId, settle, fn) => {
-      const result = await fn()
-      expect(settle(result)).toBe(0.002)
-      return result
-    })
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => response(true, 200, { usage: { total_tokens: 5, cost: 0.002 }, data: [] })),
-    )
-    await llmCreateEmbeddings({ userId: 'u1', input: 'hello' })
-  })
-
-  it('settles provider-reported STT cost for platform billing', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
-    const { withPlatformBilling } = await import('$lib/server/billing/usage-gate')
-    vi.mocked(isByokBilling).mockResolvedValue(false)
-    vi.mocked(withPlatformBilling).mockImplementation(async (_userId, settle, fn) => {
-      const result = await fn()
-      expect(settle(result)).toBe(0.0015)
-      return result
-    })
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => response(true, 200, { text: 'hello', usage: { cost: 0.0015 } })),
-    )
-    await llmCreateTranscription({
-      userId: 'u1',
-      model: 'qwen/qwen3-asr-flash-2026-02-10',
-      audio: { bytes: new Uint8Array([1]), format: 'webm' },
-    })
-  })
-
-  it('throws when platform billing cannot settle missing gateway cost', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
-    const { withPlatformBilling } = await import('$lib/server/billing/usage-gate')
-    vi.mocked(isByokBilling).mockResolvedValue(false)
-    vi.mocked(withPlatformBilling).mockImplementation(async (_userId, settle, fn) => {
-      const result = await fn()
-      expect(() => settle(result)).toThrow(/usage\.cost/)
-      return result
-    })
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => response(true, 200, { usage: { total_tokens: 1 }, choices: [] })),
-    )
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
-  })
-})
-
-describe('llm client platform billing', () => {
+describe('llm client platform gateway credentials', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockEnv.LLM_BASE_URL = 'https://example.test'
@@ -1111,8 +1022,8 @@ describe('llm client platform billing', () => {
     mockEnv.OPENROUTER_BASE_URL = 'https://openrouter.example/api/v1'
   })
 
-  it('uses platform EUrouter credentials when billing is not BYOK', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+  it('uses platform EUrouter credentials when user is not BYOK', async () => {
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(false)
     const fetchMock = vi.fn(async () =>
       response(true, 200, { usage: { prompt_tokens: 1 }, choices: [] }),
@@ -1124,7 +1035,7 @@ describe('llm client platform billing', () => {
   })
 
   it('platform OpenRouter chat uses SERVICE_API_KEY_OPENROUTER', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(false)
     mockSequentialDbLimitResults([{ provider: 'openrouter' }])
     const fetchMock = vi.fn(async () =>
@@ -1137,7 +1048,7 @@ describe('llm client platform billing', () => {
   })
 
   it('platform EUrouter fails when SERVICE_API_KEY_EUROUTER is missing', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(false)
     mockEnv.SERVICE_API_KEY_EUROUTER = ''
     await expect(
@@ -1152,12 +1063,12 @@ describe('llm client BYOK DB credentials', () => {
     mockEnv.LLM_MIN_REQUEST_INTERVAL_MS = '0'
     mockEnv.LLM_REQUEST_TIMEOUT_MS = ''
     mockEnv.LLM_MODEL_CHAT = 'gpt-test'
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(true)
   })
 
   it('loads encrypted api key from DB via decryptTenantValue', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(true)
     mockSequentialDbLimitResults(
       [{ provider: 'eurouter' }],
@@ -1190,7 +1101,7 @@ describe('llm client BYOK DB credentials', () => {
   })
 
   it('falls back to env credentials when DB row is incomplete', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(true)
     mockEnv.LLM_BASE_URL = 'https://env-gateway.example/v1'
     mockEnv.LLM_API_KEY = 'env-key'
@@ -1220,7 +1131,7 @@ describe('llm client BYOK DB credentials', () => {
   })
 
   it('rejects Docker placeholder base URL from DB eurouter credentials', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(true)
     mockSequentialDbLimitResults(
       [{ provider: 'eurouter' }],
@@ -1250,12 +1161,12 @@ describe('llm client OpenRouter routing', () => {
     mockEnv.LLM_REQUEST_TIMEOUT_MS = ''
     mockEnv.LLM_MODEL_CHAT = ''
     mockEnv.LLM_MODEL_EMBEDDING = ''
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(true)
   })
 
   it('BYOK OpenRouter chat uses modelChat from DB', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(true)
     mockSequentialDbLimitResults(
       [{ provider: 'openrouter' }],
@@ -1291,7 +1202,7 @@ describe('llm client OpenRouter routing', () => {
   })
 
   it('BYOK OpenRouter embedding uses modelEmbedding from DB', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(true)
     mockSequentialDbLimitResults(
       [{ provider: 'openrouter' }],
@@ -1325,7 +1236,7 @@ describe('llm client OpenRouter routing', () => {
   })
 
   it('fails when OpenRouter chat model is not configured', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(true)
     mockSequentialDbLimitResults(
       [{ provider: 'openrouter' }],
@@ -1348,7 +1259,7 @@ describe('llm client OpenRouter routing', () => {
   })
 
   it('fails when OpenRouter embedding model is not configured', async () => {
-    const { isByokBilling } = await import('$lib/server/billing/preferences')
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(true)
     mockSequentialDbLimitResults(
       [{ provider: 'openrouter' }],

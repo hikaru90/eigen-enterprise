@@ -2,17 +2,9 @@ import type { Actions, RequestEvent } from '@sveltejs/kit'
 import { fail, redirect } from '@sveltejs/kit'
 import { and, eq } from 'drizzle-orm'
 import { env } from '$lib/server/env/private-env'
-import { captureServerEvent } from '$lib/server/analytics/posthog-server'
 import { isUserAdmin } from '$lib/server/auth/user-role'
-import { isByokUiEnabled } from '$lib/server/billing/byok-ui'
-import { clearLegacyByokForUser, legacyByokMigrationNeeded } from '$lib/server/billing/legacy-byok'
-import {
-  getPayPalClientId,
-  getPayPalWebSdkUrl,
-  getPayPalClientSecret,
-} from '$lib/server/billing/paypal'
-import { assertByokConfigured, hasSavedByokLlmCredentials } from '$lib/server/billing/preferences'
-import { getOrCreateWallet } from '$lib/server/billing/wallet'
+import { assertByokConfigured } from '$lib/server/llm/preferences'
+import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 import { decryptTenantValue, encryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import { getDb } from '$lib/server/db'
 import {
@@ -46,32 +38,6 @@ export async function loadLlmSettingsPage(event: RequestEvent) {
 
   const userId = event.locals.user.id
   const isAdmin = await isUserAdmin(userId)
-
-  const [pref] = await getDb()
-    .select({ billingMode: userPreference.billingMode })
-    .from(userPreference)
-    .where(eq(userPreference.userId, userId))
-    .limit(1)
-
-  const billingMode = (pref?.billingMode ?? 'platform_credits') as BillingMode
-  const wallet = await getOrCreateWallet(userId)
-
-  let paypalConfigured: boolean
-  let paypalClientId: string | null = null
-  let paypalSdkUrl: string | null = null
-  try {
-    // Use the same resolution logic as the PayPal billing module,
-    // so env naming aliases (PAYPAL_URL / PAYPAL_SECRET) work consistently.
-    paypalClientId = getPayPalClientId()
-    paypalSdkUrl = getPayPalWebSdkUrl()
-    // Validate that capture credentials exist as well.
-    // Validate capture credentials exist as well.
-    // (getPayPalClientSecret + getPayPalApiBase will throw if missing)
-    getPayPalClientSecret()
-    paypalConfigured = true
-  } catch {
-    paypalConfigured = false
-  }
 
   const [activeRow] = await getDb()
     .select({ provider: llmActiveProvider.provider })
@@ -111,32 +77,10 @@ export async function loadLlmSettingsPage(event: RequestEvent) {
     (openrouterRow?.baseUrl?.trim() && openrouterApiKey.trim()),
   )
 
-  const byokUiEnabled = isByokUiEnabled()
-  const legacyByokMigration = legacyByokMigrationNeeded({
-    byokUiEnabled,
-    billingMode,
-    hasStoredCredentials: byokConfigured,
-  })
-  const tab = event.url.searchParams.get('tab')
-  let initialTab = (
-    tab === 'byok' || tab === 'credits' ? tab : billingMode === 'byok' ? 'byok' : 'credits'
-  ) as 'byok' | 'credits'
-  if (!byokUiEnabled) {
-    initialTab = 'credits'
-  }
-
   return {
     isAdmin,
-    billingMode,
-    byokUiEnabled,
     byokConfigured,
-    legacyByokMigration,
-    wallet,
-    paypalConfigured,
-    paypalClientId,
-    paypalSdkUrl,
     activeProvider,
-    initialTab,
     providers: {
       eurouter: {
         configured: isProviderConfigured(eurouterRow),
@@ -238,14 +182,14 @@ export const llmSettingsActions: Actions = {
 
       await db
         .insert(userPreference)
-        .values({ userId, billingMode: 'byok' })
+        .values({ userId, billingMode: 'byok' as BillingMode })
         .onConflictDoUpdate({
           target: userPreference.userId,
-          set: { billingMode: 'byok', updatedAt: new Date() },
+          set: { billingMode: 'byok' as BillingMode, updatedAt: new Date() },
         })
 
       const label = provider === 'eurouter' ? 'EUrouter' : 'OpenRouter'
-      return { llmMessage: `${label} saved.`, billingMode: 'byok' as const }
+      return { llmMessage: `${label} saved.` }
     } catch (error) {
       return fail(400, {
         llmMessage: getSafeErrorMessage(error, 'Unable to save LLM configuration.'),
@@ -281,10 +225,10 @@ export const llmSettingsActions: Actions = {
         })
       await db
         .insert(userPreference)
-        .values({ userId, billingMode: 'byok' })
+        .values({ userId, billingMode: 'byok' as BillingMode })
         .onConflictDoUpdate({
           target: userPreference.userId,
-          set: { billingMode: 'byok', updatedAt: new Date() },
+          set: { billingMode: 'byok' as BillingMode, updatedAt: new Date() },
         })
       return {
         llmMessage: `Active provider set to ${provider === 'eurouter' ? 'EUrouter' : 'OpenRouter'}.`,
@@ -292,109 +236,6 @@ export const llmSettingsActions: Actions = {
     } catch (error) {
       return fail(400, {
         llmMessage: getSafeErrorMessage(error, 'Unable to set active provider.'),
-      })
-    }
-  },
-
-  setBillingMode: async (event) => {
-    if (!event.locals.user) {
-      return fail(401, { billingMessage: 'You must be signed in.' })
-    }
-
-    const formData = await event.request.formData()
-    const raw = formData.get('billingMode')?.toString().trim() ?? ''
-    if (raw !== 'platform_credits' && raw !== 'byok') {
-      return fail(400, { billingMessage: 'Invalid billing method.' })
-    }
-
-    const billingMode = raw as BillingMode
-    const userId = event.locals.user.id
-
-    const [existingPref] = await getDb()
-      .select({ billingMode: userPreference.billingMode })
-      .from(userPreference)
-      .where(eq(userPreference.userId, userId))
-      .limit(1)
-    const fromBillingMode = (existingPref?.billingMode ?? 'platform_credits') as BillingMode
-
-    try {
-      if (billingMode === 'byok' && !isByokUiEnabled()) {
-        return fail(403, {
-          billingMessage: 'Bring your own key is not available on this deployment.',
-        })
-      }
-      if (billingMode === 'byok') {
-        await assertByokConfigured(userId)
-      }
-
-      await getDb()
-        .insert(userPreference)
-        .values({ userId, billingMode })
-        .onConflictDoUpdate({
-          target: userPreference.userId,
-          set: { billingMode, updatedAt: new Date() },
-        })
-
-      const billingMessage =
-        billingMode === 'byok'
-          ? 'LLM calls will use your OpenRouter / EUrouter keys.'
-          : 'LLM calls will use Eigen platform credits.'
-      if (fromBillingMode !== billingMode) {
-        captureServerEvent({
-          distinctId: userId,
-          event: 'billing_mode_changed',
-          properties: { from: fromBillingMode, to: billingMode },
-        })
-      }
-      return { billingMessage, billingMode }
-    } catch (error) {
-      return fail(400, {
-        billingMessage: getSafeErrorMessage(error, 'Unable to update billing method.'),
-      })
-    }
-  },
-
-  switchToPlatformCredits: async (event) => {
-    if (!event.locals.user) {
-      return fail(401, { legacyByokMessage: 'You must be signed in.' })
-    }
-
-    const userId = event.locals.user.id
-    const byokUiEnabled = isByokUiEnabled()
-    const [pref] = await getDb()
-      .select({ billingMode: userPreference.billingMode })
-      .from(userPreference)
-      .where(eq(userPreference.userId, userId))
-      .limit(1)
-    const billingMode = (pref?.billingMode ?? 'platform_credits') as BillingMode
-    const hasStoredCredentials = await hasSavedByokLlmCredentials(userId)
-
-    if (
-      !legacyByokMigrationNeeded({
-        byokUiEnabled,
-        billingMode,
-        hasStoredCredentials,
-      })
-    ) {
-      return fail(400, {
-        legacyByokMessage: 'Your account is already using Eigen platform credits.',
-      })
-    }
-
-    try {
-      await clearLegacyByokForUser(userId)
-      return {
-        legacyByokMessage:
-          'Your API keys were removed. LLM calls will now use Eigen platform credits.',
-        billingMode: 'platform_credits' as const,
-        legacyByokMigration: false,
-      }
-    } catch (error) {
-      return fail(400, {
-        legacyByokMessage: getSafeErrorMessage(
-          error,
-          'Unable to switch to Eigen platform credits.',
-        ),
       })
     }
   },

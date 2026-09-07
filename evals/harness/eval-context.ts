@@ -1,4 +1,4 @@
-import { billingUserAsyncLocal, tenantUserAsyncLocal } from '$lib/server/billing/context'
+import { billingUserAsyncLocal, tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import {
   appSql,
   createScopedDrizzle,

@@ -1,14 +1,9 @@
 import type { RequestHandler } from './$types'
 import { error, json } from '@sveltejs/kit'
 import {
-  isInsufficientCreditsError,
-  insufficientCreditsPayload,
-} from '$lib/server/billing/insufficient-credits'
-import {
   allowCaptureForceConfirmation,
   interpretAndQueueCapture,
 } from '$lib/server/capture/capture-confirmation'
-import { captureGateHttpStatus, captureGateJsonBody } from '$lib/server/onboarding/capture-gate'
 
 export const POST: RequestHandler = async (event) => {
   const user = event.locals.user
@@ -44,12 +39,6 @@ export const POST: RequestHandler = async (event) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to interpret capture'
     console.error('capture interpret failed', { userId: user.id, message })
-    return json(
-      {
-        ...captureGateJsonBody(err, message),
-        ...(isInsufficientCreditsError(err) ? insufficientCreditsPayload(err) : {}),
-      },
-      { status: captureGateHttpStatus(err) },
-    )
+    return json({ error: message }, { status: 500 })
   }
 }

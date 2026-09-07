@@ -22,7 +22,6 @@
  */
 
 import { and, eq, sql } from 'drizzle-orm'
-import { InsufficientCreditsError } from '$lib/server/billing/wallet'
 import type { IngestPhase, IngestPhaseTimer } from '$lib/server/capture/phase-timing'
 import type { CaptureProgressEvent } from '$lib/server/capture/service'
 import { scheduleIncrementalConsolidation } from '$lib/server/consolidation/incremental-consolidation'
@@ -392,13 +391,8 @@ export async function enrichThought(
 
     scheduleIncrementalConsolidation(userId, thoughtId)
   } else {
-    // Preserve non-retryable errors (e.g. InsufficientCreditsError) so the retry
-    // layer in retry.ts can detect them by error.name and fail immediately.
-    for (const r of results) {
-      if (r.status === 'rejected' && r.reason instanceof InsufficientCreditsError) {
-        throw r.reason
-      }
-    }
+    // Non-retryable errors keep their `error.name` so the retry layer in retry.ts
+    // can detect them and fail immediately.
     throw new Error(
       `Enrichment step(s) failed: ${formatEnrichStepFailures(results, stepNames).join('; ')}`,
     )

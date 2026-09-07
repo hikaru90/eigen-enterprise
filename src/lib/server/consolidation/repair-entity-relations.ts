@@ -11,7 +11,6 @@
  */
 
 import { and, eq, isNotNull } from 'drizzle-orm'
-import { InsufficientCreditsError } from '$lib/server/billing/wallet'
 import { pruneSuspiciousEntityEdgesForUser } from '$lib/server/consolidation/prune-suspicious-entity-edges'
 import { getDb } from '$lib/server/db'
 import { canonicalEntity, entityResolutionLog, thought } from '$lib/server/db/schema'
@@ -401,10 +400,6 @@ export async function repairEntityRelationsForUser(
         row.thought.repairAttempts = 0
       }
     } catch (err) {
-      // Never keep burning the wallet across the rest of the batch.
-      if (err instanceof InsufficientCreditsError) {
-        throw err
-      }
       await persistRepairAttempts(row.thought.thoughtId, row.thought.metadata, nextAttempts)
       row.thought.repairAttempts = nextAttempts
       row.thought.metadata = {

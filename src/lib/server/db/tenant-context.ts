@@ -7,7 +7,7 @@ import { resolveHarnessBillingUserId } from '$lib/server/auth/harness-billing'
 export const tenantUserAsyncLocal = new AsyncLocalStorage<string>()
 
 /**
- * When set (e.g. eval harness), platform LLM debits and credit checks use this user
+ * When set (e.g. eval harness), platform LLM config resolution uses this user
  * instead of the tenant RLS user. Thought/memory rows still belong to the tenant user.
  */
 export const billingUserAsyncLocal = new AsyncLocalStorage<string>()

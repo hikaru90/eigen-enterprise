@@ -4,11 +4,6 @@ import { asc, eq, sql } from 'drizzle-orm'
 import { formatToolResultForDisplay, sanitizeFinalAnswerText } from '$lib/chat/chat-stream-types'
 import { compactChatIntermediateSteps } from '$lib/chat/normalize-messages'
 import { runWithTrace } from '$lib/server/activity/trace-context'
-import { tenantUserAsyncLocal } from '$lib/server/billing/context'
-import {
-  insufficientCreditsPayload,
-  isInsufficientCreditsError,
-} from '$lib/server/billing/insufficient-credits'
 import { sessionMessagesToAgentHistory } from '$lib/server/chat/session-history-for-agent'
 import {
   appDbAsyncLocal,
@@ -19,6 +14,7 @@ import {
   deactivateTenantDbSession,
 } from '$lib/server/db'
 import { chatSession, chatMessage, type ChatSessionMode } from '$lib/server/db/brain.schema'
+import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { agentChat } from '$lib/server/llm/agent-loop'
 
 function collectErrorMessages(input: unknown): string[] {
@@ -50,9 +46,6 @@ export function chatErrorTerminalPayload(
   details: string[],
 ): { type: 'error'; error: string; details?: string[]; [key: string]: unknown } {
   const msg = details[0] ?? 'An unexpected error occurred.'
-  if (isInsufficientCreditsError(err)) {
-    return { type: 'error', ...insufficientCreditsPayload(err), details }
-  }
   return { type: 'error', error: msg, details }
 }
 
@@ -447,9 +440,6 @@ export async function handleAgentChatPost(
     console.error(`[${options.logTag ?? 'api/chat'}] agentChat threw`, {
       error: err instanceof Error ? err.message : String(err),
     })
-    if (isInsufficientCreditsError(err)) {
-      return json(insufficientCreditsPayload(err), { status: 402 })
-    }
     return json(
       { response: 'An unexpected error occurred.', history: [], sessionId },
       { status: 500 },

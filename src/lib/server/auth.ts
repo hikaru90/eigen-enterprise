@@ -190,15 +190,6 @@ export const auth = betterAuth({
           },
         }),
         after: async (user) => {
-          const { grantStartingFreeCredits } = await import('$lib/server/billing/wallet')
-          try {
-            await grantStartingFreeCredits(user.id)
-          } catch (err) {
-            console.error('[auth] failed to grant starting free credits', {
-              userId: user.id,
-              error: err instanceof Error ? err.message : String(err),
-            })
-          }
           await syncOwleryContactForVerifiedUser(user)
         },
       },

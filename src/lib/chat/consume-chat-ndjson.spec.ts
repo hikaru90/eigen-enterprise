@@ -54,18 +54,6 @@ describe('consumeChatNdjsonStream', () => {
     await expect(consumeChatNdjsonStream(res, () => undefined)).rejects.toThrow('LLM unavailable')
   })
 
-  it('throws ChatStreamError with insufficient_credits code', async () => {
-    const res = ndjsonResponse([
-      '{"type":"error","error":"Insufficient Eigen platform credits","code":"insufficient_credits","availableCredits":0,"requiredCredits":50,"phase":"precheck","creditsPerUsd":1000}\n',
-    ])
-    await expect(consumeChatNdjsonStream(res, () => undefined)).rejects.toMatchObject({
-      name: 'ChatStreamError',
-      code: 'insufficient_credits',
-      availableCredits: 0,
-      requiredCredits: 50,
-    })
-  })
-
   it('throws when stream ends without terminal event', async () => {
     const res = ndjsonResponse(['{"type":"thinking","content":"still working"}\n'])
     await expect(consumeChatNdjsonStream(res, () => undefined)).rejects.toThrow(

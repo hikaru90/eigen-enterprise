@@ -1,9 +1,5 @@
 import type { RequestHandler } from './$types'
 import { error, json } from '@sveltejs/kit'
-import {
-  billingErrorHttpStatus,
-  billingErrorJsonBody,
-} from '$lib/server/billing/insufficient-credits'
 import { STT_MAX_AUDIO_BYTES, sttFormatFromMime } from '$lib/server/llm/stt-audio'
 import { transcribeAudio } from '$lib/server/llm/stt-client'
 import { readAudioUpload } from '../audio-upload'
@@ -27,6 +23,6 @@ export const POST: RequestHandler = async (event) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Transcription failed'
     console.error('capture transcribe failed', { userId: user.id, message })
-    return json(billingErrorJsonBody(err, message), { status: billingErrorHttpStatus(err) })
+    return json({ error: message }, { status: 500 })
   }
 }

@@ -13,7 +13,7 @@ vi.mock('$lib/server/db/index', () => ({
   withDbUser: withDbUserMock,
 }))
 
-import { billingUserAsyncLocal, tenantUserAsyncLocal } from '$lib/server/billing/context'
+import { billingUserAsyncLocal, tenantUserAsyncLocal } from './tenant-context'
 import { withBillingUserDbRead } from '$lib/server/db/billing-db-read'
 import { appDbAsyncLocal, appReservedSqlAsyncLocal } from '$lib/server/db/context'
 

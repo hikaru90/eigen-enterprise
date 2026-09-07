@@ -14,14 +14,9 @@
   import { browser } from '$app/environment'
   import { resolve } from '$app/paths'
   import { page } from '$app/state'
-  import { insufficientCreditsTopUpHint } from '$lib/billing/insufficient-credits'
   import { appendVoiceTranscript } from '$lib/capture/transcribe-audio'
   import { sanitizeFinalAnswerText, toolLabel } from '$lib/chat/chat-stream-types'
-  import {
-    consumeChatNdjsonStream,
-    type ChatProgressEvent,
-    isInsufficientCreditsChatError,
-  } from '$lib/chat/consume-chat-ndjson'
+  import { consumeChatNdjsonStream, type ChatProgressEvent } from '$lib/chat/consume-chat-ndjson'
   import {
     normalizeChatDisplay,
     sessionMessagesToChatEntries,
@@ -451,12 +446,6 @@
         } else {
           appendMessage({ role: 'assistant', variant: 'text', content: 'Stopped.' })
         }
-      } else if (isInsufficientCreditsChatError(err)) {
-        appendMessage({
-          role: 'assistant',
-          variant: 'text',
-          content: `Error: ${insufficientCreditsTopUpHint(err)}`,
-        })
       } else {
         appendMessage({
           role: 'assistant',

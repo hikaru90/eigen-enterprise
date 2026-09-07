@@ -1,5 +1,5 @@
 import { isUuidV4 } from '$lib/random-uuid'
-import { resolveTenantUserId } from '$lib/server/billing/context'
+import { resolveTenantUserId } from '$lib/server/db/tenant-context'
 import type { AppDatabase } from '$lib/server/db/context'
 import { activityCallLog } from '$lib/server/db/schema'
 import { priceCall } from '$lib/server/pricing'

@@ -4,7 +4,6 @@
   import { onMount } from 'svelte'
   import { SvelteMap, SvelteURLSearchParams } from 'svelte/reactivity'
   import { page } from '$app/state'
-  import { trackInsufficientCredits } from '$lib/analytics/billing-events'
   import { capture as captureEvent } from '$lib/analytics/posthog-client'
   import {
     deleteCaptureThought,
@@ -52,7 +51,6 @@
   import CaptureOnboardingOverlay from '$lib/components/capture-onboarding-overlay.svelte'
   import CaptureQueueList from '$lib/components/capture-queue-list.svelte'
   import CaptureRecentThoughts from '$lib/components/capture-recent-thoughts.svelte'
-  import CreditsTopUpPanel from '$lib/components/credits-top-up-panel.svelte'
   import FirstCaptureNudge from '$lib/components/first-capture-nudge.svelte'
   import GroundingQuestionCard from '$lib/components/grounding-question-card.svelte'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
@@ -79,22 +77,6 @@
   let { data }: { data: PageData } = $props()
 
   const showOnboarding = $derived(!data.onboardingCompleted)
-  const captureBlocked = $derived(!data.captureAllowed)
-
-  function trackCaptureGateInsufficientCredits() {
-    if (
-      captureBlocked &&
-      data.captureGateReason === 'insufficient_credits' &&
-      data.billingMode === 'platform_credits'
-    ) {
-      trackInsufficientCredits({
-        surface: 'capture_gate',
-        phase: 'precheck',
-        required_credits: data.minCaptureCredits,
-        available_credits: data.walletAvailableCredits,
-      })
-    }
-  }
 
   type CheckInQuestionPayload =
     | { kind: 'grounding'; facetKey: string; question: string }
@@ -180,7 +162,6 @@
   }
 
   onMount(() => {
-    trackCaptureGateInsufficientCredits()
     firstCaptureNudgeDismissed = isFirstCaptureNudgeDismissed(data.user.id)
     firstCaptureNudgeHydrated = true
     if (shouldFetchCheckInQuestion() && !groundingQuestionDismissed) {
@@ -188,8 +169,6 @@
       void fetchGroundingQuestion()
     }
   })
-
-  let localWalletCredits = $derived(data.walletAvailableCredits)
 
   const RECENT_THOUGHTS_LIMIT = 8
 
@@ -952,34 +931,6 @@
         />
       {/if}
     {/if}
-    {#if captureBlocked}
-      <Card.Root class="shrink-0 border-2 border-black dark:border-border">
-        <Card.Header>
-          <Card.Title class="text-sm">Before your first capture</Card.Title>
-        </Card.Header>
-        <Card.Content class="space-y-3 text-xs">
-          {#if data.captureGateReason === 'insufficient_credits' && data.billingMode === 'platform_credits'}
-            <p class="text-muted-foreground leading-relaxed">
-              Your free credits are used up. Add Eigen credits to run capture and enrichment
-              (minimum
-              {data.minCaptureCredits.toLocaleString()} credits per capture).
-            </p>
-            <CreditsTopUpPanel
-              compact
-              surface="capture_gate"
-              availableCredits={localWalletCredits}
-              paypalConfigured={data.paypalConfigured}
-              paypalClientId={data.paypalClientId}
-              paypalSdkUrl={data.paypalSdkUrl}
-              onBalanceUpdated={(credits) => {
-                localWalletCredits = credits
-              }}
-            />
-          {/if}
-        </Card.Content>
-      </Card.Root>
-    {/if}
-
     <Card.Root
       class="shrink-0 bg-white dark:bg-card border-2 border-black dark:border-border shadow-[8px_8px_0px_0px_#000] dark:shadow-none p-0 gap-0 items-start overflow-visible"
       aria-busy={interpretPendingText !== null}
@@ -1029,7 +980,7 @@
           <Button
             type="button"
             class="bg-black text-white rounded-none px-[22px] py-[7.5px] text-base font-medium leading-6 h-auto border-0 hover:bg-black/90"
-            disabled={!raw.trim() || captureBlocked || loading}
+            disabled={!raw.trim() || loading}
             onclick={() => {
               hapticConfirm()
               void capture()
@@ -1131,13 +1082,7 @@
 </div>
 
 {#if showOnboarding}
-  <CaptureOnboardingOverlay
-    open={true}
-    walletAvailableCredits={localWalletCredits}
-    minCaptureCredits={data.minCaptureCredits}
-    creditsGatePassed={data.creditsGatePassed || localWalletCredits >= data.minCaptureCredits}
-    startingFreeCredits={data.startingFreeCredits}
-  />
+  <CaptureOnboardingOverlay open={true} />
 {/if}
 
 <AlertDialog.Root

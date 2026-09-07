@@ -42,7 +42,6 @@ describe('parseAdminUsersSort', () => {
 	it('round-trips known sort keys', () => {
 		expect(parseAdminUsersSort('createdAt')).toBe('createdAt')
 		expect(parseAdminUsersSort('email')).toBe('email')
-		expect(parseAdminUsersSort('totalCreditsDebited')).toBe('totalCreditsDebited')
 		expect(parseAdminUsersSort('totalGatewayCostUsd')).toBe('totalGatewayCostUsd')
 		expect(parseAdminUsersSort('lastActivityAt')).toBe('lastActivityAt')
 	})

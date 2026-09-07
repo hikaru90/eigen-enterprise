@@ -7,7 +7,7 @@ import {
   aggregateUserActivityCost,
   type ActivityCostAggregate,
 } from '$lib/server/activity/trace-cost'
-import { billingUserAsyncLocal, tenantUserAsyncLocal } from '$lib/server/billing/context'
+import { billingUserAsyncLocal, tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { captureThought } from '$lib/server/capture/service'
 import {
   appDbAsyncLocal,
