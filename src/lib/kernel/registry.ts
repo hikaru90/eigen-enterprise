@@ -112,8 +112,8 @@ export class KernelRegistry {
       )
     }
 
-    // (c) approval gate: mutate tools only, per injected policy and existing decisions.
-    if (descriptor.auditClass === 'mutate' && this.approvalPolicy.requiresApproval(descriptor, ctx)) {
+    // (c) approval gate: everything non-read (mutate + external), per injected policy and existing decisions.
+    if (descriptor.auditClass !== 'read' && this.approvalPolicy.requiresApproval(descriptor, ctx)) {
       const latest = await this.approvalStore.latestFor(name, ctx.principal.id)
       if (latest?.status === 'pending') {
         throw new KernelError('approval_required', `tool ${name} is awaiting approval`)

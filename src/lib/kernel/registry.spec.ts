@@ -103,6 +103,71 @@ describe('KernelRegistry.execute permission + validation', () => {
   })
 })
 
+describe('KernelRegistry.execute external flow (approvals cover everything non-read)', () => {
+  const toolName = 'email.send_mail'
+
+  function makeExternalRegistry(policy: StaticApprovalPolicy) {
+    const sink = new InMemoryEventSink()
+    const store = new InMemoryApprovalStore()
+    const { spy, messages } = makeVcsSpy()
+    const registry = new KernelRegistry({
+      eventSink: sink,
+      approvalPolicy: policy,
+      approvalStore: store,
+      vcsCommitter: spy,
+    })
+    const handlerCalls: unknown[] = []
+    registry.register(
+      makeTool({
+        name: toolName,
+        module: 'email',
+        auditClass: 'external',
+        handler: async (c, i) => {
+          handlerCalls.push([c, i])
+          return { sent: true }
+        },
+      }),
+    )
+    return { registry, sink, store, messages, handlerCalls }
+  }
+
+  it('requires approval for external tools when the policy demands it', async () => {
+    const policy = new StaticApprovalPolicy(new Set([toolName]))
+    const { registry, store, messages, handlerCalls } = makeExternalRegistry(policy)
+    const ctx = makeCtx()
+
+    await expect(registry.execute(toolName, { value: 'hello' }, ctx)).rejects.toMatchObject({
+      code: 'approval_required',
+    })
+    expect(handlerCalls).toHaveLength(0)
+    const pending = await store.listPending()
+    expect(pending).toHaveLength(1)
+    expect(pending[0]).toMatchObject({ toolName, status: 'pending' })
+
+    await store.decide(pending[0].id, 'approved', 'the-owner')
+    await expect(registry.execute(toolName, { value: 'hello' }, ctx)).resolves.toEqual({
+      sent: true,
+    })
+    expect(handlerCalls).toHaveLength(1)
+    // external actions change no repo state: no vcs commit, ever
+    expect(messages).toHaveLength(0)
+  })
+
+  it('runs external tools without approval when not listed in the policy', async () => {
+    const policy = new StaticApprovalPolicy(new Set())
+    const { registry, sink, handlerCalls } = makeExternalRegistry(policy)
+
+    await expect(registry.execute(toolName, { value: 'hello' }, makeCtx())).resolves.toEqual({
+      sent: true,
+    })
+    expect(handlerCalls).toHaveLength(1)
+    expect(sink.events).toHaveLength(1)
+    expect(sink.events[0]).toMatchObject({
+      payload: { tool: toolName, auditClass: 'external', ok: true },
+    })
+  })
+})
+
 describe('KernelRegistry.execute mutate flow', () => {
   const toolName = 'memory.wipe'
 
