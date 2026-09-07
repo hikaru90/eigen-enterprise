@@ -1,0 +1,105 @@
+# Self-hosted Postgres for Eigen (pgvector + Apache AGE + pg_cron + pg_net).
+services:
+  db:
+    container_name: eigen-db
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=age,pg_cron,pg_net
+      - -c
+      - cron.database_name=eigen
+      - -c
+      - pg_net.database_name=eigen
+      - -c
+      - cron.timezone=${CONSOLIDATION_CRON_TZ:-UTC}
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-eigen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eigen}
+      POSTGRES_DB: eigen
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-eigen} -d eigen']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    volumes:
+      - eigen_pg:/var/lib/postgresql/data
+    restart: unless-stopped
+  app:
+    container_name: eigen-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        POSTHOG_CLI_API_KEY: ${POSTHOG_CLI_API_KEY:-}
+        POSTHOG_PERSONAL_API_KEY: ${POSTHOG_PERSONAL_API_KEY:-}
+        POSTHOG_API_KEY: ${POSTHOG_API_KEY:-}
+        POSTHOG_CLI_PROJECT_ID: ${POSTHOG_CLI_PROJECT_ID:-}
+        POSTHOG_CLI_HOST: ${POSTHOG_CLI_HOST:-https://eu.posthog.com}
+        POSTHOG_SOURCEMAPS_REQUIRED: ${POSTHOG_SOURCEMAPS_REQUIRED:-0}
+        PUBLIC_POSTHOG_HOST: ${PUBLIC_POSTHOG_HOST:-https://eu.i.posthog.com}
+        PUBLIC_POSTHOG_KEY: ${PUBLIC_POSTHOG_KEY:-}
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-}
+        SOURCE_VERSION: ${SOURCE_COMMIT:-${SOURCE_VERSION:-unknown}}
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-eigen}:${POSTGRES_PASSWORD:-eigen}@db:5432/eigen
+      DATABASE_ADMIN_URL: postgres://${POSTGRES_USER:-eigen}:${POSTGRES_PASSWORD:-eigen}@db:5432/eigen
+      CONSOLIDATION_INTERNAL_URL: ${CONSOLIDATION_INTERNAL_URL:-http://app:3000}
+      APP_DB_ROLE: ${APP_DB_ROLE:-eigen_app}
+      AGE_GRAPH_NAME: ${AGE_GRAPH_NAME:-eigen_graph}
+      ADMIN_NAME: ${ADMIN_NAME:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      HOST: 0.0.0.0
+      PORT: 3000
+      # Trust the TLS reverse proxy (Caddy / Coolify Traefik) for scheme + host so
+      # SvelteKit derives the correct app origin. Required for adapter-node behind
+      # a proxy; without it the CSRF origin check compares against localhost.
+      PROTOCOL_HEADER: x-forwarded-proto
+      HOST_HEADER: x-forwarded-host
+      XFF_DEPTH: "1"
+    env_file:
+      - .env
+    ports:
+      - '3000:3000'
+    restart: unless-stopped
+
+  # Self-hosted Drizzle Studio (Gateway). Always started with the stack.
+  # Coolify: set DRIZZLE_GATEWAY_MASTERPASS; domain studio.eigenmesh.xyz is wired via Traefik labels.
+  # On first empty volume, Gateway auto-adds connection "eigen" from DATABASE_URL_eigen (internal db:5432).
+  studio:
+    container_name: eigen-studio
+    image: ghcr.io/drizzle-team/gateway@sha256:da128bbaccb82b006e4b147a62737741c2967a1bb5607a666293b9d6b60b418d
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 4983
+      # Set a long secret in Coolify / .env (openssl rand -hex 32). Required for protected access.
+      MASTERPASS: ${DRIZZLE_GATEWAY_MASTERPASS:-}
+      # Gateway seeds named connections from DATABASE_URL_* on first boot (empty store volume).
+      DATABASE_URL_eigen: postgres://${POSTGRES_USER:-eigen}:${POSTGRES_PASSWORD:-eigen}@db:5432/eigen
+    ports:
+      - '4983:4983'
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.eigen-studio.rule=Host(`studio.eigenmesh.xyz`)
+      - traefik.http.routers.eigen-studio.entrypoints=http,https
+      - traefik.http.routers.eigen-studio.tls=true
+      - traefik.http.routers.eigen-studio.tls.certresolver=letsencrypt
+      - traefik.http.services.eigen-studio.loadbalancer.server.port=4983
+    volumes:
+      - eigen_drizzle_gateway:/app
+    restart: unless-stopped
+
+volumes:
+  eigen_pg:
+  eigen_drizzle_gateway:

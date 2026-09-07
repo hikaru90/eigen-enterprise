@@ -1,0 +1,176 @@
+import { expect, test } from '@playwright/test'
+import {
+  assertReleasePreflight,
+  assertMarkDoneFromProjectsView,
+  assertProjectDetailPageViews,
+  assertProjectReviewTidyUp,
+  assertProjectWaterfallAndAdvance,
+  assertTimelineMountFetchBudget,
+  assertTimelineSharedFiltersAndDial,
+  assertTimelineSsotCountsAndLists,
+  assertTimelineTasksSearch,
+  assertCheckInDeepLinkShowsPendingQuestion,
+  captureThoughtViaUi,
+  captureThoughtViaUiAutoAccept,
+  captureThoughtViaUiDismissVerbatim,
+  completeOnboardingOverlay,
+  exerciseAuthenticatedUi,
+  exerciseNotesShoppingListAppend,
+  exerciseOvernightConsolidation,
+  exerciseProjectsLifecycle,
+  loginUser,
+  registerUser,
+} from './release-helpers'
+import { signOut } from './test-helpers'
+
+test.describe('Release smoke @release', () => {
+  test.describe.configure({ mode: 'serial', timeout: 600_000 })
+
+  test.beforeAll(() => {
+    assertReleasePreflight()
+  })
+
+  test('register → onboard → PayPal → capture → exercise UI → re-login', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await context.grantPermissions(['microphone'], {
+      origin: baseURL ?? 'http://127.0.0.1:5173',
+    })
+    const releaseThought = 'Release smoke thought: planning a team offsite in Lisbon next quarter'
+
+    let email = ''
+
+    await test.step('signup legal links point at the marketing website', async () => {
+      await page.goto('/signup')
+      const terms = page.getByRole('link', { name: /Terms of Service \(AGB\)/i })
+      const privacy = page.getByRole('link', { name: /Privacy Policy/i })
+      const imprint = page.getByRole('link', { name: /^Imprint$/i })
+      await expect(terms).toHaveAttribute('href', /\/terms$/)
+      await expect(privacy).toHaveAttribute('href', /\/privacy$/)
+      await expect(imprint).toHaveAttribute('href', /\/imprint$/)
+      // Legal docs are hosted on the website, not in the app.
+      await expect(terms).toHaveAttribute('href', /^https?:\/\//)
+      await expect(page.getByRole('checkbox', { name: /Terms of Service|AGB/i })).toBeVisible()
+    })
+
+    await test.step('login offers password reset recovery', async () => {
+      await page.goto('/login')
+      await expect(page.getByRole('link', { name: /Forgot password/i })).toBeVisible()
+      await page.getByRole('link', { name: /Forgot password/i }).click()
+      await expect(page).toHaveURL(/\/forgot-password/)
+      await expect(page.getByRole('button', { name: /Send reset link/i })).toBeVisible()
+    })
+
+    await test.step('create account', async () => {
+      ;({ email } = await registerUser(context, page, { emailDomain: 'example.com' }))
+      await expect(page).toHaveURL(/\/capture/)
+      await expect(page.getByRole('dialog', { name: /Your memory, not theirs\./ })).toBeVisible({
+        timeout: 30_000,
+      })
+    })
+
+    await test.step('complete onboarding and buy sandbox credits', async () => {
+      await completeOnboardingOverlay(page, { creditAmount: 1000 })
+    })
+
+    await test.step('check-in deep link shows pending grounding question', async () => {
+      await assertCheckInDeepLinkShowsPendingQuestion(page)
+    })
+
+    await test.step('capture a thought through the UI (interpret → confirm if needed)', async () => {
+      await captureThoughtViaUi(page, releaseThought)
+      await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible()
+      await expect(
+        page.getByRole('button', { name: /Expand thought|Collapse thought/ }).first(),
+      ).toContainText('Lisbon')
+    })
+
+    await test.step('capture deviation modal: dismiss stores verbatim', async () => {
+      const dismissRaw =
+        'Release smoke dismiss: keep this meeting in Lisbon next week exactly as written'
+      await captureThoughtViaUiDismissVerbatim(page, dismissRaw)
+      await expect(
+        page.getByRole('button', { name: /Expand thought|Collapse thought/ }).first(),
+      ).toContainText('Lisbon')
+    })
+
+    await test.step('capture deviation modal: auto-accept after countdown', async () => {
+      await captureThoughtViaUiAutoAccept(
+        page,
+        'Release smoke auto-accept: reinterpret this offsite plan for Porto next month',
+      )
+      await expect(
+        page.getByRole('button', { name: /Expand thought|Collapse thought/ }).first(),
+      ).toBeVisible()
+    })
+
+    await test.step('capture action-item wording through interpret (no invalid-category fail)', async () => {
+      await captureThoughtViaUi(
+        page,
+        'Release smoke action item: email the Lisbon host about venue deposit',
+      )
+      await expect(
+        page.getByRole('button', { name: /Expand thought|Collapse thought/ }).first(),
+      ).toContainText(/Lisbon|venue|deposit/i)
+    })
+
+    await test.step('timeline cold-mount fetch budget (no duplicate list/stats)', async () => {
+      await assertTimelineMountFetchBudget(page)
+    })
+
+    await test.step('timeline: shared filters, AI date dial, no kinds', async () => {
+      await assertTimelineSharedFiltersAndDial(page)
+    })
+
+    await test.step('timeline: Tasks search filters the list', async () => {
+      await assertTimelineTasksSearch(page)
+    })
+
+    await test.step('timeline: SSOT counts match lists; projects board has no catalog-only fetch', async () => {
+      await assertTimelineSsotCountsAndLists(page)
+    })
+
+    await test.step('projects: mark-done uses shared timeline quick action', async () => {
+      await assertMarkDoneFromProjectsView(page)
+    })
+
+    await test.step('projects: waterfall, milestones, advance next-action', async () => {
+      await assertProjectWaterfallAndAdvance(page)
+    })
+
+    await test.step('projects: detail page list/timeline/kanban views', async () => {
+      await assertProjectDetailPageViews(page)
+    })
+
+    await test.step('projects: tidy-up review dialog confirms before mutating', async () => {
+      await assertProjectReviewTidyUp(page)
+    })
+
+    await test.step('projects: create, capture, edit, dismiss', async () => {
+      await exerciseProjectsLifecycle(page)
+    })
+
+    await test.step('overnight consolidation heartbeat', async () => {
+      await exerciseOvernightConsolidation(page)
+    })
+
+    await test.step('notes: create shopping list then append via chat', async () => {
+      await exerciseNotesShoppingListAppend(page)
+    })
+
+    await test.step('exercise authenticated surfaces and controls', async () => {
+      await exerciseAuthenticatedUi(page)
+    })
+
+    await test.step('sign out and sign back in', async () => {
+      await signOut(page)
+      await loginUser(page, email)
+      await expect(page).toHaveURL(/\/capture/)
+      await expect(page.getByText(/Lisbon/i)).toBeVisible()
+      await page.getByRole('button', { name: 'Account menu' }).click()
+      await expect(page.getByText(email)).toBeVisible()
+    })
+  })
+})

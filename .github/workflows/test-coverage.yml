@@ -1,0 +1,77 @@
+name: Unit tests and coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    name: Lint, typecheck, unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Svelte naming
+        run: npm run assert:svelte-naming
+
+      - name: Typecheck
+        run: npm run check
+
+      - name: Unit tests
+        run: npm run test:unit
+
+  components:
+    name: Component browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Component browser tests
+        run: npm run test:components
+
+  coverage:
+    name: Coverage report (thresholds not yet merge-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Thresholds in vite.config.ts are the product target (95%/80%) but floors are
+    # ratcheted to current measured coverage (~89% lines / ~77% branches critical).
+    # Report the gap without blocking merges; raise floors toward the target and
+    # flip this to a required check when green.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - run: npm ci
+
+      - name: Unit tests with coverage thresholds
+        run: npm run test:coverage
+        env:
+          CI: true

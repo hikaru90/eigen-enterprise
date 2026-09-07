@@ -1,0 +1,675 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const {
+  llmChatCompletionMock,
+  logActivityCallMock,
+  retrieveThoughtsMock,
+  deleteThoughtMock,
+  editThoughtMock,
+  captureThoughtMock,
+  createTextFileMock,
+  answerQuestionMock,
+  getDbMock,
+  mcpToolMap,
+} = vi.hoisted(() => {
+  const retrieveThoughtsMock = vi.fn()
+  const deleteThoughtMock = vi.fn()
+  const editThoughtMock = vi.fn()
+  const captureThoughtMock = vi.fn()
+  const createTextFileMock = vi.fn()
+  const answerQuestionMock = vi.fn()
+  const mcpToolMap = new Map<string, typeof retrieveThoughtsMock>([
+    ['retrieve_thoughts', retrieveThoughtsMock],
+    ['delete_thought', deleteThoughtMock],
+    ['edit_thought', editThoughtMock],
+    ['capture_thought', captureThoughtMock],
+    ['create_text_file', createTextFileMock],
+    ['answer_question', answerQuestionMock],
+  ])
+  return {
+    llmChatCompletionMock: vi.fn(),
+    logActivityCallMock: vi.fn(),
+    retrieveThoughtsMock,
+    deleteThoughtMock,
+    editThoughtMock,
+    captureThoughtMock,
+    createTextFileMock,
+    answerQuestionMock,
+    getDbMock: vi.fn(),
+    mcpToolMap,
+  }
+})
+
+vi.mock('$lib/server/llm/llm-client', () => ({
+  llmChatCompletion: llmChatCompletionMock,
+}))
+vi.mock('$lib/server/activity/log-call', () => ({
+  logActivityCall: logActivityCallMock,
+}))
+vi.mock('$lib/server/db', () => ({
+  getDb: getDbMock,
+}))
+vi.mock('$lib/server/mcp/registry', () => ({
+  MCP_EXPOSED_TOOL_MAP: mcpToolMap,
+  MCP_TOOL_MAP: mcpToolMap,
+  MCP_AGENT_TOOL_NAMES: [
+    'capture_thought',
+    'retrieve_thoughts',
+    'answer_question',
+    'edit_thought',
+    'delete_thought',
+    'create_text_file',
+    'list_text_files',
+    'get_text_file',
+    'update_text_file',
+    'append_text_file',
+    'delete_text_file',
+    'search_text_files',
+    'link_text_file_to_thought',
+    'unlink_text_file_from_thought',
+  ],
+  buildAgentToolDescriptionBlock: () => '',
+  isAgentTool: (name: string) =>
+    [
+      'capture_thought',
+      'retrieve_thoughts',
+      'answer_question',
+      'edit_thought',
+      'delete_thought',
+      'create_text_file',
+      'list_text_files',
+      'get_text_file',
+      'update_text_file',
+      'append_text_file',
+      'delete_text_file',
+      'search_text_files',
+      'link_text_file_to_thought',
+      'unlink_text_file_from_thought',
+    ].includes(name),
+}))
+
+import { agentChat, AgentParseError } from './agent-loop'
+import { STRONG_RETRIEVE_MATCH_MIN } from './agent-tool-result-compact'
+
+function llmJson(payload: unknown) {
+  return {
+    choices: [{ message: { content: JSON.stringify(payload) } }],
+  }
+}
+
+describe('agentChat', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    llmChatCompletionMock.mockReset()
+    getDbMock.mockReturnValue({})
+    logActivityCallMock.mockResolvedValue(undefined)
+  })
+
+  it('rejects a final answer when no tool has run', async () => {
+    llmChatCompletionMock.mockResolvedValue(llmJson({ answer: 'Hello from memory.' }))
+
+    await expect(
+      agentChat({
+        userId: 'u1',
+        messages: [{ role: 'user', content: 'Hi' }],
+      }),
+    ).rejects.toThrow(AgentParseError)
+    expect(llmChatCompletionMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('returns answer_question results directly without another LLM turn', async () => {
+    answerQuestionMock.mockResolvedValue({
+      answer: 'Answer: You prefer sourdough.\nEvidence:\n- likes sourdough [id=t1]\nUnknown:\n- none',
+      citations: ['t1'],
+      retrieved: [],
+      conflicts: [],
+    })
+    llmChatCompletionMock.mockResolvedValueOnce(
+      llmJson({ tool: 'answer_question', arguments: { question: 'What bread do I like?' } }),
+    )
+
+    const result = await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'What bread do I like?' }],
+    })
+
+    expect(answerQuestionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'u1' }),
+      { question: 'What bread do I like?' },
+    )
+    expect(result.response).toBe(
+      'Answer: You prefer sourdough.\nEvidence:\n- likes sourdough [id=t1]\nUnknown:\n- none',
+    )
+    expect(llmChatCompletionMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('mandates answer_question for memory questions in the system prompt', async () => {
+    answerQuestionMock.mockResolvedValue({
+      answer: 'Answer: Not in memory.\nEvidence:\nUnknown:\n- workplace',
+      citations: [],
+      retrieved: [],
+      conflicts: [],
+    })
+    llmChatCompletionMock.mockResolvedValueOnce(
+      llmJson({ tool: 'answer_question', arguments: { question: 'Where do I work?' } }),
+    )
+
+    await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'Where do I work?' }],
+    })
+
+    const system = llmChatCompletionMock.mock.calls[0]?.[0]?.messages?.[0]
+    expect(system?.role).toBe('system')
+    expect(system?.content).toMatch(/answer_question/)
+    expect(system?.content).toMatch(/never answer a question from your own knowledge/i)
+    expect(system?.content).toMatch(/retrieve_thoughts is for browsing/i)
+    expect(system?.content).toMatch(/call at least one tool before giving a final answer/i)
+  })
+
+  it('rejects a final answer after retrieve_thoughts search without answer_question', async () => {
+    retrieveThoughtsMock.mockResolvedValue({
+      results: [{ id: 't-version', snippet: 'Eigen Mesh project version meanings' }],
+    })
+    answerQuestionMock.mockResolvedValue({
+      answer:
+        'Answer: Current version is 0.2.0.\nEvidence:\n- Eigen Mesh project version meanings [id=t-version]\nUnknown:\n- none',
+      citations: ['t-version'],
+      retrieved: [],
+      conflicts: [],
+    })
+    llmChatCompletionMock
+      .mockResolvedValueOnce(
+        llmJson({
+          tool: 'retrieve_thoughts',
+          arguments: { query: 'versioning for eigenmesh' },
+        }),
+      )
+      .mockResolvedValueOnce(llmJson({ answer: 'I could not find versioning info.' }))
+      .mockResolvedValueOnce(
+        llmJson({
+          tool: 'answer_question',
+          arguments: { question: 'What is the versioning for eigenmesh?' },
+        }),
+      )
+
+    const result = await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'What is the versioning for eigenmesh?' }],
+    })
+
+    expect(answerQuestionMock).toHaveBeenCalled()
+    expect(result.response).toMatch(/0\.2\.0/)
+    const redirectTurn = llmChatCompletionMock.mock.calls[1]?.[0]?.messages as Array<{
+      role: string
+      content: string
+    }>
+    const redirect = redirectTurn?.find(
+      (m) => m.role === 'user' && m.content.includes('answer_question'),
+    )
+    expect(redirect?.content).toMatch(/answer_question/)
+    expect(redirect?.content).toMatch(/retrieve_thoughts/i)
+  })
+
+  it('allows a final answer after retrieve_thoughts browse without a search query', async () => {
+    retrieveThoughtsMock.mockResolvedValue({ results: [{ id: 't1', snippet: 'Buy milk' }] })
+    llmChatCompletionMock
+      .mockResolvedValueOnce(
+        llmJson({ tool: 'retrieve_thoughts', arguments: { order: 'created_at' } }),
+      )
+      .mockResolvedValueOnce(llmJson({ answer: 'You have one recent thought.' }))
+
+    const result = await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'list my recent thoughts' }],
+    })
+
+    expect(answerQuestionMock).not.toHaveBeenCalled()
+    expect(result.response).toBe('You have one recent thought.')
+  })
+
+  it('suggests replacement tools when the model requests list_temporal_events', async () => {
+    answerQuestionMock.mockResolvedValue({
+      answer: 'Answer: Open tax task.\nEvidence:\nUnknown:\n- none',
+      citations: [],
+      retrieved: [],
+      conflicts: [],
+    })
+    llmChatCompletionMock
+      .mockResolvedValueOnce(llmJson({ tool: 'list_temporal_events', arguments: {} }))
+      .mockResolvedValueOnce(
+        llmJson({ tool: 'answer_question', arguments: { question: 'Gib mir all meine To-Dos.' } }),
+      )
+
+    const result = await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'Gib mir all meine To-Dos.' }],
+    })
+
+    expect(result.response).toMatch(/Open tax task/)
+    const errorTurn = llmChatCompletionMock.mock.calls[1]?.[0]?.messages as Array<{
+      role: string
+      content: string
+    }>
+    const errorMsg = errorTurn?.find((m) => m.role === 'user' && m.content.includes('not available'))
+    expect(errorMsg?.content).toMatch(/list_projects/)
+    expect(errorMsg?.content).toMatch(/get_project_timeline/)
+    expect(errorMsg?.content).toMatch(/answer_question/)
+  })
+
+  it('fails deterministically after repeated invalid model JSON', async () => {
+    llmChatCompletionMock.mockResolvedValue(llmJson({ unexpected: 'field' }))
+
+    await expect(
+      agentChat({
+        userId: 'u1',
+        messages: [{ role: 'user', content: 'Hi' }],
+      }),
+    ).rejects.toThrow(AgentParseError)
+    expect(llmChatCompletionMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('never returns raw tool JSON as the final response', async () => {
+    llmChatCompletionMock.mockResolvedValue(
+      llmJson({
+        answer: '{"tool":"retrieve_thoughts","arguments":{"query":"schedule"}}',
+      }),
+    )
+
+    await expect(
+      agentChat({
+        userId: 'u1',
+        messages: [{ role: 'user', content: 'What is on my schedule?' }],
+      }),
+    ).rejects.toThrow(AgentParseError)
+    expect(llmChatCompletionMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('executes answer_question and streams tool events for a clear question', async () => {
+    answerQuestionMock.mockResolvedValue({
+      answer: 'Answer: You stored Buy milk.\nEvidence:\n- Buy milk [id=t1]\nUnknown:\n- none',
+      citations: ['t1'],
+      retrieved: [],
+      conflicts: [],
+    })
+    llmChatCompletionMock.mockResolvedValueOnce(
+      llmJson({ tool: 'answer_question', arguments: { question: 'What did I store about milk?' } }),
+    )
+
+    const events: string[] = []
+    const result = await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'What did I store about milk?' }],
+      onEvent: (event) => {
+        events.push(event.type)
+      },
+    })
+
+    expect(answerQuestionMock).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u1' }), {
+      question: 'What did I store about milk?',
+    })
+    expect(result.response).toMatch(/Buy milk/)
+    expect(events).toContain('tool_call')
+    expect(events).toContain('tool_result')
+  })
+
+  it('marks a thought done via retrieve then edit_thought', async () => {
+    retrieveThoughtsMock.mockResolvedValue({
+      results: [{ id: 't-done', snippet: 'Finish the grocery list', category: 'idea' }],
+    })
+    editThoughtMock.mockResolvedValue({
+      thoughtId: 't-done',
+      summary: 'Marked as completed.',
+      after: { status: 'completed' },
+    })
+    llmChatCompletionMock
+      .mockResolvedValueOnce(
+        llmJson({ tool: 'retrieve_thoughts', arguments: { query: 'grocery' } }),
+      )
+      .mockResolvedValueOnce(
+        llmJson({
+          tool: 'edit_thought',
+          arguments: { thought_id: 't-done', edit_request: 'mark as done' },
+        }),
+      )
+      .mockResolvedValueOnce(llmJson({ answer: 'Marked the grocery thought as done.' }))
+
+    const result = await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'please mark this grocery thought as done' }],
+    })
+
+    expect(editThoughtMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ thought_id: 't-done', edit_request: 'mark as done' }),
+    )
+    expect(result.response).toMatch(/done/i)
+  })
+
+  it('returns a fallback message when the model returns empty content', async () => {
+    llmChatCompletionMock.mockResolvedValue({ choices: [{ message: { content: '   ' } }] })
+
+    const result = await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'Hello' }],
+    })
+
+    expect(result.response).toMatch(/did not produce a response/i)
+  })
+
+  it('fails deterministically when the model returns invalid JSON', async () => {
+    llmChatCompletionMock.mockResolvedValue({
+      choices: [{ message: { content: 'Just plain text.' } }],
+    })
+
+    await expect(
+      agentChat({
+        userId: 'u1',
+        messages: [{ role: 'user', content: 'Hello' }],
+      }),
+    ).rejects.toThrow(AgentParseError)
+  })
+
+  it('retries when the model requests an unknown tool', async () => {
+    retrieveThoughtsMock.mockResolvedValue({ results: [] })
+    llmChatCompletionMock
+      .mockResolvedValueOnce(llmJson({ tool: 'missing_tool', arguments: {} }))
+      .mockResolvedValueOnce(
+        llmJson({ tool: 'retrieve_thoughts', arguments: { order: 'created_at' } }),
+      )
+      .mockResolvedValueOnce(llmJson({ answer: 'Recovered.' }))
+
+    const result = await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'Help' }],
+    })
+
+    expect(result.response).toBe('Recovered.')
+    expect(llmChatCompletionMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('never sends embedding arrays to the LLM even if a tool returns them', async () => {
+    const vec = Array.from({ length: 1536 }, () => 0.1)
+    retrieveThoughtsMock.mockResolvedValue({
+      results: [{ id: 't1', normalizedText: 'secret', embedding: vec }],
+    })
+    llmChatCompletionMock
+      .mockResolvedValueOnce(llmJson({ tool: 'retrieve_thoughts', arguments: {} }))
+      .mockResolvedValueOnce(llmJson({ answer: 'ok' }))
+
+    await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'list thoughts' }],
+    })
+
+    const sentMessages = llmChatCompletionMock.mock.calls[1]?.[0]?.messages as Array<{
+      content: string
+    }>
+    const toolMsg = sentMessages.find((m) => m.content.includes('retrieve_thoughts'))
+    expect(toolMsg?.content).not.toContain('0.1')
+    expect(toolMsg?.content).not.toContain('"embedding"')
+  })
+
+  it('feeds compact tool results to the LLM on the next turn', async () => {
+    const strongScore = STRONG_RETRIEVE_MATCH_MIN + 0.1
+    retrieveThoughtsMock.mockResolvedValue({
+      results: [
+        { id: 't1', normalizedText: 'x'.repeat(8_000), category: 'thought', score: strongScore },
+        { id: 't2', normalizedText: 'y'.repeat(8_000), category: 'thought', score: strongScore },
+      ],
+    })
+    answerQuestionMock.mockResolvedValue({
+      answer: 'Answer: Pick one.\nEvidence:\nUnknown:\n- none',
+      citations: [],
+      retrieved: [],
+      conflicts: [],
+    })
+    llmChatCompletionMock
+      .mockResolvedValueOnce(
+        llmJson({ tool: 'retrieve_thoughts', arguments: { query: 'big note' } }),
+      )
+      .mockResolvedValueOnce(llmJson({ answer: 'Pick one.' }))
+      .mockResolvedValueOnce(
+        llmJson({ tool: 'answer_question', arguments: { question: 'search my notes about groceries' } }),
+      )
+
+    await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'search my notes about groceries' }],
+    })
+
+    const followUpMessages = llmChatCompletionMock.mock.calls[1]?.[0]?.messages as Array<{
+      content: string
+      role?: string
+    }>
+    expect(deleteThoughtMock).not.toHaveBeenCalled()
+    const toolResultMessage = followUpMessages.find(
+      (m) => m.role === 'user' && m.content.includes('Tool result for retrieve_thoughts'),
+    )
+    expect(toolResultMessage?.content.length).toBeLessThan(20_000)
+    expect(toolResultMessage?.content).toContain('candidates')
+    expect(toolResultMessage?.content).not.toContain('x'.repeat(500))
+  })
+
+  it('deletes via retrieve then delete_thought when the model drives the loop', async () => {
+    retrieveThoughtsMock.mockResolvedValue({
+      results: [
+        {
+          id: 't-salmon',
+          snippet: 'Japanese glazed salmon with mirin glaze',
+          category: 'reference',
+        },
+      ],
+    })
+    deleteThoughtMock.mockResolvedValue({ archived: true, thoughtId: 't-salmon' })
+    llmChatCompletionMock
+      .mockResolvedValueOnce(
+        llmJson({
+          tool: 'retrieve_thoughts',
+          arguments: { query: 'Japanese glazed salmon' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        llmJson({ tool: 'delete_thought', arguments: { thought_id: 't-salmon' } }),
+      )
+      .mockResolvedValueOnce(llmJson({ answer: 'Deleted the salmon recipe.' }))
+
+    const result = await agentChat({
+      userId: 'u1',
+      messages: [
+        {
+          role: 'user',
+          content: 'Can you please delete the Japanese glazed salmon recipe?',
+        },
+      ],
+    })
+
+    expect(deleteThoughtMock).toHaveBeenCalledWith(expect.anything(), {
+      thought_id: 't-salmon',
+    })
+    expect(result.response).toMatch(/deleted/i)
+  })
+
+  it('parses thinking blocks, fenced JSON, and brace-matched tool calls', async () => {
+    retrieveThoughtsMock.mockResolvedValue({ results: [] })
+    llmChatCompletionMock
+      .mockResolvedValueOnce({
+        choices: [
+          {
+            message: {
+              content:
+                '<think>Need to browse thoughts</think>\n```json\n{"tool":"retrieve_thoughts","arguments":{"order":"created_at","top_k":1}}\n```',
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce(llmJson({ answer: 'Listed.' }))
+
+    const events: string[] = []
+    const result = await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'show thoughts' }],
+      onEvent: (event) => events.push(event.type),
+    })
+
+    expect(events).toContain('thinking')
+    expect(retrieveThoughtsMock).toHaveBeenCalled()
+    expect(result.response).toBe('Listed.')
+  })
+
+  it('surfaces tool handler failures to the model and activity log', async () => {
+    retrieveThoughtsMock.mockRejectedValue(new Error('db unavailable'))
+    llmChatCompletionMock
+      .mockResolvedValueOnce(
+        llmJson({ tool: 'retrieve_thoughts', arguments: { order: 'created_at' } }),
+      )
+      .mockResolvedValueOnce(llmJson({ answer: 'Recovered after tool error.' }))
+
+    const events: Array<{ type: string; failed?: boolean }> = []
+    const result = await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'list' }],
+      onEvent: (event) => events.push(event),
+    })
+
+    expect(events.some((e) => e.type === 'tool_result' && e.failed)).toBe(true)
+    expect(logActivityCallMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'u1',
+      expect.objectContaining({ operation: 'tool_error.retrieve_thoughts' }),
+    )
+    expect(result.response).toBe('Recovered after tool error.')
+  })
+
+  it('returns the max-iteration fallback after too many tool loops', async () => {
+    retrieveThoughtsMock.mockResolvedValue({ results: [] })
+    llmChatCompletionMock.mockResolvedValue(
+      llmJson({ tool: 'retrieve_thoughts', arguments: { order: 'created_at' } }),
+    )
+
+    const result = await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'Loop forever' }],
+    })
+
+    expect(result.response).toMatch(/too many steps/i)
+  })
+
+  it('parses brace-matched JSON embedded in prose', async () => {
+    retrieveThoughtsMock.mockResolvedValue({ results: [] })
+    llmChatCompletionMock
+      .mockResolvedValueOnce({
+        choices: [
+          {
+            message: {
+              content:
+                'I will browse thoughts now. {"tool":"retrieve_thoughts","arguments":{"order":"created_at","top_k":2}}',
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce(llmJson({ answer: 'Done.' }))
+
+    const result = await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'list' }],
+    })
+
+    expect(retrieveThoughtsMock).toHaveBeenCalled()
+    expect(result.response).toBe('Done.')
+  })
+
+  it('fails deterministically for non-object JSON and objects without tool/answer', async () => {
+    llmChatCompletionMock.mockResolvedValue({ choices: [{ message: { content: '42' } }] })
+
+    await expect(
+      agentChat({
+        userId: 'u1',
+        messages: [{ role: 'user', content: 'one' }],
+      }),
+    ).rejects.toThrow(AgentParseError)
+
+    llmChatCompletionMock.mockResolvedValue({
+      choices: [{ message: { content: '{"status":"ok"}' } }],
+    })
+
+    await expect(
+      agentChat({
+        userId: 'u1',
+        messages: [{ role: 'user', content: 'two' }],
+      }),
+    ).rejects.toThrow(AgentParseError)
+  })
+
+  it('normalizes thought_id aliases for edit_thought', async () => {
+    editThoughtMock.mockResolvedValue({
+      thoughtId: 't1',
+      summary: 'Updated.',
+      after: { status: 'open' },
+    })
+    llmChatCompletionMock
+      .mockResolvedValueOnce(
+        llmJson({
+          tool: 'edit_thought',
+          arguments: { id: 't1', edit_request: 'fix typo' },
+        }),
+      )
+      .mockResolvedValueOnce(llmJson({ answer: 'Fixed.' }))
+
+    await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'fix the typo' }],
+    })
+
+    expect(editThoughtMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ thought_id: 't1', edit_request: 'fix typo' }),
+    )
+  })
+
+  it('captures via capture_thought when the model chooses it', async () => {
+    captureThoughtMock.mockResolvedValue({ thoughtId: 't-new', status: 'queued' })
+    llmChatCompletionMock
+      .mockResolvedValueOnce(
+        llmJson({ tool: 'capture_thought', arguments: { raw: 'I love mirin' } }),
+      )
+      .mockResolvedValueOnce(llmJson({ answer: 'Saved.' }))
+
+    const result = await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'remember that I love mirin' }],
+    })
+
+    expect(captureThoughtMock).toHaveBeenCalledWith(expect.anything(), {
+      raw: 'I love mirin',
+    })
+    expect(result.response).toBe('Saved.')
+  })
+
+  it('creates a text note via create_text_file when the model chooses it', async () => {
+    createTextFileMock.mockResolvedValue({
+      textFileId: 'f1',
+      textFile: { id: 'f1', title: 'Shopping', body: 'eggs' },
+    })
+    llmChatCompletionMock
+      .mockResolvedValueOnce(
+        llmJson({
+          tool: 'create_text_file',
+          arguments: { title: 'Shopping', body: 'eggs' },
+        }),
+      )
+      .mockResolvedValueOnce(llmJson({ answer: 'Note created.' }))
+
+    const result = await agentChat({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'add a note titled Shopping: eggs' }],
+    })
+
+    expect(createTextFileMock).toHaveBeenCalledWith(expect.anything(), {
+      title: 'Shopping',
+      body: 'eggs',
+    })
+    expect(captureThoughtMock).not.toHaveBeenCalled()
+    expect(result.response).toBe('Note created.')
+  })
+})

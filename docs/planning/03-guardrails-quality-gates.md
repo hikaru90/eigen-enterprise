@@ -1,0 +1,99 @@
+# Eigen Guardrails and Quality Gate Policy
+
+## Definition of Ready (DoR)
+
+A change is Ready only when all items below are satisfied:
+
+- Requirement is documented and scoped (in/out boundaries clear).
+- Acceptance criteria exist in Given/When/Then form.
+- Risk classification is assigned (`critical`, `high`, `normal`).
+- API/data contracts are written for touched surfaces.
+- Failure modes are documented with deterministic behavior.
+- Test cases are drafted for unit, integration, and E2E layers.
+- Security impact is reviewed (auth, tenancy, RLS implications).
+
+## Definition of Done (DoD)
+
+A change is Done only when all items below are satisfied:
+
+- Unit, integration, and Playwright E2E tests are implemented and passing.
+- Critical-path scenarios for touched domains are passing.
+- No unresolved high-severity defects.
+- Behavior changes are documented in contract docs.
+- No forbidden fallback/silent degradation behavior introduced.
+- Ingest/retrieval/enrichment fixes **generalize to arbitrary thoughts** — no thought-id, fixture-text, or single-capture special cases in production code (see **Generalize ingest fixes** in [`AGENTS.md`](../../AGENTS.md)).
+
+## Risk Classification Rules
+
+- `critical`:
+  - Ingest flow, retrieval routing, context selection, tenancy/RLS, auth, pricing/cost accounting.
+  - Must include regression tests and release-blocking checks.
+- `high`:
+  - MCP tools, non-core UI screens, schema migrations touching production paths.
+- `normal`:
+  - Non-critical UI polish and low-risk refactors.
+
+## Coverage Thresholds
+
+- Coverage is enforced by risk tier with explicit thresholds:
+  - Critical tier: **95%** product target (lines/branches/functions/statements). Enforced floors in `vite.config.ts` ratchet upward from measured coverage until the target is met.
+  - High tier: 80% lines/functions/statements (branches may be slightly lower where noted in `vite.config.ts`).
+  - Normal tier: 80% lines/branches/functions/statements.
+- Tier glob mapping for CI thresholds:
+  - Critical: `src/lib/server/{capture,retrieval,llm,pricing,validation,observability,memory,ingest,activity}/**`
+  - High: `src/lib/server/{graph,db}/**`, `src/lib/server/auth.ts`, `src/lib/server/auth-form-errors.ts`, `src/routes/**/+server.ts`, `src/routes/+layout.server.ts`
+  - Note: `src/routes/**/+page.server.ts` is listed here for risk ownership but is **excluded** from enforced coverage thresholds in `vite.config.ts` (load functions are thin data adapters; route `+server.ts` handlers remain enforced).
+  - Note: `src/routes/api/e2e/**` is excluded from coverage (harness-only endpoints).
+  - Normal: `src/lib/components/**/*.svelte`, `src/routes/**/*.svelte`
+- Exclusions: generated outputs and scaffolding (`src/lib/paraglide/**`, `src/lib/server/db/auth.schema.ts`, `src/routes/demo/**`, config files, and other non-runtime assets).
+- Coverage report path: `coverage/index.html`.
+
+## Merge Gates (PR-Level)
+
+- CI (`.github/workflows/test-coverage.yml`):
+  - **Required:** `npm run lint`, `npm run check`, `npm run test:unit` (blocks merge on failure).
+  - **Reported:** `npm run test:coverage` with `CI=true` (applies per-tier floors in `vite.config.ts`; `continue-on-error` until critical floors reach the 95% product target — see [docs/testing/README.md](../testing/README.md)).
+- CI (`.github/workflows/oss-secrets-guard.yml`): `npm run assert:oss-secrets` plus the OSS secret-guard unit spec.
+- All required tests pass for impacted risk level.
+- Lint/type checks pass.
+- No security policy regressions (Better Auth + RLS).
+- PR references relevant requirement IDs and acceptance criteria.
+- For critical changes, at least one explicit critical-path test update is present.
+- Playwright E2E and Q&A evals are **operator-run** locally (or via headed scripts); they are not currently merge-blocking CI jobs. See [docs/testing/README.md](../testing/README.md).
+
+## Release Gates
+
+- All critical-path E2E scenarios pass.
+- Deterministic retry behavior validated:
+  - Exactly 3 retries for each LLM call (same model and endpoint).
+  - Clear terminal error after retry budget is exhausted.
+- Retrieval routing behavior validated for the default intent class (relation-centric deferred).
+- Transparent pricing behavior validated:
+  - Base cost, markup, total visible and coherent.
+- No fallback paths or silent degradation introduced.
+
+## Non-Negotiable Guardrails
+
+- **Generalize ingest fixes:** never ship a fix that only works for one captured thought (specific id, exact text, or eval row). Pipeline changes must hold for all ingested thoughts; example strings belong in tests, not as production special cases.
+- No fallbacks.
+- No silent degradation.
+- No hidden bypasses.
+- Deterministic behavior for failure and routing decisions.
+- Capture persists immediately on submit by default; corrections happen through explicit post-commit edits.
+- No cross-model fallback when retry budget is exhausted.
+- Tenant isolation by `user_id` enforced with RLS.
+- Immediate pgvector + AGE combination retained as core behavior.
+- **Lexical surface:** each committed thought maintains a deterministic `lexical_text` (or equivalent) for Postgres full-text / keyword fusion with vectors; stem or lemmatize only behind an explicit, tested pipeline.
+- **MCP and ingest boundaries:** validate IDs and search parameters at the tool/API edge; document contracts in the MCP spec.
+- **Logging and telemetry:** structured logs and cost traces must redact secret-shaped fields; never persist raw API keys in the activity log payload.
+- **Embeddings DB-only:** vectors may be stored and used for retrieval, but must never appear in MCP tool results, agent/LLM messages, or logs. See [embeddings-db-only-boundary.md](./embeddings-db-only-boundary.md).
+
+## Change Control for Core Policies
+
+Any change to these requires explicit requirement update before implementation:
+
+- Retry count policy (currently 3).
+- Context selection weights.
+- Tenant key model (`user_id`).
+- Pricing markup policy (currently 20% per call).
+- MCP v1 tool set surface.

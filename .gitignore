@@ -1,0 +1,56 @@
+node_modules
+
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
+
+/docs/secret
+/docs/competitors
+/docs/competitor-concepts
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+!.env.test
+install-*.log
+posthog-setup-report.md
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+# Playwright
+test-results
+# Coverage
+coverage
+coverage-agent
+# Paraglide
+src/lib/paraglide
+project.inlang/cache/
+# Graph migration artifacts
+tmp/graph-export-*.json
+tmp/graph-import-report.json
+
+# Eval reports and embedding caches (datasets and baselines stay tracked)
+evals/reports/
+evals/datasets/retrieval/embeddings.cache.json
+
+# opencode
+opencode.json
+
+# Vitest browser failure artifacts
+.vitest-attachments/
+**/__screenshots__/
+
+.playwright-mcp
+
+# Claude skills & local credentials (never commit)
+.claude/

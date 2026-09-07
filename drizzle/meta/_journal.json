@@ -1,0 +1,496 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1778162224127,
+      "tag": "0000_classy_greymalkin",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1778512263401,
+      "tag": "0001_ontology_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778578063331,
+      "tag": "0002_amused_gamora",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1778579778413,
+      "tag": "0003_graceful_big_bertha",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1778591909558,
+      "tag": "0004_tranquil_lightspeed",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778599621668,
+      "tag": "0005_thought_category_ontology_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778599637487,
+      "tag": "0006_thought_category_ontology_fk2",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1778599677333,
+      "tag": "0007_thought_kind_fk_restrict",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1747242000000,
+      "tag": "0008_chat_message_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1747422000000,
+      "tag": "0009_llm_provider_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1747508400000,
+      "tag": "0010_practical_ontology",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1778848574833,
+      "tag": "0011_memory_system_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1747600000000,
+      "tag": "0012_activity_call_log_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1747680000000,
+      "tag": "0013_eval_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1747760000000,
+      "tag": "0014_eval_scenario",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1747840000000,
+      "tag": "0015_eval_qa",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1747920000000,
+      "tag": "0016_eval_qa_captures",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1748000000000,
+      "tag": "0017_drop_eval_scenario",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1748080000000,
+      "tag": "0018_eval_qa_extensions",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1748160000000,
+      "tag": "0019_eval_qa_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1748240000000,
+      "tag": "0020_eval_qa_contact_conflict_haystack",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1748320000000,
+      "tag": "0021_temporal_memory",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1748400000000,
+      "tag": "0022_activity_call_log_gateway_host",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1748480000000,
+      "tag": "0023_eval_qa_surgical_memory",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1748560000000,
+      "tag": "0024_eval_qa_tlif_entity_surfaces",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1748640000000,
+      "tag": "0025_push_subscription",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1748720000000,
+      "tag": "0026_billing_wallet",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1748800000000,
+      "tag": "0027_preferred_ui_locale",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1748880000000,
+      "tag": "0028_consolidation_run",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1748966400000,
+      "tag": "0029_heartbeat_run",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1749052800000,
+      "tag": "0030_heartbeat_run_progress",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1749139200000,
+      "tag": "0031_wallet_pending_billing_micro_usd",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1749225600000,
+      "tag": "0032_user_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1749312000000,
+      "tag": "0033_temporal_event_graph_node_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1749398400000,
+      "tag": "0034_tenant_envelope_encryption",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1749484800000,
+      "tag": "0035_wallet_eigen_credits",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1749571200000,
+      "tag": "0036_eval_qa_restore_jonas_retrieval",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1749657600000,
+      "tag": "0037_fast_retrieval",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1749744000000,
+      "tag": "0038_enrich_queue_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1749830400000,
+      "tag": "0039_temporal_event_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1749916800000,
+      "tag": "0040_grounding_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1750003200000,
+      "tag": "0041_temporal_event_task_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1750089600000,
+      "tag": "0042_user_daily_work_minutes",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1750176000000,
+      "tag": "0043_daily_summary_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1750262400000,
+      "tag": "0044_project_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1750348800000,
+      "tag": "0045_text_file",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1750435200000,
+      "tag": "0046_project_profile_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1750521600000,
+      "tag": "0047_user_job_queue",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1750608000000,
+      "tag": "0048_connected_agents",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1750694400000,
+      "tag": "0049_user_account_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1750780800000,
+      "tag": "0050_payment_order_checkout_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1750867200000,
+      "tag": "0051_agent_project_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1750953600000,
+      "tag": "0052_agent_labeled_memory",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1782918174026,
+      "tag": "0053_shallow_spacker_dave",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1783000000000,
+      "tag": "0054_thought_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1783086400000,
+      "tag": "0055_resolve_user_api_key_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1783086500000,
+      "tag": "0056_fix_resolve_user_api_key_key_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1783086600000,
+      "tag": "0057_drop_duplicate_resolve_user_api_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1783173000000,
+      "tag": "0058_preferred_timezone_offset_minutes",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1783259400000,
+      "tag": "0059_daily_summary_dispatch_error",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1783345800000,
+      "tag": "0060_repair_thought_lifecycle_drift",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1783432200000,
+      "tag": "0061_project_on_entity",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1784239280000,
+      "tag": "0062_connected_agent_signature_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1784325680000,
+      "tag": "0063_feedback",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1784412080000,
+      "tag": "0064_grounding_push_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1784498480000,
+      "tag": "0065_schema_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1784584880000,
+      "tag": "0066_project_timelines",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1786634400000,
+      "tag": "0067_single_type_axis",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1786546205517,
+      "tag": "0068_user_first_last_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1786634400000,
+      "tag": "0069_erpnext_invoice_sync",
+      "breakpoints": true
+    }
+  ]
+}

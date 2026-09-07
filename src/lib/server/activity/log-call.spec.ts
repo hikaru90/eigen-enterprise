@@ -1,0 +1,191 @@
+import { describe, expect, it, vi } from 'vitest'
+import { tenantUserAsyncLocal } from '$lib/server/billing/context'
+import { logActivityCall } from './log-call'
+
+vi.mock('$lib/server/pricing', () => ({
+  priceCall: vi.fn((base: number) => ({
+    baseCostUsd: base.toFixed(6),
+    markupUsd: (base * 0.2).toFixed(6),
+    totalCostUsd: (base * 1.2).toFixed(6),
+    markupRate: '0.200000',
+  })),
+}))
+
+vi.mock('./trace-context', () => ({
+  getCurrentTraceGroupId: vi.fn(() => undefined),
+}))
+
+describe('logActivityCall', () => {
+  it('persists priced activity fields', async () => {
+    const values = vi.fn()
+    const insert = vi.fn(() => ({ values }))
+    const db = { insert } as unknown as Parameters<typeof logActivityCall>[0]
+
+    await logActivityCall(db, 'u1', {
+      provider: 'llm',
+      operation: 'embedding',
+      baseCostUsd: 1,
+    })
+
+    expect(insert).toHaveBeenCalledTimes(1)
+    expect(values).toHaveBeenCalledWith({
+      userId: 'u1',
+      provider: 'llm',
+      gatewayHost: null,
+      operation: 'embedding',
+      context: null,
+      baseCostUsd: '1.000000',
+      markupUsd: '0.200000',
+      totalCostUsd: '1.200000',
+      markupRate: '0.200000',
+      groupId: undefined,
+      durationMs: undefined,
+    })
+  })
+
+  it('uses tenant RLS user for user_id when tenant context is set', async () => {
+    const values = vi.fn()
+    const insert = vi.fn(() => ({ values }))
+    const db = { insert } as unknown as Parameters<typeof logActivityCall>[0]
+
+    await tenantUserAsyncLocal.run('eval-tenant-1', async () => {
+      await logActivityCall(db, 'eval-runner-judge', {
+        provider: 'eurouter',
+        operation: 'llm.chat.success(attempt=1)',
+        baseCostUsd: 0.000026,
+      })
+    })
+
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ userId: 'eval-tenant-1' }))
+  })
+
+  it('forwards valid UUID groupId and durationMs when provided', async () => {
+    const values = vi.fn()
+    const insert = vi.fn(() => ({ values }))
+    const db = { insert } as unknown as Parameters<typeof logActivityCall>[0]
+    const groupId = 'a51561bf-f2a7-43ff-92ba-fda71b865118'
+
+    await logActivityCall(db, 'u1', {
+      provider: 'agent',
+      operation: 'tool_call.retrieve_thoughts',
+      baseCostUsd: 0,
+      groupId,
+      durationMs: 342,
+    })
+
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ groupId, durationMs: 342 }))
+  })
+
+  it('truncates context longer than 300 chars', async () => {
+    const values = vi.fn()
+    const insert = vi.fn(() => ({ values }))
+    const db = { insert } as unknown as Parameters<typeof logActivityCall>[0]
+    const longContext = 'x'.repeat(301)
+
+    await logActivityCall(db, 'u1', {
+      provider: 'llm',
+      operation: 'chat',
+      baseCostUsd: 0,
+      context: longContext,
+    })
+
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({ context: `input=${'x'.repeat(291)}...` }),
+    )
+  })
+
+  it('stores context/error and null for whitespace-only', async () => {
+    const values = vi.fn()
+    const insert = vi.fn(() => ({ values }))
+    const db = { insert } as unknown as Parameters<typeof logActivityCall>[0]
+
+    await logActivityCall(db, 'u1', {
+      provider: 'llm',
+      operation: 'chat',
+      baseCostUsd: 0,
+      context: '  hello  ',
+    })
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ context: 'input=  hello  ' }))
+
+    values.mockClear()
+    await logActivityCall(db, 'u1', {
+      provider: 'llm',
+      operation: 'chat',
+      baseCostUsd: 0,
+      context: 'hello',
+      errorMessage: 'timeout',
+    })
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({ context: 'input=hello | error=timeout' }),
+    )
+
+    values.mockClear()
+    await logActivityCall(db, 'u1', {
+      provider: 'llm',
+      operation: 'chat',
+      baseCostUsd: 0,
+      context: '   \t\n  ',
+    })
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ context: null }))
+  })
+
+  it('drops non-UUID trace group ids instead of failing insert', async () => {
+    const values = vi.fn()
+    const insert = vi.fn(() => ({ values }))
+    const db = { insert } as unknown as Parameters<typeof logActivityCall>[0]
+
+    await tenantUserAsyncLocal.run('eval-tenant-1', async () => {
+      await logActivityCall(db, 'eval-tenant-1', {
+        provider: 'apache_age',
+        operation: 'age.upsert_node.success(attempt=1)',
+        baseCostUsd: 0,
+        groupId: 'cedab913-93da-406c-a6e4-56f2b2326936-n50-capture',
+      })
+    })
+
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ groupId: undefined }))
+  })
+
+  it('keeps valid UUID group ids from trace context', async () => {
+    const values = vi.fn()
+    const insert = vi.fn(() => ({ values }))
+    const db = { insert } as unknown as Parameters<typeof logActivityCall>[0]
+    const groupId = 'a51561bf-f2a7-43ff-92ba-fda71b865118'
+
+    await tenantUserAsyncLocal.run('eval-tenant-1', async () => {
+      await logActivityCall(db, 'eval-tenant-1', {
+        provider: 'apache_age',
+        operation: 'age.upsert_node.success(attempt=1)',
+        baseCostUsd: 0,
+        groupId,
+      })
+    })
+
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ groupId }))
+  })
+
+  it('normalizes gatewayHost with trim and lowercase', async () => {
+    const values = vi.fn()
+    const insert = vi.fn(() => ({ values }))
+    const db = { insert } as unknown as Parameters<typeof logActivityCall>[0]
+
+    await logActivityCall(db, 'u1', {
+      provider: 'llm',
+      operation: 'chat',
+      baseCostUsd: 0,
+      gatewayHost: '  Gateway.Example.COM  ',
+    })
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({ gatewayHost: 'gateway.example.com' }),
+    )
+
+    values.mockClear()
+    await logActivityCall(db, 'u1', {
+      provider: 'llm',
+      operation: 'chat',
+      baseCostUsd: 0,
+      gatewayHost: '   ',
+    })
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ gatewayHost: null }))
+  })
+})

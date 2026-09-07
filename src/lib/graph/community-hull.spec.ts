@@ -1,0 +1,84 @@
+import { describe, expect, it } from 'vitest'
+import {
+  COMMUNITY_HULL_ACCENT,
+  COMMUNITY_LEAF_LEVEL,
+  communityCircleFromPositions,
+  communityHullChromeStyleForLevel,
+  communityHullFill,
+  communityHullFillOpacityForZoom,
+  communityHullGradient,
+  communityHullUsesRadialGradient,
+  COMMUNITY_HULL_GRADIENT,
+  COMMUNITY_HULL_GRADIENT_DARK,
+} from './community-hull'
+
+describe('COMMUNITY_HULL_GRADIENT', () => {
+  it('keeps the white radial stops for light mode', () => {
+    expect(COMMUNITY_HULL_GRADIENT.center).toContain('oklch(1 0 0')
+    expect(COMMUNITY_HULL_GRADIENT.center).toContain('/ 0.20)')
+  })
+
+  it('uses dark green radial stops for dark mode', () => {
+    expect(COMMUNITY_HULL_GRADIENT_DARK.center).toContain('oklch(0.')
+    expect(COMMUNITY_HULL_GRADIENT_DARK.center).toContain('152')
+    expect(COMMUNITY_HULL_GRADIENT_DARK.mid).toContain('152')
+    expect(COMMUNITY_HULL_GRADIENT_DARK.edge).toContain('152')
+    expect(communityHullGradient(false)).toBe(COMMUNITY_HULL_GRADIENT)
+    expect(communityHullGradient(true)).toBe(COMMUNITY_HULL_GRADIENT_DARK)
+  })
+})
+
+describe('communityHullUsesRadialGradient', () => {
+  it('is true only for the leaf level', () => {
+    expect(communityHullUsesRadialGradient(COMMUNITY_LEAF_LEVEL)).toBe(true)
+    expect(communityHullUsesRadialGradient(1)).toBe(false)
+    expect(communityHullUsesRadialGradient(0)).toBe(false)
+  })
+})
+
+describe('communityHullFill', () => {
+  it('uses the radial gradient at leaf and flat fills at higher levels', () => {
+    expect(communityHullFill(COMMUNITY_LEAF_LEVEL)).toBe('url(#graph-community-fill)')
+    expect(communityHullFill(1)).toContain('oklch(1 0 0')
+    expect(communityHullFill(0)).toContain('oklch(1 0 0')
+    expect(communityHullFill(1)).not.toContain('url(')
+  })
+})
+
+describe('communityHullChromeStyleForLevel', () => {
+  it('varies border weight and dash by level', () => {
+    const leaf = communityHullChromeStyleForLevel(COMMUNITY_LEAF_LEVEL)
+    const domain = communityHullChromeStyleForLevel(1)
+    const root = communityHullChromeStyleForLevel(0)
+    expect(leaf.stroke).toBe(COMMUNITY_HULL_ACCENT)
+    expect(domain.stroke).toBe(COMMUNITY_HULL_ACCENT)
+    expect(root.stroke).toBe(COMMUNITY_HULL_ACCENT)
+    expect(leaf.strokeWidth).toBeLessThan(domain.strokeWidth)
+    expect(domain.strokeWidth).toBeLessThan(root.strokeWidth)
+    expect(leaf.strokeDasharray).not.toBe(root.strokeDasharray)
+  })
+})
+
+describe('communityHullFillOpacityForZoom', () => {
+  it('is full strength at or below unit zoom for leaf hulls', () => {
+    expect(communityHullFillOpacityForZoom(1, COMMUNITY_LEAF_LEVEL)).toBe(1)
+    expect(communityHullFillOpacityForZoom(0.5, COMMUNITY_LEAF_LEVEL)).toBe(1)
+  })
+
+  it('fades leaf hulls as zoom scale increases', () => {
+    expect(communityHullFillOpacityForZoom(2, COMMUNITY_LEAF_LEVEL)).toBe(0.5)
+    expect(communityHullFillOpacityForZoom(4, COMMUNITY_LEAF_LEVEL)).toBe(0.25)
+    expect(communityHullFillOpacityForZoom(8, COMMUNITY_LEAF_LEVEL)).toBe(0.125)
+  })
+
+  it('stays opaque for non-leaf hull fills', () => {
+    expect(communityHullFillOpacityForZoom(8, 1)).toBe(1)
+    expect(communityHullFillOpacityForZoom(8, 0)).toBe(1)
+  })
+})
+
+describe('communityCircleFromPositions', () => {
+  it('returns null for empty positions', () => {
+    expect(communityCircleFromPositions([])).toBeNull()
+  })
+})
