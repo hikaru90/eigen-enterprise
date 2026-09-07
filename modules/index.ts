@@ -12,6 +12,8 @@ import type { PrincipalStore } from '$lib/kernel/principals'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolDescriptor } from '$lib/kernel/types'
 import { GitCommitter, type VcsCommitter } from '$lib/kernel/vcs'
+import { createDevAgentEngine, devAgentManifest } from './dev-agent'
+import { createDevAgentTools, type DevAgentEngine } from './dev-agent/tools'
 import { emailManifest } from './email/manifest'
 import { createEmailTools } from './email/tools'
 import { memoryManifest } from './memory/manifest'
@@ -20,7 +22,7 @@ import { websiteManifest } from './website/manifest'
 import { createWebsiteTools } from './website/tools'
 
 /** The static module surface of this eigenEnterprise instance. */
-export const moduleManifests = [memoryManifest, emailManifest, websiteManifest] as const
+export const moduleManifests = [memoryManifest, emailManifest, websiteManifest, devAgentManifest] as const
 
 /** Tools that always require an approval decision before first execution. */
 export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set(['email.send_mail'])
@@ -43,6 +45,8 @@ export type BootstrapKernelOptions = {
   principals?: PrincipalStore
   /** Defaults to a real GitCommitter; pass null to disable autocommit. */
   vcsCommitter?: VcsCommitter | null
+  /** Overrides the dev-agent engine (tests inject one with fake runners). */
+  devAgentEngine?: DevAgentEngine
 }
 
 /**
@@ -122,6 +126,9 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createMemoryTools(),
     ...createEmailTools(),
     ...createWebsiteTools(),
+    ...createDevAgentTools({
+      engine: options.devAgentEngine ?? createDevAgentEngine({ eventSink }),
+    }),
   ])
 
   return { registry, modules, activations, principals, approvals: approvalStore, eventSink }
