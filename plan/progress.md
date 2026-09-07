@@ -4,6 +4,36 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 
 ---
 
+## 2026-09-07 — **PHASE 0 CODE-COMPLETE** (orchestrator merged)
+
+**Shipped** (`ab7e84f`, merged to main)
+- `modules/orchestrator/`: **brain** (orchestrator persona = agent principal `orchestrator`/roles admin+agent; mirrors agent-loop's JSON tool protocol but executes via `kernelRegistry.execute`; tool surface = registry ∩ activated modules ∩ role-intersection — fail closed; all LLM via `llmChatCompletion` gateway), **loop** (sequential 25s long-poll, 1s→30s backoff, abortable; job-queue deliberately not used — blocking poll ≠ cron), **allowlist admin tools** (`chat-gateway.allowlist_add/remove/list`, owner-only), **bootstrap** (fails loud only when chat-gateway activated but token missing; SQL upsert documented for activations + orchestrator principal row).
+- Approval-pending UX: `approval_required` → structured `{"status":"approval_pending"}` tool result instructing the model to tell the user it's pending — the model cannot claim execution.
+- **Main state: 212/212 tests green (24 files), `npm run check` = 5 documented baseline errors, lint = baseline.**
+
+**Decisions (orchestrator)**
+- App must boot `bootstrapOrchestrator()` at startup (first-call-wins singleton ordering).
+- Parse-failure after retries: fail loud → Telegram redelivery (at-least-once). No apology-degradation.
+- Orchestrator memory ownership: principal row seeded at bootstrap; ownership refinement deferred to memory-scoping work (Phase 4).
+
+**Phase 0 exit criteria — status**
+| Criterion | Status |
+|---|---|
+| One registry → MCP + OpenAPI | ✅ parity-tested |
+| Principals incl. agents, permissions, approvals | ✅ tested |
+| Append-only events, activation gating, git auto-commit | ✅ tested |
+| Modules: memory, email, chat-gateway manifested | ✅ |
+| Orchestrator answers via Telegram | ✅ code-complete — **live smoke test pending user** (needs: `npm run db:up` + `db:migrate`, `TELEGRAM_BOT_TOKEN`, activate `chat-gateway` + `memory`/`email`, allowlist owner's Telegram ID) |
+
+**Known debt (tracked)**
+- Web push inert (SW deleted with PWA strip) — Telegram is the channel for now
+- `billingMode` column + wallet tables still in DB schema; eigen-green theme; "Eigen Mesh" i18n strings; PWA deps in package.json
+- `modules/**` outside svelte-kit tsconfig include; kernel lint chores (interface→type, caught-error rule)
+
+**Next: Phase 1 — Website module** (content objects, brand kernel, public rendering, contact capture) per `plan/phase-0-kernel.md` §Later phases.
+
+---
+
 ## 2026-09-07 — Round 2 merged: wire + chat-gateway
 
 **Shipped**
