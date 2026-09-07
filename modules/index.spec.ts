@@ -30,8 +30,8 @@ function makeInMemoryKernel() {
 }
 
 describe('moduleManifests', () => {
-  it('declares the memory and email modules', () => {
-    expect(moduleManifests.map((m) => m.id)).toEqual(['memory', 'email'])
+  it('declares the baseline modules (memory, email, website)', () => {
+    expect(moduleManifests.map((m) => m.id)).toEqual(['memory', 'email', 'website'])
   })
 })
 
@@ -39,10 +39,11 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
   it('registers manifests and tools consistently', () => {
     const { kernel } = makeInMemoryKernel()
 
-    expect(kernel.modules.list().map((m) => m.id)).toEqual(['memory', 'email'])
+    expect(kernel.modules.list().map((m) => m.id)).toEqual(['memory', 'email', 'website'])
     const toolNames = kernel.registry.list().map((t) => t.name)
     expect(toolNames).toContain('memory.retrieve_thoughts')
     expect(toolNames).toContain('email.send_mail')
+    expect(toolNames).toContain('website.create_page')
     expect(toolNames.length).toBe(
       moduleManifests.reduce((sum, m) => sum + m.tools.length, 0),
     )

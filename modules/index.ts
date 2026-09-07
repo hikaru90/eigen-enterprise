@@ -16,9 +16,11 @@ import { emailManifest } from './email/manifest'
 import { createEmailTools } from './email/tools'
 import { memoryManifest } from './memory/manifest'
 import { createMemoryTools } from './memory/tools'
+import { websiteManifest } from './website/manifest'
+import { createWebsiteTools } from './website/tools'
 
 /** The static module surface of this eigenEnterprise instance. */
-export const moduleManifests = [memoryManifest, emailManifest] as const
+export const moduleManifests = [memoryManifest, emailManifest, websiteManifest] as const
 
 /** Tools that always require an approval decision before first execution. */
 export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set(['email.send_mail'])
@@ -116,7 +118,11 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     vcsCommitter,
   })
 
-  registerModuleTools(registry, modules, [...createMemoryTools(), ...createEmailTools()])
+  registerModuleTools(registry, modules, [
+    ...createMemoryTools(),
+    ...createEmailTools(),
+    ...createWebsiteTools(),
+  ])
 
   return { registry, modules, activations, principals, approvals: approvalStore, eventSink }
 }

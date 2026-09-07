@@ -505,6 +505,13 @@
       "when": 1788795172137,
       "tag": "0071_gateway_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1788796800000,
+      "tag": "0072_website_tables",
+      "breakpoints": true
     }
   ]
 }
