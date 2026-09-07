@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { InMemoryApprovalStore, StaticApprovalPolicy } from './approvals'
 import { KernelError } from './errors'
 import { InMemoryEventSink } from './events'
+import { InMemoryActivationStore } from './modules'
 import { KernelRegistry } from './registry'
 import type { ToolContext, ToolDescriptor } from './types'
 import type { VcsCommitter } from './vcs'
@@ -210,5 +211,70 @@ describe('KernelRegistry.execute read flow', () => {
     expect(messages).toHaveLength(0)
     expect(sink.events).toHaveLength(1)
     expect(sink.events[0].payload).toMatchObject({ tool: 'memory.echo', auditClass: 'read', ok: true })
+  })
+})
+
+describe('KernelRegistry.execute module activation gating', () => {
+  it('is skipped when no activation store is injected (bare in-memory usage)', async () => {
+    const registry = new KernelRegistry()
+    registry.register(makeTool())
+    await expect(
+      registry.execute('memory.echo', { value: 'x' }, makeCtx()),
+    ).resolves.toEqual({ echoed: { value: 'x' } })
+  })
+
+  it('throws module_inactive (fail closed) for inactive modules and skips handler + audit', async () => {
+    const sink = new InMemoryEventSink()
+    const activations = new InMemoryActivationStore()
+    const registry = new KernelRegistry({ eventSink: sink, activationStore: activations })
+    const handlerCalls: unknown[] = []
+    registry.register(makeTool({ handler: async (c, i) => handlerCalls.push([c, i]) }))
+
+    await expect(
+      registry.execute('memory.echo', { value: 'x' }, makeCtx()),
+    ).rejects.toSatisfy((err: unknown) => err instanceof KernelError && err.code === 'module_inactive')
+    expect(handlerCalls).toHaveLength(0)
+    expect(sink.events).toHaveLength(0)
+  })
+
+  it('executes when the owning module is active, and deactivation re-gates', async () => {
+    const activations = new InMemoryActivationStore()
+    const registry = new KernelRegistry({ activationStore: activations })
+    registry.register(makeTool())
+
+    await activations.set('memory', true)
+    await expect(
+      registry.execute('memory.echo', { value: 'x' }, makeCtx()),
+    ).resolves.toEqual({ echoed: { value: 'x' } })
+
+    await activations.set('memory', false)
+    await expect(
+      registry.execute('memory.echo', { value: 'x' }, makeCtx()),
+    ).rejects.toSatisfy((err: unknown) => err instanceof KernelError && err.code === 'module_inactive')
+  })
+
+  it('gates per module: activating another module does not unlock this tool', async () => {
+    const activations = new InMemoryActivationStore()
+    const registry = new KernelRegistry({ activationStore: activations })
+    registry.register(makeTool())
+    registry.register(makeTool({ name: 'mail.send', module: 'mail', auditClass: 'mutate' }))
+
+    await activations.set('mail', true)
+    await expect(
+      registry.execute('memory.echo', { value: 'x' }, makeCtx()),
+    ).rejects.toSatisfy((err: unknown) => err instanceof KernelError && err.code === 'module_inactive')
+    await expect(
+      registry.execute('mail.send', { value: 'x' }, makeCtx()),
+    ).resolves.toEqual({ echoed: { value: 'x' } })
+  })
+
+  it('runs the activation gate before the permission check', async () => {
+    const activations = new InMemoryActivationStore()
+    const registry = new KernelRegistry({ activationStore: activations })
+    registry.register(makeTool())
+
+    await expect(
+      registry.execute('memory.echo', { value: 'x' }, makeCtx({ roles: ['viewer'] })),
+    ).rejects.toSatisfy((err: unknown) => err instanceof KernelError && err.code === 'module_inactive')
   })
 })

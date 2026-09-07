@@ -1,10 +1,61 @@
+import type { McpToolContext } from './tools'
+import { randomUUID } from 'node:crypto'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
-import { MCP_EXPOSED_TOOL_DEFINITIONS, MCP_EXPOSED_TOOL_MAP } from '$lib/server/mcp/registry'
-import type { McpToolContext } from '$lib/server/mcp/tools'
+import { KernelError } from '$lib/kernel/errors'
+import type { ActivationStore } from '$lib/kernel/modules'
+import { toolInputJsonSchema } from '$lib/kernel/openapi'
+import type { KernelRegistry } from '$lib/kernel/registry'
 import { sanitizeMcpToolResult } from '$lib/server/observability/strip-embeddings'
+import { bootstrapKernel, type WiredKernel } from '../../../../modules/index'
 
-export function createMcpServer(context: McpToolContext): Server {
+export type McpToolListing = {
+  name: string
+  description: string
+  inputSchema: Record<string, unknown>
+}
+
+/**
+ * Pure MCP tools/list projection of a kernel registry. When an activation
+ * store is given, tools of inactive modules are omitted (fail closed).
+ */
+export async function listMcpTools(
+  registry: KernelRegistry,
+  activations?: Pick<ActivationStore, 'get'>,
+): Promise<McpToolListing[]> {
+  const out: McpToolListing[] = []
+  for (const tool of registry.list()) {
+    if (activations && !(await activations.get(tool.module))) continue
+    out.push({
+      name: tool.name,
+      description: tool.summary,
+      inputSchema: toolInputJsonSchema(tool.inputSchema),
+    })
+  }
+  return out
+}
+
+/**
+ * MCP callers are session users (kind human) or Bearer API keys (kind agent).
+ * Phase 0 grants both the admin role — this preserves the historical MCP
+ * behavior (any authenticated principal may call) until principals.ts is wired
+ * into request auth with real role assignments.
+ */
+function toKernelPrincipal(context: McpToolContext): {
+  id: string
+  kind: 'human' | 'agent'
+  roles: string[]
+} {
+  if (context.authenticatedApiKey) {
+    return { id: context.userId, kind: 'agent', roles: ['admin', 'agent'] }
+  }
+  return { id: context.userId, kind: 'human', roles: ['admin'] }
+}
+
+export function createMcpServer(
+  context: McpToolContext,
+  kernel: WiredKernel = bootstrapKernel(),
+): Server {
   const server = new Server(
     {
       name: 'eigen-memory',
@@ -18,21 +69,32 @@ export function createMcpServer(context: McpToolContext): Server {
   )
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: MCP_EXPOSED_TOOL_DEFINITIONS.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      inputSchema: tool.inputSchema,
-    })),
+    tools: await listMcpTools(kernel.registry, kernel.activations),
   }))
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const name = request.params.name
-    const handler = MCP_EXPOSED_TOOL_MAP.get(name)
-    if (!handler) {
+    const descriptor = kernel.registry.get(name)
+    if (!descriptor) {
       throw new Error(`Unknown tool: ${name}`)
     }
+    if (!(await kernel.activations.get(descriptor.module))) {
+      throw new KernelError(
+        'module_inactive',
+        `tool ${name} belongs to inactive module ${descriptor.module}`,
+      )
+    }
 
-    const result = sanitizeMcpToolResult(await handler(context, request.params.arguments ?? {}))
+    const result = sanitizeMcpToolResult(
+      await kernel.registry.execute(
+        name,
+        request.params.arguments ?? {},
+        {
+          principal: toKernelPrincipal(context),
+          requestId: randomUUID(),
+        },
+      ),
+    )
     return {
       content: [
         {

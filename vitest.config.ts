@@ -12,6 +12,7 @@ export default mergeConfig(
       testTimeout: 15_000,
       include: [
         'src/**/*.{test,spec}.{js,ts}',
+        'modules/**/*.{test,spec}.{js,ts}',
         'evals/harness/**/*.{test,spec}.{js,ts}',
         'evals/graph-scale/**/*.{test,spec}.{js,ts}',
         'scripts/**/*.{test,spec}.{js,ts}',
