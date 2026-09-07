@@ -47,8 +47,10 @@ export type BootstrapKernelOptions = {
  * Registers every manifest and validates the tool ↔ manifest contract:
  * descriptor module must own the namespaced name, every descriptor must be
  * listed in its manifest, and every manifest tool must have a descriptor.
+ * Exported so later boot stages (e.g. the orchestrator registering the
+ * chat-gateway surface) go through the identical validated path.
  */
-function registerModuleTools(
+export function registerModuleTools(
   registry: KernelRegistry,
   modules: ModuleRegistry,
   tools: ToolDescriptor[],
@@ -85,8 +87,16 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
   const db: DbHandle =
     options.db ??
     (async () => {
-      const { getDb } = await import('$lib/server/db')
-      return getDb()
+      // Kernel tables are company-level (no RLS, no tenant scoping): use the
+      // request-scoped handle when one exists (MCP/web request paths), and a
+      // pooled app handle otherwise so background consumers (orchestrator
+      // poll loop, which runs outside any request/ALS context) still get a
+      // working audit/activation/approval path. Per-user tools keep their own
+      // scoped sessions regardless of which handle the kernel stores use.
+      const { appDbAsyncLocal, appSql, createScopedDrizzle } = await import('$lib/server/db')
+      const scoped = appDbAsyncLocal.getStore()
+      if (scoped) return scoped
+      return createScopedDrizzle(appSql)
     })
 
   const activations = options.activations ?? new DbActivationStore(db)

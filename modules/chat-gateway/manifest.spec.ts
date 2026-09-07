@@ -3,7 +3,12 @@ import { KernelError } from '$lib/kernel/errors'
 import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryActivationStore, ModuleRegistry } from '$lib/kernel/modules'
 import { KernelRegistry } from '$lib/kernel/registry'
-import { CHAT_GATEWAY_MODULE_ID, chatGatewayManifest, type ChatGatewayStats } from './manifest'
+import {
+  CHAT_GATEWAY_ALLOWLIST_TOOLS,
+  CHAT_GATEWAY_MODULE_ID,
+  chatGatewayManifest,
+  type ChatGatewayStats,
+} from './manifest'
 
 const stats: ChatGatewayStats = { allowlistCount: 2, sessionsCount: 5 }
 const { manifest, statusTool } = chatGatewayManifest(async () => stats)
@@ -13,7 +18,7 @@ describe('chat-gateway manifest', () => {
     expect(manifest.id).toBe('chat-gateway')
     expect(manifest.name).toBe('Chat Gateway')
     expect(manifest.version).toBe('0.1.0')
-    expect(manifest.tools).toEqual(['chat-gateway.status'])
+    expect(manifest.tools).toEqual(['chat-gateway.status', ...CHAT_GATEWAY_ALLOWLIST_TOOLS])
     expect(manifest.permissions).toEqual({ roles: ['owner', 'admin'] })
     expect(typeof manifest.description).toBe('string')
   })
