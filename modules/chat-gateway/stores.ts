@@ -1,19 +1,10 @@
 import { randomUUID } from 'node:crypto'
-
-export type AllowlistEntry = {
-  platform: string
-  externalUserId: string
-  principalId: string
-}
-
-export type AllowlistStore = {
-  isAllowed(platform: string, externalUserId: string): Promise<boolean>
-  /** Principal the external user is mapped to, or null when absent (fail closed). */
-  principalFor(platform: string, externalUserId: string): Promise<string | null>
-  add(platform: string, externalUserId: string, principalId: string): Promise<void>
-  remove(platform: string, externalUserId: string): Promise<void>
-  list(): Promise<AllowlistEntry[]>
-}
+import type {
+  AllowlistEntry,
+  AllowlistStore,
+  GatewaySession,
+  SessionStore,
+} from '$lib/kernel/gateway'
 
 function allowlistKey(platform: string, externalUserId: string): string {
   return `${platform}${externalUserId}`
@@ -45,20 +36,6 @@ export class InMemoryAllowlistStore implements AllowlistStore {
   async list(): Promise<AllowlistEntry[]> {
     return [...this.entries.values()]
   }
-}
-
-export type GatewaySession = {
-  id: string
-  platform: string
-  externalChatId: string
-  principalId: string
-  lastSeenAt: string
-}
-
-export type SessionStore = {
-  /** Upsert by (platform, externalChatId); keeps the session id stable. */
-  touch(platform: string, externalChatId: string, principalId: string): Promise<{ id: string }>
-  get(platform: string, externalChatId: string): Promise<{ id: string; principalId: string } | null>
 }
 
 function sessionKey(platform: string, externalChatId: string): string {

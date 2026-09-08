@@ -1,10 +1,10 @@
-import type { AllowlistStore } from '../chat-gateway/stores'
 import { z } from 'zod'
-import type { ToolDescriptor } from '$lib/kernel/types'
 import {
   CHAT_GATEWAY_ALLOWLIST_TOOLS,
   CHAT_GATEWAY_MODULE_ID,
-} from '../chat-gateway/manifest'
+  type AllowlistStore,
+} from '$lib/kernel/gateway'
+import type { ToolDescriptor } from '$lib/kernel/types'
 
 /**
  * Owner-only allowlist admin surface for the chat-gateway module. Handlers

@@ -1,5 +1,5 @@
-import type { AllowlistEntry, AllowlistStore, SessionStore } from './stores'
 import { and, eq } from 'drizzle-orm'
+import type { AllowlistEntry, AllowlistStore, SessionStore } from '$lib/kernel/gateway'
 import type { AppDatabase } from '$lib/server/db/context'
 import { kernelGatewayAllowlist, kernelGatewaySessions } from '$lib/server/db/gateway.schema'
 

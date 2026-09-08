@@ -1,5 +1,5 @@
-import type { AllowlistStore, SessionStore } from './stores'
 import type { EventSink } from '$lib/kernel/events'
+import type { AllowlistStore, Brain, SessionStore } from '$lib/kernel/gateway'
 import type { ModuleManifest } from '$lib/kernel/modules'
 import type { ToolDescriptor } from '$lib/kernel/types'
 import type { AppDatabase } from '$lib/server/db/context'
@@ -7,12 +7,7 @@ import { kernelGatewayAllowlist, kernelGatewaySessions } from '$lib/server/db/ga
 import { DbAllowlistStore, DbSessionStore } from './db-stores'
 import { chatGatewayEnv } from './env'
 import { chatGatewayManifest, type ChatGatewayStatsFn } from './manifest'
-import {
-  HttpTelegramClient,
-  TelegramGateway,
-  type Brain,
-  type TelegramClient,
-} from './telegram'
+import { HttpTelegramClient, TelegramGateway, type TelegramClient } from './telegram'
 
 export type ChatGatewayOptions = {
   /** Process env (or any env record); must contain TELEGRAM_BOT_TOKEN — validated loudly. */

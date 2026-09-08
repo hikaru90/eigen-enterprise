@@ -1,7 +1,7 @@
-import type { Brain, TelegramSessionRef } from '../chat-gateway/telegram'
 import type { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { KernelError } from '$lib/kernel/errors'
+import type { Brain, TelegramSessionRef } from '$lib/kernel/gateway'
 import type { ModuleRegistry } from '$lib/kernel/modules'
 import { toolInputJsonSchema } from '$lib/kernel/openapi'
 import type { KernelRegistry } from '$lib/kernel/registry'

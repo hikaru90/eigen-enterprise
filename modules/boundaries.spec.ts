@@ -180,11 +180,8 @@ describe('declared wiring edges', () => {
     ])
   })
 
-  it('pins the default policy to exactly the reviewed edges', () => {
-    expect([...DECLARED_WIRING_EDGES.keys()].sort()).toEqual([
-      'orchestrator→chat-gateway',
-      'orchestrator→index',
-    ])
+  it('pins the default policy to the empty set (gateway contract lives in the kernel)', () => {
+    expect([...DECLARED_WIRING_EDGES.entries()]).toEqual([])
   })
 
   it('repo scan: every cross-module import is a declared wiring edge', () => {

@@ -1,19 +1,10 @@
 import { z } from 'zod'
+import {
+  CHAT_GATEWAY_ALLOWLIST_TOOLS,
+  CHAT_GATEWAY_MODULE_ID,
+} from '$lib/kernel/gateway'
 import type { ModuleManifest } from '$lib/kernel/modules'
 import type { ToolDescriptor } from '$lib/kernel/types'
-
-export const CHAT_GATEWAY_MODULE_ID = 'chat-gateway'
-
-/**
- * Allowlist admin tool names (owner-only). Descriptors are built by
- * modules/orchestrator/allowlist-tools.ts around an AllowlistStore instance;
- * they are listed here because this manifest owns the chat-gateway surface.
- */
-export const CHAT_GATEWAY_ALLOWLIST_TOOLS = [
-  'chat-gateway.allowlist_add',
-  'chat-gateway.allowlist_remove',
-  'chat-gateway.allowlist_list',
-] as const
 
 export type ChatGatewayStats = {
   allowlistCount: number

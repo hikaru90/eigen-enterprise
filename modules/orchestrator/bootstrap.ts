@@ -1,12 +1,7 @@
-import type { AllowlistStore, SessionStore } from '../chat-gateway/stores'
-import type { TelegramGateway } from '../chat-gateway/telegram'
-import type { WiredKernel } from '../index'
-import type { AppDatabase } from '$lib/server/db/context'
-import { createChatGateway } from '../chat-gateway/index'
-import { bootstrapKernel, registerModuleTools } from '../index'
-import { createAllowlistAdminTools } from './allowlist-tools'
+import type { AllowlistStore, SessionStore } from '$lib/kernel/gateway'
+import type { WiredKernel } from '$lib/kernel/wiring'
 import { OrchestratorBrain } from './brain'
-import { createTelegramLoop, type TelegramLoopHandle } from './loop'
+import { createTelegramLoop, type TelegramGatewayLike, type TelegramLoopHandle } from './loop'
 
 /**
  * ACTIVATION SEEDING (Phase 0): there is no admin UI yet. Deployers activate
@@ -16,9 +11,11 @@ import { createTelegramLoop, type TelegramLoopHandle } from './loop'
  *   VALUES ('chat-gateway', true, now())
  *   ON CONFLICT (module_id) DO UPDATE SET active = true, updated_at = now();
  *
- * While 'chat-gateway' is inactive, bootstrapOrchestrator skips the gateway
- * and poll loop entirely (fail closed) and requires no TELEGRAM_BOT_TOKEN.
- * Once active, the token is mandatory — the gateway cannot start without it.
+ * While 'chat-gateway' is inactive, the composition root's
+ * bootstrapChatGateway stage returns null, so bootstrapOrchestrator skips the
+ * gateway and poll loop entirely (fail closed) and requires no
+ * TELEGRAM_BOT_TOKEN. Once active, the token is mandatory — the gateway
+ * cannot start without it.
  */
 
 export type OrchestratorStatus = {
@@ -26,11 +23,18 @@ export type OrchestratorStatus = {
   loopRunning: boolean
 }
 
+/** Gateway pieces bootstrapOrchestrator needs once the gateway stage ran. */
+export type OrchestratorGatewayStage = {
+  gateway: TelegramGatewayLike
+  allowlist: AllowlistStore
+  sessions: SessionStore
+}
+
 export type OrchestratorBoot = {
   kernel: WiredKernel
   brain: OrchestratorBrain
   /** Null while the chat-gateway module is inactive. */
-  gateway: TelegramGateway | null
+  gateway: TelegramGatewayLike | null
   allowlist: AllowlistStore | null
   sessions: SessionStore | null
   /** Null while the chat-gateway module is inactive. */
@@ -39,31 +43,26 @@ export type OrchestratorBoot = {
 }
 
 export type OrchestratorBootOptions = {
-  /** Process env (or any env record); TELEGRAM_BOT_TOKEN is required once chat-gateway is active. */
-  env: Record<string, string | undefined>
-  /** Defaults to the process-wide kernel singleton (tests inject an in-memory kernel). */
-  kernel?: WiredKernel
-  /** Defaults to a pooled app DB handle (kernel/gateway tables are not RLS-scoped). */
-  db?: AppDatabase
   /** Start the Telegram poll loop immediately (default true; tests pass false). */
   startLoop?: boolean
 }
 
 /**
- * Composes the Phase-0 path: kernel → orchestrator brain → chat gateway →
- * Telegram poll loop. The chat-gateway manifest and its tools (status +
- * owner-only allowlist admin) are registered here through the kernel's
- * validated registration path.
+ * Composes the orchestrator stage of the Phase-0 path: kernel → orchestrator
+ * brain → chat gateway → Telegram poll loop. The chat-gateway surface itself
+ * (construction, manifest + tool registration) is wired by the composition
+ * root's `bootstrapChatGateway` stage, injected here as `wireGateway` so the
+ * orchestrator imports only the kernel — no cross-module wiring.
  */
 export async function bootstrapOrchestrator(
-  options: OrchestratorBootOptions,
+  kernel: WiredKernel,
+  wireGateway: (brain: OrchestratorBrain) => Promise<OrchestratorGatewayStage | null>,
+  options: OrchestratorBootOptions = {},
 ): Promise<OrchestratorBoot> {
-  const kernel = options.kernel ?? bootstrapKernel()
-
   const brain = new OrchestratorBrain({ registry: kernel.registry, modules: kernel.modules })
 
-  const gatewayActive = await kernel.activations.get('chat-gateway')
-  if (!gatewayActive) {
+  const stage = await wireGateway(brain)
+  if (!stage) {
     return {
       kernel,
       brain,
@@ -75,44 +74,19 @@ export async function bootstrapOrchestrator(
     }
   }
 
-  const db = options.db ?? (await pooledDb())
-  const gatewayBoot = createChatGateway({
-    env: options.env,
-    db,
-    eventSink: kernel.eventSink,
-    brain,
-  })
-
-  kernel.modules.register(gatewayBoot.manifest)
-  registerModuleTools(kernel.registry, kernel.modules, [
-    gatewayBoot.statusTool,
-    ...createAllowlistAdminTools(gatewayBoot.allowlist),
-  ])
-
-  const loop = createTelegramLoop({ gateway: gatewayBoot.gateway })
+  const loop = createTelegramLoop({ gateway: stage.gateway })
   if (options.startLoop !== false) loop.start()
 
   return {
     kernel,
     brain,
-    gateway: gatewayBoot.gateway,
-    allowlist: gatewayBoot.allowlist,
-    sessions: gatewayBoot.sessions,
+    gateway: stage.gateway,
+    allowlist: stage.allowlist,
+    sessions: stage.sessions,
     loop,
     status: () => ({
       chatGateway: 'active',
       loopRunning: loop.running,
     }),
   }
-}
-
-/**
- * Background DB handle: a drizzle instance over the app pool. The poll loop
- * runs outside any request/ALS context, so request-scoped getDb() is not
- * available; kernel + gateway tables carry no RLS, while per-user tools
- * (memory, email) establish their own scoped sessions internally.
- */
-async function pooledDb(): Promise<AppDatabase> {
-  const { appSql, createScopedDrizzle } = await import('$lib/server/db')
-  return createScopedDrizzle(appSql)
 }

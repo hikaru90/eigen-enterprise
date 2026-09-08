@@ -1,119 +1,144 @@
-import type { WiredKernel } from '../index'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { InMemoryActivationStore } from '$lib/kernel/modules'
-import type { AppDatabase } from '$lib/server/db/context'
-import { buildKernel } from '../index'
-import { bootstrapOrchestrator, type OrchestratorBootOptions } from './bootstrap'
+import { z } from 'zod'
+import { InMemoryApprovalStore } from '$lib/kernel/approvals'
+import { InMemoryEventSink } from '$lib/kernel/events'
+import { InMemoryActivationStore, ModuleRegistry, type ModuleManifest } from '$lib/kernel/modules'
+import type { PrincipalStore } from '$lib/kernel/principals'
+import { KernelRegistry } from '$lib/kernel/registry'
+import type { ToolDescriptor, ToolContext } from '$lib/kernel/types'
+import type { WiredKernel } from '$lib/kernel/wiring'
+import {
+  bootstrapOrchestrator,
+  type OrchestratorBootOptions,
+  type OrchestratorGatewayStage,
+} from './bootstrap'
 import { OrchestratorBrain } from './brain'
 
+/** In-memory kernel wiring (the kernel composition itself is modules/index's job). */
 function inMemoryKernel(): { kernel: WiredKernel; activations: InMemoryActivationStore } {
   const activations = new InMemoryActivationStore()
-  const kernel = buildKernel({ activations, vcsCommitter: null })
+  const kernel: WiredKernel = {
+    registry: new KernelRegistry({ eventSink: new InMemoryEventSink() }),
+    modules: new ModuleRegistry(activations),
+    activations,
+    principals: {} as PrincipalStore,
+    approvals: new InMemoryApprovalStore(),
+    eventSink: new InMemoryEventSink(),
+  }
   return { kernel, activations }
 }
 
-function bootOptions(
-  kernel: WiredKernel,
-  overrides: Partial<OrchestratorBootOptions> = {},
-): OrchestratorBootOptions {
+/** Local allowlist/session fakes — the concrete stores belong to chat-gateway. */
+function fakeStage(): OrchestratorGatewayStage {
   return {
-    env: { TELEGRAM_BOT_TOKEN: 'test-token' },
-    kernel,
-    db: {} as AppDatabase,
-    startLoop: false,
-    ...overrides,
+    gateway: { runCycle: async (offset) => offset },
+    allowlist: {
+      isAllowed: async () => false,
+      principalFor: async () => null,
+      add: async () => undefined,
+      remove: async () => undefined,
+      list: async () => [],
+    },
+    sessions: {
+      touch: async () => ({ id: 'session-1' }),
+      get: async () => null,
+    },
   }
+}
+
+const activeStage = async (): Promise<OrchestratorGatewayStage> => fakeStage()
+const inactiveStage = async (): Promise<OrchestratorGatewayStage | null> => null
+
+function bootOptions(overrides: Partial<OrchestratorBootOptions> = {}): OrchestratorBootOptions {
+  return { startLoop: false, ...overrides }
 }
 
 afterEach(() => {
   vi.restoreAllMocks()
-  vi.unstubAllGlobals()
 })
 
 describe('bootstrapOrchestrator — chat-gateway inactive (fail closed)', () => {
-  it('boots brain + kernel without gateway/loop and does NOT require a bot token', async () => {
+  it('boots brain + kernel without gateway/loop and requires no env at all', async () => {
     const { kernel } = inMemoryKernel()
 
-    const boot = await bootstrapOrchestrator(bootOptions(kernel, { env: {} }))
+    const boot = await bootstrapOrchestrator(kernel, inactiveStage, bootOptions())
 
     expect(boot.status()).toEqual({ chatGateway: 'inactive', loopRunning: false })
     expect(boot.brain).toBeInstanceOf(OrchestratorBrain)
     expect(boot.gateway).toBeNull()
     expect(boot.loop).toBeNull()
     expect(boot.allowlist).toBeNull()
-    // Gateway surface is NOT registered while the module is inactive.
-    expect(kernel.registry.get('chat-gateway.status')).toBeUndefined()
-    expect(kernel.registry.get('chat-gateway.allowlist_add')).toBeUndefined()
-    expect(kernel.modules.get('chat-gateway')).toBeUndefined()
+    expect(boot.sessions).toBeNull()
+  })
+
+  it('hands the freshly composed brain to the wireGateway stage', async () => {
+    const { kernel } = inMemoryKernel()
+    const received: OrchestratorBrain[] = []
+
+    const boot = await bootstrapOrchestrator(kernel, async (brain) => {
+      received.push(brain)
+      return null
+    }, bootOptions())
+
+    expect(received).toEqual([boot.brain])
   })
 })
 
-describe('bootstrapOrchestrator — chat-gateway active', () => {
-  it('registers the gateway manifest + tools and wires brain, gateway, and loop', async () => {
-    const { kernel, activations } = inMemoryKernel()
-    await activations.set('chat-gateway', true)
+describe('bootstrapOrchestrator — chat-gateway stage active', () => {
+  it('wires brain, gateway, and loop through the stage and reports them', async () => {
+    const { kernel } = inMemoryKernel()
+    const stage = fakeStage()
 
-    const boot = await bootstrapOrchestrator(bootOptions(kernel))
+    const boot = await bootstrapOrchestrator(kernel, async () => stage, bootOptions())
 
     expect(boot.status()).toEqual({ chatGateway: 'active', loopRunning: false })
     expect(boot.brain).toBeInstanceOf(OrchestratorBrain)
-    expect(boot.gateway).not.toBeNull()
-    expect(boot.allowlist).not.toBeNull()
-    expect(boot.sessions).not.toBeNull()
+    expect(boot.gateway).toBe(stage.gateway)
+    expect(boot.allowlist).toBe(stage.allowlist)
+    expect(boot.sessions).toBe(stage.sessions)
     expect(boot.loop).not.toBeNull()
-
-    // The full chat-gateway surface went through the kernel contract validation.
-    expect(kernel.modules.get('chat-gateway')).toBeDefined()
-    for (const name of [
-      'chat-gateway.status',
-      'chat-gateway.allowlist_add',
-      'chat-gateway.allowlist_remove',
-      'chat-gateway.allowlist_list',
-    ]) {
-      expect(kernel.registry.get(name)).toBeDefined()
-    }
 
     await boot.loop!.stop()
   })
 
   it('starts the loop by default', async () => {
-    // Stub the transport before boot so the started loop never touches the network.
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ ok: true, result: [] }), { status: 200 })),
-    )
-    const { kernel, activations } = inMemoryKernel()
-    await activations.set('chat-gateway', true)
+    const { kernel } = inMemoryKernel()
+    const stage = fakeStage()
 
-    const boot = await bootstrapOrchestrator(bootOptions(kernel, { startLoop: true }))
+    const boot = await bootstrapOrchestrator(kernel, async () => stage)
 
     expect(boot.status()).toEqual({ chatGateway: 'active', loopRunning: true })
     await boot.loop!.stop()
     expect(boot.status().loopRunning).toBe(false)
   })
 
-  it('fails loud when the module is active but TELEGRAM_BOT_TOKEN is missing', async () => {
+  it('composes the fail-closed tool surface around the stage (end-to-end smoke)', async () => {
     const { kernel, activations } = inMemoryKernel()
-    await activations.set('chat-gateway', true)
+    const tool: ToolDescriptor = {
+      name: 'testmod.echo',
+      module: 'testmod',
+      summary: 'summary of testmod.echo',
+      auditClass: 'read',
+      inputSchema: z.looseObject({}),
+      permission: { roles: ['admin', 'agent'] },
+      handler: async (_ctx: ToolContext, input: unknown) => ({ echoed: input }),
+    }
+    const manifest: ModuleManifest = {
+      id: 'testmod',
+      name: 'testmod',
+      version: '0.1.0',
+      tools: ['testmod.echo'],
+      permissions: { roles: ['admin', 'agent'] },
+    }
+    kernel.modules.register(manifest)
+    kernel.registry.register(tool)
+    await activations.set('testmod', true)
 
-    await expect(
-      bootstrapOrchestrator(bootOptions(kernel, { env: {} })),
-    ).rejects.toThrow(/TELEGRAM_BOT_TOKEN/)
-  })
+    const boot = await bootstrapOrchestrator(kernel, activeStage, bootOptions())
 
-  it('routes brain messages to the gateway brain (end-to-end wiring smoke)', async () => {
-    const { kernel, activations } = inMemoryKernel()
-    await activations.set('chat-gateway', true)
-    await activations.set('memory', true)
-
-    const boot = await bootstrapOrchestrator(bootOptions(kernel))
-
-    // The brain offers memory tools (memory module active) and never gateway
-    // owner tools — the gateway surface is owner-only by design.
     const brain = boot.brain as unknown as { offeredTools(): Promise<Array<{ name: string }>> }
     const offered = await brain.offeredTools()
-    expect(offered.map((t) => t.name)).toContain('memory.list_text_files')
-    expect(offered.map((t) => t.name)).not.toContain('chat-gateway.allowlist_add')
+    expect(offered.map((t) => t.name)).toContain('testmod.echo')
 
     await boot.loop!.stop()
   })

@@ -1,6 +1,6 @@
-import type { AllowlistStore, SessionStore } from './stores'
 import { moduleSource } from '$lib/kernel/cloudevents'
 import { emitKernelEvent, type EventSink } from '$lib/kernel/events'
+import type { AllowlistStore, Brain, SessionStore } from '$lib/kernel/gateway'
 import { chatGatewayEnv } from './env'
 
 export const TELEGRAM_PLATFORM = 'telegram'
@@ -163,17 +163,6 @@ export function chunkMessage(text: string, maxLen = DEFAULT_CHUNK_MAX_LEN): stri
   }
   if (current !== '') chunks.push(current)
   return chunks
-}
-
-export type TelegramSessionRef = {
-  sessionId: string
-  platform: string
-  externalChatId: string
-  principalId: string
-}
-
-export type Brain = {
-  respond(session: TelegramSessionRef, text: string): Promise<string>
 }
 
 export type TelegramGatewayDeps = {

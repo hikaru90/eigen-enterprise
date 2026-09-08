@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { InMemoryEventSink } from '$lib/kernel/events'
+import type { Brain, TelegramSessionRef } from '$lib/kernel/gateway'
 import { InMemoryAllowlistStore, InMemorySessionStore } from './stores'
 import {
   HttpTelegramClient,
@@ -7,9 +8,7 @@ import {
   TelegramGateway,
   nextOffset,
   telegramClientFromEnv,
-  type Brain,
   type TelegramClient,
-  type TelegramSessionRef,
   type TelegramUpdate,
 } from './telegram'
 

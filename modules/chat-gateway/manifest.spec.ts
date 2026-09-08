@@ -1,14 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { KernelError } from '$lib/kernel/errors'
 import { InMemoryEventSink } from '$lib/kernel/events'
+import { CHAT_GATEWAY_ALLOWLIST_TOOLS, CHAT_GATEWAY_MODULE_ID } from '$lib/kernel/gateway'
 import { InMemoryActivationStore, ModuleRegistry } from '$lib/kernel/modules'
 import { KernelRegistry } from '$lib/kernel/registry'
-import {
-  CHAT_GATEWAY_ALLOWLIST_TOOLS,
-  CHAT_GATEWAY_MODULE_ID,
-  chatGatewayManifest,
-  type ChatGatewayStats,
-} from './manifest'
+import { chatGatewayManifest, type ChatGatewayStats } from './manifest'
 
 const stats: ChatGatewayStats = { allowlistCount: 2, sessionsCount: 5 }
 const { manifest, statusTool } = chatGatewayManifest(async () => stats)

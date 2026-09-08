@@ -31,21 +31,13 @@ export type CrossModuleImport = {
 
 /**
  * Declared wiring edges: cross-module imports that are structural boot
- * wiring, not side-door action calls. Every entry is reviewed policy —
- * the orchestrator is the boot stage that constructs and registers the
- * chat-gateway surface. Removing an entry requires extracting the shared
- * contract into the kernel first (plan/kernel-open-api.md §Later).
+ * wiring, not side-door action calls. Every entry is reviewed policy.
+ * EMPTY since the gateway contract moved into the kernel
+ * (`$lib/kernel/gateway`): no module imports another module's code, not
+ * even for boot wiring — the composition root (modules/index, exempt)
+ * wires the boot stages together (plan/kernel-open-api.md §Later 4).
  */
-export const DECLARED_WIRING_EDGES: ReadonlyMap<string, string> = new Map([
-  [
-    'orchestrator→chat-gateway',
-    'orchestrator bootstrap/brain/allowlist-tools construct and register the gateway surface',
-  ],
-  [
-    'orchestrator→index',
-    'orchestrator bootstrap registers its tools through the composition root at a later boot stage',
-  ],
-])
+export const DECLARED_WIRING_EDGES: ReadonlyMap<string, string> = new Map([])
 
 /** Owning module id of a path strictly inside `modules/<id>/…`, else null. */
 function ownerModule(path: string): string | null {
