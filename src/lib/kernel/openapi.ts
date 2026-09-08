@@ -13,6 +13,22 @@ export function toolOutputJsonSchema(schema: ZodType): Record<string, unknown> {
 
 export type OpenApiSchema = Record<string, unknown>
 
+const PROBLEM_SCHEMA: OpenApiSchema = {
+  type: 'object',
+  properties: {
+    type: { type: 'string' },
+    title: { type: 'string' },
+    status: { type: 'integer' },
+    detail: { type: 'string' },
+  },
+  required: ['type', 'title', 'status', 'detail'],
+  additionalProperties: false,
+}
+
+const PROBLEM_JSON_CONTENT = {
+  'application/problem+json': { schema: { $ref: '#/components/schemas/problem' } },
+}
+
 export type OpenApiOperation = {
   operationId: string
   summary: string
@@ -32,6 +48,7 @@ export type OpenApiDocument = {
   tags: Array<{ name: string }>
   components: {
     securitySchemes: Record<string, { type: 'http'; scheme: 'bearer' }>
+    schemas: { problem: OpenApiSchema }
   }
   security: Array<Record<string, string[]>>
   paths: Record<string, { post: OpenApiOperation }>
@@ -79,10 +96,17 @@ export function generateOpenApi(
               },
             },
           },
-          '400': { description: 'Invalid input (invalid_input) or handler failure.' },
-          '401': { description: 'Missing or invalid bearer credentials.' },
+          '400': {
+            description: 'Invalid input (invalid_input) or handler failure.',
+            content: PROBLEM_JSON_CONTENT,
+          },
+          '401': {
+            description: 'Missing or invalid bearer credentials.',
+            content: PROBLEM_JSON_CONTENT,
+          },
           '403': {
             description: 'Permission denied, module inactive, or approval required.',
+            content: PROBLEM_JSON_CONTENT,
           },
         },
       },
@@ -100,6 +124,7 @@ export function generateOpenApi(
     tags: [...tags].sort().map((name) => ({ name })),
     components: {
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer' } },
+      schemas: { problem: PROBLEM_SCHEMA },
     },
     security: [{ bearerAuth: [] }],
     paths,

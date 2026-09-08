@@ -70,6 +70,28 @@ describe('generateOpenApi 200 response schemas', () => {
   })
 })
 
+describe('generateOpenApi problem+json error responses', () => {
+  it('exposes a problem schema in components', () => {
+    const doc = generateOpenApi(makeFixtureRegistry(), { title: 't', version: 'v' })
+    expect(doc.components.schemas.problem).toMatchObject({
+      type: 'object',
+      required: ['type', 'title', 'status', 'detail'],
+      additionalProperties: false,
+    })
+  })
+
+  it('references the problem schema from the documented error responses', () => {
+    const doc = generateOpenApi(makeFixtureRegistry(), { title: 't', version: 'v' })
+    const responses = doc.paths['/api/kernel/tools/memory.echo'].post.responses
+    for (const status of ['400', '401', '403']) {
+      expect(responses[status].content?.['application/problem+json'].schema).toEqual({
+        $ref: '#/components/schemas/problem',
+      })
+    }
+    expect(responses['200'].content?.['application/problem+json']).toBeUndefined()
+  })
+})
+
 describe('generateOpenApi', () => {
   it('produces a 3.1 document with bearerAuth and per-tool POST paths', () => {
     const doc = generateOpenApi(makeFixtureRegistry(), {
