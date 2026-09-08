@@ -16,6 +16,7 @@ import {
 import { chatSession, chatMessage, type ChatSessionMode } from '$lib/server/db/brain.schema'
 import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { agentChat } from '$lib/server/llm/agent-loop'
+import { isLlmNotConfiguredError } from '$lib/server/llm/errors'
 
 function collectErrorMessages(input: unknown): string[] {
   const parts: string[] = []
@@ -44,8 +45,13 @@ function collectErrorMessages(input: unknown): string[] {
 export function chatErrorTerminalPayload(
   err: unknown,
   details: string[],
-): { type: 'error'; error: string; details?: string[]; [key: string]: unknown } {
+): { type: 'error'; error: string; details?: string[]; code?: string; [key: string]: unknown } {
   const msg = details[0] ?? 'An unexpected error occurred.'
+  // Structured kind for user-facing surfaces ("Set up your AI provider" door) — typed
+  // detection, never message string matching.
+  if (isLlmNotConfiguredError(err)) {
+    return { type: 'error', error: msg, details, code: 'llm_not_configured' }
+  }
   return { type: 'error', error: msg, details }
 }
 

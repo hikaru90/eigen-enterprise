@@ -6,11 +6,14 @@ export type ChatProgressEvent = Exclude<ChatStreamEvent, { type: 'done' } | { ty
 
 export class ChatStreamError extends Error {
   readonly details?: string[]
+  /** Structured failure kind from the server (e.g. 'llm_not_configured'). */
+  readonly code?: string
 
   constructor(event: Extract<ChatStreamEvent, { type: 'error' }>) {
     super(event.error || 'Chat failed')
     this.name = 'ChatStreamError'
     this.details = event.details
+    this.code = event.code
   }
 }
 

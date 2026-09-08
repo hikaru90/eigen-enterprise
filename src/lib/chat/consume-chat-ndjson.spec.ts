@@ -1,6 +1,6 @@
 import type { ChatProgressEvent } from './consume-chat-ndjson'
 import { describe, expect, it } from 'vitest'
-import { consumeChatNdjsonStream } from './consume-chat-ndjson'
+import { ChatStreamError, consumeChatNdjsonStream } from './consume-chat-ndjson'
 
 function ndjsonResponse(lines: string[]) {
   const encoder = new TextEncoder()
@@ -52,6 +52,22 @@ describe('consumeChatNdjsonStream', () => {
   it('throws ChatStreamError on generic error line', async () => {
     const res = ndjsonResponse(['{"type":"error","error":"LLM unavailable"}\n'])
     await expect(consumeChatNdjsonStream(res, () => undefined)).rejects.toThrow('LLM unavailable')
+  })
+
+  it('carries the error code on ChatStreamError so surfaces can react without string matching', async () => {
+    const res = ndjsonResponse([
+      '{"type":"error","error":"Platform EUrouter not configured: set LLM_BASE_URL","code":"llm_not_configured"}\n',
+    ])
+    const err = await consumeChatNdjsonStream(res, () => undefined).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(ChatStreamError)
+    expect((err as ChatStreamError).code).toBe('llm_not_configured')
+  })
+
+  it('leaves code undefined on error events without one', async () => {
+    const res = ndjsonResponse(['{"type":"error","error":"LLM unavailable"}\n'])
+    const err = await consumeChatNdjsonStream(res, () => undefined).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(ChatStreamError)
+    expect((err as ChatStreamError).code).toBeUndefined()
   })
 
   it('throws when stream ends without terminal event', async () => {

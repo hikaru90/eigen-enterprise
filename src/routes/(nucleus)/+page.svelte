@@ -5,8 +5,9 @@
   import { onMount } from 'svelte'
   import { browser } from '$app/environment'
   import { page } from '$app/state'
+  import { resolve } from '$app/paths'
   import { sanitizeFinalAnswerText } from '$lib/chat/chat-stream-types'
-  import { consumeChatNdjsonStream } from '$lib/chat/consume-chat-ndjson'
+  import { consumeChatNdjsonStream, ChatStreamError } from '$lib/chat/consume-chat-ndjson'
   import ChatMarkdown from '$lib/components/chat-markdown.svelte'
   import { Button } from '$lib/components/ui/button'
   import VoiceInputButton from '$lib/components/voice-input-button.svelte'
@@ -101,7 +102,13 @@
         appendEntry(failedTurn('Stopped.'))
       } else {
         console.error('[nucleus] chat stream failed', err)
-        appendEntry(failedTurn(`Error: ${err instanceof Error ? err.message : String(err)}`))
+        const message = `Error: ${err instanceof Error ? err.message : String(err)}`
+        // Missing provider configuration gets a door, not just a wall: link to setup.
+        const providerSetup =
+          err instanceof ChatStreamError && err.code === 'llm_not_configured'
+            ? (true as const)
+            : undefined
+        appendEntry(failedTurn(message, { providerSetup }))
       }
     } finally {
       busy = false
@@ -172,6 +179,14 @@
           {:else if entry.failed}
             <div class="py-1.5">
               <p class="text-destructive text-sm leading-relaxed wrap-break-word">{entry.content}</p>
+              {#if entry.providerSetup}
+                <a
+                  href={resolve('/settings/llm')}
+                  class="text-destructive text-xs underline underline-offset-2"
+                >
+                  Set up your AI provider →
+                </a>
+              {/if}
             </div>
           {:else}
             <div class="py-1.5">

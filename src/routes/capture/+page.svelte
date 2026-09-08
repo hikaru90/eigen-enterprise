@@ -1082,7 +1082,11 @@
 </div>
 
 {#if showOnboarding}
-  <CaptureOnboardingOverlay open={true} />
+  <CaptureOnboardingOverlay
+    open={true}
+    providerReady={data.providerReady}
+    byokUiEnabled={data.byokUiEnabled}
+  />
 {/if}
 
 <AlertDialog.Root

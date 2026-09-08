@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { LlmNotConfiguredError } from '$lib/server/llm/errors'
 import {
   BRIEFING_BOOTSTRAP_MESSAGES,
   chatErrorTerminalPayload,
@@ -8,6 +9,22 @@ describe('chatErrorTerminalPayload', () => {
   it('returns generic error payload for other failures', () => {
     const payload = chatErrorTerminalPayload(new Error('boom'), ['boom'])
     expect(payload).toEqual({ type: 'error', error: 'boom', details: ['boom'] })
+    expect(payload.code).toBeUndefined()
+  })
+
+  it('tags llm_not_configured so the surface can offer provider setup', () => {
+    const err = new LlmNotConfiguredError('Platform EUrouter not configured: set LLM_BASE_URL')
+    const payload = chatErrorTerminalPayload(err, [err.message])
+    expect(payload.code).toBe('llm_not_configured')
+    expect(payload.error).toBe('Platform EUrouter not configured: set LLM_BASE_URL')
+  })
+
+  it('tags llm_not_configured through wrapped causes', () => {
+    const wrapped = new Error('agent loop failed', {
+      cause: new LlmNotConfiguredError('LLM not configured: set LLM_BASE_URL'),
+    })
+    const payload = chatErrorTerminalPayload(wrapped, ['agent loop failed'])
+    expect(payload.code).toBe('llm_not_configured')
   })
 })
 

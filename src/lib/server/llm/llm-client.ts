@@ -14,7 +14,7 @@ import { decryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import { getDb, withDbUser } from '$lib/server/db'
 import { resolveBillingUserId } from '$lib/server/db/tenant-context'
 import { llmProviderConfig, llmActiveProvider } from '$lib/server/db/schema'
-import { LlmHttpError } from '$lib/server/llm/errors'
+import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
 import { gatewayReportedCostUsdForLog, type TokenUsage } from '$lib/server/llm/gateway-cost'
 import {
   assertEurouterGatewayConfigured,
@@ -408,12 +408,12 @@ async function loadLlmProviderConfig(
     const baseUrl = env.OPENROUTER_BASE_URL?.trim()
     const apiKey = env.OPENROUTER_API_KEY?.trim()
     if (!baseUrl) {
-      throw new Error(
+      throw new LlmNotConfiguredError(
         'OpenRouter not configured for speech-to-text: set OPENROUTER_BASE_URL or save OpenRouter credentials in Settings → LLM Provider',
       )
     }
     if (!apiKey) {
-      throw new Error(
+      throw new LlmNotConfiguredError(
         'OpenRouter not configured for speech-to-text: set OPENROUTER_API_KEY or save OpenRouter credentials in Settings → LLM Provider',
       )
     }
@@ -431,12 +431,12 @@ async function loadLlmProviderConfig(
   const baseUrl = env.LLM_BASE_URL?.trim()
   const apiKey = env.LLM_API_KEY?.trim()
   if (!baseUrl) {
-    throw new Error(
+    throw new LlmNotConfiguredError(
       'LLM not configured: set LLM_BASE_URL in environment or configure via Settings → LLM Provider',
     )
   }
   if (!apiKey) {
-    throw new Error(
+    throw new LlmNotConfiguredError(
       'LLM not configured: set LLM_API_KEY in environment or configure via Settings → LLM Provider',
     )
   }
@@ -549,7 +549,7 @@ async function chatRoutingConfig(
   if (config.provider === 'openrouter') {
     const model = config.modelChat?.trim() || env.LLM_MODEL_CHAT?.trim()
     if (!model) {
-      throw new Error(
+      throw new LlmNotConfiguredError(
         'OpenRouter chat model not configured: set a chat model name in Settings → LLM Provider',
       )
     }
@@ -560,7 +560,7 @@ async function chatRoutingConfig(
   const model = env.LLM_MODEL_CHAT?.trim()
   if (model) return { ...(ruleId ? { ruleId } : {}), model }
   if (ruleId) return resolveRoutingRuleById(ruleId, config.apiKey, config.baseUrl)
-  throw new Error(
+  throw new LlmNotConfiguredError(
     'LLM chat rule not configured: set LLM_RULE_CHAT in environment or configure via Settings → LLM Provider',
   )
 }
@@ -570,7 +570,7 @@ async function embeddingRoutingConfig(config: ResolvedLlmConfig): Promise<Routin
   if (config.provider === 'openrouter') {
     const model = config.modelEmbedding?.trim() || env.LLM_MODEL_EMBEDDING?.trim()
     if (!model) {
-      throw new Error(
+      throw new LlmNotConfiguredError(
         'OpenRouter embedding model not configured: set an embedding model name in Settings → LLM Provider',
       )
     }
@@ -581,7 +581,7 @@ async function embeddingRoutingConfig(config: ResolvedLlmConfig): Promise<Routin
   const model = env.LLM_MODEL_EMBEDDING?.trim()
   if (model) return { ...(ruleId ? { ruleId } : {}), model }
   if (ruleId) return resolveRoutingRuleById(ruleId, config.apiKey, config.baseUrl)
-  throw new Error(
+  throw new LlmNotConfiguredError(
     'LLM embedding rule not configured: set LLM_RULE_EMBEDDING in environment or configure via Settings → LLM Provider',
   )
 }

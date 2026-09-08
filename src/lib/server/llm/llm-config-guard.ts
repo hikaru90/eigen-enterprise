@@ -1,3 +1,5 @@
+import { LlmNotConfiguredError } from '$lib/server/llm/errors'
+
 /** Values baked into Dockerfile `build` stage only — must never be used at runtime. */
 export const DOCKER_PLACEHOLDER_LLM_BASE_URL = 'https://example.com/v1'
 export const DOCKER_PLACEHOLDER_RULE_CHAT = '00000000-0000-0000-0000-000000000001'
@@ -41,7 +43,7 @@ export function assertEurouterGatewayConfigured(opts: {
       opts.context === 'platform'
         ? 'Set LLM_BASE_URL (e.g. https://api.eurouter.ai/v1), SERVICE_API_KEY_EUROUTER, LLM_RULE_CHAT, and LLM_RULE_EMBEDDING in the deployment environment.'
         : 'Set LLM_BASE_URL and EUrouter rule UUIDs in the deployment environment, or save credentials under Settings → LLM → BYOK.'
-    throw new Error(
+    throw new LlmNotConfiguredError(
       `EUrouter is not configured for production: LLM_BASE_URL is the Docker placeholder (${DOCKER_PLACEHOLDER_LLM_BASE_URL}). ${hint}`,
     )
   }
@@ -57,7 +59,7 @@ export function assertEurouterGatewayConfigured(opts: {
       opts.context === 'platform'
         ? 'Replace Docker placeholder rule UUIDs with your EUrouter routing rule IDs in the deployment environment.'
         : 'Use your real EUrouter routing rule IDs in environment variables or Settings → LLM → BYOK.'
-    throw new Error(
+    throw new LlmNotConfiguredError(
       `EUrouter routing rules are not configured for production (${parts.join(', ')} are Docker placeholders). ${hint}`,
     )
   }

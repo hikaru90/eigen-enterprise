@@ -11,6 +11,8 @@ export type NucleusChatEntry = {
   role: 'user' | 'assistant'
   content: string
   failed?: boolean
+  /** On a failed turn: render the provider-setup action link (view owns the URL). */
+  providerSetup?: true
 }
 
 export type NucleusTurn = Omit<NucleusChatEntry, 'key'>
@@ -30,8 +32,13 @@ export function assistantTurnFromResponse(sanitizedText: string): NucleusTurn | 
   return { role: 'assistant', content }
 }
 
-export function failedTurn(message: string): NucleusTurn {
-  return { role: 'assistant', content: message, failed: true }
+export function failedTurn(message: string, opts?: { providerSetup?: true }): NucleusTurn {
+  return {
+    role: 'assistant',
+    content: message,
+    failed: true,
+    ...(opts?.providerSetup ? { providerSetup: true } : {}),
+  }
 }
 
 /**

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExtendedPrivateEnv } from '$lib/server/env/private-env'
+import { LlmNotConfiguredError } from './errors'
 import { fetchMockInit, fetchMockUrl } from '$lib/test/vitest-mock-call'
 import {
   DEFAULT_CHAT_MAX_TOKENS,
@@ -277,6 +278,9 @@ describe('llm client retries', () => {
     mockEnv.LLM_API_KEY = ''
     await expect(
       llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hello' }] }),
+    ).rejects.toBeInstanceOf(LlmNotConfiguredError)
+    await expect(
+      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hello' }] }),
     ).rejects.toThrow(/LLM_API_KEY/)
   })
 
@@ -412,6 +416,9 @@ describe('llm client retries', () => {
 
   it('fails when base url is missing', async () => {
     mockEnv.LLM_BASE_URL = ''
+    await expect(llmCreateEmbeddings({ userId: 'u1', input: 'hello' })).rejects.toBeInstanceOf(
+      LlmNotConfiguredError,
+    )
     await expect(llmCreateEmbeddings({ userId: 'u1', input: 'hello' })).rejects.toThrow(
       /LLM_BASE_URL/,
     )
@@ -1051,6 +1058,9 @@ describe('llm client platform gateway credentials', () => {
     const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(false)
     mockEnv.SERVICE_API_KEY_EUROUTER = ''
+    await expect(
+      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
+    ).rejects.toBeInstanceOf(LlmNotConfiguredError)
     await expect(
       llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
     ).rejects.toThrow(/SERVICE_API_KEY_EUROUTER/)

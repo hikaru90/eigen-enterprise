@@ -3,6 +3,7 @@ import { env } from '$lib/server/env/private-env'
 import { withBillingUserDbRead } from '$lib/server/db/billing-db-read'
 import { llmActiveProvider } from '$lib/server/db/schema'
 import { assertEurouterGatewayConfigured } from '$lib/server/llm/llm-config-guard'
+import { LlmNotConfiguredError } from '$lib/server/llm/errors'
 import type { LlmProviderKind, ResolvedLlmConfig } from '$lib/server/llm/types'
 
 /**
@@ -19,10 +20,12 @@ export async function loadPlatformLlmConfig(userId: string): Promise<ResolvedLlm
     const baseUrl = env.OPENROUTER_BASE_URL?.trim()
     const apiKey = env.SERVICE_API_KEY_OPENROUTER?.trim()
     if (!baseUrl) {
-      throw new Error('Platform OpenRouter not configured: set OPENROUTER_BASE_URL')
+      throw new LlmNotConfiguredError('Platform OpenRouter not configured: set OPENROUTER_BASE_URL')
     }
     if (!apiKey) {
-      throw new Error('Platform OpenRouter not configured: set SERVICE_API_KEY_OPENROUTER')
+      throw new LlmNotConfiguredError(
+        'Platform OpenRouter not configured: set SERVICE_API_KEY_OPENROUTER',
+      )
     }
     return {
       provider: 'openrouter',
@@ -38,10 +41,10 @@ export async function loadPlatformLlmConfig(userId: string): Promise<ResolvedLlm
   const baseUrl = env.LLM_BASE_URL?.trim()
   const apiKey = env.SERVICE_API_KEY_EUROUTER?.trim()
   if (!baseUrl) {
-    throw new Error('Platform EUrouter not configured: set LLM_BASE_URL')
+    throw new LlmNotConfiguredError('Platform EUrouter not configured: set LLM_BASE_URL')
   }
   if (!apiKey) {
-    throw new Error('Platform EUrouter not configured: set SERVICE_API_KEY_EUROUTER')
+    throw new LlmNotConfiguredError('Platform EUrouter not configured: set SERVICE_API_KEY_EUROUTER')
   }
   const ruleChat = env.LLM_RULE_CHAT?.trim() || null
   const ruleEmbedding = env.LLM_RULE_EMBEDDING?.trim() || null
@@ -67,10 +70,14 @@ export async function loadPlatformOpenRouterSttConfig(): Promise<ResolvedLlmConf
   const baseUrl = env.OPENROUTER_BASE_URL?.trim()
   const apiKey = env.SERVICE_API_KEY_OPENROUTER?.trim()
   if (!baseUrl) {
-    throw new Error('Platform OpenRouter STT not configured: set OPENROUTER_BASE_URL')
+    throw new LlmNotConfiguredError(
+      'Platform OpenRouter STT not configured: set OPENROUTER_BASE_URL',
+    )
   }
   if (!apiKey) {
-    throw new Error('Platform OpenRouter STT not configured: set SERVICE_API_KEY_OPENROUTER')
+    throw new LlmNotConfiguredError(
+      'Platform OpenRouter STT not configured: set SERVICE_API_KEY_OPENROUTER',
+    )
   }
   return {
     provider: 'openrouter',

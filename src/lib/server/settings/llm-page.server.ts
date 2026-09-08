@@ -4,8 +4,13 @@ import { and, eq } from 'drizzle-orm'
 import { env } from '$lib/server/env/private-env'
 import { isUserAdmin } from '$lib/server/auth/user-role'
 import { assertByokConfigured } from '$lib/server/llm/preferences'
+import {
+  providerLabel,
+  saveProviderConfig,
+  type LlmProviderId,
+} from '$lib/server/llm/save-provider-config'
 import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
-import { decryptTenantValue, encryptTenantValue } from '$lib/server/crypto/tenant-encryption'
+import { decryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import { getDb } from '$lib/server/db'
 import {
   userPreference,
@@ -14,9 +19,9 @@ import {
   type BillingMode,
 } from '$lib/server/db/schema'
 
-export type LlmProviderId = 'eurouter' | 'openrouter'
+export type { LlmProviderId } from '$lib/server/llm/save-provider-config'
 
-function getSafeErrorMessage(error: unknown, fallback: string) {
+export function getSafeErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) return error.message || fallback
   if (typeof error === 'object' && error !== null && 'message' in error) {
     const msg = (error as { message?: unknown }).message
@@ -121,75 +126,20 @@ export const llmSettingsActions: Actions = {
     const modelEmbedding = formData.get('modelEmbedding')?.toString().trim() || null
     const setActive = formData.get('setActive') !== 'false'
 
-    if (provider !== 'eurouter' && provider !== 'openrouter') {
-      return fail(400, { llmMessage: 'Invalid provider.' })
-    }
-    if (!baseUrl) {
-      return fail(400, { llmMessage: 'Base URL is required.' })
-    }
-    if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
-      return fail(400, { llmMessage: 'Base URL must start with http:// or https://' })
-    }
-    if (!apiKey) {
-      return fail(400, { llmMessage: 'API key is required.' })
-    }
-
     try {
-      const db = getDb()
-      const userId = event.locals.user.id
-      const apiKeyEncrypted = await encryptTenantValue({
-        userId,
-        table: 'llm_provider_config',
-        column: 'api_key',
-        plaintext: apiKey,
+      // Single persistence path shared with the onboarding provider step.
+      await saveProviderConfig({
+        userId: event.locals.user.id,
+        provider: provider as LlmProviderId,
+        baseUrl,
+        apiKey,
+        ruleChat,
+        ruleEmbedding,
+        modelChat,
+        modelEmbedding,
+        setActive,
       })
-      await db
-        .insert(llmProviderConfig)
-        .values({
-          userId,
-          provider,
-          baseUrl: baseUrl.replace(/\/$/, ''),
-          apiKey,
-          apiKeyEncrypted,
-          ruleChat,
-          ruleEmbedding,
-          modelChat,
-          modelEmbedding,
-        })
-        .onConflictDoUpdate({
-          target: [llmProviderConfig.userId, llmProviderConfig.provider],
-          set: {
-            baseUrl: baseUrl.replace(/\/$/, ''),
-            apiKey,
-            apiKeyEncrypted,
-            ruleChat,
-            ruleEmbedding,
-            modelChat,
-            modelEmbedding,
-            updatedAt: new Date(),
-          },
-        })
-
-      if (setActive) {
-        await db
-          .insert(llmActiveProvider)
-          .values({ userId, provider })
-          .onConflictDoUpdate({
-            target: llmActiveProvider.userId,
-            set: { provider, updatedAt: new Date() },
-          })
-      }
-
-      await db
-        .insert(userPreference)
-        .values({ userId, billingMode: 'byok' as BillingMode })
-        .onConflictDoUpdate({
-          target: userPreference.userId,
-          set: { billingMode: 'byok' as BillingMode, updatedAt: new Date() },
-        })
-
-      const label = provider === 'eurouter' ? 'EUrouter' : 'OpenRouter'
-      return { llmMessage: `${label} saved.` }
+      return { llmMessage: `${providerLabel(provider as LlmProviderId)} saved.` }
     } catch (error) {
       return fail(400, {
         llmMessage: getSafeErrorMessage(error, 'Unable to save LLM configuration.'),

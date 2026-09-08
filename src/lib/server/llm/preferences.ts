@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { decryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import { withDbUser } from '$lib/server/db'
 import { llmProviderConfig, userPreference, type BillingMode } from '$lib/server/db/schema'
+import { LlmNotConfiguredError } from '$lib/server/llm/errors'
 
 export async function isByokBilling(userId: string): Promise<boolean> {
   return withDbUser(userId, async (db) => {
@@ -47,7 +48,7 @@ export async function hasSavedByokLlmCredentials(userId: string): Promise<boolea
 export async function assertByokConfigured(userId: string): Promise<void> {
   const ok = await hasSavedByokLlmCredentials(userId)
   if (!ok) {
-    throw new Error(
+    throw new LlmNotConfiguredError(
       'BYOK requires saved OpenRouter or EUrouter credentials under Settings → LLM → BYOK.',
     )
   }

@@ -41,6 +41,10 @@ export default defineConfig({
   resolve: {
     alias: {
       $lib: path.resolve(root, 'src/lib'),
+      // SvelteKit virtual modules (no sveltekit() plugin in this lean browser config).
+      '$app/paths': path.resolve(root, 'src/lib/vitest-stubs/app-paths.ts'),
+      '$app/forms': path.resolve(root, 'src/lib/vitest-stubs/app-forms.ts'),
+      '$app/navigation': path.resolve(root, 'src/lib/vitest-stubs/app-navigation.ts'),
       // PWA plugin is not loaded in this lean browser config.
       'virtual:pwa-register': path.resolve(root, 'src/lib/vitest-stubs/virtual-pwa-register.ts'),
     },
@@ -55,9 +59,12 @@ export default defineConfig({
     name: 'components',
     expect: { requireAssertions: true },
     setupFiles: ['vitest-browser-svelte'],
-    // Phase 4 merge gate: smoke. Other `*.svelte.spec.ts` need
-    // `$app/*` stubs / locator API updates before joining this job.
-    include: ['src/lib/components/smoke.svelte.spec.ts'],
+    // Phase 4 merge gate: smoke + enrolled component specs. Specs need `$app/*` stubs
+    // (in-spec vi.mock) before joining this job.
+    include: [
+      'src/lib/components/smoke.svelte.spec.ts',
+      'src/lib/components/capture-onboarding-overlay.svelte.spec.ts',
+    ],
     exclude: ['src/routes/demo/playwright/**/*.ts', '**/*.e2e.ts'],
     fileParallelism: false,
     browser: {

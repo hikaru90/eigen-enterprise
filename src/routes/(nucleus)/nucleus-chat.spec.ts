@@ -32,6 +32,19 @@ describe('nucleus-chat entries', () => {
       failed: true,
     })
   })
+
+  it('attaches a provider-setup action when the failure is missing configuration', () => {
+    expect(
+      failedTurn('Error: Platform EUrouter not configured: set LLM_BASE_URL', {
+        providerSetup: true,
+      }),
+    ).toEqual({
+      role: 'assistant',
+      content: 'Error: Platform EUrouter not configured: set LLM_BASE_URL',
+      failed: true,
+      providerSetup: true,
+    })
+  })
 })
 
 describe('nucleus-chat status line', () => {
