@@ -37,7 +37,6 @@ describe('manifestSchema', () => {
       { ...validManifest, tools: ['echo'] },
       /invalid module manifest memory: tools\.0:/,
     ],
-    ['empty tools array', { ...validManifest, tools: [] }, /invalid module manifest memory: tools:/],
     [
       'empty roles array',
       { ...validManifest, permissions: { roles: [] } },
@@ -45,6 +44,10 @@ describe('manifestSchema', () => {
     ],
   ])('rejects %s from register()', (_label, manifest, pattern) => {
     expect(() => makeRegistry().register(manifest)).toThrow(pattern)
+  })
+
+  it('accepts an empty tools array — a module may contribute no kernel tools', () => {
+    expect(() => makeRegistry().register({ ...validManifest, tools: [] })).not.toThrow()
   })
 })
 

@@ -10,7 +10,8 @@ export const manifestSchema = z.object({
   name: z.string().min(1),
   version: z.string().regex(VERSION_PATTERN),
   description: z.string().min(1).optional(),
-  tools: z.array(z.string().regex(TOOL_NAME_PATTERN)).min(1),
+  /** Empty is valid: a module may contribute no kernel tools (routes/settings only). */
+  tools: z.array(z.string().regex(TOOL_NAME_PATTERN)),
   permissions: z.object({ roles: z.array(z.string()).min(1) }),
   /** Live ZodType — not JSON-Schema-able; accepted and ignored here. */
   settingsSchema: z.unknown().optional(),
