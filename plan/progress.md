@@ -2,6 +2,26 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-08 — Phase-2a: provider onboarding — method → provider (pi-inspired, catalog-driven)
+
+**Shipped** (`01eab7a` plan + `b338c48` feature, wt/provider-catalog-onboarding, ff-merged)
+- **Research**: pi's `packages/ai` auth architecture — type-tagged credentials (`api_key | oauth`), `OAuthAuth.isSubscription`, normalized events (`auth_url`, `device_code`). Ported the two web-native flows and adopted **models.dev** (the open model catalog pi generates from) as the provider catalog.
+- **Wizard v2 — two questions**: ① "Use a subscription I have" vs "Use an API key" ② provider selection — subscription lists **GitHub Copilot** (device flow) + **Sign in with OpenRouter** (PKCE → permanent key); API-key lists the models.dev catalog (OpenAI-compatible only, chat/embedding model counts, search) with EUrouter pinned first-class.
+- **GitHub Copilot subscription, full e2e**: device code shown in the wizard → server polls → GitHub token exchanged for a short-lived Copilot token (proxy-ep → api base derivation, model list) → stored tenant-encrypted (`auth_type/oauth_*` columns, **migration 0075**). Chat-only by design: embeddings absence fails loud naming the fix.
+- **OpenRouter sign-in**: `authorize` sets an httpOnly PKCE verifier cookie, OpenRouter redirects back with `?code=`, exchanged for a permanent key, saved + onboarding completed + redirected to `/`.
+- **llm-client generalized**: provider ids are free-form text (new providers never need migrations); all non-EUrouter providers route by direct model; OAuth rows resolve + refresh transparently (rotated access persisted under the store lock semantics of `loadLlmProviderConfig`).
+- **Gates: unit 3456 passed, components 10 passed, e2e 4 passed on BOTH deployment shapes (incl. the full Copilot device flow headlessly via mock-gateway stubs), check 0 errors, lint = main's 7 pre-existing.** Migration 0075 applied to the dev DB.
+
+**Decisions**
+- v1 subscription providers = Copilot (device flow — fully web-native, no client-secret) + OpenRouter sign-in (PKCE with caller-controlled callback). **Claude Pro/Max and ChatGPT subscriptions are the deliberate next step**: they need a redirect-allowlist strategy + Anthropic/Codex API-shape adapters — pi's `anthropic.ts`/`openai-codex.ts` are the reference implementations.
+- models.dev is a live dependency with loud failure + retry (never a silent fallback); `MODELS_DEV_CATALOG_URL` / `OAUTH_GITHUB_*` env overrides exist for e2e determinism.
+- Wizard strictness by catalog: embedding-capable providers require an embedding model (memory depends on it); chat-only providers (Copilot) warn and defer.
+
+**Tracked**
+- Claude/ChatGPT subscription OAuth + Anthropic/Codex API-shape adapter (next pass).
+- Settings → LLM remains the legacy two-provider surface; catalog providers currently manageable only via onboarding (reconnect flow = revisit onboarding) — fold into the legacy-deletion pass.
+
+---
 ## 2026-09-08 — Phase-1d: first-run onboarding IS the first screen (nucleus, ground-up)
 
 **Shipped** (`a1fb017` plan + `8972baa` feature, wt/nucleus-first-run-onboarding, ff-merged)
