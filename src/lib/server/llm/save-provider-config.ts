@@ -7,12 +7,14 @@ import {
   type BillingMode,
 } from '$lib/server/db/schema'
 
-export type LlmProviderId = 'eurouter' | 'openrouter'
+/** Widened with phase-2a: any models.dev catalog id or 'github_copilot'. */
+export type LlmProviderId = string
 
 export type SaveProviderConfigInput = {
   userId: string
   provider: LlmProviderId
   baseUrl: string
+  /** Empty for oauth rows — the request credential is the rotated access token. */
   apiKey: string
   ruleChat?: string | null
   ruleEmbedding?: string | null
@@ -20,10 +22,19 @@ export type SaveProviderConfigInput = {
   modelEmbedding?: string | null
   /** Upsert llm_active_provider (default true). billingMode always flips to byok. */
   setActive?: boolean
+  /** OAuth credentials (Copilot subscription, …) — encrypted at rest. */
+  oauth?: {
+    access: string
+    refresh: string
+    expiresAt: Date | null
+    meta?: Record<string, unknown> | null
+  }
 }
 
 function assertValidProvider(provider: string): asserts provider is LlmProviderId {
-  if (provider !== 'eurouter' && provider !== 'openrouter') {
+  // Provider ids are free-form text (llm_provider_config.provider): 'eurouter',
+  // 'openrouter', 'github_copilot', or any models.dev catalog id.
+  if (!provider.trim()) {
     throw new Error('Invalid provider.')
   }
 }
@@ -38,24 +49,44 @@ export async function saveProviderConfig(input: SaveProviderConfigInput): Promis
   assertValidProvider(input.provider)
   const baseUrl = input.baseUrl.trim()
   const apiKey = input.apiKey.trim()
+  const oauth = input.oauth
   if (!baseUrl) {
     throw new Error('Base URL is required.')
   }
   if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
     throw new Error('Base URL must start with http:// or https://')
   }
-  if (!apiKey) {
+  if (!oauth && !apiKey) {
     throw new Error('API key is required.')
   }
 
   const db = getDb()
   const userId = input.userId
-  const apiKeyEncrypted = await encryptTenantValue({
-    userId,
-    table: 'llm_provider_config',
-    column: 'api_key',
-    plaintext: apiKey,
-  })
+  const authType: 'api_key' | 'oauth' = oauth ? 'oauth' : 'api_key'
+  const apiKeyEncrypted = oauth
+    ? null
+    : await encryptTenantValue({
+        userId,
+        table: 'llm_provider_config',
+        column: 'api_key',
+        plaintext: apiKey,
+      })
+  const oauthAccessEncrypted = oauth
+    ? await encryptTenantValue({
+        userId,
+        table: 'llm_provider_config',
+        column: 'oauth_access',
+        plaintext: oauth.access,
+      })
+    : null
+  const oauthRefreshEncrypted = oauth
+    ? await encryptTenantValue({
+        userId,
+        table: 'llm_provider_config',
+        column: 'oauth_refresh',
+        plaintext: oauth.refresh,
+      })
+    : null
 
   const values = {
     userId,
@@ -63,6 +94,11 @@ export async function saveProviderConfig(input: SaveProviderConfigInput): Promis
     baseUrl: baseUrl.replace(/\/$/, ''),
     apiKey,
     apiKeyEncrypted,
+    authType,
+    oauthAccessEncrypted,
+    oauthRefreshEncrypted,
+    oauthExpiresAt: oauth?.expiresAt ?? null,
+    oauthMeta: oauth?.meta ?? null,
     ruleChat: input.ruleChat?.trim() || null,
     ruleEmbedding: input.ruleEmbedding?.trim() || null,
     modelChat: input.modelChat?.trim() || null,

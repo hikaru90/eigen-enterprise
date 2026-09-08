@@ -1265,7 +1265,7 @@ describe('llm client OpenRouter routing', () => {
     )
     await expect(
       llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
-    ).rejects.toThrow(/OpenRouter chat model not configured/)
+    ).rejects.toThrow(/No chat model configured for this openrouter credential/)
   })
 
   it('fails when OpenRouter embedding model is not configured', async () => {
@@ -1287,7 +1287,7 @@ describe('llm client OpenRouter routing', () => {
       ],
     )
     await expect(llmCreateEmbeddings({ userId: 'u1', input: 'hello' })).rejects.toThrow(
-      /OpenRouter embedding model not configured/,
+      /No embedding model configured for this openrouter credential/,
     )
   })
 })

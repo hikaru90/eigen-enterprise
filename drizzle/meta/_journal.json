@@ -526,6 +526,13 @@
       "when": 1788855145000,
       "tag": "0074_kernel_event_source",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1760000000000,
+      "tag": "0075_llm_provider_oauth",
+      "breakpoints": true
     }
   ]
 }

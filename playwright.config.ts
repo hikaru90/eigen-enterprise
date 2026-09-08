@@ -31,6 +31,12 @@ export default defineConfig({
           url: previewUrl,
           timeout: 300_000,
           reuseExistingServer: false,
+          env: {
+            ...process.env,
+            MODELS_DEV_CATALOG_URL: `${mockGatewayUrl}/models.dev.json`,
+            OAUTH_GITHUB_BASE_URL: `${mockGatewayUrl}/gh`,
+            OAUTH_GITHUB_API_BASE_URL: mockGatewayUrl,
+          },
         },
         {
           command: 'node scripts/mock-gateway.mjs',
@@ -45,7 +51,15 @@ export default defineConfig({
           command: `vite dev --host --port ${e2ePort}`,
           timeout: 120_000,
           reuseExistingServer: true,
-          env: { ...process.env, ORIGIN: devBrowserUrl },
+          env: {
+            ...process.env,
+            ORIGIN: devBrowserUrl,
+            // Deterministic wizard fixtures: catalog + GitHub device-flow stubs are
+            // served by scripts/mock-gateway.mjs on the mock gateway port.
+            MODELS_DEV_CATALOG_URL: `${mockGatewayUrl}/models.dev.json`,
+            OAUTH_GITHUB_BASE_URL: `${mockGatewayUrl}/gh`,
+            OAUTH_GITHUB_API_BASE_URL: mockGatewayUrl,
+          },
         },
         {
           command: 'node scripts/mock-gateway.mjs',

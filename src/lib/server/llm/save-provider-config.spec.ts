@@ -42,11 +42,11 @@ describe('saveProviderConfig', () => {
     encryptTenantValueMock.mockResolvedValue('encrypted-blob')
   })
 
-  it('rejects an unknown provider', async () => {
+  it('rejects an empty provider id (ids are free-form text, but never empty)', async () => {
     await expect(
       saveProviderConfig({
         userId: 'u1',
-        provider: 'anthropic' as never,
+        provider: '  ' as never,
         baseUrl: 'https://api.example.test/v1',
         apiKey: 'k',
       }),

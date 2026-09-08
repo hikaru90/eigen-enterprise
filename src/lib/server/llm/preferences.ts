@@ -24,24 +24,32 @@ export async function hasSavedByokLlmCredentials(userId: string): Promise<boolea
         baseUrl: llmProviderConfig.baseUrl,
         apiKey: llmProviderConfig.apiKey,
         apiKeyEncrypted: llmProviderConfig.apiKeyEncrypted,
+        authType: llmProviderConfig.authType,
+        oauthAccessEncrypted: llmProviderConfig.oauthAccessEncrypted,
+        oauthRefreshEncrypted: llmProviderConfig.oauthRefreshEncrypted,
         provider: llmProviderConfig.provider,
       })
       .from(llmProviderConfig)
       .where(eq(llmProviderConfig.userId, userId))
 
     const keys = await Promise.all(
-      rows.map((r) =>
-        r.apiKeyEncrypted
+      rows.map((r) => {
+        if ((r.authType ?? 'api_key') === 'oauth') {
+          return Promise.resolve(
+            Boolean(r.oauthAccessEncrypted || r.oauthRefreshEncrypted || r.apiKey?.trim()),
+          )
+        }
+        return r.apiKeyEncrypted
           ? decryptTenantValue({
               userId,
               table: 'llm_provider_config',
               column: 'api_key',
               ciphertext: r.apiKeyEncrypted,
-            })
-          : Promise.resolve(r.apiKey ?? ''),
-      ),
+            }).then((key) => Boolean(key.trim()))
+          : Promise.resolve(Boolean(r.apiKey?.trim()))
+      }),
     )
-    return rows.some((r, idx) => Boolean(r.baseUrl?.trim() && keys[idx]?.trim()))
+    return rows.some((r, idx) => Boolean(r.baseUrl?.trim() && keys[idx]))
   })
 }
 

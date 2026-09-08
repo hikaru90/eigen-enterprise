@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types'
 import { error, redirect } from '@sveltejs/kit'
 import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
-import { loadLlmSettingsPage, type LlmProviderId } from '$lib/server/settings/llm-page.server'
+import { loadLlmSettingsPage } from '$lib/server/settings/llm-page.server'
 
 export const load: PageServerLoad = async (event) => {
   if (!isByokUiEnabled()) {
@@ -14,8 +14,8 @@ export const load: PageServerLoad = async (event) => {
   const data = await loadLlmSettingsPage(event)
   return {
     ...data,
-    provider: provider as LlmProviderId,
-    providerData: data.providers[provider as LlmProviderId],
+    provider,
+    providerData: data.providers[provider],
   }
 }
 

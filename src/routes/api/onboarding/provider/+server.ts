@@ -25,7 +25,7 @@ export const POST: RequestHandler = async (event) => {
   }
 
   const body = await event.request.json().catch(() => null)
-  const parsed = parseProviderInput(body)
+  const parsed = await parseProviderInput(body)
   if ('error' in parsed) {
     return json({ error: parsed.error }, { status: 400 })
   }

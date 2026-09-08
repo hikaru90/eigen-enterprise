@@ -8,7 +8,9 @@
 
   let { data, form }: { data: PageData; form: ActionData } = $props()
 
-  let selectedProvider = $state<'eurouter' | 'openrouter'>(data.activeProvider ?? 'eurouter')
+  let selectedProvider = $state<'eurouter' | 'openrouter'>(
+    data.activeProvider === 'openrouter' ? 'openrouter' : 'eurouter',
+  )
 
   const providers = [
     { id: 'openrouter' as const, label: 'OpenRouter' },

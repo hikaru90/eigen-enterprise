@@ -899,10 +899,20 @@ export const llmProviderConfig = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
-    provider: text('provider').notNull(), // 'eurouter' | 'openrouter'
+    provider: text('provider').notNull(), // 'eurouter' | 'openrouter' | catalog ids (models.dev) | 'github_copilot'
     baseUrl: text('base_url').notNull(),
     apiKey: text('api_key').notNull(),
     apiKeyEncrypted: text('api_key_encrypted'),
+    /** 'api_key' (default) | 'oauth' — oauth rows carry encrypted token pairs instead of raw keys. */
+    authType: text('auth_type').notNull().default('api_key'),
+    /** OAuth access token (short-lived), tenant-encrypted. */
+    oauthAccessEncrypted: text('oauth_access_encrypted'),
+    /** OAuth refresh / long-lived token (GitHub token for Copilot), tenant-encrypted. */
+    oauthRefreshEncrypted: text('oauth_refresh_encrypted'),
+    /** When the access token expires (Copilot rotates ~30 min). */
+    oauthExpiresAt: timestamp('oauth_expires_at', { withTimezone: true }),
+    /** Provider-specific oauth metadata (available model ids, enterprise domain). */
+    oauthMeta: jsonb('oauth_meta'),
     /** EUrouter only: routing rule UUID for chat completions. */
     ruleChat: text('rule_chat'),
     /** EUrouter only: routing rule UUID for embeddings. */

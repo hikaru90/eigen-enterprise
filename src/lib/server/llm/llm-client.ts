@@ -5,12 +5,16 @@ import { env } from '$lib/server/env/private-env'
 import { activityProviderForLlmConfig } from '$lib/server/activity/gateway-providers'
 import { logActivityCall } from '$lib/server/activity/log-call'
 import { captureServerEvent } from '$lib/server/analytics/posthog-server'
+import { decryptTenantValue, encryptTenantValue } from '$lib/server/crypto/tenant-encryption'
+import {
+  copilotChatBaseUrl,
+  fetchCopilotAccessToken,
+} from '$lib/server/llm/oauth/github-copilot'
 import {
   loadPlatformLlmConfig,
   loadPlatformOpenRouterSttConfig,
 } from '$lib/server/llm/platform-llm'
 import { isByokBilling } from '$lib/server/llm/preferences'
-import { decryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import { getDb, withDbUser } from '$lib/server/db'
 import { resolveBillingUserId } from '$lib/server/db/tenant-context'
 import { llmProviderConfig, llmActiveProvider } from '$lib/server/db/schema'
@@ -368,6 +372,81 @@ async function loadLlmProviderConfig(
       .limit(1)
     if (!loaded?.baseUrl) return null
 
+    const authType = (loaded.authType ?? 'api_key') as 'api_key' | 'oauth'
+    if (authType === 'oauth') {
+      const access = loaded.oauthAccessEncrypted
+        ? await decryptTenantValue({
+            userId,
+            table: 'llm_provider_config',
+            column: 'oauth_access',
+            ciphertext: loaded.oauthAccessEncrypted,
+          })
+        : ''
+      const refresh = loaded.oauthRefreshEncrypted
+        ? await decryptTenantValue({
+            userId,
+            table: 'llm_provider_config',
+            column: 'oauth_refresh',
+            ciphertext: loaded.oauthRefreshEncrypted,
+          })
+        : ''
+      const expiresAtMs = loaded.oauthExpiresAt?.getTime() ?? Number.MAX_SAFE_INTEGER
+
+      // Rotating OAuth (Copilot): re-exchange the long-lived token when expired and
+      // persist the rotated access token. Non-expiring OAuth (OpenRouter key) passes through.
+      if ((!access || Date.now() >= expiresAtMs) && provider === 'github_copilot' && refresh) {
+        const session = await fetchCopilotAccessToken(refresh)
+        const oauthAccessEncrypted = await encryptTenantValue({
+          userId,
+          table: 'llm_provider_config',
+          column: 'oauth_access',
+          plaintext: session.access,
+        })
+        await getDb()
+          .update(llmProviderConfig)
+          .set({
+            oauthAccessEncrypted,
+            oauthExpiresAt: new Date(session.expiresAtMs),
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(llmProviderConfig.userId, userId),
+              eq(llmProviderConfig.provider, provider),
+            ),
+          )
+        return {
+          provider,
+          baseUrl: session.baseUrl,
+          apiKey: session.access,
+          ruleChat: loaded.ruleChat,
+          ruleEmbedding: loaded.ruleEmbedding,
+          modelChat: loaded.modelChat,
+          modelEmbedding: loaded.modelEmbedding,
+        }
+      }
+
+      if (!access) {
+        throw new LlmNotConfiguredError(
+          `${provider} credential needs to be renewed — connect it again under Settings → LLM.`,
+        )
+      }
+
+      const baseUrl =
+        provider === 'github_copilot'
+          ? copilotChatBaseUrl(access)
+          : loaded.baseUrl.replace(/\/$/, '')
+      return {
+        provider,
+        baseUrl,
+        apiKey: access,
+        ruleChat: loaded.ruleChat,
+        ruleEmbedding: loaded.ruleEmbedding,
+        modelChat: loaded.modelChat,
+        modelEmbedding: loaded.modelEmbedding,
+      }
+    }
+
     const apiKey = loaded.apiKeyEncrypted
       ? await decryptTenantValue({
           userId,
@@ -549,12 +628,13 @@ async function chatRoutingConfig(
   config: ResolvedLlmConfig,
   ruleOverride?: string,
 ): Promise<RoutingConfig> {
-  // OpenRouter: use direct model name, no routing rules
-  if (config.provider === 'openrouter') {
+  // Every non-EUrouter provider (OpenRouter, Copilot, models.dev catalog, …) is
+  // OpenAI-compatible and routes by direct model name.
+  if (config.provider !== 'eurouter') {
     const model = config.modelChat?.trim() || env.LLM_MODEL_CHAT?.trim()
     if (!model) {
       throw new LlmNotConfiguredError(
-        'OpenRouter chat model not configured: set a chat model name in Settings → LLM Provider',
+        `No chat model configured for this ${config.provider} credential — set one under Settings → LLM.`,
       )
     }
     return { model }
@@ -570,12 +650,18 @@ async function chatRoutingConfig(
 }
 
 async function embeddingRoutingConfig(config: ResolvedLlmConfig): Promise<RoutingConfig> {
-  // OpenRouter: use direct model name, no routing rules
-  if (config.provider === 'openrouter') {
+  // Every non-EUrouter provider (OpenRouter, Copilot, models.dev catalog, …) is
+  // OpenAI-compatible and routes by direct model name.
+  if (config.provider !== 'eurouter') {
+    if (config.provider === 'github_copilot' && !config.modelEmbedding?.trim()) {
+      throw new LlmNotConfiguredError(
+        'GitHub Copilot does not provide embeddings — save an embedding-capable provider (EUrouter, OpenRouter, …) for memory features.',
+      )
+    }
     const model = config.modelEmbedding?.trim() || env.LLM_MODEL_EMBEDDING?.trim()
     if (!model) {
       throw new LlmNotConfiguredError(
-        'OpenRouter embedding model not configured: set an embedding model name in Settings → LLM Provider',
+        `No embedding model configured for this ${config.provider} credential — set one under Settings → LLM.`,
       )
     }
     return { model }
