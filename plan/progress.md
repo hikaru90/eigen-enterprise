@@ -2,6 +2,29 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-08 — Startup wired + company feed live (smoke-test ready)
+
+**Shipped** (wt/startup `4951da0`, wt/activity `2fafd7d`, MCP-spec fix `4b6ef81`)
+- **`src/lib/server/boot.ts`** — the composition root: `bootApp()` memoized single-flight (failed boots do NOT cache — retry recomposes fresh); kernel → bootstrapOrchestrator(kernel, wireGateway, { engines: [['pi', piEngine]] }) → bootstrapChatGateway stage; env injectable. `src/hooks.server.ts` triggers it additive + loud-fail.
+- **Company feed** — `/activity` now renders `kernel_events` (agent.*, tool.executed, gateway.telegram.*, dev-agent.*) via `listKernelEvents` read-model + `toFeedItem` whitelist (metadata only; content fields proven excluded by tests). Full emitted-type inventory grepped + pinned.
+- **Stale HTTP-MCP spec fixed** — broadened verification scope to `src/routes` exposed a seed-era spec asserting the pre-kernel contract (unprefixed tool name, no activation). Now: fixture kernel (memory activated, real descriptors, mocked impls), namespaced `memory.retrieve_thoughts`. 655/655 in src/routes.
+- **Main state: kernel+modules+cli 446, mcp 56, routes 655, boot/activity included — check at 5-error baseline.**
+
+**Flags**
+- 6 pre-existing eigen_test integration failures (tenant-secrets, ontology-db, retrieval, thought-lifecycle) — test-DB schema drift; `npm run db:migrate` against eigen_test before smoke test.
+- Feed open items: `textLength` whitelist field, `website.contact.captured` inclusion, load-more cursor — later touches.
+
+**SMOKE TEST (user runs)**
+1. `npm run db:up && npm run db:migrate`
+2. `.env`: TELEGRAM_BOT_TOKEN, LLM gateway creds
+3. SQL: activate `chat-gateway` + `memory` (+`email`); allowlist Telegram user → principal; seed `orchestrator` principal row
+4. `npm run dev` → message the bot → orchestrator responds via builtin-json engine; /activity shows the events
+5. hermes: point MCP at `/api/mcp` (session user) or Bearer key (agent principal)
+
+**Next:** Phase 2 — owlery engine internalization (EmailProvider port first), then sales (Phase 3).
+
+---
+
 ---
 
 ## 2026-09-08 — THE HARNESS IS IN (AgentRuntime + LoopEngine + PiEngine)
