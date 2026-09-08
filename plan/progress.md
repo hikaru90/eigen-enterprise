@@ -4,6 +4,23 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 
 ---
 
+## 2026-09-08 — Gateway contract moved into the kernel (declared edges now zero)
+
+**Shipped** (`56d8c80`, merged to `main`)
+- New `src/lib/kernel/gateway.ts`: the chat-gateway port lives in the kernel now. It holds `TelegramSessionRef`, `Brain`, `AllowlistEntry`, `AllowlistStore`, `GatewaySession`, `SessionStore`, plus the `CHAT_GATEWAY_MODULE_ID` and `CHAT_GATEWAY_ALLOWLIST_TOOLS` constants. chat-gateway imports them from the kernel; every local copy is gone, no re-export shims inside modules.
+- New `src/lib/kernel/wiring.ts`: `WiredKernel` and `registerModuleTools()` moved here from modules/index.ts. The composition root still assembles the kernel, but the wiring types belong to the kernel.
+- `modules/index.ts` gained the gateway boot stage: `bootstrapChatGateway(kernel, brain, { env, db? })` returns the boot object, or null when the module is inactive. The fail-loud token rule is unchanged: an active gateway without `TELEGRAM_BOT_TOKEN` still aborts startup. `bootstrapOrchestrator(kernel, wireGateway, options?)` now takes the kernel as a parameter and hands the brain to the injected gateway stage. It has no caller yet (startup wiring is still pending the user's live smoke test), so the signature change breaks nothing.
+- `DECLARED_WIRING_EDGES` is an empty Map, pinned by test. The repo scan passes with zero exceptions: no module imports another module or the composition root.
+- Verification: 327 passed / 1 skipped (kernel + modules), `npm run check` at the 5-error baseline, lint clean on touched files.
+
+**Decisions**
+- The kernel owns the port (the `Brain` type the gateway consumes), while phase 1b decides who implements it (BuiltinJsonLoop). The two streams stack cleanly.
+- modules/index.ts re-exports `WiredKernel`/`registerModuleTools` because src/cli, mcp/server, and admin-bootstrap import them from there and sat outside this stream's scope. Re-pointing those imports is a small chore, not urgent.
+
+**Next:** phase 1b harness streams (wt/harness, wt/pi-engine); startup call site that composes kernel → orchestrator → gateway; then the HTTP tool route.
+
+---
+
 ## 2026-09-08 — Kernel open-API round 2 merged (manifest schema, problem+json, boundary guard, event provenance)
 
 **Shipped** (4 worktree streams → `main` @ `d3451ec`)
