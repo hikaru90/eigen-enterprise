@@ -16,6 +16,14 @@
   import * as Card from '$lib/components/ui/card'
   import ActivitySpendChart from './activity-spend-chart.svelte'
 
+  type ActivityFeedItem = {
+    id: string
+    tsLabel: string
+    type: string
+    principalId?: string
+    summary: string
+  }
+
   type ActivityCallRow = {
     id: string
     provider: string
@@ -34,6 +42,7 @@
 
   let fromDate = $state<string | null>(data.from)
   let toDate = $state<string | null>(data.to)
+  const feed = $derived(data.feed as ActivityFeedItem[])
   const gatewayProviderSet = $derived(new Set<string>(data.gatewayProviders))
   let allCalls = $state<ActivityCallRow[]>([])
   let isLoading = $state(true)
@@ -284,6 +293,51 @@
       }}
     />
   </div>
+
+  {#if feed.length > 0}
+    <Card.Root
+      class="ring-0 shadow-[4px_4px_0_0_rgb(17_17_17_/_0.08)] mt-4 border border-black/10 bg-card"
+    >
+      <Card.Header>
+        <Card.Title class="text-sm">Company feed</Card.Title>
+        <Card.Description class="text-muted-foreground text-xs">
+          Kernel events — agents, tools, gateways. Metadata only.
+        </Card.Description>
+      </Card.Header>
+      <Card.Content class="overflow-x-auto px-0">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-muted/50 border-b border-border">
+            <tr>
+              <th class="p-2 font-medium">When</th>
+              <th class="p-2 font-medium">Event</th>
+              <th class="p-2 font-medium">Principal</th>
+              <th class="p-2 font-medium">Summary</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each feed as item (item.id)}
+              <tr class="border-b border-border/60">
+                <td class="p-2 whitespace-nowrap font-mono text-[11px] text-muted-foreground"
+                  >{item.tsLabel}</td
+                >
+                <td class="p-2">
+                  <span class="font-mono text-[11px] truncate max-w-[220px] block">{item.type}</span>
+                </td>
+                <td class="p-2 font-mono text-[11px] text-muted-foreground"
+                  >{item.principalId ?? '—'}</td
+                >
+                <td class="p-2 text-muted-foreground">{item.summary || '—'}</td>
+              </tr>
+            {:else}
+              <tr>
+                <td class="text-muted-foreground p-4 text-xs" colspan="4">No kernel events yet.</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </Card.Content>
+    </Card.Root>
+  {/if}
 
   {#if isLoading}
     <p class="text-muted-foreground py-8 text-center text-xs">Loading activity…</p>
