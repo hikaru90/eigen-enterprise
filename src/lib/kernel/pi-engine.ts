@@ -1,5 +1,5 @@
 import type { KernelEvent } from './events'
-import type { PrincipalKind } from './types'
+import type { EngineContext } from './engine'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { KERNEL_EVENT_SOURCE } from './cloudevents'
@@ -140,24 +140,12 @@ export function createNodeSpawnRunner(): NodeSpawnRunner {
 }
 
 /**
- * Structural local mirror of the harness EngineContext (wt/harness owns the
- * canonical `src/lib/kernel/engine.ts` declaration; the orchestrator unifies
- * the types at merge). Function members use method syntax on purpose: method
- * parameters are checked bivariantly, so this stays compatible with the
- * canonical context in both directions.
- *
- * PiEngine itself only reads `principal.id` and calls `emit` — every other
- * member is the harness-provided surface an engine MAY use.
+ * The harness EngineContext (canonical declaration in `engine.ts`). PiEngine
+ * itself only reads `principal.id` and calls `emit` — every other member is
+ * the harness-provided surface an engine MAY use. Re-exported so consumers of
+ * this module keep a single import site.
  */
-export type EngineContext = {
-  /** Harness agent descriptor (AgentConfig at integration); only `id` is assumed. */
-  agent: { id: string }
-  principal: { id: string; kind: PrincipalKind; roles: string[] }
-  executeTool(name: string, input: unknown): Promise<unknown>
-  listTools(): Promise<readonly unknown[]>
-  emit(event: KernelEvent): Promise<void>
-  spendUsd(amountUsd: number): void | Promise<void>
-}
+export type { EngineContext, LoopEngine } from './engine'
 
 /** Outcome of one headless pi execution. */
 export type PiExecution = {

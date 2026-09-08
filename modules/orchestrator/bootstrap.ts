@@ -6,6 +6,7 @@ import {
   createAgentAdminTools,
 } from '$lib/kernel/agent-admin'
 import { AgentRuntime } from '$lib/kernel/agent-runtime'
+import type { LoopEngine } from '$lib/kernel/engine'
 import type { LlmCompleteFn } from '$lib/kernel/engines/builtin-json'
 import { OrchestratorBrain } from './brain'
 import {
@@ -65,6 +66,12 @@ export type OrchestratorBootOptions = {
   complete?: LlmCompleteFn
   /** Environment for boot-time config (spend cap). Defaults to process.env. */
   env?: Record<string, string | undefined>
+  /**
+   * Extra loop engines the composition root hosts (e.g. the pi engine from
+   * the dev-agent module). Injected here — the orchestrator must not import
+   * other modules directly (boundary guard).
+   */
+  engines?: Array<[string, LoopEngine]>
 }
 
 /**
@@ -114,6 +121,9 @@ export async function bootstrapOrchestrator(
     'builtin-json',
     buildOrchestratorEngine(options.complete === undefined ? {} : { complete: options.complete }),
   )
+  for (const [id, engine] of options.engines ?? []) {
+    runtime.registerEngine(id, engine)
+  }
   runtime.registerAgent(orchestratorAgentConfig({ spendCapUsd: spendCapUsdFromEnv(env) }))
 
   const brain = new OrchestratorBrain({ runtime })

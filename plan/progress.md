@@ -4,6 +4,28 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 
 ---
 
+## 2026-09-08 — THE HARNESS IS IN (AgentRuntime + LoopEngine + PiEngine)
+
+**Shipped** (`034c1f1` harness + `a6996af` pi-engine + orchestrator integration, merged to `main`)
+- **Kernel primitives**: `kernel/agent.ts` (AgentConfig/AgentTypeSpec), `kernel/engine.ts` (EngineContext + LoopEngine — the harness hands engines tools/approvals/events/spend; engines own model/prompts/strategy), `kernel/agent-runtime.ts` (dispatch pipeline: unknown_agent → agent_disabled → unknown_engine → budget → dispatched → run → replied; payloads metadata-only), `kernel/tool-surface.ts` (shared fail-closed filter: activation ∩ scope ∩ roles), `kernel/agent-admin.ts` (`agent.list/enable/disable`, owner-gated), `kernel/pi-engine.ts` (headless pi as a hosted engine; canonical PI_GUARDRAILS; spawn seam injected).
+- **Demotions done**: orchestrator brain → thin adapter over AgentRuntime; orchestrator = seeded AgentConfig (`builtin-json` engine, `EE_HARNESS_SPEND_CAP_USD`, malformed = boot fails loud); dev-agent runner delegates spawning to PiEngine.
+- **Manifest extension (additive)**: `agents?: AgentTypeSpec[]`, `verification?: VerificationPolicySpec[]` — third parties can ship agents, not just tools.
+- **Integration (orchestrator, on main)**: resolved harness × gateway-extraction conflicts (brain.ts adapter keeps `$lib/kernel/gateway` port; bootstrap keeps composition-root shape `bootstrapOrchestrator(kernel, wireGateway, options)` + runtime seeding; bootstrap.spec reconciled to three-arg convention); unified pi-engine's structural EngineContext mirror into the canonical type; added `options.engines` injection seam so the composition root hosts `pi` without module-to-module imports (boundary guard stays green). New test proves engine injection via dispatch.
+- **Main: 446 (kernel+modules+cli) + 56 (mcp) = 502 tests green; `npm run check` at 5-error baseline.**
+
+**Decisions**
+- Adding an agent = one AgentConfig + zero new code; it inherits permissions/approvals/events/spend/verification. The orchestrator holds no code privilege — deleting/replacing it touches no kernel code.
+- Spend cap: single cap on the harness agent itself (`EE_HARNESS_SPEND_CAP_USD`); no granular per-agent limits (user decision).
+- Sessions in engines: in-memory Maps (documented debt); gateway-cost accumulation wiring = follow-up (spend currently via `recordSpend`).
+- Merge-conflict lesson recorded: parallel sessions on `main` + long-lived worktrees = textual conflicts on shared files; integration unification is orchestrator work.
+
+**Next**
+- Startup call site that composes kernel → orchestrator → gateway (pending since gateway extraction) — then the live Telegram smoke test.
+- Apply `agent.*` events on the wire (activity feed UI); persisted sessions; gateway-cost spend accumulation into the runtime.
+- Then per roadmap: owlery internalization (Phase 2), sales (Phase 3), brand kernel.
+
+---
+
 ## 2026-09-08 — Gateway contract moved into the kernel (declared edges now zero)
 
 **Shipped** (`56d8c80`, merged to `main`)

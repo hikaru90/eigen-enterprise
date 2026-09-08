@@ -6,6 +6,7 @@ import { InMemoryActivationStore, ModuleRegistry, type ModuleManifest } from '$l
 import type { PrincipalStore } from '$lib/kernel/principals'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolDescriptor, ToolContext } from '$lib/kernel/types'
+import type { LoopEngine } from '$lib/kernel/engine'
 import type { WiredKernel } from '$lib/kernel/wiring'
 import {
   bootstrapOrchestrator,
@@ -235,5 +236,34 @@ describe('bootstrapOrchestrator — chat-gateway stage active', () => {
     expect(offered.map((t) => t.name)).toContain('testmod.echo')
 
     await boot.loop!.stop()
+  })
+})
+
+describe('bootstrapOrchestrator — extra engine injection (composition-root seam)', () => {
+  it('registers injected engines on the runtime without module imports', async () => {
+    const { kernel } = inMemoryKernel()
+    const fakeEngine: LoopEngine = {
+      run: async (sessionId, input) => `pi:${sessionId}:${input}`,
+    }
+
+    const boot = await bootstrapOrchestrator(
+      kernel,
+      inactiveStage,
+      bootOptions({ engines: [['pi', fakeEngine]] }),
+    )
+
+    // No getEngine accessor by design; prove registration through the dispatch path.
+    await boot.runtime.registerAgent({
+      id: 'pi-test-agent',
+      personaName: 'pi-test-agent',
+      description: 'engine injection probe',
+      loopEngine: 'pi',
+      toolScope: 'all',
+      memoryScope: 'company',
+      verificationPolicy: 'none',
+      enabled: true,
+    })
+    const reply = await boot.runtime.dispatch('pi-test-agent', 'session-1', 'hello')
+    expect(reply).toBe('pi:session-1:hello')
   })
 })
