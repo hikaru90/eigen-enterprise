@@ -1,4 +1,5 @@
 import type { ZodType } from 'zod'
+import type { AgentTypeSpec, VerificationPolicySpec } from './agent'
 import { manifestSchema } from './manifest-schema'
 
 export type ModuleManifest = {
@@ -12,6 +13,17 @@ export type ModuleManifest = {
     roles: string[]
   }
   settingsSchema?: ZodType
+  /**
+   * Declarative agent types this module contributes (additive, optional).
+   * v0: documentation only — nothing registers or enforces these yet;
+   * hosting an agent stays an explicit AgentRuntime.registerAgent step.
+   */
+  agents?: AgentTypeSpec[]
+  /**
+   * Declarative verification policies (additive, optional).
+   * v0: documentation only — no runtime enforces them yet.
+   */
+  verification?: VerificationPolicySpec[]
 }
 
 export type ActivationStore = {
