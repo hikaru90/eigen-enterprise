@@ -31,10 +31,10 @@ Rejected: gRPC/protobuf (heavy, poor dynamic discovery), direct module imports (
 
 ## Workstreams (disjoint file sets)
 
-| Stream | Branch | Files | Proof |
-|---|---|---|---|
-| `output-schema` | `wt/output-schema` | `kernel/types.ts`, `kernel/registry.ts`, `kernel/openapi.ts`, `mcp/server.ts` + their specs | Output validation round-trip; parity test covers outputSchema; advertised in MCP + OpenAPI |
-| `cloud-events` | `wt/cloud-events` | `kernel/events.ts` (types/naming helper only if needed), `kernel/cloudevents.ts` (new) + specs | Envelope conformance tests (required attributes, extension, lossless legacy mapping) |
+| Stream | Branch | Files | Proof | Status |
+|---|---|---|---|---|
+| `output-schema` | `wt/output-schema` | `kernel/types.ts`, `kernel/registry.ts`, `kernel/openapi.ts`, `mcp/server.ts` + their specs | Output validation round-trip; parity test covers outputSchema; advertised in MCP + OpenAPI | ✅ merged `49ae71c` (2026-09-08) |
+| `cloud-events` | `wt/cloud-events` | `kernel/events.ts` (types/naming helper only if needed), `kernel/cloudevents.ts` (new) + specs | Envelope conformance tests (required attributes, extension, lossless legacy mapping) | ✅ merged `1585d9b` (2026-09-08) |
 
 Neither stream touches: `db-stores.ts`, `modules/**`, migrations, other modules' emit sites.
 

@@ -4,6 +4,25 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 
 ---
 
+## 2026-09-08 — Kernel open-API standards round merged (output schemas + CloudEvents)
+
+**Shipped** (`49ae71c` + `1585d9b`, merged to `main` @ `575ea06`)
+- `plan/kernel-open-api.md` — approved standard stack: JSON Schema 2020-12 contracts (one Zod source → MCP + OpenAPI), registry-`execute()`-only inter-module calls (zero side doors), CloudEvents 1.0 event envelope, OpenAPI 3.1 edge; A2A watched, not adopted. Rejected: gRPC, direct imports, bespoke wire protocol.
+- **wt/output-schema** (`49ae71c`): `ToolDescriptor.outputSchema?: ZodType`; `execute()` validates handler results pre-audit (`invalid_output`, audited `ok:false`, vcs commit skipped); MCP `tools/list` + OpenAPI 200 responses advertise compiled output schema (`io: 'output'`); parity test covers output round-trip. `errors.ts`: `invalid_output` added (coexists with `run_in_progress` from the dev-agent stream).
+- **wt/cloud-events** (`1585d9b`): `kernel/cloudevents.ts` — CloudEvents 1.0 `CloudEvent` type, `toCloudEvent(event, source)` mapper (source explicit per call site — no implicit defaults), `eventType()` reverse-DNS convention `com.eigenenterprise.<module>.<name>`. Envelope derived at boundaries — **no kernel_events migration** (open-api plan rule 4).
+- Verification on main: 325 passed / 1 skipped (kernel + mcp + modules); only failure = `mcp/registry.spec.ts` `DATABASE_URL` missing (known — user starts dev DB). `npm run check` = 5 documented baseline errors; lint clean.
+
+**Broke / flags**
+- `main` advanced mid-stream (`40a3654` dev-agent/website/cli) — both branches merged main first, then landed; `errors.ts` union auto-merged (both new codes coexist). Worktree `node_modules` symlinked from main checkout this round — fast, worked clean.
+
+**Decisions**
+- Output validation lives inside the handler `try` (reuses existing audit-`ok:false`-rethrow path; no duplicated audit logic).
+- CloudEvents adapter only this round — wiring explicit `source` into all emit sites is a follow-up on main.
+
+**Next (from `plan/kernel-open-api.md` §Later):** manifest JSON Schema at registration, problem+json error shape, cross-module import guard, emit-site `source` wiring.
+
+---
+
 ## 2026-09-07 — dev-agent shipped: the repo can now improve itself (gated)
 
 **Shipped**
