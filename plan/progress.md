@@ -4,6 +4,28 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 
 ---
 
+## 2026-09-08 — Kernel open-API round 2 merged (manifest schema, problem+json, boundary guard, event provenance)
+
+**Shipped** (4 worktree streams → `main` @ `d3451ec`)
+- **wt/manifest-schema** (`fa3674d`): `kernel/manifest-schema.ts` — published Zod→JSON Schema contract for `ModuleManifest`, fail-loud in `ModuleRegistry.register()`. **Fix-forward** (`d3451ec`): `tools: []` is valid (toolless modules legitimate — caught by `admin-bootstrap`/`brain` fixtures exercising `registerModuleTools`; schema was over-constrained, fixtures were right).
+- **wt/problem-json** (`d12dc11`): `KernelError.toProblemJson()` — RFC 9457 (urn:eigenenterprise:problem:<code>, exhaustive title map = type error on missing entry, status map + 500 fallback); OpenAPI `components.schemas.problem` + problem+json on 400/401/403.
+- **wt/event-source** (`6a3dd57`): `KernelEvent.source` + persistence (drizzle `0074_kernel_event_source` + journal idx 74 — **migration not yet applied**), `moduleSource()`/`KERNEL_EVENT_SOURCE` urns, `toCloudEvent` resolution `event.source ?? source` (throw if neither), all 7 emit sites wired (registry audit per-module, dev-agent ×4, website ×1, chat-gateway ×2).
+- **wt/boundaries** (`45e5306` + `33b33d5`): `kernel/boundaries.ts` import-specifier detector (resolves relative specifiers, catches dynamic + export-from + bare forms) + repo-scan test. **The guard earned its keep on day one: 11 real `orchestrator→chat-gateway/index` edges found** (orchestrator = boot stage wiring the gateway surface) — codified as `DECLARED_WIRING_EDGES` pinned by test, not silently ignored.
+- Verification on main: 370 passed / 1 skipped, only `mcp/registry.spec.ts` fails (`DATABASE_URL` — user-started DB, known); check = 5 baseline errors; lint clean.
+
+**Broke / flags**
+- Manifest validation broke 2 fixture files with fake `tools: []` manifests → root cause was the schema rule, not the fixtures; fixed schema, reverted fixture edits.
+- Orchestrator still structurally coupled to chat-gateway internals (types, stores) — declared, tracked.
+
+**Decisions**
+- Toolless manifests are valid; tool-name pattern allows snake_case (all 20+ real tools use it) — published contract documents reality.
+- Cross-module wiring edges are *declared policy* with reasons, zero by default; contract extraction (gateway types → kernel) is the follow-up that shrinks the set.
+- problem+json 404/409 surfacing deferred until the HTTP tool route exists.
+
+**Next:** extract chat-gateway contract to kernel (kill declared edges); apply migration 0074 (`npm run db:migrate`, user-started DB); HTTP tool route mounting registry with bearer → principal mapping.
+
+---
+
 ## 2026-09-08 — Kernel open-API standards round merged (output schemas + CloudEvents)
 
 **Shipped** (`49ae71c` + `1585d9b`, merged to `main` @ `575ea06`)

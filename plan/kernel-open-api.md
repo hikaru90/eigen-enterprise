@@ -46,8 +46,8 @@ Neither stream touches: `db-stores.ts`, `modules/**`, migrations, other modules'
 
 ## Later (tracked, not in this round)
 
-1. problem+json error shape in `kernel/errors.ts` + OpenAPI error responses.
-2. Published `module-manifest.schema.json`, validated at `modules/index.ts` registration.
-3. `source` wiring at all emit sites (rule 3/5).
-4. Cross-module import guard (rule 1).
+1. ~~problem+json error shape~~ ✅ merged `d12dc11` (2026-09-08): `KernelError.toProblemJson()` (urn type, exhaustive title map, status map + 500 fallback); OpenAPI `components.schemas.problem` on 400/401/403. Surfacing 404/409 belongs with the (future) HTTP tool route.
+2. ~~Manifest JSON Schema at registration~~ ✅ merged `fa3674d` + `d3451ec` (2026-09-08): `kernel/manifest-schema.ts` (`manifestSchema`, `manifestJsonSchema()`), validated fail-loud in `ModuleRegistry.register()`. Tool-name pattern allows snake_case (all real tools use it); `tools: []` is valid (toolless modules).
+3. ~~Emit-site `source` wiring~~ ✅ merged `6a3dd57` (2026-09-08): `KernelEvent.source` persisted (migration `0074_kernel_event_source`, **not yet applied — run db:migrate**), `moduleSource()`/`KERNEL_EVENT_SOURCE` urns, all 7 emit sites wired.
+4. ~~Cross-module import guard~~ ✅ merged `45e5306` + `33b33d5` (2026-09-08): `kernel/boundaries.ts` detector + repo-scan test. Found 11 real `orchestrator→chat-gateway/index` edges — codified as `DECLARED_WIRING_EDGES` (boot wiring, not action side doors). **Follow-up:** extract gateway contract into the kernel and shrink the declared set to zero.
 5. A2A agent cards — only when an agent federation use case exists.
