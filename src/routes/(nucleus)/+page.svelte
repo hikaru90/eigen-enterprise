@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { PageProps } from './$types'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import SendHorizontal from '@lucide/svelte/icons/send-horizontal'
   import Square from '@lucide/svelte/icons/square'
@@ -6,9 +7,12 @@
   import { browser } from '$app/environment'
   import { page } from '$app/state'
   import { resolve } from '$app/paths'
+
+  let { data }: PageProps = $props()
   import { sanitizeFinalAnswerText } from '$lib/chat/chat-stream-types'
   import { consumeChatNdjsonStream, ChatStreamError } from '$lib/chat/consume-chat-ndjson'
   import ChatMarkdown from '$lib/components/chat-markdown.svelte'
+  import ProviderOnboarding from '$lib/components/provider-onboarding.svelte'
   import { Button } from '$lib/components/ui/button'
   import VoiceInputButton from '$lib/components/voice-input-button.svelte'
   import {
@@ -151,6 +155,9 @@
 </script>
 
 <div class="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-4">
+  {#if data.needsOnboarding}
+    <ProviderOnboarding byokUiEnabled={data.byokUiEnabled} />
+  {:else}
   <header class="flex justify-center pt-6">
     <p class="text-[11px] font-medium tracking-[0.25em] text-muted-foreground uppercase">
       Eigen Enterprise
@@ -242,4 +249,5 @@
       </Button>
     </div>
   </footer>
+  {/if}
 </div>

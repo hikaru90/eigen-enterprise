@@ -10,7 +10,7 @@ import { resendVerificationSchema, signUpSchema } from '$lib/validation/auth'
 
 export const load: PageServerLoad = (event) => {
   if (event.locals.user) {
-    throw redirect(302, '/capture')
+    throw redirect(302, '/')
   }
 
   const rawPlan = event.url.searchParams.get('plan')
@@ -70,7 +70,7 @@ export const actions: Actions = {
           email: data.email,
           password: data.password,
           ...additionalUserFields,
-          callbackURL: '/capture',
+          callbackURL: '/',
         },
       })
     } catch (error) {
@@ -86,7 +86,7 @@ export const actions: Actions = {
       }
     }
 
-    throw redirect(302, '/capture')
+    throw redirect(302, '/')
   },
 
   resendVerification: async (event) => {
@@ -111,7 +111,7 @@ export const actions: Actions = {
       await auth.api.sendVerificationEmail({
         body: {
           email: validation.data.email,
-          callbackURL: '/capture',
+          callbackURL: '/',
         },
       })
     } catch (error) {

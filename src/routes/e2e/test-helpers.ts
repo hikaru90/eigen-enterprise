@@ -6,7 +6,8 @@ export const TEST_PASSWORD = HARNESS_E2E_PASSWORD
 let userCounter = 0
 
 export type RegisterUserOptions = {
-  /** Defaults to `test.eigen` (harness). Use a production domain to exercise onboarding. */
+  /** Defaults to `test.eigen` (harness). Use a production domain to exercise onboarding.
+   *  Production users land on the nucleus first-run wizard (provider setup) instead of chat. */
   emailDomain?: string
 }
 
@@ -52,7 +53,7 @@ export async function registerUser(
 
   await completeEmailVerificationIfRequired(page, email)
 
-  await page.waitForURL(/\/capture/)
+  await page.waitForURL(/\/(\?|#|$)/)
   return { email }
 }
 
@@ -64,11 +65,11 @@ export async function registerUser(
 async function completeEmailVerificationIfRequired(page: Page, email: string): Promise<void> {
   const checkEmailNotice = page.getByText(/Check your email for a verification link/i)
   const landed = await Promise.race([
-    page.waitForURL(/\/capture/, { timeout: 15_000 }).then(() => 'capture' as const),
+    page.waitForURL(/\/(\?|#|$)/, { timeout: 15_000 }).then(() => 'nucleus' as const),
     checkEmailNotice.waitFor({ state: 'visible', timeout: 15_000 }).then(() => 'verify' as const),
   ]).catch(() => 'unknown' as const)
 
-  if (landed === 'capture') return
+  if (landed === 'nucleus') return
 
   const link = await fetchVerificationLink(page, email)
   const target = new URL(link)
@@ -111,7 +112,7 @@ export async function loginUser(page: Page, email: string): Promise<void> {
   await page.locator('#email').fill(email)
   await page.locator('#password').fill(TEST_PASSWORD)
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.waitForURL(/\/capture/)
+  await page.waitForURL(/\/(\?|#|$)/)
 }
 
 /**

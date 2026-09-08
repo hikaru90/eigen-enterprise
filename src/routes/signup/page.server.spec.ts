@@ -178,7 +178,7 @@ describe('signup page server', () => {
           firstName: 'Test',
           lastName: 'User',
           email: 'test@example.com',
-          callbackURL: '/capture',
+          callbackURL: '/',
         }),
       }),
     )
@@ -224,7 +224,7 @@ describe('signup page server', () => {
     })
     expect(signUpEmailMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        body: expect.objectContaining({ callbackURL: '/capture' }),
+        body: expect.objectContaining({ callbackURL: '/' }),
       }),
     )
   })
@@ -247,7 +247,7 @@ describe('signup page server', () => {
       expect.objectContaining({
         body: expect.objectContaining({
           email: 'test@example.com',
-          callbackURL: '/capture',
+          callbackURL: '/',
         }),
       }),
     )

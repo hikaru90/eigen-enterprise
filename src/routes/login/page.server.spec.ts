@@ -107,7 +107,7 @@ describe('login page server', () => {
       expect.objectContaining({
         body: expect.objectContaining({
           email: 'test@example.com',
-          callbackURL: '/capture',
+          callbackURL: '/',
         }),
       }),
     )

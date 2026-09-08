@@ -64,6 +64,7 @@ export default defineConfig({
     include: [
       'src/lib/components/smoke.svelte.spec.ts',
       'src/lib/components/capture-onboarding-overlay.svelte.spec.ts',
+      'src/lib/components/provider-onboarding.svelte.spec.ts',
     ],
     exclude: ['src/routes/demo/playwright/**/*.ts', '**/*.e2e.ts'],
     fileParallelism: false,

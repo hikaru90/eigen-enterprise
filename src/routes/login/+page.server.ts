@@ -13,7 +13,7 @@ function isEmailNotVerifiedError(error: unknown): boolean {
 
 export const load: PageServerLoad = (event) => {
   if (event.locals.user) {
-    throw redirect(302, '/capture')
+    throw redirect(302, '/')
   }
   const oauthError = event.url.searchParams.get('error')
   return {
@@ -42,7 +42,7 @@ export const actions: Actions = {
           email: validation.data.email,
           password: validation.data.password,
           rememberMe: true,
-          callbackURL: '/capture',
+          callbackURL: '/',
         },
       })
     } catch (error) {
@@ -58,7 +58,7 @@ export const actions: Actions = {
       return fail(401, { message: safeMessage })
     }
 
-    throw redirect(302, '/capture')
+    throw redirect(302, '/')
   },
 
   resendVerification: async (event) => {
@@ -81,7 +81,7 @@ export const actions: Actions = {
       await auth.api.sendVerificationEmail({
         body: {
           email: validation.data.email,
-          callbackURL: '/capture',
+          callbackURL: '/',
         },
       })
     } catch (error) {

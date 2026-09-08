@@ -223,6 +223,6 @@ export const actions: Actions = {
       })
     }
 
-    throw redirect(303, '/capture')
+    throw redirect(303, '/')
   },
 }

@@ -83,7 +83,7 @@ function extractAiOutputChoices(body: unknown): AiOutputChoice[] {
 }
 
 /** Hostname from gateway base URL for activity logs (handles missing `https://`). */
-function gatewayHostFromBaseUrl(baseUrl: string): string {
+export function gatewayHostFromBaseUrl(baseUrl: string): string {
   const trimmed = baseUrl.trim().replace(/\/$/, '')
   try {
     return new URL(trimmed).hostname.toLowerCase()
@@ -484,7 +484,11 @@ async function loadLlmConfig(userId: string): Promise<ResolvedLlmConfig> {
   return loadPlatformLlmConfig(billingUserId)
 }
 
-async function resolveRoutingRuleById(
+/**
+ * Resolves a routing rule to its model + provider config (cached).
+ * Exported for the onboarding provider dry-run test.
+ */
+export async function resolveRoutingRuleById(
   ruleId: string,
   apiKey: string,
   baseUrl: string,

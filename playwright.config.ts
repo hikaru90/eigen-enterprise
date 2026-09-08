@@ -21,22 +21,39 @@ const devUrl = `http://127.0.0.1:${e2ePort}`
 /** Browser baseURL must match ORIGIN (localhost) so Better Auth serves /api/auth/* (e.g. email verification links) on the same host it signs cookies for. */
 const devBrowserUrl = `http://localhost:${e2ePort}`
 const previewUrl = 'http://127.0.0.1:4173'
+const mockGatewayUrl = 'http://127.0.0.1:5199'
 
 export default defineConfig({
   webServer: isCi
-    ? {
-        command: 'npm run build && npm run preview',
-        url: previewUrl,
-        timeout: 300_000,
-        reuseExistingServer: false,
-      }
-    : {
-        url: devUrl,
-        command: `vite dev --host --port ${e2ePort}`,
-        timeout: 120_000,
-        reuseExistingServer: true,
-        env: { ...process.env, ORIGIN: devBrowserUrl },
-      },
+    ? [
+        {
+          command: 'npm run build && npm run preview',
+          url: previewUrl,
+          timeout: 300_000,
+          reuseExistingServer: false,
+        },
+        {
+          command: 'node scripts/mock-gateway.mjs',
+          url: mockGatewayUrl,
+          timeout: 30_000,
+          reuseExistingServer: true,
+        },
+      ]
+    : [
+        {
+          url: devUrl,
+          command: `vite dev --host --port ${e2ePort}`,
+          timeout: 120_000,
+          reuseExistingServer: true,
+          env: { ...process.env, ORIGIN: devBrowserUrl },
+        },
+        {
+          command: 'node scripts/mock-gateway.mjs',
+          url: mockGatewayUrl,
+          timeout: 30_000,
+          reuseExistingServer: true,
+        },
+      ],
   testMatch: '**/*.e2e.{ts,js}',
   timeout: 60_000,
   expect: { timeout: 15_000 },
