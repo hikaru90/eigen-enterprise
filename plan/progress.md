@@ -2,6 +2,25 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-08 — THE NUCLEUS: one white screen, one chatbox
+
+**Shipped** (`9829262` nucleus + `693a5a6` hermetic-env fix + auth dev-links `ea8f5e4`)
+- **`/` is now the nucleus**: white screen, one chatbox (text + Qwen ASR mic via existing `/api/capture/transcribe`), streaming replies via `/api/chat`. No nav, no module concepts, no eigenmesh landing (deleted). `(nucleus)` route group pins light palette; console routes still exist as unlinked internal tooling (deletion policy: later, deliberate).
+- **Journey seed** in the orchestrator persona: founding requests open the brand journey — tone of voice first, one question at a time. Wired through `AGENT_SYSTEM_PROMPT` (critical fix: `/api/chat` runs the legacy agent-loop, which never saw the persona).
+- **Auth links print to terminal in dev** (`ea8f5e4`) — no local mail server needed.
+- **Env truths reconciled**: user `.env` had a duplicate placeholder OWLERY block; Vite dotenv (last-wins) saw it as configured, CLI loader (first-wins) as unconfigured — the login lockout + 2 flaky specs traced to this. `.env` cleaned; specs now mock `$env/dynamic/private` hermetically (`693a5a6`).
+- **Main: 1112 tests green, check at 0 errors.**
+
+**Decisions**
+- The surface hides the console; nothing is deleted without a decision. Brand-token re-skin happens via the brand kernel phase — visual identity stays green for now.
+- ASR transcript fills the input (user reviews before send), not auto-send.
+
+**Tracked (honest list)**
+- `/api/chat` still runs the legacy agent-loop, not the kernel AgentRuntime — unify so the chatbox speaks through the harness proper.
+- Post-auth redirect still lands on `/capture` (e2e helpers cascade) — flip login/signup → `/` in a dedicated stream.
+- Identity-in-chatbox (no boring /login page) — journey design later.
+
+---
 ## 2026-09-08 — Dev instance live on :5433; test DB rebuilt from scratch (1206/1206)
 
 **Shipped**
