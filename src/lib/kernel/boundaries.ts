@@ -29,6 +29,24 @@ export type CrossModuleImport = {
   spec: string
 }
 
+/**
+ * Declared wiring edges: cross-module imports that are structural boot
+ * wiring, not side-door action calls. Every entry is reviewed policy —
+ * the orchestrator is the boot stage that constructs and registers the
+ * chat-gateway surface. Removing an entry requires extracting the shared
+ * contract into the kernel first (plan/kernel-open-api.md §Later).
+ */
+export const DECLARED_WIRING_EDGES: ReadonlyMap<string, string> = new Map([
+  [
+    'orchestrator→chat-gateway',
+    'orchestrator bootstrap/brain/allowlist-tools construct and register the gateway surface',
+  ],
+  [
+    'orchestrator→index',
+    'orchestrator bootstrap registers its tools through the composition root at a later boot stage',
+  ],
+])
+
 /** Owning module id of a path strictly inside `modules/<id>/…`, else null. */
 function ownerModule(path: string): string | null {
   const match = /(?:^|\/)modules\/([^/]+)\//.exec(path)
@@ -63,7 +81,10 @@ function importSpecifiers(content: string): string[] {
   return specs
 }
 
-export function findCrossModuleImports(files: CandidateFile[]): CrossModuleImport[] {
+export function findCrossModuleImports(
+  files: CandidateFile[],
+  policy: ReadonlyMap<string, string> = DECLARED_WIRING_EDGES,
+): CrossModuleImport[] {
   const violations: CrossModuleImport[] = []
   const seen = new Set<string>()
   for (const { path: file, content } of files) {
@@ -75,6 +96,7 @@ export function findCrossModuleImports(files: CandidateFile[]): CrossModuleImpor
       // slash for the owner regex; probe with one appended.
       const other = ownerModule(imported) ?? ownerModule(`${imported}/`)
       if (!other || other === owner) continue
+      if (policy.has(`${owner}→${other}`)) continue
       const key = `${file}→${spec}`
       if (seen.has(key)) continue
       seen.add(key)

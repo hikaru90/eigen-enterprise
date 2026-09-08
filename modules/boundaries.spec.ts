@@ -1,15 +1,25 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { findCrossModuleImports, type CandidateFile } from '../src/lib/kernel/boundaries'
+import {
+  DECLARED_WIRING_EDGES,
+  findCrossModuleImports,
+  type CandidateFile,
+} from '../src/lib/kernel/boundaries'
+
+/** Detector mechanics tests use an empty policy — declared edges are covered below. */
+const NO_POLICY = new Map<string, string>()
 
 describe('findCrossModuleImports', () => {
   it('flags a relative static import that resolves into another module', () => {
-    const violations = findCrossModuleImports([
-      {
-        path: 'modules/orchestrator/brain.ts',
-        content: "import type { Brain } from '../chat-gateway/telegram'\n",
-      },
-    ])
+    const violations = findCrossModuleImports(
+      [
+        {
+          path: 'modules/orchestrator/brain.ts',
+          content: "import type { Brain } from '../chat-gateway/telegram'\n",
+        },
+      ],
+      NO_POLICY,
+    )
     expect(violations).toEqual([
       {
         file: 'modules/orchestrator/brain.ts',
@@ -20,12 +30,15 @@ describe('findCrossModuleImports', () => {
   })
 
   it('flags a literal modules/<other>/ specifier', () => {
-    const violations = findCrossModuleImports([
-      {
-        path: 'modules/memory/tools.ts',
-        content: "import { x } from 'modules/email/tools'\n",
-      },
-    ])
+    const violations = findCrossModuleImports(
+      [
+        {
+          path: 'modules/memory/tools.ts',
+          content: "import { x } from 'modules/email/tools'\n",
+        },
+      ],
+      NO_POLICY,
+    )
     expect(violations).toEqual([
       {
         file: 'modules/memory/tools.ts',
@@ -36,12 +49,15 @@ describe('findCrossModuleImports', () => {
   })
 
   it('flags a dynamic import() crossing modules', () => {
-    const violations = findCrossModuleImports([
-      {
-        path: 'modules/memory/tools.ts',
-        content: "const m = await import('../website/store')\n",
-      },
-    ])
+    const violations = findCrossModuleImports(
+      [
+        {
+          path: 'modules/memory/tools.ts',
+          content: "const m = await import('../website/store')\n",
+        },
+      ],
+      NO_POLICY,
+    )
     expect(violations).toEqual([
       {
         file: 'modules/memory/tools.ts',
@@ -52,12 +68,15 @@ describe('findCrossModuleImports', () => {
   })
 
   it('flags export-from re-exports crossing modules', () => {
-    const violations = findCrossModuleImports([
-      {
-        path: 'modules/memory/index.ts',
-        content: "export { kind } from '../website/manifest'\n",
-      },
-    ])
+    const violations = findCrossModuleImports(
+      [
+        {
+          path: 'modules/memory/index.ts',
+          content: "export { kind } from '../website/manifest'\n",
+        },
+      ],
+      NO_POLICY,
+    )
     expect(violations).toEqual([
       {
         file: 'modules/memory/index.ts',
@@ -68,12 +87,15 @@ describe('findCrossModuleImports', () => {
   })
 
   it('flags module code importing the composition root (modules/index)', () => {
-    const violations = findCrossModuleImports([
-      {
-        path: 'modules/orchestrator/bootstrap.ts',
-        content: "import { bootstrapKernel } from '../index'\n",
-      },
-    ])
+    const violations = findCrossModuleImports(
+      [
+        {
+          path: 'modules/orchestrator/bootstrap.ts',
+          content: "import { bootstrapKernel } from '../index'\n",
+        },
+      ],
+      NO_POLICY,
+    )
     expect(violations).toEqual([
       {
         file: 'modules/orchestrator/bootstrap.ts',
@@ -130,6 +152,50 @@ describe('findCrossModuleImports', () => {
       },
     ])
     expect(violations).toEqual([])
+  })
+})
+
+describe('declared wiring edges', () => {
+  it('skips declared edges but still flags undeclared ones', () => {
+    const policy = new Map([['orchestrator→chat-gateway', 'wiring']])
+    const violations = findCrossModuleImports(
+      [
+        {
+          path: 'modules/orchestrator/brain.ts',
+          content: "import type { Brain } from '../chat-gateway/telegram'\n",
+        },
+        {
+          path: 'modules/memory/tools.ts',
+          content: "import { x } from '../email/tools'\n",
+        },
+      ],
+      policy,
+    )
+    expect(violations).toEqual([
+      {
+        file: 'modules/memory/tools.ts',
+        imported: 'modules/email/tools',
+        spec: '../email/tools',
+      },
+    ])
+  })
+
+  it('pins the default policy to exactly the reviewed edges', () => {
+    expect([...DECLARED_WIRING_EDGES.keys()].sort()).toEqual([
+      'orchestrator→chat-gateway',
+      'orchestrator→index',
+    ])
+  })
+
+  it('repo scan: every cross-module import is a declared wiring edge', () => {
+    const violations = findCrossModuleImports(collectModuleFiles(), NO_POLICY)
+    const undeclared = violations.filter((v) => {
+      const from = /modules\/([^/]+)\//.exec(v.file)?.[1]
+      const to = /modules\/([^/]+)\//.exec(`${v.imported}/`)?.[1]
+      return !from || !to || !DECLARED_WIRING_EDGES.has(`${from}→${to}`)
+    })
+    const detail = violations.map((v) => `${v.file}: '${v.spec}' → ${v.imported}`).join('\n  ')
+    expect(undeclared, `undeclared cross-module imports (rule 1):\n  ${detail}`).toEqual([])
   })
 })
 
