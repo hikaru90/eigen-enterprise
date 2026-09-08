@@ -22,10 +22,36 @@ describe('ModuleRegistry', () => {
         id: 'memory',
         name: 'Memory again',
         version: '0.2.0',
-        tools: [],
-        permissions: { roles: [] },
+        tools: ['memory.echo'],
+        permissions: { roles: ['admin'] },
       }),
     ).toThrow(/already registered/)
+  })
+
+  it('rejects malformed manifests with a validation error (fail loud)', () => {
+    const { registry } = makeRegistry()
+    expect(() =>
+      registry.register({
+        id: 'chat',
+        name: 'Chat',
+        version: '1.0',
+        tools: ['chat.send'],
+        permissions: { roles: ['admin'] },
+      }),
+    ).toThrow(/invalid module manifest chat/)
+  })
+
+  it('validates the manifest before the duplicate check', () => {
+    const { registry } = makeRegistry()
+    expect(() =>
+      registry.register({
+        id: 'memory',
+        name: 'Memory',
+        version: 'nope',
+        tools: ['memory.echo'],
+        permissions: { roles: ['admin'] },
+      }),
+    ).toThrow(/invalid module manifest memory/)
   })
 
   it('activates and deactivates via the activation store', async () => {

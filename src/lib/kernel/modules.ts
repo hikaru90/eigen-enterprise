@@ -1,4 +1,5 @@
 import type { ZodType } from 'zod'
+import { manifestSchema } from './manifest-schema'
 
 export type ModuleManifest = {
   id: string
@@ -13,7 +14,7 @@ export type ModuleManifest = {
   settingsSchema?: ZodType
 }
 
-export interface ActivationStore {
+export type ActivationStore = {
   set(id: string, active: boolean): Promise<void>
   /** Whether the module is active. Unknown ids must resolve to false (fail closed). */
   get(id: string): Promise<boolean>
@@ -42,6 +43,13 @@ export class ModuleRegistry {
   constructor(private readonly activations: ActivationStore) {}
 
   register(manifest: ModuleManifest): void {
+    const parsed = manifestSchema.safeParse(manifest)
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      throw new Error(
+        `invalid module manifest ${manifest.id}: ${issue.path.join('.')}: ${issue.message}`,
+      )
+    }
     if (this.manifests.has(manifest.id)) {
       throw new Error(`module already registered: ${manifest.id}`)
     }
