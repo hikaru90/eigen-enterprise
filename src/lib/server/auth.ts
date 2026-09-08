@@ -2,6 +2,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { betterAuth } from 'better-auth/minimal'
 import { sveltekitCookies } from 'better-auth/svelte-kit'
 import { getRequestEvent } from '$app/server'
+import { dev } from '$app/environment'
 import { env } from '$lib/server/env/private-env'
 import { resolveAccountKindForNewUser } from '$lib/auth/account-kind'
 import { syncOwleryContactForVerifiedUser } from '$lib/server/auth-owlery-sync'
@@ -39,6 +40,16 @@ function linkEmailHtml(label: string, url: string): string {
   return `<p>${label}</p><p><a href="${escaped}">${escaped}</a></p>`
 }
 
+/**
+ * Dev contract: there is no local mail server — auth links always go to the
+ * terminal, whether or not Owlery is configured. Production is unaffected
+ * (links are delivered by email only).
+ */
+function logAuthLink(kind: string, email: string, url: string): void {
+  if (!dev) return
+  console.log(`[auth] DEV ${kind} link for ${email}:\n  ${url}`)
+}
+
 function queueTransactionalEmail(input: {
   to: string
   subject: string
@@ -64,6 +75,7 @@ export const auth = betterAuth({
     ...(mailConfigured
       ? {
           sendResetPassword: async ({ user, url }: { user: { email: string }; url: string }) => {
+            logAuthLink('Password reset', user.email, url)
             queueTransactionalEmail({
               to: user.email,
               subject: 'Reset your Eigen password',
@@ -88,6 +100,7 @@ export const auth = betterAuth({
             url: string
           }) => {
             recordVerificationLink(user.email, url)
+            logAuthLink('Email verification', user.email, url)
             queueTransactionalEmail({
               to: user.email,
               subject: 'Verify your Eigen email',
@@ -128,6 +141,7 @@ export const auth = betterAuth({
               newEmail: string
               url: string
             }) => {
+              logAuthLink('Email change confirmation', user.email, url)
               queueTransactionalEmail({
                 to: user.email,
                 subject: 'Confirm your Eigen email change',

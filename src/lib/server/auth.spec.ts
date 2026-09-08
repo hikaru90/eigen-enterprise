@@ -231,6 +231,22 @@ describe('auth config', () => {
     )
   })
 
+  it('prints auth links to the terminal in dev (no local mail server)', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    env.OWLERY_API_KEY = 'key'
+    env.OWLERY_BASE_URL = 'https://mail.example'
+    env.OWLERY_EMAIL_FROM = 'noreply@example.com'
+
+    await loadAuth()
+    const config = lastConfig()
+    await config.emailVerification!.sendVerificationEmail({
+      user: { email: 'dev@b.com' },
+      url: 'https://app/verify?token=dev',
+    })
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('https://app/verify?token=dev'))
+    logSpy.mockRestore()
+  })
+
   it('queues change-email confirmation', async () => {
     env.OWLERY_API_KEY = 'key'
     env.OWLERY_BASE_URL = 'https://mail.example'
