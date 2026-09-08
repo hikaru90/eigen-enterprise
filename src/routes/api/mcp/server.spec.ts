@@ -1,5 +1,29 @@
 import { describe, expect, it, vi } from 'vitest'
 import { POST } from './+server'
+import { InMemoryEventSink } from '$lib/kernel/events'
+import { InMemoryActivationStore } from '$lib/kernel/modules'
+import { KernelRegistry } from '$lib/kernel/registry'
+import { createMemoryTools } from '../../../../modules/memory/tools'
+
+// The kernel contract (wt/wire): the HTTP MCP surface renders from the kernel
+// registry and gates calls on module activation. The fixture kernel activates
+// `memory` so the dispatch test exercises the real pipeline (permission →
+// validation → handler) with the tool implementations mocked below. The old
+// unprefixed tool name (`retrieve_thoughts`) is gone — tools are namespaced.
+const activations = new InMemoryActivationStore()
+await activations.set('memory', true)
+const fixtureKernel = {
+  registry: new KernelRegistry({
+    eventSink: new InMemoryEventSink(),
+    activationStore: activations,
+  }),
+  activations,
+}
+for (const tool of createMemoryTools()) fixtureKernel.registry.register(tool)
+
+vi.mock('../../../../modules/index', () => ({
+  bootstrapKernel: () => fixtureKernel,
+}))
 
 const {
   runCaptureThoughtToolMock,
@@ -99,7 +123,7 @@ describe('POST /api/mcp', () => {
         jsonrpc: '2.0',
         id: 3,
         method: 'tools/call',
-        params: { name: 'retrieve_thoughts', arguments: { query: 'hello' } },
+        params: { name: 'memory.retrieve_thoughts', arguments: { query: 'hello' } },
       }),
     } as never)
     expect(runRetrieveThoughtsToolMock).toHaveBeenCalledWith({ userId: 'u1' }, { query: 'hello' })
