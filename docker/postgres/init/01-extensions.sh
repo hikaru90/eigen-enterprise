@@ -81,6 +81,10 @@ BEGIN
 END
 \$\$;
 
+-- The ::agtype cast needs ag_catalog on search_path (fresh-boot fix 2026-09-08:
+-- first boot on a clean volume failed all four index creations without this).
+SET search_path = public, ag_catalog;
+
 CREATE INDEX IF NOT EXISTS thought_user_id_idx
   ON ${GRAPH_NAME}."Thought"
   USING btree (ag_catalog.agtype_access_operator(properties, '"user_id"'::agtype));
