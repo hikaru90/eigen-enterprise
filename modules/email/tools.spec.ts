@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ToolContext } from '$lib/kernel/types'
 import { EMAIL_TOOL_NAMES, emailManifest } from './manifest'
 import { createEmailTools } from './tools'
+
+// Hermetic: the lazy private-env path must fail loud on an UNCONFIGURED env
+// regardless of the developer machine's .env (placeholders would otherwise
+// leak in and turn this into a fetch-against-garbage test).
+vi.mock('$env/dynamic/private', () => ({ default: {}, env: {} }))
 
 const env = {
   OWLERY_API_KEY: 'us_test',

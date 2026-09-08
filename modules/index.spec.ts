@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
+// Hermetic: private-env-dependent failure paths must not depend on the
+// developer machine's .env (placeholders would turn fail-loud assertions
+// into fetch-against-garbage).
+vi.mock('$env/dynamic/private', () => ({ default: {}, env: {} }))
+
 vi.mock('$lib/server/mcp/tools', () => ({
   runCaptureThoughtTool: vi.fn(),
   runRetrieveThoughtsTool: vi.fn(async () => ({ count: 0, results: [] })),
