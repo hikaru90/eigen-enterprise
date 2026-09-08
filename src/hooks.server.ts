@@ -8,7 +8,7 @@ import { paraglideMiddleware } from '$lib/paraglide/server'
 import { captureServerException } from '$lib/server/analytics/posthog-server'
 import { hashApiKey } from '$lib/server/api-keys/api-key-utils'
 import { auth } from '$lib/server/auth'
-import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
+import { bootApp } from '$lib/server/boot'
 import {
   appSql,
   appDbAsyncLocal,
@@ -17,6 +17,7 @@ import {
   deactivateTenantDbSession,
 } from '$lib/server/db'
 import { authSql } from '$lib/server/db/auth-db'
+import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { startJobQueueTicker } from '$lib/server/job-queue/ticker'
 import { startNotificationDispatchTicker } from '$lib/server/memory/notification-dispatch-ticker'
 import { logOpsStartupDiagnostics } from '$lib/server/ops/startup-diagnostics'
@@ -25,6 +26,13 @@ if (!building) {
   logOpsStartupDiagnostics()
   startJobQueueTicker()
   startNotificationDispatchTicker()
+  // Composition root: kernel → orchestrator → chat gateway. bootApp memoizes,
+  // so repeated hook loads boot once per process; a failed boot logs and fails
+  // loud (unhandled rejection) — the memo is cleared so the next call retries.
+  bootApp().catch((err) => {
+    console.error('[boot]', err)
+    throw err
+  })
 }
 
 const handleParaglide: Handle = ({ event, resolve }) =>
