@@ -49,6 +49,34 @@ describe('manifestSchema', () => {
   it('accepts an empty tools array — a module may contribute no kernel tools', () => {
     expect(() => makeRegistry().register({ ...validManifest, tools: [] })).not.toThrow()
   })
+
+  it('accepts declarative agent types and verification policies (phase-1b, optional)', () => {
+    const extended: ModuleManifest = {
+      ...validManifest,
+      agents: [
+        {
+          loopEngine: 'builtin-json',
+          defaults: { personaName: 'Fleet Bot', toolScope: { modules: ['memory'] } },
+        },
+      ],
+      verification: [{ id: 'tests-and-check', description: 'Run tests + checks before shipping.' }],
+    }
+    expect(manifestSchema.safeParse(extended).success).toBe(true)
+    const registry = makeRegistry()
+    expect(() => registry.register(extended)).not.toThrow()
+    // Fields survive registration (not stripped) so consumers can read them.
+    expect(registry.get('memory')?.agents).toEqual(extended.agents)
+    expect(registry.get('memory')?.verification).toEqual(extended.verification)
+  })
+
+  it('accepts manifests without the optional phase-1b fields (omit)', () => {
+    const parsed = manifestSchema.safeParse(validManifest)
+    expect(parsed.success).toBe(true)
+    if (parsed.success) {
+      expect('agents' in parsed.data).toBe(false)
+      expect('verification' in parsed.data).toBe(false)
+    }
+  })
 })
 
 describe('manifestJsonSchema', () => {

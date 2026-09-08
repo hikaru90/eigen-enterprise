@@ -7,6 +7,12 @@ export type KernelErrorCode =
   | 'invalid_output'
   | 'module_inactive'
   | 'run_in_progress'
+  | 'unknown_agent'
+  | 'agent_disabled'
+  | 'duplicate_agent'
+  | 'unknown_engine'
+  | 'duplicate_engine'
+  | 'budget_exceeded'
 
 const KNOWN_CODES: readonly KernelErrorCode[] = [
   'permission_denied',
@@ -17,6 +23,12 @@ const KNOWN_CODES: readonly KernelErrorCode[] = [
   'invalid_output',
   'module_inactive',
   'run_in_progress',
+  'unknown_agent',
+  'agent_disabled',
+  'duplicate_agent',
+  'unknown_engine',
+  'duplicate_engine',
+  'budget_exceeded',
 ]
 
 /** Exhaustive per code — adding a KernelErrorCode without a title is a type error. */
@@ -29,6 +41,12 @@ const PROBLEM_TITLES: Record<KernelErrorCode, string> = {
   invalid_output: 'Invalid output',
   module_inactive: 'Module inactive',
   run_in_progress: 'Run in progress',
+  unknown_agent: 'Unknown agent',
+  agent_disabled: 'Agent disabled',
+  duplicate_agent: 'Duplicate agent',
+  unknown_engine: 'Unknown loop engine',
+  duplicate_engine: 'Duplicate loop engine',
+  budget_exceeded: 'Spend budget exceeded',
 }
 
 const PROBLEM_STATUS: Partial<Record<KernelErrorCode, number>> = {
@@ -40,6 +58,12 @@ const PROBLEM_STATUS: Partial<Record<KernelErrorCode, number>> = {
   approval_required: 403,
   run_in_progress: 409,
   duplicate_tool: 409,
+  unknown_agent: 404,
+  agent_disabled: 409,
+  duplicate_agent: 409,
+  unknown_engine: 500,
+  duplicate_engine: 409,
+  budget_exceeded: 402,
 }
 
 /** RFC 9457 problem-details object as produced by `KernelError.toProblemJson`. */

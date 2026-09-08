@@ -15,6 +15,19 @@ export const manifestSchema = z.object({
   permissions: z.object({ roles: z.array(z.string()).min(1) }),
   /** Live ZodType — not JSON-Schema-able; accepted and ignored here. */
   settingsSchema: z.unknown().optional(),
+  /** Declarative agent types (phase-1b, additive): accepted, not enforced. */
+  agents: z
+    .array(
+      z.object({
+        loopEngine: z.string().min(1),
+        defaults: z.record(z.string(), z.unknown()),
+      }),
+    )
+    .optional(),
+  /** Declarative verification policies (phase-1b, additive): accepted, not enforced. */
+  verification: z
+    .array(z.object({ id: z.string().min(1), description: z.string().min(1) }))
+    .optional(),
 })
 
 /** JSON Schema (draft 2020-12 via zod v4) for the module manifest — the published contract document. */

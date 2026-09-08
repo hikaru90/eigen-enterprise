@@ -57,6 +57,100 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe('bootstrapOrchestrator — harness runtime seeding (phase-1b)', () => {
+  it('seeds the orchestrator as one AgentConfig on the builtin-json engine (inactive path)', async () => {
+    const { kernel } = inMemoryKernel()
+
+    const boot = await bootstrapOrchestrator(kernel, inactiveStage, bootOptions({ env: {} }))
+
+    const config = boot.runtime.getAgent('orchestrator')
+    expect(config).toMatchObject({
+      id: 'orchestrator',
+      loopEngine: 'builtin-json',
+      toolScope: 'all',
+      memoryScope: 'company',
+      verificationPolicy: 'none',
+      enabled: true,
+    })
+    expect(config?.spendCapUsd).toBeUndefined()
+    expect(boot.brain).toBeInstanceOf(OrchestratorBrain)
+  })
+
+  it('parses EE_HARNESS_SPEND_CAP_USD into the agent spend cap (undefined = uncapped)', async () => {
+    const { kernel } = inMemoryKernel()
+    const boot = await bootstrapOrchestrator(
+      kernel,
+      inactiveStage,
+      bootOptions({ env: { EE_HARNESS_SPEND_CAP_USD: '12.5' } }),
+    )
+    expect(boot.runtime.getAgent('orchestrator')?.spendCapUsd).toBe(12.5)
+
+    const { kernel: kernel2 } = inMemoryKernel()
+    const boot2 = await bootstrapOrchestrator(
+      kernel2,
+      inactiveStage,
+      bootOptions({ env: { EE_HARNESS_SPEND_CAP_USD: '' } }),
+    )
+    expect(boot2.runtime.getAgent('orchestrator')?.spendCapUsd).toBeUndefined()
+  })
+
+  it('fails loud on a malformed EE_HARNESS_SPEND_CAP_USD', async () => {
+    const { kernel } = inMemoryKernel()
+    await expect(
+      bootstrapOrchestrator(kernel, inactiveStage, bootOptions({ env: { EE_HARNESS_SPEND_CAP_USD: 'abc' } })),
+    ).rejects.toThrow(/EE_HARNESS_SPEND_CAP_USD/)
+  })
+
+  it('registers the agent admin tools through the kernel contract (self-seeded active)', async () => {
+    const { kernel, activations } = inMemoryKernel()
+    await bootstrapOrchestrator(kernel, inactiveStage, bootOptions({ env: {} }))
+
+    expect(await activations.get('agent')).toBe(true)
+    expect(kernel.modules.get('agent')).toBeDefined()
+    for (const name of ['agent.list', 'agent.enable', 'agent.disable']) {
+      expect(kernel.registry.get(name)).toBeDefined()
+    }
+  })
+
+  it('brain.respond dispatches through the runtime as the orchestrator agent', async () => {
+    const activations = new InMemoryActivationStore()
+    const sink = new InMemoryEventSink()
+    const kernel: WiredKernel = {
+      registry: new KernelRegistry({ eventSink: sink }),
+      modules: new ModuleRegistry(activations),
+      activations,
+      principals: {} as PrincipalStore,
+      approvals: new InMemoryApprovalStore(),
+      eventSink: sink,
+    }
+    await activations.set('memory', true)
+
+    const boot = await bootstrapOrchestrator(
+      kernel,
+      inactiveStage,
+      bootOptions({
+        complete: async () => ({
+          choices: [{ message: { content: '{"answer":"hello from harness"}' } }],
+        }),
+      }),
+    )
+
+    const reply = await boot.brain.respond(
+      { sessionId: 'session-1', platform: 'telegram', externalChatId: '100', principalId: 'p1' },
+      'hi',
+    )
+    expect(reply).toBe('hello from harness')
+
+    const types = sink.events.map((e) => e.type)
+    expect(types).toContain('agent.dispatched')
+    expect(types).toContain('agent.replied')
+    // Reply content never lands in event payloads.
+    const replied = sink.events.find((e) => e.type === 'agent.replied')!
+    expect(JSON.stringify(replied.payload)).not.toContain('hello from harness')
+    expect(replied.payload).toMatchObject({ agentId: 'orchestrator', sessionId: 'session-1' })
+  })
+})
+
 describe('bootstrapOrchestrator — chat-gateway inactive (fail closed)', () => {
   it('boots brain + kernel without gateway/loop and requires no env at all', async () => {
     const { kernel } = inMemoryKernel()

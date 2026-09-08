@@ -21,6 +21,31 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 
 ---
 
+## 2026-09-08 — wt/harness: AgentRuntime + LoopEngine kernel primitive (orchestrator demoted to config)
+
+**Shipped** (branch `wt/harness`, phase-1b)
+- `kernel/agent.ts` — AgentConfig (id === principal id), AgentTypeSpec, VerificationPolicySpec, AgentSessionRef, LoopEngineId.
+- `kernel/engine.ts` — `EngineContext` { agent, principal, executeTool, listTools, emit, spendUsd } + `LoopEngine` (type alias for lint; structural). Tool list is precomputed per dispatch → `listTools()` sync.
+- `kernel/tool-surface.ts` — THE shared filter (activation ∩ role intersection ∩ agent module scope, fail closed); runtime + orchestrator both resolve surfaces through it. MCP listing untouched (activation-only subset).
+- `kernel/agent-runtime.ts` — dispatch pipeline: unknown_agent → agent_disabled → unknown_engine → budget check (emit `agent.budget_exceeded` + throw before any run) → emit `agent.dispatched` → engine.run → emit `agent.replied` {replyLength} (payloads metadata-only, never content). `stop()` = disable + `agent.stopped` (v0; in-flight cancellation is engine-dependent, documented). `recordSpend()` + injected `spendFn` + injected `rolesFor` (AgentConfig carries no roles; default `['agent']`).
+- `kernel/engines/builtin-json.ts` — brain loop extracted verbatim (think-strip, fence-strip, brace-balance, parse-retry ×3 default, approval_pending UX, history cap 40, 8 iterations, 12k tool-result chars). Kernel-local `EngineChatMessage`/`LlmCompleteFn` (no kernel→server import); `llmUserId` defaults to `ctx.agent.id`.
+- `modules/orchestrator/brain.ts` — thin adapter (identity data + `respond` → `runtime.dispatch`, `offeredTools` → `runtime.listAgentTools`); `bootstrap.ts` seeds the runtime (`orchestrator` config, `builtin-json` engine, `EE_HARNESS_SPEND_CAP_USD` → spendCapUsd, malformed = boot fails loud) — **flagged modules/** edit.
+- `kernel/agent-admin.ts` (new) — module `agent`: `agent.list` (read, admin+agent), `agent.enable`/`agent.disable` (mutate, owner-only), self-seeded active from orchestrator bootstrap.
+- Manifest extension (additive): `ModuleManifest.agents?: AgentTypeSpec[]`, `.verification?: VerificationPolicySpec[]` + zod schema; v0 declarative only, nothing enforces.
+- `kernel/errors.ts` — 6 new loud codes: unknown_agent(404), agent_disabled(409), duplicate_agent(409), unknown_engine(500), duplicate_engine(409), budget_exceeded(402).
+
+**Verification:** kernel+modules+cli 424 passed / 1 skipped (baseline 383; brain.spec 14 tests moved to `engines/builtin-json.spec.ts`, ~27 net new); mcp+modules w/ test DB 252 green; check = exactly 5 baseline errors; lint: 0 errors in harness files (7 pre-existing elsewhere).
+
+**Decisions / flags**
+- Spend wiring: gateway-cost.ts exposes parsers only — no per-principal accumulation query exists in `llm/` → default is a per-runtime in-memory accumulator via `recordSpend(agentId, usd)`; gateway-cost wiring documented follow-up (llm/** untouched).
+- Sessions in engines are in-memory Maps (documented debt, same as Phase-0 brain).
+- brain.spec deleted (moved) — OrchestratorBrainError → `LoopProtocolError` (LoopProtocolError is the engine's class now).
+
+**Next:** apply events on the wire (activity feed), PiEngine (`wt/pi-engine`, no modules/index edits), persisted sessions + gateway-cost accumulation.
+
+
+---
+
 ## 2026-09-08 — Kernel open-API round 2 merged (manifest schema, problem+json, boundary guard, event provenance)
 
 **Shipped** (4 worktree streams → `main` @ `d3451ec`)

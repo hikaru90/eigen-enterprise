@@ -1,6 +1,18 @@
 import type { AllowlistStore, SessionStore } from '$lib/kernel/gateway'
-import type { WiredKernel } from '$lib/kernel/wiring'
+import { registerModuleTools, type WiredKernel } from '$lib/kernel/wiring'
+import {
+  agentAdminManifest,
+  AGENT_ADMIN_MODULE_ID,
+  createAgentAdminTools,
+} from '$lib/kernel/agent-admin'
+import { AgentRuntime } from '$lib/kernel/agent-runtime'
+import type { LlmCompleteFn } from '$lib/kernel/engines/builtin-json'
 import { OrchestratorBrain } from './brain'
+import {
+  buildOrchestratorEngine,
+  orchestratorAgentConfig,
+  ORCHESTRATOR_PRINCIPAL,
+} from './brain'
 import { createTelegramLoop, type TelegramGatewayLike, type TelegramLoopHandle } from './loop'
 
 /**
@@ -32,6 +44,8 @@ export type OrchestratorGatewayStage = {
 
 export type OrchestratorBoot = {
   kernel: WiredKernel
+  /** The harness runtime hosting the orchestrator as one agent config. */
+  runtime: AgentRuntime
   brain: OrchestratorBrain
   /** Null while the chat-gateway module is inactive. */
   gateway: TelegramGatewayLike | null
@@ -45,26 +59,77 @@ export type OrchestratorBoot = {
 export type OrchestratorBootOptions = {
   /** Start the Telegram poll loop immediately (default true; tests pass false). */
   startLoop?: boolean
+  /** Overrides the harness runtime (tests inject an in-memory one). */
+  runtime?: AgentRuntime
+  /** Overrides the orchestrator engine's completion call (tests inject fakes; never a real LLM). */
+  complete?: LlmCompleteFn
+  /** Environment for boot-time config (spend cap). Defaults to process.env. */
+  env?: Record<string, string | undefined>
 }
 
 /**
- * Composes the orchestrator stage of the Phase-0 path: kernel → orchestrator
- * brain → chat gateway → Telegram poll loop. The chat-gateway surface itself
- * (construction, manifest + tool registration) is wired by the composition
- * root's `bootstrapChatGateway` stage, injected here as `wireGateway` so the
- * orchestrator imports only the kernel — no cross-module wiring.
+ * Orchestrator spend cap. EE_HARNESS_SPEND_CAP_USD, when present, must parse
+ * to a finite non-negative number — no silent fallbacks: a malformed value
+ * fails the boot loud. Absent/empty means uncapped.
+ */
+function spendCapUsdFromEnv(env: Record<string, string | undefined>): number | undefined {
+  const raw = env.EE_HARNESS_SPEND_CAP_USD
+  if (raw === undefined || raw.trim() === '') return undefined
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(
+      `EE_HARNESS_SPEND_CAP_USD must be a finite non-negative number, got: "${raw}"`,
+    )
+  }
+  return parsed
+}
+
+/**
+ * Composes the orchestrator stage of the Phase-1b path: kernel → harness
+ * runtime (orchestrator as one AgentConfig on the builtin-json engine) → chat
+ * gateway → Telegram poll loop. The chat-gateway surface itself (construction,
+ * manifest + tool registration) is wired by the composition root's
+ * `bootstrapChatGateway` stage, injected here as `wireGateway` so the
+ * orchestrator imports only the kernel — no cross-module wiring. The agent
+ * admin surface (agent.list/enable/disable) is registered here next to the
+ * runtime it administers.
  */
 export async function bootstrapOrchestrator(
   kernel: WiredKernel,
   wireGateway: (brain: OrchestratorBrain) => Promise<OrchestratorGatewayStage | null>,
   options: OrchestratorBootOptions = {},
 ): Promise<OrchestratorBoot> {
-  const brain = new OrchestratorBrain({ registry: kernel.registry, modules: kernel.modules })
+  const env = options.env ?? process.env
+
+  // The harness: orchestrator is demoted to one config on the shared runtime.
+  const runtime =
+    options.runtime ??
+    new AgentRuntime({
+      registry: kernel.registry,
+      isToolActive: (name) => kernel.modules.isToolActive(name),
+      eventSink: kernel.eventSink,
+      rolesFor: () => ORCHESTRATOR_PRINCIPAL.roles,
+    })
+  runtime.registerEngine(
+    'builtin-json',
+    buildOrchestratorEngine(options.complete === undefined ? {} : { complete: options.complete }),
+  )
+  runtime.registerAgent(orchestratorAgentConfig({ spendCapUsd: spendCapUsdFromEnv(env) }))
+
+  const brain = new OrchestratorBrain({ runtime })
+
+  // AGENT ADMIN REGISTRATION (flagged edit, phase-1b): register the 'agent'
+  // module self-seeded active, next to the kernel admin pattern — the admin
+  // surface cannot gate on the runtime it administers (bootstrap deadlock).
+  await kernel.activations.set(AGENT_ADMIN_MODULE_ID, true)
+  kernel.modules.register(agentAdminManifest)
+  registerModuleTools(kernel.registry, kernel.modules, createAgentAdminTools({ runtime }))
 
   const stage = await wireGateway(brain)
   if (!stage) {
     return {
       kernel,
+      runtime,
       brain,
       gateway: null,
       allowlist: null,
@@ -79,6 +144,7 @@ export async function bootstrapOrchestrator(
 
   return {
     kernel,
+    runtime,
     brain,
     gateway: stage.gateway,
     allowlist: stage.allowlist,
