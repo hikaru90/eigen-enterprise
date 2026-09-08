@@ -6,10 +6,13 @@ import { activityProviderForLlmConfig } from '$lib/server/activity/gateway-provi
 import { logActivityCall } from '$lib/server/activity/log-call'
 import { captureServerEvent } from '$lib/server/analytics/posthog-server'
 import { decryptTenantValue, encryptTenantValue } from '$lib/server/crypto/tenant-encryption'
+import { NO_EMBEDDING_PROVIDERS, fetchProviderChatCompletion, usesApiShape } from '$lib/server/llm/api-shapes'
 import {
   copilotChatBaseUrl,
   fetchCopilotAccessToken,
 } from '$lib/server/llm/oauth/github-copilot'
+import { refreshAnthropicToken } from '$lib/server/llm/oauth/anthropic'
+import { refreshCodexToken } from '$lib/server/llm/oauth/openai-codex'
 import {
   loadPlatformLlmConfig,
   loadPlatformOpenRouterSttConfig,
@@ -392,21 +395,47 @@ async function loadLlmProviderConfig(
         : ''
       const expiresAtMs = loaded.oauthExpiresAt?.getTime() ?? Number.MAX_SAFE_INTEGER
 
-      // Rotating OAuth (Copilot): re-exchange the long-lived token when expired and
-      // persist the rotated access token. Non-expiring OAuth (OpenRouter key) passes through.
-      if ((!access || Date.now() >= expiresAtMs) && provider === 'github_copilot' && refresh) {
-        const session = await fetchCopilotAccessToken(refresh)
+      // Rotating OAuth: re-exchange the long-lived token when expired and persist the
+      // rotated access token. Non-expiring OAuth (OpenRouter key) passes through.
+      if ((!access || Date.now() >= expiresAtMs) && refresh) {
+        let rotated: { access: string; refresh: string; expiresAtMs: number; meta?: Record<string, unknown> | null }
+        if (provider === 'github_copilot') {
+          const session = await fetchCopilotAccessToken(refresh)
+          rotated = {
+            access: session.access,
+            refresh: session.refresh,
+            expiresAtMs: session.expiresAtMs,
+            meta: { availableModelIds: session.availableModelIds },
+          }
+        } else if (provider === 'anthropic') {
+          rotated = await refreshAnthropicToken(refresh)
+        } else if (provider === 'openai_codex') {
+          rotated = await refreshCodexToken(refresh)
+        } else {
+          rotated = { access, refresh, expiresAtMs: Number.MAX_SAFE_INTEGER, meta: null }
+        }
         const oauthAccessEncrypted = await encryptTenantValue({
           userId,
           table: 'llm_provider_config',
           column: 'oauth_access',
-          plaintext: session.access,
+          plaintext: rotated.access,
         })
+        const oauthRefreshEncrypted =
+          rotated.refresh === refresh
+            ? (loaded.oauthRefreshEncrypted ?? null)
+            : await encryptTenantValue({
+                userId,
+                table: 'llm_provider_config',
+                column: 'oauth_refresh',
+                plaintext: rotated.refresh,
+              })
         await getDb()
           .update(llmProviderConfig)
           .set({
             oauthAccessEncrypted,
-            oauthExpiresAt: new Date(session.expiresAtMs),
+            oauthRefreshEncrypted,
+            oauthExpiresAt: new Date(rotated.expiresAtMs),
+            oauthMeta: rotated.meta ?? (loaded.oauthMeta ?? null),
             updatedAt: new Date(),
           })
           .where(
@@ -415,10 +444,14 @@ async function loadLlmProviderConfig(
               eq(llmProviderConfig.provider, provider),
             ),
           )
+        const baseUrl =
+          provider === 'github_copilot'
+            ? copilotChatBaseUrl(rotated.access)
+            : (loaded.baseUrl?.replace(/\/$/, '') ?? '')
         return {
           provider,
-          baseUrl: session.baseUrl,
-          apiKey: session.access,
+          baseUrl,
+          apiKey: rotated.access,
           ruleChat: loaded.ruleChat,
           ruleEmbedding: loaded.ruleEmbedding,
           modelChat: loaded.modelChat,
@@ -653,9 +686,9 @@ async function embeddingRoutingConfig(config: ResolvedLlmConfig): Promise<Routin
   // Every non-EUrouter provider (OpenRouter, Copilot, models.dev catalog, …) is
   // OpenAI-compatible and routes by direct model name.
   if (config.provider !== 'eurouter') {
-    if (config.provider === 'github_copilot' && !config.modelEmbedding?.trim()) {
+    if (NO_EMBEDDING_PROVIDERS.has(config.provider) && !config.modelEmbedding?.trim()) {
       throw new LlmNotConfiguredError(
-        'GitHub Copilot does not provide embeddings — save an embedding-capable provider (EUrouter, OpenRouter, …) for memory features.',
+        `${config.provider} does not provide embeddings — save an embedding-capable provider (EUrouter, OpenRouter, …) for memory features.`,
       )
     }
     const model = config.modelEmbedding?.trim() || env.LLM_MODEL_EMBEDDING?.trim()
@@ -758,25 +791,40 @@ async function llmChatCompletionInner(input: {
       )
       let res: Response
       try {
-        res = await fetch(url, {
-          signal: ac.signal,
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${config.apiKey}`,
-          },
-          body: JSON.stringify({
-            ...(routing.ruleId ? { rule_id: routing.ruleId } : {}),
-            model: routing.model,
-            ...(routing.provider ? { provider: routing.provider } : {}),
-            messages,
-            ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
-            max_tokens: input.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS,
-            ...(input.responseFormat === 'json_object'
-              ? { response_format: { type: 'json_object' } }
-              : {}),
-          }),
-        })
+        if (usesApiShape(config.provider)) {
+          // Subscription providers with their own API shape (Anthropic messages,
+          // Codex responses) — the adapter normalizes the response to OpenAI shape.
+          res = await fetchProviderChatCompletion(
+            config,
+            {
+              model: routing.model,
+              messages,
+              maxTokens: input.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS,
+              temperature: input.temperature,
+              signal: ac.signal,
+            },
+          )
+        } else {
+          res = await fetch(url, {
+            signal: ac.signal,
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${config.apiKey}`,
+            },
+            body: JSON.stringify({
+              ...(routing.ruleId ? { rule_id: routing.ruleId } : {}),
+              model: routing.model,
+              ...(routing.provider ? { provider: routing.provider } : {}),
+              messages,
+              ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
+              max_tokens: input.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS,
+              ...(input.responseFormat === 'json_object'
+                ? { response_format: { type: 'json_object' } }
+                : {}),
+            }),
+          })
+        }
       } finally {
         clearTimeout(timeoutHandle)
       }
@@ -944,6 +992,12 @@ async function llmCreateEmbeddingsInner(input: {
       )
       let res: Response
       try {
+        if (NO_EMBEDDING_PROVIDERS.has(config.provider)) {
+          // Fail loud BEFORE the request: this provider cannot embed at all.
+          throw new LlmNotConfiguredError(
+            `${config.provider} does not provide embeddings — save an embedding-capable provider (EUrouter, OpenRouter, …) for memory features.`,
+          )
+        }
         res = await fetch(url, {
           signal: embAc.signal,
           method: 'POST',

@@ -28,8 +28,13 @@ export type ExtendedPrivateEnv = typeof kitEnv & {
   LLM_REQUEST_TIMEOUT_MS?: string
   LLM_SERIAL_REQUESTS?: string
   MODELS_DEV_CATALOG_URL?: string
+  OAUTH_ANTHROPIC_API_BASE_URL?: string
+  OAUTH_ANTHROPIC_AUTHORIZE_URL?: string
+  OAUTH_ANTHROPIC_TOKEN_URL?: string
   OAUTH_GITHUB_API_BASE_URL?: string
   OAUTH_GITHUB_BASE_URL?: string
+  OAUTH_OPENAI_AUTH_BASE_URL?: string
+  OAUTH_OPENAI_CODEX_BASE_URL?: string
   NODE_ENV?: string
   PAYPAL_CLIENT_SECRET?: string
   PAYPAL_URL?: string

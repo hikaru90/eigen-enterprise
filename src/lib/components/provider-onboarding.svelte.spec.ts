@@ -46,8 +46,29 @@ describe('provider-onboarding.svelte', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: string | URL) => {
-        if (String(input) === '/api/onboarding/catalog') {
+        const path = String(input)
+        if (path === '/api/onboarding/catalog') {
           return { ok: true, status: 200, json: async () => CATALOG } as unknown as Response
+        }
+        if (path === '/api/onboarding/oauth/anthropic/authorize') {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ url: 'https://claude.ai/oauth/authorize?mock=1' }),
+          } as unknown as Response
+        }
+        if (path === '/api/onboarding/oauth/openai/start') {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              deviceAuthId: 'dev-1',
+              userCode: 'TEST-CODE',
+              verificationUri: 'https://auth.openai.com/codex/device',
+              intervalSeconds: 1,
+              expiresInSeconds: 900,
+            }),
+          } as unknown as Response
         }
         return { ok: false, status: 404, json: async () => ({}) } as unknown as Response
       }),
@@ -100,14 +121,33 @@ describe('provider-onboarding.svelte', () => {
       .toHaveValue('gpt-4o-mini')
   })
 
-  it('lists subscription providers on the subscription path', async () => {
+  it('lists all four subscription providers on the subscription path', async () => {
     render(ProviderOnboarding, { byokUiEnabled: true })
     await page.getByText('Use a subscription I have').click()
-    await expect
-      .element(page.getByText('GitHub Copilot', { exact: false }))
-      .toBeInTheDocument()
+    await expect.element(page.getByText('Claude Pro/Max')).toBeInTheDocument()
+    await expect.element(page.getByText('ChatGPT Plus/Pro')).toBeInTheDocument()
+    await expect.element(page.getByText('GitHub Copilot')).toBeInTheDocument()
     await expect.element(page.getByText(/Sign in with OpenRouter/)).toBeInTheDocument()
     await expect.element(page.getByRole('button', { name: /Groq/ })).not.toBeInTheDocument()
+  })
+
+  it('opens the Claude sign-in and shows the paste-code card', async () => {
+    render(ProviderOnboarding, { byokUiEnabled: true })
+    await page.getByText('Use a subscription I have').click()
+    await page.getByText('Claude Pro/Max').click()
+    await expect
+      .element(page.getByRole('textbox', { name: 'Authorization code' }))
+      .toBeInTheDocument()
+    await expect
+      .element(page.getByRole('button', { name: 'Connect', exact: true }))
+      .toBeInTheDocument()
+  })
+
+  it('shows the ChatGPT device code while polling', async () => {
+    render(ProviderOnboarding, { byokUiEnabled: true })
+    await page.getByText('Use a subscription I have').click()
+    await page.getByText('ChatGPT Plus/Pro').click()
+    await expect.element(page.getByText('TEST-CODE')).toBeInTheDocument({ timeout: 10_000 })
   })
 
   it('shows the operator hint instead of the flow when the BYOK UI is disabled', async () => {

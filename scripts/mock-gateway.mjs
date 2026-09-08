@@ -36,6 +36,15 @@ const CATALOG_FIXTURE = {
 }
 
 let devicePollCount = 0
+let claudeMessageCalls = 0
+let codexResponseCalls = 0
+
+function mockJwt() {
+  const payload = Buffer.from(
+    JSON.stringify({ 'https://api.openai.com/auth': { chatgpt_account_id: 'acct-e2e' } }),
+  ).toString('base64url')
+  return `e30.${payload}.sig`
+}
 
 const server = http.createServer((req, res) => {
   const url = req.url ?? ''
@@ -44,6 +53,83 @@ const server = http.createServer((req, res) => {
   const send = (status, body) => {
     res.writeHead(status, { 'content-type': 'application/json' })
     res.end(JSON.stringify(body))
+  }
+
+  // --- Claude (Anthropic OAuth) stubs --------------------------------------------
+  if (req.method === 'GET' && url.startsWith('/claude/authorize')) {
+    const parsed = new URL(url, 'http://x')
+    const state = parsed.searchParams.get('state') ?? ''
+    res.writeHead(302, {
+      location: `http://localhost:53692/callback?code=mock-claude-code&state=${encodeURIComponent(state)}`,
+    })
+    res.end()
+    return
+  }
+  if (req.method === 'POST' && url === '/claude/v1/oauth/token') {
+    send(200, { access_token: 'sk-ant-oat-mock', refresh_token: 'refresh-mock', expires_in: 3600 })
+    return
+  }
+  if (req.method === 'POST' && url === '/claude/v1/messages') {
+    if (!auth.startsWith('Bearer sk-ant-oat')) {
+      send(401, { error: { message: 'bad claude token' } })
+      return
+    }
+    claudeMessageCalls += 1
+    send(200, {
+      id: 'msg-mock',
+      model: 'claude-sonnet-4-5',
+      role: 'assistant',
+      content: [{ type: 'text', text: JSON.stringify(claudeMessageCalls % 2 === 1 ? { tool: 'retrieve_thoughts', arguments: { query: 'test', topK: 5 } } : { answer: `Hello from mock Claude. (call ${claudeMessageCalls})` }) }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 1, output_tokens: 2 },
+    })
+    return
+  }
+
+  // --- OpenAI Codex (ChatGPT OAuth) stubs ------------------------------------------
+  if (req.method === 'POST' && url === '/openai/api/accounts/deviceauth/usercode') {
+    devicePollCount = 0
+    send(200, { device_auth_id: 'da-mock', user_code: 'TEST-CODE', interval: 1 })
+    return
+  }
+  if (req.method === 'POST' && url === '/openai/api/accounts/deviceauth/token') {
+    devicePollCount += 1
+    if (devicePollCount === 1) {
+      send(403, { error: { code: 'deviceauth_authorization_pending' } })
+    } else {
+      send(200, { authorization_code: 'ac-mock', code_verifier: 'cv-mock' })
+    }
+    return
+  }
+  if (req.method === 'POST' && url === '/openai/oauth/token') {
+    send(200, {
+      access_token: mockJwt(),
+      refresh_token: 'refresh-mock',
+      expires_in: 3600,
+    })
+    return
+  }
+  if (req.method === 'POST' && url === '/codex/responses') {
+    if (!auth.startsWith('Bearer ')) {
+      send(401, { error: { message: 'bad codex token' } })
+      return
+    }
+    codexResponseCalls += 1
+    const sse = [
+      `data: ${JSON.stringify({ type: 'response.created' })}\n\n`,
+      `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: JSON.stringify(codexResponseCalls % 2 === 1 ? { tool: 'retrieve_thoughts', arguments: { query: 'test', topK: 5 } } : { answer: `Hello from mock Codex. (call ${codexResponseCalls})` }) })}\n\n`,
+      `data: ${JSON.stringify({
+        type: 'response.completed',
+        response: {
+          model: 'gpt-5.1-codex',
+          output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(codexResponseCalls % 2 === 0 ? { answer: `Hello from mock Codex. (call ${codexResponseCalls})` } : { tool: 'retrieve_thoughts', arguments: { query: 'test', topK: 5 } }) }] }],
+          usage: { input_tokens: 1, output_tokens: 2 },
+        },
+      })}\n\n`,
+    ].join('')
+    res.writeHead(200, { 'content-type': 'text/event-stream' })
+    res.end(sse)
+    return
   }
 
   // --- models.dev catalog fixture --------------------------------------------

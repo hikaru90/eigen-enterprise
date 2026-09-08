@@ -21,7 +21,8 @@ const devUrl = `http://127.0.0.1:${e2ePort}`
 /** Browser baseURL must match ORIGIN (localhost) so Better Auth serves /api/auth/* (e.g. email verification links) on the same host it signs cookies for. */
 const devBrowserUrl = `http://localhost:${e2ePort}`
 const previewUrl = 'http://127.0.0.1:4173'
-const mockGatewayUrl = 'http://127.0.0.1:5199'
+const mockGatewayPort = Number(process.env.MOCK_GATEWAY_PORT ?? 5199)
+const mockGatewayUrl = `http://127.0.0.1:${mockGatewayPort}`
 
 export default defineConfig({
   webServer: isCi
@@ -36,10 +37,22 @@ export default defineConfig({
             MODELS_DEV_CATALOG_URL: `${mockGatewayUrl}/models.dev.json`,
             OAUTH_GITHUB_BASE_URL: `${mockGatewayUrl}/gh`,
             OAUTH_GITHUB_API_BASE_URL: mockGatewayUrl,
+            OAUTH_ANTHROPIC_AUTHORIZE_URL: `${mockGatewayUrl}/claude/authorize`,
+            OAUTH_ANTHROPIC_TOKEN_URL: `${mockGatewayUrl}/claude/v1/oauth/token`,
+            OAUTH_ANTHROPIC_API_BASE_URL: `${mockGatewayUrl}/claude`,
+            OAUTH_OPENAI_AUTH_BASE_URL: `${mockGatewayUrl}/openai`,
+            OAUTH_OPENAI_CODEX_BASE_URL: mockGatewayUrl,
+          },
+          env: {
+            ...process.env,
+            MODELS_DEV_CATALOG_URL: `${mockGatewayUrl}/models.dev.json`,
+            OAUTH_GITHUB_BASE_URL: `${mockGatewayUrl}/gh`,
+            OAUTH_GITHUB_API_BASE_URL: mockGatewayUrl,
           },
         },
         {
-          command: 'node scripts/mock-gateway.mjs',
+          command: `node scripts/mock-gateway.mjs`,
+          env: { ...process.env, MOCK_GATEWAY_PORT: String(mockGatewayPort) },
           url: mockGatewayUrl,
           timeout: 30_000,
           reuseExistingServer: true,
@@ -54,15 +67,21 @@ export default defineConfig({
           env: {
             ...process.env,
             ORIGIN: devBrowserUrl,
-            // Deterministic wizard fixtures: catalog + GitHub device-flow stubs are
+            // Deterministic wizard fixtures: catalog + OAuth provider stubs are
             // served by scripts/mock-gateway.mjs on the mock gateway port.
             MODELS_DEV_CATALOG_URL: `${mockGatewayUrl}/models.dev.json`,
             OAUTH_GITHUB_BASE_URL: `${mockGatewayUrl}/gh`,
             OAUTH_GITHUB_API_BASE_URL: mockGatewayUrl,
+            OAUTH_ANTHROPIC_AUTHORIZE_URL: `${mockGatewayUrl}/claude/authorize`,
+            OAUTH_ANTHROPIC_TOKEN_URL: `${mockGatewayUrl}/claude/v1/oauth/token`,
+            OAUTH_ANTHROPIC_API_BASE_URL: `${mockGatewayUrl}/claude`,
+            OAUTH_OPENAI_AUTH_BASE_URL: `${mockGatewayUrl}/openai`,
+            OAUTH_OPENAI_CODEX_BASE_URL: mockGatewayUrl,
           },
         },
         {
-          command: 'node scripts/mock-gateway.mjs',
+          command: `node scripts/mock-gateway.mjs`,
+          env: { ...process.env, MOCK_GATEWAY_PORT: String(mockGatewayPort) },
           url: mockGatewayUrl,
           timeout: 30_000,
           reuseExistingServer: true,

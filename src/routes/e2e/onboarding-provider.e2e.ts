@@ -13,7 +13,7 @@ import { registerUser } from './test-helpers'
  * configured deployment never shows the wizard — both shapes are asserted.
  */
 
-const GATEWAY_BASE_URL = 'http://127.0.0.1:5199/v1' // scripts/mock-gateway.mjs
+const GATEWAY_BASE_URL = 'http://127.0.0.1:5191/v1' // scripts/mock-gateway.mjs
 
 /** waitFor-based visibility probe — isVisible() returns instantly and races hydration. */
 async function appearsWithin(locator: Locator, timeoutMs = 5_000): Promise<boolean> {
@@ -77,6 +77,18 @@ async function resetOnboardingViaSettings(page: Page): Promise<void> {
   await expect(form).toBeVisible()
   await form.locator('button').click()
   await page.waitForURL(/\/(\?|#|$)/)
+}
+
+/**
+ * Sends a chat turn and waits for the loop to finish. Proves the connected provider
+ * drives the full stack (agent loop → adapter → gateway) without hanging; the reply
+ * CONTENT is the agent journey's concern, not the onboarding feature's.
+ */
+async function sendChatTurn(page: Page): Promise<void> {
+  const input = page.getByPlaceholder('What do you need?')
+  await input.fill('Say hello to the test.')
+  await input.press('Enter')
+  await expect(input).toBeEnabled({ timeout: 90_000 })
 }
 
 test.describe('nucleus first-run onboarding', () => {
@@ -156,5 +168,69 @@ test.describe('nucleus first-run onboarding', () => {
 
     await resetOnboardingViaSettings(page)
     await expectChatVisible(page)
+  })
+
+  test('Claude Pro/Max: manual-code sign-in connects and chat replies via the adapter', async ({
+    page,
+    context,
+  }) => {
+    await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
+
+    if (!(await appearsWithin(page.getByText('Connect your AI provider.')))) {
+      // Configured deployment: provider already works — nothing to sign in for.
+      await expectChatVisible(page)
+      return
+    }
+
+    await page.getByText('Use a subscription I have').click()
+    // The mock authorize page redirects to pi's loopback callback — the browser shows
+    // an error page, but the REQUEST carries the code+state (that is the real UX: the
+    // user copies this URL). Capture the request instead of the popup URL.
+    const callbackRequestPromise = context.waitForEvent('request', {
+      predicate: (r) => r.url().includes('localhost:53692/callback'),
+    })
+    const popupPromise = context.waitForEvent('page')
+    await page.getByText('Claude Pro/Max').click()
+    await popupPromise
+    const callbackRequest = await callbackRequestPromise
+    const callbackUrl = callbackRequest.url()
+    expect(callbackUrl).toContain('code=mock-claude-code')
+    expect(callbackUrl).toContain('state=')
+
+    // Paste the FULL redirect URL — exercises code+state parsing server-side.
+    await fillPersisted(
+      page.getByRole('textbox', { name: 'Authorization code' }),
+      callbackUrl,
+    )
+    await page.getByRole('button', { name: 'Connect', exact: true }).click()
+    await expect(page.getByText('Connected.')).toBeVisible({ timeout: 20_000 })
+    await page.getByRole('button', { name: 'Enter the workspace →' }).click()
+    await expectChatVisible(page)
+
+    // Real chat turn through the Anthropic adapter.
+    await sendChatTurn(page)
+  })
+
+  test('ChatGPT Plus/Pro: device flow connects and chat replies via the adapter', async ({
+    page,
+    context,
+  }) => {
+    await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
+
+    if (!(await appearsWithin(page.getByText('Connect your AI provider.')))) {
+      await expectChatVisible(page)
+      return
+    }
+
+    await page.getByText('Use a subscription I have').click()
+    await page.getByText('ChatGPT Plus/Pro').click()
+    await expect(page.getByText('TEST-CODE').or(page.getByText('Connected.'))).toBeVisible({
+      timeout: 30_000,
+    })
+    await expect(page.getByText('Connected.')).toBeVisible({ timeout: 30_000 })
+    await page.getByRole('button', { name: 'Enter the workspace →' }).click()
+    await expectChatVisible(page)
+
+    await sendChatTurn(page)
   })
 })

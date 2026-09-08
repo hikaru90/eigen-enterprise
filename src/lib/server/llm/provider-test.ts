@@ -3,9 +3,10 @@ import { logActivityCall } from '$lib/server/activity/log-call'
 import { activityProviderForLlmConfig } from '$lib/server/activity/gateway-providers'
 import {
   gatewayHostFromBaseUrl,
-  resolveRoutingRuleById,
   gatewayReportedCostUsdForLog,
+  resolveRoutingRuleById,
 } from '$lib/server/llm/llm-client'
+import { fetchProviderChatCompletion, usesApiShape } from '$lib/server/llm/api-shapes'
 import type { ResolvedLlmConfig } from '$lib/server/llm/types'
 
 export type ProviderTestResult =
@@ -53,7 +54,13 @@ export async function testLlmProviderConnection(
 
   try {
     const routing = await routingConfigForTest(config)
-    const res = await fetch(`${config.baseUrl}/chat/completions`, {
+    const res = usesApiShape(config.provider)
+      ? await fetchProviderChatCompletion(config, {
+          model: routing.model,
+          messages: [{ role: 'user', content: 'ping' }],
+          maxTokens: 1,
+        })
+      : await fetch(`${config.baseUrl}/chat/completions`, {
       signal: AbortSignal.timeout(PROVIDER_TEST_TIMEOUT_MS),
       method: 'POST',
       headers: {
