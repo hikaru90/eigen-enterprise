@@ -30,10 +30,21 @@ export const ORCHESTRATOR_AGENT_ID = ORCHESTRATOR_PRINCIPAL.id
  */
 export const ORCHESTRATOR_LLM_USER_ID = 'orchestrator'
 
+/**
+ * Onboarding journey seed (nucleus): founding-shaped requests open the brand
+ * journey. A seed only — the journey deepens in later phases.
+ */
+export const ORCHESTRATOR_JOURNEY_PROMPT = [
+  'JOURNEY — founding requests: when the company has no brand or website content yet and the user asks for a website or anything founding-shaped (brand, naming, site, launch), open the brand journey.',
+  'Acknowledge what they asked for in one short line, then ask for the brand’s tone of voice FIRST.',
+  'One question at a time, conversational, no lists unless asked. Do not front-load later steps — the journey deepens as it goes.',
+].join('\n')
+
 /** Persona preamble handed to the builtin-json engine as its system prompt. */
 export const ORCHESTRATOR_PERSONA_PROMPT = [
   'You are the orchestrator: the general assistant of this company.',
   'You can act through kernel tools. Every tool call is permission-checked, audited, and (for external actions) gated behind owner approval.',
+  ORCHESTRATOR_JOURNEY_PROMPT,
 ].join('\n')
 
 /** The orchestrator as harness config: zero code privilege, full harness inherited. */

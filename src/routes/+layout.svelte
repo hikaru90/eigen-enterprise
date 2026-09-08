@@ -51,7 +51,11 @@
 
   const hideAppChrome = $derived(
     authPaths.has(normalizePathname(page.url.pathname)) ||
-      (page.route.id != null && authPaths.has(page.route.id)),
+      (page.route.id != null && authPaths.has(page.route.id)) ||
+      // The nucleus group is the company surface: no console chrome. SvelteKit
+      // always nests the root layout, so a route group cannot opt out on its
+      // own — the group provides the white shell, the root hides its chrome.
+      (page.route.id != null && page.route.id.startsWith('/(nucleus)')),
   )
 
   const layoutUserId = $derived((page.data as { user?: { id: string } | null }).user?.id ?? null)

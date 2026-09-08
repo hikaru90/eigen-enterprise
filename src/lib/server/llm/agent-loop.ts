@@ -25,6 +25,7 @@ import {
   type ComposedAnswer,
 } from '$lib/server/qa/compose-answer'
 import { readThoughtIdFromToolArgs } from '$lib/server/validation/mcp-args'
+import { ORCHESTRATOR_PERSONA_PROMPT } from '../../../../modules/orchestrator/brain'
 
 const MAX_ITERATIONS = 8
 const MAX_PARSE_RETRIES = 3
@@ -83,8 +84,14 @@ const TOOL_DESCRIPTION_BLOCK = buildAgentToolDescriptionBlock()
 /**
  * Thin chat agent: HTTP MCP thought tools plus chat-only text-note tools, with streaming visual feedback.
  * No router or classifiers.
+ *
+ * The nucleus chatbox is the orchestrating agent's surface, so the system
+ * prompt opens with the orchestrator persona (identity + onboarding journey
+ * seed from modules/orchestrator/brain.ts).
  */
 export const AGENT_SYSTEM_PROMPT = [
+  ORCHESTRATOR_PERSONA_PROMPT,
+  '',
   "You are a text interface over the user's personal memory tools.",
   'Use the available tools to fulfill the user request, then answer.',
   '',
