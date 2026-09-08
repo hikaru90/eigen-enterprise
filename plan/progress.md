@@ -4,6 +4,55 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 
 ---
 
+## 2026-09-07 — dev-agent shipped: the repo can now improve itself (gated)
+
+**Shipped**
+- **Security chore** (`8f55e76`): redacted hardcoded production Bearer token inherited from eigen in `.pi/extensions/eigen-mcp.ts` → env-based (`EE_MCP_URL`/`EE_MCP_TOKEN`, no fallback). Token remains in seed git history — repo never pushed; rewrite optional.
+- **wt/devagent** (`c513370`): `modules/dev-agent` — pi-driven self-improvement. Tools: `dispatch` (external, owner+agent), `status`, `logs` (read), `merge` (mutate, **owner-only**), `abort`. Lifecycle: dispatched → running (pi headless `pi -p --mode json` in sandbox worktree `../ee-da-<id>`, single-flight) → verification gate (vitest + check in worktree) → green|red → merged|aborted. Runs persisted (`kernel_devagent_runs`, idx 73). All seams injected (PiRunner/CommandRunner) — zero real pi/git in tests. `.pi/skills/dev-agent-protocol/` documents the contract. Kernel: `run_in_progress` added to error union (orchestrator).
+- **Main: 378/378 tests, `npm run check` at baseline.**
+
+**Decisions**
+- `dev-agent.dispatch` NOT approval-gated: the owner-gated merge is the control point; dispatch is audited, single-flight, 15-min capped. Policy can add it later.
+- pi binary: `PI_BIN` override, default `'pi'` on PATH (binary-name default, not an env fallback).
+- pi output persists truncated (4000) in `result_summary`; never logged at info.
+- Local test DB: `postgres://eigen:eigen@localhost:5432/eigen_test` (created + migrated 0000→0073 during this stream); bootstrap script still owed.
+
+**The recursive loop (how to use)**
+1. `ee tool run dev-agent.dispatch --input '{"task":"…"}' --principal <owner-id>` (or via Telegram/orchestrator delegation, or MCP from hermes)
+2. pi works in a sandbox worktree; kernel verifies tests+types
+3. `ee approvals`-style review → `ee tool run dev-agent.merge --input '{"run_id":"…"}' --principal <owner-id>`
+4. Merged changes become the new baseline — including changes to the agent itself.
+
+**Next**
+- First real dogfood: dispatch a small improvement task end-to-end (needs dev DB running + pi configured).
+- Phase 2: owlery engine internalization; Phase 3: sales; brand kernel (plan/phase-1-baseline.md follow-ups).
+
+---
+
+## 2026-09-07 — CLI + Website merged (Phase 1 baseline)
+
+**Shipped**
+- **wt/cli** (`aeaf04b`): `src/cli/` — `ee` CLI as **thin dispatcher over kernel registry tools** (no special powers, no MCP hop). Commands: `status`, `tool list/run`, `module list/activate/deactivate`, `approvals list/decide`, `openapi`. New kernel admin tools (`kernel.module_*`, `kernel.approvals_*`) registered via new `admin-bootstrap.ts` ('kernel' module self-active by design). Principal: `--principal`/`EE_CLI_PRINCIPAL_ID`, fail loud. Exit codes: 0/1/3 (approval_required). Runner: tsx (already in devDeps), `npm run ee`.
+- **wt/website** (`d15db04`): `modules/website` — content objects (`website_content`: slug/kind page|doc/visibility), tools `create/update/publish/get/list_page`, public rendering at `/s/[slug]` (private→404), contact capture `POST /api/website/contact` → `website_contact` + `kernel_events('website.contact.captured')` (ids only, no content). Markdown via marked+DOMPurify (chat's citation-rewriting deliberately not reused). Tables idx 72. `modules/index.ts` additive registration.
+- **Main: 335/335 tests green, `npm run check` at baseline.**
+
+**Decisions**
+- CLI decision REVERSED (user): agents need an in-process execution surface; MCP stays external-facing (hermes/opencode), CLI is the company-agent's native hands. Recorded in `plan/phase-1-baseline.md`.
+- Baseline company = website + agent (orchestrator), extensible via module contract.
+- 'kernel' admin module self-active: can't gate on the store it administers.
+- `/s/[slug]` fully anonymous = correct (it's the public web).
+
+**Flags / debt**
+- No `bin` entry yet (script suffices; add when packaging). No seeded-DB `ee status` smoke script yet.
+- No rate limit on contact endpoint; no contact-listing surface (sales phase); `website.contact.captured` has no consumer yet.
+- `modules/index.spec.ts` exact-manifest assertions grow with each module (by design).
+
+**Next**
+- Agent self-improvement loop: `pi` agent on this repo (user request) — messages → code changes → kernel-verified (tests/check) → git-committed. Design first: agent principals can already execute every tool; the missing piece is *code execution + repo access* governance (which tools mutate the repo, review gates).
+- Then: owlery internalization (Phase 2), sales (Phase 3), brand kernel.
+
+---
+
 ## 2026-09-07 — **PHASE 0 CODE-COMPLETE** (orchestrator merged)
 
 **Shipped** (`ab7e84f`, merged to main)

@@ -1,8 +1,16 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 
-const MCP_URL = 'https://app.eigenmesh.de/api/mcp'
-const MCP_AUTH = 'Bearer eigen_953bbbd2c566c581be2e5cd71de9ff76d7a01fa1cd74b741e6dc89cbcb2622a5'
+// Env-based config — never hardcode credentials (AGENTS.md guardrail).
+// Point EE_MCP_URL at your instance; EE_MCP_TOKEN is a Bearer API key.
+const MCP_URL = process.env.EE_MCP_URL ?? ''
+const MCP_AUTH = process.env.EE_MCP_TOKEN ? `Bearer ${process.env.EE_MCP_TOKEN}` : ''
+
+if (!MCP_URL || !MCP_AUTH) {
+  console.warn(
+    '[eigen-mcp] EE_MCP_URL / EE_MCP_TOKEN not set — kernel tools will not load. No fallback by design.',
+  )
+}
 
 type McpListedTool = {
   name: string
