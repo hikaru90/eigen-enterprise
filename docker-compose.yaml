@@ -1,7 +1,7 @@
 # Self-hosted Postgres for Eigen (pgvector + Apache AGE + pg_cron + pg_net).
 services:
   db:
-    container_name: eigen-db
+    container_name: eigen-enterprise-db
     build:
       context: .
       dockerfile: Dockerfile.postgres
@@ -31,7 +31,7 @@ services:
       - eigen_pg:/var/lib/postgresql/data
     restart: unless-stopped
   app:
-    container_name: eigen-app
+    container_name: eigen-enterprise-app
     build:
       context: .
       dockerfile: Dockerfile
@@ -76,7 +76,7 @@ services:
   # Coolify: set DRIZZLE_GATEWAY_MASTERPASS; domain studio.eigenmesh.xyz is wired via Traefik labels.
   # On first empty volume, Gateway auto-adds connection "eigen" from DATABASE_URL_eigen (internal db:5432).
   studio:
-    container_name: eigen-studio
+    container_name: eigen-enterprise-studio
     image: ghcr.io/drizzle-team/gateway@sha256:da128bbaccb82b006e4b147a62737741c2967a1bb5607a666293b9d6b60b418d
     depends_on:
       db:
