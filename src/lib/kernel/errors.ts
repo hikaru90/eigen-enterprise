@@ -6,6 +6,7 @@ export type KernelErrorCode =
   | 'invalid_input'
   | 'invalid_output'
   | 'module_inactive'
+  | 'run_in_progress'
 
 const KNOWN_CODES: readonly KernelErrorCode[] = [
   'permission_denied',
@@ -15,6 +16,7 @@ const KNOWN_CODES: readonly KernelErrorCode[] = [
   'invalid_input',
   'invalid_output',
   'module_inactive',
+  'run_in_progress',
 ]
 
 export class KernelError extends Error {

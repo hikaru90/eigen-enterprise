@@ -1,0 +1,142 @@
+import type { ApprovalRequest, ApprovalStatus, ApprovalStore } from './approvals'
+import type { ActivationStore, ModuleManifest, ModuleRegistry } from './modules'
+import type { ToolDescriptor } from './types'
+import { z } from 'zod'
+
+/**
+ * Kernel admin surface: module activation and approval decisions as regular
+ * kernel tools. The CLI, the web UI, and future agents all share this one
+ * permissioned, audited path — there is no out-of-band admin channel.
+ */
+
+export const KERNEL_MODULE_ID = 'kernel'
+
+/** Tool names owned by the kernel module (single source of truth for the manifest). */
+export const KERNEL_ADMIN_TOOL_NAMES = [
+  'kernel.module_list',
+  'kernel.module_activate',
+  'kernel.module_deactivate',
+  'kernel.approvals_list',
+  'kernel.approvals_decide',
+] as const
+
+/**
+ * Approval stores that can list requests by status. The base ApprovalStore
+ * surface only exposes pending requests; admin listing needs the richer
+ * capability. See admin-bootstrap.listableApprovalStore for the wiring.
+ */
+export type AdminApprovalStore = ApprovalStore & {
+  list(status?: ApprovalStatus): Promise<ApprovalRequest[]>
+}
+
+/** The kernel module manifest (admin tools are gated like any other module). */
+export const kernelManifest: ModuleManifest = {
+  id: KERNEL_MODULE_ID,
+  name: 'Kernel',
+  version: '0.1.0',
+  description: 'Module activation and approval-decision administration for the kernel itself.',
+  tools: [...KERNEL_ADMIN_TOOL_NAMES],
+  permissions: { roles: ['admin'] },
+}
+
+export type AdminToolDeps = {
+  modules: ModuleRegistry
+  activations: ActivationStore
+  approvals: AdminApprovalStore
+}
+
+const moduleListInput = z.object({})
+const moduleIdInput = z.object({ module_id: z.string().min(1) })
+const approvalsListInput = z.object({
+  status: z.enum(['pending', 'approved', 'denied']).optional(),
+})
+const approvalsDecideInput = z.object({
+  approval_id: z.string().min(1),
+  decision: z.enum(['approved', 'denied']),
+})
+
+/** Factory for the kernel admin ToolDescriptors — pure, deps injected, testable. */
+export function createAdminTools(deps: AdminToolDeps): ToolDescriptor[] {
+  return [
+    {
+      name: 'kernel.module_list',
+      module: KERNEL_MODULE_ID,
+      summary: 'List all registered module manifests with their activation state.',
+      auditClass: 'read',
+      inputSchema: moduleListInput,
+      permission: { roles: ['admin'] },
+      handler: async () => {
+        const manifests = deps.modules.list()
+        const result = []
+        for (const manifest of manifests) {
+          const active = await deps.activations.get(manifest.id)
+          result.push({
+            id: manifest.id,
+            name: manifest.name,
+            version: manifest.version,
+            ...(manifest.description === undefined ? {} : { description: manifest.description }),
+            tools: manifest.tools,
+            active,
+          })
+        }
+        return result
+      },
+    },
+    {
+      name: 'kernel.module_activate',
+      module: KERNEL_MODULE_ID,
+      summary: 'Activate a registered module (its tools become executable).',
+      auditClass: 'mutate',
+      inputSchema: moduleIdInput,
+      permission: { roles: ['admin'] },
+      handler: async (_ctx, input) => {
+        const parsed = moduleIdInput.parse(input)
+        await requireModule(deps.modules, parsed.module_id).activate(parsed.module_id)
+        return { module_id: parsed.module_id, active: true }
+      },
+    },
+    {
+      name: 'kernel.module_deactivate',
+      module: KERNEL_MODULE_ID,
+      summary: 'Deactivate a registered module (fail closed for its tools).',
+      auditClass: 'mutate',
+      inputSchema: moduleIdInput,
+      permission: { roles: ['admin'] },
+      handler: async (_ctx, input) => {
+        const parsed = moduleIdInput.parse(input)
+        await requireModule(deps.modules, parsed.module_id).deactivate(parsed.module_id)
+        return { module_id: parsed.module_id, active: false }
+      },
+    },
+    {
+      name: 'kernel.approvals_list',
+      module: KERNEL_MODULE_ID,
+      summary: 'List approval requests, optionally filtered by status.',
+      auditClass: 'read',
+      inputSchema: approvalsListInput,
+      permission: { roles: ['owner'] },
+      handler: async (_ctx, input) => {
+        const parsed = approvalsListInput.parse(input)
+        return deps.approvals.list(parsed.status)
+      },
+    },
+    {
+      name: 'kernel.approvals_decide',
+      module: KERNEL_MODULE_ID,
+      summary: 'Approve or deny a pending approval request.',
+      auditClass: 'mutate',
+      inputSchema: approvalsDecideInput,
+      permission: { roles: ['owner'] },
+      handler: async (ctx, input) => {
+        const parsed = approvalsDecideInput.parse(input)
+        return deps.approvals.decide(parsed.approval_id, parsed.decision, ctx.principal.id)
+      },
+    },
+  ]
+}
+
+/** Loud validation: unknown module ids must fail, never no-op. */
+function requireModule(modules: ModuleRegistry, id: string): ModuleRegistry {
+  if (!modules.get(id)) throw new Error(`unknown module: ${id}`)
+  return modules
+}
