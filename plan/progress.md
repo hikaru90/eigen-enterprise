@@ -2,6 +2,27 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-08 — Phase-2b: subscription sign-ins — Claude Pro/Max + ChatGPT via API-shape adapters
+
+**Shipped** (`7fe61c5` plan + `feb8cc1` feature, wt/subscription-signins, ff-merged)
+- **Anthropic (Claude Pro/Max) sign-in**: PKCE authorize (state=verifier) opened in a new tab; user pastes the code/redirect URL back (pi's manual_code pattern — no redirect-allowlist dependency); exchange + refresh at platform.claude.com. OAuth requests authenticate via Bearer with Claude Code identity headers (`user-agent: claude-cli/x`, `x-app: cli`), betas `claude-code-20250219,oauth-2025-04-20`, and the required Claude Code system preamble (pi: buildParams).
+- **OpenAI (ChatGPT Plus/Pro) sign-in**: device-code flow (`auth.openai.com/api/accounts/deviceauth/*`, verification page `/codex/device`) — same wizard UX as Copilot. Access token is a JWT; `chatgpt_account_id` claim extracted for the required `chatgpt-account-id` header.
+- **API-shape adapters** (`llm/api-shapes.ts`): Anthropic messages (non-streaming, `/v1/messages`) and Codex responses (SSE `/codex/responses` accumulation) normalize to OpenAI shape — llm-client's retry loop, cost logging, and PostHog run unchanged. Dispatch gated by `usesApiShape(provider)`; OpenAI-compat path untouched. Embeddings on subscription providers fail loud naming the fix.
+- **llm-client**: resolve-on-expiry generalized — github_copilot, anthropic, and openai_codex rotate and persist tokens on expiry; OpenRouter OAuth keys pass through (never expire).
+- **Wizard v3**: subscription step now offers Claude Pro/Max, ChatGPT Plus/Pro, GitHub Copilot, and OpenRouter sign-in — paste-code card and device-code card join the API-key catalog form.
+- **E2E**: mock-gateway gained Anthropic token/messages + Codex device/SSE stubs; the Claude test captures the loopback callback REQUEST (Chrome replaces the failed navigation's URL) and pastes the full URL; both flows run a real chat turn through the adapters.
+- **Gates: unit 3470 passed, components 12 passed, e2e 6 passed on BOTH deployment shapes, check 0 errors, lint = main's 7 pre-existing.**
+
+**Decisions**
+- Anthropic uses manual-code paste (pi's headless pattern) instead of a registered redirect URI — works remotely and self-hosted without any client registration.
+- Codex uses the device-code login (not the localhost:1455 browser flow) — same rationale; SSE accumulated server-side (Codex rejects store:true and pi always streams).
+- OAuth refresh generalized: anthropic/openai_codex/github_copilot rotate-and-persist on expiry inside loadLlmProviderConfig.
+
+**Tracked**
+- OpenRouter sign-in + catalog model defaults are pinned conservatively (gpt-4o-mini / text-embedding-3-small / claude-sonnet-4-5 / gpt-5.1-codex); model PICKERS for subscription providers (catalog or /models endpoints) are the next UX refinement.
+- answer_question/retrieve chaining in the agent journey means a first-turn plain answer is rejected (tool-first contract) — subscription e2e asserts the turn completes, not the reply content (journey tests already cover reply semantics with real providers).
+
+---
 ## 2026-09-08 — Phase-2a: provider onboarding — method → provider (pi-inspired, catalog-driven)
 
 **Shipped** (`01eab7a` plan + `b338c48` feature, wt/provider-catalog-onboarding, ff-merged)
