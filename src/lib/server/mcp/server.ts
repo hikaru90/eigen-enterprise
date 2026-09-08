@@ -4,7 +4,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { KernelError } from '$lib/kernel/errors'
 import type { ActivationStore } from '$lib/kernel/modules'
-import { toolInputJsonSchema } from '$lib/kernel/openapi'
+import { toolInputJsonSchema, toolOutputJsonSchema } from '$lib/kernel/openapi'
 import type { KernelRegistry } from '$lib/kernel/registry'
 import { sanitizeMcpToolResult } from '$lib/server/observability/strip-embeddings'
 import { bootstrapKernel, type WiredKernel } from '../../../../modules/index'
@@ -13,6 +13,7 @@ export type McpToolListing = {
   name: string
   description: string
   inputSchema: Record<string, unknown>
+  outputSchema?: Record<string, unknown>
 }
 
 /**
@@ -30,6 +31,9 @@ export async function listMcpTools(
       name: tool.name,
       description: tool.summary,
       inputSchema: toolInputJsonSchema(tool.inputSchema),
+      ...(tool.outputSchema === undefined
+        ? {}
+        : { outputSchema: toolOutputJsonSchema(tool.outputSchema) }),
     })
   }
   return out

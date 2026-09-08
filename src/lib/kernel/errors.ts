@@ -4,6 +4,7 @@ export type KernelErrorCode =
   | 'unknown_tool'
   | 'duplicate_tool'
   | 'invalid_input'
+  | 'invalid_output'
   | 'module_inactive'
 
 const KNOWN_CODES: readonly KernelErrorCode[] = [
@@ -12,6 +13,7 @@ const KNOWN_CODES: readonly KernelErrorCode[] = [
   'unknown_tool',
   'duplicate_tool',
   'invalid_input',
+  'invalid_output',
   'module_inactive',
 ]
 

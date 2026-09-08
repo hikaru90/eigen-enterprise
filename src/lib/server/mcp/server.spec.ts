@@ -105,7 +105,7 @@ async function handlers(kernel: WiredKernel) {
   createMcpServer({ userId: 'u1' }, kernel)
   return {
     list: handlerMap.get(Symbol.for('list-tools')) as () => Promise<{
-      tools: Array<{ name: string; inputSchema: Record<string, unknown> }>
+      tools: Array<{ name: string; inputSchema: Record<string, unknown>; outputSchema?: Record<string, unknown> }>
     }>,
     call: handlerMap.get(Symbol.for('call-tool')) as (request: {
       params: { name: string; arguments?: unknown }
@@ -124,6 +124,30 @@ describe('createMcpServer over a kernel registry', () => {
       type: 'object',
       required: ['value'],
     })
+  })
+
+  it('advertises outputSchema in tools/list only when the descriptor declares one', async () => {
+    const { kernel } = await makeFixtureKernel(['beta'])
+    kernel.registry.register({
+      name: 'beta.structured',
+      module: 'beta',
+      summary: 'returns a typed payload',
+      inputSchema: z.object({ value: z.string() }),
+      outputSchema: z.object({ doubled: z.number() }),
+      permission: { roles: ['admin', 'agent'] },
+      auditClass: 'read',
+      handler: async () => ({ doubled: 2 }),
+    })
+    const { list } = await handlers(kernel)
+
+    const tools = (await list()).tools
+    const structured = tools.find((t) => t.name === 'beta.structured')
+    expect(structured?.outputSchema).toMatchObject({ type: 'object', required: ['doubled'] })
+    expect(structured?.outputSchema?.properties).toMatchObject({ doubled: { type: 'number' } })
+
+    const plain = tools.find((t) => t.name === 'beta.read')
+    expect(plain).toBeDefined()
+    expect('outputSchema' in plain!).toBe(false)
   })
 
   it('lists nothing when every module is inactive', async () => {

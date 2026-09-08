@@ -2,7 +2,7 @@ import type { ToolDescriptor } from './types'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { InMemoryActivationStore } from './modules'
-import { generateOpenApi } from './openapi'
+import { generateOpenApi, toolOutputJsonSchema } from './openapi'
 import { KernelRegistry } from './registry'
 
 /**
@@ -11,12 +11,18 @@ import { KernelRegistry } from './registry'
  * Uses in-memory implementations only (no server, no DB).
  */
 
-function tool(name: string, module: string, schema: z.ZodType): ToolDescriptor {
+function tool(
+  name: string,
+  module: string,
+  schema: z.ZodType,
+  outputSchema?: z.ZodType,
+): ToolDescriptor {
   return {
     name,
     module,
     summary: `${name} summary`,
     inputSchema: schema,
+    ...(outputSchema === undefined ? {} : { outputSchema }),
     permission: { roles: ['admin', 'agent'] },
     auditClass: 'read',
     handler: async (_ctx, input) => ({ ok: input }),
@@ -28,7 +34,7 @@ async function makeFixture() {
   registry.register(tool('alpha.search', 'alpha', z.object({ query: z.string(), top_k: z.number().optional() })))
   registry.register(tool('alpha.get', 'alpha', z.object({ id: z.string() })))
   registry.register(tool('beta.list', 'beta', z.object({ limit: z.number().optional() })))
-  registry.register(tool('beta.send', 'beta', z.object({ body: z.string() })))
+  registry.register(tool('beta.send', 'beta', z.object({ body: z.string() }), z.object({ ok: z.boolean() })))
 
   const activations = new InMemoryActivationStore()
   await activations.set('alpha', true)
@@ -96,5 +102,32 @@ describe('MCP ↔ OpenAPI surface parity', () => {
     }
     // OpenAPI documents the full registered surface; gating is enforced at the call layer.
     expect(Object.keys(doc.paths)).toHaveLength(4)
+  })
+
+  it('round-trips a declared outputSchema identically across registry, MCP listing, and OpenAPI 200', async () => {
+    const { registry, activations } = await makeFixture()
+    const { listMcpTools } = await import('$lib/server/mcp/server')
+
+    const descriptor = registry.get('beta.send')
+    expect(descriptor?.outputSchema).toBeDefined()
+    const expected = toolOutputJsonSchema(descriptor!.outputSchema!)
+
+    const mcp = await listMcpTools(registry, activations)
+    const listing = mcp.find((t) => t.name === 'beta.send')
+    expect(listing?.outputSchema).toEqual(expected)
+
+    const doc = generateOpenApi(registry, { title: 'parity', version: '0.0.0' })
+    const responseSchema =
+      doc.paths['/api/kernel/tools/beta.send'].post.responses['200'].content?.['application/json']
+        .schema
+    expect(responseSchema).toEqual(expected)
+
+    const plain = mcp.find((t) => t.name === 'alpha.search')
+    expect(plain).toBeDefined()
+    expect('outputSchema' in plain!).toBe(false)
+    const plainResponse =
+      doc.paths['/api/kernel/tools/alpha.search'].post.responses['200'].content?.['application/json']
+        .schema
+    expect(plainResponse).toEqual({})
   })
 })

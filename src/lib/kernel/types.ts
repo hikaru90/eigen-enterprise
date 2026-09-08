@@ -20,6 +20,8 @@ export type ToolDescriptor = {
   module: string
   summary: string
   inputSchema: ZodType
+  /** When set, execute() validates the handler result; MCP + OpenAPI advertise the compiled JSON Schema. */
+  outputSchema?: ZodType
   permission: {
     /** Principal roles allowed to execute; execute() requires a non-empty intersection. */
     roles: string[]

@@ -343,3 +343,67 @@ describe('KernelRegistry.execute module activation gating', () => {
     ).rejects.toSatisfy((err: unknown) => err instanceof KernelError && err.code === 'module_inactive')
   })
 })
+
+describe('KernelRegistry.execute output schema', () => {
+  it('returns the parsed result when outputSchema validates', async () => {
+    const sink = new InMemoryEventSink()
+    const registry = new KernelRegistry({ eventSink: sink })
+    registry.register(
+      makeTool({
+        outputSchema: z.object({ echoed: z.object({ value: z.string() }) }),
+        handler: async (_ctx, input) => ({ echoed: input }),
+      }),
+    )
+
+    await expect(
+      registry.execute('memory.echo', { value: 'hi' }, makeCtx()),
+    ).resolves.toEqual({ echoed: { value: 'hi' } })
+    expect(sink.events[0].payload).toMatchObject({ tool: 'memory.echo', ok: true })
+  })
+
+  it('applies zod transforms: the returned result is the parsed value', async () => {
+    const registry = new KernelRegistry()
+    registry.register(
+      makeTool({
+        outputSchema: z
+          .object({ echoed: z.object({ value: z.string() }) })
+          .transform((out) => out.echoed.value.toUpperCase()),
+        handler: async (_ctx, input) => ({ echoed: input }),
+      }),
+    )
+
+    await expect(registry.execute('memory.echo', { value: 'hi' }, makeCtx())).resolves.toBe('HI')
+  })
+
+  it('throws invalid_output on a result violating outputSchema and audits ok:false before the vcs commit', async () => {
+    const sink = new InMemoryEventSink()
+    const { spy, messages } = makeVcsSpy()
+    const registry = new KernelRegistry({ eventSink: sink, vcsCommitter: spy })
+    registry.register(
+      makeTool({
+        auditClass: 'mutate',
+        outputSchema: z.object({ echoed: z.string() }),
+        handler: async () => ({ echoed: 42 }),
+      }),
+    )
+
+    await expect(
+      registry.execute('memory.echo', { value: 'x' }, makeCtx()),
+    ).rejects.toMatchObject({ code: 'invalid_output' })
+    expect(messages).toHaveLength(0)
+    expect(sink.events).toHaveLength(1)
+    expect(sink.events[0].payload).toMatchObject({
+      tool: 'memory.echo',
+      ok: false,
+      error: expect.stringContaining('invalid output for tool memory.echo'),
+    })
+  })
+
+  it('passes the handler result through untouched when no outputSchema is set', async () => {
+    const registry = new KernelRegistry()
+    const sentinel = { echoed: { value: 'x' }, extra: 'untyped' }
+    registry.register(makeTool({ handler: async () => sentinel }))
+
+    await expect(registry.execute('memory.echo', { value: 'x' }, makeCtx())).resolves.toBe(sentinel)
+  })
+})

@@ -6,6 +6,11 @@ export function toolInputJsonSchema(schema: ZodType): Record<string, unknown> {
   return toJSONSchema(schema, { io: 'input' }) as Record<string, unknown>
 }
 
+/** JSON Schema (draft 2020-12 via zod v4) for a tool's output — advertised on the OpenAPI 200 response. */
+export function toolOutputJsonSchema(schema: ZodType): Record<string, unknown> {
+  return toJSONSchema(schema, { io: 'output' }) as Record<string, unknown>
+}
+
 export type OpenApiSchema = Record<string, unknown>
 
 export type OpenApiOperation = {
@@ -68,7 +73,11 @@ export function generateOpenApi(
         responses: {
           '200': {
             description: 'Tool executed; returns the handler result as JSON.',
-            content: { 'application/json': { schema: {} } },
+            content: {
+              'application/json': {
+                schema: tool.outputSchema === undefined ? {} : toolOutputJsonSchema(tool.outputSchema),
+              },
+            },
           },
           '400': { description: 'Invalid input (invalid_input) or handler failure.' },
           '401': { description: 'Missing or invalid bearer credentials.' },

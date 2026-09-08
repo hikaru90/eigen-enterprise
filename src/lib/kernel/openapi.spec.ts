@@ -1,7 +1,7 @@
 import type { ToolDescriptor } from './types'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { generateOpenApi, toolInputJsonSchema } from './openapi'
+import { generateOpenApi, toolInputJsonSchema, toolOutputJsonSchema } from './openapi'
 import { KernelRegistry } from './registry'
 
 function makeTool(overrides: Partial<ToolDescriptor> = {}): ToolDescriptor {
@@ -37,6 +37,36 @@ describe('toolInputJsonSchema', () => {
     const schema = toolInputJsonSchema(z.object({ value: z.string(), count: z.number().optional() }))
     expect(schema).toMatchObject({ type: 'object', required: ['value'] })
     expect(schema.properties).toMatchObject({ value: { type: 'string' } })
+  })
+})
+
+describe('toolOutputJsonSchema', () => {
+  it('compiles a zod output schema with io: output', () => {
+    const schema = toolOutputJsonSchema(z.object({ echoed: z.string(), sent: z.boolean() }))
+    expect(schema).toMatchObject({ type: 'object', required: ['echoed', 'sent'] })
+    expect(schema.properties).toMatchObject({ echoed: { type: 'string' }, sent: { type: 'boolean' } })
+  })
+})
+
+describe('generateOpenApi 200 response schemas', () => {
+  it('advertises the compiled output schema when the descriptor has one', () => {
+    const registry = new KernelRegistry()
+    registry.register(makeTool({ outputSchema: z.object({ echoed: z.object({ value: z.string() }) }) }))
+    const doc = generateOpenApi(registry, { title: 't', version: 'v' })
+
+    const schema =
+      doc.paths['/api/kernel/tools/memory.echo'].post.responses['200'].content?.['application/json']
+        .schema
+    expect(schema).toMatchObject({ type: 'object', required: ['echoed'] })
+    expect(schema?.properties).toMatchObject({ echoed: { type: 'object' } })
+  })
+
+  it('keeps an empty schema for tools without outputSchema', () => {
+    const doc = generateOpenApi(makeFixtureRegistry(), { title: 't', version: 'v' })
+    const schema =
+      doc.paths['/api/kernel/tools/memory.echo'].post.responses['200'].content?.['application/json']
+        .schema
+    expect(schema).toEqual({})
   })
 })
 

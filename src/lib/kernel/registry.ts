@@ -39,10 +39,19 @@ function parseInput(schema: ZodType, input: unknown, toolName: string): unknown 
   return result.data
 }
 
+function parseOutput(schema: ZodType, output: unknown, toolName: string): unknown {
+  const result = schema.safeParse(output)
+  if (!result.success) {
+    const detail = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
+    throw new KernelError('invalid_output', `invalid output for tool ${toolName}: ${detail}`)
+  }
+  return result.data
+}
+
 /**
  * The single execution path for kernel tools: module activation gate ->
- * permission check -> approval gate -> input validation -> handler -> audit
- * event -> (mutate) vcs commit.
+ * permission check -> approval gate -> input validation -> handler -> output
+ * validation -> audit event -> (mutate) vcs commit.
  * All collaborators are constructor-injected; the registry itself does no IO.
  */
 export class KernelRegistry {
@@ -130,7 +139,7 @@ export class KernelRegistry {
       }
     }
 
-    // (d) input validation + handler execution.
+    // (d) input validation + handler execution + output contract.
     const parsed = parseInput(descriptor.inputSchema, input, name)
     const startedAtMs = Date.now()
     let ok = true
@@ -138,6 +147,8 @@ export class KernelRegistry {
     let result: unknown
     try {
       result = await descriptor.handler(ctx, parsed)
+      // validated before audit so a contract breach is recorded as ok:false.
+      if (descriptor.outputSchema) result = parseOutput(descriptor.outputSchema, result, name)
     } catch (err) {
       ok = false
       error = err instanceof Error ? err.message : String(err)
