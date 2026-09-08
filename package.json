@@ -8,7 +8,7 @@
     "node": "^22.13.0"
   },
   "scripts": {
-    "dev": "npm run db:up && npm run db:wait && npm run db:migrate && svelte-kit sync && vite dev --host",
+    "dev": "npm run db:up && npm run db:wait && npm run db:migrate && svelte-kit sync && vite dev --host --port 5174",
     "ee": "tsx src/cli/index.ts",
     "build": "vite build",
     "preview": "vite preview",
