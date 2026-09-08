@@ -1,5 +1,13 @@
-import { spawn, type ChildProcess } from 'node:child_process'
-import { buildPiPrompt } from './prompt'
+import {
+  createNodeSpawnRunner,
+  DEFAULT_PI_TIMEOUT_MS,
+  PiEngine,
+  resolvePiBin,
+  TIMEOUT_EXIT_CODE,
+  type PiExecution,
+  type SpawnHandle,
+  type SpawnOptions,
+} from '$lib/kernel/pi-engine'
 
 /**
  * Shell seam so every process boundary in this module is injectable (tests
@@ -26,133 +34,61 @@ export type CommandRunner = {
   killAll(): Promise<void>
 }
 
-/** Conventional "timed out" exit code. */
-export const TIMEOUT_EXIT_CODE = 124
+export { DEFAULT_PI_TIMEOUT_MS, resolvePiBin, TIMEOUT_EXIT_CODE }
 
 /** Real runner: spawns children, collects output, enforces per-command timeouts. */
 export class NodeCommandRunner implements CommandRunner {
-  private readonly active = new Set<ChildProcess>()
+  private readonly spawn = createNodeSpawnRunner()
 
   async run(spec: CommandSpec): Promise<CommandResult> {
-    return new Promise<CommandResult>((resolve) => {
-      const child = spawn(spec.cmd, spec.args, {
-        cwd: spec.cwd,
-        env: process.env,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      })
-      this.active.add(child)
-
-      let stdout = ''
-      let stderr = ''
-      let timedOut = false
-      child.stdout.on('data', (chunk: Buffer) => {
-        stdout += chunk.toString()
-      })
-      child.stderr.on('data', (chunk: Buffer) => {
-        stderr += chunk.toString()
-      })
-
-      const timer =
-        spec.timeoutMs === undefined
-          ? undefined
-          : setTimeout(() => {
-              timedOut = true
-              child.kill('SIGKILL')
-            }, spec.timeoutMs)
-      timer?.unref()
-
-      const settle = (exitCode: number) => {
-        if (timer !== undefined) clearTimeout(timer)
-        this.active.delete(child)
-        resolve({
-          exitCode: timedOut ? TIMEOUT_EXIT_CODE : exitCode,
-          stdout,
-          stderr: timedOut ? `${stderr}\n[dev-agent] timed out after ${spec.timeoutMs}ms` : stderr,
-        })
-      }
-
-      child.on('error', (err: NodeJS.ErrnoException) => {
-        // e.g. ENOENT — resolve loud instead of rejecting.
-        settle(err.code === 'ENOENT' ? 127 : 1)
-      })
-      child.on('close', (code) => {
-        settle(code ?? 1)
-      })
-    })
+    return this.spawn(spec.cmd, spec.args, {
+      cwd: spec.cwd,
+      ...(spec.timeoutMs === undefined ? {} : { timeoutMs: spec.timeoutMs }),
+    }).done
   }
 
   async killAll(): Promise<void> {
-    for (const child of this.active) {
-      child.kill('SIGKILL')
-    }
-    this.active.clear()
+    this.spawn.killAll()
   }
 }
 
-export type PiRunResult = {
-  ok: boolean
-  output: string
-  durationMs: number
-}
+export type PiRunResult = PiExecution
 
 /** Headless pi coding agent seam. */
 export type PiRunner = {
   run(task: string, cwd: string): Promise<PiRunResult>
 }
 
-export const DEFAULT_PI_TIMEOUT_MS = 15 * 60 * 1000
-
-/** Binary name 'pi', overridable via PI_BIN (binary-name override, not an env fallback). */
-export function resolvePiBin(env: NodeJS.ProcessEnv = process.env): string {
-  return env.PI_BIN ?? 'pi'
-}
-
 /**
- * Real PiRunner: `pi -p --mode json <prompt>` (prompt = task + mandatory
- * engineering contract) via the injected CommandRunner. Timeout kills the pi
- * process and resolves ok:false.
+ * Thin shell over the kernel PiEngine (phase 1b: the kernel owns pi spawning).
+ * Composes the prompt via the kernel and spawns through the engine; the
+ * handle's kill is routed to the shared CommandRunner so a pi timeout/abort
+ * still kills every in-flight child this module started.
  */
 export class CliPiRunner implements PiRunner {
+  private readonly engine: PiEngine
+
   constructor(
-    private readonly commands: CommandRunner,
-    private readonly timeoutMs: number = DEFAULT_PI_TIMEOUT_MS,
-  ) {}
+    commands: CommandRunner,
+    timeoutMs: number = DEFAULT_PI_TIMEOUT_MS,
+  ) {
+    this.engine = new PiEngine({
+      timeoutMs,
+      spawnRunner: (cmd, args, opts: SpawnOptions): SpawnHandle => {
+        const done = commands.run({ cmd, args, cwd: opts.cwd })
+        done.catch(() => undefined)
+        return {
+          done,
+          kill: () => {
+            void commands.killAll()
+          },
+        }
+      },
+    })
+  }
 
   async run(task: string, cwd: string): Promise<PiRunResult> {
-    const startedAtMs = Date.now()
-    const runPromise = this.commands.run({
-      cmd: resolvePiBin(),
-      args: ['-p', '--mode', 'json', buildPiPrompt(task)],
-      cwd,
-    })
-    // The runner resolves the killed run on killAll; the catch keeps a late
-    // rejection from turning into an unhandled rejection after a timeout.
-    runPromise.catch(() => undefined)
-
-    let timedOut = false
-    const timer = setTimeout(() => {
-      timedOut = true
-      void this.commands.killAll()
-    }, this.timeoutMs)
-    timer.unref()
-
-    try {
-      const result = await runPromise
-      if (timedOut) {
-        return {
-          ok: false,
-          output: `[dev-agent] pi run timed out after ${this.timeoutMs}ms`,
-          durationMs: Date.now() - startedAtMs,
-        }
-      }
-      return {
-        ok: result.exitCode === 0,
-        output: `${result.stdout}\n${result.stderr}`.trim(),
-        durationMs: Date.now() - startedAtMs,
-      }
-    } finally {
-      clearTimeout(timer)
-    }
+    return this.engine.execute(task, cwd)
   }
 }
 
