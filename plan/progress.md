@@ -2,6 +2,24 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-08 — Dev instance live on :5433; test DB rebuilt from scratch (1206/1206)
+
+**Shipped**
+- Compose: containers renamed `eigen-enterprise-*`; EE db on **host 5433** (legacy eigen stack keeps 5432) — `.env.example` updated.
+- Fresh-boot infra fix inherited from eigen: `01-extensions.sh` sets `search_path` before `::agtype` index casts (first boot on a clean volume previously failed all four graph indexes).
+- `eigen-enterprise-db` running + healthy; `eigen_test` created with the FULL init chain (vector+age+graph+labels+indexes, `eigen_app` role + grants, pg_cron/pg_net), 75 migrations applied, **RLS applied (`db:rls`) — the missing piece behind the "pre-existing" integration failures: RLS policies are not part of migrations**.
+- Verification: **1206/1206** (kernel/modules/cli/mcp/db/activity/routes) on the new instance, including the tenant-secrets RLS integration specs.
+
+**Decisions**
+- Test DBs must bootstrap with `db:migrate` + `db:rls` (migrations alone ≠ RLS). Follow-up candidate: `db:test-up` script automating create+init+migrate+rls.
+- Old eigen-db (5432) untouched; its eigen_test is obsolete.
+
+**Smoke test fully unblocked:** `.env` → `DATABASE_URL=...localhost:5433/eigen`; `db:up` → `db:migrate` → `db:rls` → `dev`; activations + allowlist SQL per bootstrap.ts docs.
+
+**Next:** Phase 2 — owlery internalization (EmailProvider port), then sales (Phase 3).
+
+---
+
 ## 2026-09-08 — Startup wired + company feed live (smoke-test ready)
 
 **Shipped** (wt/startup `4951da0`, wt/activity `2fafd7d`, MCP-spec fix `4b6ef81`)
