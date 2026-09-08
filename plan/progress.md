@@ -2,6 +2,31 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-08 — Onboarding provider setup: LLM config is user-facing, not an env dead end
+
+**Shipped** (`92f96dd` plan + `215c303` feature, wt/onboarding-provider-setup, ff-merged)
+- **Typed `LlmNotConfiguredError`** (`src/lib/server/llm/errors.ts` + `isLlmNotConfiguredError` cause-chain walk) thrown by platform-llm, llm-client loaders, llm-config-guard, preferences. Chat error terminal payload threads `code: 'llm_not_configured'` on the wire; `ChatStreamError` carries it. Zero string matching.
+- **Onboarding step "Connect your AI provider"** in `capture-onboarding-overlay.svelte` (id-based step flow frozen at mount): EUrouter (base URL + key + rule UUIDs) / OpenRouter (base URL + key + model names). Skippable; operator-hint branch when `BILLING_BYOK_UI_ENABLED=false`. Only shown when `isUserProviderReady` is false (mirrors `loadLlmConfig` fidelity: billingMode-aware, non-throwing env check).
+- **`saveProviderConfig` service** — one persistence path for Settings → LLM and the onboarding action (validate, tenant-encrypt, upsert `llm_provider_config`, active provider, `billingMode → byok`). Settings action slimmed to form-parse + BYOK-UI gate.
+- **Failed chat turns get a door**: nucleus renders "Set up your AI provider →" under the failed bubble when `code === 'llm_not_configured'`.
+- **E2E** (`onboarding-provider.e2e.ts`, 3 tests, green on BOTH deployment shapes — provider env present and emptied): step shown+save via onboarding form, step hidden once BYOK creds exist (via settings form, deterministic on any deployment), skippable.
+- **`E2E_PORT` playwright override** — a worktree checkout can e2e its own build instead of silently reusing another checkout's dev server on 5173 (reuseExistingServer trap; cost ~an hour to diagnose — the bug ran main's suite against a stale server and "passed" 14 unrelated tests).
+- **Gates: unit 3424 passed, components 8 passed, e2e 3 passed, check 0 errors, lint errors = main's 7 (all pre-existing kernel).**
+
+**Decisions**
+- Chat failure deep-links to `/settings/llm` (one form, no duplication) — orchestrator call, user approved plan without picking.
+- Onboarding provider setup = per-user BYOK (existing semantics); platform service-account env stays the operator path — coincident in single-tenant self-host.
+- Provider step visibility is load-derived (`providerReady`), never an execution gate: the gateway still fails loud; the UI only adds a door.
+- Component spec for the overlay enrolled in the browser gate with `$app/*` stub modules (`src/lib/vitest-stubs/`) + alias in `vitest.browser.config.ts` (vi.mock can't intercept virtual modules that fail import-analysis).
+
+**Broke / found**
+- `capture-onboarding-overlay.svelte.spec.ts` was stale since the billing strip (`ebf9295`) — expected an install/wallet step the component no longer had; rewritten and enrolled in the browser gate.
+- Pre-existing, NOT fixed here (different workstreams): `release-helpers.completeOnboardingOverlay` still expects the removed install step (breaks production-user e2e helpers); `auth.e2e` `text=Capture` strict-mode failure; capture/pricing e2e need LLM env; `tests/qa-*` call the stripped billing API; `release.e2e` PayPal preflight. Kernel lint errors (7) pre-exist on main.
+- Worktree checkouts need `.env` copied manually (untracked) or module-init env guards throw; hermetic specs are unaffected.
+
+**Next:** nucleus `/` surface — route auth redirect flip to `/`, identity-in-chatbox; then Phase 2 owlery internalization.
+
+---
 ## 2026-09-08 — THE NUCLEUS: one white screen, one chatbox
 
 **Shipped** (`9829262` nucleus + `693a5a6` hermetic-env fix + auth dev-links `ea8f5e4`)
