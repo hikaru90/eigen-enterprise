@@ -1,5 +1,17 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { load } from './+page.server'
+
+const listKernelEventsMock = vi.hoisted(() => vi.fn(async () => []))
+
+vi.mock('$lib/server/db', () => ({
+  getDb: () => ({}) as never,
+}))
+
+vi.mock('$lib/server/activity/kernel-events', () => ({
+  FEED_EVENT_TYPES: ['agent.dispatched', 'tool.executed'],
+  listKernelEvents: listKernelEventsMock,
+  toFeedItem: (event: unknown) => event,
+}))
 
 describe('activity page server', () => {
   it('redirects unauthenticated user', async () => {
@@ -33,5 +45,26 @@ describe('activity page server', () => {
       hasPrev: false,
       hasNext: false,
     })
+  })
+
+  it('loads the company feed with the whitelisted event types and maps it render-ready', async () => {
+    listKernelEventsMock.mockClear()
+    listKernelEventsMock.mockResolvedValueOnce([
+      { id: 'e1', ts: '2026-09-08T10:00:00.000Z', type: 'agent.dispatched' },
+    ])
+
+    const data = await load({
+      locals: { user: { id: 'u1', email: 'a@b.c' } },
+      url: new URL('http://localhost/activity'),
+    } as never)
+
+    expect(listKernelEventsMock).toHaveBeenCalledTimes(1)
+    const [db, input] = listKernelEventsMock.mock.calls[0] as [unknown, { types: string[] }]
+    expect(db).toBeDefined()
+    expect(input.types).toEqual(['agent.dispatched', 'tool.executed'])
+    expect(input.limit).toBeUndefined()
+    expect(data.feed).toEqual([
+      { id: 'e1', ts: '2026-09-08T10:00:00.000Z', type: 'agent.dispatched' },
+    ])
   })
 })
