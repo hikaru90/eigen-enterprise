@@ -21,6 +21,7 @@ export const kernelEvents = pgTable('kernel_events', {
   ts: timestamp('ts', { withTimezone: true }).defaultNow().notNull(),
   type: text('type').notNull(),
   principalId: text('principal_id'),
+  source: text('source'),
   payload: jsonb('payload').notNull(),
 })
 

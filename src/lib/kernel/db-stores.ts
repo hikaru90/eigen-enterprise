@@ -33,6 +33,7 @@ export class DbEventSink implements EventSink {
       ts: new Date(event.ts),
       type: event.type,
       ...(event.principalId === undefined ? {} : { principalId: event.principalId }),
+      ...(event.source === undefined ? {} : { source: event.source }),
       payload: event.payload,
     })
   }

@@ -1,4 +1,5 @@
 import type { AllowlistStore, SessionStore } from './stores'
+import { moduleSource } from '$lib/kernel/cloudevents'
 import { emitKernelEvent, type EventSink } from '$lib/kernel/events'
 import { chatGatewayEnv } from './env'
 
@@ -231,6 +232,7 @@ export class TelegramGateway {
     await emitKernelEvent(this.deps.events, {
       type: 'gateway.telegram.message',
       principalId,
+      source: moduleSource('chat-gateway'),
       // Metadata only — never message content.
       payload: { chatId: externalChatId, principalId, textLength: text.length },
     })
@@ -248,6 +250,7 @@ export class TelegramGateway {
   private async deny(externalUserId: string, externalChatId: string): Promise<void> {
     await emitKernelEvent(this.deps.events, {
       type: 'gateway.telegram.denied',
+      source: moduleSource('chat-gateway'),
       payload: { platform: TELEGRAM_PLATFORM, externalUserId, externalChatId },
     })
   }

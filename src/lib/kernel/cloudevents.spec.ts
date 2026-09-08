@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { eventType, toCloudEvent } from './cloudevents'
+import { KERNEL_EVENT_SOURCE, eventType, moduleSource, toCloudEvent } from './cloudevents'
 import { emitKernelEvent, InMemoryEventSink } from './events'
 
 describe('toCloudEvent', () => {
@@ -76,6 +76,47 @@ describe('toCloudEvent', () => {
     const event = await emitKernelEvent(sink, { type: 'custom', payload: null })
     expect(() => toCloudEvent(event, '')).toThrow()
     expect(() => toCloudEvent(event, '   ')).toThrow()
+  })
+
+  it('prefers the event-borne source over the parameter', async () => {
+    const sink = new InMemoryEventSink()
+    const event = await emitKernelEvent(sink, {
+      type: 'custom',
+      source: 'urn:eigenenterprise:module:memory',
+      payload: null,
+    })
+    expect(toCloudEvent(event, '/kindred/kernel').source).toBe(
+      'urn:eigenenterprise:module:memory',
+    )
+  })
+
+  it('falls back to the parameter when the event carries no source', async () => {
+    const sink = new InMemoryEventSink()
+    const event = await emitKernelEvent(sink, { type: 'custom', payload: null })
+    expect(toCloudEvent(event, KERNEL_EVENT_SOURCE).source).toBe(KERNEL_EVENT_SOURCE)
+  })
+
+  it('throws when neither the event nor the parameter carries a source', async () => {
+    const sink = new InMemoryEventSink()
+    const event = await emitKernelEvent(sink, { type: 'custom', payload: null })
+    expect(() => toCloudEvent(event)).toThrow()
+  })
+})
+
+describe('moduleSource', () => {
+  it('builds the module URN convention', () => {
+    expect(moduleSource('dev-agent')).toBe('urn:eigenenterprise:module:dev-agent')
+  })
+
+  it('throws on empty or whitespace-only module ids', () => {
+    expect(() => moduleSource('')).toThrow()
+    expect(() => moduleSource('  ')).toThrow()
+  })
+})
+
+describe('KERNEL_EVENT_SOURCE', () => {
+  it('is the kernel-internal source URN', () => {
+    expect(KERNEL_EVENT_SOURCE).toBe('urn:eigenenterprise:kernel')
   })
 })
 

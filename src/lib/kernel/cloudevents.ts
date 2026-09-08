@@ -17,14 +17,15 @@ export type CloudEvent<T = unknown> = {
  * Map a KernelEvent to a spec-compliant CloudEvents 1.0 envelope.
  * `source` is explicit at call sites — no implicit defaults.
  */
-export function toCloudEvent(event: KernelEvent, source: string): CloudEvent {
-  if (!source || source.trim() === '') {
+export function toCloudEvent(event: KernelEvent, source?: string): CloudEvent {
+  const resolved = event.source ?? source
+  if (!resolved || resolved.trim() === '') {
     throw new Error('toCloudEvent: source is required and must be non-empty')
   }
   const ce: CloudEvent = {
     specversion: '1.0',
     id: event.id,
-    source,
+    source: resolved,
     type: event.type,
     time: event.ts,
   }
@@ -46,4 +47,15 @@ export function eventType(module: string, name: string): string {
     throw new Error('eventType: module and name must be non-empty')
   }
   return `com.eigenenterprise.${module}.${name}`
+}
+
+/** Source URN for kernel-internal events. */
+export const KERNEL_EVENT_SOURCE = 'urn:eigenenterprise:kernel'
+
+/** Source URN convention: `urn:eigenenterprise:module:<moduleId>`. */
+export function moduleSource(moduleId: string): string {
+  if (!moduleId || moduleId.trim() === '') {
+    throw new Error('moduleSource: moduleId must be non-empty')
+  }
+  return `urn:eigenenterprise:module:${moduleId}`
 }

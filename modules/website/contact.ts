@@ -1,5 +1,6 @@
 import type { WebsiteStore } from './store'
 import { z } from 'zod'
+import { moduleSource } from '$lib/kernel/cloudevents'
 import { emitKernelEvent, type EventSink } from '$lib/kernel/events'
 
 /**
@@ -48,6 +49,7 @@ export async function handleContactSubmit(
   await emitKernelEvent(deps.eventSink, {
     type: 'website.contact.captured',
     ...(deps.principalId === undefined ? {} : { principalId: deps.principalId }),
+    source: moduleSource('website'),
     payload: { contactId: contact.id },
   })
 

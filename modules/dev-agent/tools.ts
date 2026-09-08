@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { z } from 'zod'
+import { moduleSource } from '$lib/kernel/cloudevents'
 import { emitKernelEvent, type EventSink } from '$lib/kernel/events'
 import type { ToolDescriptor } from '$lib/kernel/types'
 import { verifyWorktree, type CommandRunner, type PiRunner } from './runner'
@@ -91,6 +92,7 @@ export class DevAgentEngine {
     await emitKernelEvent(this.eventSink, {
       type: 'dev-agent.dispatched',
       principalId,
+      source: moduleSource('dev-agent'),
       payload: { runId },
     })
 
@@ -180,6 +182,7 @@ export class DevAgentEngine {
     await emitKernelEvent(this.eventSink, {
       type: 'dev-agent.merged',
       principalId,
+      source: moduleSource('dev-agent'),
       payload: { runId },
     })
     return { runId, branch: run.branch, status: 'merged' }
@@ -210,6 +213,7 @@ export class DevAgentEngine {
     await emitKernelEvent(this.eventSink, {
       type: 'dev-agent.aborted',
       principalId,
+      source: moduleSource('dev-agent'),
       payload: { runId },
     })
     return { runId, status: 'aborted' }
@@ -270,6 +274,7 @@ export class DevAgentEngine {
     await emitKernelEvent(this.eventSink, {
       type: 'dev-agent.completed',
       principalId,
+      source: moduleSource('dev-agent'),
       payload: { runId, green, ok },
     })
   }

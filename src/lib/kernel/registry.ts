@@ -6,6 +6,7 @@ import {
   type ApprovalPolicy,
   type ApprovalStore,
 } from './approvals'
+import { moduleSource } from './cloudevents'
 import { KernelError } from './errors'
 import { emitKernelEvent, InMemoryEventSink, type EventSink } from './events'
 import type { ActivationStore } from './modules'
@@ -177,6 +178,7 @@ export class KernelRegistry {
     await emitKernelEvent(this.eventSink, {
       type: 'tool.executed',
       principalId: ctx.principal.id,
+      source: moduleSource(descriptor.module),
       payload: {
         tool: descriptor.name,
         auditClass: descriptor.auditClass,

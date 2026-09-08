@@ -29,6 +29,23 @@ describe('emitKernelEvent', () => {
     expect(event.ts).toBe('2026-01-01T00:00:00.000Z')
     expect(event.principalId).toBeUndefined()
   })
+
+  it('round-trips the source provenance', async () => {
+    const sink = new InMemoryEventSink()
+    const event = await emitKernelEvent(sink, {
+      type: 'tool.executed',
+      source: 'urn:eigenenterprise:module:memory',
+      payload: null,
+    })
+    expect(event.source).toBe('urn:eigenenterprise:module:memory')
+    expect(sink.events[0].source).toBe('urn:eigenenterprise:module:memory')
+  })
+
+  it('leaves source unset when the emit site provides none', async () => {
+    const sink = new InMemoryEventSink()
+    const event = await emitKernelEvent(sink, { type: 'custom', payload: null })
+    expect(event.source).toBeUndefined()
+  })
 })
 
 describe('InMemoryEventSink', () => {

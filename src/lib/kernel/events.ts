@@ -6,6 +6,8 @@ export type KernelEvent = {
   ts: string
   type: string
   principalId?: string
+  /** CloudEvents `source` provenance, set by emit sites. */
+  source?: string
   payload: unknown
 }
 
@@ -34,6 +36,7 @@ export async function emitKernelEvent(
     ts: partial.ts ?? new Date().toISOString(),
     type: partial.type,
     principalId: partial.principalId,
+    source: partial.source,
     payload: partial.payload,
   }
   await sink.emit(event)

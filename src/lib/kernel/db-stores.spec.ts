@@ -179,6 +179,39 @@ describe('DbEventSink', () => {
     await sink.emit({ id: 'ev-1', ts: '2026-09-07T10:00:00.000Z', type: 'audit', payload: {} })
     expect(resolved).toBe(1)
   })
+
+  it('persists source when present and omits the column when absent', async () => {
+    const inserted: unknown[] = []
+    const { db } = makeFakeDb({
+      ...noopHandlers,
+      onInsert: (_t, values) => {
+        inserted.push(values)
+        return []
+      },
+    })
+    const sink = new DbEventSink(db)
+
+    await sink.emit({
+      id: 'ev-1',
+      ts: '2026-09-07T10:00:00.000Z',
+      type: 'tool.executed',
+      source: 'urn:eigenenterprise:module:memory',
+      payload: {},
+    })
+    await sink.emit({ id: 'ev-2', ts: '2026-09-07T10:01:00.000Z', type: 'audit', payload: {} })
+
+    expect(inserted).toEqual([
+      {
+        id: 'ev-1',
+        ts: new Date('2026-09-07T10:00:00.000Z'),
+        type: 'tool.executed',
+        source: 'urn:eigenenterprise:module:memory',
+        payload: {},
+      },
+      { id: 'ev-2', ts: new Date('2026-09-07T10:01:00.000Z'), type: 'audit', payload: {} },
+    ])
+    expect('source' in (inserted[1] as object)).toBe(false)
+  })
 })
 
 describe('DbActivationStore', () => {

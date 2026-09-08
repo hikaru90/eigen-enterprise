@@ -277,6 +277,19 @@ describe('KernelRegistry.execute read flow', () => {
     expect(sink.events).toHaveLength(1)
     expect(sink.events[0].payload).toMatchObject({ tool: 'memory.echo', auditClass: 'read', ok: true })
   })
+
+  it('stamps the audit event with the owning module source URN', async () => {
+    const sink = new InMemoryEventSink()
+    const registry = new KernelRegistry({ eventSink: sink })
+    registry.register(makeTool())
+    registry.register(makeTool({ name: 'mail.send', module: 'mail', auditClass: 'mutate' }))
+
+    await registry.execute('memory.echo', { value: 'hi' }, makeCtx())
+    await registry.execute('mail.send', { value: 'hi' }, makeCtx())
+
+    expect(sink.events[0].source).toBe('urn:eigenenterprise:module:memory')
+    expect(sink.events[1].source).toBe('urn:eigenenterprise:module:mail')
+  })
 })
 
 describe('KernelRegistry.execute module activation gating', () => {
