@@ -2,7 +2,27 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-09-08 — Onboarding provider setup: LLM config is user-facing, not an env dead end
+## 2026-09-08 — Phase-1d: first-run onboarding IS the first screen (nucleus, ground-up)
+
+**Shipped** (`a1fb017` plan + `8972baa` feature, wt/nucleus-first-run-onboarding, ff-merged)
+- **The wizard IS the page**: open `/` without a working provider → `ProviderOnboarding` (nucleus design: white, black borders, sharp, tracked uppercase wordmark) replaces the chatbox entirely. Provider tiles (OpenRouter / EUrouter) → adaptive credential fields → **Connect runs a real 1-token gateway call** (`testLlmProviderConnection`, config-driven routing — env cannot silently complete wizard creds) **before saving** (`saveProviderConfig` + `onboardingCompleted=true`). No skip: no provider, no product. Operator-hint branch for BYOK-disabled deployments.
+- **Landing flip /capture → /** — signup (load, callbackURL ×2, post-success), login (×4), settings resetOnboarding. Onboarding is literally the first thing on opening the page; e2e helpers follow (`waitForURL '/'`).
+- **Nucleus gate**: load returns `needsOnboarding = !harness && !providerReady` — returning users whose provider vanished see the wizard again; harness accounts never do.
+- **Legacy surface reverted to pre-1c**: capture overlay back to its 3-step EigenMesh shape (deletion stays a deliberate later call); capture page lost the 1c provider-step additions.
+- **`scripts/mock-gateway.mjs`** — OpenRouter-compatible mock gateway as a second playwright webServer: the wizard's real test-call is proven e2e against a reachable gateway (dummy-URL runs correctly fail the test — feature working as designed).
+- **Gates: unit 3442 passed, components 8 passed, e2e 3 passed on BOTH deployment shapes (platform env emptied + present), check 0 errors, lint = main's 7 pre-existing.**
+
+**Decisions**
+- Ground-up per user directive: EigenMesh onboarding copy/design is not carried over; the wizard is EE-native and gates the chatbox. First-run has no skip — fail loud at the front door.
+- Connection proof is a real gateway request (1 token, activity-logged), not a key-format check.
+- Wizard requires complete working credentials (EUrouter: both rule UUIDs; OpenRouter: both models) — stricter than the permissive Settings form, by design.
+
+**Tracked**
+- `release-helpers.completeOnboardingOverlay` still walks the removed install step (pre-existing; production-user e2e helpers need a rewrite for the wizard-first flow).
+- Old eigenmesh copy remains in the legacy capture overlay + `/settings` pages until the deliberate legacy-deletion pass.
+
+---
+## 2026-09-08 — Phase-1c: onboarding provider setup — LLM config is user-facing, not an env dead end
 
 **Shipped** (`92f96dd` plan + `215c303` feature, wt/onboarding-provider-setup, ff-merged)
 - **Typed `LlmNotConfiguredError`** (`src/lib/server/llm/errors.ts` + `isLlmNotConfiguredError` cause-chain walk) thrown by platform-llm, llm-client loaders, llm-config-guard, preferences. Chat error terminal payload threads `code: 'llm_not_configured'` on the wire; `ChatStreamError` carries it. Zero string matching.
