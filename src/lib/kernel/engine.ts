@@ -54,6 +54,13 @@ export type EngineContext = EngineStreamSinks & {
   emit(event: Partial<KernelEvent> & { type: string; payload?: unknown }): Promise<void>
   /** Accumulated USD spend for this agent (injected accumulator; gateway-cost wiring is a follow-up). */
   spendUsd(): number
+  /**
+   * The human in whose name this run's LLM calls resolve (their BYOK provider
+   * config, their spend). Set by the surface from the authenticated session
+   * (web) or the allowlist principal (Telegram). Absent → engines fall back
+   * to their own llmUserId, then the agent id.
+   */
+  llmUserId?: string
 }
 
 /**

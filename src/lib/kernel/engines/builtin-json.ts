@@ -389,7 +389,7 @@ export class BuiltinJsonLoop implements LoopEngine {
             emittedAnswerChars = n
           }, emitDelta)
         : await this.complete({
-            userId: this.llmUserId ?? ctx.agent.id,
+            userId: ctx.llmUserId ?? this.llmUserId ?? ctx.agent.id,
             messages,
             temperature: 0,
             logContext: this.logContext,
@@ -482,7 +482,7 @@ export class BuiltinJsonLoop implements LoopEngine {
     const extractor = new StreamedAnswerExtractor()
     const streamFn = this.streamComplete!
     return streamFn({
-      userId: this.llmUserId ?? ctx.agent.id,
+      userId: ctx.llmUserId ?? this.llmUserId ?? ctx.agent.id,
       messages,
       temperature: 0,
       logContext: this.logContext,

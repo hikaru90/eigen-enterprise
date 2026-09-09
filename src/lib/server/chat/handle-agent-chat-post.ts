@@ -148,7 +148,8 @@ export type AgentChatPostBody = {
 /**
  * The one agent path: a kernel AgentRuntime dispatch (harness). Implementations
  * resolve the runtime + agent id (composition root); the handler owns session
- * persistence, NDJSON framing, and terminal semantics.
+ * persistence, NDJSON framing, and terminal semantics. `userId` is the
+ * authenticated human — attribution for the run's LLM calls (BYOK config).
  */
 export type AgentChatDispatch = (
   sessionId: string,
@@ -157,6 +158,7 @@ export type AgentChatDispatch = (
     stream: (delta: string) => void
     surfaceEvent: (event: EngineSurfaceEvent) => void
   },
+  userId: string,
 ) => Promise<string>
 
 export type HandleAgentChatPostOptions = {
@@ -349,7 +351,7 @@ export async function handleAgentChatPost(
                   }
                   recordIntermediateStep(evt)
                 },
-              }),
+              }, user.id),
             ),
           ),
         )
@@ -421,7 +423,7 @@ export async function handleAgentChatPost(
       options.dispatch(sessionId, agentUserMessage, {
         stream: () => {},
         surfaceEvent: () => {},
-      }),
+      }, user.id),
     )
 
     const responseText = sanitizeFinalAnswerText(

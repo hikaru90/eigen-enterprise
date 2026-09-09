@@ -17,6 +17,12 @@ import { selectToolSurface } from './tool-surface'
  * to the configured LoopEngine. All collaborators are constructor-injected.
  */
 
+/** Per-dispatch options beyond sinks — attribution of the run's LLM calls. */
+export type DispatchOptions = {
+  /** The conversing human's id: their BYOK provider config pays, their spend accrues. */
+  llmUserId?: string
+}
+
 export type AgentRuntimeOptions = {
   registry: KernelRegistry
   /** Module activation gate; wire to ModuleRegistry.isToolActive (fail closed). */
@@ -100,13 +106,16 @@ export class AgentRuntime {
    * Run one user turn against an agent. Fails loud on unknown/disabled agent,
    * unregistered engine, or exhausted spend cap — never silently degrades.
    * `sinks` (optional) are per-request surface sinks passed through to the
-   * engine context; the runtime itself never consumes them.
+   * engine context; the runtime itself never consumes them. `options.llmUserId`
+   * (optional) attributes the run's LLM calls to the conversing human — their
+   * BYOK provider config and spend — instead of the agent principal.
    */
   async dispatch(
     agentId: string,
     sessionId: string,
     input: string,
     sinks?: EngineStreamSinks,
+    options?: DispatchOptions,
   ): Promise<string> {
     const agent = this.requireAgent(agentId)
     if (!agent.enabled) {
@@ -136,7 +145,7 @@ export class AgentRuntime {
 
     await this.emitAgentEvent(agent.id, 'agent.dispatched', { agentId, sessionId })
 
-    const ctx = await this.buildContext(agent, sinks)
+    const ctx = await this.buildContext(agent, sinks, options)
     const reply = await engine.run(sessionId, input, ctx)
 
     await this.emitAgentEvent(agent.id, 'agent.replied', {
@@ -171,7 +180,11 @@ export class AgentRuntime {
     return ctx.listTools()
   }
 
-  private async buildContext(agent: AgentConfig, sinks?: EngineStreamSinks): Promise<EngineContext> {
+  private async buildContext(
+    agent: AgentConfig,
+    sinks?: EngineStreamSinks,
+    options?: DispatchOptions,
+  ): Promise<EngineContext> {
     const principal: ToolContext['principal'] = {
       id: agent.id,
       kind: 'agent',
@@ -204,6 +217,7 @@ export class AgentRuntime {
         })
       },
       spendUsd: () => this.spendFor(agent.id),
+      ...(options?.llmUserId ? { llmUserId: options.llmUserId } : {}),
       ...(sinks?.stream ? { stream: sinks.stream } : {}),
       ...(sinks?.surfaceEvent ? { surfaceEvent: sinks.surfaceEvent } : {}),
     }

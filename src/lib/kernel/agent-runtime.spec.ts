@@ -174,6 +174,23 @@ describe('AgentRuntime — dispatch', () => {
     expect(JSON.stringify(fx.sink.events)).not.toContain('hello')
   })
 
+  it('threads dispatch options.llmUserId into the engine context (BYOK attribution)', async () => {
+    let seen: string | undefined
+    const fx = makeFixture({
+      engineRun: async (_sessionId, _input, ctx) => {
+        seen = ctx.llmUserId
+        return 'ok'
+      },
+    })
+    fx.runtime.registerAgent(agentConfig())
+
+    await fx.runtime.dispatch('agent-1', 's', 'hi', undefined, { llmUserId: 'user-7' })
+    expect(seen).toBe('user-7')
+
+    await fx.runtime.dispatch('agent-1', 's', 'hi')
+    expect(seen).toBeUndefined()
+  })
+
   it('rejects disabled agents with agent_disabled', async () => {
     const fx = makeFixture()
     fx.runtime.registerAgent(agentConfig({ enabled: false }))

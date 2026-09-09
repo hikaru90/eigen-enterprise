@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentConfig } from '$lib/kernel/agent'
 import { AgentRuntime } from '$lib/kernel/agent-runtime'
-import type { AgentRuntimeOptions } from '$lib/kernel/agent-runtime'
+import type { AgentRuntimeOptions, DispatchOptions } from '$lib/kernel/agent-runtime'
 import { KERNEL_EVENT_SOURCE } from '$lib/kernel/cloudevents'
 import type { EngineStreamSinks } from '$lib/kernel/engine'
 import { BuiltinJsonLoop, type LlmCompleteFn } from '$lib/kernel/engines/builtin-json'
@@ -271,17 +271,18 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     sessionId: string,
     input: string,
     sinks?: EngineStreamSinks,
+    options?: DispatchOptions,
   ): Promise<string> {
     if (agentId !== ORCHESTRATOR_AGENT_ID) {
-      return super.dispatch(agentId, sessionId, input, sinks)
+      return super.dispatch(agentId, sessionId, input, sinks, options)
     }
 
     const row = await this.journeys.getActive(this.spec.kind)
     if (!row) {
-      const reply = await super.dispatch(agentId, sessionId, input, sinks)
+      const reply = await super.dispatch(agentId, sessionId, input, sinks, options)
       return this.maybeOpenJourney(sessionId, reply)
     }
-    return this.dispatchJourneyTurn(row, agentId, sessionId, input, sinks)
+    return this.dispatchJourneyTurn(row, agentId, sessionId, input, sinks, options)
   }
 
   /** Lazy, deterministic journey start: the opening question IS the marker. */
@@ -297,6 +298,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     sessionId: string,
     input: string,
     sinks?: EngineStreamSinks,
+    options?: DispatchOptions,
   ): Promise<string> {
     const state = cloneJourneyState(row.state)
 
@@ -314,6 +316,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
       sessionId,
       `${journeyContextFor(this.spec, { ...row, state })}${JOURNEY_CONTEXT_SEPARATOR}${input}`,
       sinks,
+      options,
     )
 
     // Step capture: exact protocol markers only. Stripped before the reply
@@ -434,7 +437,11 @@ export class OrchestratorBrain implements Brain {
   }
 
   async respond(session: TelegramSessionRef, text: string): Promise<string> {
-    return this.runtime.dispatch(ORCHESTRATOR_AGENT_ID, session.sessionId, text)
+    // The allowlisted human principal id IS the auth user id — their BYOK
+    // provider config pays for the run, exactly like the web chatbox.
+    return this.runtime.dispatch(ORCHESTRATOR_AGENT_ID, session.sessionId, text, undefined, {
+      llmUserId: session.principalId,
+    })
   }
 
   /**

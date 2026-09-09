@@ -210,12 +210,14 @@ describe('POST /api/chat — harness dispatch', () => {
     await res.text()
     expect(bootAppMock).toHaveBeenCalledTimes(1)
     expect(runtimeDispatchMock).toHaveBeenCalledTimes(1)
-    const [agentId, dispatchSessionId, message, sinks] = runtimeDispatchMock.mock.calls[0]
+    const [agentId, dispatchSessionId, message, sinks, dispatchOptions] =
+      runtimeDispatchMock.mock.calls[0]
     expect(agentId).toBe('orchestrator')
     expect(dispatchSessionId).toBe(SESSION_ID)
     expect(message).toBe('hello')
     expect(typeof sinks.stream).toBe('function')
     expect(typeof sinks.surfaceEvent).toBe('function')
+    expect(dispatchOptions).toEqual({ llmUserId: 'u1' })
   })
 
   it('streams harness events (tool.preview, message_delta) and persists the turn', async () => {

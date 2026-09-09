@@ -44,8 +44,10 @@ export const POST: RequestHandler = async (event) => {
   return handleAgentChatPost(event, b, {
     sessionMode: 'default',
     logTag: 'api/chat',
-    dispatch: (sessionId, message, sinks) =>
-      boot.orchestrator.runtime.dispatch(ORCHESTRATOR_AGENT_ID, sessionId, message, sinks),
+    dispatch: (sessionId, message, sinks, userId) =>
+      boot.orchestrator.runtime.dispatch(ORCHESTRATOR_AGENT_ID, sessionId, message, sinks, {
+        llmUserId: userId,
+      }),
     resolveAgentUserMessage: ({ bootstrap, message, briefingPeriod: period }) => {
       if (bootstrap && period && BRIEFING_BOOTSTRAP_MESSAGES[period]) {
         return BRIEFING_BOOTSTRAP_MESSAGES[period]

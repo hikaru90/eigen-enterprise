@@ -148,6 +148,25 @@ describe('BuiltinJsonLoop — happy path', () => {
     expect(roles.at(-1)).toBe('user')
   })
 
+  it('attributes the LLM call to the context llmUserId over engine config over agent id (BYOK attribution)', async () => {
+    const fx = makeFixture({ responses: ['{"answer":"ok"}'] })
+    const withCtx = await fx.engine.run('session-1', 'hi', { ...fx.ctx, llmUserId: 'user-9' })
+    expect(withCtx).toBe('ok')
+    expect(fx.completeCalls.at(-1)!.userId).toBe('user-9')
+
+    const engineWithConfig = new BuiltinJsonLoop({
+      systemPrompt: 'test',
+      sessionLog: fx.sessionLog,
+      llmUserId: 'user-5',
+      complete: async (input) => {
+        fx.completeCalls.push(input)
+        return { choices: [{ message: { content: '{"answer":"ok"}' } }] }
+      },
+    })
+    await engineWithConfig.run('session-1', 'hi', fx.ctx)
+    expect(fx.completeCalls.at(-1)!.userId).toBe('user-5')
+  })
+
   it('keeps per-session conversation history across turns', async () => {
     const fx = makeFixture({ responses: ['{"answer":"first"}', '{"answer":"second"}'] })
 
