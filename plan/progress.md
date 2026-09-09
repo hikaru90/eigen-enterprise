@@ -2,6 +2,25 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-08 — Phase-2c M1+M2 shipped: brand kernel schema + guideline curation module
+
+**Shipped** (`d71dc6b` plan + `a03fb89` feature, wt/branding, ff-merged)
+- **Migration 0076** (`drizzle/0076_branding_tables.sql` + journal idx 76, applied to dev DB + functionally smoked): 10 `brand_*` tables — guideline sets (immutable versions, draft|active|retired, **one-active-per-locale partial unique index** so D3 is DB-enforced), voice examples, lexicon, visual tokens, glossary, criteria, assets, validations, judge metrics, calibration cases. CHECK constraints on every enum-ish column.
+- `src/lib/server/db/brand.schema.ts` — drizzle schema (consumed only by modules/brand).
+- **`modules/brand`** — store (interface + InMemory + Db + lazy `defaultBrandStore()`; lifecycle guards live IN the store), manifest, **10 kernel tools**: `brand.set_create/update/activate/get/list`, `example_add`, `lexicon_add`, `criterion_add`, `token_add`, `glossary_add`.
+- **Guards**: activation requires CARE-complete context + ≥2 exemplars incl. ≥1 good and ≥1 bad (G2); single tone words rejected at zod level; curation writes draft-only; active/retired immutable (G23); `getActiveSet(locale)` fails loud — no implicit "latest".
+- **G8/D5 enforcement**: mutation descriptors are admin-role AND handlers reject non-human principals (an agent holding the admin role still gets `permission_denied`); `brand.set_activate` is additionally approval-gated (APPROVAL_REQUIRED_TOOLS).
+- Wired in `modules/index.ts`; `index.spec.ts` exact-manifest assertions grown by design.
+- **Gates: modules+kernel 411 passed / 1 skipped; db 23 passed / 2 skipped; check 0 errors (24 warnings = main's); lint 7 errors = main's pre-existing baseline, 0 in modules/brand.** Migration smoke: second active set per locale correctly violates the unique index.
+
+**Decisions**
+- D1–D5 recorded in `plan/phase-2c-branding-module.md` (visual pipeline out of scope v0; dedicated judge identity + explicit `BRAND_JUDGE_MODEL` unset-loud; per-locale sets; layered disclosure; human-only mutations + activation approval gate).
+
+**Next**
+- M3 stream: `brand.content_generate` (N≥3 variants via gateway, judge-rank), deterministic→judge validation pipeline, `brand.content_publish` approval-gated with risk tiers.
+- M4 stream (separate — touches `src/lib/server/llm/**`): `brand-context` gateway middleware (G4) — CARE block injection + `guideline_set_id` on call records; generation without an active set fails loud.
+- M5: calibration + regression + acceptance sweep (§7 checklist).
+
 ## 2026-09-08 — Phase-2c approved: brand kernel implementation starts
 
 **Shipped**
