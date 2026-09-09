@@ -6,6 +6,7 @@ import { InMemoryEventSink } from '$lib/kernel/events'
 import { ModuleRegistry, InMemoryActivationStore } from '$lib/kernel/modules'
 import type { PrincipalStore } from '$lib/kernel/principals'
 import { KernelRegistry } from '$lib/kernel/registry'
+import { InMemoryAgentSessionLog } from '$lib/kernel/session-log'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 
 const { handlerMap } = vi.hoisted(() => ({ handlerMap: new Map() }))
@@ -94,6 +95,7 @@ async function makeFixtureKernel(activeModules: string[] = []): Promise<{
       principals: noopPrincipalStore,
       approvals: new InMemoryApprovalStore(),
       eventSink,
+      sessionLog: new InMemoryAgentSessionLog(),
     },
     eventSink,
     handlerCalls,

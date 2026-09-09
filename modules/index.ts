@@ -1,6 +1,7 @@
 import { StaticApprovalPolicy, type ApprovalStore } from '$lib/kernel/approvals'
 import {
   DbActivationStore,
+  DbAgentSessionLog,
   DbApprovalStore,
   DbEventSink,
   DbPrincipalStore,
@@ -11,6 +12,7 @@ import { CHAT_GATEWAY_MODULE_ID, type Brain } from '$lib/kernel/gateway'
 import { ModuleRegistry, type ActivationStore } from '$lib/kernel/modules'
 import type { PrincipalStore } from '$lib/kernel/principals'
 import { KernelRegistry } from '$lib/kernel/registry'
+import type { AgentSessionLog } from '$lib/kernel/session-log'
 import { GitCommitter, type VcsCommitter } from '$lib/kernel/vcs'
 import {
   registerModuleTools,
@@ -60,6 +62,8 @@ export type BootstrapKernelOptions = {
   eventSink?: EventSink
   approvalStore?: ApprovalStore
   principals?: PrincipalStore
+  /** Overrides the DB-backed agent session log (tests inject in-memory). */
+  sessionLog?: AgentSessionLog
   /** Defaults to a real GitCommitter; pass null to disable autocommit. */
   vcsCommitter?: VcsCommitter | null
   /** Overrides the dev-agent engine (tests inject one with fake runners). */
@@ -91,6 +95,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
   const eventSink = options.eventSink ?? new DbEventSink(db)
   const approvalStore = options.approvalStore ?? new DbApprovalStore(db)
   const principals = options.principals ?? new DbPrincipalStore(db)
+  const sessionLog = options.sessionLog ?? new DbAgentSessionLog(db)
   const vcsCommitter = options.vcsCommitter === undefined ? new GitCommitter() : options.vcsCommitter
 
   const modules = new ModuleRegistry(activations)
@@ -114,7 +119,15 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createBrandTools(),
   ])
 
-  return { registry, modules, activations, principals, approvals: approvalStore, eventSink }
+  return {
+    registry,
+    modules,
+    activations,
+    principals,
+    approvals: approvalStore,
+    eventSink,
+    sessionLog,
+  }
 }
 
 let singleton: WiredKernel | null = null

@@ -119,7 +119,10 @@ export async function bootstrapOrchestrator(
     })
   runtime.registerEngine(
     'builtin-json',
-    buildOrchestratorEngine(options.complete === undefined ? {} : { complete: options.complete }),
+    buildOrchestratorEngine({
+      ...(options.complete === undefined ? {} : { complete: options.complete }),
+      sessionLog: kernel.sessionLog,
+    }),
   )
   for (const [id, engine] of options.engines ?? []) {
     runtime.registerEngine(id, engine)

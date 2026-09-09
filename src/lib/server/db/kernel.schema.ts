@@ -1,4 +1,13 @@
-import { boolean, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import {
+  bigserial,
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core'
 
 /**
  * Kernel tables (Phase 0) — principals, append-only audit events, module
@@ -41,3 +50,24 @@ export const kernelApprovals = pgTable('kernel_approvals', {
   decidedAt: timestamp('decided_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
+
+/**
+ * Durable append-only agent session log (phase-3 M1) — the conversation
+ * history the builtin-json engine derives per-session context from. Insertion
+ * order (bigserial id) is the ordering; no update/delete paths exist.
+ */
+export const kernelAgentSessionEvents = pgTable(
+  'kernel_agent_session_events',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    sessionId: text('session_id').notNull(),
+    agentId: text('agent_id').notNull(),
+    kind: text('kind', { enum: ['user', 'assistant'] }).notNull(),
+    payload: jsonb('payload')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index('kernel_agent_session_events_session_idx').on(table.sessionId, table.id)],
+)

@@ -2,6 +2,7 @@ import type { Brain, TelegramSessionRef } from '$lib/kernel/gateway'
 import type { AgentConfig } from '$lib/kernel/agent'
 import type { AgentRuntime } from '$lib/kernel/agent-runtime'
 import { BuiltinJsonLoop, type LlmCompleteFn } from '$lib/kernel/engines/builtin-json'
+import type { AgentSessionLog } from '$lib/kernel/session-log'
 
 /**
  * The orchestrator is no longer a brain with kernel privileges — it is one
@@ -67,9 +68,11 @@ export function orchestratorAgentConfig(options: { spendCapUsd?: number } = {}):
 export function buildOrchestratorEngine(options: {
   complete?: LlmCompleteFn
   llmUserId?: string
-} = {}): BuiltinJsonLoop {
+  sessionLog: AgentSessionLog
+}): BuiltinJsonLoop {
   return new BuiltinJsonLoop({
     ...(options.complete === undefined ? {} : { complete: options.complete }),
+    sessionLog: options.sessionLog,
     systemPrompt: ORCHESTRATOR_PERSONA_PROMPT,
     llmUserId: options.llmUserId ?? ORCHESTRATOR_LLM_USER_ID,
     logContext: 'orchestrator_brain',

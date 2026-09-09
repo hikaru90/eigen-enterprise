@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { AppDatabase } from '$lib/server/db/context'
 import {
   DbActivationStore,
+  DbAgentSessionLog,
   DbApprovalStore,
   DbEventSink,
   DbPrincipalStore,
@@ -404,5 +405,106 @@ describe('DbApprovalStore', () => {
     await expect(
       new DbApprovalStore(empty.db).latestFor('email.send_mail', 'p1'),
     ).resolves.toBeNull()
+  })
+})
+
+describe('DbAgentSessionLog', () => {
+  it('append inserts a user/assistant event with its payload', async () => {
+    const { db, calls } = makeFakeDb(noopHandlers)
+    const log = new DbAgentSessionLog(db)
+
+    await log.append({
+      sessionId: 'session-1',
+      agentId: 'orchestrator',
+      kind: 'user',
+      payload: { text: 'hello' },
+    })
+
+    expect(calls).toHaveLength(1)
+    const call = calls[0]
+    if (call.op !== 'insert') throw new Error('expected insert')
+    expect(call.table).toBe('kernel_agent_session_events')
+    expect(call.values).toEqual({
+      sessionId: 'session-1',
+      agentId: 'orchestrator',
+      kind: 'user',
+      payload: { text: 'hello' },
+    })
+  })
+
+  it('list maps rows back to events, newest-first query reversed to chronological order', async () => {
+    const { db } = makeFakeDb({
+      ...noopHandlers,
+      onSelect: (table, query) => {
+        if (table !== 'kernel_agent_session_events') {
+          throw new Error(`unexpected select: ${table}`)
+        }
+        expect(query.where).toHaveLength(1)
+        expect(query.orderBy).toHaveLength(1)
+        expect(query.limit).toBe(2)
+        // DESC by id — the store reverses to chronological before returning.
+        return [
+          {
+            sessionId: 'session-1',
+            agentId: 'orchestrator',
+            kind: 'assistant',
+            payload: { text: 'reply' },
+          },
+          {
+            sessionId: 'session-1',
+            agentId: 'orchestrator',
+            kind: 'user',
+            payload: { text: 'hello' },
+          },
+        ]
+      },
+    })
+
+    await expect(new DbAgentSessionLog(db).list('session-1', 2)).resolves.toEqual([
+      {
+        sessionId: 'session-1',
+        agentId: 'orchestrator',
+        kind: 'user',
+        payload: { text: 'hello' },
+      },
+      {
+        sessionId: 'session-1',
+        agentId: 'orchestrator',
+        kind: 'assistant',
+        payload: { text: 'reply' },
+      },
+    ])
+  })
+
+  it('list without a limit selects the full session unbounded', async () => {
+    const { db } = makeFakeDb({
+      ...noopHandlers,
+      onSelect: (table, query) => {
+        if (table !== 'kernel_agent_session_events') {
+          throw new Error(`unexpected select: ${table}`)
+        }
+        expect(query.limit).toBeUndefined()
+        return []
+      },
+    })
+
+    await expect(new DbAgentSessionLog(db).list('session-1')).resolves.toEqual([])
+  })
+
+  it('accepts a lazy db provider resolved per operation', async () => {
+    let resolved = 0
+    const { db } = makeFakeDb(noopHandlers)
+    const log = new DbAgentSessionLog(() => {
+      resolved += 1
+      return db
+    })
+
+    await log.append({
+      sessionId: 'session-1',
+      agentId: 'orchestrator',
+      kind: 'assistant',
+      payload: { text: 'hi' },
+    })
+    expect(resolved).toBe(1)
   })
 })
