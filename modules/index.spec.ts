@@ -45,13 +45,14 @@ function makeInMemoryKernel() {
 }
 
 describe('moduleManifests', () => {
-  it('declares the baseline modules (memory, email, website, dev-agent, brand)', () => {
+  it('declares the baseline modules (memory, email, website, dev-agent, brand, repo)', () => {
     expect(moduleManifests.map((m) => m.id)).toEqual([
       'memory',
       'email',
       'website',
       'dev-agent',
       'brand',
+      'repo',
     ])
   })
 })
@@ -66,6 +67,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'website',
       'dev-agent',
       'brand',
+      'repo',
     ])
     const toolNames = kernel.registry.list().map((t) => t.name)
     expect(toolNames).toContain('memory.retrieve_thoughts')
@@ -74,6 +76,8 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect(toolNames).toContain('dev-agent.dispatch')
     expect(toolNames).toContain('dev-agent.merge')
     expect(toolNames).toContain('brand.set_create')
+    expect(toolNames).toContain('repo.worktree_create')
+    expect(toolNames).toContain('repo.merge')
     expect(toolNames.length).toBe(
       moduleManifests.reduce((sum, m) => sum + m.tools.length, 0),
     )
@@ -96,7 +100,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     ).resolves.toEqual({ count: 0, results: [] })
   })
 
-  it('wires StaticApprovalPolicy({email.send_mail, brand.set_activate, website.publish_page}); the kernel gate stops external sends and brand go-live at approval', async () => {
+  it('wires StaticApprovalPolicy({email.send_mail, brand.set_activate, website.publish_page, repo.merge}); the kernel gate stops external sends and brand go-live at approval', async () => {
     // Orchestrator decision (2026-09-07): the approval gate fires for every
     // non-read tool, so the external send_mail halts as approval_required and
     // the handler never runs until an owner approves the pending request.
@@ -104,9 +108,12 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     // strategic brand decision owned by a human approver.
     // Website founding journey: publishing is public, so the journey's
     // website.publish_page artifacts gate here too.
+    // Phase-3 M2: repo.merge gates the agent's repo hands — landing agent work
+    // on the instance repo is an owner decision made in chat.
     expect([...APPROVAL_REQUIRED_TOOLS].sort()).toEqual([
       'brand.set_activate',
       'email.send_mail',
+      'repo.merge',
       'website.publish_page',
     ])
     const { kernel, approvalStore } = makeInMemoryKernel()

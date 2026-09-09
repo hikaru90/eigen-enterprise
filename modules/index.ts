@@ -33,6 +33,9 @@ import { createMemoryTools } from './memory/tools'
 import { createAllowlistAdminTools } from './orchestrator/allowlist-tools'
 import { createRecapModule, type RecapBoot } from './recap'
 import { RECAP_MODULE_ID } from './recap/types'
+import { createRepoEngine } from './repo/index'
+import { repoManifest } from './repo/manifest'
+import { createRepoTools, type RepoEngine } from './repo/tools'
 
 export type { RecapBoot } from './recap'
 import { websiteManifest } from './website/manifest'
@@ -48,6 +51,7 @@ export const moduleManifests = [
   websiteManifest,
   devAgentManifest,
   brandManifest,
+  repoManifest,
 ] as const
 
 /** Tools that always require an approval decision before first execution. */
@@ -60,6 +64,9 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   // journey's website.publish_page artifacts gate here (approval_required),
   // surfacing as the chatbox approval card until the owner decides.
   'website.publish_page',
+  // Phase-3 M2: the agent's repo hands land on the instance repo here —
+  // merging agent work into the company repo is an owner decision made in chat.
+  'repo.merge',
 ])
 
 export type BootstrapKernelOptions = {
@@ -75,6 +82,8 @@ export type BootstrapKernelOptions = {
   vcsCommitter?: VcsCommitter | null
   /** Overrides the dev-agent engine (tests inject one with fake runners). */
   devAgentEngine?: DevAgentEngine
+  /** Overrides the repo engine (tests inject one with fake runners). */
+  repoEngine?: RepoEngine
 }
 
 /**
@@ -124,6 +133,9 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
       engine: options.devAgentEngine ?? createDevAgentEngine({ eventSink }),
     }),
     ...createBrandTools(),
+    ...createRepoTools({
+      engine: options.repoEngine ?? createRepoEngine({ eventSink }),
+    }),
   ])
 
   return {

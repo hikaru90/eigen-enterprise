@@ -21,6 +21,7 @@ import {
 } from '$lib/kernel/playbook'
 import type { KernelRegistry } from '$lib/kernel/registry'
 import type { AgentSessionLog } from '$lib/kernel/session-log'
+import { disciplineSections } from './discipline'
 
 /**
  * The orchestrator is no longer a brain with kernel privileges — it is one
@@ -184,6 +185,7 @@ export const ORCHESTRATOR_PERSONA_PROMPT = [
   'You are the orchestrator: the general assistant of this company.',
   'You can act through kernel tools. Every tool call is permission-checked, audited, and (for external actions) gated behind owner approval.',
   ORCHESTRATOR_JOURNEY_PROMPT,
+  ...disciplineSections(),
 ].join('\n')
 
 /** The orchestrator as harness config: zero code privilege, full harness inherited. */
