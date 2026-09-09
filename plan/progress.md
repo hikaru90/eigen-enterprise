@@ -2,6 +2,27 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-09 — Phase-3 M1: durable session log — conversations survive restarts
+
+**Shipped** (`3f33645` on wt/one-agent-loop, merged `7dbab8b`; implementation delegated to a subagent in the worktree, orchestrator reviewed + integrated)
+- **`kernel_agent_session_events`** (migration **0078** + journal idx 78): append-only conversation log (bigserial id = global order, session_id/agent_id, kind CHECK user|assistant, payload jsonb `{text}`), index (session_id, id). Applied to dev DB; content-hash tracking meant the rename to 0078 needed no DB surgery.
+- **`kernel/session-log.ts`** — kernel port (`AgentSessionLog` append/list, InMemory for tests; zero `$lib/server` imports); `DbAgentSessionLog` in `db-stores.ts` (DbHandle-injected, newest-DESC reversed to chronological).
+- **builtin-json dememorized**: in-memory session Map + `remember()` DELETED; history derived from `list(sessionId, 40)` per run; each final turn appends user + assistant events; construction fails loud without a log; payload text validated loud. Protocol/streaming/approval UX untouched.
+- **Wiring**: `WiredKernel.sessionLog` (required); `BootstrapKernelOptions.sessionLog` defaults `DbAgentSessionLog(db)`; orchestrator bootstrap forwards `kernel.sessionLog` into the engine. boot.ts unchanged.
+- **Restart-resume proven**: fresh engine instance B on a shared log continues A's conversation (spec); DB integration spec proves the same across fresh store instances.
+- **Gates: kernel+db+orchestrator 305 passed / 5 skipped (DB specs run green against dev DB); cli+mcp+modules 387 passed / 1 skipped; check 0 errors / 24 warnings (baseline).**
+
+**Broke / integration**
+- **Mid-air 0077 collision** with the parallel journeys stream (both took idx 77; both touched modules/index.ts, bootstrap.ts, brain.ts, journal). Resolution: journeys keeps 77, session events renumbered **0078**; imports unioned in brain.ts; auto-merge of the JourneyAwareRuntime + sessionLog wiring verified by hand. Journal-pin spec in playbook.spec now looks up by tag instead of "last entry" (pin survives future migrations — intent preserved, not weakened).
+- Dev DB: `0077_journeys` committed by the other session but NOT yet applied — next `npm run db:migrate` applies it (hash-based tracking; my 0078 content already applied under its old name, hash unchanged → skipped).
+
+**Decisions**
+- SessionLog is kernel-owned port + DB store beside the other kernel stores (same pattern as approvals/events); engine requires it — no in-memory fallback, debt deleted not shadowed.
+- Only final turns are logged (user + assistant); tool calls stay in kernel_events/stream — conversation log stays model-history-shaped.
+
+**Next — M2 (repo hands)**: `repo.*` registry tools (worktree_create / run-scoped / merge approval-gated with server-side verify) + `.pi/skills` discipline as persona prompt sections; then the in-conversation self-improvement proof.
+
+---
 ## 2026-09-08 — Seamless-tool wave 1+2: harness chat, approvals in the surface, recap, THE JOURNEY
 
 **Shipped** (52b110c → 9d6b8e8, five commits; parallel brand work in the tree was left untouched)
@@ -45,6 +66,7 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - Degradation policy for decorative surfaces: visible static tint + loud log (consistent with the fail-loud spirit — the failure is observable — while not taking down a public landing page over a missing GPU feature).
 
 **Tracked**
+- **`ee` CLI broken on vite 8 (regression, needs a fix stream)**: `tsx src/cli/index.ts` fails (`Cannot find package '$env'` — tsx doesn't apply SvelteKit's tsconfig paths) and the vite-node fallback dies in SvelteKit's browser-import guard (`An impossible situation occurred`, node_modules/@sveltejs/kit/src/exports/vite/index.js:670 — vite-node's module graph isn't walkable for the server-only pyramid check). Documented dev-bootstrap via SQL was used instead this session (owner principal `…aa`, website module activation, `home` page seed); the CLI path must be restored before agent-native hands depend on it.
 - Headless CI has no WebGL → the animated branch is only exercised by real GL (SwiftShader verification script, not enrolled); browser spec asserts structure + fallback branches.
 - Hero is wired only on `/s/[slug]`; reusing it on the nucleus `/` or future marketing routes is a one-line component import (brand module is the owner).
 - Shader tuning (speed/scale/quality defaults, tint tokens from `brandVisualTokens` once M3 publish lands) is open — defaults chosen to match the reference art.
