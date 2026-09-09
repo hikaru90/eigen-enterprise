@@ -61,10 +61,12 @@ describe('createBrandTools', () => {
     }
   })
 
-  it('marks curation tools mutate and reads read', () => {
-    const reads = ['brand.set_get', 'brand.set_list']
+  it('marks reads read, curation tools mutate, and extraction externals external', () => {
+    const reads = ['brand.set_get', 'brand.set_list', 'brand.extract_session_get']
+    const externals = ['brand.extract_start', 'brand.extract_propose']
     for (const descriptor of tools) {
       if (reads.includes(descriptor.name)) expect(descriptor.auditClass).toBe('read')
+      else if (externals.includes(descriptor.name)) expect(descriptor.auditClass).toBe('external')
       else expect(descriptor.auditClass).toBe('mutate')
     }
   })

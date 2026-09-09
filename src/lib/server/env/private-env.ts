@@ -6,6 +6,7 @@ import { env as kitEnv } from '$env/dynamic/private'
  */
 export type ExtendedPrivateEnv = typeof kitEnv & {
   BILLING_BYOK_UI_ENABLED?: string
+  BRAND_EXTRACT_MODEL?: string
   CAPTURE_ENRICH_CONCURRENCY?: string
   CONSOLIDATION_CRON_TZ?: string
   DB_POOL_MAX?: string

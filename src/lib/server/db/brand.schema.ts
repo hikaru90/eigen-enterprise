@@ -1,4 +1,4 @@
-import { index, integer, jsonb, pgTable, real, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { index, integer, jsonb, pgTable, real, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 
 /**
  * Brand kernel tables (phase-2c) — the company's brand as executable context.
@@ -158,5 +158,54 @@ export const brandCalibrationCases = pgTable('brand_calibration_cases', {
   body: text('body').notNull(),
   expected: jsonb('expected').$type<Record<string, unknown>>().notNull(),
   annotatedBy: text('annotated_by').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+// ---------------------------------------------------------------------------
+// Visual-brand extraction pipeline (phase-2d M2) — sessions, rounds, staging.
+// ---------------------------------------------------------------------------
+
+export type BrandExtractionVerdict = {
+  chosen: number | null
+  note?: string
+}
+
+export const brandExtractionSessions = pgTable('brand_extraction_sessions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  url: text('url').notNull(),
+  title: text('title'),
+  status: text('status', { enum: ['active', 'accepted', 'abandoned'] })
+    .default('active')
+    .notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+export const brandExtractionRounds = pgTable(
+  'brand_extraction_rounds',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => brandExtractionSessions.id, { onDelete: 'cascade' }),
+    round: integer('round').notNull(),
+    digest: text('digest').notNull(),
+    screenshotB64: text('screenshot_b64').notNull(),
+    candidates: jsonb('candidates').$type<unknown[]>().notNull(),
+    verdict: jsonb('verdict').$type<BrandExtractionVerdict>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [unique('brand_extraction_rounds_session_round_key').on(table.sessionId, table.round)],
+)
+
+export const brandCorpusStaging = pgTable('brand_corpus_staging', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sessionId: uuid('session_id').references(() => brandExtractionSessions.id, {
+    onDelete: 'set null',
+  }),
+  name: text('name').notNull(),
+  corpusItem: jsonb('corpus_item').$type<Record<string, unknown>>().notNull(),
+  status: text('status', { enum: ['staged', 'exported'] })
+    .default('staged')
+    .notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })

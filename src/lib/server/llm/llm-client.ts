@@ -660,11 +660,13 @@ export async function resolveRoutingRuleById(
 async function chatRoutingConfig(
   config: ResolvedLlmConfig,
   ruleOverride?: string,
+  modelOverride?: string,
 ): Promise<RoutingConfig> {
   // Every non-EUrouter provider (OpenRouter, Copilot, models.dev catalog, …) is
   // OpenAI-compatible and routes by direct model name.
   if (config.provider !== 'eurouter') {
-    const model = config.modelChat?.trim() || env.LLM_MODEL_CHAT?.trim()
+    const model =
+      modelOverride?.trim() || config.modelChat?.trim() || env.LLM_MODEL_CHAT?.trim()
     if (!model) {
       throw new LlmNotConfiguredError(
         `No chat model configured for this ${config.provider} credential — set one under Settings → LLM.`,
@@ -674,7 +676,7 @@ async function chatRoutingConfig(
   }
   // EUrouter: resolve via routing rule or env model override
   const ruleId = ruleOverride?.trim() || config.ruleChat
-  const model = env.LLM_MODEL_CHAT?.trim()
+  const model = modelOverride?.trim() || env.LLM_MODEL_CHAT?.trim()
   if (model) return { ...(ruleId ? { ruleId } : {}), model }
   if (ruleId) return resolveRoutingRuleById(ruleId, config.apiKey, config.baseUrl)
   throw new LlmNotConfiguredError(
@@ -730,6 +732,11 @@ export async function llmChatCompletion(input: {
   logContext?: string
   /** Override chat routing rule (e.g. LLM_RULE_ROUTER for the agent router judge). */
   routingRuleId?: string
+  /**
+   * Explicit model override for a dedicated tool identity (e.g. BRAND_EXTRACT_MODEL,
+   * phase-2c D2 precedent) — wins over per-credential/env chat routing, never silently defaulted.
+   */
+  modelOverride?: string
   /** OpenAI-compatible JSON object mode — gateway must support response_format. */
   responseFormat?: 'json_object'
   /** Optional conversation-level identifier for PostHog AI observability session grouping. */
@@ -749,6 +756,7 @@ async function llmChatCompletionInner(input: {
   maxTokens?: number
   logContext?: string
   routingRuleId?: string
+  modelOverride?: string
   responseFormat?: 'json_object'
   aiSessionId?: string
   aiTraceId?: string
@@ -757,7 +765,7 @@ async function llmChatCompletionInner(input: {
   const activityProvider = activityProviderForLlmConfig(config.provider)
   const gatewayHost = gatewayHostFromBaseUrl(config.baseUrl)
   const url = `${config.baseUrl}/chat/completions`
-  const routing = await chatRoutingConfig(config, input.routingRuleId)
+  const routing = await chatRoutingConfig(config, input.routingRuleId, input.modelOverride)
   const logCtx = (input.logContext?.trim() || 'chat').replace(/\s+/g, '_')
   const messages = sanitizeChatMessages(input.messages)
   const aiSessionId = normalizeAiIdentifier(input.aiSessionId, `user-${input.userId}`)
