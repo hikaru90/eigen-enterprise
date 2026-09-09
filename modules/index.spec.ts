@@ -96,13 +96,19 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     ).resolves.toEqual({ count: 0, results: [] })
   })
 
-  it('wires StaticApprovalPolicy({email.send_mail, brand.set_activate}); the kernel gate stops external sends and brand go-live at approval', async () => {
+  it('wires StaticApprovalPolicy({email.send_mail, brand.set_activate, website.publish_page}); the kernel gate stops external sends and brand go-live at approval', async () => {
     // Orchestrator decision (2026-09-07): the approval gate fires for every
     // non-read tool, so the external send_mail halts as approval_required and
     // the handler never runs until an owner approves the pending request.
     // Phase-2c (G8/D5): brand.set_activate joins the set — activation is a
     // strategic brand decision owned by a human approver.
-    expect([...APPROVAL_REQUIRED_TOOLS].sort()).toEqual(['brand.set_activate', 'email.send_mail'])
+    // Website founding journey: publishing is public, so the journey's
+    // website.publish_page artifacts gate here too.
+    expect([...APPROVAL_REQUIRED_TOOLS].sort()).toEqual([
+      'brand.set_activate',
+      'email.send_mail',
+      'website.publish_page',
+    ])
     const { kernel, approvalStore } = makeInMemoryKernel()
     await kernel.activations.set('email', true)
 

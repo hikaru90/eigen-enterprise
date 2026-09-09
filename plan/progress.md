@@ -2,6 +2,54 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-08 — Seamless-tool wave 1+2: harness chat, approvals in the surface, recap, THE JOURNEY
+
+**Shipped** (52b110c → 9d6b8e8, five commits; parallel brand work in the tree was left untouched)
+- **Redirects dead**: post-auth lands on `/` (social default, e2e auth-landing assertions incl. auth.e2e + projects-assign-task; capture-as-feature tests kept). Chatbox got `data-testid="nucleus-chatbox"`.
+- **`/api/chat` now dispatches through the kernel AgentRuntime** — the chatbox speaks through the harness proper. New surface events: `tool.preview` (metadata-only, ≤120 chars) + `approval.required`; nucleus renders "→ using …" lines and an approval card. Streaming via optional `EngineContext.stream` (graceful single-delta fallback — llmClient has no streaming seam yet).
+- **`modules/recap`**: deterministic 24h kernel_events digest → owner Telegram chats (sessions × allowlist intersection, chunked, fail-loud) + `recap.completed` event; `recap.run_now` tool; activation-gated; wired in boot.ts with 5-min tick (HMR-safe, opt-out via bootApp options).
+- **Journey engine** (`kernel/playbook.ts` + `kernel_journeys` idx **77** — parallel session took 75/76): `website_founding` journey ships REAL — tone-of-voice question (marker protocol, zero semantic parsing) → brand doc artifact → home/about/contact skeleton pages → `website.publish_page` ×3 **behind the approval gate** (added to APPROVAL_REQUIRED_TOOLS) → completed + event. `JourneyAwareAgentRuntime` subclass = both chatbox and Telegram get journeys; deterministic start seam via verbatim persona question.
+- **Main: 1268/1268 tests, check 0 errors; eigen_test migrated through 0077.**
+
+**Notes / debt**
+- Chat history for the model is engine in-memory per session (DB rows = durable transcript/UI only) — persisted session memory is the next harness debt.
+- `journey.abandoned` modeled, no timeout/cancel path yet. One active journey per kind (DB-enforced).
+- Parallel session active in-tree (modules/brand water-flow shader, migrations 75/76, phase-3-one-agent.md draft) — commits were scoped strictly to agent reports; their files remain uncommitted by me.
+
+---
+## 2026-09-09 — DECISION: One Agent — dsh concepts implemented IN-REPO (no dsh install; kernel stays as the tool door)
+
+**Decision (owner, decisive)**: "We need one agent that does all." — "We don't install dsh. We take the concepts of dsh and implement them in our repo." One in-repo agent loop (evolved builtin-json protocol) with a durable append-only Postgres session log (model-visible = logged; restart = resume; in-memory Maps debt dies), speaking through the nucleus chatbox via `/api/chat`. Company tools AND repo hands (worktree → scoped run → verify → approval-gated merge) are registry tools through the kernel door. `.pi/skills` discipline ports into the one agent's system-prompt sections. Approvals surface in-band: pending → agent asks in chat → owner yes → retried → audited in kernel_events + git.
+
+- **Concept map** (dsh → in-repo, exists vs build) pinned in `plan/phase-3-one-agent.md`.
+- **Frozen** (deleted deliberately in M3): AgentRuntime engine indirection, pi-engine, dev-agent module, orchestrator brain/loop, legacy `/api/chat` agent-loop path, Telegram gateway (dormant).
+- **Unchanged**: kernel proper (registry/principals/approvals/events/vcs/modules + DB), website/auth/memory/brand app, phase-2c branding M3–M5, `ee` CLI as the human/external door.
+- **Accepted risks on record**: in-repo loop is hand-maintained (one protocol file + a log — full ownership, zero external churn); owner principal in agent hands (conversational governance + git rollback; merge is the approval-gated control point); trust-the-transcript approvals.
+- **Milestones**: M1 loop + durable session log + `/api/chat` → one loop → M2 repo hands (`repo.*` tools) + skills-as-prompt-sections + in-conversation self-improvement proof → M3 dogfood (agent improves its own discipline) + deliberate cleanup of frozen code.
+
+## 2026-09-09 — Brand water-flow shader: monochrome fluid as a brand module asset
+
+**Shipped** (uncommitted working tree)
+- **`modules/brand/water-flow.svelte`** — the brand's signature visual: a monochrome flowing-water surface rendered by a WebGL1 fragment shader, built to be as lightweight as possible. One fullscreen triangle, one program, zero textures, zero per-frame allocations; motion = three domain-warped fbm evaluations/pixel (classic water warp). Cost controls: DPR capped at 2 × quality 0.75 with a hard 1.5M-pixel budget (flat fragment cost on 4K), `powerPreference: 'low-power'`, rAF loop paused via IntersectionObserver when offscreen, `prefers-reduced-motion` renders a single static frame (live media-query switch), dt clamped so background-tab resume never jumps the flow, full teardown incl. `WEBGL_lose_context`.
+- **`modules/brand/water-flow-shader.ts`** — pure logic split out of the canvas lifecycle: GLSL sources + `parseMonochromeTint`/`resolveWaterFlowColors`. Tints are hex-only and **monochrome-enforced at parse** (non-grayscale input throws naming the brand rule — the water-flow asset is grayscale by invariant, not by styling).
+- **Failure policy (decorative asset)**: every failure mode (no WebGL, invalid/non-monochrome tint) degrades to a VISIBLE static tint (gradient from the same props + `data-water-flow="static"`) with a loud `console.error` — never a crash of the host page, never a silent degradation. Shader compile/link failures still throw loud (code bug, not environment).
+- **Landing surface**: `/s/[slug]` website pages now open with a hero band (dark `#060606` → silver `#b9b9b9`, default props) — the water flow fills the band, page title overlays bottom-left over a legibility scrim.
+- **Tests first**: `water-flow-shader.spec.ts` (12 node tests: tint parsing incl. monochrome rejection, shader-source invariants — WebGL1/no `#version`, mediump, texture-free, uniform coverage) + `water-flow.svelte.spec.ts` (4 browser tests: decorative canvas + class/aria passthrough, static fallback on missing WebGL, static fallback on non-monochrome tint, enrolled in `vitest.browser.config.ts`). GLSL compile+link verified against a real GL context (playwright chromium + SwiftShader) since headless CI has no GPU.
+- **tsconfig scope fix (long-standing flag resolved)**: `svelte.config.js kit.typescript.config` now adds `../modules/**/*.ts` + `../modules/**/*.svelte` to the generated tsconfig include — modules UI assets are first-class citizens for `svelte-check` and eslint's projectService (the 2026-09-08 "modules/** outside svelte-kit tsconfig include — consider tsconfig addition later" flag is closed).
+- **Gates: unit 3506 passed (509 files), components 17 passed, check 0 errors (24 warnings = main's), lint: 0 errors in touched files (kernel's pre-existing errors untouched).**
+
+**Decisions**
+- The shader lives IN `modules/brand/` (user directive: "part of the branding module") — it is a brand visual asset, not a generic component; `src/lib/components` stays for shared UI. Routes may import module assets (boundaries guard only polices module→module imports; a presentational .svelte has no server deps).
+- Monochrome tints enforced in code (`parseMonochromeTint` rejects non-grayscale hex) — brand invariants belong in the brand module, fail loud.
+- Continuous fluid over discrete cells: user picked the smooth interpretation of the Y-reference; the tiled look remains achievable via future props if wanted.
+- Degradation policy for decorative surfaces: visible static tint + loud log (consistent with the fail-loud spirit — the failure is observable — while not taking down a public landing page over a missing GPU feature).
+
+**Tracked**
+- Headless CI has no WebGL → the animated branch is only exercised by real GL (SwiftShader verification script, not enrolled); browser spec asserts structure + fallback branches.
+- Hero is wired only on `/s/[slug]`; reusing it on the nucleus `/` or future marketing routes is a one-line component import (brand module is the owner).
+- Shader tuning (speed/scale/quality defaults, tint tokens from `brandVisualTokens` once M3 publish lands) is open — defaults chosen to match the reference art.
+
+---
 ## 2026-09-08 — Phase-2c: explicit model selection — no implicit defaults
 
 **Shipped** (`21ad301` feature, wt/model-selection, rebased onto brand-kernel main, ff-merged)

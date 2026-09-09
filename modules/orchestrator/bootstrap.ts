@@ -1,18 +1,21 @@
-import type { AllowlistStore, SessionStore } from '$lib/kernel/gateway'
-import { registerModuleTools, type WiredKernel } from '$lib/kernel/wiring'
 import {
   agentAdminManifest,
   AGENT_ADMIN_MODULE_ID,
   createAgentAdminTools,
 } from '$lib/kernel/agent-admin'
-import { AgentRuntime } from '$lib/kernel/agent-runtime'
+import type { AgentRuntime } from '$lib/kernel/agent-runtime'
 import type { LoopEngine } from '$lib/kernel/engine'
 import type { LlmCompleteFn } from '$lib/kernel/engines/builtin-json'
+import type { AllowlistStore, SessionStore } from '$lib/kernel/gateway'
+import { InMemoryJourneyStore, type JourneyStore } from '$lib/kernel/playbook'
+import { registerModuleTools, type WiredKernel } from '$lib/kernel/wiring'
 import { OrchestratorBrain } from './brain'
+import { JourneyAwareAgentRuntime } from './brain'
 import {
   buildOrchestratorEngine,
   orchestratorAgentConfig,
   ORCHESTRATOR_PRINCIPAL,
+  WEBSITE_FOUNDING_JOURNEY,
 } from './brain'
 import { createTelegramLoop, type TelegramGatewayLike, type TelegramLoopHandle } from './loop'
 
@@ -72,6 +75,12 @@ export type OrchestratorBootOptions = {
    * other modules directly (boundary guard).
    */
   engines?: Array<[string, LoopEngine]>
+  /**
+   * Durable journey state for the website-founding journey. Defaults to the
+   * in-memory store (same v0 debt as engine sessions: a restart loses an
+   * in-flight journey); the composition root injects the DB-backed store.
+   */
+  journeys?: JourneyStore
 }
 
 /**
@@ -109,13 +118,19 @@ export async function bootstrapOrchestrator(
   const env = options.env ?? process.env
 
   // The harness: orchestrator is demoted to one config on the shared runtime.
+  // The runtime is journey-aware: it drives the website-founding journey
+  // around dispatch for the orchestrator agent only (pure passthrough for
+  // every other agent). Journeys default in-memory; boot.ts injects the
+  // DB-backed store for production.
   const runtime =
     options.runtime ??
-    new AgentRuntime({
+    new JourneyAwareAgentRuntime({
       registry: kernel.registry,
       isToolActive: (name) => kernel.modules.isToolActive(name),
       eventSink: kernel.eventSink,
       rolesFor: () => ORCHESTRATOR_PRINCIPAL.roles,
+      journeys: options.journeys ?? new InMemoryJourneyStore(),
+      spec: WEBSITE_FOUNDING_JOURNEY,
     })
   runtime.registerEngine(
     'builtin-json',

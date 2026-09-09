@@ -1,8 +1,10 @@
-import type { ChatGatewayBoot } from '../../../modules/chat-gateway/index'
+import type { ChatGatewayBoot, RecapBoot } from '../../../modules/index'
+import { DbJourneyStore, type JourneyStore } from '$lib/kernel/playbook'
 import type { WiredKernel } from '$lib/kernel/wiring'
 import { piEngine } from '../../../modules/dev-agent'
 import {
   bootstrapChatGateway,
+  bootstrapRecap,
   buildKernel,
   type BootstrapKernelOptions,
 } from '../../../modules/index'
@@ -16,7 +18,8 @@ import {
 /**
  * Startup composition root (phase-1b): kernel → orchestrator (the harness
  * runtime, hosting the dev-agent `pi` engine via the orchestrator's engine
- * injection seam) → chat gateway + Telegram poll loop.
+ * injection seam) → chat gateway + Telegram poll loop → recap module + its
+ * scheduler tick.
  *
  * `bootApp()` is single-flight per process: the first call composes the boot
  * and memoizes the promise; every later call returns the same boot regardless
@@ -26,7 +29,9 @@ import {
  *
  * HMR caveat (dev only): Vite may re-evaluate this module on edit, resetting
  * the memo — the next request then composes a fresh boot. Production
- * processes boot exactly once.
+ * processes boot exactly once. The recap tick timer is guarded on globalThis
+ * (cleared and re-armed per composition), so HMR re-compositions converge to
+ * exactly ONE live timer pointing at the newest boot.
  *
  * Env is injectable and defaults to process.env; no other direct process.env
  * read happens here. Fail-loud rules are inherited from the stages: an active
@@ -43,12 +48,20 @@ export type AppBootOptions = {
   bootstrapOrchestrator?: typeof bootstrapOrchestrator
   /** Overrides bootstrapChatGateway (tests inject a fake/null stage). */
   bootstrapChatGateway?: typeof bootstrapChatGateway
+  /** Overrides bootstrapRecap (tests inject a fake/null stage). */
+  bootstrapRecap?: typeof bootstrapRecap
+  /** Overrides the DB-backed journey store (tests inject an in-memory one). */
+  journeys?: JourneyStore
+  /** Recap scheduler tick (default: start, 5-minute cadence; tests opt out). */
+  recap?: { startTick?: boolean; intervalMs?: number }
 }
 
 export type AppBootStatus = {
   orchestrator: OrchestratorStatus
   /** True once the chat-gateway stage registered its manifest + tools on the kernel. */
   gatewayBooted: boolean
+  /** True once the recap stage registered its manifest + tool on the kernel. */
+  recapBooted: boolean
 }
 
 export type AppBoot = {
@@ -56,10 +69,29 @@ export type AppBoot = {
   orchestrator: OrchestratorBoot
   /** The full chat-gateway boot (manifest, tools, client) or null while inactive. */
   gateway: ChatGatewayBoot | null
+  /** The recap module boot (scheduler included) or null while inactive. */
+  recap: RecapBoot | null
   status(): AppBootStatus
 }
 
 let bootPromise: Promise<AppBoot> | null = null
+
+/**
+ * globalThis guard: across HMR re-evaluations only one recap tick may live.
+ * A re-composition clears the previous timer and re-arms against the new boot.
+ */
+const recapTickHost = globalThis as { __eeRecapTick?: ReturnType<typeof setInterval> }
+
+/** Tick cadence: the scheduler self-guards to one run per UTC day. */
+function startRecapTick(recap: RecapBoot, intervalMs: number): void {
+  if (recapTickHost.__eeRecapTick) clearInterval(recapTickHost.__eeRecapTick)
+  recapTickHost.__eeRecapTick = setInterval(() => {
+    void recap.scheduler.maybeRun(new Date()).catch((err: unknown) => {
+      // The scheduler retries the same day; never let a tick kill the process.
+      console.error('[recap] scheduler tick failed', err)
+    })
+  }, intervalMs)
+}
 
 /** Process-wide app boot (first call wins; later options are ignored). */
 export function bootApp(options: AppBootOptions = {}): Promise<AppBoot> {
@@ -76,8 +108,20 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
   const buildKernelFn = options.buildKernel ?? buildKernel
   const orchestratorFn = options.bootstrapOrchestrator ?? bootstrapOrchestrator
   const gatewayFn = options.bootstrapChatGateway ?? bootstrapChatGateway
+  const recapFn = options.bootstrapRecap ?? bootstrapRecap
 
   const kernel = buildKernelFn()
+
+  // Durable journey state: DB-backed via the same lazy pooled-handle pattern
+  // the kernel stores use (request-scoped when inside ALS, pooled otherwise).
+  const journeys: JourneyStore =
+    options.journeys ??
+    new DbJourneyStore(async () => {
+      const { appDbAsyncLocal, appSql, createScopedDrizzle } = await import('$lib/server/db')
+      const scoped = appDbAsyncLocal.getStore()
+      if (scoped) return scoped
+      return createScopedDrizzle(appSql)
+    })
 
   let gatewayBoot: ChatGatewayBoot | null = null
   const wireGateway = async (
@@ -95,12 +139,26 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
   const orchestrator = await orchestratorFn(kernel, wireGateway, {
     env,
     engines: [['pi', piEngine]],
+    journeys,
   })
+
+  // Recap module (agent C's stage, previously without a caller): activation-
+  // gated, registers manifest + run_now tool through the kernel's validated
+  // path. The scheduler tick lives here (composition root owns cadence).
+  const recap = await recapFn(kernel, { env })
+  if (recap && (options.recap?.startTick ?? true)) {
+    startRecapTick(recap, options.recap?.intervalMs ?? 5 * 60_000)
+  }
 
   return {
     kernel,
     orchestrator,
     gateway: gatewayBoot,
-    status: () => ({ orchestrator: orchestrator.status(), gatewayBooted: gatewayBoot !== null }),
+    recap,
+    status: () => ({
+      orchestrator: orchestrator.status(),
+      gatewayBooted: gatewayBoot !== null,
+      recapBooted: recap !== null,
+    }),
   }
 }
