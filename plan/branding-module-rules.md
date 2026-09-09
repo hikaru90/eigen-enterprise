@@ -1,6 +1,6 @@
 # Branding Guideline Module — Design Rules
 
-Status: PROPOSED (research-derived, not yet implementation-approved)
+Status: APPROVED (2026-09-08 — implementation governed by plan/phase-2c-branding-module.md; §8 questions resolved there as D1–D5)
 Date: 2026-09-07
 Precedes: implementation (planned as the "brand kernel" from phase-0 §Later phases 1)
 Source basis: NN/g study guide ["Using AI for UX Work"](https://www.nngroup.com/articles/ai-work-study-guide/) + 32 linked articles (full-text analyzed; YouTube podcasts/videos excluded). Article names cited inline per rule.

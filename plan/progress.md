@@ -2,6 +2,15 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-08 — Phase-2c approved: brand kernel implementation starts
+
+**Shipped**
+- `plan/phase-2c-branding-module.md` — approved phase plan. `plan/branding-module-rules.md` flips PROPOSED → APPROVED.
+- **§8 open questions resolved as decisions D1–D5** (vetoable, recorded in the phase plan): D1 visual-asset pipeline out of scope v0 (owlery bootstraps tokens later); D2 dedicated judge identity + explicit `BRAND_JUDGE_MODEL` (unset = loud failure, never a silent generator-model fallback); D3 per-locale guideline sets, one active per locale, explicit-locale resolution (no implicit "latest"); D4 disclosure = site-level statement + per-asset provenance flag; D5 guideline mutations human-admin-only (handler kind check), `brand.set_activate` additionally approval-gated, agent-proposal flow tracked as follow-up.
+- Module id `brand`, tool namespace `brand.*`; milestones M1 schema+migration 0076 → M2 store+manifest+guideline tools → M3 generation/validation/publish → M4 gateway brand-context middleware → M5 calibration/regression/acceptance sweep.
+
+**Next:** M1+M2 on `wt/branding` worktree.
+
 ## 2026-09-08 — Phase-2b: subscription sign-ins — Claude Pro/Max + ChatGPT via API-shape adapters
 
 **Shipped** (`7fe61c5` plan + `feb8cc1` feature, wt/subscription-signins, ff-merged)
