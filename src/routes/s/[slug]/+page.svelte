@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types'
+  import WaterFlow from '../../../../modules/brand/water-flow.svelte'
   import { renderWebsiteMarkdown } from '../../../../modules/website/markdown'
 
   let { data }: { data: PageData } = $props()
@@ -14,7 +15,17 @@
 </svelte:head>
 
 <article class="website-page">
+  <div class="website-backdrop" aria-hidden="true"></div>
   <h1>{data.title}</h1>
+  <header class="website-hero">
+    <WaterFlow
+      from="#060606"
+      to="#b9b9b9"
+      speed={0.8}
+      scale={1.1}
+      resolution={{ width: 40, height: 8 }}
+    />
+  </header>
   <div class="website-page-body">
     <!-- eslint-disable-next-line svelte/no-at-html-tags -- HTML from renderWebsiteMarkdown (sanitized) -->
     {@html bodyHtml}
@@ -26,19 +37,44 @@
 
 <style>
   .website-page {
-    max-width: 44rem;
+    position: relative;
+    z-index: 1;
+    max-width: 56rem;
     margin: 0 auto;
-    padding: 2rem 1.25rem 4rem;
+    padding: 2.5rem 1.25rem 4rem;
   }
 
-  .website-page h1 {
-    font-size: 2rem;
-    line-height: 1.2;
-    margin-bottom: 1.5rem;
+  /* Full-viewport black behind the centered column; scoped + unmounts on nav
+     (no :global body style leaks to console routes). Lives inside the z:1
+     article so it paints above the root layout's bg-background wrapper. */
+  .website-backdrop {
+    position: fixed;
+    inset: 0;
+    background: #000;
+  }
+
+  .website-hero {
+    position: relative;
+    min-height: clamp(16rem, 42vh, 30rem);
+    margin: 0 -1.25rem 1.75rem;
+    overflow: hidden;
+    background: transparent;
+  }
+
+  h1 {
+    position: relative;
+    font-family: 'MontserratThin', 'Inter', sans-serif;
+    font-size: 1.75rem;
+    font-weight: 300;
+    line-height: 1.3;
+    letter-spacing: 0.04em;
+    color: #ffffff;
+    margin: 0 0 1.5rem;
   }
 
   .website-page-body {
     line-height: 1.7;
+    color: #c9c9c9;
   }
 
   .website-page-body :global(pre) {
@@ -54,6 +90,6 @@
   .website-page footer {
     margin-top: 3rem;
     font-size: 0.85rem;
-    opacity: 0.65;
+    color: #8a8a8a;
   }
 </style>

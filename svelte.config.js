@@ -18,7 +18,15 @@ const config = {
     typescript: {
       config: (config) => ({
         ...config,
-        include: [...config.include, '../drizzle.config.ts'],
+        // modules/** is part of the app program: brand UI assets (e.g.
+        // modules/brand/water-flow.svelte) are imported by routes and must be
+        // visible to svelte-check and eslint's projectService.
+        include: [
+          ...config.include,
+          '../drizzle.config.ts',
+          '../modules/**/*.ts',
+          '../modules/**/*.svelte',
+        ],
       }),
     },
   },
