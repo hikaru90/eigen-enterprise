@@ -264,4 +264,62 @@ describe('vector emit', () => {
       expect(x).toBeLessThanOrEqual(1)
     }
   })
+
+  it('fromNumericVector round-trips the numeric layout (6dp rounding only)', async () => {
+    const { fromNumericVector, toNumericVector } = await import('./vector')
+    const v = styleVector(item())
+    const restored = fromNumericVector(toNumericVector(v))
+    expect(restored.fontClasses).toEqual(v.fontClasses)
+    expect(restored.weightSet).toBe(v.weightSet)
+    for (const role of VECTOR_ROLES) {
+      expect(restored.colors[role].l).toBeCloseTo(v.colors[role].l, 5)
+      expect(restored.colors[role].c).toBeCloseTo(v.colors[role].c, 5)
+      expect(restored.colors[role].h).toBeCloseTo(v.colors[role].h, 3)
+    }
+    expect(restored.radius).toBeCloseTo(v.radius, 5)
+    expect(restored.spacing).toBeCloseTo(v.spacing, 5)
+    expect(restored.darkDelta).toBeCloseTo(v.darkDelta, 5)
+    expect(restored.grain).toBeCloseTo(v.grain, 5)
+    expect(restored.elevation).toBeCloseTo(v.elevation, 5)
+  })
+
+  it('fromNumericVector preserves styleDistance ordering (adjacency metric basis)', async () => {
+    const { fromNumericVector, toNumericVector, styleDistance } = await import('./vector')
+    const pastel = styleVector(PASTEL_SOFT)
+    const sibling = styleVector(PASTEL_SIBLING)
+    const mono = styleVector(MONO_TERMINAL)
+    const num = (v: StyleVector) => fromNumericVector(toNumericVector(v))
+    expect(styleDistance(num(pastel), num(sibling))).toBeLessThan(styleDistance(num(pastel), num(mono)))
+    // Rounding noise must stay irrelevant to the metric itself.
+    expect(styleDistance(num(pastel), num(sibling))).toBeCloseTo(styleDistance(pastel, sibling), 5)
+  })
+
+  it('fromNumericVector fails loud on a wrong-dim or NaN layout', async () => {
+    const { fromNumericVector, toNumericVector } = await import('./vector')
+    const flat = toNumericVector(styleVector(item()))
+    expect(() => fromNumericVector([...flat.slice(0, -1)])).toThrow(/48 dims/)
+    const nan = [...flat]
+    nan[31] = Number.NaN
+    expect(() => fromNumericVector(nan)).toThrow(/not a number/)
+  })
+
+  it('fromNumericVector decodes centroid means deterministically (argmax font slots)', async () => {
+    const { fromNumericVector } = await import('./vector')
+    const flat = Array<number>(48).fill(0)
+    flat[0] = 0.5 // background l
+    // sans slot: sans 0.6, mono 0.4, rest 0 → dominant 'sans' (argmax, ties by FONT_CLASS_ORDER)
+    flat[32] = 0.6
+    flat[34] = 0.4
+    // display slot: tie serif/mono 0.5 → FONT_CLASS_ORDER order picks 'serif'
+    flat[37] = 0.5
+    flat[38] = 0.5
+    // mono slot: pure mono
+    flat[42] = 1
+    flat[44] = 0.5 // weightSet centroid mean — fractional is fine
+    const restored = fromNumericVector(flat)
+    expect(restored.fontClasses.sans).toBe('sans')
+    expect(restored.fontClasses.display).toBe('serif')
+    expect(restored.fontClasses.mono).toBe('mono')
+    expect(restored.weightSet).toBe(0.5)
+  })
 })

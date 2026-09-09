@@ -19,6 +19,7 @@ export const BRAND_TOOL_NAMES = [
   'brand.extract_session_get',
   'brand.corpus_list',
   'brand.corpus_get',
+  'brand.corpus_similar',
   'brand.selection_matches',
   'brand.visual_set_create',
   'brand.visual_set_activate',

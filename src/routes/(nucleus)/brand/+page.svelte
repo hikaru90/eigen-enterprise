@@ -19,10 +19,19 @@
   let busy = $state(false)
   let error = $state('')
 
+  // M7 tree navigation state: traversal trail (pivot ids, client-side),
+  // cached similar-results per pivot, and the panel's current pivot.
+  let trail = $state<string[]>([])
+  let similarResults = $state<Record<string, Match[]>>({})
+  let panelItemId = $state<string | null>(null)
+  let similarBusy = $state(false)
+
   const itemsById = $derived(new Map(data.corpus.items.map((item) => [item.id, item])))
   const pickedCount = $derived(pickedIds.length)
   const canShowMatches = $derived(pickedCount >= PICKS_FOR_MATCHES && !busy)
   const canCreateDraft = $derived(pendingMatch !== null && draftName.trim().length > 0 && !busy)
+  const panelItem = $derived(panelItemId !== null ? (itemsById.get(panelItemId) ?? null) : null)
+  const panelResults = $derived(panelItemId !== null ? (similarResults[panelItemId] ?? []) : [])
 
   async function post(path: string, body: unknown): Promise<Record<string, unknown>> {
     const response = await fetch(path, {
@@ -90,6 +99,35 @@
       busy = false
     }
   }
+
+  // --- M7 tree navigation (client state only; endpoint is a pure lookup) ---
+
+  async function openSimilar(itemId: string): Promise<void> {
+    error = ''
+    similarBusy = true
+    try {
+      const result = await post('/api/brand/corpus/similar', { itemId })
+      similarResults = { ...similarResults, [itemId]: result.similar as Match[] }
+      panelItemId = itemId
+      trail = trail.includes(itemId) ? trail.slice(0, trail.indexOf(itemId) + 1) : [...trail, itemId]
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      similarBusy = false
+    }
+  }
+
+  function jumpToCrumb(index: number): void {
+    const itemId = trail[index]
+    if (itemId === undefined) return
+    trail = trail.slice(0, index + 1)
+    panelItemId = itemId
+  }
+
+  function resetNavigation(): void {
+    trail = []
+    panelItemId = null
+  }
 </script>
 
 <svelte:head>
@@ -101,13 +139,61 @@
     <h1 class="text-2xl font-semibold">Brand selection wizard</h1>
     <p class="text-sm text-neutral-600">
       Pick the style cards that feel right (at least {PICKS_FOR_MATCHES}), show the nearest corpus
-      designs, and land one as the working draft. Pure math over the corpus vectors — no LLM.
-      Activation (applying the draft) comes with publish.
+      designs, and land one as the working draft. Every card has a “Similar →” trail into the
+      precomputed k-NN, and clusters link to their nearest neighbors — pure lookups over the corpus
+      index, no LLM. Activation (applying the draft) comes with publish.
     </p>
   </header>
 
   {#if error}
     <pre class="whitespace-pre-wrap rounded border border-red-400 bg-red-50 p-3 text-xs text-red-800">{error}</pre>
+  {/if}
+
+  {#if panelItem}
+    <aside class="fixed inset-y-0 right-0 z-40 flex w-[30rem] max-w-full flex-col gap-3 overflow-y-auto border-l border-neutral-300 bg-white p-4 shadow-xl">
+      <div class="flex items-center justify-between gap-2">
+        <h2 class="text-lg font-medium">Similar styles</h2>
+        <button
+          type="button"
+          class="rounded border px-2 py-1 text-sm hover:bg-neutral-100"
+          onclick={resetNavigation}
+        >
+          Close
+        </button>
+      </div>
+      <nav class="flex flex-wrap items-center gap-1 text-sm text-neutral-600" aria-label="Traversal path">
+        {#each trail as crumbId, i (crumbId)}
+          {@const crumb = itemsById.get(crumbId)}
+          {#if crumb}
+            {#if i > 0}<span class="text-neutral-400">→</span>{/if}
+            {#if i === trail.length - 1}
+              <span class="font-medium text-neutral-900">{crumb.name}</span>
+            {:else}
+              <button type="button" class="underline hover:text-neutral-900" onclick={() => jumpToCrumb(i)}>
+                {crumb.name}
+              </button>
+            {/if}
+          {/if}
+        {/each}
+      </nav>
+      <p class="text-xs text-neutral-500">
+        Ranked “more like this” from the precomputed corpus k-NN — click a card to pivot the trail.
+      </p>
+      {#if similarBusy}
+        <p class="text-sm text-neutral-500">Working…</p>
+      {/if}
+      <div class="flex flex-wrap gap-3">
+        {#each panelResults as match (match.item.id)}
+          <StyleCard
+            item={match.item}
+            distance={match.distance}
+            compact={true}
+            selected={pickedIds.includes(match.item.id)}
+            ontoggle={() => void openSimilar(match.item.id)}
+          />
+        {/each}
+      </div>
+    </aside>
   {/if}
 
   <section class="flex flex-col gap-4">
@@ -118,13 +204,31 @@
       </span>
     </div>
     {#each data.corpus.clusters as cluster (cluster.id)}
-      <div class="flex flex-col gap-2">
-        <h3 class="text-sm font-semibold text-neutral-700">{cluster.name}</h3>
+      <div id={`cluster-${cluster.id}`} class="flex flex-col gap-2 scroll-mt-4">
+        <div class="flex flex-wrap items-baseline gap-2">
+          <h3 class="text-sm font-semibold text-neutral-700">{cluster.name}</h3>
+          {#if cluster.adjacentClusters.length > 0}
+            <span class="text-xs text-neutral-400">
+              tunnels:
+              {#each cluster.adjacentClusters as adjacent, i (adjacent.id)}
+                {#if i > 0}<span class="mx-0.5">·</span>{/if}
+                <a class="text-neutral-500 underline hover:text-neutral-900" href={`#cluster-${adjacent.id}`} onclick={resetNavigation}>
+                  {adjacent.name}
+                </a>
+              {/each}
+            </span>
+          {/if}
+        </div>
         <div class="flex flex-wrap gap-3">
           {#each cluster.memberIds as memberId (memberId)}
             {@const item = itemsById.get(memberId)}
             {#if item}
-              <StyleCard {item} selected={pickedIds.includes(item.id)} ontoggle={() => togglePick(item.id)} />
+              <StyleCard
+                {item}
+                selected={pickedIds.includes(item.id)}
+                ontoggle={() => togglePick(item.id)}
+                onsimilar={() => void openSimilar(item.id)}
+              />
             {/if}
           {/each}
         </div>

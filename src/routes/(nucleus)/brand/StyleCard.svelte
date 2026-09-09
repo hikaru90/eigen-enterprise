@@ -3,7 +3,9 @@
     item,
     selected = false,
     distance = null,
+    compact = false,
     ontoggle = undefined,
+    onsimilar = undefined,
   }: {
     item: {
       id: string
@@ -13,7 +15,9 @@
     }
     selected?: boolean
     distance?: number | null
+    compact?: boolean
     ontoggle?: (() => void) | undefined
+    onsimilar?: (() => void) | undefined
   } = $props()
 
   // Corpus items reference OFL families that are not loaded in this app —
@@ -36,44 +40,57 @@
   const radiusValue = $derived(item.cssVars['--radius'] ?? '0.25rem')
 </script>
 
-<button
-  type="button"
-  class="style-card"
-  class:selected
-  style={cardStyle}
-  aria-pressed={selected}
-  onclick={() => ontoggle?.()}
->
-  <header class="head">
-    <strong class="name">{item.name}</strong>
-    {#if distance !== null}
-      <span class="distance" style={`font-family: var(--font-mono, ${FALLBACK_MONO})`}>
-        Δ {Math.round(distance * 100)}%
-      </span>
-    {/if}
-  </header>
-  <div class="swatches">
-    {#each swatches as swatch (swatch.name)}
-      <span class="swatch" style:background={swatch.value} title={swatch.name}></span>
-    {/each}
-    <span class="radius-cue" style="border-radius: var(--radius, 0.25rem)" title={`--radius: ${radiusValue}`}></span>
-  </div>
-  <nav class="nav">
-    <span>Product</span>
-    <span>Pricing</span>
-    <span>About</span>
-  </nav>
-  <div class="mini-card">
-    <h3 class="heading">Heading specimen</h3>
-    <p class="copy">Card copy with a muted supporting line.</p>
-    <div class="controls">
-      <span class="btn">Action</span>
-      <span class="input">Input…</span>
+<span class="stack" class:compact>
+  <button
+    type="button"
+    class="style-card"
+    class:selected
+    class:compact
+    style={cardStyle}
+    aria-pressed={selected}
+    onclick={() => ontoggle?.()}
+  >
+    <header class="head">
+      <strong class="name">{item.name}</strong>
+      {#if distance !== null}
+        <span class="distance" style={`font-family: var(--font-mono, ${FALLBACK_MONO})`}>
+          Δ {Math.round(distance * 100)}%
+        </span>
+      {/if}
+    </header>
+    <div class="swatches">
+      {#each swatches as swatch (swatch.name)}
+        <span class="swatch" style:background={swatch.value} title={swatch.name}></span>
+      {/each}
+      <span class="radius-cue" style="border-radius: var(--radius, 0.25rem)" title={`--radius: ${radiusValue}`}></span>
     </div>
-  </div>
-</button>
+    {#if !compact}
+      <nav class="nav">
+        <span>Product</span>
+        <span>Pricing</span>
+        <span>About</span>
+      </nav>
+      <div class="mini-card">
+        <h3 class="heading">Heading specimen</h3>
+        <p class="copy">Card copy with a muted supporting line.</p>
+        <div class="controls">
+          <span class="btn">Action</span>
+          <span class="input">Input…</span>
+        </div>
+      </div>
+    {/if}
+  </button>
+  {#if onsimilar}
+    <button type="button" class="similar-btn" onclick={onsimilar}>Similar →</button>
+  {/if}
+</span>
 
 <style>
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
   .style-card {
     display: flex;
     flex-direction: column;
@@ -86,6 +103,11 @@
     border: 1px solid var(--border, #ddd);
     border-radius: calc(var(--radius, 0.25rem) + 3px);
     cursor: pointer;
+  }
+  .style-card.compact {
+    width: 11rem;
+    padding: 0.5rem;
+    gap: 0.35rem;
   }
   .style-card.selected {
     outline: 3px solid #2563eb;
@@ -101,6 +123,9 @@
     font-size: 0.85rem;
     line-height: 1.2;
   }
+  .compact .name {
+    font-size: 0.75rem;
+  }
   .distance {
     font-size: 0.7rem;
     color: var(--muted-foreground, #666);
@@ -115,11 +140,19 @@
     height: 1rem;
     border: 1px solid rgb(0 0 0 / 0.15);
   }
+  .compact .swatch {
+    width: 0.75rem;
+    height: 0.75rem;
+  }
   .radius-cue {
     width: 1.75rem;
     height: 1rem;
     margin-left: auto;
     border: 2px solid var(--primary, #333);
+  }
+  .compact .radius-cue {
+    width: 1.25rem;
+    height: 0.75rem;
   }
   .nav {
     display: flex;
@@ -169,5 +202,17 @@
     border: 1px solid var(--input, #ccc);
     border-radius: var(--radius-sm, 0.15rem);
     font-size: 0.7rem;
+  }
+  .similar-btn {
+    align-self: flex-start;
+    padding: 0.1rem 0.25rem;
+    font-size: 0.7rem;
+    color: #2563eb;
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+  .similar-btn:hover {
+    text-decoration: underline;
   }
 </style>

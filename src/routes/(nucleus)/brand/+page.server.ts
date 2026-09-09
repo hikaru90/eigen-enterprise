@@ -19,7 +19,13 @@ export const load: PageServerLoad = async (event) => {
   const corpus = (await kernel.registry.execute('brand.corpus_list', {}, context)) as {
     builtAt: string
     itemCount: number
-    clusters: { id: string; name: string; memberIds: string[] }[]
+    clusters: {
+      id: string
+      name: string
+      memberIds: string[]
+      adjacentClusterIds: string[]
+      adjacentClusters: { id: string; name: string }[]
+    }[]
     items: {
       id: string
       name: string

@@ -28,6 +28,18 @@ describe('brandCorpus (static module asset registry)', () => {
     }
   })
 
+  it('M7: every cluster carries bounded, self-free adjacency tunnels to known clusters', () => {
+    const ids = new Set(brandCorpus.clusters().map((cluster) => cluster.id))
+    for (const cluster of brandCorpus.clusters()) {
+      expect(cluster.adjacentClusterIds.length).toBeGreaterThanOrEqual(1)
+      expect(cluster.adjacentClusterIds.length).toBeLessThanOrEqual(3)
+      expect(cluster.adjacentClusterIds).not.toContain(cluster.id)
+      for (const adjacentId of cluster.adjacentClusterIds) {
+        expect(ids.has(adjacentId)).toBe(true)
+      }
+    }
+  })
+
   it('summaries carry card-rendering data but never vectors or seeds', () => {
     const summary = brandCorpus.summary(brandCorpus.items[0]!)
     expect(Object.keys(summary).sort()).toEqual(

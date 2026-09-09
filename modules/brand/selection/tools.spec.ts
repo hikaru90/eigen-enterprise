@@ -6,9 +6,11 @@ import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext } from '$lib/kernel/types'
+import { knnFor } from '../corpus/clusters'
 import { InMemoryBrandStore, REQUIRED_VISUAL_ROLES } from '../store'
 import { expandSeeds } from '../style-format/expand'
 import { brandSeedsSchema } from '../style-format/seeds'
+import { styleVector } from '../style-format/vector'
 import { createBrandSelectionTools } from './tools'
 
 const humanAdmin: ToolContext = {
@@ -83,13 +85,29 @@ const F = pastel('3f000000-0000-4000-8000-00000000000f', 'pastel-f', 340)
 const toyCorpus: CorpusRegistry = (() => {
   const items = [A, B, C, D, E, F]
   const byId = new Map(items.map((item) => [item.id, item]))
+  const entries = items.map((item) => ({ id: item.id, name: item.name, vector: styleVector(item) }))
   return {
     items,
     index: {
       builtAt: '2026-09-09T00:00:00.000Z',
       itemCount: items.length,
-      knn: {},
-      clusters: [{ id: 'cluster-1', name: 'Pastel family', memberIds: items.map((i) => i.id), centroidVector: [] }],
+      knn: Object.fromEntries(items.map((item) => [item.id, knnFor(entries, item.id, 8)])),
+      clusters: [
+        {
+          id: 'cluster-1',
+          name: 'Pastel family',
+          memberIds: items.map((i) => i.id),
+          centroidVector: [],
+          adjacentClusterIds: ['cluster-2'],
+        },
+        {
+          id: 'cluster-2',
+          name: 'Terminal family',
+          memberIds: [],
+          centroidVector: [],
+          adjacentClusterIds: ['cluster-1'],
+        },
+      ],
     },
     item(id: string) {
       const hit = byId.get(id)
@@ -103,7 +121,10 @@ const toyCorpus: CorpusRegistry = (() => {
       cssVars: item.cssVars,
       darkCssVars: item.darkCssVars,
     }),
-    clusters: () => [{ id: 'cluster-1', name: 'Pastel family', memberIds: items.map((i) => i.id) }],
+    clusters: () => [
+      { id: 'cluster-1', name: 'Pastel family', memberIds: items.map((i) => i.id), adjacentClusterIds: ['cluster-2'] },
+      { id: 'cluster-2', name: 'Terminal family', memberIds: [], adjacentClusterIds: ['cluster-1'] },
+    ],
   }
 })()
 
@@ -133,11 +154,12 @@ function activatedRegistry() {
 describe('createBrandSelectionTools — descriptors', () => {
   const tools = createBrandSelectionTools({ store: new InMemoryBrandStore(), corpus: toyCorpus })
 
-  it('exposes the eight wizard tools with namespaced names', () => {
+  it('exposes the nine wizard tools with namespaced names', () => {
     expect(tools.map((t) => t.name).sort()).toEqual(
       [
         'brand.corpus_get',
         'brand.corpus_list',
+        'brand.corpus_similar',
         'brand.selection_matches',
         'brand.visual_set_activate',
         'brand.visual_set_create',
@@ -170,7 +192,19 @@ describe('selection wizard tools through the kernel pipeline', () => {
     await ACTIVATIONS.set('brand', true)
     await expect(registry.execute('brand.corpus_list', {}, agentPrincipal)).resolves.toMatchObject({
       itemCount: 6,
-      clusters: [{ id: 'cluster-1', name: 'Pastel family' }],
+      clusters: [
+        {
+          id: 'cluster-1',
+          name: 'Pastel family',
+          adjacentClusterIds: ['cluster-2'],
+          adjacentClusters: [{ id: 'cluster-2', name: 'Terminal family' }],
+        },
+        {
+          id: 'cluster-2',
+          name: 'Terminal family',
+          adjacentClusters: [{ id: 'cluster-1', name: 'Pastel family' }],
+        },
+      ],
     })
     const result = (await registry.execute(
       'brand.selection_matches',
@@ -182,6 +216,57 @@ describe('selection wizard tools through the kernel pipeline', () => {
     for (let i = 1; i < result.matches.length; i++) {
       expect(result.matches[i - 1]!.distance).toBeLessThanOrEqual(result.matches[i]!.distance)
     }
+  })
+
+  it('corpus_similar returns ranked "more like this" cards from the precomputed knn (M7)', async () => {
+    const { registry } = activatedRegistry()
+    await ACTIVATIONS.set('brand', true)
+    const result = (await registry.execute(
+      'brand.corpus_similar',
+      { itemId: A.id },
+      agentPrincipal,
+    )) as { itemId: string; similar: Array<{ item: { id: string; name: string; cssVars: Record<string, string> }; distance: number }> }
+    expect(result.itemId).toBe(A.id)
+    expect(result.similar).toHaveLength(5) // every other toy item (knn k=8 > corpus)
+    expect(result.similar.map((s) => s.item.id)).not.toContain(A.id)
+    for (const entry of result.similar) {
+      expect(entry.distance).toBeGreaterThanOrEqual(0)
+      expect(entry.item.cssVars).toBeDefined()
+    }
+    for (let i = 1; i < result.similar.length; i++) {
+      expect(result.similar[i - 1]!.distance).toBeLessThanOrEqual(result.similar[i]!.distance)
+    }
+  })
+
+  it('corpus_similar honors the limit and defaults to 8 (KNN_K)', async () => {
+    const { registry } = activatedRegistry()
+    await ACTIVATIONS.set('brand', true)
+    const limited = (await registry.execute(
+      'brand.corpus_similar',
+      { itemId: A.id, limit: 2 },
+      agentPrincipal,
+    )) as { similar: unknown[] }
+    expect(limited.similar).toHaveLength(2)
+    const unbounded = (await registry.execute(
+      'brand.corpus_similar',
+      { itemId: A.id },
+      agentPrincipal,
+    )) as { similar: unknown[] }
+    expect(unbounded.similar.length).toBeLessThanOrEqual(8)
+  })
+
+  it('corpus_similar fails loud on an unknown itemId and an invalid limit', async () => {
+    const { registry } = activatedRegistry()
+    await ACTIVATIONS.set('brand', true)
+    await expect(
+      registry.execute('brand.corpus_similar', { itemId: '00000000-0000-4000-8000-000000000000' }, humanAdmin),
+    ).rejects.toThrow(/unknown corpus item/)
+    await expect(
+      registry.execute('brand.corpus_similar', { itemId: A.id, limit: 0 }, humanAdmin),
+    ).rejects.toMatchObject({ code: 'invalid_input' })
+    await expect(
+      registry.execute('brand.corpus_similar', { itemId: A.id, limit: 9 }, humanAdmin),
+    ).rejects.toMatchObject({ code: 'invalid_input' })
   })
 
   it('selection_matches enforces the >=3 pick unlock at schema level', async () => {

@@ -1,4 +1,4 @@
-import { styleDistance, toNumericVector, type StyleVector } from '../style-format/vector'
+import { fromNumericVector, styleDistance, toNumericVector, type StyleVector } from '../style-format/vector'
 
 /**
  * Build-time similarity structures over the corpus (phase-2d M3): k-NN and
@@ -12,6 +12,8 @@ export const KNN_K = 8
 export const CLUSTER_THRESHOLD = 0.35
 /** Clusters below this size dissolve; members join their nearest survivor. */
 export const CLUSTER_MIN_SIZE = 3
+/** Tunnel links per cluster for tree navigation (phase-2d M7, V7). */
+export const ADJACENT_CLUSTERS_K = 3
 
 export type VectorEntry = { id: string; name: string; vector: StyleVector }
 
@@ -150,4 +152,35 @@ function finalizeCluster(entries: VectorEntry[], members: Group, id: string): Co
     return Math.round((sum / members.length) * 1e6) / 1e6
   })
   return { id, name: `${entries[members[central]].name} family`, memberIds, centroidVector }
+}
+
+export type CentroidEntry = { id: string; centroidVector: number[] }
+
+/**
+ * Cluster adjacency for tree navigation (phase-2d M7): every cluster lists up
+ * to ADJACENT_CLUSTERS_K other clusters, ranked by styleDistance over the
+ * STORED centroid vectors (fromNumericVector reconstruction — the exact same
+ * metric as item-level k-NN). Deterministic: distance, then cluster id.
+ * Tunnels may be asymmetric when more than ADJACENT_CLUSTERS_K + 1 clusters
+ * exist (A's top-3 can include B while B's does not include A) — documented
+ * V7 semantics, invariants assert exact symmetry only where the cluster count
+ * makes the lists exhaustive.
+ */
+export function adjacentClusterIdsFor(clusters: readonly CentroidEntry[], k: number = ADJACENT_CLUSTERS_K): Record<string, string[]> {
+  const byId = new Map(clusters.map((c) => [c.id, c]))
+  if (byId.size !== clusters.length) throw new Error('adjacentClusterIdsFor: duplicate cluster ids')
+  const adjacency: Record<string, string[]> = {}
+  for (const cluster of clusters) {
+    if (!Number.isInteger(k) || k < 1) throw new Error(`adjacentClusterIdsFor: k must be a positive integer, got ${k}`)
+    adjacency[cluster.id] = clusters
+      .filter((other) => other.id !== cluster.id)
+      .map((other) => ({
+        id: other.id,
+        dist: styleDistance(fromNumericVector(cluster.centroidVector), fromNumericVector(other.centroidVector)),
+      }))
+      .sort((a, b) => a.dist - b.dist || (a.id < b.id ? -1 : 1))
+      .slice(0, k)
+      .map((e) => e.id)
+  }
+  return adjacency
 }

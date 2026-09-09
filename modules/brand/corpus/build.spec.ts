@@ -51,6 +51,39 @@ describe('corpus build (phase-2d M3)', () => {
     expect(() => assertIndexInvariants(items, index)).not.toThrow()
   })
 
+  it('M7: every cluster carries bounded, self-free, duplicate-free adjacency tunnels', () => {
+    for (const cluster of index.clusters) {
+      expect(Array.isArray(cluster.adjacentClusterIds)).toBe(true)
+      expect(cluster.adjacentClusterIds.length).toBeGreaterThanOrEqual(1)
+      expect(cluster.adjacentClusterIds.length).toBeLessThanOrEqual(3)
+      expect(cluster.adjacentClusterIds).not.toContain(cluster.id)
+      expect(new Set(cluster.adjacentClusterIds).size).toBe(cluster.adjacentClusterIds.length)
+      for (const adjacentId of cluster.adjacentClusterIds) {
+        expect(index.clusters.some((c) => c.id === adjacentId)).toBe(true)
+      }
+    }
+  })
+
+  it('M7: adjacency is ranked nearest-first by centroid styleDistance', async () => {
+    const { fromNumericVector, styleDistance } = await import('../style-format/vector')
+    for (const cluster of index.clusters) {
+      const distances = cluster.adjacentClusterIds.map((id) => {
+        const other = index.clusters.find((c) => c.id === id)!
+        return styleDistance(fromNumericVector(cluster.centroidVector), fromNumericVector(other.centroidVector))
+      })
+      expect([...distances].sort((a, b) => a - b)).toEqual(distances)
+    }
+  })
+
+  it('M7: with only 3 clusters the tunnels are exhaustive and exactly symmetric', () => {
+    expect(index.clusters.length).toBeLessThanOrEqual(4)
+    for (const cluster of index.clusters) {
+      expect(cluster.adjacentClusterIds.sort()).toEqual(
+        index.clusters.filter((c) => c.id !== cluster.id).map((c) => c.id).sort(),
+      )
+    }
+  })
+
   it('enforces the minimum corpus size (CORPUS_MIN_OVERRIDE can lower it explicitly)', () => {
     const min = corpusMinItems()
     expect(items.length).toBeGreaterThanOrEqual(min)
@@ -67,8 +100,10 @@ describe('corpus build (phase-2d M3)', () => {
     const a = computeIndexContent(items)
     const b = computeIndexContent(loadCorpusItems(corpusDir))
     expect(JSON.stringify(a)).toBe(JSON.stringify(b))
-    const { builtAt: _ignore, ...contentA } = index
-    expect(JSON.stringify(contentA)).toBe(JSON.stringify(a))
+    // Read the artifact fresh: what buildCorpus left on disk must equal the
+    // computed content byte-for-byte (builtAt excepted).
+    const { builtAt: _ignore, ...contentOnDisk } = readIndex()
+    expect(JSON.stringify(contentOnDisk)).toBe(JSON.stringify(a))
   })
 
   it('preserves builtAt and skips writes on content-stable rebuilds', () => {

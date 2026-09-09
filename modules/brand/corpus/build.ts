@@ -5,15 +5,15 @@ import { validateCorpusItem, type BrandCorpusItem } from '../style-format/corpus
 import { expandSeeds } from '../style-format/expand'
 import { brandSeedsSchema } from '../style-format/seeds'
 import { NUMERIC_DIMS, styleVector, type StyleVector } from '../style-format/vector'
-import { clusterCorpus, knnFor, KNN_K } from './clusters'
+import { clusterCorpus, adjacentClusterIdsFor, knnFor, ADJACENT_CLUSTERS_K, KNN_K } from './clusters'
 import { BUILD_EPOCH, corpusSlug, deterministicUuid } from './mapping'
 
 /**
  * Corpus build (phase-2d M3). Runs THROUGH vitest (build.spec.ts) so the pure
  * TS modules are reused directly — plain node cannot import this repo's TS
  * modules and vite-node is broken for CLI use here. Zero runtime LLM, zero
- * runtime computation: vectors, k-NN and clusters are all precomputed here and
- * committed as modules/brand/corpus/index.json.
+ * runtime computation: vectors, k-NN, clusters and cluster adjacency are all
+ * precomputed here and committed as modules/brand/corpus/index.json.
  *
  * builtAt semantics: the timestamp of the last CONTENT-affecting build. When a
  * rebuild produces identical content, the previous builtAt is preserved (and
@@ -22,11 +22,20 @@ import { BUILD_EPOCH, corpusSlug, deterministicUuid } from './mapping'
  * LLM naming is a planned build-time follow-up, not a fallback.
  */
 
+export type CorpusIndexCluster = {
+  id: string
+  name: string
+  memberIds: string[]
+  centroidVector: number[]
+  /** Tunnel links (M7): up to ADJACENT_CLUSTERS_K nearest clusters, ranked. */
+  adjacentClusterIds: string[]
+}
+
 export type CorpusIndex = {
   builtAt: string
   itemCount: number
   knn: Record<string, string[]>
-  clusters: { id: string; name: string; memberIds: string[]; centroidVector: number[] }[]
+  clusters: CorpusIndexCluster[]
 }
 
 /** Wrapper schema for hand-authored archetype seed files (seeds/*.json). */
@@ -108,9 +117,9 @@ export function loadCorpusItems(corpusDir: string): BrandCorpusItem[] {
 }
 
 /**
- * Pure index computation over validated items: vectors, k-NN (k=8) and
+ * Pure index computation over validated items: vectors, k-NN (k=8),
  * deterministic agglomerative complete-link clusters (threshold 0.35, min
- * cluster size 3 — pinned in clusters.ts).
+ * cluster size 3 — pinned in clusters.ts) and cluster adjacency tunnels (M7).
  */
 export function computeIndexContent(items: BrandCorpusItem[]): Omit<CorpusIndex, 'builtAt'> {
   const ids = new Set(items.map((i) => i.id))
@@ -122,7 +131,12 @@ export function computeIndexContent(items: BrandCorpusItem[]): Omit<CorpusIndex,
     knn[entry.id] = knnFor(entries, entry.id, KNN_K)
   }
   const clusters = clusterCorpus(entries)
-  return { itemCount: items.length, knn, clusters }
+  const adjacency = adjacentClusterIdsFor(clusters)
+  return {
+    itemCount: items.length,
+    knn,
+    clusters: clusters.map((cluster) => ({ ...cluster, adjacentClusterIds: adjacency[cluster.id]! })),
+  }
 }
 
 /** CORPUS_MIN_OVERRIDE lets the owner lower (or zero) the size bar explicitly. */
@@ -213,6 +227,44 @@ export function assertIndexInvariants(items: BrandCorpusItem[], index: CorpusInd
   for (const id of ids) {
     if (!seen.has(id)) violations.push(`item ${id} is in no cluster`)
   }
+
+  // M7 adjacency invariants (tunnel links): bounded, self-free, duplicate-free,
+  // referencing known clusters only. Exact symmetry is asserted only when the
+  // cluster count makes every list exhaustive (clusters <= k+1) — beyond that,
+  // asymmetric tunnels are by design (see adjacentClusterIdsFor).
+  const clusterIds = new Set(index.clusters.map((c) => c.id))
+  for (const cluster of index.clusters) {
+    const adjacent = cluster.adjacentClusterIds
+    if (!Array.isArray(adjacent)) {
+      violations.push(`cluster ${cluster.id} has no adjacentClusterIds array`)
+      continue
+    }
+    if (index.clusters.length > 1 && adjacent.length === 0) {
+      violations.push(`cluster ${cluster.id} has no adjacency entries`)
+    }
+    if (adjacent.length > ADJACENT_CLUSTERS_K) {
+      violations.push(`cluster ${cluster.id} has ${adjacent.length} adjacency entries (max ${ADJACENT_CLUSTERS_K})`)
+    }
+    if (adjacent.includes(cluster.id)) violations.push(`cluster ${cluster.id} adjacency includes self`)
+    if (new Set(adjacent).size !== adjacent.length) {
+      violations.push(`cluster ${cluster.id} adjacency has duplicate entries`)
+    }
+    for (const adjacentId of adjacent) {
+      if (!clusterIds.has(adjacentId)) {
+        violations.push(`cluster ${cluster.id} adjacency references unknown cluster ${adjacentId}`)
+      }
+    }
+  }
+  if (index.clusters.length > 1 && index.clusters.length <= ADJACENT_CLUSTERS_K + 1) {
+    for (const cluster of index.clusters) {
+      for (const adjacentId of cluster.adjacentClusterIds) {
+        if (!index.clusters.find((c) => c.id === adjacentId)?.adjacentClusterIds.includes(cluster.id)) {
+          violations.push(`cluster adjacency not symmetric: ${cluster.id} -> ${adjacentId} is one-way`)
+        }
+      }
+    }
+  }
+
   if (violations.length > 0) {
     throw new Error(`corpus index invariant violations (${violations.length}):\n${violations.join('\n')}`)
   }

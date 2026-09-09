@@ -242,7 +242,7 @@ export function styleDistance(a: StyleVector, b: StyleVector): number {
 export const NUMERIC_DIMS = 48
 export const FONT_CLASS_ORDER: FontClass[] = ['sans', 'serif', 'mono', 'display']
 
-/** Flatten a vector into the fixed 47-dim normalized layout (rounded to 6dp). */
+/** Flatten a vector into the fixed 48-dim normalized layout (rounded to 6dp). */
 export function toNumericVector(v: StyleVector): number[] {
   const out: number[] = []
   for (const role of VECTOR_ROLES) {
@@ -255,4 +255,58 @@ export function toNumericVector(v: StyleVector): number[] {
   }
   out.push(v.weightSet, round6(v.darkDelta), round6(v.grain), round6(v.elevation))
   return out
+}
+
+/**
+ * Rebuilds a StyleVector from the stored numeric layout so styleDistance can
+ * rank STORED centroid vectors (cluster adjacency, phase-2d M7) with the same
+ * metric used everywhere else. Exact inverse of toNumericVector for item
+ * vectors; for cluster centroids (member means) the font slots decode to the
+ * dominant class (argmax, ties by FONT_CLASS_ORDER) and the scalars keep
+ * their fractional means — both deterministic, both only ever feed the
+ * distance metric. Fails loud on a wrong-dim or NaN layout.
+ */
+export function fromNumericVector(flat: readonly number[]): StyleVector {
+  if (flat.length !== NUMERIC_DIMS) {
+    throw new Error(`fromNumericVector: expected ${NUMERIC_DIMS} dims, got ${flat.length}`)
+  }
+  const num = (i: number) => {
+    const x = flat[i]
+    if (typeof x !== 'number' || Number.isNaN(x)) {
+      throw new Error(`fromNumericVector: dim ${i} is not a number`)
+    }
+    return x
+  }
+  const colors = Object.fromEntries(
+    VECTOR_ROLES.map((role, r) => {
+      const base = r * 3
+      return [role, { l: num(base), c: num(base + 1) * 0.4, h: num(base + 2) * 360 }]
+    }),
+  ) as Record<VectorRole, OklchTriple>
+  let offset = VECTOR_ROLES.length * 3 + 2 // colors + radius + spacing
+  const slotClass = (): FontClass => {
+    let best = 0
+    for (let i = 1; i < FONT_CLASS_ORDER.length; i++) {
+      if (num(offset + i) > num(offset + best)) best = i
+    }
+    offset += FONT_CLASS_ORDER.length
+    return FONT_CLASS_ORDER[best]!
+  }
+  const sans = slotClass()
+  const display = slotClass()
+  const mono = slotClass()
+  // Item layouts store exact 0|1; centroid layouts store the member mean.
+  // The reconstruction only feeds the numeric distance metric, which treats
+  // weightSet as a scalar — so the widening cast is the documented contract.
+  const weightSet = num(offset) as 0 | 1
+  return {
+    colors,
+    radius: num(VECTOR_ROLES.length * 3),
+    spacing: num(VECTOR_ROLES.length * 3 + 1),
+    fontClasses: { sans, display, mono },
+    weightSet,
+    darkDelta: num(offset + 1),
+    grain: num(offset + 2),
+    elevation: num(offset + 3),
+  }
 }

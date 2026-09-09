@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { validateCorpusItem, type BrandCorpusItem } from '../style-format/corpus'
+import { ADJACENT_CLUSTERS_K } from './clusters'
 import corpusIndexJson from './index.json'
 
 /**
@@ -23,10 +24,22 @@ export type CorpusIndexData = {
   builtAt: string
   itemCount: number
   knn: Record<string, string[]>
-  clusters: { id: string; name: string; memberIds: string[]; centroidVector: number[] }[]
+  clusters: {
+    id: string
+    name: string
+    memberIds: string[]
+    centroidVector: number[]
+    /** Tunnel links (M7): up to ADJACENT_CLUSTERS_K nearest clusters, ranked. */
+    adjacentClusterIds: string[]
+  }[]
 }
 
-export type CorpusClusterInfo = { id: string; name: string; memberIds: string[] }
+export type CorpusClusterInfo = {
+  id: string
+  name: string
+  memberIds: string[]
+  adjacentClusterIds: string[]
+}
 
 /** Card-rendering summary: no vectors, no seeds (payload stays lean). */
 export type CorpusItemSummary = {
@@ -66,6 +79,23 @@ function buildRegistry(): CorpusRegistry {
       }
     }
   }
+  const clusterIds = new Set(index.clusters.map((cluster) => cluster.id))
+  for (const cluster of index.clusters) {
+    const adjacent = cluster.adjacentClusterIds
+    if (!Array.isArray(adjacent) || adjacent.length === 0 || adjacent.length > ADJACENT_CLUSTERS_K) {
+      throw new Error(
+        `corpus index is stale: cluster ${cluster.id} carries ${adjacent?.length ?? 'no'} adjacency entries (expected 1..${ADJACENT_CLUSTERS_K}) — rebuild the corpus index`,
+      )
+    }
+    if (adjacent.includes(cluster.id)) {
+      throw new Error(`corpus index is stale: cluster ${cluster.id} adjacency includes self`)
+    }
+    for (const adjacentId of adjacent) {
+      if (!clusterIds.has(adjacentId)) {
+        throw new Error(`corpus index is stale: cluster ${cluster.id} tunnels to unknown cluster ${adjacentId}`)
+      }
+    }
+  }
 
   return {
     items,
@@ -91,6 +121,7 @@ function buildRegistry(): CorpusRegistry {
         id: cluster.id,
         name: cluster.name,
         memberIds: [...cluster.memberIds],
+        adjacentClusterIds: [...cluster.adjacentClusterIds],
       }))
     },
   }

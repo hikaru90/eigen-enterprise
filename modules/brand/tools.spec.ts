@@ -68,6 +68,7 @@ describe('createBrandTools', () => {
       'brand.extract_session_get',
       'brand.corpus_list',
       'brand.corpus_get',
+      'brand.corpus_similar',
       'brand.selection_matches',
       'brand.visual_set_get',
       'brand.visual_set_list',

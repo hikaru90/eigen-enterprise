@@ -1,8 +1,8 @@
 import type { BrandCorpusItem } from '../style-format/corpus'
 import { describe, expect, it } from 'vitest'
 import { brandSeedsSchema } from '../style-format/seeds'
-import { styleDistance, styleVector, type StyleVector } from '../style-format/vector'
-import { clusterCorpus, knnFor } from './clusters'
+import { fromNumericVector, styleDistance, styleVector, type StyleVector } from '../style-format/vector'
+import { ADJACENT_CLUSTERS_K, adjacentClusterIdsFor, clusterCorpus, knnFor } from './clusters'
 
 function seeds(h: number, c: number, radius: string, shape: 'sharp' | 'soft' | 'pill' | 'squircle', fonts: Record<string, string>) {
   return brandSeedsSchema.parse({
@@ -183,5 +183,51 @@ describe('clusterCorpus', () => {
         expect(x).toBeLessThanOrEqual(1)
       }
     }
+  })
+})
+
+describe('adjacentClusterIdsFor (phase-2d M7 tree navigation)', () => {
+  function centroidDistance(a: { centroidVector: number[] }, b: { centroidVector: number[] }): number {
+    return styleDistance(fromNumericVector(a.centroidVector), fromNumericVector(b.centroidVector))
+  }
+
+  it('ranks every other cluster by centroid styleDistance, nearest-first, k=3 cap', () => {
+    const clusters = clusterCorpus(vectors(toyCorpus()))
+    const adjacency = adjacentClusterIdsFor(clusters)
+    expect(clusters).toHaveLength(3)
+    for (const cluster of clusters) {
+      const adjacent = adjacency[cluster.id]!
+      expect(ADJACENT_CLUSTERS_K).toBe(3)
+      expect(adjacent.length).toBe(Math.min(ADJACENT_CLUSTERS_K, clusters.length - 1))
+      expect(adjacent).not.toContain(cluster.id)
+      expect(new Set(adjacent).size).toBe(adjacent.length)
+      const distances = adjacent.map((id) => centroidDistance(cluster, clusters.find((c) => c.id === id)!))
+      expect([...distances].sort((a, b) => a - b)).toEqual(distances)
+    }
+  })
+
+  it('bridges the warm families first: pastel ↔ editorial adjacency precedes the terminal family', () => {
+    const items = toyCorpus()
+    const clusters = clusterCorpus(vectors(items))
+    const adjacency = adjacentClusterIdsFor(clusters)
+    const familyOf = (clusterId: string): string => {
+      const cluster = clusters.find((c) => c.id === clusterId)!
+      const firstName = items.find((i) => i.id === cluster.memberIds[0])!.name
+      return firstName.split(' ')[0]!
+    }
+    const clusterOfFamily = (family: string) => clusters.find((c) => familyOf(c.id) === family)!.id
+    const pastel = clusterOfFamily('pastel')
+    const editorial = clusterOfFamily('editorial')
+    const terminal = clusterOfFamily('terminal')
+    // The two light warm palettes are mutual nearest neighbors…
+    expect(adjacency[pastel]![0]).toBe(editorial)
+    expect(adjacency[editorial]![0]).toBe(pastel)
+    // …and the dark mono terminal family still lists both warm families as its tunnels.
+    expect(adjacency[terminal]!.sort()).toEqual([editorial, pastel].sort())
+  })
+
+  it('is deterministic', () => {
+    const clusters = clusterCorpus(vectors(toyCorpus()))
+    expect(adjacentClusterIdsFor(clusters)).toEqual(adjacentClusterIdsFor(clusterCorpus(vectors(toyCorpus()))))
   })
 })

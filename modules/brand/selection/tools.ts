@@ -10,6 +10,7 @@ import {
   MAX_SELECTION_PICKS,
   MIN_SELECTION_PICKS,
 } from './match'
+import { DEFAULT_SIMILAR_LIMIT, similarItems } from './navigate'
 
 /**
  * Kernel tools for the selection wizard surface (phase-2d M4, V7): browse the
@@ -38,6 +39,10 @@ function requireHuman(ctx: ToolContext): void {
 }
 
 const corpusGetInput = z.object({ itemId: z.string().uuid() })
+const corpusSimilarInput = z.object({
+  itemId: z.string().uuid(),
+  limit: z.number().int().min(1).max(DEFAULT_SIMILAR_LIMIT).optional(),
+})
 const selectionMatchesInput = z.object({
   pickedIds: z
     .array(z.string().uuid())
@@ -79,16 +84,28 @@ export function createBrandSelectionTools(deps: BrandSelectionToolDeps = {}): To
       name: 'brand.corpus_list',
       module: 'brand',
       summary:
-        'Read the static design corpus as clusters + item summaries (id, name, provenance source, cssVars, darkCssVars) — enough to render style cards, no vectors.',
+        'Read the static design corpus as clusters (with M7 adjacency tunnels) + item summaries (id, name, provenance source, cssVars, darkCssVars) — enough to render style cards, no vectors.',
       auditClass: 'read',
       inputSchema: z.object({}),
       permission: readPermission,
-      handler: async () => ({
-        builtAt: corpus.index.builtAt,
-        itemCount: corpus.index.itemCount,
-        clusters: corpus.clusters(),
-        items: corpus.items.map((item) => corpus.summary(item)),
-      }),
+      handler: async () => {
+        const nameById = new Map(corpus.clusters().map((cluster) => [cluster.id, cluster.name]))
+        return {
+          builtAt: corpus.index.builtAt,
+          itemCount: corpus.index.itemCount,
+          clusters: corpus.clusters().map((cluster) => ({
+            ...cluster,
+            adjacentClusters: cluster.adjacentClusterIds.map((adjacentId) => {
+              const name = nameById.get(adjacentId)
+              if (name === undefined) {
+                throw new Error(`cluster ${cluster.id} tunnels to unknown cluster ${adjacentId}`)
+              }
+              return { id: adjacentId, name }
+            }),
+          })),
+          items: corpus.items.map((item) => corpus.summary(item)),
+        }
+      },
     },
     {
       name: 'brand.corpus_get',
@@ -98,6 +115,29 @@ export function createBrandSelectionTools(deps: BrandSelectionToolDeps = {}): To
       inputSchema: corpusGetInput,
       permission: readPermission,
       handler: async (_ctx, input) => corpus.item(corpusGetInput.parse(input).itemId),
+    },
+    {
+      name: 'brand.corpus_similar',
+      module: 'brand',
+      summary:
+        'Tree navigation (M7): ranked "more like this" list for one corpus item, served from the precomputed k-NN in the corpus index — per-neighbor style distance, self excluded, card summaries only. Pure lookup + ranking, zero LLM (V10).',
+      auditClass: 'read',
+      inputSchema: corpusSimilarInput,
+      permission: readPermission,
+      handler: async (_ctx, input) => {
+        const parsed = corpusSimilarInput.parse(input)
+        corpus.item(parsed.itemId)
+        const similar = similarItems(corpus.index, corpus.items, parsed.itemId, {
+          limit: parsed.limit ?? DEFAULT_SIMILAR_LIMIT,
+        })
+        return {
+          itemId: parsed.itemId,
+          similar: similar.map((entry) => ({
+            item: corpus.summary(entry.item),
+            distance: entry.distance,
+          })),
+        }
+      },
     },
     {
       name: 'brand.selection_matches',
