@@ -6,10 +6,12 @@ import {
   brandGlossary,
   brandGuidelineSets,
   brandLexicon,
+  brandVisualSets,
   brandVisualTokens,
   brandVoiceExamples,
   type BrandGuidelineSetContext,
 } from '$lib/server/db/brand.schema'
+import { brandSeedsSchema, type BrandSeeds } from './style-format/seeds'
 
 /**
  * BrandStore — the company's brand as executable context (phase-2c, M2).
@@ -127,6 +129,54 @@ export const updateSetInputSchema = z.object({
 })
 
 // ---------------------------------------------------------------------------
+// Visual sets (phase-2d M4/V7): working drafts of the visual identity, one
+// active set per company, draft-only writes (G23). Corpus references are
+// ids only — the corpus is a static module artifact, not a store concern.
+// ---------------------------------------------------------------------------
+
+function nonEmptyVars(message: string) {
+  return z
+    .record(z.string(), z.string())
+    .refine((vars) => Object.keys(vars).length > 0, { message })
+}
+
+export const createVisualSetInputSchema = z.object({
+  name: z.string().trim().min(1, 'name is required'),
+  sourceItemId: z.string().uuid().optional(),
+  pickedItemIds: z
+    .array(z.string().uuid())
+    .min(1, 'pickedItemIds requires at least one picked corpus item — there is no selection without picks'),
+  cssVars: nonEmptyVars('cssVars must not be empty — a visual set without resolved tokens is meaningless (V3)'),
+  darkCssVars: z.record(z.string(), z.string()).optional(),
+  seeds: brandSeedsSchema.nullable().optional(),
+})
+
+export const updateVisualSetInputSchema = z.object({
+  setId: z.string().uuid(),
+  name: z.string().trim().min(1).optional(),
+  pickedItemIds: z.array(z.string().uuid()).min(1).optional(),
+  cssVars: nonEmptyVars('cssVars must not be empty — a visual set without resolved tokens is meaningless (V3)').optional(),
+  darkCssVars: z.record(z.string(), z.string()).nullable().optional(),
+  seeds: brandSeedsSchema.nullable().optional(),
+})
+
+export type BrandVisualSet = {
+  id: string
+  status: BrandSetStatus
+  name: string
+  sourceItemId: string | null
+  pickedItemIds: string[]
+  seeds: BrandSeeds | null
+  cssVars: Record<string, string>
+  darkCssVars: Record<string, string> | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type CreateVisualSetInput = z.infer<typeof createVisualSetInputSchema>
+export type UpdateVisualSetInput = z.infer<typeof updateVisualSetInputSchema>
+
+// ---------------------------------------------------------------------------
 // Store contract
 // ---------------------------------------------------------------------------
 
@@ -191,6 +241,18 @@ export type BrandStore = {
   listVoiceExamples(setId: string): Promise<BrandVoiceExample[]>
   listLexicon(setId: string): Promise<BrandLexiconEntry[]>
   listCriteria(setId: string): Promise<BrandCriterion[]>
+
+  // Visual sets (phase-2d M4): draft-only writes, one active set per company.
+  /** Create a draft visual set from a wizard selection (requires resolved cssVars, V3). */
+  createVisualSet(input: CreateVisualSetInput): Promise<BrandVisualSet>
+  getVisualSet(setId: string): Promise<BrandVisualSet | null>
+  listVisualSets(): Promise<BrandVisualSet[]>
+  /** Fail-loud resolution of the company's active visual set (no implicit latest, G23). */
+  getActiveVisualSet(): Promise<BrandVisualSet>
+  /** Patch a DRAFT visual set. Active/retired sets are immutable (G23). */
+  updateVisualSet(input: UpdateVisualSetInput): Promise<BrandVisualSet>
+  /** Draft -> active flip; fails loud while another active set exists (used by the M5 publish gate). */
+  activateVisualSet(setId: string): Promise<BrandVisualSet>
 }
 
 function requireDraft(set: BrandGuidelineSet, action: string): BrandGuidelineSet {
@@ -200,6 +262,22 @@ function requireDraft(set: BrandGuidelineSet, action: string): BrandGuidelineSet
     )
   }
   return set
+}
+
+function requireDraftVisualSet(set: BrandVisualSet, action: string): BrandVisualSet {
+  if (set.status !== 'draft') {
+    throw new Error(
+      `brand visual set ${set.id} is ${set.status}; ${action} is only allowed on draft sets (G23: active sets are immutable)`,
+    )
+  }
+  return set
+}
+
+/** Each corpus item may be picked once — a duplicated pick would double its weight in the centroid. */
+function assertNoDuplicatePicks(pickedItemIds: readonly string[]): void {
+  if (new Set(pickedItemIds).size !== pickedItemIds.length) {
+    throw new Error('pickedItemIds contains duplicates — each corpus item may be picked once')
+  }
 }
 
 /** Activation guards shared by both store implementations (G2 + D3 + CARE completeness). */
@@ -232,6 +310,7 @@ function nowIso(): string {
 /** In-memory BrandStore for tests and in-memory kernel wiring. */
 export class InMemoryBrandStore implements BrandStore {
   private readonly sets = new Map<string, BrandGuidelineSet>()
+  private readonly visualSets = new Map<string, BrandVisualSet>()
   private readonly examples: BrandVoiceExample[] = []
   private readonly lexicon: BrandLexiconEntry[] = []
   private readonly criteria: BrandCriterion[] = []
@@ -445,6 +524,82 @@ export class InMemoryBrandStore implements BrandStore {
   private requireDraftSet(setId: string): BrandGuidelineSet {
     return requireDraft(this.requireSet(setId), 'curation writes')
   }
+
+  // -- Visual sets (phase-2d M4) -------------------------------------------
+
+  async createVisualSet(input: CreateVisualSetInput): Promise<BrandVisualSet> {
+    const parsed = createVisualSetInputSchema.parse(input)
+    assertNoDuplicatePicks(parsed.pickedItemIds)
+    const set: BrandVisualSet = {
+      id: crypto.randomUUID(),
+      status: 'draft',
+      name: parsed.name,
+      sourceItemId: parsed.sourceItemId ?? null,
+      pickedItemIds: [...parsed.pickedItemIds],
+      seeds: parsed.seeds ?? null,
+      cssVars: { ...parsed.cssVars },
+      darkCssVars: parsed.darkCssVars ? { ...parsed.darkCssVars } : null,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+    }
+    this.visualSets.set(set.id, set)
+    return set
+  }
+
+  async getVisualSet(setId: string): Promise<BrandVisualSet | null> {
+    return this.visualSets.get(setId) ?? null
+  }
+
+  async listVisualSets(): Promise<BrandVisualSet[]> {
+    return [...this.visualSets.values()].sort(
+      (a, b) => b.createdAt.localeCompare(a.createdAt) || (a.id < b.id ? -1 : 1),
+    )
+  }
+
+  async getActiveVisualSet(): Promise<BrandVisualSet> {
+    for (const set of this.visualSets.values()) {
+      if (set.status === 'active') return set
+    }
+    throw new Error(
+      'no active brand visual set (activation is the M5 publish gate; absence of an active set means the app keeps its own style — never a fallback)',
+    )
+  }
+
+  async updateVisualSet(input: UpdateVisualSetInput): Promise<BrandVisualSet> {
+    const parsed = updateVisualSetInputSchema.parse(input)
+    const current = this.visualSets.get(parsed.setId)
+    if (!current) throw new Error(`unknown brand visual set: ${parsed.setId}`)
+    requireDraftVisualSet(current, 'updates')
+    const updated: BrandVisualSet = {
+      ...current,
+      name: parsed.name ?? current.name,
+      pickedItemIds: parsed.pickedItemIds
+        ? (assertNoDuplicatePicks(parsed.pickedItemIds), [...parsed.pickedItemIds])
+        : current.pickedItemIds,
+      cssVars: parsed.cssVars ?? current.cssVars,
+      darkCssVars: parsed.darkCssVars === undefined ? current.darkCssVars : parsed.darkCssVars,
+      seeds: parsed.seeds === undefined ? current.seeds : parsed.seeds,
+      updatedAt: nowIso(),
+    }
+    this.visualSets.set(updated.id, updated)
+    return updated
+  }
+
+  async activateVisualSet(setId: string): Promise<BrandVisualSet> {
+    const set = this.visualSets.get(setId)
+    if (!set) throw new Error(`unknown brand visual set: ${setId}`)
+    requireDraftVisualSet(set, 'activation')
+    for (const other of this.visualSets.values()) {
+      if (other.id !== setId && other.status === 'active') {
+        throw new Error(
+          `an active brand visual set already exists (${other.id}); retire it first (one active set per company)`,
+        )
+      }
+    }
+    const activated: BrandVisualSet = { ...set, status: 'active', updatedAt: nowIso() }
+    this.visualSets.set(activated.id, activated)
+    return activated
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -457,6 +612,7 @@ type LexiconRow = typeof brandLexicon.$inferSelect
 type CriterionRow = typeof brandCriteria.$inferSelect
 type TokenRow = typeof brandVisualTokens.$inferSelect
 type GlossaryRow = typeof brandGlossary.$inferSelect
+type VisualSetRow = typeof brandVisualSets.$inferSelect
 
 function toSet(row: SetRow): BrandGuidelineSet {
   return {
@@ -529,6 +685,22 @@ function toGlossaryEntry(row: GlossaryRow): BrandGlossaryEntry {
   }
 }
 
+function toVisualSet(row: VisualSetRow): BrandVisualSet {
+  return {
+    id: row.id,
+    status: row.status,
+    name: row.name,
+    sourceItemId: row.sourceItemId,
+    pickedItemIds: row.pickedItemIds,
+    // Re-validate stored seeds — DB integrity is checked, not trusted.
+    seeds: row.seeds ? brandSeedsSchema.parse(row.seeds) : null,
+    cssVars: row.cssVars,
+    darkCssVars: row.darkCssVars ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  }
+}
+
 async function resolveDb(db: DbHandle) {
   return typeof db === 'function' ? await db() : db
 }
@@ -541,6 +713,19 @@ async function requireDbSet(database: Awaited<ReturnType<typeof resolveDb>>, set
     .limit(1)
   if (!rows[0]) throw new Error(`unknown brand guideline set: ${setId}`)
   return toSet(rows[0])
+}
+
+async function requireDbVisualSet(
+  database: Awaited<ReturnType<typeof resolveDb>>,
+  setId: string,
+): Promise<BrandVisualSet> {
+  const rows = await database
+    .select()
+    .from(brandVisualSets)
+    .where(eq(brandVisualSets.id, setId))
+    .limit(1)
+  if (!rows[0]) throw new Error(`unknown brand visual set: ${setId}`)
+  return toVisualSet(rows[0])
 }
 
 /**
@@ -832,6 +1017,107 @@ export class DbBrandStore implements BrandStore {
       .where(eq(brandCriteria.setId, setId))
       .orderBy(brandCriteria.contentType, brandCriteria.criterion)
     return rows.map(toCriterion)
+  }
+
+  // -- Visual sets (phase-2d M4) -------------------------------------------
+
+  async createVisualSet(input: CreateVisualSetInput): Promise<BrandVisualSet> {
+    const parsed = createVisualSetInputSchema.parse(input)
+    assertNoDuplicatePicks(parsed.pickedItemIds)
+    const database = await resolveDb(this.db)
+    const rows = await database
+      .insert(brandVisualSets)
+      .values({
+        status: 'draft',
+        name: parsed.name,
+        sourceItemId: parsed.sourceItemId ?? null,
+        pickedItemIds: [...parsed.pickedItemIds],
+        seeds: parsed.seeds ?? null,
+        cssVars: parsed.cssVars,
+        darkCssVars: parsed.darkCssVars ?? null,
+      })
+      .returning()
+    if (!rows[0]) throw new Error('brand visual set insert returned no row')
+    return toVisualSet(rows[0])
+  }
+
+  async getVisualSet(setId: string): Promise<BrandVisualSet | null> {
+    const database = await resolveDb(this.db)
+    const rows = await database
+      .select()
+      .from(brandVisualSets)
+      .where(eq(brandVisualSets.id, setId))
+      .limit(1)
+    return rows[0] ? toVisualSet(rows[0]) : null
+  }
+
+  async listVisualSets(): Promise<BrandVisualSet[]> {
+    const database = await resolveDb(this.db)
+    const rows = await database
+      .select()
+      .from(brandVisualSets)
+      .orderBy(desc(brandVisualSets.createdAt), brandVisualSets.id)
+    return rows.map(toVisualSet)
+  }
+
+  async getActiveVisualSet(): Promise<BrandVisualSet> {
+    const database = await resolveDb(this.db)
+    const rows = await database
+      .select()
+      .from(brandVisualSets)
+      .where(eq(brandVisualSets.status, 'active'))
+      .limit(1)
+    if (!rows[0]) {
+      throw new Error(
+        'no active brand visual set (activation is the M5 publish gate; absence of an active set means the app keeps its own style — never a fallback)',
+      )
+    }
+    return toVisualSet(rows[0])
+  }
+
+  async updateVisualSet(input: UpdateVisualSetInput): Promise<BrandVisualSet> {
+    const parsed = updateVisualSetInputSchema.parse(input)
+    const database = await resolveDb(this.db)
+    const current = await requireDbVisualSet(database, parsed.setId)
+    requireDraftVisualSet(current, 'updates')
+    if (parsed.pickedItemIds) assertNoDuplicatePicks(parsed.pickedItemIds)
+    const rows = await database
+      .update(brandVisualSets)
+      .set({
+        ...(parsed.name === undefined ? {} : { name: parsed.name }),
+        ...(parsed.pickedItemIds === undefined ? {} : { pickedItemIds: [...parsed.pickedItemIds] }),
+        ...(parsed.cssVars === undefined ? {} : { cssVars: parsed.cssVars }),
+        ...(parsed.darkCssVars === undefined ? {} : { darkCssVars: parsed.darkCssVars }),
+        ...(parsed.seeds === undefined ? {} : { seeds: parsed.seeds }),
+        updatedAt: new Date(),
+      })
+      .where(eq(brandVisualSets.id, parsed.setId))
+      .returning()
+    if (!rows[0]) throw new Error(`brand visual set update returned no row: ${parsed.setId}`)
+    return toVisualSet(rows[0])
+  }
+
+  async activateVisualSet(setId: string): Promise<BrandVisualSet> {
+    const database = await resolveDb(this.db)
+    const set = await requireDbVisualSet(database, setId)
+    requireDraftVisualSet(set, 'activation')
+    const activeRows = await database
+      .select({ id: brandVisualSets.id })
+      .from(brandVisualSets)
+      .where(and(eq(brandVisualSets.status, 'active'), ne(brandVisualSets.id, setId)))
+      .limit(1)
+    if (activeRows[0]) {
+      throw new Error(
+        `an active brand visual set already exists (${activeRows[0].id}); retire it first (one active set per company)`,
+      )
+    }
+    const rows = await database
+      .update(brandVisualSets)
+      .set({ status: 'active', updatedAt: new Date() })
+      .where(eq(brandVisualSets.id, setId))
+      .returning()
+    if (!rows[0]) throw new Error(`brand visual set activation returned no row: ${setId}`)
+    return toVisualSet(rows[0])
   }
 }
 

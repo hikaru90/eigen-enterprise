@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { InMemoryBrandStore, createSetInputSchema } from './store'
 
 /** Valid CARE-complete context for guard tests. */
@@ -207,5 +207,97 @@ describe('InMemoryBrandStore — set lifecycle', () => {
     const examples = await store.listVoiceExamples(set.id)
     expect(examples.map((e) => e.label).sort()).toEqual(['bad', 'good'])
     await expect(store.listCriteria(set.id)).resolves.toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Visual sets (phase-2d M4): draft-only writes, one active set per company.
+// ---------------------------------------------------------------------------
+
+const ITEM_A = '1a000000-0000-4000-8000-00000000000a'
+const ITEM_B = '1b000000-0000-4000-8000-00000000000b'
+const ITEM_C = '1c000000-0000-4000-8000-00000000000c'
+
+function visualSetInput(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    name: 'Kindred draft',
+    pickedItemIds: [ITEM_A, ITEM_B, ITEM_C],
+    cssVars: { '--background': '#ffffff', '--primary': '#333333' },
+    ...overrides,
+  }
+}
+
+describe('InMemoryBrandStore — visual sets (phase-2d M4)', () => {
+  it('creates a draft visual set with the selection trail and resolved tokens', async () => {
+    const store = new InMemoryBrandStore()
+    const set = await store.createVisualSet(
+      visualSetInput({ sourceItemId: ITEM_A, darkCssVars: { '--background': '#111111' } }),
+    )
+    expect(set.status).toBe('draft')
+    expect(set.sourceItemId).toBe(ITEM_A)
+    expect(set.pickedItemIds).toEqual([ITEM_A, ITEM_B, ITEM_C])
+    expect(set.cssVars['--primary']).toBe('#333333')
+    expect(set.darkCssVars).toEqual({ '--background': '#111111' })
+    expect(set.seeds).toBeNull()
+  })
+
+  it('fails loud on empty cssVars, empty picks, or duplicate picks', async () => {
+    const store = new InMemoryBrandStore()
+    await expect(store.createVisualSet(visualSetInput({ cssVars: {} }))).rejects.toThrow(/cssVars must not be empty/)
+    await expect(store.createVisualSet(visualSetInput({ pickedItemIds: [] }))).rejects.toThrow(/at least one picked corpus item/)
+    await expect(
+      store.createVisualSet(visualSetInput({ pickedItemIds: [ITEM_A, ITEM_A, ITEM_B] })),
+    ).rejects.toThrow(/duplicates/)
+  })
+
+  it('updates draft sets: patch replaces provided fields and keeps the rest', async () => {
+    const store = new InMemoryBrandStore()
+    const set = await store.createVisualSet(visualSetInput())
+    const updated = await store.updateVisualSet({
+      setId: set.id,
+      name: 'Renamed draft',
+      pickedItemIds: [ITEM_B, ITEM_C, ITEM_A],
+    })
+    expect(updated.name).toBe('Renamed draft')
+    expect(updated.pickedItemIds).toEqual([ITEM_B, ITEM_C, ITEM_A])
+    expect(updated.cssVars).toEqual(set.cssVars)
+    expect(updated.updatedAt >= set.updatedAt).toBe(true)
+  })
+
+  it('active/retired visual sets are immutable (G23): no update after activation', async () => {
+    const store = new InMemoryBrandStore()
+    const set = await store.createVisualSet(visualSetInput())
+    await store.activateVisualSet(set.id)
+    await expect(
+      store.updateVisualSet({ setId: set.id, name: 'Nope' }),
+    ).rejects.toThrow(/only allowed on draft sets/)
+  })
+
+  it('activation is the one-active-per-company flip; a second active set fails loud', async () => {
+    const store = new InMemoryBrandStore()
+    await expect(store.getActiveVisualSet()).rejects.toThrow(/no active brand visual set/)
+    const first = await store.createVisualSet(visualSetInput())
+    const activated = await store.activateVisualSet(first.id)
+    expect(activated.status).toBe('active')
+    await expect(store.getActiveVisualSet()).resolves.toMatchObject({ id: first.id })
+
+    const second = await store.createVisualSet(visualSetInput({ name: 'Second draft' }))
+    await expect(store.activateVisualSet(second.id)).rejects.toThrow(/one active set per company/)
+  })
+
+  it('get and list resolve sets; unknown ids read null; list is newest-first', async () => {
+    const store = new InMemoryBrandStore()
+    const set = await store.createVisualSet(visualSetInput())
+    await expect(store.getVisualSet(set.id)).resolves.toMatchObject({ id: set.id })
+    await expect(store.getVisualSet('2a000000-0000-4000-8000-00000000000a')).resolves.toBeNull()
+
+    vi.useFakeTimers({ now: new Date(Date.now() + 5_000) })
+    try {
+      await store.createVisualSet(visualSetInput({ name: 'Newer draft' }))
+    } finally {
+      vi.useRealTimers()
+    }
+    const all = await store.listVisualSets()
+    expect(all.map((s) => s.name)).toEqual(['Newer draft', 'Kindred draft'])
   })
 })

@@ -120,7 +120,7 @@ export function oklabDistance(a: OklchTriple, b: OklchTriple): number {
   const la = toOkLab(a)
   const lb = toOkLab(b)
   if (!la || !lb) throw new Error('oklab conversion failed')
-  const dL = la.l - lb.l
+  const dL = (la.l ?? 0) - (lb.l ?? 0)
   const da = (la.a ?? 0) - (lb.a ?? 0)
   const db = (la.b ?? 0) - (lb.b ?? 0)
   return Math.sqrt(dL * dL + da * da + db * db)
@@ -240,7 +240,7 @@ export function styleDistance(a: StyleVector, b: StyleVector): number {
 // ---------------------------------------------------------------------------
 
 export const NUMERIC_DIMS = 48
-const FONT_CLASS_ORDER: FontClass[] = ['sans', 'serif', 'mono', 'display']
+export const FONT_CLASS_ORDER: FontClass[] = ['sans', 'serif', 'mono', 'display']
 
 /** Flatten a vector into the fixed 47-dim normalized layout (rounded to 6dp). */
 export function toNumericVector(v: StyleVector): number[] {

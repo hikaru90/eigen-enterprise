@@ -209,3 +209,28 @@ export const brandCorpusStaging = pgTable('brand_corpus_staging', {
     .notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
+
+// ---------------------------------------------------------------------------
+// Visual brand selection (phase-2d M4/V7) — working drafts of the visual
+// identity. One active set per company: single-tenant kernel tables carry no
+// company_id (mirrors brand_guideline_sets' one-active pattern from 0076);
+// the partial unique index lives in the migration, not here. Draft-only
+// writes are enforced in modules/brand/store.ts (G23).
+// ---------------------------------------------------------------------------
+
+export const brandVisualSets = pgTable('brand_visual_sets', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  status: text('status', { enum: ['draft', 'active', 'retired'] })
+    .default('draft')
+    .notNull(),
+  name: text('name').notNull(),
+  /** Corpus item (modules/brand/corpus/, static JSON — no FK, V2) the draft came from. */
+  sourceItemId: uuid('source_item_id'),
+  /** The selection trail: corpus item ids the owner picked in the wizard. */
+  pickedItemIds: jsonb('picked_item_ids').$type<string[]>().default([]).notNull(),
+  seeds: jsonb('seeds').$type<Record<string, unknown>>(),
+  cssVars: jsonb('css_vars').$type<Record<string, string>>().notNull(),
+  darkCssVars: jsonb('dark_css_vars').$type<Record<string, string>>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})

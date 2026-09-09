@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
 import type { ToolDescriptor, ToolContext } from '$lib/kernel/types'
 import { createBrandExtractTools, type BrandExtractToolDeps } from './extract/tools'
+import { createBrandSelectionTools, type BrandSelectionToolDeps } from './selection/tools'
 import {
   createSetInputSchema,
   defaultBrandStore,
@@ -11,9 +12,9 @@ import {
 
 /**
  * Kernel tool descriptors over the BrandStore (phase-2c M2: guideline
- * curation surface) plus the phase-2d extraction judge loop. Stores are
- * injected (tests pass in-memory stores; production resolves the DB lazily
- * per operation).
+ * curation surface), the phase-2d extraction judge loop, and the phase-2d M4
+ * selection wizard. Stores are injected (tests pass in-memory stores;
+ * production resolves the DB lazily per operation).
  *
  * G8/D5: guideline mutations are human-admin-only — descriptor roles are
  * ['admin'] AND the handler rejects non-human principals (agents get
@@ -25,6 +26,8 @@ export type BrandToolDeps = {
   store?: BrandStore
   /** Deps for the phase-2d extraction tools (store/capture/propose seams). */
   extract?: BrandExtractToolDeps
+  /** Deps for the phase-2d M4 selection wizard tools (store/corpus seams). */
+  selection?: BrandSelectionToolDeps
 }
 
 /** G8: strategic brand decisions are human-owned; agents never self-author boundaries (G19). */
@@ -94,6 +97,7 @@ export function createBrandTools(deps: BrandToolDeps = {}): ToolDescriptor[] {
 
   return [
     ...createBrandExtractTools(deps.extract ?? {}),
+    ...createBrandSelectionTools({ store, ...(deps.selection ?? {}) }),
     {
       name: 'brand.set_create',
       module: 'brand',
