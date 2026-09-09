@@ -540,6 +540,13 @@
       "when": 1760100000000,
       "tag": "0076_branding_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1760200000000,
+      "tag": "0077_journeys",
+      "breakpoints": true
     }
   ]
 }

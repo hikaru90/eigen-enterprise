@@ -31,10 +31,13 @@ import { createMemoryTools } from './memory/tools'
 import { createAllowlistAdminTools } from './orchestrator/allowlist-tools'
 import { createRecapModule, type RecapBoot } from './recap'
 import { RECAP_MODULE_ID } from './recap/types'
+
+export type { RecapBoot } from './recap'
 import { websiteManifest } from './website/manifest'
 import { createWebsiteTools } from './website/tools'
 
 export { registerModuleTools, type WiredKernel } from '$lib/kernel/wiring'
+export type { ChatGatewayBoot } from './chat-gateway/index'
 
 /** The static module surface of this eigenEnterprise instance. */
 export const moduleManifests = [
@@ -51,6 +54,10 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   // Phase-2c (G8/D5): guideline-set activation is a strategic brand decision —
   // human-admin principal AND an explicit approval decision.
   'brand.set_activate',
+  // Website founding journey: publishing is a public, owner-owned act — the
+  // journey's website.publish_page artifacts gate here (approval_required),
+  // surfacing as the chatbox approval card until the owner decides.
+  'website.publish_page',
 ])
 
 export type BootstrapKernelOptions = {

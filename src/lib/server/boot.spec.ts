@@ -1,18 +1,21 @@
-import type { ChatGatewayBoot } from '../../../modules/index'
+import type { ChatGatewayBoot, RecapBoot } from '../../../modules/index'
 import type { OrchestratorBoot, OrchestratorStatus } from '../../../modules/orchestrator/bootstrap'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
+import { InMemoryJourneyStore } from '$lib/kernel/playbook'
 import type { WiredKernel } from '$lib/kernel/wiring'
 
 const mocks = vi.hoisted(() => ({
   buildKernel: vi.fn(),
   bootstrapOrchestrator: vi.fn(),
   bootstrapChatGateway: vi.fn(),
+  bootstrapRecap: vi.fn(),
   piEngine: { engineId: 'fake-pi-engine' },
 }))
 
 vi.mock('../../../modules/index', () => ({
   buildKernel: mocks.buildKernel,
   bootstrapChatGateway: mocks.bootstrapChatGateway,
+  bootstrapRecap: mocks.bootstrapRecap,
 }))
 vi.mock('../../../modules/orchestrator/bootstrap', () => ({
   bootstrapOrchestrator: mocks.bootstrapOrchestrator,
@@ -76,6 +79,24 @@ function installFakeOrchestrator(): void {
   )
 }
 
+/** Fake recap stage with a scheduler whose ticks are observable. */
+function fakeRecapBoot(ticks: Date[] = []): RecapBoot {
+  return {
+    manifest: { id: 'recap' },
+    runNowTool: { name: 'recap.run_now' },
+    runDaily: async () => {
+      throw new Error('not used in boot spec')
+    },
+    scheduler: {
+      maybeRun: async (now: Date): Promise<boolean> => {
+        ticks.push(now)
+        return true
+      },
+      lastRunDay: () => null,
+    },
+  } as unknown as RecapBoot
+}
+
 beforeEach(() => {
   // boot.ts memoizes per module instance — reset for a fresh memo per test.
   vi.resetModules()
@@ -84,6 +105,7 @@ beforeEach(() => {
   stagesFromWireGateway.length = 0
   mocks.buildKernel.mockImplementation(fakeKernel)
   mocks.bootstrapChatGateway.mockResolvedValue(null)
+  mocks.bootstrapRecap.mockResolvedValue(null)
   installFakeOrchestrator()
 })
 
@@ -143,6 +165,7 @@ describe('bootApp — startup composition root', () => {
     expect(boot.status()).toEqual({
       orchestrator: { chatGateway: 'active', loopRunning: false },
       gatewayBooted: true,
+      recapBooted: false,
     })
   })
 
@@ -158,6 +181,7 @@ describe('bootApp — startup composition root', () => {
     expect(boot.status()).toEqual({
       orchestrator: { chatGateway: 'inactive', loopRunning: false },
       gatewayBooted: false,
+      recapBooted: false,
     })
   })
 
@@ -191,5 +215,135 @@ describe('bootApp — startup composition root', () => {
     expect(mocks.bootstrapOrchestrator).toHaveBeenCalledTimes(2)
     expect(retry.kernel).not.toBe(orchestratorCalls[0].kernel)
     expect(retry.status().gatewayBooted).toBe(false)
+  })
+})
+
+describe('bootApp — recap stage wiring + scheduler tick', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    const host = globalThis as { __eeRecapTick?: ReturnType<typeof setInterval> }
+    if (host.__eeRecapTick) {
+      clearInterval(host.__eeRecapTick)
+      host.__eeRecapTick = undefined
+    }
+  })
+
+  it('calls bootstrapRecap with the composed kernel + env and exposes its boot', async () => {
+    const { bootApp } = await import('./boot')
+    const env = { TELEGRAM_BOT_TOKEN: 'token' }
+    const recapBoot = fakeRecapBoot()
+    mocks.bootstrapRecap.mockResolvedValue(recapBoot)
+
+    const boot = await bootApp({ env, recap: { startTick: false } })
+
+    expect(mocks.bootstrapRecap).toHaveBeenCalledTimes(1)
+    const [kernelArg, optionsArg] = mocks.bootstrapRecap.mock.calls[0]
+    expect(kernelArg).toBe(boot.kernel)
+    expect(optionsArg).toEqual({ env })
+    expect(boot.recap).toBe(recapBoot)
+    expect(boot.status().recapBooted).toBe(true)
+  })
+
+  it('inactive recap stage: null boot, no tick, status says not booted', async () => {
+    const { bootApp } = await import('./boot')
+
+    const boot = await bootApp({ env: {} })
+
+    expect(boot.recap).toBeNull()
+    expect(boot.status().recapBooted).toBe(false)
+    await vi.advanceTimersByTimeAsync(30 * 60_000)
+    expect(mocks.bootstrapRecap).toHaveBeenCalledTimes(1)
+  })
+
+  it('ticks the scheduler (~5 min cadence) once the recap stage booted', async () => {
+    const { bootApp } = await import('./boot')
+    const ticks: Date[] = []
+    mocks.bootstrapRecap.mockResolvedValue(fakeRecapBoot(ticks))
+
+    await bootApp({ env: {}, recap: { intervalMs: 5 * 60_000 } })
+
+    await vi.advanceTimersByTimeAsync(5 * 60_000)
+    await vi.advanceTimersByTimeAsync(5 * 60_000)
+    expect(ticks).toHaveLength(2)
+  })
+
+  it('startTick: false opts out of the interval entirely (tests)', async () => {
+    const { bootApp } = await import('./boot')
+    const ticks: Date[] = []
+    mocks.bootstrapRecap.mockResolvedValue(fakeRecapBoot(ticks))
+
+    await bootApp({ env: {}, recap: { startTick: false } })
+
+    await vi.advanceTimersByTimeAsync(30 * 60_000)
+    expect(ticks).toHaveLength(0)
+  })
+
+  it('HMR guard: a re-composition replaces the previous timer — exactly one tick per cadence', async () => {
+    const firstTicks: Date[] = []
+    const secondTicks: Date[] = []
+    mocks.bootstrapRecap.mockResolvedValueOnce(fakeRecapBoot(firstTicks))
+    mocks.bootstrapRecap.mockResolvedValue(fakeRecapBoot(secondTicks))
+
+    const first = await import('./boot')
+    await first.bootApp({ env: {} })
+    // Simulate an HMR re-evaluation: fresh module registry → fresh memo.
+    vi.resetModules()
+    const second = await import('./boot')
+    await second.bootApp({ env: {} })
+
+    await vi.advanceTimersByTimeAsync(5 * 60_000)
+    expect(firstTicks).toHaveLength(0) // old timer was cleared
+    expect(secondTicks).toHaveLength(1) // only the newest boot ticks
+  })
+
+  it('a throwing scheduler tick does not kill the interval', async () => {
+    const { bootApp } = await import('./boot')
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let calls = 0
+    const recapBoot = {
+      scheduler: {
+        maybeRun: async (): Promise<boolean> => {
+          calls += 1
+          if (calls === 1) throw new Error('telegram down')
+          return true
+        },
+        lastRunDay: () => null,
+      },
+    } as unknown as RecapBoot
+    mocks.bootstrapRecap.mockResolvedValue(recapBoot)
+
+    await bootApp({ env: {}, recap: { intervalMs: 60_000 } })
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(calls).toBe(2)
+    expect(errSpy).toHaveBeenCalled()
+    errSpy.mockRestore()
+  })
+})
+
+describe('bootApp — journey store composition', () => {
+  it('injects a DB-backed journey store into the orchestrator stage', async () => {
+    // Resolve from the same (reset) module registry the fresh boot uses.
+    const { bootApp } = await import('./boot')
+    const { DbJourneyStore: FreshDbJourneyStore } = await import('$lib/kernel/playbook')
+
+    await bootApp({ env: {} })
+
+    const optionsArg = mocks.bootstrapOrchestrator.mock.calls[0][2]
+    expect(optionsArg.journeys).toBeInstanceOf(FreshDbJourneyStore)
+  })
+
+  it('honors an injected journey store override', async () => {
+    const { bootApp } = await import('./boot')
+    const journeys = new InMemoryJourneyStore()
+
+    await bootApp({ env: {}, journeys })
+
+    const optionsArg = mocks.bootstrapOrchestrator.mock.calls[0][2]
+    expect(optionsArg.journeys).toBe(journeys)
   })
 })
