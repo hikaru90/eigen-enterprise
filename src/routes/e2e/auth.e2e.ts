@@ -12,19 +12,21 @@ test.describe('Auth redirects (AC-019)', () => {
 })
 
 test.describe('Registration and login flow', () => {
-  test('new user can register and lands on /capture', async ({ page, context }) => {
+  test('new user can register and lands on the nucleus /', async ({ page, context }) => {
     const { email } = await registerUser(context, page)
-    await expect(page.locator('text=Capture')).toBeVisible()
-    await expect(page.locator(`text=${email}`)).toBeVisible()
+    // nucleus: post-auth lands on / (the chatbox), not /capture
+    await expect(page).toHaveURL(/:\d+\/$/)
+    await expect(page.locator('[data-testid="nucleus-chatbox"]')).toBeVisible()
   })
 
-  test('registered user can sign in and lands on /capture', async ({ page, context }) => {
+  test('registered user can sign in and lands on the nucleus /', async ({ page, context }) => {
     const { email } = await registerUser(context, page)
 
     await signOut(page)
 
     await loginUser(page, email)
-    await expect(page.locator('text=Capture')).toBeVisible()
+    // nucleus: post-auth lands on / (the chatbox), not /capture
+    await expect(page).toHaveURL(/:\d+\/$/)
   })
 })
 

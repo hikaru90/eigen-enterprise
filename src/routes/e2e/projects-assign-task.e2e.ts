@@ -22,7 +22,8 @@ test.describe('Projects: unassigned task assignment @qa', () => {
 
     await test.step('register and onboard', async () => {
       await registerUser(context, page, { emailDomain: 'example.com' })
-      await expect(page).toHaveURL(/\/capture/)
+      // nucleus: post-auth lands on /
+      await expect(page).toHaveURL(/:\d+\/$/)
       await completeOnboardingOverlay(page, { creditAmount: 1000 })
     })
 

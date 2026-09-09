@@ -234,7 +234,10 @@
   </main>
 
   <footer class="shrink-0 pb-6">
-    <div class="flex items-stretch gap-2 rounded-sm border-2 border-black bg-white p-2">
+    <div
+      data-testid="nucleus-chatbox"
+      class="flex items-stretch gap-2 rounded-sm border-2 border-black bg-white p-2"
+    >
       <div title={micSupported ? undefined : 'Voice input is not available in this browser'}>
         <VoiceInputButton
           language={(page.data as { preferredLanguage?: string }).preferredLanguage ?? 'en'}
