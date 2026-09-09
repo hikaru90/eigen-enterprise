@@ -2,6 +2,25 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-08 — Phase-2c: explicit model selection — no implicit defaults
+
+**Shipped** (`21ad301` feature, wt/model-selection, rebased onto brand-kernel main, ff-merged)
+- **User directive**: never default to gpt-4o-mini (or anything). Model choice is now a dedicated wizard step for EVERY flow, driven by the models.dev catalog via `GET /api/onboarding/catalog/models?provider=…` (works for anthropic/openai-codex whose API shape excludes them from the API-key grid).
+- **Pinned defaults removed everywhere**: OpenRouter sign-in no longer pins openai/gpt-4o-mini; Anthropic no longer pins claude-sonnet-4-5; Codex no longer pins gpt-5.1-codex. Connect/poll endpoints REQUIRE the chosen chat model; onboarding completes only after selection. API-key form model inputs start EMPTY with catalog datalist suggestions.
+- **Embedding fields render only when the catalog says the provider supports embeddings**; otherwise an honest note (memory features need one later). `getCatalogModelLists(providerId)` returns model lists for ANY catalog id (raw entries cached unfiltered).
+- **E2E hardening**: root layout sets `body[data-eigen-hydrated]` on mount (SSR hydration replay was wiping values filled pre-hydration); `fillPersisted` verifies the value SURVIVES a settle window and re-fills; flow-id → catalog-id mapping fixed (github_copilot → github-copilot); mock-gateway fixture extended (anthropic/openai-codex/openrouter/github-copilot entries) and its chat replies are now agent-protocol JSON (tool-first, alternating list_projects/answer per the journey contract).
+- **Gates: unit 3473 passed, components 13 passed, e2e 6 passed on BOTH deployment shapes, check 0 errors, lint = main's 7 pre-existing.**
+
+**Decisions**
+- Model lists come from the live catalog even for API-shape-excluded providers (Claude/Codex sign-ins need model pickers too) — the catalog is the single source of model truth.
+- No model default anywhere in onboarding; Continue is disabled until a chat model is picked. Server-side, connect/poll reject empty modelChat (400).
+- OpenRouter sign-in carries the chosen models through the PKCE cookie (authorize body → callback save) since its completion is a redirect, not a wizard step.
+
+**Tracked**
+- Model pickers list the full catalog for the provider; a "recommended" subset per subscription tier would be a UX refinement.
+- Settings → LLM still edits models for the two first-class providers only; fold catalog-wide editing into the legacy-deletion pass.
+
+---
 ## 2026-09-08 — Phase-2c M1+M2 shipped: brand kernel schema + guideline curation module
 
 **Shipped** (`d71dc6b` plan + `a03fb89` feature, wt/branding, ff-merged)
