@@ -19,7 +19,9 @@ import {
 import type { AppDatabase } from '$lib/server/db/context'
 import { brandManifest } from './brand/manifest'
 import { createBrandTools } from './brand/tools'
+import { DbAllowlistStore } from './chat-gateway/db-stores'
 import { createChatGateway, type ChatGatewayBoot } from './chat-gateway/index'
+import { telegramClientFromEnv } from './chat-gateway/telegram'
 import { createDevAgentEngine, devAgentManifest } from './dev-agent'
 import { createDevAgentTools, type DevAgentEngine } from './dev-agent/tools'
 import { emailManifest } from './email/manifest'
@@ -27,6 +29,8 @@ import { createEmailTools } from './email/tools'
 import { memoryManifest } from './memory/manifest'
 import { createMemoryTools } from './memory/tools'
 import { createAllowlistAdminTools } from './orchestrator/allowlist-tools'
+import { createRecapModule, type RecapBoot } from './recap'
+import { RECAP_MODULE_ID } from './recap/types'
 import { websiteManifest } from './website/manifest'
 import { createWebsiteTools } from './website/tools'
 
@@ -169,3 +173,50 @@ async function pooledDb(): Promise<AppDatabase> {
   const { appSql, createScopedDrizzle } = await import('$lib/server/db')
   return createScopedDrizzle(appSql)
 }
+
+// ─── AGENT-C ADDITIVE BLOCK: recap module boot stage (daily owner recap) ─────
+// Follows the bootstrapChatGateway pattern exactly: activation-gated (fail
+// closed, needs nothing while 'recap' is inactive), manifest + tool registered
+// through the kernel's validated registerModuleTools path, deps injected with
+// no new side doors (Telegram client + allowlist store reused from
+// chat-gateway, event sink from the kernel). Scheduling stays in-module
+// (modules/recap/schedule.ts); the caller owns tick cadence:
+//   const boot = await bootstrapRecap(kernel, { env: process.env })
+//   if (boot) setInterval(() => boot.scheduler.maybeRun(new Date()), 5 * 60_000)
+// The scheduler self-guards to one run per UTC day and retries the same day
+// after a failed delivery.
+
+export type RecapBootOptions = {
+  /** Process env (or any env record); TELEGRAM_BOT_TOKEN is required once recap is active. */
+  env: Record<string, string | undefined>
+  /** Overrides the pooled app DB handle (tests inject fakes). */
+  db?: AppDatabase
+}
+
+/**
+ * Recap boot stage: while the module is inactive this returns null and needs
+ * no TELEGRAM_BOT_TOKEN; once active the token is mandatory (fail loud).
+ */
+export async function bootstrapRecap(
+  kernel: WiredKernel,
+  options: RecapBootOptions,
+): Promise<RecapBoot | null> {
+  if (!(await kernel.activations.get(RECAP_MODULE_ID))) return null
+
+  const db = options.db ?? (await pooledDb())
+  const recapBoot = createRecapModule(
+    {
+      db,
+      telegram: telegramClientFromEnv(options.env),
+      allowlist: new DbAllowlistStore(db),
+      eventSink: kernel.eventSink,
+    },
+    { isActive: () => kernel.activations.get(RECAP_MODULE_ID) },
+  )
+
+  kernel.modules.register(recapBoot.manifest)
+  registerModuleTools(kernel.registry, kernel.modules, [recapBoot.runNowTool])
+
+  return recapBoot
+}
+// ─── END AGENT-C ADDITIVE BLOCK ──────────────────────────────────────────────
