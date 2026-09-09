@@ -6,7 +6,7 @@ const { mockEnv } = vi.hoisted(() => ({
 
 vi.mock('$lib/server/env/private-env', () => ({ env: mockEnv }))
 
-import { getProviderCatalog, resetCatalogCache } from './catalog'
+import { getCatalogModelLists, getProviderCatalog, resetCatalogCache } from './catalog'
 
 const FIXTURE = {
   openai: {
@@ -140,5 +140,40 @@ describe('getProviderCatalog', () => {
     )
 
     await expect(getProviderCatalog()).rejects.toThrow(/catalog/i)
+  })
+})
+
+
+describe('getCatalogModelLists', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockEnv.MODELS_DEV_CATALOG_URL = ''
+    resetCatalogCache()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    resetCatalogCache()
+  })
+
+  it('returns model lists for ANY catalog provider id — including non-OpenAI-compatible ones', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(FIXTURE)))
+
+    // anthropic is excluded from the API-key provider list, but its models are still
+    // needed for the Claude subscription sign-in's explicit model selection.
+    const anthropic = await getCatalogModelLists('anthropic')
+    expect(anthropic?.chatModels).toEqual([{ id: 'claude-4', name: 'Claude 4' }])
+    expect(anthropic?.embeddingModels).toEqual([])
+  })
+
+  it('returns null for unknown provider ids', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(FIXTURE)))
+    await expect(getCatalogModelLists('nonexistent')).resolves.toBeNull()
+  })
+
+  it('is case-insensitive on the provider id', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(FIXTURE)))
+    const lists = await getCatalogModelLists('  GROQ ')
+    expect(lists?.chatModels).toEqual([{ id: 'llama-3.3-70b', name: 'Llama 3.3 70B' }])
   })
 })

@@ -1,16 +1,20 @@
 import type { RequestHandler } from './$types'
 import { json } from '@sveltejs/kit'
+import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 import { eq } from 'drizzle-orm'
 import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
-import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 import {
   fetchCopilotAccessToken,
   pollCopilotDeviceFlowOnce,
 } from '$lib/server/llm/oauth/github-copilot'
 import { saveProviderConfig } from '$lib/server/llm/save-provider-config'
 
-type Body = { deviceCode?: unknown }
+type Body = {
+  deviceCode?: unknown
+  /** Explicitly selected in the wizard — never an implicit default model. */
+  modelChat?: unknown
+}
 
 /**
  * ONE poll attempt for the Copilot device flow. While the user has not authorized,
@@ -31,8 +35,12 @@ export const POST: RequestHandler = async (event) => {
 
   const body = (await event.request.json().catch(() => null)) as Body | null
   const deviceCode = typeof body?.deviceCode === 'string' ? body.deviceCode : ''
+  const modelChat = typeof body?.modelChat === 'string' ? body.modelChat.trim() : ''
   if (!deviceCode) {
     return json({ error: 'Missing device code — restart the sign-in.' }, { status: 400 })
+  }
+  if (!modelChat) {
+    return json({ error: 'Pick a chat model to continue.' }, { status: 400 })
   }
 
   let poll: Awaited<ReturnType<typeof pollCopilotDeviceFlowOnce>>
@@ -59,6 +67,7 @@ export const POST: RequestHandler = async (event) => {
       provider: 'github_copilot',
       baseUrl: session.baseUrl,
       apiKey: '',
+      modelChat,
       setActive: true,
       oauth: {
         access: session.access,

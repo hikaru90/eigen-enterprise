@@ -17,6 +17,12 @@
   import favicon from '$lib/assets/favicon.png'
   import { startCaptureQueueRunner } from '$lib/capture/queue'
   import AppHeader from '$lib/components/app-header.svelte'
+
+  // E2E hydration marker: SvelteKit hydration replaces the SSR DOM, wiping values
+  // typed into pre-hydration inputs. Tests wait for this flag before interacting.
+  onMount(() => {
+    document.body.dataset.eigenHydrated = 'true'
+  })
   import type { AuthorLayerMeta } from '$lib/graph/graph-author-layers'
   import { m } from '$lib/paraglide/messages.js'
   import { getLocale, setLocale } from '$lib/paraglide/runtime'

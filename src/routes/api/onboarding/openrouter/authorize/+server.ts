@@ -20,10 +20,23 @@ export const POST: RequestHandler = async (event) => {
     )
   }
 
+  const body = (await event.request.json().catch(() => null)) as
+    | { modelChat?: unknown; modelEmbedding?: unknown }
+    | null
+  const modelChat = typeof body?.modelChat === 'string' ? body.modelChat.trim() : ''
+  const modelEmbedding = typeof body?.modelEmbedding === 'string' ? body.modelEmbedding.trim() : ''
+  if (!modelChat) {
+    return json({ error: 'Pick a chat model to continue.' }, { status: 400 })
+  }
+
   const { verifier, challenge } = generatePkce()
   const callbackUrl = new URL('/api/onboarding/openrouter/callback', event.url.origin).toString()
 
-  event.cookies.set(PKCE_COOKIE, verifier, {
+  // Non-secret: model choices ride along so the callback can save them verbatim.
+  event.cookies.set(
+    PKCE_COOKIE,
+    JSON.stringify({ verifier, modelChat, modelEmbedding }),
+    {
     path: '/api/onboarding/openrouter',
     httpOnly: true,
     sameSite: 'lax',

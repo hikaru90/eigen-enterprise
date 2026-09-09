@@ -13,6 +13,62 @@ import http from 'node:http'
 const port = Number(process.env.MOCK_GATEWAY_PORT ?? 5199)
 
 const CATALOG_FIXTURE = {
+  'github-copilot': {
+    id: 'github-copilot',
+    name: 'GitHub Copilot',
+    env: ['GITHUB_COPILOT_TOKEN'],
+    npm: '@ai-sdk/openai-compatible',
+    api: `http://127.0.0.1:${port}/v1`,
+    models: {
+      'mock-copilot-chat': {
+        id: 'mock-copilot-chat',
+        name: 'Mock Copilot Chat',
+        modalities: { input: ['text'], output: ['text'] },
+      },
+    },
+  },
+  anthropic: {
+    id: 'anthropic',
+    name: 'Claude',
+    env: ['ANTHROPIC_API_KEY'],
+    npm: '@ai-sdk/anthropic',
+    api: 'https://api.anthropic.com/v1',
+    models: {
+      'claude-sonnet-4-5': {
+        id: 'claude-sonnet-4-5',
+        name: 'Claude Sonnet 4.5',
+        modalities: { input: ['text'], output: ['text'] },
+      },
+    },
+  },
+  'openai-codex': {
+    id: 'openai-codex',
+    name: 'OpenAI Codex',
+    env: [],
+    npm: '@ai-sdk/openai-compatible',
+    api: `http://127.0.0.1:${port}/v1`,
+    models: {
+      'gpt-5.1-codex': {
+        id: 'gpt-5.1-codex',
+        name: 'GPT-5.1 Codex',
+        modalities: { input: ['text'], output: ['text'] },
+      },
+    },
+  },
+  openrouter: {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    env: ['OPENROUTER_API_KEY'],
+    npm: '@openrouter/ai-sdk-provider',
+    api: 'https://openrouter.ai/api/v1',
+    models: {
+      'mock/openrouter-chat': {
+        id: 'mock/openrouter-chat',
+        name: 'Mock OpenRouter Chat',
+        modalities: { input: ['text'], output: ['text'] },
+      },
+    },
+  },
   mockgroq: {
     id: 'mockgroq',
     name: 'MockGroq',
@@ -38,6 +94,7 @@ const CATALOG_FIXTURE = {
 let devicePollCount = 0
 let claudeMessageCalls = 0
 let codexResponseCalls = 0
+let gatewayChatCalls = 0
 
 function mockJwt() {
   const payload = Buffer.from(
@@ -79,7 +136,7 @@ const server = http.createServer((req, res) => {
       id: 'msg-mock',
       model: 'claude-sonnet-4-5',
       role: 'assistant',
-      content: [{ type: 'text', text: JSON.stringify(claudeMessageCalls % 2 === 1 ? { tool: 'retrieve_thoughts', arguments: { query: 'test', topK: 5 } } : { answer: `Hello from mock Claude. (call ${claudeMessageCalls})` }) }],
+      content: [{ type: 'text', text: JSON.stringify(claudeMessageCalls % 2 === 1 ? { tool: 'list_projects', arguments: {} } : { answer: `Hello from mock Claude. (call ${claudeMessageCalls})` }) }],
       stop_reason: 'end_turn',
       usage: { input_tokens: 1, output_tokens: 2 },
     })
@@ -117,12 +174,12 @@ const server = http.createServer((req, res) => {
     codexResponseCalls += 1
     const sse = [
       `data: ${JSON.stringify({ type: 'response.created' })}\n\n`,
-      `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: JSON.stringify(codexResponseCalls % 2 === 1 ? { tool: 'retrieve_thoughts', arguments: { query: 'test', topK: 5 } } : { answer: `Hello from mock Codex. (call ${codexResponseCalls})` }) })}\n\n`,
+      `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: JSON.stringify(codexResponseCalls % 2 === 1 ? { tool: 'list_projects', arguments: {} } : { answer: `Hello from mock Codex. (call ${codexResponseCalls})` }) })}\n\n`,
       `data: ${JSON.stringify({
         type: 'response.completed',
         response: {
           model: 'gpt-5.1-codex',
-          output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(codexResponseCalls % 2 === 0 ? { answer: `Hello from mock Codex. (call ${codexResponseCalls})` } : { tool: 'retrieve_thoughts', arguments: { query: 'test', topK: 5 } }) }] }],
+          output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(codexResponseCalls % 2 === 0 ? { answer: `Hello from mock Codex. (call ${codexResponseCalls})` } : { tool: 'list_projects', arguments: {} }) }] }],
           usage: { input_tokens: 1, output_tokens: 2 },
         },
       })}\n\n`,
@@ -191,16 +248,26 @@ const server = http.createServer((req, res) => {
     req.on('data', (chunk) => (raw += chunk))
     req.on('end', () => {
       let model = 'mock-chat-model'
+      let isPing = false
       try {
         const body = JSON.parse(raw)
         if (typeof body.model === 'string' && body.model) model = body.model
+        if (body.max_tokens === 1) isPing = true // connection-test ping: any text reply works
       } catch {
         // keep default model
+      }
+      let content = 'pong'
+      if (!isPing) {
+        gatewayChatCalls += 1
+        content =
+          gatewayChatCalls % 2 === 1
+            ? JSON.stringify({ tool: 'list_projects', arguments: {} })
+            : JSON.stringify({ answer: 'Hello from mock gateway.' })
       }
       send(200, {
         id: 'mock-completion',
         model,
-        choices: [{ message: { role: 'assistant', content: 'pong' } }],
+        choices: [{ message: { role: 'assistant', content } }],
         usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
       })
     })

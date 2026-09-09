@@ -47,7 +47,13 @@ const EURouters: CatalogProvider = {
   embeddingModels: [],
 }
 
-let cache: { fetchedAt: number; providers: CatalogProvider[] } | null = null
+type RawCatalog = Map<string, ModelsDevProvider>
+
+let cache: {
+  fetchedAt: number
+  providers: CatalogProvider[]
+  raw: RawCatalog
+} | null = null
 
 /** Test seam — module-level cache must be reset between specs. */
 export function resetCatalogCache(): void {
@@ -62,15 +68,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-/**
- * Provider catalog for the onboarding wizard, from models.dev (the open model catalog
- * pi uses). Only providers our OpenAI-shaped gateway can actually speak to are offered
- * (`npm: @ai-sdk/openai-compatible`); EUrouter is pinned first-class. Fails loud —
- * the wizard surfaces the error with a retry instead of silently degrading.
- */
-export async function getProviderCatalog(): Promise<{ source: 'models.dev'; providers: CatalogProvider[] }> {
+async function loadRawCatalog(): Promise<RawCatalog> {
   if (cache && Date.now() - cache.fetchedAt < CATALOG_CACHE_MS) {
-    return { source: 'models.dev', providers: cache.providers }
+    return cache.raw
   }
 
   const url = env.MODELS_DEV_CATALOG_URL?.trim() || 'https://models.dev/api.json'
@@ -91,35 +91,27 @@ export async function getProviderCatalog(): Promise<{ source: 'models.dev'; prov
     throw new Error('Provider catalog returned an unexpected shape.')
   }
 
+  const raw: RawCatalog = new Map()
+  for (const [id, rawEntry] of Object.entries(body)) {
+    if (isRecord(rawEntry)) raw.set(id, rawEntry as ModelsDevProvider)
+  }
+
   const providers: CatalogProvider[] = [EURouters]
-  for (const [id, raw] of Object.entries(body)) {
-    if (!isRecord(raw)) continue
-    const entry = raw as ModelsDevProvider
+  for (const [id, entry] of raw) {
     // Only API shapes our OpenAI-style gateway speaks: @ai-sdk/openai-compatible and
     // @ai-sdk/openai. Anthropic/Google/Bedrock-style shapes are never offered here.
     if (typeof entry.npm !== 'string' || !entry.npm.includes('openai')) continue
     if (id === 'eurouter') continue
 
-    const chatModels: CatalogModel[] = []
-    const embeddingModels: CatalogModel[] = []
-    for (const model of Object.values(entry.models ?? {})) {
-      const modelId = typeof model?.id === 'string' ? model.id : null
-      if (!modelId) continue
-      const name = typeof model?.name === 'string' ? model.name : modelId
-      const output = asStringArray(model?.modalities?.output)
-      if (output.includes('embedding')) embeddingModels.push({ id: modelId, name })
-      else chatModels.push({ id: modelId, name })
-    }
-
+    const lists = modelListsFromEntry(entry)
     providers.push({
       id,
       name: typeof entry.name === 'string' && entry.name ? entry.name : id,
       baseUrl: typeof entry.api === 'string' && entry.api ? entry.api.replace(/\/$/, '') : '',
-      envVar:
-        Array.isArray(entry.env) && typeof entry.env[0] === 'string' ? entry.env[0] : null,
+      envVar: Array.isArray(entry.env) && typeof entry.env[0] === 'string' ? entry.env[0] : null,
       docUrl: typeof entry.doc === 'string' && entry.doc ? entry.doc : null,
-      chatModels: chatModels.sort((a, b) => a.name.localeCompare(b.name)),
-      embeddingModels: embeddingModels.sort((a, b) => a.name.localeCompare(b.name)),
+      chatModels: lists.chatModels,
+      embeddingModels: lists.embeddingModels,
     })
   }
 
@@ -129,6 +121,73 @@ export async function getProviderCatalog(): Promise<{ source: 'models.dev'; prov
     return a.name.localeCompare(b.name)
   })
 
-  cache = { fetchedAt: Date.now(), providers }
+  cache = { fetchedAt: Date.now(), providers, raw }
+  return raw
+}
+
+function modelListsFromEntry(entry: ModelsDevProvider): CatalogModelLists {
+  const chatModels: CatalogModel[] = []
+  const embeddingModels: CatalogModel[] = []
+  for (const model of Object.values(entry.models ?? {})) {
+    const modelId = typeof model?.id === 'string' ? model.id : null
+    if (!modelId) continue
+    const name = typeof model?.name === 'string' ? model.name : modelId
+    const output = asStringArray(model?.modalities?.output)
+    if (output.includes('embedding')) embeddingModels.push({ id: modelId, name })
+    else chatModels.push({ id: modelId, name })
+  }
+  return {
+    chatModels: chatModels.sort((a, b) => a.name.localeCompare(b.name)),
+    embeddingModels: embeddingModels.sort((a, b) => a.name.localeCompare(b.name)),
+  }
+}
+
+/**
+ * Provider catalog for the onboarding wizard's API-key path, from models.dev (the open
+ * model catalog pi uses). Only providers our OpenAI-shaped gateway can actually speak to
+ * are offered (`npm` contains "openai"); EUrouter is pinned first-class. Fails loud —
+ * the wizard surfaces the error with a retry instead of silently degrading.
+ */
+export async function getProviderCatalog(): Promise<{ source: 'models.dev'; providers: CatalogProvider[] }> {
+  const raw = await loadRawCatalog()
+
+  const providers: CatalogProvider[] = [EURouters]
+  for (const [id, entry] of raw) {
+    if (typeof entry.npm !== 'string' || !entry.npm.includes('openai')) continue
+    if (id === 'eurouter') continue
+
+    const lists = modelListsFromEntry(entry)
+    providers.push({
+      id,
+      name: typeof entry.name === 'string' && entry.name ? entry.name : id,
+      baseUrl: typeof entry.api === 'string' && entry.api ? entry.api.replace(/\/$/, '') : '',
+      envVar: Array.isArray(entry.env) && typeof entry.env[0] === 'string' ? entry.env[0] : null,
+      docUrl: typeof entry.doc === 'string' && entry.doc ? entry.doc : null,
+      chatModels: lists.chatModels,
+      embeddingModels: lists.embeddingModels,
+    })
+  }
+
+  providers.sort((a, b) => {
+    if (a.id === 'eurouter') return -1
+    if (b.id === 'eurouter') return 1
+    return a.name.localeCompare(b.name)
+  })
+
   return { source: 'models.dev', providers }
+}
+
+export type CatalogModelLists = { chatModels: CatalogModel[]; embeddingModels: CatalogModel[] }
+
+/**
+ * Model lists for ANY catalog provider id (including subscription providers like
+ * anthropic / openai-codex whose API shape is not offered via the API-key wizard).
+ * Returns null when the id is unknown. Powers the wizard's explicit model selection —
+ * subscription providers must never fall back to an implicit default model.
+ */
+export async function getCatalogModelLists(providerId: string): Promise<CatalogModelLists | null> {
+  const raw = await loadRawCatalog()
+  const entry = raw.get(providerId.trim().toLowerCase())
+  if (!entry) return null
+  return modelListsFromEntry(entry)
 }

@@ -13,9 +13,6 @@ import { saveProviderConfig } from '$lib/server/llm/save-provider-config'
 import { anthropicApiBaseUrl } from '$lib/server/llm/oauth/anthropic'
 
 const PKCE_COOKIE = 'onboarding_anthropic_pkce'
-/** Default chat model — the current Sonnet workhorse (changeable in Settings). */
-const DEFAULT_ANTHROPIC_CHAT_MODEL = 'claude-sonnet-4-5'
-
 /**
  * Anthropic (Claude Pro/Max) sign-in, step 2: the user pasted the authorization code
  * (or the full redirect URL). Validates state against the PKCE cookie, exchanges for
@@ -37,8 +34,14 @@ export const POST: RequestHandler = async (event) => {
     return json({ error: 'Sign-in expired — start again.' }, { status: 400 })
   }
 
-  const body = (await event.request.json().catch(() => null)) as { code?: unknown } | null
+  const body = (await event.request.json().catch(() => null)) as
+    | { code?: unknown; modelChat?: unknown }
+    | null
   const rawCode = typeof body?.code === 'string' ? body.code : ''
+  const modelChat = typeof body?.modelChat === 'string' ? body.modelChat.trim() : ''
+  if (!modelChat) {
+    return json({ error: 'Pick a chat model to continue.' }, { status: 400 })
+  }
   const parsed = parseAuthorizationInput(rawCode)
   if (!parsed.code) {
     return json({ error: 'Paste the authorization code or the full redirect URL.' }, { status: 400 })
@@ -55,7 +58,7 @@ export const POST: RequestHandler = async (event) => {
       provider: 'anthropic',
       baseUrl: anthropicApiBaseUrl(),
       apiKey: '',
-      modelChat: DEFAULT_ANTHROPIC_CHAT_MODEL,
+      modelChat,
       setActive: true,
       oauth: {
         access: tokens.access,

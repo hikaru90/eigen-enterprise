@@ -10,9 +10,6 @@ import { saveProviderConfig } from '$lib/server/llm/save-provider-config'
 
 const PKCE_COOKIE = 'onboarding_or_pkce'
 const DEFAULT_OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
-/** Models chosen conservatively so a signed-in OpenRouter account works out of the box. */
-const DEFAULT_OPENROUTER_CHAT_MODEL = 'openai/gpt-4o-mini'
-const DEFAULT_OPENROUTER_EMBEDDING_MODEL = 'openai/text-embedding-3-small'
 
 /**
  * OpenRouter redirects here with ?code= after the user signs in. The PKCE verifier
@@ -29,9 +26,26 @@ export const GET: RequestHandler = async (event) => {
 
   const fail = (message: string): never => redirect(302, `/?openrouter_error=${encodeURIComponent(message)}`)
 
-  const verifier = event.cookies.get(PKCE_COOKIE)
+  let verifier = ''
+  let modelChat = ''
+  let modelEmbedding = ''
+  try {
+    const stored = JSON.parse(event.cookies.get(PKCE_COOKIE) ?? '') as {
+      verifier?: unknown
+      modelChat?: unknown
+      modelEmbedding?: unknown
+    }
+    if (typeof stored.verifier === 'string') verifier = stored.verifier
+    if (typeof stored.modelChat === 'string') modelChat = stored.modelChat
+    if (typeof stored.modelEmbedding === 'string') modelEmbedding = stored.modelEmbedding
+  } catch {
+    fail('OpenRouter sign-in expired — try again.')
+  }
   if (!verifier) {
     fail('OpenRouter sign-in expired — try again.')
+  }
+  if (!modelChat) {
+    fail('OpenRouter sign-in expired (model choice missing) — try again.')
   }
   const code = event.url.searchParams.get('code')
   if (!code) {
@@ -46,8 +60,8 @@ export const GET: RequestHandler = async (event) => {
       provider: 'openrouter',
       baseUrl: DEFAULT_OPENROUTER_BASE_URL,
       apiKey,
-      modelChat: DEFAULT_OPENROUTER_CHAT_MODEL,
-      modelEmbedding: DEFAULT_OPENROUTER_EMBEDDING_MODEL,
+      modelChat,
+      modelEmbedding: modelEmbedding || null,
       setActive: true,
     })
     await authDb

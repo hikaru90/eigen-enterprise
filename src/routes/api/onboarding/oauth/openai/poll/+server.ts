@@ -11,9 +11,12 @@ import {
 } from '$lib/server/llm/oauth/openai-codex'
 import { saveProviderConfig } from '$lib/server/llm/save-provider-config'
 
-const DEFAULT_CODEX_CHAT_MODEL = 'gpt-5.1-codex'
-
-type Body = { deviceAuthId?: unknown; userCode?: unknown }
+type Body = {
+  deviceAuthId?: unknown
+  userCode?: unknown
+  /** Explicitly selected in the wizard — never an implicit default model. */
+  modelChat?: unknown
+}
 
 /**
  * ChatGPT (Plus/Pro) sign-in, step 2: ONE poll attempt. Once the user authorizes, the
@@ -34,8 +37,12 @@ export const POST: RequestHandler = async (event) => {
   const body = (await event.request.json().catch(() => null)) as Body | null
   const deviceAuthId = typeof body?.deviceAuthId === 'string' ? body.deviceAuthId : ''
   const userCode = typeof body?.userCode === 'string' ? body.userCode : ''
+  const modelChat = typeof body?.modelChat === 'string' ? body.modelChat.trim() : ''
   if (!deviceAuthId || !userCode) {
     return json({ error: 'Missing device code — restart the sign-in.' }, { status: 400 })
+  }
+  if (!modelChat) {
+    return json({ error: 'Pick a chat model to continue.' }, { status: 400 })
   }
 
   let poll: Awaited<ReturnType<typeof pollCodexDeviceAuthOnce>>
@@ -65,7 +72,7 @@ export const POST: RequestHandler = async (event) => {
       provider: 'openai_codex',
       baseUrl: codexBaseUrl(),
       apiKey: '',
-      modelChat: DEFAULT_CODEX_CHAT_MODEL,
+      modelChat,
       setActive: true,
       oauth: {
         access: tokens.access,
