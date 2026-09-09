@@ -147,6 +147,7 @@ describe('journeys migration (string-level sanity)', () => {
   })
 
   it('is journaled at the next sequential idx', () => {
-    expect(journal.entries.at(-1)).toMatchObject({ idx: 77, tag: '0077_journeys' })
+    // Looked up by tag (not "last entry") so the pin survives later migrations.
+    expect(journal.entries.find((entry) => entry.tag === '0077_journeys')).toMatchObject({ idx: 77 })
   })
 })

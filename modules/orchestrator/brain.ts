@@ -20,6 +20,7 @@ import {
   type JourneyStore,
 } from '$lib/kernel/playbook'
 import type { KernelRegistry } from '$lib/kernel/registry'
+import type { AgentSessionLog } from '$lib/kernel/session-log'
 
 /**
  * The orchestrator is no longer a brain with kernel privileges — it is one
@@ -205,9 +206,11 @@ export function orchestratorAgentConfig(options: { spendCapUsd?: number } = {}):
 export function buildOrchestratorEngine(options: {
   complete?: LlmCompleteFn
   llmUserId?: string
-} = {}): BuiltinJsonLoop {
+  sessionLog: AgentSessionLog
+}): BuiltinJsonLoop {
   return new BuiltinJsonLoop({
     ...(options.complete === undefined ? {} : { complete: options.complete }),
+    sessionLog: options.sessionLog,
     systemPrompt: ORCHESTRATOR_PERSONA_PROMPT,
     llmUserId: options.llmUserId ?? ORCHESTRATOR_LLM_USER_ID,
     logContext: 'orchestrator_brain',

@@ -2,12 +2,14 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AgentConfig } from '$lib/kernel/agent'
 import type { EngineContext, EngineSurfaceEvent, EngineToolListing } from '$lib/kernel/engine'
 import { KernelError } from '$lib/kernel/errors'
+import { InMemoryAgentSessionLog, type AgentSessionEvent } from '$lib/kernel/session-log'
 import {
   BuiltinJsonLoop,
   LoopProtocolError,
   MAX_HISTORY_MESSAGES,
   MAX_TOOL_INPUT_SUMMARY_CHARS,
   StreamedAnswerExtractor,
+  type BuiltinJsonLoopOptions,
   type LlmCompleteFn,
   type LlmStreamCompleteFn,
 } from './builtin-json'
@@ -39,6 +41,7 @@ function gatewayBody(content: string): unknown {
 
 type Fixture = {
   engine: BuiltinJsonLoop
+  sessionLog: InMemoryAgentSessionLog
   ctx: EngineContext
   executeTool: ReturnType<typeof vi.fn>
   listTools: ReturnType<typeof vi.fn>
@@ -59,6 +62,7 @@ function makeFixture(options: {
   stream?: EngineContext['stream']
   surfaceEvent?: EngineContext['surfaceEvent']
   streamComplete?: LlmStreamCompleteFn
+  sessionLog?: InMemoryAgentSessionLog
 }): Fixture {
   const completeCalls: Fixture['completeCalls'] = []
   let index = 0
@@ -108,12 +112,15 @@ function makeFixture(options: {
       }
     : undefined
 
+  const sessionLog = options.sessionLog ?? new InMemoryAgentSessionLog()
   const engine = new BuiltinJsonLoop({
     complete,
+    sessionLog,
     ...(streamComplete ? { streamComplete } : {}),
   })
   return {
     engine,
+    sessionLog,
     ctx,
     executeTool,
     listTools,
@@ -178,6 +185,121 @@ describe('BuiltinJsonLoop — happy path', () => {
     expect(last).toBeDefined()
     // system + capped history + the new user message.
     expect(last!.messages.length).toBe(1 + MAX_HISTORY_MESSAGES + 1)
+  })
+})
+
+describe('BuiltinJsonLoop — durable session log (phase-3 M1)', () => {
+  it('fails loud at construction when no session log is injected (no fallback)', () => {
+    expect(
+      () =>
+        new BuiltinJsonLoop({
+          systemPrompt: 'persona',
+        } as unknown as BuiltinJsonLoopOptions),
+    ).toThrowError(/sessionLog/)
+  })
+
+  it('appends the user message and the assistant reply to the log after the reply', async () => {
+    const fx = makeFixture({ responses: ['{"answer":"the reply"}'] })
+
+    const reply = await fx.engine.run('session-1', 'the question', fx.ctx)
+
+    expect(reply).toBe('the reply')
+    const events: AgentSessionEvent[] = await fx.sessionLog.list('session-1')
+    expect(events).toEqual([
+      {
+        sessionId: 'session-1',
+        agentId: agent.id,
+        kind: 'user',
+        payload: { text: 'the question' },
+      },
+      {
+        sessionId: 'session-1',
+        agentId: agent.id,
+        kind: 'assistant',
+        payload: { text: 'the reply' },
+      },
+    ])
+  })
+
+  it('history for the next turn comes from the log, not any in-memory cache', async () => {
+    const fx = makeFixture({ responses: ['{"answer":"first"}', '{"answer":"second"}'] })
+
+    await fx.engine.run('session-1', 'one', fx.ctx)
+    await fx.engine.run('session-1', 'two', fx.ctx)
+
+    // The log holds exactly the two turns — the engine is stateless between runs.
+    expect(await fx.sessionLog.list('session-1')).toHaveLength(4)
+    const secondCall = fx.completeCalls[1]
+    expect(secondCall.messages.filter((m) => m.role === 'assistant').map((m) => m.content)).toEqual([
+      'first',
+    ])
+  })
+
+  it('resumes a conversation in a FRESH engine instance sharing the log (restart-resume)', async () => {
+    const sessionLog = new InMemoryAgentSessionLog()
+    const first = makeFixture({
+      responses: ['{"answer":"first"}'],
+      sessionLog,
+    })
+    await first.engine.run('session-1', 'one', first.ctx)
+
+    // A new process would construct a new engine; the log is the only memory.
+    const second = makeFixture({
+      responses: ['{"answer":"second"}'],
+      sessionLog,
+    })
+    await second.engine.run('session-1', 'two', second.ctx)
+
+    const seen = second.completeCalls[0].messages
+    expect(seen.filter((m) => m.role === 'user').map((m) => m.content)).toEqual(['one', 'two'])
+    expect(seen.filter((m) => m.role === 'assistant').map((m) => m.content)).toEqual(['first'])
+  })
+
+  it('logs only the user input and the final answer — never intermediate tool protocol messages', async () => {
+    const fx = makeFixture({
+      responses: ['{"tool":"testmod.echo","arguments":{"x":1}}', '{"answer":"done"}'],
+      listings: [listing('testmod.echo', 'summary of testmod.echo')],
+    })
+
+    await fx.engine.run('session-1', 'use the tool', fx.ctx)
+
+    const events = await fx.sessionLog.list('session-1')
+    expect(events.map((e) => [e.kind, e.payload])).toEqual([
+      ['user', { text: 'use the tool' }],
+      ['assistant', { text: 'done' }],
+    ])
+  })
+
+  it('appends nothing when the run fails (parse-error exhaustion)', async () => {
+    const fx = makeFixture({ responses: ['not json at all'] })
+
+    await expect(fx.engine.run('session-1', 'hi', fx.ctx)).rejects.toBeInstanceOf(LoopProtocolError)
+    expect(await fx.sessionLog.list('session-1')).toEqual([])
+  })
+
+  it('appends nothing when the model produced no response', async () => {
+    const fx = makeFixture({ responses: [''] })
+
+    await expect(fx.engine.run('session-1', 'hi', fx.ctx)).resolves.toBe(
+      'The assistant did not produce a response.',
+    )
+    expect(await fx.sessionLog.list('session-1')).toEqual([])
+  })
+
+  it('keeps sessions isolated in the log', async () => {
+    const fx = makeFixture({ responses: ['{"answer":"a"}', '{"answer":"b"}'] })
+
+    await fx.engine.run('session-1', 'for session 1', fx.ctx)
+    await fx.engine.run('session-2', 'for session 2', fx.ctx)
+
+    expect((await fx.sessionLog.list('session-2')).map((e) => [e.kind, e.payload])).toEqual([
+      ['user', { text: 'for session 2' }],
+      ['assistant', { text: 'b' }],
+    ])
+    expect((await fx.sessionLog.list('session-1')).map((e) => e.payload)).toEqual([
+      { text: 'for session 1' },
+      { text: 'a' },
+    ])
   })
 })
 
@@ -357,7 +479,11 @@ describe('BuiltinJsonLoop — parse failures', () => {
       emit: async () => {},
       spendUsd: () => 0,
     }
-    const engine = new BuiltinJsonLoop({ complete, parseRetry: 2 })
+    const engine = new BuiltinJsonLoop({
+      complete,
+      parseRetry: 2,
+      sessionLog: new InMemoryAgentSessionLog(),
+    })
 
     await expect(engine.run('session-1', 'hi', ctx)).rejects.toBeInstanceOf(LoopProtocolError)
     expect(completeCalls).toHaveLength(2)

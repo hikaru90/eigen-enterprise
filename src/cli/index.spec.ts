@@ -7,6 +7,7 @@ import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryActivationStore, ModuleRegistry } from '$lib/kernel/modules'
 import type { Principal, PrincipalStore } from '$lib/kernel/principals'
 import { KernelRegistry } from '$lib/kernel/registry'
+import { InMemoryAgentSessionLog } from '$lib/kernel/session-log'
 import type { ToolDescriptor } from '$lib/kernel/types'
 import { runCli } from './index'
 
@@ -75,6 +76,7 @@ async function makeWiredFake(options: { approvalTools?: string[] } = {}): Promis
     principals,
     approvals: approvalStore,
     eventSink: new InMemoryEventSink(),
+    sessionLog: new InMemoryAgentSessionLog(),
   }
 }
 

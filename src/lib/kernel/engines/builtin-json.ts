@@ -4,6 +4,7 @@ import type {
   EngineToolListing,
   LoopEngine,
 } from '../engine'
+import type { AgentSessionLog } from '../session-log'
 import { KernelError } from '../errors'
 
 /**
@@ -68,6 +69,12 @@ export type BuiltinJsonLoopOptions = {
   streamComplete?: LlmStreamCompleteFn
   /** Persona preamble; the engine appends the JSON protocol, tool list, and rules. */
   systemPrompt: string
+  /**
+   * Durable conversation memory (required — no fallback): history is derived
+   * from `list(sessionId)` per run and each completed turn appends the user
+   * message + the reply, so conversations survive engine/process restarts.
+   */
+  sessionLog: AgentSessionLog
   /** Parse-failure retries before failing loud (default 3). */
   parseRetry?: number
   /**
@@ -311,30 +318,37 @@ export class StreamedAnswerExtractor {
 }
 
 /**
- * In-memory session memory (Map<sessionId, messages>) held by the engine
- * instance — DOCUMENTED DEBT (v0): not persisted; a restart starts fresh
- * conversations, matching the Phase-0 brain behavior.
+ * The orchestrator's chat loop. Stateless between runs: conversation memory
+ * lives entirely in the injected AgentSessionLog (append-only), so sessions
+ * resume across engine instances and process restarts.
  */
 export class BuiltinJsonLoop implements LoopEngine {
   private readonly complete: LlmCompleteFn
   private readonly streamComplete: LlmStreamCompleteFn | undefined
   private readonly systemPrompt: string
+  private readonly sessionLog: AgentSessionLog
   private readonly parseRetry: number
   private readonly llmUserId: string | undefined
   private readonly logContext: string
-  private readonly sessions = new Map<string, EngineChatMessage[]>()
 
   constructor(options: BuiltinJsonLoopOptions) {
+    if (!options.sessionLog) {
+      throw new KernelError(
+        'invalid_input',
+        'BuiltinJsonLoop requires a sessionLog (durable conversation memory) — none was injected.',
+      )
+    }
     this.complete = options.complete ?? gatewayComplete
     this.streamComplete = options.streamComplete
     this.systemPrompt = options.systemPrompt
+    this.sessionLog = options.sessionLog
     this.parseRetry = options.parseRetry ?? MAX_PARSE_RETRIES
     this.llmUserId = options.llmUserId
     this.logContext = options.logContext ?? 'builtin_json_loop'
   }
 
   async run(sessionId: string, input: string, ctx: EngineContext): Promise<string> {
-    const history = this.sessions.get(sessionId) ?? []
+    const history = await this.loadHistory(sessionId)
     const tools = ctx.listTools()
     const offeredNames = new Set(tools.map((t) => t.name))
 
@@ -399,7 +413,7 @@ export class BuiltinJsonLoop implements LoopEngine {
       }
 
       if (turn.type === 'final') {
-        this.remember(sessionId, input, turn.content)
+        await this.recordTurn(sessionId, ctx.agent.id, input, turn.content)
         // Completeness guarantee: whatever incremental streaming already
         // emitted is a prefix of the answer; emit any remainder (the whole
         // answer on the fallback path).
@@ -480,13 +494,42 @@ export class BuiltinJsonLoop implements LoopEngine {
     })
   }
 
-  private remember(sessionId: string, userText: string, answer: string): void {
-    const history = [
-      ...(this.sessions.get(sessionId) ?? []),
-      { role: 'user' as const, content: userText },
-      { role: 'assistant' as const, content: answer },
-    ]
-    const trimmed = history.slice(-MAX_HISTORY_MESSAGES)
-    this.sessions.set(sessionId, trimmed)
+  /** History = the session's logged events, capped to the last MAX_HISTORY_MESSAGES. */
+  private async loadHistory(sessionId: string): Promise<EngineChatMessage[]> {
+    const events = await this.sessionLog.list(sessionId, MAX_HISTORY_MESSAGES)
+    return events.map((event) => ({
+      role: event.kind,
+      content: this.payloadText(event, sessionId),
+    }))
+  }
+
+  private payloadText(
+    event: { kind: string; payload: Record<string, unknown> },
+    sessionId: string,
+  ): string {
+    const text = event.payload['text']
+    if (typeof text !== 'string') {
+      throw new KernelError(
+        'invalid_output',
+        `session log ${event.kind} event for session ${sessionId} has no text payload`,
+      )
+    }
+    return text
+  }
+
+  /** Append-only turn record: the user input, then the reply. Never updated. */
+  private async recordTurn(
+    sessionId: string,
+    agentId: string,
+    userText: string,
+    answer: string,
+  ): Promise<void> {
+    await this.sessionLog.append({ sessionId, agentId, kind: 'user', payload: { text: userText } })
+    await this.sessionLog.append({
+      sessionId,
+      agentId,
+      kind: 'assistant',
+      payload: { text: answer },
+    })
   }
 }

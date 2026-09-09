@@ -9,6 +9,7 @@ import type { ApprovalStore } from './approvals'
 import type { EventSink } from './events'
 import type { PrincipalStore } from './principals'
 import type { KernelRegistry } from './registry'
+import type { AgentSessionLog } from './session-log'
 import type { ToolDescriptor } from './types'
 import { ModuleRegistry, type ActivationStore } from './modules'
 
@@ -19,6 +20,8 @@ export type WiredKernel = {
   principals: PrincipalStore
   approvals: ApprovalStore
   eventSink: EventSink
+  /** Durable agent conversation log (append-only) backing the loop engines. */
+  sessionLog: AgentSessionLog
 }
 
 /**
