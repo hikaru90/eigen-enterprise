@@ -3,6 +3,7 @@ import { KernelError } from '$lib/kernel/errors'
 import type { ToolDescriptor, ToolContext } from '$lib/kernel/types'
 import { brandCorpus, type CorpusRegistry } from '../corpus/runtime'
 import { createVisualSetInputSchema, defaultBrandStore, type BrandStore } from '../store'
+import { DARK_PIN_PREFIX, applySeedEdit } from '../style-format/reseed'
 import {
   buildStyleVectorIndex,
   centroidMatch,
@@ -53,6 +54,15 @@ const visualSetCreateInput = z.object({
   cssVars: z.record(z.string(), z.string()),
   darkCssVars: z.record(z.string(), z.string()).optional(),
   seeds: z.record(z.string(), z.unknown()).optional(),
+})
+
+const visualSetUpdateInput = z.object({
+  setId: z.string().uuid(),
+  name: z.string().trim().min(1).optional(),
+  cssVarsPatch: z.record(z.string(), z.string()).optional(),
+  darkCssVarsPatch: z.record(z.string(), z.string()).optional(),
+  seedsPatch: z.record(z.string(), z.unknown()).optional(),
+  clearPins: z.array(z.string().min(1)).min(1).optional(),
 })
 
 export function createBrandSelectionTools(deps: BrandSelectionToolDeps = {}): ToolDescriptor[] {
@@ -153,7 +163,8 @@ export function createBrandSelectionTools(deps: BrandSelectionToolDeps = {}): To
     {
       name: 'brand.visual_set_get',
       module: 'brand',
-      summary: 'Read one brand visual set by id (draft, active, or retired).',
+      summary:
+        'Read one brand visual set by id (draft, active, or retired) including its seed block and the owner\'s pins.',
       auditClass: 'read',
       inputSchema: visualSetGetInput,
       permission: readPermission,
@@ -167,6 +178,73 @@ export function createBrandSelectionTools(deps: BrandSelectionToolDeps = {}): To
       inputSchema: z.object({}),
       permission: readPermission,
       handler: async () => store.listVisualSets(),
+    },
+    {
+      name: 'brand.visual_set_update',
+      module: 'brand',
+      summary:
+        'Edit a DRAFT visual set (phase-2d M6 visual editor): a seedsPatch re-expands the seed block deterministically (pins beat re-expansion, V3), direct cssVars/darkCssVars patches write resolved values AND pin them, clearPins re-flows values from the expansion. Seedless drafts only accept resolved-value patches. Draft-only (G23); human-only (G8).',
+      auditClass: 'mutate',
+      inputSchema: visualSetUpdateInput,
+      permission: mutationPermission,
+      handler: async (ctx, input) => {
+        requireHuman(ctx)
+        const parsed = visualSetUpdateInput.parse(input)
+        const current = await store.getVisualSet(parsed.setId)
+        if (!current) throw new Error(`unknown brand visual set: ${parsed.setId}`)
+
+        const wantsExpansion = parsed.seedsPatch !== undefined || parsed.clearPins !== undefined
+        let seeds = current.seeds
+        let cssVars: Record<string, string> | undefined
+        let darkCssVars: Record<string, string> | null | undefined
+        let pins = { ...current.pins }
+
+        if (wantsExpansion) {
+          if (parsed.clearPins !== undefined) {
+            for (const key of parsed.clearPins) {
+              if (pins[key] === undefined) {
+                throw new Error(`cannot clear unknown pin: ${key} is not pinned on draft ${parsed.setId}`)
+              }
+              delete pins[key]
+            }
+          }
+          // Re-expansion (applySeedEdit fails loud on seedless drafts): the
+          // merged seed block re-flows every non-pinned value from the
+          // canonical expansion — pins beat re-expansion (V3).
+          const reseeded = applySeedEdit({ seeds, pins }, parsed.seedsPatch ?? {})
+          seeds = reseeded.seeds
+          cssVars = reseeded.cssVars
+          darkCssVars = reseeded.darkCssVars
+          pins = reseeded.pins
+        }
+
+        // Direct resolved-value edits write AND pin (V3): a pin is how an
+        // owner's direct edit survives later seed re-expansions.
+        if (parsed.cssVarsPatch !== undefined) {
+          cssVars = { ...(cssVars ?? current.cssVars), ...parsed.cssVarsPatch }
+          for (const [key, value] of Object.entries(parsed.cssVarsPatch)) pins[key] = value
+        }
+        if (parsed.darkCssVarsPatch !== undefined) {
+          darkCssVars = {
+            ...(darkCssVars === undefined || darkCssVars === null
+              ? (current.darkCssVars ?? {})
+              : darkCssVars),
+            ...parsed.darkCssVarsPatch,
+          }
+          for (const [key, value] of Object.entries(parsed.darkCssVarsPatch)) {
+            pins[`${DARK_PIN_PREFIX}${key}`] = value
+          }
+        }
+
+        return store.updateVisualSet({
+          setId: parsed.setId,
+          ...(parsed.name === undefined ? {} : { name: parsed.name }),
+          ...(cssVars === undefined ? {} : { cssVars }),
+          ...(darkCssVars === undefined ? {} : { darkCssVars }),
+          ...(seeds === undefined ? {} : { seeds }),
+          pins,
+        })
+      },
     },
   ]
 }

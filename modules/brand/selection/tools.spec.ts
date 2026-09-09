@@ -7,6 +7,7 @@ import { InMemoryActivationStore } from '$lib/kernel/modules'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext } from '$lib/kernel/types'
 import { InMemoryBrandStore, REQUIRED_VISUAL_ROLES } from '../store'
+import { expandSeeds } from '../style-format/expand'
 import { brandSeedsSchema } from '../style-format/seeds'
 import { createBrandSelectionTools } from './tools'
 
@@ -132,7 +133,7 @@ function activatedRegistry() {
 describe('createBrandSelectionTools — descriptors', () => {
   const tools = createBrandSelectionTools({ store: new InMemoryBrandStore(), corpus: toyCorpus })
 
-  it('exposes the seven wizard tools with namespaced names', () => {
+  it('exposes the eight wizard tools with namespaced names', () => {
     expect(tools.map((t) => t.name).sort()).toEqual(
       [
         'brand.corpus_get',
@@ -142,6 +143,7 @@ describe('createBrandSelectionTools — descriptors', () => {
         'brand.visual_set_create',
         'brand.visual_set_get',
         'brand.visual_set_list',
+        'brand.visual_set_update',
       ].sort(),
     )
   })
@@ -157,6 +159,7 @@ describe('createBrandSelectionTools — descriptors', () => {
     expect(tools.filter((t) => t.auditClass === 'mutate').map((t) => t.name)).toEqual([
       'brand.visual_set_create',
       'brand.visual_set_activate',
+      'brand.visual_set_update',
     ])
   })
 })
@@ -299,3 +302,195 @@ describe('selection wizard tools through the kernel pipeline', () => {
     await expect(registry.execute('brand.visual_set_list', {}, humanAdmin)).resolves.toHaveLength(1)
   })
 })
+
+describe('brand.visual_set_update — visual editor writes (phase-2d M6, V8)', () => {
+  const base = seeds(290)
+
+  function seedBackedInput() {
+    const expanded = expandSeeds(base)
+    return {
+      name: 'Seed-backed draft',
+      pickedItemIds: [A.id, B.id, C.id],
+      seeds: base,
+      cssVars: expanded.cssVars,
+      darkCssVars: expanded.darkCssVars,
+    }
+  }
+
+  it('an agent principal with the admin ROLE cannot update visual sets (G8)', async () => {
+    const { store, registry } = activatedRegistry()
+    await ACTIVATIONS.set('brand', true)
+    const draft = await store.createVisualSet(seedBackedInput())
+    await expect(
+      registry.execute(
+        'brand.visual_set_update',
+        { setId: draft.id, name: 'Agent rename' },
+        agentPrincipal,
+      ),
+    ).rejects.toMatchObject({ code: 'permission_denied' })
+    await expect(store.getVisualSet(draft.id)).resolves.toMatchObject({ name: 'Seed-backed draft' })
+  })
+
+  it('updates are draft-only (G23): active sets cannot be edited', async () => {
+    const { store, registry } = activatedRegistry()
+    await ACTIVATIONS.set('brand', true)
+    const complete = Object.fromEntries(
+      REQUIRED_VISUAL_ROLES.map((role) => [`--${role}`, role === 'radius' ? '0.25rem' : '#111111']),
+    )
+    const draft = await store.createVisualSet(visualSetInputWith(complete))
+    await store.activateVisualSet(draft.id)
+    await expect(
+      registry.execute(
+        'brand.visual_set_update',
+        { setId: draft.id, cssVarsPatch: { '--primary': '#123456' } },
+        humanAdmin,
+      ),
+    ).rejects.toThrow(/only allowed on draft sets/)
+  })
+
+  it('applies a seedsPatch through applySeedEdit: re-expansion is deterministic', async () => {
+    const { store, registry } = activatedRegistry()
+    await ACTIVATIONS.set('brand', true)
+    const draft = await store.createVisualSet(seedBackedInput())
+    const result = (await registry.execute(
+      'brand.visual_set_update',
+      { setId: draft.id, seedsPatch: { seedColor: { h: 200 } } },
+      humanAdmin,
+    )) as { seeds: { seedColor: { h: number } }; cssVars: Record<string, string> }
+    expect(result.seeds.seedColor.h).toBe(200)
+    const expected = expandSeeds(
+      brandSeedsSchema.parse({
+        ...base,
+        seedColor: { ...base.seedColor, h: 200 },
+      }),
+    )
+    expect(result.cssVars).toEqual(expected.cssVars)
+    await expect(store.getVisualSet(draft.id)).resolves.toMatchObject({
+      seeds: { seedColor: { h: 200 } },
+    })
+  })
+
+  it('a direct cssVarsPatch writes the value and records a pin (V3)', async () => {
+    const { store, registry } = activatedRegistry()
+    await ACTIVATIONS.set('brand', true)
+    const draft = await store.createVisualSet(seedBackedInput())
+    const result = (await registry.execute(
+      'brand.visual_set_update',
+      { setId: draft.id, cssVarsPatch: { '--primary': 'PINNED-PRIMARY' } },
+      humanAdmin,
+    )) as { cssVars: Record<string, string>; pins: Record<string, string> }
+    expect(result.cssVars['--primary']).toBe('PINNED-PRIMARY')
+    expect(result.pins['--primary']).toBe('PINNED-PRIMARY')
+    const stored = await store.getVisualSet(draft.id)
+    expect(stored?.pins).toEqual({ '--primary': 'PINNED-PRIMARY' })
+  })
+
+  it('a direct darkCssVarsPatch records a dark:-prefixed pin', async () => {
+    const { store, registry } = activatedRegistry()
+    await ACTIVATIONS.set('brand', true)
+    const draft = await store.createVisualSet(seedBackedInput())
+    const result = (await registry.execute(
+      'brand.visual_set_update',
+      { setId: draft.id, darkCssVarsPatch: { '--background': 'DARK-BG' } },
+      humanAdmin,
+    )) as { darkCssVars: Record<string, string>; pins: Record<string, string> }
+    expect(result.darkCssVars['--background']).toBe('DARK-BG')
+    expect(result.pins['dark:--background']).toBe('DARK-BG')
+  })
+
+  it('pins beat re-expansion: a later seedsPatch moves the ramp everywhere EXCEPT pinned keys', async () => {
+    const { store, registry } = activatedRegistry()
+    await ACTIVATIONS.set('brand', true)
+    const draft = await store.createVisualSet(seedBackedInput())
+    await registry.execute(
+      'brand.visual_set_update',
+      { setId: draft.id, cssVarsPatch: { '--primary': 'PINNED-PRIMARY' } },
+      humanAdmin,
+    )
+    const result = (await registry.execute(
+      'brand.visual_set_update',
+      { setId: draft.id, seedsPatch: { seedColor: { h: 200 } } },
+      humanAdmin,
+    )) as { cssVars: Record<string, string> }
+    expect(result.cssVars['--primary']).toBe('PINNED-PRIMARY')
+    expect(result.cssVars['--secondary']).not.toBe(seedBackedInput().cssVars['--secondary'])
+  })
+
+  it('clearPins removes the pin and re-flows the value from the expansion', async () => {
+    const { store, registry } = activatedRegistry()
+    await ACTIVATIONS.set('brand', true)
+    const draft = await store.createVisualSet(seedBackedInput())
+    await registry.execute(
+      'brand.visual_set_update',
+      { setId: draft.id, cssVarsPatch: { '--primary': 'PINNED-PRIMARY' } },
+      humanAdmin,
+    )
+    const result = (await registry.execute(
+      'brand.visual_set_update',
+      { setId: draft.id, clearPins: ['--primary'] },
+      humanAdmin,
+    )) as { pins: Record<string, string>; cssVars: Record<string, string> }
+    expect(result.pins).toEqual({})
+    expect(result.cssVars).toEqual(expandSeeds(base).cssVars)
+    await expect(store.getVisualSet(draft.id)).resolves.toMatchObject({ pins: {} })
+  })
+
+  it('clearPins fails loud on an unknown pin (no silent no-ops)', async () => {
+    const { store, registry } = activatedRegistry()
+    await ACTIVATIONS.set('brand', true)
+    const draft = await store.createVisualSet(seedBackedInput())
+    await expect(
+      registry.execute(
+        'brand.visual_set_update',
+        { setId: draft.id, clearPins: ['--primary'] },
+        humanAdmin,
+      ),
+    ).rejects.toThrow(/unknown pin/)
+  })
+
+  it('a seedsPatch on a seedless draft fails loud, directing to resolved editing', async () => {
+    const { store, registry } = activatedRegistry()
+    await ACTIVATIONS.set('brand', true)
+    const draft = await store.createVisualSet({
+      name: 'Seedless draft',
+      pickedItemIds: [A.id, B.id, C.id],
+      cssVars: completeCssVars(),
+    })
+    await expect(
+      registry.execute(
+        'brand.visual_set_update',
+        { setId: draft.id, seedsPatch: { seedColor: { h: 200 } } },
+        humanAdmin,
+      ),
+    ).rejects.toThrow(/no seeds/)
+    // resolved-value editing stays available on seedless drafts
+    const result = (await registry.execute(
+      'brand.visual_set_update',
+      { setId: draft.id, cssVarsPatch: { '--primary': '#123456' } },
+      humanAdmin,
+    )) as { pins: Record<string, string> }
+    expect(result.pins['--primary']).toBe('#123456')
+  })
+
+  it('visual_set_get returns seeds and pins (store round-trip)', async () => {
+    const { store, registry } = activatedRegistry()
+    await ACTIVATIONS.set('brand', true)
+    const draft = await store.createVisualSet(seedBackedInput())
+    await registry.execute(
+      'brand.visual_set_update',
+      { setId: draft.id, cssVarsPatch: { '--primary': 'PINNED' } },
+      humanAdmin,
+    )
+    const read = (await registry.execute(
+      'brand.visual_set_get',
+      { setId: draft.id },
+      humanAdmin,
+    )) as { seeds: unknown; pins: Record<string, string> }
+    expect(read.seeds).toEqual(base)
+    expect(read.pins).toEqual({ '--primary': 'PINNED' })
+  })
+})
+
+function visualSetInputWith(cssVars: Record<string, string>) {
+  return { name: 'Seed-backed draft', pickedItemIds: [A.id, B.id, C.id], cssVars }
+}

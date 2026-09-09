@@ -231,6 +231,8 @@ export const brandVisualSets = pgTable('brand_visual_sets', {
   seeds: jsonb('seeds').$type<Record<string, unknown>>(),
   cssVars: jsonb('css_vars').$type<Record<string, string>>().notNull(),
   darkCssVars: jsonb('dark_css_vars').$type<Record<string, string>>(),
+  /** Owner-pinned resolved values (phase-2d M6, V3): pins beat re-expansion. */
+  pins: jsonb('pins').$type<Record<string, string>>().default({}).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })

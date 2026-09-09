@@ -370,3 +370,38 @@ describe('InMemoryBrandStore — visual sets (phase-2d M4)', () => {
     expect(all.map((s) => s.name)).toEqual(['Newer draft', 'Kindred draft'])
   })
 })
+
+describe('InMemoryBrandStore — visual set pins (phase-2d M6/V3)', () => {
+  it('new drafts start with an empty pins record', async () => {
+    const store = new InMemoryBrandStore()
+    const set = await store.createVisualSet(visualSetInput())
+    expect(set.pins).toEqual({})
+  })
+
+  it('updateVisualSet persists the pins record (store round-trip)', async () => {
+    const store = new InMemoryBrandStore()
+    const set = await store.createVisualSet(visualSetInput())
+    const pins = { '--primary': 'oklch(0.5 0.1 200)', 'dark:--background': 'oklch(0.13 0 0)' }
+    await store.updateVisualSet({ setId: set.id, pins })
+    await expect(store.getVisualSet(set.id)).resolves.toMatchObject({ pins })
+  })
+
+  it('pins patch replaces the record; absence keeps the previous pins', async () => {
+    const store = new InMemoryBrandStore()
+    const set = await store.createVisualSet(visualSetInput())
+    await store.updateVisualSet({ setId: set.id, pins: { '--ring': '#00ff00' } })
+    const untouched = await store.updateVisualSet({ setId: set.id, name: 'Renamed' })
+    expect(untouched.pins).toEqual({ '--ring': '#00ff00' })
+    const cleared = await store.updateVisualSet({ setId: set.id, pins: {} })
+    expect(cleared.pins).toEqual({})
+  })
+
+  it('draft-only guard covers pins too: no pin updates after activation (G23)', async () => {
+    const store = new InMemoryBrandStore()
+    const set = await store.createVisualSet(visualSetInput())
+    await store.activateVisualSet(set.id)
+    await expect(
+      store.updateVisualSet({ setId: set.id, pins: { '--primary': '#123456' } }),
+    ).rejects.toThrow(/only allowed on draft sets/)
+  })
+})

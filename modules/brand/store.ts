@@ -158,6 +158,8 @@ export const updateVisualSetInputSchema = z.object({
   cssVars: nonEmptyVars('cssVars must not be empty — a visual set without resolved tokens is meaningless (V3)').optional(),
   darkCssVars: z.record(z.string(), z.string()).nullable().optional(),
   seeds: brandSeedsSchema.nullable().optional(),
+  /** Owner-pinned resolved values (V3: pins beat re-expansion; 'dark:'-prefixed keys pin dark tokens). */
+  pins: z.record(z.string(), z.string()).optional(),
 })
 
 export type BrandVisualSet = {
@@ -169,6 +171,7 @@ export type BrandVisualSet = {
   seeds: BrandSeeds | null
   cssVars: Record<string, string>
   darkCssVars: Record<string, string> | null
+  pins: Record<string, string>
   createdAt: string
   updatedAt: string
 }
@@ -593,6 +596,7 @@ export class InMemoryBrandStore implements BrandStore {
       seeds: parsed.seeds ?? null,
       cssVars: { ...parsed.cssVars },
       darkCssVars: parsed.darkCssVars ? { ...parsed.darkCssVars } : null,
+      pins: {},
       createdAt: nowIso(),
       updatedAt: nowIso(),
     }
@@ -641,6 +645,7 @@ export class InMemoryBrandStore implements BrandStore {
       cssVars: parsed.cssVars ?? current.cssVars,
       darkCssVars: parsed.darkCssVars === undefined ? current.darkCssVars : parsed.darkCssVars,
       seeds: parsed.seeds === undefined ? current.seeds : parsed.seeds,
+      pins: parsed.pins === undefined ? current.pins : parsed.pins,
       updatedAt: nowIso(),
     }
     this.visualSets.set(updated.id, updated)
@@ -763,6 +768,7 @@ function toVisualSet(row: VisualSetRow): BrandVisualSet {
     seeds: row.seeds ? brandSeedsSchema.parse(row.seeds) : null,
     cssVars: row.cssVars,
     darkCssVars: row.darkCssVars ?? null,
+    pins: row.pins,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }
@@ -1102,6 +1108,7 @@ export class DbBrandStore implements BrandStore {
         seeds: parsed.seeds ?? null,
         cssVars: parsed.cssVars,
         darkCssVars: parsed.darkCssVars ?? null,
+        pins: {},
       })
       .returning()
     if (!rows[0]) throw new Error('brand visual set insert returned no row')
@@ -1161,6 +1168,7 @@ export class DbBrandStore implements BrandStore {
         ...(parsed.cssVars === undefined ? {} : { cssVars: parsed.cssVars }),
         ...(parsed.darkCssVars === undefined ? {} : { darkCssVars: parsed.darkCssVars }),
         ...(parsed.seeds === undefined ? {} : { seeds: parsed.seeds }),
+        ...(parsed.pins === undefined ? {} : { pins: parsed.pins }),
         updatedAt: new Date(),
       })
       .where(eq(brandVisualSets.id, parsed.setId))

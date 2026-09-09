@@ -568,6 +568,13 @@
       "when": 1760200000003,
       "tag": "0080_brand_visual_sets",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1760200000004,
+      "tag": "0081_brand_visual_set_pins",
+      "breakpoints": true
     }
   ]
 }

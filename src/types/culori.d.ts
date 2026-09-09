@@ -38,6 +38,8 @@ declare module 'culori' {
 
   export function formatRgb(color: Color): string | undefined
 
+  export function formatHex(color: Color): string
+
   export function parse(value: string): ColorComponents | undefined
 
   export function converter(mode: string): (color: Color) => ColorComponents | undefined
