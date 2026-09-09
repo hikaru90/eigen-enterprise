@@ -6,6 +6,7 @@ import { isUserAdmin } from '$lib/server/auth/user-role'
 import { getDb } from '$lib/server/db'
 import { userPreference } from '$lib/server/db/schema'
 import { listAuthorLayersForUser } from '$lib/server/memory/authorship'
+import { defaultBrandStore } from '../../modules/brand/store'
 
 export const load: LayoutServerLoad = async ({ locals, cookies }) => {
   let preferredUiLocale: string | null = null
@@ -38,11 +39,20 @@ export const load: LayoutServerLoad = async ({ locals, cookies }) => {
     }
   }
 
+  // Phase-2d M5 (V9): the active visual set's tokens ride every response so
+  // the root layout can emit the global :root override. Null = no active set
+  // = the app keeps its own style (legit state, never a fallback); every
+  // other store failure propagates loud.
+  const activeVisualSet = await defaultBrandStore().findActiveVisualSet()
+
   return {
     user: locals.user ?? null,
     isAdmin,
     preferredUiLocale,
     preferredLanguage,
     authorLayers,
+    activeVisualSet: activeVisualSet
+      ? { cssVars: activeVisualSet.cssVars, darkCssVars: activeVisualSet.darkCssVars }
+      : null,
   }
 }

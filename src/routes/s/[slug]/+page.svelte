@@ -16,11 +16,13 @@
 
 <article class="website-page">
   <div class="website-backdrop" aria-hidden="true"></div>
-  <h1>{data.title}</h1>
+  <h1 style:color={data.brand.h1Color}>{data.title}</h1>
   <header class="website-hero">
+    <!-- Phase-2d M5 (V9): tints derive from the active visual set (grayscale-
+         projected); with no brand active the load returns today's defaults. -->
     <WaterFlow
-      from="#060606"
-      to="#b9b9b9"
+      from={data.brand.waterFlowFrom}
+      to={data.brand.waterFlowTo}
       speed={0.8}
       scale={1.1}
       resolution={{ width: 40, height: 8 }}
@@ -68,7 +70,6 @@
     font-weight: 300;
     line-height: 1.3;
     letter-spacing: 0.04em;
-    color: #ffffff;
     margin: 0 0 1.5rem;
   }
 

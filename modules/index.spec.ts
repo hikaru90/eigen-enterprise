@@ -15,12 +15,22 @@ vi.mock('$lib/server/mcp/tools', () => ({
   runSearchTextFilesTool: vi.fn(),
 }))
 
+// Hermetic brand store for the approval-flow spec: buildKernel wires the
+// default (DB-backed) brand store; the visual_set_activate gate test below
+// swaps in one shared in-memory store so no DATABASE_URL is needed.
+vi.mock('./brand/store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./brand/store')>()
+  const singleton = new actual.InMemoryBrandStore()
+  return { ...actual, defaultBrandStore: () => singleton }
+})
+
 import { InMemoryApprovalStore } from '$lib/kernel/approvals'
 import { InMemoryEventSink } from '$lib/kernel/events'
 import type { Brain } from '$lib/kernel/gateway'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
 import type { ToolContext } from '$lib/kernel/types'
 import type { AppDatabase } from '$lib/server/db/context'
+import { REQUIRED_VISUAL_ROLES } from './brand/store'
 import {
   APPROVAL_REQUIRED_TOOLS,
   bootstrapChatGateway,
@@ -100,12 +110,14 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     ).resolves.toEqual({ count: 0, results: [] })
   })
 
-  it('wires StaticApprovalPolicy({email.send_mail, brand.set_activate, website.publish_page, repo.merge}); the kernel gate stops external sends and brand go-live at approval', async () => {
+  it('wires StaticApprovalPolicy({email.send_mail, brand.set_activate, brand.visual_set_activate, website.publish_page, repo.merge}); the kernel gate stops external sends and brand go-lives at approval', async () => {
     // Orchestrator decision (2026-09-07): the approval gate fires for every
     // non-read tool, so the external send_mail halts as approval_required and
     // the handler never runs until an owner approves the pending request.
     // Phase-2c (G8/D5): brand.set_activate joins the set — activation is a
     // strategic brand decision owned by a human approver.
+    // Phase-2d M5 (V9): brand.visual_set_activate gates the visual go-live —
+    // once approved, the set applies globally to all user-facing surfaces.
     // Website founding journey: publishing is public, so the journey's
     // website.publish_page artifacts gate here too.
     // Phase-3 M2: repo.merge gates the agent's repo hands — landing agent work
@@ -114,6 +126,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     // kernel.module_activate/deactivate, the owner's conversational yes decides.
     expect([...APPROVAL_REQUIRED_TOOLS].sort()).toEqual([
       'brand.set_activate',
+      'brand.visual_set_activate',
       'email.send_mail',
       'kernel.module_activate',
       'kernel.module_deactivate',
@@ -130,6 +143,51 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     const pending = await approvalStore.listPending()
     expect(pending).toHaveLength(1)
     expect(pending[0]).toMatchObject({ toolName: 'email.send_mail', status: 'pending' })
+  })
+
+  it('brand.visual_set_activate is approval-gated: no execution before the owner decision, activation after it (phase-2d M5/V9)', async () => {
+    const { kernel, approvalStore } = makeInMemoryKernel()
+    await kernel.activations.set('brand', true)
+
+    // Draft a complete visual set through the M4 wizard tool; the gate under
+    // test here is activation (M5).
+    const draft = (await kernel.registry.execute(
+      'brand.visual_set_create',
+      {
+        name: 'Kindred go-live',
+        pickedIds: ['5a000000-0000-4000-8000-00000000000a'],
+        cssVars: Object.fromEntries(
+          REQUIRED_VISUAL_ROLES.map((role) => [
+            `--${role}`,
+            role === 'radius' ? '0.25rem' : '#111111',
+          ]),
+        ),
+      },
+      ctx,
+    )) as { id: string }
+
+    // First activation attempt halts at the approval gate; the store is untouched.
+    await expect(
+      kernel.registry.execute('brand.visual_set_activate', { setId: draft.id }, ctx),
+    ).rejects.toMatchObject({ code: 'approval_required' })
+    const pending = await approvalStore.listPending()
+    expect(pending).toHaveLength(1)
+    expect(pending[0]).toMatchObject({ toolName: 'brand.visual_set_activate', status: 'pending' })
+
+    // A retry while still pending halts again (no second request, no execution).
+    await expect(
+      kernel.registry.execute('brand.visual_set_activate', { setId: draft.id }, ctx),
+    ).rejects.toMatchObject({ code: 'approval_required' })
+    expect(await approvalStore.listPending()).toHaveLength(1)
+
+    // The owner approves; the SAME input now executes and activates.
+    await approvalStore.decide(pending[0]!.id, 'approved', 'owner-1')
+    const activated = (await kernel.registry.execute(
+      'brand.visual_set_activate',
+      { setId: draft.id },
+      ctx,
+    )) as { status: string }
+    expect(activated.status).toBe('active')
   })
 
   it('runs mutate email tools through the full pipeline (fail loud at the owlery boundary)', async () => {

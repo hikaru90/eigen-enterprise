@@ -60,6 +60,10 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   // Phase-2c (G8/D5): guideline-set activation is a strategic brand decision —
   // human-admin principal AND an explicit approval decision.
   'brand.set_activate',
+  // Phase-2d M5 (V9): visual-set activation is THE strategic go-live moment —
+  // once approved, the set's tokens apply globally to every user-facing
+  // surface (root :root override, public hero, shader tints).
+  'brand.visual_set_activate',
   // Website founding journey: publishing is a public, owner-owned act — the
   // journey's website.publish_page artifacts gate here (approval_required),
   // surfacing as the chatbox approval card until the owner decides.

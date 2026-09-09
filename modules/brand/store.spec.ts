@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { InMemoryBrandStore, createSetInputSchema } from './store'
+import { InMemoryBrandStore, REQUIRED_VISUAL_ROLES, createSetInputSchema } from './store'
 
 /** Valid CARE-complete context for guard tests. */
 function validContext() {
@@ -218,11 +218,23 @@ const ITEM_A = '1a000000-0000-4000-8000-00000000000a'
 const ITEM_B = '1b000000-0000-4000-8000-00000000000b'
 const ITEM_C = '1c000000-0000-4000-8000-00000000000c'
 
+/** Full REQUIRED_VISUAL_ROLES cssVars minus the given roles (guard-test helper). */
+function withoutRoles(roles: string[]): Record<string, string> {
+  return Object.fromEntries(
+    REQUIRED_VISUAL_ROLES.filter((role) => !roles.includes(role)).map((role) => [
+      `--${role}`,
+      role === 'radius' ? '0.25rem' : '#111111',
+    ]),
+  )
+}
+
 function visualSetInput(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     name: 'Kindred draft',
     pickedItemIds: [ITEM_A, ITEM_B, ITEM_C],
-    cssVars: { '--background': '#ffffff', '--primary': '#333333' },
+    cssVars: Object.fromEntries(
+      REQUIRED_VISUAL_ROLES.map((role) => [`--${role}`, role === 'radius' ? '0.25rem' : '#111111']),
+    ),
     ...overrides,
   }
 }
@@ -236,7 +248,7 @@ describe('InMemoryBrandStore — visual sets (phase-2d M4)', () => {
     expect(set.status).toBe('draft')
     expect(set.sourceItemId).toBe(ITEM_A)
     expect(set.pickedItemIds).toEqual([ITEM_A, ITEM_B, ITEM_C])
-    expect(set.cssVars['--primary']).toBe('#333333')
+    expect(set.cssVars['--primary']).toBe('#111111')
     expect(set.darkCssVars).toEqual({ '--background': '#111111' })
     expect(set.seeds).toBeNull()
   })
@@ -273,7 +285,7 @@ describe('InMemoryBrandStore — visual sets (phase-2d M4)', () => {
     ).rejects.toThrow(/only allowed on draft sets/)
   })
 
-  it('activation is the one-active-per-company flip; a second active set fails loud', async () => {
+  it('activation is the approval-gated go-live flip (phase-2d M5/V9): activating retires the previously active set', async () => {
     const store = new InMemoryBrandStore()
     await expect(store.getActiveVisualSet()).rejects.toThrow(/no active brand visual set/)
     const first = await store.createVisualSet(visualSetInput())
@@ -281,8 +293,65 @@ describe('InMemoryBrandStore — visual sets (phase-2d M4)', () => {
     expect(activated.status).toBe('active')
     await expect(store.getActiveVisualSet()).resolves.toMatchObject({ id: first.id })
 
+    // V9: activation of a new draft retires the previous active set in the
+    // same operation — the go-live is one transactional order (guards first,
+    // then retire, then activate), never two active sets.
     const second = await store.createVisualSet(visualSetInput({ name: 'Second draft' }))
-    await expect(store.activateVisualSet(second.id)).rejects.toThrow(/one active set per company/)
+    const reactivated = await store.activateVisualSet(second.id)
+    expect(reactivated.status).toBe('active')
+    await expect(store.getActiveVisualSet()).resolves.toMatchObject({ id: second.id })
+    const retired = await store.getVisualSet(first.id)
+    expect(retired?.status).toBe('retired')
+  })
+
+  it('activation is draft-only (G23): active and retired sets cannot re-activate', async () => {
+    const store = new InMemoryBrandStore()
+    const set = await store.createVisualSet(visualSetInput())
+    await store.activateVisualSet(set.id)
+    await expect(store.activateVisualSet(set.id)).rejects.toThrow(/only allowed on draft sets/)
+
+    const retired = await store.createVisualSet(visualSetInput({ name: 'Replacement' }))
+    await store.activateVisualSet(retired.id) // retires `set`
+    await expect(store.activateVisualSet(set.id)).rejects.toThrow(/only allowed on draft sets/)
+  })
+
+  it('activation requires complete cssVars: missing roles fail loud listing every gap', async () => {
+    const store = new InMemoryBrandStore()
+    const incomplete = await store.createVisualSet(
+      visualSetInput({ cssVars: { '--background': '#ffffff', '--primary': '#111111' } }),
+    )
+    await expect(store.activateVisualSet(incomplete.id)).rejects.toThrow(
+      /cssVars is missing required roles.*--foreground.*--font-sans/,
+    )
+
+    // A single missing role is named too.
+    const missingRing = await store.createVisualSet(
+      visualSetInput({ name: 'Missing ring', cssVars: withoutRoles(['ring']) }),
+    )
+    await expect(store.activateVisualSet(missingRing.id)).rejects.toThrow(/--ring/)
+  })
+
+  it('a failed activation leaves the currently active set untouched (guards run before any write)', async () => {
+    const store = new InMemoryBrandStore()
+    const first = await store.createVisualSet(visualSetInput())
+    await store.activateVisualSet(first.id)
+
+    const incomplete = await store.createVisualSet(
+      visualSetInput({ name: 'Incomplete draft', cssVars: { '--background': '#ffffff' } }),
+    )
+    await expect(store.activateVisualSet(incomplete.id)).rejects.toThrow(/missing required roles/)
+    await expect(store.getActiveVisualSet()).resolves.toMatchObject({ id: first.id })
+    const untouched = await store.getVisualSet(first.id)
+    expect(untouched?.status).toBe('active')
+  })
+
+  it('findActiveVisualSet resolves null when none is active (legit state); getActiveVisualSet throws (G23)', async () => {
+    const store = new InMemoryBrandStore()
+    await expect(store.findActiveVisualSet()).resolves.toBeNull()
+    await expect(store.getActiveVisualSet()).rejects.toThrow(/no active brand visual set/)
+    const set = await store.createVisualSet(visualSetInput())
+    await store.activateVisualSet(set.id)
+    await expect(store.findActiveVisualSet()).resolves.toMatchObject({ id: set.id })
   })
 
   it('get and list resolve sets; unknown ids read null; list is newest-first', async () => {

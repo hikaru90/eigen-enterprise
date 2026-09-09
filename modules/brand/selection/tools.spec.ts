@@ -6,7 +6,7 @@ import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext } from '$lib/kernel/types'
-import { InMemoryBrandStore } from '../store'
+import { InMemoryBrandStore, REQUIRED_VISUAL_ROLES } from '../store'
 import { brandSeedsSchema } from '../style-format/seeds'
 import { createBrandSelectionTools } from './tools'
 
@@ -108,6 +108,13 @@ const toyCorpus: CorpusRegistry = (() => {
 
 const ACTIVATIONS = new InMemoryActivationStore()
 
+/** cssVars covering every activation-required role (V9 guard fixture). */
+function completeCssVars(bg = '#e8ede5'): Record<string, string> {
+  return Object.fromEntries(
+    REQUIRED_VISUAL_ROLES.map((role) => [`--${role}`, role === 'radius' ? '0.25rem' : bg]),
+  )
+}
+
 function activatedRegistry() {
   const store = new InMemoryBrandStore()
   const registry = new KernelRegistry({
@@ -125,12 +132,13 @@ function activatedRegistry() {
 describe('createBrandSelectionTools — descriptors', () => {
   const tools = createBrandSelectionTools({ store: new InMemoryBrandStore(), corpus: toyCorpus })
 
-  it('exposes the six wizard tools with namespaced names', () => {
+  it('exposes the seven wizard tools with namespaced names', () => {
     expect(tools.map((t) => t.name).sort()).toEqual(
       [
         'brand.corpus_get',
         'brand.corpus_list',
         'brand.selection_matches',
+        'brand.visual_set_activate',
         'brand.visual_set_create',
         'brand.visual_set_get',
         'brand.visual_set_list',
@@ -138,7 +146,7 @@ describe('createBrandSelectionTools — descriptors', () => {
     )
   })
 
-  it('reads are admin+agent; the visual-set mutation is admin-only (G8)', () => {
+  it('reads are admin+agent; the visual-set mutations are admin-only (G8)', () => {
     for (const descriptor of tools) {
       if (descriptor.auditClass === 'read') {
         expect(descriptor.permission.roles).toEqual(['admin', 'agent'])
@@ -148,6 +156,7 @@ describe('createBrandSelectionTools — descriptors', () => {
     }
     expect(tools.filter((t) => t.auditClass === 'mutate').map((t) => t.name)).toEqual([
       'brand.visual_set_create',
+      'brand.visual_set_activate',
     ])
   })
 })
@@ -194,6 +203,50 @@ describe('selection wizard tools through the kernel pipeline', () => {
         agentPrincipal,
       ),
     ).rejects.toMatchObject({ code: 'permission_denied' })
+  })
+
+  it('an agent principal with the admin ROLE cannot activate visual sets (G8)', async () => {
+    const { store, registry } = activatedRegistry()
+    await ACTIVATIONS.set('brand', true)
+    const draft = await store.createVisualSet({
+      name: 'Draft',
+      pickedItemIds: [A.id, B.id, C.id],
+      cssVars: completeCssVars(),
+    })
+    // This registry wires no approval policy, so the human-guard is what
+    // rejects — the agent principal never reaches the store (the approval
+    // flow itself is covered against the wired kernel in modules/index.spec).
+    await expect(
+      registry.execute('brand.visual_set_activate', { setId: draft.id }, agentPrincipal),
+    ).rejects.toMatchObject({ code: 'permission_denied' })
+    await expect(store.getVisualSet(draft.id)).resolves.toMatchObject({ status: 'draft' })
+  })
+
+  it('visual_set_activate flips a complete draft to active (guards enforced)', async () => {
+    const { store, registry } = activatedRegistry()
+    await ACTIVATIONS.set('brand', true)
+    const draft = await store.createVisualSet({
+      name: 'Kindred identity',
+      pickedItemIds: [A.id, B.id, C.id],
+      cssVars: completeCssVars(),
+    })
+    await expect(
+      registry.execute('brand.visual_set_activate', { setId: draft.id }, humanAdmin),
+    ).resolves.toMatchObject({ id: draft.id, status: 'active' })
+    await expect(store.getActiveVisualSet()).resolves.toMatchObject({ id: draft.id })
+  })
+
+  it('visual_set_activate propagates the store guard loud on incomplete cssVars', async () => {
+    const { store, registry } = activatedRegistry()
+    await ACTIVATIONS.set('brand', true)
+    const incomplete = await store.createVisualSet({
+      name: 'Incomplete',
+      pickedItemIds: [A.id, B.id, C.id],
+      cssVars: { '--background': '#fff' },
+    })
+    await expect(
+      registry.execute('brand.visual_set_activate', { setId: incomplete.id }, humanAdmin),
+    ).rejects.toThrow(/missing required roles/)
   })
 
   it('visual_set_create lands a draft row and backfills seeds from the source corpus item', async () => {

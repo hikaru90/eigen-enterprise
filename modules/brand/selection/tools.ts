@@ -138,6 +138,19 @@ export function createBrandSelectionTools(deps: BrandSelectionToolDeps = {}): To
       },
     },
     {
+      name: 'brand.visual_set_activate',
+      module: 'brand',
+      summary:
+        'Activate a draft brand visual set — the approval-gated strategic go-live (V9). Guards: draft-only, cssVars must cover every required role. Activating retires the previously active set in the same operation; its tokens then apply globally to all user-facing surfaces. Requires an explicit approval decision (APPROVAL_REQUIRED_TOOLS).',
+      auditClass: 'mutate',
+      inputSchema: visualSetGetInput,
+      permission: mutationPermission,
+      handler: async (ctx, input) => {
+        requireHuman(ctx)
+        return store.activateVisualSet(visualSetGetInput.parse(input).setId)
+      },
+    },
+    {
       name: 'brand.visual_set_get',
       module: 'brand',
       summary: 'Read one brand visual set by id (draft, active, or retired).',

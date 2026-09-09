@@ -176,6 +176,30 @@ export type BrandVisualSet = {
 export type CreateVisualSetInput = z.infer<typeof createVisualSetInputSchema>
 export type UpdateVisualSetInput = z.infer<typeof updateVisualSetInputSchema>
 
+/**
+ * The cssVar roles a visual set must resolve before it can go live (V9): the
+ * shadcn `:root` surface the whole app consumes, plus type. Absence is not a
+ * fallback — an incomplete set fails activation loud, listing every gap.
+ */
+export const REQUIRED_VISUAL_ROLES = [
+  'background',
+  'foreground',
+  'card',
+  'popover',
+  'primary',
+  'primary-foreground',
+  'secondary',
+  'muted',
+  'accent',
+  'border',
+  'input',
+  'ring',
+  'radius',
+  'font-sans',
+  'font-display',
+  'font-mono',
+] as const
+
 // ---------------------------------------------------------------------------
 // Store contract
 // ---------------------------------------------------------------------------
@@ -247,11 +271,22 @@ export type BrandStore = {
   createVisualSet(input: CreateVisualSetInput): Promise<BrandVisualSet>
   getVisualSet(setId: string): Promise<BrandVisualSet | null>
   listVisualSets(): Promise<BrandVisualSet[]>
+  /**
+   * The company's active visual set, or null when none is active. Null is a
+   * legit state (the app keeps its own style), not a fallback; every other
+   * failure throws loud (G23: no implicit resolution).
+   */
+  findActiveVisualSet(): Promise<BrandVisualSet | null>
   /** Fail-loud resolution of the company's active visual set (no implicit latest, G23). */
   getActiveVisualSet(): Promise<BrandVisualSet>
   /** Patch a DRAFT visual set. Active/retired sets are immutable (G23). */
   updateVisualSet(input: UpdateVisualSetInput): Promise<BrandVisualSet>
-  /** Draft -> active flip; fails loud while another active set exists (used by the M5 publish gate). */
+  /**
+   * The approval-gated go-live flip (V9): draft only, complete cssVars
+   * (REQUIRED_VISUAL_ROLES). Activating retires the previously active set in
+   * the same operation — guards run first so a failed activation leaves the
+   * current active set untouched.
+   */
   activateVisualSet(setId: string): Promise<BrandVisualSet>
 }
 
@@ -271,6 +306,25 @@ function requireDraftVisualSet(set: BrandVisualSet, action: string): BrandVisual
     )
   }
   return set
+}
+
+/**
+ * Visual activation guards (V9), mirroring the guideline-set assertActivatable:
+ * draft-only, and the resolved cssVars must cover every required role — an
+ * incomplete set would leave consuming surfaces without tokens, so it fails
+ * loud naming the gaps instead of emitting a partial override.
+ */
+function assertVisualSetActivatable(set: BrandVisualSet): void {
+  requireDraftVisualSet(set, 'activation')
+  const missing = REQUIRED_VISUAL_ROLES.filter((role) => {
+    const value = set.cssVars[`--${role}`]
+    return value === undefined || value.trim().length === 0
+  })
+  if (missing.length > 0) {
+    throw new Error(
+      `brand visual set ${set.id} cannot activate: cssVars is missing required roles (${missing.map((role) => `--${role}`).join(', ')})`,
+    )
+  }
 }
 
 /** Each corpus item may be picked once — a duplicated pick would double its weight in the centroid. */
@@ -557,12 +611,20 @@ export class InMemoryBrandStore implements BrandStore {
   }
 
   async getActiveVisualSet(): Promise<BrandVisualSet> {
+    const active = await this.findActiveVisualSet()
+    if (!active) {
+      throw new Error(
+        'no active brand visual set (activation is the M5 publish gate; absence of an active set means the app keeps its own style — never a fallback)',
+      )
+    }
+    return active
+  }
+
+  async findActiveVisualSet(): Promise<BrandVisualSet | null> {
     for (const set of this.visualSets.values()) {
       if (set.status === 'active') return set
     }
-    throw new Error(
-      'no active brand visual set (activation is the M5 publish gate; absence of an active set means the app keeps its own style — never a fallback)',
-    )
+    return null
   }
 
   async updateVisualSet(input: UpdateVisualSetInput): Promise<BrandVisualSet> {
@@ -586,15 +648,20 @@ export class InMemoryBrandStore implements BrandStore {
   }
 
   async activateVisualSet(setId: string): Promise<BrandVisualSet> {
+    // Guards run BEFORE any mutation (the guideline-set activation order):
+    // a failed activation must leave the currently active set untouched.
     const set = this.visualSets.get(setId)
     if (!set) throw new Error(`unknown brand visual set: ${setId}`)
-    requireDraftVisualSet(set, 'activation')
-    for (const other of this.visualSets.values()) {
-      if (other.id !== setId && other.status === 'active') {
-        throw new Error(
-          `an active brand visual set already exists (${other.id}); retire it first (one active set per company)`,
-        )
-      }
+    assertVisualSetActivatable(set)
+    const previous = [...this.visualSets.values()].find(
+      (other) => other.id !== setId && other.status === 'active',
+    )
+    if (previous) {
+      this.visualSets.set(previous.id, {
+        ...previous,
+        status: 'retired',
+        updatedAt: nowIso(),
+      })
     }
     const activated: BrandVisualSet = { ...set, status: 'active', updatedAt: nowIso() }
     this.visualSets.set(activated.id, activated)
@@ -1061,18 +1128,23 @@ export class DbBrandStore implements BrandStore {
   }
 
   async getActiveVisualSet(): Promise<BrandVisualSet> {
+    const active = await this.findActiveVisualSet()
+    if (!active) {
+      throw new Error(
+        'no active brand visual set (activation is the M5 publish gate; absence of an active set means the app keeps its own style — never a fallback)',
+      )
+    }
+    return active
+  }
+
+  async findActiveVisualSet(): Promise<BrandVisualSet | null> {
     const database = await resolveDb(this.db)
     const rows = await database
       .select()
       .from(brandVisualSets)
       .where(eq(brandVisualSets.status, 'active'))
       .limit(1)
-    if (!rows[0]) {
-      throw new Error(
-        'no active brand visual set (activation is the M5 publish gate; absence of an active set means the app keeps its own style — never a fallback)',
-      )
-    }
-    return toVisualSet(rows[0])
+    return rows[0] ? toVisualSet(rows[0]) : null
   }
 
   async updateVisualSet(input: UpdateVisualSetInput): Promise<BrandVisualSet> {
@@ -1099,17 +1171,27 @@ export class DbBrandStore implements BrandStore {
 
   async activateVisualSet(setId: string): Promise<BrandVisualSet> {
     const database = await resolveDb(this.db)
+    // Guards run BEFORE any mutation (the guideline-set activation order):
+    // draft-only + complete cssVars, so a failed activation leaves the
+    // currently active set untouched. Then the transactional order mirrors
+    // set_activate's guard-then-flip shape: retire the previous active set,
+    // then flip this one — never two active sets.
     const set = await requireDbVisualSet(database, setId)
-    requireDraftVisualSet(set, 'activation')
+    assertVisualSetActivatable(set)
     const activeRows = await database
       .select({ id: brandVisualSets.id })
       .from(brandVisualSets)
       .where(and(eq(brandVisualSets.status, 'active'), ne(brandVisualSets.id, setId)))
       .limit(1)
     if (activeRows[0]) {
-      throw new Error(
-        `an active brand visual set already exists (${activeRows[0].id}); retire it first (one active set per company)`,
-      )
+      const retired = await database
+        .update(brandVisualSets)
+        .set({ status: 'retired', updatedAt: new Date() })
+        .where(eq(brandVisualSets.id, activeRows[0].id))
+        .returning()
+      if (!retired[0]) {
+        throw new Error(`brand visual set retirement returned no row: ${activeRows[0].id}`)
+      }
     }
     const rows = await database
       .update(brandVisualSets)

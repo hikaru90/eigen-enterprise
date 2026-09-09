@@ -17,6 +17,7 @@
   import favicon from '$lib/assets/favicon.png'
   import { startCaptureQueueRunner } from '$lib/capture/queue'
   import AppHeader from '$lib/components/app-header.svelte'
+  import { activeVisualSetStyleTag } from '../../modules/brand/style-format/emitter'
 
   // E2E hydration marker: SvelteKit hydration replaces the SSR DOM, wiping values
   // typed into pre-hydration inputs. Tests wait for this flag before interacting.
@@ -183,6 +184,21 @@
 <svelte:head>
   <title>Eigen Mesh</title>
   <link rel="icon" href={favicon} />
+  {#if page.data.activeVisualSet}
+    <!-- Phase-2d M5 (V9): the active visual set's tokens apply globally to
+         every surface (app shell + public). Cascade guarantee: this <style>
+         is UNLAYERED, so it beats the app's @layer base :root declarations at
+         equal specificity regardless of order; the app's unlayered `.dark`
+         block loses on document order — SvelteKit renders the manifest's
+         bundled CSS before the root layout's head content, so this override
+         follows it. Exactly one style element, emitter-generated (owner-approved
+         tokens, never user input). -->
+    <!-- eslint-disable-next-line svelte/no-at-html-tags -- emitter output over owner-approved active visual set tokens -->
+    {@html activeVisualSetStyleTag(
+      page.data.activeVisualSet.cssVars,
+      page.data.activeVisualSet.darkCssVars,
+    )}
+  {/if}
 </svelte:head>
 
 <div class="bg-background min-h-dvh" class:pb-28={!hideAppChrome} class:pb-6={hideAppChrome}>
