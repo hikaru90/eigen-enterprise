@@ -1,0 +1,859 @@
+import { and, desc, eq, ne, sql } from 'drizzle-orm'
+import { z } from 'zod'
+import type { DbHandle } from '$lib/kernel/db-stores'
+import {
+  brandCriteria,
+  brandGlossary,
+  brandGuidelineSets,
+  brandLexicon,
+  brandVisualTokens,
+  brandVoiceExamples,
+  type BrandGuidelineSetContext,
+} from '$lib/server/db/brand.schema'
+
+/**
+ * BrandStore — the company's brand as executable context (phase-2c, M2).
+ * Ruleset of record: plan/branding-module-rules.md. The store owns the
+ * guideline-set lifecycle guards so every caller (kernel tools now, gateway
+ * middleware later) inherits them:
+ *   - sets are immutable once active/retired (G23 versioning);
+ *   - activation requires exemplar-first voice (G2), a multi-word tone set,
+ *     CARE-complete context, and one active set per locale (D3);
+ *   - child curation tables are writable only while the set is a draft.
+ */
+
+export type BrandSetStatus = 'draft' | 'active' | 'retired'
+export type BrandRiskTier = 'low' | 'standard' | 'heritage'
+
+export type BrandGuidelineSet = {
+  id: string
+  version: number
+  locale: string
+  status: BrandSetStatus
+  context: BrandGuidelineSetContext
+  baseSetId: string | null
+  activatedAt: string | null
+  validationRunId: string | null
+  eventId: string | null
+  createdAt: string
+}
+
+export type BrandVoiceExample = {
+  id: string
+  setId: string
+  contentType: string
+  situation: string | null
+  body: string
+  label: 'good' | 'bad'
+  rationale: string | null
+}
+
+export type BrandLexiconEntry = {
+  id: string
+  setId: string
+  term: string
+  kind: 'allowed' | 'banned' | 'required'
+  contextKey: string | null
+  replacement: string | null
+}
+
+export type BrandCriterion = {
+  id: string
+  setId: string
+  contentType: string
+  criterion: string
+  kind: 'deterministic' | 'judge'
+  spec: Record<string, unknown>
+  riskTier: BrandRiskTier
+}
+
+export type BrandVisualToken = {
+  id: string
+  setId: string
+  token: string
+  value: string
+  proseRationale: string | null
+  styleVocabulary: string[]
+}
+
+export type BrandGlossaryEntry = {
+  id: string
+  setId: string
+  term: string
+  definition: string
+  usageNote: string | null
+}
+
+// ---------------------------------------------------------------------------
+// Shared zod schemas (consumed by modules/brand/tools.ts as descriptor inputs).
+// Locale checks are syntax-only; brand semantics are never string heuristics (G14).
+// ---------------------------------------------------------------------------
+
+/** BCP-47 shape check (syntax only, D3). */
+export const brandLocaleSchema = z
+  .string()
+  .regex(/^[a-zA-Z]{2,3}(-[a-zA-Z0-9]+)*$/, 'locale must be a BCP-47 tag (e.g. en, en-US)')
+
+/** G2: tone descriptors are multi-word nuanced sets; a single tone word is rejected here, at schema level. */
+export const toneAttributesSchema = z
+  .array(
+    z
+      .string()
+      .trim()
+      .refine((v) => v.split(/\s+/).length >= 2, {
+        message:
+          'each tone attribute must be a multi-word nuanced set (G2) — single tone words exaggerate',
+      }),
+  )
+  .min(2, 'tone must be a set of at least two multi-word descriptors (G2)')
+
+export const brandSetContextSchema = z.object({
+  mission: z.string().min(1).optional(),
+  audience: z.string().min(1).optional(),
+  register: z.string().min(1).optional(),
+  toneAttributes: toneAttributesSchema,
+  disclosureStatement: z.string().min(1).optional(),
+})
+
+export const createSetInputSchema = z.object({
+  locale: brandLocaleSchema,
+  context: brandSetContextSchema,
+  baseSetId: z.string().uuid().optional(),
+})
+
+export const updateSetInputSchema = z.object({
+  setId: z.string().uuid(),
+  context: brandSetContextSchema.partial(),
+})
+
+// ---------------------------------------------------------------------------
+// Store contract
+// ---------------------------------------------------------------------------
+
+export type CreateSetInput = z.infer<typeof createSetInputSchema>
+export type UpdateSetInput = z.infer<typeof updateSetInputSchema>
+
+export type ListSetsFilter = {
+  status?: BrandSetStatus
+  locale?: string
+}
+
+export type BrandStore = {
+  createSet(input: CreateSetInput): Promise<BrandGuidelineSet>
+  getSet(setId: string): Promise<BrandGuidelineSet | null>
+  listSets(filter?: ListSetsFilter): Promise<BrandGuidelineSet[]>
+  /** Patch the context of a DRAFT set. Active/retired sets are immutable (G23). */
+  updateDraftSet(input: UpdateSetInput): Promise<BrandGuidelineSet>
+  /**
+   * The go-live flip (G8/D5): draft only, requires exemplar-first voice (>=2
+   * examples with >=1 good and >=1 bad), CARE-complete context, and at most
+   * one active set per locale (D3).
+   */
+  activateSet(setId: string): Promise<BrandGuidelineSet>
+  /** The one legal implicit-free resolution path (G23): fail loud when the locale has no active set. */
+  getActiveSet(locale: string): Promise<BrandGuidelineSet>
+  addVoiceExample(input: {
+    setId: string
+    contentType: string
+    situation?: string
+    body: string
+    label: 'good' | 'bad'
+    rationale?: string
+  }): Promise<BrandVoiceExample>
+  addLexiconEntry(input: {
+    setId: string
+    term: string
+    kind: 'allowed' | 'banned' | 'required'
+    contextKey?: string
+    replacement?: string
+  }): Promise<BrandLexiconEntry>
+  addCriterion(input: {
+    setId: string
+    contentType: string
+    criterion: string
+    kind: 'deterministic' | 'judge'
+    spec: Record<string, unknown>
+    riskTier: BrandRiskTier
+  }): Promise<BrandCriterion>
+  addVisualToken(input: {
+    setId: string
+    token: string
+    value: string
+    proseRationale?: string
+    styleVocabulary?: string[]
+  }): Promise<BrandVisualToken>
+  addGlossaryEntry(input: {
+    setId: string
+    term: string
+    definition: string
+    usageNote?: string
+  }): Promise<BrandGlossaryEntry>
+  listVoiceExamples(setId: string): Promise<BrandVoiceExample[]>
+  listLexicon(setId: string): Promise<BrandLexiconEntry[]>
+  listCriteria(setId: string): Promise<BrandCriterion[]>
+}
+
+function requireDraft(set: BrandGuidelineSet, action: string): BrandGuidelineSet {
+  if (set.status !== 'draft') {
+    throw new Error(
+      `brand guideline set ${set.id} is ${set.status}; ${action} is only allowed on draft sets (G23: active sets are immutable)`,
+    )
+  }
+  return set
+}
+
+/** Activation guards shared by both store implementations (G2 + D3 + CARE completeness). */
+function assertActivatable(
+  set: BrandGuidelineSet,
+  examples: BrandVoiceExample[],
+): void {
+  requireDraft(set, 'activation')
+  const context = set.context
+  for (const field of ['mission', 'audience', 'register'] as const) {
+    if (!context[field] || context[field]!.trim().length === 0) {
+      throw new Error(
+        `brand guideline set ${set.id} cannot activate: context.${field} is required (CARE-complete context, G1)`,
+      )
+    }
+  }
+  const good = examples.filter((e) => e.label === 'good').length
+  const bad = examples.filter((e) => e.label === 'bad').length
+  if (examples.length < 2 || good < 1 || bad < 1) {
+    throw new Error(
+      `brand guideline set ${set.id} cannot activate: voice is stored exemplar-first (G2) — requires >=2 examples including >=1 good and >=1 bad (has ${good} good / ${bad} bad)`,
+    )
+  }
+}
+
+function nowIso(): string {
+  return new Date().toISOString()
+}
+
+/** In-memory BrandStore for tests and in-memory kernel wiring. */
+export class InMemoryBrandStore implements BrandStore {
+  private readonly sets = new Map<string, BrandGuidelineSet>()
+  private readonly examples: BrandVoiceExample[] = []
+  private readonly lexicon: BrandLexiconEntry[] = []
+  private readonly criteria: BrandCriterion[] = []
+  private readonly tokens: BrandVisualToken[] = []
+  private readonly glossary: BrandGlossaryEntry[] = []
+
+  private requireSet(setId: string): BrandGuidelineSet {
+    const set = this.sets.get(setId)
+    if (!set) throw new Error(`unknown brand guideline set: ${setId}`)
+    return set
+  }
+
+  private nextVersion(locale: string): number {
+    let max = 0
+    for (const set of this.sets.values()) {
+      if (set.locale === locale) max = Math.max(max, set.version)
+    }
+    return max + 1
+  }
+
+  async createSet(input: CreateSetInput): Promise<BrandGuidelineSet> {
+    const parsed = createSetInputSchema.parse(input)
+    const set: BrandGuidelineSet = {
+      id: crypto.randomUUID(),
+      version: this.nextVersion(parsed.locale),
+      locale: parsed.locale,
+      status: 'draft',
+      context: parsed.context,
+      baseSetId: parsed.baseSetId ?? null,
+      activatedAt: null,
+      validationRunId: null,
+      eventId: null,
+      createdAt: nowIso(),
+    }
+    this.sets.set(set.id, set)
+    return set
+  }
+
+  async getSet(setId: string): Promise<BrandGuidelineSet | null> {
+    return this.sets.get(setId) ?? null
+  }
+
+  async listSets(filter: ListSetsFilter = {}): Promise<BrandGuidelineSet[]> {
+    return [...this.sets.values()]
+      .filter(
+        (set) =>
+          (filter.status === undefined || set.status === filter.status) &&
+          (filter.locale === undefined || set.locale === filter.locale),
+      )
+      .sort((a, b) => a.locale.localeCompare(b.locale) || b.version - a.version)
+  }
+
+  async updateDraftSet(input: UpdateSetInput): Promise<BrandGuidelineSet> {
+    const parsed = updateSetInputSchema.parse(input)
+    const set = this.requireSet(parsed.setId)
+    requireDraft(set, 'context update')
+    const updated: BrandGuidelineSet = {
+      ...set,
+      context: { ...set.context, ...parsed.context },
+    }
+    this.sets.set(set.id, updated)
+    return updated
+  }
+
+  async activateSet(setId: string): Promise<BrandGuidelineSet> {
+    const set = this.requireSet(setId)
+    assertActivatable(
+      set,
+      this.examples.filter((e) => e.setId === setId),
+    )
+    for (const other of this.sets.values()) {
+      if (other.locale === set.locale && other.status === 'active') {
+        throw new Error(
+          `locale ${set.locale} already has an active guideline set (${other.id}); retire it first (D3: one active set per locale)`,
+        )
+      }
+    }
+    const activated: BrandGuidelineSet = { ...set, status: 'active', activatedAt: nowIso() }
+    this.sets.set(set.id, activated)
+    return activated
+  }
+
+  async getActiveSet(locale: string): Promise<BrandGuidelineSet> {
+    for (const set of this.sets.values()) {
+      if (set.locale === locale && set.status === 'active') return set
+    }
+    throw new Error(`no active brand guideline set for locale ${locale} (G23: no implicit latest)`)
+  }
+
+  async addVoiceExample(input: {
+    setId: string
+    contentType: string
+    situation?: string
+    body: string
+    label: 'good' | 'bad'
+    rationale?: string
+  }): Promise<BrandVoiceExample> {
+    this.requireDraftSet(input.setId)
+    const example: BrandVoiceExample = {
+      id: crypto.randomUUID(),
+      setId: input.setId,
+      contentType: input.contentType,
+      situation: input.situation ?? null,
+      body: input.body,
+      label: input.label,
+      rationale: input.rationale ?? null,
+    }
+    this.examples.push(example)
+    return example
+  }
+
+  async addLexiconEntry(input: {
+    setId: string
+    term: string
+    kind: 'allowed' | 'banned' | 'required'
+    contextKey?: string
+    replacement?: string
+  }): Promise<BrandLexiconEntry> {
+    this.requireDraftSet(input.setId)
+    if (this.lexicon.some((e) => e.setId === input.setId && e.term === input.term)) {
+      throw new Error(`duplicate lexicon term "${input.term}" in set ${input.setId}`)
+    }
+    const entry: BrandLexiconEntry = {
+      id: crypto.randomUUID(),
+      setId: input.setId,
+      term: input.term,
+      kind: input.kind,
+      contextKey: input.contextKey ?? null,
+      replacement: input.replacement ?? null,
+    }
+    this.lexicon.push(entry)
+    return entry
+  }
+
+  async addCriterion(input: {
+    setId: string
+    contentType: string
+    criterion: string
+    kind: 'deterministic' | 'judge'
+    spec: Record<string, unknown>
+    riskTier: BrandRiskTier
+  }): Promise<BrandCriterion> {
+    this.requireDraftSet(input.setId)
+    const key = `${input.contentType}::${input.criterion}`
+    if (
+      this.criteria.some((c) => c.setId === input.setId && `${c.contentType}::${c.criterion}` === key)
+    ) {
+      throw new Error(`duplicate criterion "${input.criterion}" for ${input.contentType} in set ${input.setId}`)
+    }
+    const criterion: BrandCriterion = { id: crypto.randomUUID(), ...input }
+    this.criteria.push(criterion)
+    return criterion
+  }
+
+  async addVisualToken(input: {
+    setId: string
+    token: string
+    value: string
+    proseRationale?: string
+    styleVocabulary?: string[]
+  }): Promise<BrandVisualToken> {
+    this.requireDraftSet(input.setId)
+    if (this.tokens.some((t) => t.setId === input.setId && t.token === input.token)) {
+      throw new Error(`duplicate visual token "${input.token}" in set ${input.setId}`)
+    }
+    const token: BrandVisualToken = {
+      id: crypto.randomUUID(),
+      setId: input.setId,
+      token: input.token,
+      value: input.value,
+      proseRationale: input.proseRationale ?? null,
+      styleVocabulary: input.styleVocabulary ?? [],
+    }
+    this.tokens.push(token)
+    return token
+  }
+
+  async addGlossaryEntry(input: {
+    setId: string
+    term: string
+    definition: string
+    usageNote?: string
+  }): Promise<BrandGlossaryEntry> {
+    this.requireDraftSet(input.setId)
+    if (this.glossary.some((g) => g.setId === input.setId && g.term === input.term)) {
+      throw new Error(`duplicate glossary term "${input.term}" in set ${input.setId}`)
+    }
+    const entry: BrandGlossaryEntry = {
+      id: crypto.randomUUID(),
+      setId: input.setId,
+      term: input.term,
+      definition: input.definition,
+      usageNote: input.usageNote ?? null,
+    }
+    this.glossary.push(entry)
+    return entry
+  }
+
+  async listVoiceExamples(setId: string): Promise<BrandVoiceExample[]> {
+    return this.examples.filter((e) => e.setId === setId)
+  }
+
+  async listLexicon(setId: string): Promise<BrandLexiconEntry[]> {
+    return this.lexicon.filter((e) => e.setId === setId)
+  }
+
+  async listCriteria(setId: string): Promise<BrandCriterion[]> {
+    return this.criteria.filter((c) => c.setId === setId)
+  }
+
+  private requireDraftSet(setId: string): BrandGuidelineSet {
+    return requireDraft(this.requireSet(setId), 'curation writes')
+  }
+}
+
+// ---------------------------------------------------------------------------
+// DB-backed store
+// ---------------------------------------------------------------------------
+
+type SetRow = typeof brandGuidelineSets.$inferSelect
+type ExampleRow = typeof brandVoiceExamples.$inferSelect
+type LexiconRow = typeof brandLexicon.$inferSelect
+type CriterionRow = typeof brandCriteria.$inferSelect
+type TokenRow = typeof brandVisualTokens.$inferSelect
+type GlossaryRow = typeof brandGlossary.$inferSelect
+
+function toSet(row: SetRow): BrandGuidelineSet {
+  return {
+    id: row.id,
+    version: row.version,
+    locale: row.locale,
+    status: row.status,
+    context: row.context,
+    baseSetId: row.baseSetId,
+    activatedAt: row.activatedAt ? row.activatedAt.toISOString() : null,
+    validationRunId: row.validationRunId,
+    eventId: row.eventId,
+    createdAt: row.createdAt.toISOString(),
+  }
+}
+
+function toExample(row: ExampleRow): BrandVoiceExample {
+  return {
+    id: row.id,
+    setId: row.setId,
+    contentType: row.contentType,
+    situation: row.situation,
+    body: row.body,
+    label: row.label,
+    rationale: row.rationale,
+  }
+}
+
+function toLexiconEntry(row: LexiconRow): BrandLexiconEntry {
+  return {
+    id: row.id,
+    setId: row.setId,
+    term: row.term,
+    kind: row.kind,
+    contextKey: row.contextKey,
+    replacement: row.replacement,
+  }
+}
+
+function toCriterion(row: CriterionRow): BrandCriterion {
+  return {
+    id: row.id,
+    setId: row.setId,
+    contentType: row.contentType,
+    criterion: row.criterion,
+    kind: row.kind,
+    spec: row.spec,
+    riskTier: row.riskTier,
+  }
+}
+
+function toToken(row: TokenRow): BrandVisualToken {
+  return {
+    id: row.id,
+    setId: row.setId,
+    token: row.token,
+    value: row.value,
+    proseRationale: row.proseRationale,
+    styleVocabulary: row.styleVocabulary,
+  }
+}
+
+function toGlossaryEntry(row: GlossaryRow): BrandGlossaryEntry {
+  return {
+    id: row.id,
+    setId: row.setId,
+    term: row.term,
+    definition: row.definition,
+    usageNote: row.usageNote,
+  }
+}
+
+async function resolveDb(db: DbHandle) {
+  return typeof db === 'function' ? await db() : db
+}
+
+async function requireDbSet(database: Awaited<ReturnType<typeof resolveDb>>, setId: string): Promise<BrandGuidelineSet> {
+  const rows = await database
+    .select()
+    .from(brandGuidelineSets)
+    .where(eq(brandGuidelineSets.id, setId))
+    .limit(1)
+  if (!rows[0]) throw new Error(`unknown brand guideline set: ${setId}`)
+  return toSet(rows[0])
+}
+
+/**
+ * BrandStore persisting to the brand_* tables. Uniqueness is enforced by
+ * explicit lookups with the DB constraints (unique indexes + CHECKs from
+ * migration 0076) as backstop; every path fails loud.
+ */
+export class DbBrandStore implements BrandStore {
+  constructor(private readonly db: DbHandle) {}
+
+  async createSet(input: CreateSetInput): Promise<BrandGuidelineSet> {
+    const parsed = createSetInputSchema.parse(input)
+    const database = await resolveDb(this.db)
+    const [{ maxVersion } = { maxVersion: null }] = await database
+      .select({ maxVersion: sql<number | null>`max(${brandGuidelineSets.version})` })
+      .from(brandGuidelineSets)
+      .where(eq(brandGuidelineSets.locale, parsed.locale))
+    const rows = await database
+      .insert(brandGuidelineSets)
+      .values({
+        version: (maxVersion ?? 0) + 1,
+        locale: parsed.locale,
+        status: 'draft',
+        context: parsed.context,
+        baseSetId: parsed.baseSetId ?? null,
+      })
+      .returning()
+    if (!rows[0]) throw new Error('brand guideline set insert returned no row')
+    return toSet(rows[0])
+  }
+
+  async getSet(setId: string): Promise<BrandGuidelineSet | null> {
+    const database = await resolveDb(this.db)
+    const rows = await database
+      .select()
+      .from(brandGuidelineSets)
+      .where(eq(brandGuidelineSets.id, setId))
+      .limit(1)
+    return rows[0] ? toSet(rows[0]) : null
+  }
+
+  async listSets(filter: ListSetsFilter = {}): Promise<BrandGuidelineSet[]> {
+    const database = await resolveDb(this.db)
+    const conditions = [
+      ...(filter.status === undefined ? [] : [eq(brandGuidelineSets.status, filter.status)]),
+      ...(filter.locale === undefined ? [] : [eq(brandGuidelineSets.locale, filter.locale)]),
+    ]
+    const rows = await database
+      .select()
+      .from(brandGuidelineSets)
+      .where(conditions.length === 0 ? undefined : and(...conditions))
+      .orderBy(brandGuidelineSets.locale, desc(brandGuidelineSets.version))
+    return rows.map(toSet)
+  }
+
+  async updateDraftSet(input: UpdateSetInput): Promise<BrandGuidelineSet> {
+    const parsed = updateSetInputSchema.parse(input)
+    const database = await resolveDb(this.db)
+    const current = await requireDbSet(database, parsed.setId)
+    requireDraft(current, 'context update')
+    const rows = await database
+      .update(brandGuidelineSets)
+      .set({ context: { ...current.context, ...parsed.context } })
+      .where(eq(brandGuidelineSets.id, parsed.setId))
+      .returning()
+    if (!rows[0]) throw new Error(`brand guideline set update returned no row: ${parsed.setId}`)
+    return toSet(rows[0])
+  }
+
+  async activateSet(setId: string): Promise<BrandGuidelineSet> {
+    const database = await resolveDb(this.db)
+    const set = await requireDbSet(database, setId)
+    const examples = (
+      await database.select().from(brandVoiceExamples).where(eq(brandVoiceExamples.setId, setId))
+    ).map(toExample)
+    assertActivatable(set, examples)
+
+    const activeRows = await database
+      .select({ id: brandGuidelineSets.id })
+      .from(brandGuidelineSets)
+      .where(
+        and(
+          eq(brandGuidelineSets.locale, set.locale),
+          eq(brandGuidelineSets.status, 'active'),
+          ne(brandGuidelineSets.id, setId),
+        ),
+      )
+      .limit(1)
+    if (activeRows[0]) {
+      throw new Error(
+        `locale ${set.locale} already has an active guideline set (${activeRows[0].id}); retire it first (D3: one active set per locale)`,
+      )
+    }
+
+    const rows = await database
+      .update(brandGuidelineSets)
+      .set({ status: 'active', activatedAt: new Date() })
+      .where(eq(brandGuidelineSets.id, setId))
+      .returning()
+    if (!rows[0]) throw new Error(`brand guideline set activation returned no row: ${setId}`)
+    return toSet(rows[0])
+  }
+
+  async getActiveSet(locale: string): Promise<BrandGuidelineSet> {
+    const database = await resolveDb(this.db)
+    const rows = await database
+      .select()
+      .from(brandGuidelineSets)
+      .where(and(eq(brandGuidelineSets.locale, locale), eq(brandGuidelineSets.status, 'active')))
+      .limit(1)
+    if (!rows[0]) {
+      throw new Error(`no active brand guideline set for locale ${locale} (G23: no implicit latest)`)
+    }
+    return toSet(rows[0])
+  }
+
+  async addVoiceExample(input: {
+    setId: string
+    contentType: string
+    situation?: string
+    body: string
+    label: 'good' | 'bad'
+    rationale?: string
+  }): Promise<BrandVoiceExample> {
+    const database = await resolveDb(this.db)
+    await requireDbDraft(database, input.setId, 'curation writes')
+    const rows = await database
+      .insert(brandVoiceExamples)
+      .values({
+        setId: input.setId,
+        contentType: input.contentType,
+        situation: input.situation ?? null,
+        body: input.body,
+        label: input.label,
+        rationale: input.rationale ?? null,
+      })
+      .returning()
+    if (!rows[0]) throw new Error('brand voice example insert returned no row')
+    return toExample(rows[0])
+  }
+
+  async addLexiconEntry(input: {
+    setId: string
+    term: string
+    kind: 'allowed' | 'banned' | 'required'
+    contextKey?: string
+    replacement?: string
+  }): Promise<BrandLexiconEntry> {
+    const database = await resolveDb(this.db)
+    await requireDbDraft(database, input.setId, 'curation writes')
+    const existing = await database
+      .select({ id: brandLexicon.id })
+      .from(brandLexicon)
+      .where(and(eq(brandLexicon.setId, input.setId), eq(brandLexicon.term, input.term)))
+      .limit(1)
+    if (existing[0]) {
+      throw new Error(`duplicate lexicon term "${input.term}" in set ${input.setId}`)
+    }
+    const rows = await database
+      .insert(brandLexicon)
+      .values({
+        setId: input.setId,
+        term: input.term,
+        kind: input.kind,
+        contextKey: input.contextKey ?? null,
+        replacement: input.replacement ?? null,
+      })
+      .returning()
+    if (!rows[0]) throw new Error('brand lexicon insert returned no row')
+    return toLexiconEntry(rows[0])
+  }
+
+  async addCriterion(input: {
+    setId: string
+    contentType: string
+    criterion: string
+    kind: 'deterministic' | 'judge'
+    spec: Record<string, unknown>
+    riskTier: BrandRiskTier
+  }): Promise<BrandCriterion> {
+    const database = await resolveDb(this.db)
+    await requireDbDraft(database, input.setId, 'curation writes')
+    const existing = await database
+      .select({ id: brandCriteria.id })
+      .from(brandCriteria)
+      .where(
+        and(
+          eq(brandCriteria.setId, input.setId),
+          eq(brandCriteria.contentType, input.contentType),
+          eq(brandCriteria.criterion, input.criterion),
+        ),
+      )
+      .limit(1)
+    if (existing[0]) {
+      throw new Error(
+        `duplicate criterion "${input.criterion}" for ${input.contentType} in set ${input.setId}`,
+      )
+    }
+    const rows = await database.insert(brandCriteria).values(input).returning()
+    if (!rows[0]) throw new Error('brand criteria insert returned no row')
+    return toCriterion(rows[0])
+  }
+
+  async addVisualToken(input: {
+    setId: string
+    token: string
+    value: string
+    proseRationale?: string
+    styleVocabulary?: string[]
+  }): Promise<BrandVisualToken> {
+    const database = await resolveDb(this.db)
+    await requireDbDraft(database, input.setId, 'curation writes')
+    const existing = await database
+      .select({ id: brandVisualTokens.id })
+      .from(brandVisualTokens)
+      .where(and(eq(brandVisualTokens.setId, input.setId), eq(brandVisualTokens.token, input.token)))
+      .limit(1)
+    if (existing[0]) {
+      throw new Error(`duplicate visual token "${input.token}" in set ${input.setId}`)
+    }
+    const rows = await database
+      .insert(brandVisualTokens)
+      .values({
+        setId: input.setId,
+        token: input.token,
+        value: input.value,
+        proseRationale: input.proseRationale ?? null,
+        styleVocabulary: input.styleVocabulary ?? [],
+      })
+      .returning()
+    if (!rows[0]) throw new Error('brand visual token insert returned no row')
+    return toToken(rows[0])
+  }
+
+  async addGlossaryEntry(input: {
+    setId: string
+    term: string
+    definition: string
+    usageNote?: string
+  }): Promise<BrandGlossaryEntry> {
+    const database = await resolveDb(this.db)
+    await requireDbDraft(database, input.setId, 'curation writes')
+    const existing = await database
+      .select({ id: brandGlossary.id })
+      .from(brandGlossary)
+      .where(and(eq(brandGlossary.setId, input.setId), eq(brandGlossary.term, input.term)))
+      .limit(1)
+    if (existing[0]) {
+      throw new Error(`duplicate glossary term "${input.term}" in set ${input.setId}`)
+    }
+    const rows = await database
+      .insert(brandGlossary)
+      .values({
+        setId: input.setId,
+        term: input.term,
+        definition: input.definition,
+        usageNote: input.usageNote ?? null,
+      })
+      .returning()
+    if (!rows[0]) throw new Error('brand glossary insert returned no row')
+    return toGlossaryEntry(rows[0])
+  }
+
+  async listVoiceExamples(setId: string): Promise<BrandVoiceExample[]> {
+    const database = await resolveDb(this.db)
+    const rows = await database
+      .select()
+      .from(brandVoiceExamples)
+      .where(eq(brandVoiceExamples.setId, setId))
+      .orderBy(brandVoiceExamples.createdAt)
+    return rows.map(toExample)
+  }
+
+  async listLexicon(setId: string): Promise<BrandLexiconEntry[]> {
+    const database = await resolveDb(this.db)
+    const rows = await database
+      .select()
+      .from(brandLexicon)
+      .where(eq(brandLexicon.setId, setId))
+      .orderBy(brandLexicon.term)
+    return rows.map(toLexiconEntry)
+  }
+
+  async listCriteria(setId: string): Promise<BrandCriterion[]> {
+    const database = await resolveDb(this.db)
+    const rows = await database
+      .select()
+      .from(brandCriteria)
+      .where(eq(brandCriteria.setId, setId))
+      .orderBy(brandCriteria.contentType, brandCriteria.criterion)
+    return rows.map(toCriterion)
+  }
+}
+
+async function requireDbDraft(
+  database: Awaited<ReturnType<typeof resolveDb>>,
+  setId: string,
+  action: string,
+): Promise<BrandGuidelineSet> {
+  return requireDraft(await requireDbSet(database, setId), action)
+}
+
+/**
+ * Production store handle: lazily resolves the request-scoped DB (when inside
+ * a request/ALS context) or the pooled app handle, so importing/wiring never
+ * opens a connection (same idiom as defaultWebsiteStore).
+ */
+export function defaultBrandStore(): BrandStore {
+  const db: DbHandle = async () => {
+    const { appDbAsyncLocal, appSql, createScopedDrizzle } = await import('$lib/server/db')
+    const scoped = appDbAsyncLocal.getStore()
+    if (scoped) return scoped
+    return createScopedDrizzle(appSql)
+  }
+  return new DbBrandStore(db)
+}

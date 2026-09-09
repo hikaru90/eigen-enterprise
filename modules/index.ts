@@ -17,6 +17,8 @@ import {
   type WiredKernel,
 } from '$lib/kernel/wiring'
 import type { AppDatabase } from '$lib/server/db/context'
+import { brandManifest } from './brand/manifest'
+import { createBrandTools } from './brand/tools'
 import { createChatGateway, type ChatGatewayBoot } from './chat-gateway/index'
 import { createDevAgentEngine, devAgentManifest } from './dev-agent'
 import { createDevAgentTools, type DevAgentEngine } from './dev-agent/tools'
@@ -31,10 +33,21 @@ import { createWebsiteTools } from './website/tools'
 export { registerModuleTools, type WiredKernel } from '$lib/kernel/wiring'
 
 /** The static module surface of this eigenEnterprise instance. */
-export const moduleManifests = [memoryManifest, emailManifest, websiteManifest, devAgentManifest] as const
+export const moduleManifests = [
+  memoryManifest,
+  emailManifest,
+  websiteManifest,
+  devAgentManifest,
+  brandManifest,
+] as const
 
 /** Tools that always require an approval decision before first execution. */
-export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set(['email.send_mail'])
+export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
+  'email.send_mail',
+  // Phase-2c (G8/D5): guideline-set activation is a strategic brand decision —
+  // human-admin principal AND an explicit approval decision.
+  'brand.set_activate',
+])
 
 export type BootstrapKernelOptions = {
   /** Overrides the lazy per-request `getDb()` handle (tests inject fakes). */
@@ -94,6 +107,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createDevAgentTools({
       engine: options.devAgentEngine ?? createDevAgentEngine({ eventSink }),
     }),
+    ...createBrandTools(),
   ])
 
   return { registry, modules, activations, principals, approvals: approvalStore, eventSink }

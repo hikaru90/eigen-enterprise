@@ -533,6 +533,13 @@
       "when": 1760000000000,
       "tag": "0075_llm_provider_oauth",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1760100000000,
+      "tag": "0076_branding_tables",
+      "breakpoints": true
     }
   ]
 }

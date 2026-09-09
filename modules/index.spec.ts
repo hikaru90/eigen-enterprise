@@ -45,8 +45,14 @@ function makeInMemoryKernel() {
 }
 
 describe('moduleManifests', () => {
-  it('declares the baseline modules (memory, email, website, dev-agent)', () => {
-    expect(moduleManifests.map((m) => m.id)).toEqual(['memory', 'email', 'website', 'dev-agent'])
+  it('declares the baseline modules (memory, email, website, dev-agent, brand)', () => {
+    expect(moduleManifests.map((m) => m.id)).toEqual([
+      'memory',
+      'email',
+      'website',
+      'dev-agent',
+      'brand',
+    ])
   })
 })
 
@@ -59,6 +65,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'email',
       'website',
       'dev-agent',
+      'brand',
     ])
     const toolNames = kernel.registry.list().map((t) => t.name)
     expect(toolNames).toContain('memory.retrieve_thoughts')
@@ -66,6 +73,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect(toolNames).toContain('website.create_page')
     expect(toolNames).toContain('dev-agent.dispatch')
     expect(toolNames).toContain('dev-agent.merge')
+    expect(toolNames).toContain('brand.set_create')
     expect(toolNames.length).toBe(
       moduleManifests.reduce((sum, m) => sum + m.tools.length, 0),
     )
@@ -88,11 +96,13 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     ).resolves.toEqual({ count: 0, results: [] })
   })
 
-  it('wires StaticApprovalPolicy({email.send_mail}); the kernel gate stops the external send_mail at approval', async () => {
+  it('wires StaticApprovalPolicy({email.send_mail, brand.set_activate}); the kernel gate stops external sends and brand go-live at approval', async () => {
     // Orchestrator decision (2026-09-07): the approval gate fires for every
     // non-read tool, so the external send_mail halts as approval_required and
     // the handler never runs until an owner approves the pending request.
-    expect([...APPROVAL_REQUIRED_TOOLS]).toEqual(['email.send_mail'])
+    // Phase-2c (G8/D5): brand.set_activate joins the set — activation is a
+    // strategic brand decision owned by a human approver.
+    expect([...APPROVAL_REQUIRED_TOOLS].sort()).toEqual(['brand.set_activate', 'email.send_mail'])
     const { kernel, approvalStore } = makeInMemoryKernel()
     await kernel.activations.set('email', true)
 
