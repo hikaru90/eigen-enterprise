@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-09 — FIX: chat LLM calls now resolve the human's provider config (`2408c92`)
+
+**Owner hit on dogfood**: chatbox failed loud with "Platform EUrouter not configured: set LLM_BASE_URL" despite configured OpenRouter BYOK. Root cause: the harness engine attributed LLM calls to `ctx.agent.id` ('orchestrator' principal) — llmChatCompletion found no provider row for that id and fell back to platform env. Identity mismatch between harness principal ids and llm-client user ids, introduced by the chatbox→harness wiring.
+- **`llmUserId` threads surface → dispatch → ctx → engine**: `DispatchOptions { llmUserId }` on AgentRuntime.dispatch; `EngineContext.llmUserId`; builtin-json precedence `ctx.llmUserId ?? engine config ?? agent.id` (both call sites incl. streaming); `AgentChatDispatch` carries the authenticated `user.id`; route closure passes it; Telegram `respond` passes the allowlisted `session.principalId` (human principal id = auth user id). BYOK config now resolves for exactly the human in the conversation, web and Telegram alike.
+- Regression coverage: runtime threading test, engine precedence test, route dispatch-options assertion. Gates: 610 kernel+modules+routes passed, check 0 errors.
+
 ## 2026-09-09 — Governance follow-up: the conversational yes is the gate (`a8b11c0`)
 
 **Owner directive**: "ee module activate repo — this has to be called by the agent." No manual CLI prerequisites; the loop lives in the conversation.
