@@ -65,7 +65,8 @@ test.describe('Release smoke @release', () => {
 
     await test.step('create account', async () => {
       ;({ email } = await registerUser(context, page, { emailDomain: 'example.com' }))
-      await expect(page).toHaveURL(/\/capture/)
+      // nucleus: post-auth lands on /
+      await expect(page).toHaveURL(/\/(\?|#|$)/)
       await expect(page.getByRole('dialog', { name: /Your memory, not theirs\./ })).toBeVisible({
         timeout: 30_000,
       })
@@ -167,7 +168,8 @@ test.describe('Release smoke @release', () => {
     await test.step('sign out and sign back in', async () => {
       await signOut(page)
       await loginUser(page, email)
-      await expect(page).toHaveURL(/\/capture/)
+      // nucleus: post-auth lands on /
+      await expect(page).toHaveURL(/\/(\?|#|$)/)
       await expect(page.getByText(/Lisbon/i)).toBeVisible()
       await page.getByRole('button', { name: 'Account menu' }).click()
       await expect(page.getByText(email)).toBeVisible()

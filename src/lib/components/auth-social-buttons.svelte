@@ -5,7 +5,7 @@
 
   let {
     providers,
-    callbackURL = '/capture',
+    callbackURL = '/',
     disabled = false,
   }: {
     providers: SocialProviderId[]

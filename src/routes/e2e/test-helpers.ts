@@ -60,7 +60,8 @@ export async function registerUser(
 /**
  * When email verification is enabled (Owlery mail configured), signup stays on /signup and shows a
  * "check your email" notice instead of redirecting. The dev-only harness endpoint exposes the
- * verification link Better Auth generated so we can follow it and land on /capture.
+ * verification link Better Auth generated so we can follow it and land on the nucleus (/).
+ * nucleus: post-auth lands on /
  */
 async function completeEmailVerificationIfRequired(page: Page, email: string): Promise<void> {
   const checkEmailNotice = page.getByText(/Check your email for a verification link/i)
