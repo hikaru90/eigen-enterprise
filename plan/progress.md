@@ -2,6 +2,22 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-09 — Phase-3 M2: repo hands — the one agent can now improve its own repo
+
+**Shipped** (`004d1e9` on wt/one-agent-hands, ff-merged; subagent-implemented in worktree, orchestrator reviewed)
+- **`modules/repo`** (new, activation-gated): the agent's repo hands as 5 registry tools — `repo.worktree_create` (external; `../ee-agent-<id>` + `wt/agent-<id>`, idempotent per principal, stale-worktree fails loud), `repo.run` (external; token-structured allowlist — metachars rejected outright, per-entry arg validation, `--amend` structurally impossible; 10-min timeout; non-zero exit = result, not exception; output truncated with explicit marker), `repo.read_file`/`repo.write_file` (mutate/read; path-resolved inside worktree, `..` escapes rejected, secret paths blocked BOTH ways — reading `.env*`/`*.key`/`*.pem` is exfiltration), `repo.merge` (mutate + in APPROVAL_REQUIRED_TOOLS; server-side verify gate = vitest kernel-scoped + check, both green or refused; commit-if-dirty → `merge --no-edit` → cleanup; conflicts fail loud: STOP and ask the owner).
+- **Discipline as prompt**: `modules/orchestrator/discipline.ts` — 6 sections distilled from `.pi/skills` (plan-first, understand-first, no-fallbacks, no-mid-air-rethinks, loop-detection, commit-conventions) + REPO_HANDS protocol (plan in chat → worktree → edit/run → progress.md → merge behind owner approval). Appended to the orchestrator persona (2-line brain.ts change).
+- **No new tables** (M2 decision): git history + kernel_events are the run log. Events: `repo.worktree_created/command_run/file_written/merged/verify_failed` (metadata-only).
+- **Gates: modules/repo+orchestrator 106 passed (incl. real temp-git-repo integration spec); kernel+modules+cli 628 passed / 4 skipped; check 0 errors / 24 warnings; boundaries guard green; hostile-input battery pinned (shell injection, amend, traversal, secret paths).**
+
+**Decisions**
+- Allowlist over free shell: the agent is owner-entrusted, but a hallucinated command shouldn't be `rm -rf`; capability gaps closed by structured tools (`write_file` gives mkdir-p; merge does its own `git add -A` internally) instead of flag-widening the allowlist.
+- Duplicate `REPO_VERIFY_TARGETS` instead of importing from frozen dev-agent (boundary guard).
+- Idempotent worktree keyed by principal id, tracked in engine memory; no DB persistence (git is the log).
+
+**Next — M3 (dogfood + cleanup)**: live proof in the chatbox — "improve X" → plan → worktree → green → owner yes → merged → progress.md updated, all in one conversation. Then delete frozen code (pi-engine, dev-agent module, orchestrator brain/loop remnants, builtin-json engine indirection, legacy agent-loop path) and re-point anything still consuming them.
+
+---
 ## 2026-09-09 — Phase-3 M1: durable session log — conversations survive restarts
 
 **Shipped** (`3f33645` on wt/one-agent-loop, merged `7dbab8b`; implementation delegated to a subagent in the worktree, orchestrator reviewed + integrated)
