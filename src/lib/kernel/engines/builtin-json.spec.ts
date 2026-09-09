@@ -1,12 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentConfig } from '$lib/kernel/agent'
-import type { EngineContext, EngineToolListing } from '$lib/kernel/engine'
+import type { EngineContext, EngineSurfaceEvent, EngineToolListing } from '$lib/kernel/engine'
 import { KernelError } from '$lib/kernel/errors'
 import {
   BuiltinJsonLoop,
   LoopProtocolError,
   MAX_HISTORY_MESSAGES,
+  MAX_TOOL_INPUT_SUMMARY_CHARS,
+  StreamedAnswerExtractor,
   type LlmCompleteFn,
+  type LlmStreamCompleteFn,
 } from './builtin-json'
 
 /**
@@ -44,12 +47,18 @@ type Fixture = {
     messages: Array<{ role: string; content: string }>
     temperature?: number
   }>
+  streamCompleteCalls: number
+  deltas: string[]
+  surfaceEvents: EngineSurfaceEvent[]
 }
 
 function makeFixture(options: {
   responses: string[]
   listings?: EngineToolListing[]
   executeTool?: EngineContext['executeTool']
+  stream?: EngineContext['stream']
+  surfaceEvent?: EngineContext['surfaceEvent']
+  streamComplete?: LlmStreamCompleteFn
 }): Fixture {
   const completeCalls: Fixture['completeCalls'] = []
   let index = 0
@@ -65,6 +74,21 @@ function makeFixture(options: {
     vi.fn(async (_name: string, input: unknown) => ({ echoed: input }))
   const listTools = vi.fn(() => options.listings ?? [])
 
+  const deltas: string[] = []
+  const streamSink = options.stream
+    ? (d: string) => {
+        deltas.push(d)
+        options.stream!(d)
+      }
+    : undefined
+  const surfaceEvents: EngineSurfaceEvent[] = []
+  const surfaceSink = options.surfaceEvent
+    ? (e: EngineSurfaceEvent) => {
+        surfaceEvents.push(e)
+        options.surfaceEvent!(e)
+      }
+    : undefined
+
   const ctx: EngineContext = {
     agent,
     principal: { id: agent.id, kind: 'agent', roles: ['admin', 'agent'] },
@@ -72,10 +96,34 @@ function makeFixture(options: {
     listTools,
     emit: vi.fn(async () => {}),
     spendUsd: () => 0,
+    ...(streamSink ? { stream: streamSink } : {}),
+    ...(surfaceSink ? { surfaceEvent: surfaceSink } : {}),
   }
 
-  const engine = new BuiltinJsonLoop({ complete })
-  return { engine, ctx, executeTool, listTools, completeCalls }
+  let streamCompleteCalls = 0
+  const streamComplete = options.streamComplete
+    ? async (input: Parameters<LlmStreamCompleteFn>[0]) => {
+        streamCompleteCalls += 1
+        return options.streamComplete!(input)
+      }
+    : undefined
+
+  const engine = new BuiltinJsonLoop({
+    complete,
+    ...(streamComplete ? { streamComplete } : {}),
+  })
+  return {
+    engine,
+    ctx,
+    executeTool,
+    listTools,
+    completeCalls,
+    get streamCompleteCalls() {
+      return streamCompleteCalls
+    },
+    deltas,
+    surfaceEvents,
+  }
 }
 
 describe('BuiltinJsonLoop — happy path', () => {
@@ -323,5 +371,211 @@ describe('BuiltinJsonLoop — parse failures', () => {
     const reply = await fx.engine.run('session-1', 'hi', fx.ctx)
 
     expect(reply).toBe('clean')
+  })
+})
+
+describe('BuiltinJsonLoop — streaming', () => {
+  it('falls back to emitting the full reply as one delta when only ctx.stream is set', async () => {
+    const fx = makeFixture({
+      responses: ['{"answer":"hello there"}'],
+      stream: () => {},
+    })
+
+    const reply = await fx.engine.run('session-1', 'hi', fx.ctx)
+
+    expect(reply).toBe('hello there')
+    expect(fx.deltas).toEqual(['hello there'])
+  })
+
+  it('streams incremental answer deltas when a streaming completion is configured', async () => {
+    const fx = makeFixture({
+      responses: ['{"answer":"hello world"}'],
+      stream: () => {},
+      streamComplete: async (input) => {
+        // Stream the raw protocol text in chunks; the engine must extract
+        // only the answer-string characters.
+        for (const chunk of ['{"answ', 'er": "hel', 'lo wo', 'rld"}']) input.onDelta(chunk)
+        return gatewayBody('{"answer":"hello world"}')
+      },
+    })
+
+    const reply = await fx.engine.run('session-1', 'hi', fx.ctx)
+
+    expect(reply).toBe('hello world')
+    expect(fx.deltas).toEqual(['hel', 'lo wo', 'rld'])
+    expect(fx.streamCompleteCalls).toBe(1)
+  })
+
+  it('emits the remainder when the extractor could not stream the full answer', async () => {
+    const fx = makeFixture({
+      responses: ['{"answer":"handled"}'],
+      stream: () => {},
+      streamComplete: async (input) => {
+        // Streams nothing extractable (e.g. <think> only) — fallback must
+        // still deliver the complete answer.
+        input.onDelta('<think>hmm</think>')
+        return gatewayBody('{"answer":"handled"}')
+      },
+    })
+
+    const reply = await fx.engine.run('session-1', 'hi', fx.ctx)
+
+    expect(reply).toBe('handled')
+    expect(fx.deltas).toEqual(['handled'])
+  })
+
+  it('emits no deltas on tool-call turns', async () => {
+    const fx = makeFixture({
+      responses: ['{"tool":"testmod.echo","arguments":{}}', '{"answer":"done"}'],
+      listings: [listing('testmod.echo', 'summary of testmod.echo')],
+      stream: () => {},
+    })
+
+    await fx.engine.run('session-1', 'use it', fx.ctx)
+
+    expect(fx.deltas).toEqual(['done'])
+  })
+
+  it('never breaks when the surface sink throws', async () => {
+    const fx = makeFixture({
+      responses: ['{"answer":"still replies"}'],
+      stream: () => {
+        throw new Error('surface exploded')
+      },
+    })
+
+    await expect(fx.engine.run('session-1', 'hi', fx.ctx)).resolves.toBe('still replies')
+  })
+
+  it('never touches the streaming completion without a ctx.stream sink', async () => {
+    const fx = makeFixture({
+      responses: ['{"answer":"plain"}'],
+      streamComplete: async () => {
+        throw new Error('streaming completion must not be used')
+      },
+    })
+
+    const reply = await fx.engine.run('session-1', 'hi', fx.ctx)
+
+    expect(reply).toBe('plain')
+    expect(fx.streamCompleteCalls).toBe(0)
+    expect(fx.completeCalls).toHaveLength(1)
+  })
+})
+
+describe('BuiltinJsonLoop — surface events', () => {
+  it('emits tool.preview with a short input summary before executeTool', async () => {
+    const order: string[] = []
+    const fx = makeFixture({
+      responses: ['{"tool":"email.send_mail","arguments":{"to":"a@b.c","subject":"Hi"}}', '{"answer":"sent-ish"}'],
+      listings: [listing('email.send_mail', 'summary of email.send_mail')],
+      executeTool: async () => {
+        order.push('execute')
+        return { ok: true }
+      },
+      surfaceEvent: (e) => {
+        order.push(e.type)
+      },
+    })
+
+    await fx.engine.run('session-1', 'send it', fx.ctx)
+
+    expect(fx.surfaceEvents[0]).toEqual({
+      type: 'tool.preview',
+      tool: 'email.send_mail',
+      inputSummary: '{"to":"a@b.c","subject":"Hi"}',
+    })
+    // Preview lands before the kernel execution.
+    expect(order).toEqual(['tool.preview', 'execute'])
+  })
+
+  it('truncates long input summaries and reports null for empty arguments', async () => {
+    const long = { text: 'x'.repeat(500) }
+    const fx = makeFixture({
+      responses: [
+        JSON.stringify({ tool: 'testmod.echo', arguments: long }),
+        JSON.stringify({ tool: 'testmod.echo', arguments: {} }),
+        '{"answer":"ok"}',
+      ],
+      listings: [listing('testmod.echo', 'summary of testmod.echo')],
+      surfaceEvent: () => {},
+    })
+
+    await fx.engine.run('session-1', 'go', fx.ctx)
+
+    const [preview, emptyPreview] = fx.surfaceEvents
+    expect(preview).toMatchObject({ type: 'tool.preview', tool: 'testmod.echo' })
+    if (preview.type !== 'tool.preview') throw new Error('unreachable')
+    expect(preview.inputSummary!.length).toBeLessThanOrEqual(MAX_TOOL_INPUT_SUMMARY_CHARS)
+    expect(preview.inputSummary!.endsWith('…')).toBe(true)
+    expect(emptyPreview).toEqual({
+      type: 'tool.preview',
+      tool: 'testmod.echo',
+      inputSummary: null,
+    })
+  })
+
+  it('emits approval.required when the kernel approval gate stops a tool (result path intact)', async () => {
+    const fx = makeFixture({
+      responses: [
+        '{"tool":"email.send_mail","arguments":{"to":"a@b.c"}}',
+        '{"answer":"queued for owner approval"}',
+      ],
+      listings: [listing('email.send_mail', 'summary of email.send_mail')],
+      executeTool: async () => {
+        throw new KernelError('approval_required', 'tool email.send_mail requires approval')
+      },
+      surfaceEvent: () => {},
+    })
+
+    const reply = await fx.engine.run('session-1', 'send it', fx.ctx)
+
+    expect(reply).toContain('approval')
+    expect(fx.surfaceEvents).toContainEqual({ type: 'approval.required', tool: 'email.send_mail' })
+    // Structured tool-result feedback still reaches the model.
+    const feedback = fx.completeCalls[1].messages.at(-1)!.content
+    expect(feedback).toContain('approval_pending')
+  })
+
+  it('never breaks when the surfaceEvent sink throws', async () => {
+    const fx = makeFixture({
+      responses: ['{"tool":"testmod.echo","arguments":{}}', '{"answer":"ok"}'],
+      listings: [listing('testmod.echo', 'summary of testmod.echo')],
+      surfaceEvent: () => {
+        throw new Error('surface exploded')
+      },
+    })
+
+    await expect(fx.engine.run('session-1', 'go', fx.ctx)).resolves.toBe('ok')
+    expect(fx.executeTool).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('StreamedAnswerExtractor', () => {
+  it('extracts nothing before the answer key opens and nothing after it closes', () => {
+    const ex = new StreamedAnswerExtractor()
+    expect(ex.feed('{"tool":"x","arg')).toBe('')
+    expect(ex.feed('uments":{"a":1}}')).toBe('')
+    expect(ex.emitted).toBe(0)
+  })
+
+  it('handles escapes and waits for incomplete ones', () => {
+    const ex = new StreamedAnswerExtractor()
+    expect(ex.feed('{"answer": "line\\n')).toBe('line\n')
+    expect(ex.feed('br')).toBe('br')
+    expect(ex.feed('\\u00e9"}')).toBe('é')
+    expect(ex.feed('more')).toBe('')
+  })
+
+  it('ignores an answer key inside a leading think block', () => {
+    const ex = new StreamedAnswerExtractor()
+    expect(ex.feed('<think>"answer": "noise</think>{"answer":"real"}')).toBe('real')
+  })
+
+  it('stops extracting at the closing quote', () => {
+    const ex = new StreamedAnswerExtractor()
+    expect(ex.feed('{"answer":"done"} trailing')).toBe('done')
+    expect(ex.feed(' garbage')).toBe('')
+    expect(ex.emitted).toBe(4)
   })
 })

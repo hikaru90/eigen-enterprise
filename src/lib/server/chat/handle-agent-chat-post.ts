@@ -1,10 +1,10 @@
 import type { RequestEvent } from '@sveltejs/kit'
 import { error, json } from '@sveltejs/kit'
-import { asc, eq, sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { formatToolResultForDisplay, sanitizeFinalAnswerText } from '$lib/chat/chat-stream-types'
 import { compactChatIntermediateSteps } from '$lib/chat/normalize-messages'
+import type { EngineSurfaceEvent } from '$lib/kernel/engine'
 import { runWithTrace } from '$lib/server/activity/trace-context'
-import { sessionMessagesToAgentHistory } from '$lib/server/chat/session-history-for-agent'
 import {
   appDbAsyncLocal,
   appSql,
@@ -15,7 +15,6 @@ import {
 } from '$lib/server/db'
 import { chatSession, chatMessage, type ChatSessionMode } from '$lib/server/db/brain.schema'
 import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
-import { agentChat } from '$lib/server/llm/agent-loop'
 import { isLlmNotConfiguredError } from '$lib/server/llm/errors'
 
 function collectErrorMessages(input: unknown): string[] {
@@ -146,9 +145,25 @@ export type AgentChatPostBody = {
   briefingPeriod?: unknown
 }
 
+/**
+ * The one agent path: a kernel AgentRuntime dispatch (harness). Implementations
+ * resolve the runtime + agent id (composition root); the handler owns session
+ * persistence, NDJSON framing, and terminal semantics.
+ */
+export type AgentChatDispatch = (
+  sessionId: string,
+  message: string,
+  sinks: {
+    stream: (delta: string) => void
+    surfaceEvent: (event: EngineSurfaceEvent) => void
+  },
+) => Promise<string>
+
 export type HandleAgentChatPostOptions = {
   /** Fixed session mode for this endpoint. */
   sessionMode: ChatSessionMode
+  /** The harness dispatch (AgentRuntime.dispatch for the orchestrator agent). */
+  dispatch: AgentChatDispatch
   /** Resolve the user message sent to the agent (bootstrap or typed). */
   resolveAgentUserMessage: (input: {
     bootstrap: boolean
@@ -183,33 +198,8 @@ export async function handleAgentChatPost(
   const db = getDb()
   const sessionKey =
     typeof body.sessionId === 'string' && body.sessionId.trim() ? body.sessionId.trim() : null
-  const { sessionId, mode: sessionMode } = await getOrCreateSession(
-    db,
-    user.id,
-    sessionKey,
-    options.sessionMode,
-  )
-
-  // Load prior turns before inserting this user message so history excludes the current turn.
-  const priorRows = await db
-    .select({
-      role: chatMessage.role,
-      content: chatMessage.content,
-      metadata: chatMessage.metadata,
-    })
-    .from(chatMessage)
-    .where(eq(chatMessage.sessionId, sessionId))
-    .orderBy(asc(chatMessage.createdAt))
-  const history = sessionMessagesToAgentHistory(
-    priorRows.map((row) => ({
-      role: row.role,
-      content: row.content,
-      metadata:
-        row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
-          ? (row.metadata as Record<string, unknown>)
-          : null,
-    })),
-  )
+  // Mode mismatch still fails loud (400) inside getOrCreateSession.
+  const { sessionId } = await getOrCreateSession(db, user.id, sessionKey, options.sessionMode)
 
   if (!bootstrap) {
     await db.insert(chatMessage).values({
@@ -282,11 +272,22 @@ export async function handleAgentChatPost(
       failed?: boolean
       phase?: string
       label?: string
+      inputSummary?: string | null
     }) => {
       if (evt.type === 'thinking' && evt.content) {
         intermediateSteps.push({
           content: evt.content,
           metadata: { variant: 'thinking' },
+        })
+      } else if (evt.type === 'tool.preview') {
+        intermediateSteps.push({
+          content: evt.inputSummary ?? '',
+          metadata: { variant: 'tool_preview', tool: evt.tool },
+        })
+      } else if (evt.type === 'approval.required') {
+        intermediateSteps.push({
+          content: '',
+          metadata: { variant: 'approval_required', tool: evt.tool },
         })
       } else if (evt.type === 'tool_call') {
         const args = evt.arguments ?? {}
@@ -331,37 +332,31 @@ export async function handleAgentChatPost(
         await activateTenantDbSession(reserved, user.id)
         const scopedDb = createScopedDrizzle(reserved)
 
-        const result = await tenantUserAsyncLocal.run(user.id, () =>
+        // One path: the kernel harness. The reply text comes back from the
+        // runtime; stream/surface events flow out through the sinks below.
+        const reply = await tenantUserAsyncLocal.run(user.id, () =>
           appDbAsyncLocal.run(scopedDb, () =>
             runWithTrace(crypto.randomUUID(), () =>
-              agentChat({
-                userId: user.id,
-                messages: [...history, { role: 'user', content: agentUserMessage }],
-                mode: sessionMode,
-                aiSessionId: sessionId,
-                onEvent: (evt) => {
+              options.dispatch(sessionId, agentUserMessage, {
+                stream: (delta) => {
+                  if (!streamClosed) {
+                    writeLine({ type: 'message_delta', content: delta })
+                  }
+                },
+                surfaceEvent: (evt) => {
                   if (!streamClosed) {
                     writeLine(evt)
                   }
                   recordIntermediateStep(evt)
                 },
-                db: scopedDb,
               }),
             ),
           ),
         )
 
-        let lastAnswerQuestionPreview: string | undefined
-        for (const step of intermediateSteps) {
-          if (step.metadata.variant === 'tool_result' && step.metadata.tool === 'answer_question') {
-            lastAnswerQuestionPreview = step.content
-          }
-        }
-        const rawResponse =
-          typeof result.response === 'string' && result.response.trim().length > 0
-            ? result.response
-            : 'The assistant did not produce a response.'
-        const responseText = sanitizeFinalAnswerText(rawResponse, lastAnswerQuestionPreview)
+        const responseText = sanitizeFinalAnswerText(
+          reply.trim().length > 0 ? reply : 'The assistant did not produce a response.',
+        )
         const { messageId } = await persistStreamedAssistantTurn({
           db: scopedDb,
           sessionId,
@@ -383,7 +378,10 @@ export async function handleAgentChatPost(
       } catch (err) {
         const details = collectErrorMessages(err)
         const msg = details[0] ?? 'An unexpected error occurred.'
-        console.error(`[${options.logTag ?? 'api/chat'}] agentChat threw`, { error: msg, details })
+        console.error(`[${options.logTag ?? 'api/chat'}] agent dispatch threw`, {
+          error: msg,
+          details,
+        })
         sendTerminal(chatErrorTerminalPayload(err, details))
       } finally {
         if (reserved) {
@@ -419,16 +417,16 @@ export async function handleAgentChatPost(
   }
 
   try {
-    const result = await runWithTrace(crypto.randomUUID(), () =>
-      agentChat({
-        userId: user.id,
-        messages: [...history, { role: 'user', content: agentUserMessage }],
-        mode: sessionMode,
-        aiSessionId: sessionId,
+    const reply = await runWithTrace(crypto.randomUUID(), () =>
+      options.dispatch(sessionId, agentUserMessage, {
+        stream: () => {},
+        surfaceEvent: () => {},
       }),
     )
 
-    const responseText = sanitizeFinalAnswerText(result.response)
+    const responseText = sanitizeFinalAnswerText(
+      reply.trim().length > 0 ? reply : 'The assistant did not produce a response.',
+    )
     const messageId = await persistAssistantMessage(db, sessionId, user.id, responseText)
 
     if (isFirstMessage && !bootstrap && message.length > 0) {
@@ -438,12 +436,12 @@ export async function handleAgentChatPost(
 
     return json({
       response: responseText,
-      history: result.messages.filter((m) => m.role !== 'system'),
+      history: [],
       sessionId,
       messageId,
     })
   } catch (err) {
-    console.error(`[${options.logTag ?? 'api/chat'}] agentChat threw`, {
+    console.error(`[${options.logTag ?? 'api/chat'}] dispatch threw`, {
       error: err instanceof Error ? err.message : String(err),
     })
     return json(

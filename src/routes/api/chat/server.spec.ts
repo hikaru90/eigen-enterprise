@@ -1,15 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { POST } from './+server'
+import { LlmNotConfiguredError } from '$lib/server/llm/errors'
 
-const { agentChatMock, getDbMock, appSqlMock, createScopedDrizzleMock } = vi.hoisted(() => ({
-  agentChatMock: vi.fn(),
-  getDbMock: vi.fn(),
-  appSqlMock: {
-    reserve: vi.fn(),
-  },
-  createScopedDrizzleMock: vi.fn(),
-}))
+const { bootAppMock, runtimeDispatchMock, getDbMock, appSqlMock, createScopedDrizzleMock } =
+  vi.hoisted(() => ({
+    bootAppMock: vi.fn(),
+    runtimeDispatchMock: vi.fn(),
+    getDbMock: vi.fn(),
+    appSqlMock: {
+      reserve: vi.fn(),
+    },
+    createScopedDrizzleMock: vi.fn(),
+  }))
 
+vi.mock('$lib/server/boot', () => ({ bootApp: bootAppMock }))
 vi.mock('$lib/server/db', () => ({
   getDb: getDbMock,
   appSql: appSqlMock,
@@ -18,7 +21,6 @@ vi.mock('$lib/server/db', () => ({
   activateTenantDbSession: vi.fn(async () => undefined),
   deactivateTenantDbSession: vi.fn(async () => undefined),
 }))
-vi.mock('$lib/server/llm/agent-loop', () => ({ agentChat: agentChatMock }))
 vi.mock('$lib/server/activity/trace-context', () => ({
   runWithTrace: (_id: string, fn: () => unknown) => fn(),
 }))
@@ -112,12 +114,16 @@ async function readNdjsonLines(res: Response) {
     .map((l) => JSON.parse(l) as { type: string; [key: string]: unknown })
 }
 
-describe('POST /api/chat', () => {
+describe('POST /api/chat — harness dispatch', () => {
   beforeEach(() => {
-    agentChatMock.mockReset()
+    runtimeDispatchMock.mockReset()
+    bootAppMock.mockReset()
     getDbMock.mockReset()
     appSqlMock.reserve.mockReset()
     createScopedDrizzleMock.mockReset()
+    bootAppMock.mockResolvedValue({
+      orchestrator: { runtime: { dispatch: runtimeDispatchMock } },
+    })
     getDbMock.mockReturnValue(buildMainDb())
     const streamDb = buildStreamDb()
     createScopedDrizzleMock.mockReturnValue(streamDb)
@@ -129,6 +135,7 @@ describe('POST /api/chat', () => {
   })
 
   it('rejects bootstrap without briefingPeriod', async () => {
+    const { POST } = await import('./+server')
     await expect(
       POST({
         locals: { user: { id: 'u1' } },
@@ -138,12 +145,14 @@ describe('POST /api/chat', () => {
   })
 
   it('requires auth', async () => {
+    const { POST } = await import('./+server')
     await expect(
       POST({ locals: { user: null }, request: ndjsonRequest({ message: 'hi' }) } as never),
     ).rejects.toMatchObject({ status: 401 })
   })
 
   it('rejects empty message', async () => {
+    const { POST } = await import('./+server')
     await expect(
       POST({
         locals: { user: { id: 'u1' } },
@@ -153,6 +162,7 @@ describe('POST /api/chat', () => {
   })
 
   it('rejects invalid JSON body', async () => {
+    const { POST } = await import('./+server')
     await expect(
       POST({
         locals: { user: { id: 'u1' } },
@@ -168,6 +178,7 @@ describe('POST /api/chat', () => {
   })
 
   it('returns 404 when sessionId does not exist', async () => {
+    const { POST } = await import('./+server')
     const whereForSelect = vi.fn().mockReturnValue({
       limit: vi.fn().mockResolvedValue([]),
     })
@@ -187,11 +198,103 @@ describe('POST /api/chat', () => {
     ).rejects.toMatchObject({ status: 404 })
   })
 
-  it('returns JSON response on non-ndjson success', async () => {
-    agentChatMock.mockResolvedValue({
-      response: 'Plain JSON reply.',
-      messages: [{ role: 'assistant', content: 'Plain JSON reply.' }],
+  it('dispatches through the kernel runtime as the orchestrator agent with the session and sinks', async () => {
+    const { POST } = await import('./+server')
+    runtimeDispatchMock.mockResolvedValue('Runtime reply.')
+
+    const res = await POST({
+      locals: { user: { id: 'u1' } },
+      request: ndjsonRequest({ message: 'hello' }),
+    } as never)
+
+    await res.text()
+    expect(bootAppMock).toHaveBeenCalledTimes(1)
+    expect(runtimeDispatchMock).toHaveBeenCalledTimes(1)
+    const [agentId, dispatchSessionId, message, sinks] = runtimeDispatchMock.mock.calls[0]
+    expect(agentId).toBe('orchestrator')
+    expect(dispatchSessionId).toBe(SESSION_ID)
+    expect(message).toBe('hello')
+    expect(typeof sinks.stream).toBe('function')
+    expect(typeof sinks.surfaceEvent).toBe('function')
+  })
+
+  it('streams harness events (tool.preview, message_delta) and persists the turn', async () => {
+    const { POST } = await import('./+server')
+    runtimeDispatchMock.mockImplementation(
+      async (
+        _agentId: string,
+        _sessionId: string,
+        _message: string,
+        sinks: {
+          stream: (delta: string) => void
+          surfaceEvent: (event: unknown) => void
+        },
+      ) => {
+        sinks.surfaceEvent({
+          type: 'tool.preview',
+          tool: 'email.send_mail',
+          inputSummary: '{"to":"a@b.c"}',
+        })
+        sinks.stream('Hello ')
+        sinks.stream('there.')
+        return 'Hello there.'
+      },
+    )
+    const streamDb = buildStreamDb()
+    const insertMock = streamDb.insert as ReturnType<typeof vi.fn>
+    createScopedDrizzleMock.mockReturnValue(streamDb)
+
+    const res = await POST({
+      locals: { user: { id: 'u1' } },
+      request: ndjsonRequest({ message: 'email alex' }),
+    } as never)
+
+    expect(res.headers.get('content-type')).toContain('ndjson')
+    const lines = await readNdjsonLines(res)
+    expect(lines).toContainEqual({
+      type: 'tool.preview',
+      tool: 'email.send_mail',
+      inputSummary: '{"to":"a@b.c"}',
     })
+    expect(lines).toContainEqual({ type: 'message_delta', content: 'Hello ' })
+    expect(lines).toContainEqual({ type: 'message_delta', content: 'there.' })
+    const last = lines[lines.length - 1]
+    expect(last.type).toBe('done')
+    expect(last.response).toBe('Hello there.')
+    expect(last.sessionId).toBe(SESSION_ID)
+    // Preview step + final assistant message persisted.
+    expect(insertMock.mock.calls.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('passes approval.required through as a stream event', async () => {
+    const { POST } = await import('./+server')
+    runtimeDispatchMock.mockImplementation(
+      async (
+        _agentId: string,
+        _sessionId: string,
+        _message: string,
+        sinks: { surfaceEvent: (e: unknown) => void },
+      ) => {
+        sinks.surfaceEvent({ type: 'approval.required', tool: 'email.send_mail' })
+        return 'Queued for owner approval.'
+      },
+    )
+
+    const res = await POST({
+      locals: { user: { id: 'u1' } },
+      request: ndjsonRequest({ message: 'send it' }),
+    } as never)
+
+    const lines = await readNdjsonLines(res)
+    expect(lines).toContainEqual({ type: 'approval.required', tool: 'email.send_mail' })
+    const last = lines[lines.length - 1]
+    expect(last.type).toBe('done')
+    expect(last.response).toBe('Queued for owner approval.')
+  })
+
+  it('returns JSON response on non-ndjson success', async () => {
+    const { POST } = await import('./+server')
+    runtimeDispatchMock.mockResolvedValue('Plain JSON reply.')
 
     const res = await POST({
       locals: { user: { id: 'u1' } },
@@ -206,8 +309,9 @@ describe('POST /api/chat', () => {
     })
   })
 
-  it('returns 500 JSON when agentChat throws on non-ndjson path', async () => {
-    agentChatMock.mockRejectedValue(new Error('gateway timeout'))
+  it('returns 500 JSON when dispatch throws on non-ndjson path', async () => {
+    const { POST } = await import('./+server')
+    runtimeDispatchMock.mockRejectedValue(new Error('gateway timeout'))
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
     const res = await POST({
@@ -224,73 +328,9 @@ describe('POST /api/chat', () => {
     consoleSpy.mockRestore()
   })
 
-  it('streams ndjson with done on success', async () => {
-    agentChatMock.mockImplementation(async (input: { onEvent?: (e: unknown) => void }) => {
-      input.onEvent?.({
-        type: 'tool_call',
-        tool: 'retrieve_thoughts',
-        arguments: { query: 'coffee' },
-      })
-      input.onEvent?.({
-        type: 'tool_result',
-        tool: 'retrieve_thoughts',
-        preview: JSON.stringify({ results: [] }),
-      })
-      return { response: 'You like sweet coffee.', messages: [] }
-    })
-
-    const res = await POST({
-      locals: { user: { id: 'u1' } },
-      request: ndjsonRequest({ message: 'how do i like my coffee?' }),
-    } as never)
-
-    expect(res.headers.get('content-type')).toContain('ndjson')
-    const lines = await readNdjsonLines(res)
-    expect(appSqlMock.reserve).toHaveBeenCalled()
-    expect(createScopedDrizzleMock).toHaveBeenCalled()
-    expect(lines.some((l) => l.type === 'tool_call')).toBe(true)
-    expect(lines.some((l) => l.type === 'tool_result')).toBe(true)
-    const last = lines[lines.length - 1]
-    expect(last.type).toBe('done')
-    expect(last.response).toBe('You like sweet coffee.')
-  })
-
-  it('streams parsed answer_question prose in done.response', async () => {
-    const composedAnswer =
-      'Answer: To cook salmon, whisk miso glaze and broil. [salmon-id]\nEvidence:\n- Recipe steps [salmon-id]\nUnknown:\n- none'
-    const preview = JSON.stringify({
-      answer: composedAnswer,
-      citations: ['salmon-id'],
-      retrieved: [{ id: 'salmon-id', snippet: 'Recipe: salmon', category: 'observation' }],
-    })
-    agentChatMock.mockImplementation(async (input: { onEvent?: (e: unknown) => void }) => {
-      input.onEvent?.({
-        type: 'tool_call',
-        tool: 'answer_question',
-        arguments: { question: 'how to cook salmon?' },
-      })
-      input.onEvent?.({ type: 'tool_executing', tool: 'answer_question' })
-      input.onEvent?.({ type: 'tool_result', tool: 'answer_question', preview })
-      return { response: composedAnswer, messages: [] }
-    })
-
-    const streamDb = buildStreamDb()
-    const insertMock = streamDb.insert as ReturnType<typeof vi.fn>
-    createScopedDrizzleMock.mockReturnValue(streamDb)
-
-    const res = await POST({
-      locals: { user: { id: 'u1' } },
-      request: ndjsonRequest({ message: 'how to cook salmon?' }),
-    } as never)
-
-    const lines = await readNdjsonLines(res)
-    const done = lines.find((l) => l.type === 'done')
-    expect(done?.response).toBe('To cook salmon, whisk miso glaze and broil. [salmon-id]')
-    expect(insertMock.mock.calls.length).toBeGreaterThanOrEqual(2)
-  })
-
-  it('streams ndjson error line when agentChat throws', async () => {
-    agentChatMock.mockRejectedValue(new Error('embedding failed'))
+  it('streams ndjson error line when dispatch throws', async () => {
+    const { POST } = await import('./+server')
+    runtimeDispatchMock.mockRejectedValue(new Error('embedding failed'))
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
     const res = await POST({
@@ -305,8 +345,30 @@ describe('POST /api/chat', () => {
     consoleSpy.mockRestore()
   })
 
+  it('tags llm_not_configured failures through the dispatch path', async () => {
+    const { POST } = await import('./+server')
+    runtimeDispatchMock.mockRejectedValue(
+      new Error('agent loop failed', {
+        cause: new LlmNotConfiguredError('LLM not configured: set LLM_BASE_URL'),
+      }),
+    )
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    const res = await POST({
+      locals: { user: { id: 'u1' } },
+      request: ndjsonRequest({ message: 'hello' }),
+    } as never)
+
+    const lines = await readNdjsonLines(res)
+    const last = lines[lines.length - 1]
+    expect(last.type).toBe('error')
+    expect(last.code).toBe('llm_not_configured')
+    consoleSpy.mockRestore()
+  })
+
   it('always ends stream with done or error terminal event', async () => {
-    agentChatMock.mockResolvedValue({ response: 'ok', messages: [] })
+    const { POST } = await import('./+server')
+    runtimeDispatchMock.mockResolvedValue('ok')
     const res = await POST({
       locals: { user: { id: 'u1' } },
       request: ndjsonRequest({ message: 'hello' }),
@@ -316,27 +378,20 @@ describe('POST /api/chat', () => {
     expect(terminal).toHaveLength(1)
   })
 
-  function delayedAgentChatMock() {
-    agentChatMock.mockImplementation(async (input: { onEvent?: (e: unknown) => void }) => {
-      input.onEvent?.({
-        type: 'tool_call',
-        tool: 'answer_question',
-        arguments: { question: 'test' },
-      })
-      await new Promise((r) => setTimeout(r, 50))
-      input.onEvent?.({
-        type: 'tool_progress',
-        tool: 'answer_question',
-        phase: 'searching',
-        label: 'Searching memories…',
-      })
-      input.onEvent?.({
-        type: 'tool_result',
-        tool: 'answer_question',
-        preview: JSON.stringify({ answer: 'ok' }),
-      })
-      return { response: 'Done.', messages: [] }
-    })
+  function delayedDispatchMock() {
+    runtimeDispatchMock.mockImplementation(
+      async (
+        _agentId: string,
+        _sessionId: string,
+        _message: string,
+        sinks: { stream: (delta: string) => void },
+      ) => {
+        sinks.stream('partial')
+        await new Promise((r) => setTimeout(r, 50))
+        sinks.stream(' reply')
+        return 'partial reply'
+      },
+    )
   }
 
   function enqueueFailedCalls(spy: ReturnType<typeof vi.spyOn>) {
@@ -346,7 +401,8 @@ describe('POST /api/chat', () => {
   }
 
   it('does not log enqueue errors when consumer cancels mid-stream', async () => {
-    delayedAgentChatMock()
+    const { POST } = await import('./+server')
+    delayedDispatchMock()
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
     const res = await POST({
@@ -365,7 +421,8 @@ describe('POST /api/chat', () => {
   })
 
   it('does not log enqueue errors when request aborts mid-stream', async () => {
-    delayedAgentChatMock()
+    const { POST } = await import('./+server')
+    delayedDispatchMock()
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const ac = new AbortController()
 

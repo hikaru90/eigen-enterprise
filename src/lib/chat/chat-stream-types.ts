@@ -9,6 +9,14 @@ export type ChatStreamEvent =
   | { type: 'tool_executing'; tool: string }
   | { type: 'tool_progress'; tool: string; phase: string; label: string }
   | { type: 'tool_result'; tool: string; preview: string; failed?: boolean }
+  /**
+   * Harness-path events (AgentRuntime dispatch): incremental reply text, a
+   * metadata-only preview before a tool executes, and the owner-approval
+   * gate. `inputSummary` is short and truncated server-side — never full args.
+   */
+  | { type: 'message_delta'; content: string }
+  | { type: 'tool.preview'; tool: string; inputSummary: string | null }
+  | { type: 'approval.required'; tool: string }
   | {
       type: 'done'
       response: string

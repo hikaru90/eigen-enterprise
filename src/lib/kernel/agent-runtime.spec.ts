@@ -358,3 +358,39 @@ describe('AgentRuntime — tool surface + execution path', () => {
     expect(event!.source).toBe('urn:eigenenterprise:kernel')
   })
 })
+
+describe('AgentRuntime — stream sink pass-through', () => {
+  it('passes dispatch stream sinks through to the engine context untouched', async () => {
+    const fx = makeFixture()
+    fx.runtime.registerAgent(agentConfig())
+
+    const stream = (_delta: string) => {}
+    const surfaceEvent = (_event: { type: 'tool.preview'; tool: string; inputSummary: null }) => {}
+    let seen: EngineContext | undefined
+    fx.run.mockImplementation(async (_sid, _input, ctx: EngineContext) => {
+      seen = ctx
+      return 'ok'
+    })
+
+    await fx.runtime.dispatch('agent-1', 's', 'hi', { stream, surfaceEvent })
+
+    expect(seen?.stream).toBe(stream)
+    expect(seen?.surfaceEvent).toBe(surfaceEvent)
+  })
+
+  it('leaves stream sinks undefined when dispatch is called without them', async () => {
+    const fx = makeFixture()
+    fx.runtime.registerAgent(agentConfig())
+
+    let seen: EngineContext | undefined
+    fx.run.mockImplementation(async (_sid, _input, ctx: EngineContext) => {
+      seen = ctx
+      return 'ok'
+    })
+
+    await fx.runtime.dispatch('agent-1', 's', 'hi')
+
+    expect(seen?.stream).toBeUndefined()
+    expect(seen?.surfaceEvent).toBeUndefined()
+  })
+})

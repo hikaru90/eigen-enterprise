@@ -1,11 +1,22 @@
 import type { RequestHandler } from './$types'
 import { error } from '@sveltejs/kit'
+import { bootApp } from '$lib/server/boot'
 import {
   BRIEFING_BOOTSTRAP_MESSAGES,
   handleAgentChatPost,
   type AgentChatPostBody,
 } from '$lib/server/chat/handle-agent-chat-post'
+import { ORCHESTRATOR_AGENT_ID } from '../../../../modules/orchestrator/brain'
 
+/**
+ * The nucleus chatbox speaks through the harness proper (plan/phase-1b):
+ * one path — AgentRuntime.dispatch for the orchestrator agent. Role gate:
+ * ANY authenticated user may talk to the orchestrator (checked in
+ * handleAgentChatPost); the orchestrator principal carries 'admin' + 'agent'
+ * for its kernel tool surface (runtime rolesFor, set at bootstrap). The boot
+ * is resolved exactly like src/lib/server/boot.ts — memoized, single kernel,
+ * never a second composition.
+ */
 export const POST: RequestHandler = async (event) => {
   let body: unknown
   try {
@@ -28,9 +39,13 @@ export const POST: RequestHandler = async (event) => {
     error(400, 'Invalid briefingPeriod')
   }
 
+  const boot = await bootApp()
+
   return handleAgentChatPost(event, b, {
     sessionMode: 'default',
     logTag: 'api/chat',
+    dispatch: (sessionId, message, sinks) =>
+      boot.orchestrator.runtime.dispatch(ORCHESTRATOR_AGENT_ID, sessionId, message, sinks),
     resolveAgentUserMessage: ({ bootstrap, message, briefingPeriod: period }) => {
       if (bootstrap && period && BRIEFING_BOOTSTRAP_MESSAGES[period]) {
         return BRIEFING_BOOTSTRAP_MESSAGES[period]

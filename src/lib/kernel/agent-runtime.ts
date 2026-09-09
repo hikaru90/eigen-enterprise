@@ -1,5 +1,5 @@
 import type { AgentConfig, LoopEngineId } from './agent'
-import type { EngineContext, EngineToolListing, LoopEngine } from './engine'
+import type { EngineContext, EngineStreamSinks, EngineToolListing, LoopEngine } from './engine'
 import type { KernelRegistry } from './registry'
 import type { ToolContext } from './types'
 import { randomUUID } from 'node:crypto'
@@ -99,8 +99,15 @@ export class AgentRuntime {
   /**
    * Run one user turn against an agent. Fails loud on unknown/disabled agent,
    * unregistered engine, or exhausted spend cap — never silently degrades.
+   * `sinks` (optional) are per-request surface sinks passed through to the
+   * engine context; the runtime itself never consumes them.
    */
-  async dispatch(agentId: string, sessionId: string, input: string): Promise<string> {
+  async dispatch(
+    agentId: string,
+    sessionId: string,
+    input: string,
+    sinks?: EngineStreamSinks,
+  ): Promise<string> {
     const agent = this.requireAgent(agentId)
     if (!agent.enabled) {
       throw new KernelError('agent_disabled', `agent ${agentId} is disabled`)
@@ -129,7 +136,7 @@ export class AgentRuntime {
 
     await this.emitAgentEvent(agent.id, 'agent.dispatched', { agentId, sessionId })
 
-    const ctx = await this.buildContext(agent)
+    const ctx = await this.buildContext(agent, sinks)
     const reply = await engine.run(sessionId, input, ctx)
 
     await this.emitAgentEvent(agent.id, 'agent.replied', {
@@ -164,7 +171,7 @@ export class AgentRuntime {
     return ctx.listTools()
   }
 
-  private async buildContext(agent: AgentConfig): Promise<EngineContext> {
+  private async buildContext(agent: AgentConfig, sinks?: EngineStreamSinks): Promise<EngineContext> {
     const principal: ToolContext['principal'] = {
       id: agent.id,
       kind: 'agent',
@@ -197,6 +204,8 @@ export class AgentRuntime {
         })
       },
       spendUsd: () => this.spendFor(agent.id),
+      ...(sinks?.stream ? { stream: sinks.stream } : {}),
+      ...(sinks?.surfaceEvent ? { surfaceEvent: sinks.surfaceEvent } : {}),
     }
   }
 

@@ -5,8 +5,8 @@
   import Square from '@lucide/svelte/icons/square'
   import { onMount } from 'svelte'
   import { browser } from '$app/environment'
-  import { page } from '$app/state'
   import { resolve } from '$app/paths'
+  import { page } from '$app/state'
 
   let { data }: PageProps = $props()
   import { sanitizeFinalAnswerText } from '$lib/chat/chat-stream-types'
@@ -18,6 +18,7 @@
   import {
     assistantTurnFromResponse,
     failedTurn,
+    nucleusTurnForProgressEvent,
     statusLabelForProgressEvent,
     userTurn,
     type NucleusChatEntry,
@@ -93,6 +94,8 @@
           if (event.type === 'tool_result' && event.tool === 'answer_question') {
             answerPreview = event.preview
           }
+          const turn = nucleusTurnForProgressEvent(event)
+          if (turn) appendEntry(turn)
           status = statusLabelForProgressEvent(event)
         },
         ac.signal,
@@ -183,21 +186,39 @@
                 <ChatMarkdown content={entry.content} tone="user" />
               </div>
             </div>
-          {:else if entry.failed}
-            <div class="py-1.5">
-              <p class="text-destructive text-sm leading-relaxed wrap-break-word">{entry.content}</p>
-              {#if entry.providerSetup}
-                <a
-                  href={resolve('/settings/llm')}
-                  class="text-destructive text-xs underline underline-offset-2"
-                >
-                  Set up your AI provider →
-                </a>
-              {/if}
-            </div>
-          {:else}
-            <div class="py-1.5">
-              <ChatMarkdown content={entry.content} />
+          {:else if entry.role === 'assistant'}
+            {#if entry.failed}
+              <div class="py-1.5">
+                <p class="text-destructive text-sm leading-relaxed wrap-break-word">
+                  {entry.content}
+                </p>
+                {#if entry.providerSetup}
+                  <a
+                    href={resolve('/settings/llm')}
+                    class="text-destructive text-xs underline underline-offset-2"
+                  >
+                    Set up your AI provider →
+                  </a>
+                {/if}
+              </div>
+            {:else}
+              <div class="py-1.5">
+                <ChatMarkdown content={entry.content} />
+              </div>
+            {/if}
+          {:else if entry.role === 'tool_preview'}
+            <p class="text-muted-foreground py-0.5 text-xs" data-testid="tool-preview">
+              → using {entry.tool}{entry.inputSummary ? ` · ${entry.inputSummary}` : ''}…
+            </p>
+          {:else if entry.role === 'approval'}
+            <div
+              class="border-foreground/30 bg-muted/40 my-2 rounded-sm border border-dashed px-3 py-2"
+              data-testid="approval-card"
+            >
+              <p class="text-sm font-medium">Needs your approval — pending</p>
+              <p class="text-muted-foreground text-xs">
+                {entry.tool} is queued for an owner decision. It has not run.
+              </p>
             </div>
           {/if}
         {/each}

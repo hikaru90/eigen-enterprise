@@ -1,4 +1,9 @@
-import type { EngineContext, EngineToolListing, LoopEngine } from '../engine'
+import type {
+  EngineContext,
+  EngineSurfaceEvent,
+  EngineToolListing,
+  LoopEngine,
+} from '../engine'
 import { KernelError } from '../errors'
 
 /**
@@ -22,6 +27,22 @@ export type LlmCompleteFn = (input: {
 }) => Promise<unknown>
 
 /**
+ * Streaming completion seam. Same contract as LlmCompleteFn plus `onDelta`,
+ * which receives raw model text chunks while the response is generated. The
+ * engine extracts the protocol's answer field incrementally (see
+ * StreamedAnswerExtractor) — raw JSON protocol bytes never reach the surface.
+ * llmChatCompletion offers no streaming today, so production runs the
+ * fallback path: the final reply is emitted as one delta.
+ */
+export type LlmStreamCompleteFn = (input: {
+  userId: string
+  messages: EngineChatMessage[]
+  temperature?: number
+  logContext?: string
+  onDelta: (delta: string) => void
+}) => Promise<unknown>
+
+/**
  * Production completion path: the existing LLM gateway client. Loaded lazily
  * so unit tests can inject `complete` without importing the provider stack;
  * production never calls providers directly — only through this client.
@@ -40,6 +61,11 @@ const MAX_TOOL_RESULT_CHARS = 12_000
 export type BuiltinJsonLoopOptions = {
   /** Overrides the gateway completion call (tests inject fakes; never a real LLM). */
   complete?: LlmCompleteFn
+  /**
+   * Streaming completion (used only when the EngineContext carries a `stream`
+   * sink). When absent, the fallback emits the final reply as one delta.
+   */
+  streamComplete?: LlmStreamCompleteFn
   /** Persona preamble; the engine appends the JSON protocol, tool list, and rules. */
   systemPrompt: string
   /** Parse-failure retries before failing loud (default 3). */
@@ -169,6 +195,121 @@ function toolResultText(result: unknown): string {
   return `${json.slice(0, MAX_TOOL_RESULT_CHARS)}…(truncated)`
 }
 
+/** Upper bound for the metadata-only input summary on tool.preview events. */
+export const MAX_TOOL_INPUT_SUMMARY_CHARS = 120
+
+/**
+ * Short, truncated, metadata-only projection of a tool call's arguments for
+ * surface previews. Never the full arguments — bounded wire payload, no
+ * secrets beyond what a one-line summary already exposes.
+ */
+export function shortToolInputSummary(args: Record<string, unknown>): string | null {
+  if (!args || Object.keys(args).length === 0) return null
+  try {
+    const s = JSON.stringify(args)
+    if (s.length <= MAX_TOOL_INPUT_SUMMARY_CHARS) return s
+    return `${s.slice(0, MAX_TOOL_INPUT_SUMMARY_CHARS - 1)}…`
+  } catch {
+    return null
+  }
+}
+
+const THINK_OPEN = '<think>'
+const THINK_CLOSE = '</think>'
+const ANSWER_KEY = '"answer"'
+
+/**
+ * Incremental extractor for the protocol's `{"answer": "…"}` string while raw
+ * model text streams in. Emits only the unescaped answer characters; nothing
+ * before the top-level `"answer"` key opens, nothing after the string closes.
+ * Rescans the buffered prefix per feed — buffers are model-turn sized, the
+ * simplicity is worth the quadratic worst case.
+ */
+export class StreamedAnswerExtractor {
+  private buffer = ''
+  private thinkStripped = false
+  private state: 'seek' | 'collect' | 'closed' = 'seek'
+  /** Unescaped answer chars confirmed so far (what has been emitted). */
+  private confirmed = ''
+
+  /** Feed one raw chunk; returns newly extracted unescaped answer text (may be ''). */
+  feed(chunk: string): string {
+    if (this.state === 'closed') return ''
+    this.buffer += chunk
+
+    if (!this.thinkStripped) {
+      if (this.buffer.startsWith(THINK_OPEN)) {
+        const close = this.buffer.indexOf(THINK_CLOSE)
+        if (close < 0) return ''
+        this.buffer = this.buffer.slice(close + THINK_CLOSE.length)
+      }
+      this.thinkStripped = true
+    }
+
+    if (this.state === 'seek') {
+      const keyAt = this.buffer.indexOf(ANSWER_KEY)
+      if (keyAt < 0) return ''
+      let cursor = keyAt + ANSWER_KEY.length
+      while (cursor < this.buffer.length && /\s/.test(this.buffer[cursor]!)) cursor += 1
+      if (cursor >= this.buffer.length || this.buffer[cursor] !== ':') return ''
+      cursor += 1
+      while (cursor < this.buffer.length && /\s/.test(this.buffer[cursor]!)) cursor += 1
+      if (cursor >= this.buffer.length) return ''
+      if (this.buffer[cursor] !== '"') {
+        // Not a string value at the answer key — never extract from this turn.
+        this.state = 'closed'
+        return ''
+      }
+      this.buffer = this.buffer.slice(cursor + 1)
+      this.state = 'collect'
+    }
+
+    // Collect: decode the JSON string body up to the closing quote.
+    let out = ''
+    let i = 0
+    while (i < this.buffer.length) {
+      const ch = this.buffer[i]!
+      if (ch === '"') {
+        this.state = 'closed'
+        this.buffer = ''
+        break
+      }
+      if (ch === '\\') {
+        const next = this.buffer[i + 1]
+        if (next === undefined) break // incomplete escape — wait for more
+        if (next === 'u') {
+          const hex = this.buffer.slice(i + 2, i + 6)
+          if (hex.length < 4) break // incomplete \u escape — wait for more
+          out += String.fromCharCode(parseInt(hex, 16))
+          i += 6
+          continue
+        }
+        const decoded = { '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' }[
+          next as '"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't'
+        ]
+        if (decoded === undefined) break // invalid escape — stop emitting
+        out += decoded
+        i += 2
+        continue
+      }
+      out += ch
+      i += 1
+    }
+
+    // `out` is the full decoded answer-so far (the body is re-walked on every
+    // feed); emit only the newly decoded suffix.
+    if (out.length <= this.confirmed.length) return ''
+    const delta = out.slice(this.confirmed.length)
+    this.confirmed = out
+    return delta
+  }
+
+  /** How many answer characters have been extracted so far. */
+  get emitted(): number {
+    return this.confirmed.length
+  }
+}
+
 /**
  * In-memory session memory (Map<sessionId, messages>) held by the engine
  * instance — DOCUMENTED DEBT (v0): not persisted; a restart starts fresh
@@ -176,6 +317,7 @@ function toolResultText(result: unknown): string {
  */
 export class BuiltinJsonLoop implements LoopEngine {
   private readonly complete: LlmCompleteFn
+  private readonly streamComplete: LlmStreamCompleteFn | undefined
   private readonly systemPrompt: string
   private readonly parseRetry: number
   private readonly llmUserId: string | undefined
@@ -184,6 +326,7 @@ export class BuiltinJsonLoop implements LoopEngine {
 
   constructor(options: BuiltinJsonLoopOptions) {
     this.complete = options.complete ?? gatewayComplete
+    this.streamComplete = options.streamComplete
     this.systemPrompt = options.systemPrompt
     this.parseRetry = options.parseRetry ?? MAX_PARSE_RETRIES
     this.llmUserId = options.llmUserId
@@ -201,14 +344,42 @@ export class BuiltinJsonLoop implements LoopEngine {
       { role: 'user', content: input },
     ]
 
+    // Streaming: only when the surface attached a delta sink. Without a
+    // configured streaming completion the final reply is emitted as ONE delta
+    // (graceful fallback); with one, answer text streams incrementally. A
+    // throwing surface sink must never break the loop.
+    const streamFn = ctx.stream
+    const streamingComplete = streamFn ? this.streamComplete : undefined
+    const emitDelta = (delta: string): void => {
+      if (!streamFn || !delta) return
+      try {
+        streamFn(delta)
+      } catch {
+        // best-effort channel — the reply still returns through the harness
+      }
+    }
+    const emitSurface = (event: EngineSurfaceEvent): void => {
+      if (!ctx.surfaceEvent) return
+      try {
+        ctx.surfaceEvent(event)
+      } catch {
+        // best-effort channel
+      }
+    }
+
     let parseFailures = 0
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-      const raw = await this.complete({
-        userId: this.llmUserId ?? ctx.agent.id,
-        messages,
-        temperature: 0,
-        logContext: this.logContext,
-      })
+      let emittedAnswerChars = 0
+      const raw = streamingComplete
+        ? await this.callStreamingComplete(messages, ctx, (n) => {
+            emittedAnswerChars = n
+          }, emitDelta)
+        : await this.complete({
+            userId: this.llmUserId ?? ctx.agent.id,
+            messages,
+            temperature: 0,
+            logContext: this.logContext,
+          })
       const content = extractContent(raw)
       if (!content) return 'The assistant did not produce a response.'
 
@@ -229,6 +400,10 @@ export class BuiltinJsonLoop implements LoopEngine {
 
       if (turn.type === 'final') {
         this.remember(sessionId, input, turn.content)
+        // Completeness guarantee: whatever incremental streaming already
+        // emitted is a prefix of the answer; emit any remainder (the whole
+        // answer on the fallback path).
+        emitDelta(turn.content.slice(emittedAnswerChars))
         return turn.content
       }
 
@@ -245,6 +420,12 @@ export class BuiltinJsonLoop implements LoopEngine {
         continue
       }
 
+      emitSurface({
+        type: 'tool.preview',
+        tool: turn.tool,
+        inputSummary: shortToolInputSummary(turn.arguments),
+      })
+
       try {
         const result = await ctx.executeTool(turn.tool, turn.arguments)
         messages.push({
@@ -255,6 +436,7 @@ export class BuiltinJsonLoop implements LoopEngine {
         if (err instanceof KernelError && err.code === 'approval_required') {
           // Owner-approval gate: surface as a structured tool result so the
           // model can tell the user; every other error fails the cycle loud.
+          emitSurface({ type: 'approval.required', tool: turn.tool })
           messages.push({
             role: 'user',
             content: `Tool result for ${turn.tool}:\n${JSON.stringify({
@@ -270,6 +452,32 @@ export class BuiltinJsonLoop implements LoopEngine {
     }
 
     return 'The assistant took too many steps to answer. Please try rephrasing your request.'
+  }
+
+  /**
+   * One streaming completion call: forwards incrementally extracted answer
+   * deltas to the surface and reports how many answer chars were emitted so
+   * the final turn can guarantee completeness.
+   */
+  private async callStreamingComplete(
+    messages: EngineChatMessage[],
+    ctx: EngineContext,
+    onEmitted: (chars: number) => void,
+    emitDelta: (delta: string) => void,
+  ): Promise<unknown> {
+    const extractor = new StreamedAnswerExtractor()
+    const streamFn = this.streamComplete!
+    return streamFn({
+      userId: this.llmUserId ?? ctx.agent.id,
+      messages,
+      temperature: 0,
+      logContext: this.logContext,
+      onDelta: (delta) => {
+        const answer = extractor.feed(delta)
+        if (answer) emitDelta(answer)
+        onEmitted(extractor.emitted)
+      },
+    })
   }
 
   private remember(sessionId: string, userText: string, answer: string): void {

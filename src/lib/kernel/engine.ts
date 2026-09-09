@@ -13,11 +13,33 @@ export type EngineToolListing = {
 }
 
 /**
+ * Structured, metadata-only surface events an engine can emit onto a
+ * caller-provided sink (chat NDJSON). `inputSummary` is a short, truncated
+ * projection of the tool input — never full arguments, never secrets.
+ */
+export type EngineSurfaceEvent =
+  | { type: 'tool.preview'; tool: string; inputSummary: string | null }
+  | { type: 'approval.required'; tool: string }
+
+/**
+ * Per-request surface sinks. dispatch() passes them through to the engine
+ * context when the caller (e.g. the chat endpoint) provides one; both are
+ * optional and best-effort — engines must never fail a run because a sink
+ * threw.
+ */
+export type EngineStreamSinks = {
+  /** Reply-text delta sink for surfaces that render incrementally. */
+  stream?: (delta: string) => void
+  /** Structured surface events (tool previews, approval gates). */
+  surfaceEvent?: (event: EngineSurfaceEvent) => void
+}
+
+/**
  * Everything the harness hands a loop engine for one run — the parts an agent
  * must never rebuild: its config, its principal, the kernel execution path,
  * the fail-closed tool surface, the event stream, and live spend.
  */
-export type EngineContext = {
+export type EngineContext = EngineStreamSinks & {
   agent: AgentConfig
   /** { id: agent.id, kind: 'agent', roles } — permissions/audit/approvals see this identity. */
   principal: ToolContext['principal']

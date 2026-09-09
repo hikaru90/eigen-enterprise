@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  approvalRequiredTurn,
   assistantTurnFromResponse,
   failedTurn,
+  nucleusTurnForProgressEvent,
   statusLabelForProgressEvent,
+  toolPreviewTurn,
   userTurn,
 } from './nucleus-chat'
 
@@ -81,5 +84,62 @@ describe('nucleus-chat status line', () => {
         preview: 'x',
       }),
     ).toBe('Preparing your reply…')
+  })
+
+  it('stays quiet for harness-path events that render inline or as cards', () => {
+    expect(
+      statusLabelForProgressEvent({
+        type: 'tool.preview',
+        tool: 'email.send_mail',
+        inputSummary: '{"to":"a@b.c"}',
+      }),
+    ).toBeNull()
+    expect(statusLabelForProgressEvent({ type: 'approval.required', tool: 'email.send_mail' })).toBeNull()
+    expect(statusLabelForProgressEvent({ type: 'message_delta', content: 'Hel' })).toBeNull()
+  })
+})
+
+describe('nucleus-chat harness turns', () => {
+  it('builds a tool preview turn with the bounded input summary', () => {
+    expect(toolPreviewTurn('email.send_mail', '{"to":"a@b.c"}')).toEqual({
+      role: 'tool_preview',
+      tool: 'email.send_mail',
+      inputSummary: '{"to":"a@b.c"}',
+    })
+    expect(toolPreviewTurn('memory.echo', null)).toEqual({
+      role: 'tool_preview',
+      tool: 'memory.echo',
+      inputSummary: null,
+    })
+  })
+
+  it('builds an approval turn', () => {
+    expect(approvalRequiredTurn('email.send_mail')).toEqual({
+      role: 'approval',
+      tool: 'email.send_mail',
+    })
+  })
+
+  it('folds tool.preview and approval.required progress events into transcript turns', () => {
+    expect(
+      nucleusTurnForProgressEvent({
+        type: 'tool.preview',
+        tool: 'email.send_mail',
+        inputSummary: '{"to":"a@b.c"}',
+      }),
+    ).toEqual({ role: 'tool_preview', tool: 'email.send_mail', inputSummary: '{"to":"a@b.c"}' })
+    expect(nucleusTurnForProgressEvent({ type: 'approval.required', tool: 'brand.set_activate' }))
+      .toEqual({ role: 'approval', tool: 'brand.set_activate' })
+  })
+
+  it('leaves every other progress event to the status line / final response', () => {
+    expect(nucleusTurnForProgressEvent({ type: 'thinking', content: 'internal' })).toBeNull()
+    expect(nucleusTurnForProgressEvent({ type: 'message_delta', content: 'Hel' })).toBeNull()
+    expect(
+      nucleusTurnForProgressEvent({ type: 'agent_progress', label: 'Working…' }),
+    ).toBeNull()
+    expect(
+      nucleusTurnForProgressEvent({ type: 'tool_result', tool: 'x', preview: 'y' }),
+    ).toBeNull()
   })
 })
