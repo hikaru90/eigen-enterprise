@@ -1,0 +1,25 @@
+{
+  "name": "Dark Techy",
+  "note": "Developer-tool identity: Oxanium (engineering display sans) over JetBrains Mono, cyan accent at hue 195 with cool-tinted neutrals, sharp corners, restrained single-layer shadows. The inverted-tone dark scheme lands near-black surfaces; keep lightness low and chroma cool. Don't warm the tint and don't go pill-radius — this style reads 'infrastructure', not 'friendly'.",
+  "seeds": {
+    "seedColor": { "l": 0.7, "c": 0.13, "h": 195 },
+    "neutralTintHue": 220,
+    "accentHueShift": null,
+    "chromaCurve": "tailwind",
+    "darkModeStrategy": "invert-tone",
+    "fonts": { "fontPrimary": "Oxanium", "fontSecondary": "Oxanium", "fontMono": "JetBrains Mono" },
+    "fluidScale": {
+      "baseSize": { "min": 15, "max": 17 },
+      "scaleRatio": { "min": 1.125, "max": 1.25 },
+      "viewport": { "min": 400, "max": 1280 },
+      "scaleSteps": 5,
+      "trackingCurve": "negative-on-display"
+    },
+    "spaceRhythm": [0.25, 0.5, 1, 2, 4],
+    "shapeCharacter": "sharp",
+    "radiusBase": "0.25rem",
+    "elevation": "subtle",
+    "motionPersonality": "productive",
+    "grain": 0.04
+  }
+}

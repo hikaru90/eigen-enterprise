@@ -1,0 +1,80 @@
+{
+  "id": "e3e15817-04cc-5ad6-9b66-8b0145f326cd",
+  "name": "daisyUI Black",
+  "seeds": {
+    "seedColor": {
+      "l": 0.35,
+      "c": 0,
+      "h": 0
+    },
+    "neutralTintHue": 0,
+    "accentHueShift": null,
+    "chromaCurve": "muted",
+    "darkModeStrategy": "invert-tone",
+    "fonts": {
+      "fontPrimary": "Inter",
+      "fontSecondary": "Source Serif 4",
+      "fontMono": "JetBrains Mono"
+    },
+    "fluidScale": {
+      "baseSize": {
+        "min": 16,
+        "max": 18
+      },
+      "scaleRatio": {
+        "min": 1.125,
+        "max": 1.25
+      },
+      "viewport": {
+        "min": 400,
+        "max": 1200
+      },
+      "scaleSteps": 6,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [
+      0.25,
+      0.5,
+      1,
+      2,
+      4
+    ],
+    "shapeCharacter": "sharp",
+    "radiusBase": "0rem",
+    "elevation": "flat",
+    "motionPersonality": "productive",
+    "grain": 0
+  },
+  "cssVars": {
+    "--background": "oklch(0% 0 0)",
+    "--popover": "oklch(0% 0 0)",
+    "--card": "oklch(19% 0 0)",
+    "--card-foreground": "oklch(87.609% 0 0)",
+    "--popover-foreground": "oklch(87.609% 0 0)",
+    "--foreground": "oklch(87.609% 0 0)",
+    "--primary": "oklch(35% 0 0)",
+    "--primary-foreground": "oklch(100% 0 0)",
+    "--secondary": "oklch(35% 0 0)",
+    "--secondary-foreground": "oklch(87.609% 0 0)",
+    "--accent": "oklch(35% 0 0)",
+    "--accent-foreground": "oklch(87.609% 0 0)",
+    "--muted": "oklch(35% 0 0)",
+    "--muted-foreground": "oklch(0.65 0 0)",
+    "--destructive": "oklch(62.795% 0.257 29.233)",
+    "--destructive-foreground": "oklch(12.559% 0.051 29.233)",
+    "--border": "oklch(22% 0 0)",
+    "--input": "oklch(22% 0 0)",
+    "--ring": "oklch(35% 0 0)",
+    "--radius": "0rem",
+    "--font-sans": "\"Inter\"",
+    "--font-display": "\"Source Serif 4\"",
+    "--font-mono": "\"JetBrains Mono\""
+  },
+  "darkCssVars": {},
+  "provenance": {
+    "source": "tier1",
+    "url": "https://daisyui.com/docs/themes/",
+    "note": "daisyUI theme: black (daisyui@5.7.28)"
+  },
+  "createdAt": "2026-09-09T00:00:00.000Z"
+}

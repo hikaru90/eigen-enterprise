@@ -1,0 +1,25 @@
+{
+  "name": "Swiss Grid",
+  "note": "International Typographic Style: pure white, neutral grays with zero tint, one red accent (hue 0, chroma 0.17 — the classic Swiss red), everything else is composition. Inter stands in for Helvetica (OFL constraint), radius 0, no shadow, no grain. Don't add a second accent hue and don't round anything; the grid and the red carry the entire identity.",
+  "seeds": {
+    "seedColor": { "l": 0.55, "c": 0.17, "h": 27 },
+    "neutralTintHue": 0,
+    "accentHueShift": null,
+    "chromaCurve": "flat",
+    "darkModeStrategy": "invert-tone",
+    "fonts": { "fontPrimary": "Inter", "fontSecondary": "Inter", "fontMono": "JetBrains Mono" },
+    "fluidScale": {
+      "baseSize": { "min": 16, "max": 19 },
+      "scaleRatio": { "min": 1.2, "max": 1.333 },
+      "viewport": { "min": 400, "max": 1280 },
+      "scaleSteps": 6,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [0.25, 0.5, 1, 2, 4],
+    "shapeCharacter": "sharp",
+    "radiusBase": "0px",
+    "elevation": "flat",
+    "motionPersonality": "productive",
+    "grain": 0
+  }
+}

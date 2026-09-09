@@ -1,0 +1,25 @@
+{
+  "name": "Luxury Serif",
+  "note": "Quiet money: champagne-gold accent (hue 85, chroma 0.08 — gold as a whisper, not a shout), warm dark-friendly neutrals tinted at 60, Cormorant Garamond text under Playfair Display display, razor-sharp 0 radius, subtle shadows, faint grain like uncoated stock. Don't saturate the gold past 0.1 and don't round corners; luxury is restraint with expensive typography.",
+  "seeds": {
+    "seedColor": { "l": 0.55, "c": 0.08, "h": 85 },
+    "neutralTintHue": 60,
+    "accentHueShift": null,
+    "chromaCurve": "muted",
+    "darkModeStrategy": "invert-tone",
+    "fonts": { "fontPrimary": "Cormorant Garamond", "fontSecondary": "Playfair Display", "fontMono": "JetBrains Mono" },
+    "fluidScale": {
+      "baseSize": { "min": 17, "max": 20 },
+      "scaleRatio": { "min": 1.2, "max": 1.333 },
+      "viewport": { "min": 400, "max": 1280 },
+      "scaleSteps": 6,
+      "trackingCurve": "positive-on-display"
+    },
+    "spaceRhythm": [0.5, 1, 2, 4, 8],
+    "shapeCharacter": "sharp",
+    "radiusBase": "0px",
+    "elevation": "subtle",
+    "motionPersonality": "productive",
+    "grain": 0.05
+  }
+}

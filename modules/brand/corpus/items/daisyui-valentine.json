@@ -1,0 +1,80 @@
+{
+  "id": "953f2716-28af-5ac9-a6ce-9e20c383f650",
+  "name": "daisyUI Valentine",
+  "seeds": {
+    "seedColor": {
+      "l": 0.62,
+      "c": 0.265,
+      "h": 303.9
+    },
+    "neutralTintHue": 2.43,
+    "accentHueShift": null,
+    "chromaCurve": "tailwind",
+    "darkModeStrategy": "invert-tone",
+    "fonts": {
+      "fontPrimary": "Inter",
+      "fontSecondary": "Source Serif 4",
+      "fontMono": "JetBrains Mono"
+    },
+    "fluidScale": {
+      "baseSize": {
+        "min": 16,
+        "max": 18
+      },
+      "scaleRatio": {
+        "min": 1.125,
+        "max": 1.25
+      },
+      "viewport": {
+        "min": 400,
+        "max": 1200
+      },
+      "scaleSteps": 6,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [
+      0.25,
+      0.5,
+      1,
+      2,
+      4
+    ],
+    "shapeCharacter": "pill",
+    "radiusBase": "2rem",
+    "elevation": "flat",
+    "motionPersonality": "productive",
+    "grain": 0
+  },
+  "cssVars": {
+    "--background": "oklch(97% 0.014 343.198)",
+    "--popover": "oklch(97% 0.014 343.198)",
+    "--card": "oklch(94% 0.028 342.258)",
+    "--card-foreground": "oklch(52% 0.223 3.958)",
+    "--popover-foreground": "oklch(52% 0.223 3.958)",
+    "--foreground": "oklch(52% 0.223 3.958)",
+    "--primary": "oklch(65% 0.241 354.308)",
+    "--primary-foreground": "oklch(100% 0 0)",
+    "--secondary": "oklch(62% 0.265 303.9)",
+    "--secondary-foreground": "oklch(52% 0.223 3.958)",
+    "--accent": "oklch(82% 0.111 230.318)",
+    "--accent-foreground": "oklch(52% 0.223 3.958)",
+    "--muted": "oklch(40% 0.153 2.432)",
+    "--muted-foreground": "oklch(0.52 0.223 3.96)",
+    "--destructive": "oklch(63% 0.237 25.331)",
+    "--destructive-foreground": "oklch(97% 0.013 17.38)",
+    "--border": "oklch(89% 0.061 343.231)",
+    "--input": "oklch(89% 0.061 343.231)",
+    "--ring": "oklch(65% 0.241 354.308)",
+    "--radius": "2rem",
+    "--font-sans": "\"Inter\"",
+    "--font-display": "\"Source Serif 4\"",
+    "--font-mono": "\"JetBrains Mono\""
+  },
+  "darkCssVars": {},
+  "provenance": {
+    "source": "tier1",
+    "url": "https://daisyui.com/docs/themes/",
+    "note": "daisyUI theme: valentine (daisyui@5.7.28)"
+  },
+  "createdAt": "2026-09-09T00:00:00.000Z"
+}

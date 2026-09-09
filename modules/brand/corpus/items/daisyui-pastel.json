@@ -1,0 +1,80 @@
+{
+  "id": "dbef271c-a749-517d-a5e7-9b860660b6b6",
+  "name": "daisyUI Pastel",
+  "seeds": {
+    "seedColor": {
+      "l": 0.9,
+      "c": 0.093,
+      "h": 164.15
+    },
+    "neutralTintHue": 257.42,
+    "accentHueShift": null,
+    "chromaCurve": "tailwind",
+    "darkModeStrategy": "invert-tone",
+    "fonts": {
+      "fontPrimary": "Inter",
+      "fontSecondary": "Source Serif 4",
+      "fontMono": "JetBrains Mono"
+    },
+    "fluidScale": {
+      "baseSize": {
+        "min": 16,
+        "max": 18
+      },
+      "scaleRatio": {
+        "min": 1.125,
+        "max": 1.25
+      },
+      "viewport": {
+        "min": 400,
+        "max": 1200
+      },
+      "scaleSteps": 6,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [
+      0.25,
+      0.5,
+      1,
+      2,
+      4
+    ],
+    "shapeCharacter": "pill",
+    "radiusBase": "2rem",
+    "elevation": "flat",
+    "motionPersonality": "productive",
+    "grain": 0
+  },
+  "cssVars": {
+    "--background": "oklch(100% 0 0)",
+    "--popover": "oklch(100% 0 0)",
+    "--card": "oklch(98.462% 0.001 247.838)",
+    "--card-foreground": "oklch(20% 0 0)",
+    "--popover-foreground": "oklch(20% 0 0)",
+    "--foreground": "oklch(20% 0 0)",
+    "--primary": "oklch(90% 0.063 306.703)",
+    "--primary-foreground": "oklch(49% 0.265 301.924)",
+    "--secondary": "oklch(89% 0.058 10.001)",
+    "--secondary-foreground": "oklch(20% 0 0)",
+    "--accent": "oklch(90% 0.093 164.15)",
+    "--accent-foreground": "oklch(20% 0 0)",
+    "--muted": "oklch(55% 0.046 257.417)",
+    "--muted-foreground": "oklch(0.35 0 0)",
+    "--destructive": "oklch(80% 0.114 19.571)",
+    "--destructive-foreground": "oklch(50% 0.213 27.518)",
+    "--border": "oklch(92.462% 0.001 247.838)",
+    "--input": "oklch(92.462% 0.001 247.838)",
+    "--ring": "oklch(90% 0.063 306.703)",
+    "--radius": "2rem",
+    "--font-sans": "\"Inter\"",
+    "--font-display": "\"Source Serif 4\"",
+    "--font-mono": "\"JetBrains Mono\""
+  },
+  "darkCssVars": {},
+  "provenance": {
+    "source": "tier1",
+    "url": "https://daisyui.com/docs/themes/",
+    "note": "daisyUI theme: pastel (daisyui@5.7.28)"
+  },
+  "createdAt": "2026-09-09T00:00:00.000Z"
+}

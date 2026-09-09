@@ -1,0 +1,133 @@
+{
+  "id": "37600cde-796f-5e73-8aab-8448d8c72b7e",
+  "name": "Terminal Mono",
+  "seeds": {
+    "seedColor": {
+      "l": 0.72,
+      "c": 0.14,
+      "h": 145
+    },
+    "neutralTintHue": 145,
+    "accentHueShift": null,
+    "chromaCurve": "flat",
+    "darkModeStrategy": "invert-tone",
+    "fonts": {
+      "fontPrimary": "JetBrains Mono",
+      "fontSecondary": "JetBrains Mono",
+      "fontMono": "JetBrains Mono"
+    },
+    "fluidScale": {
+      "baseSize": {
+        "min": 14,
+        "max": 16
+      },
+      "scaleRatio": {
+        "min": 1.125,
+        "max": 1.2
+      },
+      "viewport": {
+        "min": 400,
+        "max": 1200
+      },
+      "scaleSteps": 4,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [
+      0.25,
+      0.5,
+      1,
+      2
+    ],
+    "shapeCharacter": "sharp",
+    "radiusBase": "0px",
+    "elevation": "flat",
+    "motionPersonality": "productive",
+    "grain": 0
+  },
+  "cssVars": {
+    "--background": "oklch(0.962 0.012 145)",
+    "--foreground": "oklch(0.247 0.012 145)",
+    "--card": "oklch(0.985 0.012 145)",
+    "--card-foreground": "oklch(0.247 0.012 145)",
+    "--popover": "oklch(0.985 0.012 145)",
+    "--popover-foreground": "oklch(0.247 0.012 145)",
+    "--primary": "oklch(0.536 0.14 145)",
+    "--primary-foreground": "oklch(0.985 0.14 145)",
+    "--secondary": "oklch(0.898 0.14 145)",
+    "--secondary-foreground": "oklch(0.247 0.012 145)",
+    "--muted": "oklch(0.898 0.012 145)",
+    "--muted-foreground": "oklch(0.373 0.012 145)",
+    "--accent": "oklch(0.898 0.14 145)",
+    "--accent-foreground": "oklch(0.247 0.012 145)",
+    "--destructive": "oklch(0.536 0.245 27.33)",
+    "--border": "oklch(0.697 0.012 145)",
+    "--input": "oklch(0.615 0.012 145)",
+    "--ring": "oklch(0.615 0.14 145)",
+    "--chart-1": "oklch(0.85 0.14 145)",
+    "--chart-2": "oklch(0.72 0.14 169)",
+    "--chart-3": "oklch(0.6 0.14 193)",
+    "--chart-4": "oklch(0.47 0.14 217)",
+    "--chart-5": "oklch(0.35 0.14 241)",
+    "--text-step-0": "clamp(0.875rem, 0.8125rem + 0.0156vw, 1rem)",
+    "--text-step-0-lh": "1.5",
+    "--text-step-0-tracking": "0em",
+    "--text-step-1": "clamp(0.9844rem, 0.8766rem + 0.027vw, 1.2rem)",
+    "--text-step-1-lh": "1.45",
+    "--text-step-1-tracking": "0em",
+    "--text-step-2": "clamp(1.1074rem, 0.9411rem + 0.0416vw, 1.44rem)",
+    "--text-step-2-lh": "1.4",
+    "--text-step-2-tracking": "0em",
+    "--text-step-3": "clamp(1.2458rem, 1.0048rem + 0.0603vw, 1.728rem)",
+    "--text-step-3-lh": "1.35",
+    "--text-step-3-tracking": "0em",
+    "--font-sans": "\"JetBrains Mono\"",
+    "--font-display": "\"JetBrains Mono\"",
+    "--font-mono": "\"JetBrains Mono\"",
+    "--space-1": "clamp(0.2188rem, 0.2031rem + 0.0039vw, 0.25rem)",
+    "--space-2": "clamp(0.4375rem, 0.4063rem + 0.0078vw, 0.5rem)",
+    "--space-3": "clamp(0.875rem, 0.8125rem + 0.0156vw, 1rem)",
+    "--space-4": "clamp(1.75rem, 1.625rem + 0.0313vw, 2rem)",
+    "--radius": "0px",
+    "--radius-sm": "0px",
+    "--radius-md": "0px",
+    "--radius-lg": "0px",
+    "--radius-xl": "0px",
+    "--radius-2xl": "0px",
+    "--radius-3xl": "0px",
+    "--radius-4xl": "0px",
+    "--duration-fast": "150ms",
+    "--duration-slow": "300ms",
+    "--ease-enter": "cubic-bezier(0, 0, 0.2, 1)",
+    "--ease-exit": "cubic-bezier(0.4, 0, 1, 1)"
+  },
+  "darkCssVars": {
+    "--background": "oklch(0.13 0.012 145)",
+    "--foreground": "oklch(0.96 0.012 145)",
+    "--card": "oklch(0.1559 0.012 145)",
+    "--card-foreground": "oklch(0.96 0.012 145)",
+    "--popover": "oklch(0.1559 0.012 145)",
+    "--popover-foreground": "oklch(0.96 0.012 145)",
+    "--primary": "oklch(0.635 0.14 145)",
+    "--primary-foreground": "oklch(0.13 0.14 145)",
+    "--secondary": "oklch(0.2278 0.14 145)",
+    "--secondary-foreground": "oklch(0.96 0.012 145)",
+    "--muted": "oklch(0.2278 0.012 145)",
+    "--muted-foreground": "oklch(0.8183 0.012 145)",
+    "--accent": "oklch(0.2278 0.14 145)",
+    "--accent-foreground": "oklch(0.96 0.012 145)",
+    "--destructive": "oklch(0.635 0.245 27.33)",
+    "--border": "oklch(0.4539 0.012 145)",
+    "--input": "oklch(0.5461 0.012 145)",
+    "--ring": "oklch(0.5461 0.14 145)",
+    "--chart-1": "oklch(0.85 0.14 145)",
+    "--chart-2": "oklch(0.72 0.14 169)",
+    "--chart-3": "oklch(0.6 0.14 193)",
+    "--chart-4": "oklch(0.47 0.14 217)",
+    "--chart-5": "oklch(0.35 0.14 241)"
+  },
+  "provenance": {
+    "source": "archetype",
+    "note": "The machine's own notebook: near-black green-tinted surfaces, phosphor-green accent at terminal contrast, JetBrains Mono in every slot including display. Sharp corners, flat elevation, no grain — the screen IS the aesthetic. Don't mix in a proportional font; the moment any slot goes sans it becomes a different style."
+  },
+  "createdAt": "2026-09-09T00:00:00.000Z"
+}

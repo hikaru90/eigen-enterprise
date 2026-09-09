@@ -1,0 +1,25 @@
+{
+  "name": "Editorial Serif",
+  "note": "Long-form reading surface: warm paper neutrals, restrained ink-brown accent, Newsreader in both text and display slots so headlines and body share one typographic voice. Negative tracking on display only, generous 6-step scale. Don't introduce a sans for headlines and don't push chroma above whisper level — authority comes from restraint.",
+  "seeds": {
+    "seedColor": { "l": 0.45, "c": 0.08, "h": 30 },
+    "neutralTintHue": 40,
+    "accentHueShift": null,
+    "chromaCurve": "muted",
+    "darkModeStrategy": "invert-tone",
+    "fonts": { "fontPrimary": "Newsreader", "fontSecondary": "Newsreader", "fontMono": "IBM Plex Mono" },
+    "fluidScale": {
+      "baseSize": { "min": 17, "max": 20 },
+      "scaleRatio": { "min": 1.125, "max": 1.25 },
+      "viewport": { "min": 400, "max": 1200 },
+      "scaleSteps": 6,
+      "trackingCurve": "negative-on-display"
+    },
+    "spaceRhythm": [0.25, 0.5, 1, 2, 4, 8],
+    "shapeCharacter": "sharp",
+    "radiusBase": "0.125rem",
+    "elevation": "subtle",
+    "motionPersonality": "productive",
+    "grain": 0.06
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "id": "cb126811-81af-50b3-8bc9-2547078a16a5",
+  "name": "daisyUI Cyberpunk",
+  "seeds": {
+    "seedColor": {
+      "l": 0.7186,
+      "c": 0.217,
+      "h": 310.43
+    },
+    "neutralTintHue": 269.31,
+    "accentHueShift": null,
+    "chromaCurve": "flat",
+    "darkModeStrategy": "invert-tone",
+    "fonts": {
+      "fontPrimary": "Inter",
+      "fontSecondary": "Source Serif 4",
+      "fontMono": "JetBrains Mono"
+    },
+    "fluidScale": {
+      "baseSize": {
+        "min": 16,
+        "max": 18
+      },
+      "scaleRatio": {
+        "min": 1.125,
+        "max": 1.25
+      },
+      "viewport": {
+        "min": 400,
+        "max": 1200
+      },
+      "scaleSteps": 6,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [
+      0.25,
+      0.5,
+      1,
+      2,
+      4
+    ],
+    "shapeCharacter": "sharp",
+    "radiusBase": "0rem",
+    "elevation": "flat",
+    "motionPersonality": "productive",
+    "grain": 0
+  },
+  "cssVars": {
+    "--background": "oklch(94.51% 0.179 104.32)",
+    "--popover": "oklch(94.51% 0.179 104.32)",
+    "--card": "oklch(91.51% 0.179 104.32)",
+    "--card-foreground": "oklch(0% 0 0)",
+    "--popover-foreground": "oklch(0% 0 0)",
+    "--foreground": "oklch(0% 0 0)",
+    "--primary": "oklch(74.22% 0.209 6.35)",
+    "--primary-foreground": "oklch(14.844% 0.041 6.35)",
+    "--secondary": "oklch(83.33% 0.184 204.72)",
+    "--secondary-foreground": "oklch(0% 0 0)",
+    "--accent": "oklch(71.86% 0.217 310.43)",
+    "--accent-foreground": "oklch(0% 0 0)",
+    "--muted": "oklch(23.04% 0.065 269.31)",
+    "--muted-foreground": "oklch(0.35 0 0)",
+    "--destructive": "oklch(71.76% 0.221 22.18)",
+    "--destructive-foreground": "oklch(0% 0 0)",
+    "--border": "oklch(85.51% 0.179 104.32)",
+    "--input": "oklch(85.51% 0.179 104.32)",
+    "--ring": "oklch(74.22% 0.209 6.35)",
+    "--radius": "0rem",
+    "--font-sans": "\"Inter\"",
+    "--font-display": "\"Source Serif 4\"",
+    "--font-mono": "\"JetBrains Mono\""
+  },
+  "darkCssVars": {},
+  "provenance": {
+    "source": "tier1",
+    "url": "https://daisyui.com/docs/themes/",
+    "note": "daisyUI theme: cyberpunk (daisyui@5.7.28)"
+  },
+  "createdAt": "2026-09-09T00:00:00.000Z"
+}

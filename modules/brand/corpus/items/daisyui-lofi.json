@@ -1,0 +1,80 @@
+{
+  "id": "b29d786f-87ba-5c54-a1e1-516a8a7b62b6",
+  "name": "daisyUI Lofi",
+  "seeds": {
+    "seedColor": {
+      "l": 0.2146,
+      "c": 0.001,
+      "h": 17.28
+    },
+    "neutralTintHue": 0,
+    "accentHueShift": null,
+    "chromaCurve": "muted",
+    "darkModeStrategy": "invert-tone",
+    "fonts": {
+      "fontPrimary": "Inter",
+      "fontSecondary": "Source Serif 4",
+      "fontMono": "JetBrains Mono"
+    },
+    "fluidScale": {
+      "baseSize": {
+        "min": 16,
+        "max": 18
+      },
+      "scaleRatio": {
+        "min": 1.125,
+        "max": 1.25
+      },
+      "viewport": {
+        "min": 400,
+        "max": 1200
+      },
+      "scaleSteps": 6,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [
+      0.25,
+      0.5,
+      1,
+      2,
+      4
+    ],
+    "shapeCharacter": "soft",
+    "radiusBase": "0.25rem",
+    "elevation": "flat",
+    "motionPersonality": "productive",
+    "grain": 0
+  },
+  "cssVars": {
+    "--background": "oklch(100% 0 0)",
+    "--popover": "oklch(100% 0 0)",
+    "--card": "oklch(97% 0 0)",
+    "--card-foreground": "oklch(0% 0 0)",
+    "--popover-foreground": "oklch(0% 0 0)",
+    "--foreground": "oklch(0% 0 0)",
+    "--primary": "oklch(15.906% 0 0)",
+    "--primary-foreground": "oklch(100% 0 0)",
+    "--secondary": "oklch(21.455% 0.001 17.278)",
+    "--secondary-foreground": "oklch(0% 0 0)",
+    "--accent": "oklch(26.861% 0 0)",
+    "--accent-foreground": "oklch(0% 0 0)",
+    "--muted": "oklch(0% 0 0)",
+    "--muted-foreground": "oklch(0.35 0 0)",
+    "--destructive": "oklch(78.66% 0.15 28.47)",
+    "--destructive-foreground": "oklch(15.732% 0.03 28.47)",
+    "--border": "oklch(94% 0 0)",
+    "--input": "oklch(94% 0 0)",
+    "--ring": "oklch(15.906% 0 0)",
+    "--radius": "0.25rem",
+    "--font-sans": "\"Inter\"",
+    "--font-display": "\"Source Serif 4\"",
+    "--font-mono": "\"JetBrains Mono\""
+  },
+  "darkCssVars": {},
+  "provenance": {
+    "source": "tier1",
+    "url": "https://daisyui.com/docs/themes/",
+    "note": "daisyUI theme: lofi (daisyui@5.7.28)"
+  },
+  "createdAt": "2026-09-09T00:00:00.000Z"
+}

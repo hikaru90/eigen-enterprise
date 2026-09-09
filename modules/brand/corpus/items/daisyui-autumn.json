@@ -1,0 +1,80 @@
+{
+  "id": "51c0b1fe-3f4b-5494-ad91-6172500e40e8",
+  "name": "daisyUI Autumn",
+  "seeds": {
+    "seedColor": {
+      "l": 0.6168,
+      "c": 0.169,
+      "h": 23.87
+    },
+    "neutralTintHue": 51.9,
+    "accentHueShift": null,
+    "chromaCurve": "tailwind",
+    "darkModeStrategy": "invert-tone",
+    "fonts": {
+      "fontPrimary": "Inter",
+      "fontSecondary": "Source Serif 4",
+      "fontMono": "JetBrains Mono"
+    },
+    "fluidScale": {
+      "baseSize": {
+        "min": 16,
+        "max": 18
+      },
+      "scaleRatio": {
+        "min": 1.125,
+        "max": 1.25
+      },
+      "viewport": {
+        "min": 400,
+        "max": 1200
+      },
+      "scaleSteps": 6,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [
+      0.25,
+      0.5,
+      1,
+      2,
+      4
+    ],
+    "shapeCharacter": "soft",
+    "radiusBase": "0.5rem",
+    "elevation": "subtle",
+    "motionPersonality": "productive",
+    "grain": 0
+  },
+  "cssVars": {
+    "--background": "oklch(95.814% 0 0)",
+    "--popover": "oklch(95.814% 0 0)",
+    "--card": "oklch(89.107% 0 0)",
+    "--card-foreground": "oklch(19.162% 0 0)",
+    "--popover-foreground": "oklch(19.162% 0 0)",
+    "--foreground": "oklch(19.162% 0 0)",
+    "--primary": "oklch(40.723% 0.161 17.53)",
+    "--primary-foreground": "oklch(88.144% 0.032 17.53)",
+    "--secondary": "oklch(61.676% 0.169 23.865)",
+    "--secondary-foreground": "oklch(19.162% 0 0)",
+    "--accent": "oklch(73.425% 0.094 60.729)",
+    "--accent-foreground": "oklch(19.162% 0 0)",
+    "--muted": "oklch(54.367% 0.037 51.902)",
+    "--muted-foreground": "oklch(0.35 0 0)",
+    "--destructive": "oklch(53.07% 0.241 24.16)",
+    "--destructive-foreground": "oklch(90.614% 0.048 24.16)",
+    "--border": "oklch(82.4% 0 0)",
+    "--input": "oklch(82.4% 0 0)",
+    "--ring": "oklch(40.723% 0.161 17.53)",
+    "--radius": "0.5rem",
+    "--font-sans": "\"Inter\"",
+    "--font-display": "\"Source Serif 4\"",
+    "--font-mono": "\"JetBrains Mono\""
+  },
+  "darkCssVars": {},
+  "provenance": {
+    "source": "tier1",
+    "url": "https://daisyui.com/docs/themes/",
+    "note": "daisyUI theme: autumn (daisyui@5.7.28)"
+  },
+  "createdAt": "2026-09-09T00:00:00.000Z"
+}

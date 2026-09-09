@@ -1,0 +1,80 @@
+{
+  "id": "f86fd608-22d6-55af-bbea-90b5c9de10e8",
+  "name": "daisyUI Dracula",
+  "seeds": {
+    "seedColor": {
+      "l": 0.7546,
+      "c": 0.183,
+      "h": 346.81
+    },
+    "neutralTintHue": 275.52,
+    "accentHueShift": null,
+    "chromaCurve": "tailwind",
+    "darkModeStrategy": "invert-tone",
+    "fonts": {
+      "fontPrimary": "Inter",
+      "fontSecondary": "Source Serif 4",
+      "fontMono": "JetBrains Mono"
+    },
+    "fluidScale": {
+      "baseSize": {
+        "min": 16,
+        "max": 18
+      },
+      "scaleRatio": {
+        "min": 1.125,
+        "max": 1.25
+      },
+      "viewport": {
+        "min": 400,
+        "max": 1200
+      },
+      "scaleSteps": 6,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [
+      0.25,
+      0.5,
+      1,
+      2,
+      4
+    ],
+    "shapeCharacter": "soft",
+    "radiusBase": "0.5rem",
+    "elevation": "flat",
+    "motionPersonality": "productive",
+    "grain": 0
+  },
+  "cssVars": {
+    "--background": "oklch(28.822% 0.022 277.508)",
+    "--popover": "oklch(28.822% 0.022 277.508)",
+    "--card": "oklch(26.805% 0.02 277.508)",
+    "--card-foreground": "oklch(97.747% 0.007 106.545)",
+    "--popover-foreground": "oklch(97.747% 0.007 106.545)",
+    "--foreground": "oklch(97.747% 0.007 106.545)",
+    "--primary": "oklch(75.461% 0.183 346.812)",
+    "--primary-foreground": "oklch(15.092% 0.036 346.812)",
+    "--secondary": "oklch(74.202% 0.148 301.883)",
+    "--secondary-foreground": "oklch(97.747% 0.007 106.545)",
+    "--accent": "oklch(83.392% 0.124 66.558)",
+    "--accent-foreground": "oklch(97.747% 0.007 106.545)",
+    "--muted": "oklch(39.445% 0.032 275.524)",
+    "--muted-foreground": "oklch(0.65 0.007 106.55)",
+    "--destructive": "oklch(68.22% 0.206 24.43)",
+    "--destructive-foreground": "oklch(13.644% 0.041 24.43)",
+    "--border": "oklch(24.787% 0.019 277.508)",
+    "--input": "oklch(24.787% 0.019 277.508)",
+    "--ring": "oklch(75.461% 0.183 346.812)",
+    "--radius": "0.5rem",
+    "--font-sans": "\"Inter\"",
+    "--font-display": "\"Source Serif 4\"",
+    "--font-mono": "\"JetBrains Mono\""
+  },
+  "darkCssVars": {},
+  "provenance": {
+    "source": "tier1",
+    "url": "https://daisyui.com/docs/themes/",
+    "note": "daisyUI theme: dracula (daisyui@5.7.28)"
+  },
+  "createdAt": "2026-09-09T00:00:00.000Z"
+}

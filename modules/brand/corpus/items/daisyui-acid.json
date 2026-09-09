@@ -1,0 +1,80 @@
+{
+  "id": "903d1db9-1246-5002-b5c9-e92fb2331c94",
+  "name": "daisyUI Acid",
+  "seeds": {
+    "seedColor": {
+      "l": 0.719,
+      "c": 0.357,
+      "h": 330.76
+    },
+    "neutralTintHue": 278.68,
+    "accentHueShift": null,
+    "chromaCurve": "tailwind",
+    "darkModeStrategy": "invert-tone",
+    "fonts": {
+      "fontPrimary": "Inter",
+      "fontSecondary": "Source Serif 4",
+      "fontMono": "JetBrains Mono"
+    },
+    "fluidScale": {
+      "baseSize": {
+        "min": 16,
+        "max": 18
+      },
+      "scaleRatio": {
+        "min": 1.125,
+        "max": 1.25
+      },
+      "viewport": {
+        "min": 400,
+        "max": 1200
+      },
+      "scaleSteps": 6,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [
+      0.25,
+      0.5,
+      1,
+      2,
+      4
+    ],
+    "shapeCharacter": "pill",
+    "radiusBase": "1rem",
+    "elevation": "subtle",
+    "motionPersonality": "productive",
+    "grain": 0
+  },
+  "cssVars": {
+    "--background": "oklch(98% 0 0)",
+    "--popover": "oklch(98% 0 0)",
+    "--card": "oklch(95% 0 0)",
+    "--card-foreground": "oklch(0% 0 0)",
+    "--popover-foreground": "oklch(0% 0 0)",
+    "--foreground": "oklch(0% 0 0)",
+    "--primary": "oklch(71.9% 0.357 330.759)",
+    "--primary-foreground": "oklch(14.38% 0.071 330.759)",
+    "--secondary": "oklch(73.37% 0.224 48.25)",
+    "--secondary-foreground": "oklch(0% 0 0)",
+    "--accent": "oklch(92.78% 0.264 122.962)",
+    "--accent-foreground": "oklch(0% 0 0)",
+    "--muted": "oklch(21.31% 0.128 278.68)",
+    "--muted-foreground": "oklch(0.35 0 0)",
+    "--destructive": "oklch(64.84% 0.293 29.349)",
+    "--destructive-foreground": "oklch(12.968% 0.058 29.349)",
+    "--border": "oklch(91% 0 0)",
+    "--input": "oklch(91% 0 0)",
+    "--ring": "oklch(71.9% 0.357 330.759)",
+    "--radius": "1rem",
+    "--font-sans": "\"Inter\"",
+    "--font-display": "\"Source Serif 4\"",
+    "--font-mono": "\"JetBrains Mono\""
+  },
+  "darkCssVars": {},
+  "provenance": {
+    "source": "tier1",
+    "url": "https://daisyui.com/docs/themes/",
+    "note": "daisyUI theme: acid (daisyui@5.7.28)"
+  },
+  "createdAt": "2026-09-09T00:00:00.000Z"
+}

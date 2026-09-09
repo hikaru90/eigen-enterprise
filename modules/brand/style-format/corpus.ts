@@ -11,6 +11,8 @@ export const corpusProvenanceSchema = z.object({
   source: z.enum(['extraction', 'tier1', 'archetype']),
   url: z.string().url().optional(),
   capturedAt: z.string().datetime().optional(),
+  /** Free-text provenance detail (theme name, preset id, author note). */
+  note: z.string().min(1).optional(),
 })
 
 export const corpusItemSchema = z.object({

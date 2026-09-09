@@ -1,0 +1,25 @@
+{
+  "name": "Terminal Mono",
+  "note": "The machine's own notebook: near-black green-tinted surfaces, phosphor-green accent at terminal contrast, JetBrains Mono in every slot including display. Sharp corners, flat elevation, no grain — the screen IS the aesthetic. Don't mix in a proportional font; the moment any slot goes sans it becomes a different style.",
+  "seeds": {
+    "seedColor": { "l": 0.72, "c": 0.14, "h": 145 },
+    "neutralTintHue": 145,
+    "accentHueShift": null,
+    "chromaCurve": "flat",
+    "darkModeStrategy": "invert-tone",
+    "fonts": { "fontPrimary": "JetBrains Mono", "fontSecondary": "JetBrains Mono", "fontMono": "JetBrains Mono" },
+    "fluidScale": {
+      "baseSize": { "min": 14, "max": 16 },
+      "scaleRatio": { "min": 1.125, "max": 1.2 },
+      "viewport": { "min": 400, "max": 1200 },
+      "scaleSteps": 4,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [0.25, 0.5, 1, 2],
+    "shapeCharacter": "sharp",
+    "radiusBase": "0px",
+    "elevation": "flat",
+    "motionPersonality": "productive",
+    "grain": 0
+  }
+}

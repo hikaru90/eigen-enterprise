@@ -1,0 +1,80 @@
+{
+  "id": "b508a1f3-8c3f-5c16-ae45-18eb3f6342b9",
+  "name": "daisyUI Cmyk",
+  "seeds": {
+    "seedColor": {
+      "l": 0.6448,
+      "c": 0.202,
+      "h": 359.34
+    },
+    "neutralTintHue": 0,
+    "accentHueShift": null,
+    "chromaCurve": "tailwind",
+    "darkModeStrategy": "invert-tone",
+    "fonts": {
+      "fontPrimary": "Inter",
+      "fontSecondary": "Source Serif 4",
+      "fontMono": "JetBrains Mono"
+    },
+    "fluidScale": {
+      "baseSize": {
+        "min": 16,
+        "max": 18
+      },
+      "scaleRatio": {
+        "min": 1.125,
+        "max": 1.25
+      },
+      "viewport": {
+        "min": 400,
+        "max": 1200
+      },
+      "scaleSteps": 6,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [
+      0.25,
+      0.5,
+      1,
+      2,
+      4
+    ],
+    "shapeCharacter": "soft",
+    "radiusBase": "0.5rem",
+    "elevation": "flat",
+    "motionPersonality": "productive",
+    "grain": 0
+  },
+  "cssVars": {
+    "--background": "oklch(100% 0 0)",
+    "--popover": "oklch(100% 0 0)",
+    "--card": "oklch(95% 0 0)",
+    "--card-foreground": "oklch(20% 0 0)",
+    "--popover-foreground": "oklch(20% 0 0)",
+    "--foreground": "oklch(20% 0 0)",
+    "--primary": "oklch(71.772% 0.133 239.443)",
+    "--primary-foreground": "oklch(14.354% 0.026 239.443)",
+    "--secondary": "oklch(64.476% 0.202 359.339)",
+    "--secondary-foreground": "oklch(20% 0 0)",
+    "--accent": "oklch(94.228% 0.189 105.306)",
+    "--accent-foreground": "oklch(20% 0 0)",
+    "--muted": "oklch(21.778% 0 0)",
+    "--muted-foreground": "oklch(0.35 0 0)",
+    "--destructive": "oklch(62.013% 0.208 28.717)",
+    "--destructive-foreground": "oklch(12.402% 0.041 28.717)",
+    "--border": "oklch(90% 0 0)",
+    "--input": "oklch(90% 0 0)",
+    "--ring": "oklch(71.772% 0.133 239.443)",
+    "--radius": "0.5rem",
+    "--font-sans": "\"Inter\"",
+    "--font-display": "\"Source Serif 4\"",
+    "--font-mono": "\"JetBrains Mono\""
+  },
+  "darkCssVars": {},
+  "provenance": {
+    "source": "tier1",
+    "url": "https://daisyui.com/docs/themes/",
+    "note": "daisyUI theme: cmyk (daisyui@5.7.28)"
+  },
+  "createdAt": "2026-09-09T00:00:00.000Z"
+}

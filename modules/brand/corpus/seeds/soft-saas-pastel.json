@@ -1,0 +1,25 @@
+{
+  "name": "Soft SaaS Pastel",
+  "note": "The calm B2B default: white canvas, lavender pastel brand color (chroma pinned at 0.09 — pastel means pastel), 0.75rem soft corners, subtle single-direction shadows, Inter everywhere with Geist Mono for numbers. Don't let chroma creep past 0.1 and don't stack more than one shadow layer; this style sells trust through blandness.",
+  "seeds": {
+    "seedColor": { "l": 0.72, "c": 0.09, "h": 262 },
+    "neutralTintHue": 262,
+    "accentHueShift": null,
+    "chromaCurve": "muted",
+    "darkModeStrategy": "invert-tone",
+    "fonts": { "fontPrimary": "Inter", "fontSecondary": "Inter", "fontMono": "Geist Mono" },
+    "fluidScale": {
+      "baseSize": { "min": 16, "max": 18 },
+      "scaleRatio": { "min": 1.125, "max": 1.25 },
+      "viewport": { "min": 400, "max": 1200 },
+      "scaleSteps": 5,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [0.25, 0.5, 1, 2, 4],
+    "shapeCharacter": "soft",
+    "radiusBase": "0.75rem",
+    "elevation": "subtle",
+    "motionPersonality": "productive",
+    "grain": 0
+  }
+}

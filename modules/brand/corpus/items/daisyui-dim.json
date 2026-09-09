@@ -1,0 +1,80 @@
+{
+  "id": "98ddf719-d556-5109-818f-af739f7d5a91",
+  "name": "daisyUI Dim",
+  "seeds": {
+    "seedColor": {
+      "l": 0.7338,
+      "c": 0.165,
+      "h": 35.35
+    },
+    "neutralTintHue": 264.09,
+    "accentHueShift": null,
+    "chromaCurve": "flat",
+    "darkModeStrategy": "invert-tone",
+    "fonts": {
+      "fontPrimary": "Inter",
+      "fontSecondary": "Source Serif 4",
+      "fontMono": "JetBrains Mono"
+    },
+    "fluidScale": {
+      "baseSize": {
+        "min": 16,
+        "max": 18
+      },
+      "scaleRatio": {
+        "min": 1.125,
+        "max": 1.25
+      },
+      "viewport": {
+        "min": 400,
+        "max": 1200
+      },
+      "scaleSteps": 6,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [
+      0.25,
+      0.5,
+      1,
+      2,
+      4
+    ],
+    "shapeCharacter": "soft",
+    "radiusBase": "0.5rem",
+    "elevation": "flat",
+    "motionPersonality": "productive",
+    "grain": 0
+  },
+  "cssVars": {
+    "--background": "oklch(30.857% 0.023 264.149)",
+    "--popover": "oklch(30.857% 0.023 264.149)",
+    "--card": "oklch(28.036% 0.019 264.182)",
+    "--card-foreground": "oklch(82.901% 0.031 222.959)",
+    "--popover-foreground": "oklch(82.901% 0.031 222.959)",
+    "--foreground": "oklch(82.901% 0.031 222.959)",
+    "--primary": "oklch(86.133% 0.141 139.549)",
+    "--primary-foreground": "oklch(17.226% 0.028 139.549)",
+    "--secondary": "oklch(73.375% 0.165 35.353)",
+    "--secondary-foreground": "oklch(82.901% 0.031 222.959)",
+    "--accent": "oklch(74.229% 0.133 311.379)",
+    "--accent-foreground": "oklch(82.901% 0.031 222.959)",
+    "--muted": "oklch(24.731% 0.02 264.094)",
+    "--muted-foreground": "oklch(0.65 0.031 222.96)",
+    "--destructive": "oklch(82.418% 0.099 33.756)",
+    "--destructive-foreground": "oklch(16.483% 0.019 33.756)",
+    "--border": "oklch(26.346% 0.018 262.177)",
+    "--input": "oklch(26.346% 0.018 262.177)",
+    "--ring": "oklch(86.133% 0.141 139.549)",
+    "--radius": "0.5rem",
+    "--font-sans": "\"Inter\"",
+    "--font-display": "\"Source Serif 4\"",
+    "--font-mono": "\"JetBrains Mono\""
+  },
+  "darkCssVars": {},
+  "provenance": {
+    "source": "tier1",
+    "url": "https://daisyui.com/docs/themes/",
+    "note": "daisyUI theme: dim (daisyui@5.7.28)"
+  },
+  "createdAt": "2026-09-09T00:00:00.000Z"
+}

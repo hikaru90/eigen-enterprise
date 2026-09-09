@@ -1,0 +1,80 @@
+{
+  "id": "dfe9114c-c805-55f8-957c-c313810d7377",
+  "name": "daisyUI Cupcake",
+  "seeds": {
+    "seedColor": {
+      "l": 0.85,
+      "c": 0.138,
+      "h": 181.07
+    },
+    "neutralTintHue": 286.03,
+    "accentHueShift": null,
+    "chromaCurve": "tailwind",
+    "darkModeStrategy": "invert-tone",
+    "fonts": {
+      "fontPrimary": "Inter",
+      "fontSecondary": "Source Serif 4",
+      "fontMono": "JetBrains Mono"
+    },
+    "fluidScale": {
+      "baseSize": {
+        "min": 16,
+        "max": 18
+      },
+      "scaleRatio": {
+        "min": 1.125,
+        "max": 1.25
+      },
+      "viewport": {
+        "min": 400,
+        "max": 1200
+      },
+      "scaleSteps": 6,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [
+      0.25,
+      0.5,
+      1,
+      2,
+      4
+    ],
+    "shapeCharacter": "pill",
+    "radiusBase": "2rem",
+    "elevation": "subtle",
+    "motionPersonality": "productive",
+    "grain": 0
+  },
+  "cssVars": {
+    "--background": "oklch(97.788% 0.004 56.375)",
+    "--popover": "oklch(97.788% 0.004 56.375)",
+    "--card": "oklch(93.982% 0.007 61.449)",
+    "--card-foreground": "oklch(23.574% 0.066 313.189)",
+    "--popover-foreground": "oklch(23.574% 0.066 313.189)",
+    "--foreground": "oklch(23.574% 0.066 313.189)",
+    "--primary": "oklch(85% 0.138 181.071)",
+    "--primary-foreground": "oklch(43% 0.078 188.216)",
+    "--secondary": "oklch(89% 0.061 343.231)",
+    "--secondary-foreground": "oklch(23.574% 0.066 313.189)",
+    "--accent": "oklch(90% 0.076 70.697)",
+    "--accent-foreground": "oklch(23.574% 0.066 313.189)",
+    "--muted": "oklch(27% 0.006 286.033)",
+    "--muted-foreground": "oklch(0.35 0.066 313.19)",
+    "--destructive": "oklch(64% 0.246 16.439)",
+    "--destructive-foreground": "oklch(27% 0.105 12.094)",
+    "--border": "oklch(91.586% 0.006 53.44)",
+    "--input": "oklch(91.586% 0.006 53.44)",
+    "--ring": "oklch(85% 0.138 181.071)",
+    "--radius": "2rem",
+    "--font-sans": "\"Inter\"",
+    "--font-display": "\"Source Serif 4\"",
+    "--font-mono": "\"JetBrains Mono\""
+  },
+  "darkCssVars": {},
+  "provenance": {
+    "source": "tier1",
+    "url": "https://daisyui.com/docs/themes/",
+    "note": "daisyUI theme: cupcake (daisyui@5.7.28)"
+  },
+  "createdAt": "2026-09-09T00:00:00.000Z"
+}

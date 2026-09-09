@@ -1,0 +1,25 @@
+{
+  "name": "Playful Round",
+  "note": "Consumer-candy: vivid magenta-pink seed, 999px pill corners on every interactive element, Nunito's rounded terminals everywhere, layered soft shadows, expressive motion. Charts get the full 24-degree hue walk. Don't sharpen any corner and don't mute the pink — playfulness that apologizes is just bland.",
+  "seeds": {
+    "seedColor": { "l": 0.65, "c": 0.19, "h": 330 },
+    "neutralTintHue": 330,
+    "accentHueShift": 24,
+    "chromaCurve": "tailwind",
+    "darkModeStrategy": "invert-tone",
+    "fonts": { "fontPrimary": "Nunito", "fontSecondary": "Nunito", "fontMono": "Geist Mono" },
+    "fluidScale": {
+      "baseSize": { "min": 16, "max": 19 },
+      "scaleRatio": { "min": 1.2, "max": 1.333 },
+      "viewport": { "min": 400, "max": 1200 },
+      "scaleSteps": 6,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [0.5, 1, 2, 4],
+    "shapeCharacter": "pill",
+    "radiusBase": "999px",
+    "elevation": "layered",
+    "motionPersonality": "expressive",
+    "grain": 0
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "Blueprint Constructivist",
+  "note": "The engineer's notebook (see docs/design-system.md style 2): cool blue-gray paper tinted at hue 250, drafting-blue accent, IBM Plex Mono in every slot — monospace IS the identity. Sharp corners, flat shadows, hairline borders, faint grain like graph paper. Manhattan geometry in layout: 90-degree turns only. Don't introduce a proportional font and don't warm the neutrals.",
+  "seeds": {
+    "seedColor": { "l": 0.55, "c": 0.14, "h": 250 },
+    "neutralTintHue": 250,
+    "accentHueShift": null,
+    "chromaCurve": "flat",
+    "darkModeStrategy": "invert-tone",
+    "fonts": { "fontPrimary": "IBM Plex Mono", "fontSecondary": "IBM Plex Mono", "fontMono": "IBM Plex Mono" },
+    "fluidScale": {
+      "baseSize": { "min": 14, "max": 16 },
+      "scaleRatio": { "min": 1.125, "max": 1.25 },
+      "viewport": { "min": 400, "max": 1200 },
+      "scaleSteps": 5,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [0.25, 0.5, 1, 2, 4],
+    "shapeCharacter": "sharp",
+    "radiusBase": "0px",
+    "elevation": "flat",
+    "motionPersonality": "productive",
+    "grain": 0.03
+  }
+}

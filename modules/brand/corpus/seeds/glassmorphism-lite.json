@@ -1,0 +1,25 @@
+{
+  "name": "Glassmorphism Lite",
+  "note": "Frosted panels without the 2020 excess: periwinkle-violet seed at hue 230, cool-tinted neutrals, squircle intent (soft radii; corner-shape ships later), layered low-alpha shadows for floating panels, Sora's geometric voice, 0.04 grain to keep blur from banding. Don't stack more than two elevation layers and don't push opacity below the readable floor — glass lite stays legible first.",
+  "seeds": {
+    "seedColor": { "l": 0.6, "c": 0.12, "h": 230 },
+    "neutralTintHue": 240,
+    "accentHueShift": null,
+    "chromaCurve": "tailwind",
+    "darkModeStrategy": "invert-tone",
+    "fonts": { "fontPrimary": "Sora", "fontSecondary": "Sora", "fontMono": "JetBrains Mono" },
+    "fluidScale": {
+      "baseSize": { "min": 16, "max": 18 },
+      "scaleRatio": { "min": 1.125, "max": 1.25 },
+      "viewport": { "min": 400, "max": 1280 },
+      "scaleSteps": 5,
+      "trackingCurve": "negative-on-display"
+    },
+    "spaceRhythm": [0.5, 1, 2, 4],
+    "shapeCharacter": "squircle",
+    "radiusBase": "0.75rem",
+    "elevation": "layered",
+    "motionPersonality": "expressive",
+    "grain": 0.04
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "id": "840d3a60-6585-5d04-8c0b-5f4de33d625e",
+  "name": "daisyUI Business",
+  "seeds": {
+    "seedColor": {
+      "l": 0.6727,
+      "c": 0.167,
+      "h": 35.79
+    },
+    "neutralTintHue": 253.04,
+    "accentHueShift": null,
+    "chromaCurve": "tailwind",
+    "darkModeStrategy": "invert-tone",
+    "fonts": {
+      "fontPrimary": "Inter",
+      "fontSecondary": "Source Serif 4",
+      "fontMono": "JetBrains Mono"
+    },
+    "fluidScale": {
+      "baseSize": {
+        "min": 16,
+        "max": 18
+      },
+      "scaleRatio": {
+        "min": 1.125,
+        "max": 1.25
+      },
+      "viewport": {
+        "min": 400,
+        "max": 1200
+      },
+      "scaleSteps": 6,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [
+      0.25,
+      0.5,
+      1,
+      2,
+      4
+    ],
+    "shapeCharacter": "soft",
+    "radiusBase": "0.25rem",
+    "elevation": "flat",
+    "motionPersonality": "productive",
+    "grain": 0
+  },
+  "cssVars": {
+    "--background": "oklch(24.353% 0 0)",
+    "--popover": "oklch(24.353% 0 0)",
+    "--card": "oklch(22.648% 0 0)",
+    "--card-foreground": "oklch(84.87% 0 0)",
+    "--popover-foreground": "oklch(84.87% 0 0)",
+    "--foreground": "oklch(84.87% 0 0)",
+    "--primary": "oklch(41.703% 0.099 251.473)",
+    "--primary-foreground": "oklch(88.34% 0.019 251.473)",
+    "--secondary": "oklch(64.092% 0.027 229.389)",
+    "--secondary-foreground": "oklch(84.87% 0 0)",
+    "--accent": "oklch(67.271% 0.167 35.791)",
+    "--accent-foreground": "oklch(84.87% 0 0)",
+    "--muted": "oklch(27.441% 0.013 253.041)",
+    "--muted-foreground": "oklch(0.65 0 0)",
+    "--destructive": "oklch(51.61% 0.146 29.674)",
+    "--destructive-foreground": "oklch(90.322% 0.029 29.674)",
+    "--border": "oklch(20.944% 0 0)",
+    "--input": "oklch(20.944% 0 0)",
+    "--ring": "oklch(41.703% 0.099 251.473)",
+    "--radius": "0.25rem",
+    "--font-sans": "\"Inter\"",
+    "--font-display": "\"Source Serif 4\"",
+    "--font-mono": "\"JetBrains Mono\""
+  },
+  "darkCssVars": {},
+  "provenance": {
+    "source": "tier1",
+    "url": "https://daisyui.com/docs/themes/",
+    "note": "daisyUI theme: business (daisyui@5.7.28)"
+  },
+  "createdAt": "2026-09-09T00:00:00.000Z"
+}

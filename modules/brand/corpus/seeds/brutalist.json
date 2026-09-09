@@ -1,0 +1,25 @@
+{
+  "name": "Brutalist",
+  "note": "Raw structure as the aesthetic: pure white field, near-black ink, zero radius, zero shadow. Typography does all the expressive work — Archivo at display sizes with Space Mono for data. Don't add elevation, don't round corners, don't tint the neutrals; the moment anything softens it stops being brutalist.",
+  "seeds": {
+    "seedColor": { "l": 0.25, "c": 0.02, "h": 260 },
+    "neutralTintHue": 260,
+    "accentHueShift": null,
+    "chromaCurve": "flat",
+    "darkModeStrategy": "invert-tone",
+    "fonts": { "fontPrimary": "Archivo", "fontSecondary": "Archivo", "fontMono": "Space Mono" },
+    "fluidScale": {
+      "baseSize": { "min": 16, "max": 20 },
+      "scaleRatio": { "min": 1.2, "max": 1.333 },
+      "viewport": { "min": 400, "max": 1280 },
+      "scaleSteps": 6,
+      "trackingCurve": "negative-on-display"
+    },
+    "spaceRhythm": [0.25, 0.5, 1, 2, 4],
+    "shapeCharacter": "sharp",
+    "radiusBase": "0px",
+    "elevation": "flat",
+    "motionPersonality": "productive",
+    "grain": 0
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "id": "2895797f-d6a2-5e1d-97b0-111b2573762b",
+  "name": "daisyUI Light",
+  "seeds": {
+    "seedColor": {
+      "l": 0.65,
+      "c": 0.241,
+      "h": 354.31
+    },
+    "neutralTintHue": 285.82,
+    "accentHueShift": null,
+    "chromaCurve": "tailwind",
+    "darkModeStrategy": "invert-tone",
+    "fonts": {
+      "fontPrimary": "Inter",
+      "fontSecondary": "Source Serif 4",
+      "fontMono": "JetBrains Mono"
+    },
+    "fluidScale": {
+      "baseSize": {
+        "min": 16,
+        "max": 18
+      },
+      "scaleRatio": {
+        "min": 1.125,
+        "max": 1.25
+      },
+      "viewport": {
+        "min": 400,
+        "max": 1200
+      },
+      "scaleSteps": 6,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [
+      0.25,
+      0.5,
+      1,
+      2,
+      4
+    ],
+    "shapeCharacter": "soft",
+    "radiusBase": "0.25rem",
+    "elevation": "subtle",
+    "motionPersonality": "productive",
+    "grain": 0
+  },
+  "cssVars": {
+    "--background": "oklch(100% 0 0)",
+    "--popover": "oklch(100% 0 0)",
+    "--card": "oklch(98% 0 0)",
+    "--card-foreground": "oklch(21% 0.006 285.885)",
+    "--popover-foreground": "oklch(21% 0.006 285.885)",
+    "--foreground": "oklch(21% 0.006 285.885)",
+    "--primary": "oklch(45% 0.24 277.023)",
+    "--primary-foreground": "oklch(93% 0.034 272.788)",
+    "--secondary": "oklch(65% 0.241 354.308)",
+    "--secondary-foreground": "oklch(21% 0.006 285.885)",
+    "--accent": "oklch(77% 0.152 181.912)",
+    "--accent-foreground": "oklch(21% 0.006 285.885)",
+    "--muted": "oklch(14% 0.005 285.823)",
+    "--muted-foreground": "oklch(0.35 0.006 285.89)",
+    "--destructive": "oklch(71% 0.194 13.428)",
+    "--destructive-foreground": "oklch(27% 0.105 12.094)",
+    "--border": "oklch(95% 0 0)",
+    "--input": "oklch(95% 0 0)",
+    "--ring": "oklch(45% 0.24 277.023)",
+    "--radius": "0.25rem",
+    "--font-sans": "\"Inter\"",
+    "--font-display": "\"Source Serif 4\"",
+    "--font-mono": "\"JetBrains Mono\""
+  },
+  "darkCssVars": {},
+  "provenance": {
+    "source": "tier1",
+    "url": "https://daisyui.com/docs/themes/",
+    "note": "daisyUI theme: light (daisyui@5.7.28)"
+  },
+  "createdAt": "2026-09-09T00:00:00.000Z"
+}

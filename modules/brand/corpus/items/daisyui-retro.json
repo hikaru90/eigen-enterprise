@@ -1,0 +1,80 @@
+{
+  "id": "e1d75cef-8047-5904-bbe6-a5fda3fce726",
+  "name": "daisyUI Retro",
+  "seeds": {
+    "seedColor": {
+      "l": 0.68,
+      "c": 0.162,
+      "h": 75.83
+    },
+    "neutralTintHue": 73.64,
+    "accentHueShift": null,
+    "chromaCurve": "tailwind",
+    "darkModeStrategy": "invert-tone",
+    "fonts": {
+      "fontPrimary": "Inter",
+      "fontSecondary": "Source Serif 4",
+      "fontMono": "JetBrains Mono"
+    },
+    "fluidScale": {
+      "baseSize": {
+        "min": 16,
+        "max": 18
+      },
+      "scaleRatio": {
+        "min": 1.125,
+        "max": 1.25
+      },
+      "viewport": {
+        "min": 400,
+        "max": 1200
+      },
+      "scaleSteps": 6,
+      "trackingCurve": "neutral"
+    },
+    "spaceRhythm": [
+      0.25,
+      0.5,
+      1,
+      2,
+      4
+    ],
+    "shapeCharacter": "soft",
+    "radiusBase": "0.25rem",
+    "elevation": "flat",
+    "motionPersonality": "productive",
+    "grain": 0
+  },
+  "cssVars": {
+    "--background": "oklch(91.637% 0.034 90.515)",
+    "--popover": "oklch(91.637% 0.034 90.515)",
+    "--card": "oklch(88.272% 0.049 91.774)",
+    "--card-foreground": "oklch(41% 0.112 45.904)",
+    "--popover-foreground": "oklch(41% 0.112 45.904)",
+    "--foreground": "oklch(41% 0.112 45.904)",
+    "--primary": "oklch(80% 0.114 19.571)",
+    "--primary-foreground": "oklch(39% 0.141 25.723)",
+    "--secondary": "oklch(92% 0.084 155.995)",
+    "--secondary-foreground": "oklch(41% 0.112 45.904)",
+    "--accent": "oklch(68% 0.162 75.834)",
+    "--accent-foreground": "oklch(41% 0.112 45.904)",
+    "--muted": "oklch(44% 0.011 73.639)",
+    "--muted-foreground": "oklch(0.41 0.112 45.9)",
+    "--destructive": "oklch(70% 0.191 22.216)",
+    "--destructive-foreground": "oklch(40% 0.123 38.172)",
+    "--border": "oklch(84.133% 0.065 90.856)",
+    "--input": "oklch(84.133% 0.065 90.856)",
+    "--ring": "oklch(80% 0.114 19.571)",
+    "--radius": "0.25rem",
+    "--font-sans": "\"Inter\"",
+    "--font-display": "\"Source Serif 4\"",
+    "--font-mono": "\"JetBrains Mono\""
+  },
+  "darkCssVars": {},
+  "provenance": {
+    "source": "tier1",
+    "url": "https://daisyui.com/docs/themes/",
+    "note": "daisyUI theme: retro (daisyui@5.7.28)"
+  },
+  "createdAt": "2026-09-09T00:00:00.000Z"
+}
