@@ -6,7 +6,7 @@ import { expandSeeds } from '../style-format/expand'
 import { brandSeedsSchema } from '../style-format/seeds'
 import { NUMERIC_DIMS, styleVector, type StyleVector } from '../style-format/vector'
 import { clusterCorpus, knnFor, KNN_K } from './clusters'
-import { BUILD_EPOCH, corpusSlug, deterministicUuid } from './mapping.mjs'
+import { BUILD_EPOCH, corpusSlug, deterministicUuid } from './mapping'
 
 /**
  * Corpus build (phase-2d M3). Runs THROUGH vitest (build.spec.ts) so the pure

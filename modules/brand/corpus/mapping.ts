@@ -1,13 +1,38 @@
 /**
- * Pure tier-1 mapping logic (phase-2d M3). Lives in plain .mjs so BOTH the
- * owner-run ingest script (node) and the vitest-driven corpus build can import
- * it — plain node cannot import this repo's TS modules, and vite-node is
- * broken for CLI use here (see build.spec.ts rationale). File I/O and network
- * stay in ingest-tier1.mjs; everything in this module is deterministic and
- * unit-tested in mapping.spec.ts.
+ * Pure tier-1 mapping logic (phase-2d M3). Typed TS module — the plain-JS
+ * mapping.mjs predecessor got pulled into the svelte-check program when
+ * modules/** was enrolled (checkJs flagged every untyped line), so it is now
+ * a properly typed mapping.ts; behavior is byte-stable and mapping.spec.ts
+ * asserts that unchanged. BOTH the vitest-driven corpus build and the
+ * owner-run ingest script import it: plain node >= 22.18 strips TS types
+ * natively, so ingest-tier1.mjs consumes this file directly. File I/O and
+ * network stay in ingest-tier1.mjs; everything in this module is
+ * deterministic and unit-tested in mapping.spec.ts.
  */
+import type { BrandCorpusItem } from '../style-format/corpus'
+import type { BrandSeeds } from '../style-format/seeds'
 import { createHash } from 'node:crypto'
 import { converter, parse } from 'culori'
+
+/** OKLCH component triple (BrandSeeds.seedColor shape). */
+type OklchTriple = BrandSeeds['seedColor']
+
+/** OFL font slots carried by every corpus item. */
+type Tier1Fonts = BrandSeeds['fonts']
+
+/** Named CSS font stacks a tier-1 source may provide. */
+type FontStacks = { sans: string; serif: string; mono: string }
+
+/** Tweakcn registry-item preset (shadcn registry JSON, subset we consume). */
+type TweakcnPreset = {
+  name: string
+  title?: string
+  cssVars?: {
+    theme?: Record<string, string | undefined>
+    light?: Record<string, string>
+    dark?: Record<string, string>
+  }
+}
 
 /** Pinned uuid-v5 namespace for corpus ids — never change it (ids are stable in git). */
 const CORPUS_NAMESPACE_HEX = 'e8c1a7d03b5f4e629a4d2f8b6c1d5e7a'
@@ -18,7 +43,7 @@ const CORPUS_NAMESPACE_HEX = 'e8c1a7d03b5f4e629a4d2f8b6c1d5e7a'
  * theme always maps to the same id across rebuilds. (The corpus schema demands
  * uuid ids; the readable slug lives on in the filename.)
  */
-export function deterministicUuid(name) {
+export function deterministicUuid(name: string): string {
   const hash = createHash('sha1')
   hash.update(Buffer.from(CORPUS_NAMESPACE_HEX, 'hex'))
   hash.update(name, 'utf8')
@@ -30,7 +55,7 @@ export function deterministicUuid(name) {
 }
 
 /** Deterministic slug for a corpus item: `daisyui-cupcake`, `tweakcn-vercel`, `archetype-brutalist`. */
-export function corpusSlug(source, name) {
+export function corpusSlug(source: string, name: string): string {
   const slug = String(name)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -46,23 +71,25 @@ export const BUILD_EPOCH = '2026-09-09T00:00:00.000Z'
 // Color/length helpers (thin deterministic wrappers over culori).
 // ---------------------------------------------------------------------------
 
-function parseOklch(cssValue, what) {
+function parseOklch(cssValue: string, what: string): OklchTriple {
   const parsed = parse(cssValue)
   if (!parsed) throw new Error(`unparseable color for ${what}: "${cssValue}"`)
   const oklch = converter('oklch')(parsed)
   if (!oklch) throw new Error(`color does not resolve to OKLCH for ${what}: "${cssValue}"`)
+  const l = oklch.l
+  if (l === undefined) throw new Error(`color resolves to OKLCH without lightness for ${what}: "${cssValue}"`)
   return {
-    l: Math.round(oklch.l * 10000) / 10000,
+    l: Math.round(l * 10000) / 10000,
     c: Math.round((oklch.c ?? 0) * 10000) / 10000,
     h: oklch.h === undefined ? 0 : Math.round(oklch.h * 100) / 100, // achromatic hue pinned to 0
   }
 }
 
-function formatOklch(triple) {
+function formatOklch(triple: OklchTriple): string {
   return `oklch(${triple.l} ${triple.c} ${triple.h})`
 }
 
-function cssLengthToRem(value, what) {
+function cssLengthToRem(value: string, what: string): number {
   const match = /^(\d*\.?\d+)(px|rem|pt)?$/.exec(String(value).trim())
   if (!match) throw new Error(`cannot parse ${what} as CSS length: "${value}"`)
   const n = Number(match[1])
@@ -71,7 +98,7 @@ function cssLengthToRem(value, what) {
   return n
 }
 
-function clampLightness(triple, lo, hi) {
+function clampLightness(triple: OklchTriple, lo: number, hi: number): OklchTriple {
   return { ...triple, l: Math.min(hi, Math.max(lo, triple.l)) }
 }
 
@@ -84,7 +111,7 @@ function clampLightness(triple, lo, hi) {
  * { scheme, vars } where vars holds every `--key: value` declaration.
  * Throws loud when the file does not match the expected daisyUI v5 layout.
  */
-export function parseDaisyUiThemeCss(cssText, themeName) {
+export function parseDaisyUiThemeCss(cssText: string, themeName: string): { scheme: string; vars: Record<string, string> } {
   const blockStart = cssText.indexOf('{')
   const blockEnd = cssText.lastIndexOf('}')
   if (blockStart === -1 || blockEnd === -1 || blockEnd <= blockStart) {
@@ -92,7 +119,7 @@ export function parseDaisyUiThemeCss(cssText, themeName) {
   }
   const schemeMatch = /color-scheme:\s*(light|dark)\s*;/.exec(cssText.slice(0, blockEnd))
   if (!schemeMatch) throw new Error(`daisyUI theme "${themeName}": missing color-scheme declaration`)
-  const vars = {}
+  const vars: Record<string, string> = {}
   const body = cssText.slice(blockStart + 1, blockEnd)
   for (const line of body.split(';')) {
     const decl = /^(\s*--[\w-]+)\s*:\s*(.+)$/.exec(line)
@@ -132,7 +159,7 @@ export function parseDaisyUiThemeCss(cssText, themeName) {
  * base-content (the background-tuned content color) with lightness clamped
  * into the 0.35..0.65 mid band — readable, muted, deterministic.
  */
-export function mapDaisyUiVarsToShadcn(vars, themeName) {
+export function mapDaisyUiVarsToShadcn(vars: Record<string, string>, themeName: string): Record<string, string> {
   const required = [
     '--color-base-100',
     '--color-base-200',
@@ -185,7 +212,7 @@ export function mapDaisyUiVarsToShadcn(vars, themeName) {
   }
 }
 
-function formatRem(rem) {
+function formatRem(rem: number): string {
   return `${rem}rem`
 }
 
@@ -196,7 +223,7 @@ function formatRem(rem) {
 // ---------------------------------------------------------------------------
 
 /** OFL defaults for sources that carry no font tokens (daisyUI v5 themes don't). */
-export const TIER1_DEFAULT_FONTS = {
+export const TIER1_DEFAULT_FONTS: Tier1Fonts = {
   fontPrimary: 'Inter',
   fontSecondary: 'Source Serif 4',
   fontMono: 'JetBrains Mono',
@@ -207,7 +234,7 @@ export const TIER1_DEFAULT_FONTS = {
  * heuristics: stack leaders are looked up verbatim; unknown families throw.
  * Non-OFL/system entries map to metrically-reasonable OFL families.
  */
-export const TIER1_FONT_SUBSTITUTES = {
+export const TIER1_FONT_SUBSTITUTES: Record<string, string> = {
   Inter: 'Inter',
   'Geist': 'Geist',
   'Geist Mono': 'Geist Mono',
@@ -242,7 +269,7 @@ export const TIER1_FONT_SUBSTITUTES = {
 }
 
 /** First family from a CSS font shorthand stack (quotes stripped). */
-export function firstNamedFamily(stack) {
+export function firstNamedFamily(stack: string): string {
   const first = String(stack).split(',')[0]?.trim() ?? ''
   const family = /^"(.*)"$/.exec(first)?.[1] ?? first
   if (!family) throw new Error(`cannot parse font family from stack: "${stack}"`)
@@ -250,17 +277,17 @@ export function firstNamedFamily(stack) {
 }
 
 /** Substitute one family for an OFL-shippable one. Throws loud on unknowns. */
-export function substituteOflFont(family) {
+export function substituteOflFont(family: string): string {
   const sub = TIER1_FONT_SUBSTITUTES[family]
   if (!sub) {
     throw new Error(
-      `unknown font family "${family}" — add an OFL substitute to TIER1_FONT_SUBSTITUTES (corpus/mapping.mjs) before ingesting`,
+      `unknown font family "${family}" — add an OFL substitute to TIER1_FONT_SUBSTITUTES (corpus/mapping.ts) before ingesting`,
     )
   }
   return sub
 }
 
-function fontsFromStacks(sansStack, serifStack, monoStack) {
+function fontsFromStacks(sansStack: string, serifStack: string, monoStack: string): Tier1Fonts {
   return {
     fontPrimary: substituteOflFont(firstNamedFamily(sansStack)),
     fontSecondary: substituteOflFont(firstNamedFamily(serifStack)),
@@ -268,7 +295,7 @@ function fontsFromStacks(sansStack, serifStack, monoStack) {
   }
 }
 
-function trackingCurveFromEm(emValue) {
+function trackingCurveFromEm(emValue: string | undefined): BrandSeeds['fluidScale']['trackingCurve'] {
   if (emValue === undefined) return 'neutral'
   const match = /^(-?\d*\.?\d+)em$/.exec(String(emValue).trim())
   if (!match) throw new Error(`cannot parse tracking value: "${emValue}"`)
@@ -291,9 +318,21 @@ function trackingCurveFromEm(emValue) {
  *  - type scale / space rhythm / motion: pinned neutral defaults (sources carry no data).
  *  - elevation/grain/tracking: from source hints when provided, else pinned.
  */
-export function deriveSeedsFromShadcnVars({ cssVars, fontStacks = null, elevation = 'subtle', grain = 0, trackingEm }) {
+export function deriveSeedsFromShadcnVars({
+  cssVars,
+  fontStacks = null,
+  elevation = 'subtle',
+  grain = 0,
+  trackingEm,
+}: {
+  cssVars: Record<string, string>
+  fontStacks?: FontStacks | null
+  elevation?: BrandSeeds['elevation']
+  grain?: number
+  trackingEm?: string
+}): BrandSeeds {
   const roles = ['primary', 'secondary', 'accent']
-  const chroma = Object.fromEntries(roles.map((r) => [r, parseOklch(cssVars[`--${r}`], r).c]))
+  const chroma = Object.fromEntries(roles.map((r) => [r, parseOklch(cssVars[`--${r}`], r).c] as const))
   const seedRole = roles.sort((a, b) => chroma[b] - chroma[a] || roles.indexOf(a) - roles.indexOf(b))[0]
   const seedColor = parseOklch(cssVars[`--${seedRole}`], seedRole)
   const neutralTint = parseOklch(cssVars['--muted'], 'muted')
@@ -339,7 +378,7 @@ export function deriveSeedsFromShadcnVars({ cssVars, fontStacks = null, elevatio
  * Build a corpus item from one daisyUI theme.
  * provenance: { source: 'tier1', url: daisyUI docs, note: theme name + package version }.
  */
-export function daisyUiThemeToItem({ themeName, cssText, packageVersion }) {
+export function daisyUiThemeToItem({ themeName, cssText, packageVersion }: { themeName: string; cssText: string; packageVersion: string }): BrandCorpusItem {
   const { vars } = parseDaisyUiThemeCss(cssText, themeName)
   const cssVars = mapDaisyUiVarsToShadcn(vars, themeName)
   const seeds = deriveSeedsFromShadcnVars({
@@ -365,7 +404,7 @@ export function daisyUiThemeToItem({ themeName, cssText, packageVersion }) {
 }
 
 /** daisyUI theme ids like "caramellatte" display as "Caramellatte". */
-function daisyUiDisplayName(themeName) {
+function daisyUiDisplayName(themeName: string): string {
   return `daisyUI ${themeName
     .split(/[-_]/)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -377,7 +416,7 @@ function daisyUiDisplayName(themeName) {
  * JSON: cssVars.theme (fonts, radius, tracking), cssVars.light, cssVars.dark).
  * Throws loud per item on missing data — the ingest script skips + logs.
  */
-export function tweakcnPresetToItem(preset, sourceUrl) {
+export function tweakcnPresetToItem(preset: TweakcnPreset, sourceUrl: string): BrandCorpusItem {
   const theme = preset.cssVars?.theme ?? {}
   const light = preset.cssVars?.light ?? {}
   const dark = preset.cssVars?.dark ?? {}
@@ -387,28 +426,32 @@ export function tweakcnPresetToItem(preset, sourceUrl) {
   if (missing.length > 0 || missingDark.length > 0) {
     throw new Error(`tweakcn preset "${preset.name}": missing cssVars (light: ${missing.join(', ') || 'ok'}; dark: ${missingDark.join(', ') || 'ok'})`)
   }
-  if (typeof theme.radius !== 'string') {
+  const radius = theme.radius
+  if (typeof radius !== 'string') {
     throw new Error(`tweakcn preset "${preset.name}": missing radius in cssVars.theme`)
   }
 
-  const dash = (key) => `--${key}`
-  const cssVars = Object.fromEntries(Object.entries(light).map(([k, v]) => [dash(k), v]))
-  const darkCssVars = Object.fromEntries(Object.entries(dark).map(([k, v]) => [dash(k), v]))
-  cssVars['--radius'] = theme.radius
+  const dash = (key: string): string => `--${key}`
+  const cssVars = Object.fromEntries(Object.entries(light).map(([k, v]) => [dash(k), v] as const))
+  const darkCssVars = Object.fromEntries(Object.entries(dark).map(([k, v]) => [dash(k), v] as const))
+  cssVars['--radius'] = radius
   // Registry stacks may name system/non-OFL families ("ui-sans-serif, ...").
   // Per V4, cssVars carry the OFL-substituted families (quoted, expand()-style)
   // so the corpus is always shippable; the raw stacks stay in the registry.
-  if (!theme['font-sans'] || !theme['font-serif'] || !theme['font-mono']) {
+  const sans = theme['font-sans']
+  const serif = theme['font-serif']
+  const mono = theme['font-mono']
+  if (!sans || !serif || !mono) {
     throw new Error(`tweakcn preset "${preset.name}": missing font tokens in cssVars.theme`)
   }
-  const fonts = fontsFromStacks(theme['font-sans'], theme['font-serif'], theme['font-mono'])
+  const fonts = fontsFromStacks(sans, serif, mono)
   cssVars['--font-sans'] = `"${fonts.fontPrimary}"`
   cssVars['--font-display'] = `"${fonts.fontSecondary}"`
   cssVars['--font-mono'] = `"${fonts.fontMono}"`
 
   const seeds = deriveSeedsFromShadcnVars({
     cssVars,
-    fontStacks: { sans: theme['font-sans'], serif: theme['font-serif'], mono: theme['font-mono'] },
+    fontStacks: { sans, serif, mono },
     elevation: 'subtle', // registry carries no shadow recipes; shadcn components ship subtle elevation
     grain: 0,
     trackingEm: theme['tracking-normal'],

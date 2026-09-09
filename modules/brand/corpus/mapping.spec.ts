@@ -12,7 +12,7 @@ import {
   substituteOflFont,
   TIER1_DEFAULT_FONTS,
   tweakcnPresetToItem,
-} from './mapping.mjs'
+} from './mapping'
 
 const DAISY_CUPCAKE_CSS = `[data-theme="cupcake"] {
 color-scheme: light;

@@ -8,9 +8,12 @@
  *
  * Sources:
  *  - daisyUI: the bundled per-theme CSS of the `daisyui` devDependency
- *    (theme/<name>.css), mapped to shadcn roles via mapping.mjs.
+ *    (theme/<name>.css), mapped to shadcn roles via mapping.ts.
  *  - tweakcn: ONE curated explicit raw URL — the built-in preset registry of
  *    jnsahaj/tweakcn (public/r/registry.json), already shadcn-var-shaped.
+ *
+ * mapping lives in corpus/mapping.ts; this script imports it directly —
+ * node >= 22.18 strips TS types natively (guarded below, fail loud).
  *
  * No network beyond the explicit tweakcn registry URL. Loud per-item errors,
  * skip + log invalid items, count summary at the end. After running this,
@@ -19,7 +22,14 @@
 import { readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { corpusSlug, daisyUiThemeToItem, tweakcnPresetToItem } from './mapping.mjs'
+
+const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number)
+const nativeTypeStripping =
+  nodeMajor > 23 || (nodeMajor === 23 && nodeMinor >= 6) || (nodeMajor === 22 && nodeMinor >= 18)
+if (!nativeTypeStripping) {
+  fail('node >= 22.18 required: this script imports corpus/mapping.ts and relies on native TS type stripping')
+}
+const { corpusSlug, daisyUiThemeToItem, tweakcnPresetToItem } = await import('./mapping.ts')
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const itemsDir = path.join(here, 'items')
