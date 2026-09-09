@@ -61,7 +61,9 @@
       // The nucleus group is the company surface: no console chrome. SvelteKit
       // always nests the root layout, so a route group cannot opt out on its
       // own — the group provides the white shell, the root hides its chrome.
-      (page.route.id != null && page.route.id.startsWith('/(nucleus)')),
+      (page.route.id != null && page.route.id.startsWith('/(nucleus)')) ||
+      // Public website pages (/s/[slug]) are the company's face: chrome-free.
+      (page.route.id != null && page.route.id === '/s/[slug]'),
   )
 
   const layoutUserId = $derived((page.data as { user?: { id: string } | null }).user?.id ?? null)

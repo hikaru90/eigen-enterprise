@@ -67,6 +67,11 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   // Phase-3 M2: the agent's repo hands land on the instance repo here —
   // merging agent work into the company repo is an owner decision made in chat.
   'repo.merge',
+  // Phase-3 one-agent: module lifecycle levers are owner decisions made in
+  // chat — the agent calls kernel.module_activate/deactivate, the gate halts
+  // until the owner's conversational yes (kernel.approvals_decide).
+  'kernel.module_activate',
+  'kernel.module_deactivate',
 ])
 
 export type BootstrapKernelOptions = {

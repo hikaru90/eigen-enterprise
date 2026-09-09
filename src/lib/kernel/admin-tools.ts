@@ -114,7 +114,9 @@ export function createAdminTools(deps: AdminToolDeps): ToolDescriptor[] {
       summary: 'List approval requests, optionally filtered by status.',
       auditClass: 'read',
       inputSchema: approvalsListInput,
-      permission: { roles: ['owner'] },
+      // The agent surfaces pending approvals in conversation (phase-3 one-agent:
+      // governance lives in the transcript + audit trail, not the role table).
+      permission: { roles: ['owner', 'admin', 'agent'] },
       handler: async (_ctx, input) => {
         const parsed = approvalsListInput.parse(input)
         return deps.approvals.list(parsed.status)
@@ -126,7 +128,9 @@ export function createAdminTools(deps: AdminToolDeps): ToolDescriptor[] {
       summary: 'Approve or deny a pending approval request.',
       auditClass: 'mutate',
       inputSchema: approvalsDecideInput,
-      permission: { roles: ['owner'] },
+      // Trust-the-transcript (plan/phase-3-one-agent.md, risks on record): the
+      // agent executes the owner's conversational yes; decidedBy is audited.
+      permission: { roles: ['owner', 'admin', 'agent'] },
       handler: async (ctx, input) => {
         const parsed = approvalsDecideInput.parse(input)
         return deps.approvals.decide(parsed.approval_id, parsed.decision, ctx.principal.id)

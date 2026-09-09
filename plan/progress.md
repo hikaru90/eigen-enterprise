@@ -2,6 +2,23 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-09 — Phase-2d DESIGNED: visual branding (taste elicitation → extraction → selection → apply → editor)
+
+**Shipped** (plan only — design grilling session, zero code)
+- **`plan/phase-2d-visual-branding.md`** — approved design with decisions of record V1–V10 and milestones M1–M7. **Supersedes phase-2c D1: the visual pipeline is now v0 scope.** Phase-2c M3–M5 (voice pipeline) unchanged and orthogonal.
+- The crux (owner: "how do we translate tokens to design and vice versa") resolved by research: **W3C DTCG container + a seed block (~18 params) + 8 pinned deterministic expansion rules** (OKLCH/Radix ramps, M3 dark scheme, Utopia fluid scales, shape/motion/shadow/grain recipes) → `expand()` → Style Dictionary v4 → the CSS vars `layout.css` already consumes. Snapshot-tested determinism; no existing format had this — the seed schema is the only novel piece.
+- Architecture facts pinned: corpus = in-repo static JSON in `modules/brand/` (Tier-1 ingest: ~100–150 already-tokenized MIT styles from daisyUI/tweakcn/shadcn + extraction-driven growth); similarity = deterministic weighted token-vector distance + build-time k-NN/clusters (Every Noise pattern); selection = cluster grid → picks → weighted-centroid taste → top-3 shortlist; **zero runtime LLM**.
+
+**Decisions (owner, grilled)**
+- **Extraction pipeline = first priority**: URL → 3 candidate extractions per round → owner judges closest → iterate until accepted → corpus item; judged pairs stored for future fine-tuning. "RL with me as judge" implemented as convergence-by-selection, no gradient updates v0.
+- **No Penpot, no second DB, ever** — DB is SoT (new `brand_visual_sets`, draft/active/retired), native flexbox editor on a specimen canvas instead; Penpot conventions may be harvested later at most.
+- Runtime taste-interpretation scrapped ("no llm as judge … wrong direction"): selection is pure math; LLM only in extraction loop + one-time build-time cluster naming.
+- Tree navigation (k-NN descent/tunnels) = **last priority**; one selected design applies **globally to all user-facing surfaces** (global `:root` override; app's own style remains until explicit activation); water-flow shader keeps grayscale until a brand is active, then tints from the active set.
+
+**Next** — M1 canonical format (`expand()` + snapshot tests + Style Dictionary emitter) in workstream `wt/brand-visual`; M2 extraction pipeline + judge loop right behind it.
+
+---
+
 ## 2026-09-09 — Phase-3 M2: repo hands — the one agent can now improve its own repo
 
 **Shipped** (`004d1e9` on wt/one-agent-hands, ff-merged; subagent-implemented in worktree, orchestrator reviewed)

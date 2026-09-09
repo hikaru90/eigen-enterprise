@@ -104,9 +104,9 @@ describe('registerAdminTools', () => {
     ).resolves.toMatchObject({ module_id: 'memory', active: true })
     expect(await kernel.activations.get('memory')).toBe(true)
 
-    const adminOnly = makeCtx({ roles: ['admin'] })
+    const memberOnly = makeCtx({ roles: ['member'] })
     await expect(
-      kernel.registry.execute('kernel.approvals_list', {}, adminOnly),
+      kernel.registry.execute('kernel.approvals_list', {}, memberOnly),
     ).rejects.toMatchObject({ code: 'permission_denied' })
   })
 
@@ -129,6 +129,27 @@ describe('registerAdminTools', () => {
         makeCtx({ roles: ['owner'] }),
       ),
     ).resolves.toMatchObject({ id: 'appr-1', status: 'denied', decidedBy: 'principal-1' })
+  })
+
+  it('lets the agent principal decide approvals (trust-the-transcript: the conversational yes is the gate)', async () => {
+    const approvals = new InMemoryApprovalStore()
+    await approvals.create({
+      id: 'appr-2',
+      toolName: 'repo.merge',
+      input: {},
+      principalId: 'principal-2',
+      status: 'pending',
+    })
+    const kernel = makeFakeKernel(approvals)
+    await registerAdminTools(kernel)
+
+    await expect(
+      kernel.registry.execute(
+        'kernel.approvals_decide',
+        { approval_id: 'appr-2', decision: 'approved' },
+        makeCtx({ roles: ['admin', 'agent'] }),
+      ),
+    ).resolves.toMatchObject({ id: 'appr-2', status: 'approved', decidedBy: 'principal-1' })
   })
 
   it('is idempotent when admin tools are registered twice on the same kernel', async () => {

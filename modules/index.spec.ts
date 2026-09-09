@@ -110,9 +110,13 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     // website.publish_page artifacts gate here too.
     // Phase-3 M2: repo.merge gates the agent's repo hands — landing agent work
     // on the instance repo is an owner decision made in chat.
+    // Phase-3 one-agent: module lifecycle levers gate too — the agent calls
+    // kernel.module_activate/deactivate, the owner's conversational yes decides.
     expect([...APPROVAL_REQUIRED_TOOLS].sort()).toEqual([
       'brand.set_activate',
       'email.send_mail',
+      'kernel.module_activate',
+      'kernel.module_deactivate',
       'repo.merge',
       'website.publish_page',
     ])

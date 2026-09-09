@@ -38,7 +38,15 @@ async function makeWiredFake(options: { approvalTools?: string[] } = {}): Promis
     tools: ['email.send_mail'],
     permissions: { roles: ['admin', 'agent'] },
   })
+  modules.register({
+    id: 'fixture',
+    name: 'Fixture',
+    version: '0.1.0',
+    tools: ['fixture.owner_only'],
+    permissions: { roles: ['owner'] },
+  })
   await activations.set('email', true)
+  await activations.set('fixture', true)
   const approvalStore = new InMemoryApprovalStore()
   const registry = new KernelRegistry({
     activationStore: activations,
@@ -63,8 +71,18 @@ async function makeWiredFake(options: { approvalTools?: string[] } = {}): Promis
     auditClass: 'mutate',
     handler: async () => ({ sent: true }),
   }
+  const ownerOnly: ToolDescriptor = {
+    name: 'fixture.owner_only',
+    module: 'fixture',
+    summary: 'owner-gated fixture for permission_denied mapping',
+    inputSchema: z.object({}),
+    permission: { roles: ['owner'] },
+    auditClass: 'read',
+    handler: async () => ({ ok: true }),
+  }
   registry.register(echo)
   registry.register(sendMail)
+  registry.register(ownerOnly)
   const principals: PrincipalStore = {
     getById: async (id) => PRINCIPALS.find((p) => p.id === id) ?? null,
     getByApiKey: async () => null,
@@ -132,11 +150,15 @@ describe('runCli: principal resolution', () => {
   it('the flag wins over the env', async () => {
     const kernel = await makeWiredFake()
     // principal-2 lacks the owner role: if the env (principal-1) were used,
-    // status would succeed; with the flag (principal-2) it must be denied.
-    const result = await runCli(['status', '--principal', 'principal-2'], {
-      buildKernel: () => kernel,
-      env: { EE_CLI_PRINCIPAL_ID: 'principal-1' },
-    })
+    // the owner-gated fixture tool would succeed; with the flag (principal-2)
+    // it must be denied.
+    const result = await runCli(
+      ['tool', 'run', 'fixture.owner_only', '--input', '{}', '--principal', 'principal-2'],
+      {
+        buildKernel: () => kernel,
+        env: { EE_CLI_PRINCIPAL_ID: 'principal-1' },
+      },
+    )
     expect(result.exitCode).toBe(1)
     expect(result.stderr).toMatch(/permission_denied/)
   })
@@ -162,6 +184,7 @@ describe('runCli: happy paths through the full registry pipeline', () => {
     expect(data.modules).toEqual([
       { id: 'memory', name: 'Memory', version: '0.1.0', tools: ['memory.echo'], active: false },
       { id: 'email', name: 'Email', version: '0.1.0', tools: ['email.send_mail'], active: true },
+      { id: 'fixture', name: 'Fixture', version: '0.1.0', tools: ['fixture.owner_only'], active: true },
       {
         id: 'kernel',
         name: 'Kernel',
@@ -262,7 +285,16 @@ describe('runCli: error and approval exit-code mapping', () => {
   it('maps permission_denied to exit 1 with its code', async () => {
     const kernel = await makeWiredFake()
     const result = await runCli(
-      ['approvals', 'list', '--principal', 'principal-2', '--json'],
+      [
+        'tool',
+        'run',
+        'fixture.owner_only',
+        '--input',
+        '{}',
+        '--principal',
+        'principal-2',
+        '--json',
+      ],
       depsWith(kernel),
     )
     expect(result.exitCode).toBe(1)

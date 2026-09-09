@@ -83,12 +83,20 @@ describe('createAdminTools surface', () => {
     expect(toolByName(tools, 'kernel.approvals_decide').auditClass).toBe('mutate')
   })
 
-  it('maps roles: module ops are admin-only, approval ops are owner-only', () => {
+  it('maps roles: module ops are admin ops, approval ops are conversational (owner/admin/agent)', () => {
     expect(toolByName(tools, 'kernel.module_list').permission.roles).toEqual(['admin'])
     expect(toolByName(tools, 'kernel.module_activate').permission.roles).toEqual(['admin'])
     expect(toolByName(tools, 'kernel.module_deactivate').permission.roles).toEqual(['admin'])
-    expect(toolByName(tools, 'kernel.approvals_list').permission.roles).toEqual(['owner'])
-    expect(toolByName(tools, 'kernel.approvals_decide').permission.roles).toEqual(['owner'])
+    expect(toolByName(tools, 'kernel.approvals_list').permission.roles).toEqual([
+      'owner',
+      'admin',
+      'agent',
+    ])
+    expect(toolByName(tools, 'kernel.approvals_decide').permission.roles).toEqual([
+      'owner',
+      'admin',
+      'agent',
+    ])
   })
 
   it('validates inputs with zod schemas', () => {
