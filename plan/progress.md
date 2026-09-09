@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-09 — Governance follow-up: the conversational yes is the gate (`a8b11c0`)
+
+**Owner directive**: "ee module activate repo — this has to be called by the agent." No manual CLI prerequisites; the loop lives in the conversation.
+- `kernel.approvals_list` + `kernel.approvals_decide`: owner-only → **owner/admin/agent** — the agent surfaces pending approvals in chat and executes the owner's conversational yes (trust-the-transcript, as recorded in phase-3 risks; `decidedBy` audited). The chatbox approval card now completes in-conversation.
+- `kernel.module_activate`/`deactivate` added to APPROVAL_REQUIRED_TOOLS — the agent can call them (it holds admin), the gate halts until the owner's yes. "Activate the repo module" is now a chat sentence, not a CLI step.
+- CLI specs that used owner-only `approvals_list` as their denial vehicle re-pointed at an owner-only fixture tool (intent preserved: flag-over-env resolution + permission_denied exit-code mapping). Gates: 642 passed / 4 skipped, check 0 errors; the parallel session's uncommitted brand files were accidentally swept into a commit and restored to uncommitted state (`ea62db6` redone as `a8b11c0`).
+
 ## 2026-09-09 — Phase-2d DESIGNED: visual branding (taste elicitation → extraction → selection → apply → editor)
 
 **Shipped** (plan only — design grilling session, zero code)
