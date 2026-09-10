@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types'
   import { resolve } from '$app/paths'
+  import ActivationNotice from '../ActivationNotice.svelte'
   import SpecimenMini from './SpecimenMini.svelte'
 
   type Candidate = { label: string; cssVars?: Record<string, string>; error?: string }
@@ -131,6 +132,9 @@
   <title>Brand extraction judge</title>
 </svelte:head>
 
+{#if data.needsModuleActivation}
+  <ActivationNotice />
+{:else}
 <div class="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8">
   <header>
     <h1 class="text-2xl font-semibold">Brand extraction judge</h1>
@@ -280,3 +284,4 @@
     {/if}
   {/if}
 </div>
+{/if}

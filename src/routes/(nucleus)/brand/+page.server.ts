@@ -1,15 +1,21 @@
 import type { PageServerLoad } from './$types'
 import { randomUUID } from 'node:crypto'
 import { requireAdmin } from '$lib/server/auth/require-admin'
+import { brandModuleState } from '$lib/server/brand/activation'
 import { bootstrapKernel } from '../../../../modules/index'
 
 /**
  * Selection wizard surface (phase-2d M4, V7). Owner/admin only: loads the
  * static corpus (clusters + card summaries) and the existing visual sets
- * through the kernel registry — the same path MCP uses.
+ * through the kernel registry — the same path MCP uses. When the brand module
+ * is inactive the load returns a notice flag instead of failing: the owner
+ * sees the activation notice BEFORE anything starts (owner directive).
  */
 export const load: PageServerLoad = async (event) => {
   const user = await requireAdmin(event.locals.user)
+  const { active } = await brandModuleState(user)
+  if (!active) return { needsModuleActivation: true as const, corpus: null, drafts: null }
+
   const kernel = bootstrapKernel()
   const context = {
     principal: { id: user.id, kind: 'human' as const, roles: ['admin'] },
@@ -42,5 +48,5 @@ export const load: PageServerLoad = async (event) => {
     pickedItemIds: string[]
   }[]
 
-  return { corpus, drafts }
+  return { needsModuleActivation: false as const, corpus, drafts }
 }

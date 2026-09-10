@@ -1,11 +1,12 @@
 <script lang="ts">
   import type { PageData } from './$types'
+  import ActivationNotice from './ActivationNotice.svelte'
   import StyleCard from './StyleCard.svelte'
 
   let { data }: { data: PageData } = $props()
 
-  type Item = PageData['corpus']['items'][number]
-  type Draft = PageData['drafts'][number]
+  type Item = NonNullable<PageData['corpus']>['items'][number]
+  type Draft = NonNullable<PageData['drafts']>[number]
   type Match = { item: Item; distance: number }
 
   const PICKS_FOR_MATCHES = 3
@@ -15,7 +16,7 @@
   let pendingMatch = $state<Match | null>(null)
   let draftName = $state('')
   let createdDraft = $state<{ id: string; name: string } | null>(null)
-  let drafts = $state<Draft[]>(data.drafts)
+  let drafts = $state<Draft[]>(data.drafts ?? [])
   let busy = $state(false)
   let error = $state('')
 
@@ -26,7 +27,9 @@
   let panelItemId = $state<string | null>(null)
   let similarBusy = $state(false)
 
-  const itemsById = $derived(new Map(data.corpus.items.map((item) => [item.id, item])))
+  const itemsById = $derived(
+    data.corpus ? new Map(data.corpus.items.map((item) => [item.id, item])) : new Map<string, Item>(),
+  )
   const pickedCount = $derived(pickedIds.length)
   const canShowMatches = $derived(pickedCount >= PICKS_FOR_MATCHES && !busy)
   const canCreateDraft = $derived(pendingMatch !== null && draftName.trim().length > 0 && !busy)
@@ -134,6 +137,9 @@
   <title>Brand selection wizard</title>
 </svelte:head>
 
+{#if data.needsModuleActivation}
+  <ActivationNotice />
+{:else}
 <div class="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8">
   <header>
     <h1 class="text-2xl font-semibold">Brand selection wizard</h1>
@@ -323,3 +329,4 @@
     {/if}
   </section>
 </div>
+{/if}

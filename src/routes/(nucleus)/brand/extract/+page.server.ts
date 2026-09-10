@@ -1,16 +1,22 @@
 import type { PageServerLoad } from './$types'
 import { randomUUID } from 'node:crypto'
 import { requireAdmin } from '$lib/server/auth/require-admin'
+import { brandModuleState } from '$lib/server/brand/activation'
 import { bootstrapKernel } from '../../../../../modules/index'
 
 /**
  * Judge loop surface (phase-2d M2). Owner/admin only; an optional ?session=
- * id hydrates an existing extraction session server-side.
+ * id hydrates an existing extraction session server-side. Inactive brand
+ * module → activation notice flag instead of failing (owner directive:
+ * inform BEFORE anything starts).
  */
 export const load: PageServerLoad = async (event) => {
   const user = await requireAdmin(event.locals.user)
+  const { active } = await brandModuleState(user)
+  if (!active) return { needsModuleActivation: true as const, initial: null }
+
   const sessionId = event.url.searchParams.get('session')
-  if (!sessionId) return { initial: null }
+  if (!sessionId) return { needsModuleActivation: false as const, initial: null }
 
   const kernel = bootstrapKernel()
   const result = (await kernel.registry.execute(
@@ -35,6 +41,7 @@ export const load: PageServerLoad = async (event) => {
     .find((r) => r.verdict !== null && r.verdict.chosen !== null)
 
   return {
+    needsModuleActivation: false as const,
     initial: {
       session: result.session,
       screenshotB64: result.rounds[0]?.screenshotB64 ?? '',
