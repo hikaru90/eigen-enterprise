@@ -67,8 +67,6 @@
       (page.route.id != null && page.route.id === '/s/[slug]'),
   )
 
-  const layoutUserId = $derived((page.data as { user?: { id: string } | null }).user?.id ?? null)
-
   let themePreference = 'system'
   let lastIdentifiedUserId: string | null | undefined = undefined
 

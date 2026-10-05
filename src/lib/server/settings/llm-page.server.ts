@@ -1,15 +1,7 @@
 import type { Actions, RequestEvent } from '@sveltejs/kit'
 import { fail, redirect } from '@sveltejs/kit'
 import { and, eq } from 'drizzle-orm'
-import { env } from '$lib/server/env/private-env'
 import { isUserAdmin } from '$lib/server/auth/user-role'
-import { assertByokConfigured } from '$lib/server/llm/preferences'
-import {
-  providerLabel,
-  saveProviderConfig,
-  type LlmProviderId,
-} from '$lib/server/llm/save-provider-config'
-import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 import { decryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import { getDb } from '$lib/server/db'
 import {
@@ -18,6 +10,14 @@ import {
   llmActiveProvider,
   type BillingMode,
 } from '$lib/server/db/schema'
+import { env } from '$lib/server/env/private-env'
+import { assertByokConfigured } from '$lib/server/llm/preferences'
+import {
+  providerLabel,
+  saveProviderConfig,
+  type LlmProviderId,
+} from '$lib/server/llm/save-provider-config'
+import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 
 export type { LlmProviderId } from '$lib/server/llm/save-provider-config'
 

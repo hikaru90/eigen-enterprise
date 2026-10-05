@@ -1,6 +1,5 @@
 import type { RequestHandler } from './$types'
 import { json } from '@sveltejs/kit'
-import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 import { eq } from 'drizzle-orm'
 import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
@@ -9,6 +8,7 @@ import {
   pollCopilotDeviceFlowOnce,
 } from '$lib/server/llm/oauth/github-copilot'
 import { saveProviderConfig } from '$lib/server/llm/save-provider-config'
+import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 
 type Body = {
   deviceCode?: unknown

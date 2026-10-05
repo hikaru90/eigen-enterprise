@@ -1,6 +1,5 @@
 <script lang="ts">
   import ActivityIcon from '@lucide/svelte/icons/activity'
-
   import ClipboardCheck from '@lucide/svelte/icons/clipboard-check'
   import Cpu from '@lucide/svelte/icons/cpu'
   import HeartPulse from '@lucide/svelte/icons/heart-pulse'

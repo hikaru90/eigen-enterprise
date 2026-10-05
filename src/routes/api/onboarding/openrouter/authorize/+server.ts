@@ -1,10 +1,10 @@
 import type { RequestHandler } from './$types'
 import { json } from '@sveltejs/kit'
-import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 import {
   createOpenRouterAuthorizeUrl,
   generatePkce,
 } from '$lib/server/llm/oauth/openrouter-oauth'
+import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 
 const PKCE_COOKIE = 'onboarding_or_pkce'
 

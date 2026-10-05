@@ -1,6 +1,6 @@
-import type { ResolvedLlmConfig } from '$lib/server/llm/types'
 import { LlmHttpError } from '$lib/server/llm/errors'
 import { ANTHROPIC_OAUTH_BETAS, ANTHROPIC_OAUTH_HEADERS, ANTHROPIC_OAUTH_SYSTEM_PREFIX } from '$lib/server/llm/oauth/anthropic'
+import type { ResolvedLlmConfig } from '$lib/server/llm/types'
 
 /**
  * API-shape adapters for subscription providers whose gateways do not speak the

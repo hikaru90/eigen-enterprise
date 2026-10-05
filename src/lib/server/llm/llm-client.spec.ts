@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExtendedPrivateEnv } from '$lib/server/env/private-env'
-import { LlmNotConfiguredError } from './errors'
 import { fetchMockInit, fetchMockUrl } from '$lib/test/vitest-mock-call'
+import { LlmNotConfiguredError } from './errors'
 import {
   DEFAULT_CHAT_MAX_TOKENS,
   llmChatCompletion,

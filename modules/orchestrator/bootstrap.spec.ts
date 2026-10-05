@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { InMemoryApprovalStore } from '$lib/kernel/approvals'
+import type { LoopEngine } from '$lib/kernel/engine'
 import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryActivationStore, ModuleRegistry, type ModuleManifest } from '$lib/kernel/modules'
 import type { PrincipalStore } from '$lib/kernel/principals'
 import { KernelRegistry } from '$lib/kernel/registry'
 import { InMemoryAgentSessionLog } from '$lib/kernel/session-log'
 import type { ToolDescriptor, ToolContext } from '$lib/kernel/types'
-import type { LoopEngine } from '$lib/kernel/engine'
 import type { WiredKernel } from '$lib/kernel/wiring'
 import {
   bootstrapOrchestrator,

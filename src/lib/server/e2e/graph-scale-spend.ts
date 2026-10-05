@@ -7,7 +7,6 @@ import {
   aggregateUserActivityCost,
   type ActivityCostAggregate,
 } from '$lib/server/activity/trace-cost'
-import { billingUserAsyncLocal, tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { captureThought } from '$lib/server/capture/service'
 import {
   appDbAsyncLocal,
@@ -18,6 +17,7 @@ import {
   deactivateTenantDbSession,
   type AppDatabase,
 } from '$lib/server/db'
+import { billingUserAsyncLocal, tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { ensureHarnessCredentialAccount } from '$lib/server/e2e/harness-auth'
 
 export type { SpendProbeThoughtRow, SpendTrend } from '$lib/e2e/graph-scale-spend-trend'

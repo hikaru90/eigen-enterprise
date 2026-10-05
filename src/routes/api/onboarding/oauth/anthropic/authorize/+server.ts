@@ -1,8 +1,8 @@
 import type { RequestHandler } from './$types'
-import { json } from '@sveltejs/kit'
 import { randomBytes } from 'node:crypto'
-import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
+import { json } from '@sveltejs/kit'
 import { createAnthropicAuthorizeUrl } from '$lib/server/llm/oauth/anthropic'
+import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 
 const PKCE_COOKIE = 'onboarding_anthropic_pkce'
 

@@ -11,7 +11,7 @@ export type Principal = {
   apiKeyHash?: string | null
 }
 
-export interface PrincipalStore {
+export type PrincipalStore = {
   getById(id: string): Promise<Principal | null>
   getByApiKey(apiKeyHash: string): Promise<Principal | null>
 }

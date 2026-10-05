@@ -1,5 +1,5 @@
-import type { ZodType } from 'zod'
 import type { AgentTypeSpec, VerificationPolicySpec } from './agent'
+import type { ZodType } from 'zod'
 import { manifestSchema } from './manifest-schema'
 
 export type ModuleManifest = {

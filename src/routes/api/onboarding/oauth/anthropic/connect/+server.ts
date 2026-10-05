@@ -1,16 +1,16 @@
 import type { RequestHandler } from './$types'
 import { json } from '@sveltejs/kit'
 import { eq } from 'drizzle-orm'
+import { getSafeErrorMessage } from '$lib/server/auth-form-errors'
 import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
-import { getSafeErrorMessage } from '$lib/server/auth-form-errors'
-import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 import {
   exchangeAnthropicCode,
   parseAuthorizationInput,
 } from '$lib/server/llm/oauth/anthropic'
-import { saveProviderConfig } from '$lib/server/llm/save-provider-config'
 import { anthropicApiBaseUrl } from '$lib/server/llm/oauth/anthropic'
+import { saveProviderConfig } from '$lib/server/llm/save-provider-config'
+import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 
 const PKCE_COOKIE = 'onboarding_anthropic_pkce'
 /**

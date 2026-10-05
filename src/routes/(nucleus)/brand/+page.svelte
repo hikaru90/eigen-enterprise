@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types'
-  import ActivationNotice from './ActivationNotice.svelte'
-  import StyleCard from './StyleCard.svelte'
+  import ActivationNotice from './activation-notice.svelte'
+  import StyleCard from './style-card.svelte'
 
   let { data }: { data: PageData } = $props()
 

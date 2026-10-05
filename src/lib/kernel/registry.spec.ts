@@ -1,3 +1,5 @@
+import type { ToolContext, ToolDescriptor } from './types'
+import type { VcsCommitter } from './vcs'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { InMemoryApprovalStore, StaticApprovalPolicy } from './approvals'
@@ -5,8 +7,6 @@ import { KernelError } from './errors'
 import { InMemoryEventSink } from './events'
 import { InMemoryActivationStore } from './modules'
 import { KernelRegistry } from './registry'
-import type { ToolContext, ToolDescriptor } from './types'
-import type { VcsCommitter } from './vcs'
 
 function makeCtx(overrides: Partial<ToolContext['principal']> = {}): ToolContext {
   return {

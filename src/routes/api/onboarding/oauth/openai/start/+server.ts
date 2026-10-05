@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types'
 import { json } from '@sveltejs/kit'
-import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 import { startCodexDeviceAuth } from '$lib/server/llm/oauth/openai-codex'
+import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 
 /** ChatGPT (Plus/Pro) sign-in, step 1: starts the Codex device-code flow. */
 export const POST: RequestHandler = async (event) => {

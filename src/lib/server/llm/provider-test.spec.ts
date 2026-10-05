@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ResolvedLlmConfig } from './types'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { logActivityCallMock, getDbMock } = vi.hoisted(() => ({
   logActivityCallMock: vi.fn(),

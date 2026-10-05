@@ -1,3 +1,4 @@
+import type { SQL } from 'drizzle-orm'
 import { and, asc, eq, inArray, isNotNull, or } from 'drizzle-orm'
 import { decryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import { getDb } from '$lib/server/db'
@@ -11,6 +12,10 @@ import {
   type ProjectSource,
   type ProjectStatus,
 } from '$lib/server/db/schema'
+import {
+  resolveAuthorSqlCondition,
+  type AuthorLayerSqlColumns,
+} from '$lib/server/memory/authorship'
 import { auditGtdProjectProfiles } from '$lib/server/memory/judge-gtd-project'
 import {
   countOpenTasksForProjectEntity,
@@ -19,11 +24,6 @@ import {
   thoughtStatusFromMetadata,
 } from '$lib/server/memory/project-eligibility'
 import { upsertGraphHubEntity } from '$lib/server/memory/project-entity'
-import {
-  resolveAuthorSqlCondition,
-  type AuthorLayerSqlColumns,
-} from '$lib/server/memory/authorship'
-import type { SQL } from 'drizzle-orm'
 import type { ProjectMilestoneListItem } from '$lib/server/memory/project-timeline'
 import { taskItemId } from '$lib/server/memory/temporal-event-list'
 

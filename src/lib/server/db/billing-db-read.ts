@@ -1,5 +1,5 @@
-import { billingUserAsyncLocal, tenantUserAsyncLocal } from './tenant-context'
 import { appDbAsyncLocal, appReservedSqlAsyncLocal, type AppDatabase } from './context'
+import { billingUserAsyncLocal, tenantUserAsyncLocal } from './tenant-context'
 import { activateTenantDbSession } from './tenant-session'
 
 /**

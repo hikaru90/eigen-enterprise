@@ -4,8 +4,8 @@
     type ActivitySpendBucket,
     type ActivitySpendBucketUnit,
   } from '$lib/activity/spend-chart'
-  import { totalCostUsdToCredits } from '$lib/pricing/credits'
   import * as Card from '$lib/components/ui/card'
+  import { totalCostUsdToCredits } from '$lib/pricing/credits'
 
   let {
     buckets,

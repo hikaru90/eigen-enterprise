@@ -1,5 +1,5 @@
-import type { KernelEvent } from '$lib/kernel/events'
 import { describe, expect, it } from 'vitest'
+import type { KernelEvent } from '$lib/kernel/events'
 import {
   FEED_EVENT_TYPES,
   FEED_PAYLOAD_FIELDS,

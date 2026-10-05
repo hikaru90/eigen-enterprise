@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto'
 import type { ToolContext, ToolDescriptor } from './types'
+import { randomUUID } from 'node:crypto'
 
 export type ApprovalStatus = 'pending' | 'approved' | 'denied'
 
@@ -13,7 +13,7 @@ export type ApprovalRequest = {
   decidedAt?: string
 }
 
-export interface ApprovalPolicy {
+export type ApprovalPolicy = {
   requiresApproval(tool: ToolDescriptor, ctx: ToolContext): boolean
 }
 
@@ -26,7 +26,7 @@ export class StaticApprovalPolicy implements ApprovalPolicy {
   }
 }
 
-export interface ApprovalStore {
+export type ApprovalStore = {
   create(req: ApprovalRequest): Promise<ApprovalRequest>
   decide(id: string, status: 'approved' | 'denied', decidedBy: string): Promise<ApprovalRequest>
   listPending(): Promise<ApprovalRequest[]>

@@ -11,7 +11,7 @@ export type KernelEvent = {
   payload: unknown
 }
 
-export interface EventSink {
+export type EventSink = {
   emit(event: KernelEvent): Promise<void>
 }
 

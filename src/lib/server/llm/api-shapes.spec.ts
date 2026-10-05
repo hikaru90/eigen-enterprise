@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ResolvedLlmConfig } from './types'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { getDbMock } = vi.hoisted(() => ({ getDbMock: vi.fn() }))
 vi.mock('$lib/server/db', () => ({ getDb: getDbMock }))

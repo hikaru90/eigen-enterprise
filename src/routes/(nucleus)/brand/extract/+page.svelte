@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { PageData } from './$types'
   import { resolve } from '$app/paths'
-  import ActivationNotice from '../ActivationNotice.svelte'
-  import SpecimenMini from './SpecimenMini.svelte'
+  import ActivationNotice from '../activation-notice.svelte'
+  import SpecimenMini from './specimen-mini.svelte'
 
   type Candidate = { label: string; cssVars?: Record<string, string>; error?: string }
 

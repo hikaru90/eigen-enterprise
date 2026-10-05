@@ -1,32 +1,32 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
-import { env } from '$lib/server/env/private-env'
 import { activityProviderForLlmConfig } from '$lib/server/activity/gateway-providers'
 import { logActivityCall } from '$lib/server/activity/log-call'
 import { captureServerEvent } from '$lib/server/analytics/posthog-server'
 import { decryptTenantValue, encryptTenantValue } from '$lib/server/crypto/tenant-encryption'
-import { NO_EMBEDDING_PROVIDERS, fetchProviderChatCompletion, usesApiShape } from '$lib/server/llm/api-shapes'
-import {
-  copilotChatBaseUrl,
-  fetchCopilotAccessToken,
-} from '$lib/server/llm/oauth/github-copilot'
-import { refreshAnthropicToken } from '$lib/server/llm/oauth/anthropic'
-import { refreshCodexToken } from '$lib/server/llm/oauth/openai-codex'
-import {
-  loadPlatformLlmConfig,
-  loadPlatformOpenRouterSttConfig,
-} from '$lib/server/llm/platform-llm'
-import { isByokBilling } from '$lib/server/llm/preferences'
 import { getDb, withDbUser } from '$lib/server/db'
-import { resolveBillingUserId } from '$lib/server/db/tenant-context'
 import { llmProviderConfig, llmActiveProvider } from '$lib/server/db/schema'
+import { resolveBillingUserId } from '$lib/server/db/tenant-context'
+import { env } from '$lib/server/env/private-env'
+import { NO_EMBEDDING_PROVIDERS, fetchProviderChatCompletion, usesApiShape } from '$lib/server/llm/api-shapes'
 import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
 import { gatewayReportedCostUsdForLog, type TokenUsage } from '$lib/server/llm/gateway-cost'
 import {
   assertEurouterGatewayConfigured,
   routingRuleLookupErrorMessage,
 } from '$lib/server/llm/llm-config-guard'
+import { refreshAnthropicToken } from '$lib/server/llm/oauth/anthropic'
+import {
+  copilotChatBaseUrl,
+  fetchCopilotAccessToken,
+} from '$lib/server/llm/oauth/github-copilot'
+import { refreshCodexToken } from '$lib/server/llm/oauth/openai-codex'
+import {
+  loadPlatformLlmConfig,
+  loadPlatformOpenRouterSttConfig,
+} from '$lib/server/llm/platform-llm'
+import { isByokBilling } from '$lib/server/llm/preferences'
 import { isGraphScaleQuiet } from '$lib/server/observability/graph-scale-quiet'
 import { sanitizeChatMessages } from '$lib/server/observability/strip-embeddings'
 

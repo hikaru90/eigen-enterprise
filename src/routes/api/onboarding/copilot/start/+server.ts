@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types'
 import { json } from '@sveltejs/kit'
-import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 import { startCopilotDeviceFlow } from '$lib/server/llm/oauth/github-copilot'
+import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 
 /** Starts the GitHub Copilot subscription device flow for the onboarding wizard. */
 export const POST: RequestHandler = async (event) => {

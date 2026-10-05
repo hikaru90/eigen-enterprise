@@ -1,12 +1,12 @@
-import { getDb } from '$lib/server/db'
-import { logActivityCall } from '$lib/server/activity/log-call'
 import { activityProviderForLlmConfig } from '$lib/server/activity/gateway-providers'
+import { logActivityCall } from '$lib/server/activity/log-call'
+import { getDb } from '$lib/server/db'
+import { fetchProviderChatCompletion, usesApiShape } from '$lib/server/llm/api-shapes'
 import {
   gatewayHostFromBaseUrl,
   gatewayReportedCostUsdForLog,
   resolveRoutingRuleById,
 } from '$lib/server/llm/llm-client'
-import { fetchProviderChatCompletion, usesApiShape } from '$lib/server/llm/api-shapes'
 import type { ResolvedLlmConfig } from '$lib/server/llm/types'
 
 export type ProviderTestResult =

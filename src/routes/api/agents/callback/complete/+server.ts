@@ -2,8 +2,8 @@ import type { RequestHandler } from './$types'
 import { json } from '@sveltejs/kit'
 import { completeAgentAssignment } from '$lib/server/agents/complete-assignment'
 import { resolveConnectedAgentFromCallbackToken } from '$lib/server/agents/resolve-callback'
-import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { withDbUser } from '$lib/server/db'
+import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 
 export const POST: RequestHandler = async (event) => {
   const authHeader = event.request.headers.get('authorization') ?? ''

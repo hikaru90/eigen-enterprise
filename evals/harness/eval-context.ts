@@ -1,4 +1,3 @@
-import { billingUserAsyncLocal, tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import {
   appSql,
   createScopedDrizzle,
@@ -8,6 +7,7 @@ import {
   deactivateTenantDbSession,
   type AppDatabase,
 } from '$lib/server/db'
+import { billingUserAsyncLocal, tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 
 export type WithEvalDbOptions = {
   /** Platform credits / BYOK checks and wallet debits use this user (e.g. eval operator). */

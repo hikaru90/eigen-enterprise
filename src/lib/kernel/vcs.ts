@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
-export interface VcsCommitter {
+export type VcsCommitter = {
   /**
    * Commit current working-tree changes with the given message.
    * Returns the commit hash, or null when there was nothing to commit
@@ -45,7 +45,7 @@ export class GitCommitter implements VcsCommitter {
       const output = err as { stdout?: unknown; stderr?: unknown; message?: string }
       const combined = `${String(output.stdout ?? '')}\n${String(output.stderr ?? '')}`
       if (combined.includes('nothing to commit')) return null
-      throw new Error(`git commit failed: ${output.message ?? String(err)}`)
+      throw new Error(`git commit failed: ${output.message ?? String(err)}`, { cause: err })
     }
 
     const output = `${stdout}\n${stderr}`

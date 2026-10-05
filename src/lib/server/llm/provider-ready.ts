@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
-import { env } from '$lib/server/env/private-env'
 import { getDb } from '$lib/server/db'
 import { llmActiveProvider, userPreference } from '$lib/server/db/schema'
+import { env } from '$lib/server/env/private-env'
 import { hasSavedByokLlmCredentials } from '$lib/server/llm/preferences'
 import type { LlmProviderKind } from '$lib/server/llm/types'
 

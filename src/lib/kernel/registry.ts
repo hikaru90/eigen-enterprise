@@ -1,5 +1,8 @@
-import { randomUUID } from 'node:crypto'
+import type { ActivationStore } from './modules'
+import type { AuditClass, ToolContext, ToolDescriptor } from './types'
+import type { VcsCommitter } from './vcs'
 import type { ZodType } from 'zod'
+import { randomUUID } from 'node:crypto'
 import {
   InMemoryApprovalStore,
   StaticApprovalPolicy,
@@ -9,9 +12,6 @@ import {
 import { moduleSource } from './cloudevents'
 import { KernelError } from './errors'
 import { emitKernelEvent, InMemoryEventSink, type EventSink } from './events'
-import type { ActivationStore } from './modules'
-import type { AuditClass, ToolContext, ToolDescriptor } from './types'
-import type { VcsCommitter } from './vcs'
 
 export type KernelRegistryOptions = {
   eventSink?: EventSink

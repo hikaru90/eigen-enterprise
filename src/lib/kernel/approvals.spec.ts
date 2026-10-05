@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest'
-import { InMemoryApprovalStore, newApprovalRequest, StaticApprovalPolicy } from './approvals'
 import type { ToolContext, ToolDescriptor } from './types'
+import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { InMemoryApprovalStore, newApprovalRequest, StaticApprovalPolicy } from './approvals'
 
 function fakeTool(name: string): ToolDescriptor {
   return {

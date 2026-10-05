@@ -1,9 +1,9 @@
 import { eq } from 'drizzle-orm'
-import { env } from '$lib/server/env/private-env'
 import { withBillingUserDbRead } from '$lib/server/db/billing-db-read'
 import { llmActiveProvider } from '$lib/server/db/schema'
-import { assertEurouterGatewayConfigured } from '$lib/server/llm/llm-config-guard'
+import { env } from '$lib/server/env/private-env'
 import { LlmNotConfiguredError } from '$lib/server/llm/errors'
+import { assertEurouterGatewayConfigured } from '$lib/server/llm/llm-config-guard'
 import type { LlmProviderKind, ResolvedLlmConfig } from '$lib/server/llm/types'
 
 /**

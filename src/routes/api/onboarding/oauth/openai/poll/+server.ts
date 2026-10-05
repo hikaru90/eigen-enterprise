@@ -3,13 +3,13 @@ import { json } from '@sveltejs/kit'
 import { eq } from 'drizzle-orm'
 import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
-import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 import {
   codexBaseUrl,
   exchangeCodexAuthorizationCode,
   pollCodexDeviceAuthOnce,
 } from '$lib/server/llm/oauth/openai-codex'
 import { saveProviderConfig } from '$lib/server/llm/save-provider-config'
+import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 
 type Body = {
   deviceAuthId?: unknown

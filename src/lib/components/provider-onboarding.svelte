@@ -1,7 +1,7 @@
 <script lang="ts">
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
-  import { invalidateAll } from '$app/navigation'
   import { onMount } from 'svelte'
+  import { invalidateAll } from '$app/navigation'
 
   let { byokUiEnabled = true }: { byokUiEnabled?: boolean } = $props()
 

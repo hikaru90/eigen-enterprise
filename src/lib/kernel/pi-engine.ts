@@ -1,5 +1,5 @@
-import type { KernelEvent } from './events'
 import type { EngineContext } from './engine'
+import type { KernelEvent } from './events'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { KERNEL_EVENT_SOURCE } from './cloudevents'

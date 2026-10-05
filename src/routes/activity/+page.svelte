@@ -10,10 +10,10 @@
     utcDateKey,
     type ActivitySpendBucket,
   } from '$lib/activity/spend-chart'
-  import { formatActivityCredits } from '$lib/pricing/credits'
   import AiDateRangePicker from '$lib/components/ai-date-range-picker.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
+  import { formatActivityCredits } from '$lib/pricing/credits'
   import ActivitySpendChart from './activity-spend-chart.svelte'
 
   type ActivityFeedItem = {
