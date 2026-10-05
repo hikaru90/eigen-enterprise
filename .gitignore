@@ -54,3 +54,7 @@ opencode.json
 
 # Claude skills & local credentials (never commit)
 .claude/
+
+# company-os generated
+company-os/.svelte-kit/
+company-os/node_modules/

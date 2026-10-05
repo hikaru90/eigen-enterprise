@@ -2,6 +2,113 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-21 — STRATEGIC PIVOT: the wedge. Owner verdict + wedge docs captured + phase-wedge opened (M0 shipped)
+
+**Owner verdict on the existing build**: "very opinionated, bloated and not what i wanted." The kernel/brand direction built elaborate machinery while the actual product — describe your company → running on your own VPS in 10 minutes — doesn't exist. All new work executes the wedge docs instead.
+
+**Captured verbatim into plan/**: `the-wedge.md` (strategy), `first-conversation.md` (the P0–P5 day-one flow), `claim.md` ("Own your company. Don't rent it."), `ideas.md` (WebMCP entry), `company-os-architecture.md` (v0.1 target architecture).
+
+**Opened `plan/phase-wedge.md`** — the thin-slice execution plan: agent harness (minimal tool registry), website module (conversation-generated, git-stored, SvelteKit-rendered), one-command deploy, memory + owlery wired. Decisions of record W1–W8 (fresh minimal build at `company-os/` with zero imports from the existing app; Postgres only, no Redis/BullMQ; minimal fail-loud LLM client; website = git repo of content+theme; never-invent enforced structurally; SSE streaming; single owner token; memory = plain table until size demands more).
+
+**Parked (not deleted)**: phase-2b/2c/2d/3 and everything built under them (kernel machinery, brand pipeline, visual editor, 81-migration schema, 4k-test suite). The existing app stays green and untouched; `company-os/` extracts to its own repo when it warrants one.
+
+**M0 SHIPPED — harness core** (`company-os/`): streaming LLM client (OpenAI-compatible, env-required fail-loud `COMPANY_OS_LLM_*`), JSON-schema tool registry with loud parse errors, reasoning loop (reason → tool → observe, loud max-steps failure), all DI-seamed for tests without network/env. Vitest suite green. Commits: see git log on `company-os/` paths.
+
+**Decision log**: this entry IS the architecture-impact decision record for the pivot; details in phase-wedge.md §2. AGENTS.md repo-map update deferred until the slice proves out (owner's call).
+
+**Next**: M1 session+memory persistence (Postgres + resume), then M2 first-conversation P0/P1.
+
+---
+
+## 2026-09-10 — FIX: /brand 403 (owner had no admin role) + activation notice BEFORE the wizard/judge start (`f261d98`, direct orchestrator fix)
+
+**Owner hit on first use**: `/brand` → 403. Two stacked causes: (1) the owner's Better Auth row had role `'user'` — `requireAdmin` hard-failed; fixed as **dev-DB data** (`update "user" set role='admin'`, the `create-admin.mjs` equivalent — no code change). (2) `kernel_module_activations` had no `brand` row — even as admin, every `brand.*` tool would throw `module_inactive`.
+- **Owner directive**: don't fail — inform. `/brand` and `/brand/extract` now probe `brandModuleState()` on load and render **`ActivationNotice`** ("The branding module is inactive — activating it enables … approval-gated: confirm here, then approve `kernel.module_activate` in the orchestrator chat") instead of the wizard.
+- **`POST /api/brand/activate`** (admin-only) → `kernel.module_activate {module_id:'brand'}` through the registry: first call → `approval_required` → UI shows "approve in the orchestrator chat"; retry after the conversational yes → activated → `invalidateAll()` loads the real surface. Self-seeded kernel module makes this reachable while `brand` is inactive (no bootstrap deadlock).
+- **Gates: brand+routes+lib 36 files / 502 tests green; check 0 errors; lint clean (import sort auto-fixed).**
+- **Follow-up on record**: first-signup admin policy (single-tenant: first human should presumably be owner/admin by construction instead of needing `create-admin.mjs`) — owner's call, not silently decided.
+
+---
+
+## 2026-09-09 — Phase-2d M6+M7 SHIPPED — PHASE COMPLETE: visual editor + tree navigation (`8f3755e`/`51e6c77` on wt/brand-visual, ff-merged; delegated subagents, orchestrator verified 493 brand-suite tests + merged; worktree pruned)
+
+**Shipped** (migration **0081** applied)
+- **M6 editor** (`/brand/editor/[setId]`): full specimen canvas (nav/hero/cards/form/pricing/footer, flexbox, cssVars-driven, light/dark) + token panel — seed controls (color picker + oklch numerics, curves, shape, elevation, motion, grain) re-expand deterministically via `reseed.ts applySeedEdit` with **owner pins surviving every re-expansion** (V3: pins beat re-expansion; `pins jsonb`, migration 0081; clear-pin re-flows from expansion, seedless drafts throw loud); click-element → driving-token highlight via the static `drivers.ts` registry; writes through draft-only `brand.visual_set_update` (human-only).
+- **M7 tree navigation** (last priority, V7): precomputed k-NN descent per card ("Similar →" pivot drawer), clickable breadcrumb trail, cluster **tunnel links** from build-time `clusterAdjacency` (centroid-ranked, ≤3, in index.json); `fromNumericVector` inverse added to vector.ts so centroid distances decode back to styles; `brand.corpus_similar` read tool + `/api/brand/corpus/similar`. Pure lookups — zero runtime compute/LLM.
+- **Gates: full unit 4149 passed / 5 skipped; brand suite 34 files / 493 tests green in worktree AND re-verified in main tree post-merge; check 0 errors; lint clean in touched files.**
+
+**Decisions**
+- Culori ambient d.ts extended per its own header rule (`formatHex`) — culori ships no types.
+- Pin keys: bare var names for light, `dark:` prefix for dark; every direct cssVars/dark patch write pins in the same tool call.
+- Adjacency symmetry asserted exactly while clusters ≤ k+1 (true today: 3 clusters); asymmetry beyond that is documented by-design.
+- Phase-2d M1–M7 all merged; **worktree `../ee-brand-visual` + branch `wt/brand-visual` pruned** (recreate with `git worktree add ../ee-brand-visual -b wt/brand-visual` if follow-ups demand a stream).
+
+**The complete owner loop (all surfaces nucleus/admin):** `/brand/extract` — paste URL → 3 candidate extractions/round → judge closest → accept → corpus item → `node modules/brand/corpus/ingest-tier1.mjs` + `npx vitest run modules/brand/corpus/build.spec.ts` to reindex → `/brand` — pick ≥3 style cards (k-NN pivots + tunnels optional) → top-3 matches → working draft → `/brand/editor/<setId>` — tune seeds/resolved values with pins → `brand.visual_set_activate` → approve in chatbox → **brand applies to the whole app**, hero + shader included. `BRAND_EXTRACT_MODEL` env required for extraction (loud if unset).
+
+**What's next (owner's call)**: extraction-driven corpus growth in the wild (clusters will multiply past 3 — tunnels get interesting); LLM cluster naming (logged follow-up, replaces deterministic "<centroid member> family" names); phase-2c M3–M5 voice pipeline (unchanged, orthogonal); optional editor UX pass (drawer width/breadcrumb depth).
+
+---
+
+## 2026-09-09 — Phase-2d M4+M5 SHIPPED: selection wizard + approval-gated go-live with global token application (`999b8a6`/`e894ffd`→`4e9c519`/`439a556` on wt/brand-visual, ff-merged; delegated subagents, orchestrator verified + merged)
+
+**Shipped** (migration **0080** applied to dev DB)
+- **M4 selection wizard**: `/brand` (nucleus) — corpus as cluster-grouped card grid (`StyleCard` scoped per item), picks accumulate (≥3 unlocks matches), `selection/match.ts` = weighted centroid of picked vectors → top-3 nearest (pure math, zero LLM, V7), "Use this design" → **working draft** in `brand_visual_sets` (draft/active/retired, one-active partial unique index, `source_item_id` by uuid — no FK, corpus is in-repo per V2). Tools: `brand.corpus_list/get`, `brand.selection_matches`, `brand.visual_set_create/get/list`.
+- **M5 publish/apply**: `brand.visual_set_activate` **approval-gated** (APPROVAL_REQUIRED_TOOLS; halts as pending approval, second call after approval releases — set_activate pattern); activation guards = 16 required visual roles (loud gap list) + draft-only + **retire-previous** (order dictated by 0080's partial unique index). Consumption: root `+layout.server.ts` reads active set → `+layout.svelte` emits **unlayered** `:root`/`.dark` override (beats `@layer base` regardless of injection order) → **applies to the whole app**; `/s/[slug]` hero (h1 color, WaterFlow tints) is now token-driven. `style-format/tint.ts grayscaleTint`: chromatic brands project onto the L axis (c→0) so the shader's monochrome invariant stays intact while tints stay brand-derived.
+- **Hotfix `439a556`**: `corpus/mapping.mjs` → typed `mapping.ts` — the rebrand stream's `modules/**` svelte-check include pulled the plain-JS module into the check program (42 implicit-any errors); `ingest-tier1.mjs` now imports the TS module directly (node ≥22.18 native type stripping, fail-loud guard). check back to 0 errors.
+- **Integration**: orchestrated commit `fe9819a` landed the rebrand stream's then-uncommitted water-flow hero work on main (byte-identical to the branch's vendored copies — zero loss); rebase conflict in `s/[slug]/+page.svelte` resolved in favor of the M5 token-driven supersession (verified strict superset of the hardcoded version).
+- **Gates: worktree 35 files / 433 tests green (brand+routes+s/[slug]); full suite 4061 passed in M5 verification; check 0 errors; main tree re-verified 433/433 post-merge after `npm install` synced node_modules with the merged package.json.**
+
+**Broke / lessons**
+- **Main-tree node_modules lagged the merged package.json** (culori/daisyui) → 12 spec files failed at collection in the main tree while green in the worktree. Rule: after every stream merge, `npm install` in the main tree before trusting gate runs.
+- M5's check ran pre-rebase; the rebase delivered the svelte.config include that exposed `mapping.mjs` — post-rebase gates are now run by the orchestrator on EVERY merged milestone (both incidents caught exactly there).
+
+**Decisions**
+- Unlayered override block beats `@layer base` by cascade construction, not injection order — documented at the injection site.
+- `brand.selection_matches` is pure-read (no human-only guard); `visual_set_create` backfills seeds from the source corpus item (V3 resolved-tokens-alongside-seeds).
+- Reverting a live brand = activating another draft (retirement is only ever a side effect of new go-live).
+
+**Next — M6 editor (wt/brand-visual)**: specimen canvas + token panel (seed controls where seeds exist, resolved always, light/dark) + click-element→token-highlight, writing the draft via `brand.visual_set_update`. M7 (tree navigation) after.
+
+---
+
+## 2026-09-09 — Phase-2d M3 SHIPPED: corpus assembly — 83 formalized styles + deterministic similarity index (`beee859` on wt/brand-visual, ff-merged; delegated subagent, orchestrator verified 144 new tests + merged)
+
+**Shipped** (109 files, +13,965 lines)
+- **Similarity math** (`style-format/vector.ts` + `fonts.ts`): 48-dim style vectors from cssVars (10 core colors → OKLCH, radius/density, font categorical matrix, dark delta), weighted `styleDistance` (color ≈.45 / shape-density ≈.25 / type ≈.2 / effects ≈.1), symmetric, deterministic.
+- **Tier-1 ingest** (`corpus/ingest-tier1.mjs` + pure `mapping.mjs`): 35 daisyUI v5 themes + 36 tweakcn presets → shadcn-role corpus items (mapping table in report/commit; OFL font substitutes pinned; seeds derived best-effort, cssVars remain vector source of truth). Owner-run, loud, skippable per source.
+- **12 hand-authored archetype seed files** (brutalist → blueprint-constructivist), expanded through `expandSeeds()` at build time.
+- **Build-through-vitest** (`corpus/build.spec.ts`): validates every item, computes vectors + k-NN(8) + agglomerative clusters (threshold 0.35, min 3) → `corpus/index.json`; deterministic, byte-stable on no-op rebuilds. **83 items, 3 clusters** (11/56/16 — light/dark divide dominates at v0 threshold).
+- **Gates: 3979 unit passed / 0 failed (544 files); check 0 errors; lint clean in modules/brand.**
+
+**Decisions**
+- Item ids = pinned-namespace uuid v5 (schema demands UUIDs); slug survives as filename.
+- Color normalization reference constant (0.1) added — without it the cluster threshold can never separate light-theme families.
+- Cluster naming v0 = deterministic "<most-central member> family"; LLM naming logged as follow-up (keeps the build fully offline).
+- Build runs through vitest (plain node can't import the pure TS modules; vite-node is broken for CLI in this repo) — one implementation, zero toolchain hacks.
+- Only 3 clusters at v0 threshold: expected for a daisyUI/tweakcn-weighted corpus; threshold + corpus growth (M2 extraction loop!) are the levers.
+
+**Next — M4 selection wizard** (`wt/brand-visual`): `brand_visual_sets` migration (draft/active/retired, one active), `brand.corpus_list/get` + centroid-matches tools, cluster-grid wizard UI → working draft.
+
+---
+
+## 2026-09-09 — Phase-2d M1+M2 SHIPPED: canonical style format + design-system extraction with owner judge loop (`ea6bc2a`/`3eab46c`/`9228dc6` on wt/brand-visual, rebased onto main after governance+BYOK commits, ff-merged `9228dc6`; implementation delegated to subagents in `../ee-brand-visual`, orchestrator reviewed + verified gates + merged)
+
+**Shipped** (46 files, +4050 lines; migration **0079** applied to dev DB)
+- **Canonical style format** (`modules/brand/style-format/`): zod seed schema (~18 params per plan V3) + pure `expandSeeds()` — OKLCH 12-step ramps (culori, Radix step semantics → shadcn roles), invert-tone dark scheme, Utopia clamp() fluid type/space scales, shape/radius tables, elevation shadow recipes, motion token pairs, feTurbulence grain — plus deterministic CSS emitter and the corpus-item type. Golden snapshot tests pin `expand(seed) === tokens.json`.
+- **Extraction pipeline** (`modules/brand/extract/`): SSRF-guarded Playwright capture (computed-style facts + screenshot), facts digest, **3-candidate propose** (Color-led/Type-led/Structure-led lenses, temps 0.4/0.7/1.0) through the gateway, store (sessions/rounds/verdicts + `brand_corpus_staging`), export script → `modules/brand/corpus/<id>.json`.
+- **5 kernel tools** (`brand.extract_start/propose/judge/accept/session_get` — human-only guards per 2c D5, no new approval gates since staging ≠ publish) + owner API routes (`requireAdmin` idiom → registry.execute) + nucleus judge UI `/brand/extract` (specimen cards vs live screenshot, closest/retry/accept).
+- **Gates: brand+routes 271 passed; post-rebase brand+routes+llm 512 passed; full unit 3917 passed / 14 skipped; check 0 errors (warnings = pre-existing baseline); lint 0 findings in touched files.**
+
+**Decisions**
+- **Deviation from plan V3, on record**: CSS emission is an **in-repo deterministic emitter**, not Style Dictionary v4 — our token surface is fixed and snapshot-tested; SD adds indirection with no multi-platform consumer today. Revisit if iOS/Android targets appear.
+- **`llmChatCompletion` gained an additive optional `modelOverride`** (wins over routing, never defaults) — enables the dedicated extraction model identity per D2: **`BRAND_EXTRACT_MODEL` env, unset fails loud at call time**.
+- Judge loop = convergence-by-selection (owner picks closest of 3; verdicts stored as judged pairs for future fine-tuning feedback), exactly the owner's "3 variants → I judge → next round" shape.
+- Parallel-session commits (governance, BYOK) landed mid-stream; rebase was clean, 512 post-rebase tests verified before merge.
+
+**Next — M3 corpus assembly in `wt/brand-visual` (worktree kept)**: Tier-1 ingest (daisyUI/tweakcn/shadcn themes → corpus items, human-validated) + hand-authored archetypes; deterministic vector/k-NN/cluster build script (OKLCH ΔE weighted vectors, build-time LLM cluster naming) → `modules/brand/corpus/index.json`.
+
+---
+
 ## 2026-09-09 — FIX: chat LLM calls now resolve the human's provider config (`2408c92`)
 
 **Owner hit on dogfood**: chatbox failed loud with "Platform EUrouter not configured: set LLM_BASE_URL" despite configured OpenRouter BYOK. Root cause: the harness engine attributed LLM calls to `ctx.agent.id` ('orchestrator' principal) — llmChatCompletion found no provider row for that id and fell back to platform env. Identity mismatch between harness principal ids and llm-client user ids, introduced by the chatbox→harness wiring.
