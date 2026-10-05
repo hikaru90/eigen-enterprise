@@ -15,7 +15,7 @@ export type LoopEvent =
 	| { type: 'tool_result'; call: ToolCall; result: string; isError: boolean }
 	| { type: 'finish'; reason: 'completed'; messages: ChatMessage[] };
 
-export interface LoopOptions<C extends ToolContext = ToolContext> {
+export type LoopOptions<C extends ToolContext = ToolContext> = {
 	client: LlmClient;
 	registry: ToolRegistry<C>;
 	ctx: C;

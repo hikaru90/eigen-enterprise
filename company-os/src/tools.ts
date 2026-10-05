@@ -7,9 +7,9 @@ import type { ApiTool, ToolCall } from './llm.ts';
 
 /** Per-call context threaded through tool execution (identity, stores, …). */
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface ToolContext {}
+export type ToolContext = {}
 
-export interface ToolDef<C extends ToolContext = ToolContext> {
+export type ToolDef<C extends ToolContext = ToolContext> = {
 	name: string;
 	description: string;
 	/** JSON schema, type "object". */

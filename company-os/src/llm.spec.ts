@@ -1,6 +1,6 @@
+import type { Transport } from './llm.ts';
 import { describe, expect, it } from 'vitest';
 import { llmConfigFromEnv, LlmClient } from './llm.ts';
-import type { Transport } from './llm.ts';
 
 async function drain<T>(gen: AsyncIterable<T>): Promise<T[]> {
 	const out: T[] = [];

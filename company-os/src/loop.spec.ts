@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { runLoop } from './loop.ts';
-import type { LoopEvent } from './loop.ts';
-import { LlmClient } from './llm.ts';
 import type { ChatMessage, ChatParams, StreamEvent } from './llm.ts';
-import { ToolRegistry } from './tools.ts';
+import type { LoopEvent } from './loop.ts';
 import type { ToolContext } from './tools.ts';
+import { describe, expect, it } from 'vitest';
+import { LlmClient } from './llm.ts';
+import { runLoop } from './loop.ts';
+import { ToolRegistry } from './tools.ts';
 
 /** Scripted client: yields prepared stream events per call, records params. */
 class FakeClient {

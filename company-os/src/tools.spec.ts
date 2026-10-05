@@ -1,6 +1,6 @@
+import type { ToolContext, ToolDef } from './tools.ts';
 import { describe, expect, it } from 'vitest';
 import { ToolError, ToolRegistry } from './tools.ts';
-import type { ToolContext, ToolDef } from './tools.ts';
 
 const ctx: ToolContext = {};
 

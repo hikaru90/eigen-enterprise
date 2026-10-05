@@ -2,6 +2,23 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-21 — M1 SHIPPED — session + memory persistence with resume (company-os)
+
+**Shipped**: `agent_sessions`/`agent_messages` (every message persisted, seq-ordered, tool_calls as jsonb) + append-only `company_memory` (latest-wins reads — "nothing is lost, ever") via migration `company-os/migrations/0001_init.sql`; dead-simple own migration runner (`src/migrate.ts`, filename order, `schema_migrations` tracking, transactional, loud); `PgSessionStore`/`PgMemoryStore` + explicit in-memory test doubles (DI, never silent fallbacks); `resumeContext()` — "You were setting up <company> — where were we?" data assembly (phrasing belongs to M2's conversation policy).
+
+**Gates: 38/38 vitest green (7 Postgres-backed against a dedicated `company_os_test` DB on the dev cluster), tsc --noEmit clean.** PG suites skip loudly without `COMPANY_OS_TEST_DATABASE_URL`.
+
+**Broke / lessons**
+- **postgres.js delivers jsonb as a raw string on this setup** — `rowToMessage` now accepts parsed-or-string and parses defensively.
+- **The dev cluster preloads Apache AGE** (`shared_preload_libraries=age`), whose hook breaks `DROP TABLE` in any DB without `ag_catalog` (CREATE/TRUNCATE unaffected). Test DB recreated from `template0`; tests reset via TRUNCATE/DELETE, never DROP. Documented in `company-os/README.md`.
+- In-memory session double needed a monotonic touch counter — ISO timestamps tie within a millisecond and `latestOpen` ordering went flaky.
+
+**Decisions**: sessions/messages/memory shaped exactly for the P0–P5 flow (append-only, resume-first); jsonb defensive parsing over driver config archaeology; `postgres@^3.4.9` pinned to match the ecosystem.
+
+**Next**: M2 — first-conversation P0/P1: arrival health check (real substrate probe, honest failures) + the 7-question interrogation policy (≤7, one per turn, choices-over-blanks, skip rules, answers → memory).
+
+---
+
 ## 2026-09-21 — STRATEGIC PIVOT: the wedge. Owner verdict + wedge docs captured + phase-wedge opened (M0 shipped)
 
 **Owner verdict on the existing build**: "very opinionated, bloated and not what i wanted." The kernel/brand direction built elaborate machinery while the actual product — describe your company → running on your own VPS in 10 minutes — doesn't exist. All new work executes the wedge docs instead.

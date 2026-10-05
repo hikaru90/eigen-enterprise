@@ -6,13 +6,13 @@
  * Tests inject a transport explicitly — never a silent fallback.
  */
 
-export interface ToolCall {
+export type ToolCall = {
 	id: string;
 	type: 'function';
 	function: { name: string; arguments: string };
 }
 
-export interface ChatMessage {
+export type ChatMessage = {
 	role: 'system' | 'user' | 'assistant' | 'tool';
 	content: string | null;
 	tool_calls?: ToolCall[];
@@ -20,12 +20,12 @@ export interface ChatMessage {
 }
 
 /** Tool schema as sent to the LLM API (JSON-schema parameters). */
-export interface ApiTool {
+export type ApiTool = {
 	type: 'function';
 	function: { name: string; description: string; parameters: Record<string, unknown> };
 }
 
-export interface LlmConfig {
+export type LlmConfig = {
 	baseUrl: string;
 	apiKey: string;
 	model: string;
@@ -58,7 +58,7 @@ export type StreamEvent =
 	| { type: 'tool_calls'; toolCalls: ToolCall[] }
 	| { type: 'finish'; finishReason: string | null };
 
-export interface ChatParams {
+export type ChatParams = {
 	messages: ChatMessage[];
 	tools?: ApiTool[];
 	temperature?: number;
@@ -66,7 +66,7 @@ export interface ChatParams {
 
 export type Transport = (url: string, init: RequestInit) => Promise<Response>;
 
-interface StreamChunk {
+type StreamChunk = {
 	choices?: Array<{
 		delta?: {
 			content?: string | null;
@@ -112,7 +112,7 @@ export class LlmClient {
 				body: JSON.stringify(body)
 			});
 		} catch (cause) {
-			throw new Error(`LLM request to ${url} failed: ${(cause as Error).message}`);
+			throw new Error(`LLM request to ${url} failed: ${(cause as Error).message}`, { cause });
 		}
 
 		if (!response.ok) {
@@ -135,7 +135,7 @@ export class LlmClient {
 			try {
 				chunk = JSON.parse(data) as StreamChunk;
 			} catch (cause) {
-				throw new Error(`LLM stream sent invalid JSON: ${data.slice(0, 200)} (${(cause as Error).message})`);
+				throw new Error(`LLM stream sent invalid JSON: ${data.slice(0, 200)} (${(cause as Error).message})`, { cause });
 			}
 			const choice = chunk.choices?.[0];
 			if (!choice) continue;
