@@ -15,6 +15,7 @@
   import ProviderOnboarding from '$lib/components/provider-onboarding.svelte'
   import { Button } from '$lib/components/ui/button'
   import VoiceInputButton from '$lib/components/voice-input-button.svelte'
+  import WelcomeWizard from '$lib/components/welcome-wizard.svelte'
   import {
     assistantTurnFromResponse,
     failedTurn,
@@ -158,7 +159,14 @@
 </script>
 
 <div class="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-4">
-  {#if data.needsOnboarding}
+  {#if data.showWelcome}
+    <!-- First open: the tour leads; the provider step inside it stays a hard gate. -->
+    <WelcomeWizard
+      providerReady={!data.needsOnboarding}
+      byokUiEnabled={data.byokUiEnabled}
+    />
+  {:else if data.needsOnboarding}
+    <!-- Returning user whose tour is done but provider vanished: the connect gate again. -->
     <ProviderOnboarding byokUiEnabled={data.byokUiEnabled} />
   {:else}
   <header class="flex justify-center pt-6">

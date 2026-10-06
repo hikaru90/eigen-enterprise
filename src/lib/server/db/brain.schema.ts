@@ -575,6 +575,8 @@ export const userPreference = pgTable(
     lastDailySummaryLocalDate: text('last_daily_summary_local_date'),
     /** Set when the most recent dispatch attempt failed; cleared on successful delivery. */
     lastDailySummaryDispatchError: text('last_daily_summary_dispatch_error'),
+    /** Set when the welcome setup wizard on `/` was completed or skipped — the tour never nags again. */
+    welcomeCompletedAt: timestamp('welcome_completed_at'),
     updatedAt: timestamp('updated_at')
       .defaultNow()
       .$onUpdate(() => new Date())

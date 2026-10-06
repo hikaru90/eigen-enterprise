@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { authDbMock, isUserProviderReadyMock, isByokUiEnabledMock } = vi.hoisted(() => ({
+const { authDbMock, getDbMock, isUserProviderReadyMock, isByokUiEnabledMock } = vi.hoisted(() => ({
   authDbMock: {},
+  getDbMock: vi.fn(),
   isUserProviderReadyMock: vi.fn(),
   isByokUiEnabledMock: vi.fn(),
 }))
 
 vi.mock('$lib/server/db/auth-db', () => ({ authDb: authDbMock }))
+vi.mock('$lib/server/db', () => ({ getDb: getDbMock }))
 vi.mock('$lib/server/llm/provider-ready', () => ({
   isUserProviderReady: isUserProviderReadyMock,
 }))
@@ -28,6 +30,7 @@ describe('nucleus page server load', () => {
     vi.clearAllMocks()
     isByokUiEnabledMock.mockReturnValue(true)
     authDbMock.select = () => selectChain({ accountKind: 'production', onboardingCompleted: false })
+    getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: null }))
   })
 
   it('redirects unauthenticated users to login', async () => {
@@ -42,23 +45,61 @@ describe('nucleus page server load', () => {
 
     const result = await load({ locals: { user: { id: 'u1' } } } as never)
 
-    expect(result).toEqual({ needsOnboarding: true, byokUiEnabled: true })
+    expect(result).toEqual({
+      needsOnboarding: true,
+      showWelcome: true,
+      byokUiEnabled: true,
+    })
   })
 
-  it('goes straight to the chat when a provider works', async () => {
+  it('offers the welcome wizard when a provider works but the tour is not done', async () => {
     isUserProviderReadyMock.mockResolvedValue(true)
 
     const result = await load({ locals: { user: { id: 'u1' } } } as never)
 
-    expect(result).toEqual({ needsOnboarding: false, byokUiEnabled: true })
+    expect(result).toEqual({
+      needsOnboarding: false,
+      showWelcome: true,
+      byokUiEnabled: true,
+    })
   })
 
-  it('never gates harness accounts', async () => {
+  it('goes straight to the chat when the tour is done and a provider works', async () => {
+    isUserProviderReadyMock.mockResolvedValue(true)
+    getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date('2026-09-22T10:00:00Z') }))
+
+    const result = await load({ locals: { user: { id: 'u1' } } } as never)
+
+    expect(result).toEqual({
+      needsOnboarding: false,
+      showWelcome: false,
+      byokUiEnabled: true,
+    })
+  })
+
+  it('keeps the provider gate when the tour is done but the provider vanished', async () => {
+    isUserProviderReadyMock.mockResolvedValue(false)
+    getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date('2026-09-22T10:00:00Z') }))
+
+    const result = await load({ locals: { user: { id: 'u1' } } } as never)
+
+    expect(result).toEqual({
+      needsOnboarding: true,
+      showWelcome: false,
+      byokUiEnabled: true,
+    })
+  })
+
+  it('never gates harness accounts — no wizard, no tour', async () => {
     authDbMock.select = () => selectChain({ accountKind: 'harness', onboardingCompleted: true })
     isUserProviderReadyMock.mockResolvedValue(false)
 
     const result = await load({ locals: { user: { id: 'u1' } } } as never)
 
-    expect(result).toEqual({ needsOnboarding: false, byokUiEnabled: true })
+    expect(result).toEqual({
+      needsOnboarding: false,
+      showWelcome: false,
+      byokUiEnabled: true,
+    })
   })
 })

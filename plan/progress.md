@@ -2,6 +2,61 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-22 — Phase-1e SHIPPED — welcome setup wizard: the whole system, not just the provider
+
+**Owner directive (verbatim)**: "I WANT A SETUP WIZARD THAT GUIDES THROUGH THE SETUP! THE USER
+DOES NOT KNOW WHAT THIS IS, WHAT THE SYSTEM CAN DO AND WHAT THEY WANT." Root cause: the only
+first-run surface was the provider wizard (phase-1d/2a), gated on `providerReady` — a user
+whose provider works (platform credits / env BYOK) logged in to a bare "What do you need?"
+chatbox with zero explanation of the product.
+
+**Shipped**
+- **Welcome setup wizard on `/`** (`src/lib/components/welcome-wizard.svelte`, nucleus design
+  language): ① What this is (plain words: one private AI for your company, on your server,
+  remembers, acts only with approval) → ② What it can do (six capability cards: Nucleus chat,
+  Capture, Memory, Knowledge graph, Brand studio, API keys) → ③ Connect the AI (reuses
+  `<ProviderOnboarding>` inline when no provider works — still a hard gate, no skip;
+  "Connected" card when ready) → ④ "What do you want to do first?" (Start with the chat /
+  Capture / Memory / Brand / Graph — destination buttons complete the tour then navigate).
+  Skippable at every step except ③-unconnected.
+- **Gate**: `(nucleus)/+page.server.ts` returns `showWelcome = !harness &&
+  user_preference.welcome_completed_at IS NULL`. Page precedence: welcome wizard → provider
+  wizard (returning user, vanished provider) → chat.
+- **Persistence**: migration `0082_welcome_onboarding.sql` (+journal, +brain.schema.ts) adds
+  `user_preference.welcome_completed_at`; `POST /api/onboarding/welcome` (auth 401, idempotent
+  upsert via `completeWelcomeOnboarding`, fails loud).
+- **Fixed pre-existing e2e breakage**: onboarding specs hardcoded mock-gateway port 5191 while
+  playwright.config starts it on `MOCK_GATEWAY_PORT ?? 5199` — the real 1-token `test-provider`
+  dry-run failed on main. Specs now derive the port from env like the config does.
+
+**Gates: 4166/4166 vitest unit (558 files), 30/30 component, e2e onboarding-provider 6/6 +
+onboarding-welcome 3/3 (new suite: first-screen walk → chat; skip persists across
+sign-out/sign-in, provider gate still holds; destination cards navigate), svelte-check 0
+errors, lint clean on touched files, production build green. Migration applied to dev DB.**
+
+**Decisions (log)**
+- New `welcome_completed_at` on `user_preference` instead of reusing `user.onboarding_completed`
+  (that flag means "provider onboarding done", is only set by saveProviderConfig, and platform-
+  credit users never hit it). A fresh flag also makes the tour appear for existing accounts —
+  exactly what the owner asked to see.
+- The tour is skippable; the provider step inside it is not (phase-1d "no provider, no product"
+  stands where it belongs). Skipping with no provider lands on the provider gate — verified e2e.
+- The provider wizard is embedded, not duplicated: one credential flow to maintain.
+
+**Broke / lessons**: SSR buttons click before Svelte hydration attaches handlers — e2e must
+retry-until-advanced (new `continueToStep`, same discipline as `fillCaptureComposer`). An API
+completion of a UI gate must reload the open page — `page.request.post` does not refresh
+already-rendered load data.
+
+**Known stale (pre-existing, not this phase)**: `release.e2e.ts` / `projects-assign-task.e2e.ts`
+still expect the removed `/capture` onboarding overlay on `/` — they predate phase-1d and need
+a rewrite for the current surface.
+
+**Next**: owner reloads `/` and walks the wizard (their account has `welcome_completed_at`
+NULL — it shows). Then the settings fold-in pass (catalog providers manageable only via
+onboarding) or phase-3 per roadmap.
+
+---
 ## 2026-09-21 — M2c — THE FOUNDER SURFACE: guided UI + provider setup in the browser (`edcb59f`)
 
 **Owner directive (verbatim)**: "no, i wont touch the env. this is not good. its fine for devs, but does not work for normal people. i want to get guided through this in a ui as a user." The chat surface (was M6) and provider onboarding moved to NOW — the first conversation is the product.

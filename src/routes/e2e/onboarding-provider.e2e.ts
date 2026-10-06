@@ -13,7 +13,8 @@ import { registerUser } from './test-helpers'
  * All external provider calls resolve against scripts/mock-gateway.mjs via env overrides.
  */
 
-const GATEWAY_BASE_URL = 'http://127.0.0.1:5191/v1'
+// Must match the mock gateway port playwright's webServer starts (playwright.config.ts).
+const GATEWAY_BASE_URL = `http://127.0.0.1:${process.env.MOCK_GATEWAY_PORT ?? 5199}/v1`
 
 async function expectChatVisible(page: Page): Promise<void> {
   await expect(page.getByPlaceholder('What do you need?')).toBeVisible({ timeout: 15_000 })
@@ -32,6 +33,16 @@ async function postJson(page: Page, path: string, data: unknown): Promise<{ stat
 
 const CHAT_MODEL = 'mock-chat-model'
 const EMBED_MODEL = 'mock-embed-model'
+
+/** Phase-1e: the welcome tour gates `/` for production users — finish it via the API
+ * when the test's subject is the provider wizard, not the tour. */
+async function completeWelcomeViaApi(page: Page): Promise<void> {
+  const done = await postJson(page, '/api/onboarding/welcome', {})
+  expect(done.status).toBe(200)
+  expect(done.body.ok).toBe(true)
+  // The open page rendered before the flag flipped — reload so the load re-runs.
+  await page.goto('/')
+}
 
 async function saveApiKeyViaApi(page: Page, provider = 'openrouter'): Promise<void> {
   const test = await postJson(page, '/api/onboarding/test-provider', {
@@ -69,6 +80,7 @@ test.describe('nucleus first-run onboarding', () => {
     context,
   }) => {
     await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
+    await completeWelcomeViaApi(page)
     await expectWizardVisible(page)
 
     // Subscription method → provider → explicit model → device flow, via the server
@@ -106,6 +118,7 @@ test.describe('nucleus first-run onboarding', () => {
     context,
   }) => {
     await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
+    await completeWelcomeViaApi(page)
     await expectWizardVisible(page)
 
     const authorize = await postJson(page, '/api/onboarding/oauth/anthropic/authorize', {})
@@ -136,6 +149,7 @@ test.describe('nucleus first-run onboarding', () => {
     context,
   }) => {
     await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
+    await completeWelcomeViaApi(page)
     await expectWizardVisible(page)
 
     const start = await postJson(page, '/api/onboarding/oauth/openai/start', {})
@@ -171,6 +185,7 @@ test.describe('nucleus first-run onboarding', () => {
     context,
   }) => {
     await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
+    await completeWelcomeViaApi(page)
     await expectWizardVisible(page)
 
     // Dry-run connection test proves the credentials against the mock gateway.
@@ -204,6 +219,7 @@ test.describe('nucleus first-run onboarding', () => {
 
   test('once credentials exist the wizard never comes back', async ({ page, context }) => {
     await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
+    await completeWelcomeViaApi(page)
 
     await saveApiKeyViaApi(page)
 

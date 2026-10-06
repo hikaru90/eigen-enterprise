@@ -575,6 +575,13 @@
       "when": 1760200000004,
       "tag": "0081_brand_visual_set_pins",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1760200000005,
+      "tag": "0082_welcome_onboarding",
+      "breakpoints": true
     }
   ]
 }

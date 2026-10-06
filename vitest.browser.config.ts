@@ -65,6 +65,7 @@ export default defineConfig({
       'src/lib/components/smoke.svelte.spec.ts',
       'src/lib/components/capture-onboarding-overlay.svelte.spec.ts',
       'src/lib/components/provider-onboarding.svelte.spec.ts',
+      'src/lib/components/welcome-wizard.svelte.spec.ts',
       'modules/brand/water-flow.svelte.spec.ts',
     ],
     exclude: ['src/routes/demo/playwright/**/*.ts', '**/*.e2e.ts'],

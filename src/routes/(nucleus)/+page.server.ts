@@ -1,8 +1,10 @@
 import type { PageServerLoad } from './$types'
 import { redirect } from '@sveltejs/kit'
 import { eq } from 'drizzle-orm'
+import { getDb } from '$lib/server/db'
 import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
+import { userPreference } from '$lib/server/db/schema'
 import { isUserProviderReady } from '$lib/server/llm/provider-ready'
 import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 
@@ -21,10 +23,23 @@ export const load: PageServerLoad = async (event) => {
   const isHarness = authUser?.accountKind === 'harness'
   const providerReady = await isUserProviderReady(userId)
 
+  // Welcome tour gate: shown until the user finishes (or skips) it once. Harness
+  // accounts exist for automated verification — they never see product surfaces.
+  let showWelcome = false
+  if (!isHarness) {
+    const [pref] = await getDb()
+      .select({ welcomeCompletedAt: userPreference.welcomeCompletedAt })
+      .from(userPreference)
+      .where(eq(userPreference.userId, userId))
+      .limit(1)
+    showWelcome = pref?.welcomeCompletedAt == null
+  }
+
   return {
     // First-run gate: without a working provider there is no product — the page IS the
     // setup wizard. Harness accounts bypass (they exist for automated verification).
     needsOnboarding: !isHarness && !providerReady,
+    showWelcome,
     byokUiEnabled: isByokUiEnabled(),
   }
 }
