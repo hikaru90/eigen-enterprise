@@ -58,3 +58,4 @@ opencode.json
 # company-os generated
 company-os/.svelte-kit/
 company-os/node_modules/
+company-os/build/

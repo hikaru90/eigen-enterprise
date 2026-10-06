@@ -4,7 +4,7 @@
  * (first-conversation.md design rule 2).
  */
 
-import type { LoopEvent } from '../loop.ts';
+import type { LoopEvent } from '../lib/server/loop.ts';
 
 /** One tool call → zero or more printable progress lines. */
 export function renderEvent(event: LoopEvent, prev: LoopEvent | null): string[] {

@@ -7,17 +7,17 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import readline from 'node:readline';
-import { connect, databaseUrlFromEnv } from '../db.ts';
-import { migrate } from '../migrate.ts';
-import { llmConfigFromEnv, LlmClient } from '../llm.ts';
-import { PgMemoryStore } from '../memory.ts';
-import { PgSessionStore } from '../session.ts';
-import { gitProbe, migrationsProbe, postgresProbe } from '../substrate.ts';
-import { resumeContext } from '../resume.ts';
-import { openSession, runTurn } from '../conversation/turn.ts';
-import type { ConversationDeps } from '../conversation/turn.ts';
+import { connect, databaseUrlFromEnv } from '../lib/server/db.ts';
+import { migrate } from '../lib/server/migrate.ts';
+import { llmConfigFromEnv, LlmClient } from '../lib/server/llm.ts';
+import { PgMemoryStore } from '../lib/server/memory.ts';
+import { PgSessionStore } from '../lib/server/session.ts';
+import { gitProbe, migrationsProbe, postgresProbe } from '../lib/server/substrate.ts';
+import { resumeContext } from '../lib/server/resume.ts';
+import { openSession, runTurn } from '../lib/server/conversation/turn.ts';
+import type { ConversationDeps } from '../lib/server/conversation/turn.ts';
 import { renderEvent } from './render.ts';
-import type { LoopEvent } from '../loop.ts';
+import type { LoopEvent } from '../lib/server/loop.ts';
 
 const MIGRATIONS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../migrations');
 

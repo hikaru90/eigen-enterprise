@@ -8,7 +8,7 @@ import { migrate } from './migrate.ts';
 import { resumeContext } from './resume.ts';
 import { PgSessionStore } from './session.ts';
 
-const MIGRATIONS_DIR = path.resolve(import.meta.dirname, '../migrations');
+const MIGRATIONS_DIR = path.resolve(import.meta.dirname, '../../../migrations');
 
 describe('databaseUrlFromEnv', () => {
 	it('fails loud naming the variable', () => {
