@@ -2,6 +2,53 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-21 — M2c — THE FOUNDER SURFACE: guided UI + provider setup in the browser (`edcb59f`)
+
+**Owner directive (verbatim)**: "no, i wont touch the env. this is not good. its fine for devs, but does not work for normal people. i want to get guided through this in a ui as a user." The chat surface (was M6) and provider onboarding moved to NOW — the first conversation is the product.
+
+**Shipped**
+- **company-os is now a SvelteKit app** (architecture doc's shell): engine under `src/lib/server/`, adapter-node, `npm run dev` → browser.
+- **Guided provider setup**: first open without a configured key → setup screen (presets: OpenRouter / OpenAI / custom OpenAI-compatible). The key is verified with a REAL request — failures surface the provider's exact error (verified live: OpenRouter 401 came back verbatim) — then stored in **the founder's own database** (migration `0002_provider_config`, single row). `resolveLlmConfig`: DB → env (dev) → null = setup screen. A missing key is a surface, never a silent fallback.
+- **Chat UI**: arrival + interrogation as bubbles; streamed answers; named progress lines ("→ save_answer / ✓ saved"); questions emphasized; choices numbered; resume on reload. The process state stays server-side — the client renders events honestly.
+- Routes: `POST /api/session` (setup gate → arrival/resume), `POST /api/provider` (verify+save), `POST /api/turn` (SSE loop events).
+
+**Verified end-to-end** with a local mock LLM (OpenAI-compatible SSE): setup gate → key stored → arrival renders → founder answer → `save_answer` persisted to memory → next question delivered — all through the real HTTP surface. **Gates: 71/71 vitest (incl. PG), svelte-check 0 errors, production build green.**
+
+**Decisions**
+- Key in DB plaintext (single-tenant, their server, their DB) — KMS-style encryption deliberately deferred; revisit at deploy hardening.
+- `npm run dev` reads `company-os/.env` (gitignored, local-only DB URL — created openly, no secrets); `.env.example` documents the one runtime var.
+- The CLI (`npm run chat`) stays as the dev/headless path.
+
+**Broke / lessons**: routes can't have arbitrary exports (SvelteKit); `process.env` isn't populated from `.env` in dev — routes use `$env/dynamic/private`; the provider-setup route needs stores BEFORE a config exists (`coreStores` split from `buildRuntime`); `build/` output committed twice now — gitignore discipline for generated dirs, same class as `.svelte-kit`.
+
+**Next**: M3 — the website module: `module.json`, template + tokens, generate-from-answers-only, git repo per site, commit per render, preview in the UI (P2/P3 — the reveal moment).
+
+---
+
+## 2026-09-21 — M2b — THE PROCESS DRIVES: code-owned agenda after the first live run failed (`5243dfd`)
+
+**Owner feedback (verbatim, on record)**: after a live conversation the founder had to push — generic greeting, the model skipped to Q4 (tone) on its own, then offered to *invent a company name*, and the founder was left asking "and now?". **Directive: "i can't push the ai to do the thinking for me, it has to proactively guide me through a process."** Root cause: M2 made the LLM own the process (a rules document), which is exactly backwards.
+
+**Shipped**
+- **Code owns the agenda** (`src/conversation/plan.ts`): the QUESTION_PLAN is a sequence; `processState(memory)` computes phase + the single next required key; injected into every turn as a PROCESS STATE system message (recomputed from memory every turn — never persisted, so resume is always exact).
+- **Drift enforcement**: a turn ending without the required question gets ONE bounded correction, then the engine fails loud (`refusing to drift`) — silent agenda loss is impossible.
+- **Agenda-key enforcement, live**: `ask_question` now requires the agenda's key, validated against `processState` recomputed from memory at enforcement time (so a mid-turn save moves the agenda correctly: answer Q1 → Q2 becomes deliverable within the same turn). Off-agenda questions, skipping ahead, stalling, and post-completion questions all fail at the tool door.
+- **`mark_not_needed`**: the conditional site.language slot resolves by agent decision with a reason (LLM decides meaning, code persists — guardrail-compliant).
+- **Chat CLI** (`src/cli/chat.ts`, `npm run chat`): the first conversation in the terminal — real substrate probes, streaming with named progress lines, resume on start. Render logic pure + tested (`render.ts`).
+
+**Broke / lessons**
+- `openSession` double-fed the persisted prefix into the loop (tests passed via slicing luck) — runTurnLoop now reads the persisted session, no additions param.
+- FakeClient recorded params **by reference** — the loop's working-copy mutations leaked into recorded calls; snapshot at call time.
+- Node strip-types rejects constructor parameter properties — explicit field declarations (llm/memory/session).
+- The .env LLM_* values are EMPTY strings in this environment (the OpenRouter key lives in the app's BYOK DB) — the live CLI smoke needs `COMPANY_OS_LLM_*` env from the owner; everything else is test-covered.
+- The external lint watcher reformats mid-session; verify-on-disk is now standard practice (caught twice this milestone).
+
+**Decisions**: agenda = single source of truth (memory) evaluated live at enforcement, not frozen per turn; corrections persist across attempts in the loop input so the transcript stays API-valid; `requireQuestion=false` only for a broken-substrate arrival (the honest failure IS the turn).
+
+**Next**: M3 — website module: `module.json`, template + tokens, generate-from-answers-only, git repo per site, commit per render, preview (P2/P3).
+
+---
+
 ## 2026-09-21 — M2 SHIPPED — first conversation P0/P1: arrival check + interrogation engine (company-os)
 
 **Shipped**
