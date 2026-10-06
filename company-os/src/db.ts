@@ -18,5 +18,8 @@ export function databaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): string
 }
 
 export function connect(url: string): Sql {
-	return postgres(url);
+	return postgres(url, {
+		// `create table if not exists` notices are expected in the migrate path — noise otherwise
+		onnotice: () => {}
+	});
 }

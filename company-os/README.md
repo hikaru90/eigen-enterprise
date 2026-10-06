@@ -20,6 +20,7 @@ Governed by `../plan/phase-wedge.md` (decisions W1–W8). Self-contained package
 npm install
 npm test          # vitest (in-memory suites always; PG suites when COMPANY_OS_TEST_DATABASE_URL is set)
 npm run typecheck # tsc --noEmit
+npm run chat      # the first conversation in your terminal (requires LLM + DB env above)
 ```
 
 ## Layout

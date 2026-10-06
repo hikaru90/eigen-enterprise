@@ -100,7 +100,11 @@ type SessionRow = {
 }
 
 export class PgSessionStore implements SessionStore {
-	constructor(private readonly sql: Sql) {}
+	private readonly sql: Sql;
+
+	constructor(sql: Sql) {
+		this.sql = sql;
+	}
 
 	async create(): Promise<SessionRecord> {
 		const rows = await this.sql`

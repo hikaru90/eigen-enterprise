@@ -10,12 +10,18 @@ import { resumeContext } from '../resume.ts';
 function depsWith(
 	turns: StreamEvent[][],
 	overrides: Partial<ConversationDeps> = {}
-): { deps: ConversationDeps; sessions: InMemorySessionStore; memory: InMemoryMemoryStore } {
+): {
+	deps: ConversationDeps;
+	sessions: InMemorySessionStore;
+	memory: InMemoryMemoryStore;
+	client: FakeClient;
+} {
 	const sessions = new InMemorySessionStore();
 	const memory = new InMemoryMemoryStore();
+	const client = new FakeClient(turns);
 	return {
 		deps: {
-			client: new FakeClient(turns) as unknown as ConversationDeps['client'],
+			client: client as unknown as ConversationDeps['client'],
 			sessions,
 			memory,
 			substrateProbes: [
@@ -25,13 +31,14 @@ function depsWith(
 			...overrides
 		},
 		sessions,
-		memory
+		memory,
+		client
 	};
 }
 
 const greetAndAsk = (question: string): StreamEvent[] => [
 	text('Your OS is running. '),
-	toolCall('q1', 'ask_question', { question }),
+	toolCall('q1', 'ask_question', { key: 'company.name', question }),
 	finishToolCalls
 ];
 
@@ -87,7 +94,7 @@ describe('runTurn (P1 interrogation)', () => {
 			[
 				text('Noted. '),
 				toolCall('s1', 'save_answer', { key: 'company.name', value: 'Hafenlicht Studio' }),
-				toolCall('q2', 'ask_question', { question: 'Who is it for?' }),
+				toolCall('q2', 'ask_question', { key: 'company.audience', question: 'Who is it for?' }),
 				finishToolCalls
 			]
 		]);
@@ -117,7 +124,7 @@ describe('runTurn (P1 interrogation)', () => {
 			greetAndAsk('What is your company called?'),
 			[
 				toolCall('s1', 'save_answer', { key: 'company.name', value: 'Hafenlicht' }),
-				toolCall('q2', 'ask_question', { question: 'Who is it for?' }),
+				toolCall('q2', 'ask_question', { key: 'company.audience', question: 'Who is it for?' }),
 				finishToolCalls
 			]
 		]);
@@ -136,7 +143,7 @@ describe('runTurn (P1 interrogation)', () => {
 		const { deps, sessions } = depsWith([
 			greetAndAsk('What is your company called?'),
 			[
-				toolCall('q2', 'ask_question', { question: 'Who is it for?' }),
+				toolCall('q2', 'ask_question', { key: 'company.audience', question: 'Who is it for?' }),
 				toolCall('x2', 'save_answer', { key: 'company.audience', value: 'invented audience' }),
 				finishToolCalls
 			]
@@ -155,6 +162,57 @@ describe('runTurn (P1 interrogation)', () => {
 		expect(latest.find((e) => e.key === 'company.audience')).toBeUndefined();
 	});
 
+});
+
+describe('the process drives — drift enforcement', () => {
+	it('a model that ends its turn without the next question gets corrected once, then delivers', async () => {
+		const { deps, client } = depsWith([
+			greetAndAsk('What is your company called?'),
+			[text('Great, thanks!'), finishStop], // drift: no question, hands agenda back
+			[toolCall('q1b', 'ask_question', { key: 'company.name', question: 'What is your company called?' }), finishToolCalls]
+		]);
+		const opened = await openSession(deps);
+		const events = await runTurn(deps, opened.sessionId, 'hello there');
+
+		expect(events.at(-1)).toMatchObject({ type: 'finish', reason: 'awaiting_user' });
+		// the correction reached the model on attempt 2
+		const attempt2Input = client.calls.at(-1)!.messages;
+		expect(attempt2Input.some((m) => m.content?.includes('You ended your turn without delivering the next question'))).toBe(true);
+		expect(attempt2Input.some((m) => m.content?.includes('"company.name"'))).toBe(true);
+	});
+
+	it('a model that drifts twice fails loud — no silent agenda loss', async () => {
+		const drift: StreamEvent[] = [text('Great, thanks!'), finishStop];
+		const { deps } = depsWith([
+			greetAndAsk('What is your company called?'),
+			drift,
+			drift
+		]);
+		const opened = await openSession(deps);
+		await expect(runTurn(deps, opened.sessionId, 'hello')).rejects.toThrowError(/refusing to drift/);
+	});
+
+	it('every turn carries the code-generated PROCESS STATE as its agenda', async () => {
+		const { deps, client } = depsWith([
+			greetAndAsk('What is your company called?'),
+			[toolCall('s1', 'save_answer', { key: 'company.name', value: 'Hafenlicht' }),
+			 toolCall('q2', 'ask_question', { key: 'company.audience', question: 'Who is it for?' }),
+			 finishToolCalls]
+		]);
+		const opened = await openSession(deps);
+		await runTurn(deps, opened.sessionId, 'Hafenlicht');
+
+		const lastCall = client.calls.at(-1)!;
+		const stateMessage = lastCall.messages.at(-1)!.content ?? '';
+		expect(stateMessage).toContain('PROCESS STATE');
+		// agenda is turn-start state: company.name still required (the save happens mid-turn),
+		// and the live re-check after the save is what lets the model deliver audience
+		expect(stateMessage).toContain('"company.name"');
+		// the state message is agenda, never persisted (needle unique to processStateMessage —
+		// the policy prompt legitimately mentions "PROCESS STATE" too)
+		const session = await deps.sessions.get(opened.sessionId);
+		expect(session!.messages.some((m) => m.content?.includes('The next required question is'))).toBe(false);
+	});
 });
 
 describe('maxSteps guard in conversation', () => {

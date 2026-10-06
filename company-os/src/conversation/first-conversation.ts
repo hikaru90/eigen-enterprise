@@ -9,6 +9,7 @@
 import type { ToolContext, ToolDef } from '../tools.ts';
 import { ToolError } from '../tools.ts';
 import type { MemoryStore } from '../memory.ts';
+import { processState } from './plan.ts';
 
 /** The fixed answer vocabulary — each key feeds the website module directly. */
 export const CONVERSATION_KEYS = [
@@ -33,6 +34,31 @@ export const QUESTION_BUDGET = CONVERSATION_KEYS.length;
 
 export interface FirstConversationContext extends ToolContext {
 	memory: MemoryStore;
+}
+
+/**
+ * Structural agenda enforcement, evaluated LIVE from memory: after the model
+ * saved the founder's answer mid-turn, the next required question is already
+ * the new one. The model cannot ask off-agenda, cannot skip ahead, cannot
+ * stall on an earlier question, and cannot ask anything once the interview
+ * is complete.
+ */
+async function enforceAgenda(
+	key: ConversationKey,
+	ctx: FirstConversationContext,
+	tool: string
+): Promise<void> {
+	const live = await processState(ctx.memory);
+	if (live.phase === 'ready_to_render') {
+		throw new ToolError(
+			`${tool}: no question is required now — the interview is complete. End the turn with plain text.`
+		);
+	}
+	if (key !== live.next?.key) {
+		throw new ToolError(
+			`${tool}: the agenda requires "${live.next?.key}" next — you asked for "${key}". Deliver exactly the required question.`
+		);
+	}
 }
 
 async function distinctAnsweredKeys(memory: MemoryStore): Promise<Set<string>> {
@@ -119,17 +145,22 @@ export function firstConversationTools(): Array<ToolDef<FirstConversationContext
 		{
 			name: 'ask_question',
 			description:
-				'Ask the founder ONE question and end the turn. Never ask two questions in one turn — that is a form, and forms are what we are against.',
+				'Ask the founder ONE question and end the turn. The key must be the agenda\'s next key from PROCESS STATE. Never ask two questions in one turn — that is a form, and forms are what we are against.',
 			parameters: {
 				type: 'object',
-				properties: { question: { type: 'string' } },
-				required: ['question']
+				properties: {
+					key: { type: 'string', enum: [...CONVERSATION_KEYS] },
+					question: { type: 'string' }
+				},
+				required: ['key', 'question']
 			},
 			haltsTurn: true,
-			async execute(rawArgs) {
-				const args = rawArgs as { question?: unknown };
+			async execute(rawArgs, ctx) {
+				const args = rawArgs as { key?: unknown; question?: unknown };
+				validateKey(args.key);
+				await enforceAgenda(args.key, ctx, 'ask_question');
 				const question = requireNonEmptyString(args.question, 'ask_question: question');
-				return { asked: question, turn_ends: true };
+				return { asked: question, key: args.key, turn_ends: true };
 			}
 		},
 		{
@@ -152,9 +183,10 @@ export function firstConversationTools(): Array<ToolDef<FirstConversationContext
 				required: ['key', 'options', 'question']
 			},
 			haltsTurn: true,
-			async execute(rawArgs) {
+			async execute(rawArgs, ctx) {
 				const args = rawArgs as { key?: unknown; options?: unknown; question?: unknown };
 				validateKey(args.key);
+				await enforceAgenda(args.key, ctx, 'offer_choices');
 				const question = requireNonEmptyString(args.question, 'offer_choices: question');
 				if (
 					!Array.isArray(args.options) ||
@@ -172,31 +204,46 @@ export function firstConversationTools(): Array<ToolDef<FirstConversationContext
 					turn_ends: true
 				};
 			}
+		},
+		{
+			name: 'mark_not_needed',
+			description:
+				'Record that a conditional question does not apply (e.g. site.language is unambiguous from the conversation). Requires a reason. This is a process decision, not a founder answer.',
+			parameters: {
+				type: 'object',
+				properties: {
+					key: { type: 'string', enum: [...CONVERSATION_KEYS] },
+					reason: { type: 'string' }
+				},
+				required: ['key', 'reason']
+			},
+			async execute(rawArgs, ctx) {
+				const args = rawArgs as { key?: unknown; reason?: unknown };
+				validateKey(args.key);
+				const reason = requireNonEmptyString(args.reason, 'mark_not_needed: reason');
+				await ctx.memory.remember({ kind: 'skip', key: args.key, value: reason, source: 'agent' });
+				return { marked: args.key, reason };
+			}
 		}
 	];
 }
 
-export const FIRST_CONVERSATION_SYSTEM_PROMPT = `You are the founding agent of a company OS. The founder just deployed their own server — they own everything here. Your job right now is the first conversation: confirm the substrate is alive, then gather the raw material of their company. This conversation is the product. Co-found, don't process.
+export const FIRST_CONVERSATION_SYSTEM_PROMPT = `You are the founding agent of a company OS. The founder just deployed their own server — they own everything here. A code process drives this conversation and you are its voice: the founder never has to push you. Before every turn you receive PROCESS STATE (code-generated, authoritative). It is the agenda. You follow it.
 
-## Substrate honesty
-A code check just ran and its report is in the transcript. Report its results exactly as given: name what is broken and give the fix command it lists. Never claim readiness the report does not show, never soften a failure, never fake a checkmark.
+## Your job each turn
+1. If the founder's message contains an answer, persist it immediately with save_answer — their words, verbatim where possible.
+2. End your turn by delivering the NEXT step from PROCESS STATE: ask_question for the required question, or offer_choices when they don't know. The question itself is delivered by the tool — keep any prose before it to one short line.
+3. If PROCESS STATE says ready_to_render: no question. Tell the founder their company is saved and the interview is complete; the website build comes next. Plain text, end of turn.
 
-## Interrogation rules
-- Maximum 7 questions (plus one conditional: site.language, ONLY if the founder's language is ambiguous — then ask explicitly "Should the site be in German or English?").
-- ONE question per turn. Every turn of yours ends with exactly one ask_question or offer_choices call. Two questions in one turn is a form; forms are what we are against.
-- The questions, in this order:
-  1. company.name — what is your company called, and what do you do in one sentence?
-  2. company.audience — who is it for?
-  3. company.cta — what should a visitor do first: book, buy, or write?
-  4. company.tone — show me tone: paste an old email or post, or give 3 adjectives.
-  5. company.differentiator — what makes you different? One sentence, their words.
-  6. company.assets — anything to show: logo, photos, links? (skippable)
-  7. site.domain — a domain in mind? (can be deferred)
-- Persist every answer immediately with save_answer, using exactly those keys. Persist skips with skip_question.
-- NEVER invent content. Every sentence of the eventual website must trace to something the founder said. If an answer is thin, ask a better question — do not fabricate.
-- "Don't know" is a valid answer: reply with offer_choices — exactly 2 concrete options derived from their other answers. A choice, not a blank page.
+## Hard rules
+- NEVER invent. No company names, no taglines, no facts, no sections, no tasks beyond this process. Every sentence of the eventual website must trace to something the founder said.
+- NEVER ask "what do you want to do?", "where were we?", or anything that hands the agenda back to the founder. You always know the next step — it is in PROCESS STATE.
+- The substrate report (session start) is code-generated. Report failures exactly, with their fix command. Never claim readiness it does not show.
+- company.assets and site.domain are skippable: if the founder waves them off, record skip_question and move on. Skipped things become visibly placeholders — never inventions.
+- site.language is conditional: at the language_check step, ask it explicitly ("Should the site be in German or English?") unless the conversation language is unambiguous — then mark_not_needed with the reason.
+- "Don't know" is a valid answer: offer_choices with exactly 2 concrete options derived from their other answers. A choice, not a blank page.
 - The founder's language is the site's language.
-- If the founder says "whatever you think": make ALL decisions yourself, mark them as yours, and offer one review pass at the end. Never bounce the question back.
+- If the founder says "whatever you think": decide everything yourself, mark decisions as yours, offer one review pass at the end. Never bounce the question back.
 
-## Arrival (only at session start)
-If the substrate report shows every check ok, open with: that the OS is running, what you checked, then ask question 1. Warm, brief, no menus, no dashboard, no feature tour.`;
+## Arrival (session start)
+If the substrate report is all green: say the OS is running and what you checked, then immediately deliver question 1 (company.name). Warm, brief, no menus, no dashboard, no feature tour. If anything failed: say exactly what is broken and give the fix command. Do not ask any question.`

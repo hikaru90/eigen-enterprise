@@ -23,6 +23,7 @@ describe('first conversation tools', () => {
 	it('exposes exactly the conversation vocabulary', () => {
 		expect(Object.keys(tools).sort()).toEqual([
 			'ask_question',
+			'mark_not_needed',
 			'offer_choices',
 			'save_answer',
 			'skip_question'
@@ -89,8 +90,27 @@ describe('first conversation tools', () => {
 		expect(latest[0]).toMatchObject({ kind: 'skip', key: 'site.domain' });
 	});
 
+	it('mark_not_needed records a process decision with the agent as source', async () => {
+		const { ctx, memory } = ctxWith([]);
+		await tools['mark_not_needed']!.execute(
+			{ key: 'site.language', reason: 'conversation is entirely German' },
+			ctx
+		);
+		const latest = await memory.latest();
+		expect(latest[0]).toMatchObject({
+			kind: 'skip',
+			key: 'site.language',
+			source: 'agent',
+			value: 'conversation is entirely German'
+		});
+	});
+
 	it('offer_choices demands exactly 2 distinct non-empty options', async () => {
-		const { ctx } = ctxWith([]);
+		// seed the agenda up to company.cta so enforcement lets this key through
+		const { ctx } = ctxWith([
+			{ kind: 'answer', key: 'company.name', value: 'v' },
+			{ kind: 'answer', key: 'company.audience', value: 'v' }
+		]);
 		await expect(
 			tools['offer_choices']!.execute(
 				{ key: 'company.cta', options: ['only one'], question: 'q' },

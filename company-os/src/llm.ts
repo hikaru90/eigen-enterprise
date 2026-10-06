@@ -81,10 +81,13 @@ type StreamChunk = {
 }
 
 export class LlmClient {
-	constructor(
-		private readonly config: LlmConfig,
-		private readonly transport: Transport = fetch
-	) {}
+	private readonly config: LlmConfig;
+	private readonly transport: Transport;
+
+	constructor(config: LlmConfig, transport: Transport = fetch) {
+		this.config = config;
+		this.transport = transport;
+	}
 
 	get model(): string {
 		return this.config.model;

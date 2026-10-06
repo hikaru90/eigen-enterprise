@@ -66,7 +66,11 @@ export class InMemoryMemoryStore implements MemoryStore {
 }
 
 export class PgMemoryStore implements MemoryStore {
-	constructor(private readonly sql: Sql) {}
+	private readonly sql: Sql;
+
+	constructor(sql: Sql) {
+		this.sql = sql;
+	}
 
 	async remember(input: MemoryInput): Promise<MemoryEntry> {
 		const rows = await this.sql<MemoryRow[]>`

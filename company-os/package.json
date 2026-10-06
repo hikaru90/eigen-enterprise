@@ -10,7 +10,8 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "chat": "node --experimental-strip-types src/cli/chat.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

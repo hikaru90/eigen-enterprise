@@ -10,7 +10,8 @@ export class FakeClient {
 	}
 
 	async *stream(params: ChatParams): AsyncGenerator<StreamEvent> {
-		this.calls.push(params);
+		// snapshot: the loop mutates its working copy of messages during the turn
+		this.calls.push({ ...params, messages: [...params.messages] });
 		const turn = this.turns.shift();
 		if (!turn) throw new Error('FakeClient ran out of scripted turns');
 		for (const event of turn) yield event;
