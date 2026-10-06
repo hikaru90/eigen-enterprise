@@ -13,7 +13,7 @@ export type LoopEvent =
 	| { type: 'assistant_message'; message: ChatMessage }
 	| { type: 'tool_call'; call: ToolCall }
 	| { type: 'tool_result'; call: ToolCall; result: string; isError: boolean }
-	| { type: 'finish'; reason: 'completed'; messages: ChatMessage[] };
+	| { type: 'finish'; reason: 'completed' | 'awaiting_user'; messages: ChatMessage[] };
 
 export type LoopOptions<C extends ToolContext = ToolContext> = {
 	client: LlmClient;
@@ -33,6 +33,8 @@ export async function* runLoop<C extends ToolContext = ToolContext>(
 ): AsyncGenerator<LoopEvent> {
 	const maxSteps = opts.maxSteps ?? DEFAULT_MAX_STEPS;
 	const messages = [...opts.messages];
+	let halted = false;
+	let haltedByName = '';
 
 	for (let step = 0; step < maxSteps; step++) {
 		let text = '';
@@ -63,6 +65,14 @@ export async function* runLoop<C extends ToolContext = ToolContext>(
 		}
 
 		for (const call of pendingCalls) {
+			if (halted) {
+				// The turn already ended; keep the transcript API-valid by recording
+				// the skip as the observation — it also teaches the model the rule.
+				const skipped = `NOT EXECUTED: the turn already ended with "${haltedByName}" — one question per turn.`;
+				messages.push({ role: 'tool', tool_call_id: call.id, content: skipped });
+				yield { type: 'tool_result', call, result: skipped, isError: true };
+				continue;
+			}
 			yield { type: 'tool_call', call };
 			let result: string;
 			let isError = false;
@@ -75,6 +85,16 @@ export async function* runLoop<C extends ToolContext = ToolContext>(
 			}
 			messages.push({ role: 'tool', tool_call_id: call.id, content: result });
 			yield { type: 'tool_result', call, result, isError };
+			const def = opts.registry.definition(call.function.name);
+			if (def?.haltsTurn) {
+				halted = true;
+				haltedByName = def.name;
+			}
+		}
+
+		if (halted) {
+			yield { type: 'finish', reason: 'awaiting_user', messages };
+			return;
 		}
 	}
 

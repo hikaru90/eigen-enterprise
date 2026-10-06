@@ -2,6 +2,28 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-21 — M2 SHIPPED — first conversation P0/P1: arrival check + interrogation engine (company-os)
+
+**Shipped**
+- **P0 arrival**: `src/substrate.ts` — injectable probe runner + real probes (postgres reachable, migrations applied, git available). Report is code-generated and authoritative; a failing probe lands in the transcript with its fix command. The LLM may only phrase it, never fake it.
+- **P1 interrogation**: `src/conversation/first-conversation.ts` — the policy prompt (7 questions in order, one-per-turn, never-invent, choices-over-blanks, skip rules, undecisive-founder rule, founder's language = site's language) + fixed answer vocabulary (`company.name/audience/cta/tone/differentiator/assets`, `site.domain`, `site.language`).
+- **Structural enforcement** (code, not prompt advice): `ask_question`/`offer_choices` are **halting tools** — the loop ends the turn when they execute; a second tool call in the same round gets a NOT EXECUTED observation (transcript stays API-valid, model learns the rule). `save_answer`/`skip_question` validate the key vocabulary and non-empty values at the door (the never-invent gate) and enforce the question budget on distinct keys.
+- **Turn runner**: `src/conversation/turn.ts` — `openSession` (P0) and `runTurn` (persist founder message → loop → persist generated messages; a crash loses nothing said).
+
+**Gates: 55/55 vitest green (incl. PG-backed), tsc --noEmit clean.**
+
+**Decisions**
+- Question budget = 8 distinct keys (7 questions + conditional site.language per Q2.5); M8 eval still measures ≤7 asked. Re-answering an existing key is never budget-limited.
+- All tool `execute`s are async (uniform await path through the registry — a sync throw escapes `expect().rejects` and any caller's try/catch asymmetry).
+- Halting-tool results keep the transcript OpenAI-valid (every tool_call gets a tool result, executed or NOT EXECUTED).
+
+**Broke / lessons**
+- The external lint watcher reformats files mid-session (interfaces → type aliases, naming-case renames); verify-on-disk after every edit now — two of this milestone's test failures were spec-vs-disk drift, one was a genuine sync/async throw bug caught by that verification.
+
+**Next**: M3 — website module: dead-simple `module.json`, template with tokens, generation from answers only, git commit per render, preview + silent reveal (P2/P3).
+
+---
+
 ## 2026-09-21 — M1 SHIPPED — session + memory persistence with resume (company-os)
 
 **Shipped**: `agent_sessions`/`agent_messages` (every message persisted, seq-ordered, tool_calls as jsonb) + append-only `company_memory` (latest-wins reads — "nothing is lost, ever") via migration `company-os/migrations/0001_init.sql`; dead-simple own migration runner (`src/migrate.ts`, filename order, `schema_migrations` tracking, transactional, loud); `PgSessionStore`/`PgMemoryStore` + explicit in-memory test doubles (DI, never silent fallbacks); `resumeContext()` — "You were setting up <company> — where were we?" data assembly (phrasing belongs to M2's conversation policy).

@@ -15,6 +15,10 @@ export type ToolDef<C extends ToolContext = ToolContext> = {
 	/** JSON schema, type "object". */
 	parameters: Record<string, unknown>;
 	execute(args: unknown, ctx: C): Promise<unknown> | unknown;
+	/** When true, executing this tool ends the assistant turn (e.g. ask_question —
+	 * one question per turn, the founder answers next). The loop must not call the
+	 * model again within the same turn. */
+	haltsTurn?: boolean;
 }
 
 export class ToolError extends Error {}
@@ -36,6 +40,10 @@ export class ToolRegistry<C extends ToolContext = ToolContext> {
 
 	has(name: string): boolean {
 		return this.tools.has(name);
+	}
+
+	definition(name: string): ToolDef<C> | null {
+		return this.tools.get(name) ?? null;
 	}
 
 	names(): string[] {
