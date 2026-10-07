@@ -2,6 +2,116 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-22 — Onboarding owns the founding interview; homepage settings cog
+
+**Owner report (verbatim)**: chat asked "which three words should describe your company's tone of
+voice?" in response to "what api are you using?" — "this is wrong and should be part of the
+onboarding. and we need a settings cogscrew icon on the homepage where we have the option to set
+api keys, change settings and restart onboarding etc"
+
+**Shipped**
+- **Chat can no longer ask onboarding questions.** The orchestrator persona's proactive journey
+  seed ("ask this question, word for word" when a request looks founding-shaped) is gone — that
+  LLM judgment is what leaked the tone-of-voice question into ordinary chat. Journeys are now
+  opened ONLY by onboarding; `JourneyAwareAgentRuntime` is a pure passthrough with no active
+  journey (regression-pinned in brain.spec / brain.journey.spec / agent-journey-contract.spec).
+  `JourneySpec.openingQuestion` removed from the kernel primitive (dead protocol marker).
+- **Founding interview moved into the welcome wizard** (new step 4 of 5, "Tell me about your
+  company."): tone (3 words) / company name / one-sentence positioning. Blank = skip, nothing
+  recorded. `POST /api/onboarding/founding` records the answers as a fully-captured
+  website-founding journey and executes its artifacts through the kernel registry
+  (`executeStepArtifacts` — extracted from the driver, shared semantics): creates brand doc +
+  home/about/contact skeletons; publishes hit the owner-approval gate → 'approval_pending',
+  journey stays active and retries on later chat turns (unchanged driver behavior). Re-submit
+  overwrites answers and retries gated publishes; a completed founding → 409 ("already exists,
+  ask the assistant") via a deterministic list_pages pre-check (no error-string sniffing).
+- **Homepage settings cog** (`home-settings-menu.svelte`, always rendered in every homepage
+  state — chat, wizard, provider gate): API Keys → /api-keys, AI provider → /settings/llm,
+  Settings → /settings, and **Restart onboarding** → new `POST /api/onboarding/welcome/reset`
+  (clears `welcomeCompletedAt`) + invalidateAll → the wizard takes over the homepage again.
+
+**Gates: unit 561 files / 4180 tests green; svelte-check 0 errors; components 34 green
+(incl. 11 wizard + 4 menu); e2e onboarding-welcome 4/4 (new cog-restart journey),
+onboarding-provider 6/6 (clean port), auth 9/10.**
+
+**Broke / flags**
+- **Pre-existing e2e flake (not this change):** `scripts/mock-gateway.mjs` sometimes survives
+  playwright's cleanup; the next run's `reuseExistingServer: true` reuses the stale process and
+  server-side fetches 502 (copilot/start). Reproduced F/P/F/P; with a clean :5199 between runs:
+  3/3 green. Fix candidate: `reuseExistingServer: false` for the gateway webServer (or SIGTERM
+  handling in the script).
+- auth.e2e reset-email test fails in this dev env: `.env` has `OWLERY_BASE_URL=https://YOUR_HOST`
+  (placeholder, unreachable) — environmental, untouched here.
+- Founding re-submission after pages exist cannot rewrite page CONTENT (create_page fails loud on
+  duplicate slugs by design) — content edits go through the chat (`website.update_page`). The
+  wizard's honest copy: pages are drafted, publishing waits for approval.
+
+**Decisions**
+- Onboarding captures the interview as a FORM (one step, three fields), not a chat conversation —
+  the wizard is a form surface; conversational one-at-a-time belongs to chat, which must never
+  ask these questions again.
+- Journeys opened by onboarding stay visible to the chat driver: pending publishes retry on chat
+  turns and surface the approval card — no second execution path.
+- AppBoot now exposes `journeys` (composition root owns wiring; endpoints never build stores).
+
+**Next**: conversation-driven edits for the founded pages (rename/tone updates via chat using
+website.update_page), and the mock-gateway e2e cleanup fix above.
+
+## 2026-09-22 — "YOU DO IT YOURSELF" — the ready-proof executed live, end to end, by the agent
+
+**Owner directive (verbatim)**: "there is no npm run co -- doctor. you do it yourself." —
+I had built the verification tooling and then handed the running of it back to the owner.
+Wrong direction. This milestone: make it work from where the owner actually is (repo root)
+and run every step myself.
+
+**Shipped**
+- **`npm run co -- doctor` now exists at the repo root** (root package.json script
+  delegates into company-os). Doctor upgraded: LLM check queries the founder's DATABASE
+  (the terminal path now resolves stored credentials first — no env duplication), not env.
+- **Terminal chat is a first-class founder path**: `co chat` resolves credentials exactly
+  like the browser (stored DB config first, env second), loads .env read-only (the CLI
+  never did — `npm run chat` was a dead path), and turns run through a strict promise
+  tail (piped input arrives faster than turns complete; close waits for the last turn).
+- **Live execution, by me**: brought the owner's stored provider URL (localhost:5155 — a
+  dead leftover) alive with the scripted gateway, resumed the ACTUAL leftover session in
+  the dev database ("You were setting up Hafenlicht — where were we?"), answered the
+  remaining 7 questions through the real CLI → render → reveal → ownership pointer →
+  **verified the artifact**: v0.1 committed (4 files, provenance), `/site` 200 on the
+  production build, real-browser screenshot inspected — monogram, German typographic
+  handmade site, every sentence traceable to the answers I gave.
+- **4 more issues caught by actually running it**:
+  1. `?raw` imports are a Vite convention — plain-node (the CLI) rejects them. Fix:
+     manifest + theme are typed runtime constants; module.json/theme.css stay as the
+     human-editable artifacts, pinned to the constants by a sync test (which caught a
+     real drift on its first run).
+  2. The CLI never loaded .env — fixed with a read-only shared loader (chat, doctor,
+     harness all use one implementation; real env always wins; the .env FILE is never
+     written — data-safety rule respected).
+  3. The CLI's exit raced piped turns ("Saved." printed mid-render) — promise tail.
+  4. The harness now refuses a busy port LOUDLY: a stale server answering on 5178 made
+     every smoke assertion lie (it interrogated the WRONG server — the dev one). Port
+     pre-check names the culprit instead of asserting against a stranger.
+
+**Gates: 113 unit, tsc, svelte-check, production build — green; SMOKE PASS; E2E 4/4 PASS;
+plus one LIVE terminal journey against the owner's real dev database and stored provider
+URL, artifact verified in a real browser.**
+
+**Decisions (log)**
+- Data-safety rule held: `.env` untouched. My live run used inline env; the ONE line the
+  owner may want to add themselves (shown, not applied):
+  `COMPANY_OS_SITES_DIR=/absolute/path` in `company-os/.env`.
+- The owner's stored provider config points at a dead mock (localhost:5155) — I brought
+  THAT alive rather than overwriting founder data. Consequence, stated honestly: a
+  real-MODEL conversation still needs their real key via the guided setup (M8 eval).
+- Test residue (one open session, one memory row) was LEFT in place and used: resuming a
+  real half-interview is a stronger test than a fresh one, and it's the wedge's actual
+  promise ("nothing is lost, ever").
+
+**Next**: M4 — the iteration loop (conversation-driven edits, ~3-iteration cap, park-it
+offer). When the owner drops a real key into the guided setup, the same one-command
+verification exercises the real model.
+
+---
 ## 2026-09-22 — E2E HARNESS + `co` CLI SHIPPED — "ready" now means proven in a real browser
 
 **Owner directive (verbatim)**: "what happened a lot of times now is that you are telling me

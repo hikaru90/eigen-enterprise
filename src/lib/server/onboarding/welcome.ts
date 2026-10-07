@@ -24,3 +24,24 @@ export async function completeWelcomeOnboarding(userId: string): Promise<void> {
       },
     })
 }
+
+/**
+ * Clears the welcome-completed stamp: the nucleus homepage shows the welcome
+ * wizard again on the next load (the homepage settings menu's "Restart
+ * onboarding"). Same upsert shape as completion — idempotent, fails loud.
+ */
+export async function resetWelcomeOnboarding(userId: string): Promise<void> {
+  await getDb()
+    .insert(userPreference)
+    .values({
+      userId,
+      welcomeCompletedAt: null,
+    })
+    .onConflictDoUpdate({
+      target: userPreference.userId,
+      set: {
+        welcomeCompletedAt: null,
+        updatedAt: new Date(),
+      },
+    })
+}

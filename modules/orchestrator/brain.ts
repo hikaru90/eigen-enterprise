@@ -3,14 +3,13 @@ import type { AgentConfig } from '$lib/kernel/agent'
 import { AgentRuntime } from '$lib/kernel/agent-runtime'
 import type { AgentRuntimeOptions, DispatchOptions } from '$lib/kernel/agent-runtime'
 import { KERNEL_EVENT_SOURCE } from '$lib/kernel/cloudevents'
-import type { EngineStreamSinks } from '$lib/kernel/engine'
+import type { EngineStreamSinks, EngineSurfaceEvent } from '$lib/kernel/engine'
 import { BuiltinJsonLoop, type LlmCompleteFn } from '$lib/kernel/engines/builtin-json'
 import { KernelError } from '$lib/kernel/errors'
 import { emitKernelEvent, type EventSink } from '$lib/kernel/events'
 import type { Brain, TelegramSessionRef } from '$lib/kernel/gateway'
 import {
   cloneJourneyState,
-  initialJourneyState,
   journeyContextFor,
   journeyStepsCapturedIn,
   stripJourneyMarkers,
@@ -54,23 +53,28 @@ export const ORCHESTRATOR_AGENT_ID = ORCHESTRATOR_PRINCIPAL.id
 export const ORCHESTRATOR_LLM_USER_ID = 'orchestrator'
 
 /**
- * The website-founding journey: "i need a website" → tone-of-voice Q&A →
- * brand artifact → site skeleton → publish (owner-approval gated).
- * Declarative, versioned data on the kernel playbook primitive; artifact
- * tools execute through the kernel registry under ORCHESTRATOR_PRINCIPAL.
+ * The website-founding journey: brand Q&A (tone, name, positioning) → site
+ * skeleton → publish (owner-approval gated). Declarative, versioned data on
+ * the kernel playbook primitive; artifact tools execute through the kernel
+ * registry under ORCHESTRATOR_PRINCIPAL.
+ *
+ * The journey is OPENED BY ONBOARDING (the welcome wizard's founding
+ * interview — src/lib/server/onboarding/founding.ts), never by chat replies:
+ * onboarding questions must not leak into ordinary chat. Two entry points
+ * share one artifact semantics via executeStepArtifacts():
+ * - onboarding: records all answers as a fully-captured journey + runs the
+ *   artifacts immediately (publishes gate → approval_pending).
+ * - chat driver (JourneyAwareAgentRuntime): continues active journeys —
+ *   legacy mid-interview rows and approval retries.
  *
  * Deterministic protocol (no string heuristics for meaning — these are exact
  * protocol tokens the agent is instructed to emit, never user-text
  * classification):
- * - START: the persona quotes the openingQuestion verbatim; the journey row is
- *   created when a reply contains it.
  * - STEP CAPTURE: the agent appends `[[journey:<id>:captured]]` from the
  *   context block's protocol line; the driver strips the markers and advances.
  */
 export const WEBSITE_FOUNDING_JOURNEY: JourneySpec = {
   kind: 'website_founding',
-  openingQuestion:
-    'Before I build anything: which three words should describe your company’s tone of voice?',
   steps: [
     {
       id: 'tone',
@@ -168,15 +172,14 @@ export const WEBSITE_FOUNDING_JOURNEY: JourneySpec = {
 }
 
 /**
- * Onboarding journey seed (nucleus): founding-shaped requests open the brand
- * journey. The opening question is quoted VERBATIM — the journey driver
- * creates the journey row when a reply contains it (deterministic marker).
+ * Journey protocol for chat surfaces. Journeys are opened ONLY by onboarding
+ * (the welcome wizard's founding interview) — the persona never asks journey
+ * questions proactively, so onboarding content never interrupts the chat.
+ * When a journey context block IS present (an active journey from onboarding,
+ * or a legacy mid-interview row), the agent follows its capture protocol.
  */
 export const ORCHESTRATOR_JOURNEY_PROMPT = [
-  'JOURNEY — founding requests: when the company has no brand or website content yet and the user asks for a website or anything founding-shaped (brand, naming, site, launch), open the brand journey.',
-  'Acknowledge what they asked for in one short line, then ask for the brand’s tone of voice FIRST — ask exactly this question, word for word:',
-  `"${WEBSITE_FOUNDING_JOURNEY.openingQuestion}"`,
-  'One question at a time, conversational, no lists unless asked. Do not front-load later steps — the journey deepens as it goes.',
+  'JOURNEY: when a journey context block is present in the user message, follow it — serve the current journey step conversationally, one question at a time, no lists unless asked.',
   'When a journey context block gives you a step-capture marker protocol and the step’s answer is captured, append exactly that marker as the final line of your reply. Never show or mention markers to the user.',
 ].join('\n')
 
@@ -236,8 +239,8 @@ export type JourneyAwareRuntimeOptions = AgentRuntimeOptions & {
  * For every OTHER agent it is pure passthrough.
  *
  * Deterministic seam (documented):
- * - START: no active journey + reply contains spec.openingQuestion → create
- *   the journey row (lazy; the persona asks the question verbatim).
+ * - START: journeys are created by onboarding (founding interview) — never by
+ *   chat replies. With no active journey the driver is a pure passthrough.
  * - ANSWERS: while a journey is active, every user reply is appended verbatim
  *   to the current step's answer slot; the rendered journey context block is
  *   prepended to the user input (clearly delimited; the engine's history keeps
@@ -278,18 +281,11 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     }
 
     const row = await this.journeys.getActive(this.spec.kind)
-    if (!row) {
-      const reply = await super.dispatch(agentId, sessionId, input, sinks, options)
-      return this.maybeOpenJourney(sessionId, reply)
-    }
+    // No journey → plain orchestrator turn. Journeys are opened by onboarding
+    // (founding interview), never by chat replies — chat never asks
+    // onboarding questions.
+    if (!row) return super.dispatch(agentId, sessionId, input, sinks, options)
     return this.dispatchJourneyTurn(row, agentId, sessionId, input, sinks, options)
-  }
-
-  /** Lazy, deterministic journey start: the opening question IS the marker. */
-  private async maybeOpenJourney(sessionId: string, reply: string): Promise<string> {
-    if (!reply.includes(this.spec.openingQuestion)) return reply
-    await this.journeys.create(this.spec.kind, initialJourneyState(sessionId))
-    return reply
   }
 
   private async dispatchJourneyTurn(
@@ -352,75 +348,95 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
   }
 
   /**
-   * Executes pending step artifacts in spec order via the kernel registry
-   * (ORCHESTRATOR_PRINCIPAL; approvals + audit apply there). 'approval_pending'
-   * ledger entries retry on every later turn until the owner decides. The
-   * batch stops at the first open gate — later artifacts retry next turn.
+   * Delegates to the shared artifact executor — one artifact semantics for
+   * both entry points (chat driver + onboarding founding endpoint).
    */
-  private async runStepArtifacts(
+  private runStepArtifacts(
     state: JourneyState,
     sinks?: EngineStreamSinks,
   ): Promise<{ allExecuted: boolean; newlyPending: boolean }> {
-    const requestId = randomUUID()
-    let newlyPending = false
+    return executeStepArtifacts({
+      registry: this.kernelRegistry,
+      spec: this.spec,
+      state,
+      ...(sinks?.surfaceEvent ? { surfaceEvent: sinks.surfaceEvent } : {}),
+    })
+  }
+}
 
-    for (const step of this.spec.steps) {
-      if (!state.captured.includes(step.id) || !step.artifacts) continue
-      for (let index = 0; index < step.artifacts.length; index++) {
-        const artifact = step.artifacts[index]!
-        const alreadyExecuted = state.artifacts.some(
-          (r) => r.stepId === step.id && r.index === index && r.status === 'executed',
+/** Mutable artifact-ledger bookkeeping (state is plain JSON data). */
+function recordArtifact(
+  state: JourneyState,
+  stepId: string,
+  index: number,
+  tool: string,
+  status: 'executed' | 'approval_pending',
+): void {
+  const remaining = state.artifacts.filter((r) => !(r.stepId === stepId && r.index === index))
+  remaining.push({ stepId, index, tool, status })
+  state.artifacts = remaining
+}
+
+/**
+ * Executes pending step artifacts in spec order via the kernel registry
+ * (ORCHESTRATOR_PRINCIPAL; approvals + audit apply there). Shared by the chat
+ * journey driver and the onboarding founding endpoint.
+ *
+ * 'approval_required' is expected control flow: the state ledger records
+ * 'approval_pending' and later turns retry until the owner decides. The
+ * batch stops at the first open gate — later artifacts retry next turn. Any
+ * other error fails loud (no silent degradation).
+ */
+export async function executeStepArtifacts(options: {
+  registry: KernelRegistry
+  spec: JourneySpec
+  state: JourneyState
+  /** Optional surface sink for approval gates (chat streams); best-effort. */
+  surfaceEvent?: (event: EngineSurfaceEvent) => void
+}): Promise<{ allExecuted: boolean; newlyPending: boolean }> {
+  const { registry, spec, state } = options
+  const requestId = randomUUID()
+  let newlyPending = false
+
+  for (const step of spec.steps) {
+    if (!state.captured.includes(step.id) || !step.artifacts) continue
+    for (let index = 0; index < step.artifacts.length; index++) {
+      const artifact = step.artifacts[index]!
+      const alreadyExecuted = state.artifacts.some(
+        (r) => r.stepId === step.id && r.index === index && r.status === 'executed',
+      )
+      if (alreadyExecuted) continue
+      try {
+        await registry.execute(
+          artifact.tool,
+          artifact.inputFromState(state),
+          { principal: ORCHESTRATOR_PRINCIPAL, requestId },
         )
-        if (alreadyExecuted) continue
-        try {
-          await this.kernelRegistry.execute(
-            artifact.tool,
-            artifact.inputFromState(state),
-            { principal: ORCHESTRATOR_PRINCIPAL, requestId },
-          )
-          this.recordArtifact(state, step.id, index, artifact.tool, 'executed')
-        } catch (err) {
-          if (err instanceof KernelError && err.code === 'approval_required') {
-            this.recordArtifact(state, step.id, index, artifact.tool, 'approval_pending')
-            newlyPending = true
-            this.emitSurfaceEvent(sinks, artifact.tool)
-            break
+        recordArtifact(state, step.id, index, artifact.tool, 'executed')
+      } catch (err) {
+        if (err instanceof KernelError && err.code === 'approval_required') {
+          recordArtifact(state, step.id, index, artifact.tool, 'approval_pending')
+          newlyPending = true
+          try {
+            options.surfaceEvent?.({ type: 'approval.required', tool: artifact.tool })
+          } catch {
+            // best-effort channel — the gate state is already in the ledger
           }
-          throw err
+          break
         }
+        throw err
       }
     }
+  }
 
-    const allExecuted = this.spec.steps.every((step) =>
-      (step.artifacts ?? []).every((_artifact, index) =>
-        state.artifacts.some(
-          (r) => r.stepId === step.id && r.index === index && r.status === 'executed',
-        ),
+  const allExecuted = spec.steps.every((step) =>
+    (step.artifacts ?? []).every((_artifact, index) =>
+      state.artifacts.some(
+        (r) => r.stepId === step.id && r.index === index && r.status === 'executed',
       ),
-    )
-    return { allExecuted, newlyPending }
-  }
-
-  private recordArtifact(
-    state: JourneyState,
-    stepId: string,
-    index: number,
-    tool: string,
-    status: 'executed' | 'approval_pending',
-  ): void {
-    const remaining = state.artifacts.filter((r) => !(r.stepId === stepId && r.index === index))
-    remaining.push({ stepId, index, tool, status })
-    state.artifacts = remaining
-  }
-
-  private emitSurfaceEvent(sinks: EngineStreamSinks | undefined, tool: string): void {
-    if (!sinks?.surfaceEvent) return
-    try {
-      sinks.surfaceEvent({ type: 'approval.required', tool })
-    } catch {
-      // best-effort channel — the gate state is already in the ledger
-    }
-  }
+    ),
+  )
+  return { allExecuted, newlyPending }
 }
 
 /**

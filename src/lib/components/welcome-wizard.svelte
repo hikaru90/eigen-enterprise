@@ -15,14 +15,31 @@
     byokUiEnabled = true,
   }: { providerReady?: boolean; byokUiEnabled?: boolean } = $props()
 
-  type Step = 'welcome' | 'can-do' | 'connect' | 'first-move'
+  type Step = 'welcome' | 'can-do' | 'connect' | 'company' | 'first-move'
 
   let step = $state<Step>('welcome')
   let completing = $state(false)
   let error = $state<string | null>(null)
 
+  // The founding interview (step 4): the questions that used to leak into the
+  // nucleus chat live HERE, in onboarding. Blank is fine — skipping records
+  // nothing.
+  let toneInput = $state('')
+  let companyNameInput = $state('')
+  let positioningInput = $state('')
+  let submittingFounding = $state(false)
+  let foundingApprovalNote = $state(false)
+
   const stepNumber = $derived(
-    step === 'welcome' ? 1 : step === 'can-do' ? 2 : step === 'connect' ? 3 : 4,
+    step === 'welcome'
+      ? 1
+      : step === 'can-do'
+        ? 2
+        : step === 'connect'
+          ? 3
+          : step === 'company'
+            ? 4
+            : 5,
   )
 
   /**
@@ -53,6 +70,42 @@
   async function goTo(dest: '/capture' | '/memory' | '/brand' | '/graph'): Promise<void> {
     const done = await complete()
     if (done) await goto(resolve(dest))
+  }
+
+  /**
+   * Submits the founding interview and advances. Blank answers skip the call
+   * entirely — no journey, no pages, nothing invented. Fails loud inline: the
+   * user stays on the step with the exact error.
+   */
+  async function submitFounding(): Promise<void> {
+    if (submittingFounding) return
+    const tone = toneInput.trim()
+    const companyName = companyNameInput.trim()
+    const positioning = positioningInput.trim()
+    if (!tone && !companyName && !positioning) {
+      step = 'first-move'
+      return
+    }
+    submittingFounding = true
+    error = null
+    try {
+      const res = await fetch('/api/onboarding/founding', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tone, companyName, positioning }),
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null
+        throw new Error(body?.error ?? `Saving your answers failed (HTTP ${res.status}).`)
+      }
+      const result = (await res.json()) as { skipped?: boolean; approvalPending?: number }
+      foundingApprovalNote = !result.skipped && (result.approvalPending ?? 0) > 0
+      step = 'first-move'
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      submittingFounding = false
+    }
   }
 
   const capabilities = [
@@ -102,7 +155,7 @@
       Eigen Enterprise
     </p>
     <p class="text-muted-foreground mt-6 text-center text-xs tracking-wide">
-      Step {stepNumber} of 4
+      Step {stepNumber} of 5
     </p>
 
     {#if step === 'welcome'}
@@ -189,7 +242,55 @@
         type="button"
         class="mt-8 h-11 w-full bg-black text-sm font-medium text-white hover:bg-black/90 disabled:opacity-50"
         disabled={completing}
-        onclick={() => (step = 'first-move')}
+        onclick={() => (step = 'company')}
+      >
+        Continue
+      </button>
+    {:else if step === 'company'}
+      <h1 class="mt-2 text-center text-xl font-medium tracking-tight text-balance">
+        Tell me about your company.
+      </h1>
+      <p class="text-muted-foreground mt-3 text-center text-sm leading-relaxed">
+        Three quick answers shape your site and how the assistant writes for you. Blank is fine —
+        you can always add this later.
+      </p>
+      <div class="mt-6 space-y-4">
+        <label class="block">
+          <span class="text-sm font-medium">Tone of voice — three words</span>
+          <input
+            bind:value={toneInput}
+            type="text"
+            placeholder="e.g. warm, direct, technical"
+            class="border-black/15 focus:border-black mt-1 h-10 w-full border bg-white px-3 text-sm outline-none disabled:opacity-50"
+            disabled={submittingFounding}
+          />
+        </label>
+        <label class="block">
+          <span class="text-sm font-medium">Company name</span>
+          <input
+            bind:value={companyNameInput}
+            type="text"
+            placeholder="e.g. Kindred Digital Labs"
+            class="border-black/15 focus:border-black mt-1 h-10 w-full border bg-white px-3 text-sm outline-none disabled:opacity-50"
+            disabled={submittingFounding}
+          />
+        </label>
+        <label class="block">
+          <span class="text-sm font-medium">What does your company do? (one sentence)</span>
+          <input
+            bind:value={positioningInput}
+            type="text"
+            placeholder="e.g. An AI-native company OS"
+            class="border-black/15 focus:border-black mt-1 h-10 w-full border bg-white px-3 text-sm outline-none disabled:opacity-50"
+            disabled={submittingFounding}
+          />
+        </label>
+      </div>
+      <button
+        type="button"
+        class="mt-8 h-11 w-full bg-black text-sm font-medium text-white hover:bg-black/90 disabled:opacity-50"
+        disabled={submittingFounding}
+        onclick={() => void submitFounding()}
       >
         Continue
       </button>
@@ -200,6 +301,13 @@
       <p class="text-muted-foreground mt-3 text-center text-sm leading-relaxed">
         Pick anything — you can change your mind later. The chat is always here.
       </p>
+      {#if foundingApprovalNote}
+        <p
+          class="border-black/15 bg-muted/40 mt-4 border border-dashed px-3 py-2 text-center text-xs leading-relaxed"
+        >
+          Your pages are drafted — publishing waits for your approval in the chat.
+        </p>
+      {/if}
       <button
         type="button"
         class="mt-8 h-11 w-full bg-black text-sm font-medium text-white hover:bg-black/90 disabled:opacity-50"

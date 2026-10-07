@@ -38,12 +38,6 @@ export type JourneyStep = {
 export type JourneySpec = {
   /** Stable kind id (also the kernel_journeys.kind key). */
   kind: string
-  /**
-   * The journey's deterministic opening marker: the agent is instructed to ask
-   * this question VERBATIM when opening the journey; the driver creates the
-   * journey row when a reply contains it (protocol marker, not a heuristic).
-   */
-  openingQuestion: string
   steps: JourneyStep[]
 }
 

@@ -71,6 +71,11 @@ export type AppBoot = {
   gateway: ChatGatewayBoot | null
   /** The recap module boot (scheduler included) or null while inactive. */
   recap: RecapBoot | null
+  /**
+   * Durable journey store (the same instance the orchestrator runtime drives).
+   * Exposed for onboarding: the founding interview opens its journey here.
+   */
+  journeys: JourneyStore
   status(): AppBootStatus
 }
 
@@ -155,6 +160,7 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
     orchestrator,
     gateway: gatewayBoot,
     recap,
+    journeys,
     status: () => ({
       orchestrator: orchestrator.status(),
       gatewayBooted: gatewayBoot !== null,

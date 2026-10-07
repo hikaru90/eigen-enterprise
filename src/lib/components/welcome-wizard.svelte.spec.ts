@@ -40,25 +40,111 @@ describe('welcome-wizard.svelte', () => {
     render(WelcomeWizard, { providerReady: true, byokUiEnabled: true })
 
     await expect.element(page.getByText("your company's operating system")).toBeInTheDocument()
-    await expect.element(page.getByText('Step 1 of 4')).toBeInTheDocument()
+    await expect.element(page.getByText('Step 1 of 5')).toBeInTheDocument()
     await expect.element(page.getByRole('button', { name: 'Skip setup' })).toBeInTheDocument()
   })
 
-  it('walks welcome → capabilities → connect (ready) → first move', async () => {
+  it('walks welcome → capabilities → connect (ready) → company → first move', async () => {
     render(WelcomeWizard, { providerReady: true, byokUiEnabled: true })
 
     await page.getByRole('button', { name: 'Continue' }).click()
-    await expect.element(page.getByText('Step 2 of 4')).toBeInTheDocument()
+    await expect.element(page.getByText('Step 2 of 5')).toBeInTheDocument()
     await expect.element(page.getByText('Capture', { exact: true })).toBeInTheDocument()
     await expect.element(page.getByText('Knowledge graph')).toBeInTheDocument()
 
     await page.getByRole('button', { name: 'Continue' }).click()
-    await expect.element(page.getByText('Step 3 of 4')).toBeInTheDocument()
+    await expect.element(page.getByText('Step 3 of 5')).toBeInTheDocument()
     await expect.element(page.getByText('Your AI is connected.')).toBeInTheDocument()
 
     await page.getByRole('button', { name: 'Continue' }).click()
-    await expect.element(page.getByText('Step 4 of 4')).toBeInTheDocument()
+    await expect.element(page.getByText('Step 4 of 5')).toBeInTheDocument()
+    // The founding interview lives HERE — onboarding, not the chat.
+    await expect.element(page.getByText('Tell me about your company.')).toBeInTheDocument()
+
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await expect.element(page.getByText('Step 5 of 5')).toBeInTheDocument()
     await expect.element(page.getByText('What do you want to do first?')).toBeInTheDocument()
+  })
+
+  it('the company step submits the founding interview once answers exist', async () => {
+    render(WelcomeWizard, { providerReady: true, byokUiEnabled: true })
+
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByRole('button', { name: 'Continue' }).click()
+
+    await page.getByRole('textbox', { name: 'Tone of voice — three words' }).fill('warm, direct, technical')
+    await page.getByRole('textbox', { name: 'Company name' }).fill('Kindred Digital Labs')
+    await page.getByRole('textbox', { name: 'What does your company do? (one sentence)' }).fill('An AI-native company OS')
+    await page.getByRole('button', { name: 'Continue' }).click()
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/onboarding/founding',
+        expect.objectContaining({ method: 'POST' }),
+      )
+    })
+    const call = fetchMock.mock.calls.find(([url]) => url === '/api/onboarding/founding')!
+    expect(JSON.parse((call[1] as { body: string }).body)).toEqual({
+      tone: 'warm, direct, technical',
+      companyName: 'Kindred Digital Labs',
+      positioning: 'An AI-native company OS',
+    })
+    await expect.element(page.getByText('Step 5 of 5')).toBeInTheDocument()
+  })
+
+  it('empty company answers skip the founding call entirely (blank is fine)', async () => {
+    render(WelcomeWizard, { providerReady: true, byokUiEnabled: true })
+
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByRole('button', { name: 'Continue' }).click()
+
+    await expect.element(page.getByText('Step 5 of 5')).toBeInTheDocument()
+    const foundingCalls = fetchMock.mock.calls.filter(([url]) => url === '/api/onboarding/founding')
+    expect(foundingCalls).toEqual([])
+  })
+
+  it('gated publishes get an honest note on the last step', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url === '/api/onboarding/founding') {
+        return Promise.resolve(okResponse({ skipped: false, executed: 4, approvalPending: 1 }))
+      }
+      return Promise.resolve(okResponse({ ok: true }))
+    })
+    render(WelcomeWizard, { providerReady: true, byokUiEnabled: true })
+
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByRole('textbox', { name: 'Tone of voice — three words' }).fill('warm')
+    await page.getByRole('button', { name: 'Continue' }).click()
+
+    await expect.element(page.getByText(/publishing waits for your approval/)).toBeInTheDocument()
+  })
+
+  it('a failed founding submission shows the error and stays on the company step', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url === '/api/onboarding/founding') {
+        return Promise.resolve({
+          ok: false,
+          status: 409,
+          json: async () => ({ error: 'Your company website already exists.' }),
+        })
+      }
+      return Promise.resolve(okResponse({ ok: true }))
+    })
+    render(WelcomeWizard, { providerReady: true, byokUiEnabled: true })
+
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByRole('textbox', { name: 'Company name' }).fill('Kindred')
+    await page.getByRole('button', { name: 'Continue' }).click()
+
+    await expect.element(page.getByText(/already exists/)).toBeInTheDocument()
+    await expect.element(page.getByText('Step 4 of 5')).toBeInTheDocument()
   })
 
   it('embeds the provider wizard when no provider works — and hides the skip', async () => {
@@ -74,6 +160,7 @@ describe('welcome-wizard.svelte', () => {
   it('completing the last step persists the tour and refreshes the page data', async () => {
     render(WelcomeWizard, { providerReady: true, byokUiEnabled: true })
 
+    await page.getByRole('button', { name: 'Continue' }).click()
     await page.getByRole('button', { name: 'Continue' }).click()
     await page.getByRole('button', { name: 'Continue' }).click()
     await page.getByRole('button', { name: 'Continue' }).click()
@@ -103,6 +190,7 @@ describe('welcome-wizard.svelte', () => {
   it('destination cards persist the tour and navigate', async () => {
     render(WelcomeWizard, { providerReady: true, byokUiEnabled: true })
 
+    await page.getByRole('button', { name: 'Continue' }).click()
     await page.getByRole('button', { name: 'Continue' }).click()
     await page.getByRole('button', { name: 'Continue' }).click()
     await page.getByRole('button', { name: 'Continue' }).click()

@@ -16,7 +16,6 @@ import {
 
 const spec: JourneySpec = {
   kind: 'website_founding',
-  openingQuestion: 'Which three words describe your tone of voice?',
   steps: [
     { id: 'tone', promptFragment: 'Collect the tone of voice (three words).' },
     {

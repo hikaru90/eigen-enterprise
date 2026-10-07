@@ -5,6 +5,10 @@ import {
   orchestratorAgentConfig,
 } from './brain'
 
+/** The retired chat-opened journey seed — kept as a literal for regression pins. */
+const OLD_OPENING_QUESTION =
+  'Before I build anything: which three words should describe your company’s tone of voice?'
+
 describe('orchestrator persona prompt', () => {
   it('keeps the orchestrator identity lines', () => {
     expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(
@@ -13,19 +17,23 @@ describe('orchestrator persona prompt', () => {
     expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/kernel tools/)
   })
 
-  it('seeds the onboarding brand journey for founding-shaped requests', () => {
-    expect(ORCHESTRATOR_JOURNEY_PROMPT).toMatch(/no brand or website content yet/)
-    expect(ORCHESTRATOR_JOURNEY_PROMPT).toMatch(/asks for a website/)
-    expect(ORCHESTRATOR_JOURNEY_PROMPT).toMatch(/open the brand journey/)
-    expect(ORCHESTRATOR_JOURNEY_PROMPT).toMatch(/tone of voice FIRST/)
+  it('never opens the onboarding journey from chat (onboarding owns the interview)', () => {
+    // Regression pin: the persona used to instruct the agent to ask the
+    // founding question verbatim on "founding-shaped" requests — an LLM
+    // judgment that leaked onboarding questions into ordinary chat ("what api
+    // are you using?" → tone-of-voice question). The founding interview now
+    // lives in the welcome wizard; chat journeys are started there, server-side.
+    expect(ORCHESTRATOR_PERSONA_PROMPT).not.toContain(OLD_OPENING_QUESTION)
+    expect(ORCHESTRATOR_PERSONA_PROMPT).not.toMatch(/open the brand journey/)
+    expect(ORCHESTRATOR_PERSONA_PROMPT).not.toMatch(/founding-shaped/)
+    expect(ORCHESTRATOR_JOURNEY_PROMPT).not.toContain(OLD_OPENING_QUESTION)
   })
 
-  it('keeps the journey conversational: one question at a time, no lists unless asked', () => {
-    expect(ORCHESTRATOR_JOURNEY_PROMPT).toMatch(/One question at a time/)
-    expect(ORCHESTRATOR_JOURNEY_PROMPT).toMatch(/no lists unless asked/)
-  })
-
-  it('includes the journey seed in the persona system prompt', () => {
+  it('still teaches the step-capture marker protocol for active journeys', () => {
+    // Journeys opened by onboarding can still be mid-flight on chat surfaces;
+    // the agent must honor the context block's capture protocol when one is.
+    expect(ORCHESTRATOR_JOURNEY_PROMPT).toMatch(/journey context block/)
+    expect(ORCHESTRATOR_JOURNEY_PROMPT).toMatch(/append exactly/)
     expect(ORCHESTRATOR_PERSONA_PROMPT).toContain(ORCHESTRATOR_JOURNEY_PROMPT)
   })
 })

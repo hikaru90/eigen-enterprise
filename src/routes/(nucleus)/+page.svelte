@@ -12,6 +12,7 @@
   import { sanitizeFinalAnswerText } from '$lib/chat/chat-stream-types'
   import { consumeChatNdjsonStream, ChatStreamError } from '$lib/chat/consume-chat-ndjson'
   import ChatMarkdown from '$lib/components/chat-markdown.svelte'
+  import HomeSettingsMenu from '$lib/components/home-settings-menu.svelte'
   import ProviderOnboarding from '$lib/components/provider-onboarding.svelte'
   import { Button } from '$lib/components/ui/button'
   import VoiceInputButton from '$lib/components/voice-input-button.svelte'
@@ -159,6 +160,16 @@
 </script>
 
 <div class="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-4">
+  <!-- Settings cog: always reachable — chat, welcome wizard, and provider gate alike. -->
+  <header class="relative flex shrink-0 justify-center pt-6">
+    <p class="text-[11px] font-medium tracking-[0.25em] text-muted-foreground uppercase">
+      Eigen Enterprise
+    </p>
+    <div class="absolute top-5 right-0">
+      <HomeSettingsMenu />
+    </div>
+  </header>
+
   {#if data.showWelcome}
     <!-- First open: the tour leads; the provider step inside it stays a hard gate. -->
     <WelcomeWizard
@@ -169,12 +180,6 @@
     <!-- Returning user whose tour is done but provider vanished: the connect gate again. -->
     <ProviderOnboarding byokUiEnabled={data.byokUiEnabled} />
   {:else}
-  <header class="flex justify-center pt-6">
-    <p class="text-[11px] font-medium tracking-[0.25em] text-muted-foreground uppercase">
-      Eigen Enterprise
-    </p>
-  </header>
-
   <main class="flex min-h-0 flex-1 flex-col">
     {#if entries.length === 0 && !busy}
       <div class="flex flex-1 items-center justify-center">

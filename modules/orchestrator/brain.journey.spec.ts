@@ -4,7 +4,7 @@ import { InMemoryApprovalStore, StaticApprovalPolicy } from '$lib/kernel/approva
 import type { LoopEngine } from '$lib/kernel/engine'
 import { KernelError } from '$lib/kernel/errors'
 import { InMemoryEventSink } from '$lib/kernel/events'
-import { InMemoryJourneyStore } from '$lib/kernel/playbook'
+import { InMemoryJourneyStore, initialJourneyState } from '$lib/kernel/playbook'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import {
@@ -16,12 +16,20 @@ import {
 
 /**
  * Journey lifecycle tests: pure fakes (no DB, no real LLM). The fake loop
- * engine returns scripted replies (including the persona's exact opening
- * question and the step-capture markers), so the deterministic protocol —
- * journey start, verbatim answer capture, artifact execution order, the
- * approval gate, and completion — is pinned end to end against a REAL
- * KernelRegistry (permissions/approval gate/audit apply for real).
+ * engine returns scripted replies (step-capture markers), so the
+ * deterministic protocol — verbatim answer capture, artifact execution
+ * order, the approval gate, and completion — is pinned end to end against a
+ * REAL KernelRegistry (permissions/approval gate/audit apply for real).
+ *
+ * Journeys are OPENED BY ONBOARDING (src/lib/server/onboarding/founding.ts),
+ * never by chat replies — the helper pre-creates the row exactly like the
+ * onboarding endpoint does, and one test pins that chat replies (even ones
+ * containing the old opening question) open nothing.
  */
+
+/** The retired chat-opened journey seed — kept as a literal for regression pins. */
+const OLD_OPENING_QUESTION =
+  'Before I build anything: which three words should describe your company’s tone of voice?'
 
 const marker = (stepId: string) => `[[journey:${stepId}:captured]]`
 
@@ -112,50 +120,45 @@ function fixture(options: { failOnSlug?: string } = {}): Fixture {
 }
 
 async function runFoundingJourney(fx: Fixture, sinks?: Parameters<JourneyAwareAgentRuntime['dispatch']>[3]): Promise<string[]> {
-  const q = WEBSITE_FOUNDING_JOURNEY.openingQuestion
-  fx.script.push(`Happy to help with that!\n${q}`)
-  const r1 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'i need a website', sinks)
+  await fx.journeys.create(WEBSITE_FOUNDING_JOURNEY.kind, initialJourneyState('session-1'))
 
   fx.script.push(`Great — noted.\n${marker('tone')}`)
-  const r2 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'warm, direct, technical', sinks)
+  const r1 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'warm, direct, technical', sinks)
 
   fx.script.push(`Love it.\n${marker('company_name')}`)
-  const r3 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'Kindred Digital Labs', sinks)
+  const r2 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'Kindred Digital Labs', sinks)
 
   fx.script.push(`Perfect.\n${marker('positioning')}`)
-  const r4 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'an AI-native company OS', sinks)
+  const r3 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'an AI-native company OS', sinks)
 
-  return [r1, r2, r3, r4]
+  return [r1, r2, r3]
 }
 
 describe('journey lifecycle (website founding, fake-engine end to end)', () => {
-  it('opens the journey only when the persona asked the exact opening question', async () => {
+  it('never opens a journey from chat replies — onboarding owns the start (regression pin)', async () => {
     const fx = fixture()
     fx.script.push('Just chatting!')
     await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'hello there')
     expect(await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)).toBeNull()
 
-    fx.script.push(`Sure!\n${WEBSITE_FOUNDING_JOURNEY.openingQuestion}`)
+    // Even a reply quoting the exact retired opening question creates nothing:
+    // the persona no longer asks it, and the driver no longer starts journeys.
+    fx.script.push(`Sure!\n${OLD_OPENING_QUESTION}`)
     await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'i need a website')
 
-    const row = await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
-    expect(row).toMatchObject({ kind: 'website_founding', status: 'active' })
-    expect(row?.state).toMatchObject({ stepIndex: 0, captured: [], artifacts: [] })
-    expect(row?.state.sessionId).toBe('session-1')
+    expect(await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)).toBeNull()
   })
 
   it('prepends the journey context block (clearly delimited, with user speech below it)', async () => {
     const fx = fixture()
     await runFoundingJourney(fx)
 
-    // Turn 1: no journey yet — raw input, no context block.
-    expect(fx.engineInputs[0]).toBe('i need a website')
-    // Turn 2: journey active — context block on top, user speech last.
-    expect(fx.engineInputs[1].startsWith('[company journey context — not user speech]')).toBe(true)
-    expect(fx.engineInputs[1]).toContain('step 1/3 (tone)')
-    expect(fx.engineInputs[1].endsWith('warm, direct, technical')).toBe(true)
-    // Turn 3: collected tone is rendered for the model.
-    expect(fx.engineInputs[2]).toContain('- tone: warm, direct, technical')
+    // Every turn: journey active — context block on top, user speech last.
+    expect(fx.engineInputs[0].startsWith('[company journey context — not user speech]')).toBe(true)
+    expect(fx.engineInputs[0]).toContain('step 1/3 (tone)')
+    expect(fx.engineInputs[0].endsWith('warm, direct, technical')).toBe(true)
+    // Turn 2: collected tone is rendered for the model.
+    expect(fx.engineInputs[1]).toContain('- tone: warm, direct, technical')
   })
 
   it('accumulates verbatim answers, strips markers from user-facing replies, and advances steps', async () => {
@@ -269,14 +272,13 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
 
     expect(await fx.approvals.listPending()).toHaveLength(1)
     // Without a surfaceEvent sink the driver says the gate in text, marker-free.
-    expect(replies[3]).toContain('owner approval')
-    expect(replies[3]).not.toContain('[[journey:')
+    expect(replies[2]).toContain('owner approval')
+    expect(replies[2]).not.toContain('[[journey:')
   })
 
   it('fails loud on artifact errors (no silent degradation)', async () => {
     const fx = fixture({ failOnSlug: 'brand-tone-of-voice' })
-    fx.script.push(`Sure!\n${WEBSITE_FOUNDING_JOURNEY.openingQuestion}`)
-    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'i need a website')
+    await fx.journeys.create(WEBSITE_FOUNDING_JOURNEY.kind, initialJourneyState('session-1'))
 
     fx.script.push(`Great.\n${marker('tone')}`)
     await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'warm, direct, technical')
@@ -309,12 +311,12 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
   it('keeps the kernel approval semantics intact (double-gate does not duplicate requests)', async () => {
     const fx = fixture()
     await runFoundingJourney(fx)
-    const pendingAfterTurn4 = (await fx.approvals.listPending()).length
+    const pendingAfterInterview = (await fx.approvals.listPending()).length
 
     fx.script.push(`Still gated.\n${marker('positioning')}`)
     await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'status?')
 
-    expect(pendingAfterTurn4).toBe(1)
+    expect(pendingAfterInterview).toBe(1)
     expect(await fx.approvals.listPending()).toHaveLength(1)
   })
 
