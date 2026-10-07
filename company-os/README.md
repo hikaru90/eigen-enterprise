@@ -18,11 +18,27 @@ Governed by `../plan/phase-wedge.md` (decisions W1–W8). Self-contained package
 ## Commands
 
 ```sh
-npm install
-npm test          # vitest (in-memory suites always; PG suites when COMPANY_OS_TEST_DATABASE_URL is set)
-npm run typecheck # tsc --noEmit
-npm run chat      # the first conversation in your terminal (requires LLM + DB env above)
+npm run co -- doctor   # is everything in place? prints the exact fix for what isn't
+npm run co -- chat     # the founder conversation in your terminal
+npm run co -- smoke    # the wedge journey end-to-end against a production build (scripted LLM, no browser)
+npm run co -- e2e      # the same journey in a real browser (Playwright; E2E_HEADLESS=1 for CI)
+npm test               # vitest (in-memory suites always; PG suites when COMPANY_OS_TEST_DATABASE_URL is set)
+npm run typecheck      # tsc --noEmit
 ```
+
+## Verify before you say ready
+
+**"Ready" means proven, not plausible.** No company-os change ships without:
+
+- `npm run co -- smoke` green — the real product (production build, real Postgres on a
+  disposable `company_os_e2e` database, real git, real HTTP) walked through
+  setup → the 7-question interview → render → reveal → the committed site served at
+  `/site`. Only the LLM is a scripted wire-compatible gateway (`e2e/mock-llm.ts`).
+- `npm run co -- e2e` green whenever the UI flow was touched — the same journey in
+  Chromium, plus the honest-failure journeys (wrong key → exact provider error;
+  audit rejection → nothing published; reload → nothing lost).
+
+Unit tests prove the machinery. These commands prove the product.
 
 ## Layout
 

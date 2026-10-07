@@ -2,6 +2,75 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-22 — E2E HARNESS + `co` CLI SHIPPED — "ready" now means proven in a real browser
+
+**Owner directive (verbatim)**: "what happened a lot of times now is that you are telling me
+that it's ready and that I then open the dev server and look at the page and nothing works."
+— "I want you to be able to test the work you did and evaluate the work you did." Plan:
+`plan/company-os-e2e.md`.
+
+**Shipped**
+- **`npm run co <command>`** — one CLI to interact with and verify the tool:
+  `doctor` (checks every dependency, prints the exact fix — correctly reports this
+  machine's missing SITES_DIR/LLM env), `chat` (founder conversation in the terminal,
+  now wired with the website module + prints the ownership pointer after the render),
+  `smoke` (headless E2E), `e2e` (browser journeys).
+- **E2E stack harness** (`company-os/e2e/harness.ts`): the REAL product — production
+  build (adapter-node), real Postgres (disposable `company_os_e2e` database, recreated
+  per run), real git (temp sites dir), real HTTP — against a wire-compatible SCRIPTED
+  LLM gateway (`e2e/mock-llm.ts`, OpenAI SSE with split tool-call chunks; a scripted
+  401 mode for the wrong-key journey; a model call that outlives the script fails loud
+  with the request summary).
+- **Smoke journey** (`e2e/smoke.ts`): drives exactly what the UI drives — setup gate →
+  guided provider setup → the 8-turn interview (one answer per turn, agenda key
+  asserted each turn) → render in the final turn → reveal → `/site` serves the
+  committed artifact → the v0.1 commit with `content.json` provenance and a clean tree.
+  13 scripted model calls, seconds-fast, deterministic.
+- **4 browser journeys** (`e2e/journey.spec.ts`, Playwright in company-os, headed by
+  default / `E2E_HEADLESS=1`): **J1** the wedge journey (setup → interview typed into
+  the real chatbox → reveal → `/site` headline/lang/monogram → git v0.1 + provenance);
+  **J2a** wrong key → the provider's exact 401 surfaces, nothing saved;
+  **J2b** audit rejection → nothing published, founder told honestly;
+  **J3** reload mid-interview → "You were setting up … — where were we?" → continue →
+  render. All 4 green in ~8s.
+
+**Gates: 111 unit, tsc, svelte-check, production build — all green; SMOKE PASS; E2E 4/4 PASS.**
+
+**REAL BUGS THE HARNESS CAUGHT ON ITS FIRST RUNS (the whole point):**
+1. **`render_website` was broken in the production build** — `import.meta.dirname` dies
+   in the bundled server (`build/server/chunks/chunks/theme.css` ENOENT). Dev worked,
+   prod didn't — the exact class the owner complained about. Fix: manifest + theme
+   ship inside the bundle via `?raw` imports; no runtime fs reads.
+2. **The drift guard punished the render turn** — turn-start agenda demanded the
+   site.language question while the model correctly saved it AND rendered in the same
+   turn; the correction loop then burned a second attempt and failed loud. Fix:
+   satisfaction is judged against LIVE state recomputed from memory.
+3. **Company identity mismatch** — the render record stored the founder's raw sentence
+   while the directory keyed off the audited draft name; `/site` 404'd on a healthy
+   render. Fix: directory, record and rendered site all use the audited name.
+4. **Product gap**: the UI dropped `companyName` from the resume bootstrap — the
+   "You were setting up …" promise (P1, "nothing is lost, ever") was never rendered.
+   Fixed; J3 asserts it.
+5. Infra lesson: `spawnSync` in the e2e wrapper froze the event loop the mock gateway
+   lives in — every journey hung at loadScript. Async spawn; documented in code.
+
+**Decisions (log)**
+- Only the LLM is fake; everything else is production. Real-LLM runs are M8's eval
+  (owner key, human-judged), not an automated gate.
+- Test ports/db are fixtures with defaults (5177/5178, `company_os_e2e`); PRODUCT envs
+  keep failing loud — the server under test gets NO `COMPANY_OS_LLM_*` so the guided
+  setup path is what's actually exercised.
+- The mock reprograms per journey via `POST /__script`; DB reset is a direct TRUNCATE
+  from the test side — no test routes in product code.
+- **Binding definition of done** (recorded in company-os/README.md): no company-os
+  change ships without `co smoke` green, plus `co e2e` when the UI flow changed;
+  results quoted in progress.md.
+
+**Next**: owner runs `npm run co -- doctor` and adds the two missing env lines it
+prints; then a live first conversation (their key) — that lands in M8 territory. Then
+**M4** (iteration loop) per `plan/phase-wedge.md`.
+
+---
 ## 2026-09-22 — company-os M3 SHIPPED — the website module + first render (P2/P3, the reveal) (`b29266b`)
 
 The interview finally ends somewhere. `ready_to_render` used to dead-end ("the website

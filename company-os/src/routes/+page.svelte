@@ -36,7 +36,16 @@
 			messages.push({ role: 'agent', text: `Something broke on our side: ${data.error}`, kind: 'text' });
 		}
 		sessionId = data.sessionId;
-		messages = data.transcript ?? [];
+		const transcript = (data.transcript ?? []) as UiMessage[];
+		// The resume promise, made visible: re-entry shows where you left off
+		// (first-conversation.md P1 — "nothing is lost, ever").
+		messages =
+			data.companyName && transcript.length > 0
+				? [
+						{ role: 'agent', text: `You were setting up ${data.companyName} — where were we?`, kind: 'text' },
+						...transcript
+					]
+				: transcript;
 		phase = 'chat';
 		await scrollDown();
 	}

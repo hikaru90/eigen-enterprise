@@ -11,8 +11,8 @@
  * stays with code.
  */
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import moduleJsonRaw from './module.json?raw';
+import themeCssRaw from './theme.css?raw';
 import type { LlmClient } from '../../src/lib/server/llm.ts';
 import type { ToolDef, ToolContext } from '../../src/lib/server/tools.ts';
 import { ToolError } from '../../src/lib/server/tools.ts';
@@ -21,8 +21,6 @@ import { renderSiteCommit, siteDirFor } from '../../src/lib/server/site-store.ts
 import { CONTENT_SCHEMA, SECTION_TYPES, auditCopy, draftCopy } from './copy.ts';
 import type { AnswerMap } from './copy.ts';
 import { renderHtml } from './template.ts';
-
-const MODULE_DIR = import.meta.dirname;
 
 /** Mirrors modules/website/module.json — kept in sync by test, not hope. */
 export interface WebsiteManifest {
@@ -35,7 +33,10 @@ export interface WebsiteManifest {
 }
 
 export function websiteManifest(): WebsiteManifest {
-	const raw: unknown = JSON.parse(readFileSync(join(MODULE_DIR, 'module.json'), 'utf8'));
+	// The manifest and theme ship INSIDE the bundle (?raw import) — no runtime
+	// fs reads, so the production build cannot lose them (e2e caught exactly
+	// that: import.meta.dirname dies in the bundled server).
+	const raw: unknown = JSON.parse(moduleJsonRaw);
 	const manifest = raw as WebsiteManifest;
 	if (manifest.name !== 'website') {
 		throw new Error(`website module.json: expected name "website" — got ${JSON.stringify(manifest.name)}.`);
@@ -59,7 +60,7 @@ export function websiteManifest(): WebsiteManifest {
 }
 
 export function defaultThemeCss(): string {
-	return readFileSync(join(MODULE_DIR, 'theme.css'), 'utf8');
+	return themeCssRaw;
 }
 
 export interface PerformRenderDeps {
@@ -100,8 +101,13 @@ export async function performRender(deps: PerformRenderDeps): Promise<RenderResu
 		'content.json': `${JSON.stringify(content, null, 2)}\n`,
 		'theme.css': themeCss
 	};
-	const { version, commit } = renderSiteCommit(siteDirFor(deps.sitesDir, company), files);
-	return { company, version, commit, previewPath: '/site', files };
+	// The directory follows the audited draft's clean company name — the same
+	// name the site itself renders (the founder's raw answer can be a sentence).
+	const { version, commit } = renderSiteCommit(siteDirFor(deps.sitesDir, content.company.name), files);
+	// `company` is the audited draft name — the SAME name the directory, the
+	// render record and the rendered site use. The raw founder answer can be a
+	// sentence ("Hafenlicht — ein kleines Fotostudio…"); it is input, not identity.
+	return { company: content.company.name, version, commit, previewPath: '/site', files };
 }
 
 export interface RenderWebsiteToolDeps {

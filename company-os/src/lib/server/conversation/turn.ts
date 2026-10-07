@@ -126,18 +126,23 @@ async function runTurnLoop(
 			throw new Error('Agent loop ended without a finish event.');
 		}
 
-		// At ready_to_render the agenda is the render_website call — a turn that
-		// ends without it tried to hand the process back.
-		const renderCalled = finish.messages
-			.slice(persistedLength)
-			.some(
-				(m) =>
-					m.role === 'assistant' && m.tool_calls?.some((c) => c.function.name === 'render_website')
-			);
+		// Satisfaction is judged against the LIVE process state (recomputed from
+		// memory, which this turn may have moved): the final answer can complete
+		// the interview AND render IN THE SAME TURN — the turn-start agenda must
+		// not punish that.
+		const live = await processState(deps.memory);
+		const renderCalled =
+			live.phase === 'rendered' ||
+			finish.messages
+				.slice(persistedLength)
+				.some(
+					(m) =>
+						m.role === 'assistant' && m.tool_calls?.some((c) => c.function.name === 'render_website')
+				);
 		const processSatisfied =
 			finish.reason === 'awaiting_user' ||
-			state.phase === 'rendered' ||
-			(state.phase === 'ready_to_render' && renderCalled) ||
+			live.phase === 'rendered' ||
+			(live.phase === 'ready_to_render' && renderCalled) ||
 			(!requireQuestion && finish.reason === 'completed');
 		if (processSatisfied) {
 			const generated = finish.messages
@@ -158,15 +163,15 @@ async function runTurnLoop(
 		}
 		if (attempt >= 2) {
 			throw new Error(
-				`Agent ended the turn without delivering the required step (${state.next?.key ?? state.phase}) twice — refusing to drift from the process.`
+				`Agent ended the turn without delivering the required step (${live.next?.key ?? live.phase}) twice — refusing to drift from the process.`
 			);
 		}
 		correction = {
 			role: 'user',
 			content:
-				state.phase === 'ready_to_render'
+				live.phase === 'ready_to_render'
 					? '(process) You ended your turn without calling render_website. The interview is complete — say one short line that you are building the website, then call the render_website tool with no arguments and halt. Do not ask anything else.'
-					: `(process) You ended your turn without delivering the next question. The agenda requires "${state.next?.key}" now. Ask it via ask_question and halt. Do not ask anything else.`
+					: `(process) You ended your turn without delivering the next question. The agenda requires "${live.next?.key}" now. Ask it via ask_question and halt. Do not ask anything else.`
 		};
 		loopMessages = [...finish.messages, correction];
 	}

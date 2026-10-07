@@ -13,6 +13,7 @@ import { llmConfigFromEnv, LlmClient } from '../lib/server/llm.ts';
 import { PgMemoryStore } from '../lib/server/memory.ts';
 import { PgSessionStore } from '../lib/server/session.ts';
 import { gitProbe, migrationsProbe, postgresProbe } from '../lib/server/substrate.ts';
+import { sitesDirFromEnv } from '../lib/server/site-store.ts';
 import { resumeContext } from '../lib/server/resume.ts';
 import { openSession, runTurn } from '../lib/server/conversation/turn.ts';
 import type { ConversationDeps } from '../lib/server/conversation/turn.ts';
@@ -34,11 +35,15 @@ async function main(): Promise<void> {
 	const ran = await migrate(sql, MIGRATIONS_DIR);
 	console.log(ran.length > 0 ? `migrations applied: ${ran.join(', ')}` : 'migrations up to date');
 
+	const client = new LlmClient(llmConfigFromEnv());
 	const deps: ConversationDeps = {
-		client: new LlmClient(llmConfigFromEnv()),
+		client,
 		sessions: new PgSessionStore(sql),
 		memory: new PgMemoryStore(sql),
-		substrateProbes: [postgresProbe(sql), migrationsProbe(sql, MIGRATIONS_DIR), gitProbe()]
+		substrateProbes: [postgresProbe(sql), migrationsProbe(sql, MIGRATIONS_DIR), gitProbe()],
+		// The website module rides the same client; the sites dir resolves at
+		// render time — required, fail loud (the OS does not guess).
+		website: { client, getSitesDir: () => sitesDirFromEnv(process.env) }
 	};
 
 	const resume = await resumeContext(deps.sessions, deps.memory);
@@ -53,6 +58,7 @@ async function main(): Promise<void> {
 		render(opened.events);
 	}
 
+	let renderPrinted = false;
 	const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 	rl.prompt = () => process.stdout.write('> ');
 	rl.prompt();
@@ -63,7 +69,16 @@ async function main(): Promise<void> {
 			return;
 		}
 		runTurn(deps, sessionId, text)
-			.then(render)
+			.then(async (events) => {
+				render(events);
+				const renderEntry = (await deps.memory.latest()).find((e) => e.kind === 'render' && e.key === 'website');
+				if (renderEntry && !renderPrinted) {
+					renderPrinted = true;
+					const sitesDir = sitesDirFromEnv(process.env);
+					console.log(`\n  Your website lives in ${sitesDir} — every version committed.`);
+					console.log('  Start the app (npm run dev) and open /site to see it.');
+				}
+			})
 			.catch((cause: Error) => {
 				console.error(`\n✗ ${cause.message}`);
 				rl.prompt();
