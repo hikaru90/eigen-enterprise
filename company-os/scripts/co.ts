@@ -10,9 +10,10 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadDotEnv } from '../src/lib/server/dotenv.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const command = process.argv[2] ?? '';
@@ -54,7 +55,7 @@ interface CheckResult {
 
 async function doctor(): Promise<number> {
 	console.log('company-os doctor — what the product needs, checked in order\n');
-	loadEnvFile();
+	loadDotEnv(process.env, ROOT);
 
 	const results: CheckResult[] = [];
 
@@ -78,13 +79,32 @@ async function doctor(): Promise<number> {
 		ok: !!process.env.COMPANY_OS_SITES_DIR,
 		fix: 'Add `COMPANY_OS_SITES_DIR=/absolute/path` to company-os/.env.'
 	});
-	const llmReady =
+	// Terminal chat resolves credentials the same way the browser does: stored
+	// config first (guided setup → the founder's database), env second.
+	let llmStored = false;
+	if (url) {
+		try {
+			const { connect } = await import('../src/lib/server/db.ts');
+			const sql = connect(url);
+			const rows = await sql`select base_url, model from provider_config limit 1`;
+			await sql.end();
+			llmStored = rows.length > 0;
+			results.push({
+				name: `LLM credentials stored in your database (${rows[0]?.model ?? '—'} via ${rows[0]?.base_url ?? '—'})`,
+				ok: llmStored,
+				fix: 'Start the app (npm run dev) and complete the guided setup once — the key lands in your database.'
+			});
+		} catch (cause) {
+			results.push({ name: 'LLM credentials check', ok: false, detail: (cause as Error).message });
+		}
+	}
+	const llmEnvReady =
 		!!process.env.COMPANY_OS_LLM_BASE_URL && !!process.env.COMPANY_OS_LLM_API_KEY && !!process.env.COMPANY_OS_LLM_MODEL;
 	results.push({
-		name: 'COMPANY_OS_LLM_BASE_URL / _API_KEY / _MODEL are set (terminal chat path)',
-		ok: llmReady,
-		detail: llmReady ? undefined : 'The browser UI does not need these — credentials are stored via the guided setup.',
-		fix: 'Add the three COMPANY_OS_LLM_* lines to company-os/.env (or configure through the UI).'
+		name: 'COMPANY_OS_LLM_* env (alternative to the stored credentials)',
+		ok: llmStored || llmEnvReady,
+		detail: llmStored ? 'env not needed — stored credentials win' : undefined,
+		fix: 'Complete the guided setup in the browser, or set COMPANY_OS_LLM_BASE_URL/_API_KEY/_MODEL.'
 	});
 
 	// database reachable
@@ -156,17 +176,6 @@ async function doctor(): Promise<number> {
 			: `\ndoctor: ${broken} problem(s) found. Fix them and run again — nothing will work until then.`
 	);
 	return broken === 0 ? 0 : 1;
-}
-
-function loadEnvFile(): void {
-	const file = join(ROOT, '.env');
-	if (!existsSync(file)) return;
-	for (const line of readFileSync(file, 'utf8').split('\n')) {
-		const match = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
-		if (match && process.env[match[1]!] === undefined) {
-			process.env[match[1]!] = match[2]!.replace(/^["']|["']$/g, '');
-		}
-	}
 }
 
 main()

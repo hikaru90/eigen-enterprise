@@ -1,11 +1,12 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { FakeClient, finishStop, text } from '../../src/lib/server/testing.ts';
 import { InMemoryMemoryStore, type MemoryStore } from '../../src/lib/server/memory.ts';
 import { siteDirFor } from '../../src/lib/server/site-store.ts';
-import { performRender, renderWebsiteTool, websiteManifest } from './index.ts';
+import { performRender, renderWebsiteTool, websiteManifest, WEBSITE_MANIFEST, DEFAULT_THEME_CSS } from './index.ts';
 
 const DRAFT = {
 	schema: 'company-os/website@0.1',
@@ -71,6 +72,19 @@ describe('websiteManifest', () => {
 		expect(manifest.content.schema).toBe('company-os/website@0.1');
 		expect(manifest.content.sectionTypes).toEqual(['hero', 'about', 'differentiator', 'offer', 'cta']);
 		expect(manifest.tools.map((t) => t.name)).toContain('render_website');
+	});
+});
+
+describe('module artifacts stay in sync with the runtime constants', () => {
+	const moduleDir = join(dirname(fileURLToPath(import.meta.url)));
+
+	it('module.json on disk declares exactly what the code runs', () => {
+		const onDisk = JSON.parse(readFileSync(join(moduleDir, 'module.json'), 'utf8'));
+		expect(onDisk).toEqual(WEBSITE_MANIFEST);
+	});
+
+	it('theme.css on disk is the theme the renderer inlines', () => {
+		expect(readFileSync(join(moduleDir, 'theme.css'), 'utf8')).toBe(DEFAULT_THEME_CSS);
 	});
 });
 

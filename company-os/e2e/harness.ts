@@ -11,12 +11,14 @@
  */
 
 import { spawn, execSync } from 'node:child_process';
+import { createConnection } from 'node:net';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import { connect } from '../src/lib/server/db.ts';
+import { loadDotEnv } from '../src/lib/server/dotenv.ts';
 import { migrate } from '../src/lib/server/migrate.ts';
 import { MockLlmGateway } from './mock-llm.ts';
 import type { ScriptEntry } from './mock-llm.ts';
@@ -27,20 +29,8 @@ export const E2E_DB_NAME = 'company_os_e2e';
 export const MOCK_PORT = Number.parseInt(process.env.E2E_MOCK_PORT ?? '5177', 10);
 export const SERVER_PORT = Number.parseInt(process.env.E2E_SERVER_PORT ?? '5178', 10);
 
-/** Minimal .env loader — dev parity; real env always wins. */
-export function loadDotEnv(): void {
-	const file = join(COMPANY_OS_ROOT, '.env');
-	if (!existsSync(file)) return;
-	for (const line of readFileSync(file, 'utf8').split('\n')) {
-		const match = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
-		if (match && process.env[match[1]!] === undefined) {
-			process.env[match[1]!] = match[2]!.replace(/^["']|["']$/g, '');
-		}
-	}
-}
-
 export function devDatabaseUrl(): string {
-	loadDotEnv();
+	loadDotEnv(process.env, COMPANY_OS_ROOT);
 	const url = process.env.COMPANY_OS_DATABASE_URL;
 	if (!url) {
 		throw new Error(
@@ -112,6 +102,23 @@ export async function startStack(opts: StackOptions): Promise<Stack> {
 	}
 
 	const serverPort = opts.serverPort ?? SERVER_PORT;
+	// A busy port means a stale stack is answering — the readiness probe would
+	// pass against the WRONG server and every assertion would lie. Fail loud.
+	const portBusy = await new Promise<boolean>((resolve) => {
+		const probe = createConnection(serverPort, '127.0.0.1');
+		probe.once('connect', () => {
+			probe.destroy();
+			resolve(true);
+		});
+		probe.once('error', () => resolve(false));
+	});
+	if (portBusy) {
+		await gateway.stop();
+		throw new Error(
+			`[harness] port ${serverPort} is already in use — a stale server is answering. ` +
+				'Kill it (lsof -i :' + serverPort + ') and rerun; assertions against the wrong server are lies.'
+		);
+	}
 	const serverProcess = spawn('node', ['build/index.js'], {
 		cwd: COMPANY_OS_ROOT,
 		env: {

@@ -6,11 +6,14 @@
  */
 
 import { rmSync } from 'node:fs';
-import { loadDotEnv, devDatabaseUrl, e2eDatabaseUrl } from './harness.ts';
+import { devDatabaseUrl, e2eDatabaseUrl } from './harness.ts';
+import { loadDotEnv } from '../src/lib/server/dotenv.ts';
 import postgres from 'postgres';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { ScriptEntry } from './mock-llm.ts';
 
-loadDotEnv();
+loadDotEnv(process.env, join(dirname(fileURLToPath(import.meta.url)), '..'));
 
 export const BASE_URL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:5178';
 export const MOCK_URL = process.env.E2E_MOCK_URL ?? 'http://127.0.0.1:5177/v1';

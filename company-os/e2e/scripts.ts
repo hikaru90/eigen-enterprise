@@ -118,3 +118,16 @@ export const FOUNDER_REPLIES: string[] = [
 	'Habe ich noch nicht',
 	FOUNDER.language
 ];
+
+/**
+ * The RESUME journey: the founder walked away after question 1 (a leftover
+ * open session with only company.name answered) and comes back in the
+ * terminal. No verify (credentials are already stored), no arrival — the
+ * agenda continues at company.audience.
+ */
+export function wedgeResumeScript(opts: { auditViolations?: unknown[] } = {}): ScriptEntry[] {
+	return wedgeJourneyScript(opts).slice(3);
+}
+
+/** Founder replies for the resume journey (everything after the name answer). */
+export const FOUNDER_REPLIES_RESUME: string[] = FOUNDER_REPLIES.slice(1);

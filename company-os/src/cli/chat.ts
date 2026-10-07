@@ -8,9 +8,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import readline from 'node:readline';
 import { connect, databaseUrlFromEnv } from '../lib/server/db.ts';
+import { loadDotEnv } from '../lib/server/dotenv.ts';
 import { migrate } from '../lib/server/migrate.ts';
-import { llmConfigFromEnv, LlmClient } from '../lib/server/llm.ts';
+import { LlmClient } from '../lib/server/llm.ts';
 import { PgMemoryStore } from '../lib/server/memory.ts';
+import { PgProviderStore, resolveLlmConfig } from '../lib/server/provider.ts';
 import { PgSessionStore } from '../lib/server/session.ts';
 import { gitProbe, migrationsProbe, postgresProbe } from '../lib/server/substrate.ts';
 import { sitesDirFromEnv } from '../lib/server/site-store.ts';
@@ -31,11 +33,24 @@ function render(events: LoopEvent[]): void {
 }
 
 async function main(): Promise<void> {
+	// The CLI runs outside vite — bring .env in read-only (real env wins).
+	loadDotEnv();
 	const sql = connect(databaseUrlFromEnv());
 	const ran = await migrate(sql, MIGRATIONS_DIR);
 	console.log(ran.length > 0 ? `migrations applied: ${ran.join(', ')}` : 'migrations up to date');
 
-	const client = new LlmClient(llmConfigFromEnv());
+	// Credentials resolve the same way the browser does: the founder's stored
+	// config first (the guided setup wrote it into THEIR database), env second.
+	// No env duplication required for the terminal path.
+	const provider = new PgProviderStore(sql);
+	const config = await resolveLlmConfig(provider, process.env);
+	if (!config) {
+		throw new Error(
+			'No LLM credentials: start the app (npm run dev), complete the guided setup once — ' +
+				'the key is stored in your database — or set COMPANY_OS_LLM_* in the environment.'
+		);
+	}
+	const client = new LlmClient(config);
 	const deps: ConversationDeps = {
 		client,
 		sessions: new PgSessionStore(sql),
@@ -62,29 +77,34 @@ async function main(): Promise<void> {
 	const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 	rl.prompt = () => process.stdout.write('> ');
 	rl.prompt();
+
+	async function handleLine(text: string): Promise<void> {
+		try {
+			const events = await runTurn(deps, sessionId, text);
+			render(events);
+			const renderEntry = (await deps.memory.latest()).find((e) => e.kind === 'render' && e.key === 'website');
+			if (renderEntry && !renderPrinted) {
+				renderPrinted = true;
+				const sitesDir = sitesDirFromEnv(process.env);
+				console.log(`\n  Your website lives in ${sitesDir} — every version committed.`);
+				console.log('  Start the app (npm run dev) and open /site to see it.');
+			}
+		} catch (cause) {
+			console.error(`\n✗ ${(cause as Error).message}`);
+		}
+		rl.prompt();
+	}
+
+	// Turns run strictly in order — piped input arrives faster than turns
+	// complete, and close must wait for the last turn, not kill it.
+	let tail: Promise<void> = Promise.resolve();
 	rl.on('line', (line) => {
 		const text = line.trim();
-		if (text.length === 0) {
-			rl.prompt();
-			return;
-		}
-		runTurn(deps, sessionId, text)
-			.then(async (events) => {
-				render(events);
-				const renderEntry = (await deps.memory.latest()).find((e) => e.kind === 'render' && e.key === 'website');
-				if (renderEntry && !renderPrinted) {
-					renderPrinted = true;
-					const sitesDir = sitesDirFromEnv(process.env);
-					console.log(`\n  Your website lives in ${sitesDir} — every version committed.`);
-					console.log('  Start the app (npm run dev) and open /site to see it.');
-				}
-			})
-			.catch((cause: Error) => {
-				console.error(`\n✗ ${cause.message}`);
-				rl.prompt();
-			});
+		if (text.length === 0) return;
+		tail = tail.then(() => handleLine(text));
 	});
 	rl.on('close', async () => {
+		await tail;
 		console.log('\nSaved. Your answers persist — run npm run chat again to continue.');
 		await sql.end();
 		process.exit(0);

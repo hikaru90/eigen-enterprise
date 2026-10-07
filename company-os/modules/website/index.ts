@@ -11,8 +11,6 @@
  * stays with code.
  */
 
-import moduleJsonRaw from './module.json?raw';
-import themeCssRaw from './theme.css?raw';
 import type { LlmClient } from '../../src/lib/server/llm.ts';
 import type { ToolDef, ToolContext } from '../../src/lib/server/tools.ts';
 import { ToolError } from '../../src/lib/server/tools.ts';
@@ -32,12 +30,38 @@ export interface WebsiteManifest {
 	tools: { name: string; haltsTurn?: boolean }[];
 }
 
+// The manifest and theme are typed constants — one source of truth that works
+// in EVERY runtime: the vite build (?raw died there: import.meta.dirname/fs
+// paths break in the bundled server), vitest, and plain node (the CLI — where
+// node's strip-types rejects ?raw imports). module.json and theme.css remain
+// the human-editable artifacts; a test pins them to these constants.
+export const WEBSITE_MANIFEST: WebsiteManifest = {
+	name: 'website',
+	version: '0.1.0',
+	description:
+		"The public face of the company — copy drafted from the founder's answers, audited against invention, committed as git from the first render.",
+	content: { schema: CONTENT_SCHEMA, sectionTypes: [...SECTION_TYPES] },
+	theme: {
+		file: 'theme.css',
+		tokens: ['--co-bg', '--co-ink', '--co-muted', '--co-accent', '--co-display-font', '--co-body-font']
+	},
+	tools: [{ name: 'render_website', haltsTurn: false }]
+};
+
+export const DEFAULT_THEME_CSS = `/* Website theme tokens — the founder-editable surface.
+   Change these, re-render, and the site follows. Nothing else to touch. */
+:root {
+  --co-bg: #faf6ef;
+  --co-ink: #26221c;
+  --co-muted: #6f675c;
+  --co-accent: #8a4b2f;
+  --co-display-font: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --co-body-font: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+}
+`;
+
 export function websiteManifest(): WebsiteManifest {
-	// The manifest and theme ship INSIDE the bundle (?raw import) — no runtime
-	// fs reads, so the production build cannot lose them (e2e caught exactly
-	// that: import.meta.dirname dies in the bundled server).
-	const raw: unknown = JSON.parse(moduleJsonRaw);
-	const manifest = raw as WebsiteManifest;
+	const manifest = WEBSITE_MANIFEST;
 	if (manifest.name !== 'website') {
 		throw new Error(`website module.json: expected name "website" — got ${JSON.stringify(manifest.name)}.`);
 	}
@@ -60,7 +84,7 @@ export function websiteManifest(): WebsiteManifest {
 }
 
 export function defaultThemeCss(): string {
-	return themeCssRaw;
+	return DEFAULT_THEME_CSS;
 }
 
 export interface PerformRenderDeps {
