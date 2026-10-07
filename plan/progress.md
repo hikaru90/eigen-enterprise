@@ -2,6 +2,76 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-22 — company-os M3 SHIPPED — the website module + first render (P2/P3, the reveal) (`b29266b`)
+
+The interview finally ends somewhere. `ready_to_render` used to dead-end ("the website
+build comes next" — nothing built it); now the wedge's actual product moment works:
+describe your company → the site is drafted, audited, rendered and committed → revealed at
+`/site`.
+
+**Shipped**
+- **`modules/website/`** — the first module, weekend-shippable bar: `module.json` is a
+  load-bearing contract (code validates section types/schema/tools against it, not
+  decoration); `copy.ts` drafts site copy from the founder's answers ONLY (every section
+  must cite its source answer keys — unanswered keys are rejected) and then runs the
+  **W5 hard filter**: a second LLM pass judges MEANING (no string heuristics) and rejects
+  sentences stating prices/legal claims/certifications/numbers the founder never gave —
+  a rejected audit commits NOTHING; `template.ts` is a pure content→HTML renderer in the
+  typographic "handmade" register (system serif stack, warm paper, hairline rules,
+  monogram fallback from the company name, language-aware, everything HTML-escaped,
+  byte-deterministic so commits don't churn); `theme.css` is the founder-editable token
+  surface.
+- **`site-store.ts`** — the generated site is a git repo from the FIRST render (W4:
+  "even version 0.1 is committed"): `git init` on first render, one commit per render
+  (`render: v0.1 …`, versions bump 0.1→0.2→…), commit identity provided by the store so
+  the artifact never depends on host git config. `COMPANY_OS_SITES_DIR` required, fails
+  loud at call time (W3 convention — same as LLM config).
+- **The process ends somewhere**: `plan.ts` gains the `rendered` phase, derived from a
+  `render` entry in company memory (never persisted as state — resume stays exact).
+  `ready_to_render` now demands the `render_website` tool call: a turn ending without it
+  gets ONE bounded correction, then loud drift failure (same discipline as the question
+  agenda). Questions are structurally impossible post-interview (both post-interview
+  phases refuse at the tool door). Without `COMPANY_OS_SITES_DIR` wired, the render turn
+  fails loud BEFORE the model is invoked — misconfiguration can't burn tokens.
+- **`/site`** — the reveal surface serves exactly the committed `index.html` (the founder
+  sees the artifact, not a re-render). Honest 404 ("never been rendered") vs loud 500.
+- **`/api/turn` streams live** — events now go out as they happen (new `onEvent` seam on
+  `runTurn`/`openSession`), so the render's progress lines arrive during the build, not
+  after it. The CLI keeps its existing buffered path.
+
+**Gates: 111 vitest passed (17 files; PG suites skip without test DB as before), tsc
+clean, svelte-check 0 errors, production build green. Rendered output visually inspected
+(Fotostudio smoke: monogram, de lang, sections, mailto CTA, minimal footer).**
+
+**Decisions (log)**
+- The site repo IS the website: `index.html` is self-contained (tokens inlined from
+  `theme.css`, also committed alongside `content.json` with per-section provenance).
+  Deploy later = serve the repo; no renderer needed at the edge.
+- The CTA action (`mailto`/url/tel) is only emitted when the founder literally gave the
+  address/number — the audit pass verifies; otherwise the CTA renders text-only. An
+  invented email would be fabrication.
+- `content.json` ships in the site repo: provenance (section → answer keys) travels with
+  the copy. "100% traceable" is inspectable, not asserted.
+- vitest/tsconfig now include `modules/**` (child tsconfig `include` overrides the
+  generated kit list — mirrored the needed entries; svelte-check verifies).
+
+**Broke / lessons**: FakeClient must be shared between the conversation loop and the
+website tool deps — the draft/audit calls consume scripted turns from the SAME client, so
+the tool deps get the conversation's client, not a fresh one. Seeding memory after
+`openSession` is the correct resume semantic in specs (memory is the substrate); seeding
+before open changes which turn consumes which scripted response.
+
+**Known limitation (deliberate, M4's scope)**: after the reveal the agent is honest about
+what it cannot do — "editing by conversation comes next; the site is saved and every
+version is committed." No edit tools exist yet.
+
+**Next (owner)**: add `COMPANY_OS_SITES_DIR=/absolute/path` to `company-os/.env` (I don't
+touch .env — the app fails loud with this exact line until it's set), then run a live
+first conversation: interview → watch the render lines → open `/site`. Then **M4**
+(iteration loop: conversation-driven edits as tools, ~3-iteration cap, "park it" offer)
+per `plan/phase-wedge.md`.
+
+---
 ## 2026-09-22 — Phase-1e SHIPPED — welcome setup wizard: the whole system, not just the provider
 
 **Owner directive (verbatim)**: "I WANT A SETUP WIZARD THAT GUIDES THROUGH THE SETUP! THE USER
