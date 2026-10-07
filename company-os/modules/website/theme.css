@@ -1,0 +1,10 @@
+/* Website theme tokens — the founder-editable surface.
+   Change these, re-render, and the site follows. Nothing else to touch. */
+:root {
+  --co-bg: #faf6ef;
+  --co-ink: #26221c;
+  --co-muted: #6f675c;
+  --co-accent: #8a4b2f;
+  --co-display-font: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --co-body-font: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+}

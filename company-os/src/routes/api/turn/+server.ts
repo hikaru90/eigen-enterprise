@@ -29,8 +29,10 @@ export const POST: RequestHandler = async ({ request }) => {
 				controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
 			};
 			try {
-				const events = await runTurn(runtime.deps, sessionId, message);
-				for (const event of events) send(event);
+				// Live streaming: events go out as they happen — during a render
+				// (draft, audit, commit) the founder watches named progress lines,
+				// never a bare spinner (first-conversation.md rule 2).
+				await runTurn(runtime.deps, sessionId, message, (event) => send(event));
 				send({ type: 'done' });
 			} catch (cause) {
 				send({ type: 'error', message: (cause as Error).message });

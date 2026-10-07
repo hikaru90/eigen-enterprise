@@ -13,6 +13,7 @@ import { PgMemoryStore } from './memory.ts';
 import { PgProviderStore, resolveLlmConfig, verifyProviderSetup } from './provider.ts';
 import type { ProviderSetup } from './provider.ts';
 import { PgSessionStore } from './session.ts';
+import { sitesDirFromEnv } from './site-store.ts';
 import { gitProbe, migrationsProbe, postgresProbe } from './substrate.ts';
 import { openSession, runTurn } from './conversation/turn.ts';
 import type { ConversationDeps } from './conversation/turn.ts';
@@ -47,12 +48,18 @@ async function core(env: NodeJS.ProcessEnv): Promise<RuntimeCore> {
 	cachedCore = {
 		sql,
 		provider,
-		buildDeps: (config: LlmConfig) => ({
-			client: new LlmClient(config),
-			sessions,
-			memory,
-			substrateProbes: [postgresProbe(sql), migrationsProbe(sql, MIGRATIONS_DIR), gitProbe()]
-		})
+		buildDeps: (config: LlmConfig) => {
+			const client = new LlmClient(config);
+			return {
+				client,
+				sessions,
+				memory,
+				substrateProbes: [postgresProbe(sql), migrationsProbe(sql, MIGRATIONS_DIR), gitProbe()],
+				// The website module shares the conversation client; the sites dir
+				// resolves at render time — required, fail loud (W3 convention).
+				website: { client, getSitesDir: () => sitesDirFromEnv(env) }
+			};
+		}
 	};
 	return cachedCore;
 }

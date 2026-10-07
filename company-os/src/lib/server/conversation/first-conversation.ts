@@ -54,6 +54,11 @@ async function enforceAgenda(
 			`${tool}: no question is required now — the interview is complete. End the turn with plain text.`
 		);
 	}
+	if (live.phase === 'rendered') {
+		throw new ToolError(
+			`${tool}: the website is rendered — the interview is over. Asking questions is no longer part of the process.`
+		);
+	}
 	if (key !== live.next?.key) {
 		throw new ToolError(
 			`${tool}: the agenda requires "${live.next?.key}" next — you asked for "${key}". Deliver exactly the required question.`

@@ -130,4 +130,29 @@ describe('first conversation tools', () => {
 		expect(ok.choices).toEqual(['book a shoot', 'order prints']);
 		expect(ok.turn_ends).toBe(true);
 	});
+
+	it('questions are impossible once the interview is done — both post-interview phases refuse loudly', async () => {
+		const seeds = [
+			'company.name',
+			'company.audience',
+			'company.cta',
+			'company.tone',
+			'company.differentiator',
+			'company.assets',
+			'site.domain',
+			'site.language'
+		].map((key) => ({ kind: 'answer', key, value: 'v' }));
+
+		// ready_to_render: build the site instead of asking anything
+		const readyCtx = ctxWith(seeds).ctx;
+		await expect(
+			tools['ask_question']!.execute({ key: 'company.name', question: 'q' }, readyCtx)
+		).rejects.toThrowError(/the interview is complete/);
+
+		// rendered: the interview is over for good
+		const rendered = ctxWith([...seeds, { kind: 'render', key: 'website', value: '{"company":"x"}' }]);
+		await expect(
+			tools['ask_question']!.execute({ key: 'company.name', question: 'q' }, rendered.ctx)
+		).rejects.toThrowError(/the interview is over/);
+	});
 });

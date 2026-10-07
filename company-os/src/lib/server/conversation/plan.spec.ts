@@ -42,6 +42,14 @@ describe('processState — the code-owned agenda', () => {
 		expect(state.next).toBeNull();
 	});
 
+	it('a committed render moves the process to rendered — derived from memory, resume-safe', async () => {
+		const memory = await storeWith(QUESTION_PLAN.map((q) => q.key));
+		await memory.remember({ kind: 'render', key: 'website', value: '{"version":"0.1"}' });
+		const state = await processState(memory);
+		expect(state.phase).toBe('rendered');
+		expect(state.next).toBeNull();
+	});
+
 	it('latest-wins re-answers do not duplicate resolved slots', async () => {
 		const memory = new InMemoryMemoryStore();
 		await memory.remember({ kind: 'answer', key: 'company.name', value: 'a' });
@@ -60,9 +68,18 @@ describe('processStateMessage — the injected agenda', () => {
 		expect(message).toContain('ask_question');
 	});
 
-	it('the render phase forbids questions', async () => {
+	it('the render phase forbids questions and demands the render_website call', async () => {
 		const all = QUESTION_PLAN.map((q) => q.key);
 		const message = processStateMessage(await processState(await storeWith(all)));
 		expect(message).toContain('Do NOT ask any question');
+		expect(message).toContain('render_website');
+	});
+
+	it('the rendered phase is honest: no editing yet, site is saved', async () => {
+		const memory = await storeWith(QUESTION_PLAN.map((q) => q.key));
+		await memory.remember({ kind: 'render', key: 'website', value: '{"version":"0.1"}' });
+		const message = processStateMessage(await processState(memory));
+		expect(message).toContain('cannot edit');
+		expect(message).toContain('committed');
 	});
 });

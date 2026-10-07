@@ -27,7 +27,7 @@ export const QUESTION_PLAN: PlanQuestion[] = [
 	{ key: 'site.language', skippable: false, conditional: true }
 ];
 
-export type ProcessPhase = 'interrogation' | 'language_check' | 'ready_to_render';
+export type ProcessPhase = 'interrogation' | 'language_check' | 'ready_to_render' | 'rendered';
 
 export interface ProcessState {
 	phase: ProcessPhase;
@@ -57,15 +57,20 @@ export async function processState(memory: MemoryStore): Promise<ProcessState> {
 		return { phase: 'language_check', resolved, next: { key: language.key, skippable: false } };
 	}
 
-	return { phase: 'ready_to_render', resolved, next: null };
+	// The render is recorded in memory by the render_website tool — phase is
+	// always derived, never persisted as state, so resume stays exact.
+	const rendered = entries.some((e) => e.kind === 'render' && e.key === 'website');
+	return { phase: rendered ? 'rendered' : 'ready_to_render', resolved, next: null };
 }
 
 /** The per-turn system message: the process speaks first, in JSON. */
 export function processStateMessage(state: ProcessState): string {
 	const instruction =
 		state.phase === 'ready_to_render'
-			? 'All questions are resolved. Tell the founder their company is saved and the interview is complete — the website build comes next. Do NOT ask any question. End the turn with plain text only.'
-			: `The next required question is "${state.next!.key}" (skippable: ${state.next!.skippable}). You MUST end your turn with exactly one ask_question (or offer_choices) for "${state.next!.key}" — phrase it in the founder's language, warmly, one question only. Keep prose before the tool brief; the question itself is delivered by the tool.`;
+			? 'All questions are resolved — the interview is complete. Say ONE short line that you are building the website now (in the founder\'s language), then end your turn by calling the render_website tool with no arguments. Do NOT ask any question.'
+			: state.phase === 'rendered'
+				? 'The website has been rendered and revealed. Respond briefly and warmly to the founder\'s reaction, in their language. You cannot edit the site yet — conversation-driven editing is not built; if they want changes, tell them the site is saved and every version is committed, and that refining it by conversation comes next. Do NOT ask any question.'
+				: `The next required question is "${state.next!.key}" (skippable: ${state.next!.skippable}). You MUST end your turn with exactly one ask_question (or offer_choices) for "${state.next!.key}" — phrase it in the founder's language, warmly, one question only. Keep prose before the tool brief; the question itself is delivered by the tool.`;
 	return `PROCESS STATE (code-generated, authoritative — this is the agenda, not a suggestion):\n${JSON.stringify(
 		{ phase: state.phase, resolved: state.resolved, next: state.next },
 		null,

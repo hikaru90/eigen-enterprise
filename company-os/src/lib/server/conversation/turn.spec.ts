@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { existsSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { openSession, runTurn } from './turn.ts';
 import type { ConversationDeps } from './turn.ts';
 import { InMemoryMemoryStore } from '../memory.ts';
@@ -6,6 +10,7 @@ import { InMemorySessionStore } from '../session.ts';
 import { FakeClient, finishStop, finishToolCalls, text, toolCall } from '../testing.ts';
 import type { StreamEvent } from '../llm.ts';
 import { resumeContext } from '../resume.ts';
+import { QUESTION_PLAN } from './plan.ts';
 
 function depsWith(
 	turns: StreamEvent[][],
@@ -238,3 +243,130 @@ describe('maxSteps guard in conversation', () => {
 	});
 });
 
+
+describe('P2 — the render turn (website module)', () => {
+	const DRAFT = {
+		schema: 'company-os/website@0.1',
+		language: 'de',
+		company: { name: 'Hafenlicht' },
+		sections: [
+			{ type: 'hero', headline: 'Licht für den Hafen', subline: 'Aus Hamburg', sources: ['company.name'] }
+		]
+	};
+
+	/** Seeding the answers after openSession IS the resume semantic: memory is the substrate. */
+	async function completeInterview(memory: InMemoryMemoryStore): Promise<void> {
+		for (const q of QUESTION_PLAN) {
+			await memory.remember({ kind: 'answer', key: q.key, value: q.key === 'company.name' ? 'Hafenlicht' : 'v' });
+		}
+	}
+
+	function siteDeps(client: unknown, dir: string): NonNullable<ConversationDeps['website']> {
+		return { client: client as NonNullable<ConversationDeps['website']>['client'], getSitesDir: () => dir };
+	}
+
+	it('render_website is called at ready_to_render, drafts+audits via the LLM, commits, and records the render', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'co-render-'));
+		const { deps, memory, client } = depsWith([
+			greetAndAsk('What is your company called?'),
+			// the render turn: one line, then the tool
+			[text('Ich baue Ihre Website.'), toolCall('r1', 'render_website', {}), finishToolCalls],
+			// inside the tool: draft, then audit
+			[text(JSON.stringify(DRAFT)), finishStop],
+			[text(JSON.stringify({ violations: [] })), finishStop],
+			// the reveal, then silence
+			[text('Ihre Website liegt unter /site — sehen Sie sich das Ergebnis an.'), finishStop]
+		]);
+		deps.website = siteDeps(client, dir);
+		const opened = await openSession(deps);
+		await completeInterview(memory);
+		const events = await runTurn(deps, opened.sessionId, 'Fertig.');
+
+		expect(events.at(-1)).toMatchObject({ type: 'finish', reason: 'completed' });
+		const toolResults = events.filter((e) => e.type === 'tool_result');
+		expect(
+			toolResults.some((e) => e.type === 'tool_result' && !e.isError && e.call.function.name === 'render_website')
+		).toBe(true);
+		// the render is memory — the phase derived from it is 'rendered'
+		const renderEntry = (await memory.latest()).find((e) => e.kind === 'render' && e.key === 'website');
+		expect(renderEntry).toBeDefined();
+		// the site is committed from the first render
+		expect(existsSync(join(dir, 'hafenlicht', '.git'))).toBe(true);
+		expect(existsSync(join(dir, 'hafenlicht', 'index.html'))).toBe(true);
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	it('a model that ends the ready_to_render turn without rendering gets corrected once, then renders', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'co-render-'));
+		const { deps, memory, client } = depsWith([
+			greetAndAsk('What is your company called?'),
+			[text('Geschafft!'), finishStop], // drift: no render call
+			[toolCall('r1', 'render_website', {}), finishToolCalls],
+			[text(JSON.stringify(DRAFT)), finishStop],
+			[text(JSON.stringify({ violations: [] })), finishStop],
+			[text('Ihre Website: /site'), finishStop]
+		]);
+		deps.website = siteDeps(client, dir);
+		const opened = await openSession(deps);
+		await completeInterview(memory);
+		const events = await runTurn(deps, opened.sessionId, 'Fertig.');
+
+		expect(events.at(-1)).toMatchObject({ type: 'finish', reason: 'completed' });
+		expect(client.calls[2]!.messages.some((m) => m.content?.includes('without calling render_website'))).toBe(true);
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	it('a model that never renders fails loud — the reveal cannot be faked', async () => {
+		const { deps, memory, client } = depsWith([
+			greetAndAsk('What is your company called?'),
+			[text('Geschafft!'), finishStop],
+			[text('Wirklich geschafft!'), finishStop]
+		]);
+		deps.website = siteDeps(client, mkdtempSync(join(tmpdir(), 'co-render-')));
+		const opened = await openSession(deps);
+		await completeInterview(memory);
+		await expect(runTurn(deps, opened.sessionId, 'Fertig.')).rejects.toThrowError(/refusing to drift/);
+	});
+
+	it('ready_to_render without the website module fails loud before the model is invoked', async () => {
+		const { deps, memory, client } = depsWith([greetAndAsk('What is your company called?')]);
+		const opened = await openSession(deps);
+		await completeInterview(memory);
+		await expect(runTurn(deps, opened.sessionId, 'Fertig.')).rejects.toThrowError(/COMPANY_OS_SITES_DIR/);
+		expect(client.calls).toHaveLength(1); // only the open turn — no model call for the failed render turn
+	});
+
+	it('after the render, the founder can talk without the process demanding anything', async () => {
+		const { deps, memory, client } = depsWith([
+			greetAndAsk('What is your company called?'),
+			[text('Schön, dass er Ihnen gefällt!'), finishStop]
+		]);
+		deps.website = siteDeps(client, mkdtempSync(join(tmpdir(), 'co-render-')));
+		const opened = await openSession(deps);
+		await completeInterview(memory);
+		await memory.remember({ kind: 'render', key: 'website', value: '{"company":"Hafenlicht","version":"0.1"}' });
+		const events = await runTurn(deps, opened.sessionId, 'Das finde ich gut!');
+		expect(events.at(-1)).toMatchObject({ type: 'finish', reason: 'completed' });
+		// honest post-render behavior: no question, no invented editing power
+		const stateMessage = client.calls.at(-1)!.messages.at(-1)!.content ?? '';
+		expect(stateMessage).toContain('cannot edit');
+	});
+
+	it('streaming: onEvent sees every event live, identical to the returned ones', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'co-render-'));
+		const { deps, memory, client } = depsWith([
+			greetAndAsk('What is your company called?'),
+			[text('Ich baue Ihre Website.'), toolCall('r1', 'render_website', {}), finishToolCalls],
+			[text(JSON.stringify(DRAFT)), finishStop],
+			[text(JSON.stringify({ violations: [] })), finishStop],
+			[text('Ihre Website liegt unter /site.'), finishStop]
+		]);
+		deps.website = siteDeps(client, dir);
+		const opened = await openSession(deps);
+		await completeInterview(memory);
+		const live: unknown[] = [];
+		const events = await runTurn(deps, opened.sessionId, 'Fertig.', (e) => live.push(e));
+		expect(live).toEqual(events);
+		rmSync(dir, { recursive: true, force: true });
+	});
+});

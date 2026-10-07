@@ -1,0 +1,19 @@
+{
+	"name": "website",
+	"version": "0.1.0",
+	"description": "The public face of the company — copy drafted from the founder's answers, audited against invention, committed as git from the first render.",
+	"content": {
+		"schema": "company-os/website@0.1",
+		"sectionTypes": ["hero", "about", "differentiator", "offer", "cta"]
+	},
+	"theme": {
+		"file": "theme.css",
+		"tokens": ["--co-bg", "--co-ink", "--co-muted", "--co-accent", "--co-display-font", "--co-body-font"]
+	},
+	"tools": [
+		{
+			"name": "render_website",
+			"haltsTurn": false
+		}
+	]
+}
