@@ -29,6 +29,7 @@ export async function completeWelcomeOnboarding(userId: string): Promise<void> {
  * Clears the welcome-completed stamp: the nucleus homepage shows the welcome
  * wizard again on the next load (the homepage settings menu's "Restart
  * onboarding"). Same upsert shape as completion — idempotent, fails loud.
+ * Deliberately keeps displayName: identity is not tour state.
  */
 export async function resetWelcomeOnboarding(userId: string): Promise<void> {
   await getDb()
@@ -41,6 +42,32 @@ export async function resetWelcomeOnboarding(userId: string): Promise<void> {
       target: userPreference.userId,
       set: {
         welcomeCompletedAt: null,
+        updatedAt: new Date(),
+      },
+    })
+}
+
+/**
+ * Persists the name given during the boot sequence ("What should I call you?").
+ * Upsert on user_preference — idempotent, fails loud: a silently lost name would
+ * ask again forever or greet a stranger.
+ */
+export async function setWelcomeDisplayName(userId: string, name: string): Promise<void> {
+  const displayName = name.trim()
+  if (!displayName) {
+    throw new Error('Name must not be empty.')
+  }
+
+  await getDb()
+    .insert(userPreference)
+    .values({
+      userId,
+      displayName,
+    })
+    .onConflictDoUpdate({
+      target: userPreference.userId,
+      set: {
+        displayName,
         updatedAt: new Date(),
       },
     })

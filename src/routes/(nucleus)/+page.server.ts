@@ -26,13 +26,18 @@ export const load: PageServerLoad = async (event) => {
   // Welcome tour gate: shown until the user finishes (or skips) it once. Harness
   // accounts exist for automated verification — they never see product surfaces.
   let showWelcome = false
+  let displayName: string | null = null
   if (!isHarness) {
     const [pref] = await getDb()
-      .select({ welcomeCompletedAt: userPreference.welcomeCompletedAt })
+      .select({
+        welcomeCompletedAt: userPreference.welcomeCompletedAt,
+        displayName: userPreference.displayName,
+      })
       .from(userPreference)
       .where(eq(userPreference.userId, userId))
       .limit(1)
     showWelcome = pref?.welcomeCompletedAt == null
+    displayName = pref?.displayName ?? null
   }
 
   return {
@@ -41,5 +46,6 @@ export const load: PageServerLoad = async (event) => {
     needsOnboarding: !isHarness && !providerReady,
     showWelcome,
     byokUiEnabled: isByokUiEnabled(),
+    displayName,
   }
 }

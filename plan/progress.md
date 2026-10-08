@@ -1139,3 +1139,49 @@ onboarding) or phase-3 per roadmap.
 
 **Next**
 - Strip merged → tests green → kernel skeleton → pilot modules → orchestrator via Telegram
+
+---
+
+## 2026-09-07 — Phase-2e: onboarding redesigned as the boot sequence
+
+**Shipped**
+- Owner verdict on the phase-1e wizard: dead surfaces, jargon, module tourism — scrapped.
+  New rule is permanent: `.pi/skills/tangible-purpose-ui/SKILL.md` (never show anything
+  without real, tangible purpose; modules invisible at first run; agent chat is the only UI).
+- Boot sequence (`welcome-wizard.svelte` rewrite): orb bloom + breathe (pure CSS, monochrome,
+  `prefers-reduced-motion` respected) → "Hello." → name ask (only when unknown) → identity
+  lines in outcome language → mind act (only when no provider; embedded provider wizard,
+  real choices) → handoff into the chat. No step counter, no capability list, no
+  "Your AI is connected" screen, no founding-interview step, no module destination buttons.
+  "Skip for now" = muted corner link, same never-nag semantics.
+- Sound: `src/lib/sound/boot-sound.ts` — Web Audio synth (no assets/deps), ON by default
+  (owner decision), gesture-unlocked AudioContext, `ee-sound` localStorage flag, mute toggle
+  in the home settings menu.
+- Seeded first agent turn on handoff (deterministic, no LLM): "Hello{name}. Your company's OS
+  is getting set up — that happens by talking. So: what's your company called, and what does
+  it do?" — honest: the setup IS the first conversation (first-conversation.md P0/P1).
+- Full width: nucleus page container `max-w-2xl` removed (`w-full`, padded) — fixes both the
+  narrow-strip complaint and the vertical skew (wizard was min-h-dvh inside the headered
+  container; now flex-1 centered in remaining space). Provider wizard got an `embedded` prop
+  to drop its own min-h-dvh/label inside the mind act.
+- Server: migration `0083_user_display_name.sql` (+journal idx 83) — `user_preference.display_name`;
+  `setWelcomeDisplayName()`; new `POST /api/onboarding/name` (401/400 fail-loud).
+  Founding endpoint kept (owner option A) for the future branding surface; its UI step removed.
+- Explicit-event contracts (no `$effect` control flow): provider wizard `onconnected`
+  callback ("Enter the workspace →"), wizard `oncomplete({ name })` seeds the chat.
+
+**Verification**
+- `npm run check` 0 errors (29 warnings = documented baseline); lint 0 errors.
+- Unit: 4194 passed (incl. new name API + page-load displayName tests).
+- Components: 32 passed — welcome-wizard spec rewritten for the boot sequence (9 tests,
+  provider wizard mocked via `provider-onboarding.stub.svelte`).
+- E2E: full suite 25 passed, 2 pre-existing skips. `onboarding-welcome.e2e.ts` rewritten:
+  happy path (name → mind via API → seeded chat), skip path (gate still holds,
+  sign-out/in persistence), restart path (name survives, personalized greeting).
+  Migration 0083 must be applied to any env before this ships (`npm run db:migrate`).
+
+**Decisions**
+- Sound default ON; tab mute + settings toggle are the levers (owner ruled).
+- Full width = literal (`w-full` everywhere on nucleus); forms inside acts keep readable
+  measures (max-w-md/lg) — typography, not container restriction.
+- Name is identity, not tour state: `resetWelcomeOnboarding` keeps it.

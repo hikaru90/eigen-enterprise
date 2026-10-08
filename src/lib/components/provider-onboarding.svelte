@@ -3,7 +3,17 @@
   import { onMount } from 'svelte'
   import { invalidateAll } from '$app/navigation'
 
-  let { byokUiEnabled = true }: { byokUiEnabled?: boolean } = $props()
+  let {
+    byokUiEnabled = true,
+    onconnected,
+    embedded = false,
+  }: {
+    byokUiEnabled?: boolean
+    onconnected?: () => void
+    /** Embedded in the boot sequence's mind act: no own viewport/label — the
+     *  sequence owns the chrome, this renders as a form inside it. */
+    embedded?: boolean
+  } = $props()
 
   type CatalogModel = { id: string; name: string }
   type CatalogProvider = {
@@ -418,13 +428,15 @@
   }
 </script>
 
-<div class="flex min-h-dvh flex-col items-center justify-center px-4">
-  <div class="w-full max-w-md">
-    <p class="text-muted-foreground text-center text-[11px] font-medium tracking-[0.25em] uppercase">
-      Eigen Enterprise
-    </p>
+<div class={embedded ? 'flex w-full flex-col items-center justify-center' : 'flex min-h-dvh flex-col items-center justify-center px-4'}>
+  <div class={embedded ? 'w-full' : 'w-full max-w-md'}>
+    {#if !embedded}
+      <p class="text-muted-foreground text-center text-[11px] font-medium tracking-[0.25em] uppercase">
+        Eigen Enterprise
+      </p>
+    {/if}
 
-    <h1 class="mt-8 text-center text-xl font-medium tracking-tight text-balance">
+    <h1 class={embedded ? 'text-center text-xl font-medium tracking-tight text-balance' : 'mt-8 text-center text-xl font-medium tracking-tight text-balance'}>
       Connect your AI provider.
     </h1>
     <p class="text-muted-foreground mt-2 text-center text-sm leading-relaxed">
@@ -449,7 +461,10 @@
         <button
           type="button"
           class="mt-4 h-11 w-full bg-black text-sm font-medium text-white hover:bg-black/90"
-          onclick={() => void invalidateAll()}
+          onclick={() => {
+            onconnected?.()
+            void invalidateAll()
+          }}
         >
           Enter the workspace →
         </button>

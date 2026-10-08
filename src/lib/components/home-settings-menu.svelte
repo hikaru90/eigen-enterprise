@@ -4,20 +4,34 @@
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw'
   import Settings from '@lucide/svelte/icons/settings'
+  import Volume2 from '@lucide/svelte/icons/volume-2'
+  import VolumeX from '@lucide/svelte/icons/volume-x'
   import { invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
+  import { isSoundEnabled, setSoundEnabled } from '$lib/sound/boot-sound'
   import * as Popover from '$lib/components/ui/popover'
 
   /**
    * The homepage's settings entry point: a cog in the header, always reachable
    * (chat, welcome wizard, and provider gate alike). API keys, provider and
    * app settings live on their pages; restarting onboarding clears the welcome
-   * stamp and reloads page data so the wizard takes over the homepage again.
+   * stamp and reloads page data so the boot sequence takes over the homepage
+   * again. Sound (boot sequence, default on) toggles here too.
    */
 
   let menuOpen = $state(false)
   let restarting = $state(false)
+  let soundOn = $state(true)
   let error = $state<string | null>(null)
+
+  function toggleSound(): void {
+    soundOn = !soundOn
+    setSoundEnabled(soundOn)
+  }
+
+  function syncSound(): void {
+    soundOn = isSoundEnabled()
+  }
 
   async function restartOnboarding(): Promise<void> {
     if (restarting) return
@@ -39,7 +53,7 @@
   }
 </script>
 
-<Popover.Root bind:open={menuOpen}>
+<Popover.Root bind:open={menuOpen} onOpenChange={(open) => open && syncSound()}>
   <Popover.Trigger
     class="text-muted-foreground hover:text-foreground flex size-8 cursor-pointer items-center justify-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
     aria-label="Settings menu"
@@ -70,6 +84,20 @@
       Settings
     </a>
     <div class="bg-border my-1 h-px"></div>
+    <button
+      type="button"
+      class="flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm text-foreground hover:bg-white/25 disabled:opacity-50 dark:hover:bg-white/10"
+      onclick={toggleSound}
+      data-testid="sound-toggle"
+    >
+      {#if soundOn}
+        <Volume2 class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
+        Sound on
+      {:else}
+        <VolumeX class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
+        Sound off
+      {/if}
+    </button>
     <button
       type="button"
       class="flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm text-foreground hover:bg-white/25 disabled:opacity-50 dark:hover:bg-white/10"

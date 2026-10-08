@@ -40,7 +40,7 @@ describe('home-settings-menu.svelte', () => {
     await expect.element(page.getByRole('button', { name: 'Settings menu' })).toBeInTheDocument()
   })
 
-  it('opens a menu with API keys, LLM provider, settings, and restart onboarding', async () => {
+  it('opens a menu with API keys, LLM provider, settings, sound, and restart onboarding', async () => {
     render(HomeSettingsMenu)
 
     await page.getByRole('button', { name: 'Settings menu' }).click()
@@ -55,9 +55,27 @@ describe('home-settings-menu.svelte', () => {
     await expect
       .element(page.getByRole('link', { name: 'Settings', exact: true }))
       .toHaveAttribute('href', '/settings')
+    await expect.element(page.getByTestId('sound-toggle')).toHaveTextContent('Sound on')
     await expect
       .element(page.getByRole('button', { name: 'Restart onboarding' }))
       .toBeInTheDocument()
+  })
+
+  it('the sound toggle flips the persisted flag — on by default, off stays off', async () => {
+    window.localStorage.removeItem('ee-sound')
+    render(HomeSettingsMenu)
+
+    await page.getByRole('button', { name: 'Settings menu' }).click()
+    await expect.element(page.getByTestId('sound-toggle')).toHaveTextContent('Sound on')
+
+    await page.getByTestId('sound-toggle').click()
+    await expect.element(page.getByTestId('sound-toggle')).toHaveTextContent('Sound off')
+    expect(window.localStorage.getItem('ee-sound')).toBe('off')
+
+    await page.getByTestId('sound-toggle').click()
+    await expect.element(page.getByTestId('sound-toggle')).toHaveTextContent('Sound on')
+    expect(window.localStorage.getItem('ee-sound')).toBeNull()
+    window.localStorage.removeItem('ee-sound')
   })
 
   it('restart onboarding clears the welcome stamp and refreshes page data', async () => {

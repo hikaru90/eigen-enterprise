@@ -577,6 +577,8 @@ export const userPreference = pgTable(
     lastDailySummaryDispatchError: text('last_daily_summary_dispatch_error'),
     /** Set when the welcome setup wizard on `/` was completed or skipped — the tour never nags again. */
     welcomeCompletedAt: timestamp('welcome_completed_at'),
+    /** The name given during the boot sequence — "Hello, {name}." NULL = never asked/skipped. */
+    displayName: text('display_name'),
     updatedAt: timestamp('updated_at')
       .defaultNow()
       .$onUpdate(() => new Date())

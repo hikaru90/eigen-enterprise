@@ -2,13 +2,15 @@ import { expect, test, type Page } from '@playwright/test'
 import { loginUser, registerUser, signOut } from './test-helpers'
 
 /**
- * Phase-1e: the welcome setup wizard is the FIRST screen on `/` for every production
- * user who has not completed it — it explains what the system is, what it can do,
- * connects the AI (hard gate, reusing the provider wizard), and asks what the user
- * wants to do first. Skippable; completion persists server-side per user.
+ * Phase-2e: the boot sequence is the FIRST screen on `/` for every production
+ * user who has not completed it — a cinematic first run (orb, greeting, name,
+ * what this is), the provider connect as the only hard gate, and a handoff
+ * into the chat where the agent's first words are already waiting. Skippable;
+ * completion persists server-side per user; the saved name personalizes every
+ * future boot ("Hello, Ada.").
  *
  * Runs against the unconfigured deployment (test.eigenlabs.dev → no platform provider),
- * so the wizard's connect step shows the real provider gate. All external provider
+ * so the mind step shows the real provider gate. All external provider
  * calls resolve against scripts/mock-gateway.mjs via env overrides.
  */
 
@@ -22,9 +24,8 @@ async function expectChatVisible(page: Page): Promise<void> {
   await expect(page.getByTestId('welcome-wizard')).not.toBeVisible()
 }
 
-async function expectWelcomeStep(page: Page, step: string): Promise<void> {
+async function expectWizard(page: Page): Promise<void> {
   await expect(page.getByTestId('welcome-wizard')).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByText(step)).toBeVisible()
 }
 
 async function saveApiKeyViaApi(page: Page): Promise<void> {
@@ -41,61 +42,64 @@ async function saveApiKeyViaApi(page: Page): Promise<void> {
 }
 
 /**
- * A Continue click racing hydration does nothing (SSR button, no handlers yet).
- * Click and verify the step actually advanced; retry until stable — same discipline
- * as fillCaptureComposer in release-helpers.
+ * Walk the boot sequence: greet → name (when asked) → identity line 1 → line 2.
+ * Waits for the name ask OR the identity line — whichever this user gets — so
+ * the walk is deterministic regardless of the auto-advance timers.
  */
-async function continueToStep(page: Page, nextStep: string): Promise<void> {
-  for (let attempt = 0; attempt < 8; attempt++) {
-    await page.getByRole('button', { name: 'Continue' }).click()
-    try {
-      await expect(page.getByText(nextStep)).toBeVisible({ timeout: 2_000 })
-      return
-    } catch {
-      // Not advanced yet — hydration may not have attached handlers; click again.
-    }
+async function walkBoot(page: Page, name: string | null): Promise<void> {
+  await expectWizard(page)
+  await expect(page.getByText(/^Hello/)).toBeVisible()
+
+  const identityLine = page.getByText('This is the operating system for your company.')
+  const nameAsk = page.getByRole('textbox', { name: 'Your name' })
+
+  await expect(identityLine.or(nameAsk)).toBeVisible({ timeout: 15_000 })
+  if (name && (await nameAsk.isVisible())) {
+    await nameAsk.fill(name)
+    await nameAsk.press('Enter')
   }
-  throw new Error(`Continue never reached "${nextStep}"`)
+
+  await expect(identityLine).toBeVisible({ timeout: 15_000 })
+  await identityLine.click()
+  await expect(page.getByText(/You talk\. It builds/)).toBeVisible({ timeout: 15_000 })
 }
 
-test.describe('welcome setup wizard', () => {
-  test('first screen explains the system, walks to the chat, and never returns', async ({
+test.describe('welcome boot sequence', () => {
+  test('boots, learns the name, connects the mind, and hands off into the chat', async ({
     page,
     context,
   }) => {
     await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
 
-    // Step 1 — what this is (in plain words), not a bare chatbox.
-    await expectWelcomeStep(page, 'Step 1 of 5')
-    await expect(page.getByText("your company's operating system")).toBeVisible()
+    // Boot → greeting. No capability list, no step counter, no module jargon — ever.
+    await expectWizard(page)
+    await expect(page.getByText('Step 1 of 5')).not.toBeVisible()
+    await expect(page.getByText('Nucleus chat')).not.toBeVisible()
+    await expect(page.getByText('Knowledge graph')).not.toBeVisible()
 
-    // Step 2 — what it can do.
-    await continueToStep(page, 'Step 2 of 5')
-    await expect(page.getByText('Here is what it can do.')).toBeVisible()
+    await walkBoot(page, 'Ada')
 
-    // Step 3 — the AI brain: a hard gate, the provider wizard itself, no skip.
-    await continueToStep(page, 'Step 3 of 5')
-    await expect(page.getByText('Connect your AI provider.')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Skip setup' })).not.toBeVisible()
+    // The mind: the one hard gate (no platform provider in this deployment).
+    await expect(page.getByText('First, it needs a mind to think with.')).toBeVisible({
+      timeout: 20_000,
+    })
 
-    // Connect through the server contract (wizard UI covered by component tests)…
+    // Connect through the server contract (the provider wizard UI is covered by
+    // its own component tests + onboarding-provider e2e).
     await saveApiKeyViaApi(page)
-
-    // …then the step flips to connected on a fresh load (data is the source of truth).
     await page.goto('/')
-    await expectWelcomeStep(page, 'Step 1 of 5')
-    await continueToStep(page, 'Step 2 of 5')
-    await continueToStep(page, 'Step 3 of 5')
-    await expect(page.getByText('Your AI is connected.')).toBeVisible()
 
-    // Step 4 — the founding interview lives in onboarding now, not the chat.
-    await continueToStep(page, 'Step 4 of 5')
-    await expect(page.getByText('Tell me about your company.')).toBeVisible()
+    // The mind gate is gone — the boot finishes in a Begin, straight into the chat.
+    await walkBoot(page, null) // name known: no ask
+    await expect(page.getByRole('button', { name: 'Begin' })).toBeVisible({ timeout: 20_000 })
+    await page.getByRole('button', { name: 'Begin' }).click()
 
-    // Step 5 — what do you want first? Entering the chat completes the tour.
-    await continueToStep(page, 'Step 5 of 5')
-    await page.getByRole('button', { name: 'Start with the chat' }).click()
+    // Handoff: the agent's first words are already there — seeded, personal, honest.
     await expectChatVisible(page)
+    await expect(page.getByText(/Hello, Ada\. Your company's OS is getting set up/)).toBeVisible()
+    await expect(
+      page.getByText(/what's your company called, and what does it do\?/),
+    ).toBeVisible()
 
     // Reload: the tour is done — the chat IS the page now.
     await page.goto('/')
@@ -108,11 +112,11 @@ test.describe('welcome setup wizard', () => {
   }) => {
     const { email } = await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
 
-    await expectWelcomeStep(page, 'Step 1 of 5')
-    await page.getByRole('button', { name: 'Skip setup' }).click()
+    await expectWizard(page)
+    await page.getByTestId('skip-onboarding').click()
 
-    // Tour skipped, but no provider yet: the phase-1d hard gate takes over — no
-    // provider, no product. The tour never comes back on top of it.
+    // Skipped, but no provider yet: the hard gate takes over — no provider, no
+    // product. The boot sequence never comes back on top of it.
     await expect(page.getByText('Connect your AI provider.')).toBeVisible({ timeout: 15_000 })
     await expect(page.getByTestId('welcome-wizard')).not.toBeVisible()
 
@@ -128,51 +132,36 @@ test.describe('welcome setup wizard', () => {
     await expect(page.getByTestId('welcome-wizard')).not.toBeVisible()
   })
 
-  test('destination cards complete the tour and navigate', async ({ page, context }) => {
-    await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
-
-    // Walk to the connect step; the provider gate itself is covered by the other tests.
-    await expectWelcomeStep(page, 'Step 1 of 5')
-    await saveApiKeyViaApi(page)
-    await page.goto('/')
-    await continueToStep(page, 'Step 2 of 5')
-    await continueToStep(page, 'Step 3 of 5')
-    await continueToStep(page, 'Step 4 of 5')
-    await continueToStep(page, 'Step 5 of 5')
-
-    // Step 5: picking a destination persists the tour, then navigates.
-    await expectWelcomeStep(page, 'Step 5 of 5')
-    await page.getByRole('button', { name: 'Capture a thought' }).click()
-
-    await expect(page).toHaveURL(/\/capture/)
-    await expect(page.getByTestId('welcome-wizard')).not.toBeVisible()
-
-    // Back home: the tour is done — the chat, not the wizard.
-    await page.goto('/')
-    await expectChatVisible(page)
-  })
-
-  test('the homepage settings cog restarts onboarding — the wizard returns', async ({
+  test('restarting onboarding brings the boot back — and it knows your name', async ({
     page,
     context,
   }) => {
     await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
 
-    await expectWelcomeStep(page, 'Step 1 of 5')
-    await page.getByRole('button', { name: 'Skip setup' }).click()
-    await expect(page.getByText('Connect your AI provider.')).toBeVisible({ timeout: 15_000 })
+    // First pass: give the name, reach the mind gate, skip it — tour done, name saved.
+    await walkBoot(page, 'Ada')
+    await expect(page.getByText('First, it needs a mind to think with.')).toBeVisible({
+      timeout: 20_000,
+    })
+    await page.getByTestId('skip-onboarding').click()
 
-    // Finish provider setup so the chat is the homepage.
+    // No provider yet: the hard gate takes over. Connect through the server contract.
+    await expect(page.getByText('Connect your AI provider.')).toBeVisible({ timeout: 15_000 })
     await saveApiKeyViaApi(page)
     await page.goto('/')
     await expectChatVisible(page)
 
-    // The cog is on the homepage; restart brings the wizard back.
+    // The cog is on the homepage; restart brings the boot sequence back.
     await page.getByTestId('home-settings-trigger').click()
     await page.getByTestId('restart-onboarding').click()
-    await expect(page.getByTestId('welcome-wizard')).toBeVisible({ timeout: 15_000 })
+    await expectWizard(page)
 
-    // The restarted tour is the real thing: 5 steps, founding interview inside.
-    await expectWelcomeStep(page, 'Step 1 of 5')
+    // Personalized greeting, no name ask — the name survived the restart.
+    await expect(page.getByText('Hello, Ada.')).toBeVisible()
+    await expect(page.getByRole('textbox', { name: 'Your name' })).not.toBeVisible()
+
+    // And the boot still completes into the chat.
+    await page.getByTestId('skip-onboarding').click()
+    await expectChatVisible(page)
   })
 })

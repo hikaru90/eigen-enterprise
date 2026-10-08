@@ -49,6 +49,7 @@ describe('nucleus page server load', () => {
       needsOnboarding: true,
       showWelcome: true,
       byokUiEnabled: true,
+      displayName: null,
     })
   })
 
@@ -61,6 +62,7 @@ describe('nucleus page server load', () => {
       needsOnboarding: false,
       showWelcome: true,
       byokUiEnabled: true,
+      displayName: null,
     })
   })
 
@@ -74,6 +76,7 @@ describe('nucleus page server load', () => {
       needsOnboarding: false,
       showWelcome: false,
       byokUiEnabled: true,
+      displayName: null,
     })
   })
 
@@ -87,6 +90,21 @@ describe('nucleus page server load', () => {
       needsOnboarding: true,
       showWelcome: false,
       byokUiEnabled: true,
+      displayName: null,
+    })
+  })
+
+  it('hands the saved name to the wizard so the boot greets by it', async () => {
+    isUserProviderReadyMock.mockResolvedValue(true)
+    getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: null, displayName: 'Ada' }))
+
+    const result = await load({ locals: { user: { id: 'u1' } } } as never)
+
+    expect(result).toEqual({
+      needsOnboarding: false,
+      showWelcome: true,
+      byokUiEnabled: true,
+      displayName: 'Ada',
     })
   })
 
@@ -100,6 +118,7 @@ describe('nucleus page server load', () => {
       needsOnboarding: false,
       showWelcome: false,
       byokUiEnabled: true,
+      displayName: null,
     })
   })
 })

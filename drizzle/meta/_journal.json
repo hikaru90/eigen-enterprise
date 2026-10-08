@@ -582,6 +582,13 @@
       "when": 1760200000005,
       "tag": "0082_welcome_onboarding",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1760200000006,
+      "tag": "0083_user_display_name",
+      "breakpoints": true
     }
   ]
 }

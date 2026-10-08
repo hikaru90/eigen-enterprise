@@ -34,6 +34,17 @@
   let sessionId = $state<string | null>(null)
   let abortController: AbortController | null = null
 
+  /** Seeded by the boot sequence's handoff: the agent's first words, before any LLM call. */
+  let seededGreeting = $state<string | null>(null)
+
+  function handleOnboardingComplete(detail: { name: string | null }): void {
+    const name = detail.name ? `, ${detail.name}` : ''
+    seededGreeting =
+      `Hello${name}. Your company's OS is getting set up — that happens by talking. ` +
+      `So: what's your company called, and what does it do?`
+    appendEntry(assistantTurnFromResponse(seededGreeting))
+  }
+
   let inputEl = $state<HTMLInputElement | undefined>(undefined)
   let transcriptEl = $state<HTMLDivElement | undefined>(undefined)
   let voiceStopFn = $state<(() => void) | undefined>(undefined)
@@ -159,7 +170,7 @@
   })
 </script>
 
-<div class="mx-auto flex min-h-dvh w-full max-w-2xl flex-col px-4">
+<div class="flex min-h-dvh w-full flex-col px-4 sm:px-6 lg:px-10">
   <!-- Settings cog: always reachable — chat, welcome wizard, and provider gate alike. -->
   <header class="relative flex shrink-0 justify-center pt-6">
     <p class="text-[11px] font-medium tracking-[0.25em] text-muted-foreground uppercase">
@@ -171,10 +182,12 @@
   </header>
 
   {#if data.showWelcome}
-    <!-- First open: the tour leads; the provider step inside it stays a hard gate. -->
+    <!-- First open: the boot sequence leads; the provider step inside it stays a hard gate. -->
     <WelcomeWizard
       providerReady={!data.needsOnboarding}
       byokUiEnabled={data.byokUiEnabled}
+      displayName={data.displayName}
+      oncomplete={handleOnboardingComplete}
     />
   {:else if data.needsOnboarding}
     <!-- Returning user whose tour is done but provider vanished: the connect gate again. -->
