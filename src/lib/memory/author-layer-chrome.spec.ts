@@ -18,7 +18,7 @@ describe('author-layer-chrome', () => {
     expect(authorLegendItemStateClass({ filterActive: false, isSelected: false })).toBe('')
   })
 
-  it('exports EigenMesh accent for agent icon styling', () => {
+  it('exports Website Relaunch accent for agent icon styling', () => {
     expect(EIGEN_MESH_ACCENT).toBe('#22E876')
   })
 

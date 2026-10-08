@@ -19,7 +19,7 @@ describe('parseProjectIdentityPayload', () => {
     const parsed = parseProjectIdentityPayload(
       {
         canonicalEntityId: 'a',
-        canonicalLabel: 'EigenMesh',
+        canonicalLabel: 'Website Relaunch',
         mergeEntityIds: ['b'],
       },
       allowed,
@@ -34,7 +34,7 @@ describe('parseReconcilePayload', () => {
     const allowed = new Set(['w', 'l1', 'd1'])
     const parsed = parseReconcilePayload(
       {
-        mergeGroups: [{ winnerEntityId: 'w', loserEntityIds: ['l1'], canonicalLabel: 'EigenMesh' }],
+        mergeGroups: [{ winnerEntityId: 'w', loserEntityIds: ['l1'], canonicalLabel: 'Website Relaunch' }],
         demoteEntityIds: ['d1'],
       },
       allowed,
@@ -48,8 +48,8 @@ describe('parseProjectsPayload', () => {
   it('normalizes project rows', () => {
     expect(
       parseProjectsPayload({
-        projects: [{ name: 'Eigen Mesh', nextActionText: 'Ship header', status: 'active' }],
+        projects: [{ name: 'Website Relaunch', nextActionText: 'Ship header', status: 'active' }],
       }),
-    ).toEqual([{ name: 'Eigen Mesh', nextActionText: 'Ship header', status: 'active' }])
+    ).toEqual([{ name: 'Website Relaunch', nextActionText: 'Ship header', status: 'active' }])
   })
 })

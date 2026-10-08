@@ -28,7 +28,7 @@ function makeContext(overrides: Partial<EnrichmentContext> = {}): EnrichmentCont
     normalizedText: 'MCP Bearer key auto-labels agent authorship',
     rawText: 'MCP Bearer key auto-labels agent authorship',
     ontology: makeOntology(), profile: { version: 2 },
-    groundingProfile: { narrativeSummary: 'Engineer building eigenmesh for Hermes agent.', facets: { projects: 'empty link frozen project' } },
+    groundingProfile: { narrativeSummary: 'Engineer building eigenenterprise for Hermes agent.', facets: { projects: 'empty link frozen project' } },
     knownEntities: [{ label: 'MCP', entityType: 'technology' }], recentThoughts: [],
     categoryDistribution: new Map([['observation', 3]]), communityExcerpts: [],
     completeness: { knownEntityCount: 1, recentThoughtCount: 0, communitySummaryCount: 0, hasProfileNotes: false, hasGroundingProfile: true },

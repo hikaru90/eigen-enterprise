@@ -1,6 +1,6 @@
 /**
  * Canonical marketing-site paths for legally required documents.
- * Content lives on the website (eigenmesh.xyz), not in the app.
+ * Content lives on the marketing website, not in the app.
  */
 export const WEBSITE_LEGAL_PATHS = {
   terms: '/terms',
@@ -11,10 +11,10 @@ export const WEBSITE_LEGAL_PATHS = {
 export type WebsiteLegalDoc = keyof typeof WEBSITE_LEGAL_PATHS
 
 /** Production marketing origin used when PUBLIC_WEBSITE_ORIGIN is unset. */
-export const DEFAULT_WEBSITE_ORIGIN = 'https://eigenmesh.xyz'
+export const DEFAULT_WEBSITE_ORIGIN = 'https://eigenenterprise.example'
 
 /**
- * Absolute URL to a legal document on the Eigen Mesh website.
+ * Absolute URL to a legal document on the marketing website.
  * Prefer `PUBLIC_WEBSITE_ORIGIN` when set (preview / staging sites).
  */
 export function websiteLegalUrl(

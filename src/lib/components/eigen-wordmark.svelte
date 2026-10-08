@@ -28,7 +28,7 @@
     {#if tone === 'light'}
       <img
         src={light}
-        alt="Eigen Mesh"
+        alt="Eigen Enterprise"
         class="h-full w-auto object-contain"
         loading="eager"
         decoding="async"
@@ -36,7 +36,7 @@
     {:else if tone === 'dark'}
       <img
         src={dark}
-        alt="Eigen Mesh"
+        alt="Eigen Enterprise"
         class="h-full w-auto object-contain"
         loading="eager"
         decoding="async"
@@ -44,14 +44,14 @@
     {:else}
       <img
         src={light}
-        alt="Eigen Mesh"
+        alt="Eigen Enterprise"
         class="h-full w-auto object-contain dark:hidden"
         loading="eager"
         decoding="async"
       />
       <img
         src={dark}
-        alt="Eigen Mesh"
+        alt="Eigen Enterprise"
         class="hidden h-full w-auto object-contain dark:block"
         loading="eager"
         decoding="async"

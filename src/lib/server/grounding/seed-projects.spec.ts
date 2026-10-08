@@ -44,25 +44,25 @@ describe('seed-projects', () => {
   it('parseProjectsPayload normalizes project rows', () => {
     expect(
       parseProjectsPayload({
-        projects: [{ name: 'Eigen Mesh', nextActionText: 'Ship header', status: 'active' }],
+        projects: [{ name: 'Website Relaunch', nextActionText: 'Ship header', status: 'active' }],
       }),
-    ).toEqual([{ name: 'Eigen Mesh', nextActionText: 'Ship header', status: 'active' }])
+    ).toEqual([{ name: 'Website Relaunch', nextActionText: 'Ship header', status: 'active' }])
   })
 
   it('extractProjectsFromGroundingFacet calls LLM with facet text', async () => {
     llmChatCompletionMock.mockResolvedValue(
       makeResponse(
         JSON.stringify({
-          projects: [{ name: 'Eigen Mesh', nextActionText: 'Call Marcus', status: 'active' }],
+          projects: [{ name: 'Website Relaunch', nextActionText: 'Call Marcus', status: 'active' }],
         }),
       ),
     )
 
     const projects = await extractProjectsFromGroundingFacet(
       'u1',
-      'Working on Eigen Mesh. Next: call Marcus.',
+      'Working on Website Relaunch. Next: call Marcus.',
     )
     expect(projects).toHaveLength(1)
-    expect(projects[0]?.name).toBe('Eigen Mesh')
+    expect(projects[0]?.name).toBe('Website Relaunch')
   })
 })

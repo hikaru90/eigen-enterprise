@@ -98,7 +98,7 @@ describe('loadThoughtCaptureResult', () => {
         .mockReturnValueOnce(
           makeAwaitableChain([{ targetThoughtId: 't2', relationType: 'related_to' }]),
         )
-        .mockReturnValueOnce(makeLimitChain([{ label: 'Eigen Mesh' }]))
+        .mockReturnValueOnce(makeLimitChain([{ label: 'Website Relaunch' }]))
         .mockReturnValueOnce(makeLimitChain([{ projectEntityId: 'e1' }]))
         .mockReturnValueOnce(
           makeAwaitableChain([
@@ -152,7 +152,7 @@ describe('loadThoughtCaptureResult', () => {
         },
       ],
       enrichmentComplete: true,
-      gtdProjectLabel: 'Eigen Mesh',
+      gtdProjectLabel: 'Website Relaunch',
       gtdIsNextAction: true,
       queueStatus: 'complete',
       queueError: null,

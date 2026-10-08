@@ -55,7 +55,7 @@ function buildDetectionPrompt(input: ProjectDetectionInput): string {
     '',
     'A project is any named initiative, product, app, research effort, or body of work the user is working on.',
     'Examples:',
-    '- "Working on EigenMesh MVP" → "EigenMesh"',
+    '- "Working on Website MVP" → "Website"',
     '- "Need to finish the auth module for MySaaS" → "MySaaS"',
     '- "Research paper on quantum computing is progressing" → "Quantum Computing Research"',
     '- "The kitchen renovation is behind schedule" → "Kitchen Renovation"',

@@ -36,6 +36,7 @@ export type ExtendedPrivateEnv = typeof kitEnv & {
   OAUTH_GITHUB_BASE_URL?: string
   OAUTH_OPENAI_AUTH_BASE_URL?: string
   OAUTH_OPENAI_CODEX_BASE_URL?: string
+  FEEDBACK_INBOX_EMAIL?: string
   NODE_ENV?: string
   PAYPAL_CLIENT_SECRET?: string
   PAYPAL_URL?: string

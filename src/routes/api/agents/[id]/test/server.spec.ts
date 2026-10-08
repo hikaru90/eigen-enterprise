@@ -27,7 +27,7 @@ describe('POST /api/agents/[id]/test', () => {
         userId: 'u1',
         agentId: 'agent-1',
         eventType: 'webhook.test',
-        payload: { message: 'Eigenmesh webhook test' },
+        payload: { message: 'Eigen Enterprise webhook test' },
       }),
     )
     expect(res.status).toBe(200)

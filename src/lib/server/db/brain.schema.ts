@@ -1502,7 +1502,7 @@ export const userJobTypeEnum = [
 export type UserJobType = (typeof userJobTypeEnum)[number]
 
 // ---------------------------------------------------------------------------
-// Connected agents (Eigenmesh orchestration)
+// Connected agents (orchestration)
 // ---------------------------------------------------------------------------
 
 export const agentWebhookEventTypeEnum = [
@@ -1662,7 +1662,7 @@ export const agentProjectBinding = pgTable(
 
 export type AgentProjectBinding = typeof agentProjectBinding.$inferSelect
 
-/** Inbound webhook subscription — external services POST events to EigenMesh. */
+/** Inbound webhook subscription — external services POST events to the company. */
 export const inboundWebhookSubscription = pgTable(
   'inbound_webhook_subscription',
   {

@@ -77,10 +77,10 @@ function makeFromChain(options: {
 describe('judge-gtd-project parsers and gate', () => {
   it('parseGtdProjectJudgmentPayload reads isGtdProject and snake_case label', () => {
     expect(
-      parseGtdProjectJudgmentPayload({ isGtdProject: true, canonicalLabel: 'EigenMesh' }, 'Eigen'),
+      parseGtdProjectJudgmentPayload({ isGtdProject: true, canonicalLabel: 'Website Relaunch' }, 'Eigen'),
     ).toEqual({
       isGtdProject: true,
-      canonicalLabel: 'EigenMesh',
+      canonicalLabel: 'Website Relaunch',
     })
     expect(
       parseGtdProjectJudgmentPayload({ is_gtd_project: true, canonical_label: 'X' }, 'fb'),
@@ -115,7 +115,7 @@ describe('judge-gtd-project parsers and gate', () => {
       {
         results: [
           { entityId: 'a', isGtdProject: false },
-          { entity_id: 'b', is_gtd_project: true, canonical_label: 'EigenMesh' },
+          { entity_id: 'b', is_gtd_project: true, canonical_label: 'Website Relaunch' },
           { entityId: 'c', isGtdProject: true },
           null,
           'bad',
@@ -125,7 +125,7 @@ describe('judge-gtd-project parsers and gate', () => {
     )
     expect(parsed).toEqual([
       { entityId: 'a', isGtdProject: false, canonicalLabel: '' },
-      { entityId: 'b', isGtdProject: true, canonicalLabel: 'EigenMesh' },
+      { entityId: 'b', isGtdProject: true, canonicalLabel: 'Website Relaunch' },
     ])
     expect(parseGtdProjectAuditBatchPayload(null, allowed)).toEqual([])
     expect(parseGtdProjectAuditBatchPayload({ results: 'x' }, allowed)).toEqual([])
@@ -161,7 +161,7 @@ describe('loadHubJudgmentContext', () => {
           return {
             from: vi.fn(() =>
               makeFromChain({
-                entityRows: [{ label: 'EigenMesh', entityType: 'organization' }],
+                entityRows: [{ label: 'Website Relaunch', entityType: 'organization' }],
               }),
             ),
           }
@@ -195,7 +195,7 @@ describe('loadHubJudgmentContext', () => {
     const ctx = await loadHubJudgmentContext('u1', 'e1')
     expect(ctx).toMatchObject({
       entityId: 'e1',
-      label: 'EigenMesh',
+      label: 'Website Relaunch',
       linkedThoughtCount: 3,
       openTaskCount: 1,
     })
@@ -256,20 +256,20 @@ describe('judgeGtdProjectHub', () => {
 
   it('calls LLM and parses judgment when gate passes', async () => {
     mockHubDb([
-      { normalizedText: 'Build EigenMesh', normalizedTextEncrypted: null, category: 'task' },
+      { normalizedText: 'Build Website Relaunch', normalizedTextEncrypted: null, category: 'task' },
     ])
     llmMock.mockResolvedValue({
       choices: [
         {
           message: {
-            content: '```json\n{"isGtdProject":true,"canonicalLabel":"EigenMesh"}\n```',
+            content: '```json\n{"isGtdProject":true,"canonicalLabel":"Website Relaunch"}\n```',
           },
         },
       ],
     })
     await expect(judgeGtdProjectHub('u1', 'e1', { force: true })).resolves.toEqual({
       isGtdProject: true,
-      canonicalLabel: 'EigenMesh',
+      canonicalLabel: 'Website Relaunch',
     })
     expect(llmMock).toHaveBeenCalled()
   })

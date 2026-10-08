@@ -49,14 +49,14 @@ describe('detectProjectFromThought', () => {
 
   it('returns project label from LLM JSON', async () => {
     llmMock.mockResolvedValue({
-      choices: [{ message: { content: '{"projectLabel":"EigenMesh"}' } }],
+      choices: [{ message: { content: '{"projectLabel":"Website Relaunch"}' } }],
     })
     await expect(
       detectProjectFromThought({
         userId: 'u1',
-        normalizedText: 'Working on EigenMesh MVP',
+        normalizedText: 'Working on Website Relaunch MVP',
       }),
-    ).resolves.toEqual({ projectLabel: 'EigenMesh' })
+    ).resolves.toEqual({ projectLabel: 'Website Relaunch' })
   })
 
   it('throws when LLM content is missing', async () => {
@@ -73,11 +73,11 @@ describe('detectAndCreateProjectFromThought', () => {
     promoteMock.mockResolvedValue(true)
     linkMock.mockResolvedValue(undefined)
     llmMock.mockResolvedValue({
-      choices: [{ message: { content: '{"projectLabel":"EigenMesh"}' } }],
+      choices: [{ message: { content: '{"projectLabel":"Website Relaunch"}' } }],
     })
     resolveIdentityMock.mockResolvedValue({
       entityId: 'e-new',
-      canonicalLabel: 'EigenMesh',
+      canonicalLabel: 'Website Relaunch',
       hubEntityType: 'project',
       isGtdProject: false,
       shouldCreateHub: true,
@@ -98,7 +98,7 @@ describe('detectAndCreateProjectFromThought', () => {
   it('links via resolveProjectIdentity when identity returns an existing GTD project', async () => {
     resolveIdentityMock.mockResolvedValue({
       entityId: 'e9',
-      canonicalLabel: 'EigenMesh',
+      canonicalLabel: 'Website Relaunch',
       hubEntityType: 'project',
       isGtdProject: true,
       shouldCreateHub: false,
@@ -107,13 +107,13 @@ describe('detectAndCreateProjectFromThought', () => {
     await expect(
       detectAndCreateProjectFromThought({
         userId: 'u1',
-        normalizedText: 'Working on EigenMesh',
+        normalizedText: 'Working on Website Relaunch',
         thoughtId: 't1',
       }),
     ).resolves.toBe('e9')
     expect(resolveIdentityMock).toHaveBeenCalledWith({
       userId: 'u1',
-      surfaceLabel: 'EigenMesh',
+      surfaceLabel: 'Website Relaunch',
       thoughtId: 't1',
       mode: 'assign',
     })
@@ -125,13 +125,13 @@ describe('detectAndCreateProjectFromThought', () => {
     await expect(
       detectAndCreateProjectFromThought({
         userId: 'u1',
-        normalizedText: 'Working on EigenMesh',
+        normalizedText: 'Working on Website Relaunch',
         thoughtId: 't1',
       }),
     ).resolves.toBe('e-new')
     expect(resolveIdentityMock).toHaveBeenCalledWith({
       userId: 'u1',
-      surfaceLabel: 'EigenMesh',
+      surfaceLabel: 'Website Relaunch',
       thoughtId: 't1',
       mode: 'assign',
     })
@@ -149,16 +149,16 @@ describe('detectAndCreateProjectFromThought', () => {
     await expect(
       detectAndCreateProjectFromThought({
         userId: 'u1',
-        normalizedText: 'Working on EigenMesh',
+        normalizedText: 'Working on Website Relaunch',
       }),
     ).resolves.toBeNull()
   })
 
-  it('does not substring-bind roasted garlic to an unrelated EigenMesh project', async () => {
+  it('does not substring-bind roasted garlic to an unrelated Website Relaunch project', async () => {
     llmMock.mockResolvedValue({
       choices: [{ message: { content: '{"projectLabel":"roasted garlic"}' } }],
     })
-    // Identity LLM keeps ingredients separate — new hub, not EigenMesh
+    // Identity LLM keeps ingredients separate — new hub, not Website Relaunch
     resolveIdentityMock.mockResolvedValue({
       entityId: 'e-garlic',
       canonicalLabel: 'roasted garlic',
@@ -182,7 +182,7 @@ describe('detectAndCreateProjectFromThought', () => {
     )
     expect(linkMock).not.toHaveBeenCalledWith(
       'u1',
-      'e-eigenmesh',
+      'e-eigenenterprise',
       expect.anything(),
       expect.anything(),
     )
@@ -218,7 +218,7 @@ describe('detectAndCreateProjectFromThought', () => {
     llmMock.mockResolvedValue({
       choices: [{ message: { content: '{"projectLabel":"Eigen"}' } }],
     })
-    // Identity LLM must decide — not ".includes('eigen')" against "EigenMesh"
+    // Identity LLM must decide — not ".includes('eigen')" against "Website Relaunch"
     resolveIdentityMock.mockResolvedValue({
       entityId: 'e-eigen-only',
       canonicalLabel: 'Eigen',
@@ -240,7 +240,7 @@ describe('detectAndCreateProjectFromThought', () => {
     expect(resolveIdentityMock).toHaveBeenCalledWith(
       expect.objectContaining({ surfaceLabel: 'Eigen', mode: 'assign' }),
     )
-    // Must not have linked to some EigenMesh id without LLM identity
+    // Must not have linked to some Website Relaunch id without LLM identity
     expect(linkMock).not.toHaveBeenCalled()
   })
 })

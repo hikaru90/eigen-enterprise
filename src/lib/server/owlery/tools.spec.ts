@@ -4,7 +4,7 @@ import { runAddContactTool, runListContactsTool, runSendMailTool } from './tools
 const mailEnv = {
   OWLERY_API_KEY: 'us_test',
   OWLERY_BASE_URL: 'https://owlery.example',
-  OWLERY_EMAIL_FROM: 'hello@eigenmesh.xyz',
+  OWLERY_EMAIL_FROM: 'hello@eigenenterprise.example',
 }
 const contactBookEnv = { ...mailEnv, OWLERY_CONTACT_BOOK_ID: 'cb_1' }
 

@@ -272,7 +272,7 @@ describe('MCP tools', () => {
     listThoughtsMock.mockResolvedValue([])
     await runRetrieveThoughtsTool(
       { userId: 'u1' },
-      { query: 'eigenmesh recent thoughts', order: 'created_at', top_k: 10 },
+      { query: 'eigenenterprise recent thoughts', order: 'created_at', top_k: 10 },
     )
     expect(listThoughtsMock).toHaveBeenCalledWith('u1', {
       limit: 10,

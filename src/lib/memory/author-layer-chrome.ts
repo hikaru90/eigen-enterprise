@@ -1,6 +1,6 @@
 /** Shared author-layer visual tokens (graph legend, capture list, badges). */
 
-/** Eigen / EigenMesh marketing accent — graph pop-in, community hulls. */
+/** Marketing accent — graph pop-in, community hulls. */
 export const EIGEN_MESH_ACCENT = '#22E876'
 
 export const authorAgentChipClass =

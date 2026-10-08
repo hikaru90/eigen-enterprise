@@ -62,9 +62,9 @@
     </div>
     <div>
       <p class="text-muted-foreground text-xs">Feedback</p>
-      <h1 class="text-sm font-semibold">Help shape Eigen Mesh</h1>
+      <h1 class="text-sm font-semibold">Help shape Eigen Enterprise</h1>
       <p class="text-muted-foreground mt-0.5 text-xs">
-        Eigen Mesh is in beta, and your feedback is invaluable. Tell us what works, what's broken, or
+        Eigen Enterprise is in beta, and your feedback is invaluable. Tell us what works, what's broken, or
         what you wish existed.
       </p>
     </div>

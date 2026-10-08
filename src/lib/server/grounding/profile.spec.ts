@@ -13,7 +13,7 @@ describe('validateGroundingFacetInput', () => {
 
   it('accepts projects facet key', () => {
     const result = validateGroundingFacetInput([
-      { key: 'projects', content: 'Eigen Mesh — next: ship header' },
+      { key: 'projects', content: 'Website Relaunch — next: ship header' },
     ])
     expect(result[0].key).toBe('projects')
   })

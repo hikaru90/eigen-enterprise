@@ -169,11 +169,11 @@ describe('agentChat', () => {
 
   it('rejects a final answer after retrieve_thoughts search without answer_question', async () => {
     retrieveThoughtsMock.mockResolvedValue({
-      results: [{ id: 't-version', snippet: 'Eigen Mesh project version meanings' }],
+      results: [{ id: 't-version', snippet: 'Website Relaunch project version meanings' }],
     })
     answerQuestionMock.mockResolvedValue({
       answer:
-        'Answer: Current version is 0.2.0.\nEvidence:\n- Eigen Mesh project version meanings [id=t-version]\nUnknown:\n- none',
+        'Answer: Current version is 0.2.0.\nEvidence:\n- Website Relaunch project version meanings [id=t-version]\nUnknown:\n- none',
       citations: ['t-version'],
       retrieved: [],
       conflicts: [],
@@ -182,20 +182,20 @@ describe('agentChat', () => {
       .mockResolvedValueOnce(
         llmJson({
           tool: 'retrieve_thoughts',
-          arguments: { query: 'versioning for eigenmesh' },
+          arguments: { query: 'versioning for eigenenterprise' },
         }),
       )
       .mockResolvedValueOnce(llmJson({ answer: 'I could not find versioning info.' }))
       .mockResolvedValueOnce(
         llmJson({
           tool: 'answer_question',
-          arguments: { question: 'What is the versioning for eigenmesh?' },
+          arguments: { question: 'What is the versioning for eigenenterprise?' },
         }),
       )
 
     const result = await agentChat({
       userId: 'u1',
-      messages: [{ role: 'user', content: 'What is the versioning for eigenmesh?' }],
+      messages: [{ role: 'user', content: 'What is the versioning for eigenenterprise?' }],
     })
 
     expect(answerQuestionMock).toHaveBeenCalled()

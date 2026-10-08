@@ -619,13 +619,13 @@ describe('groupByProject', () => {
   it('groups items by project label with fallback last', () => {
     const now = new Date('2026-06-08T12:00:00.000Z')
     const items = [
-      item({ id: 'a', projectLabel: 'Eigen Mesh', startAt: null }),
+      item({ id: 'a', projectLabel: 'Archive Scan', startAt: null }),
       item({ id: 'b', projectLabel: 'LoRaWAN', startAt: null }),
       item({ id: 'c', projectLabel: null, startAt: null }),
     ]
     const groups = groupByProject(items, 'General', 'UTC', now)
     expect(groups).toHaveLength(3)
-    expect(groups[0]?.projectLabel).toBe('Eigen Mesh')
+    expect(groups[0]?.projectLabel).toBe('Archive Scan')
     expect(groups[1]?.projectLabel).toBe('LoRaWAN')
     expect(groups[2]?.projectLabel).toBe('General')
   })
@@ -1008,8 +1008,8 @@ describe('project grouping in today view', () => {
   it('separates items with project labels from those without', () => {
     const now = new Date('2026-06-08T12:00:00.000Z')
     const items = [
-      item({ id: 'p1', projectLabel: 'Eigen Mesh', startAt: '2026-06-08T14:00:00.000Z' }),
-      item({ id: 'p2', projectLabel: 'Eigen Mesh', startAt: '2026-06-08T15:00:00.000Z' }),
+      item({ id: 'p1', projectLabel: 'Archive Scan', startAt: '2026-06-08T14:00:00.000Z' }),
+      item({ id: 'p2', projectLabel: 'Archive Scan', startAt: '2026-06-08T15:00:00.000Z' }),
       item({ id: 'p3', projectLabel: 'LoRaWAN', startAt: '2026-06-08T16:00:00.000Z' }),
       item({ id: 'u1', projectLabel: null, startAt: '2026-06-08T17:00:00.000Z' }),
       item({ id: 'u2', projectLabel: null, startAt: '2026-06-08T18:00:00.000Z' }),
@@ -1021,9 +1021,9 @@ describe('project grouping in today view', () => {
     const groups = groupByProject(withProject, 'General', 'UTC', now)
     const { focus, later } = splitTodayEngageSections(withoutProject, 'UTC', undefined, now)
 
-    // Project groups: Eigen Mesh (2 items), LoRaWAN (1 item)
+    // Project groups: Archive Scan (2 items), LoRaWAN (1 item)
     expect(groups).toHaveLength(2)
-    expect(groups[0]?.projectLabel).toBe('Eigen Mesh')
+    expect(groups[0]?.projectLabel).toBe('Archive Scan')
     expect(groups[0]?.items).toHaveLength(2)
     expect(groups[1]?.projectLabel).toBe('LoRaWAN')
     expect(groups[1]?.items).toHaveLength(1)

@@ -125,7 +125,7 @@ describe('extractProjectTimeline', () => {
 
     const result = await extractProjectTimeline({
       userId: 'u1',
-      projectLabel: 'Eigen Mesh',
+      projectLabel: 'Website Relaunch',
       linkedThoughts: [{ thoughtId: 't1', summary: 'Ship alpha' }],
       existingDeadlines: [{ thoughtId: 't1', summary: 'Alpha due', startAt: '2026-08-15T00:00:00.000Z' }],
     })

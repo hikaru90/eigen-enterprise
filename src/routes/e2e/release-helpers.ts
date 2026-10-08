@@ -652,7 +652,7 @@ export async function topUpCreditsViaPayPalSandbox(
 
 function onboardingDialog(page: Page): Locator {
   return page.getByRole('dialog', {
-    name: /Your memory, not theirs\.|Just drop it in\.|Install Eigen Mesh|Stay in the loop/,
+    name: /Your memory, not theirs\.|Just drop it in\.|Install Eigen Enterprise|Stay in the loop/,
   })
 }
 
@@ -675,7 +675,7 @@ export async function completeOnboardingOverlay(
   await expect(dialog.getByText('Step 2 of 4')).toBeVisible()
 
   await dialog.getByRole('button', { name: 'Next' }).click()
-  await expect(dialog.getByText('Install Eigen Mesh', { exact: true })).toBeVisible({
+  await expect(dialog.getByText('Install Eigen Enterprise', { exact: true })).toBeVisible({
     timeout: 10_000,
   })
   await expect(dialog.getByText('Step 3 of 4')).toBeVisible()
@@ -1960,10 +1960,10 @@ async function exerciseAccountMenu(page: Page): Promise<void> {
   await exerciseFeedbackSubmit(page)
 }
 
-/** Submit product feedback via the UI; server emails feedback@eigenmesh.xyz via Owlery. */
+/** Submit product feedback via the UI; server emails feedback inbox via Owlery via Owlery. */
 export async function exerciseFeedbackSubmit(page: Page): Promise<void> {
   await page.goto('/feedback')
-  await expect(page.getByRole('heading', { name: 'Help shape Eigen Mesh' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Help shape Eigen Enterprise' })).toBeVisible()
   const note = `Release smoke feedback ${Date.now()}`
   await page.getByLabel('Message').fill(note)
   await page.getByRole('button', { name: 'Send feedback' }).click()

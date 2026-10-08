@@ -4,7 +4,7 @@ import { createOwleryContact, isOwleryConfigured, resolveOwleryConfig } from './
 const configuredEnv = {
   OWLERY_API_KEY: 'us_test',
   OWLERY_BASE_URL: 'https://owlery.example.com',
-  OWLERY_EMAIL_FROM: 'hello@eigenmesh.xyz',
+  OWLERY_EMAIL_FROM: 'hello@eigenenterprise.example',
   OWLERY_CONTACT_BOOK_ID: 'cb_123',
 }
 

@@ -51,7 +51,7 @@
     <Card.Header class="space-y-1 pb-2">
       <Card.Title class="text-sm">Thought saved</Card.Title>
       <Card.Description class="text-muted-foreground text-xs leading-relaxed">
-        Ask Eigen Mesh about it in Chat, or see how it connects in Memory.
+        Ask your company's assistant about it in Chat, or see how it connects in Memory.
       </Card.Description>
     </Card.Header>
     <Card.Footer class="flex flex-wrap items-center gap-2 border-t-0 pt-0">

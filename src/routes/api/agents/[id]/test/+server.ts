@@ -12,7 +12,7 @@ export const POST: RequestHandler = async (event) => {
     agentId: event.params.id,
     eventType: 'webhook.test',
     eventId: randomUUID(),
-    payload: { message: 'Eigenmesh webhook test' },
+    payload: { message: 'Eigen Enterprise webhook test' },
   })
 
   return json({ ok: true, deliveries: result.deliveries })

@@ -2,6 +2,53 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-09-22 — Eigen Enterprise de-branded from ../eigen (eigenmesh); settings rebuilt minimal
+
+**Owner directive (verbatim)**: "immediately remove all ui that was taken from ../eigen from this
+repo. eigen-enterprise is a completely separate project. reusing eigenmesh (the name of the
+../eigen) project was outright wrong! fix your mistake" — scoped via questionnaire: settings
+page rebuilt minimal + repo-wide naming scrub; other seed-derived pages stay for now (APIs
+always stay).
+
+**Shipped**
+- **`/settings` rebuilt minimal**: only Account (email + password + sign out), AI provider
+  (live status + link to /settings/llm), API keys (link to /api-keys). The eigen feature tabs
+  (appearance/theme, speech/haptics, notifications/push, memory tools incl. export + delete-all,
+  danger zone, graph rearrange) are gone from the page — their SERVER APIs are untouched.
+  Page server trimmed to `load {user, providerReady}` + `changeEmail`/`changePassword`; the
+  eigen `resetOnboarding`/language/locale actions removed (spec pins exact action keys).
+- **Settings sub-routes** `/settings/agents` (webhooks) + `/settings/scheduled-tasks` (heartbeat):
+  UI replaced with minimal placeholders linking back; their page-server loads + APIs untouched.
+- **Repo-wide 'Eigen Mesh'/eigenmesh scrub (0 grep hits across src/, messages/, static/,
+  .env.example)**: layout title, wordmark alts, chat/capture/feedback copy, i18n placeholders
+  (en+de), webhook + push test payloads, storage-key prefix `eigenmesh:` → `eigenenterprise:`,
+  schema comments, .env.example examples, LLM prompt examples (neutral examples, same shape).
+  31 spec files' fixtures swapped symmetrically ('Website Relaunch'/'Archive Scan' as neutral
+  labels — one ordering assertion needed a label that preserves the original sort semantics).
+- **Behavioral de-branding (decisions)**: feedback inbox no longer `feedback@eigenmesh.xyz` —
+  now env-overridable (`FEEDBACK_INBOX_EMAIL`) with placeholder default
+  `feedback@eigenenterprise.example` (owner must set a real address for feedback delivery);
+  subject `[Eigen Enterprise]`. Legal links no longer default to eigenmesh.xyz —
+  `DEFAULT_WEBSITE_ORIGIN` is a placeholder (`eigenenterprise.example`), real legal pages need
+  `PUBLIC_WEBSITE_ORIGIN`.
+
+**Gates: unit 561 files / 4184 green; svelte-check 0 errors; components 34 green; e2e
+onboarding-welcome 4/4, onboarding-provider 6/6 (incl. rewritten 'wizard never comes back'),
+auth 9/10 (owlery placeholder env, pre-existing); contract grep 0.**
+
+**Broke / flags**
+- The e2e 'wizard never comes back' test drove the removed eigen resetOnboarding form —
+  rewritten to pin the new truth (wizard only returns via the settings cog restart).
+- Storage-key rename means previously-dismissed first-capture nudges re-show once (cosmetic).
+- Logo ASSETS are still eigen's (`logo-whole.svg`); alt text says Eigen Enterprise. New logo
+  artwork is a design task, not a naming task — flagged.
+- Feedback delivery + legal links need owner-supplied domains (see decisions) — placeholders
+  are loud, not fake-working.
+
+**Next**: owner decision on the real feedback inbox + website origin; new logo assets; the
+remaining seed-derived pages (memory, graph, capture, chat page, brand studio) await the same
+treatment when the owner says when.
+
 ## 2026-09-22 — Onboarding owns the founding interview; homepage settings cog
 
 **Owner report (verbatim)**: chat asked "which three words should describe your company's tone of

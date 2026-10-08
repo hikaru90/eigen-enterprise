@@ -13,7 +13,7 @@ const {
   linkThoughtToProjectMock: vi.fn(async () => undefined),
   resolveProjectIdentityMock: vi.fn(async () => ({
     entityId: 'hub-1',
-    canonicalLabel: 'EigenMesh',
+    canonicalLabel: 'Website Relaunch',
     hubEntityType: 'organization',
     isGtdProject: false,
     shouldCreateHub: true,
@@ -64,7 +64,7 @@ describe('assignThoughtToProject', () => {
     vi.clearAllMocks()
     resolveProjectIdentityMock.mockResolvedValue({
       entityId: 'hub-1',
-      canonicalLabel: 'EigenMesh',
+      canonicalLabel: 'Website Relaunch',
       hubEntityType: 'organization',
       isGtdProject: false,
       shouldCreateHub: true,
@@ -93,13 +93,13 @@ describe('assignThoughtToProject', () => {
       select: vi.fn(() => makeSelectChain([{ nextActionThoughtId: null }])),
     }))
 
-    const result = await assignThoughtToProject('u1', 't1', { projectLabel: 'EigenMesh' })
+    const result = await assignThoughtToProject('u1', 't1', { projectLabel: 'Website Relaunch' })
 
-    expect(promoteHubEntityTypeMock).toHaveBeenCalledWith('u1', 'hub-1', 'EigenMesh')
+    expect(promoteHubEntityTypeMock).toHaveBeenCalledWith('u1', 'hub-1', 'Website Relaunch')
     expect(ensureProjectMock).toHaveBeenCalledWith('u1', 'hub-1', 'active', 'manual')
     expect(result).toMatchObject({
       projectEntityId: 'hub-1',
-      projectLabel: 'EigenMesh',
+      projectLabel: 'Website Relaunch',
       eligible: true,
       isGtdProject: true,
       created: true,

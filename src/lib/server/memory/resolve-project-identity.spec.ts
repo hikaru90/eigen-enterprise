@@ -115,7 +115,7 @@ describe('resolve-project-identity merge policy', () => {
 
   it('buildIdentityPrompt includes mergeEntityIds schema for seed mode', () => {
     const prompt = buildIdentityPrompt({
-      surfaceLabel: 'EigenMesh',
+      surfaceLabel: 'Website Relaunch',
       mode: 'seed',
       context: emptyContext,
     })
@@ -141,7 +141,7 @@ describe('resolve-project-identity merge policy', () => {
         gtdProjects: [
           {
             entityId: 'p1',
-            label: 'EigenMesh',
+            label: 'Website Relaunch',
             status: 'active',
             openTaskCount: 2,
             source: 'capture',
@@ -153,7 +153,7 @@ describe('resolve-project-identity merge policy', () => {
       },
     })
     expect(prompt).toContain('Thought id: t1')
-    expect(prompt).toContain('p1: EigenMesh')
+    expect(prompt).toContain('p1: Website Relaunch')
     expect(prompt).toContain('h1: Eigen')
     expect(prompt).toContain('thoughts: Ship MVP')
     expect(prompt).toContain('Eigen --related_to--> Jonas')
@@ -178,7 +178,7 @@ describe('parseProjectIdentityPayload', () => {
     const parsed = parseProjectIdentityPayload(
       {
         canonical_entity_id: 'e1',
-        canonical_label: ' EigenMesh ',
+        canonical_label: ' Website Relaunch ',
         hub_entity_type: 'product',
         is_gtd_project: true,
         should_create_hub: false,
@@ -188,7 +188,7 @@ describe('parseProjectIdentityPayload', () => {
     )
     expect(parsed).toEqual({
       canonicalEntityId: 'e1',
-      canonicalLabel: 'EigenMesh',
+      canonicalLabel: 'Website Relaunch',
       hubEntityType: 'product',
       isGtdProject: true,
       shouldCreateHub: false,
@@ -212,7 +212,7 @@ describe('loadProjectIdentityContext', () => {
     loadProjectsMock.mockResolvedValue([
       {
         entityId: 'p1',
-        label: 'EigenMesh',
+        label: 'Website Relaunch',
         status: 'active',
         openTaskCount: 1,
         source: 'capture',
@@ -301,7 +301,7 @@ describe('loadProjectIdentityContext', () => {
       /…$/,
     )
     expect(ctx.graphNeighborPairs).toEqual([
-      { sourceLabel: 'Eigen', targetLabel: 'EigenMesh', predicate: 'related_to' },
+      { sourceLabel: 'Eigen', targetLabel: 'Website Relaunch', predicate: 'related_to' },
     ])
   })
 })
@@ -554,8 +554,8 @@ describe('mergeProjectEntities', () => {
                   [
                     {
                       id: 'loser1',
-                      canonicalKey: 'eigenmesh',
-                      label: 'EigenMesh',
+                      canonicalKey: 'eigenenterprise',
+                      label: 'Website Relaunch',
                     },
                   ],
                 )

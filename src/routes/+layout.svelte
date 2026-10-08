@@ -180,7 +180,7 @@
 </script>
 
 <svelte:head>
-  <title>Eigen Mesh</title>
+  <title>Eigen Enterprise</title>
   <link rel="icon" href={favicon} />
   {#if page.data.activeVisualSet}
     <!-- Phase-2d M5 (V9): the active visual set's tokens apply globally to

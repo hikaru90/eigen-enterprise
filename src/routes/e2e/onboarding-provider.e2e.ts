@@ -223,13 +223,22 @@ test.describe('nucleus first-run onboarding', () => {
 
     await saveApiKeyViaApi(page)
 
-    // Reset first-run onboarding: the wizard stays gone because the provider works.
-    await page.goto('/settings')
-    const form = page.locator('form[action*="resetOnboarding"]')
-    await expect(form).toBeVisible()
-    await form.locator('button').click()
-    await page.waitForURL(/\/(\?|#|$)/)
+    // Tour done + provider works: the chat IS the homepage — on every re-entry.
+    await page.goto('/')
+    await expectChatVisible(page)
+    await page.goto('/')
+    await expectChatVisible(page)
 
+    // Settings shows the minimal Eigen Enterprise page — no wizard, no eigen tabs.
+    await page.goto('/settings')
+    await expect(page.getByTestId('settings-account')).toBeVisible()
+    await expect(page.getByTestId('welcome-wizard')).not.toBeVisible()
+    await expect(page.getByText('Appearance')).not.toBeVisible()
+    await expect(page.getByText('Danger zone')).not.toBeVisible()
+
+    // Back home: still the chat. (The ONE designed way back to the wizard is
+    // the homepage settings cog — covered in onboarding-welcome.e2e.ts.)
+    await page.goto('/')
     await expectChatVisible(page)
   })
 })

@@ -22,12 +22,12 @@ describe('resolveOwleryMailConfig', () => {
       resolveOwleryMailConfig({
         OWLERY_API_KEY: 'us_x',
         OWLERY_BASE_URL: 'https://owlery.example/',
-        OWLERY_EMAIL_FROM: 'hello@eigenmesh.xyz',
+        OWLERY_EMAIL_FROM: 'hello@eigenenterprise.example',
       }),
     ).toEqual({
       apiKey: 'us_x',
       baseUrl: 'https://owlery.example',
-      from: 'hello@eigenmesh.xyz',
+      from: 'hello@eigenenterprise.example',
     })
   })
 })
@@ -48,7 +48,7 @@ describe('sendTransactionalEmail', () => {
       {
         OWLERY_API_KEY: 'us_test',
         OWLERY_BASE_URL: 'https://owlery.example',
-        OWLERY_EMAIL_FROM: 'hello@eigenmesh.xyz',
+        OWLERY_EMAIL_FROM: 'hello@eigenenterprise.example',
       },
       {
         to: 'user@example.com',
@@ -73,7 +73,7 @@ describe('sendTransactionalEmail', () => {
     const body = JSON.parse((fetchImpl.mock.calls[0][1] as RequestInit).body as string)
     expect(body).toEqual({
       to: 'user@example.com',
-      from: 'hello@eigenmesh.xyz',
+      from: 'hello@eigenenterprise.example',
       subject: 'Reset your Eigen password',
       html: '<p>link</p>',
       text: 'link',
@@ -89,10 +89,10 @@ describe('sendTransactionalEmail', () => {
       {
         OWLERY_API_KEY: 'us_test',
         OWLERY_BASE_URL: 'https://owlery.example',
-        OWLERY_EMAIL_FROM: 'hello@eigenmesh.xyz',
+        OWLERY_EMAIL_FROM: 'hello@eigenenterprise.example',
       },
       {
-        to: 'feedback@eigenmesh.xyz',
+        to: 'feedback@eigenenterprise.example',
         replyTo: 'user@example.com',
         subject: 'Product feedback',
         html: '<p>hi</p>',
@@ -115,7 +115,7 @@ describe('sendTransactionalEmail', () => {
         {
           OWLERY_API_KEY: 'us_test',
           OWLERY_BASE_URL: 'https://owlery.example',
-          OWLERY_EMAIL_FROM: 'hello@eigenmesh.xyz',
+          OWLERY_EMAIL_FROM: 'hello@eigenenterprise.example',
         },
         { to: 'a@b.co', subject: 's', html: 'h', text: 't' },
         fetchImpl as unknown as typeof fetch,

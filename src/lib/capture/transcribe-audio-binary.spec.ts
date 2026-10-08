@@ -8,7 +8,7 @@ import { transcribeRecordedAudio, transcribeAudioChunk } from './transcribe-audi
  * app origin (SvelteKit `respond` in @sveltejs/kit). In production behind a
  * reverse proxy (adapter-node + Traefik/Caddy), a stale `ORIGIN` env — e.g.
  * left at the dev value `http://localhost:5173` while the browser origin is
- * `https://eigenmesh.xyz` — makes every multipart upload 403 with
+ * `https://eigenenterprise.example` — makes every multipart upload 403 with
  * "Cross-site POST form submissions are forbidden".
  *
  * The voice-upload client must therefore send audio as a non-form binary body

@@ -30,7 +30,7 @@ describe('buildEnvelope', () => {
     const envelope = buildEnvelope({
       eventType: 'webhook.test',
       eventId: 'd1',
-      payload: { message: 'Eigenmesh webhook test' },
+      payload: { message: 'Eigen Enterprise webhook test' },
     })
     expect(envelope.event).toBe('webhook.test')
     expect(envelope.event_type).toBe('webhook.test')

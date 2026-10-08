@@ -23,17 +23,17 @@ describe('createUserDeclaredProject', () => {
   it('creates hub and manual project profile without LLM identity resolution', async () => {
     const result = await createUserDeclaredProject({
       userId: 'u1',
-      label: 'EigenMesh',
+      label: 'Website Relaunch',
       status: 'active',
     })
 
     expect(result).toEqual({
       entityId: 'proj-1',
-      label: 'EigenMesh',
+      label: 'Website Relaunch',
       status: 'active',
     })
-    expect(upsertGraphHubEntityMock).toHaveBeenCalledWith('u1', 'EigenMesh', 'project')
-    expect(promoteHubEntityTypeMock).toHaveBeenCalledWith('u1', 'proj-1', 'EigenMesh')
+    expect(upsertGraphHubEntityMock).toHaveBeenCalledWith('u1', 'Website Relaunch', 'project')
+    expect(promoteHubEntityTypeMock).toHaveBeenCalledWith('u1', 'proj-1', 'Website Relaunch')
     expect(ensureProjectProfileMock).toHaveBeenCalledWith('u1', 'proj-1', 'active', 'manual')
   })
 

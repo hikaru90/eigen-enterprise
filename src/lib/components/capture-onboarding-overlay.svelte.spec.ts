@@ -44,7 +44,7 @@ describe('capture-onboarding-overlay.svelte', () => {
 
   it('carries no legacy install or wallet surface', async () => {
     render(CaptureOnboardingOverlay, { open: true })
-    await expect.element(page.getByText(/Install Eigen Mesh/i)).not.toBeInTheDocument()
+    await expect.element(page.getByText(/Install Eigen Enterprise/i)).not.toBeInTheDocument()
     await expect.element(page.getByText(/PayPal/i)).not.toBeInTheDocument()
     await expect.element(page.getByText('API key')).not.toBeInTheDocument()
   })

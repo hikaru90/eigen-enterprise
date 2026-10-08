@@ -168,8 +168,8 @@ describe('assignThoughtToAgent', () => {
 
   it('rejects when agent project bindings do not overlap thought projects', async () => {
     loadProjectContextForThoughtMock.mockResolvedValueOnce({
-      projectEntityIds: ['proj-eigenmesh'],
-      projectLabels: ['EigenMesh'],
+      projectEntityIds: ['proj-eigenenterprise'],
+      projectLabels: ['Website Relaunch'],
     })
 
     getDbMock.mockImplementation(() =>

@@ -646,7 +646,7 @@
     <div class="flex-1 overflow-y-auto px-2 py-2">
       {#if sessions.length === 0}
         <p class="text-muted-foreground px-2 py-8 text-center text-xs leading-relaxed">
-          No conversations yet. Capture a thought first, then ask Eigen Mesh about it.
+          No conversations yet. Capture a thought first, then ask your company's assistant about it.
           <a href={resolve('/capture')} class="mt-2 block underline">Go to Capture</a>
         </p>
       {/if}

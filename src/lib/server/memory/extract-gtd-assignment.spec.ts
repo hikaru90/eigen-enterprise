@@ -41,7 +41,7 @@ describe('extractGtdAssignment', () => {
     const result = await extractGtdAssignment({
       userId: 'u1',
       normalizedText: 'Call Marcus about the proposal',
-      projects: [{ entityId: 'p1', label: 'Eigen Mesh', status: 'active' }],
+      projects: [{ entityId: 'p1', label: 'Website Relaunch', status: 'active' }],
     })
 
     expect(result).toEqual({ projectEntityId: 'p1', isNextAction: true })

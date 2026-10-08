@@ -49,7 +49,7 @@ export type ResolveProjectIdentityInput = {
 
 /** Shared LLM policy: merge only true name variants of one initiative. */
 export const GTD_PROJECT_STAY_SEPARATE_POLICY = [
-  'Merge ONLY when linked thoughts describe the SAME multi-step initiative under different labels (e.g. "Eigen" and "EigenMesh").',
+  'Merge ONLY when linked thoughts describe the SAME multi-step initiative under different labels (e.g. "Website" and "Website Relaunch").',
   'Do NOT merge related but distinct bodies of work, sub-projects, phases, or parallel initiatives — even when names overlap or graph neighbors are shared.',
   'Graph neighbors inform discovery; shared neighbors alone are NOT sufficient to merge.',
   'When uncertain, keep projects separate (empty merge list).',

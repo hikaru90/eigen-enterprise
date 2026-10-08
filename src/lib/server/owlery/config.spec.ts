@@ -9,7 +9,7 @@ import {
 const mailEnv = {
   OWLERY_API_KEY: 'us_test',
   OWLERY_BASE_URL: 'https://owlery.example',
-  OWLERY_EMAIL_FROM: 'hello@eigenmesh.xyz',
+  OWLERY_EMAIL_FROM: 'hello@eigenenterprise.example',
 }
 
 const contactBookEnv = {
@@ -34,12 +34,12 @@ describe('resolveOwleryMailConfig', () => {
       resolveOwleryMailConfig({
         OWLERY_API_KEY: '  k ',
         OWLERY_BASE_URL: 'https://owlery.example/',
-        OWLERY_EMAIL_FROM: ' hello@eigenmesh.xyz ',
+        OWLERY_EMAIL_FROM: ' hello@eigenenterprise.example ',
       }),
     ).toEqual({
       apiKey: 'k',
       baseUrl: 'https://owlery.example',
-      from: 'hello@eigenmesh.xyz',
+      from: 'hello@eigenenterprise.example',
     })
   })
 
@@ -64,7 +64,7 @@ describe('resolveOwleryContactBookConfig', () => {
     expect(resolveOwleryContactBookConfig(contactBookEnv)).toEqual({
       apiKey: 'us_test',
       baseUrl: 'https://owlery.example',
-      from: 'hello@eigenmesh.xyz',
+      from: 'hello@eigenenterprise.example',
       contactBookId: 'aa44e40b69a24ab88cedffcd',
     })
   })

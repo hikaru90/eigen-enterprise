@@ -12,7 +12,7 @@ vi.mock('$lib/server/env/private-env', () => ({
   env: {
     OWLERY_API_KEY: 'us_test',
     OWLERY_BASE_URL: 'https://owlery.example',
-    OWLERY_EMAIL_FROM: 'hello@eigenmesh.xyz',
+    OWLERY_EMAIL_FROM: 'hello@eigenenterprise.example',
     ORIGIN: 'https://eigen.example',
   },
 }))

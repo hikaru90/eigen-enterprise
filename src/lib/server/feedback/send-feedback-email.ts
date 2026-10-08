@@ -2,7 +2,8 @@ import { env } from '$lib/server/env/private-env'
 import { isOwleryMailConfigured, sendTransactionalEmail } from '$lib/server/owlery/mail'
 
 /** Product inbox for user-submitted feedback (Owlery transactional). */
-export const FEEDBACK_INBOX_EMAIL = 'feedback@eigenmesh.xyz'
+export const FEEDBACK_INBOX_EMAIL =
+  env.FEEDBACK_INBOX_EMAIL?.trim() || 'feedback@eigenenterprise.example'
 
 function escapeHtml(value: string): string {
   return value
@@ -29,13 +30,13 @@ export type SendFeedbackInboxEmailInput = {
 }
 
 /**
- * Delivers product feedback to the Eigen inbox via Owlery.
+ * Delivers product feedback to the feedback inbox via Owlery.
  * Propagates send failures — no silent swallow (see AGENTS.md failure policy).
  */
 export async function sendFeedbackInboxEmail(
   input: SendFeedbackInboxEmailInput,
 ): Promise<{ emailId: string | null }> {
-  const subject = `[Eigen] Product feedback from ${input.userEmail}`
+  const subject = `[Eigen Enterprise] Product feedback from ${input.userEmail}`
   const text = [
     'New product feedback',
     '',

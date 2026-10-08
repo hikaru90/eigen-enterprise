@@ -22,7 +22,7 @@ describe('first-capture-nudge', () => {
   })
 
   it('builds a stable dismiss key per user', () => {
-    expect(firstCaptureNudgeDismissKey('u1')).toBe('eigenmesh:first_capture_nudge_dismissed:u1')
+    expect(firstCaptureNudgeDismissKey('u1')).toBe('eigenenterprise:first_capture_nudge_dismissed:u1')
   })
 
   it('reports dismissed only after localStorage flag is set', () => {

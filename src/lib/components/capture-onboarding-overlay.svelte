@@ -148,12 +148,12 @@
       <Card.Content class="space-y-3 text-sm text-card-foreground">
         {#if step === 0}
           <p class="text-xs leading-relaxed">
-            Your memory shouldn't live inside one chat vendor or hyperscaler. Eigen Mesh is yours —
+            Your memory shouldn't live inside one chat vendor or hyperscaler. Eigen Enterprise is yours —
             portable across every AI tool you use, not locked to theirs.
           </p>
         {:else if step === 1}
           <p class="text-xs leading-relaxed">
-            Eigen Mesh captures what's on your mind and keeps it organized and searchable. Nothing
+            Eigen Enterprise captures what's on your mind and keeps it organized and searchable. Nothing
             to file, nothing to tag.
           </p>
           <p class="text-xs leading-relaxed">
@@ -162,7 +162,7 @@
           </p>
         {:else}
           <p class="text-xs leading-relaxed">
-            Enable notifications so Eigen Mesh can nudge you with a quick question after setup — and
+            Enable notifications so Eigen Enterprise can nudge you with a quick question after setup — and
             later for reminders and memory check-ins.
           </p>
           {#if pushDone}

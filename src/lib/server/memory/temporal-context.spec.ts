@@ -55,7 +55,7 @@ describe('loadTemporalContextByThoughtIds', () => {
       {
         thoughtId: 't-expired',
         kind: 'reminder',
-        semanticSummary: 'separate eigenmesh app',
+        semanticSummary: 'separate eigenenterprise app',
         activePeriod: '[2026-06-02T12:00:00.000Z,2026-06-02T18:00:00.000Z)',
       },
     ])
@@ -106,7 +106,7 @@ describe('compactTemporalFieldsForMcp', () => {
         temporalEvents: [
           {
             kind: 'reminder',
-            semanticSummary: 'separate eigenmesh app',
+            semanticSummary: 'separate eigenenterprise app',
             activePeriod: '[2026-06-02T12:00:00.000Z,2026-06-02T18:00:00.000Z)',
             expired: true,
           },
@@ -116,7 +116,7 @@ describe('compactTemporalFieldsForMcp', () => {
     )
     expect(temporalStatus).toBe('expired')
     expect(temporalSummary).toContain('EXPIRED')
-    expect(temporalSummary).toContain('separate eigenmesh app')
+    expect(temporalSummary).toContain('separate eigenenterprise app')
   })
 
   it('returns active summary for ongoing events', () => {
