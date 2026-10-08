@@ -23,7 +23,7 @@ describe('graph-scale seed corpus', () => {
     for (const thought of corpus.thoughts) {
       expect(thought.rawText.length).toBeGreaterThan(10)
       expect(thought.rawText.length).toBeLessThan(200)
-      expect(thought.rawText).not.toMatch(/Marcus|Tartine|Sarah|EigenMesh|Yosemite/i)
+      expect(thought.rawText).not.toMatch(/Marcus|Tartine|Sarah|Kindred|Yosemite/i)
     }
   })
 

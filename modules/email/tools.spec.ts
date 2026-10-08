@@ -11,7 +11,7 @@ vi.mock('$env/dynamic/private', () => ({ default: {}, env: {} }))
 const env = {
   OWLERY_API_KEY: 'us_test',
   OWLERY_BASE_URL: 'https://owlery.example',
-  OWLERY_EMAIL_FROM: 'hello@eigenmesh.xyz',
+  OWLERY_EMAIL_FROM: 'hello@example.com',
   OWLERY_CONTACT_BOOK_ID: 'cb_1',
 }
 
@@ -69,7 +69,7 @@ describe('createEmailTools', () => {
     await expect(send.handler(ctx, input)).resolves.toEqual({ emailId: 'em_1' })
     expect(calls[0].url).toBe('https://owlery.example/api/v1/emails')
     const body = JSON.parse(calls[0].init.body as string)
-    expect(body).toMatchObject({ to: 'a@b.co', from: 'hello@eigenmesh.xyz', subject: 'Hi' })
+    expect(body).toMatchObject({ to: 'a@b.co', from: 'hello@example.com', subject: 'Hi' })
   })
 
   it('add_contact fails loud when the contact book is not configured', async () => {

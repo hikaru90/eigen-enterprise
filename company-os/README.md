@@ -47,7 +47,7 @@ src/llm.ts       streaming OpenAI-compatible client (DI transport for tests)
 src/tools.ts     JSON-schema tool registry
 src/loop.ts      reasoning loop: reason → tool → observe (streamed events)
 src/session.ts   conversation persistence (Postgres + in-memory test double)
-src/memory.ts    company memory, append-only, latest-wins (Eigen Mesh v0)
+src/memory.ts    company memory, append-only, latest-wins (v0)
 src/resume.ts    resume context ("You were setting up <company> — where were we?")
 src/db.ts        fail-loud connection
 src/migrate.ts   dead-simple ordered SQL runner (migrations/)

@@ -1,5 +1,5 @@
 /**
- * Company memory — Eigen Mesh v0 (decision W8). Every founder answer is
+ * Company memory — v0 (decision W8). Every founder answer is
  * persisted immediately and never overwritten; readers get latest-per-key.
  */
 

@@ -75,7 +75,7 @@ services:
     restart: unless-stopped
 
   # Self-hosted Drizzle Studio (Gateway). Always started with the stack.
-  # Coolify: set DRIZZLE_GATEWAY_MASTERPASS; domain studio.eigenmesh.xyz is wired via Traefik labels.
+  # Coolify: set DRIZZLE_GATEWAY_MASTERPASS; domain studio.your-domain.example is wired via Traefik labels (set your real domain).
   # On first empty volume, Gateway auto-adds connection "eigen" from DATABASE_URL_eigen (internal db:5432).
   studio:
     container_name: eigen-enterprise-studio
@@ -93,7 +93,7 @@ services:
       - '4983:4983'
     labels:
       - traefik.enable=true
-      - traefik.http.routers.eigen-studio.rule=Host(`studio.eigenmesh.xyz`)
+      - traefik.http.routers.eigen-studio.rule=Host(`studio.your-domain.example`)
       - traefik.http.routers.eigen-studio.entrypoints=http,https
       - traefik.http.routers.eigen-studio.tls=true
       - traefik.http.routers.eigen-studio.tls.certresolver=letsencrypt

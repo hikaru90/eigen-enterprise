@@ -37,13 +37,24 @@ onboarding-welcome 4/4, onboarding-provider 6/6 (incl. rewritten 'wizard never c
 auth 9/10 (owlery placeholder env, pre-existing); contract grep 0.**
 
 **Broke / flags**
+- **Auditor rework round (addressed)**: first scrub missed live residuals outside src/ —
+  `docker-compose.yaml` Traefik rule routed Drizzle Studio at `studio.eigenmesh.xyz` (now
+  `studio.your-domain.example` placeholder — owner sets the real domain), plus identity in
+  company-os memory module/README, evals graph-scale corpus + seed-guard, modules/email spec
+  fixtures. All scrubbed; git grep over tracked files (excl. plan/docs/.pi history) = 0.
+- **Stale generated artifacts regenerated**: `src/paraglide` compiled messages and the `build/`
+  output predated the scrub and still served "Eigen Mesh" strings — `npm run build` regenerates
+  both; artifact grep now 0 (paraglide + build).
 - The e2e 'wizard never comes back' test drove the removed eigen resetOnboarding form —
   rewritten to pin the new truth (wizard only returns via the settings cog restart).
 - Storage-key rename means previously-dismissed first-capture nudges re-show once (cosmetic).
 - Logo ASSETS are still eigen's (`logo-whole.svg`); alt text says Eigen Enterprise. New logo
   artwork is a design task, not a naming task — flagged.
-- Feedback delivery + legal links need owner-supplied domains (see decisions) — placeholders
-  are loud, not fake-working.
+- Feedback delivery + legal links + studio domain need owner-supplied domains (see decisions) —
+  placeholders are loud, not fake-working.
+- **Scope boundary (deliberate)**: `plan/`, `docs/`, `.pi` skill docs retain historical
+  eigenmesh mentions — they are internal records, not live code/UI/config; `.env` untouched
+  (data-safety rule, untracked owner data).
 
 **Next**: owner decision on the real feedback inbox + website origin; new logo assets; the
 remaining seed-derived pages (memory, graph, capture, chat page, brand studio) await the same
