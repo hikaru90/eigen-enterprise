@@ -11,6 +11,7 @@
     playConnectChime,
     primeBootSound,
   } from '$lib/sound/boot-sound'
+  import { cancelSpeak, speak } from '$lib/speech/tts'
 
   let {
     providerReady = false,
@@ -34,6 +35,10 @@
    * same thing: the tour never nags again.
    */
   type Act = 'boot' | 'hello' | 'name' | 'identity' | 'mind'
+
+  const IDENTITY_LINE_1 = 'This is the operating system for your company.'
+  const IDENTITY_LINE_2 =
+    'You talk. It builds — your website, your work — and it remembers everything. Nothing happens without your approval.'
 
   let act = $state<Act>('boot')
   let identityLine = $state(1)
@@ -59,6 +64,11 @@
     if (act === next) return
     act = next
     if (play && isSoundEnabled()) playActPulse()
+    // The voice speaks the act as it appears (the Her layer); sound and voice
+    // are independent toggles.
+    if (next === 'hello') speak(greeting)
+    else if (next === 'name') speak('What should I call you?')
+    else if (next === 'identity') speak(IDENTITY_LINE_1)
   }
 
   function advanceFromClick(): void {
@@ -68,6 +78,7 @@
     else if (act === 'identity' && identityLine === 1) {
       identityLine = 2
       if (isSoundEnabled()) playActPulse()
+      speak(IDENTITY_LINE_2)
     } else if (act === 'identity' && identityLine === 2 && !providerReady) {
       advanceTo('mind')
     }
@@ -167,6 +178,7 @@
       if (act === 'identity' && identityLine === 1) {
         identityLine = 2
         if (isSoundEnabled()) playActPulse()
+        speak(IDENTITY_LINE_2)
       }
     }, 6200)
     later(() => {
@@ -177,6 +189,7 @@
       for (const t of timers) clearTimeout(t)
       timers = []
       media.removeEventListener('change', onMediaChange)
+      cancelSpeak()
     }
   })
 
@@ -274,7 +287,7 @@
               class="block text-2xl font-light tracking-tight text-balance sm:text-3xl"
               in:fly={{ y: 10 * motion, duration: 700 * motion }}
             >
-              This is the operating system for your company.
+              {IDENTITY_LINE_1}
             </span>
           </button>
         {:else}
@@ -282,8 +295,7 @@
             class="text-base leading-relaxed text-balance text-muted-foreground sm:text-lg"
             in:fly={{ y: 10 * motion, duration: 700 * motion }}
           >
-            You talk. It builds — your website, your work — and it remembers everything. Nothing
-            happens without your approval.
+            {IDENTITY_LINE_2}
           </p>
           {#if providerReady}
             <button

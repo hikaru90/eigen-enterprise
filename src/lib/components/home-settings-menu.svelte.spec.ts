@@ -56,9 +56,27 @@ describe('home-settings-menu.svelte', () => {
       .element(page.getByRole('link', { name: 'Settings', exact: true }))
       .toHaveAttribute('href', '/settings')
     await expect.element(page.getByTestId('sound-toggle')).toHaveTextContent('Sound on')
+    await expect.element(page.getByTestId('voice-toggle')).toHaveTextContent('Voice on')
     await expect
       .element(page.getByRole('button', { name: 'Restart onboarding' }))
       .toBeInTheDocument()
+  })
+
+  it('the voice toggle flips the persisted flag — assistant speech is a real choice', async () => {
+    window.localStorage.removeItem('ee-voice')
+    render(HomeSettingsMenu)
+
+    await page.getByRole('button', { name: 'Settings menu' }).click()
+    await expect.element(page.getByTestId('voice-toggle')).toHaveTextContent('Voice on')
+
+    await page.getByTestId('voice-toggle').click()
+    await expect.element(page.getByTestId('voice-toggle')).toHaveTextContent('Voice off')
+    expect(window.localStorage.getItem('ee-voice')).toBe('off')
+
+    await page.getByTestId('voice-toggle').click()
+    await expect.element(page.getByTestId('voice-toggle')).toHaveTextContent('Voice on')
+    expect(window.localStorage.getItem('ee-voice')).toBeNull()
+    window.localStorage.removeItem('ee-voice')
   })
 
   it('the sound toggle flips the persisted flag — on by default, off stays off', async () => {

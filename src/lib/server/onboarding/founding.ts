@@ -14,6 +14,27 @@ import {
 } from '../../../../modules/orchestrator/brain'
 
 /**
+ * Opens the website-founding journey EMPTY — the phase-2e handoff: onboarding
+ * (welcome complete) starts the journey, the CHAT drives it. The seeded first
+ * agent turn asks the first step's question; the driver captures answers via
+ * markers and runs artifacts through the registry — visible, audited,
+ * approval-gated. Idempotent: an existing active journey is reused, never
+ * duplicated; a completed journey (founder already through) stays done.
+ */
+export async function openWebsiteFoundingJourney(deps: {
+  journeys: JourneyStore
+  sessionId: string
+}): Promise<string> {
+  const existing = await deps.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
+  if (existing) return existing.id
+  const row = await deps.journeys.create(
+    WEBSITE_FOUNDING_JOURNEY.kind,
+    initialJourneyState(deps.sessionId),
+  )
+  return row.id
+}
+
+/**
  * The welcome wizard's founding interview, server-side. The wizard collects
  * tone of voice, company name, and positioning — the questions that used to
  * leak into the nucleus chat (modules/orchestrator/brain.ts persona). Here the

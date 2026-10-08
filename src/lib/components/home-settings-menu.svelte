@@ -4,11 +4,13 @@
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw'
   import Settings from '@lucide/svelte/icons/settings'
+  import Speech from '@lucide/svelte/icons/speech'
   import Volume2 from '@lucide/svelte/icons/volume-2'
   import VolumeX from '@lucide/svelte/icons/volume-x'
   import { invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
   import { isSoundEnabled, setSoundEnabled } from '$lib/sound/boot-sound'
+  import { isVoiceEnabled, setVoiceEnabled } from '$lib/speech/tts'
   import * as Popover from '$lib/components/ui/popover'
 
   /**
@@ -22,6 +24,7 @@
   let menuOpen = $state(false)
   let restarting = $state(false)
   let soundOn = $state(true)
+  let voiceOn = $state(true)
   let error = $state<string | null>(null)
 
   function toggleSound(): void {
@@ -29,8 +32,14 @@
     setSoundEnabled(soundOn)
   }
 
+  function toggleVoice(): void {
+    voiceOn = !voiceOn
+    setVoiceEnabled(voiceOn)
+  }
+
   function syncSound(): void {
     soundOn = isSoundEnabled()
+    voiceOn = isVoiceEnabled()
   }
 
   async function restartOnboarding(): Promise<void> {
@@ -97,6 +106,15 @@
         <VolumeX class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
         Sound off
       {/if}
+    </button>
+    <button
+      type="button"
+      class="flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm text-foreground hover:bg-white/25 disabled:opacity-50 dark:hover:bg-white/10"
+      onclick={toggleVoice}
+      data-testid="voice-toggle"
+    >
+      <Speech class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
+      {voiceOn ? 'Voice on' : 'Voice off'}
     </button>
     <button
       type="button"

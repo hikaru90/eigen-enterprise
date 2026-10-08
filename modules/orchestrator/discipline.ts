@@ -26,6 +26,10 @@ export const loopDetectionSection = [
   'LOOP DETECTION — stagnation is the loop signal, not repetition: the same action failing the same way twice, a rejected approach re-proposed, an answered question re-asked. On stagnation: stop, summarize what you tried and what failed, and ask the user for direction.',
 ].join('\n')
 
+export const noEmptyPromisesSection = [
+  'NO EMPTY PROMISES — never announce future work. If you say you are doing something, do it in the SAME reply with tool calls (the user watches each tool run in the transcript). If you cannot execute it now, say exactly what is missing instead of promising.',
+].join('\n')
+
 export const commitConventionsSection = [
   'COMMIT CONVENTIONS — every commit message is prefaced [fix], [feature], or [chore], followed by a short imperative description. Never commit or log secrets.',
 ].join('\n')
@@ -46,6 +50,7 @@ export function disciplineSections(): string[] {
     planFirstSection,
     understandFirstSection,
     noFallbacksSection,
+    noEmptyPromisesSection,
     noMidAirRethinksSection,
     loopDetectionSection,
     commitConventionsSection,

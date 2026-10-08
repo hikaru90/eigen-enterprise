@@ -6,7 +6,7 @@ import { InMemoryJourneyStore } from '$lib/kernel/playbook'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { ORCHESTRATOR_AGENT_ID, WEBSITE_FOUNDING_JOURNEY } from '../../../../modules/orchestrator/brain'
-import { recordFoundingInterview } from './founding'
+import { openWebsiteFoundingJourney, recordFoundingInterview } from './founding'
 
 /**
  * The welcome wizard's founding interview, server-side: answers become the
@@ -83,6 +83,32 @@ function fixture() {
   return { sink, approvals, pages, toolCalls, journeys, submit }
 }
 
+describe('openWebsiteFoundingJourney (phase-2e handoff)', () => {
+  it('opens an EMPTY journey — the chat drives the questions', async () => {
+    const journeys = new InMemoryJourneyStore()
+
+    const id = await openWebsiteFoundingJourney({ journeys, sessionId: 'onboarding:u1' })
+
+    const row = await journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
+    expect(row).not.toBeNull()
+    expect(row!.id).toBe(id)
+    expect(row!.state.captured).toEqual([])
+    expect(row!.state.stepIndex).toBe(0)
+    expect(row!.state.answers).toEqual({})
+  })
+
+  it('is idempotent — an existing active journey is reused, never duplicated', async () => {
+    const journeys = new InMemoryJourneyStore()
+
+    const first = await openWebsiteFoundingJourney({ journeys, sessionId: 'onboarding:u1' })
+    const second = await openWebsiteFoundingJourney({ journeys, sessionId: 'onboarding:u2' })
+
+    expect(second).toBe(first)
+    const row = await journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
+    expect(row!.state.captured).toEqual([])
+  })
+})
+
 describe('recordFoundingInterview (onboarding founding endpoint logic)', () => {
   it('skips loudly-clean when every answer is blank (including whitespace-only)', async () => {
     const fx = fixture()
@@ -107,7 +133,7 @@ describe('recordFoundingInterview (onboarding founding endpoint logic)', () => {
 
     const row = await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
     expect(row).not.toBeNull()
-    expect(row!.state.captured).toEqual(['tone', 'company_name', 'positioning'])
+    expect(row!.state.captured).toEqual(['company_name', 'positioning', 'tone'])
     expect(row!.state.stepIndex).toBe(WEBSITE_FOUNDING_JOURNEY.steps.length)
     expect(row!.state.answers).toEqual({
       tone: 'warm, direct, technical',
@@ -125,11 +151,13 @@ describe('recordFoundingInterview (onboarding founding endpoint logic)', () => {
       'website.create_page',
       'website.create_page',
     ])
-    const brandDoc = fx.toolCalls[0]!.input
+    const home = fx.toolCalls[0]!.input
+    expect(home).toMatchObject({ slug: 'home', title: 'Home' })
+    expect(String(home.body)).toContain('# Kindred Digital Labs')
+    const brandDoc = fx.toolCalls[3]!.input
     expect(brandDoc).toMatchObject({ slug: 'brand-tone-of-voice', title: 'Brand — Tone of Voice' })
     expect(String(brandDoc.body)).toContain('warm, direct, technical')
     expect(String(brandDoc.body)).toContain('Kindred Digital Labs')
-    expect(String(fx.toolCalls[1]!.input.body)).toContain('# Kindred Digital Labs')
 
     // Gated: journey stays active, no completion event yet.
     expect((await fx.approvals.listPending()).map((p) => p.toolName)).toEqual([

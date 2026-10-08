@@ -75,34 +75,13 @@ export const ORCHESTRATOR_LLM_USER_ID = 'orchestrator'
  */
 export const WEBSITE_FOUNDING_JOURNEY: JourneySpec = {
   kind: 'website_founding',
+  // Phase-2e order: the boot sequence's seeded greeting asks the company name
+  // first, then what the company does, then tone — artifacts run on the step
+  // where every answer they need is already captured.
   steps: [
-    {
-      id: 'tone',
-      promptFragment:
-        'Collect the company’s tone of voice — three words the user gives (or confirms) count as captured.',
-    },
     {
       id: 'company_name',
       promptFragment: 'Ask for the company name (one short answer).',
-      artifacts: [
-        {
-          tool: 'website.create_page',
-          inputFromState: (state: JourneyState) => ({
-            slug: 'brand-tone-of-voice',
-            title: 'Brand — Tone of Voice',
-            kind: 'doc',
-            visibility: 'private',
-            body: [
-              '# Brand — Tone of Voice',
-              '',
-              `Tone of voice: ${state.answers.tone ?? ''}`,
-              `Company name: ${state.answers.company_name ?? ''}`,
-              '',
-              '(Captured verbatim during the website founding journey.)',
-            ].join('\n'),
-          }),
-        },
-      ],
     },
     {
       id: 'positioning',
@@ -165,6 +144,32 @@ export const WEBSITE_FOUNDING_JOURNEY: JourneySpec = {
         {
           tool: 'website.publish_page',
           inputFromState: () => ({ slug: 'contact', visibility: 'public' }),
+        },
+      ],
+    },
+    {
+      // Final step: the brand doc needs the tone answer, so it is this step's
+      // artifact — by the time tone is captured, name + positioning exist too.
+      id: 'tone',
+      promptFragment:
+        'Collect the company’s tone of voice — three words the user gives (or confirms) count as captured.',
+      artifacts: [
+        {
+          tool: 'website.create_page',
+          inputFromState: (state: JourneyState) => ({
+            slug: 'brand-tone-of-voice',
+            title: 'Brand — Tone of Voice',
+            kind: 'doc',
+            visibility: 'private',
+            body: [
+              '# Brand — Tone of Voice',
+              '',
+              `Tone of voice: ${state.answers.tone ?? ''}`,
+              `Company name: ${state.answers.company_name ?? ''}`,
+              '',
+              '(Captured verbatim during the website founding journey.)',
+            ].join('\n'),
+          }),
         },
       ],
     },

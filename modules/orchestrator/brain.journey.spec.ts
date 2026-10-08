@@ -122,14 +122,16 @@ function fixture(options: { failOnSlug?: string } = {}): Fixture {
 async function runFoundingJourney(fx: Fixture, sinks?: Parameters<JourneyAwareAgentRuntime['dispatch']>[3]): Promise<string[]> {
   await fx.journeys.create(WEBSITE_FOUNDING_JOURNEY.kind, initialJourneyState('session-1'))
 
-  fx.script.push(`Great — noted.\n${marker('tone')}`)
-  const r1 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'warm, direct, technical', sinks)
+  // Phase-2e step order: the boot sequence's seeded greeting asks the company
+  // name first — the journey steps match that founding order.
+  fx.script.push(`Great — noted.\n${marker('company_name')}`)
+  const r1 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'Kindred Digital Labs', sinks)
 
-  fx.script.push(`Love it.\n${marker('company_name')}`)
-  const r2 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'Kindred Digital Labs', sinks)
+  fx.script.push(`Love it.\n${marker('positioning')}`)
+  const r2 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'an AI-native company OS', sinks)
 
-  fx.script.push(`Perfect.\n${marker('positioning')}`)
-  const r3 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'an AI-native company OS', sinks)
+  fx.script.push(`Perfect.\n${marker('tone')}`)
+  const r3 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'warm, direct, technical', sinks)
 
   return [r1, r2, r3]
 }
@@ -155,10 +157,10 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
 
     // Every turn: journey active — context block on top, user speech last.
     expect(fx.engineInputs[0].startsWith('[company journey context — not user speech]')).toBe(true)
-    expect(fx.engineInputs[0]).toContain('step 1/3 (tone)')
-    expect(fx.engineInputs[0].endsWith('warm, direct, technical')).toBe(true)
-    // Turn 2: collected tone is rendered for the model.
-    expect(fx.engineInputs[1]).toContain('- tone: warm, direct, technical')
+    expect(fx.engineInputs[0]).toContain('step 1/3 (company_name)')
+    expect(fx.engineInputs[0].endsWith('Kindred Digital Labs')).toBe(true)
+    // Turn 2: collected name is rendered for the model.
+    expect(fx.engineInputs[1]).toContain('- company_name: Kindred Digital Labs')
   })
 
   it('accumulates verbatim answers, strips markers from user-facing replies, and advances steps', async () => {
@@ -167,7 +169,7 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
 
     const row = await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
     expect(row).not.toBeNull()
-    expect(row!.state.captured).toEqual(['tone', 'company_name', 'positioning'])
+    expect(row!.state.captured).toEqual(['company_name', 'positioning', 'tone'])
     expect(row!.state.answers).toEqual({
       tone: 'warm, direct, technical',
       company_name: 'Kindred Digital Labs',
@@ -186,17 +188,25 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     await runFoundingJourney(fx)
 
     const byTool = fx.toolCalls.map((c) => c.tool)
-    // Brand doc after tone + name; skeleton after positioning. The publish is
-    // gated BEFORE its handler runs (registry approval gate) — it never
-    // reaches this handler-level log; the pending approval request pins it.
+    // Skeleton after the name + positioning; brand doc last (it needs the tone
+    // answer too). The publish is gated BEFORE its handler runs (registry
+    // approval gate) — it never reaches this handler-level log; the pending
+    // approval request pins it.
     expect(byTool).toEqual([
-      'website.create_page', // brand doc (turn 3)
       'website.create_page', // home
       'website.create_page', // about
       'website.create_page', // contact
+      'website.create_page', // brand doc (after tone, the final step)
     ])
 
-    const brandDoc = fx.toolCalls[0]!.input
+    const home = fx.toolCalls[0]!.input
+    expect(home).toMatchObject({ slug: 'home', title: 'Home', kind: 'page', visibility: 'private' })
+    expect(String(home.body)).toContain('# Kindred Digital Labs')
+    expect(String(home.body)).toContain('an AI-native company OS')
+    expect(fx.toolCalls[1]!.input).toMatchObject({ slug: 'about', title: 'About' })
+    expect(fx.toolCalls[2]!.input).toMatchObject({ slug: 'contact', title: 'Contact' })
+
+    const brandDoc = fx.toolCalls[3]!.input
     expect(brandDoc).toMatchObject({
       slug: 'brand-tone-of-voice',
       title: 'Brand — Tone of Voice',
@@ -205,13 +215,6 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     })
     expect(String(brandDoc.body)).toContain('warm, direct, technical')
     expect(String(brandDoc.body)).toContain('Kindred Digital Labs')
-
-    const home = fx.toolCalls[1]!.input
-    expect(home).toMatchObject({ slug: 'home', title: 'Home', kind: 'page', visibility: 'private' })
-    expect(String(home.body)).toContain('# Kindred Digital Labs')
-    expect(String(home.body)).toContain('an AI-native company OS')
-    expect(fx.toolCalls[2]!.input).toMatchObject({ slug: 'about', title: 'About' })
-    expect(fx.toolCalls[3]!.input).toMatchObject({ slug: 'contact', title: 'Contact' })
   })
 
   it('gates publishes: approval_required records pending, surfaces the event, journey stays active', async () => {
@@ -231,12 +234,14 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
 
     const row = await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
     expect(row?.status).toBe('active')
+    // Spec order: the skeleton pages (positioning step), then the gated publish;
+    // the brand doc (tone step, final) executes after them.
     expect(row?.state.artifacts.map((a) => [a.tool, a.status])).toEqual([
       ['website.create_page', 'executed'],
       ['website.create_page', 'executed'],
       ['website.create_page', 'executed'],
-      ['website.create_page', 'executed'],
       ['website.publish_page', 'approval_pending'],
+      ['website.create_page', 'executed'],
     ])
   })
 
@@ -280,12 +285,17 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     const fx = fixture({ failOnSlug: 'brand-tone-of-voice' })
     await fx.journeys.create(WEBSITE_FOUNDING_JOURNEY.kind, initialJourneyState('session-1'))
 
-    fx.script.push(`Great.\n${marker('tone')}`)
-    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'warm, direct, technical')
+    fx.script.push(`Great.\n${marker('company_name')}`)
+    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'Kindred Digital Labs')
 
-    fx.script.push(`Noted.\n${marker('company_name')}`)
+    fx.script.push(`Noted.\n${marker('positioning')}`)
+    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'an AI-native company OS')
+
+    // The brand doc is the tone step's artifact (the final step): the failure
+    // surfaces on the turn that captures tone.
+    fx.script.push(`Hmm.\n${marker('tone')}`)
     await expect(
-      fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'Kindred Digital Labs'),
+      fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'warm, direct, technical'),
     ).rejects.toThrow(/duplicate website slug/)
   })
 

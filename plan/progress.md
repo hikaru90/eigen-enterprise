@@ -1185,3 +1185,48 @@ onboarding) or phase-3 per roadmap.
 - Full width = literal (`w-full` everywhere on nucleus); forms inside acts keep readable
   measures (max-w-md/lg) — typography, not container restriction.
 - Name is identity, not tour state: `resetWelcomeOnboarding` keeps it.
+
+---
+
+## 2026-09-07 — Phase-2e follow-up: the voice, and the compile that actually compiles
+
+**Owner feedback** (after driving the new boot + first conversation): wow moment landed. Two
+gaps: (1) no text-to-speech when the assistant speaks; (2) the agent SAID "I will now compile
+the brand narrative" and nothing ran — no process, no UI reflection.
+
+**Root cause of (2):** removing the wizard's founding step (phase-2e) also removed the ONLY
+opener of the website-founding journey — the chat was a plain orchestrator turn, so "compiling"
+was an LLM promise with no execution behind it.
+
+**Shipped**
+- The handoff now OPENS the founding journey (empty) server-side:
+  `openWebsiteFoundingJourney()` in founding.ts, called by POST /api/onboarding/welcome —
+  onboarding still owns the start; the chat drives it. Idempotent (reuse active, reuse none
+  after completion). Restart onboarding → new journey on next completion.
+- Journey steps reordered to match the seeded question and natural founding order:
+  company_name → positioning → tone. The brand-doc artifact moved to the tone step (final) —
+  it needs all three answers; it fired early under the old order and would have written an
+  empty tone.
+- Discipline: new `NO EMPTY PROMISES` section — never announce future work; execute in the
+  same reply with tool calls (the transcript shows each one) or say what's missing.
+- The seeded first turn now asks exactly the journey's first question ("So, first: what's
+  your company called?") — one question per reply, the journey drives the rest.
+- The visible process the owner asked for: when the journey completes its captures, artifacts
+  execute through the kernel registry mid-chat — tool preview lines ("→ using
+  website.create_page · …"), status labels, the approval.required card for publishes, and the
+  journey-completed kernel event. No new UI needed; the existing stream surfaces finally have
+  something true to show.
+- TTS (`src/lib/speech/tts.ts`): browser SpeechSynthesis, ON by default, `ee-voice` localStorage
+  flag, markdown→speech normalization (code blocks/links/emphasis/bullets), cancel-on-new-turn.
+  Speaks: boot acts (greeting, name ask, identity lines), the seeded greeting, every successful
+  assistant reply. Voice toggle ("Voice on/off") in the home settings menu next to Sound.
+
+**Verification**
+- Unit 4203 passed (journey reorder: brain.journey.spec rewritten for the new step order and
+  artifact firing order; founding + welcome route specs cover the empty-journey open).
+- Components 32 passed; check 0 errors; lint 0 errors.
+- E2E 25 passed — happy path now also asserts the greeting is SPOKEN (speechSynthesis stubbed
+  with a recorder via addInitScript).
+
+**Decision logged**
+- Voice + sound default ON; independent toggles (settings menu). Tab mute stays the user's lever.

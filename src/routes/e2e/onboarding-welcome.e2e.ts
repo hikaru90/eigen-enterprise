@@ -19,6 +19,44 @@ const GATEWAY_BASE_URL = `http://127.0.0.1:${process.env.MOCK_GATEWAY_PORT ?? 51
 const CHAT_MODEL = 'mock-chat-model'
 const EMBED_MODEL = 'mock-embed-model'
 
+/**
+ * Deterministic voice: replace speechSynthesis with a recorder before app code
+ * runs, then assertions can verify the assistant actually speaks.
+ */
+async function stubSpeechSynthesis(context: import('@playwright/test').BrowserContext): Promise<void> {
+  await context.addInitScript(() => {
+    const spoken: string[] = []
+    const recorder = {
+      speak: (utterance: { text: string }) => {
+        spoken.push(utterance.text)
+      },
+      cancel: () => {},
+      speaking: false,
+      pending: false,
+      paused: false,
+      pause: () => {},
+      resume: () => {},
+      getVoices: () => [],
+      onvoiceschanged: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }
+    Object.defineProperty(window, 'speechSynthesis', { value: recorder, configurable: true })
+    Object.defineProperty(window, '__ttsSpoken', { value: spoken, configurable: true })
+    Object.defineProperty(window, 'SpeechSynthesisUtterance', {
+      value: class {
+        text: string
+        rate = 1
+        constructor(text: string) {
+          this.text = text
+        }
+      },
+      configurable: true,
+    })
+  })
+}
+
 async function expectChatVisible(page: Page): Promise<void> {
   await expect(page.getByPlaceholder('What do you need?')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('welcome-wizard')).not.toBeVisible()
@@ -69,6 +107,7 @@ test.describe('welcome boot sequence', () => {
     page,
     context,
   }) => {
+    await stubSpeechSynthesis(context)
     await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
 
     // Boot → greeting. No capability list, no step counter, no module jargon — ever.
@@ -94,12 +133,18 @@ test.describe('welcome boot sequence', () => {
     await expect(page.getByRole('button', { name: 'Begin' })).toBeVisible({ timeout: 20_000 })
     await page.getByRole('button', { name: 'Begin' }).click()
 
-    // Handoff: the agent's first words are already there — seeded, personal, honest.
+    // Handoff: the agent's first words are already there — seeded, personal, honest,
+    // and SPOKEN (the Her layer; the greeting asks the founding journey's first question).
     await expectChatVisible(page)
-    await expect(page.getByText(/Hello, Ada\. Your company's OS is getting set up/)).toBeVisible()
     await expect(
-      page.getByText(/what's your company called, and what does it do\?/),
+      page.getByText(/Hello, Ada\. Your company's OS is getting set up/),
     ).toBeVisible()
+    await expect(page.getByText(/what's your company called\?/)).toBeVisible()
+    const spokenGreeting = await page.evaluate(
+      () => (window as unknown as { __ttsSpoken: string[] }).__ttsSpoken.join(' '),
+    )
+    expect(spokenGreeting).toContain('getting set up')
+    expect(spokenGreeting).toContain("what's your company called?")
 
     // Reload: the tour is done — the chat IS the page now.
     await page.goto('/')

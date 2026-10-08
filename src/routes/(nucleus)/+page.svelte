@@ -17,6 +17,7 @@
   import { Button } from '$lib/components/ui/button'
   import VoiceInputButton from '$lib/components/voice-input-button.svelte'
   import WelcomeWizard from '$lib/components/welcome-wizard.svelte'
+import { cancelSpeak, speak } from '$lib/speech/tts'
   import {
     assistantTurnFromResponse,
     failedTurn,
@@ -34,14 +35,16 @@
   let sessionId = $state<string | null>(null)
   let abortController: AbortController | null = null
 
-  /** Seeded by the boot sequence's handoff: the agent's first words, before any LLM call. */
+  /** Seeded by the boot sequence's handoff: the agent's first words, before any LLM call.
+   *  Asks the founding journey's FIRST step question — the journey drives the rest. */
   let seededGreeting = $state<string | null>(null)
 
   function handleOnboardingComplete(detail: { name: string | null }): void {
     const name = detail.name ? `, ${detail.name}` : ''
     seededGreeting =
       `Hello${name}. Your company's OS is getting set up — that happens by talking. ` +
-      `So: what's your company called, and what does it do?`
+      `So, first: what's your company called?`
+    speak(seededGreeting)
     appendEntry(assistantTurnFromResponse(seededGreeting))
   }
 
@@ -116,7 +119,11 @@
 
       const responseText = sanitizeFinalAnswerText(done.response ?? '', answerPreview)
       if (done.sessionId) sessionId = done.sessionId
-      appendEntry(assistantTurnFromResponse(responseText))
+      const turn = assistantTurnFromResponse(responseText)
+      if (turn) {
+        speak(turn.content)
+        appendEntry(turn)
+      }
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') {
         appendEntry(failedTurn('Stopped.'))
@@ -142,6 +149,7 @@
     const text = input.trim()
     if (!text || busy) return
 
+    cancelSpeak()
     voiceStopFn?.()
     input = ''
     appendEntry(userTurn(text))
@@ -149,6 +157,7 @@
   }
 
   function stop() {
+    cancelSpeak()
     abortController?.abort()
   }
 
