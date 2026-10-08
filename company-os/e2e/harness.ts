@@ -10,9 +10,10 @@
  * Only the model is fake. Everything else is exactly what the founder runs.
  */
 
+import type { ScriptEntry } from './mock-llm.ts';
 import { spawn, execSync } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { createConnection } from 'node:net';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,7 +22,6 @@ import { connect } from '../src/lib/server/db.ts';
 import { loadDotEnv } from '../src/lib/server/dotenv.ts';
 import { migrate } from '../src/lib/server/migrate.ts';
 import { MockLlmGateway } from './mock-llm.ts';
-import type { ScriptEntry } from './mock-llm.ts';
 
 const COMPANY_OS_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -57,7 +57,7 @@ async function recreateDatabase(devUrl: string): Promise<void> {
 	}
 }
 
-export interface Stack {
+export type Stack = {
 	mockUrl: string;
 	baseUrl: string;
 	sitesDir: string;
@@ -68,7 +68,7 @@ export interface Stack {
 	stop(): Promise<void>;
 }
 
-export interface StackOptions {
+export type StackOptions = {
 	script: ScriptEntry[];
 	/** Skip `npm run build` when the build is already fresh (iteration speed). */
 	skipBuild?: boolean;

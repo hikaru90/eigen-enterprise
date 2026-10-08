@@ -1,12 +1,11 @@
+import type { FirstConversationContext } from './first-conversation.ts';
 import { describe, expect, it } from 'vitest';
+import { InMemoryMemoryStore } from '../memory.ts';
 import {
 	CONVERSATION_KEYS,
 	QUESTION_BUDGET,
 	firstConversationTools
 } from './first-conversation.ts';
-import type { FirstConversationContext } from './first-conversation.ts';
-import { InMemoryMemoryStore } from '../memory.ts';
-import { ToolError } from '../tools.ts';
 
 function ctxWith(seeded: Array<{ kind: string; key: string; value: string }>): {
 	ctx: FirstConversationContext;

@@ -1,8 +1,8 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { renderSiteCommit, sitesDirFromEnv, siteDirFor } from './site-store.ts';
 
 let dir: string;

@@ -4,33 +4,32 @@
  * Code reports facts; the LLM only phrases them.
  */
 
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import type { Sql } from './db.ts';
+import { execFile } from 'node:child_process';
 import { readdir } from 'node:fs/promises';
-import path from 'node:path';
+import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
-export interface ProbeResult {
+export type ProbeResult = {
 	ok: boolean;
 	detail?: string;
 	fix?: string;
 }
 
-export interface Probe {
+export type Probe = {
 	name: string;
 	run(): Promise<ProbeResult>;
 }
 
-export interface SubstrateCheck {
+export type SubstrateCheck = {
 	name: string;
 	ok: boolean;
 	detail?: string;
 	fix?: string;
 }
 
-export interface SubstrateReport {
+export type SubstrateReport = {
 	ok: boolean;
 	checks: SubstrateCheck[];
 }

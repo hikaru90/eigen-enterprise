@@ -6,9 +6,9 @@
  * budget, never-invent validation at the save door, honest substrate report.
  */
 
+import type { MemoryStore } from '../memory.ts';
 import type { ToolContext, ToolDef } from '../tools.ts';
 import { ToolError } from '../tools.ts';
-import type { MemoryStore } from '../memory.ts';
 import { processState } from './plan.ts';
 
 /** The fixed answer vocabulary — each key feeds the website module directly. */
@@ -32,9 +32,9 @@ export type ConversationKey = (typeof CONVERSATION_KEYS)[number];
  */
 export const QUESTION_BUDGET = CONVERSATION_KEYS.length;
 
-export interface FirstConversationContext extends ToolContext {
+export type FirstConversationContext = {
 	memory: MemoryStore;
-}
+} & ToolContext
 
 /**
  * Structural agenda enforcement, evaluated LIVE from memory: after the model

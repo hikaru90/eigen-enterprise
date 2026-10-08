@@ -45,11 +45,11 @@ function git(cwd: string, args: string[]): string {
 	} catch (cause) {
 		const err = cause as { stderr?: Buffer | string; message: string };
 		const stderr = typeof err.stderr === 'string' ? err.stderr : err.stderr?.toString() ?? '';
-		throw new Error(`git ${args[0]} failed: ${stderr.trim() || err.message}`);
+		throw new Error(`git ${args[0]} failed: ${stderr.trim() || err.message}`, { cause });
 	}
 }
 
-export interface RenderCommit {
+export type RenderCommit = {
 	version: string;
 	commit: string;
 }

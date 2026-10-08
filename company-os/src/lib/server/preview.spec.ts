@@ -1,10 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { InMemoryMemoryStore, type MemoryStore } from './memory.ts';
-import { renderSiteCommit, siteDirFor } from './site-store.ts';
 import { previewHtml } from './preview.ts';
+import { renderSiteCommit, siteDirFor } from './site-store.ts';
 
 let dir: string;
 

@@ -6,7 +6,7 @@
   import LogOut from '@lucide/svelte/icons/log-out'
   import UserRound from '@lucide/svelte/icons/user-round'
   import { enhance } from '$app/forms'
-  import { goto, invalidateAll } from '$app/navigation'
+  import { goto } from '$app/navigation'
   import { resolve } from '$app/paths'
   import { resetPostHog } from '$lib/analytics/posthog-client'
   import { Button } from '$lib/components/ui/button'

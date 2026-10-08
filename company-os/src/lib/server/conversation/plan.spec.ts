@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { processState, processStateMessage, QUESTION_PLAN } from './plan.ts';
-import { InMemoryMemoryStore } from '../memory.ts';
 import type { MemoryStore } from '../memory.ts';
+import { describe, expect, it } from 'vitest';
+import { InMemoryMemoryStore } from '../memory.ts';
+import { processState, processStateMessage, QUESTION_PLAN } from './plan.ts';
 
 async function storeWith(resolved: string[]): Promise<MemoryStore> {
 	const memory = new InMemoryMemoryStore();

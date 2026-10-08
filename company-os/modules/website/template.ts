@@ -13,7 +13,7 @@
 
 import type { SiteContent, SiteSection } from './copy.ts';
 
-export interface RenderOptions {
+export type RenderOptions = {
 	/** Theme tokens CSS, inlined into the page (the founder-editable theme.css). */
 	themeCss?: string;
 }

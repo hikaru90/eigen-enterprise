@@ -1,6 +1,6 @@
+import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
-import type { RequestHandler } from './$types';
 import { coreStores, verifyProviderSetup } from '$lib/server/service';
 import type { ProviderSetup } from '$lib/server/service';
 

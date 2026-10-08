@@ -12,16 +12,16 @@
  */
 
 import type { LlmClient } from '../../src/lib/server/llm.ts';
-import type { ToolDef, ToolContext } from '../../src/lib/server/tools.ts';
-import { ToolError } from '../../src/lib/server/tools.ts';
 import type { MemoryStore } from '../../src/lib/server/memory.ts';
-import { renderSiteCommit, siteDirFor } from '../../src/lib/server/site-store.ts';
-import { CONTENT_SCHEMA, SECTION_TYPES, auditCopy, draftCopy } from './copy.ts';
+import type { ToolDef, ToolContext } from '../../src/lib/server/tools.ts';
 import type { AnswerMap } from './copy.ts';
+import { renderSiteCommit, siteDirFor } from '../../src/lib/server/site-store.ts';
+import { ToolError } from '../../src/lib/server/tools.ts';
+import { CONTENT_SCHEMA, SECTION_TYPES, auditCopy, draftCopy } from './copy.ts';
 import { renderHtml } from './template.ts';
 
 /** Mirrors modules/website/module.json — kept in sync by test, not hope. */
-export interface WebsiteManifest {
+export type WebsiteManifest = {
 	name: string;
 	version: string;
 	description: string;
@@ -87,13 +87,13 @@ export function defaultThemeCss(): string {
 	return DEFAULT_THEME_CSS;
 }
 
-export interface PerformRenderDeps {
+export type PerformRenderDeps = {
 	client: LlmClient;
 	memory: MemoryStore;
 	sitesDir: string;
 }
 
-export interface RenderResult {
+export type RenderResult = {
 	company: string;
 	version: string;
 	commit: string;
@@ -134,15 +134,15 @@ export async function performRender(deps: PerformRenderDeps): Promise<RenderResu
 	return { company: content.company.name, version, commit, previewPath: '/site', files };
 }
 
-export interface RenderWebsiteToolDeps {
+export type RenderWebsiteToolDeps = {
 	client: LlmClient;
 	/** Resolves at call time — required, fail loud (same convention as the LLM config). */
 	getSitesDir(): string;
 }
 
-interface WebsiteToolContext extends ToolContext {
+type WebsiteToolContext = {
 	memory: MemoryStore;
-}
+} & ToolContext
 
 export function renderWebsiteTool(deps: RenderWebsiteToolDeps): ToolDef<WebsiteToolContext> {
 	return {

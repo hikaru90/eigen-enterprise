@@ -9,10 +9,10 @@
  */
 
 import type { Sql } from './db.ts';
-import { LlmClient } from './llm.ts';
 import type { LlmConfig, Transport } from './llm.ts';
+import { LlmClient } from './llm.ts';
 
-export interface ProviderSetup {
+export type ProviderSetup = {
 	baseUrl: string;
 	apiKey: string;
 	model: string;

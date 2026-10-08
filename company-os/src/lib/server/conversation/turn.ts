@@ -4,24 +4,24 @@
  * everything the loop generates goes in after — a crash loses nothing said.
  */
 
+import type { RenderWebsiteToolDeps } from '../../../../modules/website/index.ts';
 import type { ChatMessage, LlmClient } from '../llm.ts';
-import { runLoop } from '../loop.ts';
 import type { LoopEvent } from '../loop.ts';
-import { ToolRegistry } from '../tools.ts';
 import type { MemoryStore } from '../memory.ts';
 import type { SessionStore } from '../session.ts';
-import { runSubstrateChecks } from '../substrate.ts';
 import type { Probe, SubstrateReport } from '../substrate.ts';
+import type { FirstConversationContext } from './first-conversation.ts';
 import { renderWebsiteTool } from '../../../../modules/website/index.ts';
-import type { RenderWebsiteToolDeps } from '../../../../modules/website/index.ts';
+import { runLoop } from '../loop.ts';
+import { runSubstrateChecks } from '../substrate.ts';
+import { ToolRegistry } from '../tools.ts';
 import {
 	FIRST_CONVERSATION_SYSTEM_PROMPT,
 	firstConversationTools
 } from './first-conversation.ts';
-import type { FirstConversationContext } from './first-conversation.ts';
 import { processState, processStateMessage } from './plan.ts';
 
-export interface ConversationDeps {
+export type ConversationDeps = {
 	client: LlmClient;
 	sessions: SessionStore;
 	memory: MemoryStore;
@@ -35,7 +35,7 @@ export interface ConversationDeps {
 
 const SESSION_START_MARKER = '(session opened — begin the first conversation)';
 
-export interface OpenedSession {
+export type OpenedSession = {
 	sessionId: string;
 	report: SubstrateReport;
 	events: LoopEvent[];

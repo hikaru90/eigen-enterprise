@@ -9,7 +9,7 @@
 import type { MemoryStore } from '../memory.ts';
 import type { ConversationKey } from './first-conversation.ts';
 
-export interface PlanQuestion {
+export type PlanQuestion = {
 	key: ConversationKey;
 	skippable: boolean;
 	/** Asked only at the language_check step (site.language — only if ambiguous). */
@@ -29,7 +29,7 @@ export const QUESTION_PLAN: PlanQuestion[] = [
 
 export type ProcessPhase = 'interrogation' | 'language_check' | 'ready_to_render' | 'rendered';
 
-export interface ProcessState {
+export type ProcessState = {
 	phase: ProcessPhase;
 	resolved: string[];
 	next: { key: ConversationKey; skippable: boolean } | null;

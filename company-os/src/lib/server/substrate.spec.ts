@@ -1,6 +1,6 @@
+import type { Probe, ProbeResult } from './substrate.ts';
 import { describe, expect, it } from 'vitest';
 import { runSubstrateChecks } from './substrate.ts';
-import type { Probe, ProbeResult } from './substrate.ts';
 
 const probe = (name: string, result: ProbeResult): Probe => ({
 	name,

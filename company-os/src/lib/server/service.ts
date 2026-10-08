@@ -3,34 +3,34 @@
  * session, and maps persisted messages to UI transcript entries.
  */
 
-import { connect, databaseUrlFromEnv } from './db.ts';
+import type { ConversationDeps } from './conversation/turn.ts';
 import type { Sql } from './db.ts';
-import { migrate } from './migrate.ts';
-import { LlmClient } from './llm.ts';
 import type { LlmConfig } from './llm.ts';
-import type { ChatMessage, Transport } from './llm.ts';
-import { PgMemoryStore } from './memory.ts';
-import { PgProviderStore, resolveLlmConfig, verifyProviderSetup } from './provider.ts';
+import type { ChatMessage } from './llm.ts';
 import type { ProviderSetup } from './provider.ts';
+import { openSession, runTurn } from './conversation/turn.ts';
+import { connect, databaseUrlFromEnv } from './db.ts';
+import { LlmClient } from './llm.ts';
+import { PgMemoryStore } from './memory.ts';
+import { migrate } from './migrate.ts';
+import { PgProviderStore, resolveLlmConfig, verifyProviderSetup } from './provider.ts';
+import { resumeContext } from './resume.ts';
 import { PgSessionStore } from './session.ts';
 import { sitesDirFromEnv } from './site-store.ts';
 import { gitProbe, migrationsProbe, postgresProbe } from './substrate.ts';
-import { openSession, runTurn } from './conversation/turn.ts';
-import type { ConversationDeps } from './conversation/turn.ts';
-import { resumeContext } from './resume.ts';
 
 export const MIGRATIONS_DIR = path.resolve(process.cwd(), 'migrations');
 
 import path from 'node:path';
 
-export interface Runtime {
+export type Runtime = {
 	sql: Sql;
 	deps: ConversationDeps;
 	provider: PgProviderStore;
 }
 
 /** One connection + stores per process (pools are lazy); the config resolves fresh per call. */
-interface RuntimeCore {
+type RuntimeCore = {
 	sql: Sql;
 	provider: PgProviderStore;
 	buildDeps(config: LlmConfig): ConversationDeps;
@@ -82,7 +82,7 @@ export { verifyProviderSetup };
 export type { ProviderSetup };
 
 /** A founder-visible transcript entry. */
-export interface UiMessage {
+export type UiMessage = {
 	role: 'agent' | 'founder';
 	text: string;
 	kind: 'text' | 'question' | 'choices';
@@ -127,7 +127,7 @@ export function transcriptFromMessages(messages: ChatMessage[]): UiMessage[] {
 	return out;
 }
 
-export interface SessionBootstrap {
+export type SessionBootstrap = {
 	sessionId: string;
 	transcript: UiMessage[];
 	companyName: string | null;

@@ -20,13 +20,13 @@ export const CONTENT_SCHEMA = 'company-os/website@0.1';
 export const SECTION_TYPES = ['hero', 'about', 'differentiator', 'offer', 'cta'] as const;
 export type SectionType = (typeof SECTION_TYPES)[number];
 
-export interface CtaAction {
+export type CtaAction = {
 	type: 'email' | 'url' | 'phone';
 	/** Literally provided by the founder — the audit pass verifies this. */
 	value: string;
 }
 
-export interface SiteSection {
+export type SiteSection = {
 	id: string;
 	type: SectionType;
 	/** Answer keys this section's copy was derived from — non-empty. */
@@ -41,7 +41,7 @@ export interface SiteSection {
 	action?: CtaAction;
 }
 
-export interface SiteContent {
+export type SiteContent = {
 	schema: typeof CONTENT_SCHEMA;
 	/** ISO 639-1 code — chosen by the LLM from the site.language answer (meaning work). */
 	language: string;
@@ -212,7 +212,7 @@ Paraphrases of what the founder said are FINE. Marketing tone is FINE. Only flag
 OUTPUT: one JSON object, nothing else: { "violations": [ { "section": "<type>", "sentence": "...", "reason": "..." } ] }
 Empty violations array when everything traces to the answers.`;
 
-export interface CopyViolation {
+export type CopyViolation = {
 	section: string;
 	sentence: string;
 	reason: string;

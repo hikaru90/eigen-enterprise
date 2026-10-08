@@ -1,10 +1,9 @@
+import type { LlmClient } from '../../src/lib/server/llm.ts';
 import { describe, expect, it } from 'vitest';
 import { FakeClient, finishStop, text } from '../../src/lib/server/testing.ts';
-import type { LlmClient } from '../../src/lib/server/llm.ts';
 import { auditCopy, draftCopy, type SiteContent } from './copy.ts';
 
 /** Drafts arrive without ids — the code assigns them during validation. */
-type RawSection = Omit<SiteContent['sections'][number], 'id'>;
 
 const ANSWERS: Record<string, string> = {
 	'company.name': 'Bäckerei Hinkel',

@@ -8,8 +8,8 @@
  * (copy quality with a real model is the M8 eval's job).
  */
 
-import { textTurn, toolTurn } from './mock-llm.ts';
 import type { ScriptEntry } from './mock-llm.ts';
+import { textTurn, toolTurn } from './mock-llm.ts';
 
 export const FOUNDER = {
 	name: 'Hafenlicht — ein kleines Fotostudio aus Hamburg',

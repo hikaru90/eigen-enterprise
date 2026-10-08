@@ -4,23 +4,23 @@
  * answers. This is the first conversation, runnable, before any web UI exists.
  */
 
+import type { ConversationDeps } from '../lib/server/conversation/turn.ts';
+import type { LoopEvent } from '../lib/server/loop.ts';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import readline from 'node:readline';
+import { fileURLToPath } from 'node:url';
+import { openSession, runTurn } from '../lib/server/conversation/turn.ts';
 import { connect, databaseUrlFromEnv } from '../lib/server/db.ts';
 import { loadDotEnv } from '../lib/server/dotenv.ts';
-import { migrate } from '../lib/server/migrate.ts';
 import { LlmClient } from '../lib/server/llm.ts';
 import { PgMemoryStore } from '../lib/server/memory.ts';
+import { migrate } from '../lib/server/migrate.ts';
 import { PgProviderStore, resolveLlmConfig } from '../lib/server/provider.ts';
-import { PgSessionStore } from '../lib/server/session.ts';
-import { gitProbe, migrationsProbe, postgresProbe } from '../lib/server/substrate.ts';
-import { sitesDirFromEnv } from '../lib/server/site-store.ts';
 import { resumeContext } from '../lib/server/resume.ts';
-import { openSession, runTurn } from '../lib/server/conversation/turn.ts';
-import type { ConversationDeps } from '../lib/server/conversation/turn.ts';
+import { PgSessionStore } from '../lib/server/session.ts';
+import { sitesDirFromEnv } from '../lib/server/site-store.ts';
+import { gitProbe, migrationsProbe, postgresProbe } from '../lib/server/substrate.ts';
 import { renderEvent } from './render.ts';
-import type { LoopEvent } from '../lib/server/loop.ts';
 
 const MIGRATIONS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../migrations');
 

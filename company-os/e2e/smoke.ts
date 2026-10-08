@@ -24,7 +24,7 @@ function check(what: string, condition: boolean, detail = ''): void {
 	if (!condition) failures += 1;
 }
 
-interface SseEvent {
+type SseEvent = {
 	type: string;
 	[key: string]: unknown;
 }

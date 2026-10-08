@@ -9,14 +9,14 @@
  * absorbed.
  */
 
-import { createServer, type Server } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { createServer, type Server } from 'node:http';
 
 /** One scripted model turn: the SSE chunk payloads, in order. */
 export type ScriptedTurn = Record<string, unknown>[];
 
 /** A scripted non-200 response (e.g. the provider's 401) — served instead of an SSE stream. */
-export interface ScriptedHttpError {
+export type ScriptedHttpError = {
 	httpError: { status: number; body: unknown };
 }
 export type ScriptEntry = ScriptedTurn | ScriptedHttpError;
@@ -25,7 +25,7 @@ function isHttpError(entry: ScriptEntry): entry is ScriptedHttpError {
 	return 'httpError' in entry;
 }
 
-interface RecordedRequest {
+type RecordedRequest = {
 	url: string;
 	model?: string;
 	messageCount?: number;

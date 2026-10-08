@@ -5,13 +5,13 @@
  * every hop is the same HTTP/SQL the product uses.
  */
 
+import type { ScriptEntry } from './mock-llm.ts';
 import { rmSync } from 'node:fs';
-import { devDatabaseUrl, e2eDatabaseUrl } from './harness.ts';
-import { loadDotEnv } from '../src/lib/server/dotenv.ts';
-import postgres from 'postgres';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { ScriptEntry } from './mock-llm.ts';
+import postgres from 'postgres';
+import { loadDotEnv } from '../src/lib/server/dotenv.ts';
+import { devDatabaseUrl, e2eDatabaseUrl } from './harness.ts';
 
 loadDotEnv(process.env, join(dirname(fileURLToPath(import.meta.url)), '..'));
 

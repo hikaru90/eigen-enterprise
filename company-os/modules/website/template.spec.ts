@@ -1,6 +1,6 @@
+import type { SiteContent } from './copy.ts';
 import { describe, expect, it } from 'vitest';
 import { renderHtml } from './template.ts';
-import type { SiteContent } from './copy.ts';
 
 const CONTENT: SiteContent = {
 	schema: 'company-os/website@0.1',

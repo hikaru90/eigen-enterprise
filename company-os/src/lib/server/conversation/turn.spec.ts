@@ -1,16 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import type { StreamEvent } from '../llm.ts';
+import type { ConversationDeps } from './turn.ts';
 import { existsSync } from 'node:fs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { openSession, runTurn } from './turn.ts';
-import type { ConversationDeps } from './turn.ts';
+import { describe, expect, it } from 'vitest';
 import { InMemoryMemoryStore } from '../memory.ts';
+import { resumeContext } from '../resume.ts';
 import { InMemorySessionStore } from '../session.ts';
 import { FakeClient, finishStop, finishToolCalls, text, toolCall } from '../testing.ts';
-import type { StreamEvent } from '../llm.ts';
-import { resumeContext } from '../resume.ts';
 import { QUESTION_PLAN } from './plan.ts';
+import { openSession, runTurn } from './turn.ts';
 
 function depsWith(
 	turns: StreamEvent[][],

@@ -1,6 +1,6 @@
+import type { LoopEvent } from '../lib/server/loop.ts';
 import { describe, expect, it } from 'vitest';
 import { renderEvent } from './render.ts';
-import type { LoopEvent } from '../lib/server/loop.ts';
 
 const toolCallEv = (name: string, args: string): LoopEvent => ({
 	type: 'tool_call',

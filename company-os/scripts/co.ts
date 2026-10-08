@@ -46,7 +46,7 @@ function run(cmd: string, args: string[], label: string): number {
 
 /* ------------------------------ doctor ------------------------------ */
 
-interface CheckResult {
+type CheckResult = {
 	name: string;
 	ok: boolean;
 	detail?: string;

@@ -1,6 +1,6 @@
+import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
-import type { RequestHandler } from './$types';
 import { buildRuntime, ensureSession } from '$lib/server/service';
 
 /** POST /api/session — bootstrap: guided setup gate first, then arrival/resume. */
