@@ -179,7 +179,7 @@ export const WEBSITE_FOUNDING_JOURNEY: JourneySpec = {
  * or a legacy mid-interview row), the agent follows its capture protocol.
  */
 export const ORCHESTRATOR_JOURNEY_PROMPT = [
-  'JOURNEY: when a journey context block is present in the user message, follow it — serve the current journey step conversationally, one question at a time, no lists unless asked.',
+  'JOURNEY: when a journey context block is present in the user message, follow it — the journey drives itself: after capturing an answer, ask the next step’s question unprompted in the same reply. Ask one question per reply, no lists unless asked. Never stop mid-journey and wait for the user to ask “and now?”.',
   'When a journey context block gives you a step-capture marker protocol and the step’s answer is captured, append exactly that marker as the final line of your reply. Never show or mention markers to the user.',
 ].join('\n')
 

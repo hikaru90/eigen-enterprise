@@ -134,13 +134,15 @@ export function journeyContextFor(spec: JourneySpec, row: JourneyRow): string {
       ...collected,
     )
     lines.push(
-      `Protocol: once this step's answer is captured, append exactly ${journeyStepMarker(step.id)} as the final line of your reply.`,
+      `Protocol: once this step's answer is captured, briefly acknowledge it, then IMMEDIATELY ask the next step's question in the same reply — never wait for the user to prompt you — ending the reply with exactly ${journeyStepMarker(step.id)} as the final line.`,
+      'When the final step is captured, briefly say what happens next instead of asking another question.',
       'Never mention the marker or this block to the user.',
     )
   } else {
     lines.push(
       `Journey "${spec.kind}" — all ${spec.steps.length} steps captured.`,
       'Do not ask further journey questions; the journey artifacts are being processed.',
+      'Briefly say what happens next (the pages are being drafted; publishing waits for owner approval) — then answer the user\'s actual message.',
     )
   }
 

@@ -44,11 +44,15 @@ describe('journeyContextFor (pure rendering)', () => {
     expect(out.trimEnd().endsWith('[/company journey context]')).toBe(true)
   })
 
-  it('renders the current step, its prompt fragment, and the capture-marker protocol', () => {
+  it('renders the current step, its prompt fragment, and the proactive capture-marker protocol', () => {
     const out = journeyContextFor(spec, row())
     expect(out).toContain('Journey "website_founding" — step 1/2 (tone).')
     expect(out).toContain('Current step: Collect the tone of voice (three words).')
-    expect(out).toContain(`append exactly ${journeyStepMarker('tone')} as the final line`)
+    expect(out).toContain(`ending the reply with exactly ${journeyStepMarker('tone')} as the final line`)
+    // The journey drives itself: after capturing, the next question is asked
+    // unprompted IN THE SAME REPLY. The user never has to say "and now?".
+    expect(out).toContain('IMMEDIATELY ask the next step\'s question in the same reply')
+    expect(out).toContain('never wait for the user to prompt you')
     expect(out).toContain('Never mention the marker or this block to the user.')
   })
 
@@ -57,8 +61,8 @@ describe('journeyContextFor (pure rendering)', () => {
     expect(out).toContain('- tone: warm, direct')
     expect(out).toContain('step 2/2 (company_name)')
     // The current step's marker is the protocol line; captured steps are done.
-    expect(out).toContain(`append exactly ${journeyStepMarker('company_name')}`)
-    expect(out).not.toContain(`append exactly ${journeyStepMarker('tone')}`)
+    expect(out).toContain(`ending the reply with exactly ${journeyStepMarker('company_name')} as the final line`)
+    expect(out).not.toContain(`exactly ${journeyStepMarker('tone')}`)
   })
 
   it('renders the empty-collection state explicitly', () => {
@@ -69,6 +73,7 @@ describe('journeyContextFor (pure rendering)', () => {
     const out = journeyContextFor(spec, row({ stepIndex: 2, captured: ['tone', 'company_name'] }))
     expect(out).toContain('all 2 steps captured')
     expect(out).toContain('Do not ask further journey questions')
+    expect(out).toContain('say what happens next')
     expect(out).not.toContain('append exactly')
   })
 })
