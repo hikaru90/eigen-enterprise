@@ -56,6 +56,17 @@ function fixture() {
     },
   }
 
+  const listPages: ToolDescriptor = {
+    name: 'website.list_pages',
+    module: 'website',
+    summary: 'fake list',
+    auditClass: 'read',
+    inputSchema: z.looseObject({}),
+    permission: { roles: ['admin', 'agent'] },
+    handler: async () =>
+      [...pages.values()].map((p) => ({ slug: p.slug, visibility: p.visibility })),
+  }
+
   const registry = new KernelRegistry({
     eventSink: sink,
     approvalPolicy: new StaticApprovalPolicy(new Set(['website.publish_page'])),
@@ -64,6 +75,7 @@ function fixture() {
   })
   registry.register(createPage)
   registry.register(publishPage)
+  registry.register(listPages)
 
   const journeys = new InMemoryJourneyStore()
 
@@ -197,16 +209,23 @@ describe('recordFoundingInterview (onboarding founding endpoint logic)', () => {
     expect(await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)).toBeNull()
   })
 
-  it('fails loud when the founding artifacts already exist (completed journey, no active row)', async () => {
+  it('is idempotent after completion — re-submission over existing pages never throws duplicate slug', async () => {
     const fx = fixture()
     await fx.submit({ tone: 'warm', companyName: 'Kindred', positioning: 'company OS' })
     const pending = await fx.approvals.listPending()
     await fx.approvals.decide(pending[0]!.id, 'approved', 'owner')
     await fx.submit({ tone: 'warm', companyName: 'Kindred', positioning: 'company OS' })
 
-    // Journey completed; a fresh submission would re-create existing pages.
-    await expect(
-      fx.submit({ tone: 'new tone', companyName: 'New Name', positioning: 'new positioning' }),
-    ).rejects.toThrow(/duplicate website slug/)
+    // Probes make a fresh submission (pages already exist) a no-op completion:
+    // creates are recorded executed, content is NOT rewritten (old answers
+    // survive on the pages), and the journey closes instead of throwing.
+    const result = await fx.submit({
+      tone: 'new tone',
+      companyName: 'New Name',
+      positioning: 'new positioning',
+    })
+    expect(result).toMatchObject({ skipped: false, executed: 7, approvalPending: 0, completed: true })
+    expect(fx.pages.get('home')?.body).toContain('# Kindred')
+    expect(await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)).toBeNull()
   })
 })

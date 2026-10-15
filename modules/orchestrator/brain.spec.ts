@@ -36,6 +36,15 @@ describe('orchestrator persona prompt', () => {
     expect(ORCHESTRATOR_JOURNEY_PROMPT).toMatch(/append exactly/)
     expect(ORCHESTRATOR_PERSONA_PROMPT).toContain(ORCHESTRATOR_JOURNEY_PROMPT)
   })
+
+  it('takes the orchestrator posture: route to modules, never interview', () => {
+    // Owner directive: the general chat must present what the company CAN do
+    // (the modules) and route — not run a module's multi-step intake itself.
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/you route, you do not interview/)
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/mission control, not a questionnaire/)
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/memory, website, brand, email, repo/)
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/hand off/)
+  })
 })
 
 describe('orchestratorAgentConfig', () => {

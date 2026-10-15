@@ -29,7 +29,7 @@ export async function openWebsiteFoundingJourney(deps: {
   if (existing) return existing.id
   const row = await deps.journeys.create(
     WEBSITE_FOUNDING_JOURNEY.kind,
-    initialJourneyState(deps.sessionId),
+    initialJourneyState(deps.sessionId, WEBSITE_FOUNDING_JOURNEY.specVersion),
   )
   return row.id
 }
@@ -88,7 +88,11 @@ export async function recordFoundingInterview(
 
   const existing = await journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
   const row: JourneyRow =
-    existing ?? (await journeys.create(WEBSITE_FOUNDING_JOURNEY.kind, initialJourneyState(sessionId)))
+    existing ??
+    (await journeys.create(
+      WEBSITE_FOUNDING_JOURNEY.kind,
+      initialJourneyState(sessionId, WEBSITE_FOUNDING_JOURNEY.specVersion),
+    ))
 
   const state = cloneJourneyState(row.state)
   // Form semantics: the submitted answers ARE the recorded answers (the chat
@@ -96,6 +100,9 @@ export async function recordFoundingInterview(
   state.answers = { tone, company_name: companyName, positioning }
   state.captured = WEBSITE_FOUNDING_JOURNEY.steps.map((step) => step.id)
   state.stepIndex = WEBSITE_FOUNDING_JOURNEY.steps.length
+  // (Re)stamp the spec version: reused stale rows resume under the CURRENT
+  // spec the moment the founder submits fresh answers.
+  state.specVersion = WEBSITE_FOUNDING_JOURNEY.specVersion
 
   const { allExecuted } = await executeStepArtifacts({
     registry,

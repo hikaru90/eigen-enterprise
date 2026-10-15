@@ -1219,3 +1219,115 @@ async function llmCreateTranscriptionDedicated(
     ? lastError
     : new Error(`LLM STT request failed after ${maxAttempts} attempts`)
 }
+
+/**
+ * Text-to-speech via OpenRouter `POST /audio/speech` (OpenAI-compatible).
+ * Returns the gateway's raw audio bytes (mp3) — the assistant's voice is the
+ * gateway's neural TTS, never the browser's speechSynthesis.
+ * Billing mirrors STT: the same OpenRouter config (BYOK user row first, then
+ * the deployment service account).
+ */
+export async function llmCreateSpeech(input: {
+  userId: string
+  model: string
+  voice: string
+  text: string
+}): Promise<Uint8Array> {
+  const config = await loadOpenRouterSttConfig(input.userId)
+  const run = () => llmCreateSpeechDedicated(input, config)
+  return serialLlmRequestsEnabled() ? runLlmRequestGated(input.userId, run) : run()
+}
+
+async function llmCreateSpeechDedicated(
+  input: { userId: string; model: string; voice: string; text: string },
+  config: ResolvedLlmConfig,
+): Promise<Uint8Array> {
+  const activityProvider = activityProviderForLlmConfig(config.provider)
+  const gatewayHost = gatewayHostFromBaseUrl(config.baseUrl)
+  const url = `${config.baseUrl}/audio/speech`
+
+  const maxAttempts = 3
+  let lastError: unknown
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const attemptStart = Date.now()
+    const db = getDb()
+    try {
+      await waitForSttRateLimit(input.userId)
+      const timeoutMs = requestTimeoutMs()
+      const ac = new AbortController()
+      const timeoutHandle = setTimeout(
+        () => ac.abort(new Error(`LLM TTS request timed out after ${timeoutMs}ms`)),
+        timeoutMs,
+      )
+      let res: Response
+      try {
+        res = await fetch(url, {
+          signal: ac.signal,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${config.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: input.model,
+            input: input.text,
+            voice: input.voice,
+            response_format: 'mp3',
+          }),
+        })
+      } finally {
+        clearTimeout(timeoutHandle)
+      }
+
+      if (!res.ok) {
+        const text = await res.text()
+        let message = text.slice(0, 500)
+        try {
+          const json = JSON.parse(text) as unknown
+          if (typeof json === 'object' && json && 'error' in json) {
+            message = JSON.stringify((json as { error?: unknown }).error)
+          }
+        } catch {
+          // not JSON — the sliced text is the message
+        }
+        throw new Error(`LLM TTS HTTP ${res.status}: ${message}`)
+      }
+
+      const contentType = res.headers.get('content-type') ?? ''
+      if (contentType.includes('application/json')) {
+        // A JSON body here is a gateway shape mismatch, not audio — fail loud.
+        const text = await res.text()
+        throw new Error(`LLM TTS returned JSON instead of audio bytes: ${text.slice(0, 200)}`)
+      }
+
+      const bytes = new Uint8Array(await res.arrayBuffer())
+      await logActivityCall(db, input.userId, {
+        provider: activityProvider,
+        gatewayHost,
+        operation: `llm.tts.success(attempt=${attempt},model=${input.model})`,
+        baseCostUsd: 0,
+        context: `tts:${input.model} (usage cost not reported for /audio/speech)`,
+        durationMs: Date.now() - attemptStart,
+      })
+      return bytes
+    } catch (err) {
+      lastError = err
+      const message = err instanceof Error ? err.message : String(err)
+      await logActivityCall(db, input.userId, {
+        provider: activityProvider,
+        gatewayHost,
+        operation: `llm.tts.error(attempt=${attempt},model=${input.model})`,
+        baseCostUsd: 0,
+        context: `tts:${input.model}`,
+        errorMessage: message,
+        durationMs: Date.now() - attemptStart,
+      })
+      if (attempt === maxAttempts) break
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`LLM TTS request failed after ${maxAttempts} attempts`)
+}

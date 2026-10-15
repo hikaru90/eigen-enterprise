@@ -86,6 +86,17 @@ function fixture(options: { failOnSlug?: string } = {}): Fixture {
     },
   }
 
+  const listPages: ToolDescriptor = {
+    name: 'website.list_pages',
+    module: 'website',
+    summary: 'fake list',
+    auditClass: 'read',
+    inputSchema: z.looseObject({}),
+    permission: { roles: ['admin', 'agent'] },
+    handler: async () =>
+      [...pages.values()].map((p) => ({ slug: p.slug, visibility: p.visibility })),
+  }
+
   const registry = new KernelRegistry({
     eventSink: sink,
     approvalPolicy: new StaticApprovalPolicy(new Set(['website.publish_page'])),
@@ -94,6 +105,7 @@ function fixture(options: { failOnSlug?: string } = {}): Fixture {
   })
   registry.register(createPage)
   registry.register(publishPage)
+  registry.register(listPages)
 
   const engine: LoopEngine = {
     run: async (_sessionId, input) => {
@@ -120,7 +132,10 @@ function fixture(options: { failOnSlug?: string } = {}): Fixture {
 }
 
 async function runFoundingJourney(fx: Fixture, sinks?: Parameters<JourneyAwareAgentRuntime['dispatch']>[3]): Promise<string[]> {
-  await fx.journeys.create(WEBSITE_FOUNDING_JOURNEY.kind, initialJourneyState('session-1'))
+  await fx.journeys.create(
+    WEBSITE_FOUNDING_JOURNEY.kind,
+    initialJourneyState('session-1', WEBSITE_FOUNDING_JOURNEY.specVersion),
+  )
 
   // Phase-2e step order: the boot sequence's seeded greeting asks the company
   // name first — the journey steps match that founding order.
@@ -149,6 +164,28 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'i need a website')
 
     expect(await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)).toBeNull()
+  })
+
+  it('abandons a stale journey row (old spec shape) — the turn is a pure orchestrator chat', async () => {
+    // The production incident: a pre-versioning journey row (no specVersion)
+    // kept injecting "ask the next step's question" context into every chat
+    // turn long after the spec had moved on. Stale rows are abandoned, the
+    // abandonment is audited, and the turn runs without any journey context.
+    const fx = fixture()
+    const row = await fx.journeys.create(WEBSITE_FOUNDING_JOURNEY.kind, initialJourneyState('session-1'))
+
+    fx.script.push('Just chatting!')
+    const reply = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'hi')
+
+    expect(reply).toBe('Just chatting!')
+    expect(fx.engineInputs[0]).not.toContain('[company journey context')
+    expect(fx.toolCalls).toEqual([])
+
+    const abandoned = await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
+    expect(abandoned).toBeNull()
+    const events = fx.sink.events.filter((e) => e.type === 'journey.abandoned')
+    expect(events).toHaveLength(1)
+    expect(events[0]!.payload).toMatchObject({ journeyId: row.id, reason: 'spec_version' })
   })
 
   it('prepends the journey context block (clearly delimited, with user speech below it)', async () => {
@@ -283,7 +320,10 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
 
   it('fails loud on artifact errors (no silent degradation)', async () => {
     const fx = fixture({ failOnSlug: 'brand-tone-of-voice' })
-    await fx.journeys.create(WEBSITE_FOUNDING_JOURNEY.kind, initialJourneyState('session-1'))
+    await fx.journeys.create(
+      WEBSITE_FOUNDING_JOURNEY.kind,
+      initialJourneyState('session-1', WEBSITE_FOUNDING_JOURNEY.specVersion),
+    )
 
     fx.script.push(`Great.\n${marker('company_name')}`)
     await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'Kindred Digital Labs')
@@ -297,6 +337,51 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     await expect(
       fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'warm, direct, technical'),
     ).rejects.toThrow(/duplicate website slug/)
+  })
+
+  it('records already-applied artifacts as executed instead of re-running them (duplicate-slug incident)', async () => {
+    const fx = fixture()
+    // The production incident: pages exist outside the ledger (legacy row /
+    // an agent tool call created them). Retried creates must probe first and
+    // record the ledger entry — never throw duplicate slug on later turns.
+    for (const slug of ['home', 'about', 'contact', 'brand-tone-of-voice']) {
+      fx.pages.set(slug, { slug, visibility: 'private' })
+    }
+    await runFoundingJourney(fx)
+
+    expect(fx.toolCalls.filter((c) => c.tool === 'website.create_page')).toEqual([])
+    const row = await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
+    expect(
+      row?.state.artifacts
+        .filter((a) => a.tool === 'website.create_page')
+        .every((a) => a.status === 'executed'),
+    ).toBe(true)
+    // Publishes still flow through the normal gate.
+    expect(await fx.approvals.listPending()).toHaveLength(1)
+
+    // The user's exact scenario: a plain "hi" while the journey is active
+    // must never surface a duplicate-slug error — retries are idempotent.
+    fx.script.push('Still here.')
+    const reply = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'hi')
+    // Sink-less surface: the pending publish is still announced in text —
+    // but the turn itself succeeds, no duplicate-slug throw.
+    expect(reply).toContain('Still here.')
+    expect(reply).toContain('owner approval')
+    expect(fx.toolCalls.filter((c) => c.tool === 'website.create_page')).toEqual([])
+  })
+
+  it('skips a publish whose page already sits at the target visibility', async () => {
+    const fx = fixture()
+    fx.pages.set('home', { slug: 'home', visibility: 'public' })
+    await runFoundingJourney(fx)
+
+    // home's publish is already applied (recorded executed, no gate raised);
+    // about/contact still publish → the first of them gates.
+    const pending = await fx.approvals.listPending()
+    expect(pending).toHaveLength(1)
+    expect(pending[0]!.input).toEqual({ slug: 'about', visibility: 'public' })
+    const row = await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
+    expect(row?.state.artifacts.some((a) => a.status === 'approval_pending')).toBe(true)
   })
 
   it('is pure passthrough for non-orchestrator agents', async () => {

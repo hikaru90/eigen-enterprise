@@ -1,6 +1,11 @@
 /**
  * Voice output for the company OS: the assistant speaks what it says (the Her
- * layer). Browser SpeechSynthesis — no assets, no dependencies, no LLM cost.
+ * layer) through the LLM gateway's neural TTS — POST /api/tts (qwen tts via
+ * OpenRouter, the same BYOK config that pays for chat and STT). The browser's
+ * speechSynthesis robot voice is GONE and is never a fallback: a failing or
+ * missing gateway means silence (console-warned), the same honest state as an
+ * unsupported browser was before.
+ *
  * ON by default (consistent with the boot sound, owner decision 2026-09-07);
  * `ee-voice` in localStorage is the in-app toggle (settings menu). Speaking is
  * formatting normalization of assistant text only — never semantic logic.
@@ -22,20 +27,6 @@ export function setVoiceEnabled(enabled: boolean): void {
   }
 }
 
-function synthesis(): SpeechSynthesis | null {
-  if (typeof window === 'undefined' || !window.localStorage) return null
-  if (!isVoiceEnabled()) return null
-  try {
-    if (!window.speechSynthesis) {
-      console.warn('[tts] SpeechSynthesis unavailable — staying silent.')
-      return null
-    }
-    return window.speechSynthesis
-  } catch {
-    return null
-  }
-}
-
 /**
  * Strips markdown formatting so the voice reads content, not syntax: code
  * fences and inline code out (their content is not prose), links collapse to
@@ -54,14 +45,17 @@ export function speakableText(markdown: string): string {
   return withoutCode.replace(/\s+/g, ' ').trim()
 }
 
+let currentAudio: HTMLAudioElement | null = null
+let currentFetch: AbortController | null = null
+
 /** Stops current speech — new turns and new boot acts never overlap voices. */
 export function cancelSpeak(): void {
-  try {
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel()
-    }
-  } catch {
-    // Nothing speaking / unsupported: silence is the correct state.
+  currentFetch?.abort()
+  currentFetch = null
+  if (currentAudio) {
+    currentAudio.pause()
+    if (currentAudio.src.startsWith('blob:')) URL.revokeObjectURL(currentAudio.src)
+    currentAudio = null
   }
 }
 
@@ -69,14 +63,45 @@ export function cancelSpeak(): void {
 export function speak(markdown: string): void {
   const text = speakableText(markdown)
   if (!text) return
-  const synth = synthesis()
-  if (!synth) return
+  if (!isVoiceEnabled()) return
+  void speakGatewayText(text)
+}
+
+async function speakGatewayText(text: string): Promise<void> {
+  cancelSpeak()
+  const fetchController = new AbortController()
+  currentFetch = fetchController
   try {
-    synth.cancel()
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.rate = 1.03
-    synth.speak(utterance)
+    const res = await fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+      signal: fetchController.signal,
+    })
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { error?: string } | null
+      console.warn('[tts] gateway speech failed — staying silent.', {
+        status: res.status,
+        error: body?.error,
+      })
+      return
+    }
+    if (currentFetch !== fetchController) return // cancelled while loading
+    const blob = await res.blob()
+    if (currentFetch !== fetchController) return
+    const audio = new Audio(URL.createObjectURL(blob))
+    currentAudio = audio
+    audio.onended = () => {
+      if (currentAudio === audio) {
+        URL.revokeObjectURL(audio.src)
+        currentAudio = null
+      }
+    }
+    await audio.play()
   } catch (err) {
+    if (fetchController.signal.aborted) return // superseded or cancelled: quiet
     console.warn('[tts] speak failed', err)
+  } finally {
+    if (currentFetch === fetchController) currentFetch = null
   }
 }

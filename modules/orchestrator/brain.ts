@@ -10,9 +10,12 @@ import { emitKernelEvent, type EventSink } from '$lib/kernel/events'
 import type { Brain, TelegramSessionRef } from '$lib/kernel/gateway'
 import {
   cloneJourneyState,
+  isStaleJourney,
   journeyContextFor,
   journeyStepsCapturedIn,
   stripJourneyMarkers,
+  type JourneyArtifact,
+  type JourneyArtifactPrincipal,
   type JourneyRow,
   type JourneySpec,
   type JourneyState,
@@ -73,8 +76,51 @@ export const ORCHESTRATOR_LLM_USER_ID = 'orchestrator'
  * - STEP CAPTURE: the agent appends `[[journey:<id>:captured]]` from the
  *   context block's protocol line; the driver strips the markers and advances.
  */
+/**
+ * Already-applied probes for the founding artifacts: pure reads through the
+ * registry (website.list_pages), never error sniffing. A create whose slug
+ * already exists, and a publish whose page already sits at the target
+ * visibility, are ledger-recorded executed instead of re-run — a retried
+ * turn (e.g. a plain "hi" while publishes wait on approval) must never
+ * surface `duplicate website slug`.
+ */
+async function listPagesViaRegistry(
+  registry: KernelRegistry,
+  ctx: { principal: JourneyArtifactPrincipal; requestId: string },
+): Promise<Array<{ slug: string; visibility: string }>> {
+  const rows = await registry.execute('website.list_pages', {}, ctx)
+  return rows as Array<{ slug: string; visibility: string }>
+}
+
+const createPageApplied: NonNullable<JourneyArtifact['alreadyApplied']> = async ({
+  input,
+  registry,
+  principal,
+  requestId,
+}) => {
+  const pages = await listPagesViaRegistry(registry, { principal, requestId })
+  const slug = (input as { slug: string }).slug
+  return pages.some((page) => page.slug === slug)
+}
+
+const publishPageApplied: NonNullable<JourneyArtifact['alreadyApplied']> = async ({
+  input,
+  registry,
+  principal,
+  requestId,
+}) => {
+  const pages = await listPagesViaRegistry(registry, { principal, requestId })
+  const { slug, visibility } = input as { slug: string; visibility: string }
+  const page = pages.find((entry) => entry.slug === slug)
+  return page?.visibility === visibility
+}
+
 export const WEBSITE_FOUNDING_JOURNEY: JourneySpec = {
   kind: 'website_founding',
+  // v2: the phase-2e founding order (company_name → positioning → tone).
+  // Rows stored under v1 (or pre-versioning) are stale — the driver abandons
+  // them instead of driving a superseded interview through chat.
+  specVersion: 2,
   // Phase-2e order: the boot sequence's seeded greeting asks the company name
   // first, then what the company does, then tone — artifacts run on the step
   // where every answer they need is already captured.
@@ -89,6 +135,7 @@ export const WEBSITE_FOUNDING_JOURNEY: JourneySpec = {
       artifacts: [
         {
           tool: 'website.create_page',
+          alreadyApplied: createPageApplied,
           inputFromState: (state: JourneyState) => ({
             slug: 'home',
             title: 'Home',
@@ -105,6 +152,7 @@ export const WEBSITE_FOUNDING_JOURNEY: JourneySpec = {
         },
         {
           tool: 'website.create_page',
+          alreadyApplied: createPageApplied,
           inputFromState: (state: JourneyState) => ({
             slug: 'about',
             title: 'About',
@@ -121,6 +169,7 @@ export const WEBSITE_FOUNDING_JOURNEY: JourneySpec = {
         },
         {
           tool: 'website.create_page',
+          alreadyApplied: createPageApplied,
           inputFromState: (state: JourneyState) => ({
             slug: 'contact',
             title: 'Contact',
@@ -135,14 +184,17 @@ export const WEBSITE_FOUNDING_JOURNEY: JourneySpec = {
         },
         {
           tool: 'website.publish_page',
+          alreadyApplied: publishPageApplied,
           inputFromState: () => ({ slug: 'home', visibility: 'public' }),
         },
         {
           tool: 'website.publish_page',
+          alreadyApplied: publishPageApplied,
           inputFromState: () => ({ slug: 'about', visibility: 'public' }),
         },
         {
           tool: 'website.publish_page',
+          alreadyApplied: publishPageApplied,
           inputFromState: () => ({ slug: 'contact', visibility: 'public' }),
         },
       ],
@@ -156,6 +208,7 @@ export const WEBSITE_FOUNDING_JOURNEY: JourneySpec = {
       artifacts: [
         {
           tool: 'website.create_page',
+          alreadyApplied: createPageApplied,
           inputFromState: (state: JourneyState) => ({
             slug: 'brand-tone-of-voice',
             title: 'Brand — Tone of Voice',
@@ -192,6 +245,11 @@ export const ORCHESTRATOR_JOURNEY_PROMPT = [
 export const ORCHESTRATOR_PERSONA_PROMPT = [
   'You are the orchestrator: the general assistant of this company.',
   'You can act through kernel tools. Every tool call is permission-checked, audited, and (for external actions) gated behind owner approval.',
+  'ORCHESTRATOR POSTURE — you route, you do not interview:',
+  '- The chat is mission control, not a questionnaire. Never walk the human through a multi-step intake (founding questions, branding extraction, provider setup) in conversation; those live in their own surfaces (welcome wizard, /brand, /settings).',
+  '- Know what the company CAN do — name the modules (memory, website, brand, email, repo, chat-gateway, recap), say in one line what each does, and offer the relevant one.',
+  '- When a request belongs to a module, say so and hand off: point at its surface or offer to run its kernel tools — do not silently start doing a module’s job in general chat.',
+  '- Answer anything directly that needs no module (questions, status, small talk, quick kernel lookups).',
   ORCHESTRATOR_JOURNEY_PROMPT,
   ...disciplineSections(),
 ].join('\n')
@@ -290,6 +348,19 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     // (founding interview), never by chat replies — chat never asks
     // onboarding questions.
     if (!row) return super.dispatch(agentId, sessionId, input, sinks, options)
+    // Stale spec: the stored journey predates the current spec shape (v1 /
+    // pre-versioning rows). Abandon it — a superseded interview must never
+    // drive the conversation — and answer as the plain orchestrator.
+    if (isStaleJourney(this.spec, row)) {
+      await this.journeys.updateState(row.id, row.state, 'abandoned')
+      await emitKernelEvent(this.kernelEventSink, {
+        type: 'journey.abandoned',
+        principalId: ORCHESTRATOR_AGENT_ID,
+        source: KERNEL_EVENT_SOURCE,
+        payload: { journeyId: row.id, kind: row.kind, reason: 'spec_version' },
+      })
+      return super.dispatch(agentId, sessionId, input, sinks, options)
+    }
     return this.dispatchJourneyTurn(row, agentId, sessionId, input, sinks, options)
   }
 
@@ -411,10 +482,23 @@ export async function executeStepArtifacts(options: {
         (r) => r.stepId === step.id && r.index === index && r.status === 'executed',
       )
       if (alreadyExecuted) continue
+      const input = artifact.inputFromState(state)
+      if (artifact.alreadyApplied) {
+        const applied = await artifact.alreadyApplied({
+          input,
+          registry,
+          principal: ORCHESTRATOR_PRINCIPAL,
+          requestId,
+        })
+        if (applied) {
+          recordArtifact(state, step.id, index, artifact.tool, 'executed')
+          continue
+        }
+      }
       try {
         await registry.execute(
           artifact.tool,
-          artifact.inputFromState(state),
+          input,
           { principal: ORCHESTRATOR_PRINCIPAL, requestId },
         )
         recordArtifact(state, step.id, index, artifact.tool, 'executed')

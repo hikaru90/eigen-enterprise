@@ -2,6 +2,153 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-15 — the 10-14 fixes VERIFIED LIVE; the journey e2e exists; the voice e2e re-pinned to the gateway
+
+**How the owner report was reproduced**: the 2026-09-10 stale row (pre-versioning, mid-interview)
+was ACTIVE in the dev DB when this session started — the exact reported state.
+
+**Verified live, three ways**
+- **The owner's own dev DB verified the stale-abandon first**: by the time this session looked,
+  the 2026-09-10 row had already abandoned itself (`status='abandoned'`, `journey.abandoned`
+  reason `spec_version` on the audit log) after the owner said "hi", and a fresh empty v2
+  journey sat in its place (opened by the boot handoff). The fix fired in real use.
+- **New e2e `src/routes/e2e/journey-founding.e2e.ts` (3/3, twice, ~24s)** against a real
+  browser + real server + a DISPOSABLE database (`eigen_journey_verify` on the dev cluster,
+  full bootstrap: migrate → ensure-extensions → ensure-app-role → apply-rls → activation
+  seeds): (1) a v1-shaped active row abandons itself on "hi" — no duplicate-slug, no interview
+  question, plain orchestrator answers, `journey.abandoned` reason `spec_version` audited;
+  (2) a retried turn with pages already on disk LEDGERS them through the `alreadyApplied`
+  probes (4 creates + the already-public home publish recorded `executed` WITHOUT re-running),
+  the about publish actually runs and lands `approval_pending` (gate halts its step; the tone
+  step's brand-doc create still executes — per-step halt, asserted); journey stays active.
+  (3) `/api/tts` contract: 401 anon, 400 empty/oversized, and a speech-less gateway surfaces
+  its provider error as a loud 500 (mock 404 verbatim in the error body).
+- **onboarding-welcome e2e 3/3** in the controlled env — after re-pinning the voice contract
+  (see below).
+
+**Broke / caught by verifying**
+- **The boot-sequence e2e still pinned the ROBOT voice** — the 10-14 TTS switch (browser
+  speechSynthesis → gateway) was never re-run against it. Re-pinned to the new truth:
+  `/api/tts` intercept captures the greeting text the client sends to the gateway, and the
+  speechSynthesis recorder must stay EMPTY forever. Robot voice is now e2e-pinned-dead.
+- **INCIDENT (fixed, on the record)**: the first verification runs' spec-side SQL went to the
+  WRONG database — playwright.config.ts loads .env with `override: true`, so a generic
+  `DATABASE_URL` env is silently repointed at the .env database while the server under test
+  used another. Consequence: the owner's fresh v2 journey row got a fabricated state written
+  over it and two stray pages (`about`/`contact`, body `Already here.`) landed in the dev DB.
+  REMEDIATED to the exact pre-incident state (journey state restored to the
+  `openWebsiteFoundingJourney` initial shape with the correct `onboarding:<userId>` sessionId;
+  stray pages deleted; owner's `home`/`brand-tone-of-voice` untouched). GUARD: the new e2e
+  takes `E2E_JOURNEY_DATABASE_URL` (name deliberately outside .env's reach), throws if it
+  equals `DATABASE_URL`, skips loudly when unset, and resets journey/page rows itself.
+- **Kernel VCS auto-commit fired mid-verification**: the create_page artifact's
+  `git commit -am` landed the WIP as `tool website.create_page by orchestrator` — amended
+  into this commit with the proper message (unpushed; same pattern as the pre-existing
+  `cafbe2e` kernel commit).
+- One pre-existing flake re-observed (not this change): onboarding-welcome's skip test clicked
+  before hydration once (documented SSR-click race) — passed on rerun.
+
+**Live-provider voice finding**: OpenRouter's API answers `/audio/speech` with 401
+("Missing Authentication header") for the configured service identity — the public OpenRouter
+API does not serve TTS for it. Live audio needs a speech-capable OpenAI-compatible gateway
+(`LLM_MODEL_TTS`/`LLM_TTS_VOICE` or a BYOK provider with the route); until then the assistant
+correctly stays silent (verified).
+
+**Gates: unit 4216 passed / 14 skipped (566 files); svelte-check 0 errors (29 baseline
+warnings); eslint clean on touched files; journey-founding 3/3 ×2; onboarding-welcome 3/3.**
+
+**Decisions (log)**
+- The journey e2e runs against a disposable DB by design (kernel_journeys admits ONE active
+  row per kind company-wide; the spec resets rows — shared-DB runs are what the guard
+  refuses).
+- Fixture expectations follow observed product semantics, not the old docstring: the artifact
+  gate halts its STEP; later steps still process (brand-doc create executed after the about
+  publish went `approval_pending`). Docstring vs behavior divergence flagged for a follow-up
+  either-way pin.
+
+**Next**: the Extension Roadmap (settings → Extensions; build log + queue + planned; kernel
+module so the agent reads it through its tool surface) — owner-directed this session.
+
+## 2026-10-14 (2) — journey spec versioning: stale interviews can no longer speak through chat; orchestrator posture
+
+**Owner report (verbatim)**: "The Eigenenterprise chat asks me things that seem like they are
+part of one of the modules… the general chat should take more like an orchestrator role. It
+shouldn't ask things like 'Now, on to the next step.' It should say: here's what we can do,
+those are the modules… route the user there."
+
+**Root cause**: the stale 2026-09-10 `website_founding` row (pre-phase-2e spec shape,
+`positioning` never captured → never completable) was still ACTIVE — every chat turn had the
+journey context block prepended, instructing the agent to ask the next step's question. The
+chat never decided to interview; the journey driver did.
+
+**Shipped**
+- **JourneySpec.specVersion (kernel)**: `playbook.ts` specs carry a version; stored state
+  stamps it at creation; `isStaleJourney()` flags rows whose version drifted (pre-versioning
+  rows count as stale). `JourneyAwareAgentRuntime` abandons stale rows on first touch — status
+  'abandoned', `journey.abandoned` event (reason 'spec_version', first emitter of the modeled
+  event) — and answers as the PLAIN orchestrator: no journey context, no artifact runs.
+  WEBSITE_FOUNDING_JOURNEY is specVersion 2; founding onboarding stamps it on create and
+  re-stamps reused rows on resubmission.
+- **Orchestrator posture (persona)**: "you route, you do not interview" — mission control, not
+  a questionnaire; name the modules (memory, website, brand, email, repo, chat-gateway, recap)
+  and what they do; hand off to the module's surface or tools instead of running its intake in
+  chat; answer module-less requests directly.
+
+**Gates: unit 4216 passed / 14 skipped; svelte-check 0 errors; eslint clean on touched files.**
+
+**Decisions (log)**
+- Version drift = abandon, never migrate: a superseded interview's answers are founder data,
+  but driving it forward under a spec it never consented to is worse; a fresh founding
+  submission (wizard restart) starts clean under the current version.
+- The persona change is prompt-text only — the deterministic guarantees (journeys opened only
+  by onboarding, stale rows abandoned in code) stay structural, per "code owns the agenda".
+
+**Next**: owner reloads and says "hi" — the stale row abandons itself, the chat answers as the
+orchestrator. Restart onboarding from the settings cog to redo the founding interview under v2.
+
+## 2026-10-14 — FIX: duplicate-slug error on every journey turn; the assistant's voice moves to gateway TTS (qwen)
+
+**Owner report (verbatim)**: "Error: duplicate website slug: brand-tone-of-voice — when i type
+hi. this is not correct. also, when i start or restart the onboarding it uses a mechanical robot
+sounding voice. please use qwen asr"
+
+**Shipped**
+- **Journey artifacts are idempotent (already-applied probes).** `JourneyArtifact` gains an
+  optional `alreadyApplied` probe (pure read through the registry — never error sniffing);
+  `executeStepArtifacts` records a probed artifact 'executed' WITHOUT re-running it. The
+  founding spec probes `website.list_pages`: a create whose slug exists and a publish whose page
+  already sits at the target visibility are ledger-recorded, not re-run. Root cause of the
+  report: the legacy `website_founding` row (2026-09-10, pre-phase-2e spec shape) had the
+  `brand-tone-of-voice` page in the DB but no 'executed' ledger entry under the CURRENT spec —
+  so EVERY chat turn (e.g. "hi") re-ran `website.create_page` and failed loud with duplicate
+  slug. Superseded pins rewritten deliberately: founding re-submission over existing pages is
+  now idempotent completion (no throw), and chat retries succeed while publishes stay gated.
+- **The assistant's voice = gateway TTS.** `llmCreateSpeech` in the LLM gateway
+  (`POST {baseUrl}/audio/speech`, OpenAI-compatible, 3-attempt retry, activity-logged, STT
+  billing config reused) + `src/lib/server/llm/tts-client.ts` (default
+  `qwen/qwen3-tts-flash-2026-02-10`, voice `alloy`; `LLM_MODEL_TTS`/`LLM_TTS_VOICE` overrides,
+  documented in .env.example) + `POST /api/tts` (auth 401, empty/>4000-char 400, returns
+  audio/mpeg bytes, provider error mapped to 500). `src/lib/speech/tts.ts` no longer touches
+  browser speechSynthesis AT ALL: it fetches `/api/tts`, plays the blob, cancels via
+  AbortController; a failing gateway means SILENCE (console-warned), never a robot fallback.
+
+**Note on the request wording**: the robot voice was browser speechSynthesis OUTPUT (TTS), not
+ASR — ASR (input) was already qwen (`qwen3-asr-flash`, `stt-client.ts`). Implemented as gateway
+TTS with the qwen default, mirroring the STT seam.
+
+**Gates: unit 4214 passed / 14 skipped (566 files); svelte-check 0 errors (29 baseline
+warnings); eslint clean on touched files.**
+
+**Decisions (log)**
+- Idempotency is a SPEC-declared probe, not a catch of duplicate errors — error-string sniffing
+  is forbidden (no string heuristics); the probe is a deterministic registry read.
+- Voice-off semantics unchanged (`ee-voice` toggle); "gateway unavailable" now joins
+  "browser unsupported" as the honest silent state.
+
+**Next**: owner verifies live — restart onboarding or type "hi": no duplicate-slug error, and
+the boot-sequence voice comes from the gateway (requires an OpenRouter-compatible provider that
+serves `/audio/speech`; the provider's exact error surfaces in the server log otherwise).
+
 ## 2026-09-22 — Eigen Enterprise de-branded from ../eigen (eigenmesh); settings rebuilt minimal
 
 **Owner directive (verbatim)**: "immediately remove all ui that was taken from ../eigen from this

@@ -1,4 +1,6 @@
 import type { DbHandle } from './db-stores'
+import type { KernelRegistry } from './registry'
+import type { PrincipalKind } from './types'
 import { randomUUID } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
 import { kernelJourneys } from '$lib/server/db/journey.schema'
@@ -25,6 +27,27 @@ export type JourneyArtifact = {
   tool: string
   /** Pure derivation of the tool input from the journey state's collected answers. */
   inputFromState: (state: JourneyState) => unknown
+  /**
+   * Deterministic already-applied probe: when it resolves true, the artifact
+   * is recorded 'executed' WITHOUT running the tool (the effect already
+   * exists — e.g. a page created in an earlier turn whose ledger entry was
+   * lost, or by an agent tool call). Probes are pure reads through the
+   * registry; an artifact whose effect cannot be probed stays unprobed and
+   * retried. Never error-message sniffing.
+   */
+  alreadyApplied?: (options: {
+    input: unknown
+    registry: KernelRegistry
+    principal: JourneyArtifactPrincipal
+    requestId: string
+  }) => Promise<boolean>
+}
+
+/** The principal shape artifacts execute under (structurally, kernel-internal). */
+export type JourneyArtifactPrincipal = {
+  id: string
+  kind: PrincipalKind
+  roles: string[]
 }
 
 export type JourneyStep = {
@@ -38,6 +61,13 @@ export type JourneyStep = {
 export type JourneySpec = {
   /** Stable kind id (also the kernel_journeys.kind key). */
   kind: string
+  /**
+   * Bumped whenever the steps/artifacts change shape. A stored journey whose
+   * state.specVersion differs from the current spec (including rows from
+   * before versioning existed) is STALE: the driver abandons it instead of
+   * driving it — a superseded interview must never speak through chat.
+   */
+  specVersion: number
   steps: JourneyStep[]
 }
 
@@ -57,6 +87,8 @@ export type JourneyState = {
   captured: string[]
   /** Artifact execution ledger (status per step artifact; retried while pending). */
   artifacts: JourneyArtifactRecord[]
+  /** JourneySpec.specVersion at creation time; absent on pre-versioning rows (stale). */
+  specVersion?: number
   /** Session the journey was opened in (traceability only; journeys are per kind). */
   sessionId?: string
 }
@@ -71,14 +103,20 @@ export type JourneyRow = {
   updatedAt: string
 }
 
-export function initialJourneyState(sessionId?: string): JourneyState {
+export function initialJourneyState(sessionId?: string, specVersion?: number): JourneyState {
   return {
     stepIndex: 0,
     answers: {},
     captured: [],
     artifacts: [],
+    ...(specVersion === undefined ? {} : { specVersion }),
     ...(sessionId === undefined ? {} : { sessionId }),
   }
+}
+
+/** A stored journey whose spec version drifted from the current spec is stale. */
+export function isStaleJourney(spec: JourneySpec, row: JourneyRow): boolean {
+  return row.state.specVersion !== spec.specVersion
 }
 
 /** Shallow-deep clone: journey state is plain JSON data. */

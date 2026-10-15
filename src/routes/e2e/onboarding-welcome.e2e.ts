@@ -20,8 +20,13 @@ const CHAT_MODEL = 'mock-chat-model'
 const EMBED_MODEL = 'mock-embed-model'
 
 /**
- * Deterministic voice: replace speechSynthesis with a recorder before app code
- * runs, then assertions can verify the assistant actually speaks.
+ * Deterministic voice pin, two sides:
+ *  - the robot voice is GONE: speechSynthesis is replaced with a recorder that
+ *    must stay EMPTY — the browser never speaks;
+ *  - the assistant's voice is the GATEWAY: /api/tts intercept captures what
+ *    the client asks the gateway to say (fulfilled with an error so the client
+ *    takes its honest silence path — the audio bytes themselves are pinned by
+ *    unit specs, not the browser).
  */
 async function stubSpeechSynthesis(context: import('@playwright/test').BrowserContext): Promise<void> {
   await context.addInitScript(() => {
@@ -55,6 +60,21 @@ async function stubSpeechSynthesis(context: import('@playwright/test').BrowserCo
       configurable: true,
     })
   })
+}
+
+async function interceptTts(context: import('@playwright/test').BrowserContext): Promise<{ texts: string[] }> {
+  const texts: string[] = []
+  await context.route('**/api/tts', async (route) => {
+    const request = route.request()
+    if (request.method() === 'POST') {
+      const body = request.postDataJSON() as { text?: string } | null
+      if (typeof body?.text === 'string') texts.push(body.text)
+    }
+    // The gateway cannot speak in this environment — the client's honest
+    // silence path runs, and the boot flow must not care.
+    await route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"no speech route"}' })
+  })
+  return { texts }
 }
 
 async function expectChatVisible(page: Page): Promise<void> {
@@ -108,6 +128,7 @@ test.describe('welcome boot sequence', () => {
     context,
   }) => {
     await stubSpeechSynthesis(context)
+    const tts = await interceptTts(context)
     await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
 
     // Boot → greeting. No capability list, no step counter, no module jargon — ever.
@@ -133,18 +154,21 @@ test.describe('welcome boot sequence', () => {
     await expect(page.getByRole('button', { name: 'Begin' })).toBeVisible({ timeout: 20_000 })
     await page.getByRole('button', { name: 'Begin' }).click()
 
-    // Handoff: the agent's first words are already there — seeded, personal, honest,
-    // and SPOKEN (the Her layer; the greeting asks the founding journey's first question).
+    // Handoff: the agent's first words are already there — seeded, personal,
+    // honest. The greeting goes to the GATEWAY for its voice (the Her layer);
+    // the browser's robot voice never speaks.
     await expectChatVisible(page)
     await expect(
       page.getByText(/Hello, Ada\. Your company's OS is getting set up/),
     ).toBeVisible()
     await expect(page.getByText(/what's your company called\?/)).toBeVisible()
-    const spokenGreeting = await page.evaluate(
-      () => (window as unknown as { __ttsSpoken: string[] }).__ttsSpoken.join(' '),
+    await expect
+      .poll(async () => tts.texts.join(' '), { timeout: 15_000 })
+      .toContain('getting set up')
+    const spokenByRobot = await page.evaluate(
+      () => (window as unknown as { __ttsSpoken: string[] }).__ttsSpoken,
     )
-    expect(spokenGreeting).toContain('getting set up')
-    expect(spokenGreeting).toContain("what's your company called?")
+    expect(spokenByRobot).toEqual([])
 
     // Reload: the tour is done — the chat IS the page now.
     await page.goto('/')

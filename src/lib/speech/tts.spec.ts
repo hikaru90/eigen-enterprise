@@ -1,66 +1,74 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cancelSpeak, isVoiceEnabled, setVoiceEnabled, speak } from './tts'
 
-type RecordedUtterance = { text: string }
+/**
+ * The assistant speaks through the LLM gateway (/api/tts → qwen tts) — the
+ * browser's speechSynthesis robot voice is gone. Fetch + Audio are stubbed;
+ * a failing or missing gateway means SILENCE, never a speechSynthesis
+ * fallback (that fallback was the bug).
+ */
 
-function makeSynthesis() {
-  const spoken: RecordedUtterance[] = []
-  let cancelled = 0
-  const synthesis = {
-    speak: (utterance: SpeechSynthesisUtterance) => {
-      spoken.push({ text: utterance.text })
-    },
-    cancel: () => {
-      cancelled += 1
-    },
-    speaking: false,
-    pending: false,
-    paused: false,
-    pause: () => {},
-    resume: () => {},
-    getVoices: () => [],
-    onvoiceschanged: null,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    dispatchEvent: () => false,
+type FetchCall = { url: string; init?: RequestInit }
+
+function makeAudioElement() {
+  const element = {
+    src: '',
+    played: 0,
+    onended: null as (() => void) | null,
+    play: vi.fn(async () => {
+      element.played += 1
+    }),
+    pause: vi.fn(),
   }
-  return { synthesis, spoken, cancelled: () => cancelled }
+  return element
 }
 
-const g = globalThis as {
-  window?: { localStorage?: unknown; speechSynthesis?: unknown }
-  SpeechSynthesisUtterance?: unknown
-}
-
-describe('tts — the assistant speaks', () => {
-  let synth: ReturnType<typeof makeSynthesis>
+describe('tts — the assistant speaks (gateway voice)', () => {
   let storage: Map<string, string>
+  let audioElement: ReturnType<typeof makeAudioElement>
+  let fetchCalls: FetchCall[]
+  let fetchRespond: () => Response
 
   beforeEach(() => {
+    storage = new Map()
+    audioElement = makeAudioElement()
+    fetchCalls = []
     vi.stubGlobal(
-      'SpeechSynthesisUtterance',
+      'fetch',
+      vi.fn(async (url: string | URL, init?: RequestInit) => {
+        fetchCalls.push({ url: String(url), init })
+        return fetchRespond()
+      }),
+    )
+    vi.stubGlobal(
+      'Audio',
       class {
-        text: string
-        rate = 1
-        constructor(text: string) {
-          this.text = text
+        constructor(src: string) {
+          audioElement.src = src
+          return audioElement
         }
       },
     )
-    storage = new Map()
-    synth = makeSynthesis()
-    g.window = {
+    vi.stubGlobal('window', {
       localStorage: {
         getItem: (k: string) => (storage.has(k) ? storage.get(k)! : null),
         setItem: (k: string, v: string) => void storage.set(k, v),
         removeItem: (k: string) => void storage.delete(k),
       },
-      speechSynthesis: synth.synthesis,
-    }
+    })
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: () => 'blob:mock-audio',
+      revokeObjectURL: () => {},
+    })
+    fetchRespond = () =>
+      new Response(new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/mpeg' }), {
+        status: 200,
+        headers: { 'content-type': 'audio/mpeg' },
+      })
   })
 
   afterEach(() => {
-    delete g.window
     vi.unstubAllGlobals()
   })
 
@@ -78,51 +86,66 @@ describe('tts — the assistant speaks', () => {
     expect(isVoiceEnabled()).toBe(true)
   })
 
-  it('speaks plain text and cancels whatever was speaking first', () => {
-    speak('Hello. Your company OS is getting set up.')
-
-    expect(synth.spoken).toHaveLength(1)
-    expect(synth.spoken[0]!.text).toBe('Hello. Your company OS is getting set up.')
-    expect(synth.cancelled()).toBe(1)
-  })
-
-  it('reads content, not markdown syntax', () => {
+  it('posts the speakable text to the gateway and plays the audio', async () => {
     speak(
       [
         '## Your site',
         '',
         '- **First** point with [a link](https://example.com)',
-        '- Second point',
         '',
         '```js',
         'const notProse = true',
         '```',
-        '',
-        'Done.',
       ].join('\n'),
     )
 
-    const text = synth.spoken[0]!.text
-    expect(text).toContain('Your site')
-    expect(text).toContain('First point with a link')
-    expect(text).toContain('Second point')
-    expect(text).toContain('Done.')
-    expect(text).not.toContain('```')
-    expect(text).not.toContain('**')
-    expect(text).not.toContain('https://')
-    expect(text).not.toContain('const notProse')
+    await vi.waitFor(() => expect(audioElement.played).toBe(1))
+    expect(fetchCalls).toHaveLength(1)
+    expect(fetchCalls[0]!.url).toBe('/api/tts')
+    const body = JSON.parse(String(fetchCalls[0]!.init!.body)) as { text: string }
+    expect(body.text).toContain('Your site')
+    expect(body.text).toContain('First point with a link')
+    expect(body.text).not.toContain('```')
+    expect(body.text).not.toContain('**')
+    expect(body.text).not.toContain('https://')
+    expect(body.text).not.toContain('const notProse')
+    expect(audioElement.src).toContain('blob:')
   })
 
-  it('says nothing when voice is off or the text is empty — never throws', () => {
+  it('says nothing when voice is off or the text is empty — never calls the gateway', async () => {
     setVoiceEnabled(false)
     speak('hello')
-    expect(synth.spoken).toHaveLength(0)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(fetchCalls).toHaveLength(0)
 
     setVoiceEnabled(true)
     speak('   \n  ')
-    expect(synth.spoken).toHaveLength(0)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(fetchCalls).toHaveLength(0)
+  })
 
+  it('a failing gateway means silence — never a robot-voice fallback, never a throw', async () => {
+    fetchRespond = () =>
+      new Response(JSON.stringify({ error: 'LLM TTS HTTP 401: bad key' }), { status: 401 })
+    expect(() => speak('hello')).not.toThrow()
+    await vi.waitFor(() => expect(fetchCalls).toHaveLength(1))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(audioElement.played).toBe(0)
+  })
+
+  it('cancelSpeak stops playback and aborts the in-flight request', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string | URL, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new Error('aborted')))
+          }),
+      ),
+    )
+    speak('slow gateway')
     cancelSpeak()
-    expect(synth.cancelled()).toBe(1)
+    // The pending request was aborted via its signal; nothing played.
+    expect(audioElement.played).toBe(0)
   })
 })
