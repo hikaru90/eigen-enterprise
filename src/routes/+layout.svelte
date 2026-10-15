@@ -1,11 +1,8 @@
 <script lang="ts">
-  import Brain from '@lucide/svelte/icons/brain'
-  import MessageSquareText from '@lucide/svelte/icons/message-square-text'
-  import Plus from '@lucide/svelte/icons/plus'
   import { onMount } from 'svelte'
   import { browser } from '$app/environment'
   import { afterNavigate } from '$app/navigation'
-  import { base, resolve } from '$app/paths'
+  import { base } from '$app/paths'
   import { page } from '$app/state'
   import './layout.css'
   import {
@@ -16,7 +13,7 @@
   } from '$lib/analytics/posthog-client'
   import favicon from '$lib/assets/favicon.png'
   import { startCaptureQueueRunner } from '$lib/capture/queue'
-  import AppHeader from '$lib/components/app-header.svelte'
+  import HomeSettingsMenu from '$lib/components/home-settings-menu.svelte'
   import { activeVisualSetStyleTag } from '../../modules/brand/style-format/emitter'
 
   // E2E hydration marker: SvelteKit hydration replaces the SSR DOM, wiping values
@@ -25,12 +22,10 @@
     document.body.dataset.eigenHydrated = 'true'
   })
   import type { AuthorLayerMeta } from '$lib/graph/graph-author-layers'
-  import { m } from '$lib/paraglide/messages.js'
   import { getLocale, setLocale } from '$lib/paraglide/runtime'
   import { startPushNavigationFromServiceWorker } from '$lib/push/navigation-from-sw'
   import { initCurrentUserViewStore } from '$lib/stores/current-user-view.svelte'
   import { startThoughtSync } from '$lib/stores/thought-sync'
-  import { cn } from '$lib/utils'
 
   let { children } = $props()
 
@@ -47,24 +42,19 @@
     return p || '/'
   }
 
-  function isNavItemActive(href: string): boolean {
-    const current = normalizePathname(page.url.pathname)
-    const target = normalizePathname(href)
-    if (current === target) return true
-    if (target === '/memory') return current.startsWith('/memory')
-    if (target === '/chat') return current.startsWith('/chat')
-    return current.startsWith(`${target}/`)
-  }
-
-  const hideAppChrome = $derived(
-    authPaths.has(normalizePathname(page.url.pathname)) ||
-      (page.route.id != null && authPaths.has(page.route.id)) ||
-      // The nucleus group is the company surface: no console chrome. SvelteKit
-      // always nests the root layout, so a route group cannot opt out on its
-      // own — the group provides the white shell, the root hides its chrome.
-      (page.route.id != null && page.route.id.startsWith('/(nucleus)')) ||
-      // Public website pages (/s/[slug]) are the company's face: chrome-free.
-      (page.route.id != null && page.route.id === '/s/[slug]'),
+  /**
+   * The only app chrome: the settings cog, top right — the same menu on every
+   * route (company settings, extensions, API keys, provider, sound/voice,
+   * restart onboarding, sign out). The nucleus group is the company surface and
+   * public website pages are the company's face: both chrome-free. SvelteKit
+   * always nests the root layout, so a route group cannot opt out on its own —
+   * the group provides the white shell, the root skips the menu there.
+   */
+  const showSettingsMenu = $derived(
+    !authPaths.has(normalizePathname(page.url.pathname)) &&
+      !authPaths.has(page.route.id ?? '') &&
+      !(page.route.id ?? '').startsWith('/(nucleus)') &&
+      (page.route.id ?? '') !== '/s/[slug]',
   )
 
   let themePreference = 'system'
@@ -83,24 +73,6 @@
       lastIdentifiedUserId = null
     }
   }
-
-  const bottomNavItems = $derived([
-    {
-      label: m.nav_memory(),
-      href: '/memory' as const,
-      icon: Brain,
-    },
-    {
-      label: m.nav_capture(),
-      href: '/capture' as const,
-      icon: Plus,
-    },
-    {
-      label: m.nav_chat(),
-      href: '/chat' as const,
-      icon: MessageSquareText,
-    },
-  ])
 
   onMount(() => {
     syncPostHogIdentity()
@@ -199,62 +171,12 @@
   {/if}
 </svelte:head>
 
-<div class="bg-background min-h-dvh" class:pb-28={!hideAppChrome} class:pb-6={hideAppChrome}>
-  {#if !hideAppChrome}
-    <AppHeader />
+<div class="bg-background min-h-dvh">
+  {#if showSettingsMenu}
+    <header class="fixed top-0 right-0 z-40 p-4">
+      <HomeSettingsMenu />
+    </header>
   {/if}
   {@render children()}
 </div>
 
-{#if !hideAppChrome}
-  <nav
-    class="fixed bottom-0 left-0 right-0 z-20 text-foreground dark:text-white"
-    aria-label="Main navigation"
-  >
-    <!-- Gradient blur stack (mirrors header, inverted): full at bottom, fades upward -->
-    <div
-      aria-hidden="true"
-      class="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-32 backdrop-blur-md"
-      style="-webkit-mask-image: linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.92) 12%, rgba(0,0,0,0.78) 28%, rgba(0,0,0,0.58) 45%, rgba(0,0,0,0.35) 62%, rgba(0,0,0,0.15) 78%, rgba(0,0,0,0.04) 90%, transparent 100%); mask-image: linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.92) 12%, rgba(0,0,0,0.78) 28%, rgba(0,0,0,0.58) 45%, rgba(0,0,0,0.35) 62%, rgba(0,0,0,0.15) 78%, rgba(0,0,0,0.04) 90%, transparent 100%);"
-    ></div>
-    <div
-      aria-hidden="true"
-      class="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-32 backdrop-blur-[3px]"
-      style="-webkit-mask-image: linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.85) 18%, rgba(0,0,0,0.62) 38%, rgba(0,0,0,0.38) 58%, rgba(0,0,0,0.16) 78%, rgba(0,0,0,0.04) 90%, transparent 100%); mask-image: linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.85) 18%, rgba(0,0,0,0.62) 38%, rgba(0,0,0,0.38) 58%, rgba(0,0,0,0.16) 78%, rgba(0,0,0,0.04) 90%, transparent 100%);"
-    ></div>
-    <div
-      aria-hidden="true"
-      class="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-32"
-      style="background: linear-gradient(to top, var(--background) 0%, var(--background) 26%, color-mix(in oklab, var(--background) 82%, transparent) 50%, color-mix(in oklab, var(--background) 50%, transparent) 72%, color-mix(in oklab, var(--background) 18%, transparent) 90%, transparent 100%);"
-    ></div>
-    <div class="relative z-10 flex flex-row items-center justify-between gap-2 px-4 pb-safe">
-      {#each bottomNavItems as item (item.href)}
-        {@const isActive = isNavItemActive(item.href)}
-        <div class="relative flex-1">
-          <a
-            href={resolve(item.href)}
-            class="flex w-full flex-col items-center justify-center gap-1 py-2"
-            aria-label={item.label}
-            aria-current={isActive ? 'page' : undefined}
-          >
-            <span
-              class="flex size-9 shrink-0 items-center justify-center rounded-full bg-black"
-              aria-hidden="true"
-            >
-              <item.icon
-                class={cn(
-                  'size-5 text-white',
-                  isActive && 'text-[var(--color-eigen-green)]',
-                )}
-                strokeWidth={1.75}
-              />
-            </span>
-            <span class="mt-1 text-[10px] leading-none font-bold tracking-wide whitespace-nowrap text-black dark:text-white">
-              {item.label}
-            </span>
-          </a>
-        </div>
-      {/each}
-    </div>
-  </nav>
-{/if}

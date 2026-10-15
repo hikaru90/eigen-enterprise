@@ -15,6 +15,25 @@ async function openExtensions(page: Page): Promise<void> {
   })
 }
 
+/**
+ * SSR buttons click before Svelte hydration attaches the popover handler —
+ * retry the trigger until the menu actually opens (same discipline as the
+ * boot wizard's continueToStep).
+ */
+async function openSettingsMenu(page: Page): Promise<void> {
+  const trigger = page.getByTestId('home-settings-trigger')
+  const extensions = page.getByRole('link', { name: 'Extensions' })
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await trigger.click()
+    const opened = await extensions
+      .waitFor({ state: 'visible', timeout: 2_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (opened) return
+  }
+  await expect(extensions).toBeVisible()
+}
+
 test.describe('extension roadmap', () => {
   test('the settings menu offers Extensions; the page renders the three sections with the seeds', async ({
     page,
@@ -24,8 +43,7 @@ test.describe('extension roadmap', () => {
 
     // The top-right cog names the surface.
     await page.goto('/')
-    await page.getByTestId('home-settings-trigger').click()
-    await expect(page.getByRole('link', { name: 'Extensions' })).toBeVisible()
+    await openSettingsMenu(page)
     await page.getByRole('link', { name: 'Extensions' }).click()
     await expect(page.getByRole('heading', { name: 'Extension Roadmap' })).toBeVisible({
       timeout: 15_000,

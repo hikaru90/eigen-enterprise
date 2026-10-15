@@ -5,7 +5,6 @@
   import { resolve } from '$app/paths'
   import { signupPlanSubtitle } from '$lib/auth/signup-plan'
   import AuthSocialButtons from '$lib/components/auth-social-buttons.svelte'
-  import EigenWordmark from '$lib/components/eigen-wordmark.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
   import { Label } from '$lib/components/ui/label'
@@ -71,11 +70,11 @@
   <header class="text-center">
     {#if websiteOrigin}
       <a href={websiteOrigin} rel="external" class="inline-block">
-        <EigenWordmark heightClass="h-8" />
+        <span class="text-lg font-medium tracking-tight">Eigen Enterprise</span>
       </a>
     {:else}
       <a href={resolve('/')} class="inline-block">
-        <EigenWordmark heightClass="h-8" />
+        <span class="text-lg font-medium tracking-tight">Eigen Enterprise</span>
       </a>
     {/if}
     <p class="text-muted-foreground mt-2 text-xs">Create an account</p>

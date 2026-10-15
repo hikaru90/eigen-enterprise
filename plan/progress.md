@@ -2,6 +2,61 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-15 (3) — the eigen chrome is DEAD: one cog, every route
+
+**Owner directive (verbatim)**: "/settings … the menu on the top right changes and the header
+changes also. It shows the header of eigenmesh, which is a completely separate project, and
+should be deleted in all routes… Eigen mesh as a module can stay, but the design for all
+routes eigenenterprise has to offer are not the right ones, and I want you to delete them."
+— This is the "when" the de-branding round (2026-09-22) was waiting for: the seed-derived
+shell goes, the module functionality stays.
+
+**Deleted completely**
+- `app-header.svelte` (+ spec) — the eigen wordmark header with its account menu, admin/eval/
+  feedback links, blur gradient stack — rendered by the root layout on every non-nucleus,
+  non-auth route.
+- The root layout's mobile **bottom nav** (Memory/Capture/Chat black-pill nav + gradient
+  masks) and its `bottomNavItems`/`isNavItemActive` machinery, `pb-28` chrome padding.
+- `eigen-wordmark.svelte` (+ spec) and **`logo-whole.svg`** (eigen's logo asset) — gone from
+  the repo. The auth pages (login/signup/forgot/reset) and `+error.svelte` now carry a
+  typographic "Eigen Enterprise" wordmark instead of the logo image.
+- `current-user-view-select.svelte` — lived only in the deleted header (the author-view STORE
+  stays; memory surfaces still consume it).
+
+**What replaces the chrome**: one settings cog, top right, on every app route — the SAME
+`home-settings-menu` (Company Settings / Extensions / API Keys / AI provider / sound + voice /
+Restart onboarding / Sign out) the homepage already had, now rendered by the root layout for
+non-nucleus, non-auth, non-public routes. No header, no nav, no logo anywhere; the nucleus
+group and `/s/[slug]` stay chrome-free. Verified visually: `/settings`, the open menu, and `/`
+carry exactly one cog and zero eigen furniture.
+
+**Broke / fixed along the way**
+- `release-helpers.ts` toured the dead chrome (Account menu links, the stale Workspace/
+  Capture/Ask AI bottom nav) — rewritten against the cog menu, sign-out through the menu's
+  Sign out button.
+- **playwright `workers: 1`, deliberate**: suites share singletons — `kernel_journeys` admits
+  ONE active row per kind company-wide, the mock gateway is one process with a global call
+  counter. Concurrent workers fight over both (the documented flake class: the stale-v1 test
+  failed twice in parallel multi-file runs, never serially). Serial is slower; deterministic.
+- extension-roadmap's cog walk needed the boot wizard's retry-until-open discipline (SSR
+  clicks before hydration attach handlers).
+
+**Not deleted (deliberate, flagged)**: page CONTENT styling that references the old palette
+(`--color-eigen-green` in memory surfaces, timeline views, author-layer chrome) — that is the
+memory/timeline feature content wearing an old accent, not the chrome; a content-design pass
+is owner-gated follow-up work. The favicon is still eigen-derived artwork (same class as the
+logo was). Unused paraglide `nav_*` message keys remain in the catalogs (harmless).
+
+**Gates: unit 4240 passed / 14 skipped; components 41 passed; svelte-check 0 errors (29
+baseline warnings); eslint clean on touched files; serial controlled-env e2e 8/8
+(extension-roadmap 2 + onboarding-welcome 3 + journey-founding 3).**
+
+**Decisions (log)**
+- The settings cog is THE chrome: the owner's menu design (company settings, sign out,
+  extensions in a top-right menu) applies to every route; no second navigation surface exists.
+- Chrome deletion ≠ content redesign: memory/graph/capture/timeline internals keep their
+  current look until the owner orders the pass.
+
 ## 2026-10-15 (2) — SHIPPED: the Extension Roadmap — the company's build log, queue, and plan, visible to humans AND the agent
 
 **Owner directive (verbatim intent)**: "I need a way to see what you did, what you changed,

@@ -251,10 +251,6 @@ async function waitForAuthenticatedPage(page: Page, path: string): Promise<void>
   await expect(page.locator('body')).toBeVisible()
 }
 
-async function openAccountMenu(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Account menu' }).click()
-}
-
 async function dismissOpenOverlays(page: Page): Promise<void> {
   await page.keyboard.press('Escape')
 }
@@ -1918,8 +1914,7 @@ export async function exerciseAuthenticatedUi(page: Page): Promise<void> {
     await waitForAuthenticatedPage(page, surface.path)
   }
 
-  await exerciseBottomNav(page)
-  await exerciseAccountMenu(page)
+  await exerciseSettingsMenu(page)
   await exerciseMemoryUi(page)
   await exerciseCaptureUi(page)
   await exerciseChatUi(page)
@@ -1930,33 +1925,19 @@ export async function exerciseAuthenticatedUi(page: Page): Promise<void> {
   await exerciseLegacyRedirects(page)
 }
 
-async function exerciseBottomNav(page: Page): Promise<void> {
-  for (const label of ['Workspace', 'Capture', 'Ask AI'] as const) {
-    await page.getByRole('link', { name: label, exact: true }).click()
-    await expect(page).not.toHaveURL(/\/login/)
-  }
-}
-
-async function exerciseAccountMenu(page: Page): Promise<void> {
+/** The only app chrome is the settings cog (top right) — walk its menu. */
+async function exerciseSettingsMenu(page: Page): Promise<void> {
   await page.goto('/capture')
-  await openAccountMenu(page)
-
-  for (const item of ['Activity', 'API Keys', 'Credits', 'Heartbeat', 'Settings'] as const) {
+  for (const item of ['Company Settings', 'Extensions', 'API Keys', 'AI provider'] as const) {
+    await page.getByTestId('home-settings-trigger').click()
     await page.getByRole('link', { name: item, exact: true }).click()
     await expect(page).not.toHaveURL(/\/login/)
-    await openAccountMenu(page)
   }
 
-  const evalLink = page.getByRole('link', { name: 'Evals', exact: true })
-  if (await evalLink.isVisible().catch(() => false)) {
-    await evalLink.click()
-    await expect(page).toHaveURL(/\/eval/)
-    await page.goto('/capture')
-  }
-
-  await openAccountMenu(page)
-  await page.getByRole('link', { name: 'Give us Feedback', exact: true }).click()
-  await expect(page).toHaveURL(/\/feedback/)
+  // Sign out ends the session through the same menu.
+  await page.getByTestId('home-settings-trigger').click()
+  await page.getByRole('button', { name: 'Sign out' }).click()
+  await page.waitForURL(/\/login/)
   await exerciseFeedbackSubmit(page)
 }
 

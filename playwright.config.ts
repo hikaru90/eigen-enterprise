@@ -90,6 +90,13 @@ export default defineConfig({
   testMatch: '**/*.e2e.{ts,js}',
   timeout: 60_000,
   expect: { timeout: 15_000 },
+  // Serial workers, on purpose: the suites share singletons — the dev DB's
+  // kernel_journeys admits ONE active row per kind company-wide, and the mock
+  // gateway is one process with a global call counter. Concurrent workers
+  // fight over both (the documented stale-process / interleaved-response
+  // flake class); serial makes the suites deterministic at the cost of wall
+  // time.
+  workers: 1,
   use: {
     baseURL: isCi ? previewUrl : devBrowserUrl,
     trace: 'retain-on-failure',
