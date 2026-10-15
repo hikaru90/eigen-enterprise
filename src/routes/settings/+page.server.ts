@@ -6,9 +6,10 @@ import { isUserProviderReady } from '$lib/server/llm/provider-ready'
 
 /**
  * Minimal Eigen Enterprise settings: Account (email + password), AI provider
- * status, API keys. The eigen feature surfaces (appearance, speech, push
- * notifications, memory tools, graph utilities) are gone from this page —
- * their server APIs live on untouched.
+ * status, API keys, and the Extensions pointer (the roadmap). The eigen
+ * feature surfaces (appearance, speech, push notifications, memory tools,
+ * graph utilities) are gone from this page — their server APIs live on
+ * untouched.
  */
 
 const getSafeErrorMessage = (error: unknown, fallback: string) => {

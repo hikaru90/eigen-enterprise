@@ -55,7 +55,7 @@ function makeInMemoryKernel() {
 }
 
 describe('moduleManifests', () => {
-  it('declares the baseline modules (memory, email, website, dev-agent, brand, repo)', () => {
+  it('declares the baseline modules (memory, email, website, dev-agent, brand, repo, roadmap)', () => {
     expect(moduleManifests.map((m) => m.id)).toEqual([
       'memory',
       'email',
@@ -63,6 +63,7 @@ describe('moduleManifests', () => {
       'dev-agent',
       'brand',
       'repo',
+      'roadmap',
     ])
   })
 })
@@ -78,6 +79,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'dev-agent',
       'brand',
       'repo',
+      'roadmap',
     ])
     const toolNames = kernel.registry.list().map((t) => t.name)
     expect(toolNames).toContain('memory.retrieve_thoughts')
@@ -88,6 +90,9 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect(toolNames).toContain('brand.set_create')
     expect(toolNames).toContain('repo.worktree_create')
     expect(toolNames).toContain('repo.merge')
+    expect(toolNames).toContain('roadmap.list_items')
+    expect(toolNames).toContain('roadmap.add_item')
+    expect(toolNames).toContain('roadmap.update_item')
     expect(toolNames.length).toBe(
       moduleManifests.reduce((sum, m) => sum + m.tools.length, 0),
     )

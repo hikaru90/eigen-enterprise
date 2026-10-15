@@ -36,6 +36,8 @@ import { RECAP_MODULE_ID } from './recap/types'
 import { createRepoEngine } from './repo/index'
 import { repoManifest } from './repo/manifest'
 import { createRepoTools, type RepoEngine } from './repo/tools'
+import { roadmapManifest } from './roadmap/manifest'
+import { createRoadmapTools } from './roadmap/tools'
 
 export type { RecapBoot } from './recap'
 import { websiteManifest } from './website/manifest'
@@ -52,6 +54,7 @@ export const moduleManifests = [
   devAgentManifest,
   brandManifest,
   repoManifest,
+  roadmapManifest,
 ] as const
 
 /** Tools that always require an approval decision before first execution. */
@@ -145,6 +148,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createRepoTools({
       engine: options.repoEngine ?? createRepoEngine({ eventSink }),
     }),
+    ...createRoadmapTools(),
   ])
 
   return {

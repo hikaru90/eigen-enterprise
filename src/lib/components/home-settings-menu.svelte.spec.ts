@@ -2,12 +2,14 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
 
-const { invalidateAllMock, fetchMock } = vi.hoisted(() => ({
+const { gotoMock, invalidateAllMock, fetchMock } = vi.hoisted(() => ({
+  gotoMock: vi.fn(),
   invalidateAllMock: vi.fn(),
   fetchMock: vi.fn(),
 }))
 
 vi.mock('$app/navigation', () => ({
+  goto: gotoMock,
   invalidateAll: invalidateAllMock,
 }))
 
@@ -40,11 +42,17 @@ describe('home-settings-menu.svelte', () => {
     await expect.element(page.getByRole('button', { name: 'Settings menu' })).toBeInTheDocument()
   })
 
-  it('opens a menu with API keys, LLM provider, settings, sound, and restart onboarding', async () => {
+  it('opens the menu: Company Settings, Extensions, API Keys, AI provider, then the toggles', async () => {
     render(HomeSettingsMenu)
 
     await page.getByRole('button', { name: 'Settings menu' }).click()
 
+    await expect
+      .element(page.getByRole('link', { name: 'Company Settings' }))
+      .toHaveAttribute('href', '/settings')
+    await expect
+      .element(page.getByRole('link', { name: 'Extensions' }))
+      .toHaveAttribute('href', '/settings/extensions')
     await expect.element(page.getByRole('link', { name: 'API Keys' })).toHaveAttribute(
       'href',
       '/api-keys',
@@ -52,14 +60,25 @@ describe('home-settings-menu.svelte', () => {
     await expect
       .element(page.getByRole('link', { name: 'AI provider' }))
       .toHaveAttribute('href', '/settings/llm')
-    await expect
-      .element(page.getByRole('link', { name: 'Settings', exact: true }))
-      .toHaveAttribute('href', '/settings')
     await expect.element(page.getByTestId('sound-toggle')).toHaveTextContent('Sound on')
     await expect.element(page.getByTestId('voice-toggle')).toHaveTextContent('Voice on')
     await expect
       .element(page.getByRole('button', { name: 'Restart onboarding' }))
       .toBeInTheDocument()
+  })
+
+  it('offers Sign out next to Restart onboarding, below a second divider', async () => {
+    render(HomeSettingsMenu)
+
+    await page.getByRole('button', { name: 'Settings menu' }).click()
+
+    const restart = page.getByTestId('restart-onboarding')
+    const signOut = page.getByTestId('sign-out')
+    await expect.element(signOut).toBeInTheDocument()
+    // DOM order: restart onboarding first, sign out right after it.
+    expect(restart.element().compareDocumentPosition(signOut.element())).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
   })
 
   it('the voice toggle flips the persisted flag — assistant speech is a real choice', async () => {
@@ -120,5 +139,31 @@ describe('home-settings-menu.svelte', () => {
 
     await expect.element(page.getByText(/db down/)).toBeInTheDocument()
     expect(invalidateAllMock).not.toHaveBeenCalled()
+  })
+
+  it('sign out posts to the session endpoint and lands on /login', async () => {
+    render(HomeSettingsMenu)
+
+    await page.getByRole('button', { name: 'Settings menu' }).click()
+    await page.getByTestId('sign-out').click()
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/session/sign-out',
+        expect.objectContaining({ method: 'POST', credentials: 'include' }),
+      )
+      expect(gotoMock).toHaveBeenCalledWith('/login')
+    })
+  })
+
+  it('fails loud when sign out breaks — the menu shows the error and stays put', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) })
+    render(HomeSettingsMenu)
+
+    await page.getByRole('button', { name: 'Settings menu' }).click()
+    await page.getByTestId('sign-out').click()
+
+    await expect.element(page.getByText(/Sign out failed \(HTTP 500\)\./)).toBeInTheDocument()
+    expect(gotoMock).not.toHaveBeenCalled()
   })
 })

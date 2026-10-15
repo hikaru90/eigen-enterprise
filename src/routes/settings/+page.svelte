@@ -4,6 +4,7 @@
   import KeyRound from '@lucide/svelte/icons/key-round'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import LogOut from '@lucide/svelte/icons/log-out'
+  import Puzzle from '@lucide/svelte/icons/puzzle'
   import UserRound from '@lucide/svelte/icons/user-round'
   import { enhance } from '$app/forms'
   import { goto } from '$app/navigation'
@@ -13,9 +14,9 @@
 
   /**
    * Minimal Eigen Enterprise settings: Account (email + password + sign out),
-   * AI provider status, API keys. Nothing else — the eigen feature surfaces
-   * (appearance, speech, push, memory tools, graph utilities) are gone; their
-   * server APIs live on untouched.
+   * AI provider status, API keys, Extensions (the roadmap). Nothing else — the
+   * eigen feature surfaces (appearance, speech, push, memory tools, graph
+   * utilities) are gone; their server APIs live on untouched.
    */
 
   let { data, form }: PageProps = $props()
@@ -184,6 +185,25 @@
           class="border-black/15 hover:border-black shrink-0 border px-3 py-2 text-xs font-medium"
         >
           Manage API keys →
+        </a>
+      </div>
+    </section>
+
+    <!-- Extensions -->
+    <section class="space-y-3" data-testid="settings-extensions">
+      <div class="flex items-center gap-2">
+        <Puzzle class="size-4 shrink-0 opacity-80" strokeWidth={1.75} aria-hidden="true" />
+        <h2 class="text-sm font-semibold">Extensions</h2>
+      </div>
+      <div class="border-black/15 flex items-center justify-between gap-4 border p-4">
+        <p class="text-muted-foreground text-xs">
+          What the system shipped, what it is working on, what comes next.
+        </p>
+        <a
+          href={resolve('/settings/extensions')}
+          class="border-black/15 hover:border-black shrink-0 border px-3 py-2 text-xs font-medium"
+        >
+          Extension Roadmap →
         </a>
       </div>
     </section>

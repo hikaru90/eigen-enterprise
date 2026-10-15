@@ -589,6 +589,13 @@
       "when": 1760200000006,
       "tag": "0083_user_display_name",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1760200000007,
+      "tag": "0084_extension_roadmap",
+      "breakpoints": true
     }
   ]
 }
