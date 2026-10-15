@@ -2,6 +2,68 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-15 (2) — SHIPPED: the Extension Roadmap — the company's build log, queue, and plan, visible to humans AND the agent
+
+**Owner directive (verbatim intent)**: "I need a way to see what you did, what you changed,
+what you fixed, what's on the roadmap… a kind of queue… it should live in the settings under
+extensions… name the setting extension roadmap… a visual way to see what was done and what's
+going to be implemented… down the line I want the agent to be able to build itself, so the
+agent should have access to this build log."
+
+**Shipped** (`f50762f` merged to main, wt/extension-roadmap; subagent-implemented, orchestrator
+reviewed + integrated)
+- **Kernel module `roadmap`** — `roadmap.list_items` (read) / `roadmap.add_item` /
+  `roadmap.update_item` (mutate, no approval gate — internal company data), zod-validated,
+  registry-audited, roles admin+agent. The agent connection is structural, not a shim:
+  the module is in the orchestrator persona's module list, and with `roadmap` active its
+  tools ride the existing tool-surface filter (scope 'all') — the agent can read and maintain
+  the roadmap in chat TODAY, and the software-factory loop (phase-software-factory.md) gets
+  its queue surface for free.
+- **Migration `0084_extension_roadmap.sql`** (+ journal idx 84, + `roadmap.schema.ts`):
+  `extension_roadmap_items` (status shipped/in_progress/planned, kind feature/fix/chore,
+  position, `shipped_at` stamped by the store on entering 'shipped' and cleared on leaving)
+  + 15 seed rows: the shipped build log (kernel, memory, brand pipeline, boot-sequence
+  onboarding, founding journey, journey hardening, gateway voice, agent hands), the queue
+  (live journey verification), and the plan (one-command deploy, software factory M0,
+  conversation-driven website editing, company templates, voice provider wiring, build log
+  from kernel events).
+- **`/settings/extensions` — "Extension Roadmap"**: read-only board (Shipped with dates /
+  In the queue / Planned), monochrome, honest empty sections, deliberately NO add/edit UI —
+  content is maintained through the kernel tools (agent + CLI), the page only mirrors.
+- **Top-right settings menu restructured**: Company Settings / Extensions / API Keys /
+  AI provider ‖ sound + voice toggles ‖ Restart onboarding + **Sign out** (new). All
+  e2e-pinned testids preserved. `/settings` gained an Extensions row.
+- **e2e `extension-roadmap.e2e.ts` (2/2)**: the cog names Extensions; the board renders the
+  seeds in their sections; deep-link works.
+
+**Gates: full unit 4240 passed / 14 skipped (568 files; +24 over baseline); svelte-check 0
+errors (29 baseline warnings); eslint clean on all touched files; controlled-env e2e:
+onboarding-welcome 3/3 + journey-founding 3/3 + extension-roadmap 2/2 (both file orders).**
+Migration applied to the dev DB; `roadmap` module activated there.
+
+**Broke / flags**
+- **`npm run ee` is BROKEN on main (pre-existing, NOT this round)**: `tsx src/cli/index.ts`
+  dies on `ERR_MODULE_NOT_FOUND: $env` — the CLI's import chain reaches
+  `src/lib/server/env/private-env.ts`, which imports the SvelteKit virtual
+  `$env/dynamic/private`, unresolvable under plain tsx. Needs a decision (vite-node runner vs
+  an env seam private-env can use without the virtual import). Module activation in the dev
+  DB used the documented deployer SQL path in the meantime.
+- The home-settings-menu spec previously ran in NO gate at all (excluded from the node
+  config, absent from the browser include list) — enrolled in `vitest.browser.config.ts`;
+  it now actually pins the menu.
+- The journey-founding stale-v1 test showed one transient failure across five green runs —
+  same class as the documented SSR-hydration click race; both file orders green otherwise.
+
+**Decisions (log)**
+- Roadmap UI is read-only v0; the AGENT (and `ee`/registry consumers) maintain content —
+  the owner's "agent has access to the build log" is the module boundary, not a UI form.
+- Seeds live in the migration (visible, reviewable, tool-editable afterwards), not a hidden
+  bootstrap seed.
+
+**Next**: owner opens the cog → Extensions and sees the board; the software-factory M0 open
+questions (ticket source, first proof ticket, merge policy) are now THE next owner decisions —
+the roadmap surface it would feed is live.
+
 ## 2026-10-15 — the 10-14 fixes VERIFIED LIVE; the journey e2e exists; the voice e2e re-pinned to the gateway
 
 **How the owner report was reproduced**: the 2026-09-10 stale row (pre-versioning, mid-interview)
