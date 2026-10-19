@@ -64,6 +64,8 @@ async function walkLines(lines: string[]): Promise<void> {
 async function openMailAct(): Promise<void> {
   await walkLines(ALL_LINES)
   await page.getByTestId('onboarding-continue').click()
+  await expect.element(page.getByTestId('onboarding-mail-domain')).toBeInTheDocument()
+  await page.getByTestId('onboarding-have-domain').click()
   await expect.element(page.getByTestId('onboarding-mail')).toBeInTheDocument()
 }
 
@@ -147,6 +149,23 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
     }
   })
 
+  it('before Amazon, the owner learns they need a domain and DNS access to it', async () => {
+    render(WelcomeWizard, OWNER_NO_MAIL)
+    await walkLines(ALL_LINES)
+    await page.getByTestId('onboarding-continue').click()
+
+    const domain = page.getByTestId('onboarding-mail-domain')
+    await expect.element(domain).toBeInTheDocument()
+    await expect.element(domain.getByText(/your own domain/).first()).toBeInTheDocument()
+    await expect.element(domain.getByText(/DNS/).first()).toBeInTheDocument()
+    await expect.element(page.getByTestId('onboarding-mail')).not.toBeInTheDocument()
+
+    await page.getByTestId('onboarding-have-domain').click()
+    await expect.element(page.getByTestId('onboarding-mail')).toBeInTheDocument()
+    await page.getByTestId('onboarding-back').click()
+    await expect.element(page.getByTestId('onboarding-mail-domain')).toBeInTheDocument()
+  })
+
   it('an owner without email is guided to Amazon SES after the lines, before the mind', async () => {
     render(WelcomeWizard, OWNER_NO_MAIL)
     await openMailAct()
@@ -160,6 +179,7 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
       .element(page.getByLabelText('Secret access key'))
       .toHaveAttribute('type', 'password')
 
+    await page.getByTestId('onboarding-back').click()
     await page.getByTestId('onboarding-back').click()
     await expect.element(page.getByText(LINE_LOGIN)).toBeInTheDocument()
   })

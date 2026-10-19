@@ -105,6 +105,8 @@
   /** Amazon still has to confirm the send-from address (409 verify_sender). */
   let mailVerifyAddress = $state<string | null>(null)
   let mailSentTo = $state<string | null>(null)
+  /** Sending email needs a domain the owner controls (DNS records verify it with Amazon). */
+  let mailDomainReady = $state(false)
   let error = $state<string | null>(null)
   let reducedMotion = $state(false)
 
@@ -165,6 +167,10 @@
   }
 
   function goBack(): void {
+    if (act === 'mail' && mailDomainReady && !mailSentTo) {
+      mailDomainReady = false
+      return
+    }
     if (act === 'lines' && lineIndex > 0) {
       lineIndex -= 1
       return
@@ -431,6 +437,32 @@
           </button>
         </div>
       </div>
+    {:else if act === 'mail' && !mailDomainReady}
+      <div
+        class="mx-auto w-full max-w-md text-center"
+        in:fly={{ y: 10 * motion, duration: 700 * motion }}
+        data-testid="onboarding-mail-domain"
+      >
+        <h1 class="text-2xl font-light tracking-tight text-balance sm:text-3xl">
+          First: you need your own domain.
+        </h1>
+        <p class="text-muted-foreground mt-4 text-sm text-balance">
+          Email is sent from an address at your own domain — like hello@yourcompany.com. Amazon only
+          sends for a domain you prove is yours, and you prove it by adding a few DNS records.
+        </p>
+        <p class="text-muted-foreground mt-3 text-sm text-balance">
+          So you need two things: a domain you own, and access to its DNS settings — usually where
+          you bought it (Namecheap, GoDaddy, Cloudflare, IONOS, …).
+        </p>
+        <button
+          type="button"
+          class="mt-8 h-11 bg-black px-10 text-sm font-medium text-white hover:bg-black/90"
+          onclick={() => (mailDomainReady = true)}
+          data-testid="onboarding-have-domain"
+        >
+          I have a domain and DNS access
+        </button>
+      </div>
     {:else if act === 'mail'}
       <div
         class="mx-auto w-full max-w-md"
@@ -476,9 +508,11 @@
               >.
             </li>
             <li>
-              In IAM (Amazon's user settings), create an access key for a user that is allowed to
-              send email.
+              Create a sender identity: choose “Create identity”, then “Domain”, and enter your
+              domain. Amazon shows a few DNS records — add them at your DNS provider and wait until
+              Amazon marks the domain as verified.
             </li>
+            <li>Create an access key so this server can send through SES.</li>
             <li>Pick the region your SES account is in, and paste the key below.</li>
           </ol>
           <form
