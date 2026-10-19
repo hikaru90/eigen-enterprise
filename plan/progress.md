@@ -47,7 +47,11 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 
 **Not yet verified (needs the owner)**: a real VPS with real DNS + Let's Encrypt; the real GitHub App flow (manifest → install → webhook); the founding journey with a real LLM provider. Hosting the release for `curl | sh` (the repo is private) is undecided.
 
-**Next**: owner picks the VPS + domain → install there → connect GitHub → deploy the CEO's app.
+**Owner decision (same day)**: not deploying to a remote VPS yet. "It has to run on this machine": an Ubuntu server emulated in Docker on the Mac. Shipped `scripts/local-server.sh` (up / status / logs / shell / stop / start / reset / ca). It runs the real installer into a systemd Ubuntu 24.04 container (native arm64; amd64 emulation breaks systemd's sandboxing on Apple Silicon). Console at https://os.ee.localhost, ports 80/443 → the box's Caddy, local CA. Installed clean with no owner, so the owner signs up first. A real VPS later uses the same installer with `--console-host <ip>.sslip.io` (owner's choice for the first domain).
+
+**Local limits**: GitHub webhooks can't reach a laptop, so on this machine auto-deploy on push won't fire; "Deploy latest" (outbound fetch) works. Certificates come from the box's local CA (trust it via `local-server.sh ca`).
+
+**Next**: owner signs up on the local server → onboarding → connects GitHub in Settings → Hosting → deploys the CEO's app; then the same on a real VPS.
 
 ## 2026-10-19 — PLANNED: phase-substrate — `ee`, the company's init system (architecture decision, no code)
 
