@@ -373,31 +373,80 @@ describe('BuiltinJsonLoop — tool call path', () => {
     expect(fx.completeCalls[1].messages.some((m) => m.content.includes('not available'))).toBe(true)
   })
 
-  it('fails the cycle loud when a tool handler errors with a non-approval error', async () => {
+  it('a handler error becomes a structured tool result; the run does not throw', async () => {
     const fx = makeFixture({
-      responses: ['{"tool":"testmod.boom","arguments":{}}'],
+      responses: ['{"tool":"testmod.boom","arguments":{}}', '{"answer":"I could not do that."}'],
       listings: [listing('testmod.boom', 'summary of testmod.boom')],
       executeTool: async () => {
         throw new Error('handler exploded')
       },
     })
 
-    await expect(fx.engine.run('session-1', 'go', fx.ctx)).rejects.toThrow(/handler exploded/)
+    expect(await fx.engine.run('session-1', 'go', fx.ctx)).toBe('I could not do that.')
+    const fed = fx.completeCalls[1].messages.map((m) => m.content).join('\n')
+    expect(fed).toContain('"status":"error"')
+    expect(fed).toContain('"code":"tool_failed"')
+    expect(fed).toContain('handler exploded')
   })
 
-  it('bubbles KernelErrors from executeTool other than approval_required (loud)', async () => {
+  it('a permission_denied KernelError becomes a structured tool result (not a throw)', async () => {
     const fx = makeFixture({
-      responses: ['{"tool":"testmod.gated","arguments":{}}'],
+      responses: ['{"tool":"testmod.gated","arguments":{}}', '{"answer":"not allowed"}'],
       listings: [listing('testmod.gated', 'summary of testmod.gated')],
       executeTool: async () => {
         throw new KernelError('permission_denied', 'principal cannot execute testmod.gated')
       },
     })
 
-    await expect(fx.engine.run('session-1', 'go', fx.ctx)).rejects.toMatchObject({
-      name: 'KernelError',
-      code: 'permission_denied',
+    expect(await fx.engine.run('session-1', 'go', fx.ctx)).toBe('not allowed')
+    const fed = fx.completeCalls[1].messages.map((m) => m.content).join('\n')
+    expect(fed).toContain('"code":"permission_denied"')
+  })
+
+  it('module_inactive comes back with kernel.module_activate remediation; the agent fixes and retries', async () => {
+    let active = false
+    const calls: string[] = []
+    const fx = makeFixture({
+      responses: [
+        '{"tool":"website.list_pages","arguments":{}}',
+        '{"tool":"kernel.module_activate","arguments":{"module_id":"website"}}',
+        '{"tool":"website.list_pages","arguments":{}}',
+        '{"answer":"You have a home page."}',
+      ],
+      listings: [listing('website.list_pages', 'list'), listing('kernel.module_activate', 'activate')],
+      executeTool: async (name: string) => {
+        calls.push(name)
+        if (name === 'kernel.module_activate') {
+          active = true
+          return { module_id: 'website', active: true }
+        }
+        if (!active) {
+          throw new KernelError(
+            'module_inactive',
+            'module website is not active; cannot execute website.list_pages',
+            { module: 'website', tool: 'website.list_pages' },
+          )
+        }
+        return [{ slug: 'home' }]
+      },
     })
+
+    expect(await fx.engine.run('session-1', 'pages?', fx.ctx)).toBe('You have a home page.')
+    expect(calls).toEqual(['website.list_pages', 'kernel.module_activate', 'website.list_pages'])
+    const fed = fx.completeCalls[1].messages.map((m) => m.content).join('\n')
+    expect(fed).toContain('"code":"module_inactive"')
+    expect(fed).toContain('"fix":"kernel.module_activate","input":{"module_id":"website"}')
+  })
+
+  it('an LLM gateway failure (infrastructure, not a tool result) still fails loud', async () => {
+    const fx = makeFixture({ responses: ['{"answer":"x"}'] })
+    const engine = new BuiltinJsonLoop({
+      sessionLog: new InMemoryAgentSessionLog(),
+      complete: async () => {
+        throw new Error('gateway down')
+      },
+    })
+    await expect(engine.run('session-1', 'go', fx.ctx)).rejects.toThrow(/gateway down/)
   })
 })
 

@@ -80,11 +80,14 @@ export type ProblemJson = {
 
 export class KernelError extends Error {
   readonly code: KernelErrorCode
+  /** Structured, machine-readable context (e.g. the inactive module id) — never parsed from the message. */
+  readonly details: Record<string, unknown> | undefined
 
-  constructor(code: KernelErrorCode, message: string) {
+  constructor(code: KernelErrorCode, message: string, details?: Record<string, unknown>) {
     super(message)
     this.name = 'KernelError'
     this.code = code
+    this.details = details
   }
 
   toProblemJson(): ProblemJson {

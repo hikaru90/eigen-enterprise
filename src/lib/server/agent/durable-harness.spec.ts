@@ -4,9 +4,14 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { z } from 'zod'
+import { createAdminTools, kernelManifest } from '$lib/kernel/admin-tools'
+import { InMemoryApprovalStore } from '$lib/kernel/approvals'
 import type { EngineContext } from '$lib/kernel/engine'
 import { DurableLoopEngine } from '$lib/kernel/engines/durable'
 import { KernelError } from '$lib/kernel/errors'
+import { InMemoryActivationStore, ModuleRegistry } from '$lib/kernel/modules'
+import { KernelRegistry } from '$lib/kernel/registry'
 import { InMemoryDurableConversationIndex } from './conversation-index'
 import {
   acquireAgentStateLock,
@@ -169,6 +174,90 @@ describe('durable engine over real pi-durable', () => {
     }
     expect(await engine.run('s1', 'publish', ctx)).toBe('pending approval')
     expect(JSON.stringify(seen[1]?.messages)).toContain('approval_pending')
+  })
+
+  it('module_inactive comes back as a tool result; the agent activates the module and retries', async () => {
+    const activations = new InMemoryActivationStore()
+    const modules = new ModuleRegistry(activations)
+    const registry = new KernelRegistry({ activationStore: activations })
+    modules.register(kernelManifest)
+    modules.register({ id: 'website', name: 'Website', version: '0.1.0', tools: ['website.list_pages'], permissions: { roles: ['admin'] } })
+    await activations.set('kernel', true)
+    const approvals = Object.assign(new InMemoryApprovalStore(), { list: async () => [] })
+    for (const tool of createAdminTools({ modules, activations, approvals })) registry.register(tool)
+    registry.register({
+      name: 'website.list_pages',
+      module: 'website',
+      summary: 'List pages',
+      auditClass: 'read',
+      inputSchema: z.object({}),
+      permission: { roles: ['admin'] },
+      handler: async () => [{ slug: 'home' }],
+    })
+    const principal = { id: 'orchestrator', kind: 'agent' as const, roles: ['admin', 'agent'] }
+    const ctx = {
+      agent: { id: 'orchestrator' },
+      llmUserId: 'alice',
+      listTools: () =>
+        ['website.list_pages', 'kernel.module_activate'].map((name) => ({
+          name,
+          summary: name,
+          inputJsonSchema: { type: 'object', properties: {} },
+        })),
+      executeTool: (name: string, input: unknown) => registry.execute(name, input, { principal, requestId: 'r1' }),
+    } as unknown as EngineContext
+    const { complete, seen } = scriptedGateway({
+      alice: [
+        { call: { name: 'website.list_pages', args: {} } },
+        { call: { name: 'kernel.module_activate', args: { module_id: 'website' } } },
+        { call: { name: 'website.list_pages', args: {} } },
+        { text: 'You have one page: home.' },
+      ],
+    })
+    const { engine } = engineFor(complete)
+    expect(await engine.run('s1', 'what pages do I have?', ctx)).toBe('You have one page: home.')
+    const afterFailure = JSON.stringify(seen[1]?.messages)
+    expect(afterFailure).toContain('module_inactive')
+    expect(afterFailure).toContain('kernel.module_activate')
+    expect(await activations.get('website')).toBe(true)
+    expect(JSON.stringify(seen[3]?.messages)).toContain('home')
+  })
+
+  it('handler and validation errors come back as structured tool results, secrets redacted', async () => {
+    const { complete, seen } = scriptedGateway({
+      alice: [{ call: { name: 'memory.echo', args: { text: 'x' } } }, { call: { name: 'memory.echo', args: { text: 'y' } } }, { text: 'could not' }],
+    })
+    const { engine } = engineFor(complete)
+    const ctx = engineCtx('alice', 'alice', [])
+    let calls = 0
+    ;(ctx as { executeTool: unknown }).executeTool = async () => {
+      calls++
+      if (calls === 1) throw new KernelError('invalid_input', 'bad args', { api_key: 'sk-live-123', field: 'text' })
+      z.object({ n: z.number() }).parse({ n: 'nope' })
+    }
+    expect(await engine.run('s1', 'x', ctx)).toBe('could not')
+    const first = JSON.stringify(seen[1]?.messages)
+    expect(first).toContain('invalid_input')
+    expect(first).not.toContain('sk-live-123')
+    expect(JSON.stringify(seen[2]?.messages)).toContain('invalid_input')
+  })
+
+  it('a non-tool infrastructure failure (harness) still fails loud', async () => {
+    const engine = new DurableLoopEngine({
+      harness: {
+        conversation: async () => {
+          throw new Error('durable storage unavailable')
+        },
+      },
+      instructions: 'You are a test agent.',
+    })
+    await expect(engine.run('s1', 'hi', engineCtx('alice', 'alice', []))).rejects.toThrow('durable storage unavailable')
+  })
+
+  it('a gateway failure mid-turn still fails the run (not a tool result)', async () => {
+    const { complete } = scriptedGateway({ alice: [] })
+    const { engine } = engineFor(complete)
+    await expect(engine.run('s1', 'hi', engineCtx('alice', 'alice', []))).rejects.toThrow()
   })
 
   it('remembers the conversation across turns (history comes from durable storage)', async () => {
