@@ -5,6 +5,7 @@
   import LogOut from '@lucide/svelte/icons/log-out'
   import Puzzle from '@lucide/svelte/icons/puzzle'
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw'
+  import Server from '@lucide/svelte/icons/server'
   import Settings from '@lucide/svelte/icons/settings'
   import Speech from '@lucide/svelte/icons/speech'
   import Volume2 from '@lucide/svelte/icons/volume-2'
@@ -106,6 +107,13 @@
     >
       <Puzzle class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
       Extensions
+    </a>
+    <a
+      href={resolve('/settings/hosting')}
+      class="flex items-center gap-2.5 rounded-sm px-2 py-1.5 text-sm text-foreground hover:bg-white/25 dark:hover:bg-white/10"
+    >
+      <Server class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
+      Hosting
     </a>
     <a
       href={resolve('/api-keys')}

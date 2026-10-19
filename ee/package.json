@@ -1,0 +1,21 @@
+{
+  "name": "@eigenenterprise/ee",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "ee — the company's init: one binary under systemd that reconciles the company repo into native, hardened systemd units (plan/phase-substrate.md).",
+  "license": "Apache-2.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "bundle": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/ee.mjs --banner:js=\"import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);\""
+  },
+  "dependencies": { "zod": "^4.1.0" },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

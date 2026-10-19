@@ -2,6 +2,53 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-19 (2) — SHIPPED (local box): `ee` installs eigenEnterprise on a fresh server; domains, apps and GitHub in Settings → Hosting
+
+**Owner goal**: deploy the first slice to a real VPS, keeping the onboarding exactly as it is; the website module, a GitHub connection and domains in Settings, plus everything else needed.
+
+**Shipped (verified end to end on a fresh Ubuntu 24.04 systemd box, `ee/e2e/box.sh`)**
+- **`ee/`**, the company's init (phase-substrate S0–S4 slice), as a standalone TS package bundled into one file:
+  - the contract: workload spec, `ee.json` app contract and catalog with `catalog_gap`;
+  - hardened unit generation;
+  - full Caddy config render and atomic load, with a local CA only for reserved test TLDs;
+  - the company repo (git, `ee` the only writer);
+  - an AES-GCM secret store;
+  - a level-triggered reconciler with blue-green slots, the health gate, keep-old-on-failure and no flapping;
+  - the control API on a unix socket;
+  - `bootstrap` (Postgres 16 + pgvector/pg_cron/AGE from PGDG, pg_net compiled, Caddy apt);
+  - boot-time env rendering (`ee-env.service`);
+  - `ee.json` for eigenEnterprise itself; `scripts/release.sh` (linux x64/arm64 tarballs, Docker used as a build tool only);
+  - `ee/install.sh` (pinned, checksum-verified Node 22 + `ee`, then bootstrap).
+- **Proven on the box**:
+  - fresh install → "Your company is running" in **37 s** (fast mirror; no build on the path);
+  - reboot → everything returns (env files re-rendered);
+  - changing the console host → blue-green redeploy of eigenEnterprise;
+  - a git app (fixture) builds in the sandbox, goes live at its domain, and gets a secret;
+  - a broken release fails its health gate and the old one keeps serving, reported loudly;
+  - the public host serves only the website surface (`/` → `/s/home`; `/login` and `/api/health` 404 at the edge).
+- **Browser journey** (`ee/e2e/box-journey.mjs`, Chromium) passes: owner signup → **onboarding boot sequence unchanged** → Settings → Hosting (managed) → add the public website domain → edge allowlist holds → a second signup is refused.
+- **eigenEnterprise side**:
+  - `/api/health` (DB ping), the health gate;
+  - kernel module **`substrate`** (status, domain add/remove, app remove, secret set) and module **`github`**:
+    - GitHub App manifest flow, sealed credentials (migration `0085_github_connection` + journal idx 85 + `github.schema.ts`);
+    - installation check, repos list, `app_create` / `app_deploy`;
+    - `auto_deploy`, run only by the signed webhook's service principal, for apps whose owner opted in;
+  - `/settings/hosting` (domains, GitHub, apps, secrets, activity) + a "Hosting" entry in the cog menu;
+  - shared `src/lib/server/ee/` (control client, `requireHuman`), so modules stay import-free of each other.
+
+**Decisions / deviations (on record; owner can veto)**
+- §8 recommendations implemented as defaults: hosting mutations are **human-only** (D11); Ubuntu 24.04 / Debian 13 only (`ee` refuses others); pre-DNS console host = `<ip>.sslip.io`.
+- **Postgres listens on 127.0.0.1 (scram), not a unix socket only.** Client libraries can't agree on a socket+credentials URL (postgres.js ignores `?host=`). CONNECT is revoked from PUBLIC on every database.
+- **Apps can reach loopback** (Caddy must reach their ports); binding is confined with `SocketBindAllow=tcp:<port>` instead of D5's `IPAddressDeny=localhost`.
+- **Single owner by construction**: the first signup becomes admin. On an ee-managed server (`EE_WORKLOAD` set) signup closes after that (`src/lib/server/auth/owner-policy.ts`).
+- `substrate` and `github` are self-seeded **system modules** (like `kernel`).
+- **Under ee, `EE_VCS_AUTOCOMMIT=0`** for eigenEnterprise: the release has no `.git`. Server changes are committed by ee in the company repo; kernel_events is the audit trail.
+- The release ships full `node_modules` (as the Dockerfile does): migration scripts import dev deps.
+
+**Not yet verified (needs the owner)**: a real VPS with real DNS + Let's Encrypt; the real GitHub App flow (manifest → install → webhook); the founding journey with a real LLM provider. Hosting the release for `curl | sh` (the repo is private) is undecided.
+
+**Next**: owner picks the VPS + domain → install there → connect GitHub → deploy the CEO's app.
+
 ## 2026-10-19 — PLANNED: phase-substrate — `ee`, the company's init system (architecture decision, no code)
 
 **Owner directives (same session):**

@@ -1,0 +1,9 @@
+# A disposable Ubuntu 24.04 "VPS" with systemd as PID 1, for testing `ee` installs
+# end to end on a dev machine. Test harness only — production boxes run no containers.
+FROM ubuntu:24.04
+ENV container=docker
+RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq systemd systemd-sysv dbus iproute2 curl ca-certificates xz-utils sudo >/dev/null \
+ && rm -f /etc/systemd/system/*.wants/* /lib/systemd/system/multi-user.target.wants/getty* \
+ && systemctl mask systemd-logind.service getty.target console-getty.service
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]

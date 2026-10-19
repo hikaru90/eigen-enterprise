@@ -1,13 +1,16 @@
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { betterAuth } from 'better-auth/minimal'
 import { sveltekitCookies } from 'better-auth/svelte-kit'
+import { count } from 'drizzle-orm'
 import { dev } from '$app/environment'
 import { getRequestEvent } from '$app/server'
 import { resolveAccountKindForNewUser } from '$lib/auth/account-kind'
 import { syncOwleryContactForVerifiedUser } from '$lib/server/auth-owlery-sync'
 import { buildSocialProvidersConfig, listEnabledSocialProviderIds } from '$lib/server/auth-social'
 import { normalizeUserNameFields } from '$lib/server/auth-user-name'
+import { ownerPolicyForNewUser } from '$lib/server/auth/owner-policy'
 import { authDb } from '$lib/server/db/auth-db'
+import { user as userTable } from '$lib/server/db/auth.schema'
 import { recordVerificationLink } from '$lib/server/e2e/verification-link-store'
 import { env } from '$lib/server/env/private-env'
 import { isOwleryMailConfigured, sendTransactionalEmail } from '$lib/server/owlery/mail'
@@ -196,13 +199,19 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
-        before: async (user) => ({
-          data: {
-            ...user,
-            ...normalizeUserNameFields(user),
-            accountKind: resolveAccountKindForNewUser(String(user.email ?? '')),
-          },
-        }),
+        before: async (user) => {
+          const [{ n }] = await authDb.select({ n: count() }).from(userTable)
+          // ee sets EE_WORKLOAD on every workload it runs (ee/src/units.ts).
+          const { role } = ownerPolicyForNewUser({ existingUsers: Number(n), managedByEe: Boolean(env.EE_WORKLOAD) })
+          return {
+            data: {
+              ...user,
+              ...normalizeUserNameFields(user),
+              role,
+              accountKind: resolveAccountKindForNewUser(String(user.email ?? '')),
+            },
+          }
+        },
         after: async (user) => {
           await syncOwleryContactForVerifiedUser(user)
         },

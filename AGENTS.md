@@ -45,3 +45,4 @@
 - `src/lib/server/` — existing eigen services being promoted into modules (memory, owlery client, llm, job-queue, mcp)
 - `modules/` — module manifests + implementations (baseline: website, orchestrator/agent, chat-gateway, memory, email)
 - `drizzle/` — SQL migrations + journal (see guardrails)
+- `ee/` — the company's init (plan/phase-substrate.md): one bundled binary under systemd that installs and runs eigenEnterprise and apps on a server; `ee/e2e/` holds the local systemd test box + browser journey

@@ -59,3 +59,4 @@ opencode.json
 company-os/.svelte-kit/
 company-os/node_modules/
 company-os/build/
+/dist

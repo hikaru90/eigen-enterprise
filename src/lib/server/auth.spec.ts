@@ -34,8 +34,10 @@ vi.mock('$app/server', () => ({
   getRequestEvent: vi.fn(),
 }))
 
+/** Users already in the instance when a new one signs up (owner policy input). */
+let existingUserCount = 0
 vi.mock('$lib/server/db/auth-db', () => ({
-  authDb: {},
+  authDb: { select: () => ({ from: async () => [{ n: existingUserCount }] }) },
 }))
 
 vi.mock('$lib/server/owlery/mail', () => ({
@@ -332,6 +334,16 @@ describe('auth config', () => {
     const result = await config.databaseHooks.user.create.before({ email: 'x@y.com' })
     expect(resolveAccountKindMock).toHaveBeenCalledWith('x@y.com')
     expect(result.data.accountKind).toBe('eval')
+  })
+
+  it('databaseHooks before makes the first user the owner (admin), later ones users', async () => {
+    await loadAuth()
+    const config = lastConfig()
+    existingUserCount = 0
+    expect((await config.databaseHooks.user.create.before({ email: 'owner@y.com' })).data.role).toBe('admin')
+    existingUserCount = 2
+    expect((await config.databaseHooks.user.create.before({ email: 'second@y.com' })).data.role).toBe('user')
+    existingUserCount = 0
   })
 
   it('databaseHooks after creates an owlery contact when email is verified', async () => {

@@ -10,6 +10,7 @@ export type ExtendedPrivateEnv = typeof kitEnv & {
   CAPTURE_ENRICH_CONCURRENCY?: string
   CONSOLIDATION_CRON_TZ?: string
   DB_POOL_MAX?: string
+  EE_WORKLOAD?: string
   ERPNEXT_API_KEY?: string
   ERPNEXT_API_SECRET?: string
   ERPNEXT_BASE_URL?: string

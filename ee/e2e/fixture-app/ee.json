@@ -1,0 +1,7 @@
+{
+  "runtime": "node",
+  "node": "22",
+  "build": [["node", "build.mjs"]],
+  "start": ["node", "dist/server.mjs"],
+  "health": "/healthz"
+}

@@ -1,0 +1,15 @@
+{
+  "runtime": "node",
+  "node": "22",
+  "start": ["node", "build/index.js"],
+  "preStart": [
+    ["node", "scripts/ensure-extensions.mjs"],
+    ["node", "scripts/ensure-app-role.mjs"],
+    ["node", "scripts/verify-age-graph-role.mjs"],
+    ["node", "scripts/migrate.mjs"],
+    ["node", "scripts/apply-rls.mjs"],
+    ["node", "scripts/bootstrap-production-ops.mjs"]
+  ],
+  "health": "/api/health",
+  "services": ["postgres"]
+}
