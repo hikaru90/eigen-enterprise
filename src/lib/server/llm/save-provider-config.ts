@@ -6,6 +6,7 @@ import {
   userPreference,
   type BillingMode,
 } from '$lib/server/db/schema'
+import { engineForProvider } from '../../../../modules/orchestrator/engine-choice'
 
 /** Widened with phase-2a: any models.dev catalog id or 'github_copilot'. */
 export type LlmProviderId = string
@@ -103,6 +104,8 @@ export async function saveProviderConfig(input: SaveProviderConfigInput): Promis
     ruleEmbedding: input.ruleEmbedding?.trim() || null,
     modelChat: input.modelChat?.trim() || null,
     modelEmbedding: input.modelEmbedding?.trim() || null,
+    // Explicit, recorded engine choice for this provider (no silent switching later).
+    orchestratorEngine: engineForProvider(input.provider).engine,
   }
 
   await db

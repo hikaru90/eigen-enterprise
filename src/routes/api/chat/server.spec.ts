@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { LlmNotConfiguredError } from '$lib/server/llm/errors'
 
-const { bootAppMock, runtimeDispatchMock, getDbMock, appSqlMock, createScopedDrizzleMock } =
+const { bootAppMock, runtimeDispatchMock, handoffDispatchMock, getDbMock, appSqlMock, createScopedDrizzleMock } =
   vi.hoisted(() => ({
     bootAppMock: vi.fn(),
     runtimeDispatchMock: vi.fn(),
+    handoffDispatchMock: vi.fn(),
     getDbMock: vi.fn(),
     appSqlMock: {
       reserve: vi.fn(),
@@ -117,12 +118,15 @@ async function readNdjsonLines(res: Response) {
 describe('POST /api/chat — harness dispatch', () => {
   beforeEach(() => {
     runtimeDispatchMock.mockReset()
+    handoffDispatchMock.mockReset()
     bootAppMock.mockReset()
     getDbMock.mockReset()
     appSqlMock.reserve.mockReset()
     createScopedDrizzleMock.mockReset()
     bootAppMock.mockResolvedValue({
-      orchestrator: { runtime: { dispatch: runtimeDispatchMock } },
+      orchestrator: {
+        runtime: { dispatch: runtimeDispatchMock, dispatchOnboardingHandoff: handoffDispatchMock },
+      },
     })
     getDbMock.mockReturnValue(buildMainDb())
     const streamDb = buildStreamDb()
@@ -140,6 +144,35 @@ describe('POST /api/chat — harness dispatch', () => {
       POST({
         locals: { user: { id: 'u1' } },
         request: ndjsonRequest({ bootstrap: true }),
+      } as never),
+    ).rejects.toMatchObject({ status: 400 })
+  })
+
+  it('onboarding hand-off: the agent speaks first — no user message, the runtime hand-off dispatch', async () => {
+    const { POST } = await import('./+server')
+    handoffDispatchMock.mockResolvedValue('You did it. Website first?')
+
+    const res = await POST({
+      locals: { user: { id: 'u1' } },
+      request: ndjsonRequest({ bootstrap: true, onboardingHandoff: true }),
+    } as never)
+
+    const lines = await readNdjsonLines(res)
+    expect(runtimeDispatchMock).not.toHaveBeenCalled()
+    expect(handoffDispatchMock).toHaveBeenCalledTimes(1)
+    const [sessionId, sinks, dispatchOptions] = handoffDispatchMock.mock.calls[0]
+    expect(sessionId).toBe(SESSION_ID)
+    expect(typeof sinks.stream).toBe('function')
+    expect(dispatchOptions).toEqual({ llmUserId: 'u1' })
+    expect(lines.at(-1)).toMatchObject({ type: 'done', response: 'You did it. Website first?' })
+  })
+
+  it('rejects onboardingHandoff without bootstrap (it is never user speech)', async () => {
+    const { POST } = await import('./+server')
+    await expect(
+      POST({
+        locals: { user: { id: 'u1' } },
+        request: ndjsonRequest({ message: 'hi', onboardingHandoff: true }),
       } as never),
     ).rejects.toMatchObject({ status: 400 })
   })

@@ -21,6 +21,12 @@ import { selectToolSurface } from './tool-surface'
 export type DispatchOptions = {
   /** The conversing human's id: their BYOK provider config pays, their spend accrues. */
   llmUserId?: string
+  /**
+   * Engine for THIS dispatch, overriding agent.loopEngine — set by a caller
+   * that made an explicit, recorded choice (the orchestrator's per-provider
+   * engine). Must be registered; fails loud otherwise.
+   */
+  loopEngine?: LoopEngineId
 }
 
 export type AgentRuntimeOptions = {
@@ -121,11 +127,12 @@ export class AgentRuntime {
     if (!agent.enabled) {
       throw new KernelError('agent_disabled', `agent ${agentId} is disabled`)
     }
-    const engine = this.engines.get(agent.loopEngine)
+    const engineId = options?.loopEngine ?? agent.loopEngine
+    const engine = this.engines.get(engineId)
     if (!engine) {
       throw new KernelError(
         'unknown_engine',
-        `agent ${agentId} references unregistered loop engine "${agent.loopEngine}"`,
+        `agent ${agentId} references unregistered loop engine "${engineId}"`,
       )
     }
 

@@ -2,6 +2,32 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-19 (6) — SHIPPED (branch, not merged): assisted onboarding — the agent takes over after the scripted setup
+
+**What shipped**
+- The scripted first turn in the nucleus chat is gone. When the welcome wizard finishes, the page calls `POST /api/chat` with `{ bootstrap: true, onboardingHandoff: true }`. The orchestrator agent then writes the first turn itself, from an onboarding context block and a hand-off instruction in the owner's spirit ("You did it — your company is set up and you're its admin. What should we build first? I'd suggest your website…").
+- `modules/orchestrator/onboarding-context.ts` holds the facts, the context block, the hand-off instruction and the start-marker protocol. The block lists what is done (admin account, company email, AI provider) and what comes next (the website, then the other modules). `JourneyAwareAgentRuntime` prepends it to the user input on every orchestrator turn while assisted onboarding is active, so both engines see the same thing. Persona gains `ORCHESTRATOR_ONBOARDING_PROMPT`.
+- The website journey is no longer opened by `POST /api/onboarding/welcome`. The agent opens it when the owner agrees, by appending the exact `[[onboarding:website:start]]` token; the runtime only parses that token. The journey starts empty, so the owner's "yes" is never captured as the company name. From there the journey drives as before.
+- DB facts: `src/lib/server/onboarding/assisted.ts`, wired in `boot.ts`.
+
+**Decision log (architecture impact)**
+- **Orchestrator engine = an explicit per-provider choice, recorded at connect time.** Amends phase-durable D6.
+  - Migration `0088_provider_orchestrator_engine` adds `llm_provider_config.orchestrator_engine` (NOT NULL, CHECK `builtin-json|durable`). Existing rows are backfilled to `builtin-json`, so behaviour is unchanged until a provider is re-connected.
+  - `engineForProvider` sets the value on every connect: OpenAI-compatible providers get `durable`; the API-shape subscription sign-ins (`anthropic`, `openai_codex`) can't carry tool calls and get `builtin-json`.
+  - Each dispatch runs the engine recorded for the conversing user's **active** provider, passed via the new `DispatchOptions.loopEngine`.
+  - `EE_ORCHESTRATOR_ENGINE` becomes an operator pin over that choice (rollback lever). It is unset by default.
+  - With no BYOK provider (platform billing, or Telegram turns with no human), the engine of record (`builtin-json`) runs.
+  - There is no fallback between engines on failure: a durable failure fails loud.
+  - Why per provider and not per company: BYOK credentials are per user, and the engine must match the provider that actually serves the turn. A company-wide flag could put a subscription user on durable, where the gateway fails loud on tools.
+- Durable state in local dev needs `EE_AGENT_STATE_DIR` (`.env.example`, playwright webServer env). Without it, a durable dispatch fails loud by design (D2).
+
+**Open / next**
+- Not run: e2e (`onboarding-welcome`, `journey-founding` updated to the hand-off), and a real-LLM check of the hand-off wording and marker discipline.
+- Boot warm-up (crash-resume) still runs only under the `durable` operator pin. Per-provider durable turns resume lazily on the next durable dispatch.
+- A user who switches providers mid-conversation switches engines. Durable history lives in SQLite and builtin-json history in session events, so context does not carry across the switch.
+- `openWebsiteFoundingJourney` (`founding.ts`) is now unused by the welcome route. It is kept with its tests; remove it or reuse it.
+- Migration number 0088 may collide with parallel branches; renumber at merge.
+
 ## 2026-10-19 (5) — SHIPPED: claim link + email set up in the onboarding (no secrets in env)
 
 **Owner directive**: a non-technical user never touches a terminal, env file or config. Keys users bring (email included) are entered in the onboarding and stored in the database. The first person with access to the server becomes the admin, via a private claim link.

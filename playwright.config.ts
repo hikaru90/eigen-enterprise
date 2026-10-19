@@ -42,6 +42,9 @@ export default defineConfig({
             OAUTH_ANTHROPIC_API_BASE_URL: `${mockGatewayUrl}/claude`,
             OAUTH_OPENAI_AUTH_BASE_URL: `${mockGatewayUrl}/openai`,
             OAUTH_OPENAI_CODEX_BASE_URL: mockGatewayUrl,
+            // OpenAI-compatible providers run the orchestrator on the durable engine
+            // (engine-choice.ts): its SQLite state needs an explicit dir (fails loud otherwise).
+            EE_AGENT_STATE_DIR: process.env.EE_AGENT_STATE_DIR ?? path.resolve('test-results/ee-agent-state'),
           },
           env: {
             ...process.env,
@@ -77,6 +80,9 @@ export default defineConfig({
             OAUTH_ANTHROPIC_API_BASE_URL: `${mockGatewayUrl}/claude`,
             OAUTH_OPENAI_AUTH_BASE_URL: `${mockGatewayUrl}/openai`,
             OAUTH_OPENAI_CODEX_BASE_URL: mockGatewayUrl,
+            // OpenAI-compatible providers run the orchestrator on the durable engine
+            // (engine-choice.ts): its SQLite state needs an explicit dir (fails loud otherwise).
+            EE_AGENT_STATE_DIR: process.env.EE_AGENT_STATE_DIR ?? path.resolve('test-results/ee-agent-state'),
           },
         },
         {

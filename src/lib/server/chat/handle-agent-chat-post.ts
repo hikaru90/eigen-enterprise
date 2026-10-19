@@ -143,6 +143,8 @@ export type AgentChatPostBody = {
   mode?: unknown
   bootstrap?: unknown
   briefingPeriod?: unknown
+  /** Assisted-onboarding hand-off bootstrap (POST /api/chat only). */
+  onboardingHandoff?: unknown
 }
 
 /**
