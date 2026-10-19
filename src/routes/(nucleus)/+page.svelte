@@ -35,17 +35,14 @@ import { cancelSpeak, speak } from '$lib/speech/tts'
   let sessionId = $state<string | null>(null)
   let abortController: AbortController | null = null
 
-  /** Seeded by the boot sequence's handoff: the agent's first words, before any LLM call.
-   *  Asks the founding journey's FIRST step question — the journey drives the rest. */
-  let seededGreeting = $state<string | null>(null)
-
-  function handleOnboardingComplete(detail: { name: string | null }): void {
-    const name = detail.name ? `, ${detail.name}` : ''
-    seededGreeting =
-      `Hello${name}. Your company's OS is getting set up — that happens by talking. ` +
-      `So, first: what's your company called?`
-    speak(seededGreeting)
-    appendEntry(assistantTurnFromResponse(seededGreeting))
+  /**
+   * Assisted onboarding: when the scripted first run ends, the orchestrator
+   * AGENT takes over — its first turn is generated server-side from the
+   * onboarding context (POST /api/chat, onboardingHandoff), not scripted here.
+   * Explicit event from the wizard; no prop-watching.
+   */
+  function handleOnboardingComplete(): void {
+    void sendStreaming({ bootstrap: true, onboardingHandoff: true })
   }
 
   let inputEl = $state<HTMLInputElement | undefined>(undefined)
@@ -76,13 +73,16 @@ import { cancelSpeak, speak } from '$lib/speech/tts'
     scrollToBottom()
   }
 
-  async function sendStreaming(text: string) {
+  type ChatRequestBody =
+    | { message: string; sessionId?: string }
+    | { bootstrap: true; onboardingHandoff: true; sessionId?: string }
+
+  async function sendStreaming(request: ChatRequestBody) {
     busy = true
     status = null
     scrollToBottom()
 
-    const body: { message: string; sessionId?: string } = { message: text }
-    if (sessionId) body.sessionId = sessionId
+    const body: ChatRequestBody = sessionId ? { ...request, sessionId } : request
 
     const ac = new AbortController()
     abortController = ac
@@ -153,7 +153,7 @@ import { cancelSpeak, speak } from '$lib/speech/tts'
     voiceStopFn?.()
     input = ''
     appendEntry(userTurn(text))
-    void sendStreaming(text)
+    void sendStreaming({ message: text })
   }
 
   function stop() {

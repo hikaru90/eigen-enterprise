@@ -60,3 +60,6 @@ company-os/.svelte-kit/
 company-os/node_modules/
 company-os/build/
 /dist
+
+# durable agent state (local dev)
+.ee-agent-state

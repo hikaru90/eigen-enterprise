@@ -30,12 +30,19 @@ export const POST: RequestHandler = async (event) => {
 
   const bootstrap = b.bootstrap === true
   const briefingPeriod = typeof b.briefingPeriod === 'string' ? b.briefingPeriod.trim() : ''
+  // Assisted-onboarding hand-off: the agent's first turn after the scripted
+  // setup. Always a bootstrap (no user speech); the runtime builds the input.
+  const onboardingHandoff = b.onboardingHandoff === true
 
-  if (bootstrap && !briefingPeriod) {
+  if (onboardingHandoff && !bootstrap) {
+    error(400, 'onboardingHandoff requires bootstrap')
+  }
+
+  if (bootstrap && !onboardingHandoff && !briefingPeriod) {
     error(400, 'bootstrap requires briefingPeriod')
   }
 
-  if (bootstrap && briefingPeriod && !BRIEFING_BOOTSTRAP_MESSAGES[briefingPeriod]) {
+  if (bootstrap && !onboardingHandoff && briefingPeriod && !BRIEFING_BOOTSTRAP_MESSAGES[briefingPeriod]) {
     error(400, 'Invalid briefingPeriod')
   }
 
@@ -45,10 +52,14 @@ export const POST: RequestHandler = async (event) => {
     sessionMode: 'default',
     logTag: 'api/chat',
     dispatch: (sessionId, message, sinks, userId) =>
-      boot.orchestrator.runtime.dispatch(ORCHESTRATOR_AGENT_ID, sessionId, message, sinks, {
-        llmUserId: userId,
-      }),
+      onboardingHandoff
+        ? boot.orchestrator.runtime.dispatchOnboardingHandoff(sessionId, sinks, { llmUserId: userId })
+        : boot.orchestrator.runtime.dispatch(ORCHESTRATOR_AGENT_ID, sessionId, message, sinks, {
+            llmUserId: userId,
+          }),
     resolveAgentUserMessage: ({ bootstrap, message, briefingPeriod: period }) => {
+      // The hand-off input is assembled by the runtime (onboarding context + instruction).
+      if (onboardingHandoff) return ''
       if (bootstrap && period && BRIEFING_BOOTSTRAP_MESSAGES[period]) {
         return BRIEFING_BOOTSTRAP_MESSAGES[period]
       }

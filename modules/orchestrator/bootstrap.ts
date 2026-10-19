@@ -1,9 +1,9 @@
+import type { OnboardingFactsResolver } from './onboarding-context'
 import {
   agentAdminManifest,
   AGENT_ADMIN_MODULE_ID,
   createAgentAdminTools,
 } from '$lib/kernel/agent-admin'
-import type { AgentRuntime } from '$lib/kernel/agent-runtime'
 import type { LoopEngine } from '$lib/kernel/engine'
 import type { LlmCompleteFn } from '$lib/kernel/engines/builtin-json'
 import type { AllowlistStore, SessionStore } from '$lib/kernel/gateway'
@@ -17,7 +17,7 @@ import {
   ORCHESTRATOR_PRINCIPAL,
   WEBSITE_FOUNDING_JOURNEY,
 } from './brain'
-import { orchestratorEngineFromEnv } from './engine-choice'
+import { orchestratorEnginePinFromEnv, type OrchestratorEngineId } from './engine-choice'
 import { createTelegramLoop, type TelegramGatewayLike, type TelegramLoopHandle } from './loop'
 
 /**
@@ -50,7 +50,7 @@ export type OrchestratorGatewayStage = {
 export type OrchestratorBoot = {
   kernel: WiredKernel
   /** The harness runtime hosting the orchestrator as one agent config. */
-  runtime: AgentRuntime
+  runtime: JourneyAwareAgentRuntime
   brain: OrchestratorBrain
   /** Null while the chat-gateway module is inactive. */
   gateway: TelegramGatewayLike | null
@@ -65,7 +65,7 @@ export type OrchestratorBootOptions = {
   /** Start the Telegram poll loop immediately (default true; tests pass false). */
   startLoop?: boolean
   /** Overrides the harness runtime (tests inject an in-memory one). */
-  runtime?: AgentRuntime
+  runtime?: JourneyAwareAgentRuntime
   /** Overrides the orchestrator engine's completion call (tests inject fakes; never a real LLM). */
   complete?: LlmCompleteFn
   /** Environment for boot-time config (spend cap). Defaults to process.env. */
@@ -82,6 +82,10 @@ export type OrchestratorBootOptions = {
    * in-flight journey); the composition root injects the DB-backed store.
    */
   journeys?: JourneyStore
+  /** Assisted-onboarding facts (DB-backed in the composition root). Absent = hand-off never active. */
+  onboardingFacts?: OnboardingFactsResolver
+  /** Engine recorded at provider connect time for a user's active provider (composition root wires the DB). */
+  recordedEngineFor?: (llmUserId: string) => Promise<OrchestratorEngineId | null>
 }
 
 /**
@@ -123,6 +127,10 @@ export async function bootstrapOrchestrator(
   // around dispatch for the orchestrator agent only (pure passthrough for
   // every other agent). Journeys default in-memory; boot.ts injects the
   // DB-backed store for production.
+  // Engine choice (engine-choice.ts): the operator pin, else per dispatch the
+  // engine recorded for the conversing user's provider. The agent config's
+  // loopEngine is what runs when neither applies (the engine of record).
+  const enginePin = orchestratorEnginePinFromEnv(env)
   const runtime =
     options.runtime ??
     new JourneyAwareAgentRuntime({
@@ -132,6 +140,9 @@ export async function bootstrapOrchestrator(
       rolesFor: () => ORCHESTRATOR_PRINCIPAL.roles,
       journeys: options.journeys ?? new InMemoryJourneyStore(),
       spec: WEBSITE_FOUNDING_JOURNEY,
+      enginePin,
+      ...(options.onboardingFacts ? { onboardingFacts: options.onboardingFacts } : {}),
+      ...(options.recordedEngineFor ? { recordedEngineFor: options.recordedEngineFor } : {}),
     })
   runtime.registerEngine(
     'builtin-json',
@@ -144,7 +155,7 @@ export async function bootstrapOrchestrator(
     runtime.registerEngine(id, engine)
   }
   runtime.registerAgent(
-    orchestratorAgentConfig({ spendCapUsd: spendCapUsdFromEnv(env), loopEngine: orchestratorEngineFromEnv(env) }),
+    orchestratorAgentConfig({ spendCapUsd: spendCapUsdFromEnv(env), loopEngine: enginePin ?? 'builtin-json' }),
   )
 
   const brain = new OrchestratorBrain({ runtime })

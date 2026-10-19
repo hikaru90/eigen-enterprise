@@ -17,7 +17,7 @@ import {
   type OrchestratorStatus,
 } from '../../../modules/orchestrator/bootstrap'
 import { ORCHESTRATOR_PERSONA_PROMPT } from '../../../modules/orchestrator/brain'
-import { orchestratorEngineFromEnv } from '../../../modules/orchestrator/engine-choice'
+import { orchestratorEnginePinFromEnv } from '../../../modules/orchestrator/engine-choice'
 
 /**
  * Startup composition root (phase-1b): kernel → orchestrator (the harness
@@ -155,8 +155,16 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
       ['durable', durable.engine],
     ],
     journeys,
+    // Assisted onboarding + the recorded per-provider engine choice (lazy DB
+    // imports, like the journey store: boot itself stays DB-free).
+    onboardingFacts: async (llmUserId) =>
+      (await import('$lib/server/onboarding/assisted')).onboardingFactsFor(llmUserId),
+    recordedEngineFor: async (userId) =>
+      (await import('$lib/server/onboarding/assisted')).recordedOrchestratorEngineFor(userId),
   })
-  if (orchestratorEngineFromEnv(env) === 'durable' && !building) {
+  // Warm-up (crash-resume) at boot only when the operator pinned durable; with
+  // per-provider choice the harness lazy-opens on the first durable dispatch (D3).
+  if (orchestratorEnginePinFromEnv(env) === 'durable' && !building) {
     void durable.warmUp().catch((err: unknown) => {
       console.error('[durable] could not open the agent harness at boot:', err)
     })

@@ -11,6 +11,7 @@ export type KernelErrorCode =
   | 'agent_disabled'
   | 'duplicate_agent'
   | 'unknown_engine'
+  | 'onboarding_inactive'
   | 'duplicate_engine'
   | 'budget_exceeded'
 
@@ -29,6 +30,7 @@ const KNOWN_CODES: readonly KernelErrorCode[] = [
   'unknown_engine',
   'duplicate_engine',
   'budget_exceeded',
+  'onboarding_inactive',
 ]
 
 /** Exhaustive per code — adding a KernelErrorCode without a title is a type error. */
@@ -47,11 +49,13 @@ const PROBLEM_TITLES: Record<KernelErrorCode, string> = {
   unknown_engine: 'Unknown loop engine',
   duplicate_engine: 'Duplicate loop engine',
   budget_exceeded: 'Spend budget exceeded',
+  onboarding_inactive: 'Onboarding hand-off not active',
 }
 
 const PROBLEM_STATUS: Partial<Record<KernelErrorCode, number>> = {
   invalid_input: 400,
   invalid_output: 400,
+  onboarding_inactive: 409,
   unknown_tool: 404,
   permission_denied: 403,
   module_inactive: 403,

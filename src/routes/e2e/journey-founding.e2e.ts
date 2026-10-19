@@ -117,7 +117,8 @@ async function finishBootWithProvider(page: Page, name: string): Promise<void> {
   const begin = page.getByRole('button', { name: 'Begin' })
   await expect(begin).toBeVisible({ timeout: 20_000 })
   await begin.click()
-  await expect(page.getByText(/what's your company called\?/)).toBeVisible({ timeout: 15_000 })
+  // Assisted onboarding: the agent's own first turn (mock gateway text).
+  await conversationLog(page)
 }
 
 async function sendHomepageMessage(page: Page, text: string): Promise<void> {
@@ -153,35 +154,19 @@ test.describe('website-founding journey (live)', () => {
     await expect(page.getByPlaceholder('What do you need?')).toBeVisible({ timeout: 15_000 })
 
     // The 2026-09-10 legacy shape: active, pre-versioning, mid-interview.
-    // The wizard skip above already completes onboarding and OPENS a fresh
-    // journey (one active row per kind, company-wide) — wait for that POST to
-    // land, then shape its row into the legacy pre-versioning state instead
-    // of planting a second one.
-    let openRow: { id: string }[] = []
-    await expect
-      .poll(
-        async () => {
-          openRow = await sql()`
-            select id from kernel_journeys
-            where kind = 'website_founding' and status = 'active'
-            limit 1
-          `
-          return openRow.length
-        },
-        { timeout: 15_000, intervals: [250, 500, 1000] },
-      )
-      .toBe(1)
-    const journeyId = openRow[0].id
-    await sql()`
-      update kernel_journeys
-      set state = ${sql().json({
+    // (Skipping the tour no longer opens a journey — the agent opens it on the
+    // owner's yes — so the legacy row is planted directly.)
+    const openRow = await sql()`
+      insert into kernel_journeys (kind, status, state)
+      values ('website_founding', 'active', ${sql().json({
         stepIndex: 1,
         answers: { company_name: 'Legacy Haus' },
         captured: ['company_name'],
         artifacts: [],
-      })}::jsonb
-      where id = ${journeyId}
+      })}::jsonb)
+      returning id
     `
+    const journeyId = openRow[0].id as string
 
     await sendHomepageMessage(page, 'hi')
     const log = await conversationLog(page)
@@ -217,15 +202,21 @@ test.describe('website-founding journey (live)', () => {
     await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
     await finishBootWithProvider(page, 'Ada')
 
-    // The handoff opened the founding journey, empty, under the current spec.
-    const rows = await sql()`
-      select id, state from kernel_journeys
-      where kind = 'website_founding' and status = 'active'
-      order by created_at desc limit 1
+    // The hand-off opens no journey by itself (the agent opens it on the
+    // owner's yes via its start marker — unit-pinned in brain.onboarding.spec):
+    // plant an active current-spec row as if the owner had agreed.
+    const before = await sql()`
+      select id from kernel_journeys where kind = 'website_founding' and status = 'active'
     `
-    expect(rows).toHaveLength(1)
+    expect(before).toHaveLength(0)
+    const rows = await sql()`
+      insert into kernel_journeys (kind, status, state)
+      values ('website_founding', 'active', ${sql().json({
+        stepIndex: 0, answers: {}, captured: [], artifacts: [], specVersion: 2,
+      })}::jsonb)
+      returning id
+    `
     const journeyId = rows[0].id as string
-    expect(asState(rows[0].state).specVersion).toBe(2)
 
     // The corruption the owner hit: the pages EXIST (an earlier flow created
     // them) while the current spec's ledger has no record — every turn

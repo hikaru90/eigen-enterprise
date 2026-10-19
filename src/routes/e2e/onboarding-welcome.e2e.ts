@@ -154,17 +154,16 @@ test.describe('welcome boot sequence', () => {
     await expect(page.getByRole('button', { name: 'Begin' })).toBeVisible({ timeout: 20_000 })
     await page.getByRole('button', { name: 'Begin' }).click()
 
-    // Handoff: the agent's first words are already there — seeded, personal,
-    // honest. The greeting goes to the GATEWAY for its voice (the Her layer);
+    // Assisted onboarding: the orchestrator AGENT speaks first (its turn comes
+    // from the onboarding context, here the mock gateway's text) — no scripted
+    // greeting. The turn goes to the GATEWAY for its voice (the Her layer);
     // the browser's robot voice never speaks.
     await expectChatVisible(page)
-    await expect(
-      page.getByText(/Hello, Ada\. Your company's OS is getting set up/),
-    ).toBeVisible()
-    await expect(page.getByText(/what's your company called\?/)).toBeVisible()
+    await expect(page.getByText(/Hello from mock gateway/i)).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText(/getting set up/)).toHaveCount(0)
     await expect
       .poll(async () => tts.texts.join(' '), { timeout: 15_000 })
-      .toContain('getting set up')
+      .toMatch(/Hello from mock gateway/i)
     const spokenByRobot = await page.evaluate(
       () => (window as unknown as { __ttsSpoken: string[] }).__ttsSpoken,
     )

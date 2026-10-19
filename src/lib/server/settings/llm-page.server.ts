@@ -18,6 +18,7 @@ import {
   type LlmProviderId,
 } from '$lib/server/llm/save-provider-config'
 import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
+import { engineForProvider } from '../../../../modules/orchestrator/engine-choice'
 
 export type { LlmProviderId } from '$lib/server/llm/save-provider-config'
 
@@ -250,6 +251,7 @@ export const llmSettingsActions: Actions = {
                 ? env.OPENROUTER_API_KEY?.trim() || 'placeholder'
                 : env.LLM_API_KEY?.trim() || 'placeholder',
             ...updateData,
+            orchestratorEngine: engineForProvider(provider).engine,
           })
           .onConflictDoUpdate({
             target: [llmProviderConfig.userId, llmProviderConfig.provider],
