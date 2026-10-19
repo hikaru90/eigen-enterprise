@@ -1,12 +1,16 @@
 import type { RequestHandler } from './$types'
 import { json } from '@sveltejs/kit'
 import { isUserAdmin } from '$lib/server/auth/user-role'
-import { companyMail } from '$lib/server/mail'
+import { companyMail, MailSetupError, SenderNotVerifiedError } from '$lib/server/mail'
 
 /**
  * The onboarding's email step (and Settings → Email): the owner enters their
- * Owlery details; a real test email goes to the owner's own address first, and
- * the settings are stored (key sealed) only if it went through.
+ * Amazon SES details. A real test email goes to the owner's own address first;
+ * the settings are stored (secret sealed) only if it went through.
+ *
+ *   200 { ok: true, testSentTo }
+ *   409 { error, needs: 'verify_sender', emailFrom }  — click Amazon's link, then retry
+ *   400 { error }                                     — anything else
  */
 export const POST: RequestHandler = async (event) => {
   const user = event.locals.user
@@ -23,15 +27,20 @@ export const POST: RequestHandler = async (event) => {
 
   try {
     await companyMail().saveVerified({
-      baseUrl: field('baseUrl'),
-      apiKey: field('apiKey'),
+      region: field('region'),
+      accessKeyId: field('accessKeyId'),
+      secretAccessKey: field('secretAccessKey'),
       emailFrom: field('emailFrom'),
-      contactBookId: field('contactBookId') || null,
       testRecipient: user.email,
       updatedBy: user.id,
     })
   } catch (err) {
-    return json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
+    if (err instanceof SenderNotVerifiedError) {
+      return json({ error: err.message, needs: 'verify_sender', emailFrom: err.emailFrom }, { status: 409 })
+    }
+    if (err instanceof MailSetupError) return json({ error: err.message }, { status: 400 })
+    console.error('[onboarding/mail] email setup failed', { userId: user.id, error: err instanceof Error ? err.message : String(err) })
+    return json({ error: 'Email setup failed unexpectedly. Please try again.' }, { status: 400 })
   }
   return json({ ok: true, testSentTo: user.email })
 }

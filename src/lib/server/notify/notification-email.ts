@@ -2,8 +2,7 @@ import { eq } from 'drizzle-orm'
 import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
 import { env } from '$lib/server/env/private-env'
-import { companyOwleryEnv } from '$lib/server/mail'
-import { isOwleryMailConfigured, sendTransactionalEmail } from '$lib/server/owlery/mail'
+import { companyMail } from '$lib/server/mail'
 import type { PushNotificationPayload } from '$lib/server/push/send'
 
 const EIGEN_SUBJECT_PREFIX = '[Eigen]'
@@ -19,7 +18,7 @@ function escapeHtml(value: string): string {
 /**
  * Best-effort transactional email mirror of a push notification.
  *
- * Email is a secondary channel: when Owlery mail is not configured or the user has
+ * Email is a secondary channel: when company email is not set up or the user has
  * no email address, this is a no-op. Send failures are logged, never thrown —
  * matching the fire-and-forget pattern in `src/lib/server/auth.ts`.
  */
@@ -27,8 +26,8 @@ export async function queueNotificationEmail(
   userId: string,
   payload: PushNotificationPayload,
 ): Promise<void> {
-  const mailEnv = await companyOwleryEnv()
-  if (!isOwleryMailConfigured(mailEnv)) return
+  const mail = companyMail()
+  if (!(await mail.isConfigured())) return
 
   const [row] = await authDb
     .select({ email: user.email })
@@ -49,7 +48,7 @@ export async function queueNotificationEmail(
     `<p><a href="${escapeHtml(absoluteUrl)}">Open in Eigen</a></p>`,
   ].join('')
 
-  void sendTransactionalEmail(mailEnv, { to, subject, html, text }).catch((err) => {
+  void mail.send({ to, subject, html, text }).catch((err) => {
     console.error('[notification-email] send failed', {
       userId,
       to,

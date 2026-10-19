@@ -42,7 +42,16 @@ import { bootstrapOrchestrator } from './orchestrator/bootstrap'
 import { OrchestratorBrain } from './orchestrator/brain'
 
 /** Company email lives in the database; in unit tests it is not set up. */
-vi.mock('$lib/server/mail', () => ({ companyOwleryEnv: async () => ({}) }))
+vi.mock('$lib/server/mail', async () => {
+  const { MailNotConfiguredError } = await import('$lib/server/mail/company-mail')
+  return {
+    companyMail: () => ({
+      send: async () => {
+        throw new MailNotConfiguredError()
+      },
+    }),
+  }
+})
 
 const ctx: ToolContext = {
   principal: { id: 'principal-1', kind: 'human', roles: ['admin', 'agent'] },
@@ -58,7 +67,7 @@ function makeInMemoryKernel() {
 }
 
 describe('moduleManifests', () => {
-  it('declares the baseline modules (memory, email, website, dev-agent, brand, repo, roadmap, substrate, github)', () => {
+  it('declares the baseline modules (memory, email, website, dev-agent, brand, repo, roadmap, substrate, github, owlery)', () => {
     expect(moduleManifests.map((m) => m.id)).toEqual([
       'memory',
       'email',
@@ -69,6 +78,7 @@ describe('moduleManifests', () => {
       'roadmap',
       'substrate',
       'github',
+      'owlery',
     ])
   })
 })
@@ -87,6 +97,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'roadmap',
       'substrate',
       'github',
+      'owlery',
     ])
     const toolNames = kernel.registry.list().map((t) => t.name)
     expect(toolNames).toContain('memory.retrieve_thoughts')
@@ -102,6 +113,8 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect(toolNames).toContain('roadmap.update_item')
     expect(toolNames).toContain('substrate.status')
     expect(toolNames).toContain('github.app_create')
+    expect(toolNames).toContain('owlery.status')
+    expect(toolNames).toContain('owlery.send_mail')
     expect(toolNames.length).toBe(
       moduleManifests.reduce((sum, m) => sum + m.tools.length, 0),
     )
@@ -144,6 +157,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'email.send_mail',
       'kernel.module_activate',
       'kernel.module_deactivate',
+      'owlery.send_mail',
       'repo.merge',
       'website.publish_page',
     ])
@@ -204,20 +218,12 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect(activated.status).toBe('active')
   })
 
-  it('runs mutate email tools through the full pipeline (fail loud at the owlery boundary)', async () => {
+  it('runs owlery tools through the full pipeline (status reads the unset config)', async () => {
     const { kernel, activations } = makeInMemoryKernel()
-    await activations.set('email', true)
-
-    const add = kernel.registry.get('email.add_contact')
-    expect(add?.auditClass).toBe('mutate')
-    await expect(
-      kernel.registry.execute('email.add_contact', { email: 'a@b.co' }, ctx),
-    ).rejects.toThrow(/not configured/)
-    expect(kernel.eventSink.events.at(-1)?.payload).toMatchObject({
-      tool: 'email.add_contact',
-      auditClass: 'mutate',
-      ok: false,
-    })
+    const { ensureSystemModulesActive } = await import('./index')
+    await ensureSystemModulesActive(kernel)
+    expect(await activations.get('owlery')).toBe(true)
+    expect(kernel.registry.get('owlery.send_mail')?.auditClass).toBe('mutate')
   })
 
   it('emits audit events through the injected sink', async () => {

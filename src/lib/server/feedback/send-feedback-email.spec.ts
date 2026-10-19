@@ -7,25 +7,14 @@ const { isOwleryMailConfiguredMock, sendTransactionalEmailMock } = vi.hoisted(()
 
 /** Company email lives in the database now; these values used to come from env. */
 vi.mock('$lib/server/mail', () => ({
-  companyOwleryEnv: async () => ({
-    OWLERY_API_KEY: 'us_test',
-    OWLERY_BASE_URL: 'https://owlery.example',
-    OWLERY_EMAIL_FROM: 'hello@eigenenterprise.example',
+  companyMail: () => ({
+    isConfigured: async () => isOwleryMailConfiguredMock(),
+    send: (input: unknown) => sendTransactionalEmailMock(input),
   }),
 }))
 
-vi.mock('$lib/server/env/private-env', () => ({
-  env: {
-    OWLERY_API_KEY: 'us_test',
-    OWLERY_BASE_URL: 'https://owlery.example',
-    OWLERY_EMAIL_FROM: 'Website Relaunch <hello@eigenenterprise.example>',
-  },
-}))
+vi.mock('$lib/server/env/private-env', () => ({ env: {} }))
 
-vi.mock('$lib/server/owlery/mail', () => ({
-  isOwleryMailConfigured: isOwleryMailConfiguredMock,
-  sendTransactionalEmail: sendTransactionalEmailMock,
-}))
 
 const { FEEDBACK_INBOX_EMAIL, assertFeedbackMailConfigured, sendFeedbackInboxEmail } =
   await import('./send-feedback-email')
@@ -34,7 +23,7 @@ describe('sendFeedbackInboxEmail', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     isOwleryMailConfiguredMock.mockReturnValue(true)
-    sendTransactionalEmailMock.mockResolvedValue({ emailId: 'em_fb' })
+    sendTransactionalEmailMock.mockResolvedValue({ messageId: 'em_fb' })
   })
 
   it('exposes the product inbox address', () => {
@@ -55,7 +44,7 @@ describe('sendFeedbackInboxEmail', () => {
     })
 
     expect(sendTransactionalEmailMock).toHaveBeenCalledTimes(1)
-    const [, input] = sendTransactionalEmailMock.mock.calls[0]
+    const [input] = sendTransactionalEmailMock.mock.calls[0]
     expect(input.to).toBe('feedback@eigenenterprise.example')
     expect(input.replyTo).toBe('alex@example.com')
     expect(input.subject).toContain('Product feedback')

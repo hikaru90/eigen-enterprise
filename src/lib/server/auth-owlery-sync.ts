@@ -1,6 +1,3 @@
-import { companyOwleryEnv } from '$lib/server/mail'
-import { createOwleryContact, isOwleryConfigured } from '$lib/server/owlery/contacts'
-
 export type OwlerySyncUser = {
   id: string
   email?: string | null
@@ -9,25 +6,14 @@ export type OwlerySyncUser = {
   lastName?: string | null
 }
 
-/** Mailing-list contact sync — only after the user's email is confirmed (double opt-in). */
+/**
+ * Mailing-list contact sync after the user's email is confirmed (double opt-in).
+ *
+ * The Owlery email module sends through Amazon SES, which has no contact book,
+ * so there is nothing to sync yet. This stays an explicit, logged no-op until a
+ * contact book exists — never a silent one.
+ */
 export async function syncOwleryContactForVerifiedUser(user: OwlerySyncUser): Promise<void> {
-  const mailEnv = await companyOwleryEnv()
-  if (!isOwleryConfigured(mailEnv)) return
-  if (!user.emailVerified) return
-
-  const email = user.email?.trim()
-  if (!email) return
-
-  try {
-    await createOwleryContact(mailEnv, {
-      email,
-      ...(user.firstName ? { firstName: user.firstName } : {}),
-      ...(user.lastName ? { lastName: user.lastName } : {}),
-    })
-  } catch (err) {
-    console.error('[auth] owlery contact sync failed', {
-      userId: user.id,
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
+  if (!user.emailVerified || !user.email?.trim()) return
+  console.info('[auth] contact-book sync skipped: the email module has no contact book yet', { userId: user.id })
 }
