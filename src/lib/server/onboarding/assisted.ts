@@ -2,7 +2,7 @@ import type { OrchestratorEngineId } from '../../../../modules/orchestrator/engi
 import { and, desc, eq } from 'drizzle-orm'
 import { isUserAdmin } from '$lib/server/auth/user-role'
 import { getDb } from '$lib/server/db'
-import { companyMail } from '$lib/server/db/company-mail.schema'
+import { companyMail } from '$lib/server/mail'
 import { kernelJourneys } from '$lib/server/db/journey.schema'
 import { llmActiveProvider, llmProviderConfig, userPreference } from '$lib/server/db/schema'
 import { WEBSITE_FOUNDING_JOURNEY } from '../../../../modules/orchestrator/brain'
@@ -16,7 +16,9 @@ import {
  * boot.ts into the orchestrator runtime). Read-only; fails loud on DB errors.
  * Null when there is no human (principal-attributed turns).
  */
-export async function onboardingFactsFor(llmUserId: string | undefined): Promise<OnboardingFacts | null> {
+export async function onboardingFactsFor(
+  llmUserId: string | undefined,
+): Promise<OnboardingFacts | null> {
   if (!llmUserId) return null
   const db = getDb()
   const [pref] = await db
@@ -24,7 +26,7 @@ export async function onboardingFactsFor(llmUserId: string | undefined): Promise
     .from(userPreference)
     .where(eq(userPreference.userId, llmUserId))
     .limit(1)
-  const [mail] = await db.select({ id: companyMail.id }).from(companyMail).limit(1)
+  const emailConfigured = await companyMail().isConfigured()
   const [active] = await db
     .select({ provider: llmActiveProvider.provider })
     .from(llmActiveProvider)
@@ -39,14 +41,16 @@ export async function onboardingFactsFor(llmUserId: string | undefined): Promise
   return {
     welcomeCompleted: pref?.welcomeCompletedAt != null,
     adminAccount: await isUserAdmin(llmUserId),
-    email: mail !== undefined,
+    email: emailConfigured,
     aiProvider: active !== undefined,
     website: websiteStatusFrom(journey?.status ?? null),
   }
 }
 
 /** The engine recorded at connect time for the user's ACTIVE provider (null = no BYOK provider). */
-export async function recordedOrchestratorEngineFor(userId: string): Promise<OrchestratorEngineId | null> {
+export async function recordedOrchestratorEngineFor(
+  userId: string,
+): Promise<OrchestratorEngineId | null> {
   const [row] = await getDb()
     .select({ engine: llmProviderConfig.orchestratorEngine })
     .from(llmActiveProvider)
