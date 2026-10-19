@@ -44,3 +44,22 @@ export async function deliverSignInCode(input: { email: string; otp: string }, d
   if (!deps.dev) throw new EmailDeliveryNotConfiguredError()
   deps.log(`[auth] DEV sign-in code for ${input.email}: ${input.otp}`)
 }
+
+/**
+ * Better Auth runs `sendVerificationOTP` through runInBackgroundOrAwait, which
+ * awaits but SWALLOWS errors (logs "Failed to run background task"). So the
+ * sender records a failure per address and the form action checks it after the
+ * call — otherwise the page would say "we sent a code" when nothing went out.
+ */
+const deliveryFailures = new Map<string, Error>()
+
+export function recordDeliveryFailure(email: string, err: unknown): void {
+  deliveryFailures.set(email.trim().toLowerCase(), err instanceof Error ? err : new Error(String(err)))
+}
+
+export function takeDeliveryFailure(email: string): Error | null {
+  const key = email.trim().toLowerCase()
+  const err = deliveryFailures.get(key) ?? null
+  deliveryFailures.delete(key)
+  return err
+}

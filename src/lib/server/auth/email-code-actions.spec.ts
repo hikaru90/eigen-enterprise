@@ -9,6 +9,7 @@ vi.mock('$lib/server/auth', () => ({
 }))
 
 const { requestCode, verifyCode } = await import('./email-code-actions')
+const { recordDeliveryFailure } = await import('./deliver-code')
 
 const event = (fields: Record<string, string>) =>
   ({ request: new Request('http://localhost/x', { method: 'POST', body: new URLSearchParams(fields) }) }) as never
@@ -40,6 +41,18 @@ describe('requestCode', () => {
     const out = (await requestCode(event({ email: 'a@b.co' }), { requireTerms: false })) as { status: number; data: { step: string; message: string } }
     expect(out.status).toBe(503)
     expect(out.data).toMatchObject({ step: 'email', message: 'Email delivery is not configured on this server' })
+  })
+})
+
+describe('requestCode when Better Auth swallows the sender error', () => {
+  it('still reports the failure instead of showing the code step', async () => {
+    sendVerificationOTPMock.mockImplementation(async ({ body }: { body: { email: string } }) => {
+      recordDeliveryFailure(body.email, new Error('Owlery 502'))
+      return { success: true } // what Better Auth returns after logging the background error
+    })
+    const out = (await requestCode(event({ email: 'a@b.co' }), { requireTerms: false })) as { status: number; data: { step: string; message: string } }
+    expect(out.status).toBe(503)
+    expect(out.data).toMatchObject({ step: 'email', message: 'Owlery 502' })
   })
 })
 

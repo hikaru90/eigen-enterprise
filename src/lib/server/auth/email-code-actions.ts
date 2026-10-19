@@ -1,5 +1,6 @@
 import { fail, redirect, type RequestEvent } from '@sveltejs/kit'
 import { auth } from '$lib/server/auth'
+import { takeDeliveryFailure } from '$lib/server/auth/deliver-code'
 import { getSafeErrorMessage } from '$lib/server/auth-form-errors'
 import { emailCodeRequestSchema, emailCodeVerifySchema, signUpCodeRequestSchema } from '$lib/validation/auth'
 
@@ -18,7 +19,10 @@ export async function requestCode(event: RequestEvent, opts: { requireTerms: boo
     return fail(400, { step: 'email' as const, email: raw.email, message: f.email?.[0] ?? f.acceptTerms?.[0] ?? 'Invalid input' })
   }
   try {
+    takeDeliveryFailure(parsed.data.email) // clear any stale failure
     await auth.api.sendVerificationOTP({ body: { email: parsed.data.email, type: 'sign-in' } })
+    const failure = takeDeliveryFailure(parsed.data.email)
+    if (failure) throw failure
   } catch (error) {
     return fail(503, { step: 'email' as const, email: parsed.data.email, message: getSafeErrorMessage(error, 'Could not send the code') })
   }

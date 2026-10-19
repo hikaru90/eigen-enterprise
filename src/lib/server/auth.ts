@@ -9,7 +9,7 @@ import { resolveAccountKindForNewUser } from '$lib/auth/account-kind'
 import { syncOwleryContactForVerifiedUser } from '$lib/server/auth-owlery-sync'
 import { buildSocialProvidersConfig, listEnabledSocialProviderIds } from '$lib/server/auth-social'
 import { normalizeUserNameFields } from '$lib/server/auth-user-name'
-import { deliverSignInCode } from '$lib/server/auth/deliver-code'
+import { deliverSignInCode, recordDeliveryFailure } from '$lib/server/auth/deliver-code'
 import { ownerPolicyForNewUser } from '$lib/server/auth/owner-policy'
 import { authDb } from '$lib/server/db/auth-db'
 import { user as userTable } from '$lib/server/db/auth.schema'
@@ -228,16 +228,21 @@ export const auth = betterAuth({
       allowedAttempts: 5,
       sendVerificationOTP: async ({ email, otp, type }) => {
         if (type !== 'sign-in') throw new Error(`unsupported email code type: ${type}`)
-        await deliverSignInCode(
-          { email, otp },
-          {
-            mailConfigured,
-            dev,
-            send: (mail) => sendTransactionalEmail(env, mail),
-            log: (line) => console.log(line),
-            record: recordSignInCode,
-          },
-        )
+        try {
+          await deliverSignInCode(
+            { email, otp },
+            {
+              mailConfigured,
+              dev,
+              send: (mail) => sendTransactionalEmail(env, mail),
+              log: (line) => console.log(line),
+              record: recordSignInCode,
+            },
+          )
+        } catch (err) {
+          recordDeliveryFailure(email, err) // Better Auth swallows this; requestCode reports it.
+          throw err
+        }
       },
     }),
     sveltekitCookies(getRequestEvent), // make sure this is the last plugin in the array
