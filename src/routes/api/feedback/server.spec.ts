@@ -49,7 +49,7 @@ describe('POST /api/feedback', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     assertFeedbackMailConfiguredMock.mockImplementation(() => {})
-    sendFeedbackInboxEmailMock.mockResolvedValue({ emailId: 'em_1' })
+    sendFeedbackInboxEmailMock.mockResolvedValue({ messageId: 'em_1' })
   })
 
   it('rejects unauthenticated requests with 401', async () => {

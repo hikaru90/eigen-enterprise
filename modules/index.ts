@@ -33,6 +33,8 @@ import { createGitHubTools } from './github/tools'
 import { memoryManifest } from './memory/manifest'
 import { createMemoryTools } from './memory/tools'
 import { createAllowlistAdminTools } from './orchestrator/allowlist-tools'
+import { OWLERY_MODULE_ID, owleryManifest } from './owlery/manifest'
+import { createOwleryTools } from './owlery/tools'
 import { createRecapModule, type RecapBoot } from './recap'
 import { RECAP_MODULE_ID } from './recap/types'
 import { createRepoEngine } from './repo/index'
@@ -61,11 +63,14 @@ export const moduleManifests = [
   roadmapManifest,
   substrateManifest,
   githubManifest,
+  owleryManifest,
 ] as const
 
 /** Tools that always require an approval decision before first execution. */
 export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   'email.send_mail',
+  // Company email via SES: an agent's send waits for the owner's yes.
+  'owlery.send_mail',
   // Phase-2c (G8/D5): guideline-set activation is a strategic brand decision —
   // human-admin principal AND an explicit approval decision.
   'brand.set_activate',
@@ -157,6 +162,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createRoadmapTools(),
     ...createSubstrateTools(),
     ...createGitHubTools(),
+    ...createOwleryTools(),
   ])
 
   return {
@@ -177,7 +183,8 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
  */
 export async function ensureSystemModulesActive(kernel: WiredKernel): Promise<void> {
   // github is the box's source provider in this slice; it does nothing until connected.
-  for (const id of [SUBSTRATE_MODULE_ID, GITHUB_MODULE_ID]) {
+  // owlery is the company's email (SES); it does nothing until the owner sets it up.
+  for (const id of [SUBSTRATE_MODULE_ID, GITHUB_MODULE_ID, OWLERY_MODULE_ID]) {
     if (!(await kernel.activations.get(id))) await kernel.activations.set(id, true)
   }
 }

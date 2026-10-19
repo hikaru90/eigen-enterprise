@@ -6,8 +6,7 @@ const sveltekitCookiesMock = vi.fn(() => ({ plugin: 'cookies' }))
 const sendTransactionalEmailMock = vi.fn()
 const recordVerificationLinkMock = vi.fn()
 const resolveAccountKindMock = vi.fn(() => 'production')
-const createOwleryContactMock = vi.fn()
-const isOwleryConfiguredMock = vi.fn(() => false)
+const syncContactMock = vi.fn()
 
 const env: Record<string, string | undefined> = {
   ORIGIN: 'http://localhost:5173',
@@ -41,13 +40,11 @@ vi.mock('$lib/server/db/auth-db', () => ({
 }))
 
 /** Company email (database-backed): `sendTransactionalEmailMock` stands in for its send. */
-const mailEnv = { OWLERY_API_KEY: 'key', OWLERY_BASE_URL: 'https://mail.example', OWLERY_EMAIL_FROM: 'noreply@example.com' }
 vi.mock('$lib/server/mail', () => ({
   companyMail: () => ({
     send: (...args: unknown[]) => sendTransactionalEmailMock(...args),
     isConfigured: async () => true,
   }),
-  companyOwleryEnv: async () => mailEnv,
 }))
 
 vi.mock('$lib/server/e2e/verification-link-store', () => ({
@@ -59,16 +56,11 @@ vi.mock('$lib/auth/account-kind', () => ({
   resolveAccountKindForNewUser: (...args: unknown[]) => resolveAccountKindMock(...args),
 }))
 
-vi.mock('$lib/server/owlery/contacts', () => ({
-  isOwleryConfigured: (...args: unknown[]) => isOwleryConfiguredMock(...args),
-  createOwleryContact: (...args: unknown[]) => createOwleryContactMock(...args),
+vi.mock('$lib/server/auth-owlery-sync', () => ({
+  syncOwleryContactForVerifiedUser: (...args: unknown[]) => syncContactMock(...args),
 }))
 
 function clearMailEnv() {
-  delete env.OWLERY_API_KEY
-  delete env.OWLERY_BASE_URL
-  delete env.OWLERY_EMAIL_FROM
-  delete env.OWLERY_CONTACT_BOOK_ID
   delete env.GITHUB_CLIENT_ID
   delete env.GITHUB_CLIENT_SECRET
   delete env.GOOGLE_CLIENT_ID
@@ -83,12 +75,9 @@ async function loadAuth() {
   sendTransactionalEmailMock.mockReset()
   recordVerificationLinkMock.mockReset()
   resolveAccountKindMock.mockReset()
-  createOwleryContactMock.mockReset()
-  isOwleryConfiguredMock.mockReset()
-  isOwleryConfiguredMock.mockReturnValue(false)
+  syncContactMock.mockReset()
   resolveAccountKindMock.mockReturnValue('production')
   sendTransactionalEmailMock.mockResolvedValue(undefined)
-  createOwleryContactMock.mockResolvedValue({ contactId: 'ct_1' })
   return import('./auth')
 }
 
@@ -250,65 +239,12 @@ describe('auth config', () => {
     existingUserCount = 0
   })
 
-  it('databaseHooks after creates an owlery contact when email is verified', async () => {
-    await loadAuth()
-    isOwleryConfiguredMock.mockReturnValue(true)
-    const config = lastConfig()
-    await config.databaseHooks.user.create.after({
-      id: 'user-3',
-      email: 'ada@example.com',
-      emailVerified: true,
-      firstName: 'Ada',
-      lastName: 'Lovelace',
-    })
-    expect(createOwleryContactMock).toHaveBeenCalledWith(mailEnv, {
-      email: 'ada@example.com',
-      firstName: 'Ada',
-      lastName: 'Lovelace',
-    })
-  })
-
-  it('databaseHooks after skips owlery when email is not verified', async () => {
-    await loadAuth()
-    isOwleryConfiguredMock.mockReturnValue(true)
-    const config = lastConfig()
-    await config.databaseHooks.user.create.after({
-      id: 'user-3b',
-      email: 'ada@example.com',
-      emailVerified: false,
-      firstName: 'Ada',
-    })
-    expect(createOwleryContactMock).not.toHaveBeenCalled()
-  })
-
-  it('databaseHooks after skips the owlery sync when not configured', async () => {
+  it('databaseHooks after hands the new user to the contact-book sync', async () => {
     await loadAuth()
     const config = lastConfig()
-    await config.databaseHooks.user.create.after({
-      id: 'user-4',
-      email: 'ada@example.com',
-      firstName: 'Ada',
-    })
-    expect(createOwleryContactMock).not.toHaveBeenCalled()
-  })
-
-  it('databaseHooks after logs owlery failures without throwing', async () => {
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    await loadAuth()
-    isOwleryConfiguredMock.mockReturnValue(true)
-    createOwleryContactMock.mockRejectedValue(new Error('owlery down'))
-    const config = lastConfig()
-    await config.databaseHooks.user.create.after({
-      id: 'user-5',
-      email: 'ada@example.com',
-      emailVerified: true,
-      firstName: 'Ada',
-    })
-    expect(errSpy).toHaveBeenCalledWith(
-      '[auth] owlery contact sync failed',
-      expect.objectContaining({ userId: 'user-5', error: 'owlery down' }),
-    )
-    errSpy.mockRestore()
+    const user = { id: 'user-3', email: 'ada@example.com', emailVerified: true, firstName: 'Ada' }
+    await config.databaseHooks.user.create.after(user)
+    expect(syncContactMock).toHaveBeenCalledWith(user)
   })
 })
 

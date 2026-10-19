@@ -10,18 +10,14 @@ const { authDbSelectMock, isOwleryMailConfiguredMock, sendTransactionalEmailMock
 
 /** Company email lives in the database now; these values used to come from env. */
 vi.mock('$lib/server/mail', () => ({
-  companyOwleryEnv: async () => ({
-    OWLERY_API_KEY: 'us_test',
-    OWLERY_BASE_URL: 'https://owlery.example',
-    OWLERY_EMAIL_FROM: 'hello@eigenenterprise.example',
+  companyMail: () => ({
+    isConfigured: async () => isOwleryMailConfiguredMock(),
+    send: (input: unknown) => sendTransactionalEmailMock(input),
   }),
 }))
 
 vi.mock('$lib/server/env/private-env', () => ({
   env: {
-    OWLERY_API_KEY: 'us_test',
-    OWLERY_BASE_URL: 'https://owlery.example',
-    OWLERY_EMAIL_FROM: 'hello@eigenenterprise.example',
     ORIGIN: 'https://eigen.example',
   },
 }))
@@ -34,10 +30,6 @@ vi.mock('$lib/server/db/auth.schema', () => ({
   user: { id: 'id', email: 'email' },
 }))
 
-vi.mock('$lib/server/owlery/mail', () => ({
-  isOwleryMailConfigured: isOwleryMailConfiguredMock,
-  sendTransactionalEmail: sendTransactionalEmailMock,
-}))
 
 const { queueNotificationEmail } = await import('./notification-email')
 
@@ -60,14 +52,14 @@ describe('queueNotificationEmail', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     isOwleryMailConfiguredMock.mockReturnValue(true)
-    sendTransactionalEmailMock.mockResolvedValue({ emailId: 'em_1' })
+    sendTransactionalEmailMock.mockResolvedValue({ messageId: 'em_1' })
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
   })
 
-  it('no-ops when Owlery mail is not configured', async () => {
+  it('no-ops when company email is not set up', async () => {
     isOwleryMailConfiguredMock.mockReturnValue(false)
     selectReturning([])
 
@@ -96,13 +88,12 @@ describe('queueNotificationEmail', () => {
     })
 
     expect(sendTransactionalEmailMock).toHaveBeenCalledTimes(1)
-    const [envArg, input] = sendTransactionalEmailMock.mock.calls[0]
+    const [input] = sendTransactionalEmailMock.mock.calls[0]
     expect(input.to).toBe('user@example.com')
     expect(input.subject).toBe('[Eigen] Daily')
     expect(input.text).toContain('Open: https://eigen.example/memory/timeline')
     expect(input.html).toContain('https://eigen.example/memory/timeline')
     expect(input.html).toContain('A &lt;b&gt;summary&lt;/b&gt; &amp; more')
-    expect(envArg).toBeDefined()
   })
 
   it('logs and swallows send failures (best-effort, never throws)', async () => {
@@ -124,7 +115,7 @@ describe('queueNotificationEmail', () => {
 
     await queueNotificationEmail('u1', { title: 'T', body: 'B', url: 'https://other.example/x' })
 
-    const input = sendTransactionalEmailMock.mock.calls[0][1]
+    const input = sendTransactionalEmailMock.mock.calls[0][0]
     expect(input.text).toContain('Open: https://other.example/x')
   })
 })

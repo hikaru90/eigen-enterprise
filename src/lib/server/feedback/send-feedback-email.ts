@@ -1,8 +1,7 @@
 import { env } from '$lib/server/env/private-env'
-import { companyOwleryEnv } from '$lib/server/mail'
-import { isOwleryMailConfigured, sendTransactionalEmail } from '$lib/server/owlery/mail'
+import { companyMail } from '$lib/server/mail'
 
-/** Product inbox for user-submitted feedback (Owlery transactional). */
+/** Product inbox for user-submitted feedback (company email). */
 export const FEEDBACK_INBOX_EMAIL =
   env.FEEDBACK_INBOX_EMAIL?.trim() || 'feedback@eigenenterprise.example'
 
@@ -14,9 +13,9 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
 }
 
-/** Throws when Owlery mail is not configured — feedback delivery requires email. */
+/** Throws when company email is not set up — feedback delivery requires email. */
 export async function assertFeedbackMailConfigured(): Promise<void> {
-  if (!isOwleryMailConfigured(await companyOwleryEnv())) {
+  if (!(await companyMail().isConfigured())) {
     throw new Error('Feedback email is not set up yet. The owner sets up email in the onboarding (or Settings → Email).')
   }
 }
@@ -29,12 +28,12 @@ export type SendFeedbackInboxEmailInput = {
 }
 
 /**
- * Delivers product feedback to the feedback inbox via Owlery.
+ * Delivers product feedback to the feedback inbox via company email.
  * Propagates send failures — no silent swallow (see AGENTS.md failure policy).
  */
 export async function sendFeedbackInboxEmail(
   input: SendFeedbackInboxEmailInput,
-): Promise<{ emailId: string | null }> {
+): Promise<{ messageId: string | null }> {
   const subject = `[Eigen Enterprise] Product feedback from ${input.userEmail}`
   const text = [
     'New product feedback',
@@ -54,7 +53,7 @@ export async function sendFeedbackInboxEmail(
     `<p style="margin:0;white-space:pre-line">${escapeHtml(input.message)}</p>`,
   ].join('')
 
-  return sendTransactionalEmail(await companyOwleryEnv(), {
+  return companyMail().send({
     to: FEEDBACK_INBOX_EMAIL,
     replyTo: input.userEmail,
     subject,

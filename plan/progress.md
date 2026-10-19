@@ -2,6 +2,23 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-19 (6) — SHIPPED (branch): Owlery email module on Amazon SES
+
+**Owner rule**: the email module owns the Amazon SES credentials and all sending; nothing else holds SES credentials or talks to SES.
+
+**Shipped**
+- `modules/owlery/` (id `owlery`, name "Email"): SES v2 core (`@aws-sdk/client-sesv2@3.1146.0`, exact pin) — SendEmail, GetEmailIdentity / CreateEmailIdentity, GetAccount (sandbox). Tools `owlery.status` (read) and `owlery.send_mail` (mutate, in APPROVAL_REQUIRED_TOOLS). Self-seeded system module in `ensureSystemModulesActive`.
+- Migration `0088_owlery_settings` (journal idx 88) drops `company_mail`, creates singleton `owlery_settings`; SES secret sealed with a TENANT_MASTER_KEY-derived key (AAD `owlery-ses-secret-access-key`).
+- `$lib/server/mail` is now only the contract (`companyMail().send / isConfigured / saveVerified`, typed `SenderNotVerifiedError` / `MailSetupError`), backed by the module's service. `companyOwleryEnv()` and the old Owlery HTTP client (`src/lib/server/owlery/`) are gone; auth, notifications, feedback and `email.send_mail` send via `companyMail()`.
+- `POST /api/onboarding/mail` takes `{region, accessKeyId, secretAccessKey, emailFrom}` → 200 `{ok, testSentTo}` / 409 `{error, needs:'verify_sender', emailFrom}` / 400 `{error}`.
+
+**Decisions**
+- `src/lib/server/mail` imports `modules/owlery/service` directly (same pattern as routes importing `modules/github/store`); the shared contract types live in `$lib/server/mail/company-mail`.
+- Contact-book sync is an explicit logged no-op (SES has no contact book); `email.add_contact` / `email.list_contacts` removed.
+- In the SES sandbox, setup creates the test recipient's identity (Amazon mails a verification link) and returns a plain-language 400.
+
+**Next**: onboarding UI against the new contract (other agent); Settings → Email page.
+
 ## 2026-10-19 (5) — SHIPPED: claim link + email set up in the onboarding (no secrets in env)
 
 **Owner directive**: a non-technical user never touches a terminal, env file or config. Keys users bring (email included) are entered in the onboarding and stored in the database. The first person with access to the server becomes the admin, via a private claim link.

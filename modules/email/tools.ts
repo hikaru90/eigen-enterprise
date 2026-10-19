@@ -1,30 +1,23 @@
 import { z } from 'zod'
 import type { ToolDescriptor } from '$lib/kernel/types'
-import type { OwleryEnv } from '$lib/server/owlery/config'
-import {
-  runAddContactTool,
-  runListContactsTool,
-  runSendMailTool,
-} from '$lib/server/owlery/tools'
+import type { CompanyMail } from '$lib/server/mail/company-mail'
 
 /**
- * Kernel tool descriptors wrapping the Owlery mail + contact book runners
- * (src/lib/server/owlery/tools.ts, thin wrappers over mail.ts / contacts.ts).
- * The private env is resolved lazily at call time (never at import time), and
- * configuration gaps fail loud inside the runners via owlery config.ts.
+ * The legacy `email.send_mail` tool, now sending through the shared company
+ * mail path (companyMail() — delivered by the Owlery SES module). It holds no
+ * credentials. The old Owlery contact-book tools are gone: the SES module has
+ * no contact book yet.
  */
 
 export type EmailToolDeps = {
-  /** Overrides $lib/server/env/private-env (tests). */
-  env?: OwleryEnv
-  /** Overrides global fetch (tests). */
-  fetchImpl?: typeof fetch
+  /** Overrides companyMail() from $lib/server/mail (tests). */
+  mail?: Pick<CompanyMail, 'send'>
 }
 
-async function resolveEnv(deps: EmailToolDeps): Promise<OwleryEnv> {
-  if (deps.env) return deps.env
-  const { companyOwleryEnv } = await import('$lib/server/mail')
-  return companyOwleryEnv()
+async function resolveMail(deps: EmailToolDeps): Promise<Pick<CompanyMail, 'send'>> {
+  if (deps.mail) return deps.mail
+  const { companyMail } = await import('$lib/server/mail')
+  return companyMail()
 }
 
 const sendMailInput = z.object({
@@ -35,45 +28,17 @@ const sendMailInput = z.object({
   replyTo: z.email().optional(),
 })
 
-const addContactInput = z.object({
-  email: z.email(),
-  firstName: z.string().optional(),
-  lastName: z.string().optional(),
-})
-
-/** Kernel descriptors for the Owlery email + contacts surface. */
 export function createEmailTools(deps: EmailToolDeps = {}): ToolDescriptor[] {
   return [
     {
       name: 'email.send_mail',
       module: 'email',
       summary:
-        'Send one transactional email via Owlery. Fails loud when Owlery mail is not configured.',
+        "Send one transactional email from the company's sender address. Fails loud when email is not set up.",
       auditClass: 'external',
       inputSchema: sendMailInput,
       permission: { roles: ['admin', 'agent'] },
-      handler: async (_ctx, input) =>
-        runSendMailTool(await resolveEnv(deps), sendMailInput.parse(input), deps.fetchImpl),
-    },
-    {
-      name: 'email.add_contact',
-      module: 'email',
-      summary: 'Add one pre-confirmed contact to the onboarding contact book.',
-      auditClass: 'mutate',
-      inputSchema: addContactInput,
-      permission: { roles: ['admin', 'agent'] },
-      handler: async (_ctx, input) =>
-        runAddContactTool(await resolveEnv(deps), addContactInput.parse(input), deps.fetchImpl),
-    },
-    {
-      name: 'email.list_contacts',
-      module: 'email',
-      summary:
-        'List contacts in the onboarding contact book. Fails loud when the contact book is not configured.',
-      auditClass: 'read',
-      inputSchema: z.object({}),
-      permission: { roles: ['admin', 'agent'] },
-      handler: async () => runListContactsTool(await resolveEnv(deps), deps.fetchImpl),
+      handler: async (_ctx, input) => (await resolveMail(deps)).send(sendMailInput.parse(input)),
     },
   ]
 }
