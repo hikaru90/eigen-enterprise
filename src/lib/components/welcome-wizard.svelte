@@ -512,8 +512,28 @@
               domain. Amazon shows a few DNS records — add them at your DNS provider and wait until
               Amazon marks the domain as verified.
             </li>
-            <li>Create an access key so this server can send through SES.</li>
-            <li>Pick the region your SES account is in, and paste the key below.</li>
+            <li>
+              Create the key this server sends with — in the
+              <a
+                href="https://console.aws.amazon.com/iam/home#/users/create"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-foreground underline underline-offset-4">AWS user page</a
+              >:
+              <ol class="mt-1 list-[lower-alpha] space-y-0.5 pl-5">
+                <li>Name the user “email-sender”, then Next.</li>
+                <li>
+                  Choose “Attach policies directly”, search “AmazonSESFullAccess”, tick it, then
+                  Next and Create user.
+                </li>
+                <li>
+                  Open the new user → “Security credentials” → “Create access key” → choose
+                  “Application running outside AWS” → Create.
+                </li>
+                <li>Copy both values into the fields below.</li>
+              </ol>
+            </li>
+            <li>Pick the region you opened SES in (shown top right in the AWS console).</li>
           </ol>
           <form
             class="mt-8 flex flex-col gap-5"

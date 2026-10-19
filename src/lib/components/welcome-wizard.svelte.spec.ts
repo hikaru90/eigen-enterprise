@@ -174,6 +174,9 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
     await expect
       .element(page.getByRole('link', { name: /Amazon SES console/ }))
       .toHaveAttribute('href', 'https://console.aws.amazon.com/ses/')
+    await expect
+      .element(page.getByRole('link', { name: 'AWS user page' }))
+      .toHaveAttribute('href', 'https://console.aws.amazon.com/iam/home#/users/create')
     await expect.element(page.getByRole('combobox', { name: 'Region' })).toHaveValue('eu-central-1')
     await expect
       .element(page.getByLabelText('Secret access key'))
