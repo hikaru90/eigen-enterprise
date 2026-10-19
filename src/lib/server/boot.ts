@@ -1,6 +1,8 @@
 import type { ChatGatewayBoot, RecapBoot } from '../../../modules/index'
+import { building } from '$app/environment'
 import { DbJourneyStore, type JourneyStore } from '$lib/kernel/playbook'
 import type { WiredKernel } from '$lib/kernel/wiring'
+import { createDurableEngine } from '$lib/server/agent/durable-engine'
 import { piEngine } from '../../../modules/dev-agent'
 import {
   bootstrapChatGateway,
@@ -14,6 +16,8 @@ import {
   type OrchestratorGatewayStage,
   type OrchestratorStatus,
 } from '../../../modules/orchestrator/bootstrap'
+import { ORCHESTRATOR_PERSONA_PROMPT } from '../../../modules/orchestrator/brain'
+import { orchestratorEngineFromEnv } from '../../../modules/orchestrator/engine-choice'
 
 /**
  * Startup composition root (phase-1b): kernel → orchestrator (the harness
@@ -141,11 +145,22 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
       : { gateway: boot.gateway, allowlist: boot.allowlist, sessions: boot.sessions }
   }
 
+  // The durable engine is always registered (D6); the harness only opens when an
+  // agent runs on it — at boot for the orchestrator so interrupted turns resume now.
+  const durable = createDurableEngine({ env, instructions: ORCHESTRATOR_PERSONA_PROMPT })
   const orchestrator = await orchestratorFn(kernel, wireGateway, {
     env,
-    engines: [['pi', piEngine]],
+    engines: [
+      ['pi', piEngine],
+      ['durable', durable.engine],
+    ],
     journeys,
   })
+  if (orchestratorEngineFromEnv(env) === 'durable' && !building) {
+    void durable.warmUp().catch((err: unknown) => {
+      console.error('[durable] could not open the agent harness at boot:', err)
+    })
+  }
 
   // Recap module (agent C's stage, previously without a caller): activation-
   // gated, registers manifest + run_now tool through the kernel's validated

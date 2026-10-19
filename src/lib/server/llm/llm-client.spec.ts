@@ -1786,3 +1786,11 @@ describe('llm client tool-calling passthrough', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
+
+describe('toApiShapeMessages (subscription adapters speak plain text only)', () => {
+  it('passes plain messages and fails loud on tool-shaped ones', async () => {
+    const { toApiShapeMessages } = await import('./llm-client')
+    expect(toApiShapeMessages([{ role: 'user', content: 'hi' }], 'anthropic-oauth')).toEqual([{ role: 'user', content: 'hi' }])
+    expect(() => toApiShapeMessages([{ role: 'tool', content: '{}', tool_call_id: 'c1' }], 'anthropic-oauth')).toThrow(/cannot carry tool messages/)
+  })
+})

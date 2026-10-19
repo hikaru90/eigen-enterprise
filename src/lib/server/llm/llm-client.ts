@@ -48,6 +48,25 @@ export type ChatMessage = {
   /** role:'tool' messages: the id of the call this message answers. */
   tool_call_id?: string
 }
+/**
+ * API-shape adapters (Anthropic messages, Codex responses) only speak plain
+ * system/user/assistant text. Tool-role messages or tool calls must never be
+ * silently flattened for them — fail loud, same as the tools passthrough guard.
+ */
+export function toApiShapeMessages(
+  messages: ChatMessage[],
+  provider: string,
+): Array<{ role: 'system' | 'user' | 'assistant'; content: string }> {
+  return messages.map((m) => {
+    if (m.role === 'tool' || m.tool_calls !== undefined) {
+      throw new LlmNotConfiguredError(
+        `provider "${provider}" uses its own API shape and cannot carry tool messages — configure an OpenAI-compatible credential for tool-calling agents`,
+      )
+    }
+    return { role: m.role, content: m.content }
+  })
+}
+
 export {
   extractGatewayReportedCostUsd,
   gatewayReportedCostUsdForLog,
@@ -839,7 +858,7 @@ async function llmChatCompletionInner(input: {
             config,
             {
               model: routing.model,
-              messages,
+              messages: toApiShapeMessages(messages, config.provider),
               maxTokens: input.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS,
               temperature: input.temperature,
               signal: ac.signal,

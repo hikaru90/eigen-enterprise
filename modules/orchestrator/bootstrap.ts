@@ -17,6 +17,7 @@ import {
   ORCHESTRATOR_PRINCIPAL,
   WEBSITE_FOUNDING_JOURNEY,
 } from './brain'
+import { orchestratorEngineFromEnv } from './engine-choice'
 import { createTelegramLoop, type TelegramGatewayLike, type TelegramLoopHandle } from './loop'
 
 /**
@@ -142,7 +143,9 @@ export async function bootstrapOrchestrator(
   for (const [id, engine] of options.engines ?? []) {
     runtime.registerEngine(id, engine)
   }
-  runtime.registerAgent(orchestratorAgentConfig({ spendCapUsd: spendCapUsdFromEnv(env) }))
+  runtime.registerAgent(
+    orchestratorAgentConfig({ spendCapUsd: spendCapUsdFromEnv(env), loopEngine: orchestratorEngineFromEnv(env) }),
+  )
 
   const brain = new OrchestratorBrain({ runtime })
 
