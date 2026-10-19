@@ -2,6 +2,40 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-19 (5) — SHIPPED: claim link + email set up in the onboarding (no secrets in env)
+
+**Owner directive**: a non-technical user never touches a terminal, env file or config. Keys users bring (email included) are entered in the onboarding and stored in the database. The first person with access to the server becomes the admin, via a private claim link.
+
+**Shipped (`5f8da39`, `56b21f2`)**
+- **Claim link**:
+  - `ee` mints a random token on first install and stores only its SHA-256 + a 7-day expiry (os secrets `EE_CLAIM_TOKEN_HASH` / `EE_CLAIM_EXPIRES_AT`); the installer prints `https://<console>/claim?token=…` once;
+  - `ee claim-link` issues a new link;
+  - `/claim`: the holder enters an email and is signed in as the owner immediately, through Better Auth's server-only `createVerificationOTP` + `signInEmailOTP` (no email sent). The claim runs in `claimScope`, so the owner policy knows it.
+  - On ee servers only a claim can create the first account; afterwards signup is closed. Signup/login on an unclaimed server say so in plain words.
+- **Company email in the database**:
+  - `company_mail` (migration `0087` + journal idx 87 + schema), key sealed with a TENANT_MASTER_KEY-derived key;
+  - `$lib/server/mail` (`companyMail()`, `companyOwleryEnv()`) replaces every `OWLERY_*` env read (auth codes, notifications, feedback, contact sync, email module);
+  - settings are saved only after a real test email reached the owner.
+- **Onboarding**: an owner-only `mail` act after the AI-provider act, shown only while company email isn't set up (`POST /api/onboarding/mail`).
+- **Passwordless clean-up**: no verification-by-link, no reset mail; `/forgot-password` and `/reset-password` redirect to `/login`.
+- **Bug caught by tests**: the notification email's local `env` shadowed the private env, so `ORIGIN` would have been undefined and links broken. Fixed.
+
+**Gates**: unit 4283 passed; svelte-check 0 errors; ee 42 passed.
+
+**On the Docker server, verified end to end in Chromium**:
+- signup before the claim → "not claimed yet";
+- claim → signed in → onboarding;
+- the owner opens Settings → Hosting;
+- the reused link is refused for everyone.
+
+The server was then reset clean, with no owner and the link waiting.
+
+**Still open**:
+- The mail act is only covered by the API tests; it can't run end to end locally without real Owlery credentials.
+- A Settings → Email page to change the settings later (the endpoint exists; no page yet).
+- `local-server.sh` output can get lost when piped through long release builds (`ee claim-link` recovers the link).
+- The local CA warning stays a local-only step.
+
 ## 2026-10-19 (4) — MERGED: durable agent engine (pi-durable), after reviewing another agent's work
 
 **Context**: another agent worked in `../ee-durable` (`wt/durable-engine`) and reported "implementation not started, worktree clean". **That was false.** It had:
