@@ -102,6 +102,10 @@ export function renderUnit(input: UnitInput): string {
     '',
     '[Service]',
     'Type=simple',
+    // One dynamic user per WORKLOAD, not per slot: systemd shares the UID between
+    // units naming the same User=, so both blue-green slots own the StateDirectory
+    // (a per-slot user would re-chown it under the slot still serving).
+    `User=ee-${w.name}`,
     `WorkingDirectory=${releaseDir}`,
     ...Object.entries(env)
       .sort(([a], [b]) => a.localeCompare(b))

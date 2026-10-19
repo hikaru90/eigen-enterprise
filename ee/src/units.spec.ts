@@ -29,6 +29,13 @@ describe('renderUnit', () => {
     expect(unit).toContain('ExecStartPre=/opt/ee/runtimes/node-22/bin/node scripts/migrate.mjs')
   })
 
+  it('both slots of a workload run as the same (dynamic) user, so they share its state', () => {
+    const b = renderUnit({ workload, contract, slot: 'b', port: 4101, releaseDir: '/r' })
+    expect(unit).toContain('User=ee-os')
+    expect(b).toContain('User=ee-os')
+    expect(unit).toContain('DynamicUser=yes')
+  })
+
   it('binds only its own port and owns the reserved env', () => {
     expect(unit).toContain('SocketBindAllow=tcp:4100')
     expect(unit).toContain('SocketBindDeny=any')
