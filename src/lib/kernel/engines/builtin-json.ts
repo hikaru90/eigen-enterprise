@@ -59,6 +59,36 @@ export const MAX_PARSE_RETRIES = 3
 export const MAX_HISTORY_MESSAGES = 40
 const MAX_TOOL_RESULT_CHARS = 12_000
 
+/** Upper bound for tool results fed to the model; longer results are truncated. */
+export const MAX_TOOL_RESULT_CHARS_LIMIT = MAX_TOOL_RESULT_CHARS
+
+/**
+ * The tool-result text one kernel result is fed to the model as (JSON, bounded).
+ * Shared with the durable engine so both engines show the model equivalent content.
+ */
+export function toolResultText(result: unknown): string {
+  const json = JSON.stringify(result ?? null)
+  if (json.length <= MAX_TOOL_RESULT_CHARS) return json
+  return `${json.slice(0, MAX_TOOL_RESULT_CHARS)}…(truncated)`
+}
+
+/**
+ * The structured tool result an approval-gated tool call produces: the request
+ * is queued for the company owner and has NOT executed. Shared with the
+ * durable engine so the orchestrator's approval UX wording stays consistent.
+ */
+export function approvalPendingResult(tool: string): {
+  status: 'approval_pending'
+  tool: string
+  message: string
+} {
+  return {
+    status: 'approval_pending',
+    tool,
+    message: `Tool "${tool}" requires owner approval before it can run. The request is queued for an owner to decide.`,
+  }
+}
+
 export type BuiltinJsonLoopOptions = {
   /** Overrides the gateway completion call (tests inject fakes; never a real LLM). */
   complete?: LlmCompleteFn
@@ -194,12 +224,6 @@ function composeSystemPrompt(personaPrompt: string, tools: readonly EngineToolLi
     '- If a tool fails, say so in your final answer.',
     '- Output ONLY the JSON object.',
   ].join('\n')
-}
-
-function toolResultText(result: unknown): string {
-  const json = JSON.stringify(result ?? null)
-  if (json.length <= MAX_TOOL_RESULT_CHARS) return json
-  return `${json.slice(0, MAX_TOOL_RESULT_CHARS)}…(truncated)`
 }
 
 /** Upper bound for the metadata-only input summary on tool.preview events. */
@@ -453,11 +477,7 @@ export class BuiltinJsonLoop implements LoopEngine {
           emitSurface({ type: 'approval.required', tool: turn.tool })
           messages.push({
             role: 'user',
-            content: `Tool result for ${turn.tool}:\n${JSON.stringify({
-              status: 'approval_pending',
-              tool: turn.tool,
-              message: `Tool "${turn.tool}" requires owner approval before it can run. The request is queued for an owner to decide.`,
-            })}\n\nDo not claim the action executed. Tell the user it is pending owner approval, then give your final answer using {"answer": "<your response>"}.`,
+            content: `Tool result for ${turn.tool}:\n${toolResultText(approvalPendingResult(turn.tool))}\n\nDo not claim the action executed. Tell the user it is pending owner approval, then give your final answer using {"answer": "<your response>"}.`,
           })
           continue
         }

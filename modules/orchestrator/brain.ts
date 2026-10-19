@@ -255,13 +255,15 @@ export const ORCHESTRATOR_PERSONA_PROMPT = [
 ].join('\n')
 
 /** The orchestrator as harness config: zero code privilege, full harness inherited. */
-export function orchestratorAgentConfig(options: { spendCapUsd?: number } = {}): AgentConfig {
+export function orchestratorAgentConfig(
+  options: { spendCapUsd?: number; loopEngine?: 'builtin-json' | 'durable' } = {},
+): AgentConfig {
   return {
     id: ORCHESTRATOR_AGENT_ID,
     personaName: 'Orchestrator',
     description:
       'The company general assistant: executes kernel tools on behalf of gateway users.',
-    loopEngine: 'builtin-json',
+    loopEngine: options.loopEngine ?? 'builtin-json',
     toolScope: 'all',
     memoryScope: 'company',
     verificationPolicy: 'none',

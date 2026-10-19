@@ -126,7 +126,7 @@ describe('bootApp — startup composition root', () => {
     expect(mocks.bootstrapOrchestrator).toHaveBeenCalledTimes(1)
   })
 
-  it('hosts the dev-agent pi engine via the orchestrator engines seam and injects env', async () => {
+  it('hosts the dev-agent pi engine and the durable engine via the orchestrator engines seam, and injects env', async () => {
     const { bootApp } = await import('./boot')
     const env = { EE_HARNESS_SPEND_CAP_USD: '5' }
 
@@ -135,7 +135,8 @@ describe('bootApp — startup composition root', () => {
     expect(mocks.bootstrapOrchestrator).toHaveBeenCalledTimes(1)
     const [kernelArg, , optionsArg] = mocks.bootstrapOrchestrator.mock.calls[0]
     expect(kernelArg).toBe(boot.kernel)
-    expect(optionsArg.engines).toEqual([['pi', mocks.piEngine]])
+    expect(optionsArg.engines.map(([id]: [string]) => id)).toEqual(['pi', 'durable'])
+    expect(optionsArg.engines[0][1]).toBe(mocks.piEngine)
     expect(optionsArg.env).toBe(env)
   })
 
