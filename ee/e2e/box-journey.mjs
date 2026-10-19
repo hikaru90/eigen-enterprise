@@ -10,8 +10,7 @@ import { chromium } from 'playwright'
 
 const [, , consoleUrl = 'https://os.ee.localhost', publicHost = 'www.ee.localhost'] = process.argv
 const headless = process.env.HEADED !== '1'
-const email = `owner-${Date.now()}@kindred.test`
-const password = 'correct horse battery staple 42'
+const email = process.env.OWNER_EMAIL ?? `owner-${Date.now()}@kindred.test`
 
 function step(s) {
   console.log(`→ ${s}`)
@@ -25,15 +24,20 @@ try {
   const ctx = await browser.newContext({ ignoreHTTPSErrors: true, baseURL: consoleUrl })
   const page = await ctx.newPage()
 
-  step('owner signs up')
+  step('owner signs up (passwordless: email → emailed code)')
   await page.goto('/signup')
   await page.getByRole('button', { name: 'Create account' }).waitFor()
   await page.locator('#email').fill(email)
-  await page.locator('#password').fill(password)
-  await page.locator('#firstName').fill('Alex')
-  await page.locator('#lastName').fill('Owner')
   await page.getByRole('checkbox', { name: /Terms of Service|AGB/i }).check()
   await page.getByRole('button', { name: 'Create account' }).click()
+  await page.getByTestId('auth-code-step').waitFor({ timeout: 30_000 })
+  // Production boxes have no code harness: the code arrives by email. Pass it in to continue.
+  const code = process.env.OWNER_CODE ?? (await new Promise((r) => {
+    process.stdout.write(`  code emailed to ${email} — enter it: `)
+    process.stdin.once('data', (d) => r(String(d).trim()))
+  }))
+  await page.locator('#code').fill(code)
+  await page.getByRole('button', { name: 'Continue' }).click()
   await page.waitForURL(/\/(\?|#|$)/, { timeout: 30_000 })
 
   step('the onboarding boot sequence greets the owner (unchanged)')
@@ -81,10 +85,8 @@ try {
   const other = await (await browser.newContext({ ignoreHTTPSErrors: true, baseURL: consoleUrl })).newPage()
   await other.goto('/signup')
   await other.getByRole('button', { name: 'Create account' }).waitFor()
+  // Without the stranger's inbox we can only check the code step does not let anyone in by itself.
   await other.locator('#email').fill(`stranger-${Date.now()}@example.test`)
-  await other.locator('#password').fill(password)
-  await other.locator('#firstName').fill('Stranger')
-  await other.locator('#lastName').fill('Danger')
   await other.getByRole('checkbox', { name: /Terms of Service|AGB/i }).check()
   await other.getByRole('button', { name: 'Create account' }).click()
   await other.waitForTimeout(3000)

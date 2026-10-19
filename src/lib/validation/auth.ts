@@ -35,6 +35,26 @@ export const resendVerificationSchema = z.object({
   email: z.string().email('Invalid email address'),
 })
 
+/** Passwordless: step 1 of login — the address to send a code to. */
+export const emailCodeRequestSchema = z.object({
+  email: z.string().trim().toLowerCase().email('Invalid email address'),
+})
+
+/** Passwordless: step 1 of signup — the address, plus accepting the terms. */
+export const signUpCodeRequestSchema = z.object({
+  email: z.string().trim().toLowerCase().email('Invalid email address'),
+  acceptTerms: acceptTermsSchema,
+})
+
+/** Passwordless: step 2 — the 6-digit code from the email. */
+export const emailCodeVerifySchema = z.object({
+  email: z.string().trim().toLowerCase().email('Invalid email address'),
+  code: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, 'Enter the 6-digit code from the email'),
+})
+
 export type SignInData = z.infer<typeof signInSchema>
 export type SignUpData = z.infer<typeof signUpSchema>
 export type ForgotPasswordData = z.infer<typeof forgotPasswordSchema>

@@ -9,7 +9,8 @@
   import * as Card from '$lib/components/ui/card'
   import { Label } from '$lib/components/ui/label'
   import { websiteLegalUrl } from '$lib/legal/website-legal-urls'
-  import { signUpSchema } from '$lib/validation/auth'
+  import AuthCodeStep from '$lib/components/auth-code-step.svelte'
+  import { signUpCodeRequestSchema } from '$lib/validation/auth'
 
   const websiteOrigin = (import.meta.env.PUBLIC_WEBSITE_ORIGIN ?? '').replace(/\/$/, '')
   const termsHref = websiteLegalUrl('terms', websiteOrigin)
@@ -18,39 +19,20 @@
 
   let { data, form }: { data: PageData; form: ActionData } = $props()
 
-  let firstName = $state('')
-  let lastName = $state('')
   let email = $state('')
-  let password = $state('')
   let acceptTerms = $state(false)
-  let fieldErrors = $state<{
-    firstName?: string
-    lastName?: string
-    email?: string
-    password?: string
-    acceptTerms?: string
-  }>({})
+  let fieldErrors = $state<{ email?: string; acceptTerms?: string }>({})
+
+  const codeStep = $derived(form?.step === 'code' && typeof form.email === 'string')
 
   function validate() {
-    const result = signUpSchema.safeParse({
-      firstName: firstName.trim(),
-      lastName: lastName.trim() || undefined,
-      email,
-      password,
-      acceptTerms: acceptTerms ? 'on' : undefined,
-    })
+    const result = signUpCodeRequestSchema.safeParse({ email, acceptTerms: acceptTerms ? 'on' : undefined })
     if (result.success) {
       fieldErrors = {}
       return true
     }
     const flat = result.error.flatten().fieldErrors
-    fieldErrors = {
-      firstName: flat.firstName?.[0],
-      lastName: flat.lastName?.[0],
-      email: flat.email?.[0],
-      password: flat.password?.[0],
-      acceptTerms: flat.acceptTerms?.[0],
-    }
+    fieldErrors = { email: flat.email?.[0], acceptTerms: flat.acceptTerms?.[0] }
     return false
   }
 </script>
@@ -87,27 +69,16 @@
     class="ring-0 shadow-[4px_4px_0_0_rgb(17_17_17_/_0.08)] mt-8 border border-black/10 bg-card"
   >
     <Card.Content class="space-y-4 pt-6">
-      {#if form?.checkEmail}
-        <p class="text-foreground text-xs">
-          {form.message ?? 'Check your email for a verification link before signing in.'}
-        </p>
-        {#if form.email && data.emailVerificationRequired}
-          <form method="post" action="?/resendVerification" use:enhance class="space-y-2">
-            <input type="hidden" name="email" value={form.email} />
-            <Button type="submit" variant="outline" class="w-full rounded-[4px]"
-              >Resend verification email</Button
-            >
-          </form>
-        {/if}
-        <p class="text-muted-foreground text-center text-xs">
-          <a href={resolve('/login')} class="text-foreground underline-offset-2 hover:underline"
-            >Sign in</a
-          >
-        </p>
+      {#if codeStep && form?.email}
+        <AuthCodeStep
+          email={form.email}
+          message={'notice' in form ? form.notice : undefined}
+          error={'message' in form ? form.message : undefined}
+        />
       {:else}
         <form
           method="post"
-          action="?/signUpEmail"
+          action="?/sendCode"
           use:enhance
           class="space-y-4"
           onsubmit={(e) => {
@@ -182,36 +153,6 @@
           {/if}
 
           <div class="space-y-1">
-            <Label for="firstName">First name</Label>
-            <input
-              id="firstName"
-              type="text"
-              name="firstName"
-              autocomplete="given-name"
-              bind:value={firstName}
-              class="border-input bg-card text-foreground h-9 w-full border px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              aria-describedby={fieldErrors.firstName ? 'first-name-error' : undefined}
-            />
-            {#if fieldErrors.firstName}
-              <p id="first-name-error" class="text-destructive text-xs">{fieldErrors.firstName}</p>
-            {/if}
-          </div>
-          <div class="space-y-1">
-            <Label for="lastName">Last name <span class="text-muted-foreground">(optional)</span></Label>
-            <input
-              id="lastName"
-              type="text"
-              name="lastName"
-              autocomplete="family-name"
-              bind:value={lastName}
-              class="border-input bg-card text-foreground h-9 w-full border px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              aria-describedby={fieldErrors.lastName ? 'last-name-error' : undefined}
-            />
-            {#if fieldErrors.lastName}
-              <p id="last-name-error" class="text-destructive text-xs">{fieldErrors.lastName}</p>
-            {/if}
-          </div>
-          <div class="space-y-1">
             <Label for="email">Email</Label>
             <input
               id="email"
@@ -226,24 +167,9 @@
               <p id="email-error" class="text-destructive text-xs">{fieldErrors.email}</p>
             {/if}
           </div>
-          <div class="space-y-1">
-            <Label for="password">Password</Label>
-            <input
-              id="password"
-              type="password"
-              name="password"
-              autocomplete="new-password"
-              bind:value={password}
-              class="border-input bg-card text-foreground h-9 w-full border px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              aria-describedby={fieldErrors.password ? 'password-error' : undefined}
-            />
-            <p class="text-muted-foreground text-[10px]">Minimum 8 characters</p>
-            {#if fieldErrors.password}
-              <p id="password-error" class="text-destructive text-xs">{fieldErrors.password}</p>
-            {/if}
-          </div>
+          <p class="text-muted-foreground text-[10px]">No password: we email you a 6-digit code.</p>
           <Button type="submit" class="w-full rounded-[4px]">Create account</Button>
-          {#if form?.message}
+          {#if form && 'message' in form && form.message}
             <p class="text-destructive text-xs">{form.message}</p>
           {/if}
         </form>

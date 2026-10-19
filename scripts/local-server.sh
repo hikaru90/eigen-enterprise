@@ -9,6 +9,7 @@
 #   scripts/local-server.sh logs [w]  logs of a workload (default: os = eigenEnterprise)
 #   scripts/local-server.sh shell     root shell on the server
 #   scripts/local-server.sh stop|start
+#   scripts/local-server.sh upgrade   build a release of the current code and deploy it (data kept, health-gated)
 #   scripts/local-server.sh reset     destroy the server and its data, install fresh
 #   scripts/local-server.sh ca        where the server's local certificate authority is (to trust it)
 #
@@ -58,6 +59,10 @@ case "${1:-}" in
     if need_release; then echo "→ building the release (a few minutes)"; "$ROOT/scripts/release.sh" "$ARCH"; fi
     boot
     install ;;
+  upgrade)
+    if need_release; then echo "→ building the release (a few minutes)"; "$ROOT/scripts/release.sh" "$ARCH"; fi
+    release=$(cd "$ROOT/dist/release" && ls eigenenterprise-*-linux-"$NODE_ARCH".tar.gz | tail -n 1)
+    docker exec "$NAME" sh -c "install -m 0755 /release/ee.mjs /opt/ee/ee.mjs && ee bootstrap --release /release/$release" ;;
   status) docker exec "$NAME" ee status ;;
   logs) docker exec "$NAME" ee logs "${2:-os}" ;;
   shell) docker exec -it "$NAME" bash ;;

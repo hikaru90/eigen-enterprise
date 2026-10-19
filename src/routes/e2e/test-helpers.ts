@@ -24,84 +24,43 @@ export async function registerUser(
   const emailDomain = options?.emailDomain ?? 'test.eigen'
   const email = `e2e-${id}@${emailDomain}`
 
+  // Passwordless (Better Auth emailOTP): email + terms → Create account → 6-digit code.
   await page.goto('/signup')
   await page.getByRole('button', { name: 'Create account' }).waitFor({ state: 'visible' })
-
-  const firstName = 'Test'
-  const lastName = `User ${id}`
-  const firstNameInput = page.locator('#firstName')
-  const lastNameInput = page.locator('#lastName')
   const emailInput = page.locator('#email')
-  const passwordInput = page.locator('#password')
-
-  // Fill email/password first, then names last — early fills can be cleared by Svelte hydration.
   await emailInput.fill(email)
-  await passwordInput.fill(TEST_PASSWORD)
-  await firstNameInput.fill(firstName)
-  await lastNameInput.fill(lastName)
-
-  await expect(firstNameInput).toHaveValue(firstName)
-  await expect(lastNameInput).toHaveValue(lastName)
   await expect(emailInput).toHaveValue(email)
-  await expect(passwordInput).toHaveValue(TEST_PASSWORD)
-
   const terms = page.getByRole('checkbox', { name: /Terms of Service|AGB/i })
   await terms.check()
   await expect(terms).toBeChecked()
-
   await page.getByRole('button', { name: 'Create account' }).click()
-
-  await completeEmailVerificationIfRequired(page, email)
+  await enterEmailedCode(page, email)
 
   await page.waitForURL(/\/(\?|#|$)/)
   return { email }
 }
 
 /**
- * When email verification is enabled (Owlery mail configured), signup stays on /signup and shows a
- * "check your email" notice instead of redirecting. The dev-only harness endpoint exposes the
- * verification link Better Auth generated so we can follow it and land on the nucleus (/).
- * nucleus: post-auth lands on /
+ * The dev-only harness endpoint exposes the last sign-in code Better Auth emailed,
+ * so Playwright completes passwordless login without an inbox.
  */
-async function completeEmailVerificationIfRequired(page: Page, email: string): Promise<void> {
-  const checkEmailNotice = page.getByText(/Check your email for a verification link/i)
-  const landed = await Promise.race([
-    page.waitForURL(/\/(\?|#|$)/, { timeout: 15_000 }).then(() => 'nucleus' as const),
-    checkEmailNotice.waitFor({ state: 'visible', timeout: 15_000 }).then(() => 'verify' as const),
-  ]).catch(() => 'unknown' as const)
-
-  if (landed === 'nucleus') return
-
-  const link = await fetchVerificationLink(page, email)
-  const target = new URL(link)
-  await page.goto(`${target.pathname}${target.search}`)
-}
-
-async function fetchVerificationLink(page: Page, email: string): Promise<string> {
-  let link: string | null = null
+export async function enterEmailedCode(page: Page, email: string): Promise<void> {
+  await page.getByTestId('auth-code-step').waitFor({ state: 'visible', timeout: 15_000 })
+  let code: string | null = null
   await expect
     .poll(
       async () => {
-        const res = await page.request.get(
-          `/api/e2e/harness/verification-link?email=${encodeURIComponent(email)}`,
-        )
-        if (!res.ok()) {
-          throw new Error(
-            `verification-link endpoint failed (${res.status()}): ${await res.text()}`,
-          )
-        }
-        const body = (await res.json()) as { link?: string | null }
-        link = body.link ?? null
-        return link
+        const res = await page.request.get(`/api/e2e/harness/sign-in-code?email=${encodeURIComponent(email)}`)
+        if (!res.ok()) throw new Error(`sign-in-code endpoint failed (${res.status()}): ${await res.text()}`)
+        code = ((await res.json()) as { code?: string | null }).code ?? null
+        return code
       },
       { timeout: 15_000, intervals: [250, 500, 1000] },
     )
     .not.toBeNull()
-
-  if (!link) {
-    throw new Error(`No verification link captured for ${email}`)
-  }
-  return link
+  if (!code) throw new Error(`No sign-in code captured for ${email}`)
+  await page.locator('#code').fill(code)
+  await page.getByRole('button', { name: 'Continue' }).click()
 }
 
 /**
@@ -111,8 +70,8 @@ export async function loginUser(page: Page, email: string): Promise<void> {
   await page.goto('/login')
   await page.waitForURL(/\/login/, { timeout: 15_000 })
   await page.locator('#email').fill(email)
-  await page.locator('#password').fill(TEST_PASSWORD)
-  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('button', { name: 'Send code' }).click()
+  await enterEmailedCode(page, email)
   await page.waitForURL(/\/(\?|#|$)/)
 }
 

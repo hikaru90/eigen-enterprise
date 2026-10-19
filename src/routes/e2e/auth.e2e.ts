@@ -30,22 +30,24 @@ test.describe('Registration and login flow', () => {
   })
 })
 
-test.describe('Password reset and verification recovery', () => {
-  test('login exposes forgot-password; request reset shows check-email', async ({ page }) => {
+test.describe('Passwordless email codes', () => {
+  test('login has no password: email first, then a code', async ({ page }) => {
     await page.goto('/login')
-    const forgot = page.getByRole('link', { name: /Forgot password/i })
-    await expect(forgot).toBeVisible()
-    await forgot.click()
-    await page.waitForURL(/\/forgot-password/)
-
-    await page.locator('#email').fill('recovery@example.com')
-    await page.getByRole('button', { name: /Send reset link/i }).click()
-    await expect(page.getByText(/check your email/i)).toBeVisible()
+    await expect(page.locator('#password')).toHaveCount(0)
+    await page.locator('#email').fill(`code-${Date.now()}@test.eigen`)
+    await page.getByRole('button', { name: 'Send code' }).click()
+    await expect(page.getByTestId('auth-code-step')).toBeVisible()
   })
 
-  test('reset-password without token shows an invalid-link message', async ({ page }) => {
-    await page.goto('/reset-password')
-    await expect(page.getByText(/invalid or expired/i)).toBeVisible()
+  test('a wrong code keeps you on the code step and says why', async ({ page }) => {
+    await page.goto('/login')
+    await page.locator('#email').fill(`wrong-${Date.now()}@test.eigen`)
+    await page.getByRole('button', { name: 'Send code' }).click()
+    await page.getByTestId('auth-code-step').waitFor()
+    await page.locator('#code').fill('000000')
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await expect(page.getByTestId('auth-code-error')).toBeVisible()
+    await expect(page).toHaveURL(/\/login/)
   })
 })
 

@@ -23,3 +23,19 @@ export function consumeVerificationLink(email: string): string | undefined {
   if (url) linksByEmail.delete(key)
   return url
 }
+
+const codesByEmail = new Map<string, string>()
+
+/** Dev/e2e only: the most recent email sign-in code per address (passwordless login). */
+export function recordSignInCode(email: string, otp: string): void {
+  if (!dev) return
+  codesByEmail.set(normalizeEmail(email), otp)
+}
+
+export function consumeSignInCode(email: string): string | undefined {
+  if (!dev) return undefined
+  const key = normalizeEmail(email)
+  const otp = codesByEmail.get(key)
+  if (otp) codesByEmail.delete(key)
+  return otp
+}

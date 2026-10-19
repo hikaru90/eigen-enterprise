@@ -35,5 +35,7 @@ docker run --rm --platform "linux/$ARCH" -v "$OUT:/out" -w /work node:22-bookwor
   tar -czf /out/$NAME.tar.gz -C /stage .
 "
 rm -f "$OUT/src.tar"
+# Keep only this release for the arch, so installers pick it unambiguously.
+find "$OUT" -name "eigenenterprise-*-linux-${NODE_ARCH}.tar.gz*" ! -name "$NAME.tar.gz*" -delete
 (cd "$OUT" && shasum -a 256 "$NAME.tar.gz" > "$NAME.tar.gz.sha256" && shasum -a 256 ee.mjs > ee.mjs.sha256)
 echo "✓ $OUT/$NAME.tar.gz"

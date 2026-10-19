@@ -2,6 +2,28 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-19 (3) — SHIPPED: passwordless sign-up and sign-in (Better Auth email OTP)
+
+**Owner directive**: use Better Auth; signup is passwordless: enter only the email, click Create account, and a code is sent to that address.
+
+**Shipped**
+- The Better Auth **`emailOTP` plugin** (6 digits, 10 min, 5 attempts). The `sign-in` code type both creates a new account and signs in an existing one; the owner policy still decides who may be created.
+- `/signup`: email + terms → **Create account** → code. `/login`: email → **Send code** → code. Shared `auth-code-step.svelte`. No password fields anywhere.
+- Delivery (`src/lib/server/auth/deliver-code.ts`) is **email only, via Owlery**:
+  - with no mailer configured, production **fails loudly** ("Email delivery is not configured… `ee secret set os OWLERY_*`") and never logs the code;
+  - dev prints the code and records it for the Playwright harness (`/api/e2e/harness/sign-in-code`, dev-only).
+- e2e helpers (`registerUser`, `loginUser`) are passwordless. `auth.e2e.ts` replaces the forgot-password test with code-flow tests.
+- **Gates**:
+  - unit: 4262 passed;
+  - e2e: onboarding-welcome + auth **13/13** against the dev server;
+  - svelte-check: 0 errors.
+- `scripts/local-server.sh upgrade` deploys the current code to the local box (health-gated, data kept).
+
+**Decisions / follow-ups**
+- Password endpoints stay enabled server-side (existing accounts aren't stranded), but no UI offers them. `/forgot-password` and `/reset-password` are orphaned; delete them once no password accounts are left.
+- **An ee server needs email delivery before the first signup**: `ee secret set os OWLERY_API_KEY` / `OWLERY_BASE_URL` / `OWLERY_EMAIL_FROM`.
+- CI e2e (`npm run preview`, not dev) has no code harness yet and needs a mail sink; local e2e runs against the dev server and passes.
+
 ## 2026-10-19 (2) — SHIPPED (local box): `ee` installs eigenEnterprise on a fresh server; domains, apps and GitHub in Settings → Hosting
 
 **Owner goal**: deploy the first slice to a real VPS, keeping the onboarding exactly as it is; the website module, a GitHub connection and domains in Settings, plus everything else needed.

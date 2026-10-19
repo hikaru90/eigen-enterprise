@@ -1,5 +1,6 @@
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { betterAuth } from 'better-auth/minimal'
+import { emailOTP } from 'better-auth/plugins/email-otp'
 import { sveltekitCookies } from 'better-auth/svelte-kit'
 import { count } from 'drizzle-orm'
 import { dev } from '$app/environment'
@@ -8,10 +9,11 @@ import { resolveAccountKindForNewUser } from '$lib/auth/account-kind'
 import { syncOwleryContactForVerifiedUser } from '$lib/server/auth-owlery-sync'
 import { buildSocialProvidersConfig, listEnabledSocialProviderIds } from '$lib/server/auth-social'
 import { normalizeUserNameFields } from '$lib/server/auth-user-name'
+import { deliverSignInCode } from '$lib/server/auth/deliver-code'
 import { ownerPolicyForNewUser } from '$lib/server/auth/owner-policy'
 import { authDb } from '$lib/server/db/auth-db'
 import { user as userTable } from '$lib/server/db/auth.schema'
-import { recordVerificationLink } from '$lib/server/e2e/verification-link-store'
+import { recordSignInCode, recordVerificationLink } from '$lib/server/e2e/verification-link-store'
 import { env } from '$lib/server/env/private-env'
 import { isOwleryMailConfigured, sendTransactionalEmail } from '$lib/server/owlery/mail'
 
@@ -219,6 +221,25 @@ export const auth = betterAuth({
     },
   },
   plugins: [
+    // Passwordless: an emailed 6-digit code signs up a new address and signs in an existing one.
+    emailOTP({
+      otpLength: 6,
+      expiresIn: 600,
+      allowedAttempts: 5,
+      sendVerificationOTP: async ({ email, otp, type }) => {
+        if (type !== 'sign-in') throw new Error(`unsupported email code type: ${type}`)
+        await deliverSignInCode(
+          { email, otp },
+          {
+            mailConfigured,
+            dev,
+            send: (mail) => sendTransactionalEmail(env, mail),
+            log: (line) => console.log(line),
+            record: recordSignInCode,
+          },
+        )
+      },
+    }),
     sveltekitCookies(getRequestEvent), // make sure this is the last plugin in the array
   ],
 })
