@@ -2,6 +2,21 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-20 — SHIPPED (branch): the agent fixes tool errors itself (module_inactive no longer reaches the user)
+
+**What broke**: on a fresh server the website-founding chat replied "Error: module website is not active; cannot execute website.list_pages". The KernelError came from the journey artifact executor (`executeStepArtifacts` → `listPagesViaRegistry`) and builtin-json's catch (`throw err`); durable passed only the bare message string to the model.
+
+**Shipped**
+- `src/lib/kernel/engines/tool-error.ts`: shared `toolErrorResult` → `{status:'error', tool, code, message, details?, remediation?}`. For `module_inactive` the remediation is `{module, fix:'kernel.module_activate', input:{module_id}}`. KernelError details go through `redactForLog`. Zod issues are reported as path + message only.
+- Both engines (durable `bridgeExecute`, builtin-json tool path) return this result to the model instead of throwing. `approval_required` → `approval_pending` is unchanged.
+- `KernelError` gains optional structured `details`. The registry's module gate sets `{module, tool}`, so no code parses the message.
+- The journey executor activates an inactive module through the audited `kernel.module_activate` tool and retries once. Any other error, or a second failure, still fails loud.
+- Persona prompt gains `ORCHESTRATOR_TOOL_ERROR_PROMPT`: fix it yourself, use `kernel.module_list`, tell the user only in plain language.
+
+**Decision log (architecture impact)**
+- **Tool vs infrastructure boundary**: anything that rejects from `EngineContext.executeTool` counts as the tool's result and goes to the model. Harness, storage, gateway and index failures still fail the run. Known limitation: an audit or vcs write that fails inside `registry.execute` is also reported to the model.
+- No role change. `ORCHESTRATOR_PRINCIPAL` already has `admin`, the kernel module is activated at bootstrap, and the listing already offers `kernel.module_list` + `kernel.module_activate` (pinned by a test). Tools of inactive modules stay hidden from the listing; `kernel.module_list` shows they exist.
+
 ## 2026-10-19 (6) — SHIPPED (branch): Owlery email module on Amazon SES
 
 **Owner rule**: the email module owns the Amazon SES credentials and all sending; nothing else holds SES credentials or talks to SES.

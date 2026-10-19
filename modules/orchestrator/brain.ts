@@ -96,11 +96,37 @@ export const ORCHESTRATOR_LLM_USER_ID = 'orchestrator'
  * turn (e.g. a plain "hi" while publishes wait on approval) must never
  * surface `duplicate website slug`.
  */
+/**
+ * The orchestrator fixes what it can before anything reaches the user: a
+ * journey artifact whose module is not yet active (a fresh server) gets that
+ * module activated through the audited, permissioned kernel.module_activate
+ * tool (keyed on the structured KernelError code + details.module, never the
+ * message), then the call is retried ONCE. Any other error — or a second
+ * failure — still fails loud.
+ */
+async function executeRemediatingInactiveModule(
+  registry: KernelRegistry,
+  tool: string,
+  input: unknown,
+  ctx: { principal: JourneyArtifactPrincipal; requestId: string },
+): Promise<unknown> {
+  try {
+    return await registry.execute(tool, input, ctx)
+  } catch (err) {
+    const moduleId = err instanceof KernelError ? err.details?.module : undefined
+    if (!(err instanceof KernelError) || err.code !== 'module_inactive' || typeof moduleId !== 'string') {
+      throw err
+    }
+    await registry.execute('kernel.module_activate', { module_id: moduleId }, ctx)
+    return registry.execute(tool, input, ctx)
+  }
+}
+
 async function listPagesViaRegistry(
   registry: KernelRegistry,
   ctx: { principal: JourneyArtifactPrincipal; requestId: string },
 ): Promise<Array<{ slug: string; visibility: string }>> {
-  const rows = await registry.execute('website.list_pages', {}, ctx)
+  const rows = await executeRemediatingInactiveModule(registry, 'website.list_pages', {}, ctx)
   return rows as Array<{ slug: string; visibility: string }>
 }
 
@@ -262,6 +288,16 @@ export const ORCHESTRATOR_ONBOARDING_PROMPT = [
   `ONBOARDING: when a company onboarding context block is present in the user message, you are guiding the owner right after setup — follow its order and protocol (start marker ${ONBOARDING_START_WEBSITE_MARKER} only once the owner agreed to start the website). This block overrides the “you do not interview” posture for the website founding journey.`,
 ].join('\n')
 
+/**
+ * Tool-error self-repair: a failed tool call comes back as a structured
+ * {status:'error'} result (src/lib/kernel/engines/tool-error.ts). The agent
+ * fixes what it can; the user hears only what it cannot fix.
+ */
+export const ORCHESTRATOR_TOOL_ERROR_PROMPT = [
+  'TOOL ERRORS: when a tool returns {"status":"error"}, try to fix it yourself first — if it carries a remediation, call that tool (e.g. kernel.module_activate for an inactive module), correct your arguments if they were invalid, then retry. Use kernel.module_list to see which modules exist and which are active (tools of inactive modules are not offered until activated).',
+  'Only tell the user when you cannot fix it, in plain language — never internal error codes, tool names, or raw messages.',
+].join('\n')
+
 /** Persona preamble handed to BOTH orchestrator engines (builtin-json + durable) as the system prompt. */
 export const ORCHESTRATOR_PERSONA_PROMPT = [
   'You are the orchestrator: the general assistant of this company.',
@@ -271,6 +307,7 @@ export const ORCHESTRATOR_PERSONA_PROMPT = [
   '- Know what the company CAN do — name the modules (memory, website, brand, email, repo, chat-gateway, recap, roadmap), say in one line what each does, and offer the relevant one.',
   '- When a request belongs to a module, say so and hand off: point at its surface or offer to run its kernel tools — do not silently start doing a module’s job in general chat.',
   '- Answer anything directly that needs no module (questions, status, small talk, quick kernel lookups).',
+  ORCHESTRATOR_TOOL_ERROR_PROMPT,
   ORCHESTRATOR_JOURNEY_PROMPT,
   ORCHESTRATOR_ONBOARDING_PROMPT,
   ...disciplineSections(),
@@ -598,7 +635,8 @@ export async function executeStepArtifacts(options: {
         }
       }
       try {
-        await registry.execute(
+        await executeRemediatingInactiveModule(
+          registry,
           artifact.tool,
           input,
           { principal: ORCHESTRATOR_PRINCIPAL, requestId },

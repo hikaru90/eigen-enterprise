@@ -6,6 +6,7 @@ import type {
 } from '../engine'
 import type { AgentSessionLog } from '../session-log'
 import { KernelError } from '../errors'
+import { toolErrorResult } from './tool-error'
 
 /**
  * The 'builtin-json' loop engine: the orchestrator's JSON agent protocol,
@@ -473,7 +474,7 @@ export class BuiltinJsonLoop implements LoopEngine {
       } catch (err) {
         if (err instanceof KernelError && err.code === 'approval_required') {
           // Owner-approval gate: surface as a structured tool result so the
-          // model can tell the user; every other error fails the cycle loud.
+          // model can tell the user; every other error is reported below.
           emitSurface({ type: 'approval.required', tool: turn.tool })
           messages.push({
             role: 'user',
@@ -481,7 +482,12 @@ export class BuiltinJsonLoop implements LoopEngine {
           })
           continue
         }
-        throw err
+        // Every other tool failure is the tool's result (see tool-error.ts for
+        // the boundary): the model sees it and can fix it and retry.
+        messages.push({
+          role: 'user',
+          content: `Tool result for ${turn.tool}:\n${toolResultText(toolErrorResult(turn.tool, err))}\n\nThe tool call failed. Fix it yourself if you can (e.g. call the remediation tool, correct the arguments) and retry. Otherwise give your final answer using {"answer": "<your response>"}, explaining in plain language what you could not do.`,
+        })
       }
     }
 

@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import { createAdminTools, kernelManifest } from '$lib/kernel/admin-tools'
+import { AgentRuntime } from '$lib/kernel/agent-runtime'
+import { InMemoryApprovalStore } from '$lib/kernel/approvals'
+import { InMemoryEventSink } from '$lib/kernel/events'
+import { InMemoryActivationStore, ModuleRegistry } from '$lib/kernel/modules'
+import { KernelRegistry } from '$lib/kernel/registry'
 import {
   ORCHESTRATOR_JOURNEY_PROMPT,
   ORCHESTRATOR_PERSONA_PROMPT,
+  ORCHESTRATOR_PRINCIPAL,
   orchestratorAgentConfig,
 } from './brain'
 
@@ -15,6 +22,32 @@ describe('orchestrator persona prompt', () => {
       /You are the orchestrator: the general assistant of this company\./,
     )
     expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/kernel tools/)
+  })
+
+  it('tells the agent to fix tool errors itself and only surface what it cannot fix', () => {
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('TOOL ERRORS')
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('kernel.module_activate')
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('kernel.module_list')
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/never internal error codes/)
+  })
+
+  it('the orchestrator principal can see and run the module admin tools (admin role)', async () => {
+    const activations = new InMemoryActivationStore()
+    const modules = new ModuleRegistry(activations)
+    const registry = new KernelRegistry({ activationStore: activations })
+    modules.register(kernelManifest)
+    await activations.set('kernel', true)
+    const approvals = Object.assign(new InMemoryApprovalStore(), { list: async () => [] })
+    for (const t of createAdminTools({ modules, activations, approvals })) registry.register(t)
+    const runtime = new AgentRuntime({
+      registry,
+      isToolActive: (name) => modules.isToolActive(name),
+      eventSink: new InMemoryEventSink(),
+      rolesFor: () => ORCHESTRATOR_PRINCIPAL.roles,
+    })
+    runtime.registerAgent(orchestratorAgentConfig())
+    const names = (await runtime.listAgentTools(ORCHESTRATOR_PRINCIPAL.id)).map((t) => t.name)
+    expect(names).toEqual(expect.arrayContaining(['kernel.module_list', 'kernel.module_activate']))
   })
 
   it('never opens the onboarding journey from chat (onboarding owns the interview)', () => {

@@ -1,6 +1,7 @@
 import type { EngineContext, EngineToolListing, LoopEngine } from '../engine'
 import { KernelError } from '../errors'
 import { approvalPendingResult } from './builtin-json'
+import { toolErrorResult } from './tool-error'
 
 /**
  * The 'durable' loop engine (plan/phase-durable.md D6): the turn loop is
@@ -24,7 +25,7 @@ export type DurableBridgeToolSpec = {
   name: string
   description: string
   parametersJsonSchema: Record<string, unknown>
-  /** Execute through the kernel registry for this dispatch. Throws KernelError on failure. */
+  /** Execute through the kernel registry for this dispatch. Tool failures resolve as a structured {status:'error'} result (tool-error.ts), never a throw. */
   execute(args: Record<string, unknown>): Promise<unknown>
 }
 
@@ -102,7 +103,12 @@ function emitSurfaceEvent(
  * One tool's bridge execute: through the kernel registry via
  * EngineContext.executeTool — never around it. Approval-required errors become
  * the same structured approval_pending result builtin-json produces, so the
- * orchestrator's approval wording is engine-independent.
+ * orchestrator's approval wording is engine-independent. Every other
+ * rejection of executeTool becomes a structured {status:'error'} tool result
+ * (with remediation where the kernel knows it) so the agent can fix it and
+ * retry — see tool-error.ts for the tool-vs-infrastructure boundary.
+ * Infrastructure failures (harness, storage, gateway) never pass through here
+ * and still fail the run loud.
  */
 function bridgeExecute(
   toolName: string,
@@ -116,7 +122,7 @@ function bridgeExecute(
         emitSurfaceEvent(ctx, { type: 'approval.required', tool: toolName })
         return approvalPendingResult(toolName)
       }
-      throw err
+      return toolErrorResult(toolName, err)
     }
   }
 }

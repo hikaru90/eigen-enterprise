@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { createAdminTools, kernelManifest } from '$lib/kernel/admin-tools'
 import { InMemoryApprovalStore, StaticApprovalPolicy } from '$lib/kernel/approvals'
 import type { LoopEngine } from '$lib/kernel/engine'
 import { KernelError } from '$lib/kernel/errors'
 import { InMemoryEventSink } from '$lib/kernel/events'
+import { InMemoryActivationStore, ModuleRegistry } from '$lib/kernel/modules'
 import { InMemoryJourneyStore, initialJourneyState } from '$lib/kernel/playbook'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
@@ -11,6 +13,7 @@ import {
   JourneyAwareAgentRuntime,
   ORCHESTRATOR_AGENT_ID,
   WEBSITE_FOUNDING_JOURNEY,
+  executeStepArtifacts,
   orchestratorAgentConfig,
 } from './brain'
 
@@ -424,5 +427,64 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     expect(gated?.status).toBe('approval_pending')
     // Sanity: a real KernelError with the gate code exists and is matched by code.
     expect(new KernelError('approval_required', 'x').code).toBe('approval_required')
+  })
+})
+
+describe('journey artifacts on a fresh server (module not yet active)', () => {
+  it('the orchestrator activates the inactive module itself (audited kernel tool) and continues', async () => {
+    const sink = new InMemoryEventSink()
+    const activations = new InMemoryActivationStore()
+    const modules = new ModuleRegistry(activations)
+    const registry = new KernelRegistry({ eventSink: sink, activationStore: activations, vcsCommitter: null })
+    modules.register(kernelManifest)
+    modules.register({
+      id: 'website',
+      name: 'Website',
+      version: '0.1.0',
+      tools: ['website.list_pages', 'website.create_page', 'website.publish_page'],
+      permissions: { roles: ['admin'] },
+    })
+    await activations.set('kernel', true)
+    const adminApprovals = Object.assign(new InMemoryApprovalStore(), { list: async () => [] })
+    for (const t of createAdminTools({ modules, activations, approvals: adminApprovals })) registry.register(t)
+    const pages = new Map<string, { slug: string; visibility: string }>()
+    const tool = (name: string, handler: ToolDescriptor['handler']): ToolDescriptor => ({
+      name,
+      module: 'website',
+      summary: name,
+      auditClass: name === 'website.list_pages' ? 'read' : 'mutate',
+      inputSchema: z.looseObject({}),
+      permission: { roles: ['admin'] },
+      handler,
+    })
+    registry.register(tool('website.list_pages', async () => [...pages.values()]))
+    registry.register(
+      tool('website.create_page', async (_c, input) => {
+        const { slug } = input as { slug: string }
+        pages.set(slug, { slug, visibility: 'private' })
+        return { slug }
+      }),
+    )
+    registry.register(
+      tool('website.publish_page', async (_c, input) => {
+        const { slug, visibility } = input as { slug: string; visibility: string }
+        pages.set(slug, { slug, visibility })
+        return { slug }
+      }),
+    )
+
+    const state = initialJourneyState('s1', WEBSITE_FOUNDING_JOURNEY.specVersion)
+    state.captured.push('company_name', 'positioning')
+    state.answers = { company_name: 'Acme', positioning: 'We build things.' }
+
+    const result = await executeStepArtifacts({ registry, spec: WEBSITE_FOUNDING_JOURNEY, state })
+
+    expect(await activations.get('website')).toBe(true)
+    expect([...pages.keys()].sort()).toEqual(['about', 'contact', 'home'])
+    expect(result.allExecuted).toBe(false) // tone step not captured yet
+    const activationAudit = sink.events.filter(
+      (e) => e.type === 'tool.executed' && (e.payload as { tool: string }).tool === 'kernel.module_activate',
+    )
+    expect(activationAudit).toHaveLength(1)
   })
 })

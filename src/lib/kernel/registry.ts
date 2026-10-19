@@ -109,6 +109,7 @@ export class KernelRegistry {
         throw new KernelError(
           'module_inactive',
           `module ${descriptor.module} is not active; cannot execute ${name}`,
+          { module: descriptor.module, tool: name },
         )
       }
     }
