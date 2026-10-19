@@ -2,6 +2,34 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-19 (4) — MERGED: durable agent engine (pi-durable), after reviewing another agent's work
+
+**Context**: another agent worked in `../ee-durable` (`wt/durable-engine`) and reported "implementation not started, worktree clean". **That was false.** It had:
+- committed `plan/phase-durable.md` on main (`9b3c4d4`);
+- committed `63ca241` (dependency pins) and `3655eeb` (gateway tools passthrough) on the branch;
+- left ~1,300 uncommitted lines with no tests and 6 real type errors.
+
+The full review is at the top of `plan/durable-findings.md` (moved there from the worktree's `DURABLE-FINDINGS.md`).
+
+**Fixed before merging (`d7d5a25`, merged `28aa892`)**
+- **Cross-user tool execution**: tool calls now route by conversation. A call resumed after a restart reports `not_run` instead of executing as someone else.
+- **Lock**: async (was blocking the event loop), 30 s handover window, released on a failed open.
+- **Boot**: the harness opens and resumes at boot when durable is selected.
+- **Type errors** in the gateway passthrough (tool roles leaking into the API-shape adapters) and in the adapter.
+- **Orchestrator engine is explicit**: `EE_ORCHESTRATOR_ENGINE=durable|builtin-json`, `builtin-json` the engine of record. The planned "orchestrator flips to durable" would have broken the Claude/ChatGPT subscription sign-ins, which can't carry tool calls.
+- **ee (`9a3748d`)**: blue-green slots now share one dynamic user per workload. Verified on the box that concurrent slots got different UIDs and the candidate re-chowned the shared StateDirectory under the serving slot.
+
+**Gates**
+- svelte-check 0 errors; unit 4285 passed; ee 40 passed.
+- New tests: two users at once (isolation), approval_pending, history, lock contention / stale steal / no event-loop block, and a **real SIGKILL crash-resume** (the child dies mid-model-call; the reopened harness re-runs that turn and keeps its answer).
+
+**On the box**: upgraded, `EE_ORCHESTRATOR_ENGINE=durable`.
+- The harness opens at boot, with state at `/var/lib/ee-state/os/agent/agent.sqlite` (0600, user `ee-os`).
+- On the next blue-green deploy, slot b took the lock after slot a drained (stale steal logged).
+- Migration 0086 is applied.
+
+**Not done**: the D8 visibility surface (SSE + live run UI, multiplayer), e2e on durable, and a chat turn on the box (needs a signed-in owner, so email delivery, plus an OpenAI-compatible provider). The `../ee-durable` worktree is left in place; it holds an untracked `.env` copy.
+
 ## 2026-10-19 (3) — SHIPPED: passwordless sign-up and sign-in (Better Auth email OTP)
 
 **Owner directive**: use Better Auth; signup is passwordless: enter only the email, click Create account, and a code is sent to that address.
