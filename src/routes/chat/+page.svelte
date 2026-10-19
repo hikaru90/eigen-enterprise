@@ -16,7 +16,11 @@
   import { page } from '$app/state'
   import { appendVoiceTranscript } from '$lib/capture/transcribe-audio'
   import { sanitizeFinalAnswerText, toolLabel } from '$lib/chat/chat-stream-types'
-  import { consumeChatNdjsonStream, type ChatProgressEvent } from '$lib/chat/consume-chat-ndjson'
+  import {
+    chatFailureMessage,
+    consumeChatNdjsonStream,
+    type ChatProgressEvent,
+  } from '$lib/chat/consume-chat-ndjson'
   import {
     normalizeChatDisplay,
     sessionMessagesToChatEntries,
@@ -404,8 +408,8 @@
       })
 
       if (!res.ok) {
-        const errBody = await res.json().catch(() => null)
-        throw new Error(errBody?.message ?? `HTTP ${res.status}`)
+        // The status is for the console only — never rendered to the user.
+        throw new Error(`chat request failed: HTTP ${res.status}`)
       }
 
       const streamCtx = {
@@ -447,11 +451,9 @@
           appendMessage({ role: 'assistant', variant: 'text', content: 'Stopped.' })
         }
       } else {
-        appendMessage({
-          role: 'assistant',
-          variant: 'text',
-          content: `Error: ${err instanceof Error ? err.message : String(err)}`,
-        })
+        console.error('[chat] turn failed', err)
+        // No raw error text reaches the user (code <-> harness <-> user).
+        appendMessage({ role: 'assistant', variant: 'text', content: chatFailureMessage(err) })
       }
     } finally {
       clearStreamIdleTimeout()

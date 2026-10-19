@@ -104,11 +104,16 @@ export async function recordFoundingInterview(
   // spec the moment the founder submits fresh answers.
   state.specVersion = WEBSITE_FOUNDING_JOURNEY.specVersion
 
-  const { allExecuted } = await executeStepArtifacts({
+  const { allExecuted, failures } = await executeStepArtifacts({
     registry,
     spec: WEBSITE_FOUNDING_JOURNEY,
     state,
   })
+  // The wizard endpoint has no agent turn to hand failures to: fail loud.
+  const failure = failures[0]
+  if (failure) {
+    throw new Error(`founding artifact ${failure.tool} failed (${failure.code}): ${failure.message}`)
+  }
 
   const executed = state.artifacts.filter((r) => r.status === 'executed').length
   const approvalPending = state.artifacts.filter((r) => r.status === 'approval_pending').length

@@ -10,6 +10,7 @@ import { InMemoryJourneyStore, initialJourneyState } from '$lib/kernel/playbook'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import {
+  HARNESS_OBSERVATION_HEADER,
   JourneyAwareAgentRuntime,
   ORCHESTRATOR_AGENT_ID,
   WEBSITE_FOUNDING_JOURNEY,
@@ -321,7 +322,7 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     expect(replies[2]).not.toContain('[[journey:')
   })
 
-  it('fails loud on artifact errors (no silent degradation)', async () => {
+  it('hands artifact errors back to the agent for one more step — never thrown to the caller', async () => {
     const fx = fixture({ failOnSlug: 'brand-tone-of-voice' })
     await fx.journeys.create(
       WEBSITE_FOUNDING_JOURNEY.kind,
@@ -335,11 +336,117 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'an AI-native company OS')
 
     // The brand doc is the tone step's artifact (the final step): the failure
-    // surfaces on the turn that captures tone.
-    fx.script.push(`Hmm.\n${marker('tone')}`)
-    await expect(
-      fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'warm, direct, technical'),
-    ).rejects.toThrow(/duplicate website slug/)
+    // surfaces on the turn that captures tone — as an observation the model sees.
+    fx.script.push(`All done, your brand doc is live!\n${marker('tone')}`)
+    fx.script.push('I could not save your brand page just now — I will retry on your next message.')
+    const before = fx.engineInputs.length
+    const reply = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'warm, direct, technical')
+
+    expect(reply.startsWith('I could not save your brand page just now — I will retry on your next message.')).toBe(true)
+    expect(reply).not.toContain('All done')
+    expect(fx.engineInputs).toHaveLength(before + 2)
+    const observation = fx.engineInputs.at(-1)!
+    expect(observation).toContain(HARNESS_OBSERVATION_HEADER)
+    expect(observation).toContain('"code":"tool_failed"')
+    expect(observation).toContain('duplicate website slug')
+    // The ledger keeps the failed artifact pending: it retries next turn.
+    const row = await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
+    expect(row?.state.captured).toContain('tone')
+  })
+
+  it('unknown_tool during a journey step reaches the model (missing tool on the kernel)', async () => {
+    const fx = fixture()
+    // A kernel without the website tools at all: the probe's registry call fails.
+    const bare = new KernelRegistry({ eventSink: fx.sink, vcsCommitter: null })
+    const runtime = new JourneyAwareAgentRuntime({
+      registry: bare,
+      isToolActive: async () => true,
+      eventSink: fx.sink,
+      rolesFor: () => ['admin', 'agent'],
+      journeys: fx.journeys,
+      spec: WEBSITE_FOUNDING_JOURNEY,
+    })
+    const inputs: string[] = []
+    const replies = [`Thanks.\n${marker('company_name')}`, `Noted.\n${marker('positioning')}`, 'The website tools are not available yet; I will set that up.']
+    runtime.registerEngine('builtin-json', {
+      run: async (_s, input) => {
+        inputs.push(input)
+        return replies.shift()!
+      },
+    })
+    runtime.registerAgent(orchestratorAgentConfig())
+    await fx.journeys.create(
+      WEBSITE_FOUNDING_JOURNEY.kind,
+      initialJourneyState('session-1', WEBSITE_FOUNDING_JOURNEY.specVersion),
+    )
+
+    await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'Acme')
+    const reply = await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'We build things.')
+
+    expect(reply).toBe('The website tools are not available yet; I will set that up.')
+    expect(inputs.at(-1)).toContain(HARNESS_OBSERVATION_HEADER)
+    expect(inputs.at(-1)).toContain('"code":"unknown_tool"')
+  })
+
+  it('module_inactive without the admin tools (the production incident) reaches the model', async () => {
+    const sink = new InMemoryEventSink()
+    const activations = new InMemoryActivationStore()
+    const registry = new KernelRegistry({ eventSink: sink, activationStore: activations, vcsCommitter: null })
+    registry.register({
+      name: 'website.list_pages',
+      module: 'website',
+      summary: 'list',
+      auditClass: 'read',
+      inputSchema: z.looseObject({}),
+      permission: { roles: ['admin'] },
+      handler: async () => [],
+    })
+    const journeys = new InMemoryJourneyStore()
+    const runtime = new JourneyAwareAgentRuntime({
+      registry,
+      isToolActive: async () => true,
+      eventSink: sink,
+      rolesFor: () => ['admin', 'agent'],
+      journeys,
+      spec: WEBSITE_FOUNDING_JOURNEY,
+    })
+    const inputs: string[] = []
+    const replies = [`Thanks.\n${marker('company_name')}`, `Noted.\n${marker('positioning')}`, 'Your website module is still switching on — give me a moment.']
+    runtime.registerEngine('builtin-json', {
+      run: async (_s, input) => {
+        inputs.push(input)
+        return replies.shift()!
+      },
+    })
+    runtime.registerAgent(orchestratorAgentConfig())
+    await journeys.create(WEBSITE_FOUNDING_JOURNEY.kind, initialJourneyState('s1', WEBSITE_FOUNDING_JOURNEY.specVersion))
+
+    await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'Acme')
+    const reply = await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'We build things.')
+
+    expect(reply).toBe('Your website module is still switching on — give me a moment.')
+    // The remediation itself fails (kernel.module_activate unknown): the agent sees it.
+    expect(inputs.at(-1)).toContain('"code":"unknown_tool"')
+    expect(inputs.at(-1)).toContain('kernel.module_activate')
+  })
+
+  it('a failing journey store read is handed to the agent, not thrown', async () => {
+    const fx = fixture()
+    fx.journeys.getActive = async () => {
+      throw new Error('connection reset')
+    }
+    fx.script.push('I could not load where we left off — let us continue anyway.')
+    const reply = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'hi')
+    expect(reply).toBe('I could not load where we left off — let us continue anyway.')
+    expect(fx.engineInputs[0]).toContain(HARNESS_OBSERVATION_HEADER)
+    expect(fx.engineInputs[0]).toContain('journey.load')
+    expect(fx.engineInputs[0]).toContain('hi')
+  })
+
+  it('a harness (engine) failure still rejects — the chat entry owns that case', async () => {
+    const fx = fixture()
+    // Script empty: the fake engine throws like an LLM outage.
+    await expect(fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'hi')).rejects.toThrow(/script exhausted/)
   })
 
   it('records already-applied artifacts as executed instead of re-running them (duplicate-slug incident)', async () => {

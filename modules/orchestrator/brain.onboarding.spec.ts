@@ -6,6 +6,7 @@ import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryJourneyStore } from '$lib/kernel/playbook'
 import { KernelRegistry } from '$lib/kernel/registry'
 import {
+  HARNESS_OBSERVATION_HEADER,
   JourneyAwareAgentRuntime,
   ORCHESTRATOR_AGENT_ID,
   WEBSITE_FOUNDING_JOURNEY,
@@ -103,13 +104,45 @@ describe('onboarding hand-off — the agent takes over after the scripted setup'
     await expect(fx.runtime.dispatchOnboardingHandoff('s1', undefined, { llmUserId: 'u1' })).resolves.toBe('You did it.')
   })
 
-  it('fails loud when the hand-off is requested but the website is already under way', async () => {
+  it('website already under way: the precondition goes to the agent, which answers — nothing thrown', async () => {
     const fx = fixture()
     fx.facts.current = { ...handedOff, website: 'in_progress' }
-    await expect(fx.runtime.dispatchOnboardingHandoff('s1', undefined, { llmUserId: 'u1' })).rejects.toThrow(
-      /assisted onboarding is not active/,
+    fx.script.push('Welcome back — your website is already on its way.')
+    await expect(fx.runtime.dispatchOnboardingHandoff('s1', undefined, { llmUserId: 'u1' })).resolves.toBe(
+      'Welcome back — your website is already on its way.',
     )
-    expect(fx.inputs).toHaveLength(0)
+    expect(fx.inputs).toHaveLength(1)
+    expect(fx.inputs[0]!.input).toContain(HARNESS_OBSERVATION_HEADER)
+    expect(fx.inputs[0]!.input).toContain('"code":"onboarding_inactive"')
+    expect(fx.inputs[0]!.input).toContain('in_progress')
+  })
+
+  it('a failing onboarding-facts read during the hand-off reaches the agent', async () => {
+    const fx = fixture()
+    fx.runtime = new JourneyAwareAgentRuntime({
+      registry: new KernelRegistry({ eventSink: new InMemoryEventSink(), vcsCommitter: null }),
+      isToolActive: async () => true,
+      eventSink: new InMemoryEventSink(),
+      rolesFor: () => ['admin', 'agent'],
+      journeys: fx.journeys,
+      spec: WEBSITE_FOUNDING_JOURNEY,
+      onboardingFacts: async () => {
+        throw new Error('db down')
+      },
+    })
+    const seen: string[] = []
+    fx.runtime.registerEngine('builtin-json', {
+      run: async (_s, input) => {
+        seen.push(input)
+        return 'Hi! Good to see you.'
+      },
+    })
+    fx.runtime.registerAgent(orchestratorAgentConfig())
+    await expect(fx.runtime.dispatchOnboardingHandoff('s1', undefined, { llmUserId: 'u1' })).resolves.toBe(
+      'Hi! Good to see you.',
+    )
+    expect(seen[0]).toContain('onboarding.facts')
+    expect(seen[0]).toContain('db down')
   })
 
   it('next turns carry the context block until the agent starts the website', async () => {

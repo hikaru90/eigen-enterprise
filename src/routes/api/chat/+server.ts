@@ -1,11 +1,14 @@
 import type { RequestHandler } from './$types'
 import { error } from '@sveltejs/kit'
+import { KERNEL_EVENT_SOURCE } from '$lib/kernel/cloudevents'
+import { emitKernelEvent } from '$lib/kernel/events'
 import { bootApp } from '$lib/server/boot'
 import {
   BRIEFING_BOOTSTRAP_MESSAGES,
   handleAgentChatPost,
   type AgentChatPostBody,
 } from '$lib/server/chat/handle-agent-chat-post'
+import { redactForLog } from '$lib/server/observability/redact-for-log'
 import { ORCHESTRATOR_AGENT_ID } from '../../../../modules/orchestrator/brain'
 
 /**
@@ -57,6 +60,16 @@ export const POST: RequestHandler = async (event) => {
         : boot.orchestrator.runtime.dispatch(ORCHESTRATOR_AGENT_ID, sessionId, message, sinks, {
             llmUserId: userId,
           }),
+    // Harness/LLM failures end the turn with a fixed human message; the real
+    // error lands here — the operator-visible kernel event log (redacted).
+    recordFailure: async (record) => {
+      await emitKernelEvent(boot.kernel.eventSink, {
+        type: 'harness.turn_failed',
+        principalId: ORCHESTRATOR_AGENT_ID,
+        source: KERNEL_EVENT_SOURCE,
+        payload: redactForLog(record),
+      })
+    },
     resolveAgentUserMessage: ({ bootstrap, message, briefingPeriod: period }) => {
       // The hand-off input is assembled by the runtime (onboarding context + instruction).
       if (onboardingHandoff) return ''

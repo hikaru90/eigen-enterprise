@@ -5,13 +5,13 @@ import type { DbHandle } from './db-stores'
 import type { ToolDescriptor } from './types'
 import { asc, eq } from 'drizzle-orm'
 import { kernelApprovals } from '$lib/server/db/kernel.schema'
-import { registerModuleTools } from '../../../modules/index'
 import {
   createAdminTools,
   kernelManifest,
   KERNEL_ADMIN_TOOL_NAMES,
   KERNEL_MODULE_ID,
 } from './admin-tools'
+import { registerModuleTools } from './wiring'
 
 /**
  * Boot composition for the kernel admin tools. Kept out of modules/index.ts

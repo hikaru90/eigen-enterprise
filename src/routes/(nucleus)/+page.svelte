@@ -10,7 +10,11 @@
 
   let { data }: PageProps = $props()
   import { sanitizeFinalAnswerText } from '$lib/chat/chat-stream-types'
-  import { consumeChatNdjsonStream, ChatStreamError } from '$lib/chat/consume-chat-ndjson'
+  import {
+    chatFailureMessage,
+    consumeChatNdjsonStream,
+    ChatStreamError,
+  } from '$lib/chat/consume-chat-ndjson'
   import ChatMarkdown from '$lib/components/chat-markdown.svelte'
   import HomeSettingsMenu from '$lib/components/home-settings-menu.svelte'
   import ProviderOnboarding from '$lib/components/provider-onboarding.svelte'
@@ -113,8 +117,8 @@
       })
 
       if (!res.ok) {
-        const errBody = await res.json().catch(() => null)
-        throw new Error(errBody?.message ?? `HTTP ${res.status}`)
+        // The status/body are for the console only — never rendered to the user.
+        throw new Error(`chat request failed: HTTP ${res.status}`)
       }
 
       let answerPreview: string | undefined
@@ -143,7 +147,8 @@
         appendEntry(failedTurn('Stopped.'))
       } else {
         console.error('[nucleus] chat stream failed', err)
-        const message = `Error: ${err instanceof Error ? err.message : String(err)}`
+        // No raw error text reaches the user (code <-> harness <-> user).
+        const message = chatFailureMessage(err)
         // Missing provider configuration gets a door, not just a wall: link to setup.
         const providerSetup =
           err instanceof ChatStreamError && err.code === 'llm_not_configured'

@@ -17,6 +17,21 @@ export class ChatStreamError extends Error {
   }
 }
 
+/** Shown for any client-side failure (network, HTTP status, broken stream). */
+export const CHAT_CLIENT_FAILURE_MESSAGE =
+  'I could not reach the assistant just now. Please try again in a moment.'
+
+/**
+ * What the user reads when a chat turn fails. Only the server's terminal
+ * error frame (a fixed, human message set by the chat entry) is shown
+ * verbatim; every other error is replaced by a fixed message — raw error
+ * text never reaches the transcript (code <-> harness <-> user).
+ */
+export function chatFailureMessage(err: unknown): string {
+  if (err instanceof ChatStreamError && err.message.trim().length > 0) return err.message
+  return CHAT_CLIENT_FAILURE_MESSAGE
+}
+
 function parseNdjsonLine(line: string): ChatStreamEvent | null {
   const trimmed = line.trim()
   if (!trimmed) return null

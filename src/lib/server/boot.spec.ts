@@ -10,7 +10,10 @@ const mocks = vi.hoisted(() => ({
   bootstrapChatGateway: vi.fn(),
   bootstrapRecap: vi.fn(),
   piEngine: { engineId: 'fake-pi-engine' },
+  registerAdminTools: vi.fn(async () => undefined),
 }))
+
+vi.mock('$lib/kernel/admin-bootstrap', () => ({ registerAdminTools: mocks.registerAdminTools }))
 
 vi.mock('../../../modules/index', () => ({
   buildKernel: mocks.buildKernel,
@@ -110,6 +113,18 @@ beforeEach(() => {
 })
 
 describe('bootApp — startup composition root', () => {
+  it('registers the kernel admin tools on the web kernel before the orchestrator boots', async () => {
+    const { bootApp } = await import('./boot')
+
+    const boot = await bootApp({ env: {} })
+
+    expect(mocks.registerAdminTools).toHaveBeenCalledTimes(1)
+    expect(mocks.registerAdminTools.mock.calls[0][0]).toBe(boot.kernel)
+    expect(mocks.registerAdminTools.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.bootstrapOrchestrator.mock.invocationCallOrder[0]!,
+    )
+  })
+
   it('is single-flight: overlapping and later calls return the same boot (one composition)', async () => {
     const { bootApp } = await import('./boot')
 

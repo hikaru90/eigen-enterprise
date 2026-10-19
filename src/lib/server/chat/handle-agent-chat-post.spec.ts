@@ -2,28 +2,31 @@ import { describe, expect, it } from 'vitest'
 import { LlmNotConfiguredError } from '$lib/server/llm/errors'
 import {
   BRIEFING_BOOTSTRAP_MESSAGES,
+  CHAT_LLM_NOT_CONFIGURED_MESSAGE,
+  CHAT_TURN_FAILED_MESSAGE,
   chatErrorTerminalPayload,
 } from './handle-agent-chat-post'
 
 describe('chatErrorTerminalPayload', () => {
-  it('returns generic error payload for other failures', () => {
-    const payload = chatErrorTerminalPayload(new Error('boom'), ['boom'])
-    expect(payload).toEqual({ type: 'error', error: 'boom', details: ['boom'] })
-    expect(payload.code).toBeUndefined()
+  it('returns the one fixed human message — never the raw error text', () => {
+    const payload = chatErrorTerminalPayload(new Error('boom: ECONNREFUSED 10.0.0.1'))
+    expect(payload).toEqual({ type: 'error', error: CHAT_TURN_FAILED_MESSAGE })
+    expect(JSON.stringify(payload)).not.toContain('boom')
   })
 
-  it('tags llm_not_configured so the surface can offer provider setup', () => {
+  it('tags llm_not_configured so the surface can offer provider setup (fixed message)', () => {
     const err = new LlmNotConfiguredError('Platform EUrouter not configured: set LLM_BASE_URL')
-    const payload = chatErrorTerminalPayload(err, [err.message])
+    const payload = chatErrorTerminalPayload(err)
     expect(payload.code).toBe('llm_not_configured')
-    expect(payload.error).toBe('Platform EUrouter not configured: set LLM_BASE_URL')
+    expect(payload.error).toBe(CHAT_LLM_NOT_CONFIGURED_MESSAGE)
+    expect(JSON.stringify(payload)).not.toContain('LLM_BASE_URL')
   })
 
   it('tags llm_not_configured through wrapped causes', () => {
     const wrapped = new Error('agent loop failed', {
       cause: new LlmNotConfiguredError('LLM not configured: set LLM_BASE_URL'),
     })
-    const payload = chatErrorTerminalPayload(wrapped, ['agent loop failed'])
+    const payload = chatErrorTerminalPayload(wrapped)
     expect(payload.code).toBe('llm_not_configured')
   })
 })

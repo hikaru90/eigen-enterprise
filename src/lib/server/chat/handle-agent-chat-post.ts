@@ -16,6 +16,7 @@ import {
 import { chatSession, chatMessage, type ChatSessionMode } from '$lib/server/db/brain.schema'
 import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { isLlmNotConfiguredError } from '$lib/server/llm/errors'
+import { redactForLog } from '$lib/server/observability/redact-for-log'
 
 function collectErrorMessages(input: unknown): string[] {
   const parts: string[] = []
@@ -41,17 +42,71 @@ function collectErrorMessages(input: unknown): string[] {
   return parts.filter((v, i, arr) => v && arr.indexOf(v) === i)
 }
 
-export function chatErrorTerminalPayload(
-  err: unknown,
-  details: string[],
-): { type: 'error'; error: string; details?: string[]; code?: string; [key: string]: unknown } {
-  const msg = details[0] ?? 'An unexpected error occurred.'
+/**
+ * THE BOUNDARY (code <-> harness <-> user): the chat entry hands the message
+ * to the harness and streams the harness's reply. Application failures inside
+ * the turn are the agent's to handle (modules/orchestrator/brain.ts hands them
+ * back as observations). Only a failure of the harness/LLM itself — or of this
+ * entry's own bookkeeping — ends the turn without the agent; the user then
+ * sees ONE fixed, human message. The real error is logged server-side
+ * (redacted) and recorded for the operator; no raw error text ever reaches
+ * the client.
+ */
+export const CHAT_TURN_FAILED_MESSAGE =
+  'Something went wrong on my side and I could not finish that. The team can see what happened — please try again in a moment.'
+
+/** Fixed message when no AI provider is set up (the surface offers the setup door via `code`). */
+export const CHAT_LLM_NOT_CONFIGURED_MESSAGE =
+  'I can’t answer yet — no AI provider is set up for this company. Set one up and we can start.'
+
+/** Fixed message when the turn stopped without an answer (stream closed early). */
+export const CHAT_TURN_INCOMPLETE_MESSAGE =
+  'The answer was cut off before it finished. Please try again.'
+
+/** Operator record of a turn that ended without the agent (kernel event in production). */
+export type ChatTurnFailureRecord = {
+  logTag: string
+  sessionId: string
+  userId: string
+  code: 'llm_not_configured' | 'turn_failed'
+  details: string[]
+}
+
+export function chatErrorTerminalPayload(err: unknown): {
+  type: 'error'
+  error: string
+  code?: string
+} {
   // Structured kind for user-facing surfaces ("Set up your AI provider" door) — typed
   // detection, never message string matching.
   if (isLlmNotConfiguredError(err)) {
-    return { type: 'error', error: msg, details, code: 'llm_not_configured' }
+    return { type: 'error', error: CHAT_LLM_NOT_CONFIGURED_MESSAGE, code: 'llm_not_configured' }
   }
-  return { type: 'error', error: msg, details }
+  return { type: 'error', error: CHAT_TURN_FAILED_MESSAGE }
+}
+
+/** Server-side record of a harness failure: redacted log + operator record. Never throws. */
+async function reportTurnFailure(
+  options: HandleAgentChatPostOptions,
+  input: { err: unknown; sessionId: string; userId: string },
+): Promise<void> {
+  const logTag = options.logTag ?? 'api/chat'
+  const details = collectErrorMessages(input.err)
+  const record: ChatTurnFailureRecord = {
+    logTag,
+    sessionId: input.sessionId,
+    userId: input.userId,
+    code: isLlmNotConfiguredError(input.err) ? 'llm_not_configured' : 'turn_failed',
+    details,
+  }
+  console.error(`[${logTag}] harness turn failed`, redactForLog(record))
+  try {
+    await options.recordFailure(record)
+  } catch (recordErr) {
+    console.error(`[${logTag}] could not record the turn failure`, {
+      error: recordErr instanceof Error ? recordErr.message : String(recordErr),
+    })
+  }
 }
 
 export const BRIEFING_BOOTSTRAP_MESSAGES: Record<string, string> = {
@@ -175,6 +230,11 @@ export type HandleAgentChatPostOptions = {
     briefingPeriod: string
   }) => string
   logTag?: string
+  /**
+   * Records a turn that ended without the agent (harness/LLM failure) where
+   * the operator can see it. Required: no silent failures.
+   */
+  recordFailure: (record: ChatTurnFailureRecord) => Promise<void>
 }
 
 export async function handleAgentChatPost(
@@ -255,11 +315,7 @@ export async function handleAgentChatPost(
 
     event.request.signal.addEventListener('abort', () => {
       if (!terminalSent) {
-        sendTerminal({
-          type: 'error',
-          error: 'Request cancelled.',
-          details: ['client disconnected'],
-        })
+        sendTerminal({ type: 'error', error: 'Request cancelled.' })
       }
       streamClosed = true
       void writer.abort(new Error('client disconnected')).catch(() => {})
@@ -380,37 +436,24 @@ export async function handleAgentChatPost(
           await scopedDb.update(chatSession).set({ title }).where(eq(chatSession.id, sessionId))
         }
       } catch (err) {
-        const details = collectErrorMessages(err)
-        const msg = details[0] ?? 'An unexpected error occurred.'
-        console.error(`[${options.logTag ?? 'api/chat'}] agent dispatch threw`, {
-          error: msg,
-          details,
-        })
-        sendTerminal(chatErrorTerminalPayload(err, details))
+        await reportTurnFailure(options, { err, sessionId, userId: user.id })
+        sendTerminal(chatErrorTerminalPayload(err))
       } finally {
         if (reserved) {
           await deactivateTenantDbSession(reserved).catch(() => {})
           await reserved.release()
         }
         if (!terminalSent) {
-          sendTerminal({
-            type: 'error',
-            error: 'Chat ended before a response was received.',
-            details: ['stream closed without terminal event'],
-          })
+          sendTerminal({ type: 'error', error: CHAT_TURN_INCOMPLETE_MESSAGE })
         }
         await closeStream()
       }
     })()
 
-    chatWork.catch((err) => {
-      console.error(`[${options.logTag ?? 'api/chat'}] chatWork rejected`, err)
+    chatWork.catch(async (err: unknown) => {
+      await reportTurnFailure(options, { err, sessionId, userId: user.id })
       if (!terminalSent) {
-        sendTerminal({
-          type: 'error',
-          error: 'Chat ended before a response was received.',
-          details: [err instanceof Error ? err.message : String(err)],
-        })
+        sendTerminal({ type: 'error', error: CHAT_TURN_INCOMPLETE_MESSAGE })
       }
       void closeStream()
     })
@@ -445,11 +488,15 @@ export async function handleAgentChatPost(
       messageId,
     })
   } catch (err) {
-    console.error(`[${options.logTag ?? 'api/chat'}] dispatch threw`, {
-      error: err instanceof Error ? err.message : String(err),
-    })
+    await reportTurnFailure(options, { err, sessionId, userId: user.id })
+    const payload = chatErrorTerminalPayload(err)
     return json(
-      { response: 'An unexpected error occurred.', history: [], sessionId },
+      {
+        response: payload.error,
+        history: [],
+        sessionId,
+        ...(payload.code ? { code: payload.code } : {}),
+      },
       { status: 500 },
     )
   }

@@ -1,5 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
+import { InMemoryEventSink } from '$lib/kernel/events'
+import { InMemoryJourneyStore, initialJourneyState } from '$lib/kernel/playbook'
+import { KernelRegistry } from '$lib/kernel/registry'
+import { CHAT_TURN_FAILED_MESSAGE } from '$lib/server/chat/handle-agent-chat-post'
 import { LlmNotConfiguredError } from '$lib/server/llm/errors'
+import {
+  JourneyAwareAgentRuntime,
+  WEBSITE_FOUNDING_JOURNEY,
+  orchestratorAgentConfig,
+} from '../../../../modules/orchestrator/brain'
 
 const { bootAppMock, runtimeDispatchMock, handoffDispatchMock, getDbMock, appSqlMock, createScopedDrizzleMock } =
   vi.hoisted(() => ({
@@ -115,8 +125,11 @@ async function readNdjsonLines(res: Response) {
     .map((l) => JSON.parse(l) as { type: string; [key: string]: unknown })
 }
 
+let kernelEvents: InMemoryEventSink
+
 describe('POST /api/chat — harness dispatch', () => {
   beforeEach(() => {
+    kernelEvents = new InMemoryEventSink()
     runtimeDispatchMock.mockReset()
     handoffDispatchMock.mockReset()
     bootAppMock.mockReset()
@@ -124,6 +137,7 @@ describe('POST /api/chat — harness dispatch', () => {
     appSqlMock.reserve.mockReset()
     createScopedDrizzleMock.mockReset()
     bootAppMock.mockResolvedValue({
+      kernel: { eventSink: kernelEvents },
       orchestrator: {
         runtime: { dispatch: runtimeDispatchMock, dispatchOnboardingHandoff: handoffDispatchMock },
       },
@@ -355,11 +369,13 @@ describe('POST /api/chat — harness dispatch', () => {
     } as never)
 
     expect(res.status).toBe(500)
-    expect(await res.json()).toMatchObject({
-      response: 'An unexpected error occurred.',
+    const body = await res.json()
+    expect(body).toMatchObject({
+      response: CHAT_TURN_FAILED_MESSAGE,
       sessionId: SESSION_ID,
       history: [],
     })
+    expect(JSON.stringify(body)).not.toContain('gateway timeout')
     consoleSpy.mockRestore()
   })
 
@@ -376,8 +392,75 @@ describe('POST /api/chat — harness dispatch', () => {
     const lines = await readNdjsonLines(res)
     const last = lines[lines.length - 1]
     expect(last.type).toBe('error')
-    expect(last.error).toBe('embedding failed')
+    // One fixed, human message — the raw error never reaches the client.
+    expect(last.error).toBe(CHAT_TURN_FAILED_MESSAGE)
+    expect(JSON.stringify(lines)).not.toContain('embedding failed')
+    // ...but the server log has the details, and the operator record exists.
+    expect(JSON.stringify(consoleSpy.mock.calls)).toContain('embedding failed')
+    const recorded = kernelEvents.events.filter((e) => e.type === 'harness.turn_failed')
+    expect(recorded).toHaveLength(1)
+    expect(JSON.stringify(recorded[0]!.payload)).toContain('embedding failed')
     consoleSpy.mockRestore()
+  })
+
+  it('a failing journey step: the user gets the agent reply and no error text', async () => {
+    const { POST } = await import('./+server')
+    // Real journey-aware runtime on a kernel WITHOUT the website/admin tools —
+    // the production incident ("unknown tool: kernel.module_activate").
+    const sink = new InMemoryEventSink()
+    const journeys = new InMemoryJourneyStore()
+    const registry = new KernelRegistry({ eventSink: sink, vcsCommitter: null })
+    registry.register({
+      name: 'website.list_pages',
+      module: 'website',
+      summary: 'list',
+      auditClass: 'read',
+      inputSchema: z.looseObject({}),
+      permission: { roles: ['admin'] },
+      handler: async () => {
+        throw new Error('unknown tool: kernel.module_activate')
+      },
+    })
+    const runtime = new JourneyAwareAgentRuntime({
+      registry,
+      isToolActive: async () => true,
+      eventSink: sink,
+      rolesFor: () => ['admin', 'agent'],
+      journeys,
+      spec: WEBSITE_FOUNDING_JOURNEY,
+    })
+    const modelInputs: string[] = []
+    const replies = [
+      'Got it! [[journey:company_name:captured]]',
+      'Noted. [[journey:positioning:captured]]',
+      'I could not set up your pages just yet — I will try again on your next message.',
+    ]
+    runtime.registerEngine('builtin-json', {
+      run: async (_s, input) => {
+        modelInputs.push(input)
+        return replies.shift()!
+      },
+    })
+    runtime.registerAgent(orchestratorAgentConfig())
+    await journeys.create(WEBSITE_FOUNDING_JOURNEY.kind, initialJourneyState(SESSION_ID, WEBSITE_FOUNDING_JOURNEY.specVersion))
+    await runtime.dispatch('orchestrator', SESSION_ID, 'Acme')
+    bootAppMock.mockResolvedValue({ kernel: { eventSink: kernelEvents }, orchestrator: { runtime } })
+
+    const res = await POST({
+      locals: { user: { id: 'u1' } },
+      request: ndjsonRequest({ message: 'We build things.' }),
+    } as never)
+
+    const lines = await readNdjsonLines(res)
+    const last = lines.at(-1)!
+    expect(last).toMatchObject({
+      type: 'done',
+      response: 'I could not set up your pages just yet — I will try again on your next message.',
+    })
+    expect(lines.some((l) => l.type === 'error')).toBe(false)
+    expect(JSON.stringify(lines)).not.toContain('unknown tool')
+    // The model saw the failure as information.
+    expect(modelInputs.at(-1)).toContain('unknown tool: kernel.module_activate')
   })
 
   it('tags llm_not_configured failures through the dispatch path', async () => {

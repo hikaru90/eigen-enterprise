@@ -2,6 +2,20 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-20 (2) — SHIPPED (branch): code <-> harness <-> user — no path from application code to the user
+
+**What broke (production)**: the chat showed "Error: unknown tool: kernel.module_activate". (a) The journey step code (`executeStepArtifacts`, run after the model replied, outside the agent turn) threw to `POST /api/chat`, which streamed the raw message; the nucleus page printed it as `Error: …`. (b) The web server's kernel never registered the admin tools (`registerAdminTools` ran only in the CLI); tests passed because they hand-built kernels.
+
+**Shipped**
+- `modules/orchestrator/brain.ts`: `executeStepArtifacts` returns `failures` (ToolErrorResult) instead of throwing (the already-applied probe included). `JourneyAwareAgentRuntime` hands every application failure of the turn — journey step tools, journey/onboarding reads and writes, the hand-off precondition ("website already started") — to the agent as a `harnessObservationBlock`, with one extra model step after the reply when needed. The follow-up reply replaces the first one. `founding.ts` (wizard, no agent turn) fails loud on `failures`.
+- `handle-agent-chat-post.ts`: every error frame carries a fixed human message (`CHAT_TURN_FAILED_MESSAGE`, `CHAT_LLM_NOT_CONFIGURED_MESSAGE` + `code`, `CHAT_TURN_INCOMPLETE_MESSAGE`); no `details`, no raw text. The real error is logged redacted and recorded via the required `recordFailure` (route: kernel event `harness.turn_failed`).
+- Nucleus and `/chat` pages render only the server's fixed terminal message (`chatFailureMessage`); HTTP/network errors get a fixed client message.
+- `boot.ts` calls `registerAdminTools(kernel, { db })`; `boot.wiring.spec.ts` pins it through the real composition.
+
+**Decision log (architecture impact)**
+- **The boundary (owner rule)**: code <-> harness <-> user. Application failures inside a chat turn are information for the agent (fix, retry, or explain), never exceptions for the route. Only a harness/LLM failure (engine rejects, engine choice `recordedEngineFor` fails, or the entry's own persistence fails) ends the turn without the agent: one fixed human message to the user, details in the server log + operator event. Request-shape errors before the turn (401/400/404 session) stay HTTP errors, but the client renders only a fixed message.
+- Known residue: tool-result previews (`tool_result` stream events) on the `/chat` timeline still show a tool's own error message text as a step summary.
+
 ## 2026-10-20 — SHIPPED (branch): the agent fixes tool errors itself (module_inactive no longer reaches the user)
 
 **What broke**: on a fresh server the website-founding chat replied "Error: module website is not active; cannot execute website.list_pages". The KernelError came from the journey artifact executor (`executeStepArtifacts` → `listPagesViaRegistry`) and builtin-json's catch (`throw err`); durable passed only the bare message string to the model.

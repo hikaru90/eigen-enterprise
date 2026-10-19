@@ -1,5 +1,6 @@
 import type { ChatGatewayBoot, RecapBoot } from '../../../modules/index'
 import { building } from '$app/environment'
+import { registerAdminTools } from '$lib/kernel/admin-bootstrap'
 import { DbJourneyStore, type JourneyStore } from '$lib/kernel/playbook'
 import type { WiredKernel } from '$lib/kernel/wiring'
 import { createDurableEngine } from '$lib/server/agent/durable-engine'
@@ -85,6 +86,14 @@ export type AppBoot = {
 
 let bootPromise: Promise<AppBoot> | null = null
 
+/** Lazy pooled-handle pattern of the kernel stores (request-scoped when inside ALS, pooled otherwise). */
+async function kernelDbHandle() {
+  const { appDbAsyncLocal, appSql, createScopedDrizzle } = await import('$lib/server/db')
+  const scoped = appDbAsyncLocal.getStore()
+  if (scoped) return scoped
+  return createScopedDrizzle(appSql)
+}
+
 /**
  * globalThis guard: across HMR re-evaluations only one recap tick may live.
  * A re-composition clears the previous timer and re-arms against the new boot.
@@ -120,17 +129,14 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
   const recapFn = options.bootstrapRecap ?? bootstrapRecap
 
   const kernel = buildKernelFn()
+  // The kernel admin surface (kernel.module_list / module_activate / approvals)
+  // is part of the web server's kernel, not only the CLI's: the orchestrator's
+  // remediation path (and its tool-error prompt) depends on it.
+  await registerAdminTools(kernel, { db: kernelDbHandle })
 
   // Durable journey state: DB-backed via the same lazy pooled-handle pattern
   // the kernel stores use (request-scoped when inside ALS, pooled otherwise).
-  const journeys: JourneyStore =
-    options.journeys ??
-    new DbJourneyStore(async () => {
-      const { appDbAsyncLocal, appSql, createScopedDrizzle } = await import('$lib/server/db')
-      const scoped = appDbAsyncLocal.getStore()
-      if (scoped) return scoped
-      return createScopedDrizzle(appSql)
-    })
+  const journeys: JourneyStore = options.journeys ?? new DbJourneyStore(kernelDbHandle)
 
   let gatewayBoot: ChatGatewayBoot | null = null
   const wireGateway = async (

@@ -1,6 +1,24 @@
 import type { ChatProgressEvent } from './consume-chat-ndjson'
 import { describe, expect, it } from 'vitest'
-import { ChatStreamError, consumeChatNdjsonStream } from './consume-chat-ndjson'
+import {
+  CHAT_CLIENT_FAILURE_MESSAGE,
+  ChatStreamError,
+  chatFailureMessage,
+  consumeChatNdjsonStream,
+} from './consume-chat-ndjson'
+
+describe('chatFailureMessage — what the transcript shows when a turn fails', () => {
+  it('shows the server terminal frame (already a fixed human message)', () => {
+    const err = new ChatStreamError({ type: 'error', error: 'Something went wrong on my side.' })
+    expect(chatFailureMessage(err)).toBe('Something went wrong on my side.')
+  })
+
+  it('never shows raw client-side error text (HTTP status, network, parse)', () => {
+    for (const err of [new Error('chat request failed: HTTP 500'), new TypeError('Failed to fetch'), 'boom']) {
+      expect(chatFailureMessage(err)).toBe(CHAT_CLIENT_FAILURE_MESSAGE)
+    }
+  })
+})
 
 function ndjsonResponse(lines: string[]) {
   const encoder = new TextEncoder()
