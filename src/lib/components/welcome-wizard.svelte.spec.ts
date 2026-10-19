@@ -34,6 +34,15 @@ function okResponse(body: unknown) {
 }
 
 describe('welcome-wizard.svelte — the boot sequence', () => {
+  it('never strands the user: Continue moves forward and Back returns', async () => {
+    render(WelcomeWizard, { providerReady: false, byokUiEnabled: true, displayName: 'Ada' })
+    await page.getByText('Hello, Ada.').click()
+    await page.getByTestId('onboarding-continue').click()
+    await expect.element(page.getByTestId('onboarding-continue')).toHaveTextContent('Continue')
+    await page.getByTestId('onboarding-back').click()
+    await expect.element(page.getByText('This is the operating system for your company.')).toBeInTheDocument()
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     fetchMock.mockResolvedValue(okResponse({ ok: true }))
@@ -91,6 +100,8 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
     await expect
       .element(page.getByText('This is the operating system for your company.'))
       .toBeInTheDocument()
+    // Every step has a visible way forward (no page-load timers to strand the user).
+    await page.getByTestId('onboarding-continue').click()
     await expect
       .element(
         page.getByText(
@@ -165,6 +176,7 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
 
     await page.getByText('Hello, Ada.').click()
     await page.getByText('This is the operating system for your company.').click()
+    await page.getByTestId('onboarding-continue').click()
     await expect
       .element(page.getByText('First, it needs a mind to think with.'))
       .toBeInTheDocument()

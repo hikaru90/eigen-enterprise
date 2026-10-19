@@ -69,9 +69,17 @@
     timers.push(setTimeout(fn, ms))
   }
 
+  /** Acts visited, for Back. Boot and hello are the opening, not stops to return to. */
+  let history = $state<Act[]>([])
+
   function advanceTo(next: Act, play = true): void {
     if (act === next) return
+    if (act !== 'boot' && act !== 'hello') history = [...history, act]
     act = next
+    // The opening breathes on its own; the timer starts when the act appears,
+    // so it can never fire early (the old bug: page-load timers left the user
+    // stranded on a step with no way forward).
+    if (next === 'hello') later(() => act === 'hello' && enterFromHello(), 2200)
     if (play && isSoundEnabled()) playActPulse()
     // The voice speaks the act as it appears (the Her layer); sound and voice
     // are independent toggles.
@@ -92,6 +100,18 @@
     } else if (act === 'identity' && identityLine === 2 && !providerReady) {
       advanceTo('mind')
     }
+  }
+
+  function goBack(): void {
+    if (act === 'identity' && identityLine === 2) {
+      identityLine = 1
+      return
+    }
+    const prev = history.at(-1)
+    if (!prev) return
+    history = history.slice(0, -1)
+    act = prev
+    if (prev === 'identity') identityLine = 2
   }
 
   function enterFromHello(): void {
@@ -209,19 +229,6 @@
     later(() => {
       if (act === 'boot') advanceTo('hello')
     }, 1600)
-    later(() => {
-      if (act === 'hello') enterFromHello()
-    }, 3800)
-    later(() => {
-      if (act === 'identity' && identityLine === 1) {
-        identityLine = 2
-        if (isSoundEnabled()) playActPulse()
-        speak(IDENTITY_LINE_2)
-      }
-    }, 6200)
-    later(() => {
-      if (act === 'identity' && identityLine === 2 && !providerReady) advanceTo('mind')
-    }, 8800)
 
     return () => {
       for (const t of timers) clearTimeout(t)
@@ -328,6 +335,16 @@
               {IDENTITY_LINE_1}
             </span>
           </button>
+          <div>
+            <button
+              type="button"
+              class="mt-8 h-11 px-10 text-sm font-medium text-foreground underline-offset-4 hover:underline"
+              onclick={advanceFromClick}
+              data-testid="onboarding-continue"
+            >
+              Continue
+            </button>
+          </div>
         {:else}
           <p
             class="text-base leading-relaxed text-balance text-muted-foreground sm:text-lg"
@@ -335,20 +352,20 @@
           >
             {IDENTITY_LINE_2}
           </p>
-          {#if providerReady}
-            <button
-              type="button"
-              class="mt-8 h-11 bg-black px-10 text-sm font-medium text-white hover:bg-black/90 disabled:opacity-50"
-              disabled={completing}
-              onclick={finishOrMail}
-            >
-              {#if completing}
-                <LoaderCircle class="mx-auto size-4 animate-spin" strokeWidth={1.75} />
-              {:else}
-                Begin
-              {/if}
-            </button>
-          {/if}
+          <!-- Always a way forward: Begin when a mind is connected, Continue to connect one. -->
+          <button
+            type="button"
+            class="mt-8 h-11 bg-black px-10 text-sm font-medium text-white hover:bg-black/90 disabled:opacity-50"
+            disabled={completing}
+            onclick={providerReady ? finishOrMail : () => advanceTo('mind')}
+            data-testid="onboarding-continue"
+          >
+            {#if completing}
+              <LoaderCircle class="mx-auto size-4 animate-spin" strokeWidth={1.75} />
+            {:else}
+              {providerReady ? 'Begin' : 'Continue'}
+            {/if}
+          </button>
         {/if}
       </div>
     {:else if act === 'mind'}
@@ -411,7 +428,17 @@
     </p>
   {/if}
 
-  <div class="mt-12">
+  <div class="mt-12 flex items-center gap-6">
+    {#if act !== 'boot' && act !== 'hello' && (history.length > 0 || (act === 'identity' && identityLine === 2))}
+      <button
+        type="button"
+        class="text-muted-foreground/60 hover:text-muted-foreground text-xs"
+        onclick={goBack}
+        data-testid="onboarding-back"
+      >
+        ← Back
+      </button>
+    {/if}
     <button
       type="button"
       class="text-muted-foreground/60 hover:text-muted-foreground inline-flex items-center gap-1.5 text-xs disabled:opacity-50"
