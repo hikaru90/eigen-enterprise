@@ -1,4 +1,5 @@
-type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string }
+/** Mirrors the gateway client's ChatMessage: plain roles plus the OpenAI tool-calling shapes. */
+type ChatMessage = { role: 'system' | 'user' | 'assistant' | 'tool'; content: string }
 
 /** pgvector width for thought / entity / temporal embeddings in this product. */
 export const EMBEDDING_VECTOR_LENGTH = 1536

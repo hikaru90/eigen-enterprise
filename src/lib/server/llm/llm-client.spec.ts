@@ -1601,3 +1601,188 @@ describe('llm client timeout and rate limit defaults', () => {
     }
   })
 })
+
+describe('llm client tool-calling passthrough', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockEnv.LLM_BASE_URL = 'https://example.test'
+    mockEnv.LLM_RULE_CHAT = 'rule-chat'
+    mockEnv.LLM_MODEL_CHAT = 'gpt-test'
+    mockEnv.LLM_API_KEY = 'key-1'
+    mockEnv.LLM_MIN_REQUEST_INTERVAL_MS = '0'
+    mockEnv.LLM_REQUEST_TIMEOUT_MS = ''
+  })
+
+  const chatTools = [
+    {
+      type: 'function',
+      function: {
+        name: 'memory.search',
+        description: 'Search company memory.',
+        parameters: { type: 'object', properties: { query: { type: 'string' } } },
+      },
+    },
+  ]
+
+  it('carries tools and tool_choice in the request body when given', async () => {
+    const fetchMock = vi.fn(async () =>
+      response(true, 200, { usage: { prompt_tokens: 1 }, choices: [] }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await llmChatCompletion({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'hello' }],
+      tools: chatTools,
+      toolChoice: 'auto',
+    })
+
+    const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as {
+      tools?: unknown
+      tool_choice?: unknown
+    }
+    expect(body.tools).toEqual(chatTools)
+    expect(body.tool_choice).toBe('auto')
+  })
+
+  it('omits tools and tool_choice from the body when not given', async () => {
+    const fetchMock = vi.fn(async () =>
+      response(true, 200, { usage: { prompt_tokens: 1 }, choices: [] }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await llmChatCompletion({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+
+    const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as {
+      tools?: unknown
+      tool_choice?: unknown
+    }
+    expect('tools' in body).toBe(false)
+    expect('tool_choice' in body).toBe(false)
+  })
+
+  it('returns a tool_calls response as-is and still logs the call', async () => {
+    const toolCallsBody = {
+      usage: { prompt_tokens: 21, completion_tokens: 5, total_tokens: 26 },
+      choices: [
+        {
+          finish_reason: 'tool_calls',
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              {
+                id: 'call_1',
+                type: 'function',
+                function: { name: 'memory.search', arguments: '{"query":"brand"}' },
+              },
+            ],
+          },
+        },
+      ],
+    }
+    vi.stubGlobal('fetch', vi.fn(async () => response(true, 200, toolCallsBody)))
+
+    const raw = await llmChatCompletion({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'find brand notes' }],
+      tools: chatTools,
+      logContext: 'durable-agent',
+    })
+
+    expect(raw).toEqual(toolCallsBody)
+    expect(logActivityCallMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'u1',
+      expect.objectContaining({
+        operation: 'llm.chat.durable-agent.success(attempt=1)',
+        gatewayHost: 'example.test',
+      }),
+    )
+  })
+
+  it('passes tool-role and assistant tool_calls messages through verbatim', async () => {
+    const fetchMock = vi.fn(async () =>
+      response(true, 200, { usage: { prompt_tokens: 1 }, choices: [] }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await llmChatCompletion({
+      userId: 'u1',
+      messages: [
+        { role: 'system', content: 'system prompt' },
+        { role: 'user', content: 'run it' },
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'call_9',
+              type: 'function',
+              function: { name: 'memory.search', arguments: '{"query":"x"}' },
+            },
+          ],
+        },
+        { role: 'tool', content: '{"status":"ok"}', tool_call_id: 'call_9' },
+      ],
+      tools: chatTools,
+    })
+
+    const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as {
+      messages: Array<{ role: string; content: string; tool_call_id?: string }>
+    }
+    expect(body.messages).toHaveLength(4)
+    expect(body.messages[2]).toEqual({
+      role: 'assistant',
+      content: '',
+      tool_calls: [
+        {
+          id: 'call_9',
+          type: 'function',
+          function: { name: 'memory.search', arguments: '{"query":"x"}' },
+        },
+      ],
+    })
+    // role:'tool' + tool_call_id survive sanitize; JSON content is pretty-printed
+    // by the existing embedding-strip sanitizer (equivalent JSON, reformatted).
+    expect(body.messages[3]).toEqual({
+      role: 'tool',
+      content: '{\n  "status": "ok"\n}',
+      tool_call_id: 'call_9',
+    })
+  })
+
+  it('fails loud when tools are requested from an API-shape provider', async () => {
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
+    vi.mocked(isByokBilling).mockResolvedValue(true)
+    mockSequentialDbLimitResults(
+      [{ provider: 'anthropic' }],
+      [
+        {
+          provider: 'anthropic',
+          baseUrl: 'https://anthropic.example/v1',
+          apiKey: 'db-key',
+          apiKeyEncrypted: null,
+          ruleChat: null,
+          ruleEmbedding: null,
+          modelChat: 'claude-test',
+          modelEmbedding: null,
+        },
+      ],
+    )
+    const fetchMock = vi.fn(async () => response(true, 200, { choices: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      llmChatCompletion({
+        userId: 'u1',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: chatTools,
+      }),
+    ).rejects.toThrow(/tools passthrough requires an OpenAI-shaped provider/)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})

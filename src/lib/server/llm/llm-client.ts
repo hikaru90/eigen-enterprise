@@ -30,7 +30,24 @@ import { isByokBilling } from '$lib/server/llm/preferences'
 import { isGraphScaleQuiet } from '$lib/server/observability/graph-scale-quiet'
 import { sanitizeChatMessages } from '$lib/server/observability/strip-embeddings'
 
-export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string }
+/**
+ * Tool calls carried on an assistant message (OpenAI chat-completions shape),
+ * passed through to the gateway verbatim (durable agent engine).
+ */
+export type AssistantToolCalls = Array<{
+  id: string
+  type: 'function'
+  function: { name: string; arguments: string }
+}>
+
+export type ChatMessage = {
+  role: 'system' | 'user' | 'assistant' | 'tool'
+  content: string
+  /** Assistant message tool calls (OpenAI shape, verbatim passthrough). */
+  tool_calls?: AssistantToolCalls
+  /** role:'tool' messages: the id of the call this message answers. */
+  tool_call_id?: string
+}
 export {
   extractGatewayReportedCostUsd,
   gatewayReportedCostUsdForLog,
@@ -743,6 +760,15 @@ export async function llmChatCompletion(input: {
   aiSessionId?: string
   /** Optional turn-level identifier for PostHog AI observability trace grouping. */
   aiTraceId?: string
+  /**
+   * OpenAI chat-completions `tools` definitions — passed through to the
+   * gateway request body verbatim. Requires an OpenAI-shaped provider;
+   * API-shape providers (Anthropic messages, Codex responses) fail loud
+   * instead of silently dropping the tools.
+   */
+  tools?: unknown[]
+  /** OpenAI `tool_choice`, passed through verbatim when tools are sent. */
+  toolChoice?: unknown
 }): Promise<unknown> {
   return serialLlmRequestsEnabled()
     ? runLlmRequestGated(input.userId, () => llmChatCompletionInner(input))
@@ -760,8 +786,15 @@ async function llmChatCompletionInner(input: {
   responseFormat?: 'json_object'
   aiSessionId?: string
   aiTraceId?: string
+  tools?: unknown[]
+  toolChoice?: unknown
 }): Promise<unknown> {
   const config = await loadLlmConfig(input.userId)
+  if (input.tools !== undefined && usesApiShape(config.provider)) {
+    throw new LlmNotConfiguredError(
+      `tools passthrough requires an OpenAI-shaped provider; provider "${config.provider}" uses its own API shape — configure an OpenAI-compatible credential for tool-calling agents`,
+    )
+  }
   const activityProvider = activityProviderForLlmConfig(config.provider)
   const gatewayHost = gatewayHostFromBaseUrl(config.baseUrl)
   const url = `${config.baseUrl}/chat/completions`
@@ -830,6 +863,8 @@ async function llmChatCompletionInner(input: {
               ...(input.responseFormat === 'json_object'
                 ? { response_format: { type: 'json_object' } }
                 : {}),
+              ...(input.tools !== undefined ? { tools: input.tools } : {}),
+              ...(input.toolChoice !== undefined ? { tool_choice: input.toolChoice } : {}),
             }),
           })
         }
