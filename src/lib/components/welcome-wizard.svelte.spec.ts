@@ -317,6 +317,19 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
     expect(foundingCalls).toEqual([])
   })
 
+  it('back from the provider sign-in redirect, the tour does not replay — it hands off', async () => {
+    const oncomplete = vi.fn()
+    render(WelcomeWizard, {
+      providerReady: true,
+      byokUiEnabled: true,
+      displayName: 'Ada',
+      returnedFromProvider: true,
+      oncomplete,
+    })
+    await vi.waitFor(() => expect(oncomplete).toHaveBeenCalledWith({ name: 'Ada' }))
+    await expect.element(page.getByText('Hello, Ada.')).not.toBeInTheDocument()
+  })
+
   it('with a working mind and email, Begin on the last line hands off', async () => {
     const oncomplete = vi.fn()
     render(WelcomeWizard, {

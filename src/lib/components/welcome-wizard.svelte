@@ -18,6 +18,7 @@
     needsMail = false,
     byokUiEnabled = true,
     displayName = null,
+    returnedFromProvider = false,
     oncomplete,
   }: {
     providerReady?: boolean
@@ -25,6 +26,8 @@
     needsMail?: boolean
     byokUiEnabled?: boolean
     displayName?: string | null
+    /** Back from the provider's sign-in redirect: the tour already ran up to the mind. */
+    returnedFromProvider?: boolean
     oncomplete?: (detail: { name: string | null }) => void
   } = $props()
 
@@ -302,6 +305,10 @@
   }
 
   onMount(() => {
+    if (returnedFromProvider && providerReady && !needsMail) {
+      void complete()
+      return
+    }
     primeBootSound()
     playBootSwell()
     const media = window.matchMedia('(prefers-reduced-motion: reduce)')

@@ -18,6 +18,8 @@ const { isUserAdminMock, mailConfiguredMock } = vi.hoisted(() => ({
   mailConfiguredMock: vi.fn(async () => true),
 }))
 vi.mock('$lib/server/auth/user-role', () => ({ isUserAdmin: isUserAdminMock }))
+const onboardingFactsMock = vi.hoisted(() => vi.fn())
+vi.mock('$lib/server/onboarding/assisted', () => ({ onboardingFactsFor: onboardingFactsMock }))
 vi.mock('$lib/server/mail', () => ({ companyMail: () => ({ isConfigured: mailConfiguredMock }) }))
 
 import { load } from './+page.server'
@@ -38,12 +40,18 @@ describe('nucleus page server load', () => {
     authDbMock.select = () => selectChain({ accountKind: 'production' })
     isUserAdminMock.mockResolvedValue(true)
     mailConfiguredMock.mockResolvedValue(false)
-    expect(await load({ locals: { user: { id: 'u1' } } } as never)).toMatchObject({ needsMail: true })
+    expect(
+      await load({ locals: { user: { id: 'u1' } }, url: new URL('https://os.test/') } as never),
+    ).toMatchObject({ needsMail: true })
     mailConfiguredMock.mockResolvedValue(true)
-    expect(await load({ locals: { user: { id: 'u1' } } } as never)).toMatchObject({ needsMail: false })
+    expect(
+      await load({ locals: { user: { id: 'u1' } }, url: new URL('https://os.test/') } as never),
+    ).toMatchObject({ needsMail: false })
     isUserAdminMock.mockResolvedValue(false)
     mailConfiguredMock.mockResolvedValue(false)
-    expect(await load({ locals: { user: { id: 'u2' } } } as never)).toMatchObject({ needsMail: false })
+    expect(
+      await load({ locals: { user: { id: 'u2' } }, url: new URL('https://os.test/') } as never),
+    ).toMatchObject({ needsMail: false })
   })
 
   beforeEach(() => {
@@ -51,6 +59,26 @@ describe('nucleus page server load', () => {
     isByokUiEnabledMock.mockReturnValue(true)
     authDbMock.select = () => selectChain({ accountKind: 'production', onboardingCompleted: false })
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: null }))
+    onboardingFactsMock.mockResolvedValue({ website: 'not_started' })
+  })
+
+  it('offers the agent hand-off only while the website is still to do', async () => {
+    isUserProviderReadyMock.mockResolvedValue(true)
+    const event = { locals: { user: { id: 'u1' } }, url: new URL('https://os.test/') } as never
+    expect(await load(event)).toMatchObject({ handoffAvailable: true })
+    onboardingFactsMock.mockResolvedValue({ website: 'in_progress' })
+    expect(await load(event)).toMatchObject({ handoffAvailable: false })
+  })
+
+  it('flags the return from the provider sign-in so the tour does not replay', async () => {
+    isUserProviderReadyMock.mockResolvedValue(true)
+    const back = {
+      locals: { user: { id: 'u1' } },
+      url: new URL('https://os.test/?provider=connected'),
+    }
+    expect(await load(back as never)).toMatchObject({ returnedFromProvider: true })
+    const plain = { locals: { user: { id: 'u1' } }, url: new URL('https://os.test/') }
+    expect(await load(plain as never)).toMatchObject({ returnedFromProvider: false })
   })
 
   it('redirects unauthenticated users to login', async () => {
@@ -63,9 +91,12 @@ describe('nucleus page server load', () => {
   it('gates the chat behind first-run onboarding when no provider works', async () => {
     isUserProviderReadyMock.mockResolvedValue(false)
 
-    const result = await load({ locals: { user: { id: 'u1' } } } as never)
+    const result = await load({
+      locals: { user: { id: 'u1' } },
+      url: new URL('https://os.test/'),
+    } as never)
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       needsOnboarding: true,
       showWelcome: true,
       byokUiEnabled: true,
@@ -77,9 +108,12 @@ describe('nucleus page server load', () => {
   it('offers the welcome wizard when a provider works but the tour is not done', async () => {
     isUserProviderReadyMock.mockResolvedValue(true)
 
-    const result = await load({ locals: { user: { id: 'u1' } } } as never)
+    const result = await load({
+      locals: { user: { id: 'u1' } },
+      url: new URL('https://os.test/'),
+    } as never)
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       needsOnboarding: false,
       showWelcome: true,
       byokUiEnabled: true,
@@ -92,9 +126,12 @@ describe('nucleus page server load', () => {
     isUserProviderReadyMock.mockResolvedValue(true)
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date('2026-09-22T10:00:00Z') }))
 
-    const result = await load({ locals: { user: { id: 'u1' } } } as never)
+    const result = await load({
+      locals: { user: { id: 'u1' } },
+      url: new URL('https://os.test/'),
+    } as never)
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       needsOnboarding: false,
       showWelcome: false,
       byokUiEnabled: true,
@@ -107,9 +144,12 @@ describe('nucleus page server load', () => {
     isUserProviderReadyMock.mockResolvedValue(false)
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date('2026-09-22T10:00:00Z') }))
 
-    const result = await load({ locals: { user: { id: 'u1' } } } as never)
+    const result = await load({
+      locals: { user: { id: 'u1' } },
+      url: new URL('https://os.test/'),
+    } as never)
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       needsOnboarding: true,
       showWelcome: false,
       byokUiEnabled: true,
@@ -122,9 +162,12 @@ describe('nucleus page server load', () => {
     isUserProviderReadyMock.mockResolvedValue(true)
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: null, displayName: 'Ada' }))
 
-    const result = await load({ locals: { user: { id: 'u1' } } } as never)
+    const result = await load({
+      locals: { user: { id: 'u1' } },
+      url: new URL('https://os.test/'),
+    } as never)
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       needsOnboarding: false,
       showWelcome: true,
       byokUiEnabled: true,
@@ -137,9 +180,12 @@ describe('nucleus page server load', () => {
     authDbMock.select = () => selectChain({ accountKind: 'harness', onboardingCompleted: true })
     isUserProviderReadyMock.mockResolvedValue(false)
 
-    const result = await load({ locals: { user: { id: 'u1' } } } as never)
+    const result = await load({
+      locals: { user: { id: 'u1' } },
+      url: new URL('https://os.test/'),
+    } as never)
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       needsOnboarding: false,
       showWelcome: false,
       byokUiEnabled: true,

@@ -1,3 +1,4 @@
+import { onboardingFactsFor } from '$lib/server/onboarding/assisted'
 import type { PageServerLoad } from './$types'
 import { redirect } from '@sveltejs/kit'
 import { eq } from 'drizzle-orm'
@@ -47,6 +48,10 @@ export const load: PageServerLoad = async (event) => {
     // setup wizard. Harness accounts bypass (they exist for automated verification).
     needsOnboarding: !isHarness && !providerReady,
     showWelcome,
+    // Back from the provider's sign-in redirect (OpenRouter callback): don't replay the tour.
+    returnedFromProvider: event.url.searchParams.get('provider') === 'connected',
+    // The agent's onboarding hand-off only applies while the website is still to do.
+    handoffAvailable: showWelcome && (await onboardingFactsFor(userId))?.website === 'not_started',
     byokUiEnabled: isByokUiEnabled(),
     displayName,
     // The owner sets up company email in the onboarding (sign-in codes depend on it).

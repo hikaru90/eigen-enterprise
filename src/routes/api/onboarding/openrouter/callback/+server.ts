@@ -24,7 +24,8 @@ export const GET: RequestHandler = async (event) => {
     throw redirect(302, '/')
   }
 
-  const fail = (message: string): never => redirect(302, `/?openrouter_error=${encodeURIComponent(message)}`)
+  const fail = (message: string): never =>
+    redirect(302, `/?openrouter_error=${encodeURIComponent(message)}`)
 
   let verifier = ''
   let modelChat = ''
@@ -49,7 +50,8 @@ export const GET: RequestHandler = async (event) => {
   }
   const code = event.url.searchParams.get('code')
   if (!code) {
-    const oauthError = event.url.searchParams.get('error_description') ?? event.url.searchParams.get('error')
+    const oauthError =
+      event.url.searchParams.get('error_description') ?? event.url.searchParams.get('error')
     fail(`OpenRouter sign-in was denied${oauthError ? `: ${oauthError}` : '.'}`)
   }
 
@@ -73,5 +75,5 @@ export const GET: RequestHandler = async (event) => {
   }
 
   event.cookies.delete(PKCE_COOKIE, { path: '/api/onboarding/openrouter' })
-  throw redirect(302, '/')
+  throw redirect(302, '/?provider=connected')
 }
