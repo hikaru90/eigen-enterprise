@@ -1,5 +1,6 @@
 import { toolLabel } from '$lib/chat/chat-stream-types'
 import type { ChatProgressEvent } from '$lib/chat/consume-chat-ndjson'
+import type { PersistedChatMessage } from '$lib/chat/normalize-messages'
 
 /**
  * The nucleus transcript model. User and assistant turns are the conversation;
@@ -79,6 +80,33 @@ export function nucleusTurnForProgressEvent(event: ChatProgressEvent): NucleusTu
   if (event.type === 'tool.preview') return toolPreviewTurn(event.tool, event.inputSummary)
   if (event.type === 'approval.required') return approvalRequiredTurn(event.tool)
   return null
+}
+
+/**
+ * Rebuild the transcript from persisted chat_message rows (page load). Mirrors
+ * the live view: user/assistant turns, tool previews and approval cards;
+ * thinking and tool-call/result machinery stay hidden, as they do live.
+ */
+export function nucleusTurnsFromPersisted(messages: PersistedChatMessage[]): NucleusTurn[] {
+  const out: NucleusTurn[] = []
+  for (const m of messages) {
+    if (m.role === 'user') {
+      out.push(userTurn(m.content))
+      continue
+    }
+    if (m.role !== 'assistant') continue
+    const variant = m.metadata?.variant
+    const tool = typeof m.metadata?.tool === 'string' ? m.metadata.tool : null
+    if (variant === undefined || variant === null) {
+      const turn = assistantTurnFromResponse(m.content)
+      if (turn) out.push(turn)
+    } else if (variant === 'tool_preview' && tool) {
+      out.push(toolPreviewTurn(tool, m.content || null))
+    } else if (variant === 'approval_required' && tool) {
+      out.push(approvalRequiredTurn(tool))
+    }
+  }
+  return out
 }
 
 /**

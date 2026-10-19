@@ -1,5 +1,7 @@
 import { onboardingFactsFor } from '$lib/server/onboarding/assisted'
 import type { PageServerLoad } from './$types'
+import { loadCurrentConversation } from '$lib/server/chat/current-conversation'
+import { nucleusTurnsFromPersisted } from './nucleus-chat'
 import { redirect } from '@sveltejs/kit'
 import { eq } from 'drizzle-orm'
 import { getDb } from '$lib/server/db'
@@ -43,7 +45,13 @@ export const load: PageServerLoad = async (event) => {
     displayName = pref?.displayName ?? null
   }
 
+  // The chat survives navigation: the current session and its stored turns come
+  // from Postgres (chat_message), and new turns continue that same session id.
+  const conversation = await loadCurrentConversation(getDb(), userId)
+
   return {
+    chatSessionId: conversation.sessionId,
+    chatHistory: nucleusTurnsFromPersisted(conversation.messages),
     // First-run gate: without a working provider there is no product — the page IS the
     // setup wizard. Harness accounts bypass (they exist for automated verification).
     needsOnboarding: !isHarness && !providerReady,

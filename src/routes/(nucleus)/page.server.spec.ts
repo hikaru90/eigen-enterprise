@@ -22,6 +22,13 @@ const onboardingFactsMock = vi.hoisted(() => vi.fn())
 vi.mock('$lib/server/onboarding/assisted', () => ({ onboardingFactsFor: onboardingFactsMock }))
 vi.mock('$lib/server/mail', () => ({ companyMail: () => ({ isConfigured: mailConfiguredMock }) }))
 
+const loadConversationMock = vi.hoisted(() =>
+  vi.fn(async () => ({ sessionId: null as string | null, messages: [] as unknown[] })),
+)
+vi.mock('$lib/server/chat/current-conversation', () => ({
+  loadCurrentConversation: loadConversationMock,
+}))
+
 import { load } from './+page.server'
 
 function selectChain(row: Record<string, unknown> | undefined) {
@@ -79,6 +86,39 @@ describe('nucleus page server load', () => {
     expect(await load(back as never)).toMatchObject({ returnedFromProvider: true })
     const plain = { locals: { user: { id: 'u1' } }, url: new URL('https://os.test/') }
     expect(await load(plain as never)).toMatchObject({ returnedFromProvider: false })
+  })
+
+  it('restores the saved conversation so navigating away and back keeps the chat', async () => {
+    isUserProviderReadyMock.mockResolvedValue(true)
+    loadConversationMock.mockResolvedValue({
+      sessionId: 's-1',
+      messages: [
+        { role: 'assistant', content: 'Welcome — your website next?', metadata: null },
+        { role: 'user', content: 'yes', metadata: null },
+      ],
+    })
+    const result = await load({
+      locals: { user: { id: 'u1' } },
+      url: new URL('https://os.test/'),
+    } as never)
+    expect(loadConversationMock).toHaveBeenCalledWith(expect.anything(), 'u1')
+    expect(result).toMatchObject({
+      chatSessionId: 's-1',
+      chatHistory: [
+        { role: 'assistant', content: 'Welcome — your website next?' },
+        { role: 'user', content: 'yes' },
+      ],
+    })
+  })
+
+  it('starts empty when the user has no saved conversation', async () => {
+    isUserProviderReadyMock.mockResolvedValue(true)
+    loadConversationMock.mockResolvedValue({ sessionId: null, messages: [] })
+    const result = await load({
+      locals: { user: { id: 'u1' } },
+      url: new URL('https://os.test/'),
+    } as never)
+    expect(result).toMatchObject({ chatSessionId: null, chatHistory: [] })
   })
 
   it('redirects unauthenticated users to login', async () => {

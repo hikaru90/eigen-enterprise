@@ -4,6 +4,7 @@ import {
   assistantTurnFromResponse,
   failedTurn,
   nucleusTurnForProgressEvent,
+  nucleusTurnsFromPersisted,
   statusLabelForProgressEvent,
   toolPreviewTurn,
   userTurn,
@@ -141,5 +142,40 @@ describe('nucleus-chat harness turns', () => {
     expect(
       nucleusTurnForProgressEvent({ type: 'tool_result', tool: 'x', preview: 'y' }),
     ).toBeNull()
+  })
+})
+
+describe('nucleusTurnsFromPersisted', () => {
+  it('restores the saved conversation: user + assistant turns, tool previews, approvals', () => {
+    expect(
+      nucleusTurnsFromPersisted([
+        { role: 'assistant', content: 'Welcome back.', metadata: null },
+        { role: 'user', content: 'build my site', metadata: null },
+        {
+          role: 'assistant',
+          content: 'pages',
+          metadata: { variant: 'tool_preview', tool: 'site.create' },
+        },
+        {
+          role: 'assistant',
+          content: '{"x":1}',
+          metadata: { variant: 'tool_call', tool: 'site.create' },
+        },
+        { role: 'assistant', content: 'internal', metadata: { variant: 'thinking' } },
+        {
+          role: 'assistant',
+          content: '',
+          metadata: { variant: 'approval_required', tool: 'site.publish' },
+        },
+        { role: 'system', content: 'sys', metadata: null },
+        { role: 'assistant', content: 'Queued for your approval.', metadata: null },
+      ]),
+    ).toEqual([
+      { role: 'assistant', content: 'Welcome back.' },
+      { role: 'user', content: 'build my site' },
+      { role: 'tool_preview', tool: 'site.create', inputSummary: 'pages' },
+      { role: 'approval', tool: 'site.publish' },
+      { role: 'assistant', content: 'Queued for your approval.' },
+    ])
   })
 })

@@ -28,11 +28,25 @@
     type NucleusTurn,
   } from './nucleus-chat'
 
-  let entries = $state<NucleusChatEntry[]>([])
+  let entrySeq = 0
+
+  // Restored from the server load (chat_message in Postgres): the saved transcript
+  // and the session new turns continue. Seeded once per mount; live turns append.
+  function restoredEntries(): NucleusChatEntry[] {
+    return data.chatHistory.map((turn) => {
+      entrySeq += 1
+      return { ...turn, key: `nucleus-${entrySeq}` }
+    })
+  }
+  function restoredSessionId(): string | null {
+    return data.chatSessionId
+  }
+
+  let entries = $state<NucleusChatEntry[]>(restoredEntries())
   let input = $state('')
   let busy = $state(false)
   let status = $state<string | null>(null)
-  let sessionId = $state<string | null>(null)
+  let sessionId = $state<string | null>(restoredSessionId())
   let abortController: AbortController | null = null
 
   /**
@@ -50,8 +64,6 @@
   let inputEl = $state<HTMLInputElement | undefined>(undefined)
   let transcriptEl = $state<HTMLDivElement | undefined>(undefined)
   let voiceStopFn = $state<(() => void) | undefined>(undefined)
-
-  let entrySeq = 0
 
   const micSupported = $derived(
     browser &&
@@ -178,6 +190,7 @@
 
   onMount(() => {
     inputEl?.focus()
+    scrollToBottom()
   })
 </script>
 
