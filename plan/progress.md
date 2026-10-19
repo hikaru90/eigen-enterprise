@@ -2,6 +2,39 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-19 — PLANNED: phase-substrate — `ee`, the company's init system (architecture decision, no code)
+
+**Owner directives (same session):**
+- "If we build this out, I want it to work for everyone, and I want the 'your company is up in 10 minutes' claim to also work with the website the way it is."
+- "Can't it be something I curl and install onto the server? Like a Linux package that gets started up with systemd?"
+- "What if we don't use Docker?"
+
+Two earlier same-day drafts were superseded: `phase-hosting.md` (a per-app hosting module; deleted) and a Docker-based version of `phase-substrate.md`.
+
+**Finding**: the OS metaphor (company-os §1) has no init and no loader. Five plans depend on "a revision becomes a healthy, routed, supervised process, or nothing changes": wedge install/preview/domain, `repo.merge` (there is no `.git` in the production image, so nothing ever redeploys), module services (Owlery), the software-factory post-merge smoke, and user apps. Design it once.
+
+**Decision log (architecture impact, proposed D1–D17 in phase-substrate §7, D16 owner-decided; owner can veto the rest)**
+- `ee` = one curl-installed binary (daemon + CLI) under `ee.service`. systemd is the only supervisor; every workload is a generated, hardened unit; `ee` is not in the data path (`ee` down ≠ sites down).
+- **Native only: no Docker daemon and no container runtime.** Deviates from company-os §4.2 ("Docker + Compose"); amend on approval.
+- Desired state = the company repo; `ee` is its only writer; every mutating verb is validate → commit → reconcile. Every deploy, rollback and upgrade is a commit.
+- **The catalog is the only environment** (phase-substrate §3.3):
+  - runtimes: `static` + `node` now; `python` / `binary` / `jvm` later;
+  - shared services, one of each: Postgres with each app its own database and login, a Postgres-backed queue + events in the kernel (replacing company-os's Redis/BullMQ), email, files, secrets, edge, schedules;
+  - capabilities: `chromium`, `ffmpeg`, `tesseract`, … later.
+
+  Apps declare their needs in `ee.json` (declared, never detected) and reach kernel services as `service` principals through the registry path.
+- **D16, owner-decided: a gap is an eigen change.** No app may spin up its own environment: no containers, no app-run datastores (embedded SQLite included), no vendored system programs. A missing entry fails the deploy with `catalog_gap` and lands on the Extension Roadmap; closing it is a catalog release that every company gets. If an app *could* bring its own environment, that's a substrate bug.
+- eigenEnterprise and Postgres are packages; `ee upgrade` is a health-gated blue-green deploy. First-party modules stay compiled in (phase-0 holds); all others are out-of-process workloads whose tools the registry proxies. This dissolves the fork-vs-image question: core is never modified on a server, and core improvements go upstream.
+- The website stays as it is; the edge splits the public host (public surface only) from the console host. No container and no build on the 10-minute path.
+
+**Owner decisions open (§8):** human-only approvals for system tier / first deploys / auto-deploy (reverses `a8b11c0` for this area); Ubuntu 24.04 + Debian 13 only; the pre-DNS hostname; the expand/contract migration guardrail.
+
+**Found while planning**: `docker-compose.yaml` publishes db/app/studio on all interfaces (Docker bypasses UFW) and defaults the Postgres password to `eigen`. Under D9 compose becomes dev-only.
+
+**Accepted trade-off (on record):** software that brings its own database engine (WordPress + MySQL, Plausible + ClickHouse) doesn't run on eigen until eigen provides that service for everyone.
+
+**Next**: owner answers §8 → S0 (the shared spec, the app contract + catalog manifest, the hardened unit template, the vendored-program decision). Other plans are amended only after approval (§13).
+
 ## 2026-10-15 (3) — the eigen chrome is DEAD: one cog, every route
 
 **Owner directive (verbatim)**: "/settings … the menu on the top right changes and the header
