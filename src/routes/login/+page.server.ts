@@ -3,9 +3,9 @@ import { redirect } from '@sveltejs/kit'
 import { requestCode, verifyCode } from '$lib/server/auth/email-code-actions'
 import { listEnabledSocialProviderIds } from '$lib/server/auth-social'
 import { env } from '$lib/server/env/private-env'
-import { isOwleryMailConfigured } from '$lib/server/owlery/mail'
+import { companyMail } from '$lib/server/mail'
 
-export const load: PageServerLoad = (event) => {
+export const load: PageServerLoad = async (event) => {
   if (event.locals.user) {
     throw redirect(302, '/')
   }
@@ -13,7 +13,7 @@ export const load: PageServerLoad = (event) => {
   return {
     socialProviders: listEnabledSocialProviderIds(env),
     oauthError: oauthError?.trim() || null,
-    mailConfigured: isOwleryMailConfigured(env),
+    mailConfigured: await companyMail().isConfigured(),
   }
 }
 

@@ -5,6 +5,15 @@ const { isOwleryMailConfiguredMock, sendTransactionalEmailMock } = vi.hoisted(()
   sendTransactionalEmailMock: vi.fn(),
 }))
 
+/** Company email lives in the database now; these values used to come from env. */
+vi.mock('$lib/server/mail', () => ({
+  companyOwleryEnv: async () => ({
+    OWLERY_API_KEY: 'us_test',
+    OWLERY_BASE_URL: 'https://owlery.example',
+    OWLERY_EMAIL_FROM: 'hello@eigenenterprise.example',
+  }),
+}))
+
 vi.mock('$lib/server/env/private-env', () => ({
   env: {
     OWLERY_API_KEY: 'us_test',
@@ -32,9 +41,9 @@ describe('sendFeedbackInboxEmail', () => {
     expect(FEEDBACK_INBOX_EMAIL).toBe('feedback@eigenenterprise.example')
   })
 
-  it('assertFeedbackMailConfigured throws when Owlery mail is off', () => {
+  it('assertFeedbackMailConfigured throws when company email is not set up', async () => {
     isOwleryMailConfiguredMock.mockReturnValue(false)
-    expect(() => assertFeedbackMailConfigured()).toThrow(/not configured/i)
+    await expect(assertFeedbackMailConfigured()).rejects.toThrow(/not set up/i)
   })
 
   it('sends to feedback@eigenenterprise.example with replyTo and escaped body', async () => {

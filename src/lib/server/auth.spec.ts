@@ -40,16 +40,19 @@ vi.mock('$lib/server/db/auth-db', () => ({
   authDb: { select: () => ({ from: async () => [{ n: existingUserCount }] }) },
 }))
 
-vi.mock('$lib/server/owlery/mail', () => ({
-  isOwleryMailConfigured: (e: Record<string, string | undefined>) =>
-    Boolean(
-      e.OWLERY_API_KEY?.trim() && e.OWLERY_BASE_URL?.trim() && e.OWLERY_EMAIL_FROM?.trim(),
-    ),
-  sendTransactionalEmail: (...args: unknown[]) => sendTransactionalEmailMock(...args),
+/** Company email (database-backed): `sendTransactionalEmailMock` stands in for its send. */
+const mailEnv = { OWLERY_API_KEY: 'key', OWLERY_BASE_URL: 'https://mail.example', OWLERY_EMAIL_FROM: 'noreply@example.com' }
+vi.mock('$lib/server/mail', () => ({
+  companyMail: () => ({
+    send: (...args: unknown[]) => sendTransactionalEmailMock(...args),
+    isConfigured: async () => true,
+  }),
+  companyOwleryEnv: async () => mailEnv,
 }))
 
 vi.mock('$lib/server/e2e/verification-link-store', () => ({
   recordVerificationLink: (...args: unknown[]) => recordVerificationLinkMock(...args),
+  recordSignInCode: vi.fn(),
 }))
 
 vi.mock('$lib/auth/account-kind', () => ({
@@ -150,112 +153,18 @@ describe('auth config', () => {
     env.BETTER_AUTH_SECRET = 'secret'
   })
 
-  it('constructs better-auth without verification mailer when Owlery mail unset', async () => {
-    const mod = await loadAuth()
-    expect(mod.auth).toBeDefined()
-    expect(betterAuthMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        baseURL: mod.normalizeAuthOrigin(env.ORIGIN),
-        secret: env.BETTER_AUTH_SECRET,
-        emailAndPassword: expect.objectContaining({
-          enabled: true,
-          requireEmailVerification: false,
-        }),
-        user: expect.objectContaining({
-          changeEmail: expect.objectContaining({
-            enabled: true,
-            updateEmailWithoutVerification: true,
-          }),
-        }),
-      }),
-    )
+  it('is passwordless: no verification-by-link and no password-reset mail (codes prove the address)', async () => {
+    await loadAuth()
     const config = lastConfig()
-    expect(config.emailVerification).toBeUndefined()
+    expect(config.emailAndPassword.requireEmailVerification).toBe(false)
     expect(config.emailAndPassword.sendResetPassword).toBeUndefined()
-    expect(config.user.changeEmail.sendChangeEmailConfirmation).toBeUndefined()
+    expect(config.emailVerification).toBeUndefined()
   })
 
-  it('enables verification mailers when Owlery mail is configured', async () => {
-    env.OWLERY_API_KEY = 'key'
-    env.OWLERY_BASE_URL = 'https://mail.example'
-    env.OWLERY_EMAIL_FROM = 'noreply@example.com'
-
+  it('confirms an email change by email, through company mail', async () => {
     await loadAuth()
     const config = lastConfig()
-    expect(config.emailAndPassword.requireEmailVerification).toBe(true)
     expect(config.user.changeEmail.updateEmailWithoutVerification).toBe(false)
-    expect(config.emailVerification).toBeDefined()
-    expect(typeof config.emailAndPassword.sendResetPassword).toBe('function')
-    expect(typeof config.user.changeEmail.sendChangeEmailConfirmation).toBe('function')
-  })
-
-  it('queues reset-password email via sendResetPassword', async () => {
-    env.OWLERY_API_KEY = 'key'
-    env.OWLERY_BASE_URL = 'https://mail.example'
-    env.OWLERY_EMAIL_FROM = 'noreply@example.com'
-
-    await loadAuth()
-    const config = lastConfig()
-    await config.emailAndPassword.sendResetPassword!({
-      user: { email: 'a@b.com' },
-      url: 'https://app/reset?token=1',
-    })
-    await vi.waitFor(() => expect(sendTransactionalEmailMock).toHaveBeenCalled())
-    expect(sendTransactionalEmailMock).toHaveBeenCalledWith(
-      env,
-      expect.objectContaining({
-        to: 'a@b.com',
-        subject: 'Reset your Eigen password',
-        text: expect.stringContaining('https://app/reset?token=1'),
-      }),
-    )
-  })
-
-  it('records verification link and queues verify email', async () => {
-    env.OWLERY_API_KEY = 'key'
-    env.OWLERY_BASE_URL = 'https://mail.example'
-    env.OWLERY_EMAIL_FROM = 'noreply@example.com'
-
-    await loadAuth()
-    const config = lastConfig()
-    await config.emailVerification!.sendVerificationEmail({
-      user: { email: 'v@b.com' },
-      url: 'https://app/verify?token=2',
-    })
-    expect(recordVerificationLinkMock).toHaveBeenCalledWith('v@b.com', 'https://app/verify?token=2')
-    await vi.waitFor(() => expect(sendTransactionalEmailMock).toHaveBeenCalled())
-    expect(sendTransactionalEmailMock).toHaveBeenCalledWith(
-      env,
-      expect.objectContaining({
-        to: 'v@b.com',
-        subject: 'Verify your Eigen email',
-      }),
-    )
-  })
-
-  it('prints auth links to the terminal in dev (no local mail server)', async () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
-    env.OWLERY_API_KEY = 'key'
-    env.OWLERY_BASE_URL = 'https://mail.example'
-    env.OWLERY_EMAIL_FROM = 'noreply@example.com'
-
-    await loadAuth()
-    const config = lastConfig()
-    await config.emailVerification!.sendVerificationEmail({
-      user: { email: 'dev@b.com' },
-      url: 'https://app/verify?token=dev',
-    })
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('https://app/verify?token=dev'))
-    logSpy.mockRestore()
-  })
-
-  it('queues change-email confirmation', async () => {
-    env.OWLERY_API_KEY = 'key'
-    env.OWLERY_BASE_URL = 'https://mail.example'
-    env.OWLERY_EMAIL_FROM = 'noreply@example.com'
-
-    await loadAuth()
-    const config = lastConfig()
     await config.user.changeEmail.sendChangeEmailConfirmation!({
       user: { email: 'old@b.com' },
       newEmail: 'new@b.com',
@@ -263,7 +172,6 @@ describe('auth config', () => {
     })
     await vi.waitFor(() => expect(sendTransactionalEmailMock).toHaveBeenCalled())
     expect(sendTransactionalEmailMock).toHaveBeenCalledWith(
-      env,
       expect.objectContaining({
         to: 'old@b.com',
         subject: 'Confirm your Eigen email change',
@@ -272,18 +180,14 @@ describe('auth config', () => {
     )
   })
 
-  it('logs when transactional email fails without throwing', async () => {
-    env.OWLERY_API_KEY = 'key'
-    env.OWLERY_BASE_URL = 'https://mail.example'
-    env.OWLERY_EMAIL_FROM = 'noreply@example.com'
+  it('logs when an auth email fails without throwing', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-
     await loadAuth()
     sendTransactionalEmailMock.mockRejectedValue(new Error('smtp down'))
-    const config = lastConfig()
-    await config.emailAndPassword.sendResetPassword!({
+    await lastConfig().user.changeEmail.sendChangeEmailConfirmation!({
       user: { email: 'a@b.com' },
-      url: 'https://app/reset',
+      newEmail: 'n@b.com',
+      url: 'https://app/change',
     })
     await vi.waitFor(() => expect(errSpy).toHaveBeenCalled())
     expect(errSpy).toHaveBeenCalledWith(
@@ -357,7 +261,7 @@ describe('auth config', () => {
       firstName: 'Ada',
       lastName: 'Lovelace',
     })
-    expect(createOwleryContactMock).toHaveBeenCalledWith(env, {
+    expect(createOwleryContactMock).toHaveBeenCalledWith(mailEnv, {
       email: 'ada@example.com',
       firstName: 'Ada',
       lastName: 'Lovelace',
@@ -405,28 +309,6 @@ describe('auth config', () => {
       expect.objectContaining({ userId: 'user-5', error: 'owlery down' }),
     )
     errSpy.mockRestore()
-  })
-
-  it('afterEmailVerification syncs owlery when mail is configured', async () => {
-    env.OWLERY_API_KEY = 'key'
-    env.OWLERY_BASE_URL = 'https://mail.example'
-    env.OWLERY_EMAIL_FROM = 'noreply@example.com'
-
-    await loadAuth()
-    isOwleryConfiguredMock.mockReturnValue(true)
-    const config = lastConfig()
-    await config.emailVerification!.afterEmailVerification!({
-      id: 'user-6',
-      email: 'ada@example.com',
-      emailVerified: true,
-      firstName: 'Ada',
-      lastName: 'Lovelace',
-    })
-    expect(createOwleryContactMock).toHaveBeenCalledWith(env, {
-      email: 'ada@example.com',
-      firstName: 'Ada',
-      lastName: 'Lovelace',
-    })
   })
 })
 

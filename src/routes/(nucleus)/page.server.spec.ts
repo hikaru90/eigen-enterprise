@@ -13,6 +13,12 @@ vi.mock('$lib/server/llm/provider-ready', () => ({
   isUserProviderReady: isUserProviderReadyMock,
 }))
 vi.mock('$lib/server/settings/byok-ui', () => ({ isByokUiEnabled: isByokUiEnabledMock }))
+const { isUserAdminMock, mailConfiguredMock } = vi.hoisted(() => ({
+  isUserAdminMock: vi.fn(async () => false),
+  mailConfiguredMock: vi.fn(async () => true),
+}))
+vi.mock('$lib/server/auth/user-role', () => ({ isUserAdmin: isUserAdminMock }))
+vi.mock('$lib/server/mail', () => ({ companyMail: () => ({ isConfigured: mailConfiguredMock }) }))
 
 import { load } from './+page.server'
 
@@ -26,6 +32,20 @@ function selectChain(row: Record<string, unknown> | undefined) {
 }
 
 describe('nucleus page server load', () => {
+  it('asks the owner (only the owner) to set up company email until it works', async () => {
+    isUserProviderReadyMock.mockResolvedValue(true)
+    getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: null }))
+    authDbMock.select = () => selectChain({ accountKind: 'production' })
+    isUserAdminMock.mockResolvedValue(true)
+    mailConfiguredMock.mockResolvedValue(false)
+    expect(await load({ locals: { user: { id: 'u1' } } } as never)).toMatchObject({ needsMail: true })
+    mailConfiguredMock.mockResolvedValue(true)
+    expect(await load({ locals: { user: { id: 'u1' } } } as never)).toMatchObject({ needsMail: false })
+    isUserAdminMock.mockResolvedValue(false)
+    mailConfiguredMock.mockResolvedValue(false)
+    expect(await load({ locals: { user: { id: 'u2' } } } as never)).toMatchObject({ needsMail: false })
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     isByokUiEnabledMock.mockReturnValue(true)
@@ -50,6 +70,7 @@ describe('nucleus page server load', () => {
       showWelcome: true,
       byokUiEnabled: true,
       displayName: null,
+      needsMail: false,
     })
   })
 
@@ -63,6 +84,7 @@ describe('nucleus page server load', () => {
       showWelcome: true,
       byokUiEnabled: true,
       displayName: null,
+      needsMail: false,
     })
   })
 
@@ -77,6 +99,7 @@ describe('nucleus page server load', () => {
       showWelcome: false,
       byokUiEnabled: true,
       displayName: null,
+      needsMail: false,
     })
   })
 
@@ -91,6 +114,7 @@ describe('nucleus page server load', () => {
       showWelcome: false,
       byokUiEnabled: true,
       displayName: null,
+      needsMail: false,
     })
   })
 
@@ -105,6 +129,7 @@ describe('nucleus page server load', () => {
       showWelcome: true,
       byokUiEnabled: true,
       displayName: 'Ada',
+      needsMail: false,
     })
   })
 
@@ -119,6 +144,7 @@ describe('nucleus page server load', () => {
       showWelcome: false,
       byokUiEnabled: true,
       displayName: null,
+      needsMail: false,
     })
   })
 })

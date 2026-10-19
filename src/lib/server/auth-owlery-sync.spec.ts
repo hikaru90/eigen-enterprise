@@ -3,6 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const createOwleryContactMock = vi.fn()
 const isOwleryConfiguredMock = vi.fn()
 
+/** Company email lives in the database now; these values used to come from env. */
+vi.mock('$lib/server/mail', () => ({
+  companyOwleryEnv: async () => ({
+    OWLERY_API_KEY: 'us_test',
+    OWLERY_BASE_URL: 'https://owlery.example',
+    OWLERY_EMAIL_FROM: 'hello@eigenenterprise.example',
+  }),
+}))
+
 vi.mock('$lib/server/env/private-env', () => ({
   env: {},
 }))
@@ -59,7 +68,7 @@ describe('syncOwleryContactForVerifiedUser', () => {
     })
 
     expect(createOwleryContactMock).toHaveBeenCalledWith(
-      {},
+      expect.objectContaining({ OWLERY_API_KEY: 'us_test' }),
       {
         email: 'ada@example.com',
         firstName: 'Ada',

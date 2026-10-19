@@ -15,11 +15,14 @@
 
   let {
     providerReady = false,
+    needsMail = false,
     byokUiEnabled = true,
     displayName = null,
     oncomplete,
   }: {
     providerReady?: boolean
+    /** The owner hasn't set up company email yet (sign-in codes depend on it). */
+    needsMail?: boolean
     byokUiEnabled?: boolean
     displayName?: string | null
     oncomplete?: (detail: { name: string | null }) => void
@@ -30,11 +33,12 @@
    * Acts advance by click or a quiet timer; every act carries tangible purpose
    * or it does not exist (see .pi/skills/tangible-purpose-ui/SKILL.md):
    *   boot → hello → name (only if unknown) → identity → mind (only if no
-   *   provider) → handoff into the chat (the parent seeds the agent's greeting).
+   *   provider) → mail (owner only, until company email works) → handoff into
+   *   the chat (the parent seeds the agent's greeting).
    * "Skip for now" stays a muted corner link — completing and skipping mean the
    * same thing: the tour never nags again.
    */
-  type Act = 'boot' | 'hello' | 'name' | 'identity' | 'mind'
+  type Act = 'boot' | 'hello' | 'name' | 'identity' | 'mind' | 'mail'
 
   const IDENTITY_LINE_1 = 'This is the operating system for your company.'
   const IDENTITY_LINE_2 =
@@ -50,6 +54,11 @@
   let nameError = $state<string | null>(null)
   let savingName = $state(false)
   let completing = $state(false)
+  let mailBaseUrl = $state('')
+  let mailApiKey = $state('')
+  let mailFrom = $state('')
+  let mailSaving = $state(false)
+  let mailError = $state<string | null>(null)
   let error = $state<string | null>(null)
   let reducedMotion = $state(false)
 
@@ -68,6 +77,7 @@
     // are independent toggles.
     if (next === 'hello') speak(greeting)
     else if (next === 'name') speak('What should I call you?')
+    else if (next === 'mail') speak('Now, a voice to write with.')
     else if (next === 'identity') speak(IDENTITY_LINE_1)
   }
 
@@ -149,11 +159,39 @@
    *  Explicit event — no prop-watching, no hidden control flow. */
   function onMindConnected(): void {
     if (isSoundEnabled()) playConnectChime()
-    void complete()
+    finishOrMail()
+  }
+
+  /** After the mind: the owner sets up company email once; everyone else is done. */
+  function finishOrMail(): void {
+    if (needsMail) advanceTo('mail')
+    else void complete()
+  }
+
+  /** Save company email — the server sends a real test email to the owner first. */
+  async function submitMail(): Promise<void> {
+    if (mailSaving) return
+    mailSaving = true
+    mailError = null
+    try {
+      const res = await fetch('/api/onboarding/mail', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ baseUrl: mailBaseUrl, apiKey: mailApiKey, emailFrom: mailFrom }),
+      })
+      const body = (await res.json().catch(() => null)) as { error?: string } | null
+      if (!res.ok) throw new Error(body?.error ?? `Saving email failed (HTTP ${res.status}).`)
+      if (isSoundEnabled()) playConnectChime()
+      void complete()
+    } catch (err) {
+      mailError = err instanceof Error ? err.message : String(err)
+    } finally {
+      mailSaving = false
+    }
   }
 
   function onRootKeydown(e: KeyboardEvent): void {
-    if ((e.key === 'Enter' || e.key === ' ') && act !== 'name' && act !== 'mind') {
+    if ((e.key === 'Enter' || e.key === ' ') && act !== 'name' && act !== 'mind' && act !== 'mail') {
       advanceFromClick()
     }
   }
@@ -302,7 +340,7 @@
               type="button"
               class="mt-8 h-11 bg-black px-10 text-sm font-medium text-white hover:bg-black/90 disabled:opacity-50"
               disabled={completing}
-              onclick={() => void complete()}
+              onclick={finishOrMail}
             >
               {#if completing}
                 <LoaderCircle class="mx-auto size-4 animate-spin" strokeWidth={1.75} />
@@ -324,6 +362,45 @@
         <div class="mt-8">
           <ProviderOnboarding {byokUiEnabled} embedded onconnected={onMindConnected} />
         </div>
+      </div>
+    {:else if act === 'mail'}
+      <div class="mx-auto w-full max-w-md" in:fly={{ y: 10 * motion, duration: 700 * motion }} data-testid="onboarding-mail">
+        <h1 class="text-center text-2xl font-light tracking-tight text-balance sm:text-3xl">
+          Now, a voice to write with.
+        </h1>
+        <p class="text-muted-foreground mt-3 text-center text-sm text-balance">
+          Your company sends sign-in codes and messages through your Owlery account.
+        </p>
+        <form
+          class="mt-8 flex flex-col gap-5"
+          onsubmit={(e) => {
+            e.preventDefault()
+            void submitMail()
+          }}
+        >
+          <label class="text-xs text-muted-foreground">
+            Owlery address
+            <input bind:value={mailBaseUrl} type="url" required placeholder="https://owlery.example.com" class="focus:border-black mt-1 h-10 w-full border-0 border-b border-black/25 bg-transparent px-1 text-base text-foreground outline-none" disabled={mailSaving} />
+          </label>
+          <label class="text-xs text-muted-foreground">
+            API key
+            <input bind:value={mailApiKey} type="password" required autocomplete="off" class="focus:border-black mt-1 h-10 w-full border-0 border-b border-black/25 bg-transparent px-1 text-base text-foreground outline-none" disabled={mailSaving} />
+          </label>
+          <label class="text-xs text-muted-foreground">
+            Send from
+            <input bind:value={mailFrom} type="email" required placeholder="hello@yourcompany.com" class="focus:border-black mt-1 h-10 w-full border-0 border-b border-black/25 bg-transparent px-1 text-base text-foreground outline-none" disabled={mailSaving} />
+          </label>
+          <button type="submit" class="mt-2 h-11 bg-black px-10 text-sm font-medium text-white hover:bg-black/90 disabled:opacity-50" disabled={mailSaving}>
+            {#if mailSaving}
+              <LoaderCircle class="mx-auto size-4 animate-spin" strokeWidth={1.75} />
+            {:else}
+              Send me a test email
+            {/if}
+          </button>
+        </form>
+        {#if mailError}
+          <p class="text-destructive mt-4 text-center text-sm leading-relaxed" role="alert">{mailError}</p>
+        {/if}
       </div>
     {/if}
   </div>

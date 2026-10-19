@@ -23,8 +23,8 @@ export type EmailToolDeps = {
 
 async function resolveEnv(deps: EmailToolDeps): Promise<OwleryEnv> {
   if (deps.env) return deps.env
-  const { env } = await import('$lib/server/env/private-env')
-  return env
+  const { companyOwleryEnv } = await import('$lib/server/mail')
+  return companyOwleryEnv()
 }
 
 const sendMailInput = z.object({

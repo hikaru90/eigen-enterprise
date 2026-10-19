@@ -1,5 +1,6 @@
 import { generateKeyPairSync, randomBytes } from 'node:crypto'
 import { basename } from 'node:path'
+import { newClaim } from './claim.ts'
 import { CompanyRepo } from './company-repo.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
 import { OS_INTERNAL_PORT } from './reconcile.ts'
@@ -235,7 +236,10 @@ export const OS_SECRETS = [
   'TENANT_MASTER_KEY',
 ] as const
 
-async function seedCompany(sys: System, opts: BootstrapOptions, consoleHost: string): Promise<void> {
+/** Claim-link state (hash + expiry only), declared on os so the app can check a claim. */
+export const CLAIM_SECRETS = ['EE_CLAIM_TOKEN_HASH', 'EE_CLAIM_EXPIRES_AT'] as const
+
+async function seedCompany(sys: System, opts: BootstrapOptions, consoleHost: string): Promise<string | null> {
   step('installing the eigenEnterprise release')
   const tarball = `${PATHS.releases}/${basename(opts.release)}`
   if (opts.release !== tarball) await mustRun(sys, 'cp', [opts.release, tarball])
@@ -256,6 +260,15 @@ async function seedCompany(sys: System, opts: BootstrapOptions, consoleHost: str
   for (const name of OS_SECRETS) {
     // VAPID keys are a pair: never regenerate one half.
     if (have[name] === undefined) await secrets.set('os', name, generated[name])
+  }
+
+  // First install only: mint the claim link. Re-runs never mint a new one (`ee claim-link` does).
+  let claimToken: string | null = null
+  if (have['EE_CLAIM_TOKEN_HASH'] === undefined) {
+    const claim = newClaim()
+    await secrets.set('os', 'EE_CLAIM_TOKEN_HASH', claim.hash)
+    await secrets.set('os', 'EE_CLAIM_EXPIRES_AT', claim.expiresAt)
+    claimToken = claim.token
   }
 
   step('writing the company repo')
@@ -280,7 +293,7 @@ async function seedCompany(sys: System, opts: BootstrapOptions, consoleHost: str
         // and kernel_events is the audit trail. The in-image autocommit has nothing to commit to.
         EE_VCS_AUTOCOMMIT: '0',
       },
-      secrets: [...OS_SECRETS],
+      secrets: [...OS_SECRETS, ...CLAIM_SECRETS],
       resources: { memoryMb: 2048, cpuPercent: 200 },
     })
     const firstRun = !existing
@@ -290,9 +303,13 @@ async function seedCompany(sys: System, opts: BootstrapOptions, consoleHost: str
       settings: firstRun ? { consoleHost, publicHost: null, acmeEmail: opts.acmeEmail ?? null } : s.settings,
     }
   })
+  return claimToken
 }
 
-export async function bootstrap(sys: System, opts: BootstrapOptions): Promise<{ consoleHost: string }> {
+export async function bootstrap(
+  sys: System,
+  opts: BootstrapOptions,
+): Promise<{ consoleHost: string; claimToken: string | null }> {
   if (process.getuid?.() !== 0) throw new Error('ee bootstrap must run as root')
   await assertSupportedOs(sys)
   if (!(await sys.exists(opts.release))) throw new Error(`release tarball ${opts.release} not found`)
@@ -306,6 +323,6 @@ export async function bootstrap(sys: System, opts: BootstrapOptions): Promise<{ 
   const existing = (await repo.head()) ? (await repo.read()).settings.consoleHost : null
   const consoleHost =
     opts.consoleHost ?? existing ?? `${(await detectPublicIpv4(sys)).replace(/\./g, '-')}.sslip.io`
-  await seedCompany(sys, opts, consoleHost)
-  return { consoleHost }
+  const claimToken = await seedCompany(sys, opts, consoleHost)
+  return { consoleHost, claimToken }
 }

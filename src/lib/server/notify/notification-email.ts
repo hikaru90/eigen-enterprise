@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
 import { env } from '$lib/server/env/private-env'
+import { companyOwleryEnv } from '$lib/server/mail'
 import { isOwleryMailConfigured, sendTransactionalEmail } from '$lib/server/owlery/mail'
 import type { PushNotificationPayload } from '$lib/server/push/send'
 
@@ -26,7 +27,8 @@ export async function queueNotificationEmail(
   userId: string,
   payload: PushNotificationPayload,
 ): Promise<void> {
-  if (!isOwleryMailConfigured(env)) return
+  const mailEnv = await companyOwleryEnv()
+  if (!isOwleryMailConfigured(mailEnv)) return
 
   const [row] = await authDb
     .select({ email: user.email })
@@ -47,7 +49,7 @@ export async function queueNotificationEmail(
     `<p><a href="${escapeHtml(absoluteUrl)}">Open in Eigen</a></p>`,
   ].join('')
 
-  void sendTransactionalEmail(env, { to, subject, html, text }).catch((err) => {
+  void sendTransactionalEmail(mailEnv, { to, subject, html, text }).catch((err) => {
     console.error('[notification-email] send failed', {
       userId,
       to,

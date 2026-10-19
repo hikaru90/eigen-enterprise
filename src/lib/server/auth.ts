@@ -10,16 +10,15 @@ import { syncOwleryContactForVerifiedUser } from '$lib/server/auth-owlery-sync'
 import { buildSocialProvidersConfig, listEnabledSocialProviderIds } from '$lib/server/auth-social'
 import { normalizeUserNameFields } from '$lib/server/auth-user-name'
 import { deliverSignInCode, recordDeliveryFailure } from '$lib/server/auth/deliver-code'
-import { ownerPolicyForNewUser } from '$lib/server/auth/owner-policy'
+import { claimScope, ownerPolicyForNewUser } from '$lib/server/auth/owner-policy'
 import { authDb } from '$lib/server/db/auth-db'
 import { user as userTable } from '$lib/server/db/auth.schema'
-import { recordSignInCode, recordVerificationLink } from '$lib/server/e2e/verification-link-store'
+import { recordSignInCode } from '$lib/server/e2e/verification-link-store'
 import { env } from '$lib/server/env/private-env'
-import { isOwleryMailConfigured, sendTransactionalEmail } from '$lib/server/owlery/mail'
+import { companyMail } from '$lib/server/mail'
 
 const socialProviders = buildSocialProvidersConfig(env)
 const enabledSocialProviderIds = listEnabledSocialProviderIds(env)
-const mailConfigured = isOwleryMailConfigured(env)
 
 /**
  * Better Auth requires an absolute URL with a scheme. Some hosts set `ORIGIN` to a bare hostname
@@ -61,7 +60,7 @@ function queueTransactionalEmail(input: {
   html: string
   text: string
 }): void {
-  void sendTransactionalEmail(env, input).catch((err) => {
+  void companyMail().send(input).catch((err) => {
     console.error('[auth] transactional email failed', {
       to: input.to,
       subject: input.subject,
@@ -74,51 +73,13 @@ export const auth = betterAuth({
   baseURL: normalizeAuthOrigin(env.ORIGIN),
   secret: env.BETTER_AUTH_SECRET,
   database: drizzleAdapter(authDb, { provider: 'pg' }),
+  // Sign-in is passwordless (emailOTP below): the code proves the address, so
+  // there is no separate verification-by-link. Password endpoints stay enabled
+  // only so pre-passwordless accounts aren't stranded; no UI offers them.
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: mailConfigured,
-    ...(mailConfigured
-      ? {
-          sendResetPassword: async ({ user, url }: { user: { email: string }; url: string }) => {
-            logAuthLink('Password reset', user.email, url)
-            queueTransactionalEmail({
-              to: user.email,
-              subject: 'Reset your Eigen password',
-              text: `Click the link to reset your password:\n${url}`,
-              html: linkEmailHtml('Click the link to reset your password:', url),
-            })
-          },
-        }
-      : {}),
+    requireEmailVerification: false,
   },
-  ...(mailConfigured
-    ? {
-        emailVerification: {
-          sendOnSignUp: true,
-          sendOnSignIn: true,
-          autoSignInAfterVerification: true,
-          sendVerificationEmail: async ({
-            user,
-            url,
-          }: {
-            user: { email: string }
-            url: string
-          }) => {
-            recordVerificationLink(user.email, url)
-            logAuthLink('Email verification', user.email, url)
-            queueTransactionalEmail({
-              to: user.email,
-              subject: 'Verify your Eigen email',
-              text: `Click the link to verify your email:\n${url}`,
-              html: linkEmailHtml('Click the link to verify your email:', url),
-            })
-          },
-          afterEmailVerification: async (user) => {
-            await syncOwleryContactForVerifiedUser(user)
-          },
-        },
-      }
-    : {}),
   ...(enabledSocialProviderIds.length > 0
     ? {
         socialProviders,
@@ -133,32 +94,28 @@ export const auth = betterAuth({
   user: {
     changeEmail: {
       enabled: true,
-      /** Without a mailer, allow immediate updates; with Owlery, confirm via email. */
-      updateEmailWithoutVerification: !mailConfigured,
-      ...(mailConfigured
-        ? {
-            sendChangeEmailConfirmation: async ({
-              user,
-              newEmail,
-              url,
-            }: {
-              user: { email: string }
-              newEmail: string
-              url: string
-            }) => {
-              logAuthLink('Email change confirmation', user.email, url)
-              queueTransactionalEmail({
-                to: user.email,
-                subject: 'Confirm your Eigen email change',
-                text: `Confirm changing your email to ${newEmail}:\n${url}`,
-                html: linkEmailHtml(
-                  `Confirm changing your email to <strong>${newEmail.replace(/</g, '&lt;')}</strong>:`,
-                  url,
-                ),
-              })
-            },
-          }
-        : {}),
+      /** Changing the address is confirmed by email (company mail, set up in the onboarding). */
+      updateEmailWithoutVerification: false,
+      sendChangeEmailConfirmation: async ({
+        user,
+        newEmail,
+        url,
+      }: {
+        user: { email: string }
+        newEmail: string
+        url: string
+      }) => {
+        logAuthLink('Email change confirmation', user.email, url)
+        queueTransactionalEmail({
+          to: user.email,
+          subject: 'Confirm your Eigen email change',
+          text: `Confirm changing your email to ${newEmail}:\n${url}`,
+          html: linkEmailHtml(
+            `Confirm changing your email to <strong>${newEmail.replace(/</g, '&lt;')}</strong>:`,
+            url,
+          ),
+        })
+      },
     },
     additionalFields: {
       /** Given name — captured from the signup form or the OAuth profile (mapProfileToUser). */
@@ -204,7 +161,11 @@ export const auth = betterAuth({
         before: async (user) => {
           const [{ n }] = await authDb.select({ n: count() }).from(userTable)
           // ee sets EE_WORKLOAD on every workload it runs (ee/src/units.ts).
-          const { role } = ownerPolicyForNewUser({ existingUsers: Number(n), managedByEe: Boolean(env.EE_WORKLOAD) })
+          const { role } = ownerPolicyForNewUser({
+            existingUsers: Number(n),
+            managedByEe: Boolean(env.EE_WORKLOAD),
+            viaClaim: claimScope.getStore() === true,
+          })
           return {
             data: {
               ...user,
@@ -232,9 +193,9 @@ export const auth = betterAuth({
           await deliverSignInCode(
             { email, otp },
             {
-              mailConfigured,
+              mailConfigured: await companyMail().isConfigured(),
               dev,
-              send: (mail) => sendTransactionalEmail(env, mail),
+              send: (mail) => companyMail().send(mail),
               log: (line) => console.log(line),
               record: recordSignInCode,
             },

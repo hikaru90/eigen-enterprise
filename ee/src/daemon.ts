@@ -10,6 +10,7 @@ import { gitSource, NAME, routeSchema, workloadSchema, type Route, type Workload
 import { mustRun, type System } from './system.ts'
 import { addDomain, removeDomain, setConsoleHost } from './domains.ts'
 import { fetchSource } from './sources.ts'
+import { claimUrl, newClaim } from './claim.ts'
 
 /**
  * The control API (§3.1): typed verbs over a unix socket, readable only by root
@@ -199,6 +200,25 @@ export function startControlServer(ee: Ee): Promise<void> {
         } catch (err) {
           return send(res, 200, { ok: true, reconcileError: (err as Error).message })
         }
+      }
+      if (route === 'POST /v1/claim') {
+        // A fresh claim link (lost or expired). Only the hash + expiry are stored;
+        // the token goes back once, to the caller (root on the box, via `ee claim-link`).
+        const i = z.object({ author }).strict().parse(await body(req))
+        const claim = newClaim()
+        await ee.exclusive(async () => {
+          await ee.secrets.set('os', 'EE_CLAIM_TOKEN_HASH', claim.hash)
+          await ee.secrets.set('os', 'EE_CLAIM_EXPIRES_AT', claim.expiresAt)
+        })
+        emit(ee.journal, ee.sys, 'claim.issued', 'os', `new claim link issued by ${i.author} (expires ${claim.expiresAt})`)
+        const desired = await ee.repo.read()
+        let reconcileError: string | null = null
+        try {
+          await ee.reconcile()
+        } catch (err) {
+          reconcileError = (err as Error).message
+        }
+        return send(res, 200, { url: claimUrl(desired.settings.consoleHost, claim.token), expiresAt: claim.expiresAt, reconcileError })
       }
       if (route === 'POST /v1/sources/fetch') {
         const i = fetchInput.parse(await body(req))

@@ -6,6 +6,8 @@ import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
 import { userPreference } from '$lib/server/db/schema'
 import { isUserProviderReady } from '$lib/server/llm/provider-ready'
+import { isUserAdmin } from '$lib/server/auth/user-role'
+import { companyMail } from '$lib/server/mail'
 import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 
 export const load: PageServerLoad = async (event) => {
@@ -47,5 +49,7 @@ export const load: PageServerLoad = async (event) => {
     showWelcome,
     byokUiEnabled: isByokUiEnabled(),
     displayName,
+    // The owner sets up company email in the onboarding (sign-in codes depend on it).
+    needsMail: !isHarness && (await isUserAdmin(userId)) && !(await companyMail().isConfigured()),
   }
 }

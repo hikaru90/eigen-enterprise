@@ -41,6 +41,9 @@ import {
 import { bootstrapOrchestrator } from './orchestrator/bootstrap'
 import { OrchestratorBrain } from './orchestrator/brain'
 
+/** Company email lives in the database; in unit tests it is not set up. */
+vi.mock('$lib/server/mail', () => ({ companyOwleryEnv: async () => ({}) }))
+
 const ctx: ToolContext = {
   principal: { id: 'principal-1', kind: 'human', roles: ['admin', 'agent'] },
   requestId: 'req-1',

@@ -3,6 +3,9 @@ import type { ToolContext } from '$lib/kernel/types'
 import { EMAIL_TOOL_NAMES, emailManifest } from './manifest'
 import { createEmailTools } from './tools'
 
+/** Company email lives in the database; in unit tests it is not set up. */
+vi.mock('$lib/server/mail', () => ({ companyOwleryEnv: async () => ({}) }))
+
 // Hermetic: the lazy private-env path must fail loud on an UNCONFIGURED env
 // regardless of the developer machine's .env (placeholders would otherwise
 // leak in and turn this into a fetch-against-garbage test).
@@ -91,7 +94,7 @@ describe('createEmailTools', () => {
     expect(calls[0].url).toBe('https://owlery.example/api/v1/contactBooks/cb_1/contacts')
   })
 
-  it('resolves env lazily from private env when not injected (unconfigured → fail loud)', async () => {
+  it('resolves the company mail settings lazily when not injected (not set up → fail loud)', async () => {
     const send = createEmailTools().find((t) => t.name === 'email.send_mail')
     if (!send) throw new Error('send_mail descriptor missing')
     await expect(

@@ -21,7 +21,7 @@ export async function sendTransactionalEmail(
   const config = resolveOwleryMailConfig(env)
   if (!config) {
     throw new Error(
-      'Transactional email is not configured (set OWLERY_API_KEY, OWLERY_BASE_URL, and OWLERY_EMAIL_FROM)',
+      'Email delivery is not configured yet. The owner sets it up in the onboarding (or Settings → Email).',
     )
   }
 

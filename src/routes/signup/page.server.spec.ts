@@ -10,26 +10,26 @@ vi.mock('$lib/server/auth/email-code-actions', () => ({
   requestCode: requestCodeMock,
   verifyCode: verifyCodeMock,
 }))
-vi.mock('$lib/server/owlery/mail', () => ({
-  isOwleryMailConfigured: isOwleryMailConfiguredMock,
+vi.mock('$lib/server/mail', () => ({
+  companyMail: () => ({ isConfigured: async () => isOwleryMailConfiguredMock() }),
 }))
 
 describe('signup page server', () => {
-  it('returns plan from valid query param', () => {
+  it('returns plan from valid query param', async () => {
     const url = new URL('http://localhost/signup?plan=self-hosted')
-    const data = load({ url, locals: { user: null } } as never)
+    const data = await load({ url, locals: { user: null } } as never)
     expect(data).toMatchObject({ plan: 'self-hosted' })
   })
 
-  it('returns null plan when query param omitted', () => {
+  it('returns null plan when query param omitted', async () => {
     const url = new URL('http://localhost/signup')
-    const data = load({ url, locals: { user: null } } as never)
+    const data = await load({ url, locals: { user: null } } as never)
     expect(data).toMatchObject({ plan: null })
   })
 
-  it('rejects invalid plan query param', () => {
+  it('rejects invalid plan query param', async () => {
     const url = new URL('http://localhost/signup?plan=invalid')
-    expect(() => load({ url, locals: { user: null } } as never)).toThrow()
+    await expect(load({ url, locals: { user: null } } as never)).rejects.toThrow()
   })
 
   it('passwordless: sendCode requires the terms, verifyCode completes signup', async () => {

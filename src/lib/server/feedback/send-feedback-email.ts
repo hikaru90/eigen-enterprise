@@ -1,4 +1,5 @@
 import { env } from '$lib/server/env/private-env'
+import { companyOwleryEnv } from '$lib/server/mail'
 import { isOwleryMailConfigured, sendTransactionalEmail } from '$lib/server/owlery/mail'
 
 /** Product inbox for user-submitted feedback (Owlery transactional). */
@@ -14,11 +15,9 @@ function escapeHtml(value: string): string {
 }
 
 /** Throws when Owlery mail is not configured — feedback delivery requires email. */
-export function assertFeedbackMailConfigured(): void {
-  if (!isOwleryMailConfigured(env)) {
-    throw new Error(
-      'Feedback email is not configured (set OWLERY_API_KEY, OWLERY_BASE_URL, and OWLERY_EMAIL_FROM)',
-    )
+export async function assertFeedbackMailConfigured(): Promise<void> {
+  if (!isOwleryMailConfigured(await companyOwleryEnv())) {
+    throw new Error('Feedback email is not set up yet. The owner sets up email in the onboarding (or Settings → Email).')
   }
 }
 
@@ -55,7 +54,7 @@ export async function sendFeedbackInboxEmail(
     `<p style="margin:0;white-space:pre-line">${escapeHtml(input.message)}</p>`,
   ].join('')
 
-  return sendTransactionalEmail(env, {
+  return sendTransactionalEmail(await companyOwleryEnv(), {
     to: FEEDBACK_INBOX_EMAIL,
     replyTo: input.userEmail,
     subject,

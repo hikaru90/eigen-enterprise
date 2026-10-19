@@ -10,14 +10,14 @@ vi.mock('$lib/server/auth/email-code-actions', () => ({
   requestCode: requestCodeMock,
   verifyCode: verifyCodeMock,
 }))
-vi.mock('$lib/server/owlery/mail', () => ({
-  isOwleryMailConfigured: isOwleryMailConfiguredMock,
+vi.mock('$lib/server/mail', () => ({
+  companyMail: () => ({ isConfigured: async () => isOwleryMailConfiguredMock() }),
 }))
 
 describe('login page server', () => {
-  it('exposes mailConfigured for forgot-password / resend UI', () => {
+  it('exposes mailConfigured for forgot-password / resend UI', async () => {
     isOwleryMailConfiguredMock.mockReturnValue(true)
-    const data = load({
+    const data = await load({
       locals: { user: null },
       url: new URL('http://localhost/login'),
     } as never)

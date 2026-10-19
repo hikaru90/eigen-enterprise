@@ -34,7 +34,7 @@ export const POST: RequestHandler = async (event) => {
   }
 
   try {
-    assertFeedbackMailConfigured()
+    await assertFeedbackMailConfigured()
   } catch (err) {
     return jsonError(err instanceof Error ? err.message : 'Feedback email is not configured', 503)
   }

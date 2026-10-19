@@ -8,6 +8,15 @@ const { authDbSelectMock, isOwleryMailConfiguredMock, sendTransactionalEmailMock
   }),
 )
 
+/** Company email lives in the database now; these values used to come from env. */
+vi.mock('$lib/server/mail', () => ({
+  companyOwleryEnv: async () => ({
+    OWLERY_API_KEY: 'us_test',
+    OWLERY_BASE_URL: 'https://owlery.example',
+    OWLERY_EMAIL_FROM: 'hello@eigenenterprise.example',
+  }),
+}))
+
 vi.mock('$lib/server/env/private-env', () => ({
   env: {
     OWLERY_API_KEY: 'us_test',

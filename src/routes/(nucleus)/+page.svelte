@@ -194,6 +194,7 @@ import { cancelSpeak, speak } from '$lib/speech/tts'
     <!-- First open: the boot sequence leads; the provider step inside it stays a hard gate. -->
     <WelcomeWizard
       providerReady={!data.needsOnboarding}
+      needsMail={data.needsMail}
       byokUiEnabled={data.byokUiEnabled}
       displayName={data.displayName}
       oncomplete={handleOnboardingComplete}

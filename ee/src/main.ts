@@ -1,6 +1,7 @@
 import { request } from 'node:http'
 import { parseArgs } from 'node:util'
 import { bootstrap } from './bootstrap.ts'
+import { CLAIM_TTL_DAYS, claimUrl } from './claim.ts'
 import { CompanyRepo } from './company-repo.ts'
 import { Ee, startControlServer } from './daemon.ts'
 import { loadJournal } from './journal.ts'
@@ -12,6 +13,7 @@ import { RealSystem } from './system.ts'
 const USAGE = `ee — the company's init (plan/phase-substrate.md)
 
   ee bootstrap --release <tarball> [--console-host <host>] [--acme-email <email>]
+  ee claim-link                          (new private link to claim this server)
   ee status
   ee reconcile
   ee domain add <host> [--workload os] [--role console|public|app]
@@ -72,7 +74,7 @@ async function main(argv: string[]): Promise<void> {
         options: { release: { type: 'string' }, 'console-host': { type: 'string' }, 'acme-email': { type: 'string' } },
       })
       if (!values.release) throw new Error('--release <tarball> is required')
-      const { consoleHost } = await bootstrap(sys, {
+      const { consoleHost, claimToken } = await bootstrap(sys, {
         release: values.release,
         ...(values['console-host'] ? { consoleHost: values['console-host'] } : {}),
         ...(values['acme-email'] ? { acmeEmail: values['acme-email'] } : {}),
@@ -82,7 +84,11 @@ async function main(argv: string[]): Promise<void> {
       await ee.load()
       await ee.reconcile()
       await sys.run('systemctl', ['restart', 'ee.service'])
-      console.log(`\n✓ Your company is running: https://${consoleHost}\n`)
+      if (claimToken) {
+        console.log(`\n✓ Your company is running. Claim it — this private link makes you its owner:\n\n  ${claimUrl(consoleHost, claimToken)}\n\n  (works once, for ${CLAIM_TTL_DAYS} days; lost it? run: ee claim-link)\n`)
+      } else {
+        console.log(`\n✓ Your company is running: https://${consoleHost}\n`)
+      }
       return
     }
     case 'daemon': {
@@ -107,6 +113,17 @@ async function main(argv: string[]): Promise<void> {
       if (!(await repo.head())) return
       const n = await renderLiveEnvFiles(sys, await repo.read(), await loadJournal(sys), secrets.all())
       console.log(`rendered ${n} workload env file(s)`)
+      return
+    }
+    case 'claim-link': {
+      const { status, data } = await call('POST', '/v1/claim', { author: who() })
+      if (status >= 400) return print(Promise.resolve({ status, data }))
+      const d = data as { url: string; expiresAt: string; reconcileError: string | null }
+      console.log(`\nClaim link (works once, until ${d.expiresAt}):\n\n  ${d.url}\n`)
+      if (d.reconcileError) {
+        console.error(`✗ the server could not apply it yet: ${d.reconcileError}`)
+        process.exitCode = 1
+      }
       return
     }
     case 'status':
