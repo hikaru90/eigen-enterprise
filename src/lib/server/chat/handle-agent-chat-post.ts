@@ -1,6 +1,6 @@
 import type { RequestEvent } from '@sveltejs/kit'
 import { error, json } from '@sveltejs/kit'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { formatToolResultForDisplay, sanitizeFinalAnswerText } from '$lib/chat/chat-stream-types'
 import { compactChatIntermediateSteps } from '$lib/chat/normalize-messages'
 import type { EngineSurfaceEvent } from '$lib/kernel/engine'
@@ -83,9 +83,9 @@ async function getOrCreateSession(
   const [existing] = await db
     .select({ id: chatSession.id, mode: chatSession.mode })
     .from(chatSession)
-    .where(eq(chatSession.id, sessionId))
+    .where(and(eq(chatSession.id, sessionId), eq(chatSession.userId, userId)))
     .limit(1)
-  if (!existing) error(404, 'Session not found')
+  if (!existing) error(404, 'Session not found') // also when it belongs to someone else
   if (existing.mode !== mode) {
     error(400, `Session mode mismatch: expected ${mode}`)
   }
