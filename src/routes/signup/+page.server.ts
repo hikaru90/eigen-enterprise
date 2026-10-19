@@ -2,6 +2,7 @@ import type { Actions, PageServerLoad } from './$types'
 import { error, redirect } from '@sveltejs/kit'
 import { parseSignupPlanParam } from '$lib/auth/signup-plan'
 import { requestCode, verifyCode } from '$lib/server/auth/email-code-actions'
+import { unclaimedMessage } from '$lib/server/auth/unclaimed'
 import { listEnabledSocialProviderIds } from '$lib/server/auth-social'
 import { env } from '$lib/server/env/private-env'
 import { companyMail } from '$lib/server/mail'
@@ -22,6 +23,7 @@ export const load: PageServerLoad = async (event) => {
     socialProviders: listEnabledSocialProviderIds(env),
     plan,
     emailVerificationRequired: await companyMail().isConfigured(),
+    unclaimed: await unclaimedMessage(),
   }
 }
 

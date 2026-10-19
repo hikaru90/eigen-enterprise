@@ -10,6 +10,7 @@ vi.mock('$lib/server/auth/email-code-actions', () => ({
   requestCode: requestCodeMock,
   verifyCode: verifyCodeMock,
 }))
+vi.mock('$lib/server/auth/unclaimed', () => ({ unclaimedMessage: async () => null }))
 vi.mock('$lib/server/mail', () => ({
   companyMail: () => ({ isConfigured: async () => isOwleryMailConfiguredMock() }),
 }))

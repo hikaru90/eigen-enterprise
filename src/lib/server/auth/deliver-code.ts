@@ -10,8 +10,7 @@
 export class EmailDeliveryNotConfiguredError extends Error {
   constructor() {
     super(
-      'Email delivery is not configured on this server, so sign-in codes cannot be sent. ' +
-        'Set OWLERY_API_KEY, OWLERY_BASE_URL and OWLERY_EMAIL_FROM (on an ee server: `ee secret set os <NAME>`).',
+      "This company hasn't set up email yet, so sign-in codes can't be sent. The owner sets up email in the onboarding (or Settings → Email).",
     )
   }
 }
