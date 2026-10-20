@@ -262,6 +262,38 @@ describe('owner contract (no ee.json in the repo)', () => {
     expect(JSON.parse(sys.files.get(`${rel.dir}/ee.json`)!)).toMatchObject({ runtime: 'node', start: ['node', 'index.js'] })
   })
 
+  it('the app\'s encrypted env vars reach its build steps through a 0600 env file, never argv, and a changed value rebuilds', async () => {
+    const sys = new FakeSystem()
+    const written: Array<{ path: string; content: string; mode?: number }> = []
+    const write = sys.writeFile.bind(sys)
+    sys.writeFile = async (p: string, c: string, mode?: number) => {
+      written.push({ path: p, content: c, mode })
+      return write(p, c)
+    }
+    const runs: string[][] = []
+    const run = sys.run.bind(sys)
+    sys.run = async (cmd: string, args: string[]) => {
+      if (cmd === 'systemd-run') {
+        runs.push(args)
+        // the env file exists while the build step runs
+        const f = args.find((a: string) => a.startsWith('EnvironmentFile='))!.slice('EnvironmentFile='.length)
+        expect(sys.files.get(f)).toMatch(/^PUBLIC_API_URL="https:\/\/api\.(example|other)"$/m)
+      }
+      return run(cmd, args)
+    }
+    const one = await prepareRelease(sys, gitWorkload(contract), undefined, { PUBLIC_API_URL: 'https://api.example', STRIPE_KEY: 'sk_live_secret' })
+
+    const step = runs.find((a) => a.includes('install'))!
+    expect(step.join(' ')).not.toContain('sk_live_secret')
+    const envPath = step.find((a) => a.startsWith('EnvironmentFile='))!.slice('EnvironmentFile='.length)
+    expect(written.find((w) => w.path === envPath)?.mode).toBe(0o600)
+    expect(sys.files.has(envPath)).toBe(false) // removed after the build
+
+    const two = await prepareRelease(sys, gitWorkload(contract), undefined, { PUBLIC_API_URL: 'https://api.other', STRIPE_KEY: 'sk_live_secret' })
+    expect(two.id).not.toBe(one.id)
+    expect(one.id).not.toContain('sk_live_secret')
+  })
+
   it('the owner contract wins over a repo ee.json, and a changed contract is a new release', async () => {
     const sys = new FakeSystem()
     const one = await prepareRelease(sys, gitWorkload(contract))

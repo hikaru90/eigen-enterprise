@@ -11,6 +11,8 @@ export const PATHS = {
   masterKey: '/etc/ee/master.key',
   runtimes: '/opt/ee/runtimes',
   envDir: '/run/ee/env',
+  /** Root-only env files for one build step each (removed right after). */
+  buildEnvDir: '/run/ee/build-env',
   controlSocketDir: '/run/ee/control',
   controlSocket: '/run/ee/control/ee.sock',
   unitDir: '/etc/systemd/system',

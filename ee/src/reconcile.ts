@@ -6,7 +6,7 @@ import { DeployRun, secretValues } from './deploys.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
 import { generateSecret, renderEnvFile, type SecretMap } from './secrets.ts'
 import { appContractSchema, assertInCatalog, type AppContract, type Workload } from './spec.ts'
-import { mustRun, type System } from './system.ts'
+import { mustRun, type RunResult, type System } from './system.ts'
 import { renderUnit, unitName, type Slot } from './units.ts'
 
 /**
@@ -65,7 +65,14 @@ async function readContract(sys: System, dir: string, name: string): Promise<App
 }
 
 /** Run build steps in a transient, sandboxed systemd unit as the unprivileged ee-build user. */
-async function sandboxedBuild(sys: System, w: Workload, dir: string, contract: AppContract, deploy?: DeployHandle): Promise<void> {
+async function sandboxedBuild(
+  sys: System,
+  w: Workload,
+  dir: string,
+  contract: AppContract,
+  deploy?: DeployHandle,
+  buildEnv: Record<string, string> = {},
+): Promise<void> {
   if (contract.build.length === 0) return
   deploy?.().stage('building')
   await mustRun(sys, 'chown', ['-R', 'ee-build:ee-build', dir])
@@ -73,7 +80,14 @@ async function sandboxedBuild(sys: System, w: Workload, dir: string, contract: A
     const [program, ...args] = step
     if (!program) throw new Error(`${w.name}: empty build step`)
     const resolved = program === 'node' || program === 'npm' || program === 'npx' ? `${nodeBin(contract)}/${program}` : program
-    const r = await sys.run(
+    // The app's encrypted env vars reach the build through a root-only file
+    // systemd reads before dropping privileges — never argv (visible in ps).
+    const envFile = `${PATHS.buildEnvDir}/${w.name}-${Date.now()}-${randomUUID().slice(0, 8)}.env`
+    await sys.mkdirp(PATHS.buildEnvDir, 0o700)
+    await sys.writeFile(envFile, renderEnvFile(buildEnv), 0o600)
+    let r: RunResult
+    try {
+      r = await sys.run(
       'systemd-run',
       [
         '--wait',
@@ -91,6 +105,7 @@ async function sandboxedBuild(sys: System, w: Workload, dir: string, contract: A
         '-p', `ReadWritePaths=${dir}`,
         '-p', `MemoryMax=${Math.max(w.resources.memoryMb, 1536)}M`,
         '-p', 'RuntimeMaxSec=1200',
+        '-p', `EnvironmentFile=${envFile}`,
         `--working-directory=${dir}`,
         '-E', `PATH=${nodeBin(contract)}:/usr/bin:/bin`,
         '-E', 'HOME=/tmp',
@@ -100,7 +115,10 @@ async function sandboxedBuild(sys: System, w: Workload, dir: string, contract: A
         ...args,
       ],
       { timeoutMs: 1_260_000 },
-    )
+      )
+    } finally {
+      await sys.remove(envFile)
+    }
     deploy?.().log('build', `$ ${step.join(' ')}\n${[r.stdout, r.stderr].filter((t) => t.trim()).join('\n').trimEnd()}`)
     if (r.code !== 0) {
       throw new Error(`${w.name}: build step \`${step.join(' ')}\` failed (exit ${r.code}): ${(r.stderr || r.stdout).trim().slice(-3000)}`)
@@ -109,10 +127,20 @@ async function sandboxedBuild(sys: System, w: Workload, dir: string, contract: A
   await mustRun(sys, 'chown', ['-R', 'root:root', dir])
 }
 
-export async function prepareRelease(sys: System, w: Workload, deploy?: DeployHandle): Promise<PreparedRelease> {
+export async function prepareRelease(
+  sys: System,
+  w: Workload,
+  deploy?: DeployHandle,
+  buildEnv: Record<string, string> = {},
+): Promise<PreparedRelease> {
   const base = w.source.kind === 'release' ? w.source.sha256.slice(0, 16) : w.source.rev.slice(0, 16)
   // An owner contract is part of the release: a changed contract is a new release.
-  const id = w.contract ? `${base}-${sha(JSON.stringify(w.contract)).slice(0, 8)}` : base
+  const withContract = w.contract ? `${base}-${sha(JSON.stringify(w.contract)).slice(0, 8)}` : base
+  // So are the build-time env vars (a changed value rebuilds); only a hash is used.
+  const envKeys = Object.keys(buildEnv).sort()
+  const id = envKeys.length
+    ? `${withContract}-e${sha(JSON.stringify(envKeys.map((k) => [k, buildEnv[k]]))).slice(0, 8)}`
+    : withContract
   const dir = `${PATHS.workloads}/${w.name}/releases/${id}`
   if (await sys.exists(`${dir}/.ee-ready`)) {
     return { id, dir, contract: await readContract(sys, dir, w.name) }
@@ -138,7 +166,7 @@ export async function prepareRelease(sys: System, w: Workload, deploy?: DeployHa
     await sys.writeFile(`${tmp}/ee.json`, JSON.stringify(w.contract, null, 2) + '\n', 0o644)
   }
   const contract = await readContract(sys, tmp, w.name)
-  await sandboxedBuild(sys, w, tmp, contract, deploy)
+  await sandboxedBuild(sys, w, tmp, contract, deploy, buildEnv)
   await mustRun(sys, 'chmod', ['-R', 'a+rX,go-w', tmp])
   await sys.writeFile(`${tmp}/.ee-ready`, `${id}\n`)
   // Another unpack of the same release finished first: keep its copy.
@@ -382,7 +410,8 @@ export async function reconcile(ctx: ReconcileContext): Promise<DesiredState> {
       if (entry.failedFingerprint === prepFingerprint) {
         throw new ReportedError(`${entry.lastError ?? `${w.name}: the last build failed`} (unchanged since; fix it and redeploy)`)
       }
-      const rel = await prepareRelease(sys, w, deploy)
+      // Apps get their own encrypted env vars at build time too (system workloads build from a release).
+      const rel = await prepareRelease(sys, w, deploy, w.tier === 'app' ? declaredSecretValues(ctx.secrets.all(), w) : {})
       preparing = false
       if (rel.contract.runtime === 'static') {
         const root = `${rel.dir}/${rel.contract.staticDir}`

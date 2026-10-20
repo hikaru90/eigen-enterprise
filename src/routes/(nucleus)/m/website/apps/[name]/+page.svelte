@@ -146,6 +146,10 @@
 
   <section class="mt-8 flex flex-col gap-3" aria-label="Environment variables">
     <h2 class="text-base font-semibold">Environment variables</h2>
+    <p class="text-sm text-foreground/60">
+      Stored encrypted on this server and given to the app while it builds and while it runs. Changing one
+      rebuilds the app.
+    </p>
     {#if data.app.env.length === 0}
       <p class="text-sm text-foreground/60">None yet.</p>
     {/if}
