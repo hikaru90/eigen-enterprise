@@ -82,8 +82,13 @@ async function main(argv: string[]): Promise<void> {
       console.log('→ first deploy (health-gated; migrations run now, this takes a minute)')
       const ee = new Ee(sys, await SecretStore.open(sys))
       await ee.load()
-      await ee.reconcile()
-      await sys.run('systemctl', ['restart', 'ee.service'])
+      try {
+        await ee.reconcile()
+      } finally {
+        // Always pick up the new ee: one app's failed deploy must never keep
+        // the daemon on old code (its error is still reported after this).
+        await sys.run('systemctl', ['restart', 'ee.service'])
+      }
       if (claimToken) {
         console.log(`\n✓ Your company is running. Claim it — this private link makes you its owner:\n\n  ${claimUrl(consoleHost, claimToken)}\n\n  (works once, for ${CLAIM_TTL_DAYS} days; lost it? run: ee claim-link)\n`)
       } else {
