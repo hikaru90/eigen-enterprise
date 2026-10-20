@@ -22,7 +22,8 @@ const ctx = { principal: { id: 'u1', kind: 'human' as const, roles: ['admin'] },
 
 function registry(tools: Record<string, { summary: string; output?: unknown }>): OverviewRegistry {
   return {
-    get: (name) => (tools[name] ? ({ name, summary: tools[name].summary } as ToolDescriptor) : undefined),
+    get: (name) =>
+      tools[name] ? ({ name, module: name.split('.')[0], summary: tools[name].summary } as ToolDescriptor) : undefined,
     execute: vi.fn(async (name: string) => {
       if (!tools[name]) throw new Error(`unknown tool ${name}`)
       return tools[name].output
@@ -158,22 +159,54 @@ describe('buildOverview', () => {
     expect(member.modules[0].note).toBe('Only the owner can see these results.')
   })
 
-  it('maps audit events to plain words with time, and pending approvals to chat links', async () => {
+  it('shows the declared activity sentence, failed calls keep ok:false', async () => {
     const out = await buildOverview(
       deps({
-        registry: registry({ 'website.publish_page': { summary: 'Publish a page.' } }),
+        manifests: [manifest('website', 'Website', 'The site.')],
+        registry: registry({ 'website.publish_page': { summary: 'Flip the visibility of one website content object.' } }),
         recentToolEvents: async () => [
-          { ts: '2026-10-20T10:00:00.000Z', payload: { tool: 'website.publish_page', ok: true } },
-          { ts: '2026-10-20T09:00:00.000Z', payload: { tool: 'gone.tool', ok: false } },
+          {
+            ts: '2026-10-20T10:00:00.000Z',
+            payload: { tool: 'website.publish_page', ok: true, activity: 'Published the About page' },
+          },
+          {
+            ts: '2026-10-20T09:30:00.000Z',
+            payload: { tool: 'website.publish_page', ok: false, error: 'x', activity: 'Published the page “ghost”' },
+          },
         ],
-        pendingApprovals: async () => [{ id: 'a1', toolName: 'website.publish_page' }],
       }),
     )
     expect(out.actions).toEqual([
-      { at: '2026-10-20T10:00:00.000Z', text: 'Publish a page.', ok: true },
+      { at: '2026-10-20T10:00:00.000Z', text: 'Published the About page', ok: true },
+      { at: '2026-10-20T09:30:00.000Z', text: 'Published the page “ghost”', ok: false },
+    ])
+  })
+
+  it('legacy events without activity read "<Module name>: <tool name>", never the developer summary', async () => {
+    const out = await buildOverview(
+      deps({
+        manifests: [manifest('owlery', 'Email', 'Mail.')],
+        registry: registry({ 'owlery.send_mail': { summary: "Send one email from the company's sender address." } }),
+        recentToolEvents: async () => [
+          { ts: '2026-10-20T10:00:00.000Z', payload: { tool: 'owlery.send_mail', ok: true } },
+          { ts: '2026-10-20T09:00:00.000Z', payload: { tool: 'gone.tool', ok: false } },
+        ],
+      }),
+    )
+    expect(out.actions).toEqual([
+      { at: '2026-10-20T10:00:00.000Z', text: 'Email: owlery.send_mail', ok: true },
       { at: '2026-10-20T09:00:00.000Z', text: 'gone.tool', ok: false },
     ])
-    expect(out.approvals).toEqual([{ id: 'a1', text: 'Publish a page.' }])
+  })
+
+  it('pending approvals use the declared plain approval copy', async () => {
+    const out = await buildOverview(
+      deps({
+        registry: registry({ 'website.publish_page': { summary: 'Flip the visibility.' } }),
+        pendingApprovals: async () => [{ id: 'a1', toolName: 'website.publish_page' }],
+      }),
+    )
+    expect(out.approvals).toEqual([{ id: 'a1', text: 'Publish a page of your website' }])
   })
 
   it('fails loud on a malformed audit payload', async () => {

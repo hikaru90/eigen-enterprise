@@ -13,6 +13,7 @@ export function createRecapRunNowTool(deps: RecapDeps): ToolDescriptor {
     summary:
       'Run the company recap immediately: summarize the last 24h of kernel events and deliver the summary to allowlisted Telegram owner chats.',
     auditClass: 'mutate',
+    activity: () => 'Ran the company recap',
     inputSchema: runNowInput,
     permission: { roles: ['owner', 'admin'] },
     handler: async (_ctx, input) => {

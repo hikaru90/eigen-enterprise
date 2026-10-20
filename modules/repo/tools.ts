@@ -290,6 +290,7 @@ export function createRepoTools(deps: RepoToolDeps): ToolDescriptor[] {
       summary:
         'Create your git worktree sandbox (ee-agent-<id> on wt/agent-<id>) in the main repo. Idempotent: returns the existing worktree with created:false.',
       auditClass: 'external',
+      activity: () => 'Opened a workspace for code changes',
       inputSchema: worktreeCreateInput,
       permission: { roles: ['admin', 'agent'] },
       handler: async (ctx) => engine.worktreeCreate(ctx.principal.id),
@@ -300,6 +301,7 @@ export function createRepoTools(deps: RepoToolDeps): ToolDescriptor[] {
       summary:
         'Run an allowlisted command (npm test, npm run check/lint/db:migrate, npx vitest run, git add/commit -m/status/diff/log, mkdir/cp/mv, node scripts/*) inside your worktree. Non-zero exit is a result, not an error.',
       auditClass: 'external',
+      activity: (input: z.infer<typeof runInput>) => `Ran “${input.command}” in the code workspace`,
       inputSchema: runInput,
       permission: { roles: ['admin', 'agent'] },
       handler: async (ctx, input) => {
@@ -313,6 +315,7 @@ export function createRepoTools(deps: RepoToolDeps): ToolDescriptor[] {
       summary:
         'Write a file inside your worktree (creates parent dirs). Paths must stay inside the worktree; .env*/key/pem material is refused.',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof writeFileInput>) => `Wrote the file ${input.path}`,
       inputSchema: writeFileInput,
       permission: { roles: ['admin', 'agent'] },
       handler: async (ctx, input) => {
@@ -339,6 +342,7 @@ export function createRepoTools(deps: RepoToolDeps): ToolDescriptor[] {
       summary:
         'Land your worktree branch on the main repo: server-side verification gate first (vitest + typecheck must be green), then commit, merge, and cleanup. Owner approval required; on conflicts, stop and ask the owner.',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof mergeInput>) => `Merged code changes: “${input.message}”`,
       approvalRisk: 'destructive',
       inputSchema: mergeInput,
       permission: { roles: ['admin', 'agent', 'owner'] },

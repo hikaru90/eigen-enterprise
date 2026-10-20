@@ -37,5 +37,15 @@ export type ToolDescriptor = {
   auditClass: AuditClass
   /** Required for every tool the approval policy gates (load-time error otherwise). */
   approvalRisk?: ApprovalRisk
+  /**
+   * What this call did, in plain words for the owner: one short past-tense
+   * sentence ("Published the About page"). Required for every non-read tool
+   * (registration fails loud otherwise). The registry calls it after the
+   * handler with the parsed input and the result; on a failed call `output`
+   * is undefined and the sentence comes from the input alone. It is stored
+   * in the audit trail, so it must never contain keys, tokens or passwords.
+   * Method syntax on purpose: each tool declares its own input/output types.
+   */
+  activity?(input: unknown, output: unknown): string
   handler: (ctx: ToolContext, input: unknown) => Promise<unknown>
 }

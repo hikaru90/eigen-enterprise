@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { ModuleManifest } from '$lib/kernel/modules'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
+import { approvalActionLabel } from '$lib/chat/approval-copy'
 
 /**
  * The owner's overview: which module is active, and where the work can be seen.
@@ -124,11 +125,18 @@ export const owleryResultSource: ResultSource = async ({ registry, ctx }) => {
 
 // ─── assembly ────────────────────────────────────────────────────────────────
 
-const auditPayload = z.object({ tool: z.string(), ok: z.boolean() })
+const auditPayload = z.object({ tool: z.string(), ok: z.boolean(), activity: z.string().optional() })
 
-/** A tool in plain words: its registered summary, else its name. */
-function toolText(registry: OverviewRegistry, tool: string): string {
-  return registry.get(tool)?.summary ?? tool
+/**
+ * LEGACY PATH ONLY: tool.executed events recorded before tools declared an
+ * `activity` (or whose activity broke its contract) have no plain sentence.
+ * They are shown honestly as "<Module name>: <tool name>" — never the
+ * developer summary, never a guess.
+ */
+function legacyToolText(deps: OverviewDeps, tool: string): string {
+  const moduleId = deps.registry.get(tool)?.module
+  const manifest = deps.manifests.find((m) => m.id === moduleId)
+  return manifest ? `${manifest.name}: ${tool}` : tool
 }
 
 export async function buildOverview(deps: OverviewDeps): Promise<Overview> {
@@ -155,12 +163,13 @@ export async function buildOverview(deps: OverviewDeps): Promise<Overview> {
   for (const row of await deps.recentToolEvents()) {
     const payload = auditPayload.safeParse(row.payload)
     if (!payload.success) throw new Error(`malformed tool.executed audit payload at ${row.ts}`)
-    actions.push({ at: row.ts, text: toolText(deps.registry, payload.data.tool), ok: payload.data.ok })
+    const text = payload.data.activity ?? legacyToolText(deps, payload.data.tool)
+    actions.push({ at: row.ts, text, ok: payload.data.ok })
   }
 
   const approvals = (await deps.pendingApprovals()).map((req) => ({
     id: req.id,
-    text: toolText(deps.registry, req.toolName),
+    text: approvalActionLabel(req.toolName),
   }))
 
   return { modules, actions, approvals }

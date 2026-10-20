@@ -86,6 +86,7 @@ export function createGitHubTools(deps: GitHubToolDeps = {}): ToolDescriptor[] {
       summary:
         'Deploy a repository as an app on this server (human only). The repo must contain ee.json; the app is health-gated before it takes traffic.',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof appCreateInput>) => `Deployed ${input.repo} as the app “${input.name}”`,
       inputSchema: appCreateInput,
       permission: { roles: ['admin'] },
       handler: async (ctx, input) => {
@@ -116,6 +117,7 @@ export function createGitHubTools(deps: GitHubToolDeps = {}): ToolDescriptor[] {
       module: 'github',
       summary: "Deploy the latest commit of an app's branch (human only). Health-gated; a failing release never replaces the live one.",
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof appDeployInput>) => `Deployed the latest version of the app “${input.name}”`,
       inputSchema: appDeployInput,
       permission: { roles: ['admin'] },
       handler: async (ctx, input) => {
@@ -133,6 +135,11 @@ export function createGitHubTools(deps: GitHubToolDeps = {}): ToolDescriptor[] {
       module: 'github',
       summary: 'Webhook path: deploy a pushed commit to every app linked to that repo+branch with auto-deploy on.',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof autoDeployInput>, output?: { deployed: { name: string }[] }) => {
+        if (!output) return `Deployed a push to ${input.repo}`
+        if (output.deployed.length === 0) return `Received a push to ${input.repo}; no app deploys it automatically`
+        return `Deployed a push to ${input.repo} to ${output.deployed.map((d) => `“${d.name}”`).join(', ')}`
+      },
       inputSchema: autoDeployInput,
       permission: { roles: ['service'] },
       handler: async (ctx: ToolContext, input) => {

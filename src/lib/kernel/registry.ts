@@ -75,6 +75,11 @@ export class KernelRegistry {
     if (this.tools.has(descriptor.name)) {
       throw new KernelError('duplicate_tool', `tool already registered: ${descriptor.name}`)
     }
+    if (descriptor.auditClass !== 'read' && typeof descriptor.activity !== 'function') {
+      throw new Error(
+        `tool ${descriptor.name} (${descriptor.auditClass}) declares no activity; every non-read tool must say in plain words what it did`,
+      )
+    }
     this.approvalPolicy.validateTool?.(descriptor)
     this.tools.set(descriptor.name, descriptor)
   }
@@ -172,12 +177,12 @@ export class KernelRegistry {
     } catch (err) {
       ok = false
       error = err instanceof Error ? err.message : String(err)
-      await this.audit(descriptor, ctx, ok, error, Date.now() - startedAtMs)
+      await this.audit(descriptor, ctx, parsed, undefined, ok, error, Date.now() - startedAtMs)
       throw err
     }
 
     // (e) audit.
-    await this.audit(descriptor, ctx, ok, error, Date.now() - startedAtMs)
+    await this.audit(descriptor, ctx, parsed, result, ok, error, Date.now() - startedAtMs)
 
     // (f) mutate tools that succeeded get a vcs commit.
     if (descriptor.auditClass === 'mutate' && this.vcsCommitter) {
@@ -190,10 +195,27 @@ export class KernelRegistry {
   private async audit(
     descriptor: ToolDescriptor,
     ctx: ToolContext,
+    input: unknown,
+    output: unknown,
     ok: boolean,
     error: string | undefined,
     durationMs: number,
   ): Promise<void> {
+    // A throwing activity is a contract breach of the tool, recorded loudly in
+    // the audit trail — it never changes the tool's own result.
+    let activity: string | undefined
+    let activityError: string | undefined
+    if (descriptor.activity) {
+      try {
+        activity = descriptor.activity(input, ok ? output : undefined)
+        if (typeof activity !== 'string' || activity.length === 0) {
+          throw new Error('activity must return a non-empty sentence')
+        }
+      } catch (err) {
+        activity = undefined
+        activityError = `activity of ${descriptor.name} failed: ${err instanceof Error ? err.message : String(err)}`
+      }
+    }
     await emitKernelEvent(this.eventSink, {
       type: 'tool.executed',
       principalId: ctx.principal.id,
@@ -203,6 +225,8 @@ export class KernelRegistry {
         auditClass: descriptor.auditClass,
         ok,
         ...(error === undefined ? {} : { error }),
+        ...(activity === undefined ? {} : { activity }),
+        ...(activityError === undefined ? {} : { activityError }),
         durationMs,
       },
     })

@@ -4,7 +4,12 @@ import { KernelError } from '$lib/kernel/errors'
 import type { ToolDescriptor, ToolContext } from '$lib/kernel/types'
 import { digestFacts } from './facts-digest'
 import { proposeCandidates, type ProposedCandidate, type PriorRound } from './propose'
-import { defaultBrandExtractionStore, judgeRoundInputSchema, type BrandExtractionStore } from './store'
+import {
+  defaultBrandExtractionStore,
+  judgeRoundInputSchema,
+  type BrandExtractionStore,
+  type JudgeRoundInput,
+} from './store'
 
 /**
  * Kernel tools for the design-system extraction judge loop (phase-2d M2).
@@ -72,6 +77,7 @@ export function createBrandExtractTools(deps: BrandExtractToolDeps = {}): ToolDe
       summary:
         'Capture a public site headlessly (SSRF-guarded) and open an extraction session; round 0 stores the computed-style digest and screenshot.',
       auditClass: 'external',
+      activity: (input: z.infer<typeof startInput>) => `Started reading the brand of ${input.url}`,
       inputSchema: startInput,
       permission: mutationPermission,
       handler: async (ctx, input) => {
@@ -99,6 +105,7 @@ export function createBrandExtractTools(deps: BrandExtractToolDeps = {}): ToolDe
       summary:
         'Propose three seed candidates (color/type/structure lenses) for a session via the LLM gateway; prior judge verdicts feed the next round.',
       auditClass: 'external',
+      activity: () => 'Proposed a round of brand looks',
       inputSchema: proposeInput,
       permission: mutationPermission,
       handler: async (ctx, input) => {
@@ -143,6 +150,8 @@ export function createBrandExtractTools(deps: BrandExtractToolDeps = {}): ToolDe
       summary:
         'Record the owner verdict for a candidate round (chosen = candidate index, or null to reject the round, with optional corrective note).',
       auditClass: 'mutate',
+      activity: (input: JudgeRoundInput) =>
+        input.chosen === null ? 'Turned down a round of brand looks' : 'Picked one of the proposed brand looks',
       inputSchema: judgeRoundInputSchema,
       permission: mutationPermission,
       handler: async (ctx, input) => {
@@ -158,6 +167,7 @@ export function createBrandExtractTools(deps: BrandExtractToolDeps = {}): ToolDe
       summary:
         'Stage the chosen candidate of a judged round as a brand corpus item (provenance: extraction) and mark the session accepted. Staging is not publishing.',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof acceptInput>) => `Saved “${input.name}” to the brand library`,
       inputSchema: acceptInput,
       permission: mutationPermission,
       handler: async (ctx, input) => {

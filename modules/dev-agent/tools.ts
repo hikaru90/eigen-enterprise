@@ -280,6 +280,13 @@ export class DevAgentEngine {
   }
 }
 
+const ACTIVITY_TASK_MAX_CHARS = 120
+
+/** Long task texts are cut for the activity line; the full task stays in the run log. */
+function shorten(task: string): string {
+  return task.length <= ACTIVITY_TASK_MAX_CHARS ? task : `${task.slice(0, ACTIVITY_TASK_MAX_CHARS)}…`
+}
+
 const dispatchInput = z.object({ task: z.string().min(1) })
 const runIdInput = z.object({ runId: z.string().uuid() })
 const statusInput = z.object({ runId: z.string().uuid().optional() })
@@ -298,6 +305,7 @@ export function createDevAgentTools(deps: DevAgentToolDeps): ToolDescriptor[] {
       summary:
         'Dispatch one code task to the headless pi coding agent in a fresh git worktree sandbox. One run at a time; fails with run_in_progress while another run is active.',
       auditClass: 'external',
+      activity: (input: z.infer<typeof dispatchInput>) => `Gave the coding agent a task: “${shorten(input.task)}”`,
       inputSchema: dispatchInput,
       permission: { roles: ['owner', 'agent'] },
       handler: async (ctx, input) => {
@@ -335,6 +343,7 @@ export function createDevAgentTools(deps: DevAgentToolDeps): ToolDescriptor[] {
       summary:
         'Owner-approved landing: merge a green run branch into main, then remove its worktree and branch. Fails loud, run stays green, on any git failure.',
       auditClass: 'mutate',
+      activity: () => "Merged the coding agent's work",
       inputSchema: runIdInput,
       permission: { roles: ['owner'] },
       handler: async (ctx, input) => {
@@ -348,6 +357,7 @@ export function createDevAgentTools(deps: DevAgentToolDeps): ToolDescriptor[] {
       summary:
         'Abort a run: kill the in-flight pi/verification processes or clean up a finished run worktree. Not allowed for merged or already aborted runs.',
       auditClass: 'mutate',
+      activity: () => 'Stopped a coding agent run',
       inputSchema: runIdInput,
       permission: { roles: ['owner', 'admin'] },
       handler: async (ctx, input) => {

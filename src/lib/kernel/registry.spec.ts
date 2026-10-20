@@ -29,6 +29,7 @@ function makeTool(overrides: Partial<ToolDescriptor> = {}): ToolDescriptor {
     permission: { roles: ['admin'] },
     auditClass: 'read',
     handler: async (_ctx, input) => ({ echoed: input }),
+    activity: () => 'Echoed a value',
     ...overrides,
   }
 }
@@ -479,5 +480,80 @@ describe('KernelRegistry with the owner-chosen approval mode', () => {
     expect(() =>
       registry.register(makeTool({ name: toolName, module: 'email', auditClass: 'external' })),
     ).toThrow(/declares no approvalRisk/)
+  })
+})
+
+describe('KernelRegistry activity (plain words for the owner)', () => {
+  const sink = () => new InMemoryEventSink()
+
+  it('refuses to register a non-read tool without an activity', () => {
+    const registry = new KernelRegistry()
+    for (const auditClass of ['mutate', 'external'] as const) {
+      expect(() =>
+        registry.register(makeTool({ name: `memory.${auditClass}`, auditClass, activity: undefined })),
+      ).toThrow(/declares no activity/)
+    }
+    expect(registry.list()).toHaveLength(0)
+  })
+
+  it('registers a read tool without an activity', () => {
+    const registry = new KernelRegistry()
+    registry.register(makeTool({ activity: undefined }))
+    expect(registry.get('memory.echo')).toBeDefined()
+  })
+
+  it('stores the activity built from input and output on success', async () => {
+    const events = sink()
+    const registry = new KernelRegistry({ eventSink: events })
+    registry.register(
+      makeTool({
+        auditClass: 'mutate',
+        handler: async () => ({ title: 'About' }),
+        activity: (input, output) =>
+          `Saved ${(input as { value: string }).value} as ${(output as { title: string }).title}`,
+      }),
+    )
+    await registry.execute('memory.echo', { value: 'x' }, makeCtx())
+    expect(events.events[0].payload).toMatchObject({ ok: true, activity: 'Saved x as About' })
+  })
+
+  it('stores the activity from the input alone on failure', async () => {
+    const events = sink()
+    const registry = new KernelRegistry({ eventSink: events })
+    const seen: unknown[] = []
+    registry.register(
+      makeTool({
+        auditClass: 'mutate',
+        handler: async () => {
+          throw new Error('boom')
+        },
+        activity: (input, output) => {
+          seen.push(output)
+          return `Saved ${(input as { value: string }).value}`
+        },
+      }),
+    )
+    await expect(registry.execute('memory.echo', { value: 'x' }, makeCtx())).rejects.toThrow('boom')
+    expect(seen).toEqual([undefined])
+    expect(events.events[0].payload).toMatchObject({ ok: false, error: 'boom', activity: 'Saved x' })
+  })
+
+  it('records a throwing activity as an audit error without touching the result', async () => {
+    const events = sink()
+    const registry = new KernelRegistry({ eventSink: events })
+    registry.register(
+      makeTool({
+        auditClass: 'mutate',
+        handler: async () => ({ done: true }),
+        activity: () => {
+          throw new Error('bad copy')
+        },
+      }),
+    )
+    await expect(registry.execute('memory.echo', { value: 'x' }, makeCtx())).resolves.toEqual({ done: true })
+    const payload = events.events[0].payload as Record<string, unknown>
+    expect(payload.ok).toBe(true)
+    expect(payload.activity).toBeUndefined()
+    expect(payload.activityError).toMatch(/activity of memory.echo failed: bad copy/)
   })
 })

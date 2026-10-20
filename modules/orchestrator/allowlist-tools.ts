@@ -20,6 +20,9 @@ const addInput = z.object({
   principal_id: z.string().min(1),
 })
 
+/** Declared display names per platform (the enum above is the full set). */
+const PLATFORM_NAME: Record<z.infer<typeof platformSchema>, string> = { telegram: 'Telegram' }
+
 const removeInput = z.object({
   platform: platformSchema,
   external_user_id: z.string().min(1),
@@ -34,6 +37,8 @@ export function createAllowlistAdminTools(allowlist: AllowlistStore): ToolDescri
       module: CHAT_GATEWAY_MODULE_ID,
       summary: 'Allow one external platform user, mapped to a kernel principal id.',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof addInput>) =>
+        `Allowed ${PLATFORM_NAME[input.platform]} user ${input.external_user_id} to talk to the company`,
       inputSchema: addInput,
       permission: { roles: ['owner'] },
       handler: async (_ctx, input) => {
@@ -47,6 +52,8 @@ export function createAllowlistAdminTools(allowlist: AllowlistStore): ToolDescri
       module: CHAT_GATEWAY_MODULE_ID,
       summary: 'Remove one external platform user from the allowlist.',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof removeInput>) =>
+        `Removed ${PLATFORM_NAME[input.platform]} user ${input.external_user_id} from the allowed list`,
       inputSchema: removeInput,
       permission: { roles: ['owner'] },
       handler: async (_ctx, input) => {

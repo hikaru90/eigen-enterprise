@@ -36,6 +36,8 @@ export function createEmailTools(deps: EmailToolDeps = {}): ToolDescriptor[] {
       summary:
         "Send one transactional email from the company's sender address. Fails loud when email is not set up.",
       auditClass: 'external',
+      // Recipient only: subject and body stay out of the audit trail.
+      activity: (input: z.infer<typeof sendMailInput>) => `Sent an email to ${input.to}`,
       approvalRisk: 'external',
       inputSchema: sendMailInput,
       permission: { roles: ['admin', 'agent'] },

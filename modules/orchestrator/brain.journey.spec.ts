@@ -63,6 +63,7 @@ function fixture(options: { failOnSlug?: string } = {}): Fixture {
     module: 'website',
     summary: 'fake create',
     auditClass: 'mutate',
+    activity: () => 'Did a test action',
     inputSchema: z.looseObject({ slug: z.string(), body: z.string().optional() }),
     permission: { roles: ['admin', 'agent'] },
     handler: async (_ctx: ToolContext, input: unknown) => {
@@ -78,6 +79,7 @@ function fixture(options: { failOnSlug?: string } = {}): Fixture {
     module: 'website',
     summary: 'fake publish',
     auditClass: 'mutate',
+    activity: () => 'Did a test action',
     inputSchema: z.looseObject({ slug: z.string(), visibility: z.string() }),
     permission: { roles: ['admin', 'agent'] },
     handler: async (_ctx: ToolContext, input: unknown) => {
@@ -564,6 +566,7 @@ describe('journey artifacts on a fresh server (module not yet active)', () => {
       module: 'website',
       summary: name,
       auditClass: name === 'website.list_pages' ? 'read' : 'mutate',
+      activity: () => 'Did a test action',
       inputSchema: z.looseObject({}),
       permission: { roles: ['admin'] },
       handler,

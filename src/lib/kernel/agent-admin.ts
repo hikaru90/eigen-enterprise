@@ -50,6 +50,7 @@ export function createAgentAdminTools(deps: AgentAdminToolDeps): ToolDescriptor[
       module: AGENT_ADMIN_MODULE_ID,
       summary: 'Enable a registered agent (dispatches are accepted again).',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof agentIdInput>) => `Switched on the agent “${input.agent_id}”`,
       inputSchema: agentIdInput,
       permission: { roles: ['owner'] },
       handler: async (_ctx, input) => {
@@ -63,6 +64,7 @@ export function createAgentAdminTools(deps: AgentAdminToolDeps): ToolDescriptor[
       module: AGENT_ADMIN_MODULE_ID,
       summary: 'Disable a registered agent (new dispatches fail loud with agent_disabled).',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof agentIdInput>) => `Switched off the agent “${input.agent_id}”`,
       inputSchema: agentIdInput,
       permission: { roles: ['owner'] },
       handler: async (_ctx, input) => {

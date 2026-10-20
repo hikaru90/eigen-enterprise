@@ -2,6 +2,7 @@ import type { ApprovalRequest, ApprovalStatus, ApprovalStore } from './approvals
 import type { ActivationStore, ModuleManifest, ModuleRegistry } from './modules'
 import type { ToolDescriptor } from './types'
 import { z } from 'zod'
+import { approvalActionLabel } from '$lib/chat/approval-copy'
 
 /**
  * Kernel admin surface: module activation and approval decisions as regular
@@ -87,6 +88,7 @@ export function createAdminTools(deps: AdminToolDeps): ToolDescriptor[] {
       module: KERNEL_MODULE_ID,
       summary: 'Activate a registered module (its tools become executable).',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof moduleIdInput>) => `Switched on ${moduleName(deps.modules, input.module_id)}`,
       inputSchema: moduleIdInput,
       permission: { roles: ['admin'] },
       handler: async (_ctx, input) => {
@@ -100,6 +102,7 @@ export function createAdminTools(deps: AdminToolDeps): ToolDescriptor[] {
       module: KERNEL_MODULE_ID,
       summary: 'Deactivate a registered module (fail closed for its tools).',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof moduleIdInput>) => `Switched off ${moduleName(deps.modules, input.module_id)}`,
       approvalRisk: 'destructive',
       inputSchema: moduleIdInput,
       permission: { roles: ['admin'] },
@@ -128,6 +131,10 @@ export function createAdminTools(deps: AdminToolDeps): ToolDescriptor[] {
       module: KERNEL_MODULE_ID,
       summary: 'Approve or deny a pending approval request.',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof approvalsDecideInput>, output?: ApprovalRequest) => {
+        const verb = input.decision === 'approved' ? 'Approved' : 'Turned down'
+        return output ? `${verb}: ${approvalActionLabel(output.toolName)}` : `${verb} a request`
+      },
       inputSchema: approvalsDecideInput,
       // Trust-the-transcript (plan/phase-3-one-agent.md, risks on record): the
       // agent executes the owner's conversational yes; decidedBy is audited.
@@ -138,6 +145,12 @@ export function createAdminTools(deps: AdminToolDeps): ToolDescriptor[] {
       },
     },
   ]
+}
+
+/** A module by its manifest name ("the Email module"); an unknown id is quoted as given. */
+function moduleName(modules: ModuleRegistry, id: string): string {
+  const manifest = modules.get(id)
+  return manifest ? `the ${manifest.name} module` : `the module “${id}”`
 }
 
 /** Loud validation: unknown module ids must fail, never no-op. */

@@ -46,12 +46,14 @@ export function createMemoryTools(): ToolDescriptor[] {
     summary: string,
     auditClass: ToolDescriptor['auditClass'],
     inputSchema: ToolDescriptor['inputSchema'],
+    activity?: ToolDescriptor['activity'],
   ): ToolDescriptor => ({
     name,
     module: 'memory',
     summary,
     auditClass,
     inputSchema,
+    ...(activity === undefined ? {} : { activity }),
     permission: { roles: ['admin', 'agent'] },
     handler: (ctx, input) => runMemoryTool(name, ctx, input),
   })
@@ -67,6 +69,8 @@ export function createMemoryTools(): ToolDescriptor[] {
         as_user: z.boolean().optional(),
         author: z.string().optional(),
       }),
+      // The thought itself stays out of the audit line.
+      () => 'Saved a thought',
     ),
     tool(
       'memory.retrieve_thoughts',
