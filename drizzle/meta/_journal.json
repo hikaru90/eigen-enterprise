@@ -659,6 +659,13 @@
       "when": 1760200000016,
       "tag": "0093_github_connected_repos",
       "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1760200000017,
+      "tag": "0094_github_deploy_keys",
+      "breakpoints": true
     }
   ]
 }

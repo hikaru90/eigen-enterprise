@@ -22,6 +22,10 @@ import { GITHUB_STATE_COOKIE, githubAppManifest } from '../../../../settings/hos
  * permission-checked and audited. The owner's click IS their decision: when
  * the approval mode gates a connect/disconnect, the click approves it.
  * Errors reach the page as plain sentences, never raw GitHub API errors.
+ *
+ * Private repos default to a read-only deploy key (owner's decision, 2026-10-20:
+ * no whole-account GitHub App by default). The server's ee makes and keeps the
+ * key; the page only carries the PUBLIC key and ee's key id between steps.
  */
 
 export type AvailableRepo = {
@@ -105,6 +109,23 @@ export const load: PageServerLoad = async (event) => {
 
 const field = (f: FormData, name: string) => String(f.get(name) ?? '').trim()
 
+type DeployKeyPending = { repo: string; keyId: string; publicKey: string; addKeyUrl: string }
+
+function pendingKey(f: FormData): DeployKeyPending {
+  const repo = field(f, 'repo')
+  return {
+    repo,
+    keyId: field(f, 'keyId'),
+    publicKey: field(f, 'publicKey'),
+    addKeyUrl: `https://github.com/${repo}/settings/keys/new`,
+  }
+}
+
+const keysPage = (repo: string) => ({
+  href: `https://github.com/${repo}/settings/keys`,
+  label: `Deploy keys of ${repo} on GitHub`,
+})
+
 export const actions: Actions = {
   /** Check a repo (public link, or a private one picked from the list) and offer its branches. */
   inspect: async (event) => {
@@ -141,7 +162,19 @@ export const actions: Actions = {
     const repo = field(f, 'repo')
     const branch = field(f, 'branch')
     try {
-      await run(user, 'website.github_disconnect_repo', { repo, branch })
+      const removed = await run<{ fullName: string; removeKeyUrl: string | null }>(
+        user,
+        'website.github_disconnect_repo',
+        { repo, branch },
+      )
+      if (removed.removeKeyUrl) {
+        return {
+          action: 'disconnect' as const,
+          ok: true,
+          message: `Disconnected ${repo} (${branch}) and deleted its deploy key on this server. You can remove the key on GitHub too.`,
+          link: keysPage(removed.fullName),
+        }
+      }
       return {
         action: 'disconnect' as const,
         ok: true,
@@ -150,6 +183,112 @@ export const actions: Actions = {
     } catch (err) {
       logFailure('website.github_disconnect_repo', err)
       return fail(400, { action: 'disconnect' as const, repo, error: plainMessage(err) })
+    }
+  },
+  /** Step 1: ee makes a key pair for the repo; the page shows the public key and where to add it. */
+  deployKeyCreate: async (event) => {
+    const user = await requireAdmin(event.locals.user)
+    const repo = field(await event.request.formData(), 'repo')
+    try {
+      const key = await run<DeployKeyPending>(user, 'website.github_deploy_key_create', { repo })
+      return { action: 'deploy_key' as const, step: 'add' as const, ...key }
+    } catch (err) {
+      logFailure('website.github_deploy_key_create', err)
+      return fail(400, {
+        action: 'deploy_key' as const,
+        step: 'repo' as const,
+        repo,
+        error: plainMessage(err),
+      })
+    }
+  },
+  /** Step 2: a read-only check that GitHub accepts the key; lists the branches. */
+  deployKeyCheck: async (event) => {
+    const user = await requireAdmin(event.locals.user)
+    const pending = pendingKey(await event.request.formData())
+    try {
+      const checked = await run<{ ok: true; branches: string[] } | { ok: false; message: string }>(
+        user,
+        'website.github_deploy_key_check',
+        { repo: pending.repo, keyId: pending.keyId },
+      )
+      if (!checked.ok) {
+        return fail(400, {
+          action: 'deploy_key' as const,
+          step: 'add' as const,
+          ...pending,
+          error: checked.message,
+        })
+      }
+      // Preselect only; the owner picks the branch.
+      const branch = checked.branches.includes('main') ? 'main' : (checked.branches[0] ?? '')
+      return {
+        action: 'deploy_key' as const,
+        step: 'branches' as const,
+        ...pending,
+        branches: checked.branches,
+        branch,
+      }
+    } catch (err) {
+      logFailure('website.github_deploy_key_check', err)
+      return fail(400, {
+        action: 'deploy_key' as const,
+        step: 'add' as const,
+        ...pending,
+        error: plainMessage(err),
+      })
+    }
+  },
+  /** Step 3: connect the picked branch, reading through the deploy key. */
+  deployKeyConnect: async (event) => {
+    const user = await requireAdmin(event.locals.user)
+    const f = await event.request.formData()
+    const pending = pendingKey(f)
+    const branch = field(f, 'branch')
+    try {
+      await run(user, 'website.github_connect_repo', {
+        repo: pending.repo,
+        branch,
+        auth: { kind: 'deploy_key', keyId: pending.keyId },
+      })
+      return {
+        action: 'connect' as const,
+        ok: true,
+        message: `Connected ${pending.repo} (${branch}).`,
+      }
+    } catch (err) {
+      logFailure('website.github_connect_repo', err)
+      return fail(400, {
+        action: 'deploy_key' as const,
+        step: 'add' as const,
+        ...pending,
+        error: plainMessage(err),
+      })
+    }
+  },
+  /** Give up before connecting: the unused key is deleted on the server. */
+  deployKeyCancel: async (event) => {
+    const user = await requireAdmin(event.locals.user)
+    const pending = pendingKey(await event.request.formData())
+    try {
+      await run(user, 'website.github_deploy_key_delete', {
+        repo: pending.repo,
+        keyId: pending.keyId,
+      })
+      return {
+        action: 'deploy_key_cancel' as const,
+        ok: true,
+        message: `Deleted the unused deploy key for ${pending.repo} on this server. If you already added it on GitHub, you can remove it there too.`,
+        link: keysPage(pending.repo),
+      }
+    } catch (err) {
+      logFailure('website.github_deploy_key_delete', err)
+      return fail(400, {
+        action: 'deploy_key' as const,
+        step: 'add' as const,
+        ...pending,
+        error: plainMessage(err),
+      })
     }
   },
 }

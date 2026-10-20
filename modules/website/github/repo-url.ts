@@ -1,5 +1,6 @@
 /**
- * Parses owner/repo out of a github.com repository link. This is structured
+ * Parses owner/repo out of a github.com repository link (https, or the SSH
+ * forms git@github.com:owner/repo.git / ssh://git@github.com/owner/repo.git). This is structured
  * parsing of a URL format (host + path segments), not a guess at meaning.
  * Messages are plain words for the owner.
  */
@@ -14,8 +15,31 @@ const HOSTS = new Set(['github.com', 'www.github.com'])
 
 const fail = (message: string): ParsedRepo => ({ ok: false, message })
 
+/** The scp-like SSH form, user@host:path (no scheme). */
+const SCP_FORM = /^([^@/:\s]+)@([^/:\s]+):(.*)$/
+
+function sshSegments(user: string, host: string, path: string): string[] | ParsedRepo {
+  if (!HOSTS.has(host.toLowerCase())) return fail('Only github.com repositories can be connected.')
+  if (user !== 'git')
+    return fail('Use the SSH address GitHub shows: git@github.com:owner/repo.git.')
+  const segments = path.split('/').filter(Boolean)
+  if (segments.length !== 2) return fail('That is not a valid GitHub owner/repo name.')
+  return segments
+}
+
 function pathSegments(input: string): string[] | ParsedRepo {
   if (SHORT_FORM.test(input)) return input.split('/')
+  const scp = SCP_FORM.exec(input)
+  if (scp) return sshSegments(scp[1], scp[2], scp[3])
+  if (/^ssh:\/\//i.test(input)) {
+    let ssh: URL
+    try {
+      ssh = new URL(input)
+    } catch {
+      return fail('That is not a valid GitHub owner/repo name.')
+    }
+    return sshSegments(ssh.username, ssh.hostname, ssh.pathname)
+  }
   const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(input) ? input : `https://${input}`
   let url: URL
   try {

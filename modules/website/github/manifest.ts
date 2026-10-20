@@ -14,4 +14,7 @@ export const GITHUB_CONNECT_TOOL_NAMES = [
   'website.github_inspect_repo',
   'website.github_connect_repo',
   'website.github_disconnect_repo',
+  'website.github_deploy_key_create',
+  'website.github_deploy_key_check',
+  'website.github_deploy_key_delete',
 ] as const

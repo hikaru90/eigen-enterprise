@@ -12,6 +12,9 @@ import { PATHS } from './paths.ts'
  */
 export type RunResult = { code: number; stdout: string; stderr: string }
 
+/** env is ADDED to ee's own environment for that one command. */
+export type RunOpts = { cwd?: string; input?: string; timeoutMs?: number; env?: Record<string, string> }
+
 export type System = {
   readFile(path: string): Promise<string | null>
   /** Atomic write (temp + rename) with the given mode. */
@@ -20,7 +23,7 @@ export type System = {
   exists(path: string): Promise<boolean>
   remove(path: string): Promise<void>
   sha256File(path: string): Promise<string>
-  run(cmd: string, args: string[], opts?: { cwd?: string; input?: string; timeoutMs?: number }): Promise<RunResult>
+  run(cmd: string, args: string[], opts?: RunOpts): Promise<RunResult>
   /** GET http://127.0.0.1:<port><path>; true on 2xx/3xx before the deadline. */
   httpOk(port: number, path: string, timeoutMs: number): Promise<boolean>
   /** POST the full config to Caddy's admin socket (/load). Throws with Caddy's message on rejection. */
@@ -74,12 +77,12 @@ export class RealSystem implements System {
     })
   }
 
-  run(cmd: string, args: string[], opts: { cwd?: string; input?: string; timeoutMs?: number } = {}): Promise<RunResult> {
+  run(cmd: string, args: string[], opts: RunOpts = {}): Promise<RunResult> {
     return new Promise((resolve) => {
       const child = execFile(
         cmd,
         args,
-        { cwd: opts.cwd, timeout: opts.timeoutMs ?? 600_000, maxBuffer: 64 * 1024 * 1024 },
+        { cwd: opts.cwd, env: opts.env ? { ...process.env, ...opts.env } : undefined, timeout: opts.timeoutMs ?? 600_000, maxBuffer: 64 * 1024 * 1024 },
         (err, stdout, stderr) => {
           const code = err ? (typeof (err as { code?: unknown }).code === 'number' ? (err as { code: number }).code : 1) : 0
           resolve({ code, stdout: String(stdout), stderr: String(stderr) })
@@ -143,7 +146,7 @@ export async function mustRun(
   sys: System,
   cmd: string,
   args: string[],
-  opts?: { cwd?: string; input?: string; timeoutMs?: number },
+  opts?: RunOpts,
 ): Promise<string> {
   const r = await sys.run(cmd, args, opts)
   if (r.code !== 0) {

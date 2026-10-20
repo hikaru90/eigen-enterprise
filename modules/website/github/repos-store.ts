@@ -1,22 +1,30 @@
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import type { DbHandle } from '$lib/kernel/db-stores'
 import type { AppDatabase } from '$lib/server/db/context'
 import { githubConnectedRepos } from '$lib/server/db/github.schema'
 
 /**
  * Connected GitHub repositories: what a later deploy needs (GitHub's repo id,
- * branch, installation id for private repos). Never a token.
+ * branch, and how to read it: public, the App installation id, or ee's deploy
+ * key id). Never a token, never key material.
  */
 
+/** public: no auth. github_app: the App installation. deploy_key: a read-only key ee holds. */
+export type RepoAuthKind = 'public' | 'github_app' | 'deploy_key'
+
 export type ConnectedRepo = {
-  repoId: number
+  /** GitHub's numeric id; null for deploy-key repos (never read through the API). */
+  repoId: number | null
   fullName: string
   branch: string
   htmlUrl: string
   cloneUrl: string
   visibility: 'public' | 'private'
-  /** Set for private repos (the App installation that can read it); null for public ones. */
+  authKind: RepoAuthKind
+  /** Set for github_app repos (the App installation that can read it). */
   installationId: number | null
+  /** Set for deploy_key repos: ee's key id (the key itself stays sealed in ee). */
+  deployKeyId: string | null
   connectedBy: string
   createdAt: Date
 }
@@ -42,8 +50,25 @@ export class RepoAlreadyConnectedError extends Error {
 }
 
 function validate(repo: NewConnectedRepo): void {
-  if (repo.visibility === 'private' && repo.installationId === null) {
-    throw new Error(`a private repository (${repo.fullName}) needs the App installation id`)
+  const shape = `${repo.fullName} (${repo.authKind})`
+  if (repo.authKind === 'public') {
+    if (
+      repo.visibility !== 'public' ||
+      repo.repoId === null ||
+      repo.installationId !== null ||
+      repo.deployKeyId !== null
+    )
+      throw new Error(`a public repository ${shape} has a repo id and no installation or key`)
+  } else if (repo.authKind === 'github_app') {
+    if (repo.installationId === null)
+      throw new Error(`a private repository ${shape} needs the App installation id`)
+    if (repo.visibility !== 'private' || repo.repoId === null || repo.deployKeyId !== null)
+      throw new Error(`an App repository ${shape} is private, has a repo id and no deploy key`)
+  } else {
+    if (repo.deployKeyId === null)
+      throw new Error(`a deploy-key repository ${shape} needs the key id`)
+    if (repo.visibility !== 'private' || repo.installationId !== null)
+      throw new Error(`a deploy-key repository ${shape} is private and has no installation`)
   }
 }
 
@@ -58,7 +83,10 @@ export class InMemoryConnectedRepoStore implements ConnectedRepoStore {
   }
   async add(repo: NewConnectedRepo) {
     validate(repo)
-    if (this.rows.some((r) => r.repoId === repo.repoId && r.branch === repo.branch)) {
+    const clash = (r: ConnectedRepo) =>
+      r.branch === repo.branch &&
+      ((repo.repoId !== null && r.repoId === repo.repoId) || sameName(r.fullName, repo.fullName))
+    if (this.rows.some(clash)) {
       throw new RepoAlreadyConnectedError(repo.fullName, repo.branch)
     }
     const row = { ...repo, createdAt: new Date() }
@@ -85,7 +113,9 @@ const fromRow = (r: Row): ConnectedRepo => ({
   htmlUrl: r.htmlUrl,
   cloneUrl: r.cloneUrl,
   visibility: r.visibility,
+  authKind: r.authKind,
   installationId: r.installationId,
+  deployKeyId: r.deployKeyId,
   connectedBy: r.connectedBy,
   createdAt: r.createdAt,
 })
@@ -126,7 +156,7 @@ export class DbConnectedRepoStore implements ConnectedRepoStore {
       .delete(githubConnectedRepos)
       .where(
         and(
-          eq(githubConnectedRepos.repoId, match.repoId),
+          eq(sql`lower(${githubConnectedRepos.fullName})`, match.fullName.toLowerCase()),
           eq(githubConnectedRepos.branch, match.branch),
         ),
       )

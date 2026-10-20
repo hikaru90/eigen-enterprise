@@ -29,4 +29,14 @@ export class SecretStore implements SecretAccess {
     this.data = { ...this.data, [workload]: { ...(this.data[workload] ?? {}), [name]: value } }
     await this.sys.writeFile(PATHS.secrets, encryptSecrets(this.key, this.data), 0o600)
   }
+
+  /** Remove one value; false when it was not there. */
+  async delete(workload: string, name: string): Promise<boolean> {
+    const scope = this.data[workload]
+    if (!scope || !(name in scope)) return false
+    const { [name]: _gone, ...rest } = scope
+    this.data = { ...this.data, [workload]: rest }
+    await this.sys.writeFile(PATHS.secrets, encryptSecrets(this.key, this.data), 0o600)
+    return true
+  }
 }

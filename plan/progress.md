@@ -2,6 +2,17 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-20 (7) — SHIPPED (branch): private GitHub repos through read-only deploy keys
+
+- Owner's decision: no whole-account GitHub App by default. Public repos stay by link. Private repos use a deploy key per repo. The App step is collapsed under "Advanced" on `/m/website/github` (the code is unchanged). Design: plan/github-connect.md, "Private repos: deploy keys".
+- ee: `POST /v1/deploy-keys`, `POST /v1/deploy-keys/:id/check`, `DELETE /v1/deploy-keys/:id`, and `POST /v1/sources/fetch` with a `deployKeyId`. The key comes from ssh-keygen ed25519 and is sealed in the secret store (`_deploy_keys`). For one git call it sits in a 0600 temp file, with GitHub's published host keys pinned (StrictHostKeyChecking=yes), and is deleted after. `System.run` gained `env`, `SecretStore` gained `delete`, and bootstrap installs `openssh-client`.
+- OS: `EeClient.createDeployKey/checkDeployKey/deleteDeployKey`. Migration `0094_github_deploy_keys` adds auth_kind and deploy_key_id and makes repo_id nullable. The parser accepts `git@github.com:o/r.git` and `ssh://git@github.com/o/r.git`. New tools: `website.github_deploy_key_create/check/delete`, and connect takes `auth: {kind: 'deploy_key', keyId}`.
+- Decision (D11): creating or deleting a deploy key changes the server, so it is human-only (`requireHuman`). On the page it is the owner's click. Disconnecting a deploy-key repo is human-only for the same reason. The check is read-only and open to the agent.
+- Decision: auth_kind has three values (`public | github_app | deploy_key`), not two, because the existing App rows need their own kind.
+- Decision: without ee (plain `npm run dev`) deploy keys fail loud: "Private repos need the server's deploy agent…". No fallback store.
+- Verified: ee unit tests with a fake System (key generation, sealed storage, the check command with pinned host keys and a 0600 key file, cleanup, fetch with the key) and the control verbs over a real unix socket. OS unit tests for the parser, store, tools and page actions. Component tests for the new section. `npm run check`.
+- Not verified: no real GitHub deploy key (the owner has to add one), no real ssh-keygen or ssh run on a box, and migration 0094 has not been applied to Postgres (no local server was available).
+
 ## 2026-10-20 (6) — SHIPPED (branch): connect a GitHub repo (Website → GitHub)
 
 - Studied Coolify's GitHub design, design only, no code copied (plan/github-connect.md). New page `/m/website/github`, linked from the Website module's "GitHub connection" setting. It has: the App manifest flow with plain steps, public repo by link (unauthenticated API, branch picker), private repos the installed App can see plus "Add more repos on GitHub", and the connected repos with their last commit and a Disconnect button. The App setup URL now returns the owner here.

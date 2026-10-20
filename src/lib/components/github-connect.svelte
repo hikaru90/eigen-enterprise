@@ -10,6 +10,7 @@
     branch: string
     htmlUrl: string
     visibility: 'public' | 'private'
+    authKind?: 'public' | 'github_app' | 'deploy_key'
     lastCommit: { sha: string; message: string; date: string | null } | null
     lastCommitError: string | null
   }
@@ -24,7 +25,30 @@
     defaultBranch: string
     branches: string[]
   }
+  export type DeployKeyStep =
+    | { action: 'deploy_key'; step: 'repo'; repo: string; error: string }
+    | {
+        action: 'deploy_key'
+        step: 'add'
+        repo: string
+        keyId: string
+        publicKey: string
+        addKeyUrl: string
+        error?: string
+      }
+    | {
+        action: 'deploy_key'
+        step: 'branches'
+        repo: string
+        keyId: string
+        publicKey: string
+        addKeyUrl: string
+        branches: string[]
+        branch: string
+        error?: undefined
+      }
   export type GitHubConnectForm =
+    | DeployKeyStep
     | {
         action: 'inspect'
         repo: string
@@ -33,7 +57,13 @@
         error?: undefined
       }
     | { action: 'inspect' | 'connect' | 'disconnect'; repo: string; error: string }
-    | { action: 'connect' | 'disconnect'; ok: true; message: string; error?: undefined }
+    | {
+        action: 'connect' | 'disconnect' | 'deploy_key_cancel'
+        ok: true
+        message: string
+        link?: { href: string; label: string }
+        error?: undefined
+      }
     | null
 </script>
 
@@ -68,6 +98,14 @@
       : '',
   )
   const picked = $derived(form?.action === 'inspect' && 'inspected' in form ? form : null)
+  const deployKey = $derived(form?.action === 'deploy_key' ? form : null)
+  const pendingKey = $derived(deployKey && deployKey.step !== 'repo' ? deployKey : null)
+  let copied = $state(false)
+
+  async function copyPublicKey(key: string) {
+    await navigator.clipboard.writeText(key)
+    copied = true
+  }
   const errorFor = (action: string) =>
     form && form.action === action && form.error ? form.error : null
 
@@ -84,46 +122,16 @@
 </script>
 
 {#if form && 'ok' in form && form.ok}
-  <p class="mt-6 rounded-md border border-border px-4 py-3 text-sm" role="status">{form.message}</p>
+  <p class="mt-6 rounded-md border border-border px-4 py-3 text-sm" role="status">
+    {form.message}
+    {#if form.link}
+      <a class="underline" rel="external" href={form.link.href}>{form.link.label}</a>
+    {/if}
+  </p>
 {/if}
 
-<section class="mt-8" aria-labelledby="gh-connect-heading" data-testid="github-connect-app">
-  <h2 id="gh-connect-heading" class="text-[13px] font-medium">1. Connect GitHub</h2>
-  {#if !github.connected && manifest}
-    <ol class="mt-2 list-decimal space-y-1 pl-5 text-sm text-foreground/70">
-      <li>Click “Connect GitHub”. GitHub opens and shows a ready-made app for your company.</li>
-      <li>Click “Create GitHub App” there. It can only read code, and only of repos you pick.</li>
-      <li>
-        GitHub then asks where to install it: pick your account or organization and the repos.
-      </li>
-      <li>You come back here and your repos are listed below.</li>
-    </ol>
-    <form method="POST" action={manifestAction} class="mt-4 flex flex-wrap items-end gap-2">
-      <input type="hidden" name="manifest" value={manifest.json} />
-      <label class="min-w-48 flex-1 text-xs text-foreground/60">
-        GitHub organization (leave empty for your personal account)
-        <input bind:value={githubOrg} name="org" class="{inputCls} mt-1" autocomplete="off" />
-      </label>
-      <button class={btnCls} data-testid="github-connect-start">Connect GitHub</button>
-    </form>
-    <p class="mt-2 text-xs text-foreground/55">
-      Public repos can be connected below without this step.
-    </p>
-  {:else if github.connected && !github.installed}
-    <p class="mt-2 text-sm text-foreground/70">
-      The app <strong>{github.appSlug}</strong> exists but is not installed yet.
-      <a class="underline" rel="external" href={github.manageUrl}>Install it on your repositories</a
-      >.
-    </p>
-  {:else}
-    <p class="mt-2 text-sm text-foreground/70" data-testid="github-connected">
-      Connected through the GitHub App <strong>{github.appSlug}</strong>.
-    </p>
-  {/if}
-</section>
-
-<section class="mt-10" aria-labelledby="gh-public-heading">
-  <h2 id="gh-public-heading" class="text-[13px] font-medium">2. Connect a public repo by link</h2>
+<section class="mt-8" aria-labelledby="gh-public-heading">
+  <h2 id="gh-public-heading" class="text-[13px] font-medium">Connect a public repo by link</h2>
   <form method="POST" action="?/inspect" class="mt-2 flex flex-wrap items-end gap-2">
     <label class="min-w-64 flex-1 text-xs text-foreground/60">
       Repository link
@@ -143,36 +151,167 @@
   {/if}
 </section>
 
-{#if github.installed}
-  <section class="mt-10" aria-labelledby="gh-private-heading" data-testid="github-available">
-    <h2 id="gh-private-heading" class="text-[13px] font-medium">
-      3. Or pick a repo the app can see
-    </h2>
-    {#if availableError}
-      <p class="mt-2 text-sm text-red-700 dark:text-red-400" role="alert">{availableError}</p>
-    {:else if available && available.length === 0}
-      <p class="mt-2 text-sm text-foreground/60">The app cannot see any repositories yet.</p>
-    {:else if available}
-      <ul class="mt-2 divide-y divide-border overflow-hidden rounded-lg border border-border">
-        {#each available as r (r.fullName)}
-          <li class="flex min-w-0 items-center gap-3 px-4 py-2.5">
-            <span class="min-w-0 flex-1 truncate text-sm">{r.fullName}</span>
-            <span class="shrink-0 text-xs text-foreground/55">{r.visibility}</span>
-            <form method="POST" action="?/inspect">
-              <input type="hidden" name="repo" value={r.fullName} />
-              <button class={quietBtnCls}>Choose</button>
-            </form>
-          </li>
-        {/each}
-      </ul>
+<section class="mt-10" aria-labelledby="gh-deploy-key-heading" data-testid="github-deploy-key">
+  <h2 id="gh-deploy-key-heading" class="text-[13px] font-medium">
+    Connect a private repo with a deploy key
+  </h2>
+  <p class="mt-1 text-sm text-foreground/60">
+    A deploy key lets this server read one repository, and nothing else on your GitHub account.
+  </p>
+  {#if !pendingKey}
+    <form method="POST" action="?/deployKeyCreate" class="mt-3 flex flex-wrap items-end gap-2">
+      <label class="min-w-64 flex-1 text-xs text-foreground/60">
+        Private repository
+        <input
+          name="repo"
+          class="{inputCls} mt-1"
+          placeholder="https://github.com/owner/repo or git@github.com:owner/repo.git"
+          value={deployKey?.repo ?? ''}
+          autocomplete="off"
+          required
+        />
+      </label>
+      <button class={btnCls}>Make a deploy key</button>
+    </form>
+    {#if deployKey?.error}
+      <p class="mt-2 text-sm text-red-700 dark:text-red-400" role="alert">{deployKey.error}</p>
     {/if}
-    {#if github.manageUrl}
-      <a class="mt-2 inline-block text-sm underline" rel="external" href={github.manageUrl}
-        >Add more repos on GitHub</a
+  {:else}
+    <div class="mt-3 rounded-lg border border-border px-4 py-4">
+      <p class="text-sm font-medium">{pendingKey.repo}</p>
+      <label class="mt-3 block text-xs text-foreground/60">
+        Public key
+        <textarea
+          readonly
+          rows="2"
+          class="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs break-all"
+          >{pendingKey.publicKey}</textarea
+        >
+      </label>
+      <button
+        type="button"
+        class="{quietBtnCls} mt-2"
+        onclick={() => copyPublicKey(pendingKey.publicKey)}>{copied ? 'Copied' : 'Copy key'}</button
       >
+      <ol class="mt-4 list-decimal space-y-1 pl-5 text-sm text-foreground/70">
+        <li>
+          <a class="underline" rel="external noopener noreferrer" target="_blank" href={pendingKey.addKeyUrl}
+            >Open the repo's deploy keys on GitHub</a
+          > (Settings → Deploy keys → Add deploy key).
+        </li>
+        <li>Give it any title, and paste the key into “Key”.</li>
+        <li>Leave “Allow write access” off. This server only needs to read.</li>
+        <li>Click “Add key”, then come back and click “Check access”.</li>
+      </ol>
+      {#if pendingKey.step === 'branches'}
+        <form method="POST" action="?/deployKeyConnect" class="mt-4 flex flex-wrap items-end gap-2">
+          <input type="hidden" name="repo" value={pendingKey.repo} />
+          <input type="hidden" name="keyId" value={pendingKey.keyId} />
+          <input type="hidden" name="publicKey" value={pendingKey.publicKey} />
+          <label class="min-w-48 flex-1 text-xs text-foreground/60">
+            Branch
+            <select name="branch" class="{inputCls} mt-1" value={pendingKey.branch}>
+              {#each pendingKey.branches as b (b)}
+                <option value={b}>{b}</option>
+              {/each}
+            </select>
+          </label>
+          <button class={btnCls}>Connect</button>
+        </form>
+        <p class="mt-2 text-xs text-foreground/55">GitHub accepted the key.</p>
+      {:else}
+        <div class="mt-4 flex flex-wrap gap-2">
+          <form method="POST" action="?/deployKeyCheck">
+            <input type="hidden" name="repo" value={pendingKey.repo} />
+            <input type="hidden" name="keyId" value={pendingKey.keyId} />
+            <input type="hidden" name="publicKey" value={pendingKey.publicKey} />
+            <button class={btnCls}>Check access</button>
+          </form>
+          <form method="POST" action="?/deployKeyCancel">
+            <input type="hidden" name="repo" value={pendingKey.repo} />
+            <input type="hidden" name="keyId" value={pendingKey.keyId} />
+            <input type="hidden" name="publicKey" value={pendingKey.publicKey} />
+            <button class={quietBtnCls}>Cancel and delete the key</button>
+          </form>
+        </div>
+      {/if}
+      {#if pendingKey.error}
+        <p class="mt-2 text-sm text-red-700 dark:text-red-400" role="alert">{pendingKey.error}</p>
+      {/if}
+    </div>
+  {/if}
+</section>
+
+<details class="mt-10" open={github.connected} data-testid="github-advanced">
+  <summary class="cursor-pointer text-[13px] font-medium">
+    Advanced: connect through a GitHub App
+  </summary>
+  <p class="mt-1 text-xs text-foreground/55">
+    Gives this server an app on your GitHub account that can list and read the repos you pick. Not
+    needed for public repos or deploy keys.
+  </p>
+  <section class="mt-4" aria-labelledby="gh-connect-heading" data-testid="github-connect-app">
+    <h2 id="gh-connect-heading" class="text-[13px] font-medium">Connect GitHub</h2>
+    {#if !github.connected && manifest}
+      <ol class="mt-2 list-decimal space-y-1 pl-5 text-sm text-foreground/70">
+        <li>Click “Connect GitHub”. GitHub opens and shows a ready-made app for your company.</li>
+        <li>Click “Create GitHub App” there. It can only read code, and only of repos you pick.</li>
+        <li>
+          GitHub then asks where to install it: pick your account or organization and the repos.
+        </li>
+        <li>You come back here and your repos are listed below.</li>
+      </ol>
+      <form method="POST" action={manifestAction} class="mt-4 flex flex-wrap items-end gap-2">
+        <input type="hidden" name="manifest" value={manifest.json} />
+        <label class="min-w-48 flex-1 text-xs text-foreground/60">
+          GitHub organization (leave empty for your personal account)
+          <input bind:value={githubOrg} name="org" class="{inputCls} mt-1" autocomplete="off" />
+        </label>
+        <button class={btnCls} data-testid="github-connect-start">Connect GitHub</button>
+      </form>
+    {:else if github.connected && !github.installed}
+      <p class="mt-2 text-sm text-foreground/70">
+        The app <strong>{github.appSlug}</strong> exists but is not installed yet.
+        <a class="underline" rel="external" href={github.manageUrl}
+          >Install it on your repositories</a
+        >.
+      </p>
+    {:else}
+      <p class="mt-2 text-sm text-foreground/70" data-testid="github-connected">
+        Connected through the GitHub App <strong>{github.appSlug}</strong>.
+      </p>
     {/if}
   </section>
-{/if}
+
+  {#if github.installed}
+    <section class="mt-10" aria-labelledby="gh-private-heading" data-testid="github-available">
+      <h2 id="gh-private-heading" class="text-[13px] font-medium">Pick a repo the app can see</h2>
+      {#if availableError}
+        <p class="mt-2 text-sm text-red-700 dark:text-red-400" role="alert">{availableError}</p>
+      {:else if available && available.length === 0}
+        <p class="mt-2 text-sm text-foreground/60">The app cannot see any repositories yet.</p>
+      {:else if available}
+        <ul class="mt-2 divide-y divide-border overflow-hidden rounded-lg border border-border">
+          {#each available as r (r.fullName)}
+            <li class="flex min-w-0 items-center gap-3 px-4 py-2.5">
+              <span class="min-w-0 flex-1 truncate text-sm">{r.fullName}</span>
+              <span class="shrink-0 text-xs text-foreground/55">{r.visibility}</span>
+              <form method="POST" action="?/inspect">
+                <input type="hidden" name="repo" value={r.fullName} />
+                <button class={quietBtnCls}>Choose</button>
+              </form>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      {#if github.manageUrl}
+        <a class="mt-2 inline-block text-sm underline" rel="external" href={github.manageUrl}
+          >Add more repos on GitHub</a
+        >
+      {/if}
+    </section>
+  {/if}
+</details>
 
 {#if picked}
   <section
@@ -217,7 +356,7 @@
               href={r.htmlUrl}>{r.fullName}</a
             >
             <span class="block truncate text-xs text-foreground/55">
-              {r.branch} · {r.visibility} ·
+              {r.branch} · {r.authKind === 'deploy_key' ? 'private, deploy key' : r.visibility} ·
               {#if r.lastCommit}
                 {r.lastCommit.sha.slice(0, 7)} “{r.lastCommit.message}” ({shortDate(
                   r.lastCommit.date,

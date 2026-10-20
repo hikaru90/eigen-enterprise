@@ -6,6 +6,8 @@ export const PATHS = {
   workloads: '/var/lib/ee/workloads',
   journal: '/var/lib/ee/journal.json',
   secrets: '/var/lib/ee/secrets.enc',
+  /** Short-lived ssh material (deploy key + pinned known_hosts) for one git call; 0700, emptied after. */
+  sshTmp: '/var/lib/ee/ssh-tmp',
   masterKey: '/etc/ee/master.key',
   runtimes: '/opt/ee/runtimes',
   envDir: '/run/ee/env',

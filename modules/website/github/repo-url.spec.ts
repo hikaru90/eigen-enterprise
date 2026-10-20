@@ -17,6 +17,10 @@ describe('parseGitHubRepo (structured URL parsing, not a meaning heuristic)', ()
     ],
     ['  kindred/site  ', { owner: 'kindred', repo: 'site', branch: null }],
     ['github.com/kindred/site', { owner: 'kindred', repo: 'site', branch: null }],
+    // The SSH forms GitHub shows under Code → SSH.
+    ['git@github.com:kindred/site.git', { owner: 'kindred', repo: 'site', branch: null }],
+    ['git@github.com:Kindred/my.site', { owner: 'Kindred', repo: 'my.site', branch: null }],
+    ['ssh://git@github.com/kindred/site.git', { owner: 'kindred', repo: 'site', branch: null }],
   ])('%s', (input, expected) => {
     expect(parseGitHubRepo(input)).toEqual({ ok: true, ...expected })
   })
@@ -35,6 +39,10 @@ describe('parseGitHubRepo (structured URL parsing, not a meaning heuristic)', ()
     ],
     ['https://github.com/kin dred/site', 'That is not a valid GitHub owner/repo name.'],
     ['https://github.com/a/b?x=1', 'Use the plain repository link, without ? or #.'],
+    ['git@gitlab.com:a/b.git', 'Only github.com repositories can be connected.'],
+    ['root@github.com:a/b.git', 'Use the SSH address GitHub shows: git@github.com:owner/repo.git.'],
+    ['git@github.com:a/b/c.git', 'That is not a valid GitHub owner/repo name.'],
+    ['git@github.com:a.git', 'That is not a valid GitHub owner/repo name.'],
   ])('rejects %s plainly', (input, message) => {
     expect(parseGitHubRepo(input)).toEqual({ ok: false, message })
   })

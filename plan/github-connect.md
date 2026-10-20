@@ -1,6 +1,6 @@
 # Connect a GitHub repo — design note
 
-Status: built 2026-10-20 (step "connect"); deploying a connected repo is the next step.
+Status: built 2026-10-20 (step "connect"), deploy keys added the same day (default for private repos); deploying a connected repo is the next step.
 Scope: Website module (plan/phase-platform.md), code in `modules/website/github`.
 Studied: Coolify (github.com/coollabsio/coolify), design only. No code was copied and no PHP is used. Everything here is our own TypeScript.
 
@@ -27,7 +27,7 @@ Studied: Coolify (github.com/coollabsio/coolify), design only. No code was copie
 
 ## What we don't adopt, and why
 
-- **Deploy keys / SSH**: not now. The App covers private repos with repo listing and push events. Deploy keys would mean storing an SSH private key for each repo, plus SSH clone support in ee's mirror. If an owner can't install an App, a later step could add read-only deploy keys, using ee's mirror with an SSH URL.
+- ~~Deploy keys / SSH: not now.~~ Reversed 2026-10-20 by the owner: see "Private repos: deploy keys" below.
 - **Several GitHub sources, GitHub Enterprise, GitLab/Gitea/Bitbucket**: one company, one GitHub App on github.com. Single tenant keeps it simple.
 - **PR preview deployments and self-hosted runners**: these need write permissions (pull_requests, administration). We stay read-only.
 - **Docker / docker-compose build packs**: D16 says native catalog runtimes only. ee builds from `ee.json`.
@@ -38,3 +38,21 @@ Studied: Coolify (github.com/coollabsio/coolify), design only. No code was copie
 - Kernel tools in the website module: `website.github_list_repos`, `website.github_available_repos`, `website.github_inspect_repo` (read), `website.github_connect_repo` (mutate, approvalRisk internal), `website.github_disconnect_repo` (mutate, approvalRisk destructive). Both mutating tools are on the approval-gated list, so the agent can connect from chat under the owner's approval mode. In the dashboard, the owner's click counts as their approval (it's recorded as one).
 - UI: `/m/website/github`, linked from the Website module's settings ("GitHub connection"). Errors are shown as plain sentences. GitHub's raw API errors stay in the server log and the error `cause`.
 - Connecting doesn't touch the server (D11). **Next step, deploy**: the existing `github.app_create` / ee path (`ee/src/sources.ts` fetches into a local mirror, using a freshly minted installation token for that single fetch) should take a connected repo as input: repo id → full name and clone URL, branch → ref, installation id → token (none for public repos). It should then create the ee app and link it. The webhook should match pushes by repo id plus branch, rather than by full name.
+
+## Private repos: deploy keys (owner's decision, 2026-10-20)
+
+The owner does not want to connect their whole GitHub account through an App by default. Public repos stay "by link, no auth". Private repos default to a **read-only deploy key per repo**. The GitHub App code stays, collapsed under "Advanced: connect through a GitHub App" on `/m/website/github`.
+
+- **Flow** (`/m/website/github`, "Connect a private repo with a deploy key"): the owner enters the repo (`https://github.com/owner/repo` or `git@github.com:owner/repo.git`, parsed structurally in `repo-url.ts`). The server asks ee for a fresh ed25519 pair and shows the PUBLIC key with a copy button and the steps (open `https://github.com/<o>/<r>/settings/keys/new`, paste, leave "Allow write access" off, Add key). "Check access" runs a read-only `git ls-remote --heads` over SSH through ee and lists the branches; the owner picks one and connects. A refusal shows "GitHub didn't accept the key yet — check it was added to this repo (Settings → Deploy keys)."; ssh's output only goes to the server log. "Cancel and delete the key" deletes an unused key.
+- **ee owns the key.** ee control API (unix socket `/run/ee/control/ee.sock`):
+  - `POST /v1/deploy-keys {repo, author}` → `{keyId, publicKey}`. `ssh-keygen -t ed25519 -N ''` into a 0700 temp dir under `/var/lib/ee/ssh-tmp`, which is removed right after. The pair is stored only in the sealed secret store (AES-256-GCM under the host key), scope `_deploy_keys`, id `dk_<24 hex>`. That scope is not settable through `POST /v1/secrets` (all `_` scopes are internal).
+  - `POST /v1/deploy-keys/:id/check {repo}` → `{ok: true, branches}` or `{ok: false, error: 'not_accepted', detail}`. The key must belong to that repo.
+  - `DELETE /v1/deploy-keys/:id {author}` → `{ok: true}`, or 404 for an unknown key.
+  - `POST /v1/sources/fetch` also takes `{url: 'git@github.com:o/r.git', deployKeyId}`, so a deploy uses the same key.
+  - Every SSH use writes the key to a 0600 file plus GitHub's published host keys (from `api.github.com/meta`, pinned in `ee/src/deploy-keys.ts`) to a known_hosts file in a fresh 0700 dir, runs git with `GIT_SSH_COMMAND="ssh -i … -F /dev/null -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=… -o GlobalKnownHostsFile=/dev/null"`, then deletes the dir. It never uses accept-new and never turns the check off. If GitHub rotates its host keys, the pinned list in `deploy-keys.ts` has to be updated.
+  - `ee bootstrap` now installs `openssh-client` (apt runs with `--no-install-recommends`, so git alone doesn't bring ssh).
+- **No ee, no deploy keys.** Under plain `npm run dev` the socket is missing. The tools then fail loud with "Private repos need the server's deploy agent…", with no fallback store.
+- **D11.** Creating and deleting a key changes the server's secret store, so `website.github_deploy_key_create`, `website.github_deploy_key_delete`, and disconnecting a deploy-key repo are human-only (`requireHuman`). On the page they are the owner's own click. The check is read-only, and the agent may run it.
+- **Persistence**: migration `0094_github_deploy_keys`. `auth_kind` is `public | github_app | deploy_key`, `deploy_key_id` holds ee's id, and no key material is stored. `github_app` is a third kind for the existing App rows, which carry the installation id. `repo_id` became nullable, because a deploy-key repo is never read through the API. Rows are unique by `(repo_id, branch)` and by `(lower(full_name), branch)`, and a CHECK constraint enforces the shape of each kind. Disconnecting a deploy-key repo deletes the key in ee first, then the row, and tells the owner they can remove it on GitHub as well, with a link to `…/settings/keys`.
+- **Tools**: `website.github_connect_repo` takes `auth: {kind: 'deploy_key', keyId}`. New tools: `website.github_deploy_key_create` (mutate, internal, "Created a deploy key for o/r", admin only and human-only), `website.github_deploy_key_check` (read, admin and agent), and `website.github_deploy_key_delete` (mutate, destructive, "Deleted the deploy key for o/r", human-only, refused while a connected repo uses the key). The create and delete tools are not on the approval-gated list, because D11 already limits them to a human's own action.
+- **Not built yet**: a deploy-key repo shows no last commit (it has no API access) until deploy. Deploy-key repos get no push webhooks, so deploys are manual or use polling later.

@@ -10,6 +10,7 @@ import { gitSource, NAME, routeSchema, workloadSchema, type Route, type Workload
 import { mustRun, type System } from './system.ts'
 import { addDomain, removeDomain, setConsoleHost } from './domains.ts'
 import { fetchSource } from './sources.ts'
+import { checkDeployKey, createDeployKey, deleteDeployKey, KEY_ID, REPO } from './deploy-keys.ts'
 import { claimUrl, newClaim } from './claim.ts'
 
 /**
@@ -145,15 +146,22 @@ const deployInput = z.object({ workload: z.string().regex(NAME), rev: z.string()
 const fetchInput = z
   .object({
     name: z.string().regex(/^[a-z0-9][a-z0-9._-]*$/),
-    url: z.string().url().startsWith('https://'),
+    url: z.string().min(1).max(400),
     ref: z.string().min(1).max(200),
     /** Short-lived token used for this fetch only; never persisted by ee. */
     token: z.string().min(1).max(4096).optional(),
+    /** A deploy key ee holds (POST /v1/deploy-keys); the url is then git@github.com:owner/repo.git. */
+    deployKeyId: z.string().regex(KEY_ID).optional(),
   })
   .strict()
+const deployKeyCreate = z.object({ repo: z.string().regex(REPO), author }).strict()
+const deployKeyCheck = z.object({ repo: z.string().regex(REPO) }).strict()
+const deployKeyDelete = z.object({ author }).strict()
+const DEPLOY_KEY_PATH = /^\/v1\/deploy-keys\/(dk_[a-f0-9]{24})(\/check)?$/
 
-export function startControlServer(ee: Ee): Promise<void> {
-  const server = createServer(async (req, res) => {
+/** The control API's request handler (exported so the verbs are testable over a real socket). */
+export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+  return async (req, res) => {
     try {
       const url = new URL(req.url ?? '/', 'http://ee')
       const route = `${req.method} ${url.pathname}`
@@ -222,8 +230,30 @@ export function startControlServer(ee: Ee): Promise<void> {
       }
       if (route === 'POST /v1/sources/fetch') {
         const i = fetchInput.parse(await body(req))
-        const rev = await ee.exclusive(() => fetchSource(ee.sys, i))
+        const rev = await ee.exclusive(() => fetchSource(ee.sys, i, ee.secrets))
         return send(res, 200, { mirror: `sources/${i.name}.git`, ref: i.ref, rev })
+      }
+      if (route === 'POST /v1/deploy-keys') {
+        // Generates a read-only deploy key for one repo; only the public half leaves ee.
+        const i = deployKeyCreate.parse(await body(req))
+        const out = await ee.exclusive(() => createDeployKey(ee.sys, ee.secrets, { repo: i.repo }))
+        emit(ee.journal, ee.sys, 'deploy_key.created', null, `deploy key ${out.keyId} for ${i.repo} created by ${i.author}`)
+        return send(res, 200, out)
+      }
+      const dk = DEPLOY_KEY_PATH.exec(url.pathname)
+      if (dk && req.method === 'POST' && dk[2]) {
+        const i = deployKeyCheck.parse(await body(req))
+        return send(res, 200, await ee.exclusive(() => checkDeployKey(ee.sys, ee.secrets, dk[1]!, i)))
+      }
+      if (dk && req.method === 'DELETE' && !dk[2]) {
+        const i = deployKeyDelete.parse(await body(req))
+        try {
+          await ee.exclusive(() => deleteDeployKey(ee.secrets, dk[1]!))
+        } catch (err) {
+          throw new HttpError(404, (err as Error).message)
+        }
+        emit(ee.journal, ee.sys, 'deploy_key.deleted', null, `deploy key ${dk[1]} deleted by ${i.author}`)
+        return send(res, 200, { ok: true })
       }
       if (route === 'POST /v1/apps') {
         const i = appInput.parse(await body(req))
@@ -281,7 +311,11 @@ export function startControlServer(ee: Ee): Promise<void> {
       if (err instanceof HttpError) return send(res, err.status, { type: 'urn:ee:error', title: err.message, detail: err.message })
       return send(res, 500, { type: 'urn:ee:internal', title: 'internal error', detail: (err as Error).message })
     }
-  })
+  }
+}
+
+export function startControlServer(ee: Ee): Promise<void> {
+  const server = createServer(controlHandler(ee))
 
   return (async () => {
     await ee.sys.mkdirp(PATHS.controlSocketDir, 0o750)

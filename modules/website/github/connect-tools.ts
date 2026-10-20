@@ -1,5 +1,7 @@
 import { z } from 'zod'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
+import { EeClient, SubstrateError, SubstrateUnavailableError } from '$lib/server/ee/client'
+import { requireHuman } from '$lib/server/ee/human'
 import { WEBSITE_MODULE_ID } from '../manifest'
 import { GitHubApi, GitHubApiError, type LastCommit, type Repo } from './api'
 import { asUserError, GitHubUserError, plainGitHubApiMessage } from './plain-errors'
@@ -18,13 +20,31 @@ import { defaultGitHubStore, type GitHubStore } from './store'
  * GitHub App installation (a short-lived installation token is minted from the
  * sealed App key per call, never stored). Connecting records what a later
  * deploy needs; it does not deploy and does not touch the server (D11).
+ *
+ * Private repos without the App: a read-only DEPLOY KEY per repo. ee owns the
+ * key pair (generated and sealed on the server, used for one git call at a
+ * time with GitHub's pinned host keys); this side only ever sees the public
+ * key and ee's key id. Creating or deleting a key changes the server's secret
+ * store, so those are human-only (D11: requireHuman) — on the page they are
+ * the owner's own click.
  */
+
+/** ee's deploy-key verbs (src/lib/server/ee/client.ts); a seam so tests need no socket. */
+export type DeployKeyEe = Pick<EeClient, 'createDeployKey' | 'checkDeployKey' | 'deleteDeployKey'>
 
 export type GitHubConnectToolDeps = {
   github?: GitHubStore
   repos?: ConnectedRepoStore
   api?: GitHubApi
+  ee?: DeployKeyEe
 }
+
+export const EE_UNAVAILABLE_MESSAGE =
+  "Private repos need the server's deploy agent. This copy of Eigen Enterprise is not running on a server set up with ee, so it cannot hold a deploy key."
+export const KEY_NOT_ACCEPTED_MESSAGE =
+  "GitHub didn't accept the key yet — check it was added to this repo (Settings → Deploy keys)."
+const DEPLOY_KEY_LAST_COMMIT =
+  'Read through a deploy key; the latest commit shows once it is deployed.'
 
 const REPO_INPUT = z
   .string()
@@ -33,8 +53,23 @@ const REPO_INPUT = z
   .describe('A github.com link (https://github.com/owner/repo) or owner/repo')
 const BRANCH = z.string().regex(/^[A-Za-z0-9._/-]{1,200}$/, 'a branch name')
 
+const KEY_ID = z.string().regex(/^dk_[a-f0-9]{24}$/, 'a deploy key id')
+
 const inspectInput = z.object({ repo: REPO_INPUT }).strict()
-const connectInput = z.object({ repo: REPO_INPUT, branch: BRANCH }).strict()
+const connectInput = z
+  .object({
+    repo: REPO_INPUT,
+    branch: BRANCH,
+    /** Omitted: public, or private through the GitHub App. deploy_key: a key made with website.github_deploy_key_create. */
+    auth: z
+      .object({ kind: z.literal('deploy_key'), keyId: KEY_ID })
+      .strict()
+      .optional(),
+  })
+  .strict()
+const deployKeyCreateInput = z.object({ repo: REPO_INPUT }).strict()
+const deployKeyCheckInput = z.object({ repo: REPO_INPUT, keyId: KEY_ID }).strict()
+const deployKeyDeleteInput = z.object({ repo: REPO_INPUT, keyId: KEY_ID }).strict()
 const disconnectInput = z.object({ repo: REPO_INPUT, branch: BRANCH }).strict()
 
 export type InspectedRepo = {
@@ -77,10 +112,46 @@ function displayName(raw: string): string {
 
 const principalRef = (ctx: ToolContext) => `${ctx.principal.kind}:${ctx.principal.id}`
 
+const githubPage = (fullName: string) => `https://github.com/${fullName}`
+const removeKeyUrl = (fullName: string) => `${githubPage(fullName)}/settings/keys`
+
+/** ee failures in plain words; the original stays as `cause` for the server log. */
+async function viaEe<T>(what: string, call: () => Promise<T>): Promise<T> {
+  try {
+    return await call()
+  } catch (err) {
+    if (err instanceof SubstrateUnavailableError)
+      throw new GitHubUserError(EE_UNAVAILABLE_MESSAGE, { cause: err })
+    if (err instanceof SubstrateError)
+      throw new GitHubUserError(
+        `The server's deploy agent could not ${what}. Try again; if it keeps happening, ask in the chat.`,
+        {
+          cause: err,
+        },
+      )
+    throw err
+  }
+}
+
 export function createGitHubConnectTools(deps: GitHubConnectToolDeps = {}): ToolDescriptor[] {
   const github = deps.github ?? defaultGitHubStore()
   const repos = deps.repos ?? defaultConnectedRepoStore()
   const api = deps.api ?? new GitHubApi()
+  const ee: DeployKeyEe = deps.ee ?? new EeClient()
+
+  /** Read-only check through ee: the branches, or the plain reason GitHub refused the key. */
+  async function checkKey(
+    fullName: string,
+    keyId: string,
+  ): Promise<{ ok: true; branches: string[] } | { ok: false; message: string }> {
+    const r = await viaEe('check the deploy key', () =>
+      ee.checkDeployKey(keyId, { repo: fullName }),
+    )
+    if (r.ok) return { ok: true, branches: r.branches }
+    // ssh's own words stay in the server log only.
+    console.error(`[website/github] deploy key ${keyId} for ${fullName} not accepted: ${r.detail}`)
+    return { ok: false, message: KEY_NOT_ACCEPTED_MESSAGE }
+  }
 
   async function status(): Promise<GitHubConnectStatus> {
     const conn = await github.connection()
@@ -130,7 +201,7 @@ export function createGitHubConnectTools(deps: GitHubConnectToolDeps = {}): Tool
           throw new GitHubUserError(
             auth
               ? `GitHub has no public repository ${name}, and the GitHub App cannot see it. If it is private, add it to the app on GitHub (Add more repos on GitHub).`
-              : `GitHub has no public repository ${name}. If it is private, connect GitHub first and give the app access to it.`,
+              : `GitHub has no public repository ${name}. If it is private, connect it with a deploy key below.`,
             { cause: err },
           )
         }
@@ -156,7 +227,7 @@ export function createGitHubConnectTools(deps: GitHubConnectToolDeps = {}): Tool
   }
 
   async function withLastCommit(rows: ConnectedRepo[]): Promise<ConnectedRepoView[]> {
-    const needsToken = rows.some((r) => r.visibility === 'private')
+    const needsToken = rows.some((r) => r.authKind === 'github_app')
     let auth: Awaited<ReturnType<typeof installationAuth>> = null
     let authError: string | null = null
     if (needsToken) {
@@ -176,6 +247,8 @@ export function createGitHubConnectTools(deps: GitHubConnectToolDeps = {}): Tool
       rows.map(async (r): Promise<ConnectedRepoView> => {
         const base = { ...r, createdAt: r.createdAt.toISOString() }
         const [owner, name] = r.fullName.split('/')
+        if (r.authKind === 'deploy_key')
+          return { ...base, lastCommit: null, lastCommitError: DEPLOY_KEY_LAST_COMMIT }
         if (r.visibility === 'private' && !auth)
           return { ...base, lastCommit: null, lastCommitError: authError }
         try {
@@ -256,7 +329,7 @@ export function createGitHubConnectTools(deps: GitHubConnectToolDeps = {}): Tool
       name: 'website.github_connect_repo',
       module: WEBSITE_MODULE_ID,
       summary:
-        'Connect a GitHub repository and branch to the company so it can be deployed later. Public repos by link; private repos must be visible to the GitHub App. Does not deploy.',
+        'Connect a GitHub repository and branch to the company so it can be deployed later. Public repos by link; private repos either through a deploy key (auth {kind: "deploy_key", keyId} from website.github_deploy_key_create, added on GitHub by the owner) or visible to the GitHub App. Does not deploy.',
       auditClass: 'mutate',
       approvalRisk: 'internal',
       activity: (input: z.infer<typeof connectInput>, output?: ConnectedRepo) =>
@@ -265,24 +338,49 @@ export function createGitHubConnectTools(deps: GitHubConnectToolDeps = {}): Tool
       permission: { roles: ['admin', 'agent'] },
       handler: async (ctx, input) => {
         const i = connectInput.parse(input)
-        const found = await inspect(i.repo)
-        if (!found.branches.includes(i.branch)) {
-          throw new GitHubUserError(`${found.fullName} has no branch named “${i.branch}”.`)
-        }
-        try {
-          return await repos.add({
+        let row: Parameters<ConnectedRepoStore['add']>[0]
+        if (i.auth?.kind === 'deploy_key') {
+          const { owner, repo } = parseOrFail(i.repo)
+          const fullName = `${owner}/${repo}`
+          const checked = await checkKey(fullName, i.auth.keyId)
+          if (!checked.ok) throw new GitHubUserError(checked.message)
+          if (!checked.branches.includes(i.branch))
+            throw new GitHubUserError(`${fullName} has no branch named “${i.branch}”.`)
+          row = {
+            repoId: null,
+            fullName,
+            branch: i.branch,
+            htmlUrl: githubPage(fullName),
+            cloneUrl: `git@github.com:${fullName}.git`,
+            visibility: 'private',
+            authKind: 'deploy_key',
+            installationId: null,
+            deployKeyId: i.auth.keyId,
+            connectedBy: principalRef(ctx),
+          }
+        } else {
+          const found = await inspect(i.repo)
+          if (!found.branches.includes(i.branch)) {
+            throw new GitHubUserError(`${found.fullName} has no branch named “${i.branch}”.`)
+          }
+          row = {
             repoId: found.repoId,
             fullName: found.fullName,
             branch: i.branch,
             htmlUrl: found.htmlUrl,
             cloneUrl: found.cloneUrl,
             visibility: found.visibility,
+            authKind: found.visibility === 'private' ? 'github_app' : 'public',
             installationId: found.installationId,
+            deployKeyId: null,
             connectedBy: principalRef(ctx),
-          })
+          }
+        }
+        try {
+          return await repos.add(row)
         } catch (err) {
           if (err instanceof RepoAlreadyConnectedError) {
-            throw new GitHubUserError(`${found.fullName} (${i.branch}) is already connected.`, {
+            throw new GitHubUserError(`${row.fullName} (${i.branch}) is already connected.`, {
               cause: err,
             })
           }
@@ -293,19 +391,98 @@ export function createGitHubConnectTools(deps: GitHubConnectToolDeps = {}): Tool
     {
       name: 'website.github_disconnect_repo',
       module: WEBSITE_MODULE_ID,
-      summary: 'Disconnect a GitHub repository branch from the company. Nothing on GitHub changes.',
+      summary:
+        'Disconnect a GitHub repository branch from the company. For a deploy-key repo this also deletes the key on the server (human only, D11); the owner can then remove it on GitHub too (removeKeyUrl). Nothing on GitHub changes.',
       auditClass: 'mutate',
       approvalRisk: 'destructive',
       activity: (input: z.infer<typeof disconnectInput>) =>
         `Disconnected the GitHub repo ${displayName(input.repo)} (${input.branch})`,
       inputSchema: disconnectInput,
       permission: { roles: ['admin', 'agent'] },
-      handler: async (_ctx, input) => {
+      handler: async (ctx, input) => {
         const i = disconnectInput.parse(input)
         const { owner, repo } = parseOrFail(i.repo)
-        const removed = await repos.remove(`${owner}/${repo}`, i.branch)
-        if (!removed) throw new GitHubUserError(`${owner}/${repo} (${i.branch}) is not connected.`)
-        return { ...removed, createdAt: removed.createdAt.toISOString() }
+        const fullName = `${owner}/${repo}`
+        const match = (await repos.list()).find(
+          (r) => r.fullName.toLowerCase() === fullName.toLowerCase() && r.branch === i.branch,
+        )
+        if (!match) throw new GitHubUserError(`${fullName} (${i.branch}) is not connected.`)
+        if (match.authKind === 'deploy_key' && match.deployKeyId) {
+          const author = requireHuman(ctx, 'website.github_disconnect_repo')
+          const keyId = match.deployKeyId
+          await viaEe('delete the deploy key', () => ee.deleteDeployKey(keyId, { author }))
+        }
+        const removed = await repos.remove(match.fullName, match.branch)
+        if (!removed) throw new GitHubUserError(`${fullName} (${i.branch}) is not connected.`)
+        return {
+          ...removed,
+          createdAt: removed.createdAt.toISOString(),
+          removeKeyUrl: removed.authKind === 'deploy_key' ? removeKeyUrl(removed.fullName) : null,
+        }
+      },
+    },
+    {
+      name: 'website.github_deploy_key_create',
+      module: WEBSITE_MODULE_ID,
+      summary:
+        "Create a read-only deploy key for one private GitHub repo. The server (ee) generates and keeps the key; this returns only the public key and the GitHub page where the owner adds it (Settings → Deploy keys, write access off). Human only: it changes the server's secret store (D11).",
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: (input: z.infer<typeof deployKeyCreateInput>) =>
+        `Created a deploy key for ${displayName(input.repo)}`,
+      inputSchema: deployKeyCreateInput,
+      permission: { roles: ['admin'] },
+      handler: async (ctx, input) => {
+        const author = requireHuman(ctx, 'website.github_deploy_key_create')
+        const { owner, repo } = parseOrFail(deployKeyCreateInput.parse(input).repo)
+        const fullName = `${owner}/${repo}`
+        const key = await viaEe('create a deploy key', () =>
+          ee.createDeployKey({ repo: fullName, author }),
+        )
+        return {
+          repo: fullName,
+          keyId: key.keyId,
+          publicKey: key.publicKey,
+          addKeyUrl: `${githubPage(fullName)}/settings/keys/new`,
+        }
+      },
+    },
+    {
+      name: 'website.github_deploy_key_check',
+      module: WEBSITE_MODULE_ID,
+      summary:
+        'Check whether GitHub accepts a deploy key for its repo (a read-only git ls-remote on the server) and list the branches. Returns {ok: true, branches} or {ok: false, message} in plain words.',
+      auditClass: 'read',
+      inputSchema: deployKeyCheckInput,
+      permission: { roles: ['admin', 'agent'] },
+      handler: async (_ctx, input) => {
+        const i = deployKeyCheckInput.parse(input)
+        const { owner, repo } = parseOrFail(i.repo)
+        return checkKey(`${owner}/${repo}`, i.keyId)
+      },
+    },
+    {
+      name: 'website.github_deploy_key_delete',
+      module: WEBSITE_MODULE_ID,
+      summary:
+        'Delete a deploy key the server holds that no connected repo uses (to disconnect a repo, use website.github_disconnect_repo). Human only (D11). The key should then also be removed on GitHub (removeKeyUrl).',
+      auditClass: 'mutate',
+      approvalRisk: 'destructive',
+      activity: (input: z.infer<typeof deployKeyDeleteInput>) =>
+        `Deleted the deploy key for ${displayName(input.repo)}`,
+      inputSchema: deployKeyDeleteInput,
+      permission: { roles: ['admin'] },
+      handler: async (ctx, input) => {
+        const author = requireHuman(ctx, 'website.github_deploy_key_delete')
+        const i = deployKeyDeleteInput.parse(input)
+        const { owner, repo } = parseOrFail(i.repo)
+        const user = (await repos.list()).find((r) => r.deployKeyId === i.keyId)
+        if (user)
+          throw new GitHubUserError(
+            `${user.fullName} (${user.branch}) uses this key. Disconnect it instead.`,
+          )
+        await viaEe('delete the deploy key', () => ee.deleteDeployKey(i.keyId, { author }))
+        return { ok: true as const, removeKeyUrl: removeKeyUrl(`${owner}/${repo}`) }
       },
     },
   ]

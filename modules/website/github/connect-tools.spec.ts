@@ -135,7 +135,7 @@ describe('public repo by URL (no auth)', () => {
     }).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(GitHubUserError)
     expect((err as Error).message).toBe(
-      'GitHub has no public repository kindred/ghost. If it is private, connect GitHub first and give the app access to it.',
+      'GitHub has no public repository kindred/ghost. If it is private, connect it with a deploy key below.',
     )
   })
 
@@ -258,7 +258,9 @@ describe('private repos through the installed GitHub App', () => {
       htmlUrl: '',
       cloneUrl: '',
       visibility: 'public',
+      authKind: 'public',
       installationId: null,
+      deployKeyId: null,
       connectedBy: 'human:u1',
     })
     const listed = (await run('website.github_list_repos', {})) as {

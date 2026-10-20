@@ -24,7 +24,11 @@ export class SubstrateError extends Error {
   }
 }
 
-export type EeTransport = (method: string, path: string, body?: unknown) => Promise<{ status: number; data: unknown }>
+export type EeTransport = (
+  method: string,
+  path: string,
+  body?: unknown,
+) => Promise<{ status: number; data: unknown }>
 
 export const socketTransport =
   (socketPath = EE_CONTROL_SOCKET): EeTransport =>
@@ -37,7 +41,10 @@ export const socketTransport =
           path,
           method,
           timeout: 15 * 60_000, // a deploy waits for the health gate
-          headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(text) },
+          headers: {
+            'content-type': 'application/json',
+            'content-length': Buffer.byteLength(text),
+          },
         },
         (res) => {
           let raw = ''
@@ -76,7 +83,13 @@ export type EeStatus = {
     live: { release: string; slot?: string } | null
     lastError: string | null
   }>
-  events: Array<{ id: string; time: string; type: string; workload: string | null; message: string }>
+  events: Array<{
+    id: string
+    time: string
+    type: string
+    workload: string | null
+    message: string
+  }>
 }
 
 export type ChangeResult = { rev: string; reconcileError: string | null }
@@ -87,7 +100,8 @@ export class EeClient {
   private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
     const { status, data } = await this.transport(method, path, body)
     if (status >= 400) {
-      const detail = (data as { detail?: string; title?: string } | null)?.detail ?? `HTTP ${status}`
+      const detail =
+        (data as { detail?: string; title?: string } | null)?.detail ?? `HTTP ${status}`
       throw new SubstrateError(status, detail)
     }
     return data as T
@@ -96,14 +110,45 @@ export class EeClient {
   status(): Promise<EeStatus> {
     return this.call('GET', '/v1/status')
   }
-  addDomain(i: { host: string; workload: string; role: 'console' | 'public' | 'app'; author: string }): Promise<ChangeResult> {
+  addDomain(i: {
+    host: string
+    workload: string
+    role: 'console' | 'public' | 'app'
+    author: string
+  }): Promise<ChangeResult> {
     return this.call('POST', '/v1/domains', i)
   }
   removeDomain(i: { host: string; author: string }): Promise<ChangeResult> {
     return this.call('DELETE', '/v1/domains', i)
   }
-  fetchSource(i: { name: string; url: string; ref: string; token?: string }): Promise<{ mirror: string; ref: string; rev: string }> {
+  /** https url (+ optional one-fetch token), or git@github.com:owner/repo.git + a deploy key ee holds. */
+  fetchSource(i: {
+    name: string
+    url: string
+    ref: string
+    token?: string
+    deployKeyId?: string
+  }): Promise<{ mirror: string; ref: string; rev: string }> {
     return this.call('POST', '/v1/sources/fetch', i)
+  }
+  /** ee generates an ed25519 pair and keeps the private half sealed; only the public key comes back. */
+  createDeployKey(i: {
+    repo: string
+    author: string
+  }): Promise<{ keyId: string; publicKey: string }> {
+    return this.call('POST', '/v1/deploy-keys', i)
+  }
+  /** Read-only `git ls-remote` over SSH with the key and GitHub's pinned host keys. */
+  checkDeployKey(
+    keyId: string,
+    i: { repo: string },
+  ): Promise<
+    { ok: true; branches: string[] } | { ok: false; error: 'not_accepted'; detail: string }
+  > {
+    return this.call('POST', `/v1/deploy-keys/${encodeURIComponent(keyId)}/check`, i)
+  }
+  deleteDeployKey(keyId: string, i: { author: string }): Promise<{ ok: true }> {
+    return this.call('DELETE', `/v1/deploy-keys/${encodeURIComponent(keyId)}`, i)
   }
   createApp(i: {
     name: string
@@ -121,7 +166,12 @@ export class EeClient {
   removeApp(i: { name: string; author: string }): Promise<ChangeResult> {
     return this.call('DELETE', '/v1/apps', i)
   }
-  setSecret(i: { workload: string; name: string; value: string; author: string }): Promise<{ ok: true; reconcileError: string | null }> {
+  setSecret(i: {
+    workload: string
+    name: string
+    value: string
+    author: string
+  }): Promise<{ ok: true; reconcileError: string | null }> {
     return this.call('POST', '/v1/secrets', i)
   }
 }
