@@ -10,7 +10,7 @@ import { SecretStore } from './secret-store.ts'
 import { appContractSchema, assertInCatalog, CATALOG, CatalogGapError, gitSource, NAME, routeSchema, workloadSchema, type Route, type Workload } from './spec.ts'
 import { mustRun, type System } from './system.ts'
 import { addDomain, removeDomain, setConsoleHost } from './domains.ts'
-import { fetchSource } from './sources.ts'
+import { fetchSource, readRepoFile, readTree, SourceReadError, TREE_MAX_DEPTH } from './sources.ts'
 import { checkDeployKey, createDeployKey, deleteDeployKey, KEY_ID, REPO } from './deploy-keys.ts'
 import { claimUrl, newClaim } from './claim.ts'
 
@@ -108,6 +108,15 @@ class HttpError extends Error {
     message: string,
   ) {
     super(message)
+  }
+}
+
+async function sourceRead<T>(read: () => Promise<T>): Promise<T> {
+  try {
+    return await read()
+  } catch (err) {
+    if (err instanceof SourceReadError) throw new HttpError(err.status, err.message)
+    throw err
   }
 }
 
@@ -284,6 +293,18 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
           throw err
         }
         return send(res, 200, { present: true, contract: parsed.data, gap: null, error: null })
+      }
+      if (route === 'GET /v1/sources/tree') {
+        const name = z.string().regex(/^[a-z0-9][a-z0-9._-]*$/).parse(url.searchParams.get('name'))
+        const rev = z.string().regex(/^[0-9a-f]{40}$/).parse(url.searchParams.get('rev'))
+        const depth = z.coerce.number().int().min(1).max(TREE_MAX_DEPTH).parse(url.searchParams.get('depth') ?? '1')
+        return send(res, 200, await sourceRead(() => readTree(ee.sys, name, rev, depth)))
+      }
+      if (route === 'GET /v1/sources/file') {
+        const name = z.string().regex(/^[a-z0-9][a-z0-9._-]*$/).parse(url.searchParams.get('name'))
+        const rev = z.string().regex(/^[0-9a-f]{40}$/).parse(url.searchParams.get('rev'))
+        const path = z.string().parse(url.searchParams.get('path'))
+        return send(res, 200, await sourceRead(() => readRepoFile(ee.sys, name, rev, path)))
       }
       if (route === 'GET /v1/events') {
         const name = z.string().regex(NAME).parse(url.searchParams.get('workload'))

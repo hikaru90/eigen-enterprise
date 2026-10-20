@@ -162,6 +162,47 @@ describe('/m/website/apps', () => {
     expect(out.data.error).toMatch(/no ee\.json/)
   })
 
+  it('redeploy from the detail page can carry an edited build contract', async () => {
+    const { ee } = await setup()
+    await actions
+      .deploy(
+        event({
+          request: formRequest({
+            source: 'heroku/node-js-getting-started#main',
+            name: 'gs',
+            kind: 'web',
+            useForm: 'on',
+            runtime: 'node@22',
+            start: 'node index.js',
+          }),
+        }),
+      )
+      .catch(() => undefined)
+    const detail = (await detailLoad(event({ params: { name: 'gs' } }))) as {
+      nodeVersions: string[]
+      contractFields: { start: string } | null
+    }
+    expect(detail.nodeVersions).toEqual(['22'])
+    expect(detail.contractFields).toMatchObject({ runtime: 'node@22', start: 'node index.js' })
+    ee.calls = []
+    const out = await detailActions.deploy(
+      event({
+        params: { name: 'gs' },
+        request: formRequest({
+          useForm: 'on',
+          runtime: 'node@22',
+          start: 'node server/main.js',
+          health: '/',
+        }),
+      }),
+    )
+    expect(out).toMatchObject({ ok: true })
+    const created = ee.calls.find((c) => c.verb === 'createApp')!.input as {
+      contract: { start: string[] }
+    }
+    expect(created.contract.start).toEqual(['node', 'server/main.js'])
+  })
+
   it('env set from the page never returns the value', async () => {
     await setup()
     await actions

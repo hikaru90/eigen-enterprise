@@ -45,3 +45,81 @@ export async function fetchSource(sys: System, i: FetchInput, keys?: Pick<Secret
   }
   return (await mustRun(sys, 'git', ['-C', mirror, 'rev-parse', `refs/remotes/origin/${i.ref}`])).trim()
 }
+
+/**
+ * Bounded reads of a mirror at a pinned rev (for the dashboard's build-form
+ * suggestion): a file list and single text files. Private repos are only
+ * readable here, since the deploy keys live in ee. Never the network.
+ */
+export class SourceReadError extends Error {
+  constructor(
+    readonly status: 400 | 404 | 413 | 415,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
+export const TREE_MAX_DEPTH = 4
+export const TREE_MAX_ENTRIES = 2000
+export const FILE_MAX_BYTES = 64 * 1024
+
+export type TreeEntry = { path: string; type: 'blob' | 'tree'; size: number | null }
+
+async function mirrorPath(sys: System, name: string): Promise<string> {
+  const mirror = `${PATHS.company}/sources/${name}.git`
+  if (!(await sys.exists(mirror))) throw new SourceReadError(404, `no mirror ${name}`)
+  return mirror
+}
+
+/** One `ls-tree --long` line: "<mode> <type> <sha> <size>\t<path>". */
+function parseLong(line: string): { mode: string; type: string; size: number | null; path: string } | null {
+  const tab = line.indexOf('\t')
+  if (tab < 0) return null
+  const [mode, type, , size] = line.slice(0, tab).trim().split(/\s+/)
+  if (!mode || !type) return null
+  return { mode, type, size: size === undefined || size === '-' ? null : Number(size), path: line.slice(tab + 1) }
+}
+
+export async function readTree(sys: System, name: string, rev: string, depth: number): Promise<{ entries: TreeEntry[]; truncated: boolean }> {
+  const mirror = await mirrorPath(sys, name)
+  const out = await mustRun(sys, 'git', ['-C', mirror, 'ls-tree', '-r', '-t', '--long', '--full-tree', rev])
+  const entries: TreeEntry[] = []
+  let truncated = false
+  for (const line of out.split('\n')) {
+    const e = parseLong(line)
+    if (!e || (e.type !== 'blob' && e.type !== 'tree')) continue
+    if (e.path.split('/').length > depth) continue
+    if (entries.length >= TREE_MAX_ENTRIES) {
+      truncated = true
+      break
+    }
+    entries.push({ path: e.path, type: e.type, size: e.type === 'blob' ? e.size : null })
+  }
+  return { entries, truncated }
+}
+
+/** Repo-relative, no traversal, no .git, no absolute or backslash paths. */
+export function safeRepoPath(path: string): string {
+  const segments = path.split('/')
+  const bad =
+    path.length === 0 ||
+    path.length > 400 ||
+    path.includes('\\') ||
+    path.includes('\0') ||
+    segments.some((s) => s === '' || s === '.' || s === '..' || s === '.git')
+  if (bad) throw new SourceReadError(400, `path must be a plain path inside the repo, got ${JSON.stringify(path)}`)
+  return path
+}
+
+export async function readRepoFile(sys: System, name: string, rev: string, rawPath: string): Promise<{ path: string; size: number; content: string }> {
+  const path = safeRepoPath(rawPath)
+  const mirror = await mirrorPath(sys, name)
+  const e = parseLong((await mustRun(sys, 'git', ['-C', mirror, 'ls-tree', '--long', rev, '--', path])).split('\n')[0] ?? '')
+  if (!e || e.path !== path) throw new SourceReadError(404, `no file ${path} at ${rev.slice(0, 12)}`)
+  if (e.type !== 'blob' || e.mode === '120000') throw new SourceReadError(415, `${path} is not a regular file`)
+  if (e.size === null || e.size > FILE_MAX_BYTES) throw new SourceReadError(413, `${path} is larger than ${FILE_MAX_BYTES} bytes`)
+  const content = await mustRun(sys, 'git', ['-C', mirror, 'cat-file', 'blob', `${rev}:${path}`])
+  if (content.includes('\0')) throw new SourceReadError(415, `${path} is not a text file`)
+  return { path, size: e.size, content }
+}

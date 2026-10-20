@@ -3,6 +3,7 @@ export const APP_TOOL_NAMES = [
   'website.app_list',
   'website.app_get',
   'website.app_logs',
+  'website.app_suggest_contract',
   'website.app_deploy',
   'website.app_env_set',
   'website.app_remove',

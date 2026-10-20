@@ -77,6 +77,17 @@ function argv(label: string, raw: string): string[] {
   return raw.split(/\s+/).filter(Boolean)
 }
 
+/** Why ee could not run this command as argv, in plain words; null when it can. */
+export function commandProblem(label: string, raw: string): string | null {
+  try {
+    argv(label, raw)
+    return null
+  } catch (err) {
+    if (err instanceof AppUserError) return err.message
+    throw err
+  }
+}
+
 export function contractFromForm(input: ContractForm): AppContract {
   const f = contractFormSchema.parse(input)
   const steps: Array<[string, string]> = [

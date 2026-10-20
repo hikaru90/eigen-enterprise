@@ -3,6 +3,12 @@ import type { Actions, PageServerLoad } from './$types'
 import { error, fail, redirect } from '@sveltejs/kit'
 import { requireAdmin } from '$lib/server/auth/require-admin'
 import { logAppFailure, ownerRun, plainAppMessage } from '$lib/server/website/owner-run'
+import {
+  contractFormSchema,
+  type AppContract,
+  type Catalog,
+} from '../../../../../../../modules/website/apps/contract'
+import { contractFields, formContract } from '../form'
 
 /**
  * /m/website/apps/[name]: one service — Deploy now, deploy history (ee's
@@ -14,6 +20,8 @@ export type AppDetail = ServiceView & {
   env: string[]
   domains: string[]
   contractSource: 'repo' | 'form'
+  contract: AppContract | null
+  catalog: Catalog
   history: Array<{ time: string; type: string; message: string }>
 }
 
@@ -34,7 +42,13 @@ export const load: PageServerLoad = async (event) => {
   } catch (err) {
     logsError = plainAppMessage(err)
   }
-  return { app, logs, logsError }
+  return {
+    app,
+    logs,
+    logsError,
+    nodeVersions: app.catalog.runtimes.node,
+    contractFields: contractFields(app.contract),
+  }
 }
 
 const field = (f: FormData, name: string) => String(f.get(name) ?? '').trim()
@@ -42,8 +56,22 @@ const field = (f: FormData, name: string) => String(f.get(name) ?? '').trim()
 export const actions: Actions = {
   deploy: async (event) => {
     const user = await requireAdmin(event.locals.user)
+    // The build form, when the owner opened it to edit the contract for this redeploy.
+    const contract = formContract(await event.request.formData())
+    if (contract) {
+      const checked = contractFormSchema.safeParse(contract)
+      if (!checked.success) {
+        return fail(400, {
+          action: 'deploy' as const,
+          error: checked.error.issues[0]?.message ?? 'Check the build form.',
+        })
+      }
+    }
     try {
-      await ownerRun(user, 'website.app_deploy', { name: event.params.name })
+      await ownerRun(user, 'website.app_deploy', {
+        name: event.params.name,
+        ...(contract ? { contract } : {}),
+      })
       return { action: 'deploy' as const, ok: true, message: 'Deployed. The new version is live.' }
     } catch (err) {
       logAppFailure('website.app_deploy', err)

@@ -44,6 +44,25 @@ export class FakeEe implements AppsEe {
     this.calls.push({ verb: 'sourceContract', input: i })
     return this.repoContract
   }
+  /** Files in the mirror at FAKE_REV (sourceTree / sourceFile). */
+  tree: Record<string, string> = {}
+  async sourceTree(i: { name: string; rev: string; depth: number }) {
+    this.calls.push({ verb: 'sourceTree', input: i })
+    return {
+      entries: Object.entries(this.tree).map(([path, c]) => ({
+        path,
+        type: 'blob' as const,
+        size: c.length,
+      })),
+      truncated: false,
+    }
+  }
+  async sourceFile(i: { name: string; rev: string; path: string }) {
+    this.calls.push({ verb: 'sourceFile', input: i })
+    const content = this.tree[i.path]
+    if (content === undefined) throw new Error(`FakeEe: no file ${i.path}`)
+    return { path: i.path, size: content.length, content }
+  }
   async createApp(i: Parameters<AppsEe['createApp']>[0]) {
     this.calls.push({ verb: 'createApp', input: i })
     const release = `${i.source.rev.slice(0, 16)}${i.contract ? '-abcd1234' : ''}`

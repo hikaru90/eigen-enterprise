@@ -2,6 +2,7 @@
   import type { ActionData, PageData } from './$types'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
+  import AppBuildForm from '$lib/components/app-build-form.svelte'
   import AppStatusDot from '$lib/components/app-status-dot.svelte'
 
   let { data, form }: { data: PageData; form: ActionData } = $props()
@@ -73,6 +74,33 @@
     <p class="mt-3 text-sm text-red-600" role="alert">{form.error}</p>
   {:else if form && 'message' in form}
     <p class="mt-3 text-sm text-foreground/70" role="status">{form.message}</p>
+  {/if}
+
+  {#if data.app.contractSource === 'form'}
+    <section class="mt-8 flex flex-col gap-3" aria-label="Build settings">
+      <h2 class="text-base font-semibold">Build settings</h2>
+      <form
+        method="POST"
+        action="?/deploy"
+        class="flex flex-col gap-3"
+        use:enhance={track('deploy')}
+      >
+        <AppBuildForm
+          nodeVersions={data.nodeVersions}
+          initial={data.contractFields ?? undefined}
+          target={{ name: data.app.name }}
+        />
+        <div>
+          <button
+            type="submit"
+            disabled={busy !== null}
+            class="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-60"
+          >
+            Deploy with these settings
+          </button>
+        </div>
+      </form>
+    </section>
   {/if}
 
   <section class="mt-8 flex flex-col gap-2" aria-label="Domains">

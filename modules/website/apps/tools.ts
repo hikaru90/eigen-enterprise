@@ -21,6 +21,7 @@ import { AppUserError, contractFormSchema, gapError, resolveContract } from './c
 import { fetchInputFor, mirrorName } from './fetch-auth'
 import { appHost } from './host'
 import { defaultServiceStore, type Service, type ServiceKind, type ServiceStore } from './store'
+import { suggestContract, type ContractSuggestion, type SuggestChatFn } from './suggest'
 
 /**
  * Website → Apps (plan/phase-platform.md step 3): a connected repo + branch
@@ -45,6 +46,8 @@ export type AppsEe = Pick<
   | 'catalog'
   | 'fetchSource'
   | 'sourceContract'
+  | 'sourceTree'
+  | 'sourceFile'
   | 'createApp'
   | 'addDomain'
   | 'setSecret'
@@ -60,6 +63,8 @@ export type AppToolDeps = {
   /** A fresh GitHub App installation token (never stored). */
   mintToken?: (installationId: number) => Promise<string>
   now?: () => Date
+  /** The gateway call behind website.app_suggest_contract (tests inject a fake). */
+  chat?: SuggestChatFn
 }
 
 /** Agent-callable tools that change the server: each MUST be approval-gated. */
@@ -110,6 +115,14 @@ const deployInput = z
   })
   .strict()
 const nameInput = z.object({ name: NAME }).strict()
+const suggestInput = z
+  .object({
+    /** The app name the mirror is keyed on (a redeploy: the app's own repo + branch). */
+    name: NAME,
+    repo: REPO.optional(),
+    branch: BRANCH.optional(),
+  })
+  .strict()
 const envSetInput = z
   .object({ name: NAME, key: ENV_KEY, value: z.string().min(1).max(16384) })
   .strict()
@@ -430,6 +443,7 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
           domains: status.routes.filter((r) => r.workload === name).map((r) => r.host),
           contractSource: w?.contract ? 'form' : 'repo',
           contract: w?.contract ?? null,
+          catalog: await viaEe('read the catalog', () => ee.catalog()),
           history: events
             .filter(
               (e) =>
@@ -463,6 +477,36 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
           }
           return viaEe(`read the logs of ${name}`, () => Promise.reject(err))
         }
+      },
+    },
+    {
+      name: 'website.app_suggest_contract',
+      module: WEBSITE_MODULE_ID,
+      summary:
+        "Let AI fill in the build form: reads the repo's README and manifests through the server's mirror and proposes runtime (from the catalog), install/build/start commands, health path and folder to serve, with reasons and warnings. Changes nothing (owner only).",
+      auditClass: 'read',
+      inputSchema: suggestInput,
+      permission: { roles: ['admin'] },
+      handler: async (ctx, input): Promise<ContractSuggestion> => {
+        requireHuman(ctx, 'website.app_suggest_contract')
+        const i = suggestInput.parse(input)
+        const existing = await services.get(i.name)
+        const repoName = i.repo ?? existing?.repoFullName
+        const branch = i.branch ?? existing?.branch
+        if (!repoName || !branch) {
+          throw new AppUserError('Pick the repo and branch first, then let AI fill this out.')
+        }
+        const repo = await connectedRepo(repoName, branch)
+        const fetchInput = await fetchInputFor(repo, i.name, mintToken)
+        const fetched = await viaEe(`fetch ${repo.fullName} (${branch}) from GitHub`, () =>
+          ee.fetchSource(fetchInput),
+        )
+        return viaEe('read the repo', () =>
+          suggestContract(
+            { ee, ...(deps.chat ? { chat: deps.chat } : {}) },
+            { userId: ctx.principal.id, mirror: mirrorName(i.name), rev: fetched.rev },
+          ),
+        )
       },
     },
     {

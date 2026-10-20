@@ -1,4 +1,19 @@
-import type { ContractForm } from '../../../../../../modules/website/apps/contract'
+import type { AppContract, ContractForm } from '../../../../../../modules/website/apps/contract'
+
+/** A stored contract as build-form values (argv joined back with spaces), for a redeploy. */
+export function contractFields(c: AppContract | null) {
+  if (!c) return null
+  const words = (a: string[] | undefined) => (a ?? []).join(' ')
+  return {
+    runtime: c.runtime === 'node' ? `node@${c.node ?? ''}` : 'static',
+    install: words(c.build[0]),
+    build: words(c.build[1]),
+    start: words(c.start),
+    portEnv: c.portEnv ?? '',
+    health: c.health,
+    staticDir: c.staticDir ?? '',
+  }
+}
 
 const field = (f: FormData, name: string) => String(f.get(name) ?? '').trim()
 const optional = (v: string) => (v === '' ? undefined : v)

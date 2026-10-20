@@ -74,6 +74,7 @@ export default defineConfig({
       'src/lib/components/module-card.svelte.spec.ts',
       'src/lib/components/module-settings-section.svelte.spec.ts',
       'src/lib/components/github-connect.svelte.spec.ts',
+      'src/lib/components/app-build-form.svelte.spec.ts',
       'modules/brand/water-flow.svelte.spec.ts',
     ],
     exclude: ['src/routes/demo/playwright/**/*.ts', '**/*.e2e.ts'],
