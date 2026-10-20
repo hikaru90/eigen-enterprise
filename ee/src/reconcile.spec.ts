@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { DesiredState } from './company-repo.ts'
 import { emptyJournal } from './journal.ts'
-import { reconcile, type SecretAccess } from './reconcile.ts'
+import { prepareRelease, reconcile, type SecretAccess } from './reconcile.ts'
 import type { SecretMap } from './secrets.ts'
 import { workloadSchema } from './spec.ts'
 import type { RunResult, System } from './system.ts'
@@ -118,6 +118,22 @@ function box(...shas: string[]) {
 
 const A = 'a'.repeat(64)
 const B = 'b'.repeat(64)
+
+describe('prepareRelease', () => {
+  it('two processes unpacking the same release never share a temporary directory', async () => {
+    const sys = box(A)
+    const tarTargets: string[] = []
+    const run = sys.run.bind(sys)
+    sys.run = async (cmd, args) => {
+      if (cmd === 'tar') tarTargets.push(args[3]!)
+      return run(cmd, args)
+    }
+    const workload = desired(A).workloads[0]!
+    const [one, two] = await Promise.all([prepareRelease(sys, workload), prepareRelease(sys, workload)])
+    expect(one.id).toBe(two.id)
+    expect(new Set(tarTargets).size).toBe(tarTargets.length)
+  })
+})
 
 describe('reconcile', () => {
   it('first deploy: health-gated, then the edge points at it', async () => {

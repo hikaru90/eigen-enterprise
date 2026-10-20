@@ -106,8 +106,9 @@ export async function prepareRelease(sys: System, w: Workload): Promise<Prepared
   if (await sys.exists(`${dir}/.ee-ready`)) {
     return { id, dir, contract: await readContract(sys, dir, w.name) }
   }
-  const tmp = `${dir}.partial`
-  await sys.remove(tmp)
+  // Own temp dir per unpack: the CLI's first deploy and the daemon's tick can
+  // prepare the same release at once; a shared .partial dir corrupts both.
+  const tmp = `${dir}.partial-${process.pid}-${randomUUID().slice(0, 8)}`
   await sys.mkdirp(tmp)
   if (w.source.kind === 'release') {
     const actual = await sys.sha256File(w.source.tarball)
@@ -124,6 +125,11 @@ export async function prepareRelease(sys: System, w: Workload): Promise<Prepared
   await sandboxedBuild(sys, w, tmp, contract)
   await mustRun(sys, 'chmod', ['-R', 'a+rX,go-w', tmp])
   await sys.writeFile(`${tmp}/.ee-ready`, `${id}\n`)
+  // Another unpack of the same release finished first: keep its copy.
+  if (await sys.exists(`${dir}/.ee-ready`)) {
+    await sys.remove(tmp)
+    return { id, dir, contract: await readContract(sys, dir, w.name) }
+  }
   await sys.remove(dir)
   await mustRun(sys, 'mv', [tmp, dir])
   return { id, dir, contract }
