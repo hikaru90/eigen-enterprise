@@ -1,7 +1,14 @@
 import type { ToolContext, ToolDescriptor } from './types'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { InMemoryApprovalStore, newApprovalRequest, StaticApprovalPolicy } from './approvals'
+import {
+  InMemoryApprovalModeStore,
+  InMemoryApprovalStore,
+  ModeAwareApprovalPolicy,
+  newApprovalRequest,
+  StaticApprovalPolicy,
+  type ApprovalMode,
+} from './approvals'
 
 function fakeTool(name: string): ToolDescriptor {
   return {
@@ -25,6 +32,49 @@ describe('StaticApprovalPolicy', () => {
     const policy = new StaticApprovalPolicy(new Set(['memory.wipe']))
     expect(policy.requiresApproval(fakeTool('memory.wipe'), ctx)).toBe(true)
     expect(policy.requiresApproval(fakeTool('memory.echo'), ctx)).toBe(false)
+  })
+})
+
+describe('ModeAwareApprovalPolicy', () => {
+  const gated = new Set(['email.send_mail', 'memory.note'])
+  const external = { ...fakeTool('email.send_mail'), approvalRisk: 'external' as const }
+  const internal = { ...fakeTool('memory.note'), approvalRisk: 'internal' as const }
+  const ungated = fakeTool('memory.echo')
+  const policy = (mode: ApprovalMode) =>
+    new ModeAwareApprovalPolicy(gated, new InMemoryApprovalModeStore(mode))
+
+  it('ask: exactly the gated list waits', async () => {
+    expect(await policy('ask').decide(external, ctx)).toBe('require')
+    expect(await policy('ask').decide(internal, ctx)).toBe('require')
+    expect(await policy('ask').decide(ungated, ctx)).toBe('pass')
+  })
+
+  it('reasonable: only a declared internal risk runs without approval', async () => {
+    expect(await policy('reasonable').decide(external, ctx)).toBe('require')
+    for (const risk of ['public', 'destructive'] as const) {
+      expect(await policy('reasonable').decide({ ...external, approvalRisk: risk }, ctx)).toBe('require')
+    }
+    expect(await policy('reasonable').decide(internal, ctx)).toBe('auto_approved')
+    expect(await policy('reasonable').decide(ungated, ctx)).toBe('pass')
+  })
+
+  it('allow_all: nothing waits; gated tools are auto-approved (recorded), others pass', async () => {
+    expect(await policy('allow_all').decide(external, ctx)).toBe('auto_approved')
+    expect(await policy('allow_all').decide(internal, ctx)).toBe('auto_approved')
+    expect(await policy('allow_all').decide(ungated, ctx)).toBe('pass')
+  })
+
+  it('reads the mode on every decision (owner changes take effect immediately)', async () => {
+    const store = new InMemoryApprovalModeStore('ask')
+    const p = new ModeAwareApprovalPolicy(gated, store)
+    expect(await p.decide(external, ctx)).toBe('require')
+    await store.set('allow_all', 'owner')
+    expect(await p.decide(external, ctx)).toBe('auto_approved')
+  })
+
+  it('a gated tool with no declared approvalRisk fails validation', () => {
+    expect(() => policy('ask').validateTool(fakeTool('email.send_mail'))).toThrow(/approvalRisk/)
+    expect(() => policy('ask').validateTool(ungated)).not.toThrow()
   })
 })
 

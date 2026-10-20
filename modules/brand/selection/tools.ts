@@ -193,6 +193,7 @@ export function createBrandSelectionTools(deps: BrandSelectionToolDeps = {}): To
       summary:
         'Activate a draft brand visual set — the approval-gated strategic go-live (V9). Guards: draft-only, cssVars must cover every required role. Activating retires the previously active set in the same operation; its tokens then apply globally to all user-facing surfaces. Requires an explicit approval decision (APPROVAL_REQUIRED_TOOLS).',
       auditClass: 'mutate',
+      approvalRisk: 'public',
       inputSchema: visualSetGetInput,
       permission: mutationPermission,
       handler: async (ctx, input) => {

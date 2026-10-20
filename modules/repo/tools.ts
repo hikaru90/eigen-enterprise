@@ -339,6 +339,7 @@ export function createRepoTools(deps: RepoToolDeps): ToolDescriptor[] {
       summary:
         'Land your worktree branch on the main repo: server-side verification gate first (vitest + typecheck must be green), then commit, merge, and cleanup. Owner approval required; on conflicts, stop and ask the owner.',
       auditClass: 'mutate',
+      approvalRisk: 'destructive',
       inputSchema: mergeInput,
       permission: { roles: ['admin', 'agent', 'owner'] },
       handler: async (ctx, input) => {

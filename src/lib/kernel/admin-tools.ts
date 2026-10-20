@@ -100,6 +100,7 @@ export function createAdminTools(deps: AdminToolDeps): ToolDescriptor[] {
       module: KERNEL_MODULE_ID,
       summary: 'Deactivate a registered module (fail closed for its tools).',
       auditClass: 'mutate',
+      approvalRisk: 'destructive',
       inputSchema: moduleIdInput,
       permission: { roles: ['admin'] },
       handler: async (_ctx, input) => {

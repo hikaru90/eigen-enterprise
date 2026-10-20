@@ -24,7 +24,7 @@ vi.mock('./brand/store', async (importOriginal) => {
   return { ...actual, defaultBrandStore: () => singleton }
 })
 
-import { InMemoryApprovalStore } from '$lib/kernel/approvals'
+import { InMemoryApprovalModeStore, InMemoryApprovalStore } from '$lib/kernel/approvals'
 import { InMemoryEventSink } from '$lib/kernel/events'
 import type { Brain } from '$lib/kernel/gateway'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
@@ -62,9 +62,43 @@ function makeInMemoryKernel() {
   const activations = new InMemoryActivationStore()
   const eventSink = new InMemoryEventSink()
   const approvalStore = new InMemoryApprovalStore()
-  const kernel = buildKernel({ activations, eventSink, approvalStore, vcsCommitter: null })
-  return { kernel, activations, eventSink, approvalStore }
+  const approvalMode = new InMemoryApprovalModeStore('ask')
+  const kernel = buildKernel({ activations, eventSink, approvalStore, approvalMode, vcsCommitter: null })
+  return { kernel, activations, eventSink, approvalStore, approvalMode }
 }
+
+describe('buildKernel wires the owner-chosen approval mode', () => {
+  it('uses ModeAwareApprovalPolicy over the kernel mode store: allow_all lets email.send_mail through, audited', async () => {
+    const { kernel, approvalStore, approvalMode, eventSink } = makeInMemoryKernel()
+    expect(kernel.approvalMode).toBe(approvalMode)
+    await kernel.activations.set('email', true)
+    await approvalMode.set('allow_all', 'owner')
+    const input = { to: 'a@b.co', subject: 's', html: 'h', text: 't' }
+    // the handler runs (company mail unconfigured in tests) instead of halting at approval
+    await expect(kernel.registry.execute('email.send_mail', input, ctx)).rejects.not.toMatchObject({
+      code: 'approval_required',
+    })
+    expect(await approvalStore.listPending()).toHaveLength(0)
+    expect(eventSink.events.map((e) => e.type)).toEqual(['approval.auto_approved', 'tool.executed'])
+  })
+
+  it('every gated tool registered by buildKernel declares its approvalRisk', () => {
+    const { kernel } = makeInMemoryKernel()
+    const declared = Object.fromEntries(
+      [...APPROVAL_REQUIRED_TOOLS]
+        .filter((name) => kernel.registry.get(name))
+        .map((name) => [name, kernel.registry.get(name)?.approvalRisk]),
+    )
+    expect(declared).toEqual({
+      'brand.set_activate': 'public',
+      'brand.visual_set_activate': 'public',
+      'email.send_mail': 'external',
+      'owlery.send_mail': 'external',
+      'repo.merge': 'destructive',
+      'website.publish_page': 'public',
+    })
+  })
+})
 
 describe('module activation is the agent\'s own fix (owner, 2026-10-20)', () => {
   it('the orchestrator activates a module with no approval; deactivating waits for the owner', async () => {

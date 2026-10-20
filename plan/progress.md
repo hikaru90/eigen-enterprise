@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-20 (4) — Owner-chosen approval mode (backend)
+
+**Shipped:** migration `0090_kernel_approval_mode` (one row, seeded `'ask'` in SQL); `ModeAwareApprovalPolicy` replaces `StaticApprovalPolicy` in `buildKernel`; `approvalRisk` on `ToolDescriptor`; `GET/PUT /api/approvals/mode`. The approve/deny endpoint and the chat UI belong to another workstream. **Next:** the UI selector under the chat input.
+
+**Decision log (architecture impact)**
+- Approval mode is company-wide: `ask` (gated list waits, as before), `reasonable` (a gated tool waits unless its DECLARED `approvalRisk` is `internal`), `allow_all` (nothing waits; gated calls emit `approval.auto_approved` plus the normal `tool.executed` audit). The mode is read on every call. The gated set is still `APPROVAL_REQUIRED_TOOLS`. Registering a gated tool with no `approvalRisk` throws at load time. `ApprovalPolicy` now returns `decide() → 'require' | 'pass' | 'auto_approved'`. Mode changes emit `approval.mode_changed`.
+
 ## 2026-10-20 (3) — FIXED + VERIFIED LIVE: the website founding journey advances again
 
 **Root cause (from the box's chat_message, journey row and logs):** turns at 22:44 and 23:07 captured step 2 in the agent's reply, then threw ("module website is not active", then "unknown tool") BEFORE the journey saved, so the journey stayed on step 2 while durable's history held the capture. The boundary fix (2) now saves the journey even when a step fails. A second blocker turned up: the journey's own module activation waited for owner approval, because kernel.module_activate was on APPROVAL_REQUIRED_TOOLS. The pending artifact was also recorded under website.create_page, so the label was misleading.

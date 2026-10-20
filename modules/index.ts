@@ -1,7 +1,12 @@
-import { StaticApprovalPolicy, type ApprovalStore } from '$lib/kernel/approvals'
+import {
+  ModeAwareApprovalPolicy,
+  type ApprovalModeStore,
+  type ApprovalStore,
+} from '$lib/kernel/approvals'
 import {
   DbActivationStore,
   DbAgentSessionLog,
+  DbApprovalModeStore,
   DbApprovalStore,
   DbEventSink,
   DbPrincipalStore,
@@ -97,6 +102,8 @@ export type BootstrapKernelOptions = {
   activations?: ActivationStore
   eventSink?: EventSink
   approvalStore?: ApprovalStore
+  /** Overrides the DB-backed company approval mode (tests inject in-memory). */
+  approvalMode?: ApprovalModeStore
   principals?: PrincipalStore
   /** Overrides the DB-backed agent session log (tests inject in-memory). */
   sessionLog?: AgentSessionLog
@@ -132,6 +139,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
   const activations = options.activations ?? new DbActivationStore(db)
   const eventSink = options.eventSink ?? new DbEventSink(db)
   const approvalStore = options.approvalStore ?? new DbApprovalStore(db)
+  const approvalMode = options.approvalMode ?? new DbApprovalModeStore(db)
   const principals = options.principals ?? new DbPrincipalStore(db)
   const sessionLog = options.sessionLog ?? new DbAgentSessionLog(db)
   const vcsCommitter = options.vcsCommitter === undefined ? new GitCommitter() : options.vcsCommitter
@@ -142,7 +150,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
   const registry = new KernelRegistry({
     eventSink,
     activationStore: activations,
-    approvalPolicy: new StaticApprovalPolicy(APPROVAL_REQUIRED_TOOLS),
+    approvalPolicy: new ModeAwareApprovalPolicy(APPROVAL_REQUIRED_TOOLS, approvalMode),
     approvalStore,
     vcsCommitter,
   })
@@ -170,6 +178,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     activations,
     principals,
     approvals: approvalStore,
+    approvalMode,
     eventSink,
     sessionLog,
   }

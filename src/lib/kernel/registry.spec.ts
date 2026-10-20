@@ -2,7 +2,12 @@ import type { ToolContext, ToolDescriptor } from './types'
 import type { VcsCommitter } from './vcs'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { InMemoryApprovalStore, StaticApprovalPolicy } from './approvals'
+import {
+  InMemoryApprovalModeStore,
+  InMemoryApprovalStore,
+  ModeAwareApprovalPolicy,
+  StaticApprovalPolicy,
+} from './approvals'
 import { KernelError } from './errors'
 import { InMemoryEventSink } from './events'
 import { InMemoryActivationStore } from './modules'
@@ -418,5 +423,57 @@ describe('KernelRegistry.execute output schema', () => {
     registry.register(makeTool({ handler: async () => sentinel }))
 
     await expect(registry.execute('memory.echo', { value: 'x' }, makeCtx())).resolves.toBe(sentinel)
+  })
+})
+
+describe('KernelRegistry with the owner-chosen approval mode', () => {
+  const toolName = 'email.send_mail'
+  const ctx = makeCtx()
+
+  function setup(mode: 'ask' | 'reasonable' | 'allow_all') {
+    const sink = new InMemoryEventSink()
+    const store = new InMemoryApprovalStore()
+    const policy = new ModeAwareApprovalPolicy(new Set([toolName]), new InMemoryApprovalModeStore(mode))
+    const registry = new KernelRegistry({ eventSink: sink, approvalPolicy: policy, approvalStore: store })
+    let calls = 0
+    registry.register(
+      makeTool({
+        name: toolName,
+        module: 'email',
+        auditClass: 'external',
+        approvalRisk: 'external',
+        inputSchema: z.object({}),
+        handler: async () => ++calls,
+      }),
+    )
+    return { registry, sink, store, calls: () => calls }
+  }
+
+  it('allow_all: nothing waits, the call is audited and an auto-approved event is recorded', async () => {
+    const { registry, sink, store, calls } = setup('allow_all')
+    await registry.execute(toolName, {}, ctx)
+    expect(calls()).toBe(1)
+    expect(await store.listPending()).toHaveLength(0)
+    expect(sink.events.map((e) => e.type)).toEqual(['approval.auto_approved', 'tool.executed'])
+    expect(sink.events[0].payload).toMatchObject({ tool: toolName, approvalRisk: 'external' })
+  })
+
+  it('ask and reasonable: an external tool waits for approval', async () => {
+    for (const mode of ['ask', 'reasonable'] as const) {
+      const { registry, store, calls } = setup(mode)
+      await expect(registry.execute(toolName, {}, ctx)).rejects.toMatchObject({
+        code: 'approval_required',
+      })
+      expect(calls()).toBe(0)
+      expect(await store.listPending()).toHaveLength(1)
+    }
+  })
+
+  it('registering a gated tool without approvalRisk fails at load time', () => {
+    const policy = new ModeAwareApprovalPolicy(new Set([toolName]), new InMemoryApprovalModeStore('ask'))
+    const registry = new KernelRegistry({ approvalPolicy: policy })
+    expect(() =>
+      registry.register(makeTool({ name: toolName, module: 'email', auditClass: 'external' })),
+    ).toThrow(/declares no approvalRisk/)
   })
 })

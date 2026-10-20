@@ -75,6 +75,7 @@ export class KernelRegistry {
     if (this.tools.has(descriptor.name)) {
       throw new KernelError('duplicate_tool', `tool already registered: ${descriptor.name}`)
     }
+    this.approvalPolicy.validateTool?.(descriptor)
     this.tools.set(descriptor.name, descriptor)
   }
 
@@ -124,7 +125,17 @@ export class KernelRegistry {
     }
 
     // (c) approval gate: everything non-read (mutate + external), per injected policy and existing decisions.
-    if (descriptor.auditClass !== 'read' && this.approvalPolicy.requiresApproval(descriptor, ctx)) {
+    const decision =
+      descriptor.auditClass === 'read' ? 'pass' : await this.approvalPolicy.decide(descriptor, ctx)
+    if (decision === 'auto_approved') {
+      await emitKernelEvent(this.eventSink, {
+        type: 'approval.auto_approved',
+        principalId: ctx.principal.id,
+        source: moduleSource(descriptor.module),
+        payload: { tool: name, approvalRisk: descriptor.approvalRisk },
+      })
+    }
+    if (decision === 'require') {
       const latest = await this.approvalStore.latestFor(name, ctx.principal.id)
       if (latest?.status === 'pending') {
         throw new KernelError('approval_required', `tool ${name} is awaiting approval`)

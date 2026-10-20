@@ -38,6 +38,7 @@ export function createOwleryTools(deps: OwleryToolDeps = {}): ToolDescriptor[] {
       module: 'owlery',
       summary: "Send one email from the company's sender address. Needs the owner's approval.",
       auditClass: 'mutate',
+      approvalRisk: 'external',
       inputSchema: sendMailInput,
       permission: { roles: ['admin', 'agent'] },
       handler: async (_ctx, input) => service().send(sendMailInput.parse(input)),

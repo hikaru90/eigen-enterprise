@@ -4,6 +4,14 @@ export type PrincipalKind = 'human' | 'agent' | 'service'
 
 export type AuditClass = 'read' | 'mutate' | 'external'
 
+/**
+ * Declared approval risk of a tool (owner-chosen approval mode, "reasonable"):
+ * internal = stays inside the company; public = visible to the world;
+ * external = reaches a third party; destructive = removes capability or lands
+ * irreversible changes. Declared per descriptor — never inferred from names.
+ */
+export type ApprovalRisk = 'internal' | 'public' | 'external' | 'destructive'
+
 export type ToolContext = {
   principal: {
     id: string
@@ -27,5 +35,7 @@ export type ToolDescriptor = {
     roles: string[]
   }
   auditClass: AuditClass
+  /** Required for every tool the approval policy gates (load-time error otherwise). */
+  approvalRisk?: ApprovalRisk
   handler: (ctx: ToolContext, input: unknown) => Promise<unknown>
 }

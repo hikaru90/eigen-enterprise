@@ -79,6 +79,7 @@ export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[]
       summary:
         'Flip the visibility of one website content object between public and private. Fails loud when the slug is unknown.',
       auditClass: 'mutate',
+      approvalRisk: 'public',
       inputSchema: publishPageInput,
       permission: { roles: ['admin', 'agent'] },
       handler: async (_ctx, input) => {

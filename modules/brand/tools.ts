@@ -130,6 +130,7 @@ export function createBrandTools(deps: BrandToolDeps = {}): ToolDescriptor[] {
       summary:
         'Activate a draft guideline set (one active per locale). Guards: CARE-complete context, >=2 voice examples incl. >=1 good and >=1 bad (G2). Approval-gated.',
       auditClass: 'mutate',
+      approvalRisk: 'public',
       inputSchema: setIdInput,
       permission: mutationPermission,
       handler: async (ctx, input) => {

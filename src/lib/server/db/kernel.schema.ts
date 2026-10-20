@@ -71,3 +71,11 @@ export const kernelAgentSessionEvents = pgTable(
   },
   (table) => [index('kernel_agent_session_events_session_idx').on(table.sessionId, table.id)],
 )
+
+/** Company-wide approval mode (migration 0090): single row id='company', seeded 'ask'. */
+export const kernelApprovalMode = pgTable('kernel_approval_mode', {
+  id: text('id').primaryKey().default('company'),
+  mode: text('mode', { enum: ['ask', 'reasonable', 'allow_all'] }).notNull(),
+  updatedBy: text('updated_by').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})

@@ -1,4 +1,3 @@
-import type { ApprovalRequest, ApprovalStatus, ApprovalStore } from './approvals'
 import type { KernelEvent, EventSink } from './events'
 import type { ActivationStore } from './modules'
 import type { Principal, PrincipalStore } from './principals'
@@ -7,11 +6,20 @@ import { and, asc, desc, eq } from 'drizzle-orm'
 import type { AppDatabase } from '$lib/server/db/context'
 import {
   kernelAgentSessionEvents,
+  kernelApprovalMode,
   kernelApprovals,
   kernelEvents,
   kernelModuleActivations,
   kernelPrincipals,
 } from '$lib/server/db/kernel.schema'
+import {
+  isApprovalMode,
+  type ApprovalMode,
+  type ApprovalModeStore,
+  type ApprovalRequest,
+  type ApprovalStatus,
+  type ApprovalStore,
+} from './approvals'
 
 /**
  * DB handle for the kernel stores. Either an `AppDatabase` directly (tests
@@ -260,5 +268,33 @@ export class DbAgentSessionLog implements AgentSessionLog {
       kind: row.kind,
       payload: row.payload,
     }))
+  }
+}
+
+/** The company approval mode row (seeded by migration 0090). A missing or invalid row is an error. */
+export class DbApprovalModeStore implements ApprovalModeStore {
+  constructor(private readonly db: DbHandle) {}
+
+  async get(): Promise<ApprovalMode> {
+    const rows = await (await resolveDb(this.db))
+      .select({ mode: kernelApprovalMode.mode })
+      .from(kernelApprovalMode)
+      .where(eq(kernelApprovalMode.id, 'company'))
+      .limit(1)
+    const mode = rows[0]?.mode
+    if (!isApprovalMode(mode)) {
+      throw new Error('kernel_approval_mode row missing or invalid; run migration 0090')
+    }
+    return mode
+  }
+
+  async set(mode: ApprovalMode, updatedBy: string): Promise<ApprovalMode> {
+    const rows = await (await resolveDb(this.db))
+      .update(kernelApprovalMode)
+      .set({ mode, updatedBy, updatedAt: new Date() })
+      .where(eq(kernelApprovalMode.id, 'company'))
+      .returning({ mode: kernelApprovalMode.mode })
+    if (!rows[0]) throw new Error('kernel_approval_mode row missing; run migration 0090')
+    return rows[0].mode
   }
 }

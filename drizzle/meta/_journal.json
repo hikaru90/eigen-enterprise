@@ -631,6 +631,13 @@
       "when": 1760200000012,
       "tag": "0089_provider_orchestrator_engine",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1760200000013,
+      "tag": "0090_kernel_approval_mode",
+      "breakpoints": true
     }
   ]
 }
