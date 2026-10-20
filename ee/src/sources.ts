@@ -16,7 +16,10 @@ const SSH_URL = /^git@github\.com:([A-Za-z0-9-]+\/[A-Za-z0-9_.-]+)\.git$/
 
 export async function fetchSource(sys: System, i: FetchInput, keys?: Pick<SecretStore, 'all'>): Promise<string> {
   const mirror = `${PATHS.company}/sources/${i.name}.git`
-  const fetchArgs = ['-C', mirror, 'fetch', '--quiet', '--prune', '--no-tags', i.url, `+${i.ref}:refs/remotes/origin/${i.ref}`]
+  // No --prune: with one explicit refspec and a URL (not a named remote), git
+  // prunes the very ref it fetches on every second run, leaving the mirror
+  // without the branch (deploys failed "unknown revision" every other time).
+  const fetchArgs = ['-C', mirror, 'fetch', '--quiet', '--no-tags', i.url, `+${i.ref}:refs/remotes/origin/${i.ref}`]
 
   let run: () => Promise<RunResult>
   if (i.deployKeyId !== undefined) {

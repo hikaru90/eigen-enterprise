@@ -106,6 +106,10 @@ export class CompanyRepo {
     }
     await this.sys.writeFile(`${this.dir}/routes.json`, JSON.stringify(routes, null, 2) + '\n', 0o600)
     await this.sys.writeFile(`${this.dir}/settings.json`, JSON.stringify(settings, null, 2) + '\n', 0o600)
+    // Git mirrors (sources/) live beside the desired state, never in it: a
+    // committed mirror bloats history and its refs get rewritten under ee.
+    await this.sys.writeFile(`${this.dir}/.gitignore`, 'sources/\n', 0o600)
+    await this.git(['rm', '-q', '-r', '--cached', '--ignore-unmatch', 'sources'])
     await this.git(['add', '-A'])
     const status = await this.git(['status', '--porcelain'])
     if (status.trim() === '') return (await this.head()) ?? ''
