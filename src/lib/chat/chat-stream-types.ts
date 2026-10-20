@@ -16,7 +16,7 @@ export type ChatStreamEvent =
    */
   | { type: 'message_delta'; content: string }
   | { type: 'tool.preview'; tool: string; inputSummary: string | null }
-  | { type: 'approval.required'; tool: string }
+  | { type: 'approval.required'; tool: string; approvalId: string }
   | {
       type: 'done'
       response: string

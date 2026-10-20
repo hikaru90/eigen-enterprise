@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { loadCurrentConversation } from './current-conversation'
+import { loadApprovalStatuses, loadCurrentConversation } from './current-conversation'
 
 /** Minimal drizzle-shaped fake: each select() resolves the next queued result. */
 function fakeDb(results: unknown[][]) {
@@ -42,5 +42,17 @@ describe('loadCurrentConversation', () => {
       sessionId: 's-1',
       messages: rows,
     })
+  })
+
+  it('looks up the current kernel status of the approval cards in the transcript', async () => {
+    const db = fakeDb([[{ id: 'a1', status: 'pending' }, { id: 'a2', status: 'approved' }]])
+    expect(await loadApprovalStatuses(db as never, ['a1', 'a2', 'a3'])).toEqual({
+      a1: 'pending',
+      a2: 'approved',
+    })
+    // No cards → no query.
+    const empty = fakeDb([])
+    expect(await loadApprovalStatuses(empty as never, [])).toEqual({})
+    expect(empty.select).not.toHaveBeenCalled()
   })
 })

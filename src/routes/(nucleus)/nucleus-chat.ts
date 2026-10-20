@@ -1,3 +1,4 @@
+import { approvalActionLabel } from '$lib/chat/approval-copy'
 import { toolLabel } from '$lib/chat/chat-stream-types'
 import type { ChatProgressEvent } from '$lib/chat/consume-chat-ndjson'
 import type { PersistedChatMessage } from '$lib/chat/normalize-messages'
@@ -22,9 +23,20 @@ export type NucleusToolPreviewTurn = {
   inputSummary: string | null
 }
 
+/**
+ * Card status: the kernel request's own status, or 'unavailable' when the
+ * page cannot decide it (no id saved with the card, or the request is gone).
+ */
+export type ApprovalCardStatus = 'pending' | 'approved' | 'denied' | 'unavailable'
+
 export type NucleusApprovalTurn = {
   role: 'approval'
   tool: string
+  /** The kernel approval request this card decides (null: cannot be decided here). */
+  approvalId: string | null
+  status: ApprovalCardStatus
+  /** The gated action in plain words. */
+  action: string
 }
 
 export type NucleusTurn =
@@ -66,9 +78,48 @@ export function toolPreviewTurn(tool: string, inputSummary: string | null): Nucl
   return { role: 'tool_preview', tool, inputSummary }
 }
 
-/** Distinct pending-approval card — the action is queued, not executed. */
-export function approvalRequiredTurn(tool: string): NucleusApprovalTurn {
-  return { role: 'approval', tool }
+export { approvalActionLabel }
+
+/** Approval card — the action is queued, not executed, until the owner decides. */
+export function approvalRequiredTurn(input: {
+  tool: string
+  approvalId: string | null
+  status: ApprovalCardStatus
+}): NucleusApprovalTurn {
+  return {
+    role: 'approval',
+    tool: input.tool,
+    approvalId: input.approvalId,
+    status: input.status,
+    action: approvalActionLabel(input.tool),
+  }
+}
+
+/** The entries with one approval card moved to its decided status. */
+export function withApprovalStatus<T extends NucleusChatEntry>(
+  entries: T[],
+  approvalId: string,
+  status: ApprovalCardStatus,
+): T[] {
+  return entries.map((e) =>
+    e.role === 'approval' && e.approvalId === approvalId ? { ...e, status } : e,
+  )
+}
+
+function persistedApprovalId(m: PersistedChatMessage): string | null {
+  const id = m.metadata?.approvalId
+  return typeof id === 'string' && id.length > 0 ? id : null
+}
+
+/** Approval request ids saved with the transcript's approval cards (page load looks up their status). */
+export function persistedApprovalIds(messages: PersistedChatMessage[]): string[] {
+  const ids: string[] = []
+  for (const m of messages) {
+    if (m.role !== 'assistant' || m.metadata?.variant !== 'approval_required') continue
+    const id = persistedApprovalId(m)
+    if (id) ids.push(id)
+  }
+  return ids
 }
 
 /**
@@ -78,7 +129,9 @@ export function approvalRequiredTurn(tool: string): NucleusApprovalTurn {
  */
 export function nucleusTurnForProgressEvent(event: ChatProgressEvent): NucleusTurn | null {
   if (event.type === 'tool.preview') return toolPreviewTurn(event.tool, event.inputSummary)
-  if (event.type === 'approval.required') return approvalRequiredTurn(event.tool)
+  if (event.type === 'approval.required') {
+    return approvalRequiredTurn({ tool: event.tool, approvalId: event.approvalId, status: 'pending' })
+  }
   return null
 }
 
@@ -87,7 +140,11 @@ export function nucleusTurnForProgressEvent(event: ChatProgressEvent): NucleusTu
  * the live view: user/assistant turns, tool previews and approval cards;
  * thinking and tool-call/result machinery stay hidden, as they do live.
  */
-export function nucleusTurnsFromPersisted(messages: PersistedChatMessage[]): NucleusTurn[] {
+export function nucleusTurnsFromPersisted(
+  messages: PersistedChatMessage[],
+  /** Current kernel status per approval id (from persistedApprovalIds). */
+  approvalStatuses: Record<string, 'pending' | 'approved' | 'denied'>,
+): NucleusTurn[] {
   const out: NucleusTurn[] = []
   for (const m of messages) {
     if (m.role === 'user') {
@@ -103,7 +160,9 @@ export function nucleusTurnsFromPersisted(messages: PersistedChatMessage[]): Nuc
     } else if (variant === 'tool_preview' && tool) {
       out.push(toolPreviewTurn(tool, m.content || null))
     } else if (variant === 'approval_required' && tool) {
-      out.push(approvalRequiredTurn(tool))
+      const approvalId = persistedApprovalId(m)
+      const status = approvalId ? (approvalStatuses[approvalId] ?? 'unavailable') : 'unavailable'
+      out.push(approvalRequiredTurn({ tool, approvalId, status }))
     }
   }
   return out

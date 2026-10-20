@@ -1,7 +1,7 @@
 import type { EngineContext, EngineToolListing, LoopEngine } from '../engine'
 import { KernelError } from '../errors'
 import { approvalPendingResult } from './builtin-json'
-import { toolErrorResult } from './tool-error'
+import { approvalIdFromError, toolErrorResult } from './tool-error'
 
 /**
  * The 'durable' loop engine (plan/phase-durable.md D6): the turn loop is
@@ -119,7 +119,11 @@ function bridgeExecute(
       return await ctx.executeTool(toolName, args)
     } catch (err) {
       if (err instanceof KernelError && err.code === 'approval_required') {
-        emitSurfaceEvent(ctx, { type: 'approval.required', tool: toolName })
+        emitSurfaceEvent(ctx, {
+          type: 'approval.required',
+          tool: toolName,
+          approvalId: approvalIdFromError(err),
+        })
         return approvalPendingResult(toolName)
       }
       return toolErrorResult(toolName, err)

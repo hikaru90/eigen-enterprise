@@ -453,7 +453,10 @@ describe('BuiltinJsonLoop — tool call path', () => {
 describe('BuiltinJsonLoop — approval-pending UX', () => {
   it('feeds a structured approval-pending tool result back so the cycle completes', async () => {
     const executeTool = vi.fn(async () => {
-      throw new KernelError('approval_required', 'tool testmod.mutate requires approval')
+      throw new KernelError('approval_required', 'tool testmod.mutate requires approval', {
+        approvalId: 'apr-1',
+        tool: 'testmod.mutate',
+      })
     })
     const fx = makeFixture({
       responses: [
@@ -717,7 +720,10 @@ describe('BuiltinJsonLoop — surface events', () => {
       ],
       listings: [listing('email.send_mail', 'summary of email.send_mail')],
       executeTool: async () => {
-        throw new KernelError('approval_required', 'tool email.send_mail requires approval')
+        throw new KernelError('approval_required', 'tool email.send_mail requires approval', {
+          approvalId: 'apr-9',
+          tool: 'email.send_mail',
+        })
       },
       surfaceEvent: () => {},
     })
@@ -725,7 +731,11 @@ describe('BuiltinJsonLoop — surface events', () => {
     const reply = await fx.engine.run('session-1', 'send it', fx.ctx)
 
     expect(reply).toContain('approval')
-    expect(fx.surfaceEvents).toContainEqual({ type: 'approval.required', tool: 'email.send_mail' })
+    expect(fx.surfaceEvents).toContainEqual({
+      type: 'approval.required',
+      tool: 'email.send_mail',
+      approvalId: 'apr-9',
+    })
     // Structured tool-result feedback still reaches the model.
     const feedback = fx.completeCalls[1].messages.at(-1)!.content
     expect(feedback).toContain('approval_pending')

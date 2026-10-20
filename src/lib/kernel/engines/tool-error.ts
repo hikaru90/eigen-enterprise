@@ -63,3 +63,15 @@ export function toolErrorResult(tool: string, err: unknown): ToolErrorResult {
     message: err instanceof Error ? err.message : String(err),
   }
 }
+
+/**
+ * The pending approval request id carried by an approval_required KernelError
+ * (set by the registry gate). Missing id is a broken invariant: fail loud.
+ */
+export function approvalIdFromError(err: KernelError): string {
+  const id = err.details?.approvalId
+  if (typeof id !== 'string' || id.length === 0) {
+    throw new Error(`approval_required error without an approvalId (${err.message})`, { cause: err })
+  }
+  return id
+}
