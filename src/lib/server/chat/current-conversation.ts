@@ -67,3 +67,18 @@ export async function loadApprovalStatuses(
     .where(inArray(kernelApprovals.id, approvalIds))
   return Object.fromEntries(rows.map((r) => [r.id, r.status]))
 }
+
+/**
+ * Pending kernel approval id per tool (newest wins). Cards saved before
+ * approval cards carried an id are linked by the kernel's own key (tool name).
+ */
+export async function loadPendingApprovalsByTool(
+  db: ReturnType<typeof getDb>,
+): Promise<Record<string, string>> {
+  const rows = await db
+    .select({ id: kernelApprovals.id, tool: kernelApprovals.toolName })
+    .from(kernelApprovals)
+    .where(eq(kernelApprovals.status, 'pending'))
+    .orderBy(asc(kernelApprovals.createdAt))
+  return Object.fromEntries(rows.map((r) => [r.tool, r.id]))
+}

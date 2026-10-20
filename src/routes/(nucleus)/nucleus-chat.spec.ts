@@ -98,7 +98,13 @@ describe('nucleus-chat status line', () => {
         inputSummary: '{"to":"a@b.c"}',
       }),
     ).toBeNull()
-    expect(statusLabelForProgressEvent({ type: 'approval.required', tool: 'email.send_mail', approvalId: 'a' })).toBeNull()
+    expect(
+      statusLabelForProgressEvent({
+        type: 'approval.required',
+        tool: 'email.send_mail',
+        approvalId: 'a',
+      }),
+    ).toBeNull()
     expect(statusLabelForProgressEvent({ type: 'message_delta', content: 'Hel' })).toBeNull()
   })
 })
@@ -119,7 +125,11 @@ describe('nucleus-chat harness turns', () => {
 
   it('builds an approval card turn: the action in plain words, the request id, its status', () => {
     expect(
-      approvalRequiredTurn({ tool: 'website.publish_page', approvalId: 'apr-1', status: 'pending' }),
+      approvalRequiredTurn({
+        tool: 'website.publish_page',
+        approvalId: 'apr-1',
+        status: 'pending',
+      }),
     ).toEqual({
       role: 'approval',
       tool: 'website.publish_page',
@@ -139,8 +149,14 @@ describe('nucleus-chat harness turns', () => {
 
   it('marks one approval card decided, leaving every other entry untouched', () => {
     const entries = [
-      { key: 'a', ...approvalRequiredTurn({ tool: 'repo.merge', approvalId: 'apr-1', status: 'pending' }) },
-      { key: 'b', ...approvalRequiredTurn({ tool: 'repo.merge', approvalId: 'apr-2', status: 'pending' }) },
+      {
+        key: 'a',
+        ...approvalRequiredTurn({ tool: 'repo.merge', approvalId: 'apr-1', status: 'pending' }),
+      },
+      {
+        key: 'b',
+        ...approvalRequiredTurn({ tool: 'repo.merge', approvalId: 'apr-2', status: 'pending' }),
+      },
       { key: 'c', role: 'user' as const, content: 'hi' },
     ]
     const next = withApprovalStatus(entries, 'apr-2', 'approved')
@@ -175,40 +191,60 @@ describe('nucleus-chat harness turns', () => {
   it('leaves every other progress event to the status line / final response', () => {
     expect(nucleusTurnForProgressEvent({ type: 'thinking', content: 'internal' })).toBeNull()
     expect(nucleusTurnForProgressEvent({ type: 'message_delta', content: 'Hel' })).toBeNull()
-    expect(
-      nucleusTurnForProgressEvent({ type: 'agent_progress', label: 'Working…' }),
-    ).toBeNull()
-    expect(
-      nucleusTurnForProgressEvent({ type: 'tool_result', tool: 'x', preview: 'y' }),
-    ).toBeNull()
+    expect(nucleusTurnForProgressEvent({ type: 'agent_progress', label: 'Working…' })).toBeNull()
+    expect(nucleusTurnForProgressEvent({ type: 'tool_result', tool: 'x', preview: 'y' })).toBeNull()
   })
 })
 
 describe('nucleusTurnsFromPersisted', () => {
-  it('restores the saved conversation: user + assistant turns, tool previews, approvals', () => {
-    expect(
-      nucleusTurnsFromPersisted([
-        { role: 'assistant', content: 'Welcome back.', metadata: null },
-        { role: 'user', content: 'build my site', metadata: null },
-        {
-          role: 'assistant',
-          content: 'pages',
-          metadata: { variant: 'tool_preview', tool: 'site.create' },
-        },
-        {
-          role: 'assistant',
-          content: '{"x":1}',
-          metadata: { variant: 'tool_call', tool: 'site.create' },
-        },
-        { role: 'assistant', content: 'internal', metadata: { variant: 'thinking' } },
+  it('a card saved without an id is linked to the pending request for its tool', () => {
+    const turns = nucleusTurnsFromPersisted(
+      [
         {
           role: 'assistant',
           content: '',
-          metadata: { variant: 'approval_required', tool: 'site.publish', approvalId: 'apr-1' },
+          metadata: { variant: 'approval_required', tool: 'website.publish_page' },
         },
-        { role: 'system', content: 'sys', metadata: null },
-        { role: 'assistant', content: 'Queued for your approval.', metadata: null },
-      ], { 'apr-1': 'pending' }),
+      ],
+      {},
+      { 'website.publish_page': 'appr-1' },
+    )
+    expect(turns).toEqual([
+      approvalRequiredTurn({
+        tool: 'website.publish_page',
+        approvalId: 'appr-1',
+        status: 'pending',
+      }),
+    ])
+  })
+
+  it('restores the saved conversation: user + assistant turns, tool previews, approvals', () => {
+    expect(
+      nucleusTurnsFromPersisted(
+        [
+          { role: 'assistant', content: 'Welcome back.', metadata: null },
+          { role: 'user', content: 'build my site', metadata: null },
+          {
+            role: 'assistant',
+            content: 'pages',
+            metadata: { variant: 'tool_preview', tool: 'site.create' },
+          },
+          {
+            role: 'assistant',
+            content: '{"x":1}',
+            metadata: { variant: 'tool_call', tool: 'site.create' },
+          },
+          { role: 'assistant', content: 'internal', metadata: { variant: 'thinking' } },
+          {
+            role: 'assistant',
+            content: '',
+            metadata: { variant: 'approval_required', tool: 'site.publish', approvalId: 'apr-1' },
+          },
+          { role: 'system', content: 'sys', metadata: null },
+          { role: 'assistant', content: 'Queued for your approval.', metadata: null },
+        ],
+        { 'apr-1': 'pending' },
+      ),
     ).toEqual([
       { role: 'assistant', content: 'Welcome back.' },
       { role: 'user', content: 'build my site' },
@@ -226,9 +262,21 @@ describe('nucleusTurnsFromPersisted', () => {
 
   it('restores each approval card with its current kernel status (decided cards lose their buttons)', () => {
     const rows = [
-      { role: 'assistant', content: '', metadata: { variant: 'approval_required', tool: 'repo.merge', approvalId: 'apr-1' } },
-      { role: 'assistant', content: '', metadata: { variant: 'approval_required', tool: 'repo.merge', approvalId: 'apr-2' } },
-      { role: 'assistant', content: '', metadata: { variant: 'approval_required', tool: 'repo.merge', approvalId: 'apr-3' } },
+      {
+        role: 'assistant',
+        content: '',
+        metadata: { variant: 'approval_required', tool: 'repo.merge', approvalId: 'apr-1' },
+      },
+      {
+        role: 'assistant',
+        content: '',
+        metadata: { variant: 'approval_required', tool: 'repo.merge', approvalId: 'apr-2' },
+      },
+      {
+        role: 'assistant',
+        content: '',
+        metadata: { variant: 'approval_required', tool: 'repo.merge', approvalId: 'apr-3' },
+      },
     ]
     expect(persistedApprovalIds(rows)).toEqual(['apr-1', 'apr-2', 'apr-3'])
     expect(
@@ -239,10 +287,22 @@ describe('nucleusTurnsFromPersisted', () => {
   })
 
   it('a card saved before approvals carried an id cannot be decided from the page', () => {
-    const rows = [{ role: 'assistant', content: '', metadata: { variant: 'approval_required', tool: 'repo.merge' } }]
+    const rows = [
+      {
+        role: 'assistant',
+        content: '',
+        metadata: { variant: 'approval_required', tool: 'repo.merge' },
+      },
+    ]
     expect(persistedApprovalIds(rows)).toEqual([])
     expect(nucleusTurnsFromPersisted(rows, {})).toEqual([
-      { role: 'approval', tool: 'repo.merge', approvalId: null, status: 'unavailable', action: 'Merge agent work into the company repository' },
+      {
+        role: 'approval',
+        tool: 'repo.merge',
+        approvalId: null,
+        status: 'unavailable',
+        action: 'Merge agent work into the company repository',
+      },
     ])
   })
 })

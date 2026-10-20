@@ -29,6 +29,7 @@ const loadApprovalStatusesMock = vi.hoisted(() => vi.fn(async () => ({})))
 vi.mock('$lib/server/chat/current-conversation', () => ({
   loadCurrentConversation: loadConversationMock,
   loadApprovalStatuses: loadApprovalStatusesMock,
+  loadPendingApprovalsByTool: async () => ({}),
 }))
 
 /** Stand-in for event.fetch against GET /api/approvals/mode (built by another workstream). */

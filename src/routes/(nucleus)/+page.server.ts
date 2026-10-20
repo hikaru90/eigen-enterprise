@@ -1,7 +1,11 @@
 import { onboardingFactsFor } from '$lib/server/onboarding/assisted'
 import type { PageServerLoad } from './$types'
 import { approvalModeFromResponse, type ApprovalMode } from '$lib/chat/approvals-client'
-import { loadApprovalStatuses, loadCurrentConversation } from '$lib/server/chat/current-conversation'
+import {
+  loadApprovalStatuses,
+  loadCurrentConversation,
+  loadPendingApprovalsByTool,
+} from '$lib/server/chat/current-conversation'
 import { nucleusTurnsFromPersisted, persistedApprovalIds } from './nucleus-chat'
 import { redirect } from '@sveltejs/kit'
 import { eq } from 'drizzle-orm'
@@ -67,7 +71,11 @@ export const load: PageServerLoad = async (event) => {
 
   return {
     chatSessionId: conversation.sessionId,
-    chatHistory: nucleusTurnsFromPersisted(conversation.messages, approvalStatuses),
+    chatHistory: nucleusTurnsFromPersisted(
+      conversation.messages,
+      approvalStatuses,
+      await loadPendingApprovalsByTool(getDb()),
+    ),
     isAdmin,
     approvalMode,
     // First-run gate: without a working provider there is no product — the page IS the

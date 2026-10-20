@@ -39,10 +39,7 @@ export type NucleusApprovalTurn = {
   action: string
 }
 
-export type NucleusTurn =
-  | NucleusConversationTurn
-  | NucleusToolPreviewTurn
-  | NucleusApprovalTurn
+export type NucleusTurn = NucleusConversationTurn | NucleusToolPreviewTurn | NucleusApprovalTurn
 
 export type NucleusChatEntry = NucleusTurn & { key: string }
 
@@ -130,7 +127,11 @@ export function persistedApprovalIds(messages: PersistedChatMessage[]): string[]
 export function nucleusTurnForProgressEvent(event: ChatProgressEvent): NucleusTurn | null {
   if (event.type === 'tool.preview') return toolPreviewTurn(event.tool, event.inputSummary)
   if (event.type === 'approval.required') {
-    return approvalRequiredTurn({ tool: event.tool, approvalId: event.approvalId, status: 'pending' })
+    return approvalRequiredTurn({
+      tool: event.tool,
+      approvalId: event.approvalId,
+      status: 'pending',
+    })
   }
   return null
 }
@@ -144,6 +145,8 @@ export function nucleusTurnsFromPersisted(
   messages: PersistedChatMessage[],
   /** Current kernel status per approval id (from persistedApprovalIds). */
   approvalStatuses: Record<string, 'pending' | 'approved' | 'denied'>,
+  /** Pending kernel approval id per tool — links cards saved before cards carried an id. */
+  pendingByTool: Record<string, string> = {},
 ): NucleusTurn[] {
   const out: NucleusTurn[] = []
   for (const m of messages) {
@@ -160,9 +163,20 @@ export function nucleusTurnsFromPersisted(
     } else if (variant === 'tool_preview' && tool) {
       out.push(toolPreviewTurn(tool, m.content || null))
     } else if (variant === 'approval_required' && tool) {
-      const approvalId = persistedApprovalId(m)
-      const status = approvalId ? (approvalStatuses[approvalId] ?? 'unavailable') : 'unavailable'
-      out.push(approvalRequiredTurn({ tool, approvalId, status }))
+      const savedId = persistedApprovalId(m)
+      if (savedId) {
+        out.push(
+          approvalRequiredTurn({
+            tool,
+            approvalId: savedId,
+            status: approvalStatuses[savedId] ?? 'unavailable',
+          }),
+        )
+      } else if (pendingByTool[tool]) {
+        out.push(approvalRequiredTurn({ tool, approvalId: pendingByTool[tool], status: 'pending' }))
+      } else {
+        out.push(approvalRequiredTurn({ tool, approvalId: null, status: 'unavailable' }))
+      }
     }
   }
   return out
