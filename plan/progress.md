@@ -2,6 +2,23 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-20 (5) — SHIPPED (branch): platform step 1, module merge with no behaviour change (`e9c7880`)
+
+**What shipped:** plan/phase-platform.md delivery step 1. Modules are now: memory, email, website, brand, and orchestrator (internal). Migration `0091_module_merge` merges the activation rows. `modules/substrate` moved to `modules/website/hosting`, `modules/github` to `modules/website/github`, `modules/owlery` to `modules/email/owlery`, and `modules/{repo,dev-agent,roadmap}` to `modules/orchestrator/…`. One directory per module again, so boundaries.spec still holds without declared edges.
+
+**Decision log (architecture impact)**
+- **Tool names did not change (approach a).** A manifest may own several tool namespaces (`ModuleManifest.toolNamespaces`, default `[id]`, which must include the id). The rule "module = the name's prefix" becomes "module = the owner of the name's prefix". Every namespace has exactly one owner: `ModuleRegistry.register` throws on an overlap, on an id that collides with another module's namespace, and on a tool outside its namespaces. `registerModuleTools` checks the same thing. Stored `kernel_approvals.tool_name` values, event payloads, journey artifacts, prompts and `APPROVAL_REQUIRED_TOOLS` all stay valid. There is no alias table.
+- **Mapping:** website ← website + substrate + github. email ← email + owlery (id `email`, not `owlery`: it matches the owner-facing name and the /m/email page, and both send tools now live in this one module). orchestrator (internal) ← repo + dev-agent + roadmap.
+- **Roadmap goes to the orchestrator module, not the kernel.** The kernel never imports module code, and the roadmap store is module code. Its tools (`roadmap.*`) and the extension_roadmap_items table are unchanged. Settings → Extensions still reads the store directly.
+- **orchestrator, not `agent`.** The `agent` module (agent.list/enable/disable) is registered later, in the orchestrator bootstrap, with the runtime. Folding repo/dev-agent into it would need its manifest at buildKernel time, and `agent` is self-activated, which would silently switch on repo/dev-agent. `internal: true` on a manifest means it gets no owner-facing card (buildOverview skips it; kernel.module_list reports `internal: true`).
+- **Activation migration:** a merged module is active if any of its parts was. It gets a row only if some part had one. The retired ids' rows are deleted. Pure equivalent: `mergeActivations` in src/lib/kernel/module-merge.ts. The SQL file is generated from `MODULE_MERGES` and pinned byte-for-byte by its spec. Tested on the dev DB in a transaction that was then rolled back.
+- **System modules are now website and email** (`SYSTEM_MODULE_IDS`, ensureSystemModulesActive at boot and on the hosting and webhook routes). Accepted consequences: (1) `website.*` and `email.send_mail` are always active, because they share an activation with hosting and Owlery. website.publish_page and email.send_mail are still approval-gated. (2) If any of repo/dev-agent/roadmap was active, all three are active now. D11 is unchanged: substrate mutations still go through `requireHuman`, which is pinned through the full kernel pipeline in modules/manifests.spec.ts.
+- The prompts no longer offer repo or roadmap as owner modules (brain persona, onboarding context).
+
+**UI follow-ups (not done here; src/routes/**/*.svelte and components untouched):** use module ids `website`, `email`, `brand`, `memory`. Never use `substrate`, `github`, `owlery`, `repo`, `dev-agent` or `roadmap` as module ids or /m/ pages. Hide `internal` modules (orchestrator). The overview result source key moved from `owlery` to `email` (server code, done).
+
+**Unverified:** the durable-harness SIGKILL spec fails in this worktree because it spawns `node_modules/.bin/tsx` from cwd, and the worktree has no node_modules. Nothing in this change touches it. ee was not touched, so the ee tests were not run. The migration has not been run through `npm run db:migrate`.
+
 ## 2026-10-20 (4) — Owner-chosen approval mode (backend)
 
 **Shipped:** migration `0090_kernel_approval_mode` (one row, seeded `'ask'` in SQL); `ModeAwareApprovalPolicy` replaces `StaticApprovalPolicy` in `buildKernel`; `approvalRisk` on `ToolDescriptor`; `GET/PUT /api/approvals/mode`. The approve/deny endpoint and the chat UI belong to another workstream. **Next:** the UI selector under the chat input.
