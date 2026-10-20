@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { DesiredState } from './company-repo.ts'
 import { readDeployLog } from './deploys.ts'
 import { emptyJournal } from './journal.ts'
-import { prepareRelease, reconcile, type SecretAccess } from './reconcile.ts'
+import { allowRetry, prepareRelease, reconcile, type SecretAccess } from './reconcile.ts'
 import type { SecretMap } from './secrets.ts'
 import { workloadSchema } from './spec.ts'
 import type { RunResult, System } from './system.ts'
@@ -292,6 +292,23 @@ describe('a candidate that fails its health gate', () => {
     expect(journal.events.every((e) => !/site: site:/.test(e.message))).toBe(true)
     expect(sys.commands.filter((c) => c === 'systemctl restart ee-site-a.service')).toHaveLength(1)
     expect(journal.deploys.filter((d) => d.workload === 'site')).toHaveLength(1)
+  })
+
+  it('an explicit redeploy (allowRetry) tries the same failed release once more; ticks still do not', async () => {
+    const sys = box(A)
+    const journal = emptyJournal()
+    const secrets = memSecrets()
+    const pass = () => reconcile({ sys, repo: { read: async () => desired(A) }, journal, secrets, healthTimeoutMs: 5_000 })
+    await expect(pass()).rejects.toThrow()
+    await expect(pass()).rejects.toThrow()
+    const restarts = () => sys.commands.filter((c) => c === 'systemctl restart ee-site-a.service').length
+    expect(restarts()).toBe(1)
+    allowRetry(journal, 'site')
+    await expect(pass()).rejects.toThrow()
+    expect(restarts()).toBe(2)
+    expect(journal.deploys).toHaveLength(2)
+    await expect(pass()).rejects.toThrow()
+    expect(restarts()).toBe(2)
   })
 
   it('a crash-looping candidate fails fast, and its unit is stopped AND disabled', async () => {

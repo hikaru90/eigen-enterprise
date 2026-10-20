@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { CompanyRepo, type DesiredState } from './company-repo.ts'
 import { loadJournal, saveJournal, type Journal } from './journal.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
-import { emit, reconcile } from './reconcile.ts'
+import { allowRetry, emit, reconcile } from './reconcile.ts'
 import { SecretStore } from './secret-store.ts'
 import { appContractSchema, assertInCatalog, CATALOG, CatalogGapError, gitSource, NAME, routeSchema, workloadSchema, type Route, type Workload } from './spec.ts'
 import { mustRun, type System } from './system.ts'
@@ -334,6 +334,8 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
             // Re-creating an app keeps the secrets it already declared (values live in the store).
             const secrets = [...new Set([...(existing?.secrets ?? []), ...i.secrets])]
             const next: Workload = workloadSchema.parse({ name: i.name, tier: 'app', source: i.source, env: i.env, secrets, deploy: i.deploy, ...(i.contract ? { contract: i.contract } : {}) })
+            // The owner asked for this deploy: a release that failed before is tried again.
+            allowRetry(ee.journal, i.name)
             return { ...s, workloads: [...s.workloads.filter((w) => w.name !== i.name), next] }
           }),
         )
@@ -348,6 +350,7 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
             workloads: s.workloads.map((w) => {
               if (w.name !== i.workload) return w
               if (w.source.kind !== 'git') throw new HttpError(409, `${w.name} is not a git workload`)
+              allowRetry(ee.journal, w.name)
               return { ...w, source: { ...w.source, rev: i.rev } }
             }),
           })),

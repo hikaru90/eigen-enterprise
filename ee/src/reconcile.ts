@@ -353,6 +353,15 @@ async function retireOldSlot(sys: System, w: string, keep: Slot): Promise<void> 
   await sys.run('systemctl', ['disable', '--now', '--quiet', old])
 }
 
+/**
+ * An explicit deploy request (the owner's click, POST /v1/apps or /v1/deploy)
+ * retries a release that already failed; the periodic tick never does.
+ */
+export function allowRetry(journal: Journal, name: string): void {
+  const entry = journal.workloads[name]
+  if (entry) entry.failedFingerprint = null
+}
+
 export async function reconcile(ctx: ReconcileContext): Promise<DesiredState> {
   const { sys, journal } = ctx
   const desired = await ctx.repo.read()
