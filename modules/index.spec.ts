@@ -66,6 +66,27 @@ function makeInMemoryKernel() {
   return { kernel, activations, eventSink, approvalStore }
 }
 
+describe('module activation is the agent\'s own fix (owner, 2026-10-20)', () => {
+  it('the orchestrator activates a module with no approval; deactivating waits for the owner', async () => {
+    const { kernel, approvalStore } = makeInMemoryKernel()
+    const { registerAdminTools } = await import('$lib/kernel/admin-bootstrap')
+    await registerAdminTools(kernel)
+    const agent: ToolContext = {
+      principal: { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] },
+      requestId: 'req-activate',
+    }
+    await expect(
+      kernel.registry.execute('kernel.module_activate', { module_id: 'website' }, agent),
+    ).resolves.toMatchObject({ module_id: 'website', active: true })
+    expect(await kernel.activations.get('website')).toBe(true)
+    expect(await approvalStore.listPending()).toEqual([])
+
+    await expect(
+      kernel.registry.execute('kernel.module_deactivate', { module_id: 'website' }, agent),
+    ).rejects.toMatchObject({ code: 'approval_required' })
+  })
+})
+
 describe('moduleManifests', () => {
   it('declares the baseline modules (memory, email, website, dev-agent, brand, repo, roadmap, substrate, github, owlery)', () => {
     expect(moduleManifests.map((m) => m.id)).toEqual([
@@ -149,13 +170,12 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     // website.publish_page artifacts gate here too.
     // Phase-3 M2: repo.merge gates the agent's repo hands — landing agent work
     // on the instance repo is an owner decision made in chat.
-    // Phase-3 one-agent: module lifecycle levers gate too — the agent calls
-    // kernel.module_activate/deactivate, the owner's conversational yes decides.
+    // Module lifecycle: deactivation gates (owner's yes); activation is the
+    // agent's own fix for "module not active" (owner, 2026-10-20) — not gated.
     expect([...APPROVAL_REQUIRED_TOOLS].sort()).toEqual([
       'brand.set_activate',
       'brand.visual_set_activate',
       'email.send_mail',
-      'kernel.module_activate',
       'kernel.module_deactivate',
       'owlery.send_mail',
       'repo.merge',

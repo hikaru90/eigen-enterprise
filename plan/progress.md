@@ -2,6 +2,17 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-20 (3) — FIXED + VERIFIED LIVE: the website founding journey advances again
+
+**Root cause (from the box's chat_message, journey row and logs):** turns at 22:44 and 23:07 captured step 2 in the agent's reply, then threw ("module website is not active", then "unknown tool") BEFORE the journey saved, so the journey stayed on step 2 while durable's history held the capture. The boundary fix (2) now saves the journey even when a step fails. A second blocker turned up: the journey's own module activation waited for owner approval, because kernel.module_activate was on APPROVAL_REQUIRED_TOOLS. The pending artifact was also recorded under website.create_page, so the label was misleading.
+
+**Shipped:** kernel.module_activate is no longer approval-gated; deactivation still is (`modules/index.ts`, test in `modules/index.spec.ts`, which fails without the fix). On the box: the journey row was repaired by hand to match what the agent captured (positioning captured, stepIndex 2, the stray "hi" removed from company_name). The stale pending approval row was removed.
+
+**Decision log (architecture impact)**
+- Module ACTIVATION is the agent's own remediation (owner: the harness fixes "module not active" itself, and nobody else is expected to). It is audited and reversible. DEACTIVATION stays an owner decision (approval).
+
+**Open:** journey answers accumulate every user message verbatim, so a side question like "where are we?" gets stored as the step's answer. That needs an LLM-structured capture (no string heuristics), not a filter. The durable history also repeats the journey context block on every turn.
+
 ## 2026-10-20 (2) — SHIPPED (branch): code <-> harness <-> user — no path from application code to the user
 
 **What broke (production)**: the chat showed "Error: unknown tool: kernel.module_activate". (a) The journey step code (`executeStepArtifacts`, run after the model replied, outside the agent turn) threw to `POST /api/chat`, which streamed the raw message; the nucleus page printed it as `Error: …`. (b) The web server's kernel never registered the admin tools (`registerAdminTools` ran only in the CLI); tests passed because they hand-built kernels.
