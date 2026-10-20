@@ -31,7 +31,7 @@ async function kernel(active: string[]) {
   for (const id of active) await activations.set(id, true)
   const manifests = [
     {
-      id: 'owlery',
+      id: 'email',
       name: 'Email',
       version: '1',
       description: 'Company email.',
@@ -70,19 +70,19 @@ const event = (moduleId: string, user: { id: string } | null = { id: 'owner' }) 
 describe('/m/[moduleId] load', () => {
   it('redirects signed-out visitors to login', async () => {
     kernelHolder.kernel = await kernel([])
-    await expect(load(event('owlery', null))).rejects.toMatchObject({
+    await expect(load(event('email', null))).rejects.toMatchObject({
       status: 302,
       location: '/login',
     })
   })
 
   it('shows an active module with its results', async () => {
-    kernelHolder.kernel = await kernel(['owlery'])
-    const data = (await load(event('owlery'))) as {
+    kernelHolder.kernel = await kernel(['email'])
+    const data = (await load(event('email'))) as {
       module: import('$lib/server/overview/overview').ModuleOverview
     }
     expect(data.module).toEqual({
-      id: 'owlery',
+      id: 'email',
       name: 'Email',
       description: 'Company email.',
       active: true,

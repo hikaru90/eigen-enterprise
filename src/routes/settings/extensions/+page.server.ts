@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types'
 import { redirect } from '@sveltejs/kit'
-import { defaultRoadmapStore } from '../../../../modules/roadmap/store'
+import { defaultRoadmapStore } from '../../../../modules/orchestrator/roadmap/store'
 
 /**
  * Extension Roadmap: the company's build log (shipped), work in progress, and

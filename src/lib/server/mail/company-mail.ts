@@ -1,7 +1,7 @@
 /**
  * The company's email contract, shared by every part of the app that sends mail.
  *
- * Delivery belongs to the Owlery email module (modules/owlery): it alone holds
+ * Delivery belongs to the Owlery email module (modules/email/owlery): it alone holds
  * the Amazon SES credentials and talks to SES. Everything else sends through
  * `companyMail()` from '$lib/server/mail' and never sees a credential.
  */

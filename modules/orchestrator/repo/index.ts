@@ -2,9 +2,7 @@ import type { EventSink } from '$lib/kernel/events'
 import { NodeCommandRunner, type CommandRunner } from './runner'
 import { RepoEngine, type RepoEngineDeps } from './tools'
 
-export const REPO_MODULE_ID = 'repo'
-
-export { REPO_TOOL_NAMES, repoManifest } from './manifest'
+export { REPO_TOOL_NAMES } from './manifest'
 export { RepoEngine, createRepoTools } from './tools'
 export {
   DEFAULT_COMMAND_TIMEOUT_MS,

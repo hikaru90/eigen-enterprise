@@ -1,3 +1,4 @@
+import { ORCHESTRATOR_MODULE_ID } from '../manifest'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { z } from 'zod'
@@ -301,7 +302,7 @@ export function createDevAgentTools(deps: DevAgentToolDeps): ToolDescriptor[] {
   return [
     {
       name: 'dev-agent.dispatch',
-      module: 'dev-agent',
+      module: ORCHESTRATOR_MODULE_ID,
       summary:
         'Dispatch one code task to the headless pi coding agent in a fresh git worktree sandbox. One run at a time; fails with run_in_progress while another run is active.',
       auditClass: 'external',
@@ -315,7 +316,7 @@ export function createDevAgentTools(deps: DevAgentToolDeps): ToolDescriptor[] {
     },
     {
       name: 'dev-agent.status',
-      module: 'dev-agent',
+      module: ORCHESTRATOR_MODULE_ID,
       summary: 'Run status: one run by id, or all runs (most recent first).',
       auditClass: 'read',
       inputSchema: statusInput,
@@ -327,7 +328,7 @@ export function createDevAgentTools(deps: DevAgentToolDeps): ToolDescriptor[] {
     },
     {
       name: 'dev-agent.logs',
-      module: 'dev-agent',
+      module: ORCHESTRATOR_MODULE_ID,
       summary: 'Full log of one run, including the stored (truncated) pi output.',
       auditClass: 'read',
       inputSchema: runIdInput,
@@ -339,7 +340,7 @@ export function createDevAgentTools(deps: DevAgentToolDeps): ToolDescriptor[] {
     },
     {
       name: 'dev-agent.merge',
-      module: 'dev-agent',
+      module: ORCHESTRATOR_MODULE_ID,
       summary:
         'Owner-approved landing: merge a green run branch into main, then remove its worktree and branch. Fails loud, run stays green, on any git failure.',
       auditClass: 'mutate',
@@ -353,7 +354,7 @@ export function createDevAgentTools(deps: DevAgentToolDeps): ToolDescriptor[] {
     },
     {
       name: 'dev-agent.abort',
-      module: 'dev-agent',
+      module: ORCHESTRATOR_MODULE_ID,
       summary:
         'Abort a run: kill the in-flight pi/verification processes or clean up a finished run worktree. Not allowed for merged or already aborted runs.',
       auditClass: 'mutate',

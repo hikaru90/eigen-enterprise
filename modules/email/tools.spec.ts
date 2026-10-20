@@ -24,7 +24,8 @@ const ctx: ToolContext = {
 describe('emailManifest', () => {
   it('owns the namespaced email tool names', () => {
     expect(emailManifest.id).toBe('email')
-    expect(emailManifest.tools).toEqual([...EMAIL_TOOL_NAMES])
+    expect(emailManifest.tools.slice(0, EMAIL_TOOL_NAMES.length)).toEqual([...EMAIL_TOOL_NAMES])
+    expect(emailManifest.toolNamespaces).toEqual(['email', 'owlery'])
   })
 })
 

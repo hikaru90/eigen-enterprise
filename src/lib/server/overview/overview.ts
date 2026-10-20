@@ -120,7 +120,8 @@ const owleryStatusOutput = z.union([
 
 export const owleryResultSource: ResultSource = async ({ registry, ctx }) => {
   const status = owleryStatusOutput.parse(await registry.execute('owlery.status', {}, ctx))
-  if (!status.configured) return { results: [{ label: 'Not set up', detail: null, href: null }], note: null }
+  if (!status.configured)
+    return { results: [{ label: 'Not set up', detail: null, href: null }], note: null }
   return {
     results: [
       {
@@ -135,7 +136,11 @@ export const owleryResultSource: ResultSource = async ({ registry, ctx }) => {
 
 // ─── assembly ────────────────────────────────────────────────────────────────
 
-const auditPayload = z.object({ tool: z.string(), ok: z.boolean(), activity: z.string().optional() })
+const auditPayload = z.object({
+  tool: z.string(),
+  ok: z.boolean(),
+  activity: z.string().optional(),
+})
 
 /**
  * LEGACY PATH ONLY: tool.executed events recorded before tools declared an
@@ -149,7 +154,10 @@ function legacyToolText(deps: OverviewDeps, tool: string): string {
   return manifest ? `${manifest.name}: ${tool}` : tool
 }
 
-export type ModuleOverviewDeps = Pick<OverviewDeps, 'registry' | 'ctx' | 'canReadResults' | 'resultSources'>
+export type ModuleOverviewDeps = Pick<
+  OverviewDeps,
+  'registry' | 'ctx' | 'canReadResults' | 'resultSources'
+>
 
 /** One module's entry: identity, activation, and its results when readable. */
 export async function moduleOverview(
@@ -176,6 +184,8 @@ export async function moduleOverview(
 export async function buildOverview(deps: OverviewDeps): Promise<Overview> {
   const modules: ModuleOverview[] = []
   for (const manifest of deps.manifests) {
+    // Internal modules are the agent's own machinery: no owner-facing card.
+    if (manifest.internal === true) continue
     modules.push(await moduleOverview(manifest, deps.activations.get(manifest.id) === true, deps))
   }
 

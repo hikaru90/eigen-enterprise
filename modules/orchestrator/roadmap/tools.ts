@@ -1,3 +1,4 @@
+import { ORCHESTRATOR_MODULE_ID } from '../manifest'
 import { z } from 'zod'
 import type { ToolDescriptor } from '$lib/kernel/types'
 import { defaultRoadmapStore, type RoadmapItem, type RoadmapStore } from './store'
@@ -43,7 +44,7 @@ export function createRoadmapTools(deps: RoadmapToolDeps = {}): ToolDescriptor[]
   return [
     {
       name: 'roadmap.list_items',
-      module: 'roadmap',
+      module: ORCHESTRATOR_MODULE_ID,
       summary:
         "List the company's roadmap items — the shipped build log first, then work in progress, then the planned queue (ordered by status, then position).",
       auditClass: 'read',
@@ -53,7 +54,7 @@ export function createRoadmapTools(deps: RoadmapToolDeps = {}): ToolDescriptor[]
     },
     {
       name: 'roadmap.add_item',
-      module: 'roadmap',
+      module: ORCHESTRATOR_MODULE_ID,
       summary:
         'Add one roadmap item (title required; detail defaults to empty, status to planned, kind to feature). Born-shipped items get shipped_at stamped.',
       auditClass: 'mutate',
@@ -73,7 +74,7 @@ export function createRoadmapTools(deps: RoadmapToolDeps = {}): ToolDescriptor[]
     },
     {
       name: 'roadmap.update_item',
-      module: 'roadmap',
+      module: ORCHESTRATOR_MODULE_ID,
       summary:
         "Patch one roadmap item by id (title, detail, status, kind, position). Moving status to 'shipped' stamps shipped_at; moving away clears it. Fails loud on an unknown id.",
       auditClass: 'mutate',

@@ -11,25 +11,7 @@ export type ModuleSettingsLink = { label: string; href: Pathname; text: string }
 export type ModuleSettingsSlot = { links: ModuleSettingsLink[]; note?: string }
 
 const slots: Record<string, ModuleSettingsSlot> = {
-  substrate: {
-    links: [
-      {
-        label: 'Hosting settings',
-        href: '/settings/hosting',
-        text: 'Domains, apps and this server.',
-      },
-    ],
-  },
-  github: {
-    links: [
-      {
-        label: 'GitHub connection',
-        href: '/settings/hosting',
-        text: 'Connect the GitHub App and link repositories.',
-      },
-    ],
-  },
-  owlery: {
+  email: {
     note: 'The sender (Amazon SES) is set up in the welcome flow. There is no separate settings page yet.',
     links: [
       { label: 'Ask in the chat', href: '/', text: 'Change the sender or check its status.' },
@@ -42,7 +24,15 @@ const slots: Record<string, ModuleSettingsSlot> = {
     links: [{ label: 'Memory', href: '/memory', text: 'Notes, tasks and the timeline.' }],
   },
   website: {
-    links: [{ label: 'Public site', href: '/s', text: 'The pages visitors see.' }],
+    links: [
+      { label: 'Public site', href: '/s', text: 'The pages visitors see.' },
+      { label: 'Hosting', href: '/settings/hosting', text: 'Domains, apps and this server.' },
+      {
+        label: 'GitHub connection',
+        href: '/settings/hosting',
+        text: 'Connect the GitHub App and link repositories.',
+      },
+    ],
   },
 }
 

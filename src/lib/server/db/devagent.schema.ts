@@ -2,7 +2,7 @@ import { boolean, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 /**
  * Dev-agent module tables — one row per headless pi coding-agent run in its
- * git worktree sandbox. Consumed only by modules/dev-agent stores.
+ * git worktree sandbox. Consumed only by modules/orchestrator/dev-agent stores.
  */
 
 export const kernelDevagentRuns = pgTable('kernel_devagent_runs', {

@@ -6,7 +6,8 @@ import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext } from '$lib/kernel/types'
 import { registerModuleTools } from '$lib/kernel/wiring'
 import { FakeSes } from './fake-ses'
-import { OWLERY_TOOL_NAMES, owleryManifest } from './manifest'
+import { emailManifest } from '../manifest'
+import { OWLERY_TOOL_NAMES } from './manifest'
 import { OwleryService } from './service'
 import { InMemoryOwleryStore, owlerySealKey } from './store'
 import { createOwleryTools } from './tools'
@@ -28,9 +29,10 @@ async function kernel() {
   })
   ses.sent.length = 0
   const activations = new InMemoryActivationStore()
-  await activations.set('owlery', true)
+  await activations.set('email', true)
   const modules = new ModuleRegistry(activations)
-  modules.register(owleryManifest)
+  // The email module's Owlery slice: only these tools are wired in this spec.
+  modules.register({ ...emailManifest, tools: [...OWLERY_TOOL_NAMES] })
   const approvals = new InMemoryApprovalStore()
   const registry = new KernelRegistry({
     eventSink: new InMemoryEventSink(),
@@ -49,7 +51,9 @@ describe('owlery tools', () => {
     expect(tools.map((t) => t.name)).toEqual([...OWLERY_TOOL_NAMES])
     expect(tools.find((t) => t.name === 'owlery.status')?.auditClass).toBe('read')
     expect(tools.find((t) => t.name === 'owlery.send_mail')?.auditClass).toBe('mutate')
-    expect(owleryManifest).toMatchObject({ id: 'owlery', name: 'Email' })
+    expect(emailManifest).toMatchObject({ id: 'email', name: 'Email' })
+    expect(emailManifest.tools).toEqual(expect.arrayContaining([...OWLERY_TOOL_NAMES]))
+    for (const t of tools) expect(t.module).toBe('email')
   })
 
   it('status is readable by humans and agents', async () => {

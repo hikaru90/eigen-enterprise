@@ -10,7 +10,6 @@
   import Menu from '@lucide/svelte/icons/menu'
   import MessageSquare from '@lucide/svelte/icons/message-square'
   import Palette from '@lucide/svelte/icons/palette'
-  import Server from '@lucide/svelte/icons/server'
   import Settings from '@lucide/svelte/icons/settings'
   import X from '@lucide/svelte/icons/x'
   import { appHref } from '$lib/shell/href'
@@ -42,11 +41,9 @@
     overview: LayoutDashboard,
     settings: Settings,
     website: Globe,
-    owlery: Mail,
     email: Mail,
     brand: Palette,
     memory: Brain,
-    substrate: Server,
   }
   const iconFor = (id: string): Component => icons[id] ?? Box
 

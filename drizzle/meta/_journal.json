@@ -645,6 +645,13 @@
       "when": 1760200000014,
       "tag": "0091_durable_only_providers",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1760200000015,
+      "tag": "0092_module_merge",
+      "breakpoints": true
     }
   ]
 }

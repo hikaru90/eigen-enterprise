@@ -24,8 +24,11 @@ async function latestFoundingJourney() {
 
 export function overviewResultSources(): Record<string, ResultSource> {
   return {
-    website: websiteResultSource(async () => websiteStatusFrom((await latestFoundingJourney())?.status ?? null)),
-    owlery: owleryResultSource,
+    website: websiteResultSource(async () =>
+      websiteStatusFrom((await latestFoundingJourney())?.status ?? null),
+    ),
+    // Email = Owlery + transactional send (platform step 1); keyed by module id.
+    email: owleryResultSource,
   }
 }
 

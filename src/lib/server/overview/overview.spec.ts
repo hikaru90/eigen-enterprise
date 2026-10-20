@@ -23,7 +23,9 @@ const ctx = { principal: { id: 'u1', kind: 'human' as const, roles: ['admin'] },
 function registry(tools: Record<string, { summary: string; output?: unknown }>): OverviewRegistry {
   return {
     get: (name) =>
-      tools[name] ? ({ name, module: name.split('.')[0], summary: tools[name].summary } as ToolDescriptor) : undefined,
+      tools[name]
+        ? ({ name, module: name.split('.')[0], summary: tools[name].summary } as ToolDescriptor)
+        : undefined,
     execute: vi.fn(async (name: string) => {
       if (!tools[name]) throw new Error(`unknown tool ${name}`)
       return tools[name].output
@@ -54,9 +56,44 @@ describe('buildOverview', () => {
       }),
     )
     expect(out.modules).toEqual([
-      { id: 'website', name: 'Website', description: 'The site.', active: true, results: [], counts: [], note: null },
-      { id: 'repo', name: 'Repo', description: 'Code.', active: false, results: [], counts: [], note: null },
+      {
+        id: 'website',
+        name: 'Website',
+        description: 'The site.',
+        active: true,
+        results: [],
+        counts: [],
+        note: null,
+      },
+      {
+        id: 'repo',
+        name: 'Repo',
+        description: 'Code.',
+        active: false,
+        results: [],
+        counts: [],
+        note: null,
+      },
     ])
+  })
+
+  it('leaves internal modules (the agent machinery) off the owner overview', async () => {
+    const out = await buildOverview(
+      deps({
+        manifests: [
+          manifest('website', 'Website', 'The site.'),
+          {
+            ...manifest('orchestrator', 'Agent tools', 'Repo, dev agent, build log.'),
+            internal: true,
+          },
+        ],
+        activations: new Map([
+          ['website', true],
+          ['orchestrator', true],
+        ]),
+      }),
+    )
+    expect(out.modules.map((m) => m.id)).toEqual(['website'])
   })
 
   it('maps website.site_info into results, with the journey status', async () => {
@@ -66,8 +103,18 @@ describe('buildOverview', () => {
         output: {
           url: 'http://localhost:5173/site',
           pages: [
-            { slug: 'home', title: 'Home', status: 'published', url: 'http://localhost:5173/site/home' },
-            { slug: 'about', title: 'About', status: 'draft', url: 'http://localhost:5173/site/about' },
+            {
+              slug: 'home',
+              title: 'Home',
+              status: 'published',
+              url: 'http://localhost:5173/site/home',
+            },
+            {
+              slug: 'about',
+              title: 'About',
+              status: 'draft',
+              url: 'http://localhost:5173/site/about',
+            },
           ],
         },
       },
@@ -103,7 +150,9 @@ describe('buildOverview', () => {
       }),
     )
     expect(out.modules[0].note).toBe('Preview link not available yet')
-    expect(out.modules[0].results).toEqual([{ label: 'Founding journey', detail: 'Not started', href: null }])
+    expect(out.modules[0].results).toEqual([
+      { label: 'Founding journey', detail: 'Not started', href: null },
+    ])
   })
 
   it('shows email sender and setup state, never secrets', async () => {
@@ -129,7 +178,9 @@ describe('buildOverview', () => {
         resultSources: { owlery: owleryResultSource },
       }),
     )
-    expect(out.modules[0].results).toEqual([{ label: 'hello@kindred.test', detail: 'Set up', href: null }])
+    expect(out.modules[0].results).toEqual([
+      { label: 'hello@kindred.test', detail: 'Set up', href: null },
+    ])
     expect(JSON.stringify(out)).not.toMatch(/NEVER/)
   })
 
@@ -148,7 +199,10 @@ describe('buildOverview', () => {
   it('does not read results for inactive modules or non-owners', async () => {
     const source = vi.fn()
     const inactive = await buildOverview(
-      deps({ manifests: [manifest('owlery', 'Email', 'Mail.')], resultSources: { owlery: source } }),
+      deps({
+        manifests: [manifest('owlery', 'Email', 'Mail.')],
+        resultSources: { owlery: source },
+      }),
     )
     const member = await buildOverview(
       deps({
@@ -167,15 +221,26 @@ describe('buildOverview', () => {
     const out = await buildOverview(
       deps({
         manifests: [manifest('website', 'Website', 'The site.')],
-        registry: registry({ 'website.publish_page': { summary: 'Flip the visibility of one website content object.' } }),
+        registry: registry({
+          'website.publish_page': { summary: 'Flip the visibility of one website content object.' },
+        }),
         recentToolEvents: async () => [
           {
             ts: '2026-10-20T10:00:00.000Z',
-            payload: { tool: 'website.publish_page', ok: true, activity: 'Published the About page' },
+            payload: {
+              tool: 'website.publish_page',
+              ok: true,
+              activity: 'Published the About page',
+            },
           },
           {
             ts: '2026-10-20T09:30:00.000Z',
-            payload: { tool: 'website.publish_page', ok: false, error: 'x', activity: 'Published the page “ghost”' },
+            payload: {
+              tool: 'website.publish_page',
+              ok: false,
+              error: 'x',
+              activity: 'Published the page “ghost”',
+            },
           },
         ],
       }),
@@ -190,7 +255,9 @@ describe('buildOverview', () => {
     const out = await buildOverview(
       deps({
         manifests: [manifest('owlery', 'Email', 'Mail.')],
-        registry: registry({ 'owlery.send_mail': { summary: "Send one email from the company's sender address." } }),
+        registry: registry({
+          'owlery.send_mail': { summary: "Send one email from the company's sender address." },
+        }),
         recentToolEvents: async () => [
           { ts: '2026-10-20T10:00:00.000Z', payload: { tool: 'owlery.send_mail', ok: true } },
           { ts: '2026-10-20T09:00:00.000Z', payload: { tool: 'gone.tool', ok: false } },

@@ -10,6 +10,10 @@ export const manifestSchema = z.object({
   name: z.string().min(1),
   version: z.string().regex(VERSION_PATTERN),
   description: z.string().min(1).optional(),
+  /** Tool-name prefixes owned (omitted = [id]); must include id — checked at register(). */
+  toolNamespaces: z.array(z.string().regex(ID_PATTERN)).min(1).optional(),
+  /** true = agent machinery, not an owner-facing module card. */
+  internal: z.boolean().optional(),
   /** Empty is valid: a module may contribute no kernel tools (routes/settings only). */
   tools: z.array(z.string().regex(TOOL_NAME_PATTERN)),
   permissions: z.object({ roles: z.array(z.string()).min(1) }),

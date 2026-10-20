@@ -122,18 +122,13 @@ describe('module activation is the agent\'s own fix (owner, 2026-10-20)', () => 
 })
 
 describe('moduleManifests', () => {
-  it('declares the baseline modules (memory, email, website, dev-agent, brand, repo, roadmap, substrate, github, owlery)', () => {
+  it('declares the merged baseline modules (platform step 1: memory, email, website, brand, orchestrator)', () => {
     expect(moduleManifests.map((m) => m.id)).toEqual([
       'memory',
       'email',
       'website',
-      'dev-agent',
       'brand',
-      'repo',
-      'roadmap',
-      'substrate',
-      'github',
-      'owlery',
+      'orchestrator',
     ])
   })
 })
@@ -146,13 +141,8 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'memory',
       'email',
       'website',
-      'dev-agent',
       'brand',
-      'repo',
-      'roadmap',
-      'substrate',
-      'github',
-      'owlery',
+      'orchestrator',
     ])
     const toolNames = kernel.registry.list().map((t) => t.name)
     expect(toolNames).toContain('memory.retrieve_thoughts')
@@ -173,8 +163,10 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect(toolNames.length).toBe(
       moduleManifests.reduce((sum, m) => sum + m.tools.length, 0),
     )
+    // module = the owner of the name's namespace (prefix before the first ".")
     for (const tool of kernel.registry.list()) {
-      expect(tool.module).toBe(tool.name.slice(0, tool.name.indexOf('.')))
+      const namespace = tool.name.slice(0, tool.name.indexOf('.'))
+      expect(kernel.modules.ownerOfNamespace(namespace)?.id).toBe(tool.module)
     }
   })
 
@@ -276,7 +268,8 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     const { kernel, activations } = makeInMemoryKernel()
     const { ensureSystemModulesActive } = await import('./index')
     await ensureSystemModulesActive(kernel)
-    expect(await activations.get('owlery')).toBe(true)
+    expect(await activations.get('email')).toBe(true)
+    expect(await activations.get('website')).toBe(true)
     expect(kernel.registry.get('owlery.send_mail')?.auditClass).toBe('mutate')
   })
 

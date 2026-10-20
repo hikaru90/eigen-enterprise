@@ -22,9 +22,13 @@ export type ToolContext = {
 }
 
 export type ToolDescriptor = {
-  /** Namespaced tool name: "module.toolname". */
+  /** Namespaced tool name: "namespace.toolname". */
   name: string
-  /** Owning module id — must equal the prefix of `name` before the first ".". */
+  /**
+   * Owning module id. The prefix of `name` before the first "." must be one of
+   * the owning manifest's toolNamespaces (default: exactly the module id).
+   * Merged modules own several namespaces, so tool names never changed.
+   */
   module: string
   summary: string
   inputSchema: ZodType

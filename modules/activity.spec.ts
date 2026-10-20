@@ -9,11 +9,11 @@ import { InMemoryActivationStore } from '$lib/kernel/modules'
 import type { AllowlistStore } from '$lib/kernel/gateway'
 import { buildKernel } from './index'
 import { createEmailTools } from './email/tools'
-import { createOwleryTools } from './owlery/tools'
+import { createOwleryTools } from './email/owlery/tools'
 import { createAllowlistAdminTools } from './orchestrator/allowlist-tools'
 import { createRecapRunNowTool } from './recap/tools'
 import type { RecapDeps } from './recap/types'
-import { createSubstrateTools } from './substrate/tools'
+import { createSubstrateTools } from './website/hosting/tools'
 import { createWebsiteTools } from './website/tools'
 
 /** Every tool the real boot registers (buildKernel + admin + the boot-time extras). */

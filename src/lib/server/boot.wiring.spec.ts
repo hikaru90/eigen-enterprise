@@ -42,7 +42,8 @@ describe('bootApp — production wiring', () => {
     )
     expect(offered).toContain('kernel.module_activate')
     expect(offered).toContain('kernel.module_list')
-    // Hosting, GitHub and email are on from the first boot (not only once a settings page opens).
-    for (const id of ['substrate', 'github', 'owlery']) expect(await activations.get(id)).toBe(true)
+    // Website (hosting + GitHub) and Email (Owlery) are on from the first boot
+    // (not only once a settings page opens).
+    for (const id of ['website', 'email']) expect(await activations.get(id)).toBe(true)
   })
 })

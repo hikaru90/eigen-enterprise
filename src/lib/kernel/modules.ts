@@ -7,7 +7,19 @@ export type ModuleManifest = {
   name: string
   version: string
   description?: string
-  /** Tool names owned by this module (namespaced "module.toolname"). */
+  /**
+   * Tool-name prefixes this module owns (the part before the first ".").
+   * Omitted = exactly [id]. A merged module (plan/phase-platform.md step 1)
+   * lists its own id plus the namespaces it absorbed, so existing tool names
+   * keep working unchanged. Every namespace has exactly one owner (fail loud).
+   */
+  toolNamespaces?: string[]
+  /**
+   * true = part of the agent's machinery, not an owner-facing module (no
+   * module card, no /m/<id> page). Its tools stay available to the agent.
+   */
+  internal?: boolean
+  /** Tool names owned by this module (namespaced "<namespace>.toolname"). */
   tools: string[]
   permissions: {
     roles: string[]
@@ -51,6 +63,8 @@ export class InMemoryActivationStore implements ActivationStore {
 
 export class ModuleRegistry {
   private readonly manifests = new Map<string, ModuleManifest>()
+  /** Tool namespace → owning module id. */
+  private readonly namespaces = new Map<string, string>()
 
   constructor(private readonly activations: ActivationStore) {}
 
@@ -65,7 +79,29 @@ export class ModuleRegistry {
     if (this.manifests.has(manifest.id)) {
       throw new Error(`module already registered: ${manifest.id}`)
     }
+    const owned = manifestNamespaces(manifest)
+    if (!owned.includes(manifest.id)) {
+      throw new Error(`toolNamespaces of module ${manifest.id} must include its own id`)
+    }
+    for (const namespace of owned) {
+      const owner = this.namespaces.get(namespace)
+      if (owner !== undefined) {
+        throw new Error(`namespace "${namespace}" is already owned by module ${owner}`)
+      }
+    }
+    for (const name of manifest.tools) {
+      if (!owned.includes(toolNamespace(name))) {
+        throw new Error(`tool ${name} is outside the namespaces of module ${manifest.id}`)
+      }
+    }
+    for (const namespace of owned) this.namespaces.set(namespace, manifest.id)
     this.manifests.set(manifest.id, manifest)
+  }
+
+  /** The module that owns a tool namespace (prefix before the first "."), if any. */
+  ownerOfNamespace(namespace: string): ModuleManifest | undefined {
+    const id = this.namespaces.get(namespace)
+    return id === undefined ? undefined : this.manifests.get(id)
   }
 
   get(id: string): ModuleManifest | undefined {
@@ -88,15 +124,16 @@ export class ModuleRegistry {
 
   /**
    * Whether the module owning `toolName` is currently active.
-   * Owning module id = toolName prefix before the first ".".
+   * Owning module = the module whose toolNamespaces contain the toolName
+   * prefix before the first ".".
    * Unknown module (or unknown store state) => false, fail closed.
    */
   async isToolActive(toolName: string): Promise<boolean> {
     const dot = toolName.indexOf('.')
     if (dot <= 0) return false
-    const moduleId = toolName.slice(0, dot)
-    if (!this.manifests.has(moduleId)) return false
-    return this.activations.get(moduleId)
+    const owner = this.ownerOfNamespace(toolName.slice(0, dot))
+    if (!owner) return false
+    return this.activations.get(owner.id)
   }
 
   private requireManifest(id: string): ModuleManifest {
@@ -104,4 +141,16 @@ export class ModuleRegistry {
     if (!manifest) throw new Error(`unknown module: ${id}`)
     return manifest
   }
+}
+
+/** The namespaces a manifest owns: its declared toolNamespaces, or exactly [id]. */
+export function manifestNamespaces(manifest: ModuleManifest): string[] {
+  return manifest.toolNamespaces ?? [manifest.id]
+}
+
+/** A tool name's namespace: the prefix before the first ".". */
+export function toolNamespace(toolName: string): string {
+  const dot = toolName.indexOf('.')
+  if (dot <= 0) throw new Error(`tool name ${toolName} has no namespace`)
+  return toolName.slice(0, dot)
 }

@@ -14,7 +14,8 @@ export const load: PageServerLoad = async (event) => {
   if (!event.locals.user) throw redirect(302, '/login')
   const kernel = bootstrapKernel()
   const manifest = kernel.modules.get(event.params.moduleId)
-  if (!manifest) throw error(404, 'No such module')
+  // Internal modules (the agent's own machinery) have no owner-facing page.
+  if (!manifest || manifest.internal === true) throw error(404, 'No such module')
 
   const userId = event.locals.user.id
   const isAdmin = await isUserAdmin(userId)

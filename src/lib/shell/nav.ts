@@ -15,7 +15,8 @@ export type ShellNav = {
   secondary: ShellNavItem[]
 }
 
-type ManifestLike = { id: string; name: string }
+/** `internal` modules are the agent's own machinery: never in the owner's nav. */
+type ManifestLike = { id: string; name: string; internal?: boolean }
 
 export function moduleHref(id: string): Pathname {
   return `/m/${encodeURIComponent(id)}` as const
@@ -25,12 +26,14 @@ export function buildShellNav(
   manifests: readonly ManifestLike[],
   activations: Map<string, boolean>,
 ): ShellNav {
-  const items = manifests.map((m) => ({
-    id: m.id,
-    name: m.name,
-    href: moduleHref(m.id),
-    active: activations.get(m.id) === true,
-  }))
+  const items = manifests
+    .filter((m) => m.internal !== true)
+    .map((m) => ({
+      id: m.id,
+      name: m.name,
+      href: moduleHref(m.id),
+      active: activations.get(m.id) === true,
+    }))
   return {
     primary: [
       { id: 'chat', name: 'Chat', href: '/', active: true },

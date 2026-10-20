@@ -29,47 +29,47 @@ import { createBrandTools } from './brand/tools'
 import { DbAllowlistStore } from './chat-gateway/db-stores'
 import { createChatGateway, type ChatGatewayBoot } from './chat-gateway/index'
 import { telegramClientFromEnv } from './chat-gateway/telegram'
-import { createDevAgentEngine, devAgentManifest } from './dev-agent'
-import { createDevAgentTools, type DevAgentEngine } from './dev-agent/tools'
-import { emailManifest } from './email/manifest'
+import { EMAIL_MODULE_ID, emailManifest } from './email/manifest'
+import { createOwleryTools } from './email/owlery/tools'
 import { createEmailTools } from './email/tools'
-import { GITHUB_MODULE_ID, githubManifest } from './github/manifest'
-import { createGitHubTools } from './github/tools'
 import { memoryManifest } from './memory/manifest'
 import { createMemoryTools } from './memory/tools'
 import { createAllowlistAdminTools } from './orchestrator/allowlist-tools'
-import { OWLERY_MODULE_ID, owleryManifest } from './owlery/manifest'
-import { createOwleryTools } from './owlery/tools'
+import { createDevAgentEngine } from './orchestrator/dev-agent'
+import { createDevAgentTools, type DevAgentEngine } from './orchestrator/dev-agent/tools'
+import { orchestratorManifest } from './orchestrator/manifest'
+import { createRepoEngine } from './orchestrator/repo/index'
+import { createRepoTools, type RepoEngine } from './orchestrator/repo/tools'
+import { createRoadmapTools } from './orchestrator/roadmap/tools'
 import { createRecapModule, type RecapBoot } from './recap'
 import { RECAP_MODULE_ID } from './recap/types'
-import { createRepoEngine } from './repo/index'
-import { repoManifest } from './repo/manifest'
-import { createRepoTools, type RepoEngine } from './repo/tools'
-import { roadmapManifest } from './roadmap/manifest'
-import { createRoadmapTools } from './roadmap/tools'
-import { SUBSTRATE_MODULE_ID, substrateManifest } from './substrate/manifest'
-import { createSubstrateTools } from './substrate/tools'
 
 export type { RecapBoot } from './recap'
-import { websiteManifest } from './website/manifest'
+import { createGitHubTools } from './website/github/tools'
+import { createSubstrateTools } from './website/hosting/tools'
+import { WEBSITE_MODULE_ID, websiteManifest } from './website/manifest'
 import { createWebsiteTools } from './website/tools'
 
 export { registerModuleTools, type WiredKernel } from '$lib/kernel/wiring'
 export type { ChatGatewayBoot } from './chat-gateway/index'
 
-/** The static module surface of this eigenEnterprise instance. */
+/**
+ * The static module surface of this eigenEnterprise instance
+ * (plan/phase-platform.md step 1): website = site + hosting + GitHub;
+ * email = Owlery + transactional send; orchestrator = the agent's internal
+ * repo / dev-agent / roadmap tools (no owner-facing card). Tool names are
+ * unchanged: merged modules own several tool namespaces.
+ */
 export const moduleManifests = [
   memoryManifest,
   emailManifest,
   websiteManifest,
-  devAgentManifest,
   brandManifest,
-  repoManifest,
-  roadmapManifest,
-  substrateManifest,
-  githubManifest,
-  owleryManifest,
+  orchestratorManifest,
 ] as const
+
+/** System modules: part of the OS, self-seeded active (ensureSystemModulesActive). */
+export const SYSTEM_MODULE_IDS = [WEBSITE_MODULE_ID, EMAIL_MODULE_ID] as const
 
 /** Tools that always require an approval decision before first execution. */
 export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
@@ -190,9 +190,10 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
  * hosting). Idempotent; call before using their tools.
  */
 export async function ensureSystemModulesActive(kernel: WiredKernel): Promise<void> {
-  // github is the box's source provider in this slice; it does nothing until connected.
-  // owlery is the company's email (SES); it does nothing until the owner sets it up.
-  for (const id of [SUBSTRATE_MODULE_ID, GITHUB_MODULE_ID, OWLERY_MODULE_ID]) {
+  // website owns hosting (substrate) and the GitHub source provider; github does
+  // nothing until connected. email owns Owlery (SES); it does nothing until the
+  // owner sets it up. Hosting mutations stay human-only (D11, requireHuman).
+  for (const id of SYSTEM_MODULE_IDS) {
     if (!(await kernel.activations.get(id))) await kernel.activations.set(id, true)
   }
 }

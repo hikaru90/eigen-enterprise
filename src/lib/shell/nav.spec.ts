@@ -4,27 +4,41 @@ import { buildShellNav, navItemCurrent, shellVisible } from './nav'
 const manifest = (id: string, name: string) => ({ id, name, description: `${name} does work.` })
 
 describe('buildShellNav', () => {
+  it("never lists internal modules (the agent's own machinery)", () => {
+    const nav = buildShellNav(
+      [
+        manifest('website', 'Website'),
+        { ...manifest('orchestrator', 'Agent internals'), internal: true },
+      ],
+      new Map([
+        ['website', true],
+        ['orchestrator', true],
+      ]),
+    )
+    expect([...nav.modules, ...nav.available].map((i) => i.id)).toEqual(['website'])
+  })
+
   it('lists active modules in registry order and inactive ones under Available', () => {
     const nav = buildShellNav(
       [
         manifest('memory', 'Memory'),
         manifest('website', 'Website'),
-        manifest('repo', 'Repo'),
-        manifest('owlery', 'Email'),
+        manifest('brand', 'Brand'),
+        manifest('email', 'Email'),
       ],
       new Map([
         ['website', true],
-        ['owlery', true],
-        ['repo', false],
+        ['email', true],
+        ['brand', false],
       ]),
     )
     expect(nav.modules).toEqual([
       { id: 'website', name: 'Website', href: '/m/website', active: true },
-      { id: 'owlery', name: 'Email', href: '/m/owlery', active: true },
+      { id: 'email', name: 'Email', href: '/m/email', active: true },
     ])
     expect(nav.available).toEqual([
       { id: 'memory', name: 'Memory', href: '/m/memory', active: false },
-      { id: 'repo', name: 'Repo', href: '/m/repo', active: false },
+      { id: 'brand', name: 'Brand', href: '/m/brand', active: false },
     ])
   })
 

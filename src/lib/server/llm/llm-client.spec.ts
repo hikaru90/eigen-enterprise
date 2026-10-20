@@ -1755,4 +1755,3 @@ describe('llm client tool-calling passthrough', () => {
     })
   })
 })
-})

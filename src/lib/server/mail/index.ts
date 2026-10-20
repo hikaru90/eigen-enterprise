@@ -1,5 +1,5 @@
 import type { CompanyMail } from './company-mail'
-import { owleryService } from '../../../../modules/owlery/service'
+import { owleryService } from '../../../../modules/email/owlery/service'
 
 export {
   MailNotConfiguredError,

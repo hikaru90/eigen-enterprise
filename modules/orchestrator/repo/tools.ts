@@ -1,3 +1,4 @@
+import { ORCHESTRATOR_MODULE_ID } from '../manifest'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -286,7 +287,7 @@ export function createRepoTools(deps: RepoToolDeps): ToolDescriptor[] {
   return [
     {
       name: 'repo.worktree_create',
-      module: 'repo',
+      module: ORCHESTRATOR_MODULE_ID,
       summary:
         'Create your git worktree sandbox (ee-agent-<id> on wt/agent-<id>) in the main repo. Idempotent: returns the existing worktree with created:false.',
       auditClass: 'external',
@@ -297,7 +298,7 @@ export function createRepoTools(deps: RepoToolDeps): ToolDescriptor[] {
     },
     {
       name: 'repo.run',
-      module: 'repo',
+      module: ORCHESTRATOR_MODULE_ID,
       summary:
         'Run an allowlisted command (npm test, npm run check/lint/db:migrate, npx vitest run, git add/commit -m/status/diff/log, mkdir/cp/mv, node scripts/*) inside your worktree. Non-zero exit is a result, not an error.',
       auditClass: 'external',
@@ -311,7 +312,7 @@ export function createRepoTools(deps: RepoToolDeps): ToolDescriptor[] {
     },
     {
       name: 'repo.write_file',
-      module: 'repo',
+      module: ORCHESTRATOR_MODULE_ID,
       summary:
         'Write a file inside your worktree (creates parent dirs). Paths must stay inside the worktree; .env*/key/pem material is refused.',
       auditClass: 'mutate',
@@ -325,7 +326,7 @@ export function createRepoTools(deps: RepoToolDeps): ToolDescriptor[] {
     },
     {
       name: 'repo.read_file',
-      module: 'repo',
+      module: ORCHESTRATOR_MODULE_ID,
       summary:
         'Read a file from inside your worktree. Paths must stay inside the worktree; .env*/key/pem material is refused.',
       auditClass: 'read',
@@ -338,7 +339,7 @@ export function createRepoTools(deps: RepoToolDeps): ToolDescriptor[] {
     },
     {
       name: 'repo.merge',
-      module: 'repo',
+      module: ORCHESTRATOR_MODULE_ID,
       summary:
         'Land your worktree branch on the main repo: server-side verification gate first (vitest + typecheck must be green), then commit, merge, and cleanup. Owner approval required; on conflicts, stop and ask the owner.',
       auditClass: 'mutate',

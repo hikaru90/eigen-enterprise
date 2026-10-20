@@ -1,3 +1,4 @@
+import { EMAIL_MODULE_ID } from './manifest'
 import { z } from 'zod'
 import type { ToolDescriptor } from '$lib/kernel/types'
 import type { CompanyMail } from '$lib/server/mail/company-mail'
@@ -32,7 +33,7 @@ export function createEmailTools(deps: EmailToolDeps = {}): ToolDescriptor[] {
   return [
     {
       name: 'email.send_mail',
-      module: 'email',
+      module: EMAIL_MODULE_ID,
       summary:
         "Send one transactional email from the company's sender address. Fails loud when email is not set up.",
       auditClass: 'external',

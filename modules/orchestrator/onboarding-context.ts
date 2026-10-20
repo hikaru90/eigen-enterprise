@@ -48,7 +48,7 @@ export function onboardingContextBlock(facts: OnboardingFacts, firstWebsiteQuest
     `- AI provider: ${doneOr(facts.aiProvider, 'missing')}`,
     'Next, in order:',
     '1. The company website (the website founding journey: name, what the company does, tone → pages + brand doc).',
-    '2. Then the other modules, one at a time, offered by you: brand, memory, email, repo, recap, roadmap.',
+    '2. Then the other modules, one at a time, offered by you: brand, memory, email, recap.',
     'Protocol:',
     '- Keep replies short and warm; one question per reply.',
     `- When the owner agrees to start the website, append exactly ${ONBOARDING_START_WEBSITE_MARKER} as the final line of your reply, and in that same reply do this: ${firstWebsiteQuestion}`,
