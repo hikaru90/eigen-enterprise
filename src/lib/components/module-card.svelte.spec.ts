@@ -8,6 +8,7 @@ const module = {
   name: 'Website',
   description: 'The company site.',
   active: true,
+  resultsTitle: 'Pages',
   results: [],
   counts: [
     { label: 'Published', value: 2 },

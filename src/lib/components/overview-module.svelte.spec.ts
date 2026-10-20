@@ -3,7 +3,7 @@ import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
 import OverviewModule from './overview-module.svelte'
 
-const base = { id: 'website', name: 'Website', description: 'The company site.', results: [], counts: [], note: null }
+const base = { id: 'website', name: 'Website', description: 'The company site.', resultsTitle: 'Pages', results: [], counts: [], note: null }
 
 describe('overview-module.svelte', () => {
   it('shows an active module with linked results', async () => {
@@ -18,7 +18,7 @@ describe('overview-module.svelte', () => {
       },
     })
     await expect.element(page.getByTestId('overview-module-state')).toHaveTextContent('Active')
-    await expect.element(page.getByText('Results')).toBeInTheDocument()
+    await expect.element(page.getByText('Pages')).toBeInTheDocument()
     await expect
       .element(page.getByRole('link', { name: 'Home' }))
       .toHaveAttribute('href', 'http://localhost/site/home')
@@ -28,7 +28,7 @@ describe('overview-module.svelte', () => {
   it('shows an inactive module without results', async () => {
     render(OverviewModule, { module: { ...base, active: false } })
     await expect.element(page.getByTestId('overview-module-state')).toHaveTextContent('Inactive')
-    await expect.element(page.getByText('Results')).not.toBeInTheDocument()
+    await expect.element(page.getByText('Pages')).not.toBeInTheDocument()
   })
 
   it('shows the note when results are not available', async () => {
