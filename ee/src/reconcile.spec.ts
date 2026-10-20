@@ -230,3 +230,34 @@ describe('reconcile', () => {
     ).rejects.toThrow(/STRIPE_KEY is declared but not set/)
   })
 })
+
+describe('owner contract (no ee.json in the repo)', () => {
+  const contract = { runtime: 'node', node: '22', build: [['npm', 'install', '--omit=dev']], start: ['node', 'index.js'], health: '/' }
+  const gitWorkload = (c: unknown) =>
+    workloadSchema.parse({
+      name: 'shop',
+      tier: 'app',
+      source: { kind: 'git', mirror: 'sources/gh-shop.git', ref: 'main', rev: 'c'.repeat(40) },
+      contract: c,
+    })
+
+  it('a release without ee.json builds from the contract in the company repo', async () => {
+    const sys = new FakeSystem()
+    const rel = await prepareRelease(sys, gitWorkload(contract))
+    expect(rel.contract.start).toEqual(['node', 'index.js'])
+    expect(JSON.parse(sys.files.get(`${rel.dir}/ee.json`)!)).toMatchObject({ runtime: 'node', start: ['node', 'index.js'] })
+  })
+
+  it('the owner contract wins over a repo ee.json, and a changed contract is a new release', async () => {
+    const sys = new FakeSystem()
+    const one = await prepareRelease(sys, gitWorkload(contract))
+    const two = await prepareRelease(sys, gitWorkload({ ...contract, start: ['node', 'server.js'] }))
+    expect(one.id).not.toBe(two.id)
+    expect(two.contract.start).toEqual(['node', 'server.js'])
+  })
+
+  it('a missing runtime in the owner contract is a catalog gap', async () => {
+    const sys = new FakeSystem()
+    await expect(prepareRelease(sys, gitWorkload({ ...contract, node: '18' }))).rejects.toThrow(/catalog_gap: .*node@18/)
+  })
+})

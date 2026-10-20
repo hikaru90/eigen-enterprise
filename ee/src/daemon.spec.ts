@@ -13,6 +13,8 @@ import type { RunResult, System } from './system.ts'
 /** Minimal box for the control verbs: files in memory, ssh-keygen writes a pair. */
 class FakeSystem implements System {
   files = new Map<string, string>()
+  /** Files at the rev a mirror is asked about (git ls-tree / git show). */
+  gitTree: Record<string, string> = {}
   async readFile(p: string) {
     return this.files.get(p) ?? null
   }
@@ -34,6 +36,14 @@ class FakeSystem implements System {
       const f = args[args.indexOf('-f') + 1]!
       this.files.set(f, 'PRIVATE-KEY-MATERIAL')
       this.files.set(`${f}.pub`, 'ssh-ed25519 AAAAPUB ee-deploy\n')
+    }
+    if (cmd === 'git' && args.includes('ls-tree')) {
+      const path = args.at(-1)!
+      return { code: 0, stdout: path in this.gitTree ? `${path}\n` : '', stderr: '' }
+    }
+    if (cmd === 'git' && args.includes('show')) {
+      const path = args.at(-1)!.split(':')[1]!
+      return { code: 0, stdout: this.gitTree[path] ?? '', stderr: '' }
     }
     if (cmd === 'git') return { code: 0, stdout: `${'a'.repeat(40)}\trefs/heads/main\n`, stderr: '' }
     return { code: 0, stdout: '', stderr: '' }
@@ -110,5 +120,62 @@ describe('control API: deploy keys', () => {
     const { call } = await start()
     const r = await call('POST', '/v1/secrets', { workload: '_deploy_keys', name: 'X', value: 'y', author: 'a' })
     expect(r.status).toBe(403)
+  })
+})
+
+describe('control API: apps from the dashboard', () => {
+  it('GET /v1/catalog lists the runtimes eigen provides', async () => {
+    const { call } = await start()
+    const r = await call('GET', '/v1/catalog')
+    expect(r.status).toBe(200)
+    expect(r.data.runtimes.node).toContain('22')
+  })
+
+  it('POST /v1/apps refuses a contract the catalog lacks, as a catalog_gap naming it', async () => {
+    const { call } = await start()
+    const r = await call('POST', '/v1/apps', {
+      name: 'shop',
+      source: { kind: 'git', mirror: 'sources/gh-shop.git', ref: 'main', rev: 'c'.repeat(40) },
+      env: {},
+      secrets: [],
+      deploy: { auto: false },
+      contract: { runtime: 'node', node: '18', start: ['node', 'index.js'] },
+      author: 'human:u1',
+    })
+    expect(r.status).toBe(422)
+    expect(r.data).toMatchObject({ type: 'urn:ee:catalog_gap', missing: ['runtime node@18'] })
+  })
+
+  it('GET /v1/sources/contract reads ee.json at a rev from the mirror, or says there is none', async () => {
+    const { sys, call } = await start()
+    const rev = 'c'.repeat(40)
+    sys.files.set(`${PATHS.company}/sources/gh-shop.git`, '')
+    sys.gitTree = { 'ee.json': JSON.stringify({ runtime: 'node', node: '22', start: ['node', 'index.js'] }) }
+    const found = await call('GET', `/v1/sources/contract?name=gh-shop&rev=${rev}`)
+    expect(found.status).toBe(200)
+    expect(found.data).toMatchObject({ present: true, contract: { runtime: 'node', start: ['node', 'index.js'] }, gap: null })
+
+    sys.gitTree = { 'ee.json': JSON.stringify({ runtime: 'node', node: '16', start: ['node', 'index.js'] }) }
+    const gap = await call('GET', `/v1/sources/contract?name=gh-shop&rev=${rev}`)
+    expect(gap.data).toMatchObject({ present: true, gap: ['runtime node@16'] })
+
+    sys.gitTree = {}
+    const none = await call('GET', `/v1/sources/contract?name=gh-shop&rev=${rev}`)
+    expect(none.data).toEqual({ present: false, contract: null, gap: null, error: null })
+
+    expect((await call('GET', `/v1/sources/contract?name=../x&rev=${rev}`)).status).toBe(400)
+    expect((await call('GET', `/v1/sources/contract?name=gh-nope&rev=${rev}`)).status).toBe(404)
+  })
+
+  it('GET /v1/events?workload= returns that workload’s deploy history, newest last', async () => {
+    const { ee, call } = await start()
+    ee.journal.events.push(
+      { id: '1', time: 't1', type: 'deploy.started', workload: 'shop', message: 'm1', data: {} },
+      { id: '2', time: 't2', type: 'deploy.started', workload: 'other', message: 'm2', data: {} },
+      { id: '3', time: 't3', type: 'deploy.succeeded', workload: 'shop', message: 'm3', data: { release: 'r' } },
+    )
+    const r = await call('GET', '/v1/events?workload=shop')
+    expect(r.status).toBe(200)
+    expect(r.data.events.map((e: { id: string }) => e.id)).toEqual(['1', '3'])
   })
 })

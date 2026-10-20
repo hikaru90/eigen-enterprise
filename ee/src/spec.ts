@@ -64,6 +64,12 @@ export const workloadSchema = z
       .strict()
       .default({ memoryMb: 512, cpuPercent: 100 }),
     deploy: z.object({ auto: z.boolean() }).strict().default({ auto: false }),
+    /**
+     * The build contract when the app's repo has no ee.json: written by the
+     * owner (the dashboard's form) into the company repo, never into the app's
+     * repo. ee writes it into the release as ee.json; it wins over the repo's.
+     */
+    contract: z.lazy(() => appContractSchema).optional(),
   })
   .strict()
 
@@ -87,6 +93,8 @@ export const appContractSchema = z
     /** static: directory (relative to the release) Caddy serves. */
     staticDir: z.string().regex(/^[a-zA-Z0-9._/-]+$/).optional(),
     health: z.string().startsWith('/').default('/'),
+    /** node: an extra env name the app reads its port from (ee always sets PORT too). */
+    portEnv: z.string().regex(ENV_KEY).optional(),
     services: z.array(z.string()).default([]),
     capabilities: z.array(z.string()).default([]),
   })
@@ -97,6 +105,9 @@ export const appContractSchema = z
     }
     if (c.runtime === 'node' && !c.node) {
       ctx.addIssue({ code: 'custom', message: 'runtime "node" requires "node" (major version)' })
+    }
+    if (c.portEnv && c.portEnv !== 'PORT' && (RESERVED_ENV as readonly string[]).includes(c.portEnv)) {
+      ctx.addIssue({ code: 'custom', message: `portEnv may not be ${c.portEnv}` })
     }
     if (c.runtime === 'static' && !c.staticDir) {
       ctx.addIssue({ code: 'custom', message: 'runtime "static" requires "staticDir"' })

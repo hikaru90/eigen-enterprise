@@ -4,8 +4,8 @@ vi.mock('$env/dynamic/private', () => ({ default: {}, env: {} }))
 
 import { InMemoryApprovalModeStore, InMemoryApprovalStore } from '$lib/kernel/approvals'
 import { InMemoryEventSink } from '$lib/kernel/events'
-import { InMemoryActivationStore } from '$lib/kernel/modules'
 import { MODULE_MERGES } from '$lib/kernel/module-merge'
+import { InMemoryActivationStore } from '$lib/kernel/modules'
 import type { ToolContext } from '$lib/kernel/types'
 import { EeClient } from '$lib/server/ee/client'
 import {
@@ -15,6 +15,7 @@ import {
   moduleManifests,
   SYSTEM_MODULE_IDS,
 } from './index'
+import { APP_AGENT_GATED_TOOLS } from './website/apps/tools'
 import { createSubstrateTools } from './website/hosting/tools'
 
 /** Plan/phase-platform.md step 1: the merged module cut. */
@@ -99,6 +100,12 @@ describe('merged module manifests', () => {
     expect(await k.modules.isToolActive('owlery.status')).toBe(true)
     // Not a system module: the agent's internal tools keep their own activation.
     expect(await k.modules.isToolActive('repo.merge')).toBe(false)
+  })
+})
+
+describe('D11: agent deploys go through approval, never around it', () => {
+  it('every agent-callable app tool that changes the server is approval-gated', () => {
+    for (const name of APP_AGENT_GATED_TOOLS) expect(APPROVAL_REQUIRED_TOOLS.has(name)).toBe(true)
   })
 })
 

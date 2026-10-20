@@ -101,7 +101,9 @@ async function sandboxedBuild(sys: System, w: Workload, dir: string, contract: A
 }
 
 export async function prepareRelease(sys: System, w: Workload): Promise<PreparedRelease> {
-  const id = w.source.kind === 'release' ? w.source.sha256.slice(0, 16) : w.source.rev.slice(0, 16)
+  const base = w.source.kind === 'release' ? w.source.sha256.slice(0, 16) : w.source.rev.slice(0, 16)
+  // An owner contract is part of the release: a changed contract is a new release.
+  const id = w.contract ? `${base}-${sha(JSON.stringify(w.contract)).slice(0, 8)}` : base
   const dir = `${PATHS.workloads}/${w.name}/releases/${id}`
   if (await sys.exists(`${dir}/.ee-ready`)) {
     return { id, dir, contract: await readContract(sys, dir, w.name) }
@@ -120,6 +122,10 @@ export async function prepareRelease(sys: System, w: Workload): Promise<Prepared
     const mirror = `${PATHS.company}/${w.source.mirror}`
     // git archive | tar: the release never contains .git, only the tree at that rev.
     await mustRun(sys, 'sh', ['-c', 'git -C "$1" archive --format=tar "$2" | tar -x -C "$3" --no-same-owner', 'sh', mirror, w.source.rev, tmp])
+  }
+  if (w.contract) {
+    // The owner's contract (company repo) wins over anything the repo ships.
+    await sys.writeFile(`${tmp}/ee.json`, JSON.stringify(w.contract, null, 2) + '\n', 0o644)
   }
   const contract = await readContract(sys, tmp, w.name)
   await sandboxedBuild(sys, w, tmp, contract)

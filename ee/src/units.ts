@@ -84,6 +84,7 @@ export function renderUnit(input: UnitInput): string {
   const nodeBin = `${PATHS.runtimes}/node-${c.node}/bin/node`
   const env: Record<string, string> = {
     ...w.env,
+    ...(c.portEnv ? { [c.portEnv]: String(port) } : {}),
     PORT: String(port),
     HOST: '127.0.0.1',
     NODE_ENV: 'production',

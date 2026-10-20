@@ -1,5 +1,35 @@
 import { request } from 'node:http'
 
+/** ee's AppContract (ee/src/spec.ts), as it travels over the control API. */
+export type AppContract = {
+  runtime: 'node' | 'static'
+  node?: string
+  build: string[][]
+  start?: string[]
+  preStart: string[][]
+  staticDir?: string
+  health: string
+  portEnv?: string
+  services: string[]
+  capabilities: string[]
+}
+
+/** What eigen provides (ee's CATALOG, D16). */
+export type Catalog = {
+  runtimes: { node: string[]; static: string[] }
+  services: string[]
+  capabilities: string[]
+}
+
+/** ee's answer for the repo's own ee.json at a pinned rev. */
+export type RepoContract = {
+  present: boolean
+  contract: AppContract | null
+  /** Catalog entries the ee.json needs and eigen lacks. */
+  gap: string[] | null
+  error: string | null
+}
+
 /**
  * Client for ee's control API (ee/src/daemon.ts) over its unix socket. The
  * socket only exists on a box ee manages; anywhere else every call fails with
@@ -19,6 +49,9 @@ export class SubstrateError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** ee's problem type (e.g. urn:ee:catalog_gap) and body, for structured handling. */
+    readonly type: string | null = null,
+    readonly body: unknown = null,
   ) {
     super(message)
   }
@@ -78,6 +111,8 @@ export type EeStatus = {
     tier: 'system' | 'module' | 'app'
     source: { kind: 'release' } | { kind: 'git'; mirror: string; ref: string; rev: string }
     deploy: { auto: boolean }
+    /** The owner's build contract stored in the company repo (null: the repo's ee.json). */
+    contract: AppContract | null
     secrets: string[]
     declaredSecrets: string[]
     live: { release: string; slot?: string } | null
@@ -92,6 +127,15 @@ export type EeStatus = {
   }>
 }
 
+export type EeEvent = {
+  id: string
+  time: string
+  type: string
+  workload: string | null
+  message: string
+  data: Record<string, unknown>
+}
+
 export type ChangeResult = { rev: string; reconcileError: string | null }
 
 export class EeClient {
@@ -100,9 +144,13 @@ export class EeClient {
   private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
     const { status, data } = await this.transport(method, path, body)
     if (status >= 400) {
-      const detail =
-        (data as { detail?: string; title?: string } | null)?.detail ?? `HTTP ${status}`
-      throw new SubstrateError(status, detail)
+      const problem = data as { detail?: string; type?: string } | null
+      throw new SubstrateError(
+        status,
+        problem?.detail ?? `HTTP ${status}`,
+        problem?.type ?? null,
+        data,
+      )
     }
     return data as T
   }
@@ -156,9 +204,28 @@ export class EeClient {
     env: Record<string, string>
     secrets: string[]
     deploy: { auto: boolean }
+    /** The owner's contract when the repo has no ee.json (ee keeps it in the company repo). */
+    contract?: AppContract
     author: string
   }): Promise<ChangeResult> {
     return this.call('POST', '/v1/apps', i)
+  }
+  /** What eigen provides (D16): runtimes, services, capabilities. */
+  catalog(): Promise<Catalog> {
+    return this.call('GET', '/v1/catalog')
+  }
+  /** The repo's own ee.json at a rev, read from ee's local mirror. */
+  sourceContract(i: { name: string; rev: string }): Promise<RepoContract> {
+    const q = new URLSearchParams({ name: i.name, rev: i.rev })
+    return this.call('GET', `/v1/sources/contract?${q}`)
+  }
+  /** One workload's journal events (deploy history), oldest first. */
+  events(workload: string): Promise<{ workload: string; events: EeEvent[] }> {
+    return this.call('GET', `/v1/events?${new URLSearchParams({ workload })}`)
+  }
+  /** The live slot's recent journal lines. 404 when nothing is live. */
+  logs(workload: string): Promise<{ workload: string; lines: string[] }> {
+    return this.call('GET', `/v1/logs?${new URLSearchParams({ workload })}`)
   }
   deploy(i: { workload: string; rev: string; author: string }): Promise<ChangeResult> {
     return this.call('POST', '/v1/deploy', i)

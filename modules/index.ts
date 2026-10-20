@@ -45,6 +45,7 @@ import { createRecapModule, type RecapBoot } from './recap'
 import { RECAP_MODULE_ID } from './recap/types'
 
 export type { RecapBoot } from './recap'
+import { APP_AGENT_GATED_TOOLS, createAppTools } from './website/apps/tools'
 import { createGitHubConnectTools } from './website/github/connect-tools'
 import { createGitHubTools } from './website/github/tools'
 import { createSubstrateTools } from './website/hosting/tools'
@@ -99,6 +100,9 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   // drops what a deploy depends on, so it is destructive (plan/github-connect.md).
   'website.github_connect_repo',
   'website.github_disconnect_repo',
+  // Deploying an app and setting its env change the server: the agent may do it
+  // only through this gate (owner decision 3, plan/phase-platform.md; D11).
+  ...APP_AGENT_GATED_TOOLS,
 ])
 
 export type BootstrapKernelOptions = {
@@ -175,6 +179,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createSubstrateTools(),
     ...createGitHubTools(),
     ...createGitHubConnectTools(),
+    ...createAppTools(),
     ...createOwleryTools(),
   ])
 

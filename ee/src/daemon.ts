@@ -6,7 +6,7 @@ import { loadJournal, saveJournal, type Journal } from './journal.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
 import { emit, reconcile } from './reconcile.ts'
 import { SecretStore } from './secret-store.ts'
-import { gitSource, NAME, routeSchema, workloadSchema, type Route, type Workload } from './spec.ts'
+import { appContractSchema, assertInCatalog, CATALOG, CatalogGapError, gitSource, NAME, routeSchema, workloadSchema, type Route, type Workload } from './spec.ts'
 import { mustRun, type System } from './system.ts'
 import { addDomain, removeDomain, setConsoleHost } from './domains.ts'
 import { fetchSource } from './sources.ts'
@@ -89,6 +89,7 @@ export class Ee {
           tier: w.tier,
           source: w.source.kind === 'git' ? { kind: 'git', mirror: w.source.mirror, ref: w.source.ref, rev: w.source.rev } : { kind: 'release' },
           deploy: w.deploy,
+          contract: w.contract ?? null,
           secrets: Object.keys(this.secrets.all()[w.name] ?? {}),
           declaredSecrets: w.secrets,
           live: live ? { release: live.release, slot: j?.active } : j?.staticRoot ? { release: 'static' } : null,
@@ -139,6 +140,8 @@ const appInput = z
     env: workloadSchema.shape.env,
     secrets: workloadSchema.shape.secrets,
     deploy: workloadSchema.shape.deploy,
+    /** The owner's build contract when the repo has no ee.json (stored in the company repo). */
+    contract: appContractSchema.optional(),
     author,
   })
   .strict()
@@ -255,8 +258,48 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
         emit(ee.journal, ee.sys, 'deploy_key.deleted', null, `deploy key ${dk[1]} deleted by ${i.author}`)
         return send(res, 200, { ok: true })
       }
+      if (route === 'GET /v1/catalog') return send(res, 200, CATALOG)
+      if (route === 'GET /v1/sources/contract') {
+        // The repo's own ee.json at a pinned rev, read from the local mirror (never the network).
+        const name = z.string().regex(/^[a-z0-9][a-z0-9._-]*$/).parse(url.searchParams.get('name'))
+        const rev = z.string().regex(/^[0-9a-f]{40}$/).parse(url.searchParams.get('rev'))
+        const mirror = `${PATHS.company}/sources/${name}.git`
+        if (!(await ee.sys.exists(mirror))) throw new HttpError(404, `no mirror ${name}`)
+        const listed = await mustRun(ee.sys, 'git', ['-C', mirror, 'ls-tree', '--name-only', rev, '--', 'ee.json'])
+        if (listed.trim() !== 'ee.json') return send(res, 200, { present: false, contract: null, gap: null, error: null })
+        const raw = await mustRun(ee.sys, 'git', ['-C', mirror, 'show', `${rev}:ee.json`])
+        let json: unknown
+        try {
+          json = JSON.parse(raw)
+        } catch {
+          return send(res, 200, { present: true, contract: null, gap: null, error: 'ee.json is not valid JSON' })
+        }
+        const parsed = appContractSchema.safeParse(json)
+        if (!parsed.success) return send(res, 200, { present: true, contract: null, gap: null, error: `ee.json is invalid: ${parsed.error.message}` })
+        try {
+          assertInCatalog(parsed.data)
+        } catch (err) {
+          if (err instanceof CatalogGapError) return send(res, 200, { present: true, contract: parsed.data, gap: err.missing, error: null })
+          throw err
+        }
+        return send(res, 200, { present: true, contract: parsed.data, gap: null, error: null })
+      }
+      if (route === 'GET /v1/events') {
+        const name = z.string().regex(NAME).parse(url.searchParams.get('workload'))
+        return send(res, 200, { workload: name, events: ee.journal.events.filter((e) => e.workload === name).slice(-100) })
+      }
       if (route === 'POST /v1/apps') {
         const i = appInput.parse(await body(req))
+        if (i.contract) {
+          try {
+            assertInCatalog(i.contract)
+          } catch (err) {
+            if (err instanceof CatalogGapError) {
+              return send(res, 422, { type: 'urn:ee:catalog_gap', title: 'catalog gap', detail: err.message, missing: err.missing })
+            }
+            throw err
+          }
+        }
         return send(
           res,
           200,
@@ -265,7 +308,7 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
             if (existing && existing.tier !== 'app') throw new HttpError(403, `${i.name} is a ${existing.tier} workload`)
             // Re-creating an app keeps the secrets it already declared (values live in the store).
             const secrets = [...new Set([...(existing?.secrets ?? []), ...i.secrets])]
-            const next: Workload = workloadSchema.parse({ name: i.name, tier: 'app', source: i.source, env: i.env, secrets, deploy: i.deploy })
+            const next: Workload = workloadSchema.parse({ name: i.name, tier: 'app', source: i.source, env: i.env, secrets, deploy: i.deploy, ...(i.contract ? { contract: i.contract } : {}) })
             return { ...s, workloads: [...s.workloads.filter((w) => w.name !== i.name), next] }
           }),
         )

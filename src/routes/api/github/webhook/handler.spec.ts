@@ -20,10 +20,35 @@ describe('verifyGitHubSignature', () => {
 describe('pushTarget', () => {
   const sha = 'a'.repeat(40)
   it('maps a branch push', () => {
-    expect(pushTarget({ ref: 'refs/heads/main', after: sha, repository: { full_name: 'k/app' } })).toEqual({ repo: 'k/app', ref: 'main', after: sha })
+    expect(
+      pushTarget({ ref: 'refs/heads/main', after: sha, repository: { full_name: 'k/app' } }),
+    ).toEqual({ repo: 'k/app', ref: 'main', after: sha })
+  })
+  it('carries the numeric repo id (services match by id + branch, so renames still deploy)', () => {
+    expect(
+      pushTarget({
+        ref: 'refs/heads/main',
+        after: sha,
+        repository: { id: 42, full_name: 'k/app' },
+      }),
+    ).toEqual({
+      repoId: 42,
+      repo: 'k/app',
+      ref: 'main',
+      after: sha,
+    })
   })
   it('ignores tags and deletions', () => {
-    expect(pushTarget({ ref: 'refs/tags/v1', after: sha, repository: { full_name: 'k/app' } })).toBeNull()
-    expect(pushTarget({ ref: 'refs/heads/main', after: '0'.repeat(40), deleted: true, repository: { full_name: 'k/app' } })).toBeNull()
+    expect(
+      pushTarget({ ref: 'refs/tags/v1', after: sha, repository: { full_name: 'k/app' } }),
+    ).toBeNull()
+    expect(
+      pushTarget({
+        ref: 'refs/heads/main',
+        after: '0'.repeat(40),
+        deleted: true,
+        repository: { full_name: 'k/app' },
+      }),
+    ).toBeNull()
   })
 })

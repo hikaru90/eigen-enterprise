@@ -1,8 +1,8 @@
 import type { RequestHandler } from './$types'
 import { randomUUID } from 'node:crypto'
 import { error, json } from '@sveltejs/kit'
-import { defaultGitHubStore } from '../../../../../modules/website/github/store'
 import { bootstrapKernel, ensureSystemModulesActive } from '../../../../../modules/index'
+import { defaultGitHubStore } from '../../../../../modules/website/github/store'
 import { pushTarget, verifyGitHubSignature, type PushEvent } from './handler'
 
 /**
@@ -28,9 +28,22 @@ export const POST: RequestHandler = async ({ request }) => {
 
   const kernel = bootstrapKernel()
   await ensureSystemModulesActive(kernel)
-  const out = await kernel.registry.execute('github.auto_deploy', target, {
-    principal: { id: 'github-webhook', kind: 'service', roles: ['service'] },
+  const ctx = () => ({
+    principal: { id: 'github-webhook', kind: 'service' as const, roles: ['service'] },
     requestId: randomUUID(),
   })
-  return json({ ok: true, ...(out as object) })
+  const { repoId, ...byName } = target
+  // Legacy links (github.app_create) match by name; services match by GitHub's repo id + branch.
+  const legacy = (await kernel.registry.execute('github.auto_deploy', byName, ctx())) as {
+    deployed: unknown[]
+  }
+  const services =
+    repoId === undefined
+      ? { deployed: [] }
+      : ((await kernel.registry.execute(
+          'website.app_auto_deploy',
+          { repoId, ...byName },
+          ctx(),
+        )) as { deployed: unknown[] })
+  return json({ ok: true, deployed: [...legacy.deployed, ...services.deployed] })
 }

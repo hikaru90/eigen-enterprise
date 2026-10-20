@@ -117,3 +117,15 @@ describe('renderCaddyConfig', () => {
     ).toThrow(/no live upstream/)
   })
 })
+
+describe('renderUnit portEnv', () => {
+  it('sets the app-specific port variable next to PORT', () => {
+    const c = appContractSchema.parse({ runtime: 'node', node: '22', start: ['node', 'index.js'], portEnv: 'APP_PORT' })
+    const u = renderUnit({ workload, contract: c, slot: 'a', port: 4102, releaseDir: '/r' })
+    expect(u).toContain('Environment="APP_PORT=4102"')
+    expect(u).toContain('Environment="PORT=4102"')
+  })
+  it('a contract may not point portEnv at a reserved key', () => {
+    expect(() => appContractSchema.parse({ runtime: 'node', node: '22', start: ['node', 'i.js'], portEnv: 'HOST' })).toThrow()
+  })
+})
