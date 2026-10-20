@@ -187,4 +187,19 @@ describe('suggestContract: one gateway call, validated against the catalog', () 
       ).rejects.toThrow(/couldn't read the repo well enough/)
     }
   })
+
+  it('leaves the model room for a full answer (reasons and warnings run long)', async () => {
+    const chat = chatReturning(goodAnswer)
+    await suggestContract({ ee: eeWithRepo({ 'package.json': '{}' }), chat }, { userId: 'u1', mirror: 'gh-shop', rev: FAKE_REV })
+    expect((chat.calls[0] as { maxTokens: number }).maxTokens).toBeGreaterThanOrEqual(4000)
+  })
+
+  it('an answer cut off at the length limit says so — not that the repo was unreadable', async () => {
+    const cut: SuggestChatFn = async () => ({
+      choices: [{ finish_reason: 'length', message: { content: '{"runtime":"node@22","reasons":["README says' } }],
+    })
+    await expect(
+      suggestContract({ ee: eeWithRepo({ 'package.json': '{}' }), chat: cut }, { userId: 'u1', mirror: 'gh-shop', rev: FAKE_REV }),
+    ).rejects.toThrow(/answer was cut off/)
+  })
 })

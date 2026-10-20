@@ -206,9 +206,18 @@ async function defaultChat(input: Parameters<SuggestChatFn>[0]): Promise<unknown
   return llmChatCompletion(input)
 }
 
+const CUT_OFF =
+  "The AI's answer was cut off before it finished. Try again, or fill the form in yourself."
+
 function parseAnswer(response: unknown): z.infer<typeof answerSchema> {
-  const content = (response as { choices?: Array<{ message?: { content?: unknown } }> })
-    ?.choices?.[0]?.message?.content
+  const choice = (
+    response as { choices?: Array<{ finish_reason?: unknown; message?: { content?: unknown } }> }
+  )?.choices?.[0]
+  // The provider stopped at the token limit: the JSON is incomplete by definition.
+  if (choice?.finish_reason === 'length') {
+    throw new AppUserError(CUT_OFF, { cause: new Error('finish_reason=length') })
+  }
+  const content = choice?.message?.content
   if (typeof content !== 'string') {
     throw new AppUserError(UNREADABLE, {
       cause: new Error('gateway response has no choices[0].message.content'),
@@ -252,7 +261,8 @@ export async function suggestContract(
     userId: i.userId,
     messages: buildSuggestMessages({ catalog, tree, files }),
     temperature: 0,
-    maxTokens: 1200,
+    // Reasons + warnings for a real repo run past 1200 tokens (owner's twodown did).
+    maxTokens: 4000,
     logContext: 'website_app_suggest',
     responseFormat: 'json_object',
   })

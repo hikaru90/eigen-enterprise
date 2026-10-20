@@ -124,7 +124,7 @@ export async function diagnoseDeploy(
       responseFormat: 'json_object',
       logContext: 'app_deploy_diagnose',
       temperature: 0,
-      maxTokens: 1200,
+      maxTokens: 4000,
     })
   } catch (err) {
     throw new AppUserError(
