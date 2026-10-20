@@ -19,6 +19,7 @@ vi.mock('../../../modules/index', () => ({
   buildKernel: mocks.buildKernel,
   bootstrapChatGateway: mocks.bootstrapChatGateway,
   bootstrapRecap: mocks.bootstrapRecap,
+  ensureSystemModulesActive: async () => {},
 }))
 vi.mock('../../../modules/orchestrator/bootstrap', () => ({
   bootstrapOrchestrator: mocks.bootstrapOrchestrator,
@@ -76,7 +77,9 @@ function installFakeOrchestrator(): void {
         sessions: stage?.sessions ?? null,
         loop: null,
         status: (): OrchestratorStatus =>
-          stage ? { chatGateway: 'active', loopRunning: false } : { chatGateway: 'inactive', loopRunning: false },
+          stage
+            ? { chatGateway: 'active', loopRunning: false }
+            : { chatGateway: 'inactive', loopRunning: false },
       } as unknown as OrchestratorBoot
     },
   )

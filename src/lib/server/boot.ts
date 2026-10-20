@@ -9,6 +9,7 @@ import {
   bootstrapChatGateway,
   bootstrapRecap,
   buildKernel,
+  ensureSystemModulesActive,
   type BootstrapKernelOptions,
 } from '../../../modules/index'
 import {
@@ -133,6 +134,8 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
   // is part of the web server's kernel, not only the CLI's: the orchestrator's
   // remediation path (and its tool-error prompt) depends on it.
   await registerAdminTools(kernel, { db: kernelDbHandle })
+  // Hosting, GitHub and email are the company's system modules: on from the first boot.
+  await ensureSystemModulesActive(kernel)
 
   // Durable journey state: DB-backed via the same lazy pooled-handle pattern
   // the kernel stores use (request-scoped when inside ALS, pooled otherwise).

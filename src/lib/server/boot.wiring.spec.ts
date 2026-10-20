@@ -18,11 +18,12 @@ import { bootApp } from './boot'
  */
 describe('bootApp — production wiring', () => {
   it('the web kernel carries the admin tools and offers them to the orchestrator', async () => {
+    const activations = new InMemoryActivationStore()
     const boot = await bootApp({
       env: {},
       buildKernel: () =>
         buildKernel({
-          activations: new InMemoryActivationStore(),
+          activations,
           eventSink: new InMemoryEventSink(),
           approvalStore: new InMemoryApprovalStore(),
           principals: {} as PrincipalStore,
@@ -41,5 +42,7 @@ describe('bootApp — production wiring', () => {
     )
     expect(offered).toContain('kernel.module_activate')
     expect(offered).toContain('kernel.module_list')
+    // Hosting, GitHub and email are on from the first boot (not only once a settings page opens).
+    for (const id of ['substrate', 'github', 'owlery']) expect(await activations.get(id)).toBe(true)
   })
 })
