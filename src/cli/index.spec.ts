@@ -189,6 +189,7 @@ describe('runCli: happy paths through the full registry pipeline', () => {
       {
         id: 'kernel',
         name: 'Kernel',
+        internal: true,
         version: '0.1.0',
         description:
           'Module activation and approval-decision administration for the kernel itself.',
