@@ -12,6 +12,7 @@ type State = Omit<DesiredState, 'rev'>
 
 /** The paths eigenEnterprise serves on its public host: website pages, their assets, the contact form. */
 export const OS_PUBLIC_SURFACE = [
+  '/s',
   '/s/*',
   '/_app/*',
   '/api/website/contact',
