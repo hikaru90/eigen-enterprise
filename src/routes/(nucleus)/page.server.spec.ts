@@ -25,9 +25,16 @@ vi.mock('$lib/server/mail', () => ({ companyMail: () => ({ isConfigured: mailCon
 const loadConversationMock = vi.hoisted(() =>
   vi.fn(async () => ({ sessionId: null as string | null, messages: [] as unknown[] })),
 )
+const loadApprovalStatusesMock = vi.hoisted(() => vi.fn(async () => ({})))
 vi.mock('$lib/server/chat/current-conversation', () => ({
   loadCurrentConversation: loadConversationMock,
+  loadApprovalStatuses: loadApprovalStatusesMock,
 }))
+
+/** Stand-in for event.fetch against GET /api/approvals/mode (built by another workstream). */
+function modeFetch(res: { ok: boolean; body?: unknown }) {
+  return vi.fn(async () => ({ ok: res.ok, status: res.ok ? 200 : 404, json: async () => res.body }))
+}
 
 import { load } from './+page.server'
 
@@ -47,12 +54,13 @@ describe('nucleus page server load', () => {
     authDbMock.select = () => selectChain({ accountKind: 'production' })
     isUserAdminMock.mockResolvedValue(true)
     mailConfiguredMock.mockResolvedValue(false)
+    const fetch = modeFetch({ ok: true, body: { mode: 'ask' } })
     expect(
-      await load({ locals: { user: { id: 'u1' } }, url: new URL('https://os.test/') } as never),
+      await load({ locals: { user: { id: 'u1' } }, url: new URL('https://os.test/'), fetch } as never),
     ).toMatchObject({ needsMail: true })
     mailConfiguredMock.mockResolvedValue(true)
     expect(
-      await load({ locals: { user: { id: 'u1' } }, url: new URL('https://os.test/') } as never),
+      await load({ locals: { user: { id: 'u1' } }, url: new URL('https://os.test/'), fetch } as never),
     ).toMatchObject({ needsMail: false })
     isUserAdminMock.mockResolvedValue(false)
     mailConfiguredMock.mockResolvedValue(false)
@@ -67,6 +75,7 @@ describe('nucleus page server load', () => {
     authDbMock.select = () => selectChain({ accountKind: 'production', onboardingCompleted: false })
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: null }))
     onboardingFactsMock.mockResolvedValue({ website: 'not_started' })
+    isUserAdminMock.mockResolvedValue(false)
   })
 
   it('offers the agent hand-off only while the website is still to do', async () => {
@@ -232,5 +241,66 @@ describe('nucleus page server load', () => {
       displayName: null,
       needsMail: false,
     })
+  })
+
+  it('restores approval cards with their current kernel status', async () => {
+    isUserProviderReadyMock.mockResolvedValue(true)
+    loadConversationMock.mockResolvedValue({
+      sessionId: 's-1',
+      messages: [
+        {
+          role: 'assistant',
+          content: '',
+          metadata: { variant: 'approval_required', tool: 'website.publish_page', approvalId: 'apr-1' },
+        },
+      ],
+    })
+    loadApprovalStatusesMock.mockResolvedValueOnce({ 'apr-1': 'pending' })
+    const result = await load({
+      locals: { user: { id: 'u1' } },
+      url: new URL('https://os.test/'),
+    } as never)
+    expect(loadApprovalStatusesMock).toHaveBeenCalledWith(expect.anything(), ['apr-1'])
+    expect(result).toMatchObject({
+      chatHistory: [
+        { role: 'approval', tool: 'website.publish_page', approvalId: 'apr-1', status: 'pending' },
+      ],
+    })
+  })
+
+  it('loads the approval mode for the owner/admin only', async () => {
+    isUserProviderReadyMock.mockResolvedValue(true)
+    isUserAdminMock.mockResolvedValue(true)
+    const fetch = modeFetch({ ok: true, body: { mode: 'reasonable' } })
+    const owner = await load({
+      locals: { user: { id: 'u1' } },
+      url: new URL('https://os.test/'),
+      fetch,
+    } as never)
+    expect(fetch).toHaveBeenCalledWith('/api/approvals/mode')
+    expect(owner).toMatchObject({ isAdmin: true, approvalMode: { status: 'ok', mode: 'reasonable' } })
+
+    isUserAdminMock.mockResolvedValue(false)
+    const other = modeFetch({ ok: true, body: { mode: 'ask' } })
+    const member = await load({
+      locals: { user: { id: 'u2' } },
+      url: new URL('https://os.test/'),
+      fetch: other,
+    } as never)
+    expect(other).not.toHaveBeenCalled()
+    expect(member).toMatchObject({ isAdmin: false, approvalMode: null })
+  })
+
+  it('says so when the approval mode cannot be loaded — never a silent default', async () => {
+    isUserProviderReadyMock.mockResolvedValue(true)
+    isUserAdminMock.mockResolvedValue(true)
+    for (const fetch of [
+      modeFetch({ ok: false }),
+      modeFetch({ ok: true, body: { mode: 'yolo' } }),
+    ]) {
+      expect(
+        await load({ locals: { user: { id: 'u1' } }, url: new URL('https://os.test/'), fetch } as never),
+      ).toMatchObject({ approvalMode: { status: 'unavailable' } })
+    }
   })
 })

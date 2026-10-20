@@ -24,6 +24,8 @@ const { bootAppMock, runtimeDispatchMock, handoffDispatchMock, getDbMock, appSql
   }))
 
 vi.mock('$lib/server/boot', () => ({ bootApp: bootAppMock }))
+const isUserAdminMock = vi.hoisted(() => vi.fn(async () => false))
+vi.mock('$lib/server/auth/user-role', () => ({ isUserAdmin: isUserAdminMock }))
 vi.mock('$lib/server/db', () => ({
   getDb: getDbMock,
   appSql: appSqlMock,
@@ -191,6 +193,82 @@ describe('POST /api/chat — harness dispatch', () => {
     ).rejects.toMatchObject({ status: 400 })
   })
 
+  describe('owner-decision continuation (approval card → the agent continues)', () => {
+    const decided = {
+      id: 'apr-1',
+      toolName: 'website.publish_page',
+      input: {},
+      principalId: 'orchestrator',
+      status: 'approved',
+    }
+    function withRegistry(rows: unknown[]) {
+      const execute = vi.fn(async () => rows)
+      bootAppMock.mockResolvedValue({
+        kernel: { eventSink: kernelEvents, registry: { execute } },
+        orchestrator: {
+          runtime: { dispatch: runtimeDispatchMock, dispatchOnboardingHandoff: handoffDispatchMock },
+        },
+      })
+      return execute
+    }
+
+    it('dispatches a system turn naming the decision so the agent re-runs the gated step', async () => {
+      const { POST } = await import('./+server')
+      isUserAdminMock.mockResolvedValue(true)
+      withRegistry([decided])
+      runtimeDispatchMock.mockResolvedValue('Published.')
+
+      const res = await POST({
+        locals: { user: { id: 'owner-1' } },
+        request: ndjsonRequest({ bootstrap: true, approvalContinuation: 'apr-1' }),
+      } as never)
+      const lines = await readNdjsonLines(res)
+
+      expect(runtimeDispatchMock).toHaveBeenCalledTimes(1)
+      const message = runtimeDispatchMock.mock.calls[0][2] as string
+      expect(message).toContain('approved')
+      expect(message).toContain('website.publish_page')
+      expect(message).toContain('apr-1')
+      expect(lines.at(-1)).toMatchObject({ type: 'done', response: 'Published.' })
+    })
+
+    it('owner/admin only, and only for a decided request', async () => {
+      const { POST } = await import('./+server')
+      isUserAdminMock.mockResolvedValue(false)
+      withRegistry([decided])
+      await expect(
+        POST({
+          locals: { user: { id: 'u2' } },
+          request: ndjsonRequest({ bootstrap: true, approvalContinuation: 'apr-1' }),
+        } as never),
+      ).rejects.toMatchObject({ status: 403 })
+
+      isUserAdminMock.mockResolvedValue(true)
+      withRegistry([{ ...decided, status: 'pending' }])
+      await expect(
+        POST({
+          locals: { user: { id: 'owner-1' } },
+          request: ndjsonRequest({ bootstrap: true, approvalContinuation: 'apr-1' }),
+        } as never),
+      ).rejects.toMatchObject({ status: 409 })
+
+      withRegistry([])
+      await expect(
+        POST({
+          locals: { user: { id: 'owner-1' } },
+          request: ndjsonRequest({ bootstrap: true, approvalContinuation: 'apr-1' }),
+        } as never),
+      ).rejects.toMatchObject({ status: 404 })
+      await expect(
+        POST({
+          locals: { user: { id: 'owner-1' } },
+          request: ndjsonRequest({ message: 'x', approvalContinuation: 'apr-1' }),
+        } as never),
+      ).rejects.toMatchObject({ status: 400 })
+      expect(runtimeDispatchMock).not.toHaveBeenCalled()
+    })
+  })
+
   it('requires auth', async () => {
     const { POST } = await import('./+server')
     await expect(
@@ -324,10 +402,12 @@ describe('POST /api/chat — harness dispatch', () => {
         _message: string,
         sinks: { surfaceEvent: (e: unknown) => void },
       ) => {
-        sinks.surfaceEvent({ type: 'approval.required', tool: 'email.send_mail' })
+        sinks.surfaceEvent({ type: 'approval.required', tool: 'email.send_mail', approvalId: 'apr-1' })
         return 'Queued for owner approval.'
       },
     )
+    const streamDb = buildStreamDb()
+    createScopedDrizzleMock.mockReturnValue(streamDb)
 
     const res = await POST({
       locals: { user: { id: 'u1' } },
@@ -335,7 +415,20 @@ describe('POST /api/chat — harness dispatch', () => {
     } as never)
 
     const lines = await readNdjsonLines(res)
-    expect(lines).toContainEqual({ type: 'approval.required', tool: 'email.send_mail' })
+    expect(lines).toContainEqual({
+      type: 'approval.required',
+      tool: 'email.send_mail',
+      approvalId: 'apr-1',
+    })
+    // The card's request id is saved with the transcript (page-load restore decides by it).
+    const stored = streamDb.insert.mock.results
+      .flatMap((r) => (r.value as { values: ReturnType<typeof vi.fn> }).values.mock.calls)
+      .map((c) => c[0] as { metadata?: Record<string, unknown> })
+    expect(stored.map((v) => v.metadata)).toContainEqual({
+      variant: 'approval_required',
+      tool: 'email.send_mail',
+      approvalId: 'apr-1',
+    })
     const last = lines[lines.length - 1]
     expect(last.type).toBe('done')
     expect(last.response).toBe('Queued for owner approval.')

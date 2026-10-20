@@ -260,16 +260,20 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
 
   it('gates publishes: approval_required records pending, surfaces the event, journey stays active', async () => {
     const fx = fixture()
-    const surfaceEvents: Array<{ type: string; tool?: string }> = []
+    const surfaceEvents: Array<{ type: string; tool?: string; approvalId?: string }> = []
     const sinks = {
       stream: () => {},
       surfaceEvent: (event: { type: string; tool?: string }) => surfaceEvents.push(event),
     }
     await runFoundingJourney(fx, sinks)
 
-    expect(surfaceEvents).toContainEqual({ type: 'approval.required', tool: 'website.publish_page' })
     const pending = await fx.approvals.listPending()
     expect(pending).toHaveLength(1)
+    expect(surfaceEvents).toContainEqual({
+      type: 'approval.required',
+      tool: 'website.publish_page',
+      approvalId: pending[0]!.id,
+    })
     expect(pending[0]).toMatchObject({ toolName: 'website.publish_page', status: 'pending' })
     expect(pending[0]!.input).toEqual({ slug: 'home', visibility: 'public' })
 

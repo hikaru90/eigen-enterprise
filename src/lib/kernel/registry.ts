@@ -138,17 +138,24 @@ export class KernelRegistry {
     if (decision === 'require') {
       const latest = await this.approvalStore.latestFor(name, ctx.principal.id)
       if (latest?.status === 'pending') {
-        throw new KernelError('approval_required', `tool ${name} is awaiting approval`)
+        throw new KernelError('approval_required', `tool ${name} is awaiting approval`, {
+          approvalId: latest.id,
+          tool: name,
+        })
       }
       if (latest?.status !== 'approved') {
-        await this.approvalStore.create({
+        const created = await this.approvalStore.create({
           id: randomUUID(),
           toolName: name,
           input,
           principalId: ctx.principal.id,
           status: 'pending',
         })
-        throw new KernelError('approval_required', `tool ${name} requires approval`)
+        // The request id travels with the gate so surfaces can decide it directly.
+        throw new KernelError('approval_required', `tool ${name} requires approval`, {
+          approvalId: created.id,
+          tool: name,
+        })
       }
     }
 

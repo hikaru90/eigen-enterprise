@@ -67,6 +67,8 @@ export default defineConfig({
       'src/lib/components/provider-onboarding.svelte.spec.ts',
       'src/lib/components/welcome-wizard.svelte.spec.ts',
       'src/lib/components/home-settings-menu.svelte.spec.ts',
+      'src/lib/components/approval-card.svelte.spec.ts',
+      'src/lib/components/approval-mode-select.svelte.spec.ts',
       'modules/brand/water-flow.svelte.spec.ts',
     ],
     exclude: ['src/routes/demo/playwright/**/*.ts', '**/*.e2e.ts'],

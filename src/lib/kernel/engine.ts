@@ -19,7 +19,7 @@ export type EngineToolListing = {
  */
 export type EngineSurfaceEvent =
   | { type: 'tool.preview'; tool: string; inputSummary: string | null }
-  | { type: 'approval.required'; tool: string }
+  | { type: 'approval.required'; tool: string; approvalId: string }
 
 /**
  * Per-request surface sinks. dispatch() passes them through to the engine

@@ -5,6 +5,9 @@ import {
   failedTurn,
   nucleusTurnForProgressEvent,
   nucleusTurnsFromPersisted,
+  approvalActionLabel,
+  persistedApprovalIds,
+  withApprovalStatus,
   statusLabelForProgressEvent,
   toolPreviewTurn,
   userTurn,
@@ -95,7 +98,7 @@ describe('nucleus-chat status line', () => {
         inputSummary: '{"to":"a@b.c"}',
       }),
     ).toBeNull()
-    expect(statusLabelForProgressEvent({ type: 'approval.required', tool: 'email.send_mail' })).toBeNull()
+    expect(statusLabelForProgressEvent({ type: 'approval.required', tool: 'email.send_mail', approvalId: 'a' })).toBeNull()
     expect(statusLabelForProgressEvent({ type: 'message_delta', content: 'Hel' })).toBeNull()
   })
 })
@@ -114,11 +117,36 @@ describe('nucleus-chat harness turns', () => {
     })
   })
 
-  it('builds an approval turn', () => {
-    expect(approvalRequiredTurn('email.send_mail')).toEqual({
+  it('builds an approval card turn: the action in plain words, the request id, its status', () => {
+    expect(
+      approvalRequiredTurn({ tool: 'website.publish_page', approvalId: 'apr-1', status: 'pending' }),
+    ).toEqual({
       role: 'approval',
-      tool: 'email.send_mail',
+      tool: 'website.publish_page',
+      approvalId: 'apr-1',
+      status: 'pending',
+      action: 'Publish a page of your website',
     })
+  })
+
+  it('words every gated tool in plain language; an unknown tool still names itself', () => {
+    expect(approvalActionLabel('email.send_mail')).toBe('Send an email')
+    expect(approvalActionLabel('owlery.send_mail')).toBe('Send an email from the company address')
+    expect(approvalActionLabel('repo.merge')).toBe('Merge agent work into the company repository')
+    expect(approvalActionLabel('kernel.module_deactivate')).toBe('Switch off a module')
+    expect(approvalActionLabel('custom.thing')).toBe('Run custom.thing')
+  })
+
+  it('marks one approval card decided, leaving every other entry untouched', () => {
+    const entries = [
+      { key: 'a', ...approvalRequiredTurn({ tool: 'repo.merge', approvalId: 'apr-1', status: 'pending' }) },
+      { key: 'b', ...approvalRequiredTurn({ tool: 'repo.merge', approvalId: 'apr-2', status: 'pending' }) },
+      { key: 'c', role: 'user' as const, content: 'hi' },
+    ]
+    const next = withApprovalStatus(entries, 'apr-2', 'approved')
+    expect(next[0]).toEqual(entries[0])
+    expect(next[1]).toMatchObject({ approvalId: 'apr-2', status: 'approved' })
+    expect(next[2]).toEqual(entries[2])
   })
 
   it('folds tool.preview and approval.required progress events into transcript turns', () => {
@@ -129,8 +157,19 @@ describe('nucleus-chat harness turns', () => {
         inputSummary: '{"to":"a@b.c"}',
       }),
     ).toEqual({ role: 'tool_preview', tool: 'email.send_mail', inputSummary: '{"to":"a@b.c"}' })
-    expect(nucleusTurnForProgressEvent({ type: 'approval.required', tool: 'brand.set_activate' }))
-      .toEqual({ role: 'approval', tool: 'brand.set_activate' })
+    expect(
+      nucleusTurnForProgressEvent({
+        type: 'approval.required',
+        tool: 'brand.set_activate',
+        approvalId: 'apr-7',
+      }),
+    ).toEqual({
+      role: 'approval',
+      tool: 'brand.set_activate',
+      approvalId: 'apr-7',
+      status: 'pending',
+      action: 'Make a brand guideline set the active one',
+    })
   })
 
   it('leaves every other progress event to the status line / final response', () => {
@@ -165,17 +204,45 @@ describe('nucleusTurnsFromPersisted', () => {
         {
           role: 'assistant',
           content: '',
-          metadata: { variant: 'approval_required', tool: 'site.publish' },
+          metadata: { variant: 'approval_required', tool: 'site.publish', approvalId: 'apr-1' },
         },
         { role: 'system', content: 'sys', metadata: null },
         { role: 'assistant', content: 'Queued for your approval.', metadata: null },
-      ]),
+      ], { 'apr-1': 'pending' }),
     ).toEqual([
       { role: 'assistant', content: 'Welcome back.' },
       { role: 'user', content: 'build my site' },
       { role: 'tool_preview', tool: 'site.create', inputSummary: 'pages' },
-      { role: 'approval', tool: 'site.publish' },
+      {
+        role: 'approval',
+        tool: 'site.publish',
+        approvalId: 'apr-1',
+        status: 'pending',
+        action: 'Run site.publish',
+      },
       { role: 'assistant', content: 'Queued for your approval.' },
+    ])
+  })
+
+  it('restores each approval card with its current kernel status (decided cards lose their buttons)', () => {
+    const rows = [
+      { role: 'assistant', content: '', metadata: { variant: 'approval_required', tool: 'repo.merge', approvalId: 'apr-1' } },
+      { role: 'assistant', content: '', metadata: { variant: 'approval_required', tool: 'repo.merge', approvalId: 'apr-2' } },
+      { role: 'assistant', content: '', metadata: { variant: 'approval_required', tool: 'repo.merge', approvalId: 'apr-3' } },
+    ]
+    expect(persistedApprovalIds(rows)).toEqual(['apr-1', 'apr-2', 'apr-3'])
+    expect(
+      nucleusTurnsFromPersisted(rows, { 'apr-1': 'pending', 'apr-2': 'approved' }).map((t) =>
+        t.role === 'approval' ? t.status : null,
+      ),
+    ).toEqual(['pending', 'approved', 'unavailable'])
+  })
+
+  it('a card saved before approvals carried an id cannot be decided from the page', () => {
+    const rows = [{ role: 'assistant', content: '', metadata: { variant: 'approval_required', tool: 'repo.merge' } }]
+    expect(persistedApprovalIds(rows)).toEqual([])
+    expect(nucleusTurnsFromPersisted(rows, {})).toEqual([
+      { role: 'approval', tool: 'repo.merge', approvalId: null, status: 'unavailable', action: 'Merge agent work into the company repository' },
     ])
   })
 })

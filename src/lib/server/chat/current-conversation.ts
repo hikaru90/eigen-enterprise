@@ -1,7 +1,8 @@
-import { and, asc, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import type { PersistedChatMessage } from '$lib/chat/normalize-messages'
 import type { getDb } from '$lib/server/db'
 import { chatMessage, chatSession } from '$lib/server/db/brain.schema'
+import { kernelApprovals } from '$lib/server/db/kernel.schema'
 
 export type CurrentConversation = {
   /** The user's current nucleus chat session (null until they first chat). */
@@ -47,4 +48,22 @@ export async function loadCurrentConversation(
       metadata: (r.metadata as Record<string, unknown> | null) ?? null,
     })),
   }
+}
+
+/**
+ * Current kernel status of the approval requests behind the transcript's
+ * approval cards (page load: pending cards keep their Approve / Deny buttons,
+ * decided ones show the decision). Ids missing from the result are not
+ * decidable from the page.
+ */
+export async function loadApprovalStatuses(
+  db: ReturnType<typeof getDb>,
+  approvalIds: string[],
+): Promise<Record<string, 'pending' | 'approved' | 'denied'>> {
+  if (approvalIds.length === 0) return {}
+  const rows = await db
+    .select({ id: kernelApprovals.id, status: kernelApprovals.status })
+    .from(kernelApprovals)
+    .where(inArray(kernelApprovals.id, approvalIds))
+  return Object.fromEntries(rows.map((r) => [r.id, r.status]))
 }

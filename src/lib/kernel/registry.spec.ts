@@ -205,14 +205,18 @@ describe('KernelRegistry.execute mutate flow', () => {
     const { registry, sink, store, messages, handlerCalls } = makeMutateRegistry(policy)
     const ctx = makeCtx()
 
-    await expect(registry.execute(toolName, { value: 'gone' }, ctx)).rejects.toMatchObject({
-      code: 'approval_required',
-    })
+    const blocked = await registry.execute(toolName, { value: 'gone' }, ctx).catch((e) => e)
+    expect(blocked).toMatchObject({ code: 'approval_required' })
     expect(handlerCalls).toHaveLength(0)
     expect(messages).toHaveLength(0)
     const pending = await store.listPending()
     expect(pending).toHaveLength(1)
     expect(pending[0]).toMatchObject({ toolName, principalId: 'principal-1', status: 'pending' })
+    // The gate names the request it created, so surfaces can decide it by id.
+    expect(blocked.details).toEqual({ approvalId: pending[0].id, tool: toolName })
+    // A retry while still pending names the same request.
+    const again = await registry.execute(toolName, { value: 'gone' }, ctx).catch((e) => e)
+    expect(again.details).toEqual({ approvalId: pending[0].id, tool: toolName })
 
     await store.decide(pending[0].id, 'approved', 'the-owner')
 

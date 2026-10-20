@@ -200,6 +200,8 @@ export type AgentChatPostBody = {
   briefingPeriod?: unknown
   /** Assisted-onboarding hand-off bootstrap (POST /api/chat only). */
   onboardingHandoff?: unknown
+  /** Owner-decision continuation: the decided approval id (POST /api/chat only). */
+  approvalContinuation?: unknown
 }
 
 /**
@@ -333,6 +335,7 @@ export async function handleAgentChatPost(
       phase?: string
       label?: string
       inputSummary?: string | null
+      approvalId?: string
     }) => {
       if (evt.type === 'thinking' && evt.content) {
         intermediateSteps.push({
@@ -347,7 +350,7 @@ export async function handleAgentChatPost(
       } else if (evt.type === 'approval.required') {
         intermediateSteps.push({
           content: '',
-          metadata: { variant: 'approval_required', tool: evt.tool },
+          metadata: { variant: 'approval_required', tool: evt.tool, approvalId: evt.approvalId },
         })
       } else if (evt.type === 'tool_call') {
         const args = evt.arguments ?? {}

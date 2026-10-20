@@ -5,7 +5,7 @@ import type { AgentRuntimeOptions, DispatchOptions } from '$lib/kernel/agent-run
 import { KERNEL_EVENT_SOURCE } from '$lib/kernel/cloudevents'
 import type { EngineStreamSinks, EngineSurfaceEvent } from '$lib/kernel/engine'
 import { BuiltinJsonLoop, type LlmCompleteFn } from '$lib/kernel/engines/builtin-json'
-import { toolErrorResult, type ToolErrorResult } from '$lib/kernel/engines/tool-error'
+import { approvalIdFromError, toolErrorResult, type ToolErrorResult } from '$lib/kernel/engines/tool-error'
 import { KernelError } from '$lib/kernel/errors'
 import { emitKernelEvent, type EventSink } from '$lib/kernel/events'
 import type { Brain, TelegramSessionRef } from '$lib/kernel/gateway'
@@ -784,8 +784,9 @@ export async function executeStepArtifacts(options: {
         if (err instanceof KernelError && err.code === 'approval_required') {
           recordArtifact(state, step.id, index, artifact.tool, 'approval_pending')
           newlyPending = true
+          const approvalId = approvalIdFromError(err)
           try {
-            options.surfaceEvent?.({ type: 'approval.required', tool: artifact.tool })
+            options.surfaceEvent?.({ type: 'approval.required', tool: artifact.tool, approvalId })
           } catch {
             // best-effort channel — the gate state is already in the ledger
           }

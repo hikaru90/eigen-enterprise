@@ -170,7 +170,7 @@ describe('durable engine over real pi-durable', () => {
     const { engine } = engineFor(complete)
     const ctx = engineCtx('alice', 'alice', [])
     ;(ctx as { executeTool: unknown }).executeTool = async () => {
-      throw new KernelError('approval_required', 'needs owner')
+      throw new KernelError('approval_required', 'needs owner', { approvalId: 'apr-1', tool: 'memory.echo' })
     }
     expect(await engine.run('s1', 'publish', ctx)).toBe('pending approval')
     expect(JSON.stringify(seen[1]?.messages)).toContain('approval_pending')

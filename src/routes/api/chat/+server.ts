@@ -2,6 +2,8 @@ import type { RequestHandler } from './$types'
 import { error } from '@sveltejs/kit'
 import { KERNEL_EVENT_SOURCE } from '$lib/kernel/cloudevents'
 import { emitKernelEvent } from '$lib/kernel/events'
+import { approvalContinuationMessage, findApprovalAsOwner } from '$lib/server/approvals/owner-decision'
+import { isUserAdmin } from '$lib/server/auth/user-role'
 import { bootApp } from '$lib/server/boot'
 import {
   BRIEFING_BOOTSTRAP_MESSAGES,
@@ -41,7 +43,17 @@ export const POST: RequestHandler = async (event) => {
     error(400, 'onboardingHandoff requires bootstrap')
   }
 
-  if (bootstrap && !onboardingHandoff && !briefingPeriod) {
+  // Owner-decision continuation: after Approve/Deny on a card, the agent gets a
+  // system turn naming the decision (no user speech) and continues the work.
+  const approvalContinuation =
+    typeof b.approvalContinuation === 'string' && b.approvalContinuation.trim()
+      ? b.approvalContinuation.trim()
+      : null
+  if (b.approvalContinuation !== undefined && (!approvalContinuation || !bootstrap)) {
+    error(400, 'approvalContinuation requires bootstrap and an approval id')
+  }
+
+  if (bootstrap && !onboardingHandoff && !approvalContinuation && !briefingPeriod) {
     error(400, 'bootstrap requires briefingPeriod')
   }
 
@@ -50,6 +62,17 @@ export const POST: RequestHandler = async (event) => {
   }
 
   const boot = await bootApp()
+
+  let continuationMessage: string | null = null
+  if (approvalContinuation) {
+    const user = event.locals.user
+    if (!user) error(401, 'Unauthorized')
+    if (!(await isUserAdmin(user.id))) error(403, 'Forbidden')
+    const approval = await findApprovalAsOwner(boot.kernel.registry, user, approvalContinuation)
+    if (!approval) error(404, 'Approval request not found')
+    if (approval.status === 'pending') error(409, 'Approval request is not decided yet')
+    continuationMessage = approvalContinuationMessage(approval)
+  }
 
   return handleAgentChatPost(event, b, {
     sessionMode: 'default',
@@ -73,6 +96,7 @@ export const POST: RequestHandler = async (event) => {
     resolveAgentUserMessage: ({ bootstrap, message, briefingPeriod: period }) => {
       // The hand-off input is assembled by the runtime (onboarding context + instruction).
       if (onboardingHandoff) return ''
+      if (continuationMessage) return continuationMessage
       if (bootstrap && period && BRIEFING_BOOTSTRAP_MESSAGES[period]) {
         return BRIEFING_BOOTSTRAP_MESSAGES[period]
       }

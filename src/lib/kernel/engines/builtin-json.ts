@@ -6,7 +6,7 @@ import type {
 } from '../engine'
 import type { AgentSessionLog } from '../session-log'
 import { KernelError } from '../errors'
-import { toolErrorResult } from './tool-error'
+import { approvalIdFromError, toolErrorResult } from './tool-error'
 
 /**
  * The 'builtin-json' loop engine: the orchestrator's JSON agent protocol,
@@ -475,7 +475,11 @@ export class BuiltinJsonLoop implements LoopEngine {
         if (err instanceof KernelError && err.code === 'approval_required') {
           // Owner-approval gate: surface as a structured tool result so the
           // model can tell the user; every other error is reported below.
-          emitSurface({ type: 'approval.required', tool: turn.tool })
+          emitSurface({
+            type: 'approval.required',
+            tool: turn.tool,
+            approvalId: approvalIdFromError(err),
+          })
           messages.push({
             role: 'user',
             content: `Tool result for ${turn.tool}:\n${toolResultText(approvalPendingResult(turn.tool))}\n\nDo not claim the action executed. Tell the user it is pending owner approval, then give your final answer using {"answer": "<your response>"}.`,
