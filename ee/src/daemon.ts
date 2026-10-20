@@ -1,3 +1,4 @@
+import { forgetWorkload } from './forget.ts'
 import { chmod, chown, rm } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { z } from 'zod'
@@ -330,16 +331,16 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
       }
       if (route === 'DELETE /v1/apps') {
         const i = z.object({ name: z.string().regex(NAME), author }).strict().parse(await body(req))
-        return send(
-          res,
-          200,
-          await ee.change(`app: remove ${i.name}`, i.author, (s) => {
+        const result = await ee.change(`app: remove ${i.name}`, i.author, (s) => {
             const w = s.workloads.find((x) => x.name === i.name)
             if (!w) throw new HttpError(404, `no workload ${i.name}`)
             if (w.tier !== 'app') throw new HttpError(403, `${i.name} is a ${w.tier} workload`)
             return { ...s, workloads: s.workloads.filter((x) => x.name !== i.name), routes: s.routes.filter((r: Route) => r.workload !== i.name) }
-          }),
-        )
+          })
+        // Gone from the desired state: forget its secrets and history too.
+        await forgetWorkload({ journal: ee.journal, secrets: ee.secrets, name: i.name, author: i.author })
+        await saveJournal(ee.sys, ee.journal)
+        return send(res, 200, result)
       }
       if (route === 'GET /v1/logs') {
         const name = z.string().regex(NAME).parse(url.searchParams.get('workload'))

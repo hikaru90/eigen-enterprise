@@ -30,6 +30,14 @@ export class SecretStore implements SecretAccess {
     await this.sys.writeFile(PATHS.secrets, encryptSecrets(this.key, this.data), 0o600)
   }
 
+  /** Remove every value of one workload (the app was removed). */
+  async deleteWorkload(workload: string): Promise<void> {
+    if (!(workload in this.data)) return
+    const { [workload]: _gone, ...rest } = this.data
+    this.data = rest
+    await this.sys.writeFile(PATHS.secrets, encryptSecrets(this.key, this.data), 0o600)
+  }
+
   /** Remove one value; false when it was not there. */
   async delete(workload: string, name: string): Promise<boolean> {
     const scope = this.data[workload]
