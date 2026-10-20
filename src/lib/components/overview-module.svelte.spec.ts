@@ -12,7 +12,7 @@ describe('overview-module.svelte', () => {
         ...base,
         active: true,
         results: [
-          { label: 'Founding journey', detail: 'In progress', href: null },
+          { label: 'Website setup (in chat)', detail: 'In progress', href: null },
           { label: 'Home', detail: 'Draft', href: 'http://localhost/site/home' },
         ],
       },

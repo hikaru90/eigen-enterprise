@@ -9,7 +9,7 @@
 <section class="min-w-0" data-testid="overview-module">
   <p class="sr-only" data-testid="overview-module-state">{module.active ? 'Active' : 'Inactive'}</p>
   {#if module.active && (module.results.length > 0 || module.note)}
-    <h2 class="text-[13px] font-medium text-foreground">Results</h2>
+    <h2 class="text-[13px] font-medium text-foreground">{module.resultsTitle}</h2>
     {#if module.results.length > 0}
       <ul class="mt-2 divide-y divide-border overflow-hidden rounded-lg border border-border">
         {#each module.results as result, i (i)}

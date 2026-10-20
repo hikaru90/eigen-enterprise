@@ -63,6 +63,7 @@ describe('buildOverview', () => {
         active: true,
         results: [],
         counts: [],
+        resultsTitle: 'Results',
         note: null,
       },
       {
@@ -72,6 +73,7 @@ describe('buildOverview', () => {
         active: false,
         results: [],
         counts: [],
+        resultsTitle: 'Results',
         note: null,
       },
     ])
@@ -128,8 +130,9 @@ describe('buildOverview', () => {
       }),
     )
     expect(reg.execute).toHaveBeenCalledWith('website.site_info', {}, ctx)
+    expect(out.modules[0].resultsTitle).toBe('Pages')
     expect(out.modules[0].results).toEqual([
-      { label: 'Founding journey', detail: 'In progress', href: null },
+      { label: 'Website setup (in chat)', detail: 'In progress', href: null },
       { label: 'Site', detail: null, href: 'http://localhost:5173/site' },
       { label: 'Home', detail: 'Published', href: 'http://localhost:5173/site/home' },
       { label: 'About', detail: 'Draft', href: 'http://localhost:5173/site/about' },
@@ -151,7 +154,7 @@ describe('buildOverview', () => {
     )
     expect(out.modules[0].note).toBe('Preview link not available yet')
     expect(out.modules[0].results).toEqual([
-      { label: 'Founding journey', detail: 'Not started', href: null },
+      { label: 'Website setup (in chat)', detail: 'Not started', href: null },
     ])
   })
 

@@ -18,6 +18,8 @@ export type ModuleOverview = {
   description: string
   active: boolean
   results: OverviewResult[]
+  /** What the results are, in the owner's words (e.g. "Pages"); each source declares it. */
+  resultsTitle: string
   /** Key numbers for the dashboard card (structured; never parsed from labels). */
   counts: OverviewCount[]
   /** A plain sentence when results can't be shown (never server error text). */
@@ -42,7 +44,9 @@ export type OverviewRegistry = {
 export type ResultSourceDeps = { registry: OverviewRegistry; ctx: ToolContext }
 export type ResultSource = (
   deps: ResultSourceDeps,
-) => Promise<Pick<ModuleOverview, 'results' | 'note'> & { counts?: OverviewCount[] }>
+) => Promise<
+  Pick<ModuleOverview, 'results' | 'note' | 'resultsTitle'> & { counts?: OverviewCount[] }
+>
 
 export type AuditEventRow = { ts: string; payload: unknown }
 export type PendingApprovalRow = { id: string; toolName: string }
@@ -86,12 +90,12 @@ const journeyLabel: Record<JourneyStatus, string> = {
 export function websiteResultSource(journeyStatus: () => Promise<JourneyStatus>): ResultSource {
   return async ({ registry, ctx }) => {
     const journey: OverviewResult = {
-      label: 'Founding journey',
+      label: 'Website setup (in chat)',
       detail: journeyLabel[await journeyStatus()],
       href: null,
     }
     if (!registry.get(SITE_INFO_TOOL)) {
-      return { results: [journey], note: 'Preview link not available yet' }
+      return { resultsTitle: 'Pages', results: [journey], note: 'Preview link not available yet' }
     }
     const info = siteInfoOutput.parse(await registry.execute(SITE_INFO_TOOL, {}, ctx))
     const pages = info.pages.map((page) => ({
@@ -101,6 +105,7 @@ export function websiteResultSource(journeyStatus: () => Promise<JourneyStatus>)
     }))
     const published = info.pages.filter((page) => page.status === 'published').length
     return {
+      resultsTitle: 'Pages',
       results: [journey, { label: 'Site', detail: null, href: info.url }, ...pages],
       counts: [
         { label: 'Published', value: published },
@@ -121,8 +126,13 @@ const owleryStatusOutput = z.union([
 export const owleryResultSource: ResultSource = async ({ registry, ctx }) => {
   const status = owleryStatusOutput.parse(await registry.execute('owlery.status', {}, ctx))
   if (!status.configured)
-    return { results: [{ label: 'Not set up', detail: null, href: null }], note: null }
+    return {
+      resultsTitle: 'Sender',
+      results: [{ label: 'Not set up', detail: null, href: null }],
+      note: null,
+    }
   return {
+    resultsTitle: 'Sender',
     results: [
       {
         label: status.sender,
@@ -172,13 +182,23 @@ export async function moduleOverview(
     active,
   }
   const source = deps.resultSources[manifest.id]
-  if (!active || !source) return { ...base, results: [], counts: [], note: null }
+  if (!active || !source)
+    return { ...base, resultsTitle: 'Results', results: [], counts: [], note: null }
   if (!deps.canReadResults) {
-    return { ...base, results: [], counts: [], note: 'Only the owner can see these results.' }
+    return {
+      ...base,
+      resultsTitle: 'Results',
+      results: [],
+      counts: [],
+      note: 'Only the owner can see these results.',
+    }
   }
-  const { results, note, counts } = await source({ registry: deps.registry, ctx: deps.ctx })
+  const { results, note, counts, resultsTitle } = await source({
+    registry: deps.registry,
+    ctx: deps.ctx,
+  })
   // A source without numbers simply has none to show.
-  return { ...base, results, note, counts: counts ?? [] }
+  return { ...base, resultsTitle, results, note, counts: counts ?? [] }
 }
 
 export async function buildOverview(deps: OverviewDeps): Promise<Overview> {

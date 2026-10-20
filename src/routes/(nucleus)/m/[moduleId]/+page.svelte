@@ -56,7 +56,7 @@
         <h2 id="results-heading" class="text-[13px] font-medium">Results</h2>
         <p class="mt-2 text-sm text-foreground/55">Nothing to show yet.</p>
       {:else}
-        <span id="results-heading" class="sr-only">Results</span>
+        <span id="results-heading" class="sr-only">{data.module.resultsTitle}</span>
         <OverviewModule module={data.module} />
       {/if}
     </section>

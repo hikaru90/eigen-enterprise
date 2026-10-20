@@ -133,7 +133,7 @@ describe('/overview load', () => {
       href: 'http://localhost/site/home',
     })
     expect(modules[0].results).toContainEqual({
-      label: 'Founding journey',
+      label: 'Website setup (in chat)',
       detail: 'In progress',
       href: null,
     })
