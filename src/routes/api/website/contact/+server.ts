@@ -1,3 +1,4 @@
+import { appKernel } from '$lib/server/boot'
 import type { RequestHandler } from './$types'
 import { error, json } from '@sveltejs/kit'
 import { z } from 'zod'
@@ -20,7 +21,7 @@ export const POST: RequestHandler = async (event) => {
 
   try {
     // Fails loud (500) when the kernel is not bootable — no silent degradation.
-    const kernel = bootstrapKernel()
+    const kernel = await appKernel()
     const result = await handleContactSubmit(body, {
       store: defaultWebsiteStore(),
       eventSink: kernel.eventSink,
@@ -30,7 +31,10 @@ export const POST: RequestHandler = async (event) => {
     if (err instanceof z.ZodError) {
       const issue = err.issues[0]
       const field = issue?.path.join('.')
-      return jsonError(field ? `${field}: ${issue.message}` : (issue?.message ?? 'Invalid body'), 400)
+      return jsonError(
+        field ? `${field}: ${issue.message}` : (issue?.message ?? 'Invalid body'),
+        400,
+      )
     }
     throw err
   }

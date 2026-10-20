@@ -8,6 +8,7 @@ import { piEngine } from '../../../modules/orchestrator/dev-agent'
 import {
   bootstrapChatGateway,
   bootstrapRecap,
+  bootstrapKernel,
   buildKernel,
   ensureSystemModulesActive,
   type BootstrapKernelOptions,
@@ -123,7 +124,9 @@ export function bootApp(options: AppBootOptions = {}): Promise<AppBoot> {
 
 async function composeApp(options: AppBootOptions): Promise<AppBoot> {
   const env = options.env ?? process.env
-  const buildKernelFn = options.buildKernel ?? buildKernel
+  // The process-wide kernel: routes call bootstrapKernel() and must get THIS
+  // instance, with the admin tools and system modules registered below.
+  const buildKernelFn = options.buildKernel ?? (() => bootstrapKernel())
   const orchestratorFn = options.bootstrapOrchestrator ?? bootstrapOrchestrator
   const gatewayFn = options.bootstrapChatGateway ?? bootstrapChatGateway
   const recapFn = options.bootstrapRecap ?? bootstrapRecap
@@ -195,4 +198,13 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
       recapBooted: recap !== null,
     }),
   }
+}
+
+/**
+ * The process-wide kernel, once boot has registered everything on it (admin
+ * tools, system modules). Routes use this instead of bootstrapKernel() so a
+ * request that arrives during startup never sees a half-registered kernel.
+ */
+export async function appKernel(): Promise<WiredKernel> {
+  return (await bootApp()).kernel
 }

@@ -1,3 +1,4 @@
+import { appKernel } from '$lib/server/boot'
 import type { PageServerLoad } from './$types'
 import { randomUUID } from 'node:crypto'
 import { error } from '@sveltejs/kit'
@@ -17,7 +18,7 @@ export const load: PageServerLoad = async (event) => {
   if (!setId.success) {
     error(400, 'setId must be a uuid')
   }
-  const kernel = bootstrapKernel()
+  const kernel = await appKernel()
   const set = (await kernel.registry.execute(
     'brand.visual_set_get',
     { setId: setId.data },

@@ -1,3 +1,4 @@
+import { appKernel } from '$lib/server/boot'
 import { randomUUID } from 'node:crypto'
 import { KernelError } from '$lib/kernel/errors'
 import type { ToolContext } from '$lib/kernel/types'
@@ -17,7 +18,7 @@ function ownerCtx(user: { id: string }): ToolContext {
 }
 
 export async function ownerRun<T>(user: { id: string }, tool: string, input: unknown): Promise<T> {
-  const k = bootstrapKernel()
+  const k = await appKernel()
   await ensureSystemModulesActive(k)
   try {
     return (await k.registry.execute(tool, input, ownerCtx(user))) as T

@@ -6,6 +6,7 @@ import type { WiredKernel } from '$lib/kernel/wiring'
 
 const mocks = vi.hoisted(() => ({
   buildKernel: vi.fn(),
+  bootstrapKernel: vi.fn(),
   bootstrapOrchestrator: vi.fn(),
   bootstrapChatGateway: vi.fn(),
   bootstrapRecap: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock('$lib/kernel/admin-bootstrap', () => ({ registerAdminTools: mocks.regist
 
 vi.mock('../../../modules/index', () => ({
   buildKernel: mocks.buildKernel,
+  bootstrapKernel: mocks.bootstrapKernel,
   bootstrapChatGateway: mocks.bootstrapChatGateway,
   bootstrapRecap: mocks.bootstrapRecap,
   ensureSystemModulesActive: async () => {},
@@ -110,6 +112,7 @@ beforeEach(() => {
   orchestratorCalls.length = 0
   stagesFromWireGateway.length = 0
   mocks.buildKernel.mockImplementation(fakeKernel)
+  mocks.bootstrapKernel.mockImplementation(fakeKernel)
   mocks.bootstrapChatGateway.mockResolvedValue(null)
   mocks.bootstrapRecap.mockResolvedValue(null)
   installFakeOrchestrator()
@@ -133,14 +136,14 @@ describe('bootApp — startup composition root', () => {
 
     const [a, b] = await Promise.all([bootApp({ env: {} }), bootApp({ env: {} })])
     expect(a).toBe(b)
-    expect(mocks.buildKernel).toHaveBeenCalledTimes(1)
+    expect(mocks.bootstrapKernel).toHaveBeenCalledTimes(1)
     expect(mocks.bootstrapOrchestrator).toHaveBeenCalledTimes(1)
     expect(mocks.bootstrapChatGateway).toHaveBeenCalledTimes(1)
 
     // Later calls return the memoized boot; different options are ignored.
     const c = await bootApp({ env: { DIFFERENT: 'ignored' } })
     expect(c).toBe(a)
-    expect(mocks.buildKernel).toHaveBeenCalledTimes(1)
+    expect(mocks.bootstrapKernel).toHaveBeenCalledTimes(1)
     expect(mocks.bootstrapOrchestrator).toHaveBeenCalledTimes(1)
   })
 
@@ -204,12 +207,15 @@ describe('bootApp — startup composition root', () => {
     })
   })
 
-  it('defaults: buildKernel() with no options and env falls back to process.env', async () => {
+  it('defaults: the process-wide kernel (bootstrapKernel) — the same one every route gets — and process.env', async () => {
     const { bootApp } = await import('./boot')
 
     await bootApp()
 
-    expect(mocks.buildKernel).toHaveBeenCalledWith()
+    // One kernel per process: routes calling bootstrapKernel() must see the
+    // admin tools and system modules boot registers (no second kernel).
+    expect(mocks.bootstrapKernel).toHaveBeenCalledWith()
+    expect(mocks.buildKernel).not.toHaveBeenCalled()
     expect(mocks.bootstrapOrchestrator.mock.calls[0][2].env).toBe(process.env)
     expect(mocks.bootstrapChatGateway.mock.calls[0][2].env).toBe(process.env)
   })
@@ -224,13 +230,13 @@ describe('bootApp — startup composition root', () => {
     const reason = (results[0] as PromiseRejectedResult).reason as Error
     expect(reason.message).toMatch(/TELEGRAM_BOT_TOKEN/)
     expect((results[1] as PromiseRejectedResult).reason).toBe(reason)
-    expect(mocks.buildKernel).toHaveBeenCalledTimes(1)
+    expect(mocks.bootstrapKernel).toHaveBeenCalledTimes(1)
     expect(mocks.bootstrapOrchestrator).toHaveBeenCalledTimes(1)
 
     // Recovery: the next call composes a fresh boot (new kernel, stages rerun).
     mocks.bootstrapChatGateway.mockResolvedValue(null)
     const retry = await bootApp({ env: {} })
-    expect(mocks.buildKernel).toHaveBeenCalledTimes(2)
+    expect(mocks.bootstrapKernel).toHaveBeenCalledTimes(2)
     expect(mocks.bootstrapOrchestrator).toHaveBeenCalledTimes(2)
     expect(retry.kernel).not.toBe(orchestratorCalls[0].kernel)
     expect(retry.status().gatewayBooted).toBe(false)

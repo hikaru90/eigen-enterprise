@@ -21,6 +21,10 @@ const fixtureKernel = {
 }
 for (const tool of createMemoryTools()) fixtureKernel.registry.register(tool)
 
+vi.mock('$lib/server/boot', async () => {
+  const index = await import('../../../../modules/index')
+  return { appKernel: async () => index.bootstrapKernel() }
+})
 vi.mock('../../../../modules/index', () => ({
   bootstrapKernel: () => fixtureKernel,
 }))

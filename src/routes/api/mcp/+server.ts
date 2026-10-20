@@ -1,3 +1,4 @@
+import { appKernel } from '$lib/server/boot'
 import type { RequestHandler } from './$types'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import { json } from '@sveltejs/kit'
@@ -17,10 +18,10 @@ async function handleMcp(event: Parameters<RequestHandler>[0]): Promise<Response
     enableJsonResponse: true,
   })
 
-  const server = createMcpServer({
-    userId: user.id,
-    authenticatedApiKey: event.locals.apiKeyAuth,
-  })
+  const server = createMcpServer(
+    { userId: user.id, authenticatedApiKey: event.locals.apiKeyAuth },
+    await appKernel(),
+  )
   await server.connect(transport)
 
   // Don't close the server — the transport stream lifecycle manages cleanup.

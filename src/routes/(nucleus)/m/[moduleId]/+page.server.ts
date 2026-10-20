@@ -1,3 +1,4 @@
+import { appKernel } from '$lib/server/boot'
 import type { PageServerLoad } from './$types'
 import { error, redirect } from '@sveltejs/kit'
 import { isUserAdmin } from '$lib/server/auth/user-role'
@@ -12,7 +13,7 @@ import { bootstrapKernel } from '../../../../../modules/index'
  */
 export const load: PageServerLoad = async (event) => {
   if (!event.locals.user) throw redirect(302, '/login')
-  const kernel = bootstrapKernel()
+  const kernel = await appKernel()
   const manifest = kernel.modules.get(event.params.moduleId)
   // Internal modules (the agent's own machinery) have no owner-facing page.
   if (!manifest || manifest.internal === true) throw error(404, 'No such module')

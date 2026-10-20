@@ -1,3 +1,4 @@
+import { appKernel } from '$lib/server/boot'
 import type { PageServerLoad } from './$types'
 import { randomUUID } from 'node:crypto'
 import { requireAdmin } from '$lib/server/auth/require-admin'
@@ -18,7 +19,7 @@ export const load: PageServerLoad = async (event) => {
   const sessionId = event.url.searchParams.get('session')
   if (!sessionId) return { needsModuleActivation: false as const, initial: null }
 
-  const kernel = bootstrapKernel()
+  const kernel = await appKernel()
   const result = (await kernel.registry.execute(
     'brand.extract_session_get',
     { sessionId },

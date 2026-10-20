@@ -1,3 +1,4 @@
+import { appKernel } from '$lib/server/boot'
 import { randomUUID } from 'node:crypto'
 import { error, json } from '@sveltejs/kit'
 import { z } from 'zod'
@@ -16,7 +17,7 @@ export async function executeBrandExtractTool(
   user: { id: string },
 ): Promise<Response> {
   try {
-    const kernel = bootstrapKernel()
+    const kernel = await appKernel()
     const result = await kernel.registry.execute(name, input, {
       principal: { id: user.id, kind: 'human', roles: ['admin'] },
       requestId: randomUUID(),

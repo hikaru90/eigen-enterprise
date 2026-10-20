@@ -5,6 +5,10 @@ const { executeMock, bootstrapMock } = vi.hoisted(() => ({
   bootstrapMock: vi.fn(),
 }))
 
+vi.mock('$lib/server/boot', async () => {
+  const index = await import('../../../../modules/index')
+  return { appKernel: async () => index.bootstrapKernel() }
+})
 vi.mock('../../../../modules/index', () => ({ bootstrapKernel: bootstrapMock }))
 
 const { KernelError } = await import('$lib/kernel/errors')

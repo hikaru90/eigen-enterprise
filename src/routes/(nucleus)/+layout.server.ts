@@ -1,3 +1,4 @@
+import { appKernel } from '$lib/server/boot'
 import type { LayoutServerLoad } from './$types'
 import { foundingCompanyName } from '$lib/server/overview/sources'
 import { buildShellNav, type ShellData } from '$lib/shell/nav'
@@ -10,7 +11,7 @@ import { bootstrapKernel } from '../../../modules/index'
  */
 export const load: LayoutServerLoad = async ({ locals }): Promise<{ shell: ShellData | null }> => {
   if (!locals.user) return { shell: null }
-  const kernel = bootstrapKernel()
+  const kernel = await appKernel()
   return {
     shell: {
       companyName: await foundingCompanyName(),

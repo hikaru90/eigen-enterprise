@@ -1,3 +1,4 @@
+import { appKernel } from '$lib/server/boot'
 import type {
   ConnectedRepoView,
   GitHubConnectStatus,
@@ -40,7 +41,7 @@ function ownerCtx(user: { id: string }): ToolContext {
 }
 
 async function kernel() {
-  const k = bootstrapKernel()
+  const k = await appKernel()
   await ensureSystemModulesActive(k)
   return k
 }

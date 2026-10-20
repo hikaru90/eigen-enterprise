@@ -1,3 +1,4 @@
+import { appKernel } from '$lib/server/boot'
 import type { Actions, PageServerLoad } from './$types'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { fail } from '@sveltejs/kit'
@@ -22,11 +23,14 @@ type GitHubStatus = {
 }
 
 function ctx(user: { id: string }) {
-  return { principal: { id: user.id, kind: 'human' as const, roles: ['admin'] }, requestId: randomUUID() }
+  return {
+    principal: { id: user.id, kind: 'human' as const, roles: ['admin'] },
+    requestId: randomUUID(),
+  }
 }
 
 async function run(user: { id: string }, tool: string, input: unknown): Promise<unknown> {
-  const kernel = bootstrapKernel()
+  const kernel = await appKernel()
   await ensureSystemModulesActive(kernel)
   return kernel.registry.execute(tool, input, ctx(user))
 }
@@ -65,7 +69,9 @@ export const load: PageServerLoad = async (event) => {
     repos,
     reposError,
     githubState: state,
-    githubManifest: JSON.stringify(githubAppManifest(event.url.origin, randomBytes(2).toString('hex'))),
+    githubManifest: JSON.stringify(
+      githubAppManifest(event.url.origin, randomBytes(2).toString('hex')),
+    ),
   }
 }
 

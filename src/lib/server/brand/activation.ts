@@ -1,3 +1,4 @@
+import { appKernel } from '$lib/server/boot'
 import { randomUUID } from 'node:crypto'
 import { KernelError } from '$lib/kernel/errors'
 import { bootstrapKernel } from '../../../../modules/index'
@@ -19,7 +20,7 @@ function context(user: { id: string }) {
 }
 
 export async function brandModuleState(user: { id: string }): Promise<{ active: boolean }> {
-  const kernel = bootstrapKernel()
+  const kernel = await appKernel()
   try {
     await kernel.registry.execute('brand.set_list', {}, context(user))
     return { active: true }
@@ -29,10 +30,10 @@ export async function brandModuleState(user: { id: string }): Promise<{ active: 
   }
 }
 
-export async function activateBrandModule(
-  user: { id: string },
-): Promise<{ activated: true } | { pendingApproval: true }> {
-  const kernel = bootstrapKernel()
+export async function activateBrandModule(user: {
+  id: string
+}): Promise<{ activated: true } | { pendingApproval: true }> {
+  const kernel = await appKernel()
   try {
     await kernel.registry.execute('kernel.module_activate', { module_id: 'brand' }, context(user))
     return { activated: true }

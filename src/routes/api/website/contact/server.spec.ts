@@ -14,6 +14,10 @@ vi.mock('../../../../../modules/website/store', () => ({
   defaultWebsiteStore: defaultWebsiteStoreMock,
 }))
 
+vi.mock('$lib/server/boot', async () => {
+  const index = await import('../../../../../modules/index')
+  return { appKernel: async () => index.bootstrapKernel() }
+})
 vi.mock('../../../../../modules/index', () => ({
   bootstrapKernel: bootstrapKernelMock,
 }))

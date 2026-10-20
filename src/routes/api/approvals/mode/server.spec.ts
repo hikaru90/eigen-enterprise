@@ -6,6 +6,10 @@ let admin = true
 let approvalMode = new InMemoryApprovalModeStore('ask')
 let eventSink = new InMemoryEventSink()
 vi.mock('$lib/server/auth/user-role', () => ({ isUserAdmin: async () => admin }))
+vi.mock('$lib/server/boot', async () => {
+  const index = await import('../../../../../modules/index')
+  return { appKernel: async () => index.bootstrapKernel() }
+})
 vi.mock('../../../../../modules/index', () => ({
   bootstrapKernel: () => ({ approvalMode, eventSink }),
 }))

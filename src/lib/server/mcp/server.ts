@@ -7,7 +7,7 @@ import type { ActivationStore } from '$lib/kernel/modules'
 import { toolInputJsonSchema, toolOutputJsonSchema } from '$lib/kernel/openapi'
 import type { KernelRegistry } from '$lib/kernel/registry'
 import { sanitizeMcpToolResult } from '$lib/server/observability/strip-embeddings'
-import { bootstrapKernel, type WiredKernel } from '../../../../modules/index'
+import type { WiredKernel } from '../../../../modules/index'
 
 export type McpToolListing = {
   name: string
@@ -58,7 +58,8 @@ function toKernelPrincipal(context: McpToolContext): {
 
 export function createMcpServer(
   context: McpToolContext,
-  kernel: WiredKernel = bootstrapKernel(),
+  /** The booted process kernel (routes pass `await appKernel()`). */
+  kernel: WiredKernel,
 ): Server {
   const server = new Server(
     {
@@ -90,14 +91,10 @@ export function createMcpServer(
     }
 
     const result = sanitizeMcpToolResult(
-      await kernel.registry.execute(
-        name,
-        request.params.arguments ?? {},
-        {
-          principal: toKernelPrincipal(context),
-          requestId: randomUUID(),
-        },
-      ),
+      await kernel.registry.execute(name, request.params.arguments ?? {}, {
+        principal: toKernelPrincipal(context),
+        requestId: randomUUID(),
+      }),
     )
     return {
       content: [

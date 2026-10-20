@@ -7,6 +7,10 @@ const { kernelHolder, isUserAdminMock } = vi.hoisted(() => ({
 }))
 
 vi.mock('$lib/server/auth/user-role', () => ({ isUserAdmin: isUserAdminMock }))
+vi.mock('$lib/server/boot', async () => {
+  const index = await import('../../../../../modules/index')
+  return { appKernel: async () => index.bootstrapKernel() }
+})
 vi.mock('../../../../../modules/index', () => ({ bootstrapKernel: () => kernelHolder.kernel }))
 vi.mock('../../../../../modules/orchestrator/brain', () => ({
   WEBSITE_FOUNDING_JOURNEY: { kind: 'website-founding' },

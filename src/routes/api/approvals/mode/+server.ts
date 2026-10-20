@@ -1,3 +1,4 @@
+import { appKernel } from '$lib/server/boot'
 import type { RequestHandler } from './$types'
 import { json } from '@sveltejs/kit'
 import { APPROVAL_MODES, isApprovalMode } from '$lib/kernel/approvals'
@@ -14,7 +15,7 @@ import { bootstrapKernel } from '../../../../../modules/index'
  */
 export const GET: RequestHandler = async (event) => {
   if (!event.locals.user) return json({ error: 'You must be signed in.' }, { status: 401 })
-  return json({ mode: await bootstrapKernel().approvalMode.get() })
+  return json({ mode: await (await appKernel()).approvalMode.get() })
 }
 
 export const PUT: RequestHandler = async (event) => {
@@ -30,12 +31,13 @@ export const PUT: RequestHandler = async (event) => {
   } catch {
     return json({ error: 'Request body must be JSON.' }, { status: 400 })
   }
-  const mode = typeof body === 'object' && body !== null ? (body as { mode?: unknown }).mode : undefined
+  const mode =
+    typeof body === 'object' && body !== null ? (body as { mode?: unknown }).mode : undefined
   if (!isApprovalMode(mode)) {
     return json({ error: `mode must be one of: ${APPROVAL_MODES.join(', ')}` }, { status: 400 })
   }
 
-  const kernel = bootstrapKernel()
+  const kernel = await appKernel()
   const previous = await kernel.approvalMode.get()
   const saved = await kernel.approvalMode.set(mode, user.id)
   await emitKernelEvent(kernel.eventSink, {

@@ -16,6 +16,10 @@ const { holder } = vi.hoisted(() => ({
 }))
 
 vi.mock('$lib/server/auth/require-admin', () => ({ requireAdmin: async (u: unknown) => u }))
+vi.mock('$lib/server/boot', async () => {
+  const index = await import('../../../../../../modules/index')
+  return { appKernel: async () => index.bootstrapKernel() }
+})
 vi.mock('../../../../../../modules/index', () => ({
   bootstrapKernel: () => ({ registry: holder.registry }),
   ensureSystemModulesActive: async () => undefined,

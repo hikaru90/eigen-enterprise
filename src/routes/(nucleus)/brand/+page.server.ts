@@ -1,3 +1,4 @@
+import { appKernel } from '$lib/server/boot'
 import type { PageServerLoad } from './$types'
 import { randomUUID } from 'node:crypto'
 import { requireAdmin } from '$lib/server/auth/require-admin'
@@ -16,7 +17,7 @@ export const load: PageServerLoad = async (event) => {
   const { active } = await brandModuleState(user)
   if (!active) return { needsModuleActivation: true as const, corpus: null, drafts: null }
 
-  const kernel = bootstrapKernel()
+  const kernel = await appKernel()
   const context = {
     principal: { id: user.id, kind: 'human' as const, roles: ['admin'] },
     requestId: randomUUID(),

@@ -1,3 +1,4 @@
+import { appKernel } from '$lib/server/boot'
 import type { RequestHandler } from './$types'
 import { randomUUID } from 'node:crypto'
 import { error, json } from '@sveltejs/kit'
@@ -26,7 +27,7 @@ export const POST: RequestHandler = async ({ request }) => {
   const target = pushTarget(JSON.parse(body) as PushEvent)
   if (!target) return json({ ok: true, ignored: 'not a branch push' })
 
-  const kernel = bootstrapKernel()
+  const kernel = await appKernel()
   await ensureSystemModulesActive(kernel)
   const ctx = () => ({
     principal: { id: 'github-webhook', kind: 'service' as const, roles: ['service'] },

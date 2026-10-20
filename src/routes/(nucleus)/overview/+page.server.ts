@@ -1,3 +1,4 @@
+import { appKernel } from '$lib/server/boot'
 import type { PageServerLoad } from './$types'
 import { redirect } from '@sveltejs/kit'
 import { and, desc, eq, ne, sql } from 'drizzle-orm'
@@ -19,7 +20,7 @@ const RECENT_ACTIONS = 10
 export const load: PageServerLoad = async (event) => {
   if (!event.locals.user) throw redirect(302, '/login')
   const userId = event.locals.user.id
-  const kernel = bootstrapKernel()
+  const kernel = await appKernel()
   const isAdmin = await isUserAdmin(userId)
 
   const overview = await buildOverview({
