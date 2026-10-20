@@ -69,6 +69,7 @@ async function makeWiredFake(options: { approvalTools?: string[] } = {}): Promis
     inputSchema: z.object({ to: z.string() }),
     permission: { roles: ['admin'] },
     auditClass: 'mutate',
+    activity: () => 'Did a test action',
     handler: async () => ({ sent: true }),
   }
   const ownerOnly: ToolDescriptor = {

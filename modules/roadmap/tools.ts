@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { ToolDescriptor } from '$lib/kernel/types'
-import { defaultRoadmapStore, type RoadmapStore } from './store'
+import { defaultRoadmapStore, type RoadmapItem, type RoadmapStore } from './store'
 
 /**
  * Kernel tool descriptors over the RoadmapStore. The store is injected
@@ -57,6 +57,7 @@ export function createRoadmapTools(deps: RoadmapToolDeps = {}): ToolDescriptor[]
       summary:
         'Add one roadmap item (title required; detail defaults to empty, status to planned, kind to feature). Born-shipped items get shipped_at stamped.',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof addItemInput>) => `Added “${input.title}” to the roadmap`,
       inputSchema: addItemInput,
       permission: { roles: ['admin', 'agent'] },
       handler: async (_ctx, input) => {
@@ -76,6 +77,10 @@ export function createRoadmapTools(deps: RoadmapToolDeps = {}): ToolDescriptor[]
       summary:
         "Patch one roadmap item by id (title, detail, status, kind, position). Moving status to 'shipped' stamps shipped_at; moving away clears it. Fails loud on an unknown id.",
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof updateItemInput>, output?: RoadmapItem) => {
+        const title = output?.title ?? input.title
+        return title === undefined ? 'Updated a roadmap item' : `Updated the roadmap item “${title}”`
+      },
       inputSchema: updateItemInput,
       permission: { roles: ['admin', 'agent'] },
       handler: async (_ctx, input) => {

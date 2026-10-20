@@ -27,6 +27,7 @@ function makeFixtureRegistry() {
       summary: 'sends one transactional email',
       inputSchema: z.object({ to: z.string(), subject: z.string() }),
       auditClass: 'external',
+      activity: () => 'Did a test action',
     }),
   )
   return registry

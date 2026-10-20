@@ -60,6 +60,7 @@ export function createSubstrateTools(deps: SubstrateToolDeps = {}): ToolDescript
       summary:
         'Point a domain at this server (human only). role "public" = the public website, "console" = this app, "app" = another deployed app. DNS must already point here.',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof domainAddInput>) => `Pointed the domain ${input.host} at this server`,
       inputSchema: domainAddInput,
       permission: { roles: ['admin'] },
       handler: async (ctx, input) => {
@@ -73,6 +74,7 @@ export function createSubstrateTools(deps: SubstrateToolDeps = {}): ToolDescript
       module: 'substrate',
       summary: 'Remove a domain from this server (human only). The console host cannot be removed.',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof domainRemoveInput>) => `Removed the domain ${input.host} from this server`,
       inputSchema: domainRemoveInput,
       permission: { roles: ['admin'] },
       handler: async (ctx, input) => {
@@ -85,6 +87,7 @@ export function createSubstrateTools(deps: SubstrateToolDeps = {}): ToolDescript
       module: 'substrate',
       summary: 'Stop and remove a deployed app and its domains (human only). System workloads cannot be removed.',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof appRemoveInput>) => `Removed the app “${input.name}” from this server`,
       inputSchema: appRemoveInput,
       permission: { roles: ['admin'] },
       handler: async (ctx, input) => {
@@ -97,6 +100,9 @@ export function createSubstrateTools(deps: SubstrateToolDeps = {}): ToolDescript
       module: 'substrate',
       summary: "Set a secret for a deployed app (human only). Values are write-only: they can never be read back.",
       auditClass: 'mutate',
+      // Names the secret, never its value.
+      activity: (input: z.infer<typeof secretSetInput>) =>
+        `Set the secret ${input.name} for the app “${input.workload}”`,
       inputSchema: secretSetInput,
       permission: { roles: ['admin'] },
       handler: async (ctx, input) => {

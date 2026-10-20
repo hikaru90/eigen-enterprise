@@ -7,7 +7,9 @@ import {
   createSetInputSchema,
   defaultBrandStore,
   updateSetInputSchema,
+  type BrandGuidelineSet,
   type BrandStore,
+  type CreateSetInput,
 } from './store'
 
 /**
@@ -104,6 +106,7 @@ export function createBrandTools(deps: BrandToolDeps = {}): ToolDescriptor[] {
       summary:
         'Create a draft brand guideline set (locale + CARE context incl. multi-word tone attributes). Versions increment per locale.',
       auditClass: 'mutate',
+      activity: (input: CreateSetInput) => `Created a draft brand voice for ${input.locale}`,
       inputSchema: createSetInputSchema,
       permission: mutationPermission,
       handler: async (ctx, input) => {
@@ -117,6 +120,8 @@ export function createBrandTools(deps: BrandToolDeps = {}): ToolDescriptor[] {
       summary:
         'Patch the context of a draft guideline set. Active/retired sets are immutable (G23) — fail loud.',
       auditClass: 'mutate',
+      activity: (_input: unknown, output?: BrandGuidelineSet) =>
+        output ? `Updated the draft brand voice for ${output.locale}` : 'Updated a draft brand voice',
       inputSchema: updateSetInputSchema,
       permission: mutationPermission,
       handler: async (ctx, input) => {
@@ -130,6 +135,8 @@ export function createBrandTools(deps: BrandToolDeps = {}): ToolDescriptor[] {
       summary:
         'Activate a draft guideline set (one active per locale). Guards: CARE-complete context, >=2 voice examples incl. >=1 good and >=1 bad (G2). Approval-gated.',
       auditClass: 'mutate',
+      activity: (_input: unknown, output?: BrandGuidelineSet) =>
+        output ? `Made the ${output.locale} brand voice the active one` : 'Made a brand voice the active one',
       approvalRisk: 'public',
       inputSchema: setIdInput,
       permission: mutationPermission,
@@ -168,6 +175,7 @@ export function createBrandTools(deps: BrandToolDeps = {}): ToolDescriptor[] {
       summary:
         'Add a voice exemplar (good|bad) to a draft set — the primary voice representation (G2).',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof exampleAddInput>) => `Added a ${input.label} voice example`,
       inputSchema: exampleAddInput,
       permission: mutationPermission,
       handler: async (ctx, input) => {
@@ -181,6 +189,7 @@ export function createBrandTools(deps: BrandToolDeps = {}): ToolDescriptor[] {
       summary:
         'Add an allowed|banned|required term to a draft set. Banned/required terms feed the deterministic validation layer (G11).',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof lexiconAddInput>) => `Added “${input.term}” as a ${input.kind} brand term`,
       inputSchema: lexiconAddInput,
       permission: mutationPermission,
       handler: async (ctx, input) => {
@@ -194,6 +203,7 @@ export function createBrandTools(deps: BrandToolDeps = {}): ToolDescriptor[] {
       summary:
         'Add a validation criterion for a content type (deterministic spec or judge spec) with risk tier (G10/G16).',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof criterionAddInput>) => `Added a brand check for ${input.contentType}`,
       inputSchema: criterionAddInput,
       permission: mutationPermission,
       handler: async (ctx, input) => {
@@ -207,6 +217,7 @@ export function createBrandTools(deps: BrandToolDeps = {}): ToolDescriptor[] {
       summary:
         'Add a named visual token (value + prose rationale + style vocabulary) to a draft set (G5; owlery bootstraps the store later, D1).',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof tokenAddInput>) => `Added the visual token “${input.token}”`,
       inputSchema: tokenAddInput,
       permission: mutationPermission,
       handler: async (ctx, input) => {
@@ -219,6 +230,7 @@ export function createBrandTools(deps: BrandToolDeps = {}): ToolDescriptor[] {
       module: 'brand',
       summary: 'Add a glossary term + definition to a draft set.',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof glossaryAddInput>) => `Added “${input.term}” to the brand glossary`,
       inputSchema: glossaryAddInput,
       permission: mutationPermission,
       handler: async (ctx, input) => {

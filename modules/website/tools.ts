@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { ToolDescriptor } from '$lib/kernel/types'
 import { buildSiteInfo, siteOrigin } from './site-info'
-import { defaultWebsiteStore, type WebsiteStore } from './store'
+import { defaultWebsiteStore, type WebsitePage, type WebsiteStore } from './store'
 
 /**
  * Kernel tool descriptors over the WebsiteStore. The store is injected
@@ -50,6 +50,14 @@ const listPagesInput = z.object({
   visibility: z.enum(['private', 'public']).optional(),
 })
 
+/**
+ * A page in the owner's words: its title when the call knows it, otherwise
+ * its slug quoted as-is (a title is never invented from the slug).
+ */
+function pageName(title: string | undefined, slug: string): string {
+  return title === undefined ? `the page “${slug}”` : `the ${title} page`
+}
+
 /** Kernel descriptors for the website content surface. */
 export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[] {
   const store = deps.store ?? defaultWebsiteStore()
@@ -62,6 +70,8 @@ export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[]
       summary:
         'Create one website content object (markdown body, kind page|doc, visibility private|public). Fails loud on duplicate slug.',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof createPageInput>, output?: WebsitePage) =>
+        `Created ${pageName(output?.title ?? input.title, input.slug)}`,
       inputSchema: createPageInput,
       permission: { roles: ['admin', 'agent'] },
       handler: async (_ctx, input) => store.createPage(createPageInput.parse(input)),
@@ -72,6 +82,8 @@ export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[]
       summary:
         'Update title and/or body of one website content object by slug. Fails loud when the slug is unknown.',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof updatePageInput>, output?: WebsitePage) =>
+        `Updated ${pageName(output?.title ?? input.title, input.slug)}`,
       inputSchema: updatePageInput,
       permission: { roles: ['admin', 'agent'] },
       handler: async (_ctx, input) => {
@@ -88,6 +100,10 @@ export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[]
       summary:
         'Flip the visibility of one website content object between public and private. Fails loud when the slug is unknown.',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof publishPageInput>, output?: WebsitePage) =>
+        input.visibility === 'public'
+          ? `Published ${pageName(output?.title, input.slug)}`
+          : `Made ${pageName(output?.title, input.slug)} private`,
       approvalRisk: 'public',
       inputSchema: publishPageInput,
       permission: { roles: ['admin', 'agent'] },

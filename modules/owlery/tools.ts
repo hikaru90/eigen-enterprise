@@ -38,6 +38,8 @@ export function createOwleryTools(deps: OwleryToolDeps = {}): ToolDescriptor[] {
       module: 'owlery',
       summary: "Send one email from the company's sender address. Needs the owner's approval.",
       auditClass: 'mutate',
+      // Recipient only: subject and body stay out of the audit trail.
+      activity: (input: z.infer<typeof sendMailInput>) => `Sent an email to ${input.to}`,
       approvalRisk: 'external',
       inputSchema: sendMailInput,
       permission: { roles: ['admin', 'agent'] },

@@ -76,7 +76,7 @@ describe('/overview load', () => {
     journeyRows.splice(0, journeyRows.length, { status: 'active' })
     eventRows.splice(0, eventRows.length, {
       ts: new Date('2026-10-20T10:00:00.000Z'),
-      payload: { tool: 'website.publish_page', auditClass: 'mutate', ok: true },
+      payload: { tool: 'website.publish_page', auditClass: 'mutate', ok: true, activity: 'Published the Home page' },
     })
     const data = (await load(event({ id: 'owner' }))) as { overview: import('$lib/server/overview/overview').Overview }
     const { modules, actions, approvals } = data.overview
@@ -89,7 +89,7 @@ describe('/overview load', () => {
     expect(modules[0].results).toContainEqual({ label: 'Founding journey', detail: 'In progress', href: null })
     expect(modules[1].results).toEqual([{ label: 'hi@k.test', detail: 'Set up', href: null }])
     expect(JSON.stringify(data)).not.toMatch(/eu-central-1|secret|accessKey/i)
-    expect(actions).toEqual([{ at: '2026-10-20T10:00:00.000Z', text: 'Publish a page.', ok: true }])
-    expect(approvals).toEqual([{ id: 'ap1', text: 'Publish a page.' }])
+    expect(actions).toEqual([{ at: '2026-10-20T10:00:00.000Z', text: 'Published the Home page', ok: true }])
+    expect(approvals).toEqual([{ id: 'ap1', text: 'Publish a page of your website' }])
   })
 })

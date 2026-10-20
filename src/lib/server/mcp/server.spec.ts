@@ -42,6 +42,7 @@ function descriptor(
     inputSchema: z.object({ value: z.string() }),
     permission: { roles: ['admin', 'agent'] },
     auditClass,
+    activity: () => 'Did a test action',
     handler,
   }
 }

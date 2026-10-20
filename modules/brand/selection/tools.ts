@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
 import type { ToolDescriptor, ToolContext } from '$lib/kernel/types'
 import { brandCorpus, type CorpusRegistry } from '../corpus/runtime'
-import { createVisualSetInputSchema, defaultBrandStore, type BrandStore } from '../store'
+import { createVisualSetInputSchema, defaultBrandStore, type BrandStore, type BrandVisualSet } from '../store'
 import { DARK_PIN_PREFIX, applySeedEdit } from '../style-format/reseed'
 import {
   buildStyleVectorIndex,
@@ -166,6 +166,7 @@ export function createBrandSelectionTools(deps: BrandSelectionToolDeps = {}): To
       summary:
         'Create a draft brand visual set from a wizard selection (name, source corpus item, picked-ids trail, resolved cssVars). Seeds default to the source item\'s seeds. Draft only — activation is the M5 publish gate (G8).',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof visualSetCreateInput>) => `Created the draft visual style “${input.name}”`,
       inputSchema: visualSetCreateInput,
       permission: mutationPermission,
       handler: async (ctx, input) => {
@@ -193,6 +194,8 @@ export function createBrandSelectionTools(deps: BrandSelectionToolDeps = {}): To
       summary:
         'Activate a draft brand visual set — the approval-gated strategic go-live (V9). Guards: draft-only, cssVars must cover every required role. Activating retires the previously active set in the same operation; its tokens then apply globally to all user-facing surfaces. Requires an explicit approval decision (APPROVAL_REQUIRED_TOOLS).',
       auditClass: 'mutate',
+      activity: (_input: unknown, output?: BrandVisualSet) =>
+        output ? `Made the visual style “${output.name}” live` : 'Made a visual style live',
       approvalRisk: 'public',
       inputSchema: visualSetGetInput,
       permission: mutationPermission,
@@ -226,6 +229,10 @@ export function createBrandSelectionTools(deps: BrandSelectionToolDeps = {}): To
       summary:
         'Edit a DRAFT visual set (phase-2d M6 visual editor): a seedsPatch re-expands the seed block deterministically (pins beat re-expansion, V3), direct cssVars/darkCssVars patches write resolved values AND pin them, clearPins re-flows values from the expansion. Seedless drafts only accept resolved-value patches. Draft-only (G23); human-only (G8).',
       auditClass: 'mutate',
+      activity: (input: z.infer<typeof visualSetUpdateInput>, output?: BrandVisualSet) => {
+        const name = output?.name ?? input.name
+        return name === undefined ? 'Updated a draft visual style' : `Updated the draft visual style “${name}”`
+      },
       inputSchema: visualSetUpdateInput,
       permission: mutationPermission,
       handler: async (ctx, input) => {

@@ -22,6 +22,7 @@ function fixture() {
     module: 'website',
     summary: 'fake create',
     auditClass: 'mutate',
+    activity: () => 'Did a test action',
     inputSchema: z.looseObject({ slug: z.string(), body: z.string().optional() }),
     permission: { roles: ['admin', 'agent'] },
     handler: async (_ctx: ToolContext, input: unknown) => {
@@ -36,6 +37,7 @@ function fixture() {
     module: 'website',
     summary: 'fake publish',
     auditClass: 'mutate',
+    activity: () => 'Did a test action',
     inputSchema: z.looseObject({ slug: z.string(), visibility: z.string() }),
     permission: { roles: ['admin', 'agent'] },
     handler: async (_ctx: ToolContext, input: unknown) => {
