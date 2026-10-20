@@ -254,7 +254,12 @@
     <p class="text-[11px] font-medium tracking-[0.25em] text-muted-foreground uppercase">
       Eigen Enterprise
     </p>
-    <div class="absolute top-5 right-0">
+    <div class="absolute top-5 right-0 flex items-center gap-3">
+      <a
+        href={resolve('/overview')}
+        class="text-[11px] font-medium tracking-[0.2em] text-muted-foreground uppercase hover:text-foreground"
+        data-testid="overview-link">Overview</a
+      >
       <HomeSettingsMenu />
     </div>
   </header>
