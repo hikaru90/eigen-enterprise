@@ -34,6 +34,8 @@ export type AdminApprovalStore = ApprovalStore & {
 export const kernelManifest: ModuleManifest = {
   id: KERNEL_MODULE_ID,
   name: 'Kernel',
+  // The kernel's own admin surface: never an owner-facing module card or page.
+  internal: true,
   version: '0.1.0',
   description: 'Module activation and approval-decision administration for the kernel itself.',
   tools: [...KERNEL_ADMIN_TOOL_NAMES],

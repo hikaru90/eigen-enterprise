@@ -20,6 +20,8 @@ export const AGENT_ADMIN_TOOL_NAMES = ['agent.list', 'agent.enable', 'agent.disa
 export const agentAdminManifest: ModuleManifest = {
   id: AGENT_ADMIN_MODULE_ID,
   name: 'Agent Admin',
+  // Harness machinery: never an owner-facing module card or page.
+  internal: true,
   version: '0.1.0',
   description: 'Harness agent administration: list hosted agents, enable and disable them.',
   tools: [...AGENT_ADMIN_TOOL_NAMES],
