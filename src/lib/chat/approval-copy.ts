@@ -7,6 +7,8 @@ const APPROVAL_ACTION_COPY: Record<string, string> = {
   'website.publish_page': 'Publish a page of your website',
   'repo.merge': 'Merge agent work into the company repository',
   'kernel.module_deactivate': 'Switch off a module',
+  'website.github_connect_repo': 'Connect a GitHub repository',
+  'website.github_disconnect_repo': 'Disconnect a GitHub repository',
 }
 
 /** The gated action in plain words; a tool without copy still names itself. */

@@ -18,7 +18,7 @@ function setup() {
   const store = new InMemoryGitHubStore()
   store.conn = { appId: 7, appSlug: 'eigen-kindred', clientId: 'cid', htmlUrl: 'https://github.com/apps/eigen-kindred', installationId: 99 }
   store.creds = { privateKeyPem: 'pem', webhookSecret: 'whs', clientSecret: 'cs' }
-  const repos: Repo[] = [{ full_name: 'kindred/app', default_branch: 'main', private: true, clone_url: '' }]
+  const repos: Repo[] = [{ id: 1, full_name: 'kindred/app', default_branch: 'main', private: true, clone_url: '', html_url: '' }]
   const api = {
     installationToken: async (appId: number, _pem: string, inst: number) => `tok-${appId}-${inst}`,
     installationRepos: async () => repos,

@@ -29,8 +29,8 @@ const slots: Record<string, ModuleSettingsSlot> = {
       { label: 'Hosting', href: '/settings/hosting', text: 'Domains, apps and this server.' },
       {
         label: 'GitHub connection',
-        href: '/settings/hosting',
-        text: 'Connect the GitHub App and link repositories.',
+        href: '/m/website/github',
+        text: 'Connect GitHub and your repositories (public or private).',
       },
     ],
   },

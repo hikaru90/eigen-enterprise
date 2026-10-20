@@ -95,6 +95,8 @@ describe('buildKernel wires the owner-chosen approval mode', () => {
       'email.send_mail': 'external',
       'owlery.send_mail': 'external',
       'repo.merge': 'destructive',
+      'website.github_connect_repo': 'internal',
+      'website.github_disconnect_repo': 'destructive',
       'website.publish_page': 'public',
     })
   })
@@ -205,6 +207,8 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'kernel.module_deactivate',
       'owlery.send_mail',
       'repo.merge',
+      'website.github_connect_repo',
+      'website.github_disconnect_repo',
       'website.publish_page',
     ])
     const { kernel, approvalStore } = makeInMemoryKernel()

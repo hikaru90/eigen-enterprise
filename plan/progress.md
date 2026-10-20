@@ -2,6 +2,15 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-20 (6) — SHIPPED (branch): connect a GitHub repo (Website → GitHub)
+
+- Studied Coolify's GitHub design, design only, no code copied (plan/github-connect.md). New page `/m/website/github`, linked from the Website module's "GitHub connection" setting. It has: the App manifest flow with plain steps, public repo by link (unauthenticated API, branch picker), private repos the installed App can see plus "Add more repos on GitHub", and the connected repos with their last commit and a Disconnect button. The App setup URL now returns the owner here.
+- Migration `0093_github_connected_repos`. It is keyed by GitHub repo id plus branch and stores the installation id for private repos. It stores no tokens.
+- Tools: `website.github_list_repos` / `_available_repos` / `_inspect_repo` (read), `website.github_connect_repo` (internal) and `website.github_disconnect_repo` (destructive). Both mutating tools are on the approval-gated list.
+- Decision: in the dashboard, the owner's click is their approval. When the mode gates a connect or disconnect, the page records an owner approval and runs the tool (D11: owner clicks are human actions).
+- Decision: GitHub API failures become plain sentences, chosen by HTTP status (GitHubUserError). Raw errors only go to the server log as `cause`.
+- Not verified: no real GitHub App, and the DB store has not run against Postgres (the migration has not been applied to a dev DB). Next: deploy a connected repo through `github.app_create` / ee mirror, and match webhook pushes by repo id.
+
 ## 2026-10-20 (5) — SHIPPED: one orchestrator engine (durable); Claude Pro/Max and ChatGPT sign-ins removed
 
 **Owner directive**: "The provider we use shouldn't determine if PiDurable is working or not. Remove providers that are not supported by PiDurable." Amends phase-durable D6 and the 2026-10-19 per-provider engine decision.

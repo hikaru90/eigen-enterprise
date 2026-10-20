@@ -45,6 +45,7 @@ import { createRecapModule, type RecapBoot } from './recap'
 import { RECAP_MODULE_ID } from './recap/types'
 
 export type { RecapBoot } from './recap'
+import { createGitHubConnectTools } from './website/github/connect-tools'
 import { createGitHubTools } from './website/github/tools'
 import { createSubstrateTools } from './website/hosting/tools'
 import { WEBSITE_MODULE_ID, websiteManifest } from './website/manifest'
@@ -94,6 +95,10 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   // harness fixes "module not active" itself — audited, reversible, no approval).
   // DEACTIVATING takes capability away from the company: the owner's yes in chat.
   'kernel.module_deactivate',
+  // Connecting a GitHub repo is internal (auto in "reasonable" mode); disconnecting
+  // drops what a deploy depends on, so it is destructive (plan/github-connect.md).
+  'website.github_connect_repo',
+  'website.github_disconnect_repo',
 ])
 
 export type BootstrapKernelOptions = {
@@ -169,6 +174,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createRoadmapTools(),
     ...createSubstrateTools(),
     ...createGitHubTools(),
+    ...createGitHubConnectTools(),
     ...createOwleryTools(),
   ])
 

@@ -652,6 +652,13 @@
       "when": 1760200000015,
       "tag": "0092_module_merge",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1760200000016,
+      "tag": "0093_github_connected_repos",
+      "breakpoints": true
     }
   ]
 }

@@ -21,5 +21,5 @@ export const GET: RequestHandler = async (event) => {
   const creds = await store.credentials()
   await new GitHubApi().installation(conn.appId, creds.privateKeyPem, installationId)
   await store.setInstallation(installationId)
-  throw redirect(303, '/settings/hosting')
+  throw redirect(303, '/m/website/github')
 }
