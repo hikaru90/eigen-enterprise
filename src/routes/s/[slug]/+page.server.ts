@@ -1,5 +1,6 @@
 import type { PageServerLoad } from './$types'
 import { error } from '@sveltejs/kit'
+import { isUserAdmin } from '$lib/server/auth/user-role'
 import { defaultBrandStore } from '../../../../modules/brand/store'
 import { grayscaleTint } from '../../../../modules/brand/style-format/tint'
 import { isPubliclyRenderable } from '../../../../modules/website/render-gate'
@@ -19,7 +20,14 @@ export const load: PageServerLoad = async (event) => {
   if (!slug) error(404, 'Page not found')
 
   const page = await defaultWebsiteStore().getPage(slug)
-  if (!page || !isPubliclyRenderable(page)) error(404, 'Page not found')
+  if (!page) error(404, 'Page not found')
+  // Drafts/private pages: only the signed-in admin owner may preview them
+  // (rendered with a draft banner); everyone else gets the same 404.
+  const draft = !isPubliclyRenderable(page)
+  if (draft) {
+    const userId = event.locals.user?.id
+    if (!userId || !(await isUserAdmin(userId))) error(404, 'Page not found')
+  }
 
   // Phase-2d M5 (V9): the active visual set drives the public hero; the
   // water-flow shader's monochrome invariant is a brand constant, so chromatic
@@ -33,6 +41,7 @@ export const load: PageServerLoad = async (event) => {
 
   return {
     title: page.title,
+    draft,
     body: page.body,
     updatedAt: page.updatedAt,
     brand: {

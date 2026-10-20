@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { ToolDescriptor } from '$lib/kernel/types'
+import { buildSiteInfo, siteOrigin } from './site-info'
 import { defaultWebsiteStore, type WebsiteStore } from './store'
 
 /**
@@ -12,6 +13,13 @@ import { defaultWebsiteStore, type WebsiteStore } from './store'
 
 export type WebsiteToolDeps = {
   store?: WebsiteStore
+  /** This server's absolute origin; production reads the configured console ORIGIN. */
+  origin?: () => string | Promise<string>
+}
+
+async function configuredOrigin(): Promise<string> {
+  const { env } = await import('$env/dynamic/private')
+  return siteOrigin(env.ORIGIN)
 }
 
 const createPageInput = z.object({
@@ -45,6 +53,7 @@ const listPagesInput = z.object({
 /** Kernel descriptors for the website content surface. */
 export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[] {
   const store = deps.store ?? defaultWebsiteStore()
+  const origin = deps.origin ?? configuredOrigin
 
   return [
     {
@@ -110,6 +119,16 @@ export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[]
           ...(parsed.visibility === undefined ? {} : { visibility: parsed.visibility }),
         })
       },
+    },
+    {
+      name: 'website.site_info',
+      module: 'website',
+      summary:
+        'Where the website is on this server: {url, pages:[{slug,title,status,url}]} with absolute, openable links (drafts are previewable by the signed-in owner). Use it to give the owner a link.',
+      auditClass: 'read',
+      inputSchema: z.object({}),
+      permission: { roles: ['admin', 'agent'] },
+      handler: async () => buildSiteInfo(await origin(), await store.listPages()),
     },
   ]
 }

@@ -16,6 +16,14 @@ import {
 const OLD_OPENING_QUESTION =
   'Before I build anything: which three words should describe your company’s tone of voice?'
 
+describe('orchestrator persona: where results live', () => {
+  it('tells the agent to answer "where is it" with a working link from website.site_info', () => {
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('website.site_info')
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/give the link/i)
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/never tell them to set up a domain/i)
+  })
+})
+
 describe('orchestrator persona prompt', () => {
   it('keeps the orchestrator identity lines', () => {
     expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(

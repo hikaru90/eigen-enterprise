@@ -16,6 +16,9 @@
 
 <article class="website-page">
   <div class="website-backdrop" aria-hidden="true"></div>
+  {#if data.draft}
+    <p class="website-draft-banner" role="status">Draft — only you can see this</p>
+  {/if}
   <h1 style:color={data.brand.h1Color}>{data.title}</h1>
   <header class="website-hero">
     <!-- Phase-2d M5 (V9): tints derive from the active visual set (grayscale-
@@ -53,6 +56,17 @@
     position: fixed;
     inset: 0;
     background: #000;
+  }
+
+  .website-draft-banner {
+    position: relative;
+    margin: 0 0 1.5rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #8a6d1f;
+    border-radius: 0.375rem;
+    background: #2a2108;
+    color: #f5d77a;
+    font-size: 0.9rem;
   }
 
   .website-hero {

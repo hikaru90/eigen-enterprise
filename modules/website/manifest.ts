@@ -7,6 +7,7 @@ export const WEBSITE_TOOL_NAMES = [
   'website.publish_page',
   'website.get_page',
   'website.list_pages',
+  'website.site_info',
 ] as const
 
 export const websiteManifest: ModuleManifest = {
