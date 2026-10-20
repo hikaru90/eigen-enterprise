@@ -1,8 +1,8 @@
 import type { RequestHandler } from './$types'
 import { error, redirect } from '@sveltejs/kit'
 import { requireAdmin } from '$lib/server/auth/require-admin'
-import { GitHubApi } from '../../../../../../modules/github/api'
-import { defaultGitHubStore } from '../../../../../../modules/github/store'
+import { GitHubApi } from '../../../../../../modules/website/github/api'
+import { defaultGitHubStore } from '../../../../../../modules/website/github/store'
 
 /**
  * GitHub App setup URL: after the owner installs the app, GitHub sends them here

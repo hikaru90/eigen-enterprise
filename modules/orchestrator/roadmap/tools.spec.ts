@@ -6,7 +6,8 @@ import { InMemoryActivationStore } from '$lib/kernel/modules'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import type { VcsCommitter } from '$lib/kernel/vcs'
-import { ROADMAP_TOOL_NAMES, roadmapManifest } from './manifest'
+import { orchestratorManifest } from '../manifest'
+import { ROADMAP_TOOL_NAMES } from './manifest'
 import { InMemoryRoadmapStore } from './store'
 import { createRoadmapTools } from './tools'
 
@@ -15,13 +16,13 @@ const ctx: ToolContext = {
   requestId: 'req-1',
 }
 
-describe('roadmapManifest', () => {
-  it('owns the namespaced roadmap tool names', () => {
-    expect(roadmapManifest.id).toBe('roadmap')
-    expect(roadmapManifest.version).toBe('0.1.0')
-    expect(roadmapManifest.tools).toEqual([...ROADMAP_TOOL_NAMES])
-    expect(roadmapManifest.tools.every((name) => name.startsWith('roadmap.'))).toBe(true)
-    expect(roadmapManifest.permissions).toEqual({ roles: ['admin', 'agent'] })
+describe('roadmap namespace (folded into the internal orchestrator module)', () => {
+  it('the orchestrator module owns the `roadmap` namespace and every roadmap tool name, unchanged', () => {
+    expect(orchestratorManifest.id).toBe('orchestrator')
+    expect(orchestratorManifest.internal).toBe(true)
+    expect(orchestratorManifest.toolNamespaces).toContain('roadmap')
+    expect(orchestratorManifest.tools).toEqual(expect.arrayContaining([...ROADMAP_TOOL_NAMES]))
+    expect([...ROADMAP_TOOL_NAMES].every((name) => name.startsWith('roadmap.'))).toBe(true)
   })
 })
 
@@ -35,7 +36,7 @@ describe('createRoadmapTools', () => {
     expect(byName.get('roadmap.add_item')?.auditClass).toBe('mutate')
     expect(byName.get('roadmap.update_item')?.auditClass).toBe('mutate')
     for (const descriptor of tools) {
-      expect(descriptor.module).toBe('roadmap')
+      expect(descriptor.module).toBe('orchestrator')
       expect(descriptor.permission.roles).toEqual(['admin', 'agent'])
     }
   })
@@ -94,7 +95,7 @@ describe('roadmap tools through the kernel registry pipeline', () => {
 
   it('add_item runs the full mutate pipeline: store write, audit event, vcs commit', async () => {
     const { registry, store, sink, activations, commits } = makeRegistry()
-    await activations.set('roadmap', true)
+    await activations.set('orchestrator', true)
 
     const result = await registry.execute(
       'roadmap.add_item',
@@ -122,7 +123,7 @@ describe('roadmap tools through the kernel registry pipeline', () => {
 
   it('update_item is the status machine: shipping stamps shipped_at, unshipping clears it', async () => {
     const { registry, activations } = makeRegistry()
-    await activations.set('roadmap', true)
+    await activations.set('orchestrator', true)
 
     const created = await registry.execute('roadmap.add_item', { title: 'A' }, ctx)
     const id = (created as { id: string }).id
@@ -136,7 +137,7 @@ describe('roadmap tools through the kernel registry pipeline', () => {
 
   it('update_item throws loud for an unknown id: no silent no-op, audit ok:false, no vcs commit', async () => {
     const { registry, sink, activations, commits } = makeRegistry()
-    await activations.set('roadmap', true)
+    await activations.set('orchestrator', true)
 
     await expect(
       registry.execute('roadmap.update_item', { id: 'nope', title: 'x' }, ctx),
@@ -149,7 +150,7 @@ describe('roadmap tools through the kernel registry pipeline', () => {
 
   it('list_items orders shipped build log first, then work in progress, then planned queue', async () => {
     const { registry, activations } = makeRegistry()
-    await activations.set('roadmap', true)
+    await activations.set('orchestrator', true)
     await registry.execute('roadmap.add_item', { title: 'planned b', position: 1 }, ctx)
     await registry.execute(
       'roadmap.add_item',
@@ -167,7 +168,7 @@ describe('roadmap tools through the kernel registry pipeline', () => {
 
   it('read tools emit audit but never vcs-commit', async () => {
     const { registry, sink, activations, commits } = makeRegistry()
-    await activations.set('roadmap', true)
+    await activations.set('orchestrator', true)
 
     await registry.execute('roadmap.list_items', {}, ctx)
     expect(sink.events).toHaveLength(1)
@@ -177,12 +178,12 @@ describe('roadmap tools through the kernel registry pipeline', () => {
 
   it('gates on module activation (fail closed) and on principal roles', async () => {
     const { registry, activations } = makeRegistry()
-    await activations.set('roadmap', false)
+    await activations.set('orchestrator', false)
     await expect(registry.execute('roadmap.list_items', {}, ctx)).rejects.toMatchObject({
       code: 'module_inactive',
     })
 
-    await activations.set('roadmap', true)
+    await activations.set('orchestrator', true)
     await expect(
       registry.execute(
         'roadmap.list_items',

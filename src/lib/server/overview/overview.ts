@@ -142,6 +142,8 @@ function legacyToolText(deps: OverviewDeps, tool: string): string {
 export async function buildOverview(deps: OverviewDeps): Promise<Overview> {
   const modules: ModuleOverview[] = []
   for (const manifest of deps.manifests) {
+    // Internal modules are the agent's own machinery: no owner-facing card.
+    if (manifest.internal === true) continue
     const active = deps.activations.get(manifest.id) === true
     const base = {
       id: manifest.id,

@@ -76,6 +76,8 @@ export function createAdminTools(deps: AdminToolDeps): ToolDescriptor[] {
             name: manifest.name,
             version: manifest.version,
             ...(manifest.description === undefined ? {} : { description: manifest.description }),
+            // Internal = the agent's own machinery, not an owner-facing module card.
+            ...(manifest.internal === true ? { internal: true } : {}),
             tools: manifest.tools,
             active,
           })

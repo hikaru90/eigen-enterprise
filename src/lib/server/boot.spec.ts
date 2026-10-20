@@ -24,7 +24,7 @@ vi.mock('../../../modules/index', () => ({
 vi.mock('../../../modules/orchestrator/bootstrap', () => ({
   bootstrapOrchestrator: mocks.bootstrapOrchestrator,
 }))
-vi.mock('../../../modules/dev-agent', () => ({ piEngine: mocks.piEngine }))
+vi.mock('../../../modules/orchestrator/dev-agent', () => ({ piEngine: mocks.piEngine }))
 
 type OrchestratorCall = {
   kernel: WiredKernel

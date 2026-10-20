@@ -1,3 +1,4 @@
+import { WEBSITE_MODULE_ID } from '../manifest'
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
@@ -58,7 +59,7 @@ export function createGitHubTools(deps: GitHubToolDeps = {}): ToolDescriptor[] {
   return [
     {
       name: 'github.status',
-      module: 'github',
+      module: WEBSITE_MODULE_ID,
       summary: 'Whether a GitHub App is connected and installed, and which apps on this server deploy from which repos.',
       auditClass: 'read',
       inputSchema: z.object({}).strict(),
@@ -70,7 +71,7 @@ export function createGitHubTools(deps: GitHubToolDeps = {}): ToolDescriptor[] {
     },
     {
       name: 'github.repos_list',
-      module: 'github',
+      module: WEBSITE_MODULE_ID,
       summary: "Repositories the company's GitHub App can see (and so can deploy).",
       auditClass: 'read',
       inputSchema: z.object({}).strict(),
@@ -82,7 +83,7 @@ export function createGitHubTools(deps: GitHubToolDeps = {}): ToolDescriptor[] {
     },
     {
       name: 'github.app_create',
-      module: 'github',
+      module: WEBSITE_MODULE_ID,
       summary:
         'Deploy a repository as an app on this server (human only). The repo must contain ee.json; the app is health-gated before it takes traffic.',
       auditClass: 'mutate',
@@ -114,7 +115,7 @@ export function createGitHubTools(deps: GitHubToolDeps = {}): ToolDescriptor[] {
     },
     {
       name: 'github.app_deploy',
-      module: 'github',
+      module: WEBSITE_MODULE_ID,
       summary: "Deploy the latest commit of an app's branch (human only). Health-gated; a failing release never replaces the live one.",
       auditClass: 'mutate',
       activity: (input: z.infer<typeof appDeployInput>) => `Deployed the latest version of the app “${input.name}”`,
@@ -132,7 +133,7 @@ export function createGitHubTools(deps: GitHubToolDeps = {}): ToolDescriptor[] {
     },
     {
       name: 'github.auto_deploy',
-      module: 'github',
+      module: WEBSITE_MODULE_ID,
       summary: 'Webhook path: deploy a pushed commit to every app linked to that repo+branch with auto-deploy on.',
       auditClass: 'mutate',
       activity: (input: z.infer<typeof autoDeployInput>, output?: { deployed: { name: string }[] }) => {

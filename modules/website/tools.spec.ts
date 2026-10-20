@@ -18,10 +18,10 @@ const ctx: ToolContext = {
 describe('websiteManifest', () => {
   it('owns the namespaced website tool names', () => {
     expect(websiteManifest.id).toBe('website')
-    expect(websiteManifest.version).toBe('0.1.0')
-    expect(websiteManifest.tools).toEqual([...WEBSITE_TOOL_NAMES])
-    expect(websiteManifest.tools.every((name) => name.startsWith('website.'))).toBe(true)
-    expect(websiteManifest.permissions).toEqual({ roles: ['admin', 'agent'] })
+    expect(websiteManifest.version).toBe('0.2.0')
+    expect(websiteManifest.tools.slice(0, WEBSITE_TOOL_NAMES.length)).toEqual([...WEBSITE_TOOL_NAMES])
+    expect([...WEBSITE_TOOL_NAMES].every((name) => name.startsWith('website.'))).toBe(true)
+    expect(websiteManifest.toolNamespaces).toEqual(['website', 'substrate', 'github'])
   })
 })
 

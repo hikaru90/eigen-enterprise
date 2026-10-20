@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types'
 import { randomUUID } from 'node:crypto'
 import { error, json } from '@sveltejs/kit'
-import { defaultGitHubStore } from '../../../../../modules/github/store'
+import { defaultGitHubStore } from '../../../../../modules/website/github/store'
 import { bootstrapKernel, ensureSystemModulesActive } from '../../../../../modules/index'
 import { pushTarget, verifyGitHubSignature, type PushEvent } from './handler'
 

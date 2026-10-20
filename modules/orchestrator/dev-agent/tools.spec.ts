@@ -6,7 +6,8 @@ import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext } from '$lib/kernel/types'
-import { DEV_AGENT_TOOL_NAMES, devAgentManifest, createDevAgentEngine } from './index'
+import { orchestratorManifest } from '../manifest'
+import { DEV_AGENT_TOOL_NAMES, createDevAgentEngine } from './index'
 import { VERIFY_TARGETS, type CommandResult, type CommandRunner, type CommandSpec } from './runner'
 import { InMemoryDevAgentRunStore } from './store'
 import { DevAgentEngine, createDevAgentTools } from './tools'
@@ -125,12 +126,13 @@ function devAgentEvents(sink: InMemoryEventSink): Array<{ type: string; payload:
     .map((event) => ({ type: event.type, payload: event.payload }))
 }
 
-describe('devAgentManifest', () => {
-  it('owns the namespaced dev-agent tool names', () => {
-    expect(devAgentManifest.id).toBe('dev-agent')
-    expect(devAgentManifest.tools).toEqual([...DEV_AGENT_TOOL_NAMES])
-    expect(devAgentManifest.tools.every((name) => name.startsWith('dev-agent.'))).toBe(true)
-    expect(devAgentManifest.permissions).toEqual({ roles: ['owner', 'admin', 'agent'] })
+describe('dev-agent namespace (folded into the internal orchestrator module)', () => {
+  it('the orchestrator module owns the `dev-agent` namespace and every dev-agent tool name, unchanged', () => {
+    expect(orchestratorManifest.id).toBe('orchestrator')
+    expect(orchestratorManifest.internal).toBe(true)
+    expect(orchestratorManifest.toolNamespaces).toContain('dev-agent')
+    expect(orchestratorManifest.tools).toEqual(expect.arrayContaining([...DEV_AGENT_TOOL_NAMES]))
+    expect([...DEV_AGENT_TOOL_NAMES].every((name) => name.startsWith('dev-agent.'))).toBe(true)
   })
 })
 
@@ -412,7 +414,7 @@ describe('createDevAgentTools descriptors', () => {
     expect(byName.get('dev-agent.abort')?.auditClass).toBe('mutate')
     expect(byName.get('dev-agent.abort')?.permission.roles).toEqual(['owner', 'admin'])
     for (const tool of tools) {
-      expect(tool.module).toBe('dev-agent')
+      expect(tool.module).toBe('orchestrator')
     }
   })
 
@@ -455,7 +457,7 @@ describe('dev-agent tools through the kernel registry pipeline', () => {
 
   it('agent dispatches; permissions gate merge (owner-only) and abort (owner|admin)', async () => {
     const { registry, activations, store, engine } = makeRegistry()
-    await activations.set('dev-agent', true)
+    await activations.set('orchestrator', true)
 
     const result = await registry.execute('dev-agent.dispatch', { task: 'ship it' }, ctxAgent)
     expect(result).toMatchObject({ status: 'dispatched' })
@@ -484,7 +486,7 @@ describe('dev-agent tools through the kernel registry pipeline', () => {
 
   it('second dispatch during an active run is run_in_progress through the pipeline', async () => {
     const { registry, activations, engine } = makeRegistry()
-    await activations.set('dev-agent', true)
+    await activations.set('orchestrator', true)
 
     await registry.execute('dev-agent.dispatch', { task: 'one' }, ctxAgent)
     await expect(
@@ -495,7 +497,7 @@ describe('dev-agent tools through the kernel registry pipeline', () => {
 
   it('read surfaces are admin/agent readable and carry full audit + dev-agent events', async () => {
     const { registry, activations, engine, sink } = makeRegistry()
-    await activations.set('dev-agent', true)
+    await activations.set('orchestrator', true)
 
     const { runId } = (await registry.execute(
       'dev-agent.dispatch',
@@ -524,7 +526,7 @@ describe('dev-agent tools through the kernel registry pipeline', () => {
 
   it('module activation gates the surface (fail closed)', async () => {
     const { registry, activations } = makeRegistry()
-    await activations.set('dev-agent', false)
+    await activations.set('orchestrator', false)
     await expect(
       registry.execute('dev-agent.dispatch', { task: 't' }, ctxAgent),
     ).rejects.toMatchObject({ code: 'module_inactive' })

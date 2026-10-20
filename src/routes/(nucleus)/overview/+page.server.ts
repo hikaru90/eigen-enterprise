@@ -48,7 +48,8 @@ export const load: PageServerLoad = async (event) => {
           .limit(1)
         return websiteStatusFrom(journey?.status ?? null)
       }),
-      owlery: owleryResultSource,
+      // Email = Owlery + transactional send (platform step 1); keyed by module id.
+      email: owleryResultSource,
     },
     // Agent actions = tool executions that changed something; reads (including
     // this page's own) are audited too but are not work to show.

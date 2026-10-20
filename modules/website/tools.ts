@@ -1,3 +1,4 @@
+import { WEBSITE_MODULE_ID } from './manifest'
 import { z } from 'zod'
 import type { ToolDescriptor } from '$lib/kernel/types'
 import { buildSiteInfo, siteOrigin } from './site-info'
@@ -66,7 +67,7 @@ export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[]
   return [
     {
       name: 'website.create_page',
-      module: 'website',
+      module: WEBSITE_MODULE_ID,
       summary:
         'Create one website content object (markdown body, kind page|doc, visibility private|public). Fails loud on duplicate slug.',
       auditClass: 'mutate',
@@ -78,7 +79,7 @@ export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[]
     },
     {
       name: 'website.update_page',
-      module: 'website',
+      module: WEBSITE_MODULE_ID,
       summary:
         'Update title and/or body of one website content object by slug. Fails loud when the slug is unknown.',
       auditClass: 'mutate',
@@ -96,7 +97,7 @@ export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[]
     },
     {
       name: 'website.publish_page',
-      module: 'website',
+      module: WEBSITE_MODULE_ID,
       summary:
         'Flip the visibility of one website content object between public and private. Fails loud when the slug is unknown.',
       auditClass: 'mutate',
@@ -114,7 +115,7 @@ export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[]
     },
     {
       name: 'website.get_page',
-      module: 'website',
+      module: WEBSITE_MODULE_ID,
       summary: 'Read one website content object by slug (any visibility).',
       auditClass: 'read',
       inputSchema: getPageInput,
@@ -123,7 +124,7 @@ export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[]
     },
     {
       name: 'website.list_pages',
-      module: 'website',
+      module: WEBSITE_MODULE_ID,
       summary: 'List website content objects, optionally filtered by kind and/or visibility.',
       auditClass: 'read',
       inputSchema: listPagesInput,
@@ -138,7 +139,7 @@ export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[]
     },
     {
       name: 'website.site_info',
-      module: 'website',
+      module: WEBSITE_MODULE_ID,
       summary:
         'Where the website is on this server: {url, pages:[{slug,title,status,url}]} with absolute, openable links (drafts are previewable by the signed-in owner). Use it to give the owner a link.',
       auditClass: 'read',

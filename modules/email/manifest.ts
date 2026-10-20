@@ -1,13 +1,23 @@
 import type { ModuleManifest } from '$lib/kernel/modules'
+import { OWLERY_TOOL_NAMES } from './owlery/manifest'
 
-/** Tool names owned by the email module (single source of truth for the manifest). */
+export const EMAIL_MODULE_ID = 'email'
+
+/** Transactional-send tool names (namespace `email`). */
 export const EMAIL_TOOL_NAMES = ['email.send_mail'] as const
 
+/**
+ * Email (plan/phase-platform.md step 1): the company's email through its own
+ * Amazon SES account (Owlery, namespace `owlery`) and the transactional send
+ * (namespace `email`). Both send tools live in this one module; names are
+ * unchanged. A system module: self-seeded active, does nothing until set up.
+ */
 export const emailManifest: ModuleManifest = {
-  id: 'email',
-  name: 'Transactional email',
-  version: '0.2.0',
-  description: "Send one transactional email from the company's sender address (delivered by the Owlery email module).",
-  tools: [...EMAIL_TOOL_NAMES],
+  id: EMAIL_MODULE_ID,
+  name: 'Email',
+  version: '0.3.0',
+  description: "Your company's email: connect Amazon SES, sender addresses, and the mail the agent sends.",
+  toolNamespaces: [EMAIL_MODULE_ID, 'owlery'],
+  tools: [...EMAIL_TOOL_NAMES, ...OWLERY_TOOL_NAMES],
   permissions: { roles: ['admin', 'agent'] },
 }

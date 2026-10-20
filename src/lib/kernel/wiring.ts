@@ -11,7 +11,12 @@ import type { PrincipalStore } from './principals'
 import type { KernelRegistry } from './registry'
 import type { AgentSessionLog } from './session-log'
 import type { ToolDescriptor } from './types'
-import { ModuleRegistry, type ActivationStore } from './modules'
+import {
+  manifestNamespaces,
+  ModuleRegistry,
+  toolNamespace,
+  type ActivationStore,
+} from './modules'
 
 export type WiredKernel = {
   registry: KernelRegistry
@@ -43,8 +48,8 @@ export function registerModuleTools(
     if (!manifest) {
       throw new Error(`tool ${tool.name} has no registered module manifest for "${tool.module}"`)
     }
-    if (!tool.name.startsWith(`${tool.module}.`)) {
-      throw new Error(`tool ${tool.name} is not namespaced by its module "${tool.module}"`)
+    if (!manifestNamespaces(manifest).includes(toolNamespace(tool.name))) {
+      throw new Error(`tool ${tool.name} is not in a namespace of its module "${tool.module}"`)
     }
     if (!manifest.tools.includes(tool.name)) {
       throw new Error(`tool ${tool.name} is missing from manifest "${tool.module}".tools`)

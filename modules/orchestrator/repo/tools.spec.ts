@@ -8,7 +8,8 @@ import { InMemoryActivationStore } from '$lib/kernel/modules'
 import { TIMEOUT_EXIT_CODE } from '$lib/kernel/pi-engine'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext } from '$lib/kernel/types'
-import { REPO_TOOL_NAMES, repoManifest, createRepoEngine } from './index'
+import { orchestratorManifest } from '../manifest'
+import { REPO_TOOL_NAMES, createRepoEngine } from './index'
 import { REPO_VERIFY_TARGETS, type CommandResult, type CommandRunner, type CommandSpec } from './runner'
 import { RepoEngine, createRepoTools } from './tools'
 
@@ -77,12 +78,13 @@ function repoEvents(sink: InMemoryEventSink): Array<{ type: string; payload: unk
     .map((event) => ({ type: event.type, payload: event.payload }))
 }
 
-describe('repoManifest', () => {
-  it('owns the namespaced repo tool names', () => {
-    expect(repoManifest.id).toBe('repo')
-    expect(repoManifest.tools).toEqual([...REPO_TOOL_NAMES])
-    expect(repoManifest.tools.every((name) => name.startsWith('repo.'))).toBe(true)
-    expect(repoManifest.permissions).toEqual({ roles: ['owner', 'admin', 'agent'] })
+describe('repo namespace (folded into the internal orchestrator module)', () => {
+  it('the orchestrator module owns the `repo` namespace and every repo tool name, unchanged', () => {
+    expect(orchestratorManifest.id).toBe('orchestrator')
+    expect(orchestratorManifest.internal).toBe(true)
+    expect(orchestratorManifest.toolNamespaces).toContain('repo')
+    expect(orchestratorManifest.tools).toEqual(expect.arrayContaining([...REPO_TOOL_NAMES]))
+    expect([...REPO_TOOL_NAMES].every((name) => name.startsWith('repo.'))).toBe(true)
   })
 })
 
@@ -428,7 +430,7 @@ describe('createRepoTools descriptors', () => {
     expect(byName.get('repo.merge')?.auditClass).toBe('mutate')
     expect(byName.get('repo.merge')?.permission.roles).toEqual(['admin', 'agent', 'owner'])
     for (const tool of tools) {
-      expect(tool.module).toBe('repo')
+      expect(tool.module).toBe('orchestrator')
     }
   })
 
@@ -477,7 +479,7 @@ describe('repo tools through the kernel registry pipeline', () => {
 
   it('activation gates the surface (fail closed)', async () => {
     const { registry, activations } = makeRegistry()
-    await activations.set('repo', false)
+    await activations.set('orchestrator', false)
     await expect(
       registry.execute('repo.worktree_create', {}, ctxAgent),
     ).rejects.toMatchObject({ code: 'module_inactive' })
@@ -485,7 +487,7 @@ describe('repo tools through the kernel registry pipeline', () => {
 
   it('agent and admin drive the hands; repo.merge is approval-gated before execution', async () => {
     const { registry, activations, approvals, commands, sink } = makeRegistry()
-    await activations.set('repo', true)
+    await activations.set('orchestrator', true)
 
     const worktreePath = await mkdtemp(path.join(tmpdir(), 'ee-repo-registry-'))
     const write = await registry.execute(

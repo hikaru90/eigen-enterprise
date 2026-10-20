@@ -54,7 +54,7 @@ async function kernel(active: string[]) {
   }
   const manifest = (id: string, name: string) => ({ id, name, version: '1', description: `${name} does work.`, tools: [], permissions: { roles: ['admin'] } })
   return {
-    modules: { list: () => [manifest('website', 'Website'), manifest('owlery', 'Email'), manifest('repo', 'Repo')] },
+    modules: { list: () => [manifest('website', 'Website'), manifest('email', 'Email'), manifest('brand', 'Brand')] },
     activations,
     approvals,
     registry: {
@@ -72,7 +72,7 @@ describe('/overview load', () => {
   })
 
   it('shows active and inactive modules, website and email results, actions and approvals', async () => {
-    kernelHolder.kernel = await kernel(['website', 'owlery'])
+    kernelHolder.kernel = await kernel(['website', 'email'])
     journeyRows.splice(0, journeyRows.length, { status: 'active' })
     eventRows.splice(0, eventRows.length, {
       ts: new Date('2026-10-20T10:00:00.000Z'),
@@ -82,8 +82,8 @@ describe('/overview load', () => {
     const { modules, actions, approvals } = data.overview
     expect(modules.map((m) => [m.id, m.active])).toEqual([
       ['website', true],
-      ['owlery', true],
-      ['repo', false],
+      ['email', true],
+      ['brand', false],
     ])
     expect(modules[0].results).toContainEqual({ label: 'Home', detail: 'Draft', href: 'http://localhost/site/home' })
     expect(modules[0].results).toContainEqual({ label: 'Founding journey', detail: 'In progress', href: null })

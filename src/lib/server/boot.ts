@@ -4,7 +4,7 @@ import { registerAdminTools } from '$lib/kernel/admin-bootstrap'
 import { DbJourneyStore, type JourneyStore } from '$lib/kernel/playbook'
 import type { WiredKernel } from '$lib/kernel/wiring'
 import { createDurableEngine } from '$lib/server/agent/durable-engine'
-import { piEngine } from '../../../modules/dev-agent'
+import { piEngine } from '../../../modules/orchestrator/dev-agent'
 import {
   bootstrapChatGateway,
   bootstrapRecap,

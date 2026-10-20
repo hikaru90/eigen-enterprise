@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { KernelError } from '$lib/kernel/errors'
 import type { ToolContext } from '$lib/kernel/types'
 import { EeClient, type EeTransport } from '$lib/server/ee/client'
-import { SUBSTRATE_TOOL_NAMES, substrateManifest } from './manifest'
+import { websiteManifest } from '../manifest'
+import { SUBSTRATE_TOOL_NAMES } from './manifest'
 import { createSubstrateTools } from './tools'
 
 const human: ToolContext = { principal: { id: 'u1', kind: 'human', roles: ['admin'] }, requestId: 'r1' }
@@ -25,7 +26,9 @@ describe('substrate module', () => {
   it('builds exactly the manifest tools', () => {
     const { transport } = recordingTransport()
     expect([...tools(transport).keys()].sort()).toEqual([...SUBSTRATE_TOOL_NAMES].sort())
-    expect(substrateManifest.id).toBe('substrate')
+    // Hosting folded into the website module (platform step 1); names unchanged.
+    expect(websiteManifest.tools).toEqual(expect.arrayContaining([...SUBSTRATE_TOOL_NAMES]))
+    for (const t of tools(transport).values()) expect(t.module).toBe('website')
   })
 
   it('status reports managed:false explicitly when not running under ee', async () => {

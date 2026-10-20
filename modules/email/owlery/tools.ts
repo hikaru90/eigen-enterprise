@@ -1,3 +1,4 @@
+import { EMAIL_MODULE_ID } from '../manifest'
 import { z } from 'zod'
 import type { ToolDescriptor } from '$lib/kernel/types'
 import { owleryService, type OwleryService } from './service'
@@ -25,7 +26,7 @@ export function createOwleryTools(deps: OwleryToolDeps = {}): ToolDescriptor[] {
   return [
     {
       name: 'owlery.status',
-      module: 'owlery',
+      module: EMAIL_MODULE_ID,
       summary:
         'Whether company email is set up: SES region, sender address, whether Amazon verified the sender, and whether the account is still in the SES sandbox.',
       auditClass: 'read',
@@ -35,7 +36,7 @@ export function createOwleryTools(deps: OwleryToolDeps = {}): ToolDescriptor[] {
     },
     {
       name: 'owlery.send_mail',
-      module: 'owlery',
+      module: EMAIL_MODULE_ID,
       summary: "Send one email from the company's sender address. Needs the owner's approval.",
       auditClass: 'mutate',
       // Recipient only: subject and body stay out of the audit trail.

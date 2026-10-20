@@ -1,3 +1,4 @@
+import { WEBSITE_MODULE_ID } from '../manifest'
 import { z } from 'zod'
 import type { ToolDescriptor } from '$lib/kernel/types'
 import { EeClient, SubstrateUnavailableError } from '$lib/server/ee/client'
@@ -39,7 +40,7 @@ export function createSubstrateTools(deps: SubstrateToolDeps = {}): ToolDescript
   return [
     {
       name: 'substrate.status',
-      module: 'substrate',
+      module: WEBSITE_MODULE_ID,
       summary:
         'What runs on this server: domains, workloads (eigenEnterprise and apps), what is live, recent deploy events. Reports managed:false when not running under ee.',
       auditClass: 'read',
@@ -56,7 +57,7 @@ export function createSubstrateTools(deps: SubstrateToolDeps = {}): ToolDescript
     },
     {
       name: 'substrate.domain_add',
-      module: 'substrate',
+      module: WEBSITE_MODULE_ID,
       summary:
         'Point a domain at this server (human only). role "public" = the public website, "console" = this app, "app" = another deployed app. DNS must already point here.',
       auditClass: 'mutate',
@@ -71,7 +72,7 @@ export function createSubstrateTools(deps: SubstrateToolDeps = {}): ToolDescript
     },
     {
       name: 'substrate.domain_remove',
-      module: 'substrate',
+      module: WEBSITE_MODULE_ID,
       summary: 'Remove a domain from this server (human only). The console host cannot be removed.',
       auditClass: 'mutate',
       activity: (input: z.infer<typeof domainRemoveInput>) => `Removed the domain ${input.host} from this server`,
@@ -84,7 +85,7 @@ export function createSubstrateTools(deps: SubstrateToolDeps = {}): ToolDescript
     },
     {
       name: 'substrate.app_remove',
-      module: 'substrate',
+      module: WEBSITE_MODULE_ID,
       summary: 'Stop and remove a deployed app and its domains (human only). System workloads cannot be removed.',
       auditClass: 'mutate',
       activity: (input: z.infer<typeof appRemoveInput>) => `Removed the app “${input.name}” from this server`,
@@ -97,7 +98,7 @@ export function createSubstrateTools(deps: SubstrateToolDeps = {}): ToolDescript
     },
     {
       name: 'substrate.secret_set',
-      module: 'substrate',
+      module: WEBSITE_MODULE_ID,
       summary: "Set a secret for a deployed app (human only). Values are write-only: they can never be read back.",
       auditClass: 'mutate',
       // Names the secret, never its value.

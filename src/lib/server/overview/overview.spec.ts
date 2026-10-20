@@ -59,6 +59,22 @@ describe('buildOverview', () => {
     ])
   })
 
+  it('leaves internal modules (the agent machinery) off the owner overview', async () => {
+    const out = await buildOverview(
+      deps({
+        manifests: [
+          manifest('website', 'Website', 'The site.'),
+          { ...manifest('orchestrator', 'Agent tools', 'Repo, dev agent, build log.'), internal: true },
+        ],
+        activations: new Map([
+          ['website', true],
+          ['orchestrator', true],
+        ]),
+      }),
+    )
+    expect(out.modules.map((m) => m.id)).toEqual(['website'])
+  })
+
   it('maps website.site_info into results, with the journey status', async () => {
     const reg = registry({
       'website.site_info': {
