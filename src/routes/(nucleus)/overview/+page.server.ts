@@ -1,19 +1,12 @@
 import type { PageServerLoad } from './$types'
-import { randomUUID } from 'node:crypto'
 import { redirect } from '@sveltejs/kit'
 import { and, desc, eq, ne, sql } from 'drizzle-orm'
 import { isUserAdmin } from '$lib/server/auth/user-role'
 import { getDb } from '$lib/server/db'
-import { kernelJourneys } from '$lib/server/db/journey.schema'
 import { kernelEvents } from '$lib/server/db/kernel.schema'
-import {
-  buildOverview,
-  owleryResultSource,
-  websiteResultSource,
-} from '$lib/server/overview/overview'
+import { buildOverview } from '$lib/server/overview/overview'
+import { humanContext, overviewResultSources } from '$lib/server/overview/sources'
 import { bootstrapKernel } from '../../../../modules/index'
-import { WEBSITE_FOUNDING_JOURNEY } from '../../../../modules/orchestrator/brain'
-import { websiteStatusFrom } from '../../../../modules/orchestrator/onboarding-context'
 
 /** How many recent agent actions the overview shows; the chat holds the rest. */
 const RECENT_ACTIONS = 10
@@ -33,23 +26,9 @@ export const load: PageServerLoad = async (event) => {
     manifests: kernel.modules.list(),
     activations: await kernel.activations.list(),
     registry: kernel.registry,
-    ctx: {
-      principal: { id: userId, kind: 'human', roles: isAdmin ? ['admin'] : [] },
-      requestId: randomUUID(),
-    },
+    ctx: humanContext(userId, isAdmin),
     canReadResults: isAdmin,
-    resultSources: {
-      website: websiteResultSource(async () => {
-        const [journey] = await getDb()
-          .select({ status: kernelJourneys.status })
-          .from(kernelJourneys)
-          .where(eq(kernelJourneys.kind, WEBSITE_FOUNDING_JOURNEY.kind))
-          .orderBy(desc(kernelJourneys.createdAt))
-          .limit(1)
-        return websiteStatusFrom(journey?.status ?? null)
-      }),
-      owlery: owleryResultSource,
-    },
+    resultSources: overviewResultSources(),
     // Agent actions = tool executions that changed something; reads (including
     // this page's own) are audited too but are not work to show.
     recentToolEvents: async () => {

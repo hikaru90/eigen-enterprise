@@ -1,0 +1,51 @@
+/**
+ * Per-module settings slots: where a module's settings live. A module fills
+ * its slot here with links to the settings surfaces that already exist; the
+ * module page renders whatever the slot holds. A module with no slot simply
+ * has no settings yet (shown as such, never invented).
+ */
+
+import type { Pathname } from '$app/types'
+
+export type ModuleSettingsLink = { label: string; href: Pathname; text: string }
+export type ModuleSettingsSlot = { links: ModuleSettingsLink[]; note?: string }
+
+const slots: Record<string, ModuleSettingsSlot> = {
+  substrate: {
+    links: [
+      {
+        label: 'Hosting settings',
+        href: '/settings/hosting',
+        text: 'Domains, apps and this server.',
+      },
+    ],
+  },
+  github: {
+    links: [
+      {
+        label: 'GitHub connection',
+        href: '/settings/hosting',
+        text: 'Connect the GitHub App and link repositories.',
+      },
+    ],
+  },
+  owlery: {
+    note: 'The sender (Amazon SES) is set up in the welcome flow. There is no separate settings page yet.',
+    links: [
+      { label: 'Ask in the chat', href: '/', text: 'Change the sender or check its status.' },
+    ],
+  },
+  brand: {
+    links: [{ label: 'Brand studio', href: '/brand', text: 'Pick and edit the visual set.' }],
+  },
+  memory: {
+    links: [{ label: 'Memory', href: '/memory', text: 'Notes, tasks and the timeline.' }],
+  },
+  website: {
+    links: [{ label: 'Public site', href: '/s', text: 'The pages visitors see.' }],
+  },
+}
+
+export function moduleSettingsSlot(moduleId: string): ModuleSettingsSlot | null {
+  return slots[moduleId] ?? null
+}

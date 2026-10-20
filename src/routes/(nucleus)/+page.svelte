@@ -246,10 +246,12 @@
      provider gate keep the free-flowing page they were designed for. -->
 <div
   class={chatMode
-    ? 'flex h-dvh w-full flex-col overflow-hidden px-4 sm:px-6 lg:px-10'
+    ? 'mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col overflow-hidden px-4 sm:px-6'
     : 'flex min-h-dvh w-full flex-col px-4 sm:px-6 lg:px-10'}
 >
-  <!-- Settings cog: always reachable — chat, welcome wizard, and provider gate alike. -->
+  <!-- Welcome wizard and provider gate run without the app shell: they keep
+       their own header with the settings cog. In chat the shell is the chrome. -->
+  {#if !chatMode}
   <header class="relative flex shrink-0 justify-center pt-6 pb-2">
     <p class="text-[11px] font-medium tracking-[0.25em] text-muted-foreground uppercase">
       Eigen Enterprise
@@ -263,6 +265,7 @@
       <HomeSettingsMenu />
     </div>
   </header>
+  {/if}
 
   {#if data.showWelcome}
     <!-- First open: the boot sequence leads; the provider step inside it stays a hard gate. -->

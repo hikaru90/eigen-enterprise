@@ -1,0 +1,43 @@
+import { randomUUID } from 'node:crypto'
+import { desc, eq } from 'drizzle-orm'
+import type { ToolContext } from '$lib/kernel/types'
+import { getDb } from '$lib/server/db'
+import { kernelJourneys } from '$lib/server/db/journey.schema'
+import { WEBSITE_FOUNDING_JOURNEY } from '../../../../modules/orchestrator/brain'
+import { websiteStatusFrom } from '../../../../modules/orchestrator/onboarding-context'
+import { owleryResultSource, websiteResultSource, type ResultSource } from './overview'
+
+/**
+ * The wired result sources (module id → read-only source) shared by
+ * /overview and /m/[moduleId], plus the signed-in human's tool context.
+ */
+
+async function latestFoundingJourney() {
+  const [journey] = await getDb()
+    .select({ status: kernelJourneys.status, state: kernelJourneys.state })
+    .from(kernelJourneys)
+    .where(eq(kernelJourneys.kind, WEBSITE_FOUNDING_JOURNEY.kind))
+    .orderBy(desc(kernelJourneys.createdAt))
+    .limit(1)
+  return journey ?? null
+}
+
+export function overviewResultSources(): Record<string, ResultSource> {
+  return {
+    website: websiteResultSource(async () => websiteStatusFrom((await latestFoundingJourney())?.status ?? null)),
+    owlery: owleryResultSource,
+  }
+}
+
+/** The company name the owner gave in the founding journey; null until named. */
+export async function foundingCompanyName(): Promise<string | null> {
+  const name = (await latestFoundingJourney())?.state?.answers?.company_name?.trim()
+  return name ? name : null
+}
+
+export function humanContext(userId: string, isAdmin: boolean): ToolContext {
+  return {
+    principal: { id: userId, kind: 'human', roles: isAdmin ? ['admin'] : [] },
+    requestId: randomUUID(),
+  }
+}

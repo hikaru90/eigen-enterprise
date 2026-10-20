@@ -26,7 +26,11 @@ vi.mock('$lib/server/db', () => {
     getDb: () => ({
       select: () => ({
         from: (table: { [k: symbol]: unknown }) => {
-          const name = String(Object.getOwnPropertySymbols(table).map((s) => table[s]).find((v) => typeof v === 'string'))
+          const name = String(
+            Object.getOwnPropertySymbols(table)
+              .map((s) => table[s])
+              .find((v) => typeof v === 'string'),
+          )
           return query(() => (name === 'kernel_events' ? eventRows : journeyRows))
         },
       }),
@@ -40,21 +44,51 @@ async function kernel(active: string[]) {
   const activations = new InMemoryActivationStore()
   for (const id of active) await activations.set(id, true)
   const approvals = new InMemoryApprovalStore()
-  await approvals.create({ id: 'ap1', toolName: 'website.publish_page', input: {}, principalId: 'agent', status: 'pending' })
+  await approvals.create({
+    id: 'ap1',
+    toolName: 'website.publish_page',
+    input: {},
+    principalId: 'agent',
+    status: 'pending',
+  })
   const tools: Record<string, { summary: string; output: unknown }> = {
     'website.site_info': {
       summary: 'Site info.',
-      output: { url: 'http://localhost/site', pages: [{ slug: 'home', title: 'Home', status: 'draft', url: 'http://localhost/site/home' }] },
+      output: {
+        url: 'http://localhost/site',
+        pages: [
+          { slug: 'home', title: 'Home', status: 'draft', url: 'http://localhost/site/home' },
+        ],
+      },
     },
     'website.publish_page': { summary: 'Publish a page.', output: null },
     'owlery.status': {
       summary: 'Email status.',
-      output: { configured: true, region: 'eu-central-1', sender: 'hi@k.test', senderVerified: true, sandbox: false },
+      output: {
+        configured: true,
+        region: 'eu-central-1',
+        sender: 'hi@k.test',
+        senderVerified: true,
+        sandbox: false,
+      },
     },
   }
-  const manifest = (id: string, name: string) => ({ id, name, version: '1', description: `${name} does work.`, tools: [], permissions: { roles: ['admin'] } })
+  const manifest = (id: string, name: string) => ({
+    id,
+    name,
+    version: '1',
+    description: `${name} does work.`,
+    tools: [],
+    permissions: { roles: ['admin'] },
+  })
   return {
-    modules: { list: () => [manifest('website', 'Website'), manifest('owlery', 'Email'), manifest('repo', 'Repo')] },
+    modules: {
+      list: () => [
+        manifest('website', 'Website'),
+        manifest('owlery', 'Email'),
+        manifest('repo', 'Repo'),
+      ],
+    },
     activations,
     approvals,
     registry: {
@@ -64,7 +98,8 @@ async function kernel(active: string[]) {
   }
 }
 
-const event = (user: { id: string } | null) => ({ locals: { user } }) as unknown as Parameters<typeof load>[0]
+const event = (user: { id: string } | null) =>
+  ({ locals: { user } }) as unknown as Parameters<typeof load>[0]
 
 describe('/overview load', () => {
   it('redirects signed-out visitors to login', async () => {
@@ -78,15 +113,25 @@ describe('/overview load', () => {
       ts: new Date('2026-10-20T10:00:00.000Z'),
       payload: { tool: 'website.publish_page', auditClass: 'mutate', ok: true },
     })
-    const data = (await load(event({ id: 'owner' }))) as { overview: import('$lib/server/overview/overview').Overview }
+    const data = (await load(event({ id: 'owner' }))) as {
+      overview: import('$lib/server/overview/overview').Overview
+    }
     const { modules, actions, approvals } = data.overview
     expect(modules.map((m) => [m.id, m.active])).toEqual([
       ['website', true],
       ['owlery', true],
       ['repo', false],
     ])
-    expect(modules[0].results).toContainEqual({ label: 'Home', detail: 'Draft', href: 'http://localhost/site/home' })
-    expect(modules[0].results).toContainEqual({ label: 'Founding journey', detail: 'In progress', href: null })
+    expect(modules[0].results).toContainEqual({
+      label: 'Home',
+      detail: 'Draft',
+      href: 'http://localhost/site/home',
+    })
+    expect(modules[0].results).toContainEqual({
+      label: 'Founding journey',
+      detail: 'In progress',
+      href: null,
+    })
     expect(modules[1].results).toEqual([{ label: 'hi@k.test', detail: 'Set up', href: null }])
     expect(JSON.stringify(data)).not.toMatch(/eu-central-1|secret|accessKey/i)
     expect(actions).toEqual([{ at: '2026-10-20T10:00:00.000Z', text: 'Publish a page.', ok: true }])
