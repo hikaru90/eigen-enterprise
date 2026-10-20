@@ -1,4 +1,3 @@
-import type { OrchestratorEngineId } from './engine-choice'
 import { describe, expect, it } from 'vitest'
 import { InMemoryApprovalStore, StaticApprovalPolicy } from '$lib/kernel/approvals'
 import type { LoopEngine } from '$lib/kernel/engine'
@@ -41,9 +40,7 @@ const handedOff: OnboardingFacts = {
   website: 'not_started',
 }
 
-function fixture(
-  options: { pin?: OrchestratorEngineId | null; recorded?: OrchestratorEngineId | null } = {},
-): Fx {
+function fixture(): Fx {
   const sink = new InMemoryEventSink()
   const registry = new KernelRegistry({
     eventSink: sink,
@@ -73,10 +70,7 @@ function fixture(
     journeys,
     spec: WEBSITE_FOUNDING_JOURNEY,
     onboardingFacts: async (llmUserId) => (llmUserId ? facts.current : null),
-    enginePin: options.pin ?? null,
-    recordedEngineFor: async () => options.recorded ?? null,
   })
-  runtime.registerEngine('builtin-json', fake('builtin-json'))
   runtime.registerEngine('durable', fake('durable'))
   runtime.registerAgent(orchestratorAgentConfig())
   return { runtime, journeys, inputs, script, facts }
@@ -131,7 +125,7 @@ describe('onboarding hand-off — the agent takes over after the scripted setup'
       },
     })
     const seen: string[] = []
-    fx.runtime.registerEngine('builtin-json', {
+    fx.runtime.registerEngine('durable', {
       run: async (_s, input) => {
         seen.push(input)
         return 'Hi! Good to see you.'
@@ -185,29 +179,5 @@ describe('onboarding hand-off — the agent takes over after the scripted setup'
     fx.facts.current = { ...handedOff, website: 'done' }
     await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'hello', undefined, { llmUserId: 'u1' })
     expect(fx.inputs.map((i) => i.input)).toEqual(['hello', 'hello'])
-  })
-})
-
-describe('per-dispatch engine choice (both engines get the same onboarding context)', () => {
-  it('runs the engine recorded for the conversing user’s provider', async () => {
-    const fx = fixture({ recorded: 'durable' })
-    fx.script.push('hey')
-    await fx.runtime.dispatchOnboardingHandoff('s1', undefined, { llmUserId: 'u1' })
-    expect(fx.inputs[0]!.engine).toBe('durable')
-    expect(fx.inputs[0]!.input.startsWith('[company onboarding context]')).toBe(true)
-  })
-
-  it('a recorded builtin-json (subscription sign-in) stays builtin-json', async () => {
-    const fx = fixture({ recorded: 'builtin-json' })
-    fx.script.push('hey')
-    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'hi', undefined, { llmUserId: 'u1' })
-    expect(fx.inputs[0]!.engine).toBe('builtin-json')
-  })
-
-  it('the operator pin wins', async () => {
-    const fx = fixture({ pin: 'builtin-json', recorded: 'durable' })
-    fx.script.push('hey')
-    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'hi', undefined, { llmUserId: 'u1' })
-    expect(fx.inputs[0]!.engine).toBe('builtin-json')
   })
 })

@@ -93,7 +93,7 @@ describe('orchestratorAgentConfig', () => {
     const config = orchestratorAgentConfig()
     expect(config).toMatchObject({
       id: 'orchestrator',
-      loopEngine: 'builtin-json',
+      loopEngine: 'durable',
       toolScope: 'all',
       enabled: true,
     })

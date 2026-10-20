@@ -10,7 +10,7 @@ import { getDurableHarness, type DurableHarnessDeps } from './durable-harness'
  * Production composition of the 'durable' LoopEngine (plan/phase-durable.md
  * D6): lazy globalThis harness singleton + Postgres conversation index + the
  * gateway-backed model provider. Boot passes the orchestrator persona as
- * `instructions` and registers the engine next to builtin-json and pi.
+ * `instructions` and registers the engine next to pi.
  */
 
 export type DurableEngineFactoryOptions = {

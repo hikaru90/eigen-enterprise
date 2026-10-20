@@ -49,7 +49,7 @@
   let modelEmbedding = $state('')
 
   // Subscription sign-in state (model step + device/paste cards)
-  type SubscriptionFlow = 'anthropic' | 'openai_codex' | 'github_copilot' | 'openrouter-signin'
+  type SubscriptionFlow = 'github_copilot' | 'openrouter-signin'
   let subscriptionFlow = $state<SubscriptionFlow | null>(null)
   let subChatModels = $state<CatalogModel[]>([])
   let subEmbeddingModels = $state<CatalogModel[]>([])
@@ -58,13 +58,10 @@
   let chosenChatModel = $state('')
   let chosenEmbeddingModel = $state('')
   let deviceCode = $state<string | null>(null) // copilot device_code
-  let deviceFlow = $state<'github_copilot' | 'openai_codex' | null>(null)
-  let deviceAuthId = $state<string | null>(null) // openai device_auth_id
+  let deviceFlow = $state<'github_copilot' | null>(null)
   let userCode = $state<string | null>(null)
   let verificationUri = $state<string | null>(null)
   let pollTimer: ReturnType<typeof setInterval> | null = null
-  let pastedCode = $state('') // anthropic paste-code
-  let pasteBusy = $state(false)
 
   let connectedSummary = $state<string | null>(null)
 
@@ -132,18 +129,14 @@
     chosenChatModel = ''
     chosenEmbeddingModel = ''
     deviceCode = null
-    deviceAuthId = null
     userCode = null
     verificationUri = null
-    pastedCode = ''
     step = 'models'
     void loadSubscriptionModels(flow)
   }
 
   /** Flow id → models.dev catalog id. */
   const CATALOG_ID: Record<SubscriptionFlow, string> = {
-    anthropic: 'anthropic',
-    openai_codex: 'openai-codex',
     github_copilot: 'github-copilot',
     'openrouter-signin': 'openrouter',
   }
@@ -205,13 +198,7 @@
     }
     error = null
     step = 'credentials'
-    if (subscriptionFlow === 'anthropic') {
-      deviceFlow = null
-      void startAnthropicAuthorize()
-    } else if (subscriptionFlow === 'openai_codex') {
-      deviceFlow = 'openai_codex'
-      void startOpenAiDevice()
-    } else if (subscriptionFlow === 'github_copilot') {
+    if (subscriptionFlow === 'github_copilot') {
       deviceFlow = 'github_copilot'
       void startCopilot()
     }
@@ -270,100 +257,6 @@
       error = e instanceof Error ? e.message : String(e)
       if (pollTimer) clearInterval(pollTimer)
       pollTimer = null
-    }
-  }
-
-  async function startOpenAiDevice(): Promise<void> {
-    phase = 'connecting'
-    try {
-      const res = await fetch('/api/onboarding/oauth/openai/start', { method: 'POST' })
-      const body = (await res.json().catch(() => null)) as
-        | {
-            deviceAuthId?: string
-            userCode?: string
-            verificationUri?: string
-            intervalSeconds?: number
-            error?: string
-          }
-        | null
-      if (!res.ok || !body?.deviceAuthId || !body.userCode || !body.verificationUri) {
-        throw new Error(body?.error ?? `Sign-in could not start (${res.status})`)
-      }
-      deviceAuthId = body.deviceAuthId
-      userCode = body.userCode
-      verificationUri = body.verificationUri
-      const intervalMs = Math.max((body.intervalSeconds ?? 5) * 1000, 1000)
-      pollTimer = setInterval(() => void pollOpenAi(), intervalMs)
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e)
-    } finally {
-      phase = 'idle'
-    }
-  }
-
-  async function pollOpenAi(): Promise<void> {
-    if (!deviceAuthId || !userCode || pollTimer === null) return
-    try {
-      const res = await fetch('/api/onboarding/oauth/openai/poll', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ deviceAuthId, userCode, modelChat: chosenChatModel.trim() }),
-      })
-      const body = (await res.json().catch(() => null)) as { status?: string; error?: string } | null
-      if (body?.status === 'pending') return
-      if (pollTimer) clearInterval(pollTimer)
-      pollTimer = null
-      if (body?.status === 'connected') {
-        connectedSummary = `ChatGPT subscription · ${chosenChatModel.trim()}`
-        phase = 'idle'
-        step = 'connected'
-        return
-      }
-      error = body?.error ?? 'ChatGPT sign-in failed.'
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e)
-      if (pollTimer) clearInterval(pollTimer)
-      pollTimer = null
-    }
-  }
-
-  async function startAnthropicAuthorize(): Promise<void> {
-    phase = 'connecting'
-    try {
-      const res = await fetch('/api/onboarding/oauth/anthropic/authorize', { method: 'POST' })
-      const body = (await res.json().catch(() => null)) as { url?: string; error?: string } | null
-      if (!res.ok || !body?.url) {
-        throw new Error(body?.error ?? `Sign-in could not start (${res.status})`)
-      }
-      window.open(body.url, '_blank', 'noopener,noreferrer')
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e)
-    } finally {
-      phase = 'idle'
-    }
-  }
-
-  async function connectAnthropicPaste(): Promise<void> {
-    if (pasteBusy) return
-    pasteBusy = true
-    error = null
-    try {
-      const res = await fetch('/api/onboarding/oauth/anthropic/connect', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ code: pastedCode.trim(), modelChat: chosenChatModel.trim() }),
-      })
-      const body = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null
-      if (!res.ok || !body?.ok) {
-        throw new Error(body?.error ?? `Sign-in failed (${res.status})`)
-      }
-      connectedSummary = `Claude Pro/Max · ${chosenChatModel.trim()}`
-      phase = 'idle'
-      step = 'connected'
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e)
-    } finally {
-      pasteBusy = false
     }
   }
 
@@ -495,26 +388,6 @@
     {:else if step === 'provider'}
       {#if method === 'subscription'}
         <div class="mt-8 space-y-3">
-          <button
-            type="button"
-            class="border-2 px-4 py-4 text-left transition-colors hover:border-black"
-            onclick={() => chooseSubscription('anthropic')}
-          >
-            <span class="block text-sm font-medium">Claude Pro/Max</span>
-            <span class="text-muted-foreground mt-0.5 block text-xs">
-              Sign in with your Claude account — no API key. Chat only.
-            </span>
-          </button>
-          <button
-            type="button"
-            class="border-2 px-4 py-4 text-left transition-colors hover:border-black"
-            onclick={() => chooseSubscription('openai_codex')}
-          >
-            <span class="block text-sm font-medium">ChatGPT Plus/Pro</span>
-            <span class="text-muted-foreground mt-0.5 block text-xs">
-              Sign in with your ChatGPT account — no API key. Chat only.
-            </span>
-          </button>
           <button
             type="button"
             class="border-2 px-4 py-4 text-left transition-colors hover:border-black"
@@ -817,7 +690,7 @@
           The connection is verified with one real request before anything is saved.
         </p>
       </div>
-    {:else if step === 'credentials' && (deviceFlow === 'github_copilot' || deviceFlow === 'openai_codex')}
+    {:else if step === 'credentials' && deviceFlow === 'github_copilot'}
       <div class="mt-8 space-y-3">
         <p class="text-muted-foreground text-xs">
           Model: <span class="font-medium">{chosenChatModel}</span>
@@ -848,53 +721,6 @@
         {/if}
         {#if error}
           <p class="text-destructive text-xs leading-relaxed">{error}</p>
-        {/if}
-      </div>
-    {:else if step === 'credentials'}
-      <div class="mt-8 space-y-3">
-        <p class="text-muted-foreground text-xs">
-          Model: <span class="font-medium">{chosenChatModel}</span>
-        </p>
-        <p class="text-sm leading-relaxed">
-          A Claude sign-in page opened in a new tab. After approving, paste the
-          authorization code — or the entire URL you were sent to — below.
-        </p>
-        {#if error}
-          <p class="text-destructive text-xs leading-relaxed">{error}</p>
-        {/if}
-        <div>
-          <label
-            for="anthropic-paste-code"
-            class="text-muted-foreground block text-[10px] font-medium tracking-wider uppercase"
-          >
-            Authorization code
-          </label>
-          <textarea
-            id="anthropic-paste-code"
-            rows="3"
-            bind:value={pastedCode}
-            placeholder="code#state — or the full redirect URL: http://localhost:53692/callback?code=…&state=…"
-            class="focus:border-black mt-1 w-full border border-black/20 bg-white px-3 py-2 font-mono text-xs outline-none"
-          ></textarea>
-        </div>
-        <button
-          type="button"
-          onclick={() => void connectAnthropicPaste()}
-          disabled={pasteBusy || !pastedCode.trim()}
-          class="flex h-11 w-full items-center justify-center bg-black text-sm font-medium text-white hover:bg-black/90 disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          {#if pasteBusy}
-            <LoaderCircle class="size-4 animate-spin" strokeWidth={1.75} />
-            <span class="ml-2">Connecting…</span>
-          {:else}
-            Connect
-          {/if}
-        </button>
-        {#if phase === 'connecting'}
-          <p class="text-muted-foreground flex items-center gap-2 text-xs">
-            <LoaderCircle class="size-3.5 animate-spin" strokeWidth={1.75} />
-            Opening Claude sign-in…
-          </p>
         {/if}
       </div>
     {/if}

@@ -925,11 +925,6 @@ export const llmProviderConfig = pgTable(
     modelChat: text('model_chat'),
     /** OpenRouter only: model name for embeddings (e.g. qwen/qwen3-embedding-8b). */
     modelEmbedding: text('model_embedding'),
-    /**
-     * The orchestrator loop engine recorded at connect time (engineForProvider,
-     * modules/orchestrator/engine-choice.ts). No default: every write chooses.
-     */
-    orchestratorEngine: text('orchestrator_engine', { enum: ['builtin-json', 'durable'] }).notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
       .$onUpdate(() => new Date())

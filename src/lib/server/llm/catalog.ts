@@ -180,8 +180,8 @@ export async function getProviderCatalog(): Promise<{ source: 'models.dev'; prov
 export type CatalogModelLists = { chatModels: CatalogModel[]; embeddingModels: CatalogModel[] }
 
 /**
- * Model lists for ANY catalog provider id (including subscription providers like
- * anthropic / openai-codex whose API shape is not offered via the API-key wizard).
+ * Model lists for ANY catalog provider id (including providers whose API shape is
+ * not OpenAI-compatible and so are not offered via the API-key wizard).
  * Returns null when the id is unknown. Powers the wizard's explicit model selection —
  * subscription providers must never fall back to an implicit default model.
  */

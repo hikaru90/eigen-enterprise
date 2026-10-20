@@ -4,7 +4,6 @@ import { AgentRuntime } from '$lib/kernel/agent-runtime'
 import type { AgentRuntimeOptions, DispatchOptions } from '$lib/kernel/agent-runtime'
 import { KERNEL_EVENT_SOURCE } from '$lib/kernel/cloudevents'
 import type { EngineStreamSinks, EngineSurfaceEvent } from '$lib/kernel/engine'
-import { BuiltinJsonLoop, type LlmCompleteFn } from '$lib/kernel/engines/builtin-json'
 import { approvalIdFromError, toolErrorResult, type ToolErrorResult } from '$lib/kernel/engines/tool-error'
 import { KernelError } from '$lib/kernel/errors'
 import { emitKernelEvent, type EventSink } from '$lib/kernel/events'
@@ -24,9 +23,7 @@ import {
   type JourneyStore,
 } from '$lib/kernel/playbook'
 import type { KernelRegistry } from '$lib/kernel/registry'
-import type { AgentSessionLog } from '$lib/kernel/session-log'
 import { disciplineSections } from './discipline'
-import { resolveDispatchEngine, type OrchestratorEngineId } from './engine-choice'
 import {
   ONBOARDING_HANDOFF_INSTRUCTION,
   ONBOARDING_START_WEBSITE_MARKER,
@@ -299,7 +296,7 @@ export const ORCHESTRATOR_TOOL_ERROR_PROMPT = [
   'Only tell the user when you cannot fix it, in plain language — never internal error codes, tool names, or raw messages.',
 ].join('\n')
 
-/** Persona preamble handed to BOTH orchestrator engines (builtin-json + durable) as the system prompt. */
+/** Persona preamble handed to the durable engine as the orchestrator's system prompt. */
 export const ORCHESTRATOR_PERSONA_PROMPT = [
   'You are the orchestrator: the general assistant of this company.',
   'You can act through kernel tools. Every tool call is permission-checked, audited, and (for external actions) gated behind owner approval.',
@@ -316,36 +313,19 @@ export const ORCHESTRATOR_PERSONA_PROMPT = [
 ].join('\n')
 
 /** The orchestrator as harness config: zero code privilege, full harness inherited. */
-export function orchestratorAgentConfig(
-  options: { spendCapUsd?: number; loopEngine?: 'builtin-json' | 'durable' } = {},
-): AgentConfig {
+export function orchestratorAgentConfig(options: { spendCapUsd?: number } = {}): AgentConfig {
   return {
     id: ORCHESTRATOR_AGENT_ID,
     personaName: 'Orchestrator',
     description:
       'The company general assistant: executes kernel tools on behalf of gateway users.',
-    loopEngine: options.loopEngine ?? 'builtin-json',
+    loopEngine: 'durable',
     toolScope: 'all',
     memoryScope: 'company',
     verificationPolicy: 'none',
     ...(options.spendCapUsd === undefined ? {} : { spendCapUsd: options.spendCapUsd }),
     enabled: true,
   }
-}
-
-/** The orchestrator's loop: the extracted builtin-json engine with its persona. */
-export function buildOrchestratorEngine(options: {
-  complete?: LlmCompleteFn
-  llmUserId?: string
-  sessionLog: AgentSessionLog
-}): BuiltinJsonLoop {
-  return new BuiltinJsonLoop({
-    ...(options.complete === undefined ? {} : { complete: options.complete }),
-    sessionLog: options.sessionLog,
-    systemPrompt: ORCHESTRATOR_PERSONA_PROMPT,
-    llmUserId: options.llmUserId ?? ORCHESTRATOR_LLM_USER_ID,
-    logContext: 'orchestrator_brain',
-  })
 }
 
 const JOURNEY_CONTEXT_SEPARATOR = '\n\n---\n\n'
@@ -376,10 +356,6 @@ export type JourneyAwareRuntimeOptions = AgentRuntimeOptions & {
   spec: JourneySpec
   /** Assisted-onboarding facts for the conversing human (boot wires the DB). Absent = never active. */
   onboardingFacts?: OnboardingFactsResolver
-  /** Operator pin (EE_ORCHESTRATOR_ENGINE); null/absent = the recorded per-provider choice decides. */
-  enginePin?: OrchestratorEngineId | null
-  /** The engine recorded at connect time for the conversing user's active provider (null = none). */
-  recordedEngineFor?: (llmUserId: string) => Promise<OrchestratorEngineId | null>
 }
 
 /**
@@ -415,8 +391,6 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
   private readonly kernelRegistry: KernelRegistry
   private readonly kernelEventSink: EventSink
   private readonly onboardingFacts: OnboardingFactsResolver | undefined
-  private readonly enginePin: OrchestratorEngineId | null
-  private readonly recordedEngineFor: JourneyAwareRuntimeOptions['recordedEngineFor']
 
   constructor(options: JourneyAwareRuntimeOptions) {
     super(options)
@@ -425,8 +399,6 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     this.kernelRegistry = options.registry
     this.kernelEventSink = options.eventSink
     this.onboardingFacts = options.onboardingFacts
-    this.enginePin = options.enginePin ?? null
-    this.recordedEngineFor = options.recordedEngineFor
   }
 
   /**
@@ -472,14 +444,6 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     )
   }
 
-  /** Adds the explicit per-dispatch engine choice (pin > recorded > engine of record). */
-  private async withEngine(options?: DispatchOptions): Promise<DispatchOptions | undefined> {
-    if (!this.recordedEngineFor && this.enginePin === null) return options
-    const recorded =
-      options?.llmUserId && this.recordedEngineFor ? await this.recordedEngineFor(options.llmUserId) : null
-    return { ...options, loopEngine: resolveDispatchEngine({ pin: this.enginePin, recorded }) }
-  }
-
   /**
    * Runs one application step of the turn. A failure is recorded as a
    * structured observation for the agent (never rethrown to the route).
@@ -511,7 +475,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
       sessionId,
       `${harnessObservationBlock(failures)}${JOURNEY_CONTEXT_SEPARATOR}${input}`,
       sinks,
-      await this.withEngine(options),
+      options,
     )
     return this.userFacing(reply)
   }
@@ -534,7 +498,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
       sessionId,
       harnessObservationBlock(failures),
       sinks,
-      await this.withEngine(options),
+      options,
     )
     return this.userFacing(reply)
   }
@@ -557,7 +521,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
       sessionId,
       `${onboardingContextBlock(facts, firstStep.promptFragment)}${JOURNEY_CONTEXT_SEPARATOR}${input}`,
       sinks,
-      await this.withEngine(options),
+      options,
     )
     // The agent decided the owner agreed (exact protocol token only): the
     // website journey opens EMPTY — the agreement is not an answer.
@@ -598,7 +562,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
       )
       if (!facts.ok) return this.dispatchObserved(agentId, sessionId, failures, input, sinks, options)
       if (facts.value) return this.dispatchOnboardingTurn(facts.value, sessionId, input, sinks, options)
-      return super.dispatch(agentId, sessionId, input, sinks, await this.withEngine(options))
+      return super.dispatch(agentId, sessionId, input, sinks, options)
     }
     // Stale spec: the stored journey predates the current spec shape (v1 /
     // pre-versioning rows). Abandon it — a superseded interview must never
@@ -614,7 +578,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
         })
       })
       if (failures.length > 0) return this.dispatchObserved(agentId, sessionId, failures, input, sinks, options)
-      return super.dispatch(agentId, sessionId, input, sinks, await this.withEngine(options))
+      return super.dispatch(agentId, sessionId, input, sinks, options)
     }
     return this.dispatchJourneyTurn(row, agentId, sessionId, input, sinks, options)
   }
@@ -649,7 +613,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
       sessionId,
       `${journeyContextFor(this.spec, { ...row, state })}${JOURNEY_CONTEXT_SEPARATOR}${input}`,
       sinks,
-      await this.withEngine(options),
+      options,
     )
 
     // Step capture: exact protocol markers only. Stripped before the reply

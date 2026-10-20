@@ -5,7 +5,7 @@
  * the harness hands work to; the orchestrator itself is one AgentConfig.
  */
 
-/** Identifier of a registered loop engine (e.g. 'builtin-json', 'pi'). */
+/** Identifier of a registered loop engine (e.g. 'durable', 'pi'). */
 export type LoopEngineId = string
 
 /** Which conversations/memory partition the agent operates in (v0: declarative). */

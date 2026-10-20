@@ -5,19 +5,16 @@ import {
   createAgentAdminTools,
 } from '$lib/kernel/agent-admin'
 import type { LoopEngine } from '$lib/kernel/engine'
-import type { LlmCompleteFn } from '$lib/kernel/engines/builtin-json'
 import type { AllowlistStore, SessionStore } from '$lib/kernel/gateway'
 import { InMemoryJourneyStore, type JourneyStore } from '$lib/kernel/playbook'
 import { registerModuleTools, type WiredKernel } from '$lib/kernel/wiring'
 import { OrchestratorBrain } from './brain'
 import { JourneyAwareAgentRuntime } from './brain'
 import {
-  buildOrchestratorEngine,
   orchestratorAgentConfig,
   ORCHESTRATOR_PRINCIPAL,
   WEBSITE_FOUNDING_JOURNEY,
 } from './brain'
-import { orchestratorEnginePinFromEnv, type OrchestratorEngineId } from './engine-choice'
 import { createTelegramLoop, type TelegramGatewayLike, type TelegramLoopHandle } from './loop'
 
 /**
@@ -66,14 +63,13 @@ export type OrchestratorBootOptions = {
   startLoop?: boolean
   /** Overrides the harness runtime (tests inject an in-memory one). */
   runtime?: JourneyAwareAgentRuntime
-  /** Overrides the orchestrator engine's completion call (tests inject fakes; never a real LLM). */
-  complete?: LlmCompleteFn
   /** Environment for boot-time config (spend cap). Defaults to process.env. */
   env?: Record<string, string | undefined>
   /**
-   * Extra loop engines the composition root hosts (e.g. the pi engine from
-   * the dev-agent module). Injected here — the orchestrator must not import
-   * other modules directly (boundary guard).
+   * The loop engines the composition root hosts: 'durable' (the orchestrator's
+   * only engine, composed in $lib/server/agent) is required; others (e.g. the
+   * pi engine from the dev-agent module) are optional. Injected here — the
+   * orchestrator must not import other modules directly (boundary guard).
    */
   engines?: Array<[string, LoopEngine]>
   /**
@@ -84,8 +80,6 @@ export type OrchestratorBootOptions = {
   journeys?: JourneyStore
   /** Assisted-onboarding facts (DB-backed in the composition root). Absent = hand-off never active. */
   onboardingFacts?: OnboardingFactsResolver
-  /** Engine recorded at provider connect time for a user's active provider (composition root wires the DB). */
-  recordedEngineFor?: (llmUserId: string) => Promise<OrchestratorEngineId | null>
 }
 
 /**
@@ -107,7 +101,7 @@ function spendCapUsdFromEnv(env: Record<string, string | undefined>): number | u
 
 /**
  * Composes the orchestrator stage of the Phase-1b path: kernel → harness
- * runtime (orchestrator as one AgentConfig on the builtin-json engine) → chat
+ * runtime (orchestrator as one AgentConfig on the durable engine) → chat
  * gateway → Telegram poll loop. The chat-gateway surface itself (construction,
  * manifest + tool registration) is wired by the composition root's
  * `bootstrapChatGateway` stage, injected here as `wireGateway` so the
@@ -127,10 +121,6 @@ export async function bootstrapOrchestrator(
   // around dispatch for the orchestrator agent only (pure passthrough for
   // every other agent). Journeys default in-memory; boot.ts injects the
   // DB-backed store for production.
-  // Engine choice (engine-choice.ts): the operator pin, else per dispatch the
-  // engine recorded for the conversing user's provider. The agent config's
-  // loopEngine is what runs when neither applies (the engine of record).
-  const enginePin = orchestratorEnginePinFromEnv(env)
   const runtime =
     options.runtime ??
     new JourneyAwareAgentRuntime({
@@ -140,23 +130,17 @@ export async function bootstrapOrchestrator(
       rolesFor: () => ORCHESTRATOR_PRINCIPAL.roles,
       journeys: options.journeys ?? new InMemoryJourneyStore(),
       spec: WEBSITE_FOUNDING_JOURNEY,
-      enginePin,
       ...(options.onboardingFacts ? { onboardingFacts: options.onboardingFacts } : {}),
-      ...(options.recordedEngineFor ? { recordedEngineFor: options.recordedEngineFor } : {}),
     })
-  runtime.registerEngine(
-    'builtin-json',
-    buildOrchestratorEngine({
-      ...(options.complete === undefined ? {} : { complete: options.complete }),
-      sessionLog: kernel.sessionLog,
-    }),
-  )
   for (const [id, engine] of options.engines ?? []) {
     runtime.registerEngine(id, engine)
   }
-  runtime.registerAgent(
-    orchestratorAgentConfig({ spendCapUsd: spendCapUsdFromEnv(env), loopEngine: enginePin ?? 'builtin-json' }),
-  )
+  // The orchestrator has exactly one engine. Boot fails loud without it — never
+  // a chat that discovers the gap on its first turn.
+  if (!(options.engines ?? []).some(([id]) => id === 'durable')) {
+    throw new Error("bootstrapOrchestrator: the 'durable' loop engine must be injected via options.engines")
+  }
+  runtime.registerAgent(orchestratorAgentConfig({ spendCapUsd: spendCapUsdFromEnv(env) }))
 
   const brain = new OrchestratorBrain({ runtime })
 

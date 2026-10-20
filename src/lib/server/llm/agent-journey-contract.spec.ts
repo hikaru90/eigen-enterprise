@@ -40,7 +40,7 @@ describe('agent system prompt journey contract', () => {
 })
 
 /**
- * /api/chat now dispatches through the kernel AgentRuntime, whose builtin-json
+ * /api/chat now dispatches through the kernel AgentRuntime, whose durable
  * engine runs on ORCHESTRATOR_PERSONA_PROMPT — the journey protocol must ride
  * along there too, or the harness path loses active-journey handling.
  */

@@ -1,10 +1,9 @@
-import type { OrchestratorEngineId } from '../../../../modules/orchestrator/engine-choice'
-import { and, desc, eq } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
 import { isUserAdmin } from '$lib/server/auth/user-role'
 import { getDb } from '$lib/server/db'
 import { companyMail } from '$lib/server/mail'
 import { kernelJourneys } from '$lib/server/db/journey.schema'
-import { llmActiveProvider, llmProviderConfig, userPreference } from '$lib/server/db/schema'
+import { llmActiveProvider, userPreference } from '$lib/server/db/schema'
 import { WEBSITE_FOUNDING_JOURNEY } from '../../../../modules/orchestrator/brain'
 import {
   websiteStatusFrom,
@@ -45,23 +44,4 @@ export async function onboardingFactsFor(
     aiProvider: active !== undefined,
     website: websiteStatusFrom(journey?.status ?? null),
   }
-}
-
-/** The engine recorded at connect time for the user's ACTIVE provider (null = no BYOK provider). */
-export async function recordedOrchestratorEngineFor(
-  userId: string,
-): Promise<OrchestratorEngineId | null> {
-  const [row] = await getDb()
-    .select({ engine: llmProviderConfig.orchestratorEngine })
-    .from(llmActiveProvider)
-    .innerJoin(
-      llmProviderConfig,
-      and(
-        eq(llmProviderConfig.userId, llmActiveProvider.userId),
-        eq(llmProviderConfig.provider, llmActiveProvider.provider),
-      ),
-    )
-    .where(eq(llmActiveProvider.userId, userId))
-    .limit(1)
-  return row?.engine ?? null
 }

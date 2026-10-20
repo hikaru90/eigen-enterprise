@@ -241,7 +241,7 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
    * dispatch's surface, and return the registrations to configure the
    * conversation with. Args are validated against the kernel tool's JSON
    * Schema (zod v4 output, wrapped as a TypeBox schema); the model-visible
-   * result text matches what builtin-json feeds.
+   * result text matches what durable feeds.
    */
   /**
    * Conversation-scoped tool routing. The registry holds ONE kernel bridge

@@ -131,7 +131,7 @@ function fixture(options: { failOnSlug?: string } = {}): Fixture {
     journeys,
     spec: WEBSITE_FOUNDING_JOURNEY,
   })
-  runtime.registerEngine('builtin-json', engine)
+  runtime.registerEngine('durable', engine)
   runtime.registerAgent(orchestratorAgentConfig())
 
   return { runtime, journeys, sink, approvals, engineInputs, toolCalls, pages, script }
@@ -374,7 +374,7 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     })
     const inputs: string[] = []
     const replies = [`Thanks.\n${marker('company_name')}`, `Noted.\n${marker('positioning')}`, 'The website tools are not available yet; I will set that up.']
-    runtime.registerEngine('builtin-json', {
+    runtime.registerEngine('durable', {
       run: async (_s, input) => {
         inputs.push(input)
         return replies.shift()!
@@ -418,7 +418,7 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     })
     const inputs: string[] = []
     const replies = [`Thanks.\n${marker('company_name')}`, `Noted.\n${marker('positioning')}`, 'Your website module is still switching on — give me a moment.']
-    runtime.registerEngine('builtin-json', {
+    runtime.registerEngine('durable', {
       run: async (_s, input) => {
         inputs.push(input)
         return replies.shift()!
@@ -506,7 +506,7 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
       id: 'other-agent',
       personaName: 'Other',
       description: 'probe',
-      loopEngine: 'builtin-json',
+      loopEngine: 'durable',
       toolScope: 'all',
       memoryScope: 'company',
       verificationPolicy: 'none',

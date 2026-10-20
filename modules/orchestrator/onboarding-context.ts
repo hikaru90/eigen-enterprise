@@ -3,7 +3,7 @@
  * AI provider), the orchestrator agent takes over in the chat. The handoff is
  * agent-driven, not more scripted UI: every orchestrator turn while assisted
  * onboarding is active carries this context block (prepended to the user input
- * by JourneyAwareAgentRuntime — engine-agnostic, so builtin-json AND durable
+ * by JourneyAwareAgentRuntime — engine-agnostic
  * see the same thing). The agent opens the website founding journey by
  * emitting an exact protocol marker; the runtime only parses that token.
  */

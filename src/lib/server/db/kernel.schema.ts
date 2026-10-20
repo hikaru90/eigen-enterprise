@@ -53,7 +53,7 @@ export const kernelApprovals = pgTable('kernel_approvals', {
 
 /**
  * Durable append-only agent session log (phase-3 M1) — the conversation
- * history the builtin-json engine derives per-session context from. Insertion
+ * history the former builtin-json engine derived per-session context from (the durable engine keeps its history in pi-durable storage; nothing writes here any more). Insertion
  * order (bigserial id) is the ordering; no update/delete paths exist.
  */
 export const kernelAgentSessionEvents = pgTable(

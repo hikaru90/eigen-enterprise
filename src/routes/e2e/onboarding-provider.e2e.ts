@@ -3,7 +3,7 @@ import { registerUser } from './test-helpers'
 
 /**
  * Phase-2a/2b: provider onboarding is two questions (method → provider), catalog-driven,
- * with subscription sign-ins (Claude, ChatGPT, Copilot) and explicit model selection.
+ * with subscription sign-ins (Copilot, OpenRouter) and explicit model selection.
  *
  * These tests drive the SERVER CONTRACT through the session-shared request context
  * (deterministic — no UI typing races) and assert the gate on the nucleus surface:
@@ -111,73 +111,6 @@ test.describe('nucleus first-run onboarding', () => {
     // Connected: the wizard gate opens — chat, never the wizard.
     await page.goto('/')
     await expectChatVisible(page)
-  })
-
-  test('Claude subscription: authorize → connect → chat replies via the Anthropic adapter', async ({
-    page,
-    context,
-  }) => {
-    await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
-    await completeWelcomeViaApi(page)
-    await expectWizardVisible(page)
-
-    const authorize = await postJson(page, '/api/onboarding/oauth/anthropic/authorize', {})
-    expect(authorize.status).toBe(200)
-    const authorizeUrl = String(authorize.body.url)
-    expect(authorizeUrl).toContain('/claude/authorize')
-    expect(authorizeUrl).toContain('state=')
-
-    // Manual-code pattern: the user pastes the code (or the full redirect URL).
-    const connect = await postJson(page, '/api/onboarding/oauth/anthropic/connect', {
-      code: 'mock-claude-code',
-      modelChat: 'claude-sonnet-4-5',
-    })
-    expect(connect.status).toBe(200)
-    expect(connect.body.ok).toBe(true)
-
-    // Real chat turn through the Anthropic adapter (nucleus chat → agent loop → adapter).
-    const chat = await page.request.post('/api/chat', {
-      data: { message: 'Say hello to the test.' },
-      headers: { accept: 'application/x-ndjson' },
-    })
-    const body = await chat.text()
-    expect(body).toContain('Hello from mock Claude')
-  })
-
-  test('ChatGPT subscription: device flow → connect → chat replies via the Codex adapter', async ({
-    page,
-    context,
-  }) => {
-    await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
-    await completeWelcomeViaApi(page)
-    await expectWizardVisible(page)
-
-    const start = await postJson(page, '/api/onboarding/oauth/openai/start', {})
-    expect(start.status).toBe(200)
-    const device = start.body as { deviceAuthId: string; userCode: string }
-    expect(device.userCode).toBeTruthy()
-
-    const poll1 = await postJson(page, '/api/onboarding/oauth/openai/poll', {
-      deviceAuthId: device.deviceAuthId,
-      userCode: device.userCode,
-      modelChat: 'gpt-5.1-codex',
-    })
-    expect(poll1.body.status).toBe('pending') // 403 pending on first poll
-
-    const poll2 = await postJson(page, '/api/onboarding/oauth/openai/poll', {
-      deviceAuthId: device.deviceAuthId,
-      userCode: device.userCode,
-      modelChat: 'gpt-5.1-codex',
-    })
-    expect(poll2.status).toBe(200)
-    expect(poll2.body.status).toBe('connected')
-
-    const chat = await page.request.post('/api/chat', {
-      data: { message: 'Say hello to the test.' },
-      headers: { accept: 'application/x-ndjson' },
-    })
-    const body = await chat.text()
-    expect(body).toContain('Hello from mock Codex')
   })
 
   test('API-key path: catalog provider test + save, then chat via the gateway', async ({

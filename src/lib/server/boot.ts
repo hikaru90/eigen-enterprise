@@ -19,7 +19,6 @@ import {
   type OrchestratorStatus,
 } from '../../../modules/orchestrator/bootstrap'
 import { ORCHESTRATOR_PERSONA_PROMPT } from '../../../modules/orchestrator/brain'
-import { orchestratorEnginePinFromEnv } from '../../../modules/orchestrator/engine-choice'
 
 /**
  * Startup composition root (phase-1b): kernel → orchestrator (the harness
@@ -154,8 +153,8 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
       : { gateway: boot.gateway, allowlist: boot.allowlist, sessions: boot.sessions }
   }
 
-  // The durable engine is always registered (D6); the harness only opens when an
-  // agent runs on it — at boot for the orchestrator so interrupted turns resume now.
+  // The durable engine is the orchestrator's only engine: the harness opens at
+  // boot so turns a restart interrupted resume now.
   const durable = createDurableEngine({ env, instructions: ORCHESTRATOR_PERSONA_PROMPT })
   const orchestrator = await orchestratorFn(kernel, wireGateway, {
     env,
@@ -164,16 +163,13 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
       ['durable', durable.engine],
     ],
     journeys,
-    // Assisted onboarding + the recorded per-provider engine choice (lazy DB
-    // imports, like the journey store: boot itself stays DB-free).
+    // Assisted onboarding facts (lazy DB import, like the journey store: boot
+    // itself stays DB-free).
     onboardingFacts: async (llmUserId) =>
       (await import('$lib/server/onboarding/assisted')).onboardingFactsFor(llmUserId),
-    recordedEngineFor: async (userId) =>
-      (await import('$lib/server/onboarding/assisted')).recordedOrchestratorEngineFor(userId),
   })
-  // Warm-up (crash-resume) at boot only when the operator pinned durable; with
-  // per-provider choice the harness lazy-opens on the first durable dispatch (D3).
-  if (orchestratorEnginePinFromEnv(env) === 'durable' && !building) {
+  // Warm-up (crash-resume): open the harness now, not on the first chat turn.
+  if (!building) {
     void durable.warmUp().catch((err: unknown) => {
       console.error('[durable] could not open the agent harness at boot:', err)
     })

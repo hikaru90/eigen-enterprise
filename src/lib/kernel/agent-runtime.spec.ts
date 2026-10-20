@@ -15,7 +15,7 @@ function agentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
     id: 'agent-1',
     personaName: 'Agent One',
     description: 'test agent',
-    loopEngine: 'builtin-json',
+    loopEngine: 'durable',
     toolScope: 'all',
     memoryScope: 'company',
     verificationPolicy: 'none',
@@ -88,7 +88,7 @@ function makeFixture(options: {
     ...(options.spendFn ? { spendFn: options.spendFn } : {}),
     rolesFor: () => options.roles ?? ['agent'],
   })
-  runtime.registerEngine('builtin-json', engine)
+  runtime.registerEngine('durable', engine)
 
   return { runtime, registry, activations, sink, run, engine }
 }
@@ -145,7 +145,7 @@ describe('AgentRuntime — registration', () => {
 
   it('fails loud on duplicate engine ids', () => {
     const fx = makeFixture()
-    expect(() => fx.runtime.registerEngine('builtin-json', { run: async () => 'x' })).toThrowError(
+    expect(() => fx.runtime.registerEngine('durable', { run: async () => 'x' })).toThrowError(
       /already registered/,
     )
   })
@@ -344,7 +344,7 @@ describe('AgentRuntime — tool surface + execution path', () => {
 
     const responses = ['{"tool":"memory.echo","arguments":{"x":1}}', '{"answer":"done"}']
     fx.run.mockImplementation(async (_sid, _input, ctx: EngineContext) => {
-      // Simulate the builtin-json engine: one tool call, then answer.
+      // Simulate the durable engine: one tool call, then answer.
       await ctx.executeTool('memory.echo', { x: 1 })
       const listing = ctx.listTools()
       expect(listing.map((t) => t.name)).toEqual(['memory.echo'])

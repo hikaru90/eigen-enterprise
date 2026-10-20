@@ -55,7 +55,7 @@ describe('manifestSchema', () => {
       ...validManifest,
       agents: [
         {
-          loopEngine: 'builtin-json',
+          loopEngine: 'durable',
           defaults: { personaName: 'Fleet Bot', toolScope: { modules: ['memory'] } },
         },
       ],

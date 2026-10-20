@@ -528,7 +528,7 @@ describe('POST /api/chat — harness dispatch', () => {
       'Noted. [[journey:positioning:captured]]',
       'I could not set up your pages just yet — I will try again on your next message.',
     ]
-    runtime.registerEngine('builtin-json', {
+    runtime.registerEngine('durable', {
       run: async (_s, input) => {
         modelInputs.push(input)
         return replies.shift()!

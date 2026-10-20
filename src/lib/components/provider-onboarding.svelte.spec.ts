@@ -43,20 +43,8 @@ const CATALOG = {
   ],
 }
 
-// Model lists for subscription providers (anthropic / openai-codex come from
-// models.dev even though their API shape is not on the API-key path).
+// Model lists for the subscription sign-ins (from models.dev).
 const MODEL_LISTS: Record<string, { chatModels: CatalogModelLike[]; embeddingModels: CatalogModelLike[] }> = {
-  anthropic: {
-    chatModels: [
-      { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
-      { id: 'claude-opus-4-8', name: 'Claude Opus 4.8' },
-    ],
-    embeddingModels: [],
-  },
-  'openai-codex': {
-    chatModels: [{ id: 'gpt-5.1-codex', name: 'GPT-5.1 Codex' }],
-    embeddingModels: [],
-  },
   openrouter: {
     chatModels: [{ id: 'mock/openrouter-chat', name: 'Mock OpenRouter Chat' }],
     embeddingModels: [],
@@ -94,26 +82,6 @@ describe('provider-onboarding.svelte', () => {
             new URL(path, 'http://x').searchParams.get('provider') ?? '',
           )
         }
-        if (path === '/api/onboarding/oauth/anthropic/authorize') {
-          return {
-            ok: true,
-            status: 200,
-            json: async () => ({ url: 'https://claude.ai/oauth/authorize?mock=1' }),
-          } as unknown as Response
-        }
-        if (path === '/api/onboarding/oauth/openai/start') {
-          return {
-            ok: true,
-            status: 200,
-            json: async () => ({
-              deviceAuthId: 'dev-1',
-              userCode: 'TEST-CODE',
-              verificationUri: 'https://auth.openai.com/codex/device',
-              intervalSeconds: 1,
-              expiresInSeconds: 900,
-            }),
-          } as unknown as Response
-        }
         if (path === '/api/onboarding/openrouter/authorize') {
           return {
             ok: true,
@@ -139,47 +107,14 @@ describe('provider-onboarding.svelte', () => {
     await expect.element(page.getByRole('textbox', { name: 'API key' })).not.toBeInTheDocument()
   })
 
-  it('lists subscription providers including Claude and ChatGPT', async () => {
+  it('lists only the tool-capable subscription sign-ins (no Claude / ChatGPT: their API shapes carry no tool calls)', async () => {
     renderWizard({ byokUiEnabled: true })
     await page.getByText('Use a subscription I have').click()
-    await expect.element(page.getByText('Claude Pro/Max')).toBeInTheDocument()
-    await expect.element(page.getByText('ChatGPT Plus/Pro')).toBeInTheDocument()
+    await expect.element(page.getByText('Claude Pro/Max')).not.toBeInTheDocument()
+    await expect.element(page.getByText('ChatGPT Plus/Pro')).not.toBeInTheDocument()
     await expect.element(page.getByText('GitHub Copilot')).toBeInTheDocument()
     await expect.element(page.getByText(/Sign in with OpenRouter/)).toBeInTheDocument()
     await expect.element(page.getByRole('button', { name: /Groq/ })).not.toBeInTheDocument()
-  })
-
-  it('requires an explicit chat model for Claude before the sign-in card', async () => {
-    renderWizard({ byokUiEnabled: true })
-    await page.getByText('Use a subscription I have').click()
-    await page.getByText('Claude Pro/Max').click()
-
-    // Model step first — no implicit default model; Continue stays disabled until picked.
-    const chatModel = page.getByRole('combobox', { name: 'Chat model' })
-    await expect.element(chatModel).toBeInTheDocument()
-    await expect.element(chatModel).toHaveValue('')
-    const continueBtn = page.getByRole('button', { name: 'Continue' })
-    await expect.element(continueBtn).toBeDisabled()
-
-    await chatModel.fill('claude-sonnet-4-5')
-    await expect.element(continueBtn).toBeEnabled()
-    await continueBtn.click()
-    // Now the paste-code card appears.
-    await expect
-      .element(page.getByRole('textbox', { name: 'Authorization code' }))
-      .toBeInTheDocument()
-    await expect
-      .element(page.getByText(/Claude sign-in page opened/i))
-      .toBeInTheDocument()
-  })
-
-  it('shows the ChatGPT device code after the model step', async () => {
-    renderWizard({ byokUiEnabled: true })
-    await page.getByText('Use a subscription I have').click()
-    await page.getByText('ChatGPT Plus/Pro').click()
-    await page.getByRole('combobox', { name: 'Chat model' }).fill('gpt-5.1-codex')
-    await page.getByRole('button', { name: 'Continue' }).click()
-    await expect.element(page.getByText('TEST-CODE')).toBeInTheDocument({ timeout: 10_000 })
   })
 
   it('shows OpenRouter model selection before the sign-in redirect', async () => {

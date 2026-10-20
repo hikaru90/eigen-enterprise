@@ -5,9 +5,9 @@ import { KernelError } from '../errors'
 /**
  * The structured tool result a failed tool call hands back to the model, so
  * the agent can see the failure and fix it (activate a module, correct its
- * arguments, retry) instead of the turn aborting. Shared by both loop engines.
+ * arguments, retry) instead of the turn aborting. Used by the durable loop engine.
  *
- * Boundary (decided here, applied by both engines): everything that REJECTS
+ * Boundary (decided here, applied by the engine): everything that REJECTS
  * from `EngineContext.executeTool` is the tool's outcome — KernelError of any
  * code except approval_required (which keeps its own approval_pending result),
  * zod validation errors, and errors thrown by the tool handler. Failures
@@ -74,4 +74,21 @@ export function approvalIdFromError(err: KernelError): string {
     throw new Error(`approval_required error without an approvalId (${err.message})`, { cause: err })
   }
   return id
+}
+
+/**
+ * The structured tool result an approval-gated tool call produces: the request
+ * is queued for the company owner and has NOT executed. The orchestrator's
+ * approval UX wording lives here, next to the other structured tool results.
+ */
+export function approvalPendingResult(tool: string): {
+  status: 'approval_pending'
+  tool: string
+  message: string
+} {
+  return {
+    status: 'approval_pending',
+    tool,
+    message: `Tool "${tool}" requires owner approval before it can run. The request is queued for an owner to decide.`,
+  }
 }

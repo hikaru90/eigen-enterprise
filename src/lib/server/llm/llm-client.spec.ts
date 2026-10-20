@@ -1754,43 +1754,5 @@ describe('llm client tool-calling passthrough', () => {
       tool_call_id: 'call_9',
     })
   })
-
-  it('fails loud when tools are requested from an API-shape provider', async () => {
-    const { isByokBilling } = await import('$lib/server/llm/preferences')
-    vi.mocked(isByokBilling).mockResolvedValue(true)
-    mockSequentialDbLimitResults(
-      [{ provider: 'anthropic' }],
-      [
-        {
-          provider: 'anthropic',
-          baseUrl: 'https://anthropic.example/v1',
-          apiKey: 'db-key',
-          apiKeyEncrypted: null,
-          ruleChat: null,
-          ruleEmbedding: null,
-          modelChat: 'claude-test',
-          modelEmbedding: null,
-        },
-      ],
-    )
-    const fetchMock = vi.fn(async () => response(true, 200, { choices: [] }))
-    vi.stubGlobal('fetch', fetchMock)
-
-    await expect(
-      llmChatCompletion({
-        userId: 'u1',
-        messages: [{ role: 'user', content: 'hello' }],
-        tools: chatTools,
-      }),
-    ).rejects.toThrow(/tools passthrough requires an OpenAI-shaped provider/)
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
 })
-
-describe('toApiShapeMessages (subscription adapters speak plain text only)', () => {
-  it('passes plain messages and fails loud on tool-shaped ones', async () => {
-    const { toApiShapeMessages } = await import('./llm-client')
-    expect(toApiShapeMessages([{ role: 'user', content: 'hi' }], 'anthropic-oauth')).toEqual([{ role: 'user', content: 'hi' }])
-    expect(() => toApiShapeMessages([{ role: 'tool', content: '{}', tool_call_id: 'c1' }], 'anthropic-oauth')).toThrow(/cannot carry tool messages/)
-  })
 })

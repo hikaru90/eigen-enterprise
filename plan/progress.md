@@ -2,6 +2,21 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-20 (5) — SHIPPED: one orchestrator engine (durable); Claude Pro/Max and ChatGPT sign-ins removed
+
+**Owner directive**: "The provider we use shouldn't determine if PiDurable is working or not. Remove providers that are not supported by PiDurable." Amends phase-durable D6 and the 2026-10-19 per-provider engine decision.
+
+**Shipped:**
+- `durable` (pi-durable 1.3.0) is the orchestrator's only loop engine. `builtin-json` (`src/lib/kernel/engines/builtin-json.ts`) and `modules/orchestrator/engine-choice.ts` are deleted; `EE_ORCHESTRATOR_ENGINE` is gone (no pin, no rollback engine). `bootstrapOrchestrator` fails loud at boot unless a `durable` engine is injected via `options.engines`; the harness warm-up (crash-resume) now runs on every boot, not only under the pin. `approvalPendingResult` moved to `src/lib/kernel/engines/tool-error.ts`.
+- The subscription sign-ins whose API shapes cannot carry tool calls are removed end to end: provider ids `anthropic` (Claude Pro/Max OAuth) and `openai_codex` (ChatGPT device flow), their adapters (`api-shapes.ts`, `oauth/anthropic.ts`, `oauth/openai-codex.ts`), the four `/api/onboarding/oauth/{anthropic,openai}/*` routes, the wizard cards, the mock-gateway stubs and the e2e/component tests for them. GitHub Copilot and OpenRouter sign-ins stay (OpenAI-compatible chat completions).
+- Migration `0091_durable_only_providers` (journal idx 91): deletes `llm_active_provider` / `llm_provider_config` rows for the two providers and drops `llm_provider_config.orchestrator_engine`. An owner who was on one of them sees the provider onboarding again and connects an OpenAI-compatible provider.
+- Verified: `npm run check` 0 errors; `npm test` 4255 passed; migration applied on the dev DB.
+
+**Decision log (architecture impact)**
+- The engine is not a per-provider or per-deployment choice any more. A provider is supported iff it speaks OpenAI chat completions with native tool calls; anything else is not offered. No fallback engine exists — a durable failure fails loud.
+- Follow-up (not done): `kernel_agent_session_events` + `AgentSessionLog` (`sessionLog` on `WiredKernel`) had `builtin-json` as their only writer and are now dead infrastructure (pi-durable storage is the history source, D6). Removing them is a kernel-wide change (wiring, db-stores, CLI/MCP spec fixtures, a drop migration) and was left out of this cut.
+- Housekeeping: the merged parent-dir worktrees `../ee-durable` (branch deleted) and `../ee-rebrand` (worktree removed; its uncommitted edits preserved as WIP commit `ec40558` on `wt/rebrand`) are gone. Worktrees stay inside the repo from now on.
+
 ## 2026-10-20 (4) — Owner-chosen approval mode (backend)
 
 **Shipped:** migration `0090_kernel_approval_mode` (one row, seeded `'ask'` in SQL); `ModeAwareApprovalPolicy` replaces `StaticApprovalPolicy` in `buildKernel`; `approvalRisk` on `ToolDescriptor`; `GET/PUT /api/approvals/mode`. The approve/deny endpoint and the chat UI belong to another workstream. **Next:** the UI selector under the chat input.

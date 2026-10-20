@@ -63,7 +63,7 @@ describe('agent.list', () => {
       id: 'orchestrator',
       personaName: 'Orchestrator',
       description: 'd',
-      loopEngine: 'builtin-json',
+      loopEngine: 'durable',
       toolScope: 'all',
       memoryScope: 'company',
       verificationPolicy: 'none',

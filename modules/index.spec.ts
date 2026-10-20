@@ -362,7 +362,7 @@ describe('bootstrapChatGateway (composition root — gateway boot stage)', () =>
           env: { TELEGRAM_BOT_TOKEN: 'test-token' },
           db: {} as AppDatabase,
         }),
-      { startLoop: false },
+      { startLoop: false, engines: [['durable', { run: async (_s, input) => `durable:${input}` }]] },
     )
 
     expect(boot.status()).toEqual({ chatGateway: 'active', loopRunning: false })

@@ -1,7 +1,6 @@
 import type { EngineContext, EngineToolListing, LoopEngine } from '../engine'
 import { KernelError } from '../errors'
-import { approvalPendingResult } from './builtin-json'
-import { approvalIdFromError, toolErrorResult } from './tool-error'
+import { approvalIdFromError, approvalPendingResult, toolErrorResult } from './tool-error'
 
 /**
  * The 'durable' loop engine (plan/phase-durable.md D6): the turn loop is
@@ -68,7 +67,7 @@ export type DurableLoopEngineOptions = {
   /**
    * Gateway billing/config identity for LLM calls. Used when the dispatch
    * carries no llmUserId; the agent principal id is the last resort (same
-   * chain as builtin-json).
+   * chain as before).
    */
   llmUserId?: string
 }
@@ -102,7 +101,7 @@ function emitSurfaceEvent(
 /**
  * One tool's bridge execute: through the kernel registry via
  * EngineContext.executeTool — never around it. Approval-required errors become
- * the same structured approval_pending result builtin-json produces, so the
+ * the structured approval_pending result (tool-error.ts), so the
  * orchestrator's approval wording is engine-independent. Every other
  * rejection of executeTool becomes a structured {status:'error'} tool result
  * (with remediation where the kernel knows it) so the agent can fix it and
@@ -181,7 +180,7 @@ export class DurableLoopEngine implements LoopEngine {
     }
 
     // Surface completeness: no gateway streaming yet (follow-up) — the final
-    // reply is emitted as ONE delta, mirroring builtin-json's fallback path.
+    // reply is emitted as ONE delta, one answer per turn.
     if (ctx.stream && settled.reply) {
       try {
         ctx.stream(settled.reply)

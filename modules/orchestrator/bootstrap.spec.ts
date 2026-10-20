@@ -52,8 +52,13 @@ function fakeStage(): OrchestratorGatewayStage {
 const activeStage = async (): Promise<OrchestratorGatewayStage> => fakeStage()
 const inactiveStage = async (): Promise<OrchestratorGatewayStage | null> => null
 
+/** The orchestrator's one engine, faked: echoes the input (never a real harness/LLM). */
+function fakeDurable(reply: (sessionId: string, input: string) => string = (_s, input) => `durable:${input}`): LoopEngine {
+  return { run: async (sessionId, input) => reply(sessionId, input) }
+}
+
 function bootOptions(overrides: Partial<OrchestratorBootOptions> = {}): OrchestratorBootOptions {
-  return { startLoop: false, ...overrides }
+  return { startLoop: false, engines: [['durable', fakeDurable()]], ...overrides }
 }
 
 afterEach(() => {
@@ -61,7 +66,7 @@ afterEach(() => {
 })
 
 describe('bootstrapOrchestrator — harness runtime seeding (phase-1b)', () => {
-  it('seeds the orchestrator as one AgentConfig on the builtin-json engine (inactive path)', async () => {
+  it('seeds the orchestrator as one AgentConfig on the durable engine (inactive path)', async () => {
     const { kernel } = inMemoryKernel()
 
     const boot = await bootstrapOrchestrator(kernel, inactiveStage, bootOptions({ env: {} }))
@@ -69,7 +74,7 @@ describe('bootstrapOrchestrator — harness runtime seeding (phase-1b)', () => {
     const config = boot.runtime.getAgent('orchestrator')
     expect(config).toMatchObject({
       id: 'orchestrator',
-      loopEngine: 'builtin-json',
+      loopEngine: 'durable',
       toolScope: 'all',
       memoryScope: 'company',
       verificationPolicy: 'none',
@@ -95,6 +100,13 @@ describe('bootstrapOrchestrator — harness runtime seeding (phase-1b)', () => {
       bootOptions({ env: { EE_HARNESS_SPEND_CAP_USD: '' } }),
     )
     expect(boot2.runtime.getAgent('orchestrator')?.spendCapUsd).toBeUndefined()
+  })
+
+  it('fails loud when no durable engine is injected (the orchestrator has exactly one engine)', async () => {
+    const { kernel } = inMemoryKernel()
+    await expect(bootstrapOrchestrator(kernel, inactiveStage, bootOptions({ engines: [] }))).rejects.toThrow(
+      /'durable' loop engine must be injected/,
+    )
   })
 
   it('fails loud on a malformed EE_HARNESS_SPEND_CAP_USD', async () => {
@@ -133,11 +145,7 @@ describe('bootstrapOrchestrator — harness runtime seeding (phase-1b)', () => {
     const boot = await bootstrapOrchestrator(
       kernel,
       inactiveStage,
-      bootOptions({
-        complete: async () => ({
-          choices: [{ message: { content: '{"answer":"hello from harness"}' } }],
-        }),
-      }),
+      bootOptions({ engines: [['durable', fakeDurable(() => 'hello from harness')]] }),
     )
 
     const reply = await boot.brain.respond(
@@ -145,17 +153,6 @@ describe('bootstrapOrchestrator — harness runtime seeding (phase-1b)', () => {
       'hi',
     )
     expect(reply).toBe('hello from harness')
-
-    // The turn is durably logged: user input first, then the reply.
-    expect(await sessionLog.list('session-1')).toEqual([
-      { sessionId: 'session-1', agentId: 'orchestrator', kind: 'user', payload: { text: 'hi' } },
-      {
-        sessionId: 'session-1',
-        agentId: 'orchestrator',
-        kind: 'assistant',
-        payload: { text: 'hello from harness' },
-      },
-    ])
 
     const types = sink.events.map((e) => e.type)
     expect(types).toContain('agent.dispatched')
@@ -215,7 +212,7 @@ describe('bootstrapOrchestrator — chat-gateway stage active', () => {
     const { kernel } = inMemoryKernel()
     const stage = fakeStage()
 
-    const boot = await bootstrapOrchestrator(kernel, async () => stage)
+    const boot = await bootstrapOrchestrator(kernel, async () => stage, { engines: [['durable', fakeDurable()]] })
 
     expect(boot.status()).toEqual({ chatGateway: 'active', loopRunning: true })
     await boot.loop!.stop()
@@ -264,7 +261,7 @@ describe('bootstrapOrchestrator — extra engine injection (composition-root sea
     const boot = await bootstrapOrchestrator(
       kernel,
       inactiveStage,
-      bootOptions({ engines: [['pi', fakeEngine]] }),
+      bootOptions({ engines: [['durable', fakeDurable()], ['pi', fakeEngine]] }),
     )
 
     // No getEngine accessor by design; prove registration through the dispatch path.

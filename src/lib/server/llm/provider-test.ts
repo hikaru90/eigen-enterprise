@@ -1,7 +1,6 @@
 import { activityProviderForLlmConfig } from '$lib/server/activity/gateway-providers'
 import { logActivityCall } from '$lib/server/activity/log-call'
 import { getDb } from '$lib/server/db'
-import { fetchProviderChatCompletion, usesApiShape } from '$lib/server/llm/api-shapes'
 import {
   gatewayHostFromBaseUrl,
   gatewayReportedCostUsdForLog,
@@ -54,13 +53,7 @@ export async function testLlmProviderConnection(
 
   try {
     const routing = await routingConfigForTest(config)
-    const res = usesApiShape(config.provider)
-      ? await fetchProviderChatCompletion(config, {
-          model: routing.model,
-          messages: [{ role: 'user', content: 'ping' }],
-          maxTokens: 1,
-        })
-      : await fetch(`${config.baseUrl}/chat/completions`, {
+    const res = await fetch(`${config.baseUrl}/chat/completions`, {
       signal: AbortSignal.timeout(PROVIDER_TEST_TIMEOUT_MS),
       method: 'POST',
       headers: {

@@ -9,19 +9,16 @@ import { getDb, withDbUser } from '$lib/server/db'
 import { llmProviderConfig, llmActiveProvider } from '$lib/server/db/schema'
 import { resolveBillingUserId } from '$lib/server/db/tenant-context'
 import { env } from '$lib/server/env/private-env'
-import { NO_EMBEDDING_PROVIDERS, fetchProviderChatCompletion, usesApiShape } from '$lib/server/llm/api-shapes'
 import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
 import { gatewayReportedCostUsdForLog, type TokenUsage } from '$lib/server/llm/gateway-cost'
 import {
   assertEurouterGatewayConfigured,
   routingRuleLookupErrorMessage,
 } from '$lib/server/llm/llm-config-guard'
-import { refreshAnthropicToken } from '$lib/server/llm/oauth/anthropic'
 import {
   copilotChatBaseUrl,
   fetchCopilotAccessToken,
 } from '$lib/server/llm/oauth/github-copilot'
-import { refreshCodexToken } from '$lib/server/llm/oauth/openai-codex'
 import {
   loadPlatformLlmConfig,
   loadPlatformOpenRouterSttConfig,
@@ -48,24 +45,8 @@ export type ChatMessage = {
   /** role:'tool' messages: the id of the call this message answers. */
   tool_call_id?: string
 }
-/**
- * API-shape adapters (Anthropic messages, Codex responses) only speak plain
- * system/user/assistant text. Tool-role messages or tool calls must never be
- * silently flattened for them — fail loud, same as the tools passthrough guard.
- */
-export function toApiShapeMessages(
-  messages: ChatMessage[],
-  provider: string,
-): Array<{ role: 'system' | 'user' | 'assistant'; content: string }> {
-  return messages.map((m) => {
-    if (m.role === 'tool' || m.tool_calls !== undefined) {
-      throw new LlmNotConfiguredError(
-        `provider "${provider}" uses its own API shape and cannot carry tool messages — configure an OpenAI-compatible credential for tool-calling agents`,
-      )
-    }
-    return { role: m.role, content: m.content }
-  })
-}
+/** Providers with no embeddings endpoint — memory features need a different provider. */
+const NO_EMBEDDING_PROVIDERS = new Set(['github_copilot'])
 
 export {
   extractGatewayReportedCostUsd,
@@ -443,10 +424,6 @@ async function loadLlmProviderConfig(
             expiresAtMs: session.expiresAtMs,
             meta: { availableModelIds: session.availableModelIds },
           }
-        } else if (provider === 'anthropic') {
-          rotated = await refreshAnthropicToken(refresh)
-        } else if (provider === 'openai_codex') {
-          rotated = await refreshCodexToken(refresh)
         } else {
           rotated = { access, refresh, expiresAtMs: Number.MAX_SAFE_INTEGER, meta: null }
         }
@@ -809,11 +786,6 @@ async function llmChatCompletionInner(input: {
   toolChoice?: unknown
 }): Promise<unknown> {
   const config = await loadLlmConfig(input.userId)
-  if (input.tools !== undefined && usesApiShape(config.provider)) {
-    throw new LlmNotConfiguredError(
-      `tools passthrough requires an OpenAI-shaped provider; provider "${config.provider}" uses its own API shape — configure an OpenAI-compatible credential for tool-calling agents`,
-    )
-  }
   const activityProvider = activityProviderForLlmConfig(config.provider)
   const gatewayHost = gatewayHostFromBaseUrl(config.baseUrl)
   const url = `${config.baseUrl}/chat/completions`
@@ -851,42 +823,27 @@ async function llmChatCompletionInner(input: {
       )
       let res: Response
       try {
-        if (usesApiShape(config.provider)) {
-          // Subscription providers with their own API shape (Anthropic messages,
-          // Codex responses) — the adapter normalizes the response to OpenAI shape.
-          res = await fetchProviderChatCompletion(
-            config,
-            {
-              model: routing.model,
-              messages: toApiShapeMessages(messages, config.provider),
-              maxTokens: input.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS,
-              temperature: input.temperature,
-              signal: ac.signal,
-            },
-          )
-        } else {
-          res = await fetch(url, {
-            signal: ac.signal,
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${config.apiKey}`,
-            },
-            body: JSON.stringify({
-              ...(routing.ruleId ? { rule_id: routing.ruleId } : {}),
-              model: routing.model,
-              ...(routing.provider ? { provider: routing.provider } : {}),
-              messages,
-              ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
-              max_tokens: input.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS,
-              ...(input.responseFormat === 'json_object'
-                ? { response_format: { type: 'json_object' } }
-                : {}),
-              ...(input.tools !== undefined ? { tools: input.tools } : {}),
-              ...(input.toolChoice !== undefined ? { tool_choice: input.toolChoice } : {}),
-            }),
-          })
-        }
+        res = await fetch(url, {
+          signal: ac.signal,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${config.apiKey}`,
+          },
+          body: JSON.stringify({
+            ...(routing.ruleId ? { rule_id: routing.ruleId } : {}),
+            model: routing.model,
+            ...(routing.provider ? { provider: routing.provider } : {}),
+            messages,
+            ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
+            max_tokens: input.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS,
+            ...(input.responseFormat === 'json_object'
+              ? { response_format: { type: 'json_object' } }
+              : {}),
+            ...(input.tools !== undefined ? { tools: input.tools } : {}),
+            ...(input.toolChoice !== undefined ? { tool_choice: input.toolChoice } : {}),
+          }),
+        })
       } finally {
         clearTimeout(timeoutHandle)
       }
