@@ -3,7 +3,7 @@ import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
 import OverviewModule from './overview-module.svelte'
 
-const base = { id: 'website', name: 'Website', description: 'The company site.', results: [], note: null }
+const base = { id: 'website', name: 'Website', description: 'The company site.', results: [], counts: [], note: null }
 
 describe('overview-module.svelte', () => {
   it('shows an active module with linked results', async () => {

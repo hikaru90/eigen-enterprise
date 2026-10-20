@@ -54,8 +54,8 @@ describe('buildOverview', () => {
       }),
     )
     expect(out.modules).toEqual([
-      { id: 'website', name: 'Website', description: 'The site.', active: true, results: [], note: null },
-      { id: 'repo', name: 'Repo', description: 'Code.', active: false, results: [], note: null },
+      { id: 'website', name: 'Website', description: 'The site.', active: true, results: [], counts: [], note: null },
+      { id: 'repo', name: 'Repo', description: 'Code.', active: false, results: [], counts: [], note: null },
     ])
   })
 
@@ -86,6 +86,10 @@ describe('buildOverview', () => {
       { label: 'Site', detail: null, href: 'http://localhost:5173/site' },
       { label: 'Home', detail: 'Published', href: 'http://localhost:5173/site/home' },
       { label: 'About', detail: 'Draft', href: 'http://localhost:5173/site/about' },
+    ])
+    expect(out.modules[0].counts).toEqual([
+      { label: 'Published', value: 1 },
+      { label: 'Drafts', value: 1 },
     ])
     expect(out.modules[0].note).toBeNull()
   })

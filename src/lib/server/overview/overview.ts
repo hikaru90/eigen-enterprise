@@ -10,6 +10,7 @@ import { approvalActionLabel } from '$lib/chat/approval-copy'
  */
 
 export type OverviewResult = { label: string; detail: string | null; href: string | null }
+export type OverviewCount = { label: string; value: number }
 
 export type ModuleOverview = {
   id: string
@@ -17,6 +18,8 @@ export type ModuleOverview = {
   description: string
   active: boolean
   results: OverviewResult[]
+  /** Key numbers for the dashboard card (structured; never parsed from labels). */
+  counts: OverviewCount[]
   /** A plain sentence when results can't be shown (never server error text). */
   note: string | null
 }
@@ -37,7 +40,9 @@ export type OverviewRegistry = {
 }
 
 export type ResultSourceDeps = { registry: OverviewRegistry; ctx: ToolContext }
-export type ResultSource = (deps: ResultSourceDeps) => Promise<Pick<ModuleOverview, 'results' | 'note'>>
+export type ResultSource = (
+  deps: ResultSourceDeps,
+) => Promise<Pick<ModuleOverview, 'results' | 'note'> & { counts?: OverviewCount[] }>
 
 export type AuditEventRow = { ts: string; payload: unknown }
 export type PendingApprovalRow = { id: string; toolName: string }
@@ -94,8 +99,13 @@ export function websiteResultSource(journeyStatus: () => Promise<JourneyStatus>)
       detail: page.status === 'published' ? 'Published' : 'Draft',
       href: page.url,
     }))
+    const published = info.pages.filter((page) => page.status === 'published').length
     return {
       results: [journey, { label: 'Site', detail: null, href: info.url }, ...pages],
+      counts: [
+        { label: 'Published', value: published },
+        { label: 'Drafts', value: info.pages.length - published },
+      ],
       note: pages.length === 0 ? 'No pages yet' : null,
     }
   }
@@ -139,24 +149,34 @@ function legacyToolText(deps: OverviewDeps, tool: string): string {
   return manifest ? `${manifest.name}: ${tool}` : tool
 }
 
+export type ModuleOverviewDeps = Pick<OverviewDeps, 'registry' | 'ctx' | 'canReadResults' | 'resultSources'>
+
+/** One module's entry: identity, activation, and its results when readable. */
+export async function moduleOverview(
+  manifest: ModuleManifest,
+  active: boolean,
+  deps: ModuleOverviewDeps,
+): Promise<ModuleOverview> {
+  const base = {
+    id: manifest.id,
+    name: manifest.name,
+    description: manifest.description ?? '',
+    active,
+  }
+  const source = deps.resultSources[manifest.id]
+  if (!active || !source) return { ...base, results: [], counts: [], note: null }
+  if (!deps.canReadResults) {
+    return { ...base, results: [], counts: [], note: 'Only the owner can see these results.' }
+  }
+  const { results, note, counts } = await source({ registry: deps.registry, ctx: deps.ctx })
+  // A source without numbers simply has none to show.
+  return { ...base, results, note, counts: counts ?? [] }
+}
+
 export async function buildOverview(deps: OverviewDeps): Promise<Overview> {
   const modules: ModuleOverview[] = []
   for (const manifest of deps.manifests) {
-    const active = deps.activations.get(manifest.id) === true
-    const base = {
-      id: manifest.id,
-      name: manifest.name,
-      description: manifest.description ?? '',
-      active,
-    }
-    const source = deps.resultSources[manifest.id]
-    if (!active || !source) {
-      modules.push({ ...base, results: [], note: null })
-    } else if (!deps.canReadResults) {
-      modules.push({ ...base, results: [], note: 'Only the owner can see these results.' })
-    } else {
-      modules.push({ ...base, ...(await source({ registry: deps.registry, ctx: deps.ctx })) })
-    }
+    modules.push(await moduleOverview(manifest, deps.activations.get(manifest.id) === true, deps))
   }
 
   const actions: OverviewAction[] = []
