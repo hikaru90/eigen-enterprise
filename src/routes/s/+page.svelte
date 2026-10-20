@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types'
+  import { resolve } from '$app/paths'
 
   let { data }: { data: PageData } = $props()
 </script>
@@ -16,7 +17,7 @@
     <ul class="space-y-2">
       {#each data.pages as page (page.slug)}
         <li>
-          <a class="underline" href={`/s/${encodeURIComponent(page.slug)}`}>{page.title}</a>
+          <a class="underline" href={resolve('/s/[slug]', { slug: page.slug })}>{page.title}</a>
           {#if page.draft}<span class="ml-2 text-sm text-muted-foreground">Draft — only you can see this</span>{/if}
         </li>
       {/each}
