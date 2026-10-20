@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-21 — SHIPPED (branch): "Let AI fill this out" on the Apps build form
+
+- ee: `GET /v1/sources/tree?name&rev&depth` (depth ≤4, ≤2000 entries) and `GET /v1/sources/file?name&rev&path` (≤64KB, text only; refuses traversal/absolute/.git paths 400, symlinks/binaries 415, big files 413). Read from the local mirror only.
+- OS: `website.app_suggest_contract` (admin + human only, read): fetch the mirror with the repo's auth → tree + a fixed declared list of root files (README*, manifests, framework configs, Procfile, Dockerfile as info; lockfiles presence-only) → one gateway call (json_object, prompt carries catalog ids + ee contract semantics) → zod-validated; a runtime outside the catalog comes back as a plain catalog-gap sentence (field left empty), shell syntax in a command becomes a warning. Endpoint `POST /m/website/apps/suggest`. Form button fills + outlines fields, shows reasons/warnings; detail page gets "Build settings" (edit stored contract + AI fill + redeploy) for form-contract apps.
+- Decision: the gateway only offers `json_object`, so the "strict schema" is the shape in the prompt + zod on the answer (no provider-side json_schema).
+- Verified on ee-box: tree/file endpoints for real on heroku/node-js-getting-started (traversal 400, lockfile 413, 404). The LLM call was NOT run for real (needs an owner session); covered by mocked-gateway tests and a real-mirror run with a mocked chat. `local-server.sh upgrade` fails from a worktree (box mounts the main checkout's dist/release); bootstrapped from a copied tarball instead, which exited 1 only because of the owner's failing `twodown` app (os went live).
+
 ## 2026-10-20 (8) — SHIPPED (branch) + VERIFIED ON THE LOCAL BOX: deploy a connected repo as an app (Website → Apps)
 
 - A connected repo + branch becomes a **service** (web app or back-end service). Table `website_services` (migration `0095_website_services`) holds the source, kind, host, push-to-deploy, and the last deploy's state/rev/plain error. It holds no contract and no env values.
