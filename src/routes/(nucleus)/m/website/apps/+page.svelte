@@ -12,6 +12,12 @@
   let panel = $state<ReturnType<typeof AppDeployProgress> | null>(null)
   let source = $state('')
   let name = $state('')
+  let kind = $state<'web' | 'backend'>('web')
+  // What "Let AI fill this out" reads: the picked repo + branch, keyed on the app name.
+  const buildTarget = $derived.by(() => {
+    const [repo, branch] = source.split('#')
+    return repo && branch && name ? { name, repo, branch } : null
+  })
 
   function pickSource(value: string) {
     source = value
@@ -123,7 +129,11 @@
           </label>
           <label class="flex flex-col gap-1 text-sm">
             Kind
-            <select name="kind" class="rounded-md border border-border bg-background px-2 py-1.5">
+            <select
+              name="kind"
+              bind:value={kind}
+              class="rounded-md border border-border bg-background px-2 py-1.5"
+            >
               <option value="web">Web app (gets an address)</option>
               <option value="backend">Back-end service (no public address)</option>
             </select>
@@ -147,7 +157,11 @@
             there is no push-to-deploy.
           </p>
         {/if}
-        <AppBuildForm nodeVersions={data.catalog?.runtimes.node ?? []} />
+        <AppBuildForm
+          nodeVersions={data.catalog?.runtimes.node ?? []}
+          target={buildTarget}
+          onsuggested={(s) => (kind = s.kind === 'service' ? 'backend' : 'web')}
+        />
         {#if form?.action === 'deploy' && 'error' in form && form.error && !('jobId' in form)}
           <p class="text-sm text-red-600" role="alert">{form.error}</p>
         {/if}

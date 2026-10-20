@@ -5,6 +5,7 @@ export const APP_TOOL_NAMES = [
   'website.app_logs',
   'website.app_deploy_status',
   'website.app_diagnose',
+  'website.app_suggest_contract',
   'website.app_deploy',
   'website.app_env_set',
   'website.app_remove',

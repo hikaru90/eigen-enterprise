@@ -45,6 +45,29 @@ const publicRepo: NewConnectedRepo = {
   connectedBy: 'human:u1',
 }
 
+const suggestCalls: unknown[] = []
+const suggestChat = async (input: unknown) => {
+  suggestCalls.push(input)
+  return {
+    choices: [
+      {
+        message: {
+          content: JSON.stringify({
+            runtime: 'node@22',
+            install: 'npm ci',
+            start: 'node server/main.js',
+            healthPath: '/',
+            kind: 'web',
+            confidence: 0.9,
+            reasons: ['README names server/main.js'],
+            warnings: [],
+          }),
+        },
+      },
+    ],
+  }
+}
+
 async function setup(repo: NewConnectedRepo = publicRepo, diagnoseLlm?: DiagnoseLlm) {
   const ee = new FakeEe()
   const repos = new InMemoryConnectedRepoStore()
@@ -55,12 +78,13 @@ async function setup(repo: NewConnectedRepo = publicRepo, diagnoseLlm?: Diagnose
     ee,
     repos,
     services,
+    chat: suggestChat,
+    ...(diagnoseLlm ? { diagnoseLlm } : {}),
     mintToken: async (id) => {
       minted.push(id)
       return 'ghs_SECRET_TOKEN'
     },
     now: () => new Date('2026-10-20T10:00:00Z'),
-    ...(diagnoseLlm ? { diagnoseLlm } : {}),
   })
   const tool = (name: string) => tools.find((t) => t.name === name) as ToolDescriptor
   const run = (name: string, input: unknown, ctx = human) =>
@@ -521,6 +545,61 @@ describe('push-to-deploy (website.app_auto_deploy)', () => {
         autoDeploy: true,
       }),
     ).rejects.toThrow(/GitHub App/)
+  })
+})
+
+describe('website.app_suggest_contract: the AI reads the repo through ee', () => {
+  it('fetches the mirror with the repo auth, reads the files, asks the gateway as the owner', async () => {
+    const { ee, run } = await setup()
+    ee.tree = { 'README.md': 'node server/main.js', 'package.json': '{}' }
+    const out = (await run('website.app_suggest_contract', {
+      name: 'shop',
+      repo: 'kindred/shop',
+      branch: 'main',
+    })) as { fields: { runtime: string; start: string } }
+    expect(out.fields).toMatchObject({ runtime: 'node@22', start: 'node server/main.js' })
+    expect(verbs(ee)).toEqual(['fetchSource', 'sourceTree', 'sourceFile', 'sourceFile'])
+    expect(ee.calls[0]!.input).toMatchObject({
+      name: 'gh-shop',
+      url: 'https://github.com/kindred/shop.git',
+      ref: 'main',
+    })
+    expect(suggestCalls.at(-1)).toMatchObject({ userId: 'u1' })
+  })
+
+  it('owner/admin only: the agent and members are refused before anything reaches ee', async () => {
+    const { ee, tools } = await setup()
+    const registry = new KernelRegistry()
+    for (const t of tools) registry.register(t)
+    const input = { name: 'shop', repo: 'kindred/shop', branch: 'main' }
+    const member: ToolContext = {
+      principal: { id: 'm', kind: 'human', roles: ['member'] },
+      requestId: 'r',
+    }
+    for (const ctx of [agent, member]) {
+      const err = await registry.execute('website.app_suggest_contract', input, ctx).catch((e) => e)
+      expect(err).toBeInstanceOf(KernelError)
+      expect(err.code).toBe('permission_denied')
+    }
+    expect(ee.calls).toEqual([])
+  })
+
+  it('a redeploy suggests from the app’s own repo and branch', async () => {
+    const { ee, run } = await setup()
+    await run('website.app_deploy', {
+      repo: 'kindred/shop',
+      branch: 'main',
+      name: 'shop',
+      kind: 'web',
+      contract: form,
+    })
+    ee.calls = []
+    ee.tree = { 'package.json': '{}' }
+    await run('website.app_suggest_contract', { name: 'shop' })
+    expect(ee.calls[0]).toMatchObject({
+      verb: 'fetchSource',
+      input: { name: 'gh-shop', ref: 'main' },
+    })
   })
 })
 

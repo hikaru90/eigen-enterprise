@@ -30,6 +30,15 @@ export type RepoContract = {
   error: string | null
 }
 
+/** ee's bounded listing of a mirror at a rev (GET /v1/sources/tree). */
+export type SourceTree = {
+  entries: Array<{ path: string; type: 'blob' | 'tree'; size: number | null }>
+  truncated: boolean
+}
+
+/** One text file from a mirror at a rev (GET /v1/sources/file). */
+export type SourceFile = { path: string; size: number; content: string }
+
 /**
  * Client for ee's control API (ee/src/daemon.ts) over its unix socket. The
  * socket only exists on a box ee manages; anywhere else every call fails with
@@ -234,6 +243,16 @@ export class EeClient {
   sourceContract(i: { name: string; rev: string }): Promise<RepoContract> {
     const q = new URLSearchParams({ name: i.name, rev: i.rev })
     return this.call('GET', `/v1/sources/contract?${q}`)
+  }
+  /** A bounded file list of the mirror at a rev (depth 1..4). */
+  sourceTree(i: { name: string; rev: string; depth: number }): Promise<SourceTree> {
+    const q = new URLSearchParams({ name: i.name, rev: i.rev, depth: String(i.depth) })
+    return this.call('GET', `/v1/sources/tree?${q}`)
+  }
+  /** One text file (≤64KB) of the mirror at a rev; ee refuses paths outside the repo. */
+  sourceFile(i: { name: string; rev: string; path: string }): Promise<SourceFile> {
+    const q = new URLSearchParams({ name: i.name, rev: i.rev, path: i.path })
+    return this.call('GET', `/v1/sources/file?${q}`)
   }
   /** One workload's journal events (deploy history), oldest first. */
   events(workload: string): Promise<{ workload: string; events: EeEvent[] }> {

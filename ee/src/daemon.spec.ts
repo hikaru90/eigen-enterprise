@@ -16,6 +16,7 @@ class FakeSystem implements System {
   files = new Map<string, string>()
   /** Files at the rev a mirror is asked about (git ls-tree / git show). */
   gitTree: Record<string, string> = {}
+  symlinks = new Set<string>()
   async readFile(p: string) {
     return this.files.get(p) ?? null
   }
@@ -39,7 +40,31 @@ class FakeSystem implements System {
       this.files.set(`${f}.pub`, 'ssh-ed25519 AAAAPUB ee-deploy\n')
     }
     if (cmd === 'git' && args.includes('ls-tree') && args.includes('-r')) {
-      return { code: 0, stdout: Object.keys(this.gitTree).join('\n') + '\n', stderr: '' }
+      if (args.includes('--name-only')) {
+        return { code: 0, stdout: Object.keys(this.gitTree).join('\n') + '\n', stderr: '' }
+      }
+      // ls-tree -r -t --long <rev>: every blob and the trees above them.
+      const dirs = new Set<string>()
+      for (const p of Object.keys(this.gitTree)) {
+        const parts = p.split('/')
+        for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/'))
+      }
+      const lines = [
+        ...[...dirs].map((d) => `040000 tree ${'0'.repeat(40)}       -\t${d}`),
+        ...Object.entries(this.gitTree).map(([p, c]) => `100644 blob ${'1'.repeat(40)} ${Buffer.byteLength(c)}\t${p}`),
+      ]
+      return { code: 0, stdout: lines.join('\n') + '\n', stderr: '' }
+    }
+    if (cmd === 'git' && args.includes('ls-tree') && args.includes('--long')) {
+      const path = args.at(-1)!
+      const c = this.gitTree[path]
+      if (c === undefined) return { code: 0, stdout: '', stderr: '' }
+      const mode = this.symlinks.has(path) ? '120000' : '100644'
+      return { code: 0, stdout: `${mode} blob ${'1'.repeat(40)} ${Buffer.byteLength(c)}\t${path}\n`, stderr: '' }
+    }
+    if (cmd === 'git' && args.includes('cat-file')) {
+      const path = args.at(-1)!.split(':')[1]!
+      return { code: 0, stdout: this.gitTree[path] ?? '', stderr: '' }
     }
     if (cmd === 'git' && args.includes('ls-tree')) {
       const path = args.at(-1)!
@@ -181,6 +206,39 @@ describe('control API: apps from the dashboard', () => {
     const r = await call('GET', '/v1/events?workload=shop')
     expect(r.status).toBe(200)
     expect(r.data.events.map((e: { id: string }) => e.id)).toEqual(['1', '3'])
+  })
+
+  it('GET /v1/sources/tree lists the repo at a rev, bounded by depth', async () => {
+    const { sys, call } = await start()
+    const rev = 'c'.repeat(40)
+    sys.files.set(`${PATHS.company}/sources/gh-shop.git`, '')
+    sys.gitTree = { 'README.md': '# shop', 'package.json': '{}', 'server/main.js': 'x', 'server/lib/deep.js': 'y' }
+    const r = await call('GET', `/v1/sources/tree?name=gh-shop&rev=${rev}&depth=2`)
+    expect(r.status).toBe(200)
+    const paths = r.data.entries.map((e: { path: string }) => e.path)
+    expect(paths).toEqual(expect.arrayContaining(['README.md', 'package.json', 'server', 'server/main.js', 'server/lib']))
+    expect(paths).not.toContain('server/lib/deep.js')
+    expect(r.data.entries.find((e: { path: string }) => e.path === 'package.json')).toEqual({ path: 'package.json', type: 'blob', size: 2 })
+    expect(r.data.truncated).toBe(false)
+    expect((await call('GET', `/v1/sources/tree?name=gh-nope&rev=${rev}&depth=1`)).status).toBe(404)
+    expect((await call('GET', `/v1/sources/tree?name=gh-shop&rev=${rev}&depth=99`)).status).toBe(400)
+  })
+
+  it('GET /v1/sources/file returns one text file, refusing traversal, symlinks, binaries and big files', async () => {
+    const { sys, call } = await start()
+    const rev = 'c'.repeat(40)
+    sys.files.set(`${PATHS.company}/sources/gh-shop.git`, '')
+    sys.gitTree = { 'README.md': '# shop\nrun node server/main.js', 'big.txt': 'a'.repeat(64 * 1024 + 1), 'logo.png': 'PNG\u0000\u0001', link: 'x' }
+    sys.symlinks.add('link')
+    const ok = await call('GET', `/v1/sources/file?name=gh-shop&rev=${rev}&path=README.md`)
+    expect(ok).toEqual({ status: 200, data: { path: 'README.md', size: 30, content: '# shop\nrun node server/main.js' } })
+    for (const bad of ['../etc/passwd', '/etc/passwd', 'a/../../b', 'a//b', '.git/config', 'a\\b']) {
+      expect((await call('GET', `/v1/sources/file?name=gh-shop&rev=${rev}&path=${encodeURIComponent(bad)}`)).status).toBe(400)
+    }
+    expect((await call('GET', `/v1/sources/file?name=gh-shop&rev=${rev}&path=big.txt`)).status).toBe(413)
+    expect((await call('GET', `/v1/sources/file?name=gh-shop&rev=${rev}&path=logo.png`)).status).toBe(415)
+    expect((await call('GET', `/v1/sources/file?name=gh-shop&rev=${rev}&path=link`)).status).toBe(415)
+    expect((await call('GET', `/v1/sources/file?name=gh-shop&rev=${rev}&path=missing.md`)).status).toBe(404)
   })
 })
 

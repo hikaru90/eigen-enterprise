@@ -3,8 +3,14 @@ import type { DeployStatus, ServiceView } from '../../../../../../../modules/web
 import type { Actions, PageServerLoad } from './$types'
 import { error, fail, redirect } from '@sveltejs/kit'
 import { requireAdmin } from '$lib/server/auth/require-admin'
-import { lastAttempt } from '$lib/server/website/deploy-runner'
+import { lastAttempt, startOwnerDeploy } from '$lib/server/website/deploy-runner'
 import { logAppFailure, ownerRun, plainAppMessage } from '$lib/server/website/owner-run'
+import {
+  contractFormSchema,
+  type AppContract,
+  type Catalog,
+} from '../../../../../../../modules/website/apps/contract'
+import { contractFields, formContract } from '../form'
 
 /**
  * /m/website/apps/[name]: one service — Deploy now (in the background, followed
@@ -17,7 +23,8 @@ export type AppDetail = ServiceView & {
   env: string[]
   domains: string[]
   contractSource: 'repo' | 'form'
-  contract: unknown
+  contract: AppContract | null
+  catalog: Catalog
   history: Array<{ time: string; type: string; message: string }>
 }
 
@@ -48,12 +55,39 @@ export const load: PageServerLoad = async (event) => {
   } catch (err) {
     logAppFailure('website.app_deploy_status', err)
   }
-  return { app, logs, logsError, lastDeploy }
+  return {
+    app,
+    logs,
+    logsError,
+    lastDeploy,
+    nodeVersions: app.catalog.runtimes.node,
+    contractFields: contractFields(app.contract),
+  }
 }
 
 const field = (f: FormData, name: string) => String(f.get(name) ?? '').trim()
 
 export const actions: Actions = {
+  deploy: async (event) => {
+    const user = await requireAdmin(event.locals.user)
+    // The build form, when the owner opened it to edit the contract for this redeploy.
+    const contract = formContract(await event.request.formData())
+    if (contract) {
+      const checked = contractFormSchema.safeParse(contract)
+      if (!checked.success) {
+        return fail(400, {
+          action: 'deploy' as const,
+          error: checked.error.issues[0]?.message ?? 'Check the build form.',
+        })
+      }
+    }
+    // In the background: the page follows the job (stage + live log) from the submit handler.
+    const job = startOwnerDeploy(user, {
+      name: event.params.name,
+      ...(contract ? { contract } : {}),
+    })
+    return { action: 'deploy' as const, jobId: job.id, name: event.params.name }
+  },
   env: async (event) => {
     const user = await requireAdmin(event.locals.user)
     const f = await event.request.formData()
