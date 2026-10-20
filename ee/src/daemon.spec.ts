@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { controlHandler, Ee } from './daemon.ts'
+import { DeployRun, forgetDeploys } from './deploys.ts'
 import { emptyJournal } from './journal.ts'
 import { PATHS } from './paths.ts'
 import { SecretStore } from './secret-store.ts'
@@ -36,6 +37,9 @@ class FakeSystem implements System {
       const f = args[args.indexOf('-f') + 1]!
       this.files.set(f, 'PRIVATE-KEY-MATERIAL')
       this.files.set(`${f}.pub`, 'ssh-ed25519 AAAAPUB ee-deploy\n')
+    }
+    if (cmd === 'git' && args.includes('ls-tree') && args.includes('-r')) {
+      return { code: 0, stdout: Object.keys(this.gitTree).join('\n') + '\n', stderr: '' }
     }
     if (cmd === 'git' && args.includes('ls-tree')) {
       const path = args.at(-1)!
@@ -177,5 +181,70 @@ describe('control API: apps from the dashboard', () => {
     const r = await call('GET', '/v1/events?workload=shop')
     expect(r.status).toBe(200)
     expect(r.data.events.map((e: { id: string }) => e.id)).toEqual(['1', '3'])
+  })
+})
+
+describe('control API: deploys (progress + log per attempt)', () => {
+  it('GET /v1/deploys?workload= lists that workload’s attempts newest first, with status and stages', async () => {
+    const { sys, ee, call } = await start()
+    const one = new DeployRun(sys, ee.journal, 'shop', () => [])
+    one.stage('fetching')
+    await one.succeed('rel1')
+    const two = new DeployRun(sys, ee.journal, 'shop', () => [])
+    two.stage('building')
+    new DeployRun(sys, ee.journal, 'other', () => [])
+    const r = await call('GET', '/v1/deploys?workload=shop')
+    expect(r.status).toBe(200)
+    expect(r.data.deploys.map((d: { id: string }) => d.id)).toEqual([two.record.id, one.record.id])
+    expect(r.data.deploys[0]).toMatchObject({ status: 'running', stage: 'building' })
+    expect(r.data.deploys[1]).toMatchObject({ status: 'live', release: 'rel1' })
+    expect((await call('GET', '/v1/deploys?workload=../x')).status).toBe(400)
+  })
+
+  it('GET /v1/deploys/:id/log returns the bounded, redacted log, live while running and after it ends', async () => {
+    const { sys, ee, call } = await start()
+    const run = new DeployRun(sys, ee.journal, 'shop', () => ['hunter2-secret'])
+    run.stage('health')
+    run.log('start', "Error: Cannot find module 'index.js'\ncode: 'MODULE_NOT_FOUND'\npw=hunter2-secret")
+    const live = await call('GET', `/v1/deploys/${run.record.id}/log`)
+    expect(live.status).toBe(200)
+    expect(live.data.deploy).toMatchObject({ id: run.record.id, status: 'running', stage: 'health' })
+    expect(live.data.lines.join('\n')).toContain('MODULE_NOT_FOUND')
+    await run.fail('the app crashed on start (exit status 1)')
+    const ended = await call('GET', `/v1/deploys/${run.record.id}/log`)
+    expect(ended.data.deploy).toMatchObject({ status: 'failed', error: 'the app crashed on start (exit status 1)' })
+    expect(ended.data.lines.join('\n')).toContain('MODULE_NOT_FOUND')
+    expect(JSON.stringify(ended.data)).not.toContain('hunter2-secret')
+    const many = new DeployRun(sys, ee.journal, 'shop', () => [])
+    many.log('build', Array.from({ length: 1000 }, (_, i) => `line ${i}`).join('\n'))
+    const bounded = await call('GET', `/v1/deploys/${many.record.id}/log`)
+    expect(bounded.data.lines).toHaveLength(400)
+    expect(bounded.data.lines.at(-1)).toBe('line 999')
+    expect((await call('GET', '/v1/deploys/00000000-0000-0000-0000-000000000000/log')).status).toBe(404)
+    expect((await call('GET', '/v1/deploys/..%2Fetc/log')).status).toBe(404)
+  })
+
+  it('removing an app forgets its deploys and their logs', async () => {
+    // (DELETE /v1/apps commits to the company repo, which this fake box has no git for; the
+    // verb calls forgetDeploys right before forgetWorkload.)
+    const { sys, ee, call } = await start()
+    const run = new DeployRun(sys, ee.journal, 'shop', () => [])
+    await run.fail('x')
+    const other = new DeployRun(sys, ee.journal, 'other', () => [])
+    await other.fail('y')
+    expect(sys.files.has(`${PATHS.root}/deploys/${run.record.id}.log`)).toBe(true)
+    await forgetDeploys(sys, ee.journal, 'shop')
+    expect(ee.journal.deploys.map((d) => d.workload)).toEqual(['other'])
+    expect(sys.files.has(`${PATHS.root}/deploys/${run.record.id}.log`)).toBe(false)
+    expect((await call('GET', `/v1/deploys/${run.record.id}/log`)).status).toBe(404)
+  })
+
+  it('GET /v1/sources/files lists the repo’s files at a rev, for the agent harness to diagnose', async () => {
+    const { sys, call } = await start()
+    sys.files.set(`${PATHS.company}/sources/gh-shop.git`, '')
+    sys.gitTree = { 'package.json': '{}', 'server.js': '' }
+    const r = await call('GET', `/v1/sources/files?name=gh-shop&rev=${'c'.repeat(40)}`)
+    expect(r.status).toBe(200)
+    expect(r.data).toEqual({ files: ['package.json', 'server.js'], truncated: false })
   })
 })

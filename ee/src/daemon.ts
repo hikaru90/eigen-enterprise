@@ -1,4 +1,5 @@
 import { forgetWorkload } from './forget.ts'
+import { forgetDeploys, readDeployLog } from './deploys.ts'
 import { chmod, chown, rm } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { z } from 'zod'
@@ -161,7 +162,9 @@ const fetchInput = z
 const deployKeyCreate = z.object({ repo: z.string().regex(REPO), author }).strict()
 const deployKeyCheck = z.object({ repo: z.string().regex(REPO) }).strict()
 const deployKeyDelete = z.object({ author }).strict()
-const DEPLOY_KEY_PATH = /^\/v1\/deploy-keys\/(dk_[a-f0-9]{24})(\/check)?$/
+const DEPLOY_LOG_PATH = /^\/v1\/deploys\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/log$/
+const MAX_FILES = 500
+const DEPLOY_KEY_PATH =/^\/v1\/deploy-keys\/(dk_[a-f0-9]{24})(\/check)?$/
 
 /** The control API's request handler (exported so the verbs are testable over a real socket). */
 export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
@@ -289,6 +292,27 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
         const name = z.string().regex(NAME).parse(url.searchParams.get('workload'))
         return send(res, 200, { workload: name, events: ee.journal.events.filter((e) => e.workload === name).slice(-100) })
       }
+      if (route === 'GET /v1/deploys') {
+        const name = z.string().regex(NAME).parse(url.searchParams.get('workload'))
+        const deploys = ee.journal.deploys.filter((d) => d.workload === name).reverse()
+        return send(res, 200, { workload: name, deploys })
+      }
+      const dl = DEPLOY_LOG_PATH.exec(url.pathname)
+      if (dl && req.method === 'GET') {
+        const deploy = ee.journal.deploys.find((d) => d.id === dl[1])
+        if (!deploy) throw new HttpError(404, `no deploy ${dl[1]}`)
+        return send(res, 200, { deploy, lines: await readDeployLog(ee.sys, deploy.id) })
+      }
+      if (route === 'GET /v1/sources/files') {
+        // The tree at a pinned rev (names only), so the agent can tell a wrong start path from a crash.
+        const name = z.string().regex(/^[a-z0-9][a-z0-9._-]*$/).parse(url.searchParams.get('name'))
+        const rev = z.string().regex(/^[0-9a-f]{40}$/).parse(url.searchParams.get('rev'))
+        const mirror = `${PATHS.company}/sources/${name}.git`
+        if (!(await ee.sys.exists(mirror))) throw new HttpError(404, `no mirror ${name}`)
+        const out = await mustRun(ee.sys, 'git', ['-C', mirror, 'ls-tree', '-r', '--name-only', rev])
+        const all = out.split('\n').filter(Boolean)
+        return send(res, 200, { files: all.slice(0, MAX_FILES), truncated: all.length > MAX_FILES })
+      }
       if (route === 'POST /v1/apps') {
         const i = appInput.parse(await body(req))
         if (i.contract) {
@@ -338,6 +362,7 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
             return { ...s, workloads: s.workloads.filter((x) => x.name !== i.name), routes: s.routes.filter((r: Route) => r.workload !== i.name) }
           })
         // Gone from the desired state: forget its secrets and history too.
+        await forgetDeploys(ee.sys, ee.journal, i.name)
         await forgetWorkload({ journal: ee.journal, secrets: ee.secrets, name: i.name, author: i.author })
         await saveJournal(ee.sys, ee.journal)
         return send(res, 200, result)

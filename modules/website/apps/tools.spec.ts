@@ -1,3 +1,4 @@
+import type { DiagnoseLlm } from './diagnose'
 import { describe, expect, it } from 'vitest'
 import {
   InMemoryApprovalModeStore,
@@ -10,7 +11,7 @@ import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { SubstrateError } from '$lib/server/ee/client'
 import { InMemoryConnectedRepoStore, type NewConnectedRepo } from '../github/repos-store'
 import { InMemoryServiceStore } from './store'
-import { FakeEe } from './testing'
+import { FAKE_CRASH, FakeEe } from './testing'
 import { APP_AGENT_GATED_TOOLS, createAppTools } from './tools'
 
 const REV = 'c'.repeat(40)
@@ -44,7 +45,7 @@ const publicRepo: NewConnectedRepo = {
   connectedBy: 'human:u1',
 }
 
-async function setup(repo: NewConnectedRepo = publicRepo) {
+async function setup(repo: NewConnectedRepo = publicRepo, diagnoseLlm?: DiagnoseLlm) {
   const ee = new FakeEe()
   const repos = new InMemoryConnectedRepoStore()
   await repos.add(repo)
@@ -59,6 +60,7 @@ async function setup(repo: NewConnectedRepo = publicRepo) {
       return 'ghs_SECRET_TOKEN'
     },
     now: () => new Date('2026-10-20T10:00:00Z'),
+    ...(diagnoseLlm ? { diagnoseLlm } : {}),
   })
   const tool = (name: string) => tools.find((t) => t.name === name) as ToolDescriptor
   const run = (name: string, input: unknown, ctx = human) =>
@@ -263,7 +265,9 @@ describe('website.app_deploy builds the right ee calls', () => {
       contract: form,
     }).catch((e) => e)
     expect(err).toBeInstanceOf(Error)
-    expect(err.message).toMatch(/didn't answer GET \/ in time/)
+    // ee's own recorded cause and the failing stage, never a pointer to "the deploy history".
+    expect(err.message).toBe(`shop failed while waiting for its health check: ${FAKE_CRASH}.`)
+    expect(err.message).not.toMatch(/deploy history/)
     expect(err.message).not.toContain('<raw')
     const s = await services.get('shop')
     expect(s).toMatchObject({ state: 'failed', lastRev: REV })
@@ -517,5 +521,132 @@ describe('push-to-deploy (website.app_auto_deploy)', () => {
         autoDeploy: true,
       }),
     ).rejects.toThrow(/GitHub App/)
+  })
+})
+
+describe('deploy progress and "Ask AI what went wrong"', () => {
+  const failedDeploy = async (llm?: DiagnoseLlm) => {
+    const ctx = await setup(publicRepo, llm)
+    ctx.ee.failHealth = true
+    await ctx
+      .run('website.app_deploy', {
+        repo: 'kindred/shop',
+        branch: 'main',
+        name: 'shop',
+        kind: 'web',
+        contract: form,
+      })
+      .catch(() => undefined)
+    return ctx
+  }
+  const answer = (content: unknown) => ({
+    choices: [
+      { message: { content: typeof content === 'string' ? content : JSON.stringify(content) } },
+    ],
+  })
+
+  it('website.app_deploy_status returns the latest attempt with its stages and log', async () => {
+    const { run } = await failedDeploy()
+    const out = (await run('website.app_deploy_status', { name: 'shop' })) as {
+      deploy: { status: string; error: string; stages: Array<{ stage: string }> }
+      lines: string[]
+    }
+    expect(out.deploy).toMatchObject({ status: 'failed', error: FAKE_CRASH })
+    expect(out.deploy.stages.map((s) => s.stage)).toEqual([
+      'fetching',
+      'building',
+      'starting',
+      'health',
+      'failed',
+    ])
+    expect(out.lines.join('\n')).toContain('MODULE_NOT_FOUND')
+    const later = await run('website.app_deploy_status', {
+      name: 'shop',
+      after: '2099-01-01T00:00:00.000Z',
+    })
+    expect(later).toEqual({ deploy: null, lines: [] })
+  })
+
+  it('website.app_diagnose sends stage, cause, log tail, contract and file list through the gateway and validates the JSON', async () => {
+    const seen: Array<Parameters<DiagnoseLlm>[0]> = []
+    const llm: DiagnoseLlm = async (input) => {
+      seen.push(input)
+      return answer({
+        cause:
+          'The start command runs index.js, but the repo has no index.js; its entry file is server.js.',
+        fix: 'Start it with node server.js.',
+        suggestedContractChanges: { start: 'node server.js' },
+      })
+    }
+    const { ee, run } = await failedDeploy(llm)
+    const id = ee.deployRecords[0]!.id
+    const out = await run('website.app_diagnose', { name: 'shop', deployId: id })
+    expect(out).toEqual({
+      cause: expect.stringContaining('no index.js'),
+      fix: 'Start it with node server.js.',
+      suggestedContractChanges: { start: 'node server.js' },
+      contractSource: 'form',
+    })
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({
+      userId: 'u1',
+      responseFormat: 'json_object',
+      logContext: 'app_deploy_diagnose',
+    })
+    const prompt = seen[0]!.messages.map((m) => m.content).join('\n')
+    expect(prompt).toContain('Failed at stage: health')
+    expect(prompt).toContain(FAKE_CRASH)
+    expect(prompt).toContain('MODULE_NOT_FOUND')
+    expect(prompt).toContain('"start": "node index.js"')
+    expect(prompt).toContain('server.js')
+  })
+
+  it('an answer that is not the schema is refused in plain words (never shown raw)', async () => {
+    const { ee, run } = await failedDeploy(async () => answer({ verdict: 'idk' }))
+    const err = await run('website.app_diagnose', {
+      name: 'shop',
+      deployId: ee.deployRecords[0]!.id,
+    }).catch((e) => e)
+    expect(err.name).toBe('AppUserError')
+    expect(err.message).toMatch(/expected shape/)
+    const { ee: ee2, run: run2 } = await failedDeploy(async () => answer('not json'))
+    const err2 = await run2('website.app_diagnose', {
+      name: 'shop',
+      deployId: ee2.deployRecords[0]!.id,
+    }).catch((e) => e)
+    expect(err2.message).toMatch(/couldn't be read/)
+  })
+
+  it("a repo with its own ee.json gets no contract changes to apply (they'd be ignored)", async () => {
+    const { ee, run } = await setup(publicRepo, async () =>
+      answer({ cause: 'c', fix: 'f', suggestedContractChanges: { start: 'node server.js' } }),
+    )
+    ee.repoContract = {
+      present: true,
+      contract: {
+        runtime: 'node',
+        node: '22',
+        build: [],
+        start: ['node', 'index.js'],
+        preStart: [],
+        health: '/',
+        services: [],
+        capabilities: [],
+      },
+      gap: null,
+      error: null,
+    }
+    ee.failHealth = true
+    await run('website.app_deploy', {
+      repo: 'kindred/shop',
+      branch: 'main',
+      name: 'shop',
+      kind: 'web',
+    }).catch(() => undefined)
+    const out = await run('website.app_diagnose', {
+      name: 'shop',
+      deployId: ee.deployRecords[0]!.id,
+    })
+    expect(out).toEqual({ cause: 'c', fix: 'f', contractSource: 'repo' })
   })
 })

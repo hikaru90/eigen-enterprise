@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { PATHS } from './paths.ts'
 import type { System } from './system.ts'
+import { deployRecordSchema } from './deploys.ts'
 
 /**
  * ee's runtime state: what is ACTUALLY live, observed and recorded. Never
@@ -40,6 +41,8 @@ const journalSchema = z.object({
   caddyFingerprint: z.string().nullable(),
   appliedRev: z.string().nullable(),
   events: z.array(eventSchema),
+  /** Deploy attempts (bounded per workload); their logs live in PATHS.root/deploys. */
+  deploys: z.array(deployRecordSchema).default([]),
 })
 
 export type Journal = z.infer<typeof journalSchema>
@@ -50,7 +53,7 @@ export const FIRST_PORT = 4100
 const MAX_EVENTS = 500
 
 export function emptyJournal(): Journal {
-  return { version: 1, workloads: {}, caddyFingerprint: null, appliedRev: null, events: [] }
+  return { version: 1, workloads: {}, caddyFingerprint: null, appliedRev: null, events: [], deploys: [] }
 }
 
 export async function loadJournal(sys: System): Promise<Journal> {

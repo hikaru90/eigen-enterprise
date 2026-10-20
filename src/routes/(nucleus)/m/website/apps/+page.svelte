@@ -1,12 +1,15 @@
 <script lang="ts">
   import type { ActionData, PageData } from './$types'
   import { enhance } from '$app/forms'
+  import { invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
   import AppBuildForm from '$lib/components/app-build-form.svelte'
+  import AppDeployProgress from '$lib/components/app-deploy-progress.svelte'
   import AppStatusDot from '$lib/components/app-status-dot.svelte'
 
   let { data, form }: { data: PageData; form: ActionData } = $props()
   let deploying = $state(false)
+  let panel = $state<ReturnType<typeof AppDeployProgress> | null>(null)
   let source = $state('')
   let name = $state('')
 
@@ -81,9 +84,15 @@
         class="flex flex-col gap-4"
         use:enhance={() => {
           deploying = true
-          return async ({ update }) => {
-            await update()
+          return async ({ result, update }) => {
+            await update({ reset: false })
             deploying = false
+            // The deploy runs in the background: follow it from here (no $effect).
+            const started =
+              result.type === 'success' || result.type === 'failure' ? result.data : null
+            if (started && typeof started.jobId === 'string' && typeof started.name === 'string') {
+              void panel?.follow(started.jobId, started.name)
+            }
           }
         }}
       >
@@ -139,7 +148,7 @@
           </p>
         {/if}
         <AppBuildForm nodeVersions={data.catalog?.runtimes.node ?? []} />
-        {#if form?.action === 'deploy' && form.error}
+        {#if form?.action === 'deploy' && 'error' in form && form.error && !('jobId' in form)}
           <p class="text-sm text-red-600" role="alert">{form.error}</p>
         {/if}
         <div>
@@ -148,10 +157,11 @@
             disabled={deploying}
             class="rounded-md bg-foreground px-3 py-1.5 text-sm text-background disabled:opacity-60"
           >
-            {deploying ? 'Deploying… this can take a few minutes' : 'Deploy'}
+            {deploying ? 'Starting…' : 'Deploy'}
           </button>
         </div>
       </form>
+      <AppDeployProgress bind:this={panel} name="" onlive={() => invalidateAll()} />
     {/if}
   </section>
 </div>

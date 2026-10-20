@@ -1,11 +1,14 @@
-import type { ServiceView } from '../../../../../../../modules/website/apps/tools'
+import type { DeployProgress } from '../../../../../../../modules/website/apps/deploy-jobs'
+import type { DeployStatus, ServiceView } from '../../../../../../../modules/website/apps/tools'
 import type { Actions, PageServerLoad } from './$types'
 import { error, fail, redirect } from '@sveltejs/kit'
 import { requireAdmin } from '$lib/server/auth/require-admin'
+import { lastAttempt } from '$lib/server/website/deploy-runner'
 import { logAppFailure, ownerRun, plainAppMessage } from '$lib/server/website/owner-run'
 
 /**
- * /m/website/apps/[name]: one service — Deploy now, deploy history (ee's
+ * /m/website/apps/[name]: one service — Deploy now (in the background, followed
+ * through deploy-progress), the last attempt's log and "Ask AI", deploy history (ee's
  * journal), recent logs, domains, env variables (names only; values are
  * stored sealed by ee and never shown again).
  */
@@ -14,6 +17,7 @@ export type AppDetail = ServiceView & {
   env: string[]
   domains: string[]
   contractSource: 'repo' | 'form'
+  contract: unknown
   history: Array<{ time: string; type: string; message: string }>
 }
 
@@ -34,22 +38,22 @@ export const load: PageServerLoad = async (event) => {
   } catch (err) {
     logsError = plainAppMessage(err)
   }
-  return { app, logs, logsError }
+  // The last attempt (stage, plain cause, log): a failure stays visible with "Ask AI" after a reload.
+  let lastDeploy: DeployProgress | null = null
+  try {
+    lastDeploy = lastAttempt(
+      name,
+      await ownerRun<DeployStatus>(user, 'website.app_deploy_status', { name }),
+    )
+  } catch (err) {
+    logAppFailure('website.app_deploy_status', err)
+  }
+  return { app, logs, logsError, lastDeploy }
 }
 
 const field = (f: FormData, name: string) => String(f.get(name) ?? '').trim()
 
 export const actions: Actions = {
-  deploy: async (event) => {
-    const user = await requireAdmin(event.locals.user)
-    try {
-      await ownerRun(user, 'website.app_deploy', { name: event.params.name })
-      return { action: 'deploy' as const, ok: true, message: 'Deployed. The new version is live.' }
-    } catch (err) {
-      logAppFailure('website.app_deploy', err)
-      return fail(400, { action: 'deploy' as const, error: plainAppMessage(err) })
-    }
-  },
   env: async (event) => {
     const user = await requireAdmin(event.locals.user)
     const f = await event.request.formData()

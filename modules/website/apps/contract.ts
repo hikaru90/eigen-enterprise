@@ -169,3 +169,22 @@ export function resolveContract(i: {
   if (missing.length > 0) throw gapError(missing, i.catalog)
   return { source: 'form', contract }
 }
+
+/** The build form's terms for a stored contract (to apply a suggested change and redeploy). */
+export function formFromContract(c: AppContract): ContractForm {
+  if (c.build.length > 2) {
+    throw new AppUserError(
+      'This app has more than an install and a build step, so a change has to be made in the build form itself.',
+    )
+  }
+  return {
+    runtime: c.runtime,
+    ...(c.node ? { nodeVersion: c.node } : {}),
+    install: c.build[0]?.join(' ') ?? '',
+    build: c.build[1]?.join(' ') ?? '',
+    start: c.start?.join(' ') ?? '',
+    health: c.health,
+    ...(c.portEnv ? { portEnv: c.portEnv } : {}),
+    ...(c.staticDir ? { staticDir: c.staticDir } : {}),
+  }
+}

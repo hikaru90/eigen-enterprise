@@ -4,10 +4,13 @@ import type { Actions, PageServerLoad } from './$types'
 import { fail, redirect } from '@sveltejs/kit'
 import { requireAdmin } from '$lib/server/auth/require-admin'
 import type { Catalog } from '$lib/server/ee/client'
+import { settleBriefly, startOwnerDeploy } from '$lib/server/website/deploy-runner'
 import { logAppFailure, ownerRun, plainAppMessage } from '$lib/server/website/owner-run'
 import { contractFormSchema } from '../../../../../../modules/website/apps/contract'
 import { appSlug } from '../../../../../../modules/website/apps/host'
 import { formContract } from './form'
+
+const SETTLE_MS = 1500
 
 /**
  * /m/website/apps: services deployed from connected GitHub repos, and the
@@ -78,12 +81,15 @@ export const actions: Actions = {
       ...(optional(field(f, 'host')) ? { host: field(f, 'host') } : {}),
       ...(field(f, 'autoDeploy') === 'on' ? { autoDeploy: true } : {}),
     }
-    try {
-      await ownerRun(user, 'website.app_deploy', input)
-    } catch (err) {
-      logAppFailure('website.app_deploy', err)
-      return fail(400, { action: 'deploy' as const, name, error: plainAppMessage(err) })
+    // In the background: the page follows the job (stage + log) instead of one long request.
+    const job = startOwnerDeploy(user, input)
+    await settleBriefly(job, SETTLE_MS)
+    if (job.state === 'failed') {
+      // An instant refusal (form, repo, name) goes straight back to the form; the page
+      // still follows the job, so a recorded attempt shows its log and "Ask AI".
+      return fail(400, { action: 'deploy' as const, name, error: job.error ?? '', jobId: job.id })
     }
-    redirect(303, `/m/website/apps/${name}`)
+    if (job.state === 'done') redirect(303, `/m/website/apps/${name}`)
+    return { action: 'deploy' as const, name, jobId: job.id }
   },
 }

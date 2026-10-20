@@ -136,6 +136,22 @@ export type EeEvent = {
   data: Record<string, unknown>
 }
 
+export type EeDeployStage = 'fetching' | 'building' | 'starting' | 'health' | 'live' | 'failed'
+
+/** ee's record of one deploy attempt (ee/src/deploys.ts). */
+export type EeDeploy = {
+  id: string
+  workload: string
+  release: string | null
+  status: 'running' | 'live' | 'failed'
+  stage: EeDeployStage
+  stages: Array<{ stage: EeDeployStage; at: string }>
+  startedAt: string
+  endedAt: string | null
+  /** The plain one-line cause ee recorded. */
+  error: string | null
+}
+
 export type ChangeResult = { rev: string; reconcileError: string | null }
 
 export class EeClient {
@@ -226,6 +242,21 @@ export class EeClient {
   /** The live slot's recent journal lines. 404 when nothing is live. */
   logs(workload: string): Promise<{ workload: string; lines: string[] }> {
     return this.call('GET', `/v1/logs?${new URLSearchParams({ workload })}`)
+  }
+  /** One workload's deploy attempts (stages, status, the plain cause), newest first. */
+  deploys(workload: string): Promise<{ workload: string; deploys: EeDeploy[] }> {
+    return this.call('GET', `/v1/deploys?${new URLSearchParams({ workload })}`)
+  }
+  /** One attempt's bounded, secret-redacted build + start log. */
+  deployLog(id: string): Promise<{ deploy: EeDeploy; lines: string[] }> {
+    return this.call('GET', `/v1/deploys/${encodeURIComponent(id)}/log`)
+  }
+  /** The repo's file names at a rev, from ee's local mirror. */
+  sourceFiles(i: { name: string; rev: string }): Promise<{ files: string[]; truncated: boolean }> {
+    return this.call(
+      'GET',
+      `/v1/sources/files?${new URLSearchParams({ name: i.name, rev: i.rev })}`,
+    )
   }
   deploy(i: { workload: string; rev: string; author: string }): Promise<ChangeResult> {
     return this.call('POST', '/v1/deploy', i)

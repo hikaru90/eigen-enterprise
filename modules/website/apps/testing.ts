@@ -1,9 +1,17 @@
 import type { AppsEe } from './tools'
-import type { EeEvent, EeStatus, RepoContract } from '$lib/server/ee/client'
+import {
+  SubstrateError,
+  type EeDeploy,
+  type EeEvent,
+  type EeStatus,
+  type RepoContract,
+} from '$lib/server/ee/client'
 
 /** Test double for ee's control API (used by the tool and page specs). */
 
 export const FAKE_REV = 'c'.repeat(40)
+export const FAKE_CRASH =
+  'the app crashed on start (exit status 1, 3 restarts); its start output is in the deploy log'
 
 type Call = { verb: string; input: unknown }
 
@@ -17,6 +25,9 @@ export class FakeEe implements AppsEe {
   journal: EeEvent[] = []
   secretNames: Record<string, string[]> = {}
   consoleHost = 'os.ee.localhost'
+  deployRecords: EeDeploy[] = []
+  deployLines: Record<string, string[]> = {}
+  repoFiles = ['package.json', 'server.js', 'README.md']
 
   async status(): Promise<EeStatus> {
     return {
@@ -67,14 +78,36 @@ export class FakeEe implements AppsEe {
         secrets: [],
         declaredSecrets: i.secrets,
         live: this.failHealth ? null : { release, slot: 'a' },
-        lastError: this.failHealth
-          ? 'ee-shop-a.service did not pass its health check (GET /) in time\n<raw logs>'
-          : null,
+        lastError: this.failHealth ? FAKE_CRASH : null,
       },
     ]
     this.journal.push(
       this.failHealth ? ev('deploy.failed', 'health') : ev('deploy.succeeded', 'live'),
     )
+    const id = `0000000${this.deployRecords.length}-0000-4000-8000-000000000000`
+    const at = new Date().toISOString()
+    this.deployRecords.push({
+      id,
+      workload: i.name,
+      release,
+      status: this.failHealth ? 'failed' : 'live',
+      stage: this.failHealth ? 'failed' : 'live',
+      stages: (this.failHealth
+        ? (['fetching', 'building', 'starting', 'health', 'failed'] as const)
+        : (['fetching', 'building', 'starting', 'health', 'live'] as const)
+      ).map((stage) => ({ stage, at })),
+      startedAt: at,
+      endedAt: at,
+      error: this.failHealth ? FAKE_CRASH : null,
+    })
+    this.deployLines[id] = this.failHealth
+      ? [
+          '$ npm install --omit=dev',
+          'added 57 packages in 3s',
+          "Error: Cannot find module '/var/lib/ee/workloads/shop/releases/x/index.js'",
+          "  code: 'MODULE_NOT_FOUND'",
+        ]
+      : ['$ npm install --omit=dev', 'added 57 packages in 3s', 'listening on 4100']
     return {
       rev: 's1',
       reconcileError: this.failHealth ? 'reconcile finished with errors: <raw>' : null,
@@ -92,6 +125,21 @@ export class FakeEe implements AppsEe {
   }
   async events(workload: string) {
     return { workload, events: this.journal.filter((e) => e.workload === workload) }
+  }
+  async deploys(workload: string) {
+    return {
+      workload,
+      deploys: this.deployRecords.filter((d) => d.workload === workload).reverse(),
+    }
+  }
+  async deployLog(id: string) {
+    const deploy = this.deployRecords.find((d) => d.id === id)
+    if (!deploy) throw new SubstrateError(404, `no deploy ${id}`, 'urn:ee:error', null)
+    return { deploy, lines: this.deployLines[id] ?? [] }
+  }
+  async sourceFiles(i: { name: string; rev: string }) {
+    this.calls.push({ verb: 'sourceFiles', input: i })
+    return { files: this.repoFiles, truncated: false }
   }
   async logs(workload: string) {
     return { workload, lines: ['listening on 4100'] }

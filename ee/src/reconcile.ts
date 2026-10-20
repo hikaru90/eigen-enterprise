@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { renderCaddyConfig, type Upstream } from './caddy.ts'
 import type { CompanyRepo, DesiredState } from './company-repo.ts'
 import { saveJournal, workloadEntry, type EeEvent, type Journal } from './journal.ts'
+import { DeployRun, secretValues } from './deploys.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
 import { generateSecret, renderEnvFile, type SecretMap } from './secrets.ts'
 import { appContractSchema, assertInCatalog, type AppContract, type Workload } from './spec.ts'
@@ -28,6 +29,12 @@ export type ReconcileContext = {
   /** Collects deploys that failed while an older release kept serving (reported, not fatal to the edge). */
   deployFailures?: string[]
 }
+
+/** Lazily started deploy record for one workload in one pass (a no-op pass records nothing). */
+export type DeployHandle = () => DeployRun
+
+/** A failure already recorded (event + deploy record): the pass reports it, never records it again. */
+class ReportedError extends Error {}
 
 export type PreparedRelease = { id: string; dir: string; contract: AppContract }
 
@@ -58,8 +65,9 @@ async function readContract(sys: System, dir: string, name: string): Promise<App
 }
 
 /** Run build steps in a transient, sandboxed systemd unit as the unprivileged ee-build user. */
-async function sandboxedBuild(sys: System, w: Workload, dir: string, contract: AppContract): Promise<void> {
+async function sandboxedBuild(sys: System, w: Workload, dir: string, contract: AppContract, deploy?: DeployHandle): Promise<void> {
   if (contract.build.length === 0) return
+  deploy?.().stage('building')
   await mustRun(sys, 'chown', ['-R', 'ee-build:ee-build', dir])
   for (const step of contract.build) {
     const [program, ...args] = step
@@ -93,6 +101,7 @@ async function sandboxedBuild(sys: System, w: Workload, dir: string, contract: A
       ],
       { timeoutMs: 1_260_000 },
     )
+    deploy?.().log('build', `$ ${step.join(' ')}\n${[r.stdout, r.stderr].filter((t) => t.trim()).join('\n').trimEnd()}`)
     if (r.code !== 0) {
       throw new Error(`${w.name}: build step \`${step.join(' ')}\` failed (exit ${r.code}): ${(r.stderr || r.stdout).trim().slice(-3000)}`)
     }
@@ -100,7 +109,7 @@ async function sandboxedBuild(sys: System, w: Workload, dir: string, contract: A
   await mustRun(sys, 'chown', ['-R', 'root:root', dir])
 }
 
-export async function prepareRelease(sys: System, w: Workload): Promise<PreparedRelease> {
+export async function prepareRelease(sys: System, w: Workload, deploy?: DeployHandle): Promise<PreparedRelease> {
   const base = w.source.kind === 'release' ? w.source.sha256.slice(0, 16) : w.source.rev.slice(0, 16)
   // An owner contract is part of the release: a changed contract is a new release.
   const id = w.contract ? `${base}-${sha(JSON.stringify(w.contract)).slice(0, 8)}` : base
@@ -111,6 +120,7 @@ export async function prepareRelease(sys: System, w: Workload): Promise<Prepared
   // Own temp dir per unpack: the CLI's first deploy and the daemon's tick can
   // prepare the same release at once; a shared .partial dir corrupts both.
   const tmp = `${dir}.partial-${process.pid}-${randomUUID().slice(0, 8)}`
+  deploy?.().stage('fetching')
   await sys.mkdirp(tmp)
   if (w.source.kind === 'release') {
     const actual = await sys.sha256File(w.source.tarball)
@@ -128,7 +138,7 @@ export async function prepareRelease(sys: System, w: Workload): Promise<Prepared
     await sys.writeFile(`${tmp}/ee.json`, JSON.stringify(w.contract, null, 2) + '\n', 0o644)
   }
   const contract = await readContract(sys, tmp, w.name)
-  await sandboxedBuild(sys, w, tmp, contract)
+  await sandboxedBuild(sys, w, tmp, contract, deploy)
   await mustRun(sys, 'chmod', ['-R', 'a+rX,go-w', tmp])
   await sys.writeFile(`${tmp}/.ee-ready`, `${id}\n`)
   // Another unpack of the same release finished first: keep its copy.
@@ -230,23 +240,38 @@ export async function renderLiveEnvFiles(sys: System, desired: DesiredState, jou
   return n
 }
 
-async function waitHealthy(ctx: ReconcileContext, unit: string, port: number, path: string): Promise<string | null> {
-  const deadline = ctx.sys.now().getTime() + (ctx.healthTimeoutMs ?? 240_000)
-  while (ctx.sys.now().getTime() < deadline) {
-    const state = (await ctx.sys.run('systemctl', ['is-active', unit])).stdout.trim()
-    if (state === 'failed') return `${unit} failed to start`
-    if (state === 'active' && (await ctx.sys.httpOk(port, path, 3000))) return null
-    await ctx.sys.sleep(1000)
-  }
-  return `${unit} did not pass its health check (GET ${path}) in time`
+/** A candidate that systemd restarted this often is crash-looping: fail now, not at the deadline. */
+const CRASH_RESTARTS = 3
+
+async function unitShow(sys: System, unit: string, prop: string): Promise<string> {
+  return (await sys.run('systemctl', ['show', '-p', prop, '--value', unit])).stdout.trim()
 }
 
-async function unitLogs(sys: System, unit: string): Promise<string> {
-  return (await sys.run('journalctl', ['-u', unit, '-n', '40', '--no-pager', '-o', 'cat'])).stdout.trim()
+async function waitHealthy(ctx: ReconcileContext, unit: string, port: number, path: string, onTick: () => Promise<void>): Promise<string | null> {
+  const timeoutMs = ctx.healthTimeoutMs ?? 240_000
+  const deadline = ctx.sys.now().getTime() + timeoutMs
+  for (let i = 0; ctx.sys.now().getTime() < deadline; i++) {
+    const state = (await ctx.sys.run('systemctl', ['is-active', unit])).stdout.trim()
+    const restarts = Number(await unitShow(ctx.sys, unit, 'NRestarts')) || 0
+    if (state === 'failed' || restarts >= CRASH_RESTARTS) {
+      const status = await unitShow(ctx.sys, unit, 'ExecMainStatus')
+      return `the app crashed on start (exit status ${status || 'unknown'}${restarts > 0 ? `, ${restarts} restarts` : ''}); its start output is in the deploy log`
+    }
+    if (state === 'active' && (await ctx.sys.httpOk(port, path, 3000))) return null
+    if (i % 5 === 4) await onTick()
+    await ctx.sys.sleep(1000)
+  }
+  return `the app started but did not answer GET ${path} within ${Math.round(timeoutMs / 1000)}s`
+}
+
+/** The candidate's own output since this attempt started (bounded; redacted by the deploy log). */
+async function unitLogs(sys: System, unit: string, sinceMs: number): Promise<string> {
+  const since = `@${Math.floor(sinceMs / 1000)}`
+  return (await sys.run('journalctl', ['-u', unit, '--since', since, '-n', '400', '--no-pager', '-o', 'cat'])).stdout.trimEnd()
 }
 
 /** Deploy a node workload: no-op when live, else blue-green to the other slot behind the health gate. */
-async function reconcileNode(ctx: ReconcileContext, w: Workload, rel: PreparedRelease): Promise<Upstream | null> {
+async function reconcileNode(ctx: ReconcileContext, w: Workload, rel: PreparedRelease, deploy: DeployHandle): Promise<Upstream | null> {
   const { sys, journal } = ctx
   const entry = workloadEntry(journal, w.name)
   const env = await envFor(ctx, w, rel.contract)
@@ -271,12 +296,15 @@ async function reconcileNode(ctx: ReconcileContext, w: Workload, rel: PreparedRe
       ctx.deployFailures?.push(`${w.name}: ${entry.lastError ?? 'the last deploy failed'} (unchanged since; the previous release keeps serving)`)
       return { kind: 'proxy', port: live.port }
     }
-    throw new Error(`${w.name}: ${entry.lastError ?? 'the last deploy failed'} (unchanged since; fix it and redeploy)`)
+    throw new ReportedError(`${w.name}: ${entry.lastError ?? 'the last deploy failed'} (unchanged since; fix it and redeploy)`)
   }
 
   const cand: Slot = active === 'a' ? 'b' : 'a'
   const port = entry.basePort + (cand === 'a' ? 0 : 1)
   const unit = unitName(w.name, cand)
+  const run = deploy()
+  run.record.release = rel.id
+  run.stage('starting')
   await sys.writeFile(`${PATHS.envDir}/${w.name}-${cand}.env`, renderEnvFile(env), 0o600)
   const text = renderUnit({ workload: w, contract: rel.contract, slot: cand, port, releaseDir: rel.dir, supplementaryGroups: groups })
   if (groups.length > 0) await sys.mkdirp(PATHS.controlSocketDir, 0o750) // bind target must exist before the unit starts
@@ -284,20 +312,28 @@ async function reconcileNode(ctx: ReconcileContext, w: Workload, rel: PreparedRe
   await mustRun(sys, 'systemctl', ['daemon-reload'])
   await sys.run('systemctl', ['reset-failed', unit])
   // A failing start is not an exception here: the health gate below reports it, with logs.
+  const startedMs = sys.now().getTime()
   await sys.run('systemctl', ['restart', unit])
-  emit(journal, sys, 'deploy.started', w.name, `starting ${unit} with release ${rel.id}`, { release: rel.id, slot: cand })
+  emit(journal, sys, 'deploy.started', w.name, `starting ${unit} with release ${rel.id}`, { release: rel.id, slot: cand, deployId: run.record.id })
+  run.stage('health')
 
-  const failure = await waitHealthy(ctx, unit, port, rel.contract.health)
+  const captureStart = async () => run.log('start', await unitLogs(sys, unit, startedMs), 'replace')
+  const failure = await waitHealthy(ctx, unit, port, rel.contract.health, captureStart)
+  await captureStart()
   if (failure) {
-    const logs = await unitLogs(sys, unit)
-    await sys.run('systemctl', ['stop', unit])
+    // Stop AND disable: a failed candidate never crash-loops in the background or comes back at boot.
+    await sys.run('systemctl', ['disable', '--now', '--quiet', unit])
+    await sys.run('systemctl', ['reset-failed', unit])
     entry.lastError = failure
     entry.failedFingerprint = fingerprint
+    await run.fail(failure)
     emit(journal, sys, 'deploy.failed', w.name, `${failure}; ${live ? 'the previous release keeps serving' : 'nothing was live before'}`, {
       release: rel.id,
-      logs: logs.slice(-4000),
+      deployId: run.record.id,
+      stage: 'health',
+      logs: run.tail(60),
     })
-    if (!live) throw new Error(`${w.name}: ${failure}\n${logs}`)
+    if (!live) throw new ReportedError(`${w.name}: ${failure}`)
     ctx.deployFailures?.push(`${w.name}: ${failure}; the previous release keeps serving`)
     return { kind: 'proxy', port: live.port }
   }
@@ -307,7 +343,8 @@ async function reconcileNode(ctx: ReconcileContext, w: Workload, rel: PreparedRe
   entry.lastError = null
   entry.failedFingerprint = null
   await mustRun(sys, 'systemctl', ['enable', '--quiet', unit])
-  emit(journal, sys, 'deploy.succeeded', w.name, `${unit} is healthy; release ${rel.id} is live`, { release: rel.id, slot: cand })
+  await run.succeed(rel.id)
+  emit(journal, sys, 'deploy.succeeded', w.name, `${unit} is healthy; release ${rel.id} is live`, { release: rel.id, slot: cand, deployId: run.record.id })
   return { kind: 'proxy', port }
 }
 
@@ -324,25 +361,50 @@ export async function reconcile(ctx: ReconcileContext): Promise<DesiredState> {
   const failures: string[] = []
   ctx.deployFailures = failures
 
+  const redactions = () => secretValues(ctx.secrets.all())
   for (const w of desired.workloads) {
+    let run: DeployRun | null = null
+    const deploy: DeployHandle = () => (run ??= new DeployRun(sys, journal, w.name, redactions))
+    // A release that already failed to unpack/build is not rebuilt until the workload's spec changes.
+    const prepFingerprint = `prepare:${sha(JSON.stringify(w))}`
+    let preparing = true
     try {
-      const rel = await prepareRelease(sys, w)
+      const entry = workloadEntry(journal, w.name)
+      if (entry.failedFingerprint === prepFingerprint) {
+        throw new ReportedError(`${entry.lastError ?? `${w.name}: the last build failed`} (unchanged since; fix it and redeploy)`)
+      }
+      const rel = await prepareRelease(sys, w, deploy)
+      preparing = false
       if (rel.contract.runtime === 'static') {
         const root = `${rel.dir}/${rel.contract.staticDir}`
-        const entry = workloadEntry(journal, w.name)
-        if (entry.staticRoot !== root) emit(journal, sys, 'deploy.succeeded', w.name, `static release ${rel.id} is live`)
+        if (entry.staticRoot !== root) {
+          await deploy().succeed(rel.id)
+          emit(journal, sys, 'deploy.succeeded', w.name, `static release ${rel.id} is live`, { deployId: deploy().record.id })
+        }
         entry.staticRoot = root
+        entry.lastError = null
+        entry.failedFingerprint = null
         upstreams[w.name] = { kind: 'static', root }
         continue
       }
-      const up = await reconcileNode(ctx, w, rel)
+      const up = await reconcileNode(ctx, w, rel, deploy)
       if (up) upstreams[w.name] = up
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       errors.push(message)
       const entry = workloadEntry(journal, w.name)
-      entry.lastError = message
-      emit(journal, sys, 'workload.error', w.name, message)
+      if (!(err instanceof ReportedError)) {
+        // Record a failure once: an identical error on the next tick is not a new event.
+        const fresh = message !== entry.lastError || run !== null
+        entry.lastError = message
+        if (preparing) entry.failedFingerprint = prepFingerprint
+        if (fresh) {
+          const r = deploy()
+          const stage = r.record.stage
+          await r.fail(message)
+          emit(journal, sys, 'workload.error', w.name, message, { deployId: r.record.id, stage, logs: r.tail(60) })
+        }
+      }
       const live = entry.active ? entry.slots[entry.active] : undefined
       if (live) upstreams[w.name] = { kind: 'proxy', port: live.port }
       else if (entry.staticRoot) upstreams[w.name] = { kind: 'static', root: entry.staticRoot }

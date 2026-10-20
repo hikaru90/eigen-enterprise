@@ -5,7 +5,7 @@ import {
   EeClient,
   SubstrateError,
   SubstrateUnavailableError,
-  type AppContract,
+  type EeDeploy,
   type EeStatus,
 } from '$lib/server/ee/client'
 import { requireHuman } from '$lib/server/ee/human'
@@ -18,6 +18,8 @@ import {
 import { defaultGitHubStore } from '../github/store'
 import { WEBSITE_MODULE_ID } from '../manifest'
 import { AppUserError, contractFormSchema, gapError, resolveContract } from './contract'
+import { failedStageOf, failureSentence, sentence } from './deploy-jobs'
+import { diagnoseDeploy, gatewayDiagnoseLlm, type DiagnoseLlm, type Diagnosis } from './diagnose'
 import { fetchInputFor, mirrorName } from './fetch-auth'
 import { appHost } from './host'
 import { defaultServiceStore, type Service, type ServiceKind, type ServiceStore } from './store'
@@ -51,6 +53,9 @@ export type AppsEe = Pick<
   | 'events'
   | 'logs'
   | 'removeApp'
+  | 'deploys'
+  | 'deployLog'
+  | 'sourceFiles'
 >
 
 export type AppToolDeps = {
@@ -60,7 +65,11 @@ export type AppToolDeps = {
   /** A fresh GitHub App installation token (never stored). */
   mintToken?: (installationId: number) => Promise<string>
   now?: () => Date
+  /** The gateway call behind "Ask AI what went wrong" (tests inject a fake). */
+  diagnoseLlm?: DiagnoseLlm
 }
+
+const firstLine = (s: string) => s.split('\n')[0] ?? s
 
 /** Agent-callable tools that change the server: each MUST be approval-gated. */
 export const APP_AGENT_GATED_TOOLS = ['website.app_deploy', 'website.app_env_set'] as const
@@ -110,6 +119,11 @@ const deployInput = z
   })
   .strict()
 const nameInput = z.object({ name: NAME }).strict()
+const deployStatusInput = z.object({ name: NAME, after: z.string().datetime().optional() }).strict()
+const diagnoseInput = z.object({ name: NAME, deployId: z.string().uuid() }).strict()
+
+export type DeployStatus = { deploy: EeDeploy | null; lines: string[] }
+export type DiagnoseResult = Diagnosis & { contractSource: 'repo' | 'form' }
 const envSetInput = z
   .object({ name: NAME, key: ENV_KEY, value: z.string().min(1).max(16384) })
   .strict()
@@ -221,6 +235,7 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
 
   /** Fetch → contract → app → route → health. Records the outcome on the service row. */
   async function deploy(i: z.infer<typeof deployInput>, author: string): Promise<DeployResult> {
+    const startedAt = now()
     const existing = await services.get(i.name)
     if (!existing && (!i.repo || !i.branch || !i.kind)) {
       throw new AppUserError(
@@ -337,7 +352,12 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
         contractSource: resolved.source,
       }
     }
-    const message = await failureMessage(i.name, resolved.contract, live?.live != null)
+    const message = await failureMessage(
+      i.name,
+      startedAt,
+      live?.live != null,
+      live?.lastError ?? null,
+    )
     console.error(
       `[website/apps] deploy of ${i.name} @ ${fetched.rev.slice(0, 12)} failed: ${live?.lastError ?? 'no live release'}`,
     )
@@ -345,21 +365,28 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
     throw new AppUserError(message)
   }
 
-  /** Plain words from the journal's structured event type (never from parsing its text). */
+  /**
+   * The plain cause ee recorded for this attempt (its deploy record), never a
+   * pointer elsewhere: the page shows it with the log, and offers the AI.
+   */
   async function failureMessage(
     name: string,
-    contract: AppContract,
+    startedAt: Date,
     previousServes: boolean,
+    lastError: string | null,
   ): Promise<string> {
-    const { events } = await viaEe('read the deploy history', () => ee.events(name))
-    const last = [...events]
-      .reverse()
-      .find((e) => e.type === 'deploy.failed' || e.type === 'workload.error')
+    const { deploys } = await viaEe('read the deploy record', () => ee.deploys(name))
+    const last = deploys[0]
     const keeps = previousServes ? ' The previous version keeps serving.' : ''
-    if (last?.type === 'deploy.failed') {
-      return `${name} built, but didn't answer GET ${contract.health} in time, so it was stopped.${keeps} Its logs show why.`
+    if (last?.status === 'failed' && last.error) {
+      const retried = Date.parse(last.startedAt) >= startedAt.getTime() - 1000
+      const again = retried
+        ? ''
+        : ' This exact version and build settings failed before, so it was not retried: change the build settings or push a fix.'
+      return `${failureSentence(name, last)}${again}${keeps}`
     }
-    return `${name} could not be built or started.${keeps} The deploy history has the server's details.`
+    if (lastError) return `${name} could not be deployed: ${sentence(firstLine(lastError))}${keeps}`
+    return `${name} did not go live and the server recorded no cause.${keeps} Ask the AI in the chat to look at the server's events for ${name}.`
   }
 
   async function views(): Promise<{ services: ServiceView[]; status: EeStatus }> {
@@ -392,6 +419,60 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
     const s = await services.get(name)
     if (!s) throw new AppUserError(`There is no app called ${name}.`)
     return s
+  }
+
+  /** The newest attempt ee recorded (optionally only one that started after `after`). */
+  async function latestDeploy(name: string, after: Date | null): Promise<DeployStatus> {
+    const { deploys } = await viaEe('read the deploy record', () => ee.deploys(name))
+    const deploy =
+      deploys.find((d) => !after || Date.parse(d.startedAt) >= after.getTime() - 1000) ?? null
+    if (!deploy) return { deploy: null, lines: [] }
+    const { lines } = await viaEe('read the deploy log', () => ee.deployLog(deploy.id))
+    return { deploy, lines }
+  }
+
+  async function diagnose(userId: string, name: string, deployId: string): Promise<DiagnoseResult> {
+    const { deploy, lines } = await viaEe('read the deploy log', () => ee.deployLog(deployId))
+    if (deploy.workload !== name) throw new AppUserError(`That deploy isn't one of ${name}'s.`)
+    if (deploy.status !== 'failed') {
+      throw new AppUserError(
+        deploy.status === 'live'
+          ? 'That deploy went live; there is nothing to diagnose.'
+          : 'That deploy is still running.',
+      )
+    }
+    const status = await viaEe('read the server status', () => ee.status())
+    const w = status.workloads.find((x) => x.name === name)
+    const source = w?.source.kind === 'git' ? w.source : null
+    const repoContract = source
+      ? await viaEe("read the repo's ee.json", () =>
+          ee.sourceContract({ name: mirrorName(name), rev: source.rev }),
+        )
+      : null
+    const contractSource: 'repo' | 'form' = repoContract?.present ? 'repo' : 'form'
+    const contract =
+      contractSource === 'repo' ? (repoContract?.contract ?? null) : (w?.contract ?? null)
+    const files = source
+      ? (
+          await viaEe('list the repo files', () =>
+            ee.sourceFiles({ name: mirrorName(name), rev: source.rev }),
+          )
+        ).files
+      : null
+    const answer = await diagnoseDeploy(
+      userId,
+      {
+        app: name,
+        deploy,
+        failedStage: failedStageOf(deploy),
+        logTail: lines,
+        contract,
+        contractSource,
+        files,
+      },
+      deps.diagnoseLlm ?? gatewayDiagnoseLlm,
+    )
+    return { ...answer, contractSource }
   }
 
   return [
@@ -440,6 +521,33 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
             .reverse()
             .map((e) => ({ time: e.time, type: e.type, message: e.message })),
         }
+      },
+    },
+    {
+      name: 'website.app_deploy_status',
+      module: WEBSITE_MODULE_ID,
+      summary:
+        "An app's latest deploy attempt: stage (fetching, building, starting, health, live, failed) with timestamps, the plain cause if it failed, and its build + start log (secrets redacted).",
+      auditClass: 'read',
+      inputSchema: deployStatusInput,
+      permission: { roles: ['admin', 'agent'] },
+      handler: async (_ctx, input) => {
+        const i = deployStatusInput.parse(input)
+        return latestDeploy(i.name, i.after ? new Date(i.after) : null)
+      },
+    },
+    {
+      name: 'website.app_diagnose',
+      module: WEBSITE_MODULE_ID,
+      summary:
+        "Ask the AI what went wrong with a failed deploy: it reads the failed stage, ee's recorded cause, the log tail, the build contract and the repo's file list, and answers with the cause, the fix, and (when the build form is the contract) suggested contract changes.",
+      auditClass: 'read',
+      inputSchema: diagnoseInput,
+      permission: { roles: ['admin', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = diagnoseInput.parse(input)
+        await mustService(i.name)
+        return diagnose(ctx.principal.id, i.name, i.deployId)
       },
     },
     {

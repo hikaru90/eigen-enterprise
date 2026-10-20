@@ -1,13 +1,28 @@
 <script lang="ts">
   import type { ActionData, PageData } from './$types'
   import { enhance } from '$app/forms'
+  import { invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
+  import AppDeployProgress from '$lib/components/app-deploy-progress.svelte'
   import AppStatusDot from '$lib/components/app-status-dot.svelte'
 
   let { data, form }: { data: PageData; form: ActionData } = $props()
-  let busy = $state<'deploy' | 'env' | 'remove' | null>(null)
+  let busy = $state<'env' | 'remove' | null>(null)
+  let starting = $state(false)
+  let panel = $state<ReturnType<typeof AppDeployProgress> | null>(null)
 
-  const track = (what: 'deploy' | 'env' | 'remove') => () => {
+  /** Deploy in the background; the panel polls its progress (started here, from the click). */
+  async function deployNow() {
+    if (!panel) return
+    starting = true
+    try {
+      await panel.redeploy()
+    } finally {
+      starting = false
+    }
+  }
+
+  const track = (what: 'env' | 'remove') => () => {
     busy = what
     return async ({ update }: { update: () => Promise<void> }) => {
       await update()
@@ -49,15 +64,14 @@
   </header>
 
   <section class="mt-6 flex flex-wrap items-center gap-3">
-    <form method="POST" action="?/deploy" use:enhance={track('deploy')}>
-      <button
-        type="submit"
-        disabled={busy !== null}
-        class="rounded-md bg-foreground px-3 py-1.5 text-sm text-background disabled:opacity-60"
-      >
-        {busy === 'deploy' ? 'Deploying… this can take a few minutes' : 'Deploy now'}
-      </button>
-    </form>
+    <button
+      type="button"
+      onclick={deployNow}
+      disabled={busy !== null || starting}
+      class="rounded-md bg-foreground px-3 py-1.5 text-sm text-background disabled:opacity-60"
+    >
+      {starting ? 'Starting…' : 'Deploy now'}
+    </button>
     <span class="text-xs text-foreground/55">
       {data.app.autoDeploy
         ? 'Also deploys on every push to this branch.'
@@ -69,6 +83,14 @@
         : 'the build form'}.
     </span>
   </section>
+  <div class="mt-4">
+    <AppDeployProgress
+      bind:this={panel}
+      name={data.app.name}
+      initial={data.lastDeploy?.state === 'failed' ? data.lastDeploy : null}
+      onlive={() => invalidateAll()}
+    />
+  </div>
   {#if form && 'error' in form && form.error}
     <p class="mt-3 text-sm text-red-600" role="alert">{form.error}</p>
   {:else if form && 'message' in form}

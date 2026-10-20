@@ -12,7 +12,12 @@ import { APP_AGENT_GATED_TOOLS, createAppTools } from '../../../../../../modules
 import { InMemoryConnectedRepoStore } from '../../../../../../modules/website/github/repos-store'
 
 const { holder } = vi.hoisted(() => ({
-  holder: { registry: null as unknown, approvals: null as unknown },
+  holder: {
+    registry: null as unknown,
+    approvals: null as unknown,
+    llmCalls: [] as unknown[],
+    llmAnswer: null as unknown,
+  },
 }))
 
 vi.mock('$lib/server/auth/require-admin', () => ({ requireAdmin: async (u: unknown) => u }))
@@ -36,8 +41,13 @@ vi.mock('$lib/server/approvals/owner-decision', () => ({
   },
 }))
 
+import { deployJobs } from '../../../../../../modules/website/apps/deploy-jobs'
+import { FAKE_CRASH } from '../../../../../../modules/website/apps/testing'
 import { actions, load } from './+page.server'
 import { actions as detailActions, load as detailLoad } from './[name]/+page.server'
+import { GET as progressGET } from './[name]/deploy-progress/+server'
+import { POST as deployPOST } from './[name]/deploy/+server'
+import { POST as diagnosePOST } from './[name]/diagnose/+server'
 
 async function setup() {
   const ee = new FakeEe()
@@ -68,6 +78,10 @@ async function setup() {
     repos,
     services: new InMemoryServiceStore(),
     mintToken: async () => 'x',
+    diagnoseLlm: async (input) => {
+      holder.llmCalls.push(input)
+      return { choices: [{ message: { content: JSON.stringify(holder.llmAnswer) } }] }
+    },
   }))
     registry.register(t)
   registry.register({
@@ -186,5 +200,134 @@ describe('/m/website/apps', () => {
     )
     expect(JSON.stringify(out)).not.toContain('sk-secret')
     expect(out).toMatchObject({ ok: true })
+  })
+})
+
+describe('/m/website/apps: background deploy, progress, "Ask AI"', () => {
+  const deployForm = (name: string) =>
+    formRequest({
+      source: 'heroku/node-js-getting-started#main',
+      name,
+      kind: 'web',
+      useForm: 'on',
+      runtime: 'node@22',
+      install: 'npm install --omit=dev',
+      start: 'node index.js',
+      health: '/',
+    })
+  const progress = async (name: string, jobId: string) => {
+    const res = await progressGET(
+      event({
+        params: { name },
+        url: new URL(`http://x/m/website/apps/${name}/deploy-progress?job=${jobId}`),
+      }),
+    )
+    return { status: res.status, body: await res.json() }
+  }
+  const post = (body: unknown) =>
+    new Request('http://x', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+  it("a slow deploy returns at once with a job; progress shows the stage, then the failure with ee's cause and the log", async () => {
+    const { ee } = await setup()
+    ee.failHealth = true
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    const createApp = ee.createApp.bind(ee)
+    ee.createApp = async (i) => {
+      await gate
+      return createApp(i)
+    }
+    const out = (await actions.deploy(event({ request: deployForm('gs-slow') }))) as {
+      jobId: string
+      name: string
+    }
+    expect(out).toMatchObject({ action: 'deploy', name: 'gs-slow', jobId: expect.any(String) })
+
+    const running = await progress('gs-slow', out.jobId)
+    expect(running.status).toBe(200)
+    expect(running.body).toMatchObject({ state: 'running', stage: 'fetching', deployId: null })
+
+    release()
+    await deployJobs.get(out.jobId)!.done
+    const ended = await progress('gs-slow', out.jobId)
+    expect(ended.body).toMatchObject({
+      state: 'failed',
+      failedStage: 'health',
+      deployId: expect.any(String),
+    })
+    expect(ended.body.error).toBe(
+      `gs-slow failed while waiting for its health check: ${FAKE_CRASH}.`,
+    )
+    expect(ended.body.error).not.toMatch(/deploy history/)
+    expect(ended.body.lines.join('\n')).toContain('MODULE_NOT_FOUND')
+    expect(ended.body.stages.map((s: { stage: string }) => s.stage)).toEqual([
+      'fetching',
+      'building',
+      'starting',
+      'health',
+      'failed',
+    ])
+
+    // The detail page keeps the failure (with its log) after a reload.
+    const detail = (await detailLoad(event({ params: { name: 'gs-slow' } }))) as {
+      lastDeploy: { state: string; error: string; lines: string[]; deployId: string }
+    }
+    expect(detail.lastDeploy).toMatchObject({ state: 'failed', deployId: ended.body.deployId })
+    expect(detail.lastDeploy.error).toContain(FAKE_CRASH)
+  })
+
+  it('an unknown job is a plain 404, not a crash', async () => {
+    await setup()
+    const r = await progress('gs', '00000000-0000-4000-8000-000000000000')
+    expect(r.status).toBe(404)
+    expect(r.body.error).toMatch(/not running on this server/)
+  })
+
+  it('"Ask AI": the diagnosis goes through the gateway caller and comes back in plain words; "Apply and redeploy" applies the change', async () => {
+    const { ee } = await setup()
+    ee.failHealth = true
+    await actions.deploy(event({ request: deployForm('gs-ai') })).catch(() => undefined)
+    const deployId = ee.deployRecords.at(-1)!.id
+    holder.llmCalls = []
+    holder.llmAnswer = {
+      cause: 'The start command runs index.js, which this repo does not have.',
+      fix: 'Start it with node server.js instead.',
+      suggestedContractChanges: { start: 'node server.js' },
+    }
+    const res = await diagnosePOST(
+      event({ params: { name: 'gs-ai' }, request: post({ deployId }) }),
+    )
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ...(holder.llmAnswer as object), contractSource: 'form' })
+    expect(holder.llmCalls).toHaveLength(1)
+
+    holder.llmAnswer = { verdict: 'no idea' }
+    const bad = await diagnosePOST(
+      event({ params: { name: 'gs-ai' }, request: post({ deployId }) }),
+    )
+    expect(bad.status).toBe(400)
+    expect((await bad.json()).error).toMatch(/expected shape/)
+
+    ee.failHealth = false
+    const applied = await deployPOST(
+      event({ params: { name: 'gs-ai' }, request: post({ changes: { start: 'node server.js' } }) }),
+    )
+    const { jobId } = (await applied.json()) as { jobId: string }
+    await deployJobs.get(jobId)!.done
+    const last = ee.calls.filter((c) => c.verb === 'createApp').at(-1)!.input as {
+      contract: { start: string[]; build: string[][] }
+    }
+    expect(last.contract.start).toEqual(['node', 'server.js'])
+    expect(last.contract.build).toEqual([['npm', 'install', '--omit=dev']])
+    expect((await progress('gs-ai', jobId)).body).toMatchObject({ state: 'live', stage: 'live' })
+
+    const invalid = await deployPOST(
+      event({ params: { name: 'gs-ai' }, request: post({ changes: { start: 42 } }) }),
+    )
+    expect(invalid.status).toBe(400)
   })
 })
