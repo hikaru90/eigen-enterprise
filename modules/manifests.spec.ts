@@ -189,6 +189,30 @@ describe('per-app domains (D-W2): human-only tools, never agent-gated', () => {
   })
 })
 
+describe('website.activity read tool (plan/phase-website-apps-ux.md W5)', () => {
+  it('is registered, owned by the website module, readable by admin and agent', () => {
+    const { kernel: k } = kernel()
+    const t = k.registry.get('website.activity')
+    expect(t).toBeDefined()
+    expect(t!.module).toBe('website')
+    expect(t!.auditClass).toBe('read')
+    expect(t!.permission.roles).toEqual(['admin', 'agent'])
+    expect(t!.inputSchema.safeParse({}).success).toBe(true)
+    expect(t!.inputSchema.safeParse({ limit: 51 }).success).toBe(false)
+    expect(t!.outputSchema).toBeDefined()
+  })
+
+  it('is a read: never approval-gated, and not in the app-tool cut', () => {
+    const { kernel: k } = kernel()
+    expect(APPROVAL_REQUIRED_TOOLS.has('website.activity')).toBe(false)
+    const appCut = k.registry
+      .list()
+      .map((t) => t.name)
+      .filter((n) => n.startsWith('website.app_'))
+    expect(appCut).not.toContain('website.activity')
+  })
+})
+
 describe('D11 stays exactly as strict after the merge', () => {
   const agent: ToolContext = {
     principal: { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] },

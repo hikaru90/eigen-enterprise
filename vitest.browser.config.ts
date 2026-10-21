@@ -88,6 +88,7 @@ export default defineConfig({
       'src/lib/components/app-card.svelte.spec.ts',
       'src/lib/components/add-app-dialog.svelte.spec.ts',
       'src/lib/components/repo-connect-steps.svelte.spec.ts',
+      'src/lib/components/website-activity-panel.svelte.spec.ts',
       'modules/brand/water-flow.svelte.spec.ts',
     ],
     exclude: ['src/routes/demo/playwright/**/*.ts', '**/*.e2e.ts'],

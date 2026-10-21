@@ -47,6 +47,7 @@ import { createRecapModule, type RecapBoot } from './recap'
 import { RECAP_MODULE_ID } from './recap/types'
 
 export type { RecapBoot } from './recap'
+import { createActivityTools } from './website/activity-tools'
 import { createDomainTools } from './website/apps/domain-tools'
 import { APP_AGENT_GATED_TOOLS, createAppTools } from './website/apps/tools'
 import { createGitHubConnectTools } from './website/github/connect-tools'
@@ -189,6 +190,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createGitHubConnectTools(),
     ...createAppTools(),
     ...createDomainTools(),
+    ...createActivityTools(),
     ...createOwleryTools(),
     ...createMembersTools(),
   ])
