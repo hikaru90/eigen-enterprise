@@ -1,9 +1,12 @@
 import type { ModuleManifest } from '$lib/kernel/modules'
+import { APP_TOOL_NAMES } from './apps/manifest'
 import { GITHUB_CONNECT_TOOL_NAMES, GITHUB_TOOL_NAMES } from './github/manifest'
 import { SUBSTRATE_TOOL_NAMES } from './hosting/manifest'
-import { APP_TOOL_NAMES } from './apps/manifest'
 
 export const WEBSITE_MODULE_ID = 'website'
+
+/** The module page's activity read (plan/phase-website-apps-ux.md W5). */
+export const WEBSITE_ACTIVITY_TOOL = 'website.activity'
 
 /** Site-content tool names (namespace `website`). */
 export const WEBSITE_TOOL_NAMES = [
@@ -28,6 +31,13 @@ export const websiteManifest: ModuleManifest = {
   version: '0.2.0',
   description: 'Your apps, services and site: link GitHub repos, deploy, domains, logs.',
   toolNamespaces: [WEBSITE_MODULE_ID, 'substrate', 'github'],
-  tools: [...WEBSITE_TOOL_NAMES, ...GITHUB_CONNECT_TOOL_NAMES, ...APP_TOOL_NAMES, ...SUBSTRATE_TOOL_NAMES, ...GITHUB_TOOL_NAMES],
+  tools: [
+    ...WEBSITE_TOOL_NAMES,
+    WEBSITE_ACTIVITY_TOOL,
+    ...GITHUB_CONNECT_TOOL_NAMES,
+    ...APP_TOOL_NAMES,
+    ...SUBSTRATE_TOOL_NAMES,
+    ...GITHUB_TOOL_NAMES,
+  ],
   permissions: { roles: ['admin', 'agent', 'service'] },
 }

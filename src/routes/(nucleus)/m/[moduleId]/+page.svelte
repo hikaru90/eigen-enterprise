@@ -4,6 +4,7 @@
   import MailKeysPanel from '$lib/components/mail-keys-panel.svelte'
   import ModuleSettingsSection from '$lib/components/module-settings-section.svelte'
   import OverviewModule from '$lib/components/overview-module.svelte'
+  import WebsiteActivityPanel from '$lib/components/website-activity-panel.svelte'
   import { moduleSettingsSlot } from '$lib/shell/module-settings'
 
   let { data }: { data: PageData } = $props()
@@ -61,6 +62,13 @@
         <OverviewModule module={data.module} />
       {/if}
     </section>
+
+    {#if slot?.panel === 'website-activity' && (data.activity || data.activityError)}
+      <section class="mt-10" aria-labelledby="activity-heading">
+        <span id="activity-heading" class="sr-only">Recent activity</span>
+        <WebsiteActivityPanel activity={data.activity} error={data.activityError} />
+      </section>
+    {/if}
 
     <section class="mt-10" aria-labelledby="settings-heading">
       <h2 id="settings-heading" class="mb-2 text-[13px] font-medium">Settings</h2>

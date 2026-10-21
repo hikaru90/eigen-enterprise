@@ -9,7 +9,7 @@ import type { Pathname } from '$app/types'
 
 export type ModuleSettingsLink = { label: string; href: Pathname; text: string }
 /** A built-in panel the module page renders under the links (e.g. Email's mail-sending keys). */
-export type ModuleSettingsPanel = 'mail-keys'
+export type ModuleSettingsPanel = 'mail-keys' | 'website-activity'
 export type ModuleSettingsSlot = {
   links: ModuleSettingsLink[]
   note?: string
@@ -53,6 +53,7 @@ const slots: Record<string, ModuleSettingsSlot> = {
         text: 'Connect GitHub and your repositories (public or private).',
       },
     ],
+    panel: 'website-activity',
   },
 }
 
