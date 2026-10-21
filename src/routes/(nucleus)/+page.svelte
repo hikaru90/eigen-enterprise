@@ -236,6 +236,13 @@
   }
 
   onMount(() => {
+    // Deep-linked draft (?prefill=, e.g. from the Apps "+" dialog): fill the
+    // composer for the owner to review and send — never auto-send.
+    const prefill = page.url.searchParams.get('prefill')
+    if (prefill) {
+      input = prefill
+      history.replaceState(null, '', page.url.pathname)
+    }
     inputEl?.focus()
     scrollToBottom()
   })
@@ -252,19 +259,19 @@
   <!-- Welcome wizard and provider gate run without the app shell: they keep
        their own header with the settings cog. In chat the shell is the chrome. -->
   {#if !chatMode}
-  <header class="relative flex shrink-0 justify-center pt-6 pb-2">
-    <p class="text-[11px] font-medium tracking-[0.25em] text-muted-foreground uppercase">
-      Eigen Enterprise
-    </p>
-    <div class="absolute top-5 right-0 flex items-center gap-3">
-      <a
-        href={resolve('/overview')}
-        class="text-[11px] font-medium tracking-[0.2em] text-muted-foreground uppercase hover:text-foreground"
-        data-testid="overview-link">Overview</a
-      >
-      <HomeSettingsMenu />
-    </div>
-  </header>
+    <header class="relative flex shrink-0 justify-center pt-6 pb-2">
+      <p class="text-[11px] font-medium tracking-[0.25em] text-muted-foreground uppercase">
+        Eigen Enterprise
+      </p>
+      <div class="absolute top-5 right-0 flex items-center gap-3">
+        <a
+          href={resolve('/overview')}
+          class="text-[11px] font-medium tracking-[0.2em] text-muted-foreground uppercase hover:text-foreground"
+          data-testid="overview-link">Overview</a
+        >
+        <HomeSettingsMenu />
+      </div>
+    </header>
   {/if}
 
   {#if data.showWelcome}
@@ -324,10 +331,7 @@
                 </div>
               {/if}
             {:else if entry.role === 'tool_preview'}
-              <p
-                class="text-muted-foreground truncate py-0.5 text-xs"
-                data-testid="tool-preview"
-              >
+              <p class="text-muted-foreground truncate py-0.5 text-xs" data-testid="tool-preview">
                 → using {entry.tool}{entry.inputSummary ? ` · ${entry.inputSummary}` : ''}…
               </p>
             {:else if entry.role === 'approval'}

@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { paraglideVitePlugin } from '@inlang/paraglide-js'
@@ -49,6 +50,17 @@ export default defineConfig({
       'virtual:pwa-register': path.resolve(root, 'src/lib/vitest-stubs/virtual-pwa-register.ts'),
     },
   },
+  server: {
+    fs: {
+      allow: [
+        root,
+        // Git worktrees symlink node_modules to the main checkout; the browser
+        // must be allowed to fetch deps from that real path (no-op in the main
+        // repo, where the realpath is root/node_modules).
+        fs.realpathSync(path.resolve(root, 'node_modules')),
+      ],
+    },
+  },
   // Avoid holding browser module requests behind a full-app dep crawl.
   optimizeDeps: {
     noDiscovery: true,
@@ -76,6 +88,8 @@ export default defineConfig({
       'src/lib/components/github-connect.svelte.spec.ts',
       'src/lib/components/app-deploy-progress.svelte.spec.ts',
       'src/lib/components/app-build-form.svelte.spec.ts',
+      'src/lib/components/app-card.svelte.spec.ts',
+      'src/lib/components/add-app-dialog.svelte.spec.ts',
       'modules/brand/water-flow.svelte.spec.ts',
     ],
     exclude: ['src/routes/demo/playwright/**/*.ts', '**/*.e2e.ts'],
