@@ -1,12 +1,30 @@
+import { realpathSync } from 'node:fs'
+import path from 'node:path'
 import { paraglideVitePlugin } from '@inlang/paraglide-js'
 import { sveltekit } from '@sveltejs/kit/vite'
 import tailwindcss from '@tailwindcss/vite'
+import { searchForWorkspaceRoot } from 'vite'
 import { defineConfig } from 'vitest/config'
 
 /** Watch / file-scoped re-runs only instrument a subset; thresholds would false-fail. */
 const enforceCoverageThresholds = process.env.CI === 'true' || process.argv.includes('run')
 
+/**
+ * Directories the dev server may serve over /@fs/. A git worktree symlinks
+ * node_modules to the main checkout; without the real path in the allowlist,
+ * Vite's strict filesystem 403s the SvelteKit client runtime and no page
+ * hydrates (browser e2e from a worktree is dead). Dev-only; no effect on the
+ * build or on vitest.
+ */
+function devFsAllow(): string[] {
+  // No install, no dev server — fail loud instead of silently 403ing /@fs/.
+  return [searchForWorkspaceRoot(process.cwd()), realpathSync(path.resolve('node_modules'))]
+}
+
 export default defineConfig({
+  server: {
+    fs: { allow: devFsAllow() },
+  },
   build: {
     // Hidden maps: uploaded to PostHog for error tracking, not served to browsers.
     sourcemap: 'hidden',

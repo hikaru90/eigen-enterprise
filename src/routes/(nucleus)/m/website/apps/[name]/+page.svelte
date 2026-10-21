@@ -9,6 +9,7 @@
   import * as Alert from '$lib/components/ui/alert'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
   import { Badge } from '$lib/components/ui/badge'
+  import * as Breadcrumb from '$lib/components/ui/breadcrumb'
   import { Button, buttonVariants } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
   import { Input } from '$lib/components/ui/input'
@@ -49,10 +50,22 @@
 <svelte:head><title>{data.app.name} · Apps · Eigen Enterprise</title></svelte:head>
 
 <div class="mx-auto w-full max-w-4xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
-  <header class="flex flex-col gap-3">
-    <a href={resolve('/m/website/apps')} class="text-xs text-foreground/55 hover:text-foreground"
-      >Apps</a
-    >
+  <header class="flex min-w-0 flex-col gap-3">
+    <Breadcrumb.Root>
+      <Breadcrumb.List>
+        <Breadcrumb.Item>
+          <Breadcrumb.Link href={resolve('/m/website')}>Website</Breadcrumb.Link>
+        </Breadcrumb.Item>
+        <Breadcrumb.Separator />
+        <Breadcrumb.Item>
+          <Breadcrumb.Link href={resolve('/m/website/apps')}>Apps</Breadcrumb.Link>
+        </Breadcrumb.Item>
+        <Breadcrumb.Separator />
+        <Breadcrumb.Item>
+          <Breadcrumb.Page>{data.app.name}</Breadcrumb.Page>
+        </Breadcrumb.Item>
+      </Breadcrumb.List>
+    </Breadcrumb.Root>
     <div class="flex min-w-0 flex-wrap items-center gap-3">
       <h1 class="text-xl font-semibold tracking-tight">{data.app.name}</h1>
       <Badge variant="secondary">{kindLabel}</Badge>
@@ -130,7 +143,7 @@
     </Card.Header>
     <Card.Content class="flex flex-col gap-4">
       {#if data.app.domains.length === 0}
-        <p class="text-sm text-foreground/60">No address yet.</p>
+        <p class="text-sm text-muted-foreground">No address yet.</p>
       {:else}
         <Table.Root>
           <Table.Body>
@@ -265,7 +278,7 @@
     </Card.Header>
     <Card.Content class="flex flex-col gap-3">
       {#if data.app.env.length === 0}
-        <p class="text-sm text-foreground/60">None yet.</p>
+        <p class="text-sm text-muted-foreground">None yet.</p>
       {:else}
         <ul class="flex flex-col gap-1">
           {#each data.app.env as key (key)}
@@ -314,7 +327,7 @@
     </Card.Header>
     <Card.Content class="flex flex-col gap-3">
       {#if data.secretNames.length === 0}
-        <p class="text-sm text-foreground/60">None yet.</p>
+        <p class="text-sm text-muted-foreground">None yet.</p>
       {:else}
         <ul class="flex flex-col gap-1">
           {#each data.secretNames as secret (secret)}
@@ -360,7 +373,7 @@
     </Card.Header>
     <Card.Content>
       {#if data.app.history.length === 0}
-        <p class="text-sm text-foreground/60">No deploys yet.</p>
+        <p class="text-sm text-muted-foreground">No deploys yet.</p>
       {:else}
         <ul class="flex flex-col gap-1">
           {#each data.app.history.slice(0, 30) as e, i (i)}
@@ -379,7 +392,7 @@
     </Card.Header>
     <Card.Content>
       {#if data.logsError}
-        <p class="text-sm text-foreground/60">{data.logsError}</p>
+        <p class="text-sm text-muted-foreground">{data.logsError}</p>
       {:else}
         <pre
           class="max-h-96 overflow-auto rounded-md border border-border bg-muted/40 p-3 text-xs whitespace-pre-wrap">{data.logs.join(

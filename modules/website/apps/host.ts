@@ -32,3 +32,14 @@ export function appSlug(repoName: string): string {
   s = s.slice(0, 31).replace(/-+$/, '')
   return s.length >= 2 ? s : 'app'
 }
+
+/** First free variant of base ("shop" → "shop-2" → …) that fits the app-name shape; case-insensitive. */
+export function freeName(taken: ReadonlySet<string>, base: string): string {
+  const takenLower = new Set([...taken].map((n) => n.toLowerCase()))
+  let name = base
+  for (let i = 2; takenLower.has(name.toLowerCase()); i++) {
+    const suffix = `-${i}`
+    name = base.slice(0, 31 - suffix.length) + suffix
+  }
+  return name
+}

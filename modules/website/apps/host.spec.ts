@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appHost, appSlug } from './host'
+import { appHost, appSlug, freeName } from './host'
 
 describe('appHost', () => {
   it('on the local box: <app>.ee.localhost next to the console (local CA)', () => {
@@ -23,5 +23,18 @@ describe('appSlug', () => {
     expect(appSlug('My_Site.v2')).toBe('my-site-v2')
     expect(appSlug('2048')).toBe('app-2048')
     expect(appSlug('a'.repeat(50))).toHaveLength(31)
+  })
+})
+
+describe('freeName', () => {
+  it('keeps the base when it is free and moves to -2, -3 … when taken (case-insensitive)', () => {
+    expect(freeName(new Set(), 'shop')).toBe('shop')
+    expect(freeName(new Set(['shop', 'Shop']), 'shop')).toBe('shop-2')
+    expect(freeName(new Set(['shop', 'shop-2']), 'shop')).toBe('shop-3')
+  })
+  it('the variant still fits the 31-character app-name shape', () => {
+    const long = 'a'.repeat(31)
+    expect(freeName(new Set([long]), long)).toBe(`${'a'.repeat(29)}-2`)
+    expect(freeName(new Set([long, `${'a'.repeat(29)}-2`]), long)).toBe(`${'a'.repeat(29)}-3`)
   })
 })

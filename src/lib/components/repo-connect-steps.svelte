@@ -65,7 +65,7 @@
   import { RadioGroup, RadioGroupItem } from '$lib/components/ui/radio-group'
   import * as Select from '$lib/components/ui/select'
   import { Switch } from '$lib/components/ui/switch'
-  import { appHost, appSlug } from '../../../modules/website/apps/host'
+  import { appHost, appSlug, freeName } from '../../../modules/website/apps/host'
 
   let { data }: { data: RepoConnectData } = $props()
 
@@ -132,15 +132,9 @@
       : null
   }
 
-  /** First free variant of base ("shop" → "shop-2" → …) that fits the app-name shape. */
+  /** A free app name derived from the repo (the same rule the server's suggested names follow). */
   function suggestName(fullName: string): string {
-    const taken = new Set(data.takenNames.map((n) => n.toLowerCase()))
-    let s = appSlug(fullName.split('/')[1] ?? fullName)
-    for (let i = 2; taken.has(s); i++) {
-      const suffix = `-${i}`
-      s = s.slice(0, 31 - suffix.length) + suffix
-    }
-    return s
+    return freeName(new Set(data.takenNames), appSlug(fullName.split('/')[1] ?? fullName))
   }
 
   function derivedHost(forName: string): string {
@@ -462,6 +456,16 @@
   </p>
 {/if}
 
+{#if !data.managed}
+  <Alert class="mt-4" data-testid="not-managed">
+    <AlertTitle>This server isn't managed by ee yet</AlertTitle>
+    <AlertDescription>
+      Apps can't be deployed from this page, because this Eigen Enterprise isn't running on a server
+      set up with ee. Connecting the repo still works.
+    </AlertDescription>
+  </Alert>
+{/if}
+
 {#if step === 1}
   <section
     class="mt-6 flex flex-col gap-6"
@@ -680,16 +684,6 @@
         {connected.repo} ({connected.branch}) — name it, say what it is, deploy.
       </p>
     </div>
-
-    {#if !data.managed}
-      <Alert data-testid="not-managed">
-        <AlertTitle>This server isn't managed by ee yet</AlertTitle>
-        <AlertDescription>
-          Apps can't be deployed from this page, because this Eigen Enterprise isn't running on a
-          server set up with ee. Connecting the repo still works.
-        </AlertDescription>
-      </Alert>
-    {/if}
 
     <form method="POST" action="?/deploy" use:enhance={deploySubmit} class="flex flex-col gap-4">
       <input type="hidden" name="repo" value={connected.repo} />
