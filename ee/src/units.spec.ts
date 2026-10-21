@@ -34,6 +34,8 @@ describe('renderUnit', () => {
     expect(npmUnit).toContain('ExecStart=/opt/ee/runtimes/node-22/bin/npm run start')
     expect(npmUnit).toContain('Environment="PATH=/opt/ee/runtimes/node-22/bin:/usr/bin:/bin"')
     expect(npmUnit).toContain('Environment="npm_config_cache=/tmp/npm-cache"')
+    // Apps that keep data under ~ (e.g. ~/.local/share/<app>) get their persistent state dir as HOME.
+    expect(npmUnit).toContain(`Environment="HOME=/var/lib/ee-state/${workload.name}"`)
   })
 
   it('both slots of a workload run as the same (dynamic) user, so they share its state', () => {

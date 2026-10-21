@@ -92,6 +92,8 @@ export function renderUnit(input: UnitInput): string {
     NODE_ENV: 'production',
     EE_WORKLOAD: w.name,
     EE_STATE_DIR: `/var/lib/ee-state/${w.name}`,
+    // DynamicUser has no home: apps that keep data under ~ get their persistent state dir.
+    HOME: `/var/lib/ee-state/${w.name}`,
     PATH: `${PATHS.runtimes}/node-${c.node}/bin:/usr/bin:/bin`,
   }
   const needsPostgres = c.services.includes('postgres')
@@ -110,8 +112,7 @@ export function renderUnit(input: UnitInput): string {
     // (a per-slot user would re-chown it under the slot still serving).
     `User=ee-${w.name}`,
     `WorkingDirectory=${releaseDir}`,
-    // The runtime on PATH (npm scripts call node) and npm's cache in the private /tmp.
-    envAssignment('PATH', `${nodeBin.slice(0, nodeBin.lastIndexOf('/'))}:/usr/bin:/bin`),
+    // npm's cache in the private /tmp (the runtime is on PATH via env).
     envAssignment('npm_config_cache', '/tmp/npm-cache'),
     envAssignment('npm_config_update_notifier', 'false'),
     ...Object.entries(env)
