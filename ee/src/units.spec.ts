@@ -29,6 +29,13 @@ describe('renderUnit', () => {
     expect(unit).toContain('ExecStartPre=/opt/ee/runtimes/node-22/bin/node scripts/migrate.mjs')
   })
 
+  it('npm and npx start commands resolve to the pinned runtime, with that runtime on PATH (npm start finds node)', () => {
+    const npmUnit = renderUnit({ workload, contract: { ...contract, start: ['npm', 'run', 'start'] }, slot: 'a', port: 4100, releaseDir: '/r' })
+    expect(npmUnit).toContain('ExecStart=/opt/ee/runtimes/node-22/bin/npm run start')
+    expect(npmUnit).toContain('Environment="PATH=/opt/ee/runtimes/node-22/bin:/usr/bin:/bin"')
+    expect(npmUnit).toContain('Environment="npm_config_cache=/tmp/npm-cache"')
+  })
+
   it('both slots of a workload run as the same (dynamic) user, so they share its state', () => {
     const b = renderUnit({ workload, contract, slot: 'b', port: 4101, releaseDir: '/r' })
     expect(unit).toContain('User=ee-os')

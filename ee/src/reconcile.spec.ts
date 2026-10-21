@@ -192,6 +192,19 @@ describe('reconcile', () => {
     expect(journal.workloads.site?.active).toBe('a')
   })
 
+  it('a start command ee cannot run fails ONCE, with the reason in the record — no retry every tick', async () => {
+    const sys = box(A)
+    sys.tarballs.set(`/rel/${A}.tgz`, { 'ee.json': JSON.stringify({ runtime: 'node', node: '22', start: ['bash', 'run.sh'], health: '/' }) })
+    const journal = emptyJournal()
+    const secrets = memSecrets()
+    await expect(reconcile({ sys, repo: { read: async () => desired(A) }, journal, secrets, healthTimeoutMs: 5_000 })).rejects.toThrow(/argv\[0\]/)
+    await expect(reconcile({ sys, repo: { read: async () => desired(A) }, journal, secrets, healthTimeoutMs: 5_000 })).rejects.toThrow(/unchanged since/)
+    const failed = journal.events.filter((e) => e.type === 'deploy.failed')
+    expect(failed).toHaveLength(1)
+    expect(failed[0]!.message).toMatch(/argv\[0\]/)
+    expect(journal.workloads.site?.lastError).toMatch(/argv\[0\]/)
+  })
+
   it('a healthy candidate switches the edge, then drains the old slot', async () => {
     const sys = box(A, B)
     sys.healthy.add(4100).add(4101)

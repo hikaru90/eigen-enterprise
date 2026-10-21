@@ -341,7 +341,21 @@ async function reconcileNode(ctx: ReconcileContext, w: Workload, rel: PreparedRe
   run.record.release = rel.id
   run.stage('starting')
   await sys.writeFile(`${PATHS.envDir}/${w.name}-${cand}.env`, renderEnvFile(env), 0o600)
-  const text = renderUnit({ workload: w, contract: rel.contract, slot: cand, port, releaseDir: rel.dir, supplementaryGroups: groups })
+  let text: string
+  try {
+    text = renderUnit({ workload: w, contract: rel.contract, slot: cand, port, releaseDir: rel.dir, supplementaryGroups: groups })
+  } catch (err) {
+    // A start ee cannot run (e.g. a bad start command) fails like a health-gate
+    // failure: recorded once, with its reason in the deploy log, never retried
+    // until desired state changes.
+    const failure = `${w.name} could not be started: ${(err as Error).message}`
+    run.log('start', failure, 'replace')
+    entry.lastError = failure
+    entry.failedFingerprint = fingerprint
+    await run.fail(failure)
+    emit(journal, sys, 'deploy.failed', w.name, failure, { release: rel.id, deployId: run.record.id, stage: 'starting' })
+    throw new ReportedError(failure)
+  }
   if (groups.length > 0) await sys.mkdirp(PATHS.controlSocketDir, 0o750) // bind target must exist before the unit starts
   await sys.writeFile(`${PATHS.unitDir}/${unit}`, text)
   await mustRun(sys, 'systemctl', ['daemon-reload'])

@@ -37,8 +37,10 @@ function execArg(arg: string): string {
 
 export function execLine(argv: string[], nodeBin: string): string {
   const [first, ...rest] = argv
-  // "node" resolves to the pinned runtime the contract declared, never the host's.
-  const program = first === 'node' ? nodeBin : first
+  // node/npm/npx resolve to the pinned runtime the contract declared, never the host's
+  // (npm start is how most Node apps start — Nixpacks and Coolify run it too).
+  const runtimeDir = nodeBin.slice(0, nodeBin.lastIndexOf('/'))
+  const program = first === 'node' || first === 'npm' || first === 'npx' ? `${runtimeDir}/${first}` : first
   if (!program) throw new Error('empty argv')
   if (!program.startsWith('/') && !program.startsWith('./')) {
     throw new Error(`argv[0] must be "node", an absolute path or ./relative: ${program}`)
@@ -108,6 +110,10 @@ export function renderUnit(input: UnitInput): string {
     // (a per-slot user would re-chown it under the slot still serving).
     `User=ee-${w.name}`,
     `WorkingDirectory=${releaseDir}`,
+    // The runtime on PATH (npm scripts call node) and npm's cache in the private /tmp.
+    envAssignment('PATH', `${nodeBin.slice(0, nodeBin.lastIndexOf('/'))}:/usr/bin:/bin`),
+    envAssignment('npm_config_cache', '/tmp/npm-cache'),
+    envAssignment('npm_config_update_notifier', 'false'),
     ...Object.entries(env)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => envAssignment(k, v)),
