@@ -82,7 +82,7 @@ export default defineConfig({
       'src/lib/components/app-shell.svelte.spec.ts',
       'src/lib/components/module-card.svelte.spec.ts',
       'src/lib/components/module-settings-section.svelte.spec.ts',
-      'src/lib/components/github-connect.svelte.spec.ts',
+      'src/lib/components/github-app-connect.svelte.spec.ts',
       'src/lib/components/app-deploy-progress.svelte.spec.ts',
       'src/lib/components/app-build-form.svelte.spec.ts',
       'src/lib/components/app-card.svelte.spec.ts',

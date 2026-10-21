@@ -1,30 +1,34 @@
 <script lang="ts">
-  import type { ActionData, PageData } from './$types'
+  import type { PageData } from './$types'
   import { resolve } from '$app/paths'
-  import GitHubConnect, { type GitHubConnectForm } from '$lib/components/github-connect.svelte'
+  import GitHubAppConnect from '$lib/components/github-app-connect.svelte'
+  import * as Breadcrumb from '$lib/components/ui/breadcrumb'
 
-  let { data, form }: { data: PageData; form: ActionData } = $props()
+  /** /m/website/github — the GitHub App connection only (decision D-W4). */
+  let { data }: { data: PageData } = $props()
 </script>
 
 <svelte:head><title>GitHub · Website · Eigen Enterprise</title></svelte:head>
 
 <div class="mx-auto w-full max-w-4xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
-  <header class="flex min-w-0 flex-col gap-1.5 border-b border-border pb-6">
-    <a href={resolve('/m/website')} class="text-xs text-foreground/55 hover:text-foreground"
-      >Website</a
-    >
+  <Breadcrumb.Root>
+    <Breadcrumb.List>
+      <Breadcrumb.Item>
+        <Breadcrumb.Link href={resolve('/m/website')}>Website</Breadcrumb.Link>
+      </Breadcrumb.Item>
+      <Breadcrumb.Separator />
+      <Breadcrumb.Item>
+        <Breadcrumb.Page>GitHub</Breadcrumb.Page>
+      </Breadcrumb.Item>
+    </Breadcrumb.List>
+  </Breadcrumb.Root>
+
+  <header class="mt-3 border-b border-border pb-6">
     <h1 class="text-xl font-semibold tracking-tight">GitHub</h1>
-    <p class="text-sm text-foreground/60">
-      Connect your GitHub repositories so they can be deployed here.
+    <p class="mt-1 text-sm text-muted-foreground">
+      How this server may read your GitHub repositories.
     </p>
   </header>
 
-  <GitHubConnect
-    github={data.github}
-    repos={data.repos}
-    available={data.available}
-    availableError={data.availableError}
-    manifest={data.manifest}
-    form={(form ?? null) as GitHubConnectForm}
-  />
+  <GitHubAppConnect github={data.github} manifest={data.manifest} />
 </div>
