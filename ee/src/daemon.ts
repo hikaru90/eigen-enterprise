@@ -6,14 +6,14 @@ import { z } from 'zod'
 import { CompanyRepo, type DesiredState } from './company-repo.ts'
 import { loadJournal, saveJournal, type Journal } from './journal.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
-import { allowRetry, emit, reconcile } from './reconcile.ts'
+import { allowRetry, emit, OS_INTERNAL_PORT, reconcile } from './reconcile.ts'
 import { SecretStore } from './secret-store.ts'
 import { appContractSchema, assertInCatalog, CATALOG, CatalogGapError, gitSource, NAME, routeSchema, workloadSchema, type Route, type Workload } from './spec.ts'
 import { mustRun, type System } from './system.ts'
 import { addDomain, removeDomain, setConsoleHost } from './domains.ts'
 import { fetchSource, readRepoFile, readTree, SourceReadError, TREE_MAX_DEPTH } from './sources.ts'
 import { checkDeployKey, createDeployKey, deleteDeployKey, KEY_ID, REPO } from './deploy-keys.ts'
-import { claimUrl, newClaim } from './claim.ts'
+import { claimState, claimUrl, newClaim } from './claim.ts'
 
 /**
  * The control API (§3.1): typed verbs over a unix socket, readable only by root
@@ -229,6 +229,10 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
         // A fresh claim link (lost or expired). Only the hash + expiry are stored;
         // the token goes back once, to the caller (root on the box, via `ee claim-link`).
         const i = z.object({ author }).strict().parse(await body(req))
+        // Only while the company has no owner: eigenEnterprise is asked (its database is the truth).
+        const state = await claimState(ee.sys, OS_INTERNAL_PORT)
+        if (state === 'claimed') throw new HttpError(409, 'this company already has an owner; claim links are only for a server nobody has claimed yet')
+        if (state === 'unreachable') throw new HttpError(503, 'eigenEnterprise is not answering, so ee cannot tell whether the company is claimed; no claim link minted')
         const claim = newClaim()
         await ee.exclusive(async () => {
           await ee.secrets.set('os', 'EE_CLAIM_TOKEN_HASH', claim.hash)

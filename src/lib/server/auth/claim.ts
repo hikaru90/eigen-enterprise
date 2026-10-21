@@ -35,8 +35,10 @@ export function claimConfigFromEnv(env: Record<string, string | undefined>): Cla
   return { tokenHash, expiresAt }
 }
 
+export const claimTokenHash = (token: string): string => createHash('sha256').update(token).digest('hex')
+
 export function checkClaimToken(token: string, cfg: ClaimConfig, now: Date): 'ok' | 'invalid' | 'expired' {
-  const actual = Buffer.from(createHash('sha256').update(token).digest('hex'))
+  const actual = Buffer.from(claimTokenHash(token))
   const expected = Buffer.from(cfg.tokenHash)
   if (!token || actual.length !== expected.length || !timingSafeEqual(actual, expected)) return 'invalid'
   return now.getTime() > cfg.expiresAt.getTime() ? 'expired' : 'ok'
@@ -45,6 +47,10 @@ export function checkClaimToken(token: string, cfg: ClaimConfig, now: Date): 'ok
 export type ClaimDeps = {
   config: ClaimConfig | null
   countUsers: () => Promise<number>
+  /** Whether this claim token (by hash) was already used. */
+  isConsumed: (tokenHash: string) => Promise<boolean>
+  /** Record the token (by hash) as used; false when another claim used it first (atomic). */
+  consume: (tokenHash: string) => Promise<boolean>
   /** Mint a sign-in code without sending it (Better Auth createVerificationOTP, server-only). */
   createCode: (email: string) => Promise<string>
   /** Sign in with that code — creates the account through the normal hooks. */
@@ -53,16 +59,21 @@ export type ClaimDeps = {
 }
 
 /** Reasons that can be shown to the person holding the link. */
-export async function claimStatus(token: string, deps: Pick<ClaimDeps, 'config' | 'countUsers' | 'now'>): Promise<'ok' | ClaimErrorCode> {
-  if (!deps.config) return 'no_claim'
+export async function claimStatus(
+  token: string,
+  deps: Pick<ClaimDeps, 'config' | 'countUsers' | 'isConsumed' | 'now'>,
+): Promise<'ok' | ClaimErrorCode> {
+  // An owner exists: claiming is over, whatever the token (even a still-valid one).
   if ((await deps.countUsers()) > 0) return 'already_claimed'
+  if (!deps.config) return 'no_claim'
+  if (token && (await deps.isConsumed(claimTokenHash(token)))) return 'already_claimed'
   const t = checkClaimToken(token, deps.config, deps.now?.() ?? new Date())
   return t === 'ok' ? 'ok' : t === 'expired' ? 'expired' : 'invalid_token'
 }
 
 const MESSAGES: Record<ClaimErrorCode, string> = {
   no_claim: 'This server has no claim link.',
-  already_claimed: 'This company already has an owner. Sign in instead.',
+  already_claimed: 'This company already has an owner.',
   invalid_token: 'This claim link is not valid. Use the exact link the installer printed.',
   expired: 'This claim link has expired. Ask whoever installed the server to run `ee claim-link` for a new one.',
   invalid_email: 'Enter a valid email address.',
@@ -77,6 +88,8 @@ export async function claimCompany(input: { email: string; token: string }, deps
   if (!email.success) throw new ClaimError('invalid_email', MESSAGES.invalid_email)
   const status = await claimStatus(input.token, deps)
   if (status !== 'ok') throw new ClaimError(status, MESSAGES[status])
+  // The token is spent here, before the owner is created: two racing claims can't both pass.
+  if (!(await deps.consume(claimTokenHash(input.token)))) throw new ClaimError('already_claimed', MESSAGES.already_claimed)
   const code = await deps.createCode(email.data)
   await claimScope.run(true, () => deps.signIn(email.data, code))
 }

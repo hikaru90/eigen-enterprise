@@ -10,7 +10,11 @@ vi.mock('$lib/server/auth/email-code-actions', () => ({
   requestCode: requestCodeMock,
   verifyCode: verifyCodeMock,
 }))
-vi.mock('$lib/server/auth/unclaimed', () => ({ unclaimedMessage: async () => null }))
+const { unclaimedState } = vi.hoisted(() => ({ unclaimedState: { ee: false, unclaimed: null as string | null } }))
+vi.mock('$lib/server/auth/unclaimed', () => ({
+  unclaimedMessage: async () => unclaimedState.unclaimed,
+  managedByEe: () => unclaimedState.ee,
+}))
 vi.mock('$lib/server/mail', () => ({
   companyMail: () => ({ isConfigured: async () => isOwleryMailConfiguredMock() }),
 }))
@@ -23,6 +27,23 @@ describe('login page server', () => {
       url: new URL('http://localhost/login'),
     } as never)
     expect(data).toMatchObject({ mailConfigured: true })
+  })
+
+  it('on a claimed ee server: a normal sign-in with no claim/owner message and no signup link', async () => {
+    unclaimedState.ee = true
+    unclaimedState.unclaimed = null
+    const data = await load({ locals: { user: null }, url: new URL('http://localhost/login') } as never)
+    expect(data).toMatchObject({ unclaimed: null, signupOpen: false })
+    unclaimedState.ee = false
+  })
+
+  it('on an unclaimed ee server the page says so', async () => {
+    unclaimedState.ee = true
+    unclaimedState.unclaimed = 'This server has not been claimed yet.'
+    const data = await load({ locals: { user: null }, url: new URL('http://localhost/login') } as never)
+    expect(data).toMatchObject({ unclaimed: 'This server has not been claimed yet.' })
+    unclaimedState.ee = false
+    unclaimedState.unclaimed = null
   })
 
   it('passwordless: sendCode (no terms on login), verifyCode signs in', async () => {

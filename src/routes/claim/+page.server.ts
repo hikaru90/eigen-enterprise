@@ -1,11 +1,11 @@
 import type { Actions, PageServerLoad } from './$types'
 import { fail, redirect } from '@sveltejs/kit'
-import { count } from 'drizzle-orm'
+import { count, eq } from 'drizzle-orm'
 import { auth } from '$lib/server/auth'
 import { getSafeErrorMessage } from '$lib/server/auth-form-errors'
 import { claimCompany, claimConfigFromEnv, claimMessage, claimStatus, ClaimError } from '$lib/server/auth/claim'
 import { authDb } from '$lib/server/db/auth-db'
-import { user } from '$lib/server/db/auth.schema'
+import { claimConsumed, user } from '$lib/server/db/auth.schema'
 import { env } from '$lib/server/env/private-env'
 
 /** First-run handover: the installer's private link makes its holder the owner (see $lib/server/auth/claim). */
@@ -18,6 +18,10 @@ async function countUsers(): Promise<number> {
 const deps = () => ({
   config: claimConfigFromEnv(env),
   countUsers,
+  isConsumed: async (tokenHash: string) =>
+    (await authDb.select({ h: claimConsumed.tokenHash }).from(claimConsumed).where(eq(claimConsumed.tokenHash, tokenHash)).limit(1)).length > 0,
+  consume: async (tokenHash: string) =>
+    (await authDb.insert(claimConsumed).values({ tokenHash }).onConflictDoNothing().returning({ h: claimConsumed.tokenHash })).length === 1,
   createCode: async (email: string) => auth.api.createVerificationOTP({ body: { email, type: 'sign-in' } }),
   signIn: async (email: string, code: string) => auth.api.signInEmailOTP({ body: { email, otp: code } }),
 })

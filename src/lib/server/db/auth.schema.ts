@@ -1,10 +1,12 @@
-import { relations } from 'drizzle-orm'
-import { pgTable, text, timestamp, boolean, index } from 'drizzle-orm/pg-core'
+import { relations, sql } from 'drizzle-orm'
+import { pgTable, text, timestamp, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core'
 
 export const userAccountKindEnum = ['production', 'harness'] as const
 export type UserAccountKind = (typeof userAccountKindEnum)[number]
 
-export const user = pgTable('user', {
+export const user = pgTable(
+  'user',
+  {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   email: text('email').notNull().unique(),
@@ -13,8 +15,9 @@ export const user = pgTable('user', {
   firstName: text('first_name'),
   lastName: text('last_name'),
   onboardingCompleted: boolean('onboarding_completed').default(false).notNull(),
-  role: text('role', { enum: ['user', 'admin'] })
-    .default('user')
+  /** Company role (see $lib/server/auth/user-role): exactly one owner (unique index below). */
+  role: text('role', { enum: ['owner', 'admin', 'member'] })
+    .default('member')
     .notNull(),
   accountKind: text('account_kind', { enum: userAccountKindEnum }).default('production').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -22,7 +25,9 @@ export const user = pgTable('user', {
     .defaultNow()
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
-})
+  },
+  (t) => [uniqueIndex('user_single_owner').on(t.role).where(sql`${t.role} = 'owner'`)],
+)
 
 export const session = pgTable(
   'session',
@@ -101,3 +106,24 @@ export const accountRelations = relations(account, ({ one }) => ({
     references: [user.id],
   }),
 }))
+
+/**
+ * Member invites (Settings -> Members, members.invite). Only the SHA-256 of the
+ * one-time token is stored; the link goes out once, by company mail.
+ */
+export const memberInvite = pgTable('member_invite', {
+  id: text('id').primaryKey(),
+  email: text('email').notNull(),
+  role: text('role', { enum: ['admin', 'member'] }).notNull(),
+  tokenHash: text('token_hash').notNull().unique(),
+  invitedBy: text('invited_by').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+/** Claim tokens already used (by hash): a claim link works once, even if the owner row later vanished. */
+export const claimConsumed = pgTable('claim_consumed', {
+  tokenHash: text('token_hash').primaryKey(),
+  claimedAt: timestamp('claimed_at', { withTimezone: true }).defaultNow().notNull(),
+})

@@ -2,28 +2,21 @@ import { eq } from 'drizzle-orm'
 import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
 
-export type UserRole = 'user' | 'admin'
+/** Company roles (user.role): one owner; admins manage members like the owner does; members use the company. */
+export const MEMBER_ROLES = ['owner', 'admin', 'member'] as const
+export type MemberRole = (typeof MEMBER_ROLES)[number]
 
-export async function getUserRole(userId: string): Promise<UserRole> {
-  const [row] = await authDb
-    .select({ role: user.role })
-    .from(user)
-    .where(eq(user.id, userId))
-    .limit(1)
-  return row?.role === 'admin' ? 'admin' : 'user'
+/** The user's company role, or null when there is no such user. */
+export async function getUserRole(userId: string): Promise<MemberRole | null> {
+  const [row] = await authDb.select({ role: user.role }).from(user).where(eq(user.id, userId)).limit(1)
+  return row?.role ?? null
+}
+
+/** Owner and admins run the company (settings, agent, members). */
+export function isAdminRole(role: MemberRole | null): boolean {
+  return role === 'owner' || role === 'admin'
 }
 
 export async function isUserAdmin(userId: string): Promise<boolean> {
-  return (await getUserRole(userId)) === 'admin'
-}
-
-export async function grantAdminByEmail(email: string): Promise<boolean> {
-  const normalized = email.trim().toLowerCase()
-  if (!normalized) return false
-  const rows = await authDb
-    .update(user)
-    .set({ role: 'admin' })
-    .where(eq(user.email, normalized))
-    .returning({ id: user.id })
-  return rows.length > 0
+  return isAdminRole(await getUserRole(userId))
 }

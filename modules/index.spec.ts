@@ -93,6 +93,8 @@ describe('buildKernel wires the owner-chosen approval mode', () => {
       'brand.set_activate': 'public',
       'brand.visual_set_activate': 'public',
       'email.send_mail': 'external',
+      'members.invite': 'external',
+      'members.set_role': 'internal',
       'owlery.send_mail': 'external',
       'repo.merge': 'destructive',
       'website.github_connect_repo': 'internal',
@@ -133,6 +135,7 @@ describe('moduleManifests', () => {
       'website',
       'brand',
       'orchestrator',
+      'members',
     ])
   })
 })
@@ -147,6 +150,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'website',
       'brand',
       'orchestrator',
+      'members',
     ])
     const toolNames = kernel.registry.list().map((t) => t.name)
     expect(toolNames).toContain('memory.retrieve_thoughts')
@@ -164,6 +168,9 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect(toolNames).toContain('github.app_create')
     expect(toolNames).toContain('owlery.status')
     expect(toolNames).toContain('owlery.send_mail')
+    expect(toolNames).toContain('members.list')
+    expect(toolNames).toContain('members.invite')
+    expect(toolNames).toContain('members.set_role')
     expect(toolNames.length).toBe(
       moduleManifests.reduce((sum, m) => sum + m.tools.length, 0),
     )
@@ -207,6 +214,8 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'brand.visual_set_activate',
       'email.send_mail',
       'kernel.module_deactivate',
+      'members.invite',
+      'members.set_role',
       'owlery.send_mail',
       'repo.merge',
       'website.app_deploy',

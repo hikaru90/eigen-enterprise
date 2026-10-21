@@ -16,7 +16,9 @@
 <div class="mx-auto max-w-md px-5 pt-16">
   <header class="text-center">
     <span class="text-lg font-medium tracking-tight">Eigen Enterprise</span>
-    <p class="text-muted-foreground mt-2 text-xs">Your company is installed. Claim it.</p>
+    {#if data.ok}
+      <p class="text-muted-foreground mt-2 text-xs">Your company is installed. Claim it.</p>
+    {/if}
   </header>
 
   <Card.Root class="ring-0 shadow-[4px_4px_0_0_rgb(17_17_17_/_0.08)] mt-8 border border-black/10 bg-card">

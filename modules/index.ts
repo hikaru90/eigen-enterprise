@@ -32,6 +32,8 @@ import { telegramClientFromEnv } from './chat-gateway/telegram'
 import { EMAIL_MODULE_ID, emailManifest } from './email/manifest'
 import { createOwleryTools } from './email/owlery/tools'
 import { createEmailTools } from './email/tools'
+import { MEMBERS_MODULE_ID, membersManifest } from './members/manifest'
+import { createMembersTools } from './members/tools'
 import { memoryManifest } from './memory/manifest'
 import { createMemoryTools } from './memory/tools'
 import { createAllowlistAdminTools } from './orchestrator/allowlist-tools'
@@ -68,10 +70,11 @@ export const moduleManifests = [
   websiteManifest,
   brandManifest,
   orchestratorManifest,
+  membersManifest,
 ] as const
 
 /** System modules: part of the OS, self-seeded active (ensureSystemModulesActive). */
-export const SYSTEM_MODULE_IDS = [WEBSITE_MODULE_ID, EMAIL_MODULE_ID] as const
+export const SYSTEM_MODULE_IDS = [WEBSITE_MODULE_ID, EMAIL_MODULE_ID, MEMBERS_MODULE_ID] as const
 
 /** Tools that always require an approval decision before first execution. */
 export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
@@ -103,6 +106,10 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   // Deploying an app and setting its env change the server: the agent may do it
   // only through this gate (owner decision 3, plan/phase-platform.md; D11).
   ...APP_AGENT_GATED_TOOLS,
+  // Members: inviting sends company mail to a person (external); a role change
+  // grants or takes away rights (internal). Both wait on the approval mode.
+  'members.invite',
+  'members.set_role',
 ])
 
 export type BootstrapKernelOptions = {
@@ -181,6 +188,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createGitHubConnectTools(),
     ...createAppTools(),
     ...createOwleryTools(),
+    ...createMembersTools(),
   ])
 
   return {
