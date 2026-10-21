@@ -93,7 +93,12 @@
   >
     <Settings class="pointer-events-none size-5 shrink-0" aria-hidden="true" strokeWidth={1.75} />
   </Popover.Trigger>
-  <Popover.Content align="end" side="bottom" sideOffset={6} class="w-56 gap-1 overflow-hidden pt-2 pb-2">
+  <Popover.Content
+    align="end"
+    side="bottom"
+    sideOffset={6}
+    class="w-56 gap-1 overflow-hidden pt-2 pb-2"
+  >
     <a
       href={resolve('/settings')}
       class="flex items-center gap-2.5 rounded-sm px-2 py-1.5 text-sm text-foreground hover:bg-white/25 dark:hover:bg-white/10"
@@ -109,7 +114,7 @@
       Extensions
     </a>
     <a
-      href={resolve('/settings/hosting')}
+      href={resolve('/m/website/hosting')}
       class="flex items-center gap-2.5 rounded-sm px-2 py-1.5 text-sm text-foreground hover:bg-white/25 dark:hover:bg-white/10"
     >
       <Server class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />

@@ -70,7 +70,7 @@ describe('navItemCurrent', () => {
     expect(navItemCurrent('/', '/')).toBe(true)
     expect(navItemCurrent('/', '/overview')).toBe(false)
     expect(navItemCurrent('/m/website', '/m/website')).toBe(true)
-    expect(navItemCurrent('/settings', '/settings/hosting')).toBe(true)
+    expect(navItemCurrent('/settings', '/settings/llm')).toBe(true)
     expect(navItemCurrent('/m/web', '/m/website')).toBe(false)
   })
 })

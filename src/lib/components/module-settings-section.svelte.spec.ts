@@ -6,11 +6,15 @@ import ModuleSettingsSection from './module-settings-section.svelte'
 describe('module-settings-section.svelte', () => {
   it('renders the links a module put in its slot', async () => {
     render(ModuleSettingsSection, {
-      slot: { links: [{ label: 'Hosting settings', href: '/settings/hosting', text: 'Domains and apps.' }] },
+      slot: {
+        links: [
+          { label: 'Hosting settings', href: '/m/website/hosting', text: 'Domains and apps.' },
+        ],
+      },
     })
     await expect
       .element(page.getByRole('link', { name: /Hosting settings/ }))
-      .toHaveAttribute('href', '/settings/hosting')
+      .toHaveAttribute('href', '/m/website/hosting')
     await expect.element(page.getByText('Domains and apps.')).toBeInTheDocument()
   })
 
