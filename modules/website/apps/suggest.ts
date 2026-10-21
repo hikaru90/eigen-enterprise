@@ -103,8 +103,8 @@ const answerSchema = z
       .optional(),
     kind: z.enum(['web', 'service']),
     confidence: z.number().min(0).max(1),
-    reasons: z.array(z.string().max(300)).max(8),
-    warnings: z.array(z.string().max(300)).max(8),
+    reasons: z.array(z.string().max(200)).max(3),
+    warnings: z.array(z.string().max(200)).max(2),
   })
   .strict()
 
@@ -118,8 +118,8 @@ const ANSWER_SHAPE = {
   staticDir: 'string | null — static only: the folder (after build) to serve, e.g. "dist"',
   kind: '"web" (has pages people open) | "service" (an API or worker without public pages)',
   confidence: 'number 0..1',
-  reasons: 'string[] — short, each citing what in the repo led to a field',
-  warnings: 'string[] — short, anything the owner should check before deploying',
+  reasons: 'string[] — at most 3, one short line each: which file decided the framework / package manager / start command',
+  warnings: 'string[] — usually empty; only a reason these settings cannot build or start this repo',
 }
 
 export function buildSuggestMessages(i: {
@@ -134,6 +134,7 @@ export function buildSuggestMessages(i: {
     'If the repo needs a runtime that is not allowed (another language, another Node.js major), put the id it needs (e.g. "python@3.12", "node@18") in runtime and say why in warnings. Never pretend an allowed runtime fits when it does not.',
     'How the server runs things: install, build and start each are ONE command run directly, not through a shell — no &&, ;, |, >, $VARS, quotes or cd. They run inside the repo root with the runtime on PATH. The app must listen on the port in the PORT environment variable (set portEnv only if the code reads another variable name). healthPath must answer HTTP 2xx once the app is up. A Dockerfile is information only: it is never used to build.',
     'Install only production dependencies when nothing needs building; when a build step needs dev dependencies, install all of them.',
+    'Decide only from the framework, its adapter/output and the package manager. Do not mention app configuration: environment variables, secrets, auth, databases, storage, proxies, WebSockets or hosting advice.',
     `JSON shape: ${JSON.stringify(ANSWER_SHAPE)}`,
   ].join('\n')
 
