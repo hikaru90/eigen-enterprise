@@ -10,4 +10,7 @@ export const APP_TOOL_NAMES = [
   'website.app_env_set',
   'website.app_remove',
   'website.app_auto_deploy',
+  // Per-app domains (plan/phase-website-apps-ux.md D-W2): human-only, never agent-gated.
+  'website.app_domain_set',
+  'website.app_domain_remove',
 ] as const

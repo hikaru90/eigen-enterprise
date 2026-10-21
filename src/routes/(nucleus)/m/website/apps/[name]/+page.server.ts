@@ -3,6 +3,7 @@ import type { DeployStatus, ServiceView } from '../../../../../../../modules/web
 import type { Actions, PageServerLoad } from './$types'
 import { error, fail, redirect } from '@sveltejs/kit'
 import { requireAdmin } from '$lib/server/auth/require-admin'
+import type { EeStatus } from '$lib/server/ee/client'
 import { lastAttempt, startOwnerDeploy } from '$lib/server/website/deploy-runner'
 import { logAppFailure, ownerRun, plainAppMessage } from '$lib/server/website/owner-run'
 import {
@@ -13,10 +14,10 @@ import {
 import { contractFields, formContract } from '../form'
 
 /**
- * /m/website/apps/[name]: one service — Deploy now (in the background, followed
- * through deploy-progress), the last attempt's log and "Ask AI", deploy history (ee's
- * journal), recent logs, domains, env variables (names only; values are
- * stored sealed by ee and never shown again).
+ * /m/website/apps/[name]: one app — Deploy now (in the background, followed
+ * through deploy-progress), its domains (add/change/remove per app, D-W2),
+ * build settings, env variables (names only; values stored sealed by ee),
+ * secrets (write-only via substrate.secret_set), deploy history, recent logs.
  */
 
 export type AppDetail = ServiceView & {
@@ -27,6 +28,9 @@ export type AppDetail = ServiceView & {
   catalog: Catalog
   history: Array<{ time: string; type: string; message: string }>
 }
+
+/** substrate.status: the server state, or the explicit "not managed by ee". */
+type SubstrateView = ({ managed: true } & EeStatus) | { managed: false; reason: string }
 
 export const load: PageServerLoad = async (event) => {
   const user = await requireAdmin(event.locals.user)
@@ -55,6 +59,13 @@ export const load: PageServerLoad = async (event) => {
   } catch (err) {
     logAppFailure('website.app_deploy_status', err)
   }
+  // Secret names for this workload (declared + set), from the substrate read —
+  // values are write-only and never come back.
+  const substrate = await ownerRun<SubstrateView>(user, 'substrate.status', {})
+  const workload = substrate.managed ? substrate.workloads.find((w) => w.name === name) : undefined
+  const secretNames = workload
+    ? [...new Set([...workload.declaredSecrets, ...workload.secrets])].sort()
+    : []
   return {
     app,
     logs,
@@ -62,6 +73,8 @@ export const load: PageServerLoad = async (event) => {
     lastDeploy,
     nodeVersions: app.catalog.runtimes.node,
     contractFields: contractFields(app.contract),
+    secretNames,
+    managed: substrate.managed,
   }
 }
 
@@ -88,6 +101,51 @@ export const actions: Actions = {
     })
     return { action: 'deploy' as const, jobId: job.id, name: event.params.name }
   },
+  domainSet: async (event) => {
+    const user = await requireAdmin(event.locals.user)
+    const f = await event.request.formData()
+    const host = field(f, 'host')
+    const replace = field(f, 'replace')
+    try {
+      const out = await ownerRun<{ host: string; domains: string[] }>(
+        user,
+        'website.app_domain_set',
+        {
+          name: event.params.name,
+          host,
+          ...(replace ? { replace } : {}),
+        },
+      )
+      return {
+        action: 'domainSet' as const,
+        ok: true,
+        message: replace
+          ? `This app now runs at ${out.host}.`
+          : `${out.host} now points at this app.`,
+      }
+    } catch (err) {
+      logAppFailure('website.app_domain_set', err)
+      return fail(400, { action: 'domainSet' as const, error: plainAppMessage(err) })
+    }
+  },
+  domainRemove: async (event) => {
+    const user = await requireAdmin(event.locals.user)
+    const host = field(await event.request.formData(), 'host')
+    try {
+      await ownerRun<{ host: string; domains: string[] }>(user, 'website.app_domain_remove', {
+        name: event.params.name,
+        host,
+      })
+      return {
+        action: 'domainRemove' as const,
+        ok: true,
+        message: `${host} no longer serves this app.`,
+      }
+    } catch (err) {
+      logAppFailure('website.app_domain_remove', err)
+      return fail(400, { action: 'domainRemove' as const, error: plainAppMessage(err) })
+    }
+  },
   env: async (event) => {
     const user = await requireAdmin(event.locals.user)
     const f = await event.request.formData()
@@ -108,6 +166,26 @@ export const actions: Actions = {
     } catch (err) {
       logAppFailure('website.app_env_set', err)
       return fail(400, { action: 'env' as const, error: plainAppMessage(err) })
+    }
+  },
+  secretSet: async (event) => {
+    const user = await requireAdmin(event.locals.user)
+    const f = await event.request.formData()
+    const name = field(f, 'name')
+    try {
+      await ownerRun(user, 'substrate.secret_set', {
+        workload: event.params.name,
+        name,
+        value: String(f.get('value') ?? ''),
+      })
+      return {
+        action: 'secretSet' as const,
+        ok: true,
+        message: `Saved ${name} as a secret. The app gets it sealed; the value is never shown again.`,
+      }
+    } catch (err) {
+      logAppFailure('substrate.secret_set', err)
+      return fail(400, { action: 'secretSet' as const, error: plainAppMessage(err) })
     }
   },
   remove: async (event) => {

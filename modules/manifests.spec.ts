@@ -34,13 +34,38 @@ function kernel() {
 
 /** Every tool name that existed before the merge, with its old owning module. */
 const PRE_MERGE_TOOLS: Record<string, string[]> = {
-  website: ['website.create_page', 'website.update_page', 'website.publish_page', 'website.get_page', 'website.list_pages', 'website.site_info'],
-  substrate: ['substrate.status', 'substrate.domain_add', 'substrate.domain_remove', 'substrate.app_remove', 'substrate.secret_set'],
-  github: ['github.status', 'github.repos_list', 'github.app_create', 'github.app_deploy', 'github.auto_deploy'],
+  website: [
+    'website.create_page',
+    'website.update_page',
+    'website.publish_page',
+    'website.get_page',
+    'website.list_pages',
+    'website.site_info',
+  ],
+  substrate: [
+    'substrate.status',
+    'substrate.domain_add',
+    'substrate.domain_remove',
+    'substrate.app_remove',
+    'substrate.secret_set',
+  ],
+  github: [
+    'github.status',
+    'github.repos_list',
+    'github.app_create',
+    'github.app_deploy',
+    'github.auto_deploy',
+  ],
   email: ['email.send_mail'],
   owlery: ['owlery.status', 'owlery.send_mail'],
   repo: ['repo.worktree_create', 'repo.run', 'repo.write_file', 'repo.read_file', 'repo.merge'],
-  'dev-agent': ['dev-agent.dispatch', 'dev-agent.status', 'dev-agent.logs', 'dev-agent.merge', 'dev-agent.abort'],
+  'dev-agent': [
+    'dev-agent.dispatch',
+    'dev-agent.status',
+    'dev-agent.logs',
+    'dev-agent.merge',
+    'dev-agent.abort',
+  ],
   roadmap: ['roadmap.list_items', 'roadmap.add_item', 'roadmap.update_item'],
 }
 
@@ -59,7 +84,10 @@ describe('merged module manifests', () => {
   })
 
   it('the orchestrator and members modules are internal (no owner-facing card); the others are not', () => {
-    expect(moduleManifests.filter((m) => m.internal === true).map((m) => m.id)).toEqual(['orchestrator', 'members'])
+    expect(moduleManifests.filter((m) => m.internal === true).map((m) => m.id)).toEqual([
+      'orchestrator',
+      'members',
+    ])
   })
 
   it('no retired module id remains a module', () => {
@@ -109,13 +137,70 @@ describe('D11: agent deploys go through approval, never around it', () => {
   })
 })
 
+describe('per-app domains (D-W2): human-only tools, never agent-gated', () => {
+  /** The pinned cut of the website module's app tools (plan/phase-website-apps-ux.md). */
+  const APP_TOOLS = [
+    'website.app_list',
+    'website.app_get',
+    'website.app_logs',
+    'website.app_deploy_status',
+    'website.app_diagnose',
+    'website.app_suggest_contract',
+    'website.app_deploy',
+    'website.app_env_set',
+    'website.app_remove',
+    'website.app_auto_deploy',
+    'website.app_domain_set',
+    'website.app_domain_remove',
+  ]
+
+  const agent: ToolContext = {
+    principal: { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] },
+    requestId: 'd-w2',
+  }
+
+  it('both domain tools are registered, owned by the website module', () => {
+    const { kernel: k } = kernel()
+    for (const name of ['website.app_domain_set', 'website.app_domain_remove']) {
+      expect(k.registry.get(name), name).toBeDefined()
+      expect(k.registry.get(name)!.module, name).toBe('website')
+    }
+  })
+
+  it('the app tool cut is exactly this (new per-app domain tools included)', () => {
+    const { kernel: k } = kernel()
+    const registered = k.registry
+      .list()
+      .map((t) => t.name)
+      .filter((n) => n.startsWith('website.app_'))
+    expect(registered.sort()).toEqual([...APP_TOOLS].sort())
+  })
+
+  it('the domain tools are NOT approval-gated: the agent is refused outright (human only, D11)', async () => {
+    expect(APPROVAL_REQUIRED_TOOLS.has('website.app_domain_set')).toBe(false)
+    expect(APPROVAL_REQUIRED_TOOLS.has('website.app_domain_remove')).toBe(false)
+    const { kernel: k, activations } = kernel()
+    await activations.set('website', true)
+    for (const name of ['website.app_domain_set', 'website.app_domain_remove']) {
+      await expect(
+        k.registry.execute(name, { name: 'shop', host: 'a.example.com' }, agent),
+      ).rejects.toMatchObject({ code: 'permission_denied' })
+    }
+  })
+})
+
 describe('D11 stays exactly as strict after the merge', () => {
   const agent: ToolContext = {
     principal: { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] },
     requestId: 'd11',
   }
 
-  it.each(['substrate.domain_add', 'substrate.domain_remove', 'substrate.app_remove', 'substrate.secret_set'])(
+  it.each([
+    'substrate.domain_add',
+    'substrate.domain_remove',
+    'substrate.app_remove',
+    'substrate.secret_set',
+  ])(
     '%s through the full kernel pipeline refuses an agent even with the website module active',
     async (name) => {
       const calls: string[] = []
@@ -133,8 +218,12 @@ describe('D11 stays exactly as strict after the merge', () => {
         name === 'substrate.secret_set'
           ? { workload: 'x1', name: 'API_KEY', value: 'v' }
           : { host: 'a.example.com', role: 'app', workload: 'x1', name: 'x1' }
-      await expect(recording.get(name)!.handler(agent, input)).rejects.toMatchObject({ code: 'permission_denied' })
-      await expect(k.registry.execute(name, input, agent)).rejects.toMatchObject({ code: 'permission_denied' })
+      await expect(recording.get(name)!.handler(agent, input)).rejects.toMatchObject({
+        code: 'permission_denied',
+      })
+      await expect(k.registry.execute(name, input, agent)).rejects.toMatchObject({
+        code: 'permission_denied',
+      })
       expect(calls).toEqual([])
     },
   )

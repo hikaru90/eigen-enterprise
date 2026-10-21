@@ -6,9 +6,18 @@
   import AppBuildForm from '$lib/components/app-build-form.svelte'
   import AppDeployProgress from '$lib/components/app-deploy-progress.svelte'
   import AppStatusDot from '$lib/components/app-status-dot.svelte'
+  import * as Alert from '$lib/components/ui/alert'
+  import * as AlertDialog from '$lib/components/ui/alert-dialog'
+  import { Badge } from '$lib/components/ui/badge'
+  import { Button, buttonVariants } from '$lib/components/ui/button'
+  import * as Card from '$lib/components/ui/card'
+  import { Input } from '$lib/components/ui/input'
+  import { Label } from '$lib/components/ui/label'
+  import * as Table from '$lib/components/ui/table'
 
   let { data, form }: { data: PageData; form: ActionData } = $props()
-  let busy = $state<'env' | 'remove' | null>(null)
+
+  let busy = $state<'domainSet' | 'domainRemove' | 'env' | 'secretSet' | 'remove' | null>(null)
   let starting = $state(false)
   let panel = $state<ReturnType<typeof AppDeployProgress> | null>(null)
 
@@ -23,7 +32,7 @@
     }
   }
 
-  const track = (what: 'env' | 'remove') => () => {
+  const track = (what: 'domainSet' | 'domainRemove' | 'env' | 'secretSet' | 'remove') => () => {
     busy = what
     return async ({ update }: { update: () => Promise<void> }) => {
       await update()
@@ -32,197 +41,384 @@
   }
 
   const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : 'never')
+
+  const kindLabel = $derived(data.app.kind === 'web' ? 'Web app' : 'Back-end service')
+  const siteUrl = $derived(data.app.domains.length > 0 ? `https://${data.app.domains[0]}` : null)
 </script>
 
 <svelte:head><title>{data.app.name} · Apps · Eigen Enterprise</title></svelte:head>
 
 <div class="mx-auto w-full max-w-4xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
-  <header class="flex min-w-0 flex-col gap-1.5 border-b border-border pb-6">
+  <header class="flex flex-col gap-3">
     <a href={resolve('/m/website/apps')} class="text-xs text-foreground/55 hover:text-foreground"
       >Apps</a
     >
-    <h1 class="flex items-center gap-3 text-xl font-semibold tracking-tight">
-      {data.app.name}
+    <div class="flex min-w-0 flex-wrap items-center gap-3">
+      <h1 class="text-xl font-semibold tracking-tight">{data.app.name}</h1>
+      <Badge variant="secondary">{kindLabel}</Badge>
       <AppStatusDot status={data.app.status} />
-    </h1>
+    </div>
     <p class="text-sm break-words text-foreground/60">
-      {data.app.kind === 'web' ? 'Web app' : 'Back-end service'} from {data.app.repo} · {data.app
-        .branch}{data.app.shortSha ? `@${data.app.shortSha}` : ''} · last deploy {when(
-        data.app.lastDeployedAt,
-      )}
+      {data.app.repo} · {data.app.branch}{data.app.shortSha ? `@${data.app.shortSha}` : ''} · last deploy
+      {when(data.app.lastDeployedAt)}
     </p>
-    {#if data.app.url}
+    {#if siteUrl}
       <a
-        href={data.app.url}
+        href={siteUrl}
         class="text-sm break-all underline"
         rel="external noopener noreferrer"
-        target="_blank">{data.app.url}</a
+        target="_blank">{siteUrl}</a
       >
     {/if}
+    {#if !data.managed}
+      <Alert.Root variant="destructive">
+        <Alert.Title>Not running on a server set up with ee</Alert.Title>
+        <Alert.Description>
+          Changes here need the server's deploy agent (ee). This copy of Eigen Enterprise isn't
+          running on a server set up with ee.
+        </Alert.Description>
+      </Alert.Root>
+    {/if}
     {#if data.app.lastError}
-      <p class="text-sm text-red-600" role="alert">{data.app.lastError}</p>
+      <Alert.Root variant="destructive">
+        <Alert.Title>The last deploy failed</Alert.Title>
+        <Alert.Description>{data.app.lastError}</Alert.Description>
+      </Alert.Root>
+    {/if}
+    {#if form && 'error' in form && form.error}
+      <p class="text-sm text-red-600" role="alert">{form.error}</p>
+    {:else if form && 'message' in form}
+      <p class="text-sm text-foreground/70" role="status">{form.message}</p>
     {/if}
   </header>
 
-  <section class="mt-6 flex flex-wrap items-center gap-3">
-    <button
-      type="button"
-      onclick={deployNow}
-      disabled={busy !== null || starting}
-      class="rounded-md bg-foreground px-3 py-1.5 text-sm text-background disabled:opacity-60"
-    >
-      {starting ? 'Starting…' : 'Deploy now'}
-    </button>
-    <span class="text-xs text-foreground/55">
-      {data.app.autoDeploy
-        ? 'Also deploys on every push to this branch.'
-        : data.app.authKind === 'github_app'
-          ? 'Deployed by hand.'
-          : 'Deployed by hand: repos read by deploy key or public link get no push events.'}
-      Build contract: {data.app.contractSource === 'repo'
-        ? "the repo's ee.json"
-        : 'the build form'}.
-    </span>
-  </section>
-  <div class="mt-4">
-    <AppDeployProgress
-      bind:this={panel}
-      name={data.app.name}
-      initial={data.lastDeploy?.state === 'failed' ? data.lastDeploy : null}
-      onlive={() => invalidateAll()}
-    />
-  </div>
-  {#if form && 'error' in form && form.error}
-    <p class="mt-3 text-sm text-red-600" role="alert">{form.error}</p>
-  {:else if form && 'message' in form}
-    <p class="mt-3 text-sm text-foreground/70" role="status">{form.message}</p>
-  {/if}
+  <Card.Root class="mt-6">
+    <Card.Header>
+      <Card.Title>Deploy</Card.Title>
+      <Card.Description>
+        {data.app.autoDeploy
+          ? 'Deploys by hand here, and on every push to this branch.'
+          : data.app.authKind === 'github_app'
+            ? 'Deploys by hand.'
+            : 'Deploys by hand: repos read by deploy key or public link get no push events.'}
+        Build contract: {data.app.contractSource === 'repo'
+          ? "the repo's ee.json"
+          : 'the build form'}.
+      </Card.Description>
+    </Card.Header>
+    <Card.Content class="flex flex-col gap-4">
+      <div>
+        <Button type="button" onclick={deployNow} disabled={busy !== null || starting}>
+          {starting ? 'Starting…' : 'Deploy now'}
+        </Button>
+      </div>
+      <AppDeployProgress
+        bind:this={panel}
+        name={data.app.name}
+        initial={data.lastDeploy?.state === 'failed' ? data.lastDeploy : null}
+        onlive={() => invalidateAll()}
+      />
+    </Card.Content>
+  </Card.Root>
 
-  {#if data.app.contractSource === 'form'}
-    <section class="mt-8 flex flex-col gap-3" aria-label="Build settings">
-      <h2 class="text-base font-semibold">Build settings</h2>
+  <Card.Root class="mt-6">
+    <Card.Header>
+      <Card.Title>Domains</Card.Title>
+      <Card.Description>
+        The addresses this app is served at. An address works once its DNS points at this server.
+      </Card.Description>
+    </Card.Header>
+    <Card.Content class="flex flex-col gap-4">
+      {#if data.app.domains.length === 0}
+        <p class="text-sm text-foreground/60">No address yet.</p>
+      {:else}
+        <Table.Root>
+          <Table.Body>
+            {#each data.app.domains as d (d)}
+              <Table.Row>
+                <Table.Cell class="break-all font-mono text-xs">{d}</Table.Cell>
+                <Table.Cell class="w-full max-w-xs">
+                  <form
+                    method="POST"
+                    action="?/domainSet"
+                    use:enhance={track('domainSet')}
+                    class="flex items-center gap-2"
+                  >
+                    <input type="hidden" name="replace" value={d} />
+                    <Input
+                      name="host"
+                      required
+                      placeholder="new.example.com"
+                      aria-label={`Replace ${d}`}
+                      class="h-8 min-w-0 flex-1 font-mono text-xs"
+                    />
+                    <Button type="submit" variant="outline" size="sm" disabled={busy !== null}
+                      >Save</Button
+                    >
+                  </form>
+                </Table.Cell>
+                <Table.Cell class="w-24">
+                  <AlertDialog.Root>
+                    <AlertDialog.Trigger class={buttonVariants({ variant: 'ghost', size: 'sm' })}
+                      >Remove</AlertDialog.Trigger
+                    >
+                    <AlertDialog.Content>
+                      <AlertDialog.Header>
+                        <AlertDialog.Title>Remove {d}?</AlertDialog.Title>
+                        <AlertDialog.Description>
+                          It stops serving this app. DNS can keep pointing here; nothing else
+                          changes.
+                        </AlertDialog.Description>
+                      </AlertDialog.Header>
+                      <form
+                        method="POST"
+                        action="?/domainRemove"
+                        use:enhance={track('domainRemove')}
+                      >
+                        <input type="hidden" name="host" value={d} />
+                        <AlertDialog.Footer>
+                          <AlertDialog.Cancel disabled={busy !== null}>Keep it</AlertDialog.Cancel>
+                          <AlertDialog.Action
+                            type="submit"
+                            variant="destructive"
+                            disabled={busy !== null}
+                          >
+                            {busy === 'domainRemove' ? 'Removing…' : 'Remove address'}
+                          </AlertDialog.Action>
+                        </AlertDialog.Footer>
+                      </form>
+                    </AlertDialog.Content>
+                  </AlertDialog.Root>
+                </Table.Cell>
+              </Table.Row>
+            {/each}
+          </Table.Body>
+        </Table.Root>
+      {/if}
       <form
         method="POST"
-        action="?/deploy"
-        class="flex flex-col gap-3"
-        use:enhance={() => {
-          starting = true
-          return async ({ result, update }) => {
-            await update({ reset: false })
-            starting = false
-            // Runs in the background: follow it from here (no $effect).
-            const started = result.type === 'success' ? result.data : null
-            if (started && typeof started.jobId === 'string') void panel?.follow(started.jobId)
-          }
-        }}
+        action="?/domainSet"
+        use:enhance={track('domainSet')}
+        class="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:items-end"
       >
-        <AppBuildForm
-          nodeVersions={data.nodeVersions}
-          initial={data.contractFields ?? undefined}
-          target={{ name: data.app.name }}
-        />
-        <div>
-          <button
-            type="submit"
-            disabled={busy !== null || starting}
-            class="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-60"
-          >
-            Deploy with these settings
-          </button>
+        <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+          <Label for="add-domain">Add a domain</Label>
+          <Input
+            id="add-domain"
+            name="host"
+            required
+            placeholder="shop.example.com"
+            class="font-mono text-xs"
+          />
         </div>
+        <Button type="submit" variant="outline" disabled={busy !== null}>Add domain</Button>
       </form>
-    </section>
+    </Card.Content>
+  </Card.Root>
+
+  {#if data.app.contractSource === 'form'}
+    <Card.Root class="mt-6">
+      <Card.Header>
+        <Card.Title>Build settings</Card.Title>
+        <Card.Description>
+          How this app is built and started; the repo has no ee.json, so this form is the contract.
+        </Card.Description>
+      </Card.Header>
+      <Card.Content>
+        <form
+          method="POST"
+          action="?/deploy"
+          class="flex flex-col gap-3"
+          use:enhance={() => {
+            starting = true
+            return async ({ result, update }) => {
+              await update({ reset: false })
+              starting = false
+              // Runs in the background: follow it from here (no $effect).
+              const started = result.type === 'success' ? result.data : null
+              if (started && typeof started.jobId === 'string') void panel?.follow(started.jobId)
+            }
+          }}
+        >
+          <AppBuildForm
+            nodeVersions={data.nodeVersions}
+            initial={data.contractFields ?? undefined}
+            target={{ name: data.app.name }}
+          />
+          <div>
+            <Button type="submit" variant="outline" disabled={busy !== null || starting}>
+              Deploy with these settings
+            </Button>
+          </div>
+        </form>
+      </Card.Content>
+    </Card.Root>
   {/if}
 
-  <section class="mt-8 flex flex-col gap-2" aria-label="Domains">
-    <h2 class="text-base font-semibold">Domains</h2>
-    {#if data.app.domains.length === 0}
-      <p class="text-sm text-foreground/60">No public address (back-end service).</p>
-    {/if}
-    {#each data.app.domains as d (d)}
-      <p class="text-sm break-all">{d}</p>
-    {/each}
-  </section>
-
-  <section class="mt-8 flex flex-col gap-3" aria-label="Environment variables">
-    <h2 class="text-base font-semibold">Environment variables</h2>
-    <p class="text-sm text-foreground/60">
-      Stored encrypted on this server and given to the app while it builds and while it runs. Changing one
-      rebuilds the app.
-    </p>
-    {#if data.app.env.length === 0}
-      <p class="text-sm text-foreground/60">None yet.</p>
-    {/if}
-    <ul class="flex flex-col gap-1">
-      {#each data.app.env as key (key)}
-        <li class="flex items-center gap-2 font-mono text-xs">
-          {key} <span class="text-foreground/40">••••••••</span>
-        </li>
-      {/each}
-    </ul>
-    <form
-      method="POST"
-      action="?/env"
-      use:enhance={track('env')}
-      class="flex flex-col gap-2 sm:flex-row"
-      autocomplete="off"
-    >
-      <input
-        name="key"
-        required
-        placeholder="NAME"
-        class="rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs"
-      />
-      <input
-        name="value"
-        type="password"
-        required
-        placeholder="value (stored sealed, never shown again)"
-        class="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs"
-      />
-      <button
-        type="submit"
-        disabled={busy !== null}
-        class="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-60"
-        >{busy === 'env' ? 'Saving…' : 'Set'}</button
+  <Card.Root class="mt-6">
+    <Card.Header>
+      <Card.Title>Environment variables</Card.Title>
+      <Card.Description>
+        Stored encrypted on this server and given to the app while it builds and while it runs.
+        Changing one rebuilds the app.
+      </Card.Description>
+    </Card.Header>
+    <Card.Content class="flex flex-col gap-3">
+      {#if data.app.env.length === 0}
+        <p class="text-sm text-foreground/60">None yet.</p>
+      {:else}
+        <ul class="flex flex-col gap-1">
+          {#each data.app.env as key (key)}
+            <li class="flex items-center gap-2 font-mono text-xs">
+              {key} <span class="text-foreground/40">••••••••</span>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      <form
+        method="POST"
+        action="?/env"
+        use:enhance={track('env')}
+        class="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row"
+        autocomplete="off"
       >
-    </form>
-  </section>
+        <Input
+          name="key"
+          required
+          placeholder="NAME"
+          aria-label="Variable name"
+          class="font-mono text-xs"
+        />
+        <Input
+          name="value"
+          type="password"
+          required
+          placeholder="value (stored sealed, never shown again)"
+          aria-label="Variable value"
+          class="min-w-0 flex-1 font-mono text-xs"
+        />
+        <Button type="submit" variant="outline" disabled={busy !== null}>
+          {busy === 'env' ? 'Saving…' : 'Set'}
+        </Button>
+      </form>
+    </Card.Content>
+  </Card.Root>
 
-  <section class="mt-8 flex flex-col gap-2" aria-label="Deploy history">
-    <h2 class="text-base font-semibold">Deploy history</h2>
-    {#if data.app.history.length === 0}
-      <p class="text-sm text-foreground/60">No deploys yet.</p>
-    {/if}
-    <ul class="flex flex-col gap-1">
-      {#each data.app.history.slice(0, 30) as e, i (i)}
-        <li class="text-xs break-words text-foreground/70">
-          <span class="text-foreground/45">{when(e.time)}</span> · {e.message}
-        </li>
-      {/each}
-    </ul>
-  </section>
-
-  <section class="mt-8 flex flex-col gap-2" aria-label="Logs">
-    <h2 class="text-base font-semibold">Recent logs</h2>
-    {#if data.logsError}
-      <p class="text-sm text-foreground/60">{data.logsError}</p>
-    {:else}
-      <pre
-        class="max-h-96 overflow-auto rounded-md border border-border bg-muted/40 p-3 text-xs whitespace-pre-wrap">{data.logs.join(
-          '\n',
-        )}</pre>
-    {/if}
-  </section>
-
-  <section class="mt-10 border-t border-border pt-6">
-    <form method="POST" action="?/remove" use:enhance={track('remove')}>
-      <button
-        type="submit"
-        disabled={busy !== null}
-        class="rounded-md border border-red-500/60 px-3 py-1.5 text-sm text-red-600 disabled:opacity-60"
-        >{busy === 'remove' ? 'Removing…' : 'Remove this app from the server'}</button
+  <Card.Root class="mt-6">
+    <Card.Header>
+      <Card.Title>Secrets</Card.Title>
+      <Card.Description>
+        Sealed by the server and handed to the running app. Unlike environment variables, secrets
+        are never given to a build, and their values can never be read back.
+      </Card.Description>
+    </Card.Header>
+    <Card.Content class="flex flex-col gap-3">
+      {#if data.secretNames.length === 0}
+        <p class="text-sm text-foreground/60">None yet.</p>
+      {:else}
+        <ul class="flex flex-col gap-1">
+          {#each data.secretNames as secret (secret)}
+            <li class="flex items-center gap-2 font-mono text-xs">
+              {secret}
+              <Badge variant="outline">sealed</Badge>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      <form
+        method="POST"
+        action="?/secretSet"
+        use:enhance={track('secretSet')}
+        class="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row"
+        autocomplete="off"
       >
-    </form>
-  </section>
+        <Input
+          name="name"
+          required
+          placeholder="NAME"
+          aria-label="Secret name"
+          class="font-mono text-xs"
+        />
+        <Input
+          name="value"
+          type="password"
+          required
+          placeholder="value (write-only, never shown again)"
+          aria-label="Secret value"
+          class="min-w-0 flex-1 font-mono text-xs"
+        />
+        <Button type="submit" variant="outline" disabled={busy !== null}>
+          {busy === 'secretSet' ? 'Saving…' : 'Set secret'}
+        </Button>
+      </form>
+    </Card.Content>
+  </Card.Root>
+
+  <Card.Root class="mt-6">
+    <Card.Header>
+      <Card.Title>Deploy history</Card.Title>
+    </Card.Header>
+    <Card.Content>
+      {#if data.app.history.length === 0}
+        <p class="text-sm text-foreground/60">No deploys yet.</p>
+      {:else}
+        <ul class="flex flex-col gap-1">
+          {#each data.app.history.slice(0, 30) as e, i (i)}
+            <li class="text-xs break-words text-foreground/70">
+              <span class="text-foreground/45">{when(e.time)}</span> · {e.message}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </Card.Content>
+  </Card.Root>
+
+  <Card.Root class="mt-6">
+    <Card.Header>
+      <Card.Title>Recent logs</Card.Title>
+    </Card.Header>
+    <Card.Content>
+      {#if data.logsError}
+        <p class="text-sm text-foreground/60">{data.logsError}</p>
+      {:else}
+        <pre
+          class="max-h-96 overflow-auto rounded-md border border-border bg-muted/40 p-3 text-xs whitespace-pre-wrap">{data.logs.join(
+            '\n',
+          )}</pre>
+      {/if}
+    </Card.Content>
+  </Card.Root>
+
+  <Card.Root class="mt-10 border-red-500/40">
+    <Card.Header>
+      <Card.Title class="text-red-600">Danger zone</Card.Title>
+      <Card.Description>
+        Removes the app and its addresses from this server. The repo stays connected.
+      </Card.Description>
+    </Card.Header>
+    <Card.Content>
+      <AlertDialog.Root>
+        <AlertDialog.Trigger class={buttonVariants({ variant: 'destructive' })}>
+          Remove this app…
+        </AlertDialog.Trigger>
+        <AlertDialog.Content>
+          <AlertDialog.Header>
+            <AlertDialog.Title>Remove {data.app.name}?</AlertDialog.Title>
+            <AlertDialog.Description>
+              It stops serving and its addresses are freed. This cannot be undone; deploy it again
+              to bring it back.
+            </AlertDialog.Description>
+          </AlertDialog.Header>
+          <form method="POST" action="?/remove" use:enhance={track('remove')}>
+            <AlertDialog.Footer>
+              <AlertDialog.Cancel disabled={busy !== null}>Keep it</AlertDialog.Cancel>
+              <AlertDialog.Action type="submit" variant="destructive" disabled={busy !== null}>
+                {busy === 'remove' ? 'Removing…' : 'Remove app'}
+              </AlertDialog.Action>
+            </AlertDialog.Footer>
+          </form>
+        </AlertDialog.Content>
+      </AlertDialog.Root>
+    </Card.Content>
+  </Card.Root>
 </div>
