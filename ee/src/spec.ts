@@ -17,7 +17,7 @@ export const NAME = /^[a-z][a-z0-9-]{1,30}$/
 const ENV_KEY = /^[A-Z_][A-Z0-9_]*$/
 const SHA256 = /^[0-9a-f]{64}$/
 const GIT_REV = /^[0-9a-f]{40}$/
-const HOSTNAME = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/
+export const HOSTNAME = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/
 
 /** Environment keys ee itself owns; a spec may not set them. */
 export const RESERVED_ENV = ['PORT', 'HOST', 'NODE_ENV', 'EE_WORKLOAD', 'EE_STATE_DIR'] as const

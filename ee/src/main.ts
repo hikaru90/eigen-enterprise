@@ -1,3 +1,5 @@
+import { z } from 'zod'
+import { HOSTNAME } from './spec.ts'
 import { request } from 'node:http'
 import { parseArgs } from 'node:util'
 import { bootstrap } from './bootstrap.ts'
@@ -74,6 +76,13 @@ async function main(argv: string[]): Promise<void> {
         options: { release: { type: 'string' }, 'console-host': { type: 'string' }, 'acme-email': { type: 'string' } },
       })
       if (!values.release) throw new Error('--release <tarball> is required')
+      // Check the flags up front, in plain words, before anything is installed.
+      if (values['acme-email'] && !z.email().safeParse(values['acme-email']).success) {
+        throw new Error(`--acme-email "${values['acme-email']}" is not a valid email address`)
+      }
+      if (values['console-host'] && !HOSTNAME.test(values['console-host'])) {
+        throw new Error(`--console-host "${values['console-host']}" is not a valid host name (e.g. os.example.com)`)
+      }
       const { consoleHost, claimToken } = await bootstrap(sys, {
         release: values.release,
         ...(values['console-host'] ? { consoleHost: values['console-host'] } : {}),
