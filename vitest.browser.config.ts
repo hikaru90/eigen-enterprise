@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { paraglideVitePlugin } from '@inlang/paraglide-js'
@@ -19,6 +20,14 @@ const root = path.dirname(fileURLToPath(import.meta.url))
  * `scripts/patch-vitest-browser-iframeid.mjs` so paths containing `+` work.
  */
 export default defineConfig({
+  // Git worktrees symlink node_modules to the main checkout; the browser-mode
+  // dev server must be allowed to serve those real paths or every module fetch
+  // from the tester iframe fails outside the main checkout.
+  server: {
+    fs: {
+      allow: [root, realpathSync(path.join(root, 'node_modules'))],
+    },
+  },
   plugins: [
     // Tailwind is omitted here: bits-ui virtual `<style>` modules conflict with
     // `@tailwindcss/vite` in browser mode. Component specs assert behavior, not CSS.
@@ -76,6 +85,7 @@ export default defineConfig({
       'src/lib/components/github-connect.svelte.spec.ts',
       'src/lib/components/app-deploy-progress.svelte.spec.ts',
       'src/lib/components/app-build-form.svelte.spec.ts',
+      'src/lib/components/repo-connect-steps.svelte.spec.ts',
       'modules/brand/water-flow.svelte.spec.ts',
     ],
     exclude: ['src/routes/demo/playwright/**/*.ts', '**/*.e2e.ts'],
