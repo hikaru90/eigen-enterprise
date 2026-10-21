@@ -58,8 +58,8 @@ describe('merged module manifests', () => {
     }
   })
 
-  it('the orchestrator module is internal (no owner-facing card); the others are not', () => {
-    expect(moduleManifests.filter((m) => m.internal === true).map((m) => m.id)).toEqual(['orchestrator'])
+  it('the orchestrator and members modules are internal (no owner-facing card); the others are not', () => {
+    expect(moduleManifests.filter((m) => m.internal === true).map((m) => m.id)).toEqual(['orchestrator', 'members'])
   })
 
   it('no retired module id remains a module', () => {
@@ -89,8 +89,8 @@ describe('merged module manifests', () => {
     for (const name of APPROVAL_REQUIRED_TOOLS) expect(k.registry.get(name), name).toBeDefined()
   })
 
-  it('system modules are website and email, and boot activates them', async () => {
-    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email'])
+  it('system modules are website, email and members, and boot activates them', async () => {
+    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members'])
     const { kernel: k, activations } = kernel()
     await ensureSystemModulesActive(k)
     expect(await activations.get('website')).toBe(true)

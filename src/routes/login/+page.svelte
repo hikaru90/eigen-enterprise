@@ -99,10 +99,12 @@
           {/if}
         </form>
 
-        <p class="text-muted-foreground text-center text-xs">
-          Don't have an account?
-          <a href={resolve('/signup')} class="text-foreground underline-offset-2 hover:underline">Sign up</a>
-        </p>
+        {#if data.signupOpen}
+          <p class="text-muted-foreground text-center text-xs" data-testid="auth-signup-link">
+            Don't have an account?
+            <a href={resolve('/signup')} class="text-foreground underline-offset-2 hover:underline">Sign up</a>
+          </p>
+        {/if}
       {/if}
     </Card.Content>
   </Card.Root>

@@ -10,7 +10,9 @@ import { syncOwleryContactForVerifiedUser } from '$lib/server/auth-owlery-sync'
 import { buildSocialProvidersConfig, listEnabledSocialProviderIds } from '$lib/server/auth-social'
 import { normalizeUserNameFields } from '$lib/server/auth-user-name'
 import { deliverSignInCode, recordDeliveryFailure } from '$lib/server/auth/deliver-code'
-import { claimScope, ownerPolicyForNewUser } from '$lib/server/auth/owner-policy'
+import { claimScope, inviteScope, NotAMemberError, ownerPolicyForNewUser } from '$lib/server/auth/owner-policy'
+import { dbMemberStore } from '$lib/server/members/db-store'
+import { foundingCompanyName } from '$lib/server/overview/sources'
 import { authDb } from '$lib/server/db/auth-db'
 import { user as userTable } from '$lib/server/db/auth.schema'
 import { recordSignInCode } from '$lib/server/e2e/verification-link-store'
@@ -142,7 +144,7 @@ export const auth = betterAuth({
       role: {
         type: 'string',
         required: false,
-        defaultValue: 'user',
+        defaultValue: 'member',
         input: false,
         returned: true,
       },
@@ -161,11 +163,25 @@ export const auth = betterAuth({
         before: async (user) => {
           const [{ n }] = await authDb.select({ n: count() }).from(userTable)
           // ee sets EE_WORKLOAD on every workload it runs (ee/src/units.ts).
-          const { role } = ownerPolicyForNewUser({
-            existingUsers: Number(n),
-            managedByEe: Boolean(env.EE_WORKLOAD),
-            viaClaim: claimScope.getStore() === true,
-          })
+          const email = String(user.email ?? '').toLowerCase()
+          const invite = inviteScope.getStore()
+          if (invite && invite.email !== email) throw new Error('this invite belongs to a different email address')
+          let role
+          try {
+            role = ownerPolicyForNewUser({
+              existingUsers: Number(n),
+              managedByEe: Boolean(env.EE_WORKLOAD),
+              viaClaim: claimScope.getStore() === true,
+              invite: invite ? { role: invite.role } : null,
+            }).role
+          } catch (err) {
+            if (err instanceof NotAMemberError) throw new NotAMemberError(await foundingCompanyName())
+            throw err
+          }
+          // An invite works once: consumed atomically right before its account is created.
+          if (invite && !(await dbMemberStore.consumeInvite(invite.inviteId, new Date()))) {
+            throw new Error('This invite was already used or has expired.')
+          }
           return {
             data: {
               ...user,

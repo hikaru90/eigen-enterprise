@@ -7,6 +7,8 @@ const { sendVerificationOTPMock, signInEmailOTPMock } = vi.hoisted(() => ({
 vi.mock('$lib/server/auth', () => ({
   auth: { api: { sendVerificationOTP: sendVerificationOTPMock, signInEmailOTP: signInEmailOTPMock } },
 }))
+const { signInRefusalMock } = vi.hoisted(() => ({ signInRefusalMock: vi.fn(async (_email: string): Promise<string | null> => null) }))
+vi.mock('./unclaimed', () => ({ signInRefusal: signInRefusalMock }))
 
 const { requestCode, verifyCode } = await import('./email-code-actions')
 const { recordDeliveryFailure } = await import('./deliver-code')
@@ -41,6 +43,18 @@ describe('requestCode', () => {
     const out = (await requestCode(event({ email: 'a@b.co' }), { requireTerms: false })) as { status: number; data: { step: string; message: string } }
     expect(out.status).toBe(503)
     expect(out.data).toMatchObject({ step: 'email', message: 'Email delivery is not configured on this server' })
+  })
+})
+
+describe('requestCode on a claimed server', () => {
+  it('an address without an account gets the plain not-a-member answer and no code', async () => {
+    sendVerificationOTPMock.mockClear()
+    signInRefusalMock.mockResolvedValueOnce("You're not a member of Kindred yet. Ask the owner for an invite.")
+    const out = (await requestCode(event({ email: 'Stranger@X.co' }), { requireTerms: false })) as { status: number; data: { step: string; message: string } }
+    expect(signInRefusalMock).toHaveBeenCalledWith('stranger@x.co')
+    expect(out.status).toBe(403)
+    expect(out.data).toEqual({ step: 'email', email: 'stranger@x.co', message: "You're not a member of Kindred yet. Ask the owner for an invite." })
+    expect(sendVerificationOTPMock).not.toHaveBeenCalled()
   })
 })
 

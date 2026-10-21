@@ -673,6 +673,13 @@
       "when": 1760200000018,
       "tag": "0095_website_services",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1760200000019,
+      "tag": "0096_members",
+      "breakpoints": true
     }
   ]
 }

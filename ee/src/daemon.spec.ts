@@ -3,7 +3,7 @@ import { createServer, request, type Server } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { controlHandler, Ee } from './daemon.ts'
 import { DeployRun, forgetDeploys } from './deploys.ts'
 import { emptyJournal } from './journal.ts'
@@ -77,8 +77,10 @@ class FakeSystem implements System {
     if (cmd === 'git') return { code: 0, stdout: `${'a'.repeat(40)}\trefs/heads/main\n`, stderr: '' }
     return { code: 0, stdout: '', stderr: '' }
   }
-  async httpOk() {
-    return true
+  /** Per-path answers of the OS on 127.0.0.1 (null: everything answers 2xx). */
+  httpPaths: Record<string, boolean> | null = null
+  async httpOk(_port: number, path: string) {
+    return this.httpPaths ? (this.httpPaths[path] ?? false) : true
   }
   async caddyLoad() {}
   async sleep() {}
@@ -117,6 +119,36 @@ async function start() {
     })
   return { sys, ee, call }
 }
+
+describe('control API: claim links (ee claim-link)', () => {
+  it('mints a link only while eigenEnterprise says nobody claimed the company', async () => {
+    const { sys, ee, call } = await start()
+    sys.httpPaths = { '/api/claim/open': true, '/api/health': true }
+    vi.spyOn(ee.repo, 'read').mockResolvedValue({ settings: { consoleHost: 'os.kindred.test' } } as never)
+    vi.spyOn(ee, 'reconcile').mockResolvedValue(undefined as never)
+    const ok = await call('POST', '/v1/claim', { author: 'root' })
+    expect(ok.status).toBe(200)
+    expect(ok.data.url).toMatch(/\/claim\?token=/)
+    expect(ee.secrets.all()['os']?.['EE_CLAIM_TOKEN_HASH']).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('refuses once the company has an owner, and stores nothing', async () => {
+    const { sys, ee, call } = await start()
+    sys.httpPaths = { '/api/claim/open': false, '/api/health': true }
+    const r = await call('POST', '/v1/claim', { author: 'root' })
+    expect(r.status).toBe(409)
+    expect(JSON.stringify(r.data)).toMatch(/already has an owner/)
+    expect(ee.secrets.all()['os']?.['EE_CLAIM_TOKEN_HASH']).toBeUndefined()
+    expect(ee.journal.events.map((e) => e.type)).not.toContain('claim.issued')
+  })
+
+  it('refuses when eigenEnterprise is not answering (cannot tell)', async () => {
+    const { sys, call } = await start()
+    sys.httpPaths = {}
+    const r = await call('POST', '/v1/claim', { author: 'root' })
+    expect(r.status).toBe(503)
+  })
+})
 
 describe('control API: deploy keys', () => {
   it('create → check → delete; only the public key ever comes back', async () => {

@@ -10,12 +10,25 @@ vi.mock('$lib/server/auth/email-code-actions', () => ({
   requestCode: requestCodeMock,
   verifyCode: verifyCodeMock,
 }))
-vi.mock('$lib/server/auth/unclaimed', () => ({ unclaimedMessage: async () => null }))
+const { unclaimedState } = vi.hoisted(() => ({ unclaimedState: { ee: false, unclaimed: null as string | null } }))
+vi.mock('$lib/server/auth/unclaimed', () => ({
+  unclaimedMessage: async () => unclaimedState.unclaimed,
+  managedByEe: () => unclaimedState.ee,
+}))
 vi.mock('$lib/server/mail', () => ({
   companyMail: () => ({ isConfigured: async () => isOwleryMailConfiguredMock() }),
 }))
 
 describe('signup page server', () => {
+  it('on a claimed ee server, /signup sends people to the normal sign-in', async () => {
+    unclaimedState.ee = true
+    await expect(load({ url: new URL('http://localhost/signup'), locals: { user: null } } as never)).rejects.toMatchObject({
+      status: 302,
+      location: '/login',
+    })
+    unclaimedState.ee = false
+  })
+
   it('returns plan from valid query param', async () => {
     const url = new URL('http://localhost/signup?plan=self-hosted')
     const data = await load({ url, locals: { user: null } } as never)

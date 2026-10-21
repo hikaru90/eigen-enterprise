@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { PageProps } from './$types'
   import Cpu from '@lucide/svelte/icons/cpu'
+  import { page } from '$app/state'
   import KeyRound from '@lucide/svelte/icons/key-round'
+  import Users from '@lucide/svelte/icons/users'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import LogOut from '@lucide/svelte/icons/log-out'
   import Puzzle from '@lucide/svelte/icons/puzzle'
@@ -169,6 +171,25 @@
         </a>
       </div>
     </section>
+
+    {#if page.data.isAdmin}
+      <!-- Members -->
+      <section class="space-y-3" data-testid="settings-members">
+        <div class="flex items-center gap-2">
+          <Users class="size-4 shrink-0 opacity-80" strokeWidth={1.75} aria-hidden="true" />
+          <h2 class="text-sm font-semibold">Members</h2>
+        </div>
+        <div class="border-black/15 flex items-center justify-between gap-4 border p-4">
+          <p class="text-muted-foreground text-xs">The people in your company and their roles.</p>
+          <a
+            href={resolve('/settings/members')}
+            class="border-black/15 hover:border-black shrink-0 border px-3 py-2 text-xs font-medium"
+          >
+            Manage members →
+          </a>
+        </div>
+      </section>
+    {/if}
 
     <!-- API keys -->
     <section class="space-y-3" data-testid="settings-api-keys">

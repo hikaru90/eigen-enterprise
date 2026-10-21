@@ -1,6 +1,7 @@
 import { fail, redirect, type RequestEvent } from '@sveltejs/kit'
 import { auth } from '$lib/server/auth'
 import { takeDeliveryFailure } from '$lib/server/auth/deliver-code'
+import { signInRefusal } from '$lib/server/auth/unclaimed'
 import { getSafeErrorMessage } from '$lib/server/auth-form-errors'
 import { emailCodeRequestSchema, emailCodeVerifySchema, signUpCodeRequestSchema } from '$lib/validation/auth'
 
@@ -18,6 +19,9 @@ export async function requestCode(event: RequestEvent, opts: { requireTerms: boo
     const f = parsed.error.flatten().fieldErrors as Record<string, string[] | undefined>
     return fail(400, { step: 'email' as const, email: raw.email, message: f.email?.[0] ?? f.acceptTerms?.[0] ?? 'Invalid input' })
   }
+  // On a claimed ee server only members get a code; everyone else gets a plain answer.
+  const refusal = await signInRefusal(parsed.data.email)
+  if (refusal) return fail(403, { step: 'email' as const, email: parsed.data.email, message: refusal })
   try {
     takeDeliveryFailure(parsed.data.email) // clear any stale failure
     await auth.api.sendVerificationOTP({ body: { email: parsed.data.email, type: 'sign-in' } })

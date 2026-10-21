@@ -52,6 +52,10 @@ vi.mock('$lib/server/e2e/verification-link-store', () => ({
   recordSignInCode: vi.fn(),
 }))
 
+const consumeInviteMock = vi.fn(async (_id: string, _now: Date) => true)
+vi.mock('$lib/server/members/db-store', () => ({ dbMemberStore: { consumeInvite: (id: string, now: Date) => consumeInviteMock(id, now) } }))
+vi.mock('$lib/server/overview/sources', () => ({ foundingCompanyName: async () => 'Kindred' }))
+
 vi.mock('$lib/auth/account-kind', () => ({
   resolveAccountKindForNewUser: (...args: unknown[]) => resolveAccountKindMock(...args),
 }))
@@ -229,14 +233,37 @@ describe('auth config', () => {
     expect(result.data.accountKind).toBe('eval')
   })
 
-  it('databaseHooks before makes the first user the owner (admin), later ones users', async () => {
+  it('databaseHooks before makes the first user the owner, later ones members (dev)', async () => {
     await loadAuth()
     const config = lastConfig()
     existingUserCount = 0
-    expect((await config.databaseHooks.user.create.before({ email: 'owner@y.com' })).data.role).toBe('admin')
+    expect((await config.databaseHooks.user.create.before({ email: 'owner@y.com' })).data.role).toBe('owner')
     existingUserCount = 2
-    expect((await config.databaseHooks.user.create.before({ email: 'second@y.com' })).data.role).toBe('user')
+    expect((await config.databaseHooks.user.create.before({ email: 'second@y.com' })).data.role).toBe('member')
     existingUserCount = 0
+  })
+
+  it('on a claimed ee server, a new account needs an invite: it takes the invited role and consumes the invite once', async () => {
+    await loadAuth()
+    const { inviteScope } = await import('$lib/server/auth/owner-policy')
+    const config = lastConfig()
+    env.EE_WORKLOAD = 'os'
+    existingUserCount = 1
+    try {
+      await expect(config.databaseHooks.user.create.before({ email: 'stranger@y.com' })).rejects.toThrow(
+        "You're not a member of Kindred yet. Ask the owner for an invite.",
+      )
+      const scope = { inviteId: 'inv1', email: 'new@y.com', role: 'admin' as const }
+      const made = await inviteScope.run(scope, () => config.databaseHooks.user.create.before({ email: 'New@y.com' }))
+      expect(made.data.role).toBe('admin')
+      expect(consumeInviteMock).toHaveBeenCalledWith('inv1', expect.any(Date))
+      consumeInviteMock.mockResolvedValueOnce(false)
+      await expect(inviteScope.run(scope, () => config.databaseHooks.user.create.before({ email: 'new@y.com' }))).rejects.toThrow(/already used/)
+      await expect(inviteScope.run(scope, () => config.databaseHooks.user.create.before({ email: 'other@y.com' }))).rejects.toThrow(/different email/)
+    } finally {
+      delete env.EE_WORKLOAD
+      existingUserCount = 0
+    }
   })
 
   it('databaseHooks after hands the new user to the contact-book sync', async () => {
