@@ -111,12 +111,14 @@ describe('POST /api/keys', () => {
       name: 'Laptop',
       keyPrefix: 'eigen_raw_...',
       keyHash: 'hash-abc',
+      mailSend: false,
     })
     expect(await res.json()).toEqual({
       key: 'eigen_raw_secret_key',
       prefix: 'eigen_raw_...',
       name: 'Laptop',
       id: 'key-1',
+      mailSend: false,
     })
   })
 
@@ -147,5 +149,28 @@ describe('POST /api/keys', () => {
 
     expect(res.status).toBe(201)
     expect(insertChain.values).toHaveBeenCalledWith(expect.objectContaining({ name: 'default' }))
+  })
+
+  it('creates a key that can send mail when mailSend is true', async () => {
+    const insertChain = insertKeyChain({ id: 'key-4' })
+    getDbMock.mockReturnValue({ insert: vi.fn(() => insertChain) })
+    const res = await POST(postEvent({ body: { name: 'bot', mailSend: true } }))
+    expect(res.status).toBe(201)
+    expect(insertChain.values).toHaveBeenCalledWith(expect.objectContaining({ mailSend: true }))
+    expect(await res.json()).toMatchObject({ mailSend: true })
+  })
+
+  it('rejects a non-boolean mailSend', async () => {
+    const res = await POST(postEvent({ body: { name: 'bot', mailSend: 'yes' } }))
+    expect(res.status).toBe(400)
+  })
+
+  it('an API-key caller may not mint a mail-sending key (only the owner consents)', async () => {
+    const res = await POST({
+      ...postEvent({ body: { name: 'bot', mailSend: true } }),
+      locals: { user: { id: 'u1' }, apiKeyAuth: { id: 'k', name: 'n' } },
+    } as Parameters<typeof POST>[0])
+    expect(res.status).toBe(403)
+    expect(getDbMock).not.toHaveBeenCalled()
   })
 })

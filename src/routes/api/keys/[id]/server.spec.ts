@@ -9,7 +9,7 @@ vi.mock('$lib/server/db', () => ({
   getDb: getDbMock,
 }))
 
-import { DELETE } from './+server'
+import { DELETE, PATCH } from './+server'
 
 function deleteEvent(overrides: { user?: { id: string } | null; id?: string } = {}) {
   return {
@@ -65,5 +65,56 @@ describe('DELETE /api/keys/[id]', () => {
     expect(await res.json()).toEqual({ ok: true })
     expect(update.set).toHaveBeenCalledWith({ isActive: false })
     expect(update.where).toHaveBeenCalledTimes(1)
+  })
+})
+
+function patchEvent(body: unknown, locals: Record<string, unknown> = { user: { id: 'u1' } }) {
+  return {
+    locals,
+    params: { id: 'key-1' },
+    request: new Request('http://localhost/api/keys/key-1', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  } as unknown as Parameters<typeof PATCH>[0]
+}
+
+describe('PATCH /api/keys/[id]', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('returns 401 when unauthenticated', async () => {
+    expect((await PATCH(patchEvent({ mailSend: true }, { user: null }))).status).toBe(401)
+  })
+
+  it('an API-key caller may not change scopes', async () => {
+    const res = await PATCH(
+      patchEvent({ mailSend: true }, { user: { id: 'u1' }, apiKeyAuth: { id: 'k', name: 'n' } }),
+    )
+    expect(res.status).toBe(403)
+    expect(getDbMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a body without a boolean mailSend', async () => {
+    expect((await PATCH(patchEvent({ mailSend: 1 }))).status).toBe(400)
+    expect((await PATCH(patchEvent({ mailSend: true, extra: 1 }))).status).toBe(400)
+  })
+
+  it('returns 404 for a key the user does not own', async () => {
+    getDbMock.mockReturnValue({ select: vi.fn(() => selectLimit([])), update: vi.fn() })
+    expect((await PATCH(patchEvent({ mailSend: true }))).status).toBe(404)
+  })
+
+  it('sets mailSend', async () => {
+    const update = updateChain()
+    getDbMock.mockReturnValue({
+      select: vi.fn(() => selectLimit([{ id: 'key-1' }])),
+      update: vi.fn(() => update),
+    })
+    const res = await PATCH(patchEvent({ mailSend: true }))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ id: 'key-1', mailSend: true })
+    expect(update.set).toHaveBeenCalledWith({ mailSend: true })
   })
 })

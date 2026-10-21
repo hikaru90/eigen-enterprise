@@ -8,7 +8,9 @@
 import type { Pathname } from '$app/types'
 
 export type ModuleSettingsLink = { label: string; href: Pathname; text: string }
-export type ModuleSettingsSlot = { links: ModuleSettingsLink[]; note?: string }
+/** A built-in panel the module page renders under the links (e.g. Email's mail-sending keys). */
+export type ModuleSettingsPanel = 'mail-keys'
+export type ModuleSettingsSlot = { links: ModuleSettingsLink[]; note?: string; panel?: ModuleSettingsPanel }
 
 const slots: Record<string, ModuleSettingsSlot> = {
   email: {
@@ -16,6 +18,7 @@ const slots: Record<string, ModuleSettingsSlot> = {
     links: [
       { label: 'Ask in the chat', href: '/', text: 'Change the sender or check its status.' },
     ],
+    panel: 'mail-keys',
   },
   brand: {
     links: [{ label: 'Brand studio', href: '/brand', text: 'Pick and edit the visual set.' }],

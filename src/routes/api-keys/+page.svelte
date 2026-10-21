@@ -16,6 +16,7 @@
   // Generate dialog state
   let dialogOpen = $state(false)
   let keyName = $state('')
+  let keyMailSend = $state(false)
   let generating = $state(false)
   let generatedKey = $state<string | null>(null)
   let copied = $state(false)
@@ -52,6 +53,7 @@
 
   function openDialog() {
     keyName = ''
+    keyMailSend = false
     generatedKey = null
     error = null
     copied = false
@@ -82,7 +84,7 @@
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: trimmed }),
+        body: JSON.stringify({ name: trimmed, mailSend: keyMailSend }),
       })
       if (!res.ok) {
         const text = await res.text().catch(() => 'Unknown error')
@@ -97,6 +99,7 @@
           name: result.name,
           keyPrefix: result.prefix,
           isActive: true as const,
+          mailSend: result.mailSend,
           lastUsedAt: null,
           createdAt: new Date(),
         },
@@ -113,6 +116,21 @@
     await navigator.clipboard.writeText(generatedKey)
     copied = true
     setTimeout(() => (copied = false), 2000)
+  }
+
+  async function setMailSend(id: string, mailSend: boolean) {
+    error = null
+    const res = await fetch(`${base}/api/keys/${id}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mailSend }),
+    })
+    if (!res.ok) {
+      error = `Could not change the key (${res.status})`
+      return
+    }
+    keys = keys.map((k) => (k.id === id ? { ...k, mailSend } : k))
   }
 
   function confirmDelete(id: string, name: string) {
@@ -244,6 +262,14 @@
                     : 'Never used'}
                 </p>
               </div>
+              <label class="ml-2 flex shrink-0 items-center gap-1.5 text-[11px]">
+                <input
+                  type="checkbox"
+                  checked={key.mailSend}
+                  onchange={(e) => void setMailSend(key.id, e.currentTarget.checked)}
+                />
+                Can send mail
+              </label>
               <button
                 type="button"
                 class="ml-2 shrink-0 rounded-sm p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950"
@@ -286,6 +312,10 @@
           disabled={generating}
           autofocus
         />
+        <label class="flex items-center gap-1.5 pt-1 text-xs">
+          <input type="checkbox" bind:checked={keyMailSend} disabled={generating} />
+          Can send mail (POST /api/mail/send, sends at once, no approval)
+        </label>
         {#if error}
           <p class="text-destructive text-xs">{error}</p>
         {/if}

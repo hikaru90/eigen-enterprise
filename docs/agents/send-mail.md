@@ -1,106 +1,66 @@
 # Sending email through eigenEnterprise (for agents)
 
-eigenEnterprise sends the company's email through its **Email** module (Amazon SES).
-An agent sends mail by calling the kernel tool **`email.send_mail`** over the MCP
-endpoint, authenticated with an API key. Every call is permission-checked, audited,
-and — for sending mail — **approval-gated** (see "Approval" below).
+One endpoint, one recipient per call: `POST /api/mail/send`. Mail goes out through
+the company's Email module (Amazon SES) **immediately**, with no approval round.
 
-## 1. Get an API key (the owner does this once)
+## The key
 
-In eigenEnterprise: **Settings → API keys → Create key**. The key looks like
-`eigen_<hex>` and is shown once. Give it to the agent as a secret
-(e.g. env var `EIGEN_API_KEY`); never put it in a prompt, a log or a repo.
+- The owner creates it on the **Email** module page (`/m/email`, "Create a key that
+  can send mail") or on `/api-keys` with **Can send mail** ticked. That tick is the
+  owner's consent to send. It can be switched off or the key revoked at any time.
+- The key looks like `eigen_<hex>` and is shown once. Keep it in a secret
+  (e.g. `EIGEN_API_KEY`); never put it in a prompt, a log or a repo.
+- Only API keys work here. A browser session cookie gets `401`.
+- A key cannot grant itself (or another key) "Can send mail"; only the signed-in owner can.
 
-## 2. Endpoint
-
-```
-POST https://<console-host>/api/mcp
-Authorization: Bearer <EIGEN_API_KEY>
-Content-Type: application/json
-Accept: application/json, text/event-stream
-```
-
-`<console-host>` is the address you open eigenEnterprise at, e.g. `os.cerberusblue.com`.
-The endpoint speaks MCP (JSON-RPC 2.0). Any MCP client can use it with the URL and the
-Bearer header; plain HTTP works too:
-
-## 3. Send a mail
+## Send
 
 ```bash
-curl -sS https://os.cerberusblue.com/api/mcp \
+curl -sS -X POST https://<console-host>/api/mail/send \
   -H "Authorization: Bearer $EIGEN_API_KEY" \
   -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "tools/call",
-    "params": {
-      "name": "email.send_mail",
-      "arguments": {
-        "to": "someone@example.com",
-        "subject": "Hello from Cerberus Blue",
-        "text": "Plain-text body (required).",
-        "html": "<p>HTML body (required).</p>",
-        "replyTo": "a.bueckner@cerberusblue.com"
-      }
-    }
-  }'
+  -d '{"to":"ada@example.com","subject":"Hello","text":"Hi Ada","idempotencyKey":"welcome-ada-1"}'
 ```
 
-Arguments:
+## Fields (JSON; unknown fields are rejected)
 
-| field | required | notes |
+| Field | Required | Rule |
 |---|---|---|
-| `to` | yes | one valid address |
-| `subject` | yes | non-empty |
-| `text` | yes | plain-text body, non-empty |
-| `html` | yes | HTML body, non-empty |
-| `replyTo` | no | valid address |
+| `to` | yes | one email address |
+| `subject` | yes | 1 to 998 characters |
+| `text` | yes | non-empty plain text |
+| `html` | no | HTML body; without it the text is sent as simple HTML too |
+| `replyTo` | no | email address |
+| `idempotencyKey` | no | 1 to 128 characters; strongly recommended |
 
-The sender is always the company's configured sender address (set in the Email module);
-an agent cannot choose another `from`.
+## Responses
 
-To see which tools exist and their exact input schemas:
+| Status | Body | Meaning |
+|---|---|---|
+| 200 | `{"id","status":"sent","to"}` | sent (or an idempotent repeat of a send) |
+| 400 | `{"error":"invalid_request","fields":{...}}` | fix the named fields |
+| 401 | `{"error":"unauthorized"}` | missing, wrong or revoked key, or a cookie |
+| 403 | `{"error":"forbidden","message":"this key may not send mail"}` | owner has not ticked "Can send mail" |
+| 409 | `{"error":"idempotency_conflict","message"}` | idempotencyKey reused with a different body, or the first send is still running |
+| 429 | `{"error":"rate_limited","message"}` + `Retry-After` header | over 60 mails per minute for this key |
+| 502 | `{"error":"delivery_failed","message"}` | Amazon refused; `message` says why in plain words |
+| 503 | `{"error":"mail_not_configured","message"}` | the owner has not set up Email yet |
 
-```bash
-curl -sS https://os.cerberusblue.com/api/mcp \
-  -H "Authorization: Bearer $EIGEN_API_KEY" \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-```
+## Retry rule
 
-## 4. Approval — why a call can "succeed" but no mail goes out
+Always send an `idempotencyKey`. Retry with the **same** key and the **same** body
+on network errors, `429` (after `Retry-After` seconds), `502` and `503`. Within 24h the
+same key returns the first result (same `id`) and never sends twice. A failed send
+does not use up the key. Never retry `400`, `401` or `403` without fixing the cause.
 
-Sending mail is an external action, so it waits for the owner's decision unless the
-owner allows it:
+## Amazon SES sandbox
 
-- **Ask every time** / **Make reasonable choices** (approval dropdown under the chat
-  input): the first `email.send_mail` call does **not** send. It returns an
-  `approval_required` error and creates a pending approval. The owner approves it in
-  the chat (Approve button). The agent must then **call again with the same input** —
-  the approved call is what sends.
-- **Allow everything**: the call sends immediately (still audited).
+A new SES account is in the sandbox: it only delivers to addresses Amazon has
+verified. Sending elsewhere returns `502 delivery_failed` with Amazon's reason. The
+owner either verifies the recipient in the SES console or requests production access.
 
-So an agent must treat `approval_required` as "waiting for the owner", not as a
-failure, and retry the identical call after the owner approved.
+## What is recorded
 
-## 5. Results and errors
-
-- Success: the tool result describes the sent message.
-- `approval_required`: see above.
-- `module_inactive`: the Email module is off — the owner switches it on.
-- `permission_denied`: the key is not allowed to send.
-- Validation errors name the field that is wrong (e.g. `to` is not an email).
-- An error from Amazon SES (sender not verified, sandbox, wrong keys) comes back as a
-  plain message. **SES sandbox:** until the AWS account is moved out of the sandbox,
-  Amazon only delivers to **verified** recipient addresses — mail to anyone else is
-  rejected. The owner requests production access in the AWS SES console
-  ("Request production access").
-
-## 6. Rules for agents
-
-- Never log or echo the API key.
-- One recipient per call; loop for several, and keep volume reasonable (SES rate limits).
-- Every send appears in **Overview → Recent activity** as "Sent an email to …".
+Every attempt is audited with the key name, the recipient, the outcome and the id;
+never the key or the mail content. Sends show in Overview recent activity as
+"Sent an email to <to> (via key <name>)".
