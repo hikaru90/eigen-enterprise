@@ -240,9 +240,12 @@ describe('/m/website/apps/new: load', () => {
     expect(data.managed).toBe(false)
     expect(data.consoleHost).toBeNull()
     expect(data.managedReason).toMatch(/ECONNREFUSED/)
-    expect(data.appsError).toMatch(/deploy agent/)
+    // app_list answers from the database when ee is away: no error, no catalog,
+    // and the connected repos are still marked by the services that use them.
+    expect(data.appsError).toBeNull()
     expect(data.catalog).toBeNull()
     expect(data.repos).toHaveLength(2)
+    expect((data.repos as Array<{ used: boolean }>).map((r) => r.used)).toEqual([false, true])
   })
 
   it('with the GitHub App installed: the repos it can see are listed', async () => {

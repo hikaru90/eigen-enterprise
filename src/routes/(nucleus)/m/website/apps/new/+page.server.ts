@@ -72,7 +72,9 @@ export const load: PageServerLoad = async (event) => {
   let catalog: Catalog | null = null
   let appsError: string | null = null
   try {
-    const out = await ownerRun<{ services: ServiceView[]; catalog: Catalog }>(
+    // When ee is unreachable app_list does not throw: it returns the services from
+    // the database with `catalog: null`; the not-managed state is read below.
+    const out = await ownerRun<{ services: ServiceView[]; catalog: Catalog | null }>(
       user,
       'website.app_list',
       {},
