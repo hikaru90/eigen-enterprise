@@ -278,13 +278,17 @@ async function seedCompany(sys: System, opts: BootstrapOptions, consoleHost: str
   await repo.init()
   await repo.commit('bootstrap: eigenEnterprise', 'ee-bootstrap', (s) => {
     const existing = s.workloads.find((w) => w.name === 'os')
+    const routing = bootstrapRouting(
+      existing ? { routes: s.routes, settings: s.settings, origin: existing.env.ORIGIN ?? `https://${s.settings.consoleHost}` } : null,
+      { consoleHost, explicitHost: opts.consoleHost !== undefined, ...(opts.acmeEmail ? { acmeEmail: opts.acmeEmail } : {}) },
+    )
     const os = workloadSchema.parse({
       name: 'os',
       tier: 'system',
       source: { kind: 'release', tarball, sha256 },
       env: {
         ...(existing?.env ?? {}),
-        ORIGIN: existing?.env.ORIGIN ?? `https://${consoleHost}`,
+        ORIGIN: routing.origin,
         AGE_GRAPH_NAME: 'eigen_graph',
         APP_DB_ROLE: 'eigen_app',
         CONSOLIDATION_INTERNAL_URL: `http://127.0.0.1:${OS_INTERNAL_PORT}`,
@@ -298,14 +302,50 @@ async function seedCompany(sys: System, opts: BootstrapOptions, consoleHost: str
       secrets: [...OS_SECRETS, ...CLAIM_SECRETS],
       resources: { memoryMb: 2048, cpuPercent: 200 },
     })
-    const firstRun = !existing
     return {
       workloads: [...s.workloads.filter((w) => w.name !== 'os'), os],
-      routes: firstRun ? [{ host: consoleHost, workload: 'os' }] : s.routes,
-      settings: firstRun ? { consoleHost, publicHost: null, acmeEmail: opts.acmeEmail ?? null } : s.settings,
+      routes: routing.routes,
+      settings: routing.settings,
     }
   })
   return claimToken
+}
+
+type Routing = {
+  routes: Array<{ host: string; workload: string }>
+  settings: { consoleHost: string; publicHost: string | null; acmeEmail: string | null }
+  origin: string
+}
+
+/**
+ * What a bootstrap (re-)run saves for the console. A plain re-run keeps what the
+ * company has; an EXPLICIT --console-host / --acme-email is applied (never silently
+ * ignored): the console moves there, ORIGIN follows, and the old host keeps working.
+ */
+export function bootstrapRouting(
+  prior: Routing | null,
+  i: { consoleHost: string; explicitHost?: boolean; acmeEmail?: string },
+): Routing {
+  if (!prior) {
+    return {
+      routes: [{ host: i.consoleHost, workload: 'os' }],
+      settings: { consoleHost: i.consoleHost, publicHost: null, acmeEmail: i.acmeEmail ?? null },
+      origin: `https://${i.consoleHost}`,
+    }
+  }
+  const move = i.explicitHost === true && i.consoleHost !== prior.settings.consoleHost
+  const routes = move && !prior.routes.some((r) => r.host === i.consoleHost)
+    ? [...prior.routes, { host: i.consoleHost, workload: 'os' }]
+    : prior.routes
+  return {
+    routes,
+    settings: {
+      ...prior.settings,
+      ...(move ? { consoleHost: i.consoleHost } : {}),
+      ...(i.acmeEmail ? { acmeEmail: i.acmeEmail } : {}),
+    },
+    origin: move ? `https://${i.consoleHost}` : prior.origin,
+  }
 }
 
 export async function bootstrap(
