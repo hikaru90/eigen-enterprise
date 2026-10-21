@@ -10,7 +10,11 @@ import type { Pathname } from '$app/types'
 export type ModuleSettingsLink = { label: string; href: Pathname; text: string }
 /** A built-in panel the module page renders under the links (e.g. Email's mail-sending keys). */
 export type ModuleSettingsPanel = 'mail-keys'
-export type ModuleSettingsSlot = { links: ModuleSettingsLink[]; note?: string; panel?: ModuleSettingsPanel }
+export type ModuleSettingsSlot = {
+  links: ModuleSettingsLink[]
+  note?: string
+  panel?: ModuleSettingsPanel
+}
 
 const slots: Record<string, ModuleSettingsSlot> = {
   email: {
@@ -28,13 +32,21 @@ const slots: Record<string, ModuleSettingsSlot> = {
   },
   website: {
     links: [
-      { label: 'Public site', href: '/s', text: 'The pages visitors see.' },
+      {
+        label: 'Site',
+        href: '/m/website/site',
+        text: 'The company site: its domain and its pages.',
+      },
       {
         label: 'Apps',
         href: '/m/website/apps',
         text: 'Deploy connected repos as web apps and back-end services: status, logs, env.',
       },
-      { label: 'Hosting', href: '/settings/hosting', text: 'Domains, apps and this server.' },
+      {
+        label: 'Hosting',
+        href: '/m/website/hosting',
+        text: 'This server: domains and what they belong to.',
+      },
       {
         label: 'GitHub connection',
         href: '/m/website/github',

@@ -55,11 +55,10 @@ describe('home-settings-menu.svelte', () => {
       .toHaveAttribute('href', '/settings/extensions')
     await expect
       .element(page.getByRole('link', { name: 'Hosting' }))
-      .toHaveAttribute('href', '/settings/hosting')
-    await expect.element(page.getByRole('link', { name: 'API Keys' })).toHaveAttribute(
-      'href',
-      '/api-keys',
-    )
+      .toHaveAttribute('href', '/m/website/hosting')
+    await expect
+      .element(page.getByRole('link', { name: 'API Keys' }))
+      .toHaveAttribute('href', '/api-keys')
     await expect
       .element(page.getByRole('link', { name: 'AI provider' }))
       .toHaveAttribute('href', '/settings/llm')
@@ -134,7 +133,11 @@ describe('home-settings-menu.svelte', () => {
   })
 
   it('fails loud when the reset call breaks — the menu shows the exact error', async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => ({ error: 'db down' }) })
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: 'db down' }),
+    })
     render(HomeSettingsMenu)
 
     await page.getByRole('button', { name: 'Settings menu' }).click()
