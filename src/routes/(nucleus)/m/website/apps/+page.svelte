@@ -5,6 +5,7 @@
   import AddAppDialog from '$lib/components/add-app-dialog.svelte'
   import AppCard from '$lib/components/app-card.svelte'
   import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert'
+  import * as Breadcrumb from '$lib/components/ui/breadcrumb'
 
   /**
    * Apps: the one overview of what runs for the company on this server —
@@ -30,9 +31,17 @@
 
 <div class="mx-auto w-full max-w-4xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
   <header class="flex min-w-0 flex-col gap-1.5 border-b border-border pb-6">
-    <a href={resolve('/m/website')} class="text-xs text-foreground/55 hover:text-foreground"
-      >Website</a
-    >
+    <Breadcrumb.Root>
+      <Breadcrumb.List>
+        <Breadcrumb.Item>
+          <Breadcrumb.Link href={resolve('/m/website')}>Website</Breadcrumb.Link>
+        </Breadcrumb.Item>
+        <Breadcrumb.Separator />
+        <Breadcrumb.Item>
+          <Breadcrumb.Page>Apps</Breadcrumb.Page>
+        </Breadcrumb.Item>
+      </Breadcrumb.List>
+    </Breadcrumb.Root>
     <h1 class="text-xl font-semibold tracking-tight">Apps</h1>
     <p class="text-sm text-foreground/60">
       Your company site and everything built from your repos, running on this server.

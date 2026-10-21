@@ -11,7 +11,7 @@ import type { Catalog } from '$lib/server/ee/client'
 import { settleBriefly, startOwnerDeploy } from '$lib/server/website/deploy-runner'
 import { logAppFailure, ownerRun, plainAppMessage } from '$lib/server/website/owner-run'
 import { contractFormSchema } from '../../../../../../../modules/website/apps/contract'
-import { appSlug } from '../../../../../../../modules/website/apps/host'
+import { appSlug, freeName } from '../../../../../../../modules/website/apps/host'
 import { plainMessage } from '../../../../../../../modules/website/github/plain-errors'
 import { parseGitHubRepo } from '../../../../../../../modules/website/github/repo-url'
 import { formContract } from '../form'
@@ -50,16 +50,6 @@ export type AvailableRepoRow = {
 
 type SubstrateStatus =
   { managed: true; settings: { consoleHost: string } } | { managed: false; reason: string }
-
-/** First free variant of base ("shop" → "shop-2" → …) that fits the app-name shape. */
-function freeName(taken: ReadonlySet<string>, base: string): string {
-  let name = base
-  for (let i = 2; taken.has(name); i++) {
-    const suffix = `-${i}`
-    name = base.slice(0, 31 - suffix.length) + suffix
-  }
-  return name
-}
 
 export const load: PageServerLoad = async (event) => {
   const user = await requireAdmin(event.locals.user)
@@ -100,7 +90,7 @@ export const load: PageServerLoad = async (event) => {
     }
   }
 
-  const taken = new Set(services.map((s) => s.name.toLowerCase()))
+  const taken = new Set(services.map((s) => s.name))
   const serviceOf = (r: ConnectedRepoView) =>
     services.find((s) => s.repo.toLowerCase() === r.fullName.toLowerCase() && s.branch === r.branch)
   return {
