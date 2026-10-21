@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types'
   import { resolve } from '$app/paths'
+  import MailKeysPanel from '$lib/components/mail-keys-panel.svelte'
   import ModuleSettingsSection from '$lib/components/module-settings-section.svelte'
   import OverviewModule from '$lib/components/overview-module.svelte'
   import { moduleSettingsSlot } from '$lib/shell/module-settings'
@@ -64,6 +65,7 @@
     <section class="mt-10" aria-labelledby="settings-heading">
       <h2 id="settings-heading" class="mb-2 text-[13px] font-medium">Settings</h2>
       <ModuleSettingsSection {slot} />
+      {#if slot?.panel === 'mail-keys'}<MailKeysPanel />{/if}
     </section>
   {/if}
 </div>

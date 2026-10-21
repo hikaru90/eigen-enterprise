@@ -796,6 +796,8 @@ export const userApiKey = pgTable(
     keyPrefix: text('key_prefix').notNull(),
     keyHash: text('key_hash').notNull(),
     isActive: boolean('is_active').notNull().default(true),
+    /** Owner ticked "Can send mail": the key may call POST /api/mail/send (migration 0096). */
+    mailSend: boolean('mail_send').notNull().default(false),
     lastUsedAt: timestamp('last_used_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')

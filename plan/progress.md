@@ -2,6 +2,15 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-21 — SHIPPED (branch): `POST /api/mail/send`, a plain mail endpoint for API keys
+
+- What: `POST /api/mail/send` (src/routes/api/mail/send, logic in src/lib/server/mail/api-send.ts, DB/audit wiring in api-send-store.ts). Bearer `eigen_` keys only (cookie sessions 401); strict zod body (one `to`, subject 1..998, text, optional html/replyTo/idempotencyKey); sends through `companyMail().send`; 200/400/401/403/409/429/502/503 as in docs/agents/send-mail.md (rewritten around this endpoint only; MCP + approval material removed).
+- Key scope: migration 0096 adds `user_api_key.mail_send` (default false) and the `mail_api_send` idempotency table. "Can send mail" checkbox on /api-keys (create + per-key toggle, `PATCH /api/keys/[id]`) and a mail-keys panel on the Email module page (/m/email via the `panel: 'mail-keys'` settings slot): create (shown once + copy), list, toggle, revoke, "How to send mail" with a copyable curl. Same key store as before; no second key system.
+- **Decision**: the owner's "Can send mail" tick is the consent, so this endpoint sends immediately with no approval round (unlike the MCP `owlery.send_mail` tool, which stays approval-gated). A key cannot grant the scope: `POST /api/keys` with `mailSend:true` and `PATCH /api/keys/[id]` reject API-key callers (403).
+- **Decision**: idempotency in Postgres (`mail_api_send`, unique key_id+idempotency_key, 24h window; a pending row is reserved before the send and released on failure) so a retry never double-sends, even across restarts. Rate limit 60/min per key in process memory: ee runs one console process per company; a restart only resets the window.
+- Audit: every attempt past auth is a `tool.executed` event (tool `email.api_send`, auditClass write) with key name, recipient, outcome, id and an `activity` sentence ("Sent an email to <to> (via key <name>)"), so Overview recent activity shows it. Never the key or the body. 401s are not audited (no identity).
+- Tests: src/lib/server/mail/api-send.spec.ts, src/routes/api/mail/send/server.spec.ts, keys route specs. Not tested: real SES delivery, the migration against a live DB, the UI in a browser.
+
 ## 2026-10-21 — SHIPPED (branch): a failed deploy says why, live (owner verdict on "twodown": "This is a joke")
 
 - Cause on the box: the form default start `node index.js` pointed at a file twodown lacks → MODULE_NOT_FOUND crash loop (restart counter 108) during a 240s health gate, then the OS said "could not be built or started. The deploy history has the server's details."
