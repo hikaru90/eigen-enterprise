@@ -5,6 +5,7 @@ import {
   EeClient,
   SubstrateError,
   SubstrateUnavailableError,
+  type Catalog,
   type EeDeploy,
   type EeStatus,
 } from '$lib/server/ee/client'
@@ -17,6 +18,8 @@ import {
 } from '../github/repos-store'
 import { defaultGitHubStore } from '../github/store'
 import { WEBSITE_MODULE_ID } from '../manifest'
+import { siteOrigin } from '../site-info'
+import { defaultWebsiteStore, type WebsiteStore } from '../store'
 import { AppUserError, contractFormSchema, gapError, resolveContract } from './contract'
 import { failedStageOf, failureSentence, sentence } from './deploy-jobs'
 import { diagnoseDeploy, gatewayDiagnoseLlm, type DiagnoseLlm, type Diagnosis } from './diagnose'
@@ -65,6 +68,8 @@ export type AppToolDeps = {
   ee?: AppsEe
   repos?: ConnectedRepoStore
   services?: ServiceStore
+  /** The company-site pages (published/draft counts for the overview's site card). */
+  pages?: WebsiteStore
   /** A fresh GitHub App installation token (never stored). */
   mintToken?: (installationId: number) => Promise<string>
   now?: () => Date
@@ -149,6 +154,47 @@ const autoDeployInput = z
   })
   .strict()
 
+/** The shape website.app_list answers with (advertised to MCP/OpenAPI, checked on execute). */
+const appListOutput = z.object({
+  managed: z.boolean(),
+  catalog: z
+    .object({
+      runtimes: z.object({ node: z.array(z.string()), static: z.array(z.string()) }),
+      services: z.array(z.string()),
+      capabilities: z.array(z.string()),
+    })
+    .nullable(),
+  services: z.array(
+    z.object({
+      name: z.string(),
+      kind: z.enum(['web', 'backend']),
+      repo: z.string(),
+      branch: z.string(),
+      authKind: z.enum(['public', 'deploy_key', 'github_app']),
+      status: z.enum(['healthy', 'deploying', 'failed']),
+      url: z.string().nullable(),
+      shortSha: z.string().nullable(),
+      lastDeployedAt: z.string().nullable(),
+      lastError: z.string().nullable(),
+      autoDeploy: z.boolean(),
+      domains: z.array(z.string()),
+      lastDeploy: z
+        .object({
+          status: z.enum(['running', 'live', 'failed']),
+          stage: z.enum(['fetching', 'building', 'starting', 'health', 'live', 'failed']),
+          startedAt: z.string(),
+          endedAt: z.string().nullable(),
+        })
+        .nullable(),
+    }),
+  ),
+  site: z.object({
+    publicHost: z.string().nullable(),
+    url: z.string().nullable(),
+    pages: z.object({ published: z.number().int(), drafts: z.number().int() }),
+  }),
+})
+
 export type ServiceStatus = 'healthy' | 'deploying' | 'failed'
 
 export type ServiceView = {
@@ -163,6 +209,35 @@ export type ServiceView = {
   lastDeployedAt: string | null
   lastError: string | null
   autoDeploy: boolean
+}
+
+/** The newest deploy attempt ee recorded for a workload (the overview line). */
+export type LastDeploySummary = {
+  status: EeDeploy['status']
+  stage: EeDeploy['stage']
+  startedAt: string
+  endedAt: string | null
+}
+
+/** One card of the Apps overview (the site is not in here — see `site`). */
+export type AppListService = ServiceView & {
+  domains: string[]
+  lastDeploy: LastDeploySummary | null
+}
+
+/** The company site as a service (synthesized from ee settings + page counts, D-W1). */
+export type SiteOverview = {
+  publicHost: string | null
+  url: string | null
+  pages: { published: number; drafts: number }
+}
+
+export type AppListResult = {
+  /** False when ee is unreachable: the rows are the store's record, nothing pretends ee spoke. */
+  managed: boolean
+  catalog: Catalog | null
+  services: AppListService[]
+  site: SiteOverview
 }
 
 export type DeployResult = {
@@ -217,10 +292,18 @@ function statusOf(s: Service, w: EeStatus['workloads'][number] | undefined): Ser
   return 'failed'
 }
 
+/** Without ee there is no live state to ask: the row's own record is the truth. */
+function statusFromRow(s: Service): ServiceStatus {
+  if (s.state === 'healthy') return 'healthy'
+  if (s.state === 'failed') return 'failed'
+  return 'deploying'
+}
+
 export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
   const ee: AppsEe = deps.ee ?? new EeClient()
   const repos = deps.repos ?? defaultConnectedRepoStore()
   const services = deps.services ?? defaultServiceStore()
+  const pages = deps.pages ?? defaultWebsiteStore()
   const now = deps.now ?? (() => new Date())
   const mintToken =
     deps.mintToken ??
@@ -493,15 +576,91 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
       name: 'website.app_list',
       module: WEBSITE_MODULE_ID,
       summary:
-        'Apps and services deployed from connected GitHub repos: status (healthy, deploying, failed), URL, branch@commit, last deploy.',
+        'The Apps overview: whether this server is ee-managed, every app with its domains, URL, status and newest deploy attempt, and the company site (public host, URL, published/draft page counts). With `managed:false` the app rows come from the local record and nothing claims ee state.',
       auditClass: 'read',
       inputSchema: z.object({}).strict(),
+      outputSchema: appListOutput,
       permission: { roles: ['admin', 'agent'] },
-      handler: async () => ({
-        services: (await views()).services,
+      handler: async (): Promise<AppListResult> => {
+        const rows = await services.list()
+        let status: EeStatus | null = null
+        try {
+          status = await ee.status()
+        } catch (err) {
+          // Only "ee is not there" becomes the explicit managed:false state (the
+          // page says so); any other ee problem stays loud, in plain words.
+          if (!(err instanceof SubstrateUnavailableError))
+            await viaEe('read the server status', () => Promise.reject(err))
+        }
+        const sitePages = await pages.listPages({ kind: 'page' })
+        const site: SiteOverview = {
+          publicHost: status?.settings.publicHost ?? null,
+          // Same host normalization as website.site_info: a bare host becomes https://host.
+          url: status?.settings.publicHost ? siteOrigin(status.settings.publicHost) : null,
+          pages: {
+            published: sitePages.filter((p) => p.visibility === 'public').length,
+            drafts: sitePages.filter((p) => p.visibility !== 'public').length,
+          },
+        }
+        if (!status) {
+          return {
+            managed: false,
+            catalog: null,
+            site,
+            services: rows.map((s) => ({
+              name: s.name,
+              kind: s.kind,
+              repo: s.repoFullName,
+              branch: s.branch,
+              authKind: s.authKind,
+              status: statusFromRow(s),
+              url: null,
+              shortSha: s.lastRev ? s.lastRev.slice(0, 7) : null,
+              lastDeployedAt: s.lastDeployedAt ? s.lastDeployedAt.toISOString() : null,
+              lastError: s.lastError,
+              autoDeploy: s.autoDeploy,
+              domains: [],
+              lastDeploy: null,
+            })),
+          }
+        }
         // What a build form can pick from (D16: nothing outside the catalog).
-        catalog: await viaEe('read the catalog', () => ee.catalog()),
-      }),
+        const catalog = await viaEe('read the catalog', () => ee.catalog())
+        const cards = await Promise.all(
+          rows.map(async (s) => {
+            const w = status.workloads.find((x) => x.name === s.name)
+            const domains = status.routes.filter((r) => r.workload === s.name).map((r) => r.host)
+            const { deploys } = await viaEe(`read the deploys of ${s.name}`, () =>
+              ee.deploys(s.name),
+            )
+            const last = deploys[0] ?? null
+            return {
+              name: s.name,
+              kind: s.kind,
+              repo: s.repoFullName,
+              branch: s.branch,
+              authKind: s.authKind,
+              status: statusOf(s, w),
+              // The first route is the app's address on this server.
+              url: domains[0] ? `https://${domains[0]}` : null,
+              shortSha: s.lastRev ? s.lastRev.slice(0, 7) : null,
+              lastDeployedAt: s.lastDeployedAt ? s.lastDeployedAt.toISOString() : null,
+              lastError: s.lastError,
+              autoDeploy: s.autoDeploy,
+              domains,
+              lastDeploy: last
+                ? {
+                    status: last.status,
+                    stage: last.stage,
+                    startedAt: last.startedAt,
+                    endedAt: last.endedAt,
+                  }
+                : null,
+            }
+          }),
+        )
+        return { managed: true, catalog, services: cards, site }
+      },
     },
     {
       name: 'website.app_get',

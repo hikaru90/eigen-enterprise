@@ -8,8 +8,9 @@ import {
 import { KernelError } from '$lib/kernel/errors'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
-import { SubstrateError } from '$lib/server/ee/client'
+import { SubstrateError, SubstrateUnavailableError } from '$lib/server/ee/client'
 import { InMemoryConnectedRepoStore, type NewConnectedRepo } from '../github/repos-store'
+import { InMemoryWebsiteStore } from '../store'
 import { InMemoryServiceStore } from './store'
 import { FAKE_CRASH, FakeEe } from './testing'
 import { APP_AGENT_GATED_TOOLS, createAppTools } from './tools'
@@ -73,11 +74,13 @@ async function setup(repo: NewConnectedRepo = publicRepo, diagnoseLlm?: Diagnose
   const repos = new InMemoryConnectedRepoStore()
   await repos.add(repo)
   const services = new InMemoryServiceStore()
+  const pages = new InMemoryWebsiteStore()
   const minted: number[] = []
   const tools = createAppTools({
     ee,
     repos,
     services,
+    pages,
     chat: suggestChat,
     ...(diagnoseLlm ? { diagnoseLlm } : {}),
     mintToken: async (id) => {
@@ -89,7 +92,7 @@ async function setup(repo: NewConnectedRepo = publicRepo, diagnoseLlm?: Diagnose
   const tool = (name: string) => tools.find((t) => t.name === name) as ToolDescriptor
   const run = (name: string, input: unknown, ctx = human) =>
     tool(name).handler(ctx, tool(name).inputSchema.parse(input))
-  return { ee, repos, services, tools, tool, run, minted }
+  return { ee, repos, services, pages, tools, tool, run, minted }
 }
 
 const verbs = (ee: FakeEe) => ee.calls.map((c) => c.verb)
@@ -485,6 +488,152 @@ describe('website.app_list / app_get / app_logs', () => {
       name: 'shop',
       lines: ['listening on 4100'],
     })
+  })
+})
+
+describe('website.app_list: the Apps overview shape (site, domains, last deploy)', () => {
+  /** FakeEe pins publicHost to null; the overview reads it from ee's settings. */
+  const setPublicHost = (ee: FakeEe, host: string | null) => {
+    const real = ee.status.bind(ee)
+    ee.status = async () => {
+      const s = await real()
+      return { ...s, settings: { ...s.settings, publicHost: host } }
+    }
+  }
+
+  it('managed: every service carries its ee domains, url and NEWEST deploy; the site entry carries the public host and page counts', async () => {
+    const { ee, run, pages } = await setup()
+    ee.failHealth = true
+    await run('website.app_deploy', {
+      repo: 'kindred/shop',
+      branch: 'main',
+      name: 'shop',
+      kind: 'web',
+      contract: form,
+    }).catch(() => undefined)
+    ee.failHealth = false
+    await run('website.app_deploy', { name: 'shop' })
+    await run('website.app_deploy', {
+      repo: 'kindred/shop',
+      branch: 'main',
+      name: 'worker',
+      kind: 'backend',
+      contract: form,
+    })
+    await pages.createPage({ slug: 'home', title: 'Home', body: 'x', visibility: 'public' })
+    await pages.createPage({ slug: 'about', title: 'About', body: 'x', visibility: 'public' })
+    await pages.createPage({ slug: 'wip', title: 'Wip', body: 'x', visibility: 'private' })
+    await pages.createPage({
+      slug: 'handbook',
+      title: 'Handbook',
+      body: 'x',
+      kind: 'doc',
+      visibility: 'public',
+    })
+    setPublicHost(ee, 'kindred.digital')
+    ee.routes = [...ee.routes, { host: 'os.ee.localhost', workload: 'os' }]
+
+    const out = (await run('website.app_list', {})) as {
+      managed: boolean
+      catalog: { runtimes: { node: string[] } }
+      services: Array<{
+        name: string
+        domains: string[]
+        url: string | null
+        lastDeploy: {
+          status: string
+          stage: string
+          startedAt: string
+          endedAt: string | null
+        } | null
+      }>
+      site: {
+        publicHost: string | null
+        url: string | null
+        pages: { published: number; drafts: number }
+      }
+    }
+
+    expect(out.managed).toBe(true)
+    expect(out.catalog).toMatchObject({ runtimes: { node: ['22'] } })
+    const byName = new Map(out.services.map((s) => [s.name, s]))
+    // The newest attempt (the second one, live) — not the failed first.
+    expect(byName.get('shop')).toMatchObject({
+      domains: ['shop.ee.localhost'],
+      url: 'https://shop.ee.localhost',
+      lastDeploy: { status: 'live', stage: 'live' },
+    })
+    // Routes of other workloads are not the app's; a back-end service has no route.
+    expect(byName.get('worker')).toMatchObject({ domains: [], url: null })
+    expect(byName.get('worker')!.lastDeploy).toMatchObject({ status: 'live' })
+    expect(out.site).toEqual({
+      publicHost: 'kindred.digital',
+      url: 'https://kindred.digital',
+      // Docs are not site pages; drafts are the not-yet-public ones.
+      pages: { published: 2, drafts: 1 },
+    })
+  })
+
+  it('ee unavailable: managed:false with the rows from the store (no domains, no deploys, no site host) — pages still count', async () => {
+    const { ee, run, pages } = await setup()
+    await run('website.app_deploy', {
+      repo: 'kindred/shop',
+      branch: 'main',
+      name: 'shop',
+      kind: 'web',
+      contract: form,
+    })
+    await pages.createPage({ slug: 'home', title: 'Home', body: 'x', visibility: 'public' })
+    ee.status = async () => {
+      throw new SubstrateUnavailableError('ENOENT')
+    }
+
+    const out = (await run('website.app_list', {})) as {
+      managed: boolean
+      catalog: unknown
+      services: Array<{
+        name: string
+        status: string
+        domains: string[]
+        url: string | null
+        lastDeploy: unknown
+      }>
+      site: { publicHost: string | null; url: string | null; pages: unknown }
+    }
+
+    expect(out.managed).toBe(false)
+    expect(out.catalog).toBeNull()
+    // The row's own recorded state is shown; nothing pretends ee said anything.
+    expect(out.services).toEqual([
+      {
+        name: 'shop',
+        kind: 'web',
+        repo: 'kindred/shop',
+        branch: 'main',
+        authKind: 'public',
+        status: 'healthy',
+        url: null,
+        shortSha: REV.slice(0, 7),
+        lastDeployedAt: '2026-10-20T10:00:00.000Z',
+        lastError: null,
+        autoDeploy: false,
+        domains: [],
+        lastDeploy: null,
+      },
+    ])
+    expect(out.site).toEqual({
+      publicHost: null,
+      url: null,
+      pages: { published: 1, drafts: 0 },
+    })
+  })
+
+  it('any other ee failure still fails loud (only unavailability degrades to managed:false)', async () => {
+    const { ee, run } = await setup()
+    ee.status = async () => {
+      throw new SubstrateError(500, 'boom', null, null)
+    }
+    await expect(run('website.app_list', {})).rejects.toThrow()
   })
 })
 
