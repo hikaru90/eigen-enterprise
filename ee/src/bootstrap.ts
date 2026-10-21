@@ -76,7 +76,9 @@ async function installPackages(sys: System): Promise<void> {
     await mustRun(sys, 'git', ['clone', '-q', '--depth', '1', '--branch', PG_NET_VERSION, 'https://github.com/supabase/pg_net.git', '/tmp/ee-pg_net'], {
       timeoutMs: 300_000,
     })
-    await mustRun(sys, 'make', ['-C', '/tmp/ee-pg_net', `PG_CONFIG=/usr/lib/postgresql/${PG}/bin/pg_config`], { timeoutMs: 600_000 })
+    // Newer curl headers (Debian 13) type-check curl_easy_setopt; pg_net builds with
+    // -Werror, so that one warning must stay a warning (the calls are correct).
+    await mustRun(sys, 'make', ['-C', '/tmp/ee-pg_net', `PG_CONFIG=/usr/lib/postgresql/${PG}/bin/pg_config`, 'COPT=-Wno-error=attribute-warning'], { timeoutMs: 600_000 })
     await mustRun(sys, 'make', ['-C', '/tmp/ee-pg_net', 'install', `PG_CONFIG=/usr/lib/postgresql/${PG}/bin/pg_config`])
     await sys.remove('/tmp/ee-pg_net')
   }
