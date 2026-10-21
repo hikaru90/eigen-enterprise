@@ -110,6 +110,9 @@ async function sandboxedBuild(
         '-E', `PATH=${nodeBin(contract)}:/usr/bin:/bin`,
         '-E', 'HOME=/tmp',
         '-E', 'NODE_ENV=production',
+        // npm would omit devDependencies under NODE_ENV=production, but builds need
+        // them (vite, rollup's native binary). Nixpacks does the same.
+        '-E', 'npm_config_include=dev',
         '-E', 'npm_config_cache=/tmp/npm-cache',
         resolved,
         ...args,

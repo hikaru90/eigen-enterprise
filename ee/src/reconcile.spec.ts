@@ -285,6 +285,10 @@ describe('owner contract (no ee.json in the repo)', () => {
 
     const step = runs.find((a) => a.includes('install'))!
     expect(step.join(' ')).not.toContain('sk_live_secret')
+    // Build steps install dev dependencies (vite, rollup's native binary) despite
+    // NODE_ENV=production — as Nixpacks does with NPM_CONFIG_PRODUCTION=false.
+    expect(step).toContain('npm_config_include=dev')
+    expect(step).toContain('NODE_ENV=production')
     const envPath = step.find((a) => a.startsWith('EnvironmentFile='))!.slice('EnvironmentFile='.length)
     expect(written.find((w) => w.path === envPath)?.mode).toBe(0o600)
     expect(sys.files.has(envPath)).toBe(false) // removed after the build
