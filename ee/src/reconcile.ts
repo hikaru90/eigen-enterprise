@@ -75,6 +75,7 @@ async function sandboxedBuild(
 ): Promise<void> {
   if (contract.build.length === 0) return
   deploy?.().stage('building')
+  const buildMemoryMb = Math.max(w.resources.memoryMb, 1536)
   await mustRun(sys, 'chown', ['-R', 'ee-build:ee-build', dir])
   for (const step of contract.build) {
     const [program, ...args] = step
@@ -103,7 +104,7 @@ async function sandboxedBuild(
         '-p', 'PrivateTmp=yes',
         '-p', 'PrivateDevices=yes',
         '-p', `ReadWritePaths=${dir}`,
-        '-p', `MemoryMax=${Math.max(w.resources.memoryMb, 1536)}M`,
+        '-p', `MemoryMax=${buildMemoryMb}M`,
         '-p', 'RuntimeMaxSec=1200',
         '-p', `EnvironmentFile=${envFile}`,
         `--working-directory=${dir}`,
@@ -113,6 +114,9 @@ async function sandboxedBuild(
         // npm would omit devDependencies under NODE_ENV=production, but builds need
         // them (vite, rollup's native binary). Nixpacks does the same.
         '-E', 'npm_config_include=dev',
+        // Node's default heap stops big builds (vite on ~5k modules) short of the
+        // cap; give it 75%. An app's own NODE_OPTIONS (env file) still wins.
+        '-E', `NODE_OPTIONS=--max-old-space-size=${Math.floor(buildMemoryMb * 0.75)}`,
         '-E', 'npm_config_cache=/tmp/npm-cache',
         resolved,
         ...args,

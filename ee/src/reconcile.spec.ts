@@ -289,6 +289,8 @@ describe('owner contract (no ee.json in the repo)', () => {
     // NODE_ENV=production — as Nixpacks does with NPM_CONFIG_PRODUCTION=false.
     expect(step).toContain('npm_config_include=dev')
     expect(step).toContain('NODE_ENV=production')
+    // Node's default heap is too small for big builds: 75% of the build's memory cap.
+    expect(step).toContain('NODE_OPTIONS=--max-old-space-size=1152')
     const envPath = step.find((a) => a.startsWith('EnvironmentFile='))!.slice('EnvironmentFile='.length)
     expect(written.find((w) => w.path === envPath)?.mode).toBe(0o600)
     expect(sys.files.has(envPath)).toBe(false) // removed after the build
