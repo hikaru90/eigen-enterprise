@@ -5,7 +5,6 @@ import { APPROVAL_MODES, isApprovalMode } from '$lib/kernel/approvals'
 import { KERNEL_EVENT_SOURCE } from '$lib/kernel/cloudevents'
 import { emitKernelEvent } from '$lib/kernel/events'
 import { isUserAdmin } from '$lib/server/auth/user-role'
-import { bootstrapKernel } from '../../../../../modules/index'
 
 /**
  * The company-wide approval mode the owner picks under the chat input.

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { KernelError } from '$lib/kernel/errors'
 import type { ToolContext } from '$lib/kernel/types'
 import { decideApprovalAsOwner } from '$lib/server/approvals/owner-decision'
-import { bootstrapKernel, ensureSystemModulesActive } from '../../../../modules/index'
+import { ensureSystemModulesActive } from '../../../../modules/index'
 import { AppUserError } from '../../../../modules/website/apps/contract'
 
 /**

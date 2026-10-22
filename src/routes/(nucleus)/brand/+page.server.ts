@@ -3,7 +3,6 @@ import type { PageServerLoad } from './$types'
 import { randomUUID } from 'node:crypto'
 import { requireAdmin } from '$lib/server/auth/require-admin'
 import { brandModuleState } from '$lib/server/brand/activation'
-import { bootstrapKernel } from '../../../../modules/index'
 
 /**
  * Selection wizard surface (phase-2d M4, V7). Owner/admin only: loads the

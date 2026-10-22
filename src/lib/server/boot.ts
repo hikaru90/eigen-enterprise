@@ -9,7 +9,6 @@ import {
   bootstrapChatGateway,
   bootstrapRecap,
   bootstrapKernel,
-  buildKernel,
   ensureSystemModulesActive,
   type BootstrapKernelOptions,
 } from '../../../modules/index'

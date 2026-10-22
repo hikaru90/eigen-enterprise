@@ -2,7 +2,6 @@ import { appKernel } from '$lib/server/boot'
 import type { LayoutServerLoad } from './$types'
 import { foundingCompanyName } from '$lib/server/overview/sources'
 import { buildShellNav, type ShellData } from '$lib/shell/nav'
-import { bootstrapKernel } from '../../../modules/index'
 
 /**
  * The app shell's data for signed-in pages: the company name and the nav,

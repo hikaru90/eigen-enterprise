@@ -27,6 +27,9 @@ const noEffectRestrictedSyntax = [
 
 export default defineConfig(
   includeIgnoreFile(gitignorePath),
+  // Generated build output (the bundled ee binary) is never hand-edited;
+  // linting it only buries real findings under 100+ noise errors.
+  { ignores: ['ee/dist/**'] },
   js.configs.recommended,
   ts.configs.recommended,
   svelte.configs.recommended,

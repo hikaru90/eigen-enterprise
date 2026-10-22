@@ -1,7 +1,6 @@
 import { appKernel } from '$lib/server/boot'
 import { randomUUID } from 'node:crypto'
 import { KernelError } from '$lib/kernel/errors'
-import { bootstrapKernel } from '../../../../modules/index'
 
 /**
  * Branding-module activation surface (phase-2d follow-up: the owner asked to

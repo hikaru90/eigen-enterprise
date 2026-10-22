@@ -7,7 +7,6 @@ import { getDb } from '$lib/server/db'
 import { kernelEvents } from '$lib/server/db/kernel.schema'
 import { buildOverview } from '$lib/server/overview/overview'
 import { humanContext, overviewResultSources } from '$lib/server/overview/sources'
-import { bootstrapKernel } from '../../../../modules/index'
 
 /** How many recent agent actions the overview shows; the chat holds the rest. */
 const RECENT_ACTIONS = 10

@@ -107,7 +107,7 @@ async function start() {
   server = createServer(controlHandler(ee))
   await new Promise<void>((r) => server!.listen(socketPath, r))
   const call = (method: string, path: string, body?: unknown) =>
-    new Promise<{ status: number; data: any }>((resolve, reject) => {
+    new Promise<{ status: number; data: unknown }>((resolve, reject) => {
       const text = body === undefined ? '' : JSON.stringify(body)
       const req = request({ socketPath, path, method, headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(text) } }, (res) => {
         let raw = ''
@@ -128,7 +128,7 @@ describe('control API: claim links (ee claim-link)', () => {
     vi.spyOn(ee, 'reconcile').mockResolvedValue(undefined as never)
     const ok = await call('POST', '/v1/claim', { author: 'root' })
     expect(ok.status).toBe(200)
-    expect(ok.data.url).toMatch(/\/claim\?token=/)
+    expect((ok.data as { url: string }).url).toMatch(/\/claim\?token=/)
     expect(ee.secrets.all()['os']?.['EE_CLAIM_TOKEN_HASH']).toMatch(/^[0-9a-f]{64}$/)
   })
 
@@ -156,18 +156,19 @@ describe('control API: deploy keys', () => {
     const created = await call('POST', '/v1/deploy-keys', { repo: 'kindred/app', author: 'human:u1' })
     expect(created.status).toBe(200)
     expect(created.data).toEqual({ keyId: expect.stringMatching(/^dk_/), publicKey: 'ssh-ed25519 AAAAPUB ee-deploy' })
+    const { keyId } = created.data as { keyId: string }
     expect(JSON.stringify(created.data)).not.toContain('PRIVATE')
     expect(sys.files.get(PATHS.secrets)).not.toContain('PRIVATE-KEY-MATERIAL')
 
-    const checked = await call('POST', `/v1/deploy-keys/${created.data.keyId}/check`, { repo: 'kindred/app' })
+    const checked = await call('POST', `/v1/deploy-keys/${keyId}/check`, { repo: 'kindred/app' })
     expect(checked.data).toEqual({ ok: true, branches: ['main'] })
 
-    const deleted = await call('DELETE', `/v1/deploy-keys/${created.data.keyId}`, { author: 'human:u1' })
+    const deleted = await call('DELETE', `/v1/deploy-keys/${keyId}`, { author: 'human:u1' })
     expect(deleted).toEqual({ status: 200, data: { ok: true } })
-    expect(ee.secrets.all()['_deploy_keys']?.[created.data.keyId]).toBeUndefined()
+    expect(ee.secrets.all()['_deploy_keys']?.[keyId]).toBeUndefined()
     expect(ee.journal.events.map((e) => e.type)).toEqual(['deploy_key.created', 'deploy_key.deleted'])
 
-    const again = await call('DELETE', `/v1/deploy-keys/${created.data.keyId}`, { author: 'human:u1' })
+    const again = await call('DELETE', `/v1/deploy-keys/${keyId}`, { author: 'human:u1' })
     expect(again.status).toBe(404)
   })
 
@@ -189,7 +190,7 @@ describe('control API: apps from the dashboard', () => {
     const { call } = await start()
     const r = await call('GET', '/v1/catalog')
     expect(r.status).toBe(200)
-    expect(r.data.runtimes.node).toContain('22')
+    expect((r.data as { runtimes: { node: string } }).runtimes.node).toContain('22')
   })
 
   it('POST /v1/apps refuses a contract the catalog lacks, as a catalog_gap naming it', async () => {

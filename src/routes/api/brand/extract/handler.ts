@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 import { error, json } from '@sveltejs/kit'
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
-import { bootstrapKernel } from '../../../../../modules/index'
 
 /**
  * Route-side executor for the brand extraction tools (phase-2d M2).

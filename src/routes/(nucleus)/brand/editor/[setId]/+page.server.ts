@@ -4,7 +4,6 @@ import { randomUUID } from 'node:crypto'
 import { error } from '@sveltejs/kit'
 import { z } from 'zod'
 import { requireAdmin } from '$lib/server/auth/require-admin'
-import { bootstrapKernel } from '../../../../../../modules/index'
 
 /**
  * Visual editor surface (phase-2d M6, V8). Owner/admin only: loads one visual

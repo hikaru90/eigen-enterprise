@@ -3,7 +3,6 @@ import type { RequestHandler } from './$types'
 import { error, json } from '@sveltejs/kit'
 import { z } from 'zod'
 import { jsonError } from '$lib/server/http/api-error'
-import { bootstrapKernel } from '../../../../../modules/index'
 import { handleContactSubmit } from '../../../../../modules/website/contact'
 import { defaultWebsiteStore } from '../../../../../modules/website/store'
 
