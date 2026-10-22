@@ -1,5 +1,5 @@
 import { relations, sql } from 'drizzle-orm'
-import { pgTable, text, timestamp, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core'
+import { integer, pgTable, text, timestamp, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core'
 
 export const userAccountKindEnum = ['production', 'harness'] as const
 export type UserAccountKind = (typeof userAccountKindEnum)[number]
@@ -127,3 +127,28 @@ export const claimConsumed = pgTable('claim_consumed', {
   tokenHash: text('token_hash').primaryKey(),
   claimedAt: timestamp('claimed_at', { withTimezone: true }).defaultNow().notNull(),
 })
+
+/**
+ * Passkeys (WebAuthn) registered from Settings → Passkeys as a machine
+ * credential (@better-auth/passkey, migration 0100). After a code sign-in the
+ * browser's platform authenticator becomes the way back in — no code, no email.
+ */
+export const passkey = pgTable(
+  'passkey',
+  {
+    id: text('id').primaryKey(),
+    name: text('name'),
+    publicKey: text('public_key').notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    credentialID: text('credential_id').notNull().unique(),
+    counter: integer('counter').default(0).notNull(),
+    deviceType: text('device_type').notNull(),
+    backedUp: boolean('backed_up').default(false).notNull(),
+    transports: text('transports'),
+    aaguid: text('aaguid'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => [index('passkey_user_idx').on(t.userId)],
+)

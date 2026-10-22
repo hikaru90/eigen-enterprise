@@ -1,11 +1,15 @@
 <script lang="ts">
-  import type { PageData } from './$types'
+  import type { ActionData, PageData } from './$types'
   import { resolve } from '$app/paths'
   import RepoConnectSteps from '$lib/components/repo-connect-steps.svelte'
   import * as Breadcrumb from '$lib/components/ui/breadcrumb'
 
   /** /m/website/apps/new — adding an app from a repo (decision D-W4). */
-  let { data }: { data: PageData } = $props()
+  let { data, form }: { data: PageData; form: ActionData } = $props()
+
+  // A submit that raced hydration (a native POST) still gets its plain
+  // sentence back through the form prop — never a silent reload.
+  const nativeError = form && 'error' in form && typeof form.error === 'string' ? form.error : null
 </script>
 
 <svelte:head><title>Add an app · Website · Eigen Enterprise</title></svelte:head>
@@ -18,21 +22,17 @@
       </Breadcrumb.Item>
       <Breadcrumb.Separator />
       <Breadcrumb.Item>
-        <Breadcrumb.Link href={resolve('/m/website/apps')}>Apps</Breadcrumb.Link>
-      </Breadcrumb.Item>
-      <Breadcrumb.Separator />
-      <Breadcrumb.Item>
-        <Breadcrumb.Page>Add</Breadcrumb.Page>
+        <Breadcrumb.Page>Add an app</Breadcrumb.Page>
       </Breadcrumb.Item>
     </Breadcrumb.List>
   </Breadcrumb.Root>
 
-  <h1 class="mt-3 text-xl font-semibold tracking-tight">Add an app from a repo</h1>
+  <h1 class="mt-3 text-xl font-semibold tracking-tight">Connect a GitHub repository</h1>
   <p class="mt-1 text-sm text-muted-foreground">
-    Pick the repo, say how this server may read it, then deploy it under a name.
+    Connect your repository, verify access, then configure your app.
   </p>
 
   <div class="mt-8">
-    <RepoConnectSteps {data} />
+    <RepoConnectSteps {data} {nativeError} nativeResult={form} />
   </div>
 </div>

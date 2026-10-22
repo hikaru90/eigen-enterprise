@@ -5,7 +5,13 @@ import { saveJournal, workloadEntry, type EeEvent, type Journal } from './journa
 import { DeployRun, secretValues } from './deploys.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
 import { generateSecret, renderEnvFile, type SecretMap } from './secrets.ts'
-import { appContractSchema, assertInCatalog, type AppContract, type Workload } from './spec.ts'
+import {
+  OS_INTERNAL_PORT,
+  appContractSchema,
+  assertInCatalog,
+  type AppContract,
+  type Workload,
+} from './spec.ts'
 import { mustRun, type RunResult, type System } from './system.ts'
 import { renderUnit, unitName, type Slot } from './units.ts'
 
@@ -38,8 +44,7 @@ class ReportedError extends Error {}
 
 export type PreparedRelease = { id: string; dir: string; contract: AppContract }
 
-/** pg_cron/pg_net reach eigenEnterprise here, whichever slot is live. */
-export const OS_INTERNAL_PORT = 4000
+export { OS_INTERNAL_PORT }
 
 const sha = (s: string) => createHash('sha256').update(s).digest('hex')
 

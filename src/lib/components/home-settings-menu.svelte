@@ -114,11 +114,11 @@
       Extensions
     </a>
     <a
-      href={resolve('/m/website/hosting')}
+      href={resolve('/m/website/settings')}
       class="flex items-center gap-2.5 rounded-sm px-2 py-1.5 text-sm text-foreground hover:bg-white/25 dark:hover:bg-white/10"
     >
       <Server class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
-      Hosting
+      Website settings
     </a>
     <a
       href={resolve('/api-keys')}

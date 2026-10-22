@@ -94,3 +94,13 @@ Add dialog (from the "+" card), three options:
 - Multiple company sites; a pages editor UI (pages stay chat/tool-driven).
 - ee additions: `PATCH /v1/domains` (atomic rename), deploy-key list, secret delete, `resources` on apps, DNS pre-check — tracked in phase-substrate gaps.
 - The rest of `/settings/*` keeps its current theme behaviour.
+
+## 8. Owner correction — 2026-10-22
+
+The owner rejected the fragmented Hosting / Site navigation and the deployment warning dominating the app overview. The approved correction is a Coolify-style apps-and-repositories overview with two Add choices (build with chat, connect GitHub), an explicit public/private repository flow with server-held read-only deploy keys, and one Website Settings entry for server connection, domain routing and automatic HTTPS. Per-app operational settings remain attached to each app.
+
+- Include connected repositories even before their first deployment; match repository identity and branch, rather than hiding sources that lack service rows.
+- Missing deployment capability must be stated accurately where a key or deploy is requested, and visible via server status/settings. Repo browsing and public connections remain useful. Errors must remain visible.
+- Group existing Hosting and Site controls under Settings while preserving their URLs and mutation/approval contracts. Existing build, deployment history, logs, environment, secrets, mail access and removal actions remain available. No functionality is removed in this correction.
+- HTTPS is managed by the existing ee/Caddy server. Explain DNS and renewal; do not invent certificate issuance/expiry data the control API does not expose.
+- Workstreams: overview/repository inventory, connect/access workflow, website/app settings in separate worktrees; orchestrator owns integration, headed browser journey, runtime verification, and progress.

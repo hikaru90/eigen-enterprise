@@ -21,7 +21,9 @@ cp "$ROOT/ee/dist/ee.mjs" "$OUT/ee.mjs"
 cp "$ROOT/ee/install.sh" "$OUT/install.sh"
 
 echo "→ building $NAME in a linux/$ARCH container"
-(cd "$ROOT" && git ls-files -co --exclude-standard -z | COPYFILE_DISABLE=1 tar --no-xattrs --null -cf "$OUT/src.tar" -T -)
+# -co: tracked + untracked-but-not-ignored. Files deleted in the worktree but
+# not yet committed still come back from ls-files — keep only what exists.
+(cd "$ROOT" && git ls-files -co --exclude-standard -z | while IFS= read -r -d '' f; do [ -f "$f" ] && printf '%s\0' "$f"; done | COPYFILE_DISABLE=1 tar --no-xattrs --null -cf "$OUT/src.tar" -T -)
 docker run --rm --platform "linux/$ARCH" -v "$OUT:/out" -w /work node:22-bookworm sh -euc "
   tar -xf /out/src.tar -C /work
   npm ci --ignore-scripts --no-audit --no-fund --loglevel=error

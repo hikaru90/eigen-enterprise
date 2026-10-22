@@ -67,6 +67,9 @@ vi.mock('$lib/server/mcp/tools', () => ({
   runUnlinkTextFileFromThoughtTool: vi.fn(),
 }))
 
+const { canUseMcpMock } = vi.hoisted(() => ({ canUseMcpMock: vi.fn() }))
+vi.mock('$lib/server/api-keys/mcp-scope', () => ({ canUseMcp: canUseMcpMock }))
+
 function makeRequest(body: unknown, method = 'POST'): Request {
   return new Request('http://localhost/api/mcp', {
     method,
@@ -86,6 +89,36 @@ describe('POST /api/mcp', () => {
       request: makeRequest({}),
     } as never)
     expect(res.status).toBe(401)
+  })
+
+  it('a key without the mcp scope (e.g. an app mail key) gets 403', async () => {
+    canUseMcpMock.mockResolvedValueOnce(false)
+    const res = await POST({
+      locals: { user: { id: 'u1' }, apiKeyAuth: { id: 'k1', name: 'app:site' } },
+      request: makeRequest({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+    } as never)
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: 'forbidden', message: 'this key may not use MCP' })
+    expect(canUseMcpMock).toHaveBeenCalledWith('k1')
+  })
+
+  it('a key with the mcp scope is served', async () => {
+    canUseMcpMock.mockResolvedValueOnce(true)
+    const res = await POST({
+      locals: { user: { id: 'u1' }, apiKeyAuth: { id: 'k2', name: 'laptop' } },
+      request: makeRequest({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+    } as never)
+    expect(res.status).toBe(200)
+  })
+
+  it('a signed-in session needs no scope lookup', async () => {
+    canUseMcpMock.mockClear()
+    const res = await POST({
+      locals: { user: { id: 'u1' } },
+      request: makeRequest({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+    } as never)
+    expect(res.status).toBe(200)
+    expect(canUseMcpMock).not.toHaveBeenCalled()
   })
 
   it('lists tools', async () => {

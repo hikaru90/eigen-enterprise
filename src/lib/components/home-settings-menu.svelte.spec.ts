@@ -42,7 +42,7 @@ describe('home-settings-menu.svelte', () => {
     await expect.element(page.getByRole('button', { name: 'Settings menu' })).toBeInTheDocument()
   })
 
-  it('opens the menu: Company Settings, Extensions, Hosting, API Keys, AI provider, then the toggles', async () => {
+  it('opens the menu: Company Settings, Extensions, Website settings, API Keys, AI provider, then the toggles', async () => {
     render(HomeSettingsMenu)
 
     await page.getByRole('button', { name: 'Settings menu' }).click()
@@ -54,8 +54,8 @@ describe('home-settings-menu.svelte', () => {
       .element(page.getByRole('link', { name: 'Extensions' }))
       .toHaveAttribute('href', '/settings/extensions')
     await expect
-      .element(page.getByRole('link', { name: 'Hosting' }))
-      .toHaveAttribute('href', '/m/website/hosting')
+      .element(page.getByRole('link', { name: 'Website settings' }))
+      .toHaveAttribute('href', '/m/website/settings')
     await expect
       .element(page.getByRole('link', { name: 'API Keys' }))
       .toHaveAttribute('href', '/api-keys')

@@ -20,7 +20,8 @@ vi.mock('../../../../../../modules/index', () => ({
   ensureSystemModulesActive: async () => undefined,
 }))
 
-import { load } from './+page.server'
+import { load as settingsLoad } from '../settings/+page.server'
+import { load as hostingLoad } from './+page.server'
 
 function eeStatus(overrides: Partial<EeStatus> = {}): EeStatus {
   return {
@@ -53,7 +54,10 @@ function setup(status: EeStatus) {
 const user = { id: 'owner-1' }
 const event = { locals: { user } } as never
 
-describe('/m/website/hosting', () => {
+describe.each([
+  ['/m/website/hosting', hostingLoad],
+  ['/m/website/settings', settingsLoad],
+] as const)('%s', (_route, load) => {
   it('not under ee: the explicit unmanaged shape carries the reason', async () => {
     const transport: EeTransport = async () => {
       throw new SubstrateUnavailableError('ECONNREFUSED')

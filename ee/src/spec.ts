@@ -19,8 +19,20 @@ const SHA256 = /^[0-9a-f]{64}$/
 const GIT_REV = /^[0-9a-f]{40}$/
 export const HOSTNAME = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/
 
+/** pg_cron/pg_net and hosted apps reach eigenEnterprise here, whichever slot is live. */
+export const OS_INTERNAL_PORT = 4000
+/** Injected into every workload as EE_API_URL: the platform API, on the box, no TLS hop. */
+export const EE_API_URL = `http://127.0.0.1:${OS_INTERNAL_PORT}`
+
 /** Environment keys ee itself owns; a spec may not set them. */
-export const RESERVED_ENV = ['PORT', 'HOST', 'NODE_ENV', 'EE_WORKLOAD', 'EE_STATE_DIR'] as const
+export const RESERVED_ENV = [
+  'PORT',
+  'HOST',
+  'NODE_ENV',
+  'EE_WORKLOAD',
+  'EE_STATE_DIR',
+  'EE_API_URL',
+] as const
 
 const envRecord = z
   .record(z.string().regex(ENV_KEY), z.string().max(4096))

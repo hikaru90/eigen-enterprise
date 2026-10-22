@@ -56,13 +56,11 @@ async function kernel(active: string[]) {
     status: 'pending',
   })
   const tools: Record<string, { summary: string; output: unknown }> = {
-    'website.site_info': {
-      summary: 'Site info.',
+    'website.app_list': {
+      summary: 'Apps overview.',
       output: {
-        url: 'http://localhost/site',
-        pages: [
-          { slug: 'home', title: 'Home', status: 'draft', url: 'http://localhost/site/home' },
-        ],
+        managed: true,
+        services: [{ name: 'shop', status: 'healthy' }],
       },
     },
     'website.publish_page': { summary: 'Publish a page.', output: null },
@@ -132,9 +130,9 @@ describe('/overview load', () => {
       ['brand', false],
     ])
     expect(modules[0].results).toContainEqual({
-      label: 'Home',
-      detail: 'Draft',
-      href: 'http://localhost/site/home',
+      label: 'shop',
+      detail: 'Healthy',
+      href: '/m/website/apps/shop',
     })
     expect(modules[0].results).toContainEqual({
       label: 'Website setup (in chat)',

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ToolContext } from '$lib/kernel/types'
 import { GitHubApi } from './api'
 import { createGitHubConnectTools } from './connect-tools'
@@ -135,7 +135,7 @@ describe('public repo by URL (no auth)', () => {
     }).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(GitHubUserError)
     expect((err as Error).message).toBe(
-      'GitHub has no public repository kindred/ghost. If it is private, connect it with a deploy key below.',
+      'GitHub has no public repository kindred/ghost. If it is private, connect it with a deploy key.',
     )
   })
 
@@ -270,5 +270,66 @@ describe('private repos through the installed GitHub App', () => {
       lastCommit: null,
       lastCommitError: 'GitHub could not find the branch gone.',
     })
+  })
+})
+
+describe('deploy keys shared by connected branches', () => {
+  it('requires a human, retains the key for remaining branches, and deletes only its last reference', async () => {
+    const keyId = 'dk_' + 'a'.repeat(24)
+    let keyExists = true
+    const ee = {
+      createDeployKey: async () => ({ keyId, publicKey: 'ssh-ed25519 PUBLIC' }),
+      checkDeployKey: async () => {
+        if (!keyExists) throw new Error('The key was deleted')
+        return { ok: true as const, branches: ['main', 'preview/features'] }
+      },
+      deleteDeployKey: vi.fn(async () => {
+        keyExists = false
+        return { ok: true as const }
+      }),
+    }
+    const repos = new InMemoryConnectedRepoStore()
+    for (const branch of ['main', 'preview/features'])
+      await repos.add({
+        repoId: null,
+        fullName: 'kindred/private',
+        branch,
+        htmlUrl: 'https://github.com/kindred/private',
+        cloneUrl: 'git@github.com:kindred/private.git',
+        visibility: 'private',
+        authKind: 'deploy_key',
+        installationId: null,
+        deployKeyId: keyId,
+        connectedBy: 'human:u1',
+      })
+    const tools = new Map(
+      createGitHubConnectTools({ github: new InMemoryGitHubStore(), repos, ee }).map((t) => [
+        t.name,
+        t,
+      ]),
+    )
+    const disconnect = tools.get('website.github_disconnect_repo')!
+    await expect(
+      disconnect.handler(
+        { ...human, principal: { id: 'agent', kind: 'agent', roles: ['agent'] } },
+        { repo: 'kindred/private', branch: 'main' },
+      ),
+    ).rejects.toThrow('only a human')
+    expect(repos.rows).toHaveLength(2)
+    expect(
+      await disconnect.handler(human, { repo: 'kindred/private', branch: 'main' }),
+    ).toMatchObject({ removeKeyUrl: null })
+    expect(ee.deleteDeployKey).not.toHaveBeenCalled()
+    expect(repos.rows.map((r) => r.branch)).toEqual(['preview/features'])
+    expect(
+      await tools
+        .get('website.github_deploy_key_check')!
+        .handler(human, { repo: 'kindred/private', keyId }),
+    ).toEqual({ ok: true, branches: ['main', 'preview/features'] })
+    expect(
+      await disconnect.handler(human, { repo: 'kindred/private', branch: 'preview/features' }),
+    ).toMatchObject({ removeKeyUrl: 'https://github.com/kindred/private/settings/keys' })
+    expect(ee.deleteDeployKey).toHaveBeenCalledExactlyOnceWith(keyId, { author: 'human:u1' })
+    expect(repos.rows).toHaveLength(0)
   })
 })

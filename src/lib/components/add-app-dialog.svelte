@@ -1,11 +1,16 @@
 <script lang="ts">
+  import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right'
+  import GitBranch from '@lucide/svelte/icons/git-branch'
+  import MessageSquare from '@lucide/svelte/icons/message-square'
   import { resolve } from '$app/paths'
   import * as Dialog from '$lib/components/ui/dialog'
 
   /**
-   * The Add dialog behind the "+" card on the Apps overview: three ways to put
-   * something new on this server. The chat option only fills the composer's
-   * draft (?prefill=) — nothing is sent automatically.
+   * The Add dialog behind the Add button on the Website module's front page: the
+   * two ways to create or connect an app. Static sites aren't a separate
+   * path — they're an app like any other, built with the agent in chat. The chat
+   * option only fills the composer's draft (?prefill=) — nothing is sent
+   * automatically.
    */
 
   let {
@@ -20,19 +25,17 @@
 
   const options = [
     {
+      icon: MessageSquare,
       href: `/?prefill=${encodeURIComponent(BUILD_PREFILL)}`,
       title: 'Build it with chat',
-      description: 'Say what it should do; the AI builds and deploys it with you.',
+      description: 'Describe an app or website and build it with your agent.',
     },
     {
+      icon: GitBranch,
       href: resolve('/m/website/apps/new'),
       title: 'Connect a repo',
-      description: 'Deploy a GitHub repo — public, or private with a deploy key.',
-    },
-    {
-      href: resolve('/m/website/site'),
-      title: 'Static site',
-      description: 'Your company site from pages, under its own domain.',
+      description:
+        'Public or private GitHub repositories. Private repos use a read-only deploy key.',
     },
   ]
 </script>
@@ -49,11 +52,17 @@
       {#each options as option (option.href)}
         <a
           href={option.href}
-          class="flex flex-col gap-0.5 rounded-md border border-border p-3 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+          class="group flex items-start gap-3 rounded-lg border border-border p-4 transition-colors hover:border-foreground/25 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
           data-testid="add-app-option"
         >
-          <span class="text-sm font-medium">{option.title}</span>
-          <span class="text-xs text-foreground/60">{option.description}</span>
+          <span class="rounded-md border border-border bg-muted/40 p-2"
+            ><option.icon class="size-5" strokeWidth={1.5} /></span
+          >
+          <span class="flex flex-1 flex-col gap-1">
+            <span class="text-sm font-medium">{option.title}</span>
+            <span class="text-xs leading-relaxed text-foreground/60">{option.description}</span>
+          </span>
+          <ArrowUpRight class="mt-1 size-4 text-foreground/40 group-hover:text-foreground" />
         </a>
       {/each}
       <!-- eslint-enable svelte/no-navigation-without-resolve -->

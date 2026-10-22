@@ -15,14 +15,11 @@
   const available = $derived(data.overview.modules.length - activeModules.length)
   const website = $derived(data.overview.modules.find((m) => m.id === 'website') ?? null)
   const countOf = (label: string) => website?.counts.find((c) => c.label === label)?.value ?? 0
-  const site = $derived.by(() => {
+  const apps = $derived.by(() => {
     if (!website || !website.active) return { value: 'Off', hint: 'Website module not active' }
-    if (website.counts.length === 0) return { value: '—', hint: website.note ?? 'No site yet' }
-    const published = countOf('Published')
-    return {
-      value: published > 0 ? 'Live' : 'Draft',
-      hint: `${published} published · ${countOf('Drafts')} drafts`,
-    }
+    const total = countOf('Apps')
+    if (total === 0) return { value: '—', hint: website.note ?? 'No apps yet' }
+    return { value: String(total), hint: `${countOf('Healthy')} healthy` }
   })
 
   const tile =
@@ -60,9 +57,9 @@
       class={tile}
       data-testid="overview-site-tile"
     >
-      <span class="text-xs text-foreground/55">Site</span>
-      <span class="mt-1 text-2xl font-semibold">{site.value}</span>
-      <span class="mt-0.5 truncate text-xs text-foreground/45">{site.hint}</span>
+      <span class="text-xs text-foreground/55">Apps</span>
+      <span class="mt-1 text-2xl font-semibold">{apps.value}</span>
+      <span class="mt-0.5 truncate text-xs text-foreground/45">{apps.hint}</span>
     </a>
   </div>
 

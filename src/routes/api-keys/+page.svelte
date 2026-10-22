@@ -17,6 +17,7 @@
   let dialogOpen = $state(false)
   let keyName = $state('')
   let keyMailSend = $state(false)
+  let keyMcp = $state(true)
   let generating = $state(false)
   let generatedKey = $state<string | null>(null)
   let copied = $state(false)
@@ -84,7 +85,7 @@
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: trimmed, mailSend: keyMailSend }),
+        body: JSON.stringify({ name: trimmed, mailSend: keyMailSend, mcp: keyMcp }),
       })
       if (!res.ok) {
         const text = await res.text().catch(() => 'Unknown error')
@@ -100,6 +101,7 @@
           keyPrefix: result.prefix,
           isActive: true as const,
           mailSend: result.mailSend,
+          mcp: result.mcp,
           lastUsedAt: null,
           createdAt: new Date(),
         },
@@ -118,19 +120,19 @@
     setTimeout(() => (copied = false), 2000)
   }
 
-  async function setMailSend(id: string, mailSend: boolean) {
+  async function setScope(id: string, patch: { mailSend?: boolean; mcp?: boolean }) {
     error = null
     const res = await fetch(`${base}/api/keys/${id}`, {
       method: 'PATCH',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mailSend }),
+      body: JSON.stringify(patch),
     })
     if (!res.ok) {
       error = `Could not change the key (${res.status})`
       return
     }
-    keys = keys.map((k) => (k.id === id ? { ...k, mailSend } : k))
+    keys = keys.map((k) => (k.id === id ? { ...k, ...patch } : k))
   }
 
   function confirmDelete(id: string, name: string) {
@@ -265,8 +267,16 @@
               <label class="ml-2 flex shrink-0 items-center gap-1.5 text-[11px]">
                 <input
                   type="checkbox"
+                  checked={key.mcp}
+                  onchange={(e) => void setScope(key.id, { mcp: e.currentTarget.checked })}
+                />
+                MCP
+              </label>
+              <label class="ml-2 flex shrink-0 items-center gap-1.5 text-[11px]">
+                <input
+                  type="checkbox"
                   checked={key.mailSend}
-                  onchange={(e) => void setMailSend(key.id, e.currentTarget.checked)}
+                  onchange={(e) => void setScope(key.id, { mailSend: e.currentTarget.checked })}
                 />
                 Can send mail
               </label>
@@ -312,6 +322,10 @@
           disabled={generating}
           autofocus
         />
+        <label class="flex items-center gap-1.5 pt-1 text-xs">
+          <input type="checkbox" bind:checked={keyMcp} disabled={generating} />
+          MCP access (/api/mcp: the memory tools for an agent)
+        </label>
         <label class="flex items-center gap-1.5 pt-1 text-xs">
           <input type="checkbox" bind:checked={keyMailSend} disabled={generating} />
           Can send mail (POST /api/mail/send, sends at once, no approval)

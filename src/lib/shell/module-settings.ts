@@ -33,24 +33,14 @@ const slots: Record<string, ModuleSettingsSlot> = {
   website: {
     links: [
       {
-        label: 'Site',
-        href: '/m/website/site',
-        text: 'The company site: its domain and its pages.',
+        label: 'Repositories & apps',
+        href: '/m/website',
+        text: 'All connected repositories and their deployments.',
       },
       {
-        label: 'Apps',
-        href: '/m/website/apps',
-        text: 'Deploy connected repos as web apps and back-end services: status, logs, env.',
-      },
-      {
-        label: 'Hosting',
-        href: '/m/website/hosting',
-        text: 'This server: domains and what they belong to.',
-      },
-      {
-        label: 'GitHub connection',
-        href: '/m/website/github',
-        text: 'Connect GitHub and your repositories (public or private).',
+        label: 'Website settings',
+        href: '/m/website/settings',
+        text: 'Domains, routing, automatic HTTPS and deployment server status.',
       },
     ],
     panel: 'website-activity',

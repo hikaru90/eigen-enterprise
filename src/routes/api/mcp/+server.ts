@@ -3,12 +3,17 @@ import type { RequestHandler } from './$types'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import { json } from '@sveltejs/kit'
 import { runWithTrace } from '$lib/server/activity/trace-context'
+import { canUseMcp } from '$lib/server/api-keys/mcp-scope'
 import { createMcpServer } from '$lib/server/mcp/server'
 
 async function handleMcp(event: Parameters<RequestHandler>[0]): Promise<Response> {
   const user = event.locals.user
   if (!user) {
     return json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  // A key needs the "MCP access" scope; a mail-only key (an app's) stops here.
+  if (event.locals.apiKeyAuth && !(await canUseMcp(event.locals.apiKeyAuth.id))) {
+    return json({ error: 'forbidden', message: 'this key may not use MCP' }, { status: 403 })
   }
 
   // enableJsonResponse: use Promise-based JSON responses instead of SSE streaming.

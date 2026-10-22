@@ -1,4 +1,3 @@
-import type { SiteInfo } from '../../../../../../modules/website/site-info'
 import type { Actions, PageServerLoad } from './$types'
 import { fail } from '@sveltejs/kit'
 import { KernelError } from '$lib/kernel/errors'
@@ -7,32 +6,32 @@ import { SubstrateError, type EeStatus } from '$lib/server/ee/client'
 import { ownerRun } from '$lib/server/website/owner-run'
 
 /**
- * /m/website/site: the company site as a service (D-W1 — exactly one
- * synthesized site per company). Pages are written in chat by the agent
- * tools; the domain is the owner's click, so every change runs through
- * substrate tools as the signed-in human (D11).
+ * /m/website/site: the company site's public domain (D-W1 — exactly one
+ * synthesized site per company). The domain is the owner's click, so every
+ * change runs through substrate tools as the signed-in human (D11).
  */
 
 type Status = ({ managed: true } & EeStatus) | { managed: false; reason: string }
 
-export type SiteData =
-  | { managed: false; reason: string; siteUrl: string; pages: SiteInfo['pages'] }
-  | { managed: true; publicHost: string | null; siteUrl: string; pages: SiteInfo['pages'] }
+export type SiteData = {
+  managed: boolean
+  reason: string | null
+  publicHost: string | null
+  /** Its own domain when it has one; otherwise the console's address. */
+  siteUrl: string | null
+}
 
 export const load: PageServerLoad = async (event): Promise<SiteData> => {
   const user = await requireAdmin(event.locals.user)
-  const site = await ownerRun<SiteInfo>(user, 'website.site_info', {})
   const status = await ownerRun<Status>(user, 'substrate.status', {})
-  if (!status.managed) {
-    return { managed: false, reason: status.reason, siteUrl: site.url, pages: site.pages }
-  }
+  if (!status.managed)
+    return { managed: false, reason: status.reason, publicHost: null, siteUrl: null }
   const publicHost = status.settings.publicHost
   return {
     managed: true,
+    reason: null,
     publicHost,
-    // Its own domain when it has one; otherwise it lives under the console.
-    siteUrl: publicHost ? `https://${publicHost}` : site.url,
-    pages: site.pages,
+    siteUrl: publicHost ? `https://${publicHost}` : `https://${status.settings.consoleHost}`,
   }
 }
 
@@ -57,8 +56,8 @@ function logSiteFailure(action: string, err: unknown): void {
 
 export const actions: Actions = {
   /**
-   * The site's public domain (D-W2). ee has no rename: a change is an explicit
-   * remove of the old route, then the add — so the old address never lingers.
+   * ee replaces the public host and its route atomically in domain_add.
+   * Never delete first: validation and daemon failures must leave the old host intact.
    */
   domainSet: async (event) => {
     const user = await requireAdmin(event.locals.user)
@@ -71,12 +70,18 @@ export const actions: Actions = {
       if (!status.managed) {
         return fail(400, {
           action: 'domainSet' as const,
-          error: `${status.reason}. Install eigenEnterprise on a server with ee to give the site its own domain.`,
+          error:
+            "This EigenEnterprise copy runs without ee, the server's deploy agent, so it cannot give the site its own domain.",
         })
       }
-      const current = status.settings.publicHost
-      if (current && current !== host) {
-        await ownerRun(user, 'substrate.domain_remove', { host: current })
+      if (
+        host === status.settings.consoleHost ||
+        (host !== status.settings.publicHost && status.routes.some((route) => route.host === host))
+      ) {
+        return fail(400, {
+          action: 'domainSet' as const,
+          error: `${host} is already assigned to another route. Remove it from its current owner first.`,
+        })
       }
       const out = await ownerRun<{ reconcileError: string | null }>(user, 'substrate.domain_add', {
         host,

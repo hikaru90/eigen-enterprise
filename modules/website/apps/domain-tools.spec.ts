@@ -1,5 +1,5 @@
 import type { NewService } from './store'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { KernelError } from '$lib/kernel/errors'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import type { EeStatus } from '$lib/server/ee/client'
@@ -30,6 +30,11 @@ class DomainFakeEe extends FakeEe implements DomainEe {
   override async status(): Promise<EeStatus> {
     const s = await super.status()
     return { ...s, settings: { ...s.settings, publicHost: this.publicHost } }
+  }
+  override async addDomain(i: Parameters<DomainEe['addDomain']>[0]) {
+    // ee moves an existing host rather than creating duplicate routes.
+    this.routes = this.routes.filter((r) => r.host !== i.host)
+    return super.addDomain(i)
   }
   async removeDomain(i: { host: string; author: string }) {
     this.calls.push({ verb: 'removeDomain', input: i })
@@ -85,7 +90,7 @@ describe('website.app_domain_set', () => {
     expect((await store.get('shop'))?.host).toBe('shop.ee.localhost')
   })
 
-  it('replace: removes the app-owned old host, adds the new one, and moves website_services.host', async () => {
+  it('replace: adds the new host before removing the old one, and moves website_services.host', async () => {
     const { ee, store, run } = await setup()
     const out = (await run('website.app_domain_set', {
       name: 'shop',
@@ -94,8 +99,51 @@ describe('website.app_domain_set', () => {
     })) as { host: string; domains: string[] }
     expect(out).toEqual({ host: 'shop.kindred.dev', domains: ['shop.kindred.dev'] })
     expect(ee.removed).toEqual([{ host: 'shop.ee.localhost', author: 'human:u1' }])
-    expect(ee.calls.filter((c) => c.verb === 'addDomain')).toHaveLength(1)
+    expect(ee.calls.map((c) => c.verb)).toEqual(['addDomain', 'removeDomain'])
     expect((await store.get('shop'))?.host).toBe('shop.kindred.dev')
+  })
+
+  it('keeps the working address when adding its replacement fails', async () => {
+    const { ee, store, run } = await setup()
+    vi.spyOn(ee, 'addDomain').mockRejectedValue(new Error('edge unavailable'))
+    await expect(
+      run('website.app_domain_set', {
+        name: 'shop',
+        host: 'shop.kindred.dev',
+        replace: 'shop.ee.localhost',
+      }),
+    ).rejects.toThrow('edge unavailable')
+    expect(ee.removed).toEqual([])
+    expect(ee.routes).toContainEqual({ host: 'shop.ee.localhost', workload: 'shop' })
+    expect((await store.get('shop'))?.host).toBe('shop.ee.localhost')
+  })
+
+  it('keeps the old address when the server cannot apply the replacement route', async () => {
+    const { ee, store, run } = await setup()
+    vi.spyOn(ee, 'addDomain').mockResolvedValue({
+      rev: 's5',
+      reconcileError: 'Caddy rejected route',
+    })
+    await expect(
+      run('website.app_domain_set', {
+        name: 'shop',
+        host: 'shop.kindred.dev',
+        replace: 'shop.ee.localhost',
+      }),
+    ).rejects.toThrow(/could not apply.*previous address remains/i)
+    expect(ee.removed).toEqual([])
+    expect((await store.get('shop'))?.host).toBe('shop.ee.localhost')
+  })
+
+  it('saving the same address never removes its route', async () => {
+    const { ee, run } = await setup()
+    const out = await run('website.app_domain_set', {
+      name: 'shop',
+      host: 'shop.ee.localhost',
+      replace: 'shop.ee.localhost',
+    })
+    expect(ee.removed).toEqual([])
+    expect(out).toMatchObject({ domains: ['shop.ee.localhost'] })
   })
 
   it('refuses a host that serves the console', async () => {

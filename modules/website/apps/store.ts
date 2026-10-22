@@ -1,4 +1,5 @@
 import type { RepoAuthKind } from '../github/repos-store'
+import type { ContractForm } from './contract'
 import { asc, eq } from 'drizzle-orm'
 import type { DbHandle } from '$lib/kernel/db-stores'
 import type { AppDatabase } from '$lib/server/db/context'
@@ -6,9 +7,10 @@ import { websiteServices } from '$lib/server/db/website-services.schema'
 
 /**
  * Services (migration 0095): a connected repo + branch deployed as an ee app.
- * The contract lives in ee's company repo and env values in ee's sealed
- * store; this row only says where the service comes from and how its last
- * deploy went.
+ * Env values live in ee's sealed store; `contract` (migration 0101) is the
+ * saved build settings of the last healthy deploy — the config "Redeploy"
+ * replays and the owner-side record when ee no longer holds the workload's
+ * contract. The runtime source of a form-built app stays ee's company repo.
  */
 
 export type ServiceKind = 'web' | 'backend'
@@ -31,6 +33,10 @@ export type Service = {
   lastError: string | null
   lastDeployedAt: Date | null
   lastDeployedBy: string | null
+  /** The mail-only API key sealed into the app as EE_API_KEY; null = email off. */
+  mailKeyId: string | null
+  /** The saved build settings of the last healthy deploy; null = the repo's ee.json is the config. */
+  contract: ContractForm | null
   createdBy: string
   createdAt: Date
 }
@@ -54,6 +60,8 @@ export type DeployOutcome = {
   error: string | null
   by: string
   at: Date
+  /** The saved build settings to keep after this outcome: the form that went healthy, or the previous ones on a failure. */
+  contract: ContractForm | null
 }
 
 export type ServiceStore = {
@@ -63,6 +71,8 @@ export type ServiceStore = {
   upsert(s: NewService): Promise<Service>
   markDeploying(name: string): Promise<void>
   recordDeploy(name: string, o: DeployOutcome): Promise<void>
+  /** Remember (or forget, with null) the mail key sealed into the app. */
+  setMailKey(name: string, keyId: string | null): Promise<void>
   remove(name: string): Promise<void>
 }
 
@@ -88,15 +98,17 @@ export class InMemoryServiceStore implements ServiceStore {
     const existing = this.rows.get(s.name)
     const row: Service = existing
       ? { ...existing, ...s, createdBy: existing.createdBy }
-      : {
-          ...s,
-          state: 'new',
-          lastRev: null,
-          lastError: null,
-          lastDeployedAt: null,
-          lastDeployedBy: null,
-          createdAt: new Date(),
-        }
+        : {
+            ...s,
+            state: 'new',
+            lastRev: null,
+            lastError: null,
+            lastDeployedAt: null,
+            lastDeployedBy: null,
+            mailKeyId: null,
+            contract: null,
+            createdAt: new Date(),
+          }
     this.rows.set(s.name, row)
     return row
   }
@@ -115,7 +127,13 @@ export class InMemoryServiceStore implements ServiceStore {
       lastError: o.error,
       lastDeployedAt: o.at,
       lastDeployedBy: o.by,
+      contract: o.contract,
     })
+  }
+  async setMailKey(name: string, keyId: string | null) {
+    const r = this.rows.get(name)
+    if (!r) throw new Error(`no service ${name}`)
+    this.rows.set(name, { ...r, mailKeyId: keyId })
   }
   async remove(name: string) {
     this.rows.delete(name)
@@ -142,6 +160,8 @@ const fromRow = (r: Row): Service => ({
   lastError: r.lastError,
   lastDeployedAt: r.lastDeployedAt,
   lastDeployedBy: r.lastDeployedBy,
+  mailKeyId: r.mailKeyId,
+  contract: (r.contract ?? null) as ContractForm | null,
   createdBy: r.createdBy,
   createdAt: r.createdAt,
 })
@@ -203,8 +223,19 @@ export class DbServiceStore implements ServiceStore {
         lastError: o.error,
         lastDeployedAt: o.at,
         lastDeployedBy: o.by,
+        contract: o.contract,
         updatedAt: new Date(),
       })
+      .where(eq(websiteServices.name, name))
+      .returning({ name: websiteServices.name })
+    if (out.length === 0) throw new Error(`no service ${name}`)
+  }
+  async setMailKey(name: string, keyId: string | null) {
+    const out = await (
+      await resolveDb(this.db)
+    )
+      .update(websiteServices)
+      .set({ mailKeyId: keyId, updatedAt: new Date() })
       .where(eq(websiteServices.name, name))
       .returning({ name: websiteServices.name })
     if (out.length === 0) throw new Error(`no service ${name}`)

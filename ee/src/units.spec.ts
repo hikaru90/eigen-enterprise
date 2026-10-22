@@ -50,6 +50,8 @@ describe('renderUnit', () => {
     expect(unit).toContain('SocketBindDeny=any')
     expect(unit).toContain('Environment="PORT=4100"')
     expect(unit).toContain('Environment="HOST=127.0.0.1"')
+    // Every app knows where the platform API is; only a key decides what it may do there.
+    expect(unit).toContain('Environment="EE_API_URL=http://127.0.0.1:4000"')
   })
 
   it('escapes env values for systemd', () => {

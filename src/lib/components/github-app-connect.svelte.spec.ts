@@ -47,28 +47,13 @@ describe('github-app-connect.svelte', () => {
       .toHaveAttribute('href', 'https://github.com/apps/eigen-kindred/installations/new')
   })
 
-  it('installed: an Installed badge, the app slug, and a manage link', async () => {
+  it('installed: an Installed badge, the app slug, and a manage link — no add-an-app card (it lives inside that flow)', async () => {
     render(GitHubAppConnect, { github: installed, manifest: null })
     await expect.element(page.getByTestId('github-installed-badge')).toHaveTextContent('Installed')
     await expect.element(page.getByText(/Connected through the GitHub App/)).toBeInTheDocument()
     await expect
       .element(page.getByRole('link', { name: 'Manage the installation on GitHub' }))
       .toHaveAttribute('href', 'https://github.com/apps/eigen-kindred/installations/new')
-  })
-
-  it('repos are connected when you add an app: the card leads there and says what needs no App', async () => {
-    render(GitHubAppConnect, { github: installed, manifest: null })
-    const note = page.getByTestId('github-repos-note')
-    await expect
-      .element(note.getByText('Repos are connected when you add an app'))
-      .toBeInTheDocument()
-    await expect
-      .element(note.getByText(/A public repo needs nothing but its link/))
-      .toBeInTheDocument()
-    await expect
-      .element(note.getByText(/read-only deploy key during\s+that step/))
-      .toBeInTheDocument()
-    const link = note.getByTestId('github-add-app-link')
-    await expect.element(link).toHaveAttribute('href', '/m/website/apps/new')
+    expect(page.getByTestId('github-repos-note').query()).toBeNull()
   })
 })

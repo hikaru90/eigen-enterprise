@@ -19,12 +19,20 @@ import {
 import { defaultGitHubStore } from '../github/store'
 import { WEBSITE_MODULE_ID } from '../manifest'
 import { siteOrigin } from '../site-info'
-import { defaultWebsiteStore, type WebsiteStore } from '../store'
-import { AppUserError, contractFormSchema, gapError, resolveContract } from './contract'
+import {
+  AppUserError,
+  contractFromForm,
+  contractFormSchema,
+  formFromContract,
+  gapError,
+  resolveContract,
+  type ContractForm,
+} from './contract'
 import { failedStageOf, failureSentence, sentence } from './deploy-jobs'
 import { diagnoseDeploy, gatewayDiagnoseLlm, type DiagnoseLlm, type Diagnosis } from './diagnose'
 import { fetchInputFor, mirrorName } from './fetch-auth'
 import { appHost } from './host'
+import { dbAppMailKeys, MAIL_KEY_ENV, type AppMailKeys } from './mail-keys'
 import { defaultServiceStore, type Service, type ServiceKind, type ServiceStore } from './store'
 import { suggestContract, type ContractSuggestion, type SuggestChatFn } from './suggest'
 
@@ -68,8 +76,6 @@ export type AppToolDeps = {
   ee?: AppsEe
   repos?: ConnectedRepoStore
   services?: ServiceStore
-  /** The company-site pages (published/draft counts for the overview's site card). */
-  pages?: WebsiteStore
   /** A fresh GitHub App installation token (never stored). */
   mintToken?: (installationId: number) => Promise<string>
   now?: () => Date
@@ -77,6 +83,8 @@ export type AppToolDeps = {
   diagnoseLlm?: DiagnoseLlm
   /** The gateway call behind website.app_suggest_contract (tests inject a fake). */
   chat?: SuggestChatFn
+  /** The mail-only key behind "Allow this app to send email" (tests inject a fake). */
+  mailKeys?: AppMailKeys
 }
 
 const firstLine = (s: string) => s.split('\n')[0] ?? s
@@ -96,6 +104,9 @@ const RESERVED_ENV = [
   'EE_STATE_DIR',
   'DATABASE_URL',
   'DATABASE_ADMIN_URL',
+  // The platform API and the app's mail key: set by ee and the email toggle, never by hand.
+  'EE_API_URL',
+  MAIL_KEY_ENV,
 ]
 
 const NAME = z
@@ -164,6 +175,16 @@ const appListOutput = z.object({
       capabilities: z.array(z.string()),
     })
     .nullable(),
+  repositories: z.array(
+    z.object({
+      fullName: z.string(),
+      branch: z.string(),
+      htmlUrl: z.string(),
+      visibility: z.enum(['public', 'private']),
+      authKind: z.enum(['public', 'deploy_key', 'github_app']),
+      apps: z.array(z.string()),
+    }),
+  ),
   services: z.array(
     z.object({
       name: z.string(),
@@ -191,7 +212,6 @@ const appListOutput = z.object({
   site: z.object({
     publicHost: z.string().nullable(),
     url: z.string().nullable(),
-    pages: z.object({ published: z.number().int(), drafts: z.number().int() }),
   }),
 })
 
@@ -225,11 +245,18 @@ export type AppListService = ServiceView & {
   lastDeploy: LastDeploySummary | null
 }
 
-/** The company site as a service (synthesized from ee settings + page counts, D-W1). */
+/** The company site as a service (synthesized from ee settings, D-W1; pages are gone from the surface). */
 export type SiteOverview = {
   publicHost: string | null
   url: string | null
-  pages: { published: number; drafts: number }
+}
+
+export type AppListRepository = Pick<
+  ConnectedRepo,
+  'fullName' | 'branch' | 'htmlUrl' | 'visibility' | 'authKind'
+> & {
+  /** App names using this exact repository and branch. */
+  apps: string[]
 }
 
 export type AppListResult = {
@@ -237,6 +264,7 @@ export type AppListResult = {
   managed: boolean
   catalog: Catalog | null
   services: AppListService[]
+  repositories: AppListRepository[]
   site: SiteOverview
 }
 
@@ -303,7 +331,7 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
   const ee: AppsEe = deps.ee ?? new EeClient()
   const repos = deps.repos ?? defaultConnectedRepoStore()
   const services = deps.services ?? defaultServiceStore()
-  const pages = deps.pages ?? defaultWebsiteStore()
+  const mailKeys = deps.mailKeys ?? dbAppMailKeys()
   const now = deps.now ?? (() => new Date())
   const mintToken =
     deps.mintToken ??
@@ -354,7 +382,7 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
     const autoDeploy = i.autoDeploy ?? existing?.autoDeploy ?? false
     if (autoDeploy && (repo.authKind !== 'github_app' || repo.repoId === null)) {
       throw new AppUserError(
-        'Push-to-deploy needs the repo connected through the GitHub App. Repos read with a deploy key or by public link are deployed by hand (Deploy now).',
+        'Push-to-deploy needs the repo connected through the GitHub App. Repos read with a deploy key or by public link are deployed by hand (Redeploy).',
       )
     }
 
@@ -383,12 +411,24 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
       ),
       viaEe('read the catalog', () => ee.catalog()),
     ])
+    // The saved build settings of the last healthy deploy outrank what ee
+    // still holds: they are what the owner last deployed through Eigen.
+    const savedApp = existing?.contract ? contractFromForm(existing.contract) : null
     const resolved = resolveContract({
       repo: repoContract,
       form: i.contract ?? null,
-      stored: workload?.contract ?? null,
+      stored: savedApp ?? workload?.contract ?? null,
       catalog,
     })
+    // The config a later Redeploy replays: the form that produced this deploy,
+    // or (when this deploy fell back to a stored contract) that contract as
+    // form values, when the form can express it. An ee.json app saves nothing
+    // — its config lives in the repo.
+    const saved =
+      resolved.source === 'form'
+        ? (i.contract ??
+          (resolved.contract.build.length <= 2 ? formFromContract(resolved.contract) : null))
+        : null
 
     await services.upsert({
       name: i.name,
@@ -403,8 +443,22 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
     })
     await services.markDeploying(i.name)
 
-    const record = (state: 'healthy' | 'failed', error: string | null) =>
-      services.recordDeploy(i.name, { state, rev: fetched.rev, error, by: author, at: now() })
+    // A failed deploy keeps the previous saved settings; only a healthy deploy
+    // overwrites them (or clears them, when the repo's ee.json took over).
+    const keep = existing?.contract ?? null
+    const record = (
+      state: 'healthy' | 'failed',
+      error: string | null,
+      contract: ContractForm | null,
+    ) =>
+      services.recordDeploy(i.name, {
+        state,
+        rev: fetched.rev,
+        error,
+        by: author,
+        at: now(),
+        contract,
+      })
     try {
       await ee.createApp({
         name: i.name,
@@ -424,10 +478,10 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
           ? gapError((err.body as { missing?: string[] } | null)?.missing ?? [], catalog)
           : null
       if (plain) {
-        await record('failed', plain.message)
+        await record('failed', plain.message, keep)
         throw plain
       }
-      await record('failed', 'The server could not apply this deploy.')
+      await record('failed', 'The server could not apply this deploy.', keep)
       return viaEe(`deploy ${i.name}`, () => Promise.reject(err))
     }
 
@@ -436,7 +490,7 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
     const isNew =
       live?.live?.release === 'static' || live?.live?.release.startsWith(fetched.rev.slice(0, 16))
     if (live && isNew && !live.lastError) {
-      await record('healthy', null)
+      await record('healthy', null, saved)
       return {
         name: i.name,
         repo: repo.fullName,
@@ -457,7 +511,7 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
     console.error(
       `[website/apps] deploy of ${i.name} @ ${fetched.rev.slice(0, 12)} failed: ${live?.lastError ?? 'no live release'}`,
     )
-    await record('failed', message)
+    await record('failed', message, keep)
     throw new AppUserError(message)
   }
 
@@ -576,13 +630,23 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
       name: 'website.app_list',
       module: WEBSITE_MODULE_ID,
       summary:
-        'The Apps overview: whether this server is ee-managed, every app with its domains, URL, status and newest deploy attempt, and the company site (public host, URL, published/draft page counts). With `managed:false` the app rows come from the local record and nothing claims ee state.',
+        'The Apps overview: every connected repository and branch, its linked apps, and every app with domains, URL, status and newest deploy attempt. Includes the company site address and whether a deployment server is connected. With managed:false, repositories and app records remain available; live server state is unavailable.',
       auditClass: 'read',
       inputSchema: z.object({}).strict(),
       outputSchema: appListOutput,
       permission: { roles: ['admin', 'agent'] },
       handler: async (): Promise<AppListResult> => {
-        const rows = await services.list()
+        const [rows, connected] = await Promise.all([services.list(), repos.list()])
+        const repositories: AppListRepository[] = connected.map((repo) => ({
+          fullName: repo.fullName,
+          branch: repo.branch,
+          htmlUrl: repo.htmlUrl,
+          visibility: repo.visibility,
+          authKind: repo.authKind,
+          apps: rows
+            .filter((s) => sameName(s.repoFullName, repo.fullName) && s.branch === repo.branch)
+            .map((s) => s.name),
+        }))
         let status: EeStatus | null = null
         try {
           status = await ee.status()
@@ -592,20 +656,16 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
           if (!(err instanceof SubstrateUnavailableError))
             await viaEe('read the server status', () => Promise.reject(err))
         }
-        const sitePages = await pages.listPages({ kind: 'page' })
         const site: SiteOverview = {
           publicHost: status?.settings.publicHost ?? null,
           // Same host normalization as website.site_info: a bare host becomes https://host.
           url: status?.settings.publicHost ? siteOrigin(status.settings.publicHost) : null,
-          pages: {
-            published: sitePages.filter((p) => p.visibility === 'public').length,
-            drafts: sitePages.filter((p) => p.visibility !== 'public').length,
-          },
         }
         if (!status) {
           return {
             managed: false,
             catalog: null,
+            repositories,
             site,
             services: rows.map((s) => ({
               name: s.name,
@@ -659,7 +719,7 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
             }
           }),
         )
-        return { managed: true, catalog, services: cards, site }
+        return { managed: true, catalog, services: cards, repositories, site }
       },
     },
     {
@@ -672,18 +732,22 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
       permission: { roles: ['admin', 'agent'] },
       handler: async (_ctx, input) => {
         const { name } = nameInput.parse(input)
-        await mustService(name)
+        const svc = await mustService(name)
         const { services: all, status } = await views()
         const view = all.find((s) => s.name === name)!
         const w = status.workloads.find((x) => x.name === name)
         const { events } = await viaEe('read the deploy history', () => ee.events(name))
+        // ee's live workload is the truth while it lasts; the saved build
+        // settings keep the page (and Redeploy) working when it's gone.
+        const savedContract = svc.contract ? contractFromForm(svc.contract) : null
         return {
           ...view,
           env: w?.secrets ?? [],
           domains: status.routes.filter((r) => r.workload === name).map((r) => r.host),
-          contractSource: w?.contract ? 'form' : 'repo',
-          contract: w?.contract ?? null,
+          contractSource: w?.contract || savedContract ? 'form' : 'repo',
+          contract: w?.contract ?? savedContract,
           catalog: await viaEe('read the catalog', () => ee.catalog()),
+          mail: { enabled: svc.mailKeyId !== null },
           history: events
             .filter(
               (e) =>
@@ -826,6 +890,58 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
       },
     },
     {
+      name: 'website.app_mail_enable',
+      module: WEBSITE_MODULE_ID,
+      summary:
+        'Allow an app to send email through this server (human only). A key that can only send mail is minted and sealed into the app as EE_API_KEY; the app is rebuilt with it (minutes, health-gated). Turning it on again rotates the key.',
+      auditClass: 'mutate',
+      approvalRisk: 'public',
+      activity: (input: z.infer<typeof nameInput>) => `Allowed the app ${input.name} to send email`,
+      inputSchema: nameInput,
+      permission: { roles: ['admin'] },
+      handler: async (ctx, input) => {
+        const author = requireHuman(ctx, 'website.app_mail_enable')
+        const { name } = nameInput.parse(input)
+        const svc = await mustService(name)
+        const { id, raw } = await mailKeys.mint({ userId: ctx.principal.id, name: `app:${name}` })
+        let out: { reconcileError: string | null }
+        try {
+          out = await viaEe('store the mail key', () =>
+            ee.setSecret({ workload: name, name: MAIL_KEY_ENV, value: raw, author }),
+          )
+        } catch (err) {
+          // Never leave a live key that no app holds.
+          await mailKeys.revoke(id)
+          throw err
+        }
+        if (svc.mailKeyId) await mailKeys.revoke(svc.mailKeyId)
+        await services.setMailKey(name, id)
+        if (out.reconcileError)
+          console.error(`[website/apps] ${name} after enabling email: ${out.reconcileError}`)
+        return { name, enabled: true, applied: out.reconcileError === null }
+      },
+    },
+    {
+      name: 'website.app_mail_disable',
+      module: WEBSITE_MODULE_ID,
+      summary:
+        'Stop an app from sending email (human only). Its key is revoked at once; the app keeps running and its next send is refused.',
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: (input: z.infer<typeof nameInput>) =>
+        `Stopped the app ${input.name} from sending email`,
+      inputSchema: nameInput,
+      permission: { roles: ['admin'] },
+      handler: async (ctx, input) => {
+        requireHuman(ctx, 'website.app_mail_disable')
+        const { name } = nameInput.parse(input)
+        const svc = await mustService(name)
+        if (svc.mailKeyId) await mailKeys.revoke(svc.mailKeyId)
+        await services.setMailKey(name, null)
+        return { name, enabled: false }
+      },
+    },
+    {
       name: 'website.app_remove',
       module: WEBSITE_MODULE_ID,
       summary:
@@ -838,11 +954,12 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
       handler: async (ctx, input) => {
         const author = requireHuman(ctx, 'website.app_remove')
         const { name } = nameInput.parse(input)
-        await mustService(name)
+        const svc = await mustService(name)
         const status = await viaEe('read the server status', () => ee.status())
         if (status.workloads.some((w) => w.name === name)) {
           await viaEe(`remove ${name}`, () => ee.removeApp({ name, author }))
         }
+        if (svc.mailKeyId) await mailKeys.revoke(svc.mailKeyId)
         await services.remove(name)
         return { name, removed: true }
       },

@@ -11,10 +11,10 @@
 <script lang="ts">
   /**
    * The GitHub App connection, and nothing else (decision D-W4): create the App
-   * from a manifest, install it, see that it is installed. Repos are connected
-   * when you add an app — the first card says so and leads there.
+   * from a manifest, install it, see that it is installed. It lives inside the
+   * add-an-app flow (/m/website/apps/new) — the App is only for the extras:
+   * picking repos without pasting links, and deploying on push.
    */
-  import { resolve } from '$app/paths'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
@@ -39,23 +39,7 @@
   )
 </script>
 
-<Card.Root class="mt-8" data-testid="github-repos-note">
-  <Card.Header>
-    <Card.Title>Repos are connected when you add an app</Card.Title>
-    <Card.Description>
-      A public repo needs nothing but its link. A private repo gets a read-only deploy key during
-      that step. The GitHub App below is only for the extras: picking repos without pasting links,
-      and deploying on push.
-    </Card.Description>
-  </Card.Header>
-  <Card.Content>
-    <Button href={resolve('/m/website/apps/new')} data-testid="github-add-app-link"
-      >Add an app from a repo</Button
-    >
-  </Card.Content>
-</Card.Root>
-
-<Card.Root class="mt-6" data-testid="github-connect-app">
+<Card.Root data-testid="github-connect-app">
   <Card.Header>
     <Card.Title>Connect through a GitHub App</Card.Title>
     <Card.Description>

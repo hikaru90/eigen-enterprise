@@ -132,3 +132,43 @@ describe('app-card: the company site', () => {
     await expect.element(page.getByText('0 pages published · 0 drafts')).toBeInTheDocument()
   })
 })
+
+describe('app-card: connected repositories and unavailable deployment servers', () => {
+  it('makes a private repository actionable before it has an app', async () => {
+    render(AppCard, {
+      props: {
+        name: 'kindred/dashboard',
+        kind: 'repository',
+        domains: [],
+        url: null,
+        repo: 'kindred/dashboard',
+        branch: 'main',
+        visibility: 'private',
+        authKind: 'deploy_key',
+        href: '/m/website/apps/new?repo=kindred%2Fdashboard&branch=main',
+      },
+    })
+    await expect.element(page.getByText('Repository', { exact: true })).toBeInTheDocument()
+    await expect.element(page.getByText('Private · Deploy key')).toBeInTheDocument()
+    await expect.element(page.getByText('Ready to configure')).toBeInTheDocument()
+    await expect
+      .element(page.getByTestId('app-card-link'))
+      .toHaveAttribute('href', '/m/website/apps/new?repo=kindred%2Fdashboard&branch=main')
+  })
+
+  it('does not show a stale healthy status when the server is unavailable', async () => {
+    render(AppCard, {
+      props: {
+        name: 'shop',
+        kind: 'web',
+        state: 'healthy',
+        managed: false,
+        domains: [],
+        url: null,
+        href: '/m/website/apps/shop',
+      },
+    })
+    await expect.element(page.getByText('Server not connected')).toBeInTheDocument()
+    expect(page.getByText('Healthy', { exact: true }).query()).toBeNull()
+  })
+})

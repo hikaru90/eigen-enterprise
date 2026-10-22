@@ -3,14 +3,23 @@
 One endpoint, one recipient per call: `POST /api/mail/send`. Mail goes out through
 the company's Email module (Amazon SES) **immediately**, with no approval round.
 
+**Inside an app hosted by this server** you don't handle a key at all: the owner
+turns on "Allow this app to send email" on the app's page, the platform injects
+`EE_API_URL` and `EE_API_KEY` into the app, and `GET /docs/send-mail.md` on the
+console is the how-to (a ready `sendMail` function) to hand to the app's agent.
+The rest of this page is for everything else: curl, scripts, agents elsewhere.
+
 ## The key
 
 - The owner creates it on the **Email** module page (`/m/email`, "Create a key that
   can send mail") or on `/api-keys` with **Can send mail** ticked. That tick is the
   owner's consent to send. It can be switched off or the key revoked at any time.
+- A key made on the Email page is mail-only: it cannot use MCP. On `/api-keys` both
+  scopes ("MCP" and "Can send mail") are separate ticks.
 - The key looks like `eigen_<hex>` and is shown once. Keep it in a secret
   (e.g. `EIGEN_API_KEY`); never put it in a prompt, a log or a repo.
-- Only API keys work here. A browser session cookie gets `401`.
+- Only API keys work here. A browser session cookie gets `401`. And a key works
+  only on `/api/mail/send` and `/api/mcp`; everywhere else it is ignored.
 - A key cannot grant itself (or another key) "Can send mail"; only the signed-in owner can.
 
 ## Send

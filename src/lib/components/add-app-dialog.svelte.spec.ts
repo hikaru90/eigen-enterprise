@@ -4,10 +4,10 @@ import { page } from 'vitest/browser'
 import AddAppDialog from './add-app-dialog.svelte'
 
 describe('add-app-dialog', () => {
-  it('when open it offers the three ways to add an app, each with its destination', async () => {
+  it('when open it offers the two ways to add an app, each with its destination', async () => {
     render(AddAppDialog, { props: { open: true, onOpenChange: () => {} } })
     await expect.element(page.getByText('Add an app')).toBeInTheDocument()
-    expect((await page.getByTestId('add-app-option').elements()).length).toBe(3)
+    expect((await page.getByTestId('add-app-option').elements()).length).toBe(2)
     // Chat prefill: a draft, never an auto-send.
     await expect
       .element(page.getByRole('link', { name: /Build it with chat/ }))
@@ -16,8 +16,17 @@ describe('add-app-dialog', () => {
       .element(page.getByRole('link', { name: /Connect a repo/ }))
       .toHaveAttribute('href', '/m/website/apps/new')
     await expect
-      .element(page.getByRole('link', { name: /Static site/ }))
-      .toHaveAttribute('href', '/m/website/site')
+      .element(page.getByText('Describe an app or website and build it with your agent.'))
+      .toBeInTheDocument()
+    await expect
+      .element(
+        page.getByText(
+          'Public or private GitHub repositories. Private repos use a read-only deploy key.',
+        ),
+      )
+      .toBeInTheDocument()
+    // Static sites are not a separate path: they are an app built with the agent in chat.
+    expect(page.getByRole('link', { name: /Static site/ }).query()).toBeNull()
   })
 
   it('when closed nothing is rendered', async () => {

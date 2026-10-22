@@ -1,7 +1,7 @@
 import { z } from 'zod'
+import { approvalActionLabel } from '$lib/chat/approval-copy'
 import type { ModuleManifest } from '$lib/kernel/modules'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
-import { approvalActionLabel } from '$lib/chat/approval-copy'
 
 /**
  * The owner's overview: which module is active, and where the work can be seen.
@@ -63,18 +63,16 @@ export type OverviewDeps = {
   pendingApprovals: () => Promise<PendingApprovalRow[]>
 }
 
-// ─── website (contract: website.site_info, owned by the website workstream) ──
+// ─── website (contract: website.app_list — apps are the module's results) ────
 
-export const SITE_INFO_TOOL = 'website.site_info'
+export const APP_LIST_TOOL = 'website.app_list'
 
-const siteInfoOutput = z.object({
-  url: z.string(),
-  pages: z.array(
+const appListOutput = z.object({
+  managed: z.boolean(),
+  services: z.array(
     z.object({
-      slug: z.string(),
-      title: z.string(),
-      status: z.enum(['draft', 'published']),
-      url: z.string(),
+      name: z.string(),
+      status: z.enum(['healthy', 'deploying', 'failed']),
     }),
   ),
 })
@@ -94,24 +92,24 @@ export function websiteResultSource(journeyStatus: () => Promise<JourneyStatus>)
       detail: journeyLabel[await journeyStatus()],
       href: null,
     }
-    if (!registry.get(SITE_INFO_TOOL)) {
-      return { resultsTitle: 'Pages', results: [journey], note: 'Preview link not available yet' }
+    if (!registry.get(APP_LIST_TOOL)) {
+      return { resultsTitle: 'Apps', results: [journey], note: 'Apps not available yet' }
     }
-    const info = siteInfoOutput.parse(await registry.execute(SITE_INFO_TOOL, {}, ctx))
-    const pages = info.pages.map((page) => ({
-      label: page.title,
-      detail: page.status === 'published' ? 'Published' : 'Draft',
-      href: page.url,
+    const list = appListOutput.parse(await registry.execute(APP_LIST_TOOL, {}, ctx))
+    const apps = list.services.map((s) => ({
+      label: s.name,
+      detail: s.status === 'healthy' ? 'Healthy' : s.status === 'deploying' ? 'Deploying' : 'Failed',
+      href: `/m/website/apps/${s.name}`,
     }))
-    const published = info.pages.filter((page) => page.status === 'published').length
+    const healthy = list.services.filter((s) => s.status === 'healthy').length
     return {
-      resultsTitle: 'Pages',
-      results: [journey, { label: 'Site', detail: null, href: info.url }, ...pages],
+      resultsTitle: 'Apps',
+      results: [journey, ...apps],
       counts: [
-        { label: 'Published', value: published },
-        { label: 'Drafts', value: info.pages.length - published },
+        { label: 'Apps', value: list.services.length },
+        { label: 'Healthy', value: healthy },
       ],
-      note: pages.length === 0 ? 'No pages yet' : null,
+      note: list.services.length === 0 ? 'No apps yet' : null,
     }
   }
 }

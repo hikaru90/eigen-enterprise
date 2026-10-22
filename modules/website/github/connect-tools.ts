@@ -46,6 +46,24 @@ export const KEY_NOT_ACCEPTED_MESSAGE =
 const DEPLOY_KEY_LAST_COMMIT =
   'Read through a deploy key; the latest commit shows once it is deployed.'
 
+/**
+ * GitHub answers 404 to any read of a repo this server cannot see: it is
+ * private (or gone). Structured, not a message to match: when no GitHub App
+ * is installed, the page answers this by offering the deploy-key flow.
+ */
+export class RepoNotVisibleError extends GitHubUserError {
+  constructor(
+    readonly fullName: string,
+    /** True when the GitHub App is installed: the repo has to be added to it on GitHub instead. */
+    readonly appInstalled: boolean,
+    message: string,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options)
+    this.name = 'RepoNotVisibleError'
+  }
+}
+
 const REPO_INPUT = z
   .string()
   .min(1)
@@ -198,10 +216,12 @@ export function createGitHubConnectTools(deps: GitHubConnectToolDeps = {}): Tool
         found = await api.repo(owner, repo, null)
       } catch (err) {
         if (err instanceof GitHubApiError && err.status === 404) {
-          throw new GitHubUserError(
+          throw new RepoNotVisibleError(
+            name,
+            auth !== null,
             auth
               ? `GitHub has no public repository ${name}, and the GitHub App cannot see it. If it is private, add it to the app on GitHub (Add more repos on GitHub).`
-              : `GitHub has no public repository ${name}. If it is private, connect it with a deploy key below.`,
+              : `GitHub has no public repository ${name}. If it is private, connect it with a deploy key.`,
             { cause: err },
           )
         }
@@ -392,7 +412,7 @@ export function createGitHubConnectTools(deps: GitHubConnectToolDeps = {}): Tool
       name: 'website.github_disconnect_repo',
       module: WEBSITE_MODULE_ID,
       summary:
-        'Disconnect a GitHub repository branch from the company. For a deploy-key repo this also deletes the key on the server (human only, D11); the owner can then remove it on GitHub too (removeKeyUrl). Nothing on GitHub changes.',
+        'Disconnect a GitHub repository branch from the company. For a deploy-key repo this deletes its key on the server only when no connected branch still uses it (human only, D11); the owner can then remove it on GitHub too (removeKeyUrl). Nothing on GitHub changes.',
       auditClass: 'mutate',
       approvalRisk: 'destructive',
       activity: (input: z.infer<typeof disconnectInput>) =>
@@ -403,21 +423,27 @@ export function createGitHubConnectTools(deps: GitHubConnectToolDeps = {}): Tool
         const i = disconnectInput.parse(input)
         const { owner, repo } = parseOrFail(i.repo)
         const fullName = `${owner}/${repo}`
-        const match = (await repos.list()).find(
+        const connected = await repos.list()
+        const match = connected.find(
           (r) => r.fullName.toLowerCase() === fullName.toLowerCase() && r.branch === i.branch,
         )
         if (!match) throw new GitHubUserError(`${fullName} (${i.branch}) is not connected.`)
+        let keyDeleted = false
         if (match.authKind === 'deploy_key' && match.deployKeyId) {
           const author = requireHuman(ctx, 'website.github_disconnect_repo')
           const keyId = match.deployKeyId
-          await viaEe('delete the deploy key', () => ee.deleteDeployKey(keyId, { author }))
+          const shared = connected.some((r) => r !== match && r.deployKeyId === keyId)
+          if (!shared) {
+            await viaEe('delete the deploy key', () => ee.deleteDeployKey(keyId, { author }))
+            keyDeleted = true
+          }
         }
         const removed = await repos.remove(match.fullName, match.branch)
         if (!removed) throw new GitHubUserError(`${fullName} (${i.branch}) is not connected.`)
         return {
           ...removed,
           createdAt: removed.createdAt.toISOString(),
-          removeKeyUrl: removed.authKind === 'deploy_key' ? removeKeyUrl(removed.fullName) : null,
+          removeKeyUrl: keyDeleted ? removeKeyUrl(removed.fullName) : null,
         }
       },
     },

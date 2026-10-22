@@ -5,20 +5,18 @@
   import { resolve } from '$app/paths'
   import * as Alert from '$lib/components/ui/alert'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
-  import { Badge } from '$lib/components/ui/badge'
   import * as Breadcrumb from '$lib/components/ui/breadcrumb'
   import { Button } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
   import { Input as TextInput } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
-  import * as Table from '$lib/components/ui/table'
 
   let { data, form }: PageProps = $props()
 
   /**
-   * The company site as a service (D-W1): one site, its domain and its pages.
-   * Pages are written in chat; the domain is the owner's click (D11 — the
-   * click runs the human-only substrate tools).
+   * The company site's domain (D-W1): one site, one public address. The
+   * domain is the owner's click (D11 — the click runs the human-only
+   * substrate tools).
    */
 
   let changing = $state(false)
@@ -45,7 +43,7 @@
   }
 </script>
 
-<svelte:head><title>Site · Website · Eigen Enterprise</title></svelte:head>
+<svelte:head><title>Company site settings · Website · Eigen Enterprise</title></svelte:head>
 
 <div class="mx-auto w-full max-w-4xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
   <header class="flex min-w-0 flex-col gap-1.5 border-b border-border pb-6">
@@ -56,14 +54,14 @@
         </Breadcrumb.Item>
         <Breadcrumb.Separator />
         <Breadcrumb.Item>
-          <Breadcrumb.Page>Site</Breadcrumb.Page>
+          <Breadcrumb.Link href={resolve('/m/website/settings')}>Settings</Breadcrumb.Link>
         </Breadcrumb.Item>
+        <Breadcrumb.Separator />
+        <Breadcrumb.Item><Breadcrumb.Page>Company site</Breadcrumb.Page></Breadcrumb.Item>
       </Breadcrumb.List>
     </Breadcrumb.Root>
-    <h1 class="text-xl font-semibold tracking-tight">Site</h1>
-    <p class="text-sm text-foreground/60">
-      Your company's public website: its address and its pages.
-    </p>
+    <h1 class="text-xl font-semibold tracking-tight">Company site settings</h1>
+    <p class="text-sm text-foreground/60">Your company's public address.</p>
   </header>
 
   <div class="mt-6 space-y-6">
@@ -73,18 +71,24 @@
         <Card.Description>Where visitors find you.</Card.Description>
       </Card.Header>
       <Card.Content class="space-y-2">
-        <a
-          class="inline-flex items-center gap-1.5 text-base underline underline-offset-4"
-          href={data.siteUrl}
-          target="_blank"
-          rel="external noopener noreferrer"
-        >
-          {data.siteUrl}
-          <ExternalLink class="size-4 shrink-0" aria-hidden="true" />
-        </a>
-        {#if data.managed && !data.publicHost}
-          <p class="text-muted-foreground text-xs">
-            The site has no domain of its own yet; it lives at the console's address.
+        {#if data.siteUrl}
+          <a
+            class="inline-flex items-center gap-1.5 text-base underline underline-offset-4"
+            href={data.siteUrl}
+            target="_blank"
+            rel="external noopener noreferrer"
+          >
+            {data.siteUrl}
+            <ExternalLink class="size-4 shrink-0" aria-hidden="true" />
+          </a>
+          {#if data.managed && !data.publicHost}
+            <p class="text-muted-foreground text-xs">
+              The site has no domain of its own yet; it lives at the console's address.
+            </p>
+          {/if}
+        {:else}
+          <p class="text-sm text-muted-foreground">
+            No public address is reported by a deployment server.
           </p>
         {/if}
       </Card.Content>
@@ -98,10 +102,12 @@
       <Card.Content class="space-y-3">
         {#if !data.managed}
           <Alert.Root data-testid="site-unmanaged">
-            <Alert.Title>This server is not managed</Alert.Title>
+            <Alert.Title>Connect a deployment server to set the domain</Alert.Title>
             <Alert.Description>
-              {data.reason}. Install eigenEnterprise on a server with <code>ee</code> to give the site
-              its own domain.
+              Domain changes require ee on the server running this console.
+              <a class="underline" href={resolve('/m/website/settings')}
+                >View server connection details</a
+              >.
             </Alert.Description>
           </Alert.Root>
         {:else if hasOwnDomain}
@@ -157,8 +163,9 @@
 
         {#if data.managed}
           <p class="text-muted-foreground text-xs">
-            The address must point at this server (an A record) before it works; the certificate is
-            requested automatically.
+            Point the domain’s A or AAAA DNS records at this server. Caddy requests and renews HTTPS
+            certificates automatically when DNS and ports 80/443 are reachable.
+            <a class="underline" href={resolve('/m/website/settings#https')}>HTTPS settings</a>.
           </p>
           {#snippet feedback(action: string)}
             {@const m = message(action)}
@@ -192,55 +199,6 @@
               </AlertDialog.Footer>
             </AlertDialog.Content>
           </AlertDialog.Root>
-        {/if}
-      </Card.Content>
-    </Card.Root>
-
-    <Card.Root data-testid="site-pages">
-      <Card.Header>
-        <Card.Title>Pages</Card.Title>
-        <Card.Description>
-          Pages are written in chat — ask there to create, change or publish one.
-        </Card.Description>
-      </Card.Header>
-      <Card.Content>
-        {#if data.pages.length === 0}
-          <p class="text-sm text-muted-foreground">No pages yet — ask in chat to create one.</p>
-        {:else}
-          <Table.Root>
-            <Table.Header>
-              <Table.Row>
-                <Table.Head>Title</Table.Head>
-                <Table.Head>Slug</Table.Head>
-                <Table.Head>Status</Table.Head>
-                <Table.Head><span class="sr-only">Open</span></Table.Head>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {#each data.pages as page (page.slug)}
-                <Table.Row>
-                  <Table.Cell>{page.title}</Table.Cell>
-                  <Table.Cell class="text-muted-foreground">/{page.slug}</Table.Cell>
-                  <Table.Cell>
-                    <Badge variant={page.status === 'published' ? 'default' : 'outline'}>
-                      {page.status === 'published' ? 'Published' : 'Draft'}
-                    </Badge>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <a
-                      class="inline-flex items-center gap-1 underline underline-offset-2"
-                      href={page.url}
-                      target="_blank"
-                      rel="external noopener noreferrer"
-                    >
-                      Open
-                      <ExternalLink class="size-3 shrink-0" aria-hidden="true" />
-                    </a>
-                  </Table.Cell>
-                </Table.Row>
-              {/each}
-            </Table.Body>
-          </Table.Root>
         {/if}
       </Card.Content>
     </Card.Root>

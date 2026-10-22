@@ -13,4 +13,7 @@ export const APP_TOOL_NAMES = [
   // Per-app domains (plan/phase-website-apps-ux.md D-W2): human-only, never agent-gated.
   'website.app_domain_set',
   'website.app_domain_remove',
+  // "Allow this app to send email": human-only; mints/revokes the app's mail-only key.
+  'website.app_mail_enable',
+  'website.app_mail_disable',
 ] as const

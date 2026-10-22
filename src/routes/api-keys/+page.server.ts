@@ -17,6 +17,7 @@ export const load: PageServerLoad = async (event) => {
       keyPrefix: userApiKey.keyPrefix,
       isActive: userApiKey.isActive,
       mailSend: userApiKey.mailSend,
+      mcp: userApiKey.mcp,
       lastUsedAt: userApiKey.lastUsedAt,
       createdAt: userApiKey.createdAt,
     })

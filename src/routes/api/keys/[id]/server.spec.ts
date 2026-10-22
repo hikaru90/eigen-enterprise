@@ -96,9 +96,13 @@ describe('PATCH /api/keys/[id]', () => {
     expect(getDbMock).not.toHaveBeenCalled()
   })
 
-  it('rejects a body without a boolean mailSend', async () => {
+  it('rejects a body that is not { mailSend?, mcp? } with booleans only', async () => {
     expect((await PATCH(patchEvent({ mailSend: 1 }))).status).toBe(400)
     expect((await PATCH(patchEvent({ mailSend: true, extra: 1 }))).status).toBe(400)
+    expect((await PATCH(patchEvent({}))).status).toBe(400)
+    expect((await PATCH(patchEvent({ mcp: 'yes' }))).status).toBe(400)
+    expect((await PATCH(patchEvent(null))).status).toBe(400)
+    expect(getDbMock).not.toHaveBeenCalled()
   })
 
   it('returns 404 for a key the user does not own', async () => {
@@ -116,5 +120,29 @@ describe('PATCH /api/keys/[id]', () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ id: 'key-1', mailSend: true })
     expect(update.set).toHaveBeenCalledWith({ mailSend: true })
+  })
+
+  it('turns MCP off for a key', async () => {
+    const update = updateChain()
+    getDbMock.mockReturnValue({
+      select: vi.fn(() => selectLimit([{ id: 'key-1' }])),
+      update: vi.fn(() => update),
+    })
+    const res = await PATCH(patchEvent({ mcp: false }))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ id: 'key-1', mcp: false })
+    expect(update.set).toHaveBeenCalledWith({ mcp: false })
+  })
+
+  it('sets both scopes in one call', async () => {
+    const update = updateChain()
+    getDbMock.mockReturnValue({
+      select: vi.fn(() => selectLimit([{ id: 'key-1' }])),
+      update: vi.fn(() => update),
+    })
+    const res = await PATCH(patchEvent({ mailSend: true, mcp: false }))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ id: 'key-1', mailSend: true, mcp: false })
+    expect(update.set).toHaveBeenCalledWith({ mailSend: true, mcp: false })
   })
 })

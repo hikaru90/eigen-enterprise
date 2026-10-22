@@ -22,7 +22,12 @@ function devFsAllow(): string[] {
 }
 
 export default defineConfig({
+  // A running dev server must own its optimizer files. Another Vite process
+  // rewriting them can mix two Svelte runtimes and crash hydration. Keep the
+  // cache checkout-local too: worktrees may share a node_modules symlink.
+  cacheDir: path.resolve('.svelte-kit/cache/vite', String(process.pid)),
   server: {
+    strictPort: true,
     fs: { allow: devFsAllow() },
   },
   build: {

@@ -1,4 +1,4 @@
-import type { AppContract, Workload } from './spec.ts'
+import { EE_API_URL, type AppContract, type Workload } from './spec.ts'
 import { PATHS } from './paths.ts'
 
 /**
@@ -92,6 +92,7 @@ export function renderUnit(input: UnitInput): string {
     NODE_ENV: 'production',
     EE_WORKLOAD: w.name,
     EE_STATE_DIR: `/var/lib/ee-state/${w.name}`,
+    EE_API_URL,
     // DynamicUser has no home: apps that keep data under ~ get their persistent state dir.
     HOME: `/var/lib/ee-state/${w.name}`,
     PATH: `${PATHS.runtimes}/node-${c.node}/bin:/usr/bin:/bin`,

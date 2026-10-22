@@ -7,6 +7,7 @@ import { getTextDirection } from '$lib/paraglide/runtime'
 import { paraglideMiddleware } from '$lib/paraglide/server'
 import { captureServerException } from '$lib/server/analytics/posthog-server'
 import { hashApiKey } from '$lib/server/api-keys/api-key-utils'
+import { isApiKeyRoute, parseBearerApiKey } from '$lib/server/api-keys/bearer-routes'
 import { auth } from '$lib/server/auth'
 import { bootApp } from '$lib/server/boot'
 import {
@@ -97,12 +98,15 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
     event.locals.user = session.user
   }
 
-  // API key auth: resolve Bearer token for routes that need it (e.g. /api/mcp)
-  if (!event.locals.user) {
-    const authHeader = event.request.headers.get('authorization') ?? ''
-    const match = authHeader.match(/^Bearer\s+(eigen_[0-9a-f]+)$/i)
-    if (match) {
-      const hash = hashApiKey(match[1])
+  // API key auth. A key authenticates only on the routes built for keys
+  // (API_KEY_ROUTES); everywhere else the header is ignored and the request
+  // stays anonymous. Decided here rather than per route because
+  // resolveWithAppDb activates the tenant DB session from locals.user before
+  // any route runs.
+  if (!event.locals.user && isApiKeyRoute(event.url.pathname)) {
+    const rawKey = parseBearerApiKey(event.request.headers.get('authorization'))
+    if (rawKey) {
+      const hash = hashApiKey(rawKey)
       const rows = await authSql<Array<{ id: string; user_id: string; key_name: string }>>`
 				SELECT id, user_id, key_name FROM public.resolve_user_api_key(${hash})
 			`

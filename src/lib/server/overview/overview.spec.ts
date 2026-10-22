@@ -98,25 +98,15 @@ describe('buildOverview', () => {
     expect(out.modules.map((m) => m.id)).toEqual(['website'])
   })
 
-  it('maps website.site_info into results, with the journey status', async () => {
+  it('maps website.app_list into results, with the journey status', async () => {
     const reg = registry({
-      'website.site_info': {
-        summary: 'Site info',
+      'website.app_list': {
+        summary: 'Apps overview',
         output: {
-          url: 'http://localhost:5173/site',
-          pages: [
-            {
-              slug: 'home',
-              title: 'Home',
-              status: 'published',
-              url: 'http://localhost:5173/site/home',
-            },
-            {
-              slug: 'about',
-              title: 'About',
-              status: 'draft',
-              url: 'http://localhost:5173/site/about',
-            },
+          managed: true,
+          services: [
+            { name: 'shop', status: 'healthy' },
+            { name: 'worker', status: 'failed' },
           ],
         },
       },
@@ -129,22 +119,21 @@ describe('buildOverview', () => {
         resultSources: { website: websiteResultSource(async () => 'in_progress') },
       }),
     )
-    expect(reg.execute).toHaveBeenCalledWith('website.site_info', {}, ctx)
-    expect(out.modules[0].resultsTitle).toBe('Pages')
+    expect(reg.execute).toHaveBeenCalledWith('website.app_list', {}, ctx)
+    expect(out.modules[0].resultsTitle).toBe('Apps')
     expect(out.modules[0].results).toEqual([
       { label: 'Website setup (in chat)', detail: 'In progress', href: null },
-      { label: 'Site', detail: null, href: 'http://localhost:5173/site' },
-      { label: 'Home', detail: 'Published', href: 'http://localhost:5173/site/home' },
-      { label: 'About', detail: 'Draft', href: 'http://localhost:5173/site/about' },
+      { label: 'shop', detail: 'Healthy', href: '/m/website/apps/shop' },
+      { label: 'worker', detail: 'Failed', href: '/m/website/apps/worker' },
     ])
     expect(out.modules[0].counts).toEqual([
-      { label: 'Published', value: 1 },
-      { label: 'Drafts', value: 1 },
+      { label: 'Apps', value: 2 },
+      { label: 'Healthy', value: 1 },
     ])
     expect(out.modules[0].note).toBeNull()
   })
 
-  it('says the preview link is not available only when website.site_info is missing', async () => {
+  it('says apps are not available only when website.app_list is missing', async () => {
     const out = await buildOverview(
       deps({
         manifests: [manifest('website', 'Website', 'The site.')],
@@ -152,7 +141,7 @@ describe('buildOverview', () => {
         resultSources: { website: websiteResultSource(async () => 'not_started') },
       }),
     )
-    expect(out.modules[0].note).toBe('Preview link not available yet')
+    expect(out.modules[0].note).toBe('Apps not available yet')
     expect(out.modules[0].results).toEqual([
       { label: 'Website setup (in chat)', detail: 'Not started', href: null },
     ])

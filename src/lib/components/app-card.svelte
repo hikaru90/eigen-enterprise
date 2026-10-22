@@ -2,12 +2,16 @@
   /* eslint-disable svelte/no-navigation-without-resolve -- the card href arrives
      resolved from the caller (route pages call resolve()); domain links are
      absolute outbound URLs marked rel="external". */
+  import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right'
+  import GitBranch from '@lucide/svelte/icons/git-branch'
+  import Globe from '@lucide/svelte/icons/globe'
+  import Server from '@lucide/svelte/icons/server'
   import AppStatusDot from '$lib/components/app-status-dot.svelte'
   import { Badge } from '$lib/components/ui/badge'
 
   /**
-   * One card of the Apps overview grid (/m/website/apps): an app — or the
-   * company site (kind 'site', synthesized from ee settings + page counts).
+   * One card of the Apps overview: a deployed app, a connected repository, or
+   * the company site. Connected repositories link directly to configuration.
    * The whole card is a link (stretched-link pattern, so the domain links can
    * stay real anchors above it); outbound domain links open in a new tab.
    */
@@ -31,9 +35,12 @@
     lastDeploy = null,
     href,
     pages = null,
+    managed = true,
+    visibility = null,
+    authKind = null,
   }: {
     name: string
-    kind: 'web' | 'backend' | 'site'
+    kind: 'web' | 'backend' | 'site' | 'repository'
     /** The app's deploy state; the site has none (its domain is its state). */
     state?: 'healthy' | 'deploying' | 'failed'
     domains: string[]
@@ -46,9 +53,26 @@
     href: string
     /** Site cards only: published/draft page counts. */
     pages?: { published: number; drafts: number } | null
+    managed?: boolean
+    visibility?: 'public' | 'private' | null
+    authKind?: 'public' | 'deploy_key' | 'github_app' | null
   } = $props()
 
-  const kindLabel = $derived(kind === 'web' ? 'Web app' : kind === 'backend' ? 'Service' : 'Site')
+  const kindLabel = $derived(
+    kind === 'web'
+      ? 'Web app'
+      : kind === 'backend'
+        ? 'Service'
+        : kind === 'repository'
+          ? 'Repository'
+          : 'Site',
+  )
+  const Icon = $derived(kind === 'repository' ? GitBranch : kind === 'backend' ? Server : Globe)
+  const accessLabel = $derived(
+    visibility
+      ? `${visibility === 'private' ? 'Private' : 'Public'}${authKind === 'deploy_key' ? ' · Deploy key' : authKind === 'github_app' ? ' · GitHub App' : ''}`
+      : null,
+  )
 
   const deployLine = $derived.by(() => {
     if (!lastDeploy) return null
@@ -75,9 +99,15 @@
 </script>
 
 <div
-  class="relative flex min-w-0 flex-col gap-2 rounded-lg border border-border bg-background p-4 transition-[border-color,box-shadow] hover:border-foreground/20 hover:shadow-[0_1px_2px_rgb(0_0_0/0.04),0_4px_12px_rgb(0_0_0/0.04)]"
+  class="relative flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-background p-5 transition-[border-color,box-shadow] hover:border-foreground/20 hover:shadow-[0_1px_2px_rgb(0_0_0/0.04),0_4px_12px_rgb(0_0_0/0.04)]"
   data-testid="app-card"
 >
+  <div class="flex items-center justify-between gap-2">
+    <span class="rounded-lg border border-border bg-muted/30 p-2.5 text-foreground/60"
+      ><Icon class="size-5" strokeWidth={1.5} /></span
+    >
+    <Badge variant="outline">{kindLabel}</Badge>
+  </div>
   <div class="flex min-w-0 items-center gap-2">
     <a
       {href}
@@ -86,10 +116,7 @@
     >
       {name}
     </a>
-    <Badge variant="outline">{kindLabel}</Badge>
-    {#if state}
-      <span class="ml-auto shrink-0"><AppStatusDot status={state} /></span>
-    {/if}
+    <ArrowUpRight class="ml-auto size-4 shrink-0 text-foreground/35" />
   </div>
 
   {#if domains.length > 0}
@@ -112,7 +139,20 @@
   {/if}
 
   {#if repo}
-    <span class="truncate text-xs text-foreground/55">{repo} · {branch}{rev ? `@${rev}` : ''}</span>
+    <span class="truncate text-xs text-foreground/55"
+      >{kind === 'repository' ? branch : `${repo} · ${branch ?? ''}`}{rev ? `@${rev}` : ''}</span
+    >
+  {/if}
+  {#if accessLabel}<span class="text-xs text-foreground/55">{accessLabel}</span>{/if}
+  {#if kind === 'repository'}
+    <span class="mt-auto border-t border-border pt-3 text-xs text-foreground/65"
+      >Ready to configure <span aria-hidden="true">→</span></span
+    >
+  {:else if state}
+    <div class="mt-auto border-t border-border pt-3">
+      {#if managed}<AppStatusDot status={state} />
+      {:else}<span class="text-xs text-foreground/55">Server not connected</span>{/if}
+    </div>
   {/if}
 
   {#if pages}

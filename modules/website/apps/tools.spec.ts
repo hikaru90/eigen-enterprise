@@ -10,7 +10,6 @@ import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { SubstrateError, SubstrateUnavailableError } from '$lib/server/ee/client'
 import { InMemoryConnectedRepoStore, type NewConnectedRepo } from '../github/repos-store'
-import { InMemoryWebsiteStore } from '../store'
 import { InMemoryServiceStore } from './store'
 import { FAKE_CRASH, FakeEe } from './testing'
 import { APP_AGENT_GATED_TOOLS, createAppTools } from './tools'
@@ -74,14 +73,25 @@ async function setup(repo: NewConnectedRepo = publicRepo, diagnoseLlm?: Diagnose
   const repos = new InMemoryConnectedRepoStore()
   await repos.add(repo)
   const services = new InMemoryServiceStore()
-  const pages = new InMemoryWebsiteStore()
   const minted: number[] = []
+  const mailKeys = {
+    minted: [] as Array<{ userId: string; name: string }>,
+    revoked: [] as string[],
+    async mint(i: { userId: string; name: string }) {
+      mailKeys.minted.push(i)
+      const n = mailKeys.minted.length
+      return { id: `key-${n}`, raw: `eigen_raw${n}` }
+    },
+    async revoke(id: string) {
+      mailKeys.revoked.push(id)
+    },
+  }
   const tools = createAppTools({
     ee,
     repos,
     services,
-    pages,
     chat: suggestChat,
+    mailKeys,
     ...(diagnoseLlm ? { diagnoseLlm } : {}),
     mintToken: async (id) => {
       minted.push(id)
@@ -92,7 +102,7 @@ async function setup(repo: NewConnectedRepo = publicRepo, diagnoseLlm?: Diagnose
   const tool = (name: string) => tools.find((t) => t.name === name) as ToolDescriptor
   const run = (name: string, input: unknown, ctx = human) =>
     tool(name).handler(ctx, tool(name).inputSchema.parse(input))
-  return { ee, repos, services, pages, tools, tool, run, minted }
+  return { ee, repos, services, tools, tool, run, minted, mailKeys }
 }
 
 const verbs = (ee: FakeEe) => ee.calls.map((c) => c.verb)
@@ -359,6 +369,134 @@ describe('website.app_deploy builds the right ee calls', () => {
   })
 })
 
+describe('saved deploy config: Redeploy replays the last working settings', () => {
+  const form2 = { ...form, start: 'node server.js' }
+
+  it('a healthy form deploy remembers the form as the saved build settings', async () => {
+    const { run, services } = await setup()
+    await run('website.app_deploy', {
+      repo: 'kindred/shop',
+      branch: 'main',
+      name: 'shop',
+      kind: 'web',
+      contract: form,
+    })
+    // The parsed form (defaults applied) is what the deploy used.
+    expect((await services.get('shop'))?.contract).toEqual({ ...form, build: '' })
+  })
+
+  it('a redeploy replays the saved build settings even when ee has lost the workload', async () => {
+    const { ee, run } = await setup()
+    await run('website.app_deploy', {
+      repo: 'kindred/shop',
+      branch: 'main',
+      name: 'shop',
+      kind: 'web',
+      contract: form,
+    })
+    ee.workloads = []
+    ee.calls = []
+    const out = (await run('website.app_deploy', { name: 'shop' })) as { contractSource: string }
+    expect(ee.calls.find((c) => c.verb === 'createApp')!.input).toMatchObject({
+      contract: { runtime: 'node', node: '22', start: ['node', 'index.js'] },
+    })
+    expect(out).toMatchObject({ state: 'healthy', contractSource: 'form' })
+  })
+
+  it("the repo's ee.json wins over the saved build settings, and going healthy with it clears them", async () => {
+    const { ee, run, services } = await setup()
+    await run('website.app_deploy', {
+      repo: 'kindred/shop',
+      branch: 'main',
+      name: 'shop',
+      kind: 'web',
+      contract: form,
+    })
+    ee.repoContract = {
+      present: true,
+      contract: {
+        runtime: 'node',
+        node: '22',
+        build: [],
+        start: ['node', 'server.js'],
+        preStart: [],
+        health: '/up',
+        services: [],
+        capabilities: [],
+      },
+      gap: null,
+      error: null,
+    }
+    ee.calls = []
+    const out = (await run('website.app_deploy', { name: 'shop' })) as { contractSource: string }
+    const create = ee.calls.find((c) => c.verb === 'createApp')!.input as { contract?: unknown }
+    expect(create.contract).toBeUndefined()
+    expect(out.contractSource).toBe('repo')
+    expect((await services.get('shop'))?.contract).toBeNull()
+  })
+
+  it('a failed deploy keeps the last working build settings', async () => {
+    const { ee, run, services } = await setup()
+    await run('website.app_deploy', {
+      repo: 'kindred/shop',
+      branch: 'main',
+      name: 'shop',
+      kind: 'web',
+      contract: form,
+    })
+    ee.failHealth = true
+    await expect(
+      run('website.app_deploy', {
+        repo: 'kindred/shop',
+        branch: 'main',
+        name: 'shop',
+        kind: 'web',
+        contract: form2,
+      }),
+    ).rejects.toThrow(/health check/)
+    const s = await services.get('shop')
+    expect(s).toMatchObject({ state: 'failed' })
+    expect(s?.contract).toEqual({ ...form, build: '' })
+  })
+
+  it('an edited deploy that goes healthy overwrites the saved build settings', async () => {
+    const { run, services } = await setup()
+    await run('website.app_deploy', {
+      repo: 'kindred/shop',
+      branch: 'main',
+      name: 'shop',
+      kind: 'web',
+      contract: form,
+    })
+    await run('website.app_deploy', {
+      repo: 'kindred/shop',
+      branch: 'main',
+      name: 'shop',
+      kind: 'web',
+      contract: form2,
+    })
+    expect((await services.get('shop'))?.contract).toEqual({ ...form2, build: '' })
+  })
+
+  it('app_get falls back to the saved build settings when ee has lost the workload contract', async () => {
+    const { ee, run } = await setup()
+    await run('website.app_deploy', {
+      repo: 'kindred/shop',
+      branch: 'main',
+      name: 'shop',
+      kind: 'web',
+      contract: form,
+    })
+    ee.workloads = []
+    const detail = (await run('website.app_get', { name: 'shop' })) as {
+      contractSource: string
+      contract: { start: string[] } | null
+    }
+    expect(detail.contractSource).toBe('form')
+    expect(detail.contract?.start).toEqual(['node', 'index.js'])
+  })
+})
+
 describe('D11: agent deploys go through approval, never around it', () => {
   // That these tools are on APPROVAL_REQUIRED_TOOLS is held in modules/manifests.spec.ts.
 
@@ -445,6 +583,95 @@ describe('website.app_env_set', () => {
     await expect(
       run('website.app_env_set', { name: 'shop', key: 'PORT', value: '1' }),
     ).rejects.toThrow(/PORT/)
+    await expect(
+      run('website.app_env_set', { name: 'shop', key: 'EE_API_KEY', value: 'x' }),
+    ).rejects.toThrow(/EE_API_KEY/)
+    await expect(
+      run('website.app_env_set', { name: 'shop', key: 'EE_API_URL', value: 'x' }),
+    ).rejects.toThrow(/EE_API_URL/)
+  })
+})
+
+describe('"Allow this app to send email" (website.app_mail_enable / app_mail_disable)', () => {
+  const deployShop = (run: Awaited<ReturnType<typeof setup>>['run']) =>
+    run('website.app_deploy', {
+      repo: 'kindred/shop',
+      branch: 'main',
+      name: 'shop',
+      kind: 'web',
+      contract: form,
+    })
+
+  it('mints a mail-only key named after the app, seals it into the app as EE_API_KEY, remembers it; the key never shows', async () => {
+    const { ee, run, services, mailKeys } = await setup()
+    await deployShop(run)
+    const out = await run('website.app_mail_enable', { name: 'shop' })
+    expect(mailKeys.minted).toEqual([{ userId: 'u1', name: 'app:shop' }])
+    expect(ee.calls.at(-1)).toEqual({
+      verb: 'setSecret',
+      input: { workload: 'shop', name: 'EE_API_KEY', value: 'eigen_raw1', author: 'human:u1' },
+    })
+    expect((await services.get('shop'))!.mailKeyId).toBe('key-1')
+    expect(out).toEqual({ name: 'shop', enabled: true, applied: true })
+    expect(JSON.stringify(out)).not.toContain('eigen_raw')
+    const detail = (await run('website.app_get', { name: 'shop' })) as { mail: { enabled: boolean } }
+    expect(detail.mail).toEqual({ enabled: true })
+  })
+
+  it('enabling again rotates: a new key is sealed, the old one revoked', async () => {
+    const { run, services, mailKeys } = await setup()
+    await deployShop(run)
+    await run('website.app_mail_enable', { name: 'shop' })
+    await run('website.app_mail_enable', { name: 'shop' })
+    expect(mailKeys.revoked).toEqual(['key-1'])
+    expect((await services.get('shop'))!.mailKeyId).toBe('key-2')
+  })
+
+  it('when ee cannot store the key, the minted key is revoked and nothing is remembered', async () => {
+    const { ee, run, services, mailKeys } = await setup()
+    await deployShop(run)
+    ee.setSecret = async () => {
+      throw new SubstrateError(503, 'sealed store busy')
+    }
+    await expect(run('website.app_mail_enable', { name: 'shop' })).rejects.toThrow(
+      /could not store the mail key/,
+    )
+    expect(mailKeys.revoked).toEqual(['key-1'])
+    expect((await services.get('shop'))!.mailKeyId).toBeNull()
+  })
+
+  it('disable revokes the key at once and forgets it; no ee call (the app keeps running)', async () => {
+    const { ee, run, services, mailKeys } = await setup()
+    await deployShop(run)
+    await run('website.app_mail_enable', { name: 'shop' })
+    const before = ee.calls.length
+    const out = await run('website.app_mail_disable', { name: 'shop' })
+    expect(out).toEqual({ name: 'shop', enabled: false })
+    expect(mailKeys.revoked).toEqual(['key-1'])
+    expect((await services.get('shop'))!.mailKeyId).toBeNull()
+    expect(ee.calls.length).toBe(before)
+    const detail = (await run('website.app_get', { name: 'shop' })) as { mail: { enabled: boolean } }
+    expect(detail.mail).toEqual({ enabled: false })
+  })
+
+  it('removing the app revokes its mail key', async () => {
+    const { run, mailKeys } = await setup()
+    await deployShop(run)
+    await run('website.app_mail_enable', { name: 'shop' })
+    await run('website.app_remove', { name: 'shop' })
+    expect(mailKeys.revoked).toEqual(['key-1'])
+  })
+
+  it('both are human-only', async () => {
+    const { run, mailKeys } = await setup()
+    await deployShop(run)
+    await expect(run('website.app_mail_enable', { name: 'shop' }, agent)).rejects.toThrow(
+      /only a human/,
+    )
+    await expect(run('website.app_mail_disable', { name: 'shop' }, agent)).rejects.toThrow(
+      /only a human/,
+    )
+    expect(mailKeys.minted).toEqual([])
   })
 })
 
@@ -501,8 +728,58 @@ describe('website.app_list: the Apps overview shape (site, domains, last deploy)
     }
   }
 
-  it('managed: every service carries its ee domains, url and NEWEST deploy; the site entry carries the public host and page counts', async () => {
-    const { ee, run, pages } = await setup()
+  it('includes every connected repo and branch, including private repos with no app', async () => {
+    const { repos, run, tool } = await setup()
+    await repos.add({ ...publicRepo, branch: 'preview' })
+    await repos.add({
+      ...publicRepo,
+      repoId: null,
+      fullName: 'kindred/private-dashboard',
+      htmlUrl: 'https://github.com/kindred/private-dashboard',
+      cloneUrl: 'git@github.com:kindred/private-dashboard.git',
+      visibility: 'private',
+      authKind: 'deploy_key',
+      deployKeyId: 'sealed-key',
+    })
+    await run('website.app_deploy', {
+      repo: 'kindred/shop',
+      branch: 'main',
+      name: 'shop',
+      kind: 'web',
+      contract: form,
+    })
+    const output = await run('website.app_list', {})
+    expect(tool('website.app_list').outputSchema!.parse(output)).toMatchObject({
+      repositories: [
+        {
+          fullName: 'kindred/private-dashboard',
+          branch: 'main',
+          htmlUrl: 'https://github.com/kindred/private-dashboard',
+          visibility: 'private',
+          authKind: 'deploy_key',
+          apps: [],
+        },
+        { fullName: 'kindred/shop', branch: 'main', apps: ['shop'] },
+        { fullName: 'kindred/shop', branch: 'preview', apps: [] },
+      ],
+    })
+    expect(JSON.stringify(output)).not.toContain('sealed-key')
+  })
+
+  it('keeps connected repositories visible when no deployment server is connected', async () => {
+    const { ee, run } = await setup()
+    ee.status = async () => {
+      throw new SubstrateUnavailableError('ENOENT')
+    }
+    expect(await run('website.app_list', {})).toMatchObject({
+      managed: false,
+      services: [],
+      repositories: [{ fullName: 'kindred/shop', branch: 'main', apps: [] }],
+    })
+  })
+
+  it('managed: every service carries its ee domains, url and NEWEST deploy; the site entry carries the public host', async () => {
+    const { ee, run } = await setup()
     ee.failHealth = true
     await run('website.app_deploy', {
       repo: 'kindred/shop',
@@ -519,16 +796,6 @@ describe('website.app_list: the Apps overview shape (site, domains, last deploy)
       name: 'worker',
       kind: 'backend',
       contract: form,
-    })
-    await pages.createPage({ slug: 'home', title: 'Home', body: 'x', visibility: 'public' })
-    await pages.createPage({ slug: 'about', title: 'About', body: 'x', visibility: 'public' })
-    await pages.createPage({ slug: 'wip', title: 'Wip', body: 'x', visibility: 'private' })
-    await pages.createPage({
-      slug: 'handbook',
-      title: 'Handbook',
-      body: 'x',
-      kind: 'doc',
-      visibility: 'public',
     })
     setPublicHost(ee, 'kindred.digital')
     ee.routes = [...ee.routes, { host: 'os.ee.localhost', workload: 'os' }]
@@ -550,7 +817,6 @@ describe('website.app_list: the Apps overview shape (site, domains, last deploy)
       site: {
         publicHost: string | null
         url: string | null
-        pages: { published: number; drafts: number }
       }
     }
 
@@ -566,16 +832,11 @@ describe('website.app_list: the Apps overview shape (site, domains, last deploy)
     // Routes of other workloads are not the app's; a back-end service has no route.
     expect(byName.get('worker')).toMatchObject({ domains: [], url: null })
     expect(byName.get('worker')!.lastDeploy).toMatchObject({ status: 'live' })
-    expect(out.site).toEqual({
-      publicHost: 'kindred.digital',
-      url: 'https://kindred.digital',
-      // Docs are not site pages; drafts are the not-yet-public ones.
-      pages: { published: 2, drafts: 1 },
-    })
+    expect(out.site).toEqual({ publicHost: 'kindred.digital', url: 'https://kindred.digital' })
   })
 
-  it('ee unavailable: managed:false with the rows from the store (no domains, no deploys, no site host) — pages still count', async () => {
-    const { ee, run, pages } = await setup()
+  it('ee unavailable: managed:false with the rows from the store (no domains, no deploys, no site host)', async () => {
+    const { ee, run } = await setup()
     await run('website.app_deploy', {
       repo: 'kindred/shop',
       branch: 'main',
@@ -583,7 +844,6 @@ describe('website.app_list: the Apps overview shape (site, domains, last deploy)
       kind: 'web',
       contract: form,
     })
-    await pages.createPage({ slug: 'home', title: 'Home', body: 'x', visibility: 'public' })
     ee.status = async () => {
       throw new SubstrateUnavailableError('ENOENT')
     }
@@ -598,7 +858,7 @@ describe('website.app_list: the Apps overview shape (site, domains, last deploy)
         url: string | null
         lastDeploy: unknown
       }>
-      site: { publicHost: string | null; url: string | null; pages: unknown }
+      site: { publicHost: string | null; url: string | null }
     }
 
     expect(out.managed).toBe(false)
@@ -621,11 +881,15 @@ describe('website.app_list: the Apps overview shape (site, domains, last deploy)
         lastDeploy: null,
       },
     ])
-    expect(out.site).toEqual({
-      publicHost: null,
-      url: null,
-      pages: { published: 1, drafts: 0 },
-    })
+    expect(out.site).toEqual({ publicHost: null, url: null })
+  })
+
+  it('does not conceal a failed repository lookup behind an empty overview', async () => {
+    const { repos, run } = await setup()
+    repos.list = async () => {
+      throw new Error('Repository records unavailable')
+    }
+    await expect(run('website.app_list', {})).rejects.toThrow('Repository records unavailable')
   })
 
   it('any other ee failure still fails loud (only unavailability degrades to managed:false)', async () => {

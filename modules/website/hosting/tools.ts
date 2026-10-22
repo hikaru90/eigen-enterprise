@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { ToolDescriptor } from '$lib/kernel/types'
 import { EeClient, SubstrateUnavailableError } from '$lib/server/ee/client'
 import { requireHuman } from '$lib/server/ee/human'
+import { AppUserError } from '../apps/contract'
 
 /**
  * Kernel descriptors over ee's control API. Reads are open to the agent;
@@ -109,6 +110,11 @@ export function createSubstrateTools(deps: SubstrateToolDeps = {}): ToolDescript
       handler: async (ctx, input) => {
         const author = requireHuman(ctx, 'substrate.secret_set')
         const i = secretSetInput.parse(input)
+        if (i.name === 'EE_API_KEY' || i.name === 'EE_API_URL') {
+          throw new AppUserError(
+            `${i.name} is set by the server itself. To let the app send email, use its "Allow this app to send email" switch.`,
+          )
+        }
         const r = await client.setSecret({ ...i, author })
         return { ok: true, name: i.name, workload: i.workload, reconcileError: r.reconcileError }
       },

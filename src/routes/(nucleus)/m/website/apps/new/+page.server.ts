@@ -5,6 +5,7 @@ import type {
   InspectedRepo,
 } from '../../../../../../../modules/website/github/connect-tools'
 import type { Actions, PageServerLoad } from './$types'
+import { randomBytes } from 'node:crypto'
 import { fail, redirect } from '@sveltejs/kit'
 import { requireAdmin } from '$lib/server/auth/require-admin'
 import type { Catalog } from '$lib/server/ee/client'
@@ -12,8 +13,10 @@ import { settleBriefly, startOwnerDeploy } from '$lib/server/website/deploy-runn
 import { logAppFailure, ownerRun, plainAppMessage } from '$lib/server/website/owner-run'
 import { contractFormSchema } from '../../../../../../../modules/website/apps/contract'
 import { appSlug, freeName } from '../../../../../../../modules/website/apps/host'
+import { RepoNotVisibleError } from '../../../../../../../modules/website/github/connect-tools'
 import { plainMessage } from '../../../../../../../modules/website/github/plain-errors'
 import { parseGitHubRepo } from '../../../../../../../modules/website/github/repo-url'
+import { GITHUB_STATE_COOKIE, githubAppManifest } from '../../../../../settings/hosting/manifest'
 import { formContract } from '../form'
 
 const SETTLE_MS = 1500
@@ -93,8 +96,32 @@ export const load: PageServerLoad = async (event) => {
   const taken = new Set(services.map((s) => s.name))
   const serviceOf = (r: ConnectedRepoView) =>
     services.find((s) => s.repo.toLowerCase() === r.fullName.toLowerCase() && s.branch === r.branch)
+
+  // The GitHub App connection lives here now (it exists to feed this page).
+  // Same manifest and state cookie the callback endpoints under
+  // /settings/hosting/github expect — their shape stays verbatim.
+  let githubManifest: { json: string; state: string } | null = null
+  if (!listed.github.connected) {
+    const state = randomBytes(16).toString('hex')
+    event.cookies.set(GITHUB_STATE_COOKIE, state, {
+      path: '/settings/hosting/github',
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: event.url.protocol === 'https:',
+      maxAge: 60 * 30,
+    })
+    githubManifest = {
+      json: JSON.stringify(githubAppManifest(event.url.origin, randomBytes(2).toString('hex'))),
+      state,
+    }
+  }
+
   return {
+    ownerId: user.id,
+    repoHint: event.url.searchParams.get('repo'),
+    branchHint: event.url.searchParams.get('branch'),
     github: listed.github,
+    githubManifest,
     repos: listed.repos.map((r) => {
       const usedBy = serviceOf(r)
       return {
@@ -153,7 +180,16 @@ export const actions: Actions = {
       return { action: 'inspect' as const, repo, inspected, branch }
     } catch (err) {
       logAppFailure('website.github_inspect_repo', err)
-      return fail(400, { action: 'inspect' as const, repo, error: plainMessage(err) })
+      // A private repo without the GitHub App is invisible to a plain read —
+      // that is exactly the case the deploy-key flow below is for, so the
+      // stepper offers it instead of dead-ending on the sentence.
+      const keyPath = err instanceof RepoNotVisibleError && !err.appInstalled
+      return fail(400, {
+        action: 'inspect' as const,
+        repo,
+        ...(keyPath ? { keyPath: true as const } : {}),
+        error: plainMessage(err),
+      })
     }
   },
 
@@ -226,7 +262,14 @@ export const actions: Actions = {
         branch,
         ...(keyId ? { auth: { kind: 'deploy_key' as const, keyId } } : {}),
       })
-      return { action: 'connect' as const, ok: true, message: `Connected ${repo} (${branch}).` }
+      return {
+        action: 'connect' as const,
+        ok: true,
+        repo,
+        branch,
+        keyId: keyId || null,
+        message: `Connected ${repo} (${branch}).`,
+      }
     } catch (err) {
       logAppFailure('website.github_connect_repo', err)
       return fail(400, { action: 'connect' as const, repo, error: plainMessage(err) })

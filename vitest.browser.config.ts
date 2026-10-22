@@ -20,6 +20,7 @@ const root = path.dirname(fileURLToPath(import.meta.url))
  * `scripts/patch-vitest-browser-iframeid.mjs` so paths containing `+` work.
  */
 export default defineConfig({
+  cacheDir: path.join(root, '.svelte-kit', 'cache', 'vitest-browser', String(process.pid)),
   // Git worktrees symlink node_modules to the main checkout; the browser-mode
   // dev server must be allowed to serve those real paths or every module fetch
   // from the tester iframe fails outside the main checkout.
@@ -89,6 +90,8 @@ export default defineConfig({
       'src/lib/components/add-app-dialog.svelte.spec.ts',
       'src/lib/components/repo-connect-steps.svelte.spec.ts',
       'src/lib/components/website-activity-panel.svelte.spec.ts',
+      'src/lib/components/website-settings.svelte.spec.ts',
+      'src/lib/components/app-detail-settings.svelte.spec.ts',
       'modules/brand/water-flow.svelte.spec.ts',
     ],
     exclude: ['src/routes/demo/playwright/**/*.ts', '**/*.e2e.ts'],

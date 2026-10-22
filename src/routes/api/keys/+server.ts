@@ -17,6 +17,10 @@ export const POST: RequestHandler = async (event) => {
   if (typeof mailSend !== 'boolean') {
     return jsonError('mailSend must be true or false', 400)
   }
+  const mcp = body.mcp === undefined ? true : body.mcp
+  if (typeof mcp !== 'boolean') {
+    return jsonError('mcp must be true or false', 400)
+  }
   // "Can send mail" is the owner's consent; a key must never grant it to another key.
   if (mailSend && event.locals.apiKeyAuth) {
     return jsonError('Only the owner (signed in) can create a key that can send mail', 403)
@@ -35,10 +39,11 @@ export const POST: RequestHandler = async (event) => {
       keyPrefix: prefix,
       keyHash: hash,
       mailSend,
+      mcp,
     })
     .returning({ id: userApiKey.id })
 
-  return json({ key: raw, prefix, name, id: inserted.id, mailSend }, { status: 201 })
+  return json({ key: raw, prefix, name, id: inserted.id, mailSend, mcp }, { status: 201 })
 }
 
 export const GET: RequestHandler = async (event) => {
@@ -55,6 +60,7 @@ export const GET: RequestHandler = async (event) => {
       keyPrefix: userApiKey.keyPrefix,
       isActive: userApiKey.isActive,
       mailSend: userApiKey.mailSend,
+      mcp: userApiKey.mcp,
       lastUsedAt: userApiKey.lastUsedAt,
       createdAt: userApiKey.createdAt,
     })

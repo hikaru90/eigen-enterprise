@@ -122,20 +122,31 @@ async function setup() {
     ),
     approvalStore: approvals,
   })
+  const mailKeys = {
+    minted: [] as string[],
+    revoked: [] as string[],
+    async mint(i: { userId: string; name: string }) {
+      mailKeys.minted.push(i.name)
+      return { id: `key-${mailKeys.minted.length}`, raw: 'eigen_RAW_SECRET' }
+    },
+    async revoke(id: string) {
+      mailKeys.revoked.push(id)
+    },
+  }
   for (const t of [
-    ...createAppTools({ ee, repos, services, mintToken: async () => 'x' }),
+    ...createAppTools({ ee, repos, services, mintToken: async () => 'x', mailKeys }),
     ...createDomainTools({ ee, services }),
     ...createSubstrateTools({ client }),
   ])
     registry.register(t)
   holder.registry = registry
   holder.approvals = approvals
-  return { ee, eeHttp, services }
+  return { ee, eeHttp, services, mailKeys }
 }
 
 const user = { id: 'u1' }
 const event = (extra: Record<string, unknown> = {}) =>
-  ({ locals: { user }, params: {}, ...extra }) as never
+  ({ locals: { user }, params: {}, url: new URL('https://console.test/'), ...extra }) as never
 
 function formRequest(fields: Record<string, string>) {
   const body = new FormData()
@@ -166,6 +177,33 @@ describe('/m/website/apps/[name]', () => {
   it('an unknown app is a plain 404', async () => {
     await setup()
     await expect(load(event({ params: { name: 'ghost' } }))).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('the saved build settings survive ee losing the workload: the form comes prefilled', async () => {
+    const { ee, services } = await setup()
+    const row = (await services.get('shop'))!
+    services.rows.set('shop', {
+      ...row,
+      state: 'healthy',
+      contract: {
+        runtime: 'node',
+        nodeVersion: '22',
+        install: 'npm install --omit=dev',
+        start: 'node index.js',
+        health: '/',
+      },
+    })
+    ee.workloads = []
+    const data = (await load(event({ params: { name: 'shop' } }))) as {
+      app: { contractSource: string }
+      contractFields: { runtime: string; install: string; start: string } | null
+    }
+    expect(data.app.contractSource).toBe('form')
+    expect(data.contractFields).toMatchObject({
+      runtime: 'node@22',
+      install: 'npm install --omit=dev',
+      start: 'node index.js',
+    })
   })
 
   describe('domainSet', () => {
@@ -251,6 +289,19 @@ describe('/m/website/apps/[name]', () => {
       expect(JSON.stringify(out)).not.toContain('sk-live')
     })
 
+    it('EE_API_KEY cannot be set by hand: the email switch owns it', async () => {
+      const { eeHttp } = await setup()
+      const out = (await actions.secretSet(
+        event({
+          params: { name: 'shop' },
+          request: formRequest({ name: 'EE_API_KEY', value: 'eigen_whatever' }),
+        }),
+      )) as { status: number; data: { error: string } }
+      expect(out.status).toBe(400)
+      expect(out.data.error).toContain('Allow this app to send email')
+      expect(eeHttp).not.toContain('POST /v1/secrets')
+    })
+
     it('a bad name is a plain sentence, not a raw zod error', async () => {
       await setup()
       const out = (await actions.secretSet(
@@ -261,6 +312,48 @@ describe('/m/website/apps/[name]', () => {
       )) as { status: number; data: { action: string; error: string } }
       expect(out.status).toBe(400)
       expect(out.data.error).toBe('Some of what was entered is not valid. Check it and try again.')
+    })
+  })
+
+  describe('mailEnable / mailDisable ("Allow this app to send email")', () => {
+    it('load tells whether email is on and where the how-to lives', async () => {
+      await setup()
+      const data = (await load(event({ params: { name: 'shop' } }))) as {
+        app: { mail: { enabled: boolean } }
+        howtoUrl: string
+      }
+      expect(data.app.mail).toEqual({ enabled: false })
+      expect(data.howtoUrl).toBe('https://console.test/docs/send-mail.md')
+    })
+
+    it('turning it on mints a mail-only key for the app, seals it through ee, and says so without the key', async () => {
+      const { eeHttp, services, mailKeys } = await setup()
+      const out = (await actions.mailEnable(
+        event({ params: { name: 'shop' }, request: formRequest({}) }),
+      )) as { action: string; ok: boolean; message: string }
+      expect(out).toMatchObject({ action: 'mailEnable', ok: true })
+      expect(out.message).toContain('Email is on')
+      expect(mailKeys.minted).toEqual(['app:shop'])
+      expect((await services.get('shop'))!.mailKeyId).toBe('key-1')
+      expect(JSON.stringify(out)).not.toContain('eigen_RAW')
+      // The page's own ee client is not the path: the app tools' ee (the fake) sealed it.
+      expect(eeHttp).not.toContain('POST /v1/secrets')
+      const data = (await load(event({ params: { name: 'shop' } }))) as {
+        app: { mail: { enabled: boolean } }
+      }
+      expect(data.app.mail).toEqual({ enabled: true })
+    })
+
+    it('turning it off revokes the key at once', async () => {
+      const { services, mailKeys } = await setup()
+      await actions.mailEnable(event({ params: { name: 'shop' }, request: formRequest({}) }))
+      const out = (await actions.mailDisable(
+        event({ params: { name: 'shop' }, request: formRequest({}) }),
+      )) as { action: string; ok: boolean; message: string }
+      expect(out).toMatchObject({ action: 'mailDisable', ok: true })
+      expect(out.message).toContain('revoked')
+      expect(mailKeys.revoked).toEqual(['key-1'])
+      expect((await services.get('shop'))!.mailKeyId).toBeNull()
     })
   })
 

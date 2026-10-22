@@ -152,6 +152,8 @@ describe('per-app domains (D-W2): human-only tools, never agent-gated', () => {
     'website.app_auto_deploy',
     'website.app_domain_set',
     'website.app_domain_remove',
+    'website.app_mail_enable',
+    'website.app_mail_disable',
   ]
 
   const agent: ToolContext = {
@@ -185,6 +187,18 @@ describe('per-app domains (D-W2): human-only tools, never agent-gated', () => {
       await expect(
         k.registry.execute(name, { name: 'shop', host: 'a.example.com' }, agent),
       ).rejects.toMatchObject({ code: 'permission_denied' })
+    }
+  })
+
+  it('the email switch is human-only too: no approval path, the agent is refused outright', async () => {
+    expect(APPROVAL_REQUIRED_TOOLS.has('website.app_mail_enable')).toBe(false)
+    expect(APPROVAL_REQUIRED_TOOLS.has('website.app_mail_disable')).toBe(false)
+    const { kernel: k, activations } = kernel()
+    await activations.set('website', true)
+    for (const name of ['website.app_mail_enable', 'website.app_mail_disable']) {
+      await expect(k.registry.execute(name, { name: 'shop' }, agent)).rejects.toMatchObject({
+        code: 'permission_denied',
+      })
     }
   })
 })

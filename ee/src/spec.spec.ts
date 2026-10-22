@@ -32,6 +32,15 @@ describe('workload schema', () => {
     expect(() =>
       workloadSchema.parse({ name: 'x1', tier: 'app', source: release, env: { PORT: '80' } }),
     ).toThrow(/reserved/)
+    // ee injects the platform API address itself; an app may not point it elsewhere.
+    expect(() =>
+      workloadSchema.parse({
+        name: 'x1',
+        tier: 'app',
+        source: release,
+        env: { EE_API_URL: 'http://evil' },
+      }),
+    ).toThrow(/reserved/)
   })
 
   it('rejects a git source outside the local mirrors', () => {

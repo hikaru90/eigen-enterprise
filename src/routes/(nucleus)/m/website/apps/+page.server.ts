@@ -1,15 +1,11 @@
-import type { AppListResult } from '../../../../../../modules/website/apps/tools'
 import type { PageServerLoad } from './$types'
-import { requireAdmin } from '$lib/server/auth/require-admin'
-import { ownerRun } from '$lib/server/website/owner-run'
+import { redirect } from '@sveltejs/kit'
 
 /**
- * /m/website/apps: the Apps overview — the company site, every app with its
- * domains and newest deploy, and the entries behind the "+" card. ee being
- * unreachable is a state the page shows explicitly (managed:false), not an
- * error; anything else fails loud.
+ * The Apps overview moved to the module's front page (/m/website) — apps are
+ * the point of the Website module (D-W7), so they land there directly. This
+ * route stays as a redirect for every link and bookmark that predates the move.
  */
-export const load: PageServerLoad = async (event) => {
-  const user = await requireAdmin(event.locals.user)
-  return ownerRun<AppListResult>(user, 'website.app_list', {})
+export const load: PageServerLoad = async () => {
+  redirect(303, '/m/website')
 }

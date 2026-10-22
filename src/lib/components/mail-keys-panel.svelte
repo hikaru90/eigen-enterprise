@@ -10,7 +10,7 @@
 
   /**
    * Mail-sending API keys on the Email module page. Uses the one key store
-   * (/api/keys); a key here is an ordinary API key with "Can send mail" ticked.
+   * (/api/keys); a key made here is mail-only: "Can send mail" on, MCP off.
    */
   type Key = {
     id: string
@@ -64,7 +64,7 @@
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: trimmed, mailSend: true }),
+        body: JSON.stringify({ name: trimmed, mailSend: true, mcp: false }),
       })
       if (!res.ok) throw new Error(await res.text())
       newKey = (await res.json()).key

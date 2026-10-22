@@ -29,7 +29,7 @@ export const DELETE: RequestHandler = async (event) => {
   return json({ ok: true })
 }
 
-/** Edit a key's scopes. Today one: `mailSend` ("Can send mail"). Owner session only. */
+/** Edit a key's scopes: `mailSend` ("Can send mail") and/or `mcp` ("MCP access"). Owner session only. */
 export const PATCH: RequestHandler = async (event) => {
   const user = event.locals.user
   if (!user) {
@@ -39,15 +39,10 @@ export const PATCH: RequestHandler = async (event) => {
     return jsonError('Only the owner (signed in) can change what a key may do', 403)
   }
   const body: unknown = await event.request.json().catch(() => null)
-  if (
-    typeof body !== 'object' ||
-    body === null ||
-    Object.keys(body).length !== 1 ||
-    typeof (body as { mailSend?: unknown }).mailSend !== 'boolean'
-  ) {
-    return jsonError('Body must be { "mailSend": true | false }', 400)
+  const patch = parseScopePatch(body)
+  if (!patch) {
+    return jsonError('Body must be { "mailSend"?: boolean, "mcp"?: boolean } with at least one', 400)
   }
-  const mailSend = (body as { mailSend: boolean }).mailSend
 
   const { id } = event.params
   const db = getDb()
@@ -62,6 +57,19 @@ export const PATCH: RequestHandler = async (event) => {
     return jsonError('Not found', 404)
   }
 
-  await db.update(userApiKey).set({ mailSend }).where(eq(userApiKey.id, id))
-  return json({ id, mailSend })
+  await db.update(userApiKey).set(patch).where(eq(userApiKey.id, id))
+  return json({ id, ...patch })
+}
+
+function parseScopePatch(body: unknown): { mailSend?: boolean; mcp?: boolean } | null {
+  if (typeof body !== 'object' || body === null) return null
+  const keys = Object.keys(body)
+  if (keys.length === 0 || keys.some((k) => k !== 'mailSend' && k !== 'mcp')) return null
+  const patch: { mailSend?: boolean; mcp?: boolean } = {}
+  for (const k of keys as Array<'mailSend' | 'mcp'>) {
+    const v = (body as Record<string, unknown>)[k]
+    if (typeof v !== 'boolean') return null
+    patch[k] = v
+  }
+  return patch
 }

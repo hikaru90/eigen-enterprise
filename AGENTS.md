@@ -15,11 +15,19 @@
 - After every completed milestone (and before ending a session), update `plan/progress.md`: what shipped, commit refs, what broke, decisions taken, what's next.
 - Decisions with architecture impact get a line in `plan/progress.md` (decision log section) — no silent choices.
 
+## Local development servers (owner decision, 2026-10-23)
+
+- The owner's running dev server is the only local development server. Agents must reuse it; do not start additional dev, preview, browser-test or mock servers unless the owner explicitly asks for a separate harness.
+- Keep `strictPort: true`: an occupied port is an error, never permission to pick another port. Do not stop the owner's server or unrelated processes to free a port.
+- Local Playwright defaults to the existing server at `http://localhost:5174` (`E2E_PORT` selects another existing server). `E2E_MANAGED_SERVERS=1` is an explicit opt-in to starting a test dev/mock harness; agents must not set it without owner authorization. CI retains its managed harness.
+- Each Vite process has a checkout-local optimizer cache. Never share generated `.svelte-kit` state between worktrees or share optimizer files with the owner's running server.
+
 ## Engineering guardrails (carried from eigen — still binding)
 
 - **Drizzle migrations:** every schema change needs BOTH `drizzle/NNNN_name.sql` AND a journal entry in `drizzle/meta/_journal.json` (idx sequential, tag = filename without `.sql`), plus schema update in `src/lib/server/db/`. `scripts/migrate.mjs` fails fast on mismatch.
 - **TDD:** tests first for features/fixes (vitest unit; Playwright headed for e2e). No weakening assertions to green a build — fix root causes, never work around them.
 - **No fallbacks / no silent degradation:** no `|| 'localhost'` default envs, no bypass paths, no temporary shims. Fail loud with explicit errors.
+- **No silent removals:** removing or replacing working functionality (a workflow, an option, a page, a tool) is announced to the owner BEFORE it ships — in the session summary and `plan/progress.md`. Regressions of working flows are treated as bugs, not refactor side effects.
 - **No string heuristics for meaning:** never regex/keyword/substring logic to decide semantic anything (classification, routing, entity typing). Always LLM + ontology + JSON schema. Post-LLM code may only parse/validate/persist.
 - **Svelte:** no `$effect` for control flow — explicit events, handlers, `onMount`. `$derived` for pure view state is fine.
 - **LLM middleware:** all model calls go through the gateway (`src/lib/server/llm/`) — never direct provider calls. Cost tracking stays attached.

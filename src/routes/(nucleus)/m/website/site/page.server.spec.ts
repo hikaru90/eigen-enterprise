@@ -7,8 +7,6 @@ import {
   type EeTransport,
 } from '$lib/server/ee/client'
 import { createSubstrateTools } from '../../../../../../modules/website/hosting/tools'
-import { InMemoryWebsiteStore } from '../../../../../../modules/website/store'
-import { createWebsiteTools } from '../../../../../../modules/website/tools'
 
 const { holder } = vi.hoisted(() => ({ holder: { registry: null as unknown } }))
 
@@ -23,8 +21,6 @@ vi.mock('../../../../../../modules/index', () => ({
 }))
 
 import { actions, load } from './+page.server'
-
-const ORIGIN = 'https://os.ee.localhost'
 
 function eeStatus(overrides: Partial<EeStatus> = {}): EeStatus {
   return {
@@ -59,12 +55,9 @@ function eeHarness(
 }
 
 function setup(transport: EeTransport) {
-  const store = new InMemoryWebsiteStore()
   const registry = new KernelRegistry()
-  for (const t of createWebsiteTools({ store, origin: () => ORIGIN })) registry.register(t)
   for (const t of createSubstrateTools({ client: new EeClient(transport) })) registry.register(t)
   holder.registry = registry
-  return store
 }
 
 const user = { id: 'owner-1' }
@@ -81,7 +74,7 @@ describe('/m/website/site load', () => {
     holder.registry = null
   })
 
-  it('with its own domain: the site lives at https://<publicHost>, pages keep their absolute urls', async () => {
+  it('with its own domain: the site lives at https://<publicHost>', async () => {
     const ee = eeHarness(
       eeStatus({
         settings: {
@@ -95,23 +88,18 @@ describe('/m/website/site load', () => {
         ],
       }),
     )
-    const store = setup(ee.transport)
-    await store.createPage({ slug: 'home', title: 'Home', body: '# hi', visibility: 'public' })
-    await store.createPage({ slug: 'notes', title: 'Notes', body: 'draft', visibility: 'private' })
+    setup(ee.transport)
 
     const data = (await load(event)) as Record<string, unknown>
     expect(data).toEqual({
       managed: true,
+      reason: null,
       publicHost: 'kindred.digital',
       siteUrl: 'https://kindred.digital',
-      pages: [
-        { slug: 'home', title: 'Home', status: 'published', url: `${ORIGIN}/s/home` },
-        { slug: 'notes', title: 'Notes', status: 'draft', url: `${ORIGIN}/s/notes` },
-      ],
     })
   })
 
-  it('without a domain of its own: the site lives at the console /s address', async () => {
+  it('without a domain of its own: the site lives at the console address', async () => {
     const ee = eeHarness(eeStatus())
     setup(ee.transport)
 
@@ -119,27 +107,22 @@ describe('/m/website/site load', () => {
     expect(data).toMatchObject({
       managed: true,
       publicHost: null,
-      siteUrl: `${ORIGIN}/s`,
+      siteUrl: 'https://os.ee.localhost',
     })
   })
 
-  it('not under ee: explicit unmanaged shape; the console /s address and the pages still load', async () => {
-    const store = new InMemoryWebsiteStore()
-    await store.createPage({ slug: 'home', title: 'Home', body: '# hi', visibility: 'public' })
-    const registry = new KernelRegistry()
-    for (const t of createWebsiteTools({ store, origin: () => ORIGIN })) registry.register(t)
+  it('not under ee: explicit unmanaged shape, no address invented', async () => {
     const transport: EeTransport = async () => {
       throw new SubstrateUnavailableError('ECONNREFUSED')
     }
-    for (const t of createSubstrateTools({ client: new EeClient(transport) })) registry.register(t)
-    holder.registry = registry
+    setup(transport)
 
     const data = (await load(event)) as Record<string, unknown>
     expect(data).toMatchObject({
       managed: false,
       reason: expect.stringMatching(/not running under ee/),
-      siteUrl: `${ORIGIN}/s`,
-      pages: [{ slug: 'home', status: 'published' }],
+      publicHost: null,
+      siteUrl: null,
     })
   })
 })
@@ -164,7 +147,7 @@ describe('/m/website/site actions', () => {
     ])
   })
 
-  it('domainSet over an existing host: remove the old route first, then add the new one — that exact order', async () => {
+  it('domainSet replaces the public host in a single atomic add; never deletes it first', async () => {
     const ee = eeHarness(
       eeStatus({
         settings: {
@@ -184,16 +167,76 @@ describe('/m/website/site actions', () => {
     expect(ee.calls).toEqual([
       { method: 'GET', path: '/v1/status' },
       {
-        method: 'DELETE',
-        path: '/v1/domains',
-        body: { host: 'old.kindred.digital', author: 'human:owner-1' },
-      },
-      {
         method: 'POST',
         path: '/v1/domains',
         body: { host: 'kindred.digital', role: 'public', workload: 'os', author: 'human:owner-1' },
       },
     ])
+  })
+
+  it.each(['not a host', 'os.ee.localhost', 'shop.kindred.digital'])(
+    'rejects %s without removing the existing domain',
+    async (host) => {
+      const status = eeStatus({
+        settings: {
+          consoleHost: 'os.ee.localhost',
+          publicHost: 'old.kindred.digital',
+          acmeEmail: null,
+        },
+        routes: [
+          { host: 'os.ee.localhost', workload: 'os' },
+          { host: 'old.kindred.digital', workload: 'os' },
+          { host: 'shop.kindred.digital', workload: 'shop' },
+        ],
+      })
+      const ee = eeHarness(status)
+      setup(ee.transport)
+      const out = (await actions.domainSet(formEvent({ host }))) as {
+        status: number
+        data: { error: string }
+      }
+      expect(out.status).toBe(400)
+      expect(out.data.error).toMatch(/valid domain|already assigned/)
+      expect(ee.calls.filter((call) => call.method !== 'GET')).toEqual([])
+    },
+  )
+
+  it('an ee rejection never removes the old public domain', async () => {
+    const ee = eeHarness(
+      eeStatus({
+        settings: {
+          consoleHost: 'os.ee.localhost',
+          publicHost: 'old.kindred.digital',
+          acmeEmail: null,
+        },
+      }),
+      { method: 'POST', path: '/v1/domains', status: 409, detail: 'new domain rejected' },
+    )
+    setup(ee.transport)
+    const out = (await actions.domainSet(formEvent({ host: 'new.kindred.digital' }))) as {
+      status: number
+      data: { error: string }
+    }
+    expect(out.status).toBe(400)
+    expect(out.data.error).toBe('new domain rejected')
+    expect(ee.calls.map((call) => call.method)).toEqual(['GET', 'POST'])
+  })
+
+  it('saving the current public domain is allowed', async () => {
+    const ee = eeHarness(
+      eeStatus({
+        settings: {
+          consoleHost: 'os.ee.localhost',
+          publicHost: 'kindred.digital',
+          acmeEmail: null,
+        },
+        routes: [{ host: 'kindred.digital', workload: 'os' }],
+      }),
+    )
+    setup(ee.transport)
+    const out = await actions.domainSet(formEvent({ host: 'kindred.digital' }))
+    expect(out).toMatchObject({ ok: true, host: 'kindred.digital' })
+    expect(ee.calls.map((call) => call.method)).toEqual(['GET', 'POST'])
   })
 
   it('domainRemove: removes exactly the host asked for', async () => {
@@ -245,7 +288,7 @@ describe('/m/website/site actions', () => {
     expect(JSON.stringify(out.data.error)).not.toMatch(/regex|zod/i)
   })
 
-  it('not under ee: the click fails with the explicit reason and ee is never mutated', async () => {
+  it('not under ee: the click fails with the plain console-stack reason and ee is never mutated', async () => {
     const registry = new KernelRegistry()
     const transport: EeTransport = async () => {
       throw new SubstrateUnavailableError('ECONNREFUSED')
@@ -259,6 +302,6 @@ describe('/m/website/site actions', () => {
     }
     expect(out.status).toBe(400)
     expect(out.data.action).toBe('domainSet')
-    expect(out.data.error).toMatch(/not running under ee/)
+    expect(out.data.error).toMatch(/without ee/)
   })
 })

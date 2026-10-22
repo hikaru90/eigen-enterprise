@@ -146,13 +146,26 @@ export function createDomainTools(deps: DomainToolDeps = {}): ToolDescriptor[] {
               `${replace} is not an address of ${i.name}, so it can't be replaced here.`,
             )
           }
-          await viaEe(`move ${replace} off ${i.name}`, () =>
-            ee.removeDomain({ host: replace, author }),
-          )
         }
-        await viaEe(`point ${i.host} at ${i.name}`, () =>
+        // Keep the working route until its replacement has been accepted and applied.
+        const added = await viaEe(`point ${i.host} at ${i.name}`, () =>
           ee.addDomain({ host: i.host, workload: i.name, role: 'app', author }),
         )
+        if (added.reconcileError) {
+          throw new AppUserError(
+            `The server could not apply ${i.host}. ${replace ? 'The previous address remains in place. ' : ''}Check Website settings for the server error.`,
+          )
+        }
+        if (replace && replace !== i.host) {
+          const removed = await viaEe(`move ${replace} off ${i.name}`, () =>
+            ee.removeDomain({ host: replace, author }),
+          )
+          if (removed.reconcileError) {
+            throw new AppUserError(
+              `The new address was added, but the server could not finish removing ${replace}. Check Website settings for the server error.`,
+            )
+          }
+        }
 
         // website_services.host is the address the app links to: follow the
         // change when it replaced that address (or there was none yet).

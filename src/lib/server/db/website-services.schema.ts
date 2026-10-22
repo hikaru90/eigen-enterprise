@@ -1,9 +1,11 @@
-import { bigint, boolean, index, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+import { bigint, boolean, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 /**
  * Services deployed from connected GitHub repos (migration 0095). Not wired
  * into schema.ts, like the GitHub tables; consumed only by modules/website/apps.
- * No contract (it lives in ee's company repo) and no env values (ee's sealed store).
+ * No env values here (ee's sealed store). `contract` is the build-form values
+ * of the last healthy deploy (migration 0101), kept as the saved deploy
+ * config behind "Redeploy"; ee's company repo stays the runtime source.
  */
 export const websiteServices = pgTable(
   'website_services',
@@ -23,6 +25,10 @@ export const websiteServices = pgTable(
     lastError: text('last_error'),
     lastDeployedAt: timestamp('last_deployed_at', { withTimezone: true }),
     lastDeployedBy: text('last_deployed_by'),
+    /** The mail-only user_api_key sealed into the app as EE_API_KEY (migration 0099); null = email off. */
+    mailKeyId: uuid('mail_key_id'),
+    /** The saved build settings (contract form) of the last healthy deploy (migration 0101); null = the repo's ee.json is the config. */
+    contract: jsonb('contract'),
     createdBy: text('created_by').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

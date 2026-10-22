@@ -2,6 +2,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { betterAuth } from 'better-auth/minimal'
 import { emailOTP } from 'better-auth/plugins/email-otp'
 import { sveltekitCookies } from 'better-auth/svelte-kit'
+import { passkey } from '@better-auth/passkey'
 import { count } from 'drizzle-orm'
 import { dev } from '$app/environment'
 import { getRequestEvent } from '$app/server'
@@ -72,7 +73,10 @@ function queueTransactionalEmail(input: {
 }
 
 export const auth = betterAuth({
-  baseURL: normalizeAuthOrigin(env.ORIGIN),
+  // Dev follows the request origin, so the server works on whatever port it
+  // landed on (5174, 5175, …): better-auth's router only serves /api/auth/*
+  // when the serving origin matches baseURL. Production pins ORIGIN.
+  baseURL: dev ? undefined : normalizeAuthOrigin(env.ORIGIN),
   secret: env.BETTER_AUTH_SECRET,
   database: drizzleAdapter(authDb, { provider: 'pg' }),
   // Sign-in is passwordless (emailOTP below): the code proves the address, so
@@ -81,6 +85,13 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false,
+  },
+  session: {
+    // The owner's call: a machine that has signed in once with a code stays
+    // signed in — the session is the device's credential. A year, and every
+    // active day extends it, so a used machine never times out mid-work.
+    expiresIn: 60 * 60 * 24 * 365,
+    updateAge: 60 * 60 * 24,
   },
   ...(enabledSocialProviderIds.length > 0
     ? {
@@ -221,6 +232,22 @@ export const auth = betterAuth({
           throw err
         }
       },
+    }),
+    // Passkeys: after a code sign-in, Settings → Passkeys registers this
+    // machine's platform authenticator as a way back in — no code, no email.
+    // Dev passes no static origin: the plugin then verifies against the
+    // request's own Origin header, so any dev port works. Production pins it
+    // (PASSKEY_ORIGIN, else ORIGIN) because its origin is stable and known.
+    passkey({
+      rpID: new URL(normalizeAuthOrigin(env.ORIGIN)).hostname,
+      rpName: 'Eigen Enterprise',
+      ...(!dev && (env.PASSKEY_ORIGIN?.trim() || env.ORIGIN.trim())
+        ? {
+            origin: normalizeAuthOrigin(
+              (env.PASSKEY_ORIGIN?.trim() || env.ORIGIN.trim()) as string,
+            ),
+          }
+        : {}),
     }),
     sveltekitCookies(getRequestEvent), // make sure this is the last plugin in the array
   ],

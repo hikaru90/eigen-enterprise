@@ -190,19 +190,38 @@ function event(form?: Record<string, string>) {
   for (const [k, v] of Object.entries(form ?? {})) body.set(k, v)
   return {
     locals: { user },
+    // The load sets the GitHub App manifest's state cookie when GitHub isn't
+    // connected; a no-op cookies bag is enough for these tests.
+    cookies: { set: () => {} },
+    url: new URL('https://kindred.example/m/website/apps/new'),
     request: new Request('https://kindred.example/m/website/apps/new', { method: 'POST', body }),
   } as never
 }
 
 describe('/m/website/apps/new: load', () => {
+  it('passes the overview repository selection to the connection flow', async () => {
+    const e = event() as unknown as { url: URL }
+    e.url.searchParams.set('repo', 'kindred/secret')
+    e.url.searchParams.set('branch', 'preview/features')
+    expect(await load(e as never)).toMatchObject({
+      repoHint: 'kindred/secret',
+      branchHint: 'preview/features',
+    })
+  })
+
   it('loads repos (marked used/unused, with a free suggested name), the catalog and the managed state', async () => {
     const data = (await load(event())) as Record<string, unknown>
+    expect(data.ownerId).toBe('u1')
     expect(data.github).toEqual({
       connected: false,
       installed: false,
       appSlug: null,
       manageUrl: null,
     })
+    // The App connection moved into this page: the manifest is offered here.
+    const manifest = data.githubManifest as { json: string; state: string }
+    expect(manifest.state).toMatch(/^[0-9a-f]{32}$/)
+    expect(JSON.parse(manifest.json)).toMatchObject({ name: expect.stringMatching(/eigen/i) })
     expect(data.managed).toBe(true)
     expect(data.consoleHost).toBe('os.ee.localhost')
     expect(data.managedReason).toBeNull()

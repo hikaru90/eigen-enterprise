@@ -210,6 +210,25 @@
       </div>
     </section>
 
+    <!-- Passkeys -->
+    <section class="space-y-3" data-testid="settings-passkeys">
+      <div class="flex items-center gap-2">
+        <KeyRound class="size-4 shrink-0 opacity-80" strokeWidth={1.75} aria-hidden="true" />
+        <h2 class="text-sm font-semibold">Passkeys</h2>
+      </div>
+      <div class="border-black/15 flex items-center justify-between gap-4 border p-4">
+        <p class="text-muted-foreground text-xs">
+          Sign back in with a fingerprint, face, or device PIN — no code, no email.
+        </p>
+        <a
+          href={resolve('/settings/passkeys')}
+          class="border-black/15 hover:border-black shrink-0 border px-3 py-2 text-xs font-medium"
+        >
+          Add a passkey →
+        </a>
+      </div>
+    </section>
+
     <!-- Extensions -->
     <section class="space-y-3" data-testid="settings-extensions">
       <div class="flex items-center gap-2">

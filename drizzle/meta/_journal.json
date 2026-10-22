@@ -687,6 +687,41 @@
       "when": 1788855145001,
       "tag": "0097_mail_api_send",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1788855145002,
+      "tag": "0098_user_api_key_mcp",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1788855145003,
+      "tag": "0099_website_services_mail_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1788855145004,
+      "tag": "0100_user_passkeys",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1788855145005,
+      "tag": "0101_website_services_contract",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1788855145006,
+      "tag": "0102_website_pages_dropped",
+      "breakpoints": true
     }
   ]
 }

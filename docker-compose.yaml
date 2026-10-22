@@ -34,6 +34,11 @@ services:
     restart: unless-stopped
   app:
     container_name: eigen-enterprise-app
+    # DEV/DEMO CONSOLE ONLY (profile `console`): no ee beside it, so deploys,
+    # deploy keys and domains are off — it can never be the real thing.
+    # The real local install is the ee box (ee/e2e/box.sh, os.ee.localhost),
+    # which runs the console AS an ee workload, exactly like production.
+    profiles: ['console']
     build:
       context: .
       dockerfile: Dockerfile
@@ -62,6 +67,9 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       HOST: 0.0.0.0
       PORT: 3000
+      # The compose app's own origin (forms fail SvelteKit's CSRF check otherwise —
+      # .env's ORIGIN belongs to the dev server on :5174/:5175).
+      ORIGIN: http://localhost:3000
       # Trust the TLS reverse proxy (Caddy / Coolify Traefik) for scheme + host so
       # SvelteKit derives the correct app origin. Required for adapter-node behind
       # a proxy; without it the CSRF origin check compares against localhost.
@@ -74,11 +82,13 @@ services:
       - '3000:3000'
     restart: unless-stopped
 
-  # Self-hosted Drizzle Studio (Gateway). Always started with the stack.
-  # Coolify: set DRIZZLE_GATEWAY_MASTERPASS; domain studio.your-domain.example is wired via Traefik labels (set your real domain).
+  # Self-hosted Drizzle Studio (Gateway). Dev tooling (profile `console`), same
+  # as the dev console above. Coolify: set DRIZZLE_GATEWAY_MASTERPASS; domain
+  # studio.your-domain.example is wired via Traefik labels (set your real domain).
   # On first empty volume, Gateway auto-adds connection "eigen" from DATABASE_URL_eigen (internal db:5432).
   studio:
     container_name: eigen-enterprise-studio
+    profiles: ['console']
     image: ghcr.io/drizzle-team/gateway@sha256:da128bbaccb82b006e4b147a62737741c2967a1bb5607a666293b9d6b60b418d
     depends_on:
       db:

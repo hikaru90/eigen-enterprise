@@ -14,10 +14,11 @@ import {
 import { contractFields, formContract } from '../form'
 
 /**
- * /m/website/apps/[name]: one app — Deploy now (in the background, followed
- * through deploy-progress), its domains (add/change/remove per app, D-W2),
- * build settings, env variables (names only; values stored sealed by ee),
- * secrets (write-only via substrate.secret_set), deploy history, recent logs.
+ * /m/website/apps/[name]: one app — Redeploy (in the background, followed
+ * through deploy-progress; it replays the saved build settings), its domains
+ * (add/change/remove per app, D-W2), build settings, env variables (names
+ * only; values stored sealed by ee), secrets (write-only via
+ * substrate.secret_set), deploy history, recent logs.
  */
 
 export type AppDetail = ServiceView & {
@@ -26,6 +27,8 @@ export type AppDetail = ServiceView & {
   contractSource: 'repo' | 'form'
   contract: AppContract | null
   catalog: Catalog
+  /** "Allow this app to send email": a mail-only key sealed into the app as EE_API_KEY. */
+  mail: { enabled: boolean }
   history: Array<{ time: string; type: string; message: string }>
 }
 
@@ -75,6 +78,8 @@ export const load: PageServerLoad = async (event) => {
     contractFields: contractFields(app.contract),
     secretNames,
     managed: substrate.managed,
+    // The how-to the app's coding agent reads; pinned from the app repo's AGENTS.md.
+    howtoUrl: `${event.url.origin}/docs/send-mail.md`,
   }
 }
 
@@ -197,5 +202,37 @@ export const actions: Actions = {
       return fail(400, { action: 'remove' as const, error: plainAppMessage(err) })
     }
     redirect(303, '/m/website/apps')
+  },
+  mailEnable: async (event) => {
+    const user = await requireAdmin(event.locals.user)
+    try {
+      const out = await ownerRun<{ applied: boolean }>(user, 'website.app_mail_enable', {
+        name: event.params.name,
+      })
+      return {
+        action: 'mailEnable' as const,
+        ok: true,
+        message: out.applied
+          ? 'Email is on. The app is being rebuilt with its key; that takes a few minutes. Hand the how-to below to whoever builds the app.'
+          : "Email is on, but the app didn't rebuild cleanly with its key — see the deploy history.",
+      }
+    } catch (err) {
+      logAppFailure('website.app_mail_enable', err)
+      return fail(400, { action: 'mailEnable' as const, error: plainAppMessage(err) })
+    }
+  },
+  mailDisable: async (event) => {
+    const user = await requireAdmin(event.locals.user)
+    try {
+      await ownerRun(user, 'website.app_mail_disable', { name: event.params.name })
+      return {
+        action: 'mailDisable' as const,
+        ok: true,
+        message: "Email is off. The app's key is revoked; its next send is refused.",
+      }
+    } catch (err) {
+      logAppFailure('website.app_mail_disable', err)
+      return fail(400, { action: 'mailDisable' as const, error: plainAppMessage(err) })
+    }
   },
 }

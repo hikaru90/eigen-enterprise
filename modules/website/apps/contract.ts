@@ -153,7 +153,8 @@ export type ResolvedContract = { source: 'repo' | 'form'; contract: AppContract 
 
 /**
  * ee.json in the repo wins. Without one: the form just submitted, else the
- * contract already stored for this app (a redeploy), else ask for the form.
+ * app's saved build settings (the last healthy form deploy), else the
+ * contract ee still holds, else ask for the form.
  */
 export function resolveContract(i: {
   repo: RepoContract

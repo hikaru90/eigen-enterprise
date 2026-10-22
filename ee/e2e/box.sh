@@ -8,7 +8,10 @@ case "${1:-}" in
   up)
     docker build -q --platform "linux/${EE_BOX_ARCH:-arm64}" -t ee-box -f "$HERE/Dockerfile.box" "$HERE" >/dev/null
     docker rm -f "$NAME" >/dev/null 2>&1 || true
+    # --restart: the box doubles as THE local install (one managed system per
+    # machine, decision 2026-10-22), so it comes back with Docker after reboots.
     docker run -d --name "$NAME" --platform "linux/${EE_BOX_ARCH:-arm64}" --privileged --cgroupns=host \
+      --restart unless-stopped \
       -v /sys/fs/cgroup:/sys/fs/cgroup:rw --tmpfs /run --tmpfs /run/lock \
       -v "$ROOT/dist/release:/release:ro" -p 443:443 -p 80:80 ee-box >/dev/null
     sleep 3; docker exec "$NAME" systemctl is-system-running --wait || true ;;

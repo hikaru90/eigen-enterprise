@@ -154,6 +154,21 @@ describe('auth config', () => {
     expect(config.emailVerification).toBeUndefined()
   })
 
+  it('a machine that signs in with a code stays signed in: the session is the device credential', async () => {
+    await loadAuth()
+    const config = lastConfig()
+    expect(config.session?.expiresIn).toBe(60 * 60 * 24 * 365)
+    // Rolling: active use extends the session, so a used machine never times out mid-work.
+    expect(config.session?.updateAge).toBe(60 * 60 * 24)
+  })
+
+  it('offers passkeys: the machine credential registered after a code sign-in', async () => {
+    await loadAuth()
+    const config = lastConfig()
+    const ids = (config.plugins ?? []).map((p) => (p as { id?: string }).id ?? '')
+    expect(ids).toContain('passkey')
+  })
+
   it('confirms an email change by email, through company mail', async () => {
     await loadAuth()
     const config = lastConfig()
