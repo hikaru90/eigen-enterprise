@@ -2,6 +2,30 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-23 — SHIPPED AND PUSHED: the uncommitted waves are now real commits; box upgraded to a committed release (deploy keys confirmed live)
+
+**Owner report that started this**: "I can't generate a deploy key when I input a private repository link… The current version that is deployed is ~ten git commits behind… I already told you fix it. You do it."
+
+**Root cause of the whole confusion**: six shipped, tested waves (2026-10-21/22: api-key deny-by-default, passkeys + long sessions, key scopes + app mail binding, saved deploy config + Redeploy, the private-repo keyPath fix + module front page, repositories-first UX) sat **uncommitted** on the main working tree. The box's live release was built from that dirty tree, so the deployed console corresponded to NO git ref, `origin/main` was 27 commits behind, and the stale pre-fix release (`fe5ea2eb`, deployed over the box at 19:32 on 10-22 and active until 20:58) served the exact dead end the owner hit: paste a private repo → no deploy-key step. ee fell back to the good build at 22:11 and the 20:58 deploy made it live again — so the site had already self-healed, but nothing about the setup could prove that, because the code existed in no ref.
+
+**What shipped (this session)**
+- `62c41a5` [feature]: the whole uncommitted wave committed on main (suite on that exact tree: 4,709 unit passed / 14 skipped, svelte-check 0 errors, secrets guard OK).
+- `77be7e9` [chore]: the push wall removed at its root — repo-wide eslint had 122 errors that the pre-push hook turned into a permanent push block (the reason origin drifted). 108 were the generated `ee/dist/ee.mjs` (now eslint-ignored, it's build output); 13 dead `bootstrapKernel`/`buildKernel` imports removed; `daemon.spec.ts`'s control-API helper typed `data: unknown` with honest casts. eslint . exits 0; no rule was weakened.
+- `origin/main` pushed: `4c9eb5e..77be7e9`. Deployed, committed and pushed are now the same code.
+- Fresh release built from the CLEAN tree (`scripts/release.sh arm64` → `eigenenterprise-0.3.0-77be7e94dba3-linux-arm64.tar.gz`) and installed via `ee/e2e/box.sh install os.ee.localhost`. Health-gated blue-green: new release `bed2dbd343e368cd` **replaced the stale slot a** and went live at 22:50; `appliedRev == desiredRev`, reconcile error null, console health 200 over Caddy TLS.
+- **Deploy keys verified live on the deployed install, minutes ago**: minted `dk_fd2bd8ae85b9c69055e91da5` for `kindred/ship-verify` over `/v1/deploy-keys` (public material only) and deleted it (`{"ok":true}`), author `agent:ship-verify`. The live client bundle carries the keyPath flow markers ("it needs a deploy key") and the server chunks the plain-language refusals.
+
+**Decisions**
+- **Standing rule (owner, after this session): shipped means committed AND pushed.** No release may again be built from an uncommitted tree — "the deployed version is behind" must be an impossible sentence. Enforced by habit here, not tooling (a pre-release guard could assert a clean tree; noted as follow-up).
+- Interleaved waves were committed as ONE feature commit (`62c41a5`) instead of fake historical splits: the intermediate half-states were never tested as discrete commits; both ends of history build and are verified.
+- The 2026-10-22 open "managed architecture" question is CLOSED by owner fiat: the ee box is THE local install (compose console retired behind the `console` profile, committed in `62c41a5`). The dev server on :5174 stays console-only by design; deploy keys live on the box.
+
+**Broken on the way**: the pre-push eslint wall (fixed above, see 77be7e9). Nothing else.
+
+**Verification**: unit 4,709 passed / 14 skipped on the committed tree; svelte-check 0 errors; `assert:oss-secrets` OK; eslint 0 errors; box journal `deploy.succeeded` + edge.updated; live mint/delete of a deploy key over the control socket. Not verified: the deploy-key flow in a logged-in browser on the box (the box is production mode — passwordless codes need a mailer; prior sessions' claim-link mint is one-time). The UI path itself is covered by the stepper component specs and the 8/8 headed e2e journey on this code.
+
+**Next**: the owner connects their real private repo at https://os.ee.localhost → Add → Connect a repo → the stepper mints the key, they add it on GitHub, check, connect, deploy. If anything in that journey bites, it is a bug to fix — not an architecture question.
+
 
 ## 2026-10-22 — Website UX correction: repositories first, one settings surface (uncommitted)
 
