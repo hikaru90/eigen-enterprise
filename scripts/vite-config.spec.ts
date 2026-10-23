@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { describe, expect, it } from 'vitest'
@@ -6,45 +7,44 @@ import { describe, expect, it } from 'vitest'
 const exec = promisify(execFile)
 const root = process.cwd()
 
-async function readConfig(file: string) {
+type WebServer = { command: string; url: string; reuseExistingServer?: boolean; env?: Record<string, string> }
+
+async function readPlaywrightConfig(env: Record<string, string>) {
   const script = `
     import { loadConfigFromFile } from 'vite';
-    const result = await loadConfigFromFile({ command: 'serve', mode: 'development' }, ${JSON.stringify(file)});
-    console.log(JSON.stringify({ cacheDir: result.config.cacheDir, strictPort: result.config.server?.strictPort, managedServers: result.config.webServer?.length ?? 0, baseUrl: result.config.use?.baseURL }));
+    const result = await loadConfigFromFile({ command: 'serve', mode: 'development' }, 'playwright.config.ts');
+    const c = result.config;
+    console.log(JSON.stringify({
+      webServer: (c.webServer ?? []).map((s) => ({ command: s.command, url: s.url, reuseExistingServer: s.reuseExistingServer, env: { ORIGIN: s.env?.ORIGIN } })),
+      baseUrl: c.use?.baseURL,
+    }));
   `
   const { stdout } = await exec(process.execPath, ['--input-type=module', '--eval', script], {
     cwd: root,
-    env: { ...process.env, CI: '', E2E_MANAGED_SERVERS: '' },
+    env: { ...process.env, ...env },
     timeout: 30_000,
   })
-  return JSON.parse(stdout.trim()) as {
-    cacheDir?: string
-    strictPort?: boolean
-    managedServers: number
-    baseUrl?: string
-  }
+  return JSON.parse(stdout.trim()) as { webServer: WebServer[]; baseUrl?: string }
 }
 
-describe('local Vite process isolation', () => {
-  it('refuses to choose another port for the owner’s dev server', async () => {
-    expect((await readConfig('vite.config.ts')).strictPort).toBe(true)
+// No dev server (owner decision 2026-10-23): the ee box is the only install.
+// Browser e2e runs its own throwaway harness (Vite + mock gateway), started and
+// stopped by Playwright — never an already-running server.
+describe('no dev server', () => {
+  it('has no `npm run dev` script', async () => {
+    const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'))
+    expect(pkg.scripts.dev).toBeUndefined()
   })
 
-  it('uses the owner’s server without starting local test services', async () => {
-    const config = await readConfig('playwright.config.ts')
-    expect(config.managedServers).toBe(0)
-    expect(config.baseUrl).toBe('http://localhost:5174')
-  })
-
-  it('isolates optimizer caches between processes and browser tests', async () => {
-    const first = await readConfig('vite.config.ts')
-    const second = await readConfig('vite.config.ts')
-    const browser = await readConfig('vitest.browser.config.ts')
-    const caches = [first.cacheDir, second.cacheDir, browser.cacheDir]
-    for (const cache of caches) {
-      expect(typeof cache).toBe('string')
-      expect(cache?.startsWith(path.join(root, '.svelte-kit', 'cache') + path.sep)).toBe(true)
-    }
-    expect(new Set(caches).size).toBe(3)
-  })
+  for (const ci of ['', '1']) {
+    it(`e2e starts its own harness and never reuses a running server (CI=${ci || 'unset'})`, async () => {
+      const config = await readPlaywrightConfig({ CI: ci })
+      expect(config.webServer.length).toBe(2)
+      for (const server of config.webServer) expect(server.reuseExistingServer).toBe(false)
+      const app = config.webServer.find((s) => s.command.includes('vite'))
+      expect(app?.command).toContain('--strictPort')
+      expect(app?.env?.ORIGIN).toBe(config.baseUrl)
+      expect(config.baseUrl).toBe('http://localhost:4173')
+    }, 30_000)
+  }
 })

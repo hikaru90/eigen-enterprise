@@ -10,7 +10,7 @@ import { defineConfig } from 'vitest/config'
 const enforceCoverageThresholds = process.env.CI === 'true' || process.argv.includes('run')
 
 /**
- * Directories the dev server may serve over /@fs/. A git worktree symlinks
+ * Directories Vite's server (vitest browser) may serve over /@fs/. A git worktree symlinks
  * node_modules to the main checkout; without the real path in the allowlist,
  * Vite's strict filesystem 403s the SvelteKit client runtime and no page
  * hydrates (browser e2e from a worktree is dead). Dev-only; no effect on the
@@ -22,12 +22,11 @@ function devFsAllow(): string[] {
 }
 
 export default defineConfig({
-  // A running dev server must own its optimizer files. Another Vite process
-  // rewriting them can mix two Svelte runtimes and crash hydration. Keep the
-  // cache checkout-local too: worktrees may share a node_modules symlink.
+  // Each Vite process (build, vitest browser) owns its optimizer files: two
+  // processes rewriting them can mix two Svelte runtimes and crash hydration.
+  // Checkout-local too: worktrees may share a node_modules symlink.
   cacheDir: path.resolve('.svelte-kit/cache/vite', String(process.pid)),
   server: {
-    strictPort: true,
     fs: { allow: devFsAllow() },
   },
   build: {

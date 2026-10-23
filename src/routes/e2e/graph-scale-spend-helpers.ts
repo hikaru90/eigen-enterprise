@@ -63,7 +63,7 @@ async function withSpendApiRetry<T>(label: string, fn: () => Promise<T>, attempt
   const detail = lastError instanceof Error ? lastError.message : String(lastError)
   throw new Error(
     `${label} failed after ${attempts} attempts: ${detail}. ` +
-      'Ensure `npm run dev` is running and Postgres is up.',
+      'Ensure Postgres is up (`npm run db:up`); Playwright starts the preview itself.',
   )
 }
 

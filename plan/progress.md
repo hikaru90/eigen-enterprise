@@ -2,6 +2,28 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-23 — The dev server is removed: the ee box is the only install
+
+**Owner report**: on a private repo, "Generate deploy key" was disabled ("A deployment server is needed…"), read as a deploy regression; then the box said "not claimed" although the owner had a login and passkey.
+
+**Diagnosis**: no code regression. Both symptoms came from having two installs. The owner was on the dev server (http://localhost:5174), which has no ee control socket, so deploys/deploy keys were off by design. The login + passkey lived in the dev database (`localhost:5433/eigen`, passkey bound to `localhost`); the box's own database had 0 users. The ee transport hasn't changed since ee was introduced; the box console has the socket (group `ee-control`).
+
+**Owner decision (2026-10-23)**: remove the dev server — "it's just cumbersome", and it caused the confusion above. Replaces the same-day rule "the owner's running dev server is the only local development server".
+
+**Removed / changed (announced to the owner before shipping)**
+- `npm run dev` deleted. AGENTS.md's dev-server section replaced by "One install: the ee box"; commands table updated.
+- Playwright: no owner server, no `E2E_PORT` / `E2E_MANAGED_SERVERS`. Every run starts its own throwaway harness — `vite dev --port 4173 --strictPort` (`ORIGIN` pinned) + the mock gateway on :5199, `reuseExistingServer: false` — and Playwright stops both. A built preview was tried first and rejected: the sign-in-code harness routes are `dev`-only by design, and adding a test switch to production builds would be a bypass path. Readiness probes `localhost` (Vite binds [::1] only). `npm run test:e2e` now does db:up/wait/migrate first (DB prep that used to live in `dev`).
+- `vite.config.ts`: `server.strictPort` dropped (no dev port to guard); per-process optimizer cache kept for build/vitest-browser.
+- `.env.example` ORIGIN → :4173; docs/evals/helper messages no longer say `npm run dev`. The graph-scale live watcher no longer needs a dev server running beside it.
+- The owner's `vite dev` (PID 22527) and the compose Postgres were stopped; the `eigenenterprise_eigen_pg` volume (old dev login/data) is kept until the owner says otherwise. Compose Postgres is the test DB only.
+- CI unchanged: it never ran e2e (lint, check, unit, components, coverage).
+- Tests: `scripts/vite-config.spec.ts` rewritten (no `dev` script; e2e harness is Playwright-owned, never reused). Failed first, now green. Verified: lint 0 errors, svelte-check 0 errors, unit 4,709 passed / 14 skipped, `auth.e2e.ts` 10/10 on the new harness. Full e2e suite not run.
+- Not shipped: an earlier same-day "this is the dev console" message on /m/website/apps/new; reverted as dead code.
+
+**Box access**: box was unclaimed → fresh one-time link via `ee claim-link` (expires 2026-10-30). The TLS warning is Caddy's local CA, which isn't trusted on the Mac yet; the owner trusts the root cert once (System keychain).
+
+**Follow-ups**: `mail-keys.spec.ts` times out under full-suite load (15s), passes alone. e2e against the box itself (instead of a preview) would need the mock gateway on the box; not planned.
+
 ## 2026-10-23 — SHIPPED AND PUSHED: the uncommitted waves are now real commits; box upgraded to a committed release (deploy keys confirmed live)
 
 **Owner report that started this**: "I can't generate a deploy key when I input a private repository link… The current version that is deployed is ~ten git commits behind… I already told you fix it. You do it."

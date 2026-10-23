@@ -103,13 +103,11 @@ See [`docs/planning/graph-scale-cost.md`](../docs/planning/graph-scale-cost.md) 
 While a graph-scale run is ingesting, you can sign in as the fresh corpus harness tenant and watch thoughts + graph growth in the browser:
 
 ```bash
-# terminal 1 — keep dev running
-npm run dev
-
-# terminal 2 — start the benchmark
+# (no dev server: the Playwright watcher starts its own preview)
+# terminal 1 — start the benchmark
 npm run graph-scale
 
-# terminal 3 — attach the watcher (headed browser, 60m timeout)
+# terminal 2 — attach the watcher (headed browser, 60m timeout)
 npm run test:e2e:graph-scale-watch
 ```
 

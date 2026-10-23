@@ -15,12 +15,12 @@
 - After every completed milestone (and before ending a session), update `plan/progress.md`: what shipped, commit refs, what broke, decisions taken, what's next.
 - Decisions with architecture impact get a line in `plan/progress.md` (decision log section) — no silent choices.
 
-## Local development servers (owner decision, 2026-10-23)
+## One install: the ee box (owner decision, 2026-10-23)
 
-- The owner's running dev server is the only local development server. Agents must reuse it; do not start additional dev, preview, browser-test or mock servers unless the owner explicitly asks for a separate harness.
-- Keep `strictPort: true`: an occupied port is an error, never permission to pick another port. Do not stop the owner's server or unrelated processes to free a port.
-- Local Playwright defaults to the existing server at `http://localhost:5174` (`E2E_PORT` selects another existing server). `E2E_MANAGED_SERVERS=1` is an explicit opt-in to starting a test dev/mock harness; agents must not set it without owner authorization. CI retains its managed harness.
-- Each Vite process has a checkout-local optimizer cache. Never share generated `.svelte-kit` state between worktrees or share optimizer files with the owner's running server.
+- There is **no dev server**. The ee box (`ee/e2e/box.sh`, https://os.ee.localhost) is the only running eigenEnterprise on this machine — the same systemd + Caddy + ee shape as production. Do not add a `dev` script or run `vite dev`.
+- Develop against tests: unit (`npm run test:unit`) and component (`npm run test:components`, real Svelte in a real browser). Browser e2e (`npm run test:e2e`) starts its own throwaway harness — Vite in dev mode on :4173 (the sign-in-code harness routes exist only there) + the mock gateway on :5199 — and Playwright stops both when the run ends. It never reuses a running server; nothing stays running.
+- See a change live: commit, `scripts/release.sh arm64`, `ee/e2e/box.sh install os.ee.localhost`. Shipped means committed, pushed and on the box.
+- The compose Postgres (`npm run db:up`, :5433) is the test database only.
 
 ## Engineering guardrails (carried from eigen — still binding)
 
@@ -41,9 +41,10 @@
 | Coverage | `npm run test:coverage` |
 | Typecheck | `npm run check` |
 | Lint | `npm run lint` |
-| Dev DB | `npm run db:up` |
-| Dev server | `npm run dev` |
-| Migrations | `npm run db:migrate` |
+| Test DB | `npm run db:up` |
+| E2E (throwaway harness) | `npm run test:e2e` |
+| Release to the box | `scripts/release.sh arm64 && ee/e2e/box.sh install os.ee.localhost` |
+| Migrations (test DB) | `npm run db:migrate` |
 
 ## Repo map
 

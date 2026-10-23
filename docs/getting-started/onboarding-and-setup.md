@@ -181,7 +181,7 @@ Users on BYOK must configure credentials in the UI (or rely on these env fallbac
    # Edit .env — add LLM gateway credentials (and PayPal if using platform credits)
    ```
 
-   For local development only: `cp .env.example .env` and use `npm run dev` (see [README](../../README.md#development-local-non-containerized)).
+   For local tests only: `cp .env.example .env`, then `npm run db:up && npm run test:e2e`. The local install is the ee box (`ee/e2e/box.sh`), not a dev server.
 
 2. **Start the stack**
 

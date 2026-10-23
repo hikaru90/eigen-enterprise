@@ -68,7 +68,7 @@ services:
       HOST: 0.0.0.0
       PORT: 3000
       # The compose app's own origin (forms fail SvelteKit's CSRF check otherwise —
-      # .env's ORIGIN belongs to the dev server on :5174/:5175).
+      # .env's ORIGIN belongs to the e2e preview on :4173).
       ORIGIN: http://localhost:3000
       # Trust the TLS reverse proxy (Caddy / Coolify Traefik) for scheme + host so
       # SvelteKit derives the correct app origin. Required for adapter-node behind
