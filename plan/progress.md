@@ -2,6 +2,32 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-30 — SHIPPED (main, not on the box yet): factory S0 — durable background runs, D8 live run view, D9 chat mirror
+
+Two worktree streams, merged `--no-ff`: S0-A `ec223ca` (`6a509f8`), S0-B `3d3be85` (`c179487`), integration fix `381c44c`.
+
+**What shipped**
+- **Background runs** (`startBackgroundRun` on the durable engine, `AppBoot.startBackgroundRun`): an ownerless pi-durable conversation recorded in `durable_conversations` with its run principal and tool surface (migration `0103_durable_background_runs`: `run_principal_id`, `run_tools` jsonb). Its tool calls, live or resumed after a restart, run through `KernelRegistry.execute` as the recorded principal (permissions, approvals, audit unchanged). A missing principal is a structured `unknown_principal` tool error (new KernelErrorCode); nothing runs as anyone else. Chat conversations keep `not_run` for request-less calls. On open, background surfaces are registered before `harness.resume()`.
+- **D9**: pending chat submissions are watched at open; a turn that settles with an answer after a restart is written into `chat_message` under the user's RLS session, once (`chat_message.durable_answer_key` unique, same migration). Only the final reply is mirrored, not tool steps.
+- **D8**: `GET /api/agent/runs` (index metadata only) and `GET /api/agent/runs/[id]/events` (SSE: snapshot on connect, one batch per commit, overflow re-snapshot, 25 s keepalive, watcher stopped exactly once on disconnect; 401 signed out, 403 without an owner/admin/member role). Pages `/runs` and `/runs/[id]` with a live feed (run start/end, input, assistant text, tool start/end with outcome). Tool output, thinking and usage stay server-side; tool args go through `redactForLog`.
+- **Integration fix**: the run view's fallback opened the harness singleton with only env + index, which would have produced an under-wired harness (no `runAsPrincipal`, no mirror) if `/runs` was hit before boot's warm-up. New `openedDurableHarness()` returns boot's harness or fails loud.
+
+**Verification (merged main)**: svelte-check 0 errors; eslint 0 errors; full unit **4748 passed / 17 skipped, 0 failed**; targeted agent/kernel/modules/chat/runs suites 1598 passed. In the streams: real SIGKILL crash-resume of a background run that executes its tool as the recorded principal after reopen; Postgres integration spec for the mirror; e2e `agent-runs-live.e2e.ts` 1/1 (two browser contexts see the same run live).
+
+**Not verified**: the box proof (`systemctl restart` mid-tool-call, two browsers) — needs a release + install. Live text deltas and live tool events with real tool calls are covered by unit/component specs only (the mock gateway doesn't stream or emit native tool calls).
+
+**Decisions taken in the streams (owner may veto)**
+- Run visibility is company-wide: every owner/admin/member sees every run's transcript text, including other members' chats (reading of D8 "team visibility").
+- `/api/agent/runs` (plan path), not `/api/agents/runs` (collides with `/api/agents/[id]`). No nav entry for `/runs` yet.
+
+**Broke / found on the way**
+- The main checkout had **no node_modules**; worktree symlinks to it dangled. `npm ci` (Node 22.23.2 — the default `node` on this Mac is v26 and fails `engines`). Main also had no `.env`; `npm run check` needs one (copied from `.env.example`, gitignored).
+- **vitest can't run specs inside `.claude/worktrees/`**: `*.spec.ts` is excluded from the worktree tsconfig, so the transform walks up to the main checkout's tsconfig, which points at a missing `.svelte-kit`. Streams ran gates from an rsync copy. Needs a fix before S2's factory runs gates in worktrees.
+- **The mock gateway still emits builtin-json-style JSON tool intents** (builtin-json died 2026-10-20); on the durable engine `/api/chat` returns 500 for those turns in e2e. The run-view e2e asserts only on the run view. Follow-up: teach the mock native `tool_calls`.
+- Port 5199 is held by a long-running eigen-design vite process on this Mac; the e2e ran with `MOCK_GATEWAY_PORT=5299`.
+
+**Next**: S0 box proof (release + install, restart mid-tool-call, two browsers on `/runs`), then S1 (announced removals: dev-agent, pi-engine, `pi` engine, `kernel_agent_session_events`).
+
 ## 2026-10-30 — APPROVED: software factory on the box, built on durable background runs (plan only)
 
 **Owner direction**: "focus on pi durable implementation and setting up the software factory so that the system can self evolve." `plan/phase-software-factory.md` rewritten (the 2026-10-08 draft built on the frozen `dev-agent`).
