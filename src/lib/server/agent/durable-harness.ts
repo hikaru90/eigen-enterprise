@@ -12,6 +12,7 @@ import type {
   SettledDurableTurn,
 } from '$lib/kernel/engines/durable'
 import { DurableRunError } from '$lib/kernel/engines/durable'
+import { dbScopedGatewayComplete } from './db-scoped-complete'
 import {
   createGatewayModelCatalog,
   GATEWAY_MODEL_ID,
@@ -229,12 +230,7 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
 
   const index = deps.index
   const models = createGatewayModelCatalog({
-    complete:
-      deps.complete ??
-      (async (input) => {
-        const { llmChatCompletion } = await import('$lib/server/llm/llm-client')
-        return llmChatCompletion(input)
-      }),
+    complete: deps.complete ?? dbScopedGatewayComplete,
     resolveUserId: async (providerSessionId) => {
       const row = await index.resolveByProviderSession(providerSessionId)
       if (!row) {
