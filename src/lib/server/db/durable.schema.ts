@@ -1,4 +1,11 @@
-import { pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core'
+import { jsonb, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core'
+
+/** One tool of a background run's recorded surface (re-registered on reopen). */
+export type DurableRunToolRecord = {
+  name: string
+  description: string
+  parametersJsonSchema: Record<string, unknown>
+}
 
 /**
  * Durable agent conversation index (plan/phase-durable.md D7) — Postgres keeps
@@ -16,6 +23,13 @@ export const durableConversations = pgTable('durable_conversations', {
   llmUserId: text('llm_user_id').notNull(),
   piConversationId: text('pi_conversation_id').notNull(),
   providerSessionId: text('provider_session_id').notNull().unique(),
+  /**
+   * The principal a BACKGROUND run's tools execute as (migration 0103). NULL
+   * for chat conversations: their resumed tool calls report not_run.
+   */
+  runPrincipalId: text('run_principal_id'),
+  /** A background run's tool surface (NULL for chat rows). */
+  runTools: jsonb('run_tools').$type<DurableRunToolRecord[]>(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })

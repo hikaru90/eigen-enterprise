@@ -2,9 +2,13 @@ import type { DurableConversationIndex } from './conversation-index'
 import { mkdirSync, openSync, readFileSync, unlinkSync, writeSync, closeSync } from 'node:fs'
 import { join } from 'node:path'
 import type {
+  BackgroundRunHandle,
+  BackgroundRunInput,
+  BackgroundToolExecutor,
   DurableBridgeToolSpec,
   DurableEngineConversation,
   DurableEngineHarness,
+  DurableToolSurfaceEntry,
   SettledDurableTurn,
 } from '$lib/kernel/engines/durable'
 import { DurableRunError } from '$lib/kernel/engines/durable'
@@ -27,6 +31,7 @@ import {
   type Conversation,
   type ConversationId,
   type DurableHarness,
+  type SettledSubmissionRecord,
   type ToolRegistration,
 } from './pi-durable'
 
@@ -166,6 +171,30 @@ export type DurableHarnessDeps = {
   complete?: GatewayCompleteFn
   /** Failure reporter (default: console.error with the [durable] prefix). */
   onReport?: (error: unknown) => void
+  /**
+   * Executes a BACKGROUND run's tool call as its recorded principal (kernel
+   * registry: permission / approval / audit). Required — background runs have
+   * no live request to borrow a principal from.
+   */
+  runAsPrincipal: BackgroundToolExecutor
+  /**
+   * D9: a CHAT turn that settled with no live request (it was resumed after a
+   * restart) hands its reply here so the chat bubble appears. Must be
+   * idempotent on `answerKey`.
+   */
+  mirrorResumedChatTurn: (turn: ResumedChatTurn) => Promise<void>
+}
+
+/** A chat turn that settled after a restart, with nobody waiting for it (D9). */
+export type ResumedChatTurn = {
+  conversationKey: string
+  agentId: string
+  /** The chat's human (the gateway billing identity of the conversation). */
+  llmUserId: string
+  piConversationId: string
+  /** `<piConversationId>:<answerEntryId>` — stable idempotency key of the reply. */
+  answerKey: string
+  reply: string
 }
 
 export type DurableHarnessBox = {
@@ -177,8 +206,10 @@ export type DurableHarnessBox = {
   readonly stateDir: string
   /** Live event stream of one conversation (the D8 multiplayer slice). */
   events(conversationId: number): Promise<AgentEventStream>
-  /** The engine-facing port: one conversation per (agentId, sessionId). */
+  /** The engine-facing port: one conversation per (agentId, sessionId), plus background runs. */
   readonly engineHarness: DurableEngineHarness
+  /** Wait for one submission (e.g. a background run's prompt) to settle. */
+  waitForSubmission(submissionId: string): Promise<SettledDurableTurn>
 }
 
 async function openDurableHarness(deps: DurableHarnessDeps): Promise<DurableHarnessBox> {
@@ -229,7 +260,8 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
     },
     BACKGROUND_CONTEXT,
   )
-  harness.resume()
+  // harness.resume() runs at the END of this function: the tool bridge of
+  // every background run and the resumed-turn watchers must exist first.
 
   // pi-durable ids are branded safe integers — String() and Number() round-trip.
   function asConversationId(id: number | string): ConversationId {
@@ -253,21 +285,49 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
    * run: there is no principal to run it as, so it reports that instead.
    */
   const activeBridges = new Map<string, Map<string, DurableBridgeToolSpec>>()
-  const knownTools = new Map<string, DurableBridgeToolSpec>()
+  const knownTools = new Map<string, DurableToolSurfaceEntry>()
+  /**
+   * Background runs by pi conversation id: their tools execute as the RECORDED
+   * principal (index row), live or resumed after a restart — never through a
+   * chat request's closures.
+   */
+  const backgroundRuns = new Map<string, { principalId: string; agentId: string; tools: Set<string> }>()
 
-  function bridgeTool(spec: DurableBridgeToolSpec): ToolRegistration {
+  function notRun(why: string) {
+    return {
+      output: [{ type: 'text' as const, text: JSON.stringify({ status: 'not_run', message: why }) }],
+      isError: true,
+    }
+  }
+
+  function bridgeTool(spec: DurableToolSurfaceEntry): ToolRegistration {
     return defineTool({
       name: spec.name,
       description: spec.description,
       parameters: Type.Unsafe<Record<string, unknown>>(spec.parametersJsonSchema),
       execute: async (args, api) => {
-        const bridge = activeBridges.get(String(api.conversationId))
+        const conversationId = String(api.conversationId)
+        const background = backgroundRuns.get(conversationId)
+        if (background) {
+          if (!background.tools.has(spec.name)) {
+            return notRun(`tool ${spec.name} is not in this background run's tool surface`)
+          }
+          const result = await deps.runAsPrincipal({
+            principalId: background.principalId,
+            agentId: background.agentId,
+            tool: spec.name,
+            args: args as Record<string, unknown>,
+          })
+          return { output: [{ type: 'text', text: JSON.stringify(result ?? null) }] }
+        }
+        const bridge = activeBridges.get(conversationId)
         const own = bridge?.get(spec.name)
         if (!own) {
-          const why = bridge
-            ? `tool ${spec.name} is not available to this conversation's current dispatch`
-            : `tool ${spec.name} was interrupted by a server restart and was not run (no live request to run it as) — ask again`
-          return { output: [{ type: 'text', text: JSON.stringify({ status: 'not_run', message: why }) }], isError: true }
+          return notRun(
+            bridge
+              ? `tool ${spec.name} is not available to this conversation's current dispatch`
+              : `tool ${spec.name} was interrupted by a server restart and was not run (no live request to run it as) — ask again`,
+          )
         }
         const result = await own.execute(args as Record<string, unknown>)
         return { output: [{ type: 'text', text: JSON.stringify(result ?? null) }] }
@@ -275,11 +335,15 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
     })
   }
 
-  function installToolBridge(tools: DurableBridgeToolSpec[]): ToolRegistration[] {
+  function installToolBridge(tools: DurableToolSurfaceEntry[]): ToolRegistration[] {
     let grew = false
     for (const spec of tools) {
       if (!knownTools.has(spec.name)) grew = true
-      knownTools.set(spec.name, spec)
+      knownTools.set(spec.name, {
+        name: spec.name,
+        description: spec.description,
+        parametersJsonSchema: spec.parametersJsonSchema,
+      })
     }
     const all = [...knownTools.values()].map(bridgeTool)
     if (grew || all.length === 0) {
@@ -347,21 +411,41 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
       return engineConversation(conversation, existing.id, input.tools)
     }
 
+    const { conversation, row } = await createIndexedConversation({
+      conversationKey: input.conversationKey,
+      agentId: input.agentId,
+      llmUserId: input.llmUserId,
+      instructions: input.instructions,
+      registrations,
+    })
+    return engineConversation(conversation, row.id, input.tools)
+  }
+
+  /**
+   * Create an ownerless conversation and record its index row. The provider
+   * session id is THE crash-safe attribution key (D7): read it from the
+   * conversation view and record the index row BEFORE the first submit, so
+   * even a crash right after submit bills correctly.
+   */
+  async function createIndexedConversation(input: {
+    conversationKey: string
+    agentId: string
+    llmUserId: string
+    instructions: string
+    registrations: ToolRegistration[]
+    background?: { principalId: string; tools: DurableToolSurfaceEntry[] }
+  }) {
     const conversation = await harness.createConversation(
       {
         ownership: { kind: 'ownerless' },
         agent: {
           model: { provider: GATEWAY_PROVIDER_ID, modelId: GATEWAY_MODEL_ID },
           instructions: input.instructions,
-          tools: registrations,
+          tools: input.registrations,
         },
       },
       BACKGROUND_CONTEXT,
     )
-
-    // The provider session id is THE crash-safe attribution key (D7): read it
-    // from the conversation view and record the index row BEFORE the first
-    // submit, so even a crash right after submit bills correctly.
     const view = await conversation.viewState(BACKGROUND_CONTEXT)
     const providerDoc = view.value.docs['pi.provider'] as { sessionId?: unknown } | undefined
     const providerSessionId =
@@ -377,8 +461,73 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
       llmUserId: input.llmUserId,
       piConversationId: String(conversation.id),
       providerSessionId,
+      ...(input.background
+        ? { runPrincipalId: input.background.principalId, runTools: input.background.tools }
+        : {}),
     })
-    return engineConversation(conversation, row.id, input.tools)
+    return { conversation, row }
+  }
+
+  function trackBackgroundRun(piConversationId: string, run: { principalId: string; agentId: string; tools: DurableToolSurfaceEntry[] }) {
+    backgroundRuns.set(piConversationId, {
+      principalId: run.principalId,
+      agentId: run.agentId,
+      tools: new Set(run.tools.map((t) => t.name)),
+    })
+  }
+
+  /**
+   * Start a background run (plan/phase-software-factory.md §3.1): an ownerless
+   * conversation recorded with its run principal + tool surface, its prompt
+   * durably admitted. Nobody awaits it — the harness drives it to settle, and
+   * a reopened harness resumes it (its tools still run as the recorded principal).
+   */
+  async function startBackgroundRun(input: BackgroundRunInput): Promise<BackgroundRunHandle> {
+    if (await index.resolveByConversationKey(input.conversationKey)) {
+      throw new Error(
+        `background run key ${input.conversationKey} is already indexed — a background run is started once; pick a new key`,
+      )
+    }
+    const registrations = installToolBridge(input.tools)
+    const { conversation, row } = await createIndexedConversation({
+      conversationKey: input.conversationKey,
+      agentId: input.agentId,
+      llmUserId: input.llmUserId,
+      instructions: input.instructions,
+      registrations,
+      background: { principalId: input.principalId, tools: input.tools },
+    })
+    if (row.piConversationId !== String(conversation.id)) {
+      throw new Error(
+        `background run key ${input.conversationKey} was recorded concurrently for another conversation (${row.piConversationId})`,
+      )
+    }
+    trackBackgroundRun(row.piConversationId, input)
+    const submission = await conversation.submit({ type: 'input', content: input.prompt }, BACKGROUND_CONTEXT)
+    return {
+      conversationId: row.piConversationId,
+      conversationKey: row.conversationKey,
+      submissionId: String(submission.id),
+    }
+  }
+
+  async function settledTurn(conversationId: ConversationId, settled: SettledSubmissionRecord): Promise<SettledDurableTurn> {
+    if (settled.status === 'unanswered') {
+      return { status: 'unanswered', reason: settled.reason, detail: settled.detail }
+    }
+    if (settled.type !== 'input') {
+      throw new DurableRunError(`submission settled in an unexpected state: ${settled.status}/${settled.type}`)
+    }
+    const conversation = await harness.conversation(conversationId, BACKGROUND_CONTEXT)
+    if (!conversation) throw new Error(`durable conversation ${String(conversationId)} vanished from storage`)
+    return { status: 'done', reply: await replyOf(conversation, settled.answer) }
+  }
+
+  async function waitForSubmission(submissionId: string): Promise<SettledDurableTurn> {
+    const submission = await harness.submission(Number(submissionId) as never, BACKGROUND_CONTEXT)
+    if (!submission) throw new Error(`unknown durable submission ${submissionId}`)
+    const settled = await submission.wait(BACKGROUND_CONTEXT)
+    return settledTurn(settled.conversationId, settled)
   }
 
   function engineConversation(
@@ -415,13 +564,70 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
     }
   }
 
+  // Background runs survive restarts: re-register each recorded run's tool
+  // surface and principal routing BEFORE resuming, so a resumed tool call
+  // executes as its recorded principal instead of reporting not_run.
+  for (const row of await index.listConversations()) {
+    if (row.runPrincipalId === null) continue
+    if (!row.runTools) {
+      throw new Error(
+        `background run ${row.conversationKey} has run principal ${row.runPrincipalId} but no recorded tool surface`,
+      )
+    }
+    installToolBridge(row.runTools)
+    trackBackgroundRun(row.piConversationId, {
+      principalId: row.runPrincipalId,
+      agentId: row.agentId,
+      tools: row.runTools,
+    })
+  }
+
+  // D9: input submissions still unsettled at open belonged to requests that
+  // died with the previous process. Watch each; a CHAT turn that settles done
+  // is handed to the chat mirror (nobody else will write its bubble).
+  const inspection = await harness.inspect(BACKGROUND_CONTEXT)
+  for (const pending of inspection.submissions) {
+    if (pending.type !== 'input') continue
+    void mirrorWhenSettled(pending.conversationId, String(pending.id)).catch((err: unknown) => {
+      ;(deps.onReport ?? ((e: unknown) => console.error('[durable] report:', e)))(
+        new Error(`could not mirror resumed submission ${String(pending.id)}`, { cause: err }),
+      )
+    })
+  }
+
+  async function mirrorWhenSettled(conversationId: ConversationId, submissionId: string): Promise<void> {
+    const row = await index.resolveByPiConversationId(String(conversationId))
+    if (!row) {
+      throw new Error(`resumed durable conversation ${String(conversationId)} has no conversation index row`)
+    }
+    if (row.runPrincipalId !== null) return // background runs have no chat bubble
+    const submission = await harness.submission(Number(submissionId) as never, BACKGROUND_CONTEXT)
+    if (!submission) throw new Error(`resumed submission ${submissionId} vanished from storage`)
+    const settled = await submission.wait(BACKGROUND_CONTEXT)
+    if (settled.status !== 'done' || settled.type !== 'input') return // nothing answered to mirror
+    const turn = await settledTurn(conversationId, settled)
+    if (turn.status !== 'done') return
+    await index.touch(row.id)
+    await deps.mirrorResumedChatTurn({
+      conversationKey: row.conversationKey,
+      agentId: row.agentId,
+      llmUserId: row.llmUserId,
+      piConversationId: row.piConversationId,
+      answerKey: `${row.piConversationId}:${String(settled.answer)}`,
+      reply: turn.reply,
+    })
+  }
+
+  harness.resume()
+
   return {
     harness,
     index,
     stateDir,
     events: (conversationId: number) =>
       watchEvents(harness, asConversationId(conversationId), BACKGROUND_CONTEXT),
-    engineHarness: { conversation },
+    engineHarness: { conversation, startBackgroundRun },
+    waitForSubmission,
   }
 }
 

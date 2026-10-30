@@ -1,6 +1,7 @@
 import type { ChatGatewayBoot, RecapBoot } from '../../../modules/index'
 import { building } from '$app/environment'
 import { registerAdminTools } from '$lib/kernel/admin-bootstrap'
+import { createPrincipalToolExecutor, type BackgroundRunHandle, type BackgroundRunInput } from '$lib/kernel/engines/durable'
 import { DbJourneyStore, type JourneyStore } from '$lib/kernel/playbook'
 import type { WiredKernel } from '$lib/kernel/wiring'
 import { createDurableEngine } from '$lib/server/agent/durable-engine'
@@ -81,6 +82,11 @@ export type AppBoot = {
    * Exposed for onboarding: the founding interview opens its journey here.
    */
   journeys: JourneyStore
+  /**
+   * Start a durable background run (software-factory §3.1): its tools execute
+   * as `principalId` through this kernel's registry, also after a restart.
+   */
+  startBackgroundRun(input: BackgroundRunInput): Promise<BackgroundRunHandle>
   status(): AppBootStatus
 }
 
@@ -157,7 +163,13 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
 
   // The durable engine is the orchestrator's only engine: the harness opens at
   // boot so turns a restart interrupted resume now.
-  const durable = createDurableEngine({ env, instructions: ORCHESTRATOR_PERSONA_PROMPT })
+  // Background runs execute their tools as their RECORDED principal through
+  // this kernel's registry (permission / approval / audit inherited).
+  const durable = createDurableEngine({
+    env,
+    instructions: ORCHESTRATOR_PERSONA_PROMPT,
+    runAsPrincipal: createPrincipalToolExecutor({ registry: kernel.registry, principals: kernel.principals }),
+  })
   const orchestrator = await orchestratorFn(kernel, wireGateway, {
     env,
     engines: [
@@ -191,6 +203,7 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
     gateway: gatewayBoot,
     recap,
     journeys,
+    startBackgroundRun: durable.startBackgroundRun,
     status: () => ({
       orchestrator: orchestrator.status(),
       gatewayBooted: gatewayBoot !== null,

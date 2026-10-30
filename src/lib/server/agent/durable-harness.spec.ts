@@ -3,12 +3,17 @@ import { spawn } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createAdminTools, kernelManifest } from '$lib/kernel/admin-tools'
 import { InMemoryApprovalStore } from '$lib/kernel/approvals'
 import type { EngineContext } from '$lib/kernel/engine'
-import { DurableLoopEngine } from '$lib/kernel/engines/durable'
+import {
+  createPrincipalToolExecutor,
+  DurableLoopEngine,
+  type BackgroundToolCall,
+  type BackgroundToolExecutor,
+} from '$lib/kernel/engines/durable'
 import { KernelError } from '$lib/kernel/errors'
 import { InMemoryActivationStore, ModuleRegistry } from '$lib/kernel/modules'
 import { KernelRegistry } from '$lib/kernel/registry'
@@ -19,7 +24,9 @@ import {
   releaseAgentStateLock,
   resetDurableHarnessSingletonForTests,
   resolveAgentStateDir,
+  type ResumedChatTurn,
 } from './durable-harness'
+import { BACKGROUND_CONTEXT } from './pi-durable'
 import { FileIndex } from './test-fixtures/file-index'
 
 /**
@@ -81,11 +88,56 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
+/** Records background tool calls; answers as the recorded principal. */
+function recordingExecutor(executed: string[]): BackgroundToolExecutor {
+  return async (call: BackgroundToolCall) => {
+    executed.push(`${call.principalId}:${call.tool}:${JSON.stringify(call.args)}`)
+    return { echoed: call.args.text, as: call.principalId }
+  }
+}
+
+/** A tool executor that must never be reached (chat-only tests). */
+const noBackgroundTools: BackgroundToolExecutor = async (call) => {
+  throw new Error(`unexpected background tool call ${call.tool}`)
+}
+
+const ECHO_SURFACE = [
+  {
+    name: 'memory.echo',
+    description: 'Echo back the input',
+    parametersJsonSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+  },
+]
+
+function harnessDeps(
+  complete: GatewayCompleteFn,
+  options: {
+    index?: InMemoryDurableConversationIndex | FileIndex
+    runAsPrincipal?: BackgroundToolExecutor
+    mirrored?: ResumedChatTurn[]
+  } = {},
+) {
+  return {
+    env: { EE_AGENT_STATE_DIR: dir },
+    index: options.index ?? new InMemoryDurableConversationIndex(),
+    complete,
+    onReport: () => {},
+    runAsPrincipal: options.runAsPrincipal ?? noBackgroundTools,
+    mirrorResumedChatTurn: async (turn: ResumedChatTurn) => {
+      if (!options.mirrored) throw new Error(`unexpected chat mirror of ${turn.conversationKey}`)
+      options.mirrored.push(turn)
+    },
+  }
+}
+
 function engineFor(complete: GatewayCompleteFn) {
   const index = new InMemoryDurableConversationIndex()
-  const deps = { env: { EE_AGENT_STATE_DIR: dir }, index, complete, onReport: () => {} }
+  const deps = harnessDeps(complete, { index })
   const engine = new DurableLoopEngine({
-    harness: { conversation: async (input) => (await getDurableHarness(deps)).engineHarness.conversation(input) },
+    harness: {
+      conversation: async (input) => (await getDurableHarness(deps)).engineHarness.conversation(input),
+      startBackgroundRun: async (input) => (await getDurableHarness(deps)).engineHarness.startBackgroundRun(input),
+    },
     instructions: 'You are a test agent.',
   })
   return { engine, index }
@@ -248,6 +300,9 @@ describe('durable engine over real pi-durable', () => {
         conversation: async () => {
           throw new Error('durable storage unavailable')
         },
+        startBackgroundRun: async () => {
+          throw new Error('durable storage unavailable')
+        },
       },
       instructions: 'You are a test agent.',
     })
@@ -274,34 +329,19 @@ describe('durable engine over real pi-durable', () => {
 describe('crash-resume (the point of durability)', () => {
   it('a turn whose process was SIGKILLed mid-model-call completes after reopen, from its checkpoint', async () => {
     // 1) A child process starts the turn and dies (SIGKILL) while the model call is in flight.
-    const child = spawn(join(process.cwd(), 'node_modules/.bin/tsx'), [join(__dirname, 'test-fixtures/crash-child.ts'), dir], {
-      cwd: process.cwd(),
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    let stderr = ''
-    child.stderr.on('data', (d) => (stderr += String(d)))
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`child never reached the model call: ${stderr}`)), 60_000)
-      child.stdout.on('data', (d) => {
-        if (String(d).includes('IN_FLIGHT')) {
-          clearTimeout(timer)
-          resolve()
-        }
-      })
-      child.on('exit', (code) => reject(new Error(`child exited early (${code}): ${stderr}`)))
-    })
-    child.removeAllListeners('exit')
-    const dead = new Promise((r) => child.on('exit', r))
-    child.kill('SIGKILL')
-    await dead
+    await waitInFlight(spawnCrashChild('chat'))
 
     // 2) This process reopens the same state: the dead owner's lock is stolen, the
     //    pending turn resumes, and its answer lands before the next turn runs.
     const { complete, seen } = scriptedGateway({ alice: [{ text: 'resumed answer' }, { text: 'next answer' }] })
     const index = new FileIndex(join(dir, 'index.json'))
-    const deps = { env: { EE_AGENT_STATE_DIR: dir }, index, complete, onReport: () => {} }
+    const mirrored: ResumedChatTurn[] = []
+    const deps = harnessDeps(complete, { index, mirrored })
     const engine = new DurableLoopEngine({
-      harness: { conversation: async (input) => (await getDurableHarness(deps)).engineHarness.conversation(input) },
+      harness: {
+      conversation: async (input) => (await getDurableHarness(deps)).engineHarness.conversation(input),
+      startBackgroundRun: async (input) => (await getDurableHarness(deps)).engineHarness.startBackgroundRun(input),
+    },
       instructions: 'You are a test agent.',
     })
     expect(await engine.run('s1', 'and now?', engineCtx('alice', 'alice', []))).toBe('next answer')
@@ -309,5 +349,171 @@ describe('crash-resume (the point of durability)', () => {
     expect(resumedCall).toContain('crash me') // the interrupted turn was re-run, not lost
     const nextCall = JSON.stringify(seen[1]?.messages)
     expect(nextCall).toContain('resumed answer') // and its answer is part of the history
+
+    // 3) D9: the resumed turn had no live request — its reply is handed to the
+    //    chat mirror exactly once (the live 'next answer' is NOT: its request wrote it).
+    await vi.waitFor(() => expect(mirrored).toHaveLength(1))
+    expect(mirrored[0]).toMatchObject({
+      conversationKey: 'orchestrator:s1',
+      agentId: 'orchestrator',
+      llmUserId: 'alice',
+      reply: 'resumed answer',
+    })
+    expect(mirrored[0]?.answerKey).toMatch(/^\d+:\d+$/)
   }, 120_000)
+
+  it('a BACKGROUND run SIGKILLed mid-run completes after reopen and runs its tool as its recorded principal', async () => {
+    const child = spawnCrashChild('background')
+    await waitInFlight(child)
+
+    const executed: string[] = []
+    const { complete, seen } = scriptedGateway({
+      'factory-billing': [{ call: { name: 'memory.echo', args: { text: 'after restart' } } }, { text: 'built it' }],
+    })
+    const index = new FileIndex(join(dir, 'index.json'))
+    const box = await getDurableHarness(harnessDeps(complete, { index, runAsPrincipal: recordingExecutor(executed) }))
+    await box.harness.waitForIdle(BACKGROUND_CONTEXT)
+
+    expect(executed).toEqual(['agent:factory:memory.echo:{"text":"after restart"}'])
+    expect(JSON.stringify(seen[0]?.messages)).toContain('build ticket 7') // the interrupted run resumed
+    expect(JSON.stringify(seen[1]?.messages)).toContain('agent:factory') // the model saw the tool result
+    const row = await index.resolveByConversationKey('factory:ticket-7')
+    expect(row).toMatchObject({ runPrincipalId: 'agent:factory', agentId: 'factory', llmUserId: 'factory-billing' })
+  }, 120_000)
+})
+
+function spawnCrashChild(mode: 'chat' | 'background') {
+  const child = spawn(
+    join(process.cwd(), 'node_modules/.bin/tsx'),
+    [join(__dirname, 'test-fixtures/crash-child.ts'), dir, mode],
+    { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] },
+  )
+  return child
+}
+
+async function waitInFlight(child: ReturnType<typeof spawnCrashChild>): Promise<void> {
+  let stderr = ''
+  child.stderr.on('data', (d) => (stderr += String(d)))
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`child never reached the model call: ${stderr}`)), 60_000)
+    child.stdout.on('data', (d) => {
+      if (String(d).includes('IN_FLIGHT')) {
+        clearTimeout(timer)
+        resolve()
+      }
+    })
+    child.on('exit', (code) => reject(new Error(`child exited early (${code}): ${stderr}`)))
+  })
+  child.removeAllListeners('exit')
+  const dead = new Promise((r) => child.on('exit', r))
+  child.kill('SIGKILL')
+  await dead
+}
+
+describe('background runs (software-factory S0)', () => {
+  it('records the run principal + surface in the index and drives the run to settle, tools as the principal', async () => {
+    const executed: string[] = []
+    const { complete, seen } = scriptedGateway({
+      bill: [{ call: { name: 'memory.echo', args: { text: 'hi' } } }, { text: 'background done' }],
+    })
+    const index = new InMemoryDurableConversationIndex()
+    const box = await getDurableHarness(harnessDeps(complete, { index, runAsPrincipal: recordingExecutor(executed) }))
+    const handle = await box.engineHarness.startBackgroundRun({
+      conversationKey: 'factory:item-1',
+      agentId: 'factory',
+      principalId: 'agent:factory',
+      llmUserId: 'bill',
+      instructions: 'You are the factory.',
+      prompt: 'build item 1',
+      tools: ECHO_SURFACE,
+    })
+    expect(handle.conversationKey).toBe('factory:item-1')
+
+    const settled = await box.waitForSubmission(handle.submissionId)
+    expect(settled).toEqual({ status: 'done', reply: 'background done' })
+    expect(executed).toEqual(['agent:factory:memory.echo:{"text":"hi"}'])
+    expect(seen.every((call) => call.userId === 'bill')).toBe(true)
+    expect(JSON.stringify(seen[0]?.messages)).toContain('build item 1')
+    expect(await index.resolveByConversationKey('factory:item-1')).toMatchObject({
+      agentId: 'factory',
+      llmUserId: 'bill',
+      runPrincipalId: 'agent:factory',
+      piConversationId: handle.conversationId,
+      runTools: ECHO_SURFACE,
+    })
+  })
+
+  it('a conversation key that is already indexed fails loud', async () => {
+    const { complete } = scriptedGateway({ bill: [{ text: 'one' }] })
+    const box = await getDurableHarness(harnessDeps(complete, { runAsPrincipal: recordingExecutor([]) }))
+    const input = {
+      conversationKey: 'factory:dup',
+      agentId: 'factory',
+      principalId: 'agent:factory',
+      llmUserId: 'bill',
+      instructions: 'You are the factory.',
+      prompt: 'go',
+      tools: [],
+    }
+    await box.engineHarness.startBackgroundRun(input)
+    await expect(box.engineHarness.startBackgroundRun(input)).rejects.toThrow(/already indexed/)
+  })
+
+  it('a recorded principal that no longer exists: the tool fails loud naming it, nothing runs as anyone else', async () => {
+    const { complete, seen } = scriptedGateway({
+      bill: [{ call: { name: 'memory.echo', args: { text: 'x' } } }, { text: 'could not' }],
+    })
+    const registry = new KernelRegistry()
+    const ran: string[] = []
+    registry.register({
+      name: 'memory.echo',
+      module: 'memory',
+      summary: 'echo',
+      auditClass: 'read',
+      inputSchema: z.object({ text: z.string() }),
+      permission: { roles: ['agent'] },
+      handler: async (ctx) => ran.push(ctx.principal.id),
+    })
+    const runAsPrincipal = createPrincipalToolExecutor({
+      registry,
+      principals: { getById: async () => null, getByApiKey: async () => null },
+    })
+    const box = await getDurableHarness(harnessDeps(complete, { runAsPrincipal }))
+    const handle = await box.engineHarness.startBackgroundRun({
+      conversationKey: 'factory:orphan',
+      agentId: 'factory',
+      principalId: 'agent:gone',
+      llmUserId: 'bill',
+      instructions: 'You are the factory.',
+      prompt: 'go',
+      tools: ECHO_SURFACE,
+    })
+    expect(await box.waitForSubmission(handle.submissionId)).toEqual({ status: 'done', reply: 'could not' })
+    expect(ran).toEqual([])
+    const toolResult = JSON.stringify(seen[1]?.messages)
+    expect(toolResult).toContain('unknown_principal')
+    expect(toolResult).toContain('agent:gone')
+  })
+
+  it('a CHAT conversation keeps the rule: a tool call with no live request reports not_run', async () => {
+    const executed: string[] = []
+    const { complete, seen } = scriptedGateway({
+      alice: [{ text: 'first' }, { call: { name: 'memory.echo', args: { text: 'late' } } }, { text: 'ok' }],
+    })
+    const index = new InMemoryDurableConversationIndex()
+    const deps = harnessDeps(complete, { index, runAsPrincipal: recordingExecutor(executed) })
+    const engine = new DurableLoopEngine({
+      harness: { conversation: async (input) => (await getDurableHarness(deps)).engineHarness.conversation(input), startBackgroundRun: async () => { throw new Error('unused') } },
+      instructions: 'You are a test agent.',
+    })
+    await engine.run('s1', 'one', engineCtx('alice', 'alice', executed))
+    // A turn with no live dispatch (what a restart-resumed turn looks like):
+    const box = await getDurableHarness(deps)
+    const row = await index.resolveByConversationKey('orchestrator:s1')
+    const conversation = await box.harness.conversation(Number(row!.piConversationId) as never, BACKGROUND_CONTEXT)
+    const submission = await conversation!.submit({ type: 'input', content: 'two' }, BACKGROUND_CONTEXT)
+    await submission.wait(BACKGROUND_CONTEXT)
+    expect(executed).toEqual([])
+    expect(JSON.stringify(seen[2]?.messages)).toContain('not_run')
+  })
 })

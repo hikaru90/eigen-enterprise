@@ -14,7 +14,14 @@ export class FileIndex implements DurableConversationIndex {
   }
   async recordConversation(input: RecordDurableConversationInput): Promise<DurableConversationRow> {
     const rows = this.rows()
-    const row = { ...input, id: rows.length + 1, createdAt: new Date(), updatedAt: new Date() }
+    const row: DurableConversationRow = {
+      ...input,
+      runPrincipalId: input.runPrincipalId ?? null,
+      runTools: input.runTools ?? null,
+      id: rows.length + 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
     writeFileSync(this.path, JSON.stringify([...rows, row]))
     return row
   }
@@ -23,6 +30,9 @@ export class FileIndex implements DurableConversationIndex {
   }
   async resolveByProviderSession(id: string) {
     return this.rows().find((r) => r.providerSessionId === id)
+  }
+  async resolveByPiConversationId(id: string) {
+    return this.rows().find((r) => r.piConversationId === id)
   }
   async listConversations() {
     return this.rows()
