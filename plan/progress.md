@@ -2,6 +2,22 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-30 — APPROVED: software factory on the box, built on durable background runs (plan only)
+
+**Owner direction**: "focus on pi durable implementation and setting up the software factory so that the system can self evolve." `plan/phase-software-factory.md` rewritten (the 2026-10-08 draft built on the frozen `dev-agent`).
+
+**Decisions (owner, 2026-10-30)**
+- **F1** The factory lives on the box: ee keeps a git checkout of eigenEnterprise's source; shipped changes become new `os` releases through ee's blue-green, health-gated path.
+- **F2** The builder is the durable agent with the `repo.*` hands, as background pi-durable runs that survive restarts. `dev-agent`, `pi-engine`, the `pi` engine and the writer-less `kernel_agent_session_events` are deleted in S1 (announced in the plan, §6).
+- **F3** Tickets come from the Extension Roadmap.
+- **F4** Green docs-only and test-only changes auto-merge; src needs the owner's approval; every deploy is an owner click (D11 unchanged). Governance files (AGENTS.md, `.pi/skills/**`, discipline, approvals, the risk rules) are always src-class; a test-only change that drops the test count is src-class.
+
+**Gap found while planning**: the `repo.*` hands resolve the git root from `process.cwd()`. On the box that is a read-only release tarball, so self-improvement had nowhere to run since the dev server was removed. S2 fixes it (`EE_SOURCE_DIR`).
+
+**Open**: how the box pushes to GitHub (blocks S4 only; recommendation: per-push App installation token, `contents: write`, this repo only).
+
+**Next**: S0 — durable background runs with a recorded run principal, the D8 live run view (SSE, multi-viewer), the D9 chat mirror.
+
 ## 2026-10-23 — The dev server is removed: the ee box is the only install
 
 **Owner report**: on a private repo, "Generate deploy key" was disabled ("A deployment server is needed…"), read as a deploy regression; then the box said "not claimed" although the owner had a login and passkey.
