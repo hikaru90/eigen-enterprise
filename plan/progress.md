@@ -2,6 +2,29 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-10-30 — S0 PROVEN in the local test server (ee-box): crash-resume works for real after a getDb() fix
+
+**First proof run FAILED, which found the real bug**: a chat turn resumed after a restart failed at once with `getDb() was called outside an active request`. pi-durable drives model calls from its own task loop; the default completion called `llmChatCompletion`, which needs the request-scoped DB context. Resumed turns and background runs have none. The crash-resume specs injected a fake `complete`, so **crash-resume had never worked in production**. Fix `da46d7b`: the default completion always runs inside `withDbUser(input.userId)` (the user resolved from the conversation index), never in the ambient context — the task loop may drive another user's conversation during a live request.
+
+**Also merged**: mock gateway with native `tool_calls` + `[mock-tool:…]`/`[mock-delay:ms]` markers (`b16e249`, merge `37057b0`); `agent-runs-live.e2e.ts` now expects a 200 chat.
+
+**Proof (release `da46d7b`, ee release `511aa2c8a5e369fa`, unit `ee-os-a.service`, mock on the host :5299 reached as host.docker.internal)**
+- Two browser contexts on one run: both live; after the restart both reconnect on their own (~1 s) without reload.
+- Restart during the first LLM call (SIGKILL): the model call is replayed, the tool runs in the new process, the answer is generated, journal `chat mirror: mirrored`, the answer is in the chat after reload without resending, both feeds show the full run + "Run finished".
+- Restart after the tool ran, during the second LLM call: resumed second call, answer mirrored, feeds complete.
+- In-flight chat tool call at restart: recorded as a failed tool (`tool_unavailable`, "Tool website.list_pages is not available"), not our `not_run`; the model answered anyway.
+
+**Follow-ups found**
+- SIGTERM never exits on its own (waits for in-flight turns) → every restart takes the full 20 s and ends in SIGKILL.
+- The run feed's Input lines show the whole injected onboarding-context block.
+- A chat sent right after "Skip for now" fails with `conversation_busy` (greeting turn still running); the greeting bubble then appears under that failed message.
+- `.env.example` lacks `TENANT_MASTER_KEY`; without it the server crashes on the provider save.
+- Two `onboarding-welcome` e2e tests fail ("First, it needs a mind to think with."); not yet checked against main before the mock change.
+
+**State**: ee-box is a fresh, unclaimed install of `511aa2c8a5e369fa` (claim link handed to the owner in the session, not in any file). Main not pushed.
+
+**Next**: S1 removals; module readiness pass (website, brand, email) — see the session for owner questions.
+
 ## 2026-10-30 — SHIPPED (main, not on the box yet): factory S0 — durable background runs, D8 live run view, D9 chat mirror
 
 Two worktree streams, merged `--no-ff`: S0-A `ec223ca` (`6a509f8`), S0-B `3d3be85` (`c179487`), integration fix `381c44c`.
