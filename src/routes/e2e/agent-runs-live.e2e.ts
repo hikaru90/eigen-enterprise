@@ -28,11 +28,10 @@ async function chat(page: Page, message: string, sessionId?: string): Promise<st
     data: { message, ...(sessionId ? { sessionId } : {}) },
     timeout: 60_000,
   })
-  // The mock gateway alternates a JSON tool-intent text and a plain answer
-  // (one global counter). The chat layer refuses the JSON text as an answer
-  // (500), but the durable run itself still started, ran and committed —
-  // which is all this view watches. Either way the body names the session.
+  // The mock gateway answers with a native tool call (website.list_pages), then a
+  // plain answer once the tool result is back (scripts/mock-gateway-chat.mjs).
   const body = (await res.json()) as { sessionId?: string }
+  expect(res.status(), JSON.stringify(body)).toBe(200)
   expect(body.sessionId, JSON.stringify(body)).toBeTruthy()
   return body.sessionId!
 }
@@ -84,6 +83,9 @@ test.describe('agent runs live view', () => {
       await expect(feed.getByText(second)).toBeVisible()
       await expect(feed.getByText('Run started').last()).toBeVisible()
       await expect(feed.getByText('Run finished').last()).toBeVisible()
+      // The native tool call shows up as a tool line that finished.
+      await expect(p.getByTestId('run-feed-tool').last()).toContainText('website.list_pages')
+      await expect(p.getByTestId('run-feed-tool').last()).toContainText('done')
       await expect(p.getByTestId('run-feed-status')).toHaveText('Idle')
     }
     await page.screenshot({ path: 'test-results/agent-runs-live-a.png', fullPage: true })

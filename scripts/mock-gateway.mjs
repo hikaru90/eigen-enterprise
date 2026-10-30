@@ -3,12 +3,15 @@
  *
  * 1. OpenRouter-compatible LLM gateway (/v1) — the onboarding wizard verifies
  *    credentials with a REAL server-side gateway call, so e2e needs a gateway that
- *    actually answers.
+ *    actually answers. Chat completions answer with NATIVE tool_calls then a
+ *    plain answer; prompt markers [mock-tool:<name>] / [mock-delay:<ms>] and env
+ *    MOCK_GATEWAY_DELAY_MS are documented in scripts/mock-gateway-chat.mjs.
  * 2. models.dev catalog fixture (/models.dev.json) — MODELS_DEV_CATALOG_URL override.
  * 3. GitHub device-flow + Copilot token stubs (/gh/*, /copilot_internal/*) —
  *    OAUTH_GITHUB_BASE_URL / OAUTH_GITHUB_API_BASE_URL overrides.
  */
 import http from 'node:http'
+import { mockChatCompletion } from './mock-gateway-chat.mjs'
 
 const port = Number(process.env.MOCK_GATEWAY_PORT ?? 5199)
 
@@ -64,7 +67,6 @@ const CATALOG_FIXTURE = {
 }
 
 let devicePollCount = 0
-let gatewayChatCalls = 0
 
 const server = http.createServer((req, res) => {
   const url = req.url ?? ''
@@ -133,29 +135,21 @@ const server = http.createServer((req, res) => {
     let raw = ''
     req.on('data', (chunk) => (raw += chunk))
     req.on('end', () => {
-      let model = 'mock-chat-model'
-      let isPing = false
+      let body
       try {
-        const body = JSON.parse(raw)
-        if (typeof body.model === 'string' && body.model) model = body.model
-        if (body.max_tokens === 1) isPing = true // connection-test ping: any text reply works
+        body = JSON.parse(raw)
       } catch {
-        // keep default model
+        send(400, { error: { message: 'mock gateway: request body is not JSON' } })
+        return
       }
-      let content = 'pong'
-      if (!isPing) {
-        gatewayChatCalls += 1
-        content =
-          gatewayChatCalls % 2 === 1
-            ? JSON.stringify({ tool: 'list_projects', arguments: {} })
-            : JSON.stringify({ answer: 'Hello from mock gateway.' })
+      // Native tool_calls + optional delay: see scripts/mock-gateway-chat.mjs.
+      const { delayMs, response } = mockChatCompletion(body, process.env)
+      if (delayMs > 0) {
+        console.log(`[mock-gateway] delaying completion ${delayMs} ms`)
+        setTimeout(() => send(200, response), delayMs)
+      } else {
+        send(200, response)
       }
-      send(200, {
-        id: 'mock-completion',
-        model,
-        choices: [{ message: { role: 'assistant', content } }],
-        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-      })
     })
     return
   }
