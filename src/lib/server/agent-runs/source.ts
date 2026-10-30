@@ -3,7 +3,7 @@ import {
   DbDurableConversationIndex,
   type DurableConversationIndex,
 } from '$lib/server/agent/conversation-index'
-import { getDurableHarness, type DurableHarnessBox } from '$lib/server/agent/durable-harness'
+import { openedDurableHarness, type DurableHarnessBox } from '$lib/server/agent/durable-harness'
 import type { AgentEventStream } from '$lib/server/agent/pi-durable'
 
 /**
@@ -59,14 +59,12 @@ function defaultIndex(): DurableConversationIndex {
 }
 
 /**
- * Production source. The harness is a process singleton: boot normally opened
- * it already (getDurableHarness returns the cached box); otherwise this opens
- * it with the same deps the engine uses (process env + the Postgres index).
+ * Production source. The harness is the process singleton boot opened (with
+ * the engine's full deps); the run view only reads it and never opens one.
  */
 export function agentRunsSource(): AgentRunsSource {
-  const index = defaultIndex()
   return createAgentRunsSource({
-    index,
-    harness: () => getDurableHarness({ env: process.env, index }),
+    index: defaultIndex(),
+    harness: () => openedDurableHarness(),
   })
 }

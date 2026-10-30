@@ -647,6 +647,20 @@ export function getDurableHarness(deps: DurableHarnessDeps): Promise<DurableHarn
   return durableHost.__eeDurableHarness
 }
 
+/**
+ * The harness boot opened, for readers that must never open it themselves
+ * (the D8 run view): opening needs the engine's full deps (runAsPrincipal,
+ * the chat mirror), which only the composition root has. Not opened yet ⇒
+ * fail loud instead of opening a second, under-wired singleton.
+ */
+export function openedDurableHarness(): Promise<DurableHarnessBox> {
+  const opened = durableHost.__eeDurableHarness
+  if (!opened) {
+    throw new Error('the durable agent harness is not open yet (boot opens it); retry once the server has booted')
+  }
+  return opened
+}
+
 /** Test/ops reset of the process singleton (the opener itself is never cached). */
 export function resetDurableHarnessSingletonForTests(): void {
   delete durableHost.__eeDurableHarness
