@@ -1,6 +1,8 @@
 import { eq } from 'drizzle-orm'
 import type { AppDatabase } from '$lib/server/db'
-import { durableConversations } from '$lib/server/db/durable.schema'
+import { durableConversations, type DurableRunToolRecord } from '$lib/server/db/durable.schema'
+
+export type { DurableRunToolRecord }
 
 /**
  * Postgres index of durable agent conversations (plan/phase-durable.md D7).
@@ -18,6 +20,10 @@ export type DurableConversationRow = {
   llmUserId: string
   piConversationId: string
   providerSessionId: string
+  /** The principal a background run's tools execute as; null for chat conversations. */
+  runPrincipalId: string | null
+  /** A background run's tool surface; null for chat conversations. */
+  runTools: DurableRunToolRecord[] | null
   createdAt: Date
   updatedAt: Date
 }
@@ -31,6 +37,10 @@ export type RecordDurableConversationInput = {
   piConversationId: string
   /** The pi.provider doc's sessionId — unique, the attribution key. */
   providerSessionId: string
+  /** Background runs only: the principal its tools execute as (chat: omitted). */
+  runPrincipalId?: string
+  /** Background runs only: the tool surface to re-register on reopen. */
+  runTools?: DurableRunToolRecord[]
 }
 
 /**
@@ -44,6 +54,7 @@ export type DurableConversationIndex = {
   ): Promise<DurableConversationRow>
   resolveByConversationKey(conversationKey: string): Promise<DurableConversationRow | undefined>
   resolveByProviderSession(providerSessionId: string): Promise<DurableConversationRow | undefined>
+  resolveByPiConversationId(piConversationId: string): Promise<DurableConversationRow | undefined>
   listConversations(): Promise<DurableConversationRow[]>
   /** Stamp `updated_at` (the index has no other mutable column). */
   touch(id: number): Promise<void>
@@ -57,6 +68,8 @@ function rowOf(record: typeof durableConversations.$inferSelect): DurableConvers
     llmUserId: record.llmUserId,
     piConversationId: record.piConversationId,
     providerSessionId: record.providerSessionId,
+    runPrincipalId: record.runPrincipalId ?? null,
+    runTools: record.runTools ?? null,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   }
@@ -116,6 +129,16 @@ export class DbDurableConversationIndex implements DurableConversationIndex {
     return record ? rowOf(record) : undefined
   }
 
+  async resolveByPiConversationId(piConversationId: string): Promise<DurableConversationRow | undefined> {
+    const db = await this.db()
+    const [record] = await db
+      .select()
+      .from(durableConversations)
+      .where(eq(durableConversations.piConversationId, piConversationId))
+      .limit(1)
+    return record ? rowOf(record) : undefined
+  }
+
   async listConversations(): Promise<DurableConversationRow[]> {
     const db = await this.db()
     const records = await db.select().from(durableConversations)
@@ -144,6 +167,8 @@ export class InMemoryDurableConversationIndex implements DurableConversationInde
     const row: DurableConversationRow = {
       id: this.nextId++,
       ...input,
+      runPrincipalId: input.runPrincipalId ?? null,
+      runTools: input.runTools ?? null,
       createdAt: new Date(),
       updatedAt: new Date(),
     }
@@ -157,6 +182,10 @@ export class InMemoryDurableConversationIndex implements DurableConversationInde
 
   async resolveByProviderSession(sessionId: string): Promise<DurableConversationRow | undefined> {
     return [...this.rows.values()].find((row) => row.providerSessionId === sessionId)
+  }
+
+  async resolveByPiConversationId(piConversationId: string): Promise<DurableConversationRow | undefined> {
+    return [...this.rows.values()].find((row) => row.piConversationId === piConversationId)
   }
 
   async listConversations(): Promise<DurableConversationRow[]> {

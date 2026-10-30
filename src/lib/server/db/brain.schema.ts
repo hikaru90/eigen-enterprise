@@ -858,9 +858,16 @@ export const chatMessage = pgTable(
     content: text('content').notNull(),
     /** Stores variant/tool metadata for intermediate agent steps (thinking, tool_call, tool_result). */
     metadata: jsonb('metadata'),
+    /**
+     * "<piConversationId>:<answerEntryId>" of a durable turn mirrored into the
+     * chat after a restart (plan/phase-durable.md D9, migration 0103). Unique:
+     * the mirror never writes the same reply twice. NULL for live-written rows.
+     */
+    durableAnswerKey: text('durable_answer_key'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (t) => [
+    uniqueIndex('chat_message_durable_answer_key_unique').on(t.durableAnswerKey),
     index('chat_message_session_idx').on(t.sessionId),
     index('chat_message_user_idx').on(t.userId),
     index('chat_message_created_idx').on(t.sessionId, t.createdAt),

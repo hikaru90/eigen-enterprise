@@ -14,6 +14,7 @@ export type KernelErrorCode =
   | 'onboarding_inactive'
   | 'duplicate_engine'
   | 'budget_exceeded'
+  | 'unknown_principal'
 
 const KNOWN_CODES: readonly KernelErrorCode[] = [
   'permission_denied',
@@ -31,6 +32,7 @@ const KNOWN_CODES: readonly KernelErrorCode[] = [
   'duplicate_engine',
   'budget_exceeded',
   'onboarding_inactive',
+  'unknown_principal',
 ]
 
 /** Exhaustive per code — adding a KernelErrorCode without a title is a type error. */
@@ -50,6 +52,7 @@ const PROBLEM_TITLES: Record<KernelErrorCode, string> = {
   duplicate_engine: 'Duplicate loop engine',
   budget_exceeded: 'Spend budget exceeded',
   onboarding_inactive: 'Onboarding hand-off not active',
+  unknown_principal: 'Unknown principal',
 }
 
 const PROBLEM_STATUS: Partial<Record<KernelErrorCode, number>> = {

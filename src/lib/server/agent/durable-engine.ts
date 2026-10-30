@@ -1,10 +1,19 @@
 import type { GatewayCompleteFn } from './gateway-model'
-import { DurableLoopEngine } from '$lib/kernel/engines/durable'
+import {
+  DurableLoopEngine,
+  type BackgroundRunHandle,
+  type BackgroundRunInput,
+  type BackgroundToolExecutor,
+} from '$lib/kernel/engines/durable'
 import {
   DbDurableConversationIndex,
   type DurableConversationIndex,
 } from './conversation-index'
-import { getDurableHarness, type DurableHarnessDeps } from './durable-harness'
+import {
+  getDurableHarness,
+  type DurableHarnessDeps,
+  type ResumedChatTurn,
+} from './durable-harness'
 
 /**
  * Production composition of the 'durable' LoopEngine (plan/phase-durable.md
@@ -24,6 +33,20 @@ export type DurableEngineFactoryOptions = {
   instructions: string
   /** Default gateway billing identity when a dispatch carries no llmUserId. */
   llmUserId?: string
+  /**
+   * Executes background-run tool calls as their recorded principal (boot:
+   * createPrincipalToolExecutor over the kernel registry). Required.
+   */
+  runAsPrincipal: BackgroundToolExecutor
+  /** D9 chat mirror of resumed turns; defaults to the chat_message writer. */
+  mirrorResumedChatTurn?: (turn: ResumedChatTurn) => Promise<void>
+}
+
+/** D9 default: write the resumed reply into chat_message (lazy DB import). */
+async function defaultChatMirror(turn: ResumedChatTurn): Promise<void> {
+  const { mirrorResumedChatTurn } = await import('$lib/server/chat/mirror-durable-turn')
+  const outcome = await mirrorResumedChatTurn(turn)
+  console.info(`[durable] resumed turn of ${turn.conversationKey} → chat mirror: ${outcome}`)
 }
 
 /** The lazy pooled DB handle the kernel stores use (request-scoped in ALS). */
@@ -40,12 +63,20 @@ export function createDurableEngine(options: DurableEngineFactoryOptions): {
   engine: DurableLoopEngine
   /** Open the harness now (resuming turns a restart interrupted); retries through a blue-green handover. */
   warmUp: () => Promise<void>
+  /** Start a background run (software-factory §3.1): nobody awaits it; it survives restarts. */
+  startBackgroundRun: (input: BackgroundRunInput) => Promise<BackgroundRunHandle>
 } {
   const index = options.index ?? defaultConversationIndex()
   const deps: DurableHarnessDeps = {
     env: options.env ?? process.env,
     index,
     ...(options.complete === undefined ? {} : { complete: options.complete }),
+    runAsPrincipal: options.runAsPrincipal,
+    mirrorResumedChatTurn: options.mirrorResumedChatTurn ?? defaultChatMirror,
+  }
+  const startBackgroundRun = async (input: BackgroundRunInput) => {
+    const box = await getDurableHarness(deps)
+    return box.engineHarness.startBackgroundRun(input)
   }
   const engine = new DurableLoopEngine({
     harness: {
@@ -53,6 +84,7 @@ export function createDurableEngine(options: DurableEngineFactoryOptions): {
         const box = await getDurableHarness(deps)
         return box.engineHarness.conversation(input)
       },
+      startBackgroundRun,
     },
     instructions: options.instructions,
     ...(options.llmUserId === undefined ? {} : { llmUserId: options.llmUserId }),
@@ -70,5 +102,5 @@ export function createDurableEngine(options: DurableEngineFactoryOptions): {
       }
     }
   }
-  return { engine, warmUp }
+  return { engine, warmUp, startBackgroundRun }
 }
