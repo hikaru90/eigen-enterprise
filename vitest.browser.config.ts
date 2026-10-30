@@ -92,6 +92,7 @@ export default defineConfig({
       'src/lib/components/website-activity-panel.svelte.spec.ts',
       'src/lib/components/website-settings.svelte.spec.ts',
       'src/lib/components/app-detail-settings.svelte.spec.ts',
+      'src/lib/components/agent-run-feed.svelte.spec.ts',
       'modules/brand/water-flow.svelte.spec.ts',
     ],
     exclude: ['src/routes/demo/playwright/**/*.ts', '**/*.e2e.ts'],
