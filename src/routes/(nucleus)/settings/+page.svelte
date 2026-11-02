@@ -46,10 +46,10 @@
   <title>{docTitle('Account', 'Settings')}</title>
 </svelte:head>
 
-<h1 class="text-xl font-medium tracking-tight">Account</h1>
+<h2 class="text-base font-semibold tracking-tight">Account</h2>
 <p class="mt-1 text-sm text-foreground/60">
-  Signed in as <span class="font-medium text-foreground">{data.user.email}</span>. You sign in with a
-  code sent to this email or with a passkey — there is no password.
+  Signed in as <span class="font-medium text-foreground">{data.user.email}</span>. You sign in with
+  a code sent to this email or with a passkey — there is no password.
 </p>
 
 <div class="mt-8 space-y-6" data-testid="settings-account">
@@ -69,7 +69,9 @@
     {/if}
   </form>
 
-  <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-4">
+  <div
+    class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-4"
+  >
     <div>
       <p class="text-sm font-medium">Sign out</p>
       <p class="text-xs text-foreground/60">Ends the session in this browser.</p>

@@ -65,11 +65,11 @@
   <title>{docTitle('Brand')}</title>
 </svelte:head>
 
-<div class="flex w-full flex-col gap-6 px-4 py-8 md:px-8">
+<div class="mt-8 flex w-full flex-col gap-6">
   <header class="flex flex-wrap items-end justify-between gap-4">
     <div class="flex flex-col gap-2">
       <PickerBreadcrumb trail={data.trail} />
-      <h1 class="text-3xl font-semibold tracking-tight">{levelTitle}</h1>
+      <h2 class="text-base font-semibold tracking-tight">{levelTitle}</h2>
       {#if data.active}
         <p class="text-muted-foreground text-sm" data-testid="active-style">
           Active style:

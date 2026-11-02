@@ -4,7 +4,7 @@
   import { resolve } from '$app/paths'
   import * as Alert from '$lib/components/ui/alert'
   import { Badge } from '$lib/components/ui/badge'
-  import * as Breadcrumb from '$lib/components/ui/breadcrumb'
+  import SectionHeader from '$lib/components/page/section-header.svelte'
   import * as Card from '$lib/components/ui/card'
   import * as Table from '$lib/components/ui/table'
   import { docTitle } from '$lib/shell/title'
@@ -23,33 +23,11 @@
 
 <svelte:head><title>{docTitle('Settings', 'Website')}</title></svelte:head>
 
-<div class="mx-auto w-full max-w-4xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
-  <header class="flex min-w-0 flex-col gap-1.5 border-b border-border pb-6">
-    <Breadcrumb.Root>
-      <Breadcrumb.List>
-        <Breadcrumb.Item>
-          <Breadcrumb.Link href={resolve('/m/website')}>Website</Breadcrumb.Link>
-        </Breadcrumb.Item>
-        <Breadcrumb.Separator />
-        <Breadcrumb.Item>
-          <Breadcrumb.Page>Settings</Breadcrumb.Page>
-        </Breadcrumb.Item>
-      </Breadcrumb.List>
-    </Breadcrumb.Root>
-    <h1 class="text-xl font-semibold tracking-tight">Website settings</h1>
-    <p class="text-sm text-foreground/60">
-      Domains, routing, HTTPS and the server that runs your apps.
-    </p>
-  </header>
-
-  <nav class="mt-5 flex flex-wrap gap-4 text-sm" aria-label="Website settings">
-    <a class="underline underline-offset-4" href={resolve('/m/website')}>Back to repositories</a>
-    <a class="underline underline-offset-4" href={resolve('/m/website/site')}
-      >Company site settings</a
-    >
-    <a class="underline underline-offset-4" href="#domains">Domains &amp; routing</a>
-    <a class="underline underline-offset-4" href="#https">HTTPS &amp; certificates</a>
-  </nav>
+<div class="max-w-3xl">
+  <SectionHeader
+    title="Settings"
+    description="Domains, routing, HTTPS and the server that runs your apps."
+  />
 
   {#if !data.managed}
     <Alert.Root class="mt-6" data-testid="hosting-unmanaged">

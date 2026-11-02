@@ -434,7 +434,7 @@
           <button
             type="button"
             class={isLastLine
-              ? 'mt-8 h-11 bg-black px-10 text-sm font-medium text-white hover:bg-black/90 disabled:opacity-50'
+              ? 'mt-8 h-11 bg-primary px-10 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50'
               : 'mt-8 h-11 px-10 text-sm font-medium text-foreground underline-offset-4 hover:underline'}
             disabled={completing}
             onclick={nextLine}
@@ -467,7 +467,7 @@
         </p>
         <button
           type="button"
-          class="mt-8 h-11 bg-black px-10 text-sm font-medium text-white hover:bg-black/90"
+          class="mt-8 h-11 bg-primary px-10 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           onclick={() => (mailDomainReady = true)}
           data-testid="onboarding-have-domain"
         >
@@ -490,7 +490,7 @@
           <div class="text-center">
             <button
               type="button"
-              class="mt-8 h-11 bg-black px-10 text-sm font-medium text-white hover:bg-black/90 disabled:opacity-50"
+              class="mt-8 h-11 bg-primary px-10 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               disabled={completing}
               onclick={afterMail}
               data-testid="onboarding-continue"
@@ -602,7 +602,7 @@
             {/if}
             <button
               type="submit"
-              class="mt-2 h-11 bg-black px-10 text-sm font-medium text-white hover:bg-black/90 disabled:opacity-50"
+              class="mt-2 h-11 bg-primary px-10 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               disabled={mailSaving}
             >
               {#if mailSaving}

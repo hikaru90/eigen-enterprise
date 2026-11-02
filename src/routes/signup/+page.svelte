@@ -1,5 +1,6 @@
 <script lang="ts">
   import { docTitle } from '$lib/shell/title'
+  import PublicFrame from '$lib/components/page/public-frame.svelte'
   import type { ActionData } from './$types'
   import type { PageData } from './$types'
   import { enhance } from '$app/forms'
@@ -27,7 +28,10 @@
   const codeStep = $derived(form?.step === 'code' && typeof form.email === 'string')
 
   function validate() {
-    const result = signUpCodeRequestSchema.safeParse({ email, acceptTerms: acceptTerms ? 'on' : undefined })
+    const result = signUpCodeRequestSchema.safeParse({
+      email,
+      acceptTerms: acceptTerms ? 'on' : undefined,
+    })
     if (result.success) {
       fieldErrors = {}
       return true
@@ -40,38 +44,13 @@
 
 <svelte:head><title>{docTitle('Sign up')}</title></svelte:head>
 
-<div class="mx-auto max-w-md px-5 pt-10">
-  <p class="mb-4">
-    {#if websiteOrigin}
-      <a href={websiteOrigin} rel="external" class="text-muted-foreground text-xs underline-offset-2 hover:underline">
-        ← Back to home
-      </a>
-    {:else}
-      <a href={resolve('/')} class="text-muted-foreground text-xs underline-offset-2 hover:underline">
-        ← Back to home
-      </a>
-    {/if}
-  </p>
-  <header class="text-center">
-    {#if websiteOrigin}
-      <a href={websiteOrigin} rel="external" class="inline-block">
-        <span class="text-lg font-medium tracking-tight">Eigen Enterprise</span>
-      </a>
-    {:else}
-      <a href={resolve('/')} class="inline-block">
-        <span class="text-lg font-medium tracking-tight">Eigen Enterprise</span>
-      </a>
-    {/if}
-    <p class="text-muted-foreground mt-2 text-xs">Create an account</p>
-    {#if data.plan}
-      <p class="text-muted-foreground mt-1 text-xs">{signupPlanSubtitle(data.plan)}</p>
-    {/if}
-  </header>
-
-  <Card.Root
-    class="ring-0 shadow-[4px_4px_0_0_rgb(17_17_17_/_0.08)] mt-8 border border-black/10 bg-card"
-  >
-    <Card.Content class="space-y-4 pt-6">
+<PublicFrame
+  title="Create an account"
+  subtitle={data.plan ? signupPlanSubtitle(data.plan) : null}
+  back
+>
+  <Card.Root class="border border-border shadow-none">
+    <Card.Content class="space-y-4">
       {#if data.unclaimed}
         <p class="text-xs" data-testid="auth-unclaimed">{data.unclaimed}</p>
       {:else if codeStep && form?.email}
@@ -136,7 +115,9 @@
               </span>
             </label>
             {#if fieldErrors.acceptTerms}
-              <p id="accept-terms-error" class="text-destructive text-xs">{fieldErrors.acceptTerms}</p>
+              <p id="accept-terms-error" class="text-destructive text-xs">
+                {fieldErrors.acceptTerms}
+              </p>
             {/if}
           </div>
 
@@ -188,4 +169,4 @@
       {/if}
     </Card.Content>
   </Card.Root>
-</div>
+</PublicFrame>

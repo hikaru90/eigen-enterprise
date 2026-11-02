@@ -90,14 +90,16 @@ test('every navigation entry and settings section renders inside the one shell',
     await expect(page).toHaveURL(url)
     await expectInShell(page, 'settings', new RegExp(`^${name} · Settings · eigenEnterprise$`))
     await expect(page.getByTestId(`settings-nav-${id}`)).toHaveAttribute('aria-current', 'page')
-    await expect(page.getByRole('heading', { level: 1, name })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 2, name })).toBeVisible()
     await page.screenshot({ path: `${SHOTS}/settings-${id}.png`, fullPage: true })
   }
   // Passkeys never hang on "Loading…"; the current session is listed.
   await page.goto('/settings/passkeys')
   await expect(page.getByText('Loading…')).toHaveCount(0)
   await expect(page.getByTestId('passkeys-empty')).toBeVisible()
-  await expect(page.getByTestId('session-row').first()).toContainText('')
+  // A readable device (or when it signed in) — never "Unknown device · Unknown address".
+  await expect(page.getByTestId('session-row').first()).not.toContainText('Unknown')
   await expect(page.getByText('this browser')).toBeVisible()
   // No password form anywhere in settings.
   await page.goto('/settings')
@@ -166,6 +168,11 @@ test('signed out: unknown pages and dead ends offer Sign in', async ({ page }) =
   expect(res?.status()).toBe(404)
   await expect(page.getByTestId('error-back')).toHaveText('Sign in')
   await expect(page.getByTestId('app-shell')).toHaveCount(0)
+  // The public company site is for visitors: its 404 never offers "Sign in".
+  const site404 = await page.goto('/s/no-such-page')
+  expect(site404?.status()).toBe(404)
+  await expect(page.getByTestId('site-error')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Sign in' })).toHaveCount(0)
   await page.goto('/invite?token=nope')
   await expect(page.getByTestId('invite-sign-in')).toHaveAttribute('href', '/login')
   await page.screenshot({ path: `${SHOTS}/signed-out-invite.png` })

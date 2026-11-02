@@ -62,7 +62,7 @@
         {tab.count > 0 || tab.segment !== 'overdue' ? tab.count : '—'}
       </p>
       <p
-        class="text-foreground mt-0.5 text-[10px] uppercase tracking-wide {segment === tab.segment
+        class="text-foreground mt-0.5 text-[11px] {segment === tab.segment
           ? 'font-medium'
           : 'font-normal'}"
       >

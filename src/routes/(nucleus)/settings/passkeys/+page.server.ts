@@ -1,5 +1,6 @@
 import type { PageServerLoad } from './$types'
 import { redirect } from '@sveltejs/kit'
+import { deviceLabel } from '$lib/auth/session-label'
 import { auth } from '$lib/server/auth'
 
 /**
@@ -30,10 +31,13 @@ export const load: PageServerLoad = async (event) => {
       .map((s) => ({
         id: s.id,
         current: s.id === currentId,
-        device: s.userAgent || 'Unknown device',
+        device: deviceLabel(s.userAgent),
         ipAddress: s.ipAddress || null,
+        signedInAt: new Date(s.createdAt).toISOString(),
         lastActive: new Date(s.updatedAt).toISOString(),
       }))
-      .sort((a, b) => Number(b.current) - Number(a.current) || b.lastActive.localeCompare(a.lastActive)),
+      .sort(
+        (a, b) => Number(b.current) - Number(a.current) || b.lastActive.localeCompare(a.lastActive),
+      ),
   }
 }

@@ -27,15 +27,9 @@
   import TemporalTimelineOptionsPopover from './temporal-timeline-options-popover.svelte'
   import TemporalTodaySegmentTabs from './temporal-today-segment-tabs.svelte'
   import TimelineAgentAssignDialog from './timeline-agent-assign-dialog.svelte'
-  import {
-    shouldRefetchForViewChange,
-    shouldRefetchPrefetchForView,
-  } from './timeline-client-loads'
+  import { shouldRefetchForViewChange, shouldRefetchPrefetchForView } from './timeline-client-loads'
   import { filterTimelineItemsBySearch } from './timeline-data-derive'
-  import {
-    createTimelineData,
-    type TimelineUnifiedSourceState,
-  } from './timeline-data.svelte'
+  import { createTimelineData, type TimelineUnifiedSourceState } from './timeline-data.svelte'
   import TimelineDateRangeDial from './timeline-date-range-dial.svelte'
   import { postTimelineQuickAction, type TimelineQuickAction } from './timeline-item-actions'
   import TimelineProjectAssignDialog from './timeline-project-assign-dialog.svelte'
@@ -103,9 +97,7 @@
 
   const filteredTodoItems = $derived(filterTimelineItemsBySearch(data.todoItems, searchQuery))
   const filteredDoneItems = $derived(filterTimelineItemsBySearch(data.doneItems, searchQuery))
-  const filteredOverdueItems = $derived(
-    filterTimelineItemsBySearch(data.overdueItems, searchQuery),
-  )
+  const filteredOverdueItems = $derived(filterTimelineItemsBySearch(data.overdueItems, searchQuery))
 
   /** Counts are the lengths of the exact arrays each tab renders — never a parallel source. */
   const tabCounts = $derived({
@@ -369,7 +361,6 @@
     lastActionSummary = m.graph_timeline_assign_agent_success({ agent: payload.agentName })
     closeAgentAssign()
   }
-
 </script>
 
 <div
@@ -418,11 +409,7 @@
       </div>
     {/snippet}
     {#if mode === 'tasks'}
-      <TemporalTodaySegmentTabs
-        segment={nowSegment}
-        tabCounts={tabCounts}
-        onSegmentChange={setNowSegment}
-      />
+      <TemporalTodaySegmentTabs segment={nowSegment} {tabCounts} onSegmentChange={setNowSegment} />
     {/if}
   </TemporalTimelineHeader>
 
@@ -458,8 +445,12 @@
   {:else if showGlobalEmpty}
     <div class="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
       {#if totalReadyCount === 0}
-        <p class="text-muted-foreground text-sm">{m.graph_temporal_empty()}</p>
-        <p class="text-muted-foreground/70 text-xs">{m.graph_temporal_empty_hint()}</p>
+        <p class="text-muted-foreground text-sm" data-testid="timeline-empty">
+          {mode === 'tasks' ? m.graph_tasks_empty() : m.graph_temporal_empty()}
+        </p>
+        <p class="text-muted-foreground/70 text-xs">
+          {mode === 'tasks' ? m.graph_tasks_empty_hint() : m.graph_temporal_empty_hint()}
+        </p>
       {:else}
         <p class="text-muted-foreground text-sm">{m.graph_temporal_no_open()}</p>
         <p class="text-muted-foreground/70 text-xs">{m.graph_temporal_no_open_hint()}</p>
@@ -477,7 +468,7 @@
           onRefresh={() => {
             void data.load({ silent: true })
           }}
-          updatingEventId={updatingEventId}
+          {updatingEventId}
         />
       {:else}
         <TimelineTasksView

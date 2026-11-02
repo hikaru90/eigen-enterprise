@@ -3,7 +3,13 @@ import { redirect } from '@sveltejs/kit'
 import { ACTIVITY_PAGE_LLM_PROVIDERS } from '$lib/server/activity/gateway-providers'
 import { FEED_EVENT_TYPES, listKernelEvents } from '$lib/server/activity/kernel-events'
 import { getDb } from '$lib/server/db'
-import { groupLogByDay, moduleLabel, toLogEntry } from '$lib/server/activity/readable-log'
+import {
+  groupLogByDay,
+  moduleLabel,
+  toLogEntry,
+  toolNamespaceLabels,
+} from '$lib/server/activity/readable-log'
+import { appKernel } from '$lib/server/boot'
 import { ORCHESTRATOR_AGENT_ID } from '../../../../../modules/orchestrator/brain'
 
 export const load: PageServerLoad = async (event) => {
@@ -17,7 +23,8 @@ export const load: PageServerLoad = async (event) => {
 
   // The owner's readable log: plain lines grouped by day, filterable by module.
   const agentIds = new Set([ORCHESTRATOR_AGENT_ID])
-  const entries = feed.map((event) => toLogEntry(event, agentIds))
+  const namespaces = toolNamespaceLabels((await appKernel()).modules.list())
+  const entries = feed.map((event) => toLogEntry(event, agentIds, namespaces))
   const moduleIds = [...new Set(entries.map((e) => e.module))].sort()
   const selected = event.url.searchParams.get('module')
   const module = selected && moduleIds.includes(selected) ? selected : null

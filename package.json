@@ -126,6 +126,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@posthog/cli": "^0.7.30",
     "@vite-pwa/sveltekit": "^1.1.0",
+    "bowser": "^2.14.1",
     "culori": "^4.0.2",
     "d3": "^7.9.0",
     "fflate": "^0.8.3",

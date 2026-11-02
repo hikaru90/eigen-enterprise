@@ -2,7 +2,6 @@
   import type { ActionData, PageData } from './$types'
   import { resolve } from '$app/paths'
   import RepoConnectSteps from '$lib/components/repo-connect-steps.svelte'
-  import * as Breadcrumb from '$lib/components/ui/breadcrumb'
   import { docTitle } from '$lib/shell/title'
 
   /** /m/website/apps/new — adding an app from a repo (decision D-W4). */
@@ -15,20 +14,13 @@
 
 <svelte:head><title>{docTitle('Add an app', 'Website')}</title></svelte:head>
 
-<div class="mx-auto w-full max-w-4xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
-  <Breadcrumb.Root>
-    <Breadcrumb.List>
-      <Breadcrumb.Item>
-        <Breadcrumb.Link href={resolve('/m/website')}>Website</Breadcrumb.Link>
-      </Breadcrumb.Item>
-      <Breadcrumb.Separator />
-      <Breadcrumb.Item>
-        <Breadcrumb.Page>Add an app</Breadcrumb.Page>
-      </Breadcrumb.Item>
-    </Breadcrumb.List>
-  </Breadcrumb.Root>
-
-  <h1 class="mt-3 text-xl font-semibold tracking-tight">Connect a GitHub repository</h1>
+<div class="max-w-3xl">
+  <a
+    href={resolve('/m/website')}
+    class="mt-6 inline-block text-xs text-muted-foreground hover:underline"
+    data-testid="back-link">← Back to apps</a
+  >
+  <h2 class="mt-2 text-base font-semibold tracking-tight">Connect a GitHub repository</h2>
   <p class="mt-1 text-sm text-muted-foreground">
     Connect your repository, verify access, then configure your app.
   </p>

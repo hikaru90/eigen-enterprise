@@ -40,7 +40,7 @@ describe('/invite page', () => {
     expect(await actions.sendCode(ev('http://x/invite', { token: 'good' }))).toMatchObject({ step: 'code', email: 'new@k.co' })
     expect(sendOtp).toHaveBeenCalledWith({ body: { email: 'new@k.co', type: 'sign-in' } })
     await expect(actions.verifyCode(ev('http://x/invite', { token: 'good', code: '123456' }))).rejects.toMatchObject({ status: 303, location: '/' })
-    expect(signIn).toHaveBeenCalledWith({ body: { email: 'new@k.co', otp: '123456' } })
+    expect(signIn).toHaveBeenCalledWith({ body: { email: 'new@k.co', otp: '123456' }, headers: expect.any(Headers) })
   })
 
   it('refuses a bad link without sending anything', async () => {

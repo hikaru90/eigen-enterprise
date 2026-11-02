@@ -87,14 +87,16 @@ test.describe('website apps (the module cut, no ee attached)', () => {
 
     const grid = page.locator('section[aria-label="Apps and repositories"]')
     await expect(grid).toBeVisible()
-    // Apps only — the company site card is gone (pages dropped, D-W7).
-    await expect(page.getByText('Company site')).toHaveCount(0)
+    // Apps only — the company site card is gone (pages dropped, D-W7). (The header's
+    // one-line description mentions the company site; the grid holds no card for it.)
+    await expect(grid.getByText('Company site')).toHaveCount(0)
     // Add stays visible in the header even when there are no repositories yet.
     await expect(page.getByTestId('add-app')).toHaveAccessibleName('Add')
 
     // The module's recent activity sits in the right rail.
     await expect(page.locator('section[aria-label="Recent activity"]')).toBeVisible()
 
+    await page.waitForFunction(() => document.body.dataset.eigenHydrated === 'true')
     await page.getByTestId('add-app').click()
     const dialog = page.getByRole('dialog', { name: 'Add an app' })
     await expect(dialog).toBeVisible()
@@ -109,7 +111,7 @@ test.describe('website apps (the module cut, no ee attached)', () => {
     await expect(page).toHaveURL(/\/m\/website\/apps\/new$/)
     await expect(page.getByTestId('step-repository')).toBeVisible()
     await expect(
-      page.getByRole('heading', { name: 'Connect a GitHub repository', level: 1 }),
+      page.getByRole('heading', { name: 'Connect a GitHub repository', level: 2 }),
     ).toBeVisible()
     // Both client navigation and a fresh SSR hydration must use the same runtime.
     await page.reload()
@@ -223,10 +225,15 @@ test.describe('website apps (the module cut, no ee attached)', () => {
       .getByRole('link', { name: 'Settings', exact: true })
       .click()
     await expect(page).toHaveURL(/\/m\/website\/settings$/)
-    await expect(page.getByRole('heading', { name: /Website settings/i, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Settings', level: 2 })).toBeVisible()
     await expect(page.getByText(/HTTPS/).first()).toBeVisible()
     await expect(page.getByText('Deploys are off on this stack')).toHaveCount(0)
-    await expect(page.getByRole('link', { name: /domain/i }).first()).toBeVisible()
+    // Domain routing is a section of this page; the company domain is one link away
+    // (the old underlined in-page link row is replaced by the Website tabs).
+    await expect(page.getByText('Domains & routing', { exact: true }).first()).toBeVisible()
+    await expect(
+      page.getByRole('link', { name: 'company site settings', exact: true }).first(),
+    ).toHaveAttribute('href', '/m/website/site')
     await page.screenshot({ path: 'test-results/website-settings.png', fullPage: true })
     await page.setViewportSize({ width: 390, height: 844 })
     expect(
@@ -247,6 +254,8 @@ test.describe('website apps (the module cut, no ee attached)', () => {
     await newOwner(context, page)
     await page.goto('/m/website')
     await connectProvider(page)
+    // Add lives in the Website page header (C3b); a click before hydration is a no-op.
+    await page.waitForFunction(() => document.body.dataset.eigenHydrated === 'true')
     await page.getByTestId('add-app').click()
     await page
       .getByRole('dialog', { name: 'Add an app' })

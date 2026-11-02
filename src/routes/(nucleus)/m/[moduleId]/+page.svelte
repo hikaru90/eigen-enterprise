@@ -4,6 +4,8 @@
   import MailKeysPanel from '$lib/components/mail-keys-panel.svelte'
   import ModuleSettingsSection from '$lib/components/module-settings-section.svelte'
   import OverviewModule from '$lib/components/overview-module.svelte'
+  import PageFrame from '$lib/components/page/page-frame.svelte'
+  import PageHeader from '$lib/components/page/page-header.svelte'
   import WebsiteActivityPanel from '$lib/components/website-activity-panel.svelte'
   import { moduleSettingsSlot } from '$lib/shell/module-settings'
   import { docTitle } from '$lib/shell/title'
@@ -14,28 +16,12 @@
 
 <svelte:head><title>{docTitle(data.module.name)}</title></svelte:head>
 
-<div class="mx-auto w-full max-w-4xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
-  <header class="flex min-w-0 flex-col gap-1.5 border-b border-border pb-6">
-    <div class="flex min-w-0 items-center gap-3">
-      <h1 class="min-w-0 truncate text-xl font-semibold tracking-tight">{data.module.name}</h1>
-      <span
-        class="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium {data
-          .module.active
-          ? 'text-foreground'
-          : 'text-foreground/50'}"
-        data-testid="module-status"
-      >
-        <span
-          class="size-1.5 rounded-full {data.module.active ? 'bg-eigen-green' : 'bg-foreground/25'}"
-          aria-hidden="true"
-        ></span>
-        {data.module.active ? 'Active' : 'Not active'}
-      </span>
-    </div>
-    {#if data.module.description}
-      <p class="text-sm text-foreground/60">{data.module.description}</p>
-    {/if}
-  </header>
+<PageFrame>
+  <PageHeader
+    title={data.module.name}
+    description={data.module.description || null}
+    status={{ label: data.module.active ? 'Active' : 'Not active', on: data.module.active }}
+  />
 
   {#if !data.module.active}
     <section
@@ -49,7 +35,7 @@
       </p>
       <a
         href={resolve('/')}
-        class="mt-4 inline-flex h-8 items-center rounded-md bg-foreground px-3 text-[13px] font-medium text-background outline-none hover:bg-foreground/85 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2"
+        class="mt-4 inline-flex h-8 items-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground outline-none hover:bg-primary/85 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2"
         >Open chat</a
       >
     </section>
@@ -74,7 +60,19 @@
     <section class="mt-10" aria-labelledby="settings-heading">
       <h2 id="settings-heading" class="mb-2 text-[13px] font-medium">Settings</h2>
       <ModuleSettingsSection {slot} />
-      {#if slot?.panel === 'mail-keys'}<MailKeysPanel />{/if}
     </section>
+
+    {#if slot?.panel === 'mail-keys'}
+      <section class="mt-10" aria-labelledby="developers-heading" data-testid="for-developers">
+        <h2 id="developers-heading" class="text-[13px] font-medium">For developers</h2>
+        <p class="mt-1 text-sm text-muted-foreground">
+          Let your own software send mail as the company, with an API key.
+        </p>
+        <details class="mt-3 rounded-lg border border-border px-4 py-3">
+          <summary class="cursor-pointer text-sm font-medium">Keys and how to send</summary>
+          <MailKeysPanel />
+        </details>
+      </section>
+    {/if}
   {/if}
-</div>
+</PageFrame>

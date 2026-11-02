@@ -11,7 +11,7 @@
   <title>{docTitle('Approval mode', 'Settings')}</title>
 </svelte:head>
 
-<h1 class="text-xl font-medium tracking-tight">Approval mode</h1>
+<h2 class="text-base font-semibold tracking-tight">Approval mode</h2>
 <p class="mt-1 text-sm text-foreground/60">
   How much the agent may do on its own before it asks you. The same choice sits under the chat box.
 </p>

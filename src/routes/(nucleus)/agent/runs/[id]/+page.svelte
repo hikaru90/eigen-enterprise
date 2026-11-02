@@ -10,7 +10,6 @@
     type RunConnection,
     type RunSnapshot,
   } from '$lib/agent-runs/feed'
-  import AgentAreaNav from '$lib/components/agent-area-nav.svelte'
   import AgentRunFeed from '$lib/components/agent-run-feed.svelte'
   import { docTitle } from '$lib/shell/title'
 
@@ -51,21 +50,24 @@
 
 <svelte:head><title>{docTitle(`Run ${data.run.id}`, 'Agent')}</title></svelte:head>
 
-<div class="mx-auto w-full max-w-5xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
-  <div class="mb-6"><AgentAreaNav /></div>
-  <a href={resolve('/(nucleus)/agent/runs')} class="text-xs text-foreground/55 hover:underline">
-    ← Agent runs
-  </a>
-  <header class="mt-2 flex min-w-0 flex-col gap-1" data-testid="run-header">
-    <h1 class="text-xl font-semibold tracking-tight">Run {data.run.id}</h1>
-    <p class="flex min-w-0 flex-wrap items-center gap-x-3 text-sm text-foreground/55">
-      <span>{data.run.agentId}</span>
-      <code class="truncate font-mono text-xs">{data.run.conversationKey}</code>
-      <span class="text-xs">Started {when(data.run.createdAt)}</span>
-    </p>
-  </header>
+<a
+  href={resolve('/(nucleus)/agent/runs')}
+  class="mt-6 inline-block text-xs text-muted-foreground hover:underline"
+  data-testid="back-link">← Back to runs</a
+>
+<header class="mt-2 flex min-w-0 flex-col gap-1" data-testid="run-header">
+  <h2 class="text-base font-semibold tracking-tight">Run {data.run.id}</h2>
+  <p class="flex min-w-0 flex-wrap items-center gap-x-3 text-sm text-muted-foreground">
+    <span data-testid="run-title">{data.run.title}</span>
+    <span class="text-xs">Started {when(data.run.createdAt)}</span>
+  </p>
+  <details class="text-xs text-muted-foreground">
+    <summary class="cursor-pointer">Details</summary>
+    <p class="mt-1">Agent: {data.run.agentId}</p>
+    <code class="block truncate font-mono">{data.run.conversationKey}</code>
+  </details>
+</header>
 
-  <div class="mt-6">
-    <AgentRunFeed {feed} {connection} />
-  </div>
+<div class="mt-6">
+  <AgentRunFeed {feed} {connection} />
 </div>

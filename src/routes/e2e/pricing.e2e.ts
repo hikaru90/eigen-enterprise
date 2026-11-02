@@ -1,63 +1,75 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { registerUser } from './test-helpers'
 
-async function captureViaUi(page: import('@playwright/test').Page, raw: string) {
-  await page.fill('#thought', raw)
-  const interpretPromise = page.waitForResponse(
-    (res) => res.url().includes('/api/capture/interpret') && res.request().method() === 'POST',
-    { timeout: 30_000 },
-  )
-  await page.click('button:has-text("Capture")')
-  const interpretRes = await interpretPromise
-  const body = (await interpretRes.json()) as { status?: string; queueStatus?: string }
-  const status =
-    body.status ??
-    (body.queueStatus === 'awaiting_confirmation' ? 'awaiting_confirmation' : 'ingested')
-  if (status === 'awaiting_confirmation') {
-    const confirmModal = page.getByTestId('capture-confirmation-modal')
-    await expect(confirmModal).toBeVisible({ timeout: 30_000 })
-    await confirmModal.getByRole('button', { name: /Confirm|Bestätigen/i }).click()
-  }
+/**
+ * Pricing transparency (AC-014, AC-015) on today's product: an AI call made
+ * through the company's provider (the mock gateway in this harness) shows up
+ * under Agent → Activity › AI usage with its duration and credits — never raw
+ * dollars or the markup. The AI call is one chat turn (the capture page's
+ * interpret protocol is not something the mock gateway speaks).
+ */
+
+const GATEWAY_BASE_URL = `http://127.0.0.1:${process.env.MOCK_GATEWAY_PORT ?? 5199}/v1`
+
+async function connectProvider(page: Page): Promise<void> {
+  const saved = await page.request.post('/api/onboarding/provider', {
+    data: {
+      provider: 'openrouter',
+      baseUrl: GATEWAY_BASE_URL,
+      apiKey: `e2e-key-${Date.now()}`,
+      modelChat: 'mock-chat-model',
+      modelEmbedding: 'mock-embed-model',
+    },
+  })
+  expect(saved.status()).toBe(200)
+}
+
+async function oneChatTurn(page: Page): Promise<void> {
+  const res = await page.request.post('/api/chat', {
+    data: { message: `pricing check ${Date.now()}` },
+    timeout: 60_000,
+  })
+  expect(res.status(), await res.text()).toBe(200)
+}
+
+/** The AI usage table, once its client-side load has rows (not the empty row). */
+function usageTable(page: Page) {
+  return page.getByRole('table')
 }
 
 test.describe('Pricing transparency (AC-014, AC-015)', () => {
-  test('activity log shows credits and duration per call after capture', async ({
+  test('AI usage lists each call with duration and credits after an AI call', async ({
     page,
     context,
   }) => {
     await registerUser(context, page)
-    await page.goto('/m/memory/capture')
-
-    await captureViaUi(page, 'Test thought for pricing verification')
-    await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible({ timeout: 30_000 })
+    await connectProvider(page)
+    await oneChatTurn(page)
 
     await page.goto('/agent/activity')
-
-    await expect(page.locator('table')).toBeVisible({ timeout: 10000 })
-    const headers = await page.locator('thead th').allTextContents()
-    const headerText = headers.join(' ')
+    const table = usageTable(page)
+    await expect(table).toBeVisible({ timeout: 10_000 })
+    const headerText = (await table.locator('thead th').allTextContents()).join(' ')
     expect(headerText).toContain('Duration')
     expect(headerText).toContain('Credits')
     expect(headerText).not.toContain('Base USD')
     expect(headerText).not.toContain('Total USD')
     expect(headerText).not.toContain('Markup')
 
-    const rowCount = await page.locator('tbody tr').count()
-    expect(rowCount).toBeGreaterThanOrEqual(1)
+    await expect(table.getByText('No activity logged yet.')).toHaveCount(0)
+    expect(await table.locator('tbody tr').count()).toBeGreaterThanOrEqual(1)
   })
 
-  test('activity page shows totals row with credits', async ({ page, context }) => {
+  test('AI usage shows a credits total for the page, never dollars', async ({ page, context }) => {
     await registerUser(context, page)
-    await page.goto('/m/memory/capture')
-
-    await captureViaUi(page, 'Another thought for totals check')
-    await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible({ timeout: 30_000 })
+    await connectProvider(page)
+    await oneChatTurn(page)
 
     await page.goto('/agent/activity')
-
-    await expect(page.locator('tfoot')).toBeVisible()
-    const totals = await page.locator('tfoot td').allTextContents()
-    const totalsText = totals.join(' ')
+    const table = usageTable(page)
+    await expect(table.getByText('No activity logged yet.')).toHaveCount(0, { timeout: 10_000 })
+    await expect(table.locator('tfoot')).toBeVisible()
+    const totalsText = (await table.locator('tfoot td').allTextContents()).join(' ')
     expect(totalsText).toContain('Total (this page)')
     expect(totalsText).not.toContain('$')
   })

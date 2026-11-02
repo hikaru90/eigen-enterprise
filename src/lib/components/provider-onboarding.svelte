@@ -324,8 +324,8 @@
 <div class={embedded ? 'flex w-full flex-col items-center justify-center' : 'flex min-h-dvh flex-col items-center justify-center px-4'}>
   <div class={embedded ? 'w-full' : 'w-full max-w-md'}>
     {#if !embedded}
-      <p class="text-muted-foreground text-center text-[11px] font-medium tracking-[0.25em] uppercase">
-        Eigen Enterprise
+      <p class="text-center text-sm font-semibold tracking-tight text-muted-foreground">
+        eigenEnterprise
       </p>
     {/if}
 
@@ -353,7 +353,7 @@
         {/if}
         <button
           type="button"
-          class="mt-4 h-11 w-full bg-black text-sm font-medium text-white hover:bg-black/90"
+          class="mt-4 h-11 w-full bg-primary text-sm font-medium text-primary-foreground hover:bg-primary/90"
           onclick={() => {
             onconnected?.()
             void invalidateAll()
@@ -540,7 +540,7 @@
             type="button"
             disabled={!chosenChatModel.trim()}
             onclick={confirmModels}
-            class="h-11 w-full bg-black text-sm font-medium text-white hover:bg-black/90 disabled:cursor-not-allowed disabled:opacity-70"
+            class="h-11 w-full bg-primary text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
           >
             Continue
           </button>
@@ -677,7 +677,7 @@
           type="button"
           onclick={() => void connect()}
           disabled={connecting}
-          class="flex h-11 w-full items-center justify-center bg-black text-sm font-medium text-white hover:bg-black/90 disabled:cursor-not-allowed disabled:opacity-70"
+          class="flex h-11 w-full items-center justify-center bg-primary text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
         >
           {#if connecting}
             <LoaderCircle class="size-4 animate-spin" strokeWidth={1.75} />

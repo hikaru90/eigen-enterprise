@@ -90,3 +90,47 @@ An architectural diagram meets Bauhaus-inspired composition. Strict grid geometr
 - Color signals intent: Tangerine for urgency/highlight, Aquamarine/Citric for energy/accent, neutrals for everything structural.
 - Typography is restrained — one family per style, tight weight range, no decorative variation.
 - All brand colors are sourced from [`docs/brand-palette.md`](brand-palette.md). Do not introduce off-palette colors without updating that file first.
+
+---
+
+## Page frame (app shell, C3b — binding)
+
+Every area page inside the shell opens the same way. Use the shared components in
+`src/lib/components/page/`; never hand-roll a header, breadcrumb or tab bar.
+
+- **`PageHeader`** — `h1` title (the area name: Overview, Website, Email, Brand, Agent,
+  Memory, Settings), an optional one-line plain-language description, an optional
+  status pill, optional actions on the right, and optional sub-nav **tabs below** the
+  header (`tabs` from `src/lib/shell/area-nav.ts`, `settings-nav.ts`,
+  `memory-surface-nav.ts`). One `h1` per page.
+- **`StatusPill`** — the one status style: a bordered pill with a dot (`bg-primary` when
+  on, muted when off) and a short label ("Active", "Not active", "Connected").
+- **`SectionHeader`** — the `h2` heading of a tab's content (`text-base font-semibold`),
+  optional description and actions (e.g. Roadmap's "Add item").
+- **Back links** (`← Back to apps`, `← Back to runs`) appear only on detail pages, as a
+  small muted link above the detail's `h2`. No breadcrumbs, no underlined text-link
+  sub-navs.
+- **Primary actions** use the primary token (`Button` default variant or
+  `bg-primary text-primary-foreground`), never hard-coded black/neutral, so the chosen
+  brand style re-skins them.
+
+### Content width rule
+
+- **`PageFrame width="default"`** — every area page: a centred column, `max-w-5xl`,
+  `px-4 sm:px-8`, `pt-6 sm:pt-10`. The header and the content share this column, so the
+  left edge never moves between pages.
+- **Forms and reading text** inside it cap themselves at **`max-w-2xl`** (Settings) or
+  **`max-w-3xl`** (Website site/settings, detail pages) — left-aligned, never re-centred.
+- **`PageFrame width="full"`** — only areas whose main content is a card grid that gains
+  from width: **Brand** (style picker, design system) and **Website** (apps grid with its
+  activity rail). Everything else is `default`.
+- Full-pane tools (the brand set editor, Chat) render without the frame.
+
+### Signed-out and public pages
+
+Login, signup, claim, invite and the signed-out error page use **`PublicFrame`** (or
+`PublicSurface` for error pages): the shell's tokens (the app's white default, or the
+active brand style), the shell's type, the one wordmark **`eigenEnterprise`** (`Wordmark`),
+an `h1`, and a one-line subtitle. Login and signup both carry "← Back to home". The public
+company site (`/s`) is for visitors: it is named after the company and its errors never
+offer "Sign in".

@@ -12,6 +12,12 @@ vi.mock('$lib/server/activity/kernel-events', () => ({
   listKernelEvents: listKernelEventsMock,
 }))
 
+vi.mock('$lib/server/boot', () => ({
+  appKernel: async () => ({
+    modules: { list: () => [{ name: 'Website', toolNamespaces: ['website', 'substrate', 'github'] }] },
+  }),
+}))
+
 vi.mock('../../../../../modules/orchestrator/brain', () => ({ ORCHESTRATOR_AGENT_ID: 'orchestrator' }))
 
 describe('activity page server', () => {

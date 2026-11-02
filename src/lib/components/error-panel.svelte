@@ -1,5 +1,6 @@
 <script lang="ts">
   import { resolve } from '$app/paths'
+  import Wordmark from '$lib/components/page/wordmark.svelte'
   import { Button } from '$lib/components/ui/button'
   import { docTitle } from '$lib/shell/title'
 
@@ -26,18 +27,20 @@
   data-testid="error-page"
 >
   {#if !signedIn}
-    <span class="mb-8 text-lg font-medium tracking-tight">eigenEnterprise</span>
+    <div class="mb-8"><Wordmark /></div>
   {/if}
-  <p class="text-xs tracking-wider text-foreground/50 uppercase">{status}</p>
-  <h1 class="mt-2 text-lg font-medium">{heading}</h1>
+  <p class="text-xs text-muted-foreground tabular-nums">Error {status}</p>
+  <h1 class="mt-2 text-xl font-semibold tracking-tight">{heading}</h1>
   {#if isNotFound}
     <p class="mt-2 text-sm text-foreground/60">This address does not exist (any more).</p>
   {:else if message}
     <p class="mt-2 text-xs text-foreground/60">{message}</p>
   {/if}
   {#if signedIn}
-    <Button href={resolve('/')} class="mt-8" size="lg" data-testid="error-back">Back to Chat</Button>
+    <Button href={resolve('/')} class="mt-8" size="lg" data-testid="error-back">Back to Chat</Button
+    >
   {:else}
-    <Button href={resolve('/login')} class="mt-8" size="lg" data-testid="error-back">Sign in</Button>
+    <Button href={resolve('/login')} class="mt-8" size="lg" data-testid="error-back">Sign in</Button
+    >
   {/if}
 </div>

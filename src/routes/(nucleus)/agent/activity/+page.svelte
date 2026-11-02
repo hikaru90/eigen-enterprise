@@ -12,7 +12,7 @@
     utcDateKey,
     type ActivitySpendBucket,
   } from '$lib/activity/spend-chart'
-  import AgentAreaNav from '$lib/components/agent-area-nav.svelte'
+  import SectionHeader from '$lib/components/page/section-header.svelte'
   import AiDateRangePicker from '$lib/components/ai-date-range-picker.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
@@ -51,7 +51,9 @@
   const timeLabel = (iso: string) => timeFormat.format(new Date(iso))
   const chip = (on: boolean) =>
     `rounded-full border px-2.5 py-1 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60 ${
-      on ? 'border-foreground bg-foreground text-background' : 'border-border text-foreground/70 hover:text-foreground'
+      on
+        ? 'border-foreground bg-foreground text-background'
+        : 'border-border text-foreground/70 hover:text-foreground'
     }`
   const gatewayProviderSet = $derived(new Set<string>(data.gatewayProviders))
   let allCalls = $state<ActivityCallRow[]>([])
@@ -290,264 +292,260 @@
   <title>{docTitle('Activity', 'Agent')}</title>
 </svelte:head>
 
-<div class="mx-auto w-full max-w-5xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
-  <div class="mb-6"><AgentAreaNav /></div>
-  <header class="flex min-w-0 flex-col gap-1">
-    <h1 class="text-xl font-semibold tracking-tight">Activity</h1>
-    <p class="text-sm text-foreground/55">What the agent and the system did, newest first.</p>
-  </header>
+<SectionHeader title="Activity" description="What the agent and the system did, newest first." />
 
-  <section class="mt-6" aria-label="Activity log" data-testid="activity-log">
-    {#if data.modules.length > 1}
-      <nav class="mb-4 flex flex-wrap gap-1.5" aria-label="Filter by module" data-testid="activity-filter">
-        <a
-          href={resolve('/(nucleus)/agent/activity')}
-          aria-current={data.module === null ? 'page' : undefined}
-          class={chip(data.module === null)}>All</a
-        >
-        {#each data.modules as m (m.id)}
-          <a
-            href={`${resolve('/(nucleus)/agent/activity')}?module=${encodeURIComponent(m.id)}`}
-            aria-current={data.module === m.id ? 'page' : undefined}
-            data-testid="activity-filter-{m.id}"
-            class={chip(data.module === m.id)}>{m.label}</a
-          >
-        {/each}
-      </nav>
-    {/if}
-
-    {#if data.log.length === 0}
-      <p
-        class="rounded-lg border border-border px-4 py-3 text-sm text-foreground/55"
-        data-testid="activity-log-empty"
-      >
-        Nothing has happened yet.
-      </p>
-    {:else}
-      <div class="flex flex-col gap-6">
-        {#each data.log as group (group.day)}
-          <section aria-label={dayLabel(group.day)} data-testid="activity-day">
-            <h2 class="mb-2 text-[13px] font-medium text-foreground/70">{dayLabel(group.day)}</h2>
-            <ul class="divide-y divide-border overflow-hidden rounded-lg border border-border">
-              {#each group.entries as entry (entry.id)}
-                <li class="px-4 py-2.5 text-sm" data-testid="activity-entry">
-                  <details class="group">
-                    <summary
-                      class="flex min-w-0 cursor-pointer list-none items-center gap-3 outline-none focus-visible:ring-2 focus-visible:ring-ring/60 [&::-webkit-details-marker]:hidden"
-                    >
-                      <span class="w-16 shrink-0 text-xs whitespace-nowrap text-foreground/50 tabular-nums"
-                        >{timeLabel(entry.ts)}</span
-                      >
-                      <span class="min-w-0 flex-1 truncate">
-                        <span class="font-medium">{entry.actor}</span>
-                        <span class="text-foreground/80">· {entry.text}</span>
-                      </span>
-                      <span
-                        class="hidden shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] text-foreground/60 sm:inline"
-                        >{entry.moduleLabel}</span
-                      >
-                      {#if entry.outcome === 'done'}
-                        <span class="shrink-0 text-xs text-emerald-700 dark:text-emerald-400">Done</span>
-                      {:else if entry.outcome === 'failed'}
-                        <span class="shrink-0 text-xs text-destructive">Didn't work</span>
-                      {/if}
-                    </summary>
-                    <ul class="mt-2 ml-19 space-y-0.5 text-xs text-foreground/55" data-testid="activity-details">
-                      {#each entry.details as line (line)}
-                        <li><code class="font-mono">{line}</code></li>
-                      {/each}
-                    </ul>
-                  </details>
-                </li>
-              {/each}
-            </ul>
-          </section>
-        {/each}
-      </div>
-    {/if}
-  </section>
-
-  <div class="mt-10 flex items-center justify-between">
-    <h2 class="text-sm font-semibold">AI usage</h2>
-    <AiDateRangePicker
-      from={fromDate ?? undefined}
-      to={toDate ?? undefined}
-      onChange={(f, t) => {
-        fromDate = f
-        toDate = t
-        currentPage = 1
-      }}
-    />
-  </div>
-
-  {#if isLoading}
-    <p class="text-muted-foreground py-8 text-center text-xs">Loading activity…</p>
-  {:else if loadError}
-    <p class="py-8 text-center text-xs text-red-500">{loadError}</p>
-  {:else}
-    {#if showOverall && spendSeries}
-      <ActivitySpendChart
-        buckets={spendSeries.buckets}
-        unit={spendSeries.unit}
-        totalGroups={spendSeries.totalGroups}
-      />
-    {/if}
-
-    <Card.Root
-      class="mt-4 border border-border bg-card shadow-none ring-0"
+<section class="mt-6" aria-label="Activity log" data-testid="activity-log">
+  {#if data.modules.length > 1}
+    <nav
+      class="mb-4 flex flex-wrap gap-1.5"
+      aria-label="Filter by module"
+      data-testid="activity-filter"
     >
-      <Card.Header>
-        <Card.Title class="text-sm">Calls</Card.Title>
-        <Card.Description class="text-muted-foreground text-xs">
-          All LLM gateway calls and agent tool operations.
-        </Card.Description>
-      </Card.Header>
-      <Card.Content class="overflow-x-auto px-0">
-        <table class="w-full text-left text-xs">
-          <thead class="bg-muted/50 border-b border-border">
-            <tr>
-              <th class="p-2 font-medium">When</th>
-              <th class="p-2 font-medium">Provider</th>
-              <th class="p-2 font-medium">Operation</th>
-              <th class="p-2 font-medium">Duration</th>
-              <th class="p-2 font-medium">Credits</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each pagedGroups as group (group.key)}
-              {@const prov = groupProviderLabel(group.calls)}
-              {@const groupLabel = group.firstOp.replace(/\.(success|error)\(.*\)$/, '')}
-              {@const context = group.calls.find((c) => c.context)?.context}
-              {@const dur = totalDurationMs(group.calls)}
-              {@const isExpanded = !!expandedGroups[group.key]}
-              {@const hasMultipleCalls = group.calls.length > 1}
-
-              <tr
-                class="border-b border-border/60 {hasMultipleCalls
-                  ? 'cursor-pointer hover:bg-muted/50'
-                  : ''}"
-                onclick={() => hasMultipleCalls && toggleGroup(group.key)}
-              >
-                <td class="p-2 whitespace-nowrap">
-                  {#if hasMultipleCalls}
-                    <span class="inline-block w-4 text-muted-foreground text-[10px]"
-                      >{isExpanded ? '▼' : '▶'}</span
-                    >
-                  {/if}
-                  {formatDate(group.calls[0].createdAt)}
-                </td>
-                <td class="p-2">
-                  <span class="inline-flex items-center gap-1">
-                    {#if prov.isPaid}
-                      <span class="text-destructive">●</span>
-                    {:else}
-                      <span class="text-green-600">●</span>
-                    {/if}
-                    {prov.label}
-                  </span>
-                </td>
-                <td class="p-2">
-                  <span class="font-mono text-[11px] truncate max-w-[250px] block"
-                    >{groupLabel}</span
-                  >
-                  {#if context}
-                    <span class="text-[10px] text-muted-foreground truncate max-w-[250px] block"
-                      >{context}</span
-                    >
-                  {/if}
-                  {#if hasMultipleCalls}
-                    <span class="text-[10px] text-muted-foreground"
-                      >({group.calls.length} calls)</span
-                    >
-                  {/if}
-                </td>
-                <td class="p-2 font-mono text-[11px] text-muted-nowrap">{formatDuration(dur)}</td>
-                <td class="p-2 font-mono text-[11px] tabular-nums"
-                  >{formatActivityCredits(group.groupTotalUsd)}</td
-                >
-              </tr>
-
-              {#if isExpanded && hasMultipleCalls}
-                {#each group.calls as call (call.id)}
-                  {@const callProv = groupProviderLabel([call])}
-                  <tr class="border-b border-border/30 bg-muted/20">
-                    <td class="p-2 pl-8 whitespace-nowrap text-muted-foreground"
-                      >{formatDate(call.createdAt)}</td
-                    >
-                    <td class="p-2 text-muted-foreground">
-                      <span class="inline-flex items-center gap-1">
-                        {#if callProv.isPaid}
-                          <span class="text-destructive">●</span>
-                        {:else}
-                          <span class="text-green-600">●</span>
-                        {/if}
-                        {callProv.label}
-                      </span>
-                    </td>
-                    <td class="p-2">
-                      <span
-                        class="font-mono text-[10px] truncate max-w-[250px] block text-muted-foreground"
-                        >{call.operation}</span
-                      >
-                      {#if call.context}
-                        <span
-                          class="text-[9px] text-muted-foreground/70 truncate max-w-[250px] block"
-                          >{call.context}</span
-                        >
-                      {/if}
-                    </td>
-                    <td class="p-2 font-mono text-[11px] text-muted-nowrap"
-                      >{formatDuration(call.durationMs)}</td
-                    >
-                    <td class="p-2 font-mono text-[11px] tabular-nums"
-                      >{formatActivityCredits(call.totalCostUsd)}</td
-                    >
-                  </tr>
-                {/each}
-              {/if}
-            {:else}
-              <tr>
-                <td class="text-muted-foreground p-4 text-xs" colspan="5"
-                  >No activity logged yet.</td
-                >
-              </tr>
-            {/each}
-          </tbody>
-          <tfoot class="border-t-2 border-border bg-muted/30">
-            <tr>
-              <td class="p-2 text-right text-xs font-medium" colspan="4">Total (this page)</td>
-              <td class="p-2 font-mono text-[11px] tabular-nums">{pageTotalCredits}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </Card.Content>
-    </Card.Root>
-
-    {#if totalPages > 1}
-      <div class="mt-4 flex items-center justify-center gap-3">
-        {#if currentPage > 1}
-          <button
-            onclick={() => {
-              currentPage = currentPage - 1
-            }}
-          >
-            <Button variant="outline" size="xs">Previous</Button>
-          </button>
-        {/if}
-        <span class="text-muted-foreground text-xs">
-          Page {currentPage} of {totalPages}
-          ({grouped.length} groups)
-        </span>
-        {#if currentPage < totalPages}
-          <button
-            onclick={() => {
-              currentPage = currentPage + 1
-            }}
-          >
-            <Button variant="outline" size="xs">Next</Button>
-          </button>
-        {/if}
-      </div>
-    {/if}
+      <a
+        href={resolve('/(nucleus)/agent/activity')}
+        aria-current={data.module === null ? 'page' : undefined}
+        class={chip(data.module === null)}>All</a
+      >
+      {#each data.modules as m (m.id)}
+        <a
+          href={`${resolve('/(nucleus)/agent/activity')}?module=${encodeURIComponent(m.id)}`}
+          aria-current={data.module === m.id ? 'page' : undefined}
+          data-testid="activity-filter-{m.id}"
+          class={chip(data.module === m.id)}>{m.label}</a
+        >
+      {/each}
+    </nav>
   {/if}
+
+  {#if data.log.length === 0}
+    <p
+      class="rounded-lg border border-border px-4 py-3 text-sm text-foreground/55"
+      data-testid="activity-log-empty"
+    >
+      Nothing has happened yet.
+    </p>
+  {:else}
+    <div class="flex flex-col gap-6">
+      {#each data.log as group (group.day)}
+        <section aria-label={dayLabel(group.day)} data-testid="activity-day">
+          <h2 class="mb-2 text-[13px] font-medium text-foreground/70">{dayLabel(group.day)}</h2>
+          <ul class="divide-y divide-border overflow-hidden rounded-lg border border-border">
+            {#each group.entries as entry (entry.id)}
+              <li class="px-4 py-2.5 text-sm" data-testid="activity-entry">
+                <details class="group">
+                  <summary
+                    class="flex min-w-0 cursor-pointer list-none items-center gap-3 outline-none focus-visible:ring-2 focus-visible:ring-ring/60 [&::-webkit-details-marker]:hidden"
+                  >
+                    <span
+                      class="w-16 shrink-0 text-xs whitespace-nowrap text-foreground/50 tabular-nums"
+                      >{timeLabel(entry.ts)}</span
+                    >
+                    <span class="min-w-0 flex-1 truncate">
+                      <span class="font-medium">{entry.actor}</span>
+                      <span class="text-foreground/80">· {entry.text}</span>
+                    </span>
+                    <span
+                      class="hidden shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] text-foreground/60 sm:inline"
+                      >{entry.moduleLabel}</span
+                    >
+                    {#if entry.outcome === 'done'}
+                      <span class="shrink-0 text-xs text-emerald-700 dark:text-emerald-400"
+                        >Done</span
+                      >
+                    {:else if entry.outcome === 'failed'}
+                      <span class="shrink-0 text-xs text-destructive">Didn't work</span>
+                    {/if}
+                  </summary>
+                  <ul
+                    class="mt-2 ml-19 space-y-0.5 text-xs text-foreground/55"
+                    data-testid="activity-details"
+                  >
+                    {#each entry.details as line (line)}
+                      <li><code class="font-mono">{line}</code></li>
+                    {/each}
+                  </ul>
+                </details>
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {/each}
+    </div>
+  {/if}
+</section>
+
+<div class="mt-10 flex items-center justify-between">
+  <h2 class="text-sm font-semibold">AI usage</h2>
+  <AiDateRangePicker
+    from={fromDate ?? undefined}
+    to={toDate ?? undefined}
+    onChange={(f, t) => {
+      fromDate = f
+      toDate = t
+      currentPage = 1
+    }}
+  />
 </div>
+
+{#if isLoading}
+  <p class="text-muted-foreground py-8 text-center text-xs">Loading activity…</p>
+{:else if loadError}
+  <p class="py-8 text-center text-xs text-red-500">{loadError}</p>
+{:else}
+  {#if showOverall && spendSeries}
+    <ActivitySpendChart
+      buckets={spendSeries.buckets}
+      unit={spendSeries.unit}
+      totalGroups={spendSeries.totalGroups}
+    />
+  {/if}
+
+  <Card.Root class="mt-4 border border-border bg-card shadow-none ring-0">
+    <Card.Header>
+      <Card.Title class="text-sm">Calls</Card.Title>
+      <Card.Description class="text-muted-foreground text-xs">
+        All LLM gateway calls and agent tool operations.
+      </Card.Description>
+    </Card.Header>
+    <Card.Content class="overflow-x-auto px-0">
+      <table class="w-full text-left text-xs">
+        <thead class="bg-muted/50 border-b border-border">
+          <tr>
+            <th class="p-2 font-medium">When</th>
+            <th class="p-2 font-medium">Provider</th>
+            <th class="p-2 font-medium">Operation</th>
+            <th class="p-2 font-medium">Duration</th>
+            <th class="p-2 font-medium">Credits</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each pagedGroups as group (group.key)}
+            {@const prov = groupProviderLabel(group.calls)}
+            {@const groupLabel = group.firstOp.replace(/\.(success|error)\(.*\)$/, '')}
+            {@const context = group.calls.find((c) => c.context)?.context}
+            {@const dur = totalDurationMs(group.calls)}
+            {@const isExpanded = !!expandedGroups[group.key]}
+            {@const hasMultipleCalls = group.calls.length > 1}
+
+            <tr
+              class="border-b border-border/60 {hasMultipleCalls
+                ? 'cursor-pointer hover:bg-muted/50'
+                : ''}"
+              onclick={() => hasMultipleCalls && toggleGroup(group.key)}
+            >
+              <td class="p-2 whitespace-nowrap">
+                {#if hasMultipleCalls}
+                  <span class="inline-block w-4 text-muted-foreground text-[10px]"
+                    >{isExpanded ? '▼' : '▶'}</span
+                  >
+                {/if}
+                {formatDate(group.calls[0].createdAt)}
+              </td>
+              <td class="p-2">
+                <span class="inline-flex items-center gap-1">
+                  {#if prov.isPaid}
+                    <span class="text-destructive">●</span>
+                  {:else}
+                    <span class="text-green-600">●</span>
+                  {/if}
+                  {prov.label}
+                </span>
+              </td>
+              <td class="p-2">
+                <span class="font-mono text-[11px] truncate max-w-[250px] block">{groupLabel}</span>
+                {#if context}
+                  <span class="text-[10px] text-muted-foreground truncate max-w-[250px] block"
+                    >{context}</span
+                  >
+                {/if}
+                {#if hasMultipleCalls}
+                  <span class="text-[10px] text-muted-foreground">({group.calls.length} calls)</span
+                  >
+                {/if}
+              </td>
+              <td class="p-2 font-mono text-[11px] text-muted-nowrap">{formatDuration(dur)}</td>
+              <td class="p-2 font-mono text-[11px] tabular-nums"
+                >{formatActivityCredits(group.groupTotalUsd)}</td
+              >
+            </tr>
+
+            {#if isExpanded && hasMultipleCalls}
+              {#each group.calls as call (call.id)}
+                {@const callProv = groupProviderLabel([call])}
+                <tr class="border-b border-border/30 bg-muted/20">
+                  <td class="p-2 pl-8 whitespace-nowrap text-muted-foreground"
+                    >{formatDate(call.createdAt)}</td
+                  >
+                  <td class="p-2 text-muted-foreground">
+                    <span class="inline-flex items-center gap-1">
+                      {#if callProv.isPaid}
+                        <span class="text-destructive">●</span>
+                      {:else}
+                        <span class="text-green-600">●</span>
+                      {/if}
+                      {callProv.label}
+                    </span>
+                  </td>
+                  <td class="p-2">
+                    <span
+                      class="font-mono text-[10px] truncate max-w-[250px] block text-muted-foreground"
+                      >{call.operation}</span
+                    >
+                    {#if call.context}
+                      <span class="text-[9px] text-muted-foreground/70 truncate max-w-[250px] block"
+                        >{call.context}</span
+                      >
+                    {/if}
+                  </td>
+                  <td class="p-2 font-mono text-[11px] text-muted-nowrap"
+                    >{formatDuration(call.durationMs)}</td
+                  >
+                  <td class="p-2 font-mono text-[11px] tabular-nums"
+                    >{formatActivityCredits(call.totalCostUsd)}</td
+                  >
+                </tr>
+              {/each}
+            {/if}
+          {:else}
+            <tr>
+              <td class="text-muted-foreground p-4 text-xs" colspan="5">No activity logged yet.</td>
+            </tr>
+          {/each}
+        </tbody>
+        <tfoot class="border-t-2 border-border bg-muted/30">
+          <tr>
+            <td class="p-2 text-right text-xs font-medium" colspan="4">Total (this page)</td>
+            <td class="p-2 font-mono text-[11px] tabular-nums">{pageTotalCredits}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </Card.Content>
+  </Card.Root>
+
+  {#if totalPages > 1}
+    <div class="mt-4 flex items-center justify-center gap-3">
+      {#if currentPage > 1}
+        <button
+          onclick={() => {
+            currentPage = currentPage - 1
+          }}
+        >
+          <Button variant="outline" size="xs">Previous</Button>
+        </button>
+      {/if}
+      <span class="text-muted-foreground text-xs">
+        Page {currentPage} of {totalPages}
+        ({grouped.length} groups)
+      </span>
+      {#if currentPage < totalPages}
+        <button
+          onclick={() => {
+            currentPage = currentPage + 1
+          }}
+        >
+          <Button variant="outline" size="xs">Next</Button>
+        </button>
+      {/if}
+    </div>
+  {/if}
+{/if}

@@ -1,6 +1,7 @@
 import type { Actions, PageServerLoad } from './$types'
-import { fail, redirect } from '@sveltejs/kit'
+import { fail, redirect, type RequestEvent } from '@sveltejs/kit'
 import { auth } from '$lib/server/auth'
+import { signInHeaders } from '$lib/server/auth/sign-in-headers'
 import { takeDeliveryFailure } from '$lib/server/auth/deliver-code'
 import { getSafeErrorMessage } from '$lib/server/auth-form-errors'
 import { acceptInvite, InviteError, sendInviteCode, type AcceptDeps } from '$lib/server/members/accept'
@@ -10,7 +11,7 @@ import { foundingCompanyName } from '$lib/server/overview/sources'
 
 /** Accept a member invite: the link's token → a code to the invited address → signed in with the invited role. */
 
-const deps = (): AcceptDeps => ({
+const deps = (event?: Pick<RequestEvent, 'request' | 'getClientAddress'>): AcceptDeps => ({
   store: dbMemberStore,
   sendCode: async (email) => {
     takeDeliveryFailure(email) // clear any stale failure
@@ -18,7 +19,8 @@ const deps = (): AcceptDeps => ({
     const failure = takeDeliveryFailure(email)
     if (failure) throw failure
   },
-  signIn: (email, code) => auth.api.signInEmailOTP({ body: { email, otp: code } }),
+  signIn: (email, code) =>
+    auth.api.signInEmailOTP({ body: { email, otp: code }, ...(event ? { headers: signInHeaders(event) } : {}) }),
 })
 
 export const load: PageServerLoad = async (event) => {
@@ -50,7 +52,7 @@ export const actions: Actions = {
       return fail(400, { step: 'code' as const, email: form.get('email')?.toString() ?? '', message: 'Enter the 6-digit code.' })
     }
     try {
-      await acceptInvite(token, code, deps())
+      await acceptInvite(token, code, deps(event))
     } catch (err) {
       const message = err instanceof InviteError ? err.message : getSafeErrorMessage(err, 'That code did not work')
       return fail(400, { step: 'code' as const, email: form.get('email')?.toString() ?? '', message })

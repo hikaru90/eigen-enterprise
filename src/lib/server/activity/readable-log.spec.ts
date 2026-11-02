@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { KernelEvent } from '$lib/kernel/events'
-import { groupLogByDay, toLogEntry } from './readable-log'
+import { groupLogByDay, toLogEntry, toolNamespaceLabels } from './readable-log'
 
 const AGENTS = new Set(['orchestrator'])
 
@@ -35,6 +35,27 @@ describe('toLogEntry', () => {
       text: 'Used Website: list pages',
       outcome: 'done',
     })
+  })
+
+  it('names the owning module for every tool namespace, never an internal id', () => {
+    const namespaces = toolNamespaceLabels([
+      { name: 'Website', toolNamespaces: ['website', 'substrate', 'github'] },
+      { name: 'Email', toolNamespaces: ['email', 'owlery'] },
+    ])
+    const line = (tool: string, module: string) =>
+      toLogEntry(
+        ev({
+          type: 'tool.executed',
+          source: `urn:eigenenterprise:module:${module}`,
+          payload: { tool, ok: true },
+        }),
+        AGENTS,
+        namespaces,
+      ).text
+    expect(line('substrate.status', 'website')).toBe('Used Website: status')
+    expect(line('github.list_repos', 'website')).toBe('Used Website: list repos')
+    expect(line('owlery.status', 'email')).toBe('Used Email: status')
+    expect(line('website.list_pages', 'website')).toBe('Used Website: list pages')
   })
 
   it("prefers the tool's own activity sentence and marks failures", () => {

@@ -1,5 +1,6 @@
 import { fail, redirect, type RequestEvent } from '@sveltejs/kit'
 import { auth } from '$lib/server/auth'
+import { signInHeaders } from './sign-in-headers'
 import { takeDeliveryFailure } from '$lib/server/auth/deliver-code'
 import { signInRefusal } from '$lib/server/auth/unclaimed'
 import { getSafeErrorMessage } from '$lib/server/auth-form-errors'
@@ -42,7 +43,7 @@ export async function verifyCode(event: RequestEvent) {
     return fail(400, { step: 'code' as const, email: raw.email, message: f.code?.[0] ?? f.email?.[0] ?? 'Invalid input' })
   }
   try {
-    await auth.api.signInEmailOTP({ body: { email: parsed.data.email, otp: parsed.data.code } })
+    await auth.api.signInEmailOTP({ body: { email: parsed.data.email, otp: parsed.data.code }, headers: signInHeaders(event) })
   } catch (error) {
     return fail(400, { step: 'code' as const, email: parsed.data.email, message: getSafeErrorMessage(error, 'That code did not work') })
   }

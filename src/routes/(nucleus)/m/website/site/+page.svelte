@@ -5,7 +5,7 @@
   import { resolve } from '$app/paths'
   import * as Alert from '$lib/components/ui/alert'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
-  import * as Breadcrumb from '$lib/components/ui/breadcrumb'
+  import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
   import { Input as TextInput } from '$lib/components/ui/input'
@@ -46,24 +46,8 @@
 
 <svelte:head><title>{docTitle('Company site', 'Website')}</title></svelte:head>
 
-<div class="mx-auto w-full max-w-4xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
-  <header class="flex min-w-0 flex-col gap-1.5 border-b border-border pb-6">
-    <Breadcrumb.Root>
-      <Breadcrumb.List>
-        <Breadcrumb.Item>
-          <Breadcrumb.Link href={resolve('/m/website')}>Website</Breadcrumb.Link>
-        </Breadcrumb.Item>
-        <Breadcrumb.Separator />
-        <Breadcrumb.Item>
-          <Breadcrumb.Link href={resolve('/m/website/settings')}>Settings</Breadcrumb.Link>
-        </Breadcrumb.Item>
-        <Breadcrumb.Separator />
-        <Breadcrumb.Item><Breadcrumb.Page>Company site</Breadcrumb.Page></Breadcrumb.Item>
-      </Breadcrumb.List>
-    </Breadcrumb.Root>
-    <h1 class="text-xl font-semibold tracking-tight">Company site settings</h1>
-    <p class="text-sm text-foreground/60">Your company's public address.</p>
-  </header>
+<div class="max-w-3xl">
+  <SectionHeader title="Company site" description="Your company's public address." />
 
   <div class="mt-6 space-y-6">
     <Card.Root data-testid="site-address">
