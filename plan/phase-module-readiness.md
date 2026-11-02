@@ -1,6 +1,6 @@
 # Phase: Module readiness — Website, Email, and the self-improving agent
 
-**Status:** DRAFT (2026-11-02) — waiting for the owner on §5 (four decisions). Brand runs in parallel under `plan/phase-brand-picker.md`; the factory milestones are `plan/phase-software-factory.md`.
+**Status:** APPROVED (owner, 2026-11-02) — decisions in §5. Brand runs in parallel under `plan/phase-brand-picker.md`; the factory milestones are `plan/phase-software-factory.md`.
 **Owner direction (2026-10-31):** "eigenEnterprise is your company in a single place, on your VPS. I want the website module, branding module, email/owlery module ready. Durable pi should work and be ready for self-improvement." SES setup is skipped for now (2026-10-31).
 
 **"Ready" means:** every owner journey of the module runs end to end in a logged-in browser on the local test server (the `ee-box` container, same install as a real VPS), is pinned by a Playwright journey that runs against every release, and nothing a non-technical owner meets first is broken or confusing.
@@ -38,12 +38,12 @@
 
 S1 removals (dev-agent, pi-engine, `pi` engine, dead session log) → S2 source checkout on the server (`EE_SOURCE_DIR`, gates in a sandboxed unit; also fixes vitest-in-worktree) → S3 first roadmap ticket built by the system (risk-tiered merge) → S4 ship (owner-clicked self-upgrade; needs the push credential decision) → S5 reviewer → S6 friction → roadmap. Follow-ups found in S0 go into S1: chat tool calls interrupted by a restart, failed turns in the run feed, onboarding-context noise in the feed, `conversation_busy` after "Skip for now", `TENANT_MASTER_KEY` missing from `.env.example`, two failing `onboarding-welcome` e2e.
 
-## 5. Owner decisions needed
+## 5. Owner decisions (2026-11-02)
 
-- **D-1 Company site:** (a) the company site is an app like any other (a repo deployed through Website → Apps; the founding chat later builds it through the factory), the `/s` pages and page tools are removed — or (b) bring built-in pages back as a small site the chat edits, served at the root.
-- **D-2 App data:** each app gets (a) its own database on the one Postgres server (what the code does today) or (b) its own schema + login role inside the company database (what the 2026-10-20 owner decision says).
-- **D-3 Push-to-deploy for deploy-key/public repos:** (a) ee polls the repo every few minutes and redeploys on a new commit, or (b) manual Redeploy only, said clearly in the UI.
-- **D-4 Order:** what runs first after brand B2–B5.
+- **D-1 Company site = an app, routed by eigenEnterprise.** (Owner, dictated; interpretation recorded for confirmation.) The easy default is a static site, or a site the agent builds; alternatively a GitHub-connected app that is deployed like any other. eigenEnterprise does the routing: one app is marked as the company site and the company domain's root goes to it. The dead `/s` pages + `rootRewrite: /s/home` go (announced); page tools get aligned with "the agent builds a static site app".
+- **D-2 App data = own schema + login role inside the company database** (the 2026-10-20 decision). The code (`ensureDatabase`, D17: own database per workload) changes to match.
+- **D-3 Push-to-deploy for deploy-key/public repos = manual only**, said clearly in the UI ("press Redeploy after pushing"). Only GitHub-App repos auto-deploy.
+- **D-4 Order:** start E1 + E4, S1 and W1 now, in parallel with brand.
 
 ## 6. Proposed order and parallelism
 
