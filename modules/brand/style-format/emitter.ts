@@ -38,3 +38,40 @@ export function activeVisualSetStyleTag(
 ): string {
   return `<style>\n${activeVisualSetCss(cssVars, darkCssVars)}</style>`
 }
+
+/**
+ * Shell aliases for an active set (C3, brand-wide): the visual sets carry the
+ * semantic shadcn roles, never the app-only ones, so without these the
+ * sidebar, headings, overlays and shadows kept the app's own neutrals while
+ * the set was active. Every alias is derived from the set's own roles and is
+ * emitted only when the set does not declare that key itself:
+ *  - `--sidebar*`  → the set's background/foreground/primary/accent/border/ring
+ *    (the sidebar is tinted 6% toward primary so the chosen colour reads in the
+ *    chrome); declared as var() references in :root so a `.dark` block that
+ *    redefines the roles re-derives them,
+ *  - `--font-heading` → the set's display font (headings use it),
+ *  - `--overlay` → a dark tint of the primary (dialog/drawer scrims),
+ *  - `--shadow-1..3: none` when the set has no elevation tokens (flat).
+ * Font fallback stacks come from the component set (withFontFallbacks).
+ * Default app (no active set): none of this is emitted — the app keeps its own tokens.
+ */
+export function brandShellVars(cssVars: Record<string, string>): Record<string, string> {
+  const aliases: Record<string, string> = {
+    '--sidebar': 'color-mix(in oklab, var(--primary) 6%, var(--background))',
+    '--sidebar-foreground': 'var(--foreground)',
+    '--sidebar-primary': 'var(--primary)',
+    '--sidebar-primary-foreground': 'var(--primary-foreground)',
+    '--sidebar-accent': 'color-mix(in oklab, var(--primary) 14%, var(--background))',
+    '--sidebar-accent-foreground': 'var(--foreground)',
+    '--sidebar-border': 'var(--border)',
+    '--sidebar-ring': 'var(--ring)',
+    '--font-heading': 'var(--font-display)',
+    '--overlay': 'color-mix(in oklab, var(--primary) 20%, black)',
+  }
+  if (!('--shadow-1' in cssVars)) {
+    aliases['--shadow-1'] = 'none'
+    aliases['--shadow-2'] = 'none'
+    aliases['--shadow-3'] = 'none'
+  }
+  return { ...aliases, ...cssVars }
+}

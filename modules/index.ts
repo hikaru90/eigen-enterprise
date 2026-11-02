@@ -19,7 +19,7 @@ import { KernelRegistry } from '$lib/kernel/registry'
 import { GitCommitter, type VcsCommitter } from '$lib/kernel/vcs'
 import { registerModuleTools, type WiredKernel } from '$lib/kernel/wiring'
 import type { AppDatabase } from '$lib/server/db/context'
-import { brandManifest } from './brand/manifest'
+import { BRAND_MODULE_ID, brandManifest } from './brand/manifest'
 import { createBrandTools } from './brand/tools'
 import { DbAllowlistStore } from './chat-gateway/db-stores'
 import { createChatGateway, type ChatGatewayBoot } from './chat-gateway/index'
@@ -68,7 +68,13 @@ export const moduleManifests = [
   membersManifest,
 ] as const
 
-/** System modules: part of the OS, self-seeded active (ensureSystemModulesActive). */
+/**
+ * System modules: part of the OS, self-seeded active (ensureSystemModulesActive).
+ * Brand joined in C3: the style the owner picks is the whole app's look, so the
+ * picker must never sit behind an activation step (its consequential acts stay
+ * gated per tool: brand.visual_set_activate / brand.set_activate need approval,
+ * the picker's choose is owner-only).
+ */
 export const SYSTEM_MODULE_IDS = [
   WEBSITE_MODULE_ID,
   EMAIL_MODULE_ID,
@@ -76,6 +82,7 @@ export const SYSTEM_MODULE_IDS = [
   // Memory (phase-cohesion C3): the owner's notes/tasks/projects/capture and the
   // agent's memory tools are core, never an optional extension.
   MEMORY_MODULE_ID,
+  BRAND_MODULE_ID,
 ] as const
 
 /** Tools that always require an approval decision before first execution. */

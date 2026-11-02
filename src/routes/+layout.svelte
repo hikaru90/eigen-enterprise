@@ -13,7 +13,8 @@
   } from '$lib/analytics/posthog-client'
   import favicon from '$lib/assets/favicon.png'
   import { startCaptureQueueRunner } from '$lib/capture/queue'
-  import { activeVisualSetStyleTag } from '../../modules/brand/style-format/emitter'
+  import { activeVisualSetStyleTag, brandShellVars } from '../../modules/brand/style-format/emitter'
+  import { googleFontLinks, withFontFallbacks } from '../../modules/brand/system/component-set'
 
   // E2E hydration marker: SvelteKit hydration replaces the SSR DOM, wiping values
   // typed into pre-hydration inputs. Tests wait for this flag before interacting.
@@ -142,6 +143,11 @@
   <title>eigenEnterprise</title>
   <link rel="icon" href={favicon} />
   {#if page.data.activeVisualSet}
+    <!-- C3: the set's fonts (display / sans / mono) load from Google Fonts,
+         one stylesheet per family; the emitted stacks carry generic fallbacks. -->
+    {#each googleFontLinks(page.data.activeVisualSet.cssVars) as link (link.family)}
+      <link rel="stylesheet" href={link.href} data-brand-font={link.family} />
+    {/each}
     <!-- Phase-2d M5 (V9): the active visual set's tokens apply globally to
          every surface (app shell + public). Cascade guarantee: this <style>
          is UNLAYERED, so it beats the app's @layer base :root declarations at
@@ -152,8 +158,10 @@
          tokens, never user input). -->
     <!-- eslint-disable-next-line svelte/no-at-html-tags -- emitter output over owner-approved active visual set tokens -->
     {@html activeVisualSetStyleTag(
-      page.data.activeVisualSet.cssVars,
-      page.data.activeVisualSet.darkCssVars,
+      brandShellVars(withFontFallbacks(page.data.activeVisualSet.cssVars)),
+      page.data.activeVisualSet.darkCssVars
+        ? brandShellVars(withFontFallbacks(page.data.activeVisualSet.darkCssVars))
+        : null,
     )}
   {/if}
 </svelte:head>
@@ -161,4 +169,3 @@
 <div class="bg-background min-h-dvh">
   {@render children()}
 </div>
-

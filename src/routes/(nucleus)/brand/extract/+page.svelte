@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types'
   import { resolve } from '$app/paths'
-  import ActivationNotice from '../activation-notice.svelte'
   import SpecimenMini from './specimen-mini.svelte'
   import { docTitle } from '$lib/shell/title'
 
@@ -27,9 +26,7 @@
   let error = $state('')
 
   const candidateCount = $derived(candidates.filter((c) => !c.error).length)
-  const canAccept = $derived(
-    sessionId !== '' && !busy && judged !== null && name.trim().length > 0,
-  )
+  const canAccept = $derived(sessionId !== '' && !busy && judged !== null && name.trim().length > 0)
 
   async function post(path: string, body: unknown): Promise<Record<string, unknown>> {
     const response = await fetch(path, {
@@ -133,26 +130,28 @@
   <title>{docTitle('Extract', 'Brand')}</title>
 </svelte:head>
 
-{#if data.needsModuleActivation}
-  <ActivationNotice />
-{:else}
 <div class="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8">
   <header>
     <h1 class="text-2xl font-semibold">Brand extraction judge</h1>
     <p class="text-sm text-neutral-600">
-      Capture a public site, judge three seed candidates per round, stage the winner. Staging is
-      not publishing — promotion happens through the activation gate later.
+      Capture a public site, judge three seed candidates per round, stage the winner. Staging is not
+      publishing — promotion happens through the activation gate later.
     </p>
   </header>
 
   {#if error}
-    <pre class="whitespace-pre-wrap rounded border border-red-400 bg-red-50 p-3 text-xs text-red-800">{error}</pre>
+    <pre
+      class="whitespace-pre-wrap rounded border border-red-400 bg-red-50 p-3 text-xs text-red-800">{error}</pre>
   {/if}
 
   {#if acceptedItem}
     <section class="flex flex-col gap-3">
       <h2 class="text-lg font-medium">Staged corpus item</h2>
-      <pre class="max-h-96 overflow-auto rounded border bg-neutral-100 p-3 text-xs">{JSON.stringify(acceptedItem, null, 2)}</pre>
+      <pre class="max-h-96 overflow-auto rounded border bg-neutral-100 p-3 text-xs">{JSON.stringify(
+          acceptedItem,
+          null,
+          2,
+        )}</pre>
       <a class="text-sm underline" href={resolve('/brand/extract')}>Extract another site</a>
     </section>
   {:else}
@@ -285,4 +284,3 @@
     {/if}
   {/if}
 </div>
-{/if}
