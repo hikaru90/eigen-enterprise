@@ -2,6 +2,37 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-02 — SHIPPED (main, not pushed, not on the test server): brand picker B1–B4, email E1+E4, website W1, cohesion C0–C2+C4, factory S1
+
+Parallel worktree streams (subagents on low effort), each merged `--no-ff`. Gates on the final main: svelte-check 0 errors, full unit suite **4674 passed / 15 skipped / 0 failed**. Repo-wide eslint and the full e2e suite were not run on the merged tree (streams ran their own e2e).
+
+**Brand (plan/phase-brand-picker.md, corrected 2026-11-02: choosing the style is the point; website styling out of scope)**
+- B1 `9ad61d1`: taxonomy — 11 genres, 57 styles, 174 variants; distinctness gate (styleDistance ≥ 0.20). Owner reviewed it as rendered previews (artifact "Brand Style Picker").
+- Owner decisions 2026-11-02: keep 11 genres; dark mode = global switch (every node light + dark); 4 near-duplicate corpus items dropped (tweakcn-clean-slate, daisyui-light/-fantasy/-caramellatte); genres and styles get their own tokens; decorative fonts for headings only.
+- B2a `1287a8e`: authored light+dark token sets for all 242 nodes (77 corpus-reuse, 97 authored variants, all genres/styles authored), WCAG AA contrast gate, 0 distinctness violations, 30 dark-only variants re-aimed (renames recorded in `authoring/palettes.json` `reaimedFrom`). Licences: tweakcn is **Apache-2.0** (ingest script said MIT — corrected), all 57 fonts OFL (`corpus/LICENSE-NOTES.md`).
+- B2b `f759ef7` + render `03439b6`: build-time preview renderer (`npm run brand:previews`), 484 WebP previews (7.8 MB) + `picker-index.json`. Known: the pixel font clips the preview's nav button.
+- B3 `0f4d003`: `/brand` = Spotify-style picker (genre → style → variant, `?style=`, breadcrumb, light/dark previews); "Choose this style" = owner one click → `brand.picker_choose` (owner-only kernel tool) creates + activates the visual set. Migration `0105_brand_visual_set_picker_node`. **Removed (announced):** the ≥3-pick centroid flow, the "Similar styles" drawer, `style-card.svelte`.
+- B4 `0cfd582`: `/brand/system` design-system view (component set in the active style, light/dark). Token fixes with app-wide effect: shadcn components now use the radius tokens (default style: square → ~4px), font variables actually reach the utilities, the nucleus wrapper no longer forces white over an active brand, brand dark tokens beat the app's `.dark` block.
+
+**Email (plan/phase-module-readiness.md)** — E1+E4 `62addc2`: `MAIL_TRANSPORT=fake` (DB-backed captured mails, migration `0104_mail_fake_transport`; refused in production without `MAIL_TRANSPORT_FAKE_IN_PRODUCTION=1`; unknown values fail at boot), e2e-only `/api/e2e/harness/mail`; sign-in codes flow through it (e2e signs in with a captured code). **Removed (announced):** `owlery.send_mail` — `email.send_mail` is the one send tool.
+
+**Website** — W1 `da6e299`: `ee/e2e/box-journey.mjs` rewritten as a maintained Playwright journey; on the test server 8 of 13 steps passed (claim, public repo, deploy, health gate, served on its host, env, secret, Redeploy). Fixes: env vars and secrets are one sealed store → one card (names were listed twice and the page claimed secrets never reach the build); D-3 copy "press Redeploy after you push". Not run yet: logs/history, mail access, domain change, remove; private repo needs the owner's GitHub.
+- **Incident:** the W1 agent found `ee-box` unclaimed and claimed it with a test account (allowed by its brief), then could not reset it — the permission classifier correctly refused `box.sh down` (irreversible). The owner's earlier claim link is void; reset awaits the owner's OK. Next journey runs reuse a saved session (`OWNER_STATE`) instead of claiming.
+
+**Cohesion (plan/phase-cohesion.md, owner feedback 2026-11-02 "what is missing completely is the cohesiveness")**
+- C0: screenshot inventory of all 61 pages (published as "App Page Inventory"): 20 in the new shell, 15 in the old eigen chrome, 8 settings, 18 standalone.
+- C1: owner decisions per area recorded in the plan §3.
+- C2 + C4 `b883d11` (+ spec fix `165af80`): one shell for every signed-in page (nav: Chat, Overview, Website, Email, Brand, Agent, Memory, Settings); `/settings` inside it = Account, Members & invites, AI provider, Passkeys & sessions (stuck "Loading…" fixed), API keys (moved from `/api-keys`), Approval mode (new section), Extensions (until C3). Errors render in the shell ("Back to Chat"), 404 not 500 for bad ids, one title pattern via `docTitle()`, `/claim` and `/invite` get "Sign in". Guard spec `src/routes/shell-guard.spec.ts` (allowlist: login, signup, claim, invite, s, s/[slug]). **Removed (announced, C1):** `/demo/*`, `/settings/agents`, `/settings/scheduled-tasks`, "Change password", `/register`, `/forgot-password`, `/reset-password`, `/graph`, `/notes`, `/timeline`, `/memory/timeline`, `/settings/hosting` page, `/m/website/apps` alias, `/m/website/hosting`, `/m/brand`, `/eval`, `/admin/queue`, `/feedback`, old `/chat`, `/memory` graph view, plus API routes and code only they used (`/api/feedback`, `/api/eval/qa*`, `/api/chat/sessions*`, src/lib/graph, eval UI, force-graph, …).
+
+**Factory S1** `979a4e1` + `9626723`: **removed (announced):** dev-agent (+ `kernel_devagent_runs`, its event types), pi-engine and the `pi` loop engine (durable is the only engine), AgentSessionLog/`kernel_agent_session_events` (migration `0106_drop_dev_agent_tables`); `repo.*` keeps working (runner inlined). S0 follow-ups: interrupted chat tool calls now report `not_run`; failed turns show in `/runs`; feed Input shows only the owner's words (structural `ownerText`); same-conversation turns queue instead of `conversation_busy` + greeting started after the wizard hands over; `.env.example` explains `TENANT_MASTER_KEY`; stale `onboarding-welcome`/`journey-founding` e2e fixed; SIGTERM exits within 2 s (unit-tested only).
+
+**Broke / found on the way**
+- Migration-number collisions between parallel streams (0104 ×3) — renumbered at merge; orchestrator now assigns numbers up front.
+- The Mac is the bottleneck with 6+ agents: svelte-check/eslint runs hang, dev servers take >2 min, ports 4173/5199/5299 stay occupied by orphaned harness processes (left alone — ownership unclear).
+- A missing `TENANT_MASTER_KEY` still crashes the whole dev server via an unhandled rejection in `tenant-keys.ts` (open).
+
+**Next**: owner OK to reset `ee-box`; C3 (Memory page, Agent page with Runs/Activity/Roadmap, Brand on/off without `/m/brand`, chosen style visible app-wide incl. fonts); new inventory to compare with C0; release + journeys on the test server; then W2–W4, E2–E6, S2.
+
 ## 2026-10-30 — S0 PROVEN in the local test server (ee-box): crash-resume works for real after a getDb() fix
 
 **First proof run FAILED, which found the real bug**: a chat turn resumed after a restart failed at once with `getDb() was called outside an active request`. pi-durable drives model calls from its own task loop; the default completion called `llmChatCompletion`, which needs the request-scoped DB context. Resumed turns and background runs have none. The crash-resume specs injected a fake `complete`, so **crash-resume had never worked in production**. Fix `da46d7b`: the default completion always runs inside `withDbUser(input.userId)` (the user resolved from the conversation index), never in the ambient context — the task loop may drive another user's conversation during a live request.
