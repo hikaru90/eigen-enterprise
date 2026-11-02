@@ -1,8 +1,8 @@
-import { createNodeSpawnRunner, TIMEOUT_EXIT_CODE } from '$lib/kernel/pi-engine'
+import { spawn, type ChildProcess } from 'node:child_process'
 
 /**
  * Shell seam so every process boundary in this module is injectable (tests
- * never spawn real git/node). Same shape as the kernel spawn seam — failures
+ * never spawn real git/node). Failures
  * surface as non-zero exit codes, the runner never rejects.
  */
 export type CommandSpec = {
@@ -24,28 +24,74 @@ export type CommandRunner = {
   killAll(): Promise<void>
 }
 
-export { TIMEOUT_EXIT_CODE }
+/** Conventional "timed out" exit code. */
+export const TIMEOUT_EXIT_CODE = 124
 
-/** Real runner: spawns children (no shell), collects output, per-command timeout. */
+/**
+ * Real runner: spawns children (no shell), collects stdout/stderr, resolves
+ * (never rejects) with exit codes (127 for ENOENT), enforces an optional
+ * per-command timeout (SIGKILL, exitCode 124).
+ */
 export class NodeCommandRunner implements CommandRunner {
-  private readonly spawn = createNodeSpawnRunner()
+  private readonly active = new Set<ChildProcess>()
 
-  async run(spec: CommandSpec): Promise<CommandResult> {
-    return this.spawn(spec.cmd, spec.args, {
+  run(spec: CommandSpec): Promise<CommandResult> {
+    const child = spawn(spec.cmd, spec.args, {
       cwd: spec.cwd,
-      ...(spec.timeoutMs === undefined ? {} : { timeoutMs: spec.timeoutMs }),
-    }).done
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    this.active.add(child)
+
+    let stdout = ''
+    let stderr = ''
+    let timedOut = false
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString()
+    })
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString()
+    })
+
+    const timer =
+      spec.timeoutMs === undefined
+        ? undefined
+        : setTimeout(() => {
+            timedOut = true
+            child.kill('SIGKILL')
+          }, spec.timeoutMs)
+    timer?.unref()
+
+    return new Promise<CommandResult>((resolve) => {
+      const settle = (exitCode: number) => {
+        if (timer !== undefined) clearTimeout(timer)
+        this.active.delete(child)
+        resolve({
+          exitCode: timedOut ? TIMEOUT_EXIT_CODE : exitCode,
+          stdout,
+          stderr: timedOut ? `${stderr}\n[spawn] timed out after ${spec.timeoutMs}ms` : stderr,
+        })
+      }
+      child.on('error', (err: NodeJS.ErrnoException) => {
+        // e.g. ENOENT — resolve loud instead of rejecting.
+        settle(err.code === 'ENOENT' ? 127 : 1)
+      })
+      child.on('close', (code) => {
+        settle(code ?? 1)
+      })
+    })
   }
 
   async killAll(): Promise<void> {
-    this.spawn.killAll()
+    for (const child of this.active) child.kill('SIGKILL')
+    this.active.clear()
   }
 }
 
 /** Wall-clock budget per repo.run command: 10 minutes, then SIGKILL (exit 124). */
 export const DEFAULT_COMMAND_TIMEOUT_MS = 10 * 60 * 1000
 
-/** Max chars kept per output stream (dev-agent's result-summary rule). */
+/** Max chars kept per output stream (result-summary rule). */
 export const OUTPUT_MAX_CHARS = 4000
 
 export function truncateOutput(text: string, max: number = OUTPUT_MAX_CHARS): { text: string; truncated: boolean } {
@@ -53,7 +99,7 @@ export function truncateOutput(text: string, max: number = OUTPUT_MAX_CHARS): { 
   return { text: `${text.slice(0, max - 1)}…`, truncated: true }
 }
 
-/** Scopes the merge gate verifies in the worktree (mirrors the dev-agent gate). */
+/** Scopes the merge gate verifies in the worktree. */
 export const REPO_VERIFY_TARGETS = ['src/cli', 'src/lib/kernel', 'src/lib/server/mcp', 'modules'] as const
 
 export type VerificationResult = {

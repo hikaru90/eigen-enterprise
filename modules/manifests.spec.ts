@@ -59,13 +59,6 @@ const PRE_MERGE_TOOLS: Record<string, string[]> = {
   email: ['email.send_mail'],
   owlery: ['owlery.status'],
   repo: ['repo.worktree_create', 'repo.run', 'repo.write_file', 'repo.read_file', 'repo.merge'],
-  'dev-agent': [
-    'dev-agent.dispatch',
-    'dev-agent.status',
-    'dev-agent.logs',
-    'dev-agent.merge',
-    'dev-agent.abort',
-  ],
   roadmap: ['roadmap.list_items', 'roadmap.add_item', 'roadmap.update_item'],
 }
 

@@ -5,7 +5,6 @@ import { createPrincipalToolExecutor, type BackgroundRunHandle, type BackgroundR
 import { DbJourneyStore, type JourneyStore } from '$lib/kernel/playbook'
 import type { WiredKernel } from '$lib/kernel/wiring'
 import { createDurableEngine } from '$lib/server/agent/durable-engine'
-import { piEngine } from '../../../modules/orchestrator/dev-agent'
 import {
   bootstrapChatGateway,
   bootstrapRecap,
@@ -23,7 +22,7 @@ import { ORCHESTRATOR_PERSONA_PROMPT } from '../../../modules/orchestrator/brain
 
 /**
  * Startup composition root (phase-1b): kernel → orchestrator (the harness
- * runtime, hosting the dev-agent `pi` engine via the orchestrator's engine
+ * runtime, hosting the durable engine via the orchestrator's engine
  * injection seam) → chat gateway + Telegram poll loop → recap module + its
  * scheduler tick.
  *
@@ -172,10 +171,7 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
   })
   const orchestrator = await orchestratorFn(kernel, wireGateway, {
     env,
-    engines: [
-      ['pi', piEngine],
-      ['durable', durable.engine],
-    ],
+    engines: [['durable', durable.engine]],
     journeys,
     // Assisted onboarding facts (lazy DB import, like the journey store: boot
     // itself stays DB-free).

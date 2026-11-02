@@ -70,24 +70,12 @@ export function summarizeEvents(
 
   const typeCounts = new Map<string, number>()
   const budgetExceededAgents = new Set<string>()
-  const devCompleted: Array<{ runId: string; green: boolean | undefined; ok: boolean | undefined }> =
-    []
   for (const event of events) {
     typeCounts.set(event.type, (typeCounts.get(event.type) ?? 0) + 1)
     const record = payloadRecord(event.payload)
     if (event.type === 'agent.budget_exceeded') {
       const agentId = whitelistedField(record, 'agentId')
       if (agentId !== undefined) budgetExceededAgents.add(String(agentId))
-    }
-    if (event.type === 'dev-agent.completed') {
-      const runId = whitelistedField(record, 'runId')
-      if (runId !== undefined) {
-        devCompleted.push({
-          runId: String(runId),
-          green: typeof record.green === 'boolean' ? record.green : undefined,
-          ok: typeof record.ok === 'boolean' ? record.ok : undefined,
-        })
-      }
     }
   }
 
@@ -106,13 +94,6 @@ export function summarizeEvents(
   const denied = typeCounts.get('gateway.telegram.denied') ?? 0
   if (denied > 0) {
     lines.push(`Notable: ${denied} denied gateway attempt${denied === 1 ? '' : 's'}.`)
-  }
-
-  if (devCompleted.length > 0) {
-    const green = devCompleted.filter((c) => c.green === true).length
-    lines.push(
-      `Notable: dev-agent ${devCompleted.length} completion${devCompleted.length === 1 ? '' : 's'} (${green} green).`,
-    )
   }
 
   lines.push(...countLines(typeCounts))

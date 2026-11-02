@@ -72,17 +72,6 @@ describe('summarizeEvents', () => {
     expect(summary.lines.join('\n')).not.toContain('8888')
   })
 
-  it('summarizes dev-agent completions with green counts', () => {
-    const events = [
-      event('dev-agent.completed', { runId: 'r1', green: true, ok: true }),
-      event('dev-agent.completed', { runId: 'r2', green: false, ok: true }),
-      event('dev-agent.completed', { runId: 'r3', green: true, ok: false }),
-      event('dev-agent.merged', { runId: 'r1' }),
-    ]
-    const summary = summarizeEvents(events)
-    expect(summary.lines).toContain('Notable: dev-agent 3 completions (2 green).')
-  })
-
   it('surfaces pending approvals from extras', () => {
     const summary = summarizeEvents([event('tool.executed')], { pendingApprovals: 2 })
     expect(summary.lines[0]).toBe('Notable: 2 approvals pending.')
@@ -108,7 +97,7 @@ describe('summarizeEvents', () => {
     const events = [
       event('tool.executed', { tool: 'a' }),
       event('agent.budget_exceeded', { agentId: 'x' }),
-      event('dev-agent.completed', { runId: 'r', green: true, ok: true }),
+      event('website.contact.captured', { contactId: 'c' }),
     ]
     expect(summarizeEvents(events)).toEqual(summarizeEvents(events))
   })
@@ -116,14 +105,14 @@ describe('summarizeEvents', () => {
   it('handles malformed payloads without throwing', () => {
     const events = [
       event('agent.budget_exceeded', null),
-      event('dev-agent.completed', 'not-an-object'),
+      event('website.contact.captured', 'not-an-object'),
       event('tool.executed', ['array', 'payload']),
     ]
     const summary = summarizeEvents(events)
     expect(summary.lines).toEqual([
       '1 agent.budget_exceeded',
       '1 tool.executed',
-      '1 dev-agent.completed',
+      '1 website.contact.captured',
     ])
   })
 })
@@ -140,6 +129,6 @@ describe('recapTypeCounts', () => {
     expect(counts['tool.executed']).toBe(2)
     expect(counts['gateway.telegram.denied']).toBe(1)
     expect(counts['website.contact.captured']).toBe(0)
-    expect(Object.keys(counts)).toHaveLength(12)
+    expect(Object.keys(counts)).toHaveLength(8)
   })
 })

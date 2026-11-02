@@ -21,7 +21,7 @@ export const RECAP_COMPLETED_EVENT = 'recap.completed'
  * Event types the recap aggregates — the exact strings emitted across the
  * codebase: kernel/agent-runtime.ts (agent.*), kernel/registry.ts
  * (tool.executed), modules/chat-gateway/telegram.ts (gateway.telegram.*),
- * modules/dev-agent/tools.ts (dev-agent.*), modules/website/contact.ts
+ * modules/website/contact.ts
  * (website.contact.captured). Exact-match whitelist, no heuristics.
  */
 export const RECAP_EVENT_TYPES = [
@@ -32,10 +32,6 @@ export const RECAP_EVENT_TYPES = [
   'tool.executed',
   'gateway.telegram.message',
   'gateway.telegram.denied',
-  'dev-agent.dispatched',
-  'dev-agent.merged',
-  'dev-agent.aborted',
-  'dev-agent.completed',
   'website.contact.captured',
 ] as const
 

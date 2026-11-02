@@ -1,7 +1,5 @@
 import {
-  bigserial,
   boolean,
-  index,
   jsonb,
   pgTable,
   text,
@@ -50,27 +48,6 @@ export const kernelApprovals = pgTable('kernel_approvals', {
   decidedAt: timestamp('decided_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
-
-/**
- * Durable append-only agent session log (phase-3 M1) — the conversation
- * history the former builtin-json engine derived per-session context from (the durable engine keeps its history in pi-durable storage; nothing writes here any more). Insertion
- * order (bigserial id) is the ordering; no update/delete paths exist.
- */
-export const kernelAgentSessionEvents = pgTable(
-  'kernel_agent_session_events',
-  {
-    id: bigserial('id', { mode: 'number' }).primaryKey(),
-    sessionId: text('session_id').notNull(),
-    agentId: text('agent_id').notNull(),
-    kind: text('kind', { enum: ['user', 'assistant'] }).notNull(),
-    payload: jsonb('payload')
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default({}),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [index('kernel_agent_session_events_session_idx').on(table.sessionId, table.id)],
-)
 
 /** Company-wide approval mode (migration 0090): single row id='company', seeded 'ask'. */
 export const kernelApprovalMode = pgTable('kernel_approval_mode', {

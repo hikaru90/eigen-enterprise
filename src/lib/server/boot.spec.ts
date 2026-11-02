@@ -10,7 +10,6 @@ const mocks = vi.hoisted(() => ({
   bootstrapOrchestrator: vi.fn(),
   bootstrapChatGateway: vi.fn(),
   bootstrapRecap: vi.fn(),
-  piEngine: { engineId: 'fake-pi-engine' },
   registerAdminTools: vi.fn(async () => undefined),
 }))
 
@@ -26,7 +25,6 @@ vi.mock('../../../modules/index', () => ({
 vi.mock('../../../modules/orchestrator/bootstrap', () => ({
   bootstrapOrchestrator: mocks.bootstrapOrchestrator,
 }))
-vi.mock('../../../modules/orchestrator/dev-agent', () => ({ piEngine: mocks.piEngine }))
 
 type OrchestratorCall = {
   kernel: WiredKernel
@@ -147,7 +145,7 @@ describe('bootApp — startup composition root', () => {
     expect(mocks.bootstrapOrchestrator).toHaveBeenCalledTimes(1)
   })
 
-  it('hosts the dev-agent pi engine and the durable engine via the orchestrator engines seam, and injects env', async () => {
+  it('hosts only the durable engine via the orchestrator engines seam, and injects env', async () => {
     const { bootApp } = await import('./boot')
     const env = { EE_HARNESS_SPEND_CAP_USD: '5' }
 
@@ -156,8 +154,7 @@ describe('bootApp — startup composition root', () => {
     expect(mocks.bootstrapOrchestrator).toHaveBeenCalledTimes(1)
     const [kernelArg, , optionsArg] = mocks.bootstrapOrchestrator.mock.calls[0]
     expect(kernelArg).toBe(boot.kernel)
-    expect(optionsArg.engines.map(([id]: [string]) => id)).toEqual(['pi', 'durable'])
-    expect(optionsArg.engines[0][1]).toBe(mocks.piEngine)
+    expect(optionsArg.engines.map(([id]: [string]) => id)).toEqual(['durable'])
     expect(optionsArg.env).toBe(env)
   })
 

@@ -9,7 +9,6 @@ import type { ApprovalModeStore, ApprovalStore } from './approvals'
 import type { EventSink } from './events'
 import type { PrincipalStore } from './principals'
 import type { KernelRegistry } from './registry'
-import type { AgentSessionLog } from './session-log'
 import type { ToolDescriptor } from './types'
 import {
   manifestNamespaces,
@@ -27,8 +26,6 @@ export type WiredKernel = {
   /** Company-wide approval mode the owner picks (ask | reasonable | allow_all). */
   approvalMode: ApprovalModeStore
   eventSink: EventSink
-  /** Durable agent conversation log (append-only) backing the loop engines. */
-  sessionLog: AgentSessionLog
 }
 
 /**

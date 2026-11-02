@@ -67,8 +67,7 @@ export type OrchestratorBootOptions = {
   env?: Record<string, string | undefined>
   /**
    * The loop engines the composition root hosts: 'durable' (the orchestrator's
-   * only engine, composed in $lib/server/agent) is required; others (e.g. the
-   * pi engine from the dev-agent module) are optional. Injected here — the
+   * only engine, composed in $lib/server/agent) is required; others are optional. Injected here — the
    * orchestrator must not import other modules directly (boundary guard).
    */
   engines?: Array<[string, LoopEngine]>

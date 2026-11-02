@@ -15,8 +15,7 @@ import { approvalIdFromError, approvalPendingResult, toolErrorResult } from './t
  * containment module (D1). What the harness inherits from the kernel is every
  * tool execution: the bridge's execute calls EngineContext.executeTool, so
  * permissions, approval gate, audit and vcs commits apply unchanged (D5).
- * Per D6 this engine does NOT write kernel_agent_session_events — pi-durable
- * storage is the history source for agents on this engine.
+ * Per D6 pi-durable storage is the history source for agents on this engine.
  */
 
 /** One tool of a conversation's surface as the model sees it (no executor). */
