@@ -1,3 +1,4 @@
+import { ownerModuleBlurb } from '$lib/shell/module-copy'
 import { describe, expect, it, vi } from 'vitest'
 import type { ModuleManifest } from '$lib/kernel/modules'
 import type { ToolDescriptor } from '$lib/kernel/types'
@@ -48,7 +49,7 @@ function deps(over: Partial<OverviewDeps>): OverviewDeps {
 }
 
 describe('buildOverview', () => {
-  it('lists active and inactive modules with their manifest description', async () => {
+  it('lists active and inactive modules with the owner-facing blurb (manifest description as fallback)', async () => {
     const out = await buildOverview(
       deps({
         manifests: [manifest('website', 'Website', 'The site.'), manifest('repo', 'Repo', 'Code.')],
@@ -59,7 +60,7 @@ describe('buildOverview', () => {
       {
         id: 'website',
         name: 'Website',
-        description: 'The site.',
+        description: ownerModuleBlurb('website', 'The site.'),
         active: true,
         results: [],
         counts: [],

@@ -158,7 +158,7 @@
         {/if}
         {#if isTaskListItem(item)}
           <span
-            class="text-muted-foreground rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase"
+            class="text-muted-foreground rounded-full border border-border px-2 py-0.5 text-[11px] font-medium"
           >
             {m.graph_timeline_open_loop()}
           </span>

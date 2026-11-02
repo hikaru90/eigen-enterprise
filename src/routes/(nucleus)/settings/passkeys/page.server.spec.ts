@@ -32,7 +32,8 @@ describe('/settings/passkeys — Passkeys & sessions', () => {
     listSessions.mockResolvedValueOnce([
       {
         id: 's-here',
-        userAgent: 'Mozilla/5.0',
+        userAgent:
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
         ipAddress: '127.0.0.1',
         createdAt: new Date('2026-11-02T09:00:00Z'),
         updatedAt: new Date('2026-11-02T09:30:00Z'),
@@ -60,15 +61,17 @@ describe('/settings/passkeys — Passkeys & sessions', () => {
         {
           id: 's-here',
           current: true,
-          device: 'Mozilla/5.0',
+          device: 'Chrome on macOS',
           ipAddress: '127.0.0.1',
+          signedInAt: '2026-11-02T09:00:00.000Z',
           lastActive: '2026-11-02T09:30:00.000Z',
         },
         {
           id: 's-other',
           current: false,
-          device: 'Unknown device',
+          device: null,
           ipAddress: null,
+          signedInAt: '2026-10-30T09:00:00.000Z',
           lastActive: '2026-10-30T09:00:00.000Z',
         },
       ],

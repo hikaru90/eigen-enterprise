@@ -1,7 +1,8 @@
 import type { Actions, PageServerLoad } from './$types'
-import { fail, redirect } from '@sveltejs/kit'
+import { fail, redirect, type RequestEvent } from '@sveltejs/kit'
 import { count, eq } from 'drizzle-orm'
 import { auth } from '$lib/server/auth'
+import { signInHeaders } from '$lib/server/auth/sign-in-headers'
 import { getSafeErrorMessage } from '$lib/server/auth-form-errors'
 import { claimCompany, claimConfigFromEnv, claimMessage, claimStatus, ClaimError } from '$lib/server/auth/claim'
 import { authDb } from '$lib/server/db/auth-db'
@@ -15,7 +16,7 @@ async function countUsers(): Promise<number> {
   return Number(row?.n ?? 0)
 }
 
-const deps = () => ({
+const deps = (event?: Pick<RequestEvent, 'request' | 'getClientAddress'>) => ({
   config: claimConfigFromEnv(env),
   countUsers,
   isConsumed: async (tokenHash: string) =>
@@ -23,7 +24,7 @@ const deps = () => ({
   consume: async (tokenHash: string) =>
     (await authDb.insert(claimConsumed).values({ tokenHash }).onConflictDoNothing().returning({ h: claimConsumed.tokenHash })).length === 1,
   createCode: async (email: string) => auth.api.createVerificationOTP({ body: { email, type: 'sign-in' } }),
-  signIn: async (email: string, code: string) => auth.api.signInEmailOTP({ body: { email, otp: code } }),
+  signIn: async (email: string, code: string) => auth.api.signInEmailOTP({ body: { email, otp: code }, ...(event ? { headers: signInHeaders(event) } : {}) }),
 })
 
 export const load: PageServerLoad = async (event) => {
@@ -39,7 +40,7 @@ export const actions: Actions = {
     const email = form.get('email')?.toString() ?? ''
     const token = form.get('token')?.toString() ?? ''
     try {
-      await claimCompany({ email, token }, deps())
+      await claimCompany({ email, token }, deps(event))
     } catch (err) {
       const message = err instanceof ClaimError ? err.message : getSafeErrorMessage(err, 'Claiming failed')
       return fail(400, { email, message })

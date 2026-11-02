@@ -59,14 +59,35 @@ function moduleOf(event: KernelEvent): string {
   return 'agent'
 }
 
-function toolText(tool: string): string {
+/** Tool namespace → the owning module's owner-facing name ("substrate" → "Website"). */
+export type ToolNamespaceLabels = ReadonlyMap<string, string>
+
+/**
+ * Built from the module manifests: a merged module owns several tool
+ * namespaces (website = website + substrate + github; email = email + owlery),
+ * and the owner only ever sees the module's own name.
+ */
+export function toolNamespaceLabels(
+  manifests: readonly { name: string; toolNamespaces?: readonly string[] }[],
+): ToolNamespaceLabels {
+  const map = new Map<string, string>()
+  for (const m of manifests) for (const ns of m.toolNamespaces ?? []) map.set(ns, m.name)
+  return map
+}
+
+function toolText(tool: string, namespaces: ToolNamespaceLabels): string {
   const dot = tool.indexOf('.')
   if (dot <= 0) return `Used ${humanize(tool).toLowerCase()}`
-  return `Used ${moduleLabel(tool.slice(0, dot))}: ${humanize(tool.slice(dot + 1)).toLowerCase()}`
+  const ns = tool.slice(0, dot)
+  return `Used ${namespaces.get(ns) ?? moduleLabel(ns)}: ${humanize(tool.slice(dot + 1)).toLowerCase()}`
 }
 
 /** One kernel event as a readable line. Unknown types fail loud. */
-export function toLogEntry(event: KernelEvent, agentIds: ReadonlySet<string>): ActivityLogEntry {
+export function toLogEntry(
+  event: KernelEvent,
+  agentIds: ReadonlySet<string>,
+  namespaces: ToolNamespaceLabels = new Map(),
+): ActivityLogEntry {
   if (!(FEED_EVENT_TYPES as readonly string[]).includes(event.type)) {
     throw new Error(`toLogEntry: event type outside the feed whitelist: ${event.type}`)
   }
@@ -99,7 +120,10 @@ export function toLogEntry(event: KernelEvent, agentIds: ReadonlySet<string>): A
     case 'tool.executed': {
       const tool = typeof p.tool === 'string' ? p.tool : 'a tool'
       actor = isAgent ? 'Agent' : event.principalId ? 'A team member' : 'System'
-      text = typeof p.activity === 'string' && p.activity.length > 0 ? p.activity : toolText(tool)
+      text =
+        typeof p.activity === 'string' && p.activity.length > 0
+          ? p.activity
+          : toolText(tool, namespaces)
       outcome = p.ok === true ? 'done' : p.ok === false ? 'failed' : null
       details.push(`tool: ${tool}`)
       if (typeof p.durationMs === 'number') details.push(`took ${p.durationMs} ms`)

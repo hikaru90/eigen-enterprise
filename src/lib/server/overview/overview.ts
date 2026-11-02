@@ -1,3 +1,4 @@
+import { ownerModuleBlurb } from '$lib/shell/module-copy'
 import { z } from 'zod'
 import { approvalActionLabel } from '$lib/chat/approval-copy'
 import type { ModuleManifest } from '$lib/kernel/modules'
@@ -98,7 +99,8 @@ export function websiteResultSource(journeyStatus: () => Promise<JourneyStatus>)
     const list = appListOutput.parse(await registry.execute(APP_LIST_TOOL, {}, ctx))
     const apps = list.services.map((s) => ({
       label: s.name,
-      detail: s.status === 'healthy' ? 'Healthy' : s.status === 'deploying' ? 'Deploying' : 'Failed',
+      detail:
+        s.status === 'healthy' ? 'Healthy' : s.status === 'deploying' ? 'Deploying' : 'Failed',
       href: `/m/website/apps/${s.name}`,
     }))
     const healthy = list.services.filter((s) => s.status === 'healthy').length
@@ -176,7 +178,7 @@ export async function moduleOverview(
   const base = {
     id: manifest.id,
     name: manifest.name,
-    description: manifest.description ?? '',
+    description: ownerModuleBlurb(manifest.id, manifest.description ?? ''),
     active,
   }
   const source = deps.resultSources[manifest.id]

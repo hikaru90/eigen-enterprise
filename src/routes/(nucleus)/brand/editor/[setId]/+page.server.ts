@@ -15,7 +15,8 @@ export const load: PageServerLoad = async (event) => {
   const user = await requireAdmin(event.locals.user)
   const setId = z.string().uuid().safeParse(event.params.setId)
   if (!setId.success) {
-    error(400, 'setId must be a uuid')
+    // A malformed id names no set: the same plain 404 as an unknown one.
+    error(404, 'Visual set not found')
   }
   const kernel = await appKernel()
   const set = (await kernel.registry.execute(

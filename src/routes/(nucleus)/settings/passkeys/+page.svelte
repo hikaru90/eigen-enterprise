@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { sessionPlace } from '$lib/auth/session-label'
   import type { PageProps } from './$types'
   import { invalidateAll } from '$app/navigation'
   import { authClient } from '$lib/auth-client'
@@ -40,7 +41,7 @@
   <title>{docTitle('Passkeys & sessions', 'Settings')}</title>
 </svelte:head>
 
-<h1 class="text-xl font-medium tracking-tight">Passkeys &amp; sessions</h1>
+<h2 class="text-base font-semibold tracking-tight">Passkeys &amp; sessions</h2>
 <p class="mt-1 text-sm text-foreground/60">
   A passkey lets you back in with a fingerprint, face, or device PIN — no code, no email. Passkeys
   are bound to <span class="font-mono text-xs">{data.origin}</span>; register one per machine.
@@ -48,7 +49,7 @@
 
 <section class="mt-8 space-y-3" data-testid="passkeys">
   <div class="flex flex-wrap items-center justify-between gap-3">
-    <h2 class="text-sm font-semibold">Your passkeys</h2>
+    <h3 class="text-sm font-semibold">Your passkeys</h3>
     <Button type="button" size="sm" onclick={addPasskey} disabled={adding}>
       {adding ? 'Waiting for your device…' : 'Add a passkey for this machine'}
     </Button>
@@ -84,14 +85,23 @@
 </section>
 
 <section class="mt-10 space-y-3" data-testid="sessions">
-  <h2 class="text-sm font-semibold">Where you are signed in</h2>
+  <h3 class="text-sm font-semibold">Where you are signed in</h3>
   <ul class="divide-y divide-border rounded-lg border border-border">
     {#each data.sessions as s (s.id)}
       <li class="flex flex-wrap items-center justify-between gap-3 p-3" data-testid="session-row">
         <div class="min-w-0">
-          <p class="truncate text-sm">{s.device}</p>
-          <p class="text-[11px] text-foreground/50">
-            {s.ipAddress ?? 'Unknown address'} · last active {day(s.lastActive)}
+          <p class="truncate text-sm" data-testid="session-device">
+            {s.device ?? `Signed in ${day(s.signedInAt)}`}
+          </p>
+          <p class="text-[11px] text-muted-foreground">
+            {[
+              s.device
+                ? sessionPlace({ ipAddress: s.ipAddress, createdAt: s.signedInAt }, day)
+                : s.ipAddress,
+              `last active ${day(s.lastActive)}`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           </p>
         </div>
         {#if s.current}<Badge variant="outline">this browser</Badge>{/if}

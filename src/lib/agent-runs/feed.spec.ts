@@ -72,18 +72,22 @@ describe('agent run feed reducer', () => {
     expect(live.lines.map((l) => [l.kind, l.text])).toEqual([
       ['run', 'Run started'],
       ['user', 'hi'],
-      ['error', 'Turn failed (model_error): gateway 502'],
+      ['error', "The AI provider didn't answer. Try again in a moment."],
       ['run', 'Run ended without an answer'],
     ])
     const snap = feedFromSnapshot({
       running: false,
-      items: [{ kind: 'user_input', text: 'hi' }, { kind: 'run_failed', reason: 'model_error', detail: 'gateway 502' }],
+      items: [
+        { kind: 'user_input', text: 'hi' },
+        { kind: 'run_failed', reason: 'model_error', detail: 'gateway 502' },
+      ],
     })
     expect(snap.lines.map((l) => [l.kind, l.text])).toEqual([
       ['user', 'hi'],
-      ['error', 'Turn failed (model_error): gateway 502'],
+      ['error', "The AI provider didn't answer. Try again in a moment."],
       ['run', 'Run ended without an answer'],
     ])
+    // The technical reason stays available behind the "details" toggle.
+    expect(snap.lines[1].detail).toBe('model_error: gateway 502')
   })
 })
-

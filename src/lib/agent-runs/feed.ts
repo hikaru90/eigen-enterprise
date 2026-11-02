@@ -5,11 +5,15 @@
  * Shared by server and client — no server imports here.
  */
 
+import { failureExplanation } from './titles'
+
 /** One durable conversation, as the run list shows it. Metadata only. */
 export type RunSummary = {
   id: number
   conversationKey: string
   agentId: string
+  /** Readable name: "Chat with <member>" or "Background task: …" (titles.ts). */
+  title: string
   createdAt: string
   updatedAt: string
 }
@@ -40,6 +44,8 @@ export type FeedLine = {
   status: 'running' | 'done' | 'error' | 'unfinished'
   toolCallId?: string
   args?: unknown
+  /** Technical detail behind the line's "details" toggle (failed turns). */
+  detail?: string
 }
 
 export type FeedState = { running: boolean; lines: FeedLine[]; nextKey: number }
@@ -77,12 +83,14 @@ export function applyBatch(state: FeedState, items: readonly FeedItem[]): FeedSt
         running = false
         const open = streamingIndex()
         if (open >= 0) lines[open] = { ...lines[open], status: 'done' }
-        const text = `Turn failed (${item.reason})${item.detail ? `: ${item.detail}` : ''}`
+        const text = failureExplanation(item.reason, item.detail)
+        const detail = `${item.reason}${item.detail ? `: ${item.detail}` : ''}`
         // Live, the run_end marker already arrived: the failure replaces it so
         // the feed reads "error, then run end" in both live and snapshot order.
         const last = lines.length - 1
-        if (last >= 0 && lines[last].kind === 'run' && lines[last].text === 'Run finished') lines.pop()
-        push({ kind: 'error', text, status: 'error' })
+        if (last >= 0 && lines[last].kind === 'run' && lines[last].text === 'Run finished')
+          lines.pop()
+        push({ kind: 'error', text, status: 'error', detail })
         push({ kind: 'run', text: 'Run ended without an answer', status: 'done' })
         break
       }

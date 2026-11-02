@@ -74,7 +74,7 @@ describe('verifyCode', () => {
   it('signs in (or up) with a valid code and redirects home', async () => {
     signInEmailOTPMock.mockResolvedValue({ token: 't' })
     await expect(verifyCode(event({ email: 'a@b.co', code: '123456' }))).rejects.toMatchObject({ status: 302, location: '/' })
-    expect(signInEmailOTPMock).toHaveBeenCalledWith({ body: { email: 'a@b.co', otp: '123456' } })
+    expect(signInEmailOTPMock).toHaveBeenCalledWith({ body: { email: 'a@b.co', otp: '123456' }, headers: expect.any(Headers) })
   })
 
   it('rejects anything that is not six digits without calling Better Auth', async () => {

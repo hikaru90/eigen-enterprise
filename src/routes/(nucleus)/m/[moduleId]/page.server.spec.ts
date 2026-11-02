@@ -1,3 +1,4 @@
+import { ownerModuleBlurb } from '$lib/shell/module-copy'
 import { describe, expect, it, vi } from 'vitest'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
 import { AppUserError } from '../../../../../modules/website/apps/contract'
@@ -121,7 +122,7 @@ describe('/m/[moduleId] load', () => {
     expect(data.module).toEqual({
       id: 'email',
       name: 'Email',
-      description: 'Company email.',
+      description: ownerModuleBlurb('email', 'Company email.'),
       active: true,
       resultsTitle: 'Sender',
       results: [{ label: 'hi@k.test', detail: 'Set up · sender not verified yet', href: null }],

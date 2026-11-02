@@ -64,6 +64,16 @@
         <li class="px-4 py-2.5 text-sm text-destructive" data-testid="run-feed-error">
           <span class="mr-2 text-xs">Error</span>
           <span class="break-words whitespace-pre-wrap">{line.text}</span>
+          {#if line.detail}
+            <details
+              class="mt-1 text-xs text-muted-foreground"
+              data-testid="run-feed-error-details"
+            >
+              <summary class="cursor-pointer">Details</summary>
+              <code class="mt-1 block font-mono break-words whitespace-pre-wrap">{line.detail}</code
+              >
+            </details>
+          {/if}
         </li>
       {:else if line.kind === 'user'}
         <li class="px-4 py-2.5 text-sm" data-testid="run-feed-user">
@@ -89,7 +99,9 @@
             </Badge>
           </span>
           {#if argsPreview(line.args)}
-            <code class="truncate font-mono text-xs text-foreground/50">{argsPreview(line.args)}</code>
+            <code class="truncate font-mono text-xs text-foreground/50"
+              >{argsPreview(line.args)}</code
+            >
           {/if}
         </li>
       {/if}

@@ -27,7 +27,11 @@ describe('createAgentRunsSource', () => {
     const index = await seeded()
     await new Promise((r) => setTimeout(r, 5))
     await index.touch(1)
-    const source = createAgentRunsSource({ index, harness: vi.fn() })
+    const source = createAgentRunsSource({
+      index,
+      harness: vi.fn(),
+      memberNames: async () => new Map([['user-a', 'Ada Park']]),
+    })
     const runs = await source.list()
     expect(runs.map((r) => r.id)).toEqual([1, 2])
     expect(Object.keys(runs[0]).sort()).toEqual([
@@ -35,8 +39,11 @@ describe('createAgentRunsSource', () => {
       'conversationKey',
       'createdAt',
       'id',
+      'title',
       'updatedAt',
     ])
+    // Readable titles: the member's name, never their id.
+    expect(runs.map((r) => r.title)).toEqual(['Chat with Ada Park', 'Chat with a team member'])
     expect(JSON.stringify(runs)).not.toMatch(/prov-secret|user-a|user-b/)
     expect(typeof runs[0].createdAt).toBe('string')
   })
