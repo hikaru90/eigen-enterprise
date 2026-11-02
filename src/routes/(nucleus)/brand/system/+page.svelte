@@ -63,10 +63,10 @@
   {/if}
 </svelte:head>
 
-<div class="mx-auto w-full max-w-5xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
-  <header class="flex min-w-0 flex-wrap items-end justify-between gap-4">
+<div class="w-full">
+  <header class="mt-8 flex min-w-0 flex-wrap items-end justify-between gap-4">
     <div class="flex min-w-0 flex-col gap-1">
-      <h1 class="text-xl font-semibold tracking-tight">Design system</h1>
+      <h2 class="text-base font-semibold tracking-tight">Design system</h2>
       <p class="text-sm text-foreground/55">
         {#if style}
           Every component in <span class="text-foreground">{style.name}</span>, the active style.

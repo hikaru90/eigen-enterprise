@@ -297,9 +297,7 @@
        their own header with the settings cog. In chat the shell is the chrome. -->
   {#if !chatMode}
     <header class="relative flex shrink-0 justify-center pt-6 pb-2">
-      <p class="text-[11px] font-medium tracking-[0.25em] text-muted-foreground uppercase">
-        Eigen Enterprise
-      </p>
+      <p class="text-sm font-semibold tracking-tight text-muted-foreground">eigenEnterprise</p>
       <div class="absolute top-5 right-0 flex items-center gap-3">
         <a
           href={resolve('/overview')}

@@ -6,6 +6,7 @@
   import * as Card from '$lib/components/ui/card'
   import { Label } from '$lib/components/ui/label'
   import { docTitle } from '$lib/shell/title'
+  import PublicFrame from '$lib/components/page/public-frame.svelte'
 
   /** Claim this server: the installer's private link → your email → you own the company. */
   let { data, form }: { data: PageData; form: ActionData } = $props()
@@ -15,16 +16,12 @@
   <title>{docTitle('Claim your company')}</title>
 </svelte:head>
 
-<div class="mx-auto max-w-md px-5 pt-16">
-  <header class="text-center">
-    <span class="text-lg font-medium tracking-tight">Eigen Enterprise</span>
-    {#if data.ok}
-      <p class="text-muted-foreground mt-2 text-xs">Your company is installed. Claim it.</p>
-    {/if}
-  </header>
-
-  <Card.Root class="ring-0 shadow-[4px_4px_0_0_rgb(17_17_17_/_0.08)] mt-8 border border-black/10 bg-card">
-    <Card.Content class="space-y-4 pt-6">
+<PublicFrame
+  title="Claim your company"
+  subtitle={data.ok ? 'Your company is installed. Claim it.' : null}
+>
+  <Card.Root class="border border-border shadow-none">
+    <Card.Content class="space-y-4">
       {#if data.ok}
         <form method="post" use:enhance class="space-y-4" data-testid="claim-form">
           <input type="hidden" name="token" value={data.token} />
@@ -58,4 +55,4 @@
       {/if}
     </Card.Content>
   </Card.Root>
-</div>
+</PublicFrame>

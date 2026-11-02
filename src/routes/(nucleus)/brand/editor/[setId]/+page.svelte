@@ -352,7 +352,7 @@
 
             <button
               type="button"
-              class="self-start rounded bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+              class="self-start rounded bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
               disabled={busy}
               onclick={applySeeds}
             >

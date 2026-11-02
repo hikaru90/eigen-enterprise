@@ -1,5 +1,6 @@
 <script lang="ts">
   import { docTitle } from '$lib/shell/title'
+  import PublicFrame from '$lib/components/page/public-frame.svelte'
   import type { ActionData } from './$types'
   import type { PageData } from './$types'
   import { enhance } from '$app/forms'
@@ -13,8 +14,6 @@
   import { emailCodeRequestSchema } from '$lib/validation/auth'
 
   /** Passwordless sign-in: email → 6-digit code (Better Auth emailOTP). */
-
-  const websiteOrigin = (import.meta.env.PUBLIC_WEBSITE_ORIGIN ?? '').replace(/\/$/, '')
 
   let { data, form }: { data: PageData; form: ActionData } = $props()
 
@@ -33,7 +32,8 @@
     try {
       const res = await authClient.signIn.passkey()
       if (res?.error) {
-        passkeyError = 'No passkey on this device for this app — sign in with a code once, then add one in Settings → Passkeys.'
+        passkeyError =
+          'No passkey on this device for this app — sign in with a code once, then add one in Settings → Passkeys.'
         return
       }
       window.location.href = resolve('/')
@@ -53,24 +53,9 @@
 
 <svelte:head><title>{docTitle('Sign in')}</title></svelte:head>
 
-<div class="mx-auto max-w-md px-5 pt-10">
-  <header class="text-center">
-    {#if websiteOrigin}
-      <a href={websiteOrigin} rel="external" class="inline-block">
-        <span class="text-lg font-medium tracking-tight">Eigen Enterprise</span>
-      </a>
-    {:else}
-      <a href={resolve('/')} class="inline-block">
-        <span class="text-lg font-medium tracking-tight">Eigen Enterprise</span>
-      </a>
-    {/if}
-    <p class="text-muted-foreground mt-2 text-xs">Sign in</p>
-  </header>
-
-  <Card.Root
-    class="ring-0 shadow-[4px_4px_0_0_rgb(17_17_17_/_0.08)] mt-8 border border-black/10 bg-card"
-  >
-    <Card.Content class="space-y-4 pt-6">
+<PublicFrame title="Sign in" back>
+  <Card.Root class="border border-border shadow-none">
+    <Card.Content class="space-y-4">
       {#if data.unclaimed}
         <p class="text-xs" data-testid="auth-unclaimed">{data.unclaimed}</p>
       {:else if codeStep && form?.email}
@@ -140,10 +125,12 @@
         {#if data.signupOpen}
           <p class="text-muted-foreground text-center text-xs" data-testid="auth-signup-link">
             Don't have an account?
-            <a href={resolve('/signup')} class="text-foreground underline-offset-2 hover:underline">Sign up</a>
+            <a href={resolve('/signup')} class="text-foreground underline-offset-2 hover:underline"
+              >Sign up</a
+            >
           </p>
         {/if}
       {/if}
     </Card.Content>
   </Card.Root>
-</div>
+</PublicFrame>

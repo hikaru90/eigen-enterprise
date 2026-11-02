@@ -10,7 +10,6 @@
   import * as Alert from '$lib/components/ui/alert'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
   import { Badge } from '$lib/components/ui/badge'
-  import * as Breadcrumb from '$lib/components/ui/breadcrumb'
   import { Button, buttonVariants } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
   import { Input } from '$lib/components/ui/input'
@@ -82,21 +81,15 @@
 
 <svelte:head><title>{docTitle(data.app.name, 'Website')}</title></svelte:head>
 
-<div class="mx-auto w-full max-w-4xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
-  <header class="flex min-w-0 flex-col gap-3">
-    <Breadcrumb.Root>
-      <Breadcrumb.List>
-        <Breadcrumb.Item>
-          <Breadcrumb.Link href={resolve('/m/website')}>Website</Breadcrumb.Link>
-        </Breadcrumb.Item>
-        <Breadcrumb.Separator />
-        <Breadcrumb.Item>
-          <Breadcrumb.Page>{data.app.name}</Breadcrumb.Page>
-        </Breadcrumb.Item>
-      </Breadcrumb.List>
-    </Breadcrumb.Root>
+<div class="max-w-3xl">
+  <a
+    href={resolve('/m/website')}
+    class="mt-6 inline-block text-xs text-muted-foreground hover:underline"
+    data-testid="back-link">← Back to apps</a
+  >
+  <header class="mt-2 flex min-w-0 flex-col gap-3">
     <div class="flex min-w-0 flex-wrap items-center gap-3">
-      <h1 class="text-xl font-semibold tracking-tight">{data.app.name}</h1>
+      <h2 class="text-base font-semibold tracking-tight">{data.app.name}</h2>
       <Badge variant="secondary">{kindLabel}</Badge>
       <AppStatusDot status={data.app.status} />
     </div>
@@ -125,9 +118,9 @@
     {/if}
   </header>
 
-  <nav class="mt-6 flex gap-4 text-sm" aria-label="App sections">
-    <a class="underline underline-offset-4" href="#overview">Overview &amp; deployments</a>
-    <a class="underline underline-offset-4" href="#settings" onclick={() => (settingsOpen = true)}
+  <nav class="mt-6 flex gap-4 text-sm text-muted-foreground" aria-label="App sections">
+    <a class="hover:text-foreground" href="#overview">Overview &amp; deployments</a>
+    <a class="hover:text-foreground" href="#settings" onclick={() => (settingsOpen = true)}
       >App settings</a
     >
   </nav>

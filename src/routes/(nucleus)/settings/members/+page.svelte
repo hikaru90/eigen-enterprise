@@ -22,14 +22,14 @@
 
 <div>
   <header class="mb-8">
-    <h1 class="text-xl font-medium tracking-tight">Members &amp; invites</h1>
+    <h2 class="text-base font-semibold tracking-tight">Members &amp; invites</h2>
     <p class="mt-1 text-sm text-foreground/60">
       The people in {data.companyName ?? 'your company'}, their roles, and invites by email.
     </p>
   </header>
 
   <section class="space-y-3" data-testid="members-list">
-    <h2 class="text-sm font-semibold">People</h2>
+    <h3 class="text-sm font-semibold">People</h3>
     <ul class="divide-y divide-border border border-border">
       {#each data.members as m (m.id)}
         <li class="flex flex-wrap items-center justify-between gap-3 p-3" data-testid="member-row">
@@ -80,7 +80,7 @@
   </section>
 
   <section class="mt-10 space-y-3" data-testid="members-invite">
-    <h2 class="text-sm font-semibold">Invite someone</h2>
+    <h3 class="text-sm font-semibold">Invite someone</h3>
     <form method="post" action="?/invite" use:enhance class="flex flex-wrap items-end gap-2">
       <div class="min-w-0 flex-1 space-y-1">
         <label class="text-xs" for="invite-email">Email</label>

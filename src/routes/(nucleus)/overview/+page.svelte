@@ -3,6 +3,8 @@
   import type { PageData } from './$types'
   import { resolve } from '$app/paths'
   import ModuleCard from '$lib/components/module-card.svelte'
+  import PageFrame from '$lib/components/page/page-frame.svelte'
+  import PageHeader from '$lib/components/page/page-header.svelte'
   import { appHref } from '$lib/shell/href'
   import { moduleHref } from '$lib/shell/nav'
   import { docTitle } from '$lib/shell/title'
@@ -13,7 +15,7 @@
   const when = (iso: string) => timeFormat.format(new Date(iso))
 
   const activeModules = $derived(data.overview.modules.filter((m) => m.active))
-  const available = $derived(data.overview.modules.length - activeModules.length)
+  const switchedOff = $derived(data.overview.modules.length - activeModules.length)
   const website = $derived(data.overview.modules.find((m) => m.id === 'website') ?? null)
   const countOf = (label: string) => website?.counts.find((c) => c.label === label)?.value ?? 0
   const apps = $derived.by(() => {
@@ -29,18 +31,19 @@
 
 <svelte:head><title>{docTitle('Overview')}</title></svelte:head>
 
-<div class="mx-auto w-full max-w-5xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
-  <header class="flex min-w-0 flex-col gap-1">
-    <h1 class="text-xl font-semibold tracking-tight">Overview</h1>
-    <p class="text-sm text-foreground/55">What is running and where the work is.</p>
-  </header>
+<PageFrame>
+  <PageHeader title="Overview" description="What is running and where the work is." />
 
   <!-- Status tiles -->
   <div class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3" data-testid="overview-tiles">
     <a href="#modules" class={tile}>
-      <span class="text-xs text-foreground/55">Active modules</span>
+      <span class="text-xs text-foreground/55">Modules working for you</span>
       <span class="mt-1 text-2xl font-semibold tabular-nums">{activeModules.length}</span>
-      <span class="mt-0.5 text-xs text-foreground/45">{available} available</span>
+      <span class="mt-0.5 text-xs text-foreground/45" data-testid="overview-modules-hint"
+        >{switchedOff === 0
+          ? 'All switched on'
+          : `${switchedOff} switched off — ask in the chat to turn ${switchedOff === 1 ? 'it' : 'them'} on`}</span
+      >
     </a>
     <a href="#needs-you" class={tile}>
       <span class="text-xs text-foreground/55">Needs you</span>
@@ -135,4 +138,4 @@
       {/if}
     </section>
   </div>
-</div>
+</PageFrame>

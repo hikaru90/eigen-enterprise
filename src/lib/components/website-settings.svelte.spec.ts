@@ -9,11 +9,13 @@ describe('website settings', () => {
     await expect.element(page.getByText('Deployment server not connected')).toBeInTheDocument()
     await expect.element(page.getByText('No ee control socket.')).toBeInTheDocument()
     await expect
-      .element(page.getByRole('link', { name: 'Company site settings', exact: true }))
+      .element(page.getByRole('link', { name: 'company site settings', exact: true }))
       .toHaveAttribute('href', '/m/website/site')
+    // The tabs above the page hold the area navigation: no "Back to repositories" here.
     await expect
       .element(page.getByRole('link', { name: 'Back to repositories' }))
-      .toHaveAttribute('href', '/m/website')
+      .not.toBeInTheDocument()
+    await expect.element(page.getByRole('heading', { level: 2, name: 'Settings' })).toBeVisible()
     await expect.element(page.getByText(/Certificate status is not reported/)).toBeInTheDocument()
   })
 

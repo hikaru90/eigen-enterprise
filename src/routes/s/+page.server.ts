@@ -1,5 +1,6 @@
 import type { PageServerLoad } from './$types'
 import { isUserAdmin } from '$lib/server/auth/user-role'
+import { foundingCompanyName } from '$lib/server/overview/sources'
 import { isPubliclyRenderable } from '../../../modules/website/render-gate'
 import { defaultWebsiteStore } from '../../../modules/website/store'
 
@@ -10,8 +11,12 @@ import { defaultWebsiteStore } from '../../../modules/website/store'
 export const load: PageServerLoad = async ({ locals }) => {
   const userId = locals.user?.id
   const owner = userId ? await isUserAdmin(userId) : false
-  const pages = await defaultWebsiteStore().listPages({ kind: 'page' })
+  const [pages, companyName] = await Promise.all([
+    defaultWebsiteStore().listPages({ kind: 'page' }),
+    foundingCompanyName(),
+  ])
   return {
+    companyName,
     pages: pages
       .filter((page) => owner || isPubliclyRenderable(page))
       .map((page) => ({

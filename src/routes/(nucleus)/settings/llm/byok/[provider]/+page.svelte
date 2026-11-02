@@ -49,8 +49,8 @@
   </a>
 
   <div>
-    <h1 class="text-xl font-medium tracking-tight">{label}</h1>
-    <p class="text-muted-foreground mt-0.5 text-xs">API credentials for {label}.</p>
+    <h2 class="text-base font-semibold tracking-tight">{label}</h2>
+    <p class="mt-1 text-sm text-muted-foreground">Connect {label} with its API key.</p>
   </div>
 
   <form
@@ -64,7 +64,7 @@
         }
       }
     }}
-    class="rounded-xl bg-muted space-y-3 px-3.5 py-3 text-sm"
+    class="space-y-3 rounded-lg border border-border p-4 text-sm"
   >
     <input type="hidden" name="provider" value={data.provider} />
     <input type="hidden" name="setActive" value="true" />

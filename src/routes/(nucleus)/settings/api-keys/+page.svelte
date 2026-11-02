@@ -168,7 +168,7 @@
 
 <div class="space-y-6">
   <header>
-    <h1 class="text-xl font-medium tracking-tight">API keys</h1>
+    <h2 class="text-base font-semibold tracking-tight">API keys</h2>
     <p class="mt-1 text-sm text-foreground/60">Connect other tools to your company's data.</p>
   </header>
 

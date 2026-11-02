@@ -130,10 +130,10 @@
   <title>{docTitle('Extract', 'Brand')}</title>
 </svelte:head>
 
-<div class="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8">
+<div class="mt-8 flex w-full flex-col gap-6">
   <header>
-    <h1 class="text-2xl font-semibold">Brand extraction judge</h1>
-    <p class="text-sm text-neutral-600">
+    <h2 class="text-base font-semibold tracking-tight">Brand extraction judge</h2>
+    <p class="mt-1 text-sm text-muted-foreground">
       Capture a public site, judge three seed candidates per round, stage the winner. Staging is not
       publishing — promotion happens through the activation gate later.
     </p>
@@ -168,7 +168,7 @@
           />
           <button
             type="button"
-            class="rounded bg-neutral-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+            class="rounded bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
             disabled={busy || url.trim().length === 0}
             onclick={() => void start()}
           >
@@ -192,7 +192,7 @@
                 <SpecimenMini title={sessionTitle || 'Untitled site'} {candidate} />
                 <button
                   type="button"
-                  class="rounded bg-neutral-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+                  class="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50"
                   disabled={busy || candidate.error !== undefined}
                   onclick={() => void judge(index)}
                 >
@@ -257,7 +257,7 @@
             />
             <button
               type="button"
-              class="self-start rounded bg-emerald-700 px-4 py-2 text-sm text-white disabled:opacity-50"
+              class="self-start rounded bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
               disabled={!canAccept}
               onclick={() => void accept()}
             >
