@@ -21,7 +21,7 @@ const run = {
 }
 const ev = (user: { id: string } | null, id = '3') => ({ locals: { user }, params: { id } }) as never
 
-describe('/runs loads', () => {
+describe('/agent/runs loads', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('redirects signed-out visitors to /login', async () => {

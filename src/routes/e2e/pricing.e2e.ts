@@ -31,7 +31,7 @@ test.describe('Pricing transparency (AC-014, AC-015)', () => {
     await captureViaUi(page, 'Test thought for pricing verification')
     await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible({ timeout: 30_000 })
 
-    await page.goto('/activity')
+    await page.goto('/agent/activity')
 
     await expect(page.locator('table')).toBeVisible({ timeout: 10000 })
     const headers = await page.locator('thead th').allTextContents()
@@ -53,7 +53,7 @@ test.describe('Pricing transparency (AC-014, AC-015)', () => {
     await captureViaUi(page, 'Another thought for totals check')
     await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible({ timeout: 30_000 })
 
-    await page.goto('/activity')
+    await page.goto('/agent/activity')
 
     await expect(page.locator('tfoot')).toBeVisible()
     const totals = await page.locator('tfoot td').allTextContents()
@@ -64,7 +64,7 @@ test.describe('Pricing transparency (AC-014, AC-015)', () => {
 
   test('empty activity state shows placeholder message', async ({ page, context }) => {
     await registerUser(context, page)
-    await page.goto('/activity')
+    await page.goto('/agent/activity')
 
     await expect(page.locator('text=No activity logged yet')).toBeVisible()
   })

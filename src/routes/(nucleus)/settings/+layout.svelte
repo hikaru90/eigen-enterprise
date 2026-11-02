@@ -6,8 +6,7 @@
 
   /**
    * Settings inside the shell: one sub-navigation for the company-wide
-   * sections (rule 3). Pages outside those sections (the roadmap, still at
-   * /settings/extensions until the Agent page takes it) render bare.
+   * sections (rule 3). Pages outside those sections render bare.
    */
   let { children } = $props()
 

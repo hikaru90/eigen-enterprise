@@ -34,7 +34,7 @@
       {#each data.runs as run (run.id)}
         <li>
           <a
-            href={resolve('/(nucleus)/runs/[id]', { id: String(run.id) })}
+            href={resolve('/(nucleus)/agent/runs/[id]', { id: String(run.id) })}
             class="flex min-w-0 items-center justify-between gap-3 px-4 py-2.5 text-sm outline-none hover:bg-foreground/[0.03] focus-visible:ring-2 focus-visible:ring-ring/60"
             data-testid="runs-item"
           >
