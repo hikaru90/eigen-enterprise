@@ -12,7 +12,8 @@ const mockGatewayUrl = `http://127.0.0.1:${mockGatewayPort}`
  * host it signs cookies for. Vite binds [::1] only, so the readiness poll uses
  * localhost too (127.0.0.1 never answers).
  */
-const browserUrl = 'http://localhost:4173'
+const e2ePort = Number(process.env.E2E_PORT ?? 4173)
+const browserUrl = `http://localhost:${e2ePort}`
 
 /**
  * No dev server (owner decision 2026-10-23): the ee box is the only install.
@@ -23,7 +24,7 @@ const browserUrl = 'http://localhost:4173'
 export default defineConfig({
   webServer: [
     {
-      command: 'vite dev --port 4173 --strictPort',
+      command: `vite dev --port ${e2ePort} --strictPort`,
       url: browserUrl,
       timeout: 120_000,
       reuseExistingServer: false,

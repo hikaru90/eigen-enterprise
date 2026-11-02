@@ -26,7 +26,8 @@ let itemTitle = ''
 
 test.afterAll(async () => {
   if (itemTitle) await sql()`delete from extension_roadmap_items where title = ${itemTitle}`
-  if (email) await sql()`update "user" set role = 'member' where email = ${email} and role = 'admin'`
+  if (email)
+    await sql()`update "user" set role = 'member' where email = ${email} and role = 'admin'`
   await _sql?.end()
 })
 
@@ -67,7 +68,8 @@ test('nav → Agent → Runs → Activity → Roadmap (add, start)', async ({ pa
   await agentNav.click()
   await expect(page).toHaveURL(/\/agent\/runs$/)
   await expect(page).toHaveTitle(/^Runs · Agent · /)
-  await expect(page.getByRole('heading', { name: 'Agent runs' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Agent' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2, name: 'Runs' })).toBeVisible()
   await expect(page.getByTestId('agent-nav-runs')).toHaveAttribute('aria-current', 'page')
   const runLink = page.locator(`a[href="/agent/runs/${run!.id}"]`)
   await expect(runLink).toBeVisible()
@@ -81,7 +83,10 @@ test('nav → Agent → Runs → Activity → Roadmap (add, start)', async ({ pa
   await expect(page).toHaveURL(/\/agent\/activity$/)
   await expect(page).toHaveTitle(/^Activity · Agent · /)
   const log = page.getByTestId('activity-log')
-  const toolLine = log.getByTestId('activity-entry').filter({ hasText: 'Used Website: list pages' }).first()
+  const toolLine = log
+    .getByTestId('activity-entry')
+    .filter({ hasText: 'Used Website: list pages' })
+    .first()
   await expect(toolLine).toBeVisible()
   await expect(toolLine).toContainText('Agent')
   await expect(toolLine).toContainText('Done')

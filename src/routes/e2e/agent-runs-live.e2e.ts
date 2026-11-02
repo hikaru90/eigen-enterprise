@@ -57,8 +57,13 @@ test.describe('agent runs live view', () => {
 
     // Browser A: the run list links to the run.
     await page.goto('/agent/runs')
-    await expect(page.getByRole('heading', { name: 'Agent runs' })).toBeVisible()
-    await page.locator(`a[href="/agent/runs/${run!.id}"]`).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Agent' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 2, name: 'Runs' })).toBeVisible()
+    // A readable title, not the agent id and its raw conversation key.
+    const row = page.locator(`a[href="/agent/runs/${run!.id}"]`)
+    await expect(row.getByTestId('runs-item-title')).toHaveText(/^Chat with /)
+    await expect(row).not.toContainText(run!.conversationKey)
+    await row.click()
     await expect(page.getByRole('heading', { name: `Run ${run!.id}` })).toBeVisible()
 
     // Browser B: a second company member in a separate context.
@@ -93,11 +98,9 @@ test.describe('agent runs live view', () => {
 
     // Anonymous callers are refused (fail closed).
     const anon = await browser.newContext()
-    const anonList = await anon.request.get('http://localhost:4173/api/agent/runs')
+    const anonList = await anon.request.get('/api/agent/runs')
     expect(anonList.status()).toBe(401)
-    const anonEvents = await anon.request.get(
-      `http://localhost:4173/api/agent/runs/${run!.id}/events`,
-    )
+    const anonEvents = await anon.request.get(`/api/agent/runs/${run!.id}/events`)
     expect(anonEvents.status()).toBe(401)
     await anon.close()
     await otherContext.close()
