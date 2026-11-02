@@ -44,7 +44,7 @@ const results = []
 let current = ''
 function step(s) {
   current = s
-  console.log(`→ ${s}`)
+  console.info(`→ ${s}`)
 }
 function pass() {
   results.push({ step: current, ok: true })
@@ -55,7 +55,7 @@ function assert(cond, msg) {
 async function shot(page, label) {
   const file = path.join(shots, `${String(++n).padStart(2, '0')}-${label}.png`)
   await page.screenshot({ path: file, fullPage: true })
-  console.log(`  shot ${file}`)
+  console.info(`  shot ${file}`)
 }
 /** The app page's settings live in a <details>; open it before using them. */
 async function openSettings(page) {
@@ -89,7 +89,7 @@ const ctx = await browser.newContext({
   ...(ownerState && existsSync(ownerState) && !claimUrl ? { storageState: ownerState } : {}),
 })
 const page = await ctx.newPage()
-let appHost = ''
+let appHost
 try {
   if (claimUrl) {
     step(`claim the box as ${email}`)
@@ -233,7 +233,7 @@ try {
   assert(gone.status() !== 200, `removed app still served (${gone.status()})`)
   pass()
 
-  console.log('✓ box journey passed')
+  console.info('✓ box journey passed')
 } catch (e) {
   results.push({ step: current, ok: false, error: String(e?.message ?? e) })
   await shot(page, 'FAILED').catch(() => {})
@@ -241,7 +241,7 @@ try {
   process.exitCode = 1
 } finally {
   for (const r of results) {
-    console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.step}${r.error ? `  — ${r.error}` : ''}`)
+    console.info(`${r.ok ? 'PASS' : 'FAIL'}  ${r.step}${r.error ? `  — ${r.error}` : ''}`)
   }
   await browser.close()
 }

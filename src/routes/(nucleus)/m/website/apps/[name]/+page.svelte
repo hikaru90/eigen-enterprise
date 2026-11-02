@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { deployModeText } from './deploy-mode'
   import type { ActionData, PageData } from './$types'
   import { onMount } from 'svelte'
   import { enhance } from '$app/forms'
@@ -17,6 +16,7 @@
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
   import * as Table from '$lib/components/ui/table'
+  import { deployModeText } from './deploy-mode'
 
   let { data, form }: { data: PageData; form: ActionData } = $props()
 
