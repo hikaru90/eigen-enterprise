@@ -1,67 +1,62 @@
 # Phase: Brand picker — choose your style like an artist on Spotify
 
-**Status:** APPROVED direction (owner, 2026-10-31). Implementation starts after the owner's "go" on this plan. §6 has two open questions.
-**Owner direction (2026-10-31):** "compose a list of UI and styles and the user chooses one of those styles, like you choose your favourite artist on Spotify or YouTube Music … you select one, and when you selected one more styles of this category get shown, and you can select a final granularity."
-**Builds on:** `plan/phase-2d-visual-branding.md` (corpus, distance, k-NN, Specimen, emitter, editor). **Changes its selection flow** (§5).
+**Status:** APPROVED direction (owner, 2026-10-31, corrected 2026-11-02). Milestone B1 (style taxonomy) produces a proposal for the owner to review before anything is precompiled.
+**Owner direction (2026-10-31):** "compose a list of UI and styles and the user chooses one of those styles, like you choose your favourite artist on Spotify … when you selected one, more styles of this category get shown, and you can select a final granularity."
+**Owner correction (2026-11-02):** choosing the style is the most important thing. "A pre-compiled list of different styles that are granular enough and broad enough and fine enough to make a real distinction" → "precompile them into a list of mini previews of websites or a component view" → "then apply them to the design system", i.e. a predefined set of components. **Applying the style to the company website is out of scope.**
+**Builds on:** `plan/phase-2d-visual-branding.md` (corpus format, distance, Specimen, seed expansion, emitter). **Replaces its selection flow** (§5).
 
-## 1. Owner decisions (2026-10-31)
+## 1. Owner decisions
 
-- **P1 — Cards are mini website previews**: hero, button, card and text rendered in that style's colours, fonts and shapes. You judge the look, not a name.
-- **P2 — One path, drill down**: tap one style → its closest relatives replace the grid → tap again → narrower, about 3 levels to the final style. Always one step back (breadcrumb).
-- **P3 — Apply, then fine-tune**: the chosen style applies right away to the website and the app; afterwards a simple editor or a chat request adjusts it.
+- **P1 — Cards are mini previews** (a small website/component view rendered in the style), not names or swatches.
+- **P2 — Spotify-style onboarding, one path down**: broad styles first → tap one → its finer relatives replace the grid → tap again → final style. About 3 levels, always one step back.
+- **P3 — The style list is precompiled and curated**: broad enough at the top, fine enough at the bottom, every option visibly different from its siblings. Nothing is generated at pick time.
+- **P4 — Applying = a predefined component set (the design system)**: the chosen style is a token set that drives a fixed set of components. The company website is not a target.
 
-## 2. What exists (audit 2026-10-31) and how it's used
+## 2. What exists (audit 2026-10-31)
 
-| Exists | Use |
-|---|---|
-| 83 corpus styles (`modules/brand/corpus/items`: 35 daisyUI, 36 tweakcn, 12 archetypes), cssVars light/dark + seeds | the style pool for levels 1–2 |
-| `styleDistance` (48-dim vector, weighted colour/shape/type/effects), precomputed k-NN K=8, `index.json` | builds the level tree |
-| `Specimen.svelte` (full mini site), `extract/specimen-mini.svelte` (small preview) | card = specimen-mini; preview + editor = Specimen |
-| Seed expansion (`expand.ts`, `reseed.ts` `applySeedEdit`, owner pins) | level-3 variations + simple editor |
-| `brand_visual_sets` draft/active/retired, `activation.ts`, global `:root` override in `+layout.svelte` | apply |
-| Editor `/brand/editor/[setId]` (seeds, OKLCH, pins, drivers) | stays as "Advanced" |
-
-Gaps: swatch cards instead of mini sites; corpus fonts not loaded; the start grid shows all 83 grouped into only 3 (light/dark) clusters; drill-down is a side drawer over a ≥3-pick centroid flow; flat K=8 neighbours that don't narrow; applying needs draft → activate tool → chat approval; the company website takes only `--background`/`--foreground`; chat can't adjust a style (`visual_set_update` is human-only); no brand e2e.
+- 83 corpus styles (`modules/brand/corpus/items`: 35 daisyUI, 36 tweakcn, 12 archetypes), cssVars light/dark + seeds; `styleDistance` (48-dim, weighted colour/shape/type/effects); k-NN K=8; only 3 clusters (light vs dark) → **no usable hierarchy**.
+- `Specimen.svelte` (full mini site) and `extract/specimen-mini.svelte` (small preview); seed expansion (`expand.ts`, `reseed.ts`); emitter (`emitter.ts`) → CSS vars; `brand_visual_sets` + activation (`:root` override of the app).
+- Gaps for this phase: no taxonomy (genre → style → variant); many corpus items are near-duplicates (daisyUI/tweakcn palettes differ mostly in colour); fonts not loaded; previews rendered live, not precompiled; no defined component set to apply to.
 
 ## 3. Design
 
-### 3.1 The level tree (precomputed, deterministic, no LLM at runtime)
-- **Level 1, "genres"**: ~10–12 maximally distinct entry styles, picked by farthest-point sampling over `styleDistance` (deterministic start: the corpus medoid). Each corpus item belongs to the genre whose entry style is nearest.
-- **Level 2, "artists"**: the members of the tapped genre, ordered by distance to its entry style, at most 12 shown.
-- **Level 3, "final granularity"**: 6–9 **variations of the tapped style**, generated through seed expansion: accent hue ± steps, roundness, density, type pairing, light/dark lean. They're deterministic (fixed offsets) and every variation passes the same 16-role check as activation. This gives level 3 real choice even with a 83-style corpus.
-- Built into `index.json` by the existing build spec; snapshot-tested like the rest of phase 2d. Genre names: one-time build-time naming, as phase 2d planned for clusters.
+### 3.1 The taxonomy (B1 — research + curation, owner reviews)
+- **Level 1 — genres** (~8–12): visual directions a non-designer recognises at a glance (e.g. Swiss/minimal, editorial serif, brutalist, neo-brutalist, soft/rounded friendly, corporate/enterprise, luxury/dark, playful/colourful, retro/vintage, technical/terminal, organic/natural, glass/futuristic — final list from research).
+- **Level 2 — styles** (~4–8 per genre): distinct takes within the genre (type pairing, colour mood, density, shape language).
+- **Level 3 — variants** (~3–4 per style): the final granularity (accent colour, light/dark, roundness/density step).
+- Target ≈ 150–300 precompiled leaves. Every node gets a name, a one-line description and a full token set (colour light/dark, type pairing with real fonts, radius, border, shadow/elevation, spacing/density, motion).
+- **Distinctness rule (deterministic gate):** siblings must be at least a minimum `styleDistance` apart, and a parent's children must cover different axes; near-duplicates are merged or dropped. Existing corpus items are reused where they fit a node; gaps are authored as seeds.
+- Sources to research: design-movement references, daisyUI/tweakcn/shadcn themes, public design systems, type-pairing collections. Licences recorded per source, as in phase 2d.
 
-### 3.2 The page (`/brand`)
-- A full-width grid of mini-site cards (specimen-mini, style scoped onto the card, corpus fonts loaded from Google Fonts per visible card).
-- Tapping a card replaces the grid with the next level (animated), and the breadcrumb on top steps back. Nothing else to configure.
-- "Preview" on any card: the whole app shows that style temporarily (scoped override, nothing saved) until you leave the preview.
-- The final level has **Use this style**.
+### 3.2 Precompiled previews (B2)
+- One fixed **preview composition** (hero + nav + button set + card + input + badge), rendered per node at build time into a static image (light and dark) with its real fonts. Precompiled = fast grid, identical look on every machine.
+- Stored as build assets with an index (`node id → parent, name, description, tokens, preview paths`), snapshot-tested.
 
-### 3.3 Apply (P3)
-- **Use this style** = one owner click: create the visual set and activate it in one step (an owner click is a human action, D11 precedent; the activation rules stay: 16 roles, previous set retired). The chat agent's activation stays approval-gated.
-- Applies to: the app console (existing `:root` override) and the company website: `/s/[slug]` gets the full token set instead of only bg/fg.
+### 3.3 The picker (B3)
+- Full-width grid of preview cards. Level 1 shows the genres; tapping replaces the grid with that node's children (animated); a breadcrumb steps back. The final level has **Choose this style**.
+- Choosing saves the style as the company's brand (`brand_visual_sets`, existing activation rules).
 
-### 3.4 Fine-tune
-- **Simple editor** (default): primary colour, font pairing, roundness, density, light/dark. Each control maps to one seed edit (`applySeedEdit`) with a live Specimen.
-- **Advanced**: today's editor, unchanged, behind a toggle.
-- **Chat**: new tool `brand.style_adjust` takes a structured seed edit (the LLM turns "make it warmer / rounder" into the edit, as JSON schema output), produces a draft, and the owner approves it in chat. No string heuristics.
+### 3.4 Apply to the design system (B4)
+- A defined **component set** (from `docs/design-system.md` / the shadcn components the app uses): buttons, inputs, select, card, badge, alert, tabs, table, dialog, nav, typography scale.
+- The chosen token set drives exactly those components (emitter → CSS variables), and a **design-system view** (`/brand/system`) shows every component in the chosen style, light and dark.
+- The app console uses the same tokens (existing `:root` override).
 
 ## 4. Milestones
 
-Each one: tests first, gates green, one commit per workstream, a progress entry, and an e2e with **inspected** screenshots.
+Tests first, gates green, one commit per workstream, a progress entry, e2e screenshots **inspected**.
 
-- **B1 — Level tree + mini-site cards**: farthest-point genres, level-2 membership, level-3 variation generator, `index.json` snapshot; card = specimen-mini with loaded fonts.
-- **B2 — Drill-down page**: grid → level → level with breadcrumb back, preview mode. Replaces the drawer and the ≥3-pick flow (§5).
-- **B3 — One-click apply + website tokens**: create + activate in one owner action; `/s/[slug]` uses the full token set.
-- **B4 — Simple editor + chat adjust**: simple controls over seeds; `brand.style_adjust` (approval-gated).
-- **B5 — E2E journey** in the local test server (ee-box): claim → `/brand` → 3 taps → Use this style → the console and the website both show it → simple-editor tweak → chat "make it rounder" → approve → visible.
+- **B1 — Taxonomy proposal**: research + a draft tree (names, descriptions, axes, which corpus items map where, what must be authored), plus the distinctness gate as code. **The owner reviews the tree before B2.**
+- **B2 — Precompile**: author the missing tokens, build-time preview rendering, the node index, snapshot tests.
+- **B3 — Picker**: the drill-down page over the precompiled index.
+- **B4 — Design-system view**: the component set driven by the chosen tokens.
+- **B5 — E2E** in the local test server (ee-box): onboarding → 3 taps → Choose → the design-system view and the console show it.
 
 ## 5. Removals (announced before they ship — AGENTS.md "no silent removals")
 
-- The `/brand` multi-select flow (pick ≥3 → centroid top-3 → "Use this design") and its "Similar styles" drawer — replaced by the drill-down. The agent tools `brand.selection_matches` and `brand.corpus_similar` stay (the agent can still use them).
-- The swatch `style-card.svelte` — replaced by the mini-site card.
+- The `/brand` multi-select flow (pick ≥3 → centroid top-3 → "Use this design"), its "Similar styles" drawer and the swatch `style-card.svelte` — replaced by the picker. The agent tools `brand.selection_matches` / `brand.corpus_similar` stay.
 
-## 6. Open questions
+## 6. Out of scope (named)
 
-1. **Deployed apps** (Website → Apps, your GitHub repos) can't be restyled from outside. Should eigenEnterprise publish the active brand as a stylesheet (e.g. `/brand/tokens.css` plus an env var for deployed apps) that your own apps can opt into? Recommendation: yes, but in a later milestone, not B1–B5.
-2. **Phase-2c voice tools** (tone, lexicon, glossary; not connected to the visual flow) — keep as they are, or fold "brand voice" into the same picker later? Recommendation: keep untouched, decide later.
+- Styling the company website or deployed apps with the brand.
+- Chat fine-tuning of a chosen style; a simple editor (the existing advanced editor stays as it is).
+- Phase-2c voice tools (tone, lexicon, glossary) stay untouched.
