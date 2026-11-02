@@ -50,6 +50,10 @@ export default defineConfig({
         MAIL_TRANSPORT: 'fake',
         EE_AGENT_STATE_DIR:
           process.env.EE_AGENT_STATE_DIR ?? path.resolve('test-results/ee-agent-state'),
+        // Secrets sealed during a run (provider keys, SES keys) need the tenant
+        // master key; a throwaway harness gets a throwaway key when .env has none
+        // (an unset key crashes the server on the first provider save).
+        TENANT_MASTER_KEY: process.env.TENANT_MASTER_KEY || 'e2e-throwaway-tenant-master-key',
       },
     },
     {

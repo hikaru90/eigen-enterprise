@@ -422,7 +422,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
       : { ok: true as const, value: null }
     const facts = resolved.ok && resolved.value ? { ...resolved.value, welcomeCompleted: true } : null
     if (facts && assistedOnboardingActive(facts)) {
-      return this.dispatchOnboardingTurn(facts, sessionId, ONBOARDING_HANDOFF_INSTRUCTION, sinks, options)
+      return this.dispatchOnboardingTurn(facts, sessionId, ONBOARDING_HANDOFF_INSTRUCTION, '', sinks, options)
     }
     if (resolved.ok) {
       failures.push({
@@ -441,6 +441,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
       'The owner just opened the chat (no user speech). Greet them briefly and continue from where they are.',
       sinks,
       options,
+      '',
     )
   }
 
@@ -469,13 +470,14 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     input: string,
     sinks?: EngineStreamSinks,
     options?: DispatchOptions,
+    ownerText: string = input,
   ): Promise<string> {
     const reply = await super.dispatch(
       agentId,
       sessionId,
       `${harnessObservationBlock(failures)}${JOURNEY_CONTEXT_SEPARATOR}${input}`,
       sinks,
-      options,
+      { ...options, ownerText },
     )
     return this.userFacing(reply)
   }
@@ -498,7 +500,8 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
       sessionId,
       harnessObservationBlock(failures),
       sinks,
-      options,
+      // App-made step: no owner words in this input.
+      { ...options, ownerText: '' },
     )
     return this.userFacing(reply)
   }
@@ -511,6 +514,8 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     facts: OnboardingFacts,
     sessionId: string,
     input: string,
+    /** The owner's own words in `input` ('' for the app-made hand-off turn). */
+    ownerText: string,
     sinks?: EngineStreamSinks,
     options?: DispatchOptions,
   ): Promise<string> {
@@ -521,7 +526,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
       sessionId,
       `${onboardingContextBlock(facts, firstStep.promptFragment)}${JOURNEY_CONTEXT_SEPARATOR}${input}`,
       sinks,
-      options,
+      { ...options, ownerText },
     )
     // The agent decided the owner agreed (exact protocol token only): the
     // website journey opens EMPTY — the agreement is not an answer.
@@ -561,7 +566,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
         this.activeOnboardingFacts(options?.llmUserId),
       )
       if (!facts.ok) return this.dispatchObserved(agentId, sessionId, failures, input, sinks, options)
-      if (facts.value) return this.dispatchOnboardingTurn(facts.value, sessionId, input, sinks, options)
+      if (facts.value) return this.dispatchOnboardingTurn(facts.value, sessionId, input, input, sinks, options)
       return super.dispatch(agentId, sessionId, input, sinks, options)
     }
     // Stale spec: the stored journey predates the current spec shape (v1 /
@@ -613,7 +618,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
       sessionId,
       `${journeyContextFor(this.spec, { ...row, state })}${JOURNEY_CONTEXT_SEPARATOR}${input}`,
       sinks,
-      options,
+      { ...options, ownerText: input },
     )
 
     // Step capture: exact protocol markers only. Stripped before the reply

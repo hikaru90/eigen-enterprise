@@ -62,4 +62,28 @@ describe('agent run feed reducer', () => {
     applyBatch(before, [{ kind: 'text_delta', delta: 'y' }])
     expect(JSON.stringify(before)).toBe(frozen)
   })
+
+  it('a failed turn shows an error line and the run end (live and snapshot read the same)', () => {
+    let live = feedFromSnapshot({ running: false, items: [] })
+    live = applyBatch(live, [{ kind: 'run_start' }, { kind: 'user_input', text: 'hi' }])
+    live = applyBatch(live, [{ kind: 'run_end' }])
+    live = applyBatch(live, [{ kind: 'run_failed', reason: 'model_error', detail: 'gateway 502' }])
+    expect(live.running).toBe(false)
+    expect(live.lines.map((l) => [l.kind, l.text])).toEqual([
+      ['run', 'Run started'],
+      ['user', 'hi'],
+      ['error', 'Turn failed (model_error): gateway 502'],
+      ['run', 'Run ended without an answer'],
+    ])
+    const snap = feedFromSnapshot({
+      running: false,
+      items: [{ kind: 'user_input', text: 'hi' }, { kind: 'run_failed', reason: 'model_error', detail: 'gateway 502' }],
+    })
+    expect(snap.lines.map((l) => [l.kind, l.text])).toEqual([
+      ['user', 'hi'],
+      ['error', 'Turn failed (model_error): gateway 502'],
+      ['run', 'Run ended without an answer'],
+    ])
+  })
 })
+

@@ -23,8 +23,12 @@ import { startJobQueueTicker } from '$lib/server/job-queue/ticker'
 import { startNotificationDispatchTicker } from '$lib/server/memory/notification-dispatch-ticker'
 import { logOpsStartupDiagnostics } from '$lib/server/ops/startup-diagnostics'
 import { configuredMailTransport } from '../modules/email/owlery/service'
+import { installPromptShutdown } from '$lib/server/shutdown'
+import { releaseDurableHarnessLockForExit } from '$lib/server/agent/durable-harness'
 
 if (!building) {
+  // SIGTERM exits promptly; in-flight agent turns resume on reopen (D3).
+  installPromptShutdown({ beforeExit: releaseDurableHarnessLockForExit })
   // Fail loud at boot on a bad MAIL_TRANSPORT (unknown value, or `fake` in
   // production without MAIL_TRANSPORT_FAKE_IN_PRODUCTION=1).
   if (configuredMailTransport() === 'fake') {

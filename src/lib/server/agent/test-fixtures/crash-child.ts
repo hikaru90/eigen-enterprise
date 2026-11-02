@@ -1,7 +1,8 @@
 // Crash test child: opens the durable harness on <dir>, starts one turn whose
 // model call never returns, prints IN_FLIGHT, and waits to be SIGKILLed.
 // Mode `chat` (default): a chat turn through the engine. Mode `background`: a
-// background run recorded with run principal `agent:factory`.
+// background run recorded with run principal `agent:factory`. Mode `chat-tool`:
+// a chat turn whose dispatch offers the `memory.echo` tool.
 import { join } from 'node:path'
 import { DurableLoopEngine } from '$lib/kernel/engines/durable'
 import { getDurableHarness } from '../durable-harness'
@@ -55,7 +56,16 @@ if (mode === 'background') {
   await engine.run('s1', 'crash me', {
     agent: { id: 'orchestrator' },
     llmUserId: 'alice',
-    listTools: () => [],
+    listTools: () =>
+      mode === 'chat-tool'
+        ? [
+            {
+              name: 'memory.echo',
+              summary: 'Echo back the input',
+              inputJsonSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+            },
+          ]
+        : [],
     executeTool: async () => null,
   } as never)
 }

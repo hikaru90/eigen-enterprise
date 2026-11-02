@@ -19,6 +19,8 @@ export type ToolOutcome = 'ok' | 'error' | 'unfinished'
 export type FeedItem =
   | { kind: 'run_start' }
   | { kind: 'run_end' }
+  /** The turn settled without an answer: pi-durable's reason (+ detail). */
+  | { kind: 'run_failed'; reason: string; detail?: string }
   | { kind: 'user_input'; text: string }
   | { kind: 'text_delta'; delta: string }
   | { kind: 'assistant_text'; text: string }
@@ -33,7 +35,7 @@ export type RunBatch = { items: FeedItem[] }
 
 export type FeedLine = {
   key: number
-  kind: 'user' | 'assistant' | 'tool' | 'run'
+  kind: 'user' | 'assistant' | 'tool' | 'run' | 'error'
   text: string
   status: 'running' | 'done' | 'error' | 'unfinished'
   toolCallId?: string
@@ -69,6 +71,19 @@ export function applyBatch(state: FeedState, items: readonly FeedItem[]): FeedSt
         const open = streamingIndex()
         if (open >= 0) lines[open] = { ...lines[open], status: 'done' }
         push({ kind: 'run', text: 'Run finished', status: 'done' })
+        break
+      }
+      case 'run_failed': {
+        running = false
+        const open = streamingIndex()
+        if (open >= 0) lines[open] = { ...lines[open], status: 'done' }
+        const text = `Turn failed (${item.reason})${item.detail ? `: ${item.detail}` : ''}`
+        // Live, the run_end marker already arrived: the failure replaces it so
+        // the feed reads "error, then run end" in both live and snapshot order.
+        const last = lines.length - 1
+        if (last >= 0 && lines[last].kind === 'run' && lines[last].text === 'Run finished') lines.pop()
+        push({ kind: 'error', text, status: 'error' })
+        push({ kind: 'run', text: 'Run ended without an answer', status: 'done' })
         break
       }
       case 'user_input':

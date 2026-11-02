@@ -62,6 +62,8 @@
   let status = $state<string | null>(null)
   let sessionId = $state<string | null>(restoredSessionId())
   let abortController: AbortController | null = null
+  const HANDOFF_PENDING_KEY = 'ee.onboarding-handoff-pending'
+  let handoffPendingInMemory = false
 
   /**
    * Assisted onboarding: when the scripted first run ends, the orchestrator
@@ -72,8 +74,40 @@
   function handleOnboardingComplete(): void {
     // Website already under way (e.g. opened earlier): the chat simply continues it.
     if (!data.handoffAvailable) return
-    void sendStreaming({ bootstrap: true, onboardingHandoff: true })
+    // The wizard reloads page data right after this (welcome stamp); the swap
+    // into the chat shell can remount this page, which killed an in-flight
+    // greeting request (the owner saw nothing, and their next message hit the
+    // still-running turn). The hand-off starts once the chat is up: here when
+    // this instance survives (onentered), else in the new instance's onMount.
+    markHandoffPending()
   }
+
+  function markHandoffPending(): void {
+    try {
+      sessionStorage.setItem(HANDOFF_PENDING_KEY, '1')
+    } catch {
+      handoffPendingInMemory = true
+    }
+  }
+
+  /** Exactly once: whoever takes the pending flag starts the greeting. */
+  function startPendingHandoff(): void {
+    let pending = handoffPendingInMemory
+    handoffPendingInMemory = false
+    try {
+      if (sessionStorage.getItem(HANDOFF_PENDING_KEY) === '1') {
+        sessionStorage.removeItem(HANDOFF_PENDING_KEY)
+        pending = true
+      }
+    } catch {
+      // storage unavailable: the in-memory flag decides
+    }
+    if (pending) void sendStreaming({ bootstrap: true, onboardingHandoff: true })
+  }
+
+  onMount(() => {
+    if (chatMode) startPendingHandoff()
+  })
 
   let inputEl = $state<HTMLInputElement | undefined>(undefined)
   let transcriptEl = $state<HTMLDivElement | undefined>(undefined)
@@ -283,6 +317,7 @@
       displayName={data.displayName}
       returnedFromProvider={data.returnedFromProvider}
       oncomplete={handleOnboardingComplete}
+      onentered={startPendingHandoff}
     />
   {:else if data.needsOnboarding}
     <!-- Returning user whose tour is done but provider vanished: the connect gate again. -->

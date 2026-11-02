@@ -45,8 +45,12 @@ export type SettledDurableTurn =
 export type DurableEngineConversation = {
   /** pi-durable conversation id (branded bigint, as text) — index + SSE surfaces. */
   readonly id: string
-  /** Submit one user input and wait for the durable run to settle. */
-  submitAndSettle(content: string): Promise<SettledDurableTurn>
+  /**
+   * Submit one user input and wait for the durable run to settle. `ownerText`
+   * (when the input was composed with injected context) is recorded with the
+   * input entry for run feeds; the model still sees `content`.
+   */
+  submitAndSettle(content: string, ownerText?: string): Promise<SettledDurableTurn>
 }
 
 /**
@@ -285,7 +289,7 @@ export class DurableLoopEngine implements LoopEngine {
       tools,
     })
 
-    const settled = await conversation.submitAndSettle(input)
+    const settled = await conversation.submitAndSettle(input, ctx.ownerText)
     if (settled.status === 'unanswered') {
       throw new DurableRunError(settled.reason, settled.detail)
     }
