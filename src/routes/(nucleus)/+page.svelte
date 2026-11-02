@@ -40,6 +40,7 @@
     type NucleusChatEntry,
     type NucleusTurn,
   } from './nucleus-chat'
+  import { docTitle } from '$lib/shell/title'
 
   let entrySeq = 0
 
@@ -247,6 +248,8 @@
     scrollToBottom()
   })
 </script>
+
+<svelte:head><title>{docTitle('Chat')}</title></svelte:head>
 
 <!-- Chat: a full-viewport frame — header on top, the transcript is the ONLY
      scroll container, the input pinned at the bottom. The welcome wizard and

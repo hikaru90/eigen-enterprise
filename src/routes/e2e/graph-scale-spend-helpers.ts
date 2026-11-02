@@ -136,7 +136,6 @@ export function formatGraphScaleSpendSummary(report: GraphScaleSpendReport): str
   )
 }
 
-const GRAPH_UI_TIMEOUT_MS = 120_000
 
 /** Persist spend report JSON under evals/graph-scale/runs/. */
 export function writeGraphScaleSpendReport(report: GraphScaleSpendReport): string {
@@ -157,28 +156,6 @@ export function writeGraphScaleSpendReport(report: GraphScaleSpendReport): strin
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
   console.log(`[graph-scale-spend] report ${reportPath}`)
   return reportPath
-}
-
-/** Memory graph tab — for headed review after ingest. */
-export async function openGraphScaleSpendGraphPage(page: Page): Promise<void> {
-  await page.goto('/memory', { waitUntil: 'domcontentloaded', timeout: GRAPH_UI_TIMEOUT_MS })
-  await expect(page).toHaveURL(/\/memory/, { timeout: GRAPH_UI_TIMEOUT_MS })
-  await page.getByRole('link', { name: 'Map', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Search nodes', exact: true })).toBeVisible({
-    timeout: GRAPH_UI_TIMEOUT_MS,
-  })
-  await expect(page.locator('canvas, svg').first()).toBeVisible({ timeout: GRAPH_UI_TIMEOUT_MS })
-  await setGraphScaleSpendPageTitle(page, 'Graph-scale spend · review graph')
-}
-
-/** Keep headed browser open until the operator closes it. */
-export async function holdHeadedBrowserForGraphReview(
-  page: Page,
-  reportPath: string,
-): Promise<void> {
-  console.log(`[graph-scale-spend] report saved: ${reportPath}`)
-  console.log('[graph-scale-spend] graph open — close the browser window when finished reviewing.')
-  await page.context().waitForEvent('close')
 }
 
 /** Open capture so headed runs show the app instead of about:blank. */

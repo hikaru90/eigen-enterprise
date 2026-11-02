@@ -6,12 +6,13 @@
   import OverviewModule from '$lib/components/overview-module.svelte'
   import WebsiteActivityPanel from '$lib/components/website-activity-panel.svelte'
   import { moduleSettingsSlot } from '$lib/shell/module-settings'
+  import { docTitle } from '$lib/shell/title'
 
   let { data }: { data: PageData } = $props()
   const slot = $derived(moduleSettingsSlot(data.module.id))
 </script>
 
-<svelte:head><title>{data.module.name} · Eigen Enterprise</title></svelte:head>
+<svelte:head><title>{docTitle(data.module.name)}</title></svelte:head>
 
 <div class="mx-auto w-full max-w-4xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
   <header class="flex min-w-0 flex-col gap-1.5 border-b border-border pb-6">

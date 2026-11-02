@@ -201,7 +201,7 @@ export const actions: Actions = {
       logAppFailure('website.app_remove', err)
       return fail(400, { action: 'remove' as const, error: plainAppMessage(err) })
     }
-    redirect(303, '/m/website/apps')
+    redirect(303, '/m/website')
   },
   mailEnable: async (event) => {
     const user = await requireAdmin(event.locals.user)

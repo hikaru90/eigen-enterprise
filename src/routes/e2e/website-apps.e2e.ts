@@ -10,12 +10,12 @@ import { registerUser } from './test-helpers'
  *     /m/website/apps redirects here; the dialog offers exactly the two ways
  *     to add; "Connect a repo" walks into the three-step flow.
  *  2. /m/website/apps/new — a non-GitHub link comes back as a plain sentence.
- *  3. /m/website/hosting — the light module shell holds even when the stored
+ *  3. /m/website/settings — the light module shell holds even when the stored
  *     theme preference is dark (the reason the page left /settings), and the
  *     old tabs (GitHub, App secrets, Recent activity) are gone.
  *  4. /m/website/site — the domain card says why it is read-only; the pages
  *     card is gone (pages dropped from the surface).
- *  5. /settings/hosting — lands on /m/website/hosting (the 307).
+ *  5. /settings/hosting and /m/website/hosting — removed, 404.
  *  6. /?prefill= — the chat composer carries the draft; nothing is sent.
  *
  * No ee runs locally, so every page is in its explicit not-managed state —
@@ -67,16 +67,16 @@ async function newOwner(context: BrowserContext, page: Page): Promise<void> {
 }
 
 test.describe('website apps (the module cut, no ee attached)', () => {
-  test('the module front page: apps grid + activity rail; the old /apps route redirects; the dialog offers two ways to add', async ({
+  test('the module front page: apps grid + activity rail; the old /apps alias is gone; the dialog offers two ways to add', async ({
     page,
     context,
   }) => {
     const browserErrors: string[] = []
     page.on('pageerror', (error) => browserErrors.push(error.message))
     await newOwner(context, page)
-    await page.goto('/m/website/apps')
-    // The overview moved to the module front page.
-    await expect(page).toHaveURL(/\/m\/website$/)
+    // The /m/website/apps alias was removed (phase-cohesion C4): 404 in the shell.
+    expect((await page.goto('/m/website/apps'))?.status()).toBe(404)
+    await page.goto('/m/website')
 
     // The overview exposes capability without an alarming, blocking deployment banner.
     await expect(page.getByTestId('deployment-server-status')).toBeVisible()
@@ -172,13 +172,13 @@ test.describe('website apps (the module cut, no ee attached)', () => {
     await expect(page.getByTestId('step-repository')).toBeVisible()
   })
 
-  test('hosting renders in the light module shell even under the dark preference', async ({
+  test('website settings render in the light module shell even under the dark preference', async ({
     page,
     context,
   }) => {
     await newOwner(context, page)
     await page.addInitScript(() => localStorage.setItem('theme-preference', 'dark'))
-    await page.goto('/m/website/hosting')
+    await page.goto('/m/website/settings')
 
     // The dark preference is really applied to the document...
     expect(await page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(
@@ -234,11 +234,13 @@ test.describe('website apps (the module cut, no ee attached)', () => {
     ).toBe(true)
   })
 
-  test('/settings/hosting lands on /m/website/hosting', async ({ page, context }) => {
+  test('the legacy /settings/hosting and duplicate /m/website/hosting URLs are gone (404)', async ({
+    page,
+    context,
+  }) => {
     await newOwner(context, page)
-    await page.goto('/settings/hosting')
-    await expect(page).toHaveURL(/\/m\/website\/hosting$/)
-    await expect(page.getByRole('heading', { name: 'Website settings', level: 1 })).toBeVisible()
+    expect((await page.goto('/settings/hosting'))?.status()).toBe(404)
+    expect((await page.goto('/m/website/hosting'))?.status()).toBe(404)
   })
 
   test('Build it with chat opens an unsent draft from Add', async ({ page, context }) => {

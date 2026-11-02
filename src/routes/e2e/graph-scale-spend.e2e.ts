@@ -9,10 +9,8 @@ import {
   captureThoughtThroughUi,
   fetchSpendProbeSnapshot,
   formatGraphScaleSpendLine,
-  holdHeadedBrowserForGraphReview,
   initGraphScaleSpendProbe,
   openGraphScaleSpendCapturePage,
-  openGraphScaleSpendGraphPage,
   setGraphScaleSpendPageTitle,
   spendDeltaRow,
   writeGraphScaleSpendReport,
@@ -41,7 +39,7 @@ test.describe('Graph-scale ingest spend', () => {
     test.skip(!SPEND_ENABLED, 'Set GRAPH_SCALE_SPEND=1 and run npm run test:e2e:graph-scale-spend')
   })
 
-  test('captures linked picnic thoughts and logs per-ingest spend', async ({ page }, testInfo) => {
+  test('captures linked picnic thoughts and logs per-ingest spend', async ({ page }) => {
     const runId = randomUUID()
     const startedAt = new Date().toISOString()
     const texts = buildSpendPicnicProbeTexts(CAPTURE_COUNT)
@@ -125,17 +123,10 @@ test.describe('Graph-scale ingest spend', () => {
       },
     }
 
-    let reportPath = ''
     await test.step('write spend report', async () => {
       expect(perThought).toHaveLength(CAPTURE_COUNT)
       expect(trend.sumCredits).toBeGreaterThan(0)
-      reportPath = writeGraphScaleSpendReport(report)
-    })
-
-    await test.step('review stored graph (close browser when done)', async () => {
-      testInfo.setTimeout(0)
-      await openGraphScaleSpendGraphPage(page)
-      await holdHeadedBrowserForGraphReview(page, reportPath)
+      writeGraphScaleSpendReport(report)
     })
   })
 })

@@ -15,6 +15,7 @@
   import * as Table from '$lib/components/ui/table'
   import * as Tabs from '$lib/components/ui/tabs'
   import { Textarea } from '$lib/components/ui/textarea'
+  import { docTitle } from '$lib/shell/title'
   import { cn } from '$lib/utils.js'
   import {
     BUTTON_SIZES,
@@ -56,7 +57,7 @@
 </script>
 
 <svelte:head>
-  <title>Design system · Eigen Enterprise</title>
+  <title>{docTitle('Design system', 'Brand')}</title>
   {#each fontLinks as link (link.family)}
     <link rel="stylesheet" href={link.href} data-brand-font={link.family} />
   {/each}

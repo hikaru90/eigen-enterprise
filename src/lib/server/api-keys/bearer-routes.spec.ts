@@ -32,7 +32,7 @@ describe('isApiKeyRoute', () => {
   })
 
   it('denies pages and the root, so a key never opens the console', () => {
-    for (const path of ['/', '/login', '/overview', '/m/website/apps/site', '/api-keys']) {
+    for (const path of ['/', '/login', '/overview', '/m/website/apps/site', '/settings/api-keys']) {
       expect(isApiKeyRoute(path), path).toBe(false)
     }
   })

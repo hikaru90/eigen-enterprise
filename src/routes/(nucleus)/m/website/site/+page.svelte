@@ -10,6 +10,7 @@
   import * as Card from '$lib/components/ui/card'
   import { Input as TextInput } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { docTitle } from '$lib/shell/title'
 
   let { data, form }: PageProps = $props()
 
@@ -43,7 +44,7 @@
   }
 </script>
 
-<svelte:head><title>Company site settings · Website · Eigen Enterprise</title></svelte:head>
+<svelte:head><title>{docTitle('Company site', 'Website')}</title></svelte:head>
 
 <div class="mx-auto w-full max-w-4xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
   <header class="flex min-w-0 flex-col gap-1.5 border-b border-border pb-6">

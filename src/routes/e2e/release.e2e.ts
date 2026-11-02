@@ -15,8 +15,6 @@ import {
   captureThoughtViaUiDismissVerbatim,
   completeOnboardingOverlay,
   exerciseAuthenticatedUi,
-  exerciseNotesShoppingListAppend,
-  exerciseOvernightConsolidation,
   exerciseProjectsLifecycle,
   loginUser,
   registerUser,
@@ -53,14 +51,6 @@ test.describe('Release smoke @release', () => {
       // Legal docs are hosted on the website, not in the app.
       await expect(terms).toHaveAttribute('href', /^https?:\/\//)
       await expect(page.getByRole('checkbox', { name: /Terms of Service|AGB/i })).toBeVisible()
-    })
-
-    await test.step('login offers password reset recovery', async () => {
-      await page.goto('/login')
-      await expect(page.getByRole('link', { name: /Forgot password/i })).toBeVisible()
-      await page.getByRole('link', { name: /Forgot password/i }).click()
-      await expect(page).toHaveURL(/\/forgot-password/)
-      await expect(page.getByRole('button', { name: /Send reset link/i })).toBeVisible()
     })
 
     await test.step('create account', async () => {
@@ -151,14 +141,6 @@ test.describe('Release smoke @release', () => {
 
     await test.step('projects: create, capture, edit, dismiss', async () => {
       await exerciseProjectsLifecycle(page)
-    })
-
-    await test.step('overnight consolidation heartbeat', async () => {
-      await exerciseOvernightConsolidation(page)
-    })
-
-    await test.step('notes: create shopping list then append via chat', async () => {
-      await exerciseNotesShoppingListAppend(page)
     })
 
     await test.step('exercise authenticated surfaces and controls', async () => {

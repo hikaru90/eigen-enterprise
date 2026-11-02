@@ -16,6 +16,7 @@
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
   import * as Table from '$lib/components/ui/table'
+  import { docTitle } from '$lib/shell/title'
   import { deployModeText } from './deploy-mode'
 
   let { data, form }: { data: PageData; form: ActionData } = $props()
@@ -79,7 +80,7 @@
   const siteUrl = $derived(data.app.domains.length > 0 ? `https://${data.app.domains[0]}` : null)
 </script>
 
-<svelte:head><title>{data.app.name} · Apps · Eigen Enterprise</title></svelte:head>
+<svelte:head><title>{docTitle(data.app.name, 'Website')}</title></svelte:head>
 
 <div class="mx-auto w-full max-w-4xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
   <header class="flex min-w-0 flex-col gap-3">

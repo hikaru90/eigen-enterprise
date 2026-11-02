@@ -44,7 +44,7 @@ function selectReturning(rows: { email?: string }[]) {
 const PAYLOAD = {
   title: 'Appointment',
   body: 'In 30 min · Dentist',
-  url: '/memory/timeline?event=te1',
+  url: '/memory/tasks?event=te1',
   tag: 'event-te1-30',
 }
 
@@ -83,7 +83,7 @@ describe('queueNotificationEmail', () => {
     await queueNotificationEmail('u1', {
       title: 'Daily',
       body: 'A <b>summary</b> & more',
-      url: '/memory/timeline',
+      url: '/memory/tasks',
       tag: 'daily-summary-2026-01-01',
     })
 
@@ -91,8 +91,8 @@ describe('queueNotificationEmail', () => {
     const [input] = sendTransactionalEmailMock.mock.calls[0]
     expect(input.to).toBe('user@example.com')
     expect(input.subject).toBe('[Eigen] Daily')
-    expect(input.text).toContain('Open: https://eigen.example/memory/timeline')
-    expect(input.html).toContain('https://eigen.example/memory/timeline')
+    expect(input.text).toContain('Open: https://eigen.example/memory/tasks')
+    expect(input.html).toContain('https://eigen.example/memory/tasks')
     expect(input.html).toContain('A &lt;b&gt;summary&lt;/b&gt; &amp; more')
   })
 

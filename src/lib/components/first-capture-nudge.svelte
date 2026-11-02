@@ -51,15 +51,15 @@
     <Card.Header class="space-y-1 pb-2">
       <Card.Title class="text-sm">Thought saved</Card.Title>
       <Card.Description class="text-muted-foreground text-xs leading-relaxed">
-        Ask your company's assistant about it in Chat, or see how it connects in Memory.
+        Ask your company's assistant about it in Chat, or find it in your notes.
       </Card.Description>
     </Card.Header>
     <Card.Footer class="flex flex-wrap items-center gap-2 border-t-0 pt-0">
-      <Button href="/chat" class="rounded-[4px] text-xs" onclick={trackChat}>
+      <Button href="/" class="rounded-[4px] text-xs" onclick={trackChat}>
         Ask about it in Chat
       </Button>
-      <Button href="/memory" variant="outline" class="rounded-[4px] text-xs" onclick={trackMemory}>
-        See it in Memory
+      <Button href="/memory/notes" variant="outline" class="rounded-[4px] text-xs" onclick={trackMemory}>
+        See it in Notes
       </Button>
       <Button
         type="button"

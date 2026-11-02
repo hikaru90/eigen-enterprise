@@ -3,6 +3,7 @@
   import { resolve } from '$app/paths'
   import ActivationNotice from '../activation-notice.svelte'
   import SpecimenMini from './specimen-mini.svelte'
+  import { docTitle } from '$lib/shell/title'
 
   type Candidate = { label: string; cssVars?: Record<string, string>; error?: string }
 
@@ -129,7 +130,7 @@
 </script>
 
 <svelte:head>
-  <title>Brand extraction judge</title>
+  <title>{docTitle('Extract', 'Brand')}</title>
 </svelte:head>
 
 {#if data.needsModuleActivation}

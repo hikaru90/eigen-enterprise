@@ -1,9 +1,11 @@
 <script lang="ts">
   import type { ActionData, PageData } from './$types'
   import { enhance } from '$app/forms'
+  import { resolve } from '$app/paths'
   import { Button } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
   import { Label } from '$lib/components/ui/label'
+  import { docTitle } from '$lib/shell/title'
 
   /** Accept an invite: one click emails a code to the invited address; the code signs you in as a member. */
   let { data, form }: { data: PageData; form: ActionData } = $props()
@@ -14,7 +16,7 @@
 </script>
 
 <svelte:head>
-  <title>Join {company} · Eigen Enterprise</title>
+  <title>{docTitle(`Join ${company}`)}</title>
 </svelte:head>
 
 <div class="mx-auto max-w-md px-5 pt-16">
@@ -31,6 +33,11 @@
     <Card.Content class="space-y-4 pt-6">
       {#if !data.ok}
         <p class="text-xs" data-testid="invite-unavailable">{data.message}</p>
+        <a
+          href={resolve('/login')}
+          class="inline-block text-xs font-medium underline underline-offset-4"
+          data-testid="invite-sign-in">Sign in</a
+        >
       {:else if codeStep}
         <form method="post" action="?/verifyCode" use:enhance class="space-y-4" data-testid="invite-code-step">
           <input type="hidden" name="token" value={data.token} />

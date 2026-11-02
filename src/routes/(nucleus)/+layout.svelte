@@ -16,7 +16,7 @@
 </script>
 
 <svelte:head>
-  <title>Eigen Enterprise</title>
+  <title>eigenEnterprise</title>
 </svelte:head>
 
 <!--

@@ -57,8 +57,15 @@ describe('(nucleus) layout load', () => {
     journeyRows.splice(0, journeyRows.length, { status: 'active', state: { answers: { company_name: ' Kindred ' } } })
     const data = (await load(event({ id: 'owner' }))) as { shell: import('$lib/shell/nav').ShellData }
     expect(data.shell.companyName).toBe('Kindred')
-    expect(data.shell.nav.modules.map((m) => m.id)).toEqual(['website', 'owlery'])
-    expect(data.shell.nav.available.map((m) => m.id)).toEqual(['repo'])
+    expect(data.shell.nav.items.map((m) => [m.id, m.active])).toEqual([
+      ['chat', true],
+      ['overview', true],
+      ['website', true],
+      ['agent', true],
+      ['owlery', true],
+      ['repo', false],
+      ['settings', true],
+    ])
   })
 
   it('leaves the company unnamed until the founding journey names it', async () => {

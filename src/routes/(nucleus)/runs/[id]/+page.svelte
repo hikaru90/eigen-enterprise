@@ -11,6 +11,7 @@
     type RunSnapshot,
   } from '$lib/agent-runs/feed'
   import AgentRunFeed from '$lib/components/agent-run-feed.svelte'
+  import { docTitle } from '$lib/shell/title'
 
   let { data }: { data: PageData } = $props()
 
@@ -47,7 +48,7 @@
   const when = (iso: string) => timeFormat.format(new Date(iso))
 </script>
 
-<svelte:head><title>Run {data.run.id} · Eigen Enterprise</title></svelte:head>
+<svelte:head><title>{docTitle(`Run ${data.run.id}`, 'Agent')}</title></svelte:head>
 
 <div class="mx-auto w-full max-w-5xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
   <a href={resolve('/(nucleus)/runs')} class="text-xs text-foreground/55 hover:underline">

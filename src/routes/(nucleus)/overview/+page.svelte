@@ -5,6 +5,7 @@
   import ModuleCard from '$lib/components/module-card.svelte'
   import { appHref } from '$lib/shell/href'
   import { moduleHref } from '$lib/shell/nav'
+  import { docTitle } from '$lib/shell/title'
 
   let { data }: { data: PageData } = $props()
 
@@ -26,7 +27,7 @@
     'flex min-w-0 flex-col rounded-lg border border-border bg-background px-4 py-3.5 transition-colors outline-none hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring/60'
 </script>
 
-<svelte:head><title>Overview · Eigen Enterprise</title></svelte:head>
+<svelte:head><title>{docTitle('Overview')}</title></svelte:head>
 
 <div class="mx-auto w-full max-w-5xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
   <header class="flex min-w-0 flex-col gap-1">

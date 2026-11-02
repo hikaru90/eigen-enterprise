@@ -8,6 +8,7 @@
   import PickerBreadcrumb from '$lib/components/brand-picker/picker-breadcrumb.svelte'
   import PickerGrid from '$lib/components/brand-picker/picker-grid.svelte'
   import { pickerQuery, type PreviewMode } from '$lib/components/brand-picker/types'
+  import { docTitle } from '$lib/shell/title'
   import ActivationNotice from './activation-notice.svelte'
 
   /**
@@ -64,7 +65,7 @@
 </script>
 
 <svelte:head>
-  <title>Brand — choose your style</title>
+  <title>{docTitle('Brand')}</title>
 </svelte:head>
 
 {#if data.needsModuleActivation}

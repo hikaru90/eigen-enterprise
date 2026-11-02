@@ -7,6 +7,7 @@
   import AddAppDialog from '$lib/components/add-app-dialog.svelte'
   import AppCard from '$lib/components/app-card.svelte'
   import WebsiteActivityPanel from '$lib/components/website-activity-panel.svelte'
+  import { docTitle } from '$lib/shell/title'
 
   let { data }: PageProps = $props()
   let addOpen = $state(false)
@@ -26,7 +27,7 @@
     `${resolve('/m/website/apps/new')}?${new URLSearchParams({ repo, branch })}`
 </script>
 
-<svelte:head><title>Apps &amp; repositories · Website · Eigen Enterprise</title></svelte:head>
+<svelte:head><title>{docTitle('Apps & repositories', 'Website')}</title></svelte:head>
 
 <div class="mx-auto w-full max-w-7xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
   <header class="flex min-w-0 flex-col gap-5 border-b border-border pb-6">
