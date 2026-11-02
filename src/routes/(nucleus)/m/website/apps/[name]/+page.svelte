@@ -137,10 +137,10 @@
       <Card.Description>
         <span data-testid="deploy-mode">{deployModeText(data.app)}</span>
         Build contract: {data.app.contractSource === 'repo'
-          ? "the repo's ee.json"
-          : 'the saved build settings below'}
-        . Redeploy rebuilds the current branch head with exactly that config — same commands as the last
-        deploy, no AI, nothing to fill out.
+          ? "the repo's ee.json."
+          : 'the saved build settings below.'}
+        Redeploy fetches the current branch head and deploys it with exactly that config — no AI, nothing
+        to fill out. If nothing changed since the last deploy, the live app stays as it is.
       </Card.Description>
     </Card.Header>
     <Card.Content class="flex flex-col gap-4">
@@ -358,20 +358,26 @@
 
     <Card.Root class="mt-6">
       <Card.Header>
-        <Card.Title>Environment variables</Card.Title>
+        <Card.Title>Environment variables &amp; secrets</Card.Title>
         <Card.Description>
-          Stored encrypted on this server and given to the app while it builds and while it runs.
+          API keys, passwords and settings the app reads from its environment. Stored encrypted on
+          this server, given to the app while it builds and while it runs, and never shown again.
           Changing one rebuilds the app.
         </Card.Description>
       </Card.Header>
       <Card.Content class="flex flex-col gap-3">
-        {#if data.app.env.length === 0}
+        {#if data.secretNames.length === 0}
           <p class="text-sm text-muted-foreground">None yet.</p>
         {:else}
-          <ul class="flex flex-col gap-1">
-            {#each data.app.env as key (key)}
+          <ul class="flex flex-col gap-1" data-testid="env-names">
+            {#each data.secretNames as key (key)}
               <li class="flex items-center gap-2 font-mono text-xs">
-                {key} <span class="text-foreground/40">••••••••</span>
+                {key}
+                {#if data.app.env.includes(key)}
+                  <Badge variant="outline">sealed</Badge>
+                {:else}
+                  <Badge variant="destructive">needed by the repo, not set</Badge>
+                {/if}
               </li>
             {/each}
           </ul>
@@ -400,56 +406,6 @@
           />
           <Button type="submit" variant="outline" disabled={busy !== null}>
             {busy === 'env' ? 'Saving…' : 'Set'}
-          </Button>
-        </form>
-      </Card.Content>
-    </Card.Root>
-
-    <Card.Root class="mt-6">
-      <Card.Header>
-        <Card.Title>Secrets</Card.Title>
-        <Card.Description>
-          Sealed by the server and handed to the running app. Unlike environment variables, secrets
-          are never given to a build, and their values can never be read back.
-        </Card.Description>
-      </Card.Header>
-      <Card.Content class="flex flex-col gap-3">
-        {#if data.secretNames.length === 0}
-          <p class="text-sm text-muted-foreground">None yet.</p>
-        {:else}
-          <ul class="flex flex-col gap-1">
-            {#each data.secretNames as secret (secret)}
-              <li class="flex items-center gap-2 font-mono text-xs">
-                {secret}
-                <Badge variant="outline">sealed</Badge>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-        <form
-          method="POST"
-          action="?/secretSet"
-          use:enhance={track('secretSet')}
-          class="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row"
-          autocomplete="off"
-        >
-          <Input
-            name="name"
-            required
-            placeholder="NAME"
-            aria-label="Secret name"
-            class="font-mono text-xs"
-          />
-          <Input
-            name="value"
-            type="password"
-            required
-            placeholder="value (write-only, never shown again)"
-            aria-label="Secret value"
-            class="min-w-0 flex-1 font-mono text-xs"
-          />
-          <Button type="submit" variant="outline" disabled={busy !== null}>
-            {busy === 'secretSet' ? 'Saving…' : 'Set secret'}
           </Button>
         </form>
       </Card.Content>

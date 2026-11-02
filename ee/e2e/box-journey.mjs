@@ -166,34 +166,31 @@ try {
   await page.getByText('JOURNEY_FLAG').first().waitFor()
   pass()
 
-  step('set a secret')
+  step('set a secret (same sealed store, value never shown again)')
   await page.reload()
   await openSettings(page)
-  await page.getByLabel('Secret name').fill('JOURNEY_TOKEN')
-  await page.getByLabel('Secret value').fill('s3cret-value')
-  await page.getByRole('button', { name: 'Set secret' }).click()
+  await page.getByLabel('Variable name').fill('JOURNEY_TOKEN')
+  await page.getByLabel('Variable value').fill('s3cret-value')
+  await page.getByRole('button', { name: 'Set', exact: true }).click()
   a = await formAnswer(page)
   assert(a.ok, `secret: ${a.text}`)
-  await page.getByText('JOURNEY_TOKEN').first().waitFor()
+  await page.reload()
+  await openSettings(page)
+  const names = (await page.getByTestId('env-names').innerText()).split('\n').join(' ')
+  for (const k of ['JOURNEY_FLAG', 'JOURNEY_TOKEN']) {
+    assert(names.split(k).length === 2, `${k} must be listed exactly once (got: ${names})`)
+  }
   assert(!(await page.content()).includes('s3cret-value'), 'secret value echoed on the page')
   await shot(page, 'env-secret')
   pass()
 
   step('Redeploy and wait for live')
   await page.reload()
-  const before = await page
-    .getByTestId('deploy-history')
-    .innerText()
-    .catch(() => '')
+  // Same head + same config is a no-op by design (ee is desired-state): the panel must still
+  // settle on live, never hang or fail.
   await page.getByRole('button', { name: 'Redeploy' }).click()
-  await page.locator('[data-testid="deploy-progress"][data-state="running"]').waitFor()
   await waitDeploy(page).finally(() => shot(page, 'redeployed'))
   await page.reload()
-  const after = await page
-    .getByTestId('deploy-history')
-    .innerText()
-    .catch(() => '')
-  assert(after !== before, 'deploy history did not change after Redeploy')
   pass()
 
   step('logs and deploy history are shown')
