@@ -27,7 +27,7 @@ import {
 type Fx = {
   runtime: JourneyAwareAgentRuntime
   journeys: InMemoryJourneyStore
-  inputs: Array<{ engine: string; input: string }>
+  inputs: Array<{ engine: string; input: string; ownerText?: string }>
   script: string[]
   facts: { current: OnboardingFacts | null }
 }
@@ -54,8 +54,8 @@ function fixture(): Fx {
   const journeys = new InMemoryJourneyStore()
 
   const fake = (engine: string): LoopEngine => ({
-    run: async (_sessionId, input) => {
-      inputs.push({ engine, input })
+    run: async (_sessionId, input, ctx) => {
+      inputs.push({ engine, input, ...(ctx.ownerText !== undefined ? { ownerText: ctx.ownerText } : {}) })
       const reply = script.shift()
       if (reply === undefined) throw new Error('fake engine: script exhausted')
       return reply
@@ -87,6 +87,8 @@ describe('onboarding hand-off — the agent takes over after the scripted setup'
     expect(fx.inputs).toHaveLength(1)
     expect(fx.inputs[0]!.input.startsWith('[company onboarding context]')).toBe(true)
     expect(fx.inputs[0]!.input).toContain(ONBOARDING_HANDOFF_INSTRUCTION)
+    // App-made turn: no owner words, so run feeds show no Input line for it.
+    expect(fx.inputs[0]!.ownerText).toBe('')
     // The hand-off never opens the journey by itself — the owner answers first.
     expect(await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)).toBeNull()
   })
@@ -145,6 +147,9 @@ describe('onboarding hand-off — the agent takes over after the scripted setup'
     await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'not yet', undefined, { llmUserId: 'u1' })
     expect(fx.inputs[0]!.input.startsWith('[company onboarding context]')).toBe(true)
     expect(fx.inputs[0]!.input.endsWith('not yet')).toBe(true)
+    // The injected block is composed by code: the owner's own words travel
+    // separately, so the run feed shows only them.
+    expect(fx.inputs[0]!.ownerText).toBe('not yet')
     expect(await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)).toBeNull()
   })
 

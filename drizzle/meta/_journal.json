@@ -743,6 +743,13 @@
       "when": 1793620000000,
       "tag": "0105_brand_visual_set_picker_node",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1793620001000,
+      "tag": "0106_drop_dev_agent_tables",
+      "breakpoints": true
     }
   ]
 }

@@ -14,6 +14,12 @@ import type {
 import { DurableRunError } from '$lib/kernel/engines/durable'
 import { dbScopedGatewayComplete } from './db-scoped-complete'
 import {
+  OWNER_INPUT_ENTRY_KIND,
+  TURN_FAILED_ENTRY_KIND,
+  type OwnerInputEntryData,
+  type TurnFailedEntryData,
+} from './entry-kinds'
+import {
   createGatewayModelCatalog,
   GATEWAY_MODEL_ID,
   GATEWAY_PROVIDER_ID,
@@ -218,7 +224,9 @@ async function openDurableHarness(deps: DurableHarnessDeps): Promise<DurableHarn
   mkdirSync(stateDir, { recursive: true })
   const lock = await acquireAgentStateLock(stateDir)
   try {
-    return await openLocked(deps, stateDir)
+    const box = await openLocked(deps, stateDir)
+    durableHost.__eeDurableLock = lock
+    return box
   } catch (err) {
     releaseAgentStateLock(lock)
     throw err
@@ -283,6 +291,12 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
   const activeBridges = new Map<string, Map<string, DurableBridgeToolSpec>>()
   const knownTools = new Map<string, DurableToolSurfaceEntry>()
   /**
+   * Names registered at open only so a restart-interrupted chat tool call
+   * resolves to the bridge (and reports not_run) instead of pi-durable's
+   * tool_unavailable. The first real surface carrying the name replaces it.
+   */
+  const placeholderTools = new Set<string>()
+  /**
    * Background runs by pi conversation id: their tools execute as the RECORDED
    * principal (index row), live or resumed after a restart — never through a
    * chat request's closures.
@@ -334,7 +348,7 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
   function installToolBridge(tools: DurableToolSurfaceEntry[]): ToolRegistration[] {
     let grew = false
     for (const spec of tools) {
-      if (!knownTools.has(spec.name)) grew = true
+      if (!knownTools.has(spec.name) || placeholderTools.delete(spec.name)) grew = true
       knownTools.set(spec.name, {
         name: spec.name,
         description: spec.description,
@@ -500,6 +514,12 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
     }
     trackBackgroundRun(row.piConversationId, input)
     const submission = await conversation.submit({ type: 'input', content: input.prompt }, BACKGROUND_CONTEXT)
+    void submission
+      .wait(BACKGROUND_CONTEXT)
+      .then((settled) => (settled.status === 'unanswered' ? recordTurnFailure(conversation, settled) : undefined))
+      .catch((err: unknown) => {
+        report(new Error(`could not record the outcome of background run ${row.conversationKey}`, { cause: err }))
+      })
     return {
       conversationId: row.piConversationId,
       conversationKey: row.conversationKey,
@@ -526,36 +546,81 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
     return settledTurn(settled.conversationId, settled)
   }
 
+  /**
+   * A turn that settled unanswered leaves a display-only entry, so run feeds
+   * show the failure (also when opened after the fact) — pi-durable keeps
+   * no settled-submission record in its event snapshot.
+   */
+  async function recordTurnFailure(
+    conversation: Conversation,
+    settled: { reason: string; detail?: unknown },
+  ): Promise<void> {
+    const detail =
+      settled.detail === undefined
+        ? undefined
+        : typeof settled.detail === 'string'
+          ? settled.detail
+          : JSON.stringify(settled.detail)
+    const data: TurnFailedEntryData = { reason: settled.reason, ...(detail === undefined ? {} : { detail }) }
+    await conversation.submit({ type: 'write', entry: { kind: TURN_FAILED_ENTRY_KIND, data } }, BACKGROUND_CONTEXT)
+  }
+
+  function report(error: unknown): void {
+    ;(deps.onReport ?? ((e: unknown) => console.error('[durable] report:', e)))(error)
+  }
+
+  /** Per pi conversation: the tail of its turn queue (one turn at a time). */
+  const turnQueues = new Map<string, Promise<void>>()
+
   function engineConversation(
     conversation: Conversation,
     indexRowId: number,
     tools: DurableBridgeToolSpec[],
   ): DurableEngineConversation {
     const key = String(conversation.id)
+
+    async function runTurn(content: string, ownerText: string | undefined): Promise<SettledDurableTurn> {
+      activeBridges.set(key, new Map(tools.map((t) => [t.name, t])))
+      let settled
+      try {
+        const ownerEntry =
+          ownerText === undefined
+            ? {}
+            : { entry: { kind: OWNER_INPUT_ENTRY_KIND, data: { ownerText } satisfies OwnerInputEntryData } }
+        const submission = await conversation.submit({ type: 'input', content, ...ownerEntry }, BACKGROUND_CONTEXT)
+        settled = await submission.wait(BACKGROUND_CONTEXT)
+      } finally {
+        activeBridges.delete(key)
+      }
+      await index.touch(indexRowId)
+      if (settled.status === 'unanswered') {
+        await recordTurnFailure(conversation, settled)
+        return { status: 'unanswered', reason: settled.reason, detail: settled.detail }
+      }
+      if (settled.status !== 'done' || settled.type !== 'input') {
+        throw new DurableRunError(`submission settled in an unexpected state: ${settled.status}/${settled.type}`)
+      }
+      return { status: 'done', reply: await replyOf(conversation, settled.answer) }
+    }
+
     return {
       id: key,
-      submitAndSettle: async (content: string): Promise<SettledDurableTurn> => {
-        if (activeBridges.has(key)) {
-          throw new DurableRunError('conversation_busy', `durable conversation ${key} already has a turn in flight`)
-        }
-        activeBridges.set(key, new Map(tools.map((t) => [t.name, t])))
-        let settled
+      submitAndSettle: async (content: string, ownerText?: string): Promise<SettledDurableTurn> => {
+        // One turn at a time per conversation: a message that arrives while a
+        // turn is in flight (e.g. the owner typing during the onboarding
+        // greeting) waits for it, then runs — never a conversation_busy error.
+        const previous = turnQueues.get(key)
+        let release!: () => void
+        const mine = new Promise<void>((resolve) => (release = resolve))
+        const tail = (previous ?? Promise.resolve()).then(() => mine)
+        turnQueues.set(key, tail)
+        await previous
         try {
-          const submission = await conversation.submit({ type: 'input', content }, BACKGROUND_CONTEXT)
-          settled = await submission.wait(BACKGROUND_CONTEXT)
+          return await runTurn(content, ownerText)
         } finally {
-          activeBridges.delete(key)
+          release()
+          if (turnQueues.get(key) === tail) turnQueues.delete(key)
         }
-        await index.touch(indexRowId)
-        if (settled.status === 'unanswered') {
-          return { status: 'unanswered', reason: settled.reason, detail: settled.detail }
-        }
-        if (settled.status !== 'done' || settled.type !== 'input') {
-          throw new DurableRunError(
-            `submission settled in an unexpected state: ${settled.status}/${settled.type}`,
-          )
-        }
-        return { status: 'done', reply: await replyOf(conversation, settled.answer) }
       },
     }
   }
@@ -582,13 +647,44 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
   // died with the previous process. Watch each; a CHAT turn that settles done
   // is handed to the chat mirror (nobody else will write its bubble).
   const inspection = await harness.inspect(BACKGROUND_CONTEXT)
+  // A resumed CHAT turn has no live request: its tool calls must resolve to the
+  // bridge (which reports not_run with the restart explanation), not to
+  // pi-durable's tool_unavailable. The fresh registry knows none of the tool
+  // names the conversation was configured with, so register them first.
+  const interruptedChatTools = new Set<string>()
+  for (const pending of inspection.submissions) {
+    if (pending.type !== 'input') continue
+    const row = await index.resolveByPiConversationId(String(pending.conversationId))
+    if (!row || row.runPrincipalId !== null) continue
+    for (const name of await configuredToolNames(pending.conversationId)) {
+      if (!knownTools.has(name)) interruptedChatTools.add(name)
+    }
+  }
+  if (interruptedChatTools.size > 0) {
+    installToolBridge(
+      [...interruptedChatTools].map((name) => ({
+        name,
+        description: `${name} (interrupted by a server restart; resend the request to run it)`,
+        parametersJsonSchema: { type: 'object' },
+      })),
+    )
+    for (const name of interruptedChatTools) placeholderTools.add(name)
+  }
   for (const pending of inspection.submissions) {
     if (pending.type !== 'input') continue
     void mirrorWhenSettled(pending.conversationId, String(pending.id)).catch((err: unknown) => {
-      ;(deps.onReport ?? ((e: unknown) => console.error('[durable] report:', e)))(
-        new Error(`could not mirror resumed submission ${String(pending.id)}`, { cause: err }),
-      )
+      report(new Error(`could not mirror resumed submission ${String(pending.id)}`, { cause: err }))
     })
+  }
+
+  /** The tool names a conversation is configured with (pi.agent), registered or not. */
+  async function configuredToolNames(conversationId: ConversationId): Promise<string[]> {
+    const conversation = await harness.conversation(conversationId, BACKGROUND_CONTEXT)
+    if (!conversation) return []
+    const view = await conversation.viewState(BACKGROUND_CONTEXT)
+    const agentDoc = view.value.docs['pi.agent'] as { tools?: unknown } | undefined
+    const tools = agentDoc?.tools
+    return Array.isArray(tools) ? tools.filter((t): t is string => typeof t === 'string') : []
   }
 
   async function mirrorWhenSettled(conversationId: ConversationId, submissionId: string): Promise<void> {
@@ -596,10 +692,15 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
     if (!row) {
       throw new Error(`resumed durable conversation ${String(conversationId)} has no conversation index row`)
     }
-    if (row.runPrincipalId !== null) return // background runs have no chat bubble
     const submission = await harness.submission(Number(submissionId) as never, BACKGROUND_CONTEXT)
     if (!submission) throw new Error(`resumed submission ${submissionId} vanished from storage`)
     const settled = await submission.wait(BACKGROUND_CONTEXT)
+    if (settled.status === 'unanswered') {
+      const conversation = await harness.conversation(conversationId, BACKGROUND_CONTEXT)
+      if (conversation) await recordTurnFailure(conversation, settled)
+      return
+    }
+    if (row.runPrincipalId !== null) return // background runs have no chat bubble
     if (settled.status !== 'done' || settled.type !== 'input') return // nothing answered to mirror
     const turn = await settledTurn(conversationId, settled)
     if (turn.status !== 'done') return
@@ -632,7 +733,20 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
  * lifetime, reused across HMR recompositions, never closed on recompose —
  * releasing the SQLite lock would race the next composition.
  */
-const durableHost = globalThis as { __eeDurableHarness?: Promise<DurableHarnessBox> }
+const durableHost = globalThis as {
+  __eeDurableHarness?: Promise<DurableHarnessBox>
+  __eeDurableLock?: AgentStateLock
+}
+
+/**
+ * Process exit (SIGTERM): hand the agent state over at once — release the
+ * lock so the next owner opens without waiting. Storage is not closed: what
+ * is in flight resumes on reopen (D3), exactly like after a crash.
+ */
+export function releaseDurableHarnessLockForExit(): void {
+  const lock = durableHost.__eeDurableLock
+  if (lock) releaseAgentStateLock(lock)
+}
 
 export function getDurableHarness(deps: DurableHarnessDeps): Promise<DurableHarnessBox> {
   durableHost.__eeDurableHarness ??= openDurableHarness(deps).catch((err: unknown) => {
@@ -660,4 +774,5 @@ export function openedDurableHarness(): Promise<DurableHarnessBox> {
 /** Test/ops reset of the process singleton (the opener itself is never cached). */
 export function resetDurableHarnessSingletonForTests(): void {
   delete durableHost.__eeDurableHarness
+  delete durableHost.__eeDurableLock
 }

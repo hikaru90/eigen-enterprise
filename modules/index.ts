@@ -5,7 +5,6 @@ import {
 } from '$lib/kernel/approvals'
 import {
   DbActivationStore,
-  DbAgentSessionLog,
   DbApprovalModeStore,
   DbApprovalStore,
   DbEventSink,
@@ -17,7 +16,6 @@ import { CHAT_GATEWAY_MODULE_ID, type Brain } from '$lib/kernel/gateway'
 import { ModuleRegistry, type ActivationStore } from '$lib/kernel/modules'
 import type { PrincipalStore } from '$lib/kernel/principals'
 import { KernelRegistry } from '$lib/kernel/registry'
-import type { AgentSessionLog } from '$lib/kernel/session-log'
 import { GitCommitter, type VcsCommitter } from '$lib/kernel/vcs'
 import {
   registerModuleTools,
@@ -37,8 +35,6 @@ import { createMembersTools } from './members/tools'
 import { memoryManifest } from './memory/manifest'
 import { createMemoryTools } from './memory/tools'
 import { createAllowlistAdminTools } from './orchestrator/allowlist-tools'
-import { createDevAgentEngine } from './orchestrator/dev-agent'
-import { createDevAgentTools, type DevAgentEngine } from './orchestrator/dev-agent/tools'
 import { orchestratorManifest } from './orchestrator/manifest'
 import { createRepoEngine } from './orchestrator/repo/index'
 import { createRepoTools, type RepoEngine } from './orchestrator/repo/tools'
@@ -63,7 +59,7 @@ export type { ChatGatewayBoot } from './chat-gateway/index'
  * The static module surface of this eigenEnterprise instance
  * (plan/phase-platform.md step 1): website = site + hosting + GitHub;
  * email = Owlery + transactional send; orchestrator = the agent's internal
- * repo / dev-agent / roadmap tools (no owner-facing card). Tool names are
+ * repo / roadmap tools (no owner-facing card). Tool names are
  * unchanged: merged modules own several tool namespaces.
  */
 export const moduleManifests = [
@@ -122,12 +118,8 @@ export type BootstrapKernelOptions = {
   /** Overrides the DB-backed company approval mode (tests inject in-memory). */
   approvalMode?: ApprovalModeStore
   principals?: PrincipalStore
-  /** Overrides the DB-backed agent session log (tests inject in-memory). */
-  sessionLog?: AgentSessionLog
   /** Defaults to a real GitCommitter; pass null to disable autocommit. */
   vcsCommitter?: VcsCommitter | null
-  /** Overrides the dev-agent engine (tests inject one with fake runners). */
-  devAgentEngine?: DevAgentEngine
   /** Overrides the repo engine (tests inject one with fake runners). */
   repoEngine?: RepoEngine
 }
@@ -158,7 +150,6 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
   const approvalStore = options.approvalStore ?? new DbApprovalStore(db)
   const approvalMode = options.approvalMode ?? new DbApprovalModeStore(db)
   const principals = options.principals ?? new DbPrincipalStore(db)
-  const sessionLog = options.sessionLog ?? new DbAgentSessionLog(db)
   const vcsCommitter = options.vcsCommitter === undefined ? new GitCommitter() : options.vcsCommitter
 
   const modules = new ModuleRegistry(activations)
@@ -176,9 +167,6 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createMemoryTools(),
     ...createEmailTools(),
     ...createWebsiteTools(),
-    ...createDevAgentTools({
-      engine: options.devAgentEngine ?? createDevAgentEngine({ eventSink }),
-    }),
     ...createBrandTools(),
     ...createRepoTools({
       engine: options.repoEngine ?? createRepoEngine({ eventSink }),
@@ -202,7 +190,6 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     approvals: approvalStore,
     approvalMode,
     eventSink,
-    sessionLog,
   }
 }
 

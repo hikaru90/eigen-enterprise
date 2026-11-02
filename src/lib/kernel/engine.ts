@@ -61,6 +61,12 @@ export type EngineContext = EngineStreamSinks & {
    * to their own llmUserId, then the agent id.
    */
   llmUserId?: string
+  /**
+   * The owner's own words of this turn when `input` was composed with
+   * injected context (DispatchOptions.ownerText). Engines that record the
+   * input for display record this instead of the composed text.
+   */
+  ownerText?: string
 }
 
 /**

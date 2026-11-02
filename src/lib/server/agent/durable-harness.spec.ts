@@ -27,6 +27,7 @@ import {
   type ResumedChatTurn,
 } from './durable-harness'
 import { BACKGROUND_CONTEXT } from './pi-durable'
+import { projectSnapshot } from '$lib/server/agent-runs/project'
 import { FileIndex } from './test-fixtures/file-index'
 
 /**
@@ -315,6 +316,55 @@ describe('durable engine over real pi-durable', () => {
     await expect(engine.run('s1', 'hi', engineCtx('alice', 'alice', []))).rejects.toThrow()
   })
 
+  it('a failed turn leaves its record in the transcript (the run feed shows it, also after the fact)', async () => {
+    const { complete } = scriptedGateway({ alice: [] })
+    const { engine, index } = engineFor(complete)
+    await expect(engine.run('s1', 'hi', engineCtx('alice', 'alice', []))).rejects.toThrow()
+    const row = await index.resolveByConversationKey('orchestrator:s1')
+    const box = await getDurableHarness(harnessDeps(complete))
+    const stream = await box.events(Number(row!.piConversationId))
+    const items = projectSnapshot(stream.snapshot).items
+    await stream.stop()
+    expect(items[0]).toEqual({ kind: 'user_input', text: 'hi' })
+    expect(items.at(-1)).toMatchObject({ kind: 'run_failed', reason: 'model_error' })
+  })
+
+  it('a composed input records the owner\'s own words on its entry; the model sees the whole input', async () => {
+    const { complete, seen } = scriptedGateway({ alice: [{ text: 'ok' }] })
+    const { engine, index } = engineFor(complete)
+    const ctx = { ...engineCtx('alice', 'alice', []), ownerText: 'build my site' } as EngineContext
+    await engine.run('s1', '[injected context]\n\nbuild my site', ctx)
+    expect(JSON.stringify(seen[0]?.messages)).toContain('[injected context]')
+    const row = await index.resolveByConversationKey('orchestrator:s1')
+    const box = await getDurableHarness(harnessDeps(complete))
+    const stream = await box.events(Number(row!.piConversationId))
+    const items = projectSnapshot(stream.snapshot).items
+    await stream.stop()
+    expect(items[0]).toEqual({ kind: 'user_input', text: 'build my site' })
+  })
+
+  it('a message sent while a turn is still running (e.g. the greeting) queues behind it — no conversation_busy', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const { complete: scripted, seen } = scriptedGateway({ alice: [{ text: 'greeting' }, { text: 'answer' }] })
+    let entered = false
+    const complete: GatewayCompleteFn = async (input) => {
+      if (!entered) {
+        entered = true
+        await gate // the first (greeting) model call is slow
+      }
+      return scripted(input)
+    }
+    const { engine } = engineFor(complete)
+    const greeting = engine.run('s1', 'say hi', engineCtx('alice', 'alice', []))
+    await vi.waitFor(() => expect(entered).toBe(true))
+    const owner = engine.run('s1', 'my question', engineCtx('alice', 'alice', []))
+    release()
+    await expect(greeting).resolves.toBe('greeting')
+    await expect(owner).resolves.toBe('answer')
+    expect(JSON.stringify(seen[1]?.messages)).toContain('greeting') // answered after the greeting, in order
+  })
+
   it('remembers the conversation across turns (history comes from durable storage)', async () => {
     const { complete, seen } = scriptedGateway({ alice: [{ text: 'first' }, { text: 'second' }] })
     const { engine } = engineFor(complete)
@@ -380,9 +430,32 @@ describe('crash-resume (the point of durability)', () => {
     const row = await index.resolveByConversationKey('factory:ticket-7')
     expect(row).toMatchObject({ runPrincipalId: 'agent:factory', agentId: 'factory', llmUserId: 'factory-billing' })
   }, 120_000)
+
+  it('a CHAT tool call issued after a restart reports our structured not_run (never tool_unavailable)', async () => {
+    await waitInFlight(spawnCrashChild('chat-tool'))
+
+    const executed: string[] = []
+    const { complete, seen } = scriptedGateway({
+      alice: [{ call: { name: 'memory.echo', args: { text: 'after restart' } } }, { text: 'told the owner' }],
+    })
+    const index = new FileIndex(join(dir, 'index.json'))
+    const mirrored: ResumedChatTurn[] = []
+    const box = await getDurableHarness(
+      harnessDeps(complete, { index, mirrored, runAsPrincipal: recordingExecutor(executed) }),
+    )
+    await box.harness.waitForIdle(BACKGROUND_CONTEXT)
+
+    expect(executed).toEqual([]) // no live request: nothing runs as anyone
+    const toolResult = JSON.stringify(seen[1]?.messages)
+    expect(toolResult).toContain('not_run')
+    expect(toolResult).toContain('server restart')
+    expect(toolResult).not.toContain('is not available') // pi-durable's tool_unavailable text
+    await vi.waitFor(() => expect(mirrored).toHaveLength(1))
+    expect(mirrored[0]?.reply).toBe('told the owner')
+  }, 120_000)
 })
 
-function spawnCrashChild(mode: 'chat' | 'background') {
+function spawnCrashChild(mode: 'chat' | 'chat-tool' | 'background') {
   const child = spawn(
     join(process.cwd(), 'node_modules/.bin/tsx'),
     [join(__dirname, 'test-fixtures/crash-child.ts'), dir, mode],

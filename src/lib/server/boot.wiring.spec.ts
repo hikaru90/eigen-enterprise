@@ -4,7 +4,6 @@ import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
 import { InMemoryJourneyStore } from '$lib/kernel/playbook'
 import type { PrincipalStore } from '$lib/kernel/principals'
-import { InMemoryAgentSessionLog } from '$lib/kernel/session-log'
 import { buildKernel } from '../../../modules/index'
 import { ORCHESTRATOR_AGENT_ID } from '../../../modules/orchestrator/brain'
 import { bootApp } from './boot'
@@ -27,7 +26,6 @@ describe('bootApp — production wiring', () => {
           eventSink: new InMemoryEventSink(),
           approvalStore: new InMemoryApprovalStore(),
           principals: {} as PrincipalStore,
-          sessionLog: new InMemoryAgentSessionLog(),
           vcsCommitter: null,
         }),
       journeys: new InMemoryJourneyStore(),

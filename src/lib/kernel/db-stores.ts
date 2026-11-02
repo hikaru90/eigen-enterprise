@@ -1,11 +1,9 @@
 import type { KernelEvent, EventSink } from './events'
 import type { ActivationStore } from './modules'
 import type { Principal, PrincipalStore } from './principals'
-import type { AgentSessionEvent, AgentSessionLog } from './session-log'
 import { and, asc, desc, eq } from 'drizzle-orm'
 import type { AppDatabase } from '$lib/server/db/context'
 import {
-  kernelAgentSessionEvents,
   kernelApprovalMode,
   kernelApprovals,
   kernelEvents,
@@ -230,44 +228,6 @@ export class DbApprovalStore implements ApprovalStore {
       .orderBy(desc(kernelApprovals.createdAt))
       .limit(1)
     return rows[0] ? toApprovalRequest(rows[0]) : null
-  }
-}
-
-/**
- * AgentSessionLog persisting to the append-only kernel_agent_session_events
- * table. Insertion order (bigserial id) is the ordering; reads take the newest
- * rows DESC and reverse back to chronological.
- */
-export class DbAgentSessionLog implements AgentSessionLog {
-  constructor(private readonly db: DbHandle) {}
-
-  async append(event: AgentSessionEvent): Promise<void> {
-    await (await resolveDb(this.db)).insert(kernelAgentSessionEvents).values({
-      sessionId: event.sessionId,
-      agentId: event.agentId,
-      kind: event.kind,
-      payload: event.payload,
-    })
-  }
-
-  async list(sessionId: string, limit?: number): Promise<AgentSessionEvent[]> {
-    const query = (await resolveDb(this.db))
-      .select({
-        sessionId: kernelAgentSessionEvents.sessionId,
-        agentId: kernelAgentSessionEvents.agentId,
-        kind: kernelAgentSessionEvents.kind,
-        payload: kernelAgentSessionEvents.payload,
-      })
-      .from(kernelAgentSessionEvents)
-      .where(eq(kernelAgentSessionEvents.sessionId, sessionId))
-      .orderBy(desc(kernelAgentSessionEvents.id))
-    const rows = limit === undefined ? await query : await query.limit(limit)
-    return rows.reverse().map((row) => ({
-      sessionId: row.sessionId,
-      agentId: row.agentId,
-      kind: row.kind,
-      payload: row.payload,
-    }))
   }
 }
 

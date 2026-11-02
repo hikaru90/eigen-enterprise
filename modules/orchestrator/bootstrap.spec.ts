@@ -6,7 +6,6 @@ import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryActivationStore, ModuleRegistry, type ModuleManifest } from '$lib/kernel/modules'
 import type { PrincipalStore } from '$lib/kernel/principals'
 import { KernelRegistry } from '$lib/kernel/registry'
-import { InMemoryAgentSessionLog } from '$lib/kernel/session-log'
 import type { ToolDescriptor, ToolContext } from '$lib/kernel/types'
 import type { WiredKernel } from '$lib/kernel/wiring'
 import {
@@ -26,7 +25,6 @@ function inMemoryKernel(): { kernel: WiredKernel; activations: InMemoryActivatio
     principals: {} as PrincipalStore,
     approvals: new InMemoryApprovalStore(),
     eventSink: new InMemoryEventSink(),
-    sessionLog: new InMemoryAgentSessionLog(),
   }
   return { kernel, activations }
 }
@@ -130,7 +128,6 @@ describe('bootstrapOrchestrator — harness runtime seeding (phase-1b)', () => {
   it('brain.respond dispatches through the runtime as the orchestrator agent', async () => {
     const activations = new InMemoryActivationStore()
     const sink = new InMemoryEventSink()
-    const sessionLog = new InMemoryAgentSessionLog()
     const kernel: WiredKernel = {
       registry: new KernelRegistry({ eventSink: sink }),
       modules: new ModuleRegistry(activations),
@@ -138,7 +135,6 @@ describe('bootstrapOrchestrator — harness runtime seeding (phase-1b)', () => {
       principals: {} as PrincipalStore,
       approvals: new InMemoryApprovalStore(),
       eventSink: sink,
-      sessionLog,
     }
     await activations.set('memory', true)
 

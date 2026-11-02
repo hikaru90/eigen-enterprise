@@ -14,8 +14,8 @@ import { kernelEvents } from '$lib/server/db/kernel.schema'
 /**
  * Event types the company feed surfaces — the exact strings emitted across
  * the codebase: kernel/agent-runtime.ts (agent.*), kernel/registry.ts
- * (tool.executed), modules/chat-gateway/telegram.ts (gateway.telegram.*),
- * modules/orchestrator/dev-agent/tools.ts (dev-agent.*). Single source of truth.
+ * (tool.executed), modules/chat-gateway/telegram.ts (gateway.telegram.*).
+ * Single source of truth.
  */
 export const FEED_EVENT_TYPES = [
   'agent.dispatched',
@@ -25,10 +25,6 @@ export const FEED_EVENT_TYPES = [
   'tool.executed',
   'gateway.telegram.message',
   'gateway.telegram.denied',
-  'dev-agent.dispatched',
-  'dev-agent.merged',
-  'dev-agent.aborted',
-  'dev-agent.completed',
 ] as const
 
 /**

@@ -1,5 +1,11 @@
 import type { FeedItem, RunSnapshot, ToolOutcome } from '$lib/agent-runs/feed'
 import type { AgentEvent, PiMessage, SnapshotEvent } from '$lib/server/agent/pi-durable'
+import {
+  OWNER_INPUT_ENTRY_KIND,
+  TURN_FAILED_ENTRY_KIND,
+  type OwnerInputEntryData,
+  type TurnFailedEntryData,
+} from '$lib/server/agent/entry-kinds'
 import { redactForLog } from '$lib/server/observability/redact-for-log'
 
 /**
@@ -10,7 +16,7 @@ import { redactForLog } from '$lib/server/observability/redact-for-log'
  * (AGENTS.md: *key, *token, *secret, password).
  */
 
-type EntryLike = { model?: readonly PiMessage[] }
+type EntryLike = { kind?: string; data?: unknown; model?: readonly PiMessage[] }
 
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content
@@ -27,11 +33,20 @@ function redactArgs(args: unknown): unknown {
 
 /** Items of one committed entry. `withToolCalls`: in a snapshot the transcript is the only tool record. */
 function entryItems(entry: EntryLike, withToolCalls: boolean): FeedItem[] {
+  if (entry.kind === TURN_FAILED_ENTRY_KIND) {
+    const data = entry.data as TurnFailedEntryData
+    return [{ kind: 'run_failed', reason: data.reason, ...(data.detail ? { detail: data.detail } : {}) }]
+  }
   const message = entry.model?.[0]
   if (!message) return []
   switch (message.role) {
     case 'user': {
-      const text = textOf(message.content)
+      // A composed input (injected context + the owner's words) carries the
+      // owner's words structurally on its entry: the feed shows only those.
+      const text =
+        entry.kind === OWNER_INPUT_ENTRY_KIND
+          ? (entry.data as OwnerInputEntryData).ownerText
+          : textOf(message.content)
       return text ? [{ kind: 'user_input', text }] : []
     }
     case 'assistant': {
@@ -110,6 +125,10 @@ export function projectEvents(events: readonly AgentEvent[]): FeedItem[] {
         break
       case 'message_end':
         // Tool calls/results arrive as tool_execution_* events in live mode.
+        items.push(...entryItems(event.entry, false))
+        break
+      case 'entry_appended':
+        // Display-only entries (e.g. a failed turn's record).
         items.push(...entryItems(event.entry, false))
         break
       case 'tool_execution_start':

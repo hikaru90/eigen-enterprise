@@ -60,6 +60,11 @@
         <li class="px-4 py-1.5 text-xs text-foreground/50" data-testid="run-feed-marker">
           {line.text}
         </li>
+      {:else if line.kind === 'error'}
+        <li class="px-4 py-2.5 text-sm text-destructive" data-testid="run-feed-error">
+          <span class="mr-2 text-xs">Error</span>
+          <span class="break-words whitespace-pre-wrap">{line.text}</span>
+        </li>
       {:else if line.kind === 'user'}
         <li class="px-4 py-2.5 text-sm" data-testid="run-feed-user">
           <span class="mr-2 text-xs text-foreground/50">Input</span>

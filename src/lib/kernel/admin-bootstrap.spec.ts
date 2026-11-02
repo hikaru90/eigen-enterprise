@@ -8,7 +8,6 @@ import { InMemoryApprovalStore } from './approvals'
 import { InMemoryEventSink } from './events'
 import { InMemoryActivationStore, ModuleRegistry, type ModuleManifest } from './modules'
 import { KernelRegistry } from './registry'
-import { InMemoryAgentSessionLog } from './session-log'
 
 function makeManifest(id: string): ModuleManifest {
   return {
@@ -40,7 +39,6 @@ function makeFakeKernel(approvals: ApprovalStore): WiredKernel {
     principals,
     approvals,
     eventSink: new InMemoryEventSink(),
-    sessionLog: new InMemoryAgentSessionLog(),
   }
 }
 

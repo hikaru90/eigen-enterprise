@@ -49,6 +49,25 @@ const CHAT_MODEL = 'mock-chat-model'
 const EMBED_MODEL = 'mock-embed-model'
 
 /** kernel_journeys admits ONE active row per kind, company-wide — clear the slot. */
+/** The mind gate's heading (welcome-wizard.svelte MIND_HEADING). */
+const MIND_HEADING = 'Now, it needs a mind to think with.'
+
+/**
+ * The boot's remaining identity lines (the modular-system lines): Continue
+ * until the mind gate shows or the last line turns into Begin.
+ */
+async function continueThroughLines(page: Page): Promise<void> {
+  const mind = page.getByText(MIND_HEADING)
+  const begin = page.getByRole('button', { name: 'Begin' })
+  const next = page.getByTestId('onboarding-continue')
+  for (let i = 0; i < 10; i++) {
+    await expect(mind.or(begin).or(next).first()).toBeVisible({ timeout: 15_000 })
+    if ((await mind.isVisible()) || (await begin.isVisible())) return
+    await next.click()
+  }
+  throw new Error('the boot never reached the mind gate or Begin')
+}
+
 async function resetJourneyState(): Promise<void> {
   await sql()`update kernel_journeys set status = 'abandoned' where kind = 'website_founding' and status = 'active'`
   await sql()`delete from website_content where slug in ('home', 'about', 'contact', 'brand-tone-of-voice')`
@@ -100,9 +119,8 @@ async function walkBootToMindGate(page: Page, name: string): Promise<void> {
   await expect(identityLine).toBeVisible({ timeout: 15_000 })
   await identityLine.click()
   await expect(page.getByText(/You talk\. It builds/)).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByText('First, it needs a mind to think with.')).toBeVisible({
-    timeout: 20_000,
-  })
+  await continueThroughLines(page)
+  await expect(page.getByText(MIND_HEADING)).toBeVisible({ timeout: 20_000 })
 }
 
 async function finishBootWithProvider(page: Page, name: string): Promise<void> {
@@ -114,6 +132,7 @@ async function finishBootWithProvider(page: Page, name: string): Promise<void> {
   await expect(identityLine).toBeVisible({ timeout: 15_000 })
   await identityLine.click()
   await expect(page.getByText(/You talk\. It builds/)).toBeVisible({ timeout: 15_000 })
+  await continueThroughLines(page)
   const begin = page.getByRole('button', { name: 'Begin' })
   await expect(begin).toBeVisible({ timeout: 20_000 })
   await begin.click()

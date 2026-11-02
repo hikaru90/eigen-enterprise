@@ -85,7 +85,7 @@ describe('orchestrator persona prompt', () => {
     expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/mission control, not a questionnaire/)
     // Platform step 1: the owner-facing cut; the agent's own tools are not offered as modules.
     expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/website, email, brand, memory, chat-gateway, recap/)
-    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/repo, dev-agent and roadmap tools are not modules to offer/)
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/repo and roadmap tools are not modules to offer/)
     expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/hand off/)
   })
 })

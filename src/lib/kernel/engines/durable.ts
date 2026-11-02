@@ -15,8 +15,7 @@ import { approvalIdFromError, approvalPendingResult, toolErrorResult } from './t
  * containment module (D1). What the harness inherits from the kernel is every
  * tool execution: the bridge's execute calls EngineContext.executeTool, so
  * permissions, approval gate, audit and vcs commits apply unchanged (D5).
- * Per D6 this engine does NOT write kernel_agent_session_events — pi-durable
- * storage is the history source for agents on this engine.
+ * Per D6 pi-durable storage is the history source for agents on this engine.
  */
 
 /** One tool of a conversation's surface as the model sees it (no executor). */
@@ -46,8 +45,12 @@ export type SettledDurableTurn =
 export type DurableEngineConversation = {
   /** pi-durable conversation id (branded bigint, as text) — index + SSE surfaces. */
   readonly id: string
-  /** Submit one user input and wait for the durable run to settle. */
-  submitAndSettle(content: string): Promise<SettledDurableTurn>
+  /**
+   * Submit one user input and wait for the durable run to settle. `ownerText`
+   * (when the input was composed with injected context) is recorded with the
+   * input entry for run feeds; the model still sees `content`.
+   */
+  submitAndSettle(content: string, ownerText?: string): Promise<SettledDurableTurn>
 }
 
 /**
@@ -286,7 +289,7 @@ export class DurableLoopEngine implements LoopEngine {
       tools,
     })
 
-    const settled = await conversation.submitAndSettle(input)
+    const settled = await conversation.submitAndSettle(input, ctx.ownerText)
     if (settled.status === 'unanswered') {
       throw new DurableRunError(settled.reason, settled.detail)
     }

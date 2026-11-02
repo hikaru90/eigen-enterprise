@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent, SnapshotEvent } from '$lib/server/agent/pi-durable'
+import { OWNER_INPUT_ENTRY_KIND, TURN_FAILED_ENTRY_KIND } from '$lib/server/agent/entry-kinds'
 import { projectEvents, projectSnapshot } from './project'
 
 const usage = {}
@@ -123,5 +124,36 @@ describe('projectEvents', () => {
       { type: 'message_end', entry: entry(1, { role: 'user', content: [{ type: 'text', text: 'go' }], timestamp: 0 }) },
     ] as unknown as AgentEvent[]
     expect(projectEvents(events)).toEqual([{ kind: 'user_input', text: 'go' }])
+  })
+
+  it('a failed turn (its recorded entry) projects as run_failed, live and in a snapshot', () => {
+    const failed = { id: 7, conversationId: 1, kind: TURN_FAILED_ENTRY_KIND, data: { reason: 'model_error', detail: 'gateway 502' } }
+    const events = [
+      { type: 'run_end', inputs: [] },
+      { type: 'entry_appended', entry: failed },
+    ] as unknown as AgentEvent[]
+    expect(projectEvents(events)).toEqual([
+      { kind: 'run_end' },
+      { kind: 'run_failed', reason: 'model_error', detail: 'gateway 502' },
+    ])
+    expect(projectSnapshot(snapshot({ entries: [failed] as never })).items).toEqual([
+      { kind: 'run_failed', reason: 'model_error', detail: 'gateway 502' },
+    ])
+  })
+
+  it('a composed input shows only the owner\'s own words (structural, from its entry data)', () => {
+    const composed = {
+      id: 3,
+      conversationId: 1,
+      kind: OWNER_INPUT_ENTRY_KIND,
+      data: { ownerText: 'make me a website' },
+      model: [{ role: 'user', content: '[company onboarding context]\n…\n[/company onboarding context]\n\nmake me a website', timestamp: 0 }],
+    }
+    expect(projectEvents([{ type: 'message_end', entry: composed }] as unknown as AgentEvent[])).toEqual([
+      { kind: 'user_input', text: 'make me a website' },
+    ])
+    // An app-made turn (no owner words) shows no Input line at all.
+    const handoff = { ...composed, data: { ownerText: '' } }
+    expect(projectSnapshot(snapshot({ entries: [handoff] as never })).items).toEqual([])
   })
 })

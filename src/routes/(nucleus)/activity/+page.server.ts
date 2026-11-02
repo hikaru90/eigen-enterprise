@@ -9,7 +9,7 @@ export const load: PageServerLoad = async (event) => {
     throw redirect(302, '/login')
   }
 
-  // Company feed: newest kernel events (agent + tool + gateway + dev-agent),
+  // Company feed: newest kernel events (agent + tool + gateway),
   // projected to metadata-only render items. Read-only on kernel_events.
   const feed = await listKernelEvents(getDb(), { types: [...FEED_EVENT_TYPES] })
 

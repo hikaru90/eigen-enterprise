@@ -28,6 +28,25 @@ const EMBED_MODEL = 'mock-embed-model'
  *    takes its honest silence path — the audio bytes themselves are pinned by
  *    unit specs, not the browser).
  */
+/** The mind gate's heading (welcome-wizard.svelte MIND_HEADING). */
+const MIND_HEADING = 'Now, it needs a mind to think with.'
+
+/**
+ * The boot's remaining identity lines (the modular-system lines): Continue
+ * until the mind gate shows or the last line turns into Begin.
+ */
+async function continueThroughLines(page: Page): Promise<void> {
+  const mind = page.getByText(MIND_HEADING)
+  const begin = page.getByRole('button', { name: 'Begin' })
+  const next = page.getByTestId('onboarding-continue')
+  for (let i = 0; i < 10; i++) {
+    await expect(mind.or(begin).or(next).first()).toBeVisible({ timeout: 15_000 })
+    if ((await mind.isVisible()) || (await begin.isVisible())) return
+    await next.click()
+  }
+  throw new Error('the boot never reached the mind gate or Begin')
+}
+
 async function stubSpeechSynthesis(context: import('@playwright/test').BrowserContext): Promise<void> {
   await context.addInitScript(() => {
     const spoken: string[] = []
@@ -140,9 +159,8 @@ test.describe('welcome boot sequence', () => {
     await walkBoot(page, 'Ada')
 
     // The mind: the one hard gate (no platform provider in this deployment).
-    await expect(page.getByText('First, it needs a mind to think with.')).toBeVisible({
-      timeout: 20_000,
-    })
+    await continueThroughLines(page)
+    await expect(page.getByText(MIND_HEADING)).toBeVisible({ timeout: 20_000 })
 
     // Connect through the server contract (the provider wizard UI is covered by
     // its own component tests + onboarding-provider e2e).
@@ -151,6 +169,7 @@ test.describe('welcome boot sequence', () => {
 
     // The mind gate is gone — the boot finishes in a Begin, straight into the chat.
     await walkBoot(page, null) // name known: no ask
+    await continueThroughLines(page)
     await expect(page.getByRole('button', { name: 'Begin' })).toBeVisible({ timeout: 20_000 })
     await page.getByRole('button', { name: 'Begin' }).click()
 
@@ -208,9 +227,8 @@ test.describe('welcome boot sequence', () => {
 
     // First pass: give the name, reach the mind gate, skip it — tour done, name saved.
     await walkBoot(page, 'Ada')
-    await expect(page.getByText('First, it needs a mind to think with.')).toBeVisible({
-      timeout: 20_000,
-    })
+    await continueThroughLines(page)
+    await expect(page.getByText(MIND_HEADING)).toBeVisible({ timeout: 20_000 })
     await page.getByTestId('skip-onboarding').click()
 
     // No provider yet: the hard gate takes over. Connect through the server contract.
@@ -220,7 +238,11 @@ test.describe('welcome boot sequence', () => {
     await expectChatVisible(page)
 
     // The cog is on the homepage; restart brings the boot sequence back.
-    await page.getByTestId('home-settings-trigger').click()
+    // A click that lands before hydration opens nothing: retry until the menu is up.
+    await expect(async () => {
+      await page.getByTestId('home-settings-trigger').click()
+      await expect(page.getByTestId('restart-onboarding')).toBeVisible({ timeout: 2_000 })
+    }).toPass({ timeout: 20_000 })
     await page.getByTestId('restart-onboarding').click()
     await expectWizard(page)
 

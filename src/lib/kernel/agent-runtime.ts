@@ -27,6 +27,13 @@ export type DispatchOptions = {
    * engine). Must be registered; fails loud otherwise.
    */
   loopEngine?: LoopEngineId
+  /**
+   * The owner's own words of this turn, when the caller composed `input` from
+   * injected context (onboarding / journey / observation blocks) plus them.
+   * Run feeds show this instead of the composed input. Absent: the whole input
+   * is the owner's; '' : the turn carries no owner words (an app-made turn).
+   */
+  ownerText?: string
 }
 
 export type AgentRuntimeOptions = {
@@ -225,6 +232,7 @@ export class AgentRuntime {
       },
       spendUsd: () => this.spendFor(agent.id),
       ...(options?.llmUserId ? { llmUserId: options.llmUserId } : {}),
+      ...(options?.ownerText !== undefined ? { ownerText: options.ownerText } : {}),
       ...(sinks?.stream ? { stream: sinks.stream } : {}),
       ...(sinks?.surfaceEvent ? { surfaceEvent: sinks.surfaceEvent } : {}),
     }

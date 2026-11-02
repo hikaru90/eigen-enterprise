@@ -20,6 +20,7 @@
     displayName = null,
     returnedFromProvider = false,
     oncomplete,
+    onentered,
   }: {
     providerReady?: boolean
     /** The owner hasn't set up company email yet (sign-in codes depend on it). */
@@ -29,6 +30,8 @@
     /** Back from the provider's sign-in redirect: the tour already ran up to the mind. */
     returnedFromProvider?: boolean
     oncomplete?: (detail: { name: string | null }) => void
+    /** The setup stamp is saved and page data reloaded: the chat is up. */
+    onentered?: () => void
   } = $props()
 
   /**
@@ -239,6 +242,7 @@
       }
       completed = true
       await invalidateAll()
+      onentered?.()
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
