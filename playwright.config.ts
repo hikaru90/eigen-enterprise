@@ -42,6 +42,9 @@ export default defineConfig({
         OAUTH_OPENAI_CODEX_BASE_URL: mockGatewayUrl,
         // The orchestrator runs on the durable engine
         // (engine-choice.ts): its SQLite state needs an explicit dir (fails loud otherwise).
+        // E1: every mail goes to the database-backed fake (read via
+        // /api/e2e/harness/mail) — the harness never talks to Amazon SES.
+        MAIL_TRANSPORT: 'fake',
         EE_AGENT_STATE_DIR:
           process.env.EE_AGENT_STATE_DIR ?? path.resolve('test-results/ee-agent-state'),
       },

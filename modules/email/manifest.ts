@@ -8,9 +8,9 @@ export const EMAIL_TOOL_NAMES = ['email.send_mail'] as const
 
 /**
  * Email (plan/phase-platform.md step 1): the company's email through its own
- * Amazon SES account (Owlery, namespace `owlery`) and the transactional send
- * (namespace `email`). Both send tools live in this one module; names are
- * unchanged. A system module: self-seeded active, does nothing until set up.
+ * Amazon SES account. One send tool, `email.send_mail`; the setup status is
+ * `owlery.status` (namespace `owlery`). A system module: self-seeded active,
+ * does nothing until set up.
  */
 export const emailManifest: ModuleManifest = {
   id: EMAIL_MODULE_ID,

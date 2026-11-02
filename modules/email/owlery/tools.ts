@@ -1,25 +1,15 @@
-import { EMAIL_MODULE_ID } from '../manifest'
 import { z } from 'zod'
 import type { ToolDescriptor } from '$lib/kernel/types'
+import { EMAIL_MODULE_ID } from '../manifest'
 import { owleryService, type OwleryService } from './service'
 
 /**
- * Kernel tools for the company's email. `owlery.send_mail` sits behind the
- * kernel approval gate (APPROVAL_REQUIRED_TOOLS): an agent's send waits for
- * the owner's yes.
+ * Kernel tools for the company's email setup. Sending is `email.send_mail`
+ * (modules/email/tools.ts) — the one send tool; `owlery.send_mail` was removed
+ * (plan/phase-module-readiness.md E4).
  */
 
-export type OwleryToolDeps = { service?: Pick<OwleryService, 'status' | 'send'> }
-
-const sendMailInput = z
-  .object({
-    to: z.email(),
-    subject: z.string().min(1),
-    html: z.string().min(1),
-    text: z.string().min(1),
-    replyTo: z.email().optional(),
-  })
-  .strict()
+export type OwleryToolDeps = { service?: Pick<OwleryService, 'status'> }
 
 export function createOwleryTools(deps: OwleryToolDeps = {}): ToolDescriptor[] {
   const service = () => deps.service ?? owleryService()
@@ -33,18 +23,6 @@ export function createOwleryTools(deps: OwleryToolDeps = {}): ToolDescriptor[] {
       inputSchema: z.object({}).strict(),
       permission: { roles: ['admin', 'agent'] },
       handler: async () => service().status(),
-    },
-    {
-      name: 'owlery.send_mail',
-      module: EMAIL_MODULE_ID,
-      summary: "Send one email from the company's sender address. Needs the owner's approval.",
-      auditClass: 'mutate',
-      // Recipient only: subject and body stay out of the audit trail.
-      activity: (input: z.infer<typeof sendMailInput>) => `Sent an email to ${input.to}`,
-      approvalRisk: 'external',
-      inputSchema: sendMailInput,
-      permission: { roles: ['admin', 'agent'] },
-      handler: async (_ctx, input) => service().send(sendMailInput.parse(input)),
     },
   ]
 }

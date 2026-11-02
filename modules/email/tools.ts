@@ -4,10 +4,11 @@ import type { ToolDescriptor } from '$lib/kernel/types'
 import type { CompanyMail } from '$lib/server/mail/company-mail'
 
 /**
- * The legacy `email.send_mail` tool, now sending through the shared company
- * mail path (companyMail() — delivered by the Owlery SES module). It holds no
- * credentials. The old Owlery contact-book tools are gone: the SES module has
- * no contact book yet.
+ * `email.send_mail` — the one tool that sends company email (plan/phase-module-
+ * readiness.md E4). It goes through companyMail() (delivered by the Owlery SES
+ * module, or the fake under MAIL_TRANSPORT=fake), holds no credentials, and
+ * sits behind the kernel approval gate (APPROVAL_REQUIRED_TOOLS): a send waits
+ * for the owner's yes.
  */
 
 export type EmailToolDeps = {

@@ -57,7 +57,7 @@ const PRE_MERGE_TOOLS: Record<string, string[]> = {
     'github.auto_deploy',
   ],
   email: ['email.send_mail'],
-  owlery: ['owlery.status', 'owlery.send_mail'],
+  owlery: ['owlery.status'],
   repo: ['repo.worktree_create', 'repo.run', 'repo.write_file', 'repo.read_file', 'repo.merge'],
   'dev-agent': [
     'dev-agent.dispatch',

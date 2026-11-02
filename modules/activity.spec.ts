@@ -9,7 +9,6 @@ import { InMemoryActivationStore } from '$lib/kernel/modules'
 import type { AllowlistStore } from '$lib/kernel/gateway'
 import { buildKernel } from './index'
 import { createEmailTools } from './email/tools'
-import { createOwleryTools } from './email/owlery/tools'
 import { createAllowlistAdminTools } from './orchestrator/allowlist-tools'
 import { createRecapRunNowTool } from './recap/tools'
 import type { RecapDeps } from './recap/types'
@@ -54,7 +53,6 @@ const mail = {
 describe('activity never carries secrets', () => {
   for (const [name, tools] of [
     ['email.send_mail', createEmailTools({ mail: { send: async () => ({ messageId: null }) } })],
-    ['owlery.send_mail', createOwleryTools({ service: { status: async () => ({}) as never, send: async () => ({ messageId: 'm' }) } })],
   ] as const) {
     it(`${name} names only the recipient`, () => {
       const tool = tools.find((t) => t.name === name)!

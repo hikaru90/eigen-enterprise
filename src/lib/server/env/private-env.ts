@@ -26,6 +26,8 @@ export type ExtendedPrivateEnv = typeof kitEnv & {
   GRAPH_SCALE_QUIET?: string
   GRAPH_SCALE_SPEND?: string
   LLM_MODEL_CHAT?: string
+  MAIL_TRANSPORT?: string
+  MAIL_TRANSPORT_FAKE_IN_PRODUCTION?: string
   LLM_MODEL_EMBEDDING?: string
   LLM_MODEL_STT?: string
   LLM_ORCHESTRATION_CONCURRENCY?: string

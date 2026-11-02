@@ -80,9 +80,8 @@ export const SYSTEM_MODULE_IDS = [WEBSITE_MODULE_ID, EMAIL_MODULE_ID, MEMBERS_MO
 
 /** Tools that always require an approval decision before first execution. */
 export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
+  // Company email (the one send tool): an agent's send waits for the owner's yes.
   'email.send_mail',
-  // Company email via SES: an agent's send waits for the owner's yes.
-  'owlery.send_mail',
   // Phase-2c (G8/D5): guideline-set activation is a strategic brand decision —
   // human-admin principal AND an explicit approval decision.
   'brand.set_activate',
