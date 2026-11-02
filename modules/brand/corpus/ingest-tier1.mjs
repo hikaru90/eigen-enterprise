@@ -36,12 +36,22 @@ const itemsDir = path.join(here, 'items')
 const daisyUiThemeDir = path.join(here, '../../../node_modules/daisyui/theme')
 const TWEAKCN_REGISTRY_URL = 'https://raw.githubusercontent.com/jnsahaj/tweakcn/main/public/r/registry.json'
 
-/** Curated explicit list of tweakcn built-in preset ids (jnsahaj/tweakcn, MIT). */
+/**
+ * daisyUI themes dropped as near-duplicates (owner decision 2026-11-02, brand
+ * picker B2a — announced removal): never re-ingested.
+ */
+const DAISYUI_DROPPED_THEMES = new Set(['light', 'fantasy', 'caramellatte'])
+
+/**
+ * Curated explicit list of tweakcn built-in preset ids (jnsahaj/tweakcn,
+ * Apache-2.0 — repo LICENSE verified 2026-11-02). clean-slate was dropped as a
+ * near-duplicate (owner decision 2026-11-02, brand picker B2a).
+ */
 const TWEAKCN_PRESET_IDS = [
   'modern-minimal', 't3-chat', 'twitter', 'mocha-mousse', 'bubblegum', 'doom-64',
   'catppuccin', 'graphite', 'perpetuity', 'kodama-grove', 'cosmic-night', 'tangerine',
   'quantum-rose', 'nature', 'bold-tech', 'elegant-luxury', 'amber-minimal', 'supabase',
-  'neo-brutalism', 'solar-dusk', 'claymorphism', 'cyberpunk', 'pastel-dreams', 'clean-slate',
+  'neo-brutalism', 'solar-dusk', 'claymorphism', 'cyberpunk', 'pastel-dreams',
   'caffeine', 'ocean-breeze', 'retro-arcade', 'midnight-bloom', 'candyland', 'northern-lights',
   'vintage-paper', 'sunset-horizon', 'starry-night', 'claude', 'vercel', 'mono',
 ]
@@ -77,6 +87,7 @@ function ingestDaisyUi() {
   let failed = 0
   for (const file of themeFiles) {
     const themeName = file.replace(/\.css$/, '')
+    if (DAISYUI_DROPPED_THEMES.has(themeName)) continue
     try {
       const cssText = readFileSync(path.join(daisyUiThemeDir, file), 'utf8')
       const item = daisyUiThemeToItem({ themeName, cssText, packageVersion: daisyPkg.version })
