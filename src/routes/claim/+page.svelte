@@ -1,16 +1,18 @@
 <script lang="ts">
   import type { ActionData, PageData } from './$types'
   import { enhance } from '$app/forms'
+  import { resolve } from '$app/paths'
   import { Button } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
   import { Label } from '$lib/components/ui/label'
+  import { docTitle } from '$lib/shell/title'
 
   /** Claim this server: the installer's private link → your email → you own the company. */
   let { data, form }: { data: PageData; form: ActionData } = $props()
 </script>
 
 <svelte:head>
-  <title>Claim your company · Eigen Enterprise</title>
+  <title>{docTitle('Claim your company')}</title>
 </svelte:head>
 
 <div class="mx-auto max-w-md px-5 pt-16">
@@ -48,6 +50,11 @@
         </form>
       {:else}
         <p class="text-xs" data-testid="claim-unavailable">{data.message}</p>
+        <a
+          href={resolve('/login')}
+          class="inline-block text-xs font-medium underline underline-offset-4"
+          data-testid="claim-sign-in">Sign in</a
+        >
       {/if}
     </Card.Content>
   </Card.Root>

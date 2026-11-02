@@ -3,6 +3,7 @@
   import { resolve } from '$app/paths'
   import RepoConnectSteps from '$lib/components/repo-connect-steps.svelte'
   import * as Breadcrumb from '$lib/components/ui/breadcrumb'
+  import { docTitle } from '$lib/shell/title'
 
   /** /m/website/apps/new — adding an app from a repo (decision D-W4). */
   let { data, form }: { data: PageData; form: ActionData } = $props()
@@ -12,7 +13,7 @@
   const nativeError = form && 'error' in form && typeof form.error === 'string' ? form.error : null
 </script>
 
-<svelte:head><title>Add an app · Website · Eigen Enterprise</title></svelte:head>
+<svelte:head><title>{docTitle('Add an app', 'Website')}</title></svelte:head>
 
 <div class="mx-auto w-full max-w-4xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
   <Breadcrumb.Root>

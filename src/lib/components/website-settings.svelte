@@ -7,6 +7,7 @@
   import * as Breadcrumb from '$lib/components/ui/breadcrumb'
   import * as Card from '$lib/components/ui/card'
   import * as Table from '$lib/components/ui/table'
+  import { docTitle } from '$lib/shell/title'
 
   let { data }: { data: HostingData } = $props()
 
@@ -20,7 +21,7 @@
     role === 'Console' ? 'secondary' : role === 'Site' ? 'default' : 'outline'
 </script>
 
-<svelte:head><title>Settings · Website · Eigen Enterprise</title></svelte:head>
+<svelte:head><title>{docTitle('Settings', 'Website')}</title></svelte:head>
 
 <div class="mx-auto w-full max-w-4xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
   <header class="flex min-w-0 flex-col gap-1.5 border-b border-border pb-6">

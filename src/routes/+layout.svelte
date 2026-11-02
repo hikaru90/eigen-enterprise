@@ -13,7 +13,6 @@
   } from '$lib/analytics/posthog-client'
   import favicon from '$lib/assets/favicon.png'
   import { startCaptureQueueRunner } from '$lib/capture/queue'
-  import HomeSettingsMenu from '$lib/components/home-settings-menu.svelte'
   import { activeVisualSetStyleTag } from '../../modules/brand/style-format/emitter'
 
   // E2E hydration marker: SvelteKit hydration replaces the SSR DOM, wiping values
@@ -29,7 +28,7 @@
 
   let { children } = $props()
 
-  const authPaths = new Set(['/login', '/signup', '/register'])
+  const authPaths = new Set(['/login', '/signup'])
 
   function normalizePathname(pathname: string): string {
     let p = pathname
@@ -42,20 +41,8 @@
     return p || '/'
   }
 
-  /**
-   * The only app chrome: the settings cog, top right — the same menu on every
-   * route (company settings, extensions, API keys, provider, sound/voice,
-   * restart onboarding, sign out). The nucleus group is the company surface and
-   * public website pages are the company's face: both chrome-free. SvelteKit
-   * always nests the root layout, so a route group cannot opt out on its own —
-   * the group provides the white shell, the root skips the menu there.
-   */
-  const showSettingsMenu = $derived(
-    !authPaths.has(normalizePathname(page.url.pathname)) &&
-      !authPaths.has(page.route.id ?? '') &&
-      !(page.route.id ?? '').startsWith('/(nucleus)') &&
-      (page.route.id ?? '') !== '/s/[slug]',
-  )
+  // No chrome here: signed-in pages live in the (nucleus) shell, which carries
+  // the navigation and the settings menu; signed-out and public pages stay bare.
 
   let themePreference = 'system'
   let lastIdentifiedUserId: string | null | undefined = undefined
@@ -152,7 +139,7 @@
 </script>
 
 <svelte:head>
-  <title>Eigen Enterprise</title>
+  <title>eigenEnterprise</title>
   <link rel="icon" href={favicon} />
   {#if page.data.activeVisualSet}
     <!-- Phase-2d M5 (V9): the active visual set's tokens apply globally to
@@ -172,11 +159,6 @@
 </svelte:head>
 
 <div class="bg-background min-h-dvh">
-  {#if showSettingsMenu}
-    <header class="fixed top-0 right-0 z-40 p-4">
-      <HomeSettingsMenu />
-    </header>
-  {/if}
   {@render children()}
 </div>
 

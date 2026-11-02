@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildShellNav, navItemCurrent, shellVisible } from './nav'
+import { buildShellNav, currentNavId, navItemCurrent, shellVisible } from './nav'
 
 const manifest = (id: string, name: string) => ({ id, name, description: `${name} does work.` })
 
@@ -15,13 +15,14 @@ describe('buildShellNav', () => {
         ['orchestrator', true],
       ]),
     )
-    expect([...nav.modules, ...nav.available].map((i) => i.id)).toEqual(['website'])
+    expect(nav.items.map((i) => i.id)).toEqual(['chat', 'overview', 'website', 'agent', 'settings'])
   })
 
-  it('lists active modules in registry order and inactive ones under Available', () => {
+  it('keeps the one fixed order: Chat, Overview, Website, Email, Brand, Agent, Memory, Settings', () => {
     const nav = buildShellNav(
       [
         manifest('memory', 'Memory'),
+        manifest('recap', 'Recap'),
         manifest('website', 'Website'),
         manifest('brand', 'Brand'),
         manifest('email', 'Email'),
@@ -32,22 +33,44 @@ describe('buildShellNav', () => {
         ['brand', false],
       ]),
     )
-    expect(nav.modules).toEqual([
-      { id: 'website', name: 'Website', href: '/m/website', active: true },
-      { id: 'email', name: 'Email', href: '/m/email', active: true },
-    ])
-    expect(nav.available).toEqual([
-      { id: 'memory', name: 'Memory', href: '/m/memory', active: false },
-      { id: 'brand', name: 'Brand', href: '/m/brand', active: false },
+    expect(nav.items.map((i) => [i.name, i.href, i.active])).toEqual([
+      ['Chat', '/', true],
+      ['Overview', '/overview', true],
+      ['Website', '/m/website', true],
+      ['Email', '/m/email', true],
+      ['Brand', '/brand', false],
+      ['Agent', '/runs', true],
+      ['Memory', '/m/memory', false],
+      ['Recap', '/m/recap', false],
+      ['Settings', '/settings', true],
     ])
   })
 
-  it('always carries the fixed app entries around the modules', () => {
+  it('always carries the fixed app entries, even with no modules', () => {
     const nav = buildShellNav([], new Map())
-    expect(nav.primary.map((i) => i.href)).toEqual(['/', '/overview'])
-    expect(nav.secondary.map((i) => i.href)).toEqual(['/settings'])
-    expect(nav.modules).toEqual([])
-    expect(nav.available).toEqual([])
+    expect(nav.items.map((i) => i.href)).toEqual(['/', '/overview', '/runs', '/settings'])
+  })
+})
+
+describe('currentNavId', () => {
+  const nav = buildShellNav(
+    [manifest('website', 'Website'), manifest('brand', 'Brand'), manifest('memory', 'Memory')],
+    new Map(),
+  )
+  it.each([
+    ['/', 'chat'],
+    ['/overview', 'overview'],
+    ['/m/website/settings', 'website'],
+    ['/brand/editor/x', 'brand'],
+    ['/runs/12', 'agent'],
+    ['/activity', 'agent'],
+    ['/settings/extensions', 'agent'],
+    ['/memory/notes', 'memory'],
+    ['/capture', 'memory'],
+    ['/settings/api-keys', 'settings'],
+    ['/nowhere', null],
+  ])('%s -> %s', (path, id) => {
+    expect(currentNavId(nav.items, path)).toBe(id)
   })
 })
 

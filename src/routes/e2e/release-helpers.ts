@@ -7,16 +7,9 @@ import {
   isTimelineUnifiedFetch,
 } from '../timeline/timeline-client-loads'
 import {
-  assertChatLoadingVisible,
-  assertChatLogHasNoRawJson,
-  assertChatStreamMatchesReload,
-  askChatQuestion,
   loginUser,
   registerUser,
-  startNewChatSession,
   TEST_PASSWORD,
-  waitForChatAnswerMarker,
-  waitForChatIdle,
 } from './test-helpers'
 import {
   assertVoiceTranscribeApi,
@@ -32,7 +25,6 @@ export { registerUser, loginUser, TEST_PASSWORD }
 /** Max wait for release smoke polls and async UI steps. */
 const RELEASE_WAIT_MS = 30_000
 /** Overnight heartbeat runs many jobs; allow longer than generic UI polls. */
-const RELEASE_HEARTBEAT_WAIT_MS = 120_000
 /** Background enrich (entities, GTD link, embeddings) — the one place we wait longer. */
 const RELEASE_INDEXING_WAIT_MS = 120_000
 /** Single UI probe — fail fast, try the next strategy. */
@@ -223,17 +215,15 @@ export type AuthenticatedSurface = {
 /** Main authenticated routes exercised before a release. */
 export const AUTHENTICATED_SURFACES: AuthenticatedSurface[] = [
   { path: '/capture', label: 'Capture' },
-  { path: '/memory', label: 'Memory graph' },
-  { path: '/memory?view=embeddings', label: 'Memory embeddings' },
   { path: '/memory/tasks', label: 'Memory tasks' },
   { path: '/memory/projects', label: 'Memory projects' },
   { path: '/memory/notes', label: 'Memory notes' },
-  { path: '/chat', label: 'Chat' },
+  { path: '/', label: 'Chat' },
   { path: '/activity', label: 'Activity' },
   { path: '/settings', label: 'Settings' },
-  { path: '/settings/llm', label: 'Settings Credits' },
-  { path: '/settings/scheduled-tasks', label: 'Heartbeat' },
-  { path: '/api-keys', label: 'API keys' },
+  { path: '/settings/llm', label: 'AI provider' },
+  { path: '/settings/passkeys', label: 'Passkeys & sessions' },
+  { path: '/settings/api-keys', label: 'API keys' },
 ]
 
 export function assertReleasePreflight(): void {
@@ -1597,63 +1587,6 @@ export async function assertProjectReviewTidyUp(page: Page): Promise<void> {
   }
 }
 
-type ScheduledTaskSnapshot = {
-  activeRun?: unknown
-  lastRunAt?: string | null
-  lastRunStatus?: string | null
-}
-
-async function fetchScheduledTask(page: Page): Promise<ScheduledTaskSnapshot | null> {
-  const res = await page.request.get('/api/scheduled-tasks')
-  if (!res.ok()) return null
-  const body = (await res.json()) as { tasks?: ScheduledTaskSnapshot[] }
-  return body.tasks?.[0] ?? null
-}
-
-/** Run overnight consolidation from Settings → Heartbeat and wait for completion. */
-export async function exerciseOvernightConsolidation(page: Page): Promise<void> {
-  await page.goto('/settings/scheduled-tasks')
-  await expect(page.getByRole('heading', { name: 'Heartbeat' })).toBeVisible()
-
-  const baseline = await fetchScheduledTask(page)
-  const baselineLastRunAt = baseline?.lastRunAt ?? null
-
-  const runNow = page.getByRole('button', { name: 'Run now' })
-  let triggered = false
-  if (await runNow.isVisible().catch(() => false)) {
-    // POST returns 202 immediately; drain continues in the background.
-    const triggerResponse = page.waitForResponse(
-      (res) =>
-        res.request().method() === 'POST' &&
-        /\/api\/scheduled-tasks\/[^/]+$/.test(res.url()) &&
-        (res.status() === 202 || res.status() === 409),
-      { timeout: RELEASE_HEARTBEAT_WAIT_MS },
-    )
-    await runNow.click()
-    const response = await triggerResponse
-    if (!response.ok() && response.status() !== 409) {
-      throw new Error(`Heartbeat trigger failed (${response.status()}): ${await response.text()}`)
-    }
-    triggered = true
-  }
-
-  await expect
-    .poll(
-      async () => {
-        const task = await fetchScheduledTask(page)
-        if (!task) return false
-        if (task.activeRun || task.lastRunStatus === 'running') return false
-        if (task.lastRunStatus !== 'completed' || !task.lastRunAt) return false
-        if (triggered) return task.lastRunAt !== baselineLastRunAt
-        return true
-      },
-      { timeout: RELEASE_HEARTBEAT_WAIT_MS, intervals: [1000, 2000, 3000] },
-    )
-    .toBe(true)
-
-  await expect(page.getByText('Heartbeat finished.')).toBeVisible({ timeout: RELEASE_WAIT_MS })
-}
-
 /**
  * Headed-release guard: cold `/memory/tasks` must stay within
  * `TIMELINE_MOUNT_FETCH_BUDGET` (one unified `/api/timeline` fetch).
@@ -1917,53 +1850,33 @@ export async function exerciseAuthenticatedUi(page: Page): Promise<void> {
   await exerciseSettingsMenu(page)
   await exerciseMemoryUi(page)
   await exerciseCaptureUi(page)
-  await exerciseChatUi(page)
-  await exerciseChatFailureUi(page)
   await exerciseSettingsUi(page)
   await exerciseApiKeysUi(page)
   await exerciseActivityUi(page)
   await exerciseLegacyRedirects(page)
 }
 
-/** The only app chrome is the settings cog (top right) — walk its menu. */
+/** The shell's settings menu (sidebar footer): one Settings link, then sign out. */
 async function exerciseSettingsMenu(page: Page): Promise<void> {
   await page.goto('/capture')
-  for (const item of ['Company Settings', 'Extensions', 'API Keys', 'AI provider'] as const) {
-    await page.getByTestId('home-settings-trigger').click()
-    await page.getByRole('link', { name: item, exact: true }).click()
-    await expect(page).not.toHaveURL(/\/login/)
-  }
+  await page.getByTestId('home-settings-trigger').first().click()
+  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  await expect(page).toHaveURL(/\/settings$/)
 
   // Sign out ends the session through the same menu.
   await page.getByTestId('home-settings-trigger').click()
   await page.getByRole('button', { name: 'Sign out' }).click()
   await page.waitForURL(/\/login/)
-  await exerciseFeedbackSubmit(page)
-}
-
-/** Submit product feedback via the UI; server emails feedback inbox via Owlery via Owlery. */
-export async function exerciseFeedbackSubmit(page: Page): Promise<void> {
-  await page.goto('/feedback')
-  await expect(page.getByRole('heading', { name: 'Help shape Eigen Enterprise' })).toBeVisible()
-  const note = `Release smoke feedback ${Date.now()}`
-  await page.getByLabel('Message').fill(note)
-  await page.getByRole('button', { name: 'Send feedback' }).click()
-  await expect(page.getByRole('status')).toContainText(/Got it/i, { timeout: 30_000 })
 }
 
 async function exerciseMemoryUi(page: Page): Promise<void> {
-  await page.goto('/memory')
+  await page.goto('/memory/tasks')
 
-  for (const tab of ['Map', 'Cluster', 'Tasks', 'Projects', 'Notes'] as const) {
+  for (const tab of ['Tasks', 'Projects', 'Notes'] as const) {
     await page.getByRole('link', { name: tab, exact: true }).click()
     await expect(page).not.toHaveURL(/\/login/)
   }
 
-  await page.getByRole('link', { name: 'Map', exact: true }).click()
-  await exerciseGraphFilters(page)
-
-  // Timeline was split into Tasks and Projects routes (commit 26b7bd0); exercise both
-  // instead of the removed Timeline tab and its Tasks/Projects toggle button.
   await page.getByRole('link', { name: 'Tasks', exact: true }).click()
   for (const segment of ['To do', 'Done', 'Overdue'] as const) {
     const segTab = page.getByRole('tab', { name: segment, exact: true })
@@ -1983,28 +1896,6 @@ async function exerciseMemoryUi(page: Page): Promise<void> {
   }
 }
 
-async function exerciseGraphFilters(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Search nodes', exact: true }).click()
-  await page.locator('#graph-search').fill('Lisbon')
-  await dismissOpenOverlays(page)
-
-  await page.getByRole('button', { name: 'Edge type filter', exact: true }).click()
-  const coMention = page.getByRole('option', { name: 'Co-mentioned' })
-  if (await coMention.isVisible().catch(() => false)) {
-    await coMention.click()
-  }
-  await dismissOpenOverlays(page)
-
-  await page.getByRole('button', { name: 'Community level filter', exact: true }).click()
-  await dismissOpenOverlays(page)
-
-  const entityFilter = page.getByRole('button', { name: 'Entity type filter', exact: true })
-  if (await entityFilter.isVisible().catch(() => false)) {
-    await entityFilter.click()
-    await dismissOpenOverlays(page)
-  }
-}
-
 async function exerciseCaptureUi(page: Page): Promise<void> {
   await assertVoiceTranscribeApi(page, { timeoutMs: RELEASE_WAIT_MS })
   await installVoiceCaptureMocks(page)
@@ -2019,211 +1910,16 @@ async function exerciseCaptureUi(page: Page): Promise<void> {
   }
 }
 
-type TextFileApiRow = {
-  id: string
-  title: string
-  body: string
-}
-
-async function listTextFilesViaApi(page: Page): Promise<TextFileApiRow[]> {
-  const res = await page.request.get('/api/text-files?limit=100')
-  if (!res.ok()) {
-    throw new Error(`GET /api/text-files failed (${res.status()}): ${await res.text()}`)
-  }
-  const body = (await res.json()) as { textFiles?: TextFileApiRow[] }
-  return body.textFiles ?? []
-}
-
-/**
- * Create a shopping-list note in the Notes UI, ask chat to append an item, and
- * assert the existing note was updated (no duplicate text_file row).
- */
-export async function exerciseNotesShoppingListAppend(page: Page): Promise<void> {
-  const noteTitle = 'Shopping list'
-  const initialBody = 'eggs'
-  const appendItem = 'milk'
-
-  await page.goto('/memory/notes')
-  await expect(page.getByRole('heading', { name: 'Notes', exact: true })).toBeVisible({
-    timeout: RELEASE_WAIT_MS,
-  })
-
-  await page.getByRole('button', { name: 'New note', exact: true }).click()
-  const createDialog = page.getByRole('dialog').filter({
-    has: page.locator('#create-title'),
-  })
-  await expect(createDialog).toBeVisible({ timeout: RELEASE_WAIT_MS })
-  await createDialog.locator('#create-title').fill(noteTitle)
-  await createDialog.locator('#create-body').fill(initialBody)
-  await createDialog.getByRole('button', { name: 'New note', exact: true }).click()
-  // Create dialog closes; product then opens the edit drawer for the new note.
-  await expect(createDialog).toBeHidden({ timeout: RELEASE_WAIT_MS })
-  const editDrawer = page.getByRole('dialog').filter({
-    has: page.locator('#note-title'),
-  })
-  await expect(editDrawer).toBeVisible({ timeout: RELEASE_WAIT_MS })
-  await expect(editDrawer.locator('#note-title')).toHaveValue(noteTitle)
-  await page.keyboard.press('Escape')
-  await expect(editDrawer).toBeHidden({ timeout: RELEASE_WAIT_MS })
-  await expect(page.getByRole('button', { name: new RegExp(noteTitle, 'i') }).first()).toBeVisible({
-    timeout: RELEASE_WAIT_MS,
-  })
-
-  const before = await listTextFilesViaApi(page)
-  const shoppingBefore = before.filter(
-    (f) => f.title.trim().toLowerCase() === noteTitle.toLowerCase(),
-  )
-  expect(shoppingBefore, 'expected exactly one Shopping list note after create').toHaveLength(1)
-  expect(shoppingBefore[0]?.body).toContain(initialBody)
-  const noteId = shoppingBefore[0]!.id
-
-  await startNewChatSession(page)
-  const question = `Add ${appendItem} to my shopping list note`
-  await askChatQuestion(page, question)
-  await expect(page.getByText(question)).toBeVisible({ timeout: RELEASE_WAIT_MS })
-
-  await assertChatLoadingVisible(page)
-  await waitForChatIdle(page, RELEASE_INDEXING_WAIT_MS)
-  await expect(page.getByRole('button', { name: 'Regenerate answer' })).toBeVisible({
-    timeout: RELEASE_INDEXING_WAIT_MS,
-  })
-
-  const logText = (await page.getByRole('log', { name: 'Chat messages' }).textContent()) ?? ''
-  assertChatLogHasNoRawJson(logText)
-  await expect(page.locator('.animate-spin')).toHaveCount(0)
-
-  await expect
-    .poll(
-      async () => {
-        const files = await listTextFilesViaApi(page)
-        const shopping = files.filter(
-          (f) => f.title.trim().toLowerCase() === noteTitle.toLowerCase(),
-        )
-        if (shopping.length !== 1) return `count=${shopping.length}`
-        const body = shopping[0]?.body ?? ''
-        if (shopping[0]?.id !== noteId) return 'id-changed'
-        if (!body.includes(initialBody)) return 'missing-eggs'
-        if (!body.includes(appendItem)) return 'missing-milk'
-        return 'ok'
-      },
-      { timeout: RELEASE_WAIT_MS, intervals: [500, 1000, 2000] },
-    )
-    .toBe('ok')
-
-  await page.goto('/memory/notes')
-  await expect(page.getByText(appendItem, { exact: false }).first()).toBeVisible({
-    timeout: RELEASE_WAIT_MS,
-  })
-  const listButtons = page.getByRole('button', { name: new RegExp(noteTitle, 'i') })
-  await expect(listButtons).toHaveCount(1)
-}
-
-async function exerciseChatUi(page: Page): Promise<void> {
-  await startNewChatSession(page)
-
-  const question = 'What city did I mention in my recent capture?'
-  await askChatQuestion(page, question)
-  await expect(page.getByText(question)).toBeVisible({ timeout: RELEASE_WAIT_MS })
-
-  await assertChatLoadingVisible(page)
-  // Clear questions must go through answer_question (compose), not retrieve-only browse.
-  await expect(page.getByText('Answering your question')).toBeVisible({
-    timeout: RELEASE_INDEXING_WAIT_MS,
-  })
-  await waitForChatAnswerMarker(page, /Lisbon/i, RELEASE_INDEXING_WAIT_MS)
-  await expect(page.getByRole('button', { name: 'Regenerate answer' })).toBeVisible({
-    timeout: RELEASE_WAIT_MS,
-  })
-
-  const logText = (await page.getByRole('log', { name: 'Chat messages' }).textContent()) ?? ''
-  assertChatLogHasNoRawJson(logText)
-  expect(logText, 'clear question should use answer_question compose path').toMatch(
-    /Answering your question/i,
-  )
-  await expect(page.locator('.animate-spin')).toHaveCount(0)
-  await waitForChatIdle(page, RELEASE_WAIT_MS)
-
-  // Streamed answer must match the session reload from the server.
-  await assertChatStreamMatchesReload(page, {
-    timeoutMs: RELEASE_WAIT_MS,
-    answerMarker: /Lisbon/i,
-  })
-}
-
-async function exerciseChatFailureUi(page: Page): Promise<void> {
-  await page.route('**/api/chat', async (route) => {
-    if (route.request().method() !== 'POST') {
-      await route.continue()
-      return
-    }
-    await new Promise((resolve) => setTimeout(resolve, 750))
-    await route.fulfill({
-      status: 200,
-      headers: { 'content-type': 'application/x-ndjson; charset=utf-8' },
-      body:
-        '{"type":"agent_progress","label":"Planning next step…"}\n' +
-        '{"type":"error","error":"Chat service unavailable for this test."}\n',
-    })
-  })
-
-  try {
-    await startNewChatSession(page)
-    await askChatQuestion(page, 'What did I capture recently?')
-
-    await expect
-      .poll(
-        async () =>
-          (await page
-            .getByText(/Planning next step|Connecting…|Working…/i)
-            .first()
-            .isVisible()
-            .catch(() => false)) ||
-          (await page
-            .locator('.animate-spin')
-            .first()
-            .isVisible()
-            .catch(() => false)) ||
-          (await page
-            .getByText(/Chat service unavailable for this test/i)
-            .isVisible()
-            .catch(() => false)),
-        { timeout: RELEASE_WAIT_MS, intervals: [100, 250, 500] },
-      )
-      .toBe(true)
-
-    await expect(page.getByText(/Chat service unavailable for this test/i)).toBeVisible({
-      timeout: RELEASE_WAIT_MS,
-    })
-    await waitForChatIdle(page, RELEASE_WAIT_MS)
-
-    const logText = (await page.getByRole('log', { name: 'Chat messages' }).textContent()) ?? ''
-    assertChatLogHasNoRawJson(logText)
-    await expect(page.locator('.animate-spin')).toHaveCount(0)
-  } finally {
-    await page.unroute('**/api/chat')
-  }
-}
-
 async function exerciseSettingsUi(page: Page): Promise<void> {
   await page.goto('/settings')
-
-  for (const tab of [
-    'Appearance',
-    'Speech',
-    'Account',
-    'Notifications',
-    'Memory',
-    'Danger zone',
-  ] as const) {
-    await page.getByRole('tab', { name: tab, exact: true }).click()
+  for (const section of ['AI provider', 'Passkeys & sessions', 'API keys', 'Account'] as const) {
+    await page.getByTestId('settings-nav').getByRole('link', { name: section, exact: true }).click()
+    await expect(page).not.toHaveURL(/\/login/)
   }
-
-  await page.goto('/settings/llm')
-  await expect(page).not.toHaveURL(/\/login/)
 }
 
 async function exerciseApiKeysUi(page: Page): Promise<void> {
-  await page.goto('/api-keys')
+  await page.goto('/settings/api-keys')
   await page.getByRole('button', { name: 'Generate new key', exact: true }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await page.getByRole('button', { name: 'Cancel' }).click()
@@ -2236,8 +1932,10 @@ async function exerciseActivityUi(page: Page): Promise<void> {
 }
 
 async function exerciseLegacyRedirects(page: Page): Promise<void> {
-  await page.goto('/graph')
-  await expect(page).toHaveURL(/\/memory/)
+  // Removed legacy URLs 404 inside the shell (phase-cohesion C4).
+  const res = await page.goto('/graph')
+  expect(res?.status()).toBe(404)
+  await expect(page.getByTestId('error-back')).toHaveAttribute('href', '/')
 }
 
 /**

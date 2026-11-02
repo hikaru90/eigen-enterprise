@@ -28,7 +28,12 @@ const slots: Record<string, ModuleSettingsSlot> = {
     links: [{ label: 'Brand studio', href: '/brand', text: 'Pick and edit the visual set.' }],
   },
   memory: {
-    links: [{ label: 'Memory', href: '/memory', text: 'Notes, tasks and the timeline.' }],
+    links: [
+      { label: 'Tasks', href: '/memory/tasks', text: 'What is due, and the timeline.' },
+      { label: 'Projects', href: '/memory/projects', text: 'Projects and their next actions.' },
+      { label: 'Notes', href: '/memory/notes', text: 'Everything written down.' },
+      { label: 'Capture', href: '/capture', text: 'Write or say a thought.' },
+    ],
   },
   website: {
     links: [

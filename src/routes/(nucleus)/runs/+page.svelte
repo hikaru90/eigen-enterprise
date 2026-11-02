@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { PageData } from './$types'
   import { resolve } from '$app/paths'
+  import AgentAreaNav from '$lib/components/agent-area-nav.svelte'
+  import { docTitle } from '$lib/shell/title'
 
   let { data }: { data: PageData } = $props()
 
@@ -8,9 +10,10 @@
   const when = (iso: string) => timeFormat.format(new Date(iso))
 </script>
 
-<svelte:head><title>Agent runs · Eigen Enterprise</title></svelte:head>
+<svelte:head><title>{docTitle('Runs', 'Agent')}</title></svelte:head>
 
 <div class="mx-auto w-full max-w-5xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
+  <div class="mb-6"><AgentAreaNav /></div>
   <header class="flex min-w-0 flex-col gap-1">
     <h1 class="text-xl font-semibold tracking-tight">Agent runs</h1>
     <p class="text-sm text-foreground/55">Every durable agent conversation, live.</p>

@@ -8,6 +8,7 @@
     SECTION_DRIVERS,
     type SpecimenSectionId,
   } from '../../../../../../modules/brand/style-format/drivers'
+  import { docTitle } from '$lib/shell/title'
 
   /**
    * Visual editor (phase-2d M6, V8): draft specimen canvas + token panel.
@@ -153,7 +154,7 @@
 </script>
 
 <svelte:head>
-  <title>Visual editor — {set.name}</title>
+  <title>{docTitle(`Editor: ${set.name}`, 'Brand')}</title>
 </svelte:head>
 
 <div class="flex min-h-dvh flex-col bg-neutral-50 text-neutral-900">

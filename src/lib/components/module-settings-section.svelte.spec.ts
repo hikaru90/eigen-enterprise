@@ -8,13 +8,13 @@ describe('module-settings-section.svelte', () => {
     render(ModuleSettingsSection, {
       slot: {
         links: [
-          { label: 'Hosting settings', href: '/m/website/hosting', text: 'Domains and apps.' },
+          { label: 'Hosting settings', href: '/m/website/settings', text: 'Domains and apps.' },
         ],
       },
     })
     await expect
       .element(page.getByRole('link', { name: /Hosting settings/ }))
-      .toHaveAttribute('href', '/m/website/hosting')
+      .toHaveAttribute('href', '/m/website/settings')
     await expect.element(page.getByText('Domains and apps.')).toBeInTheDocument()
   })
 

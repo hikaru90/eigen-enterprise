@@ -362,7 +362,7 @@ describe('/m/website/apps/[name]', () => {
       await setup()
       await expect(
         actions.remove(event({ params: { name: 'shop' }, request: formRequest({}) })),
-      ).rejects.toMatchObject({ status: 303, location: '/m/website/apps' })
+      ).rejects.toMatchObject({ status: 303, location: '/m/website' })
     })
   })
 })

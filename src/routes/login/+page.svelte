@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { docTitle } from '$lib/shell/title'
   import type { ActionData } from './$types'
   import type { PageData } from './$types'
   import { enhance } from '$app/forms'
@@ -49,6 +50,8 @@
     return result.success
   }
 </script>
+
+<svelte:head><title>{docTitle('Sign in')}</title></svelte:head>
 
 <div class="mx-auto max-w-md px-5 pt-10">
   <header class="text-center">

@@ -36,6 +36,14 @@ async function kernel(active: string[]) {
   for (const id of active) await activations.set(id, true)
   const manifests = [
     {
+      id: 'brand',
+      name: 'Brand',
+      version: '1',
+      description: 'The company look.',
+      tools: [],
+      permissions: { roles: ['admin'] },
+    },
+    {
       id: 'email',
       name: 'Email',
       version: '1',
@@ -135,6 +143,11 @@ describe('/m/[moduleId] load', () => {
   it('404s for an unknown module', async () => {
     kernelHolder.kernel = await kernel([])
     await expect(load(event('nope'))).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('404s for /m/brand: the Brand page is /brand (one entry per module)', async () => {
+    kernelHolder.kernel = await kernel(['brand'])
+    await expect(load(event('brand'))).rejects.toMatchObject({ status: 404 })
   })
 })
 

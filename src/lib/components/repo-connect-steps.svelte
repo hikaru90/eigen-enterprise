@@ -912,7 +912,7 @@
           {connected.repo} is connected. To build and run this app, this stack needs a server installed
           with ee. Your repository is saved; you can return to deploy it when the server is ready.
         </p>
-        <a class="mt-3 inline-block text-sm underline" href={resolve('/m/website/apps')}
+        <a class="mt-3 inline-block text-sm underline" href={resolve('/m/website')}
           >Back to apps</a
         >
       </div>

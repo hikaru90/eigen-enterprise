@@ -42,26 +42,16 @@ describe('home-settings-menu.svelte', () => {
     await expect.element(page.getByRole('button', { name: 'Settings menu' })).toBeInTheDocument()
   })
 
-  it('opens the menu: Company Settings, Extensions, Website settings, API Keys, AI provider, then the toggles', async () => {
+  it('opens the menu: one Settings link (the sections live in the settings page), then the toggles', async () => {
     render(HomeSettingsMenu)
 
     await page.getByRole('button', { name: 'Settings menu' }).click()
 
     await expect
-      .element(page.getByRole('link', { name: 'Company Settings' }))
+      .element(page.getByRole('link', { name: 'Settings' }))
       .toHaveAttribute('href', '/settings')
-    await expect
-      .element(page.getByRole('link', { name: 'Extensions' }))
-      .toHaveAttribute('href', '/settings/extensions')
-    await expect
-      .element(page.getByRole('link', { name: 'Website settings' }))
-      .toHaveAttribute('href', '/m/website/settings')
-    await expect
-      .element(page.getByRole('link', { name: 'API Keys' }))
-      .toHaveAttribute('href', '/api-keys')
-    await expect
-      .element(page.getByRole('link', { name: 'AI provider' }))
-      .toHaveAttribute('href', '/settings/llm')
+    await expect.element(page.getByRole('link', { name: 'API Keys' })).not.toBeInTheDocument()
+    await expect.element(page.getByRole('link', { name: 'Extensions' })).not.toBeInTheDocument()
     await expect.element(page.getByTestId('sound-toggle')).toHaveTextContent('Sound on')
     await expect.element(page.getByTestId('voice-toggle')).toHaveTextContent('Voice on')
     await expect

@@ -101,7 +101,7 @@ describe('repo-connect-steps.svelte', () => {
       .toHaveTextContent('Connect a deployment server')
     await expect
       .element(page.getByRole('link', { name: 'Back to apps' }))
-      .toHaveAttribute('href', '/m/website/apps')
+      .toHaveAttribute('href', '/m/website')
   })
 
   it('starts a private repository with a deploy key without a failing public lookup', async () => {

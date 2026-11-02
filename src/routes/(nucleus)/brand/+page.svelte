@@ -2,6 +2,7 @@
   import type { PageData } from './$types'
   import ActivationNotice from './activation-notice.svelte'
   import StyleCard from './style-card.svelte'
+  import { docTitle } from '$lib/shell/title'
 
   let { data }: { data: PageData } = $props()
 
@@ -134,7 +135,7 @@
 </script>
 
 <svelte:head>
-  <title>Brand selection wizard</title>
+  <title>{docTitle('Brand')}</title>
 </svelte:head>
 
 {#if data.needsModuleActivation}

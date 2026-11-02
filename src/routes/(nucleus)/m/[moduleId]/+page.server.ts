@@ -8,6 +8,12 @@ import { humanContext, overviewResultSources } from '$lib/server/overview/source
 import { AppUserError } from '../../../../../modules/website/apps/contract'
 import { WEBSITE_ACTIVITY_TOOL } from '../../../../../modules/website/manifest'
 
+/**
+ * Modules whose page lives at its own named route: no second entry under /m.
+ * Brand = /brand (phase-cohesion §3).
+ */
+const OWN_PAGE = new Set(['brand'])
+
 /** How many activity rows the Website module page's panel shows. */
 const ACTIVITY_ITEMS = 10
 
@@ -24,7 +30,8 @@ export const load: PageServerLoad = async (event) => {
   const kernel = await appKernel()
   const manifest = kernel.modules.get(event.params.moduleId)
   // Internal modules (the agent's own machinery) have no owner-facing page.
-  if (!manifest || manifest.internal === true) throw error(404, 'No such module')
+  if (!manifest || manifest.internal === true || OWN_PAGE.has(manifest.id))
+    throw error(404, 'No such module')
 
   const userId = event.locals.user.id
   const isAdmin = await isUserAdmin(userId)

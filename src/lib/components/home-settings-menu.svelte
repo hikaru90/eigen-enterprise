@@ -1,11 +1,7 @@
 <script lang="ts">
-  import Cpu from '@lucide/svelte/icons/cpu'
-  import KeyRound from '@lucide/svelte/icons/key-round'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import LogOut from '@lucide/svelte/icons/log-out'
-  import Puzzle from '@lucide/svelte/icons/puzzle'
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw'
-  import Server from '@lucide/svelte/icons/server'
   import Settings from '@lucide/svelte/icons/settings'
   import Speech from '@lucide/svelte/icons/speech'
   import Volume2 from '@lucide/svelte/icons/volume-2'
@@ -104,35 +100,7 @@
       class="flex items-center gap-2.5 rounded-sm px-2 py-1.5 text-sm text-foreground hover:bg-white/25 dark:hover:bg-white/10"
     >
       <Settings class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
-      Company Settings
-    </a>
-    <a
-      href={resolve('/settings/extensions')}
-      class="flex items-center gap-2.5 rounded-sm px-2 py-1.5 text-sm text-foreground hover:bg-white/25 dark:hover:bg-white/10"
-    >
-      <Puzzle class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
-      Extensions
-    </a>
-    <a
-      href={resolve('/m/website/settings')}
-      class="flex items-center gap-2.5 rounded-sm px-2 py-1.5 text-sm text-foreground hover:bg-white/25 dark:hover:bg-white/10"
-    >
-      <Server class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
-      Website settings
-    </a>
-    <a
-      href={resolve('/api-keys')}
-      class="flex items-center gap-2.5 rounded-sm px-2 py-1.5 text-sm text-foreground hover:bg-white/25 dark:hover:bg-white/10"
-    >
-      <KeyRound class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
-      API Keys
-    </a>
-    <a
-      href={resolve('/settings/llm')}
-      class="flex items-center gap-2.5 rounded-sm px-2 py-1.5 text-sm text-foreground hover:bg-white/25 dark:hover:bg-white/10"
-    >
-      <Cpu class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
-      AI provider
+      Settings
     </a>
     <div class="bg-border my-1 h-px"></div>
     <button

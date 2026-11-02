@@ -8,12 +8,13 @@ import AppShell from './app-shell.svelte'
 const nav = buildShellNav(
   [
     { id: 'website', name: 'Website' },
-    { id: 'owlery', name: 'Email' },
+    { id: 'email', name: 'Email' },
+    { id: 'brand', name: 'Brand' },
     { id: 'repo', name: 'Repo' },
   ],
   new Map([
     ['website', true],
-    ['owlery', true],
+    ['email', true],
   ]),
 )
 
@@ -34,8 +35,10 @@ describe('app-shell.svelte', () => {
     await expect.element(page.getByTestId('shell-company').first()).toHaveTextContent('Kindred Digital Labs')
     await expect.element(page.getByTestId('shell-nav-chat').first()).toHaveAttribute('href', '/')
     await expect.element(page.getByTestId('shell-nav-website').first()).toHaveAttribute('href', '/m/website')
-    await expect.element(page.getByTestId('shell-modules').first()).toHaveTextContent('Email')
-    await expect.element(page.getByTestId('shell-available').first()).toHaveTextContent('Repo')
+    await expect.element(page.getByTestId('shell-nav-email').first()).toHaveAttribute('href', '/m/email')
+    await expect.element(page.getByTestId('shell-nav-brand').first()).toHaveAttribute('href', '/brand')
+    await expect.element(page.getByTestId('shell-nav-agent').first()).toHaveAttribute('href', '/runs')
+    await expect.element(page.getByTestId('shell-nav-repo').first()).toHaveTextContent('Off')
     await expect.element(page.getByTestId('shell-nav-settings').first()).toHaveAttribute('href', '/settings')
     await expect.element(page.getByTestId('shell-user').first()).toHaveTextContent('Alex')
     await expect.element(page.getByText('Page body')).toBeInTheDocument()
@@ -45,6 +48,12 @@ describe('app-shell.svelte', () => {
     renderShell('/m/website')
     await expect.element(page.getByTestId('shell-nav-website').first()).toHaveAttribute('aria-current', 'page')
     await expect.element(page.getByTestId('shell-nav-overview').first()).not.toHaveAttribute('aria-current')
+  })
+
+  it('highlights exactly one entry: the agent for its internals, not Settings', async () => {
+    renderShell('/settings/extensions')
+    await expect.element(page.getByTestId('shell-nav-agent').first()).toHaveAttribute('aria-current', 'page')
+    await expect.element(page.getByTestId('shell-nav-settings').first()).not.toHaveAttribute('aria-current')
   })
 
   it('opens and closes the phone drawer from the top bar', async () => {
