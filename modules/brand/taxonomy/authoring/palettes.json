@@ -1,0 +1,5752 @@
+{
+  "version": 1,
+  "note": "Hand-edited authoring source for styles.json (brand picker B2a). Compact palettes {bg, fg, primary, accent[, secondary]} expand deterministically in authoring/derive.ts; a missing dark palette is derived from the light one; corpus.light/corpus.dark reuse corpus item token sets. Regenerate styles.json: npx vitest run modules/brand/taxonomy/authoring/build-styles.spec.ts",
+  "genres": [
+    {
+      "id": "swiss-minimal",
+      "name": "Swiss & Minimal",
+      "description": "Grid, whitespace and one confident accent — nothing decorative.",
+      "fonts": {
+        "heading": "Inter Tight",
+        "body": "Inter",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "none",
+        "density": "regular",
+        "elevation": "flat",
+        "border": "hairline"
+      },
+      "light": {
+        "bg": "#fafafa",
+        "fg": "#111111",
+        "primary": "#e30613",
+        "accent": "#111111"
+      },
+      "dark": {
+        "bg": "#121212",
+        "fg": "#f2f2f2",
+        "primary": "#ff3b30",
+        "accent": "#f2f2f2"
+      },
+      "styles": [
+        {
+          "id": "swiss-minimal-swiss-grid",
+          "name": "Swiss Grid",
+          "description": "International Typographic Style: grid, grotesk, a single signal colour.",
+          "fonts": {
+            "heading": "Inter Tight",
+            "body": "Inter",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "regular",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#ffffff",
+            "fg": "#0a0a0a",
+            "primary": "#d81e05",
+            "accent": "#0a0a0a"
+          },
+          "variants": [
+            {
+              "id": "swiss-minimal-swiss-grid-red-signal",
+              "name": "Signal Red",
+              "description": "White page, black type, Swiss red accent.",
+              "fonts": {
+                "heading": "Inter Tight",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "archetype-swiss-grid",
+                "dark": "archetype-swiss-grid"
+              }
+            },
+            {
+              "id": "swiss-minimal-swiss-grid-cobalt",
+              "name": "Cobalt",
+              "description": "Same grid with an electric cobalt accent.",
+              "fonts": {
+                "heading": "Inter Tight",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#ffffff",
+                "fg": "#111111",
+                "primary": "#1f4ae0",
+                "accent": "#1f4ae0"
+              }
+            },
+            {
+              "id": "swiss-minimal-swiss-grid-dense-orange",
+              "name": "Dense Orange",
+              "description": "Tighter grid on cool grey with a safety-orange accent.",
+              "fonts": {
+                "heading": "Inter Tight",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "compact",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#eef0f2",
+                "fg": "#141414",
+                "primary": "#c2410c",
+                "accent": "#141414"
+              },
+              "dark": {
+                "bg": "#0b0b0b",
+                "fg": "#f5f5f5",
+                "primary": "#ff6a2b",
+                "accent": "#f5f5f5"
+              },
+              "reaimedFrom": "swiss-minimal-swiss-grid-night-grid"
+            }
+          ]
+        },
+        {
+          "id": "swiss-minimal-monochrome",
+          "name": "Monochrome",
+          "description": "Strictly black and white, no accent colour at all.",
+          "fonts": {
+            "heading": "Geist",
+            "body": "Geist",
+            "mono": "Geist Mono"
+          },
+          "shape": {
+            "radius": "sm",
+            "density": "regular",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#ffffff",
+            "fg": "#000000",
+            "primary": "#000000",
+            "accent": "#e5e5e5"
+          },
+          "variants": [
+            {
+              "id": "swiss-minimal-monochrome-ink-on-white",
+              "name": "Ink on White",
+              "description": "Black on white, crisp product feel.",
+              "fonts": {
+                "heading": "Geist",
+                "body": "Geist",
+                "mono": "Geist Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-vercel",
+                "dark": "tweakcn-vercel"
+              }
+            },
+            {
+              "id": "swiss-minimal-monochrome-warm-mono",
+              "name": "Warm Mono",
+              "description": "Black on warm paper, still no accent colour.",
+              "fonts": {
+                "heading": "Geist",
+                "body": "Geist",
+                "mono": "Geist Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f3efe6",
+                "fg": "#1a1814",
+                "primary": "#1a1814",
+                "accent": "#e0d9cb"
+              },
+              "dark": {
+                "bg": "#171512",
+                "fg": "#f0ebe0",
+                "primary": "#f0ebe0",
+                "accent": "#2e2a24"
+              },
+              "reaimedFrom": "swiss-minimal-monochrome-pure-black"
+            },
+            {
+              "id": "swiss-minimal-monochrome-lo-fi",
+              "name": "Lo-fi",
+              "description": "Black on white with typewriter-like softness and hairlines everywhere.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "IBM Plex Mono"
+              },
+              "shape": {
+                "radius": "xs",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "daisyui-lofi",
+                "dark": "daisyui-black"
+              }
+            }
+          ]
+        },
+        {
+          "id": "swiss-minimal-quiet-minimal",
+          "name": "Quiet Minimal",
+          "description": "Soft greys, small radii, airy spacing — calm rather than stark.",
+          "fonts": {
+            "heading": "DM Sans",
+            "body": "DM Sans",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "sm",
+            "density": "airy",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f6f6f4",
+            "fg": "#3a3a38",
+            "primary": "#5c6b73",
+            "accent": "#dfe3e4"
+          },
+          "variants": [
+            {
+              "id": "swiss-minimal-quiet-minimal-graphite",
+              "name": "Graphite",
+              "description": "Neutral greys with a graphite accent.",
+              "fonts": {
+                "heading": "DM Sans",
+                "body": "DM Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-graphite",
+                "dark": "tweakcn-graphite"
+              }
+            },
+            {
+              "id": "swiss-minimal-quiet-minimal-blue-minimal",
+              "name": "Blue Minimal",
+              "description": "Neutral greys with a clear product blue.",
+              "fonts": {
+                "heading": "DM Sans",
+                "body": "DM Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-modern-minimal",
+                "dark": "tweakcn-modern-minimal"
+              }
+            },
+            {
+              "id": "swiss-minimal-quiet-minimal-mist",
+              "name": "Mist",
+              "description": "Misty blue-grey surfaces with a steel-blue accent.",
+              "fonts": {
+                "heading": "DM Sans",
+                "body": "DM Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#e9f0f5",
+                "fg": "#1f2f3d",
+                "primary": "#2f6690",
+                "accent": "#cfe0ec"
+              },
+              "dark": {
+                "bg": "#1d232b",
+                "fg": "#e8ecf0",
+                "primary": "#7fa4c8",
+                "accent": "#29313b"
+              },
+              "reaimedFrom": "swiss-minimal-quiet-minimal-slate-night"
+            }
+          ]
+        },
+        {
+          "id": "swiss-minimal-wireframe",
+          "name": "Wireframe",
+          "description": "Looks like a polished sketch: outlines, grey fills, no colour.",
+          "fonts": {
+            "heading": "Inter",
+            "body": "Inter",
+            "mono": "IBM Plex Mono"
+          },
+          "shape": {
+            "radius": "xs",
+            "density": "regular",
+            "elevation": "flat",
+            "border": "bold"
+          },
+          "light": {
+            "bg": "#ffffff",
+            "fg": "#222222",
+            "primary": "#222222",
+            "accent": "#d6d6d6"
+          },
+          "variants": [
+            {
+              "id": "swiss-minimal-wireframe-sketch",
+              "name": "Sketch",
+              "description": "Grey outlines on white.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "IBM Plex Mono"
+              },
+              "shape": {
+                "radius": "xs",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "corpus": {
+                "light": "daisyui-wireframe"
+              }
+            },
+            {
+              "id": "swiss-minimal-wireframe-drafting-green",
+              "name": "Drafting Green",
+              "description": "Outlines on a pale green drafting sheet.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "IBM Plex Mono"
+              },
+              "shape": {
+                "radius": "xs",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#eef5ec",
+                "fg": "#1f4a2c",
+                "primary": "#2e6b3f",
+                "accent": "#2e6b3f"
+              }
+            },
+            {
+              "id": "swiss-minimal-wireframe-blueline",
+              "name": "Blueline",
+              "description": "Blue pen outlines on white, like a marked-up spec.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "IBM Plex Mono"
+              },
+              "shape": {
+                "radius": "xs",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#ffffff",
+                "fg": "#1a2b6d",
+                "primary": "#2346c8",
+                "accent": "#dfe6fb"
+              },
+              "dark": {
+                "bg": "#1e1f21",
+                "fg": "#f2f2f2",
+                "primary": "#8ea6ff",
+                "accent": "#26282b"
+              },
+              "reaimedFrom": "swiss-minimal-wireframe-dark-outline"
+            }
+          ]
+        },
+        {
+          "id": "swiss-minimal-japanese-minimal",
+          "name": "Japanese Minimal",
+          "description": "\"Ma\": generous emptiness, warm paper and a single vermilion mark.",
+          "fonts": {
+            "heading": "Zen Kaku Gothic New",
+            "body": "Zen Kaku Gothic New",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "airy",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f8f4ec",
+            "fg": "#1c1a17",
+            "primary": "#bc2f1f",
+            "accent": "#e8e0d0"
+          },
+          "variants": [
+            {
+              "id": "swiss-minimal-japanese-minimal-washi",
+              "name": "Washi",
+              "description": "Warm paper white with vermilion.",
+              "fonts": {
+                "heading": "Zen Kaku Gothic New",
+                "body": "Zen Kaku Gothic New",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f7f3ea",
+                "fg": "#1e1b18",
+                "primary": "#c8402c",
+                "accent": "#ede7da"
+              }
+            },
+            {
+              "id": "swiss-minimal-japanese-minimal-aizome",
+              "name": "Aizome",
+              "description": "Indigo-dyed blue on warm paper.",
+              "fonts": {
+                "heading": "Zen Kaku Gothic New",
+                "body": "Zen Kaku Gothic New",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f5f2ea",
+                "fg": "#1b2033",
+                "primary": "#2b3f7a",
+                "accent": "#e3e6ee"
+              },
+              "dark": {
+                "bg": "#141210",
+                "fg": "#f2ece0",
+                "primary": "#8ea0d8",
+                "accent": "#211e1b"
+              },
+              "reaimedFrom": "swiss-minimal-japanese-minimal-sumi"
+            },
+            {
+              "id": "swiss-minimal-japanese-minimal-matcha",
+              "name": "Matcha",
+              "description": "Paper white with a muted matcha green.",
+              "fonts": {
+                "heading": "Zen Kaku Gothic New",
+                "body": "Zen Kaku Gothic New",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f6f3ea",
+                "fg": "#1f1d18",
+                "primary": "#5e7a2e",
+                "accent": "#e9ead9"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "editorial",
+      "name": "Editorial & Magazine",
+      "description": "Reading-first: serif headlines, columns and print rhythm.",
+      "fonts": {
+        "heading": "Playfair Display",
+        "body": "Source Serif 4",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "none",
+        "density": "regular",
+        "elevation": "flat",
+        "border": "hairline"
+      },
+      "light": {
+        "bg": "#f7f3ea",
+        "fg": "#1a1714",
+        "primary": "#8c1c13",
+        "accent": "#c9a227"
+      },
+      "dark": {
+        "bg": "#1c1915",
+        "fg": "#efe7d6",
+        "primary": "#e07a5f",
+        "accent": "#d8b24a"
+      },
+      "styles": [
+        {
+          "id": "editorial-newspaper",
+          "name": "Newspaper",
+          "description": "Broadsheet: dense columns, rules, condensed headlines.",
+          "fonts": {
+            "heading": "Playfair Display",
+            "body": "Libre Franklin",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "compact",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f4f1ea",
+            "fg": "#121212",
+            "primary": "#121212",
+            "accent": "#a31f1f"
+          },
+          "variants": [
+            {
+              "id": "editorial-newspaper-broadsheet",
+              "name": "Broadsheet",
+              "description": "Warm newsprint, black ink, oxblood accent.",
+              "fonts": {
+                "heading": "Newsreader",
+                "body": "Newsreader",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "compact",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "archetype-editorial-serif",
+                "dark": "archetype-editorial-serif"
+              }
+            },
+            {
+              "id": "editorial-newspaper-tabloid",
+              "name": "Tabloid",
+              "description": "White page, heavy headlines, red masthead.",
+              "fonts": {
+                "heading": "Oswald",
+                "body": "Libre Franklin",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "compact",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#ffffff",
+                "fg": "#0a0a0a",
+                "primary": "#d0021b",
+                "accent": "#f2f2f2"
+              }
+            },
+            {
+              "id": "editorial-newspaper-salmon-pink",
+              "name": "Salmon Pink",
+              "description": "Financial-paper salmon with claret and ink.",
+              "fonts": {
+                "heading": "Playfair Display",
+                "body": "Libre Franklin",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "compact",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#fdeee2",
+                "fg": "#2a1f1a",
+                "primary": "#8f1d3b",
+                "accent": "#f4d9c8"
+              },
+              "dark": {
+                "bg": "#22201d",
+                "fg": "#f1e9d8",
+                "primary": "#e3a8b6",
+                "accent": "#2d2a26"
+              },
+              "reaimedFrom": "editorial-newspaper-evening-edition"
+            }
+          ]
+        },
+        {
+          "id": "editorial-literary",
+          "name": "Literary Journal",
+          "description": "Book typography: Garamond-style text, wide margins, quiet colour.",
+          "fonts": {
+            "heading": "EB Garamond",
+            "body": "EB Garamond",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "airy",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#faf6ee",
+            "fg": "#2c241c",
+            "primary": "#6e2c1f",
+            "accent": "#e9dfcc"
+          },
+          "variants": [
+            {
+              "id": "editorial-literary-cream",
+              "name": "Cream",
+              "description": "Cream paper and brown-black ink.",
+              "fonts": {
+                "heading": "EB Garamond",
+                "body": "EB Garamond",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f6efdf",
+                "fg": "#2a2018",
+                "primary": "#9e3b2e",
+                "accent": "#ece2cc"
+              }
+            },
+            {
+              "id": "editorial-literary-midnight-ink",
+              "name": "Midnight Ink",
+              "description": "Cool white with deep ink-blue accents.",
+              "fonts": {
+                "heading": "Libre Baskerville",
+                "body": "Libre Baskerville",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-starry-night",
+                "dark": "tweakcn-starry-night"
+              }
+            },
+            {
+              "id": "editorial-literary-sepia-press",
+              "name": "Sepia Press",
+              "description": "Sepia ink and amber on old cream stock.",
+              "fonts": {
+                "heading": "EB Garamond",
+                "body": "EB Garamond",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#e9dcc3",
+                "fg": "#2f2418",
+                "primary": "#5b3a1a",
+                "accent": "#b5793a"
+              },
+              "dark": {
+                "bg": "#221a14",
+                "fg": "#f1e4cc",
+                "primary": "#e0a24a",
+                "accent": "#2e241c"
+              },
+              "reaimedFrom": "editorial-literary-candlelight"
+            }
+          ]
+        },
+        {
+          "id": "editorial-fashion",
+          "name": "Fashion Magazine",
+          "description": "High-contrast Didone headlines, huge whitespace, black and blush.",
+          "fonts": {
+            "heading": "Bodoni Moda",
+            "body": "Jost",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "airy",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#ffffff",
+            "fg": "#0b0b0b",
+            "primary": "#0b0b0b",
+            "accent": "#f2c6cc"
+          },
+          "variants": [
+            {
+              "id": "editorial-fashion-blush",
+              "name": "Blush",
+              "description": "White, black and powder blush.",
+              "fonts": {
+                "heading": "Bodoni Moda",
+                "body": "Jost",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#ffffff",
+                "fg": "#0d0d0d",
+                "primary": "#0d0d0d",
+                "accent": "#f4cfd3"
+              }
+            },
+            {
+              "id": "editorial-fashion-saffron",
+              "name": "Saffron",
+              "description": "Black and white with a hot saffron cover line.",
+              "fonts": {
+                "heading": "Bodoni Moda",
+                "body": "Jost",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#fffdf7",
+                "fg": "#0a0a0a",
+                "primary": "#c45a00",
+                "accent": "#ffe2a8"
+              },
+              "dark": {
+                "bg": "#000000",
+                "fg": "#ffffff",
+                "primary": "#ffa630",
+                "accent": "#151515"
+              },
+              "reaimedFrom": "editorial-fashion-noir"
+            },
+            {
+              "id": "editorial-fashion-cobalt-cover",
+              "name": "Cobalt Cover",
+              "description": "White with saturated cobalt cover colour.",
+              "fonts": {
+                "heading": "Bodoni Moda",
+                "body": "Jost",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#ffffff",
+                "fg": "#0a0a0a",
+                "primary": "#0038ff",
+                "accent": "#eef1ff"
+              }
+            }
+          ]
+        },
+        {
+          "id": "editorial-modern-editorial",
+          "name": "Modern Editorial",
+          "description": "Serif headlines over a clean sans body — blog/newsletter feel.",
+          "fonts": {
+            "heading": "Fraunces",
+            "body": "Inter",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "sm",
+            "density": "regular",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#fbfaf7",
+            "fg": "#1f1f1f",
+            "primary": "#c2410c",
+            "accent": "#f3e8dc"
+          },
+          "variants": [
+            {
+              "id": "editorial-modern-editorial-clay",
+              "name": "Clay",
+              "description": "Warm ivory with terracotta accent.",
+              "fonts": {
+                "heading": "Fraunces",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-claude",
+                "dark": "tweakcn-claude"
+              }
+            },
+            {
+              "id": "editorial-modern-editorial-sage",
+              "name": "Sage",
+              "description": "Off-white with muted sage green.",
+              "fonts": {
+                "heading": "Fraunces",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f8f7f3",
+                "fg": "#2b2b2b",
+                "primary": "#55704f",
+                "accent": "#e3ebdf"
+              }
+            },
+            {
+              "id": "editorial-modern-editorial-ink-blue",
+              "name": "Ink Blue",
+              "description": "Paper white with fountain-pen blue links.",
+              "fonts": {
+                "heading": "Fraunces",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#fafaf8",
+                "fg": "#1c1f26",
+                "primary": "#2443a8",
+                "accent": "#e6eaf6"
+              },
+              "dark": {
+                "bg": "#141414",
+                "fg": "#ececea",
+                "primary": "#8fa8ff",
+                "accent": "#1f1f1f"
+              },
+              "reaimedFrom": "editorial-modern-editorial-night-read"
+            }
+          ]
+        },
+        {
+          "id": "editorial-slow-living",
+          "name": "Slow Living",
+          "description": "Kinfolk-style: light serif, linen tones, lots of air.",
+          "fonts": {
+            "heading": "Cormorant Garamond",
+            "body": "Karla",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "airy",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f1ece3",
+            "fg": "#3a332c",
+            "primary": "#8a6f57",
+            "accent": "#e2d8c8"
+          },
+          "variants": [
+            {
+              "id": "editorial-slow-living-linen",
+              "name": "Linen",
+              "description": "Linen beige with taupe.",
+              "fonts": {
+                "heading": "Cormorant Garamond",
+                "body": "Karla",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f4efe6",
+                "fg": "#2b2622",
+                "primary": "#7a6a58",
+                "accent": "#e9e1d3"
+              }
+            },
+            {
+              "id": "editorial-slow-living-stone",
+              "name": "Stone",
+              "description": "Cool stone grey with olive.",
+              "fonts": {
+                "heading": "Cormorant Garamond",
+                "body": "Karla",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#e2e5e6",
+                "fg": "#1f2528",
+                "primary": "#3f5a3a",
+                "accent": "#c4ccc9"
+              }
+            },
+            {
+              "id": "editorial-slow-living-terracotta-dusk",
+              "name": "Terracotta Dusk",
+              "description": "Peach-washed linen with a sun-baked terracotta.",
+              "fonts": {
+                "heading": "Cormorant Garamond",
+                "body": "Karla",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f8e4d6",
+                "fg": "#3a2a22",
+                "primary": "#a8442a",
+                "accent": "#e9b99c"
+              },
+              "dark": {
+                "bg": "#2e2924",
+                "fg": "#efe6d6",
+                "primary": "#e3a283",
+                "accent": "#3a342e"
+              },
+              "reaimedFrom": "editorial-slow-living-dusk"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "corporate",
+      "name": "Corporate & Enterprise",
+      "description": "Trustworthy, dense and accessible — built for work tools and B2B.",
+      "fonts": {
+        "heading": "IBM Plex Sans",
+        "body": "IBM Plex Sans",
+        "mono": "IBM Plex Mono"
+      },
+      "shape": {
+        "radius": "sm",
+        "density": "compact",
+        "elevation": "subtle",
+        "border": "hairline"
+      },
+      "light": {
+        "bg": "#f8fafc",
+        "fg": "#0f172a",
+        "primary": "#1d4ed8",
+        "accent": "#0ea5e9"
+      },
+      "styles": [
+        {
+          "id": "corporate-enterprise-blue",
+          "name": "Enterprise Blue",
+          "description": "The classic business application: blue on cool greys.",
+          "fonts": {
+            "heading": "IBM Plex Sans",
+            "body": "IBM Plex Sans",
+            "mono": "IBM Plex Mono"
+          },
+          "shape": {
+            "radius": "sm",
+            "density": "compact",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f4f6f9",
+            "fg": "#161b26",
+            "primary": "#0f62fe",
+            "accent": "#d0e2ff"
+          },
+          "variants": [
+            {
+              "id": "corporate-enterprise-blue-corporate",
+              "name": "Corporate",
+              "description": "White with confident mid blue.",
+              "fonts": {
+                "heading": "IBM Plex Sans",
+                "body": "IBM Plex Sans",
+                "mono": "IBM Plex Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "compact",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "daisyui-corporate",
+                "dark": "daisyui-business"
+              }
+            },
+            {
+              "id": "corporate-enterprise-blue-teal-enterprise",
+              "name": "Teal Enterprise",
+              "description": "The same dense app chrome in a calm enterprise teal.",
+              "fonts": {
+                "heading": "IBM Plex Sans",
+                "body": "IBM Plex Sans",
+                "mono": "IBM Plex Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "compact",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f5f8f8",
+                "fg": "#14212b",
+                "primary": "#0f766e",
+                "accent": "#d5ecea"
+              },
+              "dark": {
+                "bg": "#141c22",
+                "fg": "#e2ecef",
+                "primary": "#3cc4b5",
+                "accent": "#1e2a31"
+              },
+              "reaimedFrom": "corporate-enterprise-blue-business-dark"
+            },
+            {
+              "id": "corporate-enterprise-blue-winter",
+              "name": "Winter",
+              "description": "Crisp white with saturated royal blue.",
+              "fonts": {
+                "heading": "IBM Plex Sans",
+                "body": "IBM Plex Sans",
+                "mono": "IBM Plex Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "compact",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "daisyui-winter"
+              }
+            }
+          ]
+        },
+        {
+          "id": "corporate-nordic",
+          "name": "Nordic Calm",
+          "description": "Desaturated frost blues and birch neutrals.",
+          "fonts": {
+            "heading": "Inter",
+            "body": "Inter",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "sm",
+            "density": "regular",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#eceff4",
+            "fg": "#2e3440",
+            "primary": "#5e81ac",
+            "accent": "#d8dee9"
+          },
+          "variants": [
+            {
+              "id": "corporate-nordic-nord",
+              "name": "Nord",
+              "description": "Nord palette, frost blue accent.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "dark": {
+                "bg": "#2e3440",
+                "fg": "#eceff4",
+                "primary": "#88c0d0",
+                "accent": "#3b4252"
+              },
+              "corpus": {
+                "light": "daisyui-nord"
+              }
+            },
+            {
+              "id": "corporate-nordic-aurora-green",
+              "name": "Aurora Green",
+              "description": "Frost greys with a lichen-green aurora accent.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#edf3ee",
+                "fg": "#26332c",
+                "primary": "#2f7a4a",
+                "accent": "#cfe5d4"
+              },
+              "dark": {
+                "bg": "#242b29",
+                "fg": "#e6eeea",
+                "primary": "#a3be8c",
+                "accent": "#2f3835"
+              },
+              "reaimedFrom": "corporate-nordic-polar-night"
+            },
+            {
+              "id": "corporate-nordic-birch",
+              "name": "Birch",
+              "description": "Birch-bark white with warm bark-brown accents.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#faf8f3",
+                "fg": "#3a2f28",
+                "primary": "#8a5a3c",
+                "accent": "#e8dccb"
+              }
+            }
+          ]
+        },
+        {
+          "id": "corporate-fintech",
+          "name": "Fintech",
+          "description": "Money and trust: navy, green, tabular numbers.",
+          "fonts": {
+            "heading": "Manrope",
+            "body": "Manrope",
+            "mono": "IBM Plex Mono"
+          },
+          "shape": {
+            "radius": "md",
+            "density": "compact",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f7f9fc",
+            "fg": "#0b1b33",
+            "primary": "#0b3b8c",
+            "accent": "#16a34a"
+          },
+          "variants": [
+            {
+              "id": "corporate-fintech-emerald-trust",
+              "name": "Emerald Trust",
+              "description": "White with emerald growth green.",
+              "fonts": {
+                "heading": "Manrope",
+                "body": "Manrope",
+                "mono": "IBM Plex Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "compact",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "daisyui-emerald"
+              }
+            },
+            {
+              "id": "corporate-fintech-navy-gold",
+              "name": "Navy & Gold",
+              "description": "Deep navy with restrained gold.",
+              "fonts": {
+                "heading": "Manrope",
+                "body": "Manrope",
+                "mono": "IBM Plex Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "compact",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#ffffff",
+                "fg": "#0f1f3d",
+                "primary": "#0f2a5c",
+                "accent": "#b8963e"
+              }
+            },
+            {
+              "id": "corporate-fintech-ledger",
+              "name": "Ledger",
+              "description": "Spreadsheet-tight greys with profit green and loss red.",
+              "fonts": {
+                "heading": "Manrope",
+                "body": "Manrope",
+                "mono": "IBM Plex Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "compact",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f6f7f9",
+                "fg": "#111827",
+                "primary": "#15803d",
+                "accent": "#fee2e2"
+              },
+              "dark": {
+                "bg": "#0b1120",
+                "fg": "#e5e9f2",
+                "primary": "#22c55e",
+                "accent": "#3b1d24"
+              },
+              "reaimedFrom": "corporate-fintech-ledger-dark"
+            }
+          ]
+        },
+        {
+          "id": "corporate-public-sector",
+          "name": "Public Sector",
+          "description": "GOV.UK-style accessibility: high contrast, bold focus, plain type.",
+          "fonts": {
+            "heading": "Public Sans",
+            "body": "Public Sans",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "regular",
+            "elevation": "flat",
+            "border": "bold"
+          },
+          "light": {
+            "bg": "#ffffff",
+            "fg": "#0b0c0c",
+            "primary": "#1d70b8",
+            "accent": "#ffdd00"
+          },
+          "variants": [
+            {
+              "id": "corporate-public-sector-civic-blue",
+              "name": "Civic Blue",
+              "description": "Government blue with yellow focus rings.",
+              "fonts": {
+                "heading": "Public Sans",
+                "body": "Public Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#ffffff",
+                "fg": "#0b0c0c",
+                "primary": "#1d70b8",
+                "accent": "#ffdd00"
+              }
+            },
+            {
+              "id": "corporate-public-sector-civic-green",
+              "name": "Civic Green",
+              "description": "Municipal green variant.",
+              "fonts": {
+                "heading": "Public Sans",
+                "body": "Public Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#f3f2f1",
+                "fg": "#0b0c0c",
+                "primary": "#00703c",
+                "accent": "#f47738"
+              }
+            },
+            {
+              "id": "corporate-public-sector-civic-black",
+              "name": "Civic Black",
+              "description": "Maximum contrast: black buttons, thick rules, yellow focus.",
+              "fonts": {
+                "heading": "Public Sans",
+                "body": "Public Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#ffffff",
+                "fg": "#000000",
+                "primary": "#000000",
+                "accent": "#ffdd00"
+              },
+              "dark": {
+                "bg": "#000000",
+                "fg": "#ffffff",
+                "primary": "#ffdd00",
+                "accent": "#ffdd00"
+              },
+              "reaimedFrom": "corporate-public-sector-high-contrast"
+            }
+          ]
+        },
+        {
+          "id": "corporate-clinical",
+          "name": "Clinical Clean",
+          "description": "Healthcare calm: teal/aqua, airy, rounded, reassuring.",
+          "fonts": {
+            "heading": "Nunito Sans",
+            "body": "Nunito Sans",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "md",
+            "density": "airy",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f2fbfb",
+            "fg": "#0f3a40",
+            "primary": "#0aa5a0",
+            "accent": "#ffd8c2"
+          },
+          "variants": [
+            {
+              "id": "corporate-clinical-aqua-teal",
+              "name": "Aqua",
+              "description": "Fresh aqua with green accents.",
+              "fonts": {
+                "heading": "Nunito Sans",
+                "body": "Nunito Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-ocean-breeze",
+                "dark": "tweakcn-ocean-breeze"
+              }
+            },
+            {
+              "id": "corporate-clinical-lavender-care",
+              "name": "Lavender Care",
+              "description": "Soft lavender calm.",
+              "fonts": {
+                "heading": "Nunito Sans",
+                "body": "Nunito Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#ffffff",
+                "fg": "#334155",
+                "primary": "#6f63c4",
+                "accent": "#f3f1fb"
+              }
+            },
+            {
+              "id": "corporate-clinical-coral-care",
+              "name": "Coral Care",
+              "description": "Warm, human healthcare: soft coral on clean white.",
+              "fonts": {
+                "heading": "Nunito Sans",
+                "body": "Nunito Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#fffaf8",
+                "fg": "#3d2b2b",
+                "primary": "#d4553f",
+                "accent": "#fde3dc"
+              },
+              "dark": {
+                "bg": "#16262a",
+                "fg": "#e2f1f1",
+                "primary": "#ff9b85",
+                "accent": "#1f3236"
+              },
+              "reaimedFrom": "corporate-clinical-night-shift"
+            }
+          ]
+        },
+        {
+          "id": "corporate-consulting",
+          "name": "Consulting",
+          "description": "Serif-led authority: classic serif headings, sober accent.",
+          "fonts": {
+            "heading": "Libre Baskerville",
+            "body": "Source Sans 3",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "xs",
+            "density": "regular",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#fbfbfa",
+            "fg": "#22252a",
+            "primary": "#1f3a5f",
+            "accent": "#e9e4da"
+          },
+          "variants": [
+            {
+              "id": "corporate-consulting-burgundy",
+              "name": "Burgundy",
+              "description": "White with burgundy.",
+              "fonts": {
+                "heading": "Libre Baskerville",
+                "body": "Source Sans 3",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xs",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#ffffff",
+                "fg": "#2b2b2b",
+                "primary": "#7a1f2b",
+                "accent": "#f5f1f1"
+              }
+            },
+            {
+              "id": "corporate-consulting-navy-serif",
+              "name": "Navy",
+              "description": "White with deep navy.",
+              "fonts": {
+                "heading": "Libre Baskerville",
+                "body": "Source Sans 3",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xs",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f6f7fa",
+                "fg": "#2b2b2b",
+                "primary": "#14254a",
+                "accent": "#c9a227"
+              }
+            },
+            {
+              "id": "corporate-consulting-evergreen",
+              "name": "Evergreen",
+              "description": "Ivory pages, evergreen headings and a brass rule.",
+              "fonts": {
+                "heading": "Libre Baskerville",
+                "body": "Source Sans 3",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xs",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#faf8f2",
+                "fg": "#232623",
+                "primary": "#1f4a3a",
+                "accent": "#ece5d2"
+              },
+              "dark": {
+                "bg": "#26272a",
+                "fg": "#f2eee4",
+                "primary": "#b59a5b",
+                "accent": "#313236"
+              },
+              "reaimedFrom": "corporate-consulting-charcoal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "saas",
+      "name": "Modern SaaS & Product",
+      "description": "Today's product look: friendly sans, rounded cards, soft gradients.",
+      "fonts": {
+        "heading": "Inter",
+        "body": "Inter",
+        "mono": "Geist Mono"
+      },
+      "shape": {
+        "radius": "lg",
+        "density": "regular",
+        "elevation": "subtle",
+        "border": "hairline"
+      },
+      "light": {
+        "bg": "#fbfaff",
+        "fg": "#1e1b3a",
+        "primary": "#6d5dfc",
+        "accent": "#f0abfc"
+      },
+      "styles": [
+        {
+          "id": "saas-soft-saas",
+          "name": "Soft SaaS",
+          "description": "Calm pastel B2B: lavender tints, gentle shadows.",
+          "fonts": {
+            "heading": "Inter",
+            "body": "Inter",
+            "mono": "Geist Mono"
+          },
+          "shape": {
+            "radius": "lg",
+            "density": "regular",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#faf8ff",
+            "fg": "#2a2540",
+            "primary": "#7c6cf0",
+            "accent": "#ece8ff"
+          },
+          "variants": [
+            {
+              "id": "saas-soft-saas-lavender",
+              "name": "Lavender",
+              "description": "White with soft lavender.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "Geist Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "archetype-soft-saas-pastel",
+                "dark": "archetype-soft-saas-pastel"
+              }
+            },
+            {
+              "id": "saas-soft-saas-cosmic-violet",
+              "name": "Cosmic Violet",
+              "description": "Violet-tinted surfaces, purple primary.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "Geist Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-cosmic-night",
+                "dark": "tweakcn-cosmic-night"
+              }
+            },
+            {
+              "id": "saas-soft-saas-peach-soft",
+              "name": "Peach Soft",
+              "description": "Soft SaaS warmed up: peach tints and an apricot accent.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "Geist Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#fffaf6",
+                "fg": "#3a2a24",
+                "primary": "#e06d3c",
+                "accent": "#ffe8d9"
+              },
+              "dark": {
+                "bg": "#11131c",
+                "fg": "#e6e7f2",
+                "primary": "#ffab85",
+                "accent": "#1b1e2b"
+              },
+              "reaimedFrom": "saas-soft-saas-soft-dark"
+            }
+          ]
+        },
+        {
+          "id": "saas-startup-bold",
+          "name": "Startup Bold",
+          "description": "High-energy gradients, saturated violet/indigo, expressive motion.",
+          "fonts": {
+            "heading": "Plus Jakarta Sans",
+            "body": "Plus Jakarta Sans",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "lg",
+            "density": "regular",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#ffffff",
+            "fg": "#120f24",
+            "primary": "#6d28d9",
+            "accent": "#f43f5e"
+          },
+          "variants": [
+            {
+              "id": "saas-startup-bold-electric-violet",
+              "name": "Electric Violet",
+              "description": "Saturated violet.",
+              "fonts": {
+                "heading": "Plus Jakarta Sans",
+                "body": "Plus Jakarta Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-bold-tech",
+                "dark": "tweakcn-bold-tech"
+              }
+            },
+            {
+              "id": "saas-startup-bold-midnight-bloom",
+              "name": "Midnight Bloom",
+              "description": "Indigo with bloom pink.",
+              "fonts": {
+                "heading": "Montserrat",
+                "body": "Montserrat",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-midnight-bloom",
+                "dark": "tweakcn-midnight-bloom"
+              }
+            },
+            {
+              "id": "saas-startup-bold-sunrise",
+              "name": "Sunrise",
+              "description": "Orange-to-pink gradient energy.",
+              "fonts": {
+                "heading": "Plus Jakarta Sans",
+                "body": "Plus Jakarta Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#ffffff",
+                "fg": "#14121a",
+                "primary": "#e8384f",
+                "accent": "#ff8a3d"
+              }
+            }
+          ]
+        },
+        {
+          "id": "saas-dev-platform",
+          "name": "Developer Platform",
+          "description": "Dev-platform marketing: dark-friendly, neon-ish single accent.",
+          "fonts": {
+            "heading": "Outfit",
+            "body": "Outfit",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "md",
+            "density": "regular",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#fbfcfb",
+            "fg": "#101614",
+            "primary": "#10b981",
+            "accent": "#d1fae5"
+          },
+          "variants": [
+            {
+              "id": "saas-dev-platform-emerald",
+              "name": "Emerald",
+              "description": "Supabase-like mint green.",
+              "fonts": {
+                "heading": "Outfit",
+                "body": "Outfit",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-supabase",
+                "dark": "tweakcn-supabase"
+              }
+            },
+            {
+              "id": "saas-dev-platform-berry",
+              "name": "Berry",
+              "description": "Berry pink on rose-tinted white.",
+              "fonts": {
+                "heading": "Outfit",
+                "body": "Outfit",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-t3-chat",
+                "dark": "tweakcn-t3-chat"
+              }
+            },
+            {
+              "id": "saas-dev-platform-indigo",
+              "name": "Indigo",
+              "description": "Cool white with a deep indigo accent.",
+              "fonts": {
+                "heading": "Outfit",
+                "body": "Outfit",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f8f9fc",
+                "fg": "#161a2b",
+                "primary": "#4f46e5",
+                "accent": "#e0e7ff"
+              },
+              "corpus": {
+                "dark": "daisyui-dark"
+              },
+              "reaimedFrom": "saas-dev-platform-indigo-dark"
+            }
+          ]
+        },
+        {
+          "id": "saas-bento",
+          "name": "Bento Showcase",
+          "description": "Apple-style bento grid: big rounded tiles, layered depth.",
+          "fonts": {
+            "heading": "Geist",
+            "body": "Geist",
+            "mono": "Geist Mono"
+          },
+          "shape": {
+            "radius": "xl",
+            "density": "airy",
+            "elevation": "layered",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f2f2f4",
+            "fg": "#1b1b1f",
+            "primary": "#1b1b1f",
+            "accent": "#ffffff"
+          },
+          "variants": [
+            {
+              "id": "saas-bento-daylight",
+              "name": "Daylight",
+              "description": "White tiles on light grey.",
+              "fonts": {
+                "heading": "Geist",
+                "body": "Geist",
+                "mono": "Geist Mono"
+              },
+              "shape": {
+                "radius": "xl",
+                "density": "airy",
+                "elevation": "layered",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f0f1f3",
+                "fg": "#16181d",
+                "primary": "#2563eb",
+                "accent": "#ffffff"
+              }
+            },
+            {
+              "id": "saas-bento-mint-tiles",
+              "name": "Mint Tiles",
+              "description": "Pale mint canvas, white tiles, deep green accent.",
+              "fonts": {
+                "heading": "Geist",
+                "body": "Geist",
+                "mono": "Geist Mono"
+              },
+              "shape": {
+                "radius": "xl",
+                "density": "airy",
+                "elevation": "layered",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#e8f3ee",
+                "fg": "#13221c",
+                "primary": "#11734f",
+                "accent": "#ffffff"
+              },
+              "dark": {
+                "bg": "#000000",
+                "fg": "#f2f2f2",
+                "primary": "#4ade80",
+                "accent": "#1a1a1c"
+              },
+              "reaimedFrom": "saas-bento-graphite-tiles"
+            },
+            {
+              "id": "saas-bento-sand-tiles",
+              "name": "Sand Tiles",
+              "description": "Warm sand canvas, cream tiles.",
+              "fonts": {
+                "heading": "Geist",
+                "body": "Geist",
+                "mono": "Geist Mono"
+              },
+              "shape": {
+                "radius": "xl",
+                "density": "airy",
+                "elevation": "layered",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#ece4d6",
+                "fg": "#2a231c",
+                "primary": "#b0532f",
+                "accent": "#f8f2e8"
+              }
+            }
+          ]
+        },
+        {
+          "id": "saas-social",
+          "name": "Social App",
+          "description": "Consumer-social: pill buttons, bright brand colour.",
+          "fonts": {
+            "heading": "Open Sans",
+            "body": "Open Sans",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "pill",
+            "density": "regular",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#ffffff",
+            "fg": "#0f1419",
+            "primary": "#e0245e",
+            "accent": "#ffe4ec"
+          },
+          "variants": [
+            {
+              "id": "saas-social-sky",
+              "name": "Sky",
+              "description": "White with sky blue.",
+              "fonts": {
+                "heading": "Open Sans",
+                "body": "Open Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "pill",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-twitter",
+                "dark": "tweakcn-twitter"
+              }
+            },
+            {
+              "id": "saas-social-tangerine",
+              "name": "Tangerine",
+              "description": "Cool grey with tangerine.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-tangerine",
+                "dark": "tweakcn-tangerine"
+              }
+            },
+            {
+              "id": "saas-social-grape",
+              "name": "Grape",
+              "description": "Pill buttons in a juicy grape purple.",
+              "fonts": {
+                "heading": "Open Sans",
+                "body": "Open Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "pill",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#fdfaff",
+                "fg": "#1e1427",
+                "primary": "#8e2de2",
+                "accent": "#f1e3ff"
+              },
+              "dark": {
+                "bg": "#15202b",
+                "fg": "#e7ecf0",
+                "primary": "#c084fc",
+                "accent": "#1e2a36"
+              },
+              "reaimedFrom": "saas-social-dim"
+            }
+          ]
+        },
+        {
+          "id": "saas-productivity",
+          "name": "Productivity Tool",
+          "description": "Linear/Notion-like: compact, neutral, keyboard-first.",
+          "fonts": {
+            "heading": "Inter",
+            "body": "Inter",
+            "mono": "Geist Mono"
+          },
+          "shape": {
+            "radius": "md",
+            "density": "compact",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f7f7f8",
+            "fg": "#1f2023",
+            "primary": "#0e7490",
+            "accent": "#e6f2f5"
+          },
+          "variants": [
+            {
+              "id": "saas-productivity-amber-note",
+              "name": "Amber Note",
+              "description": "White with amber highlights.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "Geist Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "compact",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-amber-minimal",
+                "dark": "tweakcn-amber-minimal"
+              }
+            },
+            {
+              "id": "saas-productivity-slate-tool",
+              "name": "Slate",
+              "description": "Cool slate with indigo.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "Geist Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "compact",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f5f7fa",
+                "fg": "#1e293b",
+                "primary": "#4f46e5",
+                "accent": "#e8ecf3"
+              }
+            },
+            {
+              "id": "saas-productivity-rose-focus",
+              "name": "Rose Focus",
+              "description": "Neutral workspace, a single rose-red focus colour.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "Geist Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "compact",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#fafafa",
+                "fg": "#18181b",
+                "primary": "#e11d48",
+                "accent": "#ffe4e6"
+              },
+              "dark": {
+                "bg": "#0e0e11",
+                "fg": "#ececf1",
+                "primary": "#fb7185",
+                "accent": "#18181d"
+              },
+              "reaimedFrom": "saas-productivity-focus-dark"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "brutalist",
+      "name": "Brutalist & Raw",
+      "description": "Unpolished on purpose: hard edges, thick borders, loud contrast.",
+      "fonts": {
+        "heading": "Space Grotesk",
+        "body": "Archivo",
+        "mono": "Space Mono"
+      },
+      "shape": {
+        "radius": "none",
+        "density": "regular",
+        "elevation": "layered",
+        "border": "bold"
+      },
+      "light": {
+        "bg": "#fffef0",
+        "fg": "#000000",
+        "primary": "#ff3b00",
+        "accent": "#ffe600"
+      },
+      "dark": {
+        "bg": "#000000",
+        "fg": "#fffef0",
+        "primary": "#ff5a1f",
+        "accent": "#ffe600"
+      },
+      "styles": [
+        {
+          "id": "brutalist-raw",
+          "name": "Raw Brutalist",
+          "description": "Default-HTML honesty: system-like type, no decoration.",
+          "fonts": {
+            "heading": "Archivo",
+            "body": "Archivo",
+            "mono": "Space Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "regular",
+            "elevation": "flat",
+            "border": "bold"
+          },
+          "light": {
+            "bg": "#ffffff",
+            "fg": "#000000",
+            "primary": "#0000ee",
+            "accent": "#000000"
+          },
+          "variants": [
+            {
+              "id": "brutalist-raw-concrete",
+              "name": "Concrete",
+              "description": "Grey-white concrete with black.",
+              "fonts": {
+                "heading": "Archivo",
+                "body": "Archivo",
+                "mono": "Space Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "corpus": {
+                "light": "archetype-brutalist",
+                "dark": "archetype-brutalist"
+              }
+            },
+            {
+              "id": "brutalist-raw-newsprint-raw",
+              "name": "Newsprint",
+              "description": "Yellowed newsprint, blue links.",
+              "fonts": {
+                "heading": "Archivo",
+                "body": "Archivo",
+                "mono": "Space Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#f1ead2",
+                "fg": "#000000",
+                "primary": "#0000ee",
+                "accent": "#e6dcbd"
+              }
+            },
+            {
+              "id": "brutalist-raw-hyper-red",
+              "name": "Hyper Red",
+              "description": "White page, black type, unapologetic red links.",
+              "fonts": {
+                "heading": "Archivo",
+                "body": "Archivo",
+                "mono": "Space Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#ffffff",
+                "fg": "#000000",
+                "primary": "#e00000",
+                "accent": "#ffff00"
+              },
+              "dark": {
+                "bg": "#000000",
+                "fg": "#ffffff",
+                "primary": "#ff4040",
+                "accent": "#111111"
+              },
+              "reaimedFrom": "brutalist-raw-raw-black"
+            }
+          ]
+        },
+        {
+          "id": "brutalist-neo-brutalist",
+          "name": "Neo-Brutalist",
+          "description": "Thick black borders, hard offset shadows, saturated fills.",
+          "fonts": {
+            "heading": "Space Grotesk",
+            "body": "Space Grotesk",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "regular",
+            "elevation": "layered",
+            "border": "bold"
+          },
+          "light": {
+            "bg": "#fdf6e3",
+            "fg": "#000000",
+            "primary": "#ff90e8",
+            "accent": "#23a094"
+          },
+          "variants": [
+            {
+              "id": "brutalist-neo-brutalist-yellow",
+              "name": "Yellow",
+              "description": "Loud yellow fills.",
+              "fonts": {
+                "heading": "Space Grotesk",
+                "body": "Space Grotesk",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "layered",
+                "border": "bold"
+              },
+              "corpus": {
+                "light": "archetype-neo-brutalist",
+                "dark": "archetype-neo-brutalist"
+              }
+            },
+            {
+              "id": "brutalist-neo-brutalist-coral",
+              "name": "Coral",
+              "description": "Coral-red fills.",
+              "fonts": {
+                "heading": "DM Sans",
+                "body": "DM Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "layered",
+                "border": "bold"
+              },
+              "corpus": {
+                "light": "tweakcn-neo-brutalism",
+                "dark": "tweakcn-neo-brutalism"
+              }
+            },
+            {
+              "id": "brutalist-neo-brutalist-lime-pop",
+              "name": "Lime Pop",
+              "description": "Hard shadows with an acid-lime fill on lilac.",
+              "fonts": {
+                "heading": "Space Grotesk",
+                "body": "Space Grotesk",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "layered",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#efe9ff",
+                "fg": "#000000",
+                "primary": "#a3e635",
+                "accent": "#c4b5fd"
+              },
+              "dark": {
+                "bg": "#0a0a0a",
+                "fg": "#ffffff",
+                "primary": "#c6ff00",
+                "accent": "#1a1a1a"
+              },
+              "reaimedFrom": "brutalist-neo-brutalist-neo-dark"
+            }
+          ]
+        },
+        {
+          "id": "brutalist-anti-design",
+          "name": "Anti-Design",
+          "description": "Clashing colours and rounded chaos — deliberately wrong.",
+          "fonts": {
+            "heading": "Archivo",
+            "body": "Archivo",
+            "mono": "Space Mono"
+          },
+          "shape": {
+            "radius": "lg",
+            "density": "regular",
+            "elevation": "flat",
+            "border": "bold"
+          },
+          "light": {
+            "bg": "#e6ff00",
+            "fg": "#1a1a1a",
+            "primary": "#ff00a8",
+            "accent": "#3d00ff"
+          },
+          "variants": [
+            {
+              "id": "brutalist-anti-design-acid",
+              "name": "Acid",
+              "description": "Acid pink and lime on white.",
+              "fonts": {
+                "heading": "Archivo",
+                "body": "Archivo",
+                "mono": "Space Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "corpus": {
+                "light": "daisyui-acid"
+              }
+            },
+            {
+              "id": "brutalist-anti-design-cmyk",
+              "name": "CMYK",
+              "description": "Print primaries: cyan, magenta, yellow.",
+              "fonts": {
+                "heading": "Archivo",
+                "body": "Archivo",
+                "mono": "Space Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "corpus": {
+                "light": "daisyui-cmyk"
+              }
+            },
+            {
+              "id": "brutalist-anti-design-clash",
+              "name": "Clash",
+              "description": "Orange page, violet buttons, nothing matches on purpose.",
+              "fonts": {
+                "heading": "Archivo",
+                "body": "Archivo",
+                "mono": "Space Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#ff8a00",
+                "fg": "#1a0033",
+                "primary": "#4b00b5",
+                "accent": "#00e5ff"
+              },
+              "dark": {
+                "bg": "#000000",
+                "fg": "#ff6a00",
+                "primary": "#a855f7",
+                "accent": "#1a0f00"
+              },
+              "reaimedFrom": "brutalist-anti-design-clash-dark"
+            }
+          ]
+        },
+        {
+          "id": "brutalist-constructivist",
+          "name": "Constructivist Poster",
+          "description": "Red, black, diagonals and condensed caps.",
+          "fonts": {
+            "heading": "Oswald",
+            "body": "Archivo",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "regular",
+            "elevation": "flat",
+            "border": "bold"
+          },
+          "light": {
+            "bg": "#efe8d8",
+            "fg": "#111111",
+            "primary": "#c81e1e",
+            "accent": "#111111"
+          },
+          "variants": [
+            {
+              "id": "brutalist-constructivist-red-black",
+              "name": "Red & Black",
+              "description": "Classic poster red and black.",
+              "fonts": {
+                "heading": "Oswald",
+                "body": "Archivo",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#f3efe6",
+                "fg": "#000000",
+                "primary": "#d81e05",
+                "accent": "#e6e0d2"
+              }
+            },
+            {
+              "id": "brutalist-constructivist-ochre",
+              "name": "Ochre",
+              "description": "Ochre paper with black and red.",
+              "fonts": {
+                "heading": "Oswald",
+                "body": "Archivo",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#d9a441",
+                "fg": "#111111",
+                "primary": "#9e1c0c",
+                "accent": "#e6b75e"
+              }
+            },
+            {
+              "id": "brutalist-constructivist-ultramarine",
+              "name": "Ultramarine",
+              "description": "Cream poster stock, black bars, ultramarine blocks.",
+              "fonts": {
+                "heading": "Oswald",
+                "body": "Archivo",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#f2ead8",
+                "fg": "#0d0d0d",
+                "primary": "#1638b5",
+                "accent": "#f2c230"
+              },
+              "dark": {
+                "bg": "#0d0d0d",
+                "fg": "#f1e6cf",
+                "primary": "#5c7cff",
+                "accent": "#1c1a17"
+              },
+              "reaimedFrom": "brutalist-constructivist-poster-night"
+            }
+          ]
+        },
+        {
+          "id": "brutalist-zine",
+          "name": "Photocopy Zine",
+          "description": "DIY xerox and risograph: grain, typewriter, misregistered colour.",
+          "fonts": {
+            "heading": "Anton",
+            "body": "Courier Prime",
+            "mono": "Courier Prime"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "regular",
+            "elevation": "flat",
+            "border": "bold"
+          },
+          "light": {
+            "bg": "#ecebe4",
+            "fg": "#151515",
+            "primary": "#151515",
+            "accent": "#f05a9c"
+          },
+          "variants": [
+            {
+              "id": "brutalist-zine-photocopy",
+              "name": "Photocopy",
+              "description": "Toner black on grey paper, heavy grain.",
+              "fonts": {
+                "heading": "Anton",
+                "body": "Courier Prime",
+                "mono": "Courier Prime"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#d8d8d4",
+                "fg": "#111111",
+                "primary": "#111111",
+                "accent": "#c8c8c3"
+              }
+            },
+            {
+              "id": "brutalist-zine-riso-pink",
+              "name": "Riso Pink",
+              "description": "Fluorescent pink risograph.",
+              "fonts": {
+                "heading": "Anton",
+                "body": "Courier Prime",
+                "mono": "Courier Prime"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#f7f3ea",
+                "fg": "#1d2b8f",
+                "primary": "#e0218a",
+                "accent": "#0078bf"
+              }
+            },
+            {
+              "id": "brutalist-zine-riso-teal",
+              "name": "Riso Teal",
+              "description": "Teal and orange risograph.",
+              "fonts": {
+                "heading": "Anton",
+                "body": "Courier Prime",
+                "mono": "Courier Prime"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#f7f3ea",
+                "fg": "#163a3a",
+                "primary": "#00747a",
+                "accent": "#ff6c2f"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "playful",
+      "name": "Playful & Friendly",
+      "description": "Round, colourful and bouncy — approachable consumer brands.",
+      "fonts": {
+        "heading": "Nunito",
+        "body": "Nunito",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "pill",
+        "density": "regular",
+        "elevation": "subtle",
+        "border": "none"
+      },
+      "light": {
+        "bg": "#fff7fb",
+        "fg": "#3b0a45",
+        "primary": "#e5007d",
+        "accent": "#ffd400"
+      },
+      "styles": [
+        {
+          "id": "playful-candy",
+          "name": "Candy Pop",
+          "description": "Saturated candy pinks and pill shapes.",
+          "fonts": {
+            "heading": "Nunito",
+            "body": "Nunito",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "pill",
+            "density": "regular",
+            "elevation": "subtle",
+            "border": "none"
+          },
+          "light": {
+            "bg": "#fff0f7",
+            "fg": "#4a0d36",
+            "primary": "#d6197a",
+            "accent": "#ffd166"
+          },
+          "variants": [
+            {
+              "id": "playful-candy-magenta",
+              "name": "Magenta",
+              "description": "Vivid magenta-pink.",
+              "fonts": {
+                "heading": "Nunito",
+                "body": "Nunito",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "pill",
+                "density": "regular",
+                "elevation": "layered",
+                "border": "none"
+              },
+              "corpus": {
+                "light": "archetype-playful-round",
+                "dark": "archetype-playful-round"
+              }
+            },
+            {
+              "id": "playful-candy-bubblegum",
+              "name": "Bubblegum",
+              "description": "Pink-tinted canvas, bubblegum pink.",
+              "fonts": {
+                "heading": "Poppins",
+                "body": "Poppins",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "none"
+              },
+              "corpus": {
+                "light": "tweakcn-bubblegum",
+                "dark": "tweakcn-bubblegum"
+              }
+            },
+            {
+              "id": "playful-candy-valentine",
+              "name": "Valentine",
+              "description": "Rose canvas, hot pink.",
+              "fonts": {
+                "heading": "Nunito",
+                "body": "Nunito",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "pill",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "none"
+              },
+              "corpus": {
+                "light": "daisyui-valentine"
+              }
+            },
+            {
+              "id": "playful-candy-candyland",
+              "name": "Candyland",
+              "description": "Pale sky canvas with sugar pastels.",
+              "fonts": {
+                "heading": "Poppins",
+                "body": "Poppins",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "none"
+              },
+              "corpus": {
+                "light": "tweakcn-candyland",
+                "dark": "tweakcn-candyland"
+              }
+            }
+          ]
+        },
+        {
+          "id": "playful-pastel",
+          "name": "Pastel Dream",
+          "description": "Low-saturation pastels, very round, dreamy.",
+          "fonts": {
+            "heading": "Quicksand",
+            "body": "Open Sans",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "pill",
+            "density": "regular",
+            "elevation": "subtle",
+            "border": "none"
+          },
+          "light": {
+            "bg": "#fbf7ff",
+            "fg": "#463a5c",
+            "primary": "#9b7fd6",
+            "accent": "#c4f0e0"
+          },
+          "variants": [
+            {
+              "id": "playful-pastel-lilac",
+              "name": "Lilac",
+              "description": "Lilac and periwinkle.",
+              "fonts": {
+                "heading": "Quicksand",
+                "body": "Open Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xl",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "none"
+              },
+              "corpus": {
+                "light": "tweakcn-pastel-dreams",
+                "dark": "tweakcn-pastel-dreams"
+              }
+            },
+            {
+              "id": "playful-pastel-rainbow-pastel",
+              "name": "Rainbow Pastel",
+              "description": "All pastels at once.",
+              "fonts": {
+                "heading": "Quicksand",
+                "body": "Open Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "pill",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "none"
+              },
+              "corpus": {
+                "light": "daisyui-pastel"
+              }
+            },
+            {
+              "id": "playful-pastel-cupcake",
+              "name": "Cupcake",
+              "description": "Cream with teal and pink frosting.",
+              "fonts": {
+                "heading": "Quicksand",
+                "body": "Open Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "pill",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "none"
+              },
+              "corpus": {
+                "light": "daisyui-cupcake"
+              }
+            }
+          ]
+        },
+        {
+          "id": "playful-clay",
+          "name": "Claymorphism",
+          "description": "Puffy 3-D clay surfaces with inner and outer shadows.",
+          "fonts": {
+            "heading": "Plus Jakarta Sans",
+            "body": "Plus Jakarta Sans",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "xl",
+            "density": "regular",
+            "elevation": "layered",
+            "border": "none"
+          },
+          "light": {
+            "bg": "#f1eef8",
+            "fg": "#2d2a45",
+            "primary": "#6c63ff",
+            "accent": "#ffc6a5"
+          },
+          "variants": [
+            {
+              "id": "playful-clay-periwinkle",
+              "name": "Periwinkle",
+              "description": "Grey clay with periwinkle.",
+              "fonts": {
+                "heading": "Plus Jakarta Sans",
+                "body": "Plus Jakarta Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xl",
+                "density": "regular",
+                "elevation": "layered",
+                "border": "none"
+              },
+              "corpus": {
+                "light": "tweakcn-claymorphism",
+                "dark": "tweakcn-claymorphism"
+              }
+            },
+            {
+              "id": "playful-clay-peach",
+              "name": "Peach",
+              "description": "Peach clay.",
+              "fonts": {
+                "heading": "Plus Jakarta Sans",
+                "body": "Plus Jakarta Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xl",
+                "density": "regular",
+                "elevation": "layered",
+                "border": "none"
+              },
+              "light": {
+                "bg": "#ffe8dc",
+                "fg": "#4a2a22",
+                "primary": "#e0573a",
+                "accent": "#ffb38a"
+              }
+            },
+            {
+              "id": "playful-clay-mint-clay",
+              "name": "Mint",
+              "description": "Mint clay.",
+              "fonts": {
+                "heading": "Plus Jakarta Sans",
+                "body": "Plus Jakarta Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xl",
+                "density": "regular",
+                "elevation": "layered",
+                "border": "none"
+              },
+              "light": {
+                "bg": "#ddf5ec",
+                "fg": "#1f3f38",
+                "primary": "#14866f",
+                "accent": "#7fd8c0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "playful-primary-bright",
+          "name": "Primary Bright",
+          "description": "Kids-and-games energy: primary yellow, chunky rounded type.",
+          "fonts": {
+            "heading": "Baloo 2",
+            "body": "Nunito",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "lg",
+            "density": "regular",
+            "elevation": "subtle",
+            "border": "none"
+          },
+          "light": {
+            "bg": "#fffbea",
+            "fg": "#1a1a1a",
+            "primary": "#1e5bd8",
+            "accent": "#ffcd00"
+          },
+          "variants": [
+            {
+              "id": "playful-primary-bright-bumblebee",
+              "name": "Bumblebee",
+              "description": "Yellow and black.",
+              "fonts": {
+                "heading": "Baloo 2",
+                "body": "Nunito",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "none"
+              },
+              "corpus": {
+                "light": "daisyui-bumblebee"
+              }
+            },
+            {
+              "id": "playful-primary-bright-lemonade",
+              "name": "Lemonade",
+              "description": "Lime and lemon.",
+              "fonts": {
+                "heading": "Baloo 2",
+                "body": "Nunito",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "none"
+              },
+              "corpus": {
+                "light": "daisyui-lemonade"
+              }
+            },
+            {
+              "id": "playful-primary-bright-primary-trio",
+              "name": "Primary Trio",
+              "description": "Red, blue, yellow building blocks.",
+              "fonts": {
+                "heading": "Baloo 2",
+                "body": "Nunito",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "none"
+              },
+              "light": {
+                "bg": "#ffffff",
+                "fg": "#111111",
+                "primary": "#d62839",
+                "accent": "#1d4ed8"
+              }
+            }
+          ]
+        },
+        {
+          "id": "playful-doodle",
+          "name": "Hand-drawn",
+          "description": "Sketchy borders, handwritten headings, notebook warmth.",
+          "fonts": {
+            "heading": "Patrick Hand",
+            "body": "Nunito",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "md",
+            "density": "regular",
+            "elevation": "flat",
+            "border": "bold"
+          },
+          "light": {
+            "bg": "#fffdf5",
+            "fg": "#24324f",
+            "primary": "#e2574c",
+            "accent": "#fff1a8"
+          },
+          "variants": [
+            {
+              "id": "playful-doodle-notebook",
+              "name": "Notebook",
+              "description": "Ruled-paper white with blue marker.",
+              "fonts": {
+                "heading": "Patrick Hand",
+                "body": "Nunito",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#fdfdf8",
+                "fg": "#1a2b5c",
+                "primary": "#2851c8",
+                "accent": "#eef2fb"
+              }
+            },
+            {
+              "id": "playful-doodle-crayon",
+              "name": "Crayon",
+              "description": "Bright crayon colours.",
+              "fonts": {
+                "heading": "Patrick Hand",
+                "body": "Nunito",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#ffffff",
+                "fg": "#2b2b2b",
+                "primary": "#d6332c",
+                "accent": "#3caa4a"
+              }
+            },
+            {
+              "id": "playful-doodle-sticky-note",
+              "name": "Sticky Note",
+              "description": "Yellow sticky-note paper with marker-black scribbles.",
+              "fonts": {
+                "heading": "Patrick Hand",
+                "body": "Nunito",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "bold"
+              },
+              "light": {
+                "bg": "#fff6b3",
+                "fg": "#2a2618",
+                "primary": "#2a2618",
+                "accent": "#ff8fab"
+              },
+              "dark": {
+                "bg": "#26382f",
+                "fg": "#f1f3ee",
+                "primary": "#f6e58d",
+                "accent": "#2f443a"
+              },
+              "reaimedFrom": "playful-doodle-chalkboard"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "luxury",
+      "name": "Luxury & Elegant",
+      "description": "Refined serif type, restrained palettes, expensive emptiness.",
+      "fonts": {
+        "heading": "Cormorant Garamond",
+        "body": "Lato",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "none",
+        "density": "airy",
+        "elevation": "flat",
+        "border": "hairline"
+      },
+      "light": {
+        "bg": "#f6f1e7",
+        "fg": "#1b1712",
+        "primary": "#9c7a3c",
+        "accent": "#1b1712"
+      },
+      "dark": {
+        "bg": "#0c0b09",
+        "fg": "#efe6d2",
+        "primary": "#c9a646",
+        "accent": "#efe6d2"
+      },
+      "styles": [
+        {
+          "id": "luxury-quiet-luxury",
+          "name": "Quiet Luxury",
+          "description": "Old money: ivory, champagne, nothing loud.",
+          "fonts": {
+            "heading": "Cormorant Garamond",
+            "body": "Lato",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "airy",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f7f3ec",
+            "fg": "#2e2822",
+            "primary": "#8b7355",
+            "accent": "#ebe3d6"
+          },
+          "variants": [
+            {
+              "id": "luxury-quiet-luxury-champagne",
+              "name": "Champagne",
+              "description": "Ivory with champagne gold.",
+              "fonts": {
+                "heading": "Cormorant Garamond",
+                "body": "Playfair Display",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "archetype-luxury-serif",
+                "dark": "archetype-luxury-serif"
+              }
+            },
+            {
+              "id": "luxury-quiet-luxury-silk",
+              "name": "Silk",
+              "description": "Silk white with deep plum-black.",
+              "fonts": {
+                "heading": "Cormorant Garamond",
+                "body": "Lato",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "daisyui-silk"
+              }
+            },
+            {
+              "id": "luxury-quiet-luxury-cashmere",
+              "name": "Cashmere",
+              "description": "Camel and cream.",
+              "fonts": {
+                "heading": "Cormorant Garamond",
+                "body": "Lato",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f5efe4",
+                "fg": "#3a2a20",
+                "primary": "#8a6a42",
+                "accent": "#ebe2d2"
+              }
+            }
+          ]
+        },
+        {
+          "id": "luxury-black-gold",
+          "name": "Black & Gold",
+          "description": "Dark luxury: black surfaces, gold or white accents.",
+          "fonts": {
+            "heading": "Cormorant Garamond",
+            "body": "Lato",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "airy",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#ffffff",
+            "fg": "#0a0a0a",
+            "primary": "#0a0a0a",
+            "accent": "#c9a646"
+          },
+          "dark": {
+            "bg": "#0a0a0a",
+            "fg": "#f1e8d4",
+            "primary": "#c9a646",
+            "accent": "#c9a646"
+          },
+          "variants": [
+            {
+              "id": "luxury-black-gold-noir-white",
+              "name": "Noir",
+              "description": "Black with pure-white accents.",
+              "fonts": {
+                "heading": "Cormorant Garamond",
+                "body": "Lato",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#ffffff",
+                "fg": "#0a0a0a",
+                "primary": "#0a0a0a",
+                "accent": "#e9e4d8"
+              },
+              "corpus": {
+                "dark": "daisyui-luxury"
+              }
+            },
+            {
+              "id": "luxury-black-gold-gilded",
+              "name": "Gilded",
+              "description": "Black with warm gold.",
+              "fonts": {
+                "heading": "Cormorant Garamond",
+                "body": "Lato",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f8f2e2",
+                "fg": "#14120d",
+                "primary": "#14120d",
+                "accent": "#c9a646"
+              },
+              "dark": {
+                "bg": "#0a0a0a",
+                "fg": "#f3ead6",
+                "primary": "#c9a646",
+                "accent": "#16140f"
+              }
+            },
+            {
+              "id": "luxury-black-gold-emerald-gold",
+              "name": "Emerald & Gold",
+              "description": "Deep emerald with gold.",
+              "fonts": {
+                "heading": "Cormorant Garamond",
+                "body": "Lato",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#eef3ee",
+                "fg": "#0d2a22",
+                "primary": "#0d4a3a",
+                "accent": "#d0ad55"
+              },
+              "dark": {
+                "bg": "#0d2a22",
+                "fg": "#f1ead6",
+                "primary": "#d0ad55",
+                "accent": "#13372d"
+              }
+            }
+          ]
+        },
+        {
+          "id": "luxury-art-deco",
+          "name": "Art Deco",
+          "description": "Geometric 1920s glamour: thin caps, fan motifs, gold lines.",
+          "fonts": {
+            "heading": "Poiret One",
+            "body": "Josefin Sans",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "airy",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#efe7d2",
+            "fg": "#0f2a3d",
+            "primary": "#0f4c5c",
+            "accent": "#bf9b42"
+          },
+          "variants": [
+            {
+              "id": "luxury-art-deco-gatsby",
+              "name": "Gatsby",
+              "description": "Navy and gold.",
+              "fonts": {
+                "heading": "Poiret One",
+                "body": "Josefin Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f3ecd9",
+                "fg": "#14213d",
+                "primary": "#14213d",
+                "accent": "#c6a24a"
+              }
+            },
+            {
+              "id": "luxury-art-deco-jade",
+              "name": "Jade",
+              "description": "Jade green and gold.",
+              "fonts": {
+                "heading": "Poiret One",
+                "body": "Josefin Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f2ecda",
+                "fg": "#123a33",
+                "primary": "#1e6b5c",
+                "accent": "#c6a24a"
+              }
+            },
+            {
+              "id": "luxury-art-deco-deco-rose",
+              "name": "Deco Rose",
+              "description": "Rose-gold fans on blush, thin gilt rules.",
+              "fonts": {
+                "heading": "Poiret One",
+                "body": "Josefin Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f8e9e4",
+                "fg": "#3a1f24",
+                "primary": "#8e3b4a",
+                "accent": "#d6a77a"
+              },
+              "dark": {
+                "bg": "#0b0b0b",
+                "fg": "#efe4c8",
+                "primary": "#e2a7a0",
+                "accent": "#171511"
+              },
+              "reaimedFrom": "luxury-art-deco-deco-night"
+            }
+          ]
+        },
+        {
+          "id": "luxury-boutique",
+          "name": "Boutique",
+          "description": "Fashion boutique: blush, rose, delicate serif and small radii.",
+          "fonts": {
+            "heading": "Playfair Display",
+            "body": "Lato",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "sm",
+            "density": "airy",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#fbe9ec",
+            "fg": "#3f2329",
+            "primary": "#a3324f",
+            "accent": "#f3c7cf"
+          },
+          "variants": [
+            {
+              "id": "luxury-boutique-blush-rose",
+              "name": "Blush Rose",
+              "description": "Blush canvas, dusty rose.",
+              "fonts": {
+                "heading": "Playfair Display",
+                "body": "Lato",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#fbeeee",
+                "fg": "#4a2a30",
+                "primary": "#b0566b",
+                "accent": "#f6dfe2"
+              }
+            },
+            {
+              "id": "luxury-boutique-rose-neon",
+              "name": "Rose Quantum",
+              "description": "Rose canvas with vivid rose and rounded type.",
+              "fonts": {
+                "heading": "Playfair Display",
+                "body": "Quicksand",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-quantum-rose",
+                "dark": "tweakcn-quantum-rose"
+              }
+            },
+            {
+              "id": "luxury-boutique-burgundy-velvet",
+              "name": "Burgundy Velvet",
+              "description": "Wine and cream.",
+              "fonts": {
+                "heading": "Playfair Display",
+                "body": "Lato",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f8efe9",
+                "fg": "#3a141c",
+                "primary": "#6e1a2b",
+                "accent": "#ecd2cb"
+              },
+              "dark": {
+                "bg": "#2a0f16",
+                "fg": "#f3e6d8",
+                "primary": "#d9a7a0",
+                "accent": "#3a1720"
+              }
+            }
+          ]
+        },
+        {
+          "id": "luxury-heritage",
+          "name": "Heritage",
+          "description": "Established-house serif: crests, forest green and burgundy.",
+          "fonts": {
+            "heading": "Libre Caslon Text",
+            "body": "Libre Caslon Text",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "regular",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f3edde",
+            "fg": "#1e2a22",
+            "primary": "#5c1a24",
+            "accent": "#a8823c"
+          },
+          "variants": [
+            {
+              "id": "luxury-heritage-racing-green",
+              "name": "Racing Green",
+              "description": "Cream with racing green.",
+              "fonts": {
+                "heading": "Libre Caslon Text",
+                "body": "Libre Caslon Text",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f4eedd",
+                "fg": "#1c2a22",
+                "primary": "#1f4d36",
+                "accent": "#a8823c"
+              }
+            },
+            {
+              "id": "luxury-heritage-oxblood",
+              "name": "Oxblood",
+              "description": "Cream with oxblood and brass.",
+              "fonts": {
+                "heading": "Libre Baskerville",
+                "body": "Poppins",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-elegant-luxury",
+                "dark": "tweakcn-elegant-luxury"
+              }
+            },
+            {
+              "id": "luxury-heritage-library",
+              "name": "Library",
+              "description": "Dark wood brown with brass.",
+              "fonts": {
+                "heading": "Libre Caslon Text",
+                "body": "Libre Caslon Text",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#e6d8bd",
+                "fg": "#24180f",
+                "primary": "#5a3a22",
+                "accent": "#c49a50"
+              },
+              "dark": {
+                "bg": "#2a1e16",
+                "fg": "#efe2c6",
+                "primary": "#c49a50",
+                "accent": "#36281e"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "retro",
+      "name": "Retro & Vintage",
+      "description": "Nostalgia by decade: paper, 70s warmth, pixels, Y2K chrome.",
+      "fonts": {
+        "heading": "Libre Baskerville",
+        "body": "Lora",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "sm",
+        "density": "regular",
+        "elevation": "subtle",
+        "border": "hairline"
+      },
+      "light": {
+        "bg": "#f3e9d2",
+        "fg": "#3b2a1a",
+        "primary": "#d9531e",
+        "accent": "#2a7f7a"
+      },
+      "styles": [
+        {
+          "id": "retro-vintage-paper",
+          "name": "Vintage Paper",
+          "description": "Aged paper, sepia ink, letterpress feel.",
+          "fonts": {
+            "heading": "Libre Baskerville",
+            "body": "Lora",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "sm",
+            "density": "regular",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f1e6cf",
+            "fg": "#3d2f22",
+            "primary": "#8b4b2b",
+            "accent": "#d8c39a"
+          },
+          "variants": [
+            {
+              "id": "retro-vintage-paper-parchment",
+              "name": "Parchment",
+              "description": "Parchment and sepia.",
+              "fonts": {
+                "heading": "Libre Baskerville",
+                "body": "Lora",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-vintage-paper",
+                "dark": "tweakcn-vintage-paper"
+              }
+            },
+            {
+              "id": "retro-vintage-paper-solar-dusk",
+              "name": "Solar Dusk",
+              "description": "Warm cream with burnt orange and squared type.",
+              "fonts": {
+                "heading": "Oxanium",
+                "body": "Merriweather",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-solar-dusk",
+                "dark": "tweakcn-solar-dusk"
+              }
+            },
+            {
+              "id": "retro-vintage-paper-old-map",
+              "name": "Old Map",
+              "description": "Tea-stained paper with map blue and red.",
+              "fonts": {
+                "heading": "Libre Baskerville",
+                "body": "Lora",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#efe2c2",
+                "fg": "#3a2d1e",
+                "primary": "#2f5a78",
+                "accent": "#a8382a"
+              }
+            }
+          ]
+        },
+        {
+          "id": "retro-seventies",
+          "name": "Seventies",
+          "description": "Groovy warmth: orange, brown, mustard, soft bold display.",
+          "fonts": {
+            "heading": "Shrikhand",
+            "body": "DM Sans",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "lg",
+            "density": "regular",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#fbe9cc",
+            "fg": "#3b2414",
+            "primary": "#d9661f",
+            "accent": "#e6a817"
+          },
+          "variants": [
+            {
+              "id": "retro-seventies-retro-cream",
+              "name": "Retro Cream",
+              "description": "Cream with coral and teal.",
+              "fonts": {
+                "heading": "Shrikhand",
+                "body": "DM Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "daisyui-retro"
+              }
+            },
+            {
+              "id": "retro-seventies-sunset-stripe",
+              "name": "Sunset Stripe",
+              "description": "Peach with sunset orange.",
+              "fonts": {
+                "heading": "Montserrat",
+                "body": "Merriweather",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-sunset-horizon",
+                "dark": "tweakcn-sunset-horizon"
+              }
+            },
+            {
+              "id": "retro-seventies-autumn",
+              "name": "Autumn",
+              "description": "Grey-white with rust red.",
+              "fonts": {
+                "heading": "Shrikhand",
+                "body": "DM Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "daisyui-autumn"
+              }
+            }
+          ]
+        },
+        {
+          "id": "retro-pixel",
+          "name": "Pixel Arcade",
+          "description": "8-bit: pixel fonts, square corners, arcade colours.",
+          "fonts": {
+            "heading": "Press Start 2P",
+            "body": "Space Mono",
+            "mono": "Space Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "regular",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f5f0e1",
+            "fg": "#1d1b2e",
+            "primary": "#e43b44",
+            "accent": "#2ce8f5"
+          },
+          "variants": [
+            {
+              "id": "retro-pixel-arcade",
+              "name": "Arcade",
+              "description": "Cream with arcade pink.",
+              "fonts": {
+                "heading": "Outfit",
+                "body": "Outfit",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xs",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-retro-arcade",
+                "dark": "tweakcn-retro-arcade"
+              }
+            },
+            {
+              "id": "retro-pixel-doom",
+              "name": "Doom",
+              "description": "Grey metal with blood red.",
+              "fonts": {
+                "heading": "Oxanium",
+                "body": "IBM Plex Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-doom-64",
+                "dark": "tweakcn-doom-64"
+              }
+            },
+            {
+              "id": "retro-pixel-gameboy",
+              "name": "Handheld",
+              "description": "Four-shade green handheld LCD.",
+              "fonts": {
+                "heading": "Press Start 2P",
+                "body": "Space Mono",
+                "mono": "Space Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#9bbc0f",
+                "fg": "#0f380f",
+                "primary": "#306230",
+                "accent": "#8bac0f"
+              },
+              "dark": {
+                "bg": "#0f380f",
+                "fg": "#9bbc0f",
+                "primary": "#8bac0f",
+                "accent": "#306230"
+              }
+            }
+          ]
+        },
+        {
+          "id": "retro-y2k",
+          "name": "Y2K",
+          "description": "Millennium chrome: bubbly, glossy, aqua and silver.",
+          "fonts": {
+            "heading": "Syne",
+            "body": "Inter",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "xl",
+            "density": "regular",
+            "elevation": "layered",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#eef4fb",
+            "fg": "#202a4a",
+            "primary": "#3b6cff",
+            "accent": "#ff7ac8"
+          },
+          "variants": [
+            {
+              "id": "retro-y2k-aqua",
+              "name": "Aqua",
+              "description": "Deep blue with aqua.",
+              "fonts": {
+                "heading": "Syne",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xl",
+                "density": "regular",
+                "elevation": "layered",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#e6f9fc",
+                "fg": "#0c2a5c",
+                "primary": "#0a6fb8",
+                "accent": "#7fe3f2"
+              },
+              "corpus": {
+                "dark": "daisyui-aqua"
+              }
+            },
+            {
+              "id": "retro-y2k-bubble",
+              "name": "Bubble",
+              "description": "Silver with bubble pink.",
+              "fonts": {
+                "heading": "Syne",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xl",
+                "density": "regular",
+                "elevation": "layered",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#dff7fb",
+                "fg": "#24305e",
+                "primary": "#d63a8c",
+                "accent": "#3ad1e0"
+              }
+            },
+            {
+              "id": "retro-y2k-chrome",
+              "name": "Chrome",
+              "description": "Silver chrome with electric blue.",
+              "fonts": {
+                "heading": "Syne",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xl",
+                "density": "regular",
+                "elevation": "layered",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#e6e9ee",
+                "fg": "#1a1f2c",
+                "primary": "#1f5fe0",
+                "accent": "#9aa3b2"
+              }
+            }
+          ]
+        },
+        {
+          "id": "retro-mid-century",
+          "name": "Mid-Century",
+          "description": "1950s modern: geometric sans, teal, mustard, atomic shapes.",
+          "fonts": {
+            "heading": "Josefin Sans",
+            "body": "Work Sans",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "md",
+            "density": "regular",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f6ecd6",
+            "fg": "#2a2620",
+            "primary": "#c94f2a",
+            "accent": "#2f8f83"
+          },
+          "variants": [
+            {
+              "id": "retro-mid-century-atomic-teal",
+              "name": "Atomic Teal",
+              "description": "Cream with teal and mustard.",
+              "fonts": {
+                "heading": "Josefin Sans",
+                "body": "Work Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f4ead2",
+                "fg": "#2c2a24",
+                "primary": "#1a7373",
+                "accent": "#e0a526"
+              }
+            },
+            {
+              "id": "retro-mid-century-tomato",
+              "name": "Tomato",
+              "description": "Cream with tomato red.",
+              "fonts": {
+                "heading": "Josefin Sans",
+                "body": "Work Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f4ead2",
+                "fg": "#2c2a24",
+                "primary": "#c23b22",
+                "accent": "#6f7a2f"
+              }
+            },
+            {
+              "id": "retro-mid-century-lounge",
+              "name": "Lounge",
+              "description": "Dark walnut with mustard.",
+              "fonts": {
+                "heading": "Josefin Sans",
+                "body": "Work Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "regular",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#efe2c8",
+                "fg": "#2d2018",
+                "primary": "#6b3f22",
+                "accent": "#e0a526"
+              },
+              "dark": {
+                "bg": "#2d2018",
+                "fg": "#f1e3c4",
+                "primary": "#e0a526",
+                "accent": "#2a9d8f"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "technical",
+      "name": "Technical & Developer",
+      "description": "Built by and for engineers: mono type, dark themes, data density.",
+      "fonts": {
+        "heading": "JetBrains Mono",
+        "body": "JetBrains Mono",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "none",
+        "density": "compact",
+        "elevation": "flat",
+        "border": "hairline"
+      },
+      "light": {
+        "bg": "#f5f7f5",
+        "fg": "#0d1a12",
+        "primary": "#0a7d3b",
+        "accent": "#0a7d3b"
+      },
+      "dark": {
+        "bg": "#0a0f0b",
+        "fg": "#c8f5d2",
+        "primary": "#33ff66",
+        "accent": "#33ff66"
+      },
+      "styles": [
+        {
+          "id": "technical-terminal",
+          "name": "Terminal",
+          "description": "Everything mono: the machine's own notebook.",
+          "fonts": {
+            "heading": "JetBrains Mono",
+            "body": "JetBrains Mono",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "compact",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f4f6f2",
+            "fg": "#162016",
+            "primary": "#1d7a2f",
+            "accent": "#1d7a2f"
+          },
+          "dark": {
+            "bg": "#0b0e0b",
+            "fg": "#b8f5c1",
+            "primary": "#3cff6e",
+            "accent": "#3cff6e"
+          },
+          "variants": [
+            {
+              "id": "technical-terminal-phosphor-green",
+              "name": "Phosphor Green",
+              "description": "Terminal green on near-black.",
+              "fonts": {
+                "heading": "JetBrains Mono",
+                "body": "JetBrains Mono",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "compact",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "archetype-terminal-mono",
+                "dark": "archetype-terminal-mono"
+              }
+            },
+            {
+              "id": "technical-terminal-mono-paper",
+              "name": "Mono Paper",
+              "description": "Grey mono on white paper.",
+              "fonts": {
+                "heading": "Geist Mono",
+                "body": "Geist Mono",
+                "mono": "Geist Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "compact",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-mono",
+                "dark": "tweakcn-mono"
+              }
+            },
+            {
+              "id": "technical-terminal-amber-crt",
+              "name": "Amber CRT",
+              "description": "Amber phosphor on black.",
+              "fonts": {
+                "heading": "JetBrains Mono",
+                "body": "JetBrains Mono",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "compact",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#fbf3e0",
+                "fg": "#2b1d00",
+                "primary": "#9a5b00",
+                "accent": "#ffd27a"
+              },
+              "dark": {
+                "bg": "#0c0700",
+                "fg": "#ffb000",
+                "primary": "#ffb000",
+                "accent": "#1a1000"
+              }
+            }
+          ]
+        },
+        {
+          "id": "technical-blueprint",
+          "name": "Blueprint",
+          "description": "Engineering drawing: grid lines, blue, technical mono.",
+          "fonts": {
+            "heading": "IBM Plex Mono",
+            "body": "IBM Plex Mono",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "compact",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#eef4fb",
+            "fg": "#0f2c55",
+            "primary": "#1c4f9c",
+            "accent": "#d7e5f7"
+          },
+          "dark": {
+            "bg": "#0f2c55",
+            "fg": "#e6f0ff",
+            "primary": "#9cc8ff",
+            "accent": "#9cc8ff"
+          },
+          "variants": [
+            {
+              "id": "technical-blueprint-drafting",
+              "name": "Drafting",
+              "description": "Pale grid with blueprint blue.",
+              "fonts": {
+                "heading": "IBM Plex Mono",
+                "body": "IBM Plex Mono",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "compact",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "archetype-blueprint-constructivist",
+                "dark": "archetype-blueprint-constructivist"
+              }
+            },
+            {
+              "id": "technical-blueprint-cyanotype",
+              "name": "Cyanotype",
+              "description": "Deep cyan sheet, white lines.",
+              "fonts": {
+                "heading": "IBM Plex Mono",
+                "body": "IBM Plex Mono",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "compact",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#e7eef8",
+                "fg": "#0d2f63",
+                "primary": "#123f7a",
+                "accent": "#9cc8ff"
+              },
+              "dark": {
+                "bg": "#123f7a",
+                "fg": "#eaf2ff",
+                "primary": "#ffffff",
+                "accent": "#1a4c8c"
+              }
+            },
+            {
+              "id": "technical-blueprint-pencil",
+              "name": "Pencil",
+              "description": "Graph paper with graphite and red-pencil marks.",
+              "fonts": {
+                "heading": "IBM Plex Mono",
+                "body": "IBM Plex Mono",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "compact",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f7f8f3",
+                "fg": "#3a3d40",
+                "primary": "#c0362a",
+                "accent": "#ecefe6"
+              }
+            }
+          ]
+        },
+        {
+          "id": "technical-dev-tool",
+          "name": "Dev Tool",
+          "description": "Developer-tool product: techno display, small radius, teal glow.",
+          "fonts": {
+            "heading": "Oxanium",
+            "body": "IBM Plex Sans",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "xs",
+            "density": "compact",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f4f7f8",
+            "fg": "#121a1e",
+            "primary": "#0d9488",
+            "accent": "#ccfbf1"
+          },
+          "variants": [
+            {
+              "id": "technical-dev-tool-teal-glow",
+              "name": "Teal Glow",
+              "description": "Light grey with techno teal.",
+              "fonts": {
+                "heading": "Oxanium",
+                "body": "IBM Plex Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xs",
+                "density": "compact",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "archetype-dark-techy",
+                "dark": "archetype-dark-techy"
+              }
+            },
+            {
+              "id": "technical-dev-tool-perpetuity",
+              "name": "Perpetuity",
+              "description": "Cyan-tinted mono, small radius.",
+              "fonts": {
+                "heading": "Source Code Pro",
+                "body": "Source Code Pro",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xs",
+                "density": "compact",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-perpetuity",
+                "dark": "tweakcn-perpetuity"
+              }
+            },
+            {
+              "id": "technical-dev-tool-lime",
+              "name": "Lime",
+              "description": "Slate tool chrome with a sharp lime accent.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "compact",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f6f8f4",
+                "fg": "#1b2116",
+                "primary": "#4d7c0f",
+                "accent": "#ecfccb"
+              },
+              "corpus": {
+                "dark": "daisyui-dim"
+              },
+              "reaimedFrom": "technical-dev-tool-dim-lime"
+            }
+          ]
+        },
+        {
+          "id": "technical-editor-themes",
+          "name": "Editor Themes",
+          "description": "The palettes from code editors developers already love.",
+          "fonts": {
+            "heading": "Inter",
+            "body": "Inter",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "sm",
+            "density": "regular",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f6f5fb",
+            "fg": "#2b2a3a",
+            "primary": "#7c4dcc",
+            "accent": "#f3d6ff"
+          },
+          "variants": [
+            {
+              "id": "technical-editor-themes-dracula",
+              "name": "Dracula",
+              "description": "Dracula purple-grey with pink.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f8f8f2",
+                "fg": "#282a36",
+                "primary": "#a0307a",
+                "accent": "#7c3aed"
+              },
+              "corpus": {
+                "dark": "daisyui-dracula"
+              }
+            },
+            {
+              "id": "technical-editor-themes-catppuccin",
+              "name": "Catppuccin",
+              "description": "Catppuccin latte/mocha pastels.",
+              "fonts": {
+                "heading": "Montserrat",
+                "body": "Montserrat",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-catppuccin",
+                "dark": "tweakcn-catppuccin"
+              }
+            },
+            {
+              "id": "technical-editor-themes-night-owl",
+              "name": "Night",
+              "description": "Deep navy with sky blue.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#fbfbfb",
+                "fg": "#403f53",
+                "primary": "#2a6fc4",
+                "accent": "#c5e4fd"
+              },
+              "corpus": {
+                "dark": "daisyui-night"
+              }
+            },
+            {
+              "id": "technical-editor-themes-coffee",
+              "name": "Coffee",
+              "description": "Espresso dark with latte gold.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "sm",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f3ece4",
+                "fg": "#3b2a20",
+                "primary": "#8a5a2b",
+                "accent": "#e8d5b5"
+              },
+              "corpus": {
+                "dark": "daisyui-coffee"
+              }
+            }
+          ]
+        },
+        {
+          "id": "technical-data-dense",
+          "name": "Data Dense",
+          "description": "Dashboards and ops consoles: condensed sans, tabular numbers, tight grid.",
+          "fonts": {
+            "heading": "IBM Plex Sans Condensed",
+            "body": "IBM Plex Sans Condensed",
+            "mono": "IBM Plex Mono"
+          },
+          "shape": {
+            "radius": "xs",
+            "density": "compact",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f4f5f7",
+            "fg": "#1a1f26",
+            "primary": "#b45309",
+            "accent": "#e3e8ef"
+          },
+          "variants": [
+            {
+              "id": "technical-data-dense-trading",
+              "name": "Trading",
+              "description": "Market-terminal density: green up, red down, black ink.",
+              "fonts": {
+                "heading": "IBM Plex Sans Condensed",
+                "body": "IBM Plex Sans Condensed",
+                "mono": "IBM Plex Mono"
+              },
+              "shape": {
+                "radius": "xs",
+                "density": "compact",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f5f6f4",
+                "fg": "#111511",
+                "primary": "#047857",
+                "accent": "#fecaca"
+              },
+              "dark": {
+                "bg": "#0b0f0c",
+                "fg": "#d6e5da",
+                "primary": "#22c55e",
+                "accent": "#3f1d1d"
+              },
+              "reaimedFrom": "technical-data-dense-ops-dark"
+            },
+            {
+              "id": "technical-data-dense-ops-light",
+              "name": "Ops Light",
+              "description": "White console, blue selection.",
+              "fonts": {
+                "heading": "IBM Plex Sans Condensed",
+                "body": "IBM Plex Sans Condensed",
+                "mono": "IBM Plex Mono"
+              },
+              "shape": {
+                "radius": "xs",
+                "density": "compact",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#ffffff",
+                "fg": "#1f2328",
+                "primary": "#0969da",
+                "accent": "#f3f4f6"
+              },
+              "dark": {
+                "bg": "#17191c",
+                "fg": "#d9dde3",
+                "primary": "#3b82f6",
+                "accent": "#212429"
+              }
+            },
+            {
+              "id": "technical-data-dense-control-room",
+              "name": "Control Room",
+              "description": "Deep blue control room with amber alerts.",
+              "fonts": {
+                "heading": "IBM Plex Sans Condensed",
+                "body": "IBM Plex Sans Condensed",
+                "mono": "IBM Plex Mono"
+              },
+              "shape": {
+                "radius": "xs",
+                "density": "compact",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#eef2fb",
+                "fg": "#0a1630",
+                "primary": "#b45309",
+                "accent": "#fde7c2"
+              },
+              "dark": {
+                "bg": "#0a1630",
+                "fg": "#d6e2ff",
+                "primary": "#ffb020",
+                "accent": "#11204a"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organic",
+      "name": "Organic & Natural",
+      "description": "Earthy warmth: natural palettes, soft serifs, hand-made texture.",
+      "fonts": {
+        "heading": "Fraunces",
+        "body": "Work Sans",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "md",
+        "density": "airy",
+        "elevation": "subtle",
+        "border": "hairline"
+      },
+      "light": {
+        "bg": "#f2eee3",
+        "fg": "#2e2a22",
+        "primary": "#5f7a3a",
+        "accent": "#b5652e"
+      },
+      "styles": [
+        {
+          "id": "organic-earthy",
+          "name": "Earthy Warm",
+          "description": "Ceramic and linen: cream, clay, coffee.",
+          "fonts": {
+            "heading": "Fraunces",
+            "body": "Work Sans",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "md",
+            "density": "airy",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f4ede2",
+            "fg": "#3b2c22",
+            "primary": "#a4552f",
+            "accent": "#e3d3bf"
+          },
+          "variants": [
+            {
+              "id": "organic-earthy-ceramic",
+              "name": "Ceramic",
+              "description": "Cream with terracotta.",
+              "fonts": {
+                "heading": "Fraunces",
+                "body": "Work Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "archetype-warm-minimal",
+                "dark": "archetype-warm-minimal"
+              }
+            },
+            {
+              "id": "organic-earthy-mocha",
+              "name": "Mocha",
+              "description": "Oat with mocha brown.",
+              "fonts": {
+                "heading": "DM Sans",
+                "body": "DM Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-mocha-mousse",
+                "dark": "tweakcn-mocha-mousse"
+              }
+            },
+            {
+              "id": "organic-earthy-caffeine",
+              "name": "Caffeine",
+              "description": "White with coffee brown.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-caffeine",
+                "dark": "tweakcn-caffeine"
+              }
+            }
+          ]
+        },
+        {
+          "id": "organic-botanical",
+          "name": "Botanical",
+          "description": "Leaf greens and forest floors.",
+          "fonts": {
+            "heading": "Merriweather",
+            "body": "Montserrat",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "md",
+            "density": "airy",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f2f5ec",
+            "fg": "#1f2e1f",
+            "primary": "#3f7d3a",
+            "accent": "#dbe8cf"
+          },
+          "variants": [
+            {
+              "id": "organic-botanical-nature",
+              "name": "Nature",
+              "description": "Cream with leaf green.",
+              "fonts": {
+                "heading": "Merriweather",
+                "body": "Montserrat",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-nature",
+                "dark": "tweakcn-nature"
+              }
+            },
+            {
+              "id": "organic-botanical-kodama",
+              "name": "Kodama Grove",
+              "description": "Moss paper with olive.",
+              "fonts": {
+                "heading": "Merriweather",
+                "body": "Merriweather",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-kodama-grove",
+                "dark": "tweakcn-kodama-grove"
+              }
+            },
+            {
+              "id": "organic-botanical-forest",
+              "name": "Forest",
+              "description": "Dark forest floor with bright green.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "pill",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#eef4ec",
+                "fg": "#13261a",
+                "primary": "#1b6b3a",
+                "accent": "#c8e6c9"
+              },
+              "corpus": {
+                "dark": "daisyui-forest"
+              }
+            },
+            {
+              "id": "organic-botanical-garden",
+              "name": "Garden",
+              "description": "Grey-white with flower pink.",
+              "fonts": {
+                "heading": "Inter",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "daisyui-garden"
+              }
+            }
+          ]
+        },
+        {
+          "id": "organic-coastal",
+          "name": "Coastal",
+          "description": "Sand, sea and sky; breezy and light.",
+          "fonts": {
+            "heading": "Lora",
+            "body": "Nunito Sans",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "md",
+            "density": "airy",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f7f5ef",
+            "fg": "#22394a",
+            "primary": "#2f7fa3",
+            "accent": "#f0e2c7"
+          },
+          "variants": [
+            {
+              "id": "organic-coastal-sand",
+              "name": "Sand",
+              "description": "Sand with driftwood.",
+              "fonts": {
+                "heading": "Lora",
+                "body": "Nunito Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f3ece0",
+                "fg": "#4a4540",
+                "primary": "#6e655c",
+                "accent": "#e8dfcf"
+              }
+            },
+            {
+              "id": "organic-coastal-sea-glass",
+              "name": "Sea Glass",
+              "description": "White with sea-glass green.",
+              "fonts": {
+                "heading": "Lora",
+                "body": "Nunito Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#ffffff",
+                "fg": "#22403b",
+                "primary": "#2f7f6f",
+                "accent": "#cfe9e2"
+              }
+            },
+            {
+              "id": "organic-coastal-tidepool",
+              "name": "Tidepool",
+              "description": "Foam white with deep-sea blue and a coral fleck.",
+              "fonts": {
+                "heading": "Lora",
+                "body": "Nunito Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f2f7f8",
+                "fg": "#0e2233",
+                "primary": "#0b4f71",
+                "accent": "#ffb4a2"
+              },
+              "dark": {
+                "bg": "#0e2233",
+                "fg": "#e6f1f5",
+                "primary": "#7fd1c8",
+                "accent": "#163047"
+              },
+              "reaimedFrom": "organic-coastal-night-tide"
+            }
+          ]
+        },
+        {
+          "id": "organic-wellness",
+          "name": "Wellness",
+          "description": "Spa calm: sage, lavender, clay, extra round and slow.",
+          "fonts": {
+            "heading": "Lora",
+            "body": "Nunito",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "xl",
+            "density": "airy",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f5f2ec",
+            "fg": "#3a3a34",
+            "primary": "#8a9a7b",
+            "accent": "#efe0d4"
+          },
+          "variants": [
+            {
+              "id": "organic-wellness-sage",
+              "name": "Sage",
+              "description": "Sage and cream.",
+              "fonts": {
+                "heading": "Lora",
+                "body": "Nunito",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xl",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#eef0e4",
+                "fg": "#2f3a2c",
+                "primary": "#5a6e4e",
+                "accent": "#f8f6ec"
+              }
+            },
+            {
+              "id": "organic-wellness-lavender-field",
+              "name": "Lavender Field",
+              "description": "Lavender and cream.",
+              "fonts": {
+                "heading": "Lora",
+                "body": "Nunito",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xl",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f1edf6",
+                "fg": "#3a3248",
+                "primary": "#6f5ca3",
+                "accent": "#fbf8f2"
+              }
+            },
+            {
+              "id": "organic-wellness-clay-pink",
+              "name": "Clay Pink",
+              "description": "Clay pink and sand.",
+              "fonts": {
+                "heading": "Lora",
+                "body": "Nunito",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xl",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f3e1d8",
+                "fg": "#4a2f28",
+                "primary": "#a65a46",
+                "accent": "#f8eee4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "organic-handcrafted",
+          "name": "Handcrafted",
+          "description": "Maker texture: paper grain, stamped display type.",
+          "fonts": {
+            "heading": "Gloock",
+            "body": "Work Sans",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "xs",
+            "density": "airy",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#efe5d3",
+            "fg": "#2b211a",
+            "primary": "#7a3e1d",
+            "accent": "#d8c3a0"
+          },
+          "variants": [
+            {
+              "id": "organic-handcrafted-kraft",
+              "name": "Kraft",
+              "description": "Kraft paper and black ink.",
+              "fonts": {
+                "heading": "Gloock",
+                "body": "Work Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xs",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#c9a97c",
+                "fg": "#2a1f14",
+                "primary": "#2a1f14",
+                "accent": "#d6ba92"
+              }
+            },
+            {
+              "id": "organic-handcrafted-indigo-dye",
+              "name": "Indigo Dye",
+              "description": "Natural cotton and indigo.",
+              "fonts": {
+                "heading": "Gloock",
+                "body": "Work Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xs",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f6f3ec",
+                "fg": "#1b2440",
+                "primary": "#2b3f7a",
+                "accent": "#e6e8ef"
+              }
+            },
+            {
+              "id": "organic-handcrafted-kiln",
+              "name": "Kiln",
+              "description": "Dark kiln brown with ember orange.",
+              "fonts": {
+                "heading": "Gloock",
+                "body": "Work Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "xs",
+                "density": "airy",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f4e4d4",
+                "fg": "#3a2116",
+                "primary": "#b4471c",
+                "accent": "#f0c7a8"
+              },
+              "dark": {
+                "bg": "#2b1a12",
+                "fg": "#f2e2cf",
+                "primary": "#e8692b",
+                "accent": "#3a241a"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "futuristic",
+      "name": "Futuristic & Neon",
+      "description": "Glass, glow and neon — the screen as a light source.",
+      "fonts": {
+        "heading": "Sora",
+        "body": "Sora",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "lg",
+        "density": "regular",
+        "elevation": "layered",
+        "border": "hairline"
+      },
+      "light": {
+        "bg": "#eef0ff",
+        "fg": "#0b0b2a",
+        "primary": "#5b3df5",
+        "accent": "#00c2d8"
+      },
+      "dark": {
+        "bg": "#07071a",
+        "fg": "#e8e8ff",
+        "primary": "#8b7bff",
+        "accent": "#2ee6f0"
+      },
+      "styles": [
+        {
+          "id": "futuristic-glass",
+          "name": "Glassmorphism",
+          "description": "Frosted translucent panels over soft colour.",
+          "fonts": {
+            "heading": "Sora",
+            "body": "Sora",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "lg",
+            "density": "regular",
+            "elevation": "layered",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#f0f4ff",
+            "fg": "#14193a",
+            "primary": "#4f6bff",
+            "accent": "#b8f0ff"
+          },
+          "dark": {
+            "bg": "#0b0f24",
+            "fg": "#e9ecff",
+            "primary": "#7c93ff",
+            "accent": "#6ee7f9"
+          },
+          "variants": [
+            {
+              "id": "futuristic-glass-frost",
+              "name": "Frost",
+              "description": "Light frost panels, sky blue.",
+              "fonts": {
+                "heading": "Sora",
+                "body": "Sora",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "layered",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "archetype-glassmorphism-lite",
+                "dark": "archetype-glassmorphism-lite"
+              }
+            },
+            {
+              "id": "futuristic-glass-aurora-glass",
+              "name": "Aurora Glass",
+              "description": "Glass over aurora gradients.",
+              "fonts": {
+                "heading": "Sora",
+                "body": "Sora",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "layered",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f3f0ff",
+                "fg": "#1d1840",
+                "primary": "#7c3aed",
+                "accent": "#c7f9ff"
+              },
+              "dark": {
+                "bg": "#0b0f24",
+                "fg": "#e9ecff",
+                "primary": "#a78bfa",
+                "accent": "#6ee7f9"
+              }
+            },
+            {
+              "id": "futuristic-glass-smoke",
+              "name": "Smoke",
+              "description": "Dark smoked glass.",
+              "fonts": {
+                "heading": "Sora",
+                "body": "Sora",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "layered",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#eceef1",
+                "fg": "#16181d",
+                "primary": "#3f4654",
+                "accent": "#d5d9e0"
+              },
+              "dark": {
+                "bg": "#0e0f12",
+                "fg": "#ffffff",
+                "primary": "#ffffff",
+                "accent": "#1b1d22"
+              }
+            }
+          ]
+        },
+        {
+          "id": "futuristic-synthwave",
+          "name": "Synthwave",
+          "description": "80s retro-future: magenta and cyan over purple night.",
+          "fonts": {
+            "heading": "Orbitron",
+            "body": "Sora",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "lg",
+            "density": "regular",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#fdf0ff",
+            "fg": "#2a0f45",
+            "primary": "#e030b0",
+            "accent": "#00b8d4"
+          },
+          "dark": {
+            "bg": "#1a0b2e",
+            "fg": "#f5e6ff",
+            "primary": "#ff4fd8",
+            "accent": "#2de2e6"
+          },
+          "variants": [
+            {
+              "id": "futuristic-synthwave-outrun",
+              "name": "Outrun",
+              "description": "Purple night, magenta glow.",
+              "fonts": {
+                "heading": "Orbitron",
+                "body": "Sora",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#fdeefe",
+                "fg": "#2b0b4a",
+                "primary": "#c0179b",
+                "accent": "#00a7c2"
+              },
+              "corpus": {
+                "dark": "daisyui-synthwave"
+              }
+            },
+            {
+              "id": "futuristic-synthwave-sunset-grid",
+              "name": "Sunset Grid",
+              "description": "Navy with sunset orange.",
+              "fonts": {
+                "heading": "Orbitron",
+                "body": "Sora",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#fff1e8",
+                "fg": "#1f1b3a",
+                "primary": "#d9480f",
+                "accent": "#7048e8"
+              },
+              "corpus": {
+                "dark": "daisyui-sunset"
+              }
+            },
+            {
+              "id": "futuristic-synthwave-pumpkin",
+              "name": "Neon Pumpkin",
+              "description": "Black with neon orange.",
+              "fonts": {
+                "heading": "Orbitron",
+                "body": "Sora",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f6f0ff",
+                "fg": "#1e1030",
+                "primary": "#7e22ce",
+                "accent": "#f97316"
+              },
+              "corpus": {
+                "dark": "daisyui-halloween"
+              }
+            }
+          ]
+        },
+        {
+          "id": "futuristic-cyberpunk",
+          "name": "Cyberpunk",
+          "description": "Hard-edged high-tech: yellow/pink, angular, glitch.",
+          "fonts": {
+            "heading": "Rajdhani",
+            "body": "Inter",
+            "mono": "Share Tech Mono"
+          },
+          "shape": {
+            "radius": "none",
+            "density": "regular",
+            "elevation": "flat",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#fffbe0",
+            "fg": "#0f0f14",
+            "primary": "#e0007a",
+            "accent": "#00b3c7"
+          },
+          "dark": {
+            "bg": "#0d0d12",
+            "fg": "#f9f871",
+            "primary": "#ff2a6d",
+            "accent": "#05d9e8"
+          },
+          "variants": [
+            {
+              "id": "futuristic-cyberpunk-night-city-yellow",
+              "name": "Night City Yellow",
+              "description": "Yellow canvas, hot pink.",
+              "fonts": {
+                "heading": "Rajdhani",
+                "body": "Inter",
+                "mono": "Share Tech Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "daisyui-cyberpunk"
+              }
+            },
+            {
+              "id": "futuristic-cyberpunk-neon-pink",
+              "name": "Neon Pink",
+              "description": "White with neon pink.",
+              "fonts": {
+                "heading": "Outfit",
+                "body": "Outfit",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "md",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-cyberpunk",
+                "dark": "tweakcn-cyberpunk"
+              }
+            },
+            {
+              "id": "futuristic-cyberpunk-glitch",
+              "name": "Glitch",
+              "description": "Black with cyan and red split.",
+              "fonts": {
+                "heading": "Rajdhani",
+                "body": "Inter",
+                "mono": "Share Tech Mono"
+              },
+              "shape": {
+                "radius": "none",
+                "density": "regular",
+                "elevation": "flat",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f4fbfd",
+                "fg": "#05060a",
+                "primary": "#0089a3",
+                "accent": "#ff2a4f"
+              },
+              "dark": {
+                "bg": "#05060a",
+                "fg": "#e6faff",
+                "primary": "#00f0ff",
+                "accent": "#10131c"
+              }
+            }
+          ]
+        },
+        {
+          "id": "futuristic-aurora",
+          "name": "Aurora",
+          "description": "Northern-lights greens and violets, soft glow.",
+          "fonts": {
+            "heading": "Plus Jakarta Sans",
+            "body": "Plus Jakarta Sans",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "lg",
+            "density": "regular",
+            "elevation": "layered",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#eefaf6",
+            "fg": "#0d2a24",
+            "primary": "#0f9d74",
+            "accent": "#8b5cf6"
+          },
+          "dark": {
+            "bg": "#060b16",
+            "fg": "#e3f2ee",
+            "primary": "#3df5a7",
+            "accent": "#a78bfa"
+          },
+          "variants": [
+            {
+              "id": "futuristic-aurora-northern-lights",
+              "name": "Northern Lights",
+              "description": "Light with aurora green.",
+              "fonts": {
+                "heading": "Plus Jakarta Sans",
+                "body": "Plus Jakarta Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "layered",
+                "border": "hairline"
+              },
+              "corpus": {
+                "light": "tweakcn-northern-lights",
+                "dark": "tweakcn-northern-lights"
+              }
+            },
+            {
+              "id": "futuristic-aurora-polar",
+              "name": "Polar",
+              "description": "Night with green-teal glow.",
+              "fonts": {
+                "heading": "Plus Jakarta Sans",
+                "body": "Plus Jakarta Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "layered",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#ecfbf4",
+                "fg": "#0c2a22",
+                "primary": "#0c8a5c",
+                "accent": "#c4b5fd"
+              },
+              "dark": {
+                "bg": "#060b16",
+                "fg": "#e3f2ee",
+                "primary": "#3df5a7",
+                "accent": "#8b5cf6"
+              }
+            },
+            {
+              "id": "futuristic-aurora-violet-veil",
+              "name": "Violet Veil",
+              "description": "Night with violet glow.",
+              "fonts": {
+                "heading": "Plus Jakarta Sans",
+                "body": "Plus Jakarta Sans",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "regular",
+                "elevation": "layered",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f6f0ff",
+                "fg": "#2a1745",
+                "primary": "#8b2fd6",
+                "accent": "#fbcfe8"
+              },
+              "dark": {
+                "bg": "#0c0818",
+                "fg": "#efe7ff",
+                "primary": "#a855f7",
+                "accent": "#f472b6"
+              }
+            }
+          ]
+        },
+        {
+          "id": "futuristic-deep-space",
+          "name": "Deep Space",
+          "description": "Abyssal dark, single luminous accent, wide spacing.",
+          "fonts": {
+            "heading": "Space Grotesk",
+            "body": "Inter",
+            "mono": "JetBrains Mono"
+          },
+          "shape": {
+            "radius": "lg",
+            "density": "airy",
+            "elevation": "subtle",
+            "border": "hairline"
+          },
+          "light": {
+            "bg": "#eef0f8",
+            "fg": "#0a0d1f",
+            "primary": "#3a2fb8",
+            "accent": "#e7c46a"
+          },
+          "dark": {
+            "bg": "#05060f",
+            "fg": "#eceeff",
+            "primary": "#8f86ff",
+            "accent": "#e7c46a"
+          },
+          "variants": [
+            {
+              "id": "futuristic-deep-space-abyss",
+              "name": "Abyss",
+              "description": "Deep teal-black with lime.",
+              "fonts": {
+                "heading": "Space Grotesk",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#eef6f4",
+                "fg": "#0a2421",
+                "primary": "#2f6b18",
+                "accent": "#c6f36b"
+              },
+              "corpus": {
+                "dark": "daisyui-abyss"
+              }
+            },
+            {
+              "id": "futuristic-deep-space-nebula",
+              "name": "Nebula",
+              "description": "Black with nebula purple.",
+              "fonts": {
+                "heading": "Space Grotesk",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f5f0ff",
+                "fg": "#160c2e",
+                "primary": "#6d28d9",
+                "accent": "#ff9ee6"
+              },
+              "dark": {
+                "bg": "#05030c",
+                "fg": "#ece6ff",
+                "primary": "#9b5cff",
+                "accent": "#ff6bd6"
+              }
+            },
+            {
+              "id": "futuristic-deep-space-starlight",
+              "name": "Starlight",
+              "description": "Navy black with star white.",
+              "fonts": {
+                "heading": "Space Grotesk",
+                "body": "Inter",
+                "mono": "JetBrains Mono"
+              },
+              "shape": {
+                "radius": "lg",
+                "density": "airy",
+                "elevation": "subtle",
+                "border": "hairline"
+              },
+              "light": {
+                "bg": "#f2f4fb",
+                "fg": "#0b1230",
+                "primary": "#1e2a6b",
+                "accent": "#e7c46a"
+              },
+              "dark": {
+                "bg": "#070b1a",
+                "fg": "#f4f6ff",
+                "primary": "#e7c46a",
+                "accent": "#11182e"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

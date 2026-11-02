@@ -42,5 +42,10 @@ declare module 'culori' {
 
   export function parse(value: string): ColorComponents | undefined
 
+  /** Reduce chroma (keeping L and h) until the color fits the sRGB gamut. */
+  export function clampChroma(color: Color, mode?: string): ColorComponents
+
+  export function displayable(color: Color): boolean
+
   export function converter(mode: string): (color: Color) => ColorComponents | undefined
 }
