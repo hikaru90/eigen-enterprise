@@ -26,6 +26,7 @@ export const BRAND_TOOL_NAMES = [
   'brand.visual_set_get',
   'brand.visual_set_list',
   'brand.visual_set_update',
+  'brand.picker_choose',
 ] as const
 
 /**

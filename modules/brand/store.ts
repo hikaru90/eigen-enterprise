@@ -143,12 +143,21 @@ function nonEmptyVars(message: string) {
 export const createVisualSetInputSchema = z.object({
   name: z.string().trim().min(1, 'name is required'),
   sourceItemId: z.string().uuid().optional(),
-  pickedItemIds: z
-    .array(z.string().uuid())
-    .min(1, 'pickedItemIds requires at least one picked corpus item — there is no selection without picks'),
+  pickedItemIds: z.array(z.string().uuid()),
+  /** The brand-picker node (plan/phase-brand-picker.md §3.3) a picker choice came from. */
+  pickerNodeId: z.string().min(1).optional(),
   cssVars: nonEmptyVars('cssVars must not be empty — a visual set without resolved tokens is meaningless (V3)'),
   darkCssVars: z.record(z.string(), z.string()).optional(),
   seeds: brandSeedsSchema.nullable().optional(),
+}).superRefine((input, ctx) => {
+  // A visual set records where it came from: corpus picks (wizard/extract) or a picker node.
+  if (input.pickedItemIds.length === 0 && input.pickerNodeId === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['pickedItemIds'],
+      message: 'pickedItemIds requires at least one picked corpus item — there is no selection without picks (or a pickerNodeId)',
+    })
+  }
 })
 
 export const updateVisualSetInputSchema = z.object({
@@ -168,6 +177,8 @@ export type BrandVisualSet = {
   name: string
   sourceItemId: string | null
   pickedItemIds: string[]
+  /** Brand-picker node id when the set was chosen in the picker; null otherwise. */
+  pickerNodeId: string | null
   seeds: BrandSeeds | null
   cssVars: Record<string, string>
   darkCssVars: Record<string, string> | null
@@ -593,6 +604,7 @@ export class InMemoryBrandStore implements BrandStore {
       name: parsed.name,
       sourceItemId: parsed.sourceItemId ?? null,
       pickedItemIds: [...parsed.pickedItemIds],
+      pickerNodeId: parsed.pickerNodeId ?? null,
       seeds: parsed.seeds ?? null,
       cssVars: { ...parsed.cssVars },
       darkCssVars: parsed.darkCssVars ? { ...parsed.darkCssVars } : null,
@@ -764,6 +776,7 @@ function toVisualSet(row: VisualSetRow): BrandVisualSet {
     name: row.name,
     sourceItemId: row.sourceItemId,
     pickedItemIds: row.pickedItemIds,
+    pickerNodeId: row.pickerNodeId,
     // Re-validate stored seeds — DB integrity is checked, not trusted.
     seeds: row.seeds ? brandSeedsSchema.parse(row.seeds) : null,
     cssVars: row.cssVars,
@@ -1105,6 +1118,7 @@ export class DbBrandStore implements BrandStore {
         name: parsed.name,
         sourceItemId: parsed.sourceItemId ?? null,
         pickedItemIds: [...parsed.pickedItemIds],
+        pickerNodeId: parsed.pickerNodeId ?? null,
         seeds: parsed.seeds ?? null,
         cssVars: parsed.cssVars,
         darkCssVars: parsed.darkCssVars ?? null,

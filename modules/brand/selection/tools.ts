@@ -11,6 +11,7 @@ import {
   MIN_SELECTION_PICKS,
 } from './match'
 import { DEFAULT_SIMILAR_LIMIT, similarItems } from './navigate'
+import { createBrandPickerChooseTool, type BrandPickerToolDeps } from './picker-tool'
 
 /**
  * Kernel tools for the selection wizard surface (phase-2d M4, V7): browse the
@@ -27,6 +28,8 @@ export type BrandSelectionToolDeps = {
   store?: BrandStore
   /** Overrides the static corpus (tests inject toy registries). */
   corpus?: CorpusRegistry
+  /** Overrides the bundled brand-picker index (tests inject the fixture). */
+  pickerIndex?: BrandPickerToolDeps['pickerIndex']
 }
 
 function requireHuman(ctx: ToolContext): void {
@@ -294,5 +297,6 @@ export function createBrandSelectionTools(deps: BrandSelectionToolDeps = {}): To
         })
       },
     },
+    createBrandPickerChooseTool({ store, ...(deps.pickerIndex ? { pickerIndex: deps.pickerIndex } : {}) }),
   ]
 }

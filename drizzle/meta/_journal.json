@@ -729,6 +729,13 @@
       "when": 1788855146006,
       "tag": "0103_durable_background_runs",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1793620000000,
+      "tag": "0104_brand_visual_set_picker_node",
+      "breakpoints": true
     }
   ]
 }

@@ -40,6 +40,9 @@ export default defineConfig({
         OAUTH_ANTHROPIC_API_BASE_URL: `${mockGatewayUrl}/claude`,
         OAUTH_OPENAI_AUTH_BASE_URL: `${mockGatewayUrl}/openai`,
         OAUTH_OPENAI_CODEX_BASE_URL: mockGatewayUrl,
+        // The brand picker serves its small test fixture (2 genres × 2 styles ×
+        // 2 variants), not the renderer-built index (modules/brand/taxonomy/load-index.ts).
+        BRAND_PICKER_INDEX: 'fixture',
         // The orchestrator runs on the durable engine
         // (engine-choice.ts): its SQLite state needs an explicit dir (fails loud otherwise).
         EE_AGENT_STATE_DIR:
