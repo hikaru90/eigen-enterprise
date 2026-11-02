@@ -18,6 +18,12 @@
   import { currentNavId, type ShellData, type ShellNavItem } from '$lib/shell/nav'
 
   /**
+   * Brand-wide (C3): every chrome colour is a semantic token — primary for
+   * the highlight, badge and focus, sidebar/border/foreground for the frame,
+   * overlay for the scrim — so an active visual set re-skins the whole
+   * shell. In the app's own style primary == foreground (#111), so with no
+   * active set the frame looks exactly as before.
+   *
    * The signed-in app frame: a left sidebar on desktop (company, nav, user),
    * a top bar with a drawer on phones. The content area is a fixed-height
    * column so full-height pages (the chat) keep their own scroll container.
@@ -80,13 +86,13 @@
     data-testid="shell-nav-{item.id}"
     class="group flex h-8 min-w-0 items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60
       {current
-      ? 'bg-foreground/[0.06] font-medium text-foreground'
+      ? 'bg-primary/[0.08] font-medium text-foreground'
       : dimmed
-        ? 'text-foreground/40 hover:bg-foreground/[0.04] hover:text-foreground/70'
-        : 'text-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground'}"
+        ? 'text-foreground/40 hover:bg-primary/[0.05] hover:text-foreground/70'
+        : 'text-foreground/70 hover:bg-primary/[0.05] hover:text-foreground'}"
   >
     <Icon
-      class="size-4 shrink-0 {current ? 'text-foreground' : 'opacity-70'}"
+      class="size-4 shrink-0 {current ? 'text-primary' : 'opacity-70'}"
       aria-hidden="true"
       strokeWidth={1.75}
     />
@@ -99,7 +105,8 @@
   <div class="flex h-full min-h-0 flex-col">
     <div class="flex h-14 shrink-0 items-center gap-2.5 px-4">
       <span
-        class="flex size-6 shrink-0 items-center justify-center rounded-md bg-foreground text-[11px] font-semibold text-background"
+        data-testid="shell-company-badge"
+        class="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary text-[11px] font-semibold text-primary-foreground"
         aria-hidden="true">{initial}</span
       >
       <span
@@ -117,7 +124,7 @@
     </nav>
     <div class="flex shrink-0 items-center gap-2.5 border-t border-border px-3 py-3">
       <span
-        class="flex size-7 shrink-0 items-center justify-center rounded-full bg-foreground/[0.08] text-[11px] font-medium"
+        class="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/[0.08] text-[11px] font-medium"
         aria-hidden="true">{userLabel.slice(0, 1).toUpperCase()}</span
       >
       <div class="min-w-0 flex-1">
@@ -147,7 +154,7 @@
   <header class="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4 md:hidden">
     <button
       type="button"
-      class="-ml-1.5 flex size-8 items-center justify-center rounded-md text-foreground/70 outline-none hover:bg-foreground/[0.05] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+      class="-ml-1.5 flex size-8 items-center justify-center rounded-md text-foreground/70 outline-none hover:bg-primary/[0.05] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
       aria-label={drawerOpen ? 'Close menu' : 'Open menu'}
       aria-expanded={drawerOpen}
       aria-controls="shell-drawer"
@@ -166,14 +173,14 @@
     <div class="fixed inset-0 z-40 md:hidden">
       <button
         type="button"
-        class="absolute inset-0 bg-black/30"
+        class="absolute inset-0 bg-overlay/30"
         aria-label="Close menu"
         tabindex="-1"
         onclick={closeDrawer}
       ></button>
       <aside
         id="shell-drawer"
-        class="absolute inset-y-0 left-0 w-72 max-w-[85vw] border-r border-border bg-background shadow-xl"
+        class="absolute inset-y-0 left-0 w-72 max-w-[85vw] border-r border-border bg-sidebar shadow-xl"
         data-testid="shell-drawer"
       >
         {@render sidebar()}

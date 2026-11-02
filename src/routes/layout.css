@@ -60,10 +60,21 @@
     --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
     --sidebar-border: oklch(0.92 0.004 286.32);
     --sidebar-ring: oklch(0.705 0.015 286.067);
+    /* Scrim behind dialogs/drawers (C3): an active set tints it via the emitter. */
+    --overlay: #000000;
   }
 
   :root.dark {
     color-scheme: dark;
+  }
+
+  /* C3: headings take the active set's heading face (its display font, via
+     the emitter's --font-heading alias); with no active set the alias is
+     unset and headings keep the body face, exactly as before. */
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-heading, var(--font-sans));
   }
 
   body {
@@ -224,13 +235,25 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --color-overlay: var(--overlay);
+  /* C3 (B4 gap): a set's own radius scale (--radius-sm..4xl) wins; without it
+     the steps derive from --radius. Inline on purpose: the var() resolves on
+     the element, so a scoped re-declaration (brand/system) re-derives too. */
+  --radius-sm: var(--radius-sm, calc(var(--radius) * 0.6));
+  --radius-md: var(--radius-md, calc(var(--radius) * 0.8));
+  --radius-lg: var(--radius-lg, var(--radius));
+  --radius-xl: var(--radius-xl, calc(var(--radius) * 1.4));
+  --radius-2xl: var(--radius-2xl, calc(var(--radius) * 1.8));
+  --radius-3xl: var(--radius-3xl, calc(var(--radius) * 2.2));
+  --radius-4xl: var(--radius-4xl, calc(var(--radius) * 2.6));
+  /* C3 (B4 gap): shadcn shadow-* read the set's elevation tokens
+     (--shadow-1..3); without them, Tailwind's default recipes. */
+  --shadow-xs: var(--shadow-1, 0 1px 2px 0 rgb(0 0 0 / 0.05));
+  --shadow-sm: var(--shadow-1, 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1));
+  --shadow-md: var(--shadow-2, 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1));
+  --shadow-lg: var(--shadow-3, 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1));
+  --shadow-xl: var(--shadow-3, 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1));
+  --shadow-2xl: var(--shadow-3, 0 25px 50px -12px rgb(0 0 0 / 0.25));
 }
 
 @layer utilities {

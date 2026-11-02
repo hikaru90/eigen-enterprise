@@ -1,5 +1,8 @@
 import type { ModuleManifest } from '$lib/kernel/modules'
 
+/** Brand is a system module (C3): the company's look, always on — see modules/index.ts SYSTEM_MODULE_IDS. */
+export const BRAND_MODULE_ID = 'brand'
+
 /** Tool names owned by the brand module (single source of truth for the manifest). */
 export const BRAND_TOOL_NAMES = [
   'brand.set_create',
@@ -39,7 +42,7 @@ export const BRAND_TOOL_NAMES = [
  * approval-gated go-live that applies the visual set globally.
  */
 export const brandManifest: ModuleManifest = {
-  id: 'brand',
+  id: BRAND_MODULE_ID,
   name: 'Brand',
   version: '0.5.0',
   description:

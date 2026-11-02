@@ -25,7 +25,6 @@
     SHADOW_SAMPLES,
     SYSTEM_SCOPE_ATTR,
     TYPE_SCALE,
-    googleFontLinks,
     systemScopeCss,
   } from '../../../../../modules/brand/system/component-set'
 
@@ -35,7 +34,6 @@
   let mode = $state<'light' | 'dark'>('light')
 
   const style = $derived(data.style)
-  const fontLinks = $derived(style ? googleFontLinks(style.cssVars) : [])
   const scopeCss = $derived(style ? systemScopeCss(style.cssVars, style.darkCssVars) : '')
 
   const fontClass = { display: 'font-display', sans: 'font-sans', mono: 'font-mono' } as const
@@ -58,9 +56,7 @@
 
 <svelte:head>
   <title>{docTitle('Design system', 'Brand')}</title>
-  {#each fontLinks as link (link.family)}
-    <link rel="stylesheet" href={link.href} data-brand-font={link.family} />
-  {/each}
+  <!-- The active set's fonts load app-wide from the root layout (C3). -->
   {#if style}
     <!-- eslint-disable-next-line svelte/no-at-html-tags -- emitter output over the owner-approved active visual set tokens -->
     {@html `<style>\n${scopeCss}</style>`}

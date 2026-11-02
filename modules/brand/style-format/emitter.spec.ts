@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { activeVisualSetCss, activeVisualSetStyleTag, toCssText } from './emitter'
+import {
+  activeVisualSetCss,
+  activeVisualSetStyleTag,
+  brandShellVars,
+  toCssText,
+} from './emitter'
 
 describe('toCssText', () => {
   it('emits a sorted, deterministic css custom-property block', () => {
@@ -64,5 +69,41 @@ describe('activeVisualSetStyleTag (phase-2d M5 head injection)', () => {
     expect(tag.match(/<style>/g)).toHaveLength(1)
     expect(tag).toContain(':root {')
     expect(tag).toContain('.dark {')
+  })
+})
+
+describe('brandShellVars (C3 brand-wide shell aliases)', () => {
+  const set = {
+    '--background': '#faf6ee',
+    '--foreground': '#1c1917',
+    '--primary': '#5b2a6e',
+    '--font-sans': '"Source Serif 4"',
+    '--font-display': '"Playfair Display", serif',
+  }
+
+  it('derives the sidebar, heading font and overlay from the set roles', () => {
+    const vars = brandShellVars(set)
+    expect(vars['--sidebar']).toContain('var(--primary)')
+    expect(vars['--sidebar-primary']).toBe('var(--primary)')
+    expect(vars['--sidebar-foreground']).toBe('var(--foreground)')
+    expect(vars['--font-heading']).toBe('var(--font-display)')
+    expect(vars['--overlay']).toContain('var(--primary)')
+  })
+
+  it('never overrides a key the set declares itself', () => {
+    expect(brandShellVars({ ...set, '--sidebar': '#000' })['--sidebar']).toBe('#000')
+    expect(brandShellVars({ ...set, '--shadow-1': '0 1px 2px red' })['--shadow-1']).toBe(
+      '0 1px 2px red',
+    )
+  })
+
+  it('flattens shadows for a set without elevation tokens', () => {
+    const vars = brandShellVars(set)
+    expect([vars['--shadow-1'], vars['--shadow-2'], vars['--shadow-3']]).toEqual([
+      'none',
+      'none',
+      'none',
+    ])
+    expect(brandShellVars({ ...set, '--shadow-1': 'x' })['--shadow-2']).toBeUndefined()
   })
 })

@@ -279,7 +279,8 @@ function scopeSelector(mode: 'light' | 'dark'): string {
   return `[${SYSTEM_SCOPE_ATTR}][${SYSTEM_SCOPE_ATTR}='${mode}']`
 }
 
-function withFallbacks(vars: Record<string, string>): Record<string, string> {
+/** Every font role of a token record with its generic fallback stack appended. */
+export function withFontFallbacks(vars: Record<string, string>): Record<string, string> {
   const out = { ...vars }
   for (const role of FONT_ROLES) {
     if (out[role]) out[role] = withFontFallback(role, out[role])
@@ -297,8 +298,8 @@ export function systemScopeCss(
   cssVars: Record<string, string>,
   darkCssVars: Record<string, string> | null,
 ): string {
-  const light = withFallbacks(cssVars)
-  const dark = withFallbacks({ ...cssVars, ...(darkCssVars ?? {}) })
+  const light = withFontFallbacks(cssVars)
+  const dark = withFontFallbacks({ ...cssVars, ...(darkCssVars ?? {}) })
   return (
     toCssText({ ...light, 'color-scheme': 'light' }, scopeSelector('light')) +
     toCssText({ ...dark, 'color-scheme': 'dark' }, scopeSelector('dark'))

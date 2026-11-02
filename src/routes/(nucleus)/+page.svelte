@@ -343,7 +343,7 @@
             {#if entry.role === 'user'}
               <div class="flex w-full flex-row justify-end py-1.5">
                 <div
-                  class="max-w-[85%] min-w-0 rounded-sm bg-foreground px-3.5 py-2 wrap-break-word text-background"
+                  class="max-w-[85%] min-w-0 rounded-sm bg-primary px-3.5 py-2 wrap-break-word text-primary-foreground"
                 >
                   <ChatMarkdown content={entry.content} tone="user" />
                 </div>
@@ -401,7 +401,7 @@
     <footer class="shrink-0 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
       <div
         data-testid="nucleus-chatbox"
-        class="flex items-stretch gap-2 rounded-sm border-2 border-black bg-white p-2"
+        class="flex items-stretch gap-2 rounded-sm border-2 border-primary bg-card p-2"
       >
         <div title={micSupported ? undefined : 'Voice input is not available in this browser'}>
           <VoiceInputButton
@@ -428,7 +428,7 @@
           onclick={busy ? stop : send}
           disabled={!busy && !input.trim()}
           aria-label={busy ? 'Stop' : 'Send'}
-          class="bg-black text-white rounded-none px-4 hover:bg-black/90"
+          class="bg-primary text-primary-foreground rounded-none px-4 hover:bg-primary/90"
         >
           {#if busy}
             <Square class="size-4 shrink-0" strokeWidth={1.75} />
