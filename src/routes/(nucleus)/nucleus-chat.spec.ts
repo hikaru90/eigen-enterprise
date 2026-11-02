@@ -141,7 +141,6 @@ describe('nucleus-chat harness turns', () => {
 
   it('words every gated tool in plain language; an unknown tool still names itself', () => {
     expect(approvalActionLabel('email.send_mail')).toBe('Send an email')
-    expect(approvalActionLabel('owlery.send_mail')).toBe('Send an email from the company address')
     expect(approvalActionLabel('repo.merge')).toBe('Merge agent work into the company repository')
     expect(approvalActionLabel('kernel.module_deactivate')).toBe('Switch off a module')
     expect(approvalActionLabel('custom.thing')).toBe('Run custom.thing')

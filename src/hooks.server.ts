@@ -22,8 +22,14 @@ import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { startJobQueueTicker } from '$lib/server/job-queue/ticker'
 import { startNotificationDispatchTicker } from '$lib/server/memory/notification-dispatch-ticker'
 import { logOpsStartupDiagnostics } from '$lib/server/ops/startup-diagnostics'
+import { configuredMailTransport } from '../modules/email/owlery/service'
 
 if (!building) {
+  // Fail loud at boot on a bad MAIL_TRANSPORT (unknown value, or `fake` in
+  // production without MAIL_TRANSPORT_FAKE_IN_PRODUCTION=1).
+  if (configuredMailTransport() === 'fake') {
+    console.warn('[mail] MAIL_TRANSPORT=fake: no email leaves this server; mails are captured in mail_fake_sent')
+  }
   logOpsStartupDiagnostics()
   startJobQueueTicker()
   startNotificationDispatchTicker()

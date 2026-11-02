@@ -39,7 +39,7 @@ export type CompanyMail = {
 export class MailNotConfiguredError extends Error {
   constructor() {
     super(
-      'Email delivery is not configured yet. The owner sets it up in the onboarding (or Settings → Email).',
+      'Email delivery is not configured yet. The owner sets it up in the email step of the onboarding.',
     )
     this.name = 'MailNotConfiguredError'
   }

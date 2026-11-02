@@ -10,7 +10,7 @@
 export class EmailDeliveryNotConfiguredError extends Error {
   constructor() {
     super(
-      "This company hasn't set up email yet, so sign-in codes can't be sent. The owner sets up email in the onboarding (or Settings → Email).",
+      "This company hasn't set up email yet, so sign-in codes can't be sent. The owner sets up email in the onboarding's email step.",
     )
   }
 }

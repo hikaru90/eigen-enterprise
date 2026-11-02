@@ -8,8 +8,10 @@ import {
   type SaveMailSettingsInput,
   type SendMailInput,
 } from '$lib/server/mail/company-mail'
+import { defaultFakeMailStore, fakeStoreSes } from './fake-store'
 import { awsErrorCode, awsSes, describeSesError, type SesApi, type SesCredentials, type SesFactory } from './ses'
 import { defaultOwleryStore, owlerySealKey, sealSecret, unsealSecret, type OwleryStore } from './store'
+import { resolveMailTransport, type MailTransport } from './transport'
 
 export type OwlerySettings = SesCredentials & { emailFrom: string }
 
@@ -84,6 +86,12 @@ export class OwleryService implements CompanyMail {
       : null
     this.cache = { at: now, value }
     return value
+  }
+
+  /** Deletes the stored settings (the e2e harness reset under MAIL_TRANSPORT=fake). */
+  async forgetSettings(): Promise<void> {
+    await this.deps.store.clear()
+    this.cache = null
   }
 
   async isConfigured(): Promise<boolean> {
@@ -161,15 +169,27 @@ export class OwleryService implements CompanyMail {
 
 const host = globalThis as { __eeOwleryService?: OwleryService }
 
-/** The process-wide Owlery service (settings cached, invalidated on save). */
+/** The mail transport this process runs with (MAIL_TRANSPORT, see transport.ts). Throws on bad config. */
+export function configuredMailTransport(): MailTransport {
+  return resolveMailTransport(env)
+}
+
+/**
+ * The process-wide Owlery service (settings cached, invalidated on save).
+ * MAIL_TRANSPORT=fake swaps Amazon SES for the database-backed fake.
+ */
 export function owleryService(): OwleryService {
-  host.__eeOwleryService ??= new OwleryService({
-    store: defaultOwleryStore(),
-    key: () => {
-      const master = env.TENANT_MASTER_KEY
-      if (!master) throw new Error('TENANT_MASTER_KEY is required to unseal the Amazon SES secret')
-      return owlerySealKey(master)
-    },
-  })
+  if (!host.__eeOwleryService) {
+    const transport = configuredMailTransport()
+    host.__eeOwleryService = new OwleryService({
+      store: defaultOwleryStore(),
+      key: () => {
+        const master = env.TENANT_MASTER_KEY
+        if (!master) throw new Error('TENANT_MASTER_KEY is required to unseal the Amazon SES secret')
+        return owlerySealKey(master)
+      },
+      ...(transport === 'fake' ? { ses: fakeStoreSes(defaultFakeMailStore()) } : {}),
+    })
+  }
   return host.__eeOwleryService
 }

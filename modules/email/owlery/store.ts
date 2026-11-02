@@ -21,6 +21,8 @@ export type OwleryRow = {
 export type OwleryStore = {
   read(): Promise<OwleryRow | null>
   write(row: OwleryRow): Promise<void>
+  /** Deletes the row (only the e2e harness reset under MAIL_TRANSPORT=fake). */
+  clear(): Promise<void>
 }
 
 export const SEAL_AAD = 'owlery-ses-secret-access-key'
@@ -64,6 +66,10 @@ export class DbOwleryStore implements OwleryStore {
       .values(values)
       .onConflictDoUpdate({ target: owlerySettings.id, set: values })
   }
+
+  async clear(): Promise<void> {
+    await (await resolveDb(this.db)).delete(owlerySettings)
+  }
 }
 
 export function defaultOwleryStore(): OwleryStore {
@@ -83,5 +89,8 @@ export class InMemoryOwleryStore implements OwleryStore {
   async write(row: OwleryRow) {
     this.row = { ...row }
     this.writes += 1
+  }
+  async clear() {
+    this.row = null
   }
 }

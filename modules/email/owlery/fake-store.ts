@@ -1,0 +1,163 @@
+import type { IdentityInfo, SesApi, SesFactory, SesSendInput } from './ses'
+import { randomUUID } from 'node:crypto'
+import { asc, eq } from 'drizzle-orm'
+import type { DbHandle } from '$lib/kernel/db-stores'
+import type { AppDatabase } from '$lib/server/db/context'
+import { mailFakeIdentities, mailFakeSent } from '$lib/server/db/mail-fake.schema'
+
+/**
+ * The fake mail transport for the RUNNING app (MAIL_TRANSPORT=fake). Same
+ * behaviour as the unit-test FakeSes (identities start pending after creation,
+ * the account is never in the sandbox, every send is captured) — but the state
+ * lives in the database, so a restart or a second request still sees it and
+ * Playwright reads it through /api/e2e/harness/mail.
+ *
+ * Why the database and not a file: it is the app's one durable store, already
+ * present on the e2e harness and the test server, migration-checked, and shared
+ * by every process of the install; the agent state dir belongs to the agent.
+ */
+
+export type CapturedMail = SesSendInput & { messageId: string; createdAt: string }
+
+export type FakeMailStore = {
+  getIdentity(identity: string): Promise<IdentityInfo>
+  /** Creates the identity as pending (unverified); a no-op when it already exists. */
+  createIdentity(identity: string): Promise<void>
+  /** Marks an identity verified (creating it if needed) — what clicking Amazon's link would do. */
+  verifyIdentity(identity: string): Promise<void>
+  capture(mail: SesSendInput): Promise<CapturedMail>
+  /** Captured mails oldest first, optionally only those to one address. */
+  list(filter?: { to?: string }): Promise<CapturedMail[]>
+  /** Forgets every captured mail and identity. */
+  clear(): Promise<void>
+}
+
+const norm = (s: string) => s.trim().toLowerCase()
+
+/** SES backed by a FakeMailStore: what `owleryService()` uses under MAIL_TRANSPORT=fake. */
+export function fakeStoreSes(store: FakeMailStore): SesFactory {
+  return () => {
+    const api: SesApi = {
+      getIdentity: (id) => store.getIdentity(id),
+      createIdentity: (id) => store.createIdentity(id),
+      isSandbox: async () => false,
+      send: async (input) => ({ messageId: (await store.capture(input)).messageId }),
+    }
+    return api
+  }
+}
+
+async function resolveDb(db: DbHandle): Promise<AppDatabase> {
+  return typeof db === 'function' ? await db() : db
+}
+
+export class DbFakeMailStore implements FakeMailStore {
+  constructor(private readonly db: DbHandle) {}
+
+  async getIdentity(identity: string): Promise<IdentityInfo> {
+    const [row] = await (await resolveDb(this.db))
+      .select()
+      .from(mailFakeIdentities)
+      .where(eq(mailFakeIdentities.identity, norm(identity)))
+      .limit(1)
+    return row ? { exists: true, verified: row.verified } : { exists: false, verified: false }
+  }
+
+  async createIdentity(identity: string): Promise<void> {
+    await (await resolveDb(this.db))
+      .insert(mailFakeIdentities)
+      .values({ identity: norm(identity), verified: false })
+      .onConflictDoNothing()
+  }
+
+  async verifyIdentity(identity: string): Promise<void> {
+    const values = { identity: norm(identity), verified: true, updatedAt: new Date() }
+    await (await resolveDb(this.db))
+      .insert(mailFakeIdentities)
+      .values(values)
+      .onConflictDoUpdate({ target: mailFakeIdentities.identity, set: values })
+  }
+
+  async capture(mail: SesSendInput): Promise<CapturedMail> {
+    const [row] = await (await resolveDb(this.db))
+      .insert(mailFakeSent)
+      .values({
+        messageId: `fake-${randomUUID()}`,
+        fromAddress: mail.from,
+        toAddress: norm(mail.to),
+        subject: mail.subject,
+        html: mail.html,
+        text: mail.text,
+        replyTo: mail.replyTo ?? null,
+      })
+      .returning()
+    if (!row) throw new Error('the fake mail transport could not store the mail')
+    return toCaptured(row)
+  }
+
+  async list(filter: { to?: string } = {}): Promise<CapturedMail[]> {
+    const db = await resolveDb(this.db)
+    const base = db.select().from(mailFakeSent)
+    const rows = filter.to
+      ? await base.where(eq(mailFakeSent.toAddress, norm(filter.to))).orderBy(asc(mailFakeSent.createdAt))
+      : await base.orderBy(asc(mailFakeSent.createdAt))
+    return rows.map(toCaptured)
+  }
+
+  async clear(): Promise<void> {
+    const db = await resolveDb(this.db)
+    await db.delete(mailFakeSent)
+    await db.delete(mailFakeIdentities)
+  }
+}
+
+function toCaptured(row: typeof mailFakeSent.$inferSelect): CapturedMail {
+  return {
+    messageId: row.messageId,
+    from: row.fromAddress,
+    to: row.toAddress,
+    subject: row.subject,
+    html: row.html,
+    text: row.text,
+    ...(row.replyTo ? { replyTo: row.replyTo } : {}),
+    createdAt: row.createdAt.toISOString(),
+  }
+}
+
+export function defaultFakeMailStore(): FakeMailStore {
+  return new DbFakeMailStore(async () => {
+    const { appDbAsyncLocal, appSql, createScopedDrizzle } = await import('$lib/server/db')
+    return appDbAsyncLocal.getStore() ?? createScopedDrizzle(appSql)
+  })
+}
+
+/** In-memory FakeMailStore for unit tests (same contract as the DB store). */
+export class InMemoryFakeMailStore implements FakeMailStore {
+  identities = new Map<string, boolean>()
+  mails: CapturedMail[] = []
+  private seq = 0
+
+  async getIdentity(identity: string): Promise<IdentityInfo> {
+    const v = this.identities.get(norm(identity))
+    return v === undefined ? { exists: false, verified: false } : { exists: true, verified: v }
+  }
+  async createIdentity(identity: string) {
+    if (!this.identities.has(norm(identity))) this.identities.set(norm(identity), false)
+  }
+  async verifyIdentity(identity: string) {
+    this.identities.set(norm(identity), true)
+  }
+  async capture(mail: SesSendInput) {
+    this.seq += 1
+    const captured: CapturedMail = { ...mail, to: norm(mail.to), messageId: `fake-${this.seq}`, createdAt: new Date(this.seq).toISOString() }
+    this.mails.push(captured)
+    return captured
+  }
+  async list(filter: { to?: string } = {}) {
+    return filter.to ? this.mails.filter((m) => m.to === norm(filter.to!)) : [...this.mails]
+  }
+  async clear() {
+    this.mails = []
+    this.identities.clear()
+  }
+}

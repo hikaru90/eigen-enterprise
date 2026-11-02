@@ -95,7 +95,6 @@ describe('buildKernel wires the owner-chosen approval mode', () => {
       'email.send_mail': 'external',
       'members.invite': 'external',
       'members.set_role': 'internal',
-      'owlery.send_mail': 'external',
       'repo.merge': 'destructive',
       'website.github_connect_repo': 'internal',
       'website.app_deploy': 'public',
@@ -167,7 +166,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect(toolNames).toContain('substrate.status')
     expect(toolNames).toContain('github.app_create')
     expect(toolNames).toContain('owlery.status')
-    expect(toolNames).toContain('owlery.send_mail')
+    expect(toolNames).not.toContain('owlery.send_mail')
     expect(toolNames).toContain('members.list')
     expect(toolNames).toContain('members.invite')
     expect(toolNames).toContain('members.set_role')
@@ -216,7 +215,6 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'kernel.module_deactivate',
       'members.invite',
       'members.set_role',
-      'owlery.send_mail',
       'repo.merge',
       'website.app_deploy',
       'website.app_env_set',
@@ -287,7 +285,8 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     await ensureSystemModulesActive(kernel)
     expect(await activations.get('email')).toBe(true)
     expect(await activations.get('website')).toBe(true)
-    expect(kernel.registry.get('owlery.send_mail')?.auditClass).toBe('mutate')
+    expect(kernel.registry.get('owlery.status')?.auditClass).toBe('read')
+    expect(kernel.registry.get('owlery.send_mail')).toBeUndefined()
   })
 
   it('emits audit events through the injected sink', async () => {

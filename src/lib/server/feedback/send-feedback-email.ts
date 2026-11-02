@@ -16,7 +16,7 @@ function escapeHtml(value: string): string {
 /** Throws when company email is not set up — feedback delivery requires email. */
 export async function assertFeedbackMailConfigured(): Promise<void> {
   if (!(await companyMail().isConfigured())) {
-    throw new Error('Feedback email is not set up yet. The owner sets up email in the onboarding (or Settings → Email).')
+    throw new Error('Feedback email is not set up yet. The owner sets up email in the email step of the onboarding.')
   }
 }
 

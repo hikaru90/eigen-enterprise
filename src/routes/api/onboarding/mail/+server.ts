@@ -4,7 +4,7 @@ import { isUserAdmin } from '$lib/server/auth/user-role'
 import { companyMail, MailSetupError, SenderNotVerifiedError } from '$lib/server/mail'
 
 /**
- * The onboarding's email step (and Settings → Email): the owner enters their
+ * The onboarding's email step (the only setup surface until the Email page, E2): the owner enters their
  * Amazon SES details. A real test email goes to the owner's own address first;
  * the settings are stored (secret sealed) only if it went through.
  *
