@@ -174,7 +174,7 @@ export async function openGraphScaleSpendActivityPage(
   options?: { timeoutMs?: number },
 ): Promise<void> {
   const timeoutMs = options?.timeoutMs ?? 15_000
-  await page.goto('/activity', { waitUntil: 'domcontentloaded', timeout: timeoutMs })
+  await page.goto('/agent/activity', { waitUntil: 'domcontentloaded', timeout: timeoutMs })
   await expect(page.getByText('Available credits:')).toBeVisible({ timeout: timeoutMs })
   await expect(page.getByText('Total spend (credits):')).toBeVisible({ timeout: timeoutMs })
 }

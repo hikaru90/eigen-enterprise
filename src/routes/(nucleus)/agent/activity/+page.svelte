@@ -1,6 +1,8 @@
 <script lang="ts">
+  /* eslint-disable svelte/no-navigation-without-resolve -- the module filter is resolve() + a query string */
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
+  import { resolve } from '$app/paths'
   import {
     callTimestampBounds,
     chooseActivitySpendBucketUnit,
@@ -11,20 +13,12 @@
     type ActivitySpendBucket,
   } from '$lib/activity/spend-chart'
   import AgentAreaNav from '$lib/components/agent-area-nav.svelte'
-  import { docTitle } from '$lib/shell/title'
   import AiDateRangePicker from '$lib/components/ai-date-range-picker.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
   import { formatActivityCredits } from '$lib/pricing/credits'
+  import { docTitle } from '$lib/shell/title'
   import ActivitySpendChart from './activity-spend-chart.svelte'
-
-  type ActivityFeedItem = {
-    id: string
-    tsLabel: string
-    type: string
-    principalId?: string
-    summary: string
-  }
 
   type ActivityCallRow = {
     id: string
@@ -44,7 +38,21 @@
 
   let fromDate = $state<string | null>(data.from)
   let toDate = $state<string | null>(data.to)
-  const feed = $derived(data.feed as ActivityFeedItem[])
+
+  const dayFormat = new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'UTC',
+  })
+  const timeFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
+  /** Days group in UTC (server); the label names that UTC day. */
+  const dayLabel = (day: string) => dayFormat.format(new Date(`${day}T12:00:00Z`))
+  const timeLabel = (iso: string) => timeFormat.format(new Date(iso))
+  const chip = (on: boolean) =>
+    `rounded-full border px-2.5 py-1 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60 ${
+      on ? 'border-foreground bg-foreground text-background' : 'border-border text-foreground/70 hover:text-foreground'
+    }`
   const gatewayProviderSet = $derived(new Set<string>(data.gatewayProviders))
   let allCalls = $state<ActivityCallRow[]>([])
   let isLoading = $state(true)
@@ -282,14 +290,85 @@
   <title>{docTitle('Activity', 'Agent')}</title>
 </svelte:head>
 
-<div class="mx-auto w-full max-w-4xl px-5 pb-8 pt-8">
+<div class="mx-auto w-full max-w-5xl px-4 pt-6 pb-16 sm:px-8 sm:pt-10">
   <div class="mb-6"><AgentAreaNav /></div>
-  <header class="text-center">
-    <p class="text-muted-foreground mt-2 text-xs">Activity</p>
+  <header class="flex min-w-0 flex-col gap-1">
+    <h1 class="text-xl font-semibold tracking-tight">Activity</h1>
+    <p class="text-sm text-foreground/55">What the agent and the system did, newest first.</p>
   </header>
 
-  <div class="mt-4 flex items-center justify-between">
-    <div></div>
+  <section class="mt-6" aria-label="Activity log" data-testid="activity-log">
+    {#if data.modules.length > 1}
+      <nav class="mb-4 flex flex-wrap gap-1.5" aria-label="Filter by module" data-testid="activity-filter">
+        <a
+          href={resolve('/(nucleus)/agent/activity')}
+          aria-current={data.module === null ? 'page' : undefined}
+          class={chip(data.module === null)}>All</a
+        >
+        {#each data.modules as m (m.id)}
+          <a
+            href={`${resolve('/(nucleus)/agent/activity')}?module=${encodeURIComponent(m.id)}`}
+            aria-current={data.module === m.id ? 'page' : undefined}
+            data-testid="activity-filter-{m.id}"
+            class={chip(data.module === m.id)}>{m.label}</a
+          >
+        {/each}
+      </nav>
+    {/if}
+
+    {#if data.log.length === 0}
+      <p
+        class="rounded-lg border border-border px-4 py-3 text-sm text-foreground/55"
+        data-testid="activity-log-empty"
+      >
+        Nothing has happened yet.
+      </p>
+    {:else}
+      <div class="flex flex-col gap-6">
+        {#each data.log as group (group.day)}
+          <section aria-label={dayLabel(group.day)} data-testid="activity-day">
+            <h2 class="mb-2 text-[13px] font-medium text-foreground/70">{dayLabel(group.day)}</h2>
+            <ul class="divide-y divide-border overflow-hidden rounded-lg border border-border">
+              {#each group.entries as entry (entry.id)}
+                <li class="px-4 py-2.5 text-sm" data-testid="activity-entry">
+                  <details class="group">
+                    <summary
+                      class="flex min-w-0 cursor-pointer list-none items-center gap-3 outline-none focus-visible:ring-2 focus-visible:ring-ring/60 [&::-webkit-details-marker]:hidden"
+                    >
+                      <span class="w-16 shrink-0 text-xs whitespace-nowrap text-foreground/50 tabular-nums"
+                        >{timeLabel(entry.ts)}</span
+                      >
+                      <span class="min-w-0 flex-1 truncate">
+                        <span class="font-medium">{entry.actor}</span>
+                        <span class="text-foreground/80">· {entry.text}</span>
+                      </span>
+                      <span
+                        class="hidden shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] text-foreground/60 sm:inline"
+                        >{entry.moduleLabel}</span
+                      >
+                      {#if entry.outcome === 'done'}
+                        <span class="shrink-0 text-xs text-emerald-700 dark:text-emerald-400">Done</span>
+                      {:else if entry.outcome === 'failed'}
+                        <span class="shrink-0 text-xs text-destructive">Didn't work</span>
+                      {/if}
+                    </summary>
+                    <ul class="mt-2 ml-19 space-y-0.5 text-xs text-foreground/55" data-testid="activity-details">
+                      {#each entry.details as line (line)}
+                        <li><code class="font-mono">{line}</code></li>
+                      {/each}
+                    </ul>
+                  </details>
+                </li>
+              {/each}
+            </ul>
+          </section>
+        {/each}
+      </div>
+    {/if}
+  </section>
+
+  <div class="mt-10 flex items-center justify-between">
+    <h2 class="text-sm font-semibold">AI usage</h2>
     <AiDateRangePicker
       from={fromDate ?? undefined}
       to={toDate ?? undefined}
@@ -300,51 +379,6 @@
       }}
     />
   </div>
-
-  {#if feed.length > 0}
-    <Card.Root
-      class="ring-0 shadow-[4px_4px_0_0_rgb(17_17_17_/_0.08)] mt-4 border border-black/10 bg-card"
-    >
-      <Card.Header>
-        <Card.Title class="text-sm">Company feed</Card.Title>
-        <Card.Description class="text-muted-foreground text-xs">
-          Kernel events — agents, tools, gateways. Metadata only.
-        </Card.Description>
-      </Card.Header>
-      <Card.Content class="overflow-x-auto px-0">
-        <table class="w-full text-left text-xs">
-          <thead class="bg-muted/50 border-b border-border">
-            <tr>
-              <th class="p-2 font-medium">When</th>
-              <th class="p-2 font-medium">Event</th>
-              <th class="p-2 font-medium">Principal</th>
-              <th class="p-2 font-medium">Summary</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each feed as item (item.id)}
-              <tr class="border-b border-border/60">
-                <td class="p-2 whitespace-nowrap font-mono text-[11px] text-muted-foreground"
-                  >{item.tsLabel}</td
-                >
-                <td class="p-2">
-                  <span class="font-mono text-[11px] truncate max-w-[220px] block">{item.type}</span>
-                </td>
-                <td class="p-2 font-mono text-[11px] text-muted-foreground"
-                  >{item.principalId ?? '—'}</td
-                >
-                <td class="p-2 text-muted-foreground">{item.summary || '—'}</td>
-              </tr>
-            {:else}
-              <tr>
-                <td class="text-muted-foreground p-4 text-xs" colspan="4">No kernel events yet.</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </Card.Content>
-    </Card.Root>
-  {/if}
 
   {#if isLoading}
     <p class="text-muted-foreground py-8 text-center text-xs">Loading activity…</p>
@@ -360,10 +394,10 @@
     {/if}
 
     <Card.Root
-      class="ring-0 shadow-[4px_4px_0_0_rgb(17_17_17_/_0.08)] mt-4 border border-black/10 bg-card"
+      class="mt-4 border border-border bg-card shadow-none ring-0"
     >
       <Card.Header>
-        <Card.Title class="text-sm">Activity log</Card.Title>
+        <Card.Title class="text-sm">Calls</Card.Title>
         <Card.Description class="text-muted-foreground text-xs">
           All LLM gateway calls and agent tool operations.
         </Card.Description>

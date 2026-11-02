@@ -37,7 +37,7 @@ describe('app-shell.svelte', () => {
     await expect.element(page.getByTestId('shell-nav-website').first()).toHaveAttribute('href', '/m/website')
     await expect.element(page.getByTestId('shell-nav-email').first()).toHaveAttribute('href', '/m/email')
     await expect.element(page.getByTestId('shell-nav-brand').first()).toHaveAttribute('href', '/brand')
-    await expect.element(page.getByTestId('shell-nav-agent').first()).toHaveAttribute('href', '/runs')
+    await expect.element(page.getByTestId('shell-nav-agent').first()).toHaveAttribute('href', '/agent')
     await expect.element(page.getByTestId('shell-nav-repo').first()).toHaveTextContent('Off')
     await expect.element(page.getByTestId('shell-nav-settings').first()).toHaveAttribute('href', '/settings')
     await expect.element(page.getByTestId('shell-user').first()).toHaveTextContent('Alex')
@@ -50,8 +50,8 @@ describe('app-shell.svelte', () => {
     await expect.element(page.getByTestId('shell-nav-overview').first()).not.toHaveAttribute('aria-current')
   })
 
-  it('highlights exactly one entry: the agent for its internals, not Settings', async () => {
-    renderShell('/settings/extensions')
+  it('highlights exactly one entry: the agent for its roadmap, not Settings', async () => {
+    renderShell('/agent/roadmap')
     await expect.element(page.getByTestId('shell-nav-agent').first()).toHaveAttribute('aria-current', 'page')
     await expect.element(page.getByTestId('shell-nav-settings').first()).not.toHaveAttribute('aria-current')
   })

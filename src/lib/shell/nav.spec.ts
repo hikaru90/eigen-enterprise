@@ -39,7 +39,7 @@ describe('buildShellNav', () => {
       ['Website', '/m/website', true],
       ['Email', '/m/email', true],
       ['Brand', '/brand', false],
-      ['Agent', '/runs', true],
+      ['Agent', '/agent', true],
       ['Memory', '/m/memory', false],
       ['Recap', '/m/recap', false],
       ['Settings', '/settings', true],
@@ -48,7 +48,7 @@ describe('buildShellNav', () => {
 
   it('always carries the fixed app entries, even with no modules', () => {
     const nav = buildShellNav([], new Map())
-    expect(nav.items.map((i) => i.href)).toEqual(['/', '/overview', '/runs', '/settings'])
+    expect(nav.items.map((i) => i.href)).toEqual(['/', '/overview', '/agent', '/settings'])
   })
 })
 
@@ -62,9 +62,13 @@ describe('currentNavId', () => {
     ['/overview', 'overview'],
     ['/m/website/settings', 'website'],
     ['/brand/editor/x', 'brand'],
-    ['/runs/12', 'agent'],
-    ['/activity', 'agent'],
-    ['/settings/extensions', 'agent'],
+    ['/agent', 'agent'],
+    ['/agent/runs/12', 'agent'],
+    ['/agent/activity', 'agent'],
+    ['/agent/roadmap', 'agent'],
+    ['/runs', null],
+    ['/activity', null],
+    ['/settings/extensions', 'settings'],
     ['/m/memory/notes', 'memory'],
     ['/m/memory/capture', 'memory'],
     ['/memory/tasks', null],

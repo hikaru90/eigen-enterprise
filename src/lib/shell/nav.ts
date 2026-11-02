@@ -68,10 +68,9 @@ export function buildShellNav(
       {
         id: 'agent',
         name: 'Agent',
-        href: '/runs',
+        // One Agent area: /agent/runs · /agent/activity · /agent/roadmap.
+        href: '/agent',
         active: true,
-        // The agent's internals (activity log, roadmap) move into its page.
-        match: ['/activity', '/settings/extensions'],
       },
       ...known('memory'),
       ...others,
@@ -109,7 +108,7 @@ export function navItemCurrent(href: string, pathname: string): boolean {
 
 /**
  * The one entry that is current for a path: the longest matching href or
- * match prefix wins (so /settings/extensions belongs to Agent, not Settings).
+ * match prefix wins (so a module's match prefix beats a shorter href).
  */
 export function currentNavId(items: readonly ShellNavItem[], pathname: string): string | null {
   let best: { id: string; len: number } | null = null

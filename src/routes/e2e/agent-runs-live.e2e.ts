@@ -56,16 +56,16 @@ test.describe('agent runs live view', () => {
     expect(Object.keys(run!)).not.toContain('llmUserId')
 
     // Browser A: the run list links to the run.
-    await page.goto('/runs')
+    await page.goto('/agent/runs')
     await expect(page.getByRole('heading', { name: 'Agent runs' })).toBeVisible()
-    await page.locator(`a[href="/runs/${run!.id}"]`).click()
+    await page.locator(`a[href="/agent/runs/${run!.id}"]`).click()
     await expect(page.getByRole('heading', { name: `Run ${run!.id}` })).toBeVisible()
 
     // Browser B: a second company member in a separate context.
     const otherContext = await browser.newContext()
     const other = await otherContext.newPage()
     await registerUser(otherContext, other)
-    await other.goto(`/runs/${run!.id}`)
+    await other.goto(`/agent/runs/${run!.id}`)
 
     for (const p of [page, other]) {
       const feed = p.getByRole('log', { name: 'Run events' })
