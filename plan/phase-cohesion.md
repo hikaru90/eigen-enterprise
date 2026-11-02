@@ -24,9 +24,15 @@
 - **C5 — Rules in the repo**: §1 goes into AGENTS.md and `docs/design-system.md`, so every future agent and plan follows it.
 - **Proof**: a Playwright walk through every navigation entry on the test server, screenshots inspected, plus a new inventory to compare with C0.
 
-## 3. Owner decisions per area
+## 3. Owner decisions per area (2026-11-02, after the C0 inventory)
 
-*(filled in after C0)*
+Inventory: 61 pages — 20 in the new shell, 15 in the old eigen chrome, 8 settings, 18 standalone (published for the owner as "App Page Inventory").
+
+- **Memory → one Memory module page in the shell.** Notes, tasks, projects and capture move into it. The graph view (`/memory`) and the old `/chat` are removed; the agent keeps its memory tools. `/m/memory` must stop saying "Not active" when Memory works.
+- **Internals → Agent page.** The Agent page gets **Activity** (a readable log replacing the raw `/activity` table) and **Roadmap** (replacing `/settings/extensions`; where factory tickets live), next to **Runs**. `/eval`, `/admin/queue` and `/feedback` leave the owner UI (removed).
+- **Leftovers → removed.** `/demo/*`, the stubs `/settings/agents` and `/settings/scheduled-tasks`, the "Change password" form, legacy URLs (`/register`, `/forgot-password`, `/reset-password`, `/graph`, `/notes`, `/timeline`, `/memory/timeline`, `/settings/hosting`, `/m/website/apps` alias), the duplicate `/m/website/hosting` (keep `/m/website/settings`) and the second brand entry `/m/brand` (Brand = `/brand`). Old URLs 404.
+- **`/settings` = Members & invites, AI provider, Passkeys & sessions, API keys (moved from `/api-keys`), Approval mode.** Nothing module-specific.
+- Also fixed in C2: the root error page lives in the shell for signed-in users and never says "Back to capture"; titles follow one pattern ("<Page> · <Section> · eigenEnterprise"); signed-out `/claim` and `/invite` dead ends get a way to sign in.
 
 ## 4. Interaction with running work
 
