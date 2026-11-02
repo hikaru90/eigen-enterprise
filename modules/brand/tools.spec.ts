@@ -81,9 +81,11 @@ describe('createBrandTools', () => {
     }
   })
 
-  it('restricts guideline mutations to the admin role (G8)', () => {
+  it('restricts guideline mutations to the admin role (G8); the picker choice is owner-only', () => {
     for (const descriptor of tools) {
-      if (descriptor.auditClass === 'read') {
+      if (descriptor.name === 'brand.picker_choose') {
+        expect(descriptor.permission.roles).toEqual(['owner'])
+      } else if (descriptor.auditClass === 'read') {
         expect(descriptor.permission.roles).toEqual(['admin', 'agent'])
       } else {
         expect(descriptor.permission.roles).toEqual(['admin'])

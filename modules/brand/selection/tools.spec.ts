@@ -154,9 +154,10 @@ function activatedRegistry() {
 describe('createBrandSelectionTools — descriptors', () => {
   const tools = createBrandSelectionTools({ store: new InMemoryBrandStore(), corpus: toyCorpus })
 
-  it('exposes the nine wizard tools with namespaced names', () => {
+  it('exposes the nine wizard tools plus the picker choice with namespaced names', () => {
     expect(tools.map((t) => t.name).sort()).toEqual(
       [
+        'brand.picker_choose',
         'brand.corpus_get',
         'brand.corpus_list',
         'brand.corpus_similar',
@@ -170,9 +171,11 @@ describe('createBrandSelectionTools — descriptors', () => {
     )
   })
 
-  it('reads are admin+agent; the visual-set mutations are admin-only (G8)', () => {
+  it('reads are admin+agent; the visual-set mutations are admin-only (G8); the picker choice is owner-only', () => {
     for (const descriptor of tools) {
-      if (descriptor.auditClass === 'read') {
+      if (descriptor.name === 'brand.picker_choose') {
+        expect(descriptor.permission.roles).toEqual(['owner'])
+      } else if (descriptor.auditClass === 'read') {
         expect(descriptor.permission.roles).toEqual(['admin', 'agent'])
       } else {
         expect(descriptor.permission.roles).toEqual(['admin'])
@@ -182,6 +185,7 @@ describe('createBrandSelectionTools — descriptors', () => {
       'brand.visual_set_create',
       'brand.visual_set_activate',
       'brand.visual_set_update',
+      'brand.picker_choose',
     ])
   })
 })

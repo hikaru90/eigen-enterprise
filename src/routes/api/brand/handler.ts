@@ -1,8 +1,8 @@
-import { appKernel } from '$lib/server/boot'
 import { randomUUID } from 'node:crypto'
 import { error, json } from '@sveltejs/kit'
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
+import { appKernel } from '$lib/server/boot'
 
 /**
  * Route-side executor for the brand selection wizard tools (phase-2d M4).
@@ -14,11 +14,12 @@ export async function executeBrandTool(
   name: string,
   input: unknown,
   user: { id: string },
+  roles: string[] = ['admin'],
 ): Promise<Response> {
   try {
     const kernel = await appKernel()
     const result = await kernel.registry.execute(name, input, {
-      principal: { id: user.id, kind: 'human', roles: ['admin'] },
+      principal: { id: user.id, kind: 'human', roles },
       requestId: randomUUID(),
     })
     return json(result)

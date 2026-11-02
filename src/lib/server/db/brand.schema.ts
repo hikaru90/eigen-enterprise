@@ -228,6 +228,8 @@ export const brandVisualSets = pgTable('brand_visual_sets', {
   sourceItemId: uuid('source_item_id'),
   /** The selection trail: corpus item ids the owner picked in the wizard. */
   pickedItemIds: jsonb('picked_item_ids').$type<string[]>().default([]).notNull(),
+  /** Brand-picker node (modules/brand/taxonomy, static JSON — no FK) a picker choice came from. */
+  pickerNodeId: text('picker_node_id'),
   seeds: jsonb('seeds').$type<Record<string, unknown>>(),
   cssVars: jsonb('css_vars').$type<Record<string, string>>().notNull(),
   darkCssVars: jsonb('dark_css_vars').$type<Record<string, string>>(),

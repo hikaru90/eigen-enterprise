@@ -736,6 +736,13 @@
       "when": 1788855147006,
       "tag": "0104_mail_fake_transport",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1793620000000,
+      "tag": "0105_brand_visual_set_picker_node",
+      "breakpoints": true
     }
   ]
 }
