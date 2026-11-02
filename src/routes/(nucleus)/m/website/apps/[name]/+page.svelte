@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { deployModeText } from './deploy-mode'
   import type { ActionData, PageData } from './$types'
   import { onMount } from 'svelte'
   import { enhance } from '$app/forms'
@@ -134,11 +135,7 @@
     <Card.Header>
       <Card.Title>Deploy</Card.Title>
       <Card.Description>
-        {data.app.autoDeploy
-          ? 'Deploys by hand here, and on every push to this branch.'
-          : data.app.authKind === 'github_app'
-            ? 'Deploys by hand.'
-            : 'Deploys by hand: repos read by deploy key or public link get no push events.'}
+        <span data-testid="deploy-mode">{deployModeText(data.app)}</span>
         Build contract: {data.app.contractSource === 'repo'
           ? "the repo's ee.json"
           : 'the saved build settings below'}
