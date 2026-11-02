@@ -55,7 +55,8 @@
     "test:e2e:graph-scale-spend": "playwright install chromium && GRAPH_SCALE_SPEND=1 PW_SLOW_MO=300 playwright test src/routes/e2e/graph-scale-spend.e2e.ts --headed",
     "measure:ingest": "vite-node --config evals/vite.config.ts scripts/measure-ingest-timing.ts",
     "posthog:upload-sourcemaps": "node --env-file-if-exists=.env scripts/upload-posthog-sourcemaps.mjs",
-    "co": "npm run co --prefix company-os --"
+    "co": "npm run co --prefix company-os --",
+    "brand:previews": "tsx scripts/brand-previews.ts"
   },
   "devDependencies": {
     "@better-auth/cli": "~1.4.21",

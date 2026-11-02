@@ -1,0 +1,915 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "saas",
+      "level": "genre",
+      "parentId": null,
+      "name": "Saas",
+      "description": "Fixture genre saas.",
+      "fonts": {
+        "heading": "Inter",
+        "body": "Inter",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "md",
+        "density": "regular",
+        "elevation": "subtle",
+        "border": "hairline"
+      },
+      "tokens": {
+        "light": {
+          "background": "#ffffff",
+          "foreground": "#14121a",
+          "card": "#ffffff",
+          "popover": "#ffffff",
+          "primary": "#4f46e5",
+          "primary-foreground": "#ffffff",
+          "secondary": "#eef0f8",
+          "secondary-foreground": "#14121a",
+          "muted": "#eef0f8",
+          "muted-foreground": "#5b6170",
+          "accent": "#22c55e",
+          "accent-foreground": "#ffffff",
+          "border": "#e2e5ee",
+          "input": "#e2e5ee",
+          "ring": "#4f46e5",
+          "radius": "0.5rem",
+          "font-sans": "'Inter', sans-serif",
+          "font-display": "'Inter', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        },
+        "dark": {
+          "background": "#0e0e11",
+          "foreground": "#ececf1",
+          "card": "#0e0e11",
+          "popover": "#0e0e11",
+          "primary": "#8b5cf6",
+          "primary-foreground": "#ffffff",
+          "secondary": "#1b1b22",
+          "secondary-foreground": "#ececf1",
+          "muted": "#1b1b22",
+          "muted-foreground": "#9a9aab",
+          "accent": "#22c55e",
+          "accent-foreground": "#ffffff",
+          "border": "#2a2a33",
+          "input": "#2a2a33",
+          "ring": "#8b5cf6",
+          "radius": "0.5rem",
+          "font-sans": "'Inter', sans-serif",
+          "font-display": "'Inter', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        }
+      },
+      "source": {
+        "kind": "authored"
+      }
+    },
+    {
+      "id": "saas-soft",
+      "level": "style",
+      "parentId": "saas",
+      "name": "Soft",
+      "description": "Fixture style saas-soft.",
+      "fonts": {
+        "heading": "Plus Jakarta Sans",
+        "body": "Inter",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "xl",
+        "density": "airy",
+        "elevation": "layered",
+        "border": "none"
+      },
+      "tokens": {
+        "light": {
+          "background": "#f7f6ff",
+          "foreground": "#1e1b3a",
+          "card": "#f7f6ff",
+          "popover": "#f7f6ff",
+          "primary": "#7c6cf0",
+          "primary-foreground": "#ffffff",
+          "secondary": "#ece9ff",
+          "secondary-foreground": "#1e1b3a",
+          "muted": "#ece9ff",
+          "muted-foreground": "#6b6790",
+          "accent": "#ffb38a",
+          "accent-foreground": "#ffffff",
+          "border": "#dcd7f7",
+          "input": "#dcd7f7",
+          "ring": "#7c6cf0",
+          "radius": "1rem",
+          "font-sans": "'Inter', sans-serif",
+          "font-display": "'Plus Jakarta Sans', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        },
+        "dark": {
+          "background": "#11131c",
+          "foreground": "#e6e7f2",
+          "card": "#11131c",
+          "popover": "#11131c",
+          "primary": "#a99cf5",
+          "primary-foreground": "#11131c",
+          "secondary": "#1b1e2b",
+          "secondary-foreground": "#e6e7f2",
+          "muted": "#1b1e2b",
+          "muted-foreground": "#9a9cb5",
+          "accent": "#ffb38a",
+          "accent-foreground": "#11131c",
+          "border": "#2a2e40",
+          "input": "#2a2e40",
+          "ring": "#a99cf5",
+          "radius": "1rem",
+          "font-sans": "'Inter', sans-serif",
+          "font-display": "'Plus Jakarta Sans', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        }
+      },
+      "source": {
+        "kind": "authored"
+      }
+    },
+    {
+      "id": "saas-soft-lilac",
+      "level": "variant",
+      "parentId": "saas-soft",
+      "name": "Lilac",
+      "description": "Fixture variant saas-soft-lilac.",
+      "fonts": {
+        "heading": "Plus Jakarta Sans",
+        "body": "Inter",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "xl",
+        "density": "airy",
+        "elevation": "layered",
+        "border": "none"
+      },
+      "tokens": {
+        "light": {
+          "background": "#f7f6ff",
+          "foreground": "#1e1b3a",
+          "card": "#f7f6ff",
+          "popover": "#f7f6ff",
+          "primary": "#7c6cf0",
+          "primary-foreground": "#ffffff",
+          "secondary": "#ece9ff",
+          "secondary-foreground": "#1e1b3a",
+          "muted": "#ece9ff",
+          "muted-foreground": "#6b6790",
+          "accent": "#ffb38a",
+          "accent-foreground": "#ffffff",
+          "border": "#dcd7f7",
+          "input": "#dcd7f7",
+          "ring": "#7c6cf0",
+          "radius": "1rem",
+          "font-sans": "'Inter', sans-serif",
+          "font-display": "'Plus Jakarta Sans', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        },
+        "dark": {
+          "background": "#11131c",
+          "foreground": "#e6e7f2",
+          "card": "#11131c",
+          "popover": "#11131c",
+          "primary": "#a99cf5",
+          "primary-foreground": "#11131c",
+          "secondary": "#1b1e2b",
+          "secondary-foreground": "#e6e7f2",
+          "muted": "#1b1e2b",
+          "muted-foreground": "#9a9cb5",
+          "accent": "#ffb38a",
+          "accent-foreground": "#11131c",
+          "border": "#2a2e40",
+          "input": "#2a2e40",
+          "ring": "#a99cf5",
+          "radius": "1rem",
+          "font-sans": "'Inter', sans-serif",
+          "font-display": "'Plus Jakarta Sans', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        }
+      },
+      "source": {
+        "kind": "authored"
+      }
+    },
+    {
+      "id": "saas-soft-peach",
+      "level": "variant",
+      "parentId": "saas-soft",
+      "name": "Peach",
+      "description": "Fixture variant saas-soft-peach.",
+      "fonts": {
+        "heading": "Plus Jakarta Sans",
+        "body": "Inter",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "pill",
+        "density": "airy",
+        "elevation": "layered",
+        "border": "none"
+      },
+      "tokens": {
+        "light": {
+          "background": "#fff6f0",
+          "foreground": "#3a2018",
+          "card": "#fff6f0",
+          "popover": "#fff6f0",
+          "primary": "#ff7a5c",
+          "primary-foreground": "#ffffff",
+          "secondary": "#ffe8dc",
+          "secondary-foreground": "#3a2018",
+          "muted": "#ffe8dc",
+          "muted-foreground": "#8a6a60",
+          "accent": "#7c6cf0",
+          "accent-foreground": "#ffffff",
+          "border": "#f5d6c6",
+          "input": "#f5d6c6",
+          "ring": "#ff7a5c",
+          "radius": "9999px",
+          "font-sans": "'Inter', sans-serif",
+          "font-display": "'Plus Jakarta Sans', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        },
+        "dark": {
+          "background": "#1f1512",
+          "foreground": "#f6e7df",
+          "card": "#1f1512",
+          "popover": "#1f1512",
+          "primary": "#ff8f73",
+          "primary-foreground": "#1f1512",
+          "secondary": "#2c1f1a",
+          "secondary-foreground": "#f6e7df",
+          "muted": "#2c1f1a",
+          "muted-foreground": "#b59a90",
+          "accent": "#a99cf5",
+          "accent-foreground": "#1f1512",
+          "border": "#3a2a24",
+          "input": "#3a2a24",
+          "ring": "#ff8f73",
+          "radius": "9999px",
+          "font-sans": "'Inter', sans-serif",
+          "font-display": "'Plus Jakarta Sans', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        }
+      },
+      "source": {
+        "kind": "authored"
+      }
+    },
+    {
+      "id": "saas-bento",
+      "level": "style",
+      "parentId": "saas",
+      "name": "Bento",
+      "description": "Fixture style saas-bento.",
+      "fonts": {
+        "heading": "Space Grotesk",
+        "body": "Inter",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "lg",
+        "density": "compact",
+        "elevation": "flat",
+        "border": "hairline"
+      },
+      "tokens": {
+        "light": {
+          "background": "#f0f1f3",
+          "foreground": "#16181d",
+          "card": "#f0f1f3",
+          "popover": "#f0f1f3",
+          "primary": "#2563eb",
+          "primary-foreground": "#ffffff",
+          "secondary": "#ffffff",
+          "secondary-foreground": "#16181d",
+          "muted": "#ffffff",
+          "muted-foreground": "#5c6270",
+          "accent": "#f59e0b",
+          "accent-foreground": "#ffffff",
+          "border": "#d6d9df",
+          "input": "#d6d9df",
+          "ring": "#2563eb",
+          "radius": "0.75rem",
+          "font-sans": "'Inter', sans-serif",
+          "font-display": "'Space Grotesk', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        },
+        "dark": {
+          "background": "#000000",
+          "foreground": "#f2f2f2",
+          "card": "#000000",
+          "popover": "#000000",
+          "primary": "#ffffff",
+          "primary-foreground": "#000000",
+          "secondary": "#1a1a1c",
+          "secondary-foreground": "#f2f2f2",
+          "muted": "#1a1a1c",
+          "muted-foreground": "#8e8e93",
+          "accent": "#f59e0b",
+          "accent-foreground": "#000000",
+          "border": "#2c2c2e",
+          "input": "#2c2c2e",
+          "ring": "#ffffff",
+          "radius": "0.75rem",
+          "font-sans": "'Inter', sans-serif",
+          "font-display": "'Space Grotesk', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        }
+      },
+      "source": {
+        "kind": "authored"
+      }
+    },
+    {
+      "id": "saas-bento-daylight",
+      "level": "variant",
+      "parentId": "saas-bento",
+      "name": "Daylight",
+      "description": "Fixture variant saas-bento-daylight.",
+      "fonts": {
+        "heading": "Space Grotesk",
+        "body": "Inter",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "lg",
+        "density": "compact",
+        "elevation": "flat",
+        "border": "hairline"
+      },
+      "tokens": {
+        "light": {
+          "background": "#f0f1f3",
+          "foreground": "#16181d",
+          "card": "#f0f1f3",
+          "popover": "#f0f1f3",
+          "primary": "#2563eb",
+          "primary-foreground": "#ffffff",
+          "secondary": "#ffffff",
+          "secondary-foreground": "#16181d",
+          "muted": "#ffffff",
+          "muted-foreground": "#5c6270",
+          "accent": "#f59e0b",
+          "accent-foreground": "#ffffff",
+          "border": "#d6d9df",
+          "input": "#d6d9df",
+          "ring": "#2563eb",
+          "radius": "0.75rem",
+          "font-sans": "'Inter', sans-serif",
+          "font-display": "'Space Grotesk', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        },
+        "dark": {
+          "background": "#000000",
+          "foreground": "#f2f2f2",
+          "card": "#000000",
+          "popover": "#000000",
+          "primary": "#ffffff",
+          "primary-foreground": "#000000",
+          "secondary": "#1a1a1c",
+          "secondary-foreground": "#f2f2f2",
+          "muted": "#1a1a1c",
+          "muted-foreground": "#8e8e93",
+          "accent": "#f59e0b",
+          "accent-foreground": "#000000",
+          "border": "#2c2c2e",
+          "input": "#2c2c2e",
+          "ring": "#ffffff",
+          "radius": "0.75rem",
+          "font-sans": "'Inter', sans-serif",
+          "font-display": "'Space Grotesk', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        }
+      },
+      "source": {
+        "kind": "authored"
+      }
+    },
+    {
+      "id": "saas-bento-graphite",
+      "level": "variant",
+      "parentId": "saas-bento",
+      "name": "Graphite",
+      "description": "Fixture variant saas-bento-graphite.",
+      "fonts": {
+        "heading": "Space Grotesk",
+        "body": "Inter",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "sm",
+        "density": "compact",
+        "elevation": "flat",
+        "border": "hairline"
+      },
+      "tokens": {
+        "light": {
+          "background": "#f4f4f5",
+          "foreground": "#18181b",
+          "card": "#f4f4f5",
+          "popover": "#f4f4f5",
+          "primary": "#18181b",
+          "primary-foreground": "#ffffff",
+          "secondary": "#e4e4e7",
+          "secondary-foreground": "#18181b",
+          "muted": "#e4e4e7",
+          "muted-foreground": "#52525b",
+          "accent": "#a1a1aa",
+          "accent-foreground": "#ffffff",
+          "border": "#d4d4d8",
+          "input": "#d4d4d8",
+          "ring": "#18181b",
+          "radius": "0.25rem",
+          "font-sans": "'Inter', sans-serif",
+          "font-display": "'Space Grotesk', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        },
+        "dark": {
+          "background": "#09090b",
+          "foreground": "#fafafa",
+          "card": "#09090b",
+          "popover": "#09090b",
+          "primary": "#fafafa",
+          "primary-foreground": "#09090b",
+          "secondary": "#18181b",
+          "secondary-foreground": "#fafafa",
+          "muted": "#18181b",
+          "muted-foreground": "#a1a1aa",
+          "accent": "#71717a",
+          "accent-foreground": "#09090b",
+          "border": "#27272a",
+          "input": "#27272a",
+          "ring": "#fafafa",
+          "radius": "0.25rem",
+          "font-sans": "'Inter', sans-serif",
+          "font-display": "'Space Grotesk', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        }
+      },
+      "source": {
+        "kind": "authored"
+      }
+    },
+    {
+      "id": "editorial",
+      "level": "genre",
+      "parentId": null,
+      "name": "Editorial",
+      "description": "Fixture genre editorial.",
+      "fonts": {
+        "heading": "Playfair Display",
+        "body": "Source Serif 4",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "none",
+        "density": "regular",
+        "elevation": "flat",
+        "border": "hairline"
+      },
+      "tokens": {
+        "light": {
+          "background": "#fbf8f2",
+          "foreground": "#1d1a16",
+          "card": "#fbf8f2",
+          "popover": "#fbf8f2",
+          "primary": "#9e3b2e",
+          "primary-foreground": "#ffffff",
+          "secondary": "#efe9dd",
+          "secondary-foreground": "#1d1a16",
+          "muted": "#efe9dd",
+          "muted-foreground": "#6b6257",
+          "accent": "#c2a15a",
+          "accent-foreground": "#ffffff",
+          "border": "#d9d0c0",
+          "input": "#d9d0c0",
+          "ring": "#9e3b2e",
+          "radius": "0rem",
+          "font-sans": "'Source Serif 4', sans-serif",
+          "font-display": "'Playfair Display', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        },
+        "dark": {
+          "background": "#1d1a16",
+          "foreground": "#f1e9d8",
+          "card": "#1d1a16",
+          "popover": "#1d1a16",
+          "primary": "#e0a24a",
+          "primary-foreground": "#1d1a16",
+          "secondary": "#2a2622",
+          "secondary-foreground": "#f1e9d8",
+          "muted": "#2a2622",
+          "muted-foreground": "#a89c88",
+          "accent": "#c2a15a",
+          "accent-foreground": "#1d1a16",
+          "border": "#3a342c",
+          "input": "#3a342c",
+          "ring": "#e0a24a",
+          "radius": "0rem",
+          "font-sans": "'Source Serif 4', sans-serif",
+          "font-display": "'Playfair Display', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        }
+      },
+      "source": {
+        "kind": "authored"
+      }
+    },
+    {
+      "id": "editorial-newspaper",
+      "level": "style",
+      "parentId": "editorial",
+      "name": "Newspaper",
+      "description": "Fixture style editorial-newspaper.",
+      "fonts": {
+        "heading": "Old Standard TT",
+        "body": "Libre Franklin",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "none",
+        "density": "compact",
+        "elevation": "flat",
+        "border": "bold"
+      },
+      "tokens": {
+        "light": {
+          "background": "#ffffff",
+          "foreground": "#0a0a0a",
+          "card": "#ffffff",
+          "popover": "#ffffff",
+          "primary": "#d0021b",
+          "primary-foreground": "#ffffff",
+          "secondary": "#f2f2f2",
+          "secondary-foreground": "#0a0a0a",
+          "muted": "#f2f2f2",
+          "muted-foreground": "#555555",
+          "accent": "#d0021b",
+          "accent-foreground": "#ffffff",
+          "border": "#0a0a0a",
+          "input": "#0a0a0a",
+          "ring": "#d0021b",
+          "radius": "0rem",
+          "font-sans": "'Libre Franklin', sans-serif",
+          "font-display": "'Old Standard TT', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        },
+        "dark": {
+          "background": "#121212",
+          "foreground": "#f2f2f2",
+          "card": "#121212",
+          "popover": "#121212",
+          "primary": "#ff4d5e",
+          "primary-foreground": "#121212",
+          "secondary": "#1e1e1e",
+          "secondary-foreground": "#f2f2f2",
+          "muted": "#1e1e1e",
+          "muted-foreground": "#a0a0a0",
+          "accent": "#ff4d5e",
+          "accent-foreground": "#121212",
+          "border": "#f2f2f2",
+          "input": "#f2f2f2",
+          "ring": "#ff4d5e",
+          "radius": "0rem",
+          "font-sans": "'Libre Franklin', sans-serif",
+          "font-display": "'Old Standard TT', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        }
+      },
+      "source": {
+        "kind": "authored"
+      }
+    },
+    {
+      "id": "editorial-newspaper-tabloid",
+      "level": "variant",
+      "parentId": "editorial-newspaper",
+      "name": "Tabloid",
+      "description": "Fixture variant editorial-newspaper-tabloid.",
+      "fonts": {
+        "heading": "Old Standard TT",
+        "body": "Libre Franklin",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "none",
+        "density": "compact",
+        "elevation": "flat",
+        "border": "bold"
+      },
+      "tokens": {
+        "light": {
+          "background": "#ffffff",
+          "foreground": "#0a0a0a",
+          "card": "#ffffff",
+          "popover": "#ffffff",
+          "primary": "#d0021b",
+          "primary-foreground": "#ffffff",
+          "secondary": "#f2f2f2",
+          "secondary-foreground": "#0a0a0a",
+          "muted": "#f2f2f2",
+          "muted-foreground": "#555555",
+          "accent": "#d0021b",
+          "accent-foreground": "#ffffff",
+          "border": "#0a0a0a",
+          "input": "#0a0a0a",
+          "ring": "#d0021b",
+          "radius": "0rem",
+          "font-sans": "'Libre Franklin', sans-serif",
+          "font-display": "'Old Standard TT', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        },
+        "dark": {
+          "background": "#121212",
+          "foreground": "#f2f2f2",
+          "card": "#121212",
+          "popover": "#121212",
+          "primary": "#ff4d5e",
+          "primary-foreground": "#121212",
+          "secondary": "#1e1e1e",
+          "secondary-foreground": "#f2f2f2",
+          "muted": "#1e1e1e",
+          "muted-foreground": "#a0a0a0",
+          "accent": "#ff4d5e",
+          "accent-foreground": "#121212",
+          "border": "#f2f2f2",
+          "input": "#f2f2f2",
+          "ring": "#ff4d5e",
+          "radius": "0rem",
+          "font-sans": "'Libre Franklin', sans-serif",
+          "font-display": "'Old Standard TT', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        }
+      },
+      "source": {
+        "kind": "authored"
+      }
+    },
+    {
+      "id": "editorial-newspaper-broadsheet",
+      "level": "variant",
+      "parentId": "editorial-newspaper",
+      "name": "Broadsheet",
+      "description": "Fixture variant editorial-newspaper-broadsheet.",
+      "fonts": {
+        "heading": "Old Standard TT",
+        "body": "Libre Franklin",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "none",
+        "density": "regular",
+        "elevation": "flat",
+        "border": "hairline"
+      },
+      "tokens": {
+        "light": {
+          "background": "#f6f1e6",
+          "foreground": "#1a1a1a",
+          "card": "#f6f1e6",
+          "popover": "#f6f1e6",
+          "primary": "#1a1a1a",
+          "primary-foreground": "#f6f1e6",
+          "secondary": "#ebe4d4",
+          "secondary-foreground": "#1a1a1a",
+          "muted": "#ebe4d4",
+          "muted-foreground": "#5e574b",
+          "accent": "#8a6d3b",
+          "accent-foreground": "#f6f1e6",
+          "border": "#cfc5b0",
+          "input": "#cfc5b0",
+          "ring": "#1a1a1a",
+          "radius": "0rem",
+          "font-sans": "'Libre Franklin', sans-serif",
+          "font-display": "'Old Standard TT', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        },
+        "dark": {
+          "background": "#1c1b19",
+          "foreground": "#ece5d6",
+          "card": "#1c1b19",
+          "popover": "#1c1b19",
+          "primary": "#ece5d6",
+          "primary-foreground": "#1c1b19",
+          "secondary": "#282623",
+          "secondary-foreground": "#ece5d6",
+          "muted": "#282623",
+          "muted-foreground": "#a39a88",
+          "accent": "#c2a15a",
+          "accent-foreground": "#1c1b19",
+          "border": "#3b3832",
+          "input": "#3b3832",
+          "ring": "#ece5d6",
+          "radius": "0rem",
+          "font-sans": "'Libre Franklin', sans-serif",
+          "font-display": "'Old Standard TT', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        }
+      },
+      "source": {
+        "kind": "authored"
+      }
+    },
+    {
+      "id": "editorial-fashion",
+      "level": "style",
+      "parentId": "editorial",
+      "name": "Fashion",
+      "description": "Fixture style editorial-fashion.",
+      "fonts": {
+        "heading": "Bodoni Moda",
+        "body": "Montserrat",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "none",
+        "density": "airy",
+        "elevation": "flat",
+        "border": "none"
+      },
+      "tokens": {
+        "light": {
+          "background": "#ffffff",
+          "foreground": "#0d0d0d",
+          "card": "#ffffff",
+          "popover": "#ffffff",
+          "primary": "#0d0d0d",
+          "primary-foreground": "#ffffff",
+          "secondary": "#f9ecec",
+          "secondary-foreground": "#0d0d0d",
+          "muted": "#f9ecec",
+          "muted-foreground": "#6a6a6a",
+          "accent": "#d98f96",
+          "accent-foreground": "#ffffff",
+          "border": "#e6e6e6",
+          "input": "#e6e6e6",
+          "ring": "#0d0d0d",
+          "radius": "0rem",
+          "font-sans": "'Montserrat', sans-serif",
+          "font-display": "'Bodoni Moda', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        },
+        "dark": {
+          "background": "#000000",
+          "foreground": "#ffffff",
+          "card": "#000000",
+          "popover": "#000000",
+          "primary": "#ffffff",
+          "primary-foreground": "#000000",
+          "secondary": "#151515",
+          "secondary-foreground": "#ffffff",
+          "muted": "#151515",
+          "muted-foreground": "#9a9a9a",
+          "accent": "#d98f96",
+          "accent-foreground": "#000000",
+          "border": "#2a2a2a",
+          "input": "#2a2a2a",
+          "ring": "#ffffff",
+          "radius": "0rem",
+          "font-sans": "'Montserrat', sans-serif",
+          "font-display": "'Bodoni Moda', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        }
+      },
+      "source": {
+        "kind": "authored"
+      }
+    },
+    {
+      "id": "editorial-fashion-noir",
+      "level": "variant",
+      "parentId": "editorial-fashion",
+      "name": "Noir",
+      "description": "Fixture variant editorial-fashion-noir.",
+      "fonts": {
+        "heading": "Bodoni Moda",
+        "body": "Montserrat",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "none",
+        "density": "airy",
+        "elevation": "flat",
+        "border": "none"
+      },
+      "tokens": {
+        "light": {
+          "background": "#ffffff",
+          "foreground": "#0d0d0d",
+          "card": "#ffffff",
+          "popover": "#ffffff",
+          "primary": "#0d0d0d",
+          "primary-foreground": "#ffffff",
+          "secondary": "#f9ecec",
+          "secondary-foreground": "#0d0d0d",
+          "muted": "#f9ecec",
+          "muted-foreground": "#6a6a6a",
+          "accent": "#d98f96",
+          "accent-foreground": "#ffffff",
+          "border": "#e6e6e6",
+          "input": "#e6e6e6",
+          "ring": "#0d0d0d",
+          "radius": "0rem",
+          "font-sans": "'Montserrat', sans-serif",
+          "font-display": "'Bodoni Moda', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        },
+        "dark": {
+          "background": "#000000",
+          "foreground": "#ffffff",
+          "card": "#000000",
+          "popover": "#000000",
+          "primary": "#ffffff",
+          "primary-foreground": "#000000",
+          "secondary": "#151515",
+          "secondary-foreground": "#ffffff",
+          "muted": "#151515",
+          "muted-foreground": "#9a9a9a",
+          "accent": "#d98f96",
+          "accent-foreground": "#000000",
+          "border": "#2a2a2a",
+          "input": "#2a2a2a",
+          "ring": "#ffffff",
+          "radius": "0rem",
+          "font-sans": "'Montserrat', sans-serif",
+          "font-display": "'Bodoni Moda', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        }
+      },
+      "source": {
+        "kind": "authored"
+      }
+    },
+    {
+      "id": "editorial-fashion-cobalt",
+      "level": "variant",
+      "parentId": "editorial-fashion",
+      "name": "Cobalt",
+      "description": "Fixture variant editorial-fashion-cobalt.",
+      "fonts": {
+        "heading": "Bodoni Moda",
+        "body": "Montserrat",
+        "mono": "JetBrains Mono"
+      },
+      "shape": {
+        "radius": "none",
+        "density": "airy",
+        "elevation": "flat",
+        "border": "hairline"
+      },
+      "tokens": {
+        "light": {
+          "background": "#ffffff",
+          "foreground": "#0a0a0a",
+          "card": "#ffffff",
+          "popover": "#ffffff",
+          "primary": "#0038ff",
+          "primary-foreground": "#ffffff",
+          "secondary": "#eef1ff",
+          "secondary-foreground": "#0a0a0a",
+          "muted": "#eef1ff",
+          "muted-foreground": "#5a5f73",
+          "accent": "#0038ff",
+          "accent-foreground": "#ffffff",
+          "border": "#dfe4ff",
+          "input": "#dfe4ff",
+          "ring": "#0038ff",
+          "radius": "0rem",
+          "font-sans": "'Montserrat', sans-serif",
+          "font-display": "'Bodoni Moda', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        },
+        "dark": {
+          "background": "#05081a",
+          "foreground": "#eef1ff",
+          "card": "#05081a",
+          "popover": "#05081a",
+          "primary": "#5a7bff",
+          "primary-foreground": "#05081a",
+          "secondary": "#111633",
+          "secondary-foreground": "#eef1ff",
+          "muted": "#111633",
+          "muted-foreground": "#9aa3c9",
+          "accent": "#5a7bff",
+          "accent-foreground": "#05081a",
+          "border": "#1f2650",
+          "input": "#1f2650",
+          "ring": "#5a7bff",
+          "radius": "0rem",
+          "font-sans": "'Montserrat', sans-serif",
+          "font-display": "'Bodoni Moda', serif",
+          "font-mono": "'JetBrains Mono', monospace"
+        }
+      },
+      "source": {
+        "kind": "authored"
+      }
+    }
+  ]
+}
