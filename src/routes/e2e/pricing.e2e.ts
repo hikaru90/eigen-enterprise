@@ -26,7 +26,7 @@ test.describe('Pricing transparency (AC-014, AC-015)', () => {
     context,
   }) => {
     await registerUser(context, page)
-    await page.goto('/capture')
+    await page.goto('/m/memory/capture')
 
     await captureViaUi(page, 'Test thought for pricing verification')
     await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible({ timeout: 30_000 })
@@ -48,7 +48,7 @@ test.describe('Pricing transparency (AC-014, AC-015)', () => {
 
   test('activity page shows totals row with credits', async ({ page, context }) => {
     await registerUser(context, page)
-    await page.goto('/capture')
+    await page.goto('/m/memory/capture')
 
     await captureViaUi(page, 'Another thought for totals check')
     await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible({ timeout: 30_000 })

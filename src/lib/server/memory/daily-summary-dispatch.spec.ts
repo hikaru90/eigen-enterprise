@@ -68,7 +68,7 @@ describe('dispatchDueDailySummaries', () => {
     previewMock.mockResolvedValue({
       title: 'Daily',
       body: 'Summary',
-      url: '/memory/tasks',
+      url: '/m/memory/tasks',
     })
     sendPushMock.mockResolvedValue({ sent: 1 })
     queueEmailMock.mockResolvedValue(undefined)
@@ -137,7 +137,7 @@ describe('dispatchDueDailySummaries', () => {
       expect.objectContaining({
         title: 'Daily',
         body: 'Summary',
-        url: '/memory/tasks',
+        url: '/m/memory/tasks',
       }),
     )
     expect(update).toHaveBeenCalled()

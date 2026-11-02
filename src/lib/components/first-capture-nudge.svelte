@@ -47,7 +47,7 @@
 </script>
 
 {#if open}
-  <Card.Root class="shrink-0 border border-black/15 bg-card dark:border-border">
+  <Card.Root class="shrink-0 border border-border bg-card">
     <Card.Header class="space-y-1 pb-2">
       <Card.Title class="text-sm">Thought saved</Card.Title>
       <Card.Description class="text-muted-foreground text-xs leading-relaxed">
@@ -58,7 +58,7 @@
       <Button href="/" class="rounded-[4px] text-xs" onclick={trackChat}>
         Ask about it in Chat
       </Button>
-      <Button href="/memory/notes" variant="outline" class="rounded-[4px] text-xs" onclick={trackMemory}>
+      <Button href="/m/memory/notes" variant="outline" class="rounded-[4px] text-xs" onclick={trackMemory}>
         See it in Notes
       </Button>
       <Button

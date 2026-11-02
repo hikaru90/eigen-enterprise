@@ -59,7 +59,7 @@
   <Dialog.Content
     data-testid="capture-confirmation-modal"
     data-thought-id={thoughtId}
-    class="rounded-none border-2 border-black dark:border-border max-w-lg"
+    class="max-w-lg"
   >
     <Dialog.Header>
       <Dialog.Title>Confirm how this is stored</Dialog.Title>
@@ -106,13 +106,12 @@
     </div>
 
     <Dialog.Footer class="flex flex-wrap items-center gap-2 sm:justify-start">
-      <Button type="button" class="rounded-none" disabled={loading} onclick={confirm}>
+      <Button type="button" disabled={loading} onclick={confirm}>
         {loading ? 'Working…' : 'Confirm'}
       </Button>
       <Button
         type="button"
         variant="outline"
-        class="rounded-none"
         disabled={loading}
         onclick={dismiss}
       >

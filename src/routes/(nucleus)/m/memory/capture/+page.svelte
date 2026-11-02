@@ -72,7 +72,7 @@
   } from '$lib/stores/current-user-view.svelte'
   import { pageInputDrafts } from '$lib/stores/page-input-drafts.svelte'
   import { unlinkTextFileFromThought } from '$lib/text-files/api'
-  import { postTimelineQuickAction } from '../../timeline/timeline-item-actions'
+  import { postTimelineQuickAction } from '../../../../timeline/timeline-item-actions'
   import { docTitle } from '$lib/shell/title'
 
   let { data }: { data: PageData } = $props()
@@ -899,7 +899,7 @@
 <svelte:head><title>{docTitle('Capture', 'Memory')}</title></svelte:head>
 
 <div
-  class="-mb-28 mx-auto flex h-dvh w-full max-w-xl flex-col overflow-hidden overscroll-none pt-20"
+  class="mx-auto flex min-h-[70dvh] w-full max-w-2xl flex-1 flex-col overflow-hidden overscroll-none pt-6"
 >
   <div class="relative z-10 shrink-0 space-y-4 bg-background px-5">
     {#if groundingQuestion && !groundingQuestionDismissed}
@@ -935,7 +935,7 @@
       {/if}
     {/if}
     <Card.Root
-      class="shrink-0 bg-white dark:bg-card border-2 border-black dark:border-border shadow-[8px_8px_0px_0px_#000] dark:shadow-none p-0 gap-0 items-start overflow-visible"
+      class="shrink-0 rounded-xl bg-card border border-border shadow-sm p-0 gap-0 items-start overflow-visible"
       aria-busy={interpretPendingText !== null}
     >
       <Card.Content class="p-0 w-full">
@@ -952,15 +952,15 @@
         />
       </Card.Content>
       <Card.Footer
-        class="bg-[#FAFAFA] dark:bg-muted border-t-2 border-black dark:border-border p-4 flex flex-row items-center justify-between w-full"
+        class="bg-muted/40 border-t border-border rounded-b-xl p-4 flex flex-row items-center justify-between w-full"
       >
         {#if interpretPendingText}
-          <span class="flex items-center gap-1.5 text-[#737373] text-xs leading-4">
+          <span class="flex items-center gap-1.5 text-muted-foreground text-xs leading-4">
             <LoaderCircleIcon class="size-3 animate-spin" aria-hidden="true" />
             {INTERPRET_PENDING_STATUS_LABEL}…
           </span>
         {:else}
-          <span class="text-[#737373] text-xs leading-4">⌘ / Ctrl + Enter to capture</span>
+          <span class="text-muted-foreground text-xs leading-4">⌘ / Ctrl + Enter to capture</span>
         {/if}
         <div class="flex items-center gap-2">
           <VoiceInputButton
@@ -982,7 +982,7 @@
           />
           <Button
             type="button"
-            class="bg-black text-white rounded-none px-[22px] py-[7.5px] text-base font-medium leading-6 h-auto border-0 hover:bg-black/90"
+            class="px-5"
             disabled={!raw.trim() || loading}
             onclick={() => {
               hapticConfirm()
@@ -1094,7 +1094,7 @@
     if (!open && !deletingThoughtId) deleteTargetId = null
   }}
 >
-  <AlertDialog.Content class="max-w-sm rounded-none border-2 border-black dark:border-border">
+  <AlertDialog.Content class="max-w-sm ">
     <AlertDialog.Header>
       <AlertDialog.Title>Delete this thought?</AlertDialog.Title>
       <AlertDialog.Description>
@@ -1102,13 +1102,12 @@
       </AlertDialog.Description>
     </AlertDialog.Header>
     <AlertDialog.Footer>
-      <AlertDialog.Cancel class="rounded-none" disabled={deletingThoughtId !== null}>
+      <AlertDialog.Cancel disabled={deletingThoughtId !== null}>
         Cancel
       </AlertDialog.Cancel>
       <Button
         type="button"
         variant="destructive"
-        class="rounded-none"
         disabled={deletingThoughtId !== null}
         onclick={() => void confirmDeleteThought()}
       >

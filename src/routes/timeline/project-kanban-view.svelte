@@ -225,7 +225,7 @@
     <section
       class="border-border bg-muted/10 flex w-[min(100%,16rem)] shrink-0 flex-col rounded-md border transition-colors {dragOverColumn ===
       col.id
-        ? 'border-(--color-eigen-green) bg-muted/30'
+        ? 'border-primary bg-muted/30'
         : ''}"
       aria-label="{col.label} column"
       data-testid="project-kanban-column-{col.id}"

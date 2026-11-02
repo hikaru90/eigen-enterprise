@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { TemporalEventListItem } from '../../../../api/temporal-events/+server'
+  import type { TemporalEventListItem } from '../../../../../api/temporal-events/+server'
   import type { PageData } from './$types'
   import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left'
   import FolderKanbanIcon from '@lucide/svelte/icons/folder-kanban'
@@ -18,13 +18,13 @@
   import type { ProjectViewMode } from '$lib/memory/project-view-mode'
   import { parseProjectViewMode } from '$lib/memory/project-view-mode'
   import { m } from '$lib/paraglide/messages.js'
-  import ProjectGanttView from '../../../../timeline/project-gantt-view.svelte'
-  import ProjectKanbanView from '../../../../timeline/project-kanban-view.svelte'
-  import ProjectListView from '../../../../timeline/project-list-view.svelte'
-  import TemporalEventDetail from '../../../../timeline/temporal-event-detail.svelte'
-  import { filterItemsByStatus } from '../../../../timeline/temporal-events-utils'
-  import TimelineEditProjectDialog from '../../../../timeline/timeline-edit-project-dialog.svelte'
-  import { postTimelineQuickAction } from '../../../../timeline/timeline-item-actions'
+  import ProjectGanttView from '../../../../../timeline/project-gantt-view.svelte'
+  import ProjectKanbanView from '../../../../../timeline/project-kanban-view.svelte'
+  import ProjectListView from '../../../../../timeline/project-list-view.svelte'
+  import TemporalEventDetail from '../../../../../timeline/temporal-event-detail.svelte'
+  import { filterItemsByStatus } from '../../../../../timeline/temporal-events-utils'
+  import TimelineEditProjectDialog from '../../../../../timeline/timeline-edit-project-dialog.svelte'
+  import { postTimelineQuickAction } from '../../../../../timeline/timeline-item-actions'
   import ProjectReviewDialog from './project-review-dialog.svelte'
   import { docTitle } from '$lib/shell/title'
 
@@ -111,7 +111,7 @@
     const url = new URL(page.url)
     url.searchParams.set(key, value)
     const search = url.search ? `?${url.searchParams.toString()}` : ''
-    await goto(resolve(`/memory/projects/${project.entityId}${search}`), {
+    await goto(resolve(`/m/memory/projects/${project.entityId}${search}`), {
       replaceState: true,
       noScroll: true,
       keepFocus: true,
@@ -194,39 +194,39 @@
       console.error('Failed to dismiss project', await res.text())
       return
     }
-    await goto(resolve('/memory/projects'))
+    await goto(resolve('/m/memory/projects'))
   }
 
   const ghostIconClass =
-    'h-auto rounded-full p-1.5 text-black hover:text-black/70 dark:text-foreground dark:hover:text-foreground/70'
+    'h-auto rounded-md p-1.5 text-foreground hover:text-foreground/70'
   const filledPillClass =
-    'h-auto shrink-0 rounded-full border border-black bg-black px-3 py-1 text-xs font-medium text-white hover:bg-black/90 dark:border-foreground dark:bg-foreground dark:text-background dark:hover:bg-foreground/90'
+    'h-auto shrink-0 rounded-md px-3 py-1 text-xs font-medium'
   const viewPillClass = (active: boolean) =>
     active
-      ? 'rounded-full bg-[var(--color-eigen-green)] px-3 py-1 text-xs font-medium text-black'
-      : 'rounded-full px-3 py-1 text-xs text-muted-foreground hover:text-foreground'
+      ? 'rounded-md bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground'
+      : 'rounded-md px-3 py-1 text-xs text-muted-foreground hover:text-foreground'
 </script>
 
 <svelte:head><title>{docTitle('Project', 'Memory')}</title></svelte:head>
 
 <div
-  class="-mb-28 flex h-dvh flex-col overflow-hidden overscroll-none px-3 pt-24"
+  class="mx-auto flex min-h-[70dvh] w-full max-w-5xl flex-1 flex-col overflow-hidden overscroll-none px-4 pt-6 sm:px-8"
   data-testid="project-detail-page"
 >
   <header class="border-border shrink-0 space-y-3 border-b pb-3">
     <div class="flex items-start justify-between gap-2">
       <div class="min-w-0 flex-1">
         <a
-          href={resolve('/memory/projects')}
+          href={resolve('/m/memory/projects')}
           class="text-muted-foreground mb-2 inline-flex items-center gap-1 text-xs hover:text-foreground"
         >
           <ArrowLeftIcon class="size-3.5" aria-hidden="true" />
           {m.graph_timeline_project_back()}
         </a>
-        <h1 class="flex items-center gap-2 text-base font-semibold">
+        <h2 class="flex items-center gap-2 text-base font-semibold">
           <FolderKanbanIcon class="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
           <span class="truncate">{displayLabel}</span>
-        </h1>
+        </h2>
         <p class="text-muted-foreground text-xs">
           {statusLabel(project.status)}
           {#if project.openTaskCount > 0}

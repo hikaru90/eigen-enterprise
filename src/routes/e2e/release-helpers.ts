@@ -158,8 +158,8 @@ async function dismissBlockingLayers(page: Page): Promise<void> {
     () => drawerOverlay.click({ position: { x: 6, y: 6 }, force: true }),
     () => page.getByRole('button', { name: DIALOG_CANCEL_BTN }).first().click(),
     () => page.getByRole('button', { name: /Tasks|Aufgaben/, exact: true }).click(),
-    () => page.goto('/memory/tasks', { waitUntil: 'domcontentloaded' }),
-    () => page.goto('/capture', { waitUntil: 'domcontentloaded' }),
+    () => page.goto('/m/memory/tasks', { waitUntil: 'domcontentloaded' }),
+    () => page.goto('/m/memory/capture', { waitUntil: 'domcontentloaded' }),
   ]
 
   for (const attempt of attempts) {
@@ -167,7 +167,7 @@ async function dismissBlockingLayers(page: Page): Promise<void> {
     await attempt().catch(() => undefined)
   }
 
-  await page.goto('/capture', { waitUntil: 'domcontentloaded' }).catch(() => undefined)
+  await page.goto('/m/memory/capture', { waitUntil: 'domcontentloaded' }).catch(() => undefined)
 }
 
 const RELEASE_ENV_CHECKS: Array<{ label: string; isSet: () => boolean }> = [
@@ -214,10 +214,10 @@ export type AuthenticatedSurface = {
 
 /** Main authenticated routes exercised before a release. */
 export const AUTHENTICATED_SURFACES: AuthenticatedSurface[] = [
-  { path: '/capture', label: 'Capture' },
-  { path: '/memory/tasks', label: 'Memory tasks' },
-  { path: '/memory/projects', label: 'Memory projects' },
-  { path: '/memory/notes', label: 'Memory notes' },
+  { path: '/m/memory/capture', label: 'Capture' },
+  { path: '/m/memory/tasks', label: 'Memory tasks' },
+  { path: '/m/memory/projects', label: 'Memory projects' },
+  { path: '/m/memory/notes', label: 'Memory notes' },
   { path: '/', label: 'Chat' },
   { path: '/activity', label: 'Activity' },
   { path: '/settings', label: 'Settings' },
@@ -729,7 +729,7 @@ async function fillCaptureComposer(page: Page, raw: string): Promise<Locator> {
  */
 export async function captureThoughtViaUi(page: Page, raw: string): Promise<string> {
   await dismissBlockingLayers(page)
-  await page.goto('/capture', { waitUntil: 'domcontentloaded' })
+  await page.goto('/m/memory/capture', { waitUntil: 'domcontentloaded' })
   await dismissBlockingLayers(page)
 
   if (await visible(onboardingDialog(page))) {
@@ -823,7 +823,7 @@ export async function captureThoughtViaUiDismissVerbatim(
   raw: string,
 ): Promise<string> {
   await dismissBlockingLayers(page)
-  await page.goto('/capture', { waitUntil: 'domcontentloaded' })
+  await page.goto('/m/memory/capture', { waitUntil: 'domcontentloaded' })
   await dismissBlockingLayers(page)
 
   await page.route('**/api/capture/interpret', async (route) => {
@@ -882,7 +882,7 @@ export async function captureThoughtViaUiDismissVerbatim(
  */
 export async function captureThoughtViaUiAutoAccept(page: Page, raw: string): Promise<string> {
   await dismissBlockingLayers(page)
-  await page.goto('/capture', { waitUntil: 'domcontentloaded' })
+  await page.goto('/m/memory/capture', { waitUntil: 'domcontentloaded' })
   await dismissBlockingLayers(page)
 
   await page.route('**/api/capture/interpret', async (route) => {
@@ -960,7 +960,7 @@ async function findProject(page: Page, entityId: string): Promise<TimelineProjec
 
 async function gotoTimelineProjectsView(page: Page): Promise<void> {
   await dismissBlockingLayers(page)
-  await page.goto('/memory/projects', { waitUntil: 'domcontentloaded' })
+  await page.goto('/m/memory/projects', { waitUntil: 'domcontentloaded' })
 
   for (let attempt = 0; attempt < 4; attempt++) {
     if (await visible(page.getByRole('button', { name: ADD_PROJECT_BTN }))) {
@@ -1588,11 +1588,11 @@ export async function assertProjectReviewTidyUp(page: Page): Promise<void> {
 }
 
 /**
- * Headed-release guard: cold `/memory/tasks` must stay within
+ * Headed-release guard: cold `/m/memory/tasks` must stay within
  * `TIMELINE_MOUNT_FETCH_BUDGET` (one unified `/api/timeline` fetch).
  */
 export async function assertTimelineMountFetchBudget(page: Page): Promise<void> {
-  await page.goto('/capture', { waitUntil: 'domcontentloaded' })
+  await page.goto('/m/memory/capture', { waitUntil: 'domcontentloaded' })
 
   const urls: string[] = []
   const onRequest = (request: Request) => {
@@ -1605,7 +1605,7 @@ export async function assertTimelineMountFetchBudget(page: Page): Promise<void> 
   page.on('request', onRequest)
 
   try {
-    await page.goto('/memory/tasks', { waitUntil: 'domcontentloaded' })
+    await page.goto('/m/memory/tasks', { waitUntil: 'domcontentloaded' })
     await expect(page.getByRole('tablist')).toBeVisible({ timeout: RELEASE_WAIT_MS })
 
     await pollUntil(
@@ -1635,7 +1635,7 @@ export async function assertTimelineMountFetchBudget(page: Page): Promise<void> 
  * Dial presets (Last week / Last month / All time) resolve locally — no parse-date-range call.
  */
 export async function assertTimelineSharedFiltersAndDial(page: Page): Promise<void> {
-  await page.goto('/capture', { waitUntil: 'domcontentloaded' })
+  await page.goto('/m/memory/capture', { waitUntil: 'domcontentloaded' })
 
   let parseDateRangeCalls = 0
   await page.route('**/api/timeline/parse-date-range', async (route) => {
@@ -1661,7 +1661,7 @@ export async function assertTimelineSharedFiltersAndDial(page: Page): Promise<vo
   page.on('request', onRequest)
 
   try {
-    await page.goto('/memory/tasks', { waitUntil: 'domcontentloaded' })
+    await page.goto('/m/memory/tasks', { waitUntil: 'domcontentloaded' })
     await expect(page.getByRole('tablist')).toBeVisible({ timeout: RELEASE_WAIT_MS })
 
     await expect(page.locator('#timeline-date-range-trigger')).toBeVisible({
@@ -1719,7 +1719,7 @@ export async function assertTimelineSharedFiltersAndDial(page: Page): Promise<vo
     ).toBe(0)
 
     const beforeProjectsNav = listUrls.length
-    await page.goto('/memory/projects', { waitUntil: 'domcontentloaded' })
+    await page.goto('/m/memory/projects', { waitUntil: 'domcontentloaded' })
     await expect(page.getByRole('button', { name: ADD_PROJECT_BTN })).toBeVisible({
       timeout: RELEASE_WAIT_MS,
     })
@@ -1739,7 +1739,7 @@ export async function assertTimelineSharedFiltersAndDial(page: Page): Promise<vo
  * Tasks search: graph-style morph icon in the header; nonsense query hides rows and zeros To Do.
  */
 export async function assertTimelineTasksSearch(page: Page): Promise<void> {
-  await page.goto('/memory/tasks', { waitUntil: 'domcontentloaded' })
+  await page.goto('/m/memory/tasks', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('tablist')).toBeVisible({ timeout: RELEASE_WAIT_MS })
 
   const todoTab = page.getByRole('tab', { name: /to\s*do|offen/i })
@@ -1778,7 +1778,7 @@ export async function assertTimelineTasksSearch(page: Page): Promise<void> {
  * overdue badge equals overdue list; project board cards only for projects with tasks in range.
  */
 export async function assertTimelineSsotCountsAndLists(page: Page): Promise<void> {
-  await page.goto('/memory/tasks', { waitUntil: 'domcontentloaded' })
+  await page.goto('/m/memory/tasks', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('tablist')).toBeVisible({ timeout: RELEASE_WAIT_MS })
 
   const todoTab = page.getByRole('tab', { name: /to\s*do|offen/i })
@@ -1827,7 +1827,7 @@ export async function assertTimelineSsotCountsAndLists(page: Page): Promise<void
   }
   page.on('request', onRequest)
   try {
-    await page.goto('/memory/projects', { waitUntil: 'domcontentloaded' })
+    await page.goto('/m/memory/projects', { waitUntil: 'domcontentloaded' })
     await expect(page.getByRole('button', { name: ADD_PROJECT_BTN })).toBeVisible({
       timeout: RELEASE_WAIT_MS,
     })
@@ -1858,7 +1858,7 @@ export async function exerciseAuthenticatedUi(page: Page): Promise<void> {
 
 /** The shell's settings menu (sidebar footer): one Settings link, then sign out. */
 async function exerciseSettingsMenu(page: Page): Promise<void> {
-  await page.goto('/capture')
+  await page.goto('/m/memory/capture')
   await page.getByTestId('home-settings-trigger').first().click()
   await page.getByRole('link', { name: 'Settings', exact: true }).click()
   await expect(page).toHaveURL(/\/settings$/)
@@ -1870,7 +1870,7 @@ async function exerciseSettingsMenu(page: Page): Promise<void> {
 }
 
 async function exerciseMemoryUi(page: Page): Promise<void> {
-  await page.goto('/memory/tasks')
+  await page.goto('/m/memory/tasks')
 
   for (const tab of ['Tasks', 'Projects', 'Notes'] as const) {
     await page.getByRole('link', { name: tab, exact: true }).click()
@@ -1901,7 +1901,7 @@ async function exerciseCaptureUi(page: Page): Promise<void> {
   await installVoiceCaptureMocks(page)
   await exerciseVoiceCaptureUi(page, { timeoutMs: RELEASE_WAIT_MS })
 
-  await page.goto('/capture')
+  await page.goto('/m/memory/capture')
 
   const expand = page.getByRole('button', { name: 'Expand thought' }).first()
   if (await expand.isVisible().catch(() => false)) {
@@ -1939,7 +1939,7 @@ async function exerciseLegacyRedirects(page: Page): Promise<void> {
 }
 
 /**
- * Notification deep-link contract: `/capture?checkin=1` must surface the
+ * Notification deep-link contract: `/m/memory/capture?checkin=1` must surface the
  * pending grounding question card (same question text the push would carry).
  * Routes the question API so this assertion does not depend on a live push.
  */
@@ -1965,7 +1965,7 @@ export async function assertCheckInDeepLinkShowsPendingQuestion(page: Page): Pro
     })
   })
 
-  await page.goto('/capture?checkin=1')
+  await page.goto('/m/memory/capture?checkin=1')
   const card = page.locator('#grounding-question')
   await expect(card).toBeVisible({ timeout: RELEASE_WAIT_MS })
   await expect(card.getByText(pendingQuestion)).toBeVisible()

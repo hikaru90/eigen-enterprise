@@ -17,10 +17,7 @@ import { ModuleRegistry, type ActivationStore } from '$lib/kernel/modules'
 import type { PrincipalStore } from '$lib/kernel/principals'
 import { KernelRegistry } from '$lib/kernel/registry'
 import { GitCommitter, type VcsCommitter } from '$lib/kernel/vcs'
-import {
-  registerModuleTools,
-  type WiredKernel,
-} from '$lib/kernel/wiring'
+import { registerModuleTools, type WiredKernel } from '$lib/kernel/wiring'
 import type { AppDatabase } from '$lib/server/db/context'
 import { brandManifest } from './brand/manifest'
 import { createBrandTools } from './brand/tools'
@@ -32,7 +29,7 @@ import { createOwleryTools } from './email/owlery/tools'
 import { createEmailTools } from './email/tools'
 import { MEMBERS_MODULE_ID, membersManifest } from './members/manifest'
 import { createMembersTools } from './members/tools'
-import { memoryManifest } from './memory/manifest'
+import { MEMORY_MODULE_ID, memoryManifest } from './memory/manifest'
 import { createMemoryTools } from './memory/tools'
 import { createAllowlistAdminTools } from './orchestrator/allowlist-tools'
 import { orchestratorManifest } from './orchestrator/manifest'
@@ -72,7 +69,14 @@ export const moduleManifests = [
 ] as const
 
 /** System modules: part of the OS, self-seeded active (ensureSystemModulesActive). */
-export const SYSTEM_MODULE_IDS = [WEBSITE_MODULE_ID, EMAIL_MODULE_ID, MEMBERS_MODULE_ID] as const
+export const SYSTEM_MODULE_IDS = [
+  WEBSITE_MODULE_ID,
+  EMAIL_MODULE_ID,
+  MEMBERS_MODULE_ID,
+  // Memory (phase-cohesion C3): the owner's notes/tasks/projects/capture and the
+  // agent's memory tools are core, never an optional extension.
+  MEMORY_MODULE_ID,
+] as const
 
 /** Tools that always require an approval decision before first execution. */
 export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
@@ -150,7 +154,8 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
   const approvalStore = options.approvalStore ?? new DbApprovalStore(db)
   const approvalMode = options.approvalMode ?? new DbApprovalModeStore(db)
   const principals = options.principals ?? new DbPrincipalStore(db)
-  const vcsCommitter = options.vcsCommitter === undefined ? new GitCommitter() : options.vcsCommitter
+  const vcsCommitter =
+    options.vcsCommitter === undefined ? new GitCommitter() : options.vcsCommitter
 
   const modules = new ModuleRegistry(activations)
   for (const manifest of moduleManifests) modules.register(manifest)
@@ -201,7 +206,8 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
 export async function ensureSystemModulesActive(kernel: WiredKernel): Promise<void> {
   // website owns hosting (substrate) and the GitHub source provider; github does
   // nothing until connected. email owns Owlery (SES); it does nothing until the
-  // owner sets it up. Hosting mutations stay human-only (D11, requireHuman).
+  // owner sets it up. Hosting mutations stay human-only (D11, requireHuman). memory owns
+  // the notes/tasks/projects store and the agent's memory tools.
   for (const id of SYSTEM_MODULE_IDS) {
     if (!(await kernel.activations.get(id))) await kernel.activations.set(id, true)
   }

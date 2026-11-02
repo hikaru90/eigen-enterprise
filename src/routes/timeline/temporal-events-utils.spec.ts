@@ -298,7 +298,7 @@ describe('projects view default-visibility wiring', () => {
     expect(source).toContain('filterOpenTimelineItemsForProject')
     expect(source).toContain('projectCards')
     expect(source).toContain('data-testid="project-card"')
-    expect(source).toContain('/memory/projects/')
+    expect(source).toContain('/m/memory/projects/')
     expect(source).not.toContain('filterRangeScopedTodoItems')
     expect(source).not.toContain("fetch('/api/timeline/projects")
     expect(source).not.toContain('TimelineProjectDetailDialog')

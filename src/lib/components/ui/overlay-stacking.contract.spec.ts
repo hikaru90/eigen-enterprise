@@ -54,7 +54,7 @@ describe('overlay stacking contract', () => {
   })
 
   it('keeps project delete confirm test id for release smoke', () => {
-    const projectDetailPage = readRepo('src/routes/(nucleus)/memory/projects/[entityId]/+page.svelte')
+    const projectDetailPage = readRepo('src/routes/(nucleus)/m/memory/projects/[entityId]/+page.svelte')
     expect(projectDetailPage).toContain('data-testid="project-delete-confirm"')
   })
 })

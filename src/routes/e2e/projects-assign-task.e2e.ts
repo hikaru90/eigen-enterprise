@@ -39,7 +39,7 @@ test.describe('Projects: unassigned task assignment @qa', () => {
     })
 
     await test.step('navigate to Projects view', async () => {
-      await page.goto('/memory/projects')
+      await page.goto('/m/memory/projects')
       await page.waitForTimeout(2000)
     })
 

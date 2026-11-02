@@ -13,7 +13,7 @@ import { queueNotificationEmail } from '$lib/server/notify/notification-email'
 import { sendPushToUser } from '$lib/server/push/send'
 import { listPushSubscriptionsForUser } from '$lib/server/push/subscription'
 
-const CHECK_IN_CAPTURE_URL = '/capture?checkin=1'
+const CHECK_IN_CAPTURE_URL = '/m/memory/capture?checkin=1'
 const GROUNDING_NOTIFY_TITLE = 'Improve capture quality'
 const RELEVANCE_NOTIFY_TITLE = 'Quick memory check'
 
@@ -68,7 +68,7 @@ export async function maybeNotifyGroundingQuestionPush(
 
     // Persist the pushed question for notification taps and start the 24h send
     // cap. Do NOT bump last_session_at here — that cooldown stays deferred until
-    // the user answers or dismisses (so /capture?checkin=1 can still serve the card).
+    // the user answers or dismisses (so /m/memory/capture?checkin=1 can still serve the card).
     await recordGroundingPushSent(userId, generated)
   } catch (err) {
     console.error('[check-in-notify] push failed', {

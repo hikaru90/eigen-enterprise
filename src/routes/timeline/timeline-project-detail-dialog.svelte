@@ -50,7 +50,7 @@
   }: Props = $props()
 
   const ghostPillClass =
-    'h-auto shrink-0 rounded-full border border-white px-2 py-0.5 text-xs text-black hover:text-black/70 dark:text-foreground dark:hover:text-foreground/70'
+    'h-auto shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-foreground hover:text-foreground/70'
 
   function closeDrawer() {
     open = false
@@ -97,7 +97,7 @@
             <Button
               type="button"
               variant="ghost"
-              class="h-auto rounded-full p-1.5 text-black hover:text-black/70 dark:text-foreground dark:hover:text-foreground/70"
+              class="h-auto rounded-md p-1.5 text-foreground hover:text-foreground/70"
               aria-label={m.graph_timeline_edit_project()}
               onclick={onEdit}
             >

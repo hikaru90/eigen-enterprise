@@ -1,7 +1,7 @@
 import type { CurrentUserView } from '$lib/memory/current-user-view'
 
 /**
- * Prod fetch budget for a cold `/memory/tasks` mount under the single-source-of-truth model.
+ * Prod fetch budget for a cold `/m/memory/tasks` mount under the single-source-of-truth model.
  * One unified `GET /api/timeline` — no separate overdue or stats fetches.
  */
 export const TIMELINE_MOUNT_FETCH_BUDGET = {

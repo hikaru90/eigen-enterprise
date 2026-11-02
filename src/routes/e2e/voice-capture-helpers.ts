@@ -138,14 +138,14 @@ export async function assertVoiceTranscribeApi(
 
 /**
  * Mic button → fixture "recording" → transcript appended to `#thought`.
- * Call `installVoiceCaptureMocks` before navigating to `/capture`.
+ * Call `installVoiceCaptureMocks` before navigating to `/m/memory/capture`.
  */
 export async function exerciseVoiceCaptureUi(
   page: Page,
   options?: { timeoutMs?: number },
 ): Promise<void> {
   const timeoutMs = options?.timeoutMs ?? 120_000
-  await page.goto('/capture')
+  await page.goto('/m/memory/capture')
   await expect(
     page.getByRole('dialog', { name: /Your memory, not theirs\.|Just drop it in\./ }),
   ).toBeHidden({

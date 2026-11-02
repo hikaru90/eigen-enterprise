@@ -36,8 +36,8 @@ const MODULE_ENTRIES: Record<string, { href: Pathname; match?: string[] }> = {
   email: { href: '/m/email' },
   // Brand = /brand (the second entry /m/brand is gone).
   brand: { href: '/brand' },
-  // Notes, projects, tasks and capture belong to the Memory page.
-  memory: { href: '/m/memory', match: ['/memory', '/capture'] },
+  // Tasks, projects, notes and capture are sub-pages of /m/memory.
+  memory: { href: '/m/memory' },
 }
 
 export function buildShellNav(

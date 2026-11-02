@@ -110,8 +110,8 @@ describe('merged module manifests', () => {
     for (const name of APPROVAL_REQUIRED_TOOLS) expect(k.registry.get(name), name).toBeDefined()
   })
 
-  it('system modules are website, email and members, and boot activates them', async () => {
-    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members'])
+  it('system modules are website, email, members and memory, and boot activates them', async () => {
+    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory'])
     const { kernel: k, activations } = kernel()
     await ensureSystemModulesActive(k)
     expect(await activations.get('website')).toBe(true)
@@ -119,6 +119,9 @@ describe('merged module manifests', () => {
     expect(await k.modules.isToolActive('substrate.status')).toBe(true)
     expect(await k.modules.isToolActive('github.status')).toBe(true)
     expect(await k.modules.isToolActive('owlery.status')).toBe(true)
+    // Memory is part of the OS: its tools work and its page never says "Not active".
+    expect(await activations.get('memory')).toBe(true)
+    expect(await k.modules.isToolActive('memory.capture_thought')).toBe(true)
     // Not a system module: the agent's internal tools keep their own activation.
     expect(await k.modules.isToolActive('repo.merge')).toBe(false)
   })

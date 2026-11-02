@@ -105,10 +105,10 @@ test('every navigation entry and settings section renders inside the one shell',
 
   // Kept pages that wait for C3 still render in the shell.
   const kept: Array<[string, string]> = [
-    ['/memory/notes', 'memory'],
-    ['/memory/tasks', 'memory'],
-    ['/memory/projects', 'memory'],
-    ['/capture', 'memory'],
+    ['/m/memory/notes', 'memory'],
+    ['/m/memory/tasks', 'memory'],
+    ['/m/memory/projects', 'memory'],
+    ['/m/memory/capture', 'memory'],
     ['/activity', 'agent'],
     ['/settings/extensions', 'agent'],
     ['/m/website/settings', 'website'],
@@ -123,6 +123,9 @@ test('every navigation entry and settings section renders inside the one shell',
   for (const path of [
     '/graph',
     '/memory',
+    '/memory/tasks',
+    '/memory/notes',
+    '/capture',
     '/chat',
     '/eval',
     '/feedback',
@@ -135,7 +138,7 @@ test('every navigation entry and settings section renders inside the one shell',
     '/settings/hosting',
     '/m/brand',
     '/m/website/hosting',
-    '/memory/projects/not-a-project',
+    '/m/memory/projects/not-a-project',
   ]) {
     const res = await page.goto(path)
     expect(res?.status(), path).toBe(404)

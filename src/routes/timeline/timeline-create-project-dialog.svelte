@@ -123,7 +123,7 @@
               class="flex-1 rounded-sm px-2 py-1 font-mono text-[10px] uppercase tracking-wide transition-colors {status ===
               option.id
                 ? 'bg-foreground text-background'
-                : 'text-black hover:bg-muted/40 dark:text-foreground'}"
+                : 'text-foreground hover:bg-muted/40'}"
               aria-pressed={status === option.id}
               disabled={busy}
               onclick={() => (status = option.id)}

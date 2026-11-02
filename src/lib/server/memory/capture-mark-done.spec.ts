@@ -126,7 +126,7 @@ describe('capture page mark-done (bare thought uuid resolution)', () => {
   })
 
   it('capture page uses the shared quick-action client, not PATCH /api/thoughts', () => {
-    const page = readFileSync(path.join(here, '../../../routes/(nucleus)/capture/+page.svelte'), 'utf-8')
+    const page = readFileSync(path.join(here, '../../../routes/(nucleus)/m/memory/capture/+page.svelte'), 'utf-8')
     expect(page).toContain('postTimelineQuickAction')
     expect(page).not.toMatch(/PATCH[^"']*\/api\/thoughts/)
   })

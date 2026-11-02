@@ -160,7 +160,7 @@ export function writeGraphScaleSpendReport(report: GraphScaleSpendReport): strin
 
 /** Open capture so headed runs show the app instead of about:blank. */
 export async function openGraphScaleSpendCapturePage(page: Page): Promise<void> {
-  await page.goto('/capture')
+  await page.goto('/m/memory/capture')
   await expect(
     page.getByRole('dialog', { name: /Your memory, not theirs\.|Just drop it in\./ }),
   ).toBeHidden({
@@ -198,7 +198,7 @@ export async function captureThoughtThroughUi(
     throw new Error('captureThoughtThroughUi: rawText is required')
   }
 
-  if (!page.url().includes('/capture')) {
+  if (!page.url().includes('/m/memory/capture')) {
     await openGraphScaleSpendCapturePage(page)
   }
 
