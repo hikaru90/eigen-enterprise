@@ -14,10 +14,15 @@ function readRepo(relativeFromRoot: string): string {
   return readFileSync(path.join(repoRoot, relativeFromRoot), 'utf-8')
 }
 
-/** Default class strings only — ignore optional className / overlayClass passthrough. */
+/**
+ * Default class strings only — every string literal inside the `class={cn(…)}`
+ * call, joined; identifiers (className / overlayClass passthrough, shared
+ * surface constants like dialogSurfaceClass) are ignored.
+ */
 function defaultClassLiteral(source: string): string {
-	const cnMatch = source.match(/class=\{cn\(\s*['"]([^'"]+)['"]/)
-	if (cnMatch?.[1]) return cnMatch[1]
+	const call = source.match(/class=\{cn\(([\s\S]*?)\)\}/)?.[1]
+	const literals = call ? [...call.matchAll(/['"]([^'"]+)['"]/g)].map((m) => m[1]) : []
+	if (literals.length > 0) return literals.join(' ')
 	throw new Error('Could not find cn(\'...\') / cn("...") default class literal')
 }
 
