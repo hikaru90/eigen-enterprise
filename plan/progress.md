@@ -2,6 +2,19 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-03 — SHIPPED (main, not pushed): cohesion C3 + C3b — Memory and Agent areas, the chosen style app-wide, one page frame
+
+Gates on main: svelte-check 0 errors, full unit **4741 passed / 15 skipped / 0 failed**; e2e on the merged tree: shell-walk, memory-page, agent-roadmap, agent-runs-live, brand-picker/system/wide, mail-fake-transport, onboarding-welcome, auth, pricing, website-apps, page-frame green. Owner can see it: "App Page Inventory" (post-C3, compared with C0) and "One Page Frame" artifacts. Test server reset with the owner's OK (2026-11-02): fresh unclaimed install of `5df230738863b5ba` (= main before C3), claim link handed over in the session.
+
+- **Memory** `cd96b3b`: one Memory page `/m/memory` (Overview · Tasks · Projects · Notes · Capture) with its settings (time zone, reminders, daily summary — the service had no UI before), restyled to tokens. **Memory is a system module**: no activation row had ever been written, so `/m/memory` said "Off" *and the kernel fail-closed blocked the agent's memory.* tools*. Fixed "Mark done" on event-backed tasks. Old `/memory/*`, `/capture` 404.
+- **Brand app-wide** `b9cac80`: the chosen style re-skins the shell (sidebar, highlight, badge, chat composer, menus) via `brandShellVars()`; fonts of the active set load app-wide; shadcn shadows/radius scale/overlays read set tokens; no set ⇒ unchanged look. **Brand is a system module** (picker never behind an activation step); removed `activation-notice.svelte`, `brand/activation.ts`, `POST /api/brand/activate`.
+- **Agent** `b0da450`: `/agent` with Runs · Activity · Roadmap. Activity = readable, day-grouped log from the metadata-only projection (`readable-log.ts`); Roadmap = board with add/start/ship (owner/admin). `/runs`, `/activity`, `/settings/extensions` 404.
+- **C3b polish** (`9f70617`, `6a802c5`, `7311066`): shared `PageFrame`/`PageHeader`/`StatusPill` + `area-nav.ts` — one header per area, tabs below, one width rule (written into `docs/design-system.md` "Page frame"); signed-out pages (login, signup, claim, invite, errors) in the shell's design with one wordmark "eigenEnterprise"; owner-facing copy (`module-copy.ts`, module names in Activity from manifests, run titles "Chat with …"/"Background task: …", plain failure text with details toggle, Email leads with status — developer recipe under "For developers"); sessions record user agent + address at sign-in (bowser 2.14.1) — root cause: server-side sign-ins never forwarded the request headers; e2e fixed (relative URLs, pricing on today's product, `E2E_PORT`).
+
+**Open**: Memory › Capture keeps its own narrow column; pages without test data unchecked (brand editor with a set, app detail, project detail, published /s page); component spec `app-detail-settings` (SHOP_REGION) fails on main independently; `TENANT_MASTER_KEY` empty in `.env.example` still crashes dev via an unhandled rejection; repo-wide eslint not run on the merged tree.
+
+**Next**: release main to the test server (owner claims it); website W2–W4 (company site as routed app, schema per app), email E2/E3/E5/E6, factory S2.
+
 ## 2026-11-02 — SHIPPED (main, not pushed, not on the test server): brand picker B1–B4, email E1+E4, website W1, cohesion C0–C2+C4, factory S1
 
 Parallel worktree streams (subagents on low effort), each merged `--no-ff`. Gates on the final main: svelte-check 0 errors, full unit suite **4674 passed / 15 skipped / 0 failed**. Repo-wide eslint and the full e2e suite were not run on the merged tree (streams ran their own e2e).
