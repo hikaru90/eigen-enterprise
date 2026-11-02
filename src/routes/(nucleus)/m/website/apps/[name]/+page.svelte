@@ -177,7 +177,7 @@
       {#if data.app.history.length === 0}
         <p class="text-sm text-muted-foreground">No deploys yet.</p>
       {:else}
-        <ul class="flex flex-col gap-1">
+        <ul class="flex flex-col gap-1" data-testid="deploy-history">
           {#each data.app.history.slice(0, 30) as e, i (i)}
             <li class="text-xs break-words text-foreground/70">
               <span class="text-foreground/45">{when(e.time)}</span> · {e.message}
@@ -197,6 +197,7 @@
         <p class="text-sm text-muted-foreground">{data.logsError}</p>
       {:else}
         <pre
+          data-testid="app-logs"
           class="max-h-96 overflow-auto rounded-md border border-border bg-muted/40 p-3 text-xs whitespace-pre-wrap">{data.logs.join(
             '\n',
           )}</pre>

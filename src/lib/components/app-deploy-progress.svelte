@@ -171,6 +171,7 @@
     class="flex flex-col gap-3 rounded-md border border-border p-4"
     aria-label="Deploy progress"
     data-testid="deploy-progress"
+    data-state={progress.state}
   >
     <div class="flex flex-wrap items-center gap-2 text-sm">
       {#if progress.state === 'running'}
