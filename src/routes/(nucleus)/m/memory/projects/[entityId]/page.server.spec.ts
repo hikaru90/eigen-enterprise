@@ -15,7 +15,7 @@ const event = (entityId: string) =>
     depends: vi.fn(),
   }) as unknown as Parameters<typeof load>[0]
 
-describe('/memory/projects/[entityId]', () => {
+describe('/m/memory/projects/[entityId]', () => {
   it('404s for an id that cannot be a project (not a uuid) — never a 500 from the database', async () => {
     await expect(load(event('x'))).rejects.toMatchObject({ status: 404 })
     expect(loadProjectDetail).not.toHaveBeenCalled()

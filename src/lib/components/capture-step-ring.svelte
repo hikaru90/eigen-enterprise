@@ -13,14 +13,14 @@
 
   const stepDeg = $derived(total > 0 ? 360 / total : 360)
   const ringStyle = $derived.by(() => {
-    if (total <= 0) return 'background: #e5e5e5'
+    if (total <= 0) return 'background: var(--muted)'
     const stops: string[] = []
     for (let i = 0; i < total; i++) {
       const start = i * stepDeg
       const end = (i + 1) * stepDeg
-      let color = '#e5e5e5'
-      if (i < completed) color = '#000000'
-      else if (i === completed && active) color = '#000000'
+      let color = 'var(--muted)'
+      if (i < completed) color = 'var(--foreground)'
+      else if (i === completed && active) color = 'var(--foreground)'
       stops.push(`${color} ${start}deg ${end}deg`)
     }
     return `conic-gradient(from -90deg, ${stops.join(', ')})`

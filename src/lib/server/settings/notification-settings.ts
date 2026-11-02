@@ -3,6 +3,7 @@ import {
   DEFAULT_TIMEZONE_OFFSET_MINUTES,
   ianaFromOffsetMinutes,
   nearestOptionOffset,
+  offsetMinutesForUiPreference,
 } from '$lib/i18n/timezone-offset'
 import { getDb } from '$lib/server/db'
 import { userPreference } from '$lib/server/db/schema'
@@ -119,5 +120,33 @@ export async function saveNotificationSettings(
   return {
     ...input,
     message: `Notification settings saved.${syncMessage}`,
+  }
+}
+
+/**
+ * The stored reminder/summary settings in the shape the form edits (defaults
+ * when nothing is stored yet). Read by the Memory page's settings section.
+ */
+export async function loadNotificationSettings(userId: string): Promise<NotificationSettingsInput> {
+  const [row] = await getDb()
+    .select({
+      preferredTimezone: userPreference.preferredTimezone,
+      preferredTimezoneOffsetMinutes: userPreference.preferredTimezoneOffsetMinutes,
+      eventNotificationsEnabled: userPreference.eventNotificationsEnabled,
+      eventReminderLeadMinutes: userPreference.eventReminderLeadMinutes,
+      dailySummaryEnabled: userPreference.dailySummaryEnabled,
+      dailySummaryMinutesLocal: userPreference.dailySummaryMinutesLocal,
+    })
+    .from(userPreference)
+    .where(eq(userPreference.userId, userId))
+    .limit(1)
+  return {
+    timezoneOffsetMinutes:
+      offsetMinutesForUiPreference(row?.preferredTimezone, row?.preferredTimezoneOffsetMinutes) ??
+      DEFAULT_TIMEZONE_OFFSET_MINUTES,
+    eventNotificationsEnabled: row?.eventNotificationsEnabled ?? false,
+    eventReminderLeadMinutes: row?.eventReminderLeadMinutes ?? 10,
+    dailySummaryEnabled: row?.dailySummaryEnabled ?? false,
+    dailySummaryTimeLocal: formatMinutesLocal(row?.dailySummaryMinutesLocal ?? 480),
   }
 }

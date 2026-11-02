@@ -97,9 +97,9 @@
   }
 
   const filledPillClass =
-    'h-auto shrink-0 rounded-full border border-black bg-black px-3 py-1 text-xs font-medium text-white hover:bg-black/90 dark:border-foreground dark:bg-foreground dark:text-background dark:hover:bg-foreground/90'
+    'h-auto shrink-0 rounded-md px-3 py-1 text-xs font-medium'
   const projectCardClass =
-    'mb-2 flex w-full flex-col gap-y-1 bg-white py-3.5 px-4 text-left shadow-[4px_4px_0_0_#111111] transition-opacity hover:bg-white/95 dark:bg-card dark:shadow-[4px_4px_0_0_rgb(17_17_17_/_0.35)] dark:hover:bg-card/95'
+    'mb-2 flex w-full flex-col gap-y-1 rounded-lg border border-border bg-card py-3.5 px-4 text-left transition-colors hover:bg-muted/50'
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden px-3">
@@ -134,7 +134,7 @@
             {@const projectNextAction = getNextAction(catalogProject)}
             {@const openLoopCount = project.group.items.length}
             <a
-              href={resolve(`/memory/projects/${project.entityId}`)}
+              href={resolve(`/m/memory/projects/${project.entityId}`)}
               class="{projectCardClass} min-w-0 {project.status === 'someday' ? 'opacity-50' : ''}"
               data-testid="project-card"
             >
@@ -257,7 +257,7 @@
                     <Button
                       type="button"
                       variant="ghost"
-                      class="h-auto shrink-0 rounded-full border border-white px-2 py-0.5 text-xs text-black hover:text-black/70 dark:text-foreground dark:hover:text-foreground/70"
+                      class="h-auto shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-foreground hover:text-foreground/70"
                       onclick={() => {
                         assignProjectItem = task
                         assignProjectOpen = true

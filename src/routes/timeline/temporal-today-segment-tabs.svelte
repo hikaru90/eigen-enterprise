@@ -21,25 +21,25 @@
       segment: 'todo' as const,
       count: tabCounts.todo,
       label: m.graph_timeline_pill_todo(),
-      countClass: 'text-black dark:text-foreground',
+      countClass: 'text-foreground',
     },
     {
       segment: 'done' as const,
       count: tabCounts.done,
       label: m.graph_timeline_pill_done(),
-      countClass: 'text-green-600 dark:text-green-500',
+      countClass: 'text-primary',
     },
     {
       segment: 'overdue' as const,
       count: tabCounts.overdue,
       label: m.graph_timeline_pill_overdue(),
-      countClass: tabCounts.overdue > 0 ? 'text-destructive' : 'text-black dark:text-foreground',
+      countClass: tabCounts.overdue > 0 ? 'text-destructive' : 'text-foreground',
     },
   ] as const)
 </script>
 
 <div
-  class="grid w-full grid-cols-3 rounded-2xl border border-white/80 bg-white/5 p-0.5 dark:border-white/20 dark:bg-white/5"
+  class="grid w-full grid-cols-3 rounded-2xl border border-border bg-muted/30 p-0.5"
   role="tablist"
   aria-label={m.graph_timeline_tasks_segments_aria()}
 >

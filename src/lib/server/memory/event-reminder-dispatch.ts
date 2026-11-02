@@ -86,7 +86,7 @@ async function dispatchOneEventReminder(
 
   const title = KIND_LABELS[row.kind] ?? 'Event'
   const body = `In ${row.leadMinutes} min · ${row.semanticSummary}`
-  const url = `/memory/tasks?event=${row.temporalEventId}`
+  const url = `/m/memory/tasks?event=${row.temporalEventId}`
   const tag = `event-${row.temporalEventId}-${row.leadMinutes}`
 
   // Push and email are independent channels: each channel failure is logged

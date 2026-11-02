@@ -140,7 +140,7 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
   // is part of the web server's kernel, not only the CLI's: the orchestrator's
   // remediation path (and its tool-error prompt) depends on it.
   await registerAdminTools(kernel, { db: kernelDbHandle })
-  // Hosting, GitHub and email are the company's system modules: on from the first boot.
+  // Hosting, GitHub, email, members and memory are the company's system modules: on from the first boot.
   await ensureSystemModulesActive(kernel)
 
   // Durable journey state: DB-backed via the same lazy pooled-handle pattern

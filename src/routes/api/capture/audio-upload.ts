@@ -16,7 +16,7 @@ export type AudioUpload = {
  * audio content types are exempt from SvelteKit's CSRF origin check, unlike
  * `multipart/form-data`, which is rejected as a cross-site POST whenever the
  * deployed `ORIGIN` does not exactly match the browser origin (the production
- * failure on /capture voice input).
+ * failure on /m/memory/capture voice input).
  */
 export async function readAudioUpload(
   request: Request,

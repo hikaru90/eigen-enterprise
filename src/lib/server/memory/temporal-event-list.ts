@@ -745,13 +745,6 @@ export async function getTemporalEventListItemById(
     return tasks.find((i) => i.thoughtId === thoughtId) ?? null
   }
 
-  // Bare thought uuid (no `task:` prefix) — capture-page rows are plain thoughts
-  // without a temporal_event row. Resolve directly so lifecycle quick actions
-  // (mark done / reopen / archive) work on any surface.
-  if (UUID_RE.test(eventId)) {
-    return getThoughtListItemById(userId, eventId)
-  }
-
   const rows = await getDb()
     .select({
       id: temporalEvent.id,
@@ -795,7 +788,11 @@ export async function getTemporalEventListItemById(
     .limit(1)
 
   const r = rows[0]
-  if (!r) return null
+  // Bare thought uuid (no `task:` prefix) — capture-page rows are plain thoughts
+  // without a temporal_event row. Resolve them only when no event has this id:
+  // event ids are uuids too, and checking the thought first made every event
+  // quick action (mark done on Tasks) fail with "Event not found after update".
+  if (!r) return UUID_RE.test(eventId) ? getThoughtListItemById(userId, eventId) : null
 
   const [thoughtText, metadataJson] = await Promise.all([
     r.thoughtTextEncrypted

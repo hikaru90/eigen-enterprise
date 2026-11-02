@@ -109,8 +109,8 @@ describe('timeline client load wiring contract', () => {
     expect(pageLoad).toContain('prefetchedAuthorScope')
 
     // Pages must forward the scope to the shell.
-    const projectsPage = readTimeline('../(nucleus)/memory/projects/+page.svelte')
-    const tasksPage = readTimeline('../(nucleus)/memory/tasks/+page.svelte')
+    const projectsPage = readTimeline('../(nucleus)/m/memory/projects/+page.svelte')
+    const tasksPage = readTimeline('../(nucleus)/m/memory/tasks/+page.svelte')
     expect(projectsPage).toContain('prefetchedAuthorScope')
     expect(tasksPage).toContain('prefetchedAuthorScope')
 

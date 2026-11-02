@@ -136,7 +136,7 @@
     aria-describedby="onboarding-desc"
   >
     <Card.Root
-      class="ring-foreground/10 max-h-[90dvh] w-full max-w-md overflow-y-auto border border-black/10 bg-card shadow-lg ring-1 dark:border-white/20"
+      class="ring-foreground/10 max-h-[90dvh] w-full max-w-md overflow-y-auto border border-border bg-card shadow-lg ring-1 rounded-xl"
     >
       <Card.Header class="space-y-2">
         <Card.Title id="onboarding-title" class="text-base">{title}</Card.Title>
@@ -166,7 +166,7 @@
             later for reminders and memory check-ins.
           </p>
           {#if pushDone}
-            <p class="text-xs leading-relaxed text-emerald-700 dark:text-emerald-400">
+            <p class="text-xs leading-relaxed text-foreground/80">
               Notifications enabled for this device.
             </p>
           {:else if pushUnsupportedReason}
@@ -208,7 +208,7 @@
       </Card.Content>
 
       <Card.Footer
-        class="flex flex-wrap items-center justify-between gap-2 border-t border-black/10 pt-4 dark:border-white/15"
+        class="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4"
       >
         <div class="flex min-w-0 flex-1 items-center gap-2">
           {#if step > 0}

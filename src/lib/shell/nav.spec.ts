@@ -65,8 +65,10 @@ describe('currentNavId', () => {
     ['/runs/12', 'agent'],
     ['/activity', 'agent'],
     ['/settings/extensions', 'agent'],
-    ['/memory/notes', 'memory'],
-    ['/capture', 'memory'],
+    ['/m/memory/notes', 'memory'],
+    ['/m/memory/capture', 'memory'],
+    ['/memory/tasks', null],
+    ['/capture', null],
     ['/settings/api-keys', 'settings'],
     ['/nowhere', null],
   ])('%s -> %s', (path, id) => {

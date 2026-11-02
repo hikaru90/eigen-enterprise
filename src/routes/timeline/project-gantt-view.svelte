@@ -102,7 +102,7 @@
           <div class="relative h-6 w-full rounded bg-muted/40">
             {#if bar}
               <div
-                class="absolute top-1 h-4 rounded bg-[var(--color-eigen-green)]/80"
+                class="absolute top-1 h-4 rounded bg-primary/70"
                 style="left: {bar.leftPct}%; width: {bar.widthPct}%"
                 data-testid="project-gantt-bar"
               ></div>

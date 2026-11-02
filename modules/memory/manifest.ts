@@ -11,8 +11,11 @@ export const MEMORY_TOOL_NAMES = [
   'memory.search_text_files',
 ] as const
 
+/** Memory is a system module (always on): see SYSTEM_MODULE_IDS. */
+export const MEMORY_MODULE_ID = 'memory'
+
 export const memoryManifest: ModuleManifest = {
-  id: 'memory',
+  id: MEMORY_MODULE_ID,
   name: 'Memory',
   version: '0.1.0',
   description:

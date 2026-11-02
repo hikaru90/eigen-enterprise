@@ -373,7 +373,7 @@
 </script>
 
 <div
-  class="relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pt-14 md:pt-24"
+  class="relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none mx-auto max-w-5xl pt-4 sm:px-5"
 >
   <TemporalTimelineHeader {mode}>
     {#snippet titleActions()}
@@ -407,7 +407,7 @@
           type="button"
           variant="ghost"
           size="icon"
-          class="size-7 shrink-0 text-black hover:bg-black/5 dark:text-foreground dark:hover:bg-white/10"
+          class="size-7 shrink-0 text-foreground hover:bg-muted"
           title={m.graph_temporal_refresh()}
           disabled={refreshBusy}
           onclick={refreshAll}

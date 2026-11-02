@@ -26,7 +26,7 @@ test.describe('Capture flow (AC-001, AC-004)', () => {
     context,
   }) => {
     await registerUser(context, page)
-    await page.goto('/capture')
+    await page.goto('/m/memory/capture')
 
     let releaseInterpret: () => void = () => {}
     const held = new Promise<void>((resolve) => {
@@ -55,7 +55,7 @@ test.describe('Capture flow (AC-001, AC-004)', () => {
     context,
   }) => {
     await registerUser(context, page)
-    await page.goto('/capture')
+    await page.goto('/m/memory/capture')
 
     await captureAndConfirm(page, 'I need to review the Q3 budget report')
 
@@ -66,7 +66,7 @@ test.describe('Capture flow (AC-001, AC-004)', () => {
 
   test('user can expand and collapse a recent thought', async ({ page, context }) => {
     await registerUser(context, page)
-    await page.goto('/capture')
+    await page.goto('/m/memory/capture')
 
     const thoughtText = 'Expand toggle test thought about the Berlin museum visit'
     await captureAndConfirm(page, thoughtText)
@@ -89,7 +89,7 @@ test.describe('Capture flow (AC-001, AC-004)', () => {
   }) => {
     // Models often invent out-of-set keys like "action"; interpret must repair/retry, not 500.
     await registerUser(context, page)
-    await page.goto('/capture')
+    await page.goto('/m/memory/capture')
 
     await captureAndConfirm(
       page,
@@ -106,7 +106,7 @@ test.describe('Capture flow (AC-001, AC-004)', () => {
     context,
   }) => {
     await registerUser(context, page)
-    await page.goto('/capture')
+    await page.goto('/m/memory/capture')
 
     await captureAndConfirm(page, 'Meeting with design team tomorrow at 2pm')
     await expect(page.getByText('Category:')).toBeVisible({ timeout: 30_000 })
