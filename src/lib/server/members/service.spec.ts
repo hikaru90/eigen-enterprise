@@ -17,7 +17,7 @@ const member: Member = { id: 'm', email: 'm@k.co', name: 'M', role: 'member', cr
 
 function setup() {
   const store = memoryStore([owner, admin, member])
-  const mail = { send: vi.fn(async () => ({ messageId: 'x' })) }
+  const mail = { send: vi.fn(async () => ({ messageId: 'x' })), isConfigured: vi.fn(async () => true) }
   const deps = { store, mail, origin: 'https://os.kindred.co/', companyName: 'Kindred', now: () => at }
   return { store, mail, deps }
 }
@@ -40,7 +40,19 @@ describe('members: invites', () => {
     expect(sent.text).toContain(`https://os.kindred.co/invite?token=`)
     expect(store.invites[0]!.tokenHash).toBe(hashInviteToken(token))
     expect(JSON.stringify(store.invites)).not.toContain(token)
-    expect(JSON.stringify(out)).not.toContain(token)
+    expect(out.url).toBe(`https://os.kindred.co/invite?token=${token}`)
+    expect(out.emailed).toBe(true)
+  })
+
+  it('without company mail the invite still works: the link is returned to copy, nothing is sent', async () => {
+    const { store, mail, deps } = setup()
+    mail.isConfigured.mockResolvedValue(false)
+    const out = await inviteMember({ id: 'o', role: 'owner' }, { email: 'n@k.co', role: 'member' }, deps)
+    expect(mail.send).not.toHaveBeenCalled()
+    expect(out.emailed).toBe(false)
+    const token = new URL(out.url).searchParams.get('token')!
+    expect(store.invites[0]!.tokenHash).toBe(hashInviteToken(token))
+    expect(await inviteStatus(token, deps)).toMatchObject({ ok: true, invite: { email: 'n@k.co' } })
   })
 
   it('accept path: valid → consumed once → reuse refused', async () => {
@@ -111,7 +123,7 @@ describe('members: role rules', () => {
   it('removes a member; lists members and open invites', async () => {
     const { deps } = setup()
     await removeMember({ id: 'o', role: 'owner' }, { userId: 'm' }, deps)
-    await inviteMember({ id: 'o', role: 'owner' }, { email: 'n@k.co', role: 'member' }, { ...deps, mail: { send: async () => ({}) } })
+    await inviteMember({ id: 'o', role: 'owner' }, { email: 'n@k.co', role: 'member' }, { ...deps, mail: { send: async () => ({}), isConfigured: async () => true } })
     const list = await listMembers({ id: 'o', role: 'owner' }, deps)
     expect(list.members.map((x) => x.role)).toEqual(['owner', 'admin'])
     expect(list.invites).toEqual([{ id: expect.any(String), email: 'n@k.co', role: 'member', expiresAt: '2026-10-28T10:00:00.000Z' }])

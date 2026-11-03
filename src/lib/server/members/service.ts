@@ -7,9 +7,10 @@ import type { MemberRole } from '$lib/server/auth/user-role'
  *
  * Roles live on user.role: exactly one owner, admins who manage members like
  * the owner does, and members. People join only by invite: a one-time link
- * (random token; only its SHA-256 is stored) sent through the company mail,
- * expiring after INVITE_TTL_DAYS. Accepting it signs the person in by email
- * code and creates their account with the invited role.
+ * (random token; only its SHA-256 is stored), expiring after INVITE_TTL_DAYS.
+ * The inviter gets the link to copy (owner decision W-4) and, when company
+ * mail is set up, it is emailed too. Opening it creates the account with the
+ * invited role and asks for a passkey (see ./accept.ts).
  */
 
 export const INVITE_TTL_DAYS = 7
@@ -43,11 +44,15 @@ export type MemberStore = {
   consumeInvite(id: string, now: Date): Promise<boolean>
 }
 
-export type InviteMail = { send(input: { to: string; subject: string; html: string; text: string }): Promise<unknown> }
+export type InviteMail = {
+  send(input: { to: string; subject: string; html: string; text: string }): Promise<unknown>
+  /** Whether company mail is set up; without it the link is only shown to the inviter to copy. */
+  isConfigured(): Promise<boolean>
+}
 
 export class MemberError extends Error {
   constructor(
-    readonly code: 'forbidden' | 'not_found' | 'owner_protected' | 'already_member' | 'invalid_email' | 'invalid_role',
+    readonly code: 'forbidden' | 'not_found' | 'owner_protected' | 'already_member' | 'invalid_email' | 'invalid_role' | 'invalid_group',
     message: string,
   ) {
     super(message)
@@ -95,7 +100,7 @@ export async function inviteMember(
   actor: Actor,
   input: { email: string; role: InvitableRole },
   deps: MemberDeps,
-): Promise<{ inviteId: string; email: string; role: InvitableRole; expiresAt: string }> {
+): Promise<{ inviteId: string; email: string; role: InvitableRole; expiresAt: string; url: string; emailed: boolean }> {
   assertCanManage(actor)
   const email = z.string().trim().toLowerCase().email().safeParse(input.email)
   if (!email.success) throw new MemberError('invalid_email', 'Enter a valid email address.')
@@ -119,13 +124,14 @@ export async function inviteMember(
   const company = deps.companyName ?? 'the company'
   const url = inviteUrl(deps.origin, token)
   const roleWord = role === 'admin' ? 'an admin' : 'a member'
-  await deps.mail.send({
+  const emailed = await deps.mail.isConfigured()
+  if (emailed) await deps.mail.send({
     to: email.data,
     subject: `You're invited to join ${company}`,
     text: `You're invited to join ${company} as ${roleWord}.\n\nAccept the invite (works once, for ${INVITE_TTL_DAYS} days):\n${url}\n`,
     html: `<p>You're invited to join <strong>${escapeHtml(company)}</strong> as ${roleWord}.</p><p><a href="${escapeHtml(url)}">Accept the invite</a> (works once, for ${INVITE_TTL_DAYS} days).</p>`,
   })
-  return { inviteId: invite.id, email: invite.email, role, expiresAt: invite.expiresAt.toISOString() }
+  return { inviteId: invite.id, email: invite.email, role, expiresAt: invite.expiresAt.toISOString(), url, emailed }
 }
 
 export async function setMemberRole(
@@ -167,7 +173,7 @@ export async function inviteStatus(token: string, deps: Pick<MemberDeps, 'store'
 }
 
 const INVITE_MESSAGES = {
-  invalid: 'This invite link is not valid. Use the exact link from the email.',
+  invalid: 'This invite link is not valid. Use the exact link you were sent.',
   expired: 'This invite has expired. Ask the owner for a new one.',
   used: 'This invite was already used. Sign in instead.',
 } as const

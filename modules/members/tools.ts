@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
+import type { GroupDeps } from '$lib/server/members/groups'
 import type { Actor, MemberDeps } from '$lib/server/members/service'
 import { MEMBERS_MODULE_ID } from './manifest'
 
@@ -13,11 +14,29 @@ import { MEMBERS_MODULE_ID } from './manifest'
 export type MembersToolDeps = {
   deps?: () => Promise<MemberDeps>
   actor?: (ctx: ToolContext) => Promise<Actor>
+  groupDeps?: () => Promise<GroupDeps>
 }
 
 const listInput = z.object({}).strict()
 const inviteInput = z.object({ email: z.email(), role: z.enum(['admin', 'member']) }).strict()
 const setRoleInput = z.object({ user_id: z.string().min(1), role: z.enum(['admin', 'member']) }).strict()
+const groupCreateInput = z
+  .object({ name: z.string().min(1).max(80), description: z.string().max(500).optional(), member_ids: z.array(z.string().min(1)).optional() })
+  .strict()
+const groupUpdateInput = z
+  .object({
+    group_id: z.string().min(1),
+    name: z.string().min(1).max(80).optional(),
+    description: z.string().max(500).optional(),
+    member_ids: z.array(z.string().min(1)).optional(),
+  })
+  .strict()
+const groupDeleteInput = z.object({ group_id: z.string().min(1) }).strict()
+
+async function liveGroupDeps(): Promise<GroupDeps> {
+  const { groupDeps } = await import('$lib/server/members')
+  return groupDeps()
+}
 
 async function liveDeps(): Promise<MemberDeps> {
   const { memberDeps } = await import('$lib/server/members')
@@ -33,7 +52,9 @@ async function liveActor(ctx: ToolContext): Promise<Actor> {
 export function createMembersTools(opts: MembersToolDeps = {}): ToolDescriptor[] {
   const deps = opts.deps ?? liveDeps
   const actor = opts.actor ?? liveActor
+  const groupDeps = opts.groupDeps ?? liveGroupDeps
   const service = () => import('$lib/server/members/service')
+  const groups = () => import('$lib/server/members/groups')
   return [
     {
       name: 'members.list',
@@ -56,7 +77,13 @@ export function createMembersTools(opts: MembersToolDeps = {}): ToolDescriptor[]
       permission: { roles: ['admin', 'agent'] },
       handler: async (ctx, input) => {
         const i = inviteInput.parse(input)
-        return (await service()).inviteMember(await actor(ctx), i, await deps())
+        // The link is a credential: it goes to the invited address (company mail) or to
+        // the person copying it in Settings → Members — never into the agent's transcript.
+        const { url: _url, ...out } = await (await service()).inviteMember(await actor(ctx), i, await deps())
+        void _url
+        return out.emailed
+          ? out
+          : { ...out, note: 'Company mail is not set up, so nothing was sent. The owner can copy a fresh invite link in Settings → Members.' }
       },
     },
     {
@@ -74,6 +101,67 @@ export function createMembersTools(opts: MembersToolDeps = {}): ToolDescriptor[]
       handler: async (ctx, input) => {
         const i = setRoleInput.parse(input)
         return (await service()).setMemberRole(await actor(ctx), { userId: i.user_id, role: i.role }, await deps())
+      },
+    },
+    {
+      name: 'members.group_list',
+      module: MEMBERS_MODULE_ID,
+      summary: "List the company's groups (departments such as Sales or Dev) with their member ids.",
+      auditClass: 'read',
+      inputSchema: listInput,
+      permission: { roles: ['admin', 'agent'] },
+      handler: async (ctx) => (await groups()).listGroups(await actor(ctx), await groupDeps()),
+    },
+    {
+      name: 'members.group_create',
+      module: MEMBERS_MODULE_ID,
+      summary: 'Create a group (e.g. Sales) with an optional description and member ids (from members.list).',
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: (input: z.infer<typeof groupCreateInput>) => `Created the group ${input.name}`,
+      inputSchema: groupCreateInput,
+      permission: { roles: ['admin', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = groupCreateInput.parse(input)
+        return (await groups()).createGroup(
+          await actor(ctx),
+          { name: i.name, description: i.description, memberIds: i.member_ids },
+          await groupDeps(),
+        )
+      },
+    },
+    {
+      name: 'members.group_update',
+      module: MEMBERS_MODULE_ID,
+      summary: "Rename a group, change its description, or replace its members (member_ids is the full new list).",
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: (_input: z.infer<typeof groupUpdateInput>, output: unknown) =>
+        `Updated the group ${(output as { name?: string } | undefined)?.name ?? ''}`.trim(),
+      inputSchema: groupUpdateInput,
+      permission: { roles: ['admin', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = groupUpdateInput.parse(input)
+        return (await groups()).updateGroup(
+          await actor(ctx),
+          { groupId: i.group_id, name: i.name, description: i.description, memberIds: i.member_ids },
+          await groupDeps(),
+        )
+      },
+    },
+    {
+      name: 'members.group_delete',
+      module: MEMBERS_MODULE_ID,
+      summary: 'Delete a group. Everything shared with the group stops being shared with its members.',
+      auditClass: 'mutate',
+      approvalRisk: 'destructive',
+      activity: (_input: z.infer<typeof groupDeleteInput>, output: unknown) =>
+        `Deleted the group ${(output as { name?: string } | undefined)?.name ?? ''}`.trim(),
+      inputSchema: groupDeleteInput,
+      permission: { roles: ['admin', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = groupDeleteInput.parse(input)
+        return (await groups()).deleteGroup(await actor(ctx), { groupId: i.group_id }, await groupDeps())
       },
     },
   ]

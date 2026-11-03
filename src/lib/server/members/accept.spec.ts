@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { inviteScope } from '$lib/server/auth/owner-policy'
-import { acceptInvite, sendInviteCode } from './accept'
+import { joinWithInvite } from './accept'
 import { hashInviteToken } from './service'
 import { memoryStore } from './memory-store'
 
@@ -23,7 +23,7 @@ function setup(over: Partial<{ acceptedAt: Date | null; expiresAt: Date }> = {})
   const deps = {
     store,
     now: () => now,
-    sendCode: vi.fn(async () => {}),
+    createCode: vi.fn(async () => '424242'),
     signIn: vi.fn(async () => {
       seen.push(inviteScope.getStore())
     }),
@@ -31,28 +31,33 @@ function setup(over: Partial<{ acceptedAt: Date | null; expiresAt: Date }> = {})
   return { store, deps, seen }
 }
 
-describe('accepting an invite', () => {
-  it('sends the code to the invited address only, then signs in inside the invite scope', async () => {
+describe('joining with an invite link (no email needed)', () => {
+  it('mints a code server-side for the invited address and signs in inside the invite scope', async () => {
     const { deps, seen } = setup()
-    expect(await sendInviteCode('tok', deps)).toEqual({ email: 'new@k.co' })
-    expect(deps.sendCode).toHaveBeenCalledWith('new@k.co')
-    await acceptInvite('tok', '123456', deps)
-    expect(deps.signIn).toHaveBeenCalledWith('new@k.co', '123456')
+    expect(await joinWithInvite('tok', { name: ' Bea ' }, deps)).toEqual({ email: 'new@k.co' })
+    expect(deps.createCode).toHaveBeenCalledWith('new@k.co')
+    expect(deps.signIn).toHaveBeenCalledWith('new@k.co', '424242', 'Bea')
     expect(seen).toEqual([{ inviteId: 'inv1', email: 'new@k.co', role: 'admin' }])
   })
 
-  it('refuses expired, used and unknown links before any code is sent', async () => {
+  it('refuses expired, used and unknown links before any code is minted', async () => {
     for (const [over, msg] of [
       [{ expiresAt: new Date('2026-10-20T00:00:00Z') }, /expired/],
       [{ acceptedAt: now }, /already used/],
     ] as const) {
       const { deps } = setup(over)
-      await expect(sendInviteCode('tok', deps)).rejects.toThrow(msg)
-      await expect(acceptInvite('tok', '1', deps)).rejects.toThrow(msg)
-      expect(deps.sendCode).not.toHaveBeenCalled()
+      await expect(joinWithInvite('tok', { name: 'B' }, deps)).rejects.toThrow(msg)
+      expect(deps.createCode).not.toHaveBeenCalled()
       expect(deps.signIn).not.toHaveBeenCalled()
     }
     const { deps } = setup()
-    await expect(sendInviteCode('other', deps)).rejects.toThrow(/not valid/)
+    await expect(joinWithInvite('other', { name: 'B' }, deps)).rejects.toThrow(/not valid/)
+    expect(deps.createCode).not.toHaveBeenCalled()
+  })
+
+  it('needs a name', async () => {
+    const { deps } = setup()
+    await expect(joinWithInvite('tok', { name: '  ' }, deps)).rejects.toThrow(/Enter your name/)
+    expect(deps.createCode).not.toHaveBeenCalled()
   })
 })

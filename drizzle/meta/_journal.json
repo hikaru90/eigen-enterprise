@@ -750,6 +750,13 @@
       "when": 1793620001000,
       "tag": "0106_drop_dev_agent_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1793620002000,
+      "tag": "0107_team_groups_access",
+      "breakpoints": true
     }
   ]
 }

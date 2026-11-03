@@ -118,6 +118,11 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   // grants or takes away rights (internal). Both wait on the approval mode.
   'members.invite',
   'members.set_role',
+  // Groups decide who sees shared folders and channels: changing one is internal,
+  // deleting one takes access away (destructive).
+  'members.group_create',
+  'members.group_update',
+  'members.group_delete',
 ])
 
 export type BootstrapKernelOptions = {

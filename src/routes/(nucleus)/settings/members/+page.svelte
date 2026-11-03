@@ -3,8 +3,30 @@
   import { enhance } from '$app/forms'
   import { docTitle } from '$lib/shell/title'
 
-  /** Settings → Members: who belongs to the company, their roles, and invites by email. */
+  /**
+   * Settings → Members: who belongs to the company, their roles (explained in
+   * plain words), invites by link, and groups (Sales, Dev …) that folders and
+   * channels are shared with.
+   */
   let { data, form }: PageProps = $props()
+
+  const nameOf = (id: string) => {
+    const m = data.members.find((x) => x.id === id)
+    return m ? m.name || m.email : 'Former member'
+  }
+
+  const invited = $derived(
+    form && form.action === 'invite' && 'inviteUrl' in form
+      ? (form as unknown as { inviteUrl: string; inviteEmail: string; emailed: boolean })
+      : null,
+  )
+
+  let copied = $state(false)
+  async function copyInvite(url: string) {
+    await navigator.clipboard.writeText(url)
+    copied = true
+    setTimeout(() => (copied = false), 2000)
+  }
 
   const roleLabel = (role: string) =>
     role === 'owner' ? 'Owner' : role === 'admin' ? 'Admin' : 'Member'
@@ -24,9 +46,36 @@
   <header class="mb-8">
     <h2 class="text-base font-semibold tracking-tight">Members &amp; invites</h2>
     <p class="mt-1 text-sm text-foreground/60">
-      The people in {data.companyName ?? 'your company'}, their roles, and invites by email.
+      The people in {data.companyName ?? 'your company'}, their roles, groups, and invites.
     </p>
   </header>
+
+  <section class="mb-10 space-y-2" data-testid="members-roles">
+    <h3 class="text-sm font-semibold">What each role can do</h3>
+    <dl class="space-y-2 text-xs">
+      <div>
+        <dt class="font-medium">Owner</dt>
+        <dd class="text-muted-foreground">
+          The person who runs the company here. Can do everything, including all settings and
+          billing. There is exactly one owner; nobody can remove or demote them.
+        </dd>
+      </div>
+      <div>
+        <dt class="font-medium">Admin</dt>
+        <dd class="text-muted-foreground">
+          Helps run the company: invites and removes people, changes roles, manages groups, and
+          can open and share every channel and folder. Can't change the owner.
+        </dd>
+      </div>
+      <div>
+        <dt class="font-medium">Member</dt>
+        <dd class="text-muted-foreground">
+          Uses the company: sees what is shared with them, everyone in the company, or one of
+          their groups. Can't change people, roles or settings.
+        </dd>
+      </div>
+    </dl>
+  </section>
 
   <section class="space-y-3" data-testid="members-list">
     <h3 class="text-sm font-semibold">People</h3>
@@ -81,6 +130,9 @@
 
   <section class="mt-10 space-y-3" data-testid="members-invite">
     <h3 class="text-sm font-semibold">Invite someone</h3>
+    <p class="text-muted-foreground text-xs">
+      Enter their email (it becomes their account) and a role. You get a one-time link to copy.
+    </p>
     <form method="post" action="?/invite" use:enhance class="flex flex-wrap items-end gap-2">
       <div class="min-w-0 flex-1 space-y-1">
         <label class="text-xs" for="invite-email">Email</label>
@@ -102,17 +154,36 @@
       <button
         type="submit"
         class="h-9 bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-        >Send invite</button
+        >Create invite link</button
       >
     </form>
-    {#if feedback('invite')}
-      {@const f = feedback('invite')!}
-      <p
-        class="text-xs {f.error ? 'text-red-700' : 'text-muted-foreground'}"
-        data-testid="invite-feedback"
-      >
-        {f.error ? f.text : 'Invite sent.'}
-      </p>
+    {#if invited}
+      {@const url = invited.inviteUrl}
+      <div class="space-y-2 border border-border p-3" data-testid="invite-link">
+        <p class="text-xs">
+          Send this link to <strong>{invited.inviteEmail}</strong> in a message. It works once, for 7
+          days. They open it, enter their name and create a passkey — no email needed.
+          {#if invited.emailed}We also emailed it to them.{/if}
+        </p>
+        <div class="flex gap-2">
+          <input
+            readonly
+            value={url}
+            aria-label="Invite link"
+            data-testid="invite-link-url"
+            class="border-input bg-card h-9 min-w-0 flex-1 border px-2.5 font-mono text-[11px]"
+            onfocus={(e) => e.currentTarget.select()}
+          />
+          <button
+            type="button"
+            class="h-9 border border-border px-3 text-xs hover:border-primary"
+            onclick={() => copyInvite(url)}
+            data-testid="invite-link-copy">{copied ? 'Copied' : 'Copy link'}</button
+          >
+        </div>
+      </div>
+    {:else if feedback('invite')?.error}
+      <p class="text-xs text-red-700" data-testid="invite-feedback">{feedback('invite')!.text}</p>
     {/if}
     {#if data.invites.length > 0}
       <h3 class="text-muted-foreground pt-2 text-xs font-medium">Waiting to accept</h3>
@@ -124,5 +195,138 @@
         {/each}
       </ul>
     {/if}
+  </section>
+
+  <section class="mt-10 space-y-3" data-testid="members-groups">
+    <h3 class="text-sm font-semibold">Groups</h3>
+    <p class="text-muted-foreground text-xs">
+      Teams such as Sales or Dev. Share a folder or a channel with a group and everyone in it gets
+      access; people added later get it too.
+    </p>
+    {#if data.groups.length > 0}
+      <ul class="divide-y divide-border border border-border">
+        {#each data.groups as g (g.id)}
+          <li class="p-3" data-testid="group-row">
+            <details>
+              <summary class="flex cursor-pointer flex-wrap items-baseline justify-between gap-2">
+                <span class="text-xs font-medium" data-testid="group-name">{g.name}</span>
+                <span class="text-muted-foreground text-[11px]" data-testid="group-members">
+                  {g.memberIds.length === 0
+                    ? 'No members yet'
+                    : g.memberIds.map(nameOf).join(', ')}
+                </span>
+              </summary>
+              {#if g.description}<p class="text-muted-foreground mt-1 text-[11px]">
+                  {g.description}
+                </p>{/if}
+              <form method="post" action="?/updateGroup" use:enhance class="mt-3 space-y-2">
+                <input type="hidden" name="groupId" value={g.id} />
+                <label class="block text-xs" for="group-name-{g.id}">Name</label>
+                <input
+                  id="group-name-{g.id}"
+                  name="name"
+                  value={g.name}
+                  required
+                  maxlength="80"
+                  class="border-input bg-card h-8 w-full border px-2 text-xs"
+                />
+                <label class="block text-xs" for="group-desc-{g.id}">Description</label>
+                <input
+                  id="group-desc-{g.id}"
+                  name="description"
+                  value={g.description}
+                  maxlength="500"
+                  class="border-input bg-card h-8 w-full border px-2 text-xs"
+                />
+                <fieldset class="space-y-1">
+                  <legend class="text-xs">Members</legend>
+                  {#each data.members as m (m.id)}
+                    <label class="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        name="memberIds"
+                        value={m.id}
+                        checked={g.memberIds.includes(m.id)}
+                      />
+                      {m.name || m.email}
+                    </label>
+                  {/each}
+                </fieldset>
+                <div class="flex gap-2">
+                  <button
+                    type="submit"
+                    class="h-8 bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                    >Save group</button
+                  >
+                </div>
+              </form>
+              <form method="post" action="?/deleteGroup" use:enhance class="mt-2">
+                <input type="hidden" name="groupId" value={g.id} />
+                <button type="submit" class="text-xs text-red-700 hover:underline"
+                  >Delete group</button
+                >
+              </form>
+            </details>
+          </li>
+        {/each}
+      </ul>
+    {:else}
+      <p class="text-muted-foreground text-xs" data-testid="groups-empty">No groups yet.</p>
+    {/if}
+
+    <form
+      method="post"
+      action="?/createGroup"
+      use:enhance
+      class="space-y-2 border border-border p-3"
+      data-testid="group-create"
+    >
+      <p class="text-xs font-medium">New group</p>
+      <div class="flex flex-wrap gap-2">
+        <div class="min-w-0 flex-1 space-y-1">
+          <label class="text-xs" for="new-group-name">Name</label>
+          <input
+            id="new-group-name"
+            name="name"
+            required
+            maxlength="80"
+            placeholder="Sales"
+            class="border-input bg-card h-9 w-full border px-2.5 text-xs"
+          />
+        </div>
+        <div class="min-w-0 flex-[2] space-y-1">
+          <label class="text-xs" for="new-group-desc">Description (optional)</label>
+          <input
+            id="new-group-desc"
+            name="description"
+            maxlength="500"
+            class="border-input bg-card h-9 w-full border px-2.5 text-xs"
+          />
+        </div>
+      </div>
+      <fieldset class="space-y-1">
+        <legend class="text-xs">Members</legend>
+        {#each data.members as m (m.id)}
+          <label class="flex items-center gap-2 text-xs">
+            <input type="checkbox" name="memberIds" value={m.id} />
+            {m.name || m.email}
+          </label>
+        {/each}
+      </fieldset>
+      <button
+        type="submit"
+        class="h-9 bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+        >Create group</button
+      >
+    </form>
+    {#each ['createGroup', 'updateGroup', 'deleteGroup'] as a (a)}
+      {@const f = feedback(a)}
+      {#if f}<p
+          class="text-xs {f.error ? 'text-red-700' : 'text-muted-foreground'}"
+          data-testid="group-feedback"
+        >
+          {f.text}
+        </p>{/if}
+    {/each}
   </section>
 </div>
