@@ -9,6 +9,8 @@ import { SecretStore } from './secret-store.ts'
 import { generateSecret } from './secrets.ts'
 import { workloadSchema } from './spec.ts'
 import { mustRun, type System } from './system.ts'
+import { writeBackupTimer } from './backup/box.ts'
+import { BACKUP_SCOPE, storedConfigSchema } from './backup/service.ts'
 
 /**
  * `ee bootstrap` (§5): turn a fresh Ubuntu 24.04 / Debian 13 box into a running
@@ -210,6 +212,13 @@ async function installEeService(sys: System): Promise<void> {
   await mustRun(sys, 'systemctl', ['enable', '--quiet', 'ee-env.service', 'ee.service'])
 }
 
+/** The nightly backup timer; an upgrade keeps the owner's schedule (sealed with the backup config). */
+async function installBackupTimer(sys: System): Promise<void> {
+  step('installing the nightly backup timer')
+  const raw = (await SecretStore.open(sys)).all()[BACKUP_SCOPE]?.['CONFIG']
+  await writeBackupTimer(sys, raw ? storedConfigSchema.parse(JSON.parse(raw)).schedule : null)
+}
+
 /** VAPID keys for web push (P-256), in the base64url forms web-push expects. */
 function vapidKeys(): { publicKey: string; privateKey: string } {
   const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
@@ -363,6 +372,7 @@ export async function bootstrap(
   await configurePostgres(sys)
   await configureCaddy(sys)
   await installEeService(sys)
+  await installBackupTimer(sys)
   // Re-runs (upgrades, repairs) keep the console host the company already has.
   const repo = new CompanyRepo(sys, PATHS.company)
   const existing = (await repo.head()) ? (await repo.read()).settings.consoleHost : null

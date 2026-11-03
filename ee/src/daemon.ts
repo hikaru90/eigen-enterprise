@@ -14,6 +14,9 @@ import { addDomain, removeDomain, setConsoleHost } from './domains.ts'
 import { fetchSource, readRepoFile, readTree, SourceReadError, TREE_MAX_DEPTH } from './sources.ts'
 import { checkDeployKey, createDeployKey, deleteDeployKey, KEY_ID, REPO } from './deploy-keys.ts'
 import { claimState, claimUrl, newClaim } from './claim.ts'
+import { BackupService, type BackupDeps } from './backup/service.ts'
+import { backupRoute } from './backup/control.ts'
+import { productionSources, writeBackupTimer } from './backup/box.ts'
 
 /**
  * The control API (§3.1): typed verbs over a unix socket, readable only by root
@@ -26,12 +29,28 @@ export class Ee {
   readonly repo: CompanyRepo
   journal!: Journal
   lastReconcileError: string | null = null
+  readonly backups: BackupService
 
   constructor(
     readonly sys: System,
     readonly secrets: SecretStore,
+    backupDeps: Partial<BackupDeps> = {},
   ) {
     this.repo = new CompanyRepo(sys, PATHS.company)
+    this.backups = new BackupService({
+      secrets,
+      readFile: (p) => sys.readFile(p),
+      writeFile: (p, c, m) => sys.writeFile(p, c, m),
+      runsFile: PATHS.backupRuns,
+      sources: productionSources(),
+      now: () => sys.now(),
+      emit: async (type, message, data) => {
+        emit(this.journal, sys, type, null, message, data)
+        await saveJournal(sys, this.journal)
+      },
+      applySchedule: (s) => writeBackupTimer(sys, s),
+      ...backupDeps,
+    })
   }
 
   async load(): Promise<void> {
@@ -99,6 +118,7 @@ export class Ee {
         }
       }),
       events: this.journal.events.slice(-50),
+      backups: await this.backups.status(),
     }
   }
 }
@@ -182,6 +202,10 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
       const url = new URL(req.url ?? '/', 'http://ee')
       const route = `${req.method} ${url.pathname}`
       if (route === 'GET /v1/status') return send(res, 200, await ee.status())
+      if (url.pathname.startsWith('/v1/backups')) {
+        const b = await backupRoute(ee.backups, route, () => body(req))
+        if (b) return send(res, b.status, b.data)
+      }
       if (route === 'POST /v1/reconcile') {
         try {
           await ee.reconcile()

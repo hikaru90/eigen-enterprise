@@ -11,6 +11,12 @@ import { PATHS } from './paths.ts'
 import { renderLiveEnvFiles } from './reconcile.ts'
 import { SecretStore } from './secret-store.ts'
 import { RealSystem } from './system.ts'
+import { createInterface } from 'node:readline'
+import { parseRecoveryCode } from './backup/crypto.ts'
+import { S3Client, s3TargetSchema, type S3Target } from './backup/s3.ts'
+import { BACKUP_SCOPE, storedConfigSchema } from './backup/service.ts'
+import { fetchSnapshot, resolveSnapshot } from './backup/snapshot.ts'
+import { restoreOnBox } from './backup/box.ts'
 
 const USAGE = `ee — the company's init (plan/phase-substrate.md)
 
@@ -22,6 +28,12 @@ const USAGE = `ee — the company's init (plan/phase-substrate.md)
   ee domain remove <host>
   ee secret set <workload> <NAME>        (value read from stdin)
   ee logs <workload>
+  ee backup [--scheduled]                (take a snapshot now; the nightly timer passes --scheduled)
+  ee backup status
+  ee restore --snapshot <id|latest>      (asks for the recovery code; restores everything, then reconciles)
+  ee restore --verify [--snapshot <id|latest>]   (download + decrypt + check, touches nothing)
+      restore on a fresh server: --endpoint <url> --region <r> --bucket <b> [--prefix <p>]
+      [--addressing path|virtual] --access-key-id <id>   (secret key asked on stdin)
 
   ee daemon        (run by ee.service)
   ee render-env    (run by ee-env.service at boot)
@@ -61,6 +73,20 @@ async function readStdin(): Promise<string> {
   let s = ''
   for await (const chunk of process.stdin) s += String(chunk)
   return s.replace(/\r?\n$/, '')
+}
+
+/** Read answers line by line from stdin (a TTY prompt, or piped in a drill script). */
+function lineReader(): { next(): Promise<string>; close(): void } {
+  const rl = createInterface({ input: process.stdin })
+  const it = rl[Symbol.asyncIterator]()
+  return {
+    async next() {
+      const { value, done } = await it.next()
+      if (done) throw new Error('stdin closed before an answer was given')
+      return String(value).trim()
+    },
+    close: () => rl.close(),
+  }
 }
 
 const who = () => `owner:${process.env.SUDO_USER ?? process.env.USER ?? 'root'}`
@@ -164,6 +190,69 @@ async function main(argv: string[]): Promise<void> {
       if (!workload) throw new Error(USAGE)
       const { data } = await call('GET', `/v1/logs?workload=${encodeURIComponent(workload)}`)
       console.log(((data as { lines?: string[] }).lines ?? [JSON.stringify(data)]).join('\n'))
+      return
+    }
+    case 'backup': {
+      if (rest[0] === 'status') return print(call('GET', '/v1/backups'))
+      const { values } = parseArgs({ args: rest, options: { scheduled: { type: 'boolean' } } })
+      const { status, data } = await call('POST', '/v1/backups/run', {
+        author: values.scheduled ? 'ee-timer' : who(),
+        trigger: values.scheduled ? 'scheduled' : 'manual',
+        wait: true,
+      })
+      console.log(JSON.stringify(data, null, 2))
+      const run = (data as { run?: { status?: string } } | null)?.run
+      if (status >= 400 || (run && run.status !== 'succeeded')) process.exitCode = 1
+      return
+    }
+    case 'restore': {
+      const { values } = parseArgs({
+        args: rest,
+        options: {
+          snapshot: { type: 'string' },
+          verify: { type: 'boolean' },
+          endpoint: { type: 'string' },
+          region: { type: 'string' },
+          bucket: { type: 'string' },
+          prefix: { type: 'string' },
+          addressing: { type: 'string' },
+          'access-key-id': { type: 'string' },
+        },
+      })
+      if (!values.verify && !values.snapshot) throw new Error('--snapshot <id|latest> is required (or --verify)')
+      if (!values.verify && process.getuid?.() !== 0) throw new Error('ee restore must run as root')
+      const ask = lineReader()
+      let target: S3Target
+      if (values.endpoint || values.bucket) {
+        console.error('S3 secret access key:')
+        target = s3TargetSchema.parse({
+          endpoint: values.endpoint,
+          region: values.region ?? 'us-east-1',
+          bucket: values.bucket,
+          prefix: values.prefix ?? '',
+          addressing: values.addressing ?? 'path',
+          accessKeyId: values['access-key-id'],
+          secretAccessKey: await ask.next(),
+        })
+      } else {
+        const raw = (await SecretStore.open(sys)).all()[BACKUP_SCOPE]?.['CONFIG']
+        if (!raw) ask.close()
+        if (!raw) throw new Error('backups are not set up on this server: pass --endpoint --region --bucket [--prefix] --access-key-id')
+        target = storedConfigSchema.parse(JSON.parse(raw)).target
+      }
+      console.error('Recovery code (from when backups were set up):')
+      const key = parseRecoveryCode(await ask.next())
+      ask.close()
+      const s3 = new S3Client(target)
+      const id = await resolveSnapshot(s3, values.snapshot ?? 'latest')
+      if (values.verify) {
+        console.log(`→ verifying snapshot ${id} (nothing is written)`)
+        const m = await fetchSnapshot(s3, key, id, null, (l) => console.log(l))
+        console.log(`✓ snapshot ${id} is complete and decrypts: ${m.files.length} file(s), ${m.blobs.length} Drive blob(s)`)
+        return
+      }
+      await restoreOnBox(sys, s3, key, id, (l) => console.log(l))
+      console.log(`✓ restored snapshot ${id}. ee is reconciling now: watch \`ee status\``)
       return
     }
     default:
