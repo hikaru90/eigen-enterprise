@@ -18,8 +18,8 @@
 #
 # Steps (each prints → and stops on the first failure):
 #   1. start MinIO (k1-drill-minio) reachable from the box, create the bucket
-#   2. set backups up through ee's control API (as the owner would from
-#      Settings → Backups) and capture the recovery code it returns ONCE
+#   2. the owner sets backups up in Settings → Backups and passes the ONE
+#      company recovery code (EE1-…) as RECOVERY_CODE (first run prints how)
 #   3. record what the company holds now (row counts, Drive blob hashes)
 #   4. `ee backup`, then `ee restore --verify` (decrypt + hash check, read-only)
 #   5. destroy the box, bring up a fresh one, install the same release
@@ -34,7 +34,7 @@ MINIO=k1-drill-minio
 MINIO_IMAGE='cgr.dev/chainguard/minio@sha256:3c60a2a8c4d33409a9bc7a623a7fcbfb4605adc3d89422d2f53b3f673a6e5597'
 MINIO_PORT=9312
 AK=drilladmin
-SK=drill-secret-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')
+SK=${MINIO_SECRET:-drill-secret-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')}
 BUCKET=ee-drill
 # The box reaches the host's MinIO through Docker's host gateway.
 ENDPOINT="http://host.docker.internal:${MINIO_PORT}"
@@ -56,20 +56,31 @@ snapshot_state() { # → file with counts + blob hashes
 }
 
 step "1. MinIO ($MINIO on :$MINIO_PORT)"
+if [ -z "${MINIO_KEEP:-}" ]; then
 docker rm -f "$MINIO" >/dev/null 2>&1 || true
 docker run -d --name "$MINIO" -p "$MINIO_PORT:9000" -e MINIO_ROOT_USER=$AK -e MINIO_ROOT_PASSWORD="$SK" "$MINIO_IMAGE" server /data >/dev/null
 for i in $(seq 1 30); do curl -sf "http://127.0.0.1:$MINIO_PORT/minio/health/live" >/dev/null && break; sleep 1; done
 box sh -c "grep -q host.docker.internal /etc/hosts || echo \"\$(ip route | awk '/default/{print \$3}') host.docker.internal\" >> /etc/hosts"
 # Creating the bucket is the bucket owner's job, not ee's (curl signs SigV4 itself).
 curl -sS --fail-with-body --aws-sigv4 "aws:amz:us-east-1:s3" --user "$AK:$SK" -X PUT "http://127.0.0.1:$MINIO_PORT/$BUCKET"
-TARGET="{\"endpoint\":\"$ENDPOINT\",\"region\":\"us-east-1\",\"bucket\":\"$BUCKET\",\"prefix\":\"drill\",\"addressing\":\"path\",\"accessKeyId\":\"$AK\",\"secretAccessKey\":\"$SK\"}"
+fi
 
-step "2. set backups up (test connection, save, recovery code)"
-ctl POST /v1/backups/test "{\"target\":$TARGET}"
-ctl POST /v1/backups/config "{\"target\":$TARGET,\"schedule\":{\"hour\":3},\"retentionDays\":30,\"author\":\"owner:drill\"}" > "$WORK/config.json"
-CODE=$(sed -n 's/.*"recoveryCode":"\([^"]*\)".*/\1/p' "$WORK/config.json")
-[ -n "$CODE" ] || { echo "✗ no recovery code returned (backups were already set up on this box? the code is shown only once)"; exit 1; }
-echo "recovery code: $CODE   (kept in $WORK/recovery-code)"; echo "$CODE" > "$WORK/recovery-code"
+step "2. backups set up by the owner (Settings → Backups), with the company recovery code"
+# Setup is an owner action in the app (D11): it derives the backup key from the
+# company root key and hands only that key to ee. ONE code (EE1-…) for everything.
+[ -n "${RECOVERY_CODE:-}" ] || {
+  cat <<MSG
+✗ set backups up first, then re-run with the code:
+    MinIO is running. In https://$HOST → Settings → Backups enter
+      endpoint $ENDPOINT, region us-east-1, bucket $BUCKET, folder drill,
+      path-style, access key $AK, secret key $SK
+    Test connection → Save → copy the company recovery code (EE1-…), then:
+    MINIO_KEEP=1 RECOVERY_CODE='EE1-…' MINIO_SECRET='$SK' $0 $HOST
+MSG
+  exit 1
+}
+CODE=$RECOVERY_CODE
+ctl GET /v1/backups | grep -q '"configured":true' || { echo "✗ ee says backups are not set up"; exit 1; }
 box systemctl list-timers ee-backup.timer --no-pager
 
 step "3. what the company holds now"

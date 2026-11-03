@@ -18,8 +18,11 @@ export function productionSources(): BackupSources {
     driveDir: join(PATHS.osState, 'drive'),
     agentDb: join(PATHS.osState, 'agent', 'agent.sqlite'),
     // The desired state, the sealed secret store (incl. deploy keys, the backup
-    // config) and the host key that unseals it: together they are ee.
-    eeState: [PATHS.company, PATHS.secrets, PATHS.masterKey],
+    // config) and the host key that unseals it: together they are ee. Plus the
+    // os workload's git-native company data repo and its sealed company root key
+    // (plan/phase-git-native.md; sealed under TENANT_MASTER_KEY, which lives in
+    // the secret store above).
+    eeState: [PATHS.company, PATHS.secrets, PATHS.masterKey, join(PATHS.osState, 'company-data'), join(PATHS.osState, 'company-keys')],
     tmpDir: PATHS.backupTmp,
   }
 }

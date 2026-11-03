@@ -350,13 +350,17 @@ export class EeClient {
   ): Promise<{ ok: true } | { ok: false; error: string }> {
     return this.call('POST', '/v1/backups/test', { target })
   }
-  /** Owner only (D11). The first save returns the recovery code — the only time it is ever shown. */
+  /**
+   * Owner only (D11). backupKey (base64) is derived from the company root key
+   * (gitstore deriveBackupKey); required the first time, ee seals it.
+   */
   configureBackups(i: {
     target: Omit<BackupTarget, 'secretAccessKey'> & { secretAccessKey?: string }
     schedule: { hour: number }
     retentionDays: number
+    backupKey?: string
     author: string
-  }): Promise<{ recoveryCode: string | null; config: BackupStatus }> {
+  }): Promise<{ config: BackupStatus }> {
     return this.call('POST', '/v1/backups/config', i)
   }
   /** Start a backup now; returns the running record. */

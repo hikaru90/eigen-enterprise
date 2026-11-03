@@ -22,6 +22,8 @@ import { registerUser } from './test-helpers'
  *   EE_CONTROL_SOCKET=<tmp>/ee.sock
  *   E2E_S3_ENDPOINT=http://127.0.0.1:9311 E2E_S3_ACCESS_KEY=… E2E_S3_SECRET_KEY=…
  *   (a MinIO: see ee/src/backup/minio.spec.ts for the container)
+ *   COMPANY_KEYS_DIR=<tmp dir>  (where the app seals the company root key; the
+ *   backup key is derived from it — the ONE company recovery code, EE1-…)
  *   E2E_PG_DUMP='["docker","exec","eigen-enterprise-db","pg_dump","--format=custom","-U","eigen","eigen"]'
  */
 
@@ -31,10 +33,11 @@ const S3 = process.env.E2E_S3_ENDPOINT?.trim()
 const AK = process.env.E2E_S3_ACCESS_KEY?.trim() ?? ''
 const SK = process.env.E2E_S3_SECRET_KEY?.trim() ?? ''
 const PG_DUMP = process.env.E2E_PG_DUMP?.trim()
+const KEYS_DIR = process.env.COMPANY_KEYS_DIR?.trim()
 
 test.skip(
-  !DATABASE_URL || !SOCKET || !S3 || !PG_DUMP,
-  'needs DATABASE_URL, EE_CONTROL_SOCKET, E2E_S3_ENDPOINT/ACCESS_KEY/SECRET_KEY and E2E_PG_DUMP (see the header)',
+  !DATABASE_URL || !SOCKET || !S3 || !PG_DUMP || !KEYS_DIR,
+  'needs DATABASE_URL, EE_CONTROL_SOCKET, E2E_S3_ENDPOINT/ACCESS_KEY/SECRET_KEY, E2E_PG_DUMP and COMPANY_KEYS_DIR (see the header)',
 )
 
 const ROOT = process.cwd()
@@ -141,8 +144,9 @@ test('owner sets up backups, keeps the recovery code, backs up now; the bucket h
   const panel = page.getByTestId('backups-recovery-code')
   await expect(panel).toBeVisible()
   await expect(panel).toContainText("Without it, your backups can't be read")
+  await expect(panel).toContainText('the one recovery code of your company')
   const code = await page.getByTestId('backups-recovery-code-value').inputValue()
-  expect(code).toMatch(/^([0-9A-Z]{6}-){8}[0-9A-Z]{6}$/)
+  expect(code).toMatch(/^EE1(-[0-9A-Z]{1,5}){11}$/)
   await page.screenshot({ path: `${SHOTS}/3-recovery-code.png`, fullPage: true })
   await expect(page.getByTestId('backups-recovery-code-done')).toBeDisabled()
   await page.getByTestId('backups-recovery-code-stored').check()
@@ -180,6 +184,8 @@ test('owner sets up backups, keeps the recovery code, backs up now; the bucket h
   )
   expect(verify).toMatch(/✓ snapshot \d{8}T\d{6}Z is complete and decrypts/)
   writeFileSync(`${OUT}/verify.txt`, verify)
+  // The page showed the ONE company code (EE1-…, the root key gitstore sealed in COMPANY_KEYS_DIR);
+  // the backups decrypt with the key derived from it — no second backup code exists.
 
   // A member never sees Backups.
   const memberCtx = await browser.newContext()

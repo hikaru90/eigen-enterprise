@@ -1,7 +1,6 @@
 import type { SecretMap } from '../secrets.ts'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { newBackupKey, recoveryCode } from './crypto.ts'
 import { S3Client, s3TargetSchema, type S3Target } from './s3.ts'
 import { prune, takeSnapshot, type BackupSources } from './snapshot.ts'
 
@@ -88,6 +87,13 @@ export const configureInput = z
     target: s3TargetSchema.extend({ secretAccessKey: s3TargetSchema.shape.secretAccessKey.optional() }),
     schedule: z.object({ hour: z.number().int().min(0).max(23) }).strict(),
     retentionDays: z.number().int().min(1).max(3650),
+    /**
+     * The backup key, base64 (32 bytes): derived by the app from the company
+     * root key (gitstore deriveBackupKey), so the ONE company recovery code
+     * restores backups too. Required on first setup; when sent later it must
+     * match the sealed one (a different key would orphan every snapshot).
+     */
+    backupKey: z.string().regex(/^[A-Za-z0-9+/]{43}=$/, 'backupKey must be 32 bytes, base64').optional(),
     author: z.string().min(1).max(64),
   })
   .strict()
@@ -183,10 +189,10 @@ export class BackupService {
 
   /**
    * Save the target (after a passing connection test), schedule and retention.
-   * The first save generates the backup key; its recovery code is returned
-   * exactly this once and never again.
+   * The first save seals the backup key the app derived from the company root
+   * key; ee never sees the root key or a recovery code.
    */
-  async configure(raw: unknown): Promise<{ recoveryCode: string | null; config: Awaited<ReturnType<BackupService['status']>> }> {
+  async configure(raw: unknown): Promise<{ config: Awaited<ReturnType<BackupService['status']>> }> {
     const i = configureInput.parse(raw)
     const prev = this.config()
     const secretAccessKey = i.target.secretAccessKey ?? prev?.target.secretAccessKey
@@ -195,12 +201,14 @@ export class BackupService {
     const test = await this.testConnection(target)
     if (!test.ok) throw new BackupError(422, `connection test failed, nothing saved: ${test.error}`)
     const now = this.d.now().toISOString()
-    let code: string | null = null
     let keyCreatedAt = prev?.keyCreatedAt ?? now
-    if (!this.key()) {
-      const key = newBackupKey()
-      await this.d.secrets.set(BACKUP_SCOPE, 'KEY', key.toString('base64'))
-      code = recoveryCode(key)
+    const sealed = this.key()
+    if (sealed && i.backupKey && !sealed.equals(Buffer.from(i.backupKey, 'base64'))) {
+      throw new BackupError(409, 'a different backup key is already sealed on this server; replacing it would make every existing backup unreadable')
+    }
+    if (!sealed) {
+      if (!i.backupKey) throw new BackupError(400, 'the backup key (derived from the company recovery code) is required the first time')
+      await this.d.secrets.set(BACKUP_SCOPE, 'KEY', i.backupKey)
       keyCreatedAt = now
     }
     // A randomized minute, kept across edits, so companies don't all hit their bucket at :00.
@@ -216,7 +224,7 @@ export class BackupService {
     await this.d.secrets.set(BACKUP_SCOPE, 'CONFIG', JSON.stringify(cfg))
     await this.d.applySchedule(cfg.schedule)
     await this.d.emit('backup.configured', `backups ${prev ? 'updated' : 'set up'} by ${i.author}: s3 ${target.bucket}${target.prefix ? `/${target.prefix}` : ''}, daily at ${pad(cfg.schedule.hour)}:${pad(minute)} UTC, keep ${cfg.retentionDays} days`, { bucket: target.bucket, endpoint: target.endpoint })
-    return { recoveryCode: code, config: await this.status() }
+    return { config: await this.status() }
   }
 
   isRunning(): boolean {

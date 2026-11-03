@@ -7,7 +7,7 @@ import { BackupError, type BackupService } from './service.ts'
  * them on the owner-only Settings → Backups page; the agent reads status).
  *   GET  /v1/backups            status, config (no secrets), last runs, health
  *   POST /v1/backups/test       { target }                      → { ok } | { ok:false, error }
- *   POST /v1/backups/config     { target, schedule, retentionDays, author } → { recoveryCode|null, config }
+ *   POST /v1/backups/config     { target, schedule, retentionDays, backupKey?, author } → { config }
  *   POST /v1/backups/run        { author, trigger?, wait? }     → { run }
  */
 

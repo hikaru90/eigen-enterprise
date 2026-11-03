@@ -1,6 +1,7 @@
 import type { Actions, PageServerLoad } from './$types'
 import { error, fail, redirect } from '@sveltejs/kit'
 import { getUserRole } from '$lib/server/auth/user-role'
+import { companyBackupKey, type BackupKeyMaterial } from '$lib/server/backups/company-key'
 import {
   EeClient,
   SubstrateError,
@@ -22,7 +23,10 @@ export type BackupsPageData =
   | { managed: false; reason: string }
 
 /** Overridable in tests. */
-export const _backupsDeps = { client: (): EeClient => new EeClient() }
+export const _backupsDeps = {
+  client: (): EeClient => new EeClient(),
+  companyKey: (): Promise<BackupKeyMaterial> => companyBackupKey(),
+}
 
 async function requireOwner(locals: App.Locals): Promise<string> {
   const user = locals.user
@@ -92,14 +96,17 @@ export const actions: Actions = {
     const author = await requireOwner(locals)
     const form = await request.formData()
     return act('save', async () => {
-      const r = await _backupsDeps.client().configureBackups({
-        target: readTarget(form),
-        schedule: { hour: int(form, 'hour', 0, 23, 'The hour') },
-        retentionDays: int(form, 'retentionDays', 1, 3650, 'Keep backups for'),
-        author,
-      })
-      // The recovery code exists in this one response only; ee never returns it again.
-      return { recoveryCode: r.recoveryCode }
+      const target = readTarget(form)
+      const schedule = { hour: int(form, 'hour', 0, 23, 'The hour') }
+      const retentionDays = int(form, 'retentionDays', 1, 3650, 'Keep backups for')
+      const client = _backupsDeps.client()
+      const firstSetup = !(await client.backups()).configured
+      // The backup key is derived from the company root key: one recovery code for everything.
+      const key = await _backupsDeps.companyKey()
+      await client.configureBackups({ target, schedule, retentionDays, backupKey: key.backupKey, author })
+      // On first setup the owner confirms the company recovery code here (the same EE1-… code,
+      // never a second one); it is in this one response only.
+      return { recoveryCode: firstSetup ? key.recoveryCode : null }
     })
   },
   run: async ({ locals }) => {

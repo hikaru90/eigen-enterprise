@@ -187,24 +187,43 @@ function unbase32(s: string): Buffer {
   return Buffer.from(out)
 }
 
-const checksum = (key: Buffer) => base32(createHash('sha256').update('ee-recovery').update(key).digest().subarray(0, 2)).slice(0, 2)
+// --- The ONE company recovery code (plan/phase-git-native.md §3) -----------
+//
+// The owner holds one code: the company root key (an age X25519 identity),
+// written `EE1-XXXXX-…` = Crockford base32 of the 32 identity bytes + a 2-byte
+// checksum (sha256("EE1" ‖ bytes)[0..2]). The app (src/lib/server/gitstore/
+// keys.ts) mints it; the backup key is DERIVED from it — HKDF-SHA256(ikm =
+// identity bytes, salt = empty, info = "eigenEnterprise backup key v1", 32) —
+// and handed to ee once at setup, sealed in ee's secret store. ee never holds
+// the root key; a restore derives the backup key from the code the owner types.
 
-/** 32-byte key → 52 base32 chars + 2 checksum chars, in groups of 6 ("ABCDEF-GHJKMN-…"). */
-export function recoveryCode(key: Buffer): string {
-  if (key.length !== 32) throw new Error('backup key must be 32 bytes')
-  const s = base32(key) + checksum(key)
-  return s.match(/.{1,6}/g)!.join('-')
+const RECOVERY_PREFIX = 'EE1'
+const companyChecksum = (bytes: Buffer) => createHash('sha256').update(RECOVERY_PREFIX).update(bytes).digest().subarray(0, 2)
+
+/** The company recovery code for raw root-key bytes (tests and drills; the app mints the real one). */
+export function companyRecoveryCode(rootKeyBytes: Buffer): string {
+  if (rootKeyBytes.length !== 32) throw new Error('root key must be 32 bytes')
+  const body = base32(Buffer.concat([rootKeyBytes, companyChecksum(rootKeyBytes)]))
+  return [RECOVERY_PREFIX, ...body.match(/.{1,5}/g)!].join('-')
 }
 
-/** Parse what a human typed back (case, dashes, spaces, O/I/L look-alikes forgiven). */
-export function parseRecoveryCode(input: string): Buffer {
-  const s = input
-    .toUpperCase()
-    .replace(/[\s-]/g, '')
-    .replace(/O/g, '0')
-    .replace(/[IL]/g, '1')
-  if (s.length !== 54) throw new Error(`a recovery code has 54 characters (got ${s.length})`)
-  const key = unbase32(s.slice(0, 52)).subarray(0, 32)
-  if (checksum(key) !== s.slice(52)) throw new Error('recovery code checksum does not match — a character is mistyped')
-  return key
+/** Root-key bytes from what a human typed back (case, spaces, dashes, O/0 and I/L/1 forgiven). */
+export function parseCompanyRecoveryCode(input: string): Buffer {
+  const s = input.toUpperCase().replace(/[\s-]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1')
+  if (!s.startsWith(RECOVERY_PREFIX)) throw new Error(`a company recovery code starts with ${RECOVERY_PREFIX}-`)
+  const raw = unbase32(s.slice(RECOVERY_PREFIX.length))
+  if (raw.length !== 34) throw new Error('the recovery code is too short or too long')
+  const bytes = raw.subarray(0, 32)
+  if (!companyChecksum(bytes).equals(raw.subarray(32, 34))) throw new Error('the recovery code has a typo (checksum mismatch)')
+  return Buffer.from(bytes)
+}
+
+/** Must equal the app's gitstore deriveBackupKey(). */
+export function deriveBackupKey(rootKeyBytes: Buffer): Buffer {
+  return Buffer.from(hkdfSync('sha256', rootKeyBytes, Buffer.alloc(0), 'eigenEnterprise backup key v1', 32))
+}
+
+/** Recovery code → the backup key that encrypted the snapshots. */
+export function backupKeyFromRecoveryCode(code: string): Buffer {
+  return deriveBackupKey(parseCompanyRecoveryCode(code))
 }

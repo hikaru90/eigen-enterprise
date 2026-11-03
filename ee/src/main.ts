@@ -12,7 +12,7 @@ import { renderLiveEnvFiles } from './reconcile.ts'
 import { SecretStore } from './secret-store.ts'
 import { RealSystem } from './system.ts'
 import { createInterface } from 'node:readline'
-import { parseRecoveryCode } from './backup/crypto.ts'
+import { backupKeyFromRecoveryCode } from './backup/crypto.ts'
 import { S3Client, s3TargetSchema, type S3Target } from './backup/s3.ts'
 import { BACKUP_SCOPE, storedConfigSchema } from './backup/service.ts'
 import { fetchSnapshot, resolveSnapshot } from './backup/snapshot.ts'
@@ -30,7 +30,7 @@ const USAGE = `ee — the company's init (plan/phase-substrate.md)
   ee logs <workload>
   ee backup [--scheduled]                (take a snapshot now; the nightly timer passes --scheduled)
   ee backup status
-  ee restore --snapshot <id|latest>      (asks for the recovery code; restores everything, then reconciles)
+  ee restore --snapshot <id|latest>      (asks for the company recovery code EE1-…; restores everything, then reconciles)
   ee restore --verify [--snapshot <id|latest>]   (download + decrypt + check, touches nothing)
       restore on a fresh server: --endpoint <url> --region <r> --bucket <b> [--prefix <p>]
       [--addressing path|virtual] --access-key-id <id>   (secret key asked on stdin)
@@ -240,8 +240,8 @@ async function main(argv: string[]): Promise<void> {
         if (!raw) throw new Error('backups are not set up on this server: pass --endpoint --region --bucket [--prefix] --access-key-id')
         target = storedConfigSchema.parse(JSON.parse(raw)).target
       }
-      console.error('Recovery code (from when backups were set up):')
-      const key = parseRecoveryCode(await ask.next())
+      console.error('Company recovery code (EE1-…):')
+      const key = backupKeyFromRecoveryCode(await ask.next())
       ask.close()
       const s3 = new S3Client(target)
       const id = await resolveSnapshot(s3, values.snapshot ?? 'latest')

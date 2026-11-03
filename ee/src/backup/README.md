@@ -9,7 +9,7 @@ which asks the running ee daemon to do the work — no extra service).
 | object | what | how it is taken |
 |---|---|---|
 | `snapshots/<id>/db.dump` | the company Postgres database (`os`) | `pg_dump --format=custom` as `postgres` |
-| `snapshots/<id>/ee-state.tar.gz` | `/var/lib/ee/company` (desired state repo), `/var/lib/ee/secrets.enc` (sealed secret store: workload secrets, DB passwords, deploy keys, the backup config), `/etc/ee/master.key` (unseals it) | `tar -czf` |
+| `snapshots/<id>/ee-state.tar.gz` | `/var/lib/ee/company` (desired state repo), `/var/lib/ee/secrets.enc` (sealed secret store: workload secrets, DB passwords, deploy keys, the backup config), `/etc/ee/master.key` (unseals it), the os workload's `company-data` git repo and `company-keys` (sealed company root key) | `tar -czf` |
 | `snapshots/<id>/agent.sqlite` | the agent's durable state (`/var/lib/ee-state/os/agent/agent.sqlite`) | SQLite **online backup API** (`node:sqlite` `backup()`), never a raw copy |
 | `blobs/<sha256>` | Drive blobs (`/var/lib/ee-state/os/drive/blobs/aa/bb/<sha256>`) | content-addressed: uploaded once, skipped when already in the bucket |
 | `snapshots/<id>/manifest.json` | list of the files (size, sha256 of the plaintext) and of every blob the snapshot references | written **last** |
@@ -43,15 +43,23 @@ counter is in the nonce); truncation at a chunk boundary fails (the new last
 chunk was sealed as non-final); a swapped header fails (it is the AAD). On top,
 restore checks every file's and blob's plaintext sha256 against the manifest.
 
-## The backup key and the recovery code
+## The backup key and the ONE company recovery code
 
-The 32-byte backup key is generated when the owner first saves the bucket in
-Settings → Backups. It is sealed in ee's secret store (scope `_backup`) so
-nightly runs need no human, and shown to the owner **once** as a recovery code:
-Crockford base32 of the key (52 chars) + 2 checksum chars, in 9 groups of 6
-(`ABCDEF-…`). Case, dashes, spaces and O/0, I/L/1 look-alikes are forgiven when
-typed back. Without the code, a lost server's backups cannot be read — by
-anyone.
+There is one recovery code per company (plan/phase-git-native.md §3): the
+company root key, an age X25519 identity minted by the app
+(`src/lib/server/gitstore/keys.ts`), written `EE1-XXXXX-…` (Crockford base32 of
+the 32 key bytes + a 2-byte checksum `sha256("EE1" ‖ bytes)[0..2]`, groups of 5).
+
+The backup key is **derived** from it:
+`HKDF-SHA256(ikm = root key bytes, salt = empty, info = "eigenEnterprise backup key v1", 32)`
+(`deriveBackupKey` in the app and in `crypto.ts` here — a shared test vector
+pins them together). When the owner first saves Settings → Backups, the app
+loads (or creates) the root key, derives the backup key and sends it once in
+`POST /v1/backups/config { backupKey }`; ee seals it in its secret store (scope
+`_backup`, name `KEY`) so nightly runs need no human. ee never receives the root
+key or the code; a later config with a different key is refused (it would
+orphan every snapshot). The page shows the same `EE1-…` code to confirm it is
+stored. `ee restore` asks for that code and derives the backup key from it.
 
 ## S3 client: own implementation (`s3.ts`)
 

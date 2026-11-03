@@ -120,12 +120,13 @@
       class="mt-8 space-y-3 rounded-lg border-2 border-amber-500/70 p-4"
       data-testid="backups-recovery-code"
     >
-      <h3 class="text-sm font-semibold">Store this recovery code safely</h3>
+      <h3 class="text-sm font-semibold">Store your company recovery code safely</h3>
       <p class="text-xs text-foreground/70">
-        Without it, your backups can't be read — not by you, not by us, not by anyone. If this server
-        is ever lost, you will need this code to bring the company back. It is shown <strong
+        Without it, your backups can't be read — not by you, not by us, not by anyone. It is the one
+        recovery code of your company: the same code also unlocks the company's encrypted data. If
+        this server is ever lost, you will need it to bring the company back. It is shown <strong
           >only this once</strong
-        >: put it in your password manager or print it and keep it somewhere safe.
+        > here: put it in your password manager or print it and keep it somewhere safe.
       </p>
       <div class="flex gap-2">
         <input
@@ -356,7 +357,7 @@
         <li>
           On the new server, run <code class="font-mono">ee restore --snapshot latest</code> with your bucket's
           details (<code class="font-mono">--endpoint --region --bucket --prefix --access-key-id</code>). It asks
-          for the secret key and then for your recovery code.
+          for the secret key and then for your company recovery code (<code class="font-mono">EE1-…</code>).
         </li>
         <li>
           The server downloads the backup, checks every file, and puts back the database, Drive, the agent's

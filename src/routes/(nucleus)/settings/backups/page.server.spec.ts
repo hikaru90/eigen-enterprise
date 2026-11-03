@@ -17,6 +17,7 @@ function wire(answers: Record<string, { status: number; data: unknown }>) {
     return a
   }
   _backupsDeps.client = () => new EeClient(transport)
+  _backupsDeps.companyKey = async () => ({ backupKey: 'K'.repeat(43) + '=', recoveryCode: 'EE1-AAAAA-…', created: false })
   return calls
 }
 
@@ -71,22 +72,24 @@ describe('Settings → Backups (owner only, D11)', () => {
     })
   })
 
-  it('save: the owner is the author; the recovery code comes back in this response only', async () => {
-    const calls = wire({ 'POST /v1/backups/config': { status: 200, data: { recoveryCode: 'ABCDEF-…', config: status } } })
-    expect(await actions.save!(ev(fields))).toEqual({ action: 'save', ok: true, recoveryCode: 'ABCDEF-…' })
-    expect(calls[0]!.body).toMatchObject({ schedule: { hour: 2 }, retentionDays: 30, author: 'human:u-owner' })
+  const st = (configured: boolean) => ({ status: 200, data: { ...status, configured } })
+
+  it('first save: sends the backup key derived from the company root key and shows the SAME company recovery code once', async () => {
+    const calls = wire({ 'GET /v1/backups': st(false), 'POST /v1/backups/config': { status: 200, data: { config: status } } })
+    expect(await actions.save!(ev(fields))).toEqual({ action: 'save', ok: true, recoveryCode: 'EE1-AAAAA-…' })
+    expect(calls[1]!.body).toMatchObject({ schedule: { hour: 2 }, retentionDays: 30, backupKey: 'K'.repeat(43) + '=', author: 'human:u-owner' })
   })
 
-  it('save: an empty secret is left out (ee keeps the saved one); bad numbers are refused before ee', async () => {
-    const calls = wire({ 'POST /v1/backups/config': { status: 200, data: { recoveryCode: null, config: status } } })
-    await actions.save!(ev({ ...fields, secretAccessKey: '' }))
-    expect((calls[0]!.body as { target: object }).target).not.toHaveProperty('secretAccessKey')
+  it('later saves never show the code again; an empty secret is left out; bad numbers are refused before ee', async () => {
+    const calls = wire({ 'GET /v1/backups': st(true), 'POST /v1/backups/config': { status: 200, data: { config: status } } })
+    expect(await actions.save!(ev({ ...fields, secretAccessKey: '' }))).toEqual({ action: 'save', ok: true, recoveryCode: null })
+    expect((calls[1]!.body as { target: object }).target).not.toHaveProperty('secretAccessKey')
     expect(await actions.save!(ev({ ...fields, retentionDays: '0' }))).toMatchObject({ status: 400, data: { error: expect.stringMatching(/Keep backups for/) } })
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
   })
 
   it('a refused save shows ee\'s reason', async () => {
-    wire({ 'POST /v1/backups/config': { status: 422, data: { detail: 'connection test failed, nothing saved: S3 PUT failed: 404 NoSuchBucket' } } })
+    wire({ 'GET /v1/backups': st(false), 'POST /v1/backups/config': { status: 422, data: { detail: 'connection test failed, nothing saved: S3 PUT failed: 404 NoSuchBucket' } } })
     expect(await actions.save!(ev(fields))).toMatchObject({ status: 422, data: { error: expect.stringMatching(/NoSuchBucket/) } })
   })
 

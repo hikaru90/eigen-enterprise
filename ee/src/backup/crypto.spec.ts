@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { Readable, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { describe, expect, it } from 'vitest'
-import { BackupAuthError, decryptStream, encryptStream, HEADER_LEN, newBackupKey, parseRecoveryCode, recoveryCode, TAG_LEN } from './crypto.ts'
+import { BackupAuthError, backupKeyFromRecoveryCode, companyRecoveryCode, decryptStream, encryptStream, HEADER_LEN, newBackupKey, parseCompanyRecoveryCode, TAG_LEN } from './crypto.ts'
 
 async function run(input: Buffer, t: NodeJS.ReadWriteStream, pieces = 7): Promise<Buffer> {
   const out: Buffer[] = []
@@ -64,21 +64,21 @@ describe('EEBK v1 stream encryption', () => {
   })
 })
 
-describe('recovery code', () => {
-  it('encodes the key for humans and parses it back, forgiving case, dashes, spaces and look-alikes', () => {
-    const key = newBackupKey()
-    const code = recoveryCode(key)
-    expect(code).toMatch(/^([0-9A-HJKMNP-TV-Z]{6}-){8}[0-9A-HJKMNP-TV-Z]{6}$/)
-    expect(parseRecoveryCode(code).equals(key)).toBe(true)
-    const sloppy = code.toLowerCase().replace(/-/g, ' ').replace(/0/g, 'o').replace(/1/g, 'l')
-    expect(parseRecoveryCode(sloppy).equals(key)).toBe(true)
+describe('the company recovery code (shared with the app\'s gitstore)', () => {
+  // Vector from the app: src/lib/server/gitstore/keys.ts with identity bytes 0x07 × 32.
+  const CODE = 'EE1-0W3GE-1R70W-3GE1R-70W3G-E1R70-W3GE1-R70W3-GE1R7-0W3GE-1R70W-3R7MG'
+  const KEY = '8c38fa79a9d06dfec0b70893b7697357f3659fc0d06f529a95fb1b40f745fc95'
+
+  it('matches the app byte for byte: code format and derived backup key', () => {
+    expect(companyRecoveryCode(Buffer.alloc(32, 7))).toBe(CODE)
+    expect(backupKeyFromRecoveryCode(CODE).toString('hex')).toBe(KEY)
   })
 
-  it('a mistyped character is caught by the checksum', () => {
-    const code = recoveryCode(Buffer.alloc(32, 7)) // fixed: a random key could collide the 10-bit checksum
-    const i = 3
-    const typo = code.slice(0, i) + (code[i] === 'A' ? 'B' : 'A') + code.slice(i + 1)
-    expect(() => parseRecoveryCode(typo)).toThrow(/checksum|invalid/)
-    expect(() => parseRecoveryCode(code.slice(0, 20))).toThrow(/54 characters/)
+  it('forgives case, spaces and look-alikes; catches typos', () => {
+    const sloppy = CODE.toLowerCase().replace(/-/g, ' ').replace(/0/g, 'o').replace(/1/g, 'l')
+    expect(backupKeyFromRecoveryCode(sloppy).toString('hex')).toBe(KEY)
+    expect(() => parseCompanyRecoveryCode(CODE.replace('0W3GE', '0W3GF'))).toThrow(/typo/)
+    expect(() => parseCompanyRecoveryCode(CODE.slice(0, 20))).toThrow(/too short/)
+    expect(() => parseCompanyRecoveryCode('ABC-123')).toThrow(/EE1-/)
   })
 })

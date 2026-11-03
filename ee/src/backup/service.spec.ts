@@ -1,7 +1,7 @@
 import type { SecretMap } from '../secrets.ts'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { backupRoute } from './control.ts'
-import { parseRecoveryCode } from './crypto.ts'
+import { backupKeyFromRecoveryCode, companyRecoveryCode } from './crypto.ts'
 import { FakeS3 } from './fake-s3.ts'
 import { BackupService, MISSING_AFTER_MS } from './service.ts'
 import { readManifest } from './snapshot.ts'
@@ -50,24 +50,28 @@ describe('BackupService', () => {
     expect(fake.keys().filter((k) => k.includes('.ee-connection-test'))).toEqual([])
   })
 
-  it('first save generates the key and returns the recovery code ONCE; later saves never return it', async () => {
+  it('first save seals the backup key the app derived from the company recovery code; ee never returns a code', async () => {
     const h = await harness(endpoint, fake)
-    const first = await h.svc.configure({ target: h.target, schedule: { hour: 2 }, retentionDays: 30, author: 'owner:ada' })
-    expect(first.recoveryCode).toMatch(/^([0-9A-Z]{6}-){8}[0-9A-Z]{6}$/)
-    expect(parseRecoveryCode(first.recoveryCode!).equals(h.svc.key()!)).toBe(true)
-    expect(h.schedules).toHaveLength(1)
+    await expect(h.svc.configure({ target: h.target, schedule: { hour: 2 }, retentionDays: 30, author: 'owner:ada' })).rejects.toMatchObject({ status: 400 })
+    const code = companyRecoveryCode(Buffer.alloc(32, 9))
+    const backupKey = backupKeyFromRecoveryCode(code).toString('base64')
+    const first = await h.svc.configure({ target: h.target, schedule: { hour: 2 }, retentionDays: 30, backupKey, author: 'owner:ada' })
+    expect(first).not.toHaveProperty('recoveryCode')
+    expect(h.svc.key()!.toString('base64')).toBe(backupKey)
     expect(h.schedules[0]!.hour).toBe(2)
     // Status never carries the secret key or the backup key.
     const status = JSON.stringify(await h.svc.status())
     expect(status).not.toContain(h.target.secretAccessKey)
-    expect(status).not.toContain(h.svc.key()!.toString('base64'))
-    expect(status).not.toContain(first.recoveryCode!)
-    // Edit: no secret needed again, same key, same minute, no code.
+    expect(status).not.toContain(backupKey)
+    // Edit: no secret, no key needed again; same minute.
     const { secretAccessKey: _s, ...noSecret } = h.target
     const second = await h.svc.configure({ target: noSecret, schedule: { hour: 4 }, retentionDays: 7, author: 'owner:ada' })
-    expect(second.recoveryCode).toBeNull()
     expect(h.schedules[1]).toEqual({ hour: 4, minute: h.schedules[0]!.minute })
     expect(second.config.retentionDays).toBe(7)
+    // A different key would orphan every snapshot: refused.
+    const other = backupKeyFromRecoveryCode(companyRecoveryCode(Buffer.alloc(32, 1))).toString('base64')
+    await expect(h.svc.configure({ target: noSecret, schedule: { hour: 4 }, retentionDays: 7, backupKey: other, author: 'owner:ada' })).rejects.toMatchObject({ status: 409 })
+    expect(h.svc.key()!.toString('base64')).toBe(backupKey)
   })
 
   it('a failing connection test refuses the save', async () => {
@@ -82,7 +86,7 @@ describe('BackupService', () => {
     h.target.prefix = 'svc' // its own prefix: other tests' snapshots don't count
     await h.co.addBlob()
     expect((await h.svc.status()).health).toEqual({ state: 'unconfigured' })
-    await h.svc.configure({ target: h.target, schedule: { hour: 2 }, retentionDays: 30, author: 'owner:ada' })
+    await h.svc.configure({ target: h.target, schedule: { hour: 2 }, retentionDays: 30, backupKey: backupKeyFromRecoveryCode(companyRecoveryCode(Buffer.alloc(32, 9))).toString('base64'), author: 'owner:ada' })
     const { run, done } = await h.svc.start('manual', 'owner:ada')
     expect(run.status).toBe('running')
     await expect(h.svc.start('manual', 'owner:ada')).rejects.toMatchObject({ status: 409 })
@@ -122,8 +126,8 @@ describe('BackupService', () => {
     expect(await backupRoute(h.svc, 'GET /v1/backups', body({}))).toMatchObject({ status: 200, data: { configured: false } })
     expect(await backupRoute(h.svc, 'POST /v1/backups/test', body({ target: h.target }))).toEqual({ status: 200, data: { ok: true } })
     expect(await backupRoute(h.svc, 'GET /v1/nope', body({}))).toBeNull()
-    const saved = await backupRoute(h.svc, 'POST /v1/backups/config', body({ target: h.target, schedule: { hour: 1 }, retentionDays: 14, author: 'owner:ada' }))
-    expect(saved).toMatchObject({ status: 200, data: { recoveryCode: expect.any(String) } })
+    const saved = await backupRoute(h.svc, 'POST /v1/backups/config', body({ target: h.target, schedule: { hour: 1 }, retentionDays: 14, backupKey: backupKeyFromRecoveryCode(companyRecoveryCode(Buffer.alloc(32, 9))).toString('base64'), author: 'owner:ada' }))
+    expect(saved).toMatchObject({ status: 200, data: { config: { configured: true } } })
     const ran = await backupRoute(h.svc, 'POST /v1/backups/run', body({ author: 'owner:ada', wait: true }))
     expect(ran).toMatchObject({ status: 200, data: { run: { status: 'succeeded' } } })
   })
