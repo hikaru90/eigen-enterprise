@@ -4,7 +4,7 @@ import { ownerModuleBlurb } from './module-copy'
 const JARGON = /kernel|GTD|hybrid retrieval|substrate|owlery|LLM|entity extraction/i
 
 describe('owner-facing module blurbs', () => {
-  it.each(['website', 'email', 'brand', 'memory', 'members', 'recap', 'chat-gateway'])(
+  it.each(['website', 'email', 'brand', 'memory', 'members', 'drive', 'recap', 'chat-gateway'])(
     '%s reads in plain words',
     (id) => {
       const text = ownerModuleBlurb(id, 'Brand kernel: GTD fallback')

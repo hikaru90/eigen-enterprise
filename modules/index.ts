@@ -24,6 +24,8 @@ import { createBrandTools } from './brand/tools'
 import { DbAllowlistStore } from './chat-gateway/db-stores'
 import { createChatGateway, type ChatGatewayBoot } from './chat-gateway/index'
 import { telegramClientFromEnv } from './chat-gateway/telegram'
+import { DRIVE_MODULE_ID, driveManifest } from './drive/manifest'
+import { createDriveTools } from './drive/tools'
 import { EMAIL_MODULE_ID, emailManifest } from './email/manifest'
 import { createOwleryTools } from './email/owlery/tools'
 import { createEmailTools } from './email/tools'
@@ -69,6 +71,7 @@ export const moduleManifests = [
   orchestratorManifest,
   membersManifest,
   messagesManifest,
+  driveManifest,
 ] as const
 
 /**
@@ -88,6 +91,8 @@ export const SYSTEM_MODULE_IDS = [
   BRAND_MODULE_ID,
   // Messages (phase-workspace C1): the team's chat is part of the OS.
   MESSAGES_MODULE_ID,
+  // Drive (plan/phase-workspace.md D1): the company's files are core, like Memory.
+  DRIVE_MODULE_ID,
 ] as const
 
 /** Tools that always require an approval decision before first execution. */
@@ -128,6 +133,8 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   'members.group_create',
   'members.group_update',
   'members.group_delete',
+  // Drive: an agent's write replaces a company file's text (kept as a revision).
+  'drive.write_text',
 ])
 
 export type BootstrapKernelOptions = {
@@ -203,6 +210,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createOwleryTools(),
     ...createMembersTools(),
     ...createMessagesTools(),
+    ...createDriveTools(),
   ])
 
   return {

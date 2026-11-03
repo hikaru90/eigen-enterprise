@@ -98,6 +98,70 @@ export function createAccess(deps: AccessDeps) {
     return best
   }
 
+  /** Validates a grant set (levels, subjects, no duplicates, existing users/groups) into full grants. */
+  async function validated(
+    resourceType: ResourceType,
+    resourceId: string,
+    grants: ReadonlyArray<{ subject: Subject; level: AccessLevel }>,
+  ): Promise<Grant[]> {
+    const seen = new Set<string>()
+    const next: Grant[] = []
+    for (const g of grants) {
+      if (!isLevel(g.level)) throw new AccessError('invalid_grant', `unknown access level: ${String(g.level)}`)
+      const s = g.subject
+      if (!s || !['user', 'group', 'company'].includes(s.kind)) throw new AccessError('invalid_grant', 'unknown subject kind')
+      const key = subjectKey(s)
+      if (seen.has(key)) throw new AccessError('invalid_grant', `${key} is listed twice`)
+      seen.add(key)
+      const subject: Subject =
+        s.kind === 'user' ? { kind: 'user', userId: s.userId } : s.kind === 'group' ? { kind: 'group', groupId: s.groupId } : { kind: 'company' }
+      next.push({ resourceType, resourceId, subject, level: g.level })
+    }
+    const userIds = next.flatMap((g) => (g.subject.kind === 'user' ? [g.subject.userId] : []))
+    const groupIds = next.flatMap((g) => (g.subject.kind === 'group' ? [g.subject.groupId] : []))
+    const [users, groups] = await Promise.all([deps.store.existingUserIds(userIds), deps.store.existingGroupIds(groupIds)])
+    for (const id of userIds) if (!users.has(id)) throw new AccessError('invalid_grant', `no such member: ${id}`)
+    for (const id of groupIds) if (!groups.has(id)) throw new AccessError('invalid_grant', `no such group: ${id}`)
+
+    return next
+  }
+
+  function auditPayload(resourceType: ResourceType, resourceId: string, before: Grant[], after: Grant[]) {
+    return {
+      resourceType,
+      resourceId,
+      before: before.map((g) => ({ subject: subjectKey(g.subject), level: g.level })),
+      after: after.map((g) => ({ subject: subjectKey(g.subject), level: g.level })),
+    }
+  }
+
+  /**
+   * The first grant set of a resource its creator has just made (a member who
+   * creates a folder or channel holds no manage grant yet). Allowed only while
+   * the resource exists and has no grants at all; the creator must be a known
+   * user. Validated and audited exactly like setGrants (access.grants_set,
+   * principal = creator). Once any grant exists, changes go through setGrants.
+   */
+  async function initializeGrants(
+    creatorId: string,
+    resourceType: ResourceType,
+    resourceId: string,
+    grants: ReadonlyArray<{ subject: Subject; level: AccessLevel }>,
+    chain?: ResourceChain,
+  ): Promise<Grant[]> {
+    if (!creatorId || !resourceId || !isType(resourceType)) throw new AccessError('forbidden', 'Unknown creator or resource.')
+    targetsOf(resourceType, resourceId, chain)
+    if (!(await deps.store.userRole(creatorId))) throw new AccessError('forbidden', 'Unknown creator.')
+    if (!(await resourceExists(resourceType, resourceId))) throw new AccessError('forbidden', 'No such resource.')
+    if ((await deps.store.grantsOn([{ resourceType, resourceId }])).length > 0) {
+      throw new AccessError('forbidden', 'This already has grants; only people who manage it can change them.')
+    }
+    const next = await validated(resourceType, resourceId, grants)
+    await deps.store.replaceGrants(resourceType, resourceId, next, creatorId)
+    await deps.audit({ type: 'access.grants_set', principalId: creatorId, payload: auditPayload(resourceType, resourceId, [], next) })
+    return next
+  }
+
   async function canAccess(
     userId: string,
     resourceType: ResourceType,
@@ -132,25 +196,7 @@ export function createAccess(deps: AccessDeps) {
     if (!(await canAccess(actorId, resourceType, resourceId, 'manage', chain))) {
       throw new AccessError('forbidden', 'Only people who manage this can change who has access.')
     }
-    const seen = new Set<string>()
-    const next: Grant[] = []
-    for (const g of grants) {
-      if (!isLevel(g.level)) throw new AccessError('invalid_grant', `unknown access level: ${String(g.level)}`)
-      const s = g.subject
-      if (!s || !['user', 'group', 'company'].includes(s.kind)) throw new AccessError('invalid_grant', 'unknown subject kind')
-      const key = subjectKey(s)
-      if (seen.has(key)) throw new AccessError('invalid_grant', `${key} is listed twice`)
-      seen.add(key)
-      const subject: Subject =
-        s.kind === 'user' ? { kind: 'user', userId: s.userId } : s.kind === 'group' ? { kind: 'group', groupId: s.groupId } : { kind: 'company' }
-      next.push({ resourceType, resourceId, subject, level: g.level })
-    }
-    const userIds = next.flatMap((g) => (g.subject.kind === 'user' ? [g.subject.userId] : []))
-    const groupIds = next.flatMap((g) => (g.subject.kind === 'group' ? [g.subject.groupId] : []))
-    const [users, groups] = await Promise.all([deps.store.existingUserIds(userIds), deps.store.existingGroupIds(groupIds)])
-    for (const id of userIds) if (!users.has(id)) throw new AccessError('invalid_grant', `no such member: ${id}`)
-    for (const id of groupIds) if (!groups.has(id)) throw new AccessError('invalid_grant', `no such group: ${id}`)
-
+    const next = await validated(resourceType, resourceId, grants)
     const before = await deps.store.grantsOn([{ resourceType, resourceId }])
     await deps.store.replaceGrants(resourceType, resourceId, next, actorId)
     await deps.audit({
@@ -166,7 +212,7 @@ export function createAccess(deps: AccessDeps) {
     return next
   }
 
-  return { canAccess, effectiveLevel, listGrants, setGrants, registerResourceResolver }
+  return { canAccess, effectiveLevel, listGrants, setGrants, initializeGrants, registerResourceResolver }
 }
 
 export type Access = ReturnType<typeof createAccess>

@@ -92,6 +92,7 @@ describe('buildKernel wires the owner-chosen approval mode', () => {
     expect(declared).toEqual({
       'brand.set_activate': 'public',
       'brand.visual_set_activate': 'public',
+      'drive.write_text': 'internal',
       'email.send_mail': 'external',
       'members.invite': 'external',
       'members.set_role': 'internal',
@@ -139,6 +140,7 @@ describe('moduleManifests', () => {
       'orchestrator',
       'members',
       'messages',
+      'drive',
     ])
   })
 })
@@ -155,6 +157,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'orchestrator',
       'members',
       'messages',
+      'drive',
     ])
     const toolNames = kernel.registry.list().map((t) => t.name)
     expect(toolNames).toContain('memory.retrieve_thoughts')
@@ -174,6 +177,9 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect(toolNames).toContain('members.list')
     expect(toolNames).toContain('members.invite')
     expect(toolNames).toContain('members.set_role')
+    expect(toolNames).toContain('drive.list')
+    expect(toolNames).toContain('drive.read')
+    expect(toolNames).toContain('drive.write_text')
     expect(toolNames.length).toBe(
       moduleManifests.reduce((sum, m) => sum + m.tools.length, 0),
     )
@@ -215,6 +221,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect([...APPROVAL_REQUIRED_TOOLS].sort()).toEqual([
       'brand.set_activate',
       'brand.visual_set_activate',
+      'drive.write_text',
       'email.send_mail',
       'kernel.module_deactivate',
       'members.group_create',

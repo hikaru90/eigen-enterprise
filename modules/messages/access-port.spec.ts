@@ -26,8 +26,6 @@ function realAccessFixture() {
   )
   const port = accessPortFrom({
     access,
-    store: accessStore,
-    audit,
     listGroups: async () => [{ id: 'leads', name: 'Leads', memberIds: ['dana'] }],
   })
   const deps: MessagesDeps = { store, access: port, directory }
