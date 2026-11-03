@@ -8,6 +8,8 @@ export type ExtendedPrivateEnv = typeof kitEnv & {
   BILLING_BYOK_UI_ENABLED?: string
   BRAND_EXTRACT_MODEL?: string
   CAPTURE_ENRICH_CONCURRENCY?: string
+  COMPANY_DATA_DIR?: string
+  COMPANY_KEYS_DIR?: string
   CONSOLIDATION_CRON_TZ?: string
   DB_POOL_MAX?: string
   EE_CLAIM_TOKEN_HASH?: string
