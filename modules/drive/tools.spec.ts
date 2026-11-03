@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { memoryEditLockStore } from './locks'
 import { memoryDriveAccess } from './memory-access'
 import { createDriveService } from './service'
 import { diskBlobStore } from './storage'
@@ -17,7 +18,7 @@ async function setup() {
   const dir = await mkdtemp(join(tmpdir(), 'drive-tools-'))
   dirs.push(dir)
   const access = memoryDriveAccess({ users: { alice: { role: 'member' }, bob: { role: 'member' } } })
-  const drive = createDriveService({ store: memoryDriveStore(), blobs: diskBlobStore(dir), access, maxUploadBytes: 1 << 20 })
+  const drive = createDriveService({ store: memoryDriveStore(), blobs: diskBlobStore(dir), access, maxUploadBytes: 1 << 20, locks: memoryEditLockStore() })
   const tools = createDriveTools({ service: async () => drive })
   const tool = (n: string) => tools.find((t) => t.name === n)!
   const human = (id: string) => ({ principal: { id, kind: 'human' as const, roles: ['admin'] }, requestId: 'r' })

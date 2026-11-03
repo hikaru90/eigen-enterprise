@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { memoryEditLockStore } from './locks'
 import { memoryDriveAccess } from './memory-access'
 import { createDriveService, DriveError, resolveMaxUploadBytes, type Actor } from './service'
 import { diskBlobStore } from './storage'
@@ -35,7 +36,7 @@ async function setup(maxUploadBytes = 1024) {
     groups: { design: 'Design' },
   })
   let t = Date.parse('2026-11-03T10:00:00Z')
-  const drive = createDriveService({ store, blobs, access, maxUploadBytes, now: () => new Date((t += 1000)) })
+  const drive = createDriveService({ store, blobs, access, maxUploadBytes, locks: memoryEditLockStore(), now: () => new Date((t += 1000)) })
   return { drive, store, blobs, access }
 }
 

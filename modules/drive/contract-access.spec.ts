@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAccess } from '$lib/server/access'
 import { memoryAccessStore } from '$lib/server/access/memory-store'
 import { contractDriveAccess } from './access-port'
+import { memoryEditLockStore } from './locks'
 import { createDriveService, type Actor } from './service'
 import { diskBlobStore } from './storage'
 import { memoryDriveStore } from './store'
@@ -30,7 +31,7 @@ async function setup() {
   }
   const access = createAccess({ store, audit, resolvers })
   const port = contractDriveAccess({ access, store, shareTargets: async () => ({ people: [], groups: [] }) })
-  const drive = createDriveService({ store: driveStore, blobs: diskBlobStore(dir), access: port, maxUploadBytes: 1 << 20 })
+  const drive = createDriveService({ store: driveStore, blobs: diskBlobStore(dir), access: port, maxUploadBytes: 1 << 20, locks: memoryEditLockStore() })
   return { drive, audit, store }
 }
 

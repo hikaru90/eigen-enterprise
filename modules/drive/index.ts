@@ -1,9 +1,10 @@
 import { liveDriveAccess } from './access-port'
-import { dbDriveStore } from './db-store'
+import { dbDriveStore, dbEditLockStore } from './db-store'
 import { createDriveService, resolveMaxUploadBytes, type DriveService } from './service'
 import { diskBlobStore, resolveDriveStorageDir } from './storage'
 
 export * from './service'
+export { LOCK_HEARTBEAT_MS, LOCK_TTL_MS } from './locks'
 
 let live: DriveService | null = null
 
@@ -18,6 +19,7 @@ export async function driveService(env: Record<string, string | undefined> = pro
     blobs: diskBlobStore(resolveDriveStorageDir(env)),
     access: await liveDriveAccess(),
     maxUploadBytes: resolveMaxUploadBytes(env),
+    locks: dbEditLockStore,
   })
   return live
 }

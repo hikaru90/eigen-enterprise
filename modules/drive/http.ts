@@ -8,7 +8,7 @@ import { DriveError, type Actor, type ItemType } from './service'
  * and DriveError → status. Pages and /api/drive/* routes share it.
  */
 
-export const DRIVE_STATUS: Record<DriveError['code'], number> = { not_found: 404, forbidden: 403, invalid: 400, too_large: 413 }
+export const DRIVE_STATUS: Record<DriveError['code'], number> = { not_found: 404, forbidden: 403, invalid: 400, too_large: 413, locked: 409 }
 
 export function requestActor(event: Pick<RequestEvent, 'locals'>): Actor {
   const user = event.locals.user
@@ -21,7 +21,7 @@ export async function driveJson(run: () => Promise<unknown>): Promise<Response> 
   try {
     return json((await run()) ?? { ok: true })
   } catch (err) {
-    if (err instanceof DriveError) return json({ error: err.message, code: err.code }, { status: DRIVE_STATUS[err.code] })
+    if (err instanceof DriveError) return json({ error: err.message, code: err.code, ...(err.holder ? { holder: err.holder } : {}) }, { status: DRIVE_STATUS[err.code] })
     throw err
   }
 }

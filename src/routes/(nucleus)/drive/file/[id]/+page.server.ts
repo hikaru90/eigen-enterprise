@@ -1,5 +1,5 @@
 import type { PageServerLoad } from './$types'
-import { driveService, drivePage, isRevisioned, parseCsv, previewKind, renderDriveMarkdown, requestActor } from '$lib/server/drive'
+import { driveService, drivePage, isRevisioned, LOCK_HEARTBEAT_MS, parseCsv, previewKind, renderDriveMarkdown, requestActor } from '$lib/server/drive'
 
 /** CSV previews show at most this many rows (the full file downloads). */
 const CSV_PREVIEW_ROWS = 500
@@ -7,10 +7,11 @@ const CSV_PREVIEW_ROWS = 500
 const TEXT_PREVIEW_CHARS = 200_000
 
 /**
- * Open a file (/drive/file/[id]): the preview now, the in-place editor in D2.
- * Markdown is rendered and sanitized server side, CSV parsed into a table,
- * images and PDF come from the content endpoint, everything else offers a
- * download. Revisions for Markdown/CSV are listed.
+ * Open a file (/drive/file/[id]). People who may edit a Markdown/CSV file
+ * get the in-place editor (D2: `content` is its text); everyone else the
+ * preview: Markdown rendered and sanitized server side, CSV parsed into a
+ * table, images and PDF from the content endpoint, else a download.
+ * Revisions for Markdown/CSV are listed with their authors.
  */
 export const load: PageServerLoad = async (event) => {
   const actor = requestActor(event)
@@ -21,8 +22,9 @@ export const load: PageServerLoad = async (event) => {
     let html: string | null = null
     let text: string | null = null
     let table: { rows: string[][]; truncated: boolean } | null = null
+    let content: string | null = null
     if (kind === 'markdown' || kind === 'csv' || kind === 'text') {
-      const content = (await drive.readText(actor, event.params.id)).content
+      content = (await drive.readText(actor, event.params.id)).content
       if (kind === 'markdown') html = renderDriveMarkdown(content)
       else if (kind === 'csv') {
         const rows = parseCsv(content)
@@ -30,8 +32,9 @@ export const load: PageServerLoad = async (event) => {
       } else text = content.slice(0, TEXT_PREVIEW_CHARS)
     }
     const revisions = isRevisioned(info.file.name) ? await drive.listRevisions(actor, event.params.id) : []
-    const people = revisions.length > 0 ? (await drive.shareTargets()).people : []
+    const people = isRevisioned(info.file.name) ? (await drive.shareTargets()).people : []
     const authors = Object.fromEntries(people.map((p) => [p.id, p.name || p.email]))
-    return { ...info, kind, html, text, table, revisions, authors }
+    const editable = info.canEdit && isRevisioned(info.file.name) && (kind === 'markdown' || kind === 'csv')
+    return { ...info, kind, html, text, table, revisions, authors, editable, content: editable ? content : null, heartbeatMs: LOCK_HEARTBEAT_MS }
   })
 }
