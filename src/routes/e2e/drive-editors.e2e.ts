@@ -88,10 +88,12 @@ test('Drive editors: Markdown with lock + takeover, CSV grid, revisions', async 
   expect(share.status()).toBe(200)
   await a.reload()
   const editableA = a.getByTestId('drive-md-editable')
-  await expect(a.getByTestId('drive-editor-status-bar')).toContainText('Editing')
+  // Opening is reading: no lock until the first keystroke.
+  await expect(a.getByTestId('drive-editor-mode')).toHaveAttribute('data-mode', 'reading')
   await expect(editableA).toHaveAttribute('contenteditable', 'true')
   await editableA.click()
   await a.keyboard.type('Kickoff')
+  await expect(a.getByTestId('drive-editor-status-bar')).toContainText('Editing')
   await a.getByTestId('drive-md-h1').click()
   await a.keyboard.press('End')
   await a.keyboard.press('Enter')
@@ -157,26 +159,27 @@ test('Drive editors: Markdown with lock + takeover, CSV grid, revisions', async 
   // ── Revisions: view an older version, restore it ────────────────────────
   const revs = b.getByTestId('drive-revision')
   const before = await revs.count()
-  expect(before).toBeGreaterThanOrEqual(3)
+  expect(before).toBe(2)
   await expect(revs.first()).toContainText('Ben Member')
-  // The oldest revision is the empty new document; the second-oldest is one of A's.
-  await revs.nth(before - 2).getByTestId('drive-revision-view').click()
+  // One revision per editing session (A's, then B's); the empty new document is none.
+  await revs.nth(before - 1).getByTestId('drive-revision-view').click()
   await expect(b.getByTestId('drive-revision-dialog')).toBeVisible()
   await expect(b.getByTestId('drive-revision-dialog')).toContainText('Ada Owner')
   await b.screenshot({ path: `${SHOTS}/06-b-view-revision.png`, fullPage: true })
   const older = await (await b.request.get(`/api/drive/files/${notesId}/revisions`)).json()
-  const olderId = (older as { revisions: Array<{ id: string }> }).revisions[before - 2]!.id
+  const olderId = (older as { revisions: Array<{ id: string }> }).revisions[before - 1]!.id
   const olderText = ((await (await b.request.get(`/api/drive/files/${notesId}/revisions/${olderId}`)).json()) as { content: string }).content
   await b.getByTestId('drive-revision-dialog-restore').click()
   await expect(b.getByTestId('drive-revision-dialog')).toBeHidden()
   await expect(revs).toHaveCount(before + 1)
+  await expect(revs.first().getByTestId('drive-revision-restored-from')).toContainText('Restored from Ada Owner')
   await expect.poll(() => rawText(b, notesId)).toBe(olderText)
   await expect(b.getByTestId('drive-md-editable').locator('h1')).not.toContainText('(Ben)')
   await b.screenshot({ path: `${SHOTS}/07-b-restored.png`, fullPage: true })
 
   // ── CSV: B makes a table ────────────────────────────────────────────────
   const tableId = await newDoc(b, 'table', 'budget')
-  await expect(b.getByTestId('drive-editor-status-bar')).toContainText('Editing')
+  await expect(b.getByTestId('drive-editor-mode')).toHaveAttribute('data-mode', 'reading')
   const cell = (r: number, c: number) => b.locator(`textarea[data-testid="drive-csv-cell"][data-r="${r}"][data-c="${c}"]`)
   await expect(cell(0, 0)).toHaveValue('Column 1')
   // Header row.
@@ -231,12 +234,15 @@ test('Drive editors: Markdown with lock + takeover, CSV grid, revisions', async 
   expect(csv.endsWith('\r\n')).toBe(true)
   await b.screenshot({ path: `${SHOTS}/09-b-csv-after-reload.png`, fullPage: true })
 
-  // CSV revisions: restore the empty table → a new revision with the old text.
+  // CSV revisions: one per editing session — the reload ended the first one.
   const csvRevs = b.getByTestId('drive-revision')
-  const csvCount = await csvRevs.count()
+  await expect(csvRevs).toHaveCount(1)
+  await cell(1, 0).fill('Pears')
+  await expectSaved(b)
+  await expect(csvRevs).toHaveCount(2)
   await csvRevs.last().getByTestId('drive-revision-restore').click()
-  await expect(csvRevs).toHaveCount(csvCount + 1)
-  await expect(cell(0, 0)).toHaveValue('Column 1')
+  await expect(csvRevs).toHaveCount(3)
+  await expect(cell(1, 0)).toHaveValue('Apples')
   await b.screenshot({ path: `${SHOTS}/10-b-csv-restored.png`, fullPage: true })
 
   await ctxA.close()
