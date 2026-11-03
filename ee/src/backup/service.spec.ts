@@ -1,5 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { SecretMap } from '../secrets.ts'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { backupRoute } from './control.ts'
 import { parseRecoveryCode } from './crypto.ts'
 import { FakeS3 } from './fake-s3.ts'

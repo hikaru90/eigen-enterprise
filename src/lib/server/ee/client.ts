@@ -72,8 +72,17 @@ export type EeTransport = (
   body?: unknown,
 ) => Promise<{ status: number; data: unknown }>
 
+/**
+ * The control socket ee serves. EE_CONTROL_SOCKET points the app at another
+ * ee (the browser e2e harness runs its own on a temp socket); unset, it is
+ * the one path ee uses on every box.
+ */
+export function controlSocketPath(env: NodeJS.ProcessEnv = process.env): string {
+  return env.EE_CONTROL_SOCKET?.trim() || EE_CONTROL_SOCKET
+}
+
 export const socketTransport =
-  (socketPath = EE_CONTROL_SOCKET): EeTransport =>
+  (socketPath = controlSocketPath()): EeTransport =>
   (method, path, body) => {
     const text = body === undefined ? '' : JSON.stringify(body)
     return new Promise((resolve, reject) => {
@@ -162,6 +171,54 @@ export type EeDeploy = {
 }
 
 export type ChangeResult = { rev: string; reconcileError: string | null }
+
+/** An S3-compatible bucket (ee/src/backup/s3.ts). */
+export type BackupTarget = {
+  endpoint: string
+  region: string
+  bucket: string
+  prefix: string
+  addressing: 'path' | 'virtual'
+  accessKeyId: string
+  secretAccessKey: string
+}
+
+/** One backup run as ee records it (ee/src/backup/service.ts). */
+export type BackupRun = {
+  id: string
+  trigger: 'scheduled' | 'manual'
+  author: string
+  status: 'running' | 'succeeded' | 'failed'
+  startedAt: string
+  endedAt: string | null
+  durationMs: number | null
+  snapshotId: string | null
+  bytesUploaded: number | null
+  snapshotSize: number | null
+  blobsUploaded: number | null
+  blobsTotal: number | null
+  pruned: { snapshots: number; blobs: number } | null
+  error: string | null
+}
+
+export type BackupHealth =
+  | { state: 'unconfigured' }
+  | { state: 'ok'; lastSuccessAt: string }
+  | { state: 'running'; since: string }
+  | { state: 'failed'; at: string; error: string }
+  | { state: 'missing'; lastSuccessAt: string | null; message: string }
+
+/** ee's backup status: never a secret, never the key. */
+export type BackupStatus = {
+  configured: boolean
+  target: (Omit<BackupTarget, 'secretAccessKey'> & { hasSecret: true }) | null
+  schedule: { hour: number; minute: number } | null
+  retentionDays: number | null
+  configuredAt: string | null
+  keyCreatedAt: string | null
+  health: BackupHealth
+  runs: BackupRun[]
+}
 
 export class EeClient {
   constructor(private readonly transport: EeTransport = socketTransport()) {}
@@ -282,6 +339,29 @@ export class EeClient {
   }
   removeApp(i: { name: string; author: string }): Promise<ChangeResult> {
     return this.call('DELETE', '/v1/apps', i)
+  }
+  /** Backup config (no secrets), health and the last runs. */
+  backups(): Promise<BackupStatus> {
+    return this.call('GET', '/v1/backups')
+  }
+  /** Write, read back and delete one object in the bucket; saves nothing (no secret: the saved one). */
+  testBackupTarget(
+    target: Omit<BackupTarget, 'secretAccessKey'> & { secretAccessKey?: string },
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    return this.call('POST', '/v1/backups/test', { target })
+  }
+  /** Owner only (D11). The first save returns the recovery code — the only time it is ever shown. */
+  configureBackups(i: {
+    target: Omit<BackupTarget, 'secretAccessKey'> & { secretAccessKey?: string }
+    schedule: { hour: number }
+    retentionDays: number
+    author: string
+  }): Promise<{ recoveryCode: string | null; config: BackupStatus }> {
+    return this.call('POST', '/v1/backups/config', i)
+  }
+  /** Start a backup now; returns the running record. */
+  runBackup(i: { author: string }): Promise<{ run: BackupRun }> {
+    return this.call('POST', '/v1/backups/run', { ...i, trigger: 'manual', wait: false })
   }
   setSecret(i: {
     workload: string

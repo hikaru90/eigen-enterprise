@@ -236,7 +236,7 @@ export async function readManifest(s3: S3Client, key: Buffer, id: string): Promi
   try {
     raw = await decryptToBuffer(s3, key, s3.key(`snapshots/${id}/manifest.json`))
   } catch (err) {
-    if (err instanceof S3Error && err.status === 404) throw new Error(`snapshot ${id} has no manifest — it is incomplete (the run that wrote it did not finish)`)
+    if (err instanceof S3Error && err.status === 404) throw new Error(`snapshot ${id} has no manifest — it is incomplete (the run that wrote it did not finish)`, { cause: err })
     throw err
   }
   const m = manifestSchema.parse(JSON.parse(raw.toString('utf8')))

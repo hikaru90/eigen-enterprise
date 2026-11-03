@@ -13,7 +13,8 @@ import { BackupError, type BackupService } from './service.ts'
 
 export type Reply = { status: number; data: unknown }
 
-const testInput = z.object({ target: s3TargetSchema }).strict()
+/** The secret may be left out when editing: the saved one is used. */
+const testInput = z.object({ target: s3TargetSchema.extend({ secretAccessKey: s3TargetSchema.shape.secretAccessKey.optional() }) }).strict()
 const runInput = z
   .object({ author: z.string().min(1).max(64), trigger: z.enum(['manual', 'scheduled']).default('manual'), wait: z.boolean().default(false) })
   .strict()
@@ -23,7 +24,9 @@ export async function backupRoute(svc: BackupService, route: string, readBody: (
     if (route === 'GET /v1/backups') return { status: 200, data: await svc.status() }
     if (route === 'POST /v1/backups/test') {
       const i = testInput.parse(await readBody())
-      return { status: 200, data: await svc.testConnection(i.target) }
+      const secretAccessKey = i.target.secretAccessKey ?? svc.config()?.target.secretAccessKey
+      if (!secretAccessKey) return { status: 400, data: { type: 'urn:ee:invalid_input', title: 'the secret access key is required', detail: 'the secret access key is required' } }
+      return { status: 200, data: await svc.testConnection({ ...i.target, secretAccessKey }) }
     }
     if (route === 'POST /v1/backups/config') return { status: 200, data: await svc.configure(await readBody()) }
     if (route === 'POST /v1/backups/run') {

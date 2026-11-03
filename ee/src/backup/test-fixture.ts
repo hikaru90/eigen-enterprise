@@ -1,9 +1,9 @@
+import type { BackupSources } from './snapshot.ts'
 import { createHash, randomBytes } from 'node:crypto'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import type { BackupSources } from './snapshot.ts'
 
 /** A fake company on disk: a "pg_dump", Drive blobs, a WAL-mode agent.sqlite, ee state files. */
 export async function companyFixture(): Promise<{ root: string; sources: BackupSources; addBlob(content?: Buffer): Promise<string> }> {

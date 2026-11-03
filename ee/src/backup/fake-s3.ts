@@ -1,6 +1,6 @@
+import type { AddressInfo } from 'node:net'
 import { createHash, randomUUID } from 'node:crypto'
 import { createServer, type Server } from 'node:http'
-import type { AddressInfo } from 'node:net'
 import { signV4, type S3Target } from './s3.ts'
 
 /**

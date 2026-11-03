@@ -9,7 +9,6 @@ import { S3Client } from './s3.ts'
 import { driveBlobPath, fetchSnapshot, listSnapshots, prune, readManifest, resolveSnapshot, takeSnapshot } from './snapshot.ts'
 import { companyFixture } from './test-fixture.ts'
 
-const day = 86_400_000
 
 describe('snapshots against the fake S3', () => {
   const fake = new FakeS3()

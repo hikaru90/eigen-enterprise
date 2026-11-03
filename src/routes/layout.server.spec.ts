@@ -7,7 +7,10 @@ const { getDbMock, findActiveVisualSetMock } = vi.hoisted(() => ({
 }))
 
 vi.mock('$lib/server/db', () => ({ getDb: getDbMock }))
-vi.mock('$lib/server/auth/user-role', () => ({ isUserAdmin: vi.fn().mockResolvedValue(false) }))
+vi.mock('$lib/server/auth/user-role', () => ({
+  getUserRole: vi.fn().mockResolvedValue('member'),
+  isAdminRole: (role: string | null) => role === 'owner' || role === 'admin',
+}))
 vi.mock('$lib/i18n/ui-locale', () => ({ normalizeUiLocale: (value: string) => value }))
 vi.mock('$lib/paraglide/runtime', () => ({ cookieName: 'locale', cookieMaxAge: 31_536_000 }))
 vi.mock('../../modules/brand/store', () => ({
@@ -51,6 +54,7 @@ describe('layout server load', () => {
     await expect(load({ locals: { user: { id: 'u1' } }, cookies } as never)).resolves.toEqual({
       user: { id: 'u1' },
       isAdmin: false,
+      isOwner: false,
       preferredUiLocale: 'en',
       preferredLanguage: 'de',
       authorLayers: [{ key: 'user', label: 'You', kind: 'user' }],
@@ -60,6 +64,7 @@ describe('layout server load', () => {
     await expect(load({ locals: { user: undefined }, cookies } as never)).resolves.toEqual({
       user: null,
       isAdmin: false,
+      isOwner: false,
       preferredUiLocale: null,
       preferredLanguage: 'en',
       authorLayers: [],

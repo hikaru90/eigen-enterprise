@@ -57,6 +57,23 @@ export function createSubstrateTools(deps: SubstrateToolDeps = {}): ToolDescript
       },
     },
     {
+      name: 'substrate.backup_status',
+      module: WEBSITE_MODULE_ID,
+      summary:
+        'Backups of this company (read only): whether they are set up, the bucket (no keys), schedule, retention, health (ok, running, failed, missing) and the last runs with size, duration and errors. Setting backups up or changing them is the owner\'s job in Settings → Backups — never the agent\'s. Reports managed:false when not running under ee.',
+      auditClass: 'read',
+      inputSchema: z.object({}).strict(),
+      permission: { roles: ['admin', 'agent'] },
+      handler: async () => {
+        try {
+          return { managed: true as const, ...(await client.backups()) }
+        } catch (err) {
+          if (err instanceof SubstrateUnavailableError) return { managed: false as const, reason: err.message }
+          throw err
+        }
+      },
+    },
+    {
       name: 'substrate.domain_add',
       module: WEBSITE_MODULE_ID,
       summary:

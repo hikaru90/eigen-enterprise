@@ -44,6 +44,7 @@ const PRE_MERGE_TOOLS: Record<string, string[]> = {
   ],
   substrate: [
     'substrate.status',
+    'substrate.backup_status',
     'substrate.domain_add',
     'substrate.domain_remove',
     'substrate.app_remove',

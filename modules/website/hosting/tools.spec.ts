@@ -41,6 +41,15 @@ describe('substrate module', () => {
     expect(out.reason).toMatch(/not running under ee/)
   })
 
+  it('backup_status is a read the agent may call: it reaches GET /v1/backups and never mutates', async () => {
+    const { calls, transport } = recordingTransport({ status: 200, data: { configured: true, health: { state: 'ok', lastSuccessAt: 't' }, runs: [] } })
+    const tool = tools(transport).get('substrate.backup_status')!
+    expect(tool.auditClass).toBe('read')
+    const out = (await tool.handler(agent, {})) as { managed: boolean; health: { state: string } }
+    expect(out).toMatchObject({ managed: true, health: { state: 'ok' } })
+    expect(calls).toEqual([{ method: 'GET', path: '/v1/backups', body: undefined }])
+  })
+
   it('a human adds a domain; the commit is authored by that human', async () => {
     const { calls, transport } = recordingTransport()
     await tools(transport).get('substrate.domain_add')!.handler(human, { host: 'Kindred.Digital', role: 'public' })

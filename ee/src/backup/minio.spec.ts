@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
-import { join } from 'node:path'
 import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { newBackupKey } from './crypto.ts'

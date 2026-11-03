@@ -2,14 +2,27 @@ import { describe, expect, it, vi } from 'vitest'
 import { InMemoryApprovalStore } from '$lib/kernel/approvals'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
 
-const { kernelHolder, isUserAdminMock, eventRows, journeyRows } = vi.hoisted(() => ({
+const { kernelHolder, roleMock, backupsMock, eventRows, journeyRows } = vi.hoisted(() => ({
   kernelHolder: { kernel: null as unknown },
-  isUserAdminMock: vi.fn(async () => true),
+  roleMock: vi.fn(async (): Promise<string> => 'admin'),
+  backupsMock: vi.fn(),
   eventRows: [] as Array<{ ts: Date; payload: unknown }>,
   journeyRows: [] as Array<{ status: string }>,
 }))
 
-vi.mock('$lib/server/auth/user-role', () => ({ isUserAdmin: isUserAdminMock }))
+vi.mock('$lib/server/auth/user-role', () => ({
+  getUserRole: roleMock,
+  isAdminRole: (r: string | null) => r === 'owner' || r === 'admin',
+}))
+vi.mock('$lib/server/ee/client', () => {
+  class SubstrateUnavailableError extends Error {}
+  return {
+    SubstrateUnavailableError,
+    EeClient: class {
+      backups = backupsMock
+    },
+  }
+})
 vi.mock('$lib/server/boot', async () => {
   const index = await import('../../../../modules/index')
   return { appKernel: async () => index.bootstrapKernel() }
@@ -145,5 +158,19 @@ describe('/overview load', () => {
       { at: '2026-10-20T10:00:00.000Z', text: 'Published the Home page', ok: true },
     ])
     expect(approvals).toEqual([{ id: 'ap1', text: 'Publish a page of your website' }])
+    expect((data as { backup: unknown }).backup).toBeNull()
+    expect(backupsMock).not.toHaveBeenCalled()
+  })
+
+  it('the owner sees a failed nightly backup under Needs you; off an ee box there is nothing to show', async () => {
+    kernelHolder.kernel = await kernel(['website'])
+    roleMock.mockResolvedValue('owner')
+    backupsMock.mockResolvedValueOnce({ health: { state: 'failed', at: 't', error: 'S3 PUT failed: 403 AccessDenied' }, runs: [] })
+    const data = (await load(event({ id: 'owner' }))) as { backup: unknown }
+    expect(data.backup).toEqual({ kind: 'failed', text: 'The last backup failed: S3 PUT failed: 403 AccessDenied', href: '/settings/backups' })
+    const { SubstrateUnavailableError } = await import('$lib/server/ee/client')
+    backupsMock.mockRejectedValueOnce(new SubstrateUnavailableError('ENOENT'))
+    expect(((await load(event({ id: 'owner' }))) as { backup: unknown }).backup).toBeNull()
+    roleMock.mockResolvedValue('admin')
   })
 })

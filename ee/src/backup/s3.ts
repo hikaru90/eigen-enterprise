@@ -1,7 +1,7 @@
+import type { Readable } from 'node:stream'
 import { createHash, createHmac } from 'node:crypto'
 import { request as httpRequest, type IncomingMessage } from 'node:http'
 import { request as httpsRequest } from 'node:https'
-import type { Readable } from 'node:stream'
 import { z } from 'zod'
 
 /**

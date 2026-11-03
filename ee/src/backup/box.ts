@@ -1,7 +1,7 @@
+import type { S3Client } from './s3.ts'
 import { join } from 'node:path'
 import { PATHS } from '../paths.ts'
 import { mustRun, type System } from '../system.ts'
-import type { S3Client } from './s3.ts'
 import { fetchSnapshot, runToFile, type BackupSources, type Manifest } from './snapshot.ts'
 import { BACKUP_SERVICE, BACKUP_TIMER, defaultSchedule, renderBackupService, renderBackupTimer } from './timer.ts'
 
