@@ -21,6 +21,7 @@ import { authSql } from '$lib/server/db/auth-db'
 import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { startJobQueueTicker } from '$lib/server/job-queue/ticker'
 import { startNotificationDispatchTicker } from '$lib/server/memory/notification-dispatch-ticker'
+import { startBackupHealthTicker } from '$lib/server/backups/live'
 import { logOpsStartupDiagnostics } from '$lib/server/ops/startup-diagnostics'
 import { configuredMailTransport } from '../modules/email/owlery/service'
 import { installPromptShutdown } from '$lib/server/shutdown'
@@ -37,6 +38,8 @@ if (!building) {
   logOpsStartupDiagnostics()
   startJobQueueTicker()
   startNotificationDispatchTicker()
+  // Backups (plan/phase-backups.md): mirror ee's runs into kernel_events, alert the owner on a failed/missing night.
+  startBackupHealthTicker()
   // Composition root: kernel → orchestrator → chat gateway. bootApp memoizes,
   // so repeated hook loads boot once per process; a failed boot logs and fails
   // loud (unhandled rejection) — the memo is cleared so the next call retries.

@@ -2,7 +2,9 @@ import { appKernel } from '$lib/server/boot'
 import type { PageServerLoad } from './$types'
 import { redirect } from '@sveltejs/kit'
 import { and, desc, eq, ne, sql } from 'drizzle-orm'
-import { isUserAdmin } from '$lib/server/auth/user-role'
+import { getUserRole, isAdminRole } from '$lib/server/auth/user-role'
+import { backupNotice, type BackupNotice } from '$lib/server/backups/health'
+import { EeClient, SubstrateUnavailableError } from '$lib/server/ee/client'
 import { getDb } from '$lib/server/db'
 import { kernelEvents } from '$lib/server/db/kernel.schema'
 import { buildOverview } from '$lib/server/overview/overview'
@@ -20,7 +22,8 @@ export const load: PageServerLoad = async (event) => {
   if (!event.locals.user) throw redirect(302, '/login')
   const userId = event.locals.user.id
   const kernel = await appKernel()
-  const isAdmin = await isUserAdmin(userId)
+  const role = await getUserRole(userId)
+  const isAdmin = isAdminRole(role)
 
   const overview = await buildOverview({
     manifests: kernel.modules.list(),
@@ -48,5 +51,15 @@ export const load: PageServerLoad = async (event) => {
     pendingApprovals: () => kernel.approvals.listPending(),
   })
 
-  return { overview }
+  return { overview, backup: role === 'owner' ? await ownerBackupNotice() : null }
+}
+
+/** A failed or missing nightly backup is the owner's to fix (plan/phase-backups.md). */
+async function ownerBackupNotice(): Promise<BackupNotice | null> {
+  try {
+    return backupNotice(await new EeClient().backups())
+  } catch (err) {
+    if (err instanceof SubstrateUnavailableError) return null // not on an ee box: no backups to watch
+    throw err
+  }
 }

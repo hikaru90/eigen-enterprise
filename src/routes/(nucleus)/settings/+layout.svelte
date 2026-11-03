@@ -11,8 +11,9 @@
   let { children } = $props()
 
   const isAdmin = $derived((page.data as { isAdmin?: boolean }).isAdmin === true)
+  const isOwner = $derived((page.data as { isOwner?: boolean }).isOwner === true)
   const tabs = $derived(
-    settingsSections(isAdmin).map((s) => ({ id: s.id, label: s.name, href: s.href })),
+    settingsSections(isAdmin, isOwner).map((s) => ({ id: s.id, label: s.name, href: s.href })),
   )
   const current = $derived(currentSettingsSection(page.url.pathname))
 </script>

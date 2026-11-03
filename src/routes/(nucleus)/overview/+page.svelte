@@ -48,8 +48,8 @@
     <a href="#needs-you" class={tile}>
       <span class="text-xs text-foreground/55">Needs you</span>
       <span class="mt-1 flex items-center gap-2 text-2xl font-semibold tabular-nums">
-        {data.overview.approvals.length}
-        {#if data.overview.approvals.length > 0}<span
+        {data.overview.approvals.length + (data.backup ? 1 : 0)}
+        {#if data.overview.approvals.length > 0 || data.backup}<span
             class="size-2 rounded-full bg-eigen-green"
             aria-hidden="true"
           ></span>{/if}
@@ -72,11 +72,28 @@
       <!-- Needs you -->
       <section id="needs-you" class="scroll-mt-6" data-testid="overview-approvals">
         <h2 class="text-[13px] font-medium">Needs you</h2>
-        {#if data.overview.approvals.length === 0}
+        {#if data.backup}
+          <div
+            class="mt-2 flex min-w-0 items-center justify-between gap-3 rounded-lg border border-red-700/40 px-4 py-2.5 text-sm"
+            data-testid="overview-backup-notice"
+            data-kind={data.backup.kind}
+          >
+            <span class="flex min-w-0 items-center gap-2.5">
+              <span class="size-1.5 shrink-0 rounded-full bg-red-700" aria-hidden="true"></span>
+              <span class="min-w-0 truncate">{data.backup.text}</span>
+            </span>
+            <a
+              href={resolve('/settings/backups')}
+              class="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium outline-none hover:bg-foreground/[0.04] focus-visible:ring-2 focus-visible:ring-ring/60"
+              >Open backups</a
+            >
+          </div>
+        {/if}
+        {#if data.overview.approvals.length === 0 && !data.backup}
           <p class="mt-2 rounded-lg border border-border px-4 py-3 text-sm text-foreground/55">
             Nothing waiting on you.
           </p>
-        {:else}
+        {:else if data.overview.approvals.length > 0}
           <ul class="mt-2 divide-y divide-border overflow-hidden rounded-lg border border-border">
             {#each data.overview.approvals as approval (approval.id)}
               <li class="flex min-w-0 items-center justify-between gap-3 px-4 py-2.5 text-sm">

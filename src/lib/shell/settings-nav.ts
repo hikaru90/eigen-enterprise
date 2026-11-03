@@ -5,7 +5,14 @@
 
 import type { Pathname } from '$app/types'
 
-export type SettingsSection = { id: string; name: string; href: Pathname; adminOnly: boolean }
+export type SettingsSection = {
+  id: string
+  name: string
+  href: Pathname
+  adminOnly: boolean
+  /** Only the owner sees it (backups hold the company's recovery code; D11). */
+  ownerOnly?: boolean
+}
 
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { id: 'account', name: 'Account', href: '/settings', adminOnly: false },
@@ -14,10 +21,11 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { id: 'passkeys', name: 'Passkeys & sessions', href: '/settings/passkeys', adminOnly: false },
   { id: 'api-keys', name: 'API keys', href: '/settings/api-keys', adminOnly: false },
   { id: 'approvals', name: 'Approval mode', href: '/settings/approvals', adminOnly: true },
+  { id: 'backups', name: 'Backups', href: '/settings/backups', adminOnly: true, ownerOnly: true },
 ]
 
-export function settingsSections(isAdmin: boolean): SettingsSection[] {
-  return SETTINGS_SECTIONS.filter((s) => isAdmin || !s.adminOnly)
+export function settingsSections(isAdmin: boolean, isOwner = false): SettingsSection[] {
+  return SETTINGS_SECTIONS.filter((s) => (s.ownerOnly ? isOwner : isAdmin || !s.adminOnly))
 }
 
 /** The current section: exact for the Account root, prefix for the rest. */

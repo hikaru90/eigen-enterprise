@@ -19,6 +19,12 @@ export const PATHS = {
   caddyConfig: '/etc/caddy/ee.json',
   caddyAdminSocket: '/run/caddy/admin.sock',
   postgresSocketDir: '/var/run/postgresql',
+  /** Backup run records (plan/phase-backups.md); config + key live sealed in the secret store. */
+  backupRuns: '/var/lib/ee/backups.json',
+  /** Root-only scratch for one backup/restore run (emptied after). */
+  backupTmp: '/var/lib/ee/backup-tmp',
+  /** The os workload's persistent state (Drive under drive/, the agent under agent/). */
+  osState: '/var/lib/ee-state/os',
 } as const
 
 export const CONTROL_GROUP = 'ee-control'

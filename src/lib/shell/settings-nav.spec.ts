@@ -11,6 +11,11 @@ describe('settings sub-navigation', () => {
       'API keys',
       'Approval mode',
     ])
+    expect(settingsSections(true, true).map((s) => s.id).at(-1)).toBe('backups')
+  })
+  it("Backups is the owner's alone: admins and members never see it", () => {
+    expect(settingsSections(true, false).some((s) => s.id === 'backups')).toBe(false)
+    expect(settingsSections(false, false).some((s) => s.id === 'backups')).toBe(false)
   })
   it('hides admin-only sections from members', () => {
     expect(settingsSections(false).map((s) => s.id)).toEqual(['account', 'llm', 'passkeys', 'api-keys'])
@@ -19,6 +24,7 @@ describe('settings sub-navigation', () => {
     ['/settings', 'account'],
     ['/settings/llm/byok/openrouter', 'llm'],
     ['/settings/api-keys', 'api-keys'],
+    ['/settings/backups', 'backups'],
     ['/settings/extensions', null],
   ])('%s -> %s', (path, id) => {
     expect(currentSettingsSection(path)).toBe(id)

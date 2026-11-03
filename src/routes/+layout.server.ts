@@ -2,7 +2,7 @@ import type { LayoutServerLoad } from './$types'
 import { eq } from 'drizzle-orm'
 import { normalizeUiLocale } from '$lib/i18n/ui-locale'
 import { cookieMaxAge, cookieName } from '$lib/paraglide/runtime'
-import { isUserAdmin } from '$lib/server/auth/user-role'
+import { getUserRole, isAdminRole } from '$lib/server/auth/user-role'
 import { getDb } from '$lib/server/db'
 import { userPreference } from '$lib/server/db/schema'
 import { listAuthorLayersForUser } from '$lib/server/memory/authorship'
@@ -12,10 +12,13 @@ export const load: LayoutServerLoad = async ({ locals, cookies }) => {
   let preferredUiLocale: string | null = null
   let preferredLanguage = 'en'
   let isAdmin = false
+  let isOwner = false
   let authorLayers: Awaited<ReturnType<typeof listAuthorLayersForUser>> = []
 
   if (locals.user) {
-    isAdmin = await isUserAdmin(locals.user.id)
+    const role = await getUserRole(locals.user.id)
+    isAdmin = isAdminRole(role)
+    isOwner = role === 'owner'
     authorLayers = await listAuthorLayersForUser(locals.user.id)
     const [pref] = await getDb()
       .select({
@@ -48,6 +51,7 @@ export const load: LayoutServerLoad = async ({ locals, cookies }) => {
   return {
     user: locals.user ?? null,
     isAdmin,
+    isOwner,
     preferredUiLocale,
     preferredLanguage,
     authorLayers,
