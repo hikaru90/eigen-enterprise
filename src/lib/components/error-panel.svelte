@@ -37,7 +37,7 @@
     <p class="mt-2 text-xs text-foreground/60">{message}</p>
   {/if}
   {#if signedIn}
-    <Button href={resolve('/')} class="mt-8" size="lg" data-testid="error-back">Back to Chat</Button
+    <Button href={resolve('/')} class="mt-8" size="lg" data-testid="error-back">Back to Assistant</Button
     >
   {:else}
     <Button href={resolve('/login')} class="mt-8" size="lg" data-testid="error-back">Sign in</Button

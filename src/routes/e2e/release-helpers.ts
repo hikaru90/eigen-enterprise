@@ -218,7 +218,7 @@ export const AUTHENTICATED_SURFACES: AuthenticatedSurface[] = [
   { path: '/m/memory/tasks', label: 'Memory tasks' },
   { path: '/m/memory/projects', label: 'Memory projects' },
   { path: '/m/memory/notes', label: 'Memory notes' },
-  { path: '/', label: 'Chat' },
+  { path: '/', label: 'Assistant' },
   { path: '/agent/activity', label: 'Activity' },
   { path: '/settings', label: 'Settings' },
   { path: '/settings/llm', label: 'AI provider' },

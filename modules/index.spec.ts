@@ -138,6 +138,7 @@ describe('moduleManifests', () => {
       'brand',
       'orchestrator',
       'members',
+      'messages',
     ])
   })
 })
@@ -153,6 +154,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'brand',
       'orchestrator',
       'members',
+      'messages',
     ])
     const toolNames = kernel.registry.list().map((t) => t.name)
     expect(toolNames).toContain('memory.retrieve_thoughts')

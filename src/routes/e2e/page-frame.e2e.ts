@@ -49,6 +49,7 @@ test('every area page wears the one page header', async ({ page, context }) => {
 
   // [path, h1, tabs testid or null, frame width]
   const areas: Array<[string, string, string | null]> = [
+    ['/messages', 'Messages', null],
     ['/overview', 'Overview', null],
     ['/m/website', 'Website', 'website-nav'],
     ['/m/email', 'Email', null],
@@ -76,10 +77,10 @@ test('every area page wears the one page header', async ({ page, context }) => {
   }
   // One left edge for the default-width frames.
   const edge = lefts['/overview']
-  for (const path of ['/m/email', '/agent/runs', '/m/memory', '/settings'])
+  for (const path of ['/messages', '/m/email', '/agent/runs', '/m/memory', '/settings'])
     expect(Math.abs(lefts[path] - edge), path).toBeLessThan(2)
 
-  // Chat is the shell's home and has no page header.
+  // Assistant (the agent chat at /) is the shell's home and has no page header.
   await page.goto('/')
   await page.screenshot({ path: `${SHOTS}/area-chat.png` })
 

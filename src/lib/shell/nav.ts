@@ -1,6 +1,8 @@
 /**
- * The app shell's navigation (phase-cohesion rule 1): one fixed order —
- * Chat, Overview, Website, Email, Brand, Agent, Memory, Settings. Module
+ * The app shell's navigation (phase-cohesion rule 1, phase-workspace W-7):
+ * one fixed order — Messages, Assistant, Overview, Website, Email, Brand,
+ * Agent, Memory, Settings. The company agent's chat at `/` is "Assistant" so
+ * there are never two things called "Chat". Module
  * entries come from the module registry (name + activation state); a module
  * that is not registered is not listed, an inactive one is listed dimmed.
  * Registered modules outside the fixed order follow Memory. Pure — shared by
@@ -38,6 +40,8 @@ const MODULE_ENTRIES: Record<string, { href: Pathname; match?: string[] }> = {
   brand: { href: '/brand' },
   // Tasks, projects, notes and capture are sub-pages of /m/memory.
   memory: { href: '/m/memory' },
+  // The team's chat (phase-workspace C1).
+  messages: { href: '/messages' },
 }
 
 export function buildShellNav(
@@ -60,7 +64,8 @@ export function buildShellNav(
 
   return {
     items: [
-      { id: 'chat', name: 'Chat', href: '/', active: true },
+      ...known('messages'),
+      { id: 'chat', name: 'Assistant', href: '/', active: true },
       { id: 'overview', name: 'Overview', href: '/overview', active: true },
       ...known('website'),
       ...known('email'),

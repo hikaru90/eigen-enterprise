@@ -6,7 +6,7 @@ import { registerUser } from './test-helpers'
  * Phase-cohesion C2 proof: one shell. As an admin, click every navigation
  * entry and every settings section; each lands inside the shell with exactly
  * one highlighted entry and a "<Page> · <Section> · eigenEnterprise" title.
- * Removed URLs 404 inside the shell with the way back to Chat.
+ * Removed URLs 404 inside the shell with the way back to Assistant.
  * Screenshots go to SHELL_WALK_SHOTS (default test-results/shell-walk).
  */
 
@@ -59,6 +59,7 @@ test('every navigation entry and settings section renders inside the one shell',
   await newAdmin(context, page)
 
   const entries: Array<[string, RegExp, RegExp]> = [
+    ['messages', /\/messages$/, /^Messages · eigenEnterprise$/],
     ['overview', /\/overview$/, /^Overview · eigenEnterprise$/],
     ['website', /\/m\/website$/, / · Website · eigenEnterprise$/],
     ['email', /\/m\/email$/, /^Email · eigenEnterprise$/],
@@ -66,7 +67,7 @@ test('every navigation entry and settings section renders inside the one shell',
     ['agent', /\/agent\/runs$/, /^Runs · Agent · eigenEnterprise$/],
     ['memory', /\/m\/memory$/, /^Memory · eigenEnterprise$/],
     ['settings', /\/settings$/, /^Account · Settings · eigenEnterprise$/],
-    ['chat', /\/$/, /^Chat · eigenEnterprise$/],
+    ['chat', /\/$/, /^Assistant · eigenEnterprise$/],
   ]
   await page.goto('/overview')
   for (const [id, url, title] of entries) {
@@ -121,7 +122,7 @@ test('every navigation entry and settings section renders inside the one shell',
     await page.screenshot({ path: `${SHOTS}/kept${path.replaceAll('/', '-')}.png` })
   }
 
-  // Removed URLs 404 inside the shell, with the way back to Chat.
+  // Removed URLs 404 inside the shell, with the way back to Assistant.
   for (const path of [
     '/graph',
     '/memory',
@@ -148,7 +149,7 @@ test('every navigation entry and settings section renders inside the one shell',
     const res = await page.goto(path)
     expect(res?.status(), path).toBe(404)
     await expect(page.getByTestId('app-shell')).toBeVisible()
-    await expect(page.getByTestId('error-back')).toHaveText('Back to Chat')
+    await expect(page.getByTestId('error-back')).toHaveText('Back to Assistant')
   }
   await page.screenshot({ path: `${SHOTS}/removed-404.png` })
 
