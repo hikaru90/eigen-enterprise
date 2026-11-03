@@ -19,7 +19,13 @@
   const contentUrl = $derived(`/api/drive/files/${data.file.id}/content`)
   const fmt = (d: string | Date) => new Date(d).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
   const revisioned = $derived(data.kind === 'markdown' || data.kind === 'csv')
-  const revisions = $derived(data.revisions.map((r) => ({ ...r, createdAt: new Date(r.createdAt).toISOString() })))
+  /** Size and changed time as of the latest save (the load's copy goes stale while editing). */
+  let saved = $state<{ id: string; size?: number; updatedAt: string | Date } | null>(null)
+  const meta = $derived(saved && saved.id === data.file.id ? saved : data.file)
+  const iso = (d: string | Date) => new Date(d).toISOString()
+  const revisions = $derived(
+    data.revisions.map((r) => ({ ...r, createdAt: iso(r.createdAt), restoredFrom: r.restoredFrom ? { ...r.restoredFrom, createdAt: iso(r.restoredFrom.createdAt) } : undefined })),
+  )
 
   async function restore(revisionId: string) {
     await driveApi.restoreRevision(data.file.id, revisionId)
@@ -31,14 +37,15 @@
 
 <div class="mt-6 flex flex-col gap-4" data-testid="drive-file">
   <nav aria-label="Folder path" class="flex flex-wrap items-center gap-1 text-sm" data-testid="drive-path">
-    <a href={resolve('/drive')} class="text-muted-foreground hover:text-foreground">My drive</a>
+    <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- server-given app path ('/drive', '/drive/shared', '/messages') -->
+    <a href={data.root.href} class="text-muted-foreground hover:text-foreground" data-testid="drive-path-root">{data.root.label}</a>
     {#each data.path as crumb (crumb.id)}
       <span class="text-muted-foreground">/</span>
       <a href={resolve(`/drive/folder/${crumb.id}`)} class="text-muted-foreground hover:text-foreground">{crumb.name}</a>
     {/each}
   </nav>
 
-  <SectionHeader title={data.file.name} description={`${formatSize(data.file.size)} · changed ${fmt(data.file.updatedAt)}${data.canEdit ? '' : ' · view only'}`}>
+  <SectionHeader title={data.file.name} description={`${formatSize(meta.size)} · changed ${fmt(meta.updatedAt)}${data.canEdit ? '' : ' · view only'}`}>
     {#snippet actions()}
       <Button variant="outline" href={`${contentUrl}?download=1`} download data-testid="drive-file-download"><DownloadIcon class="size-4" /> Download</Button>
     {/snippet}
@@ -46,7 +53,7 @@
 
   {#if data.editable && data.content !== null && (data.kind === 'markdown' || data.kind === 'csv')}
     {#key data.file.id}
-      <DocEditor fileId={data.file.id} kind={data.kind} content={data.content} {revisions} authors={data.authors} heartbeatMs={data.heartbeatMs} />
+      <DocEditor fileId={data.file.id} kind={data.kind} content={data.content} {revisions} authors={data.authors} heartbeatMs={data.heartbeatMs} onsaved={(f) => (saved = f)} />
     {/key}
   {:else}
   <div class="rounded-lg border" data-testid="drive-preview" data-kind={data.kind}>

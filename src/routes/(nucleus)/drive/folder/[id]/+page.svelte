@@ -12,6 +12,7 @@
   <DriveBrowser
     folderId={data.listing.folder?.id ?? null}
     path={data.listing.path}
+    root={data.listing.root}
     items={data.listing.items}
     canEdit={data.listing.canEdit}
     query={data.query}

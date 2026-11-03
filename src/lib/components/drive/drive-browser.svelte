@@ -30,6 +30,7 @@
     emptyText = 'Nothing here yet. Drop files here or use New.',
     trashView = false,
     showToolbar = true,
+    root = { label: 'My drive', href: '/drive' },
   }: {
     folderId: string | null
     path?: Array<{ id: string; name: string }>
@@ -40,6 +41,8 @@
     emptyText?: string
     trashView?: boolean
     showToolbar?: boolean
+    /** Where the path starts: "My drive", "Shared with me" or "Messages" (from the server). */
+    root?: { label: string; href: string }
   } = $props()
 
   let error = $state<string | null>(null)
@@ -183,7 +186,7 @@
 
   {#if !trashView}
     <nav aria-label="Folder path" class="flex flex-wrap items-center gap-1 text-sm" data-testid="drive-path">
-      <a href={resolve('/drive')} class="text-muted-foreground hover:text-foreground">My drive</a>
+      <a href={root.href} class="text-muted-foreground hover:text-foreground" data-testid="drive-path-root">{root.label}</a>
       {#each path as crumb (crumb.id)}
         <span class="text-muted-foreground">/</span>
         <a href={folderHref(crumb.id)} class="hover:text-foreground {crumb.id === folderId ? 'font-medium text-foreground' : 'text-muted-foreground'}">{crumb.name}</a>

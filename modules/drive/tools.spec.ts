@@ -56,7 +56,7 @@ describe('drive.* tools', () => {
     expect(await tool('drive.list').handler(agent, {})).toMatchObject({ items: [{ name: 'budget.csv' }] })
     await tool('drive.write_text').handler(agent, { file_id: doc.id, content: 'a,b\n' })
     expect(await tool('drive.read').handler(agent, { file_id: doc.id })).toMatchObject({ content: 'a,b\n' })
-    expect(await drive.listRevisions({ kind: 'agent', id: 'agent:1' }, doc.id)).toHaveLength(2)
+    expect(await drive.listRevisions({ kind: 'agent', id: 'agent:1' }, doc.id)).toHaveLength(1)
   })
 
   it('rejects unknown input keys', async () => {

@@ -4,22 +4,32 @@
   import LoaderIcon from '@lucide/svelte/icons/loader-circle'
   import LockIcon from '@lucide/svelte/icons/lock'
   import { onMount, untrack } from 'svelte'
-  import { beforeNavigate } from '$app/navigation'
+  import { beforeNavigate, goto } from '$app/navigation'
   import { Button } from '$lib/components/ui/button'
   import { Textarea } from '$lib/components/ui/textarea'
-  import { DriveApiError, driveApi, type LockHolder, type Revision } from '$lib/drive/api'
+  import {
+    DriveApiError,
+    driveApi,
+    type DriveItem,
+    type LockHolder,
+    type Revision,
+  } from '$lib/drive/api'
   import { createAutosave, LockLostError, type AutosaveState } from '$lib/drive/autosave'
   import CsvEditor from './csv-editor.svelte'
   import MarkdownEditor from './markdown-editor.svelte'
   import RevisionsPanel from './revisions-panel.svelte'
 
   /**
-   * In-place editing of a Markdown/CSV file (D2, W-6): opening it takes the
-   * edit lock (heartbeat every `heartbeatMs`); while someone else holds it
-   * the document is read-only with "<name> is editing" and Take over. Edits
-   * autosave (debounced) through the text API — every save is a revision.
-   * A taken-over editor stops saving and keeps its unsaved draft on screen
-   * (and in this browser's storage) to copy. Leaving with unsaved edits warns.
+   * In-place editing of a Markdown/CSV file (D2, W-6). Opening a file is
+   * reading it: the edit lock is taken only when the person starts editing
+   * (first keystroke, or "Edit"), kept alive by a heartbeat every
+   * `heartbeatMs`, and let go after `idleMs` without a change (everything
+   * saved first). While someone else holds it the document is read-only with
+   * "<name> is editing" and Take over. Edits autosave (debounced) through the
+   * text API — one revision per editing session. A taken-over editor stops
+   * saving and keeps its unsaved draft on screen (and in this browser's
+   * storage) to copy. Leaving waits for the last save (in-app navigation) or
+   * sends it with keepalive (closing/hiding the page).
    */
   let {
     fileId,
@@ -29,6 +39,8 @@
     authors,
     heartbeatMs,
     saveDelayMs = 1200,
+    idleMs = 60_000,
+    onsaved,
   }: {
     fileId: string
     kind: 'markdown' | 'csv'
@@ -37,10 +49,15 @@
     authors: Record<string, string>
     heartbeatMs: number
     saveDelayMs?: number
+    idleMs?: number
+    /** The file as the server has it after a save or restore (size, changed time). */
+    onsaved?: (file: DriveItem) => void
   } = $props()
 
   type Mode =
     | { kind: 'opening' }
+    | { kind: 'reading' }
+    | { kind: 'starting' }
     | { kind: 'editing' }
     | { kind: 'watching'; holder: LockHolder }
     | { kind: 'lost'; holder: LockHolder | null; draft: string }
@@ -51,7 +68,19 @@
   let save = $state<AutosaveState>({ status: 'saved', error: null, savedAt: null })
   let revs = $state<Revision[]>([])
   let lockError = $state<string | null>(null)
-  let editor = $state<{ load(text: string): void; setEditable(next: boolean): void } | null>(null)
+  let editor = $state<{
+    load(text: string): void
+    setEditable(next: boolean): void
+    markdown?: () => string | null
+    baseline?: () => string | null
+  } | null>(null)
+  /** The last text the editor reported (or was loaded with). */
+  let lastSeen = untrack(() => content)
+  /** The text as last loaded from / saved to the server (what a read view shows). */
+  let base = untrack(() => content)
+  /** Keystrokes made while the lock is being taken. */
+  let early: string | null = null
+  let idleTimer: ReturnType<typeof setTimeout> | null = null
 
   const autosave = createAutosave({
     delayMs: untrack(() => saveDelayMs),
@@ -59,7 +88,9 @@
     onLost: () => loseLock(lostHolder),
     async save(text) {
       try {
-        await driveApi.writeText(fileId, text, session)
+        const out = await driveApi.writeText(fileId, text, session)
+        base = text
+        onsaved?.(out.file)
       } catch (err) {
         if (err instanceof DriveApiError && err.code === 'locked') {
           lostHolder = err.holder
@@ -74,52 +105,164 @@
 
   onMount(() => {
     revs = revisions
-    void open(false)
+    void openForReading()
     const beat = setInterval(() => void heartbeat(), heartbeatMs)
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (autosave.unsaved() === null) return
+      if (autosave.unsaved() === null || mode.kind !== 'editing') return
       void autosave.flush()
       event.preventDefault()
     }
+    // The page is going away (closed, reloaded, backgrounded on a phone): send
+    // the last edits with keepalive, which outlives the unload.
+    const sendOnExit = () => {
+      catchUp()
+      const text = autosave.unsaved()
+      if (text !== null && mode.kind === 'editing')
+        void driveApi.writeTextOnExit(fileId, text, session)
+    }
     const onPageHide = () => {
+      sendOnExit()
       if (mode.kind === 'editing') void driveApi.releaseLock(fileId, session)
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') sendOnExit()
     }
     window.addEventListener('beforeunload', onBeforeUnload)
     window.addEventListener('pagehide', onPageHide)
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       clearInterval(beat)
+      clearIdle()
       window.removeEventListener('beforeunload', onBeforeUnload)
       window.removeEventListener('pagehide', onPageHide)
+      document.removeEventListener('visibilitychange', onVisibility)
       if (mode.kind === 'editing')
         void autosave.flush().then(() => driveApi.releaseLock(fileId, session))
     }
   })
 
+  // In-app navigation waits for the last save, then continues: typing and
+  // leaving right away never loses the text (and the next page shows it saved).
+  let leaving = false
   beforeNavigate((nav) => {
-    if (autosave.unsaved() === null || mode.kind !== 'editing') return
+    if (leaving) return
+    catchUp()
+    const startingUp = mode.kind === 'starting'
+    if (!startingUp && mode.kind !== 'editing') return
+    if (!startingUp && autosave.unsaved() === null && save.status !== 'saving') return
     if (save.status === 'error') {
       if (!confirm('Your latest changes could not be saved. Leave anyway and lose them?'))
         nav.cancel()
       return
     }
-    void autosave.flush()
+    if (nav.type === 'leave') {
+      // Closing the tab: the keepalive save in pagehide covers it.
+      return
+    }
+    const to = nav.to?.url
+    if (!to || nav.type === 'popstate') {
+      void autosave.flush()
+      return
+    }
+    nav.cancel()
+    leaving = true
+    void (starting ?? Promise.resolve())
+      .then(() => autosave.flush())
+      .then(async () => {
+        try {
+          if (
+            save.status === 'error' &&
+            !confirm('Your latest changes could not be saved. Leave anyway and lose them?')
+          )
+            return
+          // The navigation the person already started (an app URL SvelteKit resolved);
+          // invalidateAll: data preloaded on hover predates the save (sizes would read stale).
+          // eslint-disable-next-line svelte/no-navigation-without-resolve
+          await goto(to.href, { invalidateAll: true })
+        } finally {
+          leaving = false
+        }
+      })
   })
 
-  async function open(takeover: boolean) {
+  /** On open: read-only while someone else edits, else the read view (editing starts on the first change). */
+  async function openForReading() {
     lockError = null
     try {
-      const lock = await driveApi.acquireLock(fileId, session, takeover)
-      if (lock.state === 'held') {
-        if (takeover || mode.kind !== 'opening') await reloadText()
-        mode = { kind: 'editing' }
-        editor?.setEditable(true)
-      } else if (lock.state === 'locked') {
+      const lock = await driveApi.lockStatus(fileId)
+      if (lock.state === 'locked' && lock.holder.sessionId !== session) {
         mode = { kind: 'watching', holder: lock.holder }
         editor?.setEditable(false)
+      } else {
+        mode = { kind: 'reading' }
+        editor?.setEditable(true)
       }
     } catch (err) {
       lockError = err instanceof Error ? err.message : String(err)
     }
+  }
+
+  /** The lock being taken right now (navigation waits for it, then for the save). */
+  let starting: Promise<void> | null = null
+  /** Takes the edit lock (`takeover`: even from someone else). */
+  function startEditing(takeover: boolean): Promise<void> {
+    starting = takeLock(takeover).finally(() => (starting = null))
+    return starting
+  }
+  async function takeLock(takeover: boolean) {
+    lockError = null
+    const was = mode
+    mode = { kind: 'starting' }
+    try {
+      const lock = await driveApi.acquireLock(fileId, session, takeover)
+      if (lock.state === 'held') {
+        if (takeover || was.kind === 'watching' || was.kind === 'lost') await reloadText()
+        mode = { kind: 'editing' }
+        editor?.setEditable(true)
+        if (early !== null) autosave.change(early)
+        early = null
+        touchIdle()
+      } else if (lock.state === 'locked') {
+        // Someone started editing first: what was typed here is kept to copy.
+        const draft = early
+        early = null
+        if (draft !== null && draft !== base) {
+          lostHolder = lock.holder
+          mode = { kind: 'lost', holder: lock.holder, draft }
+          try {
+            localStorage.setItem(draftKey(), draft)
+          } catch {
+            // Storage blocked: the draft stays on screen.
+          }
+        } else mode = { kind: 'watching', holder: lock.holder }
+        editor?.setEditable(false)
+        await reloadText()
+      } else mode = was
+    } catch (err) {
+      mode = was
+      lockError = err instanceof Error ? err.message : String(err)
+    }
+  }
+
+  function clearIdle() {
+    if (idleTimer !== null) clearTimeout(idleTimer)
+    idleTimer = null
+  }
+  /** Editing ends after a quiet spell: save what is left, let go of the lock, back to reading. */
+  function touchIdle() {
+    clearIdle()
+    idleTimer = setTimeout(() => void stopEditing(), idleMs)
+  }
+  async function stopEditing() {
+    clearIdle()
+    if (mode.kind !== 'editing') return
+    await autosave.flush()
+    if (mode.kind !== 'editing' || autosave.unsaved() !== null || save.status !== 'saved') {
+      if (mode.kind === 'editing') touchIdle()
+      return
+    }
+    mode = { kind: 'reading' }
+    await driveApi.releaseLock(fileId, session)
   }
 
   async function heartbeat() {
@@ -131,10 +274,27 @@
           autosave.stop()
           loseLock(lock.holder)
         }
-      } else if (mode.kind === 'watching') {
-        // Keep the read-only copy current; take the lock as soon as it is free.
-        await reloadText()
-        await open(false)
+      } else if (mode.kind === 'watching' || mode.kind === 'reading') {
+        // Keep the read copy current; show who starts editing; free again → readable.
+        const lock = await driveApi.lockStatus(fileId)
+        if (mode.kind !== 'watching' && mode.kind !== 'reading') return
+        if (lock.state === 'locked' && lock.holder.sessionId !== session) {
+          if (mode.kind === 'reading') editor?.setEditable(false)
+          mode = { kind: 'watching', holder: lock.holder }
+          await reloadText()
+        } else if (mode.kind === 'watching') {
+          await reloadText()
+          mode = { kind: 'reading' }
+          editor?.setEditable(true)
+        } else if (early === null) {
+          const { content: text } = await driveApi.readText(fileId)
+          if (mode.kind === 'reading' && early === null && text !== base) {
+            editor?.load(text)
+            autosave.reset(text)
+            base = text
+            lastSeen = text
+          }
+        }
       }
     } catch (err) {
       lockError = err instanceof Error ? err.message : String(err)
@@ -143,6 +303,7 @@
 
   function loseLock(holder: LockHolder | null) {
     if (mode.kind === 'lost') return
+    clearIdle()
     const draft = autosave.unsaved()
     if (draft !== null) {
       try {
@@ -159,6 +320,8 @@
     const { content: text } = await driveApi.readText(fileId)
     editor?.load(text)
     autosave.reset(text)
+    base = text
+    lastSeen = text
   }
 
   async function refreshRevisions() {
@@ -171,11 +334,11 @@
 
   async function restore(revisionId: string) {
     await autosave.flush()
-    await driveApi.restoreRevision(
-      fileId,
-      revisionId,
-      mode.kind === 'editing' ? session : undefined,
-    )
+    const reading = mode.kind === 'reading'
+    const out = await driveApi.restoreRevision(fileId, revisionId, session)
+    // Restoring from the read view takes the lock only for that one write.
+    if (reading) await driveApi.releaseLock(fileId, session)
+    onsaved?.(out.file)
     await reloadText()
     await refreshRevisions()
   }
@@ -184,8 +347,25 @@
     await navigator.clipboard.writeText(text)
   }
 
+  /**
+   * The Markdown editor reports changes debounced (~200 ms): before leaving,
+   * pick up what was typed since, so the last keystrokes are saved too.
+   */
+  function catchUp() {
+    const md = editor?.markdown?.()
+    if (md == null || md === lastSeen || md === editor?.baseline?.()) return
+    onchange(md)
+  }
+
   const onchange = (text: string) => {
-    if (mode.kind === 'editing') autosave.change(text)
+    lastSeen = text
+    if (mode.kind === 'editing') {
+      autosave.change(text)
+      touchIdle()
+    } else if (mode.kind === 'reading' || mode.kind === 'starting') {
+      early = text
+      if (mode.kind === 'reading') void startEditing(false)
+    }
   }
   const fmtTime = (d: Date) => d.toLocaleTimeString(undefined, { timeStyle: 'short' })
 </script>
@@ -202,8 +382,11 @@
         ><strong data-testid="drive-lock-holder">{mode.holder.name}</strong> is editing. You see their
         last saved version, read-only.</span
       >
-      <Button size="sm" variant="outline" onclick={() => open(true)} data-testid="drive-takeover"
-        >Take over</Button
+      <Button
+        size="sm"
+        variant="outline"
+        onclick={() => startEditing(true)}
+        data-testid="drive-takeover">Take over</Button
       >
     </div>
   {:else if mode.kind === 'lost'}
@@ -218,8 +401,11 @@
           ><strong>{mode.holder?.name ?? 'Someone'}</strong> took over editing. This copy is read-only
           now.</span
         >
-        <Button size="sm" variant="outline" onclick={() => open(true)} data-testid="drive-takeover"
-          >Take it back</Button
+        <Button
+          size="sm"
+          variant="outline"
+          onclick={() => startEditing(true)}
+          data-testid="drive-takeover">Take it back</Button
         >
       </div>
       {#if mode.draft}
@@ -253,13 +439,34 @@
       class="flex items-center gap-2 border-b bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground"
       data-testid="drive-editor-status-bar"
     >
-      <span class="flex-1"
+      <span class="flex-1" data-testid="drive-editor-mode" data-mode={mode.kind}
         >{mode.kind === 'editing'
           ? 'Editing'
           : mode.kind === 'opening'
             ? 'Opening…'
-            : 'Read-only'}</span
+            : mode.kind === 'starting'
+              ? 'Starting to edit…'
+              : mode.kind === 'reading'
+                ? 'Viewing — start typing to edit'
+                : 'Read-only'}</span
       >
+      {#if mode.kind === 'reading'}
+        <Button
+          size="sm"
+          variant="outline"
+          class="h-6 px-2 text-xs"
+          onclick={() => startEditing(false)}
+          data-testid="drive-start-editing">Edit</Button
+        >
+      {:else if mode.kind === 'editing'}
+        <Button
+          size="sm"
+          variant="ghost"
+          class="h-6 px-2 text-xs"
+          onclick={() => stopEditing()}
+          data-testid="drive-stop-editing">Done</Button
+        >
+      {/if}
       {#if mode.kind === 'editing' || mode.kind === 'lost'}
         <span
           class="flex items-center gap-1.5"
@@ -303,7 +510,7 @@
     {kind}
     revisions={revs}
     {authors}
-    canRestore={mode.kind === 'editing'}
+    canRestore={mode.kind === 'editing' || mode.kind === 'reading'}
     onrestore={restore}
   />
 </div>

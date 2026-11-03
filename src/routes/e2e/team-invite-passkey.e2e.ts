@@ -56,6 +56,8 @@ test('invite link → passkey (no email) → group → remove ends the session',
   await newAdmin(ownerCtx, owner)
 
   const bEmail = `member-b-${Date.now()}@kindred-e2e.example`
+  // Unique per run: the shared test DB keeps the members of earlier runs.
+  const bName = `Bea Member ${Date.now().toString(36)}`
   await owner.goto('/settings/members')
   await expect(owner.getByTestId('members-roles')).toContainText('Owner')
   await expect(owner.getByTestId('members-roles')).toContainText('Admin')
@@ -80,18 +82,27 @@ test('invite link → passkey (no email) → group → remove ends the session',
   await expect(b.getByRole('heading', { level: 1 })).toContainText('Join')
   await expect(b.getByTestId('invite-start')).toContainText(bEmail)
   await b.screenshot({ path: `${SHOTS}/2-member-invite.png`, fullPage: true })
-  await b.locator('#invite-name').fill('Bea Member')
+  await b.locator('#invite-name').fill(bName)
   await b.getByTestId('invite-join').click()
   await expect(b.getByTestId('invite-passkey-step')).toBeVisible()
   await b.screenshot({ path: `${SHOTS}/3-member-passkey-step.png`, fullPage: true })
   // No email was sent to B at any point (W-4).
   const mails = await sql()`select 1 from mail_fake_sent where to_address = ${bEmail}`
   expect(mails.length).toBe(0)
+  // Skipping is not silent: it warns that without a passkey there is no way back in.
+  await expect(async () => {
+    await b.getByTestId('invite-skip-passkey').click()
+    await expect(b.getByTestId('invite-skip-warning')).toBeVisible({ timeout: 2000 })
+  }).toPass()
+  await expect(b.getByTestId('invite-skip-warning')).toContainText('can’t sign in again')
   await b.getByTestId('invite-create-passkey').click()
   await b.waitForURL((u) => !u.pathname.startsWith('/invite'), { timeout: 30_000 })
+  // An invited member lands in Messages — no company onboarding.
+  await expect(b).toHaveURL(/\/messages/)
+  await expect(b.getByTestId('skip-onboarding')).toHaveCount(0)
 
   const [bRow] = await sql()`select id, role, name from "user" where email = ${bEmail}`
-  expect(bRow).toMatchObject({ role: 'member', name: 'Bea Member' })
+  expect(bRow).toMatchObject({ role: 'member', name: bName })
   const pk = await sql()`select id from passkey where user_id = ${bRow!.id}`
   expect(pk.length).toBe(1)
 
@@ -99,8 +110,11 @@ test('invite link → passkey (no email) → group → remove ends the session',
   await signOut(b)
   const me1 = await b.request.get('/api/auth/get-session')
   expect(await me1.json()).toBeNull()
-  await b.getByRole('button', { name: 'Sign in with a passkey' }).click()
-  await b.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 30_000 })
+  // A click that lands before the login page hydrated does nothing: retry until it navigates.
+  await expect(async () => {
+    await b.getByRole('button', { name: 'Sign in with a passkey' }).click()
+    await b.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 5_000 })
+  }).toPass({ timeout: 45_000 })
   const me2 = (await (await b.request.get('/api/auth/get-session')).json()) as { user: { email: string } }
   expect(me2.user.email).toBe(bEmail)
   await b.screenshot({ path: `${SHOTS}/4-member-signed-in-with-passkey.png`, fullPage: true })
@@ -111,10 +125,10 @@ test('invite link → passkey (no email) → group → remove ends the session',
   const create = owner.getByTestId('group-create')
   await create.locator('#new-group-name').fill('Sales')
   await create.locator('#new-group-desc').fill('Everyone who sells')
-  await create.getByLabel('Bea Member').check()
+  await create.getByLabel(bName).check()
   await create.getByRole('button', { name: 'Create group' }).click()
   const salesRow = owner.getByTestId('group-row').filter({ hasText: 'Sales' })
-  await expect(salesRow.getByTestId('group-members')).toHaveText('Bea Member')
+  await expect(salesRow.getByTestId('group-members')).toHaveText(bName)
   await salesRow.locator('summary').click()
   await owner.screenshot({ path: `${SHOTS}/5-owner-group-sales.png`, fullPage: true })
   const created = await sql()`select type, payload from kernel_events where type = 'members.group_created' and payload->>'name' = 'Sales' order by ts desc limit 1`

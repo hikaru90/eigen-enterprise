@@ -8,4 +8,4 @@
 
 <svelte:head><title>{docTitle('Shared with me', 'Drive')}</title></svelte:head>
 
-<DriveBrowser folderId={null} items={data.items} canEdit={false} showToolbar={false} emptyText="Nobody has shared anything with you yet." />
+<DriveBrowser folderId={null} root={{ label: 'Shared with me', href: '/drive/shared' }} items={data.items} canEdit={false} showToolbar={false} emptyText="Nobody has shared anything with you yet." />

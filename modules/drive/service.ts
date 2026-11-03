@@ -62,6 +62,27 @@ export type ItemView = {
 }
 
 export type Crumb = { id: string; name: string }
+/** Where a path starts: "My drive", "Shared with me" or "Messages" (a conversation's attachment folder). */
+export type PathRoot = { label: string; href: string }
+
+/** The owner id of the folders Messages keeps attachments in (its system actor). */
+export const MESSAGES_SYSTEM_OWNER = 'messages'
+
+/** A revision as listed: `restoredFrom` names the earlier revision a restore brought back. */
+export type ListedRevision = DriveRevision & { restoredFrom?: { id: string; authorId: string; createdAt: Date } }
+
+/**
+ * Revisions as people see them (newest first): the empty first version of a
+ * new document is not history worth restoring (older data still has one), and
+ * a revision whose content equals an earlier, non-adjacent one is a restore of it.
+ */
+export function presentRevisions(revs: DriveRevision[]): ListedRevision[] {
+  const list = revs.length > 0 && revs[revs.length - 1]!.size === 0 ? revs.slice(0, -1) : revs
+  return list.map((r, i) => {
+    const from = list.slice(i + 2).find((o) => o.sha256 === r.sha256)
+    return from ? { ...r, restoredFrom: { id: from.id, authorId: from.authorId, createdAt: from.createdAt } } : r
+  })
+}
 
 export const DEFAULT_MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 
@@ -220,6 +241,40 @@ export function createDriveService(deps: DriveDeps) {
 
   const ownerIdOf = (actor: Actor) => (actor.kind === 'user' ? actor.userId : actor.id)
 
+  const MY_DRIVE: PathRoot = { label: 'My drive', href: '/drive' }
+  const SHARED: PathRoot = { label: 'Shared with me', href: '/drive/shared' }
+  const MESSAGES: PathRoot = { label: 'Messages', href: '/messages' }
+
+  /**
+   * The path to an item as the actor may see it: ancestors they can't open
+   * are left out, and the root names whose tree it is — "My drive" only for
+   * the actor's own, "Messages" for conversation attachments, else
+   * "Shared with me".
+   */
+  async function pathFor(actor: Actor, chain: DriveFolder[], item: DriveFolder | DriveFile): Promise<{ root: PathRoot; path: Crumb[] }> {
+    let start = 0
+    while (start < chain.length && !(await allows(actor, 'folder', chain[start]!, 'view'))) start++
+    let visibleChain = chain.slice(start)
+    const top = visibleChain[0] ?? item
+    let root: PathRoot
+    if (top.ownerId === MESSAGES_SYSTEM_OWNER) {
+      root = MESSAGES
+      // The "Messages" folder itself is the root crumb, not a step after it.
+      if (visibleChain[0] && visibleChain[0].parentId === null) visibleChain = visibleChain.slice(1)
+    } else root = actor.kind === 'user' && top.ownerId === actor.userId ? MY_DRIVE : actor.kind === 'agent' ? MY_DRIVE : SHARED
+    return { root, path: visibleChain.map((f) => ({ id: f.id, name: f.name })) }
+  }
+
+  /** The revision this editor session already started (same lock tenure, same author, not a restore), if any. */
+  async function sessionRevision(actor: Actor, fileId: string, sessionId: string): Promise<DriveRevision | null> {
+    const lock = await locks.get(fileId)
+    if (!lock || lock.sessionId !== sessionId) return null
+    const revs = presentRevisions(await store.listRevisions(fileId))
+    const latest = revs[0]
+    if (!latest || latest.restoredFrom || latest.authorId !== ownerIdOf(actor)) return null
+    return latest.createdAt.getTime() >= lock.acquiredAt.getTime() ? latest : null
+  }
+
   async function storeRevision(fileId: string, sha256: string, size: number, actor: Actor, at: Date): Promise<DriveRevision> {
     const rev: DriveRevision = { id: randomUUID(), fileId, sha256, size, authorId: ownerIdOf(actor), createdAt: at }
     await store.insertRevision(rev)
@@ -248,7 +303,8 @@ export function createDriveService(deps: DriveDeps) {
     }
     await store.insertFile(file)
     await grantCreator(actor, 'file', file.id)
-    if (isRevisioned(name)) await storeRevision(file.id, blob.sha256, blob.size, actor, at)
+    // A new empty document has no history yet: its first revision is its first save.
+    if (isRevisioned(name) && blob.size > 0) await storeRevision(file.id, blob.sha256, blob.size, actor, at)
     return file
   }
 
@@ -300,13 +356,14 @@ export function createDriveService(deps: DriveDeps) {
         const kids = await store.children(null)
         const mine = (f: { ownerId: string }) => actor.kind === 'agent' || f.ownerId === actor.userId
         const items = await visible(actor, { folders: kids.folders.filter(mine), files: kids.files.filter(mine) })
-        return { folder: null, path: [] as Crumb[], items: sorted(items), canEdit: true, canManage: false }
+        return { folder: null, path: [] as Crumb[], root: MY_DRIVE, items: sorted(items), canEdit: true, canManage: false }
       }
       const folder = await requireFolder(actor, folderId, 'view')
-      const path = (await chainFrom(folder.id)).reverse().map((f) => ({ id: f.id, name: f.name }))
+      const { root, path } = await pathFor(actor, (await chainFrom(folder.id)).reverse(), folder)
       return {
         folder: folderView(folder),
         path,
+        root,
         items: sorted(await visible(actor, await store.children(folder.id))),
         canEdit: await allows(actor, 'folder', folder, 'edit'),
         canManage: await allows(actor, 'folder', folder, 'manage'),
@@ -407,10 +464,11 @@ export function createDriveService(deps: DriveDeps) {
 
     async fileInfo(actor: Actor, id: string) {
       const file = await requireFile(actor, id, 'view')
-      const path = file.folderId ? (await chainFrom(file.folderId)).reverse().map((f) => ({ id: f.id, name: f.name })) : []
+      const { root, path } = await pathFor(actor, file.folderId ? (await chainFrom(file.folderId)).reverse() : [], file)
       return {
         file: fileView(file),
         path,
+        root,
         canEdit: await allows(actor, 'file', file, 'edit'),
         canManage: await allows(actor, 'file', file, 'manage'),
       }
@@ -427,7 +485,12 @@ export function createDriveService(deps: DriveDeps) {
       return { file: fileView(file), content: new TextDecoder().decode(await blobs.get(file.sha256)) }
     },
 
-    /** Saves new text into a Markdown/CSV file; every save is a revision. */
+    /**
+     * Saves new text into a Markdown/CSV file. One revision per editing
+     * session: saves under the same edit lock fold into the revision that
+     * session started (a take-over, a new session after the lock was let go,
+     * or a restore starts a new one).
+     */
     async writeText(actor: Actor, id: string, content: string, sessionId?: string): Promise<{ file: ItemView; revision: DriveRevision }> {
       const file = await requireFile(actor, id, 'edit')
       if (!isRevisioned(file.name)) throw new DriveError('invalid', `Only Markdown (.md) and table (.csv) files are written as text; “${file.name}” is not one.`)
@@ -437,13 +500,18 @@ export function createDriveService(deps: DriveDeps) {
       const blob = await blobs.put(bytes)
       const at = now()
       await store.updateFile(id, { sha256: blob.sha256, size: blob.size, updatedAt: at })
-      const revision = await storeRevision(id, blob.sha256, blob.size, actor, at)
+      const ongoing = sessionId ? await sessionRevision(actor, id, sessionId) : null
+      let revision: DriveRevision
+      if (ongoing) {
+        await store.updateRevision(ongoing.id, { sha256: blob.sha256, size: blob.size, createdAt: at })
+        revision = { ...ongoing, sha256: blob.sha256, size: blob.size, createdAt: at }
+      } else revision = await storeRevision(id, blob.sha256, blob.size, actor, at)
       return { file: await view('file', id), revision }
     },
 
-    async listRevisions(actor: Actor, id: string): Promise<DriveRevision[]> {
+    async listRevisions(actor: Actor, id: string): Promise<ListedRevision[]> {
       await requireFile(actor, id, 'view')
-      return store.listRevisions(id)
+      return presentRevisions(await store.listRevisions(id))
     },
 
     /** Restoring a revision saves its text again as the newest revision (history is never rewritten). */

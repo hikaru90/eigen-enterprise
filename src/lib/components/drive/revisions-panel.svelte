@@ -73,6 +73,11 @@
             >
             {#if i === 0}<span class="ml-1 rounded-full border px-2 py-0.5 text-xs">current</span
               >{/if}
+            {#if rev.restoredFrom}<span
+                class="block text-xs text-muted-foreground"
+                data-testid="drive-revision-restored-from"
+                >Restored from {author(rev.restoredFrom.authorId)}, {fmt(rev.restoredFrom.createdAt)}</span
+              >{/if}
           </span>
           <Button
             size="sm"

@@ -71,13 +71,15 @@ describe('drive: folders, files and the creator', () => {
     )
   })
 
-  it('New → Document / Table creates empty .md / .csv files with a first revision', async () => {
+  it('New → Document / Table creates empty .md / .csv files; the empty start is no revision', async () => {
     const { drive } = await setup()
     const doc = await drive.createDocument(alice, null, 'md', 'notes')
     const table = await drive.createDocument(alice, null, 'csv')
     expect(doc).toMatchObject({ name: 'notes.md', size: 0, mime: 'text/markdown' })
     expect(table).toMatchObject({ name: 'Untitled table.csv', mime: 'text/csv' })
-    expect(await drive.listRevisions(alice, doc.id)).toHaveLength(1)
+    expect(await drive.listRevisions(alice, doc.id)).toHaveLength(0)
+    await drive.writeText(alice, doc.id, '# Hi')
+    expect((await drive.listRevisions(alice, doc.id)).map((r) => r.size)).toEqual([4])
   })
 
   it('search finds by name only what the actor can view', async () => {
@@ -242,6 +244,31 @@ describe('drive: trash', () => {
   })
 })
 
+describe('drive: paths name whose tree it is', () => {
+  it('My drive for your own, Shared with me for someone else’s (ancestors you can’t open left out), Messages for attachments', async () => {
+    const { drive } = await setup()
+    const top = await drive.createFolder(alice, null, 'Alice top')
+    const sub = await drive.createFolder(alice, top.id, 'Projects')
+    const doc = await drive.createDocument(alice, sub.id, 'md', 'plan')
+    await drive.setGrants(alice, 'folder', sub.id, [{ subject: { kind: 'user', userId: 'bob' }, level: 'edit' }])
+    expect(await drive.fileInfo(alice, doc.id)).toMatchObject({ root: { label: 'My drive' }, path: [{ name: 'Alice top' }, { name: 'Projects' }] })
+    const forBob = await drive.fileInfo(bob, doc.id)
+    expect(forBob.root).toEqual({ label: 'Shared with me', href: '/drive/shared' })
+    expect(forBob.path.map((c) => c.name)).toEqual(['Projects'])
+    expect((await drive.listFolder(bob, sub.id)).root.label).toBe('Shared with me')
+    const messages: Actor = { kind: 'agent', id: 'messages' }
+    const root = await drive.createFolder(messages, null, 'Messages')
+    const general = await drive.createFolder(messages, root.id, '#general')
+    await drive.setGrants(owner, 'folder', general.id, [{ subject: { kind: 'company' }, level: 'edit' }])
+    const att = await drive.upload(alice, general.id, { name: 'agenda.md', bytes: text('# A'), mime: 'text/markdown' })
+    for (const who of [bob, owner]) {
+      const info = await drive.fileInfo(who, att.id)
+      expect(info.root).toEqual({ label: 'Messages', href: '/messages' })
+      expect(info.path.map((c) => c.name)).toEqual(['#general'])
+    }
+  })
+})
+
 describe('drive: text revisions', () => {
   it('every write of a .md/.csv stores a revision with author and time; restore saves it again as newest', async () => {
     const { drive } = await setup()
@@ -251,11 +278,55 @@ describe('drive: text revisions', () => {
     const v1 = await drive.writeText(alice, doc.id, 'a,b\n1,2\n')
     await drive.writeText(bob, doc.id, 'a,b\n9,9\n')
     const revs = await drive.listRevisions(alice, doc.id)
-    expect(revs.map((r) => r.authorId)).toEqual(['bob', 'alice', 'alice'])
+    expect(revs.map((r) => r.authorId)).toEqual(['bob', 'alice'])
     expect(revs[0]!.createdAt.getTime()).toBeGreaterThan(revs[1]!.createdAt.getTime())
     await drive.restoreRevision(bob, doc.id, v1.revision.id)
     expect((await drive.readText(alice, doc.id)).content).toBe('a,b\n1,2\n')
-    expect(await drive.listRevisions(alice, doc.id)).toHaveLength(4)
+    const after = await drive.listRevisions(alice, doc.id)
+    expect(after).toHaveLength(3)
+    expect(after[0]).toMatchObject({ authorId: 'bob', restoredFrom: { id: v1.revision.id, authorId: 'alice' } })
+    expect(after[1]!.restoredFrom).toBeUndefined()
+  })
+
+  it('one revision per editing session: saves under one lock fold together; take-over and restore start new ones', async () => {
+    const { drive } = await setup()
+    const doc = await drive.createDocument(alice, null, 'md', 'notes')
+    await share(drive, 'file', doc.id, [{ subject: { kind: 'user', userId: 'bob' }, level: 'edit' }])
+    await drive.acquireLock(alice, doc.id, 'alice-session-1')
+    await drive.writeText(alice, doc.id, 'a', 'alice-session-1')
+    await drive.writeText(alice, doc.id, 'ab', 'alice-session-1')
+    await drive.writeText(alice, doc.id, 'abc', 'alice-session-1')
+    let revs = await drive.listRevisions(alice, doc.id)
+    expect(revs.map((r) => [r.authorId, r.size])).toEqual([['alice', 3]])
+    // Bob takes over: a new revision, then his saves fold into it.
+    await drive.acquireLock(bob, doc.id, 'bob-session-1', { takeover: true })
+    await drive.writeText(bob, doc.id, 'abcd', 'bob-session-1')
+    await drive.writeText(bob, doc.id, 'abcde', 'bob-session-1')
+    revs = await drive.listRevisions(alice, doc.id)
+    expect(revs.map((r) => [r.authorId, r.size])).toEqual([['bob', 5], ['alice', 3]])
+    // A restore is its own checkpoint; the next save starts a new revision.
+    await drive.restoreRevision(bob, doc.id, revs[1]!.id, 'bob-session-1')
+    await drive.writeText(bob, doc.id, 'abc!', 'bob-session-1')
+    revs = await drive.listRevisions(alice, doc.id)
+    expect(revs.map((r) => [r.authorId, r.size, r.restoredFrom?.authorId ?? null])).toEqual([
+      ['bob', 4, null],
+      ['bob', 3, 'alice'],
+      ['bob', 5, null],
+      ['alice', 3, null],
+    ])
+    // Letting go of the lock ends the session: the next save is a new revision.
+    await drive.releaseLock(bob, doc.id, 'bob-session-1')
+    await drive.writeText(bob, doc.id, 'abc!?', 'bob-session-1')
+    expect(await drive.listRevisions(alice, doc.id)).toHaveLength(5)
+  })
+
+  it('an empty first revision from before is not listed', async () => {
+    const { drive, store } = await setup()
+    const doc = await drive.createDocument(alice, null, 'md', 'old')
+    await store.insertRevision({ id: 'r0', fileId: doc.id, sha256: 'e3b0', size: 0, authorId: 'alice', createdAt: new Date('2026-01-01') })
+    expect(await drive.listRevisions(alice, doc.id)).toHaveLength(0)
+    await drive.writeText(alice, doc.id, 'x')
+    expect(await drive.listRevisions(alice, doc.id)).toHaveLength(1)
   })
 
   it('write_text refuses non-revisioned files; restore refuses a revision of another file and view-only people', async () => {
@@ -264,6 +335,8 @@ describe('drive: text revisions', () => {
     await expectCode(drive.writeText(alice, txt.id, 'y'), 'invalid')
     const a = await drive.createDocument(alice, null, 'md', 'a')
     const b = await drive.createDocument(alice, null, 'md', 'b')
+    await drive.writeText(alice, a.id, 'a1')
+    await drive.writeText(alice, b.id, 'b1')
     const [revB] = await drive.listRevisions(alice, b.id)
     await expectCode(drive.restoreRevision(alice, a.id, revB!.id), 'not_found')
     await share(drive, 'file', a.id, [{ subject: { kind: 'user', userId: 'bob' }, level: 'view' }])

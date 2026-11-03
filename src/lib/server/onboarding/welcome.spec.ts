@@ -1,12 +1,44 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getDbMock } = vi.hoisted(() => ({
+const { getDbMock, authUpdates } = vi.hoisted(() => ({
   getDbMock: vi.fn(),
+  authUpdates: [] as unknown[],
 }))
 
 vi.mock('$lib/server/db', () => ({ getDb: getDbMock }))
+vi.mock('$lib/server/db/auth-db', () => ({
+  authDb: {
+    update: () => ({
+      set: (values: unknown) => ({
+        where: () => {
+          authUpdates.push(values)
+          return Promise.resolve()
+        },
+      }),
+    }),
+  },
+}))
 
-import { completeWelcomeOnboarding, resetWelcomeOnboarding } from './welcome'
+import { completeWelcomeOnboarding, resetWelcomeOnboarding, setWelcomeDisplayName } from './welcome'
+
+describe('setWelcomeDisplayName', () => {
+  it('saves the name as the preference AND the account name (shown everywhere)', async () => {
+    authUpdates.length = 0
+    const captured: { values?: unknown } = {}
+    const chain = {
+      insert: () => chain,
+      values(values: unknown) {
+        captured.values = values
+        return chain
+      },
+      onConflictDoUpdate: () => Promise.resolve(),
+    }
+    getDbMock.mockReturnValue(chain)
+    await setWelcomeDisplayName('u1', '  Olivia Owner ')
+    expect(captured.values).toMatchObject({ userId: 'u1', displayName: 'Olivia Owner' })
+    expect(authUpdates).toEqual([{ name: 'Olivia Owner', firstName: 'Olivia', lastName: 'Owner' }])
+  })
+})
 
 describe('completeWelcomeOnboarding', () => {
   beforeEach(() => {

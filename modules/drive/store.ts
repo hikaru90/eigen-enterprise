@@ -52,6 +52,8 @@ export type DriveStore = {
   insertRevision(rev: DriveRevision): Promise<void>
   listRevisions(fileId: string): Promise<DriveRevision[]>
   getRevision(id: string): Promise<DriveRevision | null>
+  /** Folds a save into an existing revision (one revision per editing session). */
+  updateRevision(id: string, patch: Pick<DriveRevision, 'sha256' | 'size' | 'createdAt'>): Promise<void>
   /** Whether any file or revision still points at this blob. */
   blobInUse(sha256: string): Promise<boolean>
   /** Bytes on disk: the sum over distinct blobs referenced by files or revisions. */
@@ -113,6 +115,10 @@ export function memoryDriveStore(): DriveStore {
     },
     async getRevision(id) {
       return revisions.get(id) ?? null
+    },
+    async updateRevision(id, patch) {
+      const r = revisions.get(id)
+      if (r) revisions.set(id, { ...r, ...patch })
     },
     async blobInUse(sha) {
       return [...files.values()].some((f) => f.sha256 === sha) || [...revisions.values()].some((r) => r.sha256 === sha)
