@@ -3,6 +3,9 @@
  * conversation list's reaction to live frames. Shared by the page and its tests.
  */
 
+export type ReactionView = { emoji: string; userIds: string[]; names: string[] }
+export type AttachmentView = { fileId: string; name: string; mime: string; size: number; image: boolean }
+
 export type MessageView = {
   id: string
   conversationId: string
@@ -12,6 +15,65 @@ export type MessageView = {
   createdAt: string
   editedAt: string | null
   deleted: boolean
+  parentId: string | null
+  replyCount: number
+  lastReplyAt: string | null
+  reactions: ReactionView[]
+  attachments: AttachmentView[]
+}
+
+/** A live message frame from /api/messages/stream. */
+export type MessageFrame = {
+  action: 'created' | 'edited' | 'deleted' | 'reacted'
+  message: MessageView
+  parent: MessageView | null
+  unread: number
+}
+
+/**
+ * Applies a live frame to the open conversation's main log and (when one is
+ * open) the thread panel: replies go to their thread, never the main log; the
+ * parent's fresh reply count replaces the one in the log.
+ */
+export function applyFrame(
+  log: readonly MessageView[],
+  thread: { parentId: string; replies: readonly MessageView[] } | null,
+  f: MessageFrame,
+): { log: MessageView[]; replies: MessageView[] | null } {
+  const m = f.message
+  let nextLog = [...log]
+  let replies = thread ? [...thread.replies] : null
+  if (m.parentId === null) {
+    // Top-level: upsert only if new (created) or already shown (paged-out history stays out).
+    if (f.action === 'created' || nextLog.some((x) => x.id === m.id)) nextLog = mergeMessages(nextLog, [m])
+  } else {
+    if (thread && thread.parentId === m.parentId) replies = mergeMessages(replies ?? [], [m])
+    const parent = f.parent
+    if (parent && nextLog.some((x) => x.id === parent.id)) nextLog = mergeMessages(nextLog, [parent])
+  }
+  return { log: nextLog, replies }
+}
+
+/** Whether `me` reacted with this emoji. */
+export const reactedBy = (r: ReactionView, me: string) => r.userIds.includes(me)
+
+/** "Bea, Carl and 2 others" — the hover text for a reaction chip. */
+export function reactionTitle(r: ReactionView): string {
+  const names = r.names
+  if (names.length <= 3) return names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
+  return `${names.slice(0, 3).join(', ')} and ${names.length - 3} other${names.length - 3 === 1 ? '' : 's'}`
+}
+
+export function formatSize(n: number): string {
+  if (n < 1024) return `${n} B`
+  const units = ['KB', 'MB', 'GB']
+  let v = n / 1024
+  let i = 0
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i++
+  }
+  return `${v >= 10 ? Math.round(v) : v.toFixed(1)} ${units[i]}`
 }
 
 export type ConversationView = {

@@ -1,7 +1,7 @@
 import type { MessageEvent } from './store'
 import {
   canUse,
-  messageDto,
+  messageDtos,
   summarize,
   unreadFor,
   type ConversationSummary,
@@ -19,9 +19,26 @@ import {
  */
 
 export type StreamFrame =
-  | { id: number; event: 'message'; data: { action: 'created' | 'edited' | 'deleted'; message: MessageDto; unread: number } }
+  | {
+      id: number
+      event: 'message'
+      data: {
+        action: 'created' | 'edited' | 'deleted' | 'reacted'
+        message: MessageDto
+        /** Replies: the thread's first message with its fresh reply count. */
+        parent: MessageDto | null
+        unread: number
+      }
+    }
   | { id: number; event: 'conversation'; data: { conversation: ConversationSummary } }
   | { id: number; event: 'read'; data: { conversationId: string; unread: number } }
+
+const ACTIONS = {
+  'message.created': 'created',
+  'message.edited': 'edited',
+  'message.deleted': 'deleted',
+  'message.reacted': 'reacted',
+} as const satisfies Partial<Record<MessageEvent['kind'], string>>
 
 type Subscriber = { userId: string; send: (f: StreamFrame) => void }
 
@@ -56,15 +73,16 @@ export class MessagesHub {
     if (event.kind === 'conversation.created') {
       return { id: event.id, event: 'conversation', data: { conversation: await summarize(d, userId, c) } }
     }
-    if (!event.messageId) return null
+    if (!event.messageId || !(event.kind in ACTIONS)) return null
     const m = await d.store.getMessage(event.messageId)
     if (!m) return null
     const people = new Map((await d.directory.listPeople()).map((p) => [p.id, p]))
-    const action = event.kind === 'message.created' ? 'created' : event.kind === 'message.edited' ? 'edited' : 'deleted'
+    const parentRow = m.parentId ? await d.store.getMessage(m.parentId) : null
+    const [message, parent] = await messageDtos(d, parentRow ? [m, parentRow] : [m], people)
     return {
       id: event.id,
       event: 'message',
-      data: { action, message: messageDto(m, people), unread: await unreadFor(d, userId, c.id) },
+      data: { action: ACTIONS[event.kind as keyof typeof ACTIONS], message, parent: parent ?? null, unread: await unreadFor(d, userId, c.id) },
     }
   }
 

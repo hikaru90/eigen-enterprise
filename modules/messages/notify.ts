@@ -2,7 +2,7 @@ import type { Conversation, Person } from './store'
 import { canUse, type MessageDto, type MessagesDeps } from './service'
 
 /**
- * Push for DMs and @mentions (C1). A mention is the composer's syntax
+ * Push for DMs, @mentions (C1) and thread replies to the thread's participants (C2). A mention is the composer's syntax
  * `@handle`, where a person's handles are their email's local part and their
  * name without spaces (case-insensitive) — a lookup against the member list,
  * not a guess at meaning. Recipients are never the author, never someone who
@@ -47,8 +47,11 @@ export async function notifyNewMessage(
   m: MessageDto,
 ): Promise<string[]> {
   const people = await d.directory.listPeople()
-  const candidates =
-    c.kind === 'dm' ? await d.store.memberIds(c.id) : mentionedIds(m.body, people)
+  const candidates = [
+    ...(c.kind === 'dm' ? await d.store.memberIds(c.id) : mentionedIds(m.body, people)),
+    // A thread reply reaches the thread's participants (its starter and everyone who replied).
+    ...(m.parentId ? await d.store.threadParticipants(m.parentId) : []),
+  ]
   const now = d.now ? d.now() : new Date()
   const viewing = new Set(await d.store.viewersSince(c.id, new Date(now.getTime() - VIEWING_WINDOW_MS)))
   const recipients: string[] = []
@@ -58,13 +61,15 @@ export async function notifyNewMessage(
     if (!(await push.hasSubscription(userId))) continue
     recipients.push(userId)
   }
-  const title = c.kind === 'dm' ? m.authorName : `${m.authorName} in #${c.name}`
+  const where = c.kind === 'dm' ? '' : ` in #${c.name}`
+  const title = m.parentId ? `${m.authorName} replied in a thread${where}` : c.kind === 'dm' ? m.authorName : `${m.authorName}${where}`
+  const body = m.body.trim() ? snippet(m.body) : m.attachments.map((a) => a.name).join(', ')
   for (const userId of recipients) {
     try {
       await push.send(userId, {
         title,
-        body: snippet(m.body),
-        url: `/messages?c=${encodeURIComponent(c.id)}`,
+        body,
+        url: `/messages?c=${encodeURIComponent(c.id)}${m.parentId ? `&t=${encodeURIComponent(m.parentId)}` : ''}`,
         tag: `messages-${c.id}`,
       })
     } catch (err) {

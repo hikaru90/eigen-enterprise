@@ -1,4 +1,4 @@
-import type { Conversation, Directory, Message, MessageEvent, MessagesStore, NewEvent, Person } from './store'
+import type { Attachment, Conversation, Directory, Message, MessageEvent, MessagesStore, NewEvent, Person, Reaction, ThreadStats } from './store'
 
 type MemberRow = { lastReadAt: Date | null; viewingAt: Date | null }
 
@@ -8,6 +8,9 @@ export class MemoryMessagesStore implements MessagesStore {
   members = new Map<string, Map<string, MemberRow>>()
   messages = new Map<string, Message>()
   events: MessageEvent[] = []
+  reactions: Reaction[] = []
+  attachments: Attachment[] = []
+  folders = new Map<string, string>()
   onEvent: ((id: number) => void) | null = null
 
   private rows(id: string) {
@@ -83,7 +86,7 @@ export class MemoryMessagesStore implements MessagesStore {
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
   }
   async listMessagesBefore(id: string, before: Message | null, limit: number) {
-    const all = this.ordered(id)
+    const all = this.ordered(id).filter((m) => m.parentId === null)
     const older = before
       ? all.filter(
           (m) =>
@@ -93,10 +96,62 @@ export class MemoryMessagesStore implements MessagesStore {
       : all
     return older.reverse().slice(0, limit)
   }
+  async listReplies(parentId: string) {
+    return [...this.messages.values()]
+      .filter((m) => m.parentId === parentId)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
+  }
+  async threadStats(parentIds: string[]) {
+    const out = new Map<string, ThreadStats>()
+    for (const id of parentIds) {
+      const live = (await this.listReplies(id)).filter((m) => !m.deletedAt)
+      if (live.length > 0) out.set(id, { replyCount: live.length, lastReplyAt: live.at(-1)!.createdAt })
+    }
+    return out
+  }
+  async threadParticipants(parentId: string) {
+    const parent = this.messages.get(parentId)
+    const ids = [...(parent ? [parent.authorId] : []), ...(await this.listReplies(parentId)).map((m) => m.authorId)]
+    return [...new Set(ids)]
+  }
   async countUnread(id: string, userId: string, since: Date | null) {
+    const mine = (parentId: string) =>
+      this.messages.get(parentId)?.authorId === userId ||
+      [...this.messages.values()].some((r) => r.parentId === parentId && r.authorId === userId)
     return this.ordered(id).filter(
-      (m) => m.authorId !== userId && !m.deletedAt && (since === null || m.createdAt > since),
+      (m) =>
+        m.authorId !== userId &&
+        !m.deletedAt &&
+        (since === null || m.createdAt > since) &&
+        (m.parentId === null || mine(m.parentId)),
     ).length
+  }
+  async toggleReaction(messageId: string, userId: string, emoji: string, at: Date) {
+    const i = this.reactions.findIndex((r) => r.messageId === messageId && r.userId === userId && r.emoji === emoji)
+    if (i >= 0) {
+      this.reactions.splice(i, 1)
+      return false
+    }
+    this.reactions.push({ messageId, userId, emoji, createdAt: at })
+    return true
+  }
+  async reactionsFor(messageIds: string[]) {
+    const ids = new Set(messageIds)
+    return this.reactions.filter((r) => ids.has(r.messageId))
+  }
+  async insertAttachments(rows: Attachment[]) {
+    this.attachments.push(...rows.map((r) => ({ ...r })))
+  }
+  async attachmentsFor(messageIds: string[]) {
+    const ids = new Set(messageIds)
+    return this.attachments.filter((a) => ids.has(a.messageId)).sort((a, b) => a.position - b.position)
+  }
+  async driveFolder(scope: string) {
+    return this.folders.get(scope) ?? null
+  }
+  async claimDriveFolder(scope: string, folderId: string) {
+    if (!this.folders.has(scope)) this.folders.set(scope, folderId)
+    return this.folders.get(scope)!
   }
   async appendEvent(e: NewEvent) {
     const id = this.events.length + 1
