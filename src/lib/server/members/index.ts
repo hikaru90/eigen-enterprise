@@ -5,7 +5,6 @@ import { companyMail } from '$lib/server/mail'
 import { foundingCompanyName } from '$lib/server/overview/sources'
 import { dbMemberStore } from './db-store'
 import type { GroupDeps } from './groups'
-import { dbGroupStore } from './groups-db-store'
 import type { Actor, MemberDeps } from './service'
 
 export * from './service'
@@ -26,8 +25,13 @@ export async function humanActor(userId: string): Promise<Actor> {
 
 export * from './groups'
 
-/** The live groups wiring: Postgres + kernel audit events. */
+/**
+ * The live groups wiring: the company data repo (groups/<slug>.yaml, files
+ * first — plan/phase-git-native.md G0) with Postgres as the rebuildable
+ * index, plus kernel audit events.
+ */
 export async function groupDeps(): Promise<GroupDeps> {
   const { kernelAudit } = await import('$lib/server/access')
-  return { groups: dbGroupStore, audit: kernelAudit }
+  const { companyData } = await import('$lib/server/gitstore/live')
+  return { groups: (await companyData()).groups, audit: kernelAudit }
 }
