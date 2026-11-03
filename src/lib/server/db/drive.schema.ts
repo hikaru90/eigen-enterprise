@@ -49,3 +49,12 @@ export const driveRevision = pgTable(
   },
   (t) => [index('drive_revision_file_idx').on(t.fileId, t.createdAt), index('drive_revision_sha_idx').on(t.sha256)],
 )
+
+/** One editor at a time per Markdown/CSV file (migration 0110, W-6): the holding session and its heartbeat. */
+export const driveEditLock = pgTable('drive_edit_lock', {
+  fileId: text('file_id').primaryKey(),
+  userId: text('user_id').notNull(),
+  sessionId: text('session_id').notNull(),
+  acquiredAt: timestamp('acquired_at', { withTimezone: true }).notNull(),
+  heartbeatAt: timestamp('heartbeat_at', { withTimezone: true }).notNull(),
+})

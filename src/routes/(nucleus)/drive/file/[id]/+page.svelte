@@ -4,25 +4,26 @@
   import FileIcon from '@lucide/svelte/icons/file'
   import { invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
+  import DocEditor from '$lib/components/drive/doc-editor.svelte'
+  import RevisionsPanel from '$lib/components/drive/revisions-panel.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
   import { driveApi, formatSize } from '$lib/drive/api'
   import { docTitle } from '$lib/shell/title'
 
-  /** Open a file: the preview (the editor arrives in D2), download, and the revisions of Markdown/CSV. */
+  /**
+   * Open a file: the in-place editor for Markdown/CSV when the viewer may
+   * edit (D2), else the preview; download; the revisions of Markdown/CSV.
+   */
   let { data }: { data: PageData } = $props()
   const contentUrl = $derived(`/api/drive/files/${data.file.id}/content`)
-  let error = $state<string | null>(null)
   const fmt = (d: string | Date) => new Date(d).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+  const revisioned = $derived(data.kind === 'markdown' || data.kind === 'csv')
+  const revisions = $derived(data.revisions.map((r) => ({ ...r, createdAt: new Date(r.createdAt).toISOString() })))
 
   async function restore(revisionId: string) {
-    error = null
-    try {
-      await driveApi.restoreRevision(data.file.id, revisionId)
-      await invalidateAll()
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
-    }
+    await driveApi.restoreRevision(data.file.id, revisionId)
+    await invalidateAll()
   }
 </script>
 
@@ -43,13 +44,18 @@
     {/snippet}
   </SectionHeader>
 
+  {#if data.editable && data.content !== null && (data.kind === 'markdown' || data.kind === 'csv')}
+    {#key data.file.id}
+      <DocEditor fileId={data.file.id} kind={data.kind} content={data.content} {revisions} authors={data.authors} heartbeatMs={data.heartbeatMs} />
+    {/key}
+  {:else}
   <div class="rounded-lg border" data-testid="drive-preview" data-kind={data.kind}>
     {#if data.kind === 'markdown'}
       {#if data.html}
         <!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized server side (renderDriveMarkdown: marked + DOMPurify) -->
         <article class="drive-markdown max-w-3xl px-6 py-5 text-sm leading-relaxed" data-testid="drive-markdown">{@html data.html}</article>
       {:else}
-        <p class="px-6 py-8 text-sm text-muted-foreground">This document is empty. Editing arrives with the Drive editor.</p>
+        <p class="px-6 py-8 text-sm text-muted-foreground">This document is empty.</p>
       {/if}
     {:else if data.kind === 'csv' && data.table}
       {#if data.table.rows.length === 0}
@@ -90,21 +96,9 @@
     {/if}
   </div>
 
-  {#if data.revisions.length > 0}
-    <section class="flex flex-col gap-2" data-testid="drive-revisions">
-      <h2 class="text-base font-semibold">Revisions</h2>
-      {#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-      <ul class="divide-y rounded-lg border text-sm">
-        {#each data.revisions as rev, i (rev.id)}
-          <li class="flex items-center gap-3 px-4 py-2" data-testid="drive-revision">
-            <span class="flex-1">{fmt(rev.createdAt)} · {data.authors[rev.authorId] ?? 'the agent'} · {formatSize(rev.size)}{i === 0 ? ' · current' : ''}</span>
-            {#if i > 0 && data.canEdit}
-              <Button size="sm" variant="outline" onclick={() => restore(rev.id)} data-testid="drive-revision-restore">Restore</Button>
-            {/if}
-          </li>
-        {/each}
-      </ul>
-    </section>
+  {#if revisioned}
+    <RevisionsPanel fileId={data.file.id} kind={data.kind === 'csv' ? 'csv' : 'markdown'} {revisions} authors={data.authors} canRestore={false} onrestore={restore} />
+  {/if}
   {/if}
 </div>
 

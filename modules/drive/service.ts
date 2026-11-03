@@ -2,6 +2,7 @@ import type { AccessLevel, DriveAccessPort, Grant, GrantSubject } from './access
 import type { BlobStore } from './storage'
 import type { DriveFile, DriveFolder, DriveRevision, DriveStore } from './store'
 import { randomUUID } from 'node:crypto'
+import { holderOf, isLive, LOCK_TTL_MS, type EditLockStore, type LockHolder } from './locks'
 import { isRevisioned, isTextFile, mimeFor } from './preview'
 
 /**
@@ -22,8 +23,10 @@ export type ItemType = 'folder' | 'file'
 
 export class DriveError extends Error {
   constructor(
-    readonly code: 'not_found' | 'forbidden' | 'invalid' | 'too_large',
+    readonly code: 'not_found' | 'forbidden' | 'invalid' | 'too_large' | 'locked',
     message: string,
+    /** For `locked`: who holds the edit lock now. */
+    readonly holder?: LockHolder & { name: string },
   ) {
     super(message)
   }
@@ -34,8 +37,14 @@ export type DriveDeps = {
   blobs: BlobStore
   access: DriveAccessPort
   maxUploadBytes: number
+  /** Edit locks (W-6): one editor session per Markdown/CSV file. */
+  locks: EditLockStore
+  lockTtlMs?: number
   now?: () => Date
 }
+
+/** What an editor session learns about a file's edit lock. */
+export type LockView = { state: 'held'; since: Date } | { state: 'locked'; holder: LockHolder & { name: string } } | { state: 'free' }
 
 export type ItemView = {
   type: ItemType
@@ -108,8 +117,52 @@ const fileView = (f: DriveFile): ItemView => ({
 const byName = (a: ItemView, b: ItemView) => a.name.localeCompare(b.name)
 
 export function createDriveService(deps: DriveDeps) {
-  const { store, blobs, access } = deps
+  const { store, blobs, access, locks } = deps
   const now = deps.now ?? (() => new Date())
+  const lockTtl = deps.lockTtlMs ?? LOCK_TTL_MS
+
+  async function personName(userId: string): Promise<string> {
+    const p = (await access.shareTargets()).people.find((x) => x.id === userId)
+    return p ? p.name || p.email : 'Someone'
+  }
+  async function namedHolder(lock: Parameters<typeof holderOf>[0]) {
+    return { ...holderOf(lock), name: await personName(lock.userId) }
+  }
+
+  async function requireEditable(actor: Actor, id: string): Promise<DriveFile> {
+    const file = await requireFile(actor, id, 'edit')
+    if (!isRevisioned(file.name)) throw new DriveError('invalid', `Only Markdown (.md) and table (.csv) files are edited in place; “${file.name}” is not one.`)
+    return file
+  }
+
+  /**
+   * A write must not cut across someone else's editing session. With a
+   * session id the writer must hold the lock (or reclaim a stale/free one);
+   * without one (the agent, API calls) the file must not be locked by a
+   * live session.
+   */
+  async function requireWriteTurn(actor: Actor, fileId: string, sessionId: string | undefined): Promise<void> {
+    const at = now()
+    const cur = await locks.get(fileId)
+    if (sessionId) {
+      if (cur && cur.sessionId === sessionId) {
+        if (await locks.touch(fileId, sessionId, at)) return
+      } else if (!isLive(cur, at, lockTtl)) {
+        const got = await locks.claim(
+          { fileId, userId: ownerIdOf(actor), sessionId, acquiredAt: at, heartbeatAt: at },
+          { staleBefore: new Date(at.getTime() - lockTtl), force: false },
+        )
+        if (got.sessionId === sessionId) return
+      }
+      const now2 = await locks.get(fileId)
+      const holder = now2 ? await namedHolder(now2) : undefined
+      throw new DriveError('locked', `${holder?.name ?? 'Someone'} took over editing; your changes were not saved.`, holder)
+    }
+    if (isLive(cur, at, lockTtl)) {
+      const holder = await namedHolder(cur)
+      throw new DriveError('locked', `${holder.name} is editing this file right now; try again when they are done.`, holder)
+    }
+  }
 
   /** The folders above a parent id, nearest first (the parent itself included). */
   async function chainFrom(parentId: string | null): Promise<DriveFolder[]> {
@@ -375,9 +428,10 @@ export function createDriveService(deps: DriveDeps) {
     },
 
     /** Saves new text into a Markdown/CSV file; every save is a revision. */
-    async writeText(actor: Actor, id: string, content: string): Promise<{ file: ItemView; revision: DriveRevision }> {
+    async writeText(actor: Actor, id: string, content: string, sessionId?: string): Promise<{ file: ItemView; revision: DriveRevision }> {
       const file = await requireFile(actor, id, 'edit')
       if (!isRevisioned(file.name)) throw new DriveError('invalid', `Only Markdown (.md) and table (.csv) files are written as text; “${file.name}” is not one.`)
+      await requireWriteTurn(actor, id, sessionId)
       const bytes = new TextEncoder().encode(content)
       if (bytes.byteLength > deps.maxUploadBytes) throw new DriveError('too_large', `That text is ${formatBytes(bytes.byteLength)}; files can be at most ${formatBytes(deps.maxUploadBytes)}.`)
       const blob = await blobs.put(bytes)
@@ -393,14 +447,58 @@ export function createDriveService(deps: DriveDeps) {
     },
 
     /** Restoring a revision saves its text again as the newest revision (history is never rewritten). */
-    async restoreRevision(actor: Actor, id: string, revisionId: string): Promise<{ file: ItemView; revision: DriveRevision }> {
+    async restoreRevision(actor: Actor, id: string, revisionId: string, sessionId?: string): Promise<{ file: ItemView; revision: DriveRevision }> {
       const file = await requireFile(actor, id, 'edit')
       const rev = await store.getRevision(revisionId)
       if (!rev || rev.fileId !== file.id) throw new DriveError('not_found', 'No such revision.')
+      await requireWriteTurn(actor, id, sessionId)
       const at = now()
       await store.updateFile(id, { sha256: rev.sha256, size: rev.size, updatedAt: at })
       const revision = await storeRevision(id, rev.sha256, rev.size, actor, at)
       return { file: await view('file', id), revision }
+    },
+
+    /** The text of one revision (viewing an older version). */
+    async readRevision(actor: Actor, id: string, revisionId: string): Promise<{ revision: DriveRevision; content: string }> {
+      const file = await requireFile(actor, id, 'view')
+      const rev = await store.getRevision(revisionId)
+      if (!rev || rev.fileId !== file.id) throw new DriveError('not_found', 'No such revision.')
+      return { revision: rev, content: new TextDecoder().decode(await blobs.get(rev.sha256)) }
+    },
+
+    /** Who is editing (view access is enough to ask). */
+    async lockStatus(actor: Actor, id: string): Promise<LockView> {
+      await requireFile(actor, id, 'view')
+      const cur = await locks.get(id)
+      return isLive(cur, now(), lockTtl) ? { state: 'locked', holder: await namedHolder(cur) } : { state: 'free' }
+    },
+
+    /** Opens a file for editing: takes the lock unless another live session holds it (`takeover` takes it anyway). */
+    async acquireLock(actor: Actor, id: string, sessionId: string, opts: { takeover?: boolean } = {}): Promise<LockView> {
+      await requireEditable(actor, id)
+      const at = now()
+      const got = await locks.claim(
+        { fileId: id, userId: ownerIdOf(actor), sessionId, acquiredAt: at, heartbeatAt: at },
+        { staleBefore: new Date(at.getTime() - lockTtl), force: !!opts.takeover },
+      )
+      return got.sessionId === sessionId ? { state: 'held', since: got.acquiredAt } : { state: 'locked', holder: await namedHolder(got) }
+    },
+
+    /** Keeps a held lock alive; `locked` means someone took over (or it went stale and was taken). */
+    async heartbeatLock(actor: Actor, id: string, sessionId: string): Promise<LockView> {
+      await requireEditable(actor, id)
+      const at = now()
+      if (await locks.touch(id, sessionId, at)) {
+        const cur = await locks.get(id)
+        return { state: 'held', since: cur?.acquiredAt ?? at }
+      }
+      const cur = await locks.get(id)
+      return cur ? { state: 'locked', holder: await namedHolder(cur) } : { state: 'free' }
+    },
+
+    async releaseLock(actor: Actor, id: string, sessionId: string): Promise<void> {
+      await requireFile(actor, id, 'view')
+      await locks.release(id, sessionId)
     },
 
     async getGrants(actor: Actor, type: ItemType, id: string): Promise<Grant[]> {

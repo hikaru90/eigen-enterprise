@@ -156,10 +156,14 @@ test('Drive: two members — create, upload, share view → edit, preview, renam
   await expect(a.getByTestId('drive-revision')).toHaveCount(1)
   const notesUrl = a.url()
   const notesId = notesUrl.split('/').pop()!
-  // Give notes.md content (through the text API: the editor is D2) — a revision.
-  const put = await a.request.put(`/api/drive/files/${notesId}/text`, { data: { content: '# Kickoff\n\n- **Scope** agreed\n- Budget in the CSV\n' } })
-  expect(put.status()).toBe(200)
-  await a.reload()
+  // Give notes.md content through the text API — a revision. The open editor
+  // holds the edit lock (D2, W-6), so leave the page first: a write without
+  // an editor session waits until nobody is editing.
+  await a.goto('about:blank')
+  await expect
+    .poll(async () => (await a.request.put(`/api/drive/files/${notesId}/text`, { data: { content: '# Kickoff\n\n- **Scope** agreed\n- Budget in the CSV\n' } })).status(), { timeout: 60_000 })
+    .toBe(200)
+  await a.goto(notesUrl)
   await expect(a.getByTestId('drive-markdown').locator('h1')).toHaveText('Kickoff')
   await expect(a.getByTestId('drive-revision')).toHaveCount(2)
   await a.screenshot({ path: `${SHOTS}/01-owner-notes-preview.png`, fullPage: true })
