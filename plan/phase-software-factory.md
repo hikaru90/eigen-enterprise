@@ -9,6 +9,14 @@
 
 A software factory: tickets → code → tests → evals → improvement → deployment, as a closed loop with automated quality gates, self-healing and evidence-based improvement. The human is **on** the loop (rules + approvals), not **in** it (every click). 2026-10-30: "focus on pi durable implementation and setting up the software factory so that the system can self evolve."
 
+## 0b. Amendment (owner, 2026-11-03) — never fork the core
+
+The factory **does not edit eigenEnterprise's own source for one company.** A per-company fork would turn every upstream release into a painful merge. Instead (`plan/phase-extensions.md`):
+- **Company features** are built as **extensions** in the company's extensions repo (Extension API, own process, declarative UI, data in the company data repo). The loop below applies unchanged, with the extensions repo as the working repository; S2's "source checkout on the box" becomes a checkout of the extensions repo.
+- **Core improvements** (bugs, better editors, new capabilities every company needs) become **pull requests to the upstream eigenEnterprise repo** — never merged into a company's running core; they arrive with the next release.
+- **Before every core update** the factory runs the extension compatibility check (extensions plan §3) and repairs extensions, never the core.
+- Deploy remains an owner click (D11); `system.yaml` in the data repo records what runs.
+
 ## 1. Owner decisions (2026-10-30)
 
 - **F1 — The factory lives on the box.** The deployed system changes itself: ee keeps a git checkout of eigenEnterprise's own source next to the running release, the factory builds and gates there, and a shipped change becomes a new EE release through ee's blue-green, health-gated path. The Mac checkout is not the factory's home.

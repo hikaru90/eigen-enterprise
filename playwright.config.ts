@@ -53,6 +53,7 @@ export default defineConfig({
           process.env.EE_AGENT_STATE_DIR ?? path.resolve('test-results/ee-agent-state'),
         // Drive (D1) stores file bytes on disk: a throwaway dir per harness (fails loud when unset).
         DRIVE_STORAGE_DIR: process.env.DRIVE_STORAGE_DIR ?? path.resolve('test-results/ee-drive'),
+        COMPANY_DATA_DIR: process.env.COMPANY_DATA_DIR ?? path.resolve('test-results/ee-company-data'),
         // Secrets sealed during a run (provider keys, SES keys) need the tenant
         // master key; a throwaway harness gets a throwaway key when .env has none
         // (an unset key crashes the server on the first provider save).
