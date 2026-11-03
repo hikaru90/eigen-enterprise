@@ -77,6 +77,8 @@
 
 <svelte:window onkeydown={onKeydown} />
 
+<!-- Nav links switch colors without a transition: the old item fading out while the new one
+     fades in read as two current items at once. -->
 {#snippet navLink(item: ShellNavItem)}
   {@const Icon = iconFor(item.id)}
   {@const current = currentId === item.id}
@@ -86,7 +88,7 @@
     onclick={closeDrawer}
     aria-current={current ? 'page' : undefined}
     data-testid="shell-nav-{item.id}"
-    class="group flex h-8 min-w-0 items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60
+    class="group flex h-8 min-w-0 items-center gap-2.5 rounded-md px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring/60
       {current
       ? 'bg-primary/[0.08] font-medium text-foreground'
       : dimmed
