@@ -20,6 +20,8 @@
 
   let passkeyBusy = $state(false)
   let passkeyError = $state<string | null>(null)
+  /** Skipping the passkey asks once, with the consequence spelled out. */
+  let confirmSkip = $state(false)
 
   async function createPasskey() {
     passkeyBusy = true
@@ -80,13 +82,20 @@
               {passkeyError}
             </p>
           {/if}
-          <p class="text-muted-foreground text-[11px]">
-            Without a passkey you stay signed in on this device only. You can add one later in
-            Settings → Passkeys.
-            <a href={resolve('/messages')} class="underline underline-offset-4" data-testid="invite-skip-passkey"
-              >Later</a
-            >
-          </p>
+          {#if confirmSkip}
+            <div class="space-y-2 rounded-[4px] border border-destructive/40 bg-destructive/5 p-3 text-xs" role="alert" data-testid="invite-skip-warning">
+              <p>
+                <strong>Without a passkey you can’t sign in again</strong> once this session ends (or on
+                another device) — this company has no sign-in by email. Add one in Settings → Passkeys
+                before you sign out.
+              </p>
+              <a href={resolve('/messages')} class="underline underline-offset-4" data-testid="invite-skip-confirm">Continue without a passkey</a>
+            </div>
+          {:else}
+            <p class="text-muted-foreground text-[11px]">
+              <button type="button" class="underline underline-offset-4" onclick={() => (confirmSkip = true)} data-testid="invite-skip-passkey">Skip for now</button>
+            </p>
+          {/if}
         </div>
       {:else if !data.ok}
         <p class="text-xs" data-testid="invite-unavailable">{data.message}</p>
