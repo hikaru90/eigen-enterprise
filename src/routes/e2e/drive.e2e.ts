@@ -170,7 +170,9 @@ test('Drive: two members — create, upload, share view → edit, preview, renam
 
   // B sees nothing yet; the folder itself is a 404 for them.
   await b.goto('/drive/shared')
-  await expect(b.getByTestId('drive-empty')).toBeVisible()
+  // (Not "empty": public channels' attachment folders — Messages / #channel, C2 — are shared with everyone.)
+  await expect(b.getByRole('heading', { name: 'Drive', exact: true })).toBeVisible()
+  await expect(row(b, 'Projects')).toHaveCount(0)
   expect((await b.request.get(`/api/drive/files/${notesId}/text`)).status()).toBe(404)
 
   // A shares Projects with B: view.

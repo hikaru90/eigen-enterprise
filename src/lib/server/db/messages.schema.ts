@@ -1,4 +1,4 @@
-import { bigserial, boolean, pgTable, primaryKey, text, timestamp, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core'
+import { bigint, bigserial, boolean, integer, pgTable, primaryKey, text, timestamp, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core'
 
 /**
  * Messages core (plan/phase-workspace.md C1, migration 0109). Company-level
@@ -42,7 +42,7 @@ export const messages = pgTable('messages', {
   authorId: text('author_id').notNull(),
   /** Markdown source; rendered + sanitized at display time. */
   body: text('body').notNull(),
-  /** Reserved for threads (C2). */
+  /** The thread's parent (C2); null = a top-level message. */
   parentId: uuid('parent_id').references((): AnyPgColumn => messages.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   editedAt: timestamp('edited_at', { withTimezone: true }),
@@ -52,7 +52,7 @@ export const messages = pgTable('messages', {
 export const messageEvents = pgTable('message_events', {
   id: bigserial('id', { mode: 'number' }).primaryKey(),
   kind: text('kind', {
-    enum: ['message.created', 'message.edited', 'message.deleted', 'conversation.created', 'conversation.read'],
+    enum: ['message.created', 'message.edited', 'message.deleted', 'message.reacted', 'conversation.created', 'conversation.read'],
   }).notNull(),
   conversationId: uuid('conversation_id')
     .notNull()
@@ -61,4 +61,40 @@ export const messageEvents = pgTable('message_events', {
   /** conversation.read only: whose read state changed (delivered to that person alone). */
   userId: text('user_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+/** Emoji reactions (C2, 0111): one row per (message, person, emoji). */
+export const messageReactions = pgTable(
+  'message_reactions',
+  {
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    emoji: text('emoji').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.messageId, t.userId, t.emoji], name: 'message_reactions_pk' })],
+)
+
+/** Drive files a message carries (C2, 0111): a display snapshot; bytes + access live in the Drive. */
+export const messageAttachments = pgTable(
+  'message_attachments',
+  {
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    fileId: text('file_id').notNull(),
+    position: integer('position').notNull(),
+    name: text('name').notNull(),
+    mime: text('mime').notNull(),
+    size: bigint('size', { mode: 'number' }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.messageId, t.fileId], name: 'message_attachments_pk' })],
+)
+
+/** The Drive folder a conversation's attachments land in ('root' = the shared "Messages" folder). */
+export const messageDriveFolders = pgTable('message_drive_folders', {
+  scope: text('scope').primaryKey(),
+  folderId: text('folder_id').notNull(),
 })

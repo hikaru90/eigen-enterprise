@@ -1,5 +1,5 @@
 import type { AccessLevel, AccessPort, GrantInput } from './access-port'
-import type { Conversation, Directory, Message, MessagesStore, Person } from './store'
+import type { Attachment, Conversation, Directory, Message, MessagesStore, Person } from './store'
 import { randomUUID } from 'node:crypto'
 
 /**
@@ -13,11 +13,42 @@ import { randomUUID } from 'node:crypto'
 export const MAX_BODY = 8000
 export const MAX_DM_MEMBERS = 8
 export const PAGE_SIZE = 50
+export const MAX_ATTACHMENTS = 10
+
+/** The reaction picker's set (C2): a compact, fixed list — anything else is refused. */
+export const REACTION_EMOJI = ['👍', '❤️', '😂', '🎉', '😮', '😢', '🙏', '👀', '✅', '🔥'] as const
+
+/** Kernel audit for moderation (an owner/admin deleting someone else's message). */
+export type MessagesAudit = (event: { type: string; principalId: string; payload: Record<string, unknown> }) => Promise<void>
+
+export type DriveFileInfo = { id: string; name: string; mime: string; size: number; folderId: string | null; ownerId: string }
+
+/**
+ * Messages' seam onto the Drive (C2 attachments). Folders are created by the
+ * system (no creator grant) and then given the conversation's access with
+ * `initFolderGrants`; files are uploaded AS the person, so the Drive's own
+ * access check (edit on the folder) and size limit apply.
+ */
+export type AttachmentPort = {
+  createSystemFolder(parentId: string | null, name: string): Promise<string>
+  initFolderGrants(creatorId: string, folderId: string, grants: GrantInput[]): Promise<void>
+  upload(
+    actorId: string,
+    folderId: string,
+    file: { name: string; bytes: Uint8Array; mime: string | null },
+  ): Promise<{ ok: true; file: DriveFileInfo } | { ok: false; error: string }>
+  /** The file when the person may view it, else null. */
+  fileInfo(actorId: string, fileId: string): Promise<DriveFileInfo | null>
+}
 
 export type MessagesDeps = {
   store: MessagesStore
   access: AccessPort
   directory: Directory
+  /** Required for moderation deletes (fails loud without it). */
+  audit?: MessagesAudit
+  /** Required for attachments (fails loud without it). */
+  drive?: AttachmentPort
   now?: () => Date
   newId?: () => string
 }
@@ -31,6 +62,9 @@ export class MessagesError extends Error {
   }
 }
 
+export type ReactionDto = { emoji: string; userIds: string[]; names: string[] }
+export type AttachmentDto = { fileId: string; name: string; mime: string; size: number; image: boolean }
+
 export type MessageDto = {
   id: string
   conversationId: string
@@ -40,6 +74,13 @@ export type MessageDto = {
   createdAt: string
   editedAt: string | null
   deleted: boolean
+  /** The thread's parent (replies only). */
+  parentId: string | null
+  /** Top-level messages: live replies in its thread and the latest one's time. */
+  replyCount: number
+  lastReplyAt: string | null
+  reactions: ReactionDto[]
+  attachments: AttachmentDto[]
 }
 
 export type ConversationSummary = {
@@ -87,17 +128,57 @@ async function peopleById(d: MessagesDeps): Promise<Map<string, Person>> {
 
 const displayName = (p: Person | undefined) => (p ? p.name.trim() || p.email : 'Former member')
 
-export function messageDto(m: Message, people: Map<string, Person>): MessageDto {
-  return {
-    id: m.id,
-    conversationId: m.conversationId,
-    authorId: m.authorId,
-    authorName: displayName(people.get(m.authorId)),
-    body: m.deletedAt ? '' : m.body,
-    createdAt: m.createdAt.toISOString(),
-    editedAt: m.editedAt?.toISOString() ?? null,
-    deleted: m.deletedAt !== null,
-  }
+/** Raster images the browser shows inline (SVG is never inlined: active content). */
+export const isInlineImage = (mime: string) => /^image\/(png|jpe?g|gif|webp|avif)$/i.test(mime)
+
+/** DTOs for a batch of messages: thread stats, reactions and attachments loaded once. */
+export async function messageDtos(d: MessagesDeps, ms: Message[], people?: Map<string, Person>): Promise<MessageDto[]> {
+  if (ms.length === 0) return []
+  const map = people ?? (await peopleById(d))
+  const ids = ms.map((m) => m.id)
+  const [stats, reactions, files] = await Promise.all([
+    d.store.threadStats(ms.filter((m) => m.parentId === null).map((m) => m.id)),
+    d.store.reactionsFor(ids),
+    d.store.attachmentsFor(ids),
+  ])
+  return ms.map((m) => {
+    const st = stats.get(m.id)
+    const deleted = m.deletedAt !== null
+    const byEmoji = new Map<string, string[]>()
+    if (!deleted) {
+      for (const r of reactions) {
+        if (r.messageId !== m.id) continue
+        byEmoji.set(r.emoji, [...(byEmoji.get(r.emoji) ?? []), r.userId])
+      }
+    }
+    return {
+      id: m.id,
+      conversationId: m.conversationId,
+      authorId: m.authorId,
+      authorName: displayName(map.get(m.authorId)),
+      body: deleted ? '' : m.body,
+      createdAt: m.createdAt.toISOString(),
+      editedAt: m.editedAt?.toISOString() ?? null,
+      deleted,
+      parentId: m.parentId,
+      replyCount: st?.replyCount ?? 0,
+      lastReplyAt: st?.lastReplyAt?.toISOString() ?? null,
+      reactions: [...byEmoji].map(([emoji, userIds]) => ({
+        emoji,
+        userIds,
+        names: userIds.map((u) => displayName(map.get(u))),
+      })),
+      attachments: deleted
+        ? []
+        : files
+            .filter((a) => a.messageId === m.id)
+            .map((a) => ({ fileId: a.fileId, name: a.name, mime: a.mime, size: a.size, image: isInlineImage(a.mime) })),
+    }
+  })
+}
+
+export async function messageDto(d: MessagesDeps, m: Message, people?: Map<string, Person>): Promise<MessageDto> {
+  return (await messageDtos(d, [m], people))[0]
 }
 
 export async function unreadFor(d: MessagesDeps, userId: string, conversationId: string): Promise<number> {
@@ -234,28 +315,122 @@ export function normalizeBody(raw: string): string {
   return body
 }
 
+export type PostOptions = { parentId?: string | null; attachmentIds?: string[] }
+
 export async function postMessage(
   d: MessagesDeps,
   actorId: string,
   conversationId: string,
   rawBody: string,
-): Promise<{ message: MessageDto; conversation: Conversation }> {
-  const body = normalizeBody(rawBody)
+  opts: PostOptions = {},
+): Promise<{ message: MessageDto; conversation: Conversation; parent: MessageDto | null }> {
+  const attachmentIds = [...new Set(opts.attachmentIds ?? [])]
+  if (attachmentIds.length > MAX_ATTACHMENTS) {
+    throw new MessagesError('invalid', `a message carries at most ${MAX_ATTACHMENTS} files`)
+  }
+  const body = attachmentIds.length > 0 && rawBody.trim() === '' ? '' : normalizeBody(rawBody)
   const c = await visible(d, actorId, conversationId, 'edit')
+  let parent: Message | null = null
+  if (opts.parentId) {
+    parent = isId(opts.parentId) ? await d.store.getMessage(opts.parentId) : null
+    if (!parent || parent.conversationId !== c.id) throw new MessagesError('not_found', 'message not found')
+    if (parent.parentId !== null) throw new MessagesError('invalid', 'reply to the thread’s first message')
+    if (parent.deletedAt) throw new MessagesError('invalid', 'that message was deleted')
+  }
+  const files = await attachableFiles(d, actorId, c, attachmentIds)
   const m: Message = {
     id: newId(d),
     conversationId: c.id,
     authorId: actorId,
     body,
-    parentId: null,
+    parentId: parent?.id ?? null,
     createdAt: now(d),
     editedAt: null,
     deletedAt: null,
   }
   await d.store.insertMessage(m)
-  await d.store.setLastRead(c.id, actorId, m.createdAt)
+  await d.store.insertAttachments(
+    files.map((f, position): Attachment => ({ messageId: m.id, fileId: f.id, position, name: f.name, mime: f.mime, size: f.size })),
+  )
+  // A thread reply leaves the main log's read state alone (the reply is not in it).
+  if (!parent) await d.store.setLastRead(c.id, actorId, m.createdAt)
   await d.store.appendEvent({ kind: 'message.created', conversationId: c.id, messageId: m.id, userId: null })
-  return { message: messageDto(m, await peopleById(d)), conversation: c }
+  const people = await peopleById(d)
+  return {
+    message: await messageDto(d, m, people),
+    conversation: c,
+    parent: parent ? await messageDto(d, parent, people) : null,
+  }
+}
+
+/** Files the actor uploaded into this conversation's folder (anything else is refused). */
+async function attachableFiles(d: MessagesDeps, actorId: string, c: Conversation, ids: string[]): Promise<DriveFileInfo[]> {
+  if (ids.length === 0) return []
+  const drive = requireDrive(d)
+  const folderId = await d.store.driveFolder(c.id)
+  const out: DriveFileInfo[] = []
+  for (const id of ids) {
+    const f = await drive.fileInfo(actorId, id)
+    if (!f || folderId === null || f.folderId !== folderId || f.ownerId !== actorId) {
+      throw new MessagesError('invalid', 'attach files by uploading them to this conversation')
+    }
+    out.push(f)
+  }
+  return out
+}
+
+function requireDrive(d: MessagesDeps): AttachmentPort {
+  if (!d.drive) throw new Error('messages: attachments need the Drive port (deps.drive), none is wired')
+  return d.drive
+}
+
+/** "Messages / #general" (or "Messages / DM · Bea, Carl"): the conversation's Drive folder, created on first use. */
+export async function conversationFolder(d: MessagesDeps, actorId: string, c: Conversation): Promise<string> {
+  const existing = await d.store.driveFolder(c.id)
+  if (existing) return existing
+  const drive = requireDrive(d)
+  let root = await d.store.driveFolder('root')
+  if (!root) root = await d.store.claimDriveFolder('root', await drive.createSystemFolder(null, 'Messages'))
+  let name = `#${c.name}`
+  let grants: GrantInput[]
+  if (c.kind === 'dm') {
+    const memberIds = await d.store.memberIds(c.id)
+    const people = await peopleById(d)
+    name = `DM · ${memberIds.map((u) => displayName(people.get(u))).sort().join(', ')}`.slice(0, 200)
+    grants = memberIds.map((userId) => ({ subject: { kind: 'user', userId }, level: 'edit' }))
+  } else {
+    // The channel's access, mirrored: the same subjects at the same levels.
+    grants = (await d.access.listGrants(actorId, 'channel', c.id)).map((g) => ({ subject: g.subject, level: g.level }))
+  }
+  const folderId = await drive.createSystemFolder(root, name)
+  await drive.initFolderGrants(actorId, folderId, grants)
+  const winner = await d.store.claimDriveFolder(c.id, folderId)
+  if (winner !== folderId) console.warn('[messages] concurrent first attachment: an empty folder was left unused', { folderId, winner })
+  return winner
+}
+
+export type UploadedAttachment = AttachmentDto
+
+/** Uploads files into the conversation's Drive folder (the Drive's size limit applies per file). */
+export async function uploadAttachments(
+  d: MessagesDeps,
+  actorId: string,
+  conversationId: string,
+  files: Array<{ name: string; bytes: Uint8Array; mime: string | null }>,
+): Promise<{ uploaded: UploadedAttachment[]; errors: string[] }> {
+  const c = await visible(d, actorId, conversationId, 'edit')
+  if (files.length === 0) throw new MessagesError('invalid', 'choose at least one file')
+  if (files.length > MAX_ATTACHMENTS) throw new MessagesError('invalid', `attach at most ${MAX_ATTACHMENTS} files at once`)
+  const drive = requireDrive(d)
+  const folderId = await conversationFolder(d, actorId, c)
+  const uploaded: UploadedAttachment[] = []
+  const errors: string[] = []
+  for (const f of files) {
+    const r = await drive.upload(actorId, folderId, f)
+    if (r.ok) uploaded.push({ fileId: r.file.id, name: r.file.name, mime: r.file.mime, size: r.file.size, image: isInlineImage(r.file.mime) })
+    else errors.push(r.error)
+  }
+  return { uploaded, errors }
 }
 
 export type MessagePage = { messages: MessageDto[]; hasMore: boolean }
@@ -282,15 +457,37 @@ export async function messagePage(
     before = isId(opts.beforeId) ? await d.store.getMessage(opts.beforeId) : null
     if (!before || before.conversationId !== c.id) throw new MessagesError('invalid', 'unknown cursor')
   }
+  if (before && before.parentId !== null) throw new MessagesError('invalid', 'unknown cursor')
   const rows = await d.store.listMessagesBefore(c.id, before, limit + 1)
-  const people = await peopleById(d)
   return {
     hasMore: rows.length > limit,
-    messages: rows
-      .slice(0, limit)
-      .reverse()
-      .map((m) => messageDto(m, people)),
+    messages: await messageDtos(d, rows.slice(0, limit).reverse()),
   }
+}
+
+/** A thread: its first message and every reply, oldest first. */
+export async function listThread(
+  d: MessagesDeps,
+  actorId: string,
+  parentId: string,
+): Promise<{ parent: MessageDto; replies: MessageDto[] }> {
+  const parent = isId(parentId) ? await d.store.getMessage(parentId) : null
+  if (!parent || parent.parentId !== null) throw new MessagesError('not_found', 'message not found')
+  await visible(d, actorId, parent.conversationId)
+  const people = await peopleById(d)
+  const [p, ...replies] = await messageDtos(d, [parent, ...(await d.store.listReplies(parent.id))], people)
+  return { parent: p, replies }
+}
+
+/** Toggles the actor's reaction; returns the message as everyone now sees it. */
+export async function toggleReaction(d: MessagesDeps, actorId: string, messageId: string, emoji: string): Promise<MessageDto> {
+  if (!(REACTION_EMOJI as readonly string[]).includes(emoji)) throw new MessagesError('invalid', 'pick a reaction from the list')
+  const m = isId(messageId) ? await d.store.getMessage(messageId) : null
+  if (!m || m.deletedAt) throw new MessagesError('not_found', 'message not found')
+  await visible(d, actorId, m.conversationId, 'edit')
+  await d.store.toggleReaction(m.id, actorId, emoji, now(d))
+  await d.store.appendEvent({ kind: 'message.reacted', conversationId: m.conversationId, messageId: m.id, userId: actorId })
+  return messageDto(d, m)
 }
 
 export async function markRead(d: MessagesDeps, actorId: string, conversationId: string): Promise<void> {
@@ -314,13 +511,42 @@ async function ownMessage(d: MessagesDeps, actorId: string, messageId: string): 
 
 export async function editMessage(d: MessagesDeps, actorId: string, messageId: string, rawBody: string) {
   const m = await ownMessage(d, actorId, messageId)
-  const body = normalizeBody(rawBody)
+  const hasFiles = (await d.store.attachmentsFor([m.id])).length > 0
+  const body = hasFiles && rawBody.trim() === '' ? '' : normalizeBody(rawBody)
   await d.store.updateMessage(m.id, { body, editedAt: now(d) })
   await d.store.appendEvent({ kind: 'message.edited', conversationId: m.conversationId, messageId: m.id, userId: null })
 }
 
+/** Whether the actor may delete this message: their own, or (owner/admin) anyone's in a channel. */
+export async function canDelete(d: MessagesDeps, actorId: string, m: Message, c: Conversation): Promise<boolean> {
+  if (m.authorId === actorId) return true
+  return c.kind === 'channel' && isModerator(await d.directory.role(actorId))
+}
+
+const isModerator = (role: string | null) => role === 'owner' || role === 'admin'
+
+/**
+ * Deletes a message: the author's own anywhere; an owner/admin may delete any
+ * message in a channel (moderation, audited as messages.message_moderated).
+ * DMs are never moderated — only their authors delete there.
+ */
 export async function deleteMessage(d: MessagesDeps, actorId: string, messageId: string) {
-  const m = await ownMessage(d, actorId, messageId)
+  const m = isId(messageId) ? await d.store.getMessage(messageId) : null
+  if (!m || m.deletedAt) throw new MessagesError('not_found', 'message not found')
+  const c = await visible(d, actorId, m.conversationId)
+  if (!(await canDelete(d, actorId, m, c))) throw new MessagesError('forbidden', 'you can only delete your own messages')
+  const moderated = m.authorId !== actorId
+  const audit = d.audit
+  if (moderated && !audit) {
+    throw new Error('messages: moderation deletes need the audit sink (deps.audit), none is wired')
+  }
   await d.store.updateMessage(m.id, { deletedAt: now(d) })
+  if (moderated && audit) {
+    await audit({
+      type: 'messages.message_moderated',
+      principalId: actorId,
+      payload: { conversationId: c.id, channel: c.name, messageId: m.id, authorId: m.authorId },
+    })
+  }
   await d.store.appendEvent({ kind: 'message.deleted', conversationId: m.conversationId, messageId: m.id, userId: null })
 }

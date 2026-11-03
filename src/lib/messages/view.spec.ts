@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { continuesRun, groupByDay, mergeMessages, setUnread, upsertConversation, type ConversationView, type MessageView } from './view'
+import {
+  applyFrame,
+  continuesRun,
+  formatSize,
+  groupByDay,
+  mergeMessages,
+  reactionTitle,
+  setUnread,
+  upsertConversation,
+  type ConversationView,
+  type MessageView,
+} from './view'
 
 const msg = (id: string, createdAt: string, authorId = 'a'): MessageView => ({
   id,
@@ -10,6 +21,11 @@ const msg = (id: string, createdAt: string, authorId = 'a'): MessageView => ({
   createdAt,
   editedAt: null,
   deleted: false,
+  parentId: null,
+  replyCount: 0,
+  lastReplyAt: null,
+  reactions: [],
+  attachments: [],
 })
 
 describe('mergeMessages', () => {
@@ -67,5 +83,41 @@ describe('conversation list', () => {
     list = upsertConversation(list, c('d2', 'dm', 'Carl'))
     expect(list.map((x) => x.id)).toEqual(['2', '1', 'd2', 'd1'])
     expect(setUnread(list, '1', 3).find((x) => x.id === '1')!.unread).toBe(3)
+  })
+})
+
+describe('applyFrame (C2)', () => {
+  const p = msg('p', '2026-11-03T09:00:00.000Z')
+  const reply = { ...msg('r', '2026-11-03T09:05:00.000Z', 'b'), parentId: 'p' }
+  it('a reply goes to its open thread and refreshes the parent in the log, never into the log itself', () => {
+    const out = applyFrame([p], { parentId: 'p', replies: [] }, {
+      action: 'created',
+      message: reply,
+      parent: { ...p, replyCount: 1, lastReplyAt: reply.createdAt },
+      unread: 0,
+    })
+    expect(out.log.map((m) => [m.id, m.replyCount])).toEqual([['p', 1]])
+    expect(out.replies?.map((m) => m.id)).toEqual(['r'])
+  })
+  it('a reply to another thread leaves the open thread alone', () => {
+    const out = applyFrame([p], { parentId: 'other', replies: [] }, { action: 'created', message: reply, parent: p, unread: 0 })
+    expect(out.replies).toEqual([])
+  })
+  it('a reaction/edit on a message not loaded (older page) is not pulled into the log', () => {
+    const old = msg('old', '2026-11-01T09:00:00.000Z')
+    expect(applyFrame([p], null, { action: 'reacted', message: old, parent: null, unread: 0 }).log.map((m) => m.id)).toEqual(['p'])
+    expect(applyFrame([p], null, { action: 'created', message: old, parent: null, unread: 0 }).log.map((m) => m.id)).toEqual(['old', 'p'])
+  })
+})
+
+describe('reactionTitle / formatSize', () => {
+  it('names who reacted', () => {
+    expect(reactionTitle({ emoji: '👍', userIds: ['a'], names: ['Bea'] })).toBe('Bea')
+    expect(reactionTitle({ emoji: '👍', userIds: ['a', 'b'], names: ['Bea', 'Carl'] })).toBe('Bea and Carl')
+    expect(reactionTitle({ emoji: '👍', userIds: [], names: ['A', 'B', 'C', 'D', 'E'] })).toBe('A, B, C and 2 others')
+  })
+  it('formats sizes', () => {
+    expect(formatSize(512)).toBe('512 B')
+    expect(formatSize(1536)).toBe('1.5 KB')
   })
 })

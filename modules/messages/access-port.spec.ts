@@ -69,4 +69,20 @@ describe('messages × real access module', () => {
       /already has grants/,
     )
   })
+
+  it('first grants: a member creator goes through access.initializeGrants, an owner/admin through setGrants', async () => {
+    const { deps, access } = realAccessFixture()
+    const init = vi.spyOn(access, 'initializeGrants')
+    const set = vi.spyOn(access, 'setGrants')
+    const mine = await createChannel(deps, 'bea', { name: 'beas', private: true })
+    expect(init).toHaveBeenCalledTimes(1)
+    expect(init).toHaveBeenCalledWith('bea', 'channel', mine.id, [{ subject: { kind: 'user', userId: 'bea' }, level: 'manage' }])
+    expect(set).not.toHaveBeenCalled()
+    const owners = await createChannel(deps, 'olga', { name: 'olgas', private: false })
+    expect(init).toHaveBeenCalledTimes(1)
+    expect(set).toHaveBeenCalledWith('olga', 'channel', owners.id, [
+      { subject: { kind: 'user', userId: 'olga' }, level: 'manage' },
+      { subject: { kind: 'company' }, level: 'edit' },
+    ])
+  })
 })
