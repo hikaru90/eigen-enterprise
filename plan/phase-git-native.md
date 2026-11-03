@@ -75,3 +75,10 @@ Each: tests first, gates green, a **rebuild-from-scratch test** for the surface 
 - **Key loss = data loss** for encrypted content. The recovery code UX must make this unmistakable; optional second holder (an admin) can be added later.
 - **Two writers** (app + people pushing from git): conflicts fail loud; no auto-merge of encrypted files.
 - **Rebuild time** grows with history; incremental reconcile by diff, full rebuild only on a fresh server.
+
+## 8. Code, versions and restore (owner, 2026-11-03)
+
+- **`system.yaml`** (data repo root) pins what runs: core release + commit, each extension with version + commit (`plan/phase-extensions.md`), installed apps with their source commits. Every change to it is a commit authored by the person who clicked deploy/update.
+- **Restore** = fresh server → ee clones the data repo → reads `system.yaml` → installs exactly that core and those extensions → the core rebuilds the index from the files. Checking out an older data commit and restoring installs the matching older code.
+- **Format versions:** every file family carries `format` + `version` (like eigen-design's `eigen-doc` v1). A core release that changes a format ships a migration; the migration's file changes are committed in the same step that bumps `system.yaml`, so data commit X always matches code commit Y. Migrations are expand/contract (D15) so updates stay reversible.
+- **The core is never forked per company** (extensions plan): company code lives in the extensions repo, never in a company copy of the core.

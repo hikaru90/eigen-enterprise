@@ -16,10 +16,11 @@ export type GroupStore = {
   getGroup(id: string): Promise<Group | null>
   findGroupByName(name: string): Promise<Group | null>
   insertGroup(group: { id: string; name: string; description: string; createdBy: string; memberIds: string[] }): Promise<void>
-  updateGroup(id: string, patch: { name: string; description: string }): Promise<void>
+  /** `actorId` (who acts) becomes the commit author in the git-native store. */
+  updateGroup(id: string, patch: { name: string; description: string }, actorId?: string): Promise<void>
   /** Replace the full member list. */
-  setGroupMembers(id: string, memberIds: string[]): Promise<void>
-  deleteGroup(id: string): Promise<void>
+  setGroupMembers(id: string, memberIds: string[], actorId?: string): Promise<void>
+  deleteGroup(id: string, actorId?: string): Promise<void>
   /** Which of these user ids are company members. */
   existingMemberIds(ids: string[]): Promise<Set<string>>
 }
@@ -97,8 +98,8 @@ export async function updateGroup(
   const description = input.description === undefined ? group.description : parse(descriptionSchema, input.description)
   if (name !== group.name) await uniqueName(name, group.id, deps)
   const memberIds = input.memberIds === undefined ? group.memberIds : await checkMembers(input.memberIds, deps)
-  if (name !== group.name || description !== group.description) await deps.groups.updateGroup(group.id, { name, description })
-  if (input.memberIds !== undefined) await deps.groups.setGroupMembers(group.id, memberIds)
+  if (name !== group.name || description !== group.description) await deps.groups.updateGroup(group.id, { name, description }, actor.id)
+  if (input.memberIds !== undefined) await deps.groups.setGroupMembers(group.id, memberIds, actor.id)
   await deps.audit({
     type: 'members.group_updated',
     principalId: actor.id,
@@ -121,7 +122,7 @@ export async function deleteGroup(actor: Actor, input: { groupId: string }, deps
   assertCanManage(actor)
   const group = await deps.groups.getGroup(input.groupId)
   if (!group) throw new MemberError('not_found', 'No such group.')
-  await deps.groups.deleteGroup(group.id)
+  await deps.groups.deleteGroup(group.id, actor.id)
   await deps.audit({ type: 'members.group_deleted', principalId: actor.id, payload: { groupId: group.id, name: group.name } })
   return { groupId: group.id, name: group.name }
 }
