@@ -68,7 +68,14 @@
   let save = $state<AutosaveState>({ status: 'saved', error: null, savedAt: null })
   let revs = $state<Revision[]>([])
   let lockError = $state<string | null>(null)
-  let editor = $state<{ load(text: string): void; setEditable(next: boolean): void } | null>(null)
+  let editor = $state<{
+    load(text: string): void
+    setEditable(next: boolean): void
+    markdown?: () => string | null
+    baseline?: () => string | null
+  } | null>(null)
+  /** The last text the editor reported (or was loaded with). */
+  let lastSeen = untrack(() => content)
   /** The text as last loaded from / saved to the server (what a read view shows). */
   let base = untrack(() => content)
   /** Keystrokes made while the lock is being taken. */
@@ -108,6 +115,7 @@
     // The page is going away (closed, reloaded, backgrounded on a phone): send
     // the last edits with keepalive, which outlives the unload.
     const sendOnExit = () => {
+      catchUp()
       const text = autosave.unsaved()
       if (text !== null && mode.kind === 'editing')
         void driveApi.writeTextOnExit(fileId, text, session)
@@ -138,6 +146,7 @@
   let leaving = false
   beforeNavigate((nav) => {
     if (leaving) return
+    catchUp()
     const startingUp = mode.kind === 'starting'
     if (!startingUp && mode.kind !== 'editing') return
     if (!startingUp && autosave.unsaved() === null && save.status !== 'saving') return
@@ -166,9 +175,10 @@
             !confirm('Your latest changes could not be saved. Leave anyway and lose them?')
           )
             return
-          // The navigation the person already started (an app URL SvelteKit resolved).
+          // The navigation the person already started (an app URL SvelteKit resolved);
+          // invalidateAll: data preloaded on hover predates the save (sizes would read stale).
           // eslint-disable-next-line svelte/no-navigation-without-resolve
-          await goto(to.href)
+          await goto(to.href, { invalidateAll: true })
         } finally {
           leaving = false
         }
@@ -282,6 +292,7 @@
             editor?.load(text)
             autosave.reset(text)
             base = text
+            lastSeen = text
           }
         }
       }
@@ -310,6 +321,7 @@
     editor?.load(text)
     autosave.reset(text)
     base = text
+    lastSeen = text
   }
 
   async function refreshRevisions() {
@@ -335,7 +347,18 @@
     await navigator.clipboard.writeText(text)
   }
 
+  /**
+   * The Markdown editor reports changes debounced (~200 ms): before leaving,
+   * pick up what was typed since, so the last keystrokes are saved too.
+   */
+  function catchUp() {
+    const md = editor?.markdown?.()
+    if (md == null || md === lastSeen || md === editor?.baseline?.()) return
+    onchange(md)
+  }
+
   const onchange = (text: string) => {
+    lastSeen = text
     if (mode.kind === 'editing') {
       autosave.change(text)
       touchIdle()

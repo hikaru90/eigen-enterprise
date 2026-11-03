@@ -90,7 +90,10 @@ test('invite link → passkey (no email) → group → remove ends the session',
   const mails = await sql()`select 1 from mail_fake_sent where to_address = ${bEmail}`
   expect(mails.length).toBe(0)
   // Skipping is not silent: it warns that without a passkey there is no way back in.
-  await b.getByTestId('invite-skip-passkey').click()
+  await expect(async () => {
+    await b.getByTestId('invite-skip-passkey').click()
+    await expect(b.getByTestId('invite-skip-warning')).toBeVisible({ timeout: 2000 })
+  }).toPass()
   await expect(b.getByTestId('invite-skip-warning')).toContainText('can’t sign in again')
   await b.getByTestId('invite-create-passkey').click()
   await b.waitForURL((u) => !u.pathname.startsWith('/invite'), { timeout: 30_000 })

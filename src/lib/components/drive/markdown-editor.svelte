@@ -80,6 +80,10 @@
   export function markdown(): string | null {
     return handle?.markdown() ?? null
   }
+  /** The Markdown as last loaded (what "no change" means). */
+  export function baseline(): string | null {
+    return handle?.baseline() ?? null
+  }
 
   function run(action: MarkdownAction) {
     handle?.run(action)
