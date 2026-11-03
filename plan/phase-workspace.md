@@ -14,6 +14,8 @@
 - **W-6 Co-editing v1:** one editor at a time per document (visible "X is editing" lock with takeover), autosave, revision history. Live multi-cursor co-editing is a later milestone.
 - **W-7 Navigation (recommendation):** the team chat is **Messages**, the Drive is **Drive**; the company agent's chat at `/` is renamed **Assistant** so there are never two things called "Chat". Nav: Messages, Drive, Assistant, Overview, Website, Email, Brand, Agent, Memory, Settings.
 
+- **W-8 (owner, 2026-11-03):** the agent's writes are refused while a person is editing a file (edit protection stays). Attachment folders ("Messages → #channel" in Drive) stay editable for everyone with access to the conversation (mirror of the channel's grants).
+
 ## 2. Shared contract: access (built first in T1, consumed by Chat and Drive)
 
 `src/lib/server/access/` — one model for "who may see/change this":
