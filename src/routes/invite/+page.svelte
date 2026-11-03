@@ -33,7 +33,7 @@
             : res.error.message || 'The passkey could not be created.'
         return
       }
-      window.location.href = resolve('/')
+      window.location.href = resolve('/messages')
     } catch (err) {
       passkeyError = err instanceof Error ? err.message : 'The passkey could not be created.'
     } finally {
@@ -83,7 +83,7 @@
           <p class="text-muted-foreground text-[11px]">
             Without a passkey you stay signed in on this device only. You can add one later in
             Settings → Passkeys.
-            <a href={resolve('/')} class="underline underline-offset-4" data-testid="invite-skip-passkey"
+            <a href={resolve('/messages')} class="underline underline-offset-4" data-testid="invite-skip-passkey"
               >Later</a
             >
           </p>

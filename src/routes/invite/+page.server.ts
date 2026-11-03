@@ -28,7 +28,7 @@ export const load: PageServerLoad = async (event) => {
     if (event.url.searchParams.get('step') === 'passkey') {
       return { step: 'passkey' as const, token: '', ok: true as const, message: null, companyName, email: event.locals.user.email, role: null }
     }
-    throw redirect(302, '/')
+    throw redirect(302, '/messages')
   }
   const token = event.url.searchParams.get('token') ?? ''
   const st = await inviteStatus(token, { store: dbMemberStore })

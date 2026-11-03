@@ -43,7 +43,7 @@ describe('/invite page', () => {
   it('signed in: the passkey step shows on ?step=passkey, anything else goes home', async () => {
     const me = { id: 'u', email: 'new@k.co' }
     expect(await load(ev('http://x/invite?step=passkey', undefined, me))).toMatchObject({ step: 'passkey', email: 'new@k.co' })
-    await expect(load(ev('http://x/invite?token=good', undefined, me))).rejects.toMatchObject({ status: 302, location: '/' })
+    await expect(load(ev('http://x/invite?token=good', undefined, me))).rejects.toMatchObject({ status: 302, location: '/messages' })
   })
 
   it('joins without any email: a server-minted code signs in, then on to the passkey step', async () => {

@@ -1,4 +1,8 @@
+import { eq } from 'drizzle-orm'
+import { normalizeUserNameFields } from '$lib/server/auth-user-name'
 import { getDb } from '$lib/server/db'
+import { authDb } from '$lib/server/db/auth-db'
+import { user } from '$lib/server/db/auth.schema'
 import { userPreference } from '$lib/server/db/schema'
 
 /**
@@ -50,7 +54,9 @@ export async function resetWelcomeOnboarding(userId: string): Promise<void> {
 /**
  * Persists the name given during the boot sequence ("What should I call you?").
  * Upsert on user_preference — idempotent, fails loud: a silently lost name would
- * ask again forever or greet a stranger.
+ * ask again forever or greet a stranger. It is also the person's account name
+ * (user.name / first / last): members, messages, Drive and the shell show it,
+ * whatever happens later in the onboarding (Skip keeps it).
  */
 export async function setWelcomeDisplayName(userId: string, name: string): Promise<void> {
   const displayName = name.trim()
@@ -71,4 +77,15 @@ export async function setWelcomeDisplayName(userId: string, name: string): Promi
         updatedAt: new Date(),
       },
     })
+  await setAccountName(userId, displayName)
+}
+
+/** Writes a display name to the account (user.name + first/last name). */
+export async function setAccountName(userId: string, name: string): Promise<void> {
+  const fields = normalizeUserNameFields({ name })
+  if (!fields.name) throw new Error('Name must not be empty.')
+  await authDb
+    .update(user)
+    .set({ name: fields.name, firstName: fields.firstName ?? null, lastName: fields.lastName ?? null })
+    .where(eq(user.id, userId))
 }
