@@ -2,6 +2,21 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-03 — SHIPPED (main, not pushed): workspace v1 — Teams replacement (team, access, Messages, Drive, editors)
+
+Plan: `plan/phase-workspace.md` (owner decisions W-1…W-7). Streams merged `--no-ff`: T1 `ca7708e`, C1 `1605acc`, D1 `7532226`, ee body limit `35afaba`, D2 `ce8d260`, C2 `91ec708`. Gates on main: svelte-check 0 errors, unit **4934 passed / 17 skipped / 0 failed**. Each stream ran its own multi-member e2e (team-invite-passkey, messages, messages-depth, drive, drive-editors); not yet run together on main, not yet on the test server.
+
+- **Team (T1):** groups/departments (Settings → Members & invites), the shared access contract `src/lib/server/access` (grants to user/group/company at view/edit/manage, folder inheritance via caller-supplied ancestors, owner/admin always manage, fail closed, audited `access.grants_set`; `initializeGrants` for a creator's first grants). **Changed (announced to owner):** joining via invite no longer needs an emailed code — the one-time invite link itself signs the person in (like the claim link), then a passkey is registered; the link is emailed additionally once SES exists.
+- **Messages (C1+C2):** `/messages` — public/private channels, DMs, threads, reactions, edit/delete own, owner/admin moderation in channels (audited), attachments into a per-conversation Drive folder with the conversation's access; live via SSE + LISTEN/NOTIFY (both blue-green slots), gap-free catch-up (advisory lock from id allocation to commit, tested against Postgres), unread counts, push for DMs/mentions/thread participants. The agent reads public channels only, never private channels or DMs; no posting tool (W-2). **Nav:** the agent chat is now "Assistant" (W-7).
+- **Drive (D1+D2):** `/drive` — folders, upload (drag-and-drop, 100 MB default), download, rename, move, trash/restore, share with people/groups/company, "Shared with me", search, previews (Markdown, CSV, images, PDF, text). Bytes content-addressed on disk (`DRIVE_STORAGE_DIR` or `${EE_STATE_DIR}/drive`, else fail loud), metadata/revisions in Postgres. Editors in place: Markdown via Milkdown 7.22.3 (file stays plain .md), CSV grid via papaparse 5.7.0 (file stays RFC 4180 CSV), autosave, one-editor lock with take-over (`drive_edit_lock`), revisions with restore; view-only users never get the editor. Agent writes are refused while a person is editing.
+- **ee:** os workload gets `BODY_SIZE_LIMIT=110M` (adapter-node's 512K default would have refused uploads).
+
+**Open decisions (owner):** agent write refused during someone's editing session (recommended: keep); public channel attachment folders are editable by every member (mirror of channel grants) — alternative view-only folder with system uploads.
+**Known gaps:** revisions per ~1.2 s autosave window (coalesce per editing session); file header size/changed doesn't refresh after autosave; real web push unverified (no VAPID keys on the test server); cross-process delivery tested only in one process; drive.e2e flaky under machine load (clicks before hydration); folder grants copied once (no re-sync if channel access changes later); off-box backups missing — **must exist before real company use**.
+**Migrations:** 0107 team/access, 0108 messages core, 0109 drive, 0110 drive edit lock, 0111 messages depth.
+
+**Next:** release main to the test server and run the multi-member proof (owner + 2 members with passkeys: channel, DM, thread, shared folder, Markdown + CSV editing); then backups; then install on the owner's real server.
+
 ## 2026-11-03 — SHIPPED (main, not pushed): cohesion C3 + C3b — Memory and Agent areas, the chosen style app-wide, one page frame
 
 Gates on main: svelte-check 0 errors, full unit **4741 passed / 15 skipped / 0 failed**; e2e on the merged tree: shell-walk, memory-page, agent-roadmap, agent-runs-live, brand-picker/system/wide, mail-fake-transport, onboarding-welcome, auth, pricing, website-apps, page-frame green. Owner can see it: "App Page Inventory" (post-C3, compared with C0) and "One Page Frame" artifacts. Test server reset with the owner's OK (2026-11-02): fresh unclaimed install of `5df230738863b5ba` (= main before C3), claim link handed over in the session.
