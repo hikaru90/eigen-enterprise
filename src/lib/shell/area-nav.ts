@@ -31,6 +31,13 @@ export const BRAND_TABS: readonly AreaTab[] = [
   { id: 'extract', label: 'Extract', href: '/brand/extract' },
 ]
 
+/** Drive (D1): your own files, what others shared with you, and the trash. */
+export const DRIVE_TABS: readonly AreaTab[] = [
+  { id: 'mine', label: 'My drive', href: '/drive', match: ['/drive/folder'] },
+  { id: 'shared', label: 'Shared with me', href: '/drive/shared' },
+  { id: 'trash', label: 'Trash', href: '/drive/trash' },
+]
+
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(`${prefix}/`)
 
 /**

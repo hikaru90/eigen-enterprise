@@ -18,9 +18,10 @@ describe('buildShellNav', () => {
     expect(nav.items.map((i) => i.id)).toEqual(['chat', 'overview', 'website', 'agent', 'settings'])
   })
 
-  it('keeps the one fixed order: Messages, Assistant, Overview, Website, Email, Brand, Agent, Memory, Settings', () => {
+  it('keeps the one fixed order: Messages, Assistant, Overview, Website, Email, Brand, Agent, Memory, Drive, Settings', () => {
     const nav = buildShellNav(
       [
+        manifest('drive', 'Drive'),
         manifest('memory', 'Memory'),
         manifest('recap', 'Recap'),
         manifest('website', 'Website'),
@@ -33,6 +34,7 @@ describe('buildShellNav', () => {
         ['website', true],
         ['email', true],
         ['brand', false],
+        ['drive', true],
       ]),
     )
     expect(nav.items.map((i) => [i.name, i.href, i.active])).toEqual([
@@ -44,6 +46,7 @@ describe('buildShellNav', () => {
       ['Brand', '/brand', false],
       ['Agent', '/agent', true],
       ['Memory', '/m/memory', false],
+      ['Drive', '/drive', true],
       ['Recap', '/m/recap', false],
       ['Settings', '/settings', true],
     ])

@@ -1,7 +1,7 @@
+import type { Grant } from './types'
 import { describe, expect, it, vi } from 'vitest'
 import { memoryAccessStore } from './memory-store'
 import { createAccess } from './service'
-import type { Grant } from './types'
 
 const g = (resourceType: Grant['resourceType'], resourceId: string, subject: Grant['subject'], level: Grant['level']): Grant => ({
   resourceType,
@@ -167,5 +167,30 @@ describe('setGrants / listGrants', () => {
     await expect(access.listGrants('m', 'file', 'doc')).rejects.toThrow(/don't have access/)
     await expect(access.listGrants('o', 'file', 'missing')).rejects.toThrow(/don't have access/)
     expect(await access.listGrants('o', 'file', 'doc')).toEqual([])
+  })
+})
+
+describe('initializeGrants (a creator sets the first grants of a new resource)', () => {
+  it('a member creator sets the first set, audited as them; afterwards only managers change it', async () => {
+    const { access, audit } = setup()
+    expect(await access.canAccess('m', 'folder', 'f-root', 'manage')).toBe(false)
+    await access.initializeGrants('m', 'folder', 'f-root', [{ subject: { kind: 'user', userId: 'm' }, level: 'manage' }])
+    expect(await access.canAccess('m', 'folder', 'f-root', 'manage')).toBe(true)
+    expect(audit).toHaveBeenCalledWith({
+      type: 'access.grants_set',
+      principalId: 'm',
+      payload: { resourceType: 'folder', resourceId: 'f-root', before: [], after: [{ subject: 'user:m', level: 'manage' }] },
+    })
+    await expect(access.initializeGrants('n', 'folder', 'f-root', [{ subject: { kind: 'company' }, level: 'view' }])).rejects.toMatchObject({ code: 'forbidden' })
+  })
+
+  it('fails closed: unknown creator, unknown resource, invalid subjects', async () => {
+    const { access, audit } = setup()
+    await expect(access.initializeGrants('ghost', 'file', 'doc', [])).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(access.initializeGrants('m', 'file', 'nope', [])).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(access.initializeGrants('m', 'file', 'doc', [{ subject: { kind: 'user', userId: 'ghost' }, level: 'view' }])).rejects.toMatchObject({
+      code: 'invalid_grant',
+    })
+    expect(audit).not.toHaveBeenCalled()
   })
 })

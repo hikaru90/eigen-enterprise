@@ -19,4 +19,5 @@ export const access = createAccess({ store: dbAccessStore, audit: kernelAudit })
 export const canAccess = access.canAccess
 export const listGrants = access.listGrants
 export const setGrants = access.setGrants
+export const initializeGrants = access.initializeGrants
 export const registerResourceResolver = access.registerResourceResolver

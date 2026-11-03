@@ -1,5 +1,4 @@
-import type { Access, AccessStore } from '$lib/server/access'
-import type { AccessAudit } from '$lib/server/access/service'
+import type { Access } from '$lib/server/access'
 
 /**
  * The messages module's one seam onto the access contract
@@ -39,14 +38,12 @@ export type AccessPort = {
 const RANK: Record<AccessLevel, number> = { view: 1, edit: 2, manage: 3 }
 export const levelSatisfies = (held: AccessLevel, wanted: AccessLevel) => RANK[held] >= RANK[wanted]
 
-/** Adapter over the real access module. `store` + `audit` are the module's own, used only by initGrants. */
+/** Adapter over the real access module. */
 export function accessPortFrom(deps: {
-  access: Pick<Access, 'canAccess' | 'listGrants' | 'setGrants'>
-  store: Pick<AccessStore, 'grantsOn' | 'replaceGrants' | 'existingUserIds' | 'existingGroupIds'>
-  audit: AccessAudit
+  access: Pick<Access, 'canAccess' | 'listGrants' | 'setGrants' | 'initializeGrants'>
   listGroups: () => Promise<AccessGroup[]>
 }): AccessPort {
-  const { access, store, audit } = deps
+  const { access } = deps
   return {
     canAccess: (u, t, id, level) => access.canAccess(u, t, id, level),
     listGrants: (a, t, id) => access.listGrants(a, t, id),
@@ -54,33 +51,9 @@ export function accessPortFrom(deps: {
       await access.setGrants(a, t, id, grants)
     },
     async initGrants(creatorId, t, id, grants) {
-      if (await access.canAccess(creatorId, t, id, 'manage')) {
-        await access.setGrants(creatorId, t, id, grants)
-        return
-      }
-      if ((await store.grantsOn([{ resourceType: t, resourceId: id }])).length > 0) {
-        throw new Error(`${t} ${id} already has grants; only a manager can change them`)
-      }
-      const userIds = grants.flatMap((g) => (g.subject.kind === 'user' ? [g.subject.userId] : []))
-      const groupIds = grants.flatMap((g) => (g.subject.kind === 'group' ? [g.subject.groupId] : []))
-      const [users, groups] = await Promise.all([store.existingUserIds(userIds), store.existingGroupIds(groupIds)])
-      for (const u of userIds) if (!users.has(u)) throw new Error(`no such member: ${u}`)
-      for (const g of groupIds) if (!groups.has(g)) throw new Error(`no such group: ${g}`)
-      const next: Grant[] = grants.map((g) => ({ resourceType: t, resourceId: id, subject: g.subject, level: g.level }))
-      await store.replaceGrants(t, id, next, creatorId)
-      await audit({
-        type: 'access.grants_set',
-        principalId: creatorId,
-        payload: {
-          resourceType: t,
-          resourceId: id,
-          before: [],
-          after: next.map((g) => ({
-            subject: g.subject.kind === 'user' ? `user:${g.subject.userId}` : g.subject.kind === 'group' ? `group:${g.subject.groupId}` : 'company',
-            level: g.level,
-          })),
-        },
-      })
+      // An owner/admin creator already manages it; a member creator sets the first grants (refused once any exist).
+      if (await access.canAccess(creatorId, t, id, 'manage')) await access.setGrants(creatorId, t, id, grants)
+      else await access.initializeGrants(creatorId, t, id, grants)
     },
     listGroups: deps.listGroups,
   }
@@ -89,13 +62,10 @@ export function accessPortFrom(deps: {
 /** The live port: the real access module, its Postgres store, kernel audit, member groups. */
 export async function liveAccessPort(channelExists: (id: string) => Promise<boolean>): Promise<AccessPort> {
   const accessMod = await import('$lib/server/access')
-  const { dbAccessStore } = await import('$lib/server/access/db-store')
   const { dbGroupStore } = await import('$lib/server/members/groups-db-store')
   accessMod.registerResourceResolver('channel', channelExists)
   return accessPortFrom({
     access: accessMod.access,
-    store: dbAccessStore,
-    audit: accessMod.kernelAudit,
     listGroups: async () => (await dbGroupStore.listGroups()).map((g) => ({ id: g.id, name: g.name, memberIds: g.memberIds })),
   })
 }

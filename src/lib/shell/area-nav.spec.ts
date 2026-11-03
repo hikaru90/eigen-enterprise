@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { AGENT_TABS, BRAND_TABS, WEBSITE_TABS, currentAreaTab } from './area-nav'
+import { AGENT_TABS, BRAND_TABS, DRIVE_TABS, WEBSITE_TABS, currentAreaTab } from './area-nav'
 
 describe('area sub-navigation (one page frame)', () => {
   it('lists the tabs of each area in one order', () => {
     expect(AGENT_TABS.map((t) => t.label)).toEqual(['Runs', 'Activity', 'Roadmap'])
     expect(WEBSITE_TABS.map((t) => t.label)).toEqual(['Apps', 'Site', 'Settings'])
     expect(BRAND_TABS.map((t) => t.label)).toEqual(['Style', 'Design system', 'Extract'])
+    expect(DRIVE_TABS.map((t) => t.label)).toEqual(['My drive', 'Shared with me', 'Trash'])
   })
   it.each([
     [AGENT_TABS, '/agent/runs', 'runs'],
@@ -20,6 +21,10 @@ describe('area sub-navigation (one page frame)', () => {
     [BRAND_TABS, '/brand', 'style'],
     [BRAND_TABS, '/brand/system', 'system'],
     [BRAND_TABS, '/brand/extract', 'extract'],
+    [DRIVE_TABS, '/drive', 'mine'],
+    [DRIVE_TABS, '/drive/folder/abc', 'mine'],
+    [DRIVE_TABS, '/drive/shared', 'shared'],
+    [DRIVE_TABS, '/drive/trash', 'trash'],
   ] as const)('%#: %s → current tab', (tabs, path, id) => {
     expect(currentAreaTab(tabs, path)).toBe(id)
   })

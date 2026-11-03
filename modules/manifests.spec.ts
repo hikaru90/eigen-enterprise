@@ -110,8 +110,8 @@ describe('merged module manifests', () => {
     for (const name of APPROVAL_REQUIRED_TOOLS) expect(k.registry.get(name), name).toBeDefined()
   })
 
-  it('system modules are website, email, members, memory, brand and messages, and boot activates them', async () => {
-    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages'])
+  it('system modules are website, email, members, memory, brand, messages and drive, and boot activates them', async () => {
+    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages', 'drive'])
     const { kernel: k, activations } = kernel()
     await ensureSystemModulesActive(k)
     expect(await activations.get('website')).toBe(true)
