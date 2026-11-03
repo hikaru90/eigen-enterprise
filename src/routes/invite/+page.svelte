@@ -2,82 +2,117 @@
   import type { ActionData, PageData } from './$types'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
+  import { authClient } from '$lib/auth-client'
   import { Button } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
   import { Label } from '$lib/components/ui/label'
   import { docTitle } from '$lib/shell/title'
   import PublicFrame from '$lib/components/page/public-frame.svelte'
 
-  /** Accept an invite: one click emails a code to the invited address; the code signs you in as a member. */
+  /**
+   * Accept an invite (owner decision W-4): the link is the proof. Step 1 —
+   * your name, Join (the account is created with the invited role, signed in).
+   * Step 2 — create a passkey for this device: the way back in, no email.
+   */
   let { data, form }: { data: PageData; form: ActionData } = $props()
 
-  const CODE_PATTERN = '[0-9]{6}'
-  const codeStep = $derived(form?.step === 'code')
   const company = $derived(data.companyName ?? 'your company')
+
+  let passkeyBusy = $state(false)
+  let passkeyError = $state<string | null>(null)
+
+  async function createPasskey() {
+    passkeyBusy = true
+    passkeyError = null
+    try {
+      const res = await authClient.passkey.addPasskey({ name: 'Passkey from the invite' })
+      if (res?.error) {
+        passkeyError =
+          ('code' in res.error && res.error.code === 'canceled') || /cancel/i.test(res.error.message ?? '')
+            ? 'The passkey prompt was cancelled. Try again.'
+            : res.error.message || 'The passkey could not be created.'
+        return
+      }
+      window.location.href = resolve('/')
+    } catch (err) {
+      passkeyError = err instanceof Error ? err.message : 'The passkey could not be created.'
+    } finally {
+      passkeyBusy = false
+    }
+  }
 </script>
 
 <svelte:head>
-  <title>{docTitle(data.ok ? `Join ${company}` : 'Join your company')}</title>
+  <title>{docTitle(data.step === 'passkey' ? 'Create your passkey' : data.ok ? `Join ${company}` : 'Join your company')}</title>
 </svelte:head>
 
 <PublicFrame
-  title={data.ok ? `Join ${company}` : 'Join your company'}
-  subtitle={data.ok
-    ? `You're invited to join as ${data.role === 'admin' ? 'an admin' : 'a member'}.`
-    : null}
+  title={data.step === 'passkey'
+    ? 'Create your passkey'
+    : data.ok
+      ? `Join ${company}`
+      : 'Join your company'}
+  subtitle={data.step === 'passkey'
+    ? `You're in. A passkey is how you sign in to ${company} from now on.`
+    : data.ok
+      ? `You're invited to join as ${data.role === 'admin' ? 'an admin' : 'a member'}.`
+      : null}
 >
   <Card.Root class="border border-border shadow-none">
     <Card.Content class="space-y-4">
-      {#if !data.ok}
+      {#if data.step === 'passkey'}
+        <div class="space-y-4" data-testid="invite-passkey-step">
+          <p class="text-xs">
+            Your device saves the passkey and unlocks it with your fingerprint, face or device PIN.
+            No password, no code by email. Signed in as <strong>{data.email}</strong>.
+          </p>
+          <Button
+            type="button"
+            class="w-full rounded-[4px]"
+            onclick={createPasskey}
+            disabled={passkeyBusy}
+            data-testid="invite-create-passkey"
+          >
+            {passkeyBusy ? 'Waiting for your device…' : 'Create a passkey'}
+          </Button>
+          {#if passkeyError}
+            <p class="text-destructive text-xs" role="alert" data-testid="invite-passkey-error">
+              {passkeyError}
+            </p>
+          {/if}
+          <p class="text-muted-foreground text-[11px]">
+            Without a passkey you stay signed in on this device only. You can add one later in
+            Settings → Passkeys.
+            <a href={resolve('/')} class="underline underline-offset-4" data-testid="invite-skip-passkey"
+              >Later</a
+            >
+          </p>
+        </div>
+      {:else if !data.ok}
         <p class="text-xs" data-testid="invite-unavailable">{data.message}</p>
         <a
           href={resolve('/login')}
           class="inline-block text-xs font-medium underline underline-offset-4"
           data-testid="invite-sign-in">Sign in</a
         >
-      {:else if codeStep}
-        <form
-          method="post"
-          action="?/verifyCode"
-          use:enhance
-          class="space-y-4"
-          data-testid="invite-code-step"
-        >
+      {:else}
+        <form method="post" action="?/join" use:enhance class="space-y-4" data-testid="invite-start">
           <input type="hidden" name="token" value={data.token} />
-          <input type="hidden" name="email" value={data.email} />
-          {#if form && 'notice' in form && form.notice}
-            <p class="text-xs">{form.notice}</p>
-          {/if}
+          <p class="text-xs">Your account: <strong>{data.email}</strong></p>
           <div class="space-y-1">
-            <Label for="code">Code</Label>
+            <Label for="invite-name">Your name</Label>
             <input
-              id="code"
-              name="code"
-              inputmode="numeric"
-              autocomplete="one-time-code"
-              maxlength="6"
-              pattern={CODE_PATTERN}
+              id="invite-name"
+              name="name"
+              autocomplete="name"
               required
-              class="border-input bg-card text-foreground h-11 w-full border px-2.5 text-center font-mono text-lg tracking-[0.5em] focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              maxlength="80"
+              value={form?.name ?? ''}
+              class="border-input bg-card text-foreground h-9 w-full border px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
             />
           </div>
-          <Button type="submit" class="w-full rounded-[4px]">Join</Button>
-          {#if form && 'message' in form && form.message}
-            <p class="text-destructive text-xs" data-testid="invite-error">{form.message}</p>
-          {/if}
-        </form>
-      {:else}
-        <form
-          method="post"
-          action="?/sendCode"
-          use:enhance
-          class="space-y-4"
-          data-testid="invite-start"
-        >
-          <input type="hidden" name="token" value={data.token} />
-          <p class="text-xs">We'll send a sign-in code to <strong>{data.email}</strong>.</p>
-          <Button type="submit" class="w-full rounded-[4px]">Send code</Button>
-          {#if form && 'message' in form && form.message}
+          <Button type="submit" class="w-full rounded-[4px]" data-testid="invite-join">Join</Button>
+          {#if form?.message}
             <p class="text-destructive text-xs" data-testid="invite-error">{form.message}</p>
           {/if}
         </form>
