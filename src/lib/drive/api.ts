@@ -18,7 +18,17 @@ export type ShareTargets = { people: Array<{ id: string; name: string; email: st
 
 export type LockHolder = { userId: string; sessionId: string; since: string; name: string }
 export type LockView = { state: 'held'; since: string } | { state: 'locked'; holder: LockHolder } | { state: 'free' }
-export type Revision = { id: string; fileId: string; size: number; authorId: string; createdAt: string }
+export type Revision = {
+  id: string
+  fileId: string
+  size: number
+  authorId: string
+  createdAt: string
+  /** Set when this revision brought back an earlier one. */
+  restoredFrom?: { id: string; authorId: string; createdAt: string }
+}
+/** Where a Drive path starts ("My drive", "Shared with me", "Messages"). */
+export type PathRoot = { label: string; href: string }
 
 /** A failed Drive call: the server's sentence, its code, and (for `locked`) who holds the edit lock. */
 export class DriveApiError extends Error {
@@ -65,11 +75,16 @@ export const driveApi = {
     call<{ grants: GrantEntry[] }>(`/api/drive/items/${item.type}/${item.id}/grants`, send('PUT', { grants })),
   shareTargets: () => call<ShareTargets>('/api/drive/share-targets'),
   restoreRevision: (fileId: string, revisionId: string, session?: string) =>
-    call<unknown>(`/api/drive/files/${fileId}/revisions`, send('POST', { restore: revisionId, ...(session ? { session } : {}) })),
+    call<{ file: DriveItem }>(`/api/drive/files/${fileId}/revisions`, send('POST', { restore: revisionId, ...(session ? { session } : {}) })),
   revisions: (fileId: string) => call<{ revisions: Revision[] }>(`/api/drive/files/${fileId}/revisions`),
   revisionText: (fileId: string, revisionId: string) => call<{ revision: Revision; content: string }>(`/api/drive/files/${fileId}/revisions/${revisionId}`),
   readText: (fileId: string) => call<{ content: string }>(`/api/drive/files/${fileId}/text`),
-  writeText: (fileId: string, content: string, session: string) => call<unknown>(`/api/drive/files/${fileId}/text`, send('PUT', { content, session })),
+  writeText: (fileId: string, content: string, session: string) =>
+    call<{ file: DriveItem }>(`/api/drive/files/${fileId}/text`, send('PUT', { content, session })),
+  /** A last save while the page goes away (keepalive outlives the unload); its result is not waited for. */
+  writeTextOnExit: (fileId: string, content: string, session: string) =>
+    fetch(`/api/drive/files/${fileId}/text`, { ...send('PUT', { content, session }), keepalive: true }).then(() => undefined),
+  lockStatus: (fileId: string) => call<LockView>(`/api/drive/files/${fileId}/lock`),
   acquireLock: (fileId: string, session: string, takeover = false) => call<LockView>(`/api/drive/files/${fileId}/lock`, send('POST', { session, takeover })),
   heartbeatLock: (fileId: string, session: string) => call<LockView>(`/api/drive/files/${fileId}/lock`, send('PUT', { session })),
   /** Fire-and-forget on page exit (keepalive survives the unload). */

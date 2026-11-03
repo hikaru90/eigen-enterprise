@@ -69,6 +69,9 @@ export const dbDriveStore: DriveStore = {
     const [row] = await (await driveDb()).select().from(driveRevision).where(eq(driveRevision.id, id)).limit(1)
     return (row as DriveRevision | undefined) ?? null
   },
+  async updateRevision(id, patch) {
+    await (await driveDb()).update(driveRevision).set(patch).where(eq(driveRevision.id, id))
+  },
   async blobInUse(sha) {
     const db = await driveDb()
     const [f] = await db.select({ id: driveFile.id }).from(driveFile).where(eq(driveFile.sha256, sha)).limit(1)

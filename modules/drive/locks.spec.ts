@@ -92,6 +92,7 @@ describe('drive edit locks', () => {
 
   it('writes without a session (the agent, scripts) wait while someone edits', async () => {
     const { drive, id, advance } = await setup()
+    await drive.writeText(ada, id, 'v0\n')
     await drive.acquireLock(ada, id, 'tab-a')
     await expect(drive.writeText(agent, id, 'x')).rejects.toMatchObject({ code: 'locked', message: /Ada Owner is editing/ })
     await expect(drive.restoreRevision(agent, id, (await drive.listRevisions(ada, id))[0]!.id)).rejects.toMatchObject({ code: 'locked' })
@@ -130,9 +131,10 @@ describe('drive edit locks', () => {
   })
 
   it('reads one revision’s text; restore with the lock is a new revision', async () => {
-    const { drive, id } = await setup()
+    const { drive, id, advance } = await setup()
+    await drive.writeText(ada, id, 'v1\n')
+    advance(1000)
     await drive.acquireLock(ada, id, 'tab-a')
-    await drive.writeText(ada, id, 'v1\n', 'tab-a')
     await drive.writeText(ada, id, 'v2\n', 'tab-a')
     const revs = await drive.listRevisions(ada, id)
     const texts = await Promise.all(revs.map(async (r) => ({ r, content: (await drive.readRevision(viewer, id, r.id)).content })))
