@@ -1,5 +1,6 @@
 import { generateKeyPairSync, randomBytes } from 'node:crypto'
 import { basename } from 'node:path'
+import { OS_BODY_SIZE_LIMIT } from './body-limit.ts'
 import { newClaim } from './claim.ts'
 import { CompanyRepo } from './company-repo.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
@@ -298,6 +299,8 @@ async function seedCompany(sys: System, opts: BootstrapOptions, consoleHost: str
         // The release has no .git: server changes are committed by ee in the company repo,
         // and kernel_events is the audit trail. The in-image autocommit has nothing to commit to.
         EE_VCS_AUTOCOMMIT: '0',
+        // Drive uploads: adapter-node's 512K default would refuse them (see body-limit.ts).
+        BODY_SIZE_LIMIT: OS_BODY_SIZE_LIMIT,
       },
       secrets: [...OS_SECRETS, ...CLAIM_SECRETS],
       resources: { memoryMb: 2048, cpuPercent: 200 },
