@@ -283,7 +283,7 @@
   })
 </script>
 
-<svelte:head><title>{docTitle('Chat')}</title></svelte:head>
+<svelte:head><title>{docTitle('Assistant')}</title></svelte:head>
 
 <!-- Chat: a full-viewport frame — header on top, the transcript is the ONLY
      scroll container, the input pinned at the bottom. The welcome wizard and

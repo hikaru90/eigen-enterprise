@@ -10,6 +10,7 @@
   import Mail from '@lucide/svelte/icons/mail'
   import Menu from '@lucide/svelte/icons/menu'
   import MessageSquare from '@lucide/svelte/icons/message-square'
+  import MessagesSquare from '@lucide/svelte/icons/messages-square'
   import Palette from '@lucide/svelte/icons/palette'
   import Settings from '@lucide/svelte/icons/settings'
   import X from '@lucide/svelte/icons/x'
@@ -45,6 +46,7 @@
   // Presentation only: an icon per known id; any other module gets the generic box.
   const icons: Record<string, Component> = {
     chat: MessageSquare,
+    messages: MessagesSquare,
     overview: LayoutDashboard,
     settings: Settings,
     website: Globe,

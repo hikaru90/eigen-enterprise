@@ -31,6 +31,8 @@ import { MEMBERS_MODULE_ID, membersManifest } from './members/manifest'
 import { createMembersTools } from './members/tools'
 import { MEMORY_MODULE_ID, memoryManifest } from './memory/manifest'
 import { createMemoryTools } from './memory/tools'
+import { MESSAGES_MODULE_ID, messagesManifest } from './messages/manifest'
+import { createMessagesTools } from './messages/tools'
 import { createAllowlistAdminTools } from './orchestrator/allowlist-tools'
 import { orchestratorManifest } from './orchestrator/manifest'
 import { createRepoEngine } from './orchestrator/repo/index'
@@ -66,6 +68,7 @@ export const moduleManifests = [
   brandManifest,
   orchestratorManifest,
   membersManifest,
+  messagesManifest,
 ] as const
 
 /**
@@ -83,6 +86,8 @@ export const SYSTEM_MODULE_IDS = [
   // agent's memory tools are core, never an optional extension.
   MEMORY_MODULE_ID,
   BRAND_MODULE_ID,
+  // Messages (phase-workspace C1): the team's chat is part of the OS.
+  MESSAGES_MODULE_ID,
 ] as const
 
 /** Tools that always require an approval decision before first execution. */
@@ -197,6 +202,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createActivityTools(),
     ...createOwleryTools(),
     ...createMembersTools(),
+    ...createMessagesTools(),
   ])
 
   return {

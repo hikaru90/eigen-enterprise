@@ -7,7 +7,7 @@ describe('docTitle', () => {
   })
   it("drops empty parts: a section's own page", () => {
     expect(docTitle('Settings')).toBe('Settings · eigenEnterprise')
-    expect(docTitle(null, ' ', 'Chat')).toBe('Chat · eigenEnterprise')
+    expect(docTitle(null, ' ', 'Assistant')).toBe('Assistant · eigenEnterprise')
   })
   it('is just the product name with no parts', () => {
     expect(docTitle()).toBe('eigenEnterprise')
