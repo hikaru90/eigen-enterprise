@@ -135,7 +135,7 @@
     "culori": "^4.0.2",
     "d3": "^7.9.0",
     "fflate": "^0.8.3",
-    "isomorphic-dompurify": "^3.14.0",
+    "isomorphic-dompurify": "^4.6.0",
     "marked": "^18.0.9",
     "papaparse": "5.7.0",
     "posthog-js": "^1.422.2",
