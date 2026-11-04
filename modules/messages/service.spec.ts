@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  conversationMembers,
   createChannel,
   deleteMessage,
   editMessage,
@@ -160,6 +161,20 @@ describe('history', () => {
     const [m] = (await listMessages(deps, 'carl', ch.id)).messages
     expect(m).toMatchObject({ body: 'final', deleted: false })
     expect(m.editedAt).not.toBeNull()
+  })
+})
+
+describe('conversation members (the header)', () => {
+  it('a public channel has everyone, a private one its people plus owner/admin, a DM its participants', async () => {
+    const { deps } = fixture()
+    const general = await createChannel(deps, 'bea', { name: 'general', private: false })
+    const side = await createChannel(deps, 'bea', { name: 'side', private: true })
+    const dm = await openDm(deps, 'bea', ['carl'])
+    const ids = async (actor: string, id: string) => (await conversationMembers(deps, actor, id)).map((p) => p.id)
+    expect(await ids('carl', general.id)).toEqual(['owner', 'bea', 'carl'])
+    expect(await ids('bea', side.id)).toEqual(['owner', 'bea'])
+    expect(await ids('carl', dm.id)).toEqual(['bea', 'carl'])
+    await expect(conversationMembers(deps, 'carl', side.id)).rejects.toMatchObject({ code: 'not_found' })
   })
 })
 

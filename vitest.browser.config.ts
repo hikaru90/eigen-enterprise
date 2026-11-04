@@ -88,6 +88,7 @@ export default defineConfig({
       'src/lib/components/app-build-form.svelte.spec.ts',
       'src/lib/components/app-card.svelte.spec.ts',
       'src/lib/components/add-app-dialog.svelte.spec.ts',
+      'src/lib/messages/message-row.svelte.spec.ts',
       'src/lib/components/repo-connect-steps.svelte.spec.ts',
       'src/lib/components/website-activity-panel.svelte.spec.ts',
       'src/lib/components/website-settings.svelte.spec.ts',

@@ -496,6 +496,23 @@ export async function toggleReaction(d: MessagesDeps, actorId: string, messageId
   return messageDto(d, m)
 }
 
+/**
+ * Who is in a conversation (the header's member count and avatars): a DM's
+ * participants; for a channel, every member who may read it (a public
+ * channel = everyone; a private one = its people and groups, plus owner/admin).
+ */
+export async function conversationMembers(d: MessagesDeps, actorId: string, conversationId: string): Promise<Person[]> {
+  const c = await visible(d, actorId, conversationId)
+  const people = await d.directory.listPeople()
+  if (c.kind === 'dm') {
+    const ids = new Set(await d.store.memberIds(c.id))
+    return people.filter((p) => ids.has(p.id))
+  }
+  const out: Person[] = []
+  for (const p of people) if (await canUse(d, p.id, c, 'view')) out.push(p)
+  return out
+}
+
 export async function markRead(d: MessagesDeps, actorId: string, conversationId: string): Promise<void> {
   const c = await visible(d, actorId, conversationId)
   await d.store.setLastRead(c.id, actorId, now(d))
