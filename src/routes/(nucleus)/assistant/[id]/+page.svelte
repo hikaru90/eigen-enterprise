@@ -48,22 +48,24 @@
   const when = (iso: string) => timeFormat.format(new Date(iso))
 </script>
 
-<svelte:head><title>{docTitle(`Run ${data.run.id}`, 'Agent')}</title></svelte:head>
+<svelte:head><title>{docTitle(data.run.title, 'Assistant')}</title></svelte:head>
 
 <a
-  href={resolve('/(nucleus)/agent/runs')}
+  href={resolve('/(nucleus)/assistant')}
   class="mt-6 inline-block text-xs text-muted-foreground hover:underline"
-  data-testid="back-link">← Back to runs</a
+  data-testid="back-link">← Back to conversations</a
 >
 <header class="mt-2 flex min-w-0 flex-col gap-1" data-testid="run-header">
-  <h2 class="text-base font-semibold tracking-tight">Run {data.run.id}</h2>
+  <h2 class="text-base font-semibold tracking-tight wrap-break-word" data-testid="run-title">
+    {data.run.title}
+  </h2>
   <p class="flex min-w-0 flex-wrap items-center gap-x-3 text-sm text-muted-foreground">
-    <span data-testid="run-title">{data.run.title}</span>
     <span class="text-xs">Started {when(data.run.createdAt)}</span>
+    <span class="text-xs">Last activity {when(data.run.updatedAt)}</span>
   </p>
   <details class="text-xs text-muted-foreground">
     <summary class="cursor-pointer">Details</summary>
-    <p class="mt-1">Agent: {data.run.agentId}</p>
+    <p class="mt-1">Conversation {data.run.id} · agent {data.run.agentId}</p>
     <code class="block truncate font-mono">{data.run.conversationKey}</code>
   </details>
 </header>

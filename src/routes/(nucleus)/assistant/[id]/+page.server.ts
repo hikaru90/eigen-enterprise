@@ -3,7 +3,7 @@ import { error, redirect } from '@sveltejs/kit'
 import { runViewAccess } from '$lib/server/agent-runs/access'
 import { agentRunsSource } from '$lib/server/agent-runs/source'
 
-/** /runs/[id] (D8): one run's metadata; the live feed streams client-side over SSE. */
+/** /assistant/[id] (D8): one conversation's run metadata; the live feed streams client-side over SSE. */
 export const load: PageServerLoad = async ({ locals, params }) => {
   const access = await runViewAccess(locals.user)
   if (!access.ok) {

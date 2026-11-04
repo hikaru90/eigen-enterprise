@@ -55,6 +55,7 @@ export default defineConfig({
       '$app/paths': path.resolve(root, 'src/lib/vitest-stubs/app-paths.ts'),
       '$app/forms': path.resolve(root, 'src/lib/vitest-stubs/app-forms.ts'),
       '$app/navigation': path.resolve(root, 'src/lib/vitest-stubs/app-navigation.ts'),
+      '$app/environment': path.resolve(root, 'src/lib/vitest-stubs/app-environment.ts'),
       // PWA plugin is not loaded in this lean browser config.
       'virtual:pwa-register': path.resolve(root, 'src/lib/vitest-stubs/virtual-pwa-register.ts'),
     },
@@ -81,6 +82,7 @@ export default defineConfig({
       'src/lib/components/approval-mode-select.svelte.spec.ts',
       'src/lib/components/overview-module.svelte.spec.ts',
       'src/lib/components/app-shell.svelte.spec.ts',
+      'src/lib/components/assistant/assistant-panel.svelte.spec.ts',
       'src/lib/components/module-card.svelte.spec.ts',
       'src/lib/components/module-settings-section.svelte.spec.ts',
       'src/lib/components/github-app-connect.svelte.spec.ts',

@@ -3,20 +3,26 @@
   import type { Snippet } from 'svelte'
   import type { Component } from 'svelte'
   import Box from '@lucide/svelte/icons/box'
-  import Bot from '@lucide/svelte/icons/bot'
   import Brain from '@lucide/svelte/icons/brain'
   import Globe from '@lucide/svelte/icons/globe'
-  import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard'
+  import HardDrive from '@lucide/svelte/icons/hard-drive'
   import Mail from '@lucide/svelte/icons/mail'
   import Menu from '@lucide/svelte/icons/menu'
-  import MessageSquare from '@lucide/svelte/icons/message-square'
   import MessagesSquare from '@lucide/svelte/icons/messages-square'
   import Palette from '@lucide/svelte/icons/palette'
   import Settings from '@lucide/svelte/icons/settings'
   import X from '@lucide/svelte/icons/x'
-  import { appHref } from '$lib/shell/href'
+  import { onMount } from 'svelte'
+  import { afterNavigate, replaceState } from '$app/navigation'
+  import { resolve } from '$app/paths'
+  import AssistantBar from '$lib/components/assistant/assistant-bar.svelte'
+  import { AssistantController } from '$lib/components/assistant/assistant-controller.svelte'
+  import AssistantPanel from '$lib/components/assistant/assistant-panel.svelte'
+  import { provideAssistant } from '$lib/components/assistant/context'
   import HomeSettingsMenu from '$lib/components/home-settings-menu.svelte'
+  import { appHref } from '$lib/shell/href'
   import { currentNavId, type ShellData, type ShellNavItem } from '$lib/shell/nav'
+  import { cancelSpeak, speak } from '$lib/speech/tts'
 
   /**
    * Brand-wide (C3): every chrome colour is a semantic token — primary for
@@ -25,44 +31,75 @@
    * shell. In the app's own style primary == foreground (#111), so with no
    * active set the frame looks exactly as before.
    *
-   * The signed-in app frame: a left sidebar on desktop (company, nav, user),
-   * a top bar with a drawer on phones. The content area is a fixed-height
-   * column so full-height pages (the chat) keep their own scroll container.
+   * The signed-in app frame: a left sidebar on desktop (company = the
+   * dashboard link, nav, user), a drawer on phones. The content column has
+   * the assistant's top bar ("Ask the assistant…", ⌘K) and, below it, the
+   * page next to the assistant panel (polish P-1). The page area is a
+   * fixed-height column so full-height pages keep their own scroll container.
    */
   let {
     shell,
     pathname,
     user,
+    language,
     children,
   }: {
     shell: ShellData
     pathname: string
-    user: { name?: string | null; email?: string | null } | null
+    user: { name?: string | null; email?: string | null; image?: string | null } | null
+    /** The member's speech language (voice input in the assistant). */
+    language: string
     children: Snippet
   } = $props()
 
   let drawerOpen = $state(false)
 
+  // The one assistant: shared by the top bar, the panel and the pages inside the shell.
+  const assistant = new AssistantController({
+    fetch: (input, init) => fetch(input, init),
+    speak,
+    cancelSpeak,
+    storage: () => localStorage,
+    viewportWidth: () => window.innerWidth,
+  })
+  provideAssistant(assistant)
+
+  onMount(() => {
+    // The welcome wizard's hand-off (handoff.ts): the agent's greeting streams into the panel.
+    assistant.startPendingHandoff()
+  })
+
+  // A deep-linked draft (?prefill=, e.g. from the Apps "+" dialog) lands in the
+  // assistant's composer for the member to review and send — never auto-sent.
+  afterNavigate(({ to }) => {
+    const prefill = to?.url.searchParams.get('prefill')
+    if (!to || !prefill) return
+    assistant.prefill(prefill)
+    const clean = new URL(to.url)
+    clean.searchParams.delete('prefill')
+    replaceState(clean, {})
+  })
+
   // Presentation only: an icon per known id; any other module gets the generic box.
   const icons: Record<string, Component> = {
-    chat: MessageSquare,
     messages: MessagesSquare,
-    overview: LayoutDashboard,
     settings: Settings,
     website: Globe,
     email: Mail,
     brand: Palette,
     memory: Brain,
-    agent: Bot,
+    drive: HardDrive,
   }
   const iconFor = (id: string): Component => icons[id] ?? Box
   const currentId = $derived(currentNavId(shell.nav.items, pathname))
   const mainItems = $derived(shell.nav.items.filter((i) => i.id !== 'settings'))
   const footerItems = $derived(shell.nav.items.filter((i) => i.id === 'settings'))
+  const onDashboard = $derived(pathname === '/')
 
   const companyName = $derived(shell.companyName ?? 'Your company')
   const initial = $derived(companyName.slice(0, 1).toUpperCase())
   const userLabel = $derived(user?.name || user?.email || 'Signed in')
+  const userImage = $derived(user?.image?.trim() || null)
 
   function closeDrawer(): void {
     drawerOpen = false
@@ -71,7 +108,10 @@
     drawerOpen = !drawerOpen
   }
   function onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Escape' && drawerOpen) drawerOpen = false
+    if (event.key === 'Escape' && drawerOpen) {
+      drawerOpen = false
+      event.preventDefault()
+    }
   }
 </script>
 
@@ -96,7 +136,7 @@
         : 'text-foreground/70 hover:bg-primary/[0.05] hover:text-foreground'}"
   >
     <Icon
-      class="size-4 shrink-0 {current ? 'text-primary' : 'opacity-70'}"
+      class="size-4 shrink-0 {current ? 'text-primary' : 'opacity-70 group-hover:opacity-100'}"
       aria-hidden="true"
       strokeWidth={1.75}
     />
@@ -107,18 +147,31 @@
 
 {#snippet sidebar()}
   <div class="flex h-full min-h-0 flex-col">
-    <div class="flex h-14 shrink-0 items-center gap-2.5 px-4">
-      <span
-        data-testid="shell-company-badge"
-        class="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary text-[11px] font-semibold text-primary-foreground"
-        aria-hidden="true">{initial}</span
+    <div class="flex h-14 shrink-0 items-center px-2">
+      <!-- The company is the way home: its dashboard at / (polish P-2). -->
+      <a
+        href={resolve('/')}
+        onclick={closeDrawer}
+        aria-current={onDashboard ? 'page' : undefined}
+        data-testid="shell-company-link"
+        title="Dashboard"
+        class="group flex h-10 min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/60
+          {onDashboard ? 'bg-primary/[0.08]' : 'hover:bg-primary/[0.05]'}"
       >
-      <span
-        class="min-w-0 truncate text-sm font-semibold tracking-tight"
-        data-testid="shell-company">{companyName}</span
-      >
+        <span
+          data-testid="shell-company-badge"
+          class="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground shadow-sm transition-transform group-hover:scale-105"
+          aria-hidden="true">{initial}</span
+        >
+        <span class="flex min-w-0 flex-col leading-tight">
+          <span class="truncate text-sm font-semibold tracking-tight" data-testid="shell-company"
+            >{companyName}</span
+          >
+          <span class="truncate text-[11px] text-foreground/50">Dashboard</span>
+        </span>
+      </a>
     </div>
-    <nav class="min-h-0 flex-1 overflow-y-auto px-2 pb-4" aria-label="Main">
+    <nav class="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-4" aria-label="Main">
       <ul class="flex flex-col gap-px" data-testid="shell-nav">
         {#each mainItems as item (item.id)}<li>{@render navLink(item)}</li>{/each}
       </ul>
@@ -127,10 +180,20 @@
       </ul>
     </nav>
     <div class="flex shrink-0 items-center gap-2.5 border-t border-border px-3 py-3">
-      <span
-        class="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/[0.08] text-[11px] font-medium"
-        aria-hidden="true">{userLabel.slice(0, 1).toUpperCase()}</span
-      >
+      {#if userImage}
+        <img
+          src={userImage}
+          alt=""
+          class="size-7 shrink-0 rounded-full object-cover"
+          data-testid="shell-user-avatar"
+        />
+      {:else}
+        <span
+          class="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/[0.08] text-[11px] font-medium"
+          data-testid="shell-user-initial"
+          aria-hidden="true">{userLabel.slice(0, 1).toUpperCase()}</span
+        >
+      {/if}
       <div class="min-w-0 flex-1">
         <p class="truncate text-[13px] font-medium" data-testid="shell-user">{userLabel}</p>
         {#if user?.name && user.email}<p class="truncate text-[11px] text-foreground/50">
@@ -143,7 +206,7 @@
 {/snippet}
 
 <div
-  class="flex h-dvh w-full flex-col overflow-hidden bg-background text-foreground md:flex-row"
+  class="flex h-dvh w-full flex-row overflow-hidden bg-background text-foreground"
   data-testid="app-shell"
 >
   <!-- Desktop sidebar -->
@@ -153,25 +216,6 @@
   >
     {@render sidebar()}
   </aside>
-
-  <!-- Phone top bar -->
-  <header class="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4 md:hidden">
-    <button
-      type="button"
-      class="-ml-1.5 flex size-8 items-center justify-center rounded-md text-foreground/70 outline-none hover:bg-primary/[0.05] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
-      aria-label={drawerOpen ? 'Close menu' : 'Open menu'}
-      aria-expanded={drawerOpen}
-      aria-controls="shell-drawer"
-      onclick={toggleDrawer}
-      data-testid="shell-menu-toggle"
-    >
-      {#if drawerOpen}<X class="size-5" aria-hidden="true" />{:else}<Menu
-          class="size-5"
-          aria-hidden="true"
-        />{/if}
-    </button>
-    <span class="min-w-0 truncate text-sm font-semibold tracking-tight">{companyName}</span>
-  </header>
 
   {#if drawerOpen}
     <div class="fixed inset-0 z-40 md:hidden">
@@ -192,10 +236,41 @@
     </div>
   {/if}
 
-  <div
-    class="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto"
-    data-testid="shell-content"
-  >
-    {@render children()}
+  <div class="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="shell-column">
+    <!-- The assistant's top bar, on every signed-in page (on phones with the menu). -->
+    <header
+      class="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-3 sm:px-4"
+      data-testid="shell-topbar"
+    >
+      <button
+        type="button"
+        class="-ml-1 flex size-8 shrink-0 items-center justify-center rounded-md text-foreground/70 outline-none hover:bg-primary/[0.05] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 md:hidden"
+        aria-label={drawerOpen ? 'Close menu' : 'Open menu'}
+        aria-expanded={drawerOpen}
+        aria-controls="shell-drawer"
+        onclick={toggleDrawer}
+        data-testid="shell-menu-toggle"
+      >
+        {#if drawerOpen}<X class="size-5" aria-hidden="true" />{:else}<Menu
+            class="size-5"
+            aria-hidden="true"
+          />{/if}
+      </button>
+      <div class="flex min-w-0 flex-1 justify-center">
+        <div class="flex w-full max-w-2xl min-w-0">
+          <AssistantBar {assistant} />
+        </div>
+      </div>
+    </header>
+
+    <div class="flex min-h-0 min-w-0 flex-1 flex-row">
+      <div
+        class="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto"
+        data-testid="shell-content"
+      >
+        {@render children()}
+      </div>
+      <AssistantPanel {assistant} {language} />
+    </div>
   </div>
 </div>

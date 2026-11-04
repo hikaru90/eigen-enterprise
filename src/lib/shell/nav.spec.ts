@@ -15,10 +15,10 @@ describe('buildShellNav', () => {
         ['orchestrator', true],
       ]),
     )
-    expect(nav.items.map((i) => i.id)).toEqual(['chat', 'overview', 'website', 'agent', 'settings'])
+    expect(nav.items.map((i) => i.id)).toEqual(['website', 'settings'])
   })
 
-  it('keeps the one fixed order: Messages, Assistant, Overview, Website, Email, Brand, Agent, Memory, Drive, Settings', () => {
+  it('keeps the one fixed order: Messages, Website, Email, Brand, Memory, Drive, Settings', () => {
     const nav = buildShellNav(
       [
         manifest('drive', 'Drive'),
@@ -39,12 +39,9 @@ describe('buildShellNav', () => {
     )
     expect(nav.items.map((i) => [i.name, i.href, i.active])).toEqual([
       ['Messages', '/messages', true],
-      ['Assistant', '/', true],
-      ['Overview', '/overview', true],
       ['Website', '/m/website', true],
       ['Email', '/m/email', true],
       ['Brand', '/brand', false],
-      ['Agent', '/agent', true],
       ['Memory', '/m/memory', false],
       ['Drive', '/drive', true],
       ['Recap', '/m/recap', false],
@@ -52,9 +49,17 @@ describe('buildShellNav', () => {
     ])
   })
 
-  it('always carries the fixed app entries, even with no modules', () => {
+  it('always carries Settings, even with no modules', () => {
     const nav = buildShellNav([], new Map())
-    expect(nav.items.map((i) => i.href)).toEqual(['/', '/overview', '/agent', '/settings'])
+    expect(nav.items.map((i) => i.href)).toEqual(['/settings'])
+  })
+
+  it('has no Assistant, Overview or Agent entry: the assistant is the top bar, the dashboard is the company badge (P-1, P-2)', () => {
+    const nav = buildShellNav([manifest('website', 'Website')], new Map([['website', true]]))
+    expect(nav.items.map((i) => i.id)).not.toContain('chat')
+    expect(nav.items.map((i) => i.id)).not.toContain('overview')
+    expect(nav.items.map((i) => i.id)).not.toContain('agent')
+    expect(nav.items.map((i) => i.href)).not.toContain('/')
   })
 })
 
@@ -64,14 +69,13 @@ describe('currentNavId', () => {
     new Map(),
   )
   it.each([
-    ['/', 'chat'],
-    ['/overview', 'overview'],
+    ['/', null],
+    ['/overview', null],
     ['/m/website/settings', 'website'],
     ['/brand/editor/x', 'brand'],
-    ['/agent', 'agent'],
-    ['/agent/runs/12', 'agent'],
-    ['/agent/activity', 'agent'],
-    ['/agent/roadmap', 'agent'],
+    ['/assistant', null],
+    ['/assistant/12', null],
+    ['/agent/runs/12', null],
     ['/runs', null],
     ['/activity', null],
     ['/settings/extensions', 'settings'],

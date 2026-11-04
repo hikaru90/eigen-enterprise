@@ -5,7 +5,7 @@
   import { docTitle } from '$lib/shell/title'
 
   /**
-   * The one error page body. Signed in: the way back is Chat. Signed out: the
+   * The one error page body. Signed in: the way back is the dashboard. Signed out: the
    * way in is Sign in. Never an old-app link.
    */
   let {
@@ -37,7 +37,7 @@
     <p class="mt-2 text-xs text-foreground/60">{message}</p>
   {/if}
   {#if signedIn}
-    <Button href={resolve('/')} class="mt-8" size="lg" data-testid="error-back">Back to Assistant</Button
+    <Button href={resolve('/')} class="mt-8" size="lg" data-testid="error-back">Back to the dashboard</Button
     >
   {:else}
     <Button href={resolve('/login')} class="mt-8" size="lg" data-testid="error-back">Sign in</Button

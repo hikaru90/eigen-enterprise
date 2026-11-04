@@ -9,3 +9,5 @@ export const onNavigate = (): void => undefined
 export const disableScrollHandling = (): void => undefined
 export const preloadData = (): Promise<void> => Promise.resolve()
 export const preloadCode = (): Promise<void> => Promise.resolve()
+export const pushState = (): void => undefined
+export const replaceState = (): void => undefined

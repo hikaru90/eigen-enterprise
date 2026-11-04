@@ -19,9 +19,10 @@ const run = {
   createdAt: '2026-10-30T10:00:00.000Z',
   updatedAt: '2026-10-30T10:00:00.000Z',
 }
-const ev = (user: { id: string } | null, id = '3') => ({ locals: { user }, params: { id } }) as never
+const ev = (user: { id: string } | null, id = '3') =>
+  ({ locals: { user }, params: { id } }) as never
 
-describe('/agent/runs loads', () => {
+describe('/assistant (conversations) loads', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('redirects signed-out visitors to /login', async () => {
