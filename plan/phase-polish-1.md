@@ -1,6 +1,6 @@
 # Phase: Polish 1 — one assistant everywhere, Slack-grade Messages, profiles, full width, Owlery inside
 
-**Status:** APPROVED by owner direction (2026-11-04, voice feedback after using release `3ee4199` on the box). Owner: "make a plan, integrate with subagents, don't ask questions, just build."
+**Status:** SHIPPED to main 2026-11-04 (see progress.md; not done: campaigns, webhooks, visual block builder/xyflow canvas). APPROVED by owner direction (2026-11-04, voice feedback after using release `3ee4199` on the box). Owner: "make a plan, integrate with subagents, don't ask questions, just build."
 **Orchestrator:** main session. Streams run in `.claude/worktrees/<stream>` (never `../`), merged `--no-ff` into `main`.
 
 ## 0. Owner feedback (condensed)
