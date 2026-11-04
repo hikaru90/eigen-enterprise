@@ -261,7 +261,7 @@
 
 <svelte:head><title>{docTitle('Notes', 'Memory')}</title></svelte:head>
 
-<div class="mx-auto flex min-h-[70dvh] w-full max-w-5xl flex-1 flex-col overflow-hidden overscroll-none px-4 pt-6 pb-4 sm:px-8">
+<div class="flex min-h-[70dvh] w-full flex-1 flex-col overflow-hidden overscroll-none px-4 pt-6 pb-4 sm:px-8">
   <header class="mb-4 flex shrink-0 items-center justify-between gap-3">
     <h2 class="text-base font-semibold text-foreground">{m.notes_title()}</h2>
     <Button

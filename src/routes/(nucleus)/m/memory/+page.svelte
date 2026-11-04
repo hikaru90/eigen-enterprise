@@ -26,10 +26,10 @@
 
 <svelte:head><title>{docTitle('Memory')}</title></svelte:head>
 
-<div class="mx-auto w-full max-w-5xl px-4 pt-8 pb-16 sm:px-8">
+<div class="w-full px-4 pt-8 pb-16 sm:px-8">
   <section aria-labelledby="sections-heading">
     <h2 id="sections-heading" class="mb-2 text-[13px] font-medium">Sections</h2>
-    <ul class="grid gap-3 sm:grid-cols-2">
+    <ul class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {#each sections as s (s.id)}
         <li>
           <a
