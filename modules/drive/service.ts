@@ -61,6 +61,9 @@ export type ItemView = {
   canManage?: boolean
 }
 
+/** A listing row's owner and sharing state (see describeItems). */
+export type ItemDescription = { ownerName: string | null; shared: boolean | null }
+
 export type Crumb = { id: string; name: string }
 /** Where a path starts: "My drive", "Shared with me" or "Messages" (a conversation's attachment folder). */
 export type PathRoot = { label: string; href: string }
@@ -376,6 +379,39 @@ export function createDriveService(deps: DriveDeps) {
       const all = await visible(actor, await store.findByName(''))
       const viewable = new Set(all.map((i) => `${i.type}:${i.id}`))
       return sorted(all.filter((i) => i.ownerId !== actor.userId && !(i.parentId && viewable.has(`folder:${i.parentId}`))))
+    },
+
+    /** Messages: the conversation attachment folders (inside the Messages folder) the actor can open. */
+    async messagesFolders(actor: Actor): Promise<ItemView[]> {
+      const top = await store.children(null)
+      const out: ItemView[] = []
+      for (const root of top.folders) {
+        if (root.ownerId !== MESSAGES_SYSTEM_OWNER || root.trashedAt) continue
+        const kids = await store.children(root.id)
+        out.push(...(await visible(actor, { folders: kids.folders, files: [] })))
+      }
+      return sorted(out)
+    },
+
+    /**
+     * What a listing shows beyond the item (keyed `type:id`): the owner's name
+     * (null when the owner is no member — the agent, a removed person) and
+     * whether it is shared with anyone besides its owner — told only to those
+     * who manage the item (they could open its Share dialog anyway), else null.
+     */
+    async describeItems(actor: Actor, items: readonly ItemView[]): Promise<Record<string, ItemDescription>> {
+      const people = new Map((await access.shareTargets()).people.map((p) => [p.id, p.name || p.email]))
+      const out: Record<string, ItemDescription> = {}
+      for (const item of items) {
+        const ownerName = item.ownerId === MESSAGES_SYSTEM_OWNER ? 'Messages' : (people.get(item.ownerId) ?? null)
+        const loaded = await load(item.type, item.id)
+        const manages = loaded !== null && (await allows(actor, item.type, loaded, 'manage'))
+        const shared = manages
+          ? (await access.listGrants(item.type, item.id)).some((g) => !(g.subject.kind === 'user' && g.subject.userId === item.ownerId))
+          : null
+        out[`${item.type}:${item.id}`] = { ownerName, shared }
+      }
+      return out
     },
 
     async search(actor: Actor, query: string): Promise<ItemView[]> {
