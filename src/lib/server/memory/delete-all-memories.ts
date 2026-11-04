@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import {
   DELETE_ALL_MEMORIES_CONFIRMATION,
   isDeleteAllMemoriesConfirmation,
@@ -15,6 +15,7 @@ import {
   userOntology,
 } from '$lib/server/db/schema'
 import { deleteAllUserGraphVertices } from '$lib/server/graph/age'
+import { notSystemProjectTask } from '$lib/server/memory/system-projects'
 
 export type DeleteAllMemoriesResult = {
   thoughtsDeleted: number
@@ -32,24 +33,25 @@ export function assertDeleteAllMemoriesConfirmation(confirmation: string): void 
 /**
  * Removes all semantic memory rows for the tenant and wipes their AGE graph.
  * Does not delete auth, preferences, LLM config, API keys, or chat history.
+ * Keeps the company's system projects (the Roadmap) and their tasks — they
+ * live in this Memory but are not the person's memories.
  */
 export async function deleteAllMemoriesForUser(userId: string): Promise<DeleteAllMemoriesResult> {
   const db = getDb()
+  const ownThoughts = and(eq(thought.userId, userId), notSystemProjectTask(userId))
+  const ownEntities = and(eq(canonicalEntity.userId, userId), isNull(canonicalEntity.systemKey))
 
   const counts = await db.transaction(async (tx) => {
-    const thoughtRows = await tx
-      .select({ id: thought.id })
-      .from(thought)
-      .where(eq(thought.userId, userId))
+    const thoughtRows = await tx.select({ id: thought.id }).from(thought).where(ownThoughts)
     const entityRows = await tx
       .select({ id: canonicalEntity.id })
       .from(canonicalEntity)
-      .where(eq(canonicalEntity.userId, userId))
+      .where(ownEntities)
 
     await tx.delete(graphSyncJob).where(eq(graphSyncJob.userId, userId))
     await tx.delete(graphCommunity).where(eq(graphCommunity.userId, userId))
-    await tx.delete(thought).where(eq(thought.userId, userId))
-    await tx.delete(canonicalEntity).where(eq(canonicalEntity.userId, userId))
+    await tx.delete(thought).where(ownThoughts)
+    await tx.delete(canonicalEntity).where(ownEntities)
     await tx.delete(captureSession).where(eq(captureSession.userId, userId))
     await tx.delete(retrievalQualityEvent).where(eq(retrievalQualityEvent.userId, userId))
     await tx.delete(ontologyProposal).where(eq(ontologyProposal.userId, userId))

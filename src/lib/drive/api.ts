@@ -11,6 +11,8 @@ export type DriveItem = {
   size?: number
   mime?: string
 }
+/** A listing row's owner name (null: not a member) and sharing (null: not told — you don't manage it). */
+export type ItemDescription = { ownerName: string | null; shared: boolean | null }
 export type AccessLevel = 'view' | 'edit' | 'manage'
 export type GrantSubject = { kind: 'user'; userId: string } | { kind: 'group'; groupId: string } | { kind: 'company' }
 export type GrantEntry = { subject: GrantSubject; level: AccessLevel }

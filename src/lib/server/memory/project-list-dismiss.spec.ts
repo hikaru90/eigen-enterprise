@@ -8,6 +8,10 @@ const { getDbMock } = vi.hoisted(() => ({
 vi.mock('$lib/server/db', () => ({
   getDb: getDbMock,
 }))
+// An ordinary project (the system-project guard has its own integration spec).
+vi.mock('$lib/server/memory/system-projects', () => ({
+  assertNotSystemProject: vi.fn(async () => undefined),
+}))
 
 describe('dismissProject', () => {
   beforeEach(() => vi.clearAllMocks())

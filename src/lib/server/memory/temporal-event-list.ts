@@ -29,6 +29,7 @@ import type {
 import { canonicalEntity, temporalEvent, thought, thoughtEntity } from '$lib/server/db/schema'
 import { resolveAuthorSqlCondition } from '$lib/server/memory/authorship'
 import { computeFocusRank } from '$lib/server/memory/compute-focus-rank'
+import { notSystemProjectTask } from '$lib/server/memory/system-projects'
 
 export const TASK_ITEM_PREFIX = 'task:'
 
@@ -358,6 +359,8 @@ async function listTaskThoughtsForUser(
     eq(thought.userId, userId),
     eq(thought.category, 'task'),
     isNull(temporalEvent.id),
+    // The company's Roadmap tasks live on its board, not in personal task lists.
+    notSystemProjectTask(userId),
   ]
   const authorSql = resolveAuthorSqlCondition(
     {

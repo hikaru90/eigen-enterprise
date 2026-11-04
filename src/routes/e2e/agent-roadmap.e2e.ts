@@ -7,10 +7,10 @@ import { registerUser } from './test-helpers'
  * Runs · Activity · Roadmap — each its own URL. Driven end to end: a chat
  * turn on the durable engine creates a run (mock gateway: one native tool
  * call website.list_pages, then a plain answer); the run is listed under
- * Runs, the same turn reads as plain words under Activity, and the owner adds
- * a roadmap item and moves it to In progress. The old URLs 404.
+ * Runs and the same turn reads as plain words under Activity. The old URLs
+ * 404. The Roadmap moved into Memory (P-4): memory-roadmap.e2e.ts drives it.
  *
- * Editing needs an admin: the user is promoted for the run and demoted after.
+ * The user is promoted to admin for the run and demoted after.
  */
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim()
@@ -22,10 +22,8 @@ const sql = (): postgres.Sql => (_sql ??= postgres(DATABASE_URL!, { prepare: fal
 const SHOTS = 'test-results/agent-area'
 const GATEWAY_BASE_URL = `http://127.0.0.1:${process.env.MOCK_GATEWAY_PORT ?? 5199}/v1`
 let email = ''
-let itemTitle = ''
 
 test.afterAll(async () => {
-  if (itemTitle) await sql()`delete from extension_roadmap_items where title = ${itemTitle}`
   if (email)
     await sql()`update "user" set role = 'member' where email = ${email} and role = 'admin'`
   await _sql?.end()
@@ -44,7 +42,7 @@ async function connectProvider(page: Page): Promise<void> {
   expect(saved.status()).toBe(200)
 }
 
-test('nav → Agent → Runs → Activity → Roadmap (add, start)', async ({ page, context }) => {
+test('nav → Agent → Runs → Activity', async ({ page, context }) => {
   test.setTimeout(180_000)
   ;({ email } = await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' }))
   await sql()`update "user" set role = 'admin' where email = ${email} and role = 'member'`
@@ -103,34 +101,6 @@ test('nav → Agent → Runs → Activity → Roadmap (add, start)', async ({ pa
   await expect(log.getByText('Started working on a conversation')).toHaveCount(0)
   await expect(log.getByText('Used Website: list pages').first()).toBeVisible()
   await page.screenshot({ path: `${SHOTS}/3-activity-filtered.png`, fullPage: true })
-
-  // Roadmap: add an item to Planned, then Start it.
-  await page.getByTestId('agent-nav-roadmap').click()
-  await expect(page).toHaveURL(/\/agent\/roadmap$/)
-  await expect(page).toHaveTitle(/^Roadmap · Agent · /)
-  const planned = page.getByTestId('roadmap-planned')
-  const inProgress = page.getByTestId('roadmap-in-progress')
-  await expect(planned.getByRole('heading', { name: /Planned/ })).toBeVisible()
-  await expect(page.getByTestId('roadmap-shipped').getByText('Founding journey')).toBeVisible()
-  itemTitle = `Invoice reminders ${Date.now()}`
-  await page.getByTestId('roadmap-add-open').click()
-  const addForm = page.getByTestId('roadmap-add-form')
-  await addForm.getByLabel('Title').fill(itemTitle)
-  await addForm.getByLabel('Details').fill('Nudge customers a week before due.')
-  await addForm.getByLabel('Kind').selectOption('fix')
-  await page.screenshot({ path: `${SHOTS}/4-roadmap-add.png`, fullPage: true })
-  await addForm.getByRole('button', { name: 'Add to planned' }).click()
-  const card = planned.getByTestId('roadmap-item').filter({ hasText: itemTitle })
-  await expect(card).toBeVisible()
-  await expect(card).toContainText('fix')
-  await card.getByRole('button', { name: 'Start' }).click()
-  const moved = inProgress.getByTestId('roadmap-item').filter({ hasText: itemTitle })
-  await expect(moved).toBeVisible()
-  await expect(planned.getByText(itemTitle)).toHaveCount(0)
-  await page.reload()
-  await expect(inProgress.getByText(itemTitle)).toBeVisible()
-  await moved.scrollIntoViewIfNeeded()
-  await page.screenshot({ path: `${SHOTS}/5-roadmap-started.png`, fullPage: true })
 
   // The old URLs are gone (no redirects).
   for (const path of ['/runs', `/runs/${run!.id}`, '/activity', '/settings/extensions']) {

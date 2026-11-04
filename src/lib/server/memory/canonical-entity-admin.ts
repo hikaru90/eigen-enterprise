@@ -12,6 +12,7 @@ import {
   upsertEntityNode,
   upsertMentionEdge,
 } from '$lib/server/graph/age'
+import { systemProjectOf } from '$lib/server/memory/system-projects'
 import {
   activeEntityTypeKindKeys,
   DEFAULT_ENTITY_TYPE_KIND_KEYS,
@@ -258,9 +259,11 @@ export async function pruneCanonicalEntitiesWithNoThoughtLinks(
 export async function deleteCanonicalEntityForUser(
   userId: string,
   entityId: string,
-): Promise<{ ok: true } | { ok: false; reason: 'not_found' }> {
+): Promise<{ ok: true } | { ok: false; reason: 'not_found' | 'system_project' }> {
   const row = await getCanonicalEntityForUser(userId, entityId)
   if (!row) return { ok: false, reason: 'not_found' }
+  // System projects (the Roadmap) are never deleted — not even when pruned empty.
+  if (await systemProjectOf(userId, row.id)) return { ok: false, reason: 'system_project' }
 
   await deleteEntityVertexFromGraph({ userId, entityId: row.id })
   await getDb()

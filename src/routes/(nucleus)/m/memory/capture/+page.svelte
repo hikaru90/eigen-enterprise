@@ -899,7 +899,7 @@
 <svelte:head><title>{docTitle('Capture', 'Memory')}</title></svelte:head>
 
 <div
-  class="mx-auto flex min-h-[70dvh] w-full max-w-2xl flex-1 flex-col overflow-hidden overscroll-none pt-6"
+  class="flex min-h-[70dvh] w-full max-w-4xl flex-1 flex-col overflow-hidden overscroll-none pt-6 sm:px-3"
 >
   <div class="relative z-10 shrink-0 space-y-4 bg-background px-5">
     {#if groundingQuestion && !groundingQuestionDismissed}

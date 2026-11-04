@@ -12,7 +12,7 @@
 
 <!-- The Memory module page: the one page header with status, tabs below. -->
 <div class="flex min-h-0 w-full flex-1 flex-col" data-testid="memory-page">
-  <div class="mx-auto w-full max-w-5xl px-4 pt-6 sm:px-8 sm:pt-10">
+  <div class="w-full px-4 pt-6 sm:px-8 sm:pt-10">
     <PageHeader
       title={data.memory.name}
       description="Tasks, projects and notes you and the agent keep — and a place to capture a thought."

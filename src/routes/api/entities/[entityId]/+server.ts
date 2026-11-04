@@ -66,6 +66,8 @@ export const DELETE: RequestHandler = async (event) => {
   if (!entityId) error(400, 'entityId is required')
 
   const result = await deleteCanonicalEntityForUser(user.id, entityId)
+  if (!result.ok && result.reason === 'system_project')
+    error(409, 'This is a system project of the company and can’t be deleted.')
   if (!result.ok) error(404, 'Entity not found')
 
   return json({ ok: true as const })

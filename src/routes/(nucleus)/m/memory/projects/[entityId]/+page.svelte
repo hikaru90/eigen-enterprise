@@ -210,7 +210,7 @@
 <svelte:head><title>{docTitle('Project', 'Memory')}</title></svelte:head>
 
 <div
-  class="mx-auto flex min-h-[70dvh] w-full max-w-5xl flex-1 flex-col overflow-hidden overscroll-none px-4 pt-6 sm:px-8"
+  class="flex min-h-[70dvh] w-full flex-1 flex-col overflow-hidden overscroll-none px-4 pt-6 sm:px-8"
   data-testid="project-detail-page"
 >
   <header class="border-border shrink-0 space-y-3 border-b pb-3">

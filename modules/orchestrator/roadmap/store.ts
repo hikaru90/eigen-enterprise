@@ -1,7 +1,12 @@
-import { eq } from 'drizzle-orm'
-import type { DbHandle } from '$lib/kernel/db-stores'
+import { and, eq, ne, sql } from 'drizzle-orm'
 import type { AppDatabase } from '$lib/server/db/context'
-import { extensionRoadmapItems } from '$lib/server/db/roadmap.schema'
+import { rowsFromDbExecute } from '$lib/server/db/execute-rows'
+import { ontologyEntityKind, thought, thoughtEntity } from '$lib/server/db/schema'
+import { computeLexicalText } from '$lib/server/memory/lexical-text'
+import { roadmapItemFromTask, taskStateForStatus, type RoadmapTaskRow } from './task-mapping'
+
+/** Tenant encryption opens the DB pool on import: load it on first use (wiring stays connection-free). */
+const tenantCrypto = () => import('$lib/server/crypto/tenant-encryption')
 
 export type RoadmapStatus = 'shipped' | 'in_progress' | 'planned'
 export type RoadmapKind = 'feature' | 'fix' | 'chore'
@@ -50,11 +55,6 @@ function compareItems(a: RoadmapItem, b: RoadmapItem): number {
   if (rankDiff !== 0) return rankDiff
   if (a.position !== b.position) return a.position - b.position
   return a.id.localeCompare(b.id)
-}
-
-/** shipped_at follow-up for a status patch: entering 'shipped' stamps now(), leaving it clears. */
-function shippedAtForPatch(status: RoadmapStatus): { shippedAt: Date } | { shippedAt: null } {
-  return status === 'shipped' ? { shippedAt: new Date() } : { shippedAt: null }
 }
 
 function nowIso(): string {
@@ -111,94 +111,296 @@ export class InMemoryRoadmapStore implements RoadmapStore {
   }
 }
 
-type ItemRow = typeof extensionRoadmapItems.$inferSelect
+/** Where the roadmap lives: the company owner's Memory, scoped by RLS. */
+export type RoadmapMemoryAccess = {
+  /** The user whose Memory holds the Roadmap project. Throws loud when there is none. */
+  ownerId(): Promise<string>
+  /** Run `fn` with the database scoped (RLS) to that user. */
+  withUserDb<T>(userId: string, fn: (db: AppDatabase) => Promise<T>): Promise<T>
+}
 
-function toItem(row: ItemRow): RoadmapItem {
-  return {
-    id: row.id,
-    title: row.title,
-    detail: row.detail,
-    status: row.status,
-    kind: row.kind,
-    position: row.position,
-    shippedAt: row.shippedAt ? row.shippedAt.toISOString() : null,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
+export class RoadmapOwnerMissingError extends Error {
+  constructor() {
+    super("The roadmap lives in the company owner's Memory, and this company has no owner yet.")
   }
 }
 
-async function resolveDb(db: DbHandle): Promise<AppDatabase> {
-  return typeof db === 'function' ? await db() : db
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+const TASK_COLUMNS = {
+  id: thought.id,
+  normalizedText: thought.normalizedText,
+  normalizedTextEncrypted: thought.normalizedTextEncrypted,
+  metadata: thought.metadata,
+  metadataEncrypted: thought.metadataEncrypted,
+  lifecycleStatus: thought.lifecycleStatus,
+  lifecycleCompletedAt: thought.lifecycleCompletedAt,
+  taskKind: thought.taskKind,
+  taskStartedAt: thought.taskStartedAt,
+  taskPosition: thought.taskPosition,
+  createdAt: thought.createdAt,
+  updatedAt: thought.updatedAt,
+}
+
+type TaskSelectRow = Omit<RoadmapTaskRow, 'title' | 'detail'> & {
+  normalizedText: string
+  normalizedTextEncrypted: string | null
+  metadata: Record<string, unknown>
+  metadataEncrypted: string | null
 }
 
 /**
- * RoadmapStore persisting to the extension_roadmap_items table. Unknown ids
- * fail loud via an explicit lookup before the update.
+ * The Roadmap system project's id in this user's Memory, created (and, for
+ * the company owner, the legacy extension_roadmap_items rows adopted) by the
+ * idempotent roadmap_ensure_project() from drizzle/0120.
  */
-export class DbRoadmapStore implements RoadmapStore {
-  constructor(private readonly db: DbHandle) {}
+export async function ensureRoadmapProject(db: AppDatabase, userId: string): Promise<string> {
+  const rows = rowsFromDbExecute<{ id: string | null }>(
+    await db.execute(sql`select roadmap_ensure_project(${userId}) as id`),
+  )
+  const id = rows[0]?.id
+  if (!id) throw new Error(`roadmap_ensure_project returned no project for ${userId}`)
+  return id
+}
+
+/**
+ * RoadmapStore over Memory (P-4): items are the tasks of the system project
+ * "Roadmap" in the company owner's Memory — thought rows (category 'task')
+ * linked to the project, with the roadmap vocabulary mapped onto the task
+ * state (task-mapping.ts). Title and detail are written like every Memory
+ * thought: plaintext columns plus tenant-encrypted copies, which win on read.
+ * Roadmap tasks skip the capture enrich pipeline (no LLM reclassification).
+ */
+export class MemoryRoadmapStore implements RoadmapStore {
+  constructor(private readonly access: RoadmapMemoryAccess) {}
+
+  private async run<T>(
+    fn: (db: AppDatabase, userId: string, projectId: string) => Promise<T>,
+  ): Promise<T> {
+    const userId = await this.access.ownerId()
+    return this.access.withUserDb(userId, async (db) => {
+      const projectId = await ensureRoadmapProject(db, userId)
+      return fn(db, userId, projectId)
+    })
+  }
+
+  /** The Roadmap project's entity id (ensured). */
+  async projectId(): Promise<string> {
+    return this.run(async (_db, _userId, projectId) => projectId)
+  }
 
   async list(): Promise<RoadmapItem[]> {
-    const rows = await (await resolveDb(this.db)).select().from(extensionRoadmapItems)
-    return rows.map(toItem).sort(compareItems)
+    return this.run(async (db, userId, projectId) => {
+      const rows: TaskSelectRow[] = await db
+        .select(TASK_COLUMNS)
+        .from(thought)
+        .innerJoin(thoughtEntity, eq(thoughtEntity.thoughtId, thought.id))
+        .where(
+          and(
+            eq(thought.userId, userId),
+            eq(thought.category, 'task'),
+            ne(thought.lifecycleStatus, 'archived'),
+            eq(thoughtEntity.entityId, projectId),
+          ),
+        )
+      const items: RoadmapItem[] = []
+      for (const row of rows) {
+        const item = roadmapItemFromTask(await readTask(userId, row))
+        if (item) items.push(item)
+      }
+      return items.sort(compareItems)
+    })
   }
 
   async create(input: CreateRoadmapItemInput): Promise<RoadmapItem> {
-    const rows = await (
-      await resolveDb(this.db)
-    )
-      .insert(extensionRoadmapItems)
-      .values({
-        title: input.title,
-        detail: input.detail ?? '',
-        status: input.status ?? 'planned',
-        kind: input.kind ?? 'feature',
-        position: input.position ?? 0,
-        ...(input.status === 'shipped' ? { shippedAt: new Date() } : {}),
+    return this.run(async (db, userId, projectId) => {
+      const state = taskStateForStatus(input.status ?? 'planned', new Date())
+      const encrypted = await encryptTask(userId, input.title, { detail: input.detail ?? '' })
+      const [kind] = await db
+        .select({ id: ontologyEntityKind.id })
+        .from(ontologyEntityKind)
+        .where(and(eq(ontologyEntityKind.userId, userId), eq(ontologyEntityKind.key, 'task')))
+        .limit(1)
+      if (!kind) throw new Error(`no 'task' thought category in the Memory of ${userId}`)
+
+      const id = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(thought)
+          .values({
+            userId,
+            rawText: input.title,
+            normalizedText: input.title,
+            lexicalText: computeLexicalText(input.title),
+            category: 'task',
+            ontologyEntityKindId: kind.id,
+            metadata: { encrypted: true },
+            captureSource: 'api',
+            author: 'user',
+            ...encrypted,
+            ...state,
+            taskKind: input.kind ?? 'feature',
+            taskPosition: input.position ?? 0,
+          })
+          .returning({ id: thought.id })
+        if (!row) throw new Error('roadmap task insert returned no row')
+        await tx
+          .insert(thoughtEntity)
+          .values({ thoughtId: row.id, entityId: projectId, userId, salience: 1, source: 'manual' })
+        return row.id
       })
-      .returning()
-    if (!rows[0]) throw new Error('roadmap item insert returned no row')
-    return toItem(rows[0])
+      return getItem(db, userId, projectId, id)
+    })
   }
 
   async update(id: string, patch: UpdateRoadmapItemPatch): Promise<RoadmapItem> {
-    const database = await resolveDb(this.db)
-    const current = await database
-      .select()
-      .from(extensionRoadmapItems)
-      .where(eq(extensionRoadmapItems.id, id))
-      .limit(1)
-    if (!current[0]) throw new Error(`unknown roadmap item: ${id}`)
+    return this.run(async (db, userId, projectId) => {
+      const current = UUID_RE.test(id) ? await findTask(db, userId, projectId, id) : null
+      if (!current) throw new Error(`unknown roadmap item: ${id}`)
+      const task = await readTask(userId, current)
+      const title = patch.title ?? task.title
+      const detail = patch.detail ?? task.detail
+      const textChanged = patch.title !== undefined || patch.detail !== undefined
+      const now = new Date()
 
-    const rows = await database
-      .update(extensionRoadmapItems)
-      .set({
-        ...(patch.title === undefined ? {} : { title: patch.title }),
-        ...(patch.detail === undefined ? {} : { detail: patch.detail }),
-        ...(patch.status === undefined ? {} : { status: patch.status }),
-        ...(patch.status === undefined ? {} : shippedAtForPatch(patch.status)),
-        ...(patch.kind === undefined ? {} : { kind: patch.kind }),
-        ...(patch.position === undefined ? {} : { position: patch.position }),
-        updatedAt: new Date(),
-      })
-      .where(eq(extensionRoadmapItems.id, id))
-      .returning()
-    if (!rows[0]) throw new Error(`roadmap item update returned no row: ${id}`)
-    return toItem(rows[0])
+      await db
+        .update(thought)
+        .set({
+          ...(textChanged
+            ? {
+                rawText: title,
+                normalizedText: title,
+                lexicalText: computeLexicalText(title),
+                metadata: { encrypted: true },
+                ...(await encryptTask(userId, title, { ...task.metadata, detail })),
+              }
+            : {}),
+          ...(patch.status === undefined
+            ? {}
+            : taskStateForStatus(patch.status, now, { taskStartedAt: current.taskStartedAt })),
+          ...(patch.kind === undefined ? {} : { taskKind: patch.kind }),
+          ...(patch.position === undefined ? {} : { taskPosition: patch.position }),
+          updatedAt: now,
+        })
+        .where(and(eq(thought.userId, userId), eq(thought.id, id)))
+      return getItem(db, userId, projectId, id)
+    })
   }
 }
 
-/**
- * Production store handle: lazily resolves the request-scoped DB (when inside
- * a request/ALS context) or the pooled app handle, so importing/wiring never
- * opens a connection.
- */
-export function defaultRoadmapStore(): RoadmapStore {
-  const db: DbHandle = async () => {
-    const { appDbAsyncLocal, appSql, createScopedDrizzle } = await import('$lib/server/db')
-    const scoped = appDbAsyncLocal.getStore()
-    if (scoped) return scoped
-    return createScopedDrizzle(appSql)
+async function findTask(
+  db: AppDatabase,
+  userId: string,
+  projectId: string,
+  id: string,
+): Promise<TaskSelectRow | null> {
+  const [row] = await db
+    .select(TASK_COLUMNS)
+    .from(thought)
+    .innerJoin(thoughtEntity, eq(thoughtEntity.thoughtId, thought.id))
+    .where(
+      and(
+        eq(thought.userId, userId),
+        eq(thought.id, id),
+        eq(thought.category, 'task'),
+        ne(thought.lifecycleStatus, 'archived'),
+        eq(thoughtEntity.entityId, projectId),
+      ),
+    )
+    .limit(1)
+  return row ?? null
+}
+
+async function getItem(
+  db: AppDatabase,
+  userId: string,
+  projectId: string,
+  id: string,
+): Promise<RoadmapItem> {
+  const row = await findTask(db, userId, projectId, id)
+  const item = row ? roadmapItemFromTask(await readTask(userId, row)) : null
+  if (!item) throw new Error(`roadmap item vanished after write: ${id}`)
+  return item
+}
+
+async function encryptTask(userId: string, title: string, metadata: Record<string, unknown>) {
+  const { encryptTenantValue } = await tenantCrypto()
+  const [rawTextEncrypted, normalizedTextEncrypted, metadataEncrypted] = await Promise.all([
+    encryptTenantValue({ userId, table: 'thought', column: 'raw_text', plaintext: title }),
+    encryptTenantValue({ userId, table: 'thought', column: 'normalized_text', plaintext: title }),
+    encryptTenantValue({
+      userId,
+      table: 'thought',
+      column: 'metadata',
+      plaintext: JSON.stringify(metadata),
+    }),
+  ])
+  return { rawTextEncrypted, normalizedTextEncrypted, metadataEncrypted }
+}
+
+/** The task as the roadmap reads it, plus its full metadata (kept on rewrite). */
+async function readTask(
+  userId: string,
+  row: TaskSelectRow,
+): Promise<RoadmapTaskRow & { metadata: Record<string, unknown> }> {
+  const { decryptTenantValue } = await tenantCrypto()
+  const title = row.normalizedTextEncrypted
+    ? await decryptTenantValue({
+        userId,
+        table: 'thought',
+        column: 'normalized_text',
+        ciphertext: row.normalizedTextEncrypted,
+      })
+    : row.normalizedText
+  const metadata = row.metadataEncrypted
+    ? (JSON.parse(
+        await decryptTenantValue({
+          userId,
+          table: 'thought',
+          column: 'metadata',
+          ciphertext: row.metadataEncrypted,
+        }),
+      ) as Record<string, unknown>)
+    : row.metadata
+  return {
+    id: row.id,
+    title,
+    detail: typeof metadata.detail === 'string' ? metadata.detail : '',
+    metadata,
+    lifecycleStatus: row.lifecycleStatus,
+    lifecycleCompletedAt: row.lifecycleCompletedAt,
+    taskKind: row.taskKind,
+    taskStartedAt: row.taskStartedAt,
+    taskPosition: row.taskPosition,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   }
-  return new DbRoadmapStore(db)
+}
+
+/** The company owner's user id (exactly one: unique index on user.role). */
+async function companyOwnerId(): Promise<string> {
+  const { authDb } = await import('$lib/server/db/auth-db')
+  const { user } = await import('$lib/server/db/auth.schema')
+  const [row] = await authDb
+    .select({ id: user.id })
+    .from(user)
+    .where(eq(user.role, 'owner'))
+    .limit(1)
+  if (!row) throw new RoadmapOwnerMissingError()
+  return row.id
+}
+
+/**
+ * Production store: the Roadmap project in the company owner's Memory, every
+ * operation on a connection scoped (RLS) to the owner — members read the
+ * company roadmap through this store, never through their own Memory.
+ * Importing/wiring never opens a connection.
+ */
+export function defaultRoadmapStore(): MemoryRoadmapStore {
+  return new MemoryRoadmapStore({
+    ownerId: companyOwnerId,
+    withUserDb: async (userId, fn) => {
+      const { withDbUser } = await import('$lib/server/db')
+      return withDbUser(userId, fn)
+    },
+  })
 }
