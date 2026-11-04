@@ -7,7 +7,8 @@ import { registerUser } from './test-helpers'
  *
  * These tests drive the SERVER CONTRACT through the session-shared request context
  * (deterministic — no UI typing races) and assert the gate on the nucleus surface:
- * a user without a working provider gets the wizard; a connected user gets chat.
+ * a user without a working provider gets the wizard; a connected user gets the
+ * app (dashboard + the assistant's top bar).
  * The wizard UI itself is covered by component tests.
  *
  * All external provider calls resolve against scripts/mock-gateway.mjs via env overrides.
@@ -17,7 +18,7 @@ import { registerUser } from './test-helpers'
 const GATEWAY_BASE_URL = `http://127.0.0.1:${process.env.MOCK_GATEWAY_PORT ?? 5199}/v1`
 
 async function expectChatVisible(page: Page): Promise<void> {
-  await expect(page.getByPlaceholder('What do you need?')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('assistant-bar-input')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByText('Connect your AI provider.')).not.toBeVisible()
 }
 

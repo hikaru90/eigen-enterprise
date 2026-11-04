@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { assertRedirectsToLogin, loginUser, registerUser, signOut } from './test-helpers'
 
 test.describe('Auth redirects (AC-019)', () => {
-  const PROTECTED_ROUTES = ['/m/memory/capture', '/agent/activity', '/settings', '/settings/llm', '/m/memory/notes']
+  const PROTECTED_ROUTES = ['/m/memory/capture', '/assistant/activity', '/settings', '/settings/llm', '/m/memory/notes']
 
   for (const route of PROTECTED_ROUTES) {
     test(`redirects unauthenticated user from ${route} to /login`, async ({ page }) => {
@@ -14,9 +14,10 @@ test.describe('Auth redirects (AC-019)', () => {
 test.describe('Registration and login flow', () => {
   test('new user can register and lands on the nucleus /', async ({ page, context }) => {
     await registerUser(context, page)
-    // nucleus: post-auth lands on / (the chatbox), not /m/memory/capture
+    // nucleus: post-auth lands on / (the dashboard, the assistant's top bar), not /m/memory/capture
     await expect(page).toHaveURL(/:\d+\/$/)
-    await expect(page.locator('[data-testid="nucleus-chatbox"]')).toBeVisible()
+    await expect(page.getByTestId('dashboard')).toBeVisible()
+    await expect(page.getByTestId('assistant-bar-input')).toBeVisible()
   })
 
   test('registered user can sign in and lands on the nucleus /', async ({ page, context }) => {

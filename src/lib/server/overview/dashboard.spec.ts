@@ -55,7 +55,7 @@ vi.mock('$lib/server/db', () => {
   }
 })
 
-import { load } from './+page.server'
+import { loadDashboard } from './dashboard'
 
 async function kernel(active: string[]) {
   const activations = new InMemoryActivationStore()
@@ -113,14 +113,7 @@ async function kernel(active: string[]) {
   }
 }
 
-const event = (user: { id: string } | null) =>
-  ({ locals: { user } }) as unknown as Parameters<typeof load>[0]
-
-describe('/overview load', () => {
-  it('redirects signed-out visitors to login', async () => {
-    await expect(load(event(null))).rejects.toMatchObject({ status: 302, location: '/login' })
-  })
-
+describe('the dashboard at / (loadDashboard)', () => {
   it('shows active and inactive modules, website and email results, actions and approvals', async () => {
     kernelHolder.kernel = await kernel(['website', 'email'])
     journeyRows.splice(0, journeyRows.length, { status: 'active' })
@@ -133,9 +126,7 @@ describe('/overview load', () => {
         activity: 'Published the Home page',
       },
     })
-    const data = (await load(event({ id: 'owner' }))) as {
-      overview: import('$lib/server/overview/overview').Overview
-    }
+    const data = await loadDashboard('owner')
     const { modules, actions, approvals } = data.overview
     expect(modules.map((m) => [m.id, m.active])).toEqual([
       ['website', true],
@@ -158,7 +149,7 @@ describe('/overview load', () => {
       { at: '2026-10-20T10:00:00.000Z', text: 'Published the Home page', ok: true },
     ])
     expect(approvals).toEqual([{ id: 'ap1', text: 'Publish a page of your website' }])
-    expect((data as { backup: unknown }).backup).toBeNull()
+    expect(data.backup).toBeNull()
     expect(backupsMock).not.toHaveBeenCalled()
   })
 
@@ -166,11 +157,11 @@ describe('/overview load', () => {
     kernelHolder.kernel = await kernel(['website'])
     roleMock.mockResolvedValue('owner')
     backupsMock.mockResolvedValueOnce({ health: { state: 'failed', at: 't', error: 'S3 PUT failed: 403 AccessDenied' }, runs: [] })
-    const data = (await load(event({ id: 'owner' }))) as { backup: unknown }
+    const data = await loadDashboard('owner')
     expect(data.backup).toEqual({ kind: 'failed', text: 'The last backup failed: S3 PUT failed: 403 AccessDenied', href: '/settings/backups' })
     const { SubstrateUnavailableError } = await import('$lib/server/ee/client')
     backupsMock.mockRejectedValueOnce(new SubstrateUnavailableError('ENOENT'))
-    expect(((await load(event({ id: 'owner' }))) as { backup: unknown }).backup).toBeNull()
+    expect((await loadDashboard('owner')).backup).toBeNull()
     roleMock.mockResolvedValue('admin')
   })
 })

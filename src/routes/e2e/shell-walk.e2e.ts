@@ -6,7 +6,9 @@ import { registerUser } from './test-helpers'
  * Phase-cohesion C2 proof: one shell. As an admin, click every navigation
  * entry and every settings section; each lands inside the shell with exactly
  * one highlighted entry and a "<Page> · <Section> · eigenEnterprise" title.
- * Removed URLs 404 inside the shell with the way back to Assistant.
+ * The company badge is the way to the dashboard at /; the assistant is the
+ * top bar on every page, not a nav entry (polish P-1/P-2).
+ * Removed URLs 404 inside the shell with the way back to the dashboard.
  * Screenshots go to SHELL_WALK_SHOTS (default test-results/shell-walk).
  */
 
@@ -40,13 +42,16 @@ async function newAdmin(context: BrowserContext, page: Page): Promise<void> {
 
 const sidebar = (page: Page) => page.getByTestId('shell-sidebar')
 
-async function expectInShell(page: Page, current: string, title: RegExp): Promise<void> {
+/** `current` = the one highlighted sidebar entry (a nav id or 'company-link'), or null for none. */
+async function expectInShell(page: Page, current: string | null, title: RegExp): Promise<void> {
   await expect(page.getByTestId('app-shell')).toBeVisible()
-  await expect(sidebar(page).locator('[aria-current="page"]')).toHaveCount(1)
-  await expect(sidebar(page).getByTestId(`shell-nav-${current}`)).toHaveAttribute(
-    'aria-current',
-    'page',
-  )
+  // The assistant's top bar is on every signed-in page.
+  await expect(page.getByTestId('assistant-bar-input')).toBeVisible()
+  await expect(sidebar(page).locator('[aria-current="page"]')).toHaveCount(current ? 1 : 0)
+  if (current) {
+    const testid = current === 'company-link' ? 'shell-company-link' : `shell-nav-${current}`
+    await expect(sidebar(page).getByTestId(testid)).toHaveAttribute('aria-current', 'page')
+  }
   await expect(page).toHaveTitle(title)
 }
 
@@ -58,24 +63,55 @@ test('every navigation entry and settings section renders inside the one shell',
   await page.setViewportSize({ width: 1280, height: 800 })
   await newAdmin(context, page)
 
+  // No Assistant, Overview or Agent entry any more (P-1, P-2).
+  for (const gone of ['chat', 'overview', 'agent']) {
+    await page.goto('/settings')
+    await expect(sidebar(page).getByTestId(`shell-nav-${gone}`)).toHaveCount(0)
+  }
+
   const entries: Array<[string, RegExp, RegExp]> = [
     ['messages', /\/messages$/, /^Messages · eigenEnterprise$/],
-    ['overview', /\/overview$/, /^Overview · eigenEnterprise$/],
     ['website', /\/m\/website$/, / · Website · eigenEnterprise$/],
     ['email', /\/m\/email$/, /^Email · eigenEnterprise$/],
     ['brand', /\/brand$/, /^Brand · eigenEnterprise$/],
-    ['agent', /\/agent\/runs$/, /^Runs · Agent · eigenEnterprise$/],
     ['memory', /\/m\/memory$/, /^Memory · eigenEnterprise$/],
     ['settings', /\/settings$/, /^Account · Settings · eigenEnterprise$/],
-    ['chat', /\/$/, /^Assistant · eigenEnterprise$/],
   ]
-  await page.goto('/overview')
+  await page.goto('/settings')
   for (const [id, url, title] of entries) {
     await sidebar(page).getByTestId(`shell-nav-${id}`).click()
     await expect(page).toHaveURL(url)
     await expectInShell(page, id, title)
     await page.screenshot({ path: `${SHOTS}/nav-${id}.png` })
   }
+  // The company badge opens the dashboard.
+  await sidebar(page).getByTestId('shell-company-link').click()
+  await expect(page).toHaveURL(/\/$/)
+  await expectInShell(page, 'company-link', /^Dashboard · eigenEnterprise$/)
+  await expect(page.getByTestId('dashboard')).toBeVisible()
+  await page.screenshot({ path: `${SHOTS}/nav-dashboard.png` })
+
+  // The one assistant: ⌘K / Ctrl+K from any page, the panel docks right of the
+  // page and stays open with its conversation across client-side navigation.
+  await page.goto('/m/website')
+  await page.waitForFunction(() => document.body.dataset.eigenHydrated === 'true')
+  await page.keyboard.press('ControlOrMeta+k')
+  await expect(page.getByTestId('assistant-bar-input')).toBeFocused()
+  await page.keyboard.type('What can you do?')
+  await page.keyboard.press('Enter')
+  const panel = page.getByTestId('assistant-panel')
+  await expect(panel).toBeVisible()
+  await expect(panel.getByText('What can you do?')).toBeVisible()
+  const panelBox = (await panel.boundingBox())!
+  const contentBox = (await page.getByTestId('shell-content').boundingBox())!
+  expect(panelBox.x).toBeGreaterThanOrEqual(contentBox.x + contentBox.width - 1)
+  expect(panelBox.width).toBeGreaterThanOrEqual(320)
+  await page.screenshot({ path: `${SHOTS}/assistant-panel.png` })
+  await sidebar(page).getByTestId('shell-nav-memory').click()
+  await expect(page).toHaveURL(/\/m\/memory$/)
+  await expect(panel.getByText('What can you do?')).toBeVisible()
+  await page.getByTestId('assistant-close').click()
+  await expect(panel).toHaveCount(0)
 
   const sections: Array<[string, RegExp, string]> = [
     ['members', /\/settings\/members$/, 'Members & invites'],
@@ -107,13 +143,14 @@ test('every navigation entry and settings section renders inside the one shell',
   await expect(page.getByText(/password/i).filter({ hasText: 'Change password' })).toHaveCount(0)
 
   // Kept pages that wait for C3 still render in the shell.
-  const kept: Array<[string, string]> = [
+  // The assistant's linkable pages belong to no nav entry: the top bar is their way in.
+  const kept: Array<[string, string | null]> = [
     ['/m/memory/notes', 'memory'],
     ['/m/memory/tasks', 'memory'],
     ['/m/memory/projects', 'memory'],
     ['/m/memory/capture', 'memory'],
-    ['/agent/activity', 'agent'],
-    ['/agent/roadmap', 'agent'],
+    ['/assistant', null],
+    ['/assistant/activity', null],
     ['/m/website/settings', 'website'],
   ]
   for (const [path, current] of kept) {
@@ -122,8 +159,14 @@ test('every navigation entry and settings section renders inside the one shell',
     await page.screenshot({ path: `${SHOTS}/kept${path.replaceAll('/', '-')}.png` })
   }
 
-  // Removed URLs 404 inside the shell, with the way back to Assistant.
+  // Removed URLs 404 inside the shell, with the way back to the dashboard.
   for (const path of [
+    '/overview',
+    '/agent',
+    '/agent/runs',
+    '/agent/runs/1',
+    '/agent/activity',
+    '/agent/roadmap',
     '/graph',
     '/memory',
     '/memory/tasks',
@@ -149,19 +192,32 @@ test('every navigation entry and settings section renders inside the one shell',
     const res = await page.goto(path)
     expect(res?.status(), path).toBe(404)
     await expect(page.getByTestId('app-shell')).toBeVisible()
-    await expect(page.getByTestId('error-back')).toHaveText('Back to Assistant')
+    await expect(page.getByTestId('error-back')).toHaveText('Back to the dashboard')
   }
   await page.screenshot({ path: `${SHOTS}/removed-404.png` })
 
   // Phone: the drawer carries the same nav.
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/settings/api-keys')
+  // A tap before hydration opens nothing.
+  await page.waitForFunction(() => document.body.dataset.eigenHydrated === 'true')
   await page.getByTestId('shell-menu-toggle').click()
-  await expect(page.getByTestId('shell-drawer').getByTestId('shell-nav-agent')).toBeVisible()
+  await expect(page.getByTestId('shell-drawer').getByTestId('shell-company-link')).toBeVisible()
+  await expect(page.getByTestId('shell-drawer').getByTestId('shell-nav-memory')).toBeVisible()
   await page.screenshot({ path: `${SHOTS}/phone-drawer.png` })
   await page.getByTestId('shell-drawer').getByTestId('shell-nav-memory').click()
   await expect(page).toHaveURL(/\/m\/memory$/)
   await page.screenshot({ path: `${SHOTS}/phone-memory.png` })
+  // Phone: the top bar keeps the assistant; asking opens it as a full-screen sheet.
+  await page.getByTestId('assistant-bar-input').fill('Hello')
+  await page.getByTestId('assistant-bar-input').press('Enter')
+  const sheet = page.getByTestId('assistant-panel')
+  await expect(sheet).toBeVisible()
+  const box = (await sheet.boundingBox())!
+  expect(box.width).toBeGreaterThanOrEqual(389)
+  await page.screenshot({ path: `${SHOTS}/phone-assistant.png` })
+  await page.getByTestId('assistant-close').click()
+  await expect(sheet).toHaveCount(0)
 })
 
 test('signed out: unknown pages and dead ends offer Sign in', async ({ page }) => {

@@ -3,7 +3,7 @@ import { error, redirect } from '@sveltejs/kit'
 import { runViewAccess } from '$lib/server/agent-runs/access'
 import { agentRunsSource } from '$lib/server/agent-runs/source'
 
-/** /agent/runs (D8): the company's durable agent runs, newest activity first. */
+/** /assistant (D8, polish P-1): the assistant's conversations (durable runs), newest activity first. */
 export const load: PageServerLoad = async ({ locals }) => {
   const access = await runViewAccess(locals.user)
   if (!access.ok) {

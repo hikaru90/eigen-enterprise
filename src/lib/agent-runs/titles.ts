@@ -1,5 +1,5 @@
 /**
- * Owner-facing words for the Agent → Runs list (C3b). Shared by server and
+ * Owner-facing words for the assistant's conversation list (C3b, polish P-1). Shared by server and
  * client — no server imports here. Runs are told apart structurally: a
  * background run carries a run principal, a chat run does not (its
  * `llm_user_id` is the member who chatted).
@@ -11,10 +11,19 @@ export type RunTitleInput = {
   background: boolean
   /** The chatting member's display name, when known. */
   memberName: string | null
+  /** A chat's first message (what the conversation is about), when known. */
+  topic?: string | null
 }
 
+/** Longest title the conversation lists show before cutting with an ellipsis. */
+const TOPIC_MAX = 72
+
 export function runTitle(input: RunTitleInput): string {
-  if (!input.background) return `Chat with ${input.memberName?.trim() || 'a team member'}`
+  if (!input.background) {
+    const topic = input.topic?.replace(/\s+/g, ' ').trim()
+    if (topic) return topic.length > TOPIC_MAX ? `${topic.slice(0, TOPIC_MAX - 1).trimEnd()}…` : topic
+    return `Chat with ${input.memberName?.trim() || 'a team member'}`
+  }
   const colon = input.conversationKey.indexOf(':')
   const task =
     colon >= 0

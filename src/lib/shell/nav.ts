@@ -1,8 +1,9 @@
 /**
- * The app shell's navigation (phase-cohesion rule 1, phase-workspace W-7):
- * one fixed order — Messages, Assistant, Overview, Website, Email, Brand,
- * Agent, Memory, Drive, Settings. The company agent's chat at `/` is "Assistant" so
- * there are never two things called "Chat". Module
+ * The app shell's navigation (phase-cohesion rule 1, phase-workspace W-7,
+ * polish P-1/P-2): one fixed order — Messages, Website, Email, Brand, Memory,
+ * Drive, Settings. The assistant is not a nav entry: it is the shell's top bar
+ * and panel on every page. The dashboard at `/` is the company badge at the
+ * top of the sidebar, not an entry either. Module
  * entries come from the module registry (name + activation state); a module
  * that is not registered is not listed, an inactive one is listed dimmed.
  * Registered modules outside the fixed order follow Memory. Pure — shared by
@@ -67,18 +68,9 @@ export function buildShellNav(
   return {
     items: [
       ...known('messages'),
-      { id: 'chat', name: 'Assistant', href: '/', active: true },
-      { id: 'overview', name: 'Overview', href: '/overview', active: true },
       ...known('website'),
       ...known('email'),
       ...known('brand'),
-      {
-        id: 'agent',
-        name: 'Agent',
-        // One Agent area: /agent/runs · /agent/activity · /agent/roadmap.
-        href: '/agent',
-        active: true,
-      },
       ...known('memory'),
       ...known('drive'),
       ...others,

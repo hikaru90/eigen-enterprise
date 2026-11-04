@@ -36,15 +36,10 @@ const onboardingFactsMock = vi.hoisted(() => vi.fn())
 vi.mock('$lib/server/onboarding/assisted', () => ({ onboardingFactsFor: onboardingFactsMock }))
 vi.mock('$lib/server/mail', () => ({ companyMail: () => ({ isConfigured: mailConfiguredMock }) }))
 
-const loadConversationMock = vi.hoisted(() =>
-  vi.fn(async () => ({ sessionId: null as string | null, messages: [] as unknown[] })),
+const loadDashboardMock = vi.hoisted(() =>
+  vi.fn(async () => ({ overview: { modules: [], actions: [], approvals: [] }, backup: null })),
 )
-const loadApprovalStatusesMock = vi.hoisted(() => vi.fn(async () => ({})))
-vi.mock('$lib/server/chat/current-conversation', () => ({
-  loadCurrentConversation: loadConversationMock,
-  loadApprovalStatuses: loadApprovalStatusesMock,
-  loadPendingApprovalsByTool: async () => ({}),
-}))
+vi.mock('$lib/server/overview/dashboard', () => ({ loadDashboard: loadDashboardMock }))
 
 /** Stand-in for event.fetch against GET /api/approvals/mode (built by another workstream). */
 function modeFetch(res: { ok: boolean; body?: unknown }) {
@@ -108,7 +103,7 @@ describe('nucleus page server load', () => {
       location: '/messages',
     })
     expect(completeWelcomeMock).toHaveBeenCalledWith('m1')
-    // Later visits: the chat, never the setup wizard.
+    // Later visits: the dashboard, never the setup wizard.
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date() }))
     expect(await load(withFetch({ locals: { user: { id: 'm1', name: 'Anna' } }, url: new URL('https://os.test/') } as never))).toMatchObject({
       needsOnboarding: false,
@@ -167,39 +162,6 @@ describe('nucleus page server load', () => {
     expect(await load(withFetch(plain as never))).toMatchObject({ returnedFromProvider: false })
   })
 
-  it('restores the saved conversation so navigating away and back keeps the chat', async () => {
-    isUserProviderReadyMock.mockResolvedValue(true)
-    loadConversationMock.mockResolvedValue({
-      sessionId: 's-1',
-      messages: [
-        { role: 'assistant', content: 'Welcome — your website next?', metadata: null },
-        { role: 'user', content: 'yes', metadata: null },
-      ],
-    })
-    const result = await load(withFetch({
-      locals: { user: { id: 'u1' } },
-      url: new URL('https://os.test/'),
-    } as never))
-    expect(loadConversationMock).toHaveBeenCalledWith(expect.anything(), 'u1')
-    expect(result).toMatchObject({
-      chatSessionId: 's-1',
-      chatHistory: [
-        { role: 'assistant', content: 'Welcome — your website next?' },
-        { role: 'user', content: 'yes' },
-      ],
-    })
-  })
-
-  it('starts empty when the user has no saved conversation', async () => {
-    isUserProviderReadyMock.mockResolvedValue(true)
-    loadConversationMock.mockResolvedValue({ sessionId: null, messages: [] })
-    const result = await load(withFetch({
-      locals: { user: { id: 'u1' } },
-      url: new URL('https://os.test/'),
-    } as never))
-    expect(result).toMatchObject({ chatSessionId: null, chatHistory: [] })
-  })
-
   it('redirects unauthenticated users to login', async () => {
     await expect(load(withFetch({ locals: { user: null } } as never))).rejects.toMatchObject({
       status: 302,
@@ -207,7 +169,7 @@ describe('nucleus page server load', () => {
     })
   })
 
-  it('gates the chat behind first-run onboarding when no provider works', async () => {
+  it('gates the dashboard behind first-run onboarding when no provider works', async () => {
     isUserProviderReadyMock.mockResolvedValue(false)
 
     const result = await load(withFetch({
@@ -241,7 +203,7 @@ describe('nucleus page server load', () => {
     })
   })
 
-  it('goes straight to the chat when the tour is done and a provider works', async () => {
+  it('goes straight to the dashboard when the tour is done and a provider works', async () => {
     isUserProviderReadyMock.mockResolvedValue(true)
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date('2026-09-22T10:00:00Z') }))
 
@@ -313,65 +275,43 @@ describe('nucleus page server load', () => {
     })
   })
 
-  it('restores approval cards with their current kernel status', async () => {
-    isUserProviderReadyMock.mockResolvedValue(true)
-    loadConversationMock.mockResolvedValue({
-      sessionId: 's-1',
-      messages: [
-        {
-          role: 'assistant',
-          content: '',
-          metadata: { variant: 'approval_required', tool: 'website.publish_page', approvalId: 'apr-1' },
-        },
-      ],
-    })
-    loadApprovalStatusesMock.mockResolvedValueOnce({ 'apr-1': 'pending' })
-    const result = await load(withFetch({
-      locals: { user: { id: 'u1' } },
-      url: new URL('https://os.test/'),
-    } as never))
-    expect(loadApprovalStatusesMock).toHaveBeenCalledWith(expect.anything(), ['apr-1'])
-    expect(result).toMatchObject({
-      chatHistory: [
-        { role: 'approval', tool: 'website.publish_page', approvalId: 'apr-1', status: 'pending' },
-      ],
-    })
-  })
+  it('the dashboard loads only once the first-run flows are done', async () => {
+    isUserProviderReadyMock.mockResolvedValue(false)
+    const first = await load(withFetch({ locals: { user: { id: 'u1' } }, url: new URL('https://os.test/') } as never))
+    expect(first).toMatchObject({ showWelcome: true, dashboard: null })
+    expect(loadDashboardMock).not.toHaveBeenCalled()
 
-  it('loads the approval mode for the owner/admin only', async () => {
     isUserProviderReadyMock.mockResolvedValue(true)
-    roleMock.mockResolvedValue('owner')
-    const fetch = modeFetch({ ok: true, body: { mode: 'reasonable' } })
-    const owner = await load(withFetch({
-      locals: { user: { id: 'u1' } },
-      url: new URL('https://os.test/'),
-      fetch,
-    } as never))
-    expect(fetch).toHaveBeenCalledWith('/api/approvals/mode')
-    expect(owner).toMatchObject({ isAdmin: true, approvalMode: { status: 'ok', mode: 'reasonable' } })
-
-    roleMock.mockResolvedValue('member')
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date() }))
-    const other = modeFetch({ ok: true, body: { mode: 'ask' } })
-    const member = await load(withFetch({
-      locals: { user: { id: 'u2' } },
-      url: new URL('https://os.test/'),
-      fetch: other,
-    } as never))
-    expect(other).not.toHaveBeenCalled()
-    expect(member).toMatchObject({ isAdmin: false, approvalMode: null })
+    const done = await load(withFetch({ locals: { user: { id: 'u1' } }, url: new URL('https://os.test/') } as never))
+    expect(loadDashboardMock).toHaveBeenCalledWith('u1')
+    expect(done).toMatchObject({
+      showWelcome: false,
+      needsOnboarding: false,
+      dashboard: { overview: { modules: [], actions: [], approvals: [] }, backup: null },
+    })
   })
 
-  it('says so when the approval mode cannot be loaded — never a silent default', async () => {
+  it('greets by the first name of the account, else of the onboarding name', async () => {
     isUserProviderReadyMock.mockResolvedValue(true)
-    roleMock.mockResolvedValue('owner')
-    for (const fetch of [
-      modeFetch({ ok: false }),
-      modeFetch({ ok: true, body: { mode: 'yolo' } }),
-    ]) {
-      expect(
-        await load(withFetch({ locals: { user: { id: 'u1' } }, url: new URL('https://os.test/'), fetch } as never)),
-      ).toMatchObject({ approvalMode: { status: 'unavailable' } })
-    }
+    getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date() }))
+    const profile = await load(withFetch({ locals: { user: { id: 'u1', name: 'Ada Lovelace', firstName: 'Augusta' } }, url: new URL('https://os.test/') } as never))
+    expect(profile).toMatchObject({ greetingName: 'Augusta' })
+    getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date(), displayName: 'Ada Lovelace' }))
+    const named = await load(withFetch({ locals: { user: { id: 'u1', name: 'Grace Hopper' } }, url: new URL('https://os.test/') } as never))
+    expect(named).toMatchObject({ greetingName: 'Grace' })
+    const onboardingOnly = await load(withFetch({ locals: { user: { id: 'u1', name: '' } }, url: new URL('https://os.test/') } as never))
+    expect(onboardingOnly).toMatchObject({ greetingName: 'Ada' })
+    getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date() }))
+    const anonymous = await load(withFetch({ locals: { user: { id: 'u1', name: ' ' } }, url: new URL('https://os.test/') } as never))
+    expect(anonymous).toMatchObject({ greetingName: null })
+  })
+
+  it('carries no chat transcript: the conversation lives in the assistant panel', async () => {
+    isUserProviderReadyMock.mockResolvedValue(true)
+    getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date() }))
+    const data = await load(withFetch({ locals: { user: { id: 'u1' } }, url: new URL('https://os.test/') } as never))
+    expect(data).not.toHaveProperty('chatHistory')
+    expect(data).not.toHaveProperty('chatSessionId')
   })
 })

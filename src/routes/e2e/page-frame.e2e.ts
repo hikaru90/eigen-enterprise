@@ -5,7 +5,8 @@ import { registerUser } from './test-helpers'
 /**
  * C3b proof: one page frame. Every area page opens with the same PageHeader
  * (h1, description, optional status pill and actions, tabs below) on the
- * same left edge; the signed-out pages share the shell's tokens and the one
+ * same left edge, and uses the full width of the pane (polish P-3); the
+ * signed-out pages share the shell's tokens and the one
  * wordmark. Screenshots go to PAGE_FRAME_SHOTS (default
  * test-results/page-frame) and are meant to be looked at side by side.
  */
@@ -47,14 +48,14 @@ test('every area page wears the one page header', async ({ page, context }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await newAdmin(context, page)
 
-  // [path, h1, tabs testid or null, frame width]
-  const areas: Array<[string, string, string | null]> = [
+  // [path, h1, tabs testid or null]
+  const areas: Array<[string, string | RegExp, string | null]> = [
     ['/messages', 'Messages', null],
-    ['/overview', 'Overview', null],
+    ['/', /^Welcome back/, null],
     ['/m/website', 'Website', 'website-nav'],
     ['/m/email', 'Email', null],
     ['/brand', 'Brand', 'brand-nav'],
-    ['/agent/runs', 'Agent', 'agent-area-nav'],
+    ['/assistant', 'Assistant', 'assistant-area-nav'],
     ['/m/memory', 'Memory', 'memory-nav'],
     ['/settings', 'Settings', 'settings-nav'],
   ]
@@ -73,16 +74,21 @@ test('every area page wears the one page header', async ({ page, context }) => {
       expect(navBox.y).toBeGreaterThan(titleBox.y + titleBox.height)
     }
     lefts[path] = await h1Left(page)
-    await page.screenshot({ path: `${SHOTS}/area${path.replaceAll('/', '-')}.png` })
+    await page.screenshot({ path: `${SHOTS}/area${path === '/' ? '-dashboard' : path.replaceAll('/', '-')}.png` })
   }
-  // One left edge for the default-width frames.
-  const edge = lefts['/overview']
-  for (const path of ['/messages', '/m/email', '/agent/runs', '/m/memory', '/settings'])
+  // One left edge for every framed page.
+  const edge = lefts['/']
+  for (const path of ['/m/website', '/m/email', '/brand', '/assistant', '/m/memory', '/settings'])
     expect(Math.abs(lefts[path] - edge), path).toBeLessThan(2)
 
-  // Assistant (the agent chat at /) is the shell's home and has no page header.
-  await page.goto('/')
-  await page.screenshot({ path: `${SHOTS}/area-chat.png` })
+  // Full width (P-3): the frame fills the content pane — no centred max-w column.
+  for (const path of ['/', '/m/email', '/assistant', '/m/memory', '/settings']) {
+    await page.goto(path)
+    const frame = page.locator('[data-page-frame]').first()
+    const pane = (await page.getByTestId('shell-content').boundingBox())!
+    const box = (await frame.boundingBox())!
+    expect(Math.abs(box.width - pane.width), path).toBeLessThan(2)
+  }
 
   // Status pills: one style with a dot, on modules.
   for (const path of ['/m/website', '/m/email', '/m/memory']) {
@@ -105,7 +111,7 @@ test('every area page wears the one page header', async ({ page, context }) => {
   await page.screenshot({ path: `${SHOTS}/website-site.png` })
 
   // Plain words for the owner.
-  await page.goto('/overview')
+  await page.goto('/')
   await expect(page.locator('body')).not.toContainText(/kernel|GTD|hybrid retrieval/)
   await expect(page.getByTestId('overview-modules-hint')).not.toContainText('available')
   await page.goto('/m/email')

@@ -12,8 +12,8 @@
     utcDateKey,
     type ActivitySpendBucket,
   } from '$lib/activity/spend-chart'
-  import SectionHeader from '$lib/components/page/section-header.svelte'
   import AiDateRangePicker from '$lib/components/ai-date-range-picker.svelte'
+  import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
   import { formatActivityCredits } from '$lib/pricing/credits'
@@ -289,10 +289,13 @@
 </script>
 
 <svelte:head>
-  <title>{docTitle('Activity', 'Agent')}</title>
+  <title>{docTitle('Activity', 'Assistant')}</title>
 </svelte:head>
 
-<SectionHeader title="Activity" description="What the agent and the system did, newest first." />
+<SectionHeader
+  title="Activity"
+  description="What the assistant and the system did, newest first."
+/>
 
 <section class="mt-6" aria-label="Activity log" data-testid="activity-log">
   {#if data.modules.length > 1}
@@ -302,13 +305,13 @@
       data-testid="activity-filter"
     >
       <a
-        href={resolve('/(nucleus)/agent/activity')}
+        href={resolve('/(nucleus)/assistant/activity')}
         aria-current={data.module === null ? 'page' : undefined}
         class={chip(data.module === null)}>All</a
       >
       {#each data.modules as m (m.id)}
         <a
-          href={`${resolve('/(nucleus)/agent/activity')}?module=${encodeURIComponent(m.id)}`}
+          href={`${resolve('/(nucleus)/assistant/activity')}?module=${encodeURIComponent(m.id)}`}
           aria-current={data.module === m.id ? 'page' : undefined}
           data-testid="activity-filter-{m.id}"
           class={chip(data.module === m.id)}>{m.label}</a

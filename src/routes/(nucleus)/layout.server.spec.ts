@@ -58,10 +58,7 @@ describe('(nucleus) layout load', () => {
     const data = (await load(event({ id: 'owner' }))) as { shell: import('$lib/shell/nav').ShellData }
     expect(data.shell.companyName).toBe('Kindred')
     expect(data.shell.nav.items.map((m) => [m.id, m.active])).toEqual([
-      ['chat', true],
-      ['overview', true],
       ['website', true],
-      ['agent', true],
       ['owlery', true],
       ['repo', false],
       ['settings', true],

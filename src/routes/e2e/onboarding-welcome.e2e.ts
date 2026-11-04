@@ -1,11 +1,13 @@
 import { expect, test, type Page } from '@playwright/test'
+import postgres from 'postgres'
 import { loginUser, registerUser, signOut } from './test-helpers'
 
 /**
  * Phase-2e: the boot sequence is the FIRST screen on `/` for every production
  * user who has not completed it — a cinematic first run (orb, greeting, name,
  * what this is), the provider connect as the only hard gate, and a handoff
- * into the chat where the agent's first words are already waiting. Skippable;
+ * into the app: the dashboard, with the assistant panel opened on its own and
+ * the agent's first words streaming into it (polish P-1/P-2). Skippable;
  * completion persists server-side per user; the saved name personalizes every
  * future boot ("Hello, Ada.").
  *
@@ -96,9 +98,28 @@ async function interceptTts(context: import('@playwright/test').BrowserContext):
   return { texts }
 }
 
-async function expectChatVisible(page: Page): Promise<void> {
-  await expect(page.getByPlaceholder('What do you need?')).toBeVisible({ timeout: 15_000 })
+/** After the first run: the dashboard in the shell, the assistant one field away. */
+async function expectHomeVisible(page: Page): Promise<void> {
+  await expect(page.getByTestId('dashboard')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('assistant-bar-input')).toBeVisible()
   await expect(page.getByTestId('welcome-wizard')).not.toBeVisible()
+}
+
+const DATABASE_URL = process.env.DATABASE_URL?.trim()
+let _sql: postgres.Sql | null = null
+const sql = () => (_sql ??= postgres(DATABASE_URL!, { prepare: false }))
+test.afterAll(async () => {
+  await _sql?.end()
+})
+
+/**
+ * The hand-off only applies while the company's website is still to do: a
+ * website journey left active by another spec in the shared test database
+ * would (correctly) turn it off. Start from "not started".
+ */
+async function websiteNotStarted(): Promise<void> {
+  if (!DATABASE_URL) throw new Error('DATABASE_URL not set — the hand-off spec resets the website journey')
+  await sql()`update kernel_journeys set status = 'abandoned' where kind = 'website_founding' and status = 'active'`
 }
 
 async function expectWizard(page: Page): Promise<void> {
@@ -148,6 +169,7 @@ test.describe('welcome boot sequence', () => {
   }) => {
     await stubSpeechSynthesis(context)
     const tts = await interceptTts(context)
+    await websiteNotStarted()
     await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
 
     // Boot → greeting. No capability list, no step counter, no module jargon — ever.
@@ -175,10 +197,13 @@ test.describe('welcome boot sequence', () => {
 
     // Assisted onboarding: the orchestrator AGENT speaks first (its turn comes
     // from the onboarding context, here the mock gateway's text) — no scripted
-    // greeting. The turn goes to the GATEWAY for its voice (the Her layer);
-    // the browser's robot voice never speaks.
-    await expectChatVisible(page)
-    await expect(page.getByText(/Hello from mock gateway/i)).toBeVisible({ timeout: 30_000 })
+    // greeting. It streams into the assistant panel, which opens on its own.
+    // The turn goes to the GATEWAY for its voice (the Her layer); the
+    // browser's robot voice never speaks.
+    await expectHomeVisible(page)
+    const panel = page.getByTestId('assistant-panel')
+    await expect(panel).toBeVisible({ timeout: 15_000 })
+    await expect(panel.getByText(/Hello from mock gateway/i)).toBeVisible({ timeout: 30_000 })
     await expect(page.getByText(/getting set up/)).toHaveCount(0)
     await expect
       .poll(async () => tts.texts.join(' '), { timeout: 15_000 })
@@ -188,9 +213,17 @@ test.describe('welcome boot sequence', () => {
     )
     expect(spokenByRobot).toEqual([])
 
-    // Reload: the tour is done — the chat IS the page now.
+    // Reload: the tour is done — the dashboard is the page now, the greeting
+    // stays in the conversation, and it is not sent again.
     await page.goto('/')
-    await expectChatVisible(page)
+    await expectHomeVisible(page)
+    await expect(page.getByTestId('assistant-panel')).toHaveCount(0)
+    // A click before hydration opens nothing.
+    await page.waitForFunction(() => document.body.dataset.eigenHydrated === 'true')
+    await page.getByTestId('assistant-toggle').click()
+    await expect(
+      page.getByTestId('assistant-panel').getByText(/Hello from mock gateway/i),
+    ).toHaveCount(1)
   })
 
   test('skipping persists across sign-out/sign-in; the provider gate still holds', async ({
@@ -209,13 +242,13 @@ test.describe('welcome boot sequence', () => {
 
     await saveApiKeyViaApi(page)
     await page.goto('/')
-    await expectChatVisible(page)
+    await expectHomeVisible(page)
 
     // The skip decision survives a full sign-out/sign-in cycle (server-side flag).
     await signOut(page)
     await loginUser(page, email)
 
-    await expectChatVisible(page)
+    await expectHomeVisible(page)
     await expect(page.getByTestId('welcome-wizard')).not.toBeVisible()
   })
 
@@ -235,9 +268,9 @@ test.describe('welcome boot sequence', () => {
     await expect(page.getByText('Connect your AI provider.')).toBeVisible({ timeout: 15_000 })
     await saveApiKeyViaApi(page)
     await page.goto('/')
-    await expectChatVisible(page)
+    await expectHomeVisible(page)
 
-    // The cog is on the homepage; restart brings the boot sequence back.
+    // The cog is in the shell; restart brings the boot sequence back.
     // A click that lands before hydration opens nothing: retry until the menu is up.
     await expect(async () => {
       await page.getByTestId('home-settings-trigger').click()
@@ -250,8 +283,8 @@ test.describe('welcome boot sequence', () => {
     await expect(page.getByText('Hello, Ada.')).toBeVisible()
     await expect(page.getByRole('textbox', { name: 'Your name' })).not.toBeVisible()
 
-    // And the boot still completes into the chat.
+    // And the boot still completes into the app.
     await page.getByTestId('skip-onboarding').click()
-    await expectChatVisible(page)
+    await expectHomeVisible(page)
   })
 })

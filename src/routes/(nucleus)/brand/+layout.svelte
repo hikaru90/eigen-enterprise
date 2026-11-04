@@ -15,7 +15,7 @@
 </script>
 
 {#if current}
-  <PageFrame width="full">
+  <PageFrame>
     <PageHeader
       title="Brand"
       description={ownerModuleBlurb('brand', '')}

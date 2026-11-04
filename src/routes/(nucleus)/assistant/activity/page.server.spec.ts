@@ -14,11 +14,15 @@ vi.mock('$lib/server/activity/kernel-events', () => ({
 
 vi.mock('$lib/server/boot', () => ({
   appKernel: async () => ({
-    modules: { list: () => [{ name: 'Website', toolNamespaces: ['website', 'substrate', 'github'] }] },
+    modules: {
+      list: () => [{ name: 'Website', toolNamespaces: ['website', 'substrate', 'github'] }],
+    },
   }),
 }))
 
-vi.mock('../../../../../modules/orchestrator/brain', () => ({ ORCHESTRATOR_AGENT_ID: 'orchestrator' }))
+vi.mock('../../../../../modules/orchestrator/brain', () => ({
+  ORCHESTRATOR_AGENT_ID: 'orchestrator',
+}))
 
 describe('activity page server', () => {
   it('redirects unauthenticated user', async () => {
@@ -28,7 +32,7 @@ describe('activity page server', () => {
   it('returns initial empty data', async () => {
     const data = await load({
       locals: { user: { id: 'u1', email: 'a@b.c' } },
-      url: new URL('http://localhost/agent/activity'),
+      url: new URL('http://localhost/assistant/activity'),
     } as never)
 
     expect(data.calls).toEqual([])
@@ -65,16 +69,25 @@ describe('activity page server', () => {
         source: 'urn:eigenenterprise:module:website',
         payload: { tool: 'website.list_pages', ok: true },
       },
-      { id: 'e1', ts: '2026-09-08T10:00:00.000Z', type: 'agent.dispatched', principalId: 'orchestrator', payload: {} },
+      {
+        id: 'e1',
+        ts: '2026-09-08T10:00:00.000Z',
+        type: 'agent.dispatched',
+        principalId: 'orchestrator',
+        payload: {},
+      },
     ]
     listKernelEventsMock.mockResolvedValue(events as never)
 
     const data = await load({
       locals: { user: { id: 'u1', email: 'a@b.c' } },
-      url: new URL('http://localhost/agent/activity'),
+      url: new URL('http://localhost/assistant/activity'),
     } as never)
 
-    const [db, input] = listKernelEventsMock.mock.calls[0] as unknown as [unknown, { types: string[] }]
+    const [db, input] = listKernelEventsMock.mock.calls[0] as unknown as [
+      unknown,
+      { types: string[] },
+    ]
     expect(db).toBeDefined()
     expect(input.types).toEqual(['agent.dispatched', 'tool.executed'])
     expect(data.log).toHaveLength(1)
@@ -91,7 +104,7 @@ describe('activity page server', () => {
 
     const filtered = await load({
       locals: { user: { id: 'u1', email: 'a@b.c' } },
-      url: new URL('http://localhost/agent/activity?module=website'),
+      url: new URL('http://localhost/assistant/activity?module=website'),
     } as never)
     expect(filtered.module).toBe('website')
     expect(filtered.log[0].entries.map((e) => e.id)).toEqual(['e2'])

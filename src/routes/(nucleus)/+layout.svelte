@@ -32,7 +32,12 @@
   ]}
 >
   {#if withShell && data.shell}
-    <AppShell shell={data.shell} pathname={page.url.pathname} user={data.user}>
+    <AppShell
+      shell={data.shell}
+      pathname={page.url.pathname}
+      user={data.user}
+      language={data.preferredLanguage}
+    >
       {@render children()}
     </AppShell>
   {:else}

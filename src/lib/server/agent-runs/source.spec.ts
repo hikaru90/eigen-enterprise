@@ -48,6 +48,24 @@ describe('createAgentRunsSource', () => {
     expect(typeof runs[0].createdAt).toBe('string')
   })
 
+  it('titles a chat after its first message when there is one', async () => {
+    const index = await seeded()
+    const chatTopics = vi.fn(async () => new Map([['b', 'Build me a bakery site']]))
+    const source = createAgentRunsSource({
+      index,
+      harness: vi.fn(),
+      memberNames: async () => new Map([['user-a', 'Ada Park']]),
+      chatTopics,
+    })
+    const runs = await source.list()
+    // The chat session id is the key's part after `<agentId>:`.
+    expect(chatTopics).toHaveBeenCalledWith(expect.arrayContaining(['a', 'b']))
+    expect(Object.fromEntries(runs.map((r) => [r.conversationKey, r.title]))).toEqual({
+      'orchestrator:a': 'Chat with Ada Park',
+      'orchestrator:b': 'Build me a bakery site',
+    })
+  })
+
   it('watches a run through the harness box with its pi conversation id', async () => {
     const index = await seeded()
     const fake = fakeEventStream()

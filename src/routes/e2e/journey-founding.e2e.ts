@@ -140,8 +140,9 @@ async function finishBootWithProvider(page: Page, name: string): Promise<void> {
   await conversationLog(page)
 }
 
+/** Ask from the shell's top bar: the assistant panel opens with the conversation. */
 async function sendHomepageMessage(page: Page, text: string): Promise<void> {
-  const input = page.getByPlaceholder('What do you need?')
+  const input = page.getByTestId('assistant-bar-input')
   await expect(input).toBeVisible()
   await input.click()
   await input.fill(text)
@@ -170,7 +171,7 @@ test.describe('website-founding journey (live)', () => {
     await expect(page.getByText('Connect your AI provider.')).toBeVisible({ timeout: 15_000 })
     await saveApiKeyViaApi(page)
     await page.goto('/')
-    await expect(page.getByPlaceholder('What do you need?')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId('assistant-bar-input')).toBeVisible({ timeout: 15_000 })
 
     // The 2026-09-10 legacy shape: active, pre-versioning, mid-interview.
     // (Skipping the tour no longer opens a journey — the agent opens it on the
