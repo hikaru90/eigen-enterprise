@@ -8,6 +8,7 @@ export {
   type CompanyMail,
   type SaveMailSettingsInput,
   type SendMailInput,
+  type SendMailResult,
 } from './company-mail'
 
 /**

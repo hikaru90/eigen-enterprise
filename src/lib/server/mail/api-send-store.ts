@@ -39,17 +39,23 @@ export function dbMailSendStore(): MailSendStore {
         .returning({ id: mailApiSend.id })
       if (inserted) return { kind: 'claimed', id: inserted.id }
       const [existing] = await db
-        .select({ id: mailApiSend.id, bodyHash: mailApiSend.bodyHash, status: mailApiSend.status })
+        .select({
+          id: mailApiSend.id,
+          bodyHash: mailApiSend.bodyHash,
+          status: mailApiSend.status,
+          logId: mailApiSend.logId,
+          sendStatus: mailApiSend.sendStatus,
+        })
         .from(mailApiSend)
         .where(and(eq(mailApiSend.keyId, keyId), eq(mailApiSend.idempotencyKey, idempotencyKey)))
         .limit(1)
       if (!existing) throw new Error('mail_api_send: conflicting row vanished during claim')
       return { kind: 'existing', ...existing }
     },
-    async markSent(id, messageId) {
+    async markSent(id, { messageId, logId, sendStatus }) {
       await getDb()
         .update(mailApiSend)
-        .set({ status: 'sent', messageId })
+        .set({ status: 'sent', messageId, logId, sendStatus })
         .where(eq(mailApiSend.id, id))
     },
     async release(id) {
@@ -66,7 +72,6 @@ export function mailSendDeps(principalId: string): MailSendDeps {
     mail: companyMail(),
     store: dbMailSendStore(),
     limiter,
-    newId: () => crypto.randomUUID(),
     // Shown in Overview recent activity as a tool.executed write.
     async audit(entry) {
       const kernel = await appKernel()

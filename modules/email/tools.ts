@@ -1,7 +1,7 @@
-import { EMAIL_MODULE_ID } from './manifest'
 import { z } from 'zod'
 import type { ToolDescriptor } from '$lib/kernel/types'
 import type { CompanyMail } from '$lib/server/mail/company-mail'
+import { EMAIL_MODULE_ID } from './manifest'
 
 /**
  * `email.send_mail` — the one tool that sends company email (plan/phase-module-
@@ -28,6 +28,8 @@ const sendMailInput = z.object({
   html: z.string().min(1),
   text: z.string().min(1),
   replyTo: z.email().optional(),
+  /** One of the company's senders (email.sender_list); omitted = the default sender. */
+  from: z.email().optional(),
 })
 
 export function createEmailTools(deps: EmailToolDeps = {}): ToolDescriptor[] {
@@ -36,14 +38,15 @@ export function createEmailTools(deps: EmailToolDeps = {}): ToolDescriptor[] {
       name: 'email.send_mail',
       module: EMAIL_MODULE_ID,
       summary:
-        "Send one transactional email from the company's sender address. Fails loud when email is not set up.",
+        "Send one transactional email from the company's default sender (or `from`, one of its senders). Skips addresses on the suppression list (status suppressed). Fails loud when email is not set up.",
       auditClass: 'external',
       // Recipient only: subject and body stay out of the audit trail.
       activity: (input: z.infer<typeof sendMailInput>) => `Sent an email to ${input.to}`,
       approvalRisk: 'external',
       inputSchema: sendMailInput,
       permission: { roles: ['admin', 'agent'] },
-      handler: async (_ctx, input) => (await resolveMail(deps)).send(sendMailInput.parse(input)),
+      // Logged as sent by the assistant (Email › Logs), body included like every non-system send.
+      handler: async (_ctx, input) => (await resolveMail(deps)).send({ ...sendMailInput.parse(input), source: 'agent' }),
     },
   ]
 }

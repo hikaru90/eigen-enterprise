@@ -18,6 +18,16 @@ vi.mock('$lib/server/mail', async () => {
   }
 })
 
+const eventOrigins: string[] = []
+vi.mock('../../../../../modules/email/owlery/service', () => ({
+  owleryService: () => ({
+    setupEvents: async (origin: string) => {
+      eventOrigins.push(origin)
+      return { eventsStatus: 'waiting' }
+    },
+  }),
+}))
+
 const { POST } = await import('./+server')
 
 const body = { region: 'eu-central-1', accessKeyId: 'AKIA', secretAccessKey: 's3cret', emailFrom: 'hi@kindred.test' }
@@ -34,8 +44,10 @@ describe('POST /api/onboarding/mail', () => {
   it("saves via a test email to the owner's own address", async () => {
     const res = await POST(req(body))
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ ok: true, testSentTo: 'owner@kindred.test' })
+    expect(await res.json()).toEqual({ ok: true, testSentTo: 'owner@kindred.test', events: 'waiting' })
     expect(saved[0]).toEqual({ ...body, testRecipient: 'owner@kindred.test', updatedBy: 'u1' })
+    // Delivery events are wired to this server's own address.
+    expect(eventOrigins).toEqual(['http://x'])
   })
 
   it('is owner-only and requires a session', async () => {

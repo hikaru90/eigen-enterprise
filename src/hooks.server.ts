@@ -2,7 +2,7 @@ import type { AppUser } from './app.d.ts'
 import type { Handle, HandleServerError } from '@sveltejs/kit'
 import { sequence } from '@sveltejs/kit/hooks'
 import { svelteKitHandler } from 'better-auth/svelte-kit'
-import { building } from '$app/environment'
+import { building, dev } from '$app/environment'
 import { getTextDirection } from '$lib/paraglide/runtime'
 import { paraglideMiddleware } from '$lib/paraglide/server'
 import { captureServerException } from '$lib/server/analytics/posthog-server'
@@ -25,6 +25,7 @@ import { startBackupHealthTicker } from '$lib/server/backups/live'
 import { logOpsStartupDiagnostics } from '$lib/server/ops/startup-diagnostics'
 import { configuredMailTransport } from '../modules/email/owlery/service'
 import { installPromptShutdown } from '$lib/server/shutdown'
+import { csrfRefusal, isForbiddenCrossSiteForm } from '$lib/server/csrf'
 import { releaseDurableHarnessLockForExit } from '$lib/server/agent/durable-harness'
 
 if (!building) {
@@ -47,6 +48,16 @@ if (!building) {
     console.error('[boot]', err)
     throw err
   })
+}
+
+/**
+ * SvelteKit's cross-site form check, run here (svelte.config.js disables the
+ * built-in one) so Amazon SNS can post to /api/mail/ses-events — see
+ * $lib/server/csrf. Like SvelteKit's, it is off in dev mode.
+ */
+const handleCsrf: Handle = ({ event, resolve }) => {
+  if (!dev && isForbiddenCrossSiteForm(event.request, event.url)) return csrfRefusal(event.request)
+  return resolve(event)
 }
 
 const handleParaglide: Handle = ({ event, resolve }) =>
@@ -208,6 +219,7 @@ const handlePostHogProxy: Handle = async ({ event, resolve }) => {
 }
 
 export const handle: Handle = sequence(
+  handleCsrf,
   handlePostHogProxy,
   handleParaglide,
   handleWellKnown,

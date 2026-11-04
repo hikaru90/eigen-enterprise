@@ -16,6 +16,9 @@ vi.mock('./drain', () => ({
 vi.mock('./snapshot', () => ({
   loadJobQueueSnapshot: snapshotMock,
 }))
+vi.mock('./email-tick', () => ({
+  tickEmailPlatform: async () => {},
+}))
 vi.mock('./recover-stale-running', () => ({
   recoverStaleRunningJobs: recoverMock,
 }))

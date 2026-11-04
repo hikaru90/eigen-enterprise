@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types'
   import { resolve } from '$app/paths'
-  import MailKeysPanel from '$lib/components/mail-keys-panel.svelte'
   import ModuleSettingsSection from '$lib/components/module-settings-section.svelte'
   import OverviewModule from '$lib/components/overview-module.svelte'
   import PageFrame from '$lib/components/page/page-frame.svelte'
@@ -62,17 +61,5 @@
       <ModuleSettingsSection {slot} />
     </section>
 
-    {#if slot?.panel === 'mail-keys'}
-      <section class="mt-10" aria-labelledby="developers-heading" data-testid="for-developers">
-        <h2 id="developers-heading" class="text-[13px] font-medium">For developers</h2>
-        <p class="mt-1 text-sm text-muted-foreground">
-          Let your own software send mail as the company, with an API key.
-        </p>
-        <details class="mt-3 rounded-lg border border-border px-4 py-3">
-          <summary class="cursor-pointer text-sm font-medium">Keys and how to send</summary>
-          <MailKeysPanel />
-        </details>
-      </section>
-    {/if}
   {/if}
 </PageFrame>

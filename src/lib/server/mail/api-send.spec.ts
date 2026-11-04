@@ -15,7 +15,14 @@ const SECRET_TEXT = 'TOP-SECRET-BODY-TEXT'
 function memoryStore(
   scopes: Record<string, boolean>,
 ): MailSendStore & { rows: Map<string, unknown> } {
-  type Row = { id: string; bodyHash: string; status: 'pending' | 'sent'; createdAt: number }
+  type Row = {
+    id: string
+    bodyHash: string
+    status: 'pending' | 'sent'
+    logId: string | null
+    sendStatus: string | null
+    createdAt: number
+  }
   const rows = new Map<string, Row>()
   let n = 0
   return {
@@ -28,11 +35,12 @@ function memoryStore(
       const existing = rows.get(k)
       if (existing) return { kind: 'existing', ...existing }
       const id = `row-${++n}`
-      rows.set(k, { id, bodyHash, status: 'pending', createdAt: Date.now() })
+      rows.set(k, { id, bodyHash, status: 'pending', logId: null, sendStatus: null, createdAt: Date.now() })
       return { kind: 'claimed', id }
     },
-    async markSent(id) {
-      for (const r of rows.values()) if (r.id === id) r.status = 'sent'
+    async markSent(id, result) {
+      for (const r of rows.values())
+        if (r.id === id) Object.assign(r, { status: 'sent', logId: result.logId, sendStatus: result.sendStatus })
     },
     async release(id) {
       for (const [k, r] of rows) if (r.id === id) rows.delete(k)
@@ -47,10 +55,10 @@ let deps: MailSendDeps
 let logSpy: ReturnType<typeof vi.spyOn>[]
 
 beforeEach(() => {
-  send = vi.fn(async () => ({ messageId: 'ses-1' }))
+  let logs = 0
+  send = vi.fn(async () => ({ id: `log-${++logs}`, status: 'sent', messageId: 'ses-1' }))
   isConfigured = vi.fn(async () => true)
   audits = []
-  let ids = 0
   deps = {
     mail: { isConfigured, send },
     store: memoryStore({ k1: true, k2: false }),
@@ -58,7 +66,6 @@ beforeEach(() => {
     audit: async (a) => {
       audits.push(a)
     },
-    newId: () => `gen-${++ids}`,
   }
   logSpy = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
     vi.spyOn(console, m).mockImplementation(() => {}),
@@ -118,24 +125,50 @@ describe('sending', () => {
       body: { ...BODY, html: '<p>Hi</p>', replyTo: 'me@example.com' },
     })
     expect(res.status).toBe(200)
-    expect(res.body).toEqual({ id: 'gen-1', status: 'sent', to: 'ada@example.com' })
+    expect(res.body).toEqual({ id: 'log-1', status: 'sent', to: 'ada@example.com' })
     expect(send).toHaveBeenCalledWith({
       to: 'ada@example.com',
       subject: 'Hi',
       text: 'Hello Ada',
       html: '<p>Hi</p>',
       replyTo: 'me@example.com',
+      source: 'api',
+      apiKey: KEY,
     })
     expect(audits).toEqual([
       expect.objectContaining({
         ok: true,
         outcome: 'sent',
-        id: 'gen-1',
+        id: 'log-1',
         to: 'ada@example.com',
         keyName: 'agent-bot',
         activity: 'Sent an email to ada@example.com (via key agent-bot)',
       }),
     ])
+  })
+
+  it('passes a sender and a send time; a scheduled send says so', async () => {
+    send.mockResolvedValueOnce({ id: 'log-9', status: 'scheduled', messageId: null })
+    const at = new Date(Date.now() + 3_600_000).toISOString()
+    const res = await handleMailSend(deps, { apiKey: KEY, body: { ...BODY, from: 'news@kindred.test', scheduledAt: at } })
+    expect(res.body).toEqual({ id: 'log-9', status: 'scheduled', to: 'ada@example.com' })
+    expect(send.mock.calls[0][0]).toMatchObject({ from: 'news@kindred.test', scheduledAt: new Date(at) })
+    expect(audits[0]).toMatchObject({ ok: true, outcome: 'scheduled', activity: 'Scheduled an email to ada@example.com (via key agent-bot)' })
+  })
+
+  it('rejects a send time more than 30 days ahead', async () => {
+    const at = new Date(Date.now() + 31 * 86_400_000).toISOString()
+    const res = await handleMailSend(deps, { apiKey: KEY, body: { ...BODY, scheduledAt: at } })
+    expect(res.status).toBe(400)
+    expect((res.body as { fields: object }).fields).toHaveProperty('scheduledAt')
+  })
+
+  it('a suppressed recipient is 200 with status suppressed and the reason', async () => {
+    send.mockResolvedValueOnce({ id: 'log-7', status: 'suppressed', messageId: null })
+    const res = await handleMailSend(deps, { apiKey: KEY, body: BODY })
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({ id: 'log-7', status: 'suppressed', message: expect.stringMatching(/suppression list/) })
+    expect(audits[0]).toMatchObject({ ok: false, outcome: 'suppressed' })
   })
 
   it('text-only mail gets an html part escaped from the text', async () => {

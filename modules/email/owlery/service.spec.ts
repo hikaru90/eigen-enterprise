@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { MailNotConfiguredError, MailSetupError, SenderNotVerifiedError } from '$lib/server/mail/company-mail'
-import { awsError, FakeSes } from './fake-ses'
-import { OwleryService } from './service'
+import { InMemoryMailLog } from '../platform/memory-log'
+import { awsError, FakeSes, FakeSns } from './fake-ses'
+import { eventResourceNames, formatFrom, OwleryService, SEND_SCHEDULED_JOB } from './service'
 import { describeSesError } from './ses'
 import { InMemoryOwleryStore, owlerySealKey, sealSecret, unsealSecret } from './store'
 
@@ -15,11 +16,13 @@ const input = {
   updatedBy: 'u1',
 }
 
-function setup() {
+function setup(now = () => 1_000_000) {
   const ses = new FakeSes()
+  const sns = new FakeSns()
   const store = new InMemoryOwleryStore()
-  const service = new OwleryService({ store, key: () => key, ses: ses.factory })
-  return { ses, store, service }
+  const log = new InMemoryMailLog()
+  const service = new OwleryService({ store, key: () => key, ses: ses.factory, sns: sns.factory, log, now })
+  return { ses, sns, store, log, service }
 }
 
 describe('sealing', () => {
@@ -143,18 +146,137 @@ describe('OwleryService.send / status', () => {
     expect(await service.status()).toEqual({ configured: false })
   })
 
-  it('sends from the saved sender with the unsealed credentials', async () => {
-    const { ses, service } = await configured()
+  it('sends from the saved sender with the unsealed credentials, tagged with its log id', async () => {
+    const { ses, log, service } = await configured()
     const out = await service.send({ to: 'a@b.co', subject: 's', html: 'h', text: 't', replyTo: 'r@b.co' })
-    expect(out.messageId).toBe('msg-1')
-    expect(ses.sent[0]).toEqual({ from: 'hello@kindred.test', to: 'a@b.co', subject: 's', html: 'h', text: 't', replyTo: 'r@b.co' })
+    expect(out).toEqual({ id: 'log-1', status: 'sent', messageId: 'msg-1' })
+    expect(ses.sent[0]).toEqual({
+      from: 'hello@kindred.test',
+      to: 'a@b.co',
+      subject: 's',
+      html: 'h',
+      text: 't',
+      replyTo: 'r@b.co',
+      tags: { ee_message: 'log-1' },
+    })
     expect(ses.credentials[0]).toEqual({ region: 'eu-central-1', accessKeyId: 'AKIATEST', secretAccessKey: 'super-secret-value' })
+    expect(log.messages[0]).toMatchObject({ status: 'sent', sesMessageId: 'msg-1', source: 'system', toAddress: 'a@b.co' })
+    expect(log.events.map((e) => e.status)).toEqual(['queued', 'sent'])
   })
 
-  it('send failures surface in plain language', async () => {
-    const { ses, service } = await configured()
+  it('system mail never keeps its body in the log; other sources do', async () => {
+    const { log, service } = await configured()
+    await service.send({ to: 'a@b.co', subject: 'Your code: 123456', html: '<p>123456</p>', text: '123456' })
+    await service.send({ to: 'a@b.co', subject: 'Hi', html: '<p>Hi</p>', text: 'Hi', source: 'agent' })
+    expect(log.messages[0]).toMatchObject({ contentStored: false, html: null, text: null })
+    expect(log.messages[1]).toMatchObject({ contentStored: true, html: '<p>Hi</p>', text: 'Hi', source: 'agent' })
+  })
+
+  it('send failures surface in plain language and are logged as failed', async () => {
+    const { ses, log, service } = await configured()
     ses.failSend = awsError('SendingPausedException')
     await expect(service.send({ to: 'a@b.co', subject: 's', html: 'h', text: 't' })).rejects.toThrow(/paused/)
+    expect(log.messages[0]).toMatchObject({ status: 'failed', error: expect.stringMatching(/paused/) })
+    expect(log.events.map((e) => e.status)).toEqual(['queued', 'failed'])
+  })
+
+  it('a suppressed recipient is logged as suppressed and never reaches Amazon', async () => {
+    const { ses, log, service } = await configured()
+    log.suppressed.add('gone@b.co')
+    const out = await service.send({ to: 'Gone@B.co', subject: 's', html: 'h', text: 't', source: 'api' })
+    expect(out).toEqual({ id: 'log-1', status: 'suppressed', messageId: null })
+    expect(ses.sent).toEqual([])
+    expect(log.events.map((e) => e.status)).toEqual(['suppressed'])
+  })
+
+  it('refuses a From that is not a verified sender; uses the display name of one that is', async () => {
+    const { ses, log, service } = await configured()
+    await expect(service.send({ to: 'a@b.co', subject: 's', html: 'h', text: 't', from: 'x@other.test' })).rejects.toThrow(
+      /not one of your senders/,
+    )
+    expect(log.messages).toEqual([])
+    log.senders.set('news@kindred.test', { ok: true, displayName: 'Kindred "News"', tracking: true })
+    await service.send({ to: 'a@b.co', subject: 's', html: 'h', text: 't', from: 'News@Kindred.test' })
+    expect(ses.sent[0]!.from).toBe('"Kindred \\"News\\"" <news@kindred.test>')
+    expect(log.messages[0]!.fromAddress).toBe('news@kindred.test')
+  })
+
+  it('uses the tracking configuration set for a tracking domain once events are wired', async () => {
+    const { ses, log, service } = await configured()
+    await service.setupEvents('https://os.kindred.test')
+    log.senders.set('news@kindred.test', { ok: true, displayName: null, tracking: true })
+    await service.send({ to: 'a@b.co', subject: 's', html: 'h', text: 't', from: 'news@kindred.test' })
+    await service.send({ to: 'a@b.co', subject: 's', html: 'h', text: 't' })
+    expect(ses.sent[0]!.configurationSet).toBe('ee-os-kindred-test-tracking')
+    expect(ses.sent[1]!.configurationSet).toBe('ee-os-kindred-test')
+  })
+
+  it('a future scheduledAt holds the mail as scheduled with a job; sendScheduled sends it later', async () => {
+    let now = 1_000_000
+    const s = setup(() => now)
+    s.ses.verify('hello@kindred.test')
+    await s.service.saveVerified(input)
+    s.ses.sent.length = 0
+    const at = new Date(now + 3_600_000)
+    const out = await s.service.send({ to: 'a@b.co', subject: 's', html: 'h', text: 't', scheduledAt: at })
+    expect(out.status).toBe('scheduled')
+    expect(s.ses.sent).toEqual([])
+    expect(s.log.jobs).toEqual([{ kind: SEND_SCHEDULED_JOB, payload: { messageId: out.id }, runAt: at, dedupeKey: `send:${out.id}` }])
+    expect(s.log.messages[0]).toMatchObject({ status: 'scheduled', html: 'h', contentStored: true })
+    now += 3_600_000
+    await s.service.sendScheduled(out.id)
+    expect(s.ses.sent).toHaveLength(1)
+    expect(s.log.messages[0]).toMatchObject({ status: 'sent' })
+    // A second run (job retried) does not send twice.
+    await s.service.sendScheduled(out.id)
+    expect(s.ses.sent).toHaveLength(1)
+  })
+})
+
+describe('OwleryService.setupEvents', () => {
+  async function configured() {
+    const s = setup()
+    s.ses.verify('hello@kindred.test')
+    await s.service.saveVerified(input)
+    return s
+  }
+
+  it('creates the topic, both configuration sets and the https subscription; waits for SNS to confirm', async () => {
+    const { ses, sns, store, service } = await configured()
+    const out = await service.setupEvents('https://os.kindred.test/')
+    expect(out).toMatchObject({ eventsStatus: 'waiting', eventsError: null, configSet: 'ee-os-kindred-test' })
+    expect(sns.topics).toEqual(['arn:aws:sns:eu-central-1:000000000000:ee-os-kindred-test-mail-events'])
+    expect(sns.subscriptions).toEqual([
+      { topicArn: sns.topics[0], endpoint: 'https://os.kindred.test/api/mail/ses-events' },
+    ])
+    expect(ses.eventDestinations.map((d) => [d.configurationSet, d.events.includes('OPEN')])).toEqual([
+      ['ee-os-kindred-test', false],
+      ['ee-os-kindred-test-tracking', true],
+    ])
+    expect(store.row).toMatchObject({ eventsStatus: 'waiting', eventsTopicArn: sns.topics[0] })
+  })
+
+  it('an already confirmed subscription is ready at once', async () => {
+    const { sns, service } = await configured()
+    sns.confirmImmediately = true
+    expect((await service.setupEvents('https://os.kindred.test')).eventsStatus).toBe('ready')
+  })
+
+  it('stores a plain failure instead of throwing', async () => {
+    const { sns, store, service } = await configured()
+    sns.failSubscribe = awsError('AuthorizationErrorException')
+    const out = await service.setupEvents('https://os.kindred.test')
+    expect(out).toMatchObject({ eventsStatus: 'failed', configSet: null, eventsError: expect.stringMatching(/AmazonSNSFullAccess/) })
+    expect(store.row).toMatchObject({ eventsStatus: 'failed' })
+  })
+
+  it('names resources after the host', () => {
+    expect(eventResourceNames('https://os.kindred.co.uk:8443')).toEqual({
+      topic: 'ee-os-kindred-co-uk-mail-events',
+      configSet: 'ee-os-kindred-co-uk',
+      trackingConfigSet: 'ee-os-kindred-co-uk-tracking',
+    })
+    expect(formatFrom('a@b.co', '  ')).toBe('a@b.co')
   })
 
   it('status reports region, sender, verification and sandbox', async () => {

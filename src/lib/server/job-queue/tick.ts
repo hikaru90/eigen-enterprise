@@ -1,5 +1,6 @@
 import { raceWithTimeout } from '$lib/server/async/race-with-timeout'
 import { drainUserJobQueue } from './drain'
+import { tickEmailPlatform } from './email-tick'
 import { ensureOvernightJobsEnqueued } from './ensure-overnight'
 import { recoverStaleRunningJobs } from './recover-stale-running'
 import { loadJobQueueSnapshot } from './snapshot'
@@ -26,6 +27,7 @@ async function runTickBody(): Promise<TickGlobalJobQueueResult> {
   }
   const enqueued = await ensureOvernightJobsEnqueued()
   const drain = await drainUserJobQueue()
+  await tickEmailPlatform()
   const hasActivity = enqueued > 0 || drain.claimed > 0 || recoveredStale > 0
   const shouldHeartbeat = tickCount % HEARTBEAT_EVERY_TICKS === 0
   const shouldInspectBacklog = hasActivity || shouldHeartbeat || drain.claimed === 0

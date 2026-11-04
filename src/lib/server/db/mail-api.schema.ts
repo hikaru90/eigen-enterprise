@@ -14,6 +14,9 @@ export const mailApiSend = pgTable(
     recipient: text('recipient').notNull(),
     status: text('status', { enum: ['pending', 'sent'] }).notNull(),
     messageId: text('message_id'),
+    /** The sent-mail log row (mail_messages) and its send status, for replays (migration 0114). */
+    logId: uuid('log_id'),
+    sendStatus: text('send_status'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [uniqueIndex('mail_api_send_key_idem_idx').on(t.keyId, t.idempotencyKey)],

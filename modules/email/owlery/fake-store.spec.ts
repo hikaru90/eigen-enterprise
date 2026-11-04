@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { SenderNotVerifiedError } from '$lib/server/mail/company-mail'
-import { fakeStoreSes, InMemoryFakeMailStore } from './fake-store'
+import { InMemoryMailLog } from '../platform/memory-log'
+import { fakeSns, fakeStoreSes, InMemoryFakeMailStore } from './fake-store'
 import { OwleryService } from './service'
 import { InMemoryOwleryStore, owlerySealKey } from './store'
 
@@ -16,7 +17,13 @@ const input = {
 
 function setup() {
   const fake = new InMemoryFakeMailStore()
-  const service = new OwleryService({ store: new InMemoryOwleryStore(), key: () => key, ses: fakeStoreSes(fake) })
+  const service = new OwleryService({
+    store: new InMemoryOwleryStore(),
+    log: new InMemoryMailLog(),
+    key: () => key,
+    ses: fakeStoreSes(fake),
+    sns: fakeSns,
+  })
   return { fake, service }
 }
 

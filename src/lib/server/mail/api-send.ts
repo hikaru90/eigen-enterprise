@@ -13,6 +13,8 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { MailNotConfiguredError, MailSetupError, type CompanyMail } from './company-mail'
 
+const MAX_SCHEDULE_MS = 30 * 24 * 60 * 60 * 1000
+
 export const mailSendBody = z
   .object({
     to: z.email(),
@@ -20,6 +22,16 @@ export const mailSendBody = z
     text: z.string().min(1),
     html: z.string().optional(),
     replyTo: z.email().optional(),
+    /** One of the company's senders (Email › Senders); omitted = the default sender. */
+    from: z.email().optional(),
+    /** ISO 8601 time to send at (within 30 days); omitted = now. */
+    scheduledAt: z.iso
+      .datetime({ offset: true })
+      .refine((v) => {
+        const t = new Date(v).getTime()
+        return t - Date.now() <= MAX_SCHEDULE_MS
+      }, 'must be within the next 30 days')
+      .optional(),
     idempotencyKey: z.string().min(1).max(128).optional(),
   })
   .strict()
@@ -40,9 +52,17 @@ export type MailSendStore = {
     to: string
   }): Promise<
     | { kind: 'claimed'; id: string }
-    | { kind: 'existing'; id: string; bodyHash: string; status: 'pending' | 'sent' }
+    | {
+        kind: 'existing'
+        id: string
+        bodyHash: string
+        status: 'pending' | 'sent'
+        /** The sent-mail log row and what happened to it (sent / scheduled / suppressed). */
+        logId: string | null
+        sendStatus: string | null
+      }
   >
-  markSent(id: string, messageId: string | null): Promise<void>
+  markSent(id: string, result: { messageId: string | null; logId: string; sendStatus: string }): Promise<void>
   /** Drop a reservation whose send failed, so a retry can send. */
   release(id: string): Promise<void>
 }
@@ -53,6 +73,8 @@ export type RateLimiter = {
 
 export type MailSendOutcome =
   | 'sent'
+  | 'scheduled'
+  | 'suppressed'
   | 'replayed'
   | 'forbidden'
   | 'invalid_request'
@@ -76,7 +98,6 @@ export type MailSendDeps = {
   store: MailSendStore
   limiter: RateLimiter
   audit(entry: MailSendAudit): Promise<void>
-  newId(): string
 }
 
 export type MailSendResult = {
@@ -130,7 +151,7 @@ function textToHtml(text: string): string {
 }
 
 function bodyHash(b: MailSendBody): string {
-  const canonical = JSON.stringify([b.to, b.subject, b.text, b.html ?? null, b.replyTo ?? null])
+  const canonical = JSON.stringify([b.to, b.subject, b.text, b.html ?? null, b.replyTo ?? null, b.from ?? null, b.scheduledAt ?? null])
   return createHash('sha256').update(canonical).digest('hex')
 }
 
@@ -157,10 +178,13 @@ export async function handleMailSend(
   if (!key) return { status: 401, body: { error: 'unauthorized' } }
 
   const audit = (to: string | null, outcome: MailSendOutcome, id: string | null = null) => {
-    const ok = outcome === 'sent' || outcome === 'replayed'
-    const activity = ok
-      ? `Sent an email to ${to} (via key ${key.name})`
-      : `Could not send an email${to ? ` to ${to}` : ''} (via key ${key.name}): ${outcome.replace(/_/g, ' ')}`
+    const ok = outcome === 'sent' || outcome === 'replayed' || outcome === 'scheduled'
+    const activity =
+      outcome === 'scheduled'
+        ? `Scheduled an email to ${to} (via key ${key.name})`
+        : ok
+          ? `Sent an email to ${to} (via key ${key.name})`
+          : `Could not send an email${to ? ` to ${to}` : ''} (via key ${key.name}): ${outcome.replace(/_/g, ' ')}`
     return deps.audit({ keyName: key.name, to, outcome, ok, id, activity })
   }
 
@@ -194,8 +218,7 @@ export async function handleMailSend(
     return { status: 503, body: { error: 'mail_not_configured', message: NOT_CONFIGURED } }
   }
 
-  let id: string
-  let claimed = false
+  let claimId: string | null = null
   if (body.idempotencyKey) {
     const hash = bodyHash(body)
     const claim = await deps.store.claim({
@@ -226,26 +249,28 @@ export async function handleMailSend(
           },
         }
       }
-      await audit(body.to, 'replayed', claim.id)
-      return { status: 200, body: { id: claim.id, status: 'sent', to: body.to } }
+      const id = claim.logId ?? claim.id
+      await audit(body.to, 'replayed', id)
+      return { status: 200, body: { id, status: claim.sendStatus ?? 'sent', to: body.to } }
     }
-    id = claim.id
-    claimed = true
-  } else {
-    id = deps.newId()
+    claimId = claim.id
   }
 
-  let messageId: string | null
+  let result: Awaited<ReturnType<MailSendDeps['mail']['send']>>
   try {
-    ;({ messageId } = await deps.mail.send({
+    result = await deps.mail.send({
       to: body.to,
       subject: body.subject,
       text: body.text,
       html: body.html ?? textToHtml(body.text),
       ...(body.replyTo ? { replyTo: body.replyTo } : {}),
-    }))
+      ...(body.from ? { from: body.from } : {}),
+      ...(body.scheduledAt ? { scheduledAt: new Date(body.scheduledAt) } : {}),
+      source: 'api',
+      apiKey: key,
+    })
   } catch (err) {
-    if (claimed) await deps.store.release(id)
+    if (claimId) await deps.store.release(claimId)
     if (err instanceof MailNotConfiguredError) {
       await audit(body.to, 'mail_not_configured')
       return { status: 503, body: { error: 'mail_not_configured', message: NOT_CONFIGURED } }
@@ -258,7 +283,19 @@ export async function handleMailSend(
     return { status: 502, body: { error: 'delivery_failed', message } }
   }
 
-  if (claimed) await deps.store.markSent(id, messageId)
-  await audit(body.to, 'sent', id)
-  return { status: 200, body: { id, status: 'sent', to: body.to } }
+  if (claimId) {
+    await deps.store.markSent(claimId, { messageId: result.messageId, logId: result.id, sendStatus: result.status })
+  }
+  await audit(body.to, result.status, result.id)
+  return {
+    status: 200,
+    body: {
+      id: result.id,
+      status: result.status,
+      to: body.to,
+      ...(result.status === 'suppressed'
+        ? { message: 'Not sent: this address is on the suppression list (it bounced, complained, or was added by hand). See Email › Suppression.' }
+        : {}),
+    },
+  }
 }

@@ -7,24 +7,39 @@ import {
   type CompanyMail,
   type SaveMailSettingsInput,
   type SendMailInput,
+  type SendMailResult,
 } from '$lib/server/mail/company-mail'
-import { defaultFakeMailStore, fakeStoreSes } from './fake-store'
-import { awsErrorCode, awsSes, describeSesError, type SesApi, type SesCredentials, type SesFactory } from './ses'
-import { defaultOwleryStore, owlerySealKey, sealSecret, unsealSecret, type OwleryStore } from './store'
+import { LOG_ID_TAG } from '../platform/ses-events'
+import { defaultEmailStore, type EmailStore, type MessageRow } from '../platform/store'
+import { defaultFakeMailStore, fakeSns, fakeStoreSes } from './fake-store'
+import { awsErrorCode, awsSes, describeSesError, type SesApi, type SesCredentials, type SesEventType, type SesFactory } from './ses'
+import { awsSns, EventsSetupError, type SnsApi, type SnsFactory } from './sns'
+import { defaultOwleryStore, owlerySealKey, sealSecret, unsealSecret, type OwleryEvents, type OwleryStore } from './store'
 import { resolveMailTransport, type MailTransport } from './transport'
 
-export type OwlerySettings = SesCredentials & { emailFrom: string }
+export type OwlerySettings = SesCredentials & { emailFrom: string } & OwleryEvents
 
 export type OwleryStatus =
   | { configured: false }
   | { configured: true; region: string; sender: string; senderVerified: boolean; sandbox: boolean }
 
+/** The slice of the email store the one send path needs (sender check, suppression, the log, jobs). */
+export type MailLog = Pick<
+  EmailStore,
+  'checkSender' | 'isSuppressed' | 'insertMessage' | 'updateMessage' | 'getMessage' | 'addEvent' | 'enqueueJob'
+>
+
 export type OwleryServiceDeps = {
   store: OwleryStore
   key: () => Buffer
+  log: MailLog
   ses?: SesFactory
+  sns?: SnsFactory
   now?: () => number
 }
+
+/** The background job that sends a scheduled message (EmailPlatform.runJobs). */
+export const SEND_SCHEDULED_JOB = 'send_scheduled'
 
 const CACHE_MS = 30_000
 
@@ -46,6 +61,10 @@ const TEST_MAIL = {
   html: '<p>This is the test email from your Eigen Enterprise setup.</p><p>Sign-in codes and notifications will come from this address.</p>',
 }
 
+/** Delivery events every configuration set forwards; the tracking set adds opens and clicks. */
+const GENERAL_EVENTS: SesEventType[] = ['SEND', 'REJECT', 'BOUNCE', 'COMPLAINT', 'DELIVERY', 'DELIVERY_DELAY', 'RENDERING_FAILURE']
+const TRACKING_EVENTS: SesEventType[] = [...GENERAL_EVENTS, 'OPEN', 'CLICK']
+
 /** Verified for sending either as an address or through its whole domain. */
 async function identityState(ses: SesApi, address: string): Promise<'verified' | 'pending' | 'missing'> {
   const own = await ses.getIdentity(address)
@@ -63,13 +82,32 @@ function sandboxMessage(recipient: string): string {
   )
 }
 
-/** Owns the SES settings and every send. The process singleton is `owleryService()`. */
+/** `"Display Name" <address>` (quotes and backslashes escaped), or the bare address. */
+export function formatFrom(address: string, displayName: string | null): string {
+  if (!displayName?.trim()) return address
+  const name = displayName.trim().replace(/[\\"]/g, (c) => `\\${c}`).replace(/[\r\n]/g, ' ')
+  return `"${name}" <${address}>`
+}
+
+/** Names AWS accepts for topics (256) and configuration sets (64): ee-<host>… */
+export function eventResourceNames(origin: string): { topic: string; configSet: string; trackingConfigSet: string } {
+  const host = new URL(origin).hostname.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
+  return { topic: `ee-${host}-mail-events`, configSet: `ee-${host}`, trackingConfigSet: `ee-${host}-tracking` }
+}
+
+/**
+ * Owns the SES settings and every send — the one send path. Every mail is
+ * checked against the senders and the suppression list and written to the
+ * sent-mail log before it goes to Amazon. The process singleton is `owleryService()`.
+ */
 export class OwleryService implements CompanyMail {
   private cache: { at: number; value: OwlerySettings | null } | null = null
-  private readonly ses: SesFactory
+  private readonly sesFactory: SesFactory
+  private readonly snsFactory: SnsFactory
 
   constructor(private readonly deps: OwleryServiceDeps) {
-    this.ses = deps.ses ?? awsSes
+    this.sesFactory = deps.ses ?? awsSes
+    this.snsFactory = deps.sns ?? awsSns
   }
 
   async settings(): Promise<OwlerySettings | null> {
@@ -82,6 +120,12 @@ export class OwleryService implements CompanyMail {
           accessKeyId: row.accessKeyId,
           secretAccessKey: unsealSecret(row.sealedSecretAccessKey, this.deps.key()),
           emailFrom: row.emailFrom,
+          eventsStatus: row.eventsStatus,
+          eventsError: row.eventsError,
+          eventsTopicArn: row.eventsTopicArn,
+          eventsCallbackUrl: row.eventsCallbackUrl,
+          configSet: row.configSet,
+          trackingConfigSet: row.trackingConfigSet,
         }
       : null
     this.cache = { at: now, value }
@@ -98,17 +142,132 @@ export class OwleryService implements CompanyMail {
     return (await this.settings()) !== null
   }
 
-  private client(s: OwlerySettings): SesApi {
-    return this.ses({ region: s.region, accessKeyId: s.accessKeyId, secretAccessKey: s.secretAccessKey })
+  private client(s: SesCredentials): SesApi {
+    return this.sesFactory({ region: s.region, accessKeyId: s.accessKeyId, secretAccessKey: s.secretAccessKey })
   }
 
-  async send(input: SendMailInput): Promise<{ messageId: string | null }> {
+  /** The SES client for the saved account. Throws MailNotConfiguredError before setup. */
+  async ses(): Promise<{ ses: SesApi; settings: OwlerySettings }> {
     const s = await this.settings()
     if (!s) throw new MailNotConfiguredError()
+    return { ses: this.client(s), settings: s }
+  }
+
+  private async sns(): Promise<{ sns: SnsApi; settings: OwlerySettings }> {
+    const s = await this.settings()
+    if (!s) throw new MailNotConfiguredError()
+    return { sns: this.snsFactory(s), settings: s }
+  }
+
+  async send(input: SendMailInput): Promise<SendMailResult> {
+    const s = await this.settings()
+    if (!s) throw new MailNotConfiguredError()
+    const source = input.source ?? 'system'
+    const fromAddress = (input.from ?? s.emailFrom).trim().toLowerCase()
+
+    const check = await this.deps.log.checkSender(fromAddress)
+    // The default sender passed Amazon's own check when it was saved.
+    if (!check.ok && fromAddress !== s.emailFrom.toLowerCase()) throw new MailSetupError(check.reason)
+    const from = formatFrom(fromAddress, check.ok ? check.displayName : null)
+    const tracking = check.ok && check.tracking
+
+    const scheduled = input.scheduledAt && input.scheduledAt.getTime() > (this.deps.now?.() ?? Date.now())
+    const suppressed = await this.deps.log.isSuppressed(input.to)
+    // A scheduled send must keep its body until the job sends it; system mail never schedules.
+    const contentStored = source !== 'system' || Boolean(scheduled)
+    const row = await this.deps.log.insertMessage({
+      source,
+      status: suppressed ? 'suppressed' : scheduled ? 'scheduled' : 'queued',
+      fromAddress,
+      toAddress: input.to,
+      replyTo: input.replyTo ?? null,
+      subject: input.subject,
+      html: contentStored ? input.html : null,
+      text: contentStored ? input.text : null,
+      contentStored,
+      headers: input.headers ?? null,
+      apiKeyId: input.apiKey?.id ?? null,
+      apiKeyName: input.apiKey?.name ?? null,
+      templateId: input.templateId ?? null,
+      contactId: input.contactId ?? null,
+      flowId: input.flowId ?? null,
+      scheduledAt: input.scheduledAt ?? null,
+    })
+
+    if (suppressed) {
+      await this.deps.log.addEvent(row.id, 'suppressed', { reason: 'The recipient is on the suppression list.' })
+      return { id: row.id, status: 'suppressed', messageId: null }
+    }
+    if (scheduled) {
+      await this.deps.log.addEvent(row.id, 'scheduled', { at: input.scheduledAt!.toISOString() })
+      await this.deps.log.enqueueJob(SEND_SCHEDULED_JOB, { messageId: row.id }, input.scheduledAt!, `send:${row.id}`)
+      return { id: row.id, status: 'scheduled', messageId: null }
+    }
+    await this.deps.log.addEvent(row.id, 'queued', null)
+    const messageId = await this.deliver(s, row, { from, html: input.html, text: input.text, tracking })
+    return { id: row.id, status: 'sent', messageId }
+  }
+
+  /**
+   * The background job's half of a scheduled send. A cancelled or already-sent
+   * message is left alone; one whose last attempt failed is retried (the job
+   * retries with backoff, the timeline shows each attempt).
+   */
+  async sendScheduled(messageId: string): Promise<void> {
+    const row = await this.deps.log.getMessage(messageId)
+    if (!row || !row.scheduledAt || (row.status !== 'scheduled' && row.status !== 'failed')) return
+    const s = await this.settings()
+    if (!s) throw new MailNotConfiguredError()
+    if (await this.deps.log.isSuppressed(row.toAddress)) {
+      await this.deps.log.updateMessage(row.id, { status: 'suppressed' })
+      await this.deps.log.addEvent(row.id, 'suppressed', { reason: 'The recipient is on the suppression list.' })
+      return
+    }
+    if (row.html === null || row.text === null) throw new Error(`scheduled message ${row.id} has no stored body`)
+    const check = await this.deps.log.checkSender(row.fromAddress)
+    if (!check.ok && row.fromAddress !== s.emailFrom.toLowerCase()) {
+      await this.deps.log.updateMessage(row.id, { status: 'failed', error: check.reason })
+      await this.deps.log.addEvent(row.id, 'failed', { error: check.reason })
+      return
+    }
+    await this.deps.log.updateMessage(row.id, { status: 'queued' })
+    await this.deps.log.addEvent(row.id, 'queued', null)
+    await this.deliver(s, row, {
+      from: formatFrom(row.fromAddress, check.ok ? check.displayName : null),
+      html: row.html,
+      text: row.text,
+      tracking: check.ok && check.tracking,
+    })
+  }
+
+  /** Hands one logged message to Amazon and records the outcome on its timeline. */
+  private async deliver(
+    s: OwlerySettings,
+    row: MessageRow,
+    body: { from: string; html: string; text: string; tracking: boolean },
+  ): Promise<string | null> {
+    const eventsWired = s.eventsStatus === 'ready' || s.eventsStatus === 'waiting'
+    const configurationSet = eventsWired ? ((body.tracking ? s.trackingConfigSet : s.configSet) ?? undefined) : undefined
     try {
-      return await this.client(s).send({ from: s.emailFrom, ...input })
+      const { messageId } = await this.client(s).send({
+        from: body.from,
+        to: row.toAddress,
+        subject: row.subject,
+        html: body.html,
+        text: body.text,
+        ...(row.replyTo ? { replyTo: row.replyTo } : {}),
+        ...(configurationSet ? { configurationSet } : {}),
+        ...(row.headers && row.headers.length > 0 ? { headers: row.headers } : {}),
+        tags: { [LOG_ID_TAG]: row.id },
+      })
+      await this.deps.log.updateMessage(row.id, { status: 'sent', sesMessageId: messageId })
+      await this.deps.log.addEvent(row.id, 'sent', null)
+      return messageId
     } catch (err) {
-      throw new MailSetupError(describeSesError(err), { cause: err })
+      const message = describeSesError(err)
+      await this.deps.log.updateMessage(row.id, { status: 'failed', error: message })
+      await this.deps.log.addEvent(row.id, 'failed', { error: message })
+      throw new MailSetupError(message, { cause: err })
     }
   }
 
@@ -129,11 +288,27 @@ export class OwleryService implements CompanyMail {
     }
   }
 
+  /** Whether Amazon accepts mail From this address right now (an address or its whole domain verified). */
+  async senderVerified(address: string): Promise<boolean> {
+    const { ses } = await this.ses()
+    try {
+      return (await identityState(ses, address)) === 'verified'
+    } catch (err) {
+      throw new MailSetupError(describeSesError(err), { cause: err })
+    }
+  }
+
+  /** Makes another verified sender the default (system mail and sends without their own from). */
+  async setDefaultSender(address: string, updatedBy: string): Promise<void> {
+    await this.deps.store.writeEmailFrom(address.trim().toLowerCase(), updatedBy)
+    this.cache = null
+  }
+
   async saveVerified(input: SaveMailSettingsInput): Promise<void> {
     const parsed = settingsInput.safeParse(input)
     if (!parsed.success) throw new MailSetupError(parsed.error.issues[0]?.message ?? 'The email settings are incomplete.')
     const { region, accessKeyId, secretAccessKey, emailFrom, testRecipient, updatedBy } = parsed.data
-    const ses = this.ses({ region, accessKeyId, secretAccessKey })
+    const ses = this.sesFactory({ region, accessKeyId, secretAccessKey })
 
     let sandbox = false
     try {
@@ -165,6 +340,58 @@ export class OwleryService implements CompanyMail {
     })
     this.cache = null
   }
+
+  /**
+   * Wires delivery events: an SNS topic, the two SES configuration sets
+   * (general / with open+click tracking) pointing at it, and an HTTPS
+   * subscription to `${origin}/api/mail/ses-events`. Idempotent — "Set up
+   * again" re-runs it. The outcome is stored (never thrown): the Email page
+   * shows it, with Amazon's reason when it failed.
+   */
+  async setupEvents(origin: string): Promise<OwleryEvents> {
+    const { sns, settings } = await this.sns()
+    const ses = this.client(settings)
+    const names = eventResourceNames(origin)
+    const callbackUrl = `${origin.replace(/\/+$/, '')}/api/mail/ses-events`
+    let result: OwleryEvents
+    try {
+      const topicArn = await sns.createTopic(names.topic)
+      await ses.ensureEventDestination({ configurationSet: names.configSet, topicArn, events: GENERAL_EVENTS })
+      await ses.ensureEventDestination({ configurationSet: names.trackingConfigSet, topicArn, events: TRACKING_EVENTS })
+      const { confirmed } = await sns.subscribeHttps(topicArn, callbackUrl)
+      result = {
+        eventsStatus: confirmed ? 'ready' : 'waiting',
+        eventsError: null,
+        eventsTopicArn: topicArn,
+        eventsCallbackUrl: callbackUrl,
+        configSet: names.configSet,
+        trackingConfigSet: names.trackingConfigSet,
+      }
+    } catch (err) {
+      result = {
+        eventsStatus: 'failed',
+        eventsError:
+          err instanceof EventsSetupError
+            ? err.message
+            : awsErrorCode(err) === 'AuthorizationErrorException'
+              ? 'These AWS keys may not use Amazon SNS, which tells ee when mail is delivered, bounces or is opened. Add the AmazonSNSFullAccess policy to the IAM user, then press "Set up again".'
+              : describeSesError(err),
+        eventsTopicArn: null,
+        eventsCallbackUrl: callbackUrl,
+        configSet: null,
+        trackingConfigSet: null,
+      }
+    }
+    await this.deps.store.writeEvents(result)
+    this.cache = null
+    return result
+  }
+
+  /** SNS confirmed (or cancelled) our subscription. */
+  async markEvents(patch: Partial<OwleryEvents>): Promise<void> {
+    await this.deps.store.writeEvents(patch)
+    this.cache = null
+  }
 }
 
 const host = globalThis as { __eeOwleryService?: OwleryService }
@@ -176,19 +403,20 @@ export function configuredMailTransport(): MailTransport {
 
 /**
  * The process-wide Owlery service (settings cached, invalidated on save).
- * MAIL_TRANSPORT=fake swaps Amazon SES for the database-backed fake.
+ * MAIL_TRANSPORT=fake swaps Amazon SES + SNS for the database-backed fake.
  */
 export function owleryService(): OwleryService {
   if (!host.__eeOwleryService) {
     const transport = configuredMailTransport()
     host.__eeOwleryService = new OwleryService({
       store: defaultOwleryStore(),
+      log: defaultEmailStore(),
       key: () => {
         const master = env.TENANT_MASTER_KEY
         if (!master) throw new Error('TENANT_MASTER_KEY is required to unseal the Amazon SES secret')
         return owlerySealKey(master)
       },
-      ...(transport === 'fake' ? { ses: fakeStoreSes(defaultFakeMailStore()) } : {}),
+      ...(transport === 'fake' ? { ses: fakeStoreSes(defaultFakeMailStore()), sns: fakeSns } : {}),
     })
   }
   return host.__eeOwleryService

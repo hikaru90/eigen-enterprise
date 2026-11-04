@@ -28,6 +28,8 @@ import { DRIVE_MODULE_ID, driveManifest } from './drive/manifest'
 import { createDriveTools } from './drive/tools'
 import { EMAIL_MODULE_ID, emailManifest } from './email/manifest'
 import { createOwleryTools } from './email/owlery/tools'
+import { EMAIL_PLATFORM_WRITE_TOOLS } from './email/platform/tool-names'
+import { createEmailPlatformTools } from './email/platform/tools'
 import { createEmailTools } from './email/tools'
 import { MEMBERS_MODULE_ID, membersManifest } from './members/manifest'
 import { createMembersTools } from './members/tools'
@@ -99,6 +101,8 @@ export const SYSTEM_MODULE_IDS = [
 export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   // Company email (the one send tool): an agent's send waits for the owner's yes.
   'email.send_mail',
+  // Email platform changes (domains, senders, suppressions) wait on the approval mode.
+  ...EMAIL_PLATFORM_WRITE_TOOLS,
   // Phase-2c (G8/D5): guideline-set activation is a strategic brand decision —
   // human-admin principal AND an explicit approval decision.
   'brand.set_activate',
@@ -208,6 +212,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createDomainTools(),
     ...createActivityTools(),
     ...createOwleryTools(),
+    ...createEmailPlatformTools(),
     ...createMembersTools(),
     ...createMessagesTools(),
     ...createDriveTools(),

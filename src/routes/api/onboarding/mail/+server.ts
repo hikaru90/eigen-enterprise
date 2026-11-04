@@ -2,13 +2,17 @@ import type { RequestHandler } from './$types'
 import { json } from '@sveltejs/kit'
 import { isUserAdmin } from '$lib/server/auth/user-role'
 import { companyMail, MailSetupError, SenderNotVerifiedError } from '$lib/server/mail'
+import { owleryService } from '../../../../../modules/email/owlery/service'
 
 /**
- * The onboarding's email step (the only setup surface until the Email page, E2): the owner enters their
- * Amazon SES details. A real test email goes to the owner's own address first;
- * the settings are stored (secret sealed) only if it went through.
+ * Connect Amazon SES — the welcome wizard's email step and the Email page's
+ * "Connect Amazon SES" form both post here. A real test email goes to the
+ * owner's own address first; the settings are stored (secret sealed) only if
+ * it went through. Then delivery events are wired (SNS → /api/mail/ses-events);
+ * their outcome is stored and shown on the Email page, never a reason to fail
+ * the connect.
  *
- *   200 { ok: true, testSentTo }
+ *   200 { ok: true, testSentTo, events }
  *   409 { error, needs: 'verify_sender', emailFrom }  — click Amazon's link, then retry
  *   400 { error }                                     — anything else
  */
@@ -42,5 +46,6 @@ export const POST: RequestHandler = async (event) => {
     console.error('[onboarding/mail] email setup failed', { userId: user.id, error: err instanceof Error ? err.message : String(err) })
     return json({ error: 'Email setup failed unexpectedly. Please try again.' }, { status: 400 })
   }
-  return json({ ok: true, testSentTo: user.email })
+  const events = await owleryService().setupEvents(new URL(event.request.url).origin)
+  return json({ ok: true, testSentTo: user.email, events: events.eventsStatus })
 }

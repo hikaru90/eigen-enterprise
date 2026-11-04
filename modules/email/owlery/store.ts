@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import type { DbHandle } from '$lib/kernel/db-stores'
 import { decryptEnvelope, encryptEnvelope } from '$lib/server/crypto/envelope'
 import type { AppDatabase } from '$lib/server/db/context'
-import { owlerySettings } from '$lib/server/db/owlery.schema'
+import { owlerySettings, type EventsStatus } from '$lib/server/db/owlery.schema'
 
 /**
  * Persistence for the company's Amazon SES settings (one row). The secret
@@ -18,9 +18,32 @@ export type OwleryRow = {
   updatedBy: string
 }
 
+/** Delivery-event wiring (SES configuration sets → SNS topic → our callback). */
+export type OwleryEvents = {
+  eventsStatus: EventsStatus
+  eventsError: string | null
+  eventsTopicArn: string | null
+  eventsCallbackUrl: string | null
+  configSet: string | null
+  trackingConfigSet: string | null
+}
+
+export const NO_EVENTS: OwleryEvents = {
+  eventsStatus: 'not_set_up',
+  eventsError: null,
+  eventsTopicArn: null,
+  eventsCallbackUrl: null,
+  configSet: null,
+  trackingConfigSet: null,
+}
+
 export type OwleryStore = {
-  read(): Promise<OwleryRow | null>
+  read(): Promise<(OwleryRow & OwleryEvents) | null>
+  /** Upserts the credentials + default sender; leaves the event wiring as it is. */
   write(row: OwleryRow): Promise<void>
+  writeEvents(patch: Partial<OwleryEvents>): Promise<void>
+  /** Changes only the default sender. */
+  writeEmailFrom(emailFrom: string, updatedBy: string): Promise<void>
   /** Deletes the row (only the e2e harness reset under MAIL_TRANSPORT=fake). */
   clear(): Promise<void>
 }
@@ -47,7 +70,7 @@ async function resolveDb(db: DbHandle): Promise<AppDatabase> {
 export class DbOwleryStore implements OwleryStore {
   constructor(private readonly db: DbHandle) {}
 
-  async read(): Promise<OwleryRow | null> {
+  async read(): Promise<(OwleryRow & OwleryEvents) | null> {
     const [row] = await (await resolveDb(this.db)).select().from(owlerySettings).limit(1)
     if (!row) return null
     return {
@@ -56,7 +79,21 @@ export class DbOwleryStore implements OwleryStore {
       sealedSecretAccessKey: row.sealedSecretAccessKey,
       emailFrom: row.emailFrom,
       updatedBy: row.updatedBy,
+      eventsStatus: row.eventsStatus,
+      eventsError: row.eventsError,
+      eventsTopicArn: row.eventsTopicArn,
+      eventsCallbackUrl: row.eventsCallbackUrl,
+      configSet: row.configSet,
+      trackingConfigSet: row.trackingConfigSet,
     }
+  }
+
+  async writeEvents(patch: Partial<OwleryEvents>): Promise<void> {
+    await (await resolveDb(this.db)).update(owlerySettings).set(patch)
+  }
+
+  async writeEmailFrom(emailFrom: string, updatedBy: string): Promise<void> {
+    await (await resolveDb(this.db)).update(owlerySettings).set({ emailFrom, updatedBy, updatedAt: new Date() })
   }
 
   async write(row: OwleryRow): Promise<void> {
@@ -81,14 +118,20 @@ export function defaultOwleryStore(): OwleryStore {
 
 /** In-memory store for tests. */
 export class InMemoryOwleryStore implements OwleryStore {
-  row: OwleryRow | null = null
+  row: (OwleryRow & OwleryEvents) | null = null
   writes = 0
   async read() {
     return this.row
   }
   async write(row: OwleryRow) {
-    this.row = { ...row }
+    this.row = { ...NO_EVENTS, ...this.row, ...row }
     this.writes += 1
+  }
+  async writeEvents(patch: Partial<OwleryEvents>) {
+    if (this.row) this.row = { ...this.row, ...patch }
+  }
+  async writeEmailFrom(emailFrom: string, updatedBy: string) {
+    if (this.row) this.row = { ...this.row, emailFrom, updatedBy }
   }
   async clear() {
     this.row = null
