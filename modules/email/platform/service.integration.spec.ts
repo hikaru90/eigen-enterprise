@@ -5,6 +5,7 @@ import { OwleryService } from '../owlery/service'
 import { InMemoryOwleryStore, owlerySealKey } from '../owlery/store'
 import { EmailPlatform, EmailPlatformError } from './service'
 import { EmailStore } from './store'
+import { emailBrandFromCssVars } from './templates/brand'
 
 const hasDb = Boolean(process.env.DATABASE_URL)
 
@@ -29,9 +30,7 @@ describe.skipIf(!hasDb)('EmailPlatform (test database)', () => {
   })
 
   async function wipe() {
-    for (const t of ['mail_message_events', 'mail_messages', 'mail_senders', 'mail_domains', 'mail_suppressions', 'mail_jobs']) {
-      await db.execute(`DELETE FROM ${t}` as never)
-    }
+    await new EmailStore(db).clearAll()
   }
 
   beforeEach(async () => {
@@ -71,6 +70,7 @@ describe.skipIf(!hasDb)('EmailPlatform (test database)', () => {
         fetched.push(url)
         return new Response('ok')
       }) as unknown as typeof fetch,
+      brand: async () => emailBrandFromCssVars(null, 'Kindred'),
       now: () => now,
     })
   })
@@ -207,5 +207,37 @@ describe.skipIf(!hasDb)('EmailPlatform (test database)', () => {
     expect(fetched).toEqual(['https://sns.eu-central-1.amazonaws.com/?Action=ConfirmSubscription'])
     expect((await platform.owlery.settings())!.eventsStatus).toBe('ready')
     expect((await platform.handleSnsMessage({ ...base, Type: 'Notification', TopicArn: topic, Message: 'not json' })).status).toBe(400)
+  })
+
+  it('templates: layout + template render with the brand, send by id through the one path, strict variables', async () => {
+    const t = platform.templates
+    const layout = await t.createLayout('Brand', 'u1')
+    expect(layout.body).toContain('{{ content }}')
+    const tpl = await t.createTemplate({ name: 'Welcome', layoutId: layout.id }, 'u1')
+    expect(await t.variablesOf(tpl)).toEqual([
+      { name: 'firstName', required: false },
+      { name: 'link', required: true },
+    ])
+
+    const sent = await t.send({ templateId: tpl.id, to: 'new@x.co', variables: { firstName: 'Ada', link: 'https://k.test' }, source: 'api' })
+    expect(sent.status).toBe('sent')
+    expect(ses.sent[0]).toMatchObject({ subject: 'Welcome, Ada!', to: 'new@x.co' })
+    expect(ses.sent[0]!.html).toContain('Kindred')
+    const row = await store.getMessage(sent.id)
+    expect(row).toMatchObject({ templateId: tpl.id, source: 'api', contentStored: true })
+
+    await expect(t.send({ templateId: tpl.id, to: 'new@x.co', variables: {} })).rejects.toMatchObject({ missing: ['link'] })
+    expect(ses.sent).toHaveLength(1)
+
+    // Edits are validated: a layout keeps its slot, a template its layout's format.
+    await expect(t.updateLayout(layout.id, { name: 'Brand', format: 'mjml', body: '<mjml></mjml>' })).rejects.toThrow(/content/)
+    await expect(
+      t.updateTemplate(tpl.id, { name: 'W', subject: 's', format: 'html', body: '<p>x</p>', textBody: null, layoutId: layout.id, sampleVariables: {} }),
+    ).rejects.toThrow(/MJML/)
+    await expect(t.deleteLayout(layout.id)).rejects.toThrow(/Still used by Welcome/)
+
+    const test = await t.sendTest(tpl.id, 'owner@kindred.test')
+    expect(test.status).toBe('sent')
+    expect((await store.getMessage(test.id))!.source).toBe('test')
   })
 })

@@ -110,3 +110,33 @@ export const mailJobs = pgTable('mail_jobs', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
+export const TEMPLATE_FORMATS = ['mjml', 'html'] as const
+export type TemplateFormat = (typeof TEMPLATE_FORMATS)[number]
+
+/** A reusable wrapper (header, footer, styles from the Brand) with one {{content}} slot (migration 0115). */
+export const mailLayouts = pgTable('mail_layouts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  format: text('format').$type<TemplateFormat>().notNull(),
+  body: text('body').notNull(),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+/** A subject + body with {{variables}}, optionally rendered inside a layout (migration 0115). */
+export const mailTemplates = pgTable('mail_templates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  subject: text('subject').notNull(),
+  format: text('format').$type<TemplateFormat>().notNull(),
+  body: text('body').notNull(),
+  /** Plain-text version; null = derived from the rendered html. */
+  textBody: text('text_body'),
+  layoutId: uuid('layout_id').references(() => mailLayouts.id, { onDelete: 'restrict' }),
+  /** Example values for the preview and the test send. */
+  sampleVariables: jsonb('sample_variables').$type<Record<string, string>>().notNull().default({}),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})

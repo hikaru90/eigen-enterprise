@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createMemoryRateLimiter,
   handleMailSend,
+  TemplateInvalid,
+  TemplateNotFound,
   type MailSendAudit,
   type MailSendDeps,
   type MailSendStore,
@@ -61,6 +63,11 @@ beforeEach(() => {
   audits = []
   deps = {
     mail: { isConfigured, send },
+    renderTemplate: async (id, vars) => {
+      if (id === '00000000-0000-4000-8000-00000000dead') throw new TemplateNotFound()
+      if (!vars.name) throw new TemplateInvalid('Missing variables: name.', ['name'])
+      return { subject: `Hi ${vars.name}`, html: `<p>Hi ${vars.name}</p>`, text: `Hi ${vars.name}` }
+    },
     store: memoryStore({ k1: true, k2: false }),
     limiter: createMemoryRateLimiter({ limit: 60, windowMs: 60_000, now: () => 0 }),
     audit: async (a) => {
@@ -104,6 +111,20 @@ describe('validation', () => {
     expect(res.body).toMatchObject({ error: 'invalid_request' })
     expect(Object.keys((res.body as { fields: object }).fields)).toContain(field)
     expect(send).not.toHaveBeenCalled()
+  })
+
+  it('a body is either subject + text or a templateId (+ variables)', async () => {
+    const tpl = '00000000-0000-4000-8000-000000000001'
+    for (const [body, field] of [
+      [{ to: 'a@example.com' }, 'subject'],
+      [{ to: 'a@example.com', templateId: tpl, subject: 'x' }, 'subject'],
+      [{ ...BODY, variables: { a: 'b' } }, 'variables'],
+      [{ to: 'a@example.com', templateId: 'not-a-uuid' }, 'templateId'],
+    ] as const) {
+      const res = await handleMailSend(deps, { apiKey: KEY, body })
+      expect(res.status, JSON.stringify(body)).toBe(400)
+      expect(Object.keys((res.body as { fields: object }).fields)).toContain(field)
+    }
   })
 
   it('rejects unknown fields', async () => {
@@ -205,6 +226,27 @@ describe('sending', () => {
     const res = await handleMailSend(deps, { apiKey: KEY, body: BODY })
     expect(res.status).toBe(502)
     expect(JSON.stringify(res.body)).not.toContain('/srv/x.js')
+  })
+})
+
+describe('templates', () => {
+  const tpl = '00000000-0000-4000-8000-000000000001'
+
+  it('renders the template and sends its subject/html/text, tagged with the template id', async () => {
+    const res = await handleMailSend(deps, { apiKey: KEY, body: { to: 'ada@example.com', templateId: tpl, variables: { name: 'Ada' } } })
+    expect(res.status).toBe(200)
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ subject: 'Hi Ada', html: '<p>Hi Ada</p>', text: 'Hi Ada', templateId: tpl, source: 'api' }),
+    )
+  })
+
+  it('404 for an unknown template, 422 listing missing variables; nothing sent', async () => {
+    const gone = await handleMailSend(deps, { apiKey: KEY, body: { to: 'a@example.com', templateId: '00000000-0000-4000-8000-00000000dead' } })
+    expect(gone).toMatchObject({ status: 404, body: { error: 'template_not_found' } })
+    const missing = await handleMailSend(deps, { apiKey: KEY, body: { to: 'a@example.com', templateId: tpl } })
+    expect(missing).toMatchObject({ status: 422, body: { error: 'template_invalid', missing: ['name'] } })
+    expect(send).not.toHaveBeenCalled()
+    expect(audits.map((a) => a.outcome)).toEqual(['template_not_found', 'template_invalid'])
   })
 })
 

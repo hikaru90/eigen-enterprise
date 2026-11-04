@@ -3,8 +3,9 @@
  * Contract: docs/agents/send-mail.md.
  *
  * Order of checks: key (401) → "Can send mail" scope (403) → body (400) →
- * rate limit (429) → Email set up (503) → idempotency (200 replay / 409) → send
- * (200 / 502). The owner's tick on the key is the consent, so there is no
+ * rate limit (429) → Email set up (503) → idempotency (200 replay / 409) →
+ * template render (404 / 422) → send (200 / 502). A body names either
+ * subject + text (+ html) or a templateId + variables. The owner's tick on the key is the consent, so there is no
  * approval round (decision log, plan/progress.md).
  *
  * Never logged or audited: the key itself, the subject, the text and the html.
@@ -18,9 +19,13 @@ const MAX_SCHEDULE_MS = 30 * 24 * 60 * 60 * 1000
 export const mailSendBody = z
   .object({
     to: z.email(),
-    subject: z.string().min(1).max(998),
-    text: z.string().min(1),
+    subject: z.string().min(1).max(998).optional(),
+    text: z.string().min(1).optional(),
     html: z.string().optional(),
+    /** Send a saved template (Email › Templates) instead of subject/text/html. */
+    templateId: z.uuid().optional(),
+    /** The template's {{variables}}. */
+    variables: z.record(z.string().max(100), z.string().max(10_000)).optional(),
     replyTo: z.email().optional(),
     /** One of the company's senders (Email › Senders); omitted = the default sender. */
     from: z.email().optional(),
@@ -35,6 +40,17 @@ export const mailSendBody = z
     idempotencyKey: z.string().min(1).max(128).optional(),
   })
   .strict()
+  .superRefine((b, ctx) => {
+    if (b.templateId) {
+      for (const k of ['subject', 'text', 'html'] as const) {
+        if (b[k] !== undefined) ctx.addIssue({ code: 'custom', path: [k], message: 'leave it out when sending a templateId' })
+      }
+      return
+    }
+    if (b.variables) ctx.addIssue({ code: 'custom', path: ['variables'], message: 'only with a templateId' })
+    if (!b.subject) ctx.addIssue({ code: 'custom', path: ['subject'], message: 'required (or send a templateId)' })
+    if (!b.text) ctx.addIssue({ code: 'custom', path: ['text'], message: 'required (or send a templateId)' })
+  })
 
 export type MailSendBody = z.infer<typeof mailSendBody>
 
@@ -81,6 +97,8 @@ export type MailSendOutcome =
   | 'rate_limited'
   | 'mail_not_configured'
   | 'idempotency_conflict'
+  | 'template_not_found'
+  | 'template_invalid'
   | 'delivery_failed'
 
 /** One audit record per attempt. Recipient and key name only, never content. */
@@ -93,8 +111,29 @@ export type MailSendAudit = {
   activity: string
 }
 
+/** A saved template rendered for one send; throws TemplateNotFound / TemplateInvalid. */
+export type TemplateRenderer = (templateId: string, variables: Record<string, string>) => Promise<{ subject: string; html: string; text: string }>
+
+export class TemplateNotFound extends Error {
+  constructor() {
+    super('There is no template with this templateId.')
+    this.name = 'TemplateNotFound'
+  }
+}
+
+export class TemplateInvalid extends Error {
+  constructor(
+    message: string,
+    readonly missing: string[],
+  ) {
+    super(message)
+    this.name = 'TemplateInvalid'
+  }
+}
+
 export type MailSendDeps = {
   mail: Pick<CompanyMail, 'isConfigured' | 'send'>
+  renderTemplate: TemplateRenderer
   store: MailSendStore
   limiter: RateLimiter
   audit(entry: MailSendAudit): Promise<void>
@@ -151,7 +190,17 @@ function textToHtml(text: string): string {
 }
 
 function bodyHash(b: MailSendBody): string {
-  const canonical = JSON.stringify([b.to, b.subject, b.text, b.html ?? null, b.replyTo ?? null, b.from ?? null, b.scheduledAt ?? null])
+  const canonical = JSON.stringify([
+    b.to,
+    b.subject ?? null,
+    b.text ?? null,
+    b.html ?? null,
+    b.replyTo ?? null,
+    b.from ?? null,
+    b.scheduledAt ?? null,
+    b.templateId ?? null,
+    b.variables ? Object.entries(b.variables).sort(([a], [c]) => a.localeCompare(c)) : null,
+  ])
   return createHash('sha256').update(canonical).digest('hex')
 }
 
@@ -256,13 +305,34 @@ export async function handleMailSend(
     claimId = claim.id
   }
 
+  let content: { subject: string; text: string; html: string }
+  if (body.templateId) {
+    try {
+      content = await deps.renderTemplate(body.templateId, body.variables ?? {})
+    } catch (err) {
+      if (claimId) await deps.store.release(claimId)
+      if (err instanceof TemplateNotFound) {
+        await audit(body.to, 'template_not_found')
+        return { status: 404, body: { error: 'template_not_found', message: err.message } }
+      }
+      if (err instanceof TemplateInvalid) {
+        await audit(body.to, 'template_invalid')
+        return { status: 422, body: { error: 'template_invalid', message: err.message, missing: err.missing } }
+      }
+      throw err
+    }
+  } else {
+    content = { subject: body.subject!, text: body.text!, html: body.html ?? textToHtml(body.text!) }
+  }
+
   let result: Awaited<ReturnType<MailSendDeps['mail']['send']>>
   try {
     result = await deps.mail.send({
       to: body.to,
-      subject: body.subject,
-      text: body.text,
-      html: body.html ?? textToHtml(body.text),
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
+      ...(body.templateId ? { templateId: body.templateId } : {}),
       ...(body.replyTo ? { replyTo: body.replyTo } : {}),
       ...(body.from ? { from: body.from } : {}),
       ...(body.scheduledAt ? { scheduledAt: new Date(body.scheduledAt) } : {}),

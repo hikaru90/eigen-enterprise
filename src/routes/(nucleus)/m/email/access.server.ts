@@ -2,6 +2,7 @@ import { error, fail, redirect } from '@sveltejs/kit'
 import { isUserAdmin } from '$lib/server/auth/user-role'
 import { MailNotConfiguredError, MailSetupError } from '$lib/server/mail/company-mail'
 import { EmailPlatformError } from '../../../../../modules/email/platform/service'
+import { TemplateError, TemplateRenderError } from '../../../../../modules/email/platform/templates/service'
 
 /**
  * Who may do what in the Email area: every signed-in member reads; the owner
@@ -28,7 +29,13 @@ export async function act<T extends Record<string, unknown>>(action: string, run
   try {
     return { action, ok: true as const, ...(await run()) }
   } catch (err) {
-    if (err instanceof EmailPlatformError || err instanceof MailSetupError || err instanceof MailNotConfiguredError) {
+    if (err instanceof TemplateRenderError) return fail(400, { action, error: err.message, problems: err.problems })
+    if (
+      err instanceof EmailPlatformError ||
+      err instanceof TemplateError ||
+      err instanceof MailSetupError ||
+      err instanceof MailNotConfiguredError
+    ) {
       return fail(400, { action, error: err.message })
     }
     throw err

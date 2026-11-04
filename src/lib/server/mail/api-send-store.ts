@@ -6,7 +6,9 @@ import { getDb } from '$lib/server/db'
 import { mailApiSend } from '$lib/server/db/mail-api.schema'
 import { userApiKey } from '$lib/server/db/schema'
 import { companyMail } from '.'
-import { createMemoryRateLimiter, type MailSendDeps, type MailSendStore } from './api-send'
+import { emailPlatform } from '../../../../modules/email/platform/service'
+import { TemplateError, TemplateRenderError } from '../../../../modules/email/platform/templates/service'
+import { createMemoryRateLimiter, TemplateInvalid, TemplateNotFound, type MailSendDeps, type MailSendStore } from './api-send'
 
 const IDEMPOTENCY_WINDOW_MS = 24 * 60 * 60 * 1000
 
@@ -70,6 +72,17 @@ const limiter = createMemoryRateLimiter({ limit: 60, windowMs: 60_000 })
 export function mailSendDeps(principalId: string): MailSendDeps {
   return {
     mail: companyMail(),
+    async renderTemplate(templateId, variables) {
+      try {
+        return await emailPlatform().templates.render(templateId, variables)
+      } catch (err) {
+        if (err instanceof TemplateError) throw new TemplateNotFound()
+        if (err instanceof TemplateRenderError) {
+          throw new TemplateInvalid(err.problems.length > 0 ? `${err.message} ${err.problems.join(' ')}` : err.message, err.missing)
+        }
+        throw err
+      }
+    },
     store: dbMailSendStore(),
     limiter,
     // Shown in Overview recent activity as a tool.executed write.

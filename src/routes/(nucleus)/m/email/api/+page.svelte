@@ -24,18 +24,21 @@
 
   const FIELDS: [string, string, string][] = [
     ['to', 'required', 'One recipient address.'],
-    ['subject', 'required', 'The subject line.'],
-    ['text', 'required', 'The plain-text body. Without html, ee builds a simple html version from it.'],
+    ['subject', 'required*', 'The subject line.'],
+    ['text', 'required*', 'The plain-text body. Without html, ee builds a simple html version from it.'],
     ['html', 'optional', 'The html body.'],
     ['from', 'optional', 'One of your senders (Email › Senders). Leave it out to use the default sender.'],
     ['replyTo', 'optional', 'Where replies go.'],
     ['scheduledAt', 'optional', 'Send later: an ISO time like 2026-12-01T09:00:00Z, within 30 days.'],
+    ['templateId', 'optional', 'Send a saved template (Email › Templates) instead of subject, text and html.'],
+    ['variables', 'optional', 'With a templateId: its {{ variables }} as text, like { "firstName": "Ada" }.'],
     ['idempotencyKey', 'optional', 'Any unique text per mail. Retrying with the same key never sends twice (24 hours).'],
   ]
   const ANSWERS: [string, string][] = [
     ['200', '{ "id", "status": "sent" | "scheduled" | "suppressed", "to" } — the id is the entry in Email › Logs.'],
     ['400', 'Something in the body is wrong; "fields" says what.'],
     ['401 / 403', 'The key is missing, revoked, or may not send mail.'],
+    ['404 / 422', 'The templateId does not exist, or a variable is missing ("missing" lists them).'],
     ['429', 'More than 60 mails a minute from one key; wait the Retry-After seconds.'],
     ['502 / 503', 'Amazon refused the mail, or email is not connected yet; "message" says why in plain words.'],
   ]
@@ -85,6 +88,7 @@
 
   <section aria-labelledby="ref-heading" class="border-t border-border pt-6">
     <h3 id="ref-heading" class="text-sm font-medium">Reference</h3>
+    <p class="mt-1 text-xs text-muted-foreground">* unless you send a templateId.</p>
     <div class="mt-3 overflow-x-auto rounded-lg border border-border">
       <table class="w-full text-left text-sm">
         <thead class="border-b border-border text-xs text-muted-foreground">

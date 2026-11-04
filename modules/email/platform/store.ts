@@ -6,10 +6,12 @@ import type { AppDatabase } from '$lib/server/db/context'
 import {
   mailDomains,
   mailJobs,
+  mailLayouts,
   mailMessageEvents,
   mailMessages,
   mailSenders,
   mailSuppressions,
+  mailTemplates,
   type MailSource,
   type SuppressionReason,
 } from '$lib/server/db/email.schema'
@@ -27,6 +29,8 @@ export type MessageRow = typeof mailMessages.$inferSelect
 export type MessageEventRow = typeof mailMessageEvents.$inferSelect
 export type SuppressionRow = typeof mailSuppressions.$inferSelect
 export type JobRow = typeof mailJobs.$inferSelect
+export type LayoutRow = typeof mailLayouts.$inferSelect
+export type TemplateRow = typeof mailTemplates.$inferSelect
 
 export type NewMessage = {
   source: MailSource
@@ -301,6 +305,70 @@ export class EmailStore {
       .limit(500)
   }
 
+  // ─── templates & layouts ───────────────────────────────────────────────────
+
+  async listLayouts(): Promise<LayoutRow[]> {
+    return (await this.db()).select().from(mailLayouts).orderBy(asc(mailLayouts.createdAt))
+  }
+
+  async getLayout(id: string): Promise<LayoutRow | null> {
+    const [row] = await (await this.db()).select().from(mailLayouts).where(eq(mailLayouts.id, id)).limit(1)
+    return row ?? null
+  }
+
+  async insertLayout(values: typeof mailLayouts.$inferInsert): Promise<LayoutRow> {
+    const [row] = await (await this.db()).insert(mailLayouts).values(values).returning()
+    if (!row) throw new Error('mail_layouts insert returned no row')
+    return row
+  }
+
+  async updateLayout(id: string, patch: Partial<typeof mailLayouts.$inferInsert>): Promise<LayoutRow> {
+    const [row] = await (await this.db())
+      .update(mailLayouts)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(mailLayouts.id, id))
+      .returning()
+    if (!row) throw new Error(`mail_layouts row ${id} vanished during update`)
+    return row
+  }
+
+  async deleteLayout(id: string): Promise<void> {
+    await (await this.db()).delete(mailLayouts).where(eq(mailLayouts.id, id))
+  }
+
+  async listTemplates(): Promise<TemplateRow[]> {
+    return (await this.db()).select().from(mailTemplates).orderBy(desc(mailTemplates.updatedAt))
+  }
+
+  async templatesUsingLayout(layoutId: string): Promise<TemplateRow[]> {
+    return (await this.db()).select().from(mailTemplates).where(eq(mailTemplates.layoutId, layoutId))
+  }
+
+  async getTemplate(id: string): Promise<TemplateRow | null> {
+    const [row] = await (await this.db()).select().from(mailTemplates).where(eq(mailTemplates.id, id)).limit(1)
+    return row ?? null
+  }
+
+  async insertTemplate(values: typeof mailTemplates.$inferInsert): Promise<TemplateRow> {
+    const [row] = await (await this.db()).insert(mailTemplates).values(values).returning()
+    if (!row) throw new Error('mail_templates insert returned no row')
+    return row
+  }
+
+  async updateTemplate(id: string, patch: Partial<typeof mailTemplates.$inferInsert>): Promise<TemplateRow> {
+    const [row] = await (await this.db())
+      .update(mailTemplates)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(mailTemplates.id, id))
+      .returning()
+    if (!row) throw new Error(`mail_templates row ${id} vanished during update`)
+    return row
+  }
+
+  async deleteTemplate(id: string): Promise<void> {
+    await (await this.db()).delete(mailTemplates).where(eq(mailTemplates.id, id))
+  }
+
   /** Deletes every row of the platform tables — only the e2e harness reset calls this. */
   async clearAll(): Promise<void> {
     const db = await this.db()
@@ -366,6 +434,8 @@ export const EMAIL_PLATFORM_TABLES = [
   mailDomains,
   mailSuppressions,
   mailJobs,
+  mailTemplates,
+  mailLayouts,
 ] as const
 
 export function defaultEmailStore(): EmailStore {

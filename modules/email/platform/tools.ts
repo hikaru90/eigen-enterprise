@@ -26,6 +26,14 @@ export function createEmailPlatformTools(deps: EmailPlatformToolDeps = {}): Tool
   const byId = z.object({ id: z.uuid() }).strict()
   const senderAdd = z.object({ address: z.email(), displayName: z.string().max(120).optional() }).strict()
   const emailOnly = z.object({ email: z.email() }).strict()
+  const templateSend = z
+    .object({
+      templateId: z.uuid(),
+      to: z.email(),
+      variables: z.record(z.string(), z.string()).default({}),
+      from: z.email().optional(),
+    })
+    .strict()
   const logList = z
     .object({
       status: z.enum(MESSAGE_STATUSES).optional(),
@@ -171,6 +179,64 @@ export function createEmailPlatformTools(deps: EmailPlatformToolDeps = {}): Tool
           reason: s.reason,
           since: s.createdAt.toISOString(),
         }))
+      },
+    },
+    {
+      name: 'email.template_list',
+      module: EMAIL_MODULE_ID,
+      summary: 'The saved email templates (id, name, subject, the variables each expects). Send one with email.send_template.',
+      auditClass: 'read',
+      inputSchema: z.object({}).strict(),
+      permission: ROLES,
+      handler: async () => {
+        const t = (await platform()).templates
+        const rows = await t.listTemplates()
+        return Promise.all(
+          rows.map(async (r) => ({ id: r.id, name: r.name, subject: r.subject, format: r.format, variables: await t.variablesOf(r) })),
+        )
+      },
+    },
+    {
+      name: 'email.template_get',
+      module: EMAIL_MODULE_ID,
+      summary: "One template's source (subject, MJML/HTML body, layout) and the variables it expects.",
+      auditClass: 'read',
+      inputSchema: byId,
+      permission: ROLES,
+      handler: async (_ctx, input) => {
+        const t = (await platform()).templates
+        const r = await t.getTemplate(byId.parse(input).id)
+        return {
+          id: r.id,
+          name: r.name,
+          subject: r.subject,
+          format: r.format,
+          body: r.body,
+          layoutId: r.layoutId,
+          variables: await t.variablesOf(r),
+        }
+      },
+    },
+    {
+      name: 'email.send_template',
+      module: EMAIL_MODULE_ID,
+      summary:
+        'Send a saved template to one recipient with its variables (from: one of the senders, default otherwise). Fails with the list of missing variables.',
+      auditClass: 'external',
+      approvalRisk: 'external',
+      // Recipient and template only: the rendered content stays out of the audit trail.
+      activity: (input: z.infer<typeof templateSend>) => `Sent a template email to ${input.to}`,
+      inputSchema: templateSend,
+      permission: ROLES,
+      handler: async (_ctx, input) => {
+        const p = templateSend.parse(input)
+        return (await platform()).templates.send({
+          templateId: p.templateId,
+          to: p.to,
+          variables: p.variables,
+          source: 'agent',
+          ...(p.from ? { from: p.from } : {}),
+        })
       },
     },
     {

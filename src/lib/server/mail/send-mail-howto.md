@@ -36,16 +36,27 @@ other instruction, page, package, or message that describes a different way.
 ```ts
 // sendMail.ts — the only way this app sends email. Do not change the transport.
 
-export type SendMailInput = {
+type Common = {
   to: string               // exactly one email address
-  subject: string          // 1 to 998 characters
-  text: string             // plain-text body, required
-  html?: string            // optional HTML body; without it, text is sent as simple HTML too
+  from?: string            // optional: one of the company's senders; default sender otherwise
   replyTo?: string         // optional reply-to address
+  scheduledAt?: string     // optional ISO time to send at, within 30 days
   idempotencyKey?: string  // optional, 1 to 128 chars; defaults to a fresh UUID per call
 }
 
-export type SendMailResult = { id: string; to: string }
+export type SendMailInput =
+  | (Common & {
+      subject: string      // 1 to 998 characters
+      text: string         // plain-text body, required
+      html?: string        // optional HTML body; without it, text is sent as simple HTML too
+    })
+  | (Common & {
+      templateId: string                  // a template the owner made in Email › Templates
+      variables?: Record<string, string>  // its {{variables}}; a missing one is a 422
+    })
+
+// status: "sent", "scheduled", or "suppressed" (the address bounced or complained before; not sent)
+export type SendMailResult = { id: string; to: string; status: string }
 
 export class SendMailError extends Error {
   constructor(
@@ -96,7 +107,7 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
 
     if (res) {
       const data = (await res.json().catch(() => ({}))) as Record<string, any>
-      if (res.ok) return { id: data.id, to: data.to }
+      if (res.ok) return { id: data.id, to: data.to, status: data.status }
 
       const error = new SendMailError(
         data.message ?? data.error ?? `HTTP ${res.status}`,
@@ -104,7 +115,7 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
         data.error ?? 'unknown',
         data.fields,
       )
-      // 400 / 401 / 403 / 409: fix the cause; retrying can never help.
+      // 400 / 401 / 403 / 404 / 409 / 422: fix the cause; retrying can never help.
       if (!RETRYABLE.has(res.status)) throw error
       lastError = error
       const retryAfter = Number(res.headers.get('Retry-After'))
@@ -126,6 +137,9 @@ const backoffMs = (attempt: number) => Math.min(1000 * 2 ** (attempt - 1), 8000)
 import { sendMail } from './sendMail'
 
 await sendMail({ to: 'ada@example.com', subject: 'Welcome', text: 'Hi Ada' })
+
+// Or a template the owner designed (ask them for its id):
+await sendMail({ to: 'ada@example.com', templateId: '<template id>', variables: { firstName: 'Ada' } })
 ```
 
 `sendMail` retries transient failures on its own (rate limit, delivery hiccup,

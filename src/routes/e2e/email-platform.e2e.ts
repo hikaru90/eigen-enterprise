@@ -172,4 +172,66 @@ test.describe('email platform', () => {
     expect(await captured(page, reader)).toHaveLength(1)
     await api.dispose()
   })
+
+  // Runs after the journey above: SES stays connected (serial suite, one reset at the end).
+  test('layouts + templates: brand layout → template with variables → live preview → test mail → send by templateId', async ({
+    page,
+    context,
+    playwright,
+  }) => {
+    test.setTimeout(120_000)
+    const { email } = await registerUser(context, page, { emailDomain: 'test.eigen' })
+    expect(await sql()`update "user" set role = 'admin' where email = ${email} returning id`).toHaveLength(1)
+    const stamp = Date.now().toString(36)
+
+    // A layout starts from the Brand starter and previews around a stand-in block.
+    await page.goto('/m/email/layouts')
+    await expect(page.getByTestId('brand-tokens')).toBeVisible()
+    await page.locator('#layout-name').fill(`Brand ${stamp}`)
+    await page.getByRole('button', { name: 'Create layout' }).click()
+    await expect(page).toHaveURL(/\/m\/email\/layouts\/[0-9a-f-]+$/)
+    await expect(page.getByTestId('layout-body')).toHaveValue(/\{\{ content \}\}/)
+    await expect(page.getByTestId('layout-preview')).toHaveAttribute('srcdoc', /content goes here/)
+
+    // A template inside it: variables detected, preview renders the sample values.
+    await page.getByTestId('email-tab-templates').click()
+    await page.locator('#template-name').fill(`Welcome ${stamp}`)
+    await page.locator('#template-layout').selectOption({ label: `Brand ${stamp}` })
+    await page.getByRole('button', { name: 'Create template' }).click()
+    await expect(page).toHaveURL(/\/m\/email\/templates\/[0-9a-f-]+$/)
+    const templateId = page.url().split('/').pop()!
+    await expect(page.getByTestId('tpl-preview-subject')).toContainText('Welcome, Ada!')
+    await expect(page.getByTestId('tpl-var-link')).toHaveValue('https://example.com')
+    await page.getByTestId('tpl-subject').fill('Hello {{ firstName }} from {{ brand.companyName | "us" }}')
+    await expect(page.getByTestId('tpl-preview-subject')).toContainText('Hello Ada from')
+    await page.getByTestId('tpl-save').click()
+    await expect(page.getByTestId('tpl-saved')).toBeVisible()
+
+    await page.getByTestId('tpl-test').click()
+    await expect(page.getByTestId('tpl-test-sent')).toContainText(email)
+    const testMail = (await captured(page, email)).find((m) => m.subject.startsWith('Hello Ada'))
+    expect(testMail).toBeTruthy()
+
+    // Send by templateId with a sending key; a missing variable is a 422 naming it.
+    const keyRes = await page.request.post('/api/keys', { data: { name: `tpl-${stamp}`, mailSend: true, mcp: false } })
+    expect(keyRes.status()).toBe(201)
+    const { key } = (await keyRes.json()) as { key: string }
+    const api = await playwright.request.newContext({ baseURL: page.url().replace(/\/m\/email.*$/, '') })
+    const to = `tpl-${stamp}@example.test`
+    const ok = await api.post('/api/mail/send', {
+      headers: { Authorization: `Bearer ${key}` },
+      data: { to, templateId, variables: { firstName: 'Grace', link: 'https://k.test/go' } },
+    })
+    expect(ok.status(), await ok.text()).toBe(200)
+    const [mail] = await captured(page, to)
+    expect(mail!.subject).toMatch(/^Hello Grace from /)
+    expect(mail!.text).toContain('https://k.test/go')
+    const missing = await api.post('/api/mail/send', {
+      headers: { Authorization: `Bearer ${key}` },
+      data: { to, templateId, variables: { firstName: 'Grace' } },
+    })
+    expect(missing.status()).toBe(422)
+    expect(await missing.json()).toMatchObject({ error: 'template_invalid', missing: ['link'] })
+    await api.dispose()
+  })
 })

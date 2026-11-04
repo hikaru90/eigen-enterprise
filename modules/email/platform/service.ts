@@ -1,4 +1,5 @@
 import { resolveTxt } from 'node:dns/promises'
+import { z } from 'zod'
 import { MailSetupError } from '$lib/server/mail/company-mail'
 import { owleryService, SEND_SCHEDULED_JOB, type OwleryService } from '../owlery/service'
 import { describeSesError } from '../owlery/ses'
@@ -16,6 +17,8 @@ import { isSnsUrl, type SnsMessage } from './sns-signature'
 import { nextStatus, type MessageStatus } from './status'
 import { defaultEmailStore, type DomainRow, type EmailStore, type JobRow, type MessageRow } from './store'
 import { normalizeEmail } from './suppression'
+import { emailBrandFromCssVars, type EmailBrand } from './templates/brand'
+import { TemplateService } from './templates/service'
 import { applyIdentityCheck, dueForCheck } from './verification'
 
 /**
@@ -44,6 +47,8 @@ export type EmailPlatformDeps = {
   resolveTxt: (name: string) => Promise<string[][]>
   /** GET a URL (SNS SubscribeURL confirmation). */
   fetch: typeof fetch
+  /** The company's Brand as email tokens (layouts and templates). */
+  brand: () => Promise<EmailBrand>
   now?: () => Date
 }
 
@@ -55,7 +60,11 @@ export class EmailPlatform {
   /** Called after every applied SES event (stage 3: contacts unsubscribe on hard bounce/complaint). */
   private readonly eventListeners: ((e: ParsedSesEvent, message: MessageRow) => Promise<void>)[] = []
 
+  /** Templates and layouts (stage 2). */
+  readonly templates: TemplateService
+
   constructor(private readonly deps: EmailPlatformDeps) {
+    this.templates = new TemplateService({ store: deps.store, owlery: deps.owlery, brand: deps.brand })
     this.handlers.set(SEND_SCHEDULED_JOB, async (job) => {
       const id = job.payload.messageId
       if (typeof id !== 'string') throw new Error('send_scheduled job without messageId')
@@ -402,6 +411,14 @@ export class EmailPlatform {
   }
 }
 
+const visualSetList = z.array(z.object({ status: z.string(), cssVars: z.record(z.string(), z.string()) }).passthrough())
+
+/** The email module's own principal for the kernel reads it makes off-request (brand tokens). */
+const EMAIL_SERVICE_CTX = {
+  principal: { id: 'service:email', kind: 'service' as const, roles: ['agent'] },
+  requestId: 'email-platform',
+}
+
 const host = globalThis as { __eeEmailPlatform?: EmailPlatform }
 
 /** The process-wide email platform over the Owlery service and the Postgres store. */
@@ -412,6 +429,21 @@ export function emailPlatform(): EmailPlatform {
       store: defaultEmailStore(),
       resolveTxt,
       fetch,
+      brand: async () => {
+        const [{ appKernel }, { foundingCompanyName }] = await Promise.all([
+          import('$lib/server/boot'),
+          import('$lib/server/overview/sources'),
+        ])
+        const kernel = await appKernel()
+        // The brand module owns the visual sets; email reads them through the kernel (module boundary).
+        // A switched-off brand module means no brand style is active for the company.
+        let cssVars: Record<string, string> | null = null
+        if ((await kernel.activations.get('brand')) === true) {
+          const sets = visualSetList.parse(await kernel.registry.execute('brand.visual_set_list', {}, EMAIL_SERVICE_CTX))
+          cssVars = sets.find((set) => set.status === 'active')?.cssVars ?? null
+        }
+        return emailBrandFromCssVars(cssVars, await foundingCompanyName())
+      },
     })
     host.__eeEmailPlatform = platform
   }

@@ -39,8 +39,9 @@ describe('email platform tools', () => {
     for (const t of tools) expect(emailManifest.tools).toContain(t.name)
     for (const name of EMAIL_PLATFORM_READ_TOOLS) expect(tool(name).auditClass).toBe('read')
     for (const name of EMAIL_PLATFORM_WRITE_TOOLS) {
-      expect(tool(name).auditClass).toBe('mutate')
-      expect(tool(name).approvalRisk).toBe('internal')
+      const sends = name === 'email.send_template'
+      expect(tool(name).auditClass).toBe(sends ? 'external' : 'mutate')
+      expect(tool(name).approvalRisk).toBe(sends ? 'external' : 'internal')
       expect(typeof tool(name).activity).toBe('function')
     }
   })
