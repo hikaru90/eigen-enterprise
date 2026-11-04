@@ -58,11 +58,11 @@ test('two members chat live: channel, unread, DM, private channel stays private'
   const b = await ctxB.newPage()
   const bea = await newMember(ctxB, b, 'member', `Bea ${suffix}`)
 
-  // Nav: Messages first, the agent chat is "Assistant".
+  // Nav: Messages first; the assistant is the top bar, not a nav entry (polish P-1).
   await a.goto('/messages')
   await expect(a).toHaveTitle(/^Messages · eigenEnterprise$/)
   await expect(a.getByTestId('shell-nav-messages')).toHaveAttribute('aria-current', 'page')
-  await expect(a.getByTestId('shell-nav-chat')).toHaveText(/Assistant/)
+  await expect(a.getByTestId('assistant-bar-input')).toBeVisible()
   await expect(a.getByTestId('messages-live')).toHaveAttribute('data-state', 'live')
 
   // Owner creates a public #general and a private #leadership.

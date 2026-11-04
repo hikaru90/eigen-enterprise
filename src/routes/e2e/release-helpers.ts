@@ -218,8 +218,8 @@ export const AUTHENTICATED_SURFACES: AuthenticatedSurface[] = [
   { path: '/m/memory/tasks', label: 'Memory tasks' },
   { path: '/m/memory/projects', label: 'Memory projects' },
   { path: '/m/memory/notes', label: 'Memory notes' },
-  { path: '/', label: 'Assistant' },
-  { path: '/agent/activity', label: 'Activity' },
+  { path: '/', label: 'Dashboard' },
+  { path: '/assistant/activity', label: 'Activity' },
   { path: '/settings', label: 'Settings' },
   { path: '/settings/llm', label: 'AI provider' },
   { path: '/settings/passkeys', label: 'Passkeys & sessions' },
@@ -1926,7 +1926,7 @@ async function exerciseApiKeysUi(page: Page): Promise<void> {
 }
 
 async function exerciseActivityUi(page: Page): Promise<void> {
-  await page.goto('/agent/activity')
+  await page.goto('/assistant/activity')
   await expect(page.locator('table')).toBeVisible({ timeout: 15_000 })
   await expect(page.locator('tbody tr').first()).toBeVisible()
 }

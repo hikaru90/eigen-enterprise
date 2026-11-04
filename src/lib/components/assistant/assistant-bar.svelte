@@ -14,11 +14,11 @@
 
   let value = $state('')
   let inputEl = $state<HTMLInputElement | undefined>(undefined)
-  const isMac =
-    typeof navigator !== 'undefined' &&
-    /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
+  // Which modifier the hint names; decided in the browser (the server cannot know).
+  let isMac = $state(false)
 
   onMount(() => {
+    isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
     assistant.barInput = inputEl ?? null
     return () => {
       if (assistant.barInput === inputEl) assistant.barInput = null

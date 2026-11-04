@@ -94,15 +94,13 @@ const headingFont = (page: Page) =>
     .first()
     .evaluate((el) => getComputedStyle(el).fontFamily)
 
-/** Chat, Overview, Settings — returns the Overview look and the Settings heading font. */
+/** Dashboard, Settings — returns the dashboard look and the Settings heading font. */
 async function tour(page: Page, tag: string): Promise<{ look: ShellLook; heading: string }> {
   await page.goto('/')
   await expect(page.getByTestId('app-shell')).toBeVisible()
-  await page.screenshot({ path: `${SHOTS}/${tag}-chat.png` })
-  await page.goto('/overview')
-  await expect(page.getByRole('heading', { name: 'Overview', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /^Welcome back/, level: 1 })).toBeVisible()
   const look = await shellLook(page)
-  await page.screenshot({ path: `${SHOTS}/${tag}-overview.png` })
+  await page.screenshot({ path: `${SHOTS}/${tag}-dashboard.png` })
   await page.goto('/settings')
   await expect(page.locator('h1').first()).toBeVisible()
   const heading = await headingFont(page)
@@ -127,7 +125,7 @@ test('the chosen style re-skins the whole shell, and a second choice changes it 
   await newOwner(context, page)
 
   // Brand is a system module: listed, never "Off"; /brand opens straight on the picker.
-  await page.goto('/overview')
+  await page.goto('/')
   const brandNav = page.getByTestId('shell-nav-brand')
   await expect(brandNav).toBeVisible()
   await expect(brandNav).not.toContainText('Off')

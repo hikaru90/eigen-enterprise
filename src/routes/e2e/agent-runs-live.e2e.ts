@@ -5,7 +5,9 @@ import { registerUser } from './test-helpers'
  * D8 live run view (plan/phase-durable.md D8, software-factory S0): a chat
  * turn runs on the durable engine; two company members open the same run in
  * two browsers and both see its live events (snapshot on connect, then the
- * next turn's batches), and anonymous callers are refused.
+ * next turn's batches), and anonymous callers are refused. Since polish P-1
+ * the runs are the assistant's conversations: listed at /assistant and in the
+ * assistant panel's History tab, each one a page at /assistant/[id].
  */
 
 const GATEWAY_BASE_URL = `http://127.0.0.1:${process.env.MOCK_GATEWAY_PORT ?? 5199}/v1`
@@ -55,22 +57,36 @@ test.describe('agent runs live view', () => {
     expect(Object.keys(run!)).not.toContain('providerSessionId')
     expect(Object.keys(run!)).not.toContain('llmUserId')
 
-    // Browser A: the run list links to the run.
-    await page.goto('/agent/runs')
-    await expect(page.getByRole('heading', { level: 1, name: 'Agent' })).toBeVisible()
-    await expect(page.getByRole('heading', { level: 2, name: 'Runs' })).toBeVisible()
+    // Browser A: the assistant panel's History tab lists the conversation and
+    // opens its run view.
+    await page.goto('/m/website')
+    await page.getByTestId('assistant-toggle').click()
+    await page.getByTestId('assistant-tab-history').click()
+    const historyRow = page
+      .getByTestId('assistant-history-item')
+      .and(page.locator(`a[href="/assistant/${run!.id}"]`))
+    // A human title: what the conversation is about (its first message).
+    await expect(historyRow).toContainText(marker)
+    await page.getByTestId('assistant-close').click()
+
+    // The same list as a linkable page.
+    await page.goto('/assistant')
+    await expect(page.getByRole('heading', { level: 1, name: 'Assistant' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 2, name: 'Conversations' })).toBeVisible()
     // A readable title, not the agent id and its raw conversation key.
-    const row = page.locator(`a[href="/agent/runs/${run!.id}"]`)
-    await expect(row.getByTestId('runs-item-title')).toHaveText(/^Chat with /)
+    const row = page.locator(`a[href="/assistant/${run!.id}"]`)
+    await expect(row.getByTestId('runs-item-title')).toHaveText(marker)
     await expect(row).not.toContainText(run!.conversationKey)
     await row.click()
-    await expect(page.getByRole('heading', { name: `Run ${run!.id}` })).toBeVisible()
+    await expect(page).toHaveURL(new RegExp(`/assistant/${run!.id}$`))
+    await expect(page.getByTestId('run-title')).toHaveText(marker)
+    await expect(page).toHaveTitle(new RegExp(`^${marker} · Assistant · eigenEnterprise$`))
 
     // Browser B: a second company member in a separate context.
     const otherContext = await browser.newContext()
     const other = await otherContext.newPage()
     await registerUser(otherContext, other)
-    await other.goto(`/agent/runs/${run!.id}`)
+    await other.goto(`/assistant/${run!.id}`)
 
     for (const p of [page, other]) {
       const feed = p.getByRole('log', { name: 'Run events' })

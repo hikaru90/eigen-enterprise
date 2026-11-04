@@ -16,7 +16,7 @@ import { registerUser } from './test-helpers'
  *  4. /m/website/site — the domain card says why it is read-only; the pages
  *     card is gone (pages dropped from the surface).
  *  5. /settings/hosting and /m/website/hosting — removed, 404.
- *  6. /?prefill= — the chat composer carries the draft; nothing is sent.
+ *  6. /?prefill= — the assistant panel opens with the draft in its composer; nothing is sent.
  *
  * No ee runs locally, so every page is in its explicit not-managed state —
  * that state is asserted, never skipped.
@@ -261,8 +261,11 @@ test.describe('website apps (the module cut, no ee attached)', () => {
       .getByRole('dialog', { name: 'Add an app' })
       .getByRole('link', { name: /Build it with chat/ })
       .click()
-    const composer = page.getByPlaceholder('What do you need?')
+    await expect(page.getByTestId('assistant-panel')).toBeVisible()
+    const composer = page.getByTestId('assistant-composer-input')
     await expect(composer).toHaveValue('Build me an app: ')
+    // The URL loses the draft once it is in the composer.
+    await expect(page).not.toHaveURL(/prefill=/)
     // The draft waits for the owner: no conversation, no running turn.
     await expect(page.getByRole('log', { name: 'Conversation' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(0)

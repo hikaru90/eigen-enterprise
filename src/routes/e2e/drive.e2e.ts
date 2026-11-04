@@ -120,7 +120,7 @@ test('Drive: two members — create, upload, share view → edit, preview, renam
   const memberB = await newMember(ctxB, b, 'member', 'Ben Member')
 
   // A: Drive from the nav, one page frame, storage shown.
-  await a.goto('/overview')
+  await a.goto('/')
   await a.getByTestId('shell-sidebar').getByTestId('shell-nav-drive').click()
   await expect(a).toHaveURL(/\/drive$/)
   await expect(a.getByTestId('drive-tab-mine')).toHaveAttribute('aria-current', 'page')
