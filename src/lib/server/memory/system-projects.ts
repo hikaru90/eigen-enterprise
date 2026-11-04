@@ -1,6 +1,11 @@
-import { and, eq, isNotNull } from 'drizzle-orm'
+import { and, eq, isNotNull, sql, type SQL } from 'drizzle-orm'
 import { getDb } from '$lib/server/db'
-import { canonicalEntity, thoughtEntity, type SystemProjectKey } from '$lib/server/db/schema'
+import {
+  canonicalEntity,
+  thought,
+  thoughtEntity,
+  type SystemProjectKey,
+} from '$lib/server/db/schema'
 
 /**
  * System projects (P-4, drizzle/0120): Memory projects the company itself
@@ -32,6 +37,18 @@ export async function systemProjectOf(
 export async function assertNotSystemProject(userId: string, entityId: string): Promise<void> {
   const system = await systemProjectOf(userId, entityId)
   if (system) throw new SystemProjectError(system.label)
+}
+
+/**
+ * SQL condition: the thought is not a task of a system project. Personal
+ * task lists leave the company's Roadmap tasks to its board; "delete all
+ * memories" keeps them.
+ */
+export function notSystemProjectTask(userId: string): SQL {
+  return sql`${thought.id} not in (
+    select te.thought_id from thought_entity te
+    join canonical_entity ce on ce.id = te.entity_id
+    where te.user_id = ${userId} and ce.system_key is not null)`
 }
 
 /** Ids of thoughts that are tasks of a system project in this Memory (kept by bulk deletes). */

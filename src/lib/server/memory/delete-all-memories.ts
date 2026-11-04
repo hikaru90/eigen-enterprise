@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import {
   DELETE_ALL_MEMORIES_CONFIRMATION,
   isDeleteAllMemoriesConfirmation,
@@ -15,6 +15,7 @@ import {
   userOntology,
 } from '$lib/server/db/schema'
 import { deleteAllUserGraphVertices } from '$lib/server/graph/age'
+import { notSystemProjectTask } from '$lib/server/memory/system-projects'
 
 export type DeleteAllMemoriesResult = {
   thoughtsDeleted: number
@@ -37,11 +38,7 @@ export function assertDeleteAllMemoriesConfirmation(confirmation: string): void 
  */
 export async function deleteAllMemoriesForUser(userId: string): Promise<DeleteAllMemoriesResult> {
   const db = getDb()
-  const notSystemProjectTask = sql`${thought.id} not in (
-    select te.thought_id from thought_entity te
-    join canonical_entity ce on ce.id = te.entity_id
-    where te.user_id = ${userId} and ce.system_key is not null)`
-  const ownThoughts = and(eq(thought.userId, userId), notSystemProjectTask)
+  const ownThoughts = and(eq(thought.userId, userId), notSystemProjectTask(userId))
   const ownEntities = and(eq(canonicalEntity.userId, userId), isNull(canonicalEntity.systemKey))
 
   const counts = await db.transaction(async (tx) => {

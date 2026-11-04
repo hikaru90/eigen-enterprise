@@ -54,15 +54,27 @@ describe.skipIf(!DATABASE_URL)('system projects are protected', () => {
     expect(result).toEqual({ ok: false, reason: 'system_project' })
   })
 
+  it('personal task lists leave the Roadmap tasks to the board', async () => {
+    const item = await store.create({ title: 'Board only' })
+    const { listTemporalEventsForUser } = await import('$lib/server/memory/temporal-event-list')
+    const { items } = await db.withDbUser(userId, () =>
+      listTemporalEventsForUser({ userId, status: 'all', includeTasks: true, range: 'all' }),
+    )
+    expect(items.map((i) => i.thoughtId)).not.toContain(item.id)
+  })
+
   it('"delete all memories" keeps the Roadmap and its tasks, deletes the rest', async () => {
-    const item = await store.create({ title: 'Survives a memory wipe' })
+    await store.create({ title: 'Survives a memory wipe' })
     const [personal] = await operator`
       insert into thought (user_id, raw_text, normalized_text, category)
       values (${userId}, 'a personal note', 'a personal note', 'task') returning id`
     const { deleteAllMemoriesForUser } = await import('$lib/server/memory/delete-all-memories')
     await db.withDbUser(userId, () => deleteAllMemoriesForUser(userId))
 
-    expect((await store.list()).map((i) => i.id)).toEqual([item.id])
+    expect((await store.list()).map((i) => i.title).sort()).toEqual([
+      'Board only',
+      'Survives a memory wipe',
+    ])
     const gone = await operator`select 1 from thought where id = ${personal!.id}`
     expect(gone).toHaveLength(0)
   })
