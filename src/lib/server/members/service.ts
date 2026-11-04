@@ -17,7 +17,15 @@ export const INVITE_TTL_DAYS = 7
 export type InvitableRole = Exclude<MemberRole, 'owner'>
 export const invitableRole = z.enum(['admin', 'member'])
 
-export type Member = { id: string; email: string; name: string; role: MemberRole; createdAt: Date }
+export type Member = {
+  id: string
+  email: string
+  name: string
+  role: MemberRole
+  createdAt: Date
+  /** Profile picture bytes (P-5); null until the person adds one. */
+  avatarSha256?: string | null
+}
 export type Invite = {
   id: string
   email: string

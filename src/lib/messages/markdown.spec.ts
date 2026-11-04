@@ -26,6 +26,21 @@ describe('renderMessageMarkdown', () => {
     expect(html).toContain('rel="noopener noreferrer nofollow"')
   })
 
+  it('highlights @mentions of known people, the longest name first, yours as "me"', () => {
+    const people = { names: ['Bea Member', 'Bea', 'Carl'], me: ['Carl'] }
+    expect(renderMessageMarkdown('hi @Bea Member and @carl!', people)).toBe(
+      '<p>hi <span data-mention="other">@Bea Member</span> and <span data-mention="me">@carl</span>!</p>\n',
+    )
+    expect(renderMessageMarkdown('@Bea, look', people)).toContain('<span data-mention="other">@Bea</span>,')
+  })
+
+  it('leaves unknown names, emails, partial words and code alone; a typed span stays text', () => {
+    const people = { names: ['Bea Member', 'Bea', 'Carl'], me: ['Carl'] }
+    expect(renderMessageMarkdown('@Dan bea@co.test @Beatrice `@Bea`', people)).not.toContain('data-mention')
+    expect(renderMessageMarkdown('@Bea', { names: [] })).toBe('<p>@Bea</p>\n')
+    expect(renderMessageMarkdown('<span data-mention="me">x</span>', people)).not.toContain('<span')
+  })
+
   it('strips event handler attributes even from allowed tags', () => {
     const html = renderMessageMarkdown('<a href="https://x.test" onclick="steal()">a</a> [b](https://y.test "t")')
     expect(html).not.toMatch(/<[^>]*\sonclick=/)

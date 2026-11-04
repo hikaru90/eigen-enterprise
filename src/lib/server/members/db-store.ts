@@ -5,7 +5,14 @@ import type { Invite, Member, MemberStore } from './service'
 
 /** Members live in the Better Auth user table (role column); invites in member_invite. */
 
-const memberColumns = { id: user.id, email: user.email, name: user.name, role: user.role, createdAt: user.createdAt }
+const memberColumns = {
+  id: user.id,
+  email: user.email,
+  name: user.name,
+  role: user.role,
+  createdAt: user.createdAt,
+  avatarSha256: user.avatarSha256,
+}
 // Harness accounts exist for automated verification only: never listed as company members.
 const production = eq(user.accountKind, 'production')
 

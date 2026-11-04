@@ -70,6 +70,8 @@ export type MessageDto = {
   conversationId: string
   authorId: string
   authorName: string
+  /** The author's profile picture route (P-5), null without one. */
+  authorImage: string | null
   body: string
   createdAt: string
   editedAt: string | null
@@ -79,6 +81,8 @@ export type MessageDto = {
   /** Top-level messages: live replies in its thread and the latest one's time. */
   replyCount: number
   lastReplyAt: string | null
+  /** Who replied in the thread, most recent first (at most three — the summary's avatars). */
+  replierIds: string[]
   reactions: ReactionDto[]
   attachments: AttachmentDto[]
 }
@@ -156,6 +160,7 @@ export async function messageDtos(d: MessagesDeps, ms: Message[], people?: Map<s
       conversationId: m.conversationId,
       authorId: m.authorId,
       authorName: displayName(map.get(m.authorId)),
+      authorImage: map.get(m.authorId)?.image ?? null,
       body: deleted ? '' : m.body,
       createdAt: m.createdAt.toISOString(),
       editedAt: m.editedAt?.toISOString() ?? null,
@@ -163,6 +168,7 @@ export async function messageDtos(d: MessagesDeps, ms: Message[], people?: Map<s
       parentId: m.parentId,
       replyCount: st?.replyCount ?? 0,
       lastReplyAt: st?.lastReplyAt?.toISOString() ?? null,
+      replierIds: st?.replierIds ?? [],
       reactions: [...byEmoji].map(([emoji, userIds]) => ({
         emoji,
         userIds,

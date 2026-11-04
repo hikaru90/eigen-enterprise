@@ -162,3 +162,20 @@ describe('history', () => {
     expect(m.editedAt).not.toBeNull()
   })
 })
+
+describe('author profile (P-5)', () => {
+  it('every message carries its author’s name and picture route (null without one)', async () => {
+    const { deps, directory } = fixture()
+    const bea = directory.people.find((p) => p.id === 'bea')!
+    bea.image = `/api/people/avatar/${'b'.repeat(64)}`
+    const general = await createChannel(deps, 'owner', { name: 'general', private: false })
+    const { message } = await postMessage(deps, 'bea', general.id, 'hi')
+    expect(message).toMatchObject({ authorName: 'Bea Member', authorImage: bea.image })
+    await postMessage(deps, 'owner', general.id, 'hello')
+    const page = await listMessages(deps, 'carl', general.id)
+    expect(page.messages.map((m) => [m.authorName, m.authorImage])).toEqual([
+      ['Bea Member', bea.image],
+      ['Olga Owner', null],
+    ])
+  })
+})
