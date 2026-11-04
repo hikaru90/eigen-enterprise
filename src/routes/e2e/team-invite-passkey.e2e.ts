@@ -1,6 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import postgres from 'postgres'
-import { completeProfileStepInUi, profileNames, registerUser, signOut } from './test-helpers'
+import { completeProfileStepInUi, profileNames, registerUser, signOut, waitForHydration } from './test-helpers'
 
 /**
  * T1 proof (plan/phase-workspace.md): invite link → passkey, no email.
@@ -82,6 +82,7 @@ test('invite link → passkey (no email) → group → remove ends the session',
   await expect(b.getByRole('heading', { level: 1 })).toContainText('Join')
   await expect(b.getByTestId('invite-start')).toContainText(bEmail)
   await b.screenshot({ path: `${SHOTS}/2-member-invite.png`, fullPage: true })
+  await waitForHydration(b)
   await b.locator('#invite-name').fill(bName)
   await b.getByTestId('invite-join').click()
   await expect(b.getByTestId('invite-passkey-step')).toBeVisible()

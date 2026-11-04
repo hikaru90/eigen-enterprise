@@ -109,9 +109,15 @@ export function pngBytes(w = 160, h = 100): Buffer {
  * Walks the profile step (/welcome/profile) like a person: names, a picture
  * chosen, cropped (one drag) and used, then Continue. Waits until the step is left.
  */
+/** SvelteKit hydration replaces the SSR DOM: input set before it is lost (root layout marker). */
+export async function waitForHydration(page: Page): Promise<void> {
+  await expect(page.locator('body')).toHaveAttribute('data-eigen-hydrated', 'true')
+}
+
 export async function completeProfileStepInUi(page: Page, names: ProfileNames): Promise<void> {
   await expect(page).toHaveURL(/\/welcome\/profile/)
   await expect(page.getByTestId('profile-step')).toBeVisible()
+  await waitForHydration(page)
   await expect(page.getByTestId('profile-save')).toBeDisabled() // no picture yet
   await page.getByTestId('profile-picture-input').setInputFiles({ name: 'me.png', mimeType: 'image/png', buffer: pngBytes(320, 200) })
   const crop = page.getByTestId('profile-crop').locator('canvas')
