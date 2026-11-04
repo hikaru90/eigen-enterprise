@@ -70,6 +70,10 @@
   const toolbar = $derived(!m.deleted && !editing)
 </script>
 
+{#snippet edited(at: string)}
+  <span class="ml-1 text-[11px] text-muted-foreground" title={fullFmt.format(new Date(at))} data-testid="messages-edited">(edited)</span>
+{/snippet}
+
 <article
   class={[
     'group/row relative flex gap-2 px-4 py-0.5 hover:bg-foreground/[0.03] focus-within:bg-foreground/[0.03] sm:px-5',
@@ -110,11 +114,11 @@
         <div class="message-body text-[15px] leading-6 break-words" data-testid="messages-body">
           <!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized by renderMessageMarkdown (DOMPurify allowlist) -->
           {@html renderMessageMarkdown(m.body, mentions)}
+          {#if m.editedAt}{@render edited(m.editedAt)}{/if}
         </div>
+      {:else if m.editedAt}
+        {@render edited(m.editedAt)}
       {/if}
-      {#if m.editedAt}<span class="text-[11px] text-muted-foreground" title={fullFmt.format(new Date(m.editedAt))} data-testid="messages-edited"
-          >(edited)</span
-        >{/if}
 
       {#if m.attachments.length > 0}
         <div class="mt-1.5 flex flex-wrap gap-2" data-testid="messages-attachments">
@@ -283,6 +287,10 @@
 <style>
   .message-body :global(p) {
     margin: 0;
+  }
+  /* "(edited)" sits on the last line of a plain message, like Slack. */
+  .message-body :global(p:last-of-type) {
+    display: inline;
   }
   .message-body :global(p + p),
   .message-body :global(ul),

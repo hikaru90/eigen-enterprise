@@ -769,9 +769,9 @@
               data-count={members.length}
               onclick={() => (membersOpen = !membersOpen)}
             >
-              <span class="flex -space-x-1.5" aria-hidden="true">
+              <span class="flex -space-x-1" aria-hidden="true">
                 {#each members.slice(0, 3) as p (p.id)}
-                  <UserAvatar name={p.name} image={p.image ?? null} size="xs" class="ring-2 ring-background" />
+                  <UserAvatar name={p.name} image={p.image ?? null} size="xs" class="ring-2 ring-background" testid="messages-member-avatar" />
                 {/each}
               </span>
               <span class="tabular-nums">{members.length}</span>
