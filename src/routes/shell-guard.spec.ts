@@ -14,6 +14,7 @@ const OUTSIDE_SHELL_ALLOWLIST = new Set([
   'signup', // signed out: create the account
   'claim', // signed out: the installer's one-time owner claim
   'invite', // signed out: accept an invite
+  'welcome/profile', // signed in, full screen before the shell: the required profile step (P-5 profile gate)
   's', // public company website index (while /s exists)
   's/[slug]', // public company website page
 ])

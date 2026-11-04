@@ -2,9 +2,11 @@ import type { Actions, PageServerLoad } from './$types'
 import { fail, redirect } from '@sveltejs/kit'
 import { APIError } from 'better-auth/api'
 import { auth } from '$lib/server/auth'
+import { getProfile } from '$lib/server/profile/service'
 
 /**
- * Settings → Account: the signed-in person's email and sign-out. Sign-in is
+ * Settings → Account: the signed-in person's profile (names + picture, the
+ * same editor as the profile step), email and sign-out. Sign-in is
  * passwordless (code + passkey), so there is no password to change. The other
  * company-wide sections (members, AI provider, passkeys, API keys, approval
  * mode) are their own pages under the settings sub-navigation.
@@ -24,7 +26,11 @@ export const load: PageServerLoad = async (event) => {
   if (!event.locals.user) {
     throw redirect(302, '/login')
   }
-  return { user: event.locals.user }
+  const p = await getProfile(event.locals.user.id)
+  return {
+    user: event.locals.user,
+    profile: { firstName: p.firstName, lastName: p.lastName, name: p.name, email: p.email, image: p.image, complete: p.complete },
+  }
 }
 
 export const actions: Actions = {

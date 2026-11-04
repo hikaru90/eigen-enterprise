@@ -4,15 +4,36 @@ import { actions, load } from './+page.server'
 vi.mock('$lib/server/auth', () => ({
   auth: { api: { changeEmail: vi.fn() } },
 }))
+vi.mock('$lib/server/profile/service', () => ({
+  getProfile: vi.fn(async () => ({
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+    name: 'Ada Lovelace',
+    email: 'a@b.c',
+    image: '/api/people/avatar/' + 'a'.repeat(64),
+    avatarSha256: 'a'.repeat(64),
+    complete: true,
+  })),
+}))
 
 describe('/settings — the Account section', () => {
   it('redirects unauthenticated load', async () => {
     await expect(load({ locals: { user: null } } as never)).rejects.toMatchObject({ status: 302 })
   })
 
-  it('loads the account — nothing else (the other sections are their own pages)', async () => {
+  it('loads the account and its profile — nothing else (the other sections are their own pages)', async () => {
     const result = await load({ locals: { user: { id: 'u1', email: 'a@b.c' } } } as never)
-    expect(result).toEqual({ user: { id: 'u1', email: 'a@b.c' } })
+    expect(result).toEqual({
+      user: { id: 'u1', email: 'a@b.c' },
+      profile: {
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        name: 'Ada Lovelace',
+        email: 'a@b.c',
+        image: '/api/people/avatar/' + 'a'.repeat(64),
+        complete: true,
+      },
+    })
   })
 
   it('exposes only the email action — sign-in is passwordless, the password form is gone', () => {

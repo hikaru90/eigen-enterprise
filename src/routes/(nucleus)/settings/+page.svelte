@@ -3,15 +3,17 @@
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import LogOut from '@lucide/svelte/icons/log-out'
   import { enhance } from '$app/forms'
-  import { goto } from '$app/navigation'
+  import { goto, invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
   import { resetPostHog } from '$lib/analytics/posthog-client'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
+  import ProfileEditor from '$lib/components/profile-editor.svelte'
   import { docTitle } from '$lib/shell/title'
 
   /**
-   * Settings → Account: this person's email and sign-out. Sign-in is
+   * Settings → Account: this person's profile (names + picture — the same
+   * editor as the profile step), email and sign-out. Sign-in is
    * passwordless, so there is no password form. The company-wide sections
    * are in the settings sub-navigation above.
    */
@@ -52,7 +54,15 @@
   a code sent to this email or with a passkey — there is no password.
 </p>
 
-<div class="mt-8 space-y-6" data-testid="settings-account">
+<div class="mt-8 max-w-2xl space-y-6" data-testid="settings-account">
+  <section class="space-y-4 rounded-lg border border-border p-4" data-testid="settings-profile">
+    <div>
+      <h3 class="text-sm font-medium">Profile</h3>
+      <p class="text-xs text-foreground/60">Your name and picture, as everyone in the company sees them.</p>
+    </div>
+    <ProfileEditor profile={data.profile} submitLabel="Save profile" onsaved={() => invalidateAll()} onpicture={() => invalidateAll()} />
+  </section>
+
   <form
     method="post"
     action="?/changeEmail"
