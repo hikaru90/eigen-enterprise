@@ -3,6 +3,7 @@ import { error, redirect } from '@sveltejs/kit'
 import { parseProjectTaskStatusFilter } from '$lib/memory/project-task-status-filter'
 import { parseProjectViewMode } from '$lib/memory/project-view-mode'
 import { loadProjectDetail } from '$lib/server/memory/project-detail'
+import { systemProjectOf } from '$lib/server/memory/system-projects'
 import { getUserPreferredTimezone } from '$lib/server/memory/user-timezone'
 
 /** Project entity ids are uuids; anything else cannot exist (and would 500 in the query). */
@@ -15,6 +16,10 @@ export const load: PageServerLoad = async (event) => {
 
   const entityId = event.params.entityId?.trim()
   if (!entityId || !UUID_RE.test(entityId)) error(404, 'Project not found')
+
+  // The Roadmap system project has its own board page (P-4).
+  const system = await systemProjectOf(event.locals.user.id, entityId)
+  if (system?.key === 'roadmap') redirect(307, '/m/memory/projects/roadmap')
 
   event.depends('timeline:temporal-events', 'timeline:thoughts', `project:${entityId}`)
 
