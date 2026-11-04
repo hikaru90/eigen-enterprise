@@ -98,8 +98,8 @@ An architectural diagram meets Bauhaus-inspired composition. Strict grid geometr
 Every area page inside the shell opens the same way. Use the shared components in
 `src/lib/components/page/`; never hand-roll a header, breadcrumb or tab bar.
 
-- **`PageHeader`** — `h1` title (the area name: Overview, Website, Email, Brand, Agent,
-  Memory, Settings), an optional one-line plain-language description, an optional
+- **`PageHeader`** — `h1` title (the area name: Website, Email, Brand, Assistant,
+  Memory, Drive, Settings; the dashboard at `/` greets by name instead), an optional one-line plain-language description, an optional
   status pill, optional actions on the right, and optional sub-nav **tabs below** the
   header (`tabs` from `src/lib/shell/area-nav.ts`, `settings-nav.ts`,
   `memory-surface-nav.ts`). One `h1` per page.
@@ -114,17 +114,22 @@ Every area page inside the shell opens the same way. Use the shared components i
   `bg-primary text-primary-foreground`), never hard-coded black/neutral, so the chosen
   brand style re-skins them.
 
-### Content width rule
+### Content width rule (polish P-3: full width is the rule)
 
-- **`PageFrame width="default"`** — every area page: a centred column, `max-w-5xl`,
-  `px-4 sm:px-8`, `pt-6 sm:pt-10`. The header and the content share this column, so the
-  left edge never moves between pages.
+- **`PageFrame`** — every area page uses the **full width** of the content pane:
+  `px-4 sm:px-8`, `pt-6 sm:pt-10`, no centred `max-w-*` column. The header and the content
+  share this frame, so the left edge never moves between pages. There is no width
+  variant any more (the old `width="default"` centred `max-w-5xl` column and
+  `width="full"` are gone).
 - **Forms and reading text** inside it cap themselves at **`max-w-2xl`** (Settings) or
   **`max-w-3xl`** (Website site/settings, detail pages) — left-aligned, never re-centred.
-- **`PageFrame width="full"`** — only areas whose main content is a card grid that gains
-  from width: **Brand** (style picker, design system) and **Website** (apps grid with its
-  activity rail). Everything else is `default`.
-- Full-pane tools (the brand set editor, Chat) render without the frame.
+- **Card grids** (Brand styles, Website apps, the dashboard) grow their columns with the
+  width (`sm:grid-cols-2 xl:grid-cols-3 …`) instead of capping the frame.
+- App-style areas (Messages, Drive) and full-pane tools (the brand set editor) render
+  their own panes without the frame's padding.
+- The **assistant** is not a page: the shell's top bar ("Ask the assistant… ⌘K") opens
+  it as a resizable panel on the right of every signed-in page. Its linkable pages
+  (`/assistant`, `/assistant/[id]`, `/assistant/activity`) use the frame like any area.
 
 ### Signed-out and public pages
 

@@ -16,7 +16,7 @@
   let addOpen = $state(false)
 </script>
 
-<PageFrame width="full">
+<PageFrame>
   <PageHeader
     title="Website"
     description={ownerModuleBlurb('website', '')}
