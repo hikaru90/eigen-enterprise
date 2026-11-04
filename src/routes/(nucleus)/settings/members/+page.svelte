@@ -2,7 +2,6 @@
   import type { PageProps } from './$types'
   import { enhance } from '$app/forms'
   import UserAvatar from '$lib/components/user-avatar.svelte'
-  import { avatarUrl, isAvatarSha } from '$lib/profile/profile'
   import { docTitle } from '$lib/shell/title'
 
   /**
@@ -85,7 +84,7 @@
       {#each data.members as m (m.id)}
         <li class="flex flex-wrap items-center justify-between gap-3 p-3" data-testid="member-row">
           <div class="flex min-w-0 items-center gap-2.5">
-            <UserAvatar name={m.name || m.email} image={isAvatarSha(m.avatarSha256) ? avatarUrl(m.avatarSha256) : null} size="sm" />
+            <UserAvatar name={m.name || m.email} image={m.image} size="sm" />
             <div class="min-w-0">
               <p class="truncate text-xs font-medium">{m.name || m.email}</p>
               <p class="text-muted-foreground truncate text-[11px]">{m.email}</p>
