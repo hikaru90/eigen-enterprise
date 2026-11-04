@@ -153,7 +153,8 @@ test('Drive: two members — create, upload, share view → edit, preview, renam
   await nameDialog(a, 'notes')
   await expect(a).toHaveURL(/\/drive\/file\//)
   await expect(a.getByTestId('drive-file')).toContainText('notes.md')
-  await expect(a.getByTestId('drive-revision')).toHaveCount(1)
+  await expect(a.getByTestId('drive-revision')).toHaveCount(0)
+  await expect(a.getByTestId('drive-revisions')).toContainText('No revisions yet.')
   const notesUrl = a.url()
   const notesId = notesUrl.split('/').pop()!
   // Give notes.md content through the text API — a revision. The open editor
@@ -165,7 +166,7 @@ test('Drive: two members — create, upload, share view → edit, preview, renam
     .toBe(200)
   await a.goto(notesUrl)
   await expect(a.getByTestId('drive-markdown').locator('h1')).toHaveText('Kickoff')
-  await expect(a.getByTestId('drive-revision')).toHaveCount(2)
+  await expect(a.getByTestId('drive-revision')).toHaveCount(1)
   await a.screenshot({ path: `${SHOTS}/01-owner-notes-preview.png`, fullPage: true })
 
   await a.goto(folderUrl)

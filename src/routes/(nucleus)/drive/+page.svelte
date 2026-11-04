@@ -8,4 +8,14 @@
 
 <svelte:head><title>{docTitle('My drive', 'Drive')}</title></svelte:head>
 
-<DriveBrowser folderId={null} path={[]} items={data.listing.items} canEdit={data.listing.canEdit} query={data.query} results={data.results} />
+<DriveBrowser
+  folderId={null}
+  path={[]}
+  items={data.listing.items}
+  canEdit={data.listing.canEdit}
+  query={data.query}
+  results={data.results}
+  describe={data.describe}
+  emptyText="Your drive is empty."
+  emptyHint="Folders and files you create or upload here are yours; share them with people, groups or everyone."
+/>

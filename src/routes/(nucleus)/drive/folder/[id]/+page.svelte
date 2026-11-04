@@ -17,6 +17,7 @@
     canEdit={data.listing.canEdit}
     query={data.query}
     results={data.results}
-    emptyText={data.listing.canEdit ? 'This folder is empty. Drop files here or use New.' : 'This folder is empty.'}
+    describe={data.describe}
+    emptyText="This folder is empty."
   />
 {/key}

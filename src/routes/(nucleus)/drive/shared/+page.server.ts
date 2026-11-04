@@ -5,5 +5,8 @@ import { driveService, drivePage, requestActor } from '$lib/server/drive'
 export const load: PageServerLoad = async (event) => {
   const actor = requestActor(event)
   const drive = await driveService()
-  return drivePage(async () => ({ items: await drive.sharedWithMe(actor) }))
+  return drivePage(async () => {
+    const items = await drive.sharedWithMe(actor)
+    return { items, describe: await drive.describeItems(actor, items) }
+  })
 }

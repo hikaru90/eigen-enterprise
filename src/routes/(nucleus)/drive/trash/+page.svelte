@@ -8,5 +8,13 @@
 
 <svelte:head><title>{docTitle('Trash', 'Drive')}</title></svelte:head>
 
-<p class="mt-6 text-sm text-muted-foreground">Restore puts an item back where it was. Delete forever can’t be undone.</p>
-<DriveBrowser folderId={null} items={data.items} canEdit={false} showToolbar={false} trashView emptyText="The trash is empty." />
+<DriveBrowser
+  folderId={null}
+  items={data.items}
+  describe={data.describe}
+  canEdit={false}
+  showToolbar={false}
+  trashView
+  note="Restore puts an item back where it was. Delete forever can’t be undone."
+  emptyText="The trash is empty."
+/>

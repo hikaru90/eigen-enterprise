@@ -3,7 +3,7 @@
   import CircleAlertIcon from '@lucide/svelte/icons/circle-alert'
   import LoaderIcon from '@lucide/svelte/icons/loader-circle'
   import LockIcon from '@lucide/svelte/icons/lock'
-  import { onMount, untrack } from 'svelte'
+  import { onMount, untrack, type Snippet } from 'svelte'
   import { beforeNavigate, goto } from '$app/navigation'
   import { Button } from '$lib/components/ui/button'
   import { Textarea } from '$lib/components/ui/textarea'
@@ -41,6 +41,7 @@
     saveDelayMs = 1200,
     idleMs = 60_000,
     onsaved,
+    side,
   }: {
     fileId: string
     kind: 'markdown' | 'csv'
@@ -52,6 +53,8 @@
     idleMs?: number
     /** The file as the server has it after a save or restore (size, changed time). */
     onsaved?: (file: DriveItem) => void
+    /** The file's details and sharing, shown above the revisions in the side panel. */
+    side?: Snippet
   } = $props()
 
   type Mode =
@@ -370,7 +373,8 @@
   const fmtTime = (d: Date) => d.toLocaleTimeString(undefined, { timeStyle: 'short' })
 </script>
 
-<div class="flex flex-col gap-4">
+<div class="grid min-h-0 flex-1 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+<div class="flex min-w-0 flex-col gap-4">
   {#if mode.kind === 'watching'}
     <div
       class="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 px-4 py-3 text-sm"
@@ -434,7 +438,11 @@
       {lockError}
     </p>{/if}
 
-  <div class="overflow-hidden rounded-lg border" data-testid="drive-preview" data-kind={kind}>
+  <div
+    class="flex min-h-[60vh] flex-1 flex-col overflow-hidden rounded-lg border bg-card"
+    data-testid="drive-preview"
+    data-kind={kind}
+  >
     <div
       class="flex items-center gap-2 border-b bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground"
       data-testid="drive-editor-status-bar"
@@ -505,6 +513,9 @@
     {/if}
   </div>
 
+</div>
+<aside class="flex min-w-0 flex-col gap-6" data-testid="drive-file-side">
+  {@render side?.()}
   <RevisionsPanel
     {fileId}
     {kind}
@@ -513,4 +524,5 @@
     canRestore={mode.kind === 'editing' || mode.kind === 'reading'}
     onrestore={restore}
   />
+</aside>
 </div>
