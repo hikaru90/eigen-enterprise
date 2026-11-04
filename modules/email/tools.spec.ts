@@ -48,13 +48,14 @@ describe('createEmailTools', () => {
       mail: {
         send: async (m) => {
           sent.push(m)
-          return { messageId: 'm1' }
+          return { id: 'log-1', status: 'sent', messageId: 'm1' }
         },
       },
     })[0]!
     const input = { to: 'a@b.co', subject: 'Hi', html: '<p>hi</p>', text: 'hi' }
-    await expect(send.handler(ctx, input)).resolves.toEqual({ messageId: 'm1' })
-    expect(sent).toEqual([input])
+    await expect(send.handler(ctx, input)).resolves.toEqual({ id: 'log-1', status: 'sent', messageId: 'm1' })
+    // Logged as the assistant's send.
+    expect(sent).toEqual([{ ...input, source: 'agent' }])
   })
 
   it('resolves company mail lazily when not injected (not set up → fail loud)', async () => {

@@ -6,7 +6,9 @@ import { getDb } from '$lib/server/db'
 import { mailApiSend } from '$lib/server/db/mail-api.schema'
 import { userApiKey } from '$lib/server/db/schema'
 import { companyMail } from '.'
-import { createMemoryRateLimiter, type MailSendDeps, type MailSendStore } from './api-send'
+import { emailPlatform } from '../../../../modules/email/platform/service'
+import { TemplateError, TemplateRenderError } from '../../../../modules/email/platform/templates/service'
+import { createMemoryRateLimiter, TemplateInvalid, TemplateNotFound, type MailSendDeps, type MailSendStore } from './api-send'
 
 const IDEMPOTENCY_WINDOW_MS = 24 * 60 * 60 * 1000
 
@@ -39,17 +41,23 @@ export function dbMailSendStore(): MailSendStore {
         .returning({ id: mailApiSend.id })
       if (inserted) return { kind: 'claimed', id: inserted.id }
       const [existing] = await db
-        .select({ id: mailApiSend.id, bodyHash: mailApiSend.bodyHash, status: mailApiSend.status })
+        .select({
+          id: mailApiSend.id,
+          bodyHash: mailApiSend.bodyHash,
+          status: mailApiSend.status,
+          logId: mailApiSend.logId,
+          sendStatus: mailApiSend.sendStatus,
+        })
         .from(mailApiSend)
         .where(and(eq(mailApiSend.keyId, keyId), eq(mailApiSend.idempotencyKey, idempotencyKey)))
         .limit(1)
       if (!existing) throw new Error('mail_api_send: conflicting row vanished during claim')
       return { kind: 'existing', ...existing }
     },
-    async markSent(id, messageId) {
+    async markSent(id, { messageId, logId, sendStatus }) {
       await getDb()
         .update(mailApiSend)
-        .set({ status: 'sent', messageId })
+        .set({ status: 'sent', messageId, logId, sendStatus })
         .where(eq(mailApiSend.id, id))
     },
     async release(id) {
@@ -64,9 +72,19 @@ const limiter = createMemoryRateLimiter({ limit: 60, windowMs: 60_000 })
 export function mailSendDeps(principalId: string): MailSendDeps {
   return {
     mail: companyMail(),
+    async renderTemplate(templateId, variables) {
+      try {
+        return await emailPlatform().templates.render(templateId, variables)
+      } catch (err) {
+        if (err instanceof TemplateError) throw new TemplateNotFound()
+        if (err instanceof TemplateRenderError) {
+          throw new TemplateInvalid(err.problems.length > 0 ? `${err.message} ${err.problems.join(' ')}` : err.message, err.missing)
+        }
+        throw err
+      }
+    },
     store: dbMailSendStore(),
     limiter,
-    newId: () => crypto.randomUUID(),
     // Shown in Overview recent activity as a tool.executed write.
     async audit(entry) {
       const kernel = await appKernel()

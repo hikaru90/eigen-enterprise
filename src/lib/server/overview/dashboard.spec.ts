@@ -143,7 +143,7 @@ describe('the dashboard at / (loadDashboard)', () => {
       detail: 'In progress',
       href: null,
     })
-    expect(modules[1].results).toEqual([{ label: 'hi@k.test', detail: 'Set up', href: null }])
+    expect(modules[1].results).toEqual([{ label: 'hi@k.test', detail: 'Set up', href: '/m/email' }])
     expect(JSON.stringify(data)).not.toMatch(/eu-central-1|secret|accessKey/i)
     expect(actions).toEqual([
       { at: '2026-10-20T10:00:00.000Z', text: 'Published the Home page', ok: true },

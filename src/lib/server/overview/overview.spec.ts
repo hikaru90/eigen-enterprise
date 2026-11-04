@@ -172,7 +172,7 @@ describe('buildOverview', () => {
       }),
     )
     expect(out.modules[0].results).toEqual([
-      { label: 'hello@kindred.test', detail: 'Set up', href: null },
+      { label: 'hello@kindred.test', detail: 'Set up', href: '/m/email' },
     ])
     expect(JSON.stringify(out)).not.toMatch(/NEVER/)
   })
@@ -186,7 +186,8 @@ describe('buildOverview', () => {
         resultSources: { owlery: owleryResultSource },
       }),
     )
-    expect(out.modules[0].results).toEqual([{ label: 'Not set up', detail: null, href: null }])
+    // Actionable, never a dead "Not set up": the row opens the Email area's setup.
+    expect(out.modules[0].results).toEqual([{ label: 'Set up email', detail: 'Not connected yet', href: '/m/email' }])
   })
 
   it('does not read results for inactive modules or non-owners', async () => {

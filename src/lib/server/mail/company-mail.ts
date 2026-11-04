@@ -13,6 +13,32 @@ export type SendMailInput = {
   text: string
   /** Optional Reply-To so inbox replies reach the submitter. */
   replyTo?: string
+  /** A sender address (Email › Senders); omitted = the company's default sender. */
+  from?: string
+  /**
+   * Who sent it, for the sent-mail log. `system` (the default: sign-in codes,
+   * notifications) never stores the body in the log.
+   */
+  source?: 'system' | 'agent' | 'api' | 'test' | 'template' | 'flow' | 'double_opt_in'
+  /** The API key that sent it (source `api`). */
+  apiKey?: { id: string; name: string }
+  templateId?: string
+  contactId?: string
+  flowId?: string
+  /** Extra headers, e.g. List-Unsubscribe. */
+  headers?: { name: string; value: string }[]
+  /** Send later: the log holds it as "scheduled" and the background job sends it. */
+  scheduledAt?: Date
+}
+
+/**
+ * The log row id and what happened: sent now, held as scheduled, or not sent
+ * because the recipient is on the suppression list.
+ */
+export type SendMailResult = {
+  id: string
+  status: 'sent' | 'scheduled' | 'suppressed'
+  messageId: string | null
 }
 
 export type SaveMailSettingsInput = {
@@ -27,7 +53,7 @@ export type SaveMailSettingsInput = {
 
 export type CompanyMail = {
   isConfigured(): Promise<boolean>
-  send(input: SendMailInput): Promise<{ messageId: string | null }>
+  send(input: SendMailInput): Promise<SendMailResult>
   /**
    * Save the SES settings only after a real test email went through with them.
    * Throws SenderNotVerifiedError while Amazon still waits for the sender to

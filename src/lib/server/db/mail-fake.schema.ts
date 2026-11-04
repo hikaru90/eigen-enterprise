@@ -1,4 +1,4 @@
-import { boolean, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { boolean, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 /**
  * The fake mail transport (MAIL_TRANSPORT=fake, migration 0104). Test servers
@@ -14,6 +14,8 @@ export const mailFakeSent = pgTable('mail_fake_sent', {
   html: text('html').notNull(),
   text: text('text').notNull(),
   replyTo: text('reply_to'),
+  /** Extra headers (List-Unsubscribe …), migration 0114. */
+  headers: jsonb('headers').$type<{ name: string; value: string }[]>(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
 

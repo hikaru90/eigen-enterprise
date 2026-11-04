@@ -123,12 +123,15 @@ const owleryStatusOutput = z.union([
   z.object({ configured: z.literal(true), sender: z.string(), senderVerified: z.boolean() }),
 ])
 
+/** Every email row links into the Email area, where each state has its next step. */
+export const EMAIL_HREF = '/m/email'
+
 export const owleryResultSource: ResultSource = async ({ registry, ctx }) => {
   const status = owleryStatusOutput.parse(await registry.execute('owlery.status', {}, ctx))
   if (!status.configured)
     return {
       resultsTitle: 'Sender',
-      results: [{ label: 'Not set up', detail: null, href: null }],
+      results: [{ label: 'Set up email', detail: 'Not connected yet', href: EMAIL_HREF }],
       note: null,
     }
   return {
@@ -137,7 +140,7 @@ export const owleryResultSource: ResultSource = async ({ registry, ctx }) => {
       {
         label: status.sender,
         detail: status.senderVerified ? 'Set up' : 'Set up · sender not verified yet',
-        href: null,
+        href: EMAIL_HREF,
       },
     ],
     note: null,

@@ -49,7 +49,9 @@ describe('owlery tools', () => {
     expect([...OWLERY_TOOL_NAMES]).toEqual(['owlery.status'])
     expect(tools[0]?.auditClass).toBe('read')
     expect(emailManifest).toMatchObject({ id: 'email', name: 'Email' })
-    expect(emailManifest.tools).toEqual(['email.send_mail', 'owlery.status'])
+    expect(emailManifest.tools.slice(0, 2)).toEqual(['email.send_mail', 'owlery.status'])
+    // The platform tools (domains, senders, logs, suppression) follow; no other owlery.* tool.
+    expect(emailManifest.tools.filter((t) => t.startsWith('owlery.'))).toEqual(['owlery.status'])
     for (const t of tools) expect(t.module).toBe('email')
   })
 

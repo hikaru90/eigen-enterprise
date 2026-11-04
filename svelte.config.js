@@ -12,6 +12,9 @@ const config = {
       register: false,
     },
     adapter: adapter(),
+    // The cross-site form check runs in src/hooks.server.ts (handleCsrf) — the
+    // same rule, plus the one exemption Amazon SNS needs (src/lib/server/csrf.ts).
+    csrf: { trustedOrigins: ['*'] },
     paths: {
       relative: false,
     },

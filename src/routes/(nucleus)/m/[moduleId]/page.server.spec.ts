@@ -125,7 +125,7 @@ describe('/m/[moduleId] load', () => {
       description: ownerModuleBlurb('email', 'Company email.'),
       active: true,
       resultsTitle: 'Sender',
-      results: [{ label: 'hi@k.test', detail: 'Set up · sender not verified yet', href: null }],
+      results: [{ label: 'hi@k.test', detail: 'Set up · sender not verified yet', href: '/m/email' }],
       counts: [],
       note: null,
     })

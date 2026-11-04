@@ -68,7 +68,7 @@ test.describe('mail on the fake transport', () => {
 
     const ok = await page.request.post('/api/onboarding/mail', { data: setup })
     expect(ok.status(), await ok.text()).toBe(200)
-    expect(await ok.json()).toEqual({ ok: true, testSentTo: email })
+    expect(await ok.json()).toEqual({ ok: true, testSentTo: email, events: 'ready' })
     const [testMail] = await capturedFor(page, email)
     expect(testMail).toMatchObject({ from: emailFrom, to: email, subject: 'Email works — Eigen Enterprise' })
 

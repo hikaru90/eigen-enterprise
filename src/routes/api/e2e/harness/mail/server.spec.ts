@@ -22,6 +22,30 @@ vi.mock('../../../../../../modules/email/owlery/service', () => ({
   }),
 }))
 
+const platformCalls: string[] = []
+vi.mock('../../../../../../modules/email/platform/service', () => ({
+  emailPlatform: () => ({
+    applySesEvent: async () => {
+      platformCalls.push('event')
+      return { applied: true }
+    },
+    tick: async () => {
+      platformCalls.push('tick')
+      return { domains: 0, jobs: { done: 0, failed: 0 } }
+    },
+    store: {
+      clearAll: async () => {
+        platformCalls.push('clear')
+      },
+    },
+    audience: {
+      clearAll: async () => {
+        platformCalls.push('clear-audience')
+      },
+    },
+  }),
+}))
+
 const { GET, POST, DELETE } = await import('./+server')
 
 const ev = (method: string, url: string, body?: unknown) =>
@@ -80,5 +104,12 @@ describe('/api/e2e/harness/mail', () => {
     expect(await fake.list()).toEqual([])
     expect(await fake.getIdentity('f@x.co')).toEqual({ exists: false, verified: false })
     expect(state.settingsForgotten).toBe(1)
+    expect(platformCalls).toContain('clear')
+  })
+
+  it('applies an SES event and runs the background pass on request', async () => {
+    expect(await (await POST(ev('POST', '/api/e2e/harness/mail', { sesEvent: { eventType: 'Delivery' } }))).json()).toEqual({ applied: true })
+    expect((await POST(ev('POST', '/api/e2e/harness/mail', { tick: true }))).status).toBe(200)
+    expect(platformCalls).toEqual(expect.arrayContaining(['event', 'tick']))
   })
 })

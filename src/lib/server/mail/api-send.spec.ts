@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createMemoryRateLimiter,
   handleMailSend,
+  TemplateInvalid,
+  TemplateNotFound,
   type MailSendAudit,
   type MailSendDeps,
   type MailSendStore,
@@ -15,7 +17,14 @@ const SECRET_TEXT = 'TOP-SECRET-BODY-TEXT'
 function memoryStore(
   scopes: Record<string, boolean>,
 ): MailSendStore & { rows: Map<string, unknown> } {
-  type Row = { id: string; bodyHash: string; status: 'pending' | 'sent'; createdAt: number }
+  type Row = {
+    id: string
+    bodyHash: string
+    status: 'pending' | 'sent'
+    logId: string | null
+    sendStatus: string | null
+    createdAt: number
+  }
   const rows = new Map<string, Row>()
   let n = 0
   return {
@@ -28,11 +37,12 @@ function memoryStore(
       const existing = rows.get(k)
       if (existing) return { kind: 'existing', ...existing }
       const id = `row-${++n}`
-      rows.set(k, { id, bodyHash, status: 'pending', createdAt: Date.now() })
+      rows.set(k, { id, bodyHash, status: 'pending', logId: null, sendStatus: null, createdAt: Date.now() })
       return { kind: 'claimed', id }
     },
-    async markSent(id) {
-      for (const r of rows.values()) if (r.id === id) r.status = 'sent'
+    async markSent(id, result) {
+      for (const r of rows.values())
+        if (r.id === id) Object.assign(r, { status: 'sent', logId: result.logId, sendStatus: result.sendStatus })
     },
     async release(id) {
       for (const [k, r] of rows) if (r.id === id) rows.delete(k)
@@ -47,18 +57,22 @@ let deps: MailSendDeps
 let logSpy: ReturnType<typeof vi.spyOn>[]
 
 beforeEach(() => {
-  send = vi.fn(async () => ({ messageId: 'ses-1' }))
+  let logs = 0
+  send = vi.fn(async () => ({ id: `log-${++logs}`, status: 'sent', messageId: 'ses-1' }))
   isConfigured = vi.fn(async () => true)
   audits = []
-  let ids = 0
   deps = {
     mail: { isConfigured, send },
+    renderTemplate: async (id, vars) => {
+      if (id === '00000000-0000-4000-8000-00000000dead') throw new TemplateNotFound()
+      if (!vars.name) throw new TemplateInvalid('Missing variables: name.', ['name'])
+      return { subject: `Hi ${vars.name}`, html: `<p>Hi ${vars.name}</p>`, text: `Hi ${vars.name}` }
+    },
     store: memoryStore({ k1: true, k2: false }),
     limiter: createMemoryRateLimiter({ limit: 60, windowMs: 60_000, now: () => 0 }),
     audit: async (a) => {
       audits.push(a)
     },
-    newId: () => `gen-${++ids}`,
   }
   logSpy = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
     vi.spyOn(console, m).mockImplementation(() => {}),
@@ -99,6 +113,20 @@ describe('validation', () => {
     expect(send).not.toHaveBeenCalled()
   })
 
+  it('a body is either subject + text or a templateId (+ variables)', async () => {
+    const tpl = '00000000-0000-4000-8000-000000000001'
+    for (const [body, field] of [
+      [{ to: 'a@example.com' }, 'subject'],
+      [{ to: 'a@example.com', templateId: tpl, subject: 'x' }, 'subject'],
+      [{ ...BODY, variables: { a: 'b' } }, 'variables'],
+      [{ to: 'a@example.com', templateId: 'not-a-uuid' }, 'templateId'],
+    ] as const) {
+      const res = await handleMailSend(deps, { apiKey: KEY, body })
+      expect(res.status, JSON.stringify(body)).toBe(400)
+      expect(Object.keys((res.body as { fields: object }).fields)).toContain(field)
+    }
+  })
+
   it('rejects unknown fields', async () => {
     const res = await handleMailSend(deps, { apiKey: KEY, body: { ...BODY, cc: 'x@example.com' } })
     expect(res.status).toBe(400)
@@ -118,24 +146,50 @@ describe('sending', () => {
       body: { ...BODY, html: '<p>Hi</p>', replyTo: 'me@example.com' },
     })
     expect(res.status).toBe(200)
-    expect(res.body).toEqual({ id: 'gen-1', status: 'sent', to: 'ada@example.com' })
+    expect(res.body).toEqual({ id: 'log-1', status: 'sent', to: 'ada@example.com' })
     expect(send).toHaveBeenCalledWith({
       to: 'ada@example.com',
       subject: 'Hi',
       text: 'Hello Ada',
       html: '<p>Hi</p>',
       replyTo: 'me@example.com',
+      source: 'api',
+      apiKey: KEY,
     })
     expect(audits).toEqual([
       expect.objectContaining({
         ok: true,
         outcome: 'sent',
-        id: 'gen-1',
+        id: 'log-1',
         to: 'ada@example.com',
         keyName: 'agent-bot',
         activity: 'Sent an email to ada@example.com (via key agent-bot)',
       }),
     ])
+  })
+
+  it('passes a sender and a send time; a scheduled send says so', async () => {
+    send.mockResolvedValueOnce({ id: 'log-9', status: 'scheduled', messageId: null })
+    const at = new Date(Date.now() + 3_600_000).toISOString()
+    const res = await handleMailSend(deps, { apiKey: KEY, body: { ...BODY, from: 'news@kindred.test', scheduledAt: at } })
+    expect(res.body).toEqual({ id: 'log-9', status: 'scheduled', to: 'ada@example.com' })
+    expect(send.mock.calls[0][0]).toMatchObject({ from: 'news@kindred.test', scheduledAt: new Date(at) })
+    expect(audits[0]).toMatchObject({ ok: true, outcome: 'scheduled', activity: 'Scheduled an email to ada@example.com (via key agent-bot)' })
+  })
+
+  it('rejects a send time more than 30 days ahead', async () => {
+    const at = new Date(Date.now() + 31 * 86_400_000).toISOString()
+    const res = await handleMailSend(deps, { apiKey: KEY, body: { ...BODY, scheduledAt: at } })
+    expect(res.status).toBe(400)
+    expect((res.body as { fields: object }).fields).toHaveProperty('scheduledAt')
+  })
+
+  it('a suppressed recipient is 200 with status suppressed and the reason', async () => {
+    send.mockResolvedValueOnce({ id: 'log-7', status: 'suppressed', messageId: null })
+    const res = await handleMailSend(deps, { apiKey: KEY, body: BODY })
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({ id: 'log-7', status: 'suppressed', message: expect.stringMatching(/suppression list/) })
+    expect(audits[0]).toMatchObject({ ok: false, outcome: 'suppressed' })
   })
 
   it('text-only mail gets an html part escaped from the text', async () => {
@@ -172,6 +226,27 @@ describe('sending', () => {
     const res = await handleMailSend(deps, { apiKey: KEY, body: BODY })
     expect(res.status).toBe(502)
     expect(JSON.stringify(res.body)).not.toContain('/srv/x.js')
+  })
+})
+
+describe('templates', () => {
+  const tpl = '00000000-0000-4000-8000-000000000001'
+
+  it('renders the template and sends its subject/html/text, tagged with the template id', async () => {
+    const res = await handleMailSend(deps, { apiKey: KEY, body: { to: 'ada@example.com', templateId: tpl, variables: { name: 'Ada' } } })
+    expect(res.status).toBe(200)
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ subject: 'Hi Ada', html: '<p>Hi Ada</p>', text: 'Hi Ada', templateId: tpl, source: 'api' }),
+    )
+  })
+
+  it('404 for an unknown template, 422 listing missing variables; nothing sent', async () => {
+    const gone = await handleMailSend(deps, { apiKey: KEY, body: { to: 'a@example.com', templateId: '00000000-0000-4000-8000-00000000dead' } })
+    expect(gone).toMatchObject({ status: 404, body: { error: 'template_not_found' } })
+    const missing = await handleMailSend(deps, { apiKey: KEY, body: { to: 'a@example.com', templateId: tpl } })
+    expect(missing).toMatchObject({ status: 422, body: { error: 'template_invalid', missing: ['name'] } })
+    expect(send).not.toHaveBeenCalled()
+    expect(audits.map((a) => a.outcome)).toEqual(['template_not_found', 'template_invalid'])
   })
 })
 

@@ -1,4 +1,5 @@
 import type { IdentityInfo, SesApi, SesFactory, SesSendInput } from './ses'
+import type { SnsFactory } from './sns'
 import { randomUUID } from 'node:crypto'
 import { asc, eq } from 'drizzle-orm'
 import type { DbHandle } from '$lib/kernel/db-stores'
@@ -25,6 +26,7 @@ export type FakeMailStore = {
   createIdentity(identity: string): Promise<void>
   /** Marks an identity verified (creating it if needed) — what clicking Amazon's link would do. */
   verifyIdentity(identity: string): Promise<void>
+  deleteIdentity(identity: string): Promise<void>
   capture(mail: SesSendInput): Promise<CapturedMail>
   /** Captured mails oldest first, optionally only those to one address. */
   list(filter?: { to?: string }): Promise<CapturedMail[]>
@@ -34,7 +36,13 @@ export type FakeMailStore = {
 
 const norm = (s: string) => s.trim().toLowerCase()
 
-/** SES backed by a FakeMailStore: what `owleryService()` uses under MAIL_TRANSPORT=fake. */
+/**
+ * SES backed by a FakeMailStore: what `owleryService()` uses under
+ * MAIL_TRANSPORT=fake. Domains are identities too: created pending, verified
+ * through the harness (POST /api/e2e/harness/mail { verify: <domain> }), which
+ * flips DKIM, MAIL FROM and verification together. Configuration sets and the
+ * account suppression list have no state worth faking.
+ */
 export function fakeStoreSes(store: FakeMailStore): SesFactory {
   return () => {
     const api: SesApi = {
@@ -42,10 +50,29 @@ export function fakeStoreSes(store: FakeMailStore): SesFactory {
       createIdentity: (id) => store.createIdentity(id),
       isSandbox: async () => false,
       send: async (input) => ({ messageId: (await store.capture(input)).messageId }),
+      createDomainIdentity: (input) => store.createIdentity(input.domain),
+      getDomainIdentity: async (domain) => {
+        const id = await store.getIdentity(domain)
+        const s = !id.exists ? 'NOT_STARTED' : id.verified ? 'SUCCESS' : 'PENDING'
+        return { exists: id.exists, verification: s, dkim: s, mailFrom: s, errorType: null }
+      },
+      deleteIdentity: (identity) => store.deleteIdentity(identity),
+      ensureEventDestination: async () => {},
+      removeFromAccountSuppression: async () => {},
     }
     return api
   }
 }
+
+/**
+ * SNS for the fake transport: a topic name becomes a fake ARN and every
+ * subscription counts as confirmed (no SNS exists to POST the confirmation).
+ * Events reach the app through the harness instead (POST { sesEvent }).
+ */
+export const fakeSns: SnsFactory = (c) => ({
+  createTopic: async (name) => `arn:aws:sns:${c.region}:000000000000:${name}`,
+  subscribeHttps: async () => ({ confirmed: true }),
+})
 
 async function resolveDb(db: DbHandle): Promise<AppDatabase> {
   return typeof db === 'function' ? await db() : db
@@ -78,6 +105,10 @@ export class DbFakeMailStore implements FakeMailStore {
       .onConflictDoUpdate({ target: mailFakeIdentities.identity, set: values })
   }
 
+  async deleteIdentity(identity: string): Promise<void> {
+    await (await resolveDb(this.db)).delete(mailFakeIdentities).where(eq(mailFakeIdentities.identity, norm(identity)))
+  }
+
   async capture(mail: SesSendInput): Promise<CapturedMail> {
     const [row] = await (await resolveDb(this.db))
       .insert(mailFakeSent)
@@ -89,6 +120,7 @@ export class DbFakeMailStore implements FakeMailStore {
         html: mail.html,
         text: mail.text,
         replyTo: mail.replyTo ?? null,
+        headers: mail.headers ?? null,
       })
       .returning()
     if (!row) throw new Error('the fake mail transport could not store the mail')
@@ -120,6 +152,7 @@ function toCaptured(row: typeof mailFakeSent.$inferSelect): CapturedMail {
     html: row.html,
     text: row.text,
     ...(row.replyTo ? { replyTo: row.replyTo } : {}),
+    ...(row.headers ? { headers: row.headers } : {}),
     createdAt: row.createdAt.toISOString(),
   }
 }
@@ -146,6 +179,9 @@ export class InMemoryFakeMailStore implements FakeMailStore {
   }
   async verifyIdentity(identity: string) {
     this.identities.set(norm(identity), true)
+  }
+  async deleteIdentity(identity: string) {
+    this.identities.delete(norm(identity))
   }
   async capture(mail: SesSendInput) {
     this.seq += 1
