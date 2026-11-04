@@ -1,5 +1,6 @@
 import type { RunSummary } from '$lib/agent-runs/feed'
 import { runTitle } from '$lib/agent-runs/titles'
+import { sessionIdOfConversationKey } from '$lib/kernel/engines/durable'
 import {
   DbDurableConversationIndex,
   type DurableConversationIndex,
@@ -24,13 +25,23 @@ export function createAgentRunsSource(deps: {
   harness: () => Promise<Pick<DurableHarnessBox, 'events'>>
   /** Display names for the chatting members' user ids (missing ids are unknown). */
   memberNames?: (userIds: string[]) => Promise<ReadonlyMap<string, string>>
+  /** A chat's first message per chat session id (missing ids have none yet). */
+  chatTopics?: (sessionIds: string[]) => Promise<ReadonlyMap<string, string>>
 }): AgentRunsSource {
   return {
     async list() {
       const rows = await deps.index.listConversations()
-      const chatUsers = [...new Set(rows.filter((r) => !r.runPrincipalId).map((r) => r.llmUserId))]
+      const chats = rows.filter((r) => !r.runPrincipalId)
+      const chatUsers = [...new Set(chats.map((r) => r.llmUserId))]
       const names =
         deps.memberNames && chatUsers.length > 0 ? await deps.memberNames(chatUsers) : new Map()
+      // A chat run's key is `<agentId>:<chat session id>` (durable engine contract).
+      const sessionOf = (row: (typeof rows)[number]) =>
+        sessionIdOfConversationKey(row.agentId, row.conversationKey)
+      const topics =
+        deps.chatTopics && chats.length > 0
+          ? await deps.chatTopics(chats.map(sessionOf))
+          : new Map<string, string>()
       return rows
         .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || b.id - a.id)
         .map((row) => ({
@@ -41,6 +52,7 @@ export function createAgentRunsSource(deps: {
             conversationKey: row.conversationKey,
             background: row.runPrincipalId !== null,
             memberName: names.get(row.llmUserId) ?? null,
+            topic: row.runPrincipalId === null ? (topics.get(sessionOf(row)) ?? null) : null,
           }),
           createdAt: row.createdAt.toISOString(),
           updatedAt: row.updatedAt.toISOString(),
@@ -82,6 +94,28 @@ async function defaultMemberNames(userIds: string[]): Promise<ReadonlyMap<string
   return new Map(rows.map((r) => [r.id, r.name.trim() || r.email]))
 }
 
+/** Chat session ids are uuids; anything else cannot name a chat_session row. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Each chat session's first member message: what the conversation is about. */
+async function defaultChatTopics(sessionIds: string[]): Promise<ReadonlyMap<string, string>> {
+  const ids = sessionIds.filter((id) => UUID.test(id))
+  if (ids.length === 0) return new Map()
+  const { getDb } = await import('$lib/server/db')
+  const { chatMessage } = await import('$lib/server/db/brain.schema')
+  const { and, asc, eq, inArray } = await import('drizzle-orm')
+  // One row per session: its oldest user message.
+  const rows = await getDb()
+    .selectDistinctOn([chatMessage.sessionId], {
+      sessionId: chatMessage.sessionId,
+      content: chatMessage.content,
+    })
+    .from(chatMessage)
+    .where(and(inArray(chatMessage.sessionId, ids), eq(chatMessage.role, 'user')))
+    .orderBy(chatMessage.sessionId, asc(chatMessage.createdAt))
+  return new Map(rows.map((r) => [r.sessionId, r.content]))
+}
+
 /**
  * Production source. The harness is the process singleton boot opened (with
  * the engine's full deps); the run view only reads it and never opens one.
@@ -91,5 +125,6 @@ export function agentRunsSource(): AgentRunsSource {
     index: defaultIndex(),
     harness: () => openedDurableHarness(),
     memberNames: defaultMemberNames,
+    chatTopics: defaultChatTopics,
   })
 }

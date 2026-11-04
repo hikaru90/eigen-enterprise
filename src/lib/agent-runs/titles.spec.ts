@@ -7,6 +7,24 @@ describe('runTitle: a readable name for a run', () => {
       runTitle({ conversationKey: 'orchestrator:9b1c', background: false, memberName: 'Ada Park' }),
     ).toBe('Chat with Ada Park')
   })
+  it('names a chat after what it is about: its first message, shortened', () => {
+    expect(
+      runTitle({
+        conversationKey: 'orchestrator:9b1c',
+        background: false,
+        memberName: 'Ada Park',
+        topic: '  Build me a landing page\nfor the bakery  ',
+      }),
+    ).toBe('Build me a landing page for the bakery')
+    const long = 'word '.repeat(40)
+    const title = runTitle({ conversationKey: 'o:1', background: false, memberName: null, topic: long })
+    expect(title.length).toBeLessThanOrEqual(72)
+    expect(title.endsWith('…')).toBe(true)
+    // A blank first message is no topic.
+    expect(
+      runTitle({ conversationKey: 'o:1', background: false, memberName: 'Ada', topic: '   ' }),
+    ).toBe('Chat with Ada')
+  })
   it('falls back to "a team member" when the name is unknown', () => {
     expect(
       runTitle({ conversationKey: 'orchestrator:9b1c', background: false, memberName: null }),

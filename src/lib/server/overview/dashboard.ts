@@ -1,26 +1,29 @@
-import { appKernel } from '$lib/server/boot'
-import type { PageServerLoad } from './$types'
-import { redirect } from '@sveltejs/kit'
 import { and, desc, eq, ne, sql } from 'drizzle-orm'
 import { getUserRole, isAdminRole } from '$lib/server/auth/user-role'
 import { backupNotice, type BackupNotice } from '$lib/server/backups/health'
-import { EeClient, SubstrateUnavailableError } from '$lib/server/ee/client'
+import { appKernel } from '$lib/server/boot'
 import { getDb } from '$lib/server/db'
 import { kernelEvents } from '$lib/server/db/kernel.schema'
-import { buildOverview } from '$lib/server/overview/overview'
+import { EeClient, SubstrateUnavailableError } from '$lib/server/ee/client'
+import { buildOverview, type Overview } from '$lib/server/overview/overview'
 import { humanContext, overviewResultSources } from '$lib/server/overview/sources'
 
-/** How many recent agent actions the overview shows; the chat holds the rest. */
+/** How many recent agent actions the dashboard shows; Assistant › Activity holds the rest. */
 const RECENT_ACTIONS = 10
 
+export type Dashboard = {
+  overview: Overview
+  /** The owner's nightly-backup problem, if any (plan/phase-backups.md). */
+  backup: BackupNotice | null
+}
+
 /**
- * /overview: which module is active, and where the work can be seen.
- * Read-only: module results come from kernel read tools as the signed-in
- * owner; actions and approvals are store reads.
+ * The dashboard at `/` (polish P-2, formerly /overview): which modules are
+ * active, what needs the member, and the work the agent did. Read-only:
+ * module results come from kernel read tools as the signed-in member;
+ * actions and approvals are store reads.
  */
-export const load: PageServerLoad = async (event) => {
-  if (!event.locals.user) throw redirect(302, '/login')
-  const userId = event.locals.user.id
+export async function loadDashboard(userId: string): Promise<Dashboard> {
   const kernel = await appKernel()
   const role = await getUserRole(userId)
   const isAdmin = isAdminRole(role)
