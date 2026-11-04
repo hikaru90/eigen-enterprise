@@ -7,6 +7,8 @@ export const EMAIL_PLATFORM_READ_TOOLS = [
   'email.suppression_list',
   'email.template_list',
   'email.template_get',
+  'email.contact_lists',
+  'email.flow_list',
 ] as const
 
 /** Every one of these waits on the approval gate (modules/index APPROVAL_REQUIRED_TOOLS). */
@@ -17,4 +19,5 @@ export const EMAIL_PLATFORM_WRITE_TOOLS = [
   'email.suppression_add',
   'email.suppression_remove',
   'email.send_template',
+  'email.contact_add',
 ] as const

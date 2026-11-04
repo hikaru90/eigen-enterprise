@@ -10,6 +10,8 @@ export const EMAIL_TABS: readonly AreaTab[] = [
   { id: 'senders', label: 'Senders', href: '/m/email/senders' },
   { id: 'templates', label: 'Templates', href: '/m/email/templates' },
   { id: 'layouts', label: 'Layouts', href: '/m/email/layouts' },
+  { id: 'contacts', label: 'Contacts', href: '/m/email/contacts' },
+  { id: 'flows', label: 'Flows', href: '/m/email/flows' },
   { id: 'logs', label: 'Logs', href: '/m/email/logs' },
   { id: 'suppression', label: 'Suppression', href: '/m/email/suppression' },
   { id: 'api', label: 'API', href: '/m/email/api' },

@@ -234,4 +234,79 @@ test.describe('email platform', () => {
     expect(await missing.json()).toMatchObject({ error: 'template_invalid', missing: ['link'] })
     await api.dispose()
   })
+
+  test('contacts + flows: double opt-in list → flow (send, wait) → confirm → tick → mail with one-click unsubscribe → unsubscribed', async ({
+    page,
+    context,
+    playwright,
+  }) => {
+    test.setTimeout(120_000)
+    const { email } = await registerUser(context, page, { emailDomain: 'test.eigen' })
+    expect(await sql()`update "user" set role = 'admin' where email = ${email} returning id`).toHaveLength(1)
+    const stamp = Date.now().toString(36)
+    const reader = `sub-${stamp}@example.test`
+
+    // A template for the flow (the standalone starter needs no variables).
+    await page.goto('/m/email/templates')
+    await page.locator('#template-name').fill(`Flow mail ${stamp}`)
+    await page.locator('#template-layout').selectOption('')
+    await page.getByRole('button', { name: 'Create template' }).click()
+    await expect(page).toHaveURL(/\/m\/email\/templates\/[0-9a-f-]+$/)
+
+    // A double-opt-in list.
+    await page.getByTestId('email-tab-contacts').click()
+    await page.locator('#list-name').fill(`News ${stamp}`)
+    await page.getByTestId('list-doi').check()
+    await page.getByRole('button', { name: 'Create list' }).click()
+    await expect(page.getByTestId('list-name')).toHaveText(`News ${stamp}`)
+    const listUrl = page.url()
+
+    // A flow on it: send the template, then wait two days.
+    await page.getByTestId('email-tab-flows').click()
+    await page.locator('#flow-name').fill(`Welcome ${stamp}`)
+    await page.locator('#flow-list').selectOption({ label: `News ${stamp}` })
+    await page.getByRole('button', { name: 'Create flow' }).click()
+    await expect(page).toHaveURL(/\/m\/email\/flows\/[0-9a-f-]+$/)
+    const flowUrl = page.url()
+    await page.getByTestId('flow-add-send').click()
+    await page.getByTestId('flow-step-1').getByLabel('Template').selectOption({ label: `Flow mail ${stamp}` })
+    await page.getByTestId('flow-add-wait').click()
+    await page.getByTestId('flow-save').click()
+    await expect(page.getByTestId('flow-saved')).toBeVisible()
+    await page.getByTestId('flow-activate').click()
+    await expect(page.getByTestId('flow-status')).toHaveText('Running')
+
+    // A new contact must confirm first.
+    await page.goto(listUrl)
+    await page.locator('#contact-email').fill(reader)
+    await page.locator('#contact-first').fill('Ada')
+    await page.getByRole('button', { name: 'Add', exact: true }).click()
+    await expect(page.getByTestId('contact-added')).toContainText('confirmation mail')
+    const [confirmMail] = await captured(page, reader)
+    const confirmLink = confirmMail!.text.match(/https?:\/\/\S+\/mail\/confirm\/\S+/)![0]
+    await page.goto(confirmLink)
+    await page.getByTestId('confirm-subscription').click()
+    await expect(page.getByTestId('confirmed')).toContainText(reader)
+
+    // The background pass runs the flow: the mail goes out with one-click unsubscribe headers.
+    await harness(page, { tick: true })
+    const flowMail = (await captured(page, reader)).find((m) => m.subject === 'Welcome, Ada!')
+    expect(flowMail).toBeTruthy()
+    const headers = (flowMail as unknown as { headers: { name: string; value: string }[] }).headers
+    const oneClick = headers.find((h) => h.name === 'List-Unsubscribe')!.value.slice(1, -1)
+    expect(headers).toContainEqual({ name: 'List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' })
+    await page.goto(flowUrl)
+    await expect(page.getByTestId('flow-enrollments').getByTestId('enrollment-state')).toContainText('Waiting until')
+    await expect(page.getByTestId('flow-log-email_sent')).toBeVisible()
+
+    // The mailbox provider's one-click POST (no Origin, urlencoded) unsubscribes.
+    const provider = await playwright.request.newContext()
+    const res = await provider.post(oneClick, { form: { 'List-Unsubscribe': 'One-Click' } })
+    expect(res.status(), await res.text()).toBe(200)
+    await provider.dispose()
+    await page.goto(listUrl)
+    await expect(page.getByTestId(`contact-${reader}`).getByTestId('contact-status')).toContainText('Unsubscribed')
+    await page.goto(oneClick.replace('/api/mail/unsubscribe/', '/mail/unsubscribe/'))
+    await expect(page.getByTestId('unsubscribed')).toContainText(reader)
+  })
 })

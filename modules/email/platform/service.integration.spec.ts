@@ -30,6 +30,11 @@ describe.skipIf(!hasDb)('EmailPlatform (test database)', () => {
   })
 
   async function wipe() {
+    await db.execute('DELETE FROM mail_flow_log' as never)
+    await db.execute('DELETE FROM mail_flow_enrollments' as never)
+    await db.execute('DELETE FROM mail_flows' as never)
+    await db.execute('DELETE FROM mail_contacts' as never)
+    await db.execute('DELETE FROM mail_contact_lists' as never)
     await new EmailStore(db).clearAll()
   }
 
@@ -71,6 +76,8 @@ describe.skipIf(!hasDb)('EmailPlatform (test database)', () => {
         return new Response('ok')
       }) as unknown as typeof fetch,
       brand: async () => emailBrandFromCssVars(null, 'Kindred'),
+      db,
+      origin: () => 'https://os.kindred.test',
       now: () => now,
     })
   })
@@ -239,5 +246,79 @@ describe.skipIf(!hasDb)('EmailPlatform (test database)', () => {
     const test = await t.sendTest(tpl.id, 'owner@kindred.test')
     expect(test.status).toBe('sent')
     expect((await store.getMessage(test.id))!.source).toBe('test')
+  })
+
+  it('contacts + flows: double opt-in, enrollment, send with one-click unsubscribe, wait, bounce unsubscribes', async () => {
+    const a = platform.audience
+    const t = platform.templates
+    const tpl = await t.createTemplate({ name: 'Hello', layoutId: null }, 'u1')
+    await t.updateTemplate(tpl.id, {
+      name: 'Hello',
+      subject: 'Hi {{ firstName | "there" }}',
+      format: 'html',
+      body: '<p>Hi {{ firstName | "there" }}</p><p><a href="{{ unsubscribe_url }}">Unsubscribe</a></p>',
+      textBody: null,
+      layoutId: null,
+      sampleVariables: {},
+    })
+    const list = await a.createList({ name: 'Newsletter', doubleOptIn: true }, 'u1')
+    const flow = await a.createFlow({ name: 'Welcome', triggerListId: list.id }, 'u1')
+    await expect(a.setFlowStatus(flow.id, 'active')).rejects.toThrow(/at least one step/)
+    await a.updateFlow(flow.id, {
+      name: 'Welcome',
+      triggerListId: list.id,
+      steps: [
+        { id: 's1', type: 'send', templateId: tpl.id },
+        { id: 'w1', type: 'wait', amount: 1, unit: 'days' },
+        { id: 's2', type: 'send', templateId: tpl.id },
+      ],
+    })
+    await a.setFlowStatus(flow.id, 'active')
+
+    // Double opt-in: pending + confirmation mail; no flow yet.
+    const { contact } = await a.addContact(list.id, { email: 'Reader@X.co', firstName: 'Ada' })
+    expect(contact).toMatchObject({ email: 'reader@x.co', status: 'pending' })
+    expect(ses.sent.at(-1)!.text).toContain(`https://os.kindred.test/mail/confirm/${contact.token}`)
+    expect(await a.enrollments(flow.id)).toEqual([])
+
+    // Confirm → subscribed → enrolled; the job sends step 1 and starts the wait.
+    expect((await a.confirm(contact.token))!.status).toBe('subscribed')
+    expect(await platform.runJobs()).toEqual({ done: 1, failed: 0 })
+    const welcome = ses.sent.at(-1)!
+    expect(welcome).toMatchObject({ to: 'reader@x.co', subject: 'Hi Ada' })
+    expect(welcome.html).toContain(`https://os.kindred.test/mail/unsubscribe/${contact.token}`)
+    expect(welcome.headers).toEqual([
+      { name: 'List-Unsubscribe', value: `<https://os.kindred.test/api/mail/unsubscribe/${contact.token}>` },
+      { name: 'List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' },
+    ])
+    let [e] = await a.enrollments(flow.id)
+    expect(e).toMatchObject({ status: 'active', stepIndex: 1 })
+    expect(e!.waitUntil).not.toBeNull()
+
+    // A day later the wait is over: step 2 is sent and the run completes.
+    now = new Date(now.getTime() + 86_400_000 + 1000)
+    expect(await platform.runJobs()).toEqual({ done: 1, failed: 0 })
+    ;[e] = await a.enrollments(flow.id)
+    expect(e).toMatchObject({ status: 'completed', stepIndex: 3 })
+    expect((await a.flowLog(flow.id)).map((l) => l.event).reverse()).toEqual(['entered', 'email_sent', 'waiting', 'email_sent', 'completed'])
+
+    // Re-adding the address neither duplicates nor re-enrolls.
+    expect((await a.addContact(list.id, { email: 'reader@x.co' })).created).toBe(false)
+
+    // A hard bounce unsubscribes the address everywhere; unsubscribe is idempotent.
+    const other = await a.createList({ name: 'Customers', doubleOptIn: false }, 'u1')
+    const { contact: c2 } = await a.addContact(other.id, { email: 'reader@x.co' })
+    expect(c2.status).toBe('subscribed')
+    await platform.applySesEvent({
+      eventType: 'Bounce',
+      mail: { messageId: 'ses-bounced', tags: { ee_message: [(await store.listMessages({ limit: 1 }))[0]!.id] } },
+      bounce: { bounceType: 'Permanent', bouncedRecipients: [{ emailAddress: 'reader@x.co' }] },
+    })
+    expect((await a.getContact(c2.id))!).toMatchObject({ status: 'unsubscribed', unsubscribeReason: 'BOUNCED' })
+    expect((await a.unsubscribe(contact.token))!.status).toBe('unsubscribed')
+    expect(await a.unsubscribe('nope')).toBeNull()
+
+    const imported = await a.importContacts(other.id, 'email,first\nnew@x.co,Grace\nbroken\n')
+    expect(imported).toEqual({ added: 1, updated: 0, invalid: ['broken'] })
   })
 })

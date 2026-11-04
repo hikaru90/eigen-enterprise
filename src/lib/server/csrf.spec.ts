@@ -27,6 +27,8 @@ describe('isForbiddenCrossSiteForm (SvelteKit checkOrigin, with exemptions)', ()
     expect(isForbiddenCrossSiteForm(req('POST', 'text/plain; charset=UTF-8', null), url('/api/mail/ses-events'))).toBe(false)
     expect(isCsrfExempt('/api/mail/ses-events-x')).toBe(false)
     expect(isForbiddenCrossSiteForm(req('POST', 'text/plain', null), url('/api/mail/send'))).toBe(true)
+    // RFC 8058 one-click unsubscribe from mailbox providers (token-authorised).
+    expect(isForbiddenCrossSiteForm(req('POST', 'application/x-www-form-urlencoded', null), url('/api/mail/unsubscribe/abc'))).toBe(false)
   })
 
   it('answers 403 in the shape the client asked for', async () => {

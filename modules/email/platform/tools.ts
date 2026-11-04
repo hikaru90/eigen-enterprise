@@ -34,6 +34,14 @@ export function createEmailPlatformTools(deps: EmailPlatformToolDeps = {}): Tool
       from: z.email().optional(),
     })
     .strict()
+  const contactAdd = z
+    .object({
+      listId: z.uuid(),
+      email: z.email(),
+      firstName: z.string().max(200).optional(),
+      lastName: z.string().max(200).optional(),
+    })
+    .strict()
   const logList = z
     .object({
       status: z.enum(MESSAGE_STATUSES).optional(),
@@ -238,6 +246,61 @@ export function createEmailPlatformTools(deps: EmailPlatformToolDeps = {}): Tool
           ...(p.from ? { from: p.from } : {}),
         })
       },
+    },
+    {
+      name: 'email.contact_lists',
+      module: EMAIL_MODULE_ID,
+      summary: 'The contact lists (id, name, double opt-in, how many are subscribed / waiting to confirm / unsubscribed).',
+      auditClass: 'read',
+      inputSchema: z.object({}).strict(),
+      permission: ROLES,
+      handler: async () =>
+        (await (await platform()).audience.listLists()).map((l) => ({
+          id: l.id,
+          name: l.name,
+          doubleOptIn: l.doubleOptIn,
+          subscribed: l.subscribed,
+          pending: l.pending,
+          unsubscribed: l.unsubscribed,
+        })),
+    },
+    {
+      name: 'email.contact_add',
+      module: EMAIL_MODULE_ID,
+      summary:
+        'Add a person to a contact list. On a double-opt-in list they get a confirmation mail first; otherwise they are subscribed and the list’s running flows start for them.',
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: (input: z.infer<typeof contactAdd>) => `Added ${input.email} to a contact list`,
+      inputSchema: contactAdd,
+      permission: ROLES,
+      handler: async (_ctx, input) => {
+        const p = contactAdd.parse(input)
+        const out = await (await platform()).audience.addContact(p.listId, {
+          email: p.email,
+          firstName: p.firstName ?? null,
+          lastName: p.lastName ?? null,
+        })
+        return { email: out.contact.email, status: out.contact.status, created: out.created }
+      },
+    },
+    {
+      name: 'email.flow_list',
+      module: EMAIL_MODULE_ID,
+      summary: 'The email flows (automations): status, the list that starts them, step count, people in progress and done.',
+      auditClass: 'read',
+      inputSchema: z.object({}).strict(),
+      permission: ROLES,
+      handler: async () =>
+        (await (await platform()).audience.listFlows()).map((f) => ({
+          id: f.id,
+          name: f.name,
+          status: f.status,
+          triggerListId: f.triggerListId,
+          steps: Array.isArray(f.steps) ? f.steps.length : 0,
+          inProgress: f.active,
+          completed: f.completed,
+        })),
     },
     {
       name: 'email.suppression_add',

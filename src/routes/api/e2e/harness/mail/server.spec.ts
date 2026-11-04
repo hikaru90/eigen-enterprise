@@ -38,6 +38,11 @@ vi.mock('../../../../../../modules/email/platform/service', () => ({
         platformCalls.push('clear')
       },
     },
+    audience: {
+      clearAll: async () => {
+        platformCalls.push('clear-audience')
+      },
+    },
   }),
 }))
 

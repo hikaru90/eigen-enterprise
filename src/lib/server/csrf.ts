@@ -11,8 +11,12 @@
  * Exempt, each authenticated on its own:
  * - /api/mail/ses-events — Amazon SNS posts text/plain without an Origin; every
  *   message's signature is verified (modules/email/platform/sns-signature.ts).
+ * - /api/mail/unsubscribe/<token> — RFC 8058 one-click unsubscribe: mailbox
+ *   providers POST "List-Unsubscribe=One-Click" (urlencoded, no Origin); the
+ *   unguessable per-contact token is the authorisation, and it can only
+ *   unsubscribe.
  */
-export const CSRF_EXEMPT_PATHS: readonly string[] = ['/api/mail/ses-events']
+export const CSRF_EXEMPT_PATHS: readonly string[] = ['/api/mail/ses-events', '/api/mail/unsubscribe']
 
 const FORM_TYPES = new Set(['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain', 'application/x-sveltekit-formdata'])
 const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])

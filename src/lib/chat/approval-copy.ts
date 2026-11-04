@@ -5,6 +5,7 @@ const APPROVAL_ACTION_COPY: Record<string, string> = {
   'email.domain_recheck': "Re-check a sender domain's DNS",
   'email.sender_add': 'Add a sender address',
   'email.send_template': 'Send a template email',
+  'email.contact_add': 'Add a person to a contact list',
   'email.suppression_add': 'Stop mail to an address',
   'email.suppression_remove': 'Allow mail to an address again',
   'brand.set_activate': 'Make a brand guideline set the active one',

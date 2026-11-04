@@ -57,6 +57,7 @@ export const DELETE: RequestHandler = async () => {
   const refused = guard()
   if (refused) return refused
   await defaultFakeMailStore().clear()
+  await emailPlatform().audience.clearAll()
   await emailPlatform().store.clearAll()
   await owleryService().forgetSettings()
   return json({ ok: true })

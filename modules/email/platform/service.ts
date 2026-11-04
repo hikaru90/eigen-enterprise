@@ -1,5 +1,7 @@
 import { resolveTxt } from 'node:dns/promises'
 import { z } from 'zod'
+import type { DbHandle } from '$lib/kernel/db-stores'
+import { env } from '$lib/server/env/private-env'
 import { MailSetupError } from '$lib/server/mail/company-mail'
 import { owleryService, SEND_SCHEDULED_JOB, type OwleryService } from '../owlery/service'
 import { describeSesError } from '../owlery/ses'
@@ -12,6 +14,7 @@ import {
   registrableDomain,
   type DnsRecord,
 } from './dns'
+import { AudienceService, FLOW_STEP_JOB } from './flows/service'
 import { isRepeatableEngagement, parseSesEvent, type ParsedSesEvent } from './ses-events'
 import { isSnsUrl, type SnsMessage } from './sns-signature'
 import { nextStatus, type MessageStatus } from './status'
@@ -49,6 +52,10 @@ export type EmailPlatformDeps = {
   fetch: typeof fetch
   /** The company's Brand as email tokens (layouts and templates). */
   brand: () => Promise<EmailBrand>
+  /** The database for contacts and flows (stage 3). */
+  db: DbHandle
+  /** This server's public https origin, for unsubscribe and confirm links. */
+  origin: () => string
   now?: () => Date
 }
 
@@ -62,9 +69,26 @@ export class EmailPlatform {
 
   /** Templates and layouts (stage 2). */
   readonly templates: TemplateService
+  /** Contact lists and flows (stage 3). */
+  readonly audience: AudienceService
 
   constructor(private readonly deps: EmailPlatformDeps) {
     this.templates = new TemplateService({ store: deps.store, owlery: deps.owlery, brand: deps.brand })
+    this.audience = new AudienceService({
+      db: deps.db,
+      owlery: deps.owlery,
+      templates: this.templates,
+      enqueue: (kind, payload, runAt, dedupeKey) => deps.store.enqueueJob(kind, payload, runAt, dedupeKey),
+      origin: deps.origin,
+      ...(deps.now ? { now: deps.now } : {}),
+    })
+    this.handlers.set(FLOW_STEP_JOB, (job) => this.audience.runJob(job))
+    // A hard bounce or a spam complaint also unsubscribes the address from every list.
+    this.eventListeners.push(async (e) => {
+      for (const s of e.suppress) {
+        await this.audience.unsubscribeEverywhere(s.email, s.reason === 'COMPLAINT' ? 'COMPLAINED' : 'BOUNCED')
+      }
+    })
     this.handlers.set(SEND_SCHEDULED_JOB, async (job) => {
       const id = job.payload.messageId
       if (typeof id !== 'string') throw new Error('send_scheduled job without messageId')
@@ -429,6 +453,15 @@ export function emailPlatform(): EmailPlatform {
       store: defaultEmailStore(),
       resolveTxt,
       fetch,
+      db: async () => {
+        const { appDbAsyncLocal, appSql, createScopedDrizzle } = await import('$lib/server/db')
+        return appDbAsyncLocal.getStore() ?? createScopedDrizzle(appSql)
+      },
+      origin: () => {
+        const origin = env.ORIGIN?.trim()
+        if (!origin) throw new Error('ORIGIN is not set: email links (unsubscribe, confirm) need the public address of this server')
+        return origin.replace(/\/+$/, '')
+      },
       brand: async () => {
         const [{ appKernel }, { foundingCompanyName }] = await Promise.all([
           import('$lib/server/boot'),
