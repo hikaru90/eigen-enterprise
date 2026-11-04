@@ -36,8 +36,8 @@ describe('Settings → Members page', () => {
     roleOf.value = 'owner'
     const data = (await load({ locals: { user: { id: 'o' } } } as never)) as { members: Array<{ email: string; role: string }>; companyName: string }
     expect(data.members).toEqual([
-      { id: 'o', email: 'owner@k.co', name: 'O', role: 'owner' },
-      { id: 'm', email: 'm@k.co', name: 'M', role: 'member' },
+      { id: 'o', email: 'owner@k.co', name: 'O', role: 'owner', image: null },
+      { id: 'm', email: 'm@k.co', name: 'M', role: 'member', image: null },
     ])
     expect(data.companyName).toBe('Kindred')
   })
