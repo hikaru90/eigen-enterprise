@@ -218,6 +218,8 @@ test.describe('welcome boot sequence', () => {
     await page.goto('/')
     await expectHomeVisible(page)
     await expect(page.getByTestId('assistant-panel')).toHaveCount(0)
+    // A click before hydration opens nothing.
+    await page.waitForFunction(() => document.body.dataset.eigenHydrated === 'true')
     await page.getByTestId('assistant-toggle').click()
     await expect(
       page.getByTestId('assistant-panel').getByText(/Hello from mock gateway/i),

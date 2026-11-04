@@ -60,6 +60,8 @@ test.describe('agent runs live view', () => {
     // Browser A: the assistant panel's History tab lists the conversation and
     // opens its run view.
     await page.goto('/m/website')
+    // A click before hydration opens nothing.
+    await page.waitForFunction(() => document.body.dataset.eigenHydrated === 'true')
     await page.getByTestId('assistant-toggle').click()
     await page.getByTestId('assistant-tab-history').click()
     const historyRow = page

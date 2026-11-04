@@ -94,11 +94,9 @@ test('every navigation entry and settings section renders inside the one shell',
   // The one assistant: ⌘K / Ctrl+K from any page, the panel docks right of the
   // page and stays open with its conversation across client-side navigation.
   await page.goto('/m/website')
-  await expect(page.getByTestId('assistant-bar-input')).toBeVisible()
-  await expect(async () => {
-    await page.keyboard.press('ControlOrMeta+k')
-    await expect(page.getByTestId('assistant-bar-input')).toBeFocused({ timeout: 1_000 })
-  }).toPass({ timeout: 15_000 })
+  await page.waitForFunction(() => document.body.dataset.eigenHydrated === 'true')
+  await page.keyboard.press('ControlOrMeta+k')
+  await expect(page.getByTestId('assistant-bar-input')).toBeFocused()
   await page.keyboard.type('What can you do?')
   await page.keyboard.press('Enter')
   const panel = page.getByTestId('assistant-panel')
@@ -201,6 +199,8 @@ test('every navigation entry and settings section renders inside the one shell',
   // Phone: the drawer carries the same nav.
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/settings/api-keys')
+  // A tap before hydration opens nothing.
+  await page.waitForFunction(() => document.body.dataset.eigenHydrated === 'true')
   await page.getByTestId('shell-menu-toggle').click()
   await expect(page.getByTestId('shell-drawer').getByTestId('shell-company-link')).toBeVisible()
   await expect(page.getByTestId('shell-drawer').getByTestId('shell-nav-memory')).toBeVisible()
