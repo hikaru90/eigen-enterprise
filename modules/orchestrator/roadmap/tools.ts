@@ -80,7 +80,9 @@ export function createRoadmapTools(deps: RoadmapToolDeps = {}): ToolDescriptor[]
       auditClass: 'mutate',
       activity: (input: z.infer<typeof updateItemInput>, output?: RoadmapItem) => {
         const title = output?.title ?? input.title
-        return title === undefined ? 'Updated a roadmap item' : `Updated the roadmap item “${title}”`
+        return title === undefined
+          ? 'Updated a roadmap item'
+          : `Updated the roadmap item “${title}”`
       },
       inputSchema: updateItemInput,
       permission: { roles: ['admin', 'agent'] },

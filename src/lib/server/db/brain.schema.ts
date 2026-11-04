@@ -188,6 +188,14 @@ export type MemoryAuthor = (typeof memoryAuthorEnum)[number]
 export const lifecycleStatusEnum = ['open', 'completed', 'archived'] as const
 export type LifecycleStatus = (typeof lifecycleStatusEnum)[number]
 
+/** Work kind of a task (thought.task_kind) — the roadmap's vocabulary. */
+export const taskKindValues = ['feature', 'fix', 'chore'] as const
+export type TaskKind = (typeof taskKindValues)[number]
+
+/** System project keys (canonical_entity.system_key). */
+export const systemProjectKeyValues = ['roadmap'] as const
+export type SystemProjectKey = (typeof systemProjectKeyValues)[number]
+
 export const thought = pgTable(
   'thought',
   {
@@ -254,6 +262,15 @@ export const thought = pgTable(
     lifecycleUpdatedAt: timestamp('lifecycle_updated_at').defaultNow().notNull(),
     /** Set when lifecycle_status becomes completed. */
     lifecycleCompletedAt: timestamp('lifecycle_completed_at'),
+    /**
+     * Task workflow fields (P-4, drizzle/0120): a task that is open and has
+     * task_started_at is in progress; task_kind (feature | fix | chore, DB
+     * check) and task_position (order within its stage) carry the roadmap's
+     * vocabulary. NULL for every other thought.
+     */
+    taskKind: text('task_kind').$type<TaskKind>(),
+    taskStartedAt: timestamp('task_started_at'),
+    taskPosition: integer('task_position'),
     /** Pre-truncated excerpt for listwise rerank (set at enrich). */
     rerankSnippet: text('rerank_snippet'),
     /** Communities this thought is most associated with (L1–L2), set at consolidation. */
@@ -671,6 +688,12 @@ export const canonicalEntity = pgTable(
     projectDesignatedAt: timestamp('project_designated_at'),
     /** Overall project deadline (distinct from thought-scoped temporal_event deadlines). */
     targetDate: timestamp('target_date', { withTimezone: true }),
+    /**
+     * System project marker (P-4, drizzle/0120): 'roadmap' is the company
+     * roadmap in the owner's Memory. System projects are created by
+     * roadmap_ensure_project() and can't be dismissed. NULL for everything else.
+     */
+    systemKey: text('system_key').$type<SystemProjectKey>(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -679,6 +702,9 @@ export const canonicalEntity = pgTable(
   },
   (t) => [
     index('canonical_entity_user_idx').on(t.userId),
+    uniqueIndex('canonical_entity_user_system_key_uidx')
+      .on(t.userId, t.systemKey)
+      .where(sql`${t.systemKey} IS NOT NULL`),
     index('canonical_entity_author_idx').on(t.userId, t.author),
     uniqueIndex('canonical_entity_user_canonical_uidx').on(t.userId, t.canonicalKey),
     index('canonical_entity_embedding_hnsw_idx').using('hnsw', t.embedding.op('vector_cosine_ops')),

@@ -31,6 +31,8 @@ const {
 }))
 
 vi.mock('$lib/server/db', () => ({ getDb: getDbMock }))
+// Ordinary entities (the system-project guard has its own integration spec).
+vi.mock('$lib/server/memory/system-projects', () => ({ systemProjectOf: vi.fn(async () => null) }))
 vi.mock('$lib/server/graph/age', () => ({
   upsertEntityNode: upsertEntityNodeMock,
   upsertMentionEdge: upsertMentionEdgeMock,

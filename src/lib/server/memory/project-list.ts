@@ -1,5 +1,5 @@
 import type { SQL } from 'drizzle-orm'
-import { and, asc, eq, inArray, isNotNull, or } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm'
 import { decryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import { getDb } from '$lib/server/db'
 import {
@@ -25,6 +25,7 @@ import {
 } from '$lib/server/memory/project-eligibility'
 import { upsertGraphHubEntity } from '$lib/server/memory/project-entity'
 import type { ProjectMilestoneListItem } from '$lib/server/memory/project-timeline'
+import { assertNotSystemProject } from '$lib/server/memory/system-projects'
 import { taskItemId } from '$lib/server/memory/temporal-event-list'
 
 export type ProjectNextAction = {
@@ -223,7 +224,11 @@ async function loadProjectRows(
     .where(
       and(
         ...baseProjectConditions(userId),
-        ...(entityIds ? [inArray(canonicalEntity.id, entityIds)] : []),
+        // The catalog leaves system projects (the Roadmap) out: Memory pins
+        // them on their own; a lookup by id still finds them.
+        ...(entityIds
+          ? [inArray(canonicalEntity.id, entityIds)]
+          : [isNull(canonicalEntity.systemKey)]),
         ...(extraCondition ? [extraCondition] : []),
       ),
     )
@@ -407,8 +412,9 @@ export type ListProjectsOptions = {
 
 /** Dismiss a project so it no longer appears in the active projects list.
  * Also removes the thought→entity links so thoughts are no longer tagged to the project.
- * The thoughts themselves are preserved. */
+ * The thoughts themselves are preserved. System projects (the Roadmap) refuse. */
 export async function dismissProject(userId: string, entityId: string): Promise<void> {
+  await assertNotSystemProject(userId, entityId)
   // Remove all thought-entity links for this project so thoughts are untagged.
   await getDb()
     .delete(thoughtEntity)
