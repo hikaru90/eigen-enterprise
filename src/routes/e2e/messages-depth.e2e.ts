@@ -1,7 +1,7 @@
 import { deflateSync } from 'node:zlib'
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import postgres from 'postgres'
-import { registerUser } from './test-helpers'
+import { completeProfileViaApi, profileNames, registerUser } from './test-helpers'
 
 /**
  * Phase-workspace C2 proof, two members in two browsers: a thread reply
@@ -31,6 +31,8 @@ async function newMember(context: BrowserContext, page: Page, role: 'admin' | 'm
     update "user" set role = ${role}, name = ${name}, account_kind = 'production', onboarding_completed = true
     where email = ${email} returning id`
   if (rows.length !== 1) throw new Error(`could not set up ${email}`)
+  // P-5: a production member has a complete profile (names + picture) before any shell page.
+  await completeProfileViaApi(page, profileNames(name))
   const saved = await page.request.post('/api/onboarding/provider', {
     data: {
       provider: 'openrouter',

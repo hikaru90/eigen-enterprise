@@ -108,13 +108,11 @@ async function saveApiKeyViaApi(page: Page): Promise<void> {
   expect(saved.status()).toBe(200)
 }
 
+/** The founder gave their name in the profile step (P-5): the boot greets them by it and never asks. */
 async function walkBootToMindGate(page: Page, name: string): Promise<void> {
   await expectWizard(page)
-  await expect(page.getByText(/^Hello/)).toBeVisible()
-  const nameAsk = page.getByRole('textbox', { name: 'Your name' })
-  await expect(nameAsk).toBeVisible({ timeout: 15_000 })
-  await nameAsk.fill(name)
-  await nameAsk.press('Enter')
+  await expect(page.getByText(`Hello, ${name}.`)).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Your name' })).toHaveCount(0)
   const identityLine = page.getByText('This is the operating system for your company.')
   await expect(identityLine).toBeVisible({ timeout: 15_000 })
   await identityLine.click()
@@ -218,7 +216,7 @@ test.describe('website-founding journey (live)', () => {
     context,
   }) => {
     await resetJourneyState()
-    await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
+    await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev', profile: { firstName: 'Ada', lastName: 'Founder' } })
     await finishBootWithProvider(page, 'Ada')
 
     // The hand-off opens no journey by itself (the agent opens it on the

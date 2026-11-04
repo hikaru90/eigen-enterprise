@@ -1,13 +1,15 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import postgres from 'postgres'
-import { registerUser } from './test-helpers'
+import { completeProfileStepInUi, completeProfileViaApi, profileNames, registerUser } from './test-helpers'
 
 /**
  * The workspace fixes from the multi-member proof run (plan/phase-workspace.md),
  * driven with real members in separate browsers:
- *  1. the name typed in the onboarding ("What should I call you?") is the
- *     account name even after "Skip for now" — the shell shows it, not the email;
- *  2. a member who joins by invite lands in Messages, never the company onboarding;
+ *  1. the name given in the profile step (P-5 — it replaced the boot's "What
+ *     should I call you?") is the account name; the boot greets with it and
+ *     "Skip for now" keeps it — the shell shows it, not the email;
+ *  2. a member who joins by invite goes through the profile step, then lands in
+ *     Messages, never the company onboarding;
  *  3. a Drive file opened from a message attachment: exactly one sidebar item current;
  *  4. opening a file is reading it — no lock, nobody sees "is editing" — until typing;
  *  5. the path names whose tree it is ("Messages / #…", "Shared with me");
@@ -41,6 +43,8 @@ async function newMember(context: BrowserContext, page: Page, role: 'admin' | 'm
   const { email } = await registerUser(context, page, { emailDomain: 'test.eigen' })
   const rows = await sql()`update "user" set role = ${role}, name = ${name}, account_kind = 'production', onboarding_completed = true where email = ${email} returning id`
   if (rows.length !== 1) throw new Error(`could not prepare ${email}`)
+  // P-5: a production member has a complete profile (names + picture) before any shell page.
+  await completeProfileViaApi(page, profileNames(name))
   await saveProvider(page)
   return { id: String(rows[0]!.id), email }
 }
@@ -79,17 +83,20 @@ test('workspace fixes: name, invite landing, sidebar, read-first editing, paths,
   const suffix = Date.now().toString(36)
   const vp = { viewport: { width: 1440, height: 900 } }
 
-  // ── 1. The founder names themselves in the onboarding, then skips ──────────
+  // ── 1. The founder names themselves in the profile step, then skips the boot ──
   const ctxO = await browser.newContext(vp)
   const o = await ctxO.newPage()
   const { email: oEmail } = await registerUser(ctxO, o, { emailDomain: 'test.eigen' })
   await sql()`update "user" set role = 'admin', account_kind = 'production' where email = ${oEmail}`
   await o.goto('/')
-  const nameAsk = o.getByRole('textbox', { name: 'Your name' })
-  await expect(nameAsk).toBeVisible({ timeout: 20_000 })
-  await nameAsk.fill(`Olivia Owner`)
+  await expect(o).toHaveURL(/\/welcome\/profile\?next=%2F$/)
+  await o.getByTestId('profile-first-name').fill('Olivia')
+  await o.getByTestId('profile-last-name').fill('Owner')
   await o.screenshot({ path: `${SHOTS}/01-owner-names-herself.png` })
-  await nameAsk.press('Enter')
+  await completeProfileStepInUi(o, { firstName: 'Olivia', lastName: 'Owner' })
+  await expect(o.getByTestId('welcome-wizard')).toBeVisible({ timeout: 20_000 })
+  await expect(o.getByText('Hello, Olivia.')).toBeVisible()
+  await expect(o.getByRole('textbox', { name: 'Your name' })).toHaveCount(0)
   await o.getByTestId('skip-onboarding').click()
   await expect.poll(async () => (await sql()`select name from "user" where email = ${oEmail}`)[0]?.name).toBe('Olivia Owner')
   await saveProvider(o)
@@ -97,8 +104,9 @@ test('workspace fixes: name, invite landing, sidebar, read-first editing, paths,
   await expect(o.getByTestId('shell-user')).toHaveText('Olivia Owner')
   await o.screenshot({ path: `${SHOTS}/02-owner-name-in-shell.png` })
 
-  // ── 2. Ben joins by invite → Messages, no company onboarding ───────────────
-  const benEmail = `ben-${suffix}@test.eigen`
+  // ── 2. Ben joins by invite → profile step → Messages, no company onboarding ─
+  // A real (production) address: a member who joins by invite is a production account, so the profile gate applies.
+  const benEmail = `ben-${suffix}@kindred-e2e.example`
   await o.goto('/settings/members')
   await o.locator('#invite-email').fill(benEmail)
   await o.locator('#invite-role').selectOption('member')
@@ -107,7 +115,7 @@ test('workspace fixes: name, invite landing, sidebar, read-first editing, paths,
   const ctxB = await browser.newContext(vp)
   const b = await ctxB.newPage()
   await b.goto(inviteUrl)
-  await b.locator('#invite-name').fill('Ben')
+  await b.locator('#invite-name').fill('Ben Baker')
   await b.getByTestId('invite-join').click()
   await expect(b.getByTestId('invite-passkey-step')).toBeVisible()
   await expect(async () => {
@@ -115,12 +123,16 @@ test('workspace fixes: name, invite landing, sidebar, read-first editing, paths,
     await expect(b.getByTestId('invite-skip-warning')).toBeVisible({ timeout: 2000 })
   }).toPass()
   await b.getByTestId('invite-skip-confirm').click()
+  // The profile step first (names pre-filled from the invite), then Messages.
+  await expect(b).toHaveURL(/\/welcome\/profile\?next=%2Fmessages$/)
+  await expect(b.getByTestId('profile-first-name')).toHaveValue('Ben')
+  await expect(b.getByTestId('profile-last-name')).toHaveValue('Baker')
+  await completeProfileStepInUi(b, { firstName: 'Ben', lastName: 'Baker' })
   await expect(b).toHaveURL(/\/messages/)
   await expect(b.getByTestId('skip-onboarding')).toHaveCount(0)
   await expect(b.getByText('Connect your AI provider.')).toHaveCount(0)
   await b.screenshot({ path: `${SHOTS}/03-ben-lands-in-messages.png` })
-  // The dev harness classifies @test.eigen sign-ups as test accounts; a real invite makes a production member.
-  await sql()`update "user" set account_kind = 'production' where email = ${benEmail}`
+  expect((await sql()`select account_kind from "user" where email = ${benEmail}`)[0]?.account_kind).toBe('production')
   // Coming back to / later: the chat, never the setup wizard.
   await b.goto('/')
   await expect(b.getByTestId('shell-sidebar')).toBeVisible()
@@ -130,7 +142,7 @@ test('workspace fixes: name, invite landing, sidebar, read-first editing, paths,
 
   const ctxA = await browser.newContext(vp)
   const a = await ctxA.newPage()
-  const { id: annaId } = await newMember(ctxA, a, 'member', 'Anna')
+  const { id: annaId } = await newMember(ctxA, a, 'member', 'Anna Lee')
 
   // ── 3–5. An attachment in #general, opened from the message ────────────────
   const general = `general-${suffix}`
@@ -173,7 +185,7 @@ test('workspace fixes: name, invite landing, sidebar, read-first editing, paths,
   await b.keyboard.type(' with Anna')
   await expect(mode(b)).toHaveAttribute('data-mode', 'editing')
   await expectSaved(b)
-  await expect(o.getByTestId('drive-lock-holder')).toHaveText('Ben', { timeout: 30_000 })
+  await expect(o.getByTestId('drive-lock-holder')).toHaveText('Ben Baker', { timeout: 30_000 })
   await o.screenshot({ path: `${SHOTS}/06-owner-sees-ben-editing.png` })
   // 6. Ben's header shows the saved size.
   const agendaBytes = new TextEncoder().encode(await rawText(b, agendaId)).byteLength
@@ -226,7 +238,7 @@ test('workspace fixes: name, invite landing, sidebar, read-first editing, paths,
 
   // Ben takes over (a new revision), Anna keeps her draft view.
   await b.goto(`/drive/file/${planId}`)
-  await expect(b.getByTestId('drive-lock-holder')).toHaveText('Anna')
+  await expect(b.getByTestId('drive-lock-holder')).toHaveText('Anna Lee')
   await b.getByTestId('drive-takeover').click()
   await expect(mode(b)).toHaveAttribute('data-mode', 'editing')
   await b.getByTestId('drive-md-editable').locator('p').first().click()
@@ -240,7 +252,7 @@ test('workspace fixes: name, invite landing, sidebar, read-first editing, paths,
   // ── 7. Ben restores Anna's version: "Restored from Anna, <time>" ───────────
   await b.getByTestId('drive-revision').nth(1).getByTestId('drive-revision-restore').click()
   await expect(b.getByTestId('drive-revision')).toHaveCount(3)
-  await expect(b.getByTestId('drive-revision').first().getByTestId('drive-revision-restored-from')).toHaveText(/^Restored from Anna, /)
+  await expect(b.getByTestId('drive-revision').first().getByTestId('drive-revision-restored-from')).toHaveText(/^Restored from Anna Lee, /)
   expect((await revisionsOf(b, planId))[0]!.restoredFrom?.authorId).toBe(annaId)
   await expect(b.getByTestId('drive-md-editable')).not.toContainText('(draft)')
   await b.screenshot({ path: `${SHOTS}/09-ben-restored-from-anna.png`, fullPage: true })
