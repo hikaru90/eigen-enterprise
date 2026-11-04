@@ -10,8 +10,10 @@
   const tabs = MEMORY_TABS.map((t) => ({ id: t.id, label: t.label, href: t.href }))
 </script>
 
-<!-- The Memory module page: the one page header with status, tabs below. -->
-<div class="flex min-h-0 w-full flex-1 flex-col" data-testid="memory-page">
+<!-- The Memory module page: the one page header with status, tabs below.
+     Full-height app layout (Capture/Notes fill the pane), so it is its own
+     frame rather than PageFrame's padded column — still full width (P-3). -->
+<div class="flex min-h-0 w-full flex-1 flex-col" data-page-frame data-testid="memory-page">
   <div class="w-full px-4 pt-6 sm:px-8 sm:pt-10">
     <PageHeader
       title={data.memory.name}

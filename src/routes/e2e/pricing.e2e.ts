@@ -4,7 +4,7 @@ import { registerUser } from './test-helpers'
 /**
  * Pricing transparency (AC-014, AC-015) on today's product: an AI call made
  * through the company's provider (the mock gateway in this harness) shows up
- * under Agent → Activity › AI usage with its duration and credits — never raw
+ * under Assistant → Activity › AI usage with its duration and credits — never raw
  * dollars or the markup. The AI call is one chat turn (the capture page's
  * interpret protocol is not something the mock gateway speaks).
  */
@@ -46,7 +46,7 @@ test.describe('Pricing transparency (AC-014, AC-015)', () => {
     await connectProvider(page)
     await oneChatTurn(page)
 
-    await page.goto('/agent/activity')
+    await page.goto('/assistant/activity')
     const table = usageTable(page)
     await expect(table).toBeVisible({ timeout: 10_000 })
     const headerText = (await table.locator('thead th').allTextContents()).join(' ')
@@ -65,7 +65,7 @@ test.describe('Pricing transparency (AC-014, AC-015)', () => {
     await connectProvider(page)
     await oneChatTurn(page)
 
-    await page.goto('/agent/activity')
+    await page.goto('/assistant/activity')
     const table = usageTable(page)
     await expect(table.getByText('No activity logged yet.')).toHaveCount(0, { timeout: 10_000 })
     await expect(table.locator('tfoot')).toBeVisible()
@@ -76,7 +76,7 @@ test.describe('Pricing transparency (AC-014, AC-015)', () => {
 
   test('empty activity state shows placeholder message', async ({ page, context }) => {
     await registerUser(context, page)
-    await page.goto('/agent/activity')
+    await page.goto('/assistant/activity')
 
     await expect(page.locator('text=No activity logged yet')).toBeVisible()
   })

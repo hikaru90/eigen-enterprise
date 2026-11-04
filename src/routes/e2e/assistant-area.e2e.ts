@@ -3,12 +3,13 @@ import postgres from 'postgres'
 import { registerUser } from './test-helpers'
 
 /**
- * The Agent area (plan/phase-cohesion.md §3, C3): one nav entry, three tabs —
- * Runs · Activity · Roadmap — each its own URL. Driven end to end: a chat
+ * The Assistant's linkable pages (plan/phase-polish-1.md P-1): the Agent area
+ * is gone; Conversations (/assistant) · Activity (/assistant/activity) are
+ * the panel's History and Activity, each its own URL. Driven end to end: a chat
  * turn on the durable engine creates a run (mock gateway: one native tool
  * call website.list_pages, then a plain answer); the run is listed under
- * Runs and the same turn reads as plain words under Activity. The old URLs
- * 404. The Roadmap moved into Memory (P-4): memory-roadmap.e2e.ts drives it.
+ * Conversations and the same turn reads as plain words under Activity. The
+ * old URLs 404. The Roadmap moved into Memory (P-4): memory-roadmap.e2e.ts drives it.
  *
  * The user is promoted to admin for the run and demoted after.
  */
@@ -19,7 +20,7 @@ test.skip(!DATABASE_URL, 'DATABASE_URL not set — the journey promotes its user
 let _sql: postgres.Sql | null = null
 const sql = (): postgres.Sql => (_sql ??= postgres(DATABASE_URL!, { prepare: false }))
 
-const SHOTS = 'test-results/agent-area'
+const SHOTS = 'test-results/assistant-area'
 const GATEWAY_BASE_URL = `http://127.0.0.1:${process.env.MOCK_GATEWAY_PORT ?? 5199}/v1`
 let email = ''
 
@@ -42,7 +43,7 @@ async function connectProvider(page: Page): Promise<void> {
   expect(saved.status()).toBe(200)
 }
 
-test('nav → Agent → Runs → Activity', async ({ page, context }) => {
+test('Assistant → Conversations → run → Activity', async ({ page, context }) => {
   test.setTimeout(180_000)
   ;({ email } = await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' }))
   await sql()`update "user" set role = 'admin' where email = ${email} and role = 'member'`
@@ -58,28 +59,25 @@ test('nav → Agent → Runs → Activity', async ({ page, context }) => {
   const run = runs.runs.find((r) => r.conversationKey.endsWith(`:${body.sessionId}`))
   expect(run, JSON.stringify(runs)).toBeTruthy()
 
-  // The shell's Agent entry lands on Runs; the run is listed and opens.
+  // No Agent nav entry any more; /assistant lists the conversation and opens it.
   await page.setViewportSize({ width: 1280, height: 800 })
-  await page.goto('/overview')
-  const agentNav = page.getByTestId('shell-sidebar').getByTestId('shell-nav-agent')
-  await expect(agentNav).toHaveAttribute('href', '/agent')
-  await agentNav.click()
-  await expect(page).toHaveURL(/\/agent\/runs$/)
-  await expect(page).toHaveTitle(/^Runs · Agent · /)
-  await expect(page.getByRole('heading', { level: 1, name: 'Agent' })).toBeVisible()
-  await expect(page.getByRole('heading', { level: 2, name: 'Runs' })).toBeVisible()
-  await expect(page.getByTestId('agent-nav-runs')).toHaveAttribute('aria-current', 'page')
-  const runLink = page.locator(`a[href="/agent/runs/${run!.id}"]`)
+  await page.goto('/')
+  await expect(page.getByTestId('shell-sidebar').getByTestId('shell-nav-agent')).toHaveCount(0)
+  await page.goto('/assistant')
+  await expect(page).toHaveTitle(/^Conversations · Assistant · /)
+  await expect(page.getByRole('heading', { level: 1, name: 'Assistant' })).toBeVisible()
+  await expect(page.getByTestId('assistant-nav-conversations')).toHaveAttribute('aria-current', 'page')
+  const runLink = page.locator(`a[href="/assistant/${run!.id}"]`)
   await expect(runLink).toBeVisible()
-  await page.screenshot({ path: `${SHOTS}/1-runs.png`, fullPage: true })
+  await page.screenshot({ path: `${SHOTS}/1-conversations.png`, fullPage: true })
   await runLink.click()
-  await expect(page.getByRole('heading', { name: `Run ${run!.id}` })).toBeVisible()
+  await expect(page.getByTestId('run-title')).toBeVisible()
   await expect(page.getByRole('log', { name: 'Run events' }).getByText(marker)).toBeVisible()
 
   // Activity: the same turn, in plain words — no event types, no ids up front.
-  await page.getByTestId('agent-nav-activity').click()
-  await expect(page).toHaveURL(/\/agent\/activity$/)
-  await expect(page).toHaveTitle(/^Activity · Agent · /)
+  await page.getByTestId('assistant-nav-activity').click()
+  await expect(page).toHaveURL(/\/assistant\/activity$/)
+  await expect(page).toHaveTitle(/^Activity · Assistant · /)
   const log = page.getByTestId('activity-log')
   const toolLine = log
     .getByTestId('activity-entry')
@@ -103,7 +101,15 @@ test('nav → Agent → Runs → Activity', async ({ page, context }) => {
   await page.screenshot({ path: `${SHOTS}/3-activity-filtered.png`, fullPage: true })
 
   // The old URLs are gone (no redirects).
-  for (const path of ['/runs', `/runs/${run!.id}`, '/activity', '/settings/extensions']) {
+  for (const path of [
+    '/runs',
+    `/runs/${run!.id}`,
+    '/activity',
+    '/settings/extensions',
+    '/agent',
+    `/agent/runs/${run!.id}`,
+    '/agent/activity',
+  ]) {
     const res = await page.goto(path)
     expect(res?.status(), path).toBe(404)
   }
