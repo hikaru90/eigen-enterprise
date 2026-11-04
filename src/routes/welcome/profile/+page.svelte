@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { PageData } from './$types'
-  import * as Card from '$lib/components/ui/card'
   import PublicFrame from '$lib/components/page/public-frame.svelte'
   import ProfileEditor from '$lib/components/profile-editor.svelte'
+  import * as Card from '$lib/components/ui/card'
   import { docTitle } from '$lib/shell/title'
 
   /**

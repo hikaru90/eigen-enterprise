@@ -1,9 +1,9 @@
 import { and, eq, isNotNull } from 'drizzle-orm'
+import { avatarUrl, isAvatarSha, isProfileComplete } from '$lib/profile/profile'
 import { getDb } from '$lib/server/db'
 import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
 import { userPreference } from '$lib/server/db/schema'
-import { avatarUrl, isAvatarSha, isProfileComplete } from '$lib/profile/profile'
 import { avatarBlobs } from './avatar'
 
 /**

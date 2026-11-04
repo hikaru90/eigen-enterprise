@@ -1,6 +1,6 @@
 import type { LayoutServerLoad } from './$types'
-import { eq } from 'drizzle-orm'
 import { redirect } from '@sveltejs/kit'
+import { eq } from 'drizzle-orm'
 import { normalizeUiLocale } from '$lib/i18n/ui-locale'
 import { cookieMaxAge, cookieName } from '$lib/paraglide/runtime'
 import { getUserRole, isAdminRole } from '$lib/server/auth/user-role'

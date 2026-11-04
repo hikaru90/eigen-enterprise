@@ -6,9 +6,9 @@
   import { goto, invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
   import { resetPostHog } from '$lib/analytics/posthog-client'
+  import ProfileEditor from '$lib/components/profile-editor.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
-  import ProfileEditor from '$lib/components/profile-editor.svelte'
   import { docTitle } from '$lib/shell/title'
 
   /**
