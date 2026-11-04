@@ -17,6 +17,9 @@ const OUTSIDE_SHELL_ALLOWLIST = new Set([
   'welcome/profile', // signed in, full screen before the shell: the required profile step (P-5 profile gate)
   's', // public company website index (while /s exists)
   's/[slug]', // public company website page
+  'mail/subscribe/[listId]', // public: sign up to a company mailing list (P-6)
+  'mail/confirm/[token]', // public: double opt-in confirmation link from an email
+  'mail/unsubscribe/[token]', // public: unsubscribe link from an email
 ])
 
 const routesDir = path.dirname(fileURLToPath(import.meta.url))

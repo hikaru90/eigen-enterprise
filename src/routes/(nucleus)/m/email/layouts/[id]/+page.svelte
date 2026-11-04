@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { docTitle } from '$lib/shell/title'
   import type { PageProps } from './$types'
   import { onMount, untrack } from 'svelte'
   import { enhance } from '$app/forms'
@@ -13,7 +14,9 @@
   let name = $state(initial.name)
   let format = $state<string>(initial.format)
   let body = $state(initial.body)
-  let preview = $state<{ html?: string; problems?: string[]; missing?: string[]; error?: string }>({})
+  let preview = $state<{ html?: string; problems?: string[]; missing?: string[]; error?: string }>(
+    {},
+  )
   let busy = $state(false)
   let timer: ReturnType<typeof setTimeout> | null = null
 
@@ -26,7 +29,9 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ layout: { format, body } }),
     })
-    const next = (await res.json().catch(() => ({ error: `Preview failed (HTTP ${res.status}).` }))) as typeof preview
+    const next = (await res
+      .json()
+      .catch(() => ({ error: `Preview failed (HTTP ${res.status}).` }))) as typeof preview
     if (mine === seq) preview = next
   }
   function edited() {
@@ -36,11 +41,17 @@
   onMount(() => {
     void refreshPreview()
   })
-  const feedback = (action: string) => (form && form.action === action ? (form as { ok?: boolean; error?: string }) : null)
+  const feedback = (action: string) =>
+    form && form.action === action ? (form as { ok?: boolean; error?: string }) : null
 </script>
 
+<svelte:head><title>{docTitle('Layouts', 'Email')}</title></svelte:head>
+
 <div class="mt-8">
-  <a class="text-[13px] text-muted-foreground hover:text-foreground" href={resolve('/m/email/layouts')}>← Back to layouts</a>
+  <a
+    class="text-[13px] text-muted-foreground hover:text-foreground"
+    href={resolve('/m/email/layouts')}>← Back to layouts</a
+  >
 </div>
 
 <form
@@ -89,13 +100,17 @@
         class="rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
         bind:value={body}
         oninput={edited}
-        data-testid="layout-body"
-      ></textarea>
-      <p class="text-xs text-muted-foreground">Put <code class="font-mono">{'{{ content }}'}</code> exactly once: each template goes there.</p>
+        data-testid="layout-body"></textarea>
+      <p class="text-xs text-muted-foreground">
+        Put <code class="font-mono">{'{{ content }}'}</code> exactly once: each template goes there.
+      </p>
     </div>
     {#if data.usedBy.length > 0}
       <p class="text-xs text-muted-foreground">
-        Used by {#each data.usedBy as t, i (t.id)}{i > 0 ? ', ' : ''}<a class="underline underline-offset-4" href={resolve(`/m/email/templates/${t.id}`)}>{t.name}</a>{/each}.
+        Used by {#each data.usedBy as t, i (t.id)}{i > 0 ? ', ' : ''}<a
+            class="underline underline-offset-4"
+            href={resolve(`/m/email/templates/${t.id}`)}>{t.name}</a
+          >{/each}.
       </p>
     {/if}
     {#if data.email.isAdmin}
@@ -111,9 +126,13 @@
           }}>Delete</Button
         >
       </div>
-      {#if feedback('save')?.ok}<p class="text-sm" role="status" data-testid="layout-saved">Saved.</p>{/if}
+      {#if feedback('save')?.ok}<p class="text-sm" role="status" data-testid="layout-saved">
+          Saved.
+        </p>{/if}
       {#if feedback('save')?.error || feedback('delete')?.error}
-        <p class="text-sm text-destructive" role="alert">{feedback('save')?.error ?? feedback('delete')?.error}</p>
+        <p class="text-sm text-destructive" role="alert">
+          {feedback('save')?.error ?? feedback('delete')?.error}
+        </p>
       {/if}
     {/if}
   </div>
@@ -121,9 +140,19 @@
   <div class="flex min-w-0 flex-col gap-4">
     <h3 class="text-sm font-medium">Preview</h3>
     {#if preview.error}<p class="text-sm text-destructive" role="alert">{preview.error}</p>{/if}
-    {#each preview.problems ?? [] as p (p)}<p class="font-mono text-xs text-destructive">{p}</p>{/each}
-    {#if preview.missing && preview.missing.length > 0}<p class="text-xs text-muted-foreground">Needs a value: {preview.missing.join(', ')}</p>{/if}
-    <iframe title="Layout preview" class="h-[32rem] w-full rounded-lg border border-border bg-white" sandbox="" srcdoc={preview.html ?? ''} data-testid="layout-preview"></iframe>
+    {#each preview.problems ?? [] as p (p)}<p class="font-mono text-xs text-destructive">
+        {p}
+      </p>{/each}
+    {#if preview.missing && preview.missing.length > 0}<p class="text-xs text-muted-foreground">
+        Needs a value: {preview.missing.join(', ')}
+      </p>{/if}
+    <iframe
+      title="Layout preview"
+      class="h-[32rem] w-full rounded-lg border border-border bg-white"
+      sandbox=""
+      srcdoc={preview.html ?? ''}
+      data-testid="layout-preview"
+    ></iframe>
     <BrandTokens brand={data.brand} />
   </div>
 </form>

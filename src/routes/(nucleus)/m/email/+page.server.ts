@@ -5,7 +5,16 @@ import { emailPlatform } from '../../../../../modules/email/platform/service'
 import { act, field, requireAdmin, requireMember } from './access.server'
 
 /** Statuses that prove a mail actually left (the "send a test email" step is done). */
-const LEFT = ['sent', 'delivered', 'opened', 'clicked', 'delivery_delayed', 'bounced', 'complained', 'rejected']
+const LEFT = [
+  'sent',
+  'delivered',
+  'opened',
+  'clicked',
+  'delivery_delayed',
+  'bounced',
+  'complained',
+  'rejected',
+]
 
 /**
  * Email › Overview: where things stand and the next step, always actionable —
@@ -52,11 +61,26 @@ export const load: PageServerLoad = async ({ locals }) => {
         callbackUrl: settings.eventsCallbackUrl,
       },
     },
-    domains: domains.map((d) => ({ id: d.id, name: d.name, status: d.status, sendable: d.sendable })),
-    senders: senders.map((s) => ({ address: s.address, displayName: s.displayName, isDefault: s.isDefault })),
+    domains: domains.map((d) => ({
+      id: d.id,
+      name: d.name,
+      status: d.status,
+      sendable: d.sendable,
+    })),
+    senders: senders.map((s) => ({
+      address: s.address,
+      displayName: s.displayName,
+      isDefault: s.isDefault,
+    })),
     counts,
     sentAny: LEFT.some((s) => (counts.byStatus[s] ?? 0) > 0),
-    recent: recent.map((m) => ({ id: m.id, to: m.toAddress, subject: m.subject, status: m.status, createdAt: m.createdAt.toISOString() })),
+    recent: recent.map((m) => ({
+      id: m.id,
+      to: m.toAddress,
+      subject: m.subject,
+      status: m.status,
+      createdAt: m.createdAt.toISOString(),
+    })),
   }
 }
 
@@ -75,7 +99,9 @@ export const actions: Actions = {
         html: '<p>This is a test email from the Email page of eigenEnterprise.</p><p>If you can read it, sending works.</p>',
       })
       if (out.status === 'suppressed') {
-        throw new MailSetupError(`${me.email} is on the suppression list, so nothing was sent. Remove it under Suppression first.`)
+        throw new MailSetupError(
+          `${me.email} is on the suppression list, so nothing was sent. Remove it under Suppression first.`,
+        )
       }
       return { sentTo: me.email, id: out.id }
     })
@@ -83,6 +109,8 @@ export const actions: Actions = {
   /** Re-runs the delivery-event wiring (SNS topic, configuration sets, subscription). */
   events: async ({ locals, url }) => {
     await requireAdmin(locals)
-    return act('events', async () => ({ events: (await emailPlatform().owlery.setupEvents(url.origin)).eventsStatus }))
+    return act('events', async () => ({
+      events: (await emailPlatform().owlery.setupEvents(url.origin)).eventsStatus,
+    }))
   },
 }

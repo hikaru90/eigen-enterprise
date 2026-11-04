@@ -21,7 +21,13 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   ])
   const emailOf = new Map(enrollments.map((e) => [e.id, e.email]))
   return {
-    flow: { id: flow.id, name: flow.name, status: flow.status, triggerListId: flow.triggerListId, steps: flow.parsedSteps },
+    flow: {
+      id: flow.id,
+      name: flow.name,
+      status: flow.status,
+      triggerListId: flow.triggerListId,
+      steps: flow.parsedSteps,
+    },
     lists: lists.map((l) => ({ id: l.id, name: l.name })),
     templates: templates.map((t) => ({ id: t.id, name: t.name })),
     senders: senders.map((s) => s.address),
@@ -54,7 +60,11 @@ export const actions: Actions = {
       } catch {
         throw new AudienceError('The steps could not be read; reload the page.')
       }
-      await emailPlatform().audience.updateFlow(params.id, { name: field(form, 'name'), triggerListId: field(form, 'listId') || null, steps })
+      await emailPlatform().audience.updateFlow(params.id, {
+        name: field(form, 'name'),
+        triggerListId: field(form, 'listId') || null,
+        steps,
+      })
       return {}
     })
   },

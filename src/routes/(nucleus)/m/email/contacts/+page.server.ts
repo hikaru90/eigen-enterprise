@@ -24,10 +24,14 @@ export const actions: Actions = {
     const me = await requireAdmin(locals)
     const form = await request.formData()
     const out = await act('create', async () => {
-      const l = await emailPlatform().audience.createList({ name: field(form, 'name'), doubleOptIn: field(form, 'doubleOptIn') === 'on' }, me.userId)
+      const l = await emailPlatform().audience.createList(
+        { name: field(form, 'name'), doubleOptIn: field(form, 'doubleOptIn') === 'on' },
+        me.userId,
+      )
       return { id: l.id }
     })
-    if ('id' in out && typeof out.id === 'string') throw redirect(303, `/m/email/contacts/${out.id}`)
+    if ('id' in out && typeof out.id === 'string')
+      throw redirect(303, `/m/email/contacts/${out.id}`)
     return out
   },
 }

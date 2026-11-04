@@ -33,7 +33,8 @@ export const actions: Actions = {
       )
       return { id: t.id }
     })
-    if ('id' in out && typeof out.id === 'string') throw redirect(303, `/m/email/templates/${out.id}`)
+    if ('id' in out && typeof out.id === 'string')
+      throw redirect(303, `/m/email/templates/${out.id}`)
     return out
   },
 }

@@ -49,8 +49,12 @@ test('every area page wears the one page header', async ({ page, context }) => {
   await newAdmin(context, page)
 
   // [path, h1, tabs testid or null]
+  // Messages is a full-bleed app layout (Slack-style, P-5 stream): its own h1, no page header.
+  await page.goto('/messages')
+  await expect(page.getByRole('heading', { level: 1, name: 'Messages' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
+
   const areas: Array<[string, string | RegExp, string | null]> = [
-    ['/messages', 'Messages', null],
     ['/', /^Welcome back/, null],
     ['/m/website', 'Website', 'website-nav'],
     ['/m/email', 'Email', null],
@@ -114,8 +118,9 @@ test('every area page wears the one page header', async ({ page, context }) => {
   await page.goto('/')
   await expect(page.locator('body')).not.toContainText(/kernel|GTD|hybrid retrieval/)
   await expect(page.getByTestId('overview-modules-hint')).not.toContainText('available')
+  // Email (P-6): the developer recipe is its own API tab, not on the Overview.
   await page.goto('/m/email')
-  await expect(page.getByTestId('for-developers')).toBeVisible()
+  await expect(page.getByTestId('email-tab-api')).toBeVisible()
   await expect(page.getByText('How to send mail')).not.toBeVisible()
   await page.screenshot({ path: `${SHOTS}/email.png`, fullPage: true })
   await page.goto('/settings/llm')

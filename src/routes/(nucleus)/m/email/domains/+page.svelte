@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { docTitle } from '$lib/shell/title'
   import type { PageProps } from './$types'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
@@ -12,6 +13,8 @@
   let busy = $state(false)
 </script>
 
+<svelte:head><title>{docTitle('Domains', 'Email')}</title></svelte:head>
+
 <SectionHeader
   title="Domains"
   description="Mail is sent from your own domain. Each domain gets its own DKIM key and four DNS records; once Amazon sees them, you can send from any address at it."
@@ -19,7 +22,9 @@
 
 {#if !data.email.configured}
   <p class="mt-4 text-sm text-muted-foreground">
-    Connect Amazon SES first — <a class="underline underline-offset-4" href={resolve('/m/email')}>on the Overview</a>.
+    Connect Amazon SES first — <a class="underline underline-offset-4" href={resolve('/m/email')}
+      >on the Overview</a
+    >.
   </p>
 {:else}
   {#if data.email.isAdmin}
@@ -38,7 +43,14 @@
     >
       <div class="grid min-w-60 flex-1 gap-1.5">
         <Label for="domain-name">Add a domain</Label>
-        <Input id="domain-name" name="name" required placeholder="yourcompany.com" autocomplete="off" disabled={busy} />
+        <Input
+          id="domain-name"
+          name="name"
+          required
+          placeholder="yourcompany.com"
+          autocomplete="off"
+          disabled={busy}
+        />
       </div>
       <Button type="submit" disabled={busy}>{busy ? 'Adding…' : 'Add domain'}</Button>
       {#if form?.action === 'add' && 'error' in form}
@@ -50,7 +62,10 @@
   {#if data.domains.length === 0}
     <p class="mt-6 text-sm text-muted-foreground" data-testid="domains-empty">No domains yet.</p>
   {:else}
-    <ul class="mt-6 divide-y divide-border rounded-lg border border-border" data-testid="domains-list">
+    <ul
+      class="mt-6 divide-y divide-border rounded-lg border border-border"
+      data-testid="domains-list"
+    >
       {#each data.domains as d (d.id)}
         <li>
           <a
@@ -59,8 +74,11 @@
             data-testid={`domain-row-${d.name}`}
           >
             <span class="min-w-0 flex-1 truncate text-sm font-medium">{d.name}</span>
-            <span class="text-xs text-muted-foreground">{d.recordsDone} of {d.recordsRequired} required records found</span>
-            {#if d.tracking}<span class="text-xs text-muted-foreground">Open & click tracking</span>{/if}
+            <span class="text-xs text-muted-foreground"
+              >{d.recordsDone} of {d.recordsRequired} required records found</span
+            >
+            {#if d.tracking}<span class="text-xs text-muted-foreground">Open & click tracking</span
+              >{/if}
             <DnsStatus status={d.status} />
           </a>
         </li>

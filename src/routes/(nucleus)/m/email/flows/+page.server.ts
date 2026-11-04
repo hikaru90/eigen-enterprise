@@ -28,7 +28,10 @@ export const actions: Actions = {
     const me = await requireAdmin(locals)
     const form = await request.formData()
     const out = await act('create', async () => {
-      const f = await emailPlatform().audience.createFlow({ name: field(form, 'name'), triggerListId: field(form, 'listId') || null }, me.userId)
+      const f = await emailPlatform().audience.createFlow(
+        { name: field(form, 'name'), triggerListId: field(form, 'listId') || null },
+        me.userId,
+      )
       return { id: f.id }
     })
     if ('id' in out && typeof out.id === 'string') throw redirect(303, `/m/email/flows/${out.id}`)

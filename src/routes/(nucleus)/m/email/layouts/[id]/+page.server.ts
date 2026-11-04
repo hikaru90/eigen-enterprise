@@ -9,7 +9,10 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   const p = emailPlatform()
   const layout = await p.store.getLayout(params.id)
   if (!layout) error(404, 'No such layout')
-  const [templates, brand] = await Promise.all([p.store.templatesUsingLayout(layout.id), p.templates.brand()])
+  const [templates, brand] = await Promise.all([
+    p.store.templatesUsingLayout(layout.id),
+    p.templates.brand(),
+  ])
   return {
     layout: { id: layout.id, name: layout.name, format: layout.format, body: layout.body },
     usedBy: templates.map((t) => ({ id: t.id, name: t.name })),

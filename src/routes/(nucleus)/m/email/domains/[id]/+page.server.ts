@@ -27,12 +27,16 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 export const actions: Actions = {
   recheck: async ({ locals, params }) => {
     await requireAdmin(locals)
-    return act('recheck', async () => ({ status: (await emailPlatform().recheckDomain(params.id)).status }))
+    return act('recheck', async () => ({
+      status: (await emailPlatform().recheckDomain(params.id)).status,
+    }))
   },
   tracking: async ({ locals, params, request }) => {
     await requireAdmin(locals)
     const on = field(await request.formData(), 'tracking') === 'on'
-    return act('tracking', async () => ({ tracking: (await emailPlatform().setDomainTracking(params.id, on)).tracking }))
+    return act('tracking', async () => ({
+      tracking: (await emailPlatform().setDomainTracking(params.id, on)).tracking,
+    }))
   },
   delete: async ({ locals, params }) => {
     await requireAdmin(locals)

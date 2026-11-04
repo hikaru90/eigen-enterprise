@@ -28,7 +28,9 @@ export const actions: Actions = {
   add: async ({ locals, request }) => {
     const me = await requireAdmin(locals)
     const name = field(await request.formData(), 'name')
-    const out = await act('add', async () => ({ id: (await emailPlatform().addDomain(name, me.userId)).id }))
+    const out = await act('add', async () => ({
+      id: (await emailPlatform().addDomain(name, me.userId)).id,
+    }))
     if ('id' in out && typeof out.id === 'string') throw redirect(303, `/m/email/domains/${out.id}`)
     return out
   },

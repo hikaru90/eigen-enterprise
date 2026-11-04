@@ -14,10 +14,18 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
     throw err
   })
   const raw = url.searchParams.get('status') ?? ''
-  const status = (CONTACT_STATUSES as readonly string[]).includes(raw) ? (raw as ContactStatus) : undefined
+  const status = (CONTACT_STATUSES as readonly string[]).includes(raw)
+    ? (raw as ContactStatus)
+    : undefined
   const contacts = await a.contacts(list.id, status)
   return {
-    list: { id: list.id, name: list.name, description: list.description, doubleOptIn: list.doubleOptIn, publicSignup: list.publicSignup },
+    list: {
+      id: list.id,
+      name: list.name,
+      description: list.description,
+      doubleOptIn: list.doubleOptIn,
+      publicSignup: list.publicSignup,
+    },
     status: status ?? '',
     signupUrl: `${url.origin}/mail/subscribe/${list.id}`,
     contacts: contacts.map((c) => ({

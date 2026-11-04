@@ -29,7 +29,12 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       text: m.text,
       headers: m.headers ?? [],
     },
-    events: events.map((e) => ({ id: e.id, status: e.status, detail: e.detail, at: e.occurredAt.toISOString() })),
+    events: events.map((e) => ({
+      id: e.id,
+      status: e.status,
+      detail: e.detail,
+      at: e.occurredAt.toISOString(),
+    })),
   }
 }
 

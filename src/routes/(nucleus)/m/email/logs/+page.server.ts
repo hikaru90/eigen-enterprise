@@ -1,6 +1,9 @@
 import type { PageServerLoad } from './$types'
 import { emailPlatform } from '../../../../../../modules/email/platform/service'
-import { MESSAGE_STATUSES, type MessageStatus } from '../../../../../../modules/email/platform/status'
+import {
+  MESSAGE_STATUSES,
+  type MessageStatus,
+} from '../../../../../../modules/email/platform/status'
 import { requireMember } from '../access.server'
 
 const PAGE = 50
@@ -9,7 +12,9 @@ const PAGE = 50
 export const load: PageServerLoad = async ({ locals, url }) => {
   await requireMember(locals)
   const rawStatus = url.searchParams.get('status') ?? ''
-  const status = (MESSAGE_STATUSES as readonly string[]).includes(rawStatus) ? (rawStatus as MessageStatus) : undefined
+  const status = (MESSAGE_STATUSES as readonly string[]).includes(rawStatus)
+    ? (rawStatus as MessageStatus)
+    : undefined
   const search = url.searchParams.get('q')?.trim() || undefined
   const beforeRaw = url.searchParams.get('before')
   const before = beforeRaw && !Number.isNaN(Date.parse(beforeRaw)) ? new Date(beforeRaw) : undefined

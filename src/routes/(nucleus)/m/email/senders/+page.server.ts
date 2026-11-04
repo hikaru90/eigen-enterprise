@@ -25,7 +25,10 @@ export const actions: Actions = {
     const me = await requireAdmin(locals)
     const form = await request.formData()
     return act('add', async () => {
-      const s = await emailPlatform().addSender({ address: field(form, 'address'), displayName: field(form, 'displayName') || null }, me.userId)
+      const s = await emailPlatform().addSender(
+        { address: field(form, 'address'), displayName: field(form, 'displayName') || null },
+        me.userId,
+      )
       return { address: s.address }
     })
   },
