@@ -13,6 +13,8 @@ vi.mock('$lib/server/auth/user-role', () => ({
 }))
 vi.mock('$lib/i18n/ui-locale', () => ({ normalizeUiLocale: (value: string) => value }))
 vi.mock('$lib/paraglide/runtime', () => ({ cookieName: 'locale', cookieMaxAge: 31_536_000 }))
+const { isHarnessUserMock } = vi.hoisted(() => ({ isHarnessUserMock: vi.fn(async () => false) }))
+vi.mock('$lib/server/auth/harness-account', () => ({ isHarnessUser: isHarnessUserMock }))
 vi.mock('../../modules/brand/store', () => ({
   defaultBrandStore: () => ({ findActiveVisualSet: findActiveVisualSetMock }),
 }))
@@ -104,5 +106,43 @@ describe('layout server load', () => {
     await expect(load({ locals: { user: undefined }, cookies: makeCookies() } as never)).rejects.toThrow(
       /db connection failed/,
     )
+  })
+
+  it('P-5 profile gate: a person without a complete profile is redirected from a shell page to the profile step', async () => {
+    findActiveVisualSetMock.mockClear()
+    const user = { id: 'u9', firstName: 'Ada', lastName: 'Lovelace', avatarSha256: null }
+    const url = new URL('http://localhost/messages?c=abc')
+    await expect(
+      load({ locals: { user }, cookies: makeCookies(), route: { id: '/(nucleus)/messages' }, url } as never),
+    ).rejects.toMatchObject({ status: 303, location: '/welcome/profile?next=%2Fmessages%3Fc%3Dabc' })
+    expect(isHarnessUserMock).toHaveBeenCalledWith('u9')
+    expect(findActiveVisualSetMock).not.toHaveBeenCalled() // the gate runs before anything else loads
+  })
+
+  it('P-5 profile gate: the invite (passkey step) and the profile step itself are never gated', async () => {
+    findActiveVisualSetMock.mockResolvedValue(null)
+    getDbMock.mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([]),
+            then(onFulfilled?: (value: unknown) => unknown, onRejected?: (error: unknown) => unknown) {
+              return Promise.resolve([]).then(onFulfilled, onRejected)
+            },
+          }),
+        }),
+      }),
+      selectDistinct: vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
+    })
+    const user = { id: 'u9', firstName: null, lastName: null, avatarSha256: null }
+    for (const id of ['/invite', '/welcome/profile']) {
+      const result = (await load({
+        locals: { user },
+        cookies: makeCookies(),
+        route: { id },
+        url: new URL(`http://localhost${id}`),
+      } as never)) as { user: unknown }
+      expect(result.user).toBe(user)
+    }
   })
 })

@@ -145,6 +145,13 @@ export const auth = betterAuth({
         input: true,
         returned: true,
       },
+      /** The profile picture's SHA-256 (set only by /api/profile/avatar; the profile gate reads it). */
+      avatarSha256: {
+        type: 'string',
+        required: false,
+        input: false,
+        returned: true,
+      },
       onboardingCompleted: {
         type: 'boolean',
         required: false,

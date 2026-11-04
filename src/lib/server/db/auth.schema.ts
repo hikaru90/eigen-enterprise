@@ -14,6 +14,8 @@ export const user = pgTable(
   image: text('image'),
   firstName: text('first_name'),
   lastName: text('last_name'),
+  /** The profile picture's bytes (SHA-256, 0113); `image` is the route serving them. NULL = no picture yet. */
+  avatarSha256: text('avatar_sha256'),
   onboardingCompleted: boolean('onboarding_completed').default(false).notNull(),
   /** Company role (see $lib/server/auth/user-role): exactly one owner (unique index below). */
   role: text('role', { enum: ['owner', 'admin', 'member'] })

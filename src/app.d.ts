@@ -5,6 +5,8 @@ export type AppUser = User & {
   role?: string | null
   firstName?: string | null
   lastName?: string | null
+  /** Profile picture bytes (SHA-256); `image` is the route serving them. */
+  avatarSha256?: string | null
 }
 
 // See https://svelte.dev/docs/kit/types#app.d.ts
