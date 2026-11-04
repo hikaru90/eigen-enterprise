@@ -54,9 +54,23 @@ export type Reaction = { messageId: string; userId: string; emoji: string; creat
 /** A Drive file a message carries (display snapshot; bytes + access stay in the Drive). */
 export type Attachment = { messageId: string; fileId: string; position: number; name: string; mime: string; size: number }
 
-export type ThreadStats = { replyCount: number; lastReplyAt: Date | null }
+export type ThreadStats = {
+  replyCount: number
+  lastReplyAt: Date | null
+  /** Who replied (live replies), most recent first, at most THREAD_REPLIERS. */
+  replierIds: string[]
+}
 
-export type Person = { id: string; name: string; email: string }
+/** How many repliers a thread summary shows (the avatars under a message). */
+export const THREAD_REPLIERS = 3
+
+export type Person = {
+  id: string
+  name: string
+  email: string
+  /** The profile picture route (P-5), or null/absent before the person adds one. */
+  image?: string | null
+}
 
 export type MessagesStore = {
   insertConversation(c: Conversation, memberIds: string[]): Promise<void>
@@ -81,7 +95,7 @@ export type MessagesStore = {
   listMessagesBefore(conversationId: string, before: Message | null, limit: number): Promise<Message[]>
   /** A thread's replies, oldest first. */
   listReplies(parentId: string): Promise<Message[]>
-  /** Live (not deleted) reply count + latest reply time per parent. */
+  /** Live (not deleted) reply count, latest reply time and latest repliers per parent. */
   threadStats(parentIds: string[]): Promise<Map<string, ThreadStats>>
   /** The parent's author and everyone who replied (distinct). */
   threadParticipants(parentId: string): Promise<string[]>

@@ -126,6 +126,7 @@ describe('members: role rules', () => {
     await inviteMember({ id: 'o', role: 'owner' }, { email: 'n@k.co', role: 'member' }, { ...deps, mail: { send: async () => ({}), isConfigured: async () => true } })
     const list = await listMembers({ id: 'o', role: 'owner' }, deps)
     expect(list.members.map((x) => x.role)).toEqual(['owner', 'admin'])
+    expect(list.members.map((x) => x.image)).toEqual([null, null]) // no profile pictures in this fixture
     expect(list.invites).toEqual([{ id: expect.any(String), email: 'n@k.co', role: 'member', expiresAt: '2026-10-28T10:00:00.000Z' }])
   })
 })

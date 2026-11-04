@@ -1,6 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import postgres from 'postgres'
-import { registerUser, signOut } from './test-helpers'
+import { completeProfileStepInUi, profileNames, registerUser, signOut } from './test-helpers'
 
 /**
  * T1 proof (plan/phase-workspace.md): invite link → passkey, no email.
@@ -97,7 +97,12 @@ test('invite link → passkey (no email) → group → remove ends the session',
   await expect(b.getByTestId('invite-skip-warning')).toContainText('can’t sign in again')
   await b.getByTestId('invite-create-passkey').click()
   await b.waitForURL((u) => !u.pathname.startsWith('/invite'), { timeout: 30_000 })
-  // An invited member lands in Messages — no company onboarding.
+  // P-5: the profile step first — names pre-filled from the invite, a picture to add …
+  await expect(b).toHaveURL(/\/welcome\/profile\?next=%2Fmessages$/)
+  await expect(b.getByTestId('profile-first-name')).toHaveValue(profileNames(bName).firstName)
+  await expect(b.getByTestId('profile-last-name')).toHaveValue(profileNames(bName).lastName)
+  await completeProfileStepInUi(b, profileNames(bName))
+  // … then an invited member lands in Messages — no company onboarding.
   await expect(b).toHaveURL(/\/messages/)
   await expect(b.getByTestId('skip-onboarding')).toHaveCount(0)
 

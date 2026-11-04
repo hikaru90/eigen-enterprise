@@ -1,4 +1,4 @@
-import type { Attachment, Conversation, Directory, Message, MessageEvent, MessagesStore, NewEvent, Person, Reaction, ThreadStats } from './store'
+import { THREAD_REPLIERS, type Attachment, type Conversation, type Directory, type Message, type MessageEvent, type MessagesStore, type NewEvent, type Person, type Reaction, type ThreadStats } from './store'
 
 type MemberRow = { lastReadAt: Date | null; viewingAt: Date | null }
 
@@ -105,7 +105,9 @@ export class MemoryMessagesStore implements MessagesStore {
     const out = new Map<string, ThreadStats>()
     for (const id of parentIds) {
       const live = (await this.listReplies(id)).filter((m) => !m.deletedAt)
-      if (live.length > 0) out.set(id, { replyCount: live.length, lastReplyAt: live.at(-1)!.createdAt })
+      if (live.length === 0) continue
+      const replierIds = [...new Set([...live].reverse().map((m) => m.authorId))].slice(0, THREAD_REPLIERS)
+      out.set(id, { replyCount: live.length, lastReplyAt: live.at(-1)!.createdAt, replierIds })
     }
     return out
   }

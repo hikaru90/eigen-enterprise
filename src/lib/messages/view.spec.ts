@@ -5,8 +5,11 @@ import {
   formatSize,
   groupByDay,
   mergeMessages,
+  messageRows,
   reactionTitle,
+  relativeTime,
   setUnread,
+  threadSummary,
   upsertConversation,
   type ConversationView,
   type MessageView,
@@ -17,6 +20,7 @@ const msg = (id: string, createdAt: string, authorId = 'a'): MessageView => ({
   conversationId: 'c',
   authorId,
   authorName: authorId,
+  authorImage: null,
   body: id,
   createdAt,
   editedAt: null,
@@ -24,6 +28,7 @@ const msg = (id: string, createdAt: string, authorId = 'a'): MessageView => ({
   parentId: null,
   replyCount: 0,
   lastReplyAt: null,
+  replierIds: [],
   reactions: [],
   attachments: [],
 })
@@ -119,5 +124,50 @@ describe('reactionTitle / formatSize', () => {
   it('formats sizes', () => {
     expect(formatSize(512)).toBe('512 B')
     expect(formatSize(1536)).toBe('1.5 KB')
+  })
+})
+
+describe('messageRows (Slack-style grouping)', () => {
+  it('groups consecutive messages by the same author within 5 minutes', () => {
+    const rows = messageRows([
+      msg('1', '2026-11-03T09:00:00.000Z', 'bea'),
+      msg('2', '2026-11-03T09:04:59.000Z', 'bea'),
+      msg('3', '2026-11-03T09:10:00.000Z', 'bea'), // too late
+      msg('4', '2026-11-03T09:10:30.000Z', 'carl'), // someone else
+      msg('5', '2026-11-03T09:11:00.000Z', 'carl'),
+    ])
+    expect(rows.map((r) => [r.message.id, r.grouped])).toEqual([
+      ['1', false],
+      ['2', true],
+      ['3', false],
+      ['4', false],
+      ['5', true],
+    ])
+  })
+
+  it('a message with a thread, and the one after it, always start a fresh row', () => {
+    const rows = messageRows([
+      msg('1', '2026-11-03T09:00:00.000Z', 'bea'),
+      { ...msg('2', '2026-11-03T09:01:00.000Z', 'bea'), replyCount: 2 },
+      msg('3', '2026-11-03T09:02:00.000Z', 'bea'),
+    ])
+    expect(rows.map((r) => r.grouped)).toEqual([false, false, false])
+  })
+})
+
+describe('relativeTime / threadSummary', () => {
+  const now = new Date('2026-11-04T12:00:00.000Z')
+  it('says how long ago, then the date', () => {
+    expect(relativeTime('2026-11-04T11:59:30.000Z', now)).toBe('just now')
+    expect(relativeTime('2026-11-04T11:55:00.000Z', now)).toBe('5m ago')
+    expect(relativeTime('2026-11-04T10:00:00.000Z', now)).toBe('2h ago')
+    expect(relativeTime('2026-11-03T10:00:00.000Z', now)).toBe('yesterday')
+    expect(relativeTime('2026-11-01T10:00:00.000Z', now)).toBe('3d ago')
+    expect(relativeTime('2026-10-01T10:00:00.000Z', now)).toMatch(/Oct|10/)
+  })
+
+  it('summarises a thread', () => {
+    expect(threadSummary({ replyCount: 3, lastReplyAt: '2026-11-04T10:00:00.000Z' }, now)).toBe('3 replies · last reply 2h ago')
+    expect(threadSummary({ replyCount: 1, lastReplyAt: null }, now)).toBe('1 reply')
   })
 })

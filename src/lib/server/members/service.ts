@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
+import { avatarUrl, isAvatarSha } from '$lib/profile/profile'
 import type { MemberRole } from '$lib/server/auth/user-role'
 
 /**
@@ -17,7 +18,15 @@ export const INVITE_TTL_DAYS = 7
 export type InvitableRole = Exclude<MemberRole, 'owner'>
 export const invitableRole = z.enum(['admin', 'member'])
 
-export type Member = { id: string; email: string; name: string; role: MemberRole; createdAt: Date }
+export type Member = {
+  id: string
+  email: string
+  name: string
+  role: MemberRole
+  createdAt: Date
+  /** Profile picture bytes (P-5); null until the person adds one. */
+  avatarSha256?: string | null
+}
 export type Invite = {
   id: string
   email: string
@@ -91,7 +100,14 @@ export async function listMembers(actor: Actor, deps: Pick<MemberDeps, 'store' |
   const now = deps.now?.() ?? new Date()
   const [members, invites] = await Promise.all([deps.store.listMembers(), deps.store.listOpenInvites(now)])
   return {
-    members: members.map((m) => ({ id: m.id, email: m.email, name: m.name, role: m.role })),
+    members: members.map((m) => ({
+      id: m.id,
+      email: m.email,
+      name: m.name,
+      role: m.role,
+      /** The profile picture route (P-5), null without one. */
+      image: isAvatarSha(m.avatarSha256) ? avatarUrl(m.avatarSha256) : null,
+    })),
     invites: invites.map((i) => ({ id: i.id, email: i.email, role: i.role, expiresAt: i.expiresAt.toISOString() })),
   }
 }

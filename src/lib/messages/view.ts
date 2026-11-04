@@ -11,6 +11,7 @@ export type MessageView = {
   conversationId: string
   authorId: string
   authorName: string
+  authorImage: string | null
   body: string
   createdAt: string
   editedAt: string | null
@@ -18,6 +19,7 @@ export type MessageView = {
   parentId: string | null
   replyCount: number
   lastReplyAt: string | null
+  replierIds: string[]
   reactions: ReactionView[]
   attachments: AttachmentView[]
 }
@@ -124,6 +126,40 @@ export function groupByDay(messages: readonly MessageView[], now: Date = new Dat
 export function continuesRun(prev: MessageView | undefined, m: MessageView): boolean {
   if (!prev || prev.authorId !== m.authorId) return false
   return new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() < 5 * 60_000
+}
+
+export type MessageRow = { message: MessageView; grouped: boolean }
+
+/**
+ * Slack-style rows for one day: a message continues the previous one's group
+ * (no avatar or name, its time in the gutter on hover) when the same person
+ * wrote it within 5 minutes — unless either side has a thread, which always
+ * starts a fresh row so its summary stays attached to a named message.
+ */
+export function messageRows(messages: readonly MessageView[]): MessageRow[] {
+  return messages.map((m, i) => {
+    const prev = messages[i - 1]
+    return { message: m, grouped: continuesRun(prev, m) && m.replyCount === 0 && (prev?.replyCount ?? 0) === 0 }
+  })
+}
+
+/** "just now", "5m ago", "2h ago", "yesterday", "3d ago", then the date. */
+export function relativeTime(iso: string, now: Date = new Date()): string {
+  const at = new Date(iso)
+  const s = Math.max(0, Math.round((now.getTime() - at.getTime()) / 1000))
+  if (s < 60) return 'just now'
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86_400) return `${Math.floor(s / 3600)}h ago`
+  const days = Math.floor(s / 86_400)
+  if (days === 1) return 'yesterday'
+  if (days < 7) return `${days}d ago`
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(at)
+}
+
+/** "3 replies · last reply 2h ago" — the thread summary under a message. */
+export function threadSummary(m: Pick<MessageView, 'replyCount' | 'lastReplyAt'>, now: Date = new Date()): string {
+  const count = `${m.replyCount} ${m.replyCount === 1 ? 'reply' : 'replies'}`
+  return m.lastReplyAt ? `${count} · last reply ${relativeTime(m.lastReplyAt, now)}` : count
 }
 
 /** Inserts or replaces a conversation, channels first (by name), then DMs. */

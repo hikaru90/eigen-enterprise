@@ -58,6 +58,19 @@ describe('threads', () => {
     ])
   })
 
+  it('the parent names its latest repliers (most recent first, distinct, at most three) for the summary', async () => {
+    const { deps } = depthFixture()
+    const ch = await createChannel(deps, 'owner', { name: 'general', private: false })
+    const { message: parent } = await postMessage(deps, 'owner', ch.id, 'Thoughts?')
+    for (const [who, body] of [['bea', 'a'], ['carl', 'b'], ['bea', 'c'], ['owner', 'd']] as const) {
+      await postMessage(deps, who, ch.id, body, { parentId: parent.id })
+    }
+    const [m] = (await listMessages(deps, 'carl', ch.id)).messages
+    expect(m).toMatchObject({ replyCount: 4, replierIds: ['owner', 'bea', 'carl'] })
+    const { message: quiet } = await postMessage(deps, 'owner', ch.id, 'no replies')
+    expect(quiet.replierIds).toEqual([])
+  })
+
   it('refuses replies to replies, to other conversations and to deleted messages', async () => {
     const { deps } = depthFixture()
     const a = await createChannel(deps, 'owner', { name: 'a', private: false })

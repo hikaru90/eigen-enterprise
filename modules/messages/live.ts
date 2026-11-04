@@ -19,7 +19,13 @@ async function liveDirectory(): Promise<Directory> {
   const { getUserRole } = await import('$lib/server/auth/user-role')
   return {
     async listPeople() {
-      return (await dbMemberStore.listMembers()).map((m) => ({ id: m.id, name: m.name, email: m.email }))
+      const { avatarUrl, isAvatarSha } = await import('$lib/profile/profile')
+      return (await dbMemberStore.listMembers()).map((m) => ({
+        id: m.id,
+        name: m.name,
+        email: m.email,
+        image: isAvatarSha(m.avatarSha256) ? avatarUrl(m.avatarSha256) : null,
+      }))
     },
     role: (userId) => getUserRole(userId),
   }

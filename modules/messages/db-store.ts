@@ -1,4 +1,4 @@
-import type { Attachment, Conversation, Message, MessageEvent, MessagesStore, NewEvent, Reaction, ThreadStats } from './store'
+import { THREAD_REPLIERS, type Attachment, type Conversation, type Message, type MessageEvent, type MessagesStore, type NewEvent, type Reaction, type ThreadStats } from './store'
 import { and, asc, count, desc, eq, exists, gt, inArray, isNull, lt, max, ne, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { AppDatabase } from '$lib/server/db/context'
@@ -151,7 +151,19 @@ export function dbMessagesStore(db: AppDatabase): MessagesStore {
         .from(messages)
         .where(and(inArray(messages.parentId, parentIds), isNull(messages.deletedAt)))
         .groupBy(messages.parentId)
-      for (const r of rows) if (r.parentId) out.set(r.parentId, { replyCount: Number(r.n), lastReplyAt: r.last })
+      for (const r of rows) if (r.parentId) out.set(r.parentId, { replyCount: Number(r.n), lastReplyAt: r.last, replierIds: [] })
+      if (out.size === 0) return out
+      // Repliers per thread, latest reply first (one row per thread × author).
+      const repliers = await db
+        .select({ parentId: messages.parentId, u: messages.authorId, last: max(messages.createdAt) })
+        .from(messages)
+        .where(and(inArray(messages.parentId, [...out.keys()]), isNull(messages.deletedAt)))
+        .groupBy(messages.parentId, messages.authorId)
+        .orderBy(desc(max(messages.createdAt)))
+      for (const r of repliers) {
+        const st = r.parentId ? out.get(r.parentId) : undefined
+        if (st && st.replierIds.length < THREAD_REPLIERS) st.replierIds.push(r.u)
+      }
       return out
     },
     async threadParticipants(parentId) {

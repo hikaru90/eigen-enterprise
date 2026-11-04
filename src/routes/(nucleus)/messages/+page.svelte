@@ -1,36 +1,32 @@
 <script lang="ts">
   import type { PageData } from './$types'
   import ArrowLeft from '@lucide/svelte/icons/arrow-left'
-  import FileText from '@lucide/svelte/icons/file-text'
+  import ChevronDown from '@lucide/svelte/icons/chevron-down'
   import Hash from '@lucide/svelte/icons/hash'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import Lock from '@lucide/svelte/icons/lock'
-  import MessageSquare from '@lucide/svelte/icons/message-square'
   import Paperclip from '@lucide/svelte/icons/paperclip'
-  import Pencil from '@lucide/svelte/icons/pencil'
   import Plus from '@lucide/svelte/icons/plus'
-  import SmilePlus from '@lucide/svelte/icons/smile-plus'
-  import Trash2 from '@lucide/svelte/icons/trash-2'
+  import SquarePen from '@lucide/svelte/icons/square-pen'
+  import Users from '@lucide/svelte/icons/users'
   import X from '@lucide/svelte/icons/x'
   import { onDestroy, onMount, tick } from 'svelte'
   import { replaceState } from '$app/navigation'
   import { resolve } from '$app/paths'
   import { page } from '$app/state'
-  import PageFrame from '$lib/components/page/page-frame.svelte'
-  import PageHeader from '$lib/components/page/page-header.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
-  import { renderMessageMarkdown } from '$lib/messages/markdown'
+  import UserAvatar from '$lib/components/user-avatar.svelte'
+  import MessageComposer from '$lib/messages/message-composer.svelte'
+  import MessageRow, { type RowPerson } from '$lib/messages/message-row.svelte'
   import {
     applyFrame,
-    continuesRun,
     formatSize,
     groupByDay,
     mergeMessages,
-    reactedBy,
-    reactionTitle,
+    messageRows,
     setUnread,
     upsertConversation,
     type AttachmentView,
@@ -40,7 +36,15 @@
   } from '$lib/messages/view'
   import { docTitle } from '$lib/shell/title'
 
+  /**
+   * Messages (phase-workspace C1/C2, polish-1 Slack layout): a full-bleed app
+   * — the channel sidebar, the conversation (header, day-grouped log,
+   * composer) and the thread pane on the right — using the whole content
+   * column; each pane scrolls on its own.
+   */
   let { data }: { data: PageData } = $props()
+
+  type Person = { id: string; name: string; email: string; image?: string | null }
 
   // Page-owned state seeded once from the load (the live stream keeps it current).
   // svelte-ignore state_referenced_locally
@@ -53,10 +57,20 @@
   let sending = $state(false)
   let errorText = $state<string | null>(null)
   let live = $state<'connecting' | 'live' | 'reconnecting'>('connecting')
+  let now = $state(new Date())
 
   let listEl = $state<HTMLDivElement | null>(null)
   let composerEl = $state<HTMLTextAreaElement | null>(null)
   let fileInput = $state<HTMLInputElement | null>(null)
+
+  // Sidebar sections (collapsible).
+  let channelsOpen = $state(true)
+  let dmsOpen = $state(true)
+
+  // Header: who is in the conversation.
+  let members = $state<Person[] | null>(null)
+  let membersError = $state<string | null>(null)
+  let membersOpen = $state(false)
 
   // Threads, reactions, edit/delete, attachments (C2).
   let thread = $state<{ parent: MessageView; replies: MessageView[] } | null>(null)
@@ -65,7 +79,6 @@
   let threadError = $state<string | null>(null)
   let threadListEl = $state<HTMLDivElement | null>(null)
   let editingId = $state<string | null>(null)
-  let editDraft = $state('')
   let pickerFor = $state<string | null>(null)
   let deleteTarget = $state<MessageView | null>(null)
   let deleteError = $state<string | null>(null)
@@ -77,13 +90,30 @@
   const selected = $derived(conversations.find((c) => c.id === selectedId) ?? null)
   const channels = $derived(conversations.filter((c) => c.kind === 'channel'))
   const dms = $derived(conversations.filter((c) => c.kind === 'dm'))
-  const days = $derived(groupByDay(messages))
-  const others = $derived(data.people.filter((p) => p.id !== data.me))
+  const days = $derived(groupByDay(messages, now))
+  const people = $derived(data.people as Person[])
+  const peopleById = $derived(new Map(people.map((p) => [p.id, p])))
+  const others = $derived(people.filter((p) => p.id !== data.me))
   const uploading = $derived(pendingFiles.some((f) => f.status === 'uploading'))
   const readyFiles = $derived(pendingFiles.filter((f) => f.status === 'ready' && f.file).map((f) => f.file as AttachmentView))
+  const canSend = $derived(!sending && !uploading && (draft.trim().length > 0 || readyFiles.length > 0))
 
-  const timeFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
-  const fullFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'short' })
+  const firstWord = (name: string) => name.trim().split(/\s+/)[0] ?? ''
+  /** @mention highlighting: everyone's full and first names; yours marked as "me". */
+  const mentions = $derived({
+    names: people.flatMap((p) => [p.name, firstWord(p.name)]).filter(Boolean),
+    me: (() => {
+      const mine = peopleById.get(data.me)
+      return mine ? [mine.name, firstWord(mine.name)] : []
+    })(),
+  })
+
+  const rowPerson = (id: string): RowPerson => {
+    const p = peopleById.get(id)
+    return { id, name: p ? p.name.trim() || p.email : 'Former member', image: p?.image ?? null }
+  }
+  /** A DM's other participants (the row's avatar and the header). */
+  const dmOthers = (c: ConversationView) => c.memberIds.filter((u) => u !== data.me).map(rowPerson)
 
   async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(path, {
@@ -119,8 +149,13 @@
     editingId = null
     pickerFor = null
     pendingFiles = []
+    members = null
+    membersError = null
+    membersOpen = false
+    now = new Date()
     // The deep link (?c=…) already carries the id on mount, before the router is up.
     if (updateUrl) setUrl(id, null)
+    void loadMembers(id)
     try {
       const pageData = await api<{ messages: MessageView[]; hasMore: boolean }>(
         `/api/messages/conversations/${id}/messages`,
@@ -135,6 +170,15 @@
       void reportViewing()
     } catch (err) {
       errorText = message(err)
+    }
+  }
+
+  async function loadMembers(id: string) {
+    try {
+      const { members: list } = await api<{ members: Person[] }>(`/api/messages/conversations/${id}/members`)
+      if (selectedId === id) members = list
+    } catch (err) {
+      if (selectedId === id) membersError = message(err)
     }
   }
 
@@ -176,8 +220,7 @@
   // ── composer + attachments ──────────────────────────────────────────────
   async function send() {
     const body = draft
-    if (!selectedId || sending || uploading) return
-    if (!body.trim() && readyFiles.length === 0) return
+    if (!selectedId || !canSend) return
     sending = true
     errorText = null
     try {
@@ -187,6 +230,7 @@
       )
       draft = ''
       pendingFiles = []
+      now = new Date()
       messages = mergeMessages(messages, [posted])
       await tick()
       scrollToBottom()
@@ -195,13 +239,6 @@
     } finally {
       sending = false
       composerEl?.focus()
-    }
-  }
-
-  function onComposerKey(e: KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-      e.preventDefault()
-      void send()
     }
   }
 
@@ -243,6 +280,13 @@
     input.value = ''
   }
 
+  function onDragOver(e: DragEvent) {
+    if (e.dataTransfer?.types.includes('Files')) {
+      e.preventDefault()
+      dragging = true
+    }
+  }
+
   function onDrop(e: DragEvent) {
     e.preventDefault()
     dragging = false
@@ -260,6 +304,7 @@
   async function openThread(parentId: string, updateUrl = true) {
     threadError = null
     threadDraft = ''
+    pickerFor = null
     try {
       const t = await api<{ parent: MessageView; replies: MessageView[] }>(`/api/messages/messages/${parentId}/thread`)
       thread = t
@@ -287,6 +332,7 @@
         { method: 'POST', body: JSON.stringify({ body: threadDraft, parentId }) },
       )
       threadDraft = ''
+      now = new Date()
       applyLocal({ action: 'created', message: reply, parent, unread: 0 })
       await tick()
       if (threadListEl) threadListEl.scrollTop = threadListEl.scrollHeight
@@ -294,13 +340,6 @@
       threadError = message(err)
     } finally {
       threadSending = false
-    }
-  }
-
-  function onReplyKey(e: KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-      e.preventDefault()
-      void sendReply()
     }
   }
 
@@ -333,28 +372,16 @@
 
   function startEdit(m: MessageView) {
     editingId = m.id
-    editDraft = m.body
     pickerFor = null
   }
 
-  async function saveEdit(m: MessageView) {
-    const body = editDraft
+  async function saveEdit(m: MessageView, body: string) {
     try {
       await api(`/api/messages/messages/${m.id}`, { method: 'PATCH', body: JSON.stringify({ body }) })
       applyLocal({ action: 'edited', message: { ...m, body: body.trim(), editedAt: new Date().toISOString() }, parent: null, unread: 0 })
       editingId = null
     } catch (err) {
       errorText = message(err)
-    }
-  }
-
-  function onEditKey(e: KeyboardEvent, m: MessageView) {
-    if (e.key === 'Escape') {
-      e.preventDefault()
-      editingId = null
-    } else if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-      e.preventDefault()
-      void saveEdit(m)
     }
   }
 
@@ -378,12 +405,14 @@
   // ── live stream ─────────────────────────────────────────────────────────
   let source: EventSource | null = null
   let heartbeat: ReturnType<typeof setInterval> | undefined
+  let clock: ReturnType<typeof setInterval> | undefined
 
   async function onMessageFrame(f: MessageFrame) {
     const cid = f.message.conversationId
     if (!conversations.some((c) => c.id === cid)) await refreshConversations()
     if (cid === selectedId) {
       const stick = nearBottom()
+      now = new Date()
       applyLocal(f)
       if (f.action === 'created' && f.message.authorId !== data.me && document.visibilityState === 'visible') {
         if (f.unread > 0) void markRead(cid)
@@ -436,9 +465,18 @@
     }
   }
 
+  /** Esc closes the reaction picker, then the thread. */
+  function onWindowKey(e: KeyboardEvent) {
+    if (e.key !== 'Escape' || e.defaultPrevented) return
+    if (pickerFor) pickerFor = null
+    else if (membersOpen) membersOpen = false
+  }
+
   onMount(() => {
     connect()
     heartbeat = setInterval(() => void reportViewing(), 20_000)
+    // "2h ago" / "Today" stay true while the page is open.
+    clock = setInterval(() => (now = new Date()), 60_000)
     document.addEventListener('visibilitychange', onVisibility)
     const initial = page.url.searchParams.get('c')
     const initialThread = page.url.searchParams.get('t')
@@ -452,6 +490,7 @@
   onDestroy(() => {
     source?.close()
     if (heartbeat) clearInterval(heartbeat)
+    if (clock) clearInterval(clock)
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', onVisibility)
       selectedId = null
@@ -536,39 +575,57 @@
   }
 
   const personLabel = (p: { name: string; email: string }) => p.name.trim() || p.email
+  const placeholder = $derived(
+    selected ? (selected.kind === 'channel' ? `Message #${selected.title}` : `Message ${selected.title}`) : '',
+  )
 </script>
 
 <svelte:head><title>{docTitle('Messages')}</title></svelte:head>
+<svelte:window onkeydown={onWindowKey} />
 
 {#snippet conversationRow(c: ConversationView)}
+  {@const current = c.id === selectedId}
+  {@const dmWith = c.kind === 'dm' ? dmOthers(c) : []}
   <li>
     <button
       type="button"
-      class="flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm outline-none hover:bg-foreground/[0.04] focus-visible:ring-2 focus-visible:ring-ring/60 {c.id ===
-      selectedId
-        ? 'bg-foreground/[0.06] font-medium'
-        : ''} {c.unread > 0 ? 'font-semibold' : ''}"
-      aria-current={c.id === selectedId ? 'true' : undefined}
+      class={[
+        'flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-[15px] outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
+        current ? 'bg-primary text-primary-foreground' : 'text-foreground/75 hover:bg-foreground/[0.06]',
+        c.unread > 0 && !current ? 'font-bold text-foreground' : '',
+      ]}
+      aria-current={current ? 'true' : undefined}
       data-testid="messages-conversation"
       data-title={c.title}
+      data-unread={c.unread}
       onclick={() => openConversation(c.id)}
     >
       {#if c.kind === 'channel'}
-        {#if c.private}
-          <Lock class="size-3.5 shrink-0 text-muted-foreground" aria-label="Private channel" />
-        {:else}
-          <Hash class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        {/if}
+        <span class="grid w-5 shrink-0 place-items-center">
+          {#if c.private}
+            <Lock class="size-3.5 opacity-70" aria-label="Private channel" />
+          {:else}
+            <Hash class="size-4 opacity-70" aria-hidden="true" />
+          {/if}
+        </span>
+      {:else if dmWith.length === 1}
+        <UserAvatar name={dmWith[0].name} image={dmWith[0].image} size="xs" testid="messages-dm-avatar" />
       {:else}
         <span
-          class="grid size-5 shrink-0 place-items-center rounded-full bg-primary/15 text-[10px] font-semibold text-primary"
-          aria-hidden="true">{c.title.slice(0, 1).toUpperCase()}</span
+          class={[
+            'grid size-5 shrink-0 place-items-center rounded-md text-[10px] font-semibold',
+            current ? 'bg-primary-foreground/20' : 'bg-foreground/10',
+          ]}
+          aria-hidden="true">{dmWith.length || 1}</span
         >
       {/if}
       <span class="min-w-0 flex-1 truncate">{c.title}</span>
       {#if c.unread > 0}
         <span
-          class="min-w-5 shrink-0 rounded-full bg-primary px-1.5 text-center text-[11px] leading-5 font-semibold text-primary-foreground tabular-nums"
+          class={[
+            'min-w-5 shrink-0 rounded-full px-1.5 text-center text-[11px] leading-5 font-bold tabular-nums',
+            current ? 'bg-primary-foreground text-primary' : 'bg-primary text-primary-foreground',
+          ]}
           data-testid="messages-unread"
           aria-label="{c.unread} unread">{c.unread > 99 ? '99+' : c.unread}</span
         >
@@ -577,365 +634,290 @@
   </li>
 {/snippet}
 
-{#snippet attachmentList(files: AttachmentView[])}
-  {#if files.length > 0}
-    <div class="mt-1.5 flex flex-wrap gap-2" data-testid="messages-attachments">
-      {#each files as f (f.fileId)}
-        {#if f.image}
-          <a
-            href={resolve(`/drive/file/${f.fileId}`)}
-            class="block overflow-hidden rounded-md border border-border"
-            title={f.name}
-            data-testid="messages-attachment-image"
-            data-name={f.name}
-          >
-            <img
-              src={`/api/drive/files/${encodeURIComponent(f.fileId)}/content`}
-              alt={f.name}
-              loading="lazy"
-              class="block max-h-48 max-w-64 object-cover"
-            />
-          </a>
-        {:else}
-          <a
-            href={resolve(`/drive/file/${f.fileId}`)}
-            class="flex max-w-64 min-w-0 items-center gap-2.5 rounded-md border border-border px-3 py-2 hover:bg-foreground/[0.04]"
-            data-testid="messages-attachment-file"
-            data-name={f.name}
-          >
-            <FileText class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <span class="min-w-0">
-              <span class="block truncate text-sm font-medium">{f.name}</span>
-              <span class="block text-[11px] text-muted-foreground">{formatSize(f.size)}</span>
-            </span>
-          </a>
-        {/if}
-      {/each}
-    </div>
-  {/if}
+{#snippet sectionHeader(label: string, open: boolean, ontoggle: () => void, addLabel: string, addTestid: string, onadd: () => void)}
+  <div class="group/section flex h-8 items-center gap-1 px-1">
+    <button
+      type="button"
+      class="flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 py-1 text-left text-[13px] font-semibold text-foreground/70 hover:bg-foreground/[0.06] hover:text-foreground"
+      aria-expanded={open}
+      onclick={ontoggle}
+    >
+      <ChevronDown class={['size-3.5 shrink-0 transition-transform', open ? '' : '-rotate-90']} aria-hidden="true" />
+      <span class="truncate">{label}</span>
+    </button>
+    <button
+      type="button"
+      class="grid size-6 shrink-0 place-items-center rounded-md text-foreground/60 hover:bg-foreground/[0.08] hover:text-foreground"
+      aria-label={addLabel}
+      title={addLabel}
+      data-testid={addTestid}
+      onclick={onadd}><Plus class="size-4" /></button
+    >
+  </div>
 {/snippet}
 
-{#snippet messageItem(m: MessageView, run: boolean, inThread: boolean)}
-  <article
-    class="group relative flex gap-2.5 rounded-md px-1 {run ? 'mt-0.5' : 'mt-3'} hover:bg-foreground/[0.02]"
-    data-testid={inThread ? 'thread-item' : 'messages-item'}
-    data-id={m.id}
+<div class="flex h-full min-h-0 w-full flex-1 overflow-hidden bg-background" data-testid="messages-panel">
+  <!-- ── Sidebar: channels and direct messages (on phones: the whole page until one is open) ── -->
+  <nav
+    class={[
+      'min-h-0 w-full shrink-0 flex-col border-border bg-foreground/[0.025] md:flex md:w-[260px] md:border-r',
+      selectedId ? 'hidden' : 'flex',
+    ]}
+    aria-label="Conversations"
+    data-testid="messages-list"
   >
-    <div class="w-8 shrink-0">
-      {#if !run}
-        <span class="grid size-8 place-items-center rounded-full bg-foreground/[0.07] text-xs font-semibold" aria-hidden="true"
-          >{m.authorName.slice(0, 1).toUpperCase()}</span
-        >
-      {/if}
-    </div>
-    <div class="min-w-0 flex-1">
-      {#if !run}
-        <p class="flex items-baseline gap-2">
-          <span class="text-sm font-semibold" data-testid="messages-author">{m.authorName}</span>
-          <time class="text-[11px] text-muted-foreground" datetime={m.createdAt} title={fullFmt.format(new Date(m.createdAt))}
-            >{timeFmt.format(new Date(m.createdAt))}</time
-          >
-        </p>
-      {/if}
-      {#if m.deleted}
-        <p class="text-sm text-muted-foreground italic" data-testid="messages-deleted">Message deleted</p>
-      {:else if editingId === m.id}
-        <div class="mt-0.5 flex flex-col gap-1.5" data-testid="messages-edit">
-          <!-- svelte-ignore a11y_autofocus -->
-          <textarea
-            bind:value={editDraft}
-            rows="2"
-            autofocus
-            class="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-            aria-label="Edit message"
-            data-testid="messages-edit-input"
-            onkeydown={(e) => onEditKey(e, m)}
-          ></textarea>
-          <div class="flex items-center gap-2">
-            <Button size="sm" onclick={() => saveEdit(m)} data-testid="messages-edit-save">Save</Button>
-            <Button size="sm" variant="outline" onclick={() => (editingId = null)}>Cancel</Button>
-            <span class="text-[11px] text-muted-foreground">Enter to save · Esc to cancel</span>
-          </div>
-        </div>
-      {:else}
-        {#if m.body}
-          <div class="message-body text-sm leading-relaxed break-words" data-testid="messages-body">
-            <!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized by renderMessageMarkdown (DOMPurify allowlist) -->
-            {@html renderMessageMarkdown(m.body)}
-          </div>
-        {/if}
-        {#if m.editedAt}<span class="text-[11px] text-muted-foreground" data-testid="messages-edited">(edited)</span>{/if}
-        {@render attachmentList(m.attachments)}
-      {/if}
-
-      {#if !m.deleted && m.reactions.length > 0}
-        <div class="mt-1 flex flex-wrap gap-1" data-testid="messages-reactions">
-          {#each m.reactions as r (r.emoji)}
-            {@const mine = reactedBy(r, data.me)}
-            <button
-              type="button"
-              class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs tabular-nums {mine
-                ? 'border-primary/50 bg-primary/10 text-foreground'
-                : 'border-border hover:bg-foreground/[0.04]'}"
-              title={reactionTitle(r)}
-              aria-label="{r.emoji} {r.userIds.length}: {reactionTitle(r)}"
-              aria-pressed={mine}
-              data-testid="messages-reaction"
-              data-emoji={r.emoji}
-              data-count={r.userIds.length}
-              onclick={() => react(m, r.emoji)}><span aria-hidden="true">{r.emoji}</span>{r.userIds.length}</button
-            >
-          {/each}
-        </div>
-      {/if}
-
-      {#if !inThread && m.replyCount > 0}
-        <button
-          type="button"
-          class="mt-1 inline-flex items-center gap-1.5 rounded px-1 py-0.5 text-xs font-medium text-primary hover:bg-primary/10"
-          data-testid="messages-thread-link"
-          data-count={m.replyCount}
-          onclick={() => openThread(m.id)}
-        >
-          <MessageSquare class="size-3.5" aria-hidden="true" />
-          {m.replyCount} {m.replyCount === 1 ? 'reply' : 'replies'}
-          {#if m.lastReplyAt}<span class="font-normal text-muted-foreground">· last {timeFmt.format(new Date(m.lastReplyAt))}</span>{/if}
-        </button>
-      {/if}
-    </div>
-
-    {#if !m.deleted && editingId !== m.id}
-      <div
-        class="absolute -top-3 right-1 hidden items-center gap-0.5 rounded-md border border-border bg-background p-0.5 shadow-sm group-hover:flex group-focus-within:flex {pickerFor ===
-        m.id
-          ? '!flex'
-          : ''}"
-        data-testid="messages-actions"
-      >
-        <button
-          type="button"
-          class="rounded p-1 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
-          aria-label="Add reaction"
-          title="Add reaction"
-          data-testid="messages-react"
-          onclick={() => (pickerFor = pickerFor === m.id ? null : m.id)}><SmilePlus class="size-4" /></button
-        >
-        {#if !inThread}
-          <button
-            type="button"
-            class="rounded p-1 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
-            aria-label="Reply in thread"
-            title="Reply in thread"
-            data-testid="messages-reply"
-            onclick={() => openThread(m.id)}><MessageSquare class="size-4" /></button
-          >
-        {/if}
-        {#if canEdit(m)}
-          <button
-            type="button"
-            class="rounded p-1 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
-            aria-label="Edit message"
-            title="Edit"
-            data-testid="messages-edit-start"
-            onclick={() => startEdit(m)}><Pencil class="size-4" /></button
-          >
-        {/if}
-        {#if canDelete(m)}
-          <button
-            type="button"
-            class="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-            aria-label="Delete message"
-            title={m.authorId === data.me ? 'Delete' : 'Delete (moderation)'}
-            data-testid="messages-delete"
-            onclick={() => {
-              deleteError = null
-              deleteTarget = m
-            }}><Trash2 class="size-4" /></button
-          >
-        {/if}
-        {#if pickerFor === m.id}
-          <div
-            class="absolute top-full right-0 z-20 mt-1 grid w-max grid-cols-5 gap-0.5 rounded-md border border-border bg-popover p-1 shadow-md"
-            role="menu"
-            aria-label="Pick a reaction"
-            data-testid="messages-picker"
-          >
-            {#each data.reactionEmoji as emoji (emoji)}
-              <button
-                type="button"
-                role="menuitem"
-                class="grid size-8 place-items-center rounded text-base hover:bg-foreground/[0.06]"
-                aria-label="React {emoji}"
-                data-testid="messages-picker-emoji"
-                data-emoji={emoji}
-                onclick={() => react(m, emoji)}>{emoji}</button
-              >
-            {/each}
-          </div>
-        {/if}
-      </div>
-    {/if}
-  </article>
-{/snippet}
-
-<PageFrame>
-  <PageHeader title="Messages" description="Talk with your team in channels and direct messages.">
-    {#snippet actions()}
+    <div class="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
+      <h1 class="min-w-0 flex-1 truncate text-lg font-bold tracking-tight">Messages</h1>
       <span
-        class="text-xs text-muted-foreground"
+        class="flex items-center gap-1.5 text-[11px] text-muted-foreground"
         data-testid="messages-live"
         data-state={live}
-        title="Live updates">{live === 'live' ? '● Live' : live === 'connecting' ? 'Connecting…' : 'Reconnecting…'}</span
+        title="Live updates"
       >
-    {/snippet}
-  </PageHeader>
+        <span class={['size-1.5 rounded-full', live === 'live' ? 'bg-emerald-500' : 'animate-pulse bg-amber-500']} aria-hidden="true"
+        ></span>
+        {live === 'live' ? 'Live' : live === 'connecting' ? 'Connecting…' : 'Reconnecting…'}
+      </span>
+      <button
+        type="button"
+        class="grid size-8 place-items-center rounded-md border border-border bg-background text-foreground/70 hover:text-foreground"
+        aria-label="New message"
+        title="New message"
+        data-testid="messages-compose"
+        onclick={openNewDm}><SquarePen class="size-4" /></button
+      >
+    </div>
 
-  <div
-    class="mt-6 grid h-[calc(100dvh-14rem)] min-h-[26rem] overflow-hidden rounded-lg border border-border md:grid-cols-[15rem_1fr] {thread ? 'lg:grid-cols-[15rem_1fr_22rem]' : ''}"
-    data-testid="messages-panel"
+    <div class="min-h-0 flex-1 overflow-y-auto px-2 py-3">
+      {@render sectionHeader('Channels', channelsOpen, () => (channelsOpen = !channelsOpen), 'Add channel', 'messages-new-channel', openNewChannel)}
+      {#if channelsOpen}
+        <ul class="mt-0.5 flex flex-col gap-px" data-testid="messages-channels">
+          {#each channels as c (c.id)}{@render conversationRow(c)}{/each}
+          <li>
+            <button
+              type="button"
+              class="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[15px] text-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground"
+              data-testid="messages-add-channel-row"
+              onclick={openNewChannel}
+            >
+              <span class="grid size-5 place-items-center rounded-md bg-foreground/[0.08]"><Plus class="size-3.5" aria-hidden="true" /></span>
+              Add channel
+            </button>
+          </li>
+        </ul>
+      {/if}
+
+      <div class="mt-4">
+        {@render sectionHeader('Direct messages', dmsOpen, () => (dmsOpen = !dmsOpen), 'New message', 'messages-new-dm', openNewDm)}
+      </div>
+      {#if dmsOpen}
+        <ul class="mt-0.5 flex flex-col gap-px" data-testid="messages-dms">
+          {#each dms as c (c.id)}{@render conversationRow(c)}{/each}
+          {#if dms.length === 0}
+            <li class="px-2 py-1 text-xs text-muted-foreground">No direct messages yet.</li>
+          {/if}
+        </ul>
+      {/if}
+    </div>
+  </nav>
+
+  <!-- ── The conversation (below xl, an open thread takes its place) ── -->
+  <section
+    class={[
+      'min-h-0 min-w-0 flex-1 flex-col',
+      thread ? 'hidden xl:flex' : selectedId ? 'flex' : 'hidden md:flex',
+    ]}
+    aria-label="Conversation"
+    data-testid="messages-conversation-view"
   >
-    <!-- Conversation list (on phones: the whole panel until one is open) -->
-    <nav
-      class="min-h-0 flex-col overflow-y-auto border-border p-2 md:flex md:border-r {selectedId
-        ? 'hidden'
-        : 'flex'}"
-      aria-label="Conversations"
-      data-testid="messages-list"
-    >
-      <div class="flex items-center justify-between px-2.5 pt-1 pb-1">
-        <h2 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Channels</h2>
+    {#if selected}
+      {@const dmWith = selected.kind === 'dm' ? dmOthers(selected) : []}
+      <header class="flex h-14 shrink-0 items-center gap-2 border-b border-border px-3 sm:px-5">
         <button
           type="button"
-          class="rounded p-1 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
-          aria-label="New channel"
-          title="New channel"
-          data-testid="messages-new-channel"
-          onclick={openNewChannel}><Plus class="size-4" /></button
+          class="-ml-1 grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-foreground/[0.06] md:hidden"
+          aria-label="Back to conversations"
+          data-testid="messages-back"
+          onclick={closeConversation}><ArrowLeft class="size-4" /></button
         >
-      </div>
-      {#if channels.length === 0}
-        <p class="px-2.5 py-1 text-xs text-muted-foreground">No channels yet.</p>
-      {/if}
-      <ul class="flex flex-col gap-0.5">
-        {#each channels as c (c.id)}{@render conversationRow(c)}{/each}
-      </ul>
-
-      <div class="mt-4 flex items-center justify-between px-2.5 pt-1 pb-1">
-        <h2 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Direct messages</h2>
-        <button
-          type="button"
-          class="rounded p-1 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
-          aria-label="New message"
-          title="New message"
-          data-testid="messages-new-dm"
-          onclick={openNewDm}><Plus class="size-4" /></button
-        >
-      </div>
-      {#if dms.length === 0}
-        <p class="px-2.5 py-1 text-xs text-muted-foreground">No direct messages yet.</p>
-      {/if}
-      <ul class="flex flex-col gap-0.5">
-        {#each dms as c (c.id)}{@render conversationRow(c)}{/each}
-      </ul>
-    </nav>
-
-    <!-- Conversation (hidden below lg while a thread is open: the thread takes its place) -->
-    <section
-      class="min-h-0 min-w-0 flex-col {thread ? 'hidden lg:flex' : selectedId ? 'flex' : 'hidden md:flex'}"
-      aria-label="Conversation"
-      data-testid="messages-conversation-view"
-    >
-      {#if selected}
-        <header class="flex min-w-0 items-center gap-2 border-b border-border px-3 py-2.5 sm:px-4">
-          <button
-            type="button"
-            class="rounded p-1 text-muted-foreground hover:bg-foreground/[0.06] md:hidden"
-            aria-label="Back to conversations"
-            data-testid="messages-back"
-            onclick={closeConversation}><ArrowLeft class="size-4" /></button
-          >
-          <div class="min-w-0">
-            <h2 class="flex items-center gap-1.5 truncate text-sm font-semibold" data-testid="messages-title">
-              {#if selected.kind === 'channel'}
-                {#if selected.private}<Lock class="size-3.5" aria-label="Private" />{:else}<Hash
-                    class="size-3.5"
-                    aria-hidden="true"
-                  />{/if}
-              {/if}
-              {selected.title}
-            </h2>
-            {#if selected.topic}
-              <p class="truncate text-xs text-muted-foreground">{selected.topic}</p>
+        {#if selected.kind === 'dm' && dmWith.length === 1}
+          <UserAvatar name={dmWith[0].name} image={dmWith[0].image} size="sm" />
+        {/if}
+        <div class="min-w-0 flex-1">
+          <h2 class="flex min-w-0 items-center gap-1 text-base font-bold" data-testid="messages-title">
+            {#if selected.kind === 'channel'}
+              {#if selected.private}<Lock class="size-4 shrink-0" aria-label="Private" />{:else}<Hash
+                  class="size-4 shrink-0"
+                  aria-hidden="true"
+                />{/if}
             {/if}
-          </div>
-        </header>
-
-        <div class="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4" bind:this={listEl} data-testid="messages-log">
-          {#if hasMore}
-            <div class="mb-3 flex justify-center">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={loadingEarlier}
-                onclick={loadEarlier}
-                data-testid="messages-load-earlier">{loadingEarlier ? 'Loading…' : 'Load earlier'}</Button
-              >
-            </div>
+            <span class="truncate">{selected.title}</span>
+          </h2>
+          {#if selected.topic}
+            <p class="truncate text-xs text-muted-foreground" data-testid="messages-topic">{selected.topic}</p>
           {/if}
-          {#if messages.length === 0}
-            <p class="py-10 text-center text-sm text-muted-foreground" data-testid="messages-empty">
-              No messages yet. Say hello.
-            </p>
-          {/if}
-          {#each days as day (day.key)}
-            <div class="my-3 flex items-center gap-3" data-testid="messages-day">
-              <span class="h-px flex-1 bg-border"></span>
-              <span class="text-[11px] font-medium text-muted-foreground">{day.label}</span>
-              <span class="h-px flex-1 bg-border"></span>
-            </div>
-            {#each day.messages as m, i (m.id)}
-              {@render messageItem(m, continuesRun(day.messages[i - 1], m) && m.replyCount === 0 && (day.messages[i - 1]?.replyCount ?? 0) === 0, false)}
-            {/each}
-          {/each}
         </div>
 
-        <form
-          class="border-t border-border p-2.5 sm:p-3 {dragging ? 'bg-primary/5 ring-2 ring-primary/40 ring-inset' : ''}"
-          data-testid="messages-composer-form"
-          onsubmit={(e) => {
-            e.preventDefault()
-            void send()
-          }}
-          ondragover={(e) => {
-            if (e.dataTransfer?.types.includes('Files')) {
-              e.preventDefault()
-              dragging = true
-            }
-          }}
-          ondragleave={() => (dragging = false)}
-          ondrop={onDrop}
-        >
+        <div class="relative shrink-0">
+          {#if members}
+            <button
+              type="button"
+              class="flex h-8 items-center gap-1.5 rounded-md border border-border px-1.5 pr-2 text-xs font-semibold hover:bg-foreground/[0.04]"
+              aria-label="{members.length} {members.length === 1 ? 'member' : 'members'}"
+              aria-expanded={membersOpen}
+              data-testid="messages-members"
+              data-count={members.length}
+              onclick={() => (membersOpen = !membersOpen)}
+            >
+              <span class="flex -space-x-1" aria-hidden="true">
+                {#each members.slice(0, 3) as p (p.id)}
+                  <UserAvatar name={p.name} image={p.image ?? null} size="xs" class="ring-2 ring-background" testid="messages-member-avatar" />
+                {/each}
+              </span>
+              <span class="tabular-nums">{members.length}</span>
+            </button>
+            {#if membersOpen}
+              <div
+                class="absolute top-full right-0 z-30 mt-1 w-64 rounded-lg border border-border bg-popover p-1 shadow-lg"
+                data-testid="messages-members-list"
+              >
+                <p class="px-2 pt-1.5 pb-1 text-xs font-semibold text-muted-foreground">
+                  {members.length}
+                  {members.length === 1 ? 'member' : 'members'}
+                </p>
+                <ul class="max-h-72 overflow-y-auto">
+                  {#each members as p (p.id)}
+                    <li class="flex items-center gap-2 rounded-md px-2 py-1.5">
+                      <UserAvatar name={p.name} image={p.image ?? null} size="sm" />
+                      <span class="min-w-0 flex-1 truncate text-sm">{personLabel(p)}</span>
+                      {#if p.id === data.me}<span class="text-[11px] text-muted-foreground">you</span>{/if}
+                    </li>
+                  {/each}
+                </ul>
+              </div>
+            {/if}
+          {:else if membersError}
+            <span class="flex items-center gap-1 text-xs text-destructive" title={membersError} data-testid="messages-members-error"
+              ><Users class="size-3.5" aria-hidden="true" /> Members unavailable</span
+            >
+          {/if}
+        </div>
+      </header>
+
+      <div
+        class="min-h-0 flex-1 overflow-y-auto pb-3"
+        bind:this={listEl}
+        data-testid="messages-log"
+        role="log"
+        aria-label="Messages in {selected.kind === 'channel' ? `#${selected.title}` : selected.title}"
+      >
+        {#if hasMore}
+          <div class="flex justify-center pt-4">
+            <Button variant="outline" size="sm" disabled={loadingEarlier} onclick={loadEarlier} data-testid="messages-load-earlier"
+              >{loadingEarlier ? 'Loading…' : 'Load earlier'}</Button
+            >
+          </div>
+        {:else if messages.length > 0}
+          <div class="px-5 pt-8 pb-2">
+            <p class="text-lg font-bold">
+              {selected.kind === 'channel' ? `#${selected.title}` : selected.title}
+            </p>
+            <p class="text-sm text-muted-foreground">
+              {selected.kind === 'channel'
+                ? `This is the very beginning of #${selected.title}.${selected.topic ? ` ${selected.topic}` : ''}`
+                : 'This is the very beginning of your direct message history.'}
+            </p>
+          </div>
+        {/if}
+        {#if messages.length === 0}
+          <div class="grid h-full place-items-center p-8 text-center" data-testid="messages-empty">
+            <div>
+              <p class="text-base font-semibold">No messages yet</p>
+              <p class="mt-1 text-sm text-muted-foreground">Say hello — everything you write here stays in this conversation.</p>
+            </div>
+          </div>
+        {/if}
+        {#each days as day (day.key)}
+          <div class="relative" data-testid="messages-day-group">
+            <div class="sticky top-0 z-20 flex items-center justify-center py-1.5" data-testid="messages-day">
+              <span class="absolute inset-x-0 top-1/2 h-px bg-border" aria-hidden="true"></span>
+              <span class="relative rounded-full border border-border bg-background px-3 py-0.5 text-xs font-semibold shadow-xs"
+                >{day.label}</span
+              >
+            </div>
+            {#each messageRows(day.messages) as row (row.message.id)}
+              {@const m = row.message}
+              <MessageRow
+                message={m}
+                grouped={row.grouped}
+                me={data.me}
+                canEdit={canEdit(m)}
+                canDelete={canDelete(m)}
+                editing={editingId === m.id}
+                pickerOpen={pickerFor === m.id}
+                reactionEmoji={data.reactionEmoji}
+                repliers={m.replierIds.map(rowPerson)}
+                {mentions}
+                {now}
+                onreact={(emoji) => react(m, emoji)}
+                ontogglepicker={() => (pickerFor = pickerFor === m.id ? null : m.id)}
+                onreply={() => openThread(m.id)}
+                onstartedit={() => startEdit(m)}
+                onsaveedit={(body) => saveEdit(m, body)}
+                oncanceledit={() => (editingId = null)}
+                ondelete={() => {
+                  deleteError = null
+                  deleteTarget = m
+                }}
+              />
+            {/each}
+          </div>
+        {/each}
+      </div>
+
+      <input bind:this={fileInput} type="file" multiple class="hidden" data-testid="messages-file-input" onchange={onPickFiles} />
+      <MessageComposer
+        bind:value={draft}
+        bind:textarea={composerEl}
+        {placeholder}
+        label="Message"
+        {canSend}
+        emoji={data.reactionEmoji}
+        inputTestid="messages-composer"
+        sendTestid="messages-send"
+        formTestid="messages-composer-form"
+        {dragging}
+        onsend={send}
+        onattach={() => fileInput?.click()}
+        onpaste={onPaste}
+        ondragover={onDragOver}
+        ondragleave={() => (dragging = false)}
+        ondrop={onDrop}
+      >
+        {#snippet above()}
           {#if errorText}
-            <p class="mb-2 text-xs text-destructive" role="alert" data-testid="messages-error">{errorText}</p>
+            <p class="px-3 pt-2 text-xs text-destructive" role="alert" data-testid="messages-error">{errorText}</p>
           {/if}
           {#if pendingFiles.length > 0}
-            <ul class="mb-2 flex flex-wrap gap-1.5" data-testid="messages-pending">
+            <ul class="flex flex-wrap gap-2 px-3 pt-2.5" data-testid="messages-pending">
               {#each pendingFiles as p (p.key)}
                 <li
-                  class="flex max-w-56 items-center gap-1.5 rounded-md border border-border bg-foreground/[0.03] py-1 pr-1 pl-2 text-xs"
+                  class="flex max-w-60 items-center gap-2 rounded-lg border border-border bg-foreground/[0.03] py-1.5 pr-1 pl-2 text-xs"
                   data-testid="messages-pending-file"
                   data-status={p.status}
                   data-name={p.name}
                 >
-                  {#if p.status === 'uploading'}<LoaderCircle class="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-label="Uploading" />{:else}<Paperclip
-                      class="size-3.5 shrink-0 text-muted-foreground"
+                  {#if p.status === 'uploading'}<LoaderCircle class="size-4 shrink-0 animate-spin text-muted-foreground" aria-label="Uploading" />{:else}<Paperclip
+                      class="size-4 shrink-0 text-muted-foreground"
                       aria-hidden="true"
                     />{/if}
-                  <span class="truncate">{p.name}</span>
-                  {#if p.file}<span class="shrink-0 text-muted-foreground">{formatSize(p.file.size)}</span>{/if}
+                  <span class="min-w-0">
+                    <span class="block truncate font-medium">{p.name}</span>
+                    {#if p.file}<span class="block text-[11px] text-muted-foreground">{formatSize(p.file.size)}</span>{/if}
+                  </span>
                   <button
                     type="button"
-                    class="rounded p-0.5 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+                    class="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
                     aria-label="Remove {p.name}"
                     onclick={() => (pendingFiles = pendingFiles.filter((x) => x.key !== p.key))}><X class="size-3.5" /></button
                   >
@@ -943,117 +925,96 @@
               {/each}
             </ul>
           {/if}
-          <div class="flex items-end gap-2">
-            <input
-              bind:this={fileInput}
-              type="file"
-              multiple
-              class="hidden"
-              data-testid="messages-file-input"
-              onchange={onPickFiles}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              aria-label="Attach files"
-              title="Attach files (they’re saved to the Drive)"
-              data-testid="messages-attach"
-              onclick={() => fileInput?.click()}><Paperclip class="size-4" /></Button
-            >
-            <textarea
-              bind:this={composerEl}
-              bind:value={draft}
-              rows="1"
-              class="max-h-40 min-h-10 flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-              placeholder={selected.kind === 'channel' ? `Message #${selected.title}` : `Message ${selected.title}`}
-              aria-label="Message"
-              data-testid="messages-composer"
-              onkeydown={onComposerKey}
-              onpaste={onPaste}
-            ></textarea>
-            <Button
-              type="submit"
-              disabled={sending || uploading || (!draft.trim() && readyFiles.length === 0)}
-              data-testid="messages-send">Send</Button
-            >
-          </div>
-          <p class="mt-1 hidden text-[11px] text-muted-foreground sm:block">
-            Enter to send · Shift+Enter for a new line · Markdown works · drop or paste files to attach
-          </p>
-        </form>
-      {:else}
-        <div class="grid flex-1 place-items-center p-8 text-center">
-          <div>
-            <p class="text-sm font-medium">Pick a conversation</p>
-            <p class="mt-1 text-sm text-muted-foreground">Or start one with “New channel” or “New message”.</p>
-          </div>
+        {/snippet}
+      </MessageComposer>
+    {:else}
+      <div class="grid flex-1 place-items-center p-8 text-center">
+        <div>
+          <p class="text-base font-semibold">Pick a conversation</p>
+          <p class="mt-1 text-sm text-muted-foreground">Or start one with “Add channel” or “New message”.</p>
         </div>
-      {/if}
-    </section>
-
-    {#if thread && selected}
-      <aside
-        class="flex min-h-0 min-w-0 flex-col border-border md:border-l"
-        aria-label="Thread"
-        data-testid="messages-thread"
-      >
-        <header class="flex items-center gap-2 border-b border-border px-3 py-2.5 sm:px-4">
-          <div class="min-w-0 flex-1">
-            <h2 class="text-sm font-semibold">Thread</h2>
-            <p class="truncate text-xs text-muted-foreground">
-              {selected.kind === 'channel' ? `#${selected.title}` : selected.title}
-            </p>
-          </div>
-          <button
-            type="button"
-            class="rounded p-1 text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
-            aria-label="Close thread"
-            data-testid="messages-thread-close"
-            onclick={closeThread}><X class="size-4" /></button
-          >
-        </header>
-        <div class="min-h-0 flex-1 overflow-y-auto px-3 py-2 sm:px-4" bind:this={threadListEl} data-testid="thread-log">
-          {@render messageItem(thread.parent, false, true)}
-          <div class="my-3 flex items-center gap-3">
-            <span class="text-[11px] font-medium text-muted-foreground" data-testid="thread-count"
-              >{thread.replies.length === 0
-                ? 'No replies yet'
-                : `${thread.replies.length} ${thread.replies.length === 1 ? 'reply' : 'replies'}`}</span
-            >
-            <span class="h-px flex-1 bg-border"></span>
-          </div>
-          {#each thread.replies as r, i (r.id)}
-            {@render messageItem(r, continuesRun(thread.replies[i - 1], r), true)}
-          {/each}
-        </div>
-        <form
-          class="border-t border-border p-2.5 sm:p-3"
-          onsubmit={(e) => {
-            e.preventDefault()
-            void sendReply()
-          }}
-        >
-          {#if threadError}
-            <p class="mb-2 text-xs text-destructive" role="alert">{threadError}</p>
-          {/if}
-          <div class="flex items-end gap-2">
-            <textarea
-              bind:value={threadDraft}
-              rows="1"
-              class="max-h-40 min-h-10 flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-              placeholder="Reply…"
-              aria-label="Reply"
-              data-testid="thread-composer"
-              onkeydown={onReplyKey}
-            ></textarea>
-            <Button type="submit" disabled={threadSending || !threadDraft.trim()} data-testid="thread-send">Reply</Button>
-          </div>
-        </form>
-      </aside>
+      </div>
     {/if}
-  </div>
-</PageFrame>
+  </section>
+
+  <!-- ── Thread pane ── -->
+  {#if thread && selected}
+    <aside
+      class="flex min-h-0 w-full min-w-0 flex-col border-border bg-background md:border-l xl:w-[400px] xl:shrink-0"
+      aria-label="Thread"
+      data-testid="messages-thread"
+    >
+      <header class="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
+        <div class="min-w-0 flex-1">
+          <h2 class="text-base font-bold">Thread</h2>
+          <p class="truncate text-xs text-muted-foreground">
+            {selected.kind === 'channel' ? `#${selected.title}` : selected.title}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+          aria-label="Close thread"
+          data-testid="messages-thread-close"
+          onclick={closeThread}><X class="size-4" /></button
+        >
+      </header>
+      <div class="min-h-0 flex-1 overflow-y-auto pb-3" bind:this={threadListEl} data-testid="thread-log">
+        {@render threadRow(thread.parent, false)}
+        <div class="my-2 flex items-center gap-3 px-5">
+          <span class="text-xs font-medium text-muted-foreground" data-testid="thread-count"
+            >{thread.replies.length === 0
+              ? 'No replies yet'
+              : `${thread.replies.length} ${thread.replies.length === 1 ? 'reply' : 'replies'}`}</span
+          >
+          <span class="h-px flex-1 bg-border"></span>
+        </div>
+        {#each messageRows(thread.replies) as row (row.message.id)}
+          {@render threadRow(row.message, row.grouped)}
+        {/each}
+      </div>
+      {#if threadError}
+        <p class="px-5 pb-1 text-xs text-destructive" role="alert">{threadError}</p>
+      {/if}
+      <MessageComposer
+        bind:value={threadDraft}
+        placeholder="Reply…"
+        label="Reply"
+        canSend={!threadSending && threadDraft.trim().length > 0}
+        emoji={data.reactionEmoji}
+        inputTestid="thread-composer"
+        sendTestid="thread-send"
+        hint={false}
+        onsend={sendReply}
+      />
+    </aside>
+  {/if}
+</div>
+
+{#snippet threadRow(m: MessageView, grouped: boolean)}
+  <MessageRow
+    message={m}
+    {grouped}
+    inThread
+    me={data.me}
+    canEdit={canEdit(m)}
+    canDelete={canDelete(m)}
+    editing={editingId === m.id}
+    pickerOpen={pickerFor === m.id}
+    reactionEmoji={data.reactionEmoji}
+    {mentions}
+    {now}
+    onreact={(emoji) => react(m, emoji)}
+    ontogglepicker={() => (pickerFor = pickerFor === m.id ? null : m.id)}
+    onstartedit={() => startEdit(m)}
+    onsaveedit={(body) => saveEdit(m, body)}
+    oncanceledit={() => (editingId = null)}
+    ondelete={() => {
+      deleteError = null
+      deleteTarget = m
+    }}
+  />
+{/snippet}
 
 <Dialog.Root
   open={deleteTarget !== null}
@@ -1123,6 +1084,7 @@
           {#each others as p (p.id)}
             <label class="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={channelPeople.includes(p.id)} onchange={() => (channelPeople = toggle(channelPeople, p.id))} />
+              <UserAvatar name={personLabel(p)} image={p.image ?? null} size="xs" />
               <span class="truncate">{personLabel(p)}</span>
               <span class="truncate text-xs text-muted-foreground">{p.email}</span>
             </label>
@@ -1146,13 +1108,16 @@
         <Dialog.Description>Pick one person, or a few for a small group.</Dialog.Description>
       </Dialog.Header>
       <Input bind:value={dmFilter} placeholder="Search people" aria-label="Search people" />
-      <div class="flex max-h-60 flex-col gap-1 overflow-y-auto rounded-md border border-border p-2" data-testid="dm-people">
-        {#if dmCandidates.length === 0}<p class="text-xs text-muted-foreground">No one found.</p>{/if}
+      <div class="flex max-h-60 flex-col gap-0.5 overflow-y-auto rounded-md border border-border p-1.5" data-testid="dm-people">
+        {#if dmCandidates.length === 0}<p class="p-1 text-xs text-muted-foreground">No one found.</p>{/if}
         {#each dmCandidates as p (p.id)}
-          <label class="flex items-center gap-2 text-sm">
+          <label class="flex items-center gap-2.5 rounded-md px-1.5 py-1 text-sm hover:bg-foreground/[0.04]">
             <input type="checkbox" checked={dmPeople.includes(p.id)} onchange={() => (dmPeople = toggle(dmPeople, p.id))} data-testid="dm-person" data-email={p.email} />
-            <span class="truncate">{personLabel(p)}</span>
-            <span class="truncate text-xs text-muted-foreground">{p.email}</span>
+            <UserAvatar name={personLabel(p)} image={p.image ?? null} size="sm" />
+            <span class="min-w-0 flex-1">
+              <span class="block truncate font-medium">{personLabel(p)}</span>
+              <span class="block truncate text-xs text-muted-foreground">{p.email}</span>
+            </span>
           </label>
         {/each}
       </div>
@@ -1164,49 +1129,3 @@
     </form>
   </Dialog.Content>
 </Dialog.Root>
-
-<style>
-  .message-body :global(p) {
-    margin: 0;
-  }
-  .message-body :global(p + p),
-  .message-body :global(ul),
-  .message-body :global(ol),
-  .message-body :global(pre),
-  .message-body :global(blockquote) {
-    margin-top: 0.4rem;
-  }
-  .message-body :global(ul) {
-    list-style: disc;
-    padding-left: 1.25rem;
-  }
-  .message-body :global(ol) {
-    list-style: decimal;
-    padding-left: 1.25rem;
-  }
-  .message-body :global(code) {
-    border-radius: 0.25rem;
-    background: color-mix(in oklab, currentColor 8%, transparent);
-    padding: 0.05rem 0.3rem;
-    font-size: 0.85em;
-  }
-  .message-body :global(pre) {
-    overflow-x: auto;
-    border-radius: 0.375rem;
-    background: color-mix(in oklab, currentColor 6%, transparent);
-    padding: 0.5rem 0.75rem;
-  }
-  .message-body :global(pre code) {
-    background: none;
-    padding: 0;
-  }
-  .message-body :global(blockquote) {
-    border-left: 2px solid var(--border);
-    padding-left: 0.75rem;
-    color: var(--muted-foreground);
-  }
-  .message-body :global(a) {
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
-</style>

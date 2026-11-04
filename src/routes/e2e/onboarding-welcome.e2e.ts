@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import postgres from 'postgres'
-import { loginUser, registerUser, signOut } from './test-helpers'
+import { completeProfileStepInUi, loginUser, registerUser, signOut } from './test-helpers'
 
 /**
  * Phase-2e: the boot sequence is the FIRST screen on `/` for every production
@@ -9,7 +9,8 @@ import { loginUser, registerUser, signOut } from './test-helpers'
  * into the app: the dashboard, with the assistant panel opened on its own and
  * the agent's first words streaming into it (polish P-1/P-2). Skippable;
  * completion persists server-side per user; the saved name personalizes every
- * future boot ("Hello, Ada.").
+ * future boot ("Hello, Ada."). The name (and picture) come from the required
+ * profile step before it (P-5), which replaced the boot's own name ask.
  *
  * Runs against the unconfigured deployment (test.eigenlabs.dev → no platform provider),
  * so the mind step shows the real provider gate. All external provider
@@ -170,13 +171,18 @@ test.describe('welcome boot sequence', () => {
     await stubSpeechSynthesis(context)
     const tts = await interceptTts(context)
     await websiteNotStarted()
-    await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
+    await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev', profile: 'manual' })
 
-    // Boot → greeting. No capability list, no step counter, no module jargon — ever.
+    // The profile step comes first (P-5): first name, last name, picture — then the boot.
+    await completeProfileStepInUi(page, { firstName: 'Ada', lastName: 'Lovelace' })
+    await expect(page).toHaveURL(/\/(\?|$)/)
+
+    // Boot → greeting, by name. No name ask: the profile step already has it. No capability list, no step counter, no module jargon — ever.
     await expectWizard(page)
     await expect(page.getByText('Step 1 of 5')).not.toBeVisible()
     await expect(page.getByText('Nucleus chat')).not.toBeVisible()
     await expect(page.getByText('Knowledge graph')).not.toBeVisible()
+    await expect(page.getByText('Hello, Ada.')).toBeVisible()
 
     await walkBoot(page, 'Ada')
 
@@ -256,9 +262,9 @@ test.describe('welcome boot sequence', () => {
     page,
     context,
   }) => {
-    await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
+    await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev', profile: { firstName: 'Ada', lastName: 'Lovelace' } })
 
-    // First pass: give the name, reach the mind gate, skip it — tour done, name saved.
+    // First pass (the name came from the profile step): reach the mind gate, skip it — tour done.
     await walkBoot(page, 'Ada')
     await continueThroughLines(page)
     await expect(page.getByText(MIND_HEADING)).toBeVisible({ timeout: 20_000 })
