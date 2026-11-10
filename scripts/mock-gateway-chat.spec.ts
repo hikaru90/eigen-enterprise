@@ -99,6 +99,16 @@ describe('mockChatCompletion', () => {
     expect(out.response.choices[0].message.content).toBe(MOCK_ANSWER)
   })
 
+  it('[mock-json:b64url] answers with exactly the decoded text, even when tools are offered', () => {
+    const verdict = JSON.stringify({ kind: 'bug', area: 'messages', duplicate_of: null })
+    const marker = `[mock-json:${Buffer.from(verdict).toString('base64url')}]`
+    const { response } = mockChatCompletion(
+      { messages: [{ role: 'user', content: `Draft:\n"Threads ${marker}"` }], tools: [{ function: { name: DEFAULT_MOCK_TOOL } }] },
+      {},
+    )
+    expect(response.choices[0]).toMatchObject({ message: { role: 'assistant', content: verdict }, finish_reason: 'stop' })
+  })
+
   it('[mock-delay:ms] in the latest user message delays every completion of the turn', () => {
     const base = {
       tools: [tool(DEFAULT_MOCK_TOOL)],

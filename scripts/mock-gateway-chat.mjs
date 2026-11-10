@@ -16,6 +16,9 @@
  *                       [mock-tool:none] answers without a tool call.
  *   [mock-delay:<ms>]   hold every completion of the turn for <ms> before
  *                       answering — lets a test restart the server mid-turn.
+ *   [mock-json:<b64url>] answer with exactly the base64url-decoded text as
+ *                       content (no tool call) — e.g. a JSON verdict for an
+ *                       LLM judge (the Contribute board's kind/area/duplicate).
  * Env:
  *   MOCK_GATEWAY_DELAY_MS  default delay for every non-ping completion
  *                          (the prompt marker wins). Malformed → throws.
@@ -72,6 +75,12 @@ export function mockChatCompletion(body, env) {
   const userText = textOf(lastUser?.content)
   const delayMarker = userText.match(/\[mock-delay:(\d+)\]/)
   const delayMs = delayMarker ? Number(delayMarker[1]) : defaultDelay
+
+  const jsonMarker = userText.match(/\[mock-json:([A-Za-z0-9_-]+)\]/)
+  if (jsonMarker) {
+    const content = Buffer.from(jsonMarker[1], 'base64url').toString('utf8')
+    return { delayMs, response: wrap({ role: 'assistant', content }, 'stop') }
+  }
 
   const toolMarker = userText.match(/\[mock-tool:([A-Za-z0-9_.-]+)\]/)
   const wanted = toolMarker ? toolMarker[1] : DEFAULT_MOCK_TOOL

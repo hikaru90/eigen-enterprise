@@ -22,6 +22,28 @@ Red on every push since 2026-10-22. Reproduced in a clean clone with no `.env` a
 
 **Decision:** CI's env is `.env.example`, nothing else. A new env key the code types against must go into `.env.example`, or CI goes red — that keeps the template honest.
 
+## 2026-11-10 — Contribute: propose improvements from the top bar; an agent picks them up (ported from Eigen)
+
+Owner: "look at the contribute feature from Eigen and include it in Eigen Enterprise … a button at the top right where people can type into and propose improvements to the application, and things will then get picked up by an agent later".
+
+- **Top bar** (`src/lib/components/contribute/contribute-button.svelte`, in `app-shell.svelte`): a "Contribute" button (lightbulb; label from `sm` up) at the right end of the top bar on every signed-in page. It opens Eigen's share composer (`contribute-composer.svelte`): Send runs the board's **LLM judge** first (kind idea|bug|polish, area from the app's surfaces, and whether the same request is already open). No duplicate → shared straight away ("Thanks — it's on the board. Sounds like a bug in Messages."). Duplicate → the chorus card: "Vote for it instead" or "Mine's different". ⌘/Ctrl+Enter sends.
+- **Board** `/contribute` (`contribute-board.svelte`): Requested · In progress · Shipped tabs with counts, most wanted first (net score, newest breaks ties; shipped by ship date). Up/down votes (second click takes it back; shipped is closed). Owner/admins set the status (incl. Declined = off the board) and a note people read. No sidebar entry (the module is `internal`); the composer and the page link to each other.
+- **Agent's hands** (kernel tools, module `contribute`, a system module — self-seeded active): `contribute.list` (default open = requested + in progress; or one status / all), `contribute.get`, `contribute.update` (status and/or note; shipping stamps `shipped_at`, moving away clears it). Agent + admin roles, no approval (internal, reversible). Reachable from the in-app assistant and `ee contribute.list`.
+- **Server:** `modules/contribute/` (catalog, judge, service, DB + in-memory stores, http, live, tools); `/api/contribute` (GET board, POST share), `/check` (judge only, creates nothing), `/[id]` PATCH (owner/admin), `/[id]/vote`. Kernel events `contribute.proposed` and `contribute.status_changed` (activity feed).
+- **Migration `0121_contributions`** (journal idx 121): `contributions` (check constraints for kind/area/status/lengths, `shipped_at` set iff shipped) and `contribution_votes` (±1, PK per person). Company-level, no RLS (like Messages).
+- **Test infra:** the mock gateway answers `[mock-json:<base64url>]` with exactly that content (an LLM judge's verdict in e2e); the browser `$app/navigation` stub gained `invalidate`.
+
+**Decisions**
+- The judge is required, like Eigen: no AI provider / failed check → the error shows in the composer and nothing is created (no fallback kind, no "assume not a duplicate"); 3 attempts on invalid JSON, gateway errors are not retried.
+- Duplicate candidates are the 40 newest open proposals, not embedding-ranked like Eigen (one company's board is small; no vector column). Revisit when a company has more open proposals than that.
+- Everyone signed in proposes and votes; only owner/admins (and the agent) change status or notes.
+
+**Gates:** svelte-check 0 errors (31 warnings, none in new files); eslint 0 errors on touched files; unit 5270 passed (+ contribute: judge, service, tools, http, client, board, mock-gateway marker); `db-store.pg.spec.ts` against the test DB (0121 applied); components: contribute composer + board + app-shell (button is the top bar's last item, opens the composer) pass. E2E `contribute.e2e.ts` passes: member proposes from the top-right button → judged "a bug in Messages" → on the board with +1; admin drafts the same request → chorus card → votes instead (still one proposal, 2 votes); admin adds a note and moves it to In progress; the member sees it, has no status control, and PATCH as member is 403.
+**Known, not from this work:** `app-detail-settings.svelte.spec.ts` ("keeps deployment controls visible…", masked `SHOP_REGION`) fails in the component suite; that page imports nothing this change touched. One e2e run flaked in the shared `registerUser` (signup form posted before hydration on a cold harness); the rerun passed.
+**Not verified:** a real AI provider answering the judge (mock gateway only); the agent picking a proposal up end to end through the in-app assistant or `ee contribute.list` (the tools are unit-tested and registered); not released to the box.
+
+**Not ported from Eigen (on purpose):** credit rewards for shipped ideas and their reward judge, the makers' inbox email, the author correcting kind/area on their own row, makers editing titles, voice input in the composer. Nothing in eigenEnterprise was removed.
+
 ## 2026-11-10 — Real releases on GitHub + `ee upgrade` (over-the-air, keeps everything) — v0.4.0
 
 Owner: "repo is now public. build real release please" / "make a command for my vps to update over the air" / "this has to work seamlessly and keep the installed users, websites, repos etc". Commit `f323b87`, tag `v0.4.0`.
@@ -43,7 +65,7 @@ Owner: "repo is now public. build real release please" / "make a command for my 
 
 **Known, not from this work:** the "Unit tests and coverage" workflow has failed on every push since 2026-10-22 — svelte-check in CI has no `ORIGIN` / `PUBLIC_POSTHOG_*` / VAPID env (`$env` types). Local gates are green.
 
-**The VPS (152.53.118.209, arm64, Debian 13; console os.cerberusblue.com, website cerberusblue.com):** runs a pre-11-03 release whose ee has no `upgrade`, so its first update is the install line; `ee upgrade` from then on.
+**The VPS upgraded (owner's go, 2026-11-10 ~15:35 CET)** — 152.53.118.209, arm64, Debian 13; console os.cerberusblue.com, website cerberusblue.com. It ran a pre-11-03 release (ee without `upgrade`), so the first update was the install line from GitHub, over SSH. Before: manual safety copy in `/root/pre-upgrade-20261110T143256Z` (os.dump + ee state). During: cerberusblue.com and the console polled every 0.5 s — **94/94 OK each, zero downtime**. After: os on v0.4.0 (release `30a0ef87dc4d6ce8`, slot a→b), 98 → 118 migrations, the 1 user intact, the website workload untouched (same release, slot b, same repo mirror), all 4 routes + console host + ACME email kept, Caddy and Postgres not restarted (up since 2026-10-21) and not upgraded, `applied == desired`, no reconcile error, manifest + service worker served; `ee upgrade --check` → up to date. From now on: `ee upgrade`.
 
 ## 2026-11-10 — SHIPPED (main `1bb02b4`, pushed, on the box as release `1bb02b405565`): the installed app wears the company's identity
 

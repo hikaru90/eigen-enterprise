@@ -24,6 +24,8 @@ import { createBrandTools } from './brand/tools'
 import { DbAllowlistStore } from './chat-gateway/db-stores'
 import { createChatGateway, type ChatGatewayBoot } from './chat-gateway/index'
 import { telegramClientFromEnv } from './chat-gateway/telegram'
+import { CONTRIBUTE_MODULE_ID, contributeManifest } from './contribute/manifest'
+import { createContributeTools } from './contribute/tools'
 import { DRIVE_MODULE_ID, driveManifest } from './drive/manifest'
 import { createDriveTools } from './drive/tools'
 import { EMAIL_MODULE_ID, emailManifest } from './email/manifest'
@@ -74,6 +76,7 @@ export const moduleManifests = [
   membersManifest,
   messagesManifest,
   driveManifest,
+  contributeManifest,
 ] as const
 
 /**
@@ -95,6 +98,8 @@ export const SYSTEM_MODULE_IDS = [
   MESSAGES_MODULE_ID,
   // Drive (plan/phase-workspace.md D1): the company's files are core, like Memory.
   DRIVE_MODULE_ID,
+  // Contribute: everyone proposes improvements from the top bar; the agent picks them up.
+  CONTRIBUTE_MODULE_ID,
 ] as const
 
 /** Tools that always require an approval decision before first execution. */
@@ -216,6 +221,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createMembersTools(),
     ...createMessagesTools(),
     ...createDriveTools(),
+    ...createContributeTools(),
   ])
 
   return {
