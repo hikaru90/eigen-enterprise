@@ -46,6 +46,13 @@ export const spawnGit: GitRunner = (args, opts) =>
         stderr: Buffer.concat(err).toString('utf8'),
       }),
     )
+    // git may exit without reading stdin (most commands never do); the write then fails with
+    // EPIPE, which unhandled is an uncaught exception that kills the process. The command's
+    // outcome is its exit code + stderr (resolved above), so EPIPE is not a result; anything
+    // else is.
+    child.stdin.on('error', (e: NodeJS.ErrnoException) => {
+      if (e.code !== 'EPIPE') reject(e)
+    })
     child.stdin.end(opts.input ?? '')
   })
 

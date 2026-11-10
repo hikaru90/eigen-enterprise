@@ -20,6 +20,14 @@ jobs:
 
       - run: npm ci
 
+      # The app reads its config from `.env` (SvelteKit's $env modules). Locally
+      # every developer has one; CI has none, so svelte-check typed ORIGIN, VAPID_*
+      # and PUBLIC_POSTHOG_* as missing and the unit tests found no DATABASE_URL.
+      # Give CI the committed template — non-secret, local-test values only. App
+      # code keeps failing loud on missing env; this only supplies it.
+      - name: CI env from .env.example
+        run: cp .env.example .env
+
       - name: Lint
         run: npm run lint
 
@@ -34,7 +42,9 @@ jobs:
 
   components:
     name: Component browser tests
-    runs-on: ubuntu-latest
+    # ubuntu-latest moved to 26.04, which Playwright 1.59 refuses
+    # ("does not support chromium on ubuntu26.04-x64"). Pinned like release.yml.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -45,6 +55,14 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # The app reads its config from `.env` (SvelteKit's $env modules). Locally
+      # every developer has one; CI has none, so svelte-check typed ORIGIN, VAPID_*
+      # and PUBLIC_POSTHOG_* as missing and the unit tests found no DATABASE_URL.
+      # Give CI the committed template — non-secret, local-test values only. App
+      # code keeps failing loud on missing env; this only supplies it.
+      - name: CI env from .env.example
+        run: cp .env.example .env
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
@@ -70,6 +88,14 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # The app reads its config from `.env` (SvelteKit's $env modules). Locally
+      # every developer has one; CI has none, so svelte-check typed ORIGIN, VAPID_*
+      # and PUBLIC_POSTHOG_* as missing and the unit tests found no DATABASE_URL.
+      # Give CI the committed template — non-secret, local-test values only. App
+      # code keeps failing loud on missing env; this only supplies it.
+      - name: CI env from .env.example
+        run: cp .env.example .env
 
       - name: Unit tests with coverage thresholds
         run: npm run test:coverage
