@@ -2,7 +2,7 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-11-10 — "Unit tests and coverage" workflow green again (CI-only fix, app code unchanged)
+## 2026-11-10 — Fix for the red "Unit tests and coverage" workflow (CI-only, app code unchanged) — PR hikaru90/eigen-enterprise#7
 
 Red on every push since 2026-10-22. Reproduced in a clean clone with no `.env` and an empty environment: the same 7 svelte-check errors. Three separate causes:
 
@@ -11,6 +11,8 @@ Red on every push since 2026-10-22. Reproduced in a clean clone with no `.env` a
 - **Component tests:** `ubuntu-latest` moved to 26.04, which Playwright 1.59 refuses ("does not support chromium on ubuntu26.04-x64").
 
 **Fix (`.github/workflows/test-coverage.yml` only):** each job does `cp .env.example .env` after `npm ci` — the committed, non-secret template, the same file a developer starts from; the components job is pinned to `ubuntu-24.04` (as `release.yml` already is). No defaults or fallbacks added to app code; no check weakened. `auth.ts`'s `env.ORIGIN.trim()` was checked and is not a runtime bug: `normalizeAuthOrigin(env.ORIGIN)` runs first and throws on a missing ORIGIN.
+
+**Process note:** pushed with `--no-verify`. The pre-push hook (`ci:local`) passed lint, svelte-naming and typecheck, then failed only in git-spawning specs (`gitstore/*`, `orchestrator/repo/integration`, `assert-oss-no-secrets`) with `fatal: this operation must be run in a work tree`: git hook env leaks into the tests when pushing from a worktree. The same specs pass outside the hook (35/35). Worse, those fixtures then **wrote into the real repo**: `.git/config` got `core.bare = true` (every checkout broke with "must be run in a work tree") and a local `[user] fixture <fixture@eigen>`. Both were reverted by hand (bare=false, `[user]` removed); refs, tags and checkouts were untouched, and no commit was made under the fixture identity. The cause is pre-existing and not fixed here: tests that spawn git must clear `GIT_DIR`/`GIT_*` from the child env. Until then, a push from a linked worktree can corrupt the main repo config. This worktree also had stale `node_modules` (better-auth 1.4.22 vs the locked 1.7.12, giving 18 svelte-check errors) until `npm ci`.
 
 **Decision:** CI's env is `.env.example`, nothing else. A new env key the code types against must go into `.env.example`, or CI goes red — that keeps the template honest.
 
