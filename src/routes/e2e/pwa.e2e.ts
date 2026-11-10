@@ -3,7 +3,7 @@ import postgres from 'postgres'
 import { completeProfileViaApi, profileNames, registerUser } from './test-helpers'
 
 /**
- * Messages as an installable app: the manifest is public and opens on
+ * Messages as an installable app in the company's identity: the manifest is public and opens on
  * Messages, a signed-in page gets the service worker, Messages offers to turn
  * notifications on for this device, and the installed app shows an explicit
  * offline page instead of the browser's error when there is no connection.
@@ -48,14 +48,24 @@ test('installable Messages: manifest, service worker, notifications banner, offl
   const manifest = await page.request.get('/manifest.webmanifest')
   expect(manifest.status()).toBe(200)
   expect(manifest.headers()['content-type']).toContain('application/manifest+json')
-  expect(await manifest.json()).toMatchObject({ display: 'standalone', start_url: '/messages' })
-  for (const src of ['/pwa-192.png', '/pwa-512.png', '/pwa-512-maskable.png']) {
-    expect((await page.request.get(src)).status()).toBe(200)
+  const m = (await manifest.json()) as { name: string; icons: Array<{ src: string }> }
+  expect(m).toMatchObject({ display: 'standalone', start_url: '/messages' })
+  // A named company wears its monogram icons; an unnamed one the product's. Either way every icon is a PNG.
+  if (m.name !== 'eigenEnterprise') expect(m.icons[0].src).toMatch(/^\/app-icon\/any-192\.png\?v=/)
+  for (const { src } of m.icons) {
+    const icon = await page.request.get(src)
+    expect(icon.status()).toBe(200)
+    expect(icon.headers()['content-type']).toBe('image/png')
   }
+  expect((await page.request.get('/app-icon/nope.png', { maxRedirects: 0 })).status()).toBe(404)
 
   await newMember(context, page, `Pia ${Date.now().toString(36)}`)
   await page.goto('/messages')
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.webmanifest')
+  // iOS "Add to Home Screen" reads these from the page: the same identity as the manifest.
+  await expect(page.locator('meta[name="apple-mobile-web-app-title"]')).toHaveAttribute('content', m.name)
+  const appleIcon = await page.locator('link[rel="apple-touch-icon"]').getAttribute('href')
+  expect((await page.request.get(appleIcon!)).headers()['content-type']).toBe('image/png')
   await expect(page.getByTestId('messages-live')).toHaveAttribute('data-state', 'live')
 
   const scriptURL = await page.evaluate(async () => (await navigator.serviceWorker.ready).active?.scriptURL)

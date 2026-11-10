@@ -90,6 +90,11 @@ describe('brandShellVars (C3 brand-wide shell aliases)', () => {
     expect(vars['--overlay']).toContain('var(--primary)')
   })
 
+  it("paints the browser and installed app's status bar in the set's background", () => {
+    // The root layout copies --theme-color into <meta name="theme-color">.
+    expect(brandShellVars(set)['--theme-color']).toBe('var(--background)')
+  })
+
   it('never overrides a key the set declares itself', () => {
     expect(brandShellVars({ ...set, '--sidebar': '#000' })['--sidebar']).toBe('#000')
     expect(brandShellVars({ ...set, '--shadow-1': '0 1px 2px red' })['--shadow-1']).toBe(

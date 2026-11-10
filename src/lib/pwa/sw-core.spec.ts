@@ -48,7 +48,7 @@ describe('notificationFor', () => {
       tag: 'messages-1',
       renotify: true,
       data: { url: '/messages?c=1' },
-      icon: '/notification-icon.png',
+      icon: '/app-icon/any-192.png',
       badge: '/notification-badge.png',
     })
   })

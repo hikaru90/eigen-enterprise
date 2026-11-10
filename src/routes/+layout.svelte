@@ -30,6 +30,8 @@
 
   let { children } = $props()
 
+  const app = $derived((page.data as { app?: { name: string; iconVersion: string | null } }).app)
+
   const authPaths = new Set(['/login', '/signup'])
 
   function normalizePathname(pathname: string): string {
@@ -143,7 +145,17 @@
 
 <svelte:head>
   <title>eigenEnterprise</title>
-  <link rel="icon" href={favicon} />
+  <!-- The company's identity (src/lib/pwa/identity.ts): its monogram once it has a name, else the product's. -->
+  {#if app?.iconVersion}
+    <link rel="icon" type="image/png" sizes="32x32" href="/app-icon/favicon-32.png?v={app.iconVersion}" />
+    <link rel="apple-touch-icon" href="/app-icon/apple-180.png?v={app.iconVersion}" />
+  {:else}
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" href={favicon} />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  {/if}
+  {#if app}<meta name="apple-mobile-web-app-title" content={app.name} />{/if}
   {#if page.data.activeVisualSet}
     <!-- C3: the set's fonts (display / sans / mono) load from Google Fonts,
          one stylesheet per family; the emitted stacks carry generic fallbacks. -->

@@ -51,6 +51,7 @@ export function activeVisualSetStyleTag(
  *    redefines the roles re-derives them,
  *  - `--font-heading` → the set's display font (headings use it),
  *  - `--overlay` → a dark tint of the primary (dialog/drawer scrims),
+ *  - `--theme-color` → the set's background (status bar of the browser / installed app),
  *  - `--shadow-1..3: none` when the set has no elevation tokens (flat).
  * Font fallback stacks come from the component set (withFontFallbacks).
  * Default app (no active set): none of this is emitted — the app keeps its own tokens.
@@ -67,6 +68,8 @@ export function brandShellVars(cssVars: Record<string, string>): Record<string, 
     '--sidebar-ring': 'var(--ring)',
     '--font-heading': 'var(--font-display)',
     '--overlay': 'color-mix(in oklab, var(--primary) 20%, black)',
+    // The root layout copies it into <meta name="theme-color"> (browser and installed-app status bar).
+    '--theme-color': 'var(--background)',
   }
   if (!('--shadow-1' in cssVars)) {
     aliases['--shadow-1'] = 'none'

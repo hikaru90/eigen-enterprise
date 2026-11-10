@@ -1,13 +1,13 @@
+import type { IdentityColors, IdentityTokens } from './identity'
+
 /**
  * The installable app (Web App Manifest): eigenEnterprise on a phone's home
- * screen or a desktop dock opens full-screen on Messages, named after the
- * company. Served by src/routes/manifest.webmanifest/+server.ts.
+ * screen or a desktop dock opens full-screen on Messages and wears the
+ * company's identity (src/lib/pwa/identity.ts) — each instance installs as its
+ * own app. Served by src/routes/manifest.webmanifest/+server.ts.
  */
 
 export const PRODUCT_NAME = 'eigenEnterprise'
-
-/** The app's light background (app.html theme-color). */
-const BACKGROUND = '#e8ede5'
 
 export type ManifestIcon = { src: string; sizes: string; type: 'image/png'; purpose: 'any' | 'maskable' }
 
@@ -24,23 +24,31 @@ export type WebAppManifest = {
   icons: ManifestIcon[]
 }
 
-/** `companyName` is null until the owner names the company in the founding journey. */
-export function webAppManifest(companyName: string | null): WebAppManifest {
-  const name = companyName ?? PRODUCT_NAME
+const PRODUCT_ICONS: ManifestIcon[] = [
+  { src: '/pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+  { src: '/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+  { src: '/pwa-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+]
+
+export function webAppManifest(t: IdentityTokens, colors: IdentityColors): WebAppManifest {
+  const v = t.version
+  const icons: ManifestIcon[] = t.initial
+    ? [
+        { src: `/app-icon/any-192.png?v=${v}`, sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: `/app-icon/any-512.png?v=${v}`, sizes: '512x512', type: 'image/png', purpose: 'any' },
+        { src: `/app-icon/maskable-512.png?v=${v}`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      ]
+    : PRODUCT_ICONS
   return {
     id: '/',
-    name,
-    short_name: name,
+    name: t.name,
+    short_name: t.name,
     description: 'The website is your company.',
     start_url: '/messages',
     scope: '/',
     display: 'standalone',
-    background_color: BACKGROUND,
-    theme_color: BACKGROUND,
-    icons: [
-      { src: '/pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: '/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-      { src: '/pwa-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-    ],
+    background_color: colors.background,
+    theme_color: colors.background,
+    icons,
   }
 }

@@ -18,6 +18,8 @@ vi.mock('$lib/server/auth/harness-account', () => ({ isHarnessUser: isHarnessUse
 vi.mock('../../modules/brand/store', () => ({
   defaultBrandStore: () => ({ findActiveVisualSet: findActiveVisualSetMock }),
 }))
+const { foundingCompanyNameMock } = vi.hoisted(() => ({ foundingCompanyNameMock: vi.fn(async (): Promise<string | null> => null) }))
+vi.mock('$lib/server/overview/sources', () => ({ foundingCompanyName: foundingCompanyNameMock }))
 
 function makeCookies() {
   return {
@@ -61,6 +63,7 @@ describe('layout server load', () => {
       preferredLanguage: 'de',
       authorLayers: [{ key: 'user', label: 'You', kind: 'user' }],
       activeVisualSet: null,
+      app: { name: 'eigenEnterprise', iconVersion: null },
     })
 
     await expect(load({ locals: { user: undefined }, cookies } as never)).resolves.toEqual({
@@ -71,6 +74,7 @@ describe('layout server load', () => {
       preferredLanguage: 'en',
       authorLayers: [],
       activeVisualSet: null,
+      app: { name: 'eigenEnterprise', iconVersion: null },
     })
   })
 
@@ -93,6 +97,22 @@ describe('layout server load', () => {
       cssVars: { '--background': '#e8ede5', '--font-sans': '"Inter"' },
       darkCssVars: { '--background': '#0b0f0c' },
     })
+  })
+
+  it("carries the app's identity for the head (home-screen name, branded icons)", async () => {
+    findActiveVisualSetMock.mockResolvedValue({
+      id: '6a000000-0000-4000-8000-00000000000a',
+      cssVars: { '--primary': '#5b2a6e', '--primary-foreground': '#ffffff', '--background': '#faf6ee' },
+      darkCssVars: null,
+    })
+    foundingCompanyNameMock.mockResolvedValueOnce('Kindred')
+    getDbMock.mockReturnValue({ selectDistinct: vi.fn().mockReturnValue({ from: vi.fn().mockResolvedValue([]) }) })
+
+    const result = (await load({ locals: { user: undefined }, cookies: makeCookies() } as never)) as {
+      app: { name: string; iconVersion: string | null }
+    }
+    expect(result.app.name).toBe('Kindred')
+    expect(result.app.iconVersion).toMatch(/^[0-9a-z]+$/)
   })
 
   it('propagates brand store failures loud — only "none active" resolves null', async () => {

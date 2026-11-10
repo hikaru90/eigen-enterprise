@@ -37,7 +37,10 @@ export function parsePushPayload(data: { text(): string } | null): PushPayload {
   return out
 }
 
-/** One notification per conversation: a newer message replaces the older one (same tag) and alerts again. */
+/**
+ * One notification per conversation: a newer message replaces the older one
+ * (same tag) and alerts again. The icon is the company's (src/routes/app-icon).
+ */
 export function notificationFor(p: PushPayload): { title: string; options: NotificationOptions & { renotify: boolean } } {
   return {
     title: p.title,
@@ -46,7 +49,7 @@ export function notificationFor(p: PushPayload): { title: string; options: Notif
       tag: p.tag,
       renotify: true,
       data: { url: p.url },
-      icon: '/notification-icon.png',
+      icon: '/app-icon/any-192.png',
       badge: '/notification-badge.png',
     },
   }

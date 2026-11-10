@@ -2,6 +2,22 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-10 — The installed app wears the company's identity (main working tree, uncommitted)
+
+Owner: one PWA can't span instances (a PWA is bound to one origin; a multi-workspace app needs a native shell + push relay — not decided), so "make sure the pwa has the same branding as the instance — I would install different pwas".
+
+- **Identity** (`src/lib/pwa/identity.ts`): the company's name + monogram — its initial on the active brand's `--primary` / `--primary-foreground`, the same badge the shell's sidebar shows; without an active visual set the app's own colors; without a company name the product (static icons). A `version` hash of name + colors versions every icon URL, so installed icons refresh when the brand changes.
+- **Icons** `GET /app-icon/<any-192|any-512|maskable-512|apple-180|favicon-32>.png` (public, like the manifest; `src/lib/server/pwa/icon.ts`): Inter Bold glyph drawn as a vector path with `opentype.js` (no server fonts needed) on the brand tile, rasterized by `sharp`; "any" rounded, maskable/apple full-bleed (letter inside the safe zone). Inter covers Latin/Greek/Cyrillic/Vietnamese; other scripts (e.g. CJK) get the plain brand tile. Unnamed company → 307 to the product's static icons.
+- **Manifest:** name, icons and `theme_color`/`background_color` (brand background, hex) from the identity.
+- **Page head** (root layout): apple-touch-icon, favicon and `apple-mobile-web-app-title` follow the identity (moved out of `app.html`; product favicons stay the unbranded branch). Notifications use the company icon.
+- **Status bar:** brand sets now alias `--theme-color: var(--background)` (`brandShellVars`), so `<meta name="theme-color">` follows the brand.
+
+**Deps:** `opentype.js` 1.3.4 (MIT) added; `sharp` moved from dev to production dependencies (pinned 0.35.3); `@types/opentype.js` (dev).
+
+**Gates:** svelte-check 0 errors; unit 5192 passed / 0 failed (`favicon.spec.ts` now checks the layout's unbranded branch, where the product favicon links moved); e2e `pwa.e2e.ts` (manifest icons are PNGs, head title + apple-touch-icon match the manifest's identity, unknown icon 404) and `messages.e2e.ts` pass. **Not verified:** the rendered icons on the box (font resolution from production `node_modules`) and on a real home screen.
+
+**Decision:** icons are the monogram, not a logo — the brand has no logo asset today; the glyph is Inter, not the brand's display font (Google-hosted at runtime).
+
 ## 2026-11-10 — SHIPPED (main `468ec1e`, on the box as release `468ec1e17cd7`, not pushed): Messages as an installable app (PWA) — home screen, push, badge, resume
 
 Owner: "make the messaging native on my phone and across devices … something like a pwa". The server half already existed (VAPID keys from `ee bootstrap`, `src/lib/server/push/`, per-device `push_subscription`, `modules/messages/notify.ts`); push had been inert since the strip (`ebf9295`) deleted the service worker.

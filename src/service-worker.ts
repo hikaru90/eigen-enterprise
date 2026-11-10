@@ -16,7 +16,7 @@ import { fetchStrategy, notificationFor, notificationTarget, OFFLINE_HTML, parse
 const sw = self as unknown as ServiceWorkerGlobalScope
 
 const CACHE = `ee-shell-${version}`
-const ICONS = ['/pwa-192.png', '/pwa-512.png', '/notification-icon.png', '/notification-badge.png']
+const ICONS = ['/pwa-192.png', '/pwa-512.png', '/notification-badge.png']
 const SHELL = new Set([...build, ...files.filter((f) => ICONS.includes(f))])
 
 // Only the icons up front; the hashed app files (several MB across all pages)

@@ -28,10 +28,13 @@ describe('favicon brand assets', () => {
 		expect(text.trim().endsWith('</svg>')).toBe(true)
 	})
 
-	it('app.html references favicon.svg and favicon.ico as fallback links', () => {
-		const html = readFileSync(path.resolve(staticDir, '../src/app.html'), 'utf-8')
-		expect(html).toContain('rel="icon"')
-		expect(html).toContain('href="/favicon.svg"')
-		expect(html).toContain('href="/favicon.ico"')
+	it('the root layout links favicon.svg and favicon.ico while the company has no monogram icon', () => {
+		// The icon links live in the root layout's head (they follow the company's
+		// identity, src/lib/pwa/identity.ts); the product's are the unbranded branch.
+		const layout = readFileSync(path.resolve(staticDir, '../src/routes/+layout.svelte'), 'utf-8')
+		const unbranded = layout.slice(layout.indexOf('{:else}'), layout.indexOf('{/if}', layout.indexOf('{:else}')))
+		expect(unbranded).toContain('rel="icon"')
+		expect(unbranded).toContain('href="/favicon.svg"')
+		expect(unbranded).toContain('href="/favicon.ico"')
 	})
 })
