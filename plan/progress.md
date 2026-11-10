@@ -2,6 +2,25 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-10 — Real releases on GitHub + `ee upgrade` (over-the-air, keeps everything) — v0.4.0
+
+Owner: "repo is now public. build real release please" / "make a command for my vps to update over the air" / "this has to work seamlessly and keep the installed users, websites, repos etc". Commit `f323b87`, tag `v0.4.0`.
+
+- **Releases** `.github/workflows/release.yml`: a `v*` tag builds amd64 (`ubuntu-24.04`) and arm64 (`ubuntu-24.04-arm`) natively with `scripts/release.sh`, checks both agree on LATEST/install.sh/ee.mjs, and publishes a GitHub Release (marked latest). Base URL `https://github.com/hikaru90/eigen-enterprise/releases/latest/download`. The tag must equal `package.json` version (0.3.0 → **0.4.0**).
+- **Installer** picks this CPU's tarball from `LATEST` (`eigenenterprise-<version>-<sha>`). `scripts/release.sh` writes LATEST and now runs under bash (it used `read -d`, which dash on Linux lacks).
+- **`ee upgrade [--check] [--from <url>]`** (`ee/src/upgrade.ts`): newest release vs. what runs; local safety copy (pg_dump + company repo + sealed secrets + master key, `ROLLBACK.txt`, keeps 3; a failed copy stops before any change); then the release installer.
+- **No downtime on re-run/upgrade:** Caddy restarts only when its unit changed (`caddyUnitAction`); apt installs with `--no-upgrade` (Postgres/Caddy are never upgraded under a running company — OS updates are the OS's job).
+- **Apache AGE after restore** (`ee/src/age-repair.ts`): pg_restore gives the graph schema a new oid while AGE stores the old one as data → "graph with oid … does not exist". The repair re-points `ag_graph.graphid` / `ag_label.graph` (FK dropped and re-added in one transaction). Now run by `ee restore` (it was missing — a restored company would have had a broken graph) and in the upgrade rollback steps.
+- `docs/operations/vps-install.md` rewritten for ee (install, upgrade, rollback, backups) — the old Docker runbook was stale.
+
+**Rehearsals:**
+- *Migrations on the owner's real data* (read-only `pg_dump` of the VPS `os` database, restored on ee-box as `vps_rehearsal`, the release's preStart run with the unit's env): 98 → 118 migrations, including `0120_roadmap_into_memory` with an existing owner (Roadmap project created, old table dropped), the 1 user intact, RLS applied. `verify-age-graph-role` failed only because of the restore (the AGE oid issue above) and passed after the repair. The copy and the dump were deleted afterwards.
+- *Over the air on ee-box*, release served over HTTP exactly like GitHub: first-time `curl … install.sh | sh -s -- --from <url>` from a pre-`upgrade` ee, then `ee upgrade --check` (up to date), then a full `ee upgrade` to a renamed copy of the release. Health polled every 0.5 s: **0 failed checks** in both; Caddy and Postgres not restarted; users kept; slots switched a↔b; safety copy + ROLLBACK.txt written.
+
+**Not verified:** the GitHub-built amd64 release on a real x64 server; an app workload (website) across an upgrade on the box (the VPS has one — the code carries every non-os workload, routes and settings unchanged); the ROLLBACK.txt steps end to end.
+
+**The VPS (152.53.118.209, arm64, Debian 13; console os.cerberusblue.com, website cerberusblue.com):** runs a pre-11-03 release whose ee has no `upgrade`, so its first update is the install line; `ee upgrade` from then on.
+
 ## 2026-11-10 — SHIPPED (main `1bb02b4`, pushed, on the box as release `1bb02b405565`): the installed app wears the company's identity
 
 Owner: one PWA can't span instances (a PWA is bound to one origin; a multi-workspace app needs a native shell + push relay — not decided), so "make sure the pwa has the same branding as the instance — I would install different pwas".
