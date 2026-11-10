@@ -2,7 +2,7 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-11-10 — The installed app wears the company's identity (main working tree, uncommitted)
+## 2026-11-10 — SHIPPED (main `1bb02b4`, pushed, on the box as release `1bb02b405565`): the installed app wears the company's identity
 
 Owner: one PWA can't span instances (a PWA is bound to one origin; a multi-workspace app needs a native shell + push relay — not decided), so "make sure the pwa has the same branding as the instance — I would install different pwas".
 
@@ -14,7 +14,7 @@ Owner: one PWA can't span instances (a PWA is bound to one origin; a multi-works
 
 **Deps:** `opentype.js` 1.3.4 (MIT) added; `sharp` moved from dev to production dependencies (pinned 0.35.3); `@types/opentype.js` (dev).
 
-**Gates:** svelte-check 0 errors; unit 5192 passed / 0 failed (`favicon.spec.ts` now checks the layout's unbranded branch, where the product favicon links moved); e2e `pwa.e2e.ts` (manifest icons are PNGs, head title + apple-touch-icon match the manifest's identity, unknown icon 404) and `messages.e2e.ts` pass. **Not verified:** the rendered icons on the box (font resolution from production `node_modules`) and on a real home screen.
+**Gates:** svelte-check 0 errors; unit 5192 passed / 0 failed (`favicon.spec.ts` now checks the layout's unbranded branch, where the product favicon links moved); e2e `pwa.e2e.ts` (manifest icons are PNGs, head title + apple-touch-icon match the manifest's identity, unknown icon 404) and `messages.e2e.ts` pass. **On the box:** the box's company is unnamed, so it serves the product icons (307s verified); the monogram renderer was run inside the box against the release's own Linux `sharp` + `opentype.js` + Inter (192×192 PNG). **Not verified:** a named company's icons served by the box, and a real home screen.
 
 **Decision:** icons are the monogram, not a logo — the brand has no logo asset today; the glyph is Inter, not the brand's display font (Google-hosted at runtime).
 
