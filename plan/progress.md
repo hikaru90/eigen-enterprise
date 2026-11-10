@@ -2,7 +2,9 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-11-10 — Contribute: propose improvements from the top bar; an agent picks them up (ported from Eigen)
+## 2026-11-10 — SHIPPED (main `c7f1c69`, pushed, on the box as release `c7f1c6970087`): Contribute — propose improvements from the top bar; an agent picks them up (ported from Eigen)
+
+**On the box:** `ee-os-b` live (internal release `9c3a340b1b0c4c94`, carries the Contribute build), `applied == desired`, no reconcile error, `/api/health` ok; `contributions` + `contribution_votes` exist (0121 applied); signed out, `/contribute` → 302 /login and `/api/contribute` → 401. Not clicked through on the box (the e2e covers the journey).
 
 Owner: "look at the contribute feature from Eigen and include it in Eigen Enterprise … a button at the top right where people can type into and propose improvements to the application, and things will then get picked up by an agent later".
 
