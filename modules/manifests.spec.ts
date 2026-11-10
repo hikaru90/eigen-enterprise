@@ -77,10 +77,11 @@ describe('merged module manifests', () => {
     }
   })
 
-  it('the orchestrator and members modules are internal (no owner-facing card); the others are not', () => {
+  it('the orchestrator, members and contribute modules are internal (no owner-facing card); the others are not', () => {
     expect(moduleManifests.filter((m) => m.internal === true).map((m) => m.id)).toEqual([
       'orchestrator',
       'members',
+      'contribute',
     ])
   })
 
@@ -111,8 +112,8 @@ describe('merged module manifests', () => {
     for (const name of APPROVAL_REQUIRED_TOOLS) expect(k.registry.get(name), name).toBeDefined()
   })
 
-  it('system modules are website, email, members, memory, brand, messages and drive, and boot activates them', async () => {
-    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages', 'drive'])
+  it('system modules are website, email, members, memory, brand, messages, drive and contribute, and boot activates them', async () => {
+    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages', 'drive', 'contribute'])
     const { kernel: k, activations } = kernel()
     await ensureSystemModulesActive(k)
     expect(await activations.get('website')).toBe(true)
@@ -126,6 +127,8 @@ describe('merged module manifests', () => {
     expect(await k.modules.isToolActive('memory.capture_thought')).toBe(true)
     // Messages (phase-workspace C1): the team chat is part of the OS.
     expect(await k.modules.isToolActive('messages.read')).toBe(true)
+    // Contribute: the agent picks up proposals without an activation step.
+    expect(await k.modules.isToolActive('contribute.list')).toBe(true)
     // Not a system module: the agent's internal tools keep their own activation.
     expect(await k.modules.isToolActive('repo.merge')).toBe(false)
   })

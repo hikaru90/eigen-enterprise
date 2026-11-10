@@ -19,6 +19,7 @@
   import { AssistantController } from '$lib/components/assistant/assistant-controller.svelte'
   import AssistantPanel from '$lib/components/assistant/assistant-panel.svelte'
   import { provideAssistant } from '$lib/components/assistant/context'
+  import ContributeButton from '$lib/components/contribute/contribute-button.svelte'
   import HomeSettingsMenu from '$lib/components/home-settings-menu.svelte'
   import { appHref } from '$lib/shell/href'
   import { currentNavId, type ShellData, type ShellNavItem } from '$lib/shell/nav'
@@ -261,6 +262,8 @@
           <AssistantBar {assistant} />
         </div>
       </div>
+      <!-- Top right: anyone proposes an improvement to the app (the Contribute board). -->
+      <ContributeButton />
     </header>
 
     <div class="flex min-h-0 min-w-0 flex-1 flex-row">

@@ -1,6 +1,7 @@
 /**
  * Browser-mode stub for the SvelteKit `$app/navigation` virtual module.
  */
+export const invalidate = (): Promise<void> => Promise.resolve()
 export const invalidateAll = (): Promise<void> => Promise.resolve()
 export const goto = (): Promise<void> => Promise.resolve()
 export const beforeNavigate = (): void => undefined

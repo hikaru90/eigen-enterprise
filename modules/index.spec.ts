@@ -148,6 +148,7 @@ describe('moduleManifests', () => {
       'members',
       'messages',
       'drive',
+      'contribute',
     ])
   })
 })
@@ -165,6 +166,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'members',
       'messages',
       'drive',
+      'contribute',
     ])
     const toolNames = kernel.registry.list().map((t) => t.name)
     expect(toolNames).toContain('memory.retrieve_thoughts')
@@ -187,6 +189,8 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect(toolNames).toContain('drive.list')
     expect(toolNames).toContain('drive.read')
     expect(toolNames).toContain('drive.write_text')
+    expect(toolNames).toContain('contribute.list')
+    expect(toolNames).toContain('contribute.update')
     expect(toolNames.length).toBe(
       moduleManifests.reduce((sum, m) => sum + m.tools.length, 0),
     )

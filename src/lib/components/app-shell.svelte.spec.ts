@@ -58,6 +58,17 @@ describe('app-shell.svelte', () => {
     await expect.element(page.getByTestId('assistant-bar-input')).toBeInTheDocument()
   })
 
+  it('has the Contribute button at the top right of the top bar, opening the proposal composer', async () => {
+    renderShell()
+    const topbar = page.getByTestId('shell-topbar')
+    const trigger = topbar.getByTestId('contribute-trigger')
+    await expect.element(trigger).toHaveAccessibleName('Contribute: propose an improvement')
+    const bar = topbar.element()
+    expect(bar.lastElementChild?.matches('[data-testid="contribute-trigger"]')).toBe(true)
+    await trigger.click()
+    await expect.element(page.getByTestId('contribute-input')).toBeInTheDocument()
+  })
+
   it('marks the current page', async () => {
     renderShell('/m/website')
     await expect.element(page.getByTestId('shell-nav-website').first()).toHaveAttribute('aria-current', 'page')
