@@ -1,5 +1,5 @@
 import type { Conversation, Person } from './store'
-import { canUse, type MessageDto, type MessagesDeps } from './service'
+import { canUse, listConversations, type MessageDto, type MessagesDeps } from './service'
 
 /**
  * Push for DMs, @mentions (C1) and thread replies to the thread's participants (C2). A mention is the composer's syntax
@@ -31,7 +31,8 @@ export function mentionedIds(body: string, people: readonly Person[]): string[] 
 
 export type PushPort = {
   hasSubscription(userId: string): Promise<boolean>
-  send(userId: string, payload: { title: string; body: string; url: string; tag: string }): Promise<void>
+  /** `badge`: the recipient's total unread across their conversations (the app-icon badge). */
+  send(userId: string, payload: { title: string; body: string; url: string; tag: string; badge: number }): Promise<void>
 }
 
 const snippet = (body: string, max = 140) => {
@@ -66,11 +67,13 @@ export async function notifyNewMessage(
   const body = m.body.trim() ? snippet(m.body) : m.attachments.map((a) => a.name).join(', ')
   for (const userId of recipients) {
     try {
+      const badge = (await listConversations(d, userId)).reduce((sum, c) => sum + c.unread, 0)
       await push.send(userId, {
         title,
         body,
         url: `/messages?c=${encodeURIComponent(c.id)}${m.parentId ? `&t=${encodeURIComponent(m.parentId)}` : ''}`,
         tag: `messages-${c.id}`,
+        badge,
       })
     } catch (err) {
       console.error('[messages] push failed', { userId, conversationId: c.id, err })

@@ -57,7 +57,6 @@ export default defineConfig({
       '$app/navigation': path.resolve(root, 'src/lib/vitest-stubs/app-navigation.ts'),
       '$app/environment': path.resolve(root, 'src/lib/vitest-stubs/app-environment.ts'),
       // PWA plugin is not loaded in this lean browser config.
-      'virtual:pwa-register': path.resolve(root, 'src/lib/vitest-stubs/virtual-pwa-register.ts'),
     },
   },
   // Avoid holding browser module requests behind a full-app dep crawl.

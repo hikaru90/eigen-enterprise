@@ -21,6 +21,7 @@
   import UserAvatar from '$lib/components/user-avatar.svelte'
   import MessageComposer from '$lib/messages/message-composer.svelte'
   import MessageRow, { type RowPerson } from '$lib/messages/message-row.svelte'
+  import { ResumableStream } from '$lib/messages/resumable-stream'
   import {
     applyFrame,
     formatSize,
@@ -34,6 +35,8 @@
     type MessageFrame,
     type MessageView,
   } from '$lib/messages/view'
+  import { syncAppBadge, totalUnread } from '$lib/pwa/badge'
+  import NotificationsBanner from '$lib/pwa/notifications-banner.svelte'
   import { docTitle } from '$lib/shell/title'
 
   /**
@@ -49,6 +52,11 @@
   // Page-owned state seeded once from the load (the live stream keeps it current).
   // svelte-ignore state_referenced_locally
   let conversations = $state<ConversationView[]>(data.conversations)
+  /** Every change to the list goes through here so the app-icon badge follows the unread counts. */
+  function setConversations(next: ConversationView[]) {
+    conversations = next
+    void syncAppBadge(totalUnread(next))
+  }
   let selectedId = $state<string | null>(null)
   let messages = $state<MessageView[]>([])
   let hasMore = $state(false)
@@ -190,7 +198,7 @@
   }
 
   async function markRead(id: string) {
-    conversations = setUnread(conversations, id, 0)
+    setConversations(setUnread(conversations, id, 0))
     await api(`/api/messages/conversations/${id}/read`, { method: 'POST' }).catch((err: unknown) => {
       console.error('[messages] mark read failed', err)
     })
@@ -403,7 +411,7 @@
     !m.deleted && (m.authorId === data.me || (data.moderator && selected?.kind === 'channel'))
 
   // ── live stream ─────────────────────────────────────────────────────────
-  let source: EventSource | null = null
+  let stream: ResumableStream | null = null
   let heartbeat: ReturnType<typeof setInterval> | undefined
   let clock: ReturnType<typeof setInterval> | undefined
 
@@ -421,31 +429,38 @@
       if (stick && f.message.parentId === null) scrollToBottom()
       if (thread && f.message.parentId === thread.parent.id && threadListEl) threadListEl.scrollTop = threadListEl.scrollHeight
     } else {
-      conversations = setUnread(conversations, cid, f.unread)
+      setConversations(setUnread(conversations, cid, f.unread))
     }
   }
 
   async function refreshConversations() {
     const fresh = await api<{ conversations: ConversationView[] }>('/api/messages/conversations')
-    conversations = fresh.conversations
+    setConversations(fresh.conversations)
   }
 
   function connect() {
-    source = new EventSource(`/api/messages/stream?after=${data.cursor}`)
-    source.onopen = () => (live = 'live')
-    source.onerror = () => (live = 'reconnecting')
-    source.addEventListener('message', (e) => void onMessageFrame(JSON.parse((e as MessageEvent).data)))
-    source.addEventListener('conversation', (e) => {
-      const { conversation } = JSON.parse((e as MessageEvent).data) as { conversation: ConversationView }
-      conversations = upsertConversation(conversations, conversation)
+    stream = new ResumableStream({
+      url: (after) => `/api/messages/stream?after=${after}`,
+      initialCursor: data.cursor,
+      events: ['message', 'conversation', 'read'],
+      onStatus: (status) => (live = status),
+      onEvent: (type, payload) => {
+        if (type === 'message') void onMessageFrame(payload as MessageFrame)
+        else if (type === 'conversation') {
+          const { conversation } = payload as { conversation: ConversationView }
+          setConversations(upsertConversation(conversations, conversation))
+        } else if (type === 'read') {
+          const { conversationId, unread } = payload as { conversationId: string; unread: number }
+          setConversations(setUnread(conversations, conversationId, unread))
+        }
+      },
     })
-    source.addEventListener('read', (e) => {
-      const { conversationId, unread } = JSON.parse((e as MessageEvent).data) as {
-        conversationId: string
-        unread: number
-      }
-      conversations = setUnread(conversations, conversationId, unread)
-    })
+    stream.connect()
+  }
+
+  /** A phone that slept may have dropped the live feed: pick it up after the last event seen. */
+  function onOnline() {
+    stream?.resume()
   }
 
   async function reportViewing() {
@@ -459,6 +474,7 @@
   }
 
   function onVisibility() {
+    if (document.visibilityState === 'visible') stream?.resume()
     void reportViewing()
     if (document.visibilityState === 'visible' && selectedId && selected && selected.unread > 0) {
       void markRead(selectedId)
@@ -478,6 +494,8 @@
     // "2h ago" / "Today" stay true while the page is open.
     clock = setInterval(() => (now = new Date()), 60_000)
     document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('online', onOnline)
+    void syncAppBadge(totalUnread(conversations))
     const initial = page.url.searchParams.get('c')
     const initialThread = page.url.searchParams.get('t')
     if (initial && conversations.some((c) => c.id === initial)) {
@@ -488,11 +506,12 @@
   })
 
   onDestroy(() => {
-    source?.close()
+    stream?.close()
     if (heartbeat) clearInterval(heartbeat)
     if (clock) clearInterval(clock)
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('online', onOnline)
       selectedId = null
       void reportViewing()
     }
@@ -531,7 +550,7 @@
           groupIds: channelPrivate ? channelGroups : [],
         }),
       })
-      conversations = upsertConversation(conversations, conversation)
+      setConversations(upsertConversation(conversations, conversation))
       channelOpen = false
       void openConversation(conversation.id)
     } catch (err) {
@@ -562,7 +581,7 @@
         method: 'POST',
         body: JSON.stringify({ userIds: dmPeople }),
       })
-      conversations = upsertConversation(conversations, conversation)
+      setConversations(upsertConversation(conversations, conversation))
       dmOpen = false
       void openConversation(conversation.id)
     } catch (err) {
@@ -687,6 +706,8 @@
         onclick={openNewDm}><SquarePen class="size-4" /></button
       >
     </div>
+
+    <NotificationsBanner />
 
     <div class="min-h-0 flex-1 overflow-y-auto px-2 py-3">
       {@render sectionHeader('Channels', channelsOpen, () => (channelsOpen = !channelsOpen), 'Add channel', 'messages-new-channel', openNewChannel)}

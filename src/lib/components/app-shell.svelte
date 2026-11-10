@@ -228,7 +228,7 @@
       ></button>
       <aside
         id="shell-drawer"
-        class="absolute inset-y-0 left-0 w-72 max-w-[85vw] border-r border-border bg-sidebar shadow-xl"
+        class="absolute inset-y-0 left-0 w-72 max-w-[85vw] border-r border-border bg-sidebar pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl"
         data-testid="shell-drawer"
       >
         {@render sidebar()}
@@ -239,7 +239,7 @@
   <div class="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="shell-column">
     <!-- The assistant's top bar, on every signed-in page (on phones with the menu). -->
     <header
-      class="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-3 sm:px-4"
+      class="box-content flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-3 pt-[env(safe-area-inset-top)] sm:px-4"
       data-testid="shell-topbar"
     >
       <button
@@ -265,7 +265,7 @@
 
     <div class="flex min-h-0 min-w-0 flex-1 flex-row">
       <div
-        class="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto"
+        class="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto pb-[env(safe-area-inset-bottom)]"
         data-testid="shell-content"
       >
         {@render children()}

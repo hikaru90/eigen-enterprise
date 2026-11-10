@@ -7,6 +7,8 @@ export type PushNotificationPayload = {
   body: string
   url?: string
   tag?: string
+  /** The app-icon badge count the service worker sets (omitted = leave the badge as is). */
+  badge?: number
 }
 
 const GONE_STATUS = new Set([404, 410])
@@ -33,6 +35,7 @@ export async function sendPushToUser(
     body: payload.body,
     url: payload.url ?? '/',
     tag: payload.tag ?? 'eigen-test',
+    ...(payload.badge !== undefined ? { badge: payload.badge } : {}),
   })
 
   const result: SendPushResult = { sent: 0, failed: 0, removed: 0, errors: [] }

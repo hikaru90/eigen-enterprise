@@ -60,4 +60,21 @@ describe('notifyNewMessage', () => {
     await setViewing(deps, 'carl', null)
     expect(await notifyNewMessage(deps, port, conversation, message)).toEqual(['carl'])
   })
+
+  it("carries the recipient's total unread for the app-icon badge", async () => {
+    const { deps } = fixture()
+    const dm = await openDm(deps, 'bea', ['carl'])
+    await postMessage(deps, 'bea', dm.id, 'one')
+    const pub = await createChannel(deps, 'owner', { name: 'general', private: false })
+    await postMessage(deps, 'owner', pub.id, 'chatter')
+    const { message, conversation } = await postMessage(deps, 'bea', dm.id, 'two')
+    const badges: Array<{ userId: string; badge: number }> = []
+    const port: PushPort = {
+      hasSubscription: async () => true,
+      send: async (userId, p) => void badges.push({ userId, badge: p.badge }),
+    }
+    await notifyNewMessage(deps, port, conversation, message)
+    // Carl: two unread in the DM, one in #general.
+    expect(badges).toEqual([{ userId: 'carl', badge: 3 }])
+  })
 })

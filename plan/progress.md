@@ -2,6 +2,25 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-10 — Messages as an installable app (PWA): home screen, push, badge, resume (main working tree, uncommitted)
+
+Owner: "make the messaging native on my phone and across devices … something like a pwa". The server half already existed (VAPID keys from `ee bootstrap`, `src/lib/server/push/`, per-device `push_subscription`, `modules/messages/notify.ts`); push had been inert since the strip (`ebf9295`) deleted the service worker.
+
+- **Installable:** `GET /manifest.webmanifest` (`src/lib/pwa/manifest.ts`): standalone, opens on `/messages`, named after the company (founding-journey name; `eigenEnterprise` until named), icons `static/pwa-192.png`, `pwa-512.png`, `pwa-512-maskable.png` (rendered from `favicon.svg` by `scripts/generate-pwa-icons.mjs`). `app.html`: manifest link, apple-touch-icon, `apple-mobile-web-app-capable`, status bar `default`.
+- **Service worker** `src/service-worker.ts` (SvelteKit's own, registered for signed-in people by `src/lib/pwa/register.ts`; logic in `src/lib/pwa/sw-core.ts`): push → notification (one per conversation via tag, renotify) + app-icon badge; tap → focus/navigate an open window or open one (never off-origin); the hashed app files cache-first, cached on first use (pre-caching all of them would be ~4.5 MB per release on every phone); page loads network-only with an explicit "You're offline" page; APIs/SSE untouched.
+- **Badge:** push payload carries `badge` = the recipient's total unread across their conversations (same numbers as the sidebar); the Messages page keeps it current (`src/lib/pwa/badge.ts`, every list change goes through `setConversations`).
+- **Turn on notifications:** banner in the Messages sidebar (`src/lib/pwa/notifications-banner.svelte`, states in `push-prompt.ts`): ask → subscribe this device; iPhone Safari tab → "Share → Add to Home Screen" (push only exists in the installed app); blocked → how to allow; "Not now" remembered per device.
+- **Live feed survives sleep:** `src/lib/messages/resumable-stream.ts` — when the app is visible/online again and the browser had given up on the EventSource, it reopens after the last event id seen (the hub catches up).
+- **Safe areas:** shell top bar, content and drawer pad for the notch / home indicator.
+
+**Decisions:** PWA, not a native wrapper (Capacitor only if VoIP/call alerts or App Store distribution are needed) — the browser stays the runtime (phase-0). SvelteKit's built-in service worker instead of `@vite-pwa`. No message data cached offline (no stale chat; explicit offline page). Badge counts all unread, channels included.
+
+**Removed (announced):** unused deps `@vite-pwa/sveltekit`, `workbox-window` and the `virtual:pwa-register` vitest stub (nothing imported them since the strip). Not restored: the old worker's capture-queue Background Sync drain — the page still drains the queue.
+
+**Gates:** svelte-check 0 errors; unit 5176 passed / 0 failed; eslint clean on touched files; `vite build` emits `service-worker.js`; e2e `pwa.e2e.ts` (manifest, worker active, banner + "Not now" remembered, offline page, back online) and `messages.e2e.ts` pass. Headless Chromium reports notification permission "denied" even when granted, so e2e checks the banner against the browser's real permission; turning push on (a real push-service subscription) is not exercised in e2e.
+
+**Not verified:** a real phone (iOS needs the app installed + a trusted certificate: the box's local CA must be trusted on the phone, or test on a real domain); push delivery end to end through Apple/Google push services.
+
 ## 2026-11-04 — SHIPPED (main): polish 1 — one assistant everywhere, dashboard, required profiles, Slack-style Messages, Roadmap in Memory, full width, the Owlery email platform inside
 
 Plan: `plan/phase-polish-1.md` (owner voice feedback on release `3ee4199`, "don't ask questions, just build"; decisions P-1…P-6 taken by the orchestrator — owner may veto). Four worktree streams, merged `--no-ff`: D `fa25bed`, A `cde8b35` + integration `2143927`, B `5b1c986` + hydration fix `17b0193`, C `7f4867c` + integration `0e8bfb2`.

@@ -24,6 +24,7 @@
   import type { AuthorLayerMeta } from '$lib/graph/graph-author-layers'
   import { getLocale, setLocale } from '$lib/paraglide/runtime'
   import { startPushNavigationFromServiceWorker } from '$lib/push/navigation-from-sw'
+  import { registerServiceWorker } from '$lib/pwa/register'
   import { initCurrentUserViewStore } from '$lib/stores/current-user-view.svelte'
   import { startThoughtSync } from '$lib/stores/thought-sync'
 
@@ -88,6 +89,7 @@
     const stopPushNavigation = startPushNavigationFromServiceWorker()
 
     if ((page.data as { user?: { id: string } | null }).user) {
+      void registerServiceWorker()
       startCaptureQueueRunner()
       startThoughtSync()
     }
