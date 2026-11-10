@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, writeFileSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { identityToRecipient } from 'age-encryption'
 import { describe, expect, it } from 'vitest'
@@ -73,11 +73,7 @@ describe('company root key + recovery code', () => {
     expect((await store.load())?.identity).toBe(root.identity)
     const raw = await readFile(join(dir, 'root.sealed'), 'utf8')
     expect(raw).not.toContain(root.identity)
-    expect(
-      execFileSync('stat', ['-f', '%Lp', join(dir, 'root.sealed')])
-        .toString()
-        .trim(),
-    ).toBe('600')
+    expect((await stat(join(dir, 'root.sealed'))).mode & 0o777).toBe(0o600)
     await expect(new SealedRootKeyStore(dir, 'master-2').load()).rejects.toThrow()
     await expect(store.save(await generateRootKey())).rejects.toThrow(/refusing/)
   })

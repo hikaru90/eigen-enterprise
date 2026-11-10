@@ -28,7 +28,8 @@ const data = {
   lastDeploy: null,
   nodeVersions: ['22'],
   contractFields: {},
-  secretNames: ['SHOP_SECRET'],
+  // declared + set names (loader); app.env holds the set ones → SHOP_SECRET is declared, not set
+  secretNames: ['SHOP_REGION', 'SHOP_SECRET'],
   managed: true,
   howtoUrl: 'https://os.example.com/docs/send-mail.md',
 }
@@ -50,8 +51,10 @@ describe('app detail settings', () => {
     await page.getByRole('link', { name: 'App settings', exact: true }).click()
     await expect.element(page.getByText('Domains & routing', { exact: true })).toBeVisible()
     await expect.element(page.getByText('Build settings', { exact: true })).toBeVisible()
-    await expect.element(page.getByText(/^SHOP_REGION\s+••••••••$/)).toBeVisible()
-    await expect.element(page.getByText(/^SHOP_SECRET\s+sealed$/)).toBeVisible()
+    await expect.element(page.getByText(/^SHOP_REGION\s+sealed$/)).toBeVisible()
+    await expect
+      .element(page.getByText(/^SHOP_SECRET\s+needed by the repo, not set$/))
+      .toBeVisible()
     await expect
       .element(page.getByText('Allow this app to send email', { exact: true }))
       .toBeVisible()
