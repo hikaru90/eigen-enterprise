@@ -1,0 +1,85 @@
+# Publishes an eigenEnterprise release on a v* tag (scripts/release.sh, plan/phase-substrate.md D7).
+#
+# Each CPU builds on its own native runner (no emulation), then one job publishes
+# a GitHub Release with: LATEST, install.sh, ee.mjs (+ .sha256) and
+# eigenenterprise-<version>-<sha>-linux-{x64,arm64}.tar.gz (+ .sha256).
+#
+# Install:  curl -fsSL https://github.com/hikaru90/eigen-enterprise/releases/latest/download/install.sh \
+#             | sh -s -- --from https://github.com/hikaru90/eigen-enterprise/releases/latest/download
+# Upgrade:  ee upgrade
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: The tag is the package version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME does not match package.json version $version" >&2; exit 1; }
+      - name: Build the ${{ matrix.arch }} release
+        run: bash scripts/release.sh ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.arch }}
+          path: |
+            dist/release/LATEST
+            dist/release/install.sh
+            dist/release/ee.mjs
+            dist/release/ee.mjs.sha256
+            dist/release/eigenenterprise-*.tar.gz
+            dist/release/eigenenterprise-*.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: built
+      - name: Both builds agree on the release name, the installer and ee
+        run: |
+          for f in LATEST install.sh ee.mjs.sha256; do
+            cmp built/release-amd64/$f built/release-arm64/$f || { echo "$f differs between the amd64 and arm64 builds" >&2; exit 1; }
+          done
+          mkdir out
+          cp built/release-amd64/{LATEST,install.sh,ee.mjs,ee.mjs.sha256} out/
+          cp built/release-*/eigenenterprise-*.tar.gz* out/
+          (cd out && sha256sum -c --quiet *.sha256)
+          ls -la out
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "eigenEnterprise $GITHUB_REF_NAME" \
+            --latest \
+            --notes "Release $(cat out/LATEST).
+
+          Install on a fresh Ubuntu 24.04 / Debian 13 server (as root):
+
+              curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/latest/download/install.sh | sh -s -- --from https://github.com/$GITHUB_REPOSITORY/releases/latest/download
+
+          Upgrade an installed server: \`ee upgrade\` (or re-run the line above — it keeps everything)."

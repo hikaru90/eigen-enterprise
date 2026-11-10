@@ -1,5 +1,6 @@
 import type { S3Client } from './s3.ts'
 import { join } from 'node:path'
+import { AGE_REPAIR_SQL } from '../age-repair.ts'
 import { PATHS } from '../paths.ts'
 import { mustRun, type System } from '../system.ts'
 import { fetchSnapshot, runToFile, type BackupSources, type Manifest } from './snapshot.ts'
@@ -72,6 +73,8 @@ export async function restoreOnBox(sys: System, s3: S3Client, key: Buffer, id: s
   await runToFile(['runuser', '-u', 'postgres', '--', 'pg_restore', '--create', '--exit-on-error', '--dbname=postgres'], join(work, 'pg_restore.log'), {
     stdinFile: join(work, 'db.dump'),
   })
+  // A restore gives the graph's schema a new oid; point AGE's catalog at it (age-repair.ts).
+  await mustRun(sys, 'runuser', ['-u', 'postgres', '--', 'psql', '-v', 'ON_ERROR_STOP=1', '-d', COMPANY_DB, '-c', AGE_REPAIR_SQL])
 
   log('→ restoring Drive and agent state')
   await sys.mkdirp(PATHS.osState, 0o755)

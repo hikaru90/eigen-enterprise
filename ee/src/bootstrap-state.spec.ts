@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bootstrapRouting } from './bootstrap.ts'
+import { aptInstallArgs, bootstrapRouting, caddyUnitAction } from './bootstrap.ts'
 
 const sslip = '152-53-118-209.sslip.io'
 const prior = {
@@ -30,5 +30,19 @@ describe('bootstrapRouting: what a (re-)run saves for the console', () => {
       settings: { consoleHost: sslip, publicHost: null, acmeEmail: null },
       origin: `https://${sslip}`,
     })
+  })
+})
+
+describe('re-runs keep the sites up (upgrade = re-run)', () => {
+  it('Caddy restarts only when its unit changed; otherwise it is just kept running (no dropped requests)', () => {
+    expect(caddyUnitAction(null, 'unit v1')).toBe('restart')
+    expect(caddyUnitAction('unit v1', 'unit v2')).toBe('restart')
+    expect(caddyUnitAction('unit v1', 'unit v1')).toBe('start')
+  })
+
+  it('installs missing packages but never upgrades installed ones (Postgres/Caddy would restart mid-upgrade)', () => {
+    const args = aptInstallArgs(['postgresql-16', 'caddy'])
+    expect(args).toContain('--no-upgrade')
+    expect(args.slice(-2)).toEqual(['postgresql-16', 'caddy'])
   })
 })

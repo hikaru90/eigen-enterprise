@@ -1,7 +1,15 @@
-import { z } from 'zod'
-import { HOSTNAME } from './spec.ts'
+import { spawn } from 'node:child_process'
+import { readdir, writeFile } from 'node:fs/promises'
 import { request } from 'node:http'
+import { basename } from 'node:path'
+import { createInterface } from 'node:readline'
 import { parseArgs } from 'node:util'
+import { z } from 'zod'
+import { restoreOnBox } from './backup/box.ts'
+import { backupKeyFromRecoveryCode } from './backup/crypto.ts'
+import { S3Client, s3TargetSchema, type S3Target } from './backup/s3.ts'
+import { BACKUP_SCOPE, storedConfigSchema } from './backup/service.ts'
+import { fetchSnapshot, resolveSnapshot } from './backup/snapshot.ts'
 import { bootstrap } from './bootstrap.ts'
 import { CLAIM_TTL_DAYS, claimUrl } from './claim.ts'
 import { CompanyRepo } from './company-repo.ts'
@@ -10,17 +18,15 @@ import { loadJournal } from './journal.ts'
 import { PATHS } from './paths.ts'
 import { renderLiveEnvFiles } from './reconcile.ts'
 import { SecretStore } from './secret-store.ts'
+import { HOSTNAME } from './spec.ts'
 import { RealSystem } from './system.ts'
-import { createInterface } from 'node:readline'
-import { backupKeyFromRecoveryCode } from './backup/crypto.ts'
-import { S3Client, s3TargetSchema, type S3Target } from './backup/s3.ts'
-import { BACKUP_SCOPE, storedConfigSchema } from './backup/service.ts'
-import { fetchSnapshot, resolveSnapshot } from './backup/snapshot.ts'
-import { restoreOnBox } from './backup/box.ts'
+import { RELEASES_URL, UPGRADES_DIR, upgrade, type Arch } from './upgrade.ts'
 
 const USAGE = `ee — the company's init (plan/phase-substrate.md)
 
   ee bootstrap --release <tarball> [--console-host <host>] [--acme-email <email>]
+  ee upgrade [--check] [--from <release-url>]   (update over the air to the newest release;
+                                         keeps everything, takes a safety copy first)
   ee claim-link                          (new private link to claim this server)
   ee status
   ee reconcile
@@ -129,6 +135,45 @@ async function main(argv: string[]): Promise<void> {
       } else {
         console.log(`\n✓ Your company is running: https://${consoleHost}\n`)
       }
+      return
+    }
+    case 'upgrade': {
+      const { values } = parseArgs({ args: rest, options: { check: { type: 'boolean' }, from: { type: 'string' } } })
+      if (process.getuid?.() !== 0) throw new Error('ee upgrade must run as root')
+      const arch: Arch = process.arch === 'x64' || process.arch === 'arm64' ? process.arch : (() => {
+        throw new Error(`unsupported CPU ${process.arch}`)
+      })()
+      const get = async (url: string) => {
+        const res = await fetch(url, { redirect: 'follow' })
+        if (!res.ok) throw new Error(`GET ${url} → ${res.status}`)
+        return res
+      }
+      const result = await upgrade(
+        {
+          fetchText: async (url) => (await get(url)).text(),
+          download: async (url, dest) => writeFile(dest, Buffer.from(await (await get(url)).arrayBuffer()), { mode: 0o600 }),
+          run: (cmd, args) => sys.run(cmd, args, { timeoutMs: 1_800_000 }),
+          runLive: (cmd, args) =>
+            new Promise((resolve, reject) => {
+              spawn(cmd, args, { stdio: 'inherit' }).on('error', reject).on('exit', (code) => resolve(code ?? 1))
+            }),
+          installed: async () => {
+            const os = (await new CompanyRepo(sys, PATHS.company).read()).workloads.find((w) => w.name === 'os')
+            return os?.source.kind === 'release' ? basename(os.source.tarball) : null
+          },
+          listUpgrades: async () => readdir(UPGRADES_DIR).catch((err: NodeJS.ErrnoException) => {
+            if (err.code === 'ENOENT') return []
+            throw err
+          }),
+          mkdirp: (p) => sys.mkdirp(p, 0o700),
+          writeFile: (p, content) => sys.writeFile(p, content, 0o600),
+          remove: (p) => sys.remove(p),
+          now: () => new Date(),
+          log: (l) => console.log(l),
+        },
+        { from: values.from ?? RELEASES_URL, arch, check: values.check === true },
+      )
+      if (values.check && result === 'available') console.log('  run `ee upgrade` to install it')
       return
     }
     case 'daemon': {

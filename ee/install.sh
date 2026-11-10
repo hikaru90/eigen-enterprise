@@ -4,7 +4,10 @@
 #   curl -fsSL <base>/install.sh | sh -s -- --from <base> [--console-host os.example.com] [--acme-email you@example.com]
 #   sh install.sh --from /root/release        (files copied to the box beforehand)
 #
-# <base> holds: ee.mjs, ee.mjs.sha256, eigenenterprise-*.tar.gz, eigenenterprise-*.tar.gz.sha256.
+# <base> holds: LATEST (the release name), ee.mjs, ee.mjs.sha256, and per CPU
+# eigenenterprise-<version>-<sha>-linux-<x64|arm64>.tar.gz (+ .sha256).
+# Published: <base> = https://github.com/hikaru90/eigen-enterprise/releases/latest/download
+# Re-running it on an installed server upgrades in place and keeps everything (`ee upgrade` does that).
 # Installs a pinned, checksum-verified Node runtime and ee, then hands over to `ee bootstrap`.
 set -eu
 
@@ -73,7 +76,13 @@ chmod 0755 /usr/local/bin/ee
 
 step "fetching the eigenEnterprise release"
 case "$FROM" in
-  http://*|https://*) RELEASE=$(curl -fsSL "$FROM/LATEST") ;;
+  http://*|https://*)
+    # LATEST names the release (eigenenterprise-<version>-<sha>); each CPU has its own tarball.
+    NAME=$(curl -fsSL --retry 3 "$FROM/LATEST" | tr -d '[:space:]')
+    case "$NAME" in
+      eigenenterprise-[0-9]*) RELEASE="$NAME-linux-$ARCH.tar.gz" ;;
+      *) echo "✗ $FROM/LATEST does not name a release" >&2; exit 1 ;;
+    esac ;;
   *) RELEASE=$(cd "$FROM" && ls eigenenterprise-*-linux-$ARCH.tar.gz | sort | tail -n 1) ;;
 esac
 [ -n "$RELEASE" ] || { echo "✗ no eigenenterprise release for linux-$ARCH in $FROM" >&2; exit 1; }

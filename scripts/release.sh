@@ -1,8 +1,10 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # Build an eigenEnterprise release for ee (plan/phase-substrate.md D7):
 #   dist/release/eigenenterprise-<version>-linux-<arch>.tar.gz   (+ .sha256)
 #   dist/release/ee.mjs                                          (the ee binary bundle)
 #   dist/release/install.sh
+#   dist/release/LATEST                                          (the release name, for install.sh --from <url>)
+# Published by .github/workflows/release.yml (amd64 + arm64) on a v* tag.
 # The tarball is built inside a Linux container so production node_modules match the
 # target (native modules). Docker is a BUILD tool here only; nothing runs in containers on the box.
 set -eu
@@ -40,4 +42,5 @@ rm -f "$OUT/src.tar"
 # Keep only this release for the arch, so installers pick it unambiguously.
 find "$OUT" -name "eigenenterprise-*-linux-${NODE_ARCH}.tar.gz*" ! -name "$NAME.tar.gz*" -delete
 (cd "$OUT" && shasum -a 256 "$NAME.tar.gz" > "$NAME.tar.gz.sha256" && shasum -a 256 ee.mjs > ee.mjs.sha256)
+printf '%s\n' "eigenenterprise-${VERSION}-${SHA}" > "$OUT/LATEST"
 echo "✓ $OUT/$NAME.tar.gz"

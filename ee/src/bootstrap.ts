@@ -36,10 +36,29 @@ const SUPPORTED = [
 
 const step = (label: string) => console.log(`→ ${label}`)
 
-const apt = (sys: System, pkgs: string[]) =>
-  mustRun(sys, 'env', ['DEBIAN_FRONTEND=noninteractive', 'apt-get', 'install', '-y', '-qq', '--no-install-recommends', ...pkgs], {
-    timeoutMs: 900_000,
-  })
+/**
+ * Installs what is missing and never upgrades what is installed: a re-run is
+ * how a server upgrades eigenEnterprise, and an apt upgrade of Postgres or
+ * Caddy would restart them under the running company. OS package updates are
+ * the OS's job (unattended-upgrades), not ee's.
+ */
+export const aptInstallArgs = (pkgs: string[]) => [
+  'DEBIAN_FRONTEND=noninteractive',
+  'apt-get',
+  'install',
+  '-y',
+  '-qq',
+  '--no-install-recommends',
+  '--no-upgrade',
+  ...pkgs,
+]
+
+const apt = (sys: System, pkgs: string[]) => mustRun(sys, 'env', aptInstallArgs(pkgs), { timeoutMs: 900_000 })
+
+/** Restart Caddy only when its unit changed; a re-run otherwise keeps it serving (no dropped requests). */
+export function caddyUnitAction(previous: string | null, next: string): 'restart' | 'start' {
+  return previous === next ? 'start' : 'restart'
+}
 
 async function assertSupportedOs(sys: System): Promise<void> {
   const osr = (await sys.readFile('/etc/os-release')) ?? ''
@@ -140,27 +159,27 @@ async function usersAndDirs(sys: System): Promise<void> {
 
 async function configureCaddy(sys: System): Promise<void> {
   step('configuring Caddy (driven by ee through its admin socket)')
-  await sys.writeFile(
-    '/etc/systemd/system/caddy.service.d/ee.conf',
-    [
-      '# Managed by ee: Caddy runs the config ee renders from the company repo.',
-      '[Service]',
-      'RuntimeDirectory=caddy',
-      'RuntimeDirectoryPreserve=yes',
-      'ExecStart=',
-      `ExecStart=/usr/bin/caddy run --environ --config ${PATHS.caddyConfig}`,
-      'ExecReload=',
-      `ExecReload=/usr/bin/caddy reload --config ${PATHS.caddyConfig} --address unix/${PATHS.caddyAdminSocket} --force`,
-      '',
-    ].join('\n'),
-  )
+  const dropInPath = '/etc/systemd/system/caddy.service.d/ee.conf'
+  const dropIn = [
+    '# Managed by ee: Caddy runs the config ee renders from the company repo.',
+    '[Service]',
+    'RuntimeDirectory=caddy',
+    'RuntimeDirectoryPreserve=yes',
+    'ExecStart=',
+    `ExecStart=/usr/bin/caddy run --environ --config ${PATHS.caddyConfig}`,
+    'ExecReload=',
+    `ExecReload=/usr/bin/caddy reload --config ${PATHS.caddyConfig} --address unix/${PATHS.caddyAdminSocket} --force`,
+    '',
+  ].join('\n')
+  const action = caddyUnitAction(await sys.readFile(dropInPath), dropIn)
+  await sys.writeFile(dropInPath, dropIn)
   if ((await sys.readFile(PATHS.caddyConfig)) === null) {
     await sys.writeFile(PATHS.caddyConfig, JSON.stringify({ admin: { listen: `unix/${PATHS.caddyAdminSocket}` } }) + '\n', 0o640)
   }
   await mustRun(sys, 'chown', ['root:caddy', PATHS.caddyConfig])
   await mustRun(sys, 'systemctl', ['daemon-reload'])
   await mustRun(sys, 'systemctl', ['enable', '--quiet', 'caddy'])
-  await mustRun(sys, 'systemctl', ['restart', 'caddy'])
+  await mustRun(sys, 'systemctl', [action, 'caddy'])
   for (let i = 0; i < 20; i++) {
     if (await sys.exists(PATHS.caddyAdminSocket)) return
     await sys.sleep(500)
