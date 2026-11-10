@@ -17,7 +17,11 @@ Owner: "repo is now public. build real release please" / "make a command for my 
 - *Migrations on the owner's real data* (read-only `pg_dump` of the VPS `os` database, restored on ee-box as `vps_rehearsal`, the release's preStart run with the unit's env): 98 → 118 migrations, including `0120_roadmap_into_memory` with an existing owner (Roadmap project created, old table dropped), the 1 user intact, RLS applied. `verify-age-graph-role` failed only because of the restore (the AGE oid issue above) and passed after the repair. The copy and the dump were deleted afterwards.
 - *Over the air on ee-box*, release served over HTTP exactly like GitHub: first-time `curl … install.sh | sh -s -- --from <url>` from a pre-`upgrade` ee, then `ee upgrade --check` (up to date), then a full `ee upgrade` to a renamed copy of the release. Health polled every 0.5 s: **0 failed checks** in both; Caddy and Postgres not restarted; users kept; slots switched a↔b; safety copy + ROLLBACK.txt written.
 
+**Published:** https://github.com/hikaru90/eigen-enterprise/releases/tag/v0.4.0 (workflow run 42832785928: both builds + publish green). Downloaded from `latest/download`: LATEST, ee.mjs and both tarballs pass their checksums. `ee upgrade` on ee-box straight from GitHub: GitHub-built arm64 release live, 0 failed health checks, Caddy not restarted, users kept.
+
 **Not verified:** the GitHub-built amd64 release on a real x64 server; an app workload (website) across an upgrade on the box (the VPS has one — the code carries every non-os workload, routes and settings unchanged); the ROLLBACK.txt steps end to end.
+
+**Known, not from this work:** the "Unit tests and coverage" workflow has failed on every push since 2026-10-22 — svelte-check in CI has no `ORIGIN` / `PUBLIC_POSTHOG_*` / VAPID env (`$env` types). Local gates are green.
 
 **The VPS (152.53.118.209, arm64, Debian 13; console os.cerberusblue.com, website cerberusblue.com):** runs a pre-11-03 release whose ee has no `upgrade`, so its first update is the install line; `ee upgrade` from then on.
 
