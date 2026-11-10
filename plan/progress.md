@@ -2,6 +2,18 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-10 — "Unit tests and coverage" workflow green again (CI-only fix, app code unchanged)
+
+Red on every push since 2026-10-22. Reproduced in a clean clone with no `.env` and an empty environment: the same 7 svelte-check errors. Three separate causes:
+
+- **Typecheck:** `svelte-kit sync` types `$env/*` from `.env`; CI has none, so `ORIGIN` became `string | undefined`, `ExtendedPrivateEnv` lost the VAPID keys, and `$env/static/public` had no `PUBLIC_POSTHOG_*`. Locally it passes only because every machine has a `.env`.
+- **Unit tests (hidden behind the typecheck; seen in the coverage job):** without `.env`, 50 test files fail on `DATABASE_URL is not set` (`src/lib/server/db/runtime-url.ts`, fails loud by design).
+- **Component tests:** `ubuntu-latest` moved to 26.04, which Playwright 1.59 refuses ("does not support chromium on ubuntu26.04-x64").
+
+**Fix (`.github/workflows/test-coverage.yml` only):** each job does `cp .env.example .env` after `npm ci` — the committed, non-secret template, the same file a developer starts from; the components job is pinned to `ubuntu-24.04` (as `release.yml` already is). No defaults or fallbacks added to app code; no check weakened. `auth.ts`'s `env.ORIGIN.trim()` was checked and is not a runtime bug: `normalizeAuthOrigin(env.ORIGIN)` runs first and throws on a missing ORIGIN.
+
+**Decision:** CI's env is `.env.example`, nothing else. A new env key the code types against must go into `.env.example`, or CI goes red — that keeps the template honest.
+
 ## 2026-11-10 — Real releases on GitHub + `ee upgrade` (over-the-air, keeps everything) — v0.4.0
 
 Owner: "repo is now public. build real release please" / "make a command for my vps to update over the air" / "this has to work seamlessly and keep the installed users, websites, repos etc". Commit `f323b87`, tag `v0.4.0`.
