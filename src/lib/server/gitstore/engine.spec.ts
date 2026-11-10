@@ -211,3 +211,37 @@ describe('git engine', () => {
     await a.push({ url: remote })
   })
 })
+
+describe('spawnGit', () => {
+  // Most git commands exit without reading stdin. Writing to the closed pipe then fails with
+  // EPIPE on the stdin stream; unhandled, that is an uncaught exception that kills the server
+  // (seen on Linux CI). The command's result is its exit code + stderr, nothing else.
+  it('a command that never reads stdin resolves on its exit code; no uncaught EPIPE', async () => {
+    const uncaught: unknown[] = []
+    const onUncaught = (e: unknown) => uncaught.push(e)
+    process.on('uncaughtException', onUncaught)
+    try {
+      const r = await spawnGit(['--version'], { cwd: tempDir('stdin'), input: 'x'.repeat(1 << 20) })
+      expect(r.code).toBe(0)
+      expect(r.stdout).toMatch(/^git version /)
+      await new Promise((done) => setTimeout(done, 50))
+      expect(uncaught).toEqual([])
+    } finally {
+      process.off('uncaughtException', onUncaught)
+    }
+  })
+
+  it('without input, a command resolves on its exit code', async () => {
+    const r = await spawnGit(['--version'], { cwd: tempDir('stdin') })
+    expect(r.code).toBe(0)
+  })
+
+  it('input that git does read still arrives', async () => {
+    const r = await spawnGit(['hash-object', '--stdin'], {
+      cwd: tempDir('stdin'),
+      input: 'hello\n',
+    })
+    expect(r.code).toBe(0)
+    expect(r.stdout.trim()).toBe('ce013625030ba8dba906f756967f9e9ca394464a')
+  })
+})
