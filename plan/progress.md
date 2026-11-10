@@ -2,7 +2,7 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-11-10 — Messages as an installable app (PWA): home screen, push, badge, resume (main working tree, uncommitted)
+## 2026-11-10 — SHIPPED (main `468ec1e`, on the box as release `468ec1e17cd7`, not pushed): Messages as an installable app (PWA) — home screen, push, badge, resume
 
 Owner: "make the messaging native on my phone and across devices … something like a pwa". The server half already existed (VAPID keys from `ee bootstrap`, `src/lib/server/push/`, per-device `push_subscription`, `modules/messages/notify.ts`); push had been inert since the strip (`ebf9295`) deleted the service worker.
 
