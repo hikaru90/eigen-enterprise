@@ -23,7 +23,7 @@ Owner: "repo is now public. build real release please" / "make a command for my 
 
 **Known, not from this work:** the "Unit tests and coverage" workflow has failed on every push since 2026-10-22 — svelte-check in CI has no `ORIGIN` / `PUBLIC_POSTHOG_*` / VAPID env (`$env` types). Local gates are green.
 
-**The VPS (152.53.118.209, arm64, Debian 13; console os.cerberusblue.com, website cerberusblue.com):** runs a pre-11-03 release whose ee has no `upgrade`, so its first update is the install line; `ee upgrade` from then on.
+**The VPS upgraded (owner's go, 2026-11-10 ~15:35 CET)** — 152.53.118.209, arm64, Debian 13; console os.cerberusblue.com, website cerberusblue.com. It ran a pre-11-03 release (ee without `upgrade`), so the first update was the install line from GitHub, over SSH. Before: manual safety copy in `/root/pre-upgrade-20261110T143256Z` (os.dump + ee state). During: cerberusblue.com and the console polled every 0.5 s — **94/94 OK each, zero downtime**. After: os on v0.4.0 (release `30a0ef87dc4d6ce8`, slot a→b), 98 → 118 migrations, the 1 user intact, the website workload untouched (same release, slot b, same repo mirror), all 4 routes + console host + ACME email kept, Caddy and Postgres not restarted (up since 2026-10-21) and not upgraded, `applied == desired`, no reconcile error, manifest + service worker served; `ee upgrade --check` → up to date. From now on: `ee upgrade`.
 
 ## 2026-11-10 — SHIPPED (main `1bb02b4`, pushed, on the box as release `1bb02b405565`): the installed app wears the company's identity
 
