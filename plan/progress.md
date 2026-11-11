@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-11 — v0.4.2 published on GitHub (Contribute judge on the company's AI provider)
+
+Owner: "Yes, release v0.4.2". Commit `c0badfe` (version 0.4.1 → 0.4.2), tag `v0.4.2`; carries fix `8dc8f4e` (entry below). Published: https://github.com/hikaru90/eigen-enterprise/releases/tag/v0.4.2 (run 43023079546: amd64 + arm64 + publish green), marked latest; `latest/download/LATEST` → `eigenenterprise-0.4.2-c0badfe5e683`. Pre-push gate green.
+
+**Not done:** the VPS still runs an older release — `ee upgrade` on 152.53.118.209 (owner's go); then a member proposing on the VPS is the real check (not verified against a real provider yet).
+
 ## 2026-11-11 — Fix: Contribute's judge runs on the company's AI provider, not the proposer's (main, not released)
 
 Owner: "when a person contributes, the error message comes up that eurouter is not configured. THIS CANT HAPPEN. we should use the normal set ai provider".
