@@ -16,6 +16,23 @@ Owner: "Yes, recreate the box". Release `scripts/release.sh arm64` (eigenEnterpr
 - **Box state now:** claimed by `owner@ee.localhost` (test), member `member@ee.localhost`; the box's earlier install was wiped (owner approved).
 - **Release hold:** v0.5.2 on GitHub lacks both fixes (livekit would log the `/proc/loadavg` ERROR every 2 s). Keep it a pre-release; publish the calls work as **v0.5.3** from main instead (needs owner OK: push main + tag).
 
+## 2026-11-11 — Contribute round 2 bugs: TTS fixed; brand capture and Members 502 diagnosed (main, pushed, not released)
+
+Owner: "Fix the bugs" (plan/contribute-round-2.md §A).
+- **TTS (A4), fixed:** `tts-client.ts` default model `qwen/qwen-audio-3.0-tts-flash`, voice `longanhuan_v3.6`. **Owner decisions (2026-11-11): TTS stays on Qwen; the voice is a woman's** (a first pass to `google/gemini-3.8-flash-tts` was reverted before commit). The old pair could never work: `qwen/qwen3-tts-flash-2026-02-10` has no OpenRouter endpoints, and `alloy` is in no OpenRouter speech model's `supported_voices`. The successor has one live endpoint (Alibaba, $0.000015/char) and lists only two voices, `loongjohn` and `longanhuan_v3.6` (Chinese voice names; how they sound in German is unknown). Note: ../eigen has no TTS; it pins Qwen only for STT. `LLM_MODEL_TTS` / `LLM_TTS_VOICE` overrides kept. Test first (`tts-client.spec.ts`). **Not verified live:** the local `.env` has no OpenRouter key.
+- **Brand URL extraction 500 (A2), cause found, not fixed:** `brand.extract_start` → `captureSite()` runs `chromium.launch()` (Playwright). Releases install node_modules with `npm ci --ignore-scripts` and never download a browser. The local ee box (same install shape) has no Chromium anywhere. The launch throws, `executeBrandExtractTool` rethrows a plain Error, and SvelteKit answers "Internal Error". Fixing it means shipping a headless Chromium (plus its system libraries) to servers. That is a substrate decision for the owner. Over MCP the tool is refused for agents (G8), so production wasn't probed directly.
+- **Members & invites 502 (A1), not reproduced:** on production `members.list` and `members.group_list` (MCP) answer fine, and the app is up. No code path returns 502; the proxy answers 502 when the app doesn't respond (crash/restart). Needs the page opened signed in on production, or the server log.
+- **"Couldn't transcribe" (A3):** no code; fixed in v0.5.2, waits for the upgrade hold.
+
+## 2026-11-11 — Contribute board round 2 triaged: 12 new proposals (plan only, no code)
+
+Owner: "get the latest entries from the contribute MCP for eigenenterprise and integrate the tasks". Read os.cerberusblue.com over its MCP (`contribute.list status:all`): 24 proposals, 12 new since round 1 (all `requested`). Triage in `plan/contribute-round-2.md`.
+- **Bugs:** Members & invites 502 and Brand URL extraction 500: cause unknown, needs the production log. "Couldn't transcribe the recording": already fixed in v0.5.2, but production is on v0.5.1 (hold). TTS broken: known (voice model has no OpenRouter endpoints), fix not landed.
+- **Small ideas:** edit company name + logo (doesn't exist), Memory privacy note + delete, Messages presence, Drive archive, accessibility (contrast/type/spacing).
+- **Need owner decisions:** Email inbox (no inbound mail storage), Contacts as a people tracker (own module?), Calendar module.
+- Board statuses on production NOT changed.
+- **Next:** production logs for the two 5xx bugs; TTS model fix; owner answers on C1–C3.
+
 ## 2026-11-11 — Calls S4 (e2e against a real livekit-server) green; DM hang-up ends for both (main, not pushed, not on the box)
 
 Owner: "Start S4", then "Yes, end for both". livekit-server 1.13.11 installed on this Mac via Homebrew (`homebrew/core`, same version ee pins).
