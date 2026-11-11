@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Download from '@lucide/svelte/icons/download'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import LogOut from '@lucide/svelte/icons/log-out'
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw'
@@ -9,6 +10,8 @@
   import { goto, invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
   import * as Popover from '$lib/components/ui/popover'
+  import { isStandalone } from '$lib/pwa/install'
+  import InstallAppDialog from '$lib/pwa/install-app-dialog.svelte'
   import { isSoundEnabled, setSoundEnabled } from '$lib/sound/boot-sound'
   import { isVoiceEnabled, setVoiceEnabled } from '$lib/speech/tts'
 
@@ -18,7 +21,8 @@
    * extension roadmap, API keys and provider live on their pages; restarting
    * onboarding clears the welcome stamp and reloads page data so the boot
    * sequence takes over the homepage again. Sound (boot sequence, default on)
-   * and assistant voice toggle here; sign out ends the session.
+   * and assistant voice toggle here; sign out ends the session. "Install app"
+   * (hidden inside the installed app) installs eigenEnterprise on this device.
    */
 
   let menuOpen = $state(false)
@@ -27,6 +31,13 @@
   let soundOn = $state(true)
   let voiceOn = $state(true)
   let error = $state<string | null>(null)
+  let runningAsApp = $state(false)
+  let installDialog = $state<ReturnType<typeof InstallAppDialog> | null>(null)
+
+  function openInstall(): void {
+    menuOpen = false
+    installDialog?.show()
+  }
 
   function toggleSound(): void {
     soundOn = !soundOn
@@ -38,9 +49,10 @@
     setVoiceEnabled(voiceOn)
   }
 
-  function syncSound(): void {
+  function syncMenu(): void {
     soundOn = isSoundEnabled()
     voiceOn = isVoiceEnabled()
+    runningAsApp = isStandalone()
   }
 
   async function restartOnboarding(): Promise<void> {
@@ -81,7 +93,7 @@
   }
 </script>
 
-<Popover.Root bind:open={menuOpen} onOpenChange={(open) => open && syncSound()}>
+<Popover.Root bind:open={menuOpen} onOpenChange={(open) => open && syncMenu()}>
   <Popover.Trigger
     class="text-muted-foreground hover:text-foreground flex size-8 cursor-pointer items-center justify-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
     aria-label="Settings menu"
@@ -102,6 +114,17 @@
       <Settings class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
       Settings
     </a>
+    {#if !runningAsApp}
+      <button
+        type="button"
+        class="flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm text-foreground hover:bg-white/25 disabled:opacity-50 dark:hover:bg-white/10"
+        onclick={openInstall}
+        data-testid="install-app"
+      >
+        <Download class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
+        Install app
+      </button>
+    {/if}
     <div class="bg-border my-1 h-px"></div>
     <button
       type="button"
@@ -162,3 +185,5 @@
     {/if}
   </Popover.Content>
 </Popover.Root>
+
+<InstallAppDialog bind:this={installDialog} />

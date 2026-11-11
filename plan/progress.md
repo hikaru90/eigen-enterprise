@@ -2,6 +2,15 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-11 — "Install app" in the settings menu: a sure way onto every device's home screen (main, not pushed, not on the box)
+
+- **What:** the cog menu (`home-settings-menu.svelte`) gains **Install app** (hidden inside the installed app). It opens `src/lib/pwa/install-app-dialog.svelte`: the browser's own install dialog where Chromium offers one, otherwise the exact taps for this browser — iPhone/iPad Safari, Chrome, Firefox and Edge (Share → Add to Home Screen), Mac Safari (File → Add to Dock), Android Chrome, Samsung, Firefox and Edge, desktop Chrome and Edge (address-bar icon or menu path). Desktop Firefox and unknown browsers get a plain "cannot install here — open in Chrome, Edge or Safari" with Copy link. A dismissed browser dialog falls back to the menu path, so the screen always shows a way forward; "already installed" and "not https" are said plainly.
+- **How:** `beforeinstallprompt` fires once, often before hydration, so an inline script in `src/app.html` captures it (and `appinstalled`) into `window.__eeInstall`; `src/lib/pwa/install.ts` reads it and fails loud if the capture is missing. `src/lib/pwa/install-prompt.ts` is the pure guide.
+- **Decision:** browser detection reads the user agent — Safari, iOS and Android browsers expose no feature saying which install menu they have. Platform detection for instructions only, not meaning (the no-string-heuristics rule is about semantics).
+- **Tests:** `install-prompt.spec.ts` (11, unit), `install-app-dialog.svelte.spec.ts` (6) + 2 new in `home-settings-menu.svelte.spec.ts` (component, enrolled in `vitest.browser.config.ts`). Typecheck + lint clean.
+- **Not done:** not pushed, not on the box, not tried on a real phone. The Messages notifications banner's iPhone "install first" hint could open this dialog — not wired.
+- **What broke:** the e2e harness auto-committed the source checkout twice (`tool brand.picker_choose by …`, via `GitCommitter` `git commit -am` in `src/lib/kernel/vcs.ts`), sweeping this work and the uncommitted dictation work into stray commits. Those two local commits were undone (soft, tree kept) and this work committed on its own; the harness fix is a separate task.
+
 ## 2026-11-11 — v0.4.2 published on GitHub (Contribute judge on the company's AI provider)
 
 Owner: "Yes, release v0.4.2". Commit `c0badfe` (version 0.4.1 → 0.4.2), tag `v0.4.2`; carries fix `8dc8f4e` (entry below). Published: https://github.com/hikaru90/eigen-enterprise/releases/tag/v0.4.2 (run 43023079546: amd64 + arm64 + publish green), marked latest; `latest/download/LATEST` → `eigenenterprise-0.4.2-c0badfe5e683`. Pre-push gate green.

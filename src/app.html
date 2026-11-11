@@ -19,6 +19,25 @@
     <meta name="text-scale" content="scale" />
     <title>Eigen Enterprise</title>
     <script>
+      // Install app (src/lib/pwa/install.ts): Chromium fires beforeinstallprompt
+      // once, often before the app boots — catch it here so "Install app" in
+      // the settings menu can open the browser's own install dialog later.
+      ;(function () {
+        var slot = { prompt: null, installed: false }
+        window.__eeInstall = slot
+        window.addEventListener('beforeinstallprompt', function (event) {
+          event.preventDefault()
+          slot.prompt = event
+          window.dispatchEvent(new Event('ee-install-change'))
+        })
+        window.addEventListener('appinstalled', function () {
+          slot.prompt = null
+          slot.installed = true
+          window.dispatchEvent(new Event('ee-install-change'))
+        })
+      })()
+    </script>
+    <script>
       ;(function () {
         var pref = localStorage.getItem('theme-preference')
         var isDark =

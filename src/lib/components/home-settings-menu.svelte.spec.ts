@@ -33,7 +33,37 @@ describe('home-settings-menu.svelte', () => {
     vi.clearAllMocks()
     fetchMock.mockResolvedValue(okResponse({ ok: true }))
     vi.stubGlobal('fetch', fetchMock)
-    return () => vi.unstubAllGlobals()
+    window.__eeInstall = { prompt: null, installed: false }
+    return () => {
+      vi.unstubAllGlobals()
+      vi.restoreAllMocks()
+      delete window.__eeInstall
+    }
+  })
+
+  it('offers Install app, which opens the install dialog and closes the menu', async () => {
+    render(HomeSettingsMenu)
+
+    await page.getByRole('button', { name: 'Settings menu' }).click()
+    await page.getByTestId('install-app').click()
+
+    await expect.element(page.getByTestId('install-app-dialog')).toBeInTheDocument()
+    await expect.element(page.getByTestId('install-app')).not.toBeInTheDocument()
+  })
+
+  it('hides Install app inside the installed app', async () => {
+    const realMatchMedia = window.matchMedia.bind(window)
+    vi.spyOn(window, 'matchMedia').mockImplementation((query: string) =>
+      query === '(display-mode: standalone)'
+        ? ({ ...realMatchMedia(query), matches: true } as MediaQueryList)
+        : realMatchMedia(query),
+    )
+    render(HomeSettingsMenu)
+
+    await page.getByRole('button', { name: 'Settings menu' }).click()
+
+    await expect.element(page.getByTestId('sound-toggle')).toBeInTheDocument()
+    await expect.element(page.getByTestId('install-app')).not.toBeInTheDocument()
   })
 
   it('renders the settings cog trigger', async () => {

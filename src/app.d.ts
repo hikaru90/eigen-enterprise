@@ -49,6 +49,8 @@ declare global {
   interface Window {
     SpeechRecognition?: SpeechRecognitionConstructor
     webkitSpeechRecognition?: SpeechRecognitionConstructor
+    /** Install capture filled by src/app.html (src/lib/pwa/install.ts). */
+    __eeInstall?: import('$lib/pwa/install').InstallSlot
   }
 }
 
