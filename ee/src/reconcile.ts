@@ -4,6 +4,7 @@ import type { CompanyRepo, DesiredState } from './company-repo.ts'
 import { saveJournal, workloadEntry, type EeEvent, type Journal } from './journal.ts'
 import { DeployRun, secretValues } from './deploys.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
+import { linkedEnv, type LinkState } from './livekit.ts'
 import { generateSecret, renderEnvFile, type SecretMap } from './secrets.ts'
 import {
   OS_INTERNAL_PORT,
@@ -58,15 +59,23 @@ function nodeBin(contract: AppContract): string {
   return `${PATHS.runtimes}/node-${contract.node}/bin`
 }
 
-async function readContract(sys: System, dir: string, name: string): Promise<AppContract> {
+async function readContract(sys: System, dir: string, w: Pick<Workload, 'name' | 'tier'>): Promise<AppContract> {
   const raw = await sys.readFile(`${dir}/ee.json`)
   if (raw === null) {
-    throw new Error(`${name}: release has no ee.json — every workload declares how it builds and runs (D6)`)
+    throw new Error(`${w.name}: release has no ee.json — every workload declares how it builds and runs (D6)`)
   }
   const parsed = appContractSchema.safeParse(JSON.parse(raw))
-  if (!parsed.success) throw new Error(`${name}: ee.json is invalid: ${parsed.error.message}`)
-  assertInCatalog(parsed.data)
+  if (!parsed.success) throw new Error(`${w.name}: ee.json is invalid: ${parsed.error.message}`)
+  assertInCatalog(parsed.data, w.tier)
   return parsed.data
+}
+
+/**
+ * A workload holding host ports cannot run two slots at once (the second could not
+ * bind them), so its deploys stop the live slot before starting the candidate.
+ */
+function hasHostPorts(w: Workload): boolean {
+  return (w.ports ?? []).length > 0
 }
 
 /** Run build steps in a transient, sandboxed systemd unit as the unprivileged ee-build user. */
@@ -155,7 +164,7 @@ export async function prepareRelease(
     : withContract
   const dir = `${PATHS.workloads}/${w.name}/releases/${id}`
   if (await sys.exists(`${dir}/.ee-ready`)) {
-    return { id, dir, contract: await readContract(sys, dir, w.name) }
+    return { id, dir, contract: await readContract(sys, dir, w) }
   }
   // Own temp dir per unpack: the CLI's first deploy and the daemon's tick can
   // prepare the same release at once; a shared .partial dir corrupts both.
@@ -177,14 +186,14 @@ export async function prepareRelease(
     // The owner's contract (company repo) wins over anything the repo ships.
     await sys.writeFile(`${tmp}/ee.json`, JSON.stringify(w.contract, null, 2) + '\n', 0o644)
   }
-  const contract = await readContract(sys, tmp, w.name)
+  const contract = await readContract(sys, tmp, w)
   await sandboxedBuild(sys, w, tmp, contract, deploy, buildEnv)
   await mustRun(sys, 'chmod', ['-R', 'a+rX,go-w', tmp])
   await sys.writeFile(`${tmp}/.ee-ready`, `${id}\n`)
   // Another unpack of the same release finished first: keep its copy.
   if (await sys.exists(`${dir}/.ee-ready`)) {
     await sys.remove(tmp)
-    return { id, dir, contract: await readContract(sys, dir, w.name) }
+    return { id, dir, contract: await readContract(sys, dir, w) }
   }
   await sys.remove(dir)
   await mustRun(sys, 'mv', [tmp, dir])
@@ -267,13 +276,14 @@ export async function renderLiveEnvFiles(sys: System, desired: DesiredState, jou
     const entry = journal.workloads[w.name]
     const live = entry?.active ? entry.slots[entry.active] : undefined
     if (!entry?.active || !live) continue
-    const contract = await readContract(sys, `${PATHS.workloads}/${w.name}/releases/${live.release}`, w.name)
+    const contract = await readContract(sys, `${PATHS.workloads}/${w.name}/releases/${live.release}`, w)
     const values = declaredSecretValues(secrets, w)
     if (contract.services.includes('postgres')) {
       const pw = secrets['_postgres']?.[w.name]
       if (!pw) throw new Error(`${w.name}: no database password in the store`)
       Object.assign(values, databaseEnv(w, pw))
     }
+    Object.assign(values, linkedEnv(desired, w, secrets, live.port))
     await sys.writeFile(`${PATHS.envDir}/${w.name}-${entry.active}.env`, renderEnvFile(values), 0o600)
     n++
   }
@@ -310,15 +320,30 @@ async function unitLogs(sys: System, unit: string, sinceMs: number): Promise<str
   return (await sys.run('journalctl', ['-u', unit, '--since', since, '-n', '400', '--no-pager', '-o', 'cat'])).stdout.trimEnd()
 }
 
-/** Deploy a node workload: no-op when live, else blue-green to the other slot behind the health gate. */
-async function reconcileNode(ctx: ReconcileContext, w: Workload, rel: PreparedRelease, deploy: DeployHandle): Promise<Upstream | null> {
+/**
+ * Deploy a node or binary workload: no-op when live, else to the other slot behind
+ * the health gate. Blue-green (the old slot serves until the candidate is healthy),
+ * except for workloads holding host ports: those stop the live slot first, and a
+ * failed candidate starts it again (a deploy of livekit drops calls in progress).
+ */
+async function reconcileNode(
+  ctx: ReconcileContext,
+  state: LinkState,
+  w: Workload,
+  rel: PreparedRelease,
+  deploy: DeployHandle,
+): Promise<Upstream | null> {
   const { sys, journal } = ctx
   const entry = workloadEntry(journal, w.name)
-  const env = await envFor(ctx, w, rel.contract)
+  const base = await envFor(ctx, w, rel.contract)
+  const envAt = (slotPort: number) => ({ ...base, ...linkedEnv(state, w, ctx.secrets.all(), slotPort) })
   const groups = w.tier === 'system' && w.name === 'os' ? [CONTROL_GROUP] : []
-  const fingerprint = sha(JSON.stringify({ rel: rel.id, w, env, groups }))
+  // The slot port is not part of the fingerprint (the same config on either slot is the
+  // same deploy): env that carries it (livekit's config) is fingerprinted at port 0.
+  const fingerprint = sha(JSON.stringify({ rel: rel.id, w, env: envAt(0), groups }))
   const active = entry.active
   const live = active ? entry.slots[active] : undefined
+  const exclusive = hasHostPorts(w)
 
   if (active && live && live.fingerprint === fingerprint) {
     const state = (await sys.run('systemctl', ['is-active', unitName(w.name, active)])).stdout.trim()
@@ -345,7 +370,7 @@ async function reconcileNode(ctx: ReconcileContext, w: Workload, rel: PreparedRe
   const run = deploy()
   run.record.release = rel.id
   run.stage('starting')
-  await sys.writeFile(`${PATHS.envDir}/${w.name}-${cand}.env`, renderEnvFile(env), 0o600)
+  await sys.writeFile(`${PATHS.envDir}/${w.name}-${cand}.env`, renderEnvFile(envAt(port)), 0o600)
   let text: string
   try {
     text = renderUnit({ workload: w, contract: rel.contract, slot: cand, port, releaseDir: rel.dir, supplementaryGroups: groups })
@@ -365,10 +390,20 @@ async function reconcileNode(ctx: ReconcileContext, w: Workload, rel: PreparedRe
   await sys.writeFile(`${PATHS.unitDir}/${unit}`, text)
   await mustRun(sys, 'systemctl', ['daemon-reload'])
   await sys.run('systemctl', ['reset-failed', unit])
+  // Host ports are exclusive: the live slot lets go of them before the candidate binds them.
+  const stoppedLive = exclusive && active && live ? unitName(w.name, active) : null
+  if (stoppedLive) await mustRun(sys, 'systemctl', ['stop', stoppedLive])
   // A failing start is not an exception here: the health gate below reports it, with logs.
   const startedMs = sys.now().getTime()
   await sys.run('systemctl', ['restart', unit])
-  emit(journal, sys, 'deploy.started', w.name, `starting ${unit} with release ${rel.id}`, { release: rel.id, slot: cand, deployId: run.record.id })
+  emit(
+    journal,
+    sys,
+    'deploy.started',
+    w.name,
+    `starting ${unit} with release ${rel.id}${stoppedLive ? ` (stopped ${stoppedLive} first: its host ports are exclusive)` : ''}`,
+    { release: rel.id, slot: cand, deployId: run.record.id },
+  )
   run.stage('health')
 
   const captureStart = async () => run.log('start', await unitLogs(sys, unit, startedMs), 'replace')
@@ -378,17 +413,20 @@ async function reconcileNode(ctx: ReconcileContext, w: Workload, rel: PreparedRe
     // Stop AND disable: a failed candidate never crash-loops in the background or comes back at boot.
     await sys.run('systemctl', ['disable', '--now', '--quiet', unit])
     await sys.run('systemctl', ['reset-failed', unit])
+    // The live slot was stopped for the candidate: bring it back (the next pass repairs it if it does not stay up).
+    if (stoppedLive) await mustRun(sys, 'systemctl', ['start', stoppedLive])
+    const previous = stoppedLive ? 'the previous release was started again' : 'the previous release keeps serving'
     entry.lastError = failure
     entry.failedFingerprint = fingerprint
     await run.fail(failure)
-    emit(journal, sys, 'deploy.failed', w.name, `${failure}; ${live ? 'the previous release keeps serving' : 'nothing was live before'}`, {
+    emit(journal, sys, 'deploy.failed', w.name, `${failure}; ${live ? previous : 'nothing was live before'}`, {
       release: rel.id,
       deployId: run.record.id,
       stage: 'health',
       logs: run.tail(60),
     })
     if (!live) throw new ReportedError(`${w.name}: ${failure}`)
-    ctx.deployFailures?.push(`${w.name}: ${failure}; the previous release keeps serving`)
+    ctx.deployFailures?.push(`${w.name}: ${failure}; ${previous}`)
     return { kind: 'proxy', port: live.port }
   }
 
@@ -451,7 +489,7 @@ export async function reconcile(ctx: ReconcileContext): Promise<DesiredState> {
         upstreams[w.name] = { kind: 'static', root }
         continue
       }
-      const up = await reconcileNode(ctx, w, rel, deploy)
+      const up = await reconcileNode(ctx, desired, w, rel, deploy)
       if (up) upstreams[w.name] = up
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)

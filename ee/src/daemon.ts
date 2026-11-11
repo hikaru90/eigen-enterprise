@@ -318,7 +318,7 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
         const parsed = appContractSchema.safeParse(json)
         if (!parsed.success) return send(res, 200, { present: true, contract: null, gap: null, error: `ee.json is invalid: ${parsed.error.message}` })
         try {
-          assertInCatalog(parsed.data)
+          assertInCatalog(parsed.data, 'app')
         } catch (err) {
           if (err instanceof CatalogGapError) return send(res, 200, { present: true, contract: parsed.data, gap: err.missing, error: null })
           throw err
@@ -366,7 +366,7 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
         const i = appInput.parse(await body(req))
         if (i.contract) {
           try {
-            assertInCatalog(i.contract)
+            assertInCatalog(i.contract, 'app')
           } catch (err) {
             if (err instanceof CatalogGapError) {
               return send(res, 422, { type: 'urn:ee:catalog_gap', title: 'catalog gap', detail: err.message, missing: err.missing })

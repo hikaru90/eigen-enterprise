@@ -5,5 +5,7 @@ ENV container=docker
 RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq systemd systemd-sysv dbus iproute2 curl ca-certificates xz-utils sudo >/dev/null \
  && rm -f /etc/systemd/system/*.wants/* /lib/systemd/system/multi-user.target.wants/getty* \
  && systemctl mask systemd-logind.service getty.target console-getty.service
+# The edge (Caddy) and livekit-server's media ports (ICE over TCP, UDP mux) — box.sh publishes them.
+EXPOSE 80/tcp 443/tcp 7881/tcp 7882/udp
 STOPSIGNAL SIGRTMIN+3
 CMD ["/sbin/init"]

@@ -13,10 +13,13 @@ case "${1:-}" in
     docker run -d --name "$NAME" --platform "linux/${EE_BOX_ARCH:-arm64}" --privileged --cgroupns=host \
       --restart unless-stopped \
       -v /sys/fs/cgroup:/sys/fs/cgroup:rw --tmpfs /run --tmpfs /run/lock \
-      -v "$ROOT/dist/release:/release:ro" -p 443:443 -p 80:80 ee-box >/dev/null
+      -v "$ROOT/dist/release:/release:ro" -p 443:443 -p 80:80 \
+      -p 7881:7881/tcp -p 7882:7882/udp ee-box >/dev/null
     sleep 3; docker exec "$NAME" systemctl is-system-running --wait || true ;;
   install)
-    docker exec "$NAME" sh /release/install.sh --from /release --console-host "${2:-os.ee.test}" ;;
+    # Calls media: the browser runs on this machine and reaches the published ports on
+    # loopback, so LiveKit advertises 127.0.0.1 (a real server passes its public IP).
+    docker exec "$NAME" sh /release/install.sh --from /release --console-host "${2:-os.ee.test}" --node-ip 127.0.0.1 ;;
   shell) docker exec -it "$NAME" bash ;;
   down) docker rm -f "$NAME" ;;
   *) echo "usage: box.sh up|install [host]|shell|down" >&2; exit 2 ;;

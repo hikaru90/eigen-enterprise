@@ -85,7 +85,7 @@ The restored company repo names the release that ran before, so ee redeploys it.
 
 export async function upgrade(
   d: UpgradeDeps,
-  opts: { from: string; arch: Arch; check: boolean },
+  opts: { from: string; arch: Arch; check: boolean; nodeIp?: string },
 ): Promise<'up-to-date' | 'available' | 'upgraded'> {
   const latest = await latestTarball(d, opts.from, opts.arch)
   const current = await d.installed()
@@ -103,7 +103,7 @@ export async function upgrade(
 
   d.log('→ running the release installer (keeps people, websites, repos, domains and secrets)')
   await d.download(`${opts.from}/install.sh`, `${dir}/install.sh`)
-  const code = await d.runLive('sh', [`${dir}/install.sh`, '--from', opts.from])
+  const code = await d.runLive('sh', [`${dir}/install.sh`, '--from', opts.from, ...(opts.nodeIp ? ['--node-ip', opts.nodeIp] : [])])
   if (code !== 0) {
     throw new Error(
       `the installer failed (exit ${code}). The app that was running stays live unless its health gate passed. ` +

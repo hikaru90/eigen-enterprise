@@ -1,13 +1,16 @@
 import { generateKeyPairSync, randomBytes } from 'node:crypto'
+import { isIP } from 'node:net'
 import { basename } from 'node:path'
 import { OS_BODY_SIZE_LIMIT } from './body-limit.ts'
 import { newClaim } from './claim.ts'
-import { CompanyRepo } from './company-repo.ts'
+import { CompanyRepo, type DesiredState } from './company-repo.ts'
+import { withCallsHost } from './domains.ts'
+import { LIVEKIT_SECRETS, LIVEKIT_WORKLOAD, generateLivekitKeys, livekitWorkload } from './livekit.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
 import { OS_INTERNAL_PORT } from './reconcile.ts'
 import { SecretStore } from './secret-store.ts'
 import { generateSecret } from './secrets.ts'
-import { workloadSchema } from './spec.ts'
+import { workloadSchema, type WorkloadInput } from './spec.ts'
 import { mustRun, type System } from './system.ts'
 import { writeBackupTimer } from './backup/box.ts'
 import { BACKUP_SCOPE, storedConfigSchema } from './backup/service.ts'
@@ -21,9 +24,42 @@ import { BACKUP_SCOPE, storedConfigSchema } from './backup/service.ts'
 export type BootstrapOptions = {
   /** Absolute path to the eigenEnterprise release tarball. */
   release: string
+  /** Absolute path to the livekit-server release tarball (scripts/release.sh packs it). */
+  livekitRelease: string
   /** Console host; when omitted, an IP-encoded sslip.io name for the box's public IPv4. */
   consoleHost?: string
   acmeEmail?: string
+  /** The IP LiveKit advertises for media; required on the first install, kept on re-runs. */
+  nodeIp?: string
+}
+
+/**
+ * The node IP for LiveKit: an explicit --node-ip wins, else the one the company
+ * already has. Never guessed — a NAT'd or multi-homed box would advertise the
+ * wrong one and calls would connect signalling but never media.
+ */
+export function resolveNodeIp(flag: string | undefined, stored: string | null): string {
+  const ip = flag ?? stored
+  if (!ip) {
+    throw new Error(
+      'calls need the IP media reaches this server on: pass --node-ip <public IP of this server> ' +
+        '(and open 7881/tcp + 7882/udp in its firewall)',
+    )
+  }
+  if (isIP(ip) === 0) throw new Error(`--node-ip "${ip}" is not an IP address`)
+  return ip
+}
+
+type SeedState = Omit<DesiredState, 'rev'>
+
+/** Put the livekit workload (this release) in the company, save the node IP, and route the calls host. */
+export function withLivekit(s: SeedState, livekit: WorkloadInput, nodeIp: string): SeedState {
+  const w = workloadSchema.parse(livekit)
+  return withCallsHost({
+    workloads: [...s.workloads.filter((x) => x.name !== w.name), w],
+    routes: s.routes,
+    settings: { ...s.settings, rtcNodeIp: nodeIp },
+  })
 }
 
 const PG = '16'
@@ -270,13 +306,26 @@ export const OS_SECRETS = [
 /** Claim-link state (hash + expiry only), declared on os so the app can check a claim. */
 export const CLAIM_SECRETS = ['EE_CLAIM_TOKEN_HASH', 'EE_CLAIM_EXPIRES_AT'] as const
 
-async function seedCompany(sys: System, opts: BootstrapOptions, consoleHost: string): Promise<string | null> {
+/** Copy a release tarball into ee's releases dir (once) and return where it is and its checksum. */
+async function installTarball(sys: System, src: string): Promise<{ tarball: string; sha256: string }> {
+  const tarball = `${PATHS.releases}/${basename(src)}`
+  if (src !== tarball) await mustRun(sys, 'cp', [src, tarball])
+  return { tarball, sha256: await sys.sha256File(tarball) }
+}
+
+async function seedCompany(sys: System, opts: BootstrapOptions, consoleHost: string, nodeIp: string): Promise<string | null> {
   step('installing the eigenEnterprise release')
-  const tarball = `${PATHS.releases}/${basename(opts.release)}`
-  if (opts.release !== tarball) await mustRun(sys, 'cp', [opts.release, tarball])
-  const sha256 = await sys.sha256File(tarball)
+  const { tarball, sha256 } = await installTarball(sys, opts.release)
+  step('installing the livekit-server release (calls)')
+  const livekit = await installTarball(sys, opts.livekitRelease)
 
   const secrets = await SecretStore.open(sys)
+  // LiveKit's API key + secret: generated once, shared by livekit (its config) and os (tokens, webhook check).
+  const haveLivekit = secrets.all()[LIVEKIT_WORKLOAD] ?? {}
+  const livekitKeys = generateLivekitKeys()
+  for (const name of LIVEKIT_SECRETS) {
+    if (haveLivekit[name] === undefined) await secrets.set(LIVEKIT_WORKLOAD, name, livekitKeys[name])
+  }
   const have = secrets.all()['os'] ?? {}
   const vapid = vapidKeys()
   const generated: Record<(typeof OS_SECRETS)[number], string> = {
@@ -333,11 +382,15 @@ async function seedCompany(sys: System, opts: BootstrapOptions, consoleHost: str
       secrets: [...OS_SECRETS, ...CLAIM_SECRETS],
       resources: { memoryMb: 2048, cpuPercent: 200 },
     })
-    return {
-      workloads: [...s.workloads.filter((w) => w.name !== 'os'), os],
-      routes: routing.routes,
-      settings: routing.settings,
-    }
+    return withLivekit(
+      {
+        workloads: [...s.workloads.filter((w) => w.name !== 'os'), os],
+        routes: routing.routes,
+        settings: { ...s.settings, ...routing.settings },
+      },
+      livekitWorkload(livekit.tarball, livekit.sha256),
+      nodeIp,
+    )
   })
   return claimToken
 }
@@ -386,6 +439,13 @@ export async function bootstrap(
   if (process.getuid?.() !== 0) throw new Error('ee bootstrap must run as root')
   await assertSupportedOs(sys)
   if (!(await sys.exists(opts.release))) throw new Error(`release tarball ${opts.release} not found`)
+  if (!(await sys.exists(opts.livekitRelease))) throw new Error(`livekit-server release tarball ${opts.livekitRelease} not found`)
+  // Before anything is installed: a first install (or an upgrade from before calls) must name the node IP.
+  // (The repo exists only where git is installed: a fresh box has neither.)
+  const company = new CompanyRepo(sys, PATHS.company)
+  const stored =
+    (await sys.exists(`${PATHS.company}/.git`)) && (await company.head()) ? (await company.read()).settings.rtcNodeIp : null
+  const nodeIp = resolveNodeIp(opts.nodeIp, stored)
   await installPackages(sys)
   await usersAndDirs(sys)
   await configurePostgres(sys)
@@ -397,6 +457,6 @@ export async function bootstrap(
   const existing = (await repo.head()) ? (await repo.read()).settings.consoleHost : null
   const consoleHost =
     opts.consoleHost ?? existing ?? `${(await detectPublicIpv4(sys)).replace(/\./g, '-')}.sslip.io`
-  const claimToken = await seedCompany(sys, opts, consoleHost)
+  const claimToken = await seedCompany(sys, opts, consoleHost, nodeIp)
   return { consoleHost, claimToken }
 }

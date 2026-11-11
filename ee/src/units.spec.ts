@@ -140,3 +140,57 @@ describe('renderUnit portEnv', () => {
     expect(() => appContractSchema.parse({ runtime: 'node', node: '22', start: ['node', 'i.js'], portEnv: 'HOST' })).toThrow()
   })
 })
+
+describe('renderUnit: binary runtime with host ports (livekit-server)', () => {
+  const livekit = workloadSchema.parse({
+    name: 'livekit',
+    tier: 'system',
+    source: { kind: 'release', tarball: '/var/lib/ee/releases/livekit.tar.gz', sha256: 'b'.repeat(64) },
+    ports: [
+      { port: 7881, proto: 'tcp' },
+      { port: 7882, proto: 'udp' },
+    ],
+  })
+  const binary = appContractSchema.parse({ runtime: 'binary', start: ['./livekit-server'], health: '/' })
+  const releaseDir = '/var/lib/ee/workloads/livekit/releases/r1'
+  const unit = renderUnit({ workload: livekit, contract: binary, slot: 'a', port: 4102, releaseDir })
+
+  it('execs the program from the release by absolute path, with no node runtime anywhere', () => {
+    expect(unit).toContain(`ExecStart=${releaseDir}/livekit-server`)
+    expect(unit).not.toContain('/opt/ee/runtimes')
+    expect(unit).not.toContain('NODE_ENV')
+    expect(unit).not.toContain('npm_config')
+    expect(unit).toContain('Environment="PATH=/usr/bin:/bin"')
+  })
+
+  it('carries the same hardening, and may open only its own loopback port plus its declared host ports', () => {
+    for (const line of HARDENING.filter((l) => !l.startsWith('RestrictAddressFamilies='))) expect(unit).toContain(line)
+    expect(unit).toContain('DynamicUser=yes')
+    expect(unit).toContain('SocketBindAllow=tcp:4102')
+    expect(unit).toContain('SocketBindAllow=tcp:7881')
+    expect(unit).toContain('SocketBindAllow=udp:7882')
+    expect(unit).toContain('SocketBindDeny=any')
+    expect(unit).toContain(`ReadOnlyPaths=${releaseDir}`)
+    expect(unit).toContain('EnvironmentFile=/run/ee/env/livekit-a.env')
+  })
+
+  it('a media server may also read the interface list (AF_NETLINK) to bind its host ports; nothing else is added', () => {
+    expect(unit).toContain('RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK')
+    expect(unit.match(/^RestrictAddressFamilies=/gm)).toHaveLength(1)
+    expect(unit).not.toMatch(/CapabilityBoundingSet=.+/)
+    expect(unit).not.toMatch(/AmbientCapabilities=.+/)
+  })
+
+  it('a workload without host ports keeps the plain address families and binds only its own port', () => {
+    const plain = renderUnit({ workload: { ...livekit, ports: undefined }, contract: binary, slot: 'b', port: 4103, releaseDir })
+    expect(plain).toContain('RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6\n')
+    expect(plain).not.toContain('SocketBindAllow=udp')
+    expect(plain.match(/^SocketBindAllow=/gm)).toEqual(['SocketBindAllow='])
+  })
+
+  it('refuses a binary contract on a non-system workload (defence in depth behind the catalog)', () => {
+    expect(() =>
+      renderUnit({ workload: { ...livekit, tier: 'app', ports: undefined }, contract: binary, slot: 'a', port: 4102, releaseDir }),
+    ).toThrow(/system/)
+  })
+})

@@ -31,3 +31,18 @@ describe('CompanyRepo: git mirrors under sources/ are never part of the desired 
     expect(execFileSync('cat', [join(dir, 'sources/gh-app.git/refs/remotes/origin/main')], { encoding: 'utf8' }).trim()).toBe('f'.repeat(40))
   })
 })
+
+describe('CompanyRepo: host ports', () => {
+  it('refuses a commit where two workloads hold the same host port, and nothing is written', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'ee-company-'))
+    const repo = new CompanyRepo(new RealSystem(), dir)
+    await repo.init()
+    const source = { kind: 'release' as const, tarball: '/r/lk.tgz', sha256: 'a'.repeat(64) }
+    const lk = (name: string) => ({ name, tier: 'system' as const, source, ports: [{ port: 7882, proto: 'udp' as const }] })
+    const first = await repo.commit('one', 'owner:test', (s) => ({ ...s, workloads: [lk('livekit')] as never }))
+    await expect(
+      repo.commit('two', 'owner:test', (s) => ({ ...s, workloads: [...s.workloads, lk('livekit-two')] as never })),
+    ).rejects.toThrow(/udp\/7882 is held by both livekit and livekit-two/)
+    expect(await repo.head()).toBe(first)
+  })
+})
