@@ -9,13 +9,16 @@
   import Strikethrough from '@lucide/svelte/icons/strikethrough'
   import type { Snippet } from 'svelte'
   import { tick } from 'svelte'
+  import VoiceDictation from '$lib/voice/voice-dictation.svelte'
+  import { appendVoiceTranscript } from '$lib/voice/transcribe-voice-clip'
   import { applyFormat, insertAt, type Edit, type Format } from './composer'
 
   /**
    * The message box, Slack-style: a bordered box with a formatting row
    * (bold, italic, strikethrough, code, link — they insert Markdown), the
-   * text, and a bottom row with attach, emoji and send. Enter sends,
-   * Shift+Enter is a new line.
+   * text, and a bottom row with attach, emoji, dictation and send. Enter sends,
+   * Shift+Enter is a new line. Dictation appends its transcript to the text;
+   * while a voice message exists the bar takes the bottom row.
    */
   let {
     value = $bindable(''),
@@ -60,6 +63,14 @@
   } = $props()
 
   let emojiOpen = $state(false)
+  let voiceActive = $state(false)
+
+  async function addTranscript(text: string) {
+    value = appendVoiceTranscript(value, text)
+    await tick()
+    textarea?.focus()
+    textarea?.setSelectionRange(value.length, value.length)
+  }
 
   async function apply(edit: Edit) {
     value = edit.text
@@ -146,6 +157,7 @@
       {onpaste}
     ></textarea>
     <div class="relative flex items-center gap-0.5 px-1.5 pb-1.5">
+      {#if !voiceActive}
       {#if onattach}
         <button
           type="button"
@@ -187,10 +199,18 @@
           <kbd class="font-sans font-medium">Enter</kbd> to send · <kbd class="font-sans font-medium">Shift+Enter</kbd> for a new line
         </span>
       {/if}
+      {/if}
+      <VoiceDictation
+        bind:active={voiceActive}
+        class={voiceActive ? '' : 'ml-auto'}
+        testid="{inputTestid}-voice"
+        ontranscript={(text) => void addTranscript(text)}
+      />
+      {#if !voiceActive}
       <button
         type="submit"
         class={[
-          'ml-auto grid h-8 w-10 place-items-center rounded-md transition-colors',
+          'ml-1 grid h-8 w-10 place-items-center rounded-md transition-colors',
           canSend ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'text-muted-foreground',
         ]}
         disabled={!canSend}
@@ -198,6 +218,7 @@
         title="Send"
         data-testid={sendTestid}><SendHorizontal class="size-4" /></button
       >
+      {/if}
     </div>
   </div>
 </form>

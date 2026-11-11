@@ -6,6 +6,8 @@
   import type { ContributeClient } from '$lib/contribute/client'
   import { AREA_LABEL, KIND_LABEL, STATUS_LABEL } from '$lib/contribute/labels'
   import { CONTRIBUTION_STATUSES } from '../../../../modules/contribute/types'
+  import VoiceDictation from '$lib/voice/voice-dictation.svelte'
+  import { appendVoiceTranscript } from '$lib/voice/transcribe-voice-clip'
 
   /**
    * The Contribute board (Eigen's board tabs): Requested · In progress ·
@@ -28,6 +30,7 @@
   /** This person's latest change per proposal, shown until the reload lands. */
   let overrides = $state<Record<string, ContributionDto>>({})
   let busy = $state<string | null>(null)
+  let noteVoiceActive = $state(false)
   let error = $state<string | null>(null)
   let editingNote = $state<{ id: string; text: string } | null>(null)
 
@@ -143,9 +146,19 @@
                   class="w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-xs outline-none focus-visible:border-ring"
                   bind:value={editingNote.text}
                 ></textarea>
-                <div class="flex gap-3">
-                  <button type="button" class="cursor-pointer text-xs font-medium text-primary" onclick={() => saveNote(p)}>Save note</button>
-                  <button type="button" class="cursor-pointer text-xs text-foreground/60" onclick={() => (editingNote = null)}>Cancel</button>
+                <div class="flex items-center gap-3">
+                  {#if !noteVoiceActive}
+                    <button type="button" class="cursor-pointer text-xs font-medium text-primary" onclick={() => saveNote(p)}>Save note</button>
+                    <button type="button" class="cursor-pointer text-xs text-foreground/60" onclick={() => (editingNote = null)}>Cancel</button>
+                  {/if}
+                  <VoiceDictation
+                    bind:active={noteVoiceActive}
+                    class={noteVoiceActive ? '' : 'ml-auto'}
+                    testid="contribute-note-voice"
+                    ontranscript={(t) => {
+                      if (editingNote) editingNote.text = appendVoiceTranscript(editingNote.text, t)
+                    }}
+                  />
                 </div>
               </div>
             {:else if p.note}

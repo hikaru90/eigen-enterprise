@@ -24,6 +24,10 @@ describe('parseSttTranscript', () => {
     ).toThrow(/chat completion shape/)
   })
 
+  it('treats an empty text as a real answer: the clip held no speech', () => {
+    expect(parseSttTranscript({ text: '   ' })).toBe('')
+  })
+
   it('throws when text missing', () => {
     expect(() => parseSttTranscript({})).toThrow(/missing transcript/)
   })

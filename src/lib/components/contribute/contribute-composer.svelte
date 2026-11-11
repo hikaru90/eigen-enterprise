@@ -5,6 +5,8 @@
   import type { ContributeClient } from '$lib/contribute/client'
   import { AREA_LABEL, KIND_PHRASE, STATUS_LABEL, votesLabel } from '$lib/contribute/labels'
   import { CONTRIBUTION_MAX_LENGTH } from '../../../../modules/contribute/types'
+  import VoiceDictation from '$lib/voice/voice-dictation.svelte'
+  import { appendVoiceTranscript } from '$lib/voice/transcribe-voice-clip'
 
   /**
    * The Contribute composer (Eigen's share bar, in the top bar's popover):
@@ -33,6 +35,7 @@
   let working = $state<'checking' | 'sharing' | 'voting' | null>(null)
   let done = $state<Done | null>(null)
   let error = $state<string | null>(null)
+  let voiceActive = $state(false)
 
   const trimmed = $derived(text.trim())
   const tooLong = $derived(trimmed.length > CONTRIBUTION_MAX_LENGTH)
@@ -201,9 +204,19 @@
     {/if}
 
     <div class="flex items-center justify-between gap-3">
-      <a href={boardHref} class="text-xs text-foreground/60 hover:text-foreground" onclick={() => onnavigate?.()}
-        >See the board</a
-      >
+      {#if !voiceActive}
+        <a href={boardHref} class="text-xs text-foreground/60 hover:text-foreground" onclick={() => onnavigate?.()}
+          >See the board</a
+        >
+      {/if}
+      <div class={['flex items-center gap-1.5', voiceActive && 'min-w-0 flex-1']}>
+      <VoiceDictation
+        bind:active={voiceActive}
+        disabled={working !== null}
+        testid="contribute-voice"
+        ontranscript={(t) => (text = appendVoiceTranscript(text, t))}
+      />
+      {#if !voiceActive}
       <button
         type="button"
         class="flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
@@ -218,6 +231,8 @@
           Send
         {/if}
       </button>
+      {/if}
+      </div>
     </div>
   {/if}
 </div>

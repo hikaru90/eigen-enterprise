@@ -100,6 +100,7 @@ export default defineConfig({
       'src/lib/components/drive/drive-browser.svelte.spec.ts',
       'src/lib/components/contribute/contribute-composer.svelte.spec.ts',
       'src/lib/components/contribute/contribute-board.svelte.spec.ts',
+      'src/lib/voice/voice-dictation.svelte.spec.ts',
       'modules/brand/water-flow.svelte.spec.ts',
       'src/lib/components/brand-picker/picker.svelte.spec.ts',
     ],
