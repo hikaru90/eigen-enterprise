@@ -23,13 +23,14 @@
     onnavigate?: () => void
     /** A proposal was shared or voted for (the board reloads). */
     onchanged?: () => void
+    /** The draft. Owned by the caller: the popover unmounts the composer on an outside click. */
+    text?: string
   }
 
-  let { client, boardHref, onnavigate, onchanged }: Props = $props()
+  let { client, boardHref, onnavigate, onchanged, text = $bindable('') }: Props = $props()
 
   type Done = { kind: 'shared'; proposal: ContributionDto } | { kind: 'voted'; proposal: ContributionDto }
 
-  let text = $state('')
   /** The judge's answer for exactly this draft. */
   let checked = $state<{ title: string; result: ContributionCheck } | null>(null)
   let working = $state<'checking' | 'sharing' | 'voting' | null>(null)

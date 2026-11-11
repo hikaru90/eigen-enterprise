@@ -14,6 +14,8 @@
    * picks them up.
    */
   let open = $state(false)
+  /** The draft lives here, not in the composer: an outside click closes the popover and unmounts it. */
+  let draft = $state('')
   const client = contributeClient()
 </script>
 
@@ -29,6 +31,7 @@
   <Popover.Content align="end" side="bottom" sideOffset={6} class="w-[min(24rem,calc(100vw-1.5rem))] p-4">
     <ContributeComposer
       {client}
+      bind:text={draft}
       boardHref={resolve('/contribute')}
       onnavigate={() => (open = false)}
       onchanged={() => void invalidate(CONTRIBUTE_DEPENDENCY)}

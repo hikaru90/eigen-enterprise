@@ -1,8 +1,14 @@
 import type { ContributionCheck, ContributionDto } from '../../../../modules/contribute/types'
 import { describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
+import ContributeButton from './contribute-button.svelte'
 import ContributeComposer from './contribute-composer.svelte'
+
+vi.mock('$app/navigation', () => ({ invalidate: vi.fn(async () => {}) }))
+vi.mock('$lib/contribute/client', () => ({
+  contributeClient: () => ({ check: vi.fn(), share: vi.fn(), vote: vi.fn() }),
+}))
 
 const dto = (over: Partial<ContributionDto> = {}): ContributionDto => ({
   id: 'p1',
@@ -85,5 +91,17 @@ describe('contribute-composer.svelte', () => {
     await expect.element(page.getByRole('alert')).toHaveTextContent('No AI provider is set up')
     await expect.element(page.getByTestId('contribute-input')).toHaveValue('Something')
     expect(client.share).not.toHaveBeenCalled()
+  })
+})
+
+describe('contribute-button.svelte', () => {
+  it('a click outside closes the popover but keeps the draft (board bug: text gone after one stray click)', async () => {
+    render(ContributeButton)
+    await page.getByTestId('contribute-trigger').click()
+    await page.getByTestId('contribute-input').fill('Let me speak my contributions')
+    await userEvent.click(document.body, { position: { x: 2, y: 2 } })
+    await expect.element(page.getByTestId('contribute-input')).not.toBeInTheDocument()
+    await page.getByTestId('contribute-trigger').click()
+    await expect.element(page.getByTestId('contribute-input')).toHaveValue('Let me speak my contributions')
   })
 })
