@@ -10,6 +10,7 @@
   import type { Dashboard } from '$lib/server/overview/dashboard'
   import { appHref } from '$lib/shell/href'
   import { moduleHref, type ShellNavItem } from '$lib/shell/nav'
+  import { groupActionsByDay } from './activity-groups'
 
   /**
    * The dashboard at `/` (polish P-2, formerly /overview): a greeting, what
@@ -22,6 +23,7 @@
     companyName,
     navItems,
     isAdmin,
+    providerMissing,
   }: {
     dashboard: Dashboard
     greetingName: string | null
@@ -29,14 +31,17 @@
     navItems: readonly ShellNavItem[]
     /** Owner/admin manage members and invites. */
     isAdmin: boolean
+    /** The company's AI provider is not connected: the assistant cannot work until it is. */
+    providerMissing: boolean
   } = $props()
 
   const assistant = useAssistant()
 
-  const timeFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+  const timeFormat = new Intl.DateTimeFormat(undefined, { timeStyle: 'short' })
   const when = (iso: string) => timeFormat.format(new Date(iso))
 
   const overview = $derived(dashboard.overview)
+  const actionGroups = $derived(groupActionsByDay(overview.actions, new Date()))
   const activeModules = $derived(overview.modules.filter((m) => m.active))
   const switchedOff = $derived(overview.modules.length - activeModules.length)
   const needsYou = $derived(overview.approvals.length + (dashboard.backup ? 1 : 0))
@@ -71,6 +76,26 @@
       ? `What is happening at ${companyName}, and what needs you.`
       : 'What is happening in your company, and what needs you.'}
   />
+
+  {#if providerMissing}
+    <!-- Kept from the former full-screen gate: without a provider the assistant cannot work. -->
+    <div
+      class="mt-6 flex min-w-0 flex-col gap-3 rounded-lg border border-primary/30 bg-primary/[0.05] px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+      data-testid="dashboard-provider-notice"
+    >
+      <span class="min-w-0">
+        <span class="font-medium">Connect your AI provider.</span>
+        <span class="text-foreground/60"
+          >The assistant and agents work once a provider is connected.</span
+        >
+      </span>
+      <a
+        href={resolve('/settings/llm')}
+        class="shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground outline-none hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring/60"
+        data-testid="dashboard-provider-connect">Connect provider</a
+      >
+    </div>
+  {/if}
 
   <!-- Ask: the assistant is one keystroke away on every page; here it is the first thing. -->
   <section
@@ -194,38 +219,55 @@
     </div>
 
     <div class="flex min-w-0 flex-col gap-10">
-      <!-- Recent activity -->
-      <section class="min-w-0" data-testid="dashboard-activity">
-        <div class="flex items-baseline justify-between gap-2">
+      <!-- Recent activity: one card, grouped by day, the time muted beside each item. -->
+      <section
+        class="min-w-0 overflow-hidden rounded-lg border border-border bg-muted/30"
+        data-testid="dashboard-activity"
+      >
+        <div class="flex items-baseline justify-between gap-2 border-b border-border px-4 py-3">
           <h2 class="text-[13px] font-medium">Recent activity</h2>
           <a
             href={resolve('/assistant/activity')}
             class="text-xs text-foreground/55 hover:text-foreground hover:underline">All activity</a
           >
         </div>
-        {#if overview.actions.length === 0}
-          <p class="mt-2 text-sm text-foreground/55">Nothing yet.</p>
+        {#if actionGroups.length === 0}
+          <p class="px-4 py-3 text-sm text-foreground/55">Nothing yet.</p>
         {:else}
-          <ol class="mt-3 border-l border-border" data-testid="overview-actions">
-            {#each overview.actions as action, i (i)}
-              <li class="relative min-w-0 pb-4 pl-4 last:pb-0">
-                <span
-                  class="absolute top-1.5 -left-[3.5px] size-1.5 rounded-full {action.ok
-                    ? 'bg-foreground/35'
-                    : 'bg-red-500'}"
-                  aria-hidden="true"
-                ></span>
-                <p class="text-sm leading-snug wrap-break-word">
-                  {action.text}{#if !action.ok}<span class="text-xs text-red-600">
-                      · failed</span
-                    >{/if}
-                </p>
-                <time class="text-xs text-foreground/45" datetime={action.at}
-                  >{when(action.at)}</time
+          <div class="flex flex-col gap-3 p-3" data-testid="overview-actions">
+            {#each actionGroups as group (group.label)}
+              <div class="min-w-0" data-testid="overview-actions-group">
+                <h3
+                  class="px-1 pb-1.5 text-[11px] font-medium tracking-wide text-foreground/45 uppercase"
                 >
-              </li>
+                  {group.label}
+                </h3>
+                <ol
+                  class="divide-y divide-border overflow-hidden rounded-md border border-border bg-background"
+                >
+                  {#each group.actions as action, i (i)}
+                    <li class="flex min-w-0 items-start gap-2.5 px-3 py-2">
+                      <span
+                        class="mt-1.5 size-1.5 shrink-0 rounded-full {action.ok
+                          ? 'bg-foreground/30'
+                          : 'bg-red-500'}"
+                        aria-hidden="true"
+                      ></span>
+                      <p class="min-w-0 flex-1 text-sm leading-snug wrap-break-word">
+                        {action.text}{#if !action.ok}<span class="text-xs text-red-600">
+                            · failed</span
+                          >{/if}
+                      </p>
+                      <time
+                        class="shrink-0 pt-0.5 text-[11px] text-foreground/40 tabular-nums"
+                        datetime={action.at}>{when(action.at)}</time
+                      >
+                    </li>
+                  {/each}
+                </ol>
+              </div>
             {/each}
-          </ol>
+          </div>
         {/if}
       </section>
 

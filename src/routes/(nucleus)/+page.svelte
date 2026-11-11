@@ -2,7 +2,6 @@
   import type { PageProps } from './$types'
   import { markHandoffPending } from '$lib/components/assistant/handoff'
   import HomeSettingsMenu from '$lib/components/home-settings-menu.svelte'
-  import ProviderOnboarding from '$lib/components/provider-onboarding.svelte'
   import WelcomeWizard from '$lib/components/welcome-wizard.svelte'
   import { docTitle } from '$lib/shell/title'
   import Dashboard from './dashboard.svelte'
@@ -31,9 +30,9 @@
 
 <svelte:head><title>{docTitle(data.dashboard ? 'Dashboard' : 'Welcome')}</title></svelte:head>
 
-{#if data.showWelcome || data.needsOnboarding}
-  <!-- The welcome wizard and the provider gate run without the app shell: they
-       keep their own header with the settings cog. -->
+{#if data.showWelcome}
+  <!-- The welcome wizard (its provider step is the hard gate) runs without the
+       app shell: it keeps its own header with the settings cog. -->
   <div class="flex min-h-dvh w-full flex-col px-4 sm:px-6 lg:px-10">
     <header class="relative flex shrink-0 justify-center pt-6 pb-2">
       <p class="text-sm font-semibold tracking-tight text-muted-foreground">eigenEnterprise</p>
@@ -42,20 +41,15 @@
       </div>
     </header>
 
-    {#if data.showWelcome}
-      <!-- First open: the boot sequence leads; the provider step inside it stays a hard gate. -->
-      <WelcomeWizard
-        providerReady={!data.needsOnboarding}
-        needsMail={data.needsMail}
-        byokUiEnabled={data.byokUiEnabled}
-        displayName={data.displayName}
-        returnedFromProvider={data.returnedFromProvider}
-        oncomplete={handleOnboardingComplete}
-      />
-    {:else}
-      <!-- Returning user whose tour is done but provider vanished: the connect gate again. -->
-      <ProviderOnboarding byokUiEnabled={data.byokUiEnabled} />
-    {/if}
+    <!-- First open: the boot sequence leads; the provider step inside it stays a hard gate. -->
+    <WelcomeWizard
+      providerReady={!data.needsOnboarding}
+      needsMail={data.needsMail}
+      byokUiEnabled={data.byokUiEnabled}
+      displayName={data.displayName}
+      returnedFromProvider={data.returnedFromProvider}
+      oncomplete={handleOnboardingComplete}
+    />
   </div>
 {:else if data.dashboard}
   <Dashboard
@@ -64,5 +58,6 @@
     companyName={data.shell?.companyName ?? null}
     navItems={data.shell?.nav.items ?? []}
     isAdmin={data.isAdmin}
+    providerMissing={data.providerMissing}
   />
 {/if}

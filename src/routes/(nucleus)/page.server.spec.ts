@@ -221,7 +221,7 @@ describe('nucleus page server load', () => {
     })
   })
 
-  it('keeps the provider gate when the tour is done but the provider vanished', async () => {
+  it('opens the dashboard with a provider notice when the tour is done but the provider vanished', async () => {
     isUserProviderReadyMock.mockResolvedValue(false)
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date('2026-09-22T10:00:00Z') }))
 
@@ -230,8 +230,11 @@ describe('nucleus page server load', () => {
       url: new URL('https://os.test/'),
     } as never))
 
+    expect(loadDashboardMock).toHaveBeenCalledWith('u1')
     expect(result).toMatchObject({
-      needsOnboarding: true,
+      needsOnboarding: false,
+      providerMissing: true,
+      dashboard: expect.anything(),
       showWelcome: false,
       byokUiEnabled: true,
       displayName: null,

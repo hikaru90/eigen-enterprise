@@ -65,13 +65,18 @@ export const load: PageServerLoad = async (event) => {
 
   // First-run gate: without a working provider there is no product — the page IS the
   // setup wizard. Harness accounts bypass (they exist for automated verification).
-  const needsOnboarding = !isHarness && companyOnboarding && !providerReady
+  // The full-screen gate holds only inside the first-run tour (the wizard's provider
+  // step). Once the tour is done, `/` is always the company dashboard; a missing
+  // provider becomes a notice there that links to the connect step.
+  const providerMissing = !isHarness && companyOnboarding && !providerReady
+  const needsOnboarding = providerMissing && showWelcome
 
   return {
     needsOnboarding,
+    providerMissing,
     showWelcome,
-    // The dashboard (polish P-2) once the full-screen first-run flows are done.
-    dashboard: showWelcome || needsOnboarding ? null : await loadDashboard(userId),
+    // The dashboard (polish P-2) once the full-screen first-run tour is done.
+    dashboard: showWelcome ? null : await loadDashboard(userId),
     greetingName: greetingName(event.locals.user, displayName),
     // Back from the provider's sign-in redirect (OpenRouter callback): don't replay the tour.
     returnedFromProvider: event.url.searchParams.get('provider') === 'connected',
