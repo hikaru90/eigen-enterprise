@@ -340,7 +340,16 @@ async function reconcileNode(
   const groups = w.tier === 'system' && w.name === 'os' ? [CONTROL_GROUP] : []
   // The slot port is not part of the fingerprint (the same config on either slot is the
   // same deploy): env that carries it (livekit's config) is fingerprinted at port 0.
-  const fingerprint = sha(JSON.stringify({ rel: rel.id, w, env: envAt(0), groups }))
+  // The unit ee renders is part of it, at a fixed slot and port: an ee upgrade that changes
+  // the template (hardening, exec line) redeploys workloads whose release and config did not
+  // change. A unit ee cannot render fingerprints as its error; the deploy below fails loudly on it.
+  let unitShape: string
+  try {
+    unitShape = renderUnit({ workload: w, contract: rel.contract, slot: 'a', port: 0, releaseDir: rel.dir, supplementaryGroups: groups })
+  } catch (err) {
+    unitShape = `unrenderable: ${(err as Error).message}`
+  }
+  const fingerprint = sha(JSON.stringify({ rel: rel.id, w, env: envAt(0), groups, unit: unitShape }))
   const active = entry.active
   const live = active ? entry.slots[active] : undefined
   const exclusive = hasHostPorts(w)

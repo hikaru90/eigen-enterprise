@@ -6,6 +6,7 @@ import { livekitWorkload } from './livekit.ts'
 import { allowRetry, prepareRelease, reconcile, renderLiveEnvFiles, type SecretAccess } from './reconcile.ts'
 import type { SecretMap } from './secrets.ts'
 import { workloadSchema } from './spec.ts'
+import { HARDENING } from './units.ts'
 import type { RunResult, System } from './system.ts'
 
 /** In-memory box: files, unit states, and a scripted health answer per port. */
@@ -534,6 +535,28 @@ describe('livekit-server as a system workload (calls)', () => {
     const before = sys.commands.filter((c) => /^systemctl (restart|stop|start) ee-livekit/.test(c)).length
     await pass()
     expect(sys.commands.filter((c) => /^systemctl (restart|stop|start) ee-livekit/.test(c)).length).toBe(before)
+  })
+
+  it('an ee upgrade that changes the rendered unit redeploys even with the same release and config (found on the box 2026-11-11)', async () => {
+    // The box kept livekit's old unit (ProcSubset=pid) after an ee upgrade: its reproducible release and its
+    // config were unchanged, and the deploy fingerprint did not cover the unit ee renders.
+    const sys = callsBox()
+    sys.healthy.add(4100).add(4101).add(4102).add(4103)
+    const journal = emptyJournal()
+    const secrets = callsSecrets()
+    const pass = () => reconcile({ sys, repo: { read: async () => callsState(LK_A) }, journal, secrets, healthTimeoutMs: 10_000 })
+    await pass()
+    expect(journal.workloads.livekit?.active).toBe('a')
+    const hardening = HARDENING as unknown as string[]
+    hardening.push('KeyringMode=private') // stands in for any change to the unit template in a newer ee
+    try {
+      await pass()
+    } finally {
+      hardening.pop()
+    }
+    expect(journal.workloads.livekit?.active).toBe('b')
+    expect(sys.files.get('/etc/systemd/system/ee-livekit-b.service')).toContain('KeyringMode=private')
+    expect(journal.workloads.os?.active).toBe('b')
   })
 
   it('a new livekit release stops the live slot BEFORE starting the candidate (host ports are exclusive: no blue-green)', async () => {
