@@ -16,7 +16,7 @@ import { CHAT_GATEWAY_MODULE_ID, type Brain } from '$lib/kernel/gateway'
 import { ModuleRegistry, type ActivationStore } from '$lib/kernel/modules'
 import type { PrincipalStore } from '$lib/kernel/principals'
 import { KernelRegistry } from '$lib/kernel/registry'
-import { GitCommitter, type VcsCommitter } from '$lib/kernel/vcs'
+import { type VcsCommitter, vcsCommitterFromEnv } from '$lib/kernel/vcs'
 import { registerModuleTools, type WiredKernel } from '$lib/kernel/wiring'
 import type { AppDatabase } from '$lib/server/db/context'
 import { BRAND_MODULE_ID, brandManifest } from './brand/manifest'
@@ -155,7 +155,7 @@ export type BootstrapKernelOptions = {
   /** Overrides the DB-backed company approval mode (tests inject in-memory). */
   approvalMode?: ApprovalModeStore
   principals?: PrincipalStore
-  /** Defaults to a real GitCommitter; pass null to disable autocommit. */
+  /** Defaults to vcsCommitterFromEnv: off unless EE_VCS_REPO_DIR names the repository. */
   vcsCommitter?: VcsCommitter | null
   /** Overrides the repo engine (tests inject one with fake runners). */
   repoEngine?: RepoEngine
@@ -188,7 +188,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
   const approvalMode = options.approvalMode ?? new DbApprovalModeStore(db)
   const principals = options.principals ?? new DbPrincipalStore(db)
   const vcsCommitter =
-    options.vcsCommitter === undefined ? new GitCommitter() : options.vcsCommitter
+    options.vcsCommitter === undefined ? vcsCommitterFromEnv(process.env) : options.vcsCommitter
 
   const modules = new ModuleRegistry(activations)
   for (const manifest of moduleManifests) modules.register(manifest)

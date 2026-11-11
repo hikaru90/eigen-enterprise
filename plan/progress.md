@@ -2,6 +2,15 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-11 — Kernel autocommit can no longer commit the source checkout (main, not pushed, not on the box)
+
+Owner: "Yes, fix it" (the stray `tool brand.picker_choose by …` commits on main, entries below).
+
+- **Root cause:** `wireKernel` defaulted to `new GitCommitter()`, which ran `git commit -am` in the process's working directory. Production was safe only because ee sets `EE_VCS_AUTOCOMMIT=0`; the e2e harness (`vite dev` inside the checkout) committed the developer's uncommitted tracked files on every `mutate` tool call (third time recorded: `tool website.create_page by orchestrator`, then twice today).
+- **Fix:** `GitCommitter(repoDir)` requires an absolute repository path and always runs `git -C <repoDir> commit -am`. `wireKernel`'s default is `vcsCommitterFromEnv(process.env)`: **off unless `EE_VCS_REPO_DIR` is set**; a relative path fails loud. `EE_VCS_AUTOCOMMIT=0` still disables a configured committer (ee keeps setting it). Tests: `src/lib/kernel/vcs.spec.ts` (git gets `-C <repo>`; relative path refused; unset env → no committer) — written first, failed, now pass.
+
+**Decision (announced change):** per-tool git autocommit is now opt-in instead of default-on. Nothing in this repo or under ee relied on the default (ee turns it off; the release has no `.git`; kernel_events stays the audit trail). To get the old behaviour back for a repo, set `EE_VCS_REPO_DIR=/abs/path/to/repo`.
+
 ## 2026-11-11 — Video calls re-planned as the Calls module on LiveKit (plan only, no code)
 
 - **What:** `plan/video-calls.md` rewritten. Calls is its own system module (`modules/calls`: call + participant tables, LiveKit room tokens, signed LiveKit webhook as the source of truth for who joined, its own SSE stream so it rings on any page, `calls.*` kernel tools — agents never join media). Messages only gets a call button and "Call, n min" system messages, both through ports. livekit-server runs as an ee system workload.
