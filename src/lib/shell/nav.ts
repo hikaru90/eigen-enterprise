@@ -1,7 +1,7 @@
 /**
  * The app shell's navigation (phase-cohesion rule 1, phase-workspace W-7,
- * polish P-1/P-2): one fixed order — Messages, Website, Email, Brand, Memory,
- * Drive, Settings. The assistant is not a nav entry: it is the shell's top bar
+ * polish P-1/P-2): one fixed order — Messages, Calls, Website, Email, Brand,
+ * Memory, Drive, Settings. The assistant is not a nav entry: it is the shell's top bar
  * and panel on every page. The dashboard at `/` is the company badge at the
  * top of the sidebar, not an entry either. Module
  * entries come from the module registry (name + activation state); a module
@@ -43,6 +43,8 @@ const MODULE_ENTRIES: Record<string, { href: Pathname; match?: string[] }> = {
   memory: { href: '/m/memory' },
   // The team's chat (phase-workspace C1).
   messages: { href: '/messages' },
+  // Video calls (plan/video-calls.md §3): recent calls, live calls, new meeting.
+  calls: { href: '/calls' },
   // Drive (D1): the company's files at /drive, right after Memory.
   drive: { href: '/drive' },
 }
@@ -68,6 +70,7 @@ export function buildShellNav(
   return {
     items: [
       ...known('messages'),
+      ...known('calls'),
       ...known('website'),
       ...known('email'),
       ...known('brand'),

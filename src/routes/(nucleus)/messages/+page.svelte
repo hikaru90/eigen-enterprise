@@ -11,9 +11,12 @@
   import Users from '@lucide/svelte/icons/users'
   import X from '@lucide/svelte/icons/x'
   import { onDestroy, onMount, tick } from 'svelte'
-  import { replaceState } from '$app/navigation'
+  import { goto, replaceState } from '$app/navigation'
   import { resolve } from '$app/paths'
   import { page } from '$app/state'
+  import CallButton from '$lib/calls/call-button.svelte'
+  import { callsClient } from '$lib/calls/client'
+  import { getLiveCalls } from '$lib/calls/live-calls.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
   import { Input } from '$lib/components/ui/input'
@@ -46,6 +49,11 @@
    * column; each pane scrolls on its own.
    */
   let { data }: { data: PageData } = $props()
+
+  // Calls (plan/video-calls.md §2): the header's Call / Join button reads the layout's one call feed.
+  const liveCalls = getLiveCalls()
+  const calls = callsClient()
+  const openCall = (id: string) => goto(resolve(`/calls/${id}`))
 
   type Person = { id: string; name: string; email: string; image?: string | null }
 
@@ -406,7 +414,7 @@
     }
   }
 
-  const canEdit = (m: MessageView) => !m.deleted && m.authorId === data.me
+  const canEdit = (m: MessageView) => !m.deleted && !m.call && m.authorId === data.me
   const canDelete = (m: MessageView) =>
     !m.deleted && (m.authorId === data.me || (data.moderator && selected?.kind === 'channel'))
 
@@ -778,6 +786,14 @@
             <p class="truncate text-xs text-muted-foreground" data-testid="messages-topic">{selected.topic}</p>
           {/if}
         </div>
+
+        <CallButton
+          kind={selected.kind}
+          contextId={selected.id}
+          live={liveCalls.liveFor(selected.kind, selected.id)}
+          client={calls}
+          onopen={openCall}
+        />
 
         <div class="relative shrink-0">
           {#if members}

@@ -1,9 +1,39 @@
 <script lang="ts">
+  import { onDestroy, onMount } from 'svelte'
+  import { goto } from '$app/navigation'
+  import { resolve } from '$app/paths'
   import { page } from '$app/state'
+  import { callsClient } from '$lib/calls/client'
+  import IncomingCallToast from '$lib/calls/incoming-call-toast.svelte'
+  import { LiveCalls, setLiveCalls } from '$lib/calls/live-calls.svelte'
   import AppShell from '$lib/components/app-shell.svelte'
   import { shellVisible } from '$lib/shell/nav'
 
   let { data, children } = $props()
+
+  // Ring everywhere (plan/video-calls.md owner decision 5): one call feed for
+  // every nucleus page — opened here on mount, closed on destroy — feeding the
+  // incoming-call toast and the Messages call button.
+  const liveCalls = setLiveCalls(new LiveCalls())
+  const calls = callsClient()
+  const resume = () => liveCalls.resume()
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') resume()
+  }
+
+  onMount(() => {
+    if (!data.user) return
+    liveCalls.connect(() => new EventSource('/api/calls/stream'))
+    window.addEventListener('online', resume)
+    document.addEventListener('visibilitychange', onVisible)
+  })
+
+  onDestroy(() => {
+    liveCalls.close()
+    if (typeof window === 'undefined') return
+    window.removeEventListener('online', resume)
+    document.removeEventListener('visibilitychange', onVisible)
+  })
 
   // Decided from page data, no effect: the welcome tour and the first-run
   // provider gate on / set showWelcome / needsOnboarding and run full-screen.
@@ -42,5 +72,8 @@
     </AppShell>
   {:else}
     {@render children()}
+  {/if}
+  {#if data.user}
+    <IncomingCallToast live={liveCalls} client={calls} onjoin={(id) => goto(resolve(`/calls/${id}`))} />
   {/if}
 </div>

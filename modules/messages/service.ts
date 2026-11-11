@@ -1,6 +1,6 @@
 import type { AccessLevel, AccessPort, GrantInput } from './access-port'
-import { CALL_OUTCOMES, type Attachment, type CallSummary, type Conversation, type Directory, type Message, type MessagesStore, type Person } from './store'
 import { randomUUID } from 'node:crypto'
+import { CALL_OUTCOMES, type Attachment, type CallSummary, type Conversation, type Directory, type Message, type MessagesStore, type Person } from './store'
 
 /**
  * Messages core (plan/phase-workspace.md C1): channels and DMs between
