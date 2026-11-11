@@ -1,4 +1,4 @@
-# Video calls — the Calls module on LiveKit (draft, awaiting owner decisions)
+# Video calls — the Calls module on LiveKit (approved 2026-11-11)
 
 Source: Contribute board item: "Chats are nice, but I want a video call function, both for
 direct messages and for group calls." Status: **plan only, no code.**
@@ -121,11 +121,10 @@ livekit-server ──https webhook──▶ console      /api/calls/livekit (sig
   hang up → "Call, n min" in both DMs. Plus decline, missed, and a three-person channel call.
 - **Box:** `ee/e2e/box-journey.mjs` with `iceTransportPolicy: 'relay'` proves the embedded TURN.
 
-## Open decisions for the owner
-1. **1:1 calls also on LiveKit** (this plan) — one media path, no P2P code. Veto → P2P + coturn for 1:1.
+## Owner decisions (all accepted 2026-11-11)
+1. **1:1 calls also on LiveKit** — one media path, no P2P code, no coturn.
 2. **ee opens host ports** for system workloads only, from an allow-list (7881/tcp, 7882/udp).
-3. **TURN on 443/TLS** for locked-down corporate networks (needs a second IP or an SNI split in
-   front of Caddy) — needed for customer zero, or later?
-4. **Recording / transcripts** (LLM summary into Memory) — later phase with consent UX (recommended), or now?
-5. **Ring everywhere** (any nucleus page; push when closed later) — recommended — or only on /calls and Messages?
-6. **Who can start a meeting** outside a DM/channel: every member (recommended) or admins only?
+3. **TURN on 443/TLS** for locked-down corporate networks — later, not in this phase.
+4. **Recording / transcripts** — a later phase, with consent UX.
+5. **Ring everywhere** — any nucleus page; push when the tab is closed is a later slice.
+6. **Starting a meeting** outside a DM/channel — every member.
