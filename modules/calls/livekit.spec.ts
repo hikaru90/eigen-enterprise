@@ -2,16 +2,21 @@ import { TokenVerifier } from 'livekit-server-sdk'
 import { describe, expect, it } from 'vitest'
 import { livekitConfig, mintRoomToken, TOKEN_TTL_SECONDS } from './livekit'
 
-const env = { LIVEKIT_URL: 'wss://rtc.os.example.test', LIVEKIT_API_KEY: 'APItestkey', LIVEKIT_API_SECRET: 'test-secret-that-is-long-enough-0123456789' }
+const env = { LIVEKIT_URL: 'wss://rtc.os.example.test', LIVEKIT_API_URL: 'http://127.0.0.1:4001', LIVEKIT_API_KEY: 'APItestkey', LIVEKIT_API_SECRET: 'test-secret-that-is-long-enough-0123456789' }
 
 describe('livekitConfig (read at use time, no defaults)', () => {
   it('reads the three variables', () => {
     const cfg = livekitConfig(env)
-    expect(cfg).toMatchObject({ url: env.LIVEKIT_URL, apiKey: env.LIVEKIT_API_KEY })
+    expect(cfg).toMatchObject({ url: env.LIVEKIT_URL, apiUrl: env.LIVEKIT_API_URL, apiKey: env.LIVEKIT_API_KEY })
     expect(cfg.apiSecret).toBe(env.LIVEKIT_API_SECRET)
   })
 
-  it.each(['LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'])('missing %s → not_configured, naming the variable', (name) => {
+  it('refuses a LIVEKIT_API_URL that is not http(s):// (the server API, not the browser signalling URL)', () => {
+    expect(() => livekitConfig({ ...env, LIVEKIT_API_URL: 'wss://rtc.os.example.test' })).toThrow(expect.objectContaining({ code: 'not_configured' }))
+    expect(() => livekitConfig({ ...env, LIVEKIT_API_URL: 'not a url' })).toThrow(expect.objectContaining({ code: 'not_configured' }))
+  })
+
+  it.each(['LIVEKIT_URL', 'LIVEKIT_API_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'])('missing %s → not_configured, naming the variable', (name) => {
     const partial = { ...env, [name]: '  ' }
     expect(() => livekitConfig(partial)).toThrow(expect.objectContaining({ code: 'not_configured' }))
     expect(() => livekitConfig(partial)).toThrow(/Calls are not set up on this server/)

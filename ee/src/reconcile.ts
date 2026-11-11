@@ -4,7 +4,7 @@ import type { CompanyRepo, DesiredState } from './company-repo.ts'
 import { saveJournal, workloadEntry, type EeEvent, type Journal } from './journal.ts'
 import { DeployRun, secretValues } from './deploys.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
-import { linkedEnv, type LinkState } from './livekit.ts'
+import { LIVEKIT_INTERNAL_PORT, LIVEKIT_WORKLOAD, linkedEnv, type LinkState } from './livekit.ts'
 import { generateSecret, renderEnvFile, type SecretMap } from './secrets.ts'
 import {
   OS_INTERNAL_PORT,
@@ -523,7 +523,10 @@ export async function reconcile(ctx: ReconcileContext): Promise<DesiredState> {
     routes: routable,
     upstreams,
     acmeEmail: desired.settings.acmeEmail,
-    internal: [{ port: OS_INTERNAL_PORT, workload: 'os' }],
+    internal: [
+      { port: OS_INTERNAL_PORT, workload: 'os' },
+      ...(desired.workloads.some((w) => w.name === LIVEKIT_WORKLOAD) ? [{ port: LIVEKIT_INTERNAL_PORT, workload: LIVEKIT_WORKLOAD }] : []),
+    ],
   })
   const fingerprint = sha(JSON.stringify(caddy))
   if (journal.caddyFingerprint !== fingerprint) {

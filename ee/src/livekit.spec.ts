@@ -78,6 +78,7 @@ describe('linkedEnv: what ee wires between livekit and os', () => {
       LIVEKIT_API_KEY: KEY,
       LIVEKIT_API_SECRET: SECRET,
       LIVEKIT_URL: 'wss://rtc.os.example.com',
+      LIVEKIT_API_URL: 'http://127.0.0.1:4001',
     })
   })
 

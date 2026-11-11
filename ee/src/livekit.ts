@@ -38,6 +38,14 @@ for (const p of LIVEKIT_HOST_PORTS) {
 /** The console's stable loopback listener (Caddy's internal server for os), so a webhook never misses a slot swap. */
 export const LIVEKIT_WEBHOOK_URL = `http://127.0.0.1:${OS_INTERNAL_PORT}/api/calls/livekit`
 
+/**
+ * LiveKit's server API for os (close a room): a stable loopback listener in Caddy,
+ * like OS_INTERNAL_PORT for os, so os never loops out through the public calls host
+ * (hairpin NAT, the local CA on test boxes) and never misses a slot swap.
+ */
+export const LIVEKIT_INTERNAL_PORT = 4001
+export const LIVEKIT_API_URL = `http://127.0.0.1:${LIVEKIT_INTERNAL_PORT}`
+
 /** Names in the secret store (scope LIVEKIT_WORKLOAD), and the env names os receives. */
 export const LIVEKIT_SECRETS = ['LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET'] as const
 
@@ -112,7 +120,7 @@ export function linkedEnv(state: LinkState, w: Workload, secrets: SecretMap, por
     const host = state.settings.callsHost
     if (!host) throw new Error('os: a livekit workload is desired but there is no calls host (settings.callsHost)')
     const { apiKey, apiSecret } = livekitKeys(secrets, 'os')
-    return { LIVEKIT_API_KEY: apiKey, LIVEKIT_API_SECRET: apiSecret, LIVEKIT_URL: `wss://${host}` }
+    return { LIVEKIT_API_KEY: apiKey, LIVEKIT_API_SECRET: apiSecret, LIVEKIT_URL: `wss://${host}`, LIVEKIT_API_URL }
   }
   return {}
 }

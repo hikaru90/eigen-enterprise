@@ -5,6 +5,7 @@ import { createCallsService, type CallsDeps } from './service'
 
 export const TEST_LIVEKIT_ENV = {
   LIVEKIT_URL: 'wss://rtc.os.example.test',
+  LIVEKIT_API_URL: 'http://127.0.0.1:4001',
   LIVEKIT_API_KEY: 'APIcallsspec',
   LIVEKIT_API_SECRET: 'calls-spec-secret-0123456789abcdefghijklmnop',
 }

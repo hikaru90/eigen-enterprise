@@ -48,7 +48,7 @@ livekit-server ──https webhook──▶ console      /api/calls/livekit (sig
   leaves, ringing timeout → missed. Membership is checked on every action (fail closed).
 - `livekit.ts` — mints room tokens with `livekit-server-sdk` (Apache-2.0): identity = user id,
   name = display name, grant = `roomJoin` for that one room, TTL ~10 min. Key + secret come from
-  env set by ee from its secret store (`LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL`);
+  env set by ee from its secret store (`LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL` for browsers, `LIVEKIT_API_URL` = a loopback Caddy listener on 127.0.0.1:4001 for the server API);
   any missing → explicit error, the Calls UI says "Calls are not set up on this server".
   Never logged (`*secret` redaction).
 - `webhook.ts` — `WebhookReceiver` verifies LiveKit's signed webhook; `participant_joined`,

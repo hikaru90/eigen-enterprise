@@ -504,6 +504,10 @@ describe('livekit-server as a system workload (calls)', () => {
     const caddy = JSON.stringify(sys.caddyLoads.at(-1))
     expect(caddy).toContain('"host":["rtc.os.example.com"]')
     expect(caddy).toMatch(/"rtc\.os\.example\.com"\]\}\],"handle":\[\{"handler":"subroute","routes":\[\{"handle":\[\{"handler":"reverse_proxy","upstreams":\[\{"dial":"127\.0\.0\.1:4100"\}\]/)
+    // os reaches LiveKit's server API on a stable loopback listener, never via the public calls host.
+    const servers = (sys.caddyLoads.at(-1) as { apps: { http: { servers: Record<string, { listen: string[]; routes: unknown[] }> } } }).apps.http.servers
+    expect(servers['internal-livekit']?.listen).toEqual(['127.0.0.1:4001'])
+    expect(JSON.stringify(servers['internal-livekit']?.routes)).toContain('"dial":"127.0.0.1:4100"')
   })
 
   it('os gets LIVEKIT_API_KEY, LIVEKIT_API_SECRET and LIVEKIT_URL through its root-only env file', async () => {
@@ -514,6 +518,7 @@ describe('livekit-server as a system workload (calls)', () => {
     expect(env).toContain(`LIVEKIT_API_KEY="${KEY}"`)
     expect(env).toContain(`LIVEKIT_API_SECRET="${SECRET}"`)
     expect(env).toContain('LIVEKIT_URL="wss://rtc.os.example.com"')
+    expect(env).toContain('LIVEKIT_API_URL="http://127.0.0.1:4001"')
     // Secrets never land in the unit file (world-readable) — only in the 0600 env file.
     expect(sys.files.get('/etc/systemd/system/ee-os-a.service')).not.toContain(SECRET)
     expect(sys.files.get('/etc/systemd/system/ee-livekit-a.service')).not.toContain(SECRET)
