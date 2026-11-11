@@ -1,19 +1,20 @@
-import { env } from '$lib/server/env/private-env'
 import { llmCreateTranscription } from './llm-client'
 
-/** OpenRouter model id for speech-to-text (`/audio/transcriptions`). */
-export const STT_MODEL_OPENROUTER_DEFAULT = 'qwen/qwen3-asr-flash-2026-02-10'
+/**
+ * OpenRouter model id for speech-to-text (`/audio/transcriptions`) — fixed in code, there is
+ * no environment override (as in eigen). It must have live endpoints that accept browser
+ * `webm`/opus and Safari `m4a` uploads. Qwen3 ASR 0.6B is eigen's choice (2026-10-28; 1.7b hung
+ * or was slow). `qwen/qwen3-asr-flash-2026-02-10`, used here before, has no OpenRouter
+ * endpoints, so every clip failed with "Couldn't transcribe the recording" (2026-11-11).
+ * Known trade-off: 0.6B can invent text on quiet audio — stopped before the upload by the
+ * browser's check (`$lib/voice/clip-speech.ts`) and judged by an LLM after (`stt-judge.ts`).
+ */
+export const STT_MODEL = 'qwen/qwen3-asr-0.6b'
 
 export type SttAudioInput = {
   bytes: Uint8Array
   format: string
   language?: string
-}
-
-function sttModelId(): string {
-  const override = env.LLM_MODEL_STT?.trim()
-  if (!override) return STT_MODEL_OPENROUTER_DEFAULT
-  return override
 }
 
 /**
@@ -46,7 +47,7 @@ export async function transcribeAudio(input: {
 }): Promise<string> {
   const body = await llmCreateTranscription({
     userId: input.userId,
-    model: sttModelId(),
+    model: STT_MODEL,
     audio: input.audio,
   })
   return parseSttTranscript(body)

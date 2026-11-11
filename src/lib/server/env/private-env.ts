@@ -31,7 +31,6 @@ export type ExtendedPrivateEnv = typeof kitEnv & {
   MAIL_TRANSPORT?: string
   MAIL_TRANSPORT_FAKE_IN_PRODUCTION?: string
   LLM_MODEL_EMBEDDING?: string
-  LLM_MODEL_STT?: string
   LLM_ORCHESTRATION_CONCURRENCY?: string
   LLM_REQUEST_TIMEOUT_MS?: string
   LLM_SERIAL_REQUESTS?: string

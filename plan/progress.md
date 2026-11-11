@@ -2,6 +2,17 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-11 — Fix: dictation always failed with "Couldn't transcribe the recording" (main, not pushed, not on the box)
+
+Owner: "update the speech to text from ../eigen to this repo. it was buggy … currently i get Couldn't transcribe the recording".
+
+- **Cause:** the port kept this repo's STT model `qwen/qwen3-asr-flash-2026-02-10`, which has **no endpoints on OpenRouter** (public `/models/<id>/endpoints`: empty), so every `/audio/transcriptions` call failed and `/api/voice/transcribe` answered 502 → the client's "Couldn't transcribe the recording". Eigen's `qwen/qwen3-asr-0.6b` has live endpoints (PrimeIntellect, DeepInfra).
+- **Fix (from eigen):** `stt-client.ts` `STT_MODEL = 'qwen/qwen3-asr-0.6b'`, fixed in code, no override — used by dictation and the assistant's capture routes alike. Tests first (`stt-client.spec.ts`: pinned id; an `LLM_MODEL_STT` left in env is ignored) — failed, now pass. Client voice code already matched eigen (only a comment differs); the judge stays the gateway-chat port.
+- **Removed (announced):** the `LLM_MODEL_STT` override (env type, `.env.example`, `docs/payments.md`) — eigen has none; a deployment that still sets it is ignored.
+- **Gates:** typecheck 0 errors; lint 0 on touched files; unit 5433 passed; `vite build` green. Not tried with a real microphone + provider.
+
+**Found, not fixed:** the assistant's voice (`tts-client.ts` `qwen/qwen3-tts-flash-2026-02-10`) also has 0 OpenRouter endpoints — speech synthesis likely fails the same way.
+
 ## 2026-11-11 — Calls S1 (ee runs LiveKit) + S2 (Calls module core) merged (main, not pushed, not on the box)
 
 Owner: "Start S1 and S2" (plan/video-calls.md). Two worktree subagents, merged by the orchestrator.
