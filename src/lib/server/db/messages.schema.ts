@@ -1,4 +1,4 @@
-import { bigint, bigserial, boolean, integer, pgTable, primaryKey, text, timestamp, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core'
+import { bigint, bigserial, boolean, integer, jsonb, pgTable, primaryKey, text, timestamp, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core'
 
 /**
  * Messages core (plan/phase-workspace.md C1, migration 0109). Company-level
@@ -47,6 +47,8 @@ export const messages = pgTable('messages', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   editedAt: timestamp('edited_at', { withTimezone: true }),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  /** A call line (0123): how a DM/channel call ended; null for ordinary messages. One per call. */
+  call: jsonb('call').$type<{ callId: string; outcome: 'ended' | 'missed' | 'declined'; durationSeconds: number | null }>(),
 })
 
 export const messageEvents = pgTable('message_events', {

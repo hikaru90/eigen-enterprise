@@ -1,4 +1,4 @@
-import { THREAD_REPLIERS, type Attachment, type Conversation, type Directory, type Message, type MessageEvent, type MessagesStore, type NewEvent, type Person, type Reaction, type ThreadStats } from './store'
+import { THREAD_REPLIERS, type Attachment, type CallSummary, type Conversation, type Directory, type Message, type MessageEvent, type MessagesStore, type NewEvent, type Person, type Reaction, type ThreadStats } from './store'
 
 type MemberRow = { lastReadAt: Date | null; viewingAt: Date | null }
 
@@ -72,6 +72,11 @@ export class MemoryMessagesStore implements MessagesStore {
   }
   async insertMessage(m: Message) {
     this.messages.set(m.id, { ...m })
+  }
+  async insertCallLine(m: Message & { call: CallSummary }) {
+    if ([...this.messages.values()].some((x) => x.call?.callId === m.call.callId)) return false
+    this.messages.set(m.id, { ...m })
+    return true
   }
   async getMessage(id: string) {
     return this.messages.get(id) ?? null

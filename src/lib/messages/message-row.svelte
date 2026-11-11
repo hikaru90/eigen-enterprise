@@ -6,9 +6,12 @@
   import FileText from '@lucide/svelte/icons/file-text'
   import MessageSquare from '@lucide/svelte/icons/message-square-text'
   import Pencil from '@lucide/svelte/icons/pencil'
+  import Phone from '@lucide/svelte/icons/phone'
+  import PhoneMissed from '@lucide/svelte/icons/phone-missed'
   import SmilePlus from '@lucide/svelte/icons/smile-plus'
   import Trash2 from '@lucide/svelte/icons/trash-2'
   import { resolve } from '$app/paths'
+  import { callLineLabel } from '$lib/calls/format'
   import UserAvatar from '$lib/components/user-avatar.svelte'
   import { renderMessageMarkdown, type MentionOptions } from './markdown'
   import MessageEdit from './message-edit.svelte'
@@ -107,6 +110,19 @@
 
     {#if m.deleted}
       <p class="text-sm leading-6 text-muted-foreground italic" data-testid="messages-deleted">Message deleted</p>
+    {:else if m.call}
+      {@const answered = m.call.outcome === 'ended'}
+      <p
+        class={[
+          'mt-0.5 inline-flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm font-medium',
+          answered ? 'border-border bg-foreground/[0.03]' : 'border-destructive/30 bg-destructive/5 text-destructive',
+        ]}
+        data-testid="messages-call-line"
+        data-outcome={m.call.outcome}
+      >
+        {#if answered}<Phone class="size-4 text-muted-foreground" aria-hidden="true" />{:else}<PhoneMissed class="size-4" aria-hidden="true" />{/if}
+        {callLineLabel(m.call)}
+      </p>
     {:else if editing}
       <MessageEdit body={m.body} onsave={(b) => onsaveedit?.(b)} oncancel={() => oncanceledit?.()} />
     {:else}

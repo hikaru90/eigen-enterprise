@@ -37,9 +37,10 @@ import {
   bootstrapKernel,
   buildKernel,
   callContextsFromMessages,
+  callLogToMessages,
   moduleManifests,
 } from './index'
-import { createChannel, openDm } from './messages/service'
+import { createChannel, listMessages, openDm } from './messages/service'
 import { fixture as messagesFixture } from './messages/test-fixtures'
 import { bootstrapOrchestrator } from './orchestrator/bootstrap'
 import { OrchestratorBrain } from './orchestrator/brain'
@@ -454,6 +455,27 @@ describe('Calls and Messages: who may be in a DM/channel call is the Messages an
     expect(ctx?.memberIds.sort()).toEqual(['carl', 'owner'])
     expect(await port.open('bea', 'channel', ch.id)).toBeNull()
     expect(await port.isMember('bea', 'channel', ch.id)).toBe(false)
+  })
+
+  it('a call that is over becomes one call line in its conversation (structured, once per call)', async () => {
+    const m = messagesFixture()
+    const log = callLogToMessages(async () => m.deps)
+    const dm = await openDm(m.deps, 'bea', ['carl'])
+    const ended = {
+      callId: '22222222-2222-4222-8222-222222222222',
+      contextKind: 'dm' as const,
+      contextId: dm.id,
+      startedBy: 'bea',
+      outcome: 'ended' as const,
+      durationSeconds: 245,
+      endedAt: new Date(),
+    }
+    await log.callEnded(ended)
+    await log.callEnded(ended)
+    const page = await listMessages(m.deps, 'carl', dm.id)
+    expect(page.messages.map((x) => [x.authorId, x.body, x.call])).toEqual([
+      ['bea', '', { callId: ended.callId, outcome: 'ended', durationSeconds: 245 }],
+    ])
   })
 
   it('calls.start by the agent halts at the approval gate (it rings people)', async () => {

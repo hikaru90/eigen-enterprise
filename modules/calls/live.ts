@@ -1,4 +1,4 @@
-import type { CallContextPort } from './context-port'
+import type { CallContextPort, CallLogPort } from './context-port'
 import type { CallsDirectory } from './store'
 import { CALLS_NOTIFY_CHANNEL, dbCallsStore } from './db-store'
 import { CallsHub } from './hub'
@@ -30,13 +30,17 @@ async function liveDirectory(): Promise<CallsDirectory> {
   }
 }
 
-/** This process's Calls service (first call wins; `contexts` is the composition root's Messages adapter). */
-export function callsService(contexts: CallContextPort): Promise<CallsService> {
+/** What the composition root hands Calls: its conversation ports, both answered by Messages. */
+export type CallsPorts = { contexts: CallContextPort; log: CallLogPort }
+
+/** This process's Calls service (first call wins; the ports are the composition root's Messages adapters). */
+export function callsService(ports: CallsPorts): Promise<CallsService> {
   servicePromise ??= (async () => {
     const { appSql, createScopedDrizzle } = await import('$lib/server/db')
     const service = createCallsService({
       store: dbCallsStore(createScopedDrizzle(appSql)),
-      contexts,
+      contexts: ports.contexts,
+      log: ports.log,
       directory: await liveDirectory(),
       livekit: () => livekitConfig(process.env),
       rooms: liveRoomControl(() => livekitConfig(process.env)),
@@ -54,9 +58,9 @@ export function callsService(contexts: CallContextPort): Promise<CallsService> {
 }
 
 /** This process's hub; the first call starts LISTEN ee_calls. */
-export function callsHub(contexts: CallContextPort): Promise<CallsHub> {
+export function callsHub(ports: CallsPorts): Promise<CallsHub> {
   hubPromise ??= (async () => {
-    const hub = new CallsHub(await callsService(contexts))
+    const hub = new CallsHub(await callsService(ports))
     const { appSql } = await import('$lib/server/db')
     await appSql.listen(
       CALLS_NOTIFY_CHANNEL,

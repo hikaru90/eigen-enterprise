@@ -1,4 +1,4 @@
-import type { CallContextPort } from './context-port'
+import type { CallContextPort, CallLogPort } from './context-port'
 import { randomUUID } from 'node:crypto'
 import { CallsError } from './errors'
 import { mintRoomToken, type LiveKitConfig, type RoomControl } from './livekit'
@@ -48,6 +48,8 @@ export type StartInput = {
 export type CallsDeps = {
   store: CallsStore
   contexts: CallContextPort
+  /** Told once when a DM/channel call is over (its history line in the conversation). */
+  log: CallLogPort
   directory: CallsDirectory
   /** Read at use time; throws not_configured when LiveKit is not set up. */
   livekit: () => LiveKitConfig
@@ -146,11 +148,40 @@ export function createCallsService(d: CallsDeps) {
     return d.contexts.isMember(userId, contextKind, contextId)
   }
 
-  /** A live call that just ended with people still in the room: close the room so LiveKit drops them. */
+  /** When a DM/channel call is over: the conversation's history line (meetings have none). */
+  async function logEnded(rec: CallRecord): Promise<void> {
+    const { call } = rec
+    if (call.contextKind === 'meeting' || call.contextId === null) return
+    const state = call.state
+    if (state !== 'ended' && state !== 'missed' && state !== 'declined') throw new Error(`calls: ${call.id} is not over (${state})`)
+    if (!call.endedAt) throw new Error(`calls: ${call.id} is over without an end time`)
+    const answers = rec.participants.filter((p) => p.userId !== call.startedBy && p.joinedAt !== null).map((p) => p.joinedAt!.getTime())
+    const durationSeconds =
+      state === 'ended' && answers.length > 0 ? Math.max(0, Math.round((call.endedAt.getTime() - Math.min(...answers)) / 1000)) : null
+    if (state === 'ended' && durationSeconds === null) throw new Error(`calls: ${call.id} ended without an answer`)
+    await d.log.callEnded({
+      callId: call.id,
+      contextKind: call.contextKind,
+      contextId: call.contextId,
+      startedBy: call.startedBy,
+      outcome: state,
+      durationSeconds,
+      endedAt: call.endedAt,
+    })
+  }
+
+  /**
+   * A live call that just ended: close the room when people are still in it
+   * (LiveKit drops them) and log it in its conversation. Both run; any
+   * failure is thrown after (the new state is already stored).
+   */
   async function afterChange(before: CallRecord, after: CallRecord): Promise<void> {
-    if (isLive(before.call.state) && !isLive(after.call.state) && before.participants.some(inRoom)) {
-      await d.rooms.closeRoom(after.call.roomName)
-    }
+    if (!isLive(before.call.state) || isLive(after.call.state)) return
+    const errors: unknown[] = []
+    if (before.participants.some(inRoom)) await d.rooms.closeRoom(after.call.roomName).catch((err: unknown) => errors.push(err))
+    await logEnded(after).catch((err: unknown) => errors.push(err))
+    if (errors.length === 1) throw errors[0]
+    if (errors.length > 1) throw new AggregateError(errors, `calls: ${errors.length} follow-ups of ending ${after.call.id} failed`)
   }
 
   async function mutate(id: string, change: (rec: CallRecord) => CallRecord): Promise<CallRecord> {

@@ -20,6 +20,7 @@ const base: MessageView = {
   replierIds: [],
   reactions: [],
   attachments: [],
+  call: null,
 }
 
 const props = (over: Partial<Parameters<typeof render<typeof MessageRow>>[1]> = {}) => ({
@@ -114,5 +115,19 @@ describe('message-row.svelte', () => {
     await expect.element(link).toHaveTextContent(/3 replies/)
     await expect.element(link).toHaveTextContent(/last reply 2h ago/)
     await expect.element(page.getByTestId('messages-replier')).toHaveTextContent('CM')
+  })
+
+  it('a call line renders from its call data — "Call, 4 min" / "Missed call" — with no edit action', async () => {
+    const line = { ...base, body: '', call: { callId: 'c1', outcome: 'ended' as const, durationSeconds: 245 } }
+    const r = render(MessageRow, props({ message: line, me: 'bea', canEdit: false, canDelete: true }))
+    const row = page.getByTestId('messages-call-line')
+    await expect.element(row).toHaveTextContent('Call, 4 min')
+    await expect.element(row).toHaveAttribute('data-outcome', 'ended')
+    expect(page.getByTestId('messages-body').elements()).toHaveLength(0)
+    expect(page.getByTestId('messages-edit-start').elements()).toHaveLength(0)
+    r.unmount()
+    render(MessageRow, props({ message: { ...line, call: { callId: 'c2', outcome: 'missed' as const, durationSeconds: null } } }))
+    await expect.element(page.getByTestId('messages-call-line')).toHaveTextContent('Missed call')
+    await expect.element(page.getByTestId('messages-call-line')).toHaveAttribute('data-outcome', 'missed')
   })
 })

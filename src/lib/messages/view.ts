@@ -22,7 +22,12 @@ export type MessageView = {
   replierIds: string[]
   reactions: ReactionView[]
   attachments: AttachmentView[]
+  /** A call line (posted by Calls when a call here ended); null for ordinary messages. */
+  call: CallLineView | null
 }
+
+/** A call line's structured data (rendered as "Call, 4 min" / "Missed call"). */
+export type CallLineView = { callId: string; outcome: 'ended' | 'missed' | 'declined'; durationSeconds: number | null }
 
 /** A live message frame from /api/messages/stream. */
 export type MessageFrame = {

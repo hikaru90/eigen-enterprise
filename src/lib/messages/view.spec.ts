@@ -31,6 +31,7 @@ const msg = (id: string, createdAt: string, authorId = 'a'): MessageView => ({
   replierIds: [],
   reactions: [],
   attachments: [],
+  call: null,
 })
 
 describe('mergeMessages', () => {

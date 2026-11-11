@@ -129,6 +129,11 @@ export function dbMessagesStore(db: AppDatabase): MessagesStore {
     async insertMessage(m: Message) {
       await db.insert(messages).values(m)
     },
+    async insertCallLine(m) {
+      // messages_call_id_idx (0123) makes the second line for a call a no-op.
+      const rows = await db.insert(messages).values(m).onConflictDoNothing().returning({ id: messages.id })
+      return rows.length > 0
+    },
     async getMessage(id) {
       const [row] = await db.select().from(messages).where(eq(messages.id, id)).limit(1)
       return (row as Message | undefined) ?? null
