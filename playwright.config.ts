@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { defineConfig } from '@playwright/test'
 import dotenv from 'dotenv'
@@ -14,6 +16,58 @@ const mockGatewayUrl = `http://127.0.0.1:${mockGatewayPort}`
  */
 const e2ePort = Number(process.env.E2E_PORT ?? 4173)
 const browserUrl = `http://localhost:${e2ePort}`
+
+/**
+ * Calls (plan/video-calls.md S4): every run also starts a throwaway
+ * livekit-server — the same version ee pins (scripts/release.sh
+ * LIVEKIT_VERSION) — with fixed throwaway keys, signalling on loopback and
+ * media on loopback only. Its webhook goes to the Vite harness by `localhost`
+ * (Vite binds [::1] only; LiveKit's Go resolver tries ::1 too). A missing or
+ * different binary fails the whole run here, loudly — never a skip.
+ */
+const livekitPort = Number(process.env.E2E_LIVEKIT_PORT ?? 7880)
+const livekitRtcPort = livekitPort + 11 // 7891/tcp + 7892/udp: never the box's published 7881/7882
+const livekitVersion = /^LIVEKIT_VERSION=(\S+)$/m.exec(readFileSync(path.resolve('scripts/release.sh'), 'utf8'))?.[1]
+if (!livekitVersion) throw new Error('playwright.config: LIVEKIT_VERSION not found in scripts/release.sh')
+const livekitBinary = process.env.E2E_LIVEKIT_BIN ?? 'livekit-server'
+function assertLivekitInstalled(): void {
+  const howTo =
+    `The e2e harness runs livekit-server ${livekitVersion} (the version ee pins in scripts/release.sh). ` +
+    `Install it: \`brew install livekit\` (check \`livekit-server --version\`), or download ` +
+    `https://github.com/livekit/livekit/releases/tag/v${livekitVersion} and put livekit-server on PATH ` +
+    `(or point E2E_LIVEKIT_BIN at it).`
+  let out: string
+  try {
+    out = execFileSync(livekitBinary, ['--version'], { encoding: 'utf8' })
+  } catch (err) {
+    throw new Error(`${livekitBinary} could not run (${err instanceof Error ? err.message : String(err)}). ${howTo}`, { cause: err })
+  }
+  const found = /version\s+(\S+)/.exec(out)?.[1]
+  if (found !== livekitVersion) throw new Error(`${livekitBinary} is version ${found ?? `unknown ("${out.trim()}")`}, not ${livekitVersion}. ${howTo}`)
+}
+assertLivekitInstalled()
+/** Throwaway, test-only: this harness's own key pair (LiveKit wants a secret of 32+ characters). */
+const livekitKey = 'e2e-livekit-key'
+const livekitSecret = 'e2e-livekit-throwaway-secret-0123456789abcdef'
+const livekitEnv = {
+  LIVEKIT_URL: `ws://127.0.0.1:${livekitPort}`,
+  LIVEKIT_API_URL: `http://127.0.0.1:${livekitPort}`,
+  LIVEKIT_API_KEY: livekitKey,
+  LIVEKIT_API_SECRET: livekitSecret,
+}
+const livekitConfig = JSON.stringify({
+  port: livekitPort,
+  bind_addresses: ['127.0.0.1'],
+  rtc: {
+    tcp_port: livekitRtcPort,
+    udp_port: livekitRtcPort + 1,
+    node_ip: '127.0.0.1',
+    use_external_ip: false,
+  },
+  keys: { [livekitKey]: livekitSecret },
+  webhook: { api_key: livekitKey, urls: [`${browserUrl}/api/calls/livekit`] },
+  logging: { level: 'info' },
+})
 
 /**
  * No dev server (owner decision 2026-10-23): the ee box is the only install.
@@ -58,7 +112,17 @@ export default defineConfig({
         // master key; a throwaway harness gets a throwaway key when .env has none
         // (an unset key crashes the server on the first provider save).
         TENANT_MASTER_KEY: process.env.TENANT_MASTER_KEY || 'e2e-throwaway-tenant-master-key',
+        // Calls: the throwaway livekit-server below (the console reads these at use time).
+        ...livekitEnv,
       },
+    },
+    {
+      // LiveKit reads YAML; JSON is YAML. Signalling answers GET / with "OK".
+      command: livekitBinary,
+      env: { ...process.env, LIVEKIT_CONFIG: livekitConfig },
+      url: `${livekitEnv.LIVEKIT_API_URL}/`,
+      timeout: 30_000,
+      reuseExistingServer: false,
     },
     {
       command: `node scripts/mock-gateway.mjs`,
