@@ -3,7 +3,7 @@ import { error, json } from '@sveltejs/kit'
 import { synthesizeSpeech } from '$lib/server/llm/tts-client'
 
 /**
- * The assistant's voice: gateway TTS (qwen) for signed-in users. The browser
+ * The assistant's voice: gateway TTS (OpenRouter, `tts-client.ts`) for signed-in users. The browser
  * speechSynthesis robot voice is gone — a failing gateway means silence on
  * the client, and the provider's exact error here.
  */

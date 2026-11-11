@@ -1,11 +1,19 @@
 import { env } from '$lib/server/env/private-env'
 import { llmCreateSpeech } from './llm-client'
 
-/** OpenRouter model id for speech synthesis (`/audio/speech`). */
-export const TTS_MODEL_OPENROUTER_DEFAULT = 'qwen/qwen3-tts-flash-2026-02-10'
+/**
+ * OpenRouter model id for speech synthesis (`/audio/speech`). Qwen TTS, the successor
+ * of qwen/qwen3-tts-flash-2026-02-10, which had no OpenRouter endpoints (every call
+ * failed). Live endpoint (Alibaba) on 2026-11-11.
+ */
+export const TTS_MODEL_OPENROUTER_DEFAULT = 'qwen/qwen-audio-3.0-tts-flash'
 
-/** OpenAI-compatible voice id passed through to the gateway model. */
-export const TTS_VOICE_DEFAULT = 'alloy'
+/**
+ * Voice id passed through to the gateway model; must be one of the model's
+ * `supported_voices` on OpenRouter (here: loongjohn, male; longanhuan_v3.6, female — the default). "alloy",
+ * the old default, is listed by no OpenRouter speech model.
+ */
+export const TTS_VOICE_DEFAULT = 'longanhuan_v3.6'
 
 const TTS_MAX_TEXT_CHARS = 4000
 
