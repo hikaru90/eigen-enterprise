@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { DesiredState } from './company-repo.ts'
 import { readDeployLog } from './deploys.ts'
 import { emptyJournal } from './journal.ts'
-import { allowRetry, prepareRelease, reconcile, type SecretAccess } from './reconcile.ts'
+import { livekitWorkload } from './livekit.ts'
+import { allowRetry, prepareRelease, reconcile, renderLiveEnvFiles, type SecretAccess } from './reconcile.ts'
 import type { SecretMap } from './secrets.ts'
 import { workloadSchema } from './spec.ts'
 import type { RunResult, System } from './system.ts'
@@ -116,7 +117,7 @@ function desired(sha: string, extra: Partial<DesiredState> = {}): DesiredState {
       }),
     ],
     routes: [{ host: 'site.example.com', workload: 'site' }],
-    settings: { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null },
+    settings: { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: null, rtcNodeIp: null },
     ...extra,
   }
 }
@@ -436,5 +437,163 @@ describe('a candidate that fails its health gate', () => {
     expect(journal.deploys).toHaveLength(1)
     expect(journal.deploys[0]!.stage).toBe('failed')
     expect((await readDeployLog(sys, journal.deploys[0]!.id)).join('\n')).toContain('missing package-lock.json')
+  })
+})
+
+describe('livekit-server as a system workload (calls)', () => {
+  const OS_SHA = 'd'.repeat(64)
+  const LK_A = 'e'.repeat(64)
+  const LK_B = 'f'.repeat(64)
+  const BINARY_JSON = JSON.stringify({ runtime: 'binary', start: ['./livekit-server'], health: '/' })
+  const KEY = 'APIabcdef012345'
+  const SECRET = 'x'.repeat(43)
+
+  function callsBox() {
+    const sys = new FakeSystem()
+    sys.hashes.set(`/rel/${OS_SHA}.tgz`, OS_SHA)
+    sys.tarballs.set(`/rel/${OS_SHA}.tgz`, { 'ee.json': EE_JSON })
+    for (const s of [LK_A, LK_B]) {
+      sys.hashes.set(`/rel/lk-${s}.tgz`, s)
+      sys.tarballs.set(`/rel/lk-${s}.tgz`, { 'ee.json': BINARY_JSON, 'livekit-server': '\x7fELF' })
+    }
+    return sys
+  }
+  const callsSecrets = () => {
+    const s = memSecrets()
+    s.data['livekit'] = { LIVEKIT_API_KEY: KEY, LIVEKIT_API_SECRET: SECRET }
+    return s
+  }
+  function callsState(lkSha: string, settings: Partial<DesiredState['settings']> = {}): DesiredState {
+    return {
+      rev: 'r'.repeat(40),
+      // HEAD lists workloads/ sorted by file name: livekit (ports 4100/4101), then os (4102/4103).
+      workloads: [
+        workloadSchema.parse(livekitWorkload(`/rel/lk-${lkSha}.tgz`, lkSha)),
+        workloadSchema.parse({ name: 'os', tier: 'system', source: { kind: 'release', tarball: `/rel/${OS_SHA}.tgz`, sha256: OS_SHA } }),
+      ],
+      routes: [
+        { host: 'os.example.com', workload: 'os' },
+        { host: 'rtc.os.example.com', workload: 'livekit' },
+      ],
+      settings: { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: 'rtc.os.example.com', rtcNodeIp: '203.0.113.7', ...settings },
+    }
+  }
+  const envFile = (sys: FakeSystem, name: string) => sys.files.get(`/run/ee/env/${name}.env`) ?? ''
+  const livekitConfigIn = (sys: FakeSystem, slot: 'a' | 'b') => {
+    const line = envFile(sys, `livekit-${slot}`).split('\n').find((l) => l.startsWith('LIVEKIT_CONFIG='))!
+    return JSON.parse(line.slice('LIVEKIT_CONFIG="'.length, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\'))
+  }
+
+  it('first deploy: livekit runs from its release with the media ports, its config, and the edge routes rtc.<console> to it', async () => {
+    const sys = callsBox()
+    sys.healthy.add(4100).add(4102)
+    const journal = emptyJournal()
+    await reconcile({ sys, repo: { read: async () => callsState(LK_A) }, journal, secrets: callsSecrets(), healthTimeoutMs: 10_000 })
+
+    expect(journal.workloads.livekit?.active).toBe('a')
+    const unit = sys.files.get('/etc/systemd/system/ee-livekit-a.service')!
+    expect(unit).toMatch(/ExecStart=\/var\/lib\/ee\/workloads\/livekit\/releases\/[0-9a-f-]+\/livekit-server\n/)
+    expect(unit).toContain('SocketBindAllow=tcp:4100')
+    expect(unit).toContain('SocketBindAllow=tcp:7881')
+    expect(unit).toContain('SocketBindAllow=udp:7882')
+
+    const cfg = livekitConfigIn(sys, 'a')
+    expect(cfg).toMatchObject({ port: 4100, rtc: { node_ip: '203.0.113.7', tcp_port: 7881, udp_port: 7882 }, keys: { [KEY]: SECRET } })
+    expect(cfg.webhook).toEqual({ api_key: KEY, urls: ['http://127.0.0.1:4000/api/calls/livekit'] })
+
+    const caddy = JSON.stringify(sys.caddyLoads.at(-1))
+    expect(caddy).toContain('"host":["rtc.os.example.com"]')
+    expect(caddy).toMatch(/"rtc\.os\.example\.com"\]\}\],"handle":\[\{"handler":"subroute","routes":\[\{"handle":\[\{"handler":"reverse_proxy","upstreams":\[\{"dial":"127\.0\.0\.1:4100"\}\]/)
+  })
+
+  it('os gets LIVEKIT_API_KEY, LIVEKIT_API_SECRET and LIVEKIT_URL through its root-only env file', async () => {
+    const sys = callsBox()
+    sys.healthy.add(4100).add(4102)
+    await reconcile({ sys, repo: { read: async () => callsState(LK_A) }, journal: emptyJournal(), secrets: callsSecrets(), healthTimeoutMs: 10_000 })
+    const env = envFile(sys, 'os-a')
+    expect(env).toContain(`LIVEKIT_API_KEY="${KEY}"`)
+    expect(env).toContain(`LIVEKIT_API_SECRET="${SECRET}"`)
+    expect(env).toContain('LIVEKIT_URL="wss://rtc.os.example.com"')
+    // Secrets never land in the unit file (world-readable) — only in the 0600 env file.
+    expect(sys.files.get('/etc/systemd/system/ee-os-a.service')).not.toContain(SECRET)
+    expect(sys.files.get('/etc/systemd/system/ee-livekit-a.service')).not.toContain(SECRET)
+  })
+
+  it('an unchanged pass restarts nothing (calls in progress keep running)', async () => {
+    const sys = callsBox()
+    sys.healthy.add(4100).add(4102)
+    const journal = emptyJournal()
+    const secrets = callsSecrets()
+    const pass = () => reconcile({ sys, repo: { read: async () => callsState(LK_A) }, journal, secrets, healthTimeoutMs: 10_000 })
+    await pass()
+    const before = sys.commands.filter((c) => /^systemctl (restart|stop|start) ee-livekit/.test(c)).length
+    await pass()
+    expect(sys.commands.filter((c) => /^systemctl (restart|stop|start) ee-livekit/.test(c)).length).toBe(before)
+  })
+
+  it('a new livekit release stops the live slot BEFORE starting the candidate (host ports are exclusive: no blue-green)', async () => {
+    const sys = callsBox()
+    sys.healthy.add(4100).add(4101).add(4102)
+    const journal = emptyJournal()
+    const secrets = callsSecrets()
+    await reconcile({ sys, repo: { read: async () => callsState(LK_A) }, journal, secrets, healthTimeoutMs: 10_000 })
+    await reconcile({ sys, repo: { read: async () => callsState(LK_B) }, journal, secrets, healthTimeoutMs: 10_000 })
+
+    const stopOld = sys.commands.indexOf('systemctl stop ee-livekit-a.service')
+    const startNew = sys.commands.indexOf('systemctl restart ee-livekit-b.service')
+    expect(stopOld).toBeGreaterThan(-1)
+    expect(startNew).toBeGreaterThan(stopOld)
+    expect(journal.workloads.livekit?.active).toBe('b')
+    expect(livekitConfigIn(sys, 'b').port).toBe(4101)
+    expect(JSON.stringify(sys.caddyLoads.at(-1))).toContain('127.0.0.1:4101')
+    expect(journal.events.some((e) => e.type === 'deploy.started' && e.workload === 'livekit' && /stopped ee-livekit-a\.service first/.test(e.message))).toBe(true)
+  })
+
+  it('a failing livekit candidate is stopped and the previous release is started again', async () => {
+    const sys = callsBox()
+    sys.healthy.add(4100).add(4102)
+    const journal = emptyJournal()
+    const secrets = callsSecrets()
+    await reconcile({ sys, repo: { read: async () => callsState(LK_A) }, journal, secrets, healthTimeoutMs: 10_000 })
+    await expect(
+      reconcile({ sys, repo: { read: async () => callsState(LK_B) }, journal, secrets, healthTimeoutMs: 5_000 }),
+    ).rejects.toThrow(/livekit: .*previous release was started again/)
+    expect(journal.workloads.livekit?.active).toBe('a')
+    expect(sys.units.get('ee-livekit-b.service')).toBe('inactive')
+    expect(sys.units.get('ee-livekit-a.service')).toBe('active')
+    const restartOld = sys.commands.lastIndexOf('systemctl start ee-livekit-a.service')
+    expect(restartOld).toBeGreaterThan(sys.commands.indexOf('systemctl disable --now --quiet ee-livekit-b.service'))
+  })
+
+  it('without a node IP, livekit fails loudly (no guessing) and os still deploys', async () => {
+    const sys = callsBox()
+    sys.healthy.add(4100).add(4102)
+    const journal = emptyJournal()
+    await expect(
+      reconcile({ sys, repo: { read: async () => callsState(LK_A, { rtcNodeIp: null }) }, journal, secrets: callsSecrets(), healthTimeoutMs: 10_000 }),
+    ).rejects.toThrow(/livekit: no node IP .*--node-ip/)
+    expect(journal.workloads.livekit?.active).toBeNull()
+    expect(journal.workloads.os?.active).toBe('a')
+  })
+
+  it('a binary contract on an app is a catalog gap', async () => {
+    const sys = box(A)
+    sys.tarballs.set(`/rel/${A}.tgz`, { 'ee.json': BINARY_JSON })
+    await expect(
+      reconcile({ sys, repo: { read: async () => desired(A) }, journal: emptyJournal(), secrets: memSecrets() }),
+    ).rejects.toThrow(/catalog_gap: .*runtime binary \(system workloads only\)/)
+  })
+
+  it('at boot, the env files are rendered again with the livekit config and the os call env', async () => {
+    const sys = callsBox()
+    sys.healthy.add(4100).add(4102)
+    const journal = emptyJournal()
+    const secrets = callsSecrets()
+    await reconcile({ sys, repo: { read: async () => callsState(LK_A) }, journal, secrets, healthTimeoutMs: 10_000 })
+    const before = { lk: envFile(sys, 'livekit-a'), os: envFile(sys, 'os-a') }
+    for (const k of [...sys.files.keys()]) if (k.startsWith('/run/ee/env/')) sys.files.delete(k)
+    expect(await renderLiveEnvFiles(sys, callsState(LK_A), journal, secrets.data)).toBe(2)
+    expect(envFile(sys, 'livekit-a')).toBe(before.lk)
+    expect(envFile(sys, 'os-a')).toBe(before.os)
   })
 })

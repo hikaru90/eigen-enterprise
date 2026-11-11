@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { readdir, writeFile } from 'node:fs/promises'
 import { request } from 'node:http'
+import { isIP } from 'node:net'
 import { basename } from 'node:path'
 import { createInterface } from 'node:readline'
 import { parseArgs } from 'node:util'
@@ -24,9 +25,11 @@ import { RELEASES_URL, UPGRADES_DIR, upgrade, type Arch } from './upgrade.ts'
 
 const USAGE = `ee — the company's init (plan/phase-substrate.md)
 
-  ee bootstrap --release <tarball> [--console-host <host>] [--acme-email <email>]
-  ee upgrade [--check] [--from <release-url>]   (update over the air to the newest release;
-                                         keeps everything, takes a safety copy first)
+  ee bootstrap --release <tarball> --livekit-release <tarball> [--console-host <host>]
+               [--acme-email <email>] [--node-ip <ip>]   (--node-ip: the public IP calls media
+                                         reach this server on; required once, then kept)
+  ee upgrade [--check] [--from <release-url>] [--node-ip <ip>]   (update over the air to the newest
+                                         release; keeps everything, takes a safety copy first)
   ee claim-link                          (new private link to claim this server)
   ee status
   ee reconcile
@@ -105,9 +108,19 @@ async function main(argv: string[]): Promise<void> {
     case 'bootstrap': {
       const { values } = parseArgs({
         args: rest,
-        options: { release: { type: 'string' }, 'console-host': { type: 'string' }, 'acme-email': { type: 'string' } },
+        options: {
+          release: { type: 'string' },
+          'livekit-release': { type: 'string' },
+          'console-host': { type: 'string' },
+          'acme-email': { type: 'string' },
+          'node-ip': { type: 'string' },
+        },
       })
       if (!values.release) throw new Error('--release <tarball> is required')
+      if (!values['livekit-release']) throw new Error('--livekit-release <tarball> is required (install.sh passes it)')
+      if (values['node-ip'] && isIP(values['node-ip']) === 0) {
+        throw new Error(`--node-ip "${values['node-ip']}" is not an IP address`)
+      }
       // Check the flags up front, in plain words, before anything is installed.
       if (values['acme-email'] && !z.email().safeParse(values['acme-email']).success) {
         throw new Error(`--acme-email "${values['acme-email']}" is not a valid email address`)
@@ -117,8 +130,10 @@ async function main(argv: string[]): Promise<void> {
       }
       const { consoleHost, claimToken } = await bootstrap(sys, {
         release: values.release,
+        livekitRelease: values['livekit-release'],
         ...(values['console-host'] ? { consoleHost: values['console-host'] } : {}),
         ...(values['acme-email'] ? { acmeEmail: values['acme-email'] } : {}),
+        ...(values['node-ip'] ? { nodeIp: values['node-ip'] } : {}),
       })
       console.log('→ first deploy (health-gated; migrations run now, this takes a minute)')
       const ee = new Ee(sys, await SecretStore.open(sys))
@@ -138,8 +153,14 @@ async function main(argv: string[]): Promise<void> {
       return
     }
     case 'upgrade': {
-      const { values } = parseArgs({ args: rest, options: { check: { type: 'boolean' }, from: { type: 'string' } } })
+      const { values } = parseArgs({
+        args: rest,
+        options: { check: { type: 'boolean' }, from: { type: 'string' }, 'node-ip': { type: 'string' } },
+      })
       if (process.getuid?.() !== 0) throw new Error('ee upgrade must run as root')
+      if (values['node-ip'] && isIP(values['node-ip']) === 0) {
+        throw new Error(`--node-ip "${values['node-ip']}" is not an IP address`)
+      }
       const arch: Arch = process.arch === 'x64' || process.arch === 'arm64' ? process.arch : (() => {
         throw new Error(`unsupported CPU ${process.arch}`)
       })()
@@ -171,7 +192,12 @@ async function main(argv: string[]): Promise<void> {
           now: () => new Date(),
           log: (l) => console.log(l),
         },
-        { from: values.from ?? RELEASES_URL, arch, check: values.check === true },
+        {
+          from: values.from ?? RELEASES_URL,
+          arch,
+          check: values.check === true,
+          ...(values['node-ip'] ? { nodeIp: values['node-ip'] } : {}),
+        },
       )
       if (values.check && result === 'available') console.log('  run `ee upgrade` to install it')
       return

@@ -1,0 +1,5 @@
+{
+  "runtime": "binary",
+  "start": ["./livekit-server"],
+  "health": "/"
+}

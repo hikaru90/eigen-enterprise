@@ -3,7 +3,8 @@ import { PATHS } from './paths.ts'
 
 /**
  * Generated systemd units (§3.5, D2, D5). Every unit comes from this template;
- * the hardening block is not configurable — no spec field reaches it.
+ * the hardening block is not configurable. The one spec field that touches it is
+ * `ports` (system tier, allow-listed): it adds those binds and AF_NETLINK, nothing else.
  */
 
 export type Slot = 'a' | 'b'
@@ -78,24 +79,60 @@ export const HARDENING = [
   'UMask=0077',
 ] as const
 
+const PLAIN_FAMILIES = 'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6'
+/**
+ * A workload that binds host ports is a media server (LiveKit): its UDP mux
+ * binds the port on each interface, and Go lists interfaces over a netlink
+ * route socket. Read-only without CAP_NET_ADMIN (the bounding set is empty).
+ */
+const HOST_PORT_FAMILIES = 'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK'
+
+/** The hardening block for this workload: HARDENING, verbatim, unless it opens host ports. */
+function hardeningFor(w: Workload): string[] {
+  if ((w.ports ?? []).length === 0) return [...HARDENING]
+  return HARDENING.map((line) => (line === PLAIN_FAMILIES ? HOST_PORT_FAMILIES : line))
+}
+
+/** How the unit starts: node resolves to the pinned runtime; binary runs from the release. */
+function startSpec(input: UnitInput): { exec: (argv: string[]) => string; runtimeEnv: Record<string, string>; npm: boolean } {
+  const { workload: w, contract: c, releaseDir } = input
+  if (c.runtime === 'node' && c.start && c.node) {
+    const nodeBin = `${PATHS.runtimes}/node-${c.node}/bin/node`
+    return {
+      exec: (argv) => execLine(argv, nodeBin),
+      runtimeEnv: { NODE_ENV: 'production', PATH: `${PATHS.runtimes}/node-${c.node}/bin:/usr/bin:/bin` },
+      npm: true,
+    }
+  }
+  if (c.runtime === 'binary' && c.start) {
+    if (w.tier !== 'system') throw new Error(`renderUnit: ${w.name} is a ${w.tier} workload; runtime "binary" is for system workloads only`)
+    return {
+      // Absolute: systemd resolves a bare name via PATH, never via WorkingDirectory.
+      exec: ([program, ...rest]) => {
+        if (!program?.startsWith('./')) throw new Error(`renderUnit: ${w.name}: a binary starts as ./<path>, got ${program}`)
+        return [`${releaseDir}/${program.slice(2)}`, ...rest].map(execArg).join(' ')
+      },
+      runtimeEnv: { PATH: '/usr/bin:/bin' },
+      npm: false,
+    }
+  }
+  throw new Error(`renderUnit: ${w.name} is not a node or binary workload`)
+}
+
 export function renderUnit(input: UnitInput): string {
   const { workload: w, contract: c, slot, port, releaseDir } = input
-  if (c.runtime !== 'node' || !c.start || !c.node) {
-    throw new Error(`renderUnit: ${w.name} is not a node workload`)
-  }
-  const nodeBin = `${PATHS.runtimes}/node-${c.node}/bin/node`
+  const start = startSpec(input)
   const env: Record<string, string> = {
     ...w.env,
     ...(c.portEnv ? { [c.portEnv]: String(port) } : {}),
     PORT: String(port),
     HOST: '127.0.0.1',
-    NODE_ENV: 'production',
     EE_WORKLOAD: w.name,
     EE_STATE_DIR: `/var/lib/ee-state/${w.name}`,
     EE_API_URL,
     // DynamicUser has no home: apps that keep data under ~ get their persistent state dir.
     HOME: `/var/lib/ee-state/${w.name}`,
-    PATH: `${PATHS.runtimes}/node-${c.node}/bin:/usr/bin:/bin`,
+    ...start.runtimeEnv,
   }
   const needsPostgres = c.services.includes('postgres')
   const lines = [
@@ -114,15 +151,16 @@ export function renderUnit(input: UnitInput): string {
     `User=ee-${w.name}`,
     `WorkingDirectory=${releaseDir}`,
     // npm's cache in the private /tmp (the runtime is on PATH via env).
-    envAssignment('npm_config_cache', '/tmp/npm-cache'),
-    envAssignment('npm_config_update_notifier', 'false'),
+    ...(start.npm
+      ? [envAssignment('npm_config_cache', '/tmp/npm-cache'), envAssignment('npm_config_update_notifier', 'false')]
+      : []),
     ...Object.entries(env)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => envAssignment(k, v)),
     // Secrets: rendered root-only by ee, read by systemd before privileges drop.
     `EnvironmentFile=${PATHS.envDir}/${w.name}-${slot}.env`,
-    ...c.preStart.map((step) => `ExecStartPre=${execLine(step, nodeBin)}`),
-    `ExecStart=${execLine(c.start, nodeBin)}`,
+    ...c.preStart.map((step) => `ExecStartPre=${start.exec(step)}`),
+    `ExecStart=${start.exec(c.start!)}`,
     'Restart=on-failure',
     'RestartSec=2',
     'TimeoutStopSec=20',
@@ -131,11 +169,13 @@ export function renderUnit(input: UnitInput): string {
     `MemoryMax=${w.resources.memoryMb}M`,
     `CPUQuota=${w.resources.cpuPercent}%`,
     `SocketBindAllow=tcp:${port}`,
+    // Host ports (system tier, allow-listed by the spec): the only binds beyond the loopback slot port.
+    ...(w.ports ?? []).map((p) => `SocketBindAllow=${p.proto}:${p.port}`),
     'SocketBindDeny=any',
     ...(input.supplementaryGroups && input.supplementaryGroups.length > 0
       ? [`SupplementaryGroups=${input.supplementaryGroups.join(' ')}`, `ReadWritePaths=${PATHS.controlSocketDir}`]
       : []),
-    ...HARDENING,
+    ...hardeningFor(w),
     '',
     '[Install]',
     'WantedBy=multi-user.target',

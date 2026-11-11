@@ -81,6 +81,12 @@ describe('upgrade', () => {
     ])
   })
 
+  it('passes --node-ip through to the installer (an upgrade to calls names it once)', async () => {
+    const { deps, calls } = fake()
+    await upgrade(deps, { from: RELEASES_URL, arch: 'arm64', check: false, nodeIp: '203.0.113.7' })
+    expect(calls.at(-1)).toBe(`live sh /var/lib/ee/upgrades/2026-11-10T15-30-00Z/install.sh --from ${RELEASES_URL} --node-ip 203.0.113.7`)
+  })
+
   it('stops before touching anything when the safety copy fails', async () => {
     const { deps, calls } = fake({}, {
       run: async (cmd, args) => (args.join(' ').includes('pg_dump') ? { code: 1, stderr: 'pg_dump: connection refused' } : { code: 0, stderr: '' }),

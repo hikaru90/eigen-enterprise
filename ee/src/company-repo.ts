@@ -1,6 +1,12 @@
-import { routesSchema, workloadSchema, type Route, type Workload } from './spec.ts'
+import { isIP } from 'node:net'
+import { hostPortCollisions, routesSchema, workloadSchema, type Route, type Workload } from './spec.ts'
 import { mustRun, type System } from './system.ts'
 import { z } from 'zod'
+
+function assertNoHostPortCollisions(workloads: Workload[]): void {
+  const collisions = hostPortCollisions(workloads)
+  if (collisions.length > 0) throw new Error(`company repo: host port collision: ${collisions.join('; ')}`)
+}
 
 /**
  * The company repo (D4): desired state as files in git. ee is its only writer;
@@ -15,6 +21,17 @@ export const settingsSchema = z
     /** Public website host, if attached. */
     publicHost: z.string().min(1).nullable().default(null),
     acmeEmail: z.string().email().nullable().default(null),
+    /** Calls signalling host (rtc.<console host> → livekit); follows the console host (domains.ts). */
+    callsHost: z.string().min(1).nullable().default(null),
+    /**
+     * The IP LiveKit advertises to browsers for media (rtc.node_ip). Explicit, from
+     * `ee bootstrap --node-ip`: never guessed (no STUN, no use_external_ip).
+     */
+    rtcNodeIp: z
+      .string()
+      .refine((ip) => isIP(ip) !== 0, { message: 'rtcNodeIp must be an IP address' })
+      .nullable()
+      .default(null),
   })
   .strict()
 
@@ -71,6 +88,7 @@ export class CompanyRepo {
       }
       workloads.push(parsed.data)
     }
+    assertNoHostPortCollisions(workloads)
     const routes = routesSchema.parse(JSON.parse((await this.showAtHead('routes.json')) ?? '[]'))
     const settingsRaw = await this.showAtHead('settings.json')
     if (settingsRaw === null) throw new Error('company repo: settings.json missing')
@@ -92,6 +110,7 @@ export class CompanyRepo {
       : { rev: '', workloads: [], routes: [], settings: settingsSchema.parse({ consoleHost: 'unset' }) }
     const next = mutate({ workloads: current.workloads, routes: current.routes, settings: current.settings })
     const workloads = next.workloads.map((w) => workloadSchema.parse(w))
+    assertNoHostPortCollisions(workloads)
     const routes = routesSchema.parse(next.routes)
     const settings = settingsSchema.parse(next.settings)
     const names = new Set(workloads.map((w) => w.name))

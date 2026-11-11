@@ -9,8 +9,10 @@ import { z } from 'zod'
  *   what it needs from the catalog.
  *
  * Neither schema has a field that could weaken the sandbox (§3.5): no user,
- * no capabilities, no host paths, no ports, no privileged mode. Unknown keys
- * are rejected (`strict`), so nothing can be smuggled in.
+ * no capabilities, no host paths, no privileged mode. Unknown keys are
+ * rejected (`strict`), so nothing can be smuggled in. The one exception is
+ * `ports` (plan/video-calls.md §4, owner decision 2): a SYSTEM workload may
+ * open host ports, and only those on HOST_PORT_ALLOWLIST.
  */
 
 export const NAME = /^[a-z][a-z0-9-]{1,30}$/
@@ -60,10 +62,36 @@ export const gitSource = z
   })
   .strict()
 
+/**
+ * The only host ports a workload can ever open: LiveKit's media ports (ICE/TCP
+ * fallback, UDP mux). Everything else reaches a workload through Caddy.
+ */
+export const HOST_PORT_ALLOWLIST = [
+  { port: 7881, proto: 'tcp' },
+  { port: 7882, proto: 'udp' },
+] as const
+
+export const hostPortSchema = z
+  .object({
+    port: z.number().int().min(1).max(65535),
+    proto: z.enum(['tcp', 'udp']),
+  })
+  .strict()
+
+export type HostPort = z.infer<typeof hostPortSchema>
+
+const hostPortKey = (p: HostPort) => `${p.proto}/${p.port}`
+
 export const workloadSchema = z
   .object({
     name: z.string().regex(NAME),
     tier: z.enum(['system', 'module', 'app']),
+    /**
+     * Host ports this workload binds on every interface (system tier only, allow-listed).
+     * Optional, not defaulted: a workload without ports serializes as before, so its
+     * deploy fingerprint does not change.
+     */
+    ports: z.array(hostPortSchema).max(HOST_PORT_ALLOWLIST.length).optional(),
     source: z.discriminatedUnion('kind', [releaseSource, gitSource]),
     env: envRecord.default({}),
     /** Secret NAMES only; values live in ee's encrypted store (D9). */
@@ -84,21 +112,63 @@ export const workloadSchema = z
     contract: z.lazy(() => appContractSchema).optional(),
   })
   .strict()
+  .superRefine((w, ctx) => {
+    const ports = w.ports ?? []
+    if (ports.length > 0 && w.tier !== 'system') {
+      ctx.addIssue({ code: 'custom', path: ['ports'], message: `only system workloads may open host ports (${w.name} is ${w.tier})` })
+    }
+    const seen = new Set<string>()
+    for (const p of ports) {
+      const key = hostPortKey(p)
+      if (!HOST_PORT_ALLOWLIST.some((a) => a.port === p.port && a.proto === p.proto)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['ports'],
+          message: `${key} is not on the host-port allow-list (${HOST_PORT_ALLOWLIST.map(hostPortKey).join(', ')})`,
+        })
+      }
+      if (seen.has(key)) ctx.addIssue({ code: 'custom', path: ['ports'], message: `${key} is listed twice` })
+      seen.add(key)
+    }
+  })
 
 export type Workload = z.infer<typeof workloadSchema>
+
+/** Host ports held by more than one workload, in plain words (empty = no collision). */
+export function hostPortCollisions(workloads: Workload[]): string[] {
+  const holder = new Map<string, string>()
+  const collisions: string[] = []
+  for (const w of workloads) {
+    for (const p of w.ports ?? []) {
+      const key = hostPortKey(p)
+      const other = holder.get(key)
+      if (other) collisions.push(`${key} is held by both ${other} and ${w.name}`)
+      else holder.set(key, w.name)
+    }
+  }
+  return collisions
+}
 export type WorkloadInput = z.input<typeof workloadSchema>
+
+/** A binary's program: ./ then a plain relative path (no PATH lookup, no absolute path). */
+const BINARY_PROGRAM = /^\.\/[A-Za-z0-9._/-]+$/
 
 /** argv, never a shell string: nothing is ever interpreted by a shell. */
 const argv = z.array(z.string().min(1).max(1024)).min(1).max(64)
 
 export const appContractSchema = z
   .object({
-    runtime: z.enum(['node', 'static']),
+    /**
+     * node: a Node app on the pinned runtime. static: files Caddy serves.
+     * binary: a static executable shipped in the release (system workloads only,
+     * e.g. livekit-server) — no runtime, no build.
+     */
+    runtime: z.enum(['node', 'static', 'binary']),
     /** Major version for the node runtime. */
     node: z.string().regex(/^\d{2}$/).optional(),
     /** Build steps, each an argv run with the runtime on PATH, inside the release dir. */
     build: z.array(argv).max(16).default([]),
-    /** node: the start argv (e.g. ["node", "build/index.js"]). */
+    /** node: the start argv (e.g. ["node", "build/index.js"]). binary: ["./program", ...args], relative to the release. */
     start: argv.optional(),
     /** Steps run before each start (e.g. migrations), as argv. */
     preStart: z.array(argv).max(16).default([]),
@@ -123,6 +193,17 @@ export const appContractSchema = z
     }
     if (c.runtime === 'static' && !c.staticDir) {
       ctx.addIssue({ code: 'custom', message: 'runtime "static" requires "staticDir"' })
+    }
+    if (c.runtime === 'binary') {
+      const program = c.start?.[0]
+      if (!program) ctx.addIssue({ code: 'custom', message: 'runtime "binary" requires "start"' })
+      else if (!BINARY_PROGRAM.test(program) || program.split('/').includes('..')) {
+        ctx.addIssue({ code: 'custom', message: `runtime "binary": start[0] must be ./<path> inside the release (got ${program})` })
+      }
+      if (c.node) ctx.addIssue({ code: 'custom', message: 'runtime "binary" has no "node"' })
+      if (c.build.length > 0) ctx.addIssue({ code: 'custom', message: 'runtime "binary" has no build steps (ship the built binary)' })
+      if (c.preStart.length > 0) ctx.addIssue({ code: 'custom', message: 'runtime "binary" has no preStart steps' })
+      if (c.staticDir) ctx.addIssue({ code: 'custom', message: 'runtime "binary" has no "staticDir"' })
     }
   })
 
@@ -158,10 +239,15 @@ export type Route = z.infer<typeof routeSchema>
  * and the catalog lacks is a gap, and a gap is an eigen change (D16).
  */
 export const CATALOG = {
+  /** What apps (and modules) may run on. */
   runtimes: { node: ["22"] as string[], static: [] as string[] },
+  /** Runtimes only system workloads (seeded by ee itself) may use. */
+  systemRuntimes: ['binary'] as string[],
   services: ['postgres', 'kernel', 'files'],
   capabilities: [] as string[],
 } as const
+
+export type Tier = Workload['tier']
 
 export class CatalogGapError extends Error {
   readonly code = 'catalog_gap'
@@ -173,9 +259,12 @@ export class CatalogGapError extends Error {
   }
 }
 
-/** Throws CatalogGapError naming every entry the catalog lacks. */
-export function assertInCatalog(contract: AppContract): void {
+/** Throws CatalogGapError naming every entry the catalog lacks for a workload of this tier. */
+export function assertInCatalog(contract: AppContract, tier: Tier): void {
   const missing: string[] = []
+  if (CATALOG.systemRuntimes.includes(contract.runtime) && tier !== 'system') {
+    missing.push(`runtime ${contract.runtime} (system workloads only)`)
+  }
   if (contract.runtime === 'node' && contract.node && !CATALOG.runtimes.node.includes(contract.node)) {
     missing.push(`runtime node@${contract.node}`)
   }

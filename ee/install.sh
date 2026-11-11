@@ -1,23 +1,31 @@
 #!/bin/sh
 # eigenEnterprise installer (plan/phase-substrate.md §5).
 #
-#   curl -fsSL <base>/install.sh | sh -s -- --from <base> [--console-host os.example.com] [--acme-email you@example.com]
-#   sh install.sh --from /root/release        (files copied to the box beforehand)
+#   curl -fsSL <base>/install.sh | sh -s -- --from <base> --node-ip <public IP> [--console-host os.example.com] [--acme-email you@example.com]
+#   sh install.sh --from /root/release --node-ip <public IP>   (files copied to the box beforehand)
 #
 # <base> holds: LATEST (the release name), ee.mjs, ee.mjs.sha256, and per CPU
-# eigenenterprise-<version>-<sha>-linux-<x64|arm64>.tar.gz (+ .sha256).
+# eigenenterprise-<version>-<sha>-linux-<x64|arm64>.tar.gz (+ .sha256) and
+# livekit-server-<LIVEKIT_VERSION>-linux-<x64|arm64>.tar.gz (+ .sha256).
 # Published: <base> = https://github.com/hikaru90/eigen-enterprise/releases/latest/download
 # Re-running it on an installed server upgrades in place and keeps everything (`ee upgrade` does that).
 # Installs a pinned, checksum-verified Node runtime and ee, then hands over to `ee bootstrap`.
+#
+# Calls (livekit-server): --node-ip is the IP browsers send call media to. It is
+# required on the first install (and on the first upgrade to a release with calls),
+# then kept. The server's firewall must let in 7881/tcp and 7882/udp, and DNS for
+# rtc.<console host> must point here (the calls host follows the console host).
 set -eu
 
 NODE_VERSION="22.23.3"
+# Must match scripts/release.sh (ee/src/livekit-release.spec.ts checks it).
+LIVEKIT_VERSION="1.13.11"
 FROM=""
 PASS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --from) FROM="$2"; shift 2 ;;
-    --console-host|--acme-email) PASS="$PASS $1 $2"; shift 2 ;;
+    --console-host|--acme-email|--node-ip) PASS="$PASS $1 $2"; shift 2 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -90,5 +98,11 @@ fetch "$RELEASE" "$WORK/$RELEASE"
 fetch "$RELEASE.sha256" "$WORK/$RELEASE.sha256"
 verify "$WORK/$RELEASE" "$WORK/$RELEASE.sha256"
 
+step "fetching livekit-server $LIVEKIT_VERSION (calls)"
+LIVEKIT="livekit-server-$LIVEKIT_VERSION-linux-$ARCH.tar.gz"
+fetch "$LIVEKIT" "$WORK/$LIVEKIT"
+fetch "$LIVEKIT.sha256" "$WORK/$LIVEKIT.sha256"
+verify "$WORK/$LIVEKIT" "$WORK/$LIVEKIT.sha256"
+
 # shellcheck disable=SC2086
-/usr/local/bin/ee bootstrap --release "$WORK/$RELEASE" $PASS
+/usr/local/bin/ee bootstrap --release "$WORK/$RELEASE" --livekit-release "$WORK/$LIVEKIT" $PASS
