@@ -172,7 +172,9 @@
         }}
       />
     </label>
-    <span class="rounded-full bg-neutral-200 px-2 py-0.5 text-xs font-medium uppercase">{set.status}</span>
+    <span class="rounded-full bg-neutral-200 px-2 py-0.5 text-xs font-medium uppercase"
+      >{set.status}</span
+    >
     <button
       type="button"
       class="ml-auto rounded border px-3 py-1 text-sm hover:bg-neutral-100"
@@ -184,7 +186,8 @@
   </header>
 
   {#if error}
-    <pre class="whitespace-pre-wrap rounded border border-red-400 bg-red-50 p-3 text-xs text-red-800">{error}</pre>
+    <pre
+      class="whitespace-pre-wrap rounded border border-red-400 bg-red-50 p-3 text-xs text-red-800">{error}</pre>
   {/if}
 
   <div class="flex min-h-0 flex-1">
@@ -214,7 +217,10 @@
                     {token}
                   </button>
                 {:else}
-                  <span class="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-xs text-neutral-500">{token}</span>
+                  <span
+                    class="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-xs text-neutral-500"
+                    >{token}</span
+                  >
                 {/if}
               </li>
             {/each}
@@ -226,8 +232,8 @@
         <h2 class="text-lg font-medium">Seeds</h2>
         {#if seedForm}
           <p class="text-xs text-neutral-500">
-            Applying seeds re-expands every token deterministically. Pinned resolved values
-            (marked ●) survive re-expansion.
+            Applying seeds re-expands every token deterministically. Pinned resolved values (marked
+            ●) survive re-expansion.
           </p>
 
           <div class="flex flex-col gap-2">
@@ -245,61 +251,143 @@
                   }
                 }}
               />
-              <label class="flex items-center gap-1 text-xs">L
-                <input type="number" class="w-20 rounded border px-1 py-0.5" min="0" max="1" step="0.01" bind:value={seedForm.seedColor.l} />
+              <label class="flex items-center gap-1 text-xs"
+                >L
+                <input
+                  type="number"
+                  class="w-20 rounded border px-1 py-0.5"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  bind:value={seedForm.seedColor.l}
+                />
               </label>
-              <label class="flex items-center gap-1 text-xs">C
-                <input type="number" class="w-20 rounded border px-1 py-0.5" min="0" max="0.4" step="0.005" bind:value={seedForm.seedColor.c} />
+              <label class="flex items-center gap-1 text-xs"
+                >C
+                <input
+                  type="number"
+                  class="w-20 rounded border px-1 py-0.5"
+                  min="0"
+                  max="0.4"
+                  step="0.005"
+                  bind:value={seedForm.seedColor.c}
+                />
               </label>
-              <label class="flex items-center gap-1 text-xs">H
-                <input type="number" class="w-20 rounded border px-1 py-0.5" min="0" max="360" step="1" bind:value={seedForm.seedColor.h} />
+              <label class="flex items-center gap-1 text-xs"
+                >H
+                <input
+                  type="number"
+                  class="w-20 rounded border px-1 py-0.5"
+                  min="0"
+                  max="360"
+                  step="1"
+                  bind:value={seedForm.seedColor.h}
+                />
               </label>
             </div>
 
-            <label class="flex items-center justify-between gap-2 text-sm">Neutral tint hue
-              <input type="number" class="w-24 rounded border px-1 py-0.5" min="0" max="360" step="1" bind:value={seedForm.neutralTintHue} />
+            <label class="flex items-center justify-between gap-2 text-sm"
+              >Neutral tint hue
+              <input
+                type="number"
+                class="w-24 rounded border px-1 py-0.5"
+                min="0"
+                max="360"
+                step="1"
+                bind:value={seedForm.neutralTintHue}
+              />
             </label>
 
-            <label class="flex items-center justify-between gap-2 text-sm">Radius base
-              <input type="text" class="w-24 rounded border px-1 py-0.5" bind:value={seedForm.radiusBase} />
+            <label class="flex items-center justify-between gap-2 text-sm"
+              >Radius base
+              <input
+                type="text"
+                class="w-24 rounded border px-1 py-0.5"
+                bind:value={seedForm.radiusBase}
+              />
             </label>
 
             <span class="text-sm font-medium">Base size (px)</span>
             <div class="flex items-center gap-2 text-xs">
-              <label class="flex items-center gap-1">min
-                <input type="number" class="w-20 rounded border px-1 py-0.5" min="1" step="1" bind:value={seedForm.fluidScale.baseSize.min} />
+              <label class="flex items-center gap-1"
+                >min
+                <input
+                  type="number"
+                  class="w-20 rounded border px-1 py-0.5"
+                  min="1"
+                  step="1"
+                  bind:value={seedForm.fluidScale.baseSize.min}
+                />
               </label>
-              <label class="flex items-center gap-1">max
-                <input type="number" class="w-20 rounded border px-1 py-0.5" min="1" step="1" bind:value={seedForm.fluidScale.baseSize.max} />
+              <label class="flex items-center gap-1"
+                >max
+                <input
+                  type="number"
+                  class="w-20 rounded border px-1 py-0.5"
+                  min="1"
+                  step="1"
+                  bind:value={seedForm.fluidScale.baseSize.max}
+                />
               </label>
             </div>
 
             <span class="text-sm font-medium">Scale ratio</span>
             <div class="flex items-center gap-2 text-xs">
-              <label class="flex items-center gap-1">min
-                <input type="number" class="w-24 rounded border px-1 py-0.5" min="1.01" step="0.001" bind:value={seedForm.fluidScale.scaleRatio.min} />
+              <label class="flex items-center gap-1"
+                >min
+                <input
+                  type="number"
+                  class="w-24 rounded border px-1 py-0.5"
+                  min="1.01"
+                  step="0.001"
+                  bind:value={seedForm.fluidScale.scaleRatio.min}
+                />
               </label>
-              <label class="flex items-center gap-1">max
-                <input type="number" class="w-24 rounded border px-1 py-0.5" min="1.01" step="0.001" bind:value={seedForm.fluidScale.scaleRatio.max} />
+              <label class="flex items-center gap-1"
+                >max
+                <input
+                  type="number"
+                  class="w-24 rounded border px-1 py-0.5"
+                  min="1.01"
+                  step="0.001"
+                  bind:value={seedForm.fluidScale.scaleRatio.max}
+                />
               </label>
             </div>
 
             <span class="text-sm font-medium">Fonts (OFL families)</span>
-            <label class="flex items-center justify-between gap-2 text-xs">Primary
-              <input type="text" class="w-48 rounded border px-1 py-0.5" bind:value={seedForm.fonts.fontPrimary} />
+            <label class="flex items-center justify-between gap-2 text-xs"
+              >Primary
+              <input
+                type="text"
+                class="w-48 rounded border px-1 py-0.5"
+                bind:value={seedForm.fonts.fontPrimary}
+              />
             </label>
-            <label class="flex items-center justify-between gap-2 text-xs">Secondary
-              <input type="text" class="w-48 rounded border px-1 py-0.5" bind:value={seedForm.fonts.fontSecondary} />
+            <label class="flex items-center justify-between gap-2 text-xs"
+              >Secondary
+              <input
+                type="text"
+                class="w-48 rounded border px-1 py-0.5"
+                bind:value={seedForm.fonts.fontSecondary}
+              />
             </label>
-            <label class="flex items-center justify-between gap-2 text-xs">Mono
-              <input type="text" class="w-48 rounded border px-1 py-0.5" bind:value={seedForm.fonts.fontMono} />
+            <label class="flex items-center justify-between gap-2 text-xs"
+              >Mono
+              <input
+                type="text"
+                class="w-48 rounded border px-1 py-0.5"
+                bind:value={seedForm.fonts.fontMono}
+              />
             </label>
 
-            <label class="flex items-center justify-between gap-2 text-sm">Chroma curve
+            <label class="flex items-center justify-between gap-2 text-sm"
+              >Chroma curve
               <select
                 class="w-32 rounded border px-1 py-0.5"
                 value={seedForm.chromaCurve}
-                onchange={(e) => (seedForm!.chromaCurve = e.currentTarget.value as BrandSeeds['chromaCurve'])}
+                onchange={(e) =>
+                  (seedForm!.chromaCurve = e.currentTarget.value as BrandSeeds['chromaCurve'])}
               >
                 <option value="tailwind">tailwind</option>
                 <option value="flat">flat</option>
@@ -307,11 +395,14 @@
               </select>
             </label>
 
-            <label class="flex items-center justify-between gap-2 text-sm">Shape character
+            <label class="flex items-center justify-between gap-2 text-sm"
+              >Shape character
               <select
                 class="w-32 rounded border px-1 py-0.5"
                 value={seedForm.shapeCharacter}
-                onchange={(e) => (seedForm!.shapeCharacter = e.currentTarget.value as BrandSeeds['shapeCharacter'])}
+                onchange={(e) =>
+                  (seedForm!.shapeCharacter = e.currentTarget
+                    .value as BrandSeeds['shapeCharacter'])}
               >
                 <option value="sharp">sharp</option>
                 <option value="soft">soft</option>
@@ -320,11 +411,13 @@
               </select>
             </label>
 
-            <label class="flex items-center justify-between gap-2 text-sm">Elevation
+            <label class="flex items-center justify-between gap-2 text-sm"
+              >Elevation
               <select
                 class="w-32 rounded border px-1 py-0.5"
                 value={seedForm.elevation}
-                onchange={(e) => (seedForm!.elevation = e.currentTarget.value as BrandSeeds['elevation'])}
+                onchange={(e) =>
+                  (seedForm!.elevation = e.currentTarget.value as BrandSeeds['elevation'])}
               >
                 <option value="flat">flat</option>
                 <option value="subtle">subtle</option>
@@ -332,18 +425,22 @@
               </select>
             </label>
 
-            <label class="flex items-center justify-between gap-2 text-sm">Motion personality
+            <label class="flex items-center justify-between gap-2 text-sm"
+              >Motion personality
               <select
                 class="w-32 rounded border px-1 py-0.5"
                 value={seedForm.motionPersonality}
-                onchange={(e) => (seedForm!.motionPersonality = e.currentTarget.value as BrandSeeds['motionPersonality'])}
+                onchange={(e) =>
+                  (seedForm!.motionPersonality = e.currentTarget
+                    .value as BrandSeeds['motionPersonality'])}
               >
                 <option value="productive">productive</option>
                 <option value="expressive">expressive</option>
               </select>
             </label>
 
-            <label class="flex items-center justify-between gap-2 text-sm">Grain
+            <label class="flex items-center justify-between gap-2 text-sm"
+              >Grain
               <span class="flex items-center gap-2">
                 <input type="range" min="0" max="1" step="0.01" bind:value={seedForm.grain} />
                 <span class="w-10 text-right font-mono text-xs">{seedForm.grain}</span>
@@ -380,7 +477,10 @@
             class="flex items-center gap-2 rounded p-1"
             class:bg-amber-100={isHighlighted(token)}
           >
-            <span class="h-5 w-5 shrink-0 rounded-full border border-neutral-300" style:background={value}></span>
+            <span
+              class="h-5 w-5 shrink-0 rounded-full border border-neutral-300"
+              style:background={value}
+            ></span>
             <code class="w-40 shrink-0 text-xs">{token}</code>
             {#if colorComponents(value)}
               <input
@@ -393,7 +493,7 @@
             <input
               type="text"
               class="w-full rounded border px-2 py-1 text-xs"
-              value={value}
+              {value}
               onchange={(e) => applyResolved(token, e.currentTarget.value.trim())}
             />
             {#if isPinned(token)}

@@ -5,7 +5,7 @@ describe('area sub-navigation (one page frame)', () => {
   it('lists the tabs of each area in one order', () => {
     expect(ASSISTANT_TABS.map((t) => t.label)).toEqual(['Conversations', 'Activity'])
     expect(WEBSITE_TABS.map((t) => t.label)).toEqual(['Apps', 'Site', 'Settings'])
-    expect(BRAND_TABS.map((t) => t.label)).toEqual(['Style', 'Design system', 'Extract'])
+    expect(BRAND_TABS.map((t) => t.label)).toEqual(['Style', 'Material', 'Extract'])
     expect(DRIVE_TABS.map((t) => t.label)).toEqual(['My drive', 'Shared with me', 'Trash'])
   })
   it.each([
@@ -19,7 +19,8 @@ describe('area sub-navigation (one page frame)', () => {
     [WEBSITE_TABS, '/m/website/site', 'site'],
     [WEBSITE_TABS, '/m/website/settings', 'settings'],
     [BRAND_TABS, '/brand', 'style'],
-    [BRAND_TABS, '/brand/system', 'system'],
+    [BRAND_TABS, '/brand/system', 'style'],
+    [BRAND_TABS, '/brand/material', 'material'],
     [BRAND_TABS, '/brand/extract', 'extract'],
     [DRIVE_TABS, '/drive', 'mine'],
     [DRIVE_TABS, '/drive/folder/abc', 'mine'],

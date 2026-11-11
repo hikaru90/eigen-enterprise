@@ -83,6 +83,12 @@
           {:else}
             <span class="text-foreground font-medium">{data.active.name}</span>
           {/if}
+          ·
+          <a
+            class="text-foreground font-medium underline-offset-4 hover:underline"
+            href={resolve('/brand/system')}
+            data-testid="open-design-system">See its design system</a
+          >
         </p>
       {:else}
         <p class="text-muted-foreground text-sm" data-testid="active-style">

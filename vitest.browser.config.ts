@@ -73,6 +73,7 @@ export default defineConfig({
     // (in-spec vi.mock) before joining this job.
     include: [
       'src/lib/components/smoke.svelte.spec.ts',
+      'src/routes/(nucleus)/brand/material/flyer-preview.svelte.spec.ts',
       'src/lib/components/capture-onboarding-overlay.svelte.spec.ts',
       'src/lib/components/provider-onboarding.svelte.spec.ts',
       'src/lib/components/welcome-wizard.svelte.spec.ts',
