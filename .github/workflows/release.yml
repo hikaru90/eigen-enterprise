@@ -2,7 +2,8 @@
 #
 # Each CPU builds on its own native runner (no emulation), then one job publishes
 # a GitHub Release with: LATEST, install.sh, ee.mjs (+ .sha256) and
-# eigenenterprise-<version>-<sha>-linux-{x64,arm64}.tar.gz (+ .sha256).
+# eigenenterprise-<version>-<sha>-linux-{x64,arm64}.tar.gz (+ .sha256) and
+# livekit-server-<version>-linux-{x64,arm64}.tar.gz (+ .sha256), which install.sh fetches for calls.
 #
 # Install:  curl -fsSL https://github.com/hikaru90/eigen-enterprise/releases/latest/download/install.sh \
 #             | sh -s -- --from https://github.com/hikaru90/eigen-enterprise/releases/latest/download
@@ -48,6 +49,8 @@ jobs:
             dist/release/ee.mjs.sha256
             dist/release/eigenenterprise-*.tar.gz
             dist/release/eigenenterprise-*.tar.gz.sha256
+            dist/release/livekit-server-*.tar.gz
+            dist/release/livekit-server-*.tar.gz.sha256
           if-no-files-found: error
           retention-days: 3
 
@@ -66,6 +69,7 @@ jobs:
           mkdir out
           cp built/release-amd64/{LATEST,install.sh,ee.mjs,ee.mjs.sha256} out/
           cp built/release-*/eigenenterprise-*.tar.gz* out/
+          cp built/release-*/livekit-server-*.tar.gz* out/
           (cd out && sha256sum -c --quiet *.sha256)
           ls -la out
       - name: Publish the GitHub Release
