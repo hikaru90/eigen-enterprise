@@ -8,6 +8,12 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - **Owner decision (2026-11-11):** hold upgrades. Nobody runs `ee upgrade` or `install.sh` against v0.5.2 on production (os.cerberusblue.com) or any other server until S4 (real-LiveKit e2e + box proof) passes and this hold is lifted here.
 - **How upgrades work:** they are manual only (no timer); `ee upgrade` and fresh installs fetch `releases/latest/download` (`ee/src/upgrade.ts:17`). While v0.5.2 is GitHub's "latest", anyone running `ee upgrade` gets it.
 
+## 2026-11-11 — v0.5.2 published on GitHub (Calls, dictation fix, speech readiness)
+
+Owner: "Yes, release". Published: https://github.com/hikaru90/eigen-enterprise/releases/tag/v0.5.2 (run 43069381496: amd64 + arm64 + publish green); `latest/download/LATEST` → `eigenenterprise-0.5.2-c7bb2763d010`. Release commit `c7bb276`. Carries everything since v0.5.1: Calls S1–S3 (`d4b6ae7` … `05db26c`: ee runs livekit-server, Calls module core, call UI + call lines in Messages), `542bd65` STT on `qwen/qwen3-asr-0.6b` (fixes "Couldn't transcribe the recording"), `a7d4c20` speech needs OpenRouter said up front + endpoint check. Local `vite build` ran green before tagging (the gate gap noted under v0.5.1).
+
+**Not done:** os.cerberusblue.com stays on v0.5.1 — see the HOLD entry above (no `ee upgrade` to v0.5.2 until Calls S4 passes). After the upgrade the server log and Settings → AI provider will flag the assistant's voice (TTS) model `qwen/qwen3-tts-flash-2026-02-10` as having no OpenRouter endpoints — known, fix proposed separately. Not tried on a real server or microphone yet.
+
 ## 2026-11-11 — Calls S3 (UI + call lines in Messages) merged (main, not pushed, not on the box)
 
 Owner: "Start S3" (plan/video-calls.md §2–3). One worktree subagent, merged by the orchestrator.
@@ -25,7 +31,7 @@ Owner: "Start S3" (plan/video-calls.md §2–3). One worktree subagent, merged b
 - **Not verified:** no livekit-server has run, so the LiveKit adapter (remote audio, the autoplay unlock click, disconnect reasons) is only type-checked and tested against a fake room. The UI hasn't been looked at in a browser, phone width included. Flaky: `modules/messages/db-store.pg.spec.ts` "many concurrent appends" failed 2 of 4 runs during S3 (event log, unrelated to call lines). No push notification for a call while the tab is closed (later slice).
 - **Next:** S4: `livekit-server --dev` in the e2e harness (needs the binary on this machine), two-browser e2e (DM call, decline, missed, three-person channel call), box proof (`box.sh up` recreates the box and wipes its install).
 
-## 2026-11-11 — Speech needs OpenRouter, said up front; speech models checked for live endpoints (main, not pushed, not on the box)
+## 2026-11-11 — Speech needs OpenRouter, said up front; speech models checked for live endpoints (released in v0.5.2)
 
 Owner: "we need endpoints for it, and maybe we should make it mandatory that the user uses open router … at least if they want to use the speech for text" → "Yes, build both".
 
@@ -36,7 +42,7 @@ Owner: "we need endpoints for it, and maybe we should make it mandatory that the
 
 **Known:** the voice model (`qwen/qwen3-tts-flash-2026-02-10`) still has 0 endpoints — the new check reports it at startup and in settings until the TTS fix lands (separate task card). A disabled button's tooltip doesn't show on touch devices; the settings page carries the same sentence.
 
-## 2026-11-11 — Fix: dictation always failed with "Couldn't transcribe the recording" (main, not pushed, not on the box)
+## 2026-11-11 — Fix: dictation always failed with "Couldn't transcribe the recording" (released in v0.5.2)
 
 Owner: "update the speech to text from ../eigen to this repo. it was buggy … currently i get Couldn't transcribe the recording".
 
