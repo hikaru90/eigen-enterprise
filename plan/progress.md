@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-11 — HOLD: no server upgrades to v0.5.2 until Calls S4 passes
+
+- **Why:** `v0.5.2` (`c7bb276`, tagged by another session) carries Calls S1–S3. It has never run against a real livekit-server, and the livekit unit's hardening is unproven on Linux. Also, its first `ee upgrade` on a server stops once and asks for `--node-ip <public IP>`.
+- **Owner decision (2026-11-11):** hold upgrades. Nobody runs `ee upgrade` or `install.sh` against v0.5.2 on production (os.cerberusblue.com) or any other server until S4 (real-LiveKit e2e + box proof) passes and this hold is lifted here.
+- **How upgrades work:** they are manual only (no timer); `ee upgrade` and fresh installs fetch `releases/latest/download` (`ee/src/upgrade.ts:17`). While v0.5.2 is GitHub's "latest", anyone running `ee upgrade` gets it.
+
 ## 2026-11-11 — Calls S3 (UI + call lines in Messages) merged (main, not pushed, not on the box)
 
 Owner: "Start S3" (plan/video-calls.md §2–3). One worktree subagent, merged by the orchestrator.
