@@ -1,110 +1,131 @@
-# Video calls in Messages — plan (draft, awaiting owner decisions)
+# Video calls — the Calls module on LiveKit (draft, awaiting owner decisions)
 
 Source: Contribute board item: "Chats are nice, but I want a video call function, both for
 direct messages and for group calls." Status: **plan only, no code.**
 
+**Owner decisions (2026-11-11):** video calls are their **own module** (`modules/calls`), not a
+part of Messages, and the media server is **LiveKit**. This replaces the earlier draft
+(`5afae92`: P2P WebRTC + coturn inside Messages, LiveKit later for groups).
+
 ## Where we start
 
-- Messages is the `modules/messages` module (service, db-store, `hub.ts` + `live.ts`) behind
-  `src/routes/api/messages/**`; the UI is `src/routes/(nucleus)/messages/+page.svelte` with
-  helpers in `src/lib/messages/**`.
-- Realtime is **server → client SSE only**: `GET /api/messages/stream` (`messagesStreamResponse`),
-  fed by Postgres LISTEN/NOTIFY through `MessagesHub`, resumable by event id
-  (`src/lib/messages/resumable-stream.ts`). Client → server is plain `fetch` POST. No WebSocket.
-- The box: `ee` runs workloads as hardened systemd units (`ee/src/units.ts`: DynamicUser,
-  `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`) behind Caddy (`ee/src/caddy.ts`, HTTP
-  `reverse_proxy` only). The workload spec (`ee/src/spec.ts`) has **no ports** and the
-  `CATALOG` has no media capability. Any UDP media port is new ee surface (D16: an eigen change).
+- Modules live in `modules/<id>/` (manifest, service, store/db-store, tools, http) and are wired
+  in `modules/index.ts`. System modules like `drive` self-seed active. Cross-module use goes
+  through ports (`modules/messages/access-port.ts`); `modules/boundaries.spec.ts` enforces it.
+- Messages realtime is server → client SSE (`GET /api/messages/stream`, Postgres LISTEN/NOTIFY via
+  `MessagesHub`); client → server is `fetch` POST. No WebSocket in the console.
+- ee (`ee/src/spec.ts`): a workload's source is a `release` tarball or a `git` mirror; the only
+  runtimes are `node` and `static` (`appContractSchema`, `CATALOG`), units are node-only
+  (`ee/src/units.ts`, DynamicUser, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`). There is
+  **no host-port field**: every workload is reached only through Caddy (`ee/src/caddy.ts`,
+  per-host `reverse_proxy` or `file_server`). System workloads get only console/public hosts
+  (`ee/src/domains.ts`). Running LiveKit is therefore an eigen change (D16).
 
-## Options
+## Shape
 
-| Option | 1:1 | Group | Box surface | Licence |
-|---|---|---|---|---|
-| A. P2P WebRTC, our signalling over SSE + POST | yes | mesh, ≤3–4 people | none for media; TURN needed in practice | browser APIs; our code Apache-2.0 |
-| B. SFU as ee-managed workload (LiveKit) | yes | yes, 50+ | 1 TCP (signal, via Caddy) + UDP range or single UDP mux port; embedded TURN | LiveKit server + JS SDK: Apache-2.0 |
-| B'. SFU mediasoup (in our Node process / worker) | yes | yes | UDP port range; we write rooms/signalling ourselves | ISC (compatible) |
-| C. TURN (coturn) — complement to A, not an alternative | relay | relay | 3478 udp/tcp, 5349 tls, relay range e.g. 49160–49200/udp | BSD-3 (compatible) |
-| D. Embed external (Jitsi Meet self-host, or hosted Jitsi/Whereby/Daily) | yes | yes | Jitsi self-host = several Java/Prosody services; hosted = none | Jitsi Apache-2.0; hosted = proprietary ToS |
+One media path for every call: **all calls, 1:1 and group, go through LiveKit** (an SFU).
+No P2P path, no separate coturn — LiveKit's embedded TURN covers restrictive networks.
 
-Trade-offs:
-- **A** is smallest and keeps data on the box, but fails behind symmetric NAT/corporate
-  firewalls without TURN, and mesh upload cost grows n-1 per person, so it does not scale to groups.
-  SSE adds ~one POST round trip per ICE batch; acceptable for signalling.
-- **B (LiveKit)** solves groups, simulcast, screen share, and ships its own TURN (TLS/443 and UDP),
-  so no separate coturn. Cost: a Go binary ee must install, a release source (not node/static —
-  a catalog gap), new port/UDP spec fields, JWT room tokens minted by eigenEnterprise.
-- **B' mediasoup** keeps everything in-repo but we own the room logic and native build per arch
-  (`scripts/release.sh arm64`); more code than LiveKit for the same outcome.
-- **C** is required for A to be reliable; one small workload, but credentials must be
-  short-lived (TURN REST shared secret in ee's secret store, never logged).
-- **D hosted** sends company media to a third party — conflicts with single-tenant self-hosting.
-  **D self-host Jitsi** is heavy (4 services) and a separate identity/UI; poor fit for "the website is the company".
+```
+browser ──https──▶ Caddy ──▶ console (os)      /calls, /api/calls/** (tokens, state, webhook)
+browser ──wss────▶ Caddy ──▶ livekit-server    rtc.<console host>  (signalling, :7880 local)
+browser ──udp/tcp──────────▶ livekit-server    7882/udp (media mux), 7881/tcp (ICE/TCP fallback)
+livekit-server ──https webhook──▶ console      /api/calls/livekit (signed, participant joined/left)
+```
 
-## Recommendation
+### 1. `modules/calls` (the module)
+- `manifest.ts` — `CALLS_MODULE_ID = 'calls'`, name **Calls**, system module (self-seeded
+  active like Drive), tools listed below, `permissions: { roles: ['admin', 'agent'] }`.
+- `store.ts` / `db-store.ts` / `memory-store.ts` — tables via `drizzle/NNNN_calls.sql` + journal
+  entry + schema in `src/lib/server/db/`:
+  - `call` (id, room name, `context_kind` `dm|channel|meeting`, `context_id` nullable, title,
+    started_by, state `ringing|active|ended|missed|declined`, started_at, ended_at)
+  - `call_participant` (call_id, user_id, invited_at, joined_at, left_at, response
+    `accepted|declined|none`)
+- `service.ts` — start a call for a context (who may join is decided by the context's owner
+  module through a port: Messages answers "who are the members of this DM/channel"; a
+  `meeting` has an explicit invite list), accept/decline/hang up, end when the last person
+  leaves, ringing timeout → missed. Membership is checked on every action (fail closed).
+- `livekit.ts` — mints room tokens with `livekit-server-sdk` (Apache-2.0): identity = user id,
+  name = display name, grant = `roomJoin` for that one room, TTL ~10 min. Key + secret come from
+  env set by ee from its secret store (`LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL`);
+  any missing → explicit error, the Calls UI says "Calls are not set up on this server".
+  Never logged (`*secret` redaction).
+- `webhook.ts` — `WebhookReceiver` verifies LiveKit's signed webhook; `participant_joined`,
+  `participant_left`, `room_finished` update `call_participant` / `call`. The webhook is the
+  source of truth for "who was really in the call"; client calls only express intent.
+- `hub.ts` — call frames (`call.ringing`, `call.state`) to the people involved. Reuses the
+  console's SSE pattern (`src/lib/messages/resumable-stream.ts`); own stream
+  `GET /api/calls/stream` so it rings on any nucleus page without depending on Messages.
+- `tools.ts` — `calls.list` (read), `calls.start` (rings people → approval-gated),
+  `calls.end`. Agents and the `ee` CLI see the same actions; **agents never join media**.
+- `http.ts` + `src/routes/api/calls/**` — `POST /api/calls` (start), `/[id]/{accept,decline,
+  hangup}`, `GET /[id]/token`, `GET /stream`, `POST /livekit` (webhook; CSRF-exempt in
+  `src/lib/server/csrf.ts` like the SNS callback, signature-checked instead).
 
-Build signalling once in `modules/messages` (call state + offer/answer/ICE over the existing
-SSE hub and POST), transport-agnostic. **Phase 1: P2P 1:1 in DMs + coturn workload.**
-**Phase 2: groups via LiveKit as an ee-managed system workload**, reusing the same call model
-and UI; P2P stays the 1:1 path (or 1:1 also moves to LiveKit if one media path is simpler to own —
-owner decision). No hosted service.
+### 2. Messages integration (through a port, Messages stays call-agnostic)
+- Messages exposes `memberAccess(conversationId)` to Calls via an access port.
+- Calls exposes `CallsPort.start(context)` + a small `<CallButton>` component; Messages puts it in
+  DM and channel headers of `src/routes/(nucleus)/messages/+page.svelte`.
+- When a call ends, Calls posts a system message into the DM/channel through Messages' port
+  ("Call, 4 min" / "Missed call") so history stays in the log.
 
-### Phase 1 — 1:1 calls inside a DM thread
-1. Call model: `message_calls` table (id, conversation_id, started_by, state
-   `ringing|active|ended|missed|declined`, started_at, ended_at) — `drizzle/NNNN_message_calls.sql`
-   + journal entry + schema in `src/lib/server/db/`. A call ends as a system message in the DM
-   ("Call, 4 min" / "Missed call") so history stays in the log.
-2. Signalling: `POST /api/messages/calls` (start), `/calls/[id]/{accept,decline,hangup,signal}`;
-   `signal` relays SDP/ICE to the other member only (membership checked in `service.ts`, same
-   rule as messages). Hub gains `call` and `call-signal` frames; signal frames are ephemeral
-   (NOTIFY payload, not persisted, not in catch-up), call-state frames are persisted.
-3. TURN credentials: `GET /api/messages/calls/[id]/ice` returns STUN/TURN URLs + HMAC credentials
-   (TTL ~10 min) from the coturn shared secret in ee's secret store. Missing secret = explicit error, no STUN-only fallback.
-4. Kernel actions/tools registered in `modules/messages/tools.ts` + `manifest.ts` (start/hang up),
-   so agents and the `ee` CLI see the same actions; agents never join media.
-5. UI: call button (camera icon) in the DM conversation header of `+page.svelte`; new
-   `src/lib/messages/call-panel.svelte` (local/remote video, mute, camera off, hang up) overlaying
-   the conversation; `src/lib/messages/incoming-call-toast.svelte` (accept/decline, ringtone) shown
-   from the nucleus layout so it rings on any page; `src/lib/messages/call.ts` = pure state machine +
-   `RTCPeerConnection` wrapper with injected factory (testable). PWA: service worker push for a call
-   when the tab is closed is a later slice (`src/lib/pwa/sw-core.ts`).
-6. ee: new `coturn` system workload. Needs (a) a `release` source for a non-node binary,
-   (b) spec fields for host ports, e.g. `ports: [{ port, proto: 'udp'|'tcp' }]` validated against an
-   allow-list, (c) `units.ts` unit without DynamicUser port restrictions beyond binding those ports,
-   (d) firewall/README note for the operator. Ports: 3478/udp+tcp, 5349/tcp (TLS, cert from Caddy's
-   store or own), relay 49160–49200/udp. `ee/e2e/box.sh` box gets the same ports.
+### 3. UI
+- `src/routes/(nucleus)/calls/+page.svelte` — recent calls, "New meeting" (pick people → link).
+- `src/routes/(nucleus)/calls/[id]/+page.svelte` — the call: `livekit-client` (Apache-2.0)
+  grid, mute, camera off, screen share, hang up; leaving the page leaves the call.
+- `src/lib/calls/incoming-call-toast.svelte` — mounted in `src/routes/(nucleus)/+layout.svelte`,
+  accept/decline + ringtone. `src/lib/calls/call-state.ts` — pure state machine (testable).
+- Nav entry **Calls** (announce: new nav item). PWA push for a ringing call when the tab is
+  closed is a later slice (`src/lib/pwa/sw-core.ts`).
 
-### Phase 2 — group calls (channels and multi-person DMs)
-LiveKit `livekit-server` as an ee system workload: signal over Caddy at `/rtc` (WebSocket upgrade —
-a new Caddy route shape), media on 7881/tcp + one UDP mux port (7882/udp) or a range; embedded TURN
-replaces coturn if the owner wants one fewer workload. eigenEnterprise mints room JWTs per member
-(`livekit-server-sdk`, Apache-2.0). Call button appears in channel headers; same toast/panel.
+### 4. ee: livekit-server as a system workload
+- **Binary runtime:** the contract gains `runtime: 'binary'` (start argv relative to the
+  release, no build steps) and `units.ts` writes its unit with the same hardening.
+  livekit-server is a single static Go binary; `scripts/release.sh` fetches the pinned version
+  per arch, checks its sha256, packs it as a release tarball.
+- **Host ports:** `workloadSchema` gains `ports: [{ port, proto: 'udp'|'tcp' }]`, allowed for
+  `tier: 'system'` only and only from an allow-list (7881/tcp, 7882/udp, TURN ports if chosen);
+  collisions rejected. Validation + generated unit output are unit-tested.
+- **Signalling host:** a new route role "calls host" (`rtc.<console host>`) → the livekit
+  workload's local port 7880. Caddy's `reverse_proxy` already passes WebSocket upgrades, so this
+  is a new route, not a new handler. `domains.ts` learns the role.
+- **Config:** ee renders `livekit.yaml` (rtc.tcp_port 7881, rtc.udp_port 7882, `use_external_ip`
+  or explicit `node_ip`, webhook URL = the console host's `/api/calls/livekit`, keys from the
+  secret store). ee generates the API key/secret once on install and gives the `os` workload the
+  same values as secrets.
+- **Box:** `ee/e2e/box.sh` + `ee/e2e/Dockerfile.box` publish 7881/tcp and 7882/udp; README note
+  for the operator's firewall.
 
-## Files that change (phase 1)
-- `modules/messages/{service,store,db-store,memory-store,hub,http,tools,manifest}.ts` (+ specs)
-- `src/routes/api/messages/calls/**` (new), `src/routes/api/messages/stream/+server.ts` (new frame types)
-- `src/routes/(nucleus)/messages/+page.svelte` (header button, panel, `events` list),
-  `src/routes/(nucleus)/+layout.svelte` (toast), `src/lib/messages/{call.ts,call-panel.svelte,incoming-call-toast.svelte,view.ts}`
-- `drizzle/NNNN_message_calls.sql`, `drizzle/meta/_journal.json`, `src/lib/server/db/` schema
-- `ee/src/{spec,units,caddy,reconcile}.ts`, `ee/e2e/box.sh`, `ee/e2e/Dockerfile.box`
+## Slices (each its own worktree; S1 and S2 touch disjoint files and can run in parallel)
+
+| Slice | Files | Done when |
+|---|---|---|
+| **S1 ee** | `ee/src/{spec,units,caddy,domains,reconcile,bootstrap}.ts`, `scripts/release.sh`, `ee/e2e/{box.sh,Dockerfile.box}` | box runs livekit-server healthy, `rtc.os.ee.localhost` answers, ports open |
+| **S2 module core** | `modules/calls/**`, `modules/index.ts`, `drizzle/**`, `src/lib/server/db/`, `src/routes/api/calls/**`, `src/lib/server/csrf.ts` | unit tests green; token + webhook proven against `livekit-server --dev` |
+| **S3 UI + Messages** | `src/routes/(nucleus)/calls/**`, `src/lib/calls/**`, `(nucleus)/+layout.svelte`, Messages header + port | component tests green |
+| **S4 proof** | `e2e/calls.e2e.ts`, `ee/e2e/box-journey.mjs` | two-browser e2e passes; box journey with relay-only ICE passes |
 
 ## Test strategy (TDD, tests first)
-- **Unit (vitest):** call state machine (ringing→active→ended, glare when both start, timeout →
-  missed); service membership checks (a non-member cannot signal); hub routes `call-signal` only to
-  the peer and excludes it from catch-up; TURN credential HMAC + expiry; ee spec validation of ports
-  (allow-list, no collisions) and generated unit/Caddy output; migration journal check.
-- **Component (real browser):** header button visible only in DMs; toast accept/decline emits the
-  right calls; call panel controls with fake `MediaStream`.
-- **E2E (Playwright, throwaway harness):** two browser contexts signed in as two people, Chromium
-  `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`, permissions granted; A calls
-  B in a DM → B sees toast → accept → both see a remote `<video>` with `videoWidth > 0` and
-  `RTCPeerConnection.connectionState === 'connected'` → hang up → "Call, n min" in both logs. Plus
-  decline and missed paths. Host-candidate only in the harness (same machine); TURN covered on the box
-  via `ee/e2e/box-journey.mjs` with `iceTransportPolicy: 'relay'` to prove the relay works.
+- **Unit (vitest):** call state machine (ringing → active → ended, both start at once, timeout →
+  missed); membership: a non-member gets no token and no frames; token grant is one room, short
+  TTL, identity = user; webhook with a bad signature is rejected and changes nothing; webhook
+  events drive participant rows; ee `ports` validation (system only, allow-list, collisions),
+  `binary` unit output, calls-host Caddy route; migration journal check.
+- **Component (real browser):** call button in DM and channel headers; toast accept/decline emits
+  the right calls; call page controls with a fake `MediaStream`.
+- **E2E (Playwright, throwaway harness):** the harness additionally starts `livekit-server --dev`
+  (new local test dependency; missing binary → the run fails loud, no skip). Two contexts signed in
+  as two people, Chromium `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`:
+  A calls B in a DM → B's toast → accept → both see a remote `<video>` with `videoWidth > 0` →
+  hang up → "Call, n min" in both DMs. Plus decline, missed, and a three-person channel call.
+- **Box:** `ee/e2e/box-journey.mjs` with `iceTransportPolicy: 'relay'` proves the embedded TURN.
 
 ## Open decisions for the owner
-1. Phase-1 transport: P2P + coturn (recommended) or go straight to LiveKit for 1:1 too (one media path, bigger first step)?
-2. Groups: LiveKit (recommended) vs mediasoup in-process vs not now.
-3. ee opening host UDP ports: accept a `ports` field for system workloads only (recommended), and the relay range size.
-4. TURN on 443/TLS for locked-down networks (needs SNI split in Caddy layer4 or a second IP) — needed for customer zero?
-5. Recording/transcripts of calls (LLM summaries into memory) — out of scope, or a later phase with consent UX?
-6. Ring everywhere (any nucleus page + push notifications) in phase 1, or only while Messages is open?
+1. **1:1 calls also on LiveKit** (this plan) — one media path, no P2P code. Veto → P2P + coturn for 1:1.
+2. **ee opens host ports** for system workloads only, from an allow-list (7881/tcp, 7882/udp).
+3. **TURN on 443/TLS** for locked-down corporate networks (needs a second IP or an SNI split in
+   front of Caddy) — needed for customer zero, or later?
+4. **Recording / transcripts** (LLM summary into Memory) — later phase with consent UX (recommended), or now?
+5. **Ring everywhere** (any nucleus page; push when closed later) — recommended — or only on /calls and Messages?
+6. **Who can start a meeting** outside a DM/channel: every member (recommended) or admins only?

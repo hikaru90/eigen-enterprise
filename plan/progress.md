@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-11 — Video calls re-planned as the Calls module on LiveKit (plan only, no code)
+
+- **What:** `plan/video-calls.md` rewritten. Calls is its own system module (`modules/calls`: call + participant tables, LiveKit room tokens, signed LiveKit webhook as the source of truth for who joined, its own SSE stream so it rings on any page, `calls.*` kernel tools — agents never join media). Messages only gets a call button and "Call, n min" system messages, both through ports. livekit-server runs as an ee system workload.
+- **Decision log (architecture impact):** (1) owner: video calls are a separate module, not part of Messages; (2) owner: media server is LiveKit — supersedes the `5afae92` draft (P2P + coturn first). (3) Proposed, owner can veto: one media path — 1:1 calls also go through LiveKit, no P2P, no coturn (LiveKit's embedded TURN). (4) Proposed: ee gains a `binary` runtime and a host `ports` field for system workloads only (allow-list 7881/tcp, 7882/udp), and a calls host `rtc.<console host>` routed through Caddy.
+- **Next:** owner answers the 6 open decisions in the plan; then S1 (ee) and S2 (module core) in parallel worktrees, S3 (UI + Messages), S4 (two-browser e2e + box relay proof).
+
 ## 2026-11-11 — Production Contribute board, round 1: 12 proposals worked (main, not pushed, not on the box)
 
 Owner: "get the contribute tab items" from os.cerberusblue.com (read over its MCP, `contribute.list status:all`: 12 proposals, all Requested), then "plan here and fix every task as a subagent on low". Orchestrated as 7 worktree workstreams, merged on `contribute-board`. Board statuses on production NOT changed.
