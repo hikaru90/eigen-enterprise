@@ -2,6 +2,16 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-11 — v0.5.1 published on GitHub (Contribute board round 1, dictation, Install app, kernel autocommit opt-in)
+
+Owner: "commit, push, release". Published: https://github.com/hikaru90/eigen-enterprise/releases/tag/v0.5.1 (run 43045254995: amd64 + arm64 + publish green); `latest/download/LATEST` → `eigenenterprise-0.5.1-0a619d03996e`. Carries everything since v0.4.2: `ebc3c0c` Install app, `4b259c3` dictation, the Contribute-board round (`b1b22c0` … `66ed759`), `4f55f82` autocommit opt-in, the Calls plan docs.
+
+- **What broke:** `v0.5.0` (`8fcc403`, tag pushed) failed its release build: `src/routes/api/voice/transcribe/+server.ts` exported `TRANSCRIBE_FAILED_MESSAGE`, which SvelteKit's postbuild analysis rejects (only handlers / `_`-prefixed exports). Nothing was published under v0.5.0; the tag stays on GitHub without a release (not force-moved). Fix `83e94fd` moved the constant to `transcribe/messages.ts`; local `vite build` green; bumped to 0.5.1 (`0a619d0`).
+- **Gate gap:** the pre-push gate (`ci:local`: lint, naming, check, unit) does not run `vite build`, so route-export errors only surface in the release workflow.
+- **Production board:** via its MCP, the 8 integrated proposals were marked Shipped ("Erledigt – live mit dem nächsten Release" + what changed); Email and Brand material set In progress with what's left; video calls and brand-guide upload stay Requested.
+
+**Not done:** os.cerberusblue.com still runs the older release until `ee upgrade` runs on it (owner's go) — the "Shipped" notes are true only after that. The production API key pasted in chat should be rotated.
+
 ## 2026-11-11 — Kernel autocommit can no longer commit the source checkout (main, not pushed, not on the box)
 
 Owner: "Yes, fix it" (the stray `tool brand.picker_choose by …` commits on main, entries below).
