@@ -2,6 +2,18 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-11 — Fix: Contribute's judge runs on the company's AI provider, not the proposer's (main, not released)
+
+Owner: "when a person contributes, the error message comes up that eurouter is not configured. THIS CANT HAPPEN. we should use the normal set ai provider".
+
+- **Cause:** AI-provider credentials are stored per account (`llm_provider_config` / `llm_active_provider` by user id), and the judge called the gateway as the proposer. A member who never set up a provider has no rows → the gateway falls through to the EUrouter env defaults → "EUrouter is not configured".
+- **Fix:** `src/lib/server/llm/company-provider.ts` `onCompanyProvider(fn)` runs gateway calls with `billingUserAsyncLocal` = the owner (the existing override `loadLlmConfig` already honours), so provider config + credentials come from the owner's account; usage/activity stay on the proposer. No owner → `LlmNotConfiguredError` (fail loud, no fallback). `modules/contribute/live.ts` wraps the judge's chat in it.
+- **Gates:** `company-provider.spec.ts` (owner's account inside, caller's outside, no owner → error before the call) + contribute unit tests green; `contribute.e2e.ts` passes (mock gateway via env — it doesn't model a member without their own provider; the unit spec covers the routing).
+
+**Decision:** the company's AI provider = the owner's (the owner sets it in the founding journey; Settings → AI provider). Company-level features any member triggers run on it.
+**Open (same root cause, not changed):** every other member-triggered AI call (assistant chat, capture/memory extraction, …) still resolves the member's own provider and would hit the same error for a member without one. Making the owner's provider the company default for all of them is a gateway-wide change — owner to decide.
+**Not done:** not released (VPS still v0.4.1 without this fix) — needs v0.4.2 + `ee upgrade`.
+
 ## 2026-11-11 — v0.4.1 published on GitHub (Contribute release)
 
 Owner: "Yes, release v0.4.1". Commit `deebce7` (version 0.4.0 → 0.4.1), tag `v0.4.1`. Carries Contribute (`c7f1c69`) — the first release since v0.4.0.

@@ -4,7 +4,8 @@ import { dbContributeStore } from './db-store'
 
 /**
  * Live wiring: the DB store over the app pool (company-level tables, no RLS),
- * the members table for names, the gateway for the judge, the company name
+ * the members table for names, the gateway for the judge (on the company's AI
+ * provider — the owner's — not the proposer's own settings), the company name
  * from the founding journey, and kernel events for the activity feed.
  */
 
@@ -31,9 +32,11 @@ export function contributeDeps(): Promise<ContributeDeps> {
     return {
       store: dbContributeStore(createScopedDrizzle(appSql)),
       directory,
+      // The judge runs on the company's AI provider (the owner's), whoever proposes.
       chat: async (input) => {
         const { llmChatCompletion } = await import('$lib/server/llm/llm-client')
-        return llmChatCompletion(input)
+        const { onCompanyProvider } = await import('$lib/server/llm/company-provider')
+        return onCompanyProvider(() => llmChatCompletion(input))
       },
       companyName: async () => {
         const { foundingCompanyName } = await import('$lib/server/overview/sources')
