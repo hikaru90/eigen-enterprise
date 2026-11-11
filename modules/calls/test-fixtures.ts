@@ -1,4 +1,4 @@
-import type { CallContext, CallContextPort, ConversationKind } from './context-port'
+import type { CallContext, CallContextPort, CallEnded, CallLogPort, ConversationKind } from './context-port'
 import { livekitConfig, type RoomControl } from './livekit'
 import { MemoryCallsDirectory, MemoryCallsStore } from './memory-store'
 import { createCallsService, type CallsDeps } from './service'
@@ -39,6 +39,12 @@ export function fixture(opts: { env?: Record<string, string | undefined> } = {})
   contexts.conversations.set('dm-ann-ben', { kind: 'dm', title: 'Ann Example, Ben Example', memberIds: ['ann', 'ben'] })
   contexts.conversations.set('ch-general', { kind: 'channel', title: '#general', memberIds: ['ann', 'ben', 'cat'] })
   const closed: string[] = []
+  const logged: CallEnded[] = []
+  const log: CallLogPort = {
+    async callEnded(ended) {
+      logged.push(ended)
+    },
+  }
   const rooms: RoomControl = {
     async closeRoom(room) {
       closed.push(room)
@@ -54,6 +60,7 @@ export function fixture(opts: { env?: Record<string, string | undefined> } = {})
   const deps: CallsDeps = {
     store,
     contexts,
+    log,
     directory,
     livekit: () => livekitConfig(env),
     rooms,
@@ -62,5 +69,5 @@ export function fixture(opts: { env?: Record<string, string | undefined> } = {})
   }
   const service = createCallsService(deps)
   const user = (userId: string) => ({ kind: 'user' as const, userId })
-  return { store, directory, contexts, closed, clock, deps, service, user }
+  return { store, directory, contexts, closed, logged, clock, deps, service, user }
 }

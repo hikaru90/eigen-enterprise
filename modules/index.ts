@@ -1,4 +1,4 @@
-import type { CallContextPort } from './calls/context-port'
+import type { CallContextPort, CallLogPort } from './calls/context-port'
 import type { CallsHub } from './calls/hub'
 import type { CallsService } from './calls/service'
 import type { MessagesDeps } from './messages/service'
@@ -397,16 +397,36 @@ export function callContextsFromMessages(load: () => Promise<MessagesDeps>): Cal
   }
 }
 
+/**
+ * CallLogPort into Messages: a DM/channel call that is over becomes one call
+ * line in that conversation ("Call, 4 min" / "Missed call"), structured data
+ * on the message, once per call (a repeat is a no-op on the Messages side).
+ */
+export function callLogToMessages(load: () => Promise<MessagesDeps>): CallLogPort {
+  return {
+    async callEnded(ended) {
+      const svc = await import('./messages/service')
+      await svc.postCallLine(await load(), {
+        conversationId: ended.contextId,
+        authorId: ended.startedBy,
+        call: { callId: ended.callId, outcome: ended.outcome, durationSeconds: ended.durationSeconds },
+      })
+    },
+  }
+}
+
 const liveMessagesDeps = async (): Promise<MessagesDeps> => (await import('./messages/live')).messagesDeps()
+
+const liveCallsPorts = () => ({ contexts: callContextsFromMessages(liveMessagesDeps), log: callLogToMessages(liveMessagesDeps) })
 
 /** This process's Calls service, its conversations answered by the live Messages. */
 export async function liveCallsService(): Promise<CallsService> {
   const { callsService } = await import('./calls/live')
-  return callsService(callContextsFromMessages(liveMessagesDeps))
+  return callsService(liveCallsPorts())
 }
 
 /** This process's Calls hub (LISTEN ee_calls). */
 export async function liveCallsHub(): Promise<CallsHub> {
   const { callsHub } = await import('./calls/live')
-  return callsHub(callContextsFromMessages(liveMessagesDeps))
+  return callsHub(liveCallsPorts())
 }

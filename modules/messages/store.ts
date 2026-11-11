@@ -18,6 +18,17 @@ export type Conversation = {
   createdAt: Date
 }
 
+/** How a call in this conversation ended (posted by Calls through the composition root). */
+export const CALL_OUTCOMES = ['ended', 'missed', 'declined'] as const
+export type CallOutcome = (typeof CALL_OUTCOMES)[number]
+
+/**
+ * A call line's structured data (plan/video-calls.md §2): rendered as
+ * "Call, 4 min" / "Missed call" — never a free-text body parsed later.
+ * `durationSeconds` is set exactly when the call was answered (`ended`).
+ */
+export type CallSummary = { callId: string; outcome: CallOutcome; durationSeconds: number | null }
+
 export type Message = {
   id: string
   conversationId: string
@@ -27,6 +38,8 @@ export type Message = {
   createdAt: Date
   editedAt: Date | null
   deletedAt: Date | null
+  /** A call line (empty body); null for every ordinary message. */
+  call: CallSummary | null
 }
 
 export type MessageEventKind =
@@ -89,6 +102,8 @@ export type MessagesStore = {
   setViewing(userId: string, conversationId: string | null, at: Date): Promise<void>
   viewersSince(conversationId: string, since: Date): Promise<string[]>
   insertMessage(m: Message): Promise<void>
+  /** Inserts a call line unless that call already has one; true = inserted. */
+  insertCallLine(m: Message & { call: CallSummary }): Promise<boolean>
   getMessage(id: string): Promise<Message | null>
   updateMessage(id: string, patch: Partial<Pick<Message, 'body' | 'editedAt' | 'deletedAt'>>): Promise<void>
   /** Newest-first page of TOP-LEVEL messages strictly older than `before` (by createdAt, then id). */

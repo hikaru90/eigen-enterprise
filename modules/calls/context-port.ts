@@ -25,3 +25,25 @@ export type CallContextPort = {
   /** Whether the person may be in this conversation's call right now. */
   isMember(userId: string, kind: ConversationKind, contextId: string): Promise<boolean>
 }
+
+/** How a DM/channel call ended, for the conversation's history. */
+export type CallEnded = {
+  callId: string
+  contextKind: ConversationKind
+  contextId: string
+  /** Who started the call (the history line's author). */
+  startedBy: string
+  outcome: 'ended' | 'missed' | 'declined'
+  /** From the first answer to the end, whole seconds; set exactly when answered (`ended`). */
+  durationSeconds: number | null
+  endedAt: Date
+}
+
+/**
+ * Calls tells the conversation's owner module that a call there is over, once
+ * per call (plan/video-calls.md §2: "Call, 4 min" / "Missed call" in the
+ * thread). Wired in the composition root to Messages; meetings are not told.
+ */
+export type CallLogPort = {
+  callEnded(ended: CallEnded): Promise<void>
+}

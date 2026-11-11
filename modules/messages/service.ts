@@ -1,5 +1,5 @@
 import type { AccessLevel, AccessPort, GrantInput } from './access-port'
-import type { Attachment, Conversation, Directory, Message, MessagesStore, Person } from './store'
+import { CALL_OUTCOMES, type Attachment, type CallSummary, type Conversation, type Directory, type Message, type MessagesStore, type Person } from './store'
 import { randomUUID } from 'node:crypto'
 
 /**
@@ -85,6 +85,8 @@ export type MessageDto = {
   replierIds: string[]
   reactions: ReactionDto[]
   attachments: AttachmentDto[]
+  /** A call line ("Call, 4 min" / "Missed call"); null for ordinary messages and deleted ones. */
+  call: CallSummary | null
 }
 
 export type ConversationSummary = {
@@ -179,6 +181,7 @@ export async function messageDtos(d: MessagesDeps, ms: Message[], people?: Map<s
         : files
             .filter((a) => a.messageId === m.id)
             .map((a) => ({ fileId: a.fileId, name: a.name, mime: a.mime, size: a.size, image: isInlineImage(a.mime) })),
+      call: deleted ? null : m.call,
     }
   })
 }
@@ -353,6 +356,7 @@ export async function postMessage(
     createdAt: now(d),
     editedAt: null,
     deletedAt: null,
+    call: null,
   }
   await d.store.insertMessage(m)
   await d.store.insertAttachments(
@@ -534,6 +538,7 @@ async function ownMessage(d: MessagesDeps, actorId: string, messageId: string): 
 
 export async function editMessage(d: MessagesDeps, actorId: string, messageId: string, rawBody: string) {
   const m = await ownMessage(d, actorId, messageId)
+  if (m.call) throw new MessagesError('invalid', 'a call line cannot be edited')
   const hasFiles = (await d.store.attachmentsFor([m.id])).length > 0
   const body = hasFiles && rawBody.trim() === '' ? '' : normalizeBody(rawBody)
   await d.store.updateMessage(m.id, { body, editedAt: now(d) })
@@ -572,4 +577,47 @@ export async function deleteMessage(d: MessagesDeps, actorId: string, messageId:
     })
   }
   await d.store.appendEvent({ kind: 'message.deleted', conversationId: m.conversationId, messageId: m.id, userId: null })
+}
+
+export type CallLineInput = {
+  conversationId: string
+  /** Who started the call (the line shows them as its author). */
+  authorId: string
+  call: CallSummary
+}
+
+/**
+ * A call line (plan/video-calls.md §2): Calls tells the composition root a
+ * DM/channel call ended; this posts one top-level message carrying the
+ * structured outcome (empty body). Trusted caller, so no access check — the
+ * call itself was only possible for the conversation's members. Once per
+ * call: a second post returns null and changes nothing.
+ */
+export async function postCallLine(d: MessagesDeps, input: CallLineInput): Promise<MessageDto | null> {
+  const { callId, outcome, durationSeconds } = input.call
+  if (!isId(callId)) throw new MessagesError('invalid', 'a call line needs the call id')
+  if (!(CALL_OUTCOMES as readonly string[]).includes(outcome)) throw new MessagesError('invalid', `unknown call outcome: ${String(outcome)}`)
+  if (outcome === 'ended') {
+    if (durationSeconds === null || !Number.isInteger(durationSeconds) || durationSeconds < 0) {
+      throw new MessagesError('invalid', 'an answered call line needs its duration in whole seconds')
+    }
+  } else if (durationSeconds !== null) {
+    throw new MessagesError('invalid', `a ${outcome} call has no duration`)
+  }
+  const c = isId(input.conversationId) ? await d.store.getConversation(input.conversationId) : null
+  if (!c) throw new MessagesError('not_found', 'conversation not found')
+  const m: Message & { call: CallSummary } = {
+    id: newId(d),
+    conversationId: c.id,
+    authorId: input.authorId,
+    body: '',
+    parentId: null,
+    createdAt: now(d),
+    editedAt: null,
+    deletedAt: null,
+    call: { callId, outcome, durationSeconds },
+  }
+  if (!(await d.store.insertCallLine(m))) return null
+  await d.store.appendEvent({ kind: 'message.created', conversationId: c.id, messageId: m.id, userId: null })
+  return messageDto(d, m)
 }

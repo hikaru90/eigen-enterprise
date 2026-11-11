@@ -94,14 +94,36 @@ describe.skipIf(!url)('message_events × interleaved transactions (Postgres)', (
   it('thread stats: live reply count, last reply and the latest distinct repliers (P-5 summary avatars)', async () => {
     const store = dbMessagesStore(db)
     const at = (min: number) => new Date(Date.UTC(2026, 10, 4, 9, min))
-    const parent = { id: randomUUID(), conversationId, authorId: 'olga', body: 'p', parentId: null, createdAt: at(0), editedAt: null, deletedAt: null }
+    const parent = { id: randomUUID(), conversationId, authorId: 'olga', body: 'p', parentId: null, createdAt: at(0), editedAt: null, deletedAt: null, call: null }
     await store.insertMessage(parent)
     const replies: Array<[string, number, boolean]> = [['bea', 1, false], ['carl', 2, false], ['bea', 3, false], ['dan', 4, false], ['eve', 5, true]]
     for (const [authorId, min, deleted] of replies) {
-      await store.insertMessage({ id: randomUUID(), conversationId, authorId, body: 'r', parentId: parent.id, createdAt: at(min), editedAt: null, deletedAt: deleted ? at(6) : null })
+      await store.insertMessage({ id: randomUUID(), conversationId, authorId, body: 'r', parentId: parent.id, createdAt: at(min), editedAt: null, deletedAt: deleted ? at(6) : null, call: null })
     }
     const st = (await store.threadStats([parent.id])).get(parent.id)
     expect(st).toEqual({ replyCount: 4, lastReplyAt: at(4), replierIds: ['dan', 'bea', 'carl'] })
     expect((await store.threadStats([randomUUID()])).size).toBe(0)
+  })
+
+  it('call lines (0123): stored with their call data, one per call; a malformed one is refused by the database', async () => {
+    const store = dbMessagesStore(db)
+    const callId = randomUUID()
+    const line = (call: unknown) => ({
+      id: randomUUID(),
+      conversationId,
+      authorId: 'bea',
+      body: '',
+      parentId: null,
+      createdAt: new Date(),
+      editedAt: null,
+      deletedAt: null,
+      call: call as { callId: string; outcome: 'ended'; durationSeconds: number },
+    })
+    const first = line({ callId, outcome: 'ended', durationSeconds: 245 })
+    expect(await store.insertCallLine(first)).toBe(true)
+    expect(await store.getMessage(first.id)).toMatchObject({ body: '', call: { callId, outcome: 'ended', durationSeconds: 245 } })
+    expect(await store.insertCallLine(line({ callId, outcome: 'ended', durationSeconds: 245 }))).toBe(false)
+    await expect(store.insertCallLine(line({ callId: randomUUID(), outcome: 'missed', durationSeconds: 10 }))).rejects.toThrow()
+    await expect(store.insertCallLine(line({ callId: randomUUID(), outcome: 'hung', durationSeconds: null }))).rejects.toThrow()
   })
 })
