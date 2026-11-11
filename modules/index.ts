@@ -1,3 +1,7 @@
+import type { CallContextPort } from './calls/context-port'
+import type { CallsHub } from './calls/hub'
+import type { CallsService } from './calls/service'
+import type { MessagesDeps } from './messages/service'
 import {
   ModeAwareApprovalPolicy,
   type ApprovalModeStore,
@@ -21,6 +25,8 @@ import { registerModuleTools, type WiredKernel } from '$lib/kernel/wiring'
 import type { AppDatabase } from '$lib/server/db/context'
 import { BRAND_MODULE_ID, brandManifest } from './brand/manifest'
 import { createBrandTools } from './brand/tools'
+import { CALLS_MODULE_ID, callsManifest } from './calls/manifest'
+import { createCallsTools } from './calls/tools'
 import { DbAllowlistStore } from './chat-gateway/db-stores'
 import { createChatGateway, type ChatGatewayBoot } from './chat-gateway/index'
 import { telegramClientFromEnv } from './chat-gateway/telegram'
@@ -77,6 +83,7 @@ export const moduleManifests = [
   messagesManifest,
   driveManifest,
   contributeManifest,
+  callsManifest,
 ] as const
 
 /**
@@ -100,6 +107,8 @@ export const SYSTEM_MODULE_IDS = [
   DRIVE_MODULE_ID,
   // Contribute: everyone proposes improvements from the top bar; the agent picks them up.
   CONTRIBUTE_MODULE_ID,
+  // Calls (plan/video-calls.md): video calls ring on any nucleus page; part of the OS.
+  CALLS_MODULE_ID,
 ] as const
 
 /** Tools that always require an approval decision before first execution. */
@@ -144,6 +153,8 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   'members.group_delete',
   // Drive: an agent's write replaces a company file's text (kept as a revision).
   'drive.write_text',
+  // Calls: starting a call rings people (internal) — an agent's ring waits on the approval mode.
+  'calls.start',
 ])
 
 export type BootstrapKernelOptions = {
@@ -222,6 +233,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createMessagesTools(),
     ...createDriveTools(),
     ...createContributeTools(),
+    ...createCallsTools({ service: liveCallsService }),
   ])
 
   return {
@@ -353,3 +365,48 @@ export async function bootstrapRecap(
   return recapBoot
 }
 // ─── END AGENT-C ADDITIVE BLOCK ──────────────────────────────────────────────
+
+// ─── Calls ↔ Messages (plan/video-calls.md §2) ───────────────────────────────
+// Who may be in a DM/channel call is Messages' answer. Modules never import
+// each other, so the adapter lives here in the composition root: Calls codes
+// against its CallContextPort, Messages stays call-agnostic.
+
+/** CallContextPort over Messages' own access rules (a DM's people; a channel's readers). */
+export function callContextsFromMessages(load: () => Promise<MessagesDeps>): CallContextPort {
+  const conversation = async (kind: 'dm' | 'channel', id: string) => {
+    const svc = await import('./messages/service')
+    if (!svc.isId(id)) return null
+    const d = await load()
+    const c = await d.store.getConversation(id)
+    return c && c.kind === kind ? { d, svc, c } : null
+  }
+  return {
+    async open(actorId, kind, id) {
+      const found = await conversation(kind, id)
+      // Starting a call is like posting: archived channels and read-only members cannot.
+      if (!found || !(await found.svc.canUse(found.d, actorId, found.c, 'edit'))) return null
+      const members = await found.svc.conversationMembers(found.d, actorId, found.c.id)
+      const title =
+        found.c.kind === 'channel' ? `#${found.c.name}` : members.map((p) => p.name.trim() || p.email).join(', ')
+      return { title, memberIds: members.map((p) => p.id) }
+    },
+    async isMember(userId, kind, id) {
+      const found = await conversation(kind, id)
+      return !!found && (await found.svc.canUse(found.d, userId, found.c, 'view'))
+    },
+  }
+}
+
+const liveMessagesDeps = async (): Promise<MessagesDeps> => (await import('./messages/live')).messagesDeps()
+
+/** This process's Calls service, its conversations answered by the live Messages. */
+export async function liveCallsService(): Promise<CallsService> {
+  const { callsService } = await import('./calls/live')
+  return callsService(callContextsFromMessages(liveMessagesDeps))
+}
+
+/** This process's Calls hub (LISTEN ee_calls). */
+export async function liveCallsHub(): Promise<CallsHub> {
+  const { callsHub } = await import('./calls/live')
+  return callsHub(callContextsFromMessages(liveMessagesDeps))
+}

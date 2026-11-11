@@ -15,8 +15,11 @@
  *   providers POST "List-Unsubscribe=One-Click" (urlencoded, no Origin); the
  *   unguessable per-contact token is the authorisation, and it can only
  *   unsubscribe.
+ * - /api/calls/livekit — the company's livekit-server posts its webhook (no
+ *   Origin, no session); the JWT over the body's sha256, signed with the
+ *   LiveKit API secret, is verified before anything is read (modules/calls/webhook.ts).
  */
-export const CSRF_EXEMPT_PATHS: readonly string[] = ['/api/mail/ses-events', '/api/mail/unsubscribe']
+export const CSRF_EXEMPT_PATHS: readonly string[] = ['/api/mail/ses-events', '/api/mail/unsubscribe', '/api/calls/livekit']
 
 const FORM_TYPES = new Set(['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain', 'application/x-sveltekit-formdata'])
 const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])

@@ -36,8 +36,11 @@ import {
   bootstrapChatGateway,
   bootstrapKernel,
   buildKernel,
+  callContextsFromMessages,
   moduleManifests,
 } from './index'
+import { createChannel, openDm } from './messages/service'
+import { fixture as messagesFixture } from './messages/test-fixtures'
 import { bootstrapOrchestrator } from './orchestrator/bootstrap'
 import { OrchestratorBrain } from './orchestrator/brain'
 
@@ -92,6 +95,7 @@ describe('buildKernel wires the owner-chosen approval mode', () => {
     expect(declared).toEqual({
       'brand.set_activate': 'public',
       'brand.visual_set_activate': 'public',
+      'calls.start': 'internal',
       'drive.write_text': 'internal',
       'email.contact_add': 'internal',
       'email.domain_add': 'internal',
@@ -149,6 +153,7 @@ describe('moduleManifests', () => {
       'messages',
       'drive',
       'contribute',
+      'calls',
     ])
   })
 })
@@ -167,6 +172,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'messages',
       'drive',
       'contribute',
+      'calls',
     ])
     const toolNames = kernel.registry.list().map((t) => t.name)
     expect(toolNames).toContain('memory.retrieve_thoughts')
@@ -191,6 +197,9 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect(toolNames).toContain('drive.write_text')
     expect(toolNames).toContain('contribute.list')
     expect(toolNames).toContain('contribute.update')
+    expect(toolNames).toContain('calls.list')
+    expect(toolNames).toContain('calls.start')
+    expect(toolNames).toContain('calls.end')
     expect(toolNames.length).toBe(
       moduleManifests.reduce((sum, m) => sum + m.tools.length, 0),
     )
@@ -232,6 +241,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect([...APPROVAL_REQUIRED_TOOLS].sort()).toEqual([
       'brand.set_activate',
       'brand.visual_set_activate',
+      'calls.start',
       'drive.write_text',
       'email.contact_add',
       'email.domain_add',
@@ -419,5 +429,39 @@ describe('bootstrapChatGateway (composition root — gateway boot stage)', () =>
     expect(offered.map((t) => t.name)).not.toContain('chat-gateway.allowlist_add')
 
     await boot.loop!.stop()
+  })
+})
+
+describe('Calls and Messages: who may be in a DM/channel call is the Messages answer', () => {
+  it('a DM: its people; a stranger gets nothing (fail closed)', async () => {
+    const m = messagesFixture()
+    const port = callContextsFromMessages(async () => m.deps)
+    const dm = await openDm(m.deps, 'bea', ['carl'])
+    expect(await port.open('bea', 'dm', dm.id)).toEqual({ title: 'Bea Member, Carl Member', memberIds: ['bea', 'carl'] })
+    expect(await port.open('owner', 'dm', dm.id)).toBeNull() // owners never see others' DMs
+    expect(await port.isMember('carl', 'dm', dm.id)).toBe(true)
+    expect(await port.isMember('owner', 'dm', dm.id)).toBe(false)
+    expect(await port.open('bea', 'channel', dm.id)).toBeNull() // the kind must match
+    expect(await port.open('bea', 'dm', 'not-a-uuid')).toBeNull()
+  })
+
+  it('a private channel: its readers; outsiders get nothing', async () => {
+    const m = messagesFixture()
+    const port = callContextsFromMessages(async () => m.deps)
+    const ch = await createChannel(m.deps, 'owner', { name: 'leads', private: true, userIds: ['carl'] })
+    const ctx = await port.open('carl', 'channel', ch.id)
+    expect(ctx?.title).toBe('#leads')
+    expect(ctx?.memberIds.sort()).toEqual(['carl', 'owner'])
+    expect(await port.open('bea', 'channel', ch.id)).toBeNull()
+    expect(await port.isMember('bea', 'channel', ch.id)).toBe(false)
+  })
+
+  it('calls.start by the agent halts at the approval gate (it rings people)', async () => {
+    const { kernel, activations } = makeInMemoryKernel()
+    await activations.set('calls', true)
+    const agent: ToolContext = { principal: { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] }, requestId: 'req-call' }
+    await expect(
+      kernel.registry.execute('calls.start', { context_kind: 'meeting', user_ids: ['bea'] }, agent),
+    ).rejects.toMatchObject({ code: 'approval_required' })
   })
 })
