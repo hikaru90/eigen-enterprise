@@ -8,9 +8,7 @@ import { transcribeAudio } from '$lib/server/llm/stt-client'
 import { judgeTranscript } from '$lib/server/llm/stt-judge'
 import { loadWritingSamples } from '$lib/server/llm/stt-writing-samples'
 import { readAudioUpload } from '../../capture/audio-upload'
-
-/** What the client is told when the provider failed all its attempts; the cause stays in the log. */
-export const TRANSCRIBE_FAILED_MESSAGE = 'Transcription failed'
+import { TRANSCRIBE_FAILED_MESSAGE } from './messages'
 
 /**
  * Transcribes one voice message (ported from eigen's voice messages): the whole clip

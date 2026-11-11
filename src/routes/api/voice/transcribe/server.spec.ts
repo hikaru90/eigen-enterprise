@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { LlmNotConfiguredError } from '$lib/server/llm/errors'
-import { POST, TRANSCRIBE_FAILED_MESSAGE } from './+server'
+import { POST } from './+server'
+import { TRANSCRIBE_FAILED_MESSAGE } from './messages'
 
 const m = vi.hoisted(() => ({
   transcribeAudio: vi.fn(),
