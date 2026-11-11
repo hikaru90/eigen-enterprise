@@ -32,9 +32,7 @@
     <div class="cards">
       <article class="card">
         <h2>Feature card</h2>
-        <p>
-          Body copy set in the candidate's sans at step 0. Muted text below shows hierarchy.
-        </p>
+        <p>Body copy set in the candidate's sans at step 0. Muted text below shows hierarchy.</p>
         <p class="muted">Muted supporting line.</p>
       </article>
       <article class="card">

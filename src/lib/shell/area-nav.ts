@@ -30,8 +30,10 @@ export const WEBSITE_TABS: readonly AreaTab[] = [
 ]
 
 export const BRAND_TABS: readonly AreaTab[] = [
-  { id: 'style', label: 'Style', href: '/brand' },
-  { id: 'system', label: 'Design system', href: '/brand/system' },
+  // The design system view (/brand/system) belongs to Style: its own tab only
+  // sent you back to Style while no style was chosen (Contribute polish).
+  { id: 'style', label: 'Style', href: '/brand', match: ['/brand/system'] },
+  { id: 'material', label: 'Material', href: '/brand/material' },
   { id: 'extract', label: 'Extract', href: '/brand/extract' },
 ]
 
