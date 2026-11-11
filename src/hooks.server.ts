@@ -1,5 +1,6 @@
 import type { AppUser } from './app.d.ts'
-import type { Handle, HandleServerError } from '@sveltejs/kit'
+import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit'
+import { reportSpeechModelsAtStartup } from '$lib/server/llm/speech-models'
 import { sequence } from '@sveltejs/kit/hooks'
 import { svelteKitHandler } from 'better-auth/svelte-kit'
 import { building, dev } from '$app/environment'
@@ -216,6 +217,11 @@ const handlePostHogProxy: Handle = async ({ event, resolve }) => {
   }
 
   return resolve(event)
+}
+
+/** Server start: check the speech models still have OpenRouter endpoints (logs, never blocks boot). */
+export const init: ServerInit = () => {
+  void reportSpeechModelsAtStartup()
 }
 
 export const handle: Handle = sequence(

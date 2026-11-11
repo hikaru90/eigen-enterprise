@@ -56,6 +56,7 @@ export default defineConfig({
       '$app/forms': path.resolve(root, 'src/lib/vitest-stubs/app-forms.ts'),
       '$app/navigation': path.resolve(root, 'src/lib/vitest-stubs/app-navigation.ts'),
       '$app/environment': path.resolve(root, 'src/lib/vitest-stubs/app-environment.ts'),
+      '$app/state': path.resolve(root, 'src/lib/vitest-stubs/app-state.svelte.ts'),
       // PWA plugin is not loaded in this lean browser config.
     },
   },
@@ -73,6 +74,7 @@ export default defineConfig({
     // (in-spec vi.mock) before joining this job.
     include: [
       'src/lib/components/smoke.svelte.spec.ts',
+      'src/lib/components/settings/speech-status.svelte.spec.ts',
       'src/routes/(nucleus)/brand/material/flyer-preview.svelte.spec.ts',
       'src/lib/components/capture-onboarding-overlay.svelte.spec.ts',
       'src/lib/components/provider-onboarding.svelte.spec.ts',

@@ -9,7 +9,8 @@ export const TTS_VOICE_DEFAULT = 'alloy'
 
 const TTS_MAX_TEXT_CHARS = 4000
 
-function ttsModelId(): string {
+/** The model speech synthesis calls (the env override, else the default). */
+export function ttsModelId(): string {
   const override = env.LLM_MODEL_TTS?.trim()
   if (!override) return TTS_MODEL_OPENROUTER_DEFAULT
   return override

@@ -1,3 +1,4 @@
+import type { SpeechReadiness } from '$lib/voice/dictation-readiness'
 /**
  * The app shell's navigation (phase-cohesion rule 1, phase-workspace W-7,
  * polish P-1/P-2): one fixed order — Messages, Calls, Website, Email, Brand,
@@ -87,6 +88,8 @@ export type ShellData = {
   /** From the founding journey; null until the company has been named. */
   companyName: string | null
   nav: ShellNav
+  /** Whether dictation (speech to text, always on OpenRouter) can work, and what is missing. */
+  dictation: SpeechReadiness
 }
 
 /**

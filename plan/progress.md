@@ -2,6 +2,17 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-11 — Speech needs OpenRouter, said up front; speech models checked for live endpoints (main, not pushed, not on the box)
+
+Owner: "we need endpoints for it, and maybe we should make it mandatory that the user uses open router … at least if they want to use the speech for text" → "Yes, build both".
+
+- **Requirement stated:** speech already runs only on OpenRouter (`llmCreateTranscription`: the billing user's own OpenRouter key under BYOK, else the platform key). `speechToTextReadiness()` (`src/lib/server/llm/speech-readiness.ts`) asks it the way `/api/voice/transcribe` runs it — on the company provider, through the same lookup (now exported: `sttCredentialSource`, `loadOpenRouterSttConfig`) — and answers `ready`, or what is missing: `openrouter_key` (BYOK, owner has none) / `platform_key` (platform credits, server has none). Codes, not error-message parsing. The shell carries it (`ShellData.dictation`); `voice-dictation.svelte` reads it via `$app/state` and disables the mic with the reason as its title, before any recording — every box (Messages composer/edit, Contribute composer/board note) at once. Only "not configured" counts as not ready; other failures surface. OpenRouter stays required for speech only — chat/agent/judge keep the company's provider.
+- **Endpoints checked:** `checkSpeechModelEndpoints()` (`speech-models.ts`) asks OpenRouter's public `GET <OPENROUTER_BASE_URL>/models/<id>/endpoints` (no key, nothing about the company sent) for the dictation model (`STT_MODEL`) and the voice model (`ttsModelId()`, now exported); 5 s timeout, 10 min cache (failures not cached); a failed lookup is reported as such, never as fine; no `OPENROUTER_BASE_URL` → says so. **Startup:** `hooks.server.ts` `init` runs `reportSpeechModelsAtStartup()` (not awaited, never blocks boot) → `console.error('[speech] … has no endpoints on OpenRouter — every call will fail')`. **Settings → AI provider** gets a "Speech" section (`src/lib/components/settings/speech-status.svelte`): dictation Ready / what's missing, and each model's providers; a model with none or a failed check is a `role="alert"` row.
+- **Tests (written first, each failed first):** `speech-readiness.spec.ts` (6), `speech-models.spec.ts` (7), `layout.server.spec.ts` (+1), settings `page.server.spec.ts` (+1), `voice-dictation.svelte.spec.ts` (+3), `speech-status.svelte.spec.ts` (4, registered). New `$app/state` stub for component tests (`src/lib/vitest-stubs/app-state.svelte.ts`).
+- **Gates:** typecheck 0 errors; lint 0 errors; unit 5448 passed; components 181/182 (the one failure is the pre-existing `app-detail-settings.svelte.spec.ts`); `vite build` green.
+
+**Known:** the voice model (`qwen/qwen3-tts-flash-2026-02-10`) still has 0 endpoints — the new check reports it at startup and in settings until the TTS fix lands (separate task card). A disabled button's tooltip doesn't show on touch devices; the settings page carries the same sentence.
+
 ## 2026-11-11 — Fix: dictation always failed with "Couldn't transcribe the recording" (main, not pushed, not on the box)
 
 Owner: "update the speech to text from ../eigen to this repo. it was buggy … currently i get Couldn't transcribe the recording".

@@ -1112,10 +1112,18 @@ function sttTranscriptPreview(body: unknown): string {
  * — Platform credits: Eigen service account (`SERVICE_API_KEY_OPENROUTER`).
  * — BYOK: user DB credentials first, then deployment `OPENROUTER_*` env fallback (same as chat).
  */
-async function loadOpenRouterSttConfig(userId: string): Promise<ResolvedLlmConfig> {
-  const billingUserId = resolveBillingUserId(userId)
-  if (await isByokBilling(billingUserId)) {
-    return loadLlmProviderConfig(billingUserId, 'openrouter')
+/**
+ * Where speech-to-text's credentials come from. Audio always goes to OpenRouter, whatever chat
+ * provider the company picked: the billing user's own OpenRouter key (BYOK), or the platform's.
+ */
+export async function sttCredentialSource(userId: string): Promise<'byok' | 'platform'> {
+  return (await isByokBilling(resolveBillingUserId(userId))) ? 'byok' : 'platform'
+}
+
+/** The OpenRouter config a transcription uses; throws LlmNotConfiguredError when it is missing. */
+export async function loadOpenRouterSttConfig(userId: string): Promise<ResolvedLlmConfig> {
+  if ((await sttCredentialSource(userId)) === 'byok') {
+    return loadLlmProviderConfig(resolveBillingUserId(userId), 'openrouter')
   }
   return loadPlatformOpenRouterSttConfig()
 }

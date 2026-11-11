@@ -27,6 +27,11 @@ vi.mock('$lib/server/db', () => ({
   }),
 }))
 
+const { readiness } = vi.hoisted(() => ({
+  readiness: vi.fn(async (_userId: string) => ({ ready: false, missing: 'openrouter_key' }) as const),
+}))
+vi.mock('$lib/server/llm/speech-readiness', () => ({ speechToTextReadiness: readiness }))
+
 import { load } from './+layout.server'
 
 async function kernel(active: string[]) {
@@ -70,5 +75,12 @@ describe('(nucleus) layout load', () => {
     journeyRows.splice(0, journeyRows.length)
     const data = (await load(event({ id: 'owner' }))) as { shell: import('$lib/shell/nav').ShellData }
     expect(data.shell.companyName).toBeNull()
+  })
+
+  it('tells every text box whether dictation can work, and what is missing when not', async () => {
+    kernelHolder.kernel = await kernel([])
+    const data = (await load(event({ id: 'member-1' }))) as { shell: import('$lib/shell/nav').ShellData }
+    expect(readiness).toHaveBeenCalledWith('member-1')
+    expect(data.shell.dictation).toEqual({ ready: false, missing: 'openrouter_key' })
   })
 })

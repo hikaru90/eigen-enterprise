@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
+import { page as appPage } from '$app/state'
 import { FakeMediaRecorder, installVoiceDoubles } from '$lib/test/voice-doubles'
 import MessageComposer from '$lib/messages/message-composer.svelte'
 import MessageEdit from '$lib/messages/message-edit.svelte'
 import ContributeComposer from '$lib/components/contribute/contribute-composer.svelte'
+import { DICTATION_MISSING_MESSAGE } from './dictation-readiness'
 import { VOICE_TRANSCRIBE_URL } from './transcribe-voice-clip'
 import { VOICE_FAILURE_TEXT } from './voice-failure-message'
 import VoiceDictation from './voice-dictation.svelte'
@@ -24,6 +26,31 @@ describe('voice-dictation.svelte', () => {
   afterEach(() => {
     doubles.restore()
     vi.unstubAllGlobals()
+    appPage.data = {}
+  })
+
+  it('when dictation cannot work, the mic says what is missing instead of failing after a recording', async () => {
+    appPage.data = { shell: { dictation: { ready: false, missing: 'openrouter_key' } } }
+    render(VoiceDictation, { ontranscript: vi.fn() })
+    const mic = page.getByTestId('voice-mic')
+    await expect.element(mic).toBeDisabled()
+    await expect.element(mic).toHaveAttribute('title', DICTATION_MISSING_MESSAGE.openrouter_key)
+    expect(doubles.getUserMedia).not.toHaveBeenCalled()
+  })
+
+  it('names the server’s missing key on platform credits', async () => {
+    appPage.data = { shell: { dictation: { ready: false, missing: 'platform_key' } } }
+    render(VoiceDictation, { ontranscript: vi.fn() })
+    await expect
+      .element(page.getByTestId('voice-mic'))
+      .toHaveAttribute('title', DICTATION_MISSING_MESSAGE.platform_key)
+  })
+
+  it('a ready company gets the normal mic', async () => {
+    appPage.data = { shell: { dictation: { ready: true } } }
+    render(VoiceDictation, { ontranscript: vi.fn() })
+    await expect.element(page.getByTestId('voice-mic')).toBeEnabled()
+    await expect.element(page.getByTestId('voice-mic')).toHaveAttribute('title', 'Dictate (speech to text)')
   })
 
   async function record(testid = 'voice') {

@@ -3,6 +3,7 @@
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
   import StatusPill from '$lib/components/page/status-pill.svelte'
+  import SpeechStatus from '$lib/components/settings/speech-status.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
@@ -62,6 +63,8 @@
       <p class="text-sm text-muted-foreground">{form.llmMessage}</p>
     {/if}
   </section>
+
+  <SpeechStatus dictation={data.speech.dictation} models={data.speech.models} />
 
   {#if data.isAdmin}
     <section class="space-y-3">

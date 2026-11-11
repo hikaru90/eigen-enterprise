@@ -4,6 +4,8 @@
   import Mic from '@lucide/svelte/icons/mic'
   import X from '@lucide/svelte/icons/x'
   import { onDestroy, onMount } from 'svelte'
+  import { page } from '$app/state'
+  import { DICTATION_MISSING_MESSAGE, type SpeechReadiness } from './dictation-readiness'
   import { transcribeVoiceClip } from './transcribe-voice-clip'
   import { voiceFailureMessage } from './voice-failure-message'
   import {
@@ -67,6 +69,9 @@
     active = false
   })
 
+  /** The shell says what dictation lacks (no OpenRouter key): the mic says so, before any recording. */
+  const dictation = $derived((page.data.shell as { dictation?: SpeechReadiness } | null | undefined)?.dictation)
+  const missingMessage = $derived(dictation?.ready === false ? DICTATION_MISSING_MESSAGE[dictation.missing] : null)
   const failure = $derived(view.phase === 'failed' ? view.failure : null)
   const showBar = $derived(view.phase === 'recording' || view.phase === 'transcribing' || view.phase === 'failed')
 
@@ -109,9 +114,9 @@
   <button
     type="button"
     class="{iconButton} {className}"
-    disabled={disabled || !supported || view.phase === 'starting'}
+    disabled={disabled || !supported || missingMessage !== null || view.phase === 'starting'}
     aria-label="Dictate"
-    title={supported ? 'Dictate (speech to text)' : 'Voice input is not available in this browser'}
+    title={missingMessage ?? (supported ? 'Dictate (speech to text)' : 'Voice input is not available in this browser')}
     data-testid="{testid}-mic"
     onclick={startTap}
   >

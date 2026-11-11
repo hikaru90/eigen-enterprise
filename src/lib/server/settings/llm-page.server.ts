@@ -1,4 +1,6 @@
 import type { Actions, RequestEvent } from '@sveltejs/kit'
+import { checkSpeechModelEndpoints } from '$lib/server/llm/speech-models'
+import { speechToTextReadiness } from '$lib/server/llm/speech-readiness'
 import { fail, redirect } from '@sveltejs/kit'
 import { and, eq } from 'drizzle-orm'
 import { isUserAdmin } from '$lib/server/auth/user-role'
@@ -82,10 +84,17 @@ export async function loadLlmSettingsPage(event: RequestEvent) {
     (openrouterRow?.baseUrl?.trim() && openrouterApiKey.trim()),
   )
 
+  const [dictation, speechModels] = await Promise.all([
+    speechToTextReadiness(userId),
+    checkSpeechModelEndpoints(),
+  ])
+
   return {
     isAdmin,
     byokConfigured,
     activeProvider,
+    /** Speech always runs on OpenRouter: whether dictation can work, and each speech model's endpoints. */
+    speech: { dictation, models: speechModels },
     providers: {
       eurouter: {
         configured: isProviderConfigured(eurouterRow),
