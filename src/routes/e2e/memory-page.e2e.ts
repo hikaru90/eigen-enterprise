@@ -61,7 +61,7 @@ test('Memory is one module page: nav → sub-pages → capture → task → comp
   await page.setViewportSize({ width: 1280, height: 860 })
   const ownerId = await newOwner(context, page)
 
-  await test.step('open Memory from the navigation: Active, with its settings', async () => {
+  await test.step('open Memory from the navigation: Active, a plain task list', async () => {
     await page.goto('/')
     const navEntry = page.getByTestId('shell-sidebar').getByTestId('shell-nav-memory')
     await expect(navEntry).toHaveAttribute('href', '/m/memory')
@@ -70,11 +70,13 @@ test('Memory is one module page: nav → sub-pages → capture → task → comp
     await expectMemoryTab(page, 'overview', /^Memory · eigenEnterprise$/)
     await expect(page.getByTestId('module-status')).toHaveText('Active')
     await expect(page.getByText('Not active')).toHaveCount(0)
-    await expect(page.getByTestId('memory-settings')).toBeVisible()
+    await expect(page.getByTestId('memory-task-list')).toBeVisible()
     await page.screenshot({ path: `${SHOTS}/overview.png`, fullPage: true })
   })
 
-  await test.step('save a Memory setting on the page', async () => {
+  await test.step('open Settings from the header (right) and save one', async () => {
+    await page.getByTestId('memory-settings-link').click()
+    await expect(page).toHaveURL(/\/m\/memory\/settings$/)
     const settings = page.getByTestId('memory-settings')
     await settings.getByLabel('Minutes before').fill('25')
     await settings.getByRole('button', { name: 'Save' }).click()

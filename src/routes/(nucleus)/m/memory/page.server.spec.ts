@@ -1,16 +1,33 @@
 import { describe, expect, it, vi } from 'vitest'
 
-const { activationsGet, loadSettings, parseBody, saveSettings } = vi.hoisted(() => ({
-  activationsGet: vi.fn(async (_id: string) => true),
-  loadSettings: vi.fn(async (_userId: string) => ({
-    timezoneOffsetMinutes: 60,
-    eventNotificationsEnabled: true,
-    eventReminderLeadMinutes: 15,
-    dailySummaryEnabled: false,
-    dailySummaryTimeLocal: '08:00',
+const { activationsGet, listEvents } = vi.hoisted(() => ({
+  listEvents: vi.fn(async (_q: unknown) => ({
+    items: [
+      {
+        id: 'task:t1',
+        itemType: 'task',
+        semanticSummary: 'Ship invoice',
+        projectEntityId: 'p1',
+        projectLabel: 'Billing',
+      },
+      {
+        id: 'ev1',
+        itemType: 'event',
+        semanticSummary: 'Dentist',
+        projectEntityId: null,
+        projectLabel: null,
+      },
+      {
+        id: 'task:t2',
+        itemType: 'task',
+        semanticSummary: 'Call mum',
+        projectEntityId: null,
+        projectLabel: null,
+      },
+    ],
+    nextCursor: null,
   })),
-  parseBody: vi.fn(),
-  saveSettings: vi.fn(),
+  activationsGet: vi.fn(async (_id: string) => true),
 }))
 
 vi.mock('$lib/server/boot', () => ({
@@ -22,14 +39,13 @@ vi.mock('$lib/server/boot', () => ({
     activations: { get: activationsGet },
   }),
 }))
-vi.mock('$lib/server/settings/notification-settings', () => ({
-  loadNotificationSettings: loadSettings,
-  parseNotificationSettingsBody: parseBody,
-  saveNotificationSettings: saveSettings,
+vi.mock('$lib/server/memory/temporal-event-list', () => ({
+  listTemporalEventsForUser: listEvents,
+  isTaskListItem: (item: { itemType: string }) => item.itemType === 'task',
 }))
 
 const { load: layoutLoad } = await import('./+layout.server')
-const { load, actions } = await import('./+page.server')
+const { load } = await import('./+page.server')
 
 const signedIn = { locals: { user: { id: 'u1' } } }
 
@@ -48,64 +64,17 @@ describe('/m/memory layout', () => {
   })
 })
 
-describe('/m/memory page', () => {
-  it("loads Memory's own settings (reminders, daily summary, timezone)", async () => {
+describe('/m/memory page (the task list)', () => {
+  it('loads open tasks with their project as a tag, dropping calendar events', async () => {
     const data = (await load(signedIn as never)) as {
-      settings: { eventReminderLeadMinutes: number }
+      tasks: { id: string; summary: string; project: { entityId: string; label: string } | null }[]
     }
-    expect(loadSettings).toHaveBeenCalledWith('u1')
-    expect(data.settings.eventReminderLeadMinutes).toBe(15)
-  })
-
-  it('saves settings from the form', async () => {
-    const parsed = {
-      timezoneOffsetMinutes: 0,
-      eventNotificationsEnabled: true,
-      eventReminderLeadMinutes: 30,
-      dailySummaryEnabled: true,
-      dailySummaryTimeLocal: '07:30',
-    }
-    parseBody.mockReturnValueOnce(parsed)
-    saveSettings.mockResolvedValueOnce({ ...parsed, message: 'Notification settings saved.' })
-    const form = new FormData()
-    form.set('timezoneOffsetMinutes', '0')
-    form.set('eventNotificationsEnabled', 'on')
-    form.set('eventReminderLeadMinutes', '30')
-    form.set('dailySummaryEnabled', 'on')
-    form.set('dailySummaryTimeLocal', '07:30')
-    const result = await actions.settings({
-      ...signedIn,
-      request: { formData: async () => form },
-    } as never)
-    expect(parseBody).toHaveBeenCalledWith({
-      timezoneOffsetMinutes: 0,
-      eventNotificationsEnabled: true,
-      eventReminderLeadMinutes: 30,
-      dailySummaryEnabled: true,
-      dailySummaryTimeLocal: '07:30',
-    })
-    expect(saveSettings).toHaveBeenCalledWith('u1', parsed)
-    expect(result).toEqual({ saved: true, message: 'Notification settings saved.' })
-  })
-
-  it('returns a 400 with the plain-words reason for invalid input', async () => {
-    parseBody.mockImplementationOnce(() => {
-      throw new Error('Reminder lead time must be at least 1 minute.')
-    })
-    const form = new FormData()
-    form.set('eventReminderLeadMinutes', '0')
-    const result = await actions.settings({
-      ...signedIn,
-      request: { formData: async () => form },
-    } as never)
-    expect(result).toMatchObject({
-      status: 400,
-      data: { message: 'Reminder lead time must be at least 1 minute.' },
-    })
-  })
-
-  it('refuses a signed-out save', async () => {
-    const result = await actions.settings({ locals: { user: null } } as never)
-    expect(result).toMatchObject({ status: 401 })
+    expect(listEvents).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'u1', status: 'open', includeTasks: true }),
+    )
+    expect(data.tasks).toEqual([
+      { id: 'task:t1', summary: 'Ship invoice', project: { entityId: 'p1', label: 'Billing' } },
+      { id: 'task:t2', summary: 'Call mum', project: null },
+    ])
   })
 })
