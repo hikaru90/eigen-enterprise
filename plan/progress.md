@@ -7,6 +7,8 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - **Why:** `v0.5.2` (`c7bb276`, tagged by another session) carries Calls S1–S3. It has never run against a real livekit-server, and the livekit unit's hardening is unproven on Linux. Also, its first `ee upgrade` on a server stops once and asks for `--node-ip <public IP>`.
 - **Owner decision (2026-11-11):** hold upgrades. Nobody runs `ee upgrade` or `install.sh` against v0.5.2 on production (os.cerberusblue.com) or any other server until S4 (real-LiveKit e2e + box proof) passes and this hold is lifted here.
 - **How upgrades work:** they are manual only (no timer); `ee upgrade` and fresh installs fetch `releases/latest/download` (`ee/src/upgrade.ts:17`). While v0.5.2 is GitHub's "latest", anyone running `ee upgrade` gets it.
+- **Enforced (owner: "Yes, mark pre-release"):** the v0.5.2 release run 43069381496 succeeded (assets include `livekit-server-1.13.11-linux-{x64,arm64}.tar.gz` + .sha256, so `c5e51d9` works). Then `gh release edit v0.5.2 --prerelease --latest=false` and `gh release edit v0.5.1 --latest`. Verified: the API reports latest = v0.5.1, and `latest/download/LATEST` redirects to v0.5.1 (GitHub's cache took about a minute). v0.5.2 assets stay downloadable at `releases/download/v0.5.2/`.
+- **Lifting the hold:** once S4 passes, `gh release edit v0.5.2 --prerelease=false --latest` (or cut v0.5.3 with the S4 fixes, which the workflow publishes as latest).
 
 ## 2026-11-11 — v0.5.2 published on GitHub (Calls, dictation fix, speech readiness)
 
