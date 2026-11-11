@@ -164,7 +164,10 @@ describe('renderUnit: binary runtime with host ports (livekit-server)', () => {
   })
 
   it('carries the same hardening, and may open only its own loopback port plus its declared host ports', () => {
-    for (const line of HARDENING.filter((l) => !l.startsWith('RestrictAddressFamilies='))) expect(unit).toContain(line)
+    // The two host-port exceptions are pinned by their own tests below; every other line is verbatim.
+    for (const line of HARDENING.filter((l) => !l.startsWith('RestrictAddressFamilies=') && !l.startsWith('ProcSubset='))) {
+      expect(unit).toContain(line)
+    }
     expect(unit).toContain('DynamicUser=yes')
     expect(unit).toContain('SocketBindAllow=tcp:4102')
     expect(unit).toContain('SocketBindAllow=tcp:7881')
@@ -181,9 +184,20 @@ describe('renderUnit: binary runtime with host ports (livekit-server)', () => {
     expect(unit).not.toMatch(/AmbientCapabilities=.+/)
   })
 
+  it('a media server sees system-wide /proc counters (loadavg, stat — LiveKit node load), still not other processes', () => {
+    // Found on the box (2026-11-11): under ProcSubset=pid, LiveKit logged "open /proc/loadavg" as an ERROR every 2 s.
+    expect(unit).toContain('ProcSubset=all')
+    expect(unit).not.toContain('ProcSubset=pid')
+    expect(unit.match(/^ProcSubset=/gm)).toHaveLength(1)
+    expect(unit).toContain('ProtectProc=invisible')
+    expect(unit).toContain('ProtectKernelTunables=yes')
+  })
+
   it('a workload without host ports keeps the plain address families and binds only its own port', () => {
     const plain = renderUnit({ workload: { ...livekit, ports: undefined }, contract: binary, slot: 'b', port: 4103, releaseDir })
     expect(plain).toContain('RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6\n')
+    expect(plain).toContain('ProcSubset=pid')
+    expect(plain).not.toContain('ProcSubset=all')
     expect(plain).not.toContain('SocketBindAllow=udp')
     expect(plain.match(/^SocketBindAllow=/gm)).toEqual(['SocketBindAllow='])
   })

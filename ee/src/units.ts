@@ -4,7 +4,7 @@ import { PATHS } from './paths.ts'
 /**
  * Generated systemd units (§3.5, D2, D5). Every unit comes from this template;
  * the hardening block is not configurable. The one spec field that touches it is
- * `ports` (system tier, allow-listed): it adds those binds and AF_NETLINK, nothing else.
+ * `ports` (system tier, allow-listed): it adds those binds, AF_NETLINK and ProcSubset=all, nothing else.
  */
 
 export type Slot = 'a' | 'b'
@@ -87,10 +87,18 @@ const PLAIN_FAMILIES = 'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6'
  */
 const HOST_PORT_FAMILIES = 'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK'
 
+/**
+ * A media server also reads system-wide /proc counters (LiveKit's node load: /proc/loadavg,
+ * /proc/stat). ProcSubset=pid hides them (LiveKit then logs an ERROR every 2 s, seen on the
+ * box 2026-11-11). Still read-only (ProtectKernelTunables), other processes still invisible (ProtectProc).
+ */
+const PLAIN_PROC = 'ProcSubset=pid'
+const HOST_PORT_PROC = 'ProcSubset=all'
+
 /** The hardening block for this workload: HARDENING, verbatim, unless it opens host ports. */
 function hardeningFor(w: Workload): string[] {
   if ((w.ports ?? []).length === 0) return [...HARDENING]
-  return HARDENING.map((line) => (line === PLAIN_FAMILIES ? HOST_PORT_FAMILIES : line))
+  return HARDENING.map((line) => (line === PLAIN_FAMILIES ? HOST_PORT_FAMILIES : line === PLAIN_PROC ? HOST_PORT_PROC : line))
 }
 
 /** How the unit starts: node resolves to the pinned runtime; binary runs from the release. */
