@@ -2,6 +2,26 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-11 — Production Contribute board, round 1: 12 proposals worked (main, not pushed, not on the box)
+
+Owner: "get the contribute tab items" from os.cerberusblue.com (read over its MCP, `contribute.list status:all`: 12 proposals, all Requested), then "plan here and fix every task as a subagent on low". Orchestrated as 7 worktree workstreams, merged on `contribute-board`. Board statuses on production NOT changed.
+
+- **Contribute: draft lost on an outside click (bug)** — `b1b22c0`. The popover unmounts the composer; the draft now lives in `contribute-button.svelte` (bindable `text`). Component test fails without the fix, passes with it. **Dictation (2 proposals)** is covered by `4b259c3` (the voice session); the subagent's own dictation (`4c60d2b`, older streaming button, English-only) was dropped, not merged.
+- **Dashboard: "Your company" opened "Connect your AI provider" (bug)** — `58f8021`. Cause: `/` showed full-screen `ProviderOnboarding` whenever the owner's provider was missing, even after the tour. Now it gates only during the welcome tour; afterwards the dashboard shows with a "Connect your AI provider" banner. Recent activity is grouped by day in one card (`activity-groups.ts`, unit-tested). Gap: no "what's happening / top priorities" summary exists.
+- **Brand** — `5fbbee7`. New Material tab: digital flyer generated from the active style (banner, poster, merch marked "Coming"). Brand-guide upload **blocked**: the gateway's `ChatMessage.content` is text only — needs (a) file/image input in the gateway or (b) a PDF text extractor.
+- **Email** — `ee8f3d0`. Landing is mail first (Pending + last 10 Sent); setup sections moved behind a Setup tab, URLs unchanged; old Overview now `/m/email/setup` ("Account"). Inbound mail isn't stored (no inbox); "who to write next" left out (needs an owner-set rule).
+- **Drive** — `81e69bf`. "Who can see your Drive" note on My drive: private by default (creator + owner + admins), share with people/groups/company, the agent reads all of Drive; nothing can be hidden from owner/admins (gap).
+- **Memory** — `8e9f339`. Landing is the open tasks with project tags; settings moved to `/m/memory/settings`, linked on the header's right.
+- **Messages: video calls** — `5afae92`, plan only: `plan/video-calls.md` (1:1 P2P WebRTC + coturn as an ee workload first, LiveKit for groups; ee must learn to open UDP ports). 6 open owner decisions listed there.
+
+**Gates (on `contribute-board`, base `4b259c3`):** typecheck 0 errors; lint 0 errors (212 pre-existing warnings); unit 5352 passed / 51 skipped; components 174/175 — the one failure, `app-detail-settings.svelte.spec.ts`, fails identically on plain `4b259c3` (pre-existing, untouched here). E2E not run; nothing tried on the box.
+
+**Removed / replaced (announced):** returning owners no longer get the full-screen provider screen at `/` (banner instead); the Brand "Design system" tab is gone (page still at `/brand/system`, linked from Style); Email's Overview moved to Setup → Account; Memory's four "Sections" cards removed (pages still in the header tabs) and its settings form moved to its own page.
+
+**What broke:** at 14:41 two commits titled "tool brand.picker_choose by <random principal>" (`bca8093`, `e07f5e0`) landed on main and swept the voice session's uncommitted tracked files into it, without its new files — main stopped building. Main was later reset past them. Likely cause: a test running `brand.picker_choose` with the kernel VCS pointed at the real checkout (candidates: `modules/brand/selection/picker-tool.spec.ts`, `modules/brand/selection/tools.spec.ts`, `modules/brand/tools.spec.ts`, `src/routes/api/brand/picker/choose/server.spec.ts`). Not fixed yet.
+
+**Next:** fix the committing test; owner decisions — brand-guide upload (a/b), video calls (6), Email "who to write next" rule; release to the box; then mark the board items on production.
+
 ## 2026-11-11 — "Install app" in the settings menu: a sure way onto every device's home screen (main, not pushed, not on the box)
 
 - **What:** the cog menu (`home-settings-menu.svelte`) gains **Install app** (hidden inside the installed app). It opens `src/lib/pwa/install-app-dialog.svelte`: the browser's own install dialog where Chromium offers one, otherwise the exact taps for this browser — iPhone/iPad Safari, Chrome, Firefox and Edge (Share → Add to Home Screen), Mac Safari (File → Add to Dock), Android Chrome, Samsung, Firefox and Edge, desktop Chrome and Edge (address-bar icon or menu path). Desktop Firefox and unknown browsers get a plain "cannot install here — open in Chrome, Edge or Safari" with Copy link. A dismissed browser dialog falls back to the menu path, so the screen always shows a way forward; "already installed" and "not https" are said plainly.
