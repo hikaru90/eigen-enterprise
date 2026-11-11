@@ -61,6 +61,27 @@ describe('call state machine', () => {
     expect(rec.participants.some(inRoom)).toBe(false)
   })
 
+  it('a DM: either person hanging up ends it for both (owner decision 2026-11-11)', () => {
+    const connected = () => joined(accept(joined(dm(), 'ann', at(1)), 'ben', at(5)), 'ben', at(6))
+    expect(connected().call.state).toBe('active')
+    expect(hangup(connected(), 'ben', at(90)).call).toMatchObject({ state: 'ended', endedAt: at(90) })
+    expect(hangup(connected(), 'ann', at(90)).call).toMatchObject({ state: 'ended', endedAt: at(90) })
+  })
+
+  it('a DM: a network drop (webhook left) is not a hang-up — the call waits for the reconnect', () => {
+    let rec = joined(accept(joined(dm(), 'ann', at(1)), 'ben', at(5)), 'ben', at(6))
+    rec = left(rec, 'ben', at(30))
+    expect(rec.call.state).toBe('active')
+    rec = joined(rec, 'ben', at(35))
+    expect(rec.call.state).toBe('active')
+  })
+
+  it('a DM: hanging up after a drop still ends it for both', () => {
+    let rec = joined(accept(joined(dm(), 'ann', at(1)), 'ben', at(5)), 'ben', at(6))
+    rec = left(rec, 'ben', at(30))
+    expect(hangup(rec, 'ben', at(31)).call).toMatchObject({ state: 'ended', endedAt: at(31) })
+  })
+
   it('timeout → missed: nobody answered within the ring window', () => {
     let rec = joined(dm(), 'ann', at(1))
     expect(timeout(rec, at(RING_TIMEOUT_MS / 1000 - 1))).toBe(rec)

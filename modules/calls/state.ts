@@ -123,6 +123,11 @@ export function hangup(rec: CallRecord, userId: string, now: Date): CallRecord {
   if (userId === rec.call.startedBy && !answered(rec)) return finish(rec, 'missed', now)
   const p = participant(rec, userId)
   if (!p) return rec
+  // A DM is a two-person call: hanging up ends it for both (owner decision 2026-11-11).
+  // A network drop is a webhook `left`, not a hang-up, so the other person waits for the reconnect.
+  if (rec.call.contextKind === 'dm' && (p.joinedAt !== null || userId === rec.call.startedBy)) {
+    return finish(rec, answered(rec) ? 'ended' : 'missed', now)
+  }
   if (p.joinedAt === null) return userId === rec.call.startedBy ? rec : decline(rec, userId, now)
   if (!inRoom(p)) return rec
   return settle(patch(rec, userId, { leftAt: now }, now), now)

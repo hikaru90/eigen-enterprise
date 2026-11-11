@@ -19,8 +19,9 @@ describe('call log port', () => {
     await service.applyWebhook({ kind: 'participant_joined', room, identity: 'ben' })
     const answeredAt = clock.now()
     clock.tick(245_000)
+    // A DM ends for both at the first hang-up (owner decision 2026-11-11): logged right then.
     await service.hangup('ann', call.id)
-    expect(logged).toEqual([])
+    expect(logged).toHaveLength(1)
     await service.applyWebhook({ kind: 'participant_left', room, identity: 'ann' })
     await service.applyWebhook({ kind: 'participant_left', room, identity: 'ben' })
     expect(logged).toHaveLength(1)

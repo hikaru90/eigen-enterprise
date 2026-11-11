@@ -198,6 +198,25 @@ describe('the call lifecycle through the service', () => {
     expect(closed).toEqual([`ee-call-${call.id}`])
   })
 
+  it('a DM call: one person hanging up ends it for both and closes the room (LiveKit drops the other)', async () => {
+    const { service, user, closed } = fixture()
+    const call = await service.start(user('ann'), { contextKind: 'dm', contextId: 'dm-ann-ben' })
+    const room = `ee-call-${call.id}`
+    await service.applyWebhook({ kind: 'participant_joined', room, identity: 'ann' })
+    await service.accept('ben', call.id)
+    await service.applyWebhook({ kind: 'participant_joined', room, identity: 'ben' })
+    expect((await service.hangup('ann', call.id)).state).toBe('ended')
+    expect((await service.get('ben', call.id)).state).toBe('ended')
+    expect(closed).toEqual([room])
+  })
+
+  it('declined before the caller\'s join webhook arrived: the room is still closed (no caller stuck waiting)', async () => {
+    const { service, user, closed } = fixture()
+    const call = await service.start(user('ann'), { contextKind: 'dm', contextId: 'dm-ann-ben' })
+    expect((await service.decline('ben', call.id)).state).toBe('declined')
+    expect(closed).toEqual([`ee-call-${call.id}`])
+  })
+
   it('end: only the starter ends it for everyone; the room is closed', async () => {
     const { service, user, closed } = fixture()
     const call = await service.start(user('ann'), { contextKind: 'dm', contextId: 'dm-ann-ben' })

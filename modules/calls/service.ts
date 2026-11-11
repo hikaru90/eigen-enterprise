@@ -171,14 +171,16 @@ export function createCallsService(d: CallsDeps) {
   }
 
   /**
-   * A live call that just ended: close the room when people are still in it
-   * (LiveKit drops them) and log it in its conversation. Both run; any
+   * A live call that just ended: close the room (LiveKit drops whoever is
+   * still in it) and log it in its conversation. Both run; any
    * failure is thrown after (the new state is already stored).
    */
   async function afterChange(before: CallRecord, after: CallRecord): Promise<void> {
     if (!isLive(before.call.state) || isLive(after.call.state)) return
     const errors: unknown[] = []
-    if (before.participants.some(inRoom)) await d.rooms.closeRoom(after.call.roomName).catch((err: unknown) => errors.push(err))
+    // Always: the join webhook may not have arrived yet, and someone may already be in the room
+    // (a decline right after the call starts). Closing a room that does not exist is a no-op.
+    await d.rooms.closeRoom(after.call.roomName).catch((err: unknown) => errors.push(err))
     await logEnded(after).catch((err: unknown) => errors.push(err))
     if (errors.length === 1) throw errors[0]
     if (errors.length > 1) throw new AggregateError(errors, `calls: ${errors.length} follow-ups of ending ${after.call.id} failed`)
