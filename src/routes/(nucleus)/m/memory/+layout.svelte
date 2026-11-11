@@ -2,6 +2,8 @@
   import type { LayoutData } from './$types'
   import type { Snippet } from 'svelte'
   import { page } from '$app/state'
+  import { resolve } from '$app/paths'
+  import Settings from '@lucide/svelte/icons/settings'
   import PageHeader from '$lib/components/page/page-header.svelte'
   import { activeMemorySurfaceTab, MEMORY_TABS } from '$lib/memory/memory-surface-nav'
 
@@ -24,7 +26,21 @@
       navLabel="Memory sections"
       navTestId="memory-nav"
       tabTestId={(id) => `memory-tab-${id}`}
-    />
+    >
+      {#snippet actions()}
+        <a
+          href={resolve('/m/memory/settings')}
+          class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-muted-foreground outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+          aria-current={page.url.pathname.replace(/\/+$/, '') === '/m/memory/settings'
+            ? 'page'
+            : undefined}
+          data-testid="memory-settings-link"
+        >
+          <Settings class="size-4" aria-hidden="true" />
+          Settings
+        </a>
+      {/snippet}
+    </PageHeader>
   </div>
   <div class="flex min-h-0 w-full flex-1 flex-col">
     {@render children()}
