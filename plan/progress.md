@@ -2,6 +2,23 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-11 — Calls S3 (UI + call lines in Messages) merged (main, not pushed, not on the box)
+
+Owner: "Start S3" (plan/video-calls.md §2–3). One worktree subagent, merged by the orchestrator.
+
+- **What** — `f5f2017`, `143dd6f`, merge `5af00eb`:
+  - **Call page** `/calls/[id]`: accept if needed → token → join; grid with names, muted indicator, screen-share tiles; mute / camera / screen share / hang up. Leaving the page or closing the tab hangs up once. "Calls are not set up on this server" is shown plainly; a blocked camera/mic says how to allow it.
+  - **`/calls` page**: live calls to (re)join, recent calls (who, when, duration, missed/declined), **New meeting** (any member). Disabled with the reason when LiveKit isn't configured.
+  - **Ring on every nucleus page**: `incoming-call-toast.svelte` in `(nucleus)/+layout.svelte`, one `EventSource` on `/api/calls/stream` opened in `onMount`, Web Audio ringtone (silent, no error, when autoplay is blocked).
+  - **Call / Join button** in DM and channel headers.
+  - `livekit-client` 2.23.0 behind a `CallRoom` interface (`src/lib/calls/room.ts`), loaded only in the browser.
+- **Messages change** (new, nothing removed): **call lines**. Migration `0123_message_call_lines` adds `messages.call` jsonb (`{callId, outcome, durationSeconds}`, shape-checked, top-level only, unique per call id). `postCallLine` (`modules/messages/service.ts`) is a no-op on a repeat post; editing a call line is refused. Rows render "Call, 4 min" / "Missed call" / "Declined call" from the data, never from text. Calls tells `CallLogPort.callEnded` once per DM/channel call (meetings post nothing); `modules/index.ts` adapts it to Messages. A failing port fails the request loudly, with the call state already stored.
+- **Visible change (announced):** new nav entry **Calls**, after Messages. Since S2 it had shown up as a generic `/m/calls` entry; it now goes to `/calls`.
+- **Orchestrator** — `05db26c`: test for "accepted but nobody connected, caller hangs up" → missed line, hang-up succeeds. (In review I suspected a stuck call there; the state machine already handles it: "answered" means someone else connected media, not just clicked Accept.)
+- **Gates (merged main `05db26c`):** unit 5469 passed / 58 skipped; components 193 / 194, the one failure `app-detail-settings.svelte.spec.ts` is the same one already on main; typecheck 0 errors (31 warnings); lint 0 errors (218 warnings); test-DB migrate clean (0123 applied).
+- **Not verified:** no livekit-server has run, so the LiveKit adapter (remote audio, the autoplay unlock click, disconnect reasons) is only type-checked and tested against a fake room. The UI hasn't been looked at in a browser, phone width included. Flaky: `modules/messages/db-store.pg.spec.ts` "many concurrent appends" failed 2 of 4 runs during S3 (event log, unrelated to call lines). No push notification for a call while the tab is closed (later slice).
+- **Next:** S4: `livekit-server --dev` in the e2e harness (needs the binary on this machine), two-browser e2e (DM call, decline, missed, three-person channel call), box proof (`box.sh up` recreates the box and wipes its install).
+
 ## 2026-11-11 — Speech needs OpenRouter, said up front; speech models checked for live endpoints (main, not pushed, not on the box)
 
 Owner: "we need endpoints for it, and maybe we should make it mandatory that the user uses open router … at least if they want to use the speech for text" → "Yes, build both".
