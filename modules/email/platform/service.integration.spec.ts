@@ -103,6 +103,17 @@ describe.skipIf(!hasDb)('EmailPlatform (test database)', () => {
     expect(verified.records.every((r) => r.status === 'SUCCESS')).toBe(true)
   })
 
+  it('lists messages in, or outside, a set of statuses (the Mail view: pending apart from sent)', async () => {
+    const base = { source: 'api' as const, fromAddress: 'hello@kindred.test', subject: 's', html: null, text: 'x', contentStored: true }
+    for (const status of ['scheduled', 'queued', 'delivered', 'bounced'] as const) {
+      await store.insertMessage({ ...base, status, toAddress: `${status}@x.co` })
+    }
+    const pending = await store.listMessages({ statuses: ['scheduled', 'queued'], limit: 10 })
+    expect(pending.map((m) => m.status).sort()).toEqual(['queued', 'scheduled'])
+    const sent = await store.listMessages({ excludeStatuses: ['scheduled', 'queued'], limit: 10 })
+    expect(sent.map((m) => m.status).sort()).toEqual(['bounced', 'delivered'])
+  })
+
   it('the background pass re-checks only domains that are due', async () => {
     const d = await platform.addDomain('kindred.com', 'u1')
     expect(await platform.refreshDueDomains()).toBe(1)
