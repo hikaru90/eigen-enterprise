@@ -58,6 +58,15 @@ describe('call log port', () => {
     ])
   })
 
+  it('accepted but nobody ever connected media (caller hangs up during the camera prompt): missed, the hang-up succeeds', async () => {
+    const { service, user, logged } = fixture()
+    const call = await service.start(user('ann'), { contextKind: 'dm', contextId: 'dm-ann-ben' })
+    await service.accept('ben', call.id)
+    await service.hangup('ann', call.id)
+    expect((await service.get('ann', call.id)).state).toBe('missed')
+    expect(logged).toEqual([expect.objectContaining({ callId: call.id, outcome: 'missed', durationSeconds: null })])
+  })
+
   it('a meeting tells nobody (it has no conversation)', async () => {
     const { service, user, logged } = fixture()
     const m = await service.start(user('ann'), { contextKind: 'meeting', userIds: ['ben'] })
