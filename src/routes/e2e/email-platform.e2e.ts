@@ -63,7 +63,7 @@ test.describe('email platform', () => {
     const sender = `owner-${stamp}@kindred.test`
 
     // ── Overview: nothing connected, the first step is a form (never a dead "not set up").
-    await page.goto('/m/email')
+    await page.goto('/m/email/setup')
     await expect(page.getByTestId('email-nav')).toBeVisible()
     await expect(page.getByTestId('email-step-connect')).toHaveAttribute('data-done', 'false')
     await page.locator('#ses-from').fill(sender)

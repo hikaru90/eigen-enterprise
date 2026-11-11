@@ -1,6 +1,6 @@
 import type { MailHeader } from '../owlery/ses'
 import type { MessageStatus } from './status'
-import { and, asc, count, desc, eq, ilike, inArray, lt, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, ilike, inArray, lt, notInArray, or, sql } from 'drizzle-orm'
 import type { DbHandle } from '$lib/kernel/db-stores'
 import type { AppDatabase } from '$lib/server/db/context'
 import {
@@ -54,6 +54,10 @@ export type NewMessage = {
 
 export type MessageListFilter = {
   status?: MessageStatus
+  /** Only messages in one of these statuses. */
+  statuses?: readonly MessageStatus[]
+  /** No messages in these statuses. */
+  excludeStatuses?: readonly MessageStatus[]
   /** Matches recipient or subject (case-insensitive). */
   search?: string
   limit: number
@@ -213,6 +217,8 @@ export class EmailStore {
   async listMessages(f: MessageListFilter): Promise<MessageRow[]> {
     const where = [
       ...(f.status ? [eq(mailMessages.status, f.status)] : []),
+      ...(f.statuses ? [inArray(mailMessages.status, [...f.statuses])] : []),
+      ...(f.excludeStatuses ? [notInArray(mailMessages.status, [...f.excludeStatuses])] : []),
       ...(f.search
         ? [or(ilike(mailMessages.toAddress, `%${f.search}%`), ilike(mailMessages.subject, `%${f.search}%`))!]
         : []),

@@ -118,9 +118,12 @@ test('every area page wears the one page header', async ({ page, context }) => {
   await page.goto('/')
   await expect(page.locator('body')).not.toContainText(/kernel|GTD|hybrid retrieval/)
   await expect(page.getByTestId('overview-modules-hint')).not.toContainText('available')
-  // Email (P-6): the developer recipe is its own API tab, not on the Overview.
+  // Email: mail first; the developer recipe is the API section under Setup.
   await page.goto('/m/email')
-  await expect(page.getByTestId('email-tab-api')).toBeVisible()
+  await expect(page.getByTestId('email-tab-setup')).toBeVisible()
+  await expect(page.getByTestId('email-pending-header').or(page.getByTestId('email-not-connected'))).toBeVisible()
+  await page.goto('/m/email/setup')
+  await expect(page.getByTestId('email-setup-tab-api')).toBeVisible()
   await expect(page.getByText('How to send mail')).not.toBeVisible()
   await page.screenshot({ path: `${SHOTS}/email.png`, fullPage: true })
   await page.goto('/settings/llm')
