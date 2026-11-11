@@ -2,6 +2,18 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-11 — Calls S4 (e2e against a real livekit-server) green; DM hang-up ends for both (main, not pushed, not on the box)
+
+Owner: "Start S4", then "Yes, end for both". livekit-server 1.13.11 installed on this Mac via Homebrew (`homebrew/core`, same version ee pins).
+
+- **Harness** — `8353eb6`: `playwright.config.ts` runs a throwaway `livekit-server` as a third webServer. It first checks `livekit-server --version` against `LIVEKIT_VERSION` in `scripts/release.sh`; a missing or different binary throws with install steps (no skip). Config goes in via `LIVEKIT_CONFIG`: fixed throwaway keys, signalling 127.0.0.1:7880, media on loopback 7891/tcp + 7892/udp (never the box's 7881/7882), webhook → `http://localhost:4173/api/calls/livekit` (checked: reaches Vite on `[::1]`). Fake camera/mic flags only in the calls spec. `scripts/vite-config.spec.ts` pins the three servers.
+- **E2E** — `b600003`, merge `68b78bd`; `src/routes/e2e/calls.e2e.ts`. All 4 pass on main `603820c` (1.5 min): DM call (toast on `/drive`, both see the other's live video with frames still arriving, hang-up ends it on both pages, "Call" line in both DMs), decline, missed (the real 45 s ring), three-person channel call. Screenshots (desktop + 375 px) in `test-results/calls/`.
+- **What the real server showed:** the LiveKit browser adapter needed no fixes; webhooks arrive signed and drive joins.
+- **Owner decision (2026-11-11):** a DM call ends for both at the first hang-up. A network drop (webhook `left`) is not a hang-up: the call waits for the reconnect. Channel and meeting calls still end when the last person leaves. — `603820c` (tests first; `call-log.spec.ts`'s first case now expects the line at the first hang-up). Same commit: the room is closed whenever a call ends, not only when someone is recorded in it. This fixes a race found in review: a decline that arrives before the caller's join webhook left the caller in an open room.
+- **Gates (main `603820c`):** unit 5489 passed / 58 skipped; ee 208 / 3 skipped; typecheck 0 errors (31 warnings); lint 0 errors (221 warnings); calls e2e 4/4.
+- **Noted:** in e2e, `[calls] hang up failed … Failed to fetch` appears at teardown: Playwright destroys browser contexts, which kills even `keepalive` requests. The calls were already over. Tab close uses `keepalive` on `pagehide` (`src/lib/calls/call-view.svelte`) but hasn't been seen working in a real browser. The Calls nav item uses the generic module icon.
+- **Next:** box proof (owner approval needed: `box.sh up` recreates the box and wipes its install): livekit under the unit hardening, ports 7881/tcp + 7882/udp, `wss://rtc.os.ee.localhost`, a webhook through 127.0.0.1:4000, a real call through Caddy. Then lift the v0.5.2 hold or cut v0.5.3 (see the HOLD entry below).
+
 ## 2026-11-11 — HOLD: no server upgrades to v0.5.2 until Calls S4 passes
 
 - **Why:** `v0.5.2` (`c7bb276`, tagged by another session) carries Calls S1–S3. It has never run against a real livekit-server, and the livekit unit's hardening is unproven on Linux. Also, its first `ee upgrade` on a server stops once and asks for `--node-ip <public IP>`.
