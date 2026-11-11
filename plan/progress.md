@@ -2,6 +2,17 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-11 — v0.4.1 published on GitHub (Contribute release)
+
+Owner: "Yes, release v0.4.1". Commit `deebce7` (version 0.4.0 → 0.4.1), tag `v0.4.1`. Carries Contribute (`c7f1c69`) — the first release since v0.4.0.
+
+- **Published:** https://github.com/hikaru90/eigen-enterprise/releases/tag/v0.4.1 (workflow run 43010324844: amd64 + arm64 builds + publish green), marked latest. `latest/download/LATEST` → `eigenenterprise-0.4.1-deebce73f75d`.
+- **Local CI gate** (pre-push) green: 0 lint/type errors, unit 5222 passed.
+- **What broke:** the first push died with exit 141 (SIGPIPE) after the gate passed — git opens the SSH connection to GitHub before the ~3-minute pre-push gate, and the idle connection was dropped. Pushing with `GIT_SSH_COMMAND="ssh -o ServerAliveInterval=20"` went through. Lasting fix (not done): a keepalive in the SSH config for github.com, or a gate that doesn't hold the connection open.
+- **Annotation:** GitHub warns `actions/checkout`, `setup-node`, `upload-artifact`, `download-artifact` @v4 target the deprecated Node 20 (forced onto Node 24 for now).
+
+**Not done:** the VPS is still on v0.4.0 — next is `ee upgrade` on 152.53.118.209 (owner's go).
+
 ## 2026-11-10 — SHIPPED (main `c7f1c69`, pushed, on the box as release `c7f1c6970087`): Contribute — propose improvements from the top bar; an agent picks them up (ported from Eigen)
 
 **On the box:** `ee-os-b` live (internal release `9c3a340b1b0c4c94`, carries the Contribute build), `applied == desired`, no reconcile error, `/api/health` ok; `contributions` + `contribution_votes` exist (0121 applied); signed out, `/contribute` → 302 /login and `/api/contribute` → 401. Not clicked through on the box (the e2e covers the journey).
