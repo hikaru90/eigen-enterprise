@@ -2,7 +2,15 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-11-11 — Calls box proof passed: a real two-person call through the ee box (main, not pushed)
+## 2026-11-12 — v0.5.3 published on GitHub (Calls, proven on the box); the v0.5.2 hold is lifted
+
+Owner: "Yes, release v0.5.3", then "Yes, retag and push" (waiting for another agent's commit first).
+- **What:** tag `v0.5.3` on `ec04458` (version bump `bb6e03d`). It carries everything in v0.5.2 plus the S4 fixes (`603820c` DM hang-up ends for both, `e045e0e` LIVEKIT_API_URL), the two box fixes (`3b49fab` ProcSubset=all for host-port workloads, `46c5979` the fingerprint covers the rendered unit), and the TTS fix (`d5bd18f`). The local CI gate passed in the pre-push hook.
+- **Release:** run 43127716364 succeeded (both arch builds + publish). GitHub lists v0.5.3 as Latest and v0.5.2 stays a pre-release. `latest/download/LATEST` serves `eigenenterprise-0.5.3-ec044582dca4`. The assets include `livekit-server-1.13.11-linux-{x64,arm64}.tar.gz` + .sha256.
+- **Hold lifted:** servers may upgrade, to v0.5.3 (never v0.5.2). The first upgrade asks once for `ee upgrade --node-ip <public IP>`. It redeploys every workload once (`46c5979`), blue-green for os/apps.
+- **Not done:** os.cerberusblue.com is still on v0.5.1; no server has been upgraded. A real call over the internet (public IP, TURN on 443 later) is unproven. Calls has only run on the local box.
+
+## 2026-11-11 — Calls box proof passed: a real two-person call through the ee box (released in v0.5.3)
 
 Owner: "Yes, recreate the box". Release `scripts/release.sh arm64` (eigenEnterprise 0.5.2 + livekit-server 1.13.11, pinned checksum verified), `ee/e2e/box.sh up` + `install os.ee.localhost` (`--node-ip 127.0.0.1`).
 
@@ -51,6 +59,7 @@ Owner: "Start S4", then "Yes, end for both". livekit-server 1.13.11 installed on
 - **Owner decision (2026-11-11):** hold upgrades. Nobody runs `ee upgrade` or `install.sh` against v0.5.2 on production (os.cerberusblue.com) or any other server until S4 (real-LiveKit e2e + box proof) passes and this hold is lifted here.
 - **How upgrades work:** they are manual only (no timer); `ee upgrade` and fresh installs fetch `releases/latest/download` (`ee/src/upgrade.ts:17`). While v0.5.2 is GitHub's "latest", anyone running `ee upgrade` gets it.
 - **Enforced (owner: "Yes, mark pre-release"):** the v0.5.2 release run 43069381496 succeeded (assets include `livekit-server-1.13.11-linux-{x64,arm64}.tar.gz` + .sha256, so `c5e51d9` works). Then `gh release edit v0.5.2 --prerelease --latest=false` and `gh release edit v0.5.1 --latest`. Verified: the API reports latest = v0.5.1, and `latest/download/LATEST` redirects to v0.5.1 (GitHub's cache took about a minute). v0.5.2 assets stay downloadable at `releases/download/v0.5.2/`.
+- **Lifted 2026-11-12:** v0.5.3 published as latest (see the entry above); v0.5.2 stays a pre-release.
 - **Lifting the hold:** once S4 passes, `gh release edit v0.5.2 --prerelease=false --latest` (or cut v0.5.3 with the S4 fixes, which the workflow publishes as latest).
 
 ## 2026-11-11 — v0.5.2 published on GitHub (Calls, dictation fix, speech readiness)
