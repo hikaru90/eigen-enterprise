@@ -2,7 +2,7 @@ import type { RepoSnapshot } from './snapshot-types'
 import { describe, expect, it } from 'vitest'
 import { render } from './render'
 import { pickDocs, takeSnapshot, DOC_LIMITS } from './snapshot'
-import { FakeGitHub, sampleRepo } from './testing'
+import { FakeGitHub, pull, sampleRepo } from './testing'
 
 const TOKEN = 'github_pat_render'
 
@@ -16,7 +16,14 @@ async function snapshotOf(mutate: (d: ReturnType<typeof sampleRepo>) => void = (
   return r.snapshot
 }
 
-const files = (s: RepoSnapshot, summary: Parameters<typeof render>[1] = null) =>
+const NONE = { summary: null, problem: null }
+const SUMMARY = {
+  summary: 'Cart work is nearly done.',
+  highlights: [{ kind: 'pr' as const, text: 'Cart totals is in draft', ref: '#7' }],
+  writtenAt: '2026-11-12T14:01:00Z',
+}
+
+const files = (s: RepoSnapshot, summary: Parameters<typeof render>[1] = NONE) =>
   Object.fromEntries(render(s, summary).flatMap((i) => (i.kind === 'file' ? [[i.key, i.content]] : [])))
 
 describe('render (pure snapshot → Drive files)', () => {
@@ -29,17 +36,39 @@ describe('render (pure snapshot → Drive files)', () => {
   })
 
   it("puts the assistant's summary on top of Overview, labelled with its time", async () => {
-    const f = files(await snapshotOf(), {
-      summary: 'Cart work is nearly done.',
-      highlights: [{ kind: 'pr', text: 'Cart totals is in draft', ref: '#7' }],
-      writtenAt: '2026-11-12T14:01:00Z',
-    })
+    const f = files(await snapshotOf(), { summary: SUMMARY, problem: null })
     expect(f['repo:4242/Overview.md']).toMatchSnapshot('Overview.md with summary')
+  })
+
+  it('says why the summary is missing or out of date (no model selected, a failed update)', async () => {
+    const s = await snapshotOf()
+    const noModel = { kind: 'no_model' as const, message: 'No model is selected for summaries. The owner selects one under Settings → AI provider.', at: '2026-11-12T14:02:00Z' }
+    const failed = { kind: 'failed' as const, message: 'The AI provider refused the request (HTTP 500).', at: '2026-11-12T14:02:00Z' }
+    const whats = (state: Parameters<typeof render>[1]) => files(s, state)['repo:4242/Overview.md']!.split('## About')[0]
+    expect(whats({ summary: null, problem: noModel })).toMatchSnapshot('missing: no model')
+    expect(whats({ summary: null, problem: failed })).toMatchSnapshot('missing: failed')
+    expect(whats({ summary: SUMMARY, problem: noModel })).toMatchSnapshot('stale: no model')
+    const stale = whats({ summary: SUMMARY, problem: failed })
+    expect(stale).toContain('_Out of date: updating it failed at 2026-11-12 14:02 UTC. The AI provider refused the request (HTTP 500).')
+    expect(stale).toContain('Cart work is nearly done.')
+  })
+
+  it('lists every open pull request, also one nobody touched in the last 30 days', async () => {
+    const s = await snapshotOf((d) => {
+      d.pulls.push(pull({ number: 2, title: 'Wishlist', headRef: 'wishlist', createdAt: new Date('2026-06-01T09:00:00Z'), updatedAt: new Date('2026-08-01T09:00:00Z') }))
+    })
+    const f = files(s)
+    const [open, done] = f['repo:4242/Pull requests.md']!.split('## Merged or closed')
+    expect(open).toContain('## Open (2)')
+    expect(open).toContain('[#2](https://github.com/kindred/shop/pull/2) Wishlist')
+    expect(done).not.toContain('Wishlist')
+    expect(f['repo:4242/Overview.md']).toContain('- Open pull requests: 2')
+    expect(s.pulls.map((p) => p.number).sort()).toEqual([2, 5, 7])
   })
 
   it('is deterministic and the same bytes for the same snapshot', async () => {
     const s = await snapshotOf()
-    expect(render(s, null)).toEqual(render(structuredClone(s), null))
+    expect(render(s, NONE)).toEqual(render(structuredClone(s), NONE))
   })
 
   it('says when GitHub truncated the tree, and the file list stays parents-first', async () => {
@@ -47,7 +76,7 @@ describe('render (pure snapshot → Drive files)', () => {
       d.tree!.truncated = true
     })
     expect(files(s)['repo:4242/Overview.md']).toContain('only part of the docs were copied')
-    const items = render(s, null)
+    const items = render(s, NONE)
     const seen = new Set<string | null>([null])
     for (const i of items) {
       expect(seen.has(i.parentKey)).toBe(true)

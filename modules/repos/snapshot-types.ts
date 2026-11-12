@@ -81,9 +81,22 @@ export type RepoSnapshot = {
   }
 }
 
-/** The assistant's "What's going on" (S4 writes it; S3 renders a placeholder without it). */
+export const HIGHLIGHT_KINDS = ['branch', 'pr', 'commit', 'release', 'other'] as const
+export type HighlightKind = (typeof HIGHLIGHT_KINDS)[number]
+
+/** The assistant's "What's going on": one gateway call after a sync that found changes. */
 export type RepoSummary = {
   summary: string
-  highlights: Array<{ kind: string; text: string; ref: string | null }>
+  highlights: Array<{ kind: HighlightKind; text: string; ref: string | null }>
   writtenAt: string
 }
+
+/**
+ * Why the latest attempt wrote no summary. With a kept summary it is stale.
+ * - no_model: the company has no AI model selected, so no call was made.
+ * - failed: the call or its answer failed (the message is plain, never the provider's text).
+ */
+export type SummaryProblem = { kind: 'no_model' | 'failed'; message: string; at: string }
+
+/** What Overview.md shows under "What's going on". */
+export type SummaryState = { summary: RepoSummary | null; problem: SummaryProblem | null }

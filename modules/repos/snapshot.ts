@@ -95,6 +95,20 @@ export function storable(s: RepoSnapshot): RepoSnapshot {
   return { ...s, docs: { ...s.docs, copied: s.docs.copied.map(({ path, sha, size }) => ({ path, sha, size })) } }
 }
 
+/**
+ * The 30-day fetch (recently merged/closed) plus every open PR, however long
+ * ago it was updated. A PR in both lists keeps its most recently updated copy;
+ * newest updated first, as GitHub sorts the 30-day list.
+ */
+export function mergePulls(recent: PullSnap[], open: PullSnap[]): PullSnap[] {
+  const byNumber = new Map<number, PullSnap>()
+  for (const x of [...recent, ...open]) {
+    const cur = byNumber.get(x.number)
+    if (!cur || x.updatedAt > cur.updatedAt) byNumber.set(x.number, x)
+  }
+  return [...byNumber.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.number - a.number)
+}
+
 export async function takeSnapshot(client: GitHubTokenClient, state: SyncState, now: Date): Promise<SnapshotResult> {
   const prev = state.snapshot
   // Without a previous snapshot a 304 would leave nothing to render: fetch everything.
@@ -157,7 +171,13 @@ export async function takeSnapshot(client: GitHubTokenClient, state: SyncState, 
   guard()
   const p = await client.pulls(fullName, since, etag('pulls'))
   keep('pulls', p.etag)
-  const pulls = p.notModified ? prev!.pulls : p.data.map(pullSnap)
+  const recentPulls = p.notModified ? prev!.pulls.filter((x) => x.updatedAt >= sinceIso) : p.data.map(pullSnap)
+
+  guard()
+  const o = await client.openPulls(fullName, etag('openPulls'))
+  keep('openPulls', o.etag)
+  const open = o.notModified ? prev!.pulls.filter((x) => x.state === 'open') : o.data.map(pullSnap)
+  const pulls = mergePulls(recentPulls, open)
 
   let docs: RepoSnapshot['docs']
   const docShas: Record<string, string> = {}

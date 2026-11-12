@@ -2,6 +2,7 @@ import type { CallContextPort, CallLogPort } from './calls/context-port'
 import type { CallsHub } from './calls/hub'
 import type { CallsService } from './calls/service'
 import type { MessagesDeps } from './messages/service'
+import type { DriveSourcePort } from './repos/drive-port'
 import { CachedActivationStore } from '$lib/kernel/activation-cache'
 import {
   ModeAwareApprovalPolicy,
@@ -50,18 +51,18 @@ import { createMembersTools } from './members/tools'
 import { MEMORY_MODULE_ID, memoryManifest } from './memory/manifest'
 import { createMemoryTools } from './memory/tools'
 import { MESSAGES_MODULE_ID, messagesManifest } from './messages/manifest'
-import type { DriveSourcePort } from './repos/drive-port'
-import { provideReposPorts } from './repos/live'
-import { REPOS_MODULE_ID, reposManifest } from './repos/manifest'
-import { createReposTools } from './repos/tools'
 import { createMessagesTools } from './messages/tools'
 import { createAllowlistAdminTools } from './orchestrator/allowlist-tools'
 import { orchestratorManifest } from './orchestrator/manifest'
 import { createRepoEngine } from './orchestrator/repo/index'
 import { createRepoTools, type RepoEngine } from './orchestrator/repo/tools'
+import { provideConnectedReposPort } from './orchestrator/repos-context'
 import { createRoadmapTools } from './orchestrator/roadmap/tools'
 import { createRecapModule, type RecapBoot } from './recap'
 import { RECAP_MODULE_ID } from './recap/types'
+import { provideReposPorts, reposService } from './repos/live'
+import { REPOS_MODULE_ID, reposManifest } from './repos/manifest'
+import { createReposTools } from './repos/tools'
 
 export type { RecapBoot } from './recap'
 import { createActivityTools } from './website/activity-tools'
@@ -259,6 +260,20 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
   provideReposPorts({
     drive: reposDrivePort(),
     client: (token) => createGitHubTokenClient({ token, fetch, timeoutMs: GITHUB_TIMEOUT_MS }),
+  })
+
+  // The orchestrator's "Connected GitHub repos" block: only while the plugin is
+  // on (a plugin switched off is really off), only repos that have synced.
+  provideConnectedReposPort(async () => {
+    if ((await activations.get(REPOS_MODULE_ID)) !== true) return []
+    return (await reposService().briefs()).map((b) => ({
+      fullName: b.fullName,
+      lastPushAt: b.lastPushAt,
+      openPulls: b.openPulls,
+      summary: b.summaryFirstSentence,
+      summaryStale: b.summaryStale,
+      driveFolderId: b.driveFolderId,
+    }))
   })
 
   registerModuleTools(registry, modules, [

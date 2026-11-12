@@ -1,4 +1,4 @@
-import type { RepoSnapshot } from './snapshot-types'
+import type { RepoSnapshot, RepoSummary } from './snapshot-types'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { AppDatabase } from '$lib/server/db/context'
 import { repoSources, repoSourceTokens } from '$lib/server/db/repos.schema'
@@ -12,7 +12,18 @@ export async function reposDb(): Promise<AppDatabase> {
 
 type SourceDbRow = typeof repoSources.$inferSelect
 
-const toSource = (r: SourceDbRow): SourceRow => ({ ...r, snapshot: (r.snapshot ?? null) as RepoSnapshot | null })
+const SUMMARY_ERROR_KINDS = new Set(['no_model', 'failed'])
+
+const toSource = (r: SourceDbRow): SourceRow => {
+  if (r.summaryErrorKind !== null && !SUMMARY_ERROR_KINDS.has(r.summaryErrorKind))
+    throw new Error(`repo_sources ${r.id} has an unknown summary_error_kind ${r.summaryErrorKind}`)
+  return {
+    ...r,
+    snapshot: (r.snapshot ?? null) as RepoSnapshot | null,
+    summary: (r.summary ?? null) as RepoSummary | null,
+    summaryErrorKind: r.summaryErrorKind as SourceRow['summaryErrorKind'],
+  }
+}
 
 export class DbReposStore implements ReposStore {
   constructor(private readonly db: () => Promise<AppDatabase> = reposDb) {}

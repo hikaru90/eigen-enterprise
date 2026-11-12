@@ -1,11 +1,14 @@
 import type { DriveSourcePort } from './drive-port'
-import type { SyncLog, TickResult, TokenClientFactory } from './sync'
+import type { ReposSyncedPayload, SyncLog, TickResult, TokenClientFactory } from './sync'
 import { hostname } from 'node:os'
 import { env } from '$lib/server/env/private-env'
 import { redactForLog } from '$lib/server/observability/redact-for-log'
 import { dbReposStore } from './db-store'
+import { REPOS_MODULE_ID } from './manifest'
 import { tokenSealKey } from './seal'
 import { createReposService, type ReposService } from './service'
+import { liveSummarizer } from './summary'
+import { REPOS_SYNCED_EVENT } from './sync'
 
 /**
  * Live wiring of the GitHub repos plugin: the Postgres store, the sealing key
@@ -27,6 +30,15 @@ export function provideReposPorts(p: ReposPorts): void {
 
 const log: SyncLog = (message, fields) => console.warn(message, redactForLog(fields))
 
+/** `repos.synced` on the kernel's event sink (CloudEvents source urn:eigenenterprise:module:repos). */
+async function emitSynced(payload: ReposSyncedPayload): Promise<void> {
+  const { appKernel } = await import('$lib/server/boot')
+  const { emitKernelEvent } = await import('$lib/kernel/events')
+  const { moduleSource } = await import('$lib/kernel/cloudevents')
+  const kernel = await appKernel()
+  await emitKernelEvent(kernel.eventSink, { type: REPOS_SYNCED_EVENT, source: moduleSource(REPOS_MODULE_ID), payload })
+}
+
 /** This process's repos service. Throws when the composition root has not wired the ports. */
 export function reposService(): ReposService {
   if (live) return live
@@ -39,6 +51,8 @@ export function reposService(): ReposService {
     now: () => new Date(),
     owner: `${hostname()}:${process.pid}`,
     log,
+    summarizer: liveSummarizer(),
+    emitSynced,
   })
   return live
 }

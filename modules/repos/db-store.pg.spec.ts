@@ -94,4 +94,18 @@ describe.skipIf(!url)('repos store (Postgres)', () => {
     await store.deleteToken(t.id)
     expect(await store.source(s.id)).toBeNull()
   })
+
+  it('the summary columns (migration 0135) round-trip, and re-enabling clears them', async () => {
+    const t = await token()
+    const id = repoId()
+    const row = await store.enableSource({ tokenId: t.id, repoId: id, fullName: 'pg/summary', defaultBranch: 'main', dueAt: past })
+    expect(row).toMatchObject({ summary: null, summaryErrorKind: null, summaryError: null, summaryErrorAt: null })
+    const summary = { summary: 'All good.', highlights: [{ kind: 'pr' as const, text: 'Merged', ref: '#1' }], writtenAt: '2026-11-12T14:00:00.000Z' }
+    const at = new Date('2026-11-12T14:16:00Z')
+    await store.updateSource(row.id, { summary, summaryErrorKind: 'failed', summaryError: 'Writing the summary failed.', summaryErrorAt: at })
+    expect(await store.source(row.id)).toMatchObject({ summary, summaryErrorKind: 'failed', summaryError: 'Writing the summary failed.', summaryErrorAt: at })
+    await expect(sql`update repo_sources set summary_error_kind = 'other' where id = ${row.id}`).rejects.toThrow(/summary_error_kind_check/)
+    const again = await store.enableSource({ tokenId: t.id, repoId: id, fullName: 'pg/summary', defaultBranch: 'main', dueAt: past })
+    expect(again).toMatchObject({ summary: null, summaryErrorKind: null })
+  })
 })

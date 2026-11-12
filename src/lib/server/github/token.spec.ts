@@ -582,6 +582,48 @@ describe('token client: activity endpoints', () => {
     })
   })
 
+  it('openPulls: every open pull request, all pages, however long ago it was updated', async () => {
+    const { gh, calls } = client({
+      'GET /repos/octo-org/repo-1/pulls?state=open&sort=created&direction=desc&per_page=100': {
+        status: 200,
+        body: [pullBody(9, '2026-11-11T10:00:00Z'), pullBody(7, '2025-01-01T10:00:00Z')],
+        headers: { etag: '"o1"', ...linkTo('/repositories/501/pulls?page=2') },
+      },
+      'GET /repositories/501/pulls?page=2': {
+        status: 200,
+        body: [pullBody(2, '2024-03-01T10:00:00Z')],
+      },
+    })
+    const out = await gh.openPulls('octo-org/repo-1', null)
+    expect(calls).toHaveLength(2)
+    expect(out.notModified).toBe(false)
+    if (out.notModified) return
+    expect(out.data.map((p) => p.number)).toEqual([9, 7, 2])
+    expect(out.data.every((p) => p.state === 'open')).toBe(true)
+    // Page 1's ETag can't vouch for page 2 (a PR closed there would go unseen).
+    expect(out.etag).toBeNull()
+  })
+
+  it('openPulls: one page keeps its ETag, and a 304 is notModified', async () => {
+    const one = client({
+      'GET /repos/octo-org/repo-1/pulls?state=open&sort=created&direction=desc&per_page=100': {
+        status: 200,
+        body: [pullBody(9, '2026-11-11T10:00:00Z')],
+        headers: { etag: '"o1"' },
+      },
+    })
+    const out = await one.gh.openPulls('octo-org/repo-1', null)
+    expect(out).toMatchObject({ notModified: false, etag: '"o1"' })
+    const again = client({
+      'GET /repos/octo-org/repo-1/pulls?state=open&sort=created&direction=desc&per_page=100': {
+        status: 304,
+        headers: { etag: '"o1"' },
+      },
+    })
+    expect(await again.gh.openPulls('octo-org/repo-1', '"o1"')).toEqual({ notModified: true, etag: '"o1"' })
+    expect(again.calls[0].headers['if-none-match']).toBe('"o1"')
+  })
+
   it('tree: recursive, blobs only, truncated flag', async () => {
     const { gh } = client({
       [`GET /repos/octo-org/repo-1/git/trees/${'a'.repeat(40)}?recursive=1`]: {

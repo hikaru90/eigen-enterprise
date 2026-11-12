@@ -136,3 +136,39 @@ exports[`render (pure snapshot → Drive files) > renders the generated pages (s
 - [#5](https://github.com/kindred/shop/pull/5) Old checkout — ada, \`checkout\` → \`main\`, merged 2026-11-05 10:00 UTC
 "
 `;
+
+exports[`render (pure snapshot → Drive files) > says why the summary is missing or out of date (no model selected, a failed update) > missing: failed 1`] = `
+"# kindred/shop
+
+## What's going on
+
+_No summary yet: writing it failed at 2026-11-12 14:02 UTC. The AI provider refused the request (HTTP 500). The assistant tries again after the next sync that finds changes._
+
+"
+`;
+
+exports[`render (pure snapshot → Drive files) > says why the summary is missing or out of date (no model selected, a failed update) > missing: no model 1`] = `
+"# kindred/shop
+
+## What's going on
+
+_No summary. No model is selected for summaries. The owner selects one under Settings → AI provider. The pages below are kept in sync without it._
+
+"
+`;
+
+exports[`render (pure snapshot → Drive files) > says why the summary is missing or out of date (no model selected, a failed update) > stale: no model 1`] = `
+"# kindred/shop
+
+## What's going on
+
+_Written by the assistant · 2026-11-12 14:01 UTC_
+
+_Out of date. No model is selected for summaries. The owner selects one under Settings → AI provider. Until then this summary is not updated._
+
+Cart work is nearly done.
+
+- Cart totals is in draft (#7)
+
+"
+`;

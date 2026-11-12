@@ -121,6 +121,11 @@ export type GitHubTokenClient = {
   compare(fullName: string, base: string, head: string): Promise<TokenCompare>
   /** All states, sorted by updated desc; stops at the first one updated before `updatedSince`. */
   pulls(fullName: string, updatedSince: Date, etag: string | null): Promise<Conditional<TokenPull[]>>
+  /**
+   * Every open pull request (GET /pulls?state=open, all pages), however long
+   * ago it was updated. The ETag comes back only when it all fit on one page.
+   */
+  openPulls(fullName: string, etag: string | null): Promise<Conditional<TokenPull[]>>
   tree(fullName: string, commitSha: string): Promise<TokenTree>
   /** A blob's bytes decoded as UTF-8. */
   blobText(fullName: string, blobSha: string): Promise<string>

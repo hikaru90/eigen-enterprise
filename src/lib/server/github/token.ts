@@ -535,6 +535,18 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
       return { notModified: false, etag: out.etag, data: out.items.map(toPull) }
     },
 
+    async openPulls(fullName, etag): Promise<Conditional<TokenPull[]>> {
+      const { base } = splitFullName(fullName)
+      const out = await paged<GhPull>(
+        `${base}/pulls?state=open&sort=created&direction=desc&per_page=${PER_PAGE}`,
+        etag,
+        () => true,
+      )
+      if (out.notModified) return out
+      // Page 1's ETag can't vouch for later pages (a PR closed there would go unseen).
+      return { notModified: false, etag: out.pages === 1 ? out.etag : null, data: out.items.map(toPull) }
+    },
+
     async tree(fullName, commitSha): Promise<TokenTree> {
       const { base } = splitFullName(fullName)
       const res = await get(`${base}/git/trees/${encodeURIComponent(commitSha)}?recursive=1`)

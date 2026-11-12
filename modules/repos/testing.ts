@@ -97,6 +97,8 @@ export class FakeGitHub {
       compare: (fullName, base, head) => call('compare', fullName, () => data(fullName).compare?.[`${base}...${head}`] ?? { aheadBy: 0, behindBy: 0 }),
       pulls: (fullName, updatedSince, etag) =>
         call('pulls', fullName, () => conditional(data(fullName).pulls.filter((p) => p.updatedAt >= updatedSince), etag)),
+      openPulls: (fullName, etag) =>
+        call('openPulls', fullName, () => conditional(data(fullName).pulls.filter((p) => p.state === 'open'), etag)),
       tree: (fullName) => call('tree', fullName, () => structuredClone(data(fullName).tree ?? { entries: [], truncated: false })),
       blobText: (fullName, sha) =>
         call('blob', fullName, () => {

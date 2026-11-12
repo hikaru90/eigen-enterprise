@@ -6,6 +6,7 @@ import { REPOS_DRIVE_SOURCE } from './manifest'
 import { repoKey } from './render'
 import { last4, sealToken, unsealToken } from './seal'
 import { FRESH_STATE } from './store'
+import { firstSentence } from './summary'
 import { reposTickWith, removeRepoFolder, syncClaimed, CLAIM_LEASE_MS, type SyncDeps, type SyncOutcome, type TickResult } from './sync'
 
 /**
@@ -29,7 +30,30 @@ export type SourceView = {
   pausedUntil: Date | null
   /** The repo's Drive folder; null until the first sync wrote it. */
   driveFolderId: string | null
+  /** The assistant's summary: when it was written, and why the latest attempt wrote none. */
+  summary: SummaryView
 }
+
+export type SummaryView = {
+  writtenAt: Date | null
+  /** A summary exists but the latest attempt to update it wrote none. */
+  stale: boolean
+  problem: { kind: 'no_model' | 'failed'; message: string; at: Date } | null
+}
+
+/** One line of the assistant's "Connected GitHub repos" prompt block. */
+export type RepoBrief = {
+  fullName: string
+  lastPushAt: Date | null
+  openPulls: number
+  /** The first sentence of the assistant's summary; null without one. */
+  summaryFirstSentence: string | null
+  summaryStale: boolean
+  driveFolderId: string | null
+}
+
+/** At most this many repos in the prompt block. */
+export const BRIEFS_MAX = 20
 
 export type TokenView = {
   id: string
@@ -60,6 +84,8 @@ export type ReposService = {
   syncNow(ref: { sourceId: string } | { repo: string }): Promise<{ fullName: string; outcome: SyncOutcome | { status: 'queued' } }>
   /** Connected repos and their status (for repos.list). */
   list(): Promise<SourceView[]>
+  /** Synced repos for the assistant's prompt block: most recently pushed first, at most BRIEFS_MAX. */
+  briefs(): Promise<RepoBrief[]>
   tick(): Promise<TickResult>
 }
 
@@ -106,7 +132,14 @@ export function createReposService(deps: SyncDeps): ReposService {
       lastError: s.lastError,
       pausedUntil: s.pausedUntil,
       driveFolderId: folders.get(repoKey(s.repoId)) ?? null,
+      summary: summaryView(s),
     }
+  }
+
+  function summaryView(s: SourceRow): SummaryView {
+    const problem =
+      s.summaryErrorKind && s.summaryError && s.summaryErrorAt ? { kind: s.summaryErrorKind, message: s.summaryError, at: s.summaryErrorAt } : null
+    return { writtenAt: s.summary ? new Date(s.summary.writtenAt) : null, stale: s.summary !== null && problem !== null, problem }
   }
 
   async function visible(token: TokenRow): Promise<TokenRepo[]> {
@@ -234,6 +267,26 @@ export function createReposService(deps: SyncDeps): ReposService {
     async list() {
       const [sources, folders] = await Promise.all([store.sources(), folderIds()])
       return sources.filter((s) => s.enabled).map((s) => sourceView(s, folders))
+    },
+
+    async briefs() {
+      const [sources, folders] = await Promise.all([store.sources(), folderIds()])
+      const pushed = (s: SourceRow) => s.snapshot?.repo.pushedAt ?? ''
+      return sources
+        .filter((s) => s.enabled && s.snapshot !== null)
+        .sort((a, b) => pushed(b).localeCompare(pushed(a)) || a.fullName.localeCompare(b.fullName))
+        .slice(0, BRIEFS_MAX)
+        .map((s) => {
+          const snap = s.snapshot!
+          return {
+            fullName: s.fullName,
+            lastPushAt: snap.repo.pushedAt ? new Date(snap.repo.pushedAt) : null,
+            openPulls: snap.pulls.filter((p) => p.state === 'open').length,
+            summaryFirstSentence: s.summary ? firstSentence(s.summary.summary) : null,
+            summaryStale: s.summary !== null && s.summaryErrorKind !== null,
+            driveFolderId: folders.get(repoKey(s.repoId)) ?? null,
+          }
+        })
     },
 
     tick: () => reposTickWith(deps),

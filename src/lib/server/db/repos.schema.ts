@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm'
 import { bigint, boolean, index, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 
 /**
- * GitHub repos in Drive (migration 0134, plan/github-drive.md). Not wired into
+ * GitHub repos in Drive (migrations 0134, 0135, plan/github-drive.md). Not wired into
  * schema.ts; consumed only by modules/repos. The token lives sealed in one
  * column (AAD = the row id) and is never selected outside the poller.
  */
@@ -39,6 +39,12 @@ export const repoSources = pgTable(
     lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
     lastError: text('last_error'),
     pausedUntil: timestamp('paused_until', { withTimezone: true }),
+    /** Migration 0135: the assistant's last good "What's going on" ({summary, highlights, writtenAt}). */
+    summary: jsonb('summary').$type<unknown>(),
+    /** Why the latest attempt wrote no summary: 'no_model' | 'failed' (then `summary` is stale). */
+    summaryErrorKind: text('summary_error_kind'),
+    summaryError: text('summary_error'),
+    summaryErrorAt: timestamp('summary_error_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [

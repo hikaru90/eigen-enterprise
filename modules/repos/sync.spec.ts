@@ -3,7 +3,7 @@ import { REPOS_DRIVE_SOURCE as SRC } from './manifest'
 import { BUDGET_FLOOR } from './snapshot'
 import { SYNC_EVERY_MS } from './sync'
 import { TOKEN, setup } from './test-setup'
-import { commit, tokenError } from './testing'
+import { commit, pull, tokenError } from './testing'
 
 const MIN = 60_000
 
@@ -46,7 +46,7 @@ describe('repos poller: one sync', () => {
     const writes = t.drive.writes
     t.gh.calls = []
     expect((await t.service.tick()).synced).toBe(1)
-    expect(t.gh.calls).toEqual(['repo kindred/shop', 'branches kindred/shop', 'pulls kindred/shop'])
+    expect(t.gh.calls).toEqual(['repo kindred/shop', 'branches kindred/shop', 'pulls kindred/shop', 'openPulls kindred/shop'])
     expect(t.drive.writes).toBe(writes)
   })
 
@@ -186,5 +186,111 @@ describe('repos poller: limits and errors', () => {
     expect(t.logs.length).toBeGreaterThan(0)
     expect(everything).not.toContain(TOKEN)
     expect(everything).not.toContain('secretSECRET')
+  })
+})
+
+describe("repos poller: the assistant's summary and repos.synced", () => {
+  const overview = (t: ReturnType<typeof setup>) => t.drive.file(SRC, 'repo:4242/Overview.md')!.content!
+  const pushCommit = (t: ReturnType<typeof setup>, sha: string, subject: string) => {
+    t.data.branches[1] = { name: 'feature/cart', headSha: sha.padEnd(40, '0') }
+    t.data.commits['feature/cart']!.unshift(commit(sha, subject, t.clock.now.toISOString(), 'grace'))
+  }
+
+  it('the first sync writes a summary (no event: nothing happened yet, the repo was connected)', async () => {
+    const t = setup()
+    await t.connect()
+    await t.service.tick()
+    expect(t.summaries.calls).toHaveLength(1)
+    expect(t.summaries.calls[0]!.delta.first).toBe(true)
+    expect(t.summaries.calls[0]!.previous).toBeNull()
+    expect(overview(t)).toContain('_Written by the assistant · 2026-11-12 14:00 UTC_')
+    expect(overview(t)).toContain('Cart work is nearly done. Checkout shipped.')
+    expect(overview(t)).toContain('- Cart totals is a draft (#7)')
+    const [row] = await t.store.sources()
+    expect(row!.summary).toMatchObject({ summary: 'Cart work is nearly done. Checkout shipped.', writtenAt: '2026-11-12T14:00:00.000Z' })
+    expect(t.events).toEqual([])
+  })
+
+  it('an unchanged sync makes no call and emits nothing; a change does both, with the previous summary', async () => {
+    const t = setup()
+    await t.connect()
+    await t.service.tick()
+    t.advance(16 * MIN)
+    await t.service.tick()
+    expect(t.summaries.calls).toHaveLength(1)
+    expect(t.events).toEqual([])
+    expect(overview(t)).toContain('Cart work is nearly done.')
+
+    t.advance(16 * MIN)
+    pushCommit(t, 'b9', 'Cart coupons')
+    t.data.pulls.push(pull({ number: 8, title: 'Coupons', createdAt: t.clock.now, updatedAt: t.clock.now }))
+    t.data.pulls[0] = { ...t.data.pulls[0]!, state: 'closed', merged: true, closedAt: t.clock.now, mergedAt: t.clock.now, updatedAt: t.clock.now }
+    t.summaries.next = { status: 'written', summary: 'Cart totals landed. Coupons are next.', highlights: [] }
+    await t.service.tick()
+    expect(t.summaries.calls).toHaveLength(2)
+    expect(t.summaries.calls[1]!.previous?.summary).toBe('Cart work is nearly done. Checkout shipped.')
+    expect(t.summaries.calls[1]!.delta.newCommits.map((c) => c.subject)).toEqual(['Cart coupons'])
+    expect(t.events).toEqual([{ repoId: 4242, fullName: 'kindred/shop', newCommits: 1, prsOpened: 1, prsMerged: 1, prsClosed: 0 }])
+    expect(overview(t)).toContain('Cart totals landed. Coupons are next.')
+    expect(overview(t)).toContain('_Written by the assistant · 2026-11-12 14:32 UTC_')
+  })
+
+  it('no model selected: no summary, Overview says why, the pages still sync', async () => {
+    const t = setup()
+    t.summaries.next = { status: 'no_model', message: 'No model is selected for summaries. The owner selects one under Settings → AI provider.' }
+    await t.connect()
+    expect((await t.service.tick()).synced).toBe(1)
+    expect(overview(t)).toContain('_No summary. No model is selected for summaries.')
+    expect(t.drive.file(SRC, 'repo:4242/Pull requests.md')?.content).toContain('Cart totals')
+    const [view] = await t.service.list()
+    expect(view!.summary).toEqual({
+      writtenAt: null,
+      stale: false,
+      problem: { kind: 'no_model', message: expect.stringContaining('No model is selected'), at: t.clock.now },
+    })
+    expect(view!.lastError).toBeNull()
+  })
+
+  it('a failed call is logged, shown and keeps the previous summary marked stale; the sync still succeeds', async () => {
+    const t = setup()
+    await t.connect()
+    await t.service.tick()
+    t.advance(16 * MIN)
+    pushCommit(t, 'b9', 'Cart coupons')
+    t.summaries.next = Object.assign(new Error('provider body with details'), { name: 'LlmHttpError' })
+    expect((await t.service.tick()).synced).toBe(1)
+    const text = overview(t)
+    expect(text).toContain('Cart work is nearly done. Checkout shipped.')
+    expect(text).toContain('_Out of date: updating it failed at 2026-11-12 14:16 UTC. Writing the summary failed.')
+    expect(t.drive.file(SRC, 'repo:4242/Activity.md')?.content).toContain('Cart coupons')
+    expect(t.logs.find(([m]) => m === '[repos] summary failed')?.[1]).toMatchObject({ repoId: 4242 })
+    const [view] = await t.service.list()
+    expect(view!.lastError).toBeNull()
+    expect(view!.summary).toMatchObject({
+      writtenAt: new Date('2026-11-12T14:00:00.000Z'),
+      stale: true,
+      problem: { kind: 'failed', message: 'Writing the summary failed.' },
+    })
+    expect(t.events).toHaveLength(1)
+
+    t.advance(16 * MIN)
+    pushCommit(t, 'ba', 'More coupons')
+    t.summaries.next = { status: 'written', summary: 'Coupons are in.', highlights: [] }
+    await t.service.tick()
+    expect((await t.service.list())[0]!.summary).toMatchObject({ stale: false, problem: null })
+    expect(overview(t)).not.toContain('Out of date')
+  })
+
+  it('a failing event sink is logged and never fails the sync', async () => {
+    const t = setup()
+    t.deps.emitSynced = async () => {
+      throw new Error('sink down')
+    }
+    await t.connect()
+    await t.service.tick()
+    t.advance(16 * MIN)
+    pushCommit(t, 'b9', 'Cart coupons')
+    expect((await t.service.tick()).synced).toBe(1)
+    expect(t.logs.some(([m]) => m === '[repos] repos.synced event failed')).toBe(true)
   })
 })
