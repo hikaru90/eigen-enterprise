@@ -3,6 +3,7 @@ import {
   generateRootKey,
   recoveryCodeFromIdentity,
   resolveCompanyKeysDir,
+  rootKeyFromRecoveryCode,
   SealedRootKeyStore,
 } from '$lib/server/gitstore/keys'
 
@@ -31,4 +32,16 @@ export async function companyBackupKey(env: NodeJS.ProcessEnv = process.env): Pr
     recoveryCode: recoveryCodeFromIdentity(identity),
     created,
   }
+}
+
+/**
+ * The backup key (base64) from a recovery code the owner typed to restore a
+ * backup — what `ee restore` derives from the code it asks for. Throws
+ * CompanyKeyError (typo, wrong length) with a plain message. The code itself
+ * goes nowhere: only the derived key is handed to ee, which checks it against
+ * the key it holds.
+ */
+export async function backupKeyFromRecoveryCode(code: string): Promise<string> {
+  const { identity } = await rootKeyFromRecoveryCode(code)
+  return deriveBackupKey(identity).toString('base64')
 }

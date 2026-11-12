@@ -71,6 +71,8 @@ export type BackupDeps = {
   applySchedule(s: { hour: number; minute: number }): Promise<void>
   /** S3 part size override (tests). */
   partSize?: number
+  /** Why a run may not start now (a check or restore of a backup is running), or null. */
+  busy: () => string | null
 }
 
 export class BackupError extends Error {
@@ -100,6 +102,8 @@ export const configureInput = z
 
 export class BackupService {
   private current: Promise<BackupRun> | null = null
+  /** Set synchronously when a run is being started, so a check/restore can't slip in before `current` is. */
+  private starting = false
   private runs: BackupRun[] | null = null
 
   constructor(private readonly d: BackupDeps) {}
@@ -228,7 +232,7 @@ export class BackupService {
   }
 
   isRunning(): boolean {
-    return this.current !== null
+    return this.starting || this.current !== null
   }
 
   /** Start a run; resolves with its record once started (wait for `.done` to get the result). */
@@ -236,7 +240,18 @@ export class BackupService {
     const cfg = this.config()
     const key = this.key()
     if (!cfg || !key) throw new BackupError(409, 'backups are not set up (Settings → Backups)')
-    if (this.current) throw new BackupError(409, 'a backup is already running')
+    if (this.isRunning()) throw new BackupError(409, 'a backup is already running')
+    const blocked = this.d.busy()
+    if (blocked) throw new BackupError(409, blocked)
+    this.starting = true
+    try {
+      return await this.begin(trigger, author, cfg, key)
+    } finally {
+      this.starting = false
+    }
+  }
+
+  private async begin(trigger: BackupRun['trigger'], author: string, cfg: BackupConfig, key: Buffer): Promise<{ run: BackupRun; done: Promise<BackupRun> }> {
     const runs = await this.loadRuns()
     const t0 = this.d.now()
     const run: BackupRun = {

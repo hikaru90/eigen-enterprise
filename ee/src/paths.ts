@@ -21,6 +21,8 @@ export const PATHS = {
   postgresSocketDir: '/var/run/postgresql',
   /** Backup run records (plan/phase-backups.md); config + key live sealed in the secret store. */
   backupRuns: '/var/lib/ee/backups.json',
+  /** The last check/restore job from Settings → Backups (backup/restore.ts); outlives the restore's restart. */
+  restoreState: '/var/lib/ee/restore.json',
   /** Root-only scratch for one backup/restore run (emptied after). */
   backupTmp: '/var/lib/ee/backup-tmp',
   /** The os workload's persistent state (Drive under drive/, the agent under agent/). */

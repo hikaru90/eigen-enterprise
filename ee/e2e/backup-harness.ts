@@ -49,6 +49,8 @@ const svc = new BackupService({
   now: () => new Date(),
   emit: async (type, message) => void events.push({ type, message }),
   applySchedule: async () => undefined,
+  // No check/restore in this harness: nothing else ever holds the job slot.
+  busy: () => null,
   partSize: 5 * 1024 * 1024,
 })
 

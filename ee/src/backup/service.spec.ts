@@ -28,6 +28,7 @@ async function harness(endpoint: string, fake: FakeS3) {
     now: () => clock,
     emit: async (type, message) => void events.push({ type, message }),
     applySchedule: async (s) => void schedules.push(s),
+    busy: () => null,
   })
   const target = fake.target(endpoint)
   return { svc, co, events, schedules, files, target, secrets: () => data, setClock: (d: Date) => (clock = d) }

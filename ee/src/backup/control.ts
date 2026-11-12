@@ -1,3 +1,4 @@
+import type { RestoreService } from './restore.ts'
 import { z } from 'zod'
 import { s3TargetSchema } from './s3.ts'
 import { BackupError, type BackupService } from './service.ts'
@@ -9,6 +10,13 @@ import { BackupError, type BackupService } from './service.ts'
  *   POST /v1/backups/test       { target }                      → { ok } | { ok:false, error }
  *   POST /v1/backups/config     { target, schedule, retentionDays, backupKey?, author } → { config }
  *   POST /v1/backups/run        { author, trigger?, wait? }     → { run }
+ * Check and restore (restore.ts; refused with 409 while a backup, check or restore runs):
+ *   GET  /v1/backups/snapshots  complete snapshots in the bucket, newest first → { snapshots: [{ id, takenAt }] }
+ *   GET  /v1/backups/restore    the last check/restore job (progress; survives the restore's restart) → { job | null }
+ *   POST /v1/backups/check      { snapshotId, author }                         → 202 { job }   (writes nothing)
+ *   POST /v1/backups/restore    { snapshotId, backupKey, author }              → 202 { job }
+ *        backupKey: derived by the app from the recovery code the owner typed; must match the sealed
+ *        key; held in memory for the verify, never stored or logged. Whole box only.
  */
 
 export type Reply = { status: number; data: unknown }
@@ -36,6 +44,19 @@ export async function backupRoute(svc: BackupService, route: string, readBody: (
       const { run, done } = await svc.start(i.trigger, i.author)
       return { status: 200, data: { run: i.wait ? await done : run } }
     }
+    return null
+  } catch (err) {
+    if (err instanceof BackupError) return { status: err.status, data: { type: 'urn:ee:backup', title: err.message, detail: err.message } }
+    throw err
+  }
+}
+
+export async function restoreRoute(svc: RestoreService, route: string, readBody: () => Promise<unknown>): Promise<Reply | null> {
+  try {
+    if (route === 'GET /v1/backups/snapshots') return { status: 200, data: await svc.snapshots() }
+    if (route === 'GET /v1/backups/restore') return { status: 200, data: { job: await svc.job() } }
+    if (route === 'POST /v1/backups/check') return { status: 202, data: { job: (await svc.check(await readBody())).job } }
+    if (route === 'POST /v1/backups/restore') return { status: 202, data: { job: (await svc.restore(await readBody())).job } }
     return null
   } catch (err) {
     if (err instanceof BackupError) return { status: err.status, data: { type: 'urn:ee:backup', title: err.message, detail: err.message } }

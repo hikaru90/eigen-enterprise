@@ -3,7 +3,8 @@ import { join } from 'node:path'
 import { AGE_REPAIR_SQL } from '../age-repair.ts'
 import { PATHS } from '../paths.ts'
 import { mustRun, type System } from '../system.ts'
-import { fetchSnapshot, runToFile, type BackupSources, type Manifest } from './snapshot.ts'
+import { RESTORE_UNIT, restoreWorkDir, stageSnapshot, type ApplyProgress } from './restore.ts'
+import { runToFile, type BackupSources, type Manifest } from './snapshot.ts'
 import { BACKUP_SERVICE, BACKUP_TIMER, defaultSchedule, renderBackupService, renderBackupTimer } from './timer.ts'
 
 /** The ee runtime (same pinned Node as ee.service). */
@@ -45,15 +46,45 @@ export async function writeBackupTimer(sys: System, s: { hour: number; minute: n
  * whose reconcile re-renders env files, re-keys the DB role and redeploys.
  */
 export async function restoreOnBox(sys: System, s3: S3Client, key: Buffer, id: string, log: (l: string) => void): Promise<Manifest> {
-  const work = join(PATHS.backupTmp, `restore-${id}`)
-  const staging = join(work, 'drive')
-  await sys.remove(work)
   log(`→ downloading and verifying snapshot ${id}`)
-  const m = await fetchSnapshot(s3, key, id, { dir: work, driveDir: staging }, log)
-  const has = (n: string) => m.files.some((f) => f.name === n)
-  if (!has('db.dump') || !has('ee-state.tar.gz')) throw new Error(`snapshot ${id} lacks the database or ee state; refusing a partial restore`)
+  const m = await stageSnapshot(s3, key, id, PATHS.backupTmp, log)
+  await applyRestore(sys, id, async (_step, line) => log(line))
+  return m
+}
 
-  log('→ stopping ee and the workloads')
+/** The restore unit Settings → Backups hands a verified, staged snapshot to (restore.ts): it outlives ee.service. */
+export async function launchRestoreUnit(sys: System, id: string): Promise<void> {
+  await mustRun(sys, 'systemd-run', [
+    `--unit=${RESTORE_UNIT}`,
+    '--description=eigenEnterprise restore (Settings → Backups)',
+    '--collect',
+    '--quiet',
+    '--property=Type=exec',
+    EE_NODE,
+    '/opt/ee/ee.mjs',
+    'restore-apply',
+    '--snapshot',
+    id,
+  ])
+}
+
+export async function restoreUnitActive(sys: System): Promise<boolean> {
+  return (await sys.run('systemctl', ['is-active', '--quiet', RESTORE_UNIT])).code === 0
+}
+
+/**
+ * Put a staged, verified snapshot (stageSnapshot) in place: stop ee and every
+ * workload, replace ee state, the database, Drive and the agent, start ee.
+ * Needs no key — everything was decrypted and checked before.
+ */
+export async function applyRestore(sys: System, id: string, progress: ApplyProgress): Promise<void> {
+  const work = restoreWorkDir(PATHS.backupTmp, id)
+  const staging = join(work, 'drive')
+  for (const f of ['db.dump', 'ee-state.tar.gz']) {
+    if (!(await sys.exists(join(work, f)))) throw new Error(`snapshot ${id} is not staged (${join(work, f)} is missing); nothing was changed`)
+  }
+
+  await progress('stopping', '→ stopping ee and the workloads')
   await mustRun(sys, 'systemctl', ['stop', 'ee.service', BACKUP_TIMER])
   const units = (await mustRun(sys, 'systemctl', ['list-units', '--plain', '--no-legend', '--all', 'ee-*-?.service']))
     .split('\n')
@@ -61,13 +92,13 @@ export async function restoreOnBox(sys: System, s3: S3Client, key: Buffer, id: s
     .filter((u): u is string => !!u && /^ee-[a-z0-9-]+-[ab]\.service$/.test(u))
   if (units.length) await mustRun(sys, 'systemctl', ['stop', ...units])
 
-  log('→ restoring ee state (company repo, sealed secrets, host key)')
+  await progress('restoring-state', '→ restoring ee state (company repo, sealed secrets, host key)')
   await sys.remove(PATHS.company)
   await mustRun(sys, 'tar', ['-C', '/', '-xzf', join(work, 'ee-state.tar.gz')])
   // Runtime state is rebuilt by reconcile from the restored desired state.
   await sys.remove(PATHS.journal)
 
-  log(`→ restoring the company database (${COMPANY_DB})`)
+  await progress('restoring-database', `→ restoring the company database (${COMPANY_DB})`)
   await mustRun(sys, 'runuser', ['-u', 'postgres', '--', 'dropdb', '--if-exists', COMPANY_DB])
   // --create recreates the database (owner role "os" exists from bootstrap; reconcile re-keys its password).
   await runToFile(['runuser', '-u', 'postgres', '--', 'pg_restore', '--create', '--exit-on-error', '--dbname=postgres'], join(work, 'pg_restore.log'), {
@@ -76,12 +107,13 @@ export async function restoreOnBox(sys: System, s3: S3Client, key: Buffer, id: s
   // A restore gives the graph's schema a new oid; point AGE's catalog at it (age-repair.ts).
   await mustRun(sys, 'runuser', ['-u', 'postgres', '--', 'psql', '-v', 'ON_ERROR_STOP=1', '-d', COMPANY_DB, '-c', AGE_REPAIR_SQL])
 
-  log('→ restoring Drive and agent state')
+  await progress('restoring-files', '→ restoring Drive and agent state')
   await sys.mkdirp(PATHS.osState, 0o755)
   const drive = join(PATHS.osState, 'drive')
   await sys.mkdirp(drive, 0o700)
+  await sys.mkdirp(staging, 0o700) // a snapshot without Drive blobs stages none
   await mustRun(sys, 'cp', ['-a', `${staging}/.`, drive])
-  if (has('agent.sqlite')) {
+  if (await sys.exists(join(work, 'agent.sqlite'))) {
     const agentDir = join(PATHS.osState, 'agent')
     await sys.mkdirp(agentDir, 0o700)
     for (const f of ['agent.sqlite-wal', 'agent.sqlite-shm']) await sys.remove(join(agentDir, f))
@@ -91,8 +123,7 @@ export async function restoreOnBox(sys: System, s3: S3Client, key: Buffer, id: s
   const owner = (await mustRun(sys, 'stat', ['-L', '-c', '%u:%g', PATHS.osState])).trim()
   await mustRun(sys, 'chown', ['-R', owner, `${PATHS.osState}/`])
 
-  log('→ starting ee (it reconciles: env files, database role, deploy)')
+  await progress('starting', '→ starting ee (it reconciles: env files, database role, deploy)')
   await mustRun(sys, 'systemctl', ['start', 'ee.service', BACKUP_TIMER])
   await sys.remove(work)
-  return m
 }
