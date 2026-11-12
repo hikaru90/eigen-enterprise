@@ -1,4 +1,5 @@
 import type { Pathname } from '$app/types'
+import { canOpen, type Capabilities } from '$lib/access/capabilities'
 
 /**
  * Sub-navigation tabs for the shell's areas (one page frame, C3b): every
@@ -11,6 +12,11 @@ export type AreaTab = {
   href: Pathname
   /** Further path prefixes that keep this tab current. */
   match?: readonly string[]
+}
+
+/** The tabs someone may open: a tab whose page answers 403 for them is not offered (Contribute 2bda4814). */
+export function openableTabs(tabs: readonly AreaTab[], capabilities: Capabilities): AreaTab[] {
+  return tabs.filter((t) => canOpen(capabilities, t.href))
 }
 
 /**

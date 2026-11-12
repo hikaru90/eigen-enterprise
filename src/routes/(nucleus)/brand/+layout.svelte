@@ -3,7 +3,7 @@
   import { page } from '$app/state'
   import PageFrame from '$lib/components/page/page-frame.svelte'
   import PageHeader from '$lib/components/page/page-header.svelte'
-  import { BRAND_TABS, currentAreaTab } from '$lib/shell/area-nav'
+  import { BRAND_TABS, currentAreaTab, openableTabs } from '$lib/shell/area-nav'
   import { ownerModuleBlurb } from '$lib/shell/module-copy'
 
   /**
@@ -12,6 +12,9 @@
    */
   let { children }: { children: Snippet } = $props()
   const current = $derived(currentAreaTab(BRAND_TABS, page.url.pathname))
+  // Extract and the editor are for owners/admins (brand.extract): a member
+  // is not offered a tab that answers 403.
+  const tabs = $derived(page.data.shell ? openableTabs(BRAND_TABS, page.data.shell.capabilities) : [])
 </script>
 
 {#if current}
@@ -19,7 +22,7 @@
     <PageHeader
       title="Brand"
       description={ownerModuleBlurb('brand', '')}
-      tabs={BRAND_TABS}
+      {tabs}
       {current}
       navLabel="Brand sections"
       navTestId="brand-nav"
