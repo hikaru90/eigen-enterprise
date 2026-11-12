@@ -1,20 +1,20 @@
 <script lang="ts">
-  import { docTitle } from '$lib/shell/title'
   import type { PageProps } from './$types'
   import { resolve } from '$app/paths'
   import MessageStatus from '$lib/components/email/message-status.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
-  import { SOURCE_LABEL } from '../../../../../modules/email/platform/status'
+  import { docTitle } from '$lib/shell/title'
+  import { SOURCE_LABEL } from '../../../../../../modules/email/platform/status'
 
-  /** Email › Mail: what is waiting to go out and what went out. Setup lives under Setup. */
+  /** Email › Company mail (owner and admins): what the company has waiting to go out and what went out. */
   let { data }: PageProps = $props()
 
   const when = (iso: string) =>
     new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 </script>
 
-<svelte:head><title>{docTitle('Email')}</title></svelte:head>
+<svelte:head><title>{docTitle('Company mail', 'Email')}</title></svelte:head>
 
 {#snippet list(
   rows: typeof data.sent,

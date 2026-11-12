@@ -15,7 +15,7 @@ export const EMAIL_SETUP_TABS: readonly AreaTab[] = [
 ]
 
 /**
- * The Email area's sections (plan/phase-polish-1.md P-6): mail first, the
+ * The Email area's sections (plan/phase-polish-1.md P-6, plan/email-inbox.md S6): your inbox first, the company's mail, the
  * audience lists, and everything about how mail is set up behind one Setup
  * tab. Kept beside the routes: the shell's area-nav lists only the shell-owned
  * areas. The lists tab was called "Contacts" until the Contacts module (the
@@ -23,9 +23,10 @@ export const EMAIL_SETUP_TABS: readonly AreaTab[] = [
  * its id and route stay.
  */
 export const EMAIL_TABS: readonly AreaTab[] = [
-  // S4 (plan/email-inbox.md): your own mail first. S6 makes /m/email land here.
+  // Your own mail first: /m/email lands here (plan/email-inbox.md S6, Contribute eb674853).
   { id: 'inbox', label: 'Inbox', href: '/m/email/inbox', match: ['/m/email/inbox'] },
-  { id: 'mail', label: 'Mail', href: '/m/email' },
+  // The company-wide pending + sent log (the landing view until S6), owner and admins only.
+  { id: 'company', label: 'Company mail', href: '/m/email/company' },
   { id: 'contacts', label: 'Lists', href: '/m/email/contacts' },
   {
     id: 'setup',
@@ -34,3 +35,8 @@ export const EMAIL_TABS: readonly AreaTab[] = [
     match: EMAIL_SETUP_TABS.map((t) => t.href),
   },
 ]
+
+/** The tabs this person sees: Company mail only for the owner and admins (its page refuses everyone else). */
+export function emailTabs(viewer: { isAdmin: boolean }): readonly AreaTab[] {
+  return viewer.isAdmin ? EMAIL_TABS : EMAIL_TABS.filter((t) => t.id !== 'company')
+}

@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { docTitle } from '$lib/shell/title'
   import type { PageProps } from './$types'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
   import MessageStatus from '$lib/components/email/message-status.svelte'
   import { Button } from '$lib/components/ui/button'
+  import { docTitle } from '$lib/shell/title'
   import {
     SOURCE_LABEL,
     STATUS_LABEL,

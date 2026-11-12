@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { docTitle } from '$lib/shell/title'
   import type { PageProps } from './$types'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
@@ -8,6 +7,7 @@
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { docTitle } from '$lib/shell/title'
 
   let { data, form }: PageProps = $props()
 </script>
