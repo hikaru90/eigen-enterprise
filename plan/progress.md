@@ -6,7 +6,8 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 
 Owner: "Yes, upgrade". `ee upgrade --check` saw 0.5.6 → 0.5.7; ran `ee upgrade --from https://github.com/hikaru90/eigen-enterprise/releases/download/v0.5.7`, detached (`nohup setsid`, log `/root/ee-upgrade-0.5.7.log`). Safety copy + rollback steps: `/var/lib/ee/upgrades/2026-11-12T20-54-04Z`.
 - **Observed after:** `ee upgrade --check` says it runs `eigenenterprise-0.5.7-318854f07775`; os switched b → a (`ee-os-a` active, 0 restarts); "Applied 4 migration(s)"; no `[server error]` lines in its journal; `ee-livekit-a` and `ee-cerberusblue-website-b` running; `/login` 200, `/api/health` 200, anonymous `/settings/passkeys` 302 → login.
-- **Not verified signed in:** the passkeys page, logo upload, calls across pages, Settings → Plugins / Backups restore, contacts by voice. Board statuses unchanged.
+- **Not verified signed in:** the passkeys page, logo upload, calls across pages, Settings → Plugins / Backups restore, contacts by voice.
+- **Board updated (owner: "Yes, update board"), over the `cerberusblue` MCP:** shipped with a v0.5.7 note — `cccc91c0` passkeys, `bf41c35d` logo, `feba04ff` green dot, `7e2ac4c8` calls across pages + layout, `f02fb253` device pickers, `2ac70cc5` restore (note says the first real restore is still ahead), `94641271` + `678ff079` contacts by voice; `c05c3a40` plugins → in_progress (part 1); `df14e05a` calendar and `d8ec9006` appointments from emails stay requested with a "planned" note. New since the triage, untouched: `e4ef6be1` (always show your own status bottom left).
 
 ## 2026-11-12 — v0.5.7 published on GitHub (Contribute round 4)
 
