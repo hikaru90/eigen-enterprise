@@ -18,6 +18,42 @@ export const MAX_LOGO_BYTES = 1024 * 1024
 export const isLogoType = (v: unknown): v is LogoType =>
   typeof v === 'string' && (LOGO_TYPES as readonly string[]).includes(v)
 
+export const LOGO_TYPE_LABEL: Record<LogoType, string> = {
+  'image/png': 'PNG',
+  'image/jpeg': 'JPEG',
+  'image/svg+xml': 'SVG',
+  'image/webp': 'WebP',
+}
+
+/** A declared content type without parameters, lower-cased ('' when there is none). */
+export const bareLogoType = (declared: string | null): string => (declared ?? '').split(';')[0].trim().toLowerCase()
+
+export type LogoFileRefusal = { status: 400 | 413 | 415; error: string }
+
+/**
+ * The type and size rules for a logo file, by its declared type and byte
+ * length. The settings page checks a picked, dropped or pasted file with this
+ * before uploading; the server checks again (and then the file's contents).
+ */
+export function refuseLogoFile(declaredType: string | null, byteLength: number): LogoFileRefusal | null {
+  const type = bareLogoType(declaredType)
+  if (!isLogoType(type)) {
+    const names = LOGO_TYPES.map((t) => LOGO_TYPE_LABEL[t])
+    return {
+      status: 415,
+      error: `A logo must be a ${names.slice(0, -1).join(', ')} or ${names.at(-1)} image (got ${type || 'no type'}).`,
+    }
+  }
+  if (byteLength === 0) return { status: 400, error: 'The file is empty.' }
+  if (byteLength > MAX_LOGO_BYTES) {
+    return {
+      status: 413,
+      error: `The logo is too large (${Math.ceil(byteLength / 1024)} KB; at most ${MAX_LOGO_BYTES / 1024} KB).`,
+    }
+  }
+  return null
+}
+
 const SHA256 = /^[0-9a-f]{64}$/
 export const isLogoSha = (v: unknown): v is string => typeof v === 'string' && SHA256.test(v)
 

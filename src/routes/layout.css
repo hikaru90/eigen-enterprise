@@ -41,6 +41,8 @@
     --accent: #f0f3f0;
     --accent-foreground: #111111;
     --destructive: oklch(0.45 0.185 27.325);
+    /* Something is on / working (status pill "Active" dot); AA as text too. */
+    --success: oklch(0.5 0.14 150);
     --border: rgb(17 17 17 / 10%);
     --input: rgb(17 17 17 / 47%);
     --ring: #666666;
@@ -196,6 +198,7 @@
   --accent: oklch(0.28 0.015 152);
   --accent-foreground: oklch(0.985 0.005 152);
   --destructive: oklch(0.765 0.14 22.216);
+  --success: oklch(0.75 0.16 150);
   --border: oklch(0.92 0.02 152 / 12%);
   --input: oklch(0.92 0.02 152 / 40%);
   --ring: oklch(0.552 0.04 152);
@@ -250,6 +253,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -309,6 +313,7 @@
     --accent-foreground: #111111;
     /* Re-declared so OS dark mode cannot leak .dark's light red onto this white page. */
     --destructive: oklch(0.495 0.2 27.325);
+    --success: oklch(0.5 0.14 150);
     --border: rgb(17 17 17 / 10%);
     --input: rgb(17 17 17 / 47%);
     --ring: #666666;

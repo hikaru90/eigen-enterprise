@@ -90,6 +90,22 @@ const SHELL_PAIRS: ContrastPair[] = [
     min: AA_TEXT,
     use: 'text-primary links',
   },
+  // The status pill's "on" dot (src/lib/components/page/status-pill.svelte).
+  // Held to the text minimum, not just 3:1, so the token can colour success text too.
+  {
+    id: 'success on background',
+    fg: { token: '--success' },
+    on: [{ token: '--background' }],
+    min: AA_TEXT,
+    use: 'status pill "on" dot, success text',
+  },
+  {
+    id: 'success on card',
+    fg: { token: '--success' },
+    on: [{ token: '--card' }],
+    min: AA_TEXT,
+    use: 'status pill "on" dot, success text',
+  },
 ]
 
 describe('app theme tokens meet WCAG 2.1 AA', () => {

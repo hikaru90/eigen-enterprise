@@ -107,6 +107,7 @@ export default defineConfig({
       'src/lib/components/app-detail-settings.svelte.spec.ts',
       'src/lib/components/agent-run-feed.svelte.spec.ts',
       'src/lib/components/page/page-header.svelte.spec.ts',
+      'src/lib/components/page/status-pill.svelte.spec.ts',
       'src/lib/components/drive/drive-browser.svelte.spec.ts',
       'src/lib/components/drive/drive-privacy-note.svelte.spec.ts',
       'src/lib/components/drive/archived-view.svelte.spec.ts',

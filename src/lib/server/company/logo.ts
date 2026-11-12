@@ -2,7 +2,7 @@ import type { UponSanitizeAttributeHook, UponSanitizeElementHook } from 'dompuri
 import { join } from 'node:path'
 import DOMPurify, { type Config } from 'isomorphic-dompurify'
 import sharp from 'sharp'
-import { isLogoType, LOGO_TYPES, MAX_LOGO_BYTES, type LogoType } from '$lib/company/identity'
+import { bareLogoType, isLogoType, LOGO_TYPE_LABEL, refuseLogoFile, type LogoType } from '$lib/company/identity'
 import { diskBlobStore, resolveDriveStorageDir, type BlobStore } from '../../../../modules/drive/storage'
 
 /**
@@ -21,13 +21,6 @@ import { diskBlobStore, resolveDriveStorageDir, type BlobStore } from '../../../
 
 export const MIN_LOGO_PX = 16
 export const MAX_LOGO_PX = 4096
-
-const LABEL: Record<LogoType, string> = {
-  'image/png': 'PNG',
-  'image/jpeg': 'JPEG',
-  'image/svg+xml': 'SVG',
-  'image/webp': 'WebP',
-}
 
 type RasterType = Exclude<LogoType, 'image/svg+xml'>
 const SHARP_FORMAT: Record<RasterType, string> = { 'image/png': 'png', 'image/jpeg': 'jpeg', 'image/webp': 'webp' }
@@ -49,7 +42,7 @@ function headerIs(type: RasterType, b: Uint8Array): boolean {
 const notA = (type: LogoType): LogoCheck => ({
   ok: false,
   status: 400,
-  error: type === 'image/svg+xml' ? 'The file is not an SVG image.' : `The file is not a ${LABEL[type]} image.`,
+  error: type === 'image/svg+xml' ? 'The file is not an SVG image.' : `The file is not a ${LOGO_TYPE_LABEL[type]} image.`,
 })
 
 async function readable(bytes: Uint8Array): Promise<{ format?: string; width?: number; height?: number } | null> {
@@ -121,23 +114,10 @@ async function checkSvg(bytes: Uint8Array): Promise<LogoCheck> {
 
 /** What Settings → Company accepts as a logo; every refusal says why. */
 export async function checkLogo(bytes: Uint8Array, declaredType: string | null): Promise<LogoCheck> {
-  const type = (declaredType ?? '').split(';')[0].trim().toLowerCase()
-  if (!isLogoType(type)) {
-    const names = LOGO_TYPES.map((t) => LABEL[t])
-    return {
-      ok: false,
-      status: 415,
-      error: `A logo must be a ${names.slice(0, -1).join(', ')} or ${names.at(-1)} image (got ${type || 'no type'}).`,
-    }
-  }
-  if (bytes.byteLength === 0) return { ok: false, status: 400, error: 'The file is empty.' }
-  if (bytes.byteLength > MAX_LOGO_BYTES) {
-    return {
-      ok: false,
-      status: 413,
-      error: `The logo is too large (${Math.ceil(bytes.byteLength / 1024)} KB; at most ${MAX_LOGO_BYTES / 1024} KB).`,
-    }
-  }
+  const refused = refuseLogoFile(declaredType, bytes.byteLength)
+  if (refused) return { ok: false, ...refused }
+  const type = bareLogoType(declaredType)
+  if (!isLogoType(type)) throw new Error(`refuseLogoFile let through a non-logo type: ${type}`)
   return type === 'image/svg+xml' ? checkSvg(bytes) : checkRaster(type, bytes)
 }
 
