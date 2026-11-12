@@ -19,6 +19,7 @@ const EXPECTED: Record<KernelErrorCode, { status: number; title: string }> = {
   core_module: { status: 409, title: 'Core module' },
   unknown_module: { status: 404, title: 'Unknown module' },
   module_required: { status: 409, title: 'Module required' },
+  module_switched_off: { status: 409, title: 'Switched off by a person' },
 }
 
 const CODES = Object.keys(EXPECTED) as KernelErrorCode[]

@@ -1,5 +1,6 @@
 import type { AgentTypeSpec, VerificationPolicySpec } from './agent'
 import type { ZodType } from 'zod'
+import { KernelError } from './errors'
 import { manifestSchema } from './manifest-schema'
 
 export type ModuleManifest = {
@@ -150,6 +151,29 @@ export class ModuleRegistry {
     if (!manifest) throw new Error(`unknown module: ${id}`)
     return manifest
   }
+}
+
+/**
+ * Whether a person switched the module off on purpose: its activation record
+ * says false. No record = never switched on (a fresh box, a plugin never set
+ * up) — the agent may switch that one on; a switched-off one only a person
+ * (owner, 2026-11-12).
+ */
+export async function moduleSwitchedOff(store: ActivationStore, id: string): Promise<boolean> {
+  return (await store.list()).get(id) === false
+}
+
+/**
+ * The `module_inactive` error for a tool of an inactive module, carrying
+ * `switchedOff` as structured detail (what the agent may do about it is
+ * decided from that, never from the message).
+ */
+export async function moduleInactiveError(store: ActivationStore, moduleId: string, tool: string): Promise<KernelError> {
+  const switchedOff = await moduleSwitchedOff(store, moduleId)
+  const message = switchedOff
+    ? `module ${moduleId} is switched off; cannot execute ${tool}. Only the owner or an admin can switch it back on, in Settings → Plugins.`
+    : `module ${moduleId} is not active; cannot execute ${tool}`
+  return new KernelError('module_inactive', message, { module: moduleId, tool, switchedOff })
 }
 
 /** The namespaces a manifest owns: its declared toolNamespaces, or exactly [id]. */

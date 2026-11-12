@@ -436,6 +436,65 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     expect(inputs.at(-1)).toContain('kernel.module_activate')
   })
 
+  // Owner, 2026-11-12: the assistant never switches back on a plugin a person switched off.
+  it('never re-activates a module a person switched off: the error reaches the model instead', async () => {
+    const sink = new InMemoryEventSink()
+    const activations = new InMemoryActivationStore()
+    await activations.set('kernel', true)
+    await activations.set('website', false)
+    const registry = new KernelRegistry({ eventSink: sink, activationStore: activations, vcsCommitter: null })
+    registry.register({
+      name: 'website.list_pages',
+      module: 'website',
+      summary: 'list',
+      auditClass: 'read',
+      inputSchema: z.looseObject({}),
+      permission: { roles: ['admin'] },
+      handler: async () => [],
+    })
+    const activateCalls: unknown[] = []
+    registry.register({
+      name: 'kernel.module_activate',
+      module: 'kernel',
+      summary: 'activate',
+      auditClass: 'mutate',
+      activity: () => 'Switched on a module',
+      inputSchema: z.looseObject({}),
+      permission: { roles: ['admin'] },
+      handler: async (_ctx, input) => {
+        activateCalls.push(input)
+        return { active: true }
+      },
+    })
+    const journeys = new InMemoryJourneyStore()
+    const runtime = new JourneyAwareAgentRuntime({
+      registry,
+      isToolActive: async () => true,
+      eventSink: sink,
+      rolesFor: () => ['admin', 'agent'],
+      journeys,
+      spec: WEBSITE_FOUNDING_JOURNEY,
+    })
+    const inputs: string[] = []
+    const replies = [`Thanks.\n${marker('company_name')}`, `Noted.\n${marker('positioning')}`, 'The website is switched off; an admin can switch it on in Settings → Plugins.']
+    runtime.registerEngine('durable', {
+      run: async (_s, input) => {
+        inputs.push(input)
+        return replies.shift()!
+      },
+    })
+    runtime.registerAgent(orchestratorAgentConfig())
+    await journeys.create(WEBSITE_FOUNDING_JOURNEY.kind, initialJourneyState('s1', WEBSITE_FOUNDING_JOURNEY.specVersion))
+
+    await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'Acme')
+    await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'We build things.')
+
+    expect(activateCalls).toEqual([])
+    expect(await activations.get('website')).toBe(false)
+    expect(inputs.at(-1)).toContain('"code":"module_inactive"')
+    expect(inputs.at(-1)).toContain('"switchedOff":true')
+  })
+
   it('a failing journey store read is handed to the agent, not thrown', async () => {
     const fx = fixture()
     fx.journeys.getActive = async () => {

@@ -37,11 +37,18 @@ export function toolErrorResult(tool: string, err: unknown): ToolErrorResult {
       ...(details === undefined ? {} : { details }),
     }
     const moduleId = err.details?.module
+    // Owner, 2026-11-12: the agent may switch on a module that was never
+    // switched on (switchedOff: false), never one a person switched off — and
+    // never on a guess (the detail missing).
     if (err.code === 'module_inactive' && typeof moduleId === 'string') {
-      result.remediation = {
-        module: moduleId,
-        fix: 'kernel.module_activate',
-        input: { module_id: moduleId },
+      if (err.details?.switchedOff === false) {
+        result.remediation = {
+          module: moduleId,
+          fix: 'kernel.module_activate',
+          input: { module_id: moduleId },
+        }
+      } else if (err.details?.switchedOff === true) {
+        result.message = `${err.message} A person switched it off on purpose. Do not switch it back on yourself: tell the person it is switched off and that the owner or an admin can switch it on in Settings → Plugins.`
       }
     }
     return result

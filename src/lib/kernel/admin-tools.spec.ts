@@ -272,6 +272,41 @@ describe('kernel.module_activate / kernel.module_deactivate handlers', () => {
     expect(await activations.get('calls')).toBe(false)
   })
 
+  // Owner, 2026-11-12: the assistant never switches back on a plugin a person switched off.
+  it.each(['agent', 'service'] as const)(
+    'refuses an %s principal switching on a plugin a person switched off (no approval-free way back)',
+    async (kind) => {
+      const { activations, activate, deactivate } = await pluginsAndCore()
+      await deactivate.handler(makeCtx(), { module_id: 'calls' })
+      await expect(activate.handler(makeCtx({ kind, roles: ['admin', 'agent'] }), { module_id: 'calls' })).rejects.toMatchObject({
+        name: 'KernelError',
+        code: 'module_switched_off',
+        message: 'Calls was switched off by a person. Only the owner or an admin can switch it back on, in Settings → Plugins.',
+        details: { module: 'calls' },
+      })
+      expect(await activations.get('calls')).toBe(false)
+    },
+  )
+
+  it('lets an agent switch on a plugin that was never set up (no activation record)', async () => {
+    const activations = new InMemoryActivationStore()
+    const modules = makeModules(activations, [makeManifest('memory')])
+    const tools = createAdminTools({ modules, activations, approvals: makeRichApprovalStore([]).store })
+    const activate = toolByName(tools, 'kernel.module_activate')
+    await expect(activate.handler(makeCtx({ kind: 'agent', roles: ['admin', 'agent'] }), { module_id: 'memory' })).resolves.toEqual({
+      module_id: 'memory',
+      active: true,
+    })
+    expect(await activations.get('memory')).toBe(true)
+  })
+
+  it('lets a person switch a switched-off plugin back on', async () => {
+    const { activations, activate, deactivate } = await pluginsAndCore()
+    await deactivate.handler(makeCtx(), { module_id: 'calls' })
+    await expect(activate.handler(makeCtx(), { module_id: 'calls' })).resolves.toEqual({ module_id: 'calls', active: true })
+    expect(await activations.get('calls')).toBe(true)
+  })
+
   it('throws loud on unknown module ids and leaves the store untouched', async () => {
     const activations = new InMemoryActivationStore()
     const modules = makeModules(activations, [makeManifest('memory')])

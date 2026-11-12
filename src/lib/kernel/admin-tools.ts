@@ -1,9 +1,9 @@
 import type { ApprovalRequest, ApprovalStatus, ApprovalStore } from './approvals'
-import type { ActivationStore, ModuleManifest, ModuleRegistry } from './modules'
 import type { ToolDescriptor } from './types'
 import { z } from 'zod'
 import { approvalActionLabel } from '$lib/chat/approval-copy'
 import { KernelError } from './errors'
+import { moduleSwitchedOff, type ActivationStore, type ModuleManifest, type ModuleRegistry } from './modules'
 
 /**
  * Kernel admin surface: module activation and approval decisions as regular
@@ -107,14 +107,24 @@ export function createAdminTools(deps: AdminToolDeps): ToolDescriptor[] {
       name: 'kernel.module_activate',
       module: KERNEL_MODULE_ID,
       summary:
-        'Activate a registered module (its tools become executable). Refused while a module it requires is switched off.',
+        'Activate a registered module (its tools become executable). Refused while a module it requires is switched off, and for an agent when a person switched this module off (only a person switches it back on).',
       auditClass: 'mutate',
       activity: (input: z.infer<typeof moduleIdInput>) => `Switched on ${moduleName(deps.modules, input.module_id)}`,
       inputSchema: moduleIdInput,
       permission: { roles: ['admin'] },
-      handler: async (_ctx, input) => {
+      handler: async (ctx, input) => {
         const parsed = moduleIdInput.parse(input)
         const manifest = requireManifest(deps.modules, parsed.module_id)
+        // Owner, 2026-11-12: a plugin a person switched off is switched back on
+        // by a person only — an agent (or service) may switch on what was never
+        // switched on, so there is no approval-free way around the switch.
+        if (ctx.principal.kind !== 'human' && (await moduleSwitchedOff(deps.activations, manifest.id))) {
+          throw new KernelError(
+            'module_switched_off',
+            `${manifest.name} was switched off by a person. Only the owner or an admin can switch it back on, in Settings → Plugins.`,
+            { module: manifest.id },
+          )
+        }
         const missing: string[] = []
         for (const id of manifest.requires ?? []) if (!(await deps.activations.get(id))) missing.push(id)
         if (missing.length > 0) {
