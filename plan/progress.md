@@ -2,12 +2,20 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-11-12 — v0.5.5 tagged: Contribute board round 3 merged into main (not on production)
+## 2026-11-12 — v0.5.5 on production (os.cerberusblue.com)
+
+Owner: "Yes, upgrade".
+- **Release run 43221566721 succeeded** (arm64 + amd64 builds + publish); GitHub lists v0.5.5 as Latest.
+- **Upgrade:** the server's `ee upgrade --check` still saw 0.5.4 right after publishing (cached `latest/download`), so it ran pinned: `ee upgrade --from https://github.com/hikaru90/eigen-enterprise/releases/download/v0.5.5`, detached with `nohup setsid` (log `/root/ee-upgrade-0.5.5.log`). Safety copy `/var/lib/ee/upgrades/2026-11-12T12-54-58Z`. No `--node-ip` prompt (saved by the 0.5.3 upgrade).
+- **Observed after:** `ee upgrade --check` says it runs `eigenenterprise-0.5.5-5da00442db2d`; os switched b → a (`ee-os-a`, 0 restarts, no warnings in its journal); "Applied 5 migration(s)" (126 rows in `drizzle.__drizzle_migrations`; `contacts`, `company_profile`, `brand_extraction_guides` exist); livekit and the cerberusblue website still running; `/login` 200, anonymous `/settings/members` 302 → login.
+- **Not verified:** Settings → Members signed in (the 502 fix), and none of the round-3 features have been clicked through on production yet. The v0.5.4 release session stood down (it had been waiting to upgrade to 0.5.4).
+
+## 2026-11-12 — v0.5.5 tagged: Contribute board round 3 merged into main
 
 Owner: "Merge and release".
 - **What:** `contribute-round-3` merged into main with `3ab736b` (tree identical to the gated branch), bump `5da0044`, tag `v0.5.5`. It carries the seven round-3 features below plus v0.5.4's Members 502 fix. Migrations 0124–0128 run on the first start.
-- **Release:** main (`0157e19..5da0044`, carrying the v0.5.4 docs commit `f37a68a` too) and the tag pushed through the pre-push gate (`npm run ci:local`: lint, svelte naming, check, unit; exit 0). Release run 43221566721 started 12:50 UTC (arm64 + amd64 builds + publish); its result is not recorded here yet. Branch `contribute-round-3` and its worktree `.claude/worktrees/round3` can be pruned.
-- **Not done:** os.cerberusblue.com still runs 0.5.3 (Members 502 until it upgrades). No upgrade without the owner's go; the first upgrade with calls asks once for `--node-ip`. Not on the local box, no e2e run. Board statuses on production unchanged. Test DBs `ee_w1…ee_w7` still on :5433.
+- **Release:** main (`0157e19..5da0044`, carrying the v0.5.4 docs commit `f37a68a` too) and the tag pushed through the pre-push gate (`npm run ci:local`: lint, svelte naming, check, unit; exit 0). Release run 43221566721 started 12:50 UTC (arm64 + amd64 builds + publish); it succeeded (see the entry above). Branch `contribute-round-3` and its worktree `.claude/worktrees/round3` can be pruned.
+- **Not done (at tagging):** production was upgraded afterwards (entry above). Not on the local box, no e2e run. Board statuses on production unchanged. Test DBs `ee_w1…ee_w7` still on :5433.
 
 ## 2026-11-12 — Contribute board round 3: seven features merged on `contribute-round-3` (merged into main and tagged v0.5.5 in the entry above)
 
