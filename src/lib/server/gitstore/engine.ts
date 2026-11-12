@@ -29,15 +29,23 @@ export type GitRunner = (
 
 export const spawnGit: GitRunner = (args, opts) =>
   new Promise((resolve, reject) => {
+    const input = opts.input
+    // No input → no stdin pipe at all (git reads /dev/null). With input, git
+    // may exit without reading it (or fail early); the write then hits a
+    // closed pipe. That EPIPE is not the outcome — git's exit code and
+    // stderr are, and the caller checks them. An unhandled stdin error would
+    // crash the whole server (Settings → Members 502, 2026-11-12).
     const child = spawn('git', [...args], {
       cwd: opts.cwd,
       env: { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C', ...(opts.env ?? {}) },
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     })
     const out: Buffer[] = []
     const err: Buffer[] = []
-    child.stdout.on('data', (b: Buffer) => out.push(b))
-    child.stderr.on('data', (b: Buffer) => err.push(b))
+    // stdout/stderr are always 'pipe' above; the conditional stdin entry only
+    // stops TypeScript from narrowing the stdio tuple.
+    child.stdout!.on('data', (b: Buffer) => out.push(b))
+    child.stderr!.on('data', (b: Buffer) => err.push(b))
     child.on('error', reject)
     child.on('close', (code) =>
       resolve({
@@ -46,7 +54,12 @@ export const spawnGit: GitRunner = (args, opts) =>
         stderr: Buffer.concat(err).toString('utf8'),
       }),
     )
-    child.stdin.end(opts.input ?? '')
+    if (input !== undefined) {
+      child.stdin!.on('error', (e: NodeJS.ErrnoException) => {
+        if (e.code !== 'EPIPE') reject(e)
+      })
+      child.stdin!.end(input)
+    }
   })
 
 export class GitEngineError extends Error {

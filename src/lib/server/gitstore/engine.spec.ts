@@ -34,6 +34,32 @@ describe('company data dir', () => {
   })
 })
 
+describe('spawnGit', () => {
+  // Production crash (2026-11-12, Settings → Members 502): git exited
+  // without reading stdin, the write hit a closed pipe, and the unhandled
+  // EPIPE on child.stdin killed the whole server process.
+  it('reports the exit code when git exits without reading its input (EPIPE never crashes)', async () => {
+    const dir = tempDir('epipe')
+    git(dir, 'init', '-q', '-b', 'main')
+    // Far more than a pipe buffer: rev-parse never reads it, so the write
+    // is guaranteed to hit the closed pipe after git exits.
+    const r = await spawnGit(['rev-parse', '--show-toplevel'], {
+      cwd: dir,
+      input: 'x'.repeat(8 * 1024 * 1024),
+    })
+    expect(r.code).toBe(0)
+    expect(r.stdout.trim()).toBe(git(dir, 'rev-parse', '--show-toplevel'))
+  })
+
+  it('without input, git gets no stdin pipe (a stdin reader sees end of input at once)', async () => {
+    const dir = tempDir('noinput')
+    git(dir, 'init', '-q', '-b', 'main')
+    const r = await spawnGit(['hash-object', '--stdin'], { cwd: dir })
+    expect(r.code).toBe(0)
+    expect(r.stdout.trim()).toBe('e69de29bb2d1d6434b8b29ae775ad8c2e48c5391') // the empty blob
+  })
+})
+
 describe('git engine', () => {
   it('commits with the acting member as author and the server as committer', async () => {
     const e = await engine()
