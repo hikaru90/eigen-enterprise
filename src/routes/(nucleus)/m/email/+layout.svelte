@@ -23,7 +23,7 @@
 <PageFrame testid="email-area">
   <PageHeader
     title="Email"
-    description="Your company's mail: what is waiting to go out and what was sent. Setup holds the Amazon SES account, domains, senders, flows, logs and the API."
+    description="Your inbox, and your company's mail: what is waiting to go out and what was sent. Setup holds the Amazon SES account, domains, senders, flows, logs and the API."
     {status}
     tabs={EMAIL_TABS}
     {current}

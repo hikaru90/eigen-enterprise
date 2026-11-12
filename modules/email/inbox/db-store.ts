@@ -1,5 +1,6 @@
-import type { AddressRow, AttachmentRow, InboxStore, MailboxRow, MailPerson, MessageRow, MessageSummary } from './store'
-import { and, asc, desc, eq, getTableColumns, inArray, sql } from 'drizzle-orm'
+import type { AddressRow, AttachmentRow, FolderCount, InboxStore, MailboxRow, MailPerson, MessageRow, MessageSummary } from './store'
+import type { Folder } from './types'
+import { and, asc, desc, eq, getTableColumns, ilike, inArray, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { AppDatabase } from '$lib/server/db/context'
 import { rowsFromDbExecute } from '$lib/server/db/execute-rows'
@@ -52,6 +53,15 @@ const addressValues = (a: AddressRow) => ({
 })
 
 const { textBody: _t, htmlBody: _h, ...summaryColumns } = getTableColumns(inboxMessages)
+
+/** A literal ILIKE pattern: the reader's \\, % and _ are characters, not wildcards. */
+export function containsPattern(search: string): string {
+  return `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+}
+
+function toMessage(r: typeof inboxMessages.$inferSelect): MessageRow {
+  return { ...toSummary(r), textBody: r.textBody, htmlBody: r.htmlBody }
+}
 
 export function dbInboxStore(db: AppDatabase): InboxStore {
   return {
@@ -145,16 +155,56 @@ export function dbInboxStore(db: AppDatabase): InboxStore {
     },
     async getMessage(id) {
       const [r] = await db.select().from(inboxMessages).where(eq(inboxMessages.id, id)).limit(1)
-      return r ? { ...toSummary(r), textBody: r.textBody, htmlBody: r.htmlBody } : null
+      return r ? toMessage(r) : null
     },
-    async listMessages(mailboxId, folder, limit) {
+    async listMessages(mailboxId, folder, limit, search) {
+      const pattern = search === undefined ? null : containsPattern(search)
+      const matches = pattern
+        ? or(
+            ilike(inboxMessages.subject, pattern),
+            ilike(sql<string>`coalesce(${inboxMessages.from}->>'name', '')`, pattern),
+            ilike(sql<string>`${inboxMessages.from}->>'address'`, pattern),
+            ilike(inboxMessages.snippet, pattern),
+          )
+        : undefined
       const rows = await db
         .select(summaryColumns)
         .from(inboxMessages)
-        .where(and(eq(inboxMessages.mailboxId, mailboxId), eq(inboxMessages.folder, folder)))
+        .where(and(eq(inboxMessages.mailboxId, mailboxId), eq(inboxMessages.folder, folder), matches))
         .orderBy(desc(inboxMessages.receivedAt), desc(inboxMessages.id))
         .limit(limit)
       return rows.map(toSummary)
+    },
+    async folderCounts(mailboxId) {
+      const rows = await db
+        .select({
+          folder: inboxMessages.folder,
+          total: sql<number>`count(*)::int`,
+          unread: sql<number>`(count(*) filter (where ${inboxMessages.readAt} is null))::int`,
+        })
+        .from(inboxMessages)
+        .where(eq(inboxMessages.mailboxId, mailboxId))
+        .groupBy(inboxMessages.folder)
+      return new Map<Folder, FolderCount>(rows.map((r) => [r.folder, { total: Number(r.total), unread: Number(r.unread) }]))
+    },
+    async threadMessages(mailboxId, threadId) {
+      const rows = await db
+        .select()
+        .from(inboxMessages)
+        .where(and(eq(inboxMessages.mailboxId, mailboxId), eq(inboxMessages.threadId, threadId)))
+        .orderBy(asc(inboxMessages.receivedAt), asc(inboxMessages.id))
+      return rows.map(toMessage)
+    },
+    async updateMessage(id, patch) {
+      await db.transaction(async (tx) => {
+        const out = await tx.update(inboxMessages).set(patch).where(eq(inboxMessages.id, id)).returning({ mailboxId: inboxMessages.mailboxId })
+        if (out.length === 0) throw new Error(`inbox message ${id} not found`)
+        await tx.execute(sql`select pg_notify(${INBOX_NOTIFY_CHANNEL}, ${out[0]!.mailboxId})`)
+      })
+    },
+    async getAttachment(id) {
+      const [r] = await db.select().from(inboxAttachments).where(eq(inboxAttachments.id, id)).limit(1)
+      return r ?? null
     },
     async stats() {
       const result = await db.execute(sql`

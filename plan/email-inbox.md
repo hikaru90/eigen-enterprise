@@ -156,6 +156,38 @@ SES/SNS ones.
 Sources: AWS SES Developer Guide (receiving concepts, console walkthrough, permissions, S3 and
 SNS actions, notification contents, quotas) and the AWS General Reference SES endpoints table.
 
+## S4 notes (2026-11-12, decisions beyond the plan)
+
+- **Inbox tab first, `/m/email` unchanged.** The page is `/m/email/inbox`; the tab carries
+  `match: ['/m/email/inbox']` because the area nav treats the first tab as exact-match only. S6
+  still moves the landing.
+- **Actions apply to the opened mail**, not the whole thread. The reader shows every mail of the
+  thread in that mailbox (any folder, oldest first; another folder is labelled). "Show images"
+  (`&images=1`) applies to the whole open thread. After a move the page returns to the list.
+- **Sent is filled by sending only:** a received mail can be moved to Inbox, Archive, Trash or
+  Spam, never into Sent. Sent mail can go to Trash.
+- **Every read/star/move also NOTIFYs `inbox_messages`** (same channel as new mail), so other
+  open tabs and the other readers of a shared mailbox follow. The stream sends `{ mailboxId }`
+  only; no event log, so a page that reconnects simply reloads its data.
+- **Ids in the URL and in form posts are uuids**, checked before any query; anything else is
+  404 / "No such mail." A named mailbox or mail is 404 also for someone with no mailbox at all.
+- **cid: images:** mailparser already turns matched `cid:` references into `data:` URIs at
+  ingest, so stored HTML rarely has any. A leftover `cid:` that matches an attachment points at
+  `/m/email/inbox/attachments/<id>?inline=1` (raster images only, never SVG); one that matches
+  nothing is dropped. Unverified: whether the session cookie reaches that route from the
+  sandboxed (opaque-origin) iframe — if not, such an image shows broken, nothing leaks.
+- **Attachment responses** carry `Content-Security-Policy: default-src 'none'; sandbox` and
+  `Cache-Control: private, no-store` besides `nosniff`; a part whose md5 no longer matches is a
+  loud 500, never a wrong file.
+- **Remote images are blocked twice:** until "Show images", the sanitizer also drops remote
+  `src`/`srcset` from the HTML, besides the srcdoc CSP. Reason: in the e2e run (Chromium) the page
+  still issued a request for a remote image with only the CSP meta in place (whether it was a
+  speculative preload or a blocked attempt Playwright reports was not pinned down) — so the URL
+  never reaches the browser now. Remote `url()` in inline styles stays blocked by the CSP alone.
+- **Search** is capped at 200 characters (longer → a plain message, no list).
+- **e2e harness** `POST /api/e2e/harness/inbox` (dev only) gives a test user a personal mailbox
+  on `inbox-e2e.test` and stores mail through `insertReceived` (so the live stream fires).
+
 ## S3 notes (2026-11-12, decisions the plan left open)
 
 - **Status codes for SNS:** wrong topic 403; malformed, non-S3 action, foreign bucket, over 40 MB or

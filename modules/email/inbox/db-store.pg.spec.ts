@@ -186,6 +186,68 @@ describe.skipIf(!url)('inbox store (Postgres)', () => {
     expect(await store.mailboxesFor([])).toEqual([])
   })
 
+  it('searches a folder literally and case-insensitively over subject, sender and snippet', async () => {
+    const store = dbInboxStore(db)
+    const m = box({ ownerUserId: ben })
+    await store.insertMailbox(m, addr(m.id, `search-${run}`))
+    const put = (over: Parameters<typeof message>[1]) => store.insertMessage(message(m.id, { id: randomUUID(), threadId: randomUUID(), ...over }))
+    await put({ sesMessageId: `s1-${run}`, subject: 'Quarterly NUMBERS', receivedAt: new Date('2026-11-01') })
+    await put({ sesMessageId: `s2-${run}`, subject: 'Lunch', from: { name: 'Jo Berg', address: 'jo@partner.example' }, snippet: 'at 100% noon', receivedAt: new Date('2026-11-02') })
+    await put({ sesMessageId: `s3-${run}`, subject: 'No name', from: { name: null, address: 'robot@x.example' }, snippet: 'a_b', receivedAt: new Date('2026-11-03') })
+    await put({ sesMessageId: `s4-${run}`, subject: 'quarterly in archive', folder: 'archive' })
+    const subjects = async (search?: string) => (await store.listMessages(m.id, 'inbox', 10, search)).map((x) => x.subject)
+    expect(await subjects()).toEqual(['No name', 'Lunch', 'Quarterly NUMBERS'])
+    expect(await subjects('quarterly')).toEqual(['Quarterly NUMBERS'])
+    expect(await subjects('JO BERG')).toEqual(['Lunch'])
+    expect(await subjects('partner.example')).toEqual(['Lunch'])
+    expect(await subjects('robot@')).toEqual(['No name'])
+    expect(await subjects('100%')).toEqual(['Lunch'])
+    expect(await subjects('%')).toEqual(['Lunch'])
+    expect(await subjects('a_b')).toEqual(['No name'])
+    expect(await subjects('_')).toEqual(['No name'])
+    expect(await subjects('\\')).toEqual([])
+  })
+
+  it('counts per folder, lists a thread oldest first, and changes a mail with a notify', async () => {
+    const store = dbInboxStore(db)
+    const m = box({ kind: 'shared', ownerUserId: null, groupId: `g2-${run}` })
+    await store.insertMailbox(m, addr(m.id, `thread-${run}`))
+    const thread = randomUUID()
+    const first = message(m.id, { id: randomUUID(), threadId: thread, sesMessageId: `th1-${run}`, receivedAt: new Date('2026-11-01') })
+    const second = message(m.id, { id: randomUUID(), threadId: thread, sesMessageId: `th2-${run}`, receivedAt: new Date('2026-11-02'), folder: 'spam' })
+    await store.insertMessage(second)
+    await store.insertMessage(first)
+    await store.insertMessage(message(m.id, { id: randomUUID(), threadId: randomUUID(), sesMessageId: `th3-${run}`, readAt: new Date() }))
+    expect(Object.fromEntries(await store.folderCounts(m.id))).toEqual({ inbox: { total: 2, unread: 1 }, spam: { total: 1, unread: 1 } })
+    expect((await store.threadMessages(m.id, thread)).map((x) => [x.id, x.textBody])).toEqual([
+      [first.id, first.textBody],
+      [second.id, second.textBody],
+    ])
+
+    const heard: string[] = []
+    const listener = await sql.listen('inbox_messages', (payload) => heard.push(payload))
+    try {
+      const readAt = new Date('2026-11-12T11:00:00Z')
+      await store.updateMessage(second.id, { folder: 'inbox', readAt, starred: true })
+      expect(await store.getMessage(second.id)).toMatchObject({ folder: 'inbox', readAt, starred: true })
+      await expect(store.updateMessage(randomUUID(), { starred: true })).rejects.toThrow()
+      for (let i = 0; i < 50 && heard.length === 0; i++) await new Promise((r) => setTimeout(r, 20))
+      expect(heard).toEqual([m.id])
+    } finally {
+      await listener.unlisten()
+    }
+  })
+
+  it('reads one attachment by id', async () => {
+    const store = dbInboxStore(db)
+    const m = (await store.personalMailboxOf(ana))!
+    const row = { ...message(m.id, { id: randomUUID(), threadId: randomUUID() }), sesMessageId: `att-${run}` }
+    const a = attachment(row.id, 0)
+    await store.insertReceived(row, [a])
+    expect(await store.getAttachment(a.id)).toMatchObject({ id: a.id, messageId: row.id, partIndex: 0, checksum: 'md5-0' })
+    expect(await store.getAttachment(randomUUID())).toBeNull()
+  })
+
   it('disables a mailbox', async () => {
     const store = dbInboxStore(db)
     const m = (await store.personalMailboxOf(ana))!

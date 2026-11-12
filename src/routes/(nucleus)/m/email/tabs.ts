@@ -23,6 +23,8 @@ export const EMAIL_SETUP_TABS: readonly AreaTab[] = [
  * its id and route stay.
  */
 export const EMAIL_TABS: readonly AreaTab[] = [
+  // S4 (plan/email-inbox.md): your own mail first. S6 makes /m/email land here.
+  { id: 'inbox', label: 'Inbox', href: '/m/email/inbox', match: ['/m/email/inbox'] },
   { id: 'mail', label: 'Mail', href: '/m/email' },
   { id: 'contacts', label: 'Lists', href: '/m/email/contacts' },
   {

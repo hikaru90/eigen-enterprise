@@ -1,7 +1,7 @@
-import type { AddressRow, InboxStore, MailboxRow, MessageRow, MessageSummary } from './store'
+import type { AddressRow, AttachmentRow, FolderCount, InboxStore, MailboxRow, MessageRow, MessageSummary } from './store'
 import type { MemberRole } from '$lib/server/auth/user-role'
 import { InboxError } from './errors'
-import { normalizeLocalPart, suggestLocalPart, type Folder, type MailboxKind } from './types'
+import { FOLDERS, MOVE_TARGETS, normalizeLocalPart, suggestLocalPart, type Folder, type MailboxKind, type MoveTarget } from './types'
 
 /**
  * Mailboxes and who reads them (plan/email-inbox.md, owner decisions
@@ -310,6 +310,94 @@ export async function getMessage(deps: InboxDeps, userId: string, messageId: str
     throw new InboxError('not_found', 'No such mail.')
   }
   return msg
+}
+
+// ─── reading (S4) ─────────────────────────────────────────────────────────────
+
+/** Whether this person reads the mailbox now — the live stream asks this for every event. */
+export async function canReadMailbox(deps: InboxDeps, userId: string, mailboxId: string): Promise<boolean> {
+  try {
+    await readable(deps, userId, mailboxId)
+    return true
+  } catch (err) {
+    if (err instanceof InboxError && err.code === 'not_found') return false
+    throw err
+  }
+}
+
+/** Total and unread for every folder of a mailbox (zero when empty). */
+export async function folderCounts(deps: InboxDeps, userId: string, mailboxId: string): Promise<Record<Folder, FolderCount>> {
+  const m = await readable(deps, userId, mailboxId)
+  const counts = await deps.store.folderCounts(m.id)
+  return Object.fromEntries(FOLDERS.map((f) => [f, counts.get(f) ?? { total: 0, unread: 0 }])) as Record<Folder, FolderCount>
+}
+
+export const MAX_SEARCH_CHARS = 200
+
+/** One folder, newest first; `search` is the reader's search box (a literal substring, never a classifier). */
+export async function listFolder(
+  deps: InboxDeps,
+  userId: string,
+  input: { mailboxId: string; folder: Folder; search?: string | null },
+): Promise<MessageSummary[]> {
+  const search = (input.search ?? '').trim()
+  if (search.length > MAX_SEARCH_CHARS) throw new InboxError('invalid', `Keep the search under ${MAX_SEARCH_CHARS} characters.`)
+  const m = await readable(deps, userId, input.mailboxId)
+  return deps.store.listMessages(m.id, input.folder, MESSAGE_PAGE, search === '' ? undefined : search)
+}
+
+export type ThreadView = {
+  /** The mail that was opened. */
+  message: MessageRow
+  /** Every mail of its thread in the same mailbox (the opened one included), oldest first. */
+  messages: MessageRow[]
+  /** Attachments per message id (an entry for every message). */
+  attachments: Map<string, AttachmentRow[]>
+}
+
+export async function getThread(deps: InboxDeps, userId: string, messageId: string): Promise<ThreadView> {
+  const message = await getMessage(deps, userId, messageId)
+  const messages = await deps.store.threadMessages(message.mailboxId, message.threadId)
+  const attachments = new Map<string, AttachmentRow[]>()
+  for (const m of messages) attachments.set(m.id, await deps.store.listAttachments(m.id))
+  return { message, messages, attachments }
+}
+
+export async function setRead(deps: InboxDeps, userId: string, input: { messageId: string; read: boolean }): Promise<void> {
+  const m = await getMessage(deps, userId, input.messageId)
+  // Reading again keeps the first time it was read.
+  const readAt = input.read ? (m.readAt ?? now(deps)) : null
+  await deps.store.updateMessage(m.id, { readAt })
+}
+
+export async function setStarred(deps: InboxDeps, userId: string, input: { messageId: string; starred: boolean }): Promise<void> {
+  const m = await getMessage(deps, userId, input.messageId)
+  await deps.store.updateMessage(m.id, { starred: input.starred })
+}
+
+/** Archive, Trash, Spam, and back to the Inbox ("Not spam"). Nothing is deleted for good here. */
+export async function moveMessage(deps: InboxDeps, userId: string, input: { messageId: string; folder: MoveTarget }): Promise<void> {
+  if (!(MOVE_TARGETS as readonly string[]).includes(input.folder)) {
+    throw new InboxError('invalid', 'Mail can be moved to the Inbox, Archive, Trash or Spam.')
+  }
+  const m = await getMessage(deps, userId, input.messageId)
+  await deps.store.updateMessage(m.id, { folder: input.folder })
+}
+
+/** An attachment with its mail, if this person reads the mail's mailbox; otherwise "not found". */
+export async function attachmentFor(
+  deps: InboxDeps,
+  userId: string,
+  attachmentId: string,
+): Promise<{ attachment: AttachmentRow; message: MessageRow }> {
+  const attachment = await deps.store.getAttachment(attachmentId)
+  if (!attachment) throw new InboxError('not_found', 'No such attachment.')
+  try {
+    return { attachment, message: await getMessage(deps, userId, attachment.messageId) }
+  } catch (err) {
+    if (err instanceof InboxError && err.code === 'not_found') throw new InboxError('not_found', 'No such attachment.')
+    throw err
+  }
 }
 
 /** Every address that should receive mail now (enabled mailboxes, aliases included) — the SES rule recipients (S2). */
