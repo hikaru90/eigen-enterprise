@@ -105,7 +105,7 @@ export class PresenceHeartbeat {
     this.#timer = setInterval(this.#report, HEARTBEAT_MS)
   }
 
-  /** Leaving Messages but not the app: stop beating and let the server's window run out. */
+  /** Leaving the app (the nucleus layout is destroyed): stop beating and let the server's window run out. */
   stop(): void {
     if (!this.#timer) return
     const { doc, win } = this.env

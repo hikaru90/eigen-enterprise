@@ -7,6 +7,7 @@
   import IncomingCallToast from '$lib/calls/incoming-call-toast.svelte'
   import { LiveCalls, setLiveCalls } from '$lib/calls/live-calls.svelte'
   import AppShell from '$lib/components/app-shell.svelte'
+  import { PresenceHeartbeat, type HeartbeatState } from '$lib/messages/presence'
   import { shellVisible } from '$lib/shell/nav'
 
   let { data, children } = $props()
@@ -21,15 +22,42 @@
     if (document.visibilityState === 'visible') resume()
   }
 
+  // Presence (plan/contribute-round-3.md W5): this tab beats on every
+  // nucleus page, not only in Messages — someone elsewhere in the app is
+  // still online. Started on mount, stopped on destroy; no effects.
+  let presenceBeat: PresenceHeartbeat | null = null
+
+  function postPresence(body: { clientId: string; state: HeartbeatState }) {
+    void fetch('/api/messages/presence', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      keepalive: true,
+    })
+      .then((res) => {
+        if (!res.ok) console.error('[presence] heartbeat refused', res.status)
+      })
+      .catch((err: unknown) => console.error('[presence] heartbeat failed', err))
+  }
+
   onMount(() => {
     if (!data.user) return
     liveCalls.connect(() => new EventSource('/api/calls/stream'))
+    presenceBeat = new PresenceHeartbeat({
+      clientId: crypto.randomUUID(),
+      post: postPresence,
+      doc: document,
+      win: window,
+      now: () => Date.now(),
+    })
+    presenceBeat.start()
     window.addEventListener('online', resume)
     document.addEventListener('visibilitychange', onVisible)
   })
 
   onDestroy(() => {
     liveCalls.close()
+    presenceBeat?.stop()
     if (typeof window === 'undefined') return
     window.removeEventListener('online', resume)
     document.removeEventListener('visibilitychange', onVisible)

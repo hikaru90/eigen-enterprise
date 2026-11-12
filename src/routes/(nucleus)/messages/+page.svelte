@@ -28,8 +28,6 @@
     applyPresence,
     presenceLabel,
     presenceOf,
-    PresenceHeartbeat,
-    type HeartbeatState,
     type PresenceFrame,
     type PresenceMap,
     type PresenceView,
@@ -505,21 +503,6 @@
     }).catch(() => {})
   }
 
-  let presenceBeat: PresenceHeartbeat | null = null
-
-  function postPresence(body: { clientId: string; state: HeartbeatState }) {
-    void fetch('/api/messages/presence', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-      keepalive: true,
-    })
-      .then((res) => {
-        if (!res.ok) console.error('[messages] presence heartbeat refused', res.status)
-      })
-      .catch((err: unknown) => console.error('[messages] presence heartbeat failed', err))
-  }
-
   async function setDoNotDisturb(on: boolean) {
     dndSaving = true
     try {
@@ -552,14 +535,6 @@
   }
 
   onMount(() => {
-    presenceBeat = new PresenceHeartbeat({
-      clientId: crypto.randomUUID(),
-      post: postPresence,
-      doc: document,
-      win: window,
-      now: () => Date.now(),
-    })
-    presenceBeat.start()
     connect()
     heartbeat = setInterval(() => void reportViewing(), 20_000)
     // "2h ago" / "Today" stay true while the page is open.
@@ -578,7 +553,6 @@
 
   onDestroy(() => {
     stream?.close()
-    presenceBeat?.stop()
     if (heartbeat) clearInterval(heartbeat)
     if (clock) clearInterval(clock)
     if (typeof document !== 'undefined') {
