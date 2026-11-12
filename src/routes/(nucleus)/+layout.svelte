@@ -46,17 +46,23 @@
 
   onMount(() => {
     if (!data.user) return
-    liveCalls.connect(() => new EventSource('/api/calls/stream'))
-    presenceBeat = new PresenceHeartbeat({
-      clientId: crypto.randomUUID(),
-      post: postPresence,
-      doc: document,
-      win: window,
-      now: () => Date.now(),
-    })
-    presenceBeat.start()
-    window.addEventListener('online', resume)
-    document.addEventListener('visibilitychange', onVisible)
+    // Only for plugins that are on: the plugin gate answers 409 otherwise, and
+    // a feed would retry forever. A switch takes effect on the next full load.
+    if (data.liveFeeds?.calls) {
+      liveCalls.connect(() => new EventSource('/api/calls/stream'))
+      window.addEventListener('online', resume)
+      document.addEventListener('visibilitychange', onVisible)
+    }
+    if (data.liveFeeds?.presence) {
+      presenceBeat = new PresenceHeartbeat({
+        clientId: crypto.randomUUID(),
+        post: postPresence,
+        doc: document,
+        win: window,
+        now: () => Date.now(),
+      })
+      presenceBeat.start()
+    }
   })
 
   onDestroy(() => {

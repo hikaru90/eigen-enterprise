@@ -17,19 +17,33 @@ import { buildShellNav, type ShellData } from '$lib/shell/nav'
  * after a recording). Signed-out visitors get no shell (their pages redirect
  * to /login on their own).
  */
-export const load: LayoutServerLoad = async ({ locals }): Promise<{ shell: ShellData | null }> => {
+/**
+ * Which always-on feeds the shell may open: the call feed (`/api/calls/stream`)
+ * needs Calls, the presence beat (`/api/messages/presence`) needs Messages.
+ * With the plugin off the gate answers 409, so the shell must not open them.
+ */
+export type LiveFeeds = { calls: boolean; presence: boolean }
+
+export const load: LayoutServerLoad = async ({
+  locals,
+}): Promise<{ shell: ShellData | null; liveFeeds?: LiveFeeds }> => {
   if (!locals.user) return { shell: null }
   // A page of a switched-off plugin (the plugin gate, src/hooks.server.ts): one
   // clear page instead of the plugin's own, which would fail or work regardless.
   if (locals.pluginOff) error(404, { message: pluginOffMessage(locals.pluginOff.name), pluginOff: locals.pluginOff })
   const kernel = await appKernel()
-  const [identity, capabilities] = await Promise.all([companyIdentity(), userCapabilities(locals.user.id)])
+  const [identity, capabilities, activations] = await Promise.all([
+    companyIdentity(),
+    userCapabilities(locals.user.id),
+    kernel.activations.list(),
+  ])
   return {
+    liveFeeds: { calls: activations.get('calls') === true, presence: activations.get('messages') === true },
     shell: {
       companyName: identity.name,
       companyLogo: identity.logo?.url ?? null,
       capabilities,
-      nav: buildShellNav(kernel.modules.list(), await kernel.activations.list(), capabilities),
+      nav: buildShellNav(kernel.modules.list(), activations, capabilities),
       dictation: await speechToTextReadiness(locals.user.id),
     },
   }

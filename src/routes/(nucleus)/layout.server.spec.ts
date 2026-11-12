@@ -77,6 +77,15 @@ describe('(nucleus) layout load', () => {
     ])
   })
 
+  it('opens the call feed and the presence beat only for plugins that are on (round 4 W7: no retry loop against the plugin gate)', async () => {
+    kernelHolder.kernel = await kernel(['calls'])
+    const on = (await load(event({ id: 'owner' }))) as { liveFeeds: { calls: boolean; presence: boolean } }
+    expect(on.liveFeeds).toEqual({ calls: true, presence: false })
+    kernelHolder.kernel = await kernel(['messages', 'calls'])
+    const both = (await load(event({ id: 'owner' }))) as { liveFeeds: { calls: boolean; presence: boolean } }
+    expect(both.liveFeeds).toEqual({ calls: true, presence: true })
+  })
+
   it('names the company and shows its logo from Settings → Company once set there', async () => {
     kernelHolder.kernel = await kernel([])
     journeyRows.splice(0, journeyRows.length, { status: 'active', state: { answers: { company_name: 'Kindred' } } })
