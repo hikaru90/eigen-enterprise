@@ -2,6 +2,16 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-12 — Email inbox S4 merged: webmail read UI, safe HTML mail, attachments, live updates (main `c23076b`, not pushed, not on the box)
+
+Owner: "Start S4". Built in worktree `email-inbox-s4` (`6904830`), merged into main (`c23076b`) on top of the round-4 merges.
+- **Shipped:** an **Inbox** tab, first in the Email area (`/m/email/inbox`; `/m/email` still opens on the old view until S6): mailbox switcher, folders with unread counts, a search (literal, case-insensitive), a thread reader, read/unread, star, archive, trash, spam / not spam. Every call goes through the S1 access rule (not readable = not found). HTML mail is sanitized server-side (DOMPurify) and shown in a sandboxed iframe with its own CSP; remote images are stripped from the srcdoc until "Show images". Attachments are re-read from the raw S3 mail (checked by part index + md5); virus-blocked ones answer 403; inline only for cid: images, with a sandbox CSP. Live updates over `/api/mail/inbox/stream` (access re-checked per event, mailbox id only). Dev-only harness `/api/e2e/harness/inbox` seeds mail for e2e.
+- **Bugs the e2e found and fixed on the way:** screen readers heard "2unread" (the sr-only space was dropped); a live-update reload cancelled a click that was opening a mail; Chromium still requested a remote image the CSP should have blocked (now stripped from the HTML too).
+- **Decisions:** actions apply to the open mail, not the whole thread; received mail can't be moved into Sent; ids in URLs/forms must be uuids; search capped at 200 characters (S4 notes in `plan/email-inbox.md`).
+- **Gates on main after the merge:** svelte-check 0 errors; unit 793 files / 6328 passed, 5 failed — the known flaky `modules/messages/db-store.pg.spec.ts` concurrent-appends test, and 4 in `settings/backups/page.server.spec.ts` (round 4's new restore page, `4dc7a2e`), which pass 11/11 on their own: they fail only in the full parallel run. S4 touches nothing there; left to the round-4 session. S4's own: component 9/9, e2e `email-inbox.e2e.ts` passed (run 4, on alternate ports because another harness held the defaults).
+- **Not verified:** attachment download only in unit tests (fake raw source), nothing against real S3; cid: images whose part the parser can't match may show broken inside the sandbox (nothing leaks); no unread counts on other mailboxes in the switcher; full component + e2e suites not run.
+- **Next:** S5 (compose / reply / forward + Sent), S6 (Inbox-first landing, Company mail tab), S7 (real proof on the box).
+
 ## 2026-11-12 — Contribute board round 4 triaged: 12 new proposals (plan only, no code)
 
 Owner: "get the newest batch of contribute items and integrate them". Read over production's MCP (`contribute.list status:all`): 36 proposals, 12 new; `2bda4814` (hide what I can't use) is already shipped by round 3. Triage in `plan/contribute-round-4.md`.
