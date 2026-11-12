@@ -8,8 +8,9 @@ import { getProfile } from '$lib/server/profile/service'
  * Settings → Account: the signed-in person's profile (names + picture, the
  * same editor as the profile step), email and sign-out. Sign-in is
  * passwordless (code + passkey), so there is no password to change. The other
- * company-wide sections (members, AI provider, passkeys, API keys, approval
- * mode) are their own pages under the settings sub-navigation.
+ * company-wide sections (company name and logo, members, AI provider,
+ * passkeys, API keys, approval mode, backups) are their own pages under the
+ * settings sub-navigation — each shown only to whoever may open it.
  */
 
 const getSafeErrorMessage = (error: unknown, fallback: string) => {

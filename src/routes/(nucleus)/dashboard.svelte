@@ -3,34 +3,38 @@
   import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right'
   import Sparkles from '@lucide/svelte/icons/sparkles'
   import { resolve } from '$app/paths'
+  import { canOpen, type Capabilities } from '$lib/access/capabilities'
   import { useAssistant } from '$lib/components/assistant/context'
   import ModuleCard from '$lib/components/module-card.svelte'
   import PageFrame from '$lib/components/page/page-frame.svelte'
   import PageHeader from '$lib/components/page/page-header.svelte'
   import type { Dashboard } from '$lib/server/overview/dashboard'
   import { appHref } from '$lib/shell/href'
-  import { moduleHref, type ShellNavItem } from '$lib/shell/nav'
+  import type { ShellNavItem } from '$lib/shell/nav'
   import { groupActionsByDay } from './activity-groups'
 
   /**
    * The dashboard at `/` (polish P-2, formerly /overview): a greeting, what
    * needs the member, the modules at work, the agent's recent actions and the
-   * ways into the rest of the company. Full width (P-3).
+   * ways into the rest of the company. Full width (P-3). Every link here is
+   * one this person may open: module cards and the Apps tile link to the
+   * module's nav entry (the nav leaves out pages they can't open), the invite
+   * link follows the capability set.
    */
   let {
     dashboard,
     greetingName,
     companyName,
     navItems,
-    isAdmin,
+    capabilities,
     providerMissing,
   }: {
     dashboard: Dashboard
     greetingName: string | null
     companyName: string | null
     navItems: readonly ShellNavItem[]
-    /** Owner/admin manage members and invites. */
-    isAdmin: boolean
+    /** The shell's capability set (who may manage members and invites, …). */
+    capabilities: Capabilities
     /** The company's AI provider is not connected: the assistant cannot work until it is. */
     providerMissing: boolean
   } = $props()
@@ -55,6 +59,10 @@
   })
   const title = $derived(greetingName ? `Welcome back, ${greetingName}` : 'Welcome back')
   const quickLinks = $derived(navItems.filter((i) => i.active && i.id !== 'settings'))
+  /** A module's page as the nav lists it for this person; null = not theirs to open. */
+  const pageOf = (id: string) => navItems.find((i) => i.id === id)?.href ?? null
+  const websitePage = $derived(website ? pageOf(website.id) : null)
+  const canInvite = $derived(canOpen(capabilities, '/settings/members'))
 
   /** Drafts for the assistant: they wait in its composer, never sent on their own. */
   const suggestions = [
@@ -145,7 +153,7 @@
       >
     </a>
     <a
-      href={website ? appHref(moduleHref(website.id)) : '#modules'}
+      href={websitePage ? appHref(websitePage) : '#modules'}
       class={tile}
       data-testid="overview-site-tile"
     >
@@ -211,7 +219,7 @@
         {:else}
           <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
             {#each activeModules as module (module.id)}
-              <ModuleCard {module} />
+              <ModuleCard {module} href={pageOf(module.id)} />
             {/each}
           </div>
         {/if}
@@ -295,7 +303,7 @@
               />
             </a>
           </li>
-          {#if isAdmin}
+          {#if canInvite}
             <li>
               <a
                 href={resolve('/settings/members')}

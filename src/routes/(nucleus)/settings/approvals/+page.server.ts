@@ -1,7 +1,8 @@
 import type { PageServerLoad } from './$types'
 import { redirect } from '@sveltejs/kit'
 import { approvalModeFromResponse, type ApprovalMode } from '$lib/chat/approvals-client'
-import { isUserAdmin } from '$lib/server/auth/user-role'
+import { roleCan } from '$lib/server/auth/capabilities'
+import { getUserRole } from '$lib/server/auth/user-role'
 
 /**
  * Settings → Approval mode: how much the agent may do without asking. The
@@ -10,7 +11,7 @@ import { isUserAdmin } from '$lib/server/auth/user-role'
  */
 export const load: PageServerLoad = async (event) => {
   if (!event.locals.user) throw redirect(302, '/login')
-  if (!(await isUserAdmin(event.locals.user.id))) throw redirect(303, '/settings')
+  if (!roleCan(await getUserRole(event.locals.user.id), 'approvals.manage')) throw redirect(303, '/settings')
 
   const res = await event.fetch('/api/approvals/mode')
   const mode: ApprovalMode | null = res.ok ? approvalModeFromResponse(await res.json()) : null

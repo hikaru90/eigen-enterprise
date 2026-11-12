@@ -1,6 +1,6 @@
 import type { Actions, PageServerLoad } from './$types'
-import { error, fail, redirect } from '@sveltejs/kit'
-import { getUserRole } from '$lib/server/auth/user-role'
+import { fail } from '@sveltejs/kit'
+import { requireCapability } from '$lib/server/auth/require-capability'
 import { companyBackupKey, type BackupKeyMaterial } from '$lib/server/backups/company-key'
 import {
   EeClient,
@@ -29,9 +29,7 @@ export const _backupsDeps = {
 }
 
 async function requireOwner(locals: App.Locals): Promise<string> {
-  const user = locals.user
-  if (!user) throw redirect(302, '/login')
-  if ((await getUserRole(user.id)) !== 'owner') error(403, 'Only the owner can manage backups.')
+  const { user } = await requireCapability(locals, 'backups.manage', 'Only the owner can manage backups.')
   return `human:${user.id}`
 }
 

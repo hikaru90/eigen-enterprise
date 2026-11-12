@@ -5,8 +5,11 @@
   import { docTitle } from '$lib/shell/title'
 
   /**
-   * The one error page body. Signed in: the way back is the dashboard. Signed out: the
-   * way in is Sign in. Never an old-app link.
+   * The one error page body. Signed in: the way back is the dashboard. Signed
+   * out: the way in is Sign in. Never an old-app link. A 403 is not an error
+   * the person caused or can fix: it says plainly that the page is not
+   * theirs and who can help (Contribute `2bda4814`) — no status code, no
+   * "Forbidden".
    */
   let {
     status,
@@ -15,7 +18,10 @@
   }: { status: number; message: string | null | undefined; signedIn: boolean } = $props()
 
   const isNotFound = $derived(status === 404)
-  const heading = $derived(isNotFound ? 'Page not found' : 'Something went wrong')
+  const isForbidden = $derived(status === 403)
+  const heading = $derived(
+    isNotFound ? 'Page not found' : isForbidden ? "You don't have access to this page" : 'Something went wrong',
+  )
 </script>
 
 <svelte:head>
@@ -29,10 +35,16 @@
   {#if !signedIn}
     <div class="mb-8"><Wordmark /></div>
   {/if}
-  <p class="text-xs text-muted-foreground tabular-nums">Error {status}</p>
+  {#if !isForbidden}
+    <p class="text-xs text-muted-foreground tabular-nums">Error {status}</p>
+  {/if}
   <h1 class="mt-2 text-xl font-semibold tracking-tight">{heading}</h1>
   {#if isNotFound}
     <p class="mt-2 text-sm text-foreground/60">This address does not exist (any more).</p>
+  {:else if isForbidden}
+    <p class="mt-2 text-sm text-foreground/60" data-testid="error-no-access">
+      Ask an owner or an admin if you need it.
+    </p>
   {:else if message}
     <p class="mt-2 text-xs text-foreground/60">{message}</p>
   {/if}

@@ -6,14 +6,15 @@
 
   /**
    * Settings inside the shell: the one page header with the company-wide
-   * sections as tabs below it (rule 3). Pages outside those sections render bare.
+   * sections as tabs below it (rule 3) — only the ones this person may open
+   * (the shell's capability set). Pages outside those sections render bare.
    */
-  let { children } = $props()
+  let { data, children } = $props()
 
-  const isAdmin = $derived((page.data as { isAdmin?: boolean }).isAdmin === true)
-  const isOwner = $derived((page.data as { isOwner?: boolean }).isOwner === true)
   const tabs = $derived(
-    settingsSections(isAdmin, isOwner).map((s) => ({ id: s.id, label: s.name, href: s.href })),
+    data.shell
+      ? settingsSections(data.shell.capabilities).map((s) => ({ id: s.id, label: s.name, href: s.href }))
+      : [],
   )
   const current = $derived(currentSettingsSection(page.url.pathname))
 </script>

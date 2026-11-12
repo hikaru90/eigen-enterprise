@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { CAPABILITIES, type Capabilities } from '$lib/access/capabilities'
 import { buildShellNav, currentNavId, navItemCurrent, shellVisible } from './nav'
 
 const manifest = (id: string, name: string) => ({ id, name, description: `${name} does work.` })
+const owner = Object.fromEntries(CAPABILITIES.map((c) => [c, true])) as Capabilities
+const member = Object.fromEntries(CAPABILITIES.map((c) => [c, false])) as Capabilities
 
 describe('buildShellNav', () => {
   it("never lists internal modules (the agent's own machinery)", () => {
@@ -14,6 +17,7 @@ describe('buildShellNav', () => {
         ['website', true],
         ['orchestrator', true],
       ]),
+      owner,
     )
     expect(nav.items.map((i) => i.id)).toEqual(['website', 'settings'])
   })
@@ -38,6 +42,7 @@ describe('buildShellNav', () => {
         ['brand', false],
         ['drive', true],
       ]),
+      owner,
     )
     expect(nav.items.map((i) => [i.name, i.href, i.active])).toEqual([
       ['Messages', '/messages', true],
@@ -53,12 +58,23 @@ describe('buildShellNav', () => {
   })
 
   it('always carries Settings, even with no modules', () => {
-    const nav = buildShellNav([], new Map())
+    const nav = buildShellNav([], new Map(), member)
     expect(nav.items.map((i) => i.href)).toEqual(['/settings'])
   })
 
+  it('never lists a page the person cannot open: no Website for a member, modules it does not know stay', () => {
+    const manifests = [manifest('messages', 'Messages'), manifest('website', 'Website'), manifest('contacts', 'Contacts')]
+    const active = new Map([
+      ['messages', true],
+      ['website', true],
+      ['contacts', true],
+    ])
+    expect(buildShellNav(manifests, active, member).items.map((i) => i.id)).toEqual(['messages', 'contacts', 'settings'])
+    expect(buildShellNav(manifests, active, owner).items.map((i) => i.id)).toEqual(['messages', 'website', 'contacts', 'settings'])
+  })
+
   it('has no Assistant, Overview or Agent entry: the assistant is the top bar, the dashboard is the company badge (P-1, P-2)', () => {
-    const nav = buildShellNav([manifest('website', 'Website')], new Map([['website', true]]))
+    const nav = buildShellNav([manifest('website', 'Website')], new Map([['website', true]]), owner)
     expect(nav.items.map((i) => i.id)).not.toContain('chat')
     expect(nav.items.map((i) => i.id)).not.toContain('overview')
     expect(nav.items.map((i) => i.id)).not.toContain('agent')
@@ -70,6 +86,7 @@ describe('currentNavId', () => {
   const nav = buildShellNav(
     [manifest('website', 'Website'), manifest('brand', 'Brand'), manifest('memory', 'Memory')],
     new Map(),
+    owner,
   )
   it.each([
     ['/', null],
@@ -94,7 +111,13 @@ describe('currentNavId', () => {
 })
 
 describe('shellVisible', () => {
-  const shell = { companyName: null, nav: buildShellNav([], new Map()) }
+  const shell = {
+    companyName: null,
+    companyLogo: null,
+    capabilities: member,
+    nav: buildShellNav([], new Map(), member),
+    dictation: { ready: true } as const,
+  }
   it('shows the shell for ordinary signed-in pages', () => {
     expect(shellVisible({ shell })).toBe(true)
   })

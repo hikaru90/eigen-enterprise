@@ -1,10 +1,17 @@
 import { describe, expect, it, vi } from 'vitest'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
 
-const { kernelHolder, journeyRows } = vi.hoisted(() => ({
+const { kernelHolder, journeyRows, profile, roleMock } = vi.hoisted(() => ({
   kernelHolder: { kernel: null as unknown },
   journeyRows: [] as Array<{ status: string; state: unknown }>,
+  profile: { row: null as null | { name: string | null; logo: { sha256: string; mime: 'image/png' } | null } },
+  roleMock: vi.fn(async (_id: string): Promise<string | null> => 'owner'),
 }))
+
+vi.mock('$lib/server/company/store', () => ({
+  companyProfileStore: () => ({ get: async () => (profile.row ? { ...profile.row, updatedBy: 'u', updatedAt: new Date() } : null) }),
+}))
+vi.mock('$lib/server/auth/user-role', () => ({ getUserRole: roleMock }))
 
 vi.mock('$lib/server/boot', async () => {
   const index = await import('../../../modules/index')
@@ -70,11 +77,34 @@ describe('(nucleus) layout load', () => {
     ])
   })
 
+  it('names the company and shows its logo from Settings → Company once set there', async () => {
+    kernelHolder.kernel = await kernel([])
+    journeyRows.splice(0, journeyRows.length, { status: 'active', state: { answers: { company_name: 'Kindred' } } })
+    profile.row = { name: 'Kindred Digital Labs', logo: { sha256: 'c'.repeat(64), mime: 'image/png' } }
+    const data = (await load(event({ id: 'owner' }))) as { shell: import('$lib/shell/nav').ShellData }
+    profile.row = null
+    expect(data.shell.companyName).toBe('Kindred Digital Labs')
+    expect(data.shell.companyLogo).toBe(`/api/company/logo/${'c'.repeat(64)}`)
+  })
+
+  it('hands the shell one capability set and leaves pages a member cannot open out of the nav', async () => {
+    kernelHolder.kernel = await kernel(['website', 'owlery'])
+    roleMock.mockResolvedValueOnce('member')
+    const member = (await load(event({ id: 'member-1' }))) as { shell: import('$lib/shell/nav').ShellData }
+    expect(roleMock).toHaveBeenCalledWith('member-1')
+    expect(Object.values(member.shell.capabilities).some(Boolean)).toBe(false)
+    expect(member.shell.nav.items.map((m) => m.id)).toEqual(['owlery', 'repo', 'settings'])
+    const owner = (await load(event({ id: 'owner' }))) as { shell: import('$lib/shell/nav').ShellData }
+    expect(owner.shell.capabilities['company.manage']).toBe(true)
+    expect(owner.shell.nav.items.map((m) => m.id)).toContain('website')
+  })
+
   it('leaves the company unnamed until the founding journey names it', async () => {
     kernelHolder.kernel = await kernel([])
     journeyRows.splice(0, journeyRows.length)
     const data = (await load(event({ id: 'owner' }))) as { shell: import('$lib/shell/nav').ShellData }
     expect(data.shell.companyName).toBeNull()
+    expect(data.shell.companyLogo).toBeNull()
   })
 
   it('tells every text box whether dictation can work, and what is missing when not', async () => {

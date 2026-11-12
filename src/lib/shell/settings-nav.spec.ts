@@ -1,27 +1,43 @@
 import { describe, expect, it } from 'vitest'
-import { currentSettingsSection, settingsSections } from './settings-nav'
+import { CAPABILITIES, canOpen, type Capabilities } from '$lib/access/capabilities'
+import { currentSettingsSection, SETTINGS_SECTIONS, settingsSections } from './settings-nav'
+
+const caps = (granted: readonly string[]) =>
+  Object.fromEntries(CAPABILITIES.map((c) => [c, granted.includes(c)])) as Capabilities
+
+const owner = caps(CAPABILITIES)
+const admin = caps(CAPABILITIES.filter((c) => c !== 'backups.manage'))
+const member = caps([])
 
 describe('settings sub-navigation', () => {
   it('holds only company-wide sections (rule 3), in one order', () => {
-    expect(settingsSections(true).map((s) => s.name)).toEqual([
+    expect(settingsSections(admin).map((s) => s.name)).toEqual([
       'Account',
+      'Company',
       'Members & invites',
       'AI provider',
       'Passkeys & sessions',
       'API keys',
       'Approval mode',
     ])
-    expect(settingsSections(true, true).map((s) => s.id).at(-1)).toBe('backups')
+    expect(settingsSections(owner).map((s) => s.id).at(-1)).toBe('backups')
   })
   it("Backups is the owner's alone: admins and members never see it", () => {
-    expect(settingsSections(true, false).some((s) => s.id === 'backups')).toBe(false)
-    expect(settingsSections(false, false).some((s) => s.id === 'backups')).toBe(false)
+    expect(settingsSections(admin).some((s) => s.id === 'backups')).toBe(false)
+    expect(settingsSections(member).some((s) => s.id === 'backups')).toBe(false)
   })
-  it('hides admin-only sections from members', () => {
-    expect(settingsSections(false).map((s) => s.id)).toEqual(['account', 'llm', 'passkeys', 'api-keys'])
+  it('a member sees only the sections they can open', () => {
+    expect(settingsSections(member).map((s) => s.id)).toEqual(['account', 'llm', 'passkeys', 'api-keys'])
+  })
+  it('every section shown is one the capability set opens (no tab leads to a 403)', () => {
+    for (const set of [owner, admin, member]) {
+      for (const s of settingsSections(set)) expect(canOpen(set, s.href)).toBe(true)
+    }
+    expect(SETTINGS_SECTIONS.find((s) => s.id === 'company')?.href).toBe('/settings/company')
   })
   it.each([
     ['/settings', 'account'],
+    ['/settings/company', 'company'],
     ['/settings/llm/byok/openrouter', 'llm'],
     ['/settings/api-keys', 'api-keys'],
     ['/settings/backups', 'backups'],
