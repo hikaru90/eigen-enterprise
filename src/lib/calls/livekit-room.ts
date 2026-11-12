@@ -143,6 +143,12 @@ export function createLiveKitRoom(): CallRoom {
         throw new MediaError(device === 'screen' ? 'permission_denied' : 'other', `${device} did not start`)
       }
     },
+    async switchDevice(kind, deviceId) {
+      if (!(await room.switchActiveDevice(kind, deviceId))) throw new Error(`the ${kind} did not switch to ${deviceId}`)
+    },
+    activeDevice(kind) {
+      return room.getActiveDevice(kind) ?? null
+    },
     async startAudio() {
       await room.startAudio()
       emit({ type: 'audio', blocked: !room.canPlaybackAudio })

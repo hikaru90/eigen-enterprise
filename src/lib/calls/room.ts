@@ -1,7 +1,8 @@
 import type { CallParticipant, Device, EndReason, MediaFailure } from './call-state'
+import type { DeviceKind } from './devices'
 
 /**
- * The call page's seam onto the media server (plan/video-calls.md §3). The
+ * The live call's seam onto the media server (plan/video-calls.md §3). The
  * live implementation wraps `livekit-client` (./livekit-room.ts); component
  * tests use a fake room with fake MediaStreams — never a real server.
  */
@@ -23,6 +24,14 @@ export type CallRoom = {
   disconnect(): Promise<void>
   /** Turns a device on or off; a device that does not turn on throws MediaError. */
   setDevice(device: Device, on: boolean): Promise<void>
+  /**
+   * Uses this microphone / speaker / camera from now on (LiveKit
+   * switchActiveDevice). Before the device is on, it is the one used when it
+   * turns on. Throws when the browser refuses (e.g. no setSinkId for speakers).
+   */
+  switchDevice(kind: DeviceKind, deviceId: string): Promise<void>
+  /** The device in use for this kind, as far as the room knows (null: not decided yet). */
+  activeDevice(kind: DeviceKind): string | null
   /** Plays remote audio after a click when the browser blocked autoplay. */
   startAudio(): Promise<void>
   participants(): CallParticipant[]

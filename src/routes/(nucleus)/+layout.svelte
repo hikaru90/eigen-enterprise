@@ -3,9 +3,11 @@
   import { goto } from '$app/navigation'
   import { resolve } from '$app/paths'
   import { page } from '$app/state'
+  import { browserActiveCall, setActiveCall } from '$lib/calls/active-call.svelte'
   import { callsClient } from '$lib/calls/client'
   import IncomingCallToast from '$lib/calls/incoming-call-toast.svelte'
   import { LiveCalls, setLiveCalls } from '$lib/calls/live-calls.svelte'
+  import MiniCall from '$lib/calls/mini-call.svelte'
   import AppShell from '$lib/components/app-shell.svelte'
   import { PresenceHeartbeat, type HeartbeatState } from '$lib/messages/presence'
   import { shellVisible } from '$lib/shell/nav'
@@ -17,6 +19,8 @@
   // incoming-call toast and the Messages call button.
   const liveCalls = setLiveCalls(new LiveCalls())
   const calls = callsClient()
+  // The live call lives here, above the pages: moving around the app keeps it.
+  const activeCall = setActiveCall(browserActiveCall(calls))
   const resume = () => liveCalls.resume()
   const onVisible = () => {
     if (document.visibilityState === 'visible') resume()
@@ -57,6 +61,7 @@
 
   onDestroy(() => {
     liveCalls.close()
+    activeCall.close()
     presenceBeat?.stop()
     if (typeof window === 'undefined') return
     window.removeEventListener('online', resume)
@@ -102,6 +107,17 @@
     {@render children()}
   {/if}
   {#if data.user}
-    <IncomingCallToast live={liveCalls} client={calls} onjoin={(id) => goto(resolve(`/calls/${id}`))} />
+    <MiniCall
+      active={activeCall}
+      live={liveCalls}
+      hidden={page.route.id === '/(nucleus)/calls/[id]' && page.params.id === activeCall.call?.id}
+      onopen={(id) => goto(resolve(`/calls/${id}`))}
+    />
+    <IncomingCallToast
+      live={liveCalls}
+      client={calls}
+      inCall={activeCall.inCall ? (activeCall.call?.id ?? null) : null}
+      onjoin={(id) => goto(resolve(`/calls/${id}`))}
+    />
   {/if}
 </div>

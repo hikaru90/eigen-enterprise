@@ -18,10 +18,13 @@
     live,
     client,
     onjoin,
+    inCall = null,
     ringer = webAudioRinger(),
   }: {
     live: LiveCalls
     client: Pick<CallsClient, 'accept' | 'decline'>
+    /** The call I am in right now (one call at a time: another one cannot be accepted). */
+    inCall?: string | null
     /** Go to the call page (after a successful accept). */
     onjoin: (callId: string) => void
     ringer?: Ringer
@@ -51,8 +54,11 @@
   const caller = (c: CallDto) => c.startedByName
   const where = (c: CallDto) => (c.contextKind === 'dm' ? 'Video call' : c.contextKind === 'channel' ? `Call in ${c.title}` : c.title)
 
+  const blocked = (c: CallDto) => inCall !== null && inCall !== c.id
+
   async function answer(c: CallDto, action: 'accept' | 'decline') {
     if (busy[c.id]) return
+    if (action === 'accept' && blocked(c)) return
     busy = { ...busy, [c.id]: action }
     try {
       if (action === 'accept') await client.accept(c.id)
@@ -72,7 +78,11 @@
 
 {#if ringing.length > 0 || failed.length > 0}
   <div
-    class="pointer-events-none fixed inset-x-0 top-0 z-[60] flex flex-col items-center gap-2 p-3 sm:inset-x-auto sm:top-auto sm:right-0 sm:bottom-0 sm:items-end sm:p-5"
+    class={[
+      'pointer-events-none fixed inset-x-0 top-0 z-[60] flex flex-col items-center gap-2 p-3 sm:inset-x-auto sm:top-auto sm:right-0 sm:items-end sm:p-5',
+      // Above the docked mini call while I am in a call.
+      inCall ? 'sm:bottom-40' : 'sm:bottom-0',
+    ]}
     data-testid="incoming-calls"
   >
     {#each ringing as c (c.id)}
@@ -92,6 +102,9 @@
         <div class="min-w-0 flex-1">
           <p class="truncate text-sm font-semibold" data-testid="incoming-call-caller">{caller(c)}</p>
           <p class="truncate text-xs text-muted-foreground" data-testid="incoming-call-where">{where(c)}</p>
+          {#if blocked(c)}
+            <p class="text-xs font-medium text-foreground" data-testid="incoming-call-busy">You're already in a call. Hang up to answer this one.</p>
+          {/if}
         </div>
         <button
           type="button"
@@ -107,7 +120,7 @@
           class="grid size-10 shrink-0 place-items-center rounded-full bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
           aria-label="Accept"
           title="Accept"
-          disabled={busy[c.id] !== undefined}
+          disabled={busy[c.id] !== undefined || blocked(c)}
           data-testid="incoming-call-accept"
           onclick={() => answer(c, 'accept')}><Phone class="size-4" /></button
         >

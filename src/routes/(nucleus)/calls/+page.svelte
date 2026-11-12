@@ -9,6 +9,7 @@
   import { onDestroy, onMount } from 'svelte'
   import { goto, invalidate } from '$app/navigation'
   import { resolve } from '$app/paths'
+  import { getActiveCall } from '$lib/calls/active-call.svelte'
   import { callsClient, problemOf, type CallDto } from '$lib/calls/client'
   import { CALLS_DEPENDENCY, historyOf } from '$lib/calls/format'
   import { getLiveCalls } from '$lib/calls/live-calls.svelte'
@@ -29,6 +30,7 @@
   let { data }: { data: PageData } = $props()
 
   const liveCalls = getLiveCalls()
+  const activeCall = getActiveCall()
   const client = callsClient()
 
   const isLive = (c: CallDto) => c.state === 'ringing' || c.state === 'active'
@@ -92,6 +94,11 @@
   async function startMeeting(e: SubmitEvent) {
     e.preventDefault()
     if (meetingPeople.length === 0 || starting) return
+    // One call at a time: never ring people for a meeting I cannot join.
+    if (activeCall.inCall && activeCall.call) {
+      meetingError = `You're already in a call (${activeCall.call.title}). Hang up first to start a meeting.`
+      return
+    }
     starting = true
     meetingError = null
     try {
