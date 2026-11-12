@@ -94,6 +94,7 @@ export default defineConfig({
       'src/lib/components/app-card.svelte.spec.ts',
       'src/lib/components/add-app-dialog.svelte.spec.ts',
       'src/lib/messages/message-row.svelte.spec.ts',
+      'src/lib/messages/presence-dot.svelte.spec.ts',
       'src/lib/calls/call-view.svelte.spec.ts',
       'src/lib/calls/incoming-call-toast.svelte.spec.ts',
       'src/lib/calls/call-button.svelte.spec.ts',

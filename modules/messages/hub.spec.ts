@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { PresenceTracker } from '$lib/server/presence/tracker'
 import { MessagesHub, messagesStreamResponse, parseLastEventId, type StreamFrame } from './hub'
+import { presenceStreamFor, reportPresence } from './presence'
 import { createChannel, markRead, openDm, postMessage } from './service'
 import { fixture } from './test-fixtures'
 
@@ -111,7 +113,7 @@ describe('messagesStreamResponse', () => {
     await postMessage(deps, 'owner', ch.id, 'missed while offline')
     await settle()
     const ac = new AbortController()
-    const res = messagesStreamResponse(hub, 'bea', mark, ac.signal)
+    const res = messagesStreamResponse(hub, 'bea', mark, ac.signal, null)
     expect(res.headers.get('content-type')).toBe('text/event-stream')
     await new Promise((r) => setTimeout(r, 0))
     await postMessage(deps, 'owner', ch.id, 'live')
@@ -121,6 +123,69 @@ describe('messagesStreamResponse', () => {
     expect(text.indexOf('missed while offline')).toBeLessThan(text.indexOf('live'))
     expect(text.match(/^id: (\d+)$/gm)).toHaveLength(2)
     expect(hub.size).toBe(0)
+  })
+
+  it('carries presence on the same stream: the company snapshot first, then changes — without ids, so resume is untouched', async () => {
+    const { deps, hub } = liveFixture()
+    const tracker = new PresenceTracker(() => new Date(Date.UTC(2026, 10, 12, 9, 0, 0)))
+    await reportPresence(deps, tracker, 'carl', { clientId: 'carl-tab-0001', state: 'active' })
+    const ac = new AbortController()
+    const inner = (await presenceStreamFor(deps, async () => tracker, 'bea'))!
+    let stopped = 0
+    const presence = {
+      start: async (send: Parameters<typeof inner.start>[0]) => {
+        const stop = await inner.start(send)
+        return () => {
+          stopped++
+          stop()
+        }
+      },
+    }
+    const res = messagesStreamResponse(hub, 'bea', null, ac.signal, presence)
+    const reader = res.body!.getReader()
+    const dec = new TextDecoder()
+    let text = ''
+    const readUntil = async (needle: string) => {
+      while (!text.includes(needle)) text += dec.decode((await reader.read()).value)
+    }
+    await readUntil('"replace":true')
+    await reportPresence(deps, tracker, 'owner', { clientId: 'olga-tab-0001', state: 'idle' })
+    await readUntil('"replace":false')
+    const frames = text.split('\n\n').filter((b) => b.startsWith('event: presence'))
+    expect(frames).toHaveLength(2)
+    expect(frames.every((b) => !/^id:/m.test(b))).toBe(true)
+    const [snapshot, change] = frames.map((b) => JSON.parse(b.split('data: ')[1]) as { people: { userId: string; status: string }[] })
+    expect(snapshot.people.map((p) => `${p.userId}:${p.status}`)).toEqual(['owner:offline', 'bea:offline', 'carl:online'])
+    expect(change.people.map((p) => `${p.userId}:${p.status}`)).toEqual(['owner:away'])
+    ac.abort()
+    expect(hub.size).toBe(0)
+    expect(stopped).toBe(1)
+    await reader.cancel()
+    expect(stopped).toBe(1)
+  })
+
+  it('presence that cannot start is reported on the stream, and messages keep flowing', async () => {
+    const { deps, hub, settle } = liveFixture()
+    const ch = await createChannel(deps, 'owner', { name: 'general', private: false })
+    await settle()
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const broken = await presenceStreamFor(deps, () => Promise.reject(new Error('calls hub down')), 'bea')
+    const ac = new AbortController()
+    const res = messagesStreamResponse(hub, 'bea', null, ac.signal, broken)
+    const reader = res.body!.getReader()
+    const dec = new TextDecoder()
+    let text = ''
+    const readUntil = async (needle: string) => {
+      while (!text.includes(needle)) text += dec.decode((await reader.read()).value)
+    }
+    await readUntil('event: presence-error')
+    await postMessage(deps, 'owner', ch.id, 'still live')
+    await settle()
+    await readUntil('still live')
+    expect(logged).toHaveBeenCalled()
+    logged.mockRestore()
+    ac.abort()
+    await reader.cancel()
   })
 
   it('parses Last-Event-ID defensively', () => {
