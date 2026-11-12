@@ -30,6 +30,8 @@ import { createCallsTools } from './calls/tools'
 import { DbAllowlistStore } from './chat-gateway/db-stores'
 import { createChatGateway, type ChatGatewayBoot } from './chat-gateway/index'
 import { telegramClientFromEnv } from './chat-gateway/telegram'
+import { CONTACTS_MODULE_ID, CONTACTS_WRITE_TOOLS, contactsManifest } from './contacts/manifest'
+import { createContactsTools } from './contacts/tools'
 import { CONTRIBUTE_MODULE_ID, contributeManifest } from './contribute/manifest'
 import { createContributeTools } from './contribute/tools'
 import { DRIVE_MODULE_ID, driveManifest } from './drive/manifest'
@@ -84,6 +86,7 @@ export const moduleManifests = [
   driveManifest,
   contributeManifest,
   callsManifest,
+  contactsManifest,
 ] as const
 
 /**
@@ -109,6 +112,8 @@ export const SYSTEM_MODULE_IDS = [
   CONTRIBUTE_MODULE_ID,
   // Calls (plan/video-calls.md): video calls ring on any nucleus page; part of the OS.
   CALLS_MODULE_ID,
+  // Contacts (plan/contribute-round-3.md W1): the people the company knows, part of the OS.
+  CONTACTS_MODULE_ID,
 ] as const
 
 /** Tools that always require an approval decision before first execution. */
@@ -155,6 +160,8 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   'drive.write_text',
   // Calls: starting a call rings people (internal) — an agent's ring waits on the approval mode.
   'calls.start',
+  // Contacts: an agent's adds, edits and logged contacts wait on the approval mode (internal).
+  ...CONTACTS_WRITE_TOOLS,
 ])
 
 export type BootstrapKernelOptions = {
@@ -234,6 +241,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createDriveTools(),
     ...createContributeTools(),
     ...createCallsTools({ service: liveCallsService }),
+    ...createContactsTools(),
   ])
 
   return {
