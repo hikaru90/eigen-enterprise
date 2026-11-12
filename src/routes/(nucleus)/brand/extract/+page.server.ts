@@ -5,8 +5,9 @@ import { requireAdmin } from '$lib/server/auth/require-admin'
 
 /**
  * Judge loop surface (phase-2d M2). Owner/admin only; an optional ?session=
- * id hydrates an existing extraction session server-side. Brand is a
- * system module (always on), so there is no activation step.
+ * id hydrates an existing extraction session server-side (a captured site or
+ * an uploaded brand guide). Brand is a system module (always on), so there is
+ * no activation step.
  */
 export const load: PageServerLoad = async (event) => {
   const user = await requireAdmin(event.locals.user)
@@ -22,7 +23,14 @@ export const load: PageServerLoad = async (event) => {
       requestId: randomUUID(),
     },
   )) as {
-    session: { id: string; url: string; title: string | null; status: string }
+    session: {
+      id: string
+      source: 'url' | 'guide'
+      url: string | null
+      title: string | null
+      status: string
+    }
+    guide: { filename: string; mime: string; sizeBytes: number } | null
     rounds: Array<{
       round: number
       screenshotB64: string
@@ -38,6 +46,7 @@ export const load: PageServerLoad = async (event) => {
   return {
     initial: {
       session: result.session,
+      guide: result.guide,
       screenshotB64: result.rounds[0]?.screenshotB64 ?? '',
       latestRound: result.rounds[result.rounds.length - 1] ?? null,
       judged: judgedRound

@@ -15,10 +15,7 @@ import {
   assertEurouterGatewayConfigured,
   routingRuleLookupErrorMessage,
 } from '$lib/server/llm/llm-config-guard'
-import {
-  copilotChatBaseUrl,
-  fetchCopilotAccessToken,
-} from '$lib/server/llm/oauth/github-copilot'
+import { copilotChatBaseUrl, fetchCopilotAccessToken } from '$lib/server/llm/oauth/github-copilot'
 import {
   loadPlatformLlmConfig,
   loadPlatformOpenRouterSttConfig,
@@ -37,6 +34,18 @@ export type AssistantToolCalls = Array<{
   function: { name: string; arguments: string }
 }>
 
+/**
+ * A file the model reads together with a user message's text (e.g. an uploaded
+ * brand guide). Sent as an OpenAI chat-completions content part: `image_url`
+ * (data URL) for images, `file` (`file_data` data URL) for PDFs. A provider or
+ * model without that input answers with an HTTP error, surfaced as
+ * LlmHttpError — never a silent text-only call. The bytes go to the provider
+ * only: logs and analytics record the type, name and size.
+ */
+export type ChatAttachment =
+  | { type: 'image'; mime: 'image/png' | 'image/jpeg' | 'image/webp'; base64: string }
+  | { type: 'pdf'; filename: string; base64: string }
+
 export type ChatMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
@@ -44,6 +53,70 @@ export type ChatMessage = {
   tool_calls?: AssistantToolCalls
   /** role:'tool' messages: the id of the call this message answers. */
   tool_call_id?: string
+  /** Files sent with this message's text; user messages only. */
+  attachments?: ChatAttachment[]
+}
+
+function attachmentContentPart(attachment: ChatAttachment): Record<string, unknown> {
+  switch (attachment.type) {
+    case 'image':
+      return {
+        type: 'image_url',
+        image_url: { url: `data:${attachment.mime};base64,${attachment.base64}` },
+      }
+    case 'pdf':
+      return {
+        type: 'file',
+        file: {
+          filename: attachment.filename,
+          file_data: `data:application/pdf;base64,${attachment.base64}`,
+        },
+      }
+  }
+}
+
+/** The request-body message: a message with attachments becomes text + file content parts. */
+function toWireMessage(message: ChatMessage): Record<string, unknown> {
+  const { attachments, ...rest } = message
+  if (!attachments || attachments.length === 0) return rest
+  return {
+    ...rest,
+    content: [{ type: 'text', text: message.content }, ...attachments.map(attachmentContentPart)],
+  }
+}
+
+function assertAttachmentsOnUserMessages(messages: ChatMessage[]): void {
+  for (const message of messages) {
+    if (message.attachments && message.attachments.length > 0 && message.role !== 'user') {
+      throw new Error(
+        `attachments are only sent on a user message; got them on a ${message.role} message`,
+      )
+    }
+  }
+}
+
+function base64ByteLength(base64: string): number {
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
+  return Math.floor((base64.length * 3) / 4) - padding
+}
+
+/** Messages as analytics sees them: attachments described (type, name, size), never their bytes. */
+function messagesForObservability(messages: ChatMessage[]): unknown[] {
+  return messages.map((message) => {
+    if (!message.attachments || message.attachments.length === 0) return message
+    return {
+      ...message,
+      attachments: message.attachments.map((attachment) =>
+        attachment.type === 'image'
+          ? { type: 'image', mime: attachment.mime, bytes: base64ByteLength(attachment.base64) }
+          : {
+              type: 'pdf',
+              filename: attachment.filename,
+              bytes: base64ByteLength(attachment.base64),
+            },
+      ),
+    }
+  })
 }
 /** Providers with no embeddings endpoint — memory features need a different provider. */
 const NO_EMBEDDING_PROVIDERS = new Set(['github_copilot'])
@@ -415,7 +488,12 @@ async function loadLlmProviderConfig(
       // Rotating OAuth: re-exchange the long-lived token when expired and persist the
       // rotated access token. Non-expiring OAuth (OpenRouter key) passes through.
       if ((!access || Date.now() >= expiresAtMs) && refresh) {
-        let rotated: { access: string; refresh: string; expiresAtMs: number; meta?: Record<string, unknown> | null }
+        let rotated: {
+          access: string
+          refresh: string
+          expiresAtMs: number
+          meta?: Record<string, unknown> | null
+        }
         if (provider === 'github_copilot') {
           const session = await fetchCopilotAccessToken(refresh)
           rotated = {
@@ -448,14 +526,11 @@ async function loadLlmProviderConfig(
             oauthAccessEncrypted,
             oauthRefreshEncrypted,
             oauthExpiresAt: new Date(rotated.expiresAtMs),
-            oauthMeta: rotated.meta ?? (loaded.oauthMeta ?? null),
+            oauthMeta: rotated.meta ?? loaded.oauthMeta ?? null,
             updatedAt: new Date(),
           })
           .where(
-            and(
-              eq(llmProviderConfig.userId, userId),
-              eq(llmProviderConfig.provider, provider),
-            ),
+            and(eq(llmProviderConfig.userId, userId), eq(llmProviderConfig.provider, provider)),
           )
         const baseUrl =
           provider === 'github_copilot'
@@ -678,8 +753,7 @@ async function chatRoutingConfig(
   // Every non-EUrouter provider (OpenRouter, Copilot, models.dev catalog, …) is
   // OpenAI-compatible and routes by direct model name.
   if (config.provider !== 'eurouter') {
-    const model =
-      modelOverride?.trim() || config.modelChat?.trim() || env.LLM_MODEL_CHAT?.trim()
+    const model = modelOverride?.trim() || config.modelChat?.trim() || env.LLM_MODEL_CHAT?.trim()
     if (!model) {
       throw new LlmNotConfiguredError(
         `No chat model configured for this ${config.provider} credential — set one under Settings → LLM.`,
@@ -785,13 +859,16 @@ async function llmChatCompletionInner(input: {
   tools?: unknown[]
   toolChoice?: unknown
 }): Promise<unknown> {
+  assertAttachmentsOnUserMessages(input.messages)
   const config = await loadLlmConfig(input.userId)
   const activityProvider = activityProviderForLlmConfig(config.provider)
   const gatewayHost = gatewayHostFromBaseUrl(config.baseUrl)
   const url = `${config.baseUrl}/chat/completions`
   const routing = await chatRoutingConfig(config, input.routingRuleId, input.modelOverride)
   const logCtx = (input.logContext?.trim() || 'chat').replace(/\s+/g, '_')
-  const messages = sanitizeChatMessages(input.messages)
+  // sanitizeChatMessages spreads each message, so tool calls and attachments pass through it.
+  const messages = sanitizeChatMessages(input.messages) as ChatMessage[]
+  const observedInput = messagesForObservability(messages)
   const aiSessionId = normalizeAiIdentifier(input.aiSessionId, `user-${input.userId}`)
   const aiTraceId = normalizeAiIdentifier(input.aiTraceId, randomUUID())
 
@@ -834,7 +911,7 @@ async function llmChatCompletionInner(input: {
             ...(routing.ruleId ? { rule_id: routing.ruleId } : {}),
             model: routing.model,
             ...(routing.provider ? { provider: routing.provider } : {}),
-            messages,
+            messages: messages.map(toWireMessage),
             ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
             max_tokens: input.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS,
             ...(input.responseFormat === 'json_object'
@@ -908,7 +985,7 @@ async function llmChatCompletionInner(input: {
           $ai_session_id: aiSessionId,
           $ai_model: routing.model,
           $ai_provider: config.provider,
-          $ai_input: messages,
+          $ai_input: observedInput,
           $ai_input_tokens: usage?.prompt_tokens,
           $ai_output_choices: extractAiOutputChoices(json),
           $ai_output_tokens: usage?.completion_tokens,
@@ -953,7 +1030,7 @@ async function llmChatCompletionInner(input: {
             $ai_session_id: aiSessionId,
             $ai_model: routing.model,
             $ai_provider: config.provider,
-            $ai_input: messages,
+            $ai_input: observedInput,
             $ai_is_error: true,
             $ai_error: msg,
             $ai_http_status: err instanceof LlmHttpError ? err.status : undefined,

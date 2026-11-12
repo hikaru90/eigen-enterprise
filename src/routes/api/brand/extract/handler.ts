@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto'
 import { error, json } from '@sveltejs/kit'
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
+import { BrowserUnavailableError } from '../../../../../modules/brand/extract/capture-errors'
+import { GuideUploadError } from '../../../../../modules/brand/extract/guide'
 
 /**
  * Route-side executor for the brand extraction tools (phase-2d M2).
@@ -32,8 +34,27 @@ export async function executeBrandExtractTool(
       const problem = err.toProblemJson()
       return json(problem, { status: problem.status })
     }
+    const typed = brandExtractErrorResponse(err)
+    if (typed) return typed
     throw err
   }
+}
+
+/**
+ * The extraction's typed failures as plain answers: no browser on this server
+ * (503 — capture can't run here, the guide upload can), a refused brand guide
+ * (its own 400/413/415). Anything else is not answered here.
+ */
+export function brandExtractErrorResponse(err: unknown): Response | null {
+  if (err instanceof BrowserUnavailableError) {
+    return json({ message: err.message, code: err.code }, { status: 503 })
+  }
+  if (err instanceof GuideUploadError) return guideUploadErrorResponse(err)
+  return null
+}
+
+export function guideUploadErrorResponse(err: GuideUploadError): Response {
+  return json({ message: err.message, code: err.code }, { status: err.status })
 }
 
 export async function parseJsonBody(request: Request): Promise<unknown> {
