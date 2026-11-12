@@ -1,7 +1,7 @@
 /** Inbox failures with their HTTP meaning. `not_found` also covers "not yours to read" (no existence leak). */
 export class InboxError extends Error {
   constructor(
-    readonly code: 'invalid' | 'taken' | 'not_found' | 'forbidden',
+    readonly code: 'invalid' | 'taken' | 'not_found' | 'forbidden' | 'blocked',
     message: string,
   ) {
     super(message)
@@ -14,4 +14,6 @@ export const INBOX_ERROR_STATUS: Record<InboxError['code'], number> = {
   taken: 409,
   forbidden: 403,
   not_found: 404,
+  /** An attachment of a mail Amazon found a virus in (S4). */
+  blocked: 403,
 }

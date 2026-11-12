@@ -10,6 +10,10 @@ export type MailboxKind = (typeof MAILBOX_KINDS)[number]
 export const FOLDERS = ['inbox', 'sent', 'spam', 'trash', 'archive'] as const
 export type Folder = (typeof FOLDERS)[number]
 
+/** Where a reader can move a mail (S4). Sent is filled by sending only. */
+export const MOVE_TARGETS = ['inbox', 'archive', 'trash', 'spam'] as const satisfies readonly Folder[]
+export type MoveTarget = (typeof MOVE_TARGETS)[number]
+
 /** SES receipt verdicts (receipt.*Verdict.status). */
 export const VERDICTS = ['PASS', 'FAIL', 'GRAY', 'PROCESSING_FAILED'] as const
 export type Verdict = (typeof VERDICTS)[number]

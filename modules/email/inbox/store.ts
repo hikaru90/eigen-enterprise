@@ -95,6 +95,11 @@ export type MailboxStats = { messages: number; unread: number; sizeBytes: number
 
 export type MailboxPatch = Partial<Pick<MailboxRow, 'displayName' | 'disabledAt'>> & { updatedAt: Date }
 
+/** What a reader changes on one mail (S4): read state, star, folder. */
+export type MessagePatch = Partial<Pick<MessageRow, 'readAt' | 'starred' | 'folder'>>
+
+export type FolderCount = { total: number; unread: number }
+
 export type InboxStore = {
   /** Inserts the mailbox and its primary address together; fails if the address exists. */
   insertMailbox(mailbox: MailboxRow, primary: AddressRow): Promise<void>
@@ -128,8 +133,18 @@ export type InboxStore = {
   /** The mailboxes these exact addresses deliver into (disabled ones included); unknown addresses are absent. */
   mailboxesFor(addresses: string[]): Promise<AddressMailbox[]>
   getMessage(id: string): Promise<MessageRow | null>
-  /** Newest first. */
-  listMessages(mailboxId: string, folder: Folder, limit: number): Promise<MessageSummary[]>
+  /**
+   * Newest first. `search` (already trimmed, non-empty) is a literal,
+   * case-insensitive substring of the subject, the sender's name or address, or the snippet.
+   */
+  listMessages(mailboxId: string, folder: Folder, limit: number, search?: string): Promise<MessageSummary[]>
+  /** Total and unread per folder of one mailbox (folders with no mail are absent). */
+  folderCounts(mailboxId: string): Promise<Map<Folder, FolderCount>>
+  /** Every mail of one thread in one mailbox, oldest first. */
+  threadMessages(mailboxId: string, threadId: string): Promise<MessageRow[]>
+  /** Changes one mail and notifies INBOX_NOTIFY_CHANNEL with its mailbox id (other open tabs follow). */
+  updateMessage(id: string, patch: MessagePatch): Promise<void>
+  getAttachment(id: string): Promise<AttachmentRow | null>
   /** Counts and sizes per mailbox id (mailboxes with no mail are absent). */
   stats(): Promise<Map<string, MailboxStats>>
 }

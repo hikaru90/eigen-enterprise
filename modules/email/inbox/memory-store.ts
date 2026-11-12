@@ -1,4 +1,5 @@
-import type { AddressRow, AttachmentRow, InboxStore, MailboxRow, MailboxStats, MessageRow } from './store'
+import type { AddressRow, AttachmentRow, FolderCount, InboxStore, MailboxRow, MailboxStats, MessageRow } from './store'
+import type { Folder } from './types'
 
 /**
  * In-memory InboxStore for unit tests (same semantics as the DB store).
@@ -111,12 +112,41 @@ export function memoryInboxStore(): InboxStore & {
       const m = messages.get(id)
       return m ? copy(m) : null
     },
-    async listMessages(mailboxId, folder, limit) {
+    async listMessages(mailboxId, folder, limit, search) {
+      const needle = search?.toLowerCase()
+      const hit = (m: MessageRow) =>
+        needle === undefined ||
+        [m.subject, m.from.name ?? '', m.from.address, m.snippet].some((v) => v.toLowerCase().includes(needle))
       return [...messages.values()]
-        .filter((m) => m.mailboxId === mailboxId && m.folder === folder)
+        .filter((m) => m.mailboxId === mailboxId && m.folder === folder && hit(m))
         .sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime() || b.id.localeCompare(a.id))
         .slice(0, limit)
         .map(({ textBody: _t, htmlBody: _h, ...summary }) => copy(summary))
+    },
+    async folderCounts(mailboxId) {
+      const out = new Map<Folder, FolderCount>()
+      for (const m of messages.values()) {
+        if (m.mailboxId !== mailboxId) continue
+        const c = out.get(m.folder) ?? { total: 0, unread: 0 }
+        out.set(m.folder, { total: c.total + 1, unread: c.unread + (m.readAt ? 0 : 1) })
+      }
+      return out
+    },
+    async threadMessages(mailboxId, threadId) {
+      return [...messages.values()]
+        .filter((m) => m.mailboxId === mailboxId && m.threadId === threadId)
+        .sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime() || a.id.localeCompare(b.id))
+        .map(copy)
+    },
+    async updateMessage(id, patch) {
+      const m = messages.get(id)
+      if (!m) throw new Error(`message ${id} not found`)
+      messages.set(id, { ...m, ...copy(patch) })
+      notified.push(m.mailboxId)
+    },
+    async getAttachment(id) {
+      const a = attachments.get(id)
+      return a ? copy(a) : null
     },
     async stats() {
       const out = new Map<string, MailboxStats>()
