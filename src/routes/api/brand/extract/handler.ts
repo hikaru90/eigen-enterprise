@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { error, json } from '@sveltejs/kit'
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
+import { BrowserUnavailableError } from '../../../../../modules/brand/extract/capture-errors'
 
 /**
  * Route-side executor for the brand extraction tools (phase-2d M2).
@@ -32,8 +33,21 @@ export async function executeBrandExtractTool(
       const problem = err.toProblemJson()
       return json(problem, { status: problem.status })
     }
+    const typed = brandExtractErrorResponse(err)
+    if (typed) return typed
     throw err
   }
+}
+
+/**
+ * The extraction's typed failures as plain answers: no browser on this server
+ * (503 — capture can't run here). Anything else is not answered here.
+ */
+export function brandExtractErrorResponse(err: unknown): Response | null {
+  if (err instanceof BrowserUnavailableError) {
+    return json({ message: err.message, code: err.code }, { status: 503 })
+  }
+  return null
 }
 
 export async function parseJsonBody(request: Request): Promise<unknown> {

@@ -6,6 +6,7 @@ import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext } from '$lib/kernel/types'
 import { expandSeeds } from '../style-format/expand'
 import { validSeeds } from '../style-format/seeds.spec'
+import { BrowserUnavailableError } from './capture-errors'
 import { InMemoryBrandExtractionStore } from './store'
 import { createBrandExtractTools, type BrandExtractToolDeps } from './tools'
 
@@ -102,6 +103,20 @@ describe('brand extraction tools', () => {
     expect(result.title).toBe('Captured Site')
     expect(result.digestSummary).toContain('SITE: Captured Site')
     expect(capture).toHaveBeenCalledWith('https://example.com')
+  })
+
+  it('extract_start passes the typed no-browser failure through and opens no session', async () => {
+    const store = new InMemoryBrandExtractionStore()
+    const capture = vi.fn(async () => {
+      throw new BrowserUnavailableError('/opt/pw/chrome-headless-shell')
+    })
+    const createSession = vi.spyOn(store, 'createSession')
+    const { registry, activations } = wiredRegistry({ store, capture })
+    await activations.set('brand', true)
+    await expect(
+      registry.execute('brand.extract_start', { url: 'https://example.com' }, humanAdmin),
+    ).rejects.toBeInstanceOf(BrowserUnavailableError)
+    expect(createSession).not.toHaveBeenCalled()
   })
 
   it('extract_start is human-only (G8): agents get permission_denied', async () => {
