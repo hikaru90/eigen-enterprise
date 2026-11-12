@@ -2,7 +2,7 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-11-12 — Email inbox S1: mailboxes, access rules, Setup › Mailboxes (branch `email-inbox-s1`, not merged, not on the box)
+## 2026-11-12 — Email inbox S1: mailboxes, access rules, Setup › Mailboxes (branch `email-inbox-s1` @ `316b514`, not merged, not on the box)
 
 - **Shipped on the branch:** migration `0129_mailboxes` (`mailboxes`, `mailbox_addresses`, `inbox_messages`) + `src/lib/server/db/inbox.schema.ts`; `modules/email/inbox/` (types, store seam, memory + Postgres stores, service, live wiring); Setup › **Mailboxes** (`/m/email/mailboxes`): assign a member's personal mailbox (address prefilled `firstname.lastname`, umlauts spelled out), shared mailboxes per group, aliases, stop/turn on receiving.
 - **Access rules (tested):** a personal mailbox is read only by its member — the owner, admins and other members get "not found"; a shared mailbox follows its group's members; someone no longer in the company reads nothing; the admin view shows addresses, holder, counts and size, never subjects or senders. No agent path. Every change is a kernel event with addresses only.
