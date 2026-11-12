@@ -98,3 +98,39 @@ the sealed secret store and the host key; drops and `pg_restore --create`s the
 (owned by the workload's user); starts ee, whose reconcile re-renders env
 files, re-keys the database role with the restored password and redeploys.
 The drill is `ee/e2e/restore-drill.sh`.
+
+## Check and restore from Settings → Backups (`restore.ts`)
+
+The owner can check or restore any complete snapshot from the console; ee does
+the work, the console only asks (control API, owner-only page, D11):
+
+```
+GET  /v1/backups/snapshots   complete snapshots in the bucket, newest first
+GET  /v1/backups/restore     the last check/restore job (polled by the page)
+POST /v1/backups/check       { snapshotId, author }             → 202 { job }
+POST /v1/backups/restore     { snapshotId, backupKey, author }  → 202 { job }
+```
+
+- **Check** = `ee restore --verify` in the daemon: download, decrypt and hash
+  every file and blob of that snapshot with the sealed key. Writes nothing.
+- **Restore** asks for the company recovery code like the CLI does. The app
+  turns it into the backup key and sends only that (ee never sees a code); ee
+  refuses a key that is not the sealed one (422), holds it in memory for the
+  verify and never writes it. The daemon downloads + verifies the whole
+  snapshot into `/var/lib/ee/backup-tmp/restore-<id>` (nothing on the box is
+  touched if any check fails), then starts the transient
+  `ee-restore.service` (`systemd-run … ee restore-apply --snapshot <id>`),
+  because the apply stops ee.service itself. The unit needs no key: it runs
+  the same steps as the CLI restore (stop ee and the workloads, ee state,
+  database, Drive + agent, start ee) on the already-verified files.
+- One job at a time: a backup, a check or a restore; the others get 409.
+- Progress (`step`: verifying → handover → stopping → restoring-state →
+  restoring-database → restoring-files → starting → done) lives in
+  `/var/lib/ee/restore.json`, written by the daemon up to the hand-over and by
+  the unit after it, so the page can poll it again once ee and os are back.
+  A job cut off by a restart reads as failed (`verifying`/`handover`: nothing
+  changed; later: possibly partly restored). If the unit fails it records the
+  error and starts ee again so the page can show it. The terminal event is
+  journaled (`restore.succeeded` / `restore.failed`) when the daemon next reads
+  the job.
+- Whole box only: there is no partial restore.

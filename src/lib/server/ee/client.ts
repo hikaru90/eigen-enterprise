@@ -220,6 +220,39 @@ export type BackupStatus = {
   runs: BackupRun[]
 }
 
+/** A snapshot id, its UTC start time: 20261103T031700Z (ee/src/backup/restore.ts SNAPSHOT_ID). */
+export const BACKUP_SNAPSHOT_ID = /^\d{8}T\d{6}Z$/
+
+/** A complete snapshot in the bucket (ee/src/backup/restore.ts). */
+export type BackupSnapshot = { id: string; takenAt: string }
+
+export type RestoreStep =
+  | 'verifying'
+  | 'handover'
+  | 'stopping'
+  | 'restoring-state'
+  | 'restoring-database'
+  | 'restoring-files'
+  | 'starting'
+  | 'done'
+
+/** The last check or restore of a backup, as ee records it (survives the restore's restart). */
+export type RestoreJob = {
+  id: string
+  kind: 'check' | 'restore'
+  snapshotId: string
+  author: string
+  status: 'running' | 'succeeded' | 'failed'
+  step: RestoreStep
+  startedAt: string
+  updatedAt: string
+  endedAt: string | null
+  checked: { files: Array<{ name: string; size: number }>; blobs: number; blobBytes: number } | null
+  error: string | null
+  log: string[]
+  announced: boolean
+}
+
 export class EeClient {
   constructor(private readonly transport: EeTransport = socketTransport()) {}
 
@@ -366,6 +399,26 @@ export class EeClient {
   /** Start a backup now; returns the running record. */
   runBackup(i: { author: string }): Promise<{ run: BackupRun }> {
     return this.call('POST', '/v1/backups/run', { ...i, trigger: 'manual', wait: false })
+  }
+  /** Complete snapshots in the bucket, newest first. */
+  backupSnapshots(): Promise<{ snapshots: BackupSnapshot[] }> {
+    return this.call('GET', '/v1/backups/snapshots')
+  }
+  /** The last check/restore job (null when there never was one). */
+  restoreJob(): Promise<{ job: RestoreJob | null }> {
+    return this.call('GET', '/v1/backups/restore')
+  }
+  /** Owner only (D11). Download + decrypt + hash a snapshot in ee; writes nothing. */
+  checkBackup(i: { snapshotId: string; author: string }): Promise<{ job: RestoreJob }> {
+    return this.call('POST', '/v1/backups/check', i)
+  }
+  /**
+   * Owner only (D11). ee verifies the snapshot, then replaces this whole server
+   * with it and restarts. backupKey (base64) is derived from the recovery code
+   * the owner just typed — it is passed through, never stored or logged.
+   */
+  restoreBackup(i: { snapshotId: string; backupKey: string; author: string }): Promise<{ job: RestoreJob }> {
+    return this.call('POST', '/v1/backups/restore', i)
   }
   setSecret(i: {
     workload: string

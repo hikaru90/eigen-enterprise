@@ -90,6 +90,8 @@ export default defineConfig({
       'src/lib/components/module-card.svelte.spec.ts',
       'src/lib/components/error-panel.svelte.spec.ts',
       'src/routes/(nucleus)/settings/company/company-page.svelte.spec.ts',
+      // Brackets/parentheses escaped: [snapshot] is a glob class otherwise.
+      'src/routes/\\(nucleus\\)/settings/backups/restore/\\[snapshot\\]/restore-page.svelte.spec.ts',
       'src/lib/components/module-settings-section.svelte.spec.ts',
       'src/lib/components/github-app-connect.svelte.spec.ts',
       'src/lib/components/app-deploy-progress.svelte.spec.ts',

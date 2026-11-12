@@ -1,13 +1,20 @@
 import type { Actions, PageServerLoad } from './$types'
 import { fail } from '@sveltejs/kit'
 import { requireCapability } from '$lib/server/auth/require-capability'
-import { companyBackupKey, type BackupKeyMaterial } from '$lib/server/backups/company-key'
 import {
+  backupKeyFromRecoveryCode,
+  companyBackupKey,
+  type BackupKeyMaterial,
+} from '$lib/server/backups/company-key'
+import {
+  BACKUP_SNAPSHOT_ID,
   EeClient,
   SubstrateError,
   SubstrateUnavailableError,
+  type BackupSnapshot,
   type BackupStatus,
   type BackupTarget,
+  type RestoreJob,
 } from '$lib/server/ee/client'
 
 /**
@@ -16,16 +23,31 @@ import {
  * and sees the last runs. Owner only — it is a server change (D11) and the
  * recovery code unlocks every backup. The person clicking is the decision, so
  * this page calls ee directly; the agent only has the read-only status tool.
+ *
+ * It also lists the backups in the bucket: "Check" asks ee to download,
+ * decrypt and hash one (writes nothing); "Restore…" opens the restore screen
+ * (./restore/[snapshot]). ee does both — the console never restores itself.
  */
 
+/** The bucket listing: ee lists it live, so a bucket error is shown, not hidden. */
+export type SnapshotList = { ok: true; snapshots: BackupSnapshot[] } | { ok: false; error: string }
+
 export type BackupsPageData =
-  | { managed: true; status: BackupStatus }
+  | { managed: true; status: BackupStatus; snapshots: SnapshotList | null; job: RestoreJob | null }
   | { managed: false; reason: string }
 
-/** Overridable in tests. */
+/** Overridable in tests (shared by the restore screen and the job endpoint below this page). */
 export const _backupsDeps = {
   client: (): EeClient => new EeClient(),
   companyKey: (): Promise<BackupKeyMaterial> => companyBackupKey(),
+  /** Loaded on use: the company profile store opens the database on import. */
+  companyName: async (): Promise<string | null> =>
+    (await import('$lib/server/overview/sources')).foundingCompanyName(),
+  backupKeyFromCode: (code: string): Promise<string> => backupKeyFromRecoveryCode(code),
+}
+
+export async function _requireOwner(locals: App.Locals): Promise<string> {
+  return requireOwner(locals)
 }
 
 async function requireOwner(locals: App.Locals): Promise<string> {
@@ -36,7 +58,19 @@ async function requireOwner(locals: App.Locals): Promise<string> {
 export const load: PageServerLoad = async ({ locals }): Promise<{ backups: BackupsPageData }> => {
   await requireOwner(locals)
   try {
-    return { backups: { managed: true, status: await _backupsDeps.client().backups() } }
+    const client = _backupsDeps.client()
+    const status = await client.backups()
+    const { job } = await client.restoreJob()
+    let snapshots: SnapshotList | null = null
+    if (status.configured) {
+      try {
+        snapshots = { ok: true, snapshots: (await client.backupSnapshots()).snapshots }
+      } catch (err) {
+        if (!(err instanceof SubstrateError)) throw err
+        snapshots = { ok: false, error: err.message }
+      }
+    }
+    return { backups: { managed: true, status, snapshots, job } }
   } catch (err) {
     if (err instanceof SubstrateUnavailableError) return { backups: { managed: false, reason: err.message } }
     throw err
@@ -112,6 +146,17 @@ export const actions: Actions = {
     return act('run', async () => {
       const { run } = await _backupsDeps.client().runBackup({ author })
       return { runId: run.id }
+    })
+  },
+  /** Check one backup: ee downloads, decrypts and hashes all of it. Writes nothing. */
+  check: async ({ locals, request }) => {
+    const author = await requireOwner(locals)
+    const form = await request.formData()
+    return act('check', async () => {
+      const snapshotId = (form.get('snapshotId') ?? '').toString()
+      if (!BACKUP_SNAPSHOT_ID.test(snapshotId)) throw new FormError('Choose a backup to check.')
+      const { job } = await _backupsDeps.client().checkBackup({ snapshotId, author })
+      return { jobId: job.id, snapshotId }
     })
   },
 }

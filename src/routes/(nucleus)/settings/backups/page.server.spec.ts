@@ -50,12 +50,13 @@ describe('Settings → Backups (owner only, D11)', () => {
     await expect(actions.save!(ev(fields))).rejects.toMatchObject({ status: 403 })
     await expect(actions.run!(ev())).rejects.toMatchObject({ status: 403 })
     await expect(actions.test!(ev(fields))).rejects.toMatchObject({ status: 403 })
+    await expect(actions.check!(ev({ snapshotId: '20261101T031700Z' }))).rejects.toMatchObject({ status: 403 })
     expect(calls).toEqual([])
   })
 
   it('load: ee status, or the plain not-managed state off an ee box', async () => {
-    wire({ 'GET /v1/backups': { status: 200, data: status } })
-    expect(await load(ev() as never)).toEqual({ backups: { managed: true, status } })
+    wire({ 'GET /v1/backups': { status: 200, data: status }, 'GET /v1/backups/restore': { status: 200, data: { job: null } } })
+    expect(await load(ev() as never)).toEqual({ backups: { managed: true, status, snapshots: null, job: null } })
     _backupsDeps.client = () =>
       new EeClient(async () => {
         throw new SubstrateUnavailableError('ENOENT')
@@ -97,5 +98,32 @@ describe('Settings → Backups (owner only, D11)', () => {
     const calls = wire({ 'POST /v1/backups/run': { status: 200, data: { run: { id: 'run-1' } } } })
     expect(await actions.run!(ev())).toEqual({ action: 'run', ok: true, runId: 'run-1' })
     expect(calls[0]!.body).toEqual({ author: 'human:u-owner', trigger: 'manual', wait: false })
+  })
+
+  const job = { id: 'job-1', kind: 'check', snapshotId: '20261101T031700Z', author: 'human:u-owner', status: 'running', step: 'verifying', startedAt: 't', updatedAt: 't', endedAt: null, checked: null, error: null, log: [], announced: false }
+
+  it('load (set up): the backups in the bucket and the last check/restore', async () => {
+    const snaps = [{ id: '20261102T031700Z', takenAt: '2026-11-02T03:17:00.000Z' }]
+    wire({ 'GET /v1/backups': st(true), 'GET /v1/backups/restore': { status: 200, data: { job } }, 'GET /v1/backups/snapshots': { status: 200, data: { snapshots: snaps } } })
+    expect(await load(ev() as never)).toMatchObject({ backups: { managed: true, snapshots: { ok: true, snapshots: snaps }, job } })
+  })
+
+  it('load: a bucket that cannot be listed is shown as such, the page still loads', async () => {
+    wire({
+      'GET /v1/backups': st(true),
+      'GET /v1/backups/restore': { status: 200, data: { job: null } },
+      'GET /v1/backups/snapshots': { status: 502, data: { detail: 'could not list the backups in the bucket: S3 GET failed: 403 AccessDenied' } },
+    })
+    expect(await load(ev() as never)).toMatchObject({ backups: { managed: true, snapshots: { ok: false, error: expect.stringMatching(/AccessDenied/) } } })
+  })
+
+  it('check: asks ee to check that one backup (writes nothing); refusals show ee\'s reason', async () => {
+    const calls = wire({ 'POST /v1/backups/check': { status: 202, data: { job } } })
+    expect(await actions.check!(ev({ snapshotId: '20261101T031700Z' }))).toEqual({ action: 'check', ok: true, jobId: 'job-1', snapshotId: '20261101T031700Z' })
+    expect(calls[0]!.body).toEqual({ snapshotId: '20261101T031700Z', author: 'human:u-owner' })
+    expect(await actions.check!(ev({ snapshotId: '../../etc' }))).toMatchObject({ status: 400 })
+    expect(calls).toHaveLength(1)
+    wire({ 'POST /v1/backups/check': { status: 409, data: { detail: 'a backup is running; wait for it to finish' } } })
+    expect(await actions.check!(ev({ snapshotId: '20261101T031700Z' }))).toMatchObject({ status: 409, data: { action: 'check', error: expect.stringMatching(/backup is running/) } })
   })
 })

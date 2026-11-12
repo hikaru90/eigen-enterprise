@@ -3,6 +3,7 @@
   import { onMount, untrack } from 'svelte'
   import { enhance } from '$app/forms'
   import { invalidateAll } from '$app/navigation'
+  import { resolve } from '$app/paths'
   import type { BackupRun } from '$lib/server/ee/client'
   import { docTitle } from '$lib/shell/title'
 
@@ -60,8 +61,33 @@
       polling = false
     }
   }
+  // The last check/restore of a backup (ee runs it; this page only asks and shows it).
+  const job = $derived(backups.managed ? backups.job : null)
+  const snapshots = $derived(backups.managed ? backups.snapshots : null)
+  const checking = $derived(job?.kind === 'check' && job.status === 'running')
+  const restoring = $derived(job?.kind === 'restore' && job.status === 'running')
+  let checkBusy = $state<string | null>(null)
+  let pollingJob = false
+  async function pollWhileChecking() {
+    if (pollingJob) return
+    pollingJob = true
+    try {
+      for (let i = 0; i < 1200; i++) {
+        await new Promise((r) => setTimeout(r, 1500))
+        await invalidateAll()
+        const j = data.backups.managed ? data.backups.job : null
+        if (!j || j.kind !== 'check' || j.status !== 'running') break
+      }
+    } finally {
+      pollingJob = false
+    }
+  }
+  const snapshotWhen = (iso: string) =>
+    new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+
   onMount(() => {
     if (running) void pollWhileRunning()
+    if (checking) void pollWhileChecking()
   })
 
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -238,6 +264,97 @@
       </section>
     {/if}
 
+    <!-- Backups in the bucket: check one, or restore it -->
+    {#if snapshots}
+      <section class="mt-10 space-y-3" data-testid="backups-snapshots">
+        <h3 class="text-sm font-semibold">Backups you can restore</h3>
+        {#if restoring && job}
+          <p class="rounded-lg border border-amber-500/70 px-4 py-3 text-xs" data-testid="backups-restoring">
+            A restore of the backup from {snapshotWhen(job.startedAt)} is running.
+            <a href={resolve('/(nucleus)/settings/backups/restore/[snapshot]', { snapshot: job.snapshotId })} class="underline">See its progress</a>.
+          </p>
+        {/if}
+        {#if !snapshots.ok}
+          <p class="text-xs text-red-700" data-testid="backups-snapshots-error">
+            The bucket could not be read, so the backups in it can't be shown: {snapshots.error}
+          </p>
+        {:else if snapshots.snapshots.length === 0}
+          <p class="text-xs text-foreground/60">There are no finished backups in the bucket yet.</p>
+        {:else}
+          <p class="text-xs text-foreground/60">
+            <strong>Check</strong> downloads a backup and makes sure every file in it can be read and is
+            unchanged — nothing on this server is touched. <strong>Restore</strong> replaces the whole
+            company with that backup.
+          </p>
+          <div class="overflow-x-auto rounded-lg border border-border">
+            <table class="w-full text-left text-xs">
+              <thead class="text-foreground/55">
+                <tr class="border-b border-border">
+                  <th class="px-3 py-2 font-medium">Taken</th>
+                  <th class="px-3 py-2 font-medium">Last check</th>
+                  <th class="px-3 py-2 font-medium"><span class="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-border">
+                {#each snapshots.snapshots as snap (snap.id)}
+                  {@const mine = job?.kind === 'check' && job.snapshotId === snap.id ? job : null}
+                  <tr data-testid="backups-snapshot" data-id={snap.id}>
+                    <td class="px-3 py-2 whitespace-nowrap">{snapshotWhen(snap.takenAt)}</td>
+                    <td class="px-3 py-2" data-testid="backups-check-result" data-status={mine?.status ?? 'none'}>
+                      {#if !mine}
+                        <span class="text-foreground/50">—</span>
+                      {:else if mine.status === 'running'}
+                        Checking…
+                      {:else if mine.status === 'succeeded' && mine.checked}
+                        <span class="text-eigen-green">OK</span>:
+                        {mine.checked.files.length} file(s) and {mine.checked.blobs} Drive file(s)
+                        ({size(mine.checked.files.reduce((n, f) => n + f.size, 0) + mine.checked.blobBytes)})
+                        decrypt and match.
+                      {:else}
+                        <span class="text-red-700">Failed:</span> <span class="text-foreground/70">{mine.error}</span>
+                      {/if}
+                    </td>
+                    <td class="px-3 py-2">
+                      <div class="flex justify-end gap-2">
+                        <form
+                          method="post"
+                          action="?/check"
+                          use:enhance={() => {
+                            checkBusy = snap.id
+                            return async ({ update, result }) => {
+                              await update()
+                              checkBusy = null
+                              if (result.type === 'success') void pollWhileChecking()
+                            }
+                          }}
+                        >
+                          <input type="hidden" name="snapshotId" value={snap.id} />
+                          <button
+                            type="submit"
+                            class="h-8 border border-border px-2.5 text-xs hover:border-primary disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={checking || restoring || running || checkBusy !== null}
+                            data-testid="backups-check">Check</button
+                          >
+                        </form>
+                        <a
+                          href={resolve('/(nucleus)/settings/backups/restore/[snapshot]', { snapshot: snap.id })}
+                          class="inline-flex h-8 items-center border border-border px-2.5 text-xs hover:border-red-700"
+                          data-testid="backups-restore">Restore…</a
+                        >
+                      </div>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+          {#if feedback('check')?.error}
+            <p class="text-xs text-red-700" data-testid="backups-check-error">{feedback('check')?.error}</p>
+          {/if}
+        {/if}
+      </section>
+    {/if}
+
     <!-- Setup -->
     <section class="mt-10 space-y-3" data-testid="backups-setup">
       <h3 class="text-sm font-semibold">{status.configured ? 'Storage bucket' : 'Set up backups'}</h3>
@@ -352,6 +469,11 @@
     <!-- How to restore -->
     <section class="mt-10 space-y-2 pb-10" data-testid="backups-restore-help">
       <h3 class="text-sm font-semibold">How to restore</h3>
+      <p class="text-xs text-foreground/70">
+        On this server: choose <strong>Restore…</strong> next to a backup above. It replaces the whole
+        company with that backup, after checking every file.
+      </p>
+      <p class="text-xs text-foreground/70">If this server is lost:</p>
       <ol class="list-decimal space-y-1.5 pl-5 text-xs text-foreground/70">
         <li>Get a fresh server and install eigenEnterprise on it, the same way as the first time.</li>
         <li>

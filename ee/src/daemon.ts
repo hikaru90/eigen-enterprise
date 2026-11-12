@@ -15,8 +15,9 @@ import { fetchSource, readRepoFile, readTree, SourceReadError, TREE_MAX_DEPTH } 
 import { checkDeployKey, createDeployKey, deleteDeployKey, KEY_ID, REPO } from './deploy-keys.ts'
 import { claimState, claimUrl, newClaim } from './claim.ts'
 import { BackupService, type BackupDeps } from './backup/service.ts'
-import { backupRoute } from './backup/control.ts'
-import { productionSources, writeBackupTimer } from './backup/box.ts'
+import { backupRoute, restoreRoute } from './backup/control.ts'
+import { launchRestoreUnit, productionSources, restoreUnitActive, writeBackupTimer } from './backup/box.ts'
+import { RestoreService, type RestoreDeps } from './backup/restore.ts'
 
 /**
  * The control API (§3.1): typed verbs over a unix socket, readable only by root
@@ -30,11 +31,13 @@ export class Ee {
   journal!: Journal
   lastReconcileError: string | null = null
   readonly backups: BackupService
+  readonly restore: RestoreService
 
   constructor(
     readonly sys: System,
     readonly secrets: SecretStore,
     backupDeps: Partial<BackupDeps> = {},
+    restoreDeps: Partial<RestoreDeps> = {},
   ) {
     this.repo = new CompanyRepo(sys, PATHS.company)
     this.backups = new BackupService({
@@ -49,12 +52,31 @@ export class Ee {
         await saveJournal(sys, this.journal)
       },
       applySchedule: (s) => writeBackupTimer(sys, s),
+      // A check or restore of a backup holds the one job slot.
+      busy: () => this.restore.busyNow(),
       ...backupDeps,
+    })
+    this.restore = new RestoreService({
+      backups: this.backups,
+      readFile: (p) => sys.readFile(p),
+      writeFile: (p, c, m) => sys.writeFile(p, c, m),
+      stateFile: PATHS.restoreState,
+      stagingDir: PATHS.backupTmp,
+      now: () => sys.now(),
+      emit: async (type, message, data) => {
+        emit(this.journal, sys, type, null, message, data)
+        await saveJournal(sys, this.journal)
+      },
+      launchApply: (id) => launchRestoreUnit(sys, id),
+      applyActive: () => restoreUnitActive(sys),
+      ...restoreDeps,
     })
   }
 
   async load(): Promise<void> {
     this.journal = await loadJournal(this.sys)
+    // Settle a check/restore cut off by a restart, and journal a restore the unit finished.
+    await this.restore.job()
   }
 
   /** Serialize every mutation and reconcile; ee never runs two at once. */
@@ -203,7 +225,7 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
       const route = `${req.method} ${url.pathname}`
       if (route === 'GET /v1/status') return send(res, 200, await ee.status())
       if (url.pathname.startsWith('/v1/backups')) {
-        const b = await backupRoute(ee.backups, route, () => body(req))
+        const b = (await restoreRoute(ee.restore, route, () => body(req))) ?? (await backupRoute(ee.backups, route, () => body(req)))
         if (b) return send(res, b.status, b.data)
       }
       if (route === 'POST /v1/reconcile') {

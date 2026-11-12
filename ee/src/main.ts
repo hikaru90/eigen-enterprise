@@ -6,10 +6,11 @@ import { basename } from 'node:path'
 import { createInterface } from 'node:readline'
 import { parseArgs } from 'node:util'
 import { z } from 'zod'
-import { restoreOnBox } from './backup/box.ts'
+import { applyRestore, restoreOnBox } from './backup/box.ts'
 import { backupKeyFromRecoveryCode } from './backup/crypto.ts'
 import { S3Client, s3TargetSchema, type S3Target } from './backup/s3.ts'
 import { BACKUP_SCOPE, storedConfigSchema } from './backup/service.ts'
+import { runApply, SNAPSHOT_ID } from './backup/restore.ts'
 import { fetchSnapshot, resolveSnapshot } from './backup/snapshot.ts'
 import { bootstrap } from './bootstrap.ts'
 import { CLAIM_TTL_DAYS, claimUrl } from './claim.ts'
@@ -20,7 +21,7 @@ import { PATHS } from './paths.ts'
 import { renderLiveEnvFiles } from './reconcile.ts'
 import { SecretStore } from './secret-store.ts'
 import { HOSTNAME } from './spec.ts'
-import { RealSystem } from './system.ts'
+import { mustRun, RealSystem } from './system.ts'
 import { RELEASES_URL, UPGRADES_DIR, upgrade, type Arch } from './upgrade.ts'
 
 const USAGE = `ee — the company's init (plan/phase-substrate.md)
@@ -46,6 +47,8 @@ const USAGE = `ee — the company's init (plan/phase-substrate.md)
 
   ee daemon        (run by ee.service)
   ee render-env    (run by ee-env.service at boot)
+  ee restore-apply --snapshot <id>   (run by ee-restore.service, which Settings → Backups starts
+                                      through ee after it verified and staged that snapshot)
 `
 
 function call(method: string, path: string, body?: unknown): Promise<{ status: number; data: unknown }> {
@@ -324,6 +327,29 @@ async function main(argv: string[]): Promise<void> {
       }
       await restoreOnBox(sys, s3, key, id, (l) => console.log(l))
       console.log(`✓ restored snapshot ${id}. ee is reconciling now: watch \`ee status\``)
+      return
+    }
+    case 'restore-apply': {
+      // The second half of a restore started in Settings → Backups (backup/restore.ts): the daemon
+      // verified and staged the snapshot, then started this as ee-restore.service, which outlives
+      // ee.service. No key here: the staged files are already decrypted and checked.
+      const { values } = parseArgs({ args: rest, options: { snapshot: { type: 'string' } } })
+      if (!values.snapshot || !SNAPSHOT_ID.test(values.snapshot)) throw new Error('--snapshot <id> (e.g. 20261103T031700Z) is required')
+      if (process.getuid?.() !== 0) throw new Error('ee restore-apply must run as root')
+      const id = values.snapshot
+      await runApply(
+        {
+          readFile: (p) => sys.readFile(p),
+          writeFile: (p, c, m) => sys.writeFile(p, c, m),
+          stateFile: PATHS.restoreState,
+          now: () => new Date(),
+          startEe: async () => void (await mustRun(sys, 'systemctl', ['start', 'ee.service'])),
+        },
+        id,
+        (progress) => applyRestore(sys, id, progress),
+        (l) => console.log(l),
+      )
+      console.log(`✓ restored snapshot ${id}. ee is reconciling now`)
       return
     }
     default:
