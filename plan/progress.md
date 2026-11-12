@@ -2,7 +2,14 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-11-12 — Contribute board round 3: seven features merged on `contribute-round-3` (not on main, not released)
+## 2026-11-12 — v0.5.5 tagged: Contribute board round 3 merged into main (not on production)
+
+Owner: "Merge and release".
+- **What:** `contribute-round-3` merged into main with `3ab736b` (tree identical to the gated branch), bump `5da0044`, tag `v0.5.5`. It carries the seven round-3 features below plus v0.5.4's Members 502 fix. Migrations 0124–0128 run on the first start.
+- **Release:** main (`0157e19..5da0044`, carrying the v0.5.4 docs commit `f37a68a` too) and the tag pushed through the pre-push gate (`npm run ci:local`: lint, svelte naming, check, unit; exit 0). Release run 43221566721 started 12:50 UTC (arm64 + amd64 builds + publish); its result is not recorded here yet. Branch `contribute-round-3` and its worktree `.claude/worktrees/round3` can be pruned.
+- **Not done:** os.cerberusblue.com still runs 0.5.3 (Members 502 until it upgrades). No upgrade without the owner's go; the first upgrade with calls asks once for `--node-ip`. Not on the local box, no e2e run. Board statuses on production unchanged. Test DBs `ee_w1…ee_w7` still on :5433.
+
+## 2026-11-12 — Contribute board round 3: seven features merged on `contribute-round-3` (merged into main and tagged v0.5.5 in the entry above)
 
 Owner: "get the latest contributions … look at all features … really think about what would improve the project … don't just debug fix, please also ship features." Board read from production's `contributions` table (read-only SQL over SSH; no MCP configured in that session): 25 proposals, 1 new (`2bda4814`). Plan: `plan/contribute-round-3.md`. Seven worktree workstreams, merged into branch `contribute-round-3` (worktree `.claude/worktrees/round3`). Board statuses on production NOT changed.
 - **W1 Contacts** (`2212c421`, `b8a87a25` part 2) — `69d9866`, `9f23f9c`, merge `ba76cd8`. New system module `modules/contacts` + `/m/contacts`: people with organisation, role, channels, where met, relationship tags (partner, customer, funder, investor, production + custom), why relevant, last contacted, next follow-up + step; "Follow up next" (overdue + 14 days, person's timezone); "Log a contact". Privacy like Drive (creator + owner/admins, or shared with the company), enforced in the service. Agent tools create/update/log_contact approval-gated; the agent never shares or deletes. Migration 0124.
