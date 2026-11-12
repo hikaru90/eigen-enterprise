@@ -7,6 +7,7 @@ import { memoryAccessStore } from '$lib/server/access/memory-store'
 import { contractDriveAccess } from './access-port'
 import { memoryEditLockStore } from './locks'
 import { createDriveService, type Actor } from './service'
+import { createDriveSourceWriter } from './source-writer'
 import { diskBlobStore } from './storage'
 import { memoryDriveStore } from './store'
 
@@ -30,9 +31,11 @@ async function setup() {
     file: async (id: string) => (await driveStore.getFile(id)) !== null,
   }
   const access = createAccess({ store, audit, resolvers })
-  const port = contractDriveAccess({ access, store, shareTargets: async () => ({ people: [], groups: [] }) })
-  const drive = createDriveService({ store: driveStore, blobs: diskBlobStore(dir), access: port, maxUploadBytes: 1 << 20, locks: memoryEditLockStore() })
-  return { drive, audit, store }
+  const port = contractDriveAccess({ access, store, audit, shareTargets: async () => ({ people: [], groups: [] }) })
+  const blobs = diskBlobStore(dir)
+  const drive = createDriveService({ store: driveStore, blobs, access: port, maxUploadBytes: 1 << 20, locks: memoryEditLockStore() })
+  const writer = createDriveSourceWriter({ store: driveStore, blobs, access: port })
+  return { drive, audit, store, writer }
 }
 
 describe('drive over the real access contract', () => {
@@ -78,5 +81,23 @@ describe('drive over the real access contract', () => {
     await drive.moveToTrash(u('a'), 'folder', f.id)
     await drive.deleteForever(u('a'), 'folder', f.id)
     expect(await store.grantsOn([{ resourceType: 'folder', resourceId: f.id }])).toEqual([])
+  })
+  it('a source root gets its company view grant from the system (audited as the source); members view, nobody edits', async () => {
+    const { drive, audit, store, writer } = await setup()
+    const root = await writer.ensureRoot('repos', 'GitHub')
+    const page = await writer.upsertText('repos', 'p', null, 'Overview.md', '# hi')
+    expect(await store.grantsOn([{ resourceType: 'folder', resourceId: root.folderId }])).toEqual([
+      { resourceType: 'folder', resourceId: root.folderId, subject: { kind: 'company' }, level: 'view' },
+    ])
+    expect(audit).toHaveBeenCalledWith({
+      type: 'access.grants_set',
+      principalId: 'repos',
+      payload: { resourceType: 'folder', resourceId: root.folderId, before: [], after: [{ subject: 'company', level: 'view' }] },
+    })
+    expect((await drive.readText(u('b'), page.fileId)).content).toBe('# hi')
+    await expect(drive.writeText(u('o'), page.fileId, 'x')).rejects.toMatchObject({ code: 'forbidden' })
+    // The owner can still narrow it with normal sharing.
+    await drive.setGrants(u('o'), 'folder', root.folderId, [])
+    await expect(drive.readText(u('b'), page.fileId)).rejects.toMatchObject({ code: 'not_found' })
   })
 })

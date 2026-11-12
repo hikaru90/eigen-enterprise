@@ -2,6 +2,7 @@
   import type { LayoutData } from './$types'
   import type { Snippet } from 'svelte'
   import ArchiveIcon from '@lucide/svelte/icons/archive'
+  import FolderLockIcon from '@lucide/svelte/icons/folder-lock'
   import HardDriveIcon from '@lucide/svelte/icons/hard-drive'
   import MessageSquareIcon from '@lucide/svelte/icons/message-square'
   import TrashIcon from '@lucide/svelte/icons/trash-2'
@@ -9,35 +10,51 @@
   import { resolve } from '$app/paths'
   import { page } from '$app/state'
   import StatusPill from '$lib/components/page/status-pill.svelte'
-  import { driveSection, type DriveSection } from '$lib/drive/sections'
+  import { driveSection, sourceSection, type DriveSection } from '$lib/drive/sections'
 
   /**
    * The Drive area as an app (P-3): full width and height, no centred frame.
    * A left rail — the one `h1`, status, My drive · Shared with me · Messages
-   * · Archived · Trash, the storage note — and the browser or file view beside it.
+   * · one section per read-only source root (e.g. GitHub, listed from the
+   * roots that exist) · Archived · Trash, the storage note — and the browser
+   * or file view beside it.
    * On narrow screens the rail becomes a bar above the content.
    */
   let { data, children }: { data: LayoutData; children: Snippet } = $props()
 
-  const sections: Array<{
+  type Section = {
     id: DriveSection
     label: string
-    href: '/drive' | '/drive/shared' | '/drive/messages' | '/drive/archived' | '/drive/trash'
+    href:
+      | '/drive'
+      | '/drive/shared'
+      | '/drive/messages'
+      | '/drive/archived'
+      | '/drive/trash'
+      | `/drive/folder/${string}`
     icon: typeof HardDriveIcon
-  }> = [
+  }
+  const before: Section[] = [
     { id: 'mine', label: 'My drive', href: '/drive', icon: HardDriveIcon },
     { id: 'shared', label: 'Shared with me', href: '/drive/shared', icon: UsersIcon },
-    {
-      id: 'messages',
-      label: 'Messages',
-      href: '/drive/messages',
-      icon: MessageSquareIcon,
-    },
+    { id: 'messages', label: 'Messages', href: '/drive/messages', icon: MessageSquareIcon },
+  ]
+  const after: Section[] = [
     { id: 'archived', label: 'Archived', href: '/drive/archived', icon: ArchiveIcon },
     { id: 'trash', label: 'Trash', href: '/drive/trash', icon: TrashIcon },
   ]
+  const sections = $derived<Section[]>([
+    ...before,
+    ...data.sources.map((s) => ({
+      id: sourceSection(s.source),
+      label: s.name,
+      href: `/drive/folder/${s.folderId}` as const,
+      icon: FolderLockIcon,
+    })),
+    ...after,
+  ])
   const rootHref = $derived((page.data as { root?: { href: string } }).root?.href ?? null)
-  const current = $derived(driveSection(page.url.pathname, rootHref))
+  const current = $derived(driveSection(page.url.pathname, rootHref, data.sources))
 </script>
 
 <div class="flex min-h-0 w-full flex-1 flex-col md:flex-row" data-testid="drive-page">

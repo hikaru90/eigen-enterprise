@@ -22,6 +22,12 @@ import { isRevisioned, isTextFile, mimeFor } from './preview'
  * contents, My drive, Shared with me, Messages), and shows in the Archived
  * view, in search (marked) and when opened directly. Whoever can edit an item
  * can archive and unarchive it.
+ *
+ * Source folders (migration 0133, plan/github-drive.md §5) are read-only
+ * copies a source plugin writes through the system writer (source-writer.ts):
+ * nobody edits them, the agent included; owner and admins can still share
+ * them. They have their own rail section (named by their root folder) and
+ * stay out of Shared with me and archive suggestions.
  */
 
 export type Actor = { kind: 'user'; userId: string } | { kind: 'agent'; id: string }
@@ -74,8 +80,14 @@ export type ItemView = {
   canManage?: boolean
 }
 
-/** A listing row's owner and sharing state (see describeItems). */
-export type ItemDescription = { ownerName: string | null; shared: boolean | null }
+/**
+ * A listing row's owner and sharing state (see describeItems); `readOnlyFrom`
+ * names the source (its root folder's name) a read-only source item comes from.
+ */
+export type ItemDescription = { ownerName: string | null; shared: boolean | null; readOnlyFrom: string | null }
+
+/** A source's root folder as the Drive rail lists it (its own section). */
+export type SourceRootView = { source: string; folderId: string; name: string; href: string }
 
 export type Crumb = { id: string; name: string }
 /** Where a path starts: "My drive", "Shared with me" or "Messages" (a conversation's attachment folder). */
@@ -250,9 +262,29 @@ export function createDriveService(deps: DriveDeps) {
   }
   const parentOf = (item: DriveFolder | DriveFile) => ('parentId' in item ? item.parentId : item.folderId)
 
+  /**
+   * The source root an item belongs to (itself, or the top of its chain), or
+   * null for what people make. `chain` is nearest first. Source roots are
+   * top-level folders, so the root is the chain's last folder.
+   */
+  function sourceRootOf(item: DriveFolder | DriveFile, chain: readonly DriveFolder[]): DriveFolder | null {
+    const top = chain[chain.length - 1] ?? item
+    if (top.source !== null && 'parentId' in top && top.parentId === null) return top
+    if (item.source !== null || chain.some((f) => f.source !== null)) throw new Error(`drive ${item.id} is a source item outside its source's root`)
+    return null
+  }
+
+  const readOnlyMessage = (root: DriveFolder) => `This comes from ${root.name} and is read-only here. Change it on ${root.name}.`
+
+  /**
+   * Source items are read-only for everyone, the agent included (checked
+   * before its bypass): no edit at all; manage stays (sharing, for the owner
+   * and admins); the access contract decides the rest.
+   */
   async function allows(actor: Actor, type: ItemType, item: DriveFolder | DriveFile, level: AccessLevel): Promise<boolean> {
-    if (actor.kind === 'agent') return true
     const chain = await chainFrom(parentOf(item))
+    if (level === 'edit' && sourceRootOf(item, chain)) return false
+    if (actor.kind === 'agent') return true
     return access.canAccess(actor.userId, { resourceType: type, resourceId: item.id, folderChain: chain.map((f) => f.id) }, level)
   }
 
@@ -261,6 +293,10 @@ export function createDriveService(deps: DriveDeps) {
     const item = await load(type, id)
     if (!item || !(await allows(actor, type, item, 'view'))) throw new DriveError('not_found', `No such ${type}.`)
     if (!opts.trashed && (item.trashedAt || (await inTrash(parentOf(item))))) throw new DriveError('not_found', `That ${type} is in the trash.`)
+    if (level === 'edit') {
+      const root = sourceRootOf(item, await chainFrom(parentOf(item)))
+      if (root) throw new DriveError('forbidden', readOnlyMessage(root))
+    }
     if (level !== 'view' && !(await allows(actor, type, item, level))) {
       throw new DriveError('forbidden', level === 'manage' ? `You can’t manage this ${type}.` : `You can view this ${type} but not change it.`)
     }
@@ -288,6 +324,8 @@ export function createDriveService(deps: DriveDeps) {
   const MY_DRIVE: PathRoot = { label: 'My drive', href: '/drive' }
   const SHARED: PathRoot = { label: 'Shared with me', href: '/drive/shared' }
   const MESSAGES: PathRoot = { label: 'Messages', href: '/messages' }
+  /** A source folder's tree starts at its root folder (named by the source, e.g. "GitHub"). */
+  const sourcePathRoot = (root: DriveFolder): PathRoot => ({ label: root.name, href: `/drive/folder/${root.id}` })
 
   /**
    * The path to an item as the actor may see it: ancestors they can't open
@@ -301,7 +339,13 @@ export function createDriveService(deps: DriveDeps) {
     let visibleChain = chain.slice(start)
     const top = visibleChain[0] ?? item
     let root: PathRoot
-    if (top.ownerId === MESSAGES_SYSTEM_OWNER) {
+    const source = sourceRootOf(item, [...chain].reverse())
+    if (source && (source.id === item.id || visibleChain[0]?.id === source.id)) {
+      // A source folder is its own rail section; its root is the root crumb, not a step after it.
+      // (Shared below a root the actor can't open, it reads as "Shared with me".)
+      root = sourcePathRoot(source)
+      if (visibleChain[0]?.id === source.id) visibleChain = visibleChain.slice(1)
+    } else if (top.ownerId === MESSAGES_SYSTEM_OWNER) {
       root = MESSAGES
       // The "Messages" folder itself is the root crumb, not a step after it.
       if (visibleChain[0] && visibleChain[0].parentId === null) visibleChain = visibleChain.slice(1)
@@ -346,6 +390,7 @@ export function createDriveService(deps: DriveDeps) {
       trashedAt: null,
       archivedAt: null,
       archivedBy: null,
+      source: null,
     }
     await store.insertFile(file)
     await grantCreator(actor, 'file', file.id)
@@ -458,9 +503,22 @@ export function createDriveService(deps: DriveDeps) {
       if (actor.kind !== 'user') return []
       // Top-most is decided over everything viewable, archived included: the
       // contents of an archived shared folder don't surface on their own.
-      const all = await visible(actor, await store.findByName(''), { archived: 'include' })
+      // Source folders have their own rail section, so they are not listed here.
+      const everything = await store.findByName('')
+      const people = { folders: everything.folders.filter((f) => f.source === null), files: everything.files.filter((f) => f.source === null) }
+      const all = await visible(actor, people, { archived: 'include' })
       const viewable = new Set(all.map((i) => `${i.type}:${i.id}`))
       return sorted(all.filter((i) => !i.archivedAt && i.ownerId !== actor.userId && !(i.parentId && viewable.has(`folder:${i.parentId}`))))
+    },
+
+    /** The source roots the actor can open, for the Drive rail (one section each), by name. */
+    async sourceRoots(actor: Actor): Promise<SourceRootView[]> {
+      const out: SourceRootView[] = []
+      for (const r of await store.sourceRoots()) {
+        if (r.trashedAt || r.source === null || !(await allows(actor, 'folder', r, 'view'))) continue
+        out.push({ source: r.source, folderId: r.id, name: r.name, href: sourcePathRoot(r).href })
+      }
+      return out.sort((a, b) => a.name.localeCompare(b.name))
     },
 
     /** Messages: the conversation attachment folders (inside the Messages folder) the actor can open. */
@@ -485,13 +543,17 @@ export function createDriveService(deps: DriveDeps) {
       const people = new Map((await access.shareTargets()).people.map((p) => [p.id, p.name || p.email]))
       const out: Record<string, ItemDescription> = {}
       for (const item of items) {
-        const ownerName = item.ownerId === MESSAGES_SYSTEM_OWNER ? 'Messages' : (people.get(item.ownerId) ?? null)
         const loaded = await load(item.type, item.id)
+        const source = loaded ? sourceRootOf(loaded, await chainFrom(parentOf(loaded))) : null
+        const ownerName = source ? source.name : item.ownerId === MESSAGES_SYSTEM_OWNER ? 'Messages' : (people.get(item.ownerId) ?? null)
         const manages = loaded !== null && (await allows(actor, item.type, loaded, 'manage'))
+        // A source root's company-wide view grant is how it is made, not sharing someone chose.
         const shared = manages
-          ? (await access.listGrants(item.type, item.id)).some((g) => !(g.subject.kind === 'user' && g.subject.userId === item.ownerId))
+          ? (await access.listGrants(item.type, item.id)).some(
+              (g) => !(g.subject.kind === 'user' && g.subject.userId === item.ownerId) && !(source?.id === item.id && g.subject.kind === 'company' && g.level === 'view'),
+            )
           : null
-        out[`${item.type}:${item.id}`] = { ownerName, shared }
+        out[`${item.type}:${item.id}`] = { ownerName, shared, readOnlyFrom: source ? source.name : null }
       }
       return out
     },
@@ -533,6 +595,7 @@ export function createDriveService(deps: DriveDeps) {
         trashedAt: null,
         archivedAt: null,
         archivedBy: null,
+        source: null,
       }
       await store.insertFolder(folder)
       await grantCreator(actor, 'folder', folder.id)
@@ -779,15 +842,15 @@ export function createDriveService(deps: DriveDeps) {
      * Files "suggest what to archive" may put to the model, selected by plain
      * facts (never by meaning): ones the actor can edit, last changed before
      * the cut-off, not trashed or archived (nor inside an archived or trashed
-     * folder), not a conversation's attachment; oldest first, at most
+     * folder), not a conversation's attachment nor a read-only source item; oldest first, at most
      * `limit` (`more` says there were others).
      */
     async archiveCandidates(actor: Actor, opts: { changedBefore: Date; limit: number }): Promise<{ candidates: ArchiveCandidate[]; more: boolean }> {
       const candidates: ArchiveCandidate[] = []
       for (const f of await store.filesChangedBefore(opts.changedBefore)) {
-        if (f.ownerId === MESSAGES_SYSTEM_OWNER) continue
+        if (f.ownerId === MESSAGES_SYSTEM_OWNER || f.source !== null) continue
         const chain = await chainFrom(f.folderId)
-        if (chain.some((c) => c.trashedAt || c.archivedAt || c.ownerId === MESSAGES_SYSTEM_OWNER)) continue
+        if (chain.some((c) => c.trashedAt || c.archivedAt || c.ownerId === MESSAGES_SYSTEM_OWNER || c.source !== null)) continue
         if (!(await allows(actor, 'file', f, 'edit'))) continue
         if (candidates.length >= opts.limit) return { candidates, more: true }
         const { root, path } = await pathFor(actor, [...chain].reverse(), f)

@@ -29,8 +29,12 @@ export type ArchiveSuggestion = { file: DriveItem; root: PathRoot; path: Crumb[]
 export type ArchiveSuggestions = { olderThanDays: number; considered: number; more: boolean; suggestions: ArchiveSuggestion[] }
 export type ItemRef = Pick<DriveItem, 'type' | 'id'>
 export type Unarchived = { item: DriveItem; stillIn: Crumb | null }
-/** A listing row's owner name (null: not a member) and sharing (null: not told — you don't manage it). */
-export type ItemDescription = { ownerName: string | null; shared: boolean | null }
+/**
+ * A listing row's owner name (null: not a member) and sharing (null: not told
+ * — you don't manage it); `readOnlyFrom` names the source a read-only copy
+ * comes from (e.g. "GitHub"), else null.
+ */
+export type ItemDescription = { ownerName: string | null; shared: boolean | null; readOnlyFrom: string | null }
 export type AccessLevel = 'view' | 'edit' | 'manage'
 export type GrantSubject = { kind: 'user'; userId: string } | { kind: 'group'; groupId: string } | { kind: 'company' }
 export type GrantEntry = { subject: GrantSubject; level: AccessLevel }

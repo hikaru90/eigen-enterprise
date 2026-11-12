@@ -5,6 +5,7 @@
   import ArchiveIcon from '@lucide/svelte/icons/archive'
   import DownloadIcon from '@lucide/svelte/icons/download'
   import FileIcon from '@lucide/svelte/icons/file'
+  import LockIcon from '@lucide/svelte/icons/lock'
   import Share2Icon from '@lucide/svelte/icons/share-2'
   import UsersIcon from '@lucide/svelte/icons/users'
   import { invalidateAll } from '$app/navigation'
@@ -111,7 +112,11 @@
     {:else}
       <p class="flex items-center gap-2 text-sm text-muted-foreground">
         <UsersIcon class="size-4" aria-hidden="true" />
-        {data.described.shared ? 'Shared with others.' : 'Only you (and admins) can open it.'}
+        {data.described.readOnlyFrom
+          ? `Comes from ${data.described.readOnlyFrom}: the whole company can open it unless sharing was narrowed.`
+          : data.described.shared
+            ? 'Shared with others.'
+            : 'Only you (and admins) can open it.'}
       </p>
       <Button
         variant="outline"
@@ -149,7 +154,19 @@
           >
         {/each}
       </nav>
-      <h2 class="mt-0.5 truncate text-lg font-semibold">{data.file.name}</h2>
+      <h2 class="mt-0.5 flex min-w-0 items-center gap-2 text-lg font-semibold">
+        <span class="truncate">{data.file.name}</span>
+        {#if data.described.readOnlyFrom}
+          <span
+            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-[10px] font-normal text-muted-foreground"
+            title={`Comes from ${data.described.readOnlyFrom}; change it there`}
+            data-testid="drive-readonly-badge"
+          >
+            <LockIcon class="size-3" aria-hidden="true" />
+            {data.described.readOnlyFrom} · read-only
+          </span>
+        {/if}
+      </h2>
       <p class="text-sm text-muted-foreground" data-testid="drive-file-meta">
         {`${formatSize(meta.size)} · changed ${fmt(meta.updatedAt)}${data.canEdit ? '' : ' · view only'}`}
       </p>

@@ -62,14 +62,14 @@ describe('drive.describeItems', () => {
       alice,
       (await drive.listFolder(alice, projects.id)).items,
     )
-    expect(inside[`file:${notes.id}`]).toEqual({ ownerName: 'Alice Archer', shared: true })
-    expect(inside[`file:${plan.id}`]).toEqual({ ownerName: 'Alice Archer', shared: false })
+    expect(inside[`file:${notes.id}`]).toEqual({ ownerName: 'Alice Archer', shared: true, readOnlyFrom: null })
+    expect(inside[`file:${plan.id}`]).toEqual({ ownerName: 'Alice Archer', shared: false, readOnlyFrom: null })
     const top = await drive.describeItems(alice, (await drive.listFolder(alice, null)).items)
-    expect(top[`folder:${projects.id}`]).toEqual({ ownerName: 'Alice Archer', shared: true })
+    expect(top[`folder:${projects.id}`]).toEqual({ ownerName: 'Alice Archer', shared: true, readOnlyFrom: null })
 
     // Bob (view) sees whose it is, not who else it is shared with.
     const forBob = await drive.describeItems(bob, (await drive.listFolder(bob, projects.id)).items)
-    expect(forBob[`file:${notes.id}`]).toEqual({ ownerName: 'Alice Archer', shared: null })
+    expect(forBob[`file:${notes.id}`]).toEqual({ ownerName: 'Alice Archer', shared: null, readOnlyFrom: null })
   })
 
   it('names the Messages owner and leaves an owner who is not a member unnamed', async () => {

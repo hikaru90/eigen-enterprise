@@ -11,6 +11,8 @@ export type DriveFolder = {
   /** Archived (0126): when and by whom; both null while it is in use. */
   archivedAt: Date | null
   archivedBy: string | null
+  /** The source plugin that wrote this read-only copy (migration 0133); null for what people make. */
+  source: string | null
 }
 
 export type DriveFile = {
@@ -26,6 +28,18 @@ export type DriveFile = {
   trashedAt: Date | null
   archivedAt: Date | null
   archivedBy: string | null
+  source: string | null
+}
+
+/** A source's stable key → its Drive item (drive_source_items, migration 0133). */
+export type DriveSourceRow = {
+  source: string
+  externalKey: string
+  itemId: string
+  kind: 'folder' | 'file'
+  parentKey: string | null
+  /** sha256 of a file's bytes; null for folders. */
+  contentSha: string | null
 }
 
 export type DriveRevision = {
@@ -67,12 +81,21 @@ export type DriveStore = {
   blobInUse(sha256: string): Promise<boolean>
   /** Bytes on disk: the sum over distinct blobs referenced by files or revisions. */
   storageBytes(): Promise<number>
+  /** Every source's root folder (top-level folders with a source), trashed ones included. */
+  sourceRoots(): Promise<DriveFolder[]>
+  getSourceItem(source: string, externalKey: string): Promise<DriveSourceRow | null>
+  /** Inserts or replaces the row for (source, externalKey). */
+  putSourceItem(row: DriveSourceRow): Promise<void>
+  listSourceItems(source: string): Promise<DriveSourceRow[]>
+  deleteSourceItem(source: string, externalKey: string): Promise<void>
 }
 
 export function memoryDriveStore(): DriveStore {
   const folders = new Map<string, DriveFolder>()
   const files = new Map<string, DriveFile>()
   const revisions = new Map<string, DriveRevision>()
+  const sourceItems = new Map<string, DriveSourceRow>()
+  const keyOf = (source: string, externalKey: string) => JSON.stringify([source, externalKey])
   const must = <T>(v: T | undefined, what: string): T => {
     if (!v) throw new Error(`${what} not found`)
     return v
@@ -148,6 +171,24 @@ export function memoryDriveStore(): DriveStore {
       for (const f of files.values()) sizes.set(f.sha256, f.size)
       for (const r of revisions.values()) sizes.set(r.sha256, r.size)
       return [...sizes.values()].reduce((a, b) => a + b, 0)
+    },
+    async sourceRoots() {
+      return [...folders.values()].filter((f) => f.source !== null && f.parentId === null)
+    },
+    async getSourceItem(source, externalKey) {
+      const r = sourceItems.get(keyOf(source, externalKey))
+      return r ? { ...r } : null
+    },
+    async putSourceItem(row) {
+      const clash = [...sourceItems.values()].find((r) => r.kind === row.kind && r.itemId === row.itemId && keyOf(r.source, r.externalKey) !== keyOf(row.source, row.externalKey))
+      if (clash) throw new Error(`drive ${row.kind} ${row.itemId} already belongs to ${clash.source} ${clash.externalKey}`)
+      sourceItems.set(keyOf(row.source, row.externalKey), { ...row })
+    },
+    async listSourceItems(source) {
+      return [...sourceItems.values()].filter((r) => r.source === source).map((r) => ({ ...r }))
+    },
+    async deleteSourceItem(source, externalKey) {
+      sourceItems.delete(keyOf(source, externalKey))
     },
   }
 }
