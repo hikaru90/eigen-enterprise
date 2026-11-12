@@ -11,6 +11,9 @@
  * Exempt, each authenticated on its own:
  * - /api/mail/ses-events — Amazon SNS posts text/plain without an Origin; every
  *   message's signature is verified (modules/email/platform/sns-signature.ts).
+ * - /api/mail/ses-inbound — the same for SES receipt notifications (received
+ *   mail); signature-verified the same way, then only the stored receiving
+ *   topic is accepted (modules/email/inbox/inbound.ts).
  * - /api/mail/unsubscribe/<token> — RFC 8058 one-click unsubscribe: mailbox
  *   providers POST "List-Unsubscribe=One-Click" (urlencoded, no Origin); the
  *   unguessable per-contact token is the authorisation, and it can only
@@ -19,7 +22,7 @@
  *   Origin, no session); the JWT over the body's sha256, signed with the
  *   LiveKit API secret, is verified before anything is read (modules/calls/webhook.ts).
  */
-export const CSRF_EXEMPT_PATHS: readonly string[] = ['/api/mail/ses-events', '/api/mail/unsubscribe', '/api/calls/livekit']
+export const CSRF_EXEMPT_PATHS: readonly string[] = ['/api/mail/ses-events', '/api/mail/ses-inbound', '/api/mail/unsubscribe', '/api/calls/livekit']
 
 const FORM_TYPES = new Set(['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain', 'application/x-sveltekit-formdata'])
 const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])

@@ -4,7 +4,7 @@ import { user } from './auth.schema'
 import { mailDomains } from './email.schema'
 
 /**
- * Mailboxes (migration 0129, plan/email-inbox.md S1): receiving addresses and
+ * Mailboxes (migrations 0129 + 0131, plan/email-inbox.md S1/S3): receiving addresses and
  * the mail they hold. Company-level tables (no RLS); who reads what is decided
  * in modules/email/inbox/service.ts. Consumed only by modules/email/inbox/db-store.ts.
  */
@@ -83,4 +83,28 @@ export const inboxMessages = pgTable(
     index('inbox_messages_thread_idx').on(t.mailboxId, t.threadId),
     index('inbox_messages_message_id_idx').on(t.mailboxId, t.messageId).where(sql`${t.messageId} IS NOT NULL`),
   ],
+)
+
+/**
+ * Attachment metadata of received mail (migration 0131, S3). Bytes are re-read
+ * from the raw MIME object on download: `partIndex` is the position in
+ * mailparser's attachment list, `checksum` its md5. `blocked` = virus FAIL.
+ */
+export const inboxAttachments = pgTable(
+  'inbox_attachments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => inboxMessages.id, { onDelete: 'cascade' }),
+    partIndex: integer('part_index').notNull(),
+    filename: text('filename'),
+    contentType: text('content_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    contentId: text('content_id'),
+    checksum: text('checksum').notNull(),
+    blocked: boolean('blocked').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('inbox_attachments_part_idx').on(t.messageId, t.partIndex)],
 )

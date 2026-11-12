@@ -53,8 +53,8 @@ if (!building) {
 
 /**
  * SvelteKit's cross-site form check, run here (svelte.config.js disables the
- * built-in one) so Amazon SNS can post to /api/mail/ses-events — see
- * $lib/server/csrf. Like SvelteKit's, it is off in dev mode.
+ * built-in one) so Amazon SNS can post to /api/mail/ses-events and
+ * /api/mail/ses-inbound — see $lib/server/csrf. Like SvelteKit's, it is off in dev mode.
  */
 const handleCsrf: Handle = ({ event, resolve }) => {
   if (!dev && isForbiddenCrossSiteForm(event.request, event.url)) return csrfRefusal(event.request)
