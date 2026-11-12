@@ -11,7 +11,7 @@ import {
   loadPendingApprovalsByTool,
 } from '$lib/server/chat/current-conversation'
 import { getDb } from '$lib/server/db'
-import { isUserProviderReady } from '$lib/server/llm/provider-ready'
+import { isCompanyProviderReady } from '$lib/server/llm/provider-ready'
 
 /**
  * The company agent's current conversation for one member (polish P-1: the
@@ -45,7 +45,7 @@ export async function loadAssistantConversation(
       approvalStatuses,
       await loadPendingApprovalsByTool(getDb()),
     ),
-    providerReady: await isUserProviderReady(userId),
+    providerReady: await isCompanyProviderReady(),
     isAdmin,
     approvalMode,
   }

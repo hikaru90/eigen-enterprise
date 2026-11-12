@@ -2,6 +2,18 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-12 — Fix: the assistant failed for everyone but the owner (production)
+
+Owner: "the assisstant does not work on the prod machine" / "fix it please".
+- **What broke:** on os.cerberusblue.com every assistant turn by a non-owner ended with "Something went wrong on my side…". The journal only said `durable agent run ended without an answer: model_error`; the durable store (`/var/lib/private/ee-state/os/agent/agent.sqlite`, `pi_tasks`) held the real error: `Platform EUrouter not configured: set LLM_BASE_URL`. The provider is stored per user; only the owner has one (byok). The admin and the member had none, so their turns fell to the platform path, which a self-hosted server never has. The Contribute judge, voice and Drive already ran on the company provider (`onCompanyProvider`, `8dc8f4e`); the assistant's durable completion never did.
+- **Fix:** `db-scoped-complete.ts`: every durable model call runs inside `onCompanyProvider` (the owner's provider config); usage stays attributed to the caller. `provider-ready.ts`: new `isCompanyProviderReady()` used by `/` and the assistant conversation load, so members no longer see the false "No AI provider is set up yet" banner (no owner → not ready).
+- **E2E:** the shared test DB has a stale real owner (with a real OpenRouter key), so with the fix every e2e user's chat went to that key. New `src/routes/e2e/company-owner.ts` (`becomeCompanyOwner` → `restore`): the specs that connect a provider and chat now do it as the company owner (`agent-runs-live`, `assistant-area`, `onboarding-provider`, `pricing`, `onboarding-welcome`) — the product's real shape. The stale owner is put back after each test. As the owner, the welcome boot also asks for company email (`needsMail`), so the two `onboarding-welcome` journeys that reach the mind gate now walk that step on the fake transport (SES form → harness verifies the sender → test mail → Continue), with the mail settings wiped before and after each test (`DELETE /api/e2e/harness/mail`).
+- **Gates:** unit 749 files / 5966 passed (80 skipped); svelte-check 0 errors; lint 0 errors on touched files.
+- **Decision log (architecture impact; owner may veto):** the company's AI provider is the owner's for every principal, in chat as everywhere else. A provider an admin or member saves on their own account is not used. Settings → AI provider still saves to the caller's account — it should be owner-only (follow-up).
+- **Known gap (follow-up):** a non-invited member, or an admin before any provider exists, still gets the welcome mind gate and can save a provider that is then never used. Production has only the owner and invited people, so nobody hits it there.
+- **Pre-existing, exposed (not fixed):** after `email-platform.e2e.ts` runs (it fails on main too), `/api/onboarding/mail` no longer recognises `SenderNotVerifiedError` (`instanceof` false → generic 400): the process-wide Owlery singleton (`globalThis.__eeOwleryService`) seems to hold a second copy of `company-mail.ts`'s classes in Vite dev. The two owner welcome journeys pass alone and fail right after `email-platform` in one run.
+- **Not done:** not released; production still runs v0.5.5 without the fix.
+
 ## 2026-11-12 — v0.5.5 on production (os.cerberusblue.com)
 
 Owner: "Yes, upgrade".

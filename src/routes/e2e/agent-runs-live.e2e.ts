@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { becomeCompanyOwner, type CompanyOwnerSwap } from './company-owner'
 import { registerUser } from './test-helpers'
 
 /**
@@ -39,8 +40,16 @@ async function chat(page: Page, message: string, sessionId?: string): Promise<st
 }
 
 test.describe('agent runs live view', () => {
+  let owner: CompanyOwnerSwap | null = null
+  test.afterEach(async () => {
+    await owner?.restore()
+    owner = null
+  })
+
   test('two members watch the same durable run live', async ({ browser, page, context }) => {
-    await registerUser(context, page)
+    // The provider is the company's: the member who connects it is the owner.
+    const { email } = await registerUser(context, page)
+    owner = await becomeCompanyOwner(email)
     await connectProvider(page)
 
     const marker = `first-turn-${Date.now()}`

@@ -90,3 +90,37 @@ describe('isUserProviderReady', () => {
     await expect(isUserProviderReady('u1')).resolves.toBe(false)
   })
 })
+
+describe('isCompanyProviderReady', () => {
+  it('asks about the company provider (the owner’s account), not the member’s own settings', async () => {
+    const { isCompanyProviderReady } = await import('./provider-ready')
+    const asked: string[] = []
+    const ready = await isCompanyProviderReady({
+      companyAccountId: async () => 'owner-1',
+      withDbUser: async (userId, fn) => {
+        asked.push(`db:${userId}`)
+        return fn()
+      },
+      isUserProviderReady: async (userId) => {
+        asked.push(`ready:${userId}`)
+        return userId === 'owner-1'
+      },
+    })
+    expect(ready).toBe(true)
+    expect(asked).toEqual(['db:owner-1', 'ready:owner-1'])
+  })
+
+  it('is not ready when the company has no owner yet (no company provider exists)', async () => {
+    const { isCompanyProviderReady } = await import('./provider-ready')
+    const ready = await isCompanyProviderReady({
+      companyAccountId: async () => null,
+      withDbUser: async () => {
+        throw new Error('must not read any account')
+      },
+      isUserProviderReady: async () => {
+        throw new Error('must not check any account')
+      },
+    })
+    expect(ready).toBe(false)
+  })
+})

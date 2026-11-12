@@ -58,3 +58,29 @@ export async function isUserProviderReady(userId: string): Promise<boolean> {
   }
   return platformEnvConfigured(provider)
 }
+
+export type CompanyProviderReadyDeps = {
+  companyAccountId: () => Promise<string | null>
+  withDbUser: <T>(userId: string, fn: () => Promise<T>) => Promise<T>
+  isUserProviderReady: (userId: string) => Promise<boolean>
+}
+
+const liveCompanyDeps: CompanyProviderReadyDeps = {
+  companyAccountId: async () => (await import('./company-provider')).companyOwnerId(),
+  withDbUser: async (userId, fn) => (await import('$lib/server/db')).withDbUser(userId, () => fn()),
+  isUserProviderReady,
+}
+
+/**
+ * Whether the assistant can answer for anyone in this company: the readiness of the
+ * company's AI provider (the owner's account — the same one the gateway uses for every
+ * member's turns, see `onCompanyProvider`); a member's own settings are irrelevant.
+ * No owner yet → no company provider → not ready.
+ */
+export async function isCompanyProviderReady(
+  deps: CompanyProviderReadyDeps = liveCompanyDeps,
+): Promise<boolean> {
+  const account = await deps.companyAccountId()
+  if (!account) return false
+  return deps.withDbUser(account, () => deps.isUserProviderReady(account))
+}

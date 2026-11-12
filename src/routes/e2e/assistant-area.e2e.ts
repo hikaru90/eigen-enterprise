@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import postgres from 'postgres'
+import { becomeCompanyOwner, type CompanyOwnerSwap } from './company-owner'
 import { registerUser } from './test-helpers'
 
 /**
@@ -11,23 +11,20 @@ import { registerUser } from './test-helpers'
  * Conversations and the same turn reads as plain words under Activity. The
  * old URLs 404. The Roadmap moved into Memory (P-4): memory-roadmap.e2e.ts drives it.
  *
- * The user is promoted to admin for the run and demoted after.
+ * The user is the company owner for the run (its provider is the company's — every
+ * turn runs on it) and steps back after.
  */
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim()
-test.skip(!DATABASE_URL, 'DATABASE_URL not set — the journey promotes its user in the test DB')
-
-let _sql: postgres.Sql | null = null
-const sql = (): postgres.Sql => (_sql ??= postgres(DATABASE_URL!, { prepare: false }))
+test.skip(!DATABASE_URL, 'DATABASE_URL not set — the journey makes its user the owner in the test DB')
 
 const SHOTS = 'test-results/assistant-area'
 const GATEWAY_BASE_URL = `http://127.0.0.1:${process.env.MOCK_GATEWAY_PORT ?? 5199}/v1`
 let email = ''
+let owner: CompanyOwnerSwap | null = null
 
 test.afterAll(async () => {
-  if (email)
-    await sql()`update "user" set role = 'member' where email = ${email} and role = 'admin'`
-  await _sql?.end()
+  await owner?.restore()
 })
 
 async function connectProvider(page: Page): Promise<void> {
@@ -46,7 +43,7 @@ async function connectProvider(page: Page): Promise<void> {
 test('Assistant → Conversations → run → Activity', async ({ page, context }) => {
   test.setTimeout(180_000)
   ;({ email } = await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' }))
-  await sql()`update "user" set role = 'admin' where email = ${email} and role = 'member'`
+  owner = await becomeCompanyOwner(email)
   await connectProvider(page)
 
   const marker = `agent-area-${Date.now()}`

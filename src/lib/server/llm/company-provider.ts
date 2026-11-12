@@ -12,7 +12,8 @@ import { LlmNotConfiguredError } from './errors'
 
 export type OwnerLookup = () => Promise<string | null>
 
-const dbOwnerId: OwnerLookup = async () => {
+/** The company owner's user id (whose account holds the company's AI provider), or null. */
+export const companyOwnerId: OwnerLookup = async () => {
   const { eq } = await import('drizzle-orm')
   const { authDb } = await import('$lib/server/db/auth-db')
   const { user } = await import('$lib/server/db/auth.schema')
@@ -20,7 +21,7 @@ const dbOwnerId: OwnerLookup = async () => {
   return row?.id ?? null
 }
 
-export async function onCompanyProvider<T>(fn: () => Promise<T>, ownerId: OwnerLookup = dbOwnerId): Promise<T> {
+export async function onCompanyProvider<T>(fn: () => Promise<T>, ownerId: OwnerLookup = companyOwnerId): Promise<T> {
   const owner = await ownerId()
   if (!owner) {
     throw new LlmNotConfiguredError(

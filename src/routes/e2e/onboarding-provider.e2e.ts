@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { becomeCompanyOwner, type CompanyOwnerSwap } from './company-owner'
 import { registerUser } from './test-helpers'
 
 /**
@@ -68,6 +69,19 @@ async function saveApiKeyViaApi(page: Page, provider = 'openrouter'): Promise<vo
 }
 
 test.describe('nucleus first-run onboarding', () => {
+  // The provider wizard is the owner's: the company's provider is the one every
+  // member's turns run on. Each wizard test signs up the company owner.
+  let owner: CompanyOwnerSwap | null = null
+  test.afterEach(async () => {
+    await owner?.restore()
+    owner = null
+  })
+
+  async function registerOwner(page: Page, context: Parameters<typeof registerUser>[0]): Promise<void> {
+    const { email } = await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
+    owner = await becomeCompanyOwner(email)
+  }
+
   test('harness user opens straight into the chat — never the wizard', async ({
     page,
     context,
@@ -80,7 +94,7 @@ test.describe('nucleus first-run onboarding', () => {
     page,
     context,
   }) => {
-    await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
+    await registerOwner(page, context)
     await completeWelcomeViaApi(page)
     await expectWizardVisible(page)
 
@@ -118,7 +132,7 @@ test.describe('nucleus first-run onboarding', () => {
     page,
     context,
   }) => {
-    await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
+    await registerOwner(page, context)
     await completeWelcomeViaApi(page)
     await expectWizardVisible(page)
 
@@ -152,7 +166,7 @@ test.describe('nucleus first-run onboarding', () => {
   })
 
   test('once credentials exist the wizard never comes back', async ({ page, context }) => {
-    await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
+    await registerOwner(page, context)
     await completeWelcomeViaApi(page)
 
     await saveApiKeyViaApi(page)

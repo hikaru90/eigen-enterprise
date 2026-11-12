@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { becomeCompanyOwner, type CompanyOwnerSwap } from './company-owner'
 import { registerUser } from './test-helpers'
 
 /**
@@ -38,11 +39,19 @@ function usageTable(page: Page) {
 }
 
 test.describe('Pricing transparency (AC-014, AC-015)', () => {
+  // The company's provider is the owner's: the user who connects it and chats is the owner.
+  let owner: CompanyOwnerSwap | null = null
+  test.afterEach(async () => {
+    await owner?.restore()
+    owner = null
+  })
+
   test('AI usage lists each call with duration and credits after an AI call', async ({
     page,
     context,
   }) => {
-    await registerUser(context, page)
+    const { email } = await registerUser(context, page)
+    owner = await becomeCompanyOwner(email)
     await connectProvider(page)
     await oneChatTurn(page)
 
@@ -61,7 +70,8 @@ test.describe('Pricing transparency (AC-014, AC-015)', () => {
   })
 
   test('AI usage shows a credits total for the page, never dollars', async ({ page, context }) => {
-    await registerUser(context, page)
+    const { email } = await registerUser(context, page)
+    owner = await becomeCompanyOwner(email)
     await connectProvider(page)
     await oneChatTurn(page)
 

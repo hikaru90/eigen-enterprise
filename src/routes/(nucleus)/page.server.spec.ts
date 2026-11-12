@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { authDbMock, getDbMock, isUserProviderReadyMock, isByokUiEnabledMock } = vi.hoisted(() => ({
+const { authDbMock, getDbMock, isCompanyProviderReadyMock, isByokUiEnabledMock } = vi.hoisted(() => ({
   authDbMock: {},
   getDbMock: vi.fn(),
-  isUserProviderReadyMock: vi.fn(),
+  isCompanyProviderReadyMock: vi.fn(),
   isByokUiEnabledMock: vi.fn(),
 }))
 
 vi.mock('$lib/server/db/auth-db', () => ({ authDb: authDbMock }))
 vi.mock('$lib/server/db', () => ({ getDb: getDbMock }))
 vi.mock('$lib/server/llm/provider-ready', () => ({
-  isUserProviderReady: isUserProviderReadyMock,
+  isCompanyProviderReady: isCompanyProviderReadyMock,
 }))
 vi.mock('$lib/server/settings/byok-ui', () => ({ isByokUiEnabled: isByokUiEnabledMock }))
 const { roleMock, completeWelcomeMock, setAccountNameMock, mailConfiguredMock } = vi.hoisted(() => ({
@@ -64,7 +64,7 @@ function selectChain(row: Record<string, unknown> | undefined) {
 
 describe('nucleus page server load', () => {
   it('asks the owner (only the owner) to set up company email until it works', async () => {
-    isUserProviderReadyMock.mockResolvedValue(true)
+    isCompanyProviderReadyMock.mockResolvedValue(true)
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: null }))
     authDbMock.select = () => selectChain({ accountKind: 'production' })
     roleMock.mockResolvedValue('owner')
@@ -97,7 +97,7 @@ describe('nucleus page server load', () => {
 
   it('a member who just joined goes straight to Messages — no company onboarding, no provider setup', async () => {
     roleMock.mockResolvedValue('member')
-    isUserProviderReadyMock.mockResolvedValue(false)
+    isCompanyProviderReadyMock.mockResolvedValue(false)
     await expect(load(withFetch({ locals: { user: { id: 'm1', name: 'Anna' } }, url: new URL('https://os.test/') } as never))).rejects.toMatchObject({
       status: 303,
       location: '/messages',
@@ -114,7 +114,7 @@ describe('nucleus page server load', () => {
   it('an account that signed up without an invite founds the company: it keeps the onboarding', async () => {
     roleMock.mockResolvedValue('member')
     invitedMock.mockResolvedValue(false)
-    isUserProviderReadyMock.mockResolvedValue(false)
+    isCompanyProviderReadyMock.mockResolvedValue(false)
     expect(await load(withFetch({ locals: { user: { id: 'f1', email: 'f@x.test', name: '' } }, url: new URL('https://os.test/') } as never))).toMatchObject({
       needsOnboarding: true,
       showWelcome: true,
@@ -124,17 +124,17 @@ describe('nucleus page server load', () => {
 
   it('an admin gets the company onboarding only while no provider works', async () => {
     roleMock.mockResolvedValue('admin')
-    isUserProviderReadyMock.mockResolvedValue(false)
+    isCompanyProviderReadyMock.mockResolvedValue(false)
     expect(await load(withFetch({ locals: { user: { id: 'a1', name: 'Al' } }, url: new URL('https://os.test/') } as never))).toMatchObject({
       needsOnboarding: true,
       showWelcome: true,
     })
-    isUserProviderReadyMock.mockResolvedValue(true)
+    isCompanyProviderReadyMock.mockResolvedValue(true)
     await expect(load(withFetch({ locals: { user: { id: 'a1', name: 'Al' } }, url: new URL('https://os.test/') } as never))).rejects.toMatchObject({ location: '/messages' })
   })
 
   it('heals an account name that was only saved as the onboarding name', async () => {
-    isUserProviderReadyMock.mockResolvedValue(true)
+    isCompanyProviderReadyMock.mockResolvedValue(true)
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date(), displayName: 'Olivia Owner' }))
     await load(withFetch({ locals: { user: { id: 'o1', name: '' } }, url: new URL('https://os.test/') } as never))
     expect(setAccountNameMock).toHaveBeenCalledWith('o1', 'Olivia Owner')
@@ -144,7 +144,7 @@ describe('nucleus page server load', () => {
   })
 
   it('offers the agent hand-off only while the website is still to do', async () => {
-    isUserProviderReadyMock.mockResolvedValue(true)
+    isCompanyProviderReadyMock.mockResolvedValue(true)
     const event = { locals: { user: { id: 'u1' } }, url: new URL('https://os.test/') } as never
     expect(await load(withFetch(event))).toMatchObject({ handoffAvailable: true })
     onboardingFactsMock.mockResolvedValue({ website: 'in_progress' })
@@ -152,7 +152,7 @@ describe('nucleus page server load', () => {
   })
 
   it('flags the return from the provider sign-in so the tour does not replay', async () => {
-    isUserProviderReadyMock.mockResolvedValue(true)
+    isCompanyProviderReadyMock.mockResolvedValue(true)
     const back = {
       locals: { user: { id: 'u1' } },
       url: new URL('https://os.test/?provider=connected'),
@@ -170,7 +170,7 @@ describe('nucleus page server load', () => {
   })
 
   it('gates the dashboard behind first-run onboarding when no provider works', async () => {
-    isUserProviderReadyMock.mockResolvedValue(false)
+    isCompanyProviderReadyMock.mockResolvedValue(false)
 
     const result = await load(withFetch({
       locals: { user: { id: 'u1' } },
@@ -187,7 +187,7 @@ describe('nucleus page server load', () => {
   })
 
   it('offers the welcome wizard when a provider works but the tour is not done', async () => {
-    isUserProviderReadyMock.mockResolvedValue(true)
+    isCompanyProviderReadyMock.mockResolvedValue(true)
 
     const result = await load(withFetch({
       locals: { user: { id: 'u1' } },
@@ -204,7 +204,7 @@ describe('nucleus page server load', () => {
   })
 
   it('goes straight to the dashboard when the tour is done and a provider works', async () => {
-    isUserProviderReadyMock.mockResolvedValue(true)
+    isCompanyProviderReadyMock.mockResolvedValue(true)
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date('2026-09-22T10:00:00Z') }))
 
     const result = await load(withFetch({
@@ -222,7 +222,7 @@ describe('nucleus page server load', () => {
   })
 
   it('opens the dashboard with a provider notice when the tour is done but the provider vanished', async () => {
-    isUserProviderReadyMock.mockResolvedValue(false)
+    isCompanyProviderReadyMock.mockResolvedValue(false)
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date('2026-09-22T10:00:00Z') }))
 
     const result = await load(withFetch({
@@ -243,7 +243,7 @@ describe('nucleus page server load', () => {
   })
 
   it('hands the saved name to the wizard so the boot greets by it', async () => {
-    isUserProviderReadyMock.mockResolvedValue(true)
+    isCompanyProviderReadyMock.mockResolvedValue(true)
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: null, displayName: 'Ada' }))
 
     const result = await load(withFetch({
@@ -262,7 +262,7 @@ describe('nucleus page server load', () => {
 
   it('never gates harness accounts — no wizard, no tour', async () => {
     authDbMock.select = () => selectChain({ accountKind: 'harness', onboardingCompleted: true })
-    isUserProviderReadyMock.mockResolvedValue(false)
+    isCompanyProviderReadyMock.mockResolvedValue(false)
 
     const result = await load(withFetch({
       locals: { user: { id: 'u1' } },
@@ -279,12 +279,12 @@ describe('nucleus page server load', () => {
   })
 
   it('the dashboard loads only once the first-run flows are done', async () => {
-    isUserProviderReadyMock.mockResolvedValue(false)
+    isCompanyProviderReadyMock.mockResolvedValue(false)
     const first = await load(withFetch({ locals: { user: { id: 'u1' } }, url: new URL('https://os.test/') } as never))
     expect(first).toMatchObject({ showWelcome: true, dashboard: null })
     expect(loadDashboardMock).not.toHaveBeenCalled()
 
-    isUserProviderReadyMock.mockResolvedValue(true)
+    isCompanyProviderReadyMock.mockResolvedValue(true)
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date() }))
     const done = await load(withFetch({ locals: { user: { id: 'u1' } }, url: new URL('https://os.test/') } as never))
     expect(loadDashboardMock).toHaveBeenCalledWith('u1')
@@ -296,7 +296,7 @@ describe('nucleus page server load', () => {
   })
 
   it('greets by the first name of the account, else of the onboarding name', async () => {
-    isUserProviderReadyMock.mockResolvedValue(true)
+    isCompanyProviderReadyMock.mockResolvedValue(true)
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date() }))
     const profile = await load(withFetch({ locals: { user: { id: 'u1', name: 'Ada Lovelace', firstName: 'Augusta' } }, url: new URL('https://os.test/') } as never))
     expect(profile).toMatchObject({ greetingName: 'Augusta' })
@@ -311,7 +311,7 @@ describe('nucleus page server load', () => {
   })
 
   it('carries no chat transcript: the conversation lives in the assistant panel', async () => {
-    isUserProviderReadyMock.mockResolvedValue(true)
+    isCompanyProviderReadyMock.mockResolvedValue(true)
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date() }))
     const data = await load(withFetch({ locals: { user: { id: 'u1' } }, url: new URL('https://os.test/') } as never))
     expect(data).not.toHaveProperty('chatHistory')

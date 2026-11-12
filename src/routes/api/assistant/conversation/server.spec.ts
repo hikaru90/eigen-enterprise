@@ -17,7 +17,7 @@ vi.mock('$lib/server/auth/user-role', () => ({
   getUserRole: roleMock,
   isAdminRole: (r: string | null) => r === 'owner' || r === 'admin',
 }))
-vi.mock('$lib/server/llm/provider-ready', () => ({ isUserProviderReady: providerReadyMock }))
+vi.mock('$lib/server/llm/provider-ready', () => ({ isCompanyProviderReady: providerReadyMock }))
 vi.mock('$lib/server/chat/current-conversation', () => ({
   loadCurrentConversation: loadConversationMock,
   loadApprovalStatuses: loadApprovalStatusesMock,

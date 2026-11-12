@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import postgres from 'postgres'
+import { becomeCompanyOwner, type CompanyOwnerSwap } from './company-owner'
 import { completeProfileStepInUi, loginUser, registerUser, signOut } from './test-helpers'
 
 /**
@@ -36,18 +37,48 @@ const MIND_HEADING = 'Now, it needs a mind to think with.'
 
 /**
  * The boot's remaining identity lines (the modular-system lines): Continue
- * until the mind gate shows or the last line turns into Begin.
+ * until the owner's email step, the mind gate or the last line's Begin shows.
  */
 async function continueThroughLines(page: Page): Promise<void> {
+  const mail = page.getByTestId('onboarding-mail-domain')
   const mind = page.getByText(MIND_HEADING)
   const begin = page.getByRole('button', { name: 'Begin' })
   const next = page.getByTestId('onboarding-continue')
   for (let i = 0; i < 10; i++) {
-    await expect(mind.or(begin).or(next).first()).toBeVisible({ timeout: 15_000 })
-    if ((await mind.isVisible()) || (await begin.isVisible())) return
+    await expect(mail.or(mind).or(begin).or(next).first()).toBeVisible({ timeout: 15_000 })
+    if ((await mail.isVisible()) || (await mind.isVisible()) || (await begin.isVisible())) return
     await next.click()
   }
-  throw new Error('the boot never reached the mind gate or Begin')
+  throw new Error('the boot never reached the email step, the mind gate or Begin')
+}
+
+/**
+ * The owner's email step (company mail not set up yet): "I have a domain" →
+ * Amazon SES on the fake transport (playwright.config MAIL_TRANSPORT=fake) →
+ * the sender is unverified, the harness clicks Amazon's link → Try again →
+ * the test email went out → Continue. Same steps as email-platform.e2e.ts.
+ */
+async function connectMailInBoot(page: Page): Promise<void> {
+  await expect(page.getByTestId('onboarding-mail-domain')).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId('onboarding-have-domain').click()
+  const step = page.getByTestId('onboarding-mail')
+  const sender = `hello-${Date.now().toString(36)}@kindred.test`
+  await step.getByLabel('Access key ID').fill('AKIAFAKE')
+  await step.getByLabel('Secret access key').fill('fake-secret')
+  await step.getByLabel('Send-from address').fill(sender)
+  await step.getByRole('button', { name: 'Send me a test email' }).click()
+  await expect(step.getByRole('status')).toContainText(sender)
+  const verified = await page.request.post('/api/e2e/harness/mail', { data: { verify: sender } })
+  expect(verified.status(), await verified.text()).toBe(200)
+  await step.getByRole('button', { name: 'Try again' }).click()
+  await expect(step.getByText(/^Test email sent to /)).toBeVisible({ timeout: 15_000 })
+  await step.getByTestId('onboarding-continue').click()
+}
+
+/** No company mail before or after a journey: the owner's boot always asks for it. */
+async function resetCompanyMail(page: Page): Promise<void> {
+  const res = await page.request.delete('/api/e2e/harness/mail')
+  expect(res.status(), await res.text()).toBe(200)
 }
 
 async function stubSpeechSynthesis(context: import('@playwright/test').BrowserContext): Promise<void> {
@@ -164,6 +195,32 @@ async function walkBoot(page: Page, name: string | null): Promise<void> {
 }
 
 test.describe('welcome boot sequence', () => {
+  // The welcome + provider wizard is the company owner's (companyOnboardingFor), and the
+  // provider it connects is the one every turn runs on: each journey signs up the owner.
+  // As the owner, the boot also asks for company email first (needsMail): the journeys
+  // that reach the mind gate walk that step on the fake transport, from a clean slate.
+  let owner: CompanyOwnerSwap | null = null
+  test.beforeEach(async ({ page }) => {
+    await resetCompanyMail(page)
+  })
+  test.afterEach(async ({ page }) => {
+    await resetCompanyMail(page)
+    await owner?.restore()
+    owner = null
+  })
+
+  async function registerOwner(
+    page: Page,
+    context: Parameters<typeof registerUser>[0],
+    options: Parameters<typeof registerUser>[2],
+  ): Promise<{ email: string }> {
+    const registered = await registerUser(context, page, options)
+    owner = await becomeCompanyOwner(registered.email)
+    // The open page rendered for a member; load it again as the owner.
+    await page.goto('/')
+    return registered
+  }
+
   test('boots, learns the name, connects the mind, and hands off into the chat', async ({
     page,
     context,
@@ -171,7 +228,7 @@ test.describe('welcome boot sequence', () => {
     await stubSpeechSynthesis(context)
     const tts = await interceptTts(context)
     await websiteNotStarted()
-    await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev', profile: 'manual' })
+    await registerOwner(page, context, { emailDomain: 'test.eigenlabs.dev', profile: 'manual' })
 
     // The profile step comes first (P-5): first name, last name, picture — then the boot.
     await completeProfileStepInUi(page, { firstName: 'Ada', lastName: 'Lovelace' })
@@ -186,8 +243,10 @@ test.describe('welcome boot sequence', () => {
 
     await walkBoot(page, 'Ada')
 
-    // The mind: the one hard gate (no platform provider in this deployment).
+    // The owner's email step, then the mind: the one hard gate (no platform provider
+    // in this deployment).
     await continueThroughLines(page)
+    await connectMailInBoot(page)
     await expect(page.getByText(MIND_HEADING)).toBeVisible({ timeout: 20_000 })
 
     // Connect through the server contract (the provider wizard UI is covered by
@@ -236,7 +295,7 @@ test.describe('welcome boot sequence', () => {
     page,
     context,
   }) => {
-    const { email } = await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev' })
+    const { email } = await registerOwner(page, context, { emailDomain: 'test.eigenlabs.dev' })
 
     await expectWizard(page)
     await page.getByTestId('skip-onboarding').click()
@@ -262,11 +321,13 @@ test.describe('welcome boot sequence', () => {
     page,
     context,
   }) => {
-    await registerUser(context, page, { emailDomain: 'test.eigenlabs.dev', profile: { firstName: 'Ada', lastName: 'Lovelace' } })
+    await registerOwner(page, context, { emailDomain: 'test.eigenlabs.dev', profile: { firstName: 'Ada', lastName: 'Lovelace' } })
 
-    // First pass (the name came from the profile step): reach the mind gate, skip it — tour done.
+    // First pass (the name came from the profile step): set up email, reach the mind
+    // gate, skip it — tour done.
     await walkBoot(page, 'Ada')
     await continueThroughLines(page)
+    await connectMailInBoot(page)
     await expect(page.getByText(MIND_HEADING)).toBeVisible({ timeout: 20_000 })
     await page.getByTestId('skip-onboarding').click()
 

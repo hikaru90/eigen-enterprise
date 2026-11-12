@@ -7,7 +7,7 @@ import { getDb } from '$lib/server/db'
 import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
 import { userPreference } from '$lib/server/db/schema'
-import { isUserProviderReady } from '$lib/server/llm/provider-ready'
+import { isCompanyProviderReady } from '$lib/server/llm/provider-ready'
 import { companyMail } from '$lib/server/mail'
 import { companyOnboardingFor, joinedByInvite } from '$lib/server/members/joined'
 import { onboardingFactsFor } from '$lib/server/onboarding/assisted'
@@ -28,7 +28,7 @@ export const load: PageServerLoad = async (event) => {
     .limit(1)
 
   const isHarness = authUser?.accountKind === 'harness'
-  const providerReady = await isUserProviderReady(userId)
+  const providerReady = await isCompanyProviderReady()
   const role = await getUserRole(userId)
   const isAdmin = isAdminRole(role)
   // The company onboarding is the owner's (see companyOnboardingFor): an
