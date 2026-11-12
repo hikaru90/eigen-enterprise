@@ -1,6 +1,7 @@
 import type { LayoutServerLoad } from './$types'
 import { error, redirect } from '@sveltejs/kit'
 import { appKernel } from '$lib/server/boot'
+import { env } from '$lib/server/env/private-env'
 import { MEMORY_MODULE_ID } from '../../../../../modules/memory/manifest'
 
 /**
@@ -17,5 +18,8 @@ export const load: LayoutServerLoad = async (event) => {
   const active = (await kernel.activations.get(MEMORY_MODULE_ID)) === true
   return {
     memory: { name: manifest.name, description: manifest.description ?? '', active },
+    // The gateway sends every AI request's input/output to PostHog when its key is set
+    // (llm-client.ts $ai_generation): the "Who can see your Memory" note says so.
+    privacy: { analyticsSeesAi: Boolean(env.POSTHOG_API_KEY?.trim()) },
   }
 }
