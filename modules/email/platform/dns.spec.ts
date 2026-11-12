@@ -1,6 +1,14 @@
 import { createPrivateKey, createPublicKey, createSign, createVerify } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { dnsRecords, generateDkimKeyPair, InvalidDomainError, mailFromDomain, normalizeDomain, registrableDomain } from './dns'
+import {
+  dnsRecords,
+  generateDkimKeyPair,
+  inboundMxSeen,
+  InvalidDomainError,
+  mailFromDomain,
+  normalizeDomain,
+  registrableDomain,
+} from './dns'
 
 const domain = (over: Partial<Parameters<typeof dnsRecords>[0]> = {}) => ({
   name: 'kindred.com',
@@ -31,7 +39,7 @@ describe('normalizeDomain', () => {
 
 describe('dnsRecords', () => {
   it('lists DKIM, MAIL FROM MX + SPF and the recommended DMARC record with zone-relative hosts', () => {
-    expect(dnsRecords(domain())).toEqual([
+    expect(dnsRecords(domain(), null)).toEqual([
       {
         purpose: 'dkim',
         type: 'TXT',
@@ -76,7 +84,7 @@ describe('dnsRecords', () => {
   })
 
   it('places a subdomain’s records under the subdomain and DMARC at the registrable domain', () => {
-    const records = dnsRecords(domain({ name: 'news.kindred.co.uk', dkimStatus: 'SUCCESS', mailFromStatus: 'FAILED', dmarcAdded: true }))
+    const records = dnsRecords(domain({ name: 'news.kindred.co.uk', dkimStatus: 'SUCCESS', mailFromStatus: 'FAILED', dmarcAdded: true }), null)
     expect(records.map((r) => [r.purpose, r.name, r.host, r.status])).toEqual([
       ['dkim', 'ee._domainkey.news.kindred.co.uk', 'ee._domainkey.news', 'SUCCESS'],
       ['mail_from_mx', 'mail.news.kindred.co.uk', 'mail.news', 'FAILED'],
@@ -87,8 +95,30 @@ describe('dnsRecords', () => {
     expect(mailFromDomain('kindred.com')).toBe('mail.kindred.com')
   })
 
+  it('adds the receiving MX on the domain itself only while receiving is on', () => {
+    expect(dnsRecords(domain(), 'PENDING').at(-1)).toEqual({
+      purpose: 'inbound_mx',
+      type: 'MX',
+      name: 'kindred.com',
+      host: '@',
+      value: 'inbound-smtp.eu-central-1.amazonaws.com',
+      priority: 10,
+      status: 'PENDING',
+      required: true,
+    })
+    expect(dnsRecords(domain({ name: 'news.kindred.com' }), 'SUCCESS').at(-1)).toMatchObject({ name: 'news.kindred.com', host: 'news' })
+    expect(dnsRecords(domain(), null).some((r) => r.purpose === 'inbound_mx')).toBe(false)
+  })
+
+  it('sees the receiving MX only when an MX record points exactly at SES in the region', () => {
+    expect(inboundMxSeen([{ exchange: 'Inbound-SMTP.eu-central-1.amazonaws.com.', priority: 10 }], 'eu-central-1')).toBe(true)
+    expect(inboundMxSeen([{ exchange: 'inbound-smtp.us-east-1.amazonaws.com', priority: 10 }], 'eu-central-1')).toBe(false)
+    expect(inboundMxSeen([{ exchange: 'aspmx.l.google.com', priority: 1 }], 'eu-central-1')).toBe(false)
+    expect(inboundMxSeen([], 'eu-central-1')).toBe(false)
+  })
+
   it('maps unknown SES states to NOT_STARTED', () => {
-    expect(dnsRecords(domain({ dkimStatus: 'weird' }))[0]!.status).toBe('NOT_STARTED')
+    expect(dnsRecords(domain({ dkimStatus: 'weird' }), null)[0]!.status).toBe('NOT_STARTED')
   })
 })
 

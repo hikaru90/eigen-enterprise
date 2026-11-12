@@ -5,8 +5,12 @@ import { fixture } from '../../../../../../modules/email/inbox/test-fixtures'
 
 let f = fixture()
 let me = { userId: 'olga', email: 'olga@home.example', isAdmin: true }
+/** What the receipt-rule sync answers: null when the rules match, else Amazon's reason. */
+let syncAnswer: string | null = null
+const syncs = vi.fn(async () => syncAnswer)
 
 vi.mock('../../../../../../modules/email/inbox/live', () => ({ inboxDeps: async () => f.deps }))
+vi.mock('../../../../../../modules/email/platform/receiving-sync', () => ({ syncMailReceiving: () => syncs() }))
 vi.mock('../access.server', async (orig) => {
   const real = await orig<typeof import('../access.server')>()
   return {
@@ -32,6 +36,32 @@ describe('Email › Setup › Mailboxes', () => {
   beforeEach(() => {
     f = fixture()
     me = { userId: 'olga', email: 'olga@home.example', isAdmin: true }
+    syncAnswer = null
+    syncs.mockClear()
+  })
+
+  it('every successful mailbox change re-syncs the receipt rules; a failed change does not', async () => {
+    await actions.shared(form({ groupId: 'g-sales', localPart: 'sales', domainId: 'd-1' }))
+    await actions.assign(form({ memberId: 'ana', localPart: 'ana', domainId: 'd-1' }))
+    const id = ((await run()).admin as { mailboxes: Array<{ id: string; address: string }> }).mailboxes.find((m) => m.address === 'sales@example.com')!.id
+    await actions.alias(form({ mailboxId: id, localPart: 'vertrieb', domainId: 'd-1' }))
+    await actions.removeAlias(form({ address: 'vertrieb@example.com' }))
+    await actions.disable(form({ mailboxId: id }))
+    await actions.enable(form({ mailboxId: id }))
+    expect(syncs).toHaveBeenCalledTimes(6)
+    await actions.assign(form({ memberId: 'ben', localPart: 'ana', domainId: 'd-1' }))
+    expect(syncs).toHaveBeenCalledTimes(6)
+  })
+
+  it('a failed sync keeps the mailbox change and shows the admin why', async () => {
+    syncAnswer = 'These AWS keys may not manage Amazon SES receipt rules.'
+    expect(await actions.assign(form({ memberId: 'ana', localPart: 'ana', domainId: 'd-1' }))).toEqual({
+      action: 'assign',
+      ok: true,
+      address: 'ana@example.com',
+      receivingError: 'These AWS keys may not manage Amazon SES receipt rules.',
+    })
+    expect(((await run()).admin as { mailboxes: unknown[] }).mailboxes).toHaveLength(1)
   })
 
   it('the owner assigns a member their address and sees it listed with counts', async () => {

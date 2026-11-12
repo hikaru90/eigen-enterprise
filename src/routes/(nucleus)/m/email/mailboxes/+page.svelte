@@ -16,6 +16,11 @@
   const feedback = (action: string) =>
     form && form.action === action ? (form as { ok?: boolean; error?: string; address?: string }) : null
 
+  /** The change was saved, but Amazon refused to update the receipt rules. */
+  const receivingError = $derived(
+    form && 'receivingError' in form && typeof form.receivingError === 'string' ? form.receivingError : null,
+  )
+
   const unassigned = $derived(data.admin?.members.filter((m) => m.mailbox === null) ?? [])
 
   /** Picking a member fills in their suggested address; the owner can still change it. */
@@ -48,6 +53,13 @@
   title="Mailboxes"
   description="The addresses your company receives mail on. Each member can have their own mailbox — only they can read it, not the owner or admins. Shared addresses like info@ are read by one group."
 />
+
+{#if receivingError}
+  <p class="mt-4 max-w-3xl rounded-lg border border-destructive/40 px-4 py-3 text-sm text-destructive" role="alert" data-testid="mailboxes-receiving-error">
+    Saved, but the receiving rules at Amazon could not be updated: {receivingError}
+    <a class="underline underline-offset-4" href={resolve('/m/email/setup')}>See Receiving under Setup › Account</a>.
+  </p>
+{/if}
 
 {#if !data.admin}
   {#if data.mine.length === 0}

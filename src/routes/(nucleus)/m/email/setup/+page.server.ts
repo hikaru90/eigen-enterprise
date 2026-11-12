@@ -1,5 +1,6 @@
 import type { Actions, PageServerLoad } from './$types'
 import { MailSetupError } from '$lib/server/mail/company-mail'
+import { receivingIamPolicy } from '../../../../../../modules/email/owlery/receiving'
 import { describeSesError } from '../../../../../../modules/email/owlery/ses'
 import { emailPlatform } from '../../../../../../modules/email/platform/service'
 import { act, field, requireAdmin, requireMember } from '../access.server'
@@ -42,11 +43,12 @@ export const load: PageServerLoad = async ({ locals }) => {
   } catch (err) {
     accountError = describeSesError(err)
   }
-  const [domains, senders, counts, recent] = await Promise.all([
+  const [domains, senders, counts, recent, receiving] = await Promise.all([
     platform.listDomains(),
     platform.listSenders(),
     platform.store.countMessages(),
     platform.store.listMessages({ limit: 5 }),
+    platform.receivingState(),
   ])
   return {
     me: { email: me.email },
@@ -60,6 +62,23 @@ export const load: PageServerLoad = async ({ locals }) => {
         error: settings.eventsError,
         callbackUrl: settings.eventsCallbackUrl,
       },
+      receiving: receiving
+        ? {
+            status: receiving.receivingStatus,
+            error: receiving.receivingError,
+            callbackUrl: receiving.receivingCallbackUrl,
+            bucket: receiving.receivingBucket,
+            ruleSet: receiving.receivingRuleSet,
+            iamPolicy: JSON.stringify(receivingIamPolicy(receiving.policyBucket), null, 2),
+            domains: domains
+              .filter((d) => d.receiving)
+              .map((d) => ({
+                id: d.id,
+                name: d.name,
+                mx: d.records.find((r) => r.purpose === 'inbound_mx')?.status ?? 'NOT_STARTED',
+              })),
+          }
+        : null,
     },
     domains: domains.map((d) => ({
       id: d.id,
@@ -105,6 +124,13 @@ export const actions: Actions = {
       }
       return { sentTo: me.email, id: out.id }
     })
+  },
+  /** "Set up receiving": bucket, topic, subscription, rule set and rules at Amazon (idempotent). */
+  receiving: async ({ locals, url }) => {
+    await requireAdmin(locals)
+    return act('receiving', async () => ({
+      receiving: (await emailPlatform().setupReceiving(url.origin)).receivingStatus,
+    }))
   },
   /** Re-runs the delivery-event wiring (SNS topic, configuration sets, subscription). */
   events: async ({ locals, url }) => {

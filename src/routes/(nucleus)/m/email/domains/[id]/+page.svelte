@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { docTitle } from '$lib/shell/title'
   import type { PageProps } from './$types'
   import RefreshCw from '@lucide/svelte/icons/refresh-cw'
   import { enhance } from '$app/forms'
@@ -7,6 +6,7 @@
   import CopyButton from '$lib/components/email/copy-button.svelte'
   import DnsStatus from '$lib/components/email/dns-status.svelte'
   import { Button } from '$lib/components/ui/button'
+  import { docTitle } from '$lib/shell/title'
 
   let { data, form }: PageProps = $props()
   const d = $derived(data.domain)
@@ -17,6 +17,8 @@
     mail_from_mx: 'Mail-from (MX) — bounces come back to Amazon through mail.<domain>.',
     spf: 'SPF — allows Amazon SES to send for your mail-from address.',
     dmarc: 'DMARC (recommended) — tells inboxes what to do with mail that fails the checks.',
+    inbound_mx:
+      'Receiving (MX) — sends all mail for <domain> to Amazon SES, which hands it to eigenEnterprise.',
   }
   const purpose = (p: string) => PURPOSE[p]!.replace('<domain>', d.name)
   const when = (iso: string | null) =>
@@ -24,7 +26,16 @@
       ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
       : 'not yet'
   const feedback = (action: string) =>
-    form && form.action === action ? (form as { ok?: boolean; error?: string }) : null
+    form && form.action === action
+      ? (form as {
+          ok?: boolean
+          error?: string
+          receiving?: boolean
+          receivingError?: string | null
+        })
+      : null
+  const receiving = $derived(data.receiving)
+  const mxList = $derived(receiving.currentMx.map((r) => `${r.priority} ${r.exchange}`).join(', '))
   const enhanced = (name: string) => () => {
     busy = name
     return async ({ update }: { update: () => Promise<void> }) => {
@@ -145,6 +156,102 @@
         </span>
       </label>
     </form>
+
+    {#if d.sendable || receiving.on}
+      <form
+        method="POST"
+        action="?/receiving"
+        use:enhance={({ formElement, cancel }) => {
+          const box = formElement.elements.namedItem('receiving') as HTMLInputElement
+          if (
+            box.checked &&
+            !confirm(
+              receiving.currentMx.length > 0
+                ? `Move all mail for ${d.name} to eigenEnterprise? Today it goes to ${mxList}. Once you change the MX record, that provider gets no more mail for ${d.name}.`
+                : `Receive mail for ${d.name} in eigenEnterprise?`,
+            )
+          ) {
+            box.checked = false
+            return cancel()
+          }
+          return enhanced('receiving')()
+        }}
+        class="rounded-lg border border-border px-4 py-3"
+        data-testid="domain-receiving"
+      >
+        <label class="flex items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            name="receiving"
+            class="mt-1"
+            checked={receiving.on}
+            disabled={busy === 'receiving'}
+            onchange={(e) => e.currentTarget.form?.requestSubmit()}
+            data-testid="domain-receiving-switch"
+          />
+          <span>
+            <span class="font-medium">Receive mail on this domain</span>
+            <span class="block text-muted-foreground"
+              >Mail to the addresses under Setup › Mailboxes arrives in eigenEnterprise. You then
+              add the receiving MX record above at your DNS provider.</span
+            >
+          </span>
+        </label>
+        {#if !receiving.on}
+          {#if receiving.mxError}
+            <p class="mt-2 text-sm text-destructive" role="alert">{receiving.mxError}</p>
+          {:else if receiving.currentMx.length > 0}
+            <div
+              class="mt-3 rounded-md border border-destructive/40 px-3 py-2 text-sm"
+              role="note"
+              data-testid="domain-receiving-warning"
+            >
+              <p class="font-medium">{d.name} already receives mail elsewhere.</p>
+              <p class="mt-1 text-muted-foreground">Its MX records point to:</p>
+              <ul class="mt-1 font-mono text-xs">
+                {#each receiving.currentMx as r (r.exchange)}<li>
+                    {r.priority}
+                    {r.exchange}
+                  </li>{/each}
+              </ul>
+              <p class="mt-1 text-muted-foreground">
+                Switching the MX record moves <strong>all</strong> mail for {d.name} to eigenEnterprise
+                — that provider (Google Workspace, Microsoft 365 …) then gets none. Note these records
+                down; you need them to switch back.
+              </p>
+            </div>
+          {:else}
+            <p class="mt-2 text-xs text-muted-foreground">
+              {d.name} has no MX records today, so no mail reaches it yet.
+            </p>
+          {/if}
+        {/if}
+        {#if feedback('receiving')?.error}<p class="mt-2 text-sm text-destructive" role="alert">
+            {feedback('receiving')?.error}
+          </p>{/if}
+        {#if feedback('receiving')?.receivingError}<p
+            class="mt-2 text-sm text-destructive"
+            role="alert"
+            data-testid="domain-receiving-error"
+          >
+            Receiving is switched on, but Amazon refused part of the setup: {feedback('receiving')
+              ?.receivingError}
+            <a class="underline underline-offset-4" href={resolve('/m/email/setup')}
+              >Retry under Setup › Account</a
+            >.
+          </p>{/if}
+        {#if feedback('receiving')?.ok && feedback('receiving')?.receiving === false}<p
+            class="mt-2 text-sm"
+            role="status"
+            data-testid="domain-receiving-off"
+          >
+            Receiving is off: Amazon no longer accepts mail for these addresses. Point the MX record
+            of
+            {d.name} back to your previous mail provider (and remove the inbound-smtp record), so mail
+            reaches it again.
+          </p>{/if}
+      </form>
+    {/if}
 
     <form
       method="POST"

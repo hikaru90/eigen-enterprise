@@ -9,7 +9,18 @@ import {
   removeAlias,
   setMailboxDisabled,
 } from '../../../../../../modules/email/inbox/service'
+import { syncMailReceiving } from '../../../../../../modules/email/platform/receiving-sync'
 import { act, field, requireAdmin, requireMember } from '../access.server'
+
+/**
+ * After every successful change the SES receipt rules follow the mailboxes. A
+ * failed sync keeps the change; the admin sees Amazon's reason (it is also
+ * stored on the receiving state, shown under Setup › Account).
+ */
+async function synced<T extends Record<string, unknown>>(out: T): Promise<T & { receivingError?: string }> {
+  const receivingError = await syncMailReceiving()
+  return receivingError ? { ...out, receivingError } : out
+}
 
 /**
  * Email › Setup › Mailboxes (plan/email-inbox.md S1): the owner and admins
@@ -41,7 +52,7 @@ export const actions: Actions = {
         domainId: field(form, 'domainId'),
         displayName: field(form, 'displayName') || null,
       })
-      return { address: box.address }
+      return synced({ address: box.address })
     })
   },
   shared: async ({ locals, request }) => {
@@ -54,7 +65,7 @@ export const actions: Actions = {
         domainId: field(form, 'domainId'),
         displayName: field(form, 'displayName') || null,
       })
-      return { address: box.address }
+      return synced({ address: box.address })
     })
   },
   alias: async ({ locals, request }) => {
@@ -66,7 +77,7 @@ export const actions: Actions = {
         localPart: field(form, 'localPart'),
         domainId: field(form, 'domainId'),
       })
-      return {}
+      return synced({})
     })
   },
   removeAlias: async ({ locals, request }) => {
@@ -74,7 +85,7 @@ export const actions: Actions = {
     const form = await request.formData()
     return act('removeAlias', async () => {
       await removeAlias(await inboxDeps(), me.userId, { address: field(form, 'address') })
-      return {}
+      return synced({})
     })
   },
   disable: async ({ locals, request }) => {
@@ -82,7 +93,7 @@ export const actions: Actions = {
     const form = await request.formData()
     return act('disable', async () => {
       await setMailboxDisabled(await inboxDeps(), me.userId, { mailboxId: field(form, 'mailboxId'), disabled: true })
-      return {}
+      return synced({})
     })
   },
   enable: async ({ locals, request }) => {
@@ -90,7 +101,7 @@ export const actions: Actions = {
     const form = await request.formData()
     return act('enable', async () => {
       await setMailboxDisabled(await inboxDeps(), me.userId, { mailboxId: field(form, 'mailboxId'), disabled: false })
-      return {}
+      return synced({})
     })
   },
 }

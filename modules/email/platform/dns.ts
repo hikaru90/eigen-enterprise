@@ -14,7 +14,7 @@ export type DnsStatus = 'NOT_STARTED' | 'PENDING' | 'SUCCESS' | 'FAILED' | 'TEMP
 
 export type DnsRecord = {
   /** What the record is for, in plain words. */
-  purpose: 'dkim' | 'mail_from_mx' | 'spf' | 'dmarc'
+  purpose: 'dkim' | 'mail_from_mx' | 'spf' | 'dmarc' | 'inbound_mx'
   type: 'MX' | 'TXT'
   /** The full record name (FQDN). */
   name: string
@@ -99,8 +99,25 @@ function asStatus(raw: string): DnsStatus {
   return s === 'PENDING' || s === 'SUCCESS' || s === 'FAILED' || s === 'TEMPORARY_FAILURE' ? s : 'NOT_STARTED'
 }
 
-/** The records the owner adds at their DNS provider, each with its own status. */
-export function dnsRecords(d: DomainDnsState): DnsRecord[] {
+/** Where SES receives mail for a domain in this region (the MX target when receiving is on). */
+export function inboundMxHost(region: string): string {
+  return `inbound-smtp.${region}.amazonaws.com`
+}
+
+export type MxRecord = { exchange: string; priority: number }
+
+/** Whether the domain's MX records already point at SES receiving (exact host match). */
+export function inboundMxSeen(mx: MxRecord[], region: string): boolean {
+  const target = inboundMxHost(region)
+  return mx.some((r) => r.exchange.trim().toLowerCase().replace(/\.$/, '') === target)
+}
+
+/**
+ * The records the owner adds at their DNS provider, each with its own status.
+ * `inboundMx` is the status of the receiving MX record, or null while the
+ * domain does not receive mail (no record is shown then).
+ */
+export function dnsRecords(d: DomainDnsState, inboundMx: DnsStatus | null): DnsRecord[] {
   const mailFrom = mailFromDomain(d.name)
   const dkimName = `${d.dkimSelector}._domainkey.${d.name}`
   const dmarcName = `_dmarc.${registrableDomain(d.name)}`
@@ -146,5 +163,19 @@ export function dnsRecords(d: DomainDnsState): DnsRecord[] {
       status: d.dmarcAdded ? 'SUCCESS' : 'NOT_STARTED',
       required: false,
     },
+    ...(inboundMx === null
+      ? []
+      : [
+          {
+            purpose: 'inbound_mx' as const,
+            type: 'MX' as const,
+            name: d.name,
+            host: hostOf(d.name, d.name),
+            value: inboundMxHost(d.region),
+            priority: 10,
+            status: inboundMx,
+            required: true,
+          },
+        ]),
   ]
 }

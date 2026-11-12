@@ -1,18 +1,22 @@
-import { resolveTxt } from 'node:dns/promises'
+import { resolveMx, resolveTxt } from 'node:dns/promises'
 import { z } from 'zod'
 import type { DbHandle } from '$lib/kernel/db-stores'
 import { env } from '$lib/server/env/private-env'
 import { MailSetupError } from '$lib/server/mail/company-mail'
+import { ReceivingSetupError, receivingService, type ReceivingService, type ReceivingState } from '../owlery/receiving'
 import { owleryService, SEND_SCHEDULED_JOB, type OwleryService } from '../owlery/service'
 import { describeSesError } from '../owlery/ses'
 import {
   DKIM_SELECTOR,
   dnsRecords,
   generateDkimKeyPair,
+  inboundMxSeen,
   mailFromDomain,
   normalizeDomain,
   registrableDomain,
   type DnsRecord,
+  type DnsStatus,
+  type MxRecord,
 } from './dns'
 import { AudienceService, FLOW_STEP_JOB } from './flows/service'
 import { isRepeatableEngagement, parseSesEvent, type ParsedSesEvent } from './ses-events'
@@ -48,6 +52,12 @@ export type EmailPlatformDeps = {
   store: EmailStore
   /** DNS TXT lookup for the DMARC check (node:dns in the app). */
   resolveTxt: (name: string) => Promise<string[][]>
+  /** DNS MX lookup: the receiving warning and the inbound MX check (node:dns in the app). */
+  resolveMx: (name: string) => Promise<MxRecord[]>
+  /** The AWS side of receiving (receipt rules, bucket, topic). */
+  receiving: ReceivingService
+  /** The addresses that should receive mail on these domains (enabled mailboxes, aliases included). */
+  receivingRecipients: (domainIds: string[]) => Promise<string[]>
   /** GET a URL (SNS SubscribeURL confirmation). */
   fetch: typeof fetch
   /** The company's Brand as email tokens (layouts and templates). */
@@ -60,6 +70,18 @@ export type EmailPlatformDeps = {
 }
 
 const ADDRESS = /^[^\s@<>"]+@[^\s@<>"]+$/
+
+/** node:dns codes for "the name has no such records" (as opposed to a failed lookup). */
+const NO_RECORDS = new Set(['ENODATA', 'ENOTFOUND'])
+
+const dnsCode = (err: unknown): string | null =>
+  err && typeof err === 'object' && 'code' in err && typeof err.code === 'string' ? err.code : null
+
+export type DomainReceivingResult = {
+  domain: DomainView
+  /** Set when Amazon refused part of the receiving setup; the switch itself is saved. */
+  receivingError: string | null
+}
 
 export class EmailPlatform {
   /** Extra job kinds (stage 3 flows) register here. */
@@ -118,17 +140,41 @@ export class EmailPlatform {
 
   // ─── domains ───────────────────────────────────────────────────────────────
 
-  private view(d: DomainRow): DomainView {
-    return { ...d, records: dnsRecords(d), sendable: d.status === 'SUCCESS' }
+  /** The receiving MX record's status: null while receiving is off, else whether DNS shows it. */
+  private async inboundMx(d: DomainRow): Promise<DnsStatus | null> {
+    if (!d.receiving) return null
+    try {
+      return inboundMxSeen(await this.deps.resolveMx(d.name), d.region) ? 'SUCCESS' : 'PENDING'
+    } catch (err) {
+      return NO_RECORDS.has(dnsCode(err) ?? '') ? 'PENDING' : 'TEMPORARY_FAILURE'
+    }
+  }
+
+  private async view(d: DomainRow): Promise<DomainView> {
+    return { ...d, records: dnsRecords(d, await this.inboundMx(d)), sendable: d.status === 'SUCCESS' }
   }
 
   async listDomains(): Promise<DomainView[]> {
-    return (await this.deps.store.listDomains()).map((d) => this.view(d))
+    return Promise.all((await this.deps.store.listDomains()).map((d) => this.view(d)))
   }
 
   async getDomain(id: string): Promise<DomainView | null> {
     const d = await this.deps.store.getDomain(id)
     return d ? this.view(d) : null
+  }
+
+  /** The domain's MX records right now (by priority) — shown before receiving is turned on. */
+  async currentMx(id: string): Promise<MxRecord[]> {
+    const d = await this.deps.store.getDomain(id)
+    if (!d) throw new EmailPlatformError('That domain does not exist (any more).')
+    try {
+      return (await this.deps.resolveMx(d.name)).sort((a, b) => a.priority - b.priority || a.exchange.localeCompare(b.exchange))
+    } catch (err) {
+      if (NO_RECORDS.has(dnsCode(err) ?? '')) return []
+      throw new EmailPlatformError(
+        `Could not look up the current MX records of ${d.name} (${dnsCode(err) ?? 'DNS error'}). Try again in a moment.`,
+      )
+    }
   }
 
   /** Registers the domain at Amazon with our own DKIM key and its MAIL FROM subdomain. */
@@ -204,6 +250,13 @@ export class EmailPlatform {
   async deleteDomain(id: string): Promise<void> {
     const d = await this.deps.store.getDomain(id)
     if (!d) return
+    // Checked before Amazon is touched: mailbox addresses hold the domain (ON DELETE RESTRICT).
+    const mailboxes = await this.deps.store.mailboxesOnDomain(id)
+    if (mailboxes > 0) {
+      throw new EmailPlatformError(
+        `${mailboxes} ${mailboxes === 1 ? 'mailbox still uses' : 'mailboxes still use'} ${d.name} — remove or move ${mailboxes === 1 ? 'it' : 'them'} first (Setup › Mailboxes).`,
+      )
+    }
     const { ses, settings } = await this.deps.owlery.ses()
     if (settings.emailFrom.toLowerCase().endsWith(`@${d.name}`)) {
       throw new EmailPlatformError(
@@ -216,6 +269,62 @@ export class EmailPlatform {
       throw new EmailPlatformError(describeSesError(err))
     }
     await this.deps.store.deleteDomain(id)
+  }
+
+  // ─── receiving (plan/email-inbox.md S2) ────────────────────────────────────
+
+  /** Where receiving stands at Amazon, or null before Amazon SES is connected. */
+  receivingState(): Promise<ReceivingState | null> {
+    return this.deps.receiving.state()
+  }
+
+  /** Every address that should receive mail now: enabled mailboxes on domains with receiving on. */
+  async receivingRecipients(): Promise<string[]> {
+    const ids = (await this.deps.store.listDomains()).filter((d) => d.receiving).map((d) => d.id)
+    return this.deps.receivingRecipients(ids)
+  }
+
+  /** "Set up receiving" (Setup › Account): provisions at Amazon, then syncs the rules. The outcome is stored. */
+  async setupReceiving(origin: string) {
+    return this.deps.receiving.setup(origin, await this.receivingRecipients())
+  }
+
+  /**
+   * Brings the receipt rules in line with the mailboxes. Returns Amazon's
+   * reason in plain words when that failed (also stored on the receiving
+   * state), null when the rules match.
+   */
+  async syncReceiving(): Promise<string | null> {
+    try {
+      await this.deps.receiving.syncRules(await this.receivingRecipients())
+      return null
+    } catch (err) {
+      if (err instanceof ReceivingSetupError) return err.message
+      throw err
+    }
+  }
+
+  /**
+   * "Receive mail on this domain". On: only for a verified domain; the first
+   * one also provisions receiving at Amazon. Off: its addresses leave the
+   * rules (SES then blocks mail to them); the owner restores the old MX.
+   */
+  async setDomainReceiving(id: string, on: boolean, origin: string): Promise<DomainReceivingResult> {
+    const d = await this.deps.store.getDomain(id)
+    if (!d) throw new EmailPlatformError('That domain does not exist (any more).')
+    if (on && d.status !== 'SUCCESS') {
+      throw new EmailPlatformError(`${d.name} is not verified yet. Finish its DNS records first, then turn on receiving.`)
+    }
+    const row = await this.deps.store.updateDomain(id, { receiving: on })
+    const state = await this.deps.receiving.state()
+    let receivingError: string | null
+    if (on && (!state || state.receivingStatus === 'not_set_up' || state.receivingStatus === 'failed')) {
+      const out = await this.setupReceiving(origin)
+      receivingError = out.receivingStatus === 'failed' ? out.receivingError : null
+    } else {
+      receivingError = await this.syncReceiving()
+    }
+    return { domain: await this.view(row), receivingError }
   }
 
   // ─── senders ───────────────────────────────────────────────────────────────
@@ -452,6 +561,15 @@ export function emailPlatform(): EmailPlatform {
       owlery: owleryService(),
       store: defaultEmailStore(),
       resolveTxt,
+      resolveMx,
+      receiving: receivingService(),
+      receivingRecipients: async (domainIds) => {
+        const [{ inboxDeps }, { receivingRecipients }] = await Promise.all([
+          import('../inbox/live'),
+          import('../inbox/receiving-addresses'),
+        ])
+        return receivingRecipients((await inboxDeps()).store, domainIds)
+      },
       fetch,
       db: async () => {
         const { appDbAsyncLocal, appSql, createScopedDrizzle } = await import('$lib/server/db')

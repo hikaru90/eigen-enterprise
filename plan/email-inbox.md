@@ -156,6 +156,23 @@ SES/SNS ones.
 Sources: AWS SES Developer Guide (receiving concepts, console walkthrough, permissions, S3 and
 SNS actions, notification contents, quotas) and the AWS General Reference SES endpoints table.
 
+**S2 notes (decisions beyond the plan, 2026-11-12):**
+- Setup order: the active rule set is read **first**, so a foreign set stops setup before any
+  topic, bucket or subscription is created. Then topic (its ARN gives the account id, no STS;
+  stored before subscribing) → bucket → subscription → `ee-inbound` created + activated → rules.
+- Bucket name is `ee-inbound-<account>-<region>` (one per AWS account and region), not per host:
+  only one rule set can be active per account anyway, so two installs can't share an account
+  for receiving.
+- Status: `waiting` once the bucket is ready; `ready` straight away when SNS says the
+  subscription is already confirmed (a re-run, or the fake transport); otherwise S3's callback
+  flips it. A not-yet-confirmed Subscribe never overwrites a `ready` that arrived first.
+- A failed rule sync keeps the status and stores Amazon's reason in `receiving_error`; the
+  mailbox or domain change stays saved, and the admin sees the reason. The next good sync clears it.
+- The inbound MX status is looked up live (DNS MX) whenever a receiving domain is shown — no
+  stored column, no migration. A failed lookup shows as TEMPORARY_FAILURE, never as "seen".
+- The non-https refusal moved its wording to neutral ("Amazon only delivers to an https
+  address…") because events and receiving share the SNS seam.
+
 ## Slices (TDD; worktrees under `.claude/worktrees/`)
 
 | # | Slice | Done when |
