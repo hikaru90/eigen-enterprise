@@ -2,13 +2,15 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-11-12 — Members & invites 502 (Contribute A1): cause found and fixed (main)
+## 2026-11-12 — Members & invites 502 (Contribute A1): cause found and fixed; v0.5.4 published (not on production yet)
 
 Owner: "why do i get … HTTP ERROR 502 when i try to access settings/members?", then "Yes, fix it".
 - **Cause (from the production journal, os.cerberusblue.com):** the whole os process crashed on every Members visit. The page reads groups from the company data repo, which runs short git commands through `spawnGit` (`src/lib/server/gitstore/engine.ts`). It always ended git's stdin with `child.stdin.end('')`. When git (e.g. `rev-parse`) exits without reading stdin, the write hits a closed pipe and there was no `error` listener on `child.stdin` → unhandled `EPIPE` → node exits 1 → Caddy `EOF` / `connection refused` = 502 until systemd restarts it. 4 crashes since 2026-11-11 (13:30, 13:52, 19:33, 2026-11-12 11:12 CET), one per Members visit in Caddy's error log. Reproduced on the server with the app's node, as its uid, in its mount namespace (an exit-0 `git rev-parse` raised EPIPE). Locally the race rarely loses, which is why it was "not reproduced" over MCP (`members.list` never touches git).
 - **Fix:** no input → git gets no stdin pipe (`'ignore'`, i.e. /dev/null); with input, a stdin `error` listener: EPIPE is not the outcome (git's exit code + stderr are, and callers check them), any other stdin error rejects. Tests first in `engine.spec.ts` (`spawnGit`: 8 MB input to `rev-parse` failed red with the uncaught EPIPE; no-input `hash-object --stdin` gives the empty blob). No other child-stdin writes in the repo.
 - **Gates:** unit 5491 passed / 58 skipped; svelte-check 0 errors (the conditional stdio tuple first left `child.stdout`/`stderr` typed nullable, now asserted — they are always piped); lint 0 errors. E2E on the two Members specs: `ws-fixes` passed; `team-invite-passkey` (invite → group → remove) failed once with `page.goto: net::ERR_ABORTED` on `/settings/members` 3 s into a cold harness (the server stayed up), then passed alone (22 s) → cold-harness flake. Full e2e suite not run (~15 min, known unrelated failures on main). An orphaned `npm test` e2e run from this session (16 min on :4173) was stopped first.
-- **Not done:** production fixed only after the release with this commit is installed there (`ee upgrade`).
+- **Release:** fix `b1ac517`, bump `0157e19`, tag `v0.5.4` (main pushed through the pre-push gate: lint 0 errors, check 0 errors, unit 5491 passed). Run 43202686040 succeeded (arm64 + amd64 builds + publish). GitHub lists v0.5.4 as Latest; `latest/download/LATEST` serves `eigenenterprise-0.5.4-0157e19fbf18`. Carries only this fix over v0.5.3.
+- **Production state (observed 2026-11-12):** os.cerberusblue.com runs os **0.5.3** (release dir `08da7506921fad4e`, livekit workload up), so the "still on v0.5.1" lines in older entries are stale; the one-time `--node-ip` step of the calls upgrade is behind it.
+- **Not done:** production keeps crashing on Members until `ee upgrade` installs v0.5.4 there. Waiting for the owner's go.
 
 ## 2026-11-12 — v0.5.3 published on GitHub (Calls, proven on the box); the v0.5.2 hold is lifted
 
