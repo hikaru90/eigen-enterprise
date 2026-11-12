@@ -195,8 +195,8 @@ SNS actions, notification contents, quotas) and the AWS General Reference SES en
 |---|---|---|
 | S0 | Spike: SES receiving in the company's region | **Done 2026-11-12** (see S0 result): eu-central-1 OK; production needs a verified domain + SES production access |
 | S1 | Schema + mailbox store + access rules + Mailboxes admin | **Done 2026-11-12** on `email-inbox-s1`: owner can't read a member's mail; shared = group only |
-| S2 | Receiving setup (MX record, bucket, rule set, SNS) with fakes | Fake SES/S3/SNS tests; rule recipients follow mailbox changes |
-| S3 | Ingest webhook: verify, fetch, parse, route, spam, thread | Signed SNS fixture → message in the right mailbox/folder; retries don't duplicate |
+| S2 | Receiving setup (MX record, bucket, rule set, SNS) with fakes | **Done 2026-11-12** (`6eb8c75`), fakes only — real AWS unproven until S7 |
+| S3 | Ingest webhook: verify, fetch, parse, route, spam, thread | **Done 2026-11-12** (`efd1bfa`), fakes only — real AWS unproven until S7 |
 | S4 | Webmail read UI + SSE | Component + e2e: inbox opens first, read pane, spam/not spam, trash |
 | S5 | Compose / reply / forward + Sent | e2e against mock: reply threads, From is the mailbox |
 | S6 | Tabs: Inbox first, Company mail tab | Old landing reachable under Company mail; nothing lost |
