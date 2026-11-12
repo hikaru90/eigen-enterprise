@@ -292,7 +292,7 @@ SNS actions, notification contents, quotas) and the AWS General Reference SES en
 | S2 | Receiving setup (MX record, bucket, rule set, SNS) with fakes | **Done 2026-11-12** (`6eb8c75`), fakes only — real AWS unproven until S7 |
 | S3 | Ingest webhook: verify, fetch, parse, route, spam, thread | **Done 2026-11-12** (`efd1bfa`), fakes only — real AWS unproven until S7 |
 | S4 | Webmail read UI + SSE | **Done 2026-11-12** (`c23076b`): read UI, safe HTML, attachments, live; e2e green |
-| S5 | Compose / reply / forward + Sent | **Built 2026-11-12** on `email-inbox-s5` (see S5 notes): reply threads, From is the mailbox, not in the company log |
+| S5 | Compose / reply / forward + Sent | **Done 2026-11-12** (`74ab9da`, see S5 notes): reply threads, From is the mailbox, not in the company log |
 | S6 | Tabs: Inbox first, Company mail tab | Old landing reachable under Company mail; nothing lost |
 | S7 | Real proof on a test domain | A real mail from outside lands in a real inbox on the box; reply arrives back |
 
