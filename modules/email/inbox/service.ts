@@ -1,0 +1,323 @@
+import type { AddressRow, InboxStore, MailboxRow, MessageRow, MessageSummary } from './store'
+import type { MemberRole } from '$lib/server/auth/user-role'
+import { InboxError } from './errors'
+import { normalizeLocalPart, suggestLocalPart, type Folder, type MailboxKind } from './types'
+
+/**
+ * Mailboxes and who reads them (plan/email-inbox.md, owner decisions
+ * 2026-11-12):
+ * - the owner and admins assign addresses by hand and see counts and sizes —
+ *   never subjects, senders or bodies;
+ * - a personal mailbox is read only by its member (not the owner, not admins);
+ * - a shared mailbox is read by the members of its group;
+ * - someone no longer in the company reads nothing;
+ * - no agent path: nothing here takes an agent principal.
+ * Anything a person may not read answers `not_found`, as if it didn't exist.
+ */
+
+export type InboxMember = { id: string; name: string; email: string; firstName: string | null; lastName: string | null }
+export type InboxGroup = { id: string; name: string; memberIds: string[] }
+export type InboxDomain = { id: string; name: string }
+export type InboxAudit = (event: { type: string; principalId: string; payload: Record<string, unknown> }) => Promise<void>
+
+export type InboxDeps = {
+  store: InboxStore
+  roleOf: (userId: string) => Promise<MemberRole | null>
+  members: () => Promise<InboxMember[]>
+  groups: () => Promise<InboxGroup[]>
+  /** Verified (sendable) company domains only. */
+  domains: () => Promise<InboxDomain[]>
+  audit: InboxAudit
+  now?: () => Date
+  newId?: () => string
+}
+
+export type MailboxView = {
+  id: string
+  address: string
+  aliases: string[]
+  kind: MailboxKind
+  ownerUserId: string | null
+  groupId: string | null
+  displayName: string | null
+  disabled: boolean
+}
+
+export type AdminMailboxView = {
+  id: string
+  address: string
+  aliases: string[]
+  kind: MailboxKind
+  /** The member's name (personal) or the group's name (shared). */
+  holder: string
+  displayName: string | null
+  disabled: boolean
+  messages: number
+  unread: number
+  sizeBytes: number
+}
+
+export type MailboxAdminView = {
+  mailboxes: AdminMailboxView[]
+  members: Array<{ id: string; name: string; suggested: string | null; mailbox: string | null }>
+  groups: Array<{ id: string; name: string }>
+  domains: InboxDomain[]
+}
+
+const now = (deps: InboxDeps) => deps.now?.() ?? new Date()
+const newId = (deps: InboxDeps) => deps.newId?.() ?? crypto.randomUUID()
+const byText = (a: string, b: string) => a.localeCompare(b)
+
+async function assertAdmin(deps: InboxDeps, userId: string): Promise<void> {
+  const role = await deps.roleOf(userId)
+  if (role !== 'owner' && role !== 'admin') {
+    throw new InboxError('forbidden', 'Only the owner or an admin can manage mailboxes.')
+  }
+}
+
+function cleanDisplayName(input: string | null | undefined): string | null {
+  const v = (input ?? '').trim()
+  if (v.length > 120) throw new InboxError('invalid', 'Keep the name recipients see under 120 characters.')
+  return v === '' ? null : v
+}
+
+/** A new address on a verified domain that nobody holds yet. */
+async function freshAddress(deps: InboxDeps, localPart: string, domainId: string): Promise<{ address: string; domainId: string }> {
+  const local = normalizeLocalPart(localPart)
+  if (!local.ok) throw new InboxError('invalid', local.message)
+  const domain = (await deps.domains()).find((d) => d.id === domainId)
+  if (!domain) throw new InboxError('invalid', 'Pick a verified domain. Domains are added and verified under Setup › Domains.')
+  const address = `${local.value}@${domain.name.toLowerCase()}`
+  if (await deps.store.getAddress(address)) throw new InboxError('taken', `${address} is already in use. Pick another address.`)
+  return { address, domainId: domain.id }
+}
+
+function toView(m: MailboxRow, addresses: AddressRow[]): MailboxView {
+  const mine = addresses.filter((a) => a.mailboxId === m.id)
+  const primary = mine.find((a) => a.primary)
+  if (!primary) throw new Error(`mailbox ${m.id} has no primary address`)
+  return {
+    id: m.id,
+    address: primary.address,
+    aliases: mine.filter((a) => !a.primary).map((a) => a.address).sort(byText),
+    kind: m.kind,
+    ownerUserId: m.ownerUserId,
+    groupId: m.groupId,
+    displayName: m.displayName,
+    disabled: m.disabledAt !== null,
+  }
+}
+
+async function viewOf(deps: InboxDeps, m: MailboxRow): Promise<MailboxView> {
+  return toView(m, await deps.store.listAddresses())
+}
+
+async function create(
+  deps: InboxDeps,
+  actorId: string,
+  owner: { kind: 'personal'; userId: string } | { kind: 'shared'; groupId: string },
+  input: { localPart: string; domainId: string; displayName?: string | null },
+): Promise<MailboxView> {
+  const displayName = cleanDisplayName(input.displayName)
+  const { address, domainId } = await freshAddress(deps, input.localPart, input.domainId)
+  const at = now(deps)
+  const mailbox: MailboxRow = {
+    id: newId(deps),
+    kind: owner.kind,
+    ownerUserId: owner.kind === 'personal' ? owner.userId : null,
+    groupId: owner.kind === 'shared' ? owner.groupId : null,
+    displayName,
+    disabledAt: null,
+    createdBy: actorId,
+    createdAt: at,
+    updatedAt: at,
+  }
+  await deps.store.insertMailbox(mailbox, { address, mailboxId: mailbox.id, domainId, primary: true, createdBy: actorId, createdAt: at })
+  await deps.audit({
+    type: 'email.mailbox_assigned',
+    principalId: actorId,
+    payload: {
+      mailboxId: mailbox.id,
+      address,
+      kind: owner.kind,
+      ...(owner.kind === 'personal' ? { memberId: owner.userId } : { groupId: owner.groupId }),
+    },
+  })
+  return viewOf(deps, mailbox)
+}
+
+/** The owner or an admin gives a member their personal mailbox (one per member). */
+export async function assignPersonalMailbox(
+  deps: InboxDeps,
+  actorId: string,
+  input: { memberId: string; localPart: string; domainId: string; displayName?: string | null },
+): Promise<MailboxView> {
+  await assertAdmin(deps, actorId)
+  const member = (await deps.members()).find((m) => m.id === input.memberId)
+  if (!member) throw new InboxError('not_found', 'No such member.')
+  const existing = await deps.store.personalMailboxOf(member.id)
+  if (existing) {
+    const { address } = await viewOf(deps, existing)
+    throw new InboxError('invalid', `${member.name || member.email} already has a mailbox (${address}). Add another address to it as an alias.`)
+  }
+  return create(deps, actorId, { kind: 'personal', userId: member.id }, input)
+}
+
+/** The owner or an admin creates an address (info@, sales@) read by one group. */
+export async function createSharedMailbox(
+  deps: InboxDeps,
+  actorId: string,
+  input: { groupId: string; localPart: string; domainId: string; displayName?: string | null },
+): Promise<MailboxView> {
+  await assertAdmin(deps, actorId)
+  const group = (await deps.groups()).find((g) => g.id === input.groupId)
+  if (!group) throw new InboxError('not_found', 'No such group.')
+  return create(deps, actorId, { kind: 'shared', groupId: group.id }, input)
+}
+
+async function mailboxFor(deps: InboxDeps, mailboxId: string): Promise<MailboxRow> {
+  const m = await deps.store.getMailbox(mailboxId)
+  if (!m) throw new InboxError('not_found', 'No such mailbox.')
+  return m
+}
+
+/** Another address delivering into the same mailbox. */
+export async function addAlias(
+  deps: InboxDeps,
+  actorId: string,
+  input: { mailboxId: string; localPart: string; domainId: string },
+): Promise<MailboxView> {
+  await assertAdmin(deps, actorId)
+  const mailbox = await mailboxFor(deps, input.mailboxId)
+  const { address, domainId } = await freshAddress(deps, input.localPart, input.domainId)
+  await deps.store.insertAddress({ address, mailboxId: mailbox.id, domainId, primary: false, createdBy: actorId, createdAt: now(deps) })
+  await deps.audit({ type: 'email.mailbox_alias_added', principalId: actorId, payload: { mailboxId: mailbox.id, address } })
+  return viewOf(deps, mailbox)
+}
+
+export async function removeAlias(deps: InboxDeps, actorId: string, input: { address: string }): Promise<void> {
+  await assertAdmin(deps, actorId)
+  const address = input.address.trim().toLowerCase()
+  const row = await deps.store.getAddress(address)
+  if (!row) throw new InboxError('not_found', `${address} isn’t an address of any mailbox.`)
+  if (row.primary) throw new InboxError('invalid', `${address} is the mailbox’s main address, not an alias.`)
+  await deps.store.deleteAlias(address)
+  await deps.audit({ type: 'email.mailbox_alias_removed', principalId: actorId, payload: { mailboxId: row.mailboxId, address } })
+}
+
+/** A disabled mailbox receives no new mail; what it holds stays readable. */
+export async function setMailboxDisabled(
+  deps: InboxDeps,
+  actorId: string,
+  input: { mailboxId: string; disabled: boolean },
+): Promise<MailboxView> {
+  await assertAdmin(deps, actorId)
+  const mailbox = await mailboxFor(deps, input.mailboxId)
+  const at = now(deps)
+  const disabledAt = input.disabled ? (mailbox.disabledAt ?? at) : null
+  await deps.store.updateMailbox(mailbox.id, { disabledAt, updatedAt: at })
+  await deps.audit({
+    type: input.disabled ? 'email.mailbox_disabled' : 'email.mailbox_enabled',
+    principalId: actorId,
+    payload: { mailboxId: mailbox.id },
+  })
+  return viewOf(deps, { ...mailbox, disabledAt })
+}
+
+/** Setup › Mailboxes: addresses, holders and counts — no mail content. */
+export async function mailboxAdmin(deps: InboxDeps, actorId: string): Promise<MailboxAdminView> {
+  await assertAdmin(deps, actorId)
+  const [mailboxes, addresses, stats, members, groups, domains] = await Promise.all([
+    deps.store.listMailboxes(),
+    deps.store.listAddresses(),
+    deps.store.stats(),
+    deps.members(),
+    deps.groups(),
+    deps.domains(),
+  ])
+  const memberName = new Map(members.map((m) => [m.id, m.name || m.email]))
+  const groupName = new Map(groups.map((g) => [g.id, g.name]))
+  const views = mailboxes.map((m) => toView(m, addresses))
+  const personalOf = new Map(views.filter((v) => v.ownerUserId).map((v) => [v.ownerUserId!, v.address]))
+  return {
+    mailboxes: views
+      .map((v): AdminMailboxView => {
+        const s = stats.get(v.id) ?? { messages: 0, unread: 0, sizeBytes: 0 }
+        const holder = v.kind === 'personal' ? memberName.get(v.ownerUserId!) : groupName.get(v.groupId!)
+        return {
+          id: v.id,
+          address: v.address,
+          aliases: v.aliases,
+          kind: v.kind,
+          holder: holder ?? (v.kind === 'personal' ? 'A former member' : 'A deleted group'),
+          displayName: v.displayName,
+          disabled: v.disabled,
+          ...s,
+        }
+      })
+      .sort((a, b) => byText(a.address, b.address)),
+    members: members
+      .map((m) => ({ id: m.id, name: m.name || m.email, suggested: suggestLocalPart(m), mailbox: personalOf.get(m.id) ?? null }))
+      .sort((a, b) => byText(a.name, b.name)),
+    groups: groups.map((g) => ({ id: g.id, name: g.name })).sort((a, b) => byText(a.name, b.name)),
+    domains: [...domains].sort((a, b) => byText(a.name, b.name)),
+  }
+}
+
+async function canRead(deps: InboxDeps, userId: string, m: MailboxRow, groups?: InboxGroup[]): Promise<boolean> {
+  if (m.kind === 'personal') return m.ownerUserId === userId
+  const all = groups ?? (await deps.groups())
+  return all.some((g) => g.id === m.groupId && g.memberIds.includes(userId))
+}
+
+/** The mailboxes this person reads: their own first, then shared ones by address. */
+export async function readableMailboxes(deps: InboxDeps, userId: string): Promise<MailboxView[]> {
+  if (!(await deps.roleOf(userId))) return []
+  const [mailboxes, addresses, groups] = await Promise.all([deps.store.listMailboxes(), deps.store.listAddresses(), deps.groups()])
+  const mine: MailboxRow[] = []
+  for (const m of mailboxes) if (await canRead(deps, userId, m, groups)) mine.push(m)
+  return mine
+    .map((m) => toView(m, addresses))
+    .sort((a, b) => Number(b.kind === 'personal') - Number(a.kind === 'personal') || byText(a.address, b.address))
+}
+
+/** The mailbox, if this person may read it; otherwise "not found". */
+async function readable(deps: InboxDeps, userId: string, mailboxId: string): Promise<MailboxRow> {
+  const notFound = new InboxError('not_found', 'No such mailbox.')
+  if (!(await deps.roleOf(userId))) throw notFound
+  const m = await deps.store.getMailbox(mailboxId)
+  if (!m || !(await canRead(deps, userId, m))) throw notFound
+  return m
+}
+
+export const MESSAGE_PAGE = 100
+
+export async function listMessages(
+  deps: InboxDeps,
+  userId: string,
+  input: { mailboxId: string; folder: Folder },
+): Promise<MessageSummary[]> {
+  const m = await readable(deps, userId, input.mailboxId)
+  return deps.store.listMessages(m.id, input.folder, MESSAGE_PAGE)
+}
+
+export async function getMessage(deps: InboxDeps, userId: string, messageId: string): Promise<MessageRow> {
+  const msg = await deps.store.getMessage(messageId)
+  if (!msg) throw new InboxError('not_found', 'No such mail.')
+  try {
+    await readable(deps, userId, msg.mailboxId)
+  } catch {
+    throw new InboxError('not_found', 'No such mail.')
+  }
+  return msg
+}
+
+/** Every address that should receive mail now (enabled mailboxes, aliases included) — the SES rule recipients (S2). */
+export async function receivingAddresses(deps: InboxDeps): Promise<string[]> {
+  const [mailboxes, addresses] = await Promise.all([deps.store.listMailboxes(), deps.store.listAddresses()])
+  const enabled = new Set(mailboxes.filter((m) => m.disabledAt === null).map((m) => m.id))
+  return addresses
+    .filter((a) => enabled.has(a.mailboxId))
+    .map((a) => a.address)
+    .sort(byText)
+}

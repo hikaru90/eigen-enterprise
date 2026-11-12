@@ -1,10 +1,11 @@
 import type { AreaTab } from '$lib/shell/area-nav'
 
-/** The setup sections: SES account, domains, senders, templates, flows, logs, the API. */
+/** The setup sections: SES account, domains, senders, mailboxes (receiving addresses), templates, flows, logs, the API. */
 export const EMAIL_SETUP_TABS: readonly AreaTab[] = [
   { id: 'account', label: 'Account', href: '/m/email/setup' },
   { id: 'domains', label: 'Domains', href: '/m/email/domains' },
   { id: 'senders', label: 'Senders', href: '/m/email/senders' },
+  { id: 'mailboxes', label: 'Mailboxes', href: '/m/email/mailboxes' },
   { id: 'templates', label: 'Templates', href: '/m/email/templates' },
   { id: 'layouts', label: 'Layouts', href: '/m/email/layouts' },
   { id: 'flows', label: 'Flows', href: '/m/email/flows' },

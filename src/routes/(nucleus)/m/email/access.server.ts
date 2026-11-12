@@ -1,6 +1,7 @@
 import { error, fail, redirect } from '@sveltejs/kit'
 import { isUserAdmin } from '$lib/server/auth/user-role'
 import { MailNotConfiguredError, MailSetupError } from '$lib/server/mail/company-mail'
+import { InboxError } from '../../../../../modules/email/inbox/errors'
 import { AudienceError } from '../../../../../modules/email/platform/flows/service'
 import { EmailPlatformError } from '../../../../../modules/email/platform/service'
 import {
@@ -44,6 +45,7 @@ export async function act<T extends Record<string, unknown>>(
       err instanceof EmailPlatformError ||
       err instanceof TemplateError ||
       err instanceof AudienceError ||
+      err instanceof InboxError ||
       err instanceof MailSetupError ||
       err instanceof MailNotConfiguredError
     ) {
