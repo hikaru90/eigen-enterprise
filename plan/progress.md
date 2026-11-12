@@ -55,6 +55,11 @@ Owner: "all items bro. you can ask if we need more context for the big items". S
 - **Gates (main `a77bb8b`, after all merges):** `npm run check` 0 errors; lint 0 errors (220 warnings); unit 6372 passed / 93 skipped, 1 failure (`gitstore/engine.spec.ts` EPIPE test) that passes 3/3 alone; components 310/311 (the pre-existing `app-detail-settings.svelte.spec.ts`); ee 224 passed; `calls.e2e.ts` 4/5 in the full run — "DM call nobody answers" showed the generic "this call is over" instead of "Nobody answered." on the caller once, passes alone (1.1 min): a timing race between ring-out and the room close, not fixed. Unit timeouts in the run before were load from parallel workstreams (all pass alone).
 - **Open / not done:** the switched-off page renders without the sidebar; `/s/*` (public site) and `/mail/*` are outside the gate — **owner call:** should switching Website off take the public site down?; Telegram poll keeps polling after Chat Gateway is switched off at runtime; already-queued overnight jobs still run; a background run executing as a recorded human could still re-enable a plugin; nothing in this round tried on the box or production; Calendar not started (K1 next); board statuses not set.
 
+## 2026-11-12 — GitHub repos in Drive on the local box (main @ `4df38e5`, not pushed)
+
+Owner: "Release to box". `scripts/release.sh arm64` → `eigenenterprise-0.5.7-4df38e5e1832-linux-arm64`, `ee/e2e/box.sh install os.ee.localhost`: health-gated deploy OK, migrations `0133_drive_sources`, `0134_repos`, `0135_repos_summary` applied, `ee` active, job-queue ticker started with no repos tick errors.
+- **Not verified:** no page seen yet — the in-app browser refuses `os.ee.localhost` (the box's Caddy local CA isn't trusted on this Mac; Caddy logs "failed to install root certificate"). The S5 journey (paste a real fine-grained token → pick a repo → Drive folder → assistant answers) is still open and needs the owner's token.
+
 ## 2026-11-12 — GitHub repos in Drive S4 merged: the assistant knows (main, not pushed, not on the box)
 
 Owner: "Start S4". Worktree branch `56d2e94`, merged as `0b7ad44`.
