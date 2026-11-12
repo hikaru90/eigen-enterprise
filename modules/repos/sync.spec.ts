@@ -162,6 +162,22 @@ describe('repos poller: limits and errors', () => {
     expect(tok!.repos[0]!.lastError).toBe('The token can no longer see kindred/shop.')
   })
 
+  it('a missing permission names it and says how to add it (a private repo without Pull requests: read)', async () => {
+    const t = setup()
+    await t.connect()
+    t.gh.failures.push({
+      method: 'pulls',
+      fullName: 'kindred/shop',
+      error: tokenError('missing_permission', { status: 403, permission: 'pull_requests' }),
+    })
+    await t.service.tick()
+    const [tok] = await t.service.tokens()
+    expect(tok!.lastError).toBeNull()
+    expect(tok!.repos[0]!.lastError).toBe(
+      'The token can see kindred/shop but is missing “Pull requests: Read-only”. On GitHub, edit the token and add it (it stays the same token), then Sync now.',
+    )
+  })
+
   it('an expired token stops its repos with the expiry date, without calling GitHub', async () => {
     const t = setup()
     await t.connect()

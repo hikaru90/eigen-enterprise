@@ -44,6 +44,8 @@ export function plainGitHubTokenMessage(err: GitHubTokenError, what: string): st
       return 'GitHub no longer accepts this token. It may have expired or been revoked. Create a new fine-grained token and paste it here.'
     case 'no_access':
       return `The token can no longer see ${what}. Check the token’s repository access on GitHub.`
+    case 'missing_permission':
+      return `The token can see ${what} but is missing a permission${err.permission ? ` (${err.permission})` : ''}. Edit the token on GitHub and add it.`
     case 'rate_limited':
       return err.resumeAt
         ? `GitHub’s rate limit is used up. Syncing pauses until ${hhmmUtc(err.resumeAt)}.`

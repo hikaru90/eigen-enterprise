@@ -1,7 +1,7 @@
 import type { SourceRow, TokenRow } from './store'
 import { randomUUID } from 'node:crypto'
 import type { TokenIdentity, TokenRepo } from '$lib/server/github/token-client'
-import { CLASSIC_TOKEN_MESSAGE, isGitHubTokenError, ReposError } from './errors'
+import { CLASSIC_TOKEN_MESSAGE, isGitHubTokenError, ReposError, tokenMessages } from './errors'
 import { REPOS_DRIVE_SOURCE } from './manifest'
 import { repoKey } from './render'
 import { last4, sealToken, unsealToken } from './seal'
@@ -241,6 +241,18 @@ export function createReposService(deps: SyncDeps): ReposService {
       }
       const repo = (await visible(token)).find((r) => r.id === repoId)
       if (!repo) throw new ReposError('This token cannot see that repo. Check the repos you selected for it on GitHub.')
+      // Fine-grained permissions apply to every selected repo, but GitHub serves a
+      // public repo's data anyway: a missing one only shows on private repos, so
+      // check this repo before it starts syncing.
+      let missing
+      try {
+        missing = await deps.client(unsealToken(token.tokenSealed, deps.key(), token.id)).checkAccess(repo.fullName)
+      } catch (err) {
+        if (isGitHubTokenError(err) && err.kind === 'no_access') throw new ReposError(tokenMessages.noAccess(repo.fullName), { cause: err })
+        if (isGitHubTokenError(err)) throw new ReposError('GitHub did not answer. Try again in a minute.', { cause: err })
+        throw err
+      }
+      if (missing.length > 0) throw new ReposError(tokenMessages.missingPermissions(repo.fullName, missing, 'tick'))
       await store.enableSource({ tokenId: token.id, repoId: repo.id, fullName: repo.fullName, defaultBranch: repo.defaultBranch, dueAt: deps.now() })
       return { fullName: repo.fullName }
     },

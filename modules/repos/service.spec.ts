@@ -72,6 +72,16 @@ describe('picking repos', () => {
     await expect(t.service.setRepo(id, 999, true)).rejects.toThrow('This token cannot see that repo.')
   })
 
+  it('refuses to tick a repo whose permissions the token lacks, naming them; nothing starts syncing', async () => {
+    const t = setup()
+    const { id } = await t.service.addToken('user-1', TOKEN)
+    t.gh.missing.set('kindred/shop', ['contents', 'pull_requests'])
+    await expect(t.service.setRepo(id, 4242, true)).rejects.toThrow(
+      'The token can see kindred/shop but is missing “Contents: Read-only” and “Pull requests: Read-only”. On GitHub, edit the token and add them (it stays the same token), then tick the repo again.',
+    )
+    expect((await t.store.sources()).filter((s) => s.enabled)).toEqual([])
+  })
+
   it("unticking deletes the repo's Drive folder (and the empty owner folder)", async () => {
     const t = setup()
     const id = await t.connect()

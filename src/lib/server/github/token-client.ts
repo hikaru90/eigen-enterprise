@@ -96,6 +96,12 @@ export type GitHubTokenErrorKind =
   | 'unauthorized'
   /** 403/404 on a repo the token used to see. */
   | 'no_access'
+  /**
+   * 403 on a request the token sees the repo for, but whose permission it
+   * lacks (`permission` says which). GitHub still serves public repos' data,
+   * so this shows up on private repos.
+   */
+  | 'missing_permission'
   /** Primary or secondary rate limit; `resumeAt` says when. */
   | 'rate_limited'
   /** Timeout, network failure, 5xx. */
@@ -103,11 +109,16 @@ export type GitHubTokenErrorKind =
   /** A non-GET method was attempted (a bug, never sent). */
   | 'write_refused'
 
+/** Repository permissions of a fine-grained token that our reads need. */
+export type TokenPermission = 'metadata' | 'contents' | 'pull_requests'
+
 export type GitHubTokenError = Error & {
   readonly kind: GitHubTokenErrorKind
   readonly status: number | null
   readonly path: string
   readonly resumeAt: Date | null
+  /** The permission the failed request needs (set for `missing_permission`). */
+  readonly permission: TokenPermission | null
 }
 
 export type GitHubTokenClient = {
@@ -129,6 +140,12 @@ export type GitHubTokenClient = {
   tree(fullName: string, commitSha: string): Promise<TokenTree>
   /** A blob's bytes decoded as UTF-8. */
   blobText(fullName: string, blobSha: string): Promise<string>
+  /**
+   * The permissions the sync needs that the token lacks on this repo (one
+   * small read each: metadata, contents, pull requests). Throws `no_access`
+   * when the token can't see the repo at all.
+   */
+  checkAccess(fullName: string): Promise<TokenPermission[]>
   /** The budget seen on the last response; null before the first call. */
   lastBudget(): RateBudget | null
 }

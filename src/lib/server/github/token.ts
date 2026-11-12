@@ -26,6 +26,7 @@ import type {
   GitHubTokenClient,
   GitHubTokenError,
   GitHubTokenErrorKind,
+  TokenPermission,
   RateBudget,
   TokenBranch,
   TokenCommit,
@@ -57,6 +58,7 @@ class TokenRequestError extends Error implements GitHubTokenError {
     readonly resumeAt: Date | null,
     message: string,
     cause?: Error,
+    readonly permission: TokenPermission | null = null,
   ) {
     super(message, cause ? { cause } : undefined)
     this.name = 'GitHubTokenError'
@@ -68,6 +70,7 @@ class TokenRequestError extends Error implements GitHubTokenError {
       kind: this.kind,
       status: this.status,
       path: this.path,
+      permission: this.permission,
       message: this.message,
     }
   }
@@ -172,6 +175,7 @@ export async function tokenRequest(
   pathOrUrl: string,
   etag: string | null,
   onBudget?: (b: RateBudget) => void,
+  permission: TokenPermission | null = null,
 ): Promise<RawResponse> {
   const { url, path } = resolve(pathOrUrl)
   if (method !== 'GET') {
@@ -248,6 +252,20 @@ export async function tokenRequest(
       cause,
     )
   }
+  // A 403 on a read beyond metadata: the token sees the repo (its metadata
+  // read passed) but lacks this permission. The status + which endpoint we
+  // called decide it, never GitHub's message text.
+  if (res.status === 403 && permission !== null && permission !== 'metadata') {
+    throw new TokenRequestError(
+      'missing_permission',
+      403,
+      path,
+      null,
+      `GitHub ${path} → 403 (missing_permission: ${permission}; GitHub accepts ${res.headers.get('x-accepted-github-permissions') ?? 'n/a'})`,
+      cause,
+      permission,
+    )
+  }
   const kind = kindFor(res.status)
   throw new TokenRequestError(
     kind,
@@ -256,6 +274,7 @@ export async function tokenRequest(
     null,
     `GitHub ${path} → ${res.status} (${kind})`,
     cause,
+    permission,
   )
 }
 
@@ -401,10 +420,17 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
   if (!(config.timeoutMs > 0)) throw new Error('createGitHubTokenClient needs a positive timeoutMs')
 
   let budget: RateBudget | null = null
-  const get = (path: string, etag: string | null = null) =>
-    tokenRequest(config, 'GET', path, etag, (b) => {
-      budget = b
-    })
+  const get = (path: string, etag: string | null = null, permission: TokenPermission | null = null) =>
+    tokenRequest(
+      config,
+      'GET',
+      path,
+      etag,
+      (b) => {
+        budget = b
+      },
+      permission,
+    )
 
   /**
    * Pages through `Link: rel="next"`. `keep` decides per item whether to go on
@@ -416,6 +442,7 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
     etag: string | null,
     keep: (item: G) => boolean,
     max = Infinity,
+    permission: TokenPermission | null = null,
   ): Promise<
     | { notModified: true; etag: string }
     | { notModified: false; etag: string | null; items: G[]; pages: number }
@@ -424,7 +451,7 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
     let url: string | null = first
     let firstEtag: string | null = null
     for (let page = 1; page <= MAX_PAGES; page++) {
-      const res = await get(url, page === 1 ? etag : null)
+      const res = await get(url, page === 1 ? etag : null, permission)
       if (res.status === 304) {
         return { notModified: true, etag: res.headers.get('etag') ?? (etag as string) }
       }
@@ -478,7 +505,7 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
 
     async repo(fullName, etag): Promise<Conditional<TokenRepo>> {
       const { base } = splitFullName(fullName)
-      const res = await get(base, etag)
+      const res = await get(base, etag, 'metadata')
       if (res.status === 304)
         return { notModified: true, etag: res.headers.get('etag') ?? (etag as string) }
       return { notModified: false, etag: res.headers.get('etag'), data: toRepo(res.json as GhRepo) }
@@ -490,6 +517,8 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
         `${base}/branches?per_page=${PER_PAGE}`,
         etag,
         () => true,
+        Infinity,
+        'metadata',
       )
       if (out.notModified) return out
       return {
@@ -509,7 +538,7 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
         since: since.toISOString(),
         per_page: String(Math.min(limit, PER_PAGE)),
       })
-      const out = await paged<GhCommit>(`${base}/commits?${q}`, null, () => true, limit)
+      const out = await paged<GhCommit>(`${base}/commits?${q}`, null, () => true, limit, 'contents')
       if (out.notModified)
         throw new Error(`GitHub answered 304 to an unconditional commits request`)
       return out.items.map(toCommit)
@@ -519,6 +548,8 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
       const { base } = splitFullName(fullName)
       const res = await get(
         `${base}/compare/${encodeURIComponent(baseRef)}...${encodeURIComponent(headRef)}?per_page=1`,
+        null,
+        'contents',
       )
       const body = res.json as { ahead_by: number; behind_by: number }
       return { aheadBy: body.ahead_by, behindBy: body.behind_by }
@@ -530,6 +561,8 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
         `${base}/pulls?state=all&sort=updated&direction=desc&per_page=${PER_PAGE}`,
         etag,
         (p) => date(p.updated_at, `updated_at of #${p.number}`) >= updatedSince,
+        Infinity,
+        'pull_requests',
       )
       if (out.notModified) return out
       return { notModified: false, etag: out.etag, data: out.items.map(toPull) }
@@ -541,6 +574,8 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
         `${base}/pulls?state=open&sort=created&direction=desc&per_page=${PER_PAGE}`,
         etag,
         () => true,
+        Infinity,
+        'pull_requests',
       )
       if (out.notModified) return out
       // Page 1's ETag can't vouch for later pages (a PR closed there would go unseen).
@@ -549,7 +584,7 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
 
     async tree(fullName, commitSha): Promise<TokenTree> {
       const { base } = splitFullName(fullName)
-      const res = await get(`${base}/git/trees/${encodeURIComponent(commitSha)}?recursive=1`)
+      const res = await get(`${base}/git/trees/${encodeURIComponent(commitSha)}?recursive=1`, null, 'contents')
       const body = res.json as {
         tree: Array<{ path: string; type: string; sha: string; size?: number }>
         truncated: boolean
@@ -568,7 +603,7 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
 
     async blobText(fullName, blobSha): Promise<string> {
       const { base } = splitFullName(fullName)
-      const res = await get(`${base}/git/blobs/${encodeURIComponent(blobSha)}`)
+      const res = await get(`${base}/git/blobs/${encodeURIComponent(blobSha)}`, null, 'contents')
       const body = res.json as { content: string; encoding: string }
       if (body.encoding !== 'base64') {
         throw new Error(`GitHub blob ${blobSha} came as ${body.encoding}, expected base64`)
@@ -579,6 +614,27 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
       } catch {
         throw new Error(`GitHub blob ${blobSha} is not valid UTF-8 text`)
       }
+    },
+
+    async checkAccess(fullName): Promise<TokenPermission[]> {
+      const { base } = splitFullName(fullName)
+      // Metadata first: a 403/404 here means the token can't see the repo (no_access, thrown).
+      await get(base, null, 'metadata')
+      const missing: TokenPermission[] = []
+      const probes: Array<[TokenPermission, string]> = [
+        ['contents', `${base}/commits?per_page=1`],
+        ['pull_requests', `${base}/pulls?state=open&per_page=1`],
+      ]
+      for (const [permission, path] of probes) {
+        try {
+          await get(path, null, permission)
+        } catch (err) {
+          if (err instanceof TokenRequestError && err.kind === 'missing_permission') missing.push(permission)
+          // 409: an empty repo has no commits; the read was allowed.
+          else if (!(err instanceof TokenRequestError && err.status === 409)) throw err
+        }
+      }
+      return missing
     },
 
     lastBudget: () => budget,

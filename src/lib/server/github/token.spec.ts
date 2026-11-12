@@ -238,6 +238,44 @@ describe('token client: errors', () => {
     expect((await failure(gh.repo('octo-org/missing', null))).kind).toBe('no_access')
   })
 
+  it('a 403 on a read beyond metadata is missing_permission, naming the permission (a private repo without Pull requests: read)', async () => {
+    const denied = (accepted: string) => ({
+      status: 403,
+      body: { message: 'Resource not accessible by personal access token' },
+      headers: { 'x-accepted-github-permissions': accepted },
+    })
+    const { gh } = client({
+      'GET /repos/octo-org/private/pulls?state=all&sort=updated&direction=desc&per_page=100': denied('pull_requests=read'),
+      'GET /repos/octo-org/private/pulls?state=open&sort=created&direction=desc&per_page=100': denied('pull_requests=read'),
+      'GET /repos/octo-org/private/git/trees/abc?recursive=1': denied('contents=read'),
+    })
+    const pulls = await failure(gh.pulls('octo-org/private', new Date('2026-10-01T00:00:00Z'), null))
+    expect(pulls).toMatchObject({ kind: 'missing_permission', permission: 'pull_requests', status: 403 })
+    expect(await failure(gh.openPulls('octo-org/private', null))).toMatchObject({ kind: 'missing_permission', permission: 'pull_requests' })
+    expect(await failure(gh.tree('octo-org/private', 'abc'))).toMatchObject({ kind: 'missing_permission', permission: 'contents' })
+    // A 404 stays no_access: GitHub hides what the token can't see.
+    expect(await failure(gh.tree('octo-org/private', 'nope'))).toMatchObject({ kind: 'no_access', permission: 'contents' })
+  })
+
+  it('checkAccess lists the permissions the token lacks on a repo; an unseen repo is no_access', async () => {
+    const ok = { status: 200, body: [] }
+    const repoBody = { status: 200, body: { id: 1 } }
+    const { gh } = client({
+      'GET /repos/octo-org/private': repoBody,
+      'GET /repos/octo-org/private/commits?per_page=1': ok,
+      'GET /repos/octo-org/private/pulls?state=open&per_page=1': {
+        status: 403,
+        body: { message: 'Resource not accessible by personal access token' },
+      },
+      'GET /repos/octo-org/full': repoBody,
+      'GET /repos/octo-org/full/commits?per_page=1': { status: 409, body: { message: 'Git Repository is empty.' } },
+      'GET /repos/octo-org/full/pulls?state=open&per_page=1': ok,
+    })
+    expect(await gh.checkAccess('octo-org/private')).toEqual(['pull_requests'])
+    expect(await gh.checkAccess('octo-org/full')).toEqual([])
+    expect((await failure(gh.checkAccess('octo-org/unseen'))).kind).toBe('no_access')
+  })
+
   it('an exhausted primary limit is rate_limited until the reset', async () => {
     const { gh } = client({
       'GET /user': {

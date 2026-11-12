@@ -6,6 +6,7 @@ import type {
   GitHubTokenError,
   GitHubTokenErrorKind,
   RateBudget,
+  TokenPermission,
   TokenBranch,
   TokenCommit,
   TokenCompare,
@@ -21,12 +22,16 @@ import type {
  * writer that keeps the key → item map in memory.
  */
 
-export function tokenError(kind: GitHubTokenErrorKind, opts: { status?: number | null; path?: string; resumeAt?: Date | null } = {}): GitHubTokenError {
+export function tokenError(
+  kind: GitHubTokenErrorKind,
+  opts: { status?: number | null; path?: string; resumeAt?: Date | null; permission?: TokenPermission | null } = {},
+): GitHubTokenError {
   return Object.assign(new Error(`GitHub ${kind}`), {
     kind,
     status: opts.status ?? null,
     path: opts.path ?? '/',
     resumeAt: opts.resumeAt ?? null,
+    permission: opts.permission ?? null,
   }) as GitHubTokenError
 }
 
@@ -49,6 +54,8 @@ export class FakeGitHub {
   readonly identities = new Map<string, Omit<TokenIdentity, 'budget'>>()
   /** token → the repo full names it can see. */
   readonly visible = new Map<string, string[]>()
+  /** repo full name → the permissions every token lacks on it (checkAccess). */
+  readonly missing = new Map<string, TokenPermission[]>()
   budget: RateBudget = { remaining: 4900, limit: 5000, resetAt: new Date('2026-11-12T15:00:00Z') }
   /** Lowers the budget by this much on every request (to test the 500 floor). */
   costPerCall = 1
@@ -106,6 +113,7 @@ export class FakeGitHub {
           if (t === undefined) throw new Error(`fake blob ${sha} missing`)
           return t
         }),
+      checkAccess: (fullName) => call('checkAccess', fullName, () => [...(this.missing.get(fullName) ?? [])]),
       lastBudget: () => last,
     }
   }

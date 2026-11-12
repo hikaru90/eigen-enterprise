@@ -189,13 +189,20 @@ export async function syncClaimed(deps: SyncDeps, row: SourceRow): Promise<SyncO
       return { status: 'paused', until }
     }
     if (isGitHubTokenError(err)) {
-      deps.log('[repos] sync failed', { ...fields, kind: err.kind, status: err.status, path: err.path })
+      deps.log('[repos] sync failed', { ...fields, kind: err.kind, status: err.status, path: err.path, permission: err.permission })
       if (err.kind === 'unauthorized') {
         const message = tokenMessages.unauthorized(token.githubLogin)
         await stopToken(deps, token, message)
         return { status: 'failed', error: message }
       }
-      const message = err.kind === 'no_access' ? tokenMessages.noAccess(row.fullName) : err.kind === 'unavailable' ? tokenMessages.unavailable : tokenMessages.failed
+      const message =
+        err.kind === 'missing_permission' && err.permission
+          ? tokenMessages.missingPermissions(row.fullName, [err.permission], 'sync')
+          : err.kind === 'no_access'
+            ? tokenMessages.noAccess(row.fullName)
+            : err.kind === 'unavailable'
+              ? tokenMessages.unavailable
+              : tokenMessages.failed
       await deps.store.updateSource(row.id, { lastError: message, dueAt: next, ...release })
       return { status: 'failed', error: message }
     }
