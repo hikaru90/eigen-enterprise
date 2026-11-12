@@ -293,7 +293,7 @@ SNS actions, notification contents, quotas) and the AWS General Reference SES en
 | S3 | Ingest webhook: verify, fetch, parse, route, spam, thread | **Done 2026-11-12** (`efd1bfa`), fakes only — real AWS unproven until S7 |
 | S4 | Webmail read UI + SSE | **Done 2026-11-12** (`c23076b`): read UI, safe HTML, attachments, live; e2e green |
 | S5 | Compose / reply / forward + Sent | **Done 2026-11-12** (`74ab9da`, see S5 notes): reply threads, From is the mailbox, not in the company log |
-| S6 | Tabs: Inbox first, Company mail tab | Old landing reachable under Company mail; nothing lost |
+| S6 | Tabs: Inbox first, Company mail tab | **Done 2026-11-12** (`f9b204c`): `/m/email` → Inbox; Company mail for owner/admins |
 | S7 | Real proof on a test domain | A real mail from outside lands in a real inbox on the box; reply arrives back |
 
 S1 → S2/S3 in parallel (disjoint files: `owlery/*` vs ingest route) → S4/S5 → S6 → S7.

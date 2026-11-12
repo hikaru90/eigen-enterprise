@@ -2,6 +2,15 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-12 — Email inbox S6 merged: Email opens on your inbox; Company mail tab (main `f9b204c`, not pushed, not on the box)
+
+Owner: "Start S6". Contribute `eb674853` ("Das Email-Postfach sollte sofort den Posteingang zeigen") is now true in code.
+- **Shipped (`58201e6`):** `/m/email` redirects (303) to `/m/email/inbox`, keeping the query. Tabs: **Inbox**, **Company mail**, Lists, Setup. The "Connect SES" hints on Domains, Senders and API point at Setup › Account instead of the old landing.
+- **Announced move + access change:** the old Email landing (company-wide Pending + last 10 sent: system, agent, API, template and flow mail; never a member's webmail) moved to `/m/email/company` as **Company mail**, for the **owner and admins only** (owner decision 2026-11-12). The page answers members with the admin refusal and the tab is hidden for them. **Members could see this view before and no longer can.** Nothing was removed.
+- **Side change:** `eslint --fix` on the Email routes re-sorted imports in 11 Email pages (import order and comment position only, no behaviour).
+- **Gates:** svelte-check 0 errors; email route + module units green; e2e `page-frame`, `email-inbox`, `email-inbox-compose` 4/4 passed; full unit run 807 files / 6514 passed, 1 failed (the known flaky Messages concurrent-appends test).
+- **Next:** S7, the real proof on the box. It needs the owner's AWS/DNS steps on production first: verify `cerberusblue.com` as an SES domain, request SES production access, then turn on receiving for the domain (MX → SES). The Contribute item stays open on production until S7 has shipped.
+
 ## 2026-11-12 — Email inbox S5 merged: compose, reply, reply all, forward + Sent (main `74ab9da`, not pushed, not on the box)
 
 Owner: "Start S5". Built in worktree `email-inbox-s5` (`16c0ce9`), merged on top of round 4.
