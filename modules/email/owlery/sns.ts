@@ -42,7 +42,7 @@ export const awsSns: SnsFactory = (c) => {
     async subscribeHttps(topicArn, endpoint) {
       if (!endpoint.startsWith('https://')) {
         throw new EventsSetupError(
-          `Amazon only delivers events to an https address, and this callback is ${endpoint}. Open ee at its public https address and press "Set up again".`,
+          `Amazon only delivers to an https address, and this callback is ${endpoint}. Open ee at its public https address and set it up again from there.`,
         )
       }
       const out = await client.send(new SubscribeCommand({ TopicArn: topicArn, Protocol: 'https', Endpoint: endpoint }))
