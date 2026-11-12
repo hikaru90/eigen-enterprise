@@ -11,12 +11,16 @@
   let { data, form }: PageProps = $props()
 </script>
 
-<svelte:head><title>{docTitle('Contacts', 'Email')}</title></svelte:head>
+<svelte:head><title>{docTitle('Lists', 'Email')}</title></svelte:head>
 
 <SectionHeader
-  title="Contacts"
+  title="Lists"
   description="Lists of people who get your mail — a newsletter, your customers. Everyone can unsubscribe with one click; flows start when someone joins a list."
 />
+<p class="mt-2 text-sm text-muted-foreground" data-testid="lists-contacts-pointer">
+  Keeping track of the people you know — where you met, why they matter, when to follow up? That's
+  <a class="underline underline-offset-2 hover:text-foreground" href={resolve('/m/contacts')}>Contacts</a>.
+</p>
 
 {#if data.email.isAdmin}
   <form

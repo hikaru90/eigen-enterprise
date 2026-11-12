@@ -111,6 +111,7 @@ export default defineConfig({
       'src/lib/components/contribute/contribute-board.svelte.spec.ts',
       'src/lib/voice/voice-dictation.svelte.spec.ts',
       'modules/brand/water-flow.svelte.spec.ts',
+      'modules/contacts/ui/*.svelte.spec.ts',
       'src/lib/components/brand-picker/picker.svelte.spec.ts',
     ],
     exclude: ['src/routes/demo/playwright/**/*.ts', '**/*.e2e.ts'],
