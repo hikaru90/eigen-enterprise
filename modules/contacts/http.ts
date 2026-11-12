@@ -1,6 +1,8 @@
 import type { Actor, ContactInput, ContactsDeps } from './service'
-import { error, fail, redirect } from '@sveltejs/kit'
+import { error, fail, json, redirect } from '@sveltejs/kit'
 import { ContactsError, ERROR_STATUS } from './errors'
+import { contactTags } from './service'
+import { EXTRACT_MODES } from './types'
 
 /**
  * The /m/contacts pages' seam onto the service: signed-in people only, form
@@ -63,6 +65,43 @@ export async function contactsAction<T>(action: string, run: () => Promise<T>, i
   } catch (err) {
     if (err instanceof ContactsError) return fail(ERROR_STATUS[err.code], { action, id, error: err.message })
     throw err
+  }
+}
+
+/**
+ * POST /api/contacts/extract { mode: 'contact' | 'log', text }: the AI's
+ * reading of a free description → `{ draft }` to prefill the form with.
+ * Saves nothing. Signed-in people in the company only; ContactsError → its
+ * status with `{ error, code }`; anything else is logged and a 500.
+ */
+export async function contactsExtractResponse(user: { id: string } | null | undefined, request: Request): Promise<Response> {
+  if (!user) return json({ error: 'sign in first' }, { status: 401 })
+  try {
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      throw new ContactsError('invalid', 'expected a JSON object body')
+    }
+    const { mode, text } = (body && typeof body === 'object' ? body : {}) as { mode?: unknown; text?: unknown }
+    if (typeof mode !== 'string' || !(EXTRACT_MODES as readonly string[]).includes(mode)) {
+      throw new ContactsError('invalid', `mode must be one of ${EXTRACT_MODES.join(', ')}`)
+    }
+    const actor = personActor(user)
+    const d = await liveContactsDeps()
+    const { todayFor } = await import('./live')
+    const { extractContactDraft, extractLogDraft, liveExtractChat } = await import('./extract')
+    // Only people in the company (contactTags checks), and the tags this person's form offers.
+    const [tags, today] = await Promise.all([contactTags(d, actor), todayFor(actor.userId)])
+    const draft =
+      mode === 'contact'
+        ? await extractContactDraft(liveExtractChat, { userId: actor.userId, text, today, tags })
+        : await extractLogDraft(liveExtractChat, { userId: actor.userId, text, today })
+    return json({ draft })
+  } catch (err) {
+    if (err instanceof ContactsError) return json({ error: err.message, code: err.code }, { status: ERROR_STATUS[err.code] })
+    console.error('[contacts.extract] request failed', err)
+    return json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
 }
 

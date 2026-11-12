@@ -99,3 +99,39 @@ export function channelHref(c: Channel): string | null {
   }
   return /^https?:\/\//i.test(c.value) ? c.value : null
 }
+
+// ── "Tell me about them": the AI's reading of what a person said ───────────────
+
+/** The longest description (typed or dictated) the AI reads in one go. */
+export const DESCRIBE_TEXT_MAX = 8000
+
+export const EXTRACT_MODES = ['contact', 'log'] as const
+export type ExtractMode = (typeof EXTRACT_MODES)[number]
+
+/**
+ * What the AI picked out of a free description of a person, for the contact
+ * form to prefill. null / empty = not said. Nothing here is saved: the
+ * person reviews the form and presses Save.
+ */
+export type ContactDraft = {
+  name: string | null
+  organisation: string | null
+  title: string | null
+  channels: Channel[]
+  metHow: string | null
+  whyRelevant: string | null
+  /** Only tags the form offers (the default ones and the ones in use). */
+  tags: string[]
+  lastContactedOn: string | null
+  nextFollowUpOn: string | null
+  nextStep: string | null
+}
+
+/** What the AI picked out of "we spoke today, next I'll…", for "Log a contact". */
+export type LogDraft = {
+  on: string | null
+  nextFollowUpOn: string | null
+  nextStep: string | null
+}
+
+export type DraftFor<M extends ExtractMode> = M extends 'contact' ? ContactDraft : LogDraft
