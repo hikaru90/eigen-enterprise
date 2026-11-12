@@ -1,4 +1,5 @@
-import type { SpeechReadiness } from '$lib/voice/dictation-readiness'
+import type { Pathname } from '$app/types'
+import { canOpen, type Capabilities } from '$lib/access/capabilities'
 /**
  * The app shell's navigation (phase-cohesion rule 1, phase-workspace W-7,
  * polish P-1/P-2): one fixed order — Messages, Calls, Website, Email, Brand,
@@ -7,11 +8,12 @@ import type { SpeechReadiness } from '$lib/voice/dictation-readiness'
  * top of the sidebar, not an entry either. Module
  * entries come from the module registry (name + activation state); a module
  * that is not registered is not listed, an inactive one is listed dimmed.
- * Registered modules outside the fixed order follow Memory. Pure — shared by
- * the server load and the shell component.
+ * Registered modules outside the fixed order follow Memory. An entry whose
+ * page the signed-in person may not open (their capability set, e.g. the
+ * Website pages for a member) is not listed — the nav never leads to a 403.
+ * Pure — shared by the server load and the shell component.
  */
-
-import type { Pathname } from '$app/types'
+import type { SpeechReadiness } from '$lib/voice/dictation-readiness'
 
 export type ShellNavItem = {
   id: string
@@ -53,6 +55,7 @@ const MODULE_ENTRIES: Record<string, { href: Pathname; match?: string[] }> = {
 export function buildShellNav(
   manifests: readonly ManifestLike[],
   activations: Map<string, boolean>,
+  capabilities: Capabilities,
 ): ShellNav {
   const visible = manifests.filter((m) => m.internal !== true)
   const moduleItem = (m: ManifestLike): ShellNavItem => {
@@ -68,25 +71,28 @@ export function buildShellNav(
   const known = (id: string): ShellNavItem[] => visible.filter((m) => m.id === id).map(moduleItem)
   const others = visible.filter((m) => !(m.id in MODULE_ENTRIES)).map(moduleItem)
 
-  return {
-    items: [
-      ...known('messages'),
-      ...known('calls'),
-      ...known('website'),
-      ...known('email'),
-      ...known('brand'),
-      ...known('memory'),
-      ...known('drive'),
-      ...others,
-      { id: 'settings', name: 'Settings', href: '/settings', active: true },
-    ],
-  }
+  const items: ShellNavItem[] = [
+    ...known('messages'),
+    ...known('calls'),
+    ...known('website'),
+    ...known('email'),
+    ...known('brand'),
+    ...known('memory'),
+    ...known('drive'),
+    ...others,
+    { id: 'settings', name: 'Settings', href: '/settings', active: true },
+  ]
+  return { items: items.filter((item) => canOpen(capabilities, item.href)) }
 }
 
 /** What the signed-in layout hands the shell. */
 export type ShellData = {
-  /** From the founding journey; null until the company has been named. */
+  /** Settings → Company, else the founding journey; null until the company has been named. */
   companyName: string | null
+  /** The company logo's route (Settings → Company); null = the initial badge. */
+  companyLogo: string | null
+  /** What this person may open and do — every menu and card decides from this alone. */
+  capabilities: Capabilities
   nav: ShellNav
   /** Whether dictation (speech to text, always on OpenRouter) can work, and what is missing. */
   dictation: SpeechReadiness

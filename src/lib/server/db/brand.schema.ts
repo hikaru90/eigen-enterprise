@@ -1,4 +1,14 @@
-import { index, integer, jsonb, pgTable, real, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  real,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core'
 
 /**
  * Brand kernel tables (phase-2c) — the company's brand as executable context.
@@ -172,7 +182,12 @@ export type BrandExtractionVerdict = {
 
 export const brandExtractionSessions = pgTable('brand_extraction_sessions', {
   id: uuid('id').primaryKey().defaultRandom(),
-  url: text('url').notNull(),
+  /** What the extraction reads: a captured site (url) or an uploaded brand guide (brand_extraction_guides). */
+  source: text('source', { enum: ['url', 'guide'] })
+    .default('url')
+    .notNull(),
+  /** The captured site; null exactly for guide sessions (CHECK in 0127). */
+  url: text('url'),
   title: text('title'),
   status: text('status', { enum: ['active', 'accepted', 'abandoned'] })
     .default('active')
@@ -196,6 +211,23 @@ export const brandExtractionRounds = pgTable(
   },
   (table) => [unique('brand_extraction_rounds_session_round_key').on(table.sessionId, table.round)],
 )
+
+/**
+ * The uploaded brand guide of a guide session (contribute round 3): the file
+ * the model reads, stored like the capture screenshot — base64 in Postgres.
+ */
+export const brandExtractionGuides = pgTable('brand_extraction_guides', {
+  sessionId: uuid('session_id')
+    .primaryKey()
+    .references(() => brandExtractionSessions.id, { onDelete: 'cascade' }),
+  filename: text('filename').notNull(),
+  mime: text('mime', {
+    enum: ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'],
+  }).notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  dataB64: text('data_b64').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+})
 
 export const brandCorpusStaging = pgTable('brand_corpus_staging', {
   id: uuid('id').primaryKey().defaultRandom(),

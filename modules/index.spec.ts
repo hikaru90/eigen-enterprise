@@ -97,6 +97,11 @@ describe('buildKernel wires the owner-chosen approval mode', () => {
       'brand.set_activate': 'public',
       'brand.visual_set_activate': 'public',
       'calls.start': 'internal',
+      'contacts.create': 'internal',
+      'contacts.update': 'internal',
+      'contacts.log_contact': 'internal',
+      'drive.archive': 'internal',
+      'drive.unarchive': 'internal',
       'drive.write_text': 'internal',
       'email.contact_add': 'internal',
       'email.domain_add': 'internal',
@@ -155,6 +160,7 @@ describe('moduleManifests', () => {
       'drive',
       'contribute',
       'calls',
+      'contacts',
     ])
   })
 })
@@ -174,6 +180,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'drive',
       'contribute',
       'calls',
+      'contacts',
     ])
     const toolNames = kernel.registry.list().map((t) => t.name)
     expect(toolNames).toContain('memory.retrieve_thoughts')
@@ -196,11 +203,18 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect(toolNames).toContain('drive.list')
     expect(toolNames).toContain('drive.read')
     expect(toolNames).toContain('drive.write_text')
+    expect(toolNames).toContain('drive.archive')
+    expect(toolNames).toContain('drive.unarchive')
+    expect(toolNames).toContain('drive.list_archived')
+    expect(toolNames).toContain('drive.suggest_archive')
     expect(toolNames).toContain('contribute.list')
     expect(toolNames).toContain('contribute.update')
     expect(toolNames).toContain('calls.list')
     expect(toolNames).toContain('calls.start')
     expect(toolNames).toContain('calls.end')
+    expect(toolNames).toContain('contacts.list')
+    expect(toolNames).toContain('contacts.follow_ups')
+    expect(toolNames).toContain('contacts.log_contact')
     expect(toolNames.length).toBe(
       moduleManifests.reduce((sum, m) => sum + m.tools.length, 0),
     )
@@ -243,6 +257,11 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'brand.set_activate',
       'brand.visual_set_activate',
       'calls.start',
+      'contacts.create',
+      'contacts.log_contact',
+      'contacts.update',
+      'drive.archive',
+      'drive.unarchive',
       'drive.write_text',
       'email.contact_add',
       'email.domain_add',

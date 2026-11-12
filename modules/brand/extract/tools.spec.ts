@@ -6,6 +6,8 @@ import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext } from '$lib/kernel/types'
 import { expandSeeds } from '../style-format/expand'
 import { validSeeds } from '../style-format/seeds.spec'
+import { BrowserUnavailableError } from './capture-errors'
+import { GuideUploadError } from './guide'
 import { InMemoryBrandExtractionStore } from './store'
 import { createBrandExtractTools, type BrandExtractToolDeps } from './tools'
 
@@ -41,11 +43,14 @@ function fakePropose() {
     cssVars: expanded.cssVars,
     darkCssVars: expanded.darkCssVars,
   })
-  return vi.fn(async () => [
-    candidate('Color-led'),
-    { label: 'Type-led', error: 'invalid json' },
-    candidate('Structure-led'),
-  ] satisfies import('./propose').ProposedCandidate[])
+  return vi.fn(
+    async () =>
+      [
+        candidate('Color-led'),
+        { label: 'Type-led', error: 'invalid json' },
+        candidate('Structure-led'),
+      ] satisfies import('./propose').ProposedCandidate[],
+  )
 }
 
 function wiredRegistry(deps: BrandExtractToolDeps = {}) {
@@ -57,7 +62,8 @@ function wiredRegistry(deps: BrandExtractToolDeps = {}) {
     approvalStore: new InMemoryApprovalStore(),
     vcsCommitter: null,
   })
-  for (const descriptor of createBrandExtractTools({ store, ...deps })) registry.register(descriptor)
+  for (const descriptor of createBrandExtractTools({ store, ...deps }))
+    registry.register(descriptor)
   return { store, registry, activations }
 }
 
@@ -70,6 +76,7 @@ describe('brand extraction tools', () => {
     })
     expect(tools.map((t) => t.name)).toEqual([
       'brand.extract_start',
+      'brand.extract_guide_start',
       'brand.extract_propose',
       'brand.extract_judge',
       'brand.extract_accept',
@@ -77,6 +84,7 @@ describe('brand extraction tools', () => {
     ])
     const byName = new Map(tools.map((t) => [t.name, t]))
     expect(byName.get('brand.extract_start')!.auditClass).toBe('external')
+    expect(byName.get('brand.extract_guide_start')!.auditClass).toBe('mutate')
     expect(byName.get('brand.extract_propose')!.auditClass).toBe('external')
     expect(byName.get('brand.extract_judge')!.auditClass).toBe('mutate')
     expect(byName.get('brand.extract_accept')!.auditClass).toBe('mutate')
@@ -102,6 +110,20 @@ describe('brand extraction tools', () => {
     expect(result.title).toBe('Captured Site')
     expect(result.digestSummary).toContain('SITE: Captured Site')
     expect(capture).toHaveBeenCalledWith('https://example.com')
+  })
+
+  it('extract_start passes the typed no-browser failure through and opens no session', async () => {
+    const store = new InMemoryBrandExtractionStore()
+    const capture = vi.fn(async () => {
+      throw new BrowserUnavailableError('/opt/pw/chrome-headless-shell')
+    })
+    const createSession = vi.spyOn(store, 'createSession')
+    const { registry, activations } = wiredRegistry({ store, capture })
+    await activations.set('brand', true)
+    await expect(
+      registry.execute('brand.extract_start', { url: 'https://example.com' }, humanAdmin),
+    ).rejects.toBeInstanceOf(BrowserUnavailableError)
+    expect(createSession).not.toHaveBeenCalled()
   })
 
   it('extract_start is human-only (G8): agents get permission_denied', async () => {
@@ -175,11 +197,7 @@ describe('brand extraction tools', () => {
     await activations.set('brand', true)
     const session = await store.createSession({ url: 'https://example.com', title: 'x' })
     await expect(
-      registry.execute(
-        'brand.extract_accept',
-        { sessionId: session.id, name: 'x' },
-        humanAdmin,
-      ),
+      registry.execute('brand.extract_accept', { sessionId: session.id, name: 'x' }, humanAdmin),
     ).rejects.toThrow(/no judged round/)
   })
 
@@ -226,6 +244,176 @@ describe('brand extraction tools', () => {
     expect(secondRoundInputs.priorRounds).toHaveLength(1)
     expect(secondRoundInputs.priorRounds[0].verdict).toEqual({ chosen: null, note: 'too muted' })
     expect(secondRoundInputs.userId).toBe('owner-1')
+  })
+})
+
+describe('brand guide upload tools', () => {
+  // "%PDF-1.7\n" and a PNG signature: the format, not the name, decides the type.
+  const PDF_B64 = 'JVBERi0xLjcK'
+  const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUg=='
+
+  it('extract_guide_start stores the guide with a new session and records round 0 without a screenshot', async () => {
+    const { store, registry, activations } = wiredRegistry()
+    await activations.set('brand', true)
+    const started = (await registry.execute(
+      'brand.extract_guide_start',
+      { filename: 'Kindred CI.pdf', dataB64: PDF_B64 },
+      humanAdmin,
+    )) as { sessionId: string; title: string; guide: unknown }
+    expect(started.title).toBe('Kindred CI.pdf')
+    expect(started.guide).toEqual({
+      filename: 'Kindred CI.pdf',
+      mime: 'application/pdf',
+      sizeBytes: 9,
+    })
+    await expect(store.requireSession(started.sessionId)).resolves.toMatchObject({
+      source: 'guide',
+      url: null,
+    })
+    await expect(store.getGuide(started.sessionId)).resolves.toEqual({
+      filename: 'Kindred CI.pdf',
+      mime: 'application/pdf',
+      sizeBytes: 9,
+      base64: PDF_B64,
+    })
+    const round0 = await store.getRound(started.sessionId, 0)
+    expect(round0).toMatchObject({ screenshotB64: '', candidates: [] })
+    expect(round0!.digest).toContain('BRAND GUIDE: “Kindred CI.pdf”')
+  })
+
+  it('extract_guide_start refuses an unsupported file with a typed error and opens no session', async () => {
+    const store = new InMemoryBrandExtractionStore()
+    const createGuideSession = vi.spyOn(store, 'createGuideSession')
+    const { registry, activations } = wiredRegistry({ store })
+    await activations.set('brand', true)
+    const gif = Buffer.from('GIF89a......').toString('base64')
+    const err = await registry
+      .execute('brand.extract_guide_start', { filename: 'anim.gif', dataB64: gif }, humanAdmin)
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(GuideUploadError)
+    expect((err as GuideUploadError).code).toBe('unsupported_type')
+    expect(createGuideSession).not.toHaveBeenCalled()
+  })
+
+  it('extract_guide_start refuses malformed base64 at the input schema', async () => {
+    const { registry, activations } = wiredRegistry()
+    await activations.set('brand', true)
+    await expect(
+      registry.execute(
+        'brand.extract_guide_start',
+        { filename: 'g.pdf', dataB64: 'not base64!' },
+        humanAdmin,
+      ),
+    ).rejects.toMatchObject({ code: 'invalid_input' })
+  })
+
+  it('extract_guide_start is human-only (G8)', async () => {
+    const { registry, activations } = wiredRegistry()
+    await activations.set('brand', true)
+    await expect(
+      registry.execute(
+        'brand.extract_guide_start',
+        { filename: 'g.pdf', dataB64: PDF_B64 },
+        agentPrincipal,
+      ),
+    ).rejects.toMatchObject({ code: 'permission_denied' })
+  })
+
+  it('propose on a guide session reads the guide (not a digest) and feeds back prior verdicts', async () => {
+    const propose = fakePropose()
+    const proposeGuide = fakePropose()
+    const { store, registry, activations } = wiredRegistry({ propose, proposeGuide })
+    await activations.set('brand', true)
+    const started = (await registry.execute(
+      'brand.extract_guide_start',
+      { filename: 'board.png', dataB64: PNG_B64 },
+      humanAdmin,
+    )) as { sessionId: string }
+
+    const first = (await registry.execute(
+      'brand.extract_propose',
+      { sessionId: started.sessionId },
+      humanAdmin,
+    )) as {
+      round: number
+    }
+    expect(first.round).toBe(1)
+    expect(propose).not.toHaveBeenCalled()
+    expect(proposeGuide).toHaveBeenCalledWith({
+      userId: 'owner-1',
+      guide: { filename: 'board.png', mime: 'image/png', sizeBytes: 16, base64: PNG_B64 },
+      priorRounds: [],
+      aiSessionId: started.sessionId,
+    })
+    expect((await store.getRound(started.sessionId, 1))!.screenshotB64).toBe('')
+
+    await registry.execute(
+      'brand.extract_judge',
+      { sessionId: started.sessionId, round: 1, chosen: null, note: 'warmer neutrals' },
+      humanAdmin,
+    )
+    await registry.execute('brand.extract_propose', { sessionId: started.sessionId }, humanAdmin)
+    const second = proposeGuide.mock.calls[1][0] as unknown as {
+      priorRounds: Array<{ verdict: unknown }>
+    }
+    expect(second.priorRounds[0].verdict).toEqual({ chosen: null, note: 'warmer neutrals' })
+  })
+
+  it('the full loop runs for a guide: start -> propose -> judge -> accept stages a corpus item naming the guide', async () => {
+    const { store, registry, activations } = wiredRegistry({ proposeGuide: fakePropose() })
+    await activations.set('brand', true)
+    const started = (await registry.execute(
+      'brand.extract_guide_start',
+      { filename: 'Kindred CI.pdf', dataB64: PDF_B64 },
+      humanAdmin,
+    )) as { sessionId: string }
+    await registry.execute('brand.extract_propose', { sessionId: started.sessionId }, humanAdmin)
+    await registry.execute(
+      'brand.extract_judge',
+      { sessionId: started.sessionId, round: 1, chosen: 0 },
+      humanAdmin,
+    )
+    const accepted = (await registry.execute(
+      'brand.extract_accept',
+      { sessionId: started.sessionId, name: 'Kindred print' },
+      humanAdmin,
+    )) as { corpusItem: { provenance: Record<string, unknown> } }
+    expect(accepted.corpusItem.provenance).toMatchObject({
+      source: 'extraction',
+      note: 'brand guide “Kindred CI.pdf”',
+    })
+    await expect(store.requireSession(started.sessionId)).resolves.toMatchObject({
+      status: 'accepted',
+    })
+  })
+
+  it('extract_session_get names the guide (no bytes) for a guide session, null for a URL session', async () => {
+    const { store, registry, activations } = wiredRegistry()
+    await activations.set('brand', true)
+    const started = (await registry.execute(
+      'brand.extract_guide_start',
+      { filename: 'Kindred CI.pdf', dataB64: PDF_B64 },
+      humanAdmin,
+    )) as { sessionId: string }
+    const guideRead = (await registry.execute(
+      'brand.extract_session_get',
+      { sessionId: started.sessionId },
+      agentPrincipal,
+    )) as { guide: unknown }
+    expect(guideRead.guide).toEqual({
+      filename: 'Kindred CI.pdf',
+      mime: 'application/pdf',
+      sizeBytes: 9,
+    })
+    const site = await sessionFixture(store)
+    const siteRead = (await registry.execute(
+      'brand.extract_session_get',
+      { sessionId: site.id },
+      agentPrincipal,
+    )) as {
+      guide: unknown
+    }
+    expect(siteRead.guide).toBeNull()
   })
 })
 

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { load } from './+page.server'
 
-const { isUserAdminMock } = vi.hoisted(() => ({ isUserAdminMock: vi.fn(async () => true) }))
-vi.mock('$lib/server/auth/user-role', () => ({ isUserAdmin: isUserAdminMock }))
+const { roleMock } = vi.hoisted(() => ({ roleMock: vi.fn(async (): Promise<string | null> => 'owner') }))
+vi.mock('$lib/server/auth/user-role', () => ({ getUserRole: roleMock }))
 
 const event = (user: { id: string } | null, response?: Response) =>
   ({
@@ -16,7 +16,7 @@ describe('/settings/approvals — Approval mode (company-wide, admin only)', () 
   })
 
   it('sends members back to the Account section: the approval mode is the owner/admin choice', async () => {
-    isUserAdminMock.mockResolvedValueOnce(false)
+    roleMock.mockResolvedValueOnce('member')
     await expect(load(event({ id: 'm' }))).rejects.toMatchObject({
       status: 303,
       location: '/settings',

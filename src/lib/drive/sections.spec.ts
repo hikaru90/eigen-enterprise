@@ -7,6 +7,7 @@ describe('driveSection', () => {
     expect(driveSection('/drive/', null)).toBe('mine')
     expect(driveSection('/drive/shared', null)).toBe('shared')
     expect(driveSection('/drive/messages', null)).toBe('messages')
+    expect(driveSection('/drive/archived', null)).toBe('archived')
     expect(driveSection('/drive/trash', null)).toBe('trash')
   })
 

@@ -2,8 +2,11 @@ import { createRawSnippet } from 'svelte'
 import { describe, expect, it } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
+import { CAPABILITIES, type Capabilities } from '$lib/access/capabilities'
 import { buildShellNav } from '$lib/shell/nav'
 import AppShell from './app-shell.svelte'
+
+const capabilities = Object.fromEntries(CAPABILITIES.map((c) => [c, true])) as Capabilities
 
 const nav = buildShellNav(
   [
@@ -16,6 +19,7 @@ const nav = buildShellNav(
     ['website', true],
     ['email', true],
   ]),
+  capabilities,
 )
 
 const children = createRawSnippet(() => ({ render: () => '<p>Page body</p>' }))
@@ -26,9 +30,10 @@ function renderShell(
     name: 'Alex',
     email: 'alex@k.test',
   },
+  companyLogo: string | null = null,
 ) {
   return render(AppShell, {
-    shell: { companyName: 'Kindred Digital Labs', nav },
+    shell: { companyName: 'Kindred Digital Labs', companyLogo, capabilities, nav },
     pathname,
     user,
     language: 'en',
@@ -79,6 +84,19 @@ describe('app-shell.svelte', () => {
     renderShell('/')
     await expect.element(page.getByTestId('shell-company-link').first()).toHaveAttribute('aria-current', 'page')
     await expect.element(page.getByTestId('shell-nav-website').first()).not.toHaveAttribute('aria-current')
+  })
+
+  it('shows the company logo at the top left once one is set, else the initial', async () => {
+    renderShell('/', undefined, '/api/company/logo/abc')
+    await expect.element(page.getByTestId('shell-company-logo').first()).toHaveAttribute('src', '/api/company/logo/abc')
+    await expect.element(page.getByTestId('shell-company-badge')).not.toBeInTheDocument()
+    await expect.element(page.getByTestId('shell-company').first()).toHaveTextContent('Kindred Digital Labs')
+  })
+
+  it('shows the initial badge without a logo', async () => {
+    renderShell('/')
+    await expect.element(page.getByTestId('shell-company-badge').first()).toHaveTextContent('K')
+    await expect.element(page.getByTestId('shell-company-logo')).not.toBeInTheDocument()
   })
 
   it("shows the member's picture when there is one, else the initial", async () => {

@@ -3,7 +3,7 @@ import { type VariantProps, tv } from 'tailwind-variants'
 import { type WithElementRef } from '$lib/utils.js'
 
 export const buttonVariants = tv({
-  base: "focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:aria-invalid:border-destructive/50 rounded-md border border-transparent bg-clip-padding text-xs font-medium focus-visible:ring-1 active:not-aria-[haspopup]:translate-y-px aria-invalid:ring-1 [&_svg:not([class*='size-'])]:size-4 group/button inline-flex shrink-0 cursor-pointer items-center justify-center whitespace-nowrap transition-all outline-none select-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  base: "focus-visible:border-ring focus-visible:ring-ring aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:aria-invalid:border-destructive/50 rounded-md border border-transparent bg-clip-padding text-xs font-medium focus-visible:ring-1 active:not-aria-[haspopup]:translate-y-px aria-invalid:ring-1 [&_svg:not([class*='size-'])]:size-4 group/button inline-flex shrink-0 cursor-pointer items-center justify-center whitespace-nowrap transition-all outline-hidden select-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   variants: {
     variant: {
       default: 'bg-primary text-primary-foreground [a]:hover:bg-primary/80',
@@ -14,7 +14,8 @@ export const buttonVariants = tv({
       ghost:
         'hover:bg-muted hover:text-foreground dark:hover:bg-muted/50 aria-expanded:bg-muted aria-expanded:text-foreground',
       destructive:
-        'bg-destructive/10 hover:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/20 text-destructive focus-visible:border-destructive/40 dark:hover:bg-destructive/30',
+        // Same tints in both modes (/10, hover /20): the strongest tint text stays AA on (contrast.ts pairs).
+        'bg-destructive/10 hover:bg-destructive/20 focus-visible:ring-destructive text-destructive focus-visible:border-destructive',
       link: 'text-primary underline-offset-4 hover:underline',
     },
     size: {

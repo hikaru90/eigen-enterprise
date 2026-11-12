@@ -8,7 +8,7 @@
  * look-alikes, so what the view shows is what the console shows.
  */
 
-import { toCssText } from '../style-format/emitter'
+import { accessibleTokens, toCssText } from '../style-format/emitter'
 import { FONT_CLASS_TABLE, type FontClass } from '../style-format/fonts'
 
 export type ComponentGroup =
@@ -292,14 +292,17 @@ export function withFontFallbacks(vars: Record<string, string>): Record<string, 
  * The active set's tokens re-declared on the view's own area so its light/dark
  * switch is page-scoped (independent of the app theme): light =
  * cssVars, dark = cssVars overlaid with darkCssVars (a set without dark tokens
- * shows its light tokens in both). Same emitter as the global :root override.
+ * shows its light tokens in both). Same emitter and the same AA contrast
+ * correction (accessibleTokens) as the global :root override, so the view
+ * shows what the app paints.
  */
 export function systemScopeCss(
   cssVars: Record<string, string>,
   darkCssVars: Record<string, string> | null,
 ): string {
-  const light = withFontFallbacks(cssVars)
-  const dark = withFontFallbacks({ ...cssVars, ...(darkCssVars ?? {}) })
+  const tokens = accessibleTokens(cssVars, darkCssVars)
+  const light = withFontFallbacks(tokens.light)
+  const dark = withFontFallbacks({ ...tokens.light, ...(tokens.dark ?? {}) })
   return (
     toCssText({ ...light, 'color-scheme': 'light' }, scopeSelector('light')) +
     toCssText({ ...dark, 'color-scheme': 'dark' }, scopeSelector('dark'))

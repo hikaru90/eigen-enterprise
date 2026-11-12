@@ -4,7 +4,7 @@ import { EMAIL_SETUP_TABS, EMAIL_TABS } from './tabs'
 
 describe('Email area tabs (mail first, setup behind one tab)', () => {
   it('shows mail first and puts the setup sections behind Setup', () => {
-    expect(EMAIL_TABS.map((t) => t.label)).toEqual(['Mail', 'Contacts', 'Setup'])
+    expect(EMAIL_TABS.map((t) => t.label)).toEqual(['Mail', 'Lists', 'Setup'])
     expect(EMAIL_SETUP_TABS.map((t) => t.label)).toEqual([
       'Account',
       'Domains',
@@ -16,6 +16,9 @@ describe('Email area tabs (mail first, setup behind one tab)', () => {
       'Suppression',
       'API',
     ])
+  })
+  it('calls the audience lists "Lists" (people you know live in Contacts); the route stays', () => {
+    expect(EMAIL_TABS.find((t) => t.id === 'contacts')).toEqual({ id: 'contacts', label: 'Lists', href: '/m/email/contacts' })
   })
   it.each([
     ['/m/email', 'mail'],

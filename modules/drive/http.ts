@@ -8,7 +8,15 @@ import { DriveError, type Actor, type ItemType } from './service'
  * and DriveError → status. Pages and /api/drive/* routes share it.
  */
 
-export const DRIVE_STATUS: Record<DriveError['code'], number> = { not_found: 404, forbidden: 403, invalid: 400, too_large: 413, locked: 409 }
+export const DRIVE_STATUS: Record<DriveError['code'], number> = {
+  not_found: 404,
+  forbidden: 403,
+  invalid: 400,
+  too_large: 413,
+  locked: 409,
+  unavailable: 503,
+  upstream: 502,
+}
 
 export function requestActor(event: Pick<RequestEvent, 'locals'>): Actor {
   const user = event.locals.user
@@ -48,6 +56,12 @@ const subject = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('company') }).strict(),
 ])
 export const grantsBody = z.object({ grants: z.array(z.object({ subject, level }).strict()) }).strict()
+
+/** A batch of items to archive (the suggestions the person kept ticked). */
+export const archiveBody = z
+  .object({ items: z.array(z.object({ type: z.enum(['file', 'folder']), id: z.string().min(1) }).strict()).min(1).max(100) })
+  .strict()
+export const suggestBody = z.object({ olderThanDays: z.number().int() }).strict()
 export type GrantEntry = { subject: GrantSubject; level: AccessLevel }
 
 export async function parseBody<T>(request: Request, schema: z.ZodType<T>): Promise<T> {

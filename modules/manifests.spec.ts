@@ -112,8 +112,8 @@ describe('merged module manifests', () => {
     for (const name of APPROVAL_REQUIRED_TOOLS) expect(k.registry.get(name), name).toBeDefined()
   })
 
-  it('system modules are website, email, members, memory, brand, messages, drive, contribute and calls, and boot activates them', async () => {
-    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages', 'drive', 'contribute', 'calls'])
+  it('system modules are website, email, members, memory, brand, messages, drive, contribute, calls and contacts, and boot activates them', async () => {
+    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages', 'drive', 'contribute', 'calls', 'contacts'])
     const { kernel: k, activations } = kernel()
     await ensureSystemModulesActive(k)
     expect(await activations.get('website')).toBe(true)
@@ -131,6 +131,8 @@ describe('merged module manifests', () => {
     expect(await k.modules.isToolActive('contribute.list')).toBe(true)
     // Calls (plan/video-calls.md): a call rings on any page, no activation step.
     expect(await k.modules.isToolActive('calls.list')).toBe(true)
+    // Contacts (plan/contribute-round-3.md W1): the people tracker is part of the OS.
+    expect(await k.modules.isToolActive('contacts.list')).toBe(true)
     // Not a system module: the agent's internal tools keep their own activation.
     expect(await k.modules.isToolActive('repo.merge')).toBe(false)
   })

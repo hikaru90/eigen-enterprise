@@ -1,17 +1,20 @@
 import { describe, expect, it, vi } from 'vitest'
 import { DELETE, GET, PATCH } from './+server'
 
-const { archiveThoughtForUserMock, setThoughtLifecycleStatusMock, getDbSelectMock } = vi.hoisted(
+const { deleteThoughtForUserMock, setThoughtLifecycleStatusMock, getDbSelectMock } = vi.hoisted(
   () => ({
-    archiveThoughtForUserMock: vi.fn(),
+    deleteThoughtForUserMock: vi.fn(),
     setThoughtLifecycleStatusMock: vi.fn(),
     getDbSelectMock: vi.fn(),
   }),
 )
 
 vi.mock('$lib/server/memory/lifecycle', () => ({
-  archiveThoughtForUser: archiveThoughtForUserMock,
   setThoughtLifecycleStatus: setThoughtLifecycleStatusMock,
+}))
+
+vi.mock('$lib/server/memory/delete-thought', () => ({
+  deleteThoughtForUser: deleteThoughtForUserMock,
 }))
 
 vi.mock('$lib/server/text-files/service', () => ({
@@ -124,22 +127,34 @@ describe('DELETE /api/thoughts/[thoughtId]', () => {
     ).rejects.toMatchObject({ status: 401 })
   })
 
-  it('returns 404 when archiveThoughtForUser reports not found', async () => {
-    archiveThoughtForUserMock.mockResolvedValue({ ok: false, reason: 'not_found' })
+  it("returns 404 when the thought is not the caller's", async () => {
+    deleteThoughtForUserMock.mockResolvedValue({ ok: false, reason: 'not_found' })
     await expect(
       DELETE({ locals: { user: { id: 'u1' } }, params: { thoughtId: 't1' } } as never),
     ).rejects.toMatchObject({ status: 404 })
   })
 
-  it('returns ok when archived', async () => {
-    archiveThoughtForUserMock.mockResolvedValue({ ok: true })
+  it('refuses a task of a company system project with 409 and says where it lives', async () => {
+    deleteThoughtForUserMock.mockResolvedValue({
+      ok: false,
+      reason: 'system_project_task',
+      projectLabel: 'Roadmap',
+    })
+    await expect(
+      DELETE({ locals: { user: { id: 'u1' } }, params: { thoughtId: 't1' } } as never),
+    ).rejects.toMatchObject({ status: 409, body: { message: expect.stringContaining('Roadmap') } })
+  })
+
+  it('deletes the thought for good (not an archive)', async () => {
+    setThoughtLifecycleStatusMock.mockClear()
+    deleteThoughtForUserMock.mockResolvedValue({ ok: true })
     const res = await DELETE({
       locals: { user: { id: 'u1' } },
       params: { thoughtId: 't1' },
     } as never)
     expect(res.status).toBe(200)
-    expect(archiveThoughtForUserMock).toHaveBeenCalledWith('u1', 't1')
-    const body = await res.json()
-    expect(body).toEqual({ ok: true, archived: true })
+    expect(deleteThoughtForUserMock).toHaveBeenCalledWith('u1', 't1')
+    expect(setThoughtLifecycleStatusMock).not.toHaveBeenCalled()
+    expect(await res.json()).toEqual({ ok: true, deleted: true })
   })
 })

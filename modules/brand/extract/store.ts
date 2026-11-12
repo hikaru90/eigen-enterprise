@@ -6,28 +6,41 @@ import { z } from 'zod'
 import type { DbHandle } from '$lib/kernel/db-stores'
 import {
   brandCorpusStaging,
+  brandExtractionGuides,
   brandExtractionRounds,
   brandExtractionSessions,
   type BrandExtractionVerdict,
 } from '$lib/server/db/brand.schema'
 import { corpusItemSchema } from '../style-format/corpus'
+import { GUIDE_MIMES, type BrandGuideMeta } from './guide'
 
 /**
  * BrandExtractionStore (phase-2d M2): durable state for the design-system
  * extraction judge loop. Round 0 stores the capture facts (digest + screenshot);
  * rounds 1+ store one candidate triplet each plus the owner's verdict.
  * Staging rows hold accepted corpus items — staging is NOT publishing (2c D5).
+ *
+ * A session reads a captured site (source 'url') or an uploaded brand guide
+ * (source 'guide'). A guide session has no URL and no screenshot: its rounds
+ * carry an empty screenshot and the guide itself is kept next to the session.
  */
 
 export type BrandExtractionSessionStatus = 'active' | 'accepted' | 'abandoned'
+export type BrandExtractionSource = 'url' | 'guide'
 
 export type BrandExtractionSession = {
   id: string
-  url: string
+  source: BrandExtractionSource
+  /** The captured site; null for a guide session. */
+  url: string | null
+  /** The site's title, or the guide's file name. */
   title: string | null
   status: BrandExtractionSessionStatus
   createdAt: string
 }
+
+/** An uploaded brand guide with its bytes (base64). */
+export type BrandGuide = BrandGuideMeta & { base64: string }
 
 export type BrandExtractionRound = {
   id: string
@@ -54,11 +67,21 @@ export const createSessionInputSchema = z.object({
   title: z.string().min(1).nullable(),
 })
 
+export const createGuideSessionInputSchema = z.object({
+  guide: z.object({
+    filename: z.string().min(1),
+    mime: z.enum(GUIDE_MIMES),
+    sizeBytes: z.number().int().positive(),
+    base64: z.string().min(1),
+  }),
+})
+
 export const createRoundInputSchema = z.object({
   sessionId: z.string().uuid(),
   round: z.number().int().min(0),
   digest: z.string().min(1),
-  screenshotB64: z.string().min(1),
+  /** The capture screenshot: required for a URL session, empty for a guide session (assertRoundShape). */
+  screenshotB64: z.string(),
   candidates: z.array(z.custom<ProposedCandidate>(() => true)),
 })
 
@@ -70,11 +93,19 @@ export const judgeRoundInputSchema = z.object({
 })
 
 export type CreateSessionInput = z.infer<typeof createSessionInputSchema>
+export type CreateGuideSessionInput = z.infer<typeof createGuideSessionInputSchema>
 export type CreateRoundInput = z.infer<typeof createRoundInputSchema>
 export type JudgeRoundInput = z.infer<typeof judgeRoundInputSchema>
 
 export type BrandExtractionStore = {
+  /** A URL session (the captured site). */
   createSession(input: CreateSessionInput): Promise<BrandExtractionSession>
+  /** A guide session: the session and its uploaded guide, stored together. */
+  createGuideSession(input: CreateGuideSessionInput): Promise<BrandExtractionSession>
+  /** The guide with its bytes; null for a URL session. */
+  getGuide(sessionId: string): Promise<BrandGuide | null>
+  /** The guide without its bytes (name, type, size); null for a URL session. */
+  getGuideMeta(sessionId: string): Promise<BrandGuideMeta | null>
   getSession(sessionId: string): Promise<BrandExtractionSession | null>
   /** Full session read for the judge UI; fails loud on unknown ids. */
   requireSession(sessionId: string): Promise<BrandExtractionSession>
@@ -96,12 +127,22 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
-function chosenCandidate(round: BrandExtractionRound): ProposedCandidate & { seeds: BrandSeeds; cssVars: Record<string, string>; darkCssVars: Record<string, string> } {
+function chosenCandidate(
+  round: BrandExtractionRound,
+): ProposedCandidate & {
+  seeds: BrandSeeds
+  cssVars: Record<string, string>
+  darkCssVars: Record<string, string>
+} {
   if (round.verdict === null) {
-    throw new Error(`round ${round.round} of session ${round.sessionId} has no verdict yet — judge it first`)
+    throw new Error(
+      `round ${round.round} of session ${round.sessionId} has no verdict yet — judge it first`,
+    )
   }
   if (round.verdict.chosen === null) {
-    throw new Error(`round ${round.round} of session ${round.sessionId} was rejected (chosen=null) — nothing to accept`)
+    throw new Error(
+      `round ${round.round} of session ${round.sessionId} was rejected (chosen=null) — nothing to accept`,
+    )
   }
   const candidate = round.candidates[round.verdict.chosen]
   if (!candidate || !('seeds' in candidate)) {
@@ -109,23 +150,56 @@ function chosenCandidate(round: BrandExtractionRound): ProposedCandidate & { see
       `round ${round.round} candidate #${round.verdict.chosen} is not an acceptable proposal (missing or invalid)`,
     )
   }
-  return candidate as ProposedCandidate & { seeds: BrandSeeds; cssVars: Record<string, string>; darkCssVars: Record<string, string> }
+  return candidate as ProposedCandidate & {
+    seeds: BrandSeeds
+    cssVars: Record<string, string>
+    darkCssVars: Record<string, string>
+  }
 }
 
-function buildCorpusItem(session: BrandExtractionSession, candidate: { seeds: BrandSeeds; cssVars: Record<string, string>; darkCssVars: Record<string, string> }, name: string): BrandCorpusItem {
+function buildCorpusItem(
+  session: BrandExtractionSession,
+  candidate: {
+    seeds: BrandSeeds
+    cssVars: Record<string, string>
+    darkCssVars: Record<string, string>
+  },
+  name: string,
+): BrandCorpusItem {
   return corpusItemSchema.parse({
     id: crypto.randomUUID(),
     name,
     seeds: candidate.seeds,
     cssVars: candidate.cssVars,
     darkCssVars: candidate.darkCssVars,
-    provenance: {
-      source: 'extraction',
-      url: session.url,
-      capturedAt: session.createdAt,
-    },
+    provenance:
+      session.source === 'url'
+        ? { source: 'extraction', url: session.url, capturedAt: session.createdAt }
+        : {
+            source: 'extraction',
+            capturedAt: session.createdAt,
+            note: `brand guide “${session.title}”`,
+          },
     createdAt: nowIso(),
   })
+}
+
+/** A URL session's rounds carry the capture screenshot; a guide session's carry none. */
+function assertRoundShape(session: BrandExtractionSession, input: CreateRoundInput): void {
+  if (session.source === 'url' && input.screenshotB64.length === 0) {
+    throw new Error(
+      `round ${input.round} of URL session ${session.id} needs the capture screenshot`,
+    )
+  }
+  if (session.source === 'guide' && input.screenshotB64.length > 0) {
+    throw new Error(
+      `round ${input.round} of guide session ${session.id} has no screenshot — the guide is stored with the session`,
+    )
+  }
+}
+
+function guideMeta(guide: BrandGuide): BrandGuideMeta {
+  return { filename: guide.filename, mime: guide.mime, sizeBytes: guide.sizeBytes }
 }
 
 function assertJudgeable(round: BrandExtractionRound, chosen: number | null): void {
@@ -142,11 +216,13 @@ export class InMemoryBrandExtractionStore implements BrandExtractionStore {
   private readonly sessions = new Map<string, BrandExtractionSession>()
   private readonly rounds = new Map<string, BrandExtractionRound>()
   private readonly staged: BrandCorpusStagedRow[] = []
+  private readonly guides = new Map<string, BrandGuide>()
 
   async createSession(input: CreateSessionInput): Promise<BrandExtractionSession> {
     const parsed = createSessionInputSchema.parse(input)
     const session: BrandExtractionSession = {
       id: crypto.randomUUID(),
+      source: 'url',
       url: parsed.url,
       title: parsed.title,
       status: 'active',
@@ -154,6 +230,30 @@ export class InMemoryBrandExtractionStore implements BrandExtractionStore {
     }
     this.sessions.set(session.id, session)
     return session
+  }
+
+  async createGuideSession(input: CreateGuideSessionInput): Promise<BrandExtractionSession> {
+    const { guide } = createGuideSessionInputSchema.parse(input)
+    const session: BrandExtractionSession = {
+      id: crypto.randomUUID(),
+      source: 'guide',
+      url: null,
+      title: guide.filename,
+      status: 'active',
+      createdAt: nowIso(),
+    }
+    this.sessions.set(session.id, session)
+    this.guides.set(session.id, guide)
+    return session
+  }
+
+  async getGuide(sessionId: string): Promise<BrandGuide | null> {
+    return this.guides.get(sessionId) ?? null
+  }
+
+  async getGuideMeta(sessionId: string): Promise<BrandGuideMeta | null> {
+    const guide = this.guides.get(sessionId)
+    return guide ? guideMeta(guide) : null
   }
 
   async getSession(sessionId: string): Promise<BrandExtractionSession | null> {
@@ -168,7 +268,7 @@ export class InMemoryBrandExtractionStore implements BrandExtractionStore {
 
   async createRound(input: CreateRoundInput): Promise<BrandExtractionRound> {
     const parsed = createRoundInputSchema.parse(input)
-    await this.requireSession(parsed.sessionId)
+    assertRoundShape(await this.requireSession(parsed.sessionId), parsed)
     const existing = await this.listRounds(parsed.sessionId)
     if (existing.some((r) => r.round === parsed.round)) {
       throw new Error(`round ${parsed.round} already exists for session ${parsed.sessionId}`)
@@ -206,7 +306,10 @@ export class InMemoryBrandExtractionStore implements BrandExtractionStore {
     assertJudgeable(round, parsed.chosen)
     const judged: BrandExtractionRound = {
       ...round,
-      verdict: { chosen: parsed.chosen, ...(parsed.note === undefined ? {} : { note: parsed.note }) },
+      verdict: {
+        chosen: parsed.chosen,
+        ...(parsed.note === undefined ? {} : { note: parsed.note }),
+      },
     }
     this.rounds.set(round.id, judged)
     return judged
@@ -215,7 +318,9 @@ export class InMemoryBrandExtractionStore implements BrandExtractionStore {
   async accept(sessionId: string, name: string): Promise<BrandCorpusStagedRow> {
     const session = await this.requireSession(sessionId)
     if (session.status !== 'active') {
-      throw new Error(`session ${sessionId} is ${session.status}; only active sessions can accept a candidate`)
+      throw new Error(
+        `session ${sessionId} is ${session.status}; only active sessions can accept a candidate`,
+      )
     }
     const rounds = await this.listRounds(sessionId)
     const judged = rounds.filter((r) => r.verdict !== null && r.verdict.chosen !== null)
@@ -264,6 +369,7 @@ type StagedRow = typeof brandCorpusStaging.$inferSelect
 function toSession(row: SessionRow): BrandExtractionSession {
   return {
     id: row.id,
+    source: row.source,
     url: row.url,
     title: row.title,
     status: row.status,
@@ -326,6 +432,54 @@ export class DbBrandExtractionStore implements BrandExtractionStore {
     return toSession(rows[0])
   }
 
+  async createGuideSession(input: CreateGuideSessionInput): Promise<BrandExtractionSession> {
+    const { guide } = createGuideSessionInputSchema.parse(input)
+    const database = await resolveDb(this.db)
+    return database.transaction(async (tx) => {
+      const rows = await tx
+        .insert(brandExtractionSessions)
+        .values({ source: 'guide', url: null, title: guide.filename })
+        .returning()
+      if (!rows[0]) throw new Error('brand guide session insert returned no row')
+      await tx.insert(brandExtractionGuides).values({
+        sessionId: rows[0].id,
+        filename: guide.filename,
+        mime: guide.mime,
+        sizeBytes: guide.sizeBytes,
+        dataB64: guide.base64,
+      })
+      return toSession(rows[0])
+    })
+  }
+
+  async getGuide(sessionId: string): Promise<BrandGuide | null> {
+    const database = await resolveDb(this.db)
+    const rows = await database
+      .select()
+      .from(brandExtractionGuides)
+      .where(eq(brandExtractionGuides.sessionId, sessionId))
+      .limit(1)
+    const row = rows[0]
+    return row
+      ? { filename: row.filename, mime: row.mime, sizeBytes: row.sizeBytes, base64: row.dataB64 }
+      : null
+  }
+
+  async getGuideMeta(sessionId: string): Promise<BrandGuideMeta | null> {
+    const database = await resolveDb(this.db)
+    // Name, type and size only: the bytes stay in the row.
+    const rows = await database
+      .select({
+        filename: brandExtractionGuides.filename,
+        mime: brandExtractionGuides.mime,
+        sizeBytes: brandExtractionGuides.sizeBytes,
+      })
+      .from(brandExtractionGuides)
+      .where(eq(brandExtractionGuides.sessionId, sessionId))
+      .limit(1)
+    return rows[0] ?? null
+  }
+
   async getSession(sessionId: string): Promise<BrandExtractionSession | null> {
     const database = await resolveDb(this.db)
     const rows = await database
@@ -343,7 +497,7 @@ export class DbBrandExtractionStore implements BrandExtractionStore {
   async createRound(input: CreateRoundInput): Promise<BrandExtractionRound> {
     const parsed = createRoundInputSchema.parse(input)
     const database = await resolveDb(this.db)
-    await requireDbSession(database, parsed.sessionId)
+    assertRoundShape(await requireDbSession(database, parsed.sessionId), parsed)
     const rows = await database
       .insert(brandExtractionRounds)
       .values({
@@ -373,7 +527,9 @@ export class DbBrandExtractionStore implements BrandExtractionStore {
     const rows = await database
       .select()
       .from(brandExtractionRounds)
-      .where(and(eq(brandExtractionRounds.sessionId, sessionId), eq(brandExtractionRounds.round, round)))
+      .where(
+        and(eq(brandExtractionRounds.sessionId, sessionId), eq(brandExtractionRounds.round, round)),
+      )
       .limit(1)
     return rows[0] ? toRound(rows[0]) : null
   }
@@ -393,7 +549,12 @@ export class DbBrandExtractionStore implements BrandExtractionStore {
     const rows = await database
       .update(brandExtractionRounds)
       .set({ verdict })
-      .where(and(eq(brandExtractionRounds.sessionId, parsed.sessionId), eq(brandExtractionRounds.round, parsed.round)))
+      .where(
+        and(
+          eq(brandExtractionRounds.sessionId, parsed.sessionId),
+          eq(brandExtractionRounds.round, parsed.round),
+        ),
+      )
       .returning()
     if (!rows[0]) throw new Error(`verdict update returned no row: round ${parsed.round}`)
     return toRound(rows[0])
@@ -403,7 +564,9 @@ export class DbBrandExtractionStore implements BrandExtractionStore {
     const database = await resolveDb(this.db)
     const session = await requireDbSession(database, sessionId)
     if (session.status !== 'active') {
-      throw new Error(`session ${sessionId} is ${session.status}; only active sessions can accept a candidate`)
+      throw new Error(
+        `session ${sessionId} is ${session.status}; only active sessions can accept a candidate`,
+      )
     }
     const rounds = await this.listRounds(sessionId)
     const judged = rounds.filter((r) => r.verdict !== null && r.verdict.chosen !== null)

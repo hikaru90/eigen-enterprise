@@ -16,6 +16,7 @@ export const BRAND_TOOL_NAMES = [
   'brand.token_add',
   'brand.glossary_add',
   'brand.extract_start',
+  'brand.extract_guide_start',
   'brand.extract_propose',
   'brand.extract_judge',
   'brand.extract_accept',
@@ -46,7 +47,7 @@ export const brandManifest: ModuleManifest = {
   name: 'Brand',
   version: '0.5.0',
   description:
-    'Brand kernel: versioned guideline sets (voice exemplars, lexicon, criteria, visual tokens, glossary) with exemplar-first activation guards, the phase-2d design-system extraction judge loop (capture -> propose -> judge -> stage), the phase-2d selection wizard (cluster grid -> centroid matches -> draft visual set), the phase-2d approval-gated go-live (visual_set_activate applies the active set globally), and the phase-2d visual editor (seed re-expansion + owner pins, draft-only).',
+    'Brand kernel: versioned guideline sets (voice exemplars, lexicon, criteria, visual tokens, glossary) with exemplar-first activation guards, the phase-2d design-system extraction judge loop (site capture or brand guide upload -> propose -> judge -> stage), the phase-2d selection wizard (cluster grid -> centroid matches -> draft visual set), the phase-2d approval-gated go-live (visual_set_activate applies the active set globally), and the phase-2d visual editor (seed re-expansion + owner pins, draft-only).',
   tools: [...BRAND_TOOL_NAMES],
   permissions: { roles: ['admin', 'agent'] },
 }

@@ -24,6 +24,16 @@
   import UserAvatar from '$lib/components/user-avatar.svelte'
   import MessageComposer from '$lib/messages/message-composer.svelte'
   import MessageRow, { type RowPerson } from '$lib/messages/message-row.svelte'
+  import {
+    applyPresence,
+    presenceLabel,
+    presenceOf,
+    type PresenceFrame,
+    type PresenceMap,
+    type PresenceView,
+  } from '$lib/messages/presence'
+  import PresenceDot from '$lib/messages/presence-dot.svelte'
+  import PresenceSelf from '$lib/messages/presence-self.svelte'
   import { ResumableStream } from '$lib/messages/resumable-stream'
   import {
     applyFrame,
@@ -75,6 +85,12 @@
   let live = $state<'connecting' | 'live' | 'reconnecting'>('connecting')
   let now = $state(new Date())
 
+  // Presence (Contribute 119f59a4): everyone's status from the live feed; mine is set by this tab's heartbeat.
+  let presence = $state<PresenceMap>({})
+  let presenceError = $state<string | null>(null)
+  let dndSaving = $state(false)
+  const presenceFor = (userId: string): PresenceView => presenceOf(presence, userId)
+
   let listEl = $state<HTMLDivElement | null>(null)
   let composerEl = $state<HTMLTextAreaElement | null>(null)
   let fileInput = $state<HTMLInputElement | null>(null)
@@ -110,6 +126,7 @@
   const people = $derived(data.people as Person[])
   const peopleById = $derived(new Map(people.map((p) => [p.id, p])))
   const others = $derived(people.filter((p) => p.id !== data.me))
+  const myself = $derived(peopleById.get(data.me) ?? null)
   const uploading = $derived(pendingFiles.some((f) => f.status === 'uploading'))
   const readyFiles = $derived(pendingFiles.filter((f) => f.status === 'ready' && f.file).map((f) => f.file as AttachmentView))
   const canSend = $derived(!sending && !uploading && (draft.trim().length > 0 || readyFiles.length > 0))
@@ -450,7 +467,7 @@
     stream = new ResumableStream({
       url: (after) => `/api/messages/stream?after=${after}`,
       initialCursor: data.cursor,
-      events: ['message', 'conversation', 'read'],
+      events: ['message', 'conversation', 'read', 'presence', 'presence-error'],
       onStatus: (status) => (live = status),
       onEvent: (type, payload) => {
         if (type === 'message') void onMessageFrame(payload as MessageFrame)
@@ -460,6 +477,11 @@
         } else if (type === 'read') {
           const { conversationId, unread } = payload as { conversationId: string; unread: number }
           setConversations(setUnread(conversations, conversationId, unread))
+        } else if (type === 'presence') {
+          presence = applyPresence(presence, payload as PresenceFrame)
+          presenceError = null
+        } else if (type === 'presence-error') {
+          presenceError = (payload as { error: string }).error
         }
       },
     })
@@ -479,6 +501,22 @@
       body: JSON.stringify({ conversationId }),
       keepalive: true,
     }).catch(() => {})
+  }
+
+  async function setDoNotDisturb(on: boolean) {
+    dndSaving = true
+    try {
+      const { presence: mine } = await api<{ presence: PresenceView }>('/api/messages/presence', {
+        method: 'PUT',
+        body: JSON.stringify({ doNotDisturb: on }),
+      })
+      presence = applyPresence(presence, { people: [mine], replace: false })
+      presenceError = null
+    } catch (err) {
+      presenceError = message(err)
+    } finally {
+      dndSaving = false
+    }
   }
 
   function onVisibility() {
@@ -636,7 +674,10 @@
           {/if}
         </span>
       {:else if dmWith.length === 1}
-        <UserAvatar name={dmWith[0].name} image={dmWith[0].image} size="xs" testid="messages-dm-avatar" />
+        <span class="relative shrink-0">
+          <UserAvatar name={dmWith[0].name} image={dmWith[0].image} size="xs" testid="messages-dm-avatar" />
+          <PresenceDot presence={presenceFor(dmWith[0].id)} {now} class="absolute -right-1 -bottom-1" testid="messages-dm-presence" />
+        </span>
       {:else}
         <span
           class={[
@@ -748,6 +789,18 @@
         </ul>
       {/if}
     </div>
+
+    {#if myself}
+      <PresenceSelf
+        name={personLabel(myself)}
+        image={myself.image ?? null}
+        presence={presenceFor(data.me)}
+        {now}
+        saving={dndSaving}
+        error={presenceError}
+        ontoggle={(on) => void setDoNotDisturb(on)}
+      />
+    {/if}
   </nav>
 
   <!-- ── The conversation (below xl, an open thread takes its place) ── -->
@@ -770,7 +823,10 @@
           onclick={closeConversation}><ArrowLeft class="size-4" /></button
         >
         {#if selected.kind === 'dm' && dmWith.length === 1}
-          <UserAvatar name={dmWith[0].name} image={dmWith[0].image} size="sm" />
+          <span class="relative shrink-0">
+            <UserAvatar name={dmWith[0].name} image={dmWith[0].image} size="sm" />
+            <PresenceDot presence={presenceFor(dmWith[0].id)} {now} class="absolute -right-1 -bottom-1" testid="messages-header-presence" />
+          </span>
         {/if}
         <div class="min-w-0 flex-1">
           <h2 class="flex min-w-0 items-center gap-1 text-base font-bold" data-testid="messages-title">
@@ -784,6 +840,11 @@
           </h2>
           {#if selected.topic}
             <p class="truncate text-xs text-muted-foreground" data-testid="messages-topic">{selected.topic}</p>
+          {/if}
+          {#if selected.kind === 'dm' && dmWith.length === 1}
+            <p class="truncate text-xs text-muted-foreground" data-testid="messages-presence-label">
+              {presenceLabel(presenceFor(dmWith[0].id), now)}
+            </p>
           {/if}
         </div>
 
@@ -824,9 +885,16 @@
                 </p>
                 <ul class="max-h-72 overflow-y-auto">
                   {#each members as p (p.id)}
-                    <li class="flex items-center gap-2 rounded-md px-2 py-1.5">
-                      <UserAvatar name={p.name} image={p.image ?? null} size="sm" />
-                      <span class="min-w-0 flex-1 truncate text-sm">{personLabel(p)}</span>
+                    {@const status = presenceFor(p.id)}
+                    <li class="flex items-center gap-2 rounded-md px-2 py-1.5" data-testid="messages-member" data-status={status.status}>
+                      <span class="relative shrink-0">
+                        <UserAvatar name={p.name} image={p.image ?? null} size="sm" />
+                        <PresenceDot presence={status} {now} class="absolute -right-1 -bottom-1" testid="messages-member-presence" />
+                      </span>
+                      <span class="min-w-0 flex-1">
+                        <span class="block truncate text-sm">{personLabel(p)}</span>
+                        <span class="block truncate text-[11px] text-muted-foreground">{presenceLabel(status, now)}</span>
+                      </span>
                       {#if p.id === data.me}<span class="text-[11px] text-muted-foreground">you</span>{/if}
                     </li>
                   {/each}
@@ -1121,7 +1189,10 @@
           {#each others as p (p.id)}
             <label class="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={channelPeople.includes(p.id)} onchange={() => (channelPeople = toggle(channelPeople, p.id))} />
-              <UserAvatar name={personLabel(p)} image={p.image ?? null} size="xs" />
+              <span class="relative shrink-0">
+                <UserAvatar name={personLabel(p)} image={p.image ?? null} size="xs" />
+                <PresenceDot presence={presenceFor(p.id)} {now} class="absolute -right-1 -bottom-1" />
+              </span>
               <span class="truncate">{personLabel(p)}</span>
               <span class="truncate text-xs text-muted-foreground">{p.email}</span>
             </label>
@@ -1150,10 +1221,13 @@
         {#each dmCandidates as p (p.id)}
           <label class="flex items-center gap-2.5 rounded-md px-1.5 py-1 text-sm hover:bg-foreground/[0.04]">
             <input type="checkbox" checked={dmPeople.includes(p.id)} onchange={() => (dmPeople = toggle(dmPeople, p.id))} data-testid="dm-person" data-email={p.email} />
-            <UserAvatar name={personLabel(p)} image={p.image ?? null} size="sm" />
+            <span class="relative shrink-0">
+              <UserAvatar name={personLabel(p)} image={p.image ?? null} size="sm" />
+              <PresenceDot presence={presenceFor(p.id)} {now} class="absolute -right-1 -bottom-1" testid="dm-person-presence" />
+            </span>
             <span class="min-w-0 flex-1">
               <span class="block truncate font-medium">{personLabel(p)}</span>
-              <span class="block truncate text-xs text-muted-foreground">{p.email}</span>
+              <span class="block truncate text-xs text-muted-foreground">{p.email} · {presenceLabel(presenceFor(p.id), now)}</span>
             </span>
           </label>
         {/each}

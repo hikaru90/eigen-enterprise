@@ -135,6 +135,10 @@ export const captureSession = pgTable(
     author: text('author').$type<MemoryAuthor>().notNull().default('user'),
     authorLabel: text('author_label'),
     authorKeyId: uuid('author_key_id').references(() => userApiKey.id, { onDelete: 'set null' }),
+    /** The thought this capture became (drizzle/0128): the raw text goes when the thought is deleted. */
+    thoughtId: uuid('thought_id').references((): AnyPgColumn => thought.id, {
+      onDelete: 'cascade',
+    }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -143,6 +147,7 @@ export const captureSession = pgTable(
   },
   (t) => [
     index('capture_session_user_idx').on(t.userId),
+    index('capture_session_thought_idx').on(t.thoughtId),
     index('capture_session_author_idx').on(t.userId, t.author),
     index('capture_session_status_idx').on(t.status),
     foreignKey({

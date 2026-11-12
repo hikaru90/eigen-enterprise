@@ -150,6 +150,23 @@ describe('systemScopeCss', () => {
     expect(dark).toContain('color-scheme: dark;')
   })
 
+  it('previews the same AA-corrected tokens the app paints (accessibleTokens)', () => {
+    const set = {
+      '--background': '#ffffff',
+      '--foreground': '#111111',
+      '--card': '#ffffff',
+      '--popover': '#ffffff',
+      '--muted': '#f4f4f5',
+      '--muted-foreground': '#a1a1aa',
+    }
+    const css = systemScopeCss(set, null)
+    const [light, dark] = css.split("[data-system-theme='dark']")
+    expect(light).not.toContain('--muted-foreground: #a1a1aa;')
+    const corrected = light.match(/--muted-foreground: ([^;]+);/)?.[1]
+    expect(corrected).toBeDefined()
+    expect(dark).toContain(`--muted-foreground: ${corrected};`)
+  })
+
   it('is deterministic and shows light tokens in both scopes without dark tokens', () => {
     const vars = { '--b': '1', '--a': '2' }
     expect(systemScopeCss(vars, null)).toBe(systemScopeCss({ '--a': '2', '--b': '1' }, null))

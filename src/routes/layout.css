@@ -34,13 +34,16 @@
     --secondary: #f0f3f0;
     --secondary-foreground: #111111;
     --muted: #f0f3f0;
-    --muted-foreground: #999999;
+    /* WCAG 2.1 AA (Contribute b73604ff): every pair below is held to 4.5:1
+       (text) / 3:1 (input boundary, focus ring) by src/routes/layout.contrast.spec.ts.
+       --border stays faint on purpose: it only draws decorative separators. */
+    --muted-foreground: #666666;
     --accent: #f0f3f0;
     --accent-foreground: #111111;
-    --destructive: oklch(0.577 0.245 27.325);
+    --destructive: oklch(0.45 0.185 27.325);
     --border: rgb(17 17 17 / 10%);
-    --input: rgb(17 17 17 / 12%);
-    --ring: rgb(17 17 17 / 25%);
+    --input: rgb(17 17 17 / 47%);
+    --ring: #666666;
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
@@ -104,7 +107,28 @@
     @apply border-input bg-card text-foreground placeholder:text-muted-foreground;
   }
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring;
+  }
+
+  /* Every focusable element shows a solid focus outline in the ring colour
+     (3:1 on every surface, see layout.contrast.spec.ts). Primitives that draw
+     their own ring set outline-hidden, which wins from the utilities layer. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* Honour the OS "reduce motion" setting everywhere: animations and
+     transitions finish at once, smooth scrolling jumps. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
   html {
     @apply bg-background font-sans;
@@ -130,7 +154,7 @@
   background: color-mix(in srgb, var(--muted) 70%, transparent);
   color: var(--muted-foreground);
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.68em;
+  font-size: 0.8125rem;
   font-weight: 500;
   letter-spacing: 0.02em;
   line-height: 1.35;
@@ -141,7 +165,7 @@
 .chat-citation--block {
   display: inline-flex;
   margin: 0;
-  font-size: 0.68rem;
+  font-size: 0.8125rem;
   vertical-align: baseline;
 }
 
@@ -171,9 +195,9 @@
   --muted-foreground: oklch(0.705 0.02 152);
   --accent: oklch(0.28 0.015 152);
   --accent-foreground: oklch(0.985 0.005 152);
-  --destructive: oklch(0.704 0.191 22.216);
+  --destructive: oklch(0.765 0.14 22.216);
   --border: oklch(0.92 0.02 152 / 12%);
-  --input: oklch(0.92 0.02 152 / 16%);
+  --input: oklch(0.92 0.02 152 / 40%);
   --ring: oklch(0.552 0.04 152);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
@@ -196,6 +220,11 @@
    `@theme inline` the literal stacks were baked into the utilities and the
    brand's fonts were silently ignored. */
 @theme {
+  /* Readable floor (Contribute b73604ff): the smallest step is 13px (Tailwind's
+     default 12px is too small for secondary text), with an 18px line. Body
+     text stays on the browser's 16px root. */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: calc(1.125 / 0.8125);
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-display: 'UnifrakturMaguntia', ui-serif, Georgia, serif;
   --font-mono:
@@ -275,12 +304,14 @@
     --secondary: #f0f3f0;
     --secondary-foreground: #111111;
     --muted: #f0f3f0;
-    --muted-foreground: #999999;
+    --muted-foreground: #666666;
     --accent: #f0f3f0;
     --accent-foreground: #111111;
+    /* Re-declared so OS dark mode cannot leak .dark's light red onto this white page. */
+    --destructive: oklch(0.495 0.2 27.325);
     --border: rgb(17 17 17 / 10%);
-    --input: rgb(17 17 17 / 12%);
-    --ring: rgb(17 17 17 / 25%);
+    --input: rgb(17 17 17 / 47%);
+    --ring: #666666;
     /* The app shell's sidebar sits inside this light wrapper: its tokens must
        be light too, or the system dark theme paints a dark sidebar under
        this wrapper's dark text (black on black). */

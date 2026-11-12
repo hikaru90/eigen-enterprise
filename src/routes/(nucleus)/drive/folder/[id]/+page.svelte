@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types'
+  import ArchiveBanner from '$lib/components/drive/archive-banner.svelte'
   import DriveBrowser from '$lib/components/drive/drive-browser.svelte'
   import { docTitle } from '$lib/shell/title'
 
@@ -7,6 +8,14 @@
 </script>
 
 <svelte:head><title>{docTitle(data.listing.folder?.name, 'Drive')}</title></svelte:head>
+
+{#if data.listing.folder}
+  <ArchiveBanner
+    item={data.listing.folder}
+    archivedIn={data.listing.archivedIn}
+    canEdit={data.listing.canEdit}
+  />
+{/if}
 
 {#key data.listing.folder?.id}
   <DriveBrowser

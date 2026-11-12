@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { ASSISTANT_TABS, BRAND_TABS, DRIVE_TABS, WEBSITE_TABS, currentAreaTab } from './area-nav'
+import { CAPABILITIES, type Capabilities } from '$lib/access/capabilities'
+import { ASSISTANT_TABS, BRAND_TABS, DRIVE_TABS, WEBSITE_TABS, currentAreaTab, openableTabs } from './area-nav'
 
 describe('area sub-navigation (one page frame)', () => {
   it('lists the tabs of each area in one order', () => {
@@ -32,5 +33,15 @@ describe('area sub-navigation (one page frame)', () => {
   it('returns null outside the area', () => {
     expect(currentAreaTab(BRAND_TABS, '/brand/editor/x')).toBeNull()
     expect(currentAreaTab(ASSISTANT_TABS, '/agent/runs')).toBeNull()
+  })
+})
+
+describe('area tabs follow the capability set (Contribute 2bda4814)', () => {
+  const caps = (granted: boolean): Capabilities =>
+    Object.fromEntries(CAPABILITIES.map((c) => [c, granted])) as Capabilities
+
+  it('a member is not offered Brand → Extract (it answers 403); an admin is', () => {
+    expect(openableTabs(BRAND_TABS, caps(false)).map((t) => t.id)).toEqual(['style', 'material'])
+    expect(openableTabs(BRAND_TABS, caps(true)).map((t) => t.id)).toEqual(['style', 'material', 'extract'])
   })
 })

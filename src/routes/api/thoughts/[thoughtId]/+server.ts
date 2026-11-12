@@ -6,7 +6,8 @@ import { decryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import { getDb } from '$lib/server/db'
 import type { LifecycleStatus } from '$lib/server/db/brain.schema'
 import { thought } from '$lib/server/db/schema'
-import { setThoughtLifecycleStatus, archiveThoughtForUser } from '$lib/server/memory/lifecycle'
+import { deleteThoughtForUser } from '$lib/server/memory/delete-thought'
+import { setThoughtLifecycleStatus } from '$lib/server/memory/lifecycle'
 import { listTextFilesForThought } from '$lib/server/text-files/service'
 
 export const GET: RequestHandler = async (event) => {
@@ -105,6 +106,12 @@ export const PATCH: RequestHandler = async (event) => {
   return json({ thought: result.thought })
 }
 
+/**
+ * Deletes the thought for good (Memory's "Delete"): text, embedding, search
+ * index, dates, graph and derived summaries — see deleteThoughtForUser.
+ * Archiving is PATCH { status: 'archived' }. Session only: API keys never
+ * reach this route (API_KEY_ROUTES), and agents' delete_thought archives.
+ */
 export const DELETE: RequestHandler = async (event) => {
   const user = event.locals.user
   if (!user) error(401, 'Unauthorized')
@@ -113,9 +120,17 @@ export const DELETE: RequestHandler = async (event) => {
   if (!thoughtId) error(400, 'thoughtId is required')
 
   const result = await runWithTrace(crypto.randomUUID(), () =>
-    archiveThoughtForUser(user.id, thoughtId),
+    deleteThoughtForUser(user.id, thoughtId),
   )
-  if (!result.ok) error(404, 'Thought not found')
+  if (!result.ok) {
+    if (result.reason === 'system_project_task') {
+      error(
+        409,
+        `This is a task of the company's “${result.projectLabel}” project: change it there, not in your Memory.`,
+      )
+    }
+    error(404, 'Thought not found')
+  }
 
-  return json({ ok: true as const, archived: true })
+  return json({ ok: true as const, deleted: true as const })
 }

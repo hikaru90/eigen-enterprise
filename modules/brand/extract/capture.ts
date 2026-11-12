@@ -1,11 +1,49 @@
+import { constants } from 'node:fs'
+import { access } from 'node:fs/promises'
 import { chromium } from 'playwright'
+import { registry } from 'playwright-core/lib/server/registry/index'
+import { BrowserUnavailableError } from './capture-errors'
 import { normalizeColor, type ElementFacts, type SiteFacts } from './facts-digest'
 import { assertPublicUrl } from './ssrf-guard'
 
 /**
  * Headless site capture (phase-2d M2): computed-style facts + a height-capped
  * full-page screenshot. Navigation errors fail loud — no partial captures.
+ * A server without the headless browser fails with BrowserUnavailableError
+ * before anything else happens.
  */
+
+/** Playwright's registry name for the browser a headless chromium launch runs. */
+const HEADLESS_BROWSER = 'chromium-headless-shell'
+
+/** Where the headless browser lives and whether it can run (injectable for tests). */
+export type BrowserProbe = {
+  /** Playwright's install path for this platform; null when it has no build for it. */
+  executablePath(): string | null
+  isExecutable(path: string): Promise<boolean>
+}
+
+export const defaultBrowserProbe: BrowserProbe = {
+  executablePath: () => registry.findExecutable(HEADLESS_BROWSER)?.executablePath() ?? null,
+  isExecutable: (path) =>
+    access(path, constants.X_OK).then(
+      () => true,
+      () => false,
+    ),
+}
+
+/** The browser executable the capture launches, or BrowserUnavailableError when it isn't installed. */
+export async function requireBrowserExecutable(
+  probe: BrowserProbe = defaultBrowserProbe,
+): Promise<string> {
+  const executablePath = probe.executablePath()
+  if (executablePath === null || !(await probe.isExecutable(executablePath))) {
+    throw new BrowserUnavailableError(executablePath)
+  }
+  return executablePath
+}
+
+export type CaptureDeps = { browser?: BrowserProbe }
 
 const MAX_SAMPLES_PER_SELECTOR = 40
 const VIEWPORT_WIDTH = 1280
@@ -50,9 +88,11 @@ export type CaptureResult = {
   title: string
 }
 
-export async function captureSite(rawUrl: string): Promise<CaptureResult> {
+export async function captureSite(rawUrl: string, deps: CaptureDeps = {}): Promise<CaptureResult> {
+  // The launch runs exactly the executable checked here, so check and launch can't disagree.
+  const executablePath = await requireBrowserExecutable(deps.browser)
   const url = await assertPublicUrl(rawUrl)
-  const browser = await chromium.launch({ headless: true })
+  const browser = await chromium.launch({ headless: true, executablePath })
   try {
     const page = await browser.newPage({
       viewport: { width: VIEWPORT_WIDTH, height: 800 },
@@ -81,10 +121,13 @@ export async function captureSite(rawUrl: string): Promise<CaptureResult> {
       const collected: ElementFacts[] = []
       for (const handle of sampled) {
         try {
-          const styles = await handle.evaluate((el, props) => {
-            const computed = getComputedStyle(el)
-            return Object.fromEntries(props.map((prop) => [prop, computed[prop]]))
-          }, [...STYLE_PROPERTIES])
+          const styles = await handle.evaluate(
+            (el, props) => {
+              const computed = getComputedStyle(el)
+              return Object.fromEntries(props.map((prop) => [prop, computed[prop]]))
+            },
+            [...STYLE_PROPERTIES],
+          )
           for (const key of ['color', 'backgroundColor'] as const) {
             const normalized = normalizeColor(styles[key])
             colorCounts.set(normalized, (colorCounts.get(normalized) ?? 0) + 1)
@@ -104,9 +147,7 @@ export async function captureSite(rawUrl: string): Promise<CaptureResult> {
       .map(([color, count]) => ({ color, count }))
       .sort((a, b) => b.count - a.count || a.color.localeCompare(b.color))
 
-    const scrollHeight = await page.evaluate(
-      () => document.documentElement.scrollHeight,
-    )
+    const scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight)
     await page.setViewportSize({
       width: VIEWPORT_WIDTH,
       height: Math.min(Math.max(scrollHeight, 1), MAX_SCREENSHOT_HEIGHT),

@@ -14,13 +14,16 @@ export const EMAIL_SETUP_TABS: readonly AreaTab[] = [
 ]
 
 /**
- * The Email area's sections (plan/phase-polish-1.md P-6): mail first, contacts,
- * and everything about how mail is set up behind one Setup tab. Kept beside the
- * routes: the shell's area-nav lists only the shell-owned areas.
+ * The Email area's sections (plan/phase-polish-1.md P-6): mail first, the
+ * audience lists, and everything about how mail is set up behind one Setup
+ * tab. Kept beside the routes: the shell's area-nav lists only the shell-owned
+ * areas. The lists tab was called "Contacts" until the Contacts module (the
+ * people you know, /m/contacts) arrived — renamed so the two aren't confused;
+ * its id and route stay.
  */
 export const EMAIL_TABS: readonly AreaTab[] = [
   { id: 'mail', label: 'Mail', href: '/m/email' },
-  { id: 'contacts', label: 'Contacts', href: '/m/email/contacts' },
+  { id: 'contacts', label: 'Lists', href: '/m/email/contacts' },
   {
     id: 'setup',
     label: 'Setup',

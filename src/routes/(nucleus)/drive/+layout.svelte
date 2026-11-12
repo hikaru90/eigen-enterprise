@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { LayoutData } from './$types'
   import type { Snippet } from 'svelte'
+  import ArchiveIcon from '@lucide/svelte/icons/archive'
   import HardDriveIcon from '@lucide/svelte/icons/hard-drive'
   import MessageSquareIcon from '@lucide/svelte/icons/message-square'
   import TrashIcon from '@lucide/svelte/icons/trash-2'
@@ -13,7 +14,7 @@
   /**
    * The Drive area as an app (P-3): full width and height, no centred frame.
    * A left rail — the one `h1`, status, My drive · Shared with me · Messages
-   * · Trash, the storage note — and the browser or file view beside it.
+   * · Archived · Trash, the storage note — and the browser or file view beside it.
    * On narrow screens the rail becomes a bar above the content.
    */
   let { data, children }: { data: LayoutData; children: Snippet } = $props()
@@ -21,7 +22,7 @@
   const sections: Array<{
     id: DriveSection
     label: string
-    href: '/drive' | '/drive/shared' | '/drive/messages' | '/drive/trash'
+    href: '/drive' | '/drive/shared' | '/drive/messages' | '/drive/archived' | '/drive/trash'
     icon: typeof HardDriveIcon
   }> = [
     { id: 'mine', label: 'My drive', href: '/drive', icon: HardDriveIcon },
@@ -32,6 +33,7 @@
       href: '/drive/messages',
       icon: MessageSquareIcon,
     },
+    { id: 'archived', label: 'Archived', href: '/drive/archived', icon: ArchiveIcon },
     { id: 'trash', label: 'Trash', href: '/drive/trash', icon: TrashIcon },
   ]
   const rootHref = $derived((page.data as { root?: { href: string } }).root?.href ?? null)

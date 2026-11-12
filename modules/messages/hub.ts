@@ -1,3 +1,4 @@
+import type { PresenceFrame, PresenceStream } from './presence'
 import type { MessageEvent } from './store'
 import {
   canUse,
@@ -123,26 +124,36 @@ export function encodeFrame(f: StreamFrame): string {
   return `id: ${f.id}\nevent: ${f.event}\ndata: ${JSON.stringify(f.data)}\n\n`
 }
 
+/** Presence is not in the event log: no `id:` line, so the browser's Last-Event-ID stays the last message event's. */
+export function encodePresenceFrame(f: PresenceFrame): string {
+  return `event: presence\ndata: ${JSON.stringify(f)}\n\n`
+}
+
 /**
  * One person's SSE response. Subscribes first and buffers, then sends the
  * catch-up after `lastEventId`, then the buffered and live frames — each
- * event id at most once.
+ * event id at most once. `presence` (null: the person is not in the company)
+ * adds the company's presence: a full snapshot on every (re)connect, then
+ * changes as they happen.
  */
 export function messagesStreamResponse(
   hub: MessagesHub,
   userId: string,
   lastEventId: number | null,
   signal: AbortSignal,
+  presence: PresenceStream | null,
 ): Response {
   const encoder = new TextEncoder()
   let closed = false
   let unsubscribe = () => {}
+  let stopPresence = () => {}
   let heartbeat: ReturnType<typeof setInterval> | undefined
   const sent = new Set<number>()
   const close = () => {
     if (closed) return
     closed = true
     unsubscribe()
+    stopPresence()
     if (heartbeat) clearInterval(heartbeat)
   }
 
@@ -161,6 +172,16 @@ export function messagesStreamResponse(
       if (signal.aborted) return close()
       signal.addEventListener('abort', close, { once: true })
       write(': connected\n\n')
+      if (presence) {
+        try {
+          const stop = await presence.start((f) => write(encodePresenceFrame(f)))
+          if (closed) stop()
+          else stopPresence = stop
+        } catch (err) {
+          console.error('[messages] stream presence failed', { userId, err })
+          write(`event: presence-error\ndata: ${JSON.stringify({ error: 'Status is unavailable right now; reload to try again.' })}\n\n`)
+        }
+      }
       try {
         if (lastEventId !== null) for (const f of await hub.catchUp(userId, lastEventId)) emit(f)
       } catch (err) {

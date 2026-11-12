@@ -3,7 +3,7 @@ import { redirect } from '@sveltejs/kit'
 import { emailPlatform } from '../../../../../../modules/email/platform/service'
 import { act, field, requireAdmin, requireMember } from '../access.server'
 
-/** Email › Contacts: lists of people who get your mail, with their subscription state. */
+/** Email › Lists (route /m/email/contacts): lists of people who get your mail, with their subscription state. */
 export const load: PageServerLoad = async ({ locals }) => {
   await requireMember(locals)
   const lists = await emailPlatform().audience.listLists()
