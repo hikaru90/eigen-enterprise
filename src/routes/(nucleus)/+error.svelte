@@ -4,4 +4,4 @@
 </script>
 
 <!-- Inside the shell group: the (nucleus) layout wraps this in the shell for signed-in users. -->
-<ErrorPanel status={page.status} message={page.error?.message} signedIn={!!page.data.user} />
+<ErrorPanel status={page.status} message={page.error?.message} signedIn={!!page.data.user} pluginOff={page.error?.pluginOff ?? null} />

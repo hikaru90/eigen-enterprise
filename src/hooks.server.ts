@@ -27,6 +27,8 @@ import { logOpsStartupDiagnostics } from '$lib/server/ops/startup-diagnostics'
 import { configuredMailTransport } from '../modules/email/owlery/service'
 import { installPromptShutdown } from '$lib/server/shutdown'
 import { csrfRefusal, isForbiddenCrossSiteForm } from '$lib/server/csrf'
+import { pluginHandle } from '$lib/server/plugins/handle'
+import { livePluginGateDeps } from '$lib/server/plugins/live'
 import { releaseDurableHarnessLockForExit } from '$lib/server/agent/durable-harness'
 
 if (!building) {
@@ -224,6 +226,15 @@ export const init: ServerInit = () => {
   void reportSpeechModelsAtStartup()
 }
 
+/**
+ * The plugin gate (owner, 2026-11-12: every sidebar entry is a plugin): a
+ * switched-off plugin's APIs answer 409 plugin_inactive, its provider
+ * webhooks get their decided policy, its pages the switched-off page — see
+ * $lib/server/plugins/gate. Runs after sign-in is known (handleBetterAuth),
+ * inside the request's DB session; the activation set is cached in-process.
+ */
+const handlePlugins: Handle = building ? ({ event, resolve }) => resolve(event) : pluginHandle(livePluginGateDeps)
+
 export const handle: Handle = sequence(
   handleCsrf,
   handlePostHogProxy,
@@ -231,6 +242,7 @@ export const handle: Handle = sequence(
   handleWellKnown,
   handleBetterAuth,
   handleCrossOriginOpenerPolicy,
+  handlePlugins,
 )
 
 /**

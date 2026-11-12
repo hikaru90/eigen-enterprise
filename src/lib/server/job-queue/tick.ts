@@ -1,4 +1,5 @@
 import { raceWithTimeout } from '$lib/server/async/race-with-timeout'
+import { pluginOn } from '$lib/server/plugins/background'
 import { drainUserJobQueue } from './drain'
 import { tickEmailPlatform } from './email-tick'
 import { ensureOvernightJobsEnqueued } from './ensure-overnight'
@@ -25,9 +26,11 @@ async function runTickBody(): Promise<TickGlobalJobQueueResult> {
   if (recoveredStale > 0) {
     console.info('[job-queue] recovered stale running jobs', { recoveredStale })
   }
-  const enqueued = await ensureOvernightJobsEnqueued()
+  // Plugin work runs only while its plugin is switched on (owner, 2026-11-12).
+  // The drain stays: it runs what is already queued (agent webhooks, onboarding).
+  const enqueued = (await pluginOn('memory', 'overnight consolidation')) ? await ensureOvernightJobsEnqueued() : 0
   const drain = await drainUserJobQueue()
-  await tickEmailPlatform()
+  if (await pluginOn('email', 'email background work (DNS checks, scheduled sends, flows)')) await tickEmailPlatform()
   const hasActivity = enqueued > 0 || drain.claimed > 0 || recoveredStale > 0
   const shouldHeartbeat = tickCount % HEARTBEAT_EVERY_TICKS === 0
   const shouldInspectBacklog = hasActivity || shouldHeartbeat || drain.claimed === 0

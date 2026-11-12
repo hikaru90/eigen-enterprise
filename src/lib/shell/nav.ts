@@ -1,5 +1,6 @@
 import type { Pathname } from '$app/types'
 import { canOpen, type Capabilities } from '$lib/access/capabilities'
+import { moduleHref, PLUGIN_ROUTES } from '$lib/plugins/routes'
 /**
  * The app shell's navigation (phase-cohesion rule 1, phase-workspace W-7,
  * polish P-1/P-2): one fixed order — Messages, Calls, Website, Email, Brand,
@@ -32,25 +33,14 @@ export type ShellNav = {
 /** `internal` modules are the agent's own machinery: never in the owner's nav. */
 type ManifestLike = { id: string; name: string; internal?: boolean }
 
-export function moduleHref(id: string): Pathname {
-  return `/m/${encodeURIComponent(id)}` as const
-}
+export { moduleHref }
 
-/** Module entries with their place in the fixed order and their page. */
-const MODULE_ENTRIES: Record<string, { href: Pathname; match?: string[] }> = {
-  website: { href: '/m/website' },
-  email: { href: '/m/email' },
-  // Brand = /brand (the second entry /m/brand is gone).
-  brand: { href: '/brand' },
-  // Tasks, projects, notes and capture are sub-pages of /m/memory.
-  memory: { href: '/m/memory' },
-  // The team's chat (phase-workspace C1).
-  messages: { href: '/messages' },
-  // Video calls (plan/video-calls.md §3): recent calls, live calls, new meeting.
-  calls: { href: '/calls' },
-  // Drive (D1): the company's files at /drive, right after Memory.
-  drive: { href: '/drive' },
-}
+/**
+ * The fixed order of the known entries. Each entry's page is its plugin's
+ * page in the plugin route map ($lib/plugins/routes) — the same map the
+ * plugin gate reads, so a dimmed entry leads to its switched-off page.
+ */
+const FIXED_ORDER = ['messages', 'calls', 'website', 'email', 'brand', 'memory', 'drive'] as const
 
 export function buildShellNav(
   manifests: readonly ManifestLike[],
@@ -58,27 +48,18 @@ export function buildShellNav(
   capabilities: Capabilities,
 ): ShellNav {
   const visible = manifests.filter((m) => m.internal !== true)
-  const moduleItem = (m: ManifestLike): ShellNavItem => {
-    const entry = MODULE_ENTRIES[m.id]
-    return {
-      id: m.id,
-      name: m.name,
-      href: entry?.href ?? moduleHref(m.id),
-      active: activations.get(m.id) === true,
-      ...(entry?.match ? { match: entry.match } : {}),
-    }
-  }
+  const moduleItem = (m: ManifestLike): ShellNavItem => ({
+    id: m.id,
+    name: m.name,
+    href: PLUGIN_ROUTES[m.id]?.page ?? moduleHref(m.id),
+    active: activations.get(m.id) === true,
+  })
   const known = (id: string): ShellNavItem[] => visible.filter((m) => m.id === id).map(moduleItem)
-  const others = visible.filter((m) => !(m.id in MODULE_ENTRIES)).map(moduleItem)
+  const fixed: readonly string[] = FIXED_ORDER
+  const others = visible.filter((m) => !fixed.includes(m.id)).map(moduleItem)
 
   const items: ShellNavItem[] = [
-    ...known('messages'),
-    ...known('calls'),
-    ...known('website'),
-    ...known('email'),
-    ...known('brand'),
-    ...known('memory'),
-    ...known('drive'),
+    ...FIXED_ORDER.flatMap(known),
     ...others,
     { id: 'settings', name: 'Settings', href: '/settings', active: true },
   ]

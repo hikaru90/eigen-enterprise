@@ -96,7 +96,7 @@ export const ORCHESTRATOR_LLM_USER_ID = 'orchestrator'
  */
 /**
  * The orchestrator fixes what it can before anything reaches the user: a
- * journey artifact whose module is not yet active (a fresh server) gets that
+ * journey artifact whose module was never switched on (a fresh server) gets that
  * module activated through the audited, permissioned kernel.module_activate
  * tool (keyed on the structured KernelError code + details.module, never the
  * message), then the call is retried ONCE. Any other error — or a second
@@ -112,7 +112,14 @@ async function executeRemediatingInactiveModule(
     return await registry.execute(tool, input, ctx)
   } catch (err) {
     const moduleId = err instanceof KernelError ? err.details?.module : undefined
-    if (!(err instanceof KernelError) || err.code !== 'module_inactive' || typeof moduleId !== 'string') {
+    // Only a module that was never switched on: one a person switched off stays
+    // off (owner, 2026-11-12) — the error reaches the model, which tells them.
+    if (
+      !(err instanceof KernelError) ||
+      err.code !== 'module_inactive' ||
+      typeof moduleId !== 'string' ||
+      err.details?.switchedOff !== false
+    ) {
       throw err
     }
     await registry.execute('kernel.module_activate', { module_id: moduleId }, ctx)
@@ -292,7 +299,8 @@ export const ORCHESTRATOR_ONBOARDING_PROMPT = [
  * fixes what it can; the user hears only what it cannot fix.
  */
 export const ORCHESTRATOR_TOOL_ERROR_PROMPT = [
-  'TOOL ERRORS: when a tool returns {"status":"error"}, try to fix it yourself first — if it carries a remediation, call that tool (e.g. kernel.module_activate for an inactive module), correct your arguments if they were invalid, then retry. Use kernel.module_list to see which modules exist and which are active (tools of inactive modules are not offered until activated).',
+  'TOOL ERRORS: when a tool returns {"status":"error"}, try to fix it yourself first — if it carries a remediation, call that tool (e.g. kernel.module_activate for a module that was never switched on), correct your arguments if they were invalid, then retry. Use kernel.module_list to see which modules exist and which are active (tools of inactive modules are not offered until activated).',
+  'SWITCHED-OFF PLUGINS: never switch back on a plugin a person switched off — a module_inactive error with "switchedOff":true (or a module_list entry a person switched off). Tell the person plainly that it is switched off and that the owner or an admin can switch it on in Settings → Plugins; do not call kernel.module_activate for it.',
   'Only tell the user when you cannot fix it, in plain language — never internal error codes, tool names, or raw messages.',
 ].join('\n')
 

@@ -1,4 +1,3 @@
-import type { ActivationStore } from './modules'
 import type { AuditClass, ToolContext, ToolDescriptor } from './types'
 import type { VcsCommitter } from './vcs'
 import type { ZodType } from 'zod'
@@ -12,6 +11,7 @@ import {
 import { moduleSource } from './cloudevents'
 import { KernelError } from './errors'
 import { emitKernelEvent, InMemoryEventSink, type EventSink } from './events'
+import { moduleInactiveError, type ActivationStore } from './modules'
 
 export type KernelRegistryOptions = {
   eventSink?: EventSink
@@ -111,13 +111,7 @@ export class KernelRegistry {
     // (a) module activation gate: fail closed when a store is wired.
     if (this.activationStore) {
       const active = await this.activationStore.get(descriptor.module)
-      if (!active) {
-        throw new KernelError(
-          'module_inactive',
-          `module ${descriptor.module} is not active; cannot execute ${name}`,
-          { module: descriptor.module, tool: name },
-        )
-      }
+      if (!active) throw await moduleInactiveError(this.activationStore, descriptor.module, name)
     }
 
     // (b) permission: principal roles must intersect descriptor roles.

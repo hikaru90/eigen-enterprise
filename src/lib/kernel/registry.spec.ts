@@ -356,6 +356,25 @@ describe('KernelRegistry.execute module activation gating', () => {
     ).resolves.toEqual({ echoed: { value: 'x' } })
   })
 
+  it('says whether the module was switched off on purpose (record false) or never switched on (no record)', async () => {
+    const activations = new InMemoryActivationStore()
+    const registry = new KernelRegistry({ activationStore: activations })
+    registry.register(makeTool())
+
+    await expect(registry.execute('memory.echo', { value: 'x' }, makeCtx())).rejects.toMatchObject({
+      code: 'module_inactive',
+      details: { module: 'memory', tool: 'memory.echo', switchedOff: false },
+    })
+
+    await activations.set('memory', false)
+    await expect(registry.execute('memory.echo', { value: 'x' }, makeCtx())).rejects.toMatchObject({
+      code: 'module_inactive',
+      message:
+        'module memory is switched off; cannot execute memory.echo. Only the owner or an admin can switch it back on, in Settings → Plugins.',
+      details: { module: 'memory', tool: 'memory.echo', switchedOff: true },
+    })
+  })
+
   it('runs the activation gate before the permission check', async () => {
     const activations = new InMemoryActivationStore()
     const registry = new KernelRegistry({ activationStore: activations })

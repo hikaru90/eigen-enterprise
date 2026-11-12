@@ -1,6 +1,7 @@
 import { raceWithTimeout } from '$lib/server/async/race-with-timeout'
 import { dispatchDueDailySummaries } from '$lib/server/memory/daily-summary-dispatch'
 import { dispatchDueEventReminders } from '$lib/server/memory/event-reminder-dispatch'
+import { pluginOn } from '$lib/server/plugins/background'
 
 export type NotificationDispatchTickResult = {
   eventReminders: Awaited<ReturnType<typeof dispatchDueEventReminders>>
@@ -12,7 +13,14 @@ export const NOTIFICATION_DISPATCH_TICK_TIMEOUT_MS = 5 * 60 * 1000
 
 let ticking = false
 
+/** A run that dispatched nothing (Memory switched off). */
+const NONE = { processed: 0, sent: 0, skipped: 0, failed: 0 }
+
 async function runTickBody(): Promise<NotificationDispatchTickResult> {
+  // Reminders and daily summaries are Memory's (its tasks and events): off while Memory is off.
+  if (!(await pluginOn('memory', 'event reminders and daily summaries'))) {
+    return { eventReminders: { ...NONE }, dailySummaries: { ...NONE } }
+  }
   const startedAt = Date.now()
   const [eventReminders, dailySummaries] = await Promise.all([
     dispatchDueEventReminders(),

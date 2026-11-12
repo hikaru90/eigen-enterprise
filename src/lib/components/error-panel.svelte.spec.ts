@@ -27,6 +27,22 @@ describe('error-panel.svelte', () => {
     await expect.element(page.getByRole('heading', { level: 1 })).toHaveTextContent('Page not found')
   })
 
+  it('a switched-off plugin, for the owner/admin: says so and links to Settings → Plugins (no "not found", no code)', async () => {
+    render(ErrorPanel, { status: 404, message: 'Drive is switched off', signedIn: true, pluginOff: { id: 'drive', name: 'Drive', canManage: true } })
+    await expect.element(page.getByRole('heading', { level: 1 })).toHaveTextContent('Drive is switched off')
+    await expect.element(page.getByTestId('plugin-off-switch')).toHaveAttribute('href', '/settings/modules')
+    await expect.element(page.getByText('Page not found')).not.toBeInTheDocument()
+    await expect.element(page.getByText('Error 404')).not.toBeInTheDocument()
+    await expect.element(page.getByTestId('error-back')).toHaveAttribute('href', '/')
+  })
+
+  it('a switched-off plugin, for a member: says so and to ask an admin (no switch link)', async () => {
+    render(ErrorPanel, { status: 404, message: 'Drive is switched off', signedIn: true, pluginOff: { id: 'drive', name: 'Drive', canManage: false } })
+    await expect.element(page.getByRole('heading', { level: 1 })).toHaveTextContent('Drive is switched off')
+    await expect.element(page.getByText('Ask an admin to switch it on.')).toBeInTheDocument()
+    await expect.element(page.getByTestId('plugin-off-switch')).not.toBeInTheDocument()
+  })
+
   it('other errors keep the status and the message', async () => {
     render(ErrorPanel, { status: 500, message: 'The database is down.', signedIn: true })
     await expect.element(page.getByRole('heading', { level: 1 })).toHaveTextContent('Something went wrong')

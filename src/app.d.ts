@@ -18,9 +18,15 @@ declare global {
       session?: Session
       /** Set when the request authenticated via Bearer API key (e.g. MCP). */
       apiKeyAuth?: { id: string; name: string }
+      /** Set by the plugin gate ($lib/server/plugins): this page's plugin is switched off. */
+      pluginOff?: import('$lib/plugins/routes').PluginOff
     }
 
-    // interface Error {}
+    interface Error {
+      message: string
+      /** The switched-off page (the plugin gate): which plugin, and whether this person may switch it on. */
+      pluginOff?: import('$lib/plugins/routes').PluginOff
+    }
     // interface PageData {}
     // interface PageState {}
     // interface Platform {}

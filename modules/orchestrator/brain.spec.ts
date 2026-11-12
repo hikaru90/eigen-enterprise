@@ -39,6 +39,12 @@ describe('orchestrator persona prompt', () => {
     expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/never internal error codes/)
   })
 
+  it('never re-enables a plugin a person switched off: only never-activated ones (owner, 2026-11-12)', () => {
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/never switch back on a plugin a person switched off/i)
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('"switchedOff":true')
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('Settings → Plugins')
+  })
+
   it('the orchestrator principal can see and run the module admin tools (admin role)', async () => {
     const activations = new InMemoryActivationStore()
     const modules = new ModuleRegistry(activations)

@@ -1,13 +1,12 @@
+import type { WiredKernel } from '../../../../modules/index'
 import type { McpToolContext } from './tools'
 import { randomUUID } from 'node:crypto'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
-import { KernelError } from '$lib/kernel/errors'
-import type { ActivationStore } from '$lib/kernel/modules'
+import { moduleInactiveError, type ActivationStore } from '$lib/kernel/modules'
 import { toolInputJsonSchema, toolOutputJsonSchema } from '$lib/kernel/openapi'
 import type { KernelRegistry } from '$lib/kernel/registry'
 import { sanitizeMcpToolResult } from '$lib/server/observability/strip-embeddings'
-import type { WiredKernel } from '../../../../modules/index'
 
 export type McpToolListing = {
   name: string
@@ -84,10 +83,7 @@ export function createMcpServer(
       throw new Error(`Unknown tool: ${name}`)
     }
     if (!(await kernel.activations.get(descriptor.module))) {
-      throw new KernelError(
-        'module_inactive',
-        `tool ${name} belongs to inactive module ${descriptor.module}`,
-      )
+      throw await moduleInactiveError(kernel.activations, descriptor.module, name)
     }
 
     const result = sanitizeMcpToolResult(

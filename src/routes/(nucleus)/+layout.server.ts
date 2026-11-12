@@ -1,4 +1,6 @@
 import type { LayoutServerLoad } from './$types'
+import { error } from '@sveltejs/kit'
+import { pluginOffMessage } from '$lib/plugins/routes'
 import { userCapabilities } from '$lib/server/auth/require-capability'
 import { appKernel } from '$lib/server/boot'
 import { speechToTextReadiness } from '$lib/server/llm/speech-readiness'
@@ -17,6 +19,9 @@ import { buildShellNav, type ShellData } from '$lib/shell/nav'
  */
 export const load: LayoutServerLoad = async ({ locals }): Promise<{ shell: ShellData | null }> => {
   if (!locals.user) return { shell: null }
+  // A page of a switched-off plugin (the plugin gate, src/hooks.server.ts): one
+  // clear page instead of the plugin's own, which would fail or work regardless.
+  if (locals.pluginOff) error(404, { message: pluginOffMessage(locals.pluginOff.name), pluginOff: locals.pluginOff })
   const kernel = await appKernel()
   const [identity, capabilities] = await Promise.all([companyIdentity(), userCapabilities(locals.user.id)])
   return {
