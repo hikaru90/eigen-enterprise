@@ -2,6 +2,17 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-12 — Email inbox S5 merged: compose, reply, reply all, forward + Sent (main `74ab9da`, not pushed, not on the box)
+
+Owner: "Start S5". Built in worktree `email-inbox-s5` (`16c0ce9`), merged on top of round 4.
+- **Shipped:** "New mail" (From picker when you can send from several mailboxes), Reply / Reply all / Forward in the reader (Re:/Fwd:, quoted text, In-Reply-To + References, reply-all minus your own addresses and aliases), Cc/Bcc, uploads (25 MB total, 20 files, 50 recipients, 40 MB finished mail), forward re-attaches the original's attachments (virus-blocked never). Raw MIME via nodemailer's MailComposer (now a direct dependency) through a new `owlery.sendRaw` (SESv2 `Content.Raw`); every other `send()` caller unchanged. The sender's copy goes to Sent in the right thread and updates live. You can only send from a mailbox you can read; never from a disabled one. Migration `0132` (`inbox_messages.bcc`; fake transport keeps raw + recipients).
+- **Privacy (owner decision: only the member reads):** webmail sends write **no** `mail_messages` row, no timeline or audit event — they don't appear under Company mail or Logs (e2e-checked with an admin). Each carries one SES tag `ee_webmail=1` (no ids, no content); delivery events with that tag only feed suppressions (permanent bounces + complaints, source `webmail`), everything else is dropped. Suppressed addresses stay visible to admins under Suppression, as before.
+- **Plain errors:** SES sandbox (detected via GetAccount, not Amazon's wording), suppressed recipient, domain not verified, too large, bad address, disabled mailbox.
+- **Decisions:** References also end with our own Message-ID, because SES reportedly replaces it (unproven until S7); attachments of sent mail are not kept (metadata only, download answers 410; keeping them would need a new `s3:PutObject` permission); drafts and HTML compose out of scope (S5 notes).
+- **Gates on main:** svelte-check 0 errors; unit 806 files / 6510 passed, 1 failed (the known flaky Messages concurrent-appends test); S5's own: component 15/15, e2e `email-inbox-compose.e2e.ts` passed (run 3 of 3 allowed: run 1 wrong test id, run 2 a Vite reload from eslint --fix mid-run). Round 4's plugin gate already covers `/m/email/*` and `/api/mail/*`.
+- **Not verified:** nothing against real SES; replies go to From (the original's Reply-To isn't stored); without JavaScript a failed send loses the typed fields; the e2e leaves fake SES settings in the test DB.
+- **Next:** S6 (Inbox-first landing, Company mail tab), then S7 (real proof on the box: verified domain + SES production access needed on production).
+
 ## 2026-11-12 — Contribute board round 4: all items built and merged into main (not pushed, not released)
 
 Owner: "all items bro. you can ask if we need more context for the big items". Seven worktree workstreams, reviewed and merged into main by the orchestrator. Plan: `plan/contribute-round-4.md`. Board statuses on production NOT changed.
