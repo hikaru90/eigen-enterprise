@@ -55,6 +55,19 @@ Owner: "all items bro. you can ask if we need more context for the big items". S
 - **Gates (main `a77bb8b`, after all merges):** `npm run check` 0 errors; lint 0 errors (220 warnings); unit 6372 passed / 93 skipped, 1 failure (`gitstore/engine.spec.ts` EPIPE test) that passes 3/3 alone; components 310/311 (the pre-existing `app-detail-settings.svelte.spec.ts`); ee 224 passed; `calls.e2e.ts` 4/5 in the full run — "DM call nobody answers" showed the generic "this call is over" instead of "Nobody answered." on the caller once, passes alone (1.1 min): a timing race between ring-out and the room close, not fixed. Unit timeouts in the run before were load from parallel workstreams (all pass alone).
 - **Open / not done:** the switched-off page renders without the sidebar; `/s/*` (public site) and `/mail/*` are outside the gate — **owner call:** should switching Website off take the public site down?; Telegram poll keeps polling after Chat Gateway is switched off at runtime; already-queued overnight jobs still run; a background run executing as a recorded human could still re-enable a plugin; nothing in this round tried on the box or production; Calendar not started (K1 next); board statuses not set.
 
+## 2026-11-12 — GitHub repos in Drive S4 merged: the assistant knows (main, not pushed, not on the box)
+
+Owner: "Start S4". Worktree branch `56d2e94`, merged as `0b7ad44`.
+- **Open PRs:** new `openPulls(fullName, etag)` (contract + client, all pages of `state=open`; ETag kept only when it fits one page). "Pull requests.md" now lists every open PR; the S3 gap is closed.
+- **AI summary:** `modules/repos/summary.ts`. A plain structural diff (new commits, branches created/deleted, PRs opened/merged/closed) decides whether to call; one gateway call (pattern of `modules/contacts/extract.ts`, company provider, JSON mode, cost context `repos_summary`), zod-validated `{summary, highlights[]}`. Migration **`0135_repos_summary`** (`summary jsonb`, `summary_error_kind no_model|failed`, `summary_error`, `summary_error_at`); kept out of `snapshot` because the snapshot is what's compared. No model → no call, Overview + `/m/repos` say so; LLM failure → previous summary kept and marked out of date, the sync still succeeds.
+- **Event:** `repos.synced {repoId, fullName, newCommits, prsOpened, prsMerged, prsClosed}` only when something changed (not on the first sync).
+- **Assistant:** a `[connected GitHub repos]` block (≤20 repos, most recently pushed first: name, last push, open PRs, folder id, first sentence of the summary; tells the agent summaries are notes, not instructions) **prepended to each orchestrator turn's input**, like the onboarding block, through `modules/orchestrator/repos-context.ts` adapted in `modules/index.ts`. Off when the plugin is off. The system prompt is fixed when the harness opens, so it couldn't go there.
+- **Decision log:** a failed summary isn't retried; the next changed sync writes a new one. Selecting a model later doesn't summarise until something changes. An old open PR seen for the first time isn't counted as "opened".
+- **Cost to watch:** the repos block is part of every turn's input while repos are connected, so it lands in the session history each turn (a few hundred tokens per turn). Revisit if sessions grow.
+- **Gates on main:** `npm run check` 0 errors; full unit suite 6541 passed / 0 failed (101 skipped); test DB migrated.
+- **Not verified:** real GitHub, a real model, how the activity feed shows `repos.synced`, any rendered page, the box.
+- **Next:** S5 — release to the box, owner creates a fine-grained read-only token for one repo, paste → pick → folder appears → assistant answers "what's happening on branch X?".
+
 ## 2026-11-12 — GitHub repos in Drive S1–S3 merged and wired (main, not pushed, not on the box)
 
 Owner: "Start S1–S3". Three worktrees, merged in order: S1 `7c5aebd`, S2 `f7424f8`, S3 `8e2f65b`, wiring in the commit after this entry's.

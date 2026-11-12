@@ -2,7 +2,7 @@
 
 Owner, 2026-11-12: "we need a way to integrate github repos into the drive … read only … the
 context of the branches and the work inside of the drive for eigen enterprise to know what is going
-on in the github repos … a personal access token as read only." Status: **approved; S0–S3 merged on main (not pushed, not on the box); S4 + S5 open.**
+on in the github repos … a personal access token as read only." Status: **approved; S0–S4 merged on main (not pushed, not on the box); S5 open.**
 
 **Owner decisions (2026-11-12):**
 - **Read-only, through a fine-grained personal access token** the owner creates on GitHub and pastes
