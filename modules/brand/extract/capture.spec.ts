@@ -15,9 +15,9 @@ function probe(executablePath: string | null, executable: boolean) {
 
 describe('requireBrowserExecutable', () => {
   it('returns the headless browser executable when it is installed', async () => {
-    await expect(requireBrowserExecutable(probe('/opt/pw/chrome-headless-shell', true))).resolves.toBe(
-      '/opt/pw/chrome-headless-shell',
-    )
+    await expect(
+      requireBrowserExecutable(probe('/opt/pw/chrome-headless-shell', true)),
+    ).resolves.toBe('/opt/pw/chrome-headless-shell')
   })
 
   it('throws BrowserUnavailableError (plain message, the expected path kept) when the browser is not installed', async () => {
@@ -32,7 +32,9 @@ describe('requireBrowserExecutable', () => {
 
   it('throws BrowserUnavailableError when Playwright has no browser build for this platform', async () => {
     const unsupported = probe(null, true)
-    await expect(requireBrowserExecutable(unsupported)).rejects.toBeInstanceOf(BrowserUnavailableError)
+    await expect(requireBrowserExecutable(unsupported)).rejects.toBeInstanceOf(
+      BrowserUnavailableError,
+    )
     expect(unsupported.isExecutable).not.toHaveBeenCalled()
   })
 })
@@ -45,7 +47,9 @@ describe('defaultBrowserProbe', () => {
   })
 
   it('checks the file on disk: a missing path is not executable, the node binary is', async () => {
-    await expect(defaultBrowserProbe.isExecutable('/nonexistent/ee/chrome-headless-shell')).resolves.toBe(false)
+    await expect(
+      defaultBrowserProbe.isExecutable('/nonexistent/ee/chrome-headless-shell'),
+    ).resolves.toBe(false)
     await expect(defaultBrowserProbe.isExecutable(process.execPath)).resolves.toBe(true)
   })
 })
@@ -54,7 +58,9 @@ describe('captureSite', () => {
   it('fails with BrowserUnavailableError before resolving the URL when no browser is installed', async () => {
     assertPublicUrlMock.mockReset()
     await expect(
-      captureSite('https://example.com', { browser: probe('/opt/pw/chrome-headless-shell', false) }),
+      captureSite('https://example.com', {
+        browser: probe('/opt/pw/chrome-headless-shell', false),
+      }),
     ).rejects.toBeInstanceOf(BrowserUnavailableError)
     expect(assertPublicUrlMock).not.toHaveBeenCalled()
   })

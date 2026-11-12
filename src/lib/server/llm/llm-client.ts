@@ -15,10 +15,7 @@ import {
   assertEurouterGatewayConfigured,
   routingRuleLookupErrorMessage,
 } from '$lib/server/llm/llm-config-guard'
-import {
-  copilotChatBaseUrl,
-  fetchCopilotAccessToken,
-} from '$lib/server/llm/oauth/github-copilot'
+import { copilotChatBaseUrl, fetchCopilotAccessToken } from '$lib/server/llm/oauth/github-copilot'
 import {
   loadPlatformLlmConfig,
   loadPlatformOpenRouterSttConfig,
@@ -63,11 +60,17 @@ export type ChatMessage = {
 function attachmentContentPart(attachment: ChatAttachment): Record<string, unknown> {
   switch (attachment.type) {
     case 'image':
-      return { type: 'image_url', image_url: { url: `data:${attachment.mime};base64,${attachment.base64}` } }
+      return {
+        type: 'image_url',
+        image_url: { url: `data:${attachment.mime};base64,${attachment.base64}` },
+      }
     case 'pdf':
       return {
         type: 'file',
-        file: { filename: attachment.filename, file_data: `data:application/pdf;base64,${attachment.base64}` },
+        file: {
+          filename: attachment.filename,
+          file_data: `data:application/pdf;base64,${attachment.base64}`,
+        },
       }
   }
 }
@@ -85,7 +88,9 @@ function toWireMessage(message: ChatMessage): Record<string, unknown> {
 function assertAttachmentsOnUserMessages(messages: ChatMessage[]): void {
   for (const message of messages) {
     if (message.attachments && message.attachments.length > 0 && message.role !== 'user') {
-      throw new Error(`attachments are only sent on a user message; got them on a ${message.role} message`)
+      throw new Error(
+        `attachments are only sent on a user message; got them on a ${message.role} message`,
+      )
     }
   }
 }
@@ -104,7 +109,11 @@ function messagesForObservability(messages: ChatMessage[]): unknown[] {
       attachments: message.attachments.map((attachment) =>
         attachment.type === 'image'
           ? { type: 'image', mime: attachment.mime, bytes: base64ByteLength(attachment.base64) }
-          : { type: 'pdf', filename: attachment.filename, bytes: base64ByteLength(attachment.base64) },
+          : {
+              type: 'pdf',
+              filename: attachment.filename,
+              bytes: base64ByteLength(attachment.base64),
+            },
       ),
     }
   })
@@ -479,7 +488,12 @@ async function loadLlmProviderConfig(
       // Rotating OAuth: re-exchange the long-lived token when expired and persist the
       // rotated access token. Non-expiring OAuth (OpenRouter key) passes through.
       if ((!access || Date.now() >= expiresAtMs) && refresh) {
-        let rotated: { access: string; refresh: string; expiresAtMs: number; meta?: Record<string, unknown> | null }
+        let rotated: {
+          access: string
+          refresh: string
+          expiresAtMs: number
+          meta?: Record<string, unknown> | null
+        }
         if (provider === 'github_copilot') {
           const session = await fetchCopilotAccessToken(refresh)
           rotated = {
@@ -512,14 +526,11 @@ async function loadLlmProviderConfig(
             oauthAccessEncrypted,
             oauthRefreshEncrypted,
             oauthExpiresAt: new Date(rotated.expiresAtMs),
-            oauthMeta: rotated.meta ?? (loaded.oauthMeta ?? null),
+            oauthMeta: rotated.meta ?? loaded.oauthMeta ?? null,
             updatedAt: new Date(),
           })
           .where(
-            and(
-              eq(llmProviderConfig.userId, userId),
-              eq(llmProviderConfig.provider, provider),
-            ),
+            and(eq(llmProviderConfig.userId, userId), eq(llmProviderConfig.provider, provider)),
           )
         const baseUrl =
           provider === 'github_copilot'
@@ -742,8 +753,7 @@ async function chatRoutingConfig(
   // Every non-EUrouter provider (OpenRouter, Copilot, models.dev catalog, …) is
   // OpenAI-compatible and routes by direct model name.
   if (config.provider !== 'eurouter') {
-    const model =
-      modelOverride?.trim() || config.modelChat?.trim() || env.LLM_MODEL_CHAT?.trim()
+    const model = modelOverride?.trim() || config.modelChat?.trim() || env.LLM_MODEL_CHAT?.trim()
     if (!model) {
       throw new LlmNotConfiguredError(
         `No chat model configured for this ${config.provider} credential — set one under Settings → LLM.`,

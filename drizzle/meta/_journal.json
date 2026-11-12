@@ -848,6 +848,13 @@
       "when": 1794100000000,
       "tag": "0123_message_call_lines",
       "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1794500000000,
+      "tag": "0127_brand_guide_upload",
+      "breakpoints": true
     }
   ]
 }

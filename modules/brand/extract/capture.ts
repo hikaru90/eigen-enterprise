@@ -33,7 +33,9 @@ export const defaultBrowserProbe: BrowserProbe = {
 }
 
 /** The browser executable the capture launches, or BrowserUnavailableError when it isn't installed. */
-export async function requireBrowserExecutable(probe: BrowserProbe = defaultBrowserProbe): Promise<string> {
+export async function requireBrowserExecutable(
+  probe: BrowserProbe = defaultBrowserProbe,
+): Promise<string> {
   const executablePath = probe.executablePath()
   if (executablePath === null || !(await probe.isExecutable(executablePath))) {
     throw new BrowserUnavailableError(executablePath)
@@ -119,10 +121,13 @@ export async function captureSite(rawUrl: string, deps: CaptureDeps = {}): Promi
       const collected: ElementFacts[] = []
       for (const handle of sampled) {
         try {
-          const styles = await handle.evaluate((el, props) => {
-            const computed = getComputedStyle(el)
-            return Object.fromEntries(props.map((prop) => [prop, computed[prop]]))
-          }, [...STYLE_PROPERTIES])
+          const styles = await handle.evaluate(
+            (el, props) => {
+              const computed = getComputedStyle(el)
+              return Object.fromEntries(props.map((prop) => [prop, computed[prop]]))
+            },
+            [...STYLE_PROPERTIES],
+          )
           for (const key of ['color', 'backgroundColor'] as const) {
             const normalized = normalizeColor(styles[key])
             colorCounts.set(normalized, (colorCounts.get(normalized) ?? 0) + 1)
@@ -142,9 +147,7 @@ export async function captureSite(rawUrl: string, deps: CaptureDeps = {}): Promi
       .map(([color, count]) => ({ color, count }))
       .sort((a, b) => b.count - a.count || a.color.localeCompare(b.color))
 
-    const scrollHeight = await page.evaluate(
-      () => document.documentElement.scrollHeight,
-    )
+    const scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight)
     await page.setViewportSize({
       width: VIEWPORT_WIDTH,
       height: Math.min(Math.max(scrollHeight, 1), MAX_SCREENSHOT_HEIGHT),

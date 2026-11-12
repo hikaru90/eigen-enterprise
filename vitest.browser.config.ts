@@ -76,6 +76,7 @@ export default defineConfig({
       'src/lib/components/smoke.svelte.spec.ts',
       'src/lib/components/settings/speech-status.svelte.spec.ts',
       'src/routes/(nucleus)/brand/material/flyer-preview.svelte.spec.ts',
+      'src/routes/(nucleus)/brand/extract/source-options.svelte.spec.ts',
       'src/lib/components/capture-onboarding-overlay.svelte.spec.ts',
       'src/lib/components/provider-onboarding.svelte.spec.ts',
       'src/lib/components/welcome-wizard.svelte.spec.ts',

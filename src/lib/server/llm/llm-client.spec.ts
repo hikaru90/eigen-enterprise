@@ -11,16 +11,16 @@ import {
 
 const { mockEnv, logActivityCallMock, getDbMock, decryptTenantValueMock, captureServerEventMock } =
   vi.hoisted(() => {
-  function makeDbMock() {
-    // Returns a chainable Drizzle-style builder that resolves to [] (no DB rows).
-    const chain: Record<string, unknown> = {}
-    chain.select = () => chain
-    chain.from = () => chain
-    chain.where = () => chain
-    chain.and = () => chain
-    chain.limit = () => Promise.resolve([])
-    return chain
-  }
+    function makeDbMock() {
+      // Returns a chainable Drizzle-style builder that resolves to [] (no DB rows).
+      const chain: Record<string, unknown> = {}
+      chain.select = () => chain
+      chain.from = () => chain
+      chain.where = () => chain
+      chain.and = () => chain
+      chain.limit = () => Promise.resolve([])
+      return chain
+    }
 
     return {
       mockEnv: {
@@ -744,7 +744,10 @@ describe('llmChatCompletion attachments (files the model reads)', () => {
       content: [
         { type: 'text', text: 'Here is the guide.' },
         { type: 'image_url', image_url: { url: `data:image/png;base64,${PNG_B64}` } },
-        { type: 'file', file: { filename: 'guide.pdf', file_data: `data:application/pdf;base64,${PDF_B64}` } },
+        {
+          type: 'file',
+          file: { filename: 'guide.pdf', file_data: `data:application/pdf;base64,${PDF_B64}` },
+        },
       ],
     })
     expect(body.messages[1]).not.toHaveProperty('attachments')
@@ -794,7 +797,11 @@ describe('llmChatCompletion attachments (files the model reads)', () => {
       llmChatCompletion({
         userId: 'u1',
         messages: [
-          { role: 'system', content: 'x', attachments: [{ type: 'image', mime: 'image/png', base64: PNG_B64 }] },
+          {
+            role: 'system',
+            content: 'x',
+            attachments: [{ type: 'image', mime: 'image/png', base64: PNG_B64 }],
+          },
         ],
       }),
     ).rejects.toThrow(/attachments.*user message.*system/)
@@ -1789,7 +1796,10 @@ describe('llm client tool-calling passthrough', () => {
         },
       ],
     }
-    vi.stubGlobal('fetch', vi.fn(async () => response(true, 200, toolCallsBody)))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => response(true, 200, toolCallsBody)),
+    )
 
     const raw = await llmChatCompletion({
       userId: 'u1',
