@@ -2,6 +2,7 @@
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import Video from '@lucide/svelte/icons/video'
   import X from '@lucide/svelte/icons/x'
+  import { getActiveCall } from './active-call.svelte'
   import { problemOf, type CallDto, type CallsClient } from './client'
 
   /**
@@ -9,6 +10,8 @@
    * "Call" starts a call that rings the conversation's members; when a call
    * is already live there it says "Join" and opens that call. Refusals (e.g.
    * "Calls are not set up on this server") are shown under the button.
+   * One call at a time: while I am in another call it says so and starts
+   * nothing (no one is rung).
    */
   let {
     kind,
@@ -26,11 +29,18 @@
     onopen: (callId: string) => void
   } = $props()
 
+  const active = getActiveCall()
+
   let busy = $state(false)
   let error = $state<string | null>(null)
 
   async function onclick() {
     error = null
+    const current = active.inCall ? active.call : null
+    if (current && current.id !== live?.id) {
+      error = `You're already in a call (${current.title}). Hang up first to ${live ? 'join' : 'start'} this one.`
+      return
+    }
     if (live) return onopen(live.id)
     busy = true
     try {

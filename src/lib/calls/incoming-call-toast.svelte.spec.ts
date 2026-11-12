@@ -21,12 +21,12 @@ const ringing = (over: Partial<CallDto> = {}): CallDto => ({
   ...over,
 })
 
-function setup() {
+function setup(inCall: string | null = null) {
   const live = new LiveCalls()
   const client = { accept: vi.fn(async (id: string) => ringing({ id, state: 'active' })), decline: vi.fn(async (id: string) => ringing({ id, state: 'declined' })) }
   const onjoin = vi.fn()
   const ringer = { start: vi.fn(), stop: vi.fn() }
-  render(IncomingCallToast, { live, client, onjoin, ringer })
+  render(IncomingCallToast, { live, client, onjoin, ringer, inCall })
   return { live, client, onjoin, ringer }
 }
 
@@ -80,6 +80,18 @@ describe('incoming-call-toast.svelte', () => {
     live.apply('call.ringing', ringing())
     await page.getByTestId('incoming-call-accept').click()
     await expect.element(page.getByTestId('incoming-call-error')).toHaveTextContent('this call is over')
+    expect(onjoin).not.toHaveBeenCalled()
+  })
+
+  it('already in another call: says so plainly, Accept is off, Decline still works', async () => {
+    const { live, client, onjoin } = setup('call-current')
+    live.apply('call.ringing', ringing({ id: 'call-2' }))
+    const toast = page.getByTestId('incoming-call')
+    await expect.element(toast.getByTestId('incoming-call-busy')).toHaveTextContent("You're already in a call. Hang up to answer this one.")
+    await expect.element(toast.getByTestId('incoming-call-accept')).toBeDisabled()
+    expect(client.accept).not.toHaveBeenCalled()
+    await toast.getByTestId('incoming-call-decline').click()
+    expect(client.decline).toHaveBeenCalledExactlyOnceWith('call-2')
     expect(onjoin).not.toHaveBeenCalled()
   })
 })

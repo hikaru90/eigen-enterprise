@@ -6,8 +6,10 @@ import { completeProfileViaApi, profileNames, registerUser } from './test-helper
  * Calls S4 proof (plan/video-calls.md "Test strategy"): real browsers against
  * the harness's real livekit-server (playwright.config.ts starts it; joins and
  * leaves reach the console only through LiveKit's signed webhook). Chromium's
- * fake camera/microphone stand in for devices. DM call, decline, missed, and a
- * three-person channel call. Screenshots go to CALLS_SHOTS (default
+ * fake camera/microphone stand in for devices. DM call, decline, missed, a
+ * three-person channel call, and (Contribute round 4) a call that survives
+ * moving around the app — docked mini call, back to call, device pickers.
+ * Screenshots go to CALLS_SHOTS (default
  * test-results/calls).
  */
 
@@ -341,6 +343,9 @@ test('three-person channel call: two accept, everyone sees two remote videos, al
   await ann.page.screenshot({ path: `${SHOTS}/channel-01-call-desktop.png` })
   await cat.page.setViewportSize(PHONE)
   await expectRemoteVideo(cat.page, [ann.name, ben.name])
+  // Three people: a grid sized to the window — on a 375px phone, one column.
+  await expect(ann.page.getByTestId('call-view')).toHaveAttribute('data-mode', 'grid')
+  await expect(cat.page.getByTestId('call-grid')).toHaveAttribute('data-columns', '1')
   await cat.page.screenshot({ path: `${SHOTS}/channel-02-call-phone.png`, fullPage: true })
 
   // One leaves: the call goes on for the other two.
@@ -368,4 +373,115 @@ test('three-person channel call: two accept, everyone sees two remote videos, al
   await ann.ctx.close()
   await ben.ctx.close()
   await cat.ctx.close()
+})
+
+/** The docked mini call (on every nucleus page but the call's own, while I am in it). */
+const mini = (page: Page, callId: string) =>
+  page.locator(`[data-testid="mini-call"][data-call-id="${callId}"]`)
+
+/** Exactly these people are in the room right now, as LiveKit's webhook told the console. */
+async function inRoom(callId: string, ids: string[]) {
+  const live = await stored(callId)
+  expect(live.state).toBe('active')
+  expect(
+    live.people
+      .filter((p) => p.joined_at !== null && p.left_at === null)
+      .map((p) => p.user_id)
+      .sort(),
+  ).toEqual([...ids].sort())
+}
+
+test('the call survives moving around the app: mini call elsewhere, back to call shows video; devices can be chosen', async ({
+  browser,
+}) => {
+  test.setTimeout(240_000)
+  const suffix = Date.now().toString(36)
+  const ann = await member(browser, 'admin', `Ava ${suffix}`)
+  const ben = await member(browser, 'member', `Bill ${suffix}`)
+  await openDm(ann, ben)
+  await ben.page.goto('/drive')
+
+  const callId = await startCall(ann.page)
+  const ring = toast(ben.page, callId)
+  await expect(ring).toBeVisible()
+  await ring.getByTestId('incoming-call-accept').click()
+  await ben.page.waitForURL(new RegExp(`/calls/${callId}$`))
+  await expectRemoteVideo(ann.page, [ben.name])
+  await expectRemoteVideo(ben.page, [ann.name])
+  // Two people: the other person fills the stage, I am the small self view.
+  await expect(ann.page.getByTestId('call-view')).toHaveAttribute('data-mode', 'pair')
+  await expect.poll(async () => (await stored(callId)).state).toBe('active')
+  await expect(mini(ann.page, callId)).toHaveCount(0)
+
+  // Ann looks something up in Email, Ben goes to Drive — in-app navigation, no reloads.
+  await ann.page.getByTestId('shell-nav-email').click()
+  await ann.page.waitForURL(/\/m\/email/)
+  await ben.page.getByTestId('shell-nav-drive').click()
+  await ben.page.waitForURL(/\/drive/)
+  for (const [who, other] of [
+    [ann, ben],
+    [ben, ann],
+  ] as const) {
+    const dock = mini(who.page, callId)
+    await expect(dock).toBeVisible()
+    await expect(dock).toHaveAttribute('data-phase', 'connected')
+    await expect(dock.getByTestId('mini-call-who')).toHaveText(other.name)
+    await expect(dock.getByTestId('mini-call-status')).toHaveText(/^\d+:\d\d$/)
+    await expect(who.page.getByTestId('call-view')).toHaveCount(0)
+  }
+  await ann.page.screenshot({ path: `${SHOTS}/nav-01-mini-call-desktop.png` })
+  await ben.page.setViewportSize(PHONE)
+  await ben.page.screenshot({ path: `${SHOTS}/nav-02-mini-call-phone.png` })
+  // Nobody left the room while away from the call page.
+  await inRoom(callId, [ann.id, ben.id])
+
+  // Mute from the dock.
+  await mini(ann.page, callId).getByTestId('mini-call-mic').click()
+  await expect(mini(ann.page, callId).getByTestId('mini-call-mic')).toHaveAttribute('data-on', 'false')
+
+  // Back to call: the call page shows the live call again, video attached.
+  await mini(ben.page, callId).getByTestId('mini-call-back').click()
+  await ben.page.waitForURL(new RegExp(`/calls/${callId}$`))
+  await expect(mini(ben.page, callId)).toHaveCount(0)
+  await expect(ben.page.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
+  await expectRemoteVideo(ben.page, [ann.name])
+  await expect(remoteTiles(ben.page)).toHaveAttribute('data-muted', 'true')
+  await ben.page.screenshot({ path: `${SHOTS}/nav-03-back-to-call-phone.png` })
+  await mini(ann.page, callId).getByTestId('mini-call-back').click()
+  await ann.page.waitForURL(new RegExp(`/calls/${callId}$`))
+  await expectRemoteVideo(ann.page, [ben.name])
+  await expect(ann.page.getByTestId('call-mic')).toHaveAttribute('data-on', 'false')
+  await inRoom(callId, [ann.id, ben.id])
+
+  // Devices (Chromium's fake devices): another microphone; remembered in this browser.
+  await ann.page.getByTestId('call-devices-toggle').click()
+  const micSelect = ann.page.getByTestId('call-device-audioinput')
+  await expect(micSelect).toBeVisible()
+  const mics = await micSelect
+    .locator('option')
+    .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value))
+  expect(mics.length).toBeGreaterThan(1)
+  const otherMic = mics.find((id) => id !== 'default' && id !== 'communications')!
+  await micSelect.selectOption(otherMic)
+  await expect(micSelect).toHaveValue(otherMic)
+  await expect(ann.page.getByTestId('call-device-problem')).toHaveCount(0)
+  // Chromium can route call sound to a chosen speaker (setSinkId): no "cannot choose" note.
+  await expect(ann.page.getByTestId('call-speaker-unsupported')).toHaveCount(0)
+  await expect(ann.page.getByTestId('call-device-videoinput')).toBeVisible()
+  await ann.page.screenshot({ path: `${SHOTS}/nav-04-devices-desktop.png` })
+  const remembered = await ann.page.evaluate(() => localStorage.getItem('ee.calls.devices'))
+  expect(JSON.parse(remembered ?? '{}')).toMatchObject({ audioinput: otherMic })
+  // The call goes on after the switch: Ben still gets Ann's video.
+  await expectRemoteVideo(ben.page, [ann.name])
+
+  // Hang up from the dock on another page: the DM call ends for both.
+  await ann.page.getByTestId('shell-nav-messages').click()
+  await ann.page.waitForURL(/\/messages/)
+  await mini(ann.page, callId).getByTestId('mini-call-hangup').click()
+  await expect(mini(ann.page, callId)).toHaveCount(0)
+  await expect(ben.page.getByTestId('call-ended')).toHaveAttribute('data-reason', 'call_over')
+  await expect.poll(async () => (await stored(callId)).state).toBe('ended')
+
+  await ann.ctx.close()
+  await ben.ctx.close()
 })

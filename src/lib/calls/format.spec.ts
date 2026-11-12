@@ -1,6 +1,6 @@
 import type { CallDto } from './client'
 import { describe, expect, it } from 'vitest'
-import { callLineLabel, durationLabel, historyOf } from './format'
+import { callClock, callLineLabel, durationLabel, historyOf } from './format'
 
 describe('durationLabel', () => {
   it('whole minutes (at least one), hours past an hour', () => {
@@ -70,5 +70,15 @@ describe('historyOf (the calls page, as one person sees a call)', () => {
   it('a live call: ringing or in progress', () => {
     expect(historyOf({ ...base, state: 'ringing', answeredAt: null, endedAt: null }, 'ben')).toMatchObject({ outcome: 'Ringing', live: true })
     expect(historyOf({ ...base, state: 'active', endedAt: null }, 'ben')).toMatchObject({ outcome: 'In progress', live: true })
+  })
+})
+
+describe('callClock', () => {
+  it('minutes:seconds, hours when it runs long, never negative', () => {
+    expect(callClock(0)).toBe('0:00')
+    expect(callClock(42.9)).toBe('0:42')
+    expect(callClock(725)).toBe('12:05')
+    expect(callClock(3729)).toBe('1:02:09')
+    expect(callClock(-5)).toBe('0:00')
   })
 })

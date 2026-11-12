@@ -52,3 +52,12 @@ export function historyOf(call: CallDto, me: string): CallHistory {
 
 /** The /calls page's load key (invalidated when a live call ends). */
 export const CALLS_DEPENDENCY = 'app:calls'
+
+/** A running call's clock: "0:42", "12:05", "1:02:09". */
+export function callClock(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = String(total % 60).padStart(2, '0')
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`
+}
