@@ -1,5 +1,7 @@
+import type { GitHubTokenError } from './token-client'
 import { KernelError } from '$lib/kernel/errors'
 import { GitHubApiError } from './api'
+import { isGitHubTokenError } from './token'
 
 /**
  * code ↔ harness ↔ user: the owner (and the agent relaying to them) gets a
@@ -31,6 +33,28 @@ export function plainGitHubApiMessage(err: GitHubApiError, what: string): string
   return `GitHub could not read ${what} right now. Try again in a minute.`
 }
 
+/** Shown when a pasted token turns out to be classic (it carries OAuth scopes). */
+export const CLASSIC_TOKEN_REFUSED =
+  'This is a classic token, which can change every repo you can. Create a fine-grained token with read-only access instead.'
+
+/** Plain words for a fine-grained token client failure, by kind (structured, not text-matched). */
+export function plainGitHubTokenMessage(err: GitHubTokenError, what: string): string {
+  switch (err.kind) {
+    case 'unauthorized':
+      return 'GitHub no longer accepts this token. It may have expired or been revoked. Create a new fine-grained token and paste it here.'
+    case 'no_access':
+      return `The token can no longer see ${what}. Check the token’s repository access on GitHub.`
+    case 'rate_limited':
+      return err.resumeAt
+        ? `GitHub’s rate limit is used up. Syncing pauses until ${hhmmUtc(err.resumeAt)}.`
+        : 'GitHub’s rate limit is used up. Syncing pauses for a while.'
+    case 'unavailable':
+      return 'GitHub is not answering right now. Syncing tries again on its own.'
+    case 'write_refused':
+      return 'eigenEnterprise only reads from GitHub. This change was stopped before it reached GitHub.'
+  }
+}
+
 /** Wraps any GitHub API failure into a GitHubUserError; everything else is rethrown untouched. */
 export function asUserError(err: unknown, what: string): never {
   if (err instanceof GitHubApiError)
@@ -42,6 +66,7 @@ export function asUserError(err: unknown, what: string): never {
 export function plainMessage(err: unknown): string {
   if (err instanceof GitHubUserError) return err.message
   if (err instanceof GitHubApiError) return plainGitHubApiMessage(err, 'that')
+  if (isGitHubTokenError(err)) return plainGitHubTokenMessage(err, 'that')
   if (err instanceof KernelError) {
     if (err.code === 'permission_denied') return 'Only an admin can do this.'
     if (err.code === 'invalid_input')

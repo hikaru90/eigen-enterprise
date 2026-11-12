@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { ToolContext } from '$lib/kernel/types'
 import { SubstrateError, SubstrateUnavailableError } from '$lib/server/ee/client'
-import { GitHubApi } from './api'
+import { GitHubApi } from '$lib/server/github/api'
+import { GitHubUserError } from '$lib/server/github/plain-errors'
 import { createGitHubConnectTools, type DeployKeyEe } from './connect-tools'
-import { GitHubUserError } from './plain-errors'
 import { InMemoryConnectedRepoStore } from './repos-store'
 import { InMemoryGitHubStore } from './store'
 

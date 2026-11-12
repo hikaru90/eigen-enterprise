@@ -2,9 +2,9 @@ import { z } from 'zod'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { EeClient, SubstrateError, SubstrateUnavailableError } from '$lib/server/ee/client'
 import { requireHuman } from '$lib/server/ee/human'
+import { GitHubApi, GitHubApiError, type LastCommit, type Repo } from '$lib/server/github/api'
+import { asUserError, GitHubUserError, plainGitHubApiMessage } from '$lib/server/github/plain-errors'
 import { WEBSITE_MODULE_ID } from '../manifest'
-import { GitHubApi, GitHubApiError, type LastCommit, type Repo } from './api'
-import { asUserError, GitHubUserError, plainGitHubApiMessage } from './plain-errors'
 import { parseGitHubRepo } from './repo-url'
 import {
   type ConnectedRepo,

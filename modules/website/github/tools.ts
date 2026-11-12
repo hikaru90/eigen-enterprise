@@ -1,10 +1,10 @@
-import { WEBSITE_MODULE_ID } from '../manifest'
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { EeClient } from '$lib/server/ee/client'
 import { requireHuman } from '$lib/server/ee/human'
-import { GitHubApi } from './api'
+import { GitHubApi } from '$lib/server/github/api'
+import { WEBSITE_MODULE_ID } from '../manifest'
 import { defaultGitHubStore, type GitHubStore } from './store'
 
 /**
