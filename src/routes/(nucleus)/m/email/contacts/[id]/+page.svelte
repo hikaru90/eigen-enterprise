@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { docTitle } from '$lib/shell/title'
-  /* eslint-disable svelte/no-navigation-without-resolve -- the status filter links add a query string to resolve() */
   import type { PageProps } from './$types'
+  /* eslint-disable svelte/no-navigation-without-resolve -- the status filter links add a query string to resolve() */
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
   import CopyButton from '$lib/components/email/copy-button.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { docTitle } from '$lib/shell/title'
 
   let { data, form }: PageProps = $props()
   const l = $derived(data.list)

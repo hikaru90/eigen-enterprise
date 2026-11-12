@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { docTitle } from '$lib/shell/title'
   import type { PageProps } from './$types'
   import { onMount, untrack } from 'svelte'
   import { enhance } from '$app/forms'
@@ -8,6 +7,7 @@
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { docTitle } from '$lib/shell/title'
   import { templateVariables } from '../../../../../../../modules/email/platform/templates/variables'
 
   let { data, form }: PageProps = $props()

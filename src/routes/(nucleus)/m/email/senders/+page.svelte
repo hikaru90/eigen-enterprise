@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { docTitle } from '$lib/shell/title'
   import type { PageProps } from './$types'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
@@ -7,6 +6,7 @@
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { docTitle } from '$lib/shell/title'
 
   let { data, form }: PageProps = $props()
   let busy = $state(false)
@@ -25,8 +25,8 @@
 
 {#if !data.email.configured}
   <p class="mt-4 text-sm text-muted-foreground">
-    Connect Amazon SES first — <a class="underline underline-offset-4" href={resolve('/m/email')}
-      >on the Overview</a
+    Connect Amazon SES first — <a class="underline underline-offset-4" href={resolve('/m/email/setup')}
+      >under Setup › Account</a
     >.
   </p>
 {:else}

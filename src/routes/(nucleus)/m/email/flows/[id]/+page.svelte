@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { docTitle } from '$lib/shell/title'
   import type { FlowStep } from '../../../../../../../modules/email/platform/flows/engine'
   import type { PageProps } from './$types'
   import ArrowDown from '@lucide/svelte/icons/arrow-down'
@@ -14,6 +13,7 @@
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { docTitle } from '$lib/shell/title'
 
   let { data, form }: PageProps = $props()
   const initial = untrack(() => data.flow)

@@ -7,11 +7,12 @@
   import PageHeader from '$lib/components/page/page-header.svelte'
   import { currentAreaTab } from '$lib/shell/area-nav'
   import { appHref } from '$lib/shell/href'
-  import { EMAIL_SETUP_TABS, EMAIL_TABS } from './tabs'
+  import { EMAIL_SETUP_TABS, emailTabs } from './tabs'
 
   /** The Email area: one header with status, mail first, setup sections behind the Setup tab. */
   let { data, children }: { data: LayoutData; children: Snippet } = $props()
-  const current = $derived(currentAreaTab(EMAIL_TABS, page.url.pathname))
+  const tabs = $derived(emailTabs(data.email))
+  const current = $derived(currentAreaTab(tabs, page.url.pathname))
   const setupCurrent = $derived(currentAreaTab(EMAIL_SETUP_TABS, page.url.pathname))
   // The module pill is the activation, like every module page; the SES connection lives under Setup › Account.
   const status = $derived({
@@ -23,9 +24,9 @@
 <PageFrame testid="email-area">
   <PageHeader
     title="Email"
-    description="Your inbox, and your company's mail: what is waiting to go out and what was sent. Setup holds the Amazon SES account, domains, senders, flows, logs and the API."
+    description="Your inbox and the mailboxes you share. Company mail shows what the company is sending; Setup holds the Amazon SES account, domains, mailboxes, senders, flows, logs and the API."
     {status}
-    tabs={EMAIL_TABS}
+    {tabs}
     {current}
     navLabel="Email sections"
     navTestId="email-nav"

@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { docTitle } from '$lib/shell/title'
-  /* eslint-disable svelte/no-navigation-without-resolve -- the filter/paging links carry a query string on resolve('/m/email/logs') */
   import type { PageProps } from './$types'
+  /* eslint-disable svelte/no-navigation-without-resolve -- the filter/paging links carry a query string on resolve('/m/email/logs') */
   import { resolve } from '$app/paths'
   import MessageStatus from '$lib/components/email/message-status.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
+  import { docTitle } from '$lib/shell/title'
   import {
     MESSAGE_STATUSES,
     SOURCE_LABEL,

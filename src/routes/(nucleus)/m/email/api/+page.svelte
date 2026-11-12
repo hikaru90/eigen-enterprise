@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { docTitle } from '$lib/shell/title'
   import type { PageProps } from './$types'
   import { resolve } from '$app/paths'
   import CopyButton from '$lib/components/email/copy-button.svelte'
   import SendingKeys from '$lib/components/email/sending-keys.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
+  import { docTitle } from '$lib/shell/title'
 
   let { data }: PageProps = $props()
   /** The key just created (shown once) fills the example; otherwise the env var. */
@@ -111,7 +111,7 @@
     </p>
     {#if !data.sender}
       <p class="mt-2 text-sm text-destructive">
-        Connect Amazon SES on the Overview first; until then the request answers 503.
+        Connect Amazon SES under Setup › Account first; until then the request answers 503.
       </p>
     {/if}
     <div class="relative mt-3">
