@@ -2,6 +2,23 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-12 — Email inbox S1: mailboxes, access rules, Setup › Mailboxes (branch `email-inbox-s1`, not merged, not on the box)
+
+- **Shipped on the branch:** migration `0129_mailboxes` (`mailboxes`, `mailbox_addresses`, `inbox_messages`) + `src/lib/server/db/inbox.schema.ts`; `modules/email/inbox/` (types, store seam, memory + Postgres stores, service, live wiring); Setup › **Mailboxes** (`/m/email/mailboxes`): assign a member's personal mailbox (address prefilled `firstname.lastname`, umlauts spelled out), shared mailboxes per group, aliases, stop/turn on receiving.
+- **Access rules (tested):** a personal mailbox is read only by its member — the owner, admins and other members get "not found"; a shared mailbox follows its group's members; someone no longer in the company reads nothing; the admin view shows addresses, holder, counts and size, never subjects or senders. No agent path. Every change is a kernel event with addresses only.
+- **Decisions:** addresses are unique company-wide in one table (primary + aliases), so an alias can never collide with another mailbox; one personal mailbox per member (DB partial unique index); "Stop receiving" keeps the mail readable; `mailbox_addresses.domain_id` is `ON DELETE RESTRICT`, so removing a domain that still has mailboxes fails loudly (the Domains page error message for that is S2 work); attachments get their table in S3, where they are first written.
+- **Tests:** inbox unit + Postgres specs (39), Mailboxes page server spec (4), tabs spec; `npm run check` 0 errors; eslint clean on the new files.
+- **Next:** S2 (receiving setup: MX record, S3 bucket, receipt rule set, SNS) and S3 (ingest webhook) — disjoint files, can run in parallel.
+
+## 2026-11-12 — Email inbox planned: personal + shared mailboxes on SES receiving (plan only, no code)
+
+Contribute `eb674853` ("Email should open on the inbox"), widened by the owner: every owner and member gets their own address and inbox. Plan: [`plan/email-inbox.md`](email-inbox.md).
+- **Decisions (owner):** receiving through Amazon SES (MX → SES → S3 + SNS → console), no mail server on the box; a personal inbox is readable only by its member (not the owner, not agents), shared addresses are group mailboxes; the owner assigns each address by hand (`firstname.lastname` only as a prefill); `/m/email` opens on your inbox.
+- **Announced move (no removal):** today's Email landing (Pending + last 10 sent, company-wide) moves to a new **Company mail** tab for admins.
+- **Open before the real proof:** no IMAP for phone/desktop clients with SES receiving; retention; what happens to a leaver's mailbox; 40 MB SES size cap.
+- **S0 done (docs + production read-only):** eu-central-1 supports receiving. Production has **no verified domain** (only the address hello@cerberusblue.com) and is **in the SES sandbox**, so replies to outside addresses fail until the owner requests production access. Both are owner steps in AWS/DNS.
+- **Design changes from S0:** one S3 action that notifies a topic, instead of an SNS action (the SNS action bounces mail over 150 KB); setup refuses to replace a foreign active receipt rule set; rules are chunked at 100 recipients; routing uses envelope recipients; new deps `@aws-sdk/client-ses` (v1 receipt APIs) + `@aws-sdk/client-s3`; new IAM: S3 on the inbound bucket only.
+
 ## 2026-11-12 — v0.5.5 on production (os.cerberusblue.com)
 
 Owner: "Yes, upgrade".

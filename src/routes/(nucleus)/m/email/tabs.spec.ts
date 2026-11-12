@@ -9,6 +9,7 @@ describe('Email area tabs (mail first, setup behind one tab)', () => {
       'Account',
       'Domains',
       'Senders',
+      'Mailboxes',
       'Templates',
       'Layouts',
       'Flows',
@@ -26,6 +27,7 @@ describe('Email area tabs (mail first, setup behind one tab)', () => {
     ['/m/email/setup', 'setup'],
     ['/m/email/domains/1', 'setup'],
     ['/m/email/senders', 'setup'],
+    ['/m/email/mailboxes', 'setup'],
     ['/m/email/templates/1', 'setup'],
     ['/m/email/layouts', 'setup'],
     ['/m/email/flows/1', 'setup'],
@@ -39,6 +41,7 @@ describe('Email area tabs (mail first, setup behind one tab)', () => {
     ['/m/email/setup', 'account'],
     ['/m/email/domains/1', 'domains'],
     ['/m/email/logs/1', 'logs'],
+    ['/m/email/mailboxes', 'mailboxes'],
     ['/m/email/api', 'api'],
   ] as const)('setup section %s → %s', (path, id) => {
     expect(currentAreaTab(EMAIL_SETUP_TABS, path)).toBe(id)

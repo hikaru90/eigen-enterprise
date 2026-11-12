@@ -883,6 +883,13 @@
       "when": 1794600000000,
       "tag": "0128_capture_session_thought",
       "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1794700000000,
+      "tag": "0129_mailboxes",
+      "breakpoints": true
     }
   ]
 }
