@@ -15,7 +15,7 @@ import {
   type MailSource,
   type SuppressionReason,
 } from '$lib/server/db/email.schema'
-import { mailboxAddresses } from '$lib/server/db/inbox.schema'
+import { mailboxAddresses, mailboxes } from '$lib/server/db/inbox.schema'
 import { normalizeEmail } from './suppression'
 
 /**
@@ -442,11 +442,16 @@ export class EmailStore {
   }
 }
 
-/** Every email-platform table, children first (the e2e harness reset under MAIL_TRANSPORT=fake). */
+/**
+ * Every email-platform table, children first (the e2e harness reset under
+ * MAIL_TRANSPORT=fake). Mailboxes go before domains: their addresses hold
+ * domains with ON DELETE RESTRICT (received mail and attachments cascade).
+ */
 export const EMAIL_PLATFORM_TABLES = [
   mailMessageEvents,
   mailMessages,
   mailSenders,
+  mailboxes,
   mailDomains,
   mailSuppressions,
   mailJobs,
