@@ -132,9 +132,45 @@ describe('kernel.module_list handler', () => {
 
     const result = await listTool.handler(makeCtx(), {})
     expect(result).toEqual([
-      { id: 'memory', name: 'memory', version: '1.0.0', tools: ['memory.tool_one'], active: true },
-      { id: 'email', name: 'email', version: '1.0.0', tools: ['email.tool_one'], active: false },
+      {
+        id: 'memory',
+        name: 'memory',
+        version: '1.0.0',
+        tools: ['memory.tool_one'],
+        active: true,
+        core: false,
+        requires: [],
+        requiredBy: [],
+      },
+      {
+        id: 'email',
+        name: 'email',
+        version: '1.0.0',
+        tools: ['email.tool_one'],
+        active: false,
+        core: false,
+        requires: [],
+        requiredBy: [],
+      },
     ])
+  })
+
+  it('marks the core (the kernel and internal modules) and says which modules need which', async () => {
+    const activations = new InMemoryActivationStore()
+    const modules = makeModules(activations, [
+      makeManifest(KERNEL_MODULE_ID),
+      { ...makeManifest('members'), internal: true },
+      makeManifest('messages'),
+      { ...makeManifest('calls'), requires: ['messages'] },
+    ])
+    const [listTool] = createAdminTools({ modules, activations, approvals: makeRichApprovalStore([]).store })
+
+    const result = (await listTool.handler(makeCtx(), {})) as Array<Record<string, unknown>>
+    const byId = Object.fromEntries(result.map((m) => [m.id, m]))
+    expect(byId.kernel).toMatchObject({ core: true, requires: [], requiredBy: [] })
+    expect(byId.members).toMatchObject({ core: true })
+    expect(byId.messages).toMatchObject({ core: false, requires: [], requiredBy: ['calls'] })
+    expect(byId.calls).toMatchObject({ core: false, requires: ['messages'], requiredBy: [] })
   })
 })
 
@@ -167,6 +203,73 @@ describe('kernel.module_activate / kernel.module_deactivate handlers', () => {
     const result = await deactivate.handler(makeCtx(), { module_id: 'memory' })
     expect(result).toMatchObject({ module_id: 'memory', active: false })
     expect(await activations.get('memory')).toBe(false)
+  })
+
+  /** Messages and Calls (Calls needs Messages) plus the internal Members core, all on. */
+  async function pluginsAndCore() {
+    const activations = new InMemoryActivationStore()
+    for (const id of ['messages', 'calls', 'members', KERNEL_MODULE_ID]) await activations.set(id, true)
+    const modules = makeModules(activations, [
+      makeManifest(KERNEL_MODULE_ID),
+      { ...makeManifest('members'), name: 'Members', internal: true },
+      { ...makeManifest('messages'), name: 'Messages' },
+      { ...makeManifest('calls'), name: 'Calls', requires: ['messages'] },
+    ])
+    const tools = createAdminTools({ modules, activations, approvals: makeRichApprovalStore([]).store })
+    return {
+      activations,
+      activate: toolByName(tools, 'kernel.module_activate'),
+      deactivate: toolByName(tools, 'kernel.module_deactivate'),
+    }
+  }
+
+  it.each(['members', KERNEL_MODULE_ID])('refuses to switch off the core (%s): a kernel error, still on', async (id) => {
+    const { activations, deactivate } = await pluginsAndCore()
+    await expect(deactivate.handler(makeCtx(), { module_id: id })).rejects.toMatchObject({
+      name: 'KernelError',
+      code: 'core_module',
+      details: { module: id },
+    })
+    expect(await activations.get(id)).toBe(true)
+  })
+
+  it('says the core refusal in words', async () => {
+    const { deactivate } = await pluginsAndCore()
+    await expect(deactivate.handler(makeCtx(), { module_id: 'members' })).rejects.toThrow(
+      'Members is part of the eigenEnterprise core and cannot be switched off.',
+    )
+  })
+
+  it('refuses to switch off a plugin another active plugin needs, naming it', async () => {
+    const { activations, deactivate } = await pluginsAndCore()
+    await expect(deactivate.handler(makeCtx(), { module_id: 'messages' })).rejects.toMatchObject({
+      code: 'module_required',
+      message: 'Calls needs Messages: switch off Calls first.',
+      details: { module: 'messages', requiredBy: ['calls'] },
+    })
+    expect(await activations.get('messages')).toBe(true)
+  })
+
+  it('switches a needed plugin off once what needs it is off', async () => {
+    const { activations, deactivate } = await pluginsAndCore()
+    await deactivate.handler(makeCtx(), { module_id: 'calls' })
+    await expect(deactivate.handler(makeCtx(), { module_id: 'messages' })).resolves.toEqual({
+      module_id: 'messages',
+      active: false,
+    })
+    expect(await activations.get('messages')).toBe(false)
+  })
+
+  it('refuses to switch on a plugin while one it needs is off, naming it', async () => {
+    const { activations, activate, deactivate } = await pluginsAndCore()
+    await deactivate.handler(makeCtx(), { module_id: 'calls' })
+    await deactivate.handler(makeCtx(), { module_id: 'messages' })
+    await expect(activate.handler(makeCtx(), { module_id: 'calls' })).rejects.toMatchObject({
+      code: 'module_required',
+      message: 'Calls needs Messages: switch on Messages first.',
+      details: { module: 'calls', missing: ['messages'] },
+    })
+    expect(await activations.get('calls')).toBe(false)
   })
 
   it('throws loud on unknown module ids and leaves the store untouched', async () => {

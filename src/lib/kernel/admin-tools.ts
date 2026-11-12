@@ -3,6 +3,7 @@ import type { ActivationStore, ModuleManifest, ModuleRegistry } from './modules'
 import type { ToolDescriptor } from './types'
 import { z } from 'zod'
 import { approvalActionLabel } from '$lib/chat/approval-copy'
+import { KernelError } from './errors'
 
 /**
  * Kernel admin surface: module activation and approval decisions as regular
@@ -48,6 +49,15 @@ export type AdminToolDeps = {
   approvals: AdminApprovalStore
 }
 
+/**
+ * The core is what has no sidebar entry: the kernel and every `internal`
+ * module (owner, 2026-11-12: everything with a sidebar entry is a plugin and
+ * can be switched off; the core cannot).
+ */
+export function isCoreModule(manifest: ModuleManifest): boolean {
+  return manifest.id === KERNEL_MODULE_ID || manifest.internal === true
+}
+
 const moduleListInput = z.object({})
 const moduleIdInput = z.object({ module_id: z.string().min(1) })
 const approvalsListInput = z.object({
@@ -60,11 +70,14 @@ const approvalsDecideInput = z.object({
 
 /** Factory for the kernel admin ToolDescriptors — pure, deps injected, testable. */
 export function createAdminTools(deps: AdminToolDeps): ToolDescriptor[] {
+  const name = (id: string) => deps.modules.get(id)?.name ?? id
+  const names = (ids: string[]) => ids.map(name).join(', ')
   return [
     {
       name: 'kernel.module_list',
       module: KERNEL_MODULE_ID,
-      summary: 'List all registered module manifests with their activation state.',
+      summary:
+        'List all registered module manifests with their activation state, whether each is core (cannot be switched off), the modules it requires and the modules that require it.',
       auditClass: 'read',
       inputSchema: moduleListInput,
       permission: { roles: ['admin'] },
@@ -82,6 +95,9 @@ export function createAdminTools(deps: AdminToolDeps): ToolDescriptor[] {
             ...(manifest.internal === true ? { internal: true } : {}),
             tools: manifest.tools,
             active,
+            core: isCoreModule(manifest),
+            requires: manifest.requires ?? [],
+            requiredBy: manifests.filter((m) => m.requires?.includes(manifest.id)).map((m) => m.id),
           })
         }
         return result
@@ -90,21 +106,33 @@ export function createAdminTools(deps: AdminToolDeps): ToolDescriptor[] {
     {
       name: 'kernel.module_activate',
       module: KERNEL_MODULE_ID,
-      summary: 'Activate a registered module (its tools become executable).',
+      summary:
+        'Activate a registered module (its tools become executable). Refused while a module it requires is switched off.',
       auditClass: 'mutate',
       activity: (input: z.infer<typeof moduleIdInput>) => `Switched on ${moduleName(deps.modules, input.module_id)}`,
       inputSchema: moduleIdInput,
       permission: { roles: ['admin'] },
       handler: async (_ctx, input) => {
         const parsed = moduleIdInput.parse(input)
-        await requireModule(deps.modules, parsed.module_id).activate(parsed.module_id)
-        return { module_id: parsed.module_id, active: true }
+        const manifest = requireManifest(deps.modules, parsed.module_id)
+        const missing: string[] = []
+        for (const id of manifest.requires ?? []) if (!(await deps.activations.get(id))) missing.push(id)
+        if (missing.length > 0) {
+          throw new KernelError(
+            'module_required',
+            `${manifest.name} needs ${names(missing)}: switch on ${names(missing)} first.`,
+            { module: manifest.id, missing },
+          )
+        }
+        await deps.modules.activate(manifest.id)
+        return { module_id: manifest.id, active: true }
       },
     },
     {
       name: 'kernel.module_deactivate',
       module: KERNEL_MODULE_ID,
-      summary: 'Deactivate a registered module (fail closed for its tools).',
+      summary:
+        'Deactivate a registered module (fail closed for its tools; its data is kept). Refused for core modules and while an active module requires it.',
       auditClass: 'mutate',
       activity: (input: z.infer<typeof moduleIdInput>) => `Switched off ${moduleName(deps.modules, input.module_id)}`,
       approvalRisk: 'destructive',
@@ -112,8 +140,27 @@ export function createAdminTools(deps: AdminToolDeps): ToolDescriptor[] {
       permission: { roles: ['admin'] },
       handler: async (_ctx, input) => {
         const parsed = moduleIdInput.parse(input)
-        await requireModule(deps.modules, parsed.module_id).deactivate(parsed.module_id)
-        return { module_id: parsed.module_id, active: false }
+        const manifest = requireManifest(deps.modules, parsed.module_id)
+        if (isCoreModule(manifest)) {
+          throw new KernelError(
+            'core_module',
+            `${manifest.name} is part of the eigenEnterprise core and cannot be switched off.`,
+            { module: manifest.id },
+          )
+        }
+        const dependents: string[] = []
+        for (const m of deps.modules.list()) {
+          if (m.requires?.includes(manifest.id) && (await deps.activations.get(m.id))) dependents.push(m.id)
+        }
+        if (dependents.length > 0) {
+          throw new KernelError(
+            'module_required',
+            `${names(dependents)} ${dependents.length === 1 ? 'needs' : 'need'} ${manifest.name}: switch off ${names(dependents)} first.`,
+            { module: manifest.id, requiredBy: dependents },
+          )
+        }
+        await deps.modules.deactivate(manifest.id)
+        return { module_id: manifest.id, active: false }
       },
     },
     {
@@ -158,7 +205,8 @@ function moduleName(modules: ModuleRegistry, id: string): string {
 }
 
 /** Loud validation: unknown module ids must fail, never no-op. */
-function requireModule(modules: ModuleRegistry, id: string): ModuleRegistry {
-  if (!modules.get(id)) throw new Error(`unknown module: ${id}`)
-  return modules
+function requireManifest(modules: ModuleRegistry, id: string): ModuleManifest {
+  const manifest = modules.get(id)
+  if (!manifest) throw new KernelError('unknown_module', `unknown module: ${id}`, { module: id })
+  return manifest
 }

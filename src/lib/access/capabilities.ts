@@ -16,6 +16,8 @@ export const CAPABILITIES = [
   'approvals.manage',
   /** Settings → Backups (the owner's alone, D11). */
   'backups.manage',
+  /** Settings → Plugins: switching plugins on and off. */
+  'modules.manage',
   /** The Website module's pages (/m/website/**). */
   'website.manage',
   /** Brand → Extract and the visual-set editor. */
@@ -36,6 +38,7 @@ export const GUARDED_PAGES: readonly { prefix: string; capability: Capability }[
   { prefix: '/settings/members', capability: 'members.manage' },
   { prefix: '/settings/approvals', capability: 'approvals.manage' },
   { prefix: '/settings/backups', capability: 'backups.manage' },
+  { prefix: '/settings/modules', capability: 'modules.manage' },
   { prefix: '/m/website', capability: 'website.manage' },
   { prefix: '/brand/extract', capability: 'brand.extract' },
   { prefix: '/brand/editor', capability: 'brand.extract' },

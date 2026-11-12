@@ -19,6 +19,12 @@ export type ModuleManifest = {
    * module card, no /m/<id> page). Its tools stay available to the agent.
    */
   internal?: boolean
+  /**
+   * Module ids this module needs switched on to work (Calls needs Messages
+   * for DM and channel calls). Declarative: the kernel reports it (who needs
+   * whom, kernel.module_list) and does not enforce it. Omitted = none.
+   */
+  requires?: string[]
   /** Tool names owned by this module (namespaced "<namespace>.toolname"). */
   tools: string[]
   permissions: {
@@ -75,6 +81,9 @@ export class ModuleRegistry {
       throw new Error(
         `invalid module manifest ${manifest.id}: ${issue.path.join('.')}: ${issue.message}`,
       )
+    }
+    if (manifest.requires?.includes(manifest.id)) {
+      throw new Error(`module ${manifest.id} cannot require itself`)
     }
     if (this.manifests.has(manifest.id)) {
       throw new Error(`module already registered: ${manifest.id}`)

@@ -16,6 +16,8 @@ export const callsManifest: ModuleManifest = {
   name: 'Calls',
   version: '0.1.0',
   description: 'Video calls for direct messages, channels and meetings, on the company’s own LiveKit server.',
+  // DM and channel calls ring the people of a Messages conversation (callContextsFromMessages).
+  requires: ['messages'],
   tools: [...CALLS_TOOL_NAMES],
   permissions: { roles: ['admin', 'agent'] },
 }

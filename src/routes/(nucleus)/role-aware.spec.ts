@@ -33,10 +33,16 @@ vi.mock('$lib/server/website/owner-run', () => ({
   logAppFailure: () => {},
   plainAppMessage: () => 'unavailable',
 }))
+// Only Settings → Modules reads the kernel (kernel.module_list, past its guard).
 vi.mock('$lib/server/boot', () => ({
-  appKernel: async () => {
-    throw new Error('the guarded loads checked here never reach the kernel')
-  },
+  appKernel: async () => ({
+    registry: {
+      execute: async (name: string) => {
+        if (name === 'kernel.module_list') return []
+        throw new Error(`the guarded loads checked here only list modules, not ${name}`)
+      },
+    },
+  }),
 }))
 
 import { load as brandEditor } from './brand/editor/[setId]/+page.server'
@@ -46,6 +52,7 @@ import { load as approvals } from './settings/approvals/+page.server'
 import { _backupsDeps, load as backups } from './settings/backups/+page.server'
 import { load as company } from './settings/company/+page.server'
 import { load as members } from './settings/members/+page.server'
+import { load as modules } from './settings/modules/+page.server'
 
 type Load = (event: never) => Promise<unknown>
 
@@ -55,6 +62,7 @@ const LOADS: Record<string, { path: string; load: Load }> = {
   '/settings/members': { path: '/settings/members', load: members as Load },
   '/settings/approvals': { path: '/settings/approvals', load: approvals as Load },
   '/settings/backups': { path: '/settings/backups', load: backups as Load },
+  '/settings/modules': { path: '/settings/modules', load: modules as Load },
   '/m/website': { path: '/m/website', load: website as Load },
   '/brand/extract': { path: '/brand/extract', load: brandExtract as Load },
   // A malformed set id is the editor's own 404 — past the guard.
@@ -135,7 +143,14 @@ describe('role-aware UI: a member is never offered a page that refuses them', ()
       [...buildShellNav(manifests, activations, member).items, ...settingsSections(member)].map((i) => i.href as string),
     )
     const hidden = ownerHrefs.filter((h) => !memberHrefs.has(h))
-    expect(hidden.sort()).toEqual(['/m/website', '/settings/approvals', '/settings/backups', '/settings/company', '/settings/members'])
+    expect(hidden.sort()).toEqual([
+      '/m/website',
+      '/settings/approvals',
+      '/settings/backups',
+      '/settings/company',
+      '/settings/members',
+      '/settings/modules',
+    ])
     roleMock.mockResolvedValue('member')
     for (const href of hidden) {
       const { path, load } = LOADS[href]

@@ -7,6 +7,8 @@ export const recapManifest: ModuleManifest = {
   version: '0.1.0',
   description:
     'The company reports to its owner: aggregates the last 24h of kernel events into a deterministic summary and delivers it to allowlisted Telegram owner chats (recap.completed event on every run).',
+  // Delivered over the chat gateway's Telegram bot to its allowlisted owner chats.
+  requires: ['chat-gateway'],
   tools: [...RECAP_TOOL_NAMES],
   permissions: { roles: ['owner', 'admin'] },
 }

@@ -14,6 +14,8 @@ export const manifestSchema = z.object({
   toolNamespaces: z.array(z.string().regex(ID_PATTERN)).min(1).optional(),
   /** true = agent machinery, not an owner-facing module card. */
   internal: z.boolean().optional(),
+  /** Module ids this module needs switched on to work (its dependencies); never its own id — checked at register(). */
+  requires: z.array(z.string().regex(ID_PATTERN)).optional(),
   /** Empty is valid: a module may contribute no kernel tools (routes/settings only). */
   tools: z.array(z.string().regex(TOOL_NAME_PATTERN)),
   permissions: z.object({ roles: z.array(z.string()).min(1) }),

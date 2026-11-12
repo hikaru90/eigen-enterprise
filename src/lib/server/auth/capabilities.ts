@@ -16,6 +16,8 @@ const RULES: Record<Capability, (role: MemberRole | null) => boolean> = {
   'approvals.manage': isAdminRole,
   // The recovery code unlocks every backup: the owner's alone (D11).
   'backups.manage': (role) => role === 'owner',
+  // Switching a plugin off takes it away from the whole company: owner and admins.
+  'modules.manage': isAdminRole,
   'website.manage': isAdminRole,
   'brand.extract': isAdminRole,
 }

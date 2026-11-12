@@ -105,6 +105,39 @@ describe('merged module manifests', () => {
     }
   })
 
+  it('declares who needs whom: Calls needs Messages, and every requirement names a known module', () => {
+    const ids = new Set<string>(moduleManifests.map((m) => m.id))
+    expect(moduleManifests.find((m) => m.id === 'calls')?.requires).toEqual(['messages'])
+    for (const m of moduleManifests) for (const id of m.requires ?? []) expect(ids.has(id), `${m.id} requires ${id}`).toBe(true)
+  })
+
+  it('through the kernel: the core stays on, Messages waits for Calls, and every plugin can be switched off', async () => {
+    const { kernel: k, activations } = kernel()
+    const { registerAdminTools } = await import('$lib/kernel/admin-bootstrap')
+    await registerAdminTools(k)
+    await ensureSystemModulesActive(k)
+    const owner: ToolContext = { principal: { id: 'owner', kind: 'human', roles: ['admin'] }, requestId: 'r-off' }
+    await k.approvalMode.set('allow_all', 'owner') // past the approval gate: the refusals are the kernel's own
+    const off = (id: string) => k.registry.execute('kernel.module_deactivate', { module_id: id }, owner)
+    await expect(off('members')).rejects.toMatchObject({ code: 'core_module' })
+    await expect(off('messages')).rejects.toMatchObject({ code: 'module_required', details: { requiredBy: ['calls'] } })
+    for (const id of ['calls', 'messages', 'website', 'email', 'brand', 'memory', 'drive', 'contacts']) await off(id)
+    for (const id of ['calls', 'messages', 'website', 'email', 'brand', 'memory', 'drive', 'contacts'])
+      expect(await activations.get(id), id).toBe(false)
+    expect(await activations.get('members')).toBe(true)
+  })
+
+  it('boot seeds the plugins on once: one the owner switched off stays off; the core is always switched back on', async () => {
+    const { kernel: k, activations } = kernel()
+    await ensureSystemModulesActive(k)
+    await activations.set('email', false)
+    await activations.set('members', false)
+    await ensureSystemModulesActive(k)
+    expect(await activations.get('email')).toBe(false)
+    expect(await activations.get('members')).toBe(true)
+    expect(await activations.get('website')).toBe(true)
+  })
+
   it('every approval-gated tool is registered (no stale name in APPROVAL_REQUIRED_TOOLS)', async () => {
     const { kernel: k } = kernel()
     const { registerAdminTools } = await import('$lib/kernel/admin-bootstrap')
