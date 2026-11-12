@@ -12,6 +12,9 @@ const {
   updateMock,
   insertMock,
   transactionMock,
+  txUpdateMock,
+  txUpdateSetMock,
+  txUpdateWhereMock,
 } = vi.hoisted(() => ({
   getDbMock: vi.fn(),
   scheduleCaptureEnrichWorkerMock: vi.fn(),
@@ -24,7 +27,12 @@ const {
   updateMock: vi.fn(),
   insertMock: vi.fn(),
   transactionMock: vi.fn(),
+  txUpdateMock: vi.fn(),
+  txUpdateSetMock: vi.fn(),
+  txUpdateWhereMock: vi.fn(),
 }))
+txUpdateMock.mockImplementation(() => ({ set: txUpdateSetMock }))
+txUpdateSetMock.mockImplementation(() => ({ where: txUpdateWhereMock }))
 
 vi.mock('$lib/server/db', () => ({
   getDb: getDbMock,
@@ -93,8 +101,9 @@ describe('queueCapture', () => {
       insertCall += 1
       return insertCall === 1 ? sessionInsert : thoughtInsert
     })
+    txUpdateWhereMock.mockResolvedValue(undefined)
     transactionMock.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) =>
-      cb({ insert: insertMock }),
+      cb({ insert: insertMock, update: txUpdateMock }),
     )
     getDbMock.mockReturnValue({
       // No root-level `insert`: tier 1 must write through the transaction handle.
@@ -164,6 +173,13 @@ describe('queueCapture', () => {
     expect(transactionMock).toHaveBeenCalledTimes(1)
     // Both inserts ran on the transaction handle (insertMock is only exposed via tx).
     expect(insertMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('links the capture session to its thought in the same transaction (delete takes it along)', async () => {
+    await queueCapture('u1', 'linked capture')
+    expect(txUpdateMock).toHaveBeenCalledTimes(1)
+    expect(txUpdateSetMock).toHaveBeenCalledWith({ thoughtId: 'thought-1' })
+    expect(txUpdateWhereMock).toHaveBeenCalledTimes(1)
   })
 
   it('still queues and schedules enrich when the tier-1 graph anchor upsert fails', async () => {

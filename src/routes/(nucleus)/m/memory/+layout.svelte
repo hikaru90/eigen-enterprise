@@ -6,6 +6,7 @@
   import Settings from '@lucide/svelte/icons/settings'
   import PageHeader from '$lib/components/page/page-header.svelte'
   import { activeMemorySurfaceTab, MEMORY_TABS } from '$lib/memory/memory-surface-nav'
+  import MemoryPrivacyNote from './memory-privacy-note.svelte'
 
   let { data, children }: { data: LayoutData; children: Snippet } = $props()
   const current = $derived(activeMemorySurfaceTab(page.url.pathname))
@@ -41,6 +42,7 @@
         </a>
       {/snippet}
     </PageHeader>
+    <div class="mt-4"><MemoryPrivacyNote analyticsSeesAi={data.privacy.analyticsSeesAi} /></div>
   </div>
   <div class="flex min-h-0 w-full flex-1 flex-col">
     {@render children()}

@@ -876,6 +876,13 @@
       "when": 1794500000000,
       "tag": "0127_brand_guide_upload",
       "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1794600000000,
+      "tag": "0128_capture_session_thought",
+      "breakpoints": true
     }
   ]
 }

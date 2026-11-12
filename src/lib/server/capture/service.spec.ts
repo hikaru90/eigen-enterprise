@@ -5,7 +5,6 @@ import {
   editStoredThought,
   setThoughtLifecycleStatus,
   relinkThoughtGraph,
-  deleteThoughtForUser,
   listThoughts,
   toPgVectorLiteral,
 } from './service'
@@ -793,74 +792,6 @@ describe('relinkThoughtGraph', () => {
       'x',
       expect.objectContaining({ onProgress: expect.any(Function) }),
     )
-  })
-})
-
-describe('deleteThoughtForUser', () => {
-  it('returns not_found when thought does not exist', async () => {
-    const db = {
-      select: vi.fn(() => ({
-        from: vi.fn(() => ({
-          where: vi.fn(() => ({
-            limit: vi.fn(async () => []),
-          })),
-        })),
-      })),
-    }
-    getDbMock.mockReturnValue(db)
-
-    const result = await deleteThoughtForUser('u1', 'missing')
-    expect(result).toEqual({ ok: false, reason: 'not_found' })
-    expect(removeThoughtGraphArtifactsMock).not.toHaveBeenCalled()
-  })
-
-  it('removes graph artifacts, deletes Postgres row, and prunes orphan entities', async () => {
-    const deleteWhere = vi.fn(async () => undefined)
-    const select = vi
-      .fn()
-      .mockReturnValueOnce({
-        from: vi.fn(() => ({
-          where: vi.fn(() => ({
-            limit: vi.fn(async () => [{ id: 't1' }]),
-          })),
-        })),
-      })
-      .mockReturnValueOnce({
-        from: vi.fn(() => ({
-          where: vi.fn(async () => [{ entityId: 'e1' }, { entityId: 'e2' }]),
-        })),
-      })
-      .mockReturnValueOnce({
-        from: vi.fn(() => ({
-          where: vi.fn(async () => [{ id: 'ev1', graphNodeId: 'ev-graph-1' }]),
-        })),
-      })
-      .mockReturnValueOnce({
-        from: vi.fn(() => ({
-          innerJoin: vi.fn(() => ({
-            where: vi.fn(async () => []),
-          })),
-        })),
-      })
-    const db = {
-      select,
-      delete: vi.fn(() => ({
-        where: deleteWhere,
-      })),
-    }
-    getDbMock.mockReturnValue(db)
-    removeThoughtGraphArtifactsMock.mockResolvedValue(undefined)
-    pruneCanonicalEntitiesWithNoThoughtLinksMock.mockResolvedValue(2)
-
-    const result = await deleteThoughtForUser('u1', 't1')
-    expect(result).toEqual({ ok: true })
-    expect(removeThoughtGraphArtifactsMock).toHaveBeenCalledWith({
-      userId: 'u1',
-      thoughtId: 't1',
-      temporalEventGraphIds: ['ev-graph-1'],
-    })
-    expect(deleteWhere).toHaveBeenCalled()
-    expect(pruneCanonicalEntitiesWithNoThoughtLinksMock).toHaveBeenCalledWith('u1', ['e1', 'e2'])
   })
 })
 
