@@ -697,6 +697,111 @@ describe('llm client retries', () => {
   })
 })
 
+describe('llmChatCompletion attachments (files the model reads)', () => {
+  const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUg=='
+  const PDF_B64 = 'JVBERi0xLjcKJcOkw7zDtsOf'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockEnv.LLM_BASE_URL = 'https://example.test'
+    mockEnv.LLM_RULE_CHAT = 'rule-chat'
+    mockEnv.LLM_MODEL_CHAT = 'gpt-test'
+    mockEnv.LLM_MIN_REQUEST_INTERVAL_MS = '0'
+    mockEnv.LLM_REQUEST_TIMEOUT_MS = ''
+    mockEnv.LLM_API_KEY = 'key-1'
+  })
+
+  function okFetch() {
+    const fetchMock = vi.fn(async () =>
+      response(true, 200, { choices: [{ message: { role: 'assistant', content: '{}' } }] }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  it('sends a user message with attachments as OpenAI content parts: text, image_url, file', async () => {
+    const fetchMock = okFetch()
+    await llmChatCompletion({
+      userId: 'u1',
+      messages: [
+        { role: 'system', content: 'You read brand guides.' },
+        {
+          role: 'user',
+          content: 'Here is the guide.',
+          attachments: [
+            { type: 'image', mime: 'image/png', base64: PNG_B64 },
+            { type: 'pdf', filename: 'guide.pdf', base64: PDF_B64 },
+          ],
+        },
+      ],
+    })
+    const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as {
+      messages: Array<{ role: string; content: unknown }>
+    }
+    expect(body.messages[0]).toEqual({ role: 'system', content: 'You read brand guides.' })
+    expect(body.messages[1]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Here is the guide.' },
+        { type: 'image_url', image_url: { url: `data:image/png;base64,${PNG_B64}` } },
+        { type: 'file', file: { filename: 'guide.pdf', file_data: `data:application/pdf;base64,${PDF_B64}` } },
+      ],
+    })
+    expect(body.messages[1]).not.toHaveProperty('attachments')
+  })
+
+  it('leaves messages without attachments exactly as before (string content)', async () => {
+    const fetchMock = okFetch()
+    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hello' }] })
+    const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as { messages: unknown[] }
+    expect(body.messages).toEqual([{ role: 'user', content: 'hello' }])
+  })
+
+  it('never sends the file bytes to analytics or the activity log — only what was attached', async () => {
+    okFetch()
+    await llmChatCompletion({
+      userId: 'u1',
+      messages: [
+        {
+          role: 'user',
+          content: 'Here is the guide.',
+          attachments: [{ type: 'pdf', filename: 'guide.pdf', base64: PDF_B64 }],
+        },
+      ],
+    })
+    const captured = JSON.stringify(captureServerEventMock.mock.calls)
+    const logged = JSON.stringify(logActivityCallMock.mock.calls)
+    expect(captured).not.toContain(PDF_B64)
+    expect(logged).not.toContain(PDF_B64)
+    expect(captureServerEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        properties: expect.objectContaining({
+          $ai_input: [
+            {
+              role: 'user',
+              content: 'Here is the guide.',
+              attachments: [{ type: 'pdf', filename: 'guide.pdf', bytes: 18 }],
+            },
+          ],
+        }),
+      }),
+    )
+  })
+
+  it('refuses attachments on a non-user message before any request (fail loud)', async () => {
+    const fetchMock = okFetch()
+    await expect(
+      llmChatCompletion({
+        userId: 'u1',
+        messages: [
+          { role: 'system', content: 'x', attachments: [{ type: 'image', mime: 'image/png', base64: PNG_B64 }] },
+        ],
+      }),
+    ).rejects.toThrow(/attachments.*user message.*system/)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
 describe('llmCreateTranscription', () => {
   beforeEach(() => {
     vi.clearAllMocks()
