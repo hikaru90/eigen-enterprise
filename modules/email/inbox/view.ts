@@ -35,6 +35,8 @@ export type AttachmentView = {
   contentType: string
   sizeBytes: number
   blocked: boolean
+  /** False for mail sent from here: only the metadata is kept, nothing to download (S5). */
+  kept: boolean
   /** Same-origin download path. */
   href: string
 }
@@ -50,6 +52,8 @@ export type ReaderMessage = {
   from: MailPerson
   to: MailPerson[]
   cc: MailPerson[]
+  /** Only on the sender's own copy (S5). */
+  bcc: MailPerson[]
   subject: string
   receivedAt: string
   unread: boolean
@@ -107,6 +111,7 @@ export function readerView(thread: ThreadView, opts: { origin: string; images: b
       from: m.from,
       to: m.to,
       cc: m.cc,
+      bcc: m.bcc,
       subject: m.subject,
       receivedAt: m.receivedAt.toISOString(),
       unread: m.readAt === null,
@@ -118,6 +123,7 @@ export function readerView(thread: ThreadView, opts: { origin: string; images: b
         contentType: a.contentType,
         sizeBytes: a.sizeBytes,
         blocked: a.blocked,
+        kept: m.rawS3Key !== null,
         href: attachmentUrl('', a.id, false),
       })),
     }

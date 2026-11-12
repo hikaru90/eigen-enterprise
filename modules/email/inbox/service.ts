@@ -290,6 +290,11 @@ async function readable(deps: InboxDeps, userId: string, mailboxId: string): Pro
   return m
 }
 
+/** The mailbox with its addresses, if this person may read it; otherwise "not found". */
+export async function readableMailbox(deps: InboxDeps, userId: string, mailboxId: string): Promise<MailboxView> {
+  return viewOf(deps, await readable(deps, userId, mailboxId))
+}
+
 export const MESSAGE_PAGE = 100
 
 export async function listMessages(

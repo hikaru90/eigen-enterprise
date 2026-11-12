@@ -54,6 +54,16 @@ describe('parseSesEvent', () => {
     expect(e!.detail).toEqual({ link: 'https://kindred.com/x' })
   })
 
+  it('recognises a webmail send by its tag (no log id), and still suppresses its hard bounces', () => {
+    const e = parseSesEvent({
+      eventType: 'Bounce',
+      mail: { messageId: 'ses-9', tags: { ee_webmail: ['1'] } },
+      bounce: { bounceType: 'Permanent', bouncedRecipients: [{ emailAddress: 'gone@x.co' }] },
+    })
+    expect(e).toMatchObject({ webmail: true, logId: null, suppress: [{ email: 'gone@x.co', reason: 'HARD_BOUNCE' }] })
+    expect(parseSesEvent({ eventType: 'Delivery', mail: { messageId: 'ses-2' } })).toMatchObject({ webmail: false })
+  })
+
   it('works without our tag (mail sent before tagging)', () => {
     expect(parseSesEvent({ eventType: 'Delivery', mail: { messageId: 'ses-2' } })).toMatchObject({ logId: null })
   })

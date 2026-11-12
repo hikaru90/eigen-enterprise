@@ -18,6 +18,8 @@ export type DownloadDeps = {
   bucket: () => Promise<string>
 }
 
+export const NOT_KEPT_MESSAGE = 'Attachments of mail sent from here aren’t kept, so they can’t be downloaded yet.'
+
 export type AttachmentFile = { bytes: Uint8Array<ArrayBuffer>; filename: string | null; contentType: string; inline: boolean }
 
 /** Raster images a browser shows without running anything (never SVG). */
@@ -33,7 +35,11 @@ export async function downloadAttachment(
   if (attachment.blocked) {
     throw new InboxError('blocked', 'Blocked: Amazon found a virus in this mail. The attachment can’t be downloaded.')
   }
-  if (!message.rawS3Key) throw new Error(`inbox message ${message.id} has attachments but no raw mail`)
+  if (!message.rawS3Key) {
+    // Mail sent from here (no verdicts) keeps no raw copy (S5 notes): listed, not downloadable — in Sent or wherever it was moved.
+    if (message.verdicts === null) throw new InboxError('not_kept', NOT_KEPT_MESSAGE)
+    throw new Error(`inbox message ${message.id} has attachments but no raw mail`)
+  }
   const raw = await deps.raw.getRaw(await deps.bucket(), message.rawS3Key)
   const mail = await simpleParser(Buffer.from(raw.buffer, raw.byteOffset, raw.byteLength))
   const part = mail.attachments[attachment.partIndex]

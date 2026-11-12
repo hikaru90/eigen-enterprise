@@ -30,6 +30,7 @@ function toSummary(r: SummaryRecord): MessageSummary {
     from: parsed<MailPerson>(person, r.from, 'from', r.id),
     to: parsed<MailPerson[]>(people, r.to, 'to', r.id),
     cc: parsed<MailPerson[]>(people, r.cc, 'cc', r.id),
+    bcc: parsed<MailPerson[]>(people, r.bcc, 'bcc', r.id),
     verdicts: parsed(verdicts, r.verdicts, 'verdicts', r.id),
   }
 }

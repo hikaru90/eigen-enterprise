@@ -1,5 +1,7 @@
 import type { DownloadDeps } from './attachments'
 import type { InboxHub } from './hub'
+import type { RawMailSource } from './raw-source'
+import type { SendDeps } from './send'
 import type { InboxAudit, InboxDeps, InboxMember } from './service'
 import { dbInboxStore } from './db-store'
 
@@ -63,19 +65,35 @@ export function inboundDeps(): Promise<import('./inbound').InboundDeps> {
   inboundPromise ??= (async () => {
     const { appSql, createScopedDrizzle } = await import('$lib/server/db')
     const { defaultOwleryStore } = await import('../owlery/store')
-    const { s3RawMailSource } = await import('./raw-source')
-    const { MAX_RAW_BYTES } = await import('./ingest')
-    const credentials = sesCredentials
     return {
       owlery: defaultOwleryStore(),
       fetch,
-      ingest: { store: dbInboxStore(createScopedDrizzle(appSql)), raw: s3RawMailSource(credentials, MAX_RAW_BYTES) },
+      ingest: { store: dbInboxStore(createScopedDrizzle(appSql)), raw: await rawMailSource() },
     }
   })().catch((err) => {
     inboundPromise = null
     throw err
   })
   return inboundPromise
+}
+
+/**
+ * Where raw received mail is read from: the company's inbound S3 bucket, or —
+ * under MAIL_TRANSPORT=fake, like SES and SNS — the process's fake bucket.
+ */
+async function rawMailSource(): Promise<RawMailSource> {
+  const { configuredMailTransport } = await import('../owlery/service')
+  const { processFakeRawMailSource, s3RawMailSource } = await import('./raw-source')
+  const { MAX_RAW_BYTES } = await import('./ingest')
+  return configuredMailTransport() === 'fake' ? processFakeRawMailSource() : s3RawMailSource(sesCredentials, MAX_RAW_BYTES)
+}
+
+/** The company's inbound bucket (stored by the receiving setup); fails loud before receiving is set up. */
+async function inboundBucket(): Promise<string> {
+  const { defaultOwleryStore } = await import('../owlery/store')
+  const bucket = (await defaultOwleryStore().read())?.receivingBucket
+  if (!bucket) throw new Error('Receiving has no inbound bucket stored, so attachments cannot be read.')
+  return bucket
 }
 
 /** The company's SES keys for reading raw mail from the inbound bucket (resolved per call). */
@@ -91,24 +109,32 @@ let downloadPromise: Promise<DownloadDeps> | null = null
 /** Live wiring for attachment downloads: the inbox deps, S3 with the company's keys, the stored inbound bucket. */
 export function downloadDeps(): Promise<DownloadDeps> {
   downloadPromise ??= (async (): Promise<DownloadDeps> => {
-    const { defaultOwleryStore } = await import('../owlery/store')
-    const { s3RawMailSource } = await import('./raw-source')
-    const { MAX_RAW_BYTES } = await import('./ingest')
-    const owlery = defaultOwleryStore()
-    return {
-      inbox: await inboxDeps(),
-      raw: s3RawMailSource(sesCredentials, MAX_RAW_BYTES),
-      bucket: async () => {
-        const bucket = (await owlery.read())?.receivingBucket
-        if (!bucket) throw new Error('Receiving has no inbound bucket stored, so attachments cannot be read.')
-        return bucket
-      },
-    }
+    return { inbox: await inboxDeps(), raw: await rawMailSource(), bucket: inboundBucket }
   })().catch((err) => {
     downloadPromise = null
     throw err
   })
   return downloadPromise
+}
+
+let sendPromise: Promise<SendDeps> | null = null
+
+/** Live wiring for sending from a mailbox: the inbox deps, the owlery send path, raw mail for forwards. */
+export function sendDeps(): Promise<SendDeps> {
+  sendPromise ??= (async (): Promise<SendDeps> => {
+    const { owleryService } = await import('../owlery/service')
+    const owlery = owleryService()
+    return {
+      inbox: await inboxDeps(),
+      transport: { sendMailboxMail: (input) => owlery.sendMailboxMail(input) },
+      raw: await rawMailSource(),
+      bucket: inboundBucket,
+    }
+  })().catch((err) => {
+    sendPromise = null
+    throw err
+  })
+  return sendPromise
 }
 
 let hubPromise: Promise<InboxHub> | null = null

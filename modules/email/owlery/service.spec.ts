@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { MailNotConfiguredError, MailSetupError, SenderNotVerifiedError } from '$lib/server/mail/company-mail'
 import { InMemoryMailLog } from '../platform/memory-log'
 import { awsError, FakeSes, FakeSns } from './fake-ses'
-import { eventResourceNames, formatFrom, OwleryService, SEND_SCHEDULED_JOB } from './service'
+import { eventResourceNames, formatFrom, OwleryService, SEND_SCHEDULED_JOB, WEBMAIL_SANDBOX_MESSAGE } from './service'
 import { describeSesError } from './ses'
 import { InMemoryOwleryStore, owlerySealKey, sealSecret, unsealSecret } from './store'
 
@@ -230,6 +230,73 @@ describe('OwleryService.send / status', () => {
     // A second run (job retried) does not send twice.
     await s.service.sendScheduled(out.id)
     expect(s.ses.sent).toHaveLength(1)
+  })
+})
+
+describe('OwleryService.sendMailboxMail (webmail, S5)', () => {
+  async function configured() {
+    const s = setup()
+    s.ses.verify('hello@kindred.test')
+    await s.service.saveVerified(input)
+    s.ses.sent.length = 0
+    s.log.senders.set('ana.lind@kindred.test', { ok: true, displayName: null, tracking: true })
+    return s
+  }
+  const raw = new TextEncoder().encode('From: ana.lind@kindred.test\r\nSubject: Hi\r\n\r\nHello\r\n')
+  const recipients = { to: ['a@b.co'], cc: ['c@b.co'], bcc: ['secret@b.co'] }
+
+  it('sends the raw mail with the whole envelope, tagged as webmail — and writes nothing to the sent-mail log', async () => {
+    const { ses, log, service } = await configured()
+    await service.setupEvents('https://os.kindred.test')
+    const out = await service.sendMailboxMail({ fromAddress: 'Ana.Lind@kindred.test', recipients, raw })
+    expect(out).toEqual({ sesMessageId: 'raw-1' })
+    expect(ses.rawSent).toEqual([
+      { from: 'ana.lind@kindred.test', recipients, raw, configurationSet: 'ee-os-kindred-test', tags: { ee_webmail: '1' } },
+    ])
+    expect(ses.sent).toEqual([])
+    expect(log.messages).toEqual([])
+    expect(log.events).toEqual([])
+  })
+
+  it('never uses the tracking configuration set (no opens or clicks on personal mail)', async () => {
+    const { ses, service } = await configured()
+    await service.setupEvents('https://os.kindred.test')
+    await service.sendMailboxMail({ fromAddress: 'ana.lind@kindred.test', recipients, raw })
+    expect(ses.rawSent[0]!.configurationSet).toBe('ee-os-kindred-test')
+  })
+
+  it('refuses the whole mail when any recipient is suppressed, naming it, and sends nothing', async () => {
+    const { ses, log, service } = await configured()
+    log.suppressed.add('secret@b.co')
+    await expect(service.sendMailboxMail({ fromAddress: 'ana.lind@kindred.test', recipients, raw })).rejects.toThrow(
+      /secret@b\.co is on the company’s suppression list/,
+    )
+    expect(ses.rawSent).toEqual([])
+    expect(log.messages).toEqual([])
+  })
+
+  it('refuses a mailbox whose domain is not verified, in plain words', async () => {
+    const { ses, service } = await configured()
+    await expect(service.sendMailboxMail({ fromAddress: 'x@pending.test', recipients, raw })).rejects.toThrow(
+      'Mail can’t go out from x@pending.test yet: its domain pending.test isn’t verified at Amazon SES. The owner or an admin finishes its DNS records under Email › Domains.',
+    )
+    expect(ses.rawSent).toEqual([])
+  })
+
+  it('explains a rejection in the sandbox as the sandbox; other rejections in Amazon’s words', async () => {
+    const { ses, service } = await configured()
+    ses.failSend = awsError('MessageRejected', 'Email address is not verified.')
+    ses.sandbox = true
+    await expect(service.sendMailboxMail({ fromAddress: 'ana.lind@kindred.test', recipients, raw })).rejects.toThrow(WEBMAIL_SANDBOX_MESSAGE)
+    ses.sandbox = false
+    await expect(service.sendMailboxMail({ fromAddress: 'ana.lind@kindred.test', recipients, raw })).rejects.toThrow(
+      'Amazon refused the email: Email address is not verified.',
+    )
+  })
+
+  it('fails loud before setup', async () => {
+    const { service } = setup()
+    await expect(service.sendMailboxMail({ fromAddress: 'ana.lind@kindred.test', recipients, raw })).rejects.toBeInstanceOf(MailNotConfiguredError)
   })
 })
 

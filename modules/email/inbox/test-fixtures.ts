@@ -53,6 +53,7 @@ export function message(mailboxId: string, over: Partial<MessageRow> = {}): Mess
     from: { name: 'Mara Voss', address: 'mara@sender.example' },
     to: [{ name: null, address: 'ana.lind@example.com' }],
     cc: [],
+    bcc: [],
     subject: 'Hello',
     snippet: 'Hi Ana, …',
     textBody: 'Hi Ana, how are you?',

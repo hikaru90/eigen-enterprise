@@ -9,10 +9,10 @@ import {
   type SendMailInput,
   type SendMailResult,
 } from '$lib/server/mail/company-mail'
-import { LOG_ID_TAG } from '../platform/ses-events'
+import { LOG_ID_TAG, WEBMAIL_TAG } from '../platform/ses-events'
 import { defaultEmailStore, type EmailStore, type MessageRow } from '../platform/store'
 import { defaultFakeMailStore, fakeSns, fakeStoreSes } from './fake-store'
-import { awsErrorCode, awsSes, describeSesError, type SesApi, type SesCredentials, type SesEventType, type SesFactory } from './ses'
+import { awsErrorCode, awsSes, describeSesError, type SesApi, type SesRawSendInput, type SesCredentials, type SesEventType, type SesFactory } from './ses'
 import { awsSns, EventsSetupError, type SnsApi, type SnsFactory } from './sns'
 import { defaultOwleryStore, owlerySealKey, sealSecret, unsealSecret, type OwleryEvents, type OwleryStore } from './store'
 import { resolveMailTransport, type MailTransport } from './transport'
@@ -87,6 +87,25 @@ export function formatFrom(address: string, displayName: string | null): string 
   if (!displayName?.trim()) return address
   const name = displayName.trim().replace(/[\\"]/g, (c) => `\\${c}`).replace(/[\r\n]/g, ' ')
   return `"${name}" <${address}>`
+}
+
+/** A mailbox's mail (the webmail, plan/email-inbox.md S5), built as raw MIME by the inbox. */
+export type MailboxSendInput = {
+  /** The mailbox address the mail goes out From. */
+  fromAddress: string
+  /** The envelope: every address the mail is delivered to (Bcc only here, never in the raw headers). */
+  recipients: SesRawSendInput['recipients']
+  raw: Uint8Array
+}
+
+export const WEBMAIL_SANDBOX_MESSAGE =
+  'Amazon SES is still in its sandbox, so it only delivers to verified addresses. Request production access in the AWS console.'
+
+function suppressedMessage(addresses: string[]): string {
+  const list = addresses.join(', ')
+  return addresses.length === 1
+    ? `${list} is on the company’s suppression list (an earlier mail bounced or was marked as spam), so nothing is sent to it. Remove it from the To, Cc or Bcc and send again, or ask the owner or an admin to check Email › Suppression.`
+    : `${list} are on the company’s suppression list (earlier mail bounced or was marked as spam), so nothing is sent to them. Remove them from the To, Cc or Bcc and send again, or ask the owner or an admin to check Email › Suppression.`
 }
 
 /** Names AWS accepts for topics (256) and configuration sets (64): ee-<host>… */
@@ -206,6 +225,62 @@ export class OwleryService implements CompanyMail {
     await this.deps.log.addEvent(row.id, 'queued', null)
     const messageId = await this.deliver(s, row, { from, html: input.html, text: input.text, tracking })
     return { id: row.id, status: 'sent', messageId }
+  }
+
+  /**
+   * A mailbox's mail (the webmail): the same sender check and suppression list
+   * as every send, but **no sent-mail log row** — a personal mailbox is read
+   * only by its member, a shared one only by its group (owner decision
+   * 2026-11-12), so neither subject, recipients nor body reach `mail_messages`
+   * or Logs. The general configuration set routes its events; the
+   * WEBMAIL_TAG (value "1", no ids) lets the event handler recognise them and
+   * still suppress bounced and complaining addresses. No open/click tracking.
+   * A suppressed recipient refuses the whole mail (never silently dropped).
+   */
+  async sendMailboxMail(input: MailboxSendInput): Promise<{ sesMessageId: string }> {
+    const s = await this.settings()
+    if (!s) throw new MailNotConfiguredError()
+    const fromAddress = input.fromAddress.trim().toLowerCase()
+    const check = await this.deps.log.checkSender(fromAddress)
+    if (!check.ok) {
+      const domain = fromAddress.slice(fromAddress.lastIndexOf('@') + 1)
+      throw new MailSetupError(
+        `Mail can’t go out from ${fromAddress} yet: its domain ${domain} isn’t verified at Amazon SES. The owner or an admin finishes its DNS records under Email › Domains.`,
+      )
+    }
+    const all = [...input.recipients.to, ...input.recipients.cc, ...input.recipients.bcc]
+    if (all.length === 0) throw new MailSetupError('Add at least one recipient.')
+    const suppressed: string[] = []
+    for (const r of all) if (await this.deps.log.isSuppressed(r)) suppressed.push(r)
+    if (suppressed.length > 0) throw new MailSetupError(suppressedMessage(suppressed))
+
+    const eventsWired = s.eventsStatus === 'ready' || s.eventsStatus === 'waiting'
+    const configurationSet = eventsWired ? (s.configSet ?? undefined) : undefined
+    const ses = this.client(s)
+    let messageId: string | null
+    try {
+      ;({ messageId } = await ses.sendRaw({
+        from: fromAddress,
+        recipients: input.recipients,
+        raw: input.raw,
+        ...(configurationSet ? { configurationSet } : {}),
+        tags: { [WEBMAIL_TAG]: '1' },
+      }))
+    } catch (err) {
+      if (awsErrorCode(err) === 'MessageRejected') {
+        // Which rejection it is comes from GetAccount (structured), never from Amazon's wording.
+        let sandbox = false
+        try {
+          sandbox = await ses.isSandbox()
+        } catch {
+          // GetAccount failing too: Amazon's own reason for the rejection is the better message.
+        }
+        if (sandbox) throw new MailSetupError(WEBMAIL_SANDBOX_MESSAGE, { cause: err })
+      }
+      throw new MailSetupError(describeSesError(err), { cause: err })
+    }
+    if (!messageId) throw new Error('Amazon SES accepted the mail but returned no message id')
+    return { sesMessageId: messageId }
   }
 
   /**

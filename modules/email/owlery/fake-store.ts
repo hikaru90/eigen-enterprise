@@ -1,7 +1,7 @@
-import type { IdentityInfo, SesApi, SesFactory, SesSendInput } from './ses'
+import type { IdentityInfo, SesApi, SesFactory, SesRawSendInput, SesSendInput } from './ses'
 import type { SnsFactory } from './sns'
 import { randomUUID } from 'node:crypto'
-import { asc, eq } from 'drizzle-orm'
+import { asc, eq, or, sql } from 'drizzle-orm'
 import type { DbHandle } from '$lib/kernel/db-stores'
 import type { AppDatabase } from '$lib/server/db/context'
 import { mailFakeIdentities, mailFakeSent } from '$lib/server/db/mail-fake.schema'
@@ -18,7 +18,25 @@ import { mailFakeIdentities, mailFakeSent } from '$lib/server/db/mail-fake.schem
  * by every process of the install; the agent state dir belongs to the agent.
  */
 
-export type CapturedMail = SesSendInput & { messageId: string; createdAt: string }
+/**
+ * One captured mail. A raw send (the webmail) also carries `raw` (the MIME as
+ * built) and `recipients` (the whole envelope, Bcc included); its `to` is the
+ * first recipient, `subject` the raw mail's own Subject, html/text empty.
+ */
+export type CapturedMail = SesSendInput & { messageId: string; createdAt: string; raw?: string; recipients?: string[] }
+
+/** What a raw send is captured as: the envelope and the bytes (MIME is 7-bit text once built). */
+export function capturedRaw(input: SesRawSendInput, subject: string): SesSendInput & { raw: string; recipients: string[] } {
+  const recipients = [...input.recipients.to, ...input.recipients.cc, ...input.recipients.bcc].map(norm)
+  if (recipients.length === 0) throw new Error('a raw send needs at least one recipient')
+  return { from: input.from, to: recipients[0]!, subject, html: '', text: '', raw: Buffer.from(input.raw).toString('utf8'), recipients }
+}
+
+/** The raw mail's decoded Subject (mailparser) — only for the capture's list view. */
+async function rawSubject(raw: Uint8Array): Promise<string> {
+  const { simpleParser } = await import('mailparser')
+  return (await simpleParser(Buffer.from(raw))).subject ?? ''
+}
 
 export type FakeMailStore = {
   getIdentity(identity: string): Promise<IdentityInfo>
@@ -27,8 +45,8 @@ export type FakeMailStore = {
   /** Marks an identity verified (creating it if needed) — what clicking Amazon's link would do. */
   verifyIdentity(identity: string): Promise<void>
   deleteIdentity(identity: string): Promise<void>
-  capture(mail: SesSendInput): Promise<CapturedMail>
-  /** Captured mails oldest first, optionally only those to one address. */
+  capture(mail: SesSendInput & { raw?: string; recipients?: string[] }): Promise<CapturedMail>
+  /** Captured mails oldest first, optionally only those to one address (any envelope recipient of a raw send). */
   list(filter?: { to?: string }): Promise<CapturedMail[]>
   /** Forgets every captured mail and identity. */
   clear(): Promise<void>
@@ -50,6 +68,7 @@ export function fakeStoreSes(store: FakeMailStore): SesFactory {
       createIdentity: (id) => store.createIdentity(id),
       isSandbox: async () => false,
       send: async (input) => ({ messageId: (await store.capture(input)).messageId }),
+      sendRaw: async (input) => ({ messageId: (await store.capture(capturedRaw(input, await rawSubject(input.raw)))).messageId }),
       createDomainIdentity: (input) => store.createIdentity(input.domain),
       getDomainIdentity: async (domain) => {
         const id = await store.getIdentity(domain)
@@ -109,7 +128,7 @@ export class DbFakeMailStore implements FakeMailStore {
     await (await resolveDb(this.db)).delete(mailFakeIdentities).where(eq(mailFakeIdentities.identity, norm(identity)))
   }
 
-  async capture(mail: SesSendInput): Promise<CapturedMail> {
+  async capture(mail: SesSendInput & { raw?: string; recipients?: string[] }): Promise<CapturedMail> {
     const [row] = await (await resolveDb(this.db))
       .insert(mailFakeSent)
       .values({
@@ -121,6 +140,8 @@ export class DbFakeMailStore implements FakeMailStore {
         text: mail.text,
         replyTo: mail.replyTo ?? null,
         headers: mail.headers ?? null,
+        raw: mail.raw ?? null,
+        recipients: mail.recipients ?? null,
       })
       .returning()
     if (!row) throw new Error('the fake mail transport could not store the mail')
@@ -131,7 +152,9 @@ export class DbFakeMailStore implements FakeMailStore {
     const db = await resolveDb(this.db)
     const base = db.select().from(mailFakeSent)
     const rows = filter.to
-      ? await base.where(eq(mailFakeSent.toAddress, norm(filter.to))).orderBy(asc(mailFakeSent.createdAt))
+      ? await base
+          .where(or(eq(mailFakeSent.toAddress, norm(filter.to)), sql`${mailFakeSent.recipients} @> ${JSON.stringify([norm(filter.to)])}::jsonb`))
+          .orderBy(asc(mailFakeSent.createdAt))
       : await base.orderBy(asc(mailFakeSent.createdAt))
     return rows.map(toCaptured)
   }
@@ -153,6 +176,8 @@ function toCaptured(row: typeof mailFakeSent.$inferSelect): CapturedMail {
     text: row.text,
     ...(row.replyTo ? { replyTo: row.replyTo } : {}),
     ...(row.headers ? { headers: row.headers } : {}),
+    ...(row.raw !== null ? { raw: row.raw } : {}),
+    ...(row.recipients ? { recipients: row.recipients } : {}),
     createdAt: row.createdAt.toISOString(),
   }
 }
@@ -183,14 +208,15 @@ export class InMemoryFakeMailStore implements FakeMailStore {
   async deleteIdentity(identity: string) {
     this.identities.delete(norm(identity))
   }
-  async capture(mail: SesSendInput) {
+  async capture(mail: SesSendInput & { raw?: string; recipients?: string[] }) {
     this.seq += 1
     const captured: CapturedMail = { ...mail, to: norm(mail.to), messageId: `fake-${this.seq}`, createdAt: new Date(this.seq).toISOString() }
     this.mails.push(captured)
     return captured
   }
   async list(filter: { to?: string } = {}) {
-    return filter.to ? this.mails.filter((m) => m.to === norm(filter.to!)) : [...this.mails]
+    const to = filter.to ? norm(filter.to) : null
+    return to ? this.mails.filter((m) => m.to === to || (m.recipients ?? []).includes(to)) : [...this.mails]
   }
   async clear() {
     this.mails = []

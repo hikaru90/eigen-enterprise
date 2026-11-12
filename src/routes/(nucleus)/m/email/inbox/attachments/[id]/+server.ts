@@ -19,6 +19,7 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
   } catch (err) {
     if (err instanceof InboxError && err.code === 'not_found') return text(404, err.message)
     if (err instanceof InboxError && err.code === 'blocked') return text(403, err.message)
+    if (err instanceof InboxError && err.code === 'not_kept') return text(410, err.message)
     throw err
   }
 }

@@ -5,6 +5,7 @@ import type {
   SesCredentials,
   SesEventType,
   SesFactory,
+  SesRawSendInput,
   SesSendInput,
 } from './ses'
 import type { SnsApi, SnsFactory } from './sns'
@@ -23,6 +24,7 @@ export class FakeSes {
   eventDestinations: { configurationSet: string; topicArn: string; events: SesEventType[] }[] = []
   unsuppressed: string[] = []
   sent: SesSendInput[] = []
+  rawSent: SesRawSendInput[] = []
   credentials: SesCredentials[] = []
   sandbox = false
   failAccount: Error | null = null
@@ -50,6 +52,11 @@ export class FakeSes {
         if (this.failSend) throw this.failSend
         this.sent.push(input)
         return { messageId: `msg-${this.sent.length}` }
+      },
+      sendRaw: async (input) => {
+        if (this.failSend) throw this.failSend
+        this.rawSent.push(input)
+        return { messageId: `raw-${this.rawSent.length}` }
       },
       createDomainIdentity: async (input) => {
         if (this.failCreateDomain) throw this.failCreateDomain

@@ -1,7 +1,9 @@
+import type { ComposeDraft } from '../send'
 import type { MessageListItem, ReaderView } from '../view'
 import { describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
+import ComposeForm from './compose-form.svelte'
 import FolderNav from './folder-nav.svelte'
 import MailReader from './mail-reader.svelte'
 import MessageList from './message-list.svelte'
@@ -41,6 +43,7 @@ const reader = (over: Partial<ReaderView> = {}): ReaderView => ({
       from: { name: 'Mara Voss', address: 'mara@sender.example' },
       to: [{ name: null, address: 'ana@example.com' }],
       cc: [],
+      bcc: [],
       subject: 'Quarterly numbers',
       receivedAt: '2026-11-12T08:00:00.000Z',
       unread: false,
@@ -139,8 +142,8 @@ describe('mail-reader.svelte', () => {
   it('lists attachments as downloads, a blocked one as blocked', async () => {
     const r = reader()
     r.messages[0]!.attachments = [
-      { id: 'a1', filename: 'contract.pdf', contentType: 'application/pdf', sizeBytes: 2048, blocked: false, href: '/m/email/inbox/attachments/a1' },
-      { id: 'a2', filename: 'evil.exe', contentType: 'application/octet-stream', sizeBytes: 10, blocked: true, href: '/m/email/inbox/attachments/a2' },
+      { id: 'a1', filename: 'contract.pdf', contentType: 'application/pdf', sizeBytes: 2048, blocked: false, kept: true, href: '/m/email/inbox/attachments/a1' },
+      { id: 'a2', filename: 'evil.exe', contentType: 'application/octet-stream', sizeBytes: 10, blocked: true, kept: true, href: '/m/email/inbox/attachments/a2' },
     ]
     render(MailReader, { reader: r, ...base })
     const list = page.getByRole('list', { name: 'Attachments' })
@@ -158,5 +161,108 @@ describe('mail-reader.svelte', () => {
     expect(items).toHaveLength(2)
     await expect.element(page.getByTestId('inbox-thread-m0')).toHaveTextContent('Archive')
     await expect.element(page.getByTestId('inbox-thread-m1')).toHaveAttribute('aria-current', 'true')
+  })
+})
+
+describe('mail-reader.svelte: reply and forward (S5)', () => {
+  const base = { backHref: '/m/email/inbox', imagesHref: '/m/email/inbox?m=m1&images=1', submit: () => undefined }
+
+  it('offers Reply, Reply all and Forward of the opened mail when it can send', async () => {
+    const compose = { reply: '/m/email/inbox?m=m1&compose=reply', replyAll: '/m/email/inbox?m=m1&compose=replyAll', forward: '/m/email/inbox?m=m1&compose=forward' }
+    render(MailReader, { reader: reader(), ...base, compose })
+    const actions = page.getByRole('group', { name: 'Actions for this mail' })
+    await expect.element(actions.getByRole('link', { name: 'Reply', exact: true })).toHaveAttribute('href', compose.reply)
+    await expect.element(actions.getByRole('link', { name: 'Reply all' })).toHaveAttribute('href', compose.replyAll)
+    await expect.element(actions.getByRole('link', { name: 'Forward' })).toHaveAttribute('href', compose.forward)
+  })
+
+  it('offers none from a disabled mailbox; shows Bcc and unkept attachments of a sent copy', async () => {
+    const r = reader({ folder: 'sent' })
+    r.messages[0] = {
+      ...r.messages[0]!,
+      folder: 'sent',
+      bcc: [{ name: 'Boss', address: 'boss@x.co' }],
+      attachments: [{ id: 's1', filename: 'plan.pdf', contentType: 'application/pdf', sizeBytes: 2048, blocked: false, kept: false, href: '/m/email/inbox/attachments/s1' }],
+    }
+    render(MailReader, { reader: r, ...base, compose: null })
+    await expect.element(page.getByRole('link', { name: 'Reply', exact: true })).not.toBeInTheDocument()
+    await expect.element(page.getByTestId('inbox-bcc')).toHaveTextContent('Bcc Boss <boss@x.co>')
+    await expect.element(page.getByTestId('inbox-attachment-not-kept-s1')).toHaveTextContent('plan.pdf')
+    await expect.element(page.getByRole('link', { name: /plan\.pdf/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('compose-form.svelte (S5)', () => {
+  const draft = (over: Partial<ComposeDraft> = {}): ComposeDraft => ({
+    mode: 'new',
+    parentId: null,
+    fromMailboxId: 'b1',
+    fromChoices: [
+      { id: 'b1', address: 'ana@example.com', name: 'Ana Lind' },
+      { id: 'b2', address: 'sales@example.com', name: null },
+    ],
+    to: '',
+    cc: '',
+    subject: '',
+    body: '',
+    forwarded: [],
+    notForwarded: [],
+    blocked: null,
+    ...over,
+  })
+  const props = { submit: () => undefined, discardHref: '/m/email/inbox' }
+
+  it('new mail: From picker on the mailbox you are in, labelled fields, focus on To, Bcc behind a toggle', async () => {
+    render(ComposeForm, { draft: draft(), ...props })
+    await expect.element(page.getByRole('heading', { name: 'New mail' })).toBeVisible()
+    await expect.element(page.getByLabelText('From')).toHaveValue('b1')
+    await expect.element(page.getByLabelText('To', { exact: true })).toHaveFocus()
+    await expect.element(page.getByLabelText('Bcc', { exact: true })).not.toBeInTheDocument()
+    await page.getByRole('button', { name: 'Bcc' }).click()
+    await expect.element(page.getByLabelText('Bcc', { exact: true })).toHaveFocus()
+    for (const label of ['Cc', 'Subject', 'Message', 'Attach files (up to 25 MB together)']) await expect.element(page.getByLabelText(label, { exact: true })).toBeVisible()
+    const form = page.getByTestId('compose').element().querySelector('form')!
+    expect(form.getAttribute('action')).toBe('?/send')
+    expect(form.getAttribute('enctype')).toBe('multipart/form-data')
+    expect(new FormData(form).get('mode')).toBe('new')
+    expect(new FormData(form).get('mailboxId')).toBe('b1')
+  })
+
+  it('a reply: fixed From, prefilled fields, focus in the text above the quote', async () => {
+    render(ComposeForm, {
+      draft: draft({ mode: 'reply', parentId: 'p1', fromChoices: [{ id: 'b1', address: 'ana@example.com', name: 'Ana Lind' }], to: 'mara@sender.example', subject: 'Re: Hi', body: '\n\nOn …, Mara wrote:\n> Hi' }),
+      ...props,
+    })
+    await expect.element(page.getByTestId('compose-from')).toHaveTextContent('Ana Lind <ana@example.com>')
+    await expect.element(page.getByLabelText('To', { exact: true })).toHaveValue('mara@sender.example')
+    await expect.element(page.getByLabelText('Subject', { exact: true })).toHaveValue('Re: Hi')
+    await expect.element(page.getByLabelText('Message')).toHaveFocus()
+    const form = page.getByTestId('compose').element().querySelector('form')!
+    expect(new FormData(form).get('parentId')).toBe('p1')
+  })
+
+  it('shows the error, keeps what was typed, and the busy state disables Send', async () => {
+    const view = render(ComposeForm, { draft: draft(), ...props })
+    await page.getByLabelText('To', { exact: true }).fill('typed@x.co')
+    await view.rerender({ draft: draft(), ...props, busy: true, error: 'Amazon SES is still in its sandbox.' })
+    await expect.element(page.getByRole('alert')).toHaveTextContent('Amazon SES is still in its sandbox.')
+    await expect.element(page.getByLabelText('To', { exact: true })).toHaveValue('typed@x.co')
+    await expect.element(page.getByRole('button', { name: 'Sending…' })).toBeDisabled()
+  })
+
+  it('a blocked draft says why and Send is off; a forward lists what it carries and what it can’t', async () => {
+    render(ComposeForm, {
+      draft: draft({
+        mode: 'forward',
+        blocked: 'ana@example.com is disabled, so no mail can be sent from it.',
+        forwarded: [{ filename: 'contract.pdf', sizeBytes: 2048 }],
+        notForwarded: [{ filename: 'bad.exe', reason: 'Amazon found a virus in this mail' }],
+      }),
+      ...props,
+    })
+    await expect.element(page.getByTestId('compose-blocked')).toHaveTextContent('disabled, so no mail can be sent')
+    await expect.element(page.getByRole('button', { name: 'Send' })).toBeDisabled()
+    await expect.element(page.getByRole('list', { name: 'Forwarded attachments' })).toHaveTextContent('contract.pdf')
+    await expect.element(page.getByTestId('compose-not-forwarded')).toHaveTextContent('bad.exe · not included: Amazon found a virus in this mail')
   })
 })

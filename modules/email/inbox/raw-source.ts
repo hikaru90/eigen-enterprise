@@ -57,3 +57,15 @@ export function fakeRawMailSource(): RawMailSource & { objects: Map<string, Uint
     },
   }
 }
+
+const processHost = globalThis as { __eeFakeRawMail?: ReturnType<typeof fakeRawMailSource> }
+
+/**
+ * The inbound bucket of MAIL_TRANSPORT=fake (test servers only): one in-memory
+ * object store per process, filled by the e2e inbox harness, read by
+ * downloads, forwards and ingest exactly like S3 would be.
+ */
+export function processFakeRawMailSource(): ReturnType<typeof fakeRawMailSource> {
+  processHost.__eeFakeRawMail ??= fakeRawMailSource()
+  return processHost.__eeFakeRawMail
+}

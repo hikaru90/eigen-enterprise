@@ -56,10 +56,20 @@ export type SesEvent = z.infer<typeof sesEvent>
 /** The tag ee puts on every send (SesSendInput.tags) — the log row id. */
 export const LOG_ID_TAG = 'ee_message'
 
+/**
+ * The tag on every webmail send (plan/email-inbox.md S5). A member's mail never
+ * gets a log row, so its events carry no log id — this tag (value "1", no ids,
+ * no content) is how an event is recognised as webmail: it only feeds the
+ * suppression list.
+ */
+export const WEBMAIL_TAG = 'ee_webmail'
+
 export type ParsedSesEvent = {
   status: MessageStatus
   sesMessageId: string
   logId: string | null
+  /** Sent from a mailbox (WEBMAIL_TAG): no log row exists, only suppressions apply. */
+  webmail: boolean
   occurredAt: Date
   /** What the timeline shows for this event (no message content). */
   detail: Record<string, unknown>
@@ -93,7 +103,8 @@ export function parseSesEvent(raw: unknown): ParsedSesEvent | null {
   const status = STATUS[e.eventType]
   if (!status) return null
   const logId = e.mail.tags?.[LOG_ID_TAG]?.[0] ?? null
-  const base = { status, sesMessageId: e.mail.messageId, logId }
+  const webmail = e.mail.tags?.[WEBMAIL_TAG]?.[0] === '1'
+  const base = { status, sesMessageId: e.mail.messageId, logId, webmail }
   switch (status) {
     case 'bounced': {
       const permanent = e.bounce?.bounceType === 'Permanent'
