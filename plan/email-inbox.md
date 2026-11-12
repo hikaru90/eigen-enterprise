@@ -156,6 +156,21 @@ SES/SNS ones.
 Sources: AWS SES Developer Guide (receiving concepts, console walkthrough, permissions, S3 and
 SNS actions, notification contents, quotas) and the AWS General Reference SES endpoints table.
 
+## S3 notes (2026-11-12, decisions the plan left open)
+
+- **Status codes for SNS:** wrong topic 403; malformed, non-S3 action, foreign bucket, over 40 MB or
+  no sender at all → 400 (never retried); raw fetch or DB failure → thrown → 5xx (SNS retries, and
+  `(mailbox_id, ses_message_id)` makes the retry a no-op). No stored inbound bucket yet → 503 (retry,
+  don't drop). A well-formed notification that is not `Received` (SES's setup test) → 200, ignored.
+  `UnsubscribeConfirmation` on our topic sets receiving `failed`, like the delivery events.
+- **Received time** is SES's `mail.timestamp`, not the sender's `Date:` header.
+- **No `From:` header:** the envelope sender (`mail.source`) is used as From; with neither, 400.
+- **Attachments** (migration 0131): every mailparser attachment, inline `cid:` parts included, is
+  found again by `part_index` (its position in mailparser's list) and proven by `checksum` (md5).
+- **Threading:** the earliest stored mail in the same mailbox whose Message-ID is the
+  `In-Reply-To` or any `References` id gives the thread; otherwise a new one.
+- **HTML-only mail:** `text_body` and the snippet come from mailparser's own HTML-to-text output.
+
 ## Slices (TDD; worktrees under `.claude/worktrees/`)
 
 | # | Slice | Done when |

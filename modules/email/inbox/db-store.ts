@@ -1,12 +1,13 @@
-import type { AddressRow, InboxStore, MailboxRow, MailPerson, MessageRow, MessageSummary } from './store'
-import { and, asc, desc, eq, getTableColumns, sql } from 'drizzle-orm'
+import type { AddressRow, AttachmentRow, InboxStore, MailboxRow, MailPerson, MessageRow, MessageSummary } from './store'
+import { and, asc, desc, eq, getTableColumns, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { AppDatabase } from '$lib/server/db/context'
 import { rowsFromDbExecute } from '$lib/server/db/execute-rows'
-import { inboxMessages, mailboxAddresses, mailboxes } from '$lib/server/db/inbox.schema'
+import { inboxAttachments, inboxMessages, mailboxAddresses, mailboxes } from '$lib/server/db/inbox.schema'
+import { INBOX_NOTIFY_CHANNEL } from './store'
 import { VERDICTS } from './types'
 
-/** InboxStore over Postgres (company-level tables, migration 0129). */
+/** InboxStore over Postgres (company-level tables, migrations 0129 + 0131). */
 
 const person = z.object({ name: z.string().nullable(), address: z.string().min(1) }).strict()
 const people = z.array(person)
@@ -98,6 +99,49 @@ export function dbInboxStore(db: AppDatabase): InboxStore {
     },
     async insertMessage(row: MessageRow) {
       await db.insert(inboxMessages).values(row)
+    },
+    async insertReceived(row, attachments: AttachmentRow[]) {
+      return db.transaction(async (tx) => {
+        const inserted = await tx
+          .insert(inboxMessages)
+          .values(row)
+          .onConflictDoNothing({
+            target: [inboxMessages.mailboxId, inboxMessages.sesMessageId],
+            where: sql`${inboxMessages.sesMessageId} IS NOT NULL`,
+          })
+          .returning({ id: inboxMessages.id })
+        if (inserted.length === 0) return { stored: false }
+        if (attachments.length > 0) await tx.insert(inboxAttachments).values(attachments)
+        // Inside the transaction: delivered on commit, never for a rolled-back row.
+        await tx.execute(sql`select pg_notify(${INBOX_NOTIFY_CHANNEL}, ${row.mailboxId})`)
+        return { stored: true }
+      })
+    },
+    async listAttachments(messageId) {
+      return db.select().from(inboxAttachments).where(eq(inboxAttachments.messageId, messageId)).orderBy(asc(inboxAttachments.partIndex))
+    },
+    async threadOf(mailboxId, messageIds) {
+      if (messageIds.length === 0) return null
+      const [r] = await db
+        .select({ threadId: inboxMessages.threadId })
+        .from(inboxMessages)
+        .where(and(eq(inboxMessages.mailboxId, mailboxId), inArray(inboxMessages.messageId, messageIds)))
+        .orderBy(asc(inboxMessages.receivedAt), asc(inboxMessages.id))
+        .limit(1)
+      return r?.threadId ?? null
+    },
+    async mailboxesFor(addresses) {
+      if (addresses.length === 0) return []
+      const rows = await db
+        .select({ address: mailboxAddresses.address, mailbox: mailboxes })
+        .from(mailboxAddresses)
+        .innerJoin(mailboxes, eq(mailboxes.id, mailboxAddresses.mailboxId))
+        .where(inArray(mailboxAddresses.address, addresses))
+      const byAddress = new Map(rows.map((r) => [r.address, r.mailbox]))
+      return addresses.flatMap((address) => {
+        const mailbox = byAddress.get(address)
+        return mailbox ? [{ address, mailbox }] : []
+      })
     },
     async getMessage(id) {
       const [r] = await db.select().from(inboxMessages).where(eq(inboxMessages.id, id)).limit(1)

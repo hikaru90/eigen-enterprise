@@ -1,19 +1,28 @@
-import type { AddressRow, InboxStore, MailboxRow, MailboxStats, MessageRow } from './store'
+import type { AddressRow, AttachmentRow, InboxStore, MailboxRow, MailboxStats, MessageRow } from './store'
 
-/** In-memory InboxStore for unit tests (same semantics as the DB store). */
+/**
+ * In-memory InboxStore for unit tests (same semantics as the DB store).
+ * `notified` stands in for pg_notify on INBOX_NOTIFY_CHANNEL (mailbox ids, in order).
+ */
 export function memoryInboxStore(): InboxStore & {
   mailboxes: Map<string, MailboxRow>
   addresses: Map<string, AddressRow>
   messages: Map<string, MessageRow>
+  attachments: Map<string, AttachmentRow>
+  notified: string[]
 } {
   const mailboxes = new Map<string, MailboxRow>()
   const addresses = new Map<string, AddressRow>()
   const messages = new Map<string, MessageRow>()
+  const attachments = new Map<string, AttachmentRow>()
+  const notified: string[] = []
   const copy = <T>(v: T): T => structuredClone(v)
   return {
     mailboxes,
     addresses,
     messages,
+    attachments,
+    notified,
     async insertMailbox(m, primary) {
       if (mailboxes.has(m.id)) throw new Error(`mailbox ${m.id} exists`)
       if (addresses.has(primary.address)) throw new Error(`address ${primary.address} exists`)
@@ -61,6 +70,42 @@ export function memoryInboxStore(): InboxStore & {
     async insertMessage(row) {
       if (messages.has(row.id)) throw new Error(`message ${row.id} exists`)
       messages.set(row.id, copy(row))
+    },
+    async insertReceived(row, rows) {
+      if ([...messages.values()].some((m) => m.mailboxId === row.mailboxId && m.sesMessageId === row.sesMessageId)) return { stored: false }
+      if (!mailboxes.has(row.mailboxId)) throw new Error(`mailbox ${row.mailboxId} not found`)
+      if (messages.has(row.id)) throw new Error(`message ${row.id} exists`)
+      for (const a of rows) {
+        if (a.messageId !== row.id) throw new Error(`attachment ${a.id} belongs to another message`)
+        if (attachments.has(a.id)) throw new Error(`attachment ${a.id} exists`)
+      }
+      if (new Set(rows.map((a) => a.partIndex)).size !== rows.length) throw new Error(`duplicate attachment part in ${row.id}`)
+      messages.set(row.id, copy(row))
+      for (const a of rows) attachments.set(a.id, copy(a))
+      notified.push(row.mailboxId)
+      return { stored: true }
+    },
+    async listAttachments(messageId) {
+      return [...attachments.values()]
+        .filter((a) => a.messageId === messageId)
+        .sort((a, b) => a.partIndex - b.partIndex)
+        .map(copy)
+    },
+    async threadOf(mailboxId, ids) {
+      const wanted = new Set(ids)
+      const hit = [...messages.values()]
+        .filter((m) => m.mailboxId === mailboxId && m.messageId !== null && wanted.has(m.messageId))
+        .sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime() || a.id.localeCompare(b.id))[0]
+      return hit?.threadId ?? null
+    },
+    async mailboxesFor(list) {
+      const out = []
+      for (const address of list) {
+        const a = addresses.get(address)
+        const m = a ? mailboxes.get(a.mailboxId) : undefined
+        if (a && m) out.push({ address, mailbox: copy(m) })
+      }
+      return out
     },
     async getMessage(id) {
       const m = messages.get(id)

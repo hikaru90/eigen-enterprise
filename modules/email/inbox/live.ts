@@ -50,3 +50,33 @@ export function inboxDeps(): Promise<InboxDeps> {
   })
   return depsPromise
 }
+
+let inboundPromise: Promise<import('./inbound').InboundDeps> | null = null
+
+/**
+ * Live wiring for /api/mail/ses-inbound: the receiving settings S2 stores
+ * (topic, bucket), the raw mail from S3 with the company's SES keys, the DB store.
+ */
+export function inboundDeps(): Promise<import('./inbound').InboundDeps> {
+  inboundPromise ??= (async () => {
+    const { appSql, createScopedDrizzle } = await import('$lib/server/db')
+    const { defaultOwleryStore } = await import('../owlery/store')
+    const { owleryService } = await import('../owlery/service')
+    const { s3RawMailSource } = await import('./raw-source')
+    const { MAX_RAW_BYTES } = await import('./ingest')
+    const credentials = async () => {
+      const s = await owleryService().settings()
+      if (!s) throw new Error('Amazon SES is not set up, so received mail cannot be read from S3.')
+      return { region: s.region, accessKeyId: s.accessKeyId, secretAccessKey: s.secretAccessKey }
+    }
+    return {
+      owlery: defaultOwleryStore(),
+      fetch,
+      ingest: { store: dbInboxStore(createScopedDrizzle(appSql)), raw: s3RawMailSource(credentials, MAX_RAW_BYTES) },
+    }
+  })().catch((err) => {
+    inboundPromise = null
+    throw err
+  })
+  return inboundPromise
+}
