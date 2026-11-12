@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { PageProps } from './$types'
-  import { enhance } from '$app/forms'
-  import { LOGO_TYPES, MAX_COMPANY_NAME_LENGTH, MAX_LOGO_BYTES } from '$lib/company/identity'
+  import { applyAction, deserialize, enhance } from '$app/forms'
+  import { invalidateAll } from '$app/navigation'
+  import { LOGO_TYPES, MAX_COMPANY_NAME_LENGTH, MAX_LOGO_BYTES, refuseLogoFile } from '$lib/company/identity'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { docTitle } from '$lib/shell/title'
@@ -10,6 +11,11 @@
    * Settings → Company: the name and logo at the top left of the app (owner
    * and admins). Saving reloads the page data, so the shell shows the change
    * at once. Brand styles stay in Brand.
+   *
+   * The logo uploads as soon as a file arrives: picked (the button opens the
+   * picker), dropped onto the logo area, or pasted. Drop and paste need no
+   * folder access, so they still work when macOS has refused Chrome the
+   * Desktop or Documents folder.
    */
   let { data, form }: PageProps = $props()
 
@@ -17,11 +23,87 @@
   const initial = $derived((data.company.name ?? '?').slice(0, 1).toUpperCase())
   const nameResult = $derived(form?.action === 'saveName' ? form : null)
   const logoResult = $derived(form?.action === 'uploadLogo' || form?.action === 'removeLogo' ? form : null)
+
+  /** What this page knows before the server answers: a file on its way, or why it was not sent. */
+  type LogoLocal = { kind: 'uploading'; fileName: string } | { kind: 'refused'; error: string }
+  let logoLocal = $state<LogoLocal | null>(null)
+  let dragging = $state(false)
+  let fileInput: HTMLInputElement | undefined = $state()
+  const uploading = $derived(logoLocal?.kind === 'uploading')
+
+  const UNREACHABLE = 'The logo did not reach the server. Check the connection and try again.'
+
+  async function uploadLogo(file: File) {
+    if (uploading) return
+    const refused = refuseLogoFile(file.type, file.size)
+    if (refused) {
+      logoLocal = { kind: 'refused', error: refused.error }
+      return
+    }
+    logoLocal = { kind: 'uploading', fileName: file.name }
+    const body = new FormData()
+    body.set('logo', file)
+    let text: string
+    try {
+      const response = await fetch('?/uploadLogo', {
+        method: 'POST',
+        body,
+        headers: { 'x-sveltekit-action': 'true' },
+      })
+      text = await response.text()
+    } catch {
+      logoLocal = { kind: 'refused', error: UNREACHABLE }
+      return
+    }
+    // Same as the default use:enhance: reload the data on success, then show the action's result.
+    const result = deserialize(text)
+    if (result.type === 'success') await invalidateAll()
+    await applyAction(result)
+    logoLocal = null
+  }
+
+  function onPicked(event: Event & { currentTarget: HTMLInputElement }) {
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    // Clear it, so picking the same file again is a change too.
+    input.value = ''
+    if (file) void uploadLogo(file)
+  }
+
+  function onDragOver(event: DragEvent) {
+    event.preventDefault()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+    dragging = true
+  }
+
+  function onDrop(event: DragEvent) {
+    event.preventDefault()
+    dragging = false
+    const file = event.dataTransfer?.files[0]
+    if (file) void uploadLogo(file)
+  }
+
+  /** A pasted file anywhere on the page is a logo, except while typing in a field. */
+  function onPaste(event: ClipboardEvent) {
+    const target = event.target
+    if (
+      target instanceof HTMLElement &&
+      (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable)
+    ) {
+      return
+    }
+    const file = event.clipboardData?.files[0]
+    if (!file) return
+    event.preventDefault()
+    void uploadLogo(file)
+  }
 </script>
 
 <svelte:head>
   <title>{docTitle('Company', 'Settings')}</title>
 </svelte:head>
+
+<svelte:document onpaste={onPaste} />
 
 <h2 class="text-base font-semibold tracking-tight">Company</h2>
 <p class="mt-1 text-sm text-foreground/60">
@@ -67,7 +149,17 @@
         name's first letter.
       </p>
     </div>
-    <div class="flex items-center gap-3">
+    <div
+      role="group"
+      aria-label="Logo: drop an image here"
+      class="flex items-center gap-3 rounded-md border border-dashed p-3 {dragging
+        ? 'border-ring bg-muted'
+        : 'border-border'}"
+      ondragover={onDragOver}
+      ondragleave={() => (dragging = false)}
+      ondrop={onDrop}
+      data-testid="company-logo-drop"
+    >
       {#if data.company.logo}
         <img
           src={data.company.logo.url}
@@ -82,37 +174,61 @@
           data-testid="company-logo-initial">{initial}</span
         >
       {/if}
-      <form
-        method="post"
-        action="?/uploadLogo"
-        enctype="multipart/form-data"
-        use:enhance
-        class="flex min-w-0 flex-1 flex-wrap items-center gap-2"
-      >
+      <div class="min-w-0 flex-1 space-y-1.5">
         <input
+          bind:this={fileInput}
           type="file"
           name="logo"
           accept={LOGO_TYPES.join(',')}
-          required
-          class="min-w-0 flex-1 text-xs text-foreground/70 file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-2.5 file:py-1 file:text-xs file:font-medium"
+          class="sr-only"
+          tabindex="-1"
+          aria-hidden="true"
+          onchange={onPicked}
           data-testid="company-logo-file"
         />
-        <Button type="submit" size="sm" variant="outline" data-testid="company-logo-upload">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={uploading}
+          onclick={() => fileInput?.click()}
+          data-testid="company-logo-upload"
+        >
           {data.company.logo ? 'Replace logo' : 'Upload logo'}
         </Button>
-      </form>
+        <p class="text-xs text-muted-foreground">Or drop an image here, or paste one (⌘V / Ctrl+V).</p>
+      </div>
     </div>
     {#if data.company.logo}
-      <form method="post" action="?/removeLogo" use:enhance>
-        <Button type="submit" size="sm" variant="ghost" data-testid="company-logo-remove">Remove logo</Button>
+      <form
+        method="post"
+        action="?/removeLogo"
+        use:enhance={() => {
+          // The answer to this click replaces an earlier refusal shown here.
+          logoLocal = null
+        }}
+      >
+        <Button type="submit" size="sm" variant="ghost" disabled={uploading} data-testid="company-logo-remove"
+          >Remove logo</Button
+        >
       </form>
     {/if}
-    {#if logoResult?.error}
+    {#if logoLocal?.kind === 'uploading'}
+      <p class="text-xs text-muted-foreground" role="status" data-testid="company-logo-status">
+        Uploading {logoLocal.fileName}…
+      </p>
+    {:else if logoLocal?.kind === 'refused'}
+      <p class="text-xs text-destructive" role="alert">{logoLocal.error}</p>
+    {:else if logoResult?.error}
       <p class="text-xs text-destructive" role="alert">{logoResult.error}</p>
     {:else if logoResult?.ok}
       <p class="text-xs text-foreground/60" role="status">
         {logoResult.action === 'removeLogo' ? 'Logo removed.' : 'Logo saved.'}
       </p>
     {/if}
+    <p class="text-xs text-muted-foreground" data-testid="company-logo-mac-hint">
+      On a Mac, if the file picker won't open your folders: allow it in System Settings → Privacy &amp; Security →
+      Files and Folders → Google Chrome. Dropping or pasting an image works without that.
+    </p>
   </section>
 </div>
