@@ -15,7 +15,7 @@
 <div class="mt-3">
   <PageHeader
     title="Add a contact"
-    description="Only the name is needed. It stays private to you (and the company owner and admins) unless you share it."
+    description="Only the name is needed — type it in, or tell me about them and the AI fills in the form for you to check. It stays private to you (and the company owner and admins) unless you share it."
   />
 </div>
 <div class="mt-6">
@@ -23,6 +23,7 @@
     suggestedTags={data.tags}
     submitLabel="Add contact"
     offerShare
+    describeOpen
     error={form && 'error' in form ? form.error : null}
   />
 </div>
