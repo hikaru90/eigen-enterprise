@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-12 — v0.5.6 on production (os.cerberusblue.com): the member assistant fix
+
+- **What:** v0.5.6 = v0.5.5 + the fix below (every principal's assistant turn runs on the company's — the owner's — AI provider). Bump `aae0819`, tag `v0.5.6`.
+- **Release run 43237920042 succeeded** (arm64 + amd64 + publish).
+- **Upgrade:** `ee upgrade --from https://github.com/hikaru90/eigen-enterprise/releases/download/v0.5.6`, detached (log `/root/ee-upgrade-0.5.6.log`). Safety copy `/var/lib/ee/upgrades/2026-11-12T14-34-49Z`. `ee upgrade --check`: runs 0.5.6-aae081926f61. `ee-os-b` active, no errors in its journal since, `/login` 200.
+- **Not verified:** no member has chatted since the upgrade (the last member turn, pi task 50 at 13:52 CET, is the old `Platform EUrouter not configured` failure). A member needs to send one message to confirm.
+
 ## 2026-11-12 — Email inbox S4 merged: webmail read UI, safe HTML mail, attachments, live updates (main `c23076b`, not pushed, not on the box)
 
 Owner: "Start S4". Built in worktree `email-inbox-s4` (`6904830`), merged into main (`c23076b`) on top of the round-4 merges.
@@ -60,7 +67,7 @@ Owner: "the assisstant does not work on the prod machine" / "fix it please".
 - **Decision log (architecture impact; owner may veto):** the company's AI provider is the owner's for every principal, in chat as everywhere else. A provider an admin or member saves on their own account is not used. Settings → AI provider still saves to the caller's account — it should be owner-only (follow-up).
 - **Known gap (follow-up):** a non-invited member, or an admin before any provider exists, still gets the welcome mind gate and can save a provider that is then never used. Production has only the owner and invited people, so nobody hits it there.
 - **Pre-existing, exposed (not fixed):** after `email-platform.e2e.ts` runs (it fails on main too), `/api/onboarding/mail` no longer recognises `SenderNotVerifiedError` (`instanceof` false → generic 400): the process-wide Owlery singleton (`globalThis.__eeOwleryService`) seems to hold a second copy of `company-mail.ts`'s classes in Vite dev. The two owner welcome journeys pass alone and fail right after `email-platform` in one run.
-- **Not done:** not released; production still runs v0.5.5 without the fix.
+- **Released:** v0.5.6 (`aae0819`), on production — see the entry above.
 
 ## 2026-11-12 — v0.5.5 on production (os.cerberusblue.com)
 
