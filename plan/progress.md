@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-12 — Email inbox S1–S6 on the local box (os.ee.localhost, release `eigenenterprise-0.5.7-04e0fab74381-linux-arm64`)
+
+Owner: "Release to the box". `scripts/release.sh arm64` then `ee/e2e/box.sh install os.ee.localhost`: a fresh install, health-gated first deploy, "✓ Your company is running". Built from `04e0fab`, which contains S1–S6 and round 4's v0.5.7.
+- **Observed on the box:** 130 rows in `drizzle.__drizzle_migrations` (through `0132`); `mailboxes`, `inbox_attachments` and `inbox_messages.bcc` exist. Signed out: `/login` 200; `/m/email`, `/m/email/inbox`, `/m/email/company` → 302 to login; `POST /api/mail/ses-inbound` with a non-JSON body → 400; `/api/mail/inbox/stream` → 401.
+- **Not verified on the box:** nothing signed in (no inbox page, no Mailboxes admin, no compose); no real mail in or out (the box has no SES receiving, and that's S7). **Not pushed:** main is ahead of origin (pushing would also publish the other session's unpushed commits). Not on production.
+- **Next:** S7 on production after the owner's AWS/DNS steps (verify `cerberusblue.com`, SES production access, receiving on).
+
 ## 2026-11-12 — v0.5.7 on production (os.cerberusblue.com)
 
 Owner: "Yes, upgrade". `ee upgrade --check` saw 0.5.6 → 0.5.7; ran `ee upgrade --from https://github.com/hikaru90/eigen-enterprise/releases/download/v0.5.7`, detached (`nohup setsid`, log `/root/ee-upgrade-0.5.7.log`). Safety copy + rollback steps: `/var/lib/ee/upgrades/2026-11-12T20-54-04Z`.
