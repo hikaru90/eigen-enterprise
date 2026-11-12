@@ -1,13 +1,14 @@
 <script lang="ts">
-  import { docTitle } from '$lib/shell/title'
   import type { PageProps } from './$types'
   import Check from '@lucide/svelte/icons/check'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
+  import CopyButton from '$lib/components/email/copy-button.svelte'
   import MessageStatus from '$lib/components/email/message-status.svelte'
   import SesConnectForm from '$lib/components/email/ses-connect-form.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
+  import { docTitle } from '$lib/shell/title'
 
   let { data, form }: PageProps = $props()
   const isAdmin = $derived(data.email.isAdmin)
@@ -65,6 +66,16 @@
     waiting:
       'Waiting for Amazon SNS to confirm the subscription. This usually takes under a minute once Amazon can reach this server.',
     ready: 'On. Deliveries, bounces, complaints, opens and clicks appear in Logs.',
+    failed: 'Not working.',
+  }
+
+  const receivingCopy: Record<string, string> = {
+    not_set_up:
+      'Not set up yet. Turn on "Receive mail on this domain" on a verified domain, or set it up here.',
+    waiting:
+      'Waiting for Amazon to confirm. Amazon SNS confirms the subscription once it can reach this server, usually within a minute.',
+    ready:
+      'Ready. Mail to your mailbox addresses arrives here once the domain’s MX record points to Amazon.',
     failed: 'Not working.',
   }
 
@@ -261,6 +272,88 @@
             </form>
           {/if}
         </div>
+        {#if account.receiving}
+          {@const r = account.receiving}
+          <div
+            class="mt-4 rounded-lg border border-border px-4 py-3 text-sm"
+            data-testid="email-receiving"
+            data-status={r.status}
+          >
+            <h3 class="font-medium">Receiving</h3>
+            <p class="mt-1 text-muted-foreground">{receivingCopy[r.status]}</p>
+            {#if r.error}<p
+                class="mt-1 text-destructive"
+                role="alert"
+                data-testid="email-receiving-error"
+              >
+                {r.error}
+              </p>{/if}
+            {#if feedback('receiving')?.error}<p class="mt-1 text-destructive" role="alert">
+                {feedback('receiving')?.error}
+              </p>{/if}
+            {#if r.domains.length > 0}
+              <ul class="mt-2 divide-y divide-border rounded-md border border-border">
+                {#each r.domains as d (d.id)}
+                  <li class="flex items-center justify-between gap-3 px-3 py-1.5">
+                    <a
+                      class="min-w-0 truncate underline-offset-4 hover:underline"
+                      href={resolve(`/m/email/domains/${d.id}`)}>{d.name}</a
+                    >
+                    <span class="shrink-0 text-xs text-muted-foreground"
+                      >{d.mx === 'SUCCESS'
+                        ? 'MX points to Amazon'
+                        : d.mx === 'TEMPORARY_FAILURE'
+                          ? 'MX lookup failed'
+                          : 'MX not seen yet'}</span
+                    >
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+            {#if isAdmin && r.status !== 'ready'}
+              <form
+                method="POST"
+                action="?/receiving"
+                class="mt-2"
+                use:enhance={() => {
+                  busy = 'receiving'
+                  return async ({ update }) => {
+                    await update()
+                    busy = null
+                  }
+                }}
+              >
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy === 'receiving'}
+                  data-testid="email-receiving-setup"
+                  >{r.status === 'not_set_up'
+                    ? 'Set up receiving'
+                    : 'Set up receiving again'}</Button
+                >
+              </form>
+            {/if}
+            {#if isAdmin}
+              <details class="mt-3">
+                <summary class="cursor-pointer text-[13px] text-muted-foreground"
+                  >IAM policy for the inbound mail bucket</summary
+                >
+                <p class="mt-2 text-xs text-muted-foreground">
+                  Receiving also needs Amazon S3 on one bucket. Add this policy to the IAM user of
+                  your access key (on top of AmazonSESFullAccess and AmazonSNSFullAccess).
+                </p>
+                <div class="mt-2 flex items-start gap-1">
+                  <pre
+                    class="max-h-64 min-w-0 flex-1 overflow-auto rounded-md bg-muted px-3 py-2 font-mono text-[11px]"
+                    data-testid="email-receiving-iam">{r.iamPolicy}</pre>
+                  <CopyButton value={r.iamPolicy} label="Copy the IAM policy" />
+                </div>
+              </details>
+            {/if}
+          </div>
+        {/if}
       {:else}
         <p class="mt-3 text-sm text-muted-foreground">Not connected yet.</p>
       {/if}

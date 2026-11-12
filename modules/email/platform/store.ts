@@ -15,6 +15,7 @@ import {
   type MailSource,
   type SuppressionReason,
 } from '$lib/server/db/email.schema'
+import { mailboxAddresses } from '$lib/server/db/inbox.schema'
 import { normalizeEmail } from './suppression'
 
 /**
@@ -115,6 +116,15 @@ export class EmailStore {
 
   async deleteDomain(id: string): Promise<void> {
     await (await this.db()).delete(mailDomains).where(eq(mailDomains.id, id))
+  }
+
+  /** How many mailboxes have an address (primary or alias) on the domain — they keep it from being removed. */
+  async mailboxesOnDomain(domainId: string): Promise<number> {
+    const [row] = await (await this.db())
+      .select({ n: sql<number>`count(distinct ${mailboxAddresses.mailboxId})::int` })
+      .from(mailboxAddresses)
+      .where(eq(mailboxAddresses.domainId, domainId))
+    return row?.n ?? 0
   }
 
   async verifyingDomains(): Promise<DomainRow[]> {

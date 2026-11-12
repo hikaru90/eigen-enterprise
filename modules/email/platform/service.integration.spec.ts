@@ -1,6 +1,12 @@
+import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { AppDatabase } from '$lib/server/db/context'
+import { dbInboxStore } from '../inbox/db-store'
+import { receivingRecipients } from '../inbox/receiving-addresses'
+import { INBOUND_RULE_SET } from '../inbox/receiving-contract'
+import { FakeInboundBucket, FakeSesReceiving } from '../owlery/fake-receiving'
 import { awsError, FakeSes, FakeSns } from '../owlery/fake-ses'
+import { ReceivingService } from '../owlery/receiving'
 import { OwleryService } from '../owlery/service'
 import { InMemoryOwleryStore, owlerySealKey } from '../owlery/store'
 import { EmailPlatform, EmailPlatformError } from './service'
@@ -22,6 +28,8 @@ describe.skipIf(!hasDb)('EmailPlatform (test database)', () => {
   let platform: EmailPlatform
   let store: EmailStore
   let dmarc: string[][] = []
+  let mx: Record<string, Array<{ exchange: string; priority: number }>> = {}
+  let rules: FakeSesReceiving
   let fetched: string[] = []
 
   beforeAll(async () => {
@@ -45,8 +53,9 @@ describe.skipIf(!hasDb)('EmailPlatform (test database)', () => {
     ses.verify('hello@kindred.test')
     const sns = new FakeSns()
     store = new EmailStore(db)
+    const owlerySettingsStore = new InMemoryOwleryStore()
     const owlery = new OwleryService({
-      store: new InMemoryOwleryStore(),
+      store: owlerySettingsStore,
       key: () => key,
       ses: ses.factory,
       sns: sns.factory,
@@ -63,10 +72,25 @@ describe.skipIf(!hasDb)('EmailPlatform (test database)', () => {
     })
     ses.sent.length = 0
     dmarc = []
+    mx = {}
     fetched = []
+    rules = new FakeSesReceiving()
     platform = new EmailPlatform({
       owlery,
       store,
+      resolveMx: async (name) => {
+        const found = mx[name]
+        if (!found) throw Object.assign(new Error('ENODATA'), { code: 'ENODATA' })
+        return found
+      },
+      receiving: new ReceivingService({
+        store: owlerySettingsStore,
+        credentials: () => owlery.settings(),
+        ses: rules.factory,
+        bucket: new FakeInboundBucket().factory,
+        sns: sns.factory,
+      }),
+      receivingRecipients: (domainIds) => receivingRecipients(dbInboxStore(db), domainIds),
       resolveTxt: async (name) => {
         if (name !== '_dmarc.kindred.com' || dmarc.length === 0) throw Object.assign(new Error('ENODATA'), { code: 'ENODATA' })
         return dmarc
@@ -101,6 +125,70 @@ describe.skipIf(!hasDb)('EmailPlatform (test database)', () => {
     const verified = await platform.refreshDomain(d.id)
     expect(verified).toMatchObject({ status: 'SUCCESS', isVerifying: false, dmarcAdded: true, sendable: true })
     expect(verified.records.every((r) => r.status === 'SUCCESS')).toBe(true)
+  })
+
+  it('receiving: warns with the current MX, provisions on the first domain, follows mailboxes, and switches off', async () => {
+    const d = await platform.addDomain('kindred.com', 'u1')
+    await expect(platform.setDomainReceiving(d.id, true, 'https://os.kindred.test')).rejects.toThrow(/not verified yet/)
+    ses.verify('kindred.com')
+    await platform.refreshDomain(d.id)
+
+    mx['kindred.com'] = [
+      { exchange: 'alt1.aspmx.l.google.com', priority: 5 },
+      { exchange: 'aspmx.l.google.com', priority: 1 },
+    ]
+    expect((await platform.currentMx(d.id)).map((r) => r.exchange)).toEqual(['aspmx.l.google.com', 'alt1.aspmx.l.google.com'])
+    expect((await platform.getDomain(d.id))!.records.some((r) => r.purpose === 'inbound_mx')).toBe(false)
+
+    const inbox = dbInboxStore(db)
+    const mailboxId = randomUUID()
+    const at = new Date()
+    await inbox.insertMailbox(
+      { id: mailboxId, kind: 'shared', ownerUserId: null, groupId: 'g-1', displayName: null, disabledAt: null, createdBy: 'u1', createdAt: at, updatedAt: at },
+      { address: 'info@kindred.com', mailboxId, domainId: d.id, primary: true, createdBy: 'u1', createdAt: at },
+    )
+    try {
+      const on = await platform.setDomainReceiving(d.id, true, 'https://os.kindred.test')
+      expect(on.receivingError).toBeNull()
+      expect(on.domain.receiving).toBe(true)
+      expect(on.domain.records.find((r) => r.purpose === 'inbound_mx')).toMatchObject({
+        value: 'inbound-smtp.eu-central-1.amazonaws.com',
+        status: 'PENDING',
+      })
+      expect(await platform.receivingState()).toMatchObject({ receivingStatus: 'waiting', receivingRuleSet: INBOUND_RULE_SET })
+      expect(rules.ruleSets.get(INBOUND_RULE_SET)!.map((r) => r.recipients)).toEqual([['info@kindred.com']])
+
+      // The owner switched MX: the record is seen.
+      mx['kindred.com'] = [{ exchange: 'inbound-smtp.eu-central-1.amazonaws.com', priority: 10 }]
+      expect((await platform.getDomain(d.id))!.records.find((r) => r.purpose === 'inbound_mx')!.status).toBe('SUCCESS')
+
+      // A new alias joins the rules on the next sync.
+      await inbox.insertAddress({ address: 'hello@kindred.com', mailboxId, domainId: d.id, primary: false, createdBy: 'u1', createdAt: at })
+      expect(await platform.syncReceiving()).toBeNull()
+      expect(rules.ruleSets.get(INBOUND_RULE_SET)!.map((r) => r.recipients)).toEqual([['hello@kindred.com', 'info@kindred.com']])
+
+      // A domain with mailboxes cannot be removed (and Amazon is not touched).
+      await expect(platform.deleteDomain(d.id)).rejects.toThrow('1 mailbox still uses kindred.com — remove or move it first')
+      expect(ses.deleted).toEqual([])
+
+      const off = await platform.setDomainReceiving(d.id, false, 'https://os.kindred.test')
+      expect(off.receivingError).toBeNull()
+      expect(off.domain.records.some((r) => r.purpose === 'inbound_mx')).toBe(false)
+      expect(rules.ruleSets.get(INBOUND_RULE_SET)).toEqual([])
+    } finally {
+      await db.execute(`DELETE FROM mailboxes WHERE id = '${mailboxId}'` as never)
+    }
+  })
+
+  it('receiving: a sync failure is returned in plain words and kept on the receiving state', async () => {
+    const d = await platform.addDomain('kindred.com', 'u1')
+    ses.verify('kindred.com')
+    await platform.refreshDomain(d.id)
+    rules.failures.set('activeRuleSet', awsError('AccessDenied'))
+    const out = await platform.setDomainReceiving(d.id, true, 'https://os.kindred.test')
+    expect(out.domain.receiving).toBe(true)
+    expect(out.receivingError).toMatch(/receipt rules/)
+    expect(await platform.receivingState()).toMatchObject({ receivingStatus: 'failed', receivingError: out.receivingError })
   })
 
   it('lists messages in, or outside, a set of statuses (the Mail view: pending apart from sent)', async () => {
