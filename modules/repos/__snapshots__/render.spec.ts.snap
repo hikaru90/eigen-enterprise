@@ -1,0 +1,138 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`render (pure snapshot → Drive files) > puts the assistant's summary on top of Overview, labelled with its time > Overview.md with summary 1`] = `
+"# kindred/shop
+
+## What's going on
+
+_Written by the assistant · 2026-11-12 14:01 UTC_
+
+Cart work is nearly done.
+
+- Cart totals is in draft (#7)
+
+## About
+
+The online shop.
+
+- On GitHub: [kindred/shop](https://github.com/kindred/shop) (private)
+- Default branch: \`main\`
+- Last push: 2026-11-11 16:20 UTC
+- Open pull requests: 1
+
+## Active branches (last 30 days)
+
+| Branch | Commits | Against the default branch | Last commit |
+| --- | --- | --- | --- |
+| \`main\` | 2 | default branch | [a100000](https://github.com/kindred/shop/commit/a100000000000000000000000000000000000000) Release 1.2 — ada, 2026-11-11 |
+| \`feature/cart\` | 2 | 1 ahead, 1 behind | [b200000](https://github.com/kindred/shop/commit/b200000000000000000000000000000000000000) Cart totals — grace, 2026-11-10 |
+
+## Docs
+
+2 Markdown files from \`main\` @ \`a100000\`, in the Docs folder.
+
+### Not copied (size limit)
+
+- \`docs/huge.md\` — 300 KB, over 256 KB
+"
+`;
+
+exports[`render (pure snapshot → Drive files) > renders the generated pages (snapshots) > Activity.md 1`] = `
+"# Activity in kindred/shop
+
+The last 30 days, newest first.
+
+## 2026-11-11
+
+### \`main\`
+
+- Release 1.2 — ada · [a100000](https://github.com/kindred/shop/commit/a100000000000000000000000000000000000000)
+
+## 2026-11-10
+
+### \`feature/cart\`
+
+- Cart totals — grace · [b200000](https://github.com/kindred/shop/commit/b200000000000000000000000000000000000000)
+
+## 2026-11-03
+
+### \`main\`
+
+- Fix | price rounding — grace · [a000000](https://github.com/kindred/shop/commit/a000000000000000000000000000000000000000)
+"
+`;
+
+exports[`render (pure snapshot → Drive files) > renders the generated pages (snapshots) > Branches.md 1`] = `
+"# Branches of kindred/shop
+
+3 branches. The default branch is \`main\`.
+
+| Branch | Last commit | Against the default branch | Open pull request |
+| --- | --- | --- | --- |
+| \`main\` | [a100000](https://github.com/kindred/shop/commit/a100000000000000000000000000000000000000) Release 1.2 — ada, 2026-11-11 | default branch | — |
+| \`feature/cart\` | [b200000](https://github.com/kindred/shop/commit/b200000000000000000000000000000000000000) Cart totals — grace, 2026-11-10 | 1 ahead, 1 behind | [#7](https://github.com/kindred/shop/pull/7) |
+
+## Quiet branches
+
+No commit in the last 90 days.
+
+| Branch | Last commit | Against the default branch | Open pull request |
+| --- | --- | --- | --- |
+| \`old/spike\` | [c300000](https://github.com/kindred/shop/commit/c300000000000000000000000000000000000000) Try a spike — ada, 2026-05-01 | — | — |
+"
+`;
+
+exports[`render (pure snapshot → Drive files) > renders the generated pages (snapshots) > Overview.md 1`] = `
+"# kindred/shop
+
+## What's going on
+
+_No summary yet. The assistant writes one after a sync that finds changes._
+
+## About
+
+The online shop.
+
+- On GitHub: [kindred/shop](https://github.com/kindred/shop) (private)
+- Default branch: \`main\`
+- Last push: 2026-11-11 16:20 UTC
+- Open pull requests: 1
+
+## Active branches (last 30 days)
+
+| Branch | Commits | Against the default branch | Last commit |
+| --- | --- | --- | --- |
+| \`main\` | 2 | default branch | [a100000](https://github.com/kindred/shop/commit/a100000000000000000000000000000000000000) Release 1.2 — ada, 2026-11-11 |
+| \`feature/cart\` | 2 | 1 ahead, 1 behind | [b200000](https://github.com/kindred/shop/commit/b200000000000000000000000000000000000000) Cart totals — grace, 2026-11-10 |
+
+## Docs
+
+2 Markdown files from \`main\` @ \`a100000\`, in the Docs folder.
+
+### Not copied (size limit)
+
+- \`docs/huge.md\` — 300 KB, over 256 KB
+"
+`;
+
+exports[`render (pure snapshot → Drive files) > renders the generated pages (snapshots) > Pull requests.md 1`] = `
+"# Pull requests of kindred/shop
+
+## Open (1)
+
+### [#7](https://github.com/kindred/shop/pull/7) Cart totals
+
+- By ada · \`feature/cart\` → \`main\` · draft
+- Opened 2026-11-01 09:00 UTC · updated 2026-11-10 09:00 UTC
+- Labels: cart
+- Review requested from: ada
+
+> Adds totals.
+>
+> Closes #3
+
+## Merged or closed in the last 30 days
+
+- [#5](https://github.com/kindred/shop/pull/5) Old checkout — ada, \`checkout\` → \`main\`, merged 2026-11-05 10:00 UTC
+"
+`;
