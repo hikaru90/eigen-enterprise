@@ -2,6 +2,17 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-12 — Contribute board round 4 triaged: 12 new proposals (plan only, no code)
+
+Owner: "get the newest batch of contribute items and integrate them". Read over production's MCP (`contribute.list status:all`): 36 proposals, 12 new; `2bda4814` (hide what I can't use) is already shipped by round 3. Triage in `plan/contribute-round-4.md`.
+- **Bugs:** `/settings/passkeys` 500 (cause unknown); a call hangs up when you open another page (by design today: the call lives in the page); "Replace logo" opens no picker (it's the form's submit button; the Desktop prompt is macOS).
+- **Found:** `handleError` (`src/hooks.server.ts`) never writes to the server log, only to PostHog, so production's unexpected 500s leave nothing in the journal. The passkeys 500 left no trace. Fix first.
+- **Small:** green Active dot (shared `StatusPill`, also 11px text), audio device picker in calls, adaptive call layout, restore backups from Settings (CLI `ee restore` exists).
+- **Need owner decisions:** contacts by voice (dictation → LLM → prefilled form), appointments from emails into a calendar (needs Email inbox + Calendar), "everything is a plugin" + a Modules page (kernel module tools exist, no UI; architecture part overlaps `phase-extensions.md`).
+- Board statuses on production NOT changed.
+- **Owner: "all items".** Six worktree workstreams started (W1 error logging + passkeys 500, W2 logo picker + green status pill, W3 calls: survive navigation + adaptive layout + device pickers, W4 restore backups from Settings, W5 contacts by voice, W6 Settings → Plugins overview). Calendar planned: `plan/calendar.md` (awaiting approval).
+- **Decision log (owner, 2026-11-12):** (1) **Every sidebar entry is a plugin** (Messages, Assistant/Chat, Calls, Website, Email, Brand, Memory, Drive, Contacts, Calendar …), as the specs already intend; it stays that way. (2) **Official plugins are never removed or altered, only deactivated.** A company's own plugin is always added alongside; it may implement the same contract as an official one, which the owner then deactivates. (3) Calendar: own plugin + two-way Google / Microsoft sync. (4) Appointments from emails are always a proposal; accept → event + invitation.
+
 ## 2026-11-12 — Email inbox S2 + S3 merged: receiving setup and the inbound ingest (main, not pushed, not on the box)
 
 Owner: "Merge, then S2+S3". S1 merged (`a4e96c0`); shared contract on main first (`675c482`: deps `@aws-sdk/client-ses` + `@aws-sdk/client-s3` + `mailparser`, migration `0130_mail_receiving`, `OwleryStore.writeReceiving`, `modules/email/inbox/receiving-contract.ts`); S2 and S3 built in parallel worktrees and merged (`efd1bfa` S3, `6eb8c75` S2); e2e reset fix `e147715`.
