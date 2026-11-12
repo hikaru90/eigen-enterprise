@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import {
-  activeVisualSetCss,
-  activeVisualSetStyleTag,
-  brandShellVars,
-  toCssText,
-} from './emitter'
+import { auditContrast } from './contrast'
+import { activeVisualSetCss, activeVisualSetStyleTag, brandShellVars, toCssText } from './emitter'
 
 describe('toCssText', () => {
   it('emits a sorted, deterministic css custom-property block', () => {
@@ -110,5 +106,105 @@ describe('brandShellVars (C3 brand-wide shell aliases)', () => {
       'none',
     ])
     expect(brandShellVars({ ...set, '--shadow-1': 'x' })['--shadow-2']).toBeUndefined()
+  })
+})
+
+describe('activeVisualSetCss holds a brand set to WCAG 2.1 AA (Contribute b73604ff)', () => {
+  const lowContrast = {
+    '--background': '#ffffff',
+    '--foreground': '#111111',
+    '--card': '#ffffff',
+    '--card-foreground': '#111111',
+    '--popover': '#ffffff',
+    '--popover-foreground': '#111111',
+    '--primary': '#2563eb',
+    '--primary-foreground': '#ffffff',
+    '--secondary': '#f4f4f5',
+    '--secondary-foreground': '#111111',
+    '--muted': '#f4f4f5',
+    '--muted-foreground': '#a1a1aa',
+    '--accent': '#f4f4f5',
+    '--accent-foreground': '#111111',
+    '--destructive': '#ef4444',
+    '--border': '#e4e4e7',
+    '--input': '#e4e4e7',
+    '--ring': '#a1a1aa',
+    '--radius': '0.5rem',
+  }
+  // Dark tokens without --input / --ring: the light values carry into dark mode.
+  const darkTokens = {
+    '--background': '#09090b',
+    '--foreground': '#fafafa',
+    '--card': '#18181b',
+    '--card-foreground': '#fafafa',
+    '--popover': '#18181b',
+    '--popover-foreground': '#fafafa',
+    '--primary': '#3b82f6',
+    '--primary-foreground': '#ffffff',
+    '--secondary': '#27272a',
+    '--secondary-foreground': '#fafafa',
+    '--muted': '#27272a',
+    '--muted-foreground': '#52525b',
+    '--accent': '#27272a',
+    '--accent-foreground': '#fafafa',
+    '--destructive': '#7f1d1d',
+    '--border': '#27272a',
+  }
+
+  function parseBlock(cssText: string, selector: string): Record<string, string> {
+    const start = cssText.indexOf(`${selector} {`)
+    if (start < 0) return {}
+    const body = cssText.slice(cssText.indexOf('{', start) + 1, cssText.indexOf('}', start))
+    return Object.fromEntries([...body.matchAll(/(--[\w-]+): ([^;]+);/g)].map((m) => [m[1], m[2]]))
+  }
+
+  it('emits tokens that pass every pair, in light and in dark', () => {
+    const cssText = activeVisualSetCss(lowContrast, darkTokens)
+    const light = parseBlock(cssText, ':root')
+    const dark = { ...light, ...parseBlock(cssText, '.dark') }
+    for (const [mode, tokens] of [
+      ['light', light],
+      ['dark', dark],
+    ] as const) {
+      for (const result of auditContrast(tokens)) {
+        expect(result.ratio, `${mode}: ${result.pair.id}`).toBeGreaterThanOrEqual(result.pair.min)
+      }
+    }
+  })
+
+  it('keeps the brand: surfaces and passing tokens are emitted byte-identical', () => {
+    const light = parseBlock(activeVisualSetCss(lowContrast, null), ':root')
+    for (const key of [
+      '--background',
+      '--card',
+      '--muted',
+      '--primary',
+      '--foreground',
+      '--primary-foreground',
+      '--radius',
+    ] as const) {
+      expect(light[key], key).toBe(lowContrast[key])
+    }
+    expect(light['--muted-foreground']).not.toBe(lowContrast['--muted-foreground'])
+  })
+
+  it('corrects a light-only role that fails in dark inside the .dark block', () => {
+    // A dark input border passes on the light background but vanishes on the dark one.
+    const cssText = activeVisualSetCss({ ...lowContrast, '--input': '#3f3f46' }, darkTokens)
+    expect(parseBlock(cssText, ':root')['--input']).toBe('#3f3f46')
+    const darkInput = parseBlock(cssText, '.dark')['--input']
+    expect(darkInput).toBeDefined()
+    expect(darkInput).not.toBe('#3f3f46')
+  })
+
+  it('leaves a set that already passes untouched', () => {
+    const fine = {
+      ...lowContrast,
+      '--muted-foreground': '#52525b',
+      '--destructive': '#b91c1c',
+      '--input': '#71717a',
+      '--ring': '#52525b',
+    }
+    expect(parseBlock(activeVisualSetCss(fine, null), ':root')).toEqual(fine)
   })
 })

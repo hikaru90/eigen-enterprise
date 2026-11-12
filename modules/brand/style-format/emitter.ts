@@ -1,3 +1,5 @@
+import { enforceContrast } from './contrast'
+
 /**
  * Deterministic CSS emitter: custom-property records -> a css text block.
  * Keys are sorted so identical token sets always render byte-identical text.
@@ -10,21 +12,47 @@ export function toCssText(cssVars: Record<string, string>, selector: string): st
 }
 
 /**
+ * A set's light and dark tokens held to WCAG 2.1 AA (contrast.ts,
+ * enforceContrast): light = the set's tokens; dark = the dark tokens over the
+ * (corrected) light ones, exactly as the cascade composes them in dark mode.
+ * The dark record carries the set's own dark tokens plus every role the
+ * correction had to change for dark (a light-only `--input` on a dark
+ * background, say). Null dark = the light tokens apply in both modes.
+ */
+export function accessibleTokens(
+  cssVars: Record<string, string>,
+  darkCssVars: Record<string, string> | null,
+): { light: Record<string, string>; dark: Record<string, string> | null } {
+  const light = enforceContrast(cssVars)
+  if (!darkCssVars || Object.keys(darkCssVars).length === 0) return { light, dark: null }
+  const composed = { ...light, ...darkCssVars }
+  const corrected = enforceContrast(composed)
+  const dark = { ...darkCssVars }
+  for (const [key, value] of Object.entries(corrected)) {
+    if (value !== composed[key]) dark[key] = value
+  }
+  return { light, dark }
+}
+
+/**
  * The global token override for an ACTIVE visual set (phase-2d M5/V9): a
  * `:root` block, plus a `.dark` block when the set carries dark tokens.
  * Emitted as one unlayered stylesheet so it wins the cascade against the
  * app's layered `@layer base` :root declarations at equal specificity, and —
  * for the app's unlayered `.dark` block — lands after the bundled CSS in
  * document order (SvelteKit renders manifest stylesheets before the root
- * layout's head content). Deterministic: identical tokens, identical text.
+ * layout's head content). The tokens pass through accessibleTokens first, so
+ * a brand themes the app at AA contrast. Deterministic: identical tokens,
+ * identical text.
  */
 export function activeVisualSetCss(
   cssVars: Record<string, string>,
   darkCssVars: Record<string, string> | null,
 ): string {
-  const root = toCssText(cssVars, ':root')
-  if (!darkCssVars || Object.keys(darkCssVars).length === 0) return root
-  return root + toCssText(darkCssVars, '.dark')
+  const { light, dark } = accessibleTokens(cssVars, darkCssVars)
+  const root = toCssText(light, ':root')
+  if (!dark) return root
+  return root + toCssText(dark, '.dark')
 }
 
 /**
