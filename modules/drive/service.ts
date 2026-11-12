@@ -16,6 +16,12 @@ import { isRevisioned, isTextFile, mimeFor } from './preview'
  *   one they can view but not change is "forbidden".
  * The agent (an `agent` actor) acts with admin rights, like the members.*
  * tools; its writes go through the kernel's approval gate.
+ *
+ * Archive (migration 0126) is a state, not a place: an archived item stays in
+ * its folder with its sharing, leaves the normal listings (a folder's
+ * contents, My drive, Shared with me, Messages), and shows in the Archived
+ * view, in search (marked) and when opened directly. Whoever can edit an item
+ * can archive and unarchive it.
  */
 
 export type Actor = { kind: 'user'; userId: string } | { kind: 'agent'; id: string }
@@ -23,12 +29,14 @@ export type ItemType = 'folder' | 'file'
 
 export class DriveError extends Error {
   constructor(
-    readonly code: 'not_found' | 'forbidden' | 'invalid' | 'too_large' | 'locked',
+    /** `unavailable`: no AI provider for the company; `upstream`: the provider failed or answered unreadably. */
+    readonly code: 'not_found' | 'forbidden' | 'invalid' | 'too_large' | 'locked' | 'unavailable' | 'upstream',
     message: string,
     /** For `locked`: who holds the edit lock now. */
     readonly holder?: LockHolder & { name: string },
+    options?: { cause?: unknown },
   ) {
-    super(message)
+    super(message, options)
   }
 }
 
@@ -54,6 +62,11 @@ export type ItemView = {
   ownerId: string
   updatedAt: Date
   trashedAt: Date | null
+  /** Set when this item itself is archived (by: a member id or the agent's id). */
+  archivedAt: Date | null
+  archivedBy: string | null
+  /** Search results only: archived itself, or inside an archived folder the actor can open. */
+  inArchive?: boolean
   size?: number
   mime?: string
   /** What the actor may do with it (set on listings; the server checks again on every act). */
@@ -67,6 +80,30 @@ export type ItemDescription = { ownerName: string | null; shared: boolean | null
 export type Crumb = { id: string; name: string }
 /** Where a path starts: "My drive", "Shared with me" or "Messages" (a conversation's attachment folder). */
 export type PathRoot = { label: string; href: string }
+
+/** One folder's archived items as the Archived view shows them (see `archived`). */
+export type ArchiveGroup = {
+  key: string
+  /** The folder they are in, when the actor can open it (null: the top level, or a folder they can't see). */
+  folder: Crumb | null
+  root: PathRoot
+  path: Crumb[]
+  items: Array<ItemView & { archivedByName: string | null }>
+}
+
+/** A file "suggest what to archive" may put to the model: plain facts only. */
+export type ArchiveCandidate = {
+  file: ItemView
+  createdAt: Date
+  root: PathRoot
+  path: Crumb[]
+  /** The folder it is in: how many live files sit there, and when the newest of them changed. */
+  folder: { files: number; newestChange: Date }
+}
+
+/** A batch archive/unarchive names items by type and id; each one it couldn't do gets a plain sentence. */
+export type ItemRef = { type: ItemType; id: string }
+export type BatchError = ItemRef & { error: string }
 
 /** The owner id of the folders Messages keeps attachments in (its system actor). */
 export const MESSAGES_SYSTEM_OWNER = 'messages'
@@ -126,6 +163,8 @@ const folderView = (f: DriveFolder): ItemView => ({
   ownerId: f.ownerId,
   updatedAt: f.updatedAt,
   trashedAt: f.trashedAt,
+  archivedAt: f.archivedAt,
+  archivedBy: f.archivedBy,
 })
 const fileView = (f: DriveFile): ItemView => ({
   type: 'file',
@@ -135,6 +174,8 @@ const fileView = (f: DriveFile): ItemView => ({
   ownerId: f.ownerId,
   updatedAt: f.updatedAt,
   trashedAt: f.trashedAt,
+  archivedAt: f.archivedAt,
+  archivedBy: f.archivedBy,
   size: f.size,
   mime: f.mime,
 })
@@ -303,6 +344,8 @@ export function createDriveService(deps: DriveDeps) {
       createdAt: at,
       updatedAt: at,
       trashedAt: null,
+      archivedAt: null,
+      archivedBy: null,
     }
     await store.insertFile(file)
     await grantCreator(actor, 'file', file.id)
@@ -338,16 +381,51 @@ export function createDriveService(deps: DriveDeps) {
     await store.deleteFolder(folder.id)
   }
 
-  async function visible(actor: Actor, items: { folders: DriveFolder[]; files: DriveFile[] }, level: AccessLevel = 'view') {
+  /** What the actor can view of these items, with their rights; archived ones only with `archived: 'include'`. */
+  async function visible(actor: Actor, items: { folders: DriveFolder[]; files: DriveFile[] }, opts: { archived: 'hide' | 'include' }) {
     const out: ItemView[] = []
     const withRights = async (type: ItemType, f: DriveFolder | DriveFile, v: ItemView) => ({
       ...v,
       canEdit: await allows(actor, type, f, 'edit'),
       canManage: await allows(actor, type, f, 'manage'),
     })
-    for (const f of items.folders) if (!f.trashedAt && !(await inTrash(f.parentId)) && (await allows(actor, 'folder', f, level))) out.push(await withRights('folder', f, folderView(f)))
-    for (const f of items.files) if (!f.trashedAt && !(await inTrash(f.folderId)) && (await allows(actor, 'file', f, level))) out.push(await withRights('file', f, fileView(f)))
+    const shown = (f: DriveFolder | DriveFile) => !f.trashedAt && (opts.archived === 'include' || !f.archivedAt)
+    for (const f of items.folders) if (shown(f) && !(await inTrash(f.parentId)) && (await allows(actor, 'folder', f, 'view'))) out.push(await withRights('folder', f, folderView(f)))
+    for (const f of items.files) if (shown(f) && !(await inTrash(f.folderId)) && (await allows(actor, 'file', f, 'view'))) out.push(await withRights('file', f, fileView(f)))
     return out
+  }
+
+  /** The nearest folder from parentId up that is archived and that the actor can open, if any. */
+  async function archivedAbove(actor: Actor, parentId: string | null): Promise<Crumb | null> {
+    for (const f of await chainFrom(parentId)) {
+      if (f.archivedAt && (await allows(actor, 'folder', f, 'view'))) return { id: f.id, name: f.name }
+    }
+    return null
+  }
+
+  async function setArchived(actor: Actor, type: ItemType, id: string, archived: boolean): Promise<DriveFolder | DriveFile> {
+    const item = await requireItem(actor, type, id, 'edit')
+    if (archived && item.archivedAt) throw new DriveError('invalid', `“${item.name}” is already archived.`)
+    if (!archived && !item.archivedAt) throw new DriveError('invalid', `“${item.name}” is not archived.`)
+    const patch = archived ? { archivedAt: now(), archivedBy: ownerIdOf(actor) } : { archivedAt: null, archivedBy: null }
+    if (type === 'folder') await store.updateFolder(id, patch)
+    else await store.updateFile(id, patch)
+    return item
+  }
+
+  /** Runs an act per item: a DriveError becomes that item's sentence; anything else is a real failure. */
+  async function eachItem<T>(items: readonly ItemRef[], act: (ref: ItemRef) => Promise<T>): Promise<{ done: T[]; errors: BatchError[] }> {
+    const done: T[] = []
+    const errors: BatchError[] = []
+    for (const ref of items) {
+      try {
+        done.push(await act(ref))
+      } catch (err) {
+        if (!(err instanceof DriveError)) throw err
+        errors.push({ type: ref.type, id: ref.id, error: err.message })
+      }
+    }
+    return { done, errors }
   }
 
   const sorted = (items: ItemView[]) => [...items.filter((i) => i.type === 'folder').sort(byName), ...items.filter((i) => i.type === 'file').sort(byName)]
@@ -358,8 +436,8 @@ export function createDriveService(deps: DriveDeps) {
       if (folderId === null) {
         const kids = await store.children(null)
         const mine = (f: { ownerId: string }) => actor.kind === 'agent' || f.ownerId === actor.userId
-        const items = await visible(actor, { folders: kids.folders.filter(mine), files: kids.files.filter(mine) })
-        return { folder: null, path: [] as Crumb[], root: MY_DRIVE, items: sorted(items), canEdit: true, canManage: false }
+        const items = await visible(actor, { folders: kids.folders.filter(mine), files: kids.files.filter(mine) }, { archived: 'hide' })
+        return { folder: null, path: [] as Crumb[], root: MY_DRIVE, items: sorted(items), canEdit: true, canManage: false, archivedIn: null as Crumb | null }
       }
       const folder = await requireFolder(actor, folderId, 'view')
       const { root, path } = await pathFor(actor, (await chainFrom(folder.id)).reverse(), folder)
@@ -367,18 +445,22 @@ export function createDriveService(deps: DriveDeps) {
         folder: folderView(folder),
         path,
         root,
-        items: sorted(await visible(actor, await store.children(folder.id))),
+        items: sorted(await visible(actor, await store.children(folder.id), { archived: 'hide' })),
         canEdit: await allows(actor, 'folder', folder, 'edit'),
         canManage: await allows(actor, 'folder', folder, 'manage'),
+        /** The archived folder above this one, when it sits inside one (the folder itself: `folder.archivedAt`). */
+        archivedIn: await archivedAbove(actor, folder.parentId),
       }
     },
 
     /** Items other people shared with the actor: the top-most ones they can view (a shared folder, not each file in it). */
     async sharedWithMe(actor: Actor): Promise<ItemView[]> {
       if (actor.kind !== 'user') return []
-      const all = await visible(actor, await store.findByName(''))
+      // Top-most is decided over everything viewable, archived included: the
+      // contents of an archived shared folder don't surface on their own.
+      const all = await visible(actor, await store.findByName(''), { archived: 'include' })
       const viewable = new Set(all.map((i) => `${i.type}:${i.id}`))
-      return sorted(all.filter((i) => i.ownerId !== actor.userId && !(i.parentId && viewable.has(`folder:${i.parentId}`))))
+      return sorted(all.filter((i) => !i.archivedAt && i.ownerId !== actor.userId && !(i.parentId && viewable.has(`folder:${i.parentId}`))))
     },
 
     /** Messages: the conversation attachment folders (inside the Messages folder) the actor can open. */
@@ -388,7 +470,7 @@ export function createDriveService(deps: DriveDeps) {
       for (const root of top.folders) {
         if (root.ownerId !== MESSAGES_SYSTEM_OWNER || root.trashedAt) continue
         const kids = await store.children(root.id)
-        out.push(...(await visible(actor, { folders: kids.folders, files: [] })))
+        out.push(...(await visible(actor, { folders: kids.folders, files: [] }, { archived: 'hide' })))
       }
       return sorted(out)
     },
@@ -417,7 +499,11 @@ export function createDriveService(deps: DriveDeps) {
     async search(actor: Actor, query: string): Promise<ItemView[]> {
       const q = query.trim()
       if (!q) return []
-      return sorted(await visible(actor, await store.findByName(q)))
+      // Archived items are still found, marked (inside an archived folder counts).
+      const found = await visible(actor, await store.findByName(q), { archived: 'include' })
+      const marked: ItemView[] = []
+      for (const i of found) marked.push({ ...i, inArchive: i.archivedAt !== null || (await archivedAbove(actor, i.parentId)) !== null })
+      return sorted(marked)
     },
 
     /** Trashed items the actor can change (only the item that was trashed, not what's inside it). */
@@ -437,7 +523,17 @@ export function createDriveService(deps: DriveDeps) {
       const name = cleanName(rawName)
       await requireTarget(actor, parentId)
       const at = now()
-      const folder: DriveFolder = { id: randomUUID(), parentId, name, ownerId: ownerIdOf(actor), createdAt: at, updatedAt: at, trashedAt: null }
+      const folder: DriveFolder = {
+        id: randomUUID(),
+        parentId,
+        name,
+        ownerId: ownerIdOf(actor),
+        createdAt: at,
+        updatedAt: at,
+        trashedAt: null,
+        archivedAt: null,
+        archivedBy: null,
+      }
       await store.insertFolder(folder)
       await grantCreator(actor, 'folder', folder.id)
       return folderView(folder)
@@ -507,6 +603,8 @@ export function createDriveService(deps: DriveDeps) {
         root,
         canEdit: await allows(actor, 'file', file, 'edit'),
         canManage: await allows(actor, 'file', file, 'manage'),
+        /** The archived folder this file sits in, if any (the file itself: `file.archivedAt`). */
+        archivedIn: await archivedAbove(actor, file.folderId),
       }
     },
 
@@ -603,6 +701,109 @@ export function createDriveService(deps: DriveDeps) {
     async releaseLock(actor: Actor, id: string, sessionId: string): Promise<void> {
       await requireFile(actor, id, 'view')
       await locks.release(id, sessionId)
+    },
+
+    /** Archives an item the actor can edit: it leaves the normal views and stays where it is. */
+    async archive(actor: Actor, type: ItemType, id: string): Promise<ItemView> {
+      await setArchived(actor, type, id, true)
+      return view(type, id)
+    },
+
+    /** Back in the normal views; `stillIn` names an archived folder it is still inside. */
+    async unarchive(actor: Actor, type: ItemType, id: string): Promise<{ item: ItemView; stillIn: Crumb | null }> {
+      const item = await setArchived(actor, type, id, false)
+      return { item: await view(type, id), stillIn: await archivedAbove(actor, parentOf(item)) }
+    },
+
+    /** Archives each item it can (one confirmation in the UI, one approval for the agent) and says why for the rest. */
+    async archiveMany(actor: Actor, items: readonly ItemRef[]): Promise<{ archived: ItemView[]; errors: BatchError[] }> {
+      const { done, errors } = await eachItem(items, async (r) => {
+        await setArchived(actor, r.type, r.id, true)
+        return view(r.type, r.id)
+      })
+      return { archived: done, errors }
+    },
+
+    async unarchiveMany(
+      actor: Actor,
+      items: readonly ItemRef[],
+    ): Promise<{ unarchived: Array<{ item: ItemView; stillIn: Crumb | null }>; errors: BatchError[] }> {
+      const { done, errors } = await eachItem(items, async (r) => {
+        const item = await setArchived(actor, r.type, r.id, false)
+        return { item: await view(r.type, r.id), stillIn: await archivedAbove(actor, parentOf(item)) }
+      })
+      return { unarchived: done, errors }
+    },
+
+    /**
+     * The Archived view: every archived item the actor can open (not in the
+     * trash), grouped by the folder it is in — the path as the actor sees it —
+     * groups in path order, newest archived first within one.
+     */
+    async archived(actor: Actor): Promise<ArchiveGroup[]> {
+      const people = new Map((await access.shareTargets()).people.map((p) => [p.id, p.name || p.email]))
+      const all = await store.listArchived()
+      const rows: Array<{ type: ItemType; item: DriveFolder | DriveFile; v: ItemView }> = [
+        ...all.folders.map((f) => ({ type: 'folder' as const, item: f, v: folderView(f) })),
+        ...all.files.map((f) => ({ type: 'file' as const, item: f, v: fileView(f) })),
+      ]
+      const groups = new Map<string, { group: ArchiveGroup; label: string }>()
+      for (const { type, item, v } of rows) {
+        const parentId = parentOf(item)
+        if (item.trashedAt || (await inTrash(parentId)) || !(await allows(actor, type, item, 'view'))) continue
+        const { root, path } = await pathFor(actor, (await chainFrom(parentId)).reverse(), item)
+        const key = `${root.href}|${path.map((c) => c.id).join('/')}`
+        let entry = groups.get(key)
+        if (!entry) {
+          const last = path[path.length - 1]
+          entry = {
+            group: { key, folder: last && last.id === parentId ? last : null, root, path, items: [] },
+            label: [root.label, ...path.map((c) => c.name)].join(' / '),
+          }
+          groups.set(key, entry)
+        }
+        entry.group.items.push({
+          ...v,
+          canEdit: await allows(actor, type, item, 'edit'),
+          canManage: await allows(actor, type, item, 'manage'),
+          archivedByName: item.archivedBy ? (people.get(item.archivedBy) ?? null) : null,
+        })
+      }
+      const newestFirst = (a: ItemView, b: ItemView) => (b.archivedAt?.getTime() ?? 0) - (a.archivedAt?.getTime() ?? 0)
+      return [...groups.values()]
+        .sort((a, b) => a.label.localeCompare(b.label))
+        .map(({ group }) => ({ ...group, items: group.items.sort(newestFirst) }))
+    },
+
+    /**
+     * Files "suggest what to archive" may put to the model, selected by plain
+     * facts (never by meaning): ones the actor can edit, last changed before
+     * the cut-off, not trashed or archived (nor inside an archived or trashed
+     * folder), not a conversation's attachment; oldest first, at most
+     * `limit` (`more` says there were others).
+     */
+    async archiveCandidates(actor: Actor, opts: { changedBefore: Date; limit: number }): Promise<{ candidates: ArchiveCandidate[]; more: boolean }> {
+      const candidates: ArchiveCandidate[] = []
+      for (const f of await store.filesChangedBefore(opts.changedBefore)) {
+        if (f.ownerId === MESSAGES_SYSTEM_OWNER) continue
+        const chain = await chainFrom(f.folderId)
+        if (chain.some((c) => c.trashedAt || c.archivedAt || c.ownerId === MESSAGES_SYSTEM_OWNER)) continue
+        if (!(await allows(actor, 'file', f, 'edit'))) continue
+        if (candidates.length >= opts.limit) return { candidates, more: true }
+        const { root, path } = await pathFor(actor, [...chain].reverse(), f)
+        // At the top level "beside it" means the same person's own top-level files.
+        const beside = (await store.children(f.folderId)).files.filter(
+          (k) => !k.trashedAt && !k.archivedAt && (f.folderId !== null || k.ownerId === f.ownerId),
+        )
+        candidates.push({
+          file: { ...fileView(f), canEdit: true, canManage: await allows(actor, 'file', f, 'manage') },
+          createdAt: f.createdAt,
+          root,
+          path,
+          folder: { files: beside.length, newestChange: new Date(Math.max(...beside.map((k) => k.updatedAt.getTime()))) },
+        })
+      }
+      return { candidates, more: false }
     },
 
     async getGrants(actor: Actor, type: ItemType, id: string): Promise<Grant[]> {

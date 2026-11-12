@@ -1,5 +1,6 @@
 <script lang="ts">
   /* eslint-disable svelte/no-navigation-without-resolve -- every href is built with resolve() or comes from the server's path root */
+  import ArchiveIcon from '@lucide/svelte/icons/archive'
   import FileIcon from '@lucide/svelte/icons/file'
   import FileTextIcon from '@lucide/svelte/icons/file-text'
   import FolderIcon from '@lucide/svelte/icons/folder'
@@ -111,13 +112,13 @@
   const contentHref = (item: DriveItem) => `/api/drive/files/${item.id}/content`
   const hereHref = () => (folderId ? folderHref(folderId) : resolve('/drive'))
 
-  async function run(act: () => Promise<unknown>, ok?: string) {
+  async function run<T>(act: () => Promise<T>, ok?: string | ((out: T) => string)) {
     error = null
     notice = null
     busy = true
     try {
-      await act()
-      if (ok) notice = ok
+      const out = await act()
+      if (ok) notice = typeof ok === 'function' ? ok(out) : ok
       await invalidateAll()
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
@@ -233,6 +234,9 @@
     new Date(d).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
   const whenOf = (item: DriveItem) =>
     trashView && item.trashedAt ? item.trashedAt : item.updatedAt
+  /** Search results mark what is archived (itself or with its folder); listings never show archived items. */
+  const archivedMark = (item: DriveItem) =>
+    !trashView && (item.inArchive === true || !!item.archivedAt)
   const toolbarBtn =
     'inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm hover:bg-muted disabled:opacity-50'
 </script>
@@ -479,7 +483,7 @@
               >{trashView ? 'Trashed' : 'Modified'}</th
             >
             <th class="hidden w-24 px-3 py-2 font-medium md:table-cell">Size</th>
-            <th class="w-40 px-3 py-2"><span class="sr-only">Actions</span></th>
+            <th class="w-52 px-3 py-2"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -518,6 +522,15 @@
                       data-testid="drive-shared-badge"
                     >
                       <UsersIcon class="size-3" aria-hidden="true" /> Shared
+                    </span>
+                  {/if}
+                  {#if archivedMark(item)}
+                    <span
+                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground"
+                      title={item.archivedAt ? 'Archived' : 'In an archived folder'}
+                      data-testid="drive-archived-badge"
+                    >
+                      <ArchiveIcon class="size-3" aria-hidden="true" /> Archived
                     </span>
                   {/if}
                 </span>
@@ -606,6 +619,13 @@
                   class="size-3.5 shrink-0 text-muted-foreground"
                   aria-label="Shared with others"
                   data-testid="drive-shared-badge"
+                />
+              {/if}
+              {#if archivedMark(item)}
+                <ArchiveIcon
+                  class="size-3.5 shrink-0 text-muted-foreground"
+                  aria-label="Archived"
+                  data-testid="drive-archived-badge"
                 />
               {/if}
             </div>

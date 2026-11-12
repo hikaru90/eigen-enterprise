@@ -2,12 +2,14 @@
   /* eslint-disable svelte/no-navigation-without-resolve -- the path root is a server-given app path ('/drive', '/drive/shared', '/messages') */
   /* eslint-disable svelte/no-at-html-tags -- data.html is sanitized server side (renderDriveMarkdown: marked + DOMPurify) */
   import type { PageData } from './$types'
+  import ArchiveIcon from '@lucide/svelte/icons/archive'
   import DownloadIcon from '@lucide/svelte/icons/download'
   import FileIcon from '@lucide/svelte/icons/file'
   import Share2Icon from '@lucide/svelte/icons/share-2'
   import UsersIcon from '@lucide/svelte/icons/users'
   import { invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
+  import ArchiveBanner from '$lib/components/drive/archive-banner.svelte'
   import DocEditor from '$lib/components/drive/doc-editor.svelte'
   import RevisionsPanel from '$lib/components/drive/revisions-panel.svelte'
   import ShareDialog from '$lib/components/drive/share-dialog.svelte'
@@ -54,6 +56,21 @@
   async function restore(revisionId: string) {
     await driveApi.restoreRevision(data.file.id, revisionId)
     await invalidateAll()
+  }
+
+  let archiving = $state(false)
+  let archiveError = $state<string | null>(null)
+  async function archive() {
+    archiveError = null
+    archiving = true
+    try {
+      await driveApi.archive(data.file)
+      await invalidateAll()
+    } catch (err) {
+      archiveError = err instanceof Error ? err.message : String(err)
+    } finally {
+      archiving = false
+    }
   }
 </script>
 
@@ -137,13 +154,33 @@
         {`${formatSize(meta.size)} · changed ${fmt(meta.updatedAt)}${data.canEdit ? '' : ' · view only'}`}
       </p>
     </div>
-    <Button
-      variant="outline"
-      href={`${contentUrl}?download=1`}
-      download
-      data-testid="drive-file-download"><DownloadIcon class="size-4" /> Download</Button
-    >
+    <div class="flex items-center gap-2">
+      {#if data.canEdit && !data.file.archivedAt}
+        <Button
+          variant="outline"
+          onclick={archive}
+          disabled={archiving}
+          title="Hide it from the everyday view; it stays here, opens and shows up in search"
+          data-testid="drive-file-archive"><ArchiveIcon class="size-4" /> Archive</Button
+        >
+      {/if}
+      <Button
+        variant="outline"
+        href={`${contentUrl}?download=1`}
+        download
+        data-testid="drive-file-download"><DownloadIcon class="size-4" /> Download</Button
+      >
+    </div>
   </header>
+  {#if archiveError}
+    <p
+      class="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive sm:px-6"
+      role="alert"
+    >
+      {archiveError}
+    </p>
+  {/if}
+  <ArchiveBanner item={data.file} archivedIn={data.archivedIn} canEdit={data.canEdit} />
 
   <div class="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6">
     {#if data.editable && data.content !== null && (data.kind === 'markdown' || data.kind === 'csv')}

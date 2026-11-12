@@ -8,9 +8,27 @@ export type DriveItem = {
   ownerId: string
   updatedAt: string | Date
   trashedAt: string | Date | null
+  /** Set when the item itself is archived (who: a member id or the agent's id). */
+  archivedAt?: string | Date | null
+  archivedBy?: string | null
+  /** Search results: archived itself or inside an archived folder. */
+  inArchive?: boolean
   size?: number
   mime?: string
 }
+export type Crumb = { id: string; name: string }
+/** One folder's archived items in the Archived view. */
+export type ArchiveGroup = {
+  key: string
+  folder: Crumb | null
+  root: PathRoot
+  path: Crumb[]
+  items: Array<DriveItem & { canEdit?: boolean; canManage?: boolean; archivedByName: string | null }>
+}
+export type ArchiveSuggestion = { file: DriveItem; root: PathRoot; path: Crumb[]; reason: string }
+export type ArchiveSuggestions = { olderThanDays: number; considered: number; more: boolean; suggestions: ArchiveSuggestion[] }
+export type ItemRef = Pick<DriveItem, 'type' | 'id'>
+export type Unarchived = { item: DriveItem; stillIn: Crumb | null }
 /** A listing row's owner name (null: not a member) and sharing (null: not told — you don't manage it). */
 export type ItemDescription = { ownerName: string | null; shared: boolean | null }
 export type AccessLevel = 'view' | 'edit' | 'manage'
@@ -72,6 +90,13 @@ export const driveApi = {
   trash: (item: Pick<DriveItem, 'type' | 'id'>) => call<{ ok: true }>(`/api/drive/items/${item.type}/${item.id}`, { method: 'DELETE' }),
   deleteForever: (item: Pick<DriveItem, 'type' | 'id'>) => call<{ ok: true }>(`/api/drive/items/${item.type}/${item.id}?forever=1`, { method: 'DELETE' }),
   restore: (item: Pick<DriveItem, 'type' | 'id'>) => call<DriveItem>(`/api/drive/items/${item.type}/${item.id}/restore`, { method: 'POST' }),
+  archive: (item: ItemRef) => call<DriveItem>(`/api/drive/items/${item.type}/${item.id}/archive`, { method: 'POST' }),
+  unarchive: (item: ItemRef) => call<Unarchived>(`/api/drive/items/${item.type}/${item.id}/archive`, { method: 'DELETE' }),
+  /** Archives several items in one go; `errors` says which couldn't be and why. */
+  archiveMany: (items: ItemRef[]) =>
+    call<{ archived: DriveItem[]; errors: Array<ItemRef & { error: string }> }>('/api/drive/archive', send('POST', { items })),
+  /** The AI's suggestions among files unchanged for `olderThanDays` (archives nothing). */
+  suggestArchive: (olderThanDays: number) => call<ArchiveSuggestions>('/api/drive/archive/suggestions', send('POST', { olderThanDays })),
   grants: (item: Pick<DriveItem, 'type' | 'id'>) => call<{ grants: GrantEntry[] }>(`/api/drive/items/${item.type}/${item.id}/grants`),
   setGrants: (item: Pick<DriveItem, 'type' | 'id'>, grants: GrantEntry[]) =>
     call<{ grants: GrantEntry[] }>(`/api/drive/items/${item.type}/${item.id}/grants`, send('PUT', { grants })),

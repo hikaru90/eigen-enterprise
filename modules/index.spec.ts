@@ -97,6 +97,8 @@ describe('buildKernel wires the owner-chosen approval mode', () => {
       'brand.set_activate': 'public',
       'brand.visual_set_activate': 'public',
       'calls.start': 'internal',
+      'drive.archive': 'internal',
+      'drive.unarchive': 'internal',
       'drive.write_text': 'internal',
       'email.contact_add': 'internal',
       'email.domain_add': 'internal',
@@ -196,6 +198,10 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect(toolNames).toContain('drive.list')
     expect(toolNames).toContain('drive.read')
     expect(toolNames).toContain('drive.write_text')
+    expect(toolNames).toContain('drive.archive')
+    expect(toolNames).toContain('drive.unarchive')
+    expect(toolNames).toContain('drive.list_archived')
+    expect(toolNames).toContain('drive.suggest_archive')
     expect(toolNames).toContain('contribute.list')
     expect(toolNames).toContain('contribute.update')
     expect(toolNames).toContain('calls.list')
@@ -243,6 +249,8 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'brand.set_activate',
       'brand.visual_set_activate',
       'calls.start',
+      'drive.archive',
+      'drive.unarchive',
       'drive.write_text',
       'email.contact_add',
       'email.domain_add',

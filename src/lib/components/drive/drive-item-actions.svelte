@@ -1,5 +1,7 @@
 <script lang="ts">
   /* eslint-disable svelte/no-navigation-without-resolve -- the download href is an API path, not a page */
+  import ArchiveIcon from '@lucide/svelte/icons/archive'
+  import ArchiveRestoreIcon from '@lucide/svelte/icons/archive-restore'
   import DownloadIcon from '@lucide/svelte/icons/download'
   import FolderInputIcon from '@lucide/svelte/icons/folder-input'
   import PencilIcon from '@lucide/svelte/icons/pencil'
@@ -7,12 +9,16 @@
   import Share2Icon from '@lucide/svelte/icons/share-2'
   import TrashIcon from '@lucide/svelte/icons/trash'
   import XIcon from '@lucide/svelte/icons/x'
-  import { driveApi, type DriveItem } from '$lib/drive/api'
+  import { driveApi, type DriveItem, type Unarchived } from '$lib/drive/api'
   import MoveDialog from './move-dialog.svelte'
   import NameDialog from './name-dialog.svelte'
   import ShareDialog from './share-dialog.svelte'
 
-  /** A row's actions: only what the person may do is offered (the server decides again). */
+  /**
+   * A row's actions: only what the person may do is offered (the server
+   * decides again). Archive for what they may edit; an archived item (in
+   * search results) offers Unarchive instead.
+   */
   let {
     item,
     trashView = false,
@@ -20,8 +26,13 @@
   }: {
     item: DriveItem & { canEdit?: boolean; canManage?: boolean }
     trashView?: boolean
-    run: (act: () => Promise<unknown>, ok?: string) => Promise<void>
+    run: <T>(act: () => Promise<T>, ok?: string | ((out: T) => string)) => Promise<void>
   } = $props()
+
+  const unarchivedNotice = (out: Unarchived) =>
+    out.stillIn
+      ? `Unarchived “${item.name}”. “${out.stillIn.name}”, the folder it is in, is still archived.`
+      : `Unarchived “${item.name}”.`
 
   let renaming = $state(false)
   let moving = $state(false)
@@ -67,6 +78,21 @@
       </button>
     {/if}
     {#if item.canEdit}
+      {#if item.archivedAt}
+        <button class={btn} title="Unarchive" aria-label={`Unarchive ${item.name}`} data-testid="drive-unarchive" onclick={() => run(() => driveApi.unarchive(item), unarchivedNotice)}>
+          <ArchiveRestoreIcon class="size-4" />
+        </button>
+      {:else}
+        <button
+          class={btn}
+          title="Archive (hide from this view; it stays openable and searchable)"
+          aria-label={`Archive ${item.name}`}
+          data-testid="drive-archive"
+          onclick={() => run(() => driveApi.archive(item), `Archived “${item.name}”. Find it under Archived.`)}
+        >
+          <ArchiveIcon class="size-4" />
+        </button>
+      {/if}
       <button class={btn} title="Move to trash" aria-label={`Move ${item.name} to trash`} data-testid="drive-trash" onclick={() => run(() => driveApi.trash(item), `Moved “${item.name}” to the trash.`)}>
         <TrashIcon class="size-4" />
       </button>
