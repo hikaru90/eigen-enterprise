@@ -4,12 +4,17 @@ import { page } from 'vitest/browser'
 import type { DriveItem } from '$lib/drive/api'
 import DriveBrowser from './drive-browser.svelte'
 
-const { gotoMock, invalidateAllMock } = vi.hoisted(() => ({
+const { gotoMock, invalidateAllMock, api } = vi.hoisted(() => ({
   gotoMock: vi.fn(),
   invalidateAllMock: vi.fn(),
+  api: { archive: vi.fn(), unarchive: vi.fn() },
 }))
 vi.mock('$app/navigation', () => ({ goto: gotoMock, invalidateAll: invalidateAllMock }))
 vi.mock('$app/paths', () => ({ base: '', resolve: (path: string) => path }))
+vi.mock('$lib/drive/api', async (importOriginal) => {
+  const real = await importOriginal<typeof import('$lib/drive/api')>()
+  return { ...real, driveApi: { ...real.driveApi, ...api } }
+})
 
 const at = '2026-11-04T10:00:00.000Z'
 const folder: DriveItem & { canEdit: boolean; canManage: boolean } = {
@@ -121,5 +126,26 @@ describe('drive-browser: the full-width listing', () => {
       new DragEvent('dragleave', { bubbles: true, cancelable: true, dataTransfer: files }),
     )
     await expect.element(page.getByTestId('drive-drop-overlay')).not.toBeInTheDocument()
+  })
+
+  it('Archive is offered on what you may edit; it hides the item from this view and says where to find it', async () => {
+    api.archive.mockResolvedValue({ ...folder, archivedAt: at })
+    render(DriveBrowser, { props: { folderId: null, items: [folder, image], canEdit: true } })
+    // The image is view-only: no Archive for it.
+    expect(page.getByTestId('drive-archive').elements()).toHaveLength(1)
+    await page.getByRole('button', { name: 'Archive Projects' }).click()
+    expect(api.archive).toHaveBeenCalledWith(expect.objectContaining({ type: 'folder', id: 'f1' }))
+    await expect.element(page.getByTestId('drive-notice')).toHaveTextContent('Archived “Projects”. Find it under Archived.')
+    expect(invalidateAllMock).toHaveBeenCalled()
+  })
+
+  it('search results mark archived items and offer Unarchive instead of Archive', async () => {
+    const archivedFolder = { ...folder, archivedAt: at, inArchive: true }
+    render(DriveBrowser, {
+      props: { folderId: null, items: [], results: [archivedFolder, { ...image, inArchive: false }], query: 'p', canEdit: true },
+    })
+    expect(page.getByTestId('drive-archived-badge').elements()).toHaveLength(1)
+    await expect.element(page.getByRole('button', { name: 'Unarchive Projects' })).toBeInTheDocument()
+    expect(page.getByTestId('drive-archive').elements()).toHaveLength(0)
   })
 })

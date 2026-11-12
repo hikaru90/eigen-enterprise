@@ -1,10 +1,10 @@
 import type { EditLock, EditLockStore } from './locks'
 import type { DriveFile, DriveFolder, DriveRevision, DriveStore } from './store'
-import { and, eq, ilike, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, asc, eq, ilike, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import { driveEditLock, driveFile, driveFolder, driveRevision } from '$lib/server/db/drive.schema'
 import { driveDb } from './db'
 
-/** Drive metadata in Postgres (migration 0108). */
+/** Drive metadata in Postgres (migrations 0109, 0110; archive state 0126). */
 
 const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`)
 
@@ -33,6 +33,21 @@ export const dbDriveStore: DriveStore = {
       db.select().from(driveFile).where(ilike(driveFile.name, pattern)),
     ])
     return { folders: folders as DriveFolder[], files: files as DriveFile[] }
+  },
+  async listArchived() {
+    const db = await driveDb()
+    const [folders, files] = await Promise.all([
+      db.select().from(driveFolder).where(isNotNull(driveFolder.archivedAt)),
+      db.select().from(driveFile).where(isNotNull(driveFile.archivedAt)),
+    ])
+    return { folders: folders as DriveFolder[], files: files as DriveFile[] }
+  },
+  async filesChangedBefore(before) {
+    return (await (await driveDb())
+      .select()
+      .from(driveFile)
+      .where(and(isNull(driveFile.trashedAt), isNull(driveFile.archivedAt), lt(driveFile.updatedAt, before)))
+      .orderBy(asc(driveFile.updatedAt), asc(driveFile.id))) as DriveFile[]
   },
   async insertFolder(folder) {
     await (await driveDb()).insert(driveFolder).values(folder)

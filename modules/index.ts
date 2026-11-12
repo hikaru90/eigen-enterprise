@@ -153,6 +153,9 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   'members.group_delete',
   // Drive: an agent's write replaces a company file's text (kept as a revision).
   'drive.write_text',
+  // Drive archive: hides items from everyone's normal view (reversible, nothing deleted).
+  'drive.archive',
+  'drive.unarchive',
   // Calls: starting a call rings people (internal) — an agent's ring waits on the approval mode.
   'calls.start',
 ])

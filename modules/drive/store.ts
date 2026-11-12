@@ -8,6 +8,9 @@ export type DriveFolder = {
   createdAt: Date
   updatedAt: Date
   trashedAt: Date | null
+  /** Archived (0126): when and by whom; both null while it is in use. */
+  archivedAt: Date | null
+  archivedBy: string | null
 }
 
 export type DriveFile = {
@@ -21,6 +24,8 @@ export type DriveFile = {
   createdAt: Date
   updatedAt: Date
   trashedAt: Date | null
+  archivedAt: Date | null
+  archivedBy: string | null
 }
 
 export type DriveRevision = {
@@ -32,8 +37,8 @@ export type DriveRevision = {
   createdAt: Date
 }
 
-export type FolderPatch = Partial<Pick<DriveFolder, 'name' | 'parentId' | 'trashedAt' | 'updatedAt'>>
-export type FilePatch = Partial<Pick<DriveFile, 'name' | 'folderId' | 'trashedAt' | 'updatedAt' | 'mime' | 'size' | 'sha256'>>
+export type FolderPatch = Partial<Pick<DriveFolder, 'name' | 'parentId' | 'trashedAt' | 'updatedAt' | 'archivedAt' | 'archivedBy'>>
+export type FilePatch = Partial<Pick<DriveFile, 'name' | 'folderId' | 'trashedAt' | 'updatedAt' | 'mime' | 'size' | 'sha256' | 'archivedAt' | 'archivedBy'>>
 
 export type DriveStore = {
   getFolder(id: string): Promise<DriveFolder | null>
@@ -42,6 +47,10 @@ export type DriveStore = {
   children(folderId: string | null): Promise<{ folders: DriveFolder[]; files: DriveFile[] }>
   /** Every item whose name contains `query` (case-insensitive); everything when query is ''. */
   findByName(query: string): Promise<{ folders: DriveFolder[]; files: DriveFile[] }>
+  /** Every archived folder and file (trashed ones included; the service decides what shows). */
+  listArchived(): Promise<{ folders: DriveFolder[]; files: DriveFile[] }>
+  /** Files not trashed and not archived themselves, last changed before `before`, oldest first. */
+  filesChangedBefore(before: Date): Promise<DriveFile[]>
   insertFolder(folder: DriveFolder): Promise<void>
   insertFile(file: DriveFile): Promise<void>
   updateFolder(id: string, patch: FolderPatch): Promise<void>
@@ -87,6 +96,17 @@ export function memoryDriveStore(): DriveStore {
         folders: [...folders.values()].filter((f) => f.name.toLowerCase().includes(q)),
         files: [...files.values()].filter((f) => f.name.toLowerCase().includes(q)),
       }
+    },
+    async listArchived() {
+      return {
+        folders: [...folders.values()].filter((f) => f.archivedAt !== null),
+        files: [...files.values()].filter((f) => f.archivedAt !== null),
+      }
+    },
+    async filesChangedBefore(before) {
+      return [...files.values()]
+        .filter((f) => f.trashedAt === null && f.archivedAt === null && f.updatedAt.getTime() < before.getTime())
+        .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime() || a.id.localeCompare(b.id))
     },
     async insertFolder(f) {
       folders.set(f.id, { ...f })

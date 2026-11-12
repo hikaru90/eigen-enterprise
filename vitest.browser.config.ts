@@ -106,6 +106,7 @@ export default defineConfig({
       'src/lib/components/page/page-header.svelte.spec.ts',
       'src/lib/components/drive/drive-browser.svelte.spec.ts',
       'src/lib/components/drive/drive-privacy-note.svelte.spec.ts',
+      'src/lib/components/drive/archived-view.svelte.spec.ts',
       'src/lib/components/contribute/contribute-composer.svelte.spec.ts',
       'src/lib/components/contribute/contribute-board.svelte.spec.ts',
       'src/lib/voice/voice-dictation.svelte.spec.ts',

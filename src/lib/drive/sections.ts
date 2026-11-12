@@ -1,5 +1,5 @@
 /** The Drive rail's sections. */
-export type DriveSection = 'mine' | 'shared' | 'messages' | 'trash'
+export type DriveSection = 'mine' | 'shared' | 'messages' | 'archived' | 'trash'
 
 /** Where a folder or file path starts (the server's PathRoot.href) → the section it belongs to. */
 const SECTION_OF_ROOT: Record<string, DriveSection> = {
@@ -12,6 +12,7 @@ const SECTION_OF_PAGE: Record<string, DriveSection> = {
   '/drive': 'mine',
   '/drive/shared': 'shared',
   '/drive/messages': 'messages',
+  '/drive/archived': 'archived',
   '/drive/trash': 'trash',
 }
 
