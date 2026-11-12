@@ -7,13 +7,22 @@ import { auth } from '$lib/server/auth'
  * Settings → Passkeys & sessions. Both lists load here on the server (the
  * former client-side passkey query could hang on "Loading…" forever); a
  * failing list fails the page loud instead.
+ *
+ * Sessions are read through Better Auth's internal adapter, not
+ * `auth.api.listSessions`: that endpoint only answers a "fresh" session (one
+ * signed in within the last day), and sessions here last a year — every
+ * machine signed in before yesterday got a 500. The page shows device, place
+ * and dates only; tokens never leave the server.
  */
 export const load: PageServerLoad = async (event) => {
-  if (!event.locals.user) throw redirect(302, '/login')
+  const user = event.locals.user
+  if (!user) throw redirect(302, '/login')
   const headers = event.request.headers
   const [passkeys, sessions] = await Promise.all([
     auth.api.listPasskeys({ headers }),
-    auth.api.listSessions({ headers }),
+    auth.$context.then((ctx) =>
+      ctx.internalAdapter.listSessions(user.id, { onlyActiveSessions: true }),
+    ),
   ])
   const currentId = event.locals.session?.id ?? null
   return {
