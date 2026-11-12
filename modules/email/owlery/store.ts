@@ -37,11 +37,35 @@ export const NO_EVENTS: OwleryEvents = {
   trackingConfigSet: null,
 }
 
+/**
+ * Receiving wiring (plan/email-inbox.md S2 writes it, S3's ingest reads it):
+ * the receipt rule set, the bucket SES writes raw mail to, and the topic that
+ * notifies /api/mail/ses-inbound. Status reuses the events lifecycle.
+ */
+export type OwleryReceiving = {
+  receivingStatus: EventsStatus
+  receivingError: string | null
+  receivingTopicArn: string | null
+  receivingBucket: string | null
+  receivingRuleSet: string | null
+  receivingCallbackUrl: string | null
+}
+
+export const NO_RECEIVING: OwleryReceiving = {
+  receivingStatus: 'not_set_up',
+  receivingError: null,
+  receivingTopicArn: null,
+  receivingBucket: null,
+  receivingRuleSet: null,
+  receivingCallbackUrl: null,
+}
+
 export type OwleryStore = {
-  read(): Promise<(OwleryRow & OwleryEvents) | null>
-  /** Upserts the credentials + default sender; leaves the event wiring as it is. */
+  read(): Promise<(OwleryRow & OwleryEvents & OwleryReceiving) | null>
+  /** Upserts the credentials + default sender; leaves the event and receiving wiring as they are. */
   write(row: OwleryRow): Promise<void>
   writeEvents(patch: Partial<OwleryEvents>): Promise<void>
+  writeReceiving(patch: Partial<OwleryReceiving>): Promise<void>
   /** Changes only the default sender. */
   writeEmailFrom(emailFrom: string, updatedBy: string): Promise<void>
   /** Deletes the row (only the e2e harness reset under MAIL_TRANSPORT=fake). */
@@ -70,7 +94,7 @@ async function resolveDb(db: DbHandle): Promise<AppDatabase> {
 export class DbOwleryStore implements OwleryStore {
   constructor(private readonly db: DbHandle) {}
 
-  async read(): Promise<(OwleryRow & OwleryEvents) | null> {
+  async read(): Promise<(OwleryRow & OwleryEvents & OwleryReceiving) | null> {
     const [row] = await (await resolveDb(this.db)).select().from(owlerySettings).limit(1)
     if (!row) return null
     return {
@@ -85,10 +109,20 @@ export class DbOwleryStore implements OwleryStore {
       eventsCallbackUrl: row.eventsCallbackUrl,
       configSet: row.configSet,
       trackingConfigSet: row.trackingConfigSet,
+      receivingStatus: row.receivingStatus,
+      receivingError: row.receivingError,
+      receivingTopicArn: row.receivingTopicArn,
+      receivingBucket: row.receivingBucket,
+      receivingRuleSet: row.receivingRuleSet,
+      receivingCallbackUrl: row.receivingCallbackUrl,
     }
   }
 
   async writeEvents(patch: Partial<OwleryEvents>): Promise<void> {
+    await (await resolveDb(this.db)).update(owlerySettings).set(patch)
+  }
+
+  async writeReceiving(patch: Partial<OwleryReceiving>): Promise<void> {
     await (await resolveDb(this.db)).update(owlerySettings).set(patch)
   }
 
@@ -118,16 +152,19 @@ export function defaultOwleryStore(): OwleryStore {
 
 /** In-memory store for tests. */
 export class InMemoryOwleryStore implements OwleryStore {
-  row: (OwleryRow & OwleryEvents) | null = null
+  row: (OwleryRow & OwleryEvents & OwleryReceiving) | null = null
   writes = 0
   async read() {
     return this.row
   }
   async write(row: OwleryRow) {
-    this.row = { ...NO_EVENTS, ...this.row, ...row }
+    this.row = { ...NO_EVENTS, ...NO_RECEIVING, ...this.row, ...row }
     this.writes += 1
   }
   async writeEvents(patch: Partial<OwleryEvents>) {
+    if (this.row) this.row = { ...this.row, ...patch }
+  }
+  async writeReceiving(patch: Partial<OwleryReceiving>) {
     if (this.row) this.row = { ...this.row, ...patch }
   }
   async writeEmailFrom(emailFrom: string, updatedBy: string) {

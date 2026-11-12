@@ -21,6 +21,8 @@ export const mailDomains = pgTable('mail_domains', {
   dmarcAdded: boolean('dmarc_added').notNull().default(false),
   /** Open and click tracking for mail from this domain (the tracking configuration set). */
   tracking: boolean('tracking').notNull().default(false),
+  /** The owner turned on receiving for this domain (MX → SES, migration 0130). */
+  receiving: boolean('receiving').notNull().default(false),
   errorMessage: text('error_message'),
   /** Still waiting on DNS: the background check keeps re-reading Amazon's status. */
   isVerifying: boolean('is_verifying').notNull().default(true),

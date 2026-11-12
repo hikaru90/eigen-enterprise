@@ -4,7 +4,7 @@ export const EVENTS_STATUSES = ['not_set_up', 'waiting', 'ready', 'failed'] as c
 export type EventsStatus = (typeof EVENTS_STATUSES)[number]
 
 /**
- * Owlery email module settings (migration 0088; delivery-event columns 0114).
+ * Owlery email module settings (migration 0088; delivery-event columns 0114; receiving 0130).
  * Consumed only by modules/email/owlery/store.
  */
 export const owlerySettings = pgTable('owlery_settings', {
@@ -23,4 +23,11 @@ export const owlerySettings = pgTable('owlery_settings', {
   eventsCallbackUrl: text('events_callback_url'),
   configSet: text('config_set'),
   trackingConfigSet: text('tracking_config_set'),
+  /** Receiving (migration 0130): receipt rule set → S3 bucket → SNS topic → /api/mail/ses-inbound. */
+  receivingStatus: text('receiving_status').$type<EventsStatus>().notNull().default('not_set_up'),
+  receivingError: text('receiving_error'),
+  receivingTopicArn: text('receiving_topic_arn'),
+  receivingBucket: text('receiving_bucket'),
+  receivingRuleSet: text('receiving_rule_set'),
+  receivingCallbackUrl: text('receiving_callback_url'),
 })
