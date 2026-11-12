@@ -58,8 +58,8 @@ describe('Inbox views', () => {
     expect(body.srcdoc).toContain(`${ORIGIN}/m/email/inbox/attachments/a1?inline=1`)
     expect(body.srcdoc).toContain("img-src data: https://os.example.com/m/email/inbox/attachments/\"")
     expect(v.messages[1]!.attachments).toEqual([
-      { id: 'a1', filename: 'logo.gif', contentType: 'image/gif', sizeBytes: 9, blocked: false, href: '/m/email/inbox/attachments/a1' },
-      { id: 'a2', filename: 'attachment', contentType: 'application/pdf', sizeBytes: 5, blocked: true, href: '/m/email/inbox/attachments/a2' },
+      { id: 'a1', filename: 'logo.gif', contentType: 'image/gif', sizeBytes: 9, blocked: false, kept: true, href: '/m/email/inbox/attachments/a1' },
+      { id: 'a2', filename: 'attachment', contentType: 'application/pdf', sizeBytes: 5, blocked: true, kept: true, href: '/m/email/inbox/attachments/a2' },
     ])
     const shown = readerView({ message: html, messages: [html], attachments }, { origin: ORIGIN, images: true })
     expect(shown).toMatchObject({ remoteImagesBlocked: false, imagesShown: true })

@@ -4,6 +4,7 @@
   import type { MessageListItem } from '../../../../../../modules/email/inbox/view'
   import type { PageProps } from './$types'
   import type { SubmitFunction } from '@sveltejs/kit'
+  import PenLine from '@lucide/svelte/icons/pen-line'
   import { onDestroy, onMount, tick } from 'svelte'
   import { deserialize } from '$app/forms'
   import { afterNavigate, goto, invalidate } from '$app/navigation'
@@ -13,6 +14,7 @@
   import { Input } from '$lib/components/ui/input'
   import { ResumableStream } from '$lib/messages/resumable-stream'
   import { docTitle } from '$lib/shell/title'
+  import ComposeForm from '../../../../../../modules/email/inbox/ui/compose-form.svelte'
   import FolderNav from '../../../../../../modules/email/inbox/ui/folder-nav.svelte'
   import MailReader from '../../../../../../modules/email/inbox/ui/mail-reader.svelte'
   import MessageList from '../../../../../../modules/email/inbox/ui/message-list.svelte'
@@ -34,6 +36,8 @@
   let actionError = $state<string | null>(null)
   let live = $state<'connecting' | 'live' | 'reconnecting'>('connecting')
   let reader: ReturnType<typeof MailReader> | undefined = $state()
+  let sending = $state(false)
+  let sendError = $state<string | null>(null)
 
   const inbox = $derived(data.inbox)
   const here = $derived<Partial<InboxState>>(inbox ? { box: inbox.box.id, folder: inbox.folder, q: inbox.q } : {})
@@ -44,6 +48,20 @@
   )
 
   const folderHref = (folder: Folder) => inboxHref(base, { box: inbox?.box.id, folder })
+  const newMailHref = $derived(inboxHref(base, { ...here, compose: 'new' }))
+  /** Where Discard goes: the opened mail (a reply or forward), else the list. */
+  const discardHref = $derived(inbox?.reader ? inboxHref(base, { ...here, m: inbox.reader.id }) : listHref)
+  const composeLinks = $derived(
+    inbox?.reader && !inbox.box.disabled
+      ? {
+          reply: inboxHref(base, { ...here, m: inbox.reader.id, compose: 'reply' }),
+          replyAll: inboxHref(base, { ...here, m: inbox.reader.id, compose: 'replyAll' }),
+          forward: inboxHref(base, { ...here, m: inbox.reader.id, compose: 'forward' }),
+        }
+      : null,
+  )
+  /** One compose form per draft: a new mode or parent starts a fresh form; reloads of the same one keep what was typed. */
+  const composeKey = $derived(inbox?.compose ? `${inbox.compose.mode}:${inbox.compose.parentId ?? ''}:${inbox.box.id}` : '')
   const messageHref = (id: string) => inboxHref(base, { ...here, m: id })
 
   /** A form action called from code (not a form): same endpoint and result shape as use:enhance. */
@@ -82,6 +100,36 @@
     }
   }
 
+  /** Send: on success show the copy in Sent with a confirmation; on failure keep the form as typed and say why. */
+  const sendSubmit: SubmitFunction = () => {
+    sending = true
+    sendError = null
+    return async ({ result }) => {
+      sending = false
+      if (result.type === 'success') {
+        const sent = (result.data as { sent?: { id: string; mailboxId: string } } | undefined)?.sent
+        if (!sent) {
+          sendError = 'The mail was sent, but the page could not open it. Look in Sent.'
+          return
+        }
+        await goto(inboxHref(base, { box: sent.mailboxId, folder: 'sent', m: sent.id, sent: true }), { invalidateAll: true })
+        await tick()
+        document.getElementById('inbox-sent-confirmation')?.focus()
+        return
+      }
+      if (result.type === 'failure') {
+        sendError = String((result.data as { error?: unknown } | undefined)?.error)
+        return
+      }
+      if (result.type === 'error') {
+        sendError = 'The mail could not be sent. Nothing went out; try again in a moment.'
+        return
+      }
+      // A redirect (signed out): follow it.
+      await goto(result.location)
+    }
+  }
+
   /** The mailbox picker submits on change (a GET form, so it also works without JavaScript). */
   function pickMailbox(event: Event) {
     ;(event.currentTarget as HTMLSelectElement).form?.requestSubmit()
@@ -98,6 +146,8 @@
   }
 
   afterNavigate(() => {
+    // Leaving the compose form drops its error (a new form starts clean).
+    if (!data.inbox?.compose) sendError = null
     if (!refreshAfterNavigation) return
     refreshAfterNavigation = false
     void invalidate(INBOX_DEPENDENCY)
@@ -178,7 +228,20 @@
         <Button type="submit" size="sm" variant="outline">Search</Button>
       </form>
       {#if live === 'reconnecting'}<span class="text-xs text-muted-foreground" role="status">Reconnecting…</span>{/if}
+      <Button href={newMailHref} size="sm" class="ml-auto" data-testid="inbox-new-mail"><PenLine aria-hidden="true" />New mail</Button>
     </div>
+
+    {#if inbox.sent && !inbox.compose}
+      <p
+        id="inbox-sent-confirmation"
+        tabindex="-1"
+        class="rounded-lg border border-border px-3 py-2 text-[13px] outline-none"
+        role="status"
+        data-testid="inbox-sent-confirmation"
+      >
+        Sent. Your copy is in Sent.
+      </p>
+    {/if}
 
     {#if inbox.box.disabled}
       <p class="text-[13px] text-muted-foreground" data-testid="inbox-disabled">This address receives no new mail. What it holds stays here.</p>
@@ -188,7 +251,7 @@
     <FolderNav folders={inbox.folders} current={inbox.folder} href={folderHref} />
 
     <div class="grid min-h-[24rem] overflow-hidden rounded-lg border border-border md:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)]">
-      <section class="min-w-0 border-border md:border-r {inbox.reader ? 'hidden md:block' : ''}" aria-label={`${folderLabel} list`}>
+      <section class="min-w-0 border-border md:border-r {inbox.reader || inbox.compose ? 'hidden md:block' : ''}" aria-label={`${folderLabel} list`}>
         {#if inbox.q}
           <p class="flex items-center justify-between gap-2 border-b border-border px-4 py-2 text-xs text-muted-foreground">
             <span class="truncate">Results for “{inbox.q}”</span>
@@ -204,8 +267,12 @@
           onopen={open}
         />
       </section>
-      <section class="min-w-0 {inbox.reader ? '' : 'hidden md:flex md:items-center md:justify-center'}" aria-label="Reading pane">
-        {#if inbox.reader}
+      <section class="min-w-0 {inbox.reader || inbox.compose ? '' : 'hidden md:flex md:items-center md:justify-center'}" aria-label={inbox.compose ? 'Compose' : 'Reading pane'}>
+        {#if inbox.compose}
+          {#key composeKey}
+            <ComposeForm draft={inbox.compose} submit={sendSubmit} {discardHref} busy={sending} error={sendError} />
+          {/key}
+        {:else if inbox.reader}
           {#key inbox.reader.id}
             <MailReader
               bind:this={reader}
@@ -215,6 +282,7 @@
               {submit}
               {busy}
               error={actionError}
+              compose={composeLinks}
             />
           {/key}
         {:else}

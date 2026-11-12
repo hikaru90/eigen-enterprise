@@ -274,6 +274,35 @@ describe.skipIf(!hasDb)('EmailPlatform (test database)', () => {
     expect(row!.status).toBe('suppressed')
   })
 
+  it('webmail (S5): sends without a log row; its bounces and complaints still suppress, its other events change nothing', async () => {
+    const d = await platform.addDomain('kindred.com', 'u1')
+    ses.verify('kindred.com')
+    await platform.refreshDomain(d.id)
+    const raw = new TextEncoder().encode('From: ana@kindred.com\r\nSubject: Private\r\n\r\nBody\r\n')
+    const { sesMessageId } = await platform.owlery.sendMailboxMail({
+      fromAddress: 'ana@kindred.com',
+      recipients: { to: ['friend@x.co'], cc: [], bcc: ['other@x.co'] },
+      raw,
+    })
+    expect(ses.rawSent).toHaveLength(1)
+    expect(await store.listMessages({ limit: 50 })).toHaveLength(0)
+
+    const mail = { messageId: sesMessageId, tags: { ee_webmail: ['1'] } }
+    expect(await platform.applySesEvent({ eventType: 'Delivery', mail })).toEqual({ applied: true })
+    await platform.applySesEvent({ eventType: 'Bounce', mail, bounce: { bounceType: 'Permanent', bouncedRecipients: [{ emailAddress: 'friend@x.co' }] } })
+    await platform.applySesEvent({ eventType: 'Complaint', mail, complaint: { complainedRecipients: [{ emailAddress: 'other@x.co' }] } })
+    expect((await store.listSuppressions()).map((s) => [s.email, s.reason, s.source]).sort()).toEqual([
+      ['friend@x.co', 'HARD_BOUNCE', 'webmail'],
+      ['other@x.co', 'COMPLAINT', 'webmail'],
+    ])
+    expect(await store.listMessages({ limit: 50 })).toHaveLength(0)
+    // The next webmail send to a suppressed address is refused whole.
+    await expect(
+      platform.owlery.sendMailboxMail({ fromAddress: 'ana@kindred.com', recipients: { to: ['friend@x.co'], cc: [], bcc: [] }, raw }),
+    ).rejects.toThrow(/friend@x\.co is on the company’s suppression list/)
+    expect(ses.rawSent).toHaveLength(1)
+  })
+
   it('manual suppression: add and remove (also from Amazon’s list)', async () => {
     await platform.suppress(' Someone@X.co ', 'u1')
     expect((await store.listSuppressions()).map((s) => [s.email, s.reason, s.source])).toEqual([['someone@x.co', 'MANUAL', 'human:u1']])

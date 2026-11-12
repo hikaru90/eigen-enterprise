@@ -16,6 +16,10 @@ export const mailFakeSent = pgTable('mail_fake_sent', {
   replyTo: text('reply_to'),
   /** Extra headers (List-Unsubscribe …), migration 0114. */
   headers: jsonb('headers').$type<{ name: string; value: string }[]>(),
+  /** A raw MIME send (the webmail, migration 0132): the mail as built; null for simple sends. */
+  raw: text('raw'),
+  /** Every envelope recipient of a raw send (Bcc included), migration 0132. */
+  recipients: jsonb('recipients').$type<string[]>(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
 

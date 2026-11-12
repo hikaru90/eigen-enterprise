@@ -3,7 +3,10 @@
   import type { ReaderMessage, ReaderView } from '../view'
   import type { SubmitFunction } from '@sveltejs/kit'
   import ArrowLeft from '@lucide/svelte/icons/arrow-left'
+  import Forward from '@lucide/svelte/icons/forward'
   import Paperclip from '@lucide/svelte/icons/paperclip'
+  import Reply from '@lucide/svelte/icons/reply'
+  import ReplyAll from '@lucide/svelte/icons/reply-all'
   import Star from '@lucide/svelte/icons/star'
   import { enhance } from '$app/forms'
   import { Button } from '$lib/components/ui/button'
@@ -24,6 +27,7 @@
     submit,
     busy = false,
     error = null,
+    compose = null,
   }: {
     reader: ReaderView
     backHref: string
@@ -31,6 +35,8 @@
     submit: SubmitFunction
     busy?: boolean
     error?: string | null
+    /** Reply / Reply all / Forward of the opened mail (S5); null when nothing can be sent from here. */
+    compose?: { reply: string; replyAll: string; forward: string } | null
   } = $props()
 
   let heading: HTMLHeadingElement | undefined = $state()
@@ -42,6 +48,8 @@
 
   const moves = $derived(moveActions(reader.folder))
   const recipients = (m: ReaderMessage) => [...m.to, ...m.cc].map(personFull).join(', ')
+  const linkClass =
+    'inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/60'
 </script>
 
 {#snippet flagForm(action: string, label: string, testid: string, icon?: boolean)}
@@ -62,6 +70,11 @@
       data-testid="inbox-back"><ArrowLeft class="size-4" aria-hidden="true" />Back to list</a
     >
     <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Actions for this mail">
+      {#if compose}
+        <a href={compose.reply} class={linkClass} data-testid="inbox-reply"><Reply class="size-4" aria-hidden="true" />Reply</a>
+        <a href={compose.replyAll} class={linkClass} data-testid="inbox-reply-all"><ReplyAll class="size-4" aria-hidden="true" />Reply all</a>
+        <a href={compose.forward} class={linkClass} data-testid="inbox-forward"><Forward class="size-4" aria-hidden="true" />Forward</a>
+      {/if}
       {#each moves as move (move.folder)}
         <form method="POST" action="?/move" use:enhance={submit}>
           <input type="hidden" name="messageId" value={reader.id} />
@@ -107,6 +120,7 @@
               <span class="font-normal text-muted-foreground">&lt;{m.from.address}&gt;</span></span
             >
             {#if recipients(m)}<span class="block truncate text-xs text-muted-foreground">To {recipients(m)}</span>{/if}
+            {#if m.bcc.length > 0}<span class="block truncate text-xs text-muted-foreground" data-testid="inbox-bcc">Bcc {m.bcc.map(personFull).join(', ')}</span>{/if}
           </span>
           <span class="flex items-center gap-2 text-xs text-muted-foreground">
             {#if m.id !== reader.id && m.folder !== reader.folder}<span class="rounded-full border border-border px-1.5">{FOLDER_LABELS[m.folder]}</span>{/if}
@@ -135,6 +149,14 @@
                   <span class="inline-flex items-center gap-1.5 rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive" data-testid={`inbox-attachment-blocked-${a.id}`}>
                     <Paperclip class="size-3.5" aria-hidden="true" />{a.filename} · Blocked: Amazon found a virus
                   </span>
+                {:else if !a.kept}
+                  <span
+                    class="inline-flex items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1 text-xs text-muted-foreground"
+                    title="Attachments of mail sent from here aren’t kept, so they can’t be downloaded yet."
+                    data-testid={`inbox-attachment-not-kept-${a.id}`}
+                    ><Paperclip class="size-3.5" aria-hidden="true" />{a.filename}
+                    <span>{fileSize(a.sizeBytes)} · sent, not kept here</span></span
+                  >
                 {:else}
                   <a
                     href={a.href}

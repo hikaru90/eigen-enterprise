@@ -7,7 +7,21 @@ import { fixture, message } from '../../../../../../modules/email/inbox/test-fix
 let f = fixture()
 let me = { userId: 'ana', email: 'ana@home.example', isAdmin: false }
 
-vi.mock('../../../../../../modules/email/inbox/live', () => ({ inboxDeps: async () => f.deps }))
+let sent: Array<{ fromAddress: string; recipients: unknown }> = []
+vi.mock('../../../../../../modules/email/inbox/live', () => ({
+  inboxDeps: async () => f.deps,
+  sendDeps: async () => ({
+    inbox: f.deps,
+    transport: {
+      sendMailboxMail: async (input: { fromAddress: string; recipients: unknown }) => {
+        sent.push(input)
+        return { sesMessageId: `ses-${sent.length}` }
+      },
+    },
+    raw: { getRaw: async () => { throw new Error('no raw mail in this test') } },
+    bucket: async () => 'bucket',
+  }),
+}))
 vi.mock('../access.server', async (orig) => {
   const real = await orig<typeof import('../access.server')>()
   return { ...real, requireMember: vi.fn(async () => me) }
@@ -28,6 +42,8 @@ type Inbox = {
   folders: Array<{ folder: string; total: number; unread: number }>
   messages: Array<{ id: string; unread: boolean }>
   reader: { id: string; messages: Array<{ id: string }>; imagesShown: boolean } | null
+  compose: { mode: string; fromMailboxId: string | null; to: string; subject: string; parentId: string | null } | null
+  sent: boolean
 }
 
 const run = async (query = '') => {
@@ -45,9 +61,10 @@ const status = async (query: string) => {
     return (err as { status?: number }).status
   }
 }
-const post = (name: keyof typeof actions, fields: Record<string, string>) => {
+const post = (name: keyof typeof actions, fields: Record<string, string>, files: File[] = []) => {
   const body = new FormData()
   for (const [k, v] of Object.entries(fields)) body.set(k, v)
+  for (const file of files) body.append('attachments', file)
   return actions[name]({ locals: {}, request: new Request('http://x/', { method: 'POST', body }) } as never)
 }
 
@@ -56,6 +73,7 @@ let salesBox = ''
 
 beforeEach(async () => {
   f = fixture()
+  sent = []
   me = { userId: 'ana', email: 'ana@home.example', isAdmin: false }
   anaBox = (await assignPersonalMailbox(f.deps, 'olga', { memberId: 'ana', localPart: 'ana.lind', domainId: 'd-1' })).id
   salesBox = (await createSharedMailbox(f.deps, 'olga', { groupId: 'g-sales', localPart: 'sales', domainId: 'd-1' })).id
@@ -135,5 +153,46 @@ describe('Email › Inbox actions', () => {
     me = { userId: 'ana', email: 'ana@home.example', isAdmin: false }
     expect(await post('move', { messageId: M1, folder: 'sent' })).toMatchObject({ status: 400 })
     expect((await f.store.getMessage(M1))!).toMatchObject({ readAt: null, folder: 'inbox' })
+  })
+})
+
+describe('Email › Inbox compose (S5)', () => {
+  it('opens the compose form for new mail and prefilled for a reply of the opened mail', async () => {
+    expect((await run()).inbox!.compose).toBeNull()
+    expect((await run('?compose=new')).inbox!.compose).toMatchObject({ mode: 'new', fromMailboxId: anaBox, to: '', parentId: null })
+    expect((await run(`?m=${M1}&compose=reply`)).inbox!.compose).toMatchObject({
+      mode: 'reply',
+      fromMailboxId: anaBox,
+      to: 'Mara Voss <mara@sender.example>',
+      subject: 'Re: Numbers',
+      parentId: M1,
+    })
+    expect(await status('?compose=reply')).toBe(404)
+    expect((await run(`?m=${M1}&sent=1`)).inbox!.sent).toBe(true)
+  })
+
+  it('sends from a mailbox you read and files the copy in Sent', async () => {
+    const out = (await post(
+      'send',
+      { mailboxId: anaBox, mode: 'reply', parentId: M1, to: 'mara@sender.example', cc: '', bcc: '', subject: 'Re: Numbers', body: '  Thanks!\n' },
+      [new File(['hello'], 'notes.txt', { type: 'text/plain' }), new File([], '')],
+    )) as { ok: boolean; sent: { id: string; threadId: string; mailboxId: string } }
+    expect(out).toMatchObject({ action: 'send', ok: true, sent: { mailboxId: anaBox, threadId: 't' } })
+    expect(sent).toEqual([{ fromAddress: 'ana.lind@example.com', recipients: { to: ['mara@sender.example'], cc: [], bcc: [] }, raw: expect.any(Uint8Array) }])
+    const copy = (await f.store.getMessage(out.sent.id))!
+    expect(copy).toMatchObject({ folder: 'sent', textBody: '  Thanks!\n', subject: 'Re: Numbers' })
+    expect((await f.store.listAttachments(copy.id)).map((a) => a.filename)).toEqual(['notes.txt'])
+  })
+
+  it('refuses in plain words: someone else’s mailbox, a disabled one, bad recipients — nothing sent', async () => {
+    const fields = { mailboxId: anaBox, mode: 'new', parentId: '', to: 'mara@sender.example', cc: '', bcc: '', subject: 'Hi', body: 'Hi' }
+    me = { userId: 'olga', email: 'olga@home.example', isAdmin: true }
+    expect(await post('send', fields)).toMatchObject({ status: 400, data: { action: 'send', error: 'No such mailbox.' } })
+    me = { userId: 'ana', email: 'ana@home.example', isAdmin: false }
+    expect(await post('send', { ...fields, to: 'nope' })).toMatchObject({ status: 400, data: { error: expect.stringMatching(/“nope” in To/) } })
+    expect(await post('send', { ...fields, mode: 'draft' })).toMatchObject({ status: 400 })
+    await f.store.updateMailbox(anaBox, { disabledAt: new Date(), updatedAt: new Date() })
+    expect(await post('send', fields)).toMatchObject({ status: 400, data: { error: 'ana.lind@example.com is disabled, so no mail can be sent from it.' } })
+    expect(sent).toEqual([])
   })
 })

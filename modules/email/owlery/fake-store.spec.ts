@@ -17,14 +17,15 @@ const input = {
 
 function setup() {
   const fake = new InMemoryFakeMailStore()
+  const log = new InMemoryMailLog()
   const service = new OwleryService({
     store: new InMemoryOwleryStore(),
-    log: new InMemoryMailLog(),
+    log,
     key: () => key,
     ses: fakeStoreSes(fake),
     sns: fakeSns,
   })
-  return { fake, service }
+  return { fake, service, log }
 }
 
 describe('InMemoryFakeMailStore', () => {
@@ -71,6 +72,20 @@ describe('OwleryService on the fake transport', () => {
     const sent = await service.send({ to: 'a@b.co', subject: 'Hi', html: '<p>Hi</p>', text: 'Hi' })
     const [captured] = await fake.list({ to: 'a@b.co' })
     expect(captured).toMatchObject({ from: 'hello@kindred.test', subject: 'Hi', messageId: sent.messageId })
+  })
+
+  it('captures a webmail raw send once with the whole envelope (Bcc included) and its decoded subject', async () => {
+    const { fake, service, log } = setup()
+    await fake.verifyIdentity('kindred.test')
+    await service.saveVerified(input)
+    log.senders.set('ana@kindred.test', { ok: true, displayName: null, tracking: false })
+    const raw = new TextEncoder().encode('From: ana@kindred.test\r\nTo: a@b.co\r\nSubject: =?UTF-8?Q?Gr=C3=BC=C3=9Fe?=\r\n\r\nHallo\r\n')
+    const { sesMessageId } = await service.sendMailboxMail({ fromAddress: 'ana@kindred.test', recipients: { to: ['A@b.co'], cc: ['c@b.co'], bcc: ['hidden@b.co'] }, raw })
+    const [captured, ...rest] = await fake.list({ to: 'hidden@b.co' })
+    expect(rest).toEqual([])
+    expect(captured).toMatchObject({ messageId: sesMessageId, from: 'ana@kindred.test', to: 'a@b.co', subject: 'Grüße', recipients: ['a@b.co', 'c@b.co', 'hidden@b.co'] })
+    expect(captured!.raw).toContain('Hallo')
+    expect(await fake.list({ to: 'a@b.co' })).toHaveLength(1)
   })
 
   it('reports status from the fake (verified sender, never sandbox)', async () => {

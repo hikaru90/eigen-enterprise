@@ -37,6 +37,9 @@ import { applyIdentityCheck, dueForCheck } from './verification'
 
 export type DomainView = DomainRow & { records: DnsRecord[]; sendable: boolean }
 
+/** `mail_suppressions.source` for an address a webmail send bounced or complained on (no message id: there is no log row). */
+export const WEBMAIL_SUPPRESSION_SOURCE = 'webmail'
+
 /** Thrown for anything the owner did wrong or must do first; the message is shown as is. */
 export class EmailPlatformError extends Error {
   constructor(message: string) {
@@ -443,7 +446,12 @@ export class EmailPlatform {
         message = await this.deps.store.updateMessage(message.id, { sesMessageId: e.sesMessageId })
       }
     }
-    if (!message) return { applied: false }
+    if (!message) {
+      // Webmail (S5): no log row by design (a mailbox is private); bounces and complaints still suppress.
+      if (!e.webmail) return { applied: false }
+      for (const s of e.suppress) await this.deps.store.addSuppression(s.email, s.reason, WEBMAIL_SUPPRESSION_SOURCE)
+      return { applied: true }
+    }
 
     if (isRepeatableEngagement(e.status) && (await this.deps.store.hasEvent(message.id, e.status))) {
       return { applied: true }

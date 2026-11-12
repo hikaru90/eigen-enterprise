@@ -14,6 +14,10 @@ export type Folder = (typeof FOLDERS)[number]
 export const MOVE_TARGETS = ['inbox', 'archive', 'trash', 'spam'] as const satisfies readonly Folder[]
 export type MoveTarget = (typeof MOVE_TARGETS)[number]
 
+/** What the compose form is for (S5). */
+export const COMPOSE_MODES = ['new', 'reply', 'replyAll', 'forward'] as const
+export type ComposeMode = (typeof COMPOSE_MODES)[number]
+
 /** SES receipt verdicts (receipt.*Verdict.status). */
 export const VERDICTS = ['PASS', 'FAIL', 'GRAY', 'PROCESSING_FAILED'] as const
 export type Verdict = (typeof VERDICTS)[number]

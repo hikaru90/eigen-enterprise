@@ -49,6 +49,8 @@ export type MessageRow = {
   from: MailPerson
   to: MailPerson[]
   cc: MailPerson[]
+  /** Only the sender's own copy in Sent has any (S5); received mail never shows its Bcc. */
+  bcc: MailPerson[]
   subject: string
   snippet: string
   textBody: string | null

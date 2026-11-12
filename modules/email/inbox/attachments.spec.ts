@@ -6,7 +6,7 @@ import { LOGO_BYTES, PDF_BYTES, WITH_ATTACHMENT } from './mime-fixtures'
 import { fakeRawMailSource } from './raw-source'
 import { BUCKET, received } from './receipt-fixtures'
 import { assignPersonalMailbox } from './service'
-import { fixture } from './test-fixtures'
+import { fixture, message } from './test-fixtures'
 
 /** Attachment bytes are read again from the raw mail in S3, found by part index and proven by checksum. */
 
@@ -68,6 +68,22 @@ describe('downloadAttachment', () => {
     await expect(downloadAttachment(deps, 'ana', pdf.id, { inline: false })).rejects.toThrow(/does not match/)
     store.attachments.set(pdf.id, { ...pdf, partIndex: 9 })
     await expect(downloadAttachment(deps, 'ana', pdf.id, { inline: false })).rejects.toThrow(/no part 9/)
+  })
+})
+
+describe('downloadAttachment: mail sent from here (S5)', () => {
+  it('says plainly that its attachments are not kept, without reading S3', async () => {
+    const { deps, store, raw } = await setup()
+    const ana = [...store.messages.values()][0]!.mailboxId
+    await store.insertReceived(
+      { ...message(ana, { id: 'sent-1', folder: 'trash', sesMessageId: 'out-1', verdicts: null, rawS3Key: null }), sesMessageId: 'out-1' },
+      [{ id: 'sa-1', messageId: 'sent-1', partIndex: 0, filename: 'plan.pdf', contentType: 'application/pdf', sizeBytes: 3, contentId: null, checksum: 'c', blocked: false, createdAt: new Date() }],
+    )
+    await expect(downloadAttachment(deps, 'ana', 'sa-1', { inline: false })).rejects.toMatchObject({
+      code: 'not_kept',
+      message: 'Attachments of mail sent from here aren’t kept, so they can’t be downloaded yet.',
+    })
+    expect(raw.reads).toEqual([])
   })
 })
 

@@ -65,6 +65,8 @@ export const inboxMessages = pgTable(
     from: jsonb('from').notNull(),
     to: jsonb('to').notNull().default(sql`'[]'::jsonb`),
     cc: jsonb('cc').notNull().default(sql`'[]'::jsonb`),
+    /** Only the sender's own copy in Sent has any (migration 0132). */
+    bcc: jsonb('bcc').notNull().default(sql`'[]'::jsonb`),
     subject: text('subject').notNull(),
     snippet: text('snippet').notNull(),
     textBody: text('text_body'),

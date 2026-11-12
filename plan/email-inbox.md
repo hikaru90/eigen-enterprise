@@ -156,6 +156,68 @@ SES/SNS ones.
 Sources: AWS SES Developer Guide (receiving concepts, console walkthrough, permissions, S3 and
 SNS actions, notification contents, quotas) and the AWS General Reference SES endpoints table.
 
+## S5 notes (2026-11-12, compose / reply / forward + Sent)
+
+- **Webmail sends stay out of the company sent log.** `OwleryService.sendMailboxMail` is a new
+  entry on the one send path: same sender check (the mailbox's domain must be verified) and the
+  same suppression list, but **no `mail_messages` row and no timeline events** — so subject,
+  recipients and body never reach Company mail or Logs. Every other caller keeps `send()` as it
+  was. A suppressed recipient refuses the **whole** mail with a plain message naming the address
+  (never a silent partial send).
+- **How delivery events are recognised without a log row:** every webmail send carries the SES
+  message tag `ee_webmail=1` (no ids, no content) and goes through the **general** configuration
+  set (never the tracking one: no open/click tracking on personal mail). `applySesEvent` finds no
+  log row, sees the tag, and only applies suppressions: permanent bounces and complaints add the
+  address with `source = 'webmail'` (there is no message id to point at). Deliveries, opens etc.
+  of webmail are dropped by design. Chosen over storing the SES message id alone: a bare id table
+  would still be a per-send record (when, how many) of private mail; the tag needs no storage at
+  all. What admins can still see: a bounced/complaining address on Email › Suppression (the owner
+  asked to keep that protection).
+- **Raw MIME** via nodemailer's MailComposer (now a direct dependency; it ships its own types)
+  and SESv2 `SendEmail` with `Content.Raw` + `Destination` (To/Cc/Bcc as the envelope, so there
+  is **no Bcc header** in the mail). Plain text plus a minimal HTML alternative (escaped, line
+  breaks kept). From = `"<mailbox display name, else the member's name>" <address>`.
+- **Threading:** our Message-ID is `<uuid@<mailbox domain>>`. Amazon SES is widely reported to
+  replace the Message-ID header with its own, so the outgoing `References` ends with our own id
+  as well: a reply carries References on, and ingest threads it back to the Sent copy either way
+  (In-Reply-To alone would only match if SES kept our id). Unproven against real SES until S7.
+  Replies: In-Reply-To = parent, References = parent's references + parent. Forwards: References
+  only (no In-Reply-To), same thread.
+- **Reply recipients** come from the stored From/To/Cc. The original's `Reply-To` header is not
+  stored (S3 didn't keep it), so a reply goes to From — a known gap for mailing lists and web
+  forms; storing Reply-To needs an ingest change.
+- **Sent copy:** stored after SES accepts, through `insertReceived` (one transaction + NOTIFY):
+  folder `sent`, `sesMessageId` = SES's id, `verdicts` null, `readAt` set, the parent's thread
+  (else a new one), plus a new `bcc` column (migration **0132**) so the sender sees their own Bcc.
+- **Attachments of sent mail: metadata only.** The Sent copy has no raw object, and writing one
+  to the inbound bucket would need a new IAM permission (`s3:PutObject`) on every install. So the
+  Sent copy lists its attachments (name, type, size, md5) but they are **not downloadable yet**
+  (410 with a plain message; the reader shows them as "sent, not kept here"), and a forward of a
+  sent mail shows them as "not included". Forwards of **received** mail re-read the original's
+  parts from the raw mail (part index + md5), never a virus-blocked one (listed as not included).
+- **Limits:** at most 50 recipients (To+Cc+Bcc), subject 500 chars, text 500 000 chars, 20
+  attachments and **25 MB of attachments together** (uploads + forwarded), the encoded mail at
+  most 40 MB (SES). Uploaded file names lose paths and control characters (≤ 200 chars).
+- **Errors in plain words:** SES `MessageRejected` while the account is in the sandbox (checked
+  with GetAccount, never Amazon's wording) → "Amazon SES is still in its sandbox, so it only
+  delivers to verified addresses. Request production access in the AWS console."; suppressed
+  recipient; mailbox domain not verified; too large; bad addresses; disabled mailbox. On failure
+  the form keeps everything typed (JS path; without JS a failed POST shows the error but the
+  fields come back empty).
+- **UI:** "New mail" (From = the mailbox you are in; a From picker when you can send from several;
+  a disabled current mailbox falls back to another you may send from), Reply / Reply all /
+  Forward in the reader (not shown for a disabled mailbox), a compose pane in place of the reader
+  (`?compose=new|reply|replyAll|forward`, a reply/forward is of `?m=`), Bcc behind a toggle, file
+  uploads, Send with a busy state, Discard. After sending the page opens the copy in Sent with
+  "Sent. Your copy is in Sent." (`&sent=1`).
+- **Out of scope:** drafts (nothing is saved until Send), HTML compose, signatures, undo send.
+- **Fake transport:** `mail_fake_sent` gains `raw` and `recipients` (0132); a raw send is captured
+  once with the whole envelope. Under MAIL_TRANSPORT=fake the inbound bucket is a per-process
+  in-memory store (like the fake SES/SNS), filled by the inbox harness (`connectMail`,
+  `attachments`, `disabled`), so downloads and forwards work in e2e.
+- **No audit event** for a webmail send: the kernel event log is company-visible, and even
+  "member X sent a mail" is more than the owner decision allows.
+
 ## S4 notes (2026-11-12, decisions beyond the plan)
 
 - **Inbox tab first, `/m/email` unchanged.** The page is `/m/email/inbox`; the tab carries
@@ -230,7 +292,7 @@ SNS actions, notification contents, quotas) and the AWS General Reference SES en
 | S2 | Receiving setup (MX record, bucket, rule set, SNS) with fakes | **Done 2026-11-12** (`6eb8c75`), fakes only — real AWS unproven until S7 |
 | S3 | Ingest webhook: verify, fetch, parse, route, spam, thread | **Done 2026-11-12** (`efd1bfa`), fakes only — real AWS unproven until S7 |
 | S4 | Webmail read UI + SSE | **Done 2026-11-12** (`c23076b`): read UI, safe HTML, attachments, live; e2e green |
-| S5 | Compose / reply / forward + Sent | e2e against mock: reply threads, From is the mailbox |
+| S5 | Compose / reply / forward + Sent | **Built 2026-11-12** on `email-inbox-s5` (see S5 notes): reply threads, From is the mailbox, not in the company log |
 | S6 | Tabs: Inbox first, Company mail tab | Old landing reachable under Company mail; nothing lost |
 | S7 | Real proof on a test domain | A real mail from outside lands in a real inbox on the box; reply arrives back |
 

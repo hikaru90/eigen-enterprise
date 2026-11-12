@@ -38,6 +38,20 @@ export type SesSendInput = {
   tags?: Record<string, string>
 }
 
+/**
+ * A ready-made MIME mail (SESv2 SendEmail with Content.Raw) — the webmail's
+ * send. `from` is the envelope sender identity (FromEmailAddress); the
+ * recipients are the envelope (Bcc included), so the raw mail never needs a
+ * Bcc header.
+ */
+export type SesRawSendInput = {
+  from: string
+  recipients: { to: string[]; cc: string[]; bcc: string[] }
+  raw: Uint8Array
+  configurationSet?: string
+  tags?: Record<string, string>
+}
+
 /** What SES says about a domain identity (GetEmailIdentity), in its own words. */
 export type DomainIdentityInfo = {
   exists: boolean
@@ -69,6 +83,8 @@ export type SesApi = {
   /** GetAccount — true while the account can only send to verified addresses. */
   isSandbox(): Promise<boolean>
   send(input: SesSendInput): Promise<{ messageId: string | null }>
+  /** SendEmail with Content.Raw: the bytes go out as built (SES adds its own headers, e.g. its Message-ID). */
+  sendRaw(input: SesRawSendInput): Promise<{ messageId: string | null }>
   /** CreateEmailIdentity with our DKIM key + PutEmailIdentityMailFromAttributes. */
   createDomainIdentity(input: CreateDomainIdentityInput): Promise<void>
   getDomainIdentity(domain: string): Promise<DomainIdentityInfo>
@@ -142,6 +158,23 @@ export const awsSes: SesFactory = (c) => {
                 : {}),
             },
           },
+        }),
+      )
+      return { messageId: out.MessageId ?? null }
+    },
+    async sendRaw(input) {
+      const tags = Object.entries(input.tags ?? {}).map(([Name, Value]) => ({ Name, Value }))
+      const out = await client.send(
+        new SendEmailCommand({
+          FromEmailAddress: input.from,
+          Destination: {
+            ...(input.recipients.to.length > 0 ? { ToAddresses: input.recipients.to } : {}),
+            ...(input.recipients.cc.length > 0 ? { CcAddresses: input.recipients.cc } : {}),
+            ...(input.recipients.bcc.length > 0 ? { BccAddresses: input.recipients.bcc } : {}),
+          },
+          ...(input.configurationSet ? { ConfigurationSetName: input.configurationSet } : {}),
+          ...(tags.length > 0 ? { EmailTags: tags } : {}),
+          Content: { Raw: { Data: input.raw } },
         }),
       )
       return { messageId: out.MessageId ?? null }
