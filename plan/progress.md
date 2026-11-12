@@ -2,6 +2,11 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-12 — v0.5.7 published on GitHub (Contribute round 4)
+
+Owner: "Push and release". Release commit `318854f`, tag `v0.5.7`; main + tag pushed through the pre-push gate (`npm run ci:local`, exit 0). Release run 43303577670: amd64 + arm64 builds + publish green; 12 assets; GitHub's latest = v0.5.7. Carries round 4 (W1–W7 + `a77bb8b`, entry below).
+- **Not done:** production (os.cerberusblue.com) still runs v0.5.6 — no `ee upgrade` run. Nothing from round 4 tried on the box. Backup restore never run on systemd (box drill first). Board statuses unchanged.
+
 ## 2026-11-12 — Email inbox S6 merged: Email opens on your inbox; Company mail tab (main `f9b204c`, not pushed, not on the box)
 
 Owner: "Start S6". Contribute `eb674853` ("Das Email-Postfach sollte sofort den Posteingang zeigen") is now true in code.
