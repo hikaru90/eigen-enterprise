@@ -19,7 +19,7 @@ const module = {
 
 describe('module-card.svelte', () => {
   it('links to the module page and shows its counts', async () => {
-    render(ModuleCard, { module })
+    render(ModuleCard, { module, href: '/m/website' })
     await expect.element(page.getByRole('link')).toHaveAttribute('href', '/m/website')
     await expect.element(page.getByText('Website')).toBeInTheDocument()
     await expect.element(page.getByTestId('module-card-count-Published')).toHaveTextContent('2')
@@ -27,7 +27,14 @@ describe('module-card.svelte', () => {
   })
 
   it('shows the note when there are no counts', async () => {
-    render(ModuleCard, { module: { ...module, counts: [], note: 'Only the owner can see these results.' } })
+    render(ModuleCard, { module: { ...module, counts: [], note: 'Only the owner can see these results.' }, href: '/m/website' })
     await expect.element(page.getByText('Only the owner can see these results.')).toBeInTheDocument()
+  })
+
+  it('is no link when the person cannot open the module page (no 403 behind a card)', async () => {
+    render(ModuleCard, { module, href: null })
+    await expect.element(page.getByTestId('module-card')).toBeInTheDocument()
+    await expect.element(page.getByRole('link')).not.toBeInTheDocument()
+    await expect.element(page.getByText('Website')).toBeInTheDocument()
   })
 })

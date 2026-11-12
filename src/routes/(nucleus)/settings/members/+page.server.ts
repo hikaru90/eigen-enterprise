@@ -1,5 +1,6 @@
 import type { Actions, PageServerLoad } from './$types'
 import { error, fail, redirect } from '@sveltejs/kit'
+import { roleCan } from '$lib/server/auth/capabilities'
 import {
   createGroup,
   deleteGroup,
@@ -30,7 +31,7 @@ export const load: PageServerLoad = async (event) => {
   const user = event.locals.user
   if (!user) throw redirect(302, '/login')
   const actor = await humanActor(user.id)
-  if (actor.role !== 'owner' && actor.role !== 'admin') error(403, 'Only the owner or an admin can manage members.')
+  if (!roleCan(actor.role, 'members.manage')) error(403, 'Only the owner or an admin can manage members.')
   const deps = await memberDeps()
   const [list, groups] = await Promise.all([listMembers(actor, deps), listGroups(actor, await groupDeps())])
   return { ...list, groups, me: { id: user.id, role: actor.role }, companyName: deps.companyName }

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
 import AppShell from '$lib/components/app-shell.svelte'
+import { CAPABILITIES, type Capabilities } from '$lib/access/capabilities'
 import { buildShellNav } from '$lib/shell/nav'
 import { HANDOFF_PENDING_KEY } from './handoff'
 import { PANEL_DEFAULT_WIDTH, PANEL_MIN_WIDTH, PANEL_WIDTH_KEY, panelMaxWidth } from './panel-width'
@@ -13,7 +14,8 @@ import { PANEL_DEFAULT_WIDTH, PANEL_MIN_WIDTH, PANEL_WIDTH_KEY, panelMaxWidth } 
  * within bounds, Esc, a new conversation, and the provider-missing door.
  */
 
-const nav = buildShellNav([{ id: 'website', name: 'Website' }], new Map([['website', true]]))
+const capabilities = Object.fromEntries(CAPABILITIES.map((c) => [c, true])) as Capabilities
+const nav = buildShellNav([{ id: 'website', name: 'Website' }], new Map([['website', true]]), capabilities)
 const children = createRawSnippet(() => ({ render: () => '<p>Page body</p>' }))
 
 type Call = { url: string; body: unknown }
@@ -83,7 +85,7 @@ function stubFetch(): void {
 
 function renderShell() {
   return render(AppShell, {
-    shell: { companyName: 'Kindred Digital Labs', nav },
+    shell: { companyName: 'Kindred Digital Labs', companyLogo: null, capabilities, nav },
     pathname: '/m/website',
     user: { name: 'Alex', email: 'alex@k.test' },
     language: 'en',

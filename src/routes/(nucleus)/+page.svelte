@@ -51,13 +51,13 @@
       oncomplete={handleOnboardingComplete}
     />
   </div>
-{:else if data.dashboard}
+{:else if data.dashboard && data.shell}
   <Dashboard
     dashboard={data.dashboard}
     greetingName={data.greetingName}
-    companyName={data.shell?.companyName ?? null}
-    navItems={data.shell?.nav.items ?? []}
-    isAdmin={data.isAdmin}
+    companyName={data.shell.companyName}
+    navItems={data.shell.nav.items}
+    capabilities={data.shell.capabilities}
     providerMissing={data.providerMissing}
   />
 {/if}

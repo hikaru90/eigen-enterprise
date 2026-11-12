@@ -99,6 +99,8 @@
 
   const companyName = $derived(shell.companyName ?? 'Your company')
   const initial = $derived(companyName.slice(0, 1).toUpperCase())
+  // Settings → Company: the logo replaces the initial badge.
+  const companyLogo = $derived(shell.companyLogo)
   const userLabel = $derived(user?.name || user?.email || 'Signed in')
   const userImage = $derived(user?.image?.trim() || null)
 
@@ -159,11 +161,20 @@
         class="group flex h-10 min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/60
           {onDashboard ? 'bg-primary/[0.08]' : 'hover:bg-primary/[0.05]'}"
       >
-        <span
-          data-testid="shell-company-badge"
-          class="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground shadow-sm transition-transform group-hover:scale-105"
-          aria-hidden="true">{initial}</span
-        >
+        {#if companyLogo}
+          <img
+            src={companyLogo}
+            alt=""
+            data-testid="shell-company-logo"
+            class="size-7 shrink-0 rounded-md object-contain transition-transform group-hover:scale-105"
+          />
+        {:else}
+          <span
+            data-testid="shell-company-badge"
+            class="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground shadow-sm transition-transform group-hover:scale-105"
+            aria-hidden="true">{initial}</span
+          >
+        {/if}
         <span class="flex min-w-0 flex-col leading-tight">
           <span class="truncate text-sm font-semibold tracking-tight" data-testid="shell-company"
             >{companyName}</span
