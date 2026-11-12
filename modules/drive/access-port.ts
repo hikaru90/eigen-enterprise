@@ -1,4 +1,5 @@
 import type { Access, AccessStore } from '$lib/server/access'
+import { subjectKey, type AccessAudit } from '$lib/server/access/service'
 
 /**
  * Drive's one seam onto the company access contract (src/lib/server/access,
@@ -35,6 +36,18 @@ export type DriveAccessPort = {
   shareTargets(): Promise<ShareTargets>
   /** Drop every grant on a resource about to be deleted forever (call while it still exists). */
   dropResource(actorId: string, resourceType: 'folder' | 'file', resourceId: string, folderChain: readonly string[]): Promise<void>
+  /**
+   * The system writer's grants (source folders, plan/github-drive.md §5): no
+   * member acts, so the manage check is skipped; the change is audited with
+   * `principalId` (the source id). Replaces the item's direct grants; only
+   * the whole-company subject is accepted (a sync never names people).
+   */
+  systemGrants(principalId: string, resourceType: 'folder' | 'file', resourceId: string, grants: Grant[]): Promise<void>
+}
+
+/** systemGrants accepts the whole company only: a source never decides about people or groups. */
+export function assertCompanyOnly(grants: readonly Grant[]): void {
+  for (const g of grants) if (g.subject.kind !== 'company') throw new Error(`drive system grants name the whole company only, got a ${g.subject.kind} grant`)
 }
 
 export const LEVEL_RANK: Record<AccessLevel, number> = { view: 1, edit: 2, manage: 3 }
@@ -45,8 +58,10 @@ export function levelCovers(have: AccessLevel, need: AccessLevel): boolean {
 
 export type ContractDeps = {
   access: Pick<Access, 'canAccess' | 'setGrants' | 'initializeGrants'>
-  store: Pick<AccessStore, 'grantsOn'>
+  store: Pick<AccessStore, 'grantsOn' | 'replaceGrants'>
   shareTargets: () => Promise<ShareTargets>
+  /** Where systemGrants are recorded (the contract's own audit: kernel_events). */
+  audit: AccessAudit
 }
 
 const inputs = (grants: Grant[]) => grants.map((g) => ({ subject: g.subject, level: g.level }))
@@ -67,6 +82,13 @@ export function contractDriveAccess(deps: ContractDeps): DriveAccessPort {
     async dropResource(actorId, type, id, folderChain) {
       if ((await direct(type, id)).length === 0) return
       await deps.access.setGrants(actorId, type, id, [], { ancestors: folderChain })
+    },
+    async systemGrants(principalId, type, id, grants) {
+      assertCompanyOnly(grants)
+      const before = await direct(type, id)
+      await deps.store.replaceGrants(type, id, grants, principalId)
+      const keys = (gs: Grant[]) => gs.map((g) => ({ subject: subjectKey(g.subject), level: g.level }))
+      await deps.audit({ type: 'access.grants_set', principalId, payload: { resourceType: type, resourceId: id, before: keys(before), after: keys(grants) } })
     },
   }
 }
@@ -92,6 +114,7 @@ export async function liveDriveAccess(): Promise<DriveAccessPort> {
   return contractDriveAccess({
     access: accessMod.access,
     store: dbAccessStore,
+    audit: accessMod.kernelAudit,
     shareTargets: async () => {
       const [members, groups] = await Promise.all([dbMemberStore.listMembers(), dbGroupStore.listGroups()])
       return { people: members.map((m) => ({ id: m.id, name: m.name, email: m.email })), groups: groups.map((g) => ({ id: g.id, name: g.name })) }

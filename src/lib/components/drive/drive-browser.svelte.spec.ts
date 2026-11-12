@@ -42,8 +42,8 @@ const image: DriveItem & { canEdit: boolean; canManage: boolean } = {
   canManage: false,
 }
 const describe_ = {
-  'folder:f1': { ownerName: 'Ada Owner', shared: true },
-  'file:i1': { ownerName: 'Ben Member', shared: null },
+  'folder:f1': { ownerName: 'Ada Owner', shared: true, readOnlyFrom: null },
+  'file:i1': { ownerName: 'Ben Member', shared: null, readOnlyFrom: null },
 }
 
 describe('drive-browser: the full-width listing', () => {
@@ -65,6 +65,36 @@ describe('drive-browser: the full-width listing', () => {
     await expect.element(page.getByText('2.0 KB')).toBeInTheDocument()
     // Shared: only the folder (the image's sharing is not the viewer's to know).
     expect(page.getByTestId('drive-shared-badge').elements()).toHaveLength(1)
+  })
+
+  it('a read-only source folder: "<source> · read-only" badges, no toolbar actions, no row edits', async () => {
+    const overview: DriveItem & { canEdit: boolean; canManage: boolean } = {
+      type: 'file',
+      id: 's1',
+      name: 'Overview.md',
+      parentId: 'root',
+      ownerId: 'repos',
+      updatedAt: at,
+      trashedAt: null,
+      size: 10,
+      mime: 'text/markdown',
+      canEdit: false,
+      canManage: false,
+    }
+    render(DriveBrowser, {
+      props: {
+        folderId: 'root',
+        items: [overview],
+        canEdit: false,
+        describe: { 'file:s1': { ownerName: 'GitHub', shared: false, readOnlyFrom: 'GitHub' } },
+      },
+    })
+    await expect.element(page.getByTestId('drive-readonly-badge')).toHaveTextContent('GitHub · read-only')
+    expect(page.getByTestId('drive-new-folder-button').elements()).toHaveLength(0)
+    expect(page.getByTestId('drive-upload').elements()).toHaveLength(0)
+    expect(page.getByTestId('drive-rename').elements()).toHaveLength(0)
+    expect(page.getByTestId('drive-archive').elements()).toHaveLength(0)
+    expect(page.getByTestId('drive-share').elements()).toHaveLength(0)
   })
 
   it('switches to a grid with image previews, and remembers the choice in this browser', async () => {

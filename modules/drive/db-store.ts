@@ -1,10 +1,10 @@
 import type { EditLock, EditLockStore } from './locks'
-import type { DriveFile, DriveFolder, DriveRevision, DriveStore } from './store'
+import type { DriveFile, DriveFolder, DriveRevision, DriveSourceRow, DriveStore } from './store'
 import { and, asc, eq, ilike, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
-import { driveEditLock, driveFile, driveFolder, driveRevision } from '$lib/server/db/drive.schema'
+import { driveEditLock, driveFile, driveFolder, driveRevision, driveSourceItems } from '$lib/server/db/drive.schema'
 import { driveDb } from './db'
 
-/** Drive metadata in Postgres (migrations 0109, 0110; archive state 0126). */
+/** Drive metadata in Postgres (migrations 0109, 0110; archive state 0126; source folders 0133). */
 
 const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`)
 
@@ -104,6 +104,36 @@ export const dbDriveStore: DriveStore = {
       ) d`)
     const list = Array.isArray(rows) ? rows : (rows as unknown as { rows: Array<{ total: string | null }> }).rows
     return Number(list[0]?.total ?? 0)
+  },
+  async sourceRoots() {
+    return (await (await driveDb()).select().from(driveFolder).where(and(isNotNull(driveFolder.source), isNull(driveFolder.parentId)))) as DriveFolder[]
+  },
+  async getSourceItem(source, externalKey) {
+    const [row] = await (await driveDb())
+      .select()
+      .from(driveSourceItems)
+      .where(and(eq(driveSourceItems.source, source), eq(driveSourceItems.externalKey, externalKey)))
+      .limit(1)
+    return (row as DriveSourceRow | undefined) ?? null
+  },
+  async putSourceItem(row) {
+    await (await driveDb())
+      .insert(driveSourceItems)
+      .values(row)
+      .onConflictDoUpdate({
+        target: [driveSourceItems.source, driveSourceItems.externalKey],
+        set: { itemId: row.itemId, kind: row.kind, parentKey: row.parentKey, contentSha: row.contentSha },
+      })
+  },
+  async listSourceItems(source) {
+    return (await (await driveDb())
+      .select()
+      .from(driveSourceItems)
+      .where(eq(driveSourceItems.source, source))
+      .orderBy(asc(driveSourceItems.externalKey))) as DriveSourceRow[]
+  },
+  async deleteSourceItem(source, externalKey) {
+    await (await driveDb()).delete(driveSourceItems).where(and(eq(driveSourceItems.source, source), eq(driveSourceItems.externalKey, externalKey)))
   },
 }
 

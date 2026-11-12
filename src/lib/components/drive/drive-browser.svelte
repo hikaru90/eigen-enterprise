@@ -8,6 +8,7 @@
   import ImageIcon from '@lucide/svelte/icons/image'
   import LayoutGridIcon from '@lucide/svelte/icons/layout-grid'
   import ListIcon from '@lucide/svelte/icons/list'
+  import LockIcon from '@lucide/svelte/icons/lock'
   import PlusIcon from '@lucide/svelte/icons/plus'
   import SearchIcon from '@lucide/svelte/icons/search'
   import SheetIcon from '@lucide/svelte/icons/sheet'
@@ -515,6 +516,15 @@
                       data-testid="drive-open">{item.name}</a
                     >
                   {/if}
+                  {#if desc?.readOnlyFrom}
+                    <span
+                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground"
+                      title={`Comes from ${desc.readOnlyFrom}; change it there`}
+                      data-testid="drive-readonly-badge"
+                    >
+                      <LockIcon class="size-3" aria-hidden="true" /> {desc.readOnlyFrom} · read-only
+                    </span>
+                  {/if}
                   {#if desc?.shared}
                     <span
                       class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground"
@@ -613,6 +623,13 @@
                   href={openHref(item)}
                   data-testid="drive-open">{item.name}</a
                 >
+              {/if}
+              {#if desc?.readOnlyFrom}
+                <LockIcon
+                  class="size-3.5 shrink-0 text-muted-foreground"
+                  aria-label={`${desc.readOnlyFrom} · read-only`}
+                  data-testid="drive-readonly-badge"
+                />
               {/if}
               {#if desc?.shared}
                 <UsersIcon

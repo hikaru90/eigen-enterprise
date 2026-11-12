@@ -1,12 +1,13 @@
 import { sql } from 'drizzle-orm'
-import { bigint, check, index, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+import { bigint, check, index, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core'
 
 /**
  * Drive metadata (migration 0109, plan/phase-workspace.md D1 + W-5). Bytes
  * live on disk as content-addressed blobs (sha256); these rows say what is
  * where, who made it, and every revision of a Markdown/CSV file. Archiving
  * (migration 0126) is a state on a folder or file: when and by whom, both
- * set or both null.
+ * set or both null. `source` (migration 0133) marks a read-only copy a
+ * source plugin wrote through Drive's system writer (null: made by people).
  */
 
 export const driveFolder = pgTable(
@@ -21,9 +22,11 @@ export const driveFolder = pgTable(
     trashedAt: timestamp('trashed_at', { withTimezone: true }),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     archivedBy: text('archived_by'),
+    source: text('source'),
   },
   (t) => [
     index('drive_folder_parent_idx').on(t.parentId),
+    uniqueIndex('drive_folder_source_root_uq').on(t.source).where(sql`${t.source} is not null and ${t.parentId} is null`),
     index('drive_folder_archived_idx').on(t.archivedAt).where(sql`${t.archivedAt} is not null`),
     check('drive_folder_archived_pair_check', sql`(${t.archivedAt} is null) = (${t.archivedBy} is null)`),
   ],
@@ -44,6 +47,7 @@ export const driveFile = pgTable(
     trashedAt: timestamp('trashed_at', { withTimezone: true }),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     archivedBy: text('archived_by'),
+    source: text('source'),
   },
   (t) => [
     index('drive_file_folder_idx').on(t.folderId),
@@ -65,6 +69,27 @@ export const driveRevision = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   },
   (t) => [index('drive_revision_file_idx').on(t.fileId, t.createdAt), index('drive_revision_sha_idx').on(t.sha256)],
+)
+
+/**
+ * A source's stable key → its Drive item (migration 0133): the system writer
+ * upserts by key. content_sha is the sha256 of a file's bytes (null for folders).
+ */
+export const driveSourceItems = pgTable(
+  'drive_source_items',
+  {
+    source: text('source').notNull(),
+    externalKey: text('external_key').notNull(),
+    itemId: text('item_id').notNull(),
+    kind: text('kind', { enum: ['folder', 'file'] }).notNull(),
+    parentKey: text('parent_key'),
+    contentSha: text('content_sha'),
+  },
+  (t) => [
+    primaryKey({ name: 'drive_source_items_pk', columns: [t.source, t.externalKey] }),
+    uniqueIndex('drive_source_items_item_uq').on(t.kind, t.itemId),
+    check('drive_source_items_kind_check', sql`${t.kind} in ('folder', 'file')`),
+  ],
 )
 
 /** One editor at a time per Markdown/CSV file (migration 0110, W-6): the holding session and its heartbeat. */

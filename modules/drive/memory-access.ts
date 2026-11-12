@@ -1,4 +1,4 @@
-import { levelCovers, LEVEL_RANK, type AccessLevel, type DriveAccessPort, type Grant } from './access-port'
+import { assertCompanyOnly, levelCovers, LEVEL_RANK, type AccessLevel, type DriveAccessPort, type Grant } from './access-port'
 
 /**
  * In-memory DriveAccessPort for tests: the same rules as the access contract
@@ -56,6 +56,11 @@ export function memoryDriveAccess(opts: MemoryAccessOptions): DriveAccessPort & 
     },
     async dropResource(_actor, type, id) {
       for (let i = grants.length - 1; i >= 0; i--) if (grants[i]!.resourceType === type && grants[i]!.resourceId === id) grants.splice(i, 1)
+    },
+    async systemGrants(_principal, type, id, next) {
+      assertCompanyOnly(next)
+      for (let i = grants.length - 1; i >= 0; i--) if (grants[i]!.resourceType === type && grants[i]!.resourceId === id) grants.splice(i, 1)
+      grants.push(...next)
     },
   }
 }
