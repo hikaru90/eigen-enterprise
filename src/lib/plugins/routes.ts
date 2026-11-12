@@ -120,6 +120,7 @@ export const PLUGIN_ROUTES: Record<string, PluginRoutes> = {
   },
   drive: { page: '/drive', api: ['/api/drive'] },
   contacts: { page: '/m/contacts', api: ['/api/contacts'] },
+  repos: { page: '/m/repos', api: [] },
   // Booted only when switched on (no page or API of their own beyond /m/<id>).
   'chat-gateway': { page: moduleHref('chat-gateway'), api: [] },
   recap: { page: moduleHref('recap'), api: [] },

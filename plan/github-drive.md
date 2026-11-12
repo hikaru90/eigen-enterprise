@@ -2,7 +2,7 @@
 
 Owner, 2026-11-12: "we need a way to integrate github repos into the drive … read only … the
 context of the branches and the work inside of the drive for eigen enterprise to know what is going
-on in the github repos … a personal access token as read only." Status: **approved; S0 contract on main.**
+on in the github repos … a personal access token as read only." Status: **approved; S0–S3 merged on main (not pushed, not on the box); S4 + S5 open.**
 
 **Owner decisions (2026-11-12):**
 - **Read-only, through a fine-grained personal access token** the owner creates on GitHub and pastes
@@ -224,7 +224,7 @@ assistant: prompt block "Connected GitHub repos" + repos.list + drive.read
   module's).
   - Its page is `/m/repos`, opened from Settings → Plugins and from the Drive rail's GitHub section
     ("Manage").
-  - No sidebar entry of its own.
+  - ~~No sidebar entry of its own.~~ Changed at the S3 merge: the shell gives every plugin a sidebar entry (`src/lib/plugins/routes.ts` + `buildShellNav`, pinned by `routes.spec.ts`), so **GitHub repos** has one, leading to `/m/repos`.
   - Can be deactivated like every plugin. Off means no sync, no prompt block, and its source root
     hidden from the rail (follows round-4 W7's "off is really off").
 - **The Website module's GitHub connection is unchanged.** Deploys keep public / App / deploy-key

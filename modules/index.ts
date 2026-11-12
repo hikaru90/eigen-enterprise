@@ -25,6 +25,7 @@ import { KernelRegistry } from '$lib/kernel/registry'
 import { type VcsCommitter, vcsCommitterFromEnv } from '$lib/kernel/vcs'
 import { registerModuleTools, type WiredKernel } from '$lib/kernel/wiring'
 import type { AppDatabase } from '$lib/server/db/context'
+import { createGitHubTokenClient } from '$lib/server/github/token'
 import { BRAND_MODULE_ID, brandManifest } from './brand/manifest'
 import { createBrandTools } from './brand/tools'
 import { CALLS_MODULE_ID, callsManifest } from './calls/manifest'
@@ -36,6 +37,7 @@ import { CONTACTS_MODULE_ID, CONTACTS_WRITE_TOOLS, contactsManifest } from './co
 import { createContactsTools } from './contacts/tools'
 import { CONTRIBUTE_MODULE_ID, contributeManifest } from './contribute/manifest'
 import { createContributeTools } from './contribute/tools'
+import { driveSourceWriter } from './drive'
 import { DRIVE_MODULE_ID, driveManifest } from './drive/manifest'
 import { createDriveTools } from './drive/tools'
 import { EMAIL_MODULE_ID, emailManifest } from './email/manifest'
@@ -48,6 +50,10 @@ import { createMembersTools } from './members/tools'
 import { MEMORY_MODULE_ID, memoryManifest } from './memory/manifest'
 import { createMemoryTools } from './memory/tools'
 import { MESSAGES_MODULE_ID, messagesManifest } from './messages/manifest'
+import type { DriveSourcePort } from './repos/drive-port'
+import { provideReposPorts } from './repos/live'
+import { REPOS_MODULE_ID, reposManifest } from './repos/manifest'
+import { createReposTools } from './repos/tools'
 import { createMessagesTools } from './messages/tools'
 import { createAllowlistAdminTools } from './orchestrator/allowlist-tools'
 import { orchestratorManifest } from './orchestrator/manifest'
@@ -89,6 +95,7 @@ export const moduleManifests = [
   contributeManifest,
   callsManifest,
   contactsManifest,
+  reposManifest,
 ] as const
 
 /**
@@ -118,6 +125,8 @@ export const SYSTEM_MODULE_IDS = [
   CALLS_MODULE_ID,
   // Contacts (plan/contribute-round-3.md W1): the people the company knows, part of the OS.
   CONTACTS_MODULE_ID,
+  // GitHub repos (plan/github-drive.md): read-only repo copies in Drive; idle until a token is pasted.
+  REPOS_MODULE_ID,
 ] as const
 
 /** Tools that always require an approval decision before first execution. */
@@ -191,6 +200,23 @@ export type BootstrapKernelOptions = {
  * lazy db provider so nothing connects until an operation actually runs;
  * inject fakes for in-memory use.
  */
+const GITHUB_TIMEOUT_MS = 20_000
+
+/**
+ * Drive's source writer as the repos plugin's DriveSourcePort (modules never
+ * import each other; the composition root adapts). The live writer is built
+ * lazily on first use, so building the kernel touches no database.
+ */
+function reposDrivePort(): DriveSourcePort {
+  return {
+    ensureRoot: async (...a) => (await driveSourceWriter()).ensureRoot(...a),
+    upsertFolder: async (...a) => (await driveSourceWriter()).upsertFolder(...a),
+    upsertText: async (...a) => (await driveSourceWriter()).upsertText(...a),
+    remove: async (...a) => (await driveSourceWriter()).remove(...a),
+    list: async (...a) => (await driveSourceWriter()).list(...a),
+  }
+}
+
 export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
   const db: DbHandle =
     options.db ??
@@ -230,6 +256,11 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     vcsCommitter,
   })
 
+  provideReposPorts({
+    drive: reposDrivePort(),
+    client: (token) => createGitHubTokenClient({ token, fetch, timeoutMs: GITHUB_TIMEOUT_MS }),
+  })
+
   registerModuleTools(registry, modules, [
     ...createMemoryTools(),
     ...createEmailTools(),
@@ -253,6 +284,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createContributeTools(),
     ...createCallsTools({ service: liveCallsService }),
     ...createContactsTools(),
+    ...createReposTools(),
   ])
 
   return {

@@ -21,6 +21,9 @@ vi.mock('./snapshot', () => ({
 vi.mock('./email-tick', () => ({
   tickEmailPlatform: emailTickMock,
 }))
+vi.mock('./repos-tick', () => ({
+  tickRepos: vi.fn(async () => {}),
+}))
 vi.mock('$lib/server/plugins/background', () => ({
   pluginOn: pluginOnMock,
 }))

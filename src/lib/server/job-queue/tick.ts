@@ -4,6 +4,7 @@ import { drainUserJobQueue } from './drain'
 import { tickEmailPlatform } from './email-tick'
 import { ensureOvernightJobsEnqueued } from './ensure-overnight'
 import { recoverStaleRunningJobs } from './recover-stale-running'
+import { tickRepos } from './repos-tick'
 import { loadJobQueueSnapshot } from './snapshot'
 
 export type TickGlobalJobQueueResult = {
@@ -31,6 +32,7 @@ async function runTickBody(): Promise<TickGlobalJobQueueResult> {
   const enqueued = (await pluginOn('memory', 'overnight consolidation')) ? await ensureOvernightJobsEnqueued() : 0
   const drain = await drainUserJobQueue()
   if (await pluginOn('email', 'email background work (DNS checks, scheduled sends, flows)')) await tickEmailPlatform()
+  if (await pluginOn('repos', 'GitHub repo sync')) await tickRepos()
   const hasActivity = enqueued > 0 || drain.claimed > 0 || recoveredStale > 0
   const shouldHeartbeat = tickCount % HEARTBEAT_EVERY_TICKS === 0
   const shouldInspectBacklog = hasActivity || shouldHeartbeat || drain.claimed === 0

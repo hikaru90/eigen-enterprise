@@ -121,8 +121,9 @@ describe('merged module manifests', () => {
     const off = (id: string) => k.registry.execute('kernel.module_deactivate', { module_id: id }, owner)
     await expect(off('members')).rejects.toMatchObject({ code: 'core_module' })
     await expect(off('messages')).rejects.toMatchObject({ code: 'module_required', details: { requiredBy: ['calls'] } })
-    for (const id of ['calls', 'messages', 'website', 'email', 'brand', 'memory', 'drive', 'contacts']) await off(id)
-    for (const id of ['calls', 'messages', 'website', 'email', 'brand', 'memory', 'drive', 'contacts'])
+    await expect(off('drive')).rejects.toMatchObject({ code: 'module_required', details: { requiredBy: ['repos'] } })
+    for (const id of ['calls', 'messages', 'website', 'email', 'brand', 'memory', 'repos', 'drive', 'contacts']) await off(id)
+    for (const id of ['calls', 'messages', 'website', 'email', 'brand', 'memory', 'repos', 'drive', 'contacts'])
       expect(await activations.get(id), id).toBe(false)
     expect(await activations.get('members')).toBe(true)
   })
@@ -145,8 +146,8 @@ describe('merged module manifests', () => {
     for (const name of APPROVAL_REQUIRED_TOOLS) expect(k.registry.get(name), name).toBeDefined()
   })
 
-  it('system modules are website, email, members, memory, brand, messages, drive, contribute, calls and contacts, and boot activates them', async () => {
-    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages', 'drive', 'contribute', 'calls', 'contacts'])
+  it('system modules are website, email, members, memory, brand, messages, drive, contribute, calls, contacts and repos, and boot activates them', async () => {
+    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages', 'drive', 'contribute', 'calls', 'contacts', 'repos'])
     const { kernel: k, activations } = kernel()
     await ensureSystemModulesActive(k)
     expect(await activations.get('website')).toBe(true)
