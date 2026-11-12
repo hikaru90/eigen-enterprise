@@ -233,8 +233,35 @@ export const handle: Handle = sequence(
   handleCrossOriginOpenerPolicy,
 )
 
+/**
+ * What the server log gets for one unexpected error: the stack (and its cause
+ * chain), never the thrown value's own fields — those can carry anything.
+ */
+function describeServerError(error: unknown): string {
+  const parts: string[] = []
+  let current: unknown = error
+  for (let depth = 0; current !== undefined && current !== null && depth < 5; depth++) {
+    if (!(current instanceof Error)) {
+      parts.push(`non-Error value (${typeof current})`)
+      break
+    }
+    parts.push(current.stack ?? `${current.name}: ${current.message}`)
+    current = current.cause
+  }
+  return parts.join('\nCaused by: ')
+}
+
+/**
+ * Unexpected errors (the "Internal Error" page) go to the server log — the
+ * journal on the box — and to PostHog when it is configured. The log names
+ * the method, path (never the query string), route and status; request
+ * headers, cookies and bodies are never logged.
+ */
 export const handleError: HandleServerError = ({ error, status, event }) => {
   if (status !== 404) {
+    console.error(
+      `[server error] ${status} ${event.request.method} ${event.url.pathname} (route ${event.route?.id ?? 'none'})\n${describeServerError(error)}`,
+    )
     captureServerException(error, event.locals.user?.id, {
       status,
       path: event.url.pathname,
