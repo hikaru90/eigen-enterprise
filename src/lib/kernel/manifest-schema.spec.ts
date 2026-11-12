@@ -69,6 +69,19 @@ describe('manifestSchema', () => {
     expect(registry.get('memory')?.verification).toEqual(extended.verification)
   })
 
+  it('accepts the module ids a module needs to work (requires), and rejects a malformed one', () => {
+    expect(() => makeRegistry().register({ ...validManifest, requires: ['messages'] })).not.toThrow()
+    expect(() => makeRegistry().register({ ...validManifest, requires: ['Not An Id'] })).toThrow(
+      /invalid module manifest memory: requires\.0:/,
+    )
+  })
+
+  it('rejects a module that requires itself', () => {
+    expect(() => makeRegistry().register({ ...validManifest, requires: ['memory'] })).toThrow(
+      /module memory cannot require itself/,
+    )
+  })
+
   it('accepts manifests without the optional phase-1b fields (omit)', () => {
     const parsed = manifestSchema.safeParse(validManifest)
     expect(parsed.success).toBe(true)

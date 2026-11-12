@@ -170,6 +170,16 @@ describe('runCli: principal resolution', () => {
 })
 
 describe('runCli: happy paths through the full registry pipeline', () => {
+  const listed = (id: string, name: string, tools: string[], active: boolean) => ({
+    id,
+    name,
+    version: '0.1.0',
+    tools,
+    active,
+    requires: [],
+    requiredBy: [],
+  })
+
   it('registers the kernel admin tools and returns composed status as JSON', async () => {
     const kernel = await makeWiredFake()
     const result = await runCli(
@@ -181,9 +191,9 @@ describe('runCli: happy paths through the full registry pipeline', () => {
     expect(result.stderr).toBe('')
     const data = JSON.parse(result.stdout)
     expect(data.modules).toEqual([
-      { id: 'memory', name: 'Memory', version: '0.1.0', tools: ['memory.echo'], active: false },
-      { id: 'email', name: 'Email', version: '0.1.0', tools: ['email.send_mail'], active: true },
-      { id: 'fixture', name: 'Fixture', version: '0.1.0', tools: ['fixture.owner_only'], active: true },
+      { ...listed('memory', 'Memory', ['memory.echo'], false), core: false },
+      { ...listed('email', 'Email', ['email.send_mail'], true), core: false },
+      { ...listed('fixture', 'Fixture', ['fixture.owner_only'], true), core: false },
       {
         id: 'kernel',
         name: 'Kernel',
@@ -199,6 +209,9 @@ describe('runCli: happy paths through the full registry pipeline', () => {
           'kernel.approvals_decide',
         ],
         active: true,
+        core: true,
+        requires: [],
+        requiredBy: [],
       },
     ])
     expect(data.pendingApprovals).toEqual([])

@@ -15,6 +15,9 @@ export type KernelErrorCode =
   | 'duplicate_engine'
   | 'budget_exceeded'
   | 'unknown_principal'
+  | 'core_module'
+  | 'unknown_module'
+  | 'module_required'
 
 const KNOWN_CODES: readonly KernelErrorCode[] = [
   'permission_denied',
@@ -33,6 +36,9 @@ const KNOWN_CODES: readonly KernelErrorCode[] = [
   'budget_exceeded',
   'onboarding_inactive',
   'unknown_principal',
+  'core_module',
+  'unknown_module',
+  'module_required',
 ]
 
 /** Exhaustive per code — adding a KernelErrorCode without a title is a type error. */
@@ -53,6 +59,9 @@ const PROBLEM_TITLES: Record<KernelErrorCode, string> = {
   budget_exceeded: 'Spend budget exceeded',
   onboarding_inactive: 'Onboarding hand-off not active',
   unknown_principal: 'Unknown principal',
+  core_module: 'Core module',
+  unknown_module: 'Unknown module',
+  module_required: 'Module required',
 }
 
 const PROBLEM_STATUS: Partial<Record<KernelErrorCode, number>> = {
@@ -71,6 +80,10 @@ const PROBLEM_STATUS: Partial<Record<KernelErrorCode, number>> = {
   unknown_engine: 500,
   duplicate_engine: 409,
   budget_exceeded: 402,
+  // Module switching that would break the system: the core, or a module another needs.
+  core_module: 409,
+  unknown_module: 404,
+  module_required: 409,
 }
 
 /** RFC 9457 problem-details object as produced by `KernelError.toProblemJson`. */

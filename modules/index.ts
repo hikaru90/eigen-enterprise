@@ -90,7 +90,9 @@ export const moduleManifests = [
 ] as const
 
 /**
- * System modules: part of the OS, self-seeded active (ensureSystemModulesActive).
+ * The modules every company starts with, self-seeded active once
+ * (ensureSystemModulesActive). The plugins among them (a sidebar entry) can be
+ * switched off in Settings → Plugins; the internal ones are the core.
  * Brand joined in C3: the style the owner picks is the whole app's look, so the
  * picker must never sit behind an activation step (its consequential acts stay
  * gated per tool: brand.visual_set_activate / brand.set_activate need approval,
@@ -259,17 +261,23 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
 }
 
 /**
- * System modules are part of the OS, not optional extensions: like the kernel
- * module, they are self-seeded active (a box can't be told to forget its own
- * hosting). Idempotent; call before using their tools.
+ * The modules a company starts with, self-seeded active. Owner, 2026-11-12:
+ * everything with a sidebar entry is a plugin and can be switched off — so a
+ * plugin is switched on once (it has no activation record yet) and a plugin
+ * the owner switched off stays off. The core (internal: members, contribute)
+ * cannot be switched off and is always switched back on. Idempotent; call
+ * before using their tools.
  */
 export async function ensureSystemModulesActive(kernel: WiredKernel): Promise<void> {
   // website owns hosting (substrate) and the GitHub source provider; github does
   // nothing until connected. email owns Owlery (SES); it does nothing until the
   // owner sets it up. Hosting mutations stay human-only (D11, requireHuman). memory owns
   // the notes/tasks/projects store and the agent's memory tools.
+  const recorded = await kernel.activations.list()
   for (const id of SYSTEM_MODULE_IDS) {
-    if (!(await kernel.activations.get(id))) await kernel.activations.set(id, true)
+    const core = kernel.modules.get(id)?.internal === true
+    const seed = core ? recorded.get(id) !== true : !recorded.has(id)
+    if (seed) await kernel.activations.set(id, true)
   }
 }
 

@@ -19,12 +19,19 @@ describe('settings sub-navigation', () => {
       'Passkeys & sessions',
       'API keys',
       'Approval mode',
+      'Plugins',
     ])
     expect(settingsSections(owner).map((s) => s.id).at(-1)).toBe('backups')
   })
   it("Backups is the owner's alone: admins and members never see it", () => {
     expect(settingsSections(admin).some((s) => s.id === 'backups')).toBe(false)
     expect(settingsSections(member).some((s) => s.id === 'backups')).toBe(false)
+  })
+  it('Plugins (switching plugins on and off) is for the owner and admins', () => {
+    expect(SETTINGS_SECTIONS.find((s) => s.id === 'modules')?.href).toBe('/settings/modules')
+    expect(settingsSections(owner).some((s) => s.id === 'modules')).toBe(true)
+    expect(settingsSections(admin).some((s) => s.id === 'modules')).toBe(true)
+    expect(settingsSections(member).some((s) => s.id === 'modules')).toBe(false)
   })
   it('a member sees only the sections they can open', () => {
     expect(settingsSections(member).map((s) => s.id)).toEqual(['account', 'llm', 'passkeys', 'api-keys'])
@@ -41,6 +48,7 @@ describe('settings sub-navigation', () => {
     ['/settings/llm/byok/openrouter', 'llm'],
     ['/settings/api-keys', 'api-keys'],
     ['/settings/backups', 'backups'],
+    ['/settings/modules', 'modules'],
     ['/settings/extensions', null],
   ])('%s -> %s', (path, id) => {
     expect(currentSettingsSection(path)).toBe(id)

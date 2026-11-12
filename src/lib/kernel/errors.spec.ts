@@ -16,6 +16,9 @@ const EXPECTED: Record<KernelErrorCode, { status: number; title: string }> = {
   unknown_engine: { status: 500, title: 'Unknown loop engine' },
   duplicate_engine: { status: 409, title: 'Duplicate loop engine' },
   budget_exceeded: { status: 402, title: 'Spend budget exceeded' },
+  core_module: { status: 409, title: 'Core module' },
+  unknown_module: { status: 404, title: 'Unknown module' },
+  module_required: { status: 409, title: 'Module required' },
 }
 
 const CODES = Object.keys(EXPECTED) as KernelErrorCode[]

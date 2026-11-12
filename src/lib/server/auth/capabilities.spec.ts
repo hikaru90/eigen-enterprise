@@ -17,6 +17,7 @@ describe('capabilitiesFor (one set, from the role)', () => {
       'members.manage': true,
       'approvals.manage': true,
       'backups.manage': false,
+      'modules.manage': true,
       'website.manage': true,
       'brand.extract': true,
     })
