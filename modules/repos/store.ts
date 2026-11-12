@@ -1,4 +1,4 @@
-import type { RepoSnapshot } from './snapshot-types'
+import type { RepoSnapshot, RepoSummary } from './snapshot-types'
 
 /**
  * Persistence for the GitHub repos plugin (migration 0134): the sealed tokens
@@ -37,6 +37,12 @@ export type SourceRow = {
   lastSyncedAt: Date | null
   lastError: string | null
   pausedUntil: Date | null
+  /** Migration 0135: the assistant's last good summary. */
+  summary: RepoSummary | null
+  /** Why the latest attempt wrote no summary; with a kept summary it is stale. */
+  summaryErrorKind: 'no_model' | 'failed' | null
+  summaryError: string | null
+  summaryErrorAt: Date | null
   createdAt: Date
 }
 
@@ -80,6 +86,10 @@ export const FRESH_STATE = {
   pausedUntil: null,
   claimedBy: null,
   claimedUntil: null,
+  summary: null,
+  summaryErrorKind: null,
+  summaryError: null,
+  summaryErrorAt: null,
 } satisfies SourcePatch
 
 const clone = <T>(v: T): T => structuredClone(v)

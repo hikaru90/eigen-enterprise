@@ -2,6 +2,7 @@
   import type { PageProps } from './$types'
   import type { SubmitFunction } from '@sveltejs/kit'
   import { enhance } from '$app/forms'
+  import { resolve } from '$app/paths'
   import PageFrame from '$lib/components/page/page-frame.svelte'
   import PageHeader from '$lib/components/page/page-header.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
@@ -116,6 +117,20 @@
     status={{ label: data.active ? 'Active' : 'Not active', on: data.active }}
   />
 
+  {#if data.summaryNoModel}
+    <p
+      class="mt-4 max-w-2xl rounded-md border border-border px-4 py-3 text-sm"
+      role="status"
+      data-testid="repos-summary-no-model"
+    >
+      <span class="font-medium">No model is selected for summaries.</span>
+      <span class="text-muted-foreground">
+        The repos still sync into Drive; only the assistant's "What's going on" summary is missing.
+        The owner selects a model under <a class="underline" href={resolve('/settings/llm')}>Settings → AI provider</a>.
+      </span>
+    </p>
+  {/if}
+
   {#if feedback('removeToken')?.ok}
     <p class="mt-4 text-sm text-muted-foreground" role="status">The token was removed.</p>
   {/if}
@@ -184,6 +199,22 @@
               {#if r.lastError}
                 <p class="w-full text-xs text-destructive">{r.lastError}</p>
               {/if}
+              <p class="w-full text-xs text-muted-foreground" data-testid="repos-summary-status">
+                {#if r.summary.problem?.kind === 'failed'}
+                  <span class="text-destructive"
+                    >Summary {r.summary.writtenAt ? 'out of date' : 'missing'}: updating it failed {time(
+                      r.summary.problem.at,
+                    )}. {r.summary.problem.message}</span
+                  >
+                {:else if r.summary.problem?.kind === 'no_model'}
+                  Summary {r.summary.writtenAt ? `from ${time(r.summary.writtenAt)}, out of date` : 'missing'}:
+                  no model is selected for summaries.
+                {:else if r.summary.writtenAt}
+                  Summary written by the assistant {time(r.summary.writtenAt)}.
+                {:else}
+                  No summary yet: the assistant writes one after a sync that finds changes.
+                {/if}
+              </p>
             </li>
           {/each}
         </ul>

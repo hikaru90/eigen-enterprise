@@ -50,6 +50,8 @@ export const load: PageServerLoad = async ({ locals }) => {
   const tokens = await repos.tokens()
   return {
     active,
+    /** Some repo's latest summary attempt found no model selected. */
+    summaryNoModel: tokens.some((t) => t.repos.some((r) => r.summary.problem?.kind === 'no_model')),
     tokens: await Promise.all(
       tokens.map(async (t) => {
         let visible: Array<{ id: number; fullName: string; private: boolean; archived: boolean; syncing: boolean }> = []
@@ -79,6 +81,11 @@ export const load: PageServerLoad = async ({ locals }) => {
             nextDueAt: iso(r.nextDueAt),
             lastError: r.lastError,
             pausedUntil: iso(r.pausedUntil),
+            summary: {
+              writtenAt: iso(r.summary.writtenAt),
+              stale: r.summary.stale,
+              problem: r.summary.problem ? { kind: r.summary.problem.kind, message: r.summary.problem.message, at: r.summary.problem.at.toISOString() } : null,
+            },
           })),
           visible,
           visibleError,

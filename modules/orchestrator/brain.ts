@@ -34,6 +34,7 @@ import {
   type OnboardingFacts,
   type OnboardingFactsResolver,
 } from './onboarding-context'
+import { connectedReposBlock, type ConnectedReposPort } from './repos-context'
 
 /**
  * The orchestrator is no longer a brain with kernel privileges — it is one
@@ -364,6 +365,8 @@ export type JourneyAwareRuntimeOptions = AgentRuntimeOptions & {
   spec: JourneySpec
   /** Assisted-onboarding facts for the conversing human (boot wires the DB). Absent = never active. */
   onboardingFacts?: OnboardingFactsResolver
+  /** The "Connected GitHub repos" block's data (modules/index adapts the repos plugin). Absent = no block. */
+  connectedRepos?: ConnectedReposPort
 }
 
 /**
@@ -399,6 +402,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
   private readonly kernelRegistry: KernelRegistry
   private readonly kernelEventSink: EventSink
   private readonly onboardingFacts: OnboardingFactsResolver | undefined
+  private readonly connectedRepos: ConnectedReposPort | undefined
 
   constructor(options: JourneyAwareRuntimeOptions) {
     super(options)
@@ -407,6 +411,14 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     this.kernelRegistry = options.registry
     this.kernelEventSink = options.eventSink
     this.onboardingFacts = options.onboardingFacts
+    this.connectedRepos = options.connectedRepos
+  }
+
+  /** The "Connected GitHub repos" block plus separator, or '' (no port, plugin off, nothing synced). */
+  private async connectedReposPrefix(): Promise<string> {
+    if (!this.connectedRepos) return ''
+    const block = connectedReposBlock(await this.connectedRepos())
+    return block ? `${block}${JOURNEY_CONTEXT_SEPARATOR}` : ''
   }
 
   /**
@@ -564,8 +576,17 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     }
 
     const failures: ToolErrorResult[] = []
+    // Every orchestrator turn carries the connected repos (when there are any);
+    // the owner's own words (ownerText, journey answers) never include them.
+    const repos = await this.attempt(failures, 'repos.connected', () => this.connectedReposPrefix())
+    if (!repos.ok) return this.dispatchObserved(agentId, sessionId, failures, input, sinks, options)
+    const context = repos.value
+    const plain = (): Promise<string> =>
+      context
+        ? super.dispatch(agentId, sessionId, `${context}${input}`, sinks, { ...options, ownerText: input })
+        : super.dispatch(agentId, sessionId, input, sinks, options)
     const active = await this.attempt(failures, 'journey.load', () => this.journeys.getActive(this.spec.kind))
-    if (!active.ok) return this.dispatchObserved(agentId, sessionId, failures, input, sinks, options)
+    if (!active.ok) return this.dispatchObserved(agentId, sessionId, failures, `${context}${input}`, sinks, options, input)
     const row = active.value
     // No journey → assisted onboarding (agent-opened journey via the exact
     // start marker) while it is active, else a plain orchestrator turn.
@@ -573,9 +594,9 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
       const facts = await this.attempt(failures, 'onboarding.facts', () =>
         this.activeOnboardingFacts(options?.llmUserId),
       )
-      if (!facts.ok) return this.dispatchObserved(agentId, sessionId, failures, input, sinks, options)
-      if (facts.value) return this.dispatchOnboardingTurn(facts.value, sessionId, input, input, sinks, options)
-      return super.dispatch(agentId, sessionId, input, sinks, options)
+      if (!facts.ok) return this.dispatchObserved(agentId, sessionId, failures, `${context}${input}`, sinks, options, input)
+      if (facts.value) return this.dispatchOnboardingTurn(facts.value, sessionId, `${context}${input}`, input, sinks, options)
+      return plain()
     }
     // Stale spec: the stored journey predates the current spec shape (v1 /
     // pre-versioning rows). Abandon it — a superseded interview must never
@@ -590,10 +611,10 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
           payload: { journeyId: row.id, kind: row.kind, reason: 'spec_version' },
         })
       })
-      if (failures.length > 0) return this.dispatchObserved(agentId, sessionId, failures, input, sinks, options)
-      return super.dispatch(agentId, sessionId, input, sinks, options)
+      if (failures.length > 0) return this.dispatchObserved(agentId, sessionId, failures, `${context}${input}`, sinks, options, input)
+      return plain()
     }
-    return this.dispatchJourneyTurn(row, agentId, sessionId, input, sinks, options)
+    return this.dispatchJourneyTurn(row, agentId, sessionId, input, sinks, options, context)
   }
 
   private async activeOnboardingFacts(llmUserId: string | undefined): Promise<OnboardingFacts | null> {
@@ -609,6 +630,8 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     input: string,
     sinks?: EngineStreamSinks,
     options?: DispatchOptions,
+    /** Per-turn context ahead of the user input (the connected repos block), '' for none. */
+    context = '',
   ): Promise<string> {
     const state = cloneJourneyState(row.state)
 
@@ -624,7 +647,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     const reply = await super.dispatch(
       agentId,
       sessionId,
-      `${journeyContextFor(this.spec, { ...row, state })}${JOURNEY_CONTEXT_SEPARATOR}${input}`,
+      `${journeyContextFor(this.spec, { ...row, state })}${JOURNEY_CONTEXT_SEPARATOR}${context}${input}`,
       sinks,
       { ...options, ownerText: input },
     )

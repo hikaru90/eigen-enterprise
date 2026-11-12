@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CLASSIC_TOKEN_MESSAGE, ReposError } from './errors'
 import { REPOS_DRIVE_SOURCE as SRC } from './manifest'
 import { sealToken, tokenSealKey, unsealToken } from './seal'
+import { BRIEFS_MAX } from './service'
 import { MASTER, TOKEN, setup } from './test-setup'
 import { sampleRepo, tokenError } from './testing'
 
@@ -134,5 +135,34 @@ describe('sync now and the repo list', () => {
     await t.service.tick()
     await expect(t.service.syncNow({ repo: 'kindred/shop' })).rejects.toThrow("Syncing is paused until 14:05 UTC (GitHub's rate limit).")
     await expect(t.service.syncNow({ repo: 'nope/nope' })).rejects.toThrow('That repo is not connected.')
+  })
+})
+
+describe('briefs (the assistant prompt block)', () => {
+  it('only synced repos, most recently pushed first, at most 20, with open PRs, first sentence and Drive folder', async () => {
+    const t = setup()
+    const tokenId = await t.connect()
+    expect(await t.service.briefs()).toEqual([])
+    for (let i = 0; i < 21; i++) {
+      const d = sampleRepo()
+      d.repo = { ...d.repo, id: 5000 + i, fullName: `kindred/r${i}`, name: `r${i}`, pushedAt: new Date(Date.UTC(2026, 9, 1 + i)) }
+      t.gh.addRepo(d, [TOKEN])
+      await t.service.setRepo(tokenId, d.repo.id, true)
+    }
+    for (let i = 0; i < 5; i++) await t.service.tick()
+    const briefs = await t.service.briefs()
+    expect(briefs).toHaveLength(BRIEFS_MAX)
+    expect(briefs[0]).toEqual({
+      fullName: 'kindred/shop',
+      lastPushAt: new Date('2026-11-11T16:20:00Z'),
+      openPulls: 1,
+      summaryFirstSentence: 'Cart work is nearly done.',
+      summaryStale: false,
+      driveFolderId: expect.any(String),
+    })
+    expect(briefs[1]!.fullName).toBe('kindred/r20')
+    expect(briefs.at(-1)!.fullName).toBe('kindred/r2')
+    const folder = (await t.service.list()).find((s) => s.fullName === 'kindred/shop')!.driveFolderId
+    expect(briefs[0]!.driveFolderId).toBe(folder)
   })
 })

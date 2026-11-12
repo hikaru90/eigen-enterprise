@@ -1,12 +1,13 @@
 import type { DriveSourceItem, DriveSourcePort } from './drive-port'
-import type { RepoSnapshot, RepoSummary } from './snapshot-types'
+import type { RepoSnapshot, SummaryState } from './snapshot-types'
 import type { ReposStore, SourceRow, TokenRow } from './store'
 import type { GitHubTokenClient } from '$lib/server/github/token-client'
 import { isGitHubTokenError, tokenMessages } from './errors'
 import { REPOS_DRIVE_SOURCE } from './manifest'
 import { render, repoKey, type RenderedItem } from './render'
 import { unsealToken } from './seal'
-import { RatePause, storable, takeSnapshot, type SnapshotResult } from './snapshot'
+import { RatePause, storable, takeSnapshot } from './snapshot'
+import { deltaIsEmpty, diffSnapshots, summaryFailureMessage, type ReposSummarizer, type SyncDelta } from './summary'
 
 /**
  * The poller (plan/github-drive.md §3): claim due repos, read GitHub, render,
@@ -33,13 +34,22 @@ export type SyncDeps = {
   /** This process's claim owner id (both blue-green slots tick). */
   owner: string
   log: SyncLog
-  /**
-   * The summary to render for a repo (S4: the assistant's "What's going on").
-   * Without it Overview.md shows the placeholder.
-   */
-  summaryFor?: (sourceId: string, result: SnapshotResult, previous: RepoSnapshot | null) => Promise<RepoSummary | null>
-  /** Called after a sync that found changes (S4: the repos.synced event). */
-  onSynced?: (source: SourceRow, result: SnapshotResult, previous: RepoSnapshot | null) => Promise<void>
+  /** The assistant's "What's going on": one gateway call after a sync that found changes. */
+  summarizer: ReposSummarizer
+  /** The kernel event `repos.synced`, after a sync (not the first) that found changes. */
+  emitSynced: (payload: ReposSyncedPayload) => Promise<void>
+}
+
+export const REPOS_SYNCED_EVENT = 'repos.synced'
+
+/** Metadata only: no commit messages, titles or names of people. */
+export type ReposSyncedPayload = {
+  repoId: number
+  fullName: string
+  newCommits: number
+  prsOpened: number
+  prsMerged: number
+  prsClosed: number
 }
 
 export type SyncOutcome =
@@ -87,6 +97,42 @@ export async function writeRepo(
   await pruneOwnerFolders(drive)
 }
 
+/** What a source row says about its summary (rendered again when nothing changed). */
+export function summaryStateOf(row: Pick<SourceRow, 'summary' | 'summaryErrorKind' | 'summaryError' | 'summaryErrorAt'>): SummaryState {
+  const problem =
+    row.summaryErrorKind && row.summaryError && row.summaryErrorAt
+      ? { kind: row.summaryErrorKind, message: row.summaryError, at: row.summaryErrorAt.toISOString() }
+      : null
+  return { summary: row.summary, problem }
+}
+
+type SummaryPatch = Pick<SourceRow, 'summary' | 'summaryErrorKind' | 'summaryError' | 'summaryErrorAt'>
+
+/**
+ * Asks for a new summary. No model → no call made, the old summary (if any)
+ * kept and marked stale. A failure is logged and shown, the old summary kept
+ * and marked stale; the sync itself goes on.
+ */
+async function summarize(deps: SyncDeps, row: SourceRow, snapshot: RepoSnapshot, delta: SyncDelta, now: Date): Promise<SummaryPatch> {
+  try {
+    const out = await deps.summarizer({ snapshot, delta, previous: row.summary })
+    if (out.status === 'no_model') return { summary: row.summary, summaryErrorKind: 'no_model', summaryError: out.message, summaryErrorAt: now }
+    return {
+      summary: { summary: out.summary, highlights: out.highlights, writtenAt: now.toISOString() },
+      summaryErrorKind: null,
+      summaryError: null,
+      summaryErrorAt: null,
+    }
+  } catch (err) {
+    deps.log('[repos] summary failed', {
+      sourceId: row.id,
+      repoId: row.repoId,
+      error: err instanceof Error ? `${err.name}: ${err.message.slice(0, 200)}` : 'unknown',
+    })
+    return { summary: row.summary, summaryErrorKind: 'failed', summaryError: summaryFailureMessage(err), summaryErrorAt: now }
+  }
+}
+
 async function stopToken(deps: SyncDeps, token: TokenRow, message: string): Promise<void> {
   await deps.store.updateToken(token.id, { lastError: message })
   await deps.store.updateSourcesOfToken(token.id, { lastError: message, claimedBy: null, claimedUntil: null })
@@ -107,10 +153,12 @@ export async function syncClaimed(deps: SyncDeps, row: SourceRow): Promise<SyncO
   try {
     const client = deps.client(unsealToken(token.tokenSealed, deps.key(), token.id))
     const result = await takeSnapshot(client, row, now)
-    const summary = deps.summaryFor ? await deps.summaryFor(row.id, result, row.snapshot) : null
+    const delta = diffSnapshots(row.snapshot, result.snapshot)
+    const moved = !deltaIsEmpty(delta)
+    const summary: SummaryPatch = moved ? await summarize(deps, row, result.snapshot, delta, now) : row
     const fullName = result.snapshot.repo.fullName
     const docSha = new Map(result.snapshot.docs.copied.map((d) => [`${repoKey(row.repoId)}/Docs/${d.path}`, d.sha]))
-    await writeRepo(deps.drive, render(result.snapshot, summary), row.repoId, async (key) => client.blobText(fullName, docSha.get(key)!))
+    await writeRepo(deps.drive, render(result.snapshot, summaryStateOf(summary)), row.repoId, async (key) => client.blobText(fullName, docSha.get(key)!))
     await deps.store.updateSource(row.id, {
       fullName,
       defaultBranch: result.snapshot.repo.defaultBranch,
@@ -122,9 +170,13 @@ export async function syncClaimed(deps: SyncDeps, row: SourceRow): Promise<SyncO
       lastError: null,
       pausedUntil: null,
       dueAt: next,
+      summary: summary.summary,
+      summaryErrorKind: summary.summaryErrorKind,
+      summaryError: summary.summaryError,
+      summaryErrorAt: summary.summaryErrorAt,
       ...release,
     })
-    if (result.changed && deps.onSynced) await deps.onSynced(row, result, row.snapshot)
+    if (moved && !delta.first) await emitSynced(deps, row, fullName, delta)
     return { status: 'synced', changed: result.changed }
   } catch (err) {
     const fields = { sourceId: row.id, tokenId: token.id, repoId: row.repoId }
@@ -150,6 +202,23 @@ export async function syncClaimed(deps: SyncDeps, row: SourceRow): Promise<SyncO
     deps.log('[repos] sync failed', { ...fields, error: err instanceof Error ? `${err.name}: ${err.message}` : String(err) })
     await deps.store.updateSource(row.id, { lastError: tokenMessages.failed, dueAt: next, ...release })
     return { status: 'failed', error: tokenMessages.failed }
+  }
+}
+
+/** The event never fails a sync that already landed in Drive: a failure is logged loudly. */
+async function emitSynced(deps: SyncDeps, row: SourceRow, fullName: string, d: SyncDelta): Promise<void> {
+  const payload: ReposSyncedPayload = {
+    repoId: row.repoId,
+    fullName,
+    newCommits: d.newCommits.length,
+    prsOpened: d.prsOpened.length,
+    prsMerged: d.prsMerged.length,
+    prsClosed: d.prsClosed.length,
+  }
+  try {
+    await deps.emitSynced(payload)
+  } catch (err) {
+    deps.log('[repos] repos.synced event failed', { sourceId: row.id, repoId: row.repoId, error: err instanceof Error ? `${err.name}: ${err.message.slice(0, 200)}` : 'unknown' })
   }
 }
 

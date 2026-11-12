@@ -16,6 +16,7 @@ import {
   WEBSITE_FOUNDING_JOURNEY,
 } from './brain'
 import { createTelegramLoop, type TelegramGatewayLike, type TelegramLoopHandle } from './loop'
+import { connectedReposPort, type ConnectedReposPort } from './repos-context'
 
 /**
  * ACTIVATION SEEDING (Phase 0): there is no admin UI yet. Deployers activate
@@ -79,7 +80,14 @@ export type OrchestratorBootOptions = {
   journeys?: JourneyStore
   /** Assisted-onboarding facts (DB-backed in the composition root). Absent = hand-off never active. */
   onboardingFacts?: OnboardingFactsResolver
+  /**
+   * The "Connected GitHub repos" block's data. Defaults to the port modules/index
+   * registered while building the kernel (provideConnectedReposPort).
+   */
+  connectedRepos?: ConnectedReposPort
 }
+
+const connectedReposOption = (port: ConnectedReposPort | null) => (port ? { connectedRepos: port } : {})
 
 /**
  * Orchestrator spend cap. EE_HARNESS_SPEND_CAP_USD, when present, must parse
@@ -130,6 +138,7 @@ export async function bootstrapOrchestrator(
       journeys: options.journeys ?? new InMemoryJourneyStore(),
       spec: WEBSITE_FOUNDING_JOURNEY,
       ...(options.onboardingFacts ? { onboardingFacts: options.onboardingFacts } : {}),
+      ...connectedReposOption(options.connectedRepos ?? connectedReposPort()),
     })
   for (const [id, engine] of options.engines ?? []) {
     runtime.registerEngine(id, engine)

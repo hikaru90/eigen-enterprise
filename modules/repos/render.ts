@@ -1,4 +1,4 @@
-import type { BranchSnap, CommitLite, NotCopied, PullSnap, RepoSnapshot, RepoSummary } from './snapshot-types'
+import type { BranchSnap, CommitLite, NotCopied, PullSnap, RepoSnapshot, SummaryState } from './snapshot-types'
 
 /**
  * Snapshot → the Markdown files of one repo's Drive folder
@@ -72,15 +72,30 @@ function lastCommitCell(c: CommitLite | null): string {
   return `${commitLink(c)} ${cell(c.subject)} — ${cell(author(c))}, ${day(c.date)}`
 }
 
-function overview(s: RepoSnapshot, summary: RepoSummary | null): string {
-  const out: string[] = [`# ${s.repo.fullName}`, '', "## What's going on", '']
+const RETRY = 'The assistant tries again after the next sync that finds changes.'
+
+function whatsGoingOn(state: SummaryState): string[] {
+  const { summary, problem } = state
+  const out: string[] = []
   if (summary) {
-    out.push(`_Written by the assistant · ${when(summary.writtenAt)}_`, '', summary.summary.trim())
+    out.push(`_Written by the assistant · ${when(summary.writtenAt)}_`, '')
+    if (problem?.kind === 'no_model') out.push(`_Out of date. ${problem.message} Until then this summary is not updated._`, '')
+    if (problem?.kind === 'failed') out.push(`_Out of date: updating it failed at ${when(problem.at)}. ${problem.message} ${RETRY}_`, '')
+    out.push(summary.summary.trim())
     if (summary.highlights.length > 0) out.push('')
     for (const h of summary.highlights) out.push(`- ${h.text}${h.ref ? ` (${h.ref})` : ''}`)
+  } else if (problem?.kind === 'no_model') {
+    out.push(`_No summary. ${problem.message} The pages below are kept in sync without it._`)
+  } else if (problem?.kind === 'failed') {
+    out.push(`_No summary yet: writing it failed at ${when(problem.at)}. ${problem.message} ${RETRY}_`)
   } else {
     out.push('_No summary yet. The assistant writes one after a sync that finds changes._')
   }
+  return out
+}
+
+function overview(s: RepoSnapshot, summary: SummaryState): string {
+  const out: string[] = [`# ${s.repo.fullName}`, '', "## What's going on", '', ...whatsGoingOn(summary)]
   out.push('', '## About', '')
   if (s.repo.description) out.push(s.repo.description, '')
   out.push(
@@ -200,7 +215,7 @@ function activityFile(s: RepoSnapshot): string {
   return `${out.join('\n')}\n`
 }
 
-export function render(snapshot: RepoSnapshot, summary: RepoSummary | null): RenderedItem[] {
+export function render(snapshot: RepoSnapshot, summary: SummaryState): RenderedItem[] {
   const s = snapshot
   const owner = ownerKey(s.repo.owner)
   const repo = repoKey(s.repo.id)

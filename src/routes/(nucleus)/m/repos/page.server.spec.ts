@@ -79,4 +79,25 @@ describe('/m/repos (admin only)', () => {
     expect(await t.service.tokens()).toEqual([])
     expect(await run('setRepo', { tokenId: tok!.id, repoId: 'abc', syncing: 'true' })).toMatchObject({ status: 400 })
   })
+
+  it('shows how the summary went: written, or why it is missing (no model selected, a failure)', async () => {
+    t.summaries.next = { status: 'no_model', message: 'No model is selected for summaries. The owner selects one under Settings → AI provider.' }
+    await t.connect()
+    await t.service.tick()
+    type Page = { summaryNoModel: boolean; tokens: Array<{ repos: Array<{ summary: Record<string, unknown> }> }> }
+    let page = (await load({ locals } as never)) as Page
+    expect(page.summaryNoModel).toBe(true)
+    expect(page.tokens[0]!.repos[0]!.summary).toEqual({
+      writtenAt: null,
+      stale: false,
+      problem: { kind: 'no_model', message: expect.stringContaining('No model is selected for summaries'), at: '2026-11-12T14:00:00.000Z' },
+    })
+    const [src] = await t.store.sources()
+    t.summaries.next = { status: 'written', summary: 'All good.', highlights: [] }
+    await t.store.updateSource(src!.id, { snapshot: null })
+    await run('syncNow', { sourceId: src!.id })
+    page = (await load({ locals } as never)) as Page
+    expect(page.summaryNoModel).toBe(false)
+    expect(page.tokens[0]!.repos[0]!.summary).toEqual({ writtenAt: '2026-11-12T14:00:00.000Z', stale: false, problem: null })
+  })
 })
