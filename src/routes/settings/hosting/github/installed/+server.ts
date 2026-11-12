@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types'
 import { error, redirect } from '@sveltejs/kit'
 import { requireAdmin } from '$lib/server/auth/require-admin'
-import { GitHubApi } from '../../../../../../modules/website/github/api'
+import { GitHubApi } from '$lib/server/github/api'
 import { defaultGitHubStore } from '../../../../../../modules/website/github/store'
 
 /**

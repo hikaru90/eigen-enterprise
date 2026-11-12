@@ -7,13 +7,13 @@ import {
 } from '$lib/kernel/approvals'
 import { KernelRegistry } from '$lib/kernel/registry'
 import { SubstrateUnavailableError, type EeClient } from '$lib/server/ee/client'
+import { GitHubApi } from '$lib/server/github/api'
 import { InMemoryServiceStore } from '../../../../../../../modules/website/apps/store'
 import { FakeEe } from '../../../../../../../modules/website/apps/testing'
 import {
   APP_AGENT_GATED_TOOLS,
   createAppTools,
 } from '../../../../../../../modules/website/apps/tools'
-import { GitHubApi } from '../../../../../../../modules/website/github/api'
 import {
   createGitHubConnectTools,
   type DeployKeyEe,

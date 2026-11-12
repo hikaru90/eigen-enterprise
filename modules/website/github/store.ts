@@ -1,4 +1,3 @@
-import type { GitHubCredentials } from './api'
 import { createHash } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import type { DbHandle } from '$lib/kernel/db-stores'
@@ -6,6 +5,7 @@ import { decryptEnvelope, encryptEnvelope } from '$lib/server/crypto/envelope'
 import type { AppDatabase } from '$lib/server/db/context'
 import { githubAppLinks, githubConnection } from '$lib/server/db/github.schema'
 import { env } from '$lib/server/env/private-env'
+import type { GitHubCredentials } from '$lib/server/github/api'
 
 /**
  * Persistence for the company's GitHub App. Credentials are sealed with a key

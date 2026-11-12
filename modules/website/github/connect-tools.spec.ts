@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ToolContext } from '$lib/kernel/types'
-import { GitHubApi } from './api'
+import { GitHubApi } from '$lib/server/github/api'
+import { GitHubUserError } from '$lib/server/github/plain-errors'
 import { createGitHubConnectTools } from './connect-tools'
 import { GITHUB_CONNECT_TOOL_NAMES } from './manifest'
-import { GitHubUserError } from './plain-errors'
 import { InMemoryConnectedRepoStore } from './repos-store'
 import { InMemoryGitHubStore } from './store'
 

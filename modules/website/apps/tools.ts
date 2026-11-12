@@ -10,7 +10,7 @@ import {
   type EeStatus,
 } from '$lib/server/ee/client'
 import { requireHuman } from '$lib/server/ee/human'
-import { GitHubApi } from '../github/api'
+import { GitHubApi } from '$lib/server/github/api'
 import {
   defaultConnectedRepoStore,
   type ConnectedRepo,
