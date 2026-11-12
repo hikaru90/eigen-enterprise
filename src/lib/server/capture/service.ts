@@ -5,10 +5,9 @@ import {
   parseLifecycleEditRequest,
 } from '$lib/server/capture/apply-thought-edit'
 import { getDb } from '$lib/server/db'
-import { temporalEvent, thought, thoughtEntity } from '$lib/server/db/schema'
-import { removeThoughtGraphArtifacts, upsertThoughtNode } from '$lib/server/graph/age'
+import { thought } from '$lib/server/db/schema'
+import { upsertThoughtNode } from '$lib/server/graph/age'
 import { createThoughtEmbedding } from '$lib/server/llm/embedding'
-import { pruneCanonicalEntitiesWithNoThoughtLinks } from '$lib/server/memory/canonical-entity-admin'
 import { computeLexicalText } from '$lib/server/memory/lexical-text'
 import { setThoughtLifecycleStatus } from '$lib/server/memory/lifecycle'
 import { activeThoughtLifecycleCondition } from '$lib/server/memory/thought-lifecycle-filter'
@@ -582,62 +581,6 @@ export async function relinkThoughtGraph(
     ok: true as const,
     thought: await loadThoughtCaptureResult(userId, thoughtId),
   }
-}
-
-/**
- * Removes a thought from AGE (edges, vertex, linked events), deletes the Postgres row
- * (cascades `thought_relation`, `entity_resolution_log`, `thought_entity`, `temporal_event`),
- * then prunes canonical entities that were only linked to this thought.
- */
-export async function deleteThoughtForUser(userId: string, thoughtId: string) {
-  await ensureUserOntologySeeded(getDb(), userId)
-
-  const [existing] = await getDb()
-    .select({ id: thought.id })
-    .from(thought)
-    .where(and(eq(thought.id, thoughtId), eq(thought.userId, userId)))
-    .limit(1)
-
-  if (!existing) {
-    return { ok: false as const, reason: 'not_found' as const }
-  }
-
-  const linkedEntityRows = await getDb()
-    .select({ entityId: thoughtEntity.entityId })
-    .from(thoughtEntity)
-    .where(and(eq(thoughtEntity.userId, userId), eq(thoughtEntity.thoughtId, existing.id)))
-  const linkedEntityIds = linkedEntityRows.map((row) => row.entityId)
-
-  const temporalRows = await getDb()
-    .select({ id: temporalEvent.id, graphNodeId: temporalEvent.graphNodeId })
-    .from(temporalEvent)
-    .where(and(eq(temporalEvent.userId, userId), eq(temporalEvent.thoughtId, existing.id)))
-  const temporalEventGraphIds = temporalRows.map((row) => row.graphNodeId?.trim() || row.id)
-
-  const { loadProjectContextForThought } = await import('$lib/server/agents/project-context')
-  const projectCtx = await loadProjectContextForThought(userId, existing.id)
-
-  await removeThoughtGraphArtifacts({
-    userId,
-    thoughtId: existing.id,
-    temporalEventGraphIds,
-  })
-
-  await getDb()
-    .delete(thought)
-    .where(and(eq(thought.id, existing.id), eq(thought.userId, userId)))
-
-  await pruneCanonicalEntitiesWithNoThoughtLinks(userId, linkedEntityIds)
-
-  const { notifyThoughtDeleted } = await import('$lib/server/agents/notify')
-  notifyThoughtDeleted({
-    userId,
-    thoughtId: existing.id,
-    projectEntityIds: projectCtx.projectEntityIds,
-    projectLabels: projectCtx.projectLabels,
-  })
-
-  return { ok: true as const }
 }
 
 async function decryptThoughtSnippetRow<

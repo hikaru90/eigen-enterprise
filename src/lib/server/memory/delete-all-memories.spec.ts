@@ -32,7 +32,12 @@ describe('deleteAllMemoriesForUser', () => {
   })
 
   it('deletes postgres rows then wipes graph', async () => {
-    const deleteWhere = vi.fn().mockResolvedValue(undefined)
+    // `where` is awaited directly or continued with `.returning()` (notes, deliveries).
+    const deleteWhere = vi.fn(() =>
+      Object.assign(Promise.resolve(undefined), {
+        returning: vi.fn(async () => [{ id: 'n1' }]),
+      }),
+    )
     const updateWhere = vi.fn().mockResolvedValue(undefined)
     const tx = {
       select: vi.fn(() => ({
@@ -51,7 +56,7 @@ describe('deleteAllMemoriesForUser', () => {
 
     const result = await deleteAllMemoriesForUser('u1')
 
-    expect(result).toEqual({ thoughtsDeleted: 2, entitiesDeleted: 2 })
+    expect(result).toEqual({ thoughtsDeleted: 2, entitiesDeleted: 2, notesDeleted: 1 })
     expect(deleteWhere).toHaveBeenCalled()
     expect(deleteAllUserGraphVerticesMock).toHaveBeenCalledWith('u1')
   })

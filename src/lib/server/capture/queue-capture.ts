@@ -190,6 +190,12 @@ export async function queueCapture(
       })
       .returning({ id: thought.id })
 
+    // The session's raw text belongs to this thought: deleting the thought deletes it (0128).
+    await tx
+      .update(captureSession)
+      .set({ thoughtId: stored.id })
+      .where(eq(captureSession.id, sessionRow.id))
+
     return { stored }
   })
 
