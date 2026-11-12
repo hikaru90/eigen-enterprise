@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-12 — v0.5.7 on production (os.cerberusblue.com)
+
+Owner: "Yes, upgrade". `ee upgrade --check` saw 0.5.6 → 0.5.7; ran `ee upgrade --from https://github.com/hikaru90/eigen-enterprise/releases/download/v0.5.7`, detached (`nohup setsid`, log `/root/ee-upgrade-0.5.7.log`). Safety copy + rollback steps: `/var/lib/ee/upgrades/2026-11-12T20-54-04Z`.
+- **Observed after:** `ee upgrade --check` says it runs `eigenenterprise-0.5.7-318854f07775`; os switched b → a (`ee-os-a` active, 0 restarts); "Applied 4 migration(s)"; no `[server error]` lines in its journal; `ee-livekit-a` and `ee-cerberusblue-website-b` running; `/login` 200, `/api/health` 200, anonymous `/settings/passkeys` 302 → login.
+- **Not verified signed in:** the passkeys page, logo upload, calls across pages, Settings → Plugins / Backups restore, contacts by voice. Board statuses unchanged.
+
 ## 2026-11-12 — v0.5.7 published on GitHub (Contribute round 4)
 
 Owner: "Push and release". Release commit `318854f`, tag `v0.5.7`; main + tag pushed through the pre-push gate (`npm run ci:local`, exit 0). Release run 43303577670: amd64 + arm64 builds + publish green; 12 assets; GitHub's latest = v0.5.7. Carries round 4 (W1–W7 + `a77bb8b`, entry below).
