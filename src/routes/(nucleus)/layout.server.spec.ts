@@ -107,6 +107,20 @@ describe('(nucleus) layout load', () => {
     expect(data.shell.companyLogo).toBeNull()
   })
 
+  // The plugin gate (src/hooks.server.ts) marks a page of a switched-off plugin; this load renders it.
+  it.each([false, true])(
+    'renders a switched-off plugin page as one clear 404 page (canManage %s), never the page itself',
+    async (canManage) => {
+      kernelHolder.kernel = await kernel([])
+      const pluginOff = { id: 'drive', name: 'Drive', canManage }
+      const e = { locals: { user: { id: 'u1' }, pluginOff } } as unknown as Parameters<typeof load>[0]
+      await expect(load(e)).rejects.toMatchObject({
+        status: 404,
+        body: { message: 'Drive is switched off', pluginOff },
+      })
+    },
+  )
+
   it('tells every text box whether dictation can work, and what is missing when not', async () => {
     kernelHolder.kernel = await kernel([])
     const data = (await load(event({ id: 'member-1' }))) as { shell: import('$lib/shell/nav').ShellData }

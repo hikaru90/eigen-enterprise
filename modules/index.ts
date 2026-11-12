@@ -2,6 +2,7 @@ import type { CallContextPort, CallLogPort } from './calls/context-port'
 import type { CallsHub } from './calls/hub'
 import type { CallsService } from './calls/service'
 import type { MessagesDeps } from './messages/service'
+import { CachedActivationStore } from '$lib/kernel/activation-cache'
 import {
   ModeAwareApprovalPolicy,
   type ApprovalModeStore,
@@ -13,6 +14,7 @@ import {
   DbApprovalStore,
   DbEventSink,
   DbPrincipalStore,
+  notifyActivationChange,
   type DbHandle,
 } from '$lib/kernel/db-stores'
 import type { EventSink } from '$lib/kernel/events'
@@ -205,7 +207,11 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
       return createScopedDrizzle(appSql)
     })
 
-  const activations = options.activations ?? new DbActivationStore(db)
+  // Cached in-process (the plugin gate reads it per request); every switch is
+  // announced so the other processes (the ee CLI, a second app slot) drop theirs.
+  const activations =
+    options.activations ??
+    new CachedActivationStore(new DbActivationStore(db), { announce: (id) => notifyActivationChange(db, id) })
   const eventSink = options.eventSink ?? new DbEventSink(db)
   const approvalStore = options.approvalStore ?? new DbApprovalStore(db)
   const approvalMode = options.approvalMode ?? new DbApprovalModeStore(db)

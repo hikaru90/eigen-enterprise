@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { remindersMock, summariesMock } = vi.hoisted(() => ({
+const { remindersMock, summariesMock, pluginOnMock } = vi.hoisted(() => ({
   remindersMock: vi.fn(),
   summariesMock: vi.fn(),
+  pluginOnMock: vi.fn(),
 }))
+
+vi.mock('$lib/server/plugins/background', () => ({ pluginOn: pluginOnMock }))
 
 vi.mock('$lib/server/memory/event-reminder-dispatch', () => ({
   dispatchDueEventReminders: remindersMock,
@@ -19,6 +22,18 @@ describe('tickNotificationDispatch', () => {
     vi.clearAllMocks()
     remindersMock.mockResolvedValue({ sent: 0, failed: 0 })
     summariesMock.mockResolvedValue({ sent: 0, failed: 0 })
+    pluginOnMock.mockResolvedValue(true)
+  })
+
+  // Owner, 2026-11-12: a switched-off plugin's background work skips.
+  it('sends no reminders or daily summaries while Memory is switched off', async () => {
+    pluginOnMock.mockResolvedValue(false)
+    const { tickNotificationDispatch } = await import('./notification-dispatch-tick')
+    const none = { processed: 0, sent: 0, skipped: 0, failed: 0 }
+    await expect(tickNotificationDispatch()).resolves.toEqual({ eventReminders: none, dailySummaries: none })
+    expect(remindersMock).not.toHaveBeenCalled()
+    expect(summariesMock).not.toHaveBeenCalled()
+    expect(pluginOnMock).toHaveBeenCalledWith('memory', 'event reminders and daily summaries')
   })
 
   it('runs both dispatchers and returns results', async () => {

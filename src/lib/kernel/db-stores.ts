@@ -1,7 +1,7 @@
 import type { KernelEvent, EventSink } from './events'
 import type { ActivationStore } from './modules'
 import type { Principal, PrincipalStore } from './principals'
-import { and, asc, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import type { AppDatabase } from '$lib/server/db/context'
 import {
   kernelApprovalMode,
@@ -45,6 +45,18 @@ export class DbEventSink implements EventSink {
       payload: event.payload,
     })
   }
+}
+
+/** Postgres channel every app process LISTENs on for module switches; the payload is the module id. */
+export const MODULE_ACTIVATIONS_CHANNEL = 'ee_module_activations'
+
+/**
+ * Tell every process a module was switched on or off (their activation caches
+ * drop the set): NOTIFY on the same handle the write used, so it is delivered
+ * with (never before) that write.
+ */
+export async function notifyActivationChange(db: DbHandle, moduleId: string): Promise<void> {
+  await (await resolveDb(db)).execute(sql`select pg_notify(${MODULE_ACTIVATIONS_CHANNEL}, ${moduleId})`)
 }
 
 /** ActivationStore persisting to kernel_module_activations (upsert on set). */
