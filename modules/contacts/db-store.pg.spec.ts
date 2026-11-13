@@ -1,4 +1,4 @@
-import type { ContactRow } from './store'
+import type { ContactRow, LogEntryRow } from './store'
 import { randomUUID } from 'node:crypto'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
@@ -8,7 +8,7 @@ import { dbContactsStore } from './db-store'
 
 /**
  * The DB store against real Postgres (the test DB, :5433). Needs DATABASE_URL
- * with migrations applied (0124); skipped without it. Rows are tagged with a
+ * with migrations applied (0124, 0138); skipped without it. Rows are tagged with a
  * per-run creator id so parallel runs never see each other's contacts.
  */
 
@@ -122,5 +122,57 @@ describe.skipIf(!url)('contacts store (Postgres)', () => {
     const store = dbContactsStore(db)
     await expect(store.insert(row({ name: '  ' }))).rejects.toThrow()
     await expect(store.insert(row({ tags: Array.from({ length: 21 }, (_, i) => `t${i}`) }))).rejects.toThrow()
+  })
+
+  const entry = (contactId: string, over: Partial<LogEntryRow> = {}): LogEntryRow => ({
+    id: randomUUID(),
+    contactId,
+    on: '2026-11-11',
+    note: null,
+    answeredFollowUpOn: null,
+    answeredStep: null,
+    nextFollowUpOn: null,
+    nextStep: null,
+    loggedBy: run,
+    loggedByKind: 'user',
+    createdAt: new Date(),
+    ...over,
+  })
+
+  it('records a log entry with the contact’s patch, lists entries newest day first, and deletes them with the contact', async () => {
+    const store = dbContactsStore(db)
+    const r = row({ nextFollowUpOn: '2026-11-10', nextStep: 'Send the deck' })
+    await store.insert(r)
+    const first = entry(r.id, { on: '2026-11-05', note: 'Coffee', answeredFollowUpOn: '2026-11-04', answeredStep: 'Ask', createdAt: new Date('2026-11-12T10:00:00Z') })
+    const second = entry(r.id, { on: '2026-11-11', nextFollowUpOn: '2026-11-20', nextStep: 'Call', createdAt: new Date('2026-11-12T09:00:00Z') })
+    await store.recordLog(first, { lastContactedOn: '2026-11-05', updatedAt: new Date() })
+    await store.recordLog(second, { lastContactedOn: '2026-11-11', nextFollowUpOn: '2026-11-20', nextStep: 'Call', updatedAt: new Date() })
+    expect(await store.get(r.id)).toMatchObject({ lastContactedOn: '2026-11-11', nextFollowUpOn: '2026-11-20', nextStep: 'Call' })
+    expect(await store.logEntries(r.id)).toEqual([second, first])
+
+    // Neither half lands when the contact is gone.
+    await expect(store.recordLog(entry(randomUUID()), { updatedAt: new Date() })).rejects.toThrow(/not found/)
+    await store.delete(r.id)
+    expect(await store.logEntries(r.id)).toEqual([])
+  })
+
+  it('a bad entry leaves the contact unchanged (one transaction)', async () => {
+    const store = dbContactsStore(db)
+    const r = row()
+    await store.insert(r)
+    await expect(store.recordLog(entry(r.id, { note: '  ' }), { lastContactedOn: '2026-11-11', updatedAt: new Date() })).rejects.toThrow()
+    expect(await store.get(r.id)).toMatchObject({ lastContactedOn: null })
+  })
+
+  it('inserts many contacts together, or none when one is refused', async () => {
+    const store = dbContactsStore(db)
+    const a = row({ name: 'Import A' })
+    const b = row({ name: 'Import B' })
+    await store.insertMany([a, b])
+    expect((await store.get(a.id))?.name).toBe('Import A')
+    expect((await store.get(b.id))?.name).toBe('Import B')
+    const c = row({ name: 'Import C' })
+    await expect(store.insertMany([c, row({ name: ' ' })])).rejects.toThrow()
+    expect(await store.get(c.id)).toBeNull()
   })
 })

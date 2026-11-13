@@ -27,6 +27,7 @@ export type ContactFieldKey = (typeof CONTACT_FIELDS)[number]['key']
 
 export const LOG_FIELDS = [
   { key: 'on', label: 'In touch on' },
+  { key: 'note', label: 'How it went' },
   { key: 'nextFollowUpOn', label: 'Next follow-up' },
   { key: 'nextStep', label: 'Next step' },
 ] as const satisfies ReadonlyArray<FieldSpec<keyof LogDraft>>

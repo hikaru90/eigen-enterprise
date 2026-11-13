@@ -43,7 +43,12 @@ describe('contacts forms', () => {
   })
 
   it('reads the log form', () => {
-    expect(formLogInput(form([['on', '2026-11-12'], ['nextStep', 'Call']]))).toEqual({ on: '2026-11-12', nextFollowUpOn: '', nextStep: 'Call' })
+    expect(formLogInput(form([['on', '2026-11-12'], ['note', 'Good talk'], ['nextStep', 'Call']]))).toEqual({
+      on: '2026-11-12',
+      note: 'Good talk',
+      nextFollowUpOn: '',
+      nextStep: 'Call',
+    })
   })
 })
 

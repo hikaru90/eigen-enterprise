@@ -15,13 +15,13 @@ describe('planFields', () => {
   })
 
   it('a field still at its default counts as empty (the log form’s today)', () => {
-    const plan = planFields(LOG_FIELDS, { on: '2026-11-12', nextFollowUpOn: '', nextStep: '' }, { on: '2026-11-11' }, { on: '2026-11-12' })
+    const plan = planFields(LOG_FIELDS, { on: '2026-11-12', note: '', nextFollowUpOn: '', nextStep: '' }, { on: '2026-11-11' }, { on: '2026-11-12' })
     expect(plan.filled).toEqual([{ key: 'on', label: 'In touch on', value: '2026-11-11' }])
     expect(plan.changes).toEqual([])
   })
 
   it('a field the person changed from its default is a change', () => {
-    const plan = planFields(LOG_FIELDS, { on: '2026-11-05', nextFollowUpOn: '', nextStep: '' }, { on: '2026-11-11' }, { on: '2026-11-12' })
+    const plan = planFields(LOG_FIELDS, { on: '2026-11-05', note: '', nextFollowUpOn: '', nextStep: '' }, { on: '2026-11-11' }, { on: '2026-11-12' })
     expect(plan.changes).toEqual([{ key: 'on', label: 'In touch on', from: '2026-11-05', to: '2026-11-11' }])
   })
 })

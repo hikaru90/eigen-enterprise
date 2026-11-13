@@ -1,4 +1,4 @@
-import type { ContactPatch, ContactRow, ContactScope, ContactsStore, Directory } from './store'
+import type { ContactPatch, ContactRow, ContactScope, ContactsStore, Directory, LogEntryRow } from './store'
 import { randomUUID } from 'node:crypto'
 import type { MemberRole } from '$lib/server/auth/user-role'
 import { ContactsError } from './errors'
@@ -7,10 +7,16 @@ import {
   CONTACT_LIMITS,
   DEFAULT_TAGS,
   FOLLOW_UP_WINDOW_DAYS,
+  IMPORT_MAX,
+  dayIn,
   type Channel,
   type ChannelType,
   type ContactDto,
   type FollowUpDto,
+  type HistoryItem,
+  type ImportCandidate,
+  type ImportPreview,
+  type ImportPreviewRow,
 } from './types'
 
 /**
@@ -31,6 +37,18 @@ import {
 export type Actor = { kind: 'user'; userId: string } | { kind: 'agent'; id: string }
 
 export type ContactsAudit = (event: { type: string; principalId: string; payload: Record<string, unknown> }) => Promise<void>
+
+/** One mail with a contact's address, as the mail port found it. */
+export type ContactMail = Omit<Extract<HistoryItem, { kind: 'mail' }>, 'kind' | 'day' | 'at'> & { at: Date }
+
+/**
+ * Mail exchanged with these addresses (lower case) that this person may read:
+ * the mailboxes they read under Email's own rules, and the company's sending
+ * when the Company-mail rule lets them. The port decides access (wired by
+ * the people routes over Email's own functions); Contacts never reads a
+ * mailbox on its own.
+ */
+export type ContactMailPort = (userId: string, addresses: string[]) => Promise<ContactMail[]>
 
 export type ContactsDeps = {
   store: ContactsStore
@@ -355,19 +373,86 @@ export async function logContact(
   d: ContactsDeps,
   actor: Actor,
   rawId: unknown,
-  input: { on: unknown; nextFollowUpOn?: unknown; nextStep?: unknown },
+  input: { on: unknown; note?: unknown; nextFollowUpOn?: unknown; nextStep?: unknown },
 ): Promise<ContactDto> {
   const v = await viewerOf(d, actor)
   const row = await visibleRow(d, v, rawId)
   const on = requiredDay(input.on, 'the day you were in touch')
+  const note = optionalText(input.note, 'How it went', CONTACT_LIMITS.logNote) ?? null
   const nextFollowUpOn = optionalDay(input.nextFollowUpOn, 'Next follow-up') ?? null
   const nextStep = optionalText(input.nextStep, 'A next step', CONTACT_LIMITS.nextStep) ?? null
   if (nextFollowUpOn !== null && nextFollowUpOn < on) {
     throw new ContactsError('invalid', 'The next follow-up can’t be before the day you were in touch.')
   }
-  await d.store.update(row.id, { lastContactedOn: on, nextFollowUpOn, nextStep, updatedAt: now(d) })
+  const at = now(d)
+  // The history keeps what was due (the follow-up this answered) and what comes next.
+  const entry: LogEntryRow = {
+    id: newId(d),
+    contactId: row.id,
+    on,
+    note,
+    answeredFollowUpOn: row.nextFollowUpOn,
+    answeredStep: row.nextStep,
+    nextFollowUpOn,
+    nextStep,
+    loggedBy: v.principalId,
+    loggedByKind: v.userId === null ? 'agent' : 'user',
+    createdAt: at,
+  }
+  await d.store.recordLog(entry, { lastContactedOn: on, nextFollowUpOn, nextStep, updatedAt: at })
   await d.audit({ type: 'contacts.contact_logged', principalId: v.principalId, payload: { id: row.id } })
   return view(d, v, row.id)
+}
+
+/** The contact's email addresses, lower case, each once (the mail port matches them exactly). */
+function emailAddresses(row: ContactRow): string[] {
+  return [...new Set(row.channels.filter((c) => c.type === 'email').map((c) => c.value.trim().toLowerCase()))]
+}
+
+const step = (on: string | null, s: string | null) => (on === null && s === null ? null : { on, step: s })
+
+/**
+ * "Kontaktverlauf": everything with this person, newest day first (then
+ * newest first) — when they were added, every logged contact (how it went,
+ * the follow-up it answered, the one it set) and mail with their email
+ * addresses that the viewer may read (the mail port applies Email's rules).
+ * For people only: no agent path reads anyone's mail.
+ */
+export async function contactHistory(
+  d: ContactsDeps,
+  actor: Actor,
+  rawId: unknown,
+  opts: { timeZone: string; mailWith: ContactMailPort },
+): Promise<HistoryItem[]> {
+  if (actor.kind !== 'user') throw new ContactsError('forbidden', 'A contact’s history is read by people, not the agent.')
+  const dayOf = (at: Date) => dayIn(opts.timeZone, at)
+  dayOf(new Date(0)) // an unknown time zone fails here, before anything is read
+  const v = await viewerOf(d, actor)
+  const row = await visibleRow(d, v, rawId)
+  const addresses = emailAddresses(row)
+  const [entries, names, mail] = await Promise.all([
+    d.store.logEntries(row.id),
+    d.directory.names(),
+    addresses.length > 0 ? opts.mailWith(actor.userId, addresses) : Promise.resolve([]),
+  ])
+  const who = (kind: 'user' | 'agent', id: string) => (kind === 'agent' ? 'the agent' : (names.get(id) ?? 'a former member'))
+  const items: HistoryItem[] = [
+    { kind: 'added', id: row.id, day: dayOf(row.createdAt), at: row.createdAt.toISOString(), by: who(row.createdByKind, row.createdBy) },
+    ...entries.map(
+      (e): HistoryItem => ({
+        kind: 'logged',
+        id: e.id,
+        day: e.on,
+        at: e.createdAt.toISOString(),
+        by: who(e.loggedByKind, e.loggedBy),
+        note: e.note,
+        answered: step(e.answeredFollowUpOn, e.answeredStep),
+        next: step(e.nextFollowUpOn, e.nextStep),
+      }),
+    ),
+    ...mail.map((m): HistoryItem => ({ ...m, kind: 'mail', day: dayOf(m.at), at: m.at.toISOString() })),
+  ]
+  return items.sort((a, b) => b.day.localeCompare(a.day) || b.at.localeCompare(a.at))
 }
 
 /** Share with the company (true) or make private again (false): its creator, the owner, admins. */
@@ -394,4 +479,129 @@ export async function deleteContact(d: ContactsDeps, actor: Actor, rawId: unknow
   }
   await d.store.delete(row.id)
   await d.audit({ type: 'contacts.deleted', principalId: v.principalId, payload: { id: row.id } })
+}
+
+// ── import (vCard, CSV) ───────────────────────────────────────────────────────
+
+const CANDIDATE_KEYS = ['name', 'organisation', 'title', 'channels', 'metHow', 'whyRelevant', 'tags'] as const
+
+/** The request's candidates: a list of 1…IMPORT_MAX objects with only the import's fields (else the request is refused). */
+function candidatesOf(raw: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(raw)) throw new ContactsError('invalid', 'Expected a list of contacts to import.')
+  if (raw.length === 0) throw new ContactsError('invalid', 'There is nobody to import in that file.')
+  if (raw.length > IMPORT_MAX) throw new ContactsError('invalid', `One import adds at most ${IMPORT_MAX} contacts; split the file.`)
+  return raw.map((c: unknown, i) => {
+    if (c === null || typeof c !== 'object' || Array.isArray(c)) throw new ContactsError('invalid', `Row ${i + 1} is not a contact.`)
+    const extra = Object.keys(c).filter((k) => !(CANDIDATE_KEYS as readonly string[]).includes(k))
+    if (extra.length > 0) throw new ContactsError('invalid', `Row ${i + 1} has fields an import doesn’t set: ${extra.join(', ')}.`)
+    return c as Record<string, unknown>
+  })
+}
+
+/** One candidate checked like a typed contact (the same limits and tag rules). */
+function checkedCandidate(c: Record<string, unknown>): ImportCandidate {
+  const name = parseName(c.name)
+  const f = parseFields({ ...c, name })
+  return {
+    name,
+    organisation: f.organisation ?? null,
+    title: f.title ?? null,
+    channels: f.channels ?? [],
+    metHow: f.metHow ?? null,
+    whyRelevant: f.whyRelevant ?? null,
+    tags: f.tags ?? [],
+  }
+}
+
+const emailsOf = (channels: readonly Channel[]) => channels.filter((c) => c.type === 'email').map((c) => c.value.trim().toLowerCase())
+
+async function preview(d: ContactsDeps, v: Viewer, raw: unknown): Promise<ImportPreview> {
+  const candidates = candidatesOf(raw)
+  // Known = a contact this person sees (someone else's private contact is not theirs to know about).
+  const known = new Map<string, { id: string; name: string }>()
+  for (const row of await d.store.list(scopeOf(v), {})) {
+    for (const email of emailsOf(row.channels)) if (!known.has(email)) known.set(email, { id: row.id, name: row.name })
+  }
+  const inFile = new Set<string>()
+  const rows = candidates.map((c, index): ImportPreviewRow => {
+    let contact: ImportCandidate
+    try {
+      contact = checkedCandidate(c)
+    } catch (err) {
+      if (!(err instanceof ContactsError)) throw err
+      return { index, status: 'invalid', name: typeof c.name === 'string' ? c.name.trim() : '', error: err.message }
+    }
+    const emails = emailsOf(contact.channels)
+    const dup = emails.find((e) => known.has(e) || inFile.has(e))
+    for (const e of emails) inFile.add(e)
+    if (dup !== undefined) return { index, status: 'duplicate', contact, email: dup, existing: known.get(dup) ?? null }
+    return { index, status: 'new', contact }
+  })
+  const count = (status: ImportPreviewRow['status']) => rows.filter((r) => r.status === status).length
+  return { rows, counts: { new: count('new'), duplicate: count('duplicate'), invalid: count('invalid') } }
+}
+
+async function importer(d: ContactsDeps, actor: Actor): Promise<Viewer & { userId: string }> {
+  const v = await viewerOf(d, actor)
+  if (v.userId === null) throw new ContactsError('forbidden', 'A person imports contacts, not the agent.')
+  return { ...v, userId: v.userId }
+}
+
+/**
+ * What an import would do, row by row — nothing is saved: new (importable),
+ * already known by email (to you: yours, shared ones, and every one for the
+ * owner and admins — or an earlier row of the file), or not importable as it
+ * is (with the reason).
+ */
+export async function previewImport(d: ContactsDeps, actor: Actor, raw: unknown): Promise<ImportPreview> {
+  return preview(d, await importer(d, actor), raw)
+}
+
+/**
+ * The confirmed import: the rows are checked again; one that is not
+ * importable stops it (nothing added); duplicates are skipped and reported,
+ * the known contact is never changed; the new ones are added together,
+ * private to the importer unless they share them with the company.
+ */
+export async function importContacts(
+  d: ContactsDeps,
+  actor: Actor,
+  raw: unknown,
+  opts: { shared: boolean },
+): Promise<{ created: ContactDto[]; skipped: ImportPreviewRow[] }> {
+  const v = await importer(d, actor)
+  const { rows } = await preview(d, v, raw)
+  const invalid = rows.find((r) => r.status === 'invalid')
+  if (invalid && invalid.status === 'invalid') {
+    throw new ContactsError('invalid', `Row ${invalid.index + 1}${invalid.name ? ` (${invalid.name})` : ''}: ${invalid.error}`)
+  }
+  const skipped = rows.filter((r) => r.status === 'duplicate')
+  const at = now(d)
+  const created: ContactRow[] = rows.flatMap((r) =>
+    r.status === 'new'
+      ? [
+          {
+            id: newId(d),
+            ...r.contact,
+            lastContactedOn: null,
+            nextFollowUpOn: null,
+            nextStep: null,
+            createdBy: v.userId,
+            createdByKind: 'user' as const,
+            shared: opts.shared,
+            createdAt: at,
+            updatedAt: at,
+          },
+        ]
+      : [],
+  )
+  if (created.length === 0) return { created: [], skipped }
+  await d.store.insertMany(created)
+  await d.audit({
+    type: 'contacts.imported',
+    principalId: v.principalId,
+    payload: { ids: created.map((r) => r.id), shared: opts.shared, skipped: skipped.length },
+  })
+  const names = await d.directory.names()
+  return { created: created.map((r) => toDto(r, names, v)), skipped }
 }

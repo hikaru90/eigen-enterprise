@@ -1,12 +1,12 @@
 import type { ContactFilter, ContactRow, ContactScope, ContactsStore } from './store'
-import { and, asc, eq, ilike, isNotNull, lte, or, sql, type SQL } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, isNotNull, lte, or, sql, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
-import { contacts } from '$lib/server/db/contacts.schema'
+import { contactLogEntries, contacts } from '$lib/server/db/contacts.schema'
 import type { AppDatabase } from '$lib/server/db/context'
 import { rowsFromDbExecute } from '$lib/server/db/execute-rows'
 import { CHANNEL_TYPES } from './types'
 
-/** ContactsStore over Postgres (company-level table, migration 0124). */
+/** ContactsStore over Postgres (company-level tables, migrations 0124 + 0138). */
 
 const storedChannels = z.array(z.object({ type: z.enum(CHANNEL_TYPES), value: z.string().min(1) }).strict())
 
@@ -43,6 +43,11 @@ export function dbContactsStore(db: AppDatabase): ContactsStore {
     async insert(row) {
       await db.insert(contacts).values(row)
     },
+    async insertMany(rows) {
+      if (rows.length === 0) return
+      // One statement: every row or none.
+      await db.insert(contacts).values(rows)
+    },
     async get(id) {
       const [r] = await db.select().from(contacts).where(eq(contacts.id, id)).limit(1)
       return r ? toRow(r) : null
@@ -76,6 +81,20 @@ export function dbContactsStore(db: AppDatabase): ContactsStore {
     },
     async delete(id) {
       await db.delete(contacts).where(eq(contacts.id, id))
+    },
+    async recordLog(entry, patch) {
+      await db.transaction(async (tx) => {
+        const out = await tx.update(contacts).set(patch).where(eq(contacts.id, entry.contactId)).returning({ id: contacts.id })
+        if (out.length === 0) throw new Error(`contact ${entry.contactId} not found`)
+        await tx.insert(contactLogEntries).values(entry)
+      })
+    },
+    async logEntries(contactId) {
+      return db
+        .select()
+        .from(contactLogEntries)
+        .where(eq(contactLogEntries.contactId, contactId))
+        .orderBy(desc(contactLogEntries.on), desc(contactLogEntries.createdAt), desc(contactLogEntries.id))
     },
   }
 }

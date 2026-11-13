@@ -9,6 +9,7 @@ import {
   personActor,
 } from '../../../../../../../modules/contacts/http'
 import {
+  contactHistory,
   contactTags,
   deleteContact,
   getContact,
@@ -18,20 +19,24 @@ import {
 } from '../../../../../../../modules/contacts/service'
 
 /**
- * /m/email/people/[id]: one person — who can see them, log a contact, edit,
+ * /m/email/people/[id]: one person — who can see them, their history
+ * (logged contacts and mail you may read), log a contact, edit,
  * share/unshare and delete. A contact you may not see is a 404.
  */
 export const load: PageServerLoad = async ({ locals, params }) => {
   const actor = personActor(locals.user)
   return contactsLoad(async () => {
     const d = await liveContactsDeps()
-    const { todayFor } = await import('../../../../../../../modules/contacts/live')
-    const [contact, tags, today] = await Promise.all([
+    const { timeZoneFor, todayFor } = await import('../../../../../../../modules/contacts/live')
+    const [contact, tags, today, timeZone] = await Promise.all([
       getContact(d, actor, params.id),
       contactTags(d, actor),
       todayFor(actor.userId),
+      timeZoneFor(actor.userId),
     ])
-    return { contact, tags, today }
+    const { liveContactMail } = await import('../contact-mail.server')
+    const history = await contactHistory(d, actor, contact.id, { timeZone, mailWith: liveContactMail })
+    return { contact, tags, today, history }
   })
 }
 

@@ -54,8 +54,8 @@ export function formContactInput(form: FormData): ContactInput {
 }
 
 /** The "Log a contact" form. */
-export function formLogInput(form: FormData): { on: string; nextFollowUpOn: string; nextStep: string } {
-  return { on: text(form, 'on'), nextFollowUpOn: text(form, 'nextFollowUpOn'), nextStep: text(form, 'nextStep') }
+export function formLogInput(form: FormData): { on: string; note: string; nextFollowUpOn: string; nextStep: string } {
+  return { on: text(form, 'on'), note: text(form, 'note'), nextFollowUpOn: text(form, 'nextFollowUpOn'), nextStep: text(form, 'nextStep') }
 }
 
 /** A form action: a ContactsError comes back to the form as `{ action, id, error }` with its status. */

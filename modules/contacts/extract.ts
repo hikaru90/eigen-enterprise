@@ -78,6 +78,7 @@ const contactSchema = z
 const logSchema = z
   .object({
     in_touch_on: day,
+    how_it_went: said(CONTACT_LIMITS.logNote),
     next_follow_up_on: day,
     next_step: said(CONTACT_LIMITS.nextStep),
   })
@@ -98,6 +99,7 @@ const CONTACT_JSON_SCHEMA = `{
 
 const LOG_JSON_SCHEMA = `{
   "in_touch_on": "YYYY-MM-DD" | null,
+  "how_it_went": "<what happened and how it went, short>" | null,
   "next_follow_up_on": "YYYY-MM-DD" | null,
   "next_step": "<the next thing to do with them, short>" | null
 }`
@@ -135,12 +137,12 @@ export function buildContactExtractMessages(input: { text: string; today: string
 
 export function buildLogExtractMessages(input: { text: string; today: string }): ChatMessage[] {
   const system = [
-    'A person at a company was in touch with someone they know and says, in their own words, when that was and what comes next.',
+    'A person at a company was in touch with someone they know and says, in their own words, when that was, how it went and what comes next.',
     'Return JSON only, exactly this schema:',
     LOG_JSON_SCHEMA,
     'Rules:',
     ...SHARED_RULES,
-    '- in_touch_on: the day they were in touch (never after Today); null if not said. next_follow_up_on and next_step: when and what to do next, if said.',
+    '- in_touch_on: the day they were in touch (never after Today); null if not said. how_it_went: what happened and how it went, without the day or the next step; null if not said. next_follow_up_on and next_step: when and what to do next, if said.',
   ].join('\n')
   const user = [`Today: ${input.today}`, 'What the person said (JSON string):', JSON.stringify(input.text)].join('\n')
   return [
@@ -188,7 +190,7 @@ export function parseContactExtractOutput(response: unknown, ctx: { tags: readon
 export function parseLogExtractOutput(response: unknown, ctx: { today: string }): LogDraft {
   const out = readJson(response, logSchema)
   notAfterToday(out.in_touch_on, ctx.today, 'in_touch_on')
-  return { on: out.in_touch_on, nextFollowUpOn: out.next_follow_up_on, nextStep: out.next_step }
+  return { on: out.in_touch_on, note: out.how_it_went, nextFollowUpOn: out.next_follow_up_on, nextStep: out.next_step }
 }
 
 // ── the call ──────────────────────────────────────────────────────────────────

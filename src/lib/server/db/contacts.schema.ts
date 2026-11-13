@@ -40,3 +40,32 @@ export const contacts = pgTable(
     index('contacts_tags_idx').using('gin', t.tags),
   ],
 )
+
+/**
+ * Contact history (migration 0138, Contribute b8a87a25): one row per "Log a
+ * contact" — the day, how it went, the follow-up it answered and the one it
+ * set. Visible to whoever may see the contact (decided in the service); goes
+ * with the contact.
+ */
+export const contactLogEntries = pgTable(
+  'contact_log_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    contactId: uuid('contact_id')
+      .notNull()
+      .references(() => contacts.id, { onDelete: 'cascade' }),
+    on: date('on', { mode: 'string' }).notNull(),
+    /** How it went, in the person's words. */
+    note: text('note'),
+    /** The follow-up this contact answered (what was due before it). */
+    answeredFollowUpOn: date('answered_follow_up_on', { mode: 'string' }),
+    answeredStep: text('answered_step'),
+    /** The follow-up it set (none when both are null). */
+    nextFollowUpOn: date('next_follow_up_on', { mode: 'string' }),
+    nextStep: text('next_step'),
+    loggedBy: text('logged_by').notNull(),
+    loggedByKind: text('logged_by_kind', { enum: ['user', 'agent'] }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('contact_log_entries_contact_idx').on(t.contactId, t.on.desc(), t.createdAt.desc())],
+)

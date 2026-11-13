@@ -1,4 +1,4 @@
-import type { ContactsDeps } from './service'
+import type { ContactMail, ContactMailPort, ContactsDeps } from './service'
 import type { MemberRole } from '$lib/server/auth/user-role'
 import { memoryContactsStore } from './memory-store'
 
@@ -12,6 +12,12 @@ export function fixture() {
   const roles: Record<string, MemberRole> = { olga: 'owner', adam: 'admin', ana: 'member', ben: 'member' }
   let clock = Date.parse('2026-11-12T09:00:00Z')
   let ids = 0
+  /** What the mail port answers, and who asked it with which addresses. */
+  const mail = { items: [] as ContactMail[], calls: [] as Array<{ userId: string; addresses: string[] }> }
+  const mailWith: ContactMailPort = async (userId, addresses) => {
+    mail.calls.push({ userId, addresses: [...addresses] })
+    return mail.items.map((m) => ({ ...m }))
+  }
   const deps: ContactsDeps = {
     store,
     directory: {
@@ -30,7 +36,7 @@ export function fixture() {
     now: () => new Date((clock += 1000)),
     newId: () => `00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`,
   }
-  return { deps, store, events }
+  return { deps, store, events, mail, mailWith }
 }
 
 export const user = (userId: string) => ({ kind: 'user' as const, userId })
