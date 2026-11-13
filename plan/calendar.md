@@ -1,4 +1,4 @@
-# Calendar plugin (approved direction; slices not started)
+# Calendar plugin (approved direction; K1 + K2 built, K3–K7 open)
 
 Source: Contribute `df14e05a` (calendar with appointments, phone reminders before a call,
 company-visible vs private / "out of office") and `d8ec9006` (read agreed call appointments
@@ -51,6 +51,47 @@ On each received mail in a personal inbox: the gateway (JSON schema, company pro
 - **K4** invitations over company mail — after K1.
 - **K5** Google sync, **K6** Microsoft sync — after K1, need the owner's OAuth apps.
 - **K7** email → proposal — after K1 + the inbox ingest.
+
+## Status (2026-11-13)
+
+**K1 built** (branch `contrib/calendar`, migration `0138_calendar`):
+- Tables `calendar_events` (owner, title, notes, start/end UTC + time zone, all-day, location,
+  `call_id`, visibility, status, source + external id + etag, RRULE + `exdates` +
+  `recurrence_ends_at`, changed instances as rows with `recurrence_id` + `original_start`),
+  `calendar_attendees` (member or external email, role required/optional, RSVP) and
+  `calendar_preferences` (a member's default visibility — §2's "change their default").
+- Service `modules/calendar/service.ts` decides every read and write (no RLS, like Contacts):
+  owner + member guests see an event in full, only the owner changes it; everyone else only
+  through `freeBusy` (company → title, busy → "Busy", private → "Out of office"; cancelled and
+  declined take no time); owner/admins/the agent on its own get exactly the colleague view.
+- Recurrence `modules/calendar/recurrence.ts`: FREQ daily/weekly/monthly/yearly, INTERVAL,
+  COUNT/UNTIL, weekly BYDAY, monthly nth weekday or BYMONTHDAY; expanded on read in the
+  event's zone (DST-correct); anything else refused loud. Change/delete one instance or the
+  series; a new time or rule for all events starts the series over (changed/removed instances
+  are dropped — the dialog says so).
+- Plugin `modules/calendar` (official, seeded on once, switchable; route `/m/calendar`, no API
+  prefix) and read tools `calendar.list` (as the person) + `calendar.free_busy`.
+- **For K4/K7:** `createEvent(deps, actor, input, { source: 'email_proposal', externalId })`
+  takes external guests (`{ email, name? }`) — the invitation and the proposal flow build on it.
+
+**K2 built:** `/m/calendar` day (hour grid) / week (list of days) / month (six weeks),
+phone-first; event dialog (title, all-day, start/end, time zone, location, repeat, visibility
+with what colleagues see, member guests, notes; this event / all events for a series; delete
+asks first; guests see the event read only); colleagues' availability (`?with=`); "New events by
+default" setting. Calendar sits after Calls in the sidebar.
+
+**Still open:**
+- **K3** reminders (web push + in-app toast; a `calendar_reminders` table), "Add a call" / "Join
+  call" (the `call_id` column exists, nothing sets it yet), presence "In a meeting".
+- **K4** invitations over company mail (iMIP REQUEST to external guests; replies from the inbox),
+  in-app RSVP for member guests (the `rsvp` column exists; no UI or service call yet).
+- **K5/K6** Google / Microsoft sync — need the owner's OAuth apps (`plan/calendar-oauth-setup.md`);
+  the sync must extend the RRULE subset (or keep unsupported rules read-only) and fill
+  `source`/`external_id`/`etag`; a `calendar_connections` table.
+- **K7** email → proposal (after the inbox ingest); `calendar_proposals` table;
+  `calendar.propose_event` (approval-gated) agent tool.
+- "This and following events" for a series (not built: this event / all events only).
+- External guests can't be added in the dialog yet (kept when editing; the service takes them).
 
 ## Open (owner)
 1. Group/shared calendars (a team, a room) — needed?

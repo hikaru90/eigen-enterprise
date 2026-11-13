@@ -115,6 +115,7 @@ describe('plugin route map', () => {
     ['/api/contacts/extract', 'contacts', 'api'],
     ['/m/website/apps/new', 'website', 'page'],
     ['/m/recap', 'recap', 'page'],
+    ['/m/calendar', 'calendar', 'page'],
   ] as const)('%s belongs to %s (%s)', (path, plugin, surface) => {
     expect(routeOwner(path)).toMatchObject({ owner: 'plugin', plugin, surface })
   })

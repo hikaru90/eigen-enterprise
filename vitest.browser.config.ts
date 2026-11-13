@@ -121,6 +121,7 @@ export default defineConfig({
       'src/lib/voice/voice-dictation.svelte.spec.ts',
       'modules/brand/water-flow.svelte.spec.ts',
       'modules/contacts/ui/*.svelte.spec.ts',
+      'modules/calendar/ui/*.svelte.spec.ts',
       'modules/email/inbox/ui/*.svelte.spec.ts',
       'src/lib/components/brand-picker/picker.svelte.spec.ts',
     ],

@@ -108,7 +108,7 @@ describe('Settings → Plugins (owner and admins)', () => {
     roleMock.mockResolvedValue(role)
     const data = await loaded()
     expect(data.plugins.map((p) => p.id).sort()).toEqual(
-      ['brand', 'calls', 'contacts', 'drive', 'email', 'memory', 'messages', 'repos', 'website'].sort(),
+      ['brand', 'calendar', 'calls', 'contacts', 'drive', 'email', 'memory', 'messages', 'repos', 'website'].sort(),
     )
     expect(data.core.map((c) => c.id).sort()).toEqual(['contribute', 'kernel', 'members', 'orchestrator'])
   })

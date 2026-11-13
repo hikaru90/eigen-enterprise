@@ -122,8 +122,8 @@ describe('merged module manifests', () => {
     await expect(off('members')).rejects.toMatchObject({ code: 'core_module' })
     await expect(off('messages')).rejects.toMatchObject({ code: 'module_required', details: { requiredBy: ['calls'] } })
     await expect(off('drive')).rejects.toMatchObject({ code: 'module_required', details: { requiredBy: ['repos'] } })
-    for (const id of ['calls', 'messages', 'website', 'email', 'brand', 'memory', 'repos', 'drive', 'contacts']) await off(id)
-    for (const id of ['calls', 'messages', 'website', 'email', 'brand', 'memory', 'repos', 'drive', 'contacts'])
+    for (const id of ['calls', 'messages', 'website', 'email', 'brand', 'memory', 'repos', 'drive', 'contacts', 'calendar']) await off(id)
+    for (const id of ['calls', 'messages', 'website', 'email', 'brand', 'memory', 'repos', 'drive', 'contacts', 'calendar'])
       expect(await activations.get(id), id).toBe(false)
     expect(await activations.get('members')).toBe(true)
   })
@@ -146,8 +146,8 @@ describe('merged module manifests', () => {
     for (const name of APPROVAL_REQUIRED_TOOLS) expect(k.registry.get(name), name).toBeDefined()
   })
 
-  it('system modules are website, email, members, memory, brand, messages, drive, contribute, calls, contacts and repos, and boot activates them', async () => {
-    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages', 'drive', 'contribute', 'calls', 'contacts', 'repos'])
+  it('system modules are website, email, members, memory, brand, messages, drive, contribute, calls, contacts, repos and calendar, and boot activates them', async () => {
+    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages', 'drive', 'contribute', 'calls', 'contacts', 'repos', 'calendar'])
     const { kernel: k, activations } = kernel()
     await ensureSystemModulesActive(k)
     expect(await activations.get('website')).toBe(true)
@@ -167,6 +167,8 @@ describe('merged module manifests', () => {
     expect(await k.modules.isToolActive('calls.list')).toBe(true)
     // Contacts (plan/contribute-round-3.md W1): the people tracker is part of the OS.
     expect(await k.modules.isToolActive('contacts.list')).toBe(true)
+    // Calendar (plan/calendar.md): an official plugin, on from the start.
+    expect(await k.modules.isToolActive('calendar.list')).toBe(true)
     // Not a system module: the agent's internal tools keep their own activation.
     expect(await k.modules.isToolActive('repo.merge')).toBe(false)
   })
