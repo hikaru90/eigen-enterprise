@@ -2,6 +2,60 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-13 — Contribute board round 5: the 10 open proposals worked (main @ `f2dd0a3`, not pushed, not released, board statuses unchanged)
+
+Orchestrated: one worktree stream per proposal (`.claude/worktrees/contrib-*`, branches `contrib/*`), merged in dependency order (calendar → email proposals; memory privacy → plugins), worktrees + branches pruned. Migrations were renumbered at merge because the phone-home work took 0136/0137 meanwhile: **0138_calendar, 0139_contact_history, 0140_calendar_proposals**. A fresh scratch DB migrated 0000→0140 clean (138 rows; scratch DB dropped).
+- **`eb674853` inbox first:** nothing new. It's already in code since S6 (`58201e6`: `/m/email` → 303 `/m/email/inbox`). It's only open on production until S7, which needs the owner's AWS/DNS steps.
+- **`b8a87a25` contact history + import** — `4b1cf81`, merge `3815fb4`:
+  - History on a contact: logged contacts (new `contact_log_entries` with "How it went"), mail with the contact from mailboxes the viewer may read (Email's own `readableMailboxes` / `isUserAdmin`), and when the contact was added.
+  - Import at `/m/email/people/import`: vCard is parsed from its own fields; for CSV the person maps every column (no guessing from header names). Preview first; duplicates by email are skipped and reported, never overwritten.
+  - Agent tool `contacts.log_contact` takes `how_it_went`.
+  - Remaining: per-person sharing, AI column suggestion, vCard address/birthday/photo.
+- **`e4ef6be1` presence bottom-left** — `8c00d69`, merge `3cd65ef`:
+  - Your status is shown in the sidebar footer on every page; clicking it opens the existing card with the DND switch. On the phone the menu button carries your status dot.
+  - The heartbeat `POST /api/messages/presence` now answers `{presence}`.
+  - Messages off → nothing shown.
+  - **Announced moves:** the footer's second line shows the status instead of the email (the email moved into the card). Messages keeps its own status card, so it shows twice there — **owner call:** drop the Messages copy?
+- **`d8ec9006` appointments from mail** (calendar K7 + K4) — `652eb87`, merge `071ada9`:
+  - Each new mail in a personal Inbox queues a job. The gateway extracts the appointment (JSON schema + zod, 3 tries); code only validates the answer → `calendar_proposals` row (0140).
+  - Accept / Edit / Dismiss on the mail and under "From your mail" in Calendar; only the mailbox holder sees them.
+  - Accept → event (`email_proposal`) + an iMIP REQUEST invitation **from the holder's own mailbox via the raw-MIME send** (decision). If sending fails, the event is rolled back.
+  - Shared mailboxes are not read (decision). Calendar off → no jobs, no card.
+  - Remaining: RSVP replies, invitations for dialog-made/changed events, colleague RSVP, the `calendar.propose_event` tool.
+- **`c05c3a40` plugins** — `753fcd0`, merge `f2dd0a3`:
+  - The Assistant is an official, switchable plugin (`modules/assistant`). Off = no top-bar field/⌘K, no panel, no conversation pages or `/api/chat`, the dashboard ask box is gone; on = unchanged.
+  - **Decision for the owner's review:** the durable agent engine, kernel registry, approvals, the activity log (`/assistant/activity`) and speech stay core.
+  - Inventory of the Assistant/Memory boundary + slice list S1–S6 + owner questions Q1–Q7 in `plan/plugins-boundary.md`. Memory is already switchable and gated; what's missing is shared helpers living in Memory and core grounding still writing Memory while it's off.
+  - Not built (needs Q1/Q4/Q5): the file move, a versioned contract, company plugins alongside.
+- **`b73604ff` accessibility** — `c9381e6`, `b3bd73e`, `69c8df8`, `d0be7ce`, merge `c171d0f`, plus `13220e0`, `6e80a01` (orchestrator):
+  - Fixed: 165 tiny text sizes, 96 faded texts, 35 faint focus rings, 1 removed outline.
+  - Guard `src/routes/layout.page-a11y.spec.ts` (rules in `src/lib/a11y/page-style-audit.ts`) fails on new offenders. `REMAINING` areas: email 22, memory 17, sidebar/presence 11, brand 8, contacts 2, settings/modules 2.
+  - Not covered: card-wide `opacity-*`, em sizes, literal colours.
+- **`df14e05a` calendar** (K1 + K2) — `4a8e68f`, `f7b6f40`, merge `b19016c`:
+  - Plugin `modules/calendar`; migration 0138 adds `calendar_events`, `calendar_attendees`, `calendar_preferences`.
+  - Visibility is enforced in the service: company / busy (default) / private = "Out of office". The owner and admins get no extra view.
+  - RRULE expanded in the event's time zone; overrides as rows.
+  - `/m/calendar` with day/week/month, the event dialog, colleagues' availability (`?with=`) and the default visibility.
+  - Tools `calendar.list`, `calendar.free_busy`.
+  - **Decisions:** editing time/rule for all events restarts the series (drops per-instance changes, said in the dialog); member guests see the full event.
+  - Remaining: K3 reminders + Join/Add call + "In a meeting"; K5/K6 sync (needs the owner's OAuth apps); "this and following"; external guests in the dialog.
+- **`7fa15491` memory privacy** — `d4fffa7`, merge `352515f`:
+  - The Tasks/project trash deletes for good after a confirmation (same `deleteThoughtForUser`).
+  - **Announced move:** archive now lives only on the row's Archive button, which now also shows on done rows.
+  - Memory calls carry `contentOrigin: 'memory'` (explicit flag; a spec fails if a Memory call lacks it). For flagged calls the gateway logs sizes only, `activity_call_log.context` stays empty, and PostHog `$ai_generation` gets model/tokens/latency only; cost tracking is kept.
+  - Memory's own log lines are ids/sizes. On Memory pages, browser PostHog drops autocapture text and replay.
+  - Remaining: old log/preview rows are still stored ("Delete everything" doesn't clear `activity_call_log.context`), error messages may quote model output, Memory text shown outside `/m/memory`, and "Delete project" only dismisses.
+- **`ffa2aa98` brand website capture — blocked, not started:** needs headless Chromium (+ system libraries) on servers. That's a substrate decision for the owner (diagnosis 2026-11-11).
+- **`288dc1d2` brand material** — `500072e`, merge `1209e55`:
+  - Material tab: social header 1500×500, roll-up 850×2000 mm, posters A1/A2, T-shirt / mug / tote. The previews share a canvas, and the flyer is unchanged.
+  - Remaining: export/download for every piece (the flyer has none either), a logo (the style has none yet), AI copy.
+- **Gates on main `f2dd0a3`:**
+  - `npm run check`: 0 errors.
+  - eslint on every file changed this round: 0 errors.
+  - Before the plugins merge: unit 830 files passed, 1 failed (the a11y guard, fixed in `6e80a01`); components 370/371 (the pre-existing `app-detail-settings.svelte.spec.ts`).
+  - Final full run on `f2dd0a3`: check 0 errors; unit 831 files / 6949 passed, 0 failed; components 373/374 (the same pre-existing `app-detail-settings` failure).
+- **Not verified:** nothing in a browser, nothing on the box; e2e not run.
+
 ## 2026-11-13 — App design follows the eigenEnterprise website (main, not committed, not on the box)
 
 - **What:** the app's default theme (no active brand set) now uses the website's language from `../eigenEnterprise-website/assets/styles.css`: white page / neutral dark (#161616), grey large-radius tiles as cards (`--radius` 0.25rem → 1.25rem), black/white primary, blue focus ring (#1f43ff / #8ea2ff), yellow text selection, Geist Serif titles (h1–h3 and `font-display`, font + OFL license copied to `src/lib/assets/fonts/`). Buttons are full pills, and the solid/outline/secondary/destructive ones use mono uppercase labels; ghost and link buttons stay in Inter. Badges are mono uppercase chips. The website's signal colours are available as `signal-yellow|blue|green|ice` utilities. PWA theme colour, offline page and the unbranded install icon follow along.
