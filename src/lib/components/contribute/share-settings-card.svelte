@@ -36,7 +36,7 @@
       </p>
     </div>
     <span
-      class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium {status.enabled
+      class="shrink-0 rounded-full px-2 py-0.5 text-[13px] font-medium {status.enabled
         ? 'bg-primary/10 text-primary'
         : 'bg-foreground/[0.06] text-foreground/60'}"
       data-testid="share-enabled">{status.enabled ? 'On' : 'Off'}</span

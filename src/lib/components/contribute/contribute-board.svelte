@@ -214,7 +214,7 @@
             {#if share}
               <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-testid="contribute-sharing">
                 <span
-                  class="rounded-full px-2 py-0.5 text-[11px] {share.state === 'failed'
+                  class="rounded-full px-2 py-0.5 text-[13px] {share.state === 'failed'
                     ? 'bg-destructive/10 text-destructive'
                     : 'bg-primary/[0.06] text-foreground/70'}"
                   data-testid="contribute-share-state"
@@ -225,14 +225,14 @@
                 {/if}
                 <button
                   type="button"
-                  class="cursor-pointer text-foreground/50 hover:text-foreground"
+                  class="cursor-pointer text-muted-foreground hover:text-foreground"
                   disabled={busy === p.id}
                   onclick={() => void toggleSent(p.id)}>{sentOpen[p.id] ? 'Hide what was sent' : 'Show what was sent'}</button
                 >
                 {#if share.state !== 'not_shared'}
                   <button
                     type="button"
-                    class="cursor-pointer text-foreground/50 hover:text-destructive"
+                    class="cursor-pointer text-muted-foreground hover:text-destructive"
                     disabled={busy === p.id}
                     onclick={() => void dontShare(p.id)}>Don't share</button
                   >
@@ -248,7 +248,7 @@
                         : 'What the next update to the makers carries (the last one sent differs):'}
                     </p>
                     <pre
-                      class="mt-1 overflow-x-auto text-[11px] whitespace-pre-wrap [overflow-wrap:anywhere]"
+                      class="mt-1 overflow-x-auto text-[13px] whitespace-pre-wrap [overflow-wrap:anywhere]"
                       data-testid="contribute-sent-payload">{JSON.stringify(sent.payload, null, 2)}</pre>
                   {:else}
                     <p class="text-foreground/60">Nothing has been prepared or sent for this proposal.</p>

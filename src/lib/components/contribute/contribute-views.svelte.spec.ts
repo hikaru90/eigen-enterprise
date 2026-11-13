@@ -39,7 +39,7 @@ const hub = (over: Partial<HubProposalDto>): HubProposalDto => ({
   ...over,
 })
 
-const base = { proposals: [local], canManage: true, client: { vote: vi.fn(), update: vi.fn() }, onchanged: vi.fn(async () => {}) }
+const base = { proposals: [local], canManage: true, sharing: null, client: { vote: vi.fn(), update: vi.fn(), sentPayload: vi.fn(), dontShare: vi.fn() }, onchanged: vi.fn(async () => {}) }
 
 describe('contribute-views.svelte', () => {
   it('without the hub (module off, or not an admin) there is only the company board', async () => {

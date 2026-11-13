@@ -154,7 +154,7 @@
       <p class="mt-0.5 text-xs text-foreground/60">
         An idea, a bug, something that feels rough — everyone in the company can see and vote on it.
       </p>
-      <p class="mt-1 text-[11px] text-foreground/50" data-testid="contribute-shared-note">
+      <p class="mt-1 text-[13px] text-muted-foreground" data-testid="contribute-shared-note">
         Proposals are also shared with the eigenEnterprise makers, without names, unless the owner turned this off in
         Settings → Company.
       </p>

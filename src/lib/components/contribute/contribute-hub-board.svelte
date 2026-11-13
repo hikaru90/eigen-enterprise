@@ -41,7 +41,7 @@
               <span class="w-8 shrink-0 text-right text-sm font-medium tabular-nums" aria-label="Score">{p.score}</span>
               <div class="min-w-0 flex-1">
                 <p class="text-sm [overflow-wrap:anywhere]" lang="en">{p.summary}</p>
-                <p class="mt-1 text-xs text-foreground/55">
+                <p class="mt-1 text-xs text-muted-foreground">
                   originally {p.language} · v{p.appVersion} · {day(p.createdDay)}
                   {#if p.shippedDay}· shipped {day(p.shippedDay)}{/if}
                   · install {p.installId.slice(0, 8)}
