@@ -3,6 +3,8 @@ import { SLEEP_CONSOLIDATION_TASK_ID } from '$lib/server/scheduled-tasks/constan
 
 export const OVERNIGHT_CONSOLIDATION_JOB = 'overnight_consolidation' as const
 export const ONBOARDING_GROUNDING_PUSH_JOB = 'onboarding_grounding_push' as const
+/** Calendar K7 (modules/calendar/mail-scan.ts keeps the same name). */
+export const CALENDAR_MAIL_PROPOSAL_JOB = 'calendar_mail_proposal' as const
 export { WEBHOOK_DELIVERY_JOB }
 export const OVERNIGHT_CONSOLIDATION_TASK = SLEEP_CONSOLIDATION_TASK_ID
 

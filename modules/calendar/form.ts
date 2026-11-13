@@ -1,5 +1,5 @@
 import type { EventInput } from './service'
-import type { OccurrenceDto, Visibility } from './types'
+import type { OccurrenceDto, ProposalDto, Visibility } from './types'
 import { CalendarError } from './errors'
 import { formatRrule, parseRrule, WEEKDAYS, type Freq, type Recurrence, type Weekday } from './recurrence'
 import { localSpan, localOf, parseWall } from './time'
@@ -84,6 +84,8 @@ export type EventDraft = {
   /** Every guest's name, for the read-only view. */
   guestLabels: string[]
   externalGuests: Array<{ email: string; name: string | null }>
+  /** An appointment found in mail (K7): Save accepts it (the event + the invitation). */
+  proposalId: string | null
 }
 
 function plusHour(day: string, time: string): { day: string; time: string } {
@@ -118,6 +120,7 @@ export function newDraft(at: { day: string; time: string | null; timeZone: strin
     guests: [],
     guestLabels: [],
     externalGuests: [],
+    proposalId: null,
   }
 }
 
@@ -150,6 +153,25 @@ export function editDraft(occ: OccurrenceDto): EventDraft {
     guests: e.attendees.filter((a) => a.memberId !== null).map((a) => a.memberId!),
     guestLabels: e.attendees.map((a) => a.name),
     externalGuests: e.attendees.filter((a) => a.email !== null).map((a) => ({ email: a.email!, name: a.name === a.email ? null : a.name })),
+    proposalId: null,
+  }
+}
+
+/**
+ * The dialog for an appointment found in mail (Edit): prefilled as Accept
+ * would create it — the call's link as the place (or in the notes beside a
+ * place), the people from the mail as guests outside the company.
+ */
+export function proposalDraft(p: ProposalDto, visibility: Visibility): EventDraft {
+  return {
+    ...newDraft({ day: p.localStart.slice(0, 10), time: p.localStart.slice(11), timeZone: p.timeZone, visibility }),
+    title: p.title,
+    endDay: p.localEnd.slice(0, 10),
+    endTime: p.localEnd.slice(11),
+    location: p.location ?? p.call ?? '',
+    notes: p.location && p.call ? p.call : '',
+    externalGuests: p.attendees.map((g) => ({ email: g.email, name: g.name })),
+    proposalId: p.id,
   }
 }
 
@@ -160,7 +182,7 @@ const text = (form: FormData, key: string): string => {
 const all = (form: FormData, key: string): string[] => form.getAll(key).filter((v): v is string => typeof v === 'string')
 
 /** The posted dialog → which event (and instance) and the service input. */
-export function eventFormInput(form: FormData): { id: string | null; occurrenceStart: string | null; input: EventInput } {
+export function eventFormInput(form: FormData): { id: string | null; occurrenceStart: string | null; proposalId: string | null; input: EventInput } {
   const allDay = form.get('allDay') === 'on'
   const one = text(form, 'scope') === 'one'
   const input: EventInput = {
@@ -193,7 +215,8 @@ export function eventFormInput(form: FormData): { id: string | null; occurrenceS
     ]
   }
   const id = text(form, 'id')
-  return { id: id === '' ? null : id, occurrenceStart: one ? text(form, 'occurrenceStart') : null, input }
+  const proposalId = text(form, 'proposalId')
+  return { id: id === '' ? null : id, occurrenceStart: one ? text(form, 'occurrenceStart') : null, proposalId: proposalId === '' ? null : proposalId, input }
 }
 
 /** Today in a zone (`YYYY-MM-DD`). */

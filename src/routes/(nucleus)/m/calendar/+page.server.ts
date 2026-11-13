@@ -2,6 +2,7 @@ import type { Actions, PageServerLoad } from './$types'
 import { CalendarError } from '../../../../../modules/calendar/errors'
 import { eventFormInput, todayIn } from '../../../../../modules/calendar/form'
 import { calendarAction, calendarLoad, liveCalendarDeps, personActor } from '../../../../../modules/calendar/http'
+import { acceptProposal, dismissProposal, openProposals } from '../../../../../modules/calendar/proposals'
 import {
   createEvent,
   defaultVisibility,
@@ -19,7 +20,14 @@ import { parseView, viewDays, viewHeading, viewRange } from '../../../../../modu
  * (the default) or month in their time zone (?view=, ?date=), the dialog's
  * create / change / delete, their default visibility, and colleagues'
  * availability for the people picked (?with=, free/busy only).
+ * K7: the appointments found in the person's mail, to accept, edit (the
+ * dialog, opened with ?proposal=<id> from the mail) or dismiss.
  */
+
+async function liveProposalDeps() {
+  const { proposalDeps } = await import('$lib/server/calendar/mail-proposals')
+  return proposalDeps()
+}
 
 const zoneList = (): string[] => [...Intl.supportedValuesOf('timeZone'), 'UTC'].filter((z, i, all) => all.indexOf(z) === i)
 
@@ -44,7 +52,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     const availabilityDays = view === 'month' ? viewDays('week', date) : range.days
     const availabilityRange = viewRange(view === 'month' ? 'week' : view, date, timeZone)
     const selected = [...new Set(url.searchParams.getAll('with'))]
-    const [occurrences, members, visibility, people] = await Promise.all([
+    const [proposals, occurrences, members, visibility, people] = await Promise.all([
+      openProposals(await liveProposalDeps(), actor),
       listCalendar(d, actor, { from: range.from.toISOString(), to: range.to.toISOString() }),
       d.members(),
       defaultVisibility(d, actor),
@@ -64,8 +73,17 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       defaultVisibility: visibility,
       timeZones: zoneList(),
       availability: { selected, days: availabilityDays, people },
+      proposals,
+      editProposal: editProposalOf(proposals, url.searchParams.get('proposal')),
     }
   })
+}
+
+/** ?proposal=<id> (Edit from the mail): one of the person's open proposals, else 404. */
+function editProposalOf(proposals: Array<{ id: string }>, id: string | null): string | null {
+  if (id === null) return null
+  if (!proposals.some((p) => p.id === id)) throw new CalendarError('not_found', 'This appointment is no longer open: it was accepted or dismissed.')
+  return id
 }
 
 const text = (form: FormData, key: string): string => {
@@ -79,7 +97,12 @@ export const actions: Actions = {
     const actor = personActor(locals.user)
     const form = await request.formData()
     return calendarAction('save', async () => {
-      const { id, occurrenceStart, input } = eventFormInput(form)
+      const { id, occurrenceStart, proposalId, input } = eventFormInput(form)
+      // An appointment from mail, edited: Save accepts it (the event + the invitation).
+      if (proposalId !== null) {
+        const out = await acceptProposal(await liveProposalDeps(), actor, proposalId, input)
+        return { action: 'save' as const, ok: true, invited: out.invited }
+      }
       const d = await liveCalendarDeps()
       if (id === null) await createEvent(d, actor, input)
       else await updateEvent(d, actor, id, input, occurrenceStart ? { occurrenceStart } : {})
@@ -94,6 +117,23 @@ export const actions: Actions = {
       const occurrenceStart = text(form, 'occurrenceStart')
       await deleteEvent(await liveCalendarDeps(), actor, text(form, 'id'), occurrenceStart ? { occurrenceStart } : {})
       return { action: 'delete' as const, ok: true }
+    })
+  },
+  /** An appointment from mail as found: the event + the invitation. */
+  acceptProposal: async ({ locals, request }) => {
+    const actor = personActor(locals.user)
+    const form = await request.formData()
+    return calendarAction('acceptProposal', async () => {
+      const out = await acceptProposal(await liveProposalDeps(), actor, text(form, 'proposalId'))
+      return { action: 'acceptProposal' as const, ok: true, invited: out.invited }
+    })
+  },
+  dismissProposal: async ({ locals, request }) => {
+    const actor = personActor(locals.user)
+    const form = await request.formData()
+    return calendarAction('dismissProposal', async () => {
+      await dismissProposal(await liveProposalDeps(), actor, text(form, 'proposalId'))
+      return { action: 'dismissProposal' as const, ok: true }
     })
   },
   /** What colleagues see of a new event by default. */

@@ -1542,6 +1542,8 @@ export const userJobTypeEnum = [
   'webhook_delivery',
   'onboarding_grounding_push',
   'erpnext_invoice_push',
+  /** Calendar K7: read one received mail for an agreed appointment (modules/calendar/mail-scan.ts). */
+  'calendar_mail_proposal',
 ] as const
 export type UserJobType = (typeof userJobTypeEnum)[number]
 

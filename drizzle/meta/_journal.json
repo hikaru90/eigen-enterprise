@@ -960,6 +960,13 @@
       "when": 1795200000139,
       "tag": "0139_contact_history",
       "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1795200000140,
+      "tag": "0140_calendar_proposals",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { assignPersonalMailbox, createSharedMailbox } from '../../../../../../modules/email/inbox/service'
 import { fixture, message } from '../../../../../../modules/email/inbox/test-fixtures'
 
@@ -22,12 +22,20 @@ vi.mock('../../../../../../modules/email/inbox/live', () => ({
     bucket: async () => 'bucket',
   }),
 }))
+/** Calendar K7: the proposal side over the calendar's in-memory stores; Calendar is on in the K7 tests only. */
+const cal = vi.hoisted(() => ({ on: false, deps: null as unknown }))
+vi.mock('$lib/server/calendar/mail-proposals', () => ({
+  calendarOn: async () => cal.on,
+  proposalDeps: async () => cal.deps,
+}))
 vi.mock('../access.server', async (orig) => {
   const real = await orig<typeof import('../access.server')>()
   return { ...real, requireMember: vi.fn(async () => me) }
 })
 
 const { load, actions } = await import('./+page.server')
+const { fixture: calendarFixture } = await import('../../../../../../modules/calendar/test-fixtures')
+const { memoryProposalStore } = await import('../../../../../../modules/calendar/proposal-store')
 
 const M1 = '10000000-0000-4000-8000-000000000001'
 const M2 = '10000000-0000-4000-8000-000000000002'
@@ -44,6 +52,7 @@ type Inbox = {
   reader: { id: string; messages: Array<{ id: string }>; imagesShown: boolean } | null
   compose: { mode: string; fromMailboxId: string | null; to: string; subject: string; parentId: string | null } | null
   sent: boolean
+  proposal: { id: string; state: string; title: string } | null
 }
 
 const run = async (query = '') => {
@@ -194,5 +203,74 @@ describe('Email › Inbox compose (S5)', () => {
     await f.store.updateMailbox(anaBox, { disabledAt: new Date(), updatedAt: new Date() })
     expect(await post('send', fields)).toMatchObject({ status: 400, data: { error: 'ana.lind@example.com is disabled, so no mail can be sent from it.' } })
     expect(sent).toEqual([])
+  })
+})
+
+describe('Email › Inbox: an appointment found in the opened mail (calendar K7)', () => {
+  const PROPOSAL = '30000000-0000-4000-8000-000000000001'
+  let invitations: unknown[] = []
+
+  beforeEach(async () => {
+    cal.on = true
+    invitations = []
+    const c = calendarFixture()
+    const proposals = memoryProposalStore()
+    await proposals.insert({
+      id: PROPOSAL,
+      memberId: 'ana',
+      mailboxId: anaBox,
+      messageId: M2,
+      state: 'open',
+      title: 'Call with Mara Voss',
+      startsAt: new Date('2026-11-19T14:00:00Z'),
+      endsAt: new Date('2026-11-19T14:30:00Z'),
+      timeZone: 'Europe/Berlin',
+      location: null,
+      call: null,
+      attendees: [{ email: 'mara@sender.example', name: 'Mara Voss' }],
+      eventId: null,
+      createdAt: new Date('2026-11-12T09:01:00Z'),
+      decidedAt: null,
+    })
+    const mail = await f.store.getMessage(M2)
+    cal.deps = {
+      calendar: c.deps,
+      proposals,
+      mail: {
+        personalMail: async (userId: string, messageId: string) =>
+          userId === 'ana' && messageId === M2 ? { mailbox: { id: anaBox, address: 'ana.lind@example.com', aliases: [] }, message: mail } : null,
+        sendInvitation: async (_u: string, m: { to: unknown }) => void invitations.push(m.to),
+      },
+    }
+  })
+  afterEach(() => {
+    cal.on = false
+  })
+
+  it('shows on that mail for its holder, not on others', async () => {
+    expect((await run(`?m=${M2}`)).inbox!.proposal).toMatchObject({ id: PROPOSAL, state: 'open', title: 'Call with Mara Voss' })
+    expect((await run(`?m=${M1}`)).inbox!.proposal).toBeNull()
+    expect((await run()).inbox!.proposal).toBeNull()
+  })
+
+  it('shows nothing while Calendar is switched off, and Accept is refused then', async () => {
+    cal.on = false
+    expect((await run(`?m=${M2}`)).inbox!.proposal).toBeNull()
+    expect(await post('acceptProposal', { proposalId: PROPOSAL })).toMatchObject({ status: 403 })
+    expect(invitations).toEqual([])
+  })
+
+  it('Accept adds it and sends the invitation; the mail then says so', async () => {
+    expect(await post('acceptProposal', { proposalId: PROPOSAL })).toEqual({ action: 'acceptProposal', ok: true, invited: 1 })
+    expect(invitations).toEqual([[{ name: 'Mara Voss', address: 'mara@sender.example' }]])
+    expect((await run(`?m=${M2}`)).inbox!.proposal).toMatchObject({ state: 'accepted' })
+  })
+
+  it('Dismiss closes it; someone else can’t touch it', async () => {
+    me = { userId: 'ben', email: 'ben@home.example', isAdmin: false }
+    expect(await post('dismissProposal', { proposalId: PROPOSAL })).toMatchObject({ status: 404 })
+    me = { userId: 'ana', email: 'ana@home.example', isAdmin: false }
+    expect(await post('dismissProposal', { proposalId: PROPOSAL })).toEqual({ action: 'dismissProposal', ok: true })
+    expect((await run(`?m=${M2}`)).inbox!.proposal).toMatchObject({ state: 'dismissed' })
   })
 })

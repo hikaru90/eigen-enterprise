@@ -86,9 +86,18 @@ export function folderOf(n: ReceivedNotification): Folder {
 
 export type IngestLog = (event: 'received', fields: Record<string, string | number>) => void
 
+/** One mail newly stored in one mailbox (what the calendar reads appointments from, K7). */
+export type StoredMail = { messageId: string; mailbox: MailboxRow; folder: Folder }
+
 export type IngestDeps = {
   store: InboxStore
   raw: RawMailSource
+  /**
+   * Called once per newly stored row (not for an SNS retry's duplicate). Must
+   * stay quick (queue work, don't do it). A failure is logged with ids and
+   * does not undo the stored mail.
+   */
+  received: (mail: StoredMail) => Promise<void>
   newId?: () => string
   /** Ids, counts and sizes only. Default: console.info. */
   log?: IngestLog
@@ -176,8 +185,14 @@ export async function ingestReceived(deps: IngestDeps, n: ReceivedNotification, 
     }
     const attachments: AttachmentRow[] = mail.attachments.map((a) => ({ id: newId(), messageId: id, ...a, blocked, createdAt: row.createdAt }))
     const out = await deps.store.insertReceived(row, attachments)
-    if (out.stored) stored += 1
-    else duplicates += 1
+    if (out.stored) {
+      stored += 1
+      try {
+        await deps.received({ messageId: id, mailbox, folder })
+      } catch (err) {
+        console.error('[inbox] after-receive work failed', { messageId: id, mailboxId: mailbox.id, error: err instanceof Error ? err.message : String(err) })
+      }
+    } else duplicates += 1
   }
   log('received', { sesMessageId, stored, duplicates, skipped, sizeBytes: raw.byteLength })
   return { stored, duplicates, skipped }

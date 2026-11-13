@@ -3,20 +3,27 @@
   import type { EventDraft } from '../../../../../modules/calendar/form'
   import type { OccurrenceDto, Visibility } from '../../../../../modules/calendar/types'
   import type { PageProps } from './$types'
+  import { onMount } from 'svelte'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
   import PageFrame from '$lib/components/page/page-frame.svelte'
   import PageHeader from '$lib/components/page/page-header.svelte'
   import { Button } from '$lib/components/ui/button'
   import { docTitle } from '$lib/shell/title'
-  import { editDraft, newDraft } from '../../../../../modules/calendar/form'
+  import { editDraft, newDraft, proposalDraft } from '../../../../../modules/calendar/form'
   import { VISIBILITIES, VISIBILITY_COPY } from '../../../../../modules/calendar/types'
   import AvailabilityPanel from '../../../../../modules/calendar/ui/availability-panel.svelte'
   import CalendarViews from '../../../../../modules/calendar/ui/calendar-views.svelte'
   import EventDialog from '../../../../../modules/calendar/ui/event-dialog.svelte'
   import { shiftDate, VIEW_LABELS, VIEWS, type View } from '../../../../../modules/calendar/ui/layout'
+  import ProposalCard from '../../../../../modules/calendar/ui/proposal-card.svelte'
+  import { inboxHref } from '../../../../../modules/email/inbox/url'
 
-  /** /m/calendar: your calendar by day, week or month; the event dialog; colleagues' availability. */
+  /**
+   * /m/calendar: your calendar by day, week or month; the event dialog;
+   * colleagues' availability; appointments found in your mail (K7) to accept,
+   * edit or dismiss (?proposal=<id> opens one in the dialog).
+   */
   let { data, form }: PageProps = $props()
 
   const base = resolve('/m/calendar')
@@ -42,6 +49,16 @@
     dialogOpen = true
   }
   const onopen = (o: OccurrenceDto) => show(editDraft(o))
+  const inbox = resolve('/m/email/inbox')
+  function editProposal(id: string) {
+    const p = data.proposals.find((x) => x.id === id)
+    if (p) show(proposalDraft(p, data.defaultVisibility as Visibility))
+  }
+
+  // Edit from the mail (a link with ?proposal=): the dialog opens once the page shows.
+  onMount(() => {
+    if (data.editProposal) editProposal(data.editProposal)
+  })
   const oncreate = (day: string, time: string | null) =>
     show(newDraft({ day, time, timeZone: data.timeZone, visibility: data.defaultVisibility as Visibility }))
 
@@ -79,6 +96,22 @@
       {/each}
     </nav>
   </div>
+
+  {#if data.proposals.length > 0}
+    <section class="mt-5 grid gap-2" aria-labelledby="calendar-proposals-heading" data-testid="calendar-proposals">
+      <h2 id="calendar-proposals-heading" class="text-sm font-semibold">From your mail</h2>
+      <div class="grid gap-2 md:grid-cols-2">
+        {#each data.proposals as p (p.id)}
+          <ProposalCard
+            proposal={p}
+            heading="Appointment found in your mail"
+            onedit={() => editProposal(p.id)}
+            mailHref={inboxHref(inbox, { box: p.mail.mailboxId, m: p.mail.messageId })}
+          />
+        {/each}
+      </div>
+    </section>
+  {/if}
 
   <div class="mt-4 grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
     <div class="min-w-0">

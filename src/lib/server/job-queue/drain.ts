@@ -51,6 +51,7 @@ import { processOnboardingGroundingPushJob } from '$lib/server/grounding/onboard
 import { markOvernightJobActive, markOvernightJobInactive } from './active-overnight-jobs'
 import { createAdminSql } from './admin-db'
 import {
+  CALENDAR_MAIL_PROPOSAL_JOB,
   JOB_QUEUE_BATCH_LIMIT,
   ONBOARDING_GROUNDING_PUSH_JOB,
   OVERNIGHT_CONSOLIDATION_JOB,
@@ -185,6 +186,12 @@ async function dispatchJob(job: ClaimedJob): Promise<void> {
     case ONBOARDING_GROUNDING_PUSH_JOB:
       await processOnboardingGroundingPushJob(job.userId)
       return
+    case CALENDAR_MAIL_PROPOSAL_JOB: {
+      // Skips itself while Calendar is switched off (owner, 2026-11-12).
+      const { processCalendarMailProposalJob } = await import('$lib/server/calendar/mail-proposals')
+      await processCalendarMailProposalJob(job)
+      return
+    }
     default:
       throw new Error(`Unknown job type: ${job.jobType}`)
   }

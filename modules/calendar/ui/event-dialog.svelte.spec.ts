@@ -2,7 +2,7 @@ import type { EventDraft } from '../form'
 import { describe, expect, it } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
-import { eventFormInput, newDraft, NO_REPEAT } from '../form'
+import { eventFormInput, newDraft, NO_REPEAT, proposalDraft } from '../form'
 import EventDialog from './event-dialog.svelte'
 
 const members = [
@@ -48,6 +48,7 @@ describe('event-dialog.svelte', () => {
     expect(posted()).toEqual({
       id: null,
       occurrenceStart: null,
+      proposalId: null,
       input: {
         title: 'Call with Northwind',
         allDay: false,
@@ -119,5 +120,43 @@ describe('event-dialog.svelte', () => {
     await expect.element(page.getByTestId('event-readonly')).toHaveTextContent('Room 2')
     await expect.element(page.getByTestId('event-readonly')).toHaveTextContent('Ben Ode, Mara Voss')
     expect(page.getByTestId('event-form').query()).toBeNull()
+  })
+
+  it('an appointment from mail: says nothing is added yet, posts the proposal, keeps the people from the mail as guests', async () => {
+    render(EventDialog, {
+      open: true,
+      draft: proposalDraft(
+        {
+          id: 'p-1',
+          state: 'open',
+          title: 'Call with Mara Voss',
+          start: '2026-11-19T14:00:00.000Z',
+          end: '2026-11-19T14:30:00.000Z',
+          timeZone: 'Europe/Berlin',
+          localStart: '2026-11-19T15:00',
+          localEnd: '2026-11-19T15:30',
+          location: null,
+          call: 'https://meet.example/abc',
+          attendees: [{ email: 'mara@sender.example', name: 'Mara Voss' }],
+          eventId: null,
+          mail: { messageId: 'm-1', mailboxId: 'b-1', subject: 'Re: Call?', from: { name: 'Mara Voss', address: 'mara@sender.example' } },
+        },
+        'busy',
+      ),
+      members,
+      timeZones,
+    })
+    await expect.element(page.getByRole('heading', { name: 'Appointment from mail' })).toBeInTheDocument()
+    await expect.element(page.getByText('Not on your calendar yet. Saving adds it and sends the invitation to the guests outside the company.')).toBeInTheDocument()
+    await expect.element(page.getByTestId('event-external-guest')).toHaveTextContent('Mara Voss <mara@sender.example>')
+    await expect.element(page.getByRole('button', { name: 'Save and send invitation' })).toBeInTheDocument()
+    expect(posted()).toMatchObject({
+      id: null,
+      proposalId: 'p-1',
+      input: { title: 'Call with Mara Voss', start: '2026-11-19T15:00', end: '2026-11-19T15:30', timeZone: 'Europe/Berlin', location: 'https://meet.example/abc' },
+    })
+    expect(posted().input.attendees).toEqual([{ email: 'mara@sender.example', name: 'Mara Voss' }])
+    await page.getByRole('button', { name: 'Remove' }).click()
+    await expect.element(page.getByRole('button', { name: 'Save', exact: true })).toBeInTheDocument()
   })
 })
