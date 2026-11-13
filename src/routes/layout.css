@@ -4,7 +4,15 @@
 @import '@fontsource/inter/latin-400.css';
 @import '@fontsource/inter/latin-500.css';
 @import '@fontsource/geist-mono/latin-400.css';
-@import '@fontsource/unifrakturmaguntia/400.css';
+
+/* Geist Serif: the website's title voice (eigenEnterprise-website). */
+@font-face {
+  font-family: 'Geist Serif';
+  src: url('../lib/assets/fonts/geist-serif-latin-variable-normal.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
 
 @font-face {
   font-family: 'MontserratThin';
@@ -20,32 +28,34 @@
 @layer base {
   :root {
     color-scheme: light;
-    /* Eigen — DESIGN.md (light) */
-    --background: #e8ede5;
+    /* eigenEnterprise website language (../eigenEnterprise-website/assets/styles.css):
+       white page, grey large-radius tiles, black pills, blue focus. */
+    --background: #ffffff;
     /* Hex for meta theme-color — Android PWA title bar does not accept oklch(). */
-    --theme-color: #e8ede5;
-    --foreground: #111111;
-    --card: #ffffff;
-    --card-foreground: #111111;
+    --theme-color: #ffffff;
+    --foreground: #000000;
+    --card: #efefef;
+    --card-foreground: #000000;
     --popover: #ffffff;
-    --popover-foreground: #111111;
-    --primary: #111111;
+    --popover-foreground: #000000;
+    --primary: #000000;
     --primary-foreground: #ffffff;
-    --secondary: #f0f3f0;
-    --secondary-foreground: #111111;
-    --muted: #f0f3f0;
+    --secondary: #e4e4e4;
+    --secondary-foreground: #000000;
+    --muted: #e4e4e4;
     /* WCAG 2.1 AA (Contribute b73604ff): every pair below is held to 4.5:1
        (text) / 3:1 (input boundary, focus ring) by src/routes/layout.contrast.spec.ts.
        --border stays faint on purpose: it only draws decorative separators. */
-    --muted-foreground: #666666;
-    --accent: #f0f3f0;
-    --accent-foreground: #111111;
+    --muted-foreground: #5c5c5c;
+    --accent: #e4e4e4;
+    --accent-foreground: #000000;
     --destructive: oklch(0.45 0.185 27.325);
     /* Something is on / working (status pill "Active" dot); AA as text too. */
     --success: oklch(0.5 0.14 150);
-    --border: rgb(17 17 17 / 10%);
-    --input: rgb(17 17 17 / 47%);
-    --ring: #666666;
+    --border: rgb(0 0 0 / 10%);
+    --input: rgb(0 0 0 / 47%);
+    /* The website's focus blue. */
+    --ring: #1f43ff;
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
@@ -55,16 +65,21 @@
     --gradient-eigen: linear-gradient(90deg, #22e876 0%, #8fe01f 60%, #22e876 99%);
     --color-eigen-green: #22e876;
     --color-eigen-lime: #8fe01f;
-    /* DESIGN: capture button ~4px; cards sharp */
-    --radius: 0.25rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.141 0.005 285.823);
-    --sidebar-primary: oklch(0.21 0.006 285.885);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.967 0.001 286.375);
-    --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-    --sidebar-border: oklch(0.92 0.004 286.32);
-    --sidebar-ring: oklch(0.705 0.015 286.067);
+    /* Website signal colours (the same in dark mode): highlights, selection. */
+    --signal-yellow: #ffc800;
+    --signal-blue: #1f43ff;
+    --signal-green: #2ee86a;
+    --signal-ice: #dcedf3;
+    /* Website tiles are large-radius (18–40px); --radius is the card step. */
+    --radius: 1.25rem;
+    --sidebar: #f7f7f7;
+    --sidebar-foreground: #000000;
+    --sidebar-primary: #000000;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #e4e4e4;
+    --sidebar-accent-foreground: #000000;
+    --sidebar-border: rgb(0 0 0 / 10%);
+    --sidebar-ring: #1f43ff;
     /* Scrim behind dialogs/drawers (C3): an active set tints it via the emitter. */
     --overlay: #000000;
   }
@@ -74,12 +89,17 @@
   }
 
   /* C3: headings take the active set's heading face (its display font, via
-     the emitter's --font-heading alias); with no active set the alias is
-     unset and headings keep the body face, exactly as before. */
+     the emitter's --font-heading alias); with no active set they take the
+     app's display face, Geist Serif (the website's title voice). */
   h1,
   h2,
   h3 {
-    font-family: var(--font-heading, var(--font-sans));
+    font-family: var(--font-heading, var(--font-display));
+  }
+
+  ::selection {
+    background: var(--signal-yellow);
+    color: #000000;
   }
 
   body {
@@ -106,7 +126,7 @@
   input,
   textarea,
   select {
-    @apply border-input bg-card text-foreground placeholder:text-muted-foreground;
+    @apply border-input bg-popover text-foreground placeholder:text-muted-foreground;
   }
   * {
     @apply border-border outline-ring;
@@ -181,40 +201,40 @@
 }
 
 .dark {
-  /* Soft dark with a hint of eigen green (hue ~152), not cool zinc gray */
-  --background: oklch(0.215 0.015 152);
-  --theme-color: #141c16;
-  --foreground: oklch(0.985 0.005 152);
-  --card: oklch(0.27 0.017 152);
-  --card-foreground: oklch(0.985 0.005 152);
-  --popover: oklch(0.27 0.017 152);
-  --popover-foreground: oklch(0.985 0.005 152);
-  --primary: oklch(0.92 0.01 152);
-  --primary-foreground: oklch(0.22 0.015 152);
-  --secondary: oklch(0.28 0.015 152);
-  --secondary-foreground: oklch(0.985 0.005 152);
-  --muted: oklch(0.28 0.015 152);
-  --muted-foreground: oklch(0.705 0.02 152);
-  --accent: oklch(0.28 0.015 152);
-  --accent-foreground: oklch(0.985 0.005 152);
+  /* Website dark: neutral greys, no hue. */
+  --background: #161616;
+  --theme-color: #161616;
+  --foreground: #f2f2f2;
+  --card: #262626;
+  --card-foreground: #f2f2f2;
+  --popover: #1f1f1f;
+  --popover-foreground: #f2f2f2;
+  --primary: #ffffff;
+  --primary-foreground: #000000;
+  --secondary: #333333;
+  --secondary-foreground: #f2f2f2;
+  --muted: #333333;
+  --muted-foreground: #a8a8a8;
+  --accent: #333333;
+  --accent-foreground: #f2f2f2;
   --destructive: oklch(0.765 0.14 22.216);
   --success: oklch(0.75 0.16 150);
-  --border: oklch(0.92 0.02 152 / 12%);
-  --input: oklch(0.92 0.02 152 / 40%);
-  --ring: oklch(0.552 0.04 152);
+  --border: rgb(255 255 255 / 10%);
+  --input: rgb(255 255 255 / 40%);
+  --ring: #8ea2ff;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.22 0.015 152);
-  --sidebar-foreground: oklch(0.985 0.005 152);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.28 0.015 152);
-  --sidebar-accent-foreground: oklch(0.985 0.005 152);
-  --sidebar-border: oklch(0.92 0.02 152 / 12%);
-  --sidebar-ring: oklch(0.552 0.04 152);
+  --sidebar: #1b1b1b;
+  --sidebar-foreground: #f2f2f2;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: #333333;
+  --sidebar-accent-foreground: #f2f2f2;
+  --sidebar-border: rgb(255 255 255 / 10%);
+  --sidebar-ring: #8ea2ff;
 }
 
 /* Fonts are a NON-inline theme block on purpose (B4): the font-* utilities
@@ -229,7 +249,7 @@
   --text-xs: 0.8125rem;
   --text-xs--line-height: calc(1.125 / 0.8125);
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'UnifrakturMaguntia', ui-serif, Georgia, serif;
+  --font-display: 'Geist Serif', ui-serif, Georgia, serif;
   --font-mono:
     'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
     'Courier New', monospace;
@@ -269,6 +289,10 @@
   --color-foreground: var(--foreground);
   --color-background: var(--background);
   --color-overlay: var(--overlay);
+  --color-signal-yellow: var(--signal-yellow);
+  --color-signal-blue: var(--signal-blue);
+  --color-signal-green: var(--signal-green);
+  --color-signal-ice: var(--signal-ice);
   /* C3 (B4 gap): a set's own radius scale (--radius-sm..4xl) wins; without it
      the steps derive from --radius. Inline on purpose: the var() resolves on
      the element, so a scoped re-declaration (brand/system) re-derives too. */
@@ -298,36 +322,36 @@
   .marketing-light-theme {
     color-scheme: light;
     --background: #ffffff;
-    --foreground: #111111;
-    --card: #ffffff;
-    --card-foreground: #111111;
+    --foreground: #000000;
+    --card: #efefef;
+    --card-foreground: #000000;
     --popover: #ffffff;
-    --popover-foreground: #111111;
-    --primary: #111111;
+    --popover-foreground: #000000;
+    --primary: #000000;
     --primary-foreground: #ffffff;
-    --secondary: #f0f3f0;
-    --secondary-foreground: #111111;
-    --muted: #f0f3f0;
-    --muted-foreground: #666666;
-    --accent: #f0f3f0;
-    --accent-foreground: #111111;
+    --secondary: #e4e4e4;
+    --secondary-foreground: #000000;
+    --muted: #e4e4e4;
+    --muted-foreground: #5c5c5c;
+    --accent: #e4e4e4;
+    --accent-foreground: #000000;
     /* Re-declared so OS dark mode cannot leak .dark's light red onto this white page. */
-    --destructive: oklch(0.495 0.2 27.325);
+    --destructive: oklch(0.45 0.185 27.325);
     --success: oklch(0.5 0.14 150);
-    --border: rgb(17 17 17 / 10%);
-    --input: rgb(17 17 17 / 47%);
-    --ring: #666666;
+    --border: rgb(0 0 0 / 10%);
+    --input: rgb(0 0 0 / 47%);
+    --ring: #1f43ff;
     /* The app shell's sidebar sits inside this light wrapper: its tokens must
        be light too, or the system dark theme paints a dark sidebar under
        this wrapper's dark text (black on black). */
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.141 0.005 285.823);
-    --sidebar-primary: oklch(0.21 0.006 285.885);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.967 0.001 286.375);
-    --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-    --sidebar-border: oklch(0.92 0.004 286.32);
-    --sidebar-ring: oklch(0.705 0.015 286.067);
+    --sidebar: #f7f7f7;
+    --sidebar-foreground: #000000;
+    --sidebar-primary: #000000;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #e4e4e4;
+    --sidebar-accent-foreground: #000000;
+    --sidebar-border: rgb(0 0 0 / 10%);
+    --sidebar-ring: #1f43ff;
   }
 }
 

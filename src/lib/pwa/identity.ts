@@ -10,7 +10,7 @@ import { PRODUCT_NAME } from './manifest'
  */
 
 /** The app's own tokens (src/routes/layout.css :root) when no brand is active. */
-const APP_TOKENS = { primary: '#111111', primaryForeground: '#ffffff', background: '#e8ede5' }
+const APP_TOKENS = { primary: '#000000', primaryForeground: '#ffffff', background: '#ffffff' }
 
 export type IdentityTokens = {
   name: string

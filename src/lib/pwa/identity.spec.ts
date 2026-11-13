@@ -23,9 +23,9 @@ describe('identityTokens', () => {
   it("uses the app's own colors without an active brand (the shell's own badge colors)", () => {
     expect(identityTokens('Acme', null)).toMatchObject({
       initial: 'A',
-      primary: '#111111',
+      primary: '#000000',
       primaryForeground: '#ffffff',
-      background: '#e8ede5',
+      background: '#ffffff',
     })
   })
 
@@ -49,9 +49,9 @@ describe('identityTokens', () => {
 describe('identityColors', () => {
   it('turns the brand tokens into hex for icons and the manifest', () => {
     expect(identityColors(identityTokens('Acme', null))).toEqual({
-      tile: '#111111',
+      tile: '#000000',
       glyph: '#ffffff',
-      background: '#e8ede5',
+      background: '#ffffff',
     })
     const c = identityColors(identityTokens('Acme', brand))
     for (const v of Object.values(c)) expect(v).toMatch(/^#[0-9a-f]{6}$/)

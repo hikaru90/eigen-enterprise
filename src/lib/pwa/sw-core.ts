@@ -91,9 +91,9 @@ export const OFFLINE_HTML = `<!doctype html>
 <style>
   :root { color-scheme: light dark; }
   body { margin: 0; min-height: 100dvh; display: grid; place-items: center; font-family: system-ui, sans-serif;
-    background: #e8ede5; color: #141c16; text-align: center; padding: 1.5rem; box-sizing: border-box; }
-  @media (prefers-color-scheme: dark) { body { background: #141c16; color: #e8ede5; } }
-  button { font: inherit; padding: 0.6rem 1.2rem; border-radius: 0.5rem; border: 1px solid currentColor;
+    background: #ffffff; color: #000000; text-align: center; padding: 1.5rem; box-sizing: border-box; }
+  @media (prefers-color-scheme: dark) { body { background: #161616; color: #f2f2f2; } }
+  button { font: inherit; padding: 0.6rem 1.2rem; border-radius: 999px; border: 1px solid currentColor;
     background: transparent; color: inherit; }
 </style></head>
 <body><main><h1 style="font-size:1.25rem">You're offline</h1>

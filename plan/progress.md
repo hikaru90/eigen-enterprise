@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-13 — App design follows the eigenEnterprise website (main, not committed, not on the box)
+
+- **What:** the app's default theme (no active brand set) now uses the website's language from `../eigenEnterprise-website/assets/styles.css`: white page / neutral dark (#161616), grey large-radius tiles as cards (`--radius` 0.25rem → 1.25rem), black/white primary, blue focus ring (#1f43ff / #8ea2ff), yellow text selection, Geist Serif titles (h1–h3 and `font-display`, font + OFL license copied to `src/lib/assets/fonts/`). Buttons are full pills, and the solid/outline/secondary/destructive ones use mono uppercase labels; ghost and link buttons stay in Inter. Badges are mono uppercase chips. The website's signal colours are available as `signal-yellow|blue|green|ice` utilities. PWA theme colour, offline page and the unbranded install icon follow along.
+- **Not changed:** page layouts, the 13px text floor (the website's 11px chips stay at 13px), WCAG AA pairs (all 145 contrast checks pass; the signed-in area's error red is now oklch(0.45 …) like the rest, so it stays AA on the grey cards). An active brand set still overrides everything.
+- **Decision log (owner may veto):** (1) the sage-green background (#e8ede5) and the green-tinted dark theme are replaced by the website's neutral greys; (2) the default display face changes from UnifrakturMaguntia to Geist Serif, and headings without a brand set now use it instead of Inter. Neither is a removed function, but both are visible changes everywhere.
+- **Checked:** typecheck 0 errors; contrast, PWA and brand unit tests; UI primitive component tests. **Not checked:** the full component and e2e suites, and how it looks on the box (needs commit + release + install).
+
 ## 2026-11-13 — Contribute phone-home, hub (plan §3; worktree branch, not merged, not on the box)
 
 The central board's side, built on the foundation (`16d29d0`: contract + migration 0137). Commits `e7896e5` (kernel namespace), `1571371` (module + API), `9fb393c` ("All installs" tab), `6901d98` (move into `modules/contribute/hub/`), plus this entry.
