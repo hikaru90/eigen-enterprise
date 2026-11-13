@@ -9,6 +9,7 @@ import {
   auditContrast,
   type ContrastPair,
 } from '../../modules/brand/style-format/contrast'
+import { cssBlock, stripCssComments, themeContexts } from '../lib/a11y/theme-contexts'
 
 /**
  * Accessibility of the app's own theme (Contribute b73604ff, round 3 W6):
@@ -17,41 +18,11 @@ import {
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const css = readFileSync(path.join(here, 'layout.css'), 'utf-8').replace(/\/\*[\s\S]*?\*\//g, '')
+const css = stripCssComments(readFileSync(path.join(here, 'layout.css'), 'utf-8'))
+const block = (selector: string) => cssBlock(css, selector)
 
-/**
- * The custom-property declarations of the first block whose line starts with
- * `selector {` (so `.dark {` never matches `:root.dark {`); no nested rules inside.
- */
-function block(selector: string): Record<string, string> {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const start = css.search(new RegExp(`^[ \\t]*${escaped} \\{`, 'm'))
-  if (start < 0) throw new Error(`layout.css has no "${selector} {" block`)
-  const open = css.indexOf('{', start)
-  const close = css.indexOf('}', open)
-  const body = css.slice(open + 1, close)
-  if (body.includes('{')) throw new Error(`"${selector}" block has nested rules`)
-  const vars: Record<string, string> = {}
-  for (const m of body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) vars[m[1]] = m[2].trim()
-  return vars
-}
-
-const root = block(':root')
-const dark = block('.dark')
-const marketing = block('.marketing-light-theme')
-
-/**
- * Where the tokens are composed (no active brand set): signed-out pages read
- * :root (light) or :root + .dark; the signed-in nucleus pins its subtree with
- * .marketing-light-theme, which in OS dark mode sits on top of .dark — so any
- * role the wrapper does not re-declare leaks the dark value into the light page.
- */
-const CONTEXTS: Record<string, Record<string, string>> = {
-  'signed-out, light': root,
-  'signed-out, dark': { ...root, ...dark },
-  'nucleus, light': { ...root, ...marketing },
-  'nucleus, OS dark mode': { ...root, ...dark, ...marketing },
-}
+/** Where the tokens are composed (no active brand set); see themeContexts. */
+const CONTEXTS = themeContexts(css)
 
 /** App-shell surfaces beyond the semantic roles (src/lib/components/app-shell.svelte). */
 const SHELL_PAIRS: ContrastPair[] = [
