@@ -77,12 +77,26 @@ describe('merged module manifests', () => {
     }
   })
 
-  it('the orchestrator, members and contribute modules are internal (no owner-facing card); the others are not', () => {
+  it('the orchestrator, members, contribute and contribute-hub modules are internal (no owner-facing card); the others are not', () => {
     expect(moduleManifests.filter((m) => m.internal === true).map((m) => m.id)).toEqual([
       'orchestrator',
       'members',
       'contribute',
+      'contribute-hub',
     ])
+  })
+
+  it('the contribute hub is never self-seeded: it stays off (its tools fail closed) until the owner switches it on', async () => {
+    const { kernel: k, activations } = kernel()
+    await ensureSystemModulesActive(k)
+    await ensureSystemModulesActive(k)
+    expect(SYSTEM_MODULE_IDS as readonly string[]).not.toContain('contribute-hub')
+    expect(await activations.get('contribute-hub')).toBe(false)
+    expect(await k.modules.isToolActive('contribute_hub.list')).toBe(false)
+    const agent: ToolContext = { principal: { id: 'agent', kind: 'agent', roles: ['agent'] }, requestId: 'r-hub' }
+    await expect(k.registry.execute('contribute_hub.list', {}, agent)).rejects.toMatchObject({ code: 'module_inactive' })
+    await activations.set('contribute-hub', true)
+    expect(await k.modules.isToolActive('contribute_hub.get')).toBe(true)
   })
 
   it('no retired module id remains a module', () => {

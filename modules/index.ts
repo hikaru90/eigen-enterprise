@@ -38,6 +38,8 @@ import { createChatGateway, type ChatGatewayBoot } from './chat-gateway/index'
 import { telegramClientFromEnv } from './chat-gateway/telegram'
 import { CONTACTS_MODULE_ID, CONTACTS_WRITE_TOOLS, contactsManifest } from './contacts/manifest'
 import { createContactsTools } from './contacts/tools'
+import { contributeHubManifest } from './contribute/hub/manifest'
+import { createContributeHubTools } from './contribute/hub/tools'
 import { CONTRIBUTE_MODULE_ID, contributeManifest } from './contribute/manifest'
 import { createContributeTools } from './contribute/tools'
 import { driveSourceWriter } from './drive'
@@ -100,6 +102,9 @@ export const moduleManifests = [
   contactsManifest,
   reposManifest,
   calendarManifest,
+  // The central Contribute board (plan/contribute-phone-home.md §3): registered everywhere, never
+  // self-seeded — off until the owner switches it on, on os.cerberusblue.com only.
+  contributeHubManifest,
 ] as const
 
 /**
@@ -184,6 +189,8 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   'calls.start',
   // Contacts: an agent's adds, edits and logged contacts wait on the approval mode (internal).
   ...CONTACTS_WRITE_TOOLS,
+  // Central board: revoking an install refuses it from now on (destructive for that install).
+  'contribute_hub.revoke_install',
 ])
 
 export type BootstrapKernelOptions = {
@@ -302,6 +309,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createMessagesTools(),
     ...createDriveTools(),
     ...createContributeTools(),
+    ...createContributeHubTools(),
     ...createCallsTools({ service: liveCallsService }),
     ...createContactsTools(),
     ...createReposTools(),

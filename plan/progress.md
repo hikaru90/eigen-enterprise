@@ -2,6 +2,25 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-13 — Contribute phone-home, hub (plan §3; worktree branch, not merged, not on the box)
+
+The central board's side, built on the foundation (`16d29d0`: contract + migration 0137). Commits `e7896e5` (kernel namespace), `1571371` (module + API), `9fb393c` ("All installs" tab), `6901d98` (move into `modules/contribute/hub/`), plus this entry.
+- **Module `contribute-hub`** (code in `modules/contribute/hub/`, see the boundary decision below): internal, registered everywhere, **not** in `SYSTEM_MODULE_IDS` — off until the owner switches it on (`kernel.module_activate`, on os.cerberusblue.com only). Tools `contribute_hub.list` / `contribute_hub.get` (read, admin + agent) and `contribute_hub.revoke_install` (mutate, `approvalRisk: 'destructive'`, in `APPROVAL_REQUIRED_TOOLS`). Postgres store + in-memory store + pg spec.
+- **API** (`src/routes/api/hub/**`): `POST /register`, `PUT|DELETE /contributions/:remoteId`, `DELETE /installs/:installId`. No session; signature per request (`verifyHubRequest`). 404 while the module is off, nothing else.
+- **"All installs" tab** on `/contribute`: only for owner/admins and only while the hub is on; grouped by status, then kind and area, with install count and summed score; read-only, no votes, no authors.
+- **Decisions:**
+  - Check order for a signed request: unknown install / bad or stale signature → 401, revoked → 403 (only after the signature holds), replayed signature (sha256 of it in `hub_seen_signatures`, pruned past the 5-min window on each request) → 401, more than 60/h → 429 (counted only after the signature verifies, so nobody can burn another install's budget), then the strict body → 400. The body is read once as text, verified, then parsed.
+  - Register stays unsigned (plan §3), but the key must parse as an Ed25519 SPKI key (400 otherwise). It counts toward the install's hourly limit. Same id + key again → 200 (app version refreshed); another key → 409; a revoked install → 403.
+  - PUT is idempotent: an identical body writes nothing and answers `200 {outcome:'unchanged'}`; a new row is 201 `created`, a change is 200 `updated` (`received_at` kept). `remote_id` in the body must equal the path (400).
+  - DELETE carries **no body** (a body → 400). Deleting a proposal that is not there is still 200 `{deleted:false}`, so a retried withdrawal never lands in the outbox's "4xx = failed". `DELETE /installs/:id` only for the install's own id (403 otherwise); it cascades its proposals, and the id may register again afterwards.
+  - Revoking keeps what the install already shared; a revoked install cannot withdraw it either (403 everywhere). The owner deletes by hand if needed.
+  - `/api/hub` is listed in `CORE_ROUTES` (`src/lib/plugins/routes.ts`): the plugin gate passes it, and the routes answer 404 themselves while the hub is off. JSON bodies, so the CSRF form check doesn't apply; no CSRF exemption needed.
+  - Where the code lives: `modules/contribute/hub/`, not `modules/contribute-hub/`. The boundary guard (`modules/boundaries.spec.ts`) allows zero cross-module imports by directory, with its declared-edge policy pinned empty. The hub has to use Contribute's wire contract (`share/contract.ts`) and vocabulary (`types.ts`) as they are, not forked. So the hub is a second manifest (`contribute-hub`) inside the Contribute feature's directory. Its activation, tools and namespace are its own.
+  - Kernel: `toolNamespaces` now accept the same characters as a tool name's prefix (underscore), so `contribute-hub` owns `contribute_hub.*` as the plan names them (`manifest-schema.ts`, spec in `modules-namespaces.spec.ts`).
+  - Settings → Plugins: the core line leaves out the hub where it is off (it is internal, so it would otherwise show up as "core" on every install).
+- **Open:** being internal (core), the hub cannot be switched off again with `kernel.module_deactivate` (`core_module`). The agent may also switch it on without approval, like any module, which would make that install answer `/api/hub/*`. Register has no proof of key possession, and the per-install limit doesn't stop a flood of fresh install ids (the plan accepts open registration). No e2e yet (plan §6 step 5).
+- **Next:** the install side (outbox, worker, Settings card) from the other workstream; then e2e against a mock hub.
+
 ## 2026-11-13 — Plan: Contribute phone-home (plan only, nothing built)
 
 Owner: "we need it to be local to the company, but also send it to a place i own without personal informations". Plan: [`plan/contribute-phone-home.md`](contribute-phone-home.md).

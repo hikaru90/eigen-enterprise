@@ -120,6 +120,7 @@ export default defineConfig({
       'src/routes/timeline/temporal-event-delete-button.svelte.spec.ts',
       'src/lib/components/contribute/contribute-composer.svelte.spec.ts',
       'src/lib/components/contribute/contribute-board.svelte.spec.ts',
+      'src/lib/components/contribute/contribute-views.svelte.spec.ts',
       'src/lib/voice/voice-dictation.svelte.spec.ts',
       'modules/brand/water-flow.svelte.spec.ts',
       'modules/contacts/ui/*.svelte.spec.ts',

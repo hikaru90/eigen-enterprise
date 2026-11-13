@@ -79,6 +79,29 @@ describe('ModuleRegistry tool namespaces', () => {
     ).toThrow(/tool repo.merge is outside the namespaces of module email/)
   })
 
+  it("a namespace may use the same characters as a tool name's prefix (contribute-hub owns contribute_hub.*)", () => {
+    const registry = new ModuleRegistry(new InMemoryActivationStore())
+    registry.register({
+      id: 'contribute-hub',
+      name: 'Contribute hub',
+      version: '0.1.0',
+      toolNamespaces: ['contribute-hub', 'contribute_hub'],
+      tools: ['contribute_hub.list'],
+      permissions: { roles: ['admin'] },
+    })
+    expect(registry.ownerOfNamespace('contribute_hub')?.id).toBe('contribute-hub')
+    expect(() =>
+      registry.register({
+        id: 'other',
+        name: 'Other',
+        version: '0.1.0',
+        toolNamespaces: ['other', 'Bad.ns'],
+        tools: [],
+        permissions: { roles: ['admin'] },
+      }),
+    ).toThrow(/invalid module manifest other: toolNamespaces/)
+  })
+
   it('rejects toolNamespaces that omit the module id itself', () => {
     const registry = new ModuleRegistry(new InMemoryActivationStore())
     expect(() =>

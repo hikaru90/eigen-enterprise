@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageProps } from './$types'
   import { invalidate } from '$app/navigation'
-  import ContributeBoard from '$lib/components/contribute/contribute-board.svelte'
+  import ContributeViews from '$lib/components/contribute/contribute-views.svelte'
   import PageFrame from '$lib/components/page/page-frame.svelte'
   import PageHeader from '$lib/components/page/page-header.svelte'
   import { CONTRIBUTE_DEPENDENCY } from '$lib/contribute/board'
@@ -23,8 +23,9 @@
     description={`Ideas, bugs and polish requests from everyone at ${data.companyName ?? 'your company'}. Propose one with Contribute at the top right and vote for the ones you want most; an agent picks them up from here.`}
   />
   <div class="mt-6">
-    <ContributeBoard
+    <ContributeViews
       proposals={data.proposals}
+      hub={data.hub}
       canManage={data.canManage}
       {client}
       onchanged={() => invalidate(CONTRIBUTE_DEPENDENCY)}
