@@ -174,7 +174,7 @@
         <ul class="flex flex-col gap-1" data-testid="deploy-history">
           {#each data.app.history.slice(0, 30) as e, i (i)}
             <li class="text-xs break-words text-foreground/70">
-              <span class="text-foreground/45">{when(e.time)}</span> · {e.message}
+              <span class="text-muted-foreground">{when(e.time)}</span> · {e.message}
             </li>
           {/each}
         </ul>

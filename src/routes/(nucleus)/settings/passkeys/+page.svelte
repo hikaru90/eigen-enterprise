@@ -65,7 +65,7 @@
         <li class="flex flex-wrap items-center justify-between gap-3 p-3" data-testid="passkey-row">
           <div class="min-w-0">
             <p class="text-sm">{pk.name}</p>
-            <p class="text-[11px] text-foreground/50">
+            <p class="text-xs text-muted-foreground">
               {pk.syncs ? 'Synced across devices' : 'This device only'} · added {day(pk.createdAt)}
             </p>
           </div>
@@ -93,7 +93,7 @@
           <p class="truncate text-sm" data-testid="session-device">
             {s.device ?? `Signed in ${day(s.signedInAt)}`}
           </p>
-          <p class="text-[11px] text-muted-foreground">
+          <p class="text-xs text-muted-foreground">
             {[
               s.device
                 ? sessionPlace({ ipAddress: s.ipAddress, createdAt: s.signedInAt }, day)

@@ -124,14 +124,14 @@
           {#if data.socialProviders.length > 0}
             <AuthSocialButtons providers={data.socialProviders} disabled={!acceptTerms} />
             {#if !acceptTerms}
-              <p class="text-muted-foreground text-[10px]">
+              <p class="text-muted-foreground text-xs">
                 Accept the Terms of Service (AGB) above before continuing with a social provider.
               </p>
             {/if}
             <div class="relative py-1">
               <div class="border-t border-black/10" aria-hidden="true"></div>
               <p
-                class="text-muted-foreground absolute inset-x-0 top-1/2 -translate-y-1/2 bg-card px-2 text-center text-[10px] mx-auto w-fit"
+                class="text-muted-foreground absolute inset-x-0 top-1/2 -translate-y-1/2 bg-card px-2 text-center text-xs mx-auto w-fit"
               >
                 or
               </p>
@@ -153,7 +153,7 @@
               <p id="email-error" class="text-destructive text-xs">{fieldErrors.email}</p>
             {/if}
           </div>
-          <p class="text-muted-foreground text-[10px]">No password: we email you a 6-digit code.</p>
+          <p class="text-muted-foreground text-xs">No password: we email you a 6-digit code.</p>
           <Button type="submit" class="w-full rounded-[4px]">Create account</Button>
           {#if form && 'message' in form && form.message}
             <p class="text-destructive text-xs">{form.message}</p>

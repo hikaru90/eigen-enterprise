@@ -160,7 +160,7 @@
           value={recoveryCode}
           aria-label="Recovery code"
           data-testid="backups-recovery-code-value"
-          class="border-input bg-card h-9 min-w-0 flex-1 border px-2.5 font-mono text-[12px] tracking-wide"
+          class="border-input bg-card h-9 min-w-0 flex-1 border px-2.5 font-mono text-xs tracking-wide"
           onfocus={(e) => e.currentTarget.select()}
         />
         <button type="button" class={secondary} onclick={() => copyCode(recoveryCode)}
@@ -236,7 +236,7 @@
         <h3 class="text-sm font-semibold">Last runs</h3>
         <div class="overflow-x-auto rounded-lg border border-border">
           <table class="w-full text-left text-xs">
-            <thead class="text-foreground/55">
+            <thead class="text-muted-foreground">
               <tr class="border-b border-border">
                 <th class="px-3 py-2 font-medium">Started</th>
                 <th class="px-3 py-2 font-medium">Result</th>
@@ -251,7 +251,7 @@
                   <td class="px-3 py-2 whitespace-nowrap">{when(r.startedAt)}</td>
                   <td class="px-3 py-2">
                     <span class={r.status === 'failed' ? 'text-red-700' : ''}>{result(r)}</span>
-                    {#if r.error}<span class="block text-[11px] text-foreground/60">{r.error}</span>{/if}
+                    {#if r.error}<span class="block text-xs text-foreground/60">{r.error}</span>{/if}
                   </td>
                   <td class="px-3 py-2 tabular-nums">{size(r.bytesUploaded)}</td>
                   <td class="px-3 py-2 tabular-nums">{duration(r.durationMs)}</td>
@@ -288,7 +288,7 @@
           </p>
           <div class="overflow-x-auto rounded-lg border border-border">
             <table class="w-full text-left text-xs">
-              <thead class="text-foreground/55">
+              <thead class="text-muted-foreground">
                 <tr class="border-b border-border">
                   <th class="px-3 py-2 font-medium">Taken</th>
                   <th class="px-3 py-2 font-medium">Last check</th>
@@ -302,7 +302,7 @@
                     <td class="px-3 py-2 whitespace-nowrap">{snapshotWhen(snap.takenAt)}</td>
                     <td class="px-3 py-2" data-testid="backups-check-result" data-status={mine?.status ?? 'none'}>
                       {#if !mine}
-                        <span class="text-foreground/50">—</span>
+                        <span class="text-muted-foreground">—</span>
                       {:else if mine.status === 'running'}
                         Checking…
                       {:else if mine.status === 'succeeded' && mine.checked}
@@ -439,7 +439,7 @@
             <input id="b-retention" name="retentionDays" type="number" min="1" max="3650" class={input} required bind:value={retentionDays} />
           </div>
         </div>
-        <p class="text-[11px] text-foreground/50">
+        <p class="text-xs text-muted-foreground">
           The exact minute is picked at random, so not every company hits its storage at the same moment.
         </p>
         <div class="flex flex-wrap items-center gap-2">
@@ -450,7 +450,7 @@
             {busy === 'save' ? 'Saving…' : status.configured ? 'Save changes' : 'Save and turn on backups'}
           </button>
           {#if !tested}
-            <span class="text-[11px] text-foreground/50">Test the connection first.</span>
+            <span class="text-xs text-muted-foreground">Test the connection first.</span>
           {/if}
         </div>
         {#if feedback('test')?.ok && tested}

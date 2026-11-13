@@ -47,10 +47,10 @@
 
   const chartWidth = 640
   const chartHeight = 180
-  const padLeft = 44
-  const padRight = 8
+  const padLeft = 52
+  const padRight = 48
   const padTop = 8
-  const padBottom = 28
+  const padBottom = 30
   const plotWidth = chartWidth - padLeft - padRight
   const plotHeight = chartHeight - padTop - padBottom
 
@@ -172,40 +172,40 @@
       <!-- Summary stats -->
       <div class="mb-4 grid grid-cols-2 gap-4 px-2 sm:grid-cols-5">
         <div class="rounded-md border border-border/50 bg-muted/30 p-3">
-          <div class="text-muted-foreground text-[10px] uppercase tracking-wide">Total Spend</div>
+          <div class="text-muted-foreground text-xs uppercase tracking-wide">Total Spend</div>
           <div class="mt-1 font-mono text-sm font-semibold tabular-nums">
             {formatCredits(totalCredits)}
           </div>
-          <div class="text-muted-foreground font-mono text-[10px]">{formatUsd(totalUsd)}</div>
+          <div class="text-muted-foreground font-mono text-xs">{formatUsd(totalUsd)}</div>
         </div>
         <div class="rounded-md border border-border/50 bg-muted/30 p-3">
-          <div class="text-muted-foreground text-[10px] uppercase tracking-wide">Avg / Day</div>
+          <div class="text-muted-foreground text-xs uppercase tracking-wide">Avg / Day</div>
           <div class="mt-1 font-mono text-sm font-semibold tabular-nums">
             {formatCredits(averageCreditsPerDay)}
           </div>
-          <div class="text-muted-foreground font-mono text-[10px]">
+          <div class="text-muted-foreground font-mono text-xs">
             {formatUsd(averageUsdPerDay)}
           </div>
         </div>
         <div class="rounded-md border border-border/50 bg-muted/30 p-3">
-          <div class="text-muted-foreground text-[10px] uppercase tracking-wide">
+          <div class="text-muted-foreground text-xs uppercase tracking-wide">
             Avg Cost / Call
           </div>
           <div class="mt-1 font-mono text-sm font-semibold tabular-nums">
             {formatCredits(averageCreditsPerGroup)}
           </div>
-          <div class="text-muted-foreground font-mono text-[10px]">
+          <div class="text-muted-foreground font-mono text-xs">
             {formatUsd(averageUsdPerGroup)}
           </div>
         </div>
         <div class="rounded-md border border-border/50 bg-muted/30 p-3">
-          <div class="text-muted-foreground text-[10px] uppercase tracking-wide">Total Calls</div>
+          <div class="text-muted-foreground text-xs uppercase tracking-wide">Total Calls</div>
           <div class="mt-1 font-mono text-sm font-semibold tabular-nums">
             {totalCalls.toLocaleString()}
           </div>
         </div>
         <div class="rounded-md border border-border/50 bg-muted/30 p-3">
-          <div class="text-muted-foreground text-[10px] uppercase tracking-wide">
+          <div class="text-muted-foreground text-xs uppercase tracking-wide">
             Avg Calls / Day
           </div>
           <div class="mt-1 font-mono text-sm font-semibold tabular-nums">
@@ -218,7 +218,7 @@
       </div>
 
       <!-- Legend -->
-      <div class="mb-2 flex items-center gap-4 px-2 text-[10px]">
+      <div class="mb-2 flex items-center gap-4 px-2 text-xs">
         <div class="flex items-center gap-1.5">
           <span class="inline-block h-2.5 w-2.5 rounded-sm bg-foreground/55"></span>
           <span class="text-muted-foreground">Total spend</span>
@@ -251,7 +251,7 @@
               x={padLeft - 6}
               y={y + 3}
               text-anchor="end"
-              class="fill-muted-foreground text-[9px]"
+              class="fill-muted-foreground text-xs"
             >
               {formatTick(tick)}
             </text>
@@ -278,7 +278,7 @@
                 x={bar.x + bar.width / 2}
                 y={chartHeight - 8}
                 text-anchor="middle"
-                class="fill-muted-foreground text-[8px]"
+                class="fill-muted-foreground text-xs"
               >
                 {bar.label}
               </text>
@@ -315,7 +315,7 @@
               x={chartWidth - padRight + 4}
               y={y + 3}
               text-anchor="start"
-              class="fill-blue-500 text-[9px]"
+              class="fill-blue-500 text-xs"
             >
               {formatTick(avgTick)}
             </text>
@@ -326,13 +326,13 @@
           {@const bar = bars[hoveredIndex]}
           {@const linePoint = linePoints[hoveredIndex]}
           <div
-            class="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 rounded border border-border bg-card px-2 py-1 text-[11px] shadow-sm"
+            class="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 rounded border border-border bg-card px-2 py-1 text-xs shadow-sm"
           >
             <div class="font-medium">{bar.label}</div>
             <div class="font-mono tabular-nums">
               {formatCredits(Number(bar.bucket.totalCostUsd))} credits
             </div>
-            <div class="text-muted-foreground font-mono text-[10px]">
+            <div class="text-muted-foreground font-mono text-xs">
               {formatUsd(Number(bar.bucket.totalCostUsd))}
             </div>
             <div class="text-muted-foreground">

@@ -73,7 +73,7 @@
           <div class="relative py-1">
             <div class="border-t border-black/10" aria-hidden="true"></div>
             <p
-              class="text-muted-foreground absolute inset-x-0 top-1/2 -translate-y-1/2 bg-card px-2 text-center text-[10px] mx-auto w-fit"
+              class="text-muted-foreground absolute inset-x-0 top-1/2 -translate-y-1/2 bg-card px-2 text-center text-xs mx-auto w-fit"
             >
               or
             </p>

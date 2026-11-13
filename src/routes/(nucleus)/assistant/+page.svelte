@@ -28,7 +28,7 @@
 
 {#if data.runs.length === 0}
   <div
-    class="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-4 py-3 text-sm text-foreground/55"
+    class="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-4 py-3 text-sm text-muted-foreground"
     data-testid="runs-empty"
   >
     <span>No conversations yet. Ask the assistant anything and it starts one.</span>
@@ -45,7 +45,7 @@
       <li>
         <a
           href={resolve('/(nucleus)/assistant/[id]', { id: String(run.id) })}
-          class="flex min-w-0 items-center justify-between gap-3 px-4 py-2.5 text-sm outline-none hover:bg-foreground/[0.03] focus-visible:ring-2 focus-visible:ring-ring/60"
+          class="flex min-w-0 items-center justify-between gap-3 px-4 py-2.5 text-sm outline-none hover:bg-foreground/[0.03] focus-visible:ring-2 -ring"
           data-testid="runs-item"
         >
           <span class="flex min-w-0 flex-col">
@@ -53,7 +53,7 @@
             <span class="truncate text-xs text-muted-foreground">Started {when(run.createdAt)}</span
             >
           </span>
-          <span class="shrink-0 text-xs text-foreground/50 tabular-nums">{when(run.updatedAt)}</span
+          <span class="shrink-0 text-xs text-muted-foreground tabular-nums">{when(run.updatedAt)}</span
           >
         </a>
       </li>

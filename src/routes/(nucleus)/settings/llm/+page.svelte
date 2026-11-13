@@ -47,7 +47,7 @@
         <li>
           <a
             href={resolve(`/settings/llm/byok/${item.id}`)}
-            class="flex items-center justify-between gap-3 px-4 py-3 text-sm outline-none hover:bg-foreground/[0.03] focus-visible:ring-2 focus-visible:ring-ring/60"
+            class="flex items-center justify-between gap-3 px-4 py-3 text-sm outline-none hover:bg-foreground/[0.03] focus-visible:ring-2 -ring"
           >
             <span class="font-medium text-foreground">{item.label}</span>
             {#if configured}
@@ -92,7 +92,7 @@
           <select
             id="model-provider"
             bind:value={selectedProvider}
-            class="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+            class="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm text-foreground outline-none focus-visible:ring-2 -ring"
           >
             <option value="eurouter">EUrouter</option>
             <option value="openrouter">OpenRouter</option>

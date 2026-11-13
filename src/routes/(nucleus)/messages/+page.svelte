@@ -655,7 +655,7 @@
     <button
       type="button"
       class={[
-        'flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-[15px] outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
+        'flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-[15px] outline-none focus-visible:ring-2 -ring',
         current ? 'bg-primary text-primary-foreground' : 'text-foreground/75 hover:bg-foreground/[0.06]',
         c.unread > 0 && !current ? 'font-bold text-foreground' : '',
       ]}
@@ -681,7 +681,7 @@
       {:else}
         <span
           class={[
-            'grid size-5 shrink-0 place-items-center rounded-md text-[10px] font-semibold',
+            'grid size-5 shrink-0 place-items-center rounded-md text-xs font-semibold',
             current ? 'bg-primary-foreground/20' : 'bg-foreground/10',
           ]}
           aria-hidden="true">{dmWith.length || 1}</span
@@ -691,7 +691,7 @@
       {#if c.unread > 0}
         <span
           class={[
-            'min-w-5 shrink-0 rounded-full px-1.5 text-center text-[11px] leading-5 font-bold tabular-nums',
+            'min-w-5 shrink-0 rounded-full px-1.5 text-center text-xs leading-5 font-bold tabular-nums',
             current ? 'bg-primary-foreground text-primary' : 'bg-primary text-primary-foreground',
           ]}
           data-testid="messages-unread"
@@ -737,7 +737,7 @@
     <div class="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
       <h1 class="min-w-0 flex-1 truncate text-lg font-bold tracking-tight">Messages</h1>
       <span
-        class="flex items-center gap-1.5 text-[11px] text-muted-foreground"
+        class="flex items-center gap-1.5 text-xs text-muted-foreground"
         data-testid="messages-live"
         data-state={live}
         title="Live updates"
@@ -893,9 +893,9 @@
                       </span>
                       <span class="min-w-0 flex-1">
                         <span class="block truncate text-sm">{personLabel(p)}</span>
-                        <span class="block truncate text-[11px] text-muted-foreground">{presenceLabel(status, now)}</span>
+                        <span class="block truncate text-xs text-muted-foreground">{presenceLabel(status, now)}</span>
                       </span>
-                      {#if p.id === data.me}<span class="text-[11px] text-muted-foreground">you</span>{/if}
+                      {#if p.id === data.me}<span class="text-xs text-muted-foreground">you</span>{/if}
                     </li>
                   {/each}
                 </ul>
@@ -1018,7 +1018,7 @@
                     />{/if}
                   <span class="min-w-0">
                     <span class="block truncate font-medium">{p.name}</span>
-                    {#if p.file}<span class="block text-[11px] text-muted-foreground">{formatSize(p.file.size)}</span>{/if}
+                    {#if p.file}<span class="block text-xs text-muted-foreground">{formatSize(p.file.size)}</span>{/if}
                   </span>
                   <button
                     type="button"
