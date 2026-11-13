@@ -5,15 +5,6 @@
 @import '@fontsource/inter/latin-500.css';
 @import '@fontsource/geist-mono/latin-400.css';
 
-/* Geist Serif: the website's title voice (eigenEnterprise-website). */
-@font-face {
-  font-family: 'Geist Serif';
-  src: url('../lib/assets/fonts/geist-serif-latin-variable-normal.woff2') format('woff2');
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
-
 @font-face {
   font-family: 'MontserratThin';
   src: url('../lib/assets/fonts/Montserrat-Thin.woff2') format('woff2');
@@ -28,31 +19,31 @@
 @layer base {
   :root {
     color-scheme: light;
-    /* eigenEnterprise website language (../eigenEnterprise-website/assets/styles.css):
-       white page, grey large-radius tiles, black pills, blue focus. */
-    --background: #ffffff;
+    /* The owner's reference board (2026-11-13; docs/design-system.md › Workspace):
+       a light #f2f2f2 stage with white cards, black pills, slate focus. */
+    --background: #f2f2f2;
     /* Hex for meta theme-color — Android PWA title bar does not accept oklch(). */
-    --theme-color: #ffffff;
-    --foreground: #000000;
-    --card: #f1f0ed;
-    --card-foreground: #000000;
+    --theme-color: #000000;
+    --foreground: #111111;
+    --card: #ffffff;
+    --card-foreground: #111111;
     --popover: #ffffff;
-    --popover-foreground: #000000;
+    --popover-foreground: #111111;
     --primary: #000000;
     --primary-foreground: #ffffff;
-    --secondary: #e7e5e0;
-    --secondary-foreground: #000000;
-    --muted: #e7e5e0;
+    --secondary: #e8e8e8;
+    --secondary-foreground: #111111;
+    --muted: #e8e8e8;
     /* WCAG 2.1 AA (Contribute b73604ff): every pair below is held to 4.5:1
        (text) / 3:1 (input boundary, focus ring) by src/routes/layout.contrast.spec.ts.
        --border stays faint on purpose: it only draws decorative separators. */
     --muted-foreground: #5c5c5c;
-    --accent: #e7e5e0;
-    --accent-foreground: #000000;
+    --accent: #e8e8e8;
+    --accent-foreground: #111111;
     --destructive: oklch(0.45 0.185 27.325);
     /* Something is on / working (status pill "Active" dot); AA as text too. */
     --success: oklch(0.5 0.14 150);
-    --border: rgb(0 0 0 / 10%);
+    --border: rgb(0 0 0 / 8%);
     --input: rgb(0 0 0 / 47%);
     /* Slate navy from the reference board: calm, AA on every light surface. */
     --ring: #2f3a52;
@@ -65,25 +56,54 @@
     --gradient-eigen: linear-gradient(90deg, #22e876 0%, #8fe01f 60%, #22e876 99%);
     --color-eigen-green: #22e876;
     --color-eigen-lime: #8fe01f;
-    /* The tile palette (owner's reference board, 2026-11-13): neutral grounds,
-       one warm coral accent used sparingly, a slate-blue dusk gradient. The
-       same in light and dark mode and under a brand style. */
-    --tone-ink: #121212;
-    --tone-charcoal: #3a3a39;
-    --tone-stone: #dcd9d1;
-    --tone-coral: #e8532f;
-    --tone-coral-soft: #f6d3c5;
-    --gradient-slate: linear-gradient(180deg, #737c90 0%, #343c4f 55%, #14171f 100%);
-    --gradient-ember: linear-gradient(180deg, #8d8985 0%, #b7887a 55%, #d9876c 100%);
-    --gradient-glow: radial-gradient(
-      closest-side,
-      #ff6a3d 0%,
-      #ff9068 34%,
-      #f4c6ae 66%,
-      rgb(244 198 174 / 0) 100%
+    /* The board's palette, sampled from the reference (fixed in light and dark
+       mode and under a brand style; the brand re-skins page, text and primary
+       actions around it). Grounds: stone, charcoal, ink. One accent: coral. */
+    --tone-ink: #000000;
+    --tone-charcoal: #3b3b3b;
+    --tone-stone: #d6d5cb;
+    --tone-grey: #767676;
+    --tone-coral: #f2541f;
+    --tone-coral-soft: #fbd0c2;
+    --tone-taupe: #8a6457;
+    /* Slate dusk: light grey into navy into near-black (9 stops off the board). */
+    --gradient-dusk: linear-gradient(
+      180deg,
+      #dcdcdc 0%,
+      #c7c8cc 7%,
+      #99a0aa 21%,
+      #6e7786 34%,
+      #3f4f66 48%,
+      #2f3c4c 62%,
+      #242c37 76%,
+      #171c20 90%,
+      #131217 100%
     );
-    /* Moderate radii: cards ~14px, tiles 20px, pills only for buttons and chips. */
-    --radius: 0.875rem;
+    /* Taupe into coral (the board's transcript card), deepened so white text stays AA. */
+    --gradient-ember: linear-gradient(180deg, #5f5751 0%, #7a645a 35%, #95665a 65%, #a8604c 100%);
+    /* The solid coral card. */
+    --gradient-coral: linear-gradient(165deg, #f55a3a 0%, #f64a1a 60%, #f6420a 100%);
+    /* Coral heat in a cream capsule. */
+    --gradient-heat: radial-gradient(
+      ellipse 78% 52% at 50% 52%,
+      #f54e21 0%,
+      #ef6a42 20%,
+      #e8957a 42%,
+      #dfc4b5 68%,
+      #dbd5c8 100%
+    );
+    /* The clock face: cream inside a coral rim. */
+    --gradient-ring: radial-gradient(
+      circle closest-side,
+      #d6d4c6 0%,
+      #d6d4c6 44%,
+      #e4a08b 66%,
+      #ef6a46 86%,
+      #f2541f 100%
+    );
+    /* Radii follow the board: stages and cards near-square, widgets squircle,
+       controls and chips pill, capsules stadium. --radius is the card step. */
+    --radius: 0.75rem;
     --sidebar: #f7f7f7;
     --sidebar-foreground: #000000;
     --sidebar-primary: #000000;
@@ -101,12 +121,12 @@
   }
 
   /* C3: headings take the active set's heading face (its display font, via
-     the emitter's --font-heading alias); with no active set they take the
-     app's display face, Geist Serif (the website's title voice). */
+     the emitter's --font-heading alias); with no active set they keep the
+     body face (Inter), as on the reference board. */
   h1,
   h2,
   h3 {
-    font-family: var(--font-heading, var(--font-display));
+    font-family: var(--font-heading, var(--font-sans));
   }
 
   ::selection {
@@ -171,108 +191,191 @@
 }
 
 /*
- * The website's widget language (../eigenEnterprise-website/src/app.css),
- * toned down for the workspace (owner, 2026-11-13): tiles and pills, mono
- * chips, the glow orb, the dot-matrix display — on neutral grounds with one
- * coral accent, moderate radii and compact sizes.
+ * The workspace language (docs/design-system.md › Workspace), copied from
+ * the owner's reference board (2026-11-13):
  *
- * Text on a tile uses .tile-soft (secondary) — never a token with an opacity
- * modifier, which would be measured against the page, not the tile.
+ * - a STAGE is a near-square surface (12px) that holds one widget;
+ * - a WIDGET floats on it as a squircle (black, grey, white) or a stadium
+ *   (the coral heat capsule, the black oval);
+ * - every CONTROL and CHIP is a pill; avatars and icon buttons are circles;
+ * - CARDS (white card, coral card, transcript card) are near-square to soft.
+ *
+ * Text on a stage or widget uses .on-soft (secondary) — never a token with an
+ * opacity modifier, which would be measured against the page, not the stage.
  */
 @layer components {
-  .tile {
+  /* Stages */
+  .stage {
     position: relative;
+    display: flex;
     min-width: 0;
-    border-radius: 1.25rem;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 0.75rem;
+    padding: 3.25rem 1.25rem 1.75rem;
   }
-  .tile-ink {
+  .stage-white {
+    background: #ffffff;
+    color: #111111;
+    --on-soft: #5c5c5c;
+    --on-wash: rgb(0 0 0 / 6%);
+  }
+  .stage-stone {
+    background: var(--tone-stone);
+    color: #111111;
+    --on-soft: #4a4a45;
+    --on-wash: rgb(0 0 0 / 7%);
+  }
+  .stage-charcoal {
+    background: var(--tone-charcoal);
+    color: #f2f2f2;
+    --on-soft: #c4c4c4;
+    --on-wash: rgb(255 255 255 / 10%);
+  }
+  .stage-ink {
     background: var(--tone-ink);
     color: #ffffff;
-    --tile-soft: rgb(255 255 255 / 70%);
-    --tile-wash: rgb(255 255 255 / 10%);
-    --tile-line: rgb(255 255 255 / 26%);
+    --on-soft: #a3a3a3;
+    --on-wash: rgb(255 255 255 / 10%);
   }
-  .tile-charcoal {
-    background: var(--tone-charcoal);
-    color: #f2f2f0;
-    --tile-soft: rgb(242 242 240 / 74%);
-    --tile-wash: rgb(255 255 255 / 10%);
-    --tile-line: rgb(255 255 255 / 26%);
+  /* Light at the top, near-black at the bottom: put text in a widget, or dark at the top. */
+  .stage-dusk {
+    background: var(--gradient-dusk);
+    color: #111111;
+    --on-soft: #3a3a3a;
+    --on-wash: rgb(255 255 255 / 55%);
   }
-  .tile-stone {
-    background: var(--tone-stone);
-    color: #171717;
-    --tile-soft: rgb(23 23 23 / 70%);
-    --tile-wash: rgb(255 255 255 / 55%);
-    --tile-line: rgb(23 23 23 / 24%);
-  }
-  .tile-mist {
-    background: var(--card);
-    color: var(--card-foreground);
-    --tile-soft: var(--muted-foreground);
-    --tile-wash: var(--background);
-    --tile-line: var(--border);
-  }
-  .tile-slate {
-    background: var(--gradient-slate);
-    color: #ffffff;
-    --tile-soft: rgb(255 255 255 / 78%);
-    --tile-wash: rgb(255 255 255 / 12%);
-    --tile-line: rgb(255 255 255 / 30%);
-  }
-  .tile-ember {
-    background: var(--gradient-ember);
-    color: #ffffff;
-    --tile-soft: rgb(255 255 255 / 86%);
-    --tile-wash: rgb(255 255 255 / 16%);
-    --tile-line: rgb(255 255 255 / 36%);
-  }
-  .tile-soft {
-    color: var(--tile-soft);
-  }
-  /* A faint grain on the gradient tiles, as on the website. */
-  .grain::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-    opacity: 0.22;
-    mix-blend-mode: overlay;
-  }
-  /* Dark tiles keep an edge on a dark page so they don't vanish. */
-  .dark .tile-ink:not(.marketing-light-theme *),
-  .dark .tile-charcoal:not(.marketing-light-theme *) {
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 8%);
+  .on-soft {
+    color: var(--on-soft);
   }
 
-  /* Chips: small mono labels in a pill (13px floor). */
+  /* The floating label at the top of a stage (the board's "−" / "+" pills). */
+  .stage-tag {
+    position: absolute;
+    top: 0.875rem;
+    left: 50%;
+    display: inline-flex;
+    height: 1.75rem;
+    align-items: center;
+    gap: 0.4rem;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    padding: 0 0.75rem;
+    background: var(--on-wash);
+    font-size: 0.8125rem;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  /* Widgets */
+  .squircle {
+    border-radius: 1.75rem;
+  }
+  @supports (corner-shape: squircle) {
+    .squircle {
+      border-radius: 2.75rem;
+      corner-shape: squircle;
+    }
+  }
+  .widget-ink {
+    background: var(--tone-ink);
+    color: #ffffff;
+    --on-soft: #a3a3a3;
+    --on-wash: rgb(255 255 255 / 12%);
+  }
+  .widget-grey {
+    background: var(--tone-grey);
+    color: #ffffff;
+    --on-soft: #ffffff;
+    --on-wash: rgb(0 0 0 / 22%);
+  }
+  .widget-white {
+    background: #ffffff;
+    color: #111111;
+    --on-soft: #5c5c5c;
+    --on-wash: rgb(0 0 0 / 6%);
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 4%),
+      0 10px 30px rgb(0 0 0 / 7%);
+  }
+  .widget-ember {
+    background: var(--gradient-ember);
+    color: #ffffff;
+    --on-soft: #ffffff;
+    --on-wash: rgb(255 255 255 / 16%);
+  }
+  .widget-coral {
+    background: var(--gradient-coral);
+    color: #ffffff;
+    --on-wash: rgb(255 255 255 / 18%);
+  }
+  .widget-heat {
+    border-radius: 999px;
+    background: var(--gradient-heat);
+    color: #111111;
+  }
+  .ring-face {
+    border-radius: 50%;
+    background: var(--gradient-ring);
+  }
+
+  /* The label with a hairline on its left ("| Adaptive / Social Profile"). */
+  .hairline {
+    border-left: 1px solid currentColor;
+    padding-left: 0.625rem;
+  }
+
+  /* Round controls: a grey pill or circle with a white glyph. */
+  .ctrl {
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    height: 1.75rem;
+    min-width: 2.75rem;
+    border-radius: 999px;
+    background: #8a8a8a;
+    color: #ffffff;
+  }
+  .ctrl-circle {
+    min-width: 0;
+    width: 2rem;
+    height: 2rem;
+  }
+  .ctrl-wash {
+    background: var(--on-wash);
+    color: inherit;
+  }
+  .ctrl-ink {
+    background: #2e2e2e;
+    color: #ffffff;
+  }
+
+  /* Chips: small labels in a pill (13px floor). */
   .chip {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
     height: 1.5rem;
-    padding: 0 0.6rem;
+    padding: 0 0.625rem;
     border-radius: 999px;
     border: 1px solid transparent;
-    font-family: var(--font-mono);
     font-size: 0.8125rem;
     font-weight: 400;
     line-height: 1;
-    letter-spacing: 0.01em;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
   .chip-line {
-    border-color: var(--tile-line, var(--border));
-  }
-  .chip-ink {
-    background: var(--primary);
-    color: var(--primary-foreground);
+    border-color: var(--border);
   }
   .chip-wash {
-    background: var(--tile-wash, var(--card));
+    background: var(--on-wash, var(--muted));
+  }
+  .chip-taupe {
+    background: var(--tone-taupe);
+    color: #ffffff;
   }
   .chip-dot::before {
     content: '';
@@ -292,69 +395,18 @@
     --chip-dot: var(--destructive);
   }
 
-  /* Icon circles. */
-  .ico {
-    display: inline-grid;
-    place-items: center;
-    flex: none;
-    width: 2rem;
-    height: 2rem;
-    border-radius: 50%;
-  }
-  .ico-ink {
-    background: var(--tone-ink);
-    color: #ffffff;
-  }
-  .ico-white {
-    background: #ffffff;
-    color: #171717;
-  }
-  .ico-wash {
-    background: var(--tile-wash, var(--card));
-    color: currentColor;
-  }
-  .ico-mist {
-    background: var(--card);
-    color: var(--card-foreground);
-  }
-  .ico-coral {
-    background: var(--tone-coral);
-    color: #ffffff;
-  }
-
-  /* The glow orb: the one warm light on a screen. */
-  .orb {
-    border-radius: 50%;
-    background: var(--gradient-glow);
-  }
-
-  /* Display type: Geist Serif at the website's tight tracking, sized for a workspace. */
-  .display-xl {
-    font-family: var(--font-heading, var(--font-display));
-    font-size: clamp(1.875rem, 2.6vw, 2.5rem);
-    font-weight: 400;
-    line-height: 1;
-    letter-spacing: -0.03em;
-  }
-  .display-l {
-    font-family: var(--font-heading, var(--font-display));
-    font-size: clamp(1.5rem, 2vw, 1.875rem);
+  /* Display voice: mono, as "Hey, Annie". */
+  .display-mono {
+    font-family: var(--font-display);
+    font-size: 1.75rem;
     font-weight: 400;
     line-height: 1.1;
-    letter-spacing: -0.025em;
+    letter-spacing: -0.02em;
   }
-  .display-m {
-    font-family: var(--font-heading, var(--font-display));
-    font-size: 1.25rem;
-    font-weight: 400;
-    line-height: 1.2;
-    letter-spacing: -0.015em;
-  }
-  .mono-label {
-    font-family: var(--font-mono);
-    font-weight: 400;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+
+  /* A list that fades out at its lower edge (the board's transcript). */
+  .fade-end {
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5rem), transparent);
   }
 }
 
@@ -403,7 +455,8 @@
 .dark {
   /* Website dark: neutral greys, no hue. */
   --background: #161616;
-  --theme-color: #161616;
+  /* The app frame is black in both modes. */
+  --theme-color: #000000;
   --foreground: #f2f2f2;
   --card: #262626;
   --card-foreground: #f2f2f2;
@@ -449,7 +502,9 @@
   --text-xs: 0.8125rem;
   --text-xs--line-height: calc(1.125 / 0.8125);
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Geist Serif', ui-serif, Georgia, serif;
+  /* The board's display voice is mono ("Hey, Annie"). */
+  --font-display:
+    'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --font-mono:
     'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
     'Courier New', monospace;
@@ -493,6 +548,7 @@
   --color-charcoal: var(--tone-charcoal);
   --color-stone: var(--tone-stone);
   --color-coral: var(--tone-coral);
+  --color-taupe: var(--tone-taupe);
   /* C3 (B4 gap): a set's own radius scale (--radius-sm..4xl) wins; without it
      the steps derive from --radius. Inline on purpose: the var() resolves on
      the element, so a scoped re-declaration (brand/system) re-derives too. */
@@ -521,24 +577,24 @@
   /* Homepage: always light scroll column regardless of global dark mode */
   .marketing-light-theme {
     color-scheme: light;
-    --background: #ffffff;
-    --foreground: #000000;
-    --card: #f1f0ed;
-    --card-foreground: #000000;
+    --background: #f2f2f2;
+    --foreground: #111111;
+    --card: #ffffff;
+    --card-foreground: #111111;
     --popover: #ffffff;
-    --popover-foreground: #000000;
+    --popover-foreground: #111111;
     --primary: #000000;
     --primary-foreground: #ffffff;
-    --secondary: #e7e5e0;
-    --secondary-foreground: #000000;
-    --muted: #e7e5e0;
+    --secondary: #e8e8e8;
+    --secondary-foreground: #111111;
+    --muted: #e8e8e8;
     --muted-foreground: #5c5c5c;
-    --accent: #e7e5e0;
-    --accent-foreground: #000000;
+    --accent: #e8e8e8;
+    --accent-foreground: #111111;
     /* Re-declared so OS dark mode cannot leak .dark's light red onto this white page. */
     --destructive: oklch(0.45 0.185 27.325);
     --success: oklch(0.5 0.14 150);
-    --border: rgb(0 0 0 / 10%);
+    --border: rgb(0 0 0 / 8%);
     --input: rgb(0 0 0 / 47%);
     --ring: #2f3a52;
     /* The app shell's sidebar sits inside this light wrapper: its tokens must
@@ -552,6 +608,40 @@
     --sidebar-accent-foreground: #000000;
     --sidebar-border: rgb(0 0 0 / 10%);
     --sidebar-ring: #2f3a52;
+  }
+
+  /* The app frame: the board's black gutters. The sidebar and top bar sit on
+     ink; the page is a light panel inside it. Held to AA by
+     layout.contrast.spec.ts ("app frame"). */
+  .ink-scope {
+    color-scheme: dark;
+    --background: #000000;
+    --foreground: #f2f2f2;
+    --card: #161616;
+    --card-foreground: #f2f2f2;
+    --popover: #161616;
+    --popover-foreground: #f2f2f2;
+    --primary: #ffffff;
+    --primary-foreground: #000000;
+    --secondary: #1f1f1f;
+    --secondary-foreground: #f2f2f2;
+    --muted: #1f1f1f;
+    --muted-foreground: #a3a3a3;
+    --accent: #1f1f1f;
+    --accent-foreground: #f2f2f2;
+    --destructive: oklch(0.765 0.14 22.216);
+    --success: oklch(0.75 0.16 150);
+    --border: rgb(255 255 255 / 10%);
+    --input: rgb(255 255 255 / 40%);
+    --ring: #a9b4cc;
+    --sidebar: #000000;
+    --sidebar-foreground: #f2f2f2;
+    --sidebar-primary: #ffffff;
+    --sidebar-primary-foreground: #000000;
+    --sidebar-accent: #1f1f1f;
+    --sidebar-accent-foreground: #f2f2f2;
+    --sidebar-border: rgb(255 255 255 / 10%);
+    --sidebar-ring: #a9b4cc;
   }
 }
 

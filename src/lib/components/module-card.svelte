@@ -4,7 +4,7 @@
   import type { ModuleOverview } from '$lib/server/overview/overview'
   import { appHref } from '$lib/shell/href'
   import { iconFor } from '$lib/shell/module-icon'
-  import { hasGrain, isDark, toneOf } from '$lib/shell/module-tone'
+  import { isDark, toneOf } from '$lib/shell/module-tone'
 
   /**
    * A dashboard card for one active module: status dot, key counts, link to
@@ -14,26 +14,32 @@
    */
   let { module, href }: { module: ModuleOverview; href: Pathname | null } = $props()
 
-  // The part's neutral tile and its icon (module-tone.ts).
+  // The part's stage and its icon (module-tone.ts).
   const tone = $derived(toneOf(module.id))
   const Icon = $derived(iconFor(module.id))
 </script>
 
+<!-- A stage (near-square) with a squircle icon, the name, and its counts as pills. -->
 <svelte:element
   this={href ? 'a' : 'div'}
   href={href ? appHref(href) : undefined}
-  class="tile tile-{tone} group flex min-h-44 min-w-0 flex-col p-5 outline-none {hasGrain(tone) ? 'grain' : ''} {href
+  class="stage stage-{tone} group min-h-48 items-stretch justify-start p-5 outline-none {href
     ? 'transition-transform hover:-translate-y-px focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
     : ''}"
   data-testid="module-card"
 >
   <div class="flex min-w-0 items-center justify-between gap-2">
-    <span class="ico {isDark(tone) ? 'ico-wash' : 'ico-white'}" aria-hidden="true">
-      <Icon class="size-4" strokeWidth={1.75} />
+    <span
+      class="grid size-10 shrink-0 place-items-center rounded-[0.75rem] {isDark(tone)
+        ? 'bg-white text-[#111111]'
+        : 'bg-ink text-white'}"
+      aria-hidden="true"
+    >
+      <Icon class="size-[18px]" strokeWidth={1.75} />
     </span>
-    <span class="chip chip-line chip-dot {module.active ? '' : 'chip-off'}">{module.active ? 'On' : 'Off'}</span>
+    <span class="chip chip-wash chip-dot {module.active ? '' : 'chip-off'}">{module.active ? 'On' : 'Off'}</span>
   </div>
-  <h3 class="display-m mt-auto flex min-w-0 items-center gap-1.5 pt-6">
+  <h3 class="mt-auto flex min-w-0 items-center gap-1.5 pt-6 text-[15px] font-medium">
     <span class="min-w-0 truncate">{module.name}</span>
     {#if href}
       <ArrowUpRight
@@ -42,21 +48,21 @@
       />
     {/if}
   </h3>
-  <p class="tile-soft mt-1.5 line-clamp-2 text-sm leading-relaxed">{module.description}</p>
+  <p class="on-soft mt-1 line-clamp-2 text-sm leading-relaxed">{module.description}</p>
   {#if module.counts.length > 0}
     <dl class="mt-3 flex flex-wrap gap-1.5">
       {#each module.counts as count (count.label)}
         <div class="chip chip-wash min-w-0">
-          <dt>{count.label}</dt>
-          <dd class="font-medium" data-testid="module-card-count-{count.label}">{count.value}</dd>
+          <dt class="on-soft">{count.label}</dt>
+          <dd class="font-mono" data-testid="module-card-count-{count.label}">{count.value}</dd>
         </div>
       {/each}
     </dl>
   {:else if module.note}
-    <p class="tile-soft mt-4 text-sm">{module.note}</p>
+    <p class="on-soft mt-3 text-sm">{module.note}</p>
   {:else if module.results.length > 0}
-    <p class="mt-4 truncate text-sm">
-      {module.results[0].label}{#if module.results[0].detail}<span class="tile-soft">
+    <p class="mt-3 truncate text-sm">
+      {module.results[0].label}{#if module.results[0].detail}<span class="on-soft">
           · {module.results[0].detail}</span
         >{/if}
     </p>

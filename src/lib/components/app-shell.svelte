@@ -41,6 +41,7 @@
     user,
     language,
     presence,
+    inkFrame = true,
     children,
   }: {
     shell: ShellData
@@ -54,6 +55,12 @@
      * is off — then there is no status anywhere (off means off).
      */
     presence: SelfPresence | null
+    /**
+     * The app's own style: the board's black frame (sidebar and top bar on
+     * ink, the page a light panel inside it). With an active brand style the
+     * frame keeps the brand's sidebar tokens (C3) instead.
+     */
+    inkFrame?: boolean
     children: Snippet
   } = $props()
 
@@ -130,20 +137,20 @@
   {@const Icon = iconFor(item.id)}
   {@const current = currentId === item.id}
   {@const dimmed = !item.active}
-  <!-- Compact rows with a moderate radius; the current one sits on the mist tile. -->
+  <!-- Controls are pills (the board): the current page is the white pill with the coral dot. -->
   <a
     href={appHref(item.href)}
     onclick={closeDrawer}
     aria-current={current ? 'page' : undefined}
     data-testid="shell-nav-{item.id}"
-    class="group flex h-8 min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring
+    class="group flex h-8 min-w-0 items-center gap-2.5 rounded-full px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring
       {current
-      ? 'bg-card font-medium text-foreground'
+      ? 'bg-primary font-medium text-primary-foreground'
       : dimmed
-        ? 'text-muted-foreground hover:bg-card'
-        : 'text-foreground hover:bg-card'}"
+        ? 'text-muted-foreground hover:bg-accent'
+        : 'text-foreground hover:bg-accent'}"
   >
-    <Icon class="size-4 shrink-0 {current ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'}" aria-hidden="true" strokeWidth={1.75} />
+    <Icon class="size-4 shrink-0 {current ? '' : 'text-muted-foreground group-hover:text-foreground'}" aria-hidden="true" strokeWidth={1.75} />
     <span class="min-w-0 truncate">{item.name}</span>
     {#if current}<span class="ml-auto size-1.5 shrink-0 rounded-full bg-coral" aria-hidden="true"></span>{/if}
     {#if dimmed}<span class="chip chip-line ml-auto shrink-0">Off</span>{/if}
@@ -160,20 +167,22 @@
         aria-current={onDashboard ? 'page' : undefined}
         data-testid="shell-company-link"
         title="Dashboard"
-        class="group flex h-12 min-w-0 flex-1 items-center gap-2.5 rounded-xl px-2 outline-none focus-visible:ring-2 focus-visible:ring-ring
-          {onDashboard ? 'bg-card' : 'hover:bg-card'}"
+        class="group flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-full pr-3 pl-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring
+          {onDashboard ? 'bg-accent' : 'hover:bg-accent'}"
       >
         {#if companyLogo}
           <img
             src={companyLogo}
             alt=""
             data-testid="shell-company-logo"
-            class="size-8 shrink-0 rounded-lg object-contain"
+            class="size-8 shrink-0 rounded-full object-contain"
           />
         {:else}
           <span
             data-testid="shell-company-badge"
-            class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary font-mono text-sm text-primary-foreground"
+            class="flex size-8 shrink-0 items-center justify-center font-mono text-sm {inkFrame
+              ? 'ring-face text-[#111111]'
+              : 'rounded-md bg-primary text-primary-foreground'}"
             aria-hidden="true">{initial}</span
           >
         {/if}
@@ -181,7 +190,7 @@
           <span class="truncate text-sm font-medium tracking-tight" data-testid="shell-company"
             >{companyName}</span
           >
-          <span class="mono-label truncate text-xs text-muted-foreground">Dashboard</span>
+          <span class="truncate font-mono text-xs text-muted-foreground">Dashboard</span>
         </span>
       </a>
     </div>
@@ -193,7 +202,7 @@
         {#each footerItems as item (item.id)}<li>{@render navLink(item)}</li>{/each}
       </ul>
     </nav>
-    <div class="mx-3 mb-3 flex shrink-0 items-center gap-2.5 rounded-xl bg-card py-1.5 pr-1.5 pl-2" data-testid="shell-user-footer">
+    <div class="mx-3 mb-3 flex shrink-0 items-center gap-2.5 rounded-full bg-card py-1.5 pr-1.5 pl-1.5" data-testid="shell-user-footer">
       {#if presence}
         <PresenceNav
           self={presence}
@@ -228,13 +237,14 @@
   </div>
 {/snippet}
 
+<!-- The board's black gutters: sidebar and top bar on ink, the page a light panel inside. -->
 <div
-  class="flex h-dvh w-full flex-row overflow-hidden bg-background text-foreground"
+  class="flex h-dvh w-full flex-row overflow-hidden text-foreground {inkFrame ? 'bg-ink' : 'bg-sidebar'}"
   data-testid="app-shell"
 >
   <!-- Desktop sidebar -->
   <aside
-    class="hidden w-56 shrink-0 bg-background md:block"
+    class="hidden w-56 shrink-0 text-foreground md:block {inkFrame ? 'ink-scope bg-ink' : 'bg-sidebar'}"
     data-testid="shell-sidebar"
   >
     {@render sidebar()}
@@ -251,7 +261,7 @@
       ></button>
       <aside
         id="shell-drawer"
-        class="absolute inset-y-0 left-0 w-72 max-w-[85vw] rounded-r-2xl bg-background pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl"
+        class="absolute inset-y-0 left-0 w-72 max-w-[85vw] rounded-r-2xl pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-foreground shadow-xl {inkFrame ? 'ink-scope bg-ink' : 'bg-sidebar'}"
         data-testid="shell-drawer"
       >
         {@render sidebar()}
@@ -262,12 +272,12 @@
   <div class="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="shell-column">
     <!-- The assistant's top bar, on every signed-in page (on phones with the menu). -->
     <header
-      class="box-content flex h-14 shrink-0 items-center gap-2 bg-background px-3 pt-[env(safe-area-inset-top)] sm:px-6"
+      class="box-content flex h-14 shrink-0 items-center gap-2 px-2 pt-[env(safe-area-inset-top)] text-foreground sm:px-3 {inkFrame ? 'ink-scope' : ''}"
       data-testid="shell-topbar"
     >
       <button
         type="button"
-        class="relative -ml-1 flex size-9 shrink-0 items-center justify-center rounded-full bg-card text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+        class="relative flex size-9 shrink-0 items-center justify-center rounded-full bg-card text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring md:hidden"
         aria-label={menuLabel}
         aria-expanded={drawerOpen}
         aria-controls="shell-drawer"
@@ -300,9 +310,12 @@
       <ContributeButton />
     </header>
 
-    <div class="flex min-h-0 min-w-0 flex-1 flex-row">
+    <div
+      class="mx-2 mb-[max(0.5rem,env(safe-area-inset-bottom))] flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden rounded-xl bg-background md:ml-0"
+      data-testid="shell-panel"
+    >
       <div
-        class="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto pb-[env(safe-area-inset-bottom)]"
+        class="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto"
         data-testid="shell-content"
       >
         {@render children()}

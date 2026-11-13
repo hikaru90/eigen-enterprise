@@ -37,7 +37,7 @@
   <div class="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-3">
     <div class="min-w-0">
       <div class="flex min-w-0 items-center gap-3">
-        <h1 class="display-l min-w-0 truncate pb-1">{title}</h1>
+        <h1 class="min-w-0 truncate text-[1.375rem] leading-tight font-medium tracking-[-0.02em]">{title}</h1>
         {#if status}<StatusPill label={status.label} on={status.on} />{/if}
       </div>
       {#if description}
@@ -53,9 +53,9 @@
     {/if}
   </div>
   {#if tabs && tabs.length > 0}
-    <!-- A segmented track: the current tab lifts onto the page colour. -->
+    <!-- Controls are pills: a pill track, the current tab the white pill on it. -->
     <nav
-      class="mt-5 flex w-fit max-w-full gap-0.5 overflow-x-auto rounded-xl bg-card p-1"
+      class="mt-5 flex w-fit max-w-full gap-0.5 overflow-x-auto rounded-full bg-muted p-1"
       aria-label={navLabel ?? `${title} sections`}
       data-testid={navTestId}
     >
@@ -64,9 +64,9 @@
           href={appHref(tab.href)}
           aria-current={current === tab.id ? 'page' : undefined}
           data-testid={tabTestId(tab.id)}
-          class="shrink-0 rounded-lg px-3 py-1.5 text-sm whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring {current ===
+          class="shrink-0 rounded-full px-3.5 py-1.5 text-sm whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring {current ===
           tab.id
-            ? 'bg-background font-medium text-foreground shadow-[0_1px_2px_rgb(0_0_0/0.06)]'
+            ? 'bg-card font-medium text-foreground shadow-[0_1px_2px_rgb(0_0_0/0.08)]'
             : 'text-muted-foreground hover:text-foreground'}">{tab.label}</a
         >
       {/each}

@@ -93,6 +93,43 @@ An architectural diagram meets Bauhaus-inspired composition. Strict grid geometr
 
 ---
 
+## Workspace (the app's own style — binding, owner reference board 2026-11-13)
+
+Copied from the owner's reference board, not invented. Classes live in
+`src/routes/layout.css` (`@layer components`); a brand style re-skins page, text and
+primary actions, never the board palette below.
+
+**Frame.** The app sits in a black frame (the board's gutters): sidebar and top bar on
+ink (`.ink-scope` re-scopes the tokens), the page is a light `#f2f2f2` panel with 12px
+corners, 8px inset. White cards on the light page.
+
+**Palette (sampled).** Grounds: light `#f2f2f2`, white, stone `#d6d5cb`, charcoal
+`#3b3b3b`, ink `#000`, widget grey `#767676`. One accent: coral `#f2541f`, used as a
+radial heat in cream (`--gradient-heat`), as the clock face's rim (`--gradient-ring`),
+as the solid coral card (`--gradient-coral`) and as the taupe-into-coral transcript card
+(`--gradient-ember`, deepened for AA). Slate dusk (`--gradient-dusk`): 9 stops from
+`#dcdcdc` through navy `#3f4f66` to `#131217`. Taupe `#8a6457` for chips on coral.
+
+**Shapes — which is round and which is square.**
+| Element | Shape |
+| --- | --- |
+| Stage (a surface holding one widget: dashboard tiles, module cards) | near-square, 12px (`.stage`) |
+| Card (white card, coral card, page cards, inputs, selects, textareas) | near-square, 10–12px |
+| Widget (black / grey / white floating object, dialogs) | squircle 28px (`.squircle`, continuous corners where `corner-shape` is supported) |
+| Capsule (heat capsule, black oval, banners) | stadium (fully round) |
+| Control (buttons, nav items, tabs, chips, badges, the ask field, small +/− controls) | pill |
+| Avatar, icon button, company badge | circle |
+| App icon inside a stage | 12px on 40px |
+
+**Type.** Inter for the UI (titles medium, −0.02em); Geist Mono for display moments
+(the greeting "Hey, …", big numbers, transcripts, times). No serif.
+
+**Details.** A floating label pill at the top of a stage (`.stage-tag`); labels with a
+1px hairline on their left (`.hairline`); white tick marks on the black widget's edges;
+the dot-matrix display (coral when something waits); grey pill controls with a white
+glyph (`.ctrl`); transcripts fade out at the edge (`.fade-end`). Coral appears only where
+something needs attention or as the assistant's face — never as a part's colour.
+
 ## Page frame (app shell, C3b — binding)
 
 Every area page inside the shell opens the same way. Use the shared components in
@@ -103,10 +140,11 @@ Every area page inside the shell opens the same way. Use the shared components i
   status pill, optional actions on the right, and optional sub-nav **tabs below** the
   header (`tabs` from `src/lib/shell/area-nav.ts`, `settings-nav.ts`,
   `memory-surface-nav.ts`). One `h1` per page.
-- **`StatusPill`** — the one status style: a bordered pill with a dot (`bg-primary` when
+- **`StatusPill`** — the one status style: a bordered pill chip with a dot (`bg-success` when
   on, muted when off) and a short label ("Active", "Not active", "Connected").
-- **`SectionHeader`** — the `h2` heading of a tab's content (`text-base font-semibold`),
-  optional description and actions (e.g. Roadmap's "Add item").
+- **`SectionHeader`** — the `h2` heading of a tab's content, with the hairline label
+  (15px medium title, optional description, a 1px rule on the left) and optional actions
+  (e.g. Roadmap's "Add item").
 - **Back links** (`← Back to apps`, `← Back to runs`) appear only on detail pages, as a
   small muted link above the detail's `h2`. No breadcrumbs, no underlined text-link
   sub-navs.

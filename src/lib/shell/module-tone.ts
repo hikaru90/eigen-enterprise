@@ -1,33 +1,26 @@
 /**
- * Presentation only: the tile each part wears on the dashboard. Neutral
- * grounds from the owner's reference board (2026-11-13) — ink, charcoal,
- * stone, mist and the slate dusk gradient — so a screen of parts reads calm;
- * the coral accent is kept for what needs attention, never for a part.
- * Keyed by module id like the shell's icon map; any other module is mist.
- * The classes live in src/routes/layout.css (`.tile-*`).
+ * Presentation only: the stage each part sits on, from the owner's reference
+ * board (2026-11-13): white, stone, charcoal and ink grounds; coral is kept
+ * for what needs attention, never for a part. Keyed by module id like the
+ * shell's icon map; any other module is white. The classes live in
+ * src/routes/layout.css (`.stage-*`).
  */
-export type Tone = 'ink' | 'charcoal' | 'stone' | 'mist' | 'slate'
+export type Tone = 'ink' | 'charcoal' | 'stone' | 'white'
 
 const TONES: Record<string, Tone> = {
-  website: 'slate',
-  messages: 'ink',
+  website: 'ink',
+  memory: 'ink',
+  messages: 'charcoal',
   calls: 'charcoal',
-  memory: 'charcoal',
   email: 'stone',
   brand: 'stone',
-  calendar: 'stone',
 }
 
 export function toneOf(id: string): Tone {
-  return TONES[id] ?? 'mist'
+  return TONES[id] ?? 'white'
 }
 
-/** Dark tiles take light icon circles and chips. */
+/** Dark stages take a white icon squircle; light ones a black one. */
 export function isDark(tone: Tone): boolean {
-  return tone === 'ink' || tone === 'charcoal' || tone === 'slate'
-}
-
-/** Gradient tiles carry the website's grain. */
-export function hasGrain(tone: Tone): boolean {
-  return tone === 'slate'
+  return tone === 'ink' || tone === 'charcoal'
 }

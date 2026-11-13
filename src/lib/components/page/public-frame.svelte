@@ -34,7 +34,7 @@
     {/if}
     <header class="text-center">
       <Wordmark href={home} />
-      <h1 class="display-l mt-8">{title}</h1>
+      <h1 class="mt-8 text-[1.375rem] leading-tight font-medium tracking-[-0.02em]">{title}</h1>
       {#if subtitle}<p class="mt-2 text-sm text-muted-foreground">{subtitle}</p>{/if}
     </header>
     <div class="mt-8">

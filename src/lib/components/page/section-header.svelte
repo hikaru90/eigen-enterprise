@@ -14,8 +14,9 @@
 </script>
 
 <div class="mt-8 flex min-w-0 flex-wrap items-end justify-between gap-3" data-testid={testid}>
-  <div class="flex min-w-0 flex-col gap-1">
-    <h2 class="display-m">{title}</h2>
+  <!-- The board's hairline label: a 1px rule on the left of title and description. -->
+  <div class="hairline flex min-w-0 flex-col gap-0.5">
+    <h2 class="text-[15px] leading-snug font-medium">{title}</h2>
     {#if description}<p class="text-sm text-muted-foreground">{description}</p>{/if}
   </div>
   {#if actions}<div class="flex shrink-0 items-center gap-2">{@render actions()}</div>{/if}

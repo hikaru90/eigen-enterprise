@@ -21,8 +21,16 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const css = stripCssComments(readFileSync(path.join(here, 'layout.css'), 'utf-8'))
 const block = (selector: string) => cssBlock(css, selector)
 
-/** Where the tokens are composed (no active brand set); see themeContexts. */
-const CONTEXTS = themeContexts(css)
+/**
+ * Where the tokens are composed (no active brand set); see themeContexts.
+ * Plus the app frame: the shell's sidebar and top bar re-scope the tokens to
+ * ink (.ink-scope) inside the light nucleus wrapper.
+ */
+const BASE_CONTEXTS = themeContexts(css)
+const CONTEXTS = {
+  ...BASE_CONTEXTS,
+  'app frame': { ...BASE_CONTEXTS['nucleus, light'], ...block('.ink-scope') },
+}
 
 /** App-shell surfaces beyond the semantic roles (src/lib/components/app-shell.svelte). */
 const SHELL_PAIRS: ContrastPair[] = [

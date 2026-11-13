@@ -93,7 +93,7 @@
 <div
   class={[
     'flex min-h-dvh flex-col text-foreground',
-    brandActive ? 'bg-background' : 'marketing-light-theme bg-white',
+    brandActive ? 'bg-background' : 'marketing-light-theme bg-background',
   ]}
 >
   {#if withShell && data.shell}
@@ -103,6 +103,7 @@
       user={data.user}
       language={data.preferredLanguage}
       presence={selfPresence}
+      inkFrame={!brandActive}
     >
       {@render children()}
     </AppShell>

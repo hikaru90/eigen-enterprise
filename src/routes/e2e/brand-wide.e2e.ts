@@ -67,6 +67,7 @@ type ShellLook = {
   sidebarBg: string
   highlightBg: string
   badgeBg: string
+  badgeImage: string
   badgeRadius: string
   bodyFont: string
 }
@@ -82,6 +83,7 @@ async function shellLook(page: Page): Promise<ShellLook> {
       sidebarBg: cs('[data-testid="shell-sidebar"]').backgroundColor,
       highlightBg: cs('[data-testid="shell-sidebar"] [aria-current="page"]').backgroundColor,
       badgeBg: cs('[data-testid="shell-company-badge"]').backgroundColor,
+      badgeImage: cs('[data-testid="shell-company-badge"]').backgroundImage,
       badgeRadius: cs('[data-testid="shell-company-badge"]').borderRadius,
       bodyFont: getComputedStyle(document.body).fontFamily,
     }
@@ -133,10 +135,10 @@ test('the chosen style re-skins the whole shell, and a second choice changes it 
   await expect(page.getByRole('heading', { name: 'Pick a direction' })).toBeVisible()
   await expect(page.getByText('The branding module is inactive')).toHaveCount(0)
 
-  // ---- no active set: the app's own look ----
+  // ---- no active set: the app's own look (the board's black frame, the coral-rimmed badge) ----
   const before = await tour(page, '0-default')
-  expect(before.look.sidebarBg).toBe('oklch(0.985 0 0)')
-  expect(before.look.badgeBg).toBe('rgb(17, 17, 17)')
+  expect(before.look.sidebarBg).toBe('rgb(0, 0, 0)')
+  expect(before.look.badgeImage).toMatch(/^radial-gradient\(/)
   expect(before.look.bodyFont).toMatch(/^Inter,/)
   expect(before.heading).toMatch(/^Inter,/)
   await expect(page.locator('link[data-brand-font]')).toHaveCount(0)
