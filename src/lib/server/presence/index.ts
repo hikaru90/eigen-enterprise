@@ -1,5 +1,6 @@
+import type { PresenceTracker } from './tracker'
 import { InCallWatcher } from './calls-watch'
-import { PresenceTracker } from './tracker'
+import { startPresence } from './start'
 
 export { PresenceTracker, type Presence, type PresenceStatus, type HeartbeatState } from './tracker'
 
@@ -16,10 +17,6 @@ export { PresenceTracker, type Presence, type PresenceStatus, type HeartbeatStat
  * shared store for "online now".
  */
 
-const SWEEP_MS = 15_000
-/** Members joining/leaving, and calls whose end was not heard. */
-const REFRESH_MS = 60_000
-
 let started: Promise<PresenceTracker> | null = null
 
 async function companyMemberIds(): Promise<string[]> {
@@ -27,21 +24,17 @@ async function companyMemberIds(): Promise<string[]> {
   return (await dbMemberStore.listMembers()).map((m) => m.id)
 }
 
+/** The process's tracker; following calls runs in the background (start.ts), so a heartbeat never waits for it. */
 export function presence(): Promise<PresenceTracker> {
   started ??= (async () => {
-    const tracker = new PresenceTracker(() => new Date())
     const { liveCallsHub, liveCallsService } = await import('../../../../modules/index')
     const [hub, service] = await Promise.all([liveCallsHub(), liveCallsService()])
-    const watcher = new InCallWatcher({ hub, service }, (ids) => tracker.setInCall(ids))
-    await watcher.follow(await companyMemberIds())
-    setInterval(() => tracker.sweep(), SWEEP_MS).unref()
-    setInterval(() => {
-      ;(async () => {
-        await watcher.follow(await companyMemberIds())
-        await watcher.reconcile()
-      })().catch((err) => console.error('[presence] refreshing members / calls failed', err))
-    }, REFRESH_MS).unref()
-    return tracker
+    return startPresence({
+      now: () => new Date(),
+      watcher: (onChange) => new InCallWatcher({ hub, service }, onChange),
+      memberIds: companyMemberIds,
+      onError: (err) => console.error('[presence] following members / calls failed', err),
+    })
   })().catch((err) => {
     started = null
     throw err
