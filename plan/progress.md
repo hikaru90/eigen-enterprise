@@ -2,6 +2,14 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-13 — Contribute phone-home merged + e2e (main @ `8466816`, not pushed, not on the box)
+
+- Merged into main: the wire contract + migrations 0136/0137 (`16d29d0`), the hub (`4cf3d93`), the install side (`fd61741`), the join fix (`8a795ae`: views pass `sharing` through; the new UI meets the page a11y guard, 13px and muted text), and the e2e journey.
+- E2E `src/routes/e2e/contribute-phone-home.e2e.ts` passes, alone and with `contribute.e2e.ts`. Covered: sharing on by default; a proposal with a name and a URL reaches the mock hub as exactly `HUB_CONTRIBUTION_KEYS` and nothing else; "Show what was sent" equals the PUT body; "Don't share" sends a signed DELETE with an empty body; sharing off sticks. Mock hub `scripts/mock-hub.ts` on :5198, a 4th Playwright webServer built on the contract's own schemas and verifier; dev-only harness trigger `POST /api/e2e/harness/contribute-share`.
+- **Bug fixed (presence, outside Contribute):** each presence heartbeat held a reserved DB connection while waiting for the tracker to start, and startup follows every member's calls through that same pool of 10, so ten heartbeats deadlocked the server (found with the test DB's 1227 members; possible in production too). The tracker is ready at once now and follows in the background, retried on the 60s refresh (`src/lib/server/presence/start.ts` + spec).
+- **Decision:** `shareTick` runs one pass at a time per process (`oneAtATime`), so the harness trigger and the 60s ticker can't both create an install key.
+- **Still open:** `ee` doesn't write `CONTRIBUTE_HUB_URL` yet, so released installs show "central board not configured" and send nothing. Activating `contribute-hub` on os.cerberusblue.com and shipping the URL are owner steps. Also open: the one-time "sharing is on" notice; the hub install's own outbox rows sit as Waiting; register is unsigned, and a flood of new install ids isn't limited.
+
 ## 2026-11-13 — Contribute board round 5: the 10 open proposals worked (main @ `f2dd0a3`, not pushed, not released, board statuses unchanged)
 
 Orchestrated: one worktree stream per proposal (`.claude/worktrees/contrib-*`, branches `contrib/*`), merged in dependency order (calendar → email proposals; memory privacy → plugins), worktrees + branches pruned. Migrations were renumbered at merge because the phone-home work took 0136/0137 meanwhile: **0138_calendar, 0139_contact_history, 0140_calendar_proposals**. A fresh scratch DB migrated 0000→0140 clean (138 rows; scratch DB dropped).
