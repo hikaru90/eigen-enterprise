@@ -15,7 +15,7 @@ async function readPlaywrightConfig(env: Record<string, string>) {
     const result = await loadConfigFromFile({ command: 'serve', mode: 'development' }, 'playwright.config.ts');
     const c = result.config;
     console.log(JSON.stringify({
-      webServer: (c.webServer ?? []).map((s) => ({ command: s.command, url: s.url, reuseExistingServer: s.reuseExistingServer, env: s.env && { ORIGIN: s.env.ORIGIN, LIVEKIT_CONFIG: s.env.LIVEKIT_CONFIG, LIVEKIT_URL: s.env.LIVEKIT_URL, LIVEKIT_API_URL: s.env.LIVEKIT_API_URL, LIVEKIT_API_KEY: s.env.LIVEKIT_API_KEY, LIVEKIT_API_SECRET: s.env.LIVEKIT_API_SECRET } })),
+      webServer: (c.webServer ?? []).map((s) => ({ command: s.command, url: s.url, reuseExistingServer: s.reuseExistingServer, env: s.env && { ORIGIN: s.env.ORIGIN, LIVEKIT_CONFIG: s.env.LIVEKIT_CONFIG, LIVEKIT_URL: s.env.LIVEKIT_URL, LIVEKIT_API_URL: s.env.LIVEKIT_API_URL, LIVEKIT_API_KEY: s.env.LIVEKIT_API_KEY, LIVEKIT_API_SECRET: s.env.LIVEKIT_API_SECRET, CONTRIBUTE_HUB_URL: s.env.CONTRIBUTE_HUB_URL } })),
       baseUrl: c.use?.baseURL,
     }));
   `
@@ -28,7 +28,7 @@ async function readPlaywrightConfig(env: Record<string, string>) {
 }
 
 // No dev server (owner decision 2026-10-23): the ee box is the only install.
-// Browser e2e runs its own throwaway harness (Vite + mock gateway + livekit-server), started and
+// Browser e2e runs its own throwaway harness (Vite + mock gateway + mock Contribute hub + livekit-server), started and
 // stopped by Playwright — never an already-running server.
 describe('no dev server', () => {
   it('has no `npm run dev` script', async () => {
@@ -39,7 +39,7 @@ describe('no dev server', () => {
   for (const ci of ['', '1']) {
     it(`e2e starts its own harness and never reuses a running server (CI=${ci || 'unset'})`, async () => {
       const config = await readPlaywrightConfig({ CI: ci })
-      expect(config.webServer.length).toBe(3)
+      expect(config.webServer.length).toBe(4)
       for (const server of config.webServer) expect(server.reuseExistingServer).toBe(false)
       const app = config.webServer.find((s) => s.command.includes('vite'))
       expect(app?.command).toContain('--strictPort')
@@ -60,6 +60,10 @@ describe('no dev server', () => {
       expect(lk.rtc).toMatchObject({ node_ip: '127.0.0.1', use_external_ip: false })
       expect([lk.rtc.tcp_port, lk.rtc.udp_port]).not.toContain(7881)
       expect([lk.rtc.tcp_port, lk.rtc.udp_port]).not.toContain(7882)
+      // Contribute phone-home: the app shares with the throwaway mock hub, never a real central board.
+      const hub = config.webServer.find((s) => s.command.includes('scripts/mock-hub.ts'))
+      expect(hub?.url).toBe(`${app?.env?.CONTRIBUTE_HUB_URL}/__mock-hub/requests`)
+      expect(app?.env?.CONTRIBUTE_HUB_URL).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
     }, 30_000)
   }
 })

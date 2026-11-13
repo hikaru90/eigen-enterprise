@@ -109,6 +109,20 @@ describe('mockChatCompletion', () => {
     expect(response.choices[0]).toMatchObject({ message: { role: 'assistant', content: verdict }, finish_reason: 'stop' })
   })
 
+  it('[mock-json@Tag:b64url] answers only the call whose user message opens with "Tag:"; others get the plain [mock-json:…]', () => {
+    const b64 = (s: string) => Buffer.from(s).toString('base64url')
+    const verdict = JSON.stringify({ kind: 'bug', area: 'messages', duplicate_of: null })
+    const scrub = JSON.stringify({ summary: 'Keep thread replies', language: 'en', removed: ['person', 'url'] })
+    const title = `Threads [mock-json:${b64(verdict)}] [mock-json@Proposal:${b64(scrub)}]`
+    const judge = mockChatCompletion({ messages: [{ role: 'user', content: `Draft:\n${JSON.stringify(title)}` }] }, {})
+    expect(judge.response.choices[0].message.content).toBe(verdict)
+    const scrubbed = mockChatCompletion({ messages: [{ role: 'user', content: `Proposal:\n${JSON.stringify(title)}` }] }, {})
+    expect(scrubbed.response.choices[0].message.content).toBe(scrub)
+    // A tagged marker alone never answers another call's tag.
+    const other = mockChatCompletion({ messages: [{ role: 'user', content: `Draft:\n"x [mock-json@Proposal:${b64(scrub)}]"` }] }, {})
+    expect(other.response.choices[0].message.content).toBe(MOCK_ANSWER)
+  })
+
   it('[mock-delay:ms] in the latest user message delays every completion of the turn', () => {
     const base = {
       tools: [tool(DEFAULT_MOCK_TOOL)],

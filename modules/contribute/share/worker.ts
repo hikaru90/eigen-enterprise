@@ -35,6 +35,20 @@ export const REVOKED_MESSAGE = 'The central board refused this install (HTTP {st
 export const KEY_CONFLICT_MESSAGE =
   'The central board already knows this install id with a different key (HTTP 409). Nothing is sent until that is resolved.'
 
+/**
+ * One pass at a time in this process: a call made while a pass runs waits for
+ * it, then runs its own. The job-queue tick and the e2e harness trigger both
+ * run passes; two at once could each make an install key on first use.
+ */
+export function oneAtATime<T>(pass: () => Promise<T>): () => Promise<T> {
+  let last: Promise<unknown> = Promise.resolve()
+  return () => {
+    const next = last.then(pass, pass)
+    last = next.catch(() => undefined)
+    return next
+  }
+}
+
 /** Delay before the n-th retry (n ≥ 1): 1 min, 2, 4 … capped at 6 h. */
 export function backoffMs(attempts: number): number {
   return Math.min(BACKOFF_BASE_MS * 2 ** Math.max(0, attempts - 1), BACKOFF_CAP_MS)
