@@ -7,6 +7,7 @@ import { requireCapability } from '$lib/server/auth/require-capability'
 import { appKernel } from '$lib/server/boot'
 import { ownerRun } from '$lib/server/website/owner-run'
 import { ownerModuleBlurb } from '$lib/shell/module-copy'
+import { CONTRIBUTE_HUB_MODULE_ID } from '../../../../../modules/contribute-hub/manifest'
 
 /**
  * Settings → Plugins (owner, 2026-11-12: "everything is a plugin"): every
@@ -92,7 +93,11 @@ export const load: PageServerLoad = async ({ locals }): Promise<PluginsData> => 
         requires: m.requires.map(ref),
         requiredBy: m.requiredBy.map(ref),
       })),
-    core: listed.filter((m) => m.core).map((m) => ({ id: m.id, name: m.name })),
+    // The central Contribute board is internal but switched on only on the owner's install:
+    // where it is off, it is not part of this company's core.
+    core: listed
+      .filter((m) => m.core && (m.active || m.id !== CONTRIBUTE_HUB_MODULE_ID))
+      .map((m) => ({ id: m.id, name: m.name })),
   }
 }
 

@@ -113,6 +113,13 @@ describe('Settings → Plugins (owner and admins)', () => {
     expect(data.core.map((c) => c.id).sort()).toEqual(['contribute', 'kernel', 'members', 'orchestrator'])
   })
 
+  it('the central Contribute board is in the core line only where the owner switched it on', async () => {
+    roleMock.mockResolvedValue('owner')
+    expect((await loaded()).core.map((c) => c.id)).not.toContain('contribute-hub')
+    await activations.set('contribute-hub', true)
+    expect((await loaded()).core.map((c) => c.id)).toContain('contribute-hub')
+  })
+
   it('describes each plugin: official, on or off, its tools, who needs whom', async () => {
     const data = await loaded()
     expect(plugin(data, 'email')).toMatchObject({
