@@ -6,7 +6,7 @@ import { HUB_CONTRIBUTION_KEYS, hubContributionV1, hubRegisterV1, verifyHubReque
 import { HUB_NOT_CONFIGURED, type HubConfig, type HubRequest, type HubResponse } from './hub'
 import { memoryInstallKeyStore } from './identity'
 import { ScrubFailedError, type ScrubResult } from './scrub'
-import { BACKOFF_CAP_MS, backoffMs, NO_PROVIDER_MESSAGE, runShareTick, SHARE_BATCH, withdrawEverything, type ShareWorkerDeps } from './worker'
+import { BACKOFF_CAP_MS, backoffMs, NO_PROVIDER_MESSAGE, oneAtATime, runShareTick, SHARE_BATCH, withdrawEverything, type ShareWorkerDeps } from './worker'
 
 const TITLE = 'Ana: upload to https://kindred.example/drive breaks for big files'
 const owner = { id: 'owner', kind: 'human' as const, canManage: true }
@@ -279,5 +279,38 @@ describe('share worker', () => {
     await runShareTick(t.deps)
     t.hub.answers.push(502)
     await expect(withdrawEverything(t.deps)).rejects.toThrow('Deleting from the central board failed. The central board answered HTTP 502')
+  })
+})
+
+describe('oneAtATime (the job-queue tick and the e2e harness trigger share one process)', () => {
+  it('runs a second call only after the first finished, so two passes never make two install keys', async () => {
+    const order: string[] = []
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    let n = 0
+    const pass = oneAtATime(async () => {
+      const me = ++n
+      order.push(`start ${me}`)
+      if (me === 1) await gate
+      order.push(`end ${me}`)
+      return me
+    })
+    const first = pass()
+    const second = pass()
+    await Promise.resolve()
+    expect(order).toEqual(['start 1'])
+    release()
+    expect(await Promise.all([first, second])).toEqual([1, 2])
+    expect(order).toEqual(['start 1', 'end 1', 'start 2', 'end 2'])
+  })
+
+  it('a failed pass does not block the next one', async () => {
+    let n = 0
+    const pass = oneAtATime(async () => {
+      if (++n === 1) throw new Error('boom')
+      return n
+    })
+    await expect(pass()).rejects.toThrow('boom')
+    expect(await pass()).toBe(2)
   })
 })

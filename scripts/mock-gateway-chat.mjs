@@ -19,6 +19,11 @@
  *   [mock-json:<b64url>] answer with exactly the base64url-decoded text as
  *                       content (no tool call) — e.g. a JSON verdict for an
  *                       LLM judge (the Contribute board's kind/area/duplicate).
+ *   [mock-json@<Tag>:<b64url>] the same, but only for a call whose latest user
+ *                       message opens with "<Tag>:" — it wins over the plain
+ *                       marker there. Lets one text answer two different calls,
+ *                       e.g. the Contribute judge ("Draft:") and the sharing
+ *                       scrub ("Proposal:") of the same proposal.
  * Env:
  *   MOCK_GATEWAY_DELAY_MS  default delay for every non-ping completion
  *                          (the prompt marker wins). Malformed → throws.
@@ -76,7 +81,11 @@ export function mockChatCompletion(body, env) {
   const delayMarker = userText.match(/\[mock-delay:(\d+)\]/)
   const delayMs = delayMarker ? Number(delayMarker[1]) : defaultDelay
 
-  const jsonMarker = userText.match(/\[mock-json:([A-Za-z0-9_-]+)\]/)
+  const tag = userText.match(/^([A-Za-z]+):/)?.[1]
+  const tagged = tag
+    ? [...userText.matchAll(/\[mock-json@([A-Za-z]+):([A-Za-z0-9_-]+)\]/g)].find((m) => m[1] === tag)
+    : undefined
+  const jsonMarker = tagged ? [tagged[0], tagged[2]] : userText.match(/\[mock-json:([A-Za-z0-9_-]+)\]/)
   if (jsonMarker) {
     const content = Buffer.from(jsonMarker[1], 'base64url').toString('utf8')
     return { delayMs, response: wrap({ role: 'assistant', content }, 'stop') }

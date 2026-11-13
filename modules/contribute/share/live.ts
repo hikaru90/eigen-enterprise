@@ -7,7 +7,7 @@ import { dbShareStore } from './db-store'
 import { fetchHubTransport, hubConfig } from './hub'
 import { sealedInstallKeyStore } from './identity'
 import { scrubTitle } from './scrub'
-import { runShareTick, type ShareTickResult } from './worker'
+import { oneAtATime, runShareTick, type ShareTickResult } from './worker'
 
 /**
  * Live wiring of sharing with the central board: the DB stores over the app
@@ -77,10 +77,10 @@ export async function isHubInstall(): Promise<boolean> {
   return kernel.activations.get(HUB_MODULE_ID)
 }
 
-/** One pass for the job-queue tick. */
-export async function shareTick(): Promise<ShareTickResult | null> {
+/** One pass for the job-queue tick (and the e2e harness trigger); one at a time per process. */
+export const shareTick: () => Promise<ShareTickResult | null> = oneAtATime(async () => {
   if (await isHubInstall()) return null
   const out = await runShareTick(await shareDeps())
   if (out.claimed > 0) console.info('[contribute.share] tick', out)
   return out
-}
+})

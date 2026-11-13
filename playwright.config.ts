@@ -10,6 +10,13 @@ const slowMo = process.env.PW_SLOW_MO ? Number(process.env.PW_SLOW_MO) : undefin
 const mockGatewayPort = Number(process.env.MOCK_GATEWAY_PORT ?? 5199)
 const mockGatewayUrl = `http://127.0.0.1:${mockGatewayPort}`
 /**
+ * Contribute phone-home (plan/contribute-phone-home.md §6 step 5): a mock
+ * central board (scripts/mock-hub.ts, contract-checked and
+ * signature-verified) the harness app shares proposals with.
+ */
+const mockHubPort = Number(process.env.MOCK_HUB_PORT ?? 5198)
+const mockHubUrl = `http://127.0.0.1:${mockHubPort}`
+/**
  * Browser baseURL must match ORIGIN (localhost) so Better Auth serves /api/auth/* on the
  * host it signs cookies for. Vite binds [::1] only, so the readiness poll uses
  * localhost too (127.0.0.1 never answers).
@@ -108,6 +115,10 @@ export default defineConfig({
         // Drive (D1) stores file bytes on disk: a throwaway dir per harness (fails loud when unset).
         DRIVE_STORAGE_DIR: process.env.DRIVE_STORAGE_DIR ?? path.resolve('test-results/ee-drive'),
         COMPANY_DATA_DIR: process.env.COMPANY_DATA_DIR ?? path.resolve('test-results/ee-company-data'),
+        // Contribute sharing: the install's sealed signing key lives beside the company root key.
+        COMPANY_KEYS_DIR: process.env.COMPANY_KEYS_DIR ?? path.resolve('test-results/ee-company-keys'),
+        // ...and it sends to the mock central board below (never the real one).
+        CONTRIBUTE_HUB_URL: mockHubUrl,
         // Secrets sealed during a run (provider keys, SES keys) need the tenant
         // master key; a throwaway harness gets a throwaway key when .env has none
         // (an unset key crashes the server on the first provider save).
@@ -128,6 +139,13 @@ export default defineConfig({
       command: `node scripts/mock-gateway.mjs`,
       env: { ...process.env, MOCK_GATEWAY_PORT: String(mockGatewayPort) },
       url: mockGatewayUrl,
+      timeout: 30_000,
+      reuseExistingServer: false,
+    },
+    {
+      command: `tsx scripts/mock-hub.ts`,
+      env: { ...process.env, MOCK_HUB_PORT: String(mockHubPort) },
+      url: `${mockHubUrl}/__mock-hub/requests`,
       timeout: 30_000,
       reuseExistingServer: false,
     },
