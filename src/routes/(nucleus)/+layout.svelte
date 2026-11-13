@@ -9,7 +9,8 @@
   import { LiveCalls, setLiveCalls } from '$lib/calls/live-calls.svelte'
   import MiniCall from '$lib/calls/mini-call.svelte'
   import AppShell from '$lib/components/app-shell.svelte'
-  import { PresenceHeartbeat, type HeartbeatState } from '$lib/messages/presence'
+  import { PresenceHeartbeat } from '$lib/messages/presence'
+  import { SelfPresence, setSelfPresence } from '$lib/messages/self-presence.svelte'
   import { shellVisible } from '$lib/shell/nav'
 
   let { data, children } = $props()
@@ -29,20 +30,15 @@
   // Presence (plan/contribute-round-3.md W5): this tab beats on every
   // nucleus page, not only in Messages — someone elsewhere in the app is
   // still online. Started on mount, stopped on destroy; no effects.
+  // Each beat answers my own status, which the nav shows on every page
+  // (Contribute e4ef6be1). Only while Messages, which owns presence, is on:
+  // off means off — no beat, no status (round 4 W7).
   let presenceBeat: PresenceHeartbeat | null = null
-
-  function postPresence(body: { clientId: string; state: HeartbeatState }) {
-    void fetch('/api/messages/presence', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-      keepalive: true,
-    })
-      .then((res) => {
-        if (!res.ok) console.error('[presence] heartbeat refused', res.status)
-      })
-      .catch((err: unknown) => console.error('[presence] heartbeat failed', err))
-  }
+  // Page data of the first load decides, like the beat: a switch takes effect on the next full load.
+  // svelte-ignore state_referenced_locally
+  const selfPresence = setSelfPresence(
+    data.user && data.liveFeeds?.presence ? new SelfPresence({ fetch: (input, init) => fetch(input, init) }) : null,
+  )
 
   onMount(() => {
     if (!data.user) return
@@ -53,10 +49,10 @@
       window.addEventListener('online', resume)
       document.addEventListener('visibilitychange', onVisible)
     }
-    if (data.liveFeeds?.presence) {
+    if (selfPresence) {
       presenceBeat = new PresenceHeartbeat({
         clientId: crypto.randomUUID(),
-        post: postPresence,
+        post: selfPresence.beat,
         doc: document,
         win: window,
         now: () => Date.now(),
@@ -106,6 +102,7 @@
       pathname={page.url.pathname}
       user={data.user}
       language={data.preferredLanguage}
+      presence={selfPresence}
     >
       {@render children()}
     </AppShell>

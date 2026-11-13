@@ -21,6 +21,10 @@
   import { provideAssistant } from '$lib/components/assistant/context'
   import ContributeButton from '$lib/components/contribute/contribute-button.svelte'
   import HomeSettingsMenu from '$lib/components/home-settings-menu.svelte'
+  import { presenceLabel } from '$lib/messages/presence'
+  import PresenceDot from '$lib/messages/presence-dot.svelte'
+  import PresenceNav from '$lib/messages/presence-nav.svelte'
+  import type { SelfPresence } from '$lib/messages/self-presence.svelte'
   import { appHref } from '$lib/shell/href'
   import { currentNavId, type ShellData, type ShellNavItem } from '$lib/shell/nav'
   import { cancelSpeak, speak } from '$lib/speech/tts'
@@ -43,6 +47,7 @@
     pathname,
     user,
     language,
+    presence,
     children,
   }: {
     shell: ShellData
@@ -50,6 +55,12 @@
     user: { name?: string | null; email?: string | null; image?: string | null } | null
     /** The member's speech language (voice input in the assistant). */
     language: string
+    /**
+     * My own status (Contribute e4ef6be1), shown at the foot of the nav and
+     * on the phone's menu button; null while Messages, which owns presence,
+     * is off — then there is no status anywhere (off means off).
+     */
+    presence: SelfPresence | null
     children: Snippet
   } = $props()
 
@@ -103,6 +114,10 @@
   const companyLogo = $derived(shell.companyLogo)
   const userLabel = $derived(user?.name || user?.email || 'Signed in')
   const userImage = $derived(user?.image?.trim() || null)
+  const myStatus = $derived(presence?.view ?? null)
+  const menuLabel = $derived(
+    (drawerOpen ? 'Close menu' : 'Open menu') + (myStatus ? ` — your status: ${presenceLabel(myStatus, new Date())}` : ''),
+  )
 
   function closeDrawer(): void {
     drawerOpen = false
@@ -191,8 +206,15 @@
         {#each footerItems as item (item.id)}<li>{@render navLink(item)}</li>{/each}
       </ul>
     </nav>
-    <div class="flex shrink-0 items-center gap-2.5 border-t border-border px-3 py-3">
-      {#if userImage}
+    <div class="flex shrink-0 items-center gap-2.5 border-t border-border px-3 py-3" data-testid="shell-user-footer">
+      {#if presence}
+        <PresenceNav
+          self={presence}
+          name={userLabel}
+          email={user?.name && user.email ? user.email : null}
+          image={userImage}
+        />
+      {:else if userImage}
         <img
           src={userImage}
           alt=""
@@ -206,12 +228,14 @@
           aria-hidden="true">{userLabel.slice(0, 1).toUpperCase()}</span
         >
       {/if}
-      <div class="min-w-0 flex-1">
-        <p class="truncate text-[13px] font-medium" data-testid="shell-user">{userLabel}</p>
-        {#if user?.name && user.email}<p class="truncate text-[11px] text-foreground/50">
-            {user.email}
-          </p>{/if}
-      </div>
+      {#if !presence}
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-[13px] font-medium" data-testid="shell-user">{userLabel}</p>
+          {#if user?.name && user.email}<p class="truncate text-[11px] text-foreground/50">
+              {user.email}
+            </p>{/if}
+        </div>
+      {/if}
       <HomeSettingsMenu />
     </div>
   </div>
@@ -256,8 +280,8 @@
     >
       <button
         type="button"
-        class="-ml-1 flex size-8 shrink-0 items-center justify-center rounded-md text-foreground/70 outline-none hover:bg-primary/[0.05] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 md:hidden"
-        aria-label={drawerOpen ? 'Close menu' : 'Open menu'}
+        class="relative -ml-1 flex size-8 shrink-0 items-center justify-center rounded-md text-foreground/70 outline-none hover:bg-primary/[0.05] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 md:hidden"
+        aria-label={menuLabel}
         aria-expanded={drawerOpen}
         aria-controls="shell-drawer"
         onclick={toggleDrawer}
@@ -267,6 +291,16 @@
             class="size-5"
             aria-hidden="true"
           />{/if}
+        <!-- Phones: the nav is in the drawer, so my status rides on its button. -->
+        {#if myStatus}
+          <PresenceDot
+            presence={myStatus}
+            now={new Date()}
+            size={10}
+            class="pointer-events-none absolute top-0.5 right-0.5"
+            testid="shell-menu-presence"
+          />
+        {/if}
       </button>
       <div class="flex min-w-0 flex-1 justify-center">
         <div class="flex w-full max-w-2xl min-w-0">

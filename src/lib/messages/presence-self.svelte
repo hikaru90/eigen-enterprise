@@ -19,6 +19,7 @@
     saving,
     error,
     ontoggle,
+    switchId = 'presence-dnd',
   }: {
     name: string
     image: string | null
@@ -28,6 +29,8 @@
     /** Status could not be loaded or saved (shown, never hidden). */
     error: string | null
     ontoggle: (on: boolean) => void
+    /** The switch's element id (the nav's copy needs its own, Messages shows both). */
+    switchId?: string
   } = $props()
 
   const label = $derived(presenceLabel(presence, now))
@@ -46,13 +49,13 @@
   </div>
   <div class="mt-2 flex items-center gap-2" title="Others see that you’d rather not be disturbed. Notifications still arrive.">
     <Switch
-      id="presence-dnd"
+      id={switchId}
       size="sm"
       disabled={saving}
       data-testid="presence-dnd"
       bind:checked={() => presence.doNotDisturb, (on) => ontoggle(on)}
     />
-    <Label for="presence-dnd" class="text-xs font-normal text-foreground/80">Do not disturb</Label>
+    <Label for={switchId} class="text-xs font-normal text-foreground/80">Do not disturb</Label>
   </div>
   {#if error}<p class="mt-1.5 text-xs text-destructive" role="alert">{error}</p>{/if}
 </div>

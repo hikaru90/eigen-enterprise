@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
 import { CAPABILITIES, type Capabilities } from '$lib/access/capabilities'
+import { SelfPresence } from '$lib/messages/self-presence.svelte'
 import { buildShellNav } from '$lib/shell/nav'
 import AppShell from './app-shell.svelte'
 
@@ -31,11 +32,13 @@ function renderShell(
     email: 'alex@k.test',
   },
   companyLogo: string | null = null,
+  presence: SelfPresence | null = null,
 ) {
   return render(AppShell, {
     shell: { companyName: 'Kindred Digital Labs', companyLogo, capabilities, nav },
     pathname,
     user,
+    presence,
     language: 'en',
     children,
   })
@@ -118,5 +121,41 @@ describe('app-shell.svelte', () => {
     await expect.element(page.getByTestId('shell-drawer')).toBeInTheDocument()
     await page.getByTestId('shell-menu-toggle').click({ force: true })
     await expect.element(page.getByTestId('shell-drawer')).not.toBeInTheDocument()
+  })
+
+  describe('my status at the foot of the nav (Contribute e4ef6be1)', () => {
+    const dnd = () => {
+      const self = new SelfPresence({ fetch: async () => new Response(null, { status: 500 }) })
+      self.receive({ userId: 'alex', status: 'dnd', doNotDisturb: true, lastSeenAt: null })
+      return self
+    }
+
+    it('shows it bottom-left on every page while Messages is on', async () => {
+      renderShell('/m/website', { name: 'Alex', email: 'alex@k.test' }, null, dnd())
+      const sidebar = page.getByTestId('shell-sidebar')
+      await expect.element(sidebar.getByTestId('shell-presence-label')).toHaveTextContent('Do not disturb')
+      await expect.element(sidebar.getByTestId('shell-presence-dot')).toHaveAttribute('data-status', 'dnd')
+      await expect.element(sidebar.getByTestId('shell-user')).toHaveTextContent('Alex')
+      // The status sits in the footer, below the nav — not inside it.
+      const footer = sidebar.getByTestId('shell-user-footer').element()
+      expect(footer.contains(sidebar.getByTestId('shell-presence-trigger').element())).toBe(true)
+      expect(footer.contains(sidebar.getByTestId('home-settings-trigger').element())).toBe(true)
+    })
+
+    it('on phones the menu button carries my status dot, and the drawer shows the status', async () => {
+      renderShell('/m/website', { name: 'Alex', email: 'alex@k.test' }, null, dnd())
+      await expect.element(page.getByTestId('shell-menu-presence')).toHaveAttribute('data-status', 'dnd')
+      await expect.element(page.getByTestId('shell-menu-toggle')).toHaveAccessibleName('Open menu — your status: Do not disturb')
+      await page.getByTestId('shell-menu-toggle').click({ force: true })
+      await expect.element(page.getByTestId('shell-drawer').getByTestId('shell-presence-label')).toHaveTextContent('Do not disturb')
+    })
+
+    it('with Messages off there is no status at all (off means off)', async () => {
+      renderShell('/m/website', { name: 'Alex', email: 'alex@k.test' }, null, null)
+      await expect.element(page.getByTestId('shell-presence-trigger')).not.toBeInTheDocument()
+      await expect.element(page.getByTestId('shell-menu-presence')).not.toBeInTheDocument()
+      await expect.element(page.getByTestId('shell-menu-toggle')).toHaveAccessibleName('Open menu')
+      await expect.element(page.getByTestId('shell-user').first()).toHaveTextContent('Alex')
+    })
   })
 })
