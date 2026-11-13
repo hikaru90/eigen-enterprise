@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { ToolDescriptor } from '$lib/kernel/types'
-import { CONTRIBUTION_STATUSES, OPEN_STATUSES, type ContributionStatus } from '../contribute/types'
+import { CONTRIBUTION_STATUSES, OPEN_STATUSES, type ContributionStatus } from '../types'
 import { CONTRIBUTE_HUB_MODULE_ID } from './manifest'
 import { getHubProposal, listHubProposals, revokeInstall, type HubDeps } from './service'
 

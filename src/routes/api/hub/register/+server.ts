@@ -1,6 +1,6 @@
 import type { RequestHandler } from './$types'
-import { hubRoute, liveHubRuntime } from '../../../../../modules/contribute-hub/http'
-import { register } from '../../../../../modules/contribute-hub/service'
+import { hubRoute, liveHubRuntime } from '../../../../../modules/contribute/hub/http'
+import { register } from '../../../../../modules/contribute/hub/service'
 
 /**
  * POST /api/hub/register — an install registers its Ed25519 public key with

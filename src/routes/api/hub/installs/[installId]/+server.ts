@@ -1,6 +1,6 @@
 import type { RequestHandler } from './$types'
-import { hubRoute, liveHubRuntime } from '../../../../../../modules/contribute-hub/http'
-import { deleteInstall } from '../../../../../../modules/contribute-hub/service'
+import { hubRoute, liveHubRuntime } from '../../../../../../modules/contribute/hub/http'
+import { deleteInstall } from '../../../../../../modules/contribute/hub/service'
 
 /**
  * DELETE /api/hub/installs/:installId — an install withdraws everything it

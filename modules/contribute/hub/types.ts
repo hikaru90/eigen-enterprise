@@ -1,4 +1,4 @@
-import type { ContributionArea, ContributionKind, ContributionStatus } from '../contribute/types'
+import type { ContributionArea, ContributionKind, ContributionStatus } from '../types'
 
 /**
  * The central board's vocabulary, shared by server and browser (pure — no

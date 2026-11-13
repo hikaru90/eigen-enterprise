@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { HUB_HEADERS, HUB_MAX_SKEW_MS, HUB_PATHS } from '../contribute/share/contract'
+import { HUB_HEADERS, HUB_MAX_SKEW_MS, HUB_PATHS } from '../share/contract'
 import {
   deleteContribution,
   deleteInstall,

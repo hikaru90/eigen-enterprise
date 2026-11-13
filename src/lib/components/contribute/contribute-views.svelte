@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { HubProposalDto } from '../../../../modules/contribute-hub/types'
+  import type { HubProposalDto } from '../../../../modules/contribute/hub/types'
   import type { ContributionDto } from '../../../../modules/contribute/types'
   import type { ContributeClient } from '$lib/contribute/client'
   import ContributeBoard from './contribute-board.svelte'

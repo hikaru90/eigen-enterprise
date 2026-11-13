@@ -1,4 +1,4 @@
-import type { ContributionArea, ContributionKind, ContributionStatus } from '../contribute/types'
+import type { ContributionArea, ContributionKind, ContributionStatus } from '../types'
 
 /** A registered install (hub_installs). */
 export type HubInstall = {

@@ -1,9 +1,9 @@
+import type { ContributionStatus } from '../types'
 import type { HubContribution, HubInstall, HubStore } from './store'
 import type { HubProposalDto } from './types'
 import { createHash, createPublicKey } from 'node:crypto'
 import { z } from 'zod'
-import type { ContributionStatus } from '../contribute/types'
-import { HUB_HEADERS, HUB_MAX_SKEW_MS, hubContributionV1, hubRegisterV1, verifyHubRequest } from '../contribute/share/contract'
+import { HUB_HEADERS, HUB_MAX_SKEW_MS, hubContributionV1, hubRegisterV1, verifyHubRequest } from '../share/contract'
 import { HubError } from './errors'
 
 /**

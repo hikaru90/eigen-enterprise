@@ -7,7 +7,7 @@ import { requireCapability } from '$lib/server/auth/require-capability'
 import { appKernel } from '$lib/server/boot'
 import { ownerRun } from '$lib/server/website/owner-run'
 import { ownerModuleBlurb } from '$lib/shell/module-copy'
-import { CONTRIBUTE_HUB_MODULE_ID } from '../../../../../modules/contribute-hub/manifest'
+import { CONTRIBUTE_HUB_MODULE_ID } from '../../../../../modules/contribute/hub/manifest'
 
 /**
  * Settings → Plugins (owner, 2026-11-12: "everything is a plugin"): every

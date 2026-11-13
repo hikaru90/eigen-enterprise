@@ -1,4 +1,4 @@
-import type { HubProposalDto } from '../../../../modules/contribute-hub/types'
+import type { HubProposalDto } from '../../../../modules/contribute/hub/types'
 import type { ContributionDto } from '../../../../modules/contribute/types'
 import { describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'

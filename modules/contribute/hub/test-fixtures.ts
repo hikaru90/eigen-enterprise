@@ -1,6 +1,6 @@
 import type { HubDeps, HubRequest } from './service'
 import { generateKeyPairSync, randomUUID } from 'node:crypto'
-import { HUB_PATHS, signHubRequest, type HubContributionV1 } from '../contribute/share/contract'
+import { HUB_PATHS, signHubRequest, type HubContributionV1 } from '../share/contract'
 import { memoryHubStore } from './memory-store'
 
 /** One install's identity: a fresh Ed25519 keypair (SPKI / PKCS8 DER, base64) and a random id. */

@@ -1,4 +1,4 @@
-import type { HubProposalDto } from '../../../../modules/contribute-hub/types'
+import type { HubProposalDto } from '../../../../modules/contribute/hub/types'
 import type { PageServerLoad } from './$types'
 import { redirect } from '@sveltejs/kit'
 import { CONTRIBUTE_DEPENDENCY } from '$lib/contribute/board'
@@ -28,8 +28,8 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
 }
 
 async function hubProposals(): Promise<HubProposalDto[] | null> {
-  const { contributeHubActive, contributeHubDeps } = await import('../../../../modules/contribute-hub/live')
+  const { contributeHubActive, contributeHubDeps } = await import('../../../../modules/contribute/hub/live')
   if (!(await contributeHubActive())) return null
-  const { listHubProposals } = await import('../../../../modules/contribute-hub/service')
+  const { listHubProposals } = await import('../../../../modules/contribute/hub/service')
   return listHubProposals(await contributeHubDeps(), CONTRIBUTION_STATUSES)
 }

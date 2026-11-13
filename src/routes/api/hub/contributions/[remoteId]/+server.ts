@@ -1,6 +1,6 @@
 import type { RequestHandler } from './$types'
-import { hubRoute, liveHubRuntime } from '../../../../../../modules/contribute-hub/http'
-import { deleteContribution, upsertContribution } from '../../../../../../modules/contribute-hub/service'
+import { hubRoute, liveHubRuntime } from '../../../../../../modules/contribute/hub/http'
+import { deleteContribution, upsertContribution } from '../../../../../../modules/contribute/hub/service'
 
 /**
  * PUT /api/hub/contributions/:remoteId — an install shares (or updates) one

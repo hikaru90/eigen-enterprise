@@ -1,4 +1,4 @@
-import type { ContributionArea, ContributionKind, ContributionStatus } from '../contribute/types'
+import type { ContributionArea, ContributionKind, ContributionStatus } from '../types'
 import { HUB_STATUS_ORDER, type HubProposalDto } from './types'
 
 /** One group on the "All installs" tab: the proposals of one status, kind and area across installs. */

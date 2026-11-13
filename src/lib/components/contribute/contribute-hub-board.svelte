@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { HubProposalDto } from '../../../../modules/contribute-hub/types'
-  import { groupHubProposals } from '../../../../modules/contribute-hub/board'
+  import type { HubProposalDto } from '../../../../modules/contribute/hub/types'
   import { AREA_LABEL, KIND_LABEL, STATUS_LABEL } from '$lib/contribute/labels'
+  import { groupHubProposals } from '../../../../modules/contribute/hub/board'
 
   /**
    * "All installs" (the central board, plan/contribute-phone-home.md §3): what
