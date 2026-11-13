@@ -24,19 +24,20 @@ describe('log-contact-form.svelte: tell me how it went', () => {
   }
 
   it('prefills the day you were in touch (still today) and what comes next; nothing is logged until "Log it"', async () => {
-    const read = vi.fn(async (): Promise<LogDraft> => ({ on: '2026-11-11', nextFollowUpOn: '2026-11-19', nextStep: 'Send the deck' }))
+    const read = vi.fn(async (): Promise<LogDraft> => ({ on: '2026-11-11', note: 'She liked the plan', nextFollowUpOn: '2026-11-19', nextStep: 'Send the deck' }))
     render(LogContactForm, { ...props, read })
     await tell('Spoke yesterday, deck by next Thursday')
     await expect.element(page.getByLabelText('In touch on')).toHaveValue('2026-11-11')
     expect(read).toHaveBeenCalledWith('log', 'Spoke yesterday, deck by next Thursday')
     await expect.element(page.getByLabelText('Next follow-up')).toHaveValue('2026-11-19')
     await expect.element(page.getByRole('textbox', { name: 'Next step', exact: true })).toHaveValue('Send the deck')
+    await expect.element(page.getByRole('textbox', { name: 'How it went', exact: true })).toHaveValue('She liked the plan')
     await expect.element(page.getByTestId('log-prefilled')).toHaveTextContent('Nothing is logged until you press “Log it”')
     expect(submitted).toBe(0)
   })
 
   it('what was not said stays as it was', async () => {
-    const read = vi.fn(async (): Promise<LogDraft> => ({ on: null, nextFollowUpOn: null, nextStep: 'Call back' }))
+    const read = vi.fn(async (): Promise<LogDraft> => ({ on: null, note: null, nextFollowUpOn: null, nextStep: 'Call back' }))
     render(LogContactForm, { ...props, read })
     await tell('Call her back')
     await expect.element(page.getByRole('textbox', { name: 'Next step', exact: true })).toHaveValue('Call back')
@@ -45,7 +46,7 @@ describe('log-contact-form.svelte: tell me how it went', () => {
   })
 
   it('a step you typed is not overwritten: the change is offered', async () => {
-    const read = vi.fn(async (): Promise<LogDraft> => ({ on: null, nextFollowUpOn: null, nextStep: 'Send the deck' }))
+    const read = vi.fn(async (): Promise<LogDraft> => ({ on: null, note: null, nextFollowUpOn: null, nextStep: 'Send the deck' }))
     render(LogContactForm, { ...props, read })
     await page.getByRole('textbox', { name: 'Next step', exact: true }).fill('Call back')
     await tell('I send the deck')

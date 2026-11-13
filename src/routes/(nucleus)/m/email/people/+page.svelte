@@ -38,6 +38,7 @@
   testid="contacts-header"
 >
   {#snippet actions()}
+    <Button variant="outline" href="/m/email/people/import" data-testid="contact-import">Import</Button>
     <Button href="/m/email/people/new" data-testid="contact-add">Add a contact</Button>
   {/snippet}
 </SectionHeader>

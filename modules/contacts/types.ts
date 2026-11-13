@@ -29,6 +29,8 @@ export const CONTACT_LIMITS = {
   metHow: 1000,
   whyRelevant: 2000,
   nextStep: 500,
+  /** "How it went" on a logged contact. */
+  logNote: 2000,
   channelValue: 300,
   channels: 20,
   tag: 40,
@@ -130,8 +132,82 @@ export type ContactDraft = {
 /** What the AI picked out of "we spoke today, next I'll…", for "Log a contact". */
 export type LogDraft = {
   on: string | null
+  /** How it went, in the person's own words. */
+  note: string | null
   nextFollowUpOn: string | null
   nextStep: string | null
 }
 
 export type DraftFor<M extends ExtractMode> = M extends 'contact' ? ContactDraft : LogDraft
+
+// ── Contact history ("Kontaktverlauf") ────────────────────────────────────────
+
+/** A follow-up: when and what (either may be missing). */
+export type FollowUpStep = { on: string | null; step: string | null }
+
+/**
+ * One thing in a contact's history. `day` (`YYYY-MM-DD`, the viewer's day) and
+ * `at` (ISO) order the timeline: newest day first, then newest first.
+ */
+export type HistoryItem =
+  | { kind: 'added'; id: string; day: string; at: string; by: string }
+  | {
+      kind: 'logged'
+      id: string
+      day: string
+      at: string
+      by: string
+      note: string | null
+      /** The follow-up this contact answered (null: none was set). */
+      answered: FollowUpStep | null
+      /** The follow-up it set (null: nothing next). */
+      next: FollowUpStep | null
+    }
+  | {
+      kind: 'mail'
+      id: string
+      day: string
+      at: string
+      /** Received from them, or sent to them. */
+      direction: 'received' | 'sent'
+      /** A mailbox you read (its address), or the company's own sending (admins only). */
+      via: { kind: 'mailbox'; address: string } | { kind: 'company'; status: string }
+      subject: string
+      snippet: string | null
+      /** Where to open it: the Inbox reader or Email › Logs. */
+      href: string
+    }
+
+/** The newest mails the history shows per source (your mailboxes, company mail). */
+export const HISTORY_MAIL_LIMIT = 50
+
+// ── Import (vCard, CSV) ───────────────────────────────────────────────────────
+
+/** The most contacts one import adds. */
+export const IMPORT_MAX = 500
+
+/** One person read from a file, before the service checks it (nothing saved). */
+export type ImportCandidate = {
+  name: string
+  organisation: string | null
+  title: string | null
+  channels: Channel[]
+  metHow: string | null
+  whyRelevant: string | null
+  tags: string[]
+}
+
+/** The preview of one candidate: new (importable), already known by email, or not importable as it is. */
+export type ImportPreviewRow =
+  | { index: number; status: 'new'; contact: ImportCandidate }
+  | {
+      index: number
+      status: 'duplicate'
+      contact: ImportCandidate
+      email: string
+      /** The contact you already see with that email, or null when an earlier row of the file has it. */
+      existing: { id: string; name: string } | null
+    }
+  | { index: number; status: 'invalid'; name: string; error: string }
+
+export type ImportPreview = { rows: ImportPreviewRow[]; counts: { new: number; duplicate: number; invalid: number } }

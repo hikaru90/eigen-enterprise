@@ -181,14 +181,27 @@ describe('extractContactDraft', () => {
 describe('extractLogDraft ("Log a contact")', () => {
   const input = { userId: 'ana', text: 'Spoke yesterday, I send the deck next Thursday', today }
 
-  it('reads the day you were in touch and what comes next', async () => {
-    const chat = fakeChat(answer({ in_touch_on: '2026-11-11', next_follow_up_on: '2026-11-19', next_step: 'Send the deck' }))
-    expect(await extractLogDraft(chat, input)).toEqual({ on: '2026-11-11', nextFollowUpOn: '2026-11-19', nextStep: 'Send the deck' })
+  it('reads the day you were in touch, how it went and what comes next', async () => {
+    const chat = fakeChat(
+      answer({ in_touch_on: '2026-11-11', how_it_went: 'She liked the plan', next_follow_up_on: '2026-11-19', next_step: 'Send the deck' }),
+    )
+    expect(await extractLogDraft(chat, input)).toEqual({
+      on: '2026-11-11',
+      note: 'She liked the plan',
+      nextFollowUpOn: '2026-11-19',
+      nextStep: 'Send the deck',
+    })
+  })
+
+  it('how it went is part of the schema: an answer without it is not read', () => {
+    expect(() =>
+      parseLogExtractOutput(answer({ in_touch_on: '2026-11-11', next_follow_up_on: null, next_step: null }), { today }),
+    ).toThrow(/how_it_went/)
   })
 
   it('refuses an in-touch day after today', () => {
     expect(() =>
-      parseLogExtractOutput(answer({ in_touch_on: '2026-11-13', next_follow_up_on: null, next_step: null }), { today }),
+      parseLogExtractOutput(answer({ in_touch_on: '2026-11-13', how_it_went: null, next_follow_up_on: null, next_step: null }), { today }),
     ).toThrow()
   })
 

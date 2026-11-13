@@ -28,6 +28,22 @@ export type ContactPatch = Partial<
   >
 > & { updatedAt: Date }
 
+/** One "Log a contact" (migration 0139): the day, how it went, the follow-up it answered and the one it set. */
+export type LogEntryRow = {
+  id: string
+  contactId: string
+  on: string
+  note: string | null
+  answeredFollowUpOn: string | null
+  answeredStep: string | null
+  nextFollowUpOn: string | null
+  nextStep: string | null
+  /** A person's user id, or the agent's principal id. */
+  loggedBy: string
+  loggedByKind: 'user' | 'agent'
+  createdAt: Date
+}
+
 /**
  * Which contacts a query may return: every one (the owner, admins, the agent
  * on its own) or one person's own plus the shared ones.
@@ -40,6 +56,8 @@ export type ContactFilter = { tag?: string; query?: string }
 /** Persistence seam: the DB store in production, the in-memory one in unit tests. */
 export type ContactsStore = {
   insert(row: ContactRow): Promise<void>
+  /** Inserts every row or none (an import). */
+  insertMany(rows: ContactRow[]): Promise<void>
   get(id: string): Promise<ContactRow | null>
   /** Contacts in scope matching the filter, by name (case-insensitive). */
   list(scope: ContactScope, filter: ContactFilter): Promise<ContactRow[]>
@@ -49,6 +67,10 @@ export type ContactsStore = {
   followUps(scope: ContactScope, until: string): Promise<ContactRow[]>
   update(id: string, patch: ContactPatch): Promise<void>
   delete(id: string): Promise<void>
+  /** Keeps a log entry and applies the contact's patch together (both or neither). */
+  recordLog(entry: LogEntryRow, patch: ContactPatch): Promise<void>
+  /** A contact's log entries, newest day first (then newest logged first). */
+  logEntries(contactId: string): Promise<LogEntryRow[]>
 }
 
 /** Display names of the people in the company. */

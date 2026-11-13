@@ -73,6 +73,7 @@ const logInput = z
   .object({
     id,
     on: day.optional().describe('the day you were in touch; defaults to today (UTC)'),
+    how_it_went: z.string().max(CONTACT_LIMITS.logNote).nullable().optional().describe('what happened and how it went; kept in the contact’s history'),
     next_follow_up_on: day.nullable().optional().describe('the next follow-up; none when left out'),
     next_step: z.string().max(CONTACT_LIMITS.nextStep).nullable().optional(),
   })
@@ -186,7 +187,7 @@ export function createContactsTools(opts: ContactsToolDeps = {}): ToolDescriptor
       name: 'contacts.log_contact',
       module: CONTACTS_MODULE_ID,
       summary:
-        'Record that you were in touch with a contact (sets last contacted) and set the next follow-up and next step — the previous follow-up is done, so leaving them out clears them.',
+        'Record that you were in touch with a contact (sets last contacted; kept in the contact’s history with how it went) and set the next follow-up and next step — the previous follow-up is done, so leaving them out clears them.',
       auditClass: 'mutate',
       approvalRisk: 'internal',
       activity: () => 'Logged being in touch with a contact',
@@ -196,6 +197,7 @@ export function createContactsTools(opts: ContactsToolDeps = {}): ToolDescriptor
         const i = logInput.parse(input)
         return logContact(await deps(), await actorOf(ctx), i.id, {
           on: i.on ?? today(),
+          note: i.how_it_went,
           nextFollowUpOn: i.next_follow_up_on,
           nextStep: i.next_step,
         })

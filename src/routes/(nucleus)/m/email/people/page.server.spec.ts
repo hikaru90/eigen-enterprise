@@ -1,22 +1,28 @@
-import type { ContactsDeps } from '../../../../../../modules/contacts/service'
+import type { ContactMailPort, ContactsDeps } from '../../../../../../modules/contacts/service'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const live = vi.hoisted(() => ({ deps: null as ContactsDeps | null }))
+const live = vi.hoisted(() => ({ deps: null as ContactsDeps | null, mailWith: null as ContactMailPort | null }))
+vi.mock('./contact-mail.server', () => ({
+  liveContactMail: (userId: string, addresses: string[]) => live.mailWith!(userId, addresses),
+}))
 vi.mock('../../../../../../modules/contacts/live', () => ({
   contactsDeps: async () => live.deps,
   todayFor: async () => '2026-11-12',
+  timeZoneFor: async () => 'Europe/Berlin',
 }))
 
 import { createContact, getContact } from '../../../../../../modules/contacts/service'
 import { fixture, user } from '../../../../../../modules/contacts/test-fixtures'
 import { actions, load } from './+page.server'
 import { actions as detailActions, load as detailLoad } from './[id]/+page.server'
+import { actions as importActions } from './import/+page.server'
 import { actions as newActions } from './new/+page.server'
 
 let f: ReturnType<typeof fixture>
 beforeEach(() => {
   f = fixture()
   live.deps = f.deps
+  live.mailWith = f.mailWith
 })
 
 const signedIn = (id: string) => ({ user: { id, email: `${id}@test` } })
@@ -94,6 +100,19 @@ describe('/m/email/people/[id]', () => {
     })
   })
 
+  it('loads the history: logged contacts (how it went) and mail the viewer may read', async () => {
+    const mara = await createContact(f.deps, user('ana'), { name: 'Mara Voss', channels: [{ type: 'email', value: 'mara@northwind.example' }] })
+    const ctx = { locals: signedIn('ana'), params: { id: mara.id }, request: post([['on', '2026-11-11'], ['note', 'Coffee, liked it']]) } as never
+    expect(await detailActions.log(ctx)).toEqual({ action: 'log', id: mara.id })
+    f.mail.items = [
+      { id: 'm1', direction: 'received', via: { kind: 'mailbox', address: 'ana@co.example' }, subject: 'Hi', snippet: null, at: new Date('2026-11-10T10:00:00Z'), href: '/x' },
+    ]
+    const out = (await detailLoad({ locals: signedIn('ana'), params: { id: mara.id } } as never)) as { history: Array<{ kind: string; id: string }> }
+    expect(out.history.map((i) => i.kind)).toEqual(['added', 'logged', 'mail'])
+    expect(out.history[1]).toMatchObject({ note: 'Coffee, liked it' })
+    expect(f.mail.calls).toEqual([{ userId: 'ana', addresses: ['mara@northwind.example'] }])
+  })
+
   it('saves, shares, logs and deletes', async () => {
     const mara = await createContact(f.deps, user('ana'), { name: 'Mara Voss', organisation: 'Northwind' })
     const ctx = (entries: Array<[string, string]>) => ({ locals: signedIn('ana'), params: { id: mara.id }, request: post(entries) }) as never
@@ -111,5 +130,46 @@ describe('/m/email/people/[id]', () => {
 
     await expect(detailActions.delete(ctx([]))).rejects.toMatchObject({ status: 303, location: '/m/email/people' })
     expect(f.store.rows.size).toBe(0)
+  })
+})
+
+describe('/m/email/people/import', () => {
+  const candidates = (list: unknown) => post([['candidates', JSON.stringify(list)]])
+  const mara = { name: 'Mara Voss', organisation: null, title: null, channels: [{ type: 'email', value: 'mara@northwind.example' }], metHow: null, whyRelevant: null, tags: [] }
+  const jon = { ...mara, name: 'Jon Park', channels: [{ type: 'email', value: 'jon@atelier.example' }] }
+
+  it('previews without saving: duplicates (by email) are reported', async () => {
+    await createContact(f.deps, user('ana'), { name: 'Mara V.', channels: [{ type: 'email', value: 'mara@northwind.example' }] })
+    const out = (await importActions.preview({ locals: signedIn('ana'), request: candidates([mara, jon]) } as never)) as {
+      action: string
+      preview: { counts: Record<string, number> }
+    }
+    expect(out).toMatchObject({ action: 'preview', preview: { counts: { new: 1, duplicate: 1, invalid: 0 } } })
+    expect(f.store.rows.size).toBe(1)
+  })
+
+  it('imports what the person confirmed (shared when ticked) and reports the skipped ones', async () => {
+    const out = (await importActions.import({
+      locals: signedIn('ana'),
+      request: post([['candidates', JSON.stringify([jon, mara])], ['shared', 'on']]),
+    } as never)) as { action: string; imported: Array<{ id: string; name: string }>; skipped: number }
+    expect(out).toMatchObject({ action: 'import', skipped: 0 })
+    expect(out.imported.map((c) => c.name)).toEqual(['Jon Park', 'Mara Voss'])
+    expect([...f.store.rows.values()].every((r) => r.shared)).toBe(true)
+  })
+
+  it('a body that is not JSON, or not a list, comes back to the page as an error', async () => {
+    expect(await importActions.preview({ locals: signedIn('ana'), request: post([['candidates', '{nope']]) } as never)).toMatchObject({
+      status: 400,
+      data: { action: 'preview' },
+    })
+    expect(await importActions.import({ locals: signedIn('ana'), request: candidates({}) } as never)).toMatchObject({
+      status: 400,
+      data: { action: 'import' },
+    })
+  })
+
+  it('sends signed-out visitors to /login', async () => {
+    await expect(importActions.preview({ locals: { user: null }, request: candidates([mara]) } as never)).rejects.toMatchObject({ status: 302 })
   })
 })

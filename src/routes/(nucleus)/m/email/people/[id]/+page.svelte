@@ -8,9 +8,10 @@
   import { relativeDays, visibilityText } from '../../../../../../../modules/contacts/types'
   import ChannelLinks from '../../../../../../../modules/contacts/ui/channel-links.svelte'
   import ContactForm from '../../../../../../../modules/contacts/ui/contact-form.svelte'
+  import ContactHistory from '../../../../../../../modules/contacts/ui/contact-history.svelte'
   import LogContactForm from '../../../../../../../modules/contacts/ui/log-contact-form.svelte'
 
-  /** /m/email/people/[id]: one person — who can see them, log a contact, edit, share, delete. */
+  /** /m/email/people/[id]: one person — who can see them, log a contact, their history, edit, share, delete. */
   let { data, form }: PageProps = $props()
   const c = $derived(data.contact)
   const errorFor = (action: string) => (form && 'error' in form && form.action === action ? form.error : null)
@@ -82,6 +83,15 @@
   {#key c.updatedAt}
     <LogContactForm contactId={c.id} name={c.name} today={data.today} error={errorFor('log')} />
   {/key}
+</div>
+
+<SectionHeader
+  title="History"
+  description="Everything with them, newest first: what you logged and mail you can read."
+  testid="contact-history-section"
+/>
+<div class="mt-3 max-w-2xl">
+  <ContactHistory items={data.history} today={data.today} hasEmail={c.channels.some((ch) => ch.type === 'email')} />
 </div>
 
 <SectionHeader title="Details" testid="contact-edit-section" />

@@ -43,8 +43,13 @@ export function contactsDeps(): Promise<ContactsDeps> {
   return depsPromise
 }
 
-/** Today (`YYYY-MM-DD`) where this person lives: their preferred timezone, as Memory's agenda uses it. */
-export async function todayFor(userId: string, at: Date = new Date()): Promise<string> {
+/** Where this person lives: their preferred timezone, as Memory's agenda uses it. */
+export async function timeZoneFor(userId: string): Promise<string> {
   const { getUserPreferredTimezone } = await import('$lib/server/memory/user-timezone')
-  return dayIn(await getUserPreferredTimezone(userId), at)
+  return getUserPreferredTimezone(userId)
+}
+
+/** Today (`YYYY-MM-DD`) where this person lives. */
+export async function todayFor(userId: string, at: Date = new Date()): Promise<string> {
+  return dayIn(await timeZoneFor(userId), at)
 }

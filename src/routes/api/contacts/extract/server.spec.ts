@@ -92,10 +92,10 @@ describe('POST /api/contacts/extract', () => {
   })
 
   it('reads "Log a contact" too', async () => {
-    m.llmChatCompletion.mockResolvedValue(answer({ in_touch_on: '2026-11-11', next_follow_up_on: null, next_step: null }))
+    m.llmChatCompletion.mockResolvedValue(answer({ in_touch_on: '2026-11-11', how_it_went: 'Short call', next_follow_up_on: null, next_step: null }))
     const res = await call({ mode: 'log', text: 'We spoke yesterday, nothing next' })
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ draft: { on: '2026-11-11', nextFollowUpOn: null, nextStep: null } })
+    expect(await res.json()).toEqual({ draft: { on: '2026-11-11', note: 'Short call', nextFollowUpOn: null, nextStep: null } })
   })
 
   it(`an invalid answer is retried, then a plain 502 after ${EXTRACT_MAX_ATTEMPTS} tries`, async () => {

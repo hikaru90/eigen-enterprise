@@ -4,13 +4,15 @@
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { Textarea } from '$lib/components/ui/textarea'
   import { readDescription, type ReadDescription } from '../client'
   import { LOG_FIELDS, planFields, type Change, type LogFieldKey } from '../prefill'
   import { CONTACT_LIMITS } from '../types'
   import DescribeThem from './describe-them.svelte'
 
   /**
-   * "Log a contact": you were in touch (today unless you say otherwise). The
+   * "Log a contact": you were in touch (today unless you say otherwise) and
+   * how it went (kept in the contact's history). The
    * follow-up this answered is done — set the next one here, or leave it
    * empty for none. "Tell me how it went" (say or type it) prefills the
    * fields; a field you already changed is offered as a change, never
@@ -39,7 +41,7 @@
   } = $props()
 
   const startDay = untrack(() => today)
-  let fields = $state<Record<LogFieldKey, string>>({ on: startDay, nextFollowUpOn: '', nextStep: '' })
+  let fields = $state<Record<LogFieldKey, string>>({ on: startDay, note: '', nextFollowUpOn: '', nextStep: '' })
   let prefilled = $state<string | null>(null)
   let changes = $state<Change<LogFieldKey>[]>([])
 
@@ -69,7 +71,7 @@
 <div class="grid gap-3 rounded-lg border border-border bg-muted/30 p-3">
   <DescribeThem
     summary="Tell me how it went"
-    hint="Say or type it: when you were in touch and what comes next. The AI fills in the fields below — you check them and log it."
+    hint="Say or type it: when you were in touch, how it went and what comes next. The AI fills in the fields below — you check them and log it."
     placeholder="e.g. Spoke yesterday, she wants the deck — I’ll send it by next Thursday."
     testid={`log-describe-${contactId}`}
     {onread}
@@ -103,6 +105,17 @@
     <div class="grid gap-1.5">
       <Label for={`log-on-${contactId}`}>In touch on</Label>
       <Input id={`log-on-${contactId}`} name="on" type="date" required bind:value={fields.on} max={today} />
+    </div>
+    <div class="grid gap-1.5 sm:col-span-3">
+      <Label for={`log-note-${contactId}`}>How it went</Label>
+      <Textarea
+        id={`log-note-${contactId}`}
+        name="note"
+        rows={2}
+        maxlength={CONTACT_LIMITS.logNote}
+        placeholder="Optional: what you talked about, how it went"
+        bind:value={fields.note}
+      />
     </div>
     <div class="grid gap-1.5">
       <Label for={`log-next-${contactId}`}>Next follow-up</Label>

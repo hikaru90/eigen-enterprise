@@ -62,13 +62,14 @@ describe('contacts.* tools', () => {
   })
 
   it('lists by tag and search, reads one, updates and logs a contact', async () => {
-    const { tools, anasPrivate } = await setup()
+    const { f, tools, anasPrivate } = await setup()
     const ctx = humanCtx('ana')
     const byTag = (await tools['contacts.list'].handler(ctx, { tag: 'investor', query: 'mara' })) as { contacts: ContactDto[] }
     expect(byTag.contacts.map((c) => c.id)).toEqual([anasPrivate.id])
     await tools['contacts.update'].handler(ctx, { id: anasPrivate.id, organisation: 'Northwind', channels: [{ type: 'phone', value: '+49 30 1234' }] })
     const logged = (await tools['contacts.log_contact'].handler(ctx, {
       id: anasPrivate.id,
+      how_it_went: 'Good call',
       next_follow_up_on: '2026-12-01',
       next_step: 'Send the deck',
     })) as ContactDto
@@ -80,6 +81,10 @@ describe('contacts.* tools', () => {
       nextStep: 'Send the deck',
     })
     expect(await tools['contacts.get'].handler(ctx, { id: anasPrivate.id })).toMatchObject({ lastContactedOn: '2026-11-12' })
+    // Kept in the contact's history, with the follow-up it answered.
+    expect(f.store.log).toEqual([
+      expect.objectContaining({ on: '2026-11-12', note: 'Good call', answeredFollowUpOn: '2026-11-13', nextFollowUpOn: '2026-12-01' }),
+    ])
   })
 
   it('follow_ups answers "who should I write to next" for today (or a given day)', async () => {
