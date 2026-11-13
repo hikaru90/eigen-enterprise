@@ -92,7 +92,7 @@
               <a href={resolve('/messages')} class="underline underline-offset-4" data-testid="invite-skip-confirm">Continue without a passkey</a>
             </div>
           {:else}
-            <p class="text-muted-foreground text-[11px]">
+            <p class="text-muted-foreground text-xs">
               <button type="button" class="underline underline-offset-4" onclick={() => (confirmSkip = true)} data-testid="invite-skip-passkey">Skip for now</button>
             </p>
           {/if}

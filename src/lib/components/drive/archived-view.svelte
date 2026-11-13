@@ -152,7 +152,7 @@
               >{group.root.label}</a
             >
             {#each group.path as crumb (crumb.id)}
-              <span class="text-muted-foreground/60" aria-hidden="true">&nbsp;/&nbsp;</span>
+              <span class="text-muted-foreground" aria-hidden="true">&nbsp;/&nbsp;</span>
               <a
                 href={resolve(`/drive/folder/${crumb.id}`)}
                 class={crumb.id === group.folder?.id

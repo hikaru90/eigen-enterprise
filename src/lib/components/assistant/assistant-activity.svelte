@@ -102,7 +102,7 @@
                         · didn't work</span
                       >{/if}
                   </p>
-                  <p class="text-[11px] text-foreground/45">
+                  <p class="text-xs text-muted-foreground">
                     <time datetime={entry.ts}>{timeLabel(entry.ts)}</time> · {entry.moduleLabel}
                   </p>
                 </li>

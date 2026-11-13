@@ -164,16 +164,16 @@
           i < current ? 'done' : i === current ? (job.status === 'failed' ? 'failed' : 'now') : 'todo'}
         <li class="flex items-center gap-2" data-state={st}>
           <span
-            class="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] {st === 'done'
+            class="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-xs {st === 'done'
               ? 'border-eigen-green bg-eigen-green text-white'
               : st === 'now'
                 ? 'border-primary text-primary'
                 : st === 'failed'
                   ? 'border-red-700 bg-red-700 text-white'
-                  : 'border-border text-foreground/40'}"
+                  : 'border-border text-muted-foreground'}"
             aria-hidden="true">{st === 'done' ? '✓' : st === 'failed' ? '!' : i + 1}</span
           >
-          <span class={st === 'todo' ? 'text-foreground/50' : ''}
+          <span class={st === 'todo' ? 'text-muted-foreground' : ''}
             >{s.label}{st === 'now' && job.status === 'running' ? '…' : ''}</span
           >
         </li>
@@ -181,13 +181,13 @@
     </ol>
 
     {#if job.checked}
-      <p class="text-[11px] text-foreground/60">
+      <p class="text-xs text-foreground/60">
         Checked: {job.checked.files.length} file(s) and {job.checked.blobs} Drive file(s) decrypt and match
         the backup.
       </p>
     {/if}
     {#if job.log.length > 0}
-      <details class="text-[11px] text-foreground/60">
+      <details class="text-xs text-foreground/60">
         <summary class="cursor-pointer">Details</summary>
         <pre class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded border border-border p-2 font-mono">{job.log.join('\n')}</pre>
       </details>
@@ -225,7 +225,7 @@
     </div>
 
     {#if job && job.kind === 'restore' && job.status !== 'running'}
-      <p class="text-[11px] text-foreground/60" data-testid="restore-last">
+      <p class="text-xs text-foreground/60" data-testid="restore-last">
         Last restore: backup {job.snapshotId}, {job.status === 'succeeded' ? 'restored' : `failed — ${job.error}`}.
       </p>
     {/if}
@@ -273,7 +273,7 @@
               >{showCode ? 'Hide' : 'Show'}</button
             >
           </div>
-          <p class="text-[11px] text-foreground/50">
+          <p class="text-xs text-muted-foreground">
             The code you stored when backups were set up. It opens the backup; it is not saved anywhere.
           </p>
         </div>

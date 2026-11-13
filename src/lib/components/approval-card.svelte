@@ -28,7 +28,7 @@
   class="my-2 rounded-sm border-2 border-black bg-white px-3 py-3 text-black"
   data-testid="approval-card"
 >
-  <p class="text-[11px] font-medium tracking-[0.2em] text-black/60 uppercase">
+  <p class="text-xs font-medium tracking-[0.2em] text-black/60 uppercase">
     Needs your approval
   </p>
   <p class="mt-1 text-sm font-medium wrap-break-word">{action}</p>

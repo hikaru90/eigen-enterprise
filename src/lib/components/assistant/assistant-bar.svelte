@@ -50,7 +50,7 @@
 <div class="flex min-w-0 flex-1 items-center gap-2" data-testid="assistant-bar">
   <form class="relative flex min-w-0 flex-1 items-center" onsubmit={submit} role="search">
     <Sparkles
-      class="pointer-events-none absolute left-2.5 size-4 text-foreground/45"
+      class="pointer-events-none absolute left-2.5 size-4 text-muted-foreground"
       aria-hidden="true"
       strokeWidth={1.75}
     />
@@ -65,17 +65,17 @@
       aria-label="Ask the assistant"
       aria-keyshortcuts={isMac ? 'Meta+K' : 'Control+K'}
       data-testid="assistant-bar-input"
-      class="h-8 w-full min-w-0 rounded-md border border-border bg-background pr-14 pl-8 text-sm text-foreground outline-none placeholder:text-foreground/45 hover:border-foreground/25 focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-ring/40"
+      class="h-8 w-full min-w-0 rounded-md border border-border bg-background pr-14 pl-8 text-sm text-foreground outline-none placeholder:text-muted-foreground hover:border-foreground/25 focus-visible:border-primary/60 focus-visible:ring-2 -ring"
     />
     <kbd
-      class="pointer-events-none absolute right-2 hidden items-center gap-0.5 rounded border border-border bg-muted/60 px-1.5 py-px font-sans text-[10px] font-medium text-foreground/55 sm:inline-flex"
+      class="pointer-events-none absolute right-2 hidden items-center gap-0.5 rounded border border-border bg-muted/60 px-1.5 py-px font-sans text-xs font-medium text-muted-foreground sm:inline-flex"
       data-testid="assistant-bar-shortcut"
       aria-hidden="true">{isMac ? '⌘' : 'Ctrl'} K</kbd
     >
   </form>
   <button
     type="button"
-    class="flex size-8 shrink-0 items-center justify-center rounded-md text-foreground/60 outline-none hover:bg-primary/[0.06] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+    class="flex size-8 shrink-0 items-center justify-center rounded-md text-foreground/60 outline-none hover:bg-primary/[0.06] hover:text-foreground focus-visible:ring-2 -ring"
     aria-label={assistant.open ? 'Close the assistant' : 'Open the assistant'}
     aria-expanded={assistant.open}
     aria-controls="assistant-panel"

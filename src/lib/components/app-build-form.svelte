@@ -122,7 +122,7 @@
     {#if phase === 'reading'}
       <span class="text-xs text-foreground/60" role="status">Reading the repo…</span>
     {:else if !target}
-      <span class="text-xs text-foreground/55">Pick a repo first.</span>
+      <span class="text-xs text-muted-foreground">Pick a repo first.</span>
     {:else if phase === 'done'}
       <span class="text-xs text-foreground/60" role="status"
         >Filled in from the repo — fields it set are outlined. Check them before deploying.</span
@@ -144,7 +144,7 @@
         <p class="text-amber-700 dark:text-amber-400">{w}</p>
       {/each}
       {#if result.filesRead.length > 0}
-        <p class="text-foreground/50">Read: {result.filesRead.join(', ')}</p>
+        <p class="text-muted-foreground">Read: {result.filesRead.join(', ')}</p>
       {/if}
     </div>
   {/if}
@@ -234,7 +234,7 @@
         />
       </label>
     </div>
-    <p class="text-xs text-foreground/55">
+    <p class="text-xs text-muted-foreground">
       Commands run directly, not through a shell. The app must listen on the port in PORT.
     </p>
   {/if}

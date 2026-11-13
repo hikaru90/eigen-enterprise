@@ -176,7 +176,7 @@
   <div class="rounded-sm border border-black/10 px-4 py-3 dark:border-white/10 space-y-3">
     <div>
       <p class="text-xs font-medium text-foreground">Connect to MCP tools</p>
-      <p class="text-muted-foreground mt-1 text-[11px] leading-relaxed">
+      <p class="text-muted-foreground mt-1 text-xs leading-relaxed">
         Eigen exposes a Model Context Protocol (MCP) server that lets AI assistants like Claude,
         Cursor, and other MCP-compatible clients read and write your memory. Add the configuration
         below to your client's MCP settings.
@@ -184,7 +184,7 @@
     </div>
 
     <div class="space-y-1.5">
-      <p class="text-[11px] font-medium text-foreground">Endpoint</p>
+      <p class="text-xs font-medium text-foreground">Endpoint</p>
       <code
         class="block text-xs font-mono break-all rounded-sm bg-black/5 dark:bg-white/5 px-2 py-1.5 text-foreground"
         >{$page.url.origin}{base}/api/mcp</code
@@ -192,7 +192,7 @@
     </div>
 
     <div class="space-y-1.5">
-      <p class="text-[11px] font-medium text-foreground">Header</p>
+      <p class="text-xs font-medium text-foreground">Header</p>
       <code
         class="block text-xs font-mono rounded-sm bg-black/5 dark:bg-white/5 px-2 py-1.5 text-foreground"
         >Authorization: Bearer &lt;your-api-key&gt;</code
@@ -200,9 +200,9 @@
     </div>
 
     <div class="space-y-1.5">
-      <p class="text-[11px] font-medium text-foreground">Example (Claude Desktop)</p>
+      <p class="text-xs font-medium text-foreground">Example (Claude Desktop)</p>
       <pre
-        class="text-[10px] font-mono leading-relaxed rounded-sm bg-black/5 dark:bg-white/5 px-2 py-1.5 text-foreground overflow-x-auto">{`{
+        class="text-xs font-mono leading-relaxed rounded-sm bg-black/5 dark:bg-white/5 px-2 py-1.5 text-foreground overflow-x-auto">{`{
   "mcpServers": {
     "eigen": {
       "url": "${$page.url.origin}${base}/api/mcp",
@@ -249,28 +249,28 @@
               <div class="min-w-0 flex-1">
                 <p class="truncate text-xs font-medium text-foreground">{key.name}</p>
                 {#if key.keyPrefix}
-                  <p class="text-muted-foreground truncate text-[11px] font-mono">
+                  <p class="text-muted-foreground truncate text-xs font-mono">
                     {key.keyPrefix}
                   </p>
                 {:else}
-                  <p class="text-muted-foreground/50 text-[11px] italic">No key generated</p>
+                  <p class="text-muted-foreground text-xs italic">No key generated</p>
                 {/if}
                 {#if key.createdAt}
-                  <p class="text-muted-foreground text-[11px]">
+                  <p class="text-muted-foreground text-xs">
                     Created {new Date(key.createdAt).toLocaleDateString()}
                   </p>
                 {/if}
                 <p
-                  class="text-[11px] {key.lastUsedAt
+                  class="text-xs {key.lastUsedAt
                     ? 'text-muted-foreground'
-                    : 'text-muted-foreground/50'}"
+                    : 'text-muted-foreground'}"
                 >
                   {key.lastUsedAt
                     ? `Last used ${formatRelativeTime(key.lastUsedAt)}`
                     : 'Never used'}
                 </p>
               </div>
-              <label class="ml-2 flex shrink-0 items-center gap-1.5 text-[11px]">
+              <label class="ml-2 flex shrink-0 items-center gap-1.5 text-xs">
                 <input
                   type="checkbox"
                   checked={key.mcp}
@@ -278,7 +278,7 @@
                 />
                 MCP
               </label>
-              <label class="ml-2 flex shrink-0 items-center gap-1.5 text-[11px]">
+              <label class="ml-2 flex shrink-0 items-center gap-1.5 text-xs">
                 <input
                   type="checkbox"
                   checked={key.mailSend}

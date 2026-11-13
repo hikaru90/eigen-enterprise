@@ -92,7 +92,7 @@
     </div>
     <button
       type="button"
-      class="-mt-1 -mr-1 grid size-6 shrink-0 place-items-center rounded-md text-foreground/50 hover:text-foreground"
+      class="-mt-1 -mr-1 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:text-foreground"
       aria-label="Not now"
       title="Not now"
       data-testid="push-banner-dismiss"

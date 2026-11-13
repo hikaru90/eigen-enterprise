@@ -72,9 +72,9 @@
   ]
 
   const tile =
-    'flex min-w-0 flex-col rounded-lg border border-border bg-background px-4 py-3.5 text-left transition-colors outline-none hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring/60'
+    'flex min-w-0 flex-col rounded-lg border border-border bg-background px-4 py-3.5 text-left transition-colors outline-none hover:border-foreground/20 focus-visible:ring-2 -ring'
   const sideLink =
-    'group flex min-w-0 items-center justify-between gap-2 rounded-md px-2.5 py-2 text-sm outline-none hover:bg-primary/[0.05] focus-visible:ring-2 focus-visible:ring-ring/60'
+    'group flex min-w-0 items-center justify-between gap-2 rounded-md px-2.5 py-2 text-sm outline-none hover:bg-primary/[0.05] focus-visible:ring-2 -ring'
 </script>
 
 <PageFrame testid="dashboard">
@@ -99,7 +99,7 @@
       </span>
       <a
         href={resolve('/settings/llm')}
-        class="shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground outline-none hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring/60"
+        class="shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground outline-none hover:bg-primary/90 focus-visible:ring-2 -ring"
         data-testid="dashboard-provider-connect">Connect provider</a
       >
     </div>
@@ -113,7 +113,7 @@
   >
     <button
       type="button"
-      class="flex min-w-0 flex-1 items-center gap-2.5 rounded-md border border-border bg-background px-3 py-2.5 text-left text-sm text-foreground/55 outline-none hover:border-foreground/25 focus-visible:ring-2 focus-visible:ring-ring/60"
+      class="flex min-w-0 flex-1 items-center gap-2.5 rounded-md border border-border bg-background px-3 py-2.5 text-left text-sm text-muted-foreground outline-none hover:border-foreground/25 focus-visible:ring-2 -ring"
       onclick={() => assistant.focusBar()}
       data-testid="dashboard-ask-button"
     >
@@ -124,7 +124,7 @@
       {#each suggestions as text (text)}
         <button
           type="button"
-          class="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-foreground/70 outline-none hover:border-foreground/25 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+          class="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-foreground/70 outline-none hover:border-foreground/25 hover:text-foreground focus-visible:ring-2 -ring"
           onclick={() => assistant.prefill(text)}
           data-testid="dashboard-suggestion">{text}</button
         >
@@ -135,18 +135,18 @@
   <!-- Status tiles -->
   <div class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3" data-testid="overview-tiles">
     <a href="#needs-you" class={tile} data-testid="dashboard-needs-you-tile">
-      <span class="text-xs text-foreground/55">Needs you</span>
+      <span class="text-xs text-muted-foreground">Needs you</span>
       <span class="mt-1 flex items-center gap-2 text-2xl font-semibold tabular-nums">
         {needsYou}
         {#if needsYou > 0}<span class="size-2 rounded-full bg-eigen-green" aria-hidden="true"
           ></span>{/if}
       </span>
-      <span class="mt-0.5 text-xs text-foreground/45">Approvals and warnings</span>
+      <span class="mt-0.5 text-xs text-muted-foreground">Approvals and warnings</span>
     </a>
     <a href="#modules" class={tile}>
-      <span class="text-xs text-foreground/55">Modules working for you</span>
+      <span class="text-xs text-muted-foreground">Modules working for you</span>
       <span class="mt-1 text-2xl font-semibold tabular-nums">{activeModules.length}</span>
-      <span class="mt-0.5 text-xs text-foreground/45" data-testid="overview-modules-hint"
+      <span class="mt-0.5 text-xs text-muted-foreground" data-testid="overview-modules-hint"
         >{switchedOff === 0
           ? 'All switched on'
           : `${switchedOff} switched off — ask the assistant to turn ${switchedOff === 1 ? 'it' : 'them'} on`}</span
@@ -157,9 +157,9 @@
       class={tile}
       data-testid="overview-site-tile"
     >
-      <span class="text-xs text-foreground/55">Apps</span>
+      <span class="text-xs text-muted-foreground">Apps</span>
       <span class="mt-1 text-2xl font-semibold">{apps.value}</span>
-      <span class="mt-0.5 truncate text-xs text-foreground/45">{apps.hint}</span>
+      <span class="mt-0.5 truncate text-xs text-muted-foreground">{apps.hint}</span>
     </a>
   </div>
 
@@ -180,13 +180,13 @@
             </span>
             <a
               href={resolve('/settings/backups')}
-              class="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium outline-none hover:bg-foreground/[0.04] focus-visible:ring-2 focus-visible:ring-ring/60"
+              class="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium outline-none hover:bg-foreground/[0.04] focus-visible:ring-2 -ring"
               >Open backups</a
             >
           </div>
         {/if}
         {#if overview.approvals.length === 0 && !dashboard.backup}
-          <p class="mt-2 rounded-lg border border-border px-4 py-3 text-sm text-foreground/55">
+          <p class="mt-2 rounded-lg border border-border px-4 py-3 text-sm text-muted-foreground">
             Nothing waiting on you.
           </p>
         {:else if overview.approvals.length > 0}
@@ -202,7 +202,7 @@
                 <button
                   type="button"
                   onclick={() => assistant.openPanel('chat')}
-                  class="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium outline-none hover:bg-foreground/[0.04] focus-visible:ring-2 focus-visible:ring-ring/60"
+                  class="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium outline-none hover:bg-foreground/[0.04] focus-visible:ring-2 -ring"
                   data-testid="overview-approval-review">Review</button
                 >
               </li>
@@ -215,7 +215,7 @@
       <section id="modules" class="mt-10 scroll-mt-6">
         <h2 class="text-[13px] font-medium">Modules</h2>
         {#if activeModules.length === 0}
-          <p class="mt-2 text-sm text-foreground/55">No module is active yet.</p>
+          <p class="mt-2 text-sm text-muted-foreground">No module is active yet.</p>
         {:else}
           <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
             {#each activeModules as module (module.id)}
@@ -236,17 +236,17 @@
           <h2 class="text-[13px] font-medium">Recent activity</h2>
           <a
             href={resolve('/assistant/activity')}
-            class="text-xs text-foreground/55 hover:text-foreground hover:underline">All activity</a
+            class="text-xs text-muted-foreground hover:text-foreground hover:underline">All activity</a
           >
         </div>
         {#if actionGroups.length === 0}
-          <p class="px-4 py-3 text-sm text-foreground/55">Nothing yet.</p>
+          <p class="px-4 py-3 text-sm text-muted-foreground">Nothing yet.</p>
         {:else}
           <div class="flex flex-col gap-3 p-3" data-testid="overview-actions">
             {#each actionGroups as group (group.label)}
               <div class="min-w-0" data-testid="overview-actions-group">
                 <h3
-                  class="px-1 pb-1.5 text-[11px] font-medium tracking-wide text-foreground/45 uppercase"
+                  class="px-1 pb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase"
                 >
                   {group.label}
                 </h3>
@@ -267,7 +267,7 @@
                           >{/if}
                       </p>
                       <time
-                        class="shrink-0 pt-0.5 text-[11px] text-foreground/40 tabular-nums"
+                        class="shrink-0 pt-0.5 text-xs text-muted-foreground tabular-nums"
                         datetime={action.at}>{when(action.at)}</time
                       >
                     </li>
@@ -288,7 +288,7 @@
               <a href={appHref(item.href)} class={sideLink} data-testid="dashboard-link-{item.id}">
                 <span class="min-w-0 truncate">{item.name}</span>
                 <ArrowUpRight
-                  class="size-3.5 shrink-0 text-foreground/30 group-hover:text-foreground/60"
+                  class="size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground"
                   aria-hidden="true"
                 />
               </a>
@@ -298,7 +298,7 @@
             <a href={resolve('/assistant')} class={sideLink} data-testid="dashboard-link-assistant">
               <span class="min-w-0 truncate">Assistant conversations</span>
               <ArrowUpRight
-                class="size-3.5 shrink-0 text-foreground/30 group-hover:text-foreground/60"
+                class="size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground"
                 aria-hidden="true"
               />
             </a>
@@ -312,7 +312,7 @@
               >
                 <span class="min-w-0 truncate">Invite a teammate</span>
                 <ArrowUpRight
-                  class="size-3.5 shrink-0 text-foreground/30 group-hover:text-foreground/60"
+                  class="size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground"
                   aria-hidden="true"
                 />
               </a>

@@ -91,7 +91,7 @@
         <div class="bg-muted/20"></div>
         {#each weekDays as day, i (day.toISOString())}
           <div
-            class="bg-muted/30 text-muted-foreground border-border border-b px-1 py-1 text-center font-mono text-[10px] uppercase"
+            class="bg-muted/30 text-muted-foreground border-border border-b px-1 py-1 text-center font-mono text-xs uppercase"
           >
             {weekdayLabels[i]}<br />
             <span class="text-foreground">{formatDayHeader(day)}</span>
@@ -100,7 +100,7 @@
 
         {#each hourRows as hour (hour)}
           <div
-            class="text-muted-foreground pr-1 text-right font-mono text-[10px] leading-none"
+            class="text-muted-foreground pr-1 text-right font-mono text-xs leading-none"
             style="height: {rowHeightPx}px"
           >
             {hour}:00
@@ -129,7 +129,7 @@
             {#each placements.filter((p) => p.dayIndex === dayIndex) as p (`${p.item.id}-${p.startMinutes}`)}
               <button
                 type="button"
-                class="pointer-events-auto absolute left-0.5 right-0.5 overflow-hidden rounded-sm border px-1 py-0.5 text-left text-[10px] leading-tight shadow-sm {selectedItemId ===
+                class="pointer-events-auto absolute left-0.5 right-0.5 overflow-hidden rounded-sm border px-1 py-0.5 text-left text-xs leading-tight shadow-sm {selectedItemId ===
                 p.item.id
                   ? 'ring-primary ring-2'
                   : ''}"

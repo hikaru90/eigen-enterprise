@@ -137,7 +137,7 @@
             data-testid="assistant-tab-{tab.id}"
             onclick={() => assistant.selectTab(tab.id)}
             onkeydown={(e) => onTabKeydown(e, i)}
-            class="h-7 rounded-md px-2.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring/60
+            class="h-7 rounded-md px-2.5 text-[13px] outline-none focus-visible:ring-2 -ring
               {selected
               ? 'bg-primary/[0.08] font-medium text-foreground'
               : 'text-foreground/60 hover:bg-primary/[0.05] hover:text-foreground'}"
@@ -148,7 +148,7 @@
       </div>
       <button
         type="button"
-        class="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[13px] text-foreground/70 outline-none hover:bg-primary/[0.06] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+        class="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[13px] text-foreground/70 outline-none hover:bg-primary/[0.06] hover:text-foreground focus-visible:ring-2 -ring"
         onclick={() => assistant.newConversation()}
         data-testid="assistant-new-conversation"
         title="New conversation"
@@ -159,7 +159,7 @@
       </button>
       <button
         type="button"
-        class="flex size-7 shrink-0 items-center justify-center rounded-md text-foreground/60 outline-none hover:bg-primary/[0.06] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+        class="flex size-7 shrink-0 items-center justify-center rounded-md text-foreground/60 outline-none hover:bg-primary/[0.06] hover:text-foreground focus-visible:ring-2 -ring"
         aria-label="Close the assistant"
         onclick={() => assistant.close()}
         data-testid="assistant-close"

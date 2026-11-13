@@ -95,7 +95,7 @@
 
 <Popover.Root bind:open={menuOpen} onOpenChange={(open) => open && syncMenu()}>
   <Popover.Trigger
-    class="text-muted-foreground hover:text-foreground flex size-8 cursor-pointer items-center justify-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
+    class="text-muted-foreground hover:text-foreground flex size-8 cursor-pointer items-center justify-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 -ring"
     aria-label="Settings menu"
     data-testid="home-settings-trigger"
   >

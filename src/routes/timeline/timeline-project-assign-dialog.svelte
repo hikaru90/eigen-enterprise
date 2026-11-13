@@ -221,7 +221,7 @@
                   />
                   <span class="min-w-0 flex-1 truncate text-sm font-medium">{project.label}</span>
                   {#if project.openTaskCount > 0}
-                    <span class="text-muted-foreground font-mono text-[10px] tabular-nums">
+                    <span class="text-muted-foreground font-mono text-xs tabular-nums">
                       {project.openTaskCount}
                     </span>
                   {/if}

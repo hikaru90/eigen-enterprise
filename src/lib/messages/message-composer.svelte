@@ -128,7 +128,7 @@
 >
   <div
     class={[
-      'rounded-xl border bg-background shadow-xs transition-colors focus-within:border-foreground/40',
+      'rounded-xl border bg-background shadow-xs transition-colors focus-within:border-ring',
       dragging ? 'border-primary ring-2 ring-primary/30' : 'border-border',
     ]}
   >
@@ -195,7 +195,7 @@
         </div>
       {/if}
       {#if hint}
-        <span class="ml-2 hidden truncate text-[11px] text-muted-foreground sm:inline">
+        <span class="ml-2 hidden truncate text-xs text-muted-foreground sm:inline">
           <kbd class="font-sans font-medium">Enter</kbd> to send · <kbd class="font-sans font-medium">Shift+Enter</kbd> for a new line
         </span>
       {/if}

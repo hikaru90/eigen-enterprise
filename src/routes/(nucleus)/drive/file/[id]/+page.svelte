@@ -92,7 +92,7 @@
         {#if data.described.ownerName}
           <span class="flex min-w-0 items-center gap-2">
             <span
-              class="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium"
+              class="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium"
               aria-hidden="true">{initialsOf(data.described.ownerName)}</span
             >
             <span class="truncate">{data.described.ownerName}</span>
@@ -147,7 +147,7 @@
           data-testid="drive-path-root">{data.root.label}</a
         >
         {#each data.path as crumb (crumb.id)}
-          <span class="text-muted-foreground/60">/</span>
+          <span class="text-muted-foreground">/</span>
           <a
             href={resolve(`/drive/folder/${crumb.id}`)}
             class="text-muted-foreground hover:text-foreground">{crumb.name}</a
@@ -158,7 +158,7 @@
         <span class="truncate">{data.file.name}</span>
         {#if data.described.readOnlyFrom}
           <span
-            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-[10px] font-normal text-muted-foreground"
+            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-xs font-normal text-muted-foreground"
             title={`Comes from ${data.described.readOnlyFrom}; change it there`}
             data-testid="drive-readonly-badge"
           >

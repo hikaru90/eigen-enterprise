@@ -138,7 +138,7 @@
             {eventLabel(item.event)}
           </span>
           {#if dur}
-            <span class="text-muted-foreground/50 tabular-nums shrink-0">{dur}</span>
+            <span class="text-muted-foreground tabular-nums shrink-0">{dur}</span>
           {/if}
         </div>
       {/each}
@@ -185,6 +185,6 @@
 
   <!-- Up next -->
   {#if nextSlot}
-    <p class="text-xs text-muted-foreground/50 pl-1">Up next: {slotLabel(nextSlot)}</p>
+    <p class="text-xs text-muted-foreground pl-1">Up next: {slotLabel(nextSlot)}</p>
   {/if}
 </div>

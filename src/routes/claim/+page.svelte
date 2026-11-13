@@ -36,7 +36,7 @@
               value={form?.email ?? ''}
               class="border-input bg-card text-foreground h-9 w-full border px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
             />
-            <p class="text-muted-foreground text-[10px]">
+            <p class="text-muted-foreground text-xs">
               You become the owner of this server. This link works once.
             </p>
           </div>

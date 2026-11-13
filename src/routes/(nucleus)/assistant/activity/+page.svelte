@@ -50,7 +50,7 @@
   const dayLabel = (day: string) => dayFormat.format(new Date(`${day}T12:00:00Z`))
   const timeLabel = (iso: string) => timeFormat.format(new Date(iso))
   const chip = (on: boolean) =>
-    `rounded-full border px-2.5 py-1 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60 ${
+    `rounded-full border px-2.5 py-1 text-xs transition-colors outline-none focus-visible:ring-2 -ring ${
       on
         ? 'border-foreground bg-foreground text-background'
         : 'border-border text-foreground/70 hover:text-foreground'
@@ -322,7 +322,7 @@
 
   {#if data.log.length === 0}
     <p
-      class="rounded-lg border border-border px-4 py-3 text-sm text-foreground/55"
+      class="rounded-lg border border-border px-4 py-3 text-sm text-muted-foreground"
       data-testid="activity-log-empty"
     >
       Nothing has happened yet.
@@ -337,10 +337,10 @@
               <li class="px-4 py-2.5 text-sm" data-testid="activity-entry">
                 <details class="group">
                   <summary
-                    class="flex min-w-0 cursor-pointer list-none items-center gap-3 outline-none focus-visible:ring-2 focus-visible:ring-ring/60 [&::-webkit-details-marker]:hidden"
+                    class="flex min-w-0 cursor-pointer list-none items-center gap-3 outline-none focus-visible:ring-2 -ring [&::-webkit-details-marker]:hidden"
                   >
                     <span
-                      class="w-16 shrink-0 text-xs whitespace-nowrap text-foreground/50 tabular-nums"
+                      class="w-16 shrink-0 text-xs whitespace-nowrap text-muted-foreground tabular-nums"
                       >{timeLabel(entry.ts)}</span
                     >
                     <span class="min-w-0 flex-1 truncate">
@@ -348,7 +348,7 @@
                       <span class="text-foreground/80">· {entry.text}</span>
                     </span>
                     <span
-                      class="hidden shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] text-foreground/60 sm:inline"
+                      class="hidden shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-foreground/60 sm:inline"
                       >{entry.moduleLabel}</span
                     >
                     {#if entry.outcome === 'done'}
@@ -360,7 +360,7 @@
                     {/if}
                   </summary>
                   <ul
-                    class="mt-2 ml-19 space-y-0.5 text-xs text-foreground/55"
+                    class="mt-2 ml-19 space-y-0.5 text-xs text-muted-foreground"
                     data-testid="activity-details"
                   >
                     {#each entry.details as line (line)}
@@ -438,7 +438,7 @@
             >
               <td class="p-2 whitespace-nowrap">
                 {#if hasMultipleCalls}
-                  <span class="inline-block w-4 text-muted-foreground text-[10px]"
+                  <span class="inline-block w-4 text-muted-foreground text-xs"
                     >{isExpanded ? '▼' : '▶'}</span
                   >
                 {/if}
@@ -455,19 +455,19 @@
                 </span>
               </td>
               <td class="p-2">
-                <span class="font-mono text-[11px] truncate max-w-[250px] block">{groupLabel}</span>
+                <span class="font-mono text-xs truncate max-w-[250px] block">{groupLabel}</span>
                 {#if context}
-                  <span class="text-[10px] text-muted-foreground truncate max-w-[250px] block"
+                  <span class="text-xs text-muted-foreground truncate max-w-[250px] block"
                     >{context}</span
                   >
                 {/if}
                 {#if hasMultipleCalls}
-                  <span class="text-[10px] text-muted-foreground">({group.calls.length} calls)</span
+                  <span class="text-xs text-muted-foreground">({group.calls.length} calls)</span
                   >
                 {/if}
               </td>
-              <td class="p-2 font-mono text-[11px] text-muted-nowrap">{formatDuration(dur)}</td>
-              <td class="p-2 font-mono text-[11px] tabular-nums"
+              <td class="p-2 font-mono text-xs text-muted-nowrap">{formatDuration(dur)}</td>
+              <td class="p-2 font-mono text-xs tabular-nums"
                 >{formatActivityCredits(group.groupTotalUsd)}</td
               >
             </tr>
@@ -491,19 +491,19 @@
                   </td>
                   <td class="p-2">
                     <span
-                      class="font-mono text-[10px] truncate max-w-[250px] block text-muted-foreground"
+                      class="font-mono text-xs truncate max-w-[250px] block text-muted-foreground"
                       >{call.operation}</span
                     >
                     {#if call.context}
-                      <span class="text-[9px] text-muted-foreground/70 truncate max-w-[250px] block"
+                      <span class="text-xs text-muted-foreground truncate max-w-[250px] block"
                         >{call.context}</span
                       >
                     {/if}
                   </td>
-                  <td class="p-2 font-mono text-[11px] text-muted-nowrap"
+                  <td class="p-2 font-mono text-xs text-muted-nowrap"
                     >{formatDuration(call.durationMs)}</td
                   >
-                  <td class="p-2 font-mono text-[11px] tabular-nums"
+                  <td class="p-2 font-mono text-xs tabular-nums"
                     >{formatActivityCredits(call.totalCostUsd)}</td
                   >
                 </tr>
@@ -518,7 +518,7 @@
         <tfoot class="border-t-2 border-border bg-muted/30">
           <tr>
             <td class="p-2 text-right text-xs font-medium" colspan="4">Total (this page)</td>
-            <td class="p-2 font-mono text-[11px] tabular-nums">{pageTotalCredits}</td>
+            <td class="p-2 font-mono text-xs tabular-nums">{pageTotalCredits}</td>
           </tr>
         </tfoot>
       </table>

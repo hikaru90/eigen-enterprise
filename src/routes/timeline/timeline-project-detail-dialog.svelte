@@ -125,7 +125,7 @@
                 closeDrawer()
               }}
             >
-              <span class="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
+              <span class="text-muted-foreground text-xs font-medium uppercase tracking-wide">
                 {m.graph_timeline_project_next_action()}
               </span>
               <span
@@ -137,11 +137,11 @@
               </span>
               <div class="flex flex-col gap-0.5">
                 {#if nextActionItem.startAt}
-                  <span class="text-foreground/60 font-mono text-[10px] leading-tight"
+                  <span class="text-foreground/60 font-mono text-xs leading-tight"
                     >{m.graph_temporal_when()} {formatWhen(nextActionItem)}</span
                   >
                 {/if}
-                <span class="text-muted-foreground font-mono text-[10px] leading-tight"
+                <span class="text-muted-foreground font-mono text-xs leading-tight"
                   >Created {formatCreatedDate(nextActionItem)}</span
                 >
               </div>
@@ -163,7 +163,7 @@
 
         {#if tasks.length > 0}
           <div class="flex flex-col">
-            <p class="text-muted-foreground mb-1 text-[10px] font-medium uppercase tracking-wide">
+            <p class="text-muted-foreground mb-1 text-xs font-medium uppercase tracking-wide">
               {m.graph_timeline_project_open_loops({ count: tasks.length })}
             </p>
             {#each tasks as task (task.id)}
@@ -194,11 +194,11 @@
                   </div>
                   <div class="flex flex-col gap-0.5">
                     {#if task.startAt}
-                      <span class="text-foreground/60 font-mono text-[10px] leading-tight"
+                      <span class="text-foreground/60 font-mono text-xs leading-tight"
                         >{m.graph_temporal_when()} {formatWhen(task)}</span
                       >
                     {/if}
-                    <span class="text-muted-foreground font-mono text-[10px] leading-tight"
+                    <span class="text-muted-foreground font-mono text-xs leading-tight"
                       >Created {formatCreatedDate(task)}</span
                     >
                   </div>

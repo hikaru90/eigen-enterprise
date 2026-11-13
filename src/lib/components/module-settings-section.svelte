@@ -9,7 +9,7 @@
 </script>
 
 {#if !slot}
-  <p class="text-sm text-foreground/55" data-testid="module-settings-empty">
+  <p class="text-sm text-muted-foreground" data-testid="module-settings-empty">
     This module has no settings yet.
   </p>
 {:else}
@@ -20,14 +20,14 @@
         <li>
           <a
             href={appHref(link.href)}
-            class="group flex min-w-0 items-center gap-3 px-4 py-3 transition-colors outline-none hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.03] focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-inset"
+            class="group flex min-w-0 items-center gap-3 px-4 py-3 transition-colors outline-none hover:bg-foreground/[0.03] focus-visible:bg-foreground/[0.03] focus-visible:ring-2 -ring focus-visible:ring-inset"
           >
             <span class="min-w-0 flex-1">
               <span class="block truncate text-sm font-medium">{link.label}</span>
-              <span class="block truncate text-xs text-foreground/55">{link.text}</span>
+              <span class="block truncate text-xs text-muted-foreground">{link.text}</span>
             </span>
             <ArrowUpRight
-              class="size-4 shrink-0 text-foreground/35 group-hover:text-foreground/70"
+              class="size-4 shrink-0 text-muted-foreground group-hover:text-foreground"
               aria-hidden="true"
             />
           </a>

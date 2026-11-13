@@ -43,7 +43,7 @@
 
 <Popover.Root bind:open>
   <Popover.Trigger
-    class="text-muted-foreground hover:text-foreground inline-flex cursor-pointer items-center gap-1.5 text-[11px] transition-colors"
+    class="text-muted-foreground hover:text-foreground inline-flex cursor-pointer items-center gap-1.5 text-xs transition-colors"
     aria-label="Filter by date range"
   >
     <span>{rangeLabel}</span>
@@ -62,7 +62,7 @@
           }}
         />
         {#if parseError}
-          <p class="mt-1 text-[10px] text-red-500">{parseError}</p>
+          <p class="mt-1 text-xs text-red-500">{parseError}</p>
         {/if}
       </div>
 
@@ -76,7 +76,7 @@
         <button
           type="button"
           onclick={() => applyDates()}
-          class="text-muted-foreground hover:text-foreground inline-flex cursor-pointer items-center gap-1 text-[11px] transition-colors"
+          class="text-muted-foreground hover:text-foreground inline-flex cursor-pointer items-center gap-1 text-xs transition-colors"
         >
           <X class="size-3" />
           Clear dates
@@ -84,7 +84,7 @@
       {/if}
 
       {#if rangeLabel !== 'All time'}
-        <p class="text-muted-foreground border-t border-border pt-2 text-[10px]">
+        <p class="text-muted-foreground border-t border-border pt-2 text-xs">
           Current: {rangeLabel}
         </p>
       {/if}

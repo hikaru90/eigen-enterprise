@@ -34,7 +34,7 @@
       </p>
       <a
         href={resolve('/')}
-        class="mt-4 inline-flex h-8 items-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground outline-none hover:bg-primary/85 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2"
+        class="mt-4 inline-flex h-8 items-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground outline-none hover:bg-primary/85 focus-visible:ring-2 -ring focus-visible:ring-offset-2"
         >Open chat</a
       >
     </section>
@@ -42,7 +42,7 @@
     <section class="mt-8" aria-labelledby="results-heading">
       {#if data.module.results.length === 0 && !data.module.note}
         <h2 id="results-heading" class="text-[13px] font-medium">Results</h2>
-        <p class="mt-2 text-sm text-foreground/55">Nothing to show yet.</p>
+        <p class="mt-2 text-sm text-muted-foreground">Nothing to show yet.</p>
       {:else}
         <span id="results-heading" class="sr-only">{data.module.resultsTitle}</span>
         <OverviewModule module={data.module} />

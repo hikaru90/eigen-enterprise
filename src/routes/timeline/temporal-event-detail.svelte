@@ -78,7 +78,7 @@
     <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-2 pb-10" data-vaul-no-drag>
       <div class="mb-3 flex flex-wrap items-start justify-between gap-2">
         <Drawer.Header class="min-w-0 flex-1 space-y-1 p-0 text-left">
-          <p class="text-muted-foreground text-[10px] font-medium tracking-wide uppercase">
+          <p class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
             {m.graph_temporal_kind()}
           </p>
           <Drawer.Title
@@ -86,14 +86,14 @@
           >
             {item.semanticSummary}
           </Drawer.Title>
-          <p class="text-muted-foreground font-mono text-[11px]">
+          <p class="text-muted-foreground font-mono text-xs">
             {item.startAt ? 'Due: ' + formatWhen(item, timeZone) + ' · ' : ''}created {formatCreatedDate(
               item,
             )}
           </p>
         </Drawer.Header>
         <Drawer.Close
-          class="text-destructive hover:text-destructive/80 shrink-0 rounded-md p-1.5 transition-colors focus-visible:ring-ring/50 focus-visible:ring-1 focus-visible:outline-none"
+          class="text-destructive hover:text-destructive/80 shrink-0 rounded-md p-1.5 transition-colors -ring focus-visible:ring-1 focus-visible:outline-none"
           aria-label={m.graph_close()}
         >
           <XIcon class="size-4" aria-hidden="true" />
@@ -104,12 +104,12 @@
         <div class="flex flex-wrap items-center gap-2">
           {#if completed}
             <span
-              class="text-muted-foreground rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] uppercase"
+              class="text-muted-foreground rounded-sm border border-border px-2 py-0.5 font-mono text-xs uppercase"
             >
               {m.graph_temporal_done()}
             </span>
           {:else}
-            <span class="text-muted-foreground font-mono text-[10px] uppercase"
+            <span class="text-muted-foreground font-mono text-xs uppercase"
               >{m.graph_temporal_status_open()}</span
             >
           {/if}
@@ -182,20 +182,20 @@
         <p class="text-muted-foreground mb-3 font-sans text-xs">{lastActionSummary}</p>
       {/if}
 
-      <dl class="grid gap-x-4 gap-y-2 font-mono text-[11px] sm:grid-cols-2">
+      <dl class="grid gap-x-4 gap-y-2 font-mono text-xs sm:grid-cols-2">
         <div>
-          <dt class="text-muted-foreground text-[10px] uppercase">{m.graph_temporal_kind()}</dt>
+          <dt class="text-muted-foreground text-xs uppercase">{m.graph_temporal_kind()}</dt>
           <dd class="text-foreground">{graphKindLabel(item.kind)}</dd>
         </div>
         <div>
-          <dt class="text-muted-foreground text-[10px] uppercase">
+          <dt class="text-muted-foreground text-xs uppercase">
             {m.graph_temporal_precision()}
           </dt>
           <dd class="text-foreground">{item.timePrecision}</dd>
         </div>
         {#if pushReminderScheduled}
           <div class="sm:col-span-2">
-            <dt class="text-muted-foreground text-[10px] uppercase">
+            <dt class="text-muted-foreground text-xs uppercase">
               {m.graph_timeline_push_notify()}
             </dt>
             <dd class="text-foreground">
@@ -205,17 +205,17 @@
         {/if}
         {#if item.sourceTextSpan}
           <div>
-            <dt class="text-muted-foreground text-[10px] uppercase">{m.graph_temporal_phrase()}</dt>
+            <dt class="text-muted-foreground text-xs uppercase">{m.graph_temporal_phrase()}</dt>
             <dd class="text-foreground">"{item.sourceTextSpan}"</dd>
           </div>
         {/if}
         <div>
-          <dt class="text-muted-foreground text-[10px] uppercase">{m.graph_temporal_graph()}</dt>
+          <dt class="text-muted-foreground text-xs uppercase">{m.graph_temporal_graph()}</dt>
           <dd class="text-foreground">{item.graphSyncStatus}</dd>
         </div>
         {#if item.snoozedUntil}
           <div>
-            <dt class="text-muted-foreground text-[10px] uppercase">
+            <dt class="text-muted-foreground text-xs uppercase">
               {m.graph_timeline_snooze_until()}
             </dt>
             <dd class="text-foreground">
@@ -225,7 +225,7 @@
         {/if}
         {#if item.recurrenceRule}
           <div class="sm:col-span-2">
-            <dt class="text-muted-foreground text-[10px] uppercase">
+            <dt class="text-muted-foreground text-xs uppercase">
               {m.graph_timeline_recurrence()}
             </dt>
             <dd class="text-foreground break-all font-sans text-xs">{item.recurrenceRule}</dd>
@@ -233,13 +233,13 @@
         {/if}
         {#if item.energyLevel}
           <div>
-            <dt class="text-muted-foreground text-[10px] uppercase">{m.graph_timeline_energy()}</dt>
+            <dt class="text-muted-foreground text-xs uppercase">{m.graph_timeline_energy()}</dt>
             <dd class="text-foreground">{item.energyLevel}</dd>
           </div>
         {/if}
         {#if item.durationMinutes}
           <div>
-            <dt class="text-muted-foreground text-[10px] uppercase">
+            <dt class="text-muted-foreground text-xs uppercase">
               {m.graph_timeline_duration()}
             </dt>
             <dd class="text-foreground">
@@ -249,7 +249,7 @@
         {/if}
         {#if item.contextTags?.length}
           <div class="sm:col-span-2">
-            <dt class="text-muted-foreground text-[10px] uppercase">
+            <dt class="text-muted-foreground text-xs uppercase">
               {m.graph_timeline_contexts()}
             </dt>
             <dd class="text-foreground">{item.contextTags.join(', ')}</dd>
@@ -257,12 +257,12 @@
         {/if}
         {#if item.recurrenceRule && item.kind === 'reminder'}
           <div>
-            <dt class="text-muted-foreground text-[10px] uppercase">{m.graph_timeline_habit()}</dt>
+            <dt class="text-muted-foreground text-xs uppercase">{m.graph_timeline_habit()}</dt>
             <dd class="text-foreground">{m.graph_timeline_habit()}</dd>
           </div>
         {/if}
         <div class="sm:col-span-2">
-          <dt class="text-muted-foreground text-[10px] uppercase">
+          <dt class="text-muted-foreground text-xs uppercase">
             {m.graph_temporal_source_thought()}
           </dt>
           <dd class="text-foreground font-sans text-xs leading-relaxed">{item.thoughtText}</dd>

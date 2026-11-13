@@ -141,26 +141,26 @@
               <div class="flex w-full min-w-0 items-start justify-between gap-2">
                 <p class="truncate text-sm leading-[1.2] text-foreground">{project.label}</p>
                 {#if openLoopCount > 0}
-                  <span class="shrink-0 text-[10px] leading-[1.2] text-muted-foreground">
+                  <span class="shrink-0 text-xs leading-[1.2] text-muted-foreground">
                     {m.graph_timeline_project_open_loops({ count: openLoopCount })}
                   </span>
                 {/if}
               </div>
               <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span class="text-[10px] leading-[1.2] text-foreground"
+                <span class="text-xs leading-[1.2] text-foreground"
                   >{statusLabel(project.status)}</span
                 >
               </div>
               {#if projectNextAction}
                 <div class="flex items-start gap-x-[11px]">
-                  <span class="shrink-0 text-[10px] leading-[1.2] text-foreground">Next</span>
-                  <span class="line-clamp-2 text-[10px] leading-[1.2] text-muted-foreground">
+                  <span class="shrink-0 text-xs leading-[1.2] text-foreground">Next</span>
+                  <span class="line-clamp-2 text-xs leading-[1.2] text-muted-foreground">
                     {projectNextAction.summary}
                   </span>
                 </div>
               {/if}
               {#if catalogProject?.targetDate}
-                <p class="text-[10px] leading-[1.2] text-muted-foreground">
+                <p class="text-xs leading-[1.2] text-muted-foreground">
                   {m.graph_timeline_project_deadline({
                     date: formatShortDate(catalogProject.targetDate),
                   })}
@@ -170,18 +170,18 @@
                 {@const visibleTasks = catalogProject?.tasks.slice(0, 4) ?? []}
                 {@const hiddenTaskCount = (catalogProject?.tasks.length ?? 0) - visibleTasks.length}
                 <div class="flex flex-col gap-0.5" data-testid="project-waterfall">
-                  <span class="text-[10px] leading-[1.2] text-muted-foreground"
+                  <span class="text-xs leading-[1.2] text-muted-foreground"
                     >{m.graph_timeline_project_waterfall()}</span
                   >
                   <ol class="flex flex-col gap-0.5">
                     {#each visibleTasks as task (task.itemId)}
-                      <li class="text-[10px] leading-[1.2] text-muted-foreground">
+                      <li class="text-xs leading-[1.2] text-muted-foreground">
                         {task.rank}. {task.summary}
                       </li>
                     {/each}
                   </ol>
                   {#if hiddenTaskCount > 0}
-                    <span class="text-[10px] leading-[1.2] text-muted-foreground"
+                    <span class="text-xs leading-[1.2] text-muted-foreground"
                       >+{hiddenTaskCount} more</span
                     >
                   {/if}
@@ -189,13 +189,13 @@
               {/if}
               {#if (catalogProject?.milestones.length ?? 0) > 0}
                 <div class="flex flex-col gap-0.5" data-testid="project-milestones">
-                  <span class="text-[10px] leading-[1.2] text-muted-foreground"
+                  <span class="text-xs leading-[1.2] text-muted-foreground"
                     >{m.graph_timeline_project_milestones()}</span
                   >
                   <div class="flex flex-wrap gap-1">
                     {#each catalogProject?.milestones ?? [] as milestone (milestone.id)}
                       <span
-                        class="rounded border border-border px-1.5 py-0.5 text-[10px] leading-[1.2] text-muted-foreground"
+                        class="rounded border border-border px-1.5 py-0.5 text-xs leading-[1.2] text-muted-foreground"
                       >
                         {milestone.label}{#if milestone.targetDate}
                           · {formatShortDate(milestone.targetDate)}{/if}
@@ -209,7 +209,7 @@
 
           {#if unassignedTasks.length > 0}
             <div class="mt-2 pt-3">
-              <h3 class="px-2 py-1.5 text-[10px] leading-[1.2] text-muted-foreground">
+              <h3 class="px-2 py-1.5 text-xs leading-[1.2] text-muted-foreground">
                 {m.graph_timeline_project_no_project()} ({unassignedTasks.length})
               </h3>
               <div class="flex flex-col">
@@ -245,11 +245,11 @@
                       </div>
                       <div class="flex flex-col gap-0.5">
                         {#if task.startAt}
-                          <span class="text-foreground/60 font-mono text-[10px] leading-tight"
+                          <span class="text-foreground/60 font-mono text-xs leading-tight"
                             >{m.graph_temporal_when()} {formatWhen(task)}</span
                           >
                         {/if}
-                        <span class="text-muted-foreground font-mono text-[10px] leading-tight"
+                        <span class="text-muted-foreground font-mono text-xs leading-tight"
                           >Created {formatCreatedDate(task)}</span
                         >
                       </div>

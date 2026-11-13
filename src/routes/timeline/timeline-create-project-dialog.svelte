@@ -120,7 +120,7 @@
           {#each statusOptions as option (option.id)}
             <button
               type="button"
-              class="flex-1 rounded-sm px-2 py-1 font-mono text-[10px] uppercase tracking-wide transition-colors {status ===
+              class="flex-1 rounded-sm px-2 py-1 font-mono text-xs uppercase tracking-wide transition-colors {status ===
               option.id
                 ? 'bg-foreground text-background'
                 : 'text-foreground hover:bg-muted/40'}"

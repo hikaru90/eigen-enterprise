@@ -73,7 +73,7 @@
   <div
     class={[
       'absolute flex items-center gap-1 rounded-md bg-black/60 font-medium',
-      size === 'small' ? 'bottom-1 left-1 max-w-[calc(100%-0.5rem)] px-1.5 py-0.5 text-[11px]' : 'bottom-2 left-2 max-w-[calc(100%-1rem)] px-2 py-1 text-xs',
+      size === 'small' ? 'bottom-1 left-1 max-w-[calc(100%-0.5rem)] px-1.5 py-0.5 text-xs' : 'bottom-2 left-2 max-w-[calc(100%-1rem)] px-2 py-1 text-xs',
     ]}
   >
     {#if tile.kind === 'camera' && !tile.micOn}<MicOff class="size-3.5 shrink-0 text-red-400" aria-label="Muted" data-testid="call-muted" />{/if}

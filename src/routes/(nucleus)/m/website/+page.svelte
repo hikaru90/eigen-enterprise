@@ -37,7 +37,7 @@
   description="Build something new, connect your code, and manage where it runs."
 />
 {#if data.apps || (data.appsError && !data.repositoriesError)}
-  <div class="mt-2 flex flex-wrap items-center justify-between gap-3 text-xs text-foreground/55">
+  <div class="mt-2 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
     <span>{summary}</span>
     <a
       href={resolve('/m/website/settings')}
@@ -78,9 +78,9 @@
       <div
         class="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-border p-8 text-center"
       >
-        <GitBranch class="mb-4 size-8 text-foreground/35" strokeWidth={1.25} />
+        <GitBranch class="mb-4 size-8 text-muted-foreground" strokeWidth={1.25} />
         <h2 class="text-base font-medium">Your next app starts here</h2>
-        <p class="mt-2 max-w-sm text-sm leading-relaxed text-foreground/55">
+        <p class="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
           Choose Add to build an app or website with chat, or connect a public or private GitHub
           repository.
         </p>

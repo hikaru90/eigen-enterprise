@@ -74,7 +74,7 @@
 </script>
 
 {#snippet edited(at: string)}
-  <span class="ml-1 text-[11px] text-muted-foreground" title={fullFmt.format(new Date(at))} data-testid="messages-edited">(edited)</span>
+  <span class="ml-1 text-xs text-muted-foreground" title={fullFmt.format(new Date(at))} data-testid="messages-edited">(edited)</span>
 {/snippet}
 
 <article
@@ -90,7 +90,7 @@
   <div class="w-9 shrink-0">
     {#if grouped}
       <time
-        class="invisible block pt-0.5 text-right text-[10px] leading-5 text-muted-foreground tabular-nums group-hover/row:visible group-focus-within/row:visible"
+        class="invisible block pt-0.5 text-right text-xs leading-5 text-muted-foreground tabular-nums group-hover/row:visible group-focus-within/row:visible"
         datetime={m.createdAt}
         title={fullFmt.format(at)}
         data-testid="messages-gutter-time">{timeFmt.format(at)}</time

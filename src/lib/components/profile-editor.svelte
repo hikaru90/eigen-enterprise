@@ -234,7 +234,7 @@
           bind:this={canvasEl}
           width={VIEW * 2}
           height={VIEW * 2}
-          class="cursor-grab touch-none rounded-xl border border-border bg-foreground/[0.04] outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:cursor-grabbing"
+          class="cursor-grab touch-none rounded-xl border border-border bg-foreground/[0.04] outline-none focus-visible:ring-2 -ring active:cursor-grabbing"
           style="width: {VIEW}px; height: {VIEW}px;"
           tabindex="0"
           aria-label="Crop preview — drag or use the arrow keys to move the picture"

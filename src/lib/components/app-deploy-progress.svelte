@@ -200,7 +200,7 @@
               ? 'font-medium text-foreground'
               : reached(progress, step.stage)
                 ? 'text-foreground/70'
-                : 'text-foreground/35'}
+                : 'text-muted-foreground'}
           aria-current={current ? 'step' : undefined}
         >
           {step.label}{failedHere ? ' — failed' : ''}{at ? ` · ${when(at)}` : ''}
@@ -220,7 +220,7 @@
         class="max-h-80 overflow-auto rounded-md border border-border bg-muted/40 p-3 text-xs whitespace-pre-wrap"
         aria-label="Deploy log">{progress.lines.join('\n')}</pre>
     {:else if progress.state === 'running'}
-      <p class="text-xs text-foreground/55">
+      <p class="text-xs text-muted-foreground">
         The build and start output appears here as it happens.
       </p>
     {/if}

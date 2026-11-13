@@ -17,11 +17,11 @@
             {#if result.href}
               <a
                 href={result.href}
-                class="group inline-flex min-w-0 items-center gap-1 rounded-sm outline-none hover:underline hover:underline-offset-2 focus-visible:ring-2 focus-visible:ring-ring/60"
+                class="group inline-flex min-w-0 items-center gap-1 rounded-sm outline-none hover:underline hover:underline-offset-2 focus-visible:ring-2 -ring"
                 target="_blank"
                 rel="external noopener noreferrer"
                 ><span class="truncate">{result.label}</span><ArrowUpRight
-                  class="size-3.5 shrink-0 text-foreground/35 group-hover:text-foreground/70"
+                  class="size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground"
                   aria-hidden="true"
                 /></a
               >
@@ -29,14 +29,14 @@
               <span class="min-w-0 truncate">{result.label}</span>
             {/if}
             {#if result.detail}
-              <span class="shrink-0 text-xs text-foreground/55">{result.detail}</span>
+              <span class="shrink-0 text-xs text-muted-foreground">{result.detail}</span>
             {/if}
           </li>
         {/each}
       </ul>
     {/if}
     {#if module.note}
-      <p class="mt-2 text-xs text-foreground/55" data-testid="overview-module-note">
+      <p class="mt-2 text-xs text-muted-foreground" data-testid="overview-module-note">
         {module.note}
       </p>
     {/if}

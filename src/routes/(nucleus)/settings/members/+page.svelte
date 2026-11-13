@@ -87,7 +87,7 @@
             <UserAvatar name={m.name || m.email} image={m.image} size="sm" />
             <div class="min-w-0">
               <p class="truncate text-xs font-medium">{m.name || m.email}</p>
-              <p class="text-muted-foreground truncate text-[11px]">{m.email}</p>
+              <p class="text-muted-foreground truncate text-xs">{m.email}</p>
             </div>
           </div>
           {#if m.role === 'owner'}
@@ -175,7 +175,7 @@
             value={url}
             aria-label="Invite link"
             data-testid="invite-link-url"
-            class="border-input bg-card h-9 min-w-0 flex-1 border px-2.5 font-mono text-[11px]"
+            class="border-input bg-card h-9 min-w-0 flex-1 border px-2.5 font-mono text-xs"
             onfocus={(e) => e.currentTarget.select()}
           />
           <button
@@ -214,13 +214,13 @@
             <details>
               <summary class="flex cursor-pointer flex-wrap items-baseline justify-between gap-2">
                 <span class="text-xs font-medium" data-testid="group-name">{g.name}</span>
-                <span class="text-muted-foreground text-[11px]" data-testid="group-members">
+                <span class="text-muted-foreground text-xs" data-testid="group-members">
                   {g.memberIds.length === 0
                     ? 'No members yet'
                     : g.memberIds.map(nameOf).join(', ')}
                 </span>
               </summary>
-              {#if g.description}<p class="text-muted-foreground mt-1 text-[11px]">
+              {#if g.description}<p class="text-muted-foreground mt-1 text-xs">
                   {g.description}
                 </p>{/if}
               <form method="post" action="?/updateGroup" use:enhance class="mt-3 space-y-2">

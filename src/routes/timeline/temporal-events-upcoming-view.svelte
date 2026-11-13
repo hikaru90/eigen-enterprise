@@ -41,7 +41,7 @@
     {#each projectGroups as group (group.projectKey)}
       <section class="border-border border-b">
         <h3
-          class="text-muted-foreground bg-muted/20 sticky top-0 z-10 border-b border-border px-4 py-2 font-mono text-[10px] uppercase tracking-widest"
+          class="text-muted-foreground bg-muted/20 sticky top-0 z-10 border-b border-border px-4 py-2 font-mono text-xs uppercase tracking-widest"
         >
           {m.graph_timeline_project_group({ name: group.projectLabel })}
         </h3>

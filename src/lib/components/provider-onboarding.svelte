@@ -488,7 +488,7 @@
           <div>
             <label
               for="sub-chat-model"
-              class="text-muted-foreground block text-[10px] font-medium tracking-wider uppercase"
+              class="text-muted-foreground block text-xs font-medium tracking-wider uppercase"
             >
               Chat model
             </label>
@@ -510,7 +510,7 @@
             <div>
               <label
                 for="sub-embedding-model"
-                class="text-muted-foreground block text-[10px] font-medium tracking-wider uppercase"
+                class="text-muted-foreground block text-xs font-medium tracking-wider uppercase"
               >
                 Embedding model
               </label>
@@ -558,7 +558,7 @@
         <div>
           <label
             for="provider-base-url"
-            class="text-muted-foreground block text-[10px] font-medium tracking-wider uppercase"
+            class="text-muted-foreground block text-xs font-medium tracking-wider uppercase"
           >
             Base URL
           </label>
@@ -573,7 +573,7 @@
         <div>
           <label
             for="provider-api-key"
-            class="text-muted-foreground block text-[10px] font-medium tracking-wider uppercase"
+            class="text-muted-foreground block text-xs font-medium tracking-wider uppercase"
           >
             API key
           </label>
@@ -590,7 +590,7 @@
           <div>
             <label
               for="provider-rule-chat"
-              class="text-muted-foreground block text-[10px] font-medium tracking-wider uppercase"
+              class="text-muted-foreground block text-xs font-medium tracking-wider uppercase"
             >
               Chat routing rule ID
             </label>
@@ -605,7 +605,7 @@
           <div>
             <label
               for="provider-rule-embedding"
-              class="text-muted-foreground block text-[10px] font-medium tracking-wider uppercase"
+              class="text-muted-foreground block text-xs font-medium tracking-wider uppercase"
             >
               Embedding routing rule ID
             </label>
@@ -622,7 +622,7 @@
             <div>
               <label
                 for="provider-model-chat"
-                class="text-muted-foreground block text-[10px] font-medium tracking-wider uppercase"
+                class="text-muted-foreground block text-xs font-medium tracking-wider uppercase"
               >
                 Chat model
               </label>
@@ -644,7 +644,7 @@
               <div>
                 <label
                   for="provider-model-embedding"
-                  class="text-muted-foreground block text-[10px] font-medium tracking-wider uppercase"
+                  class="text-muted-foreground block text-xs font-medium tracking-wider uppercase"
                 >
                   Embedding model
                 </label>
