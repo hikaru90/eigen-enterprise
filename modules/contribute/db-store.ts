@@ -2,8 +2,14 @@ import type { ContributeStore, Contribution, ContributionWithVotes } from './sto
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import type { AppDatabase } from '$lib/server/db/context'
 import { contributionVotes as votes, contributions } from '$lib/server/db/contribute.schema'
+import { enqueueSql, markDirtySql } from './share/db-store'
 
-/** ContributeStore over Postgres (company-level tables, migration 0121). */
+/**
+ * ContributeStore over Postgres (company-level tables, migration 0121). Each
+ * write also keeps the sharing outbox (migration 0136) in the same
+ * transaction: a new proposal gets a pending row while sharing is on; a
+ * status/note/vote change marks its row dirty.
+ */
 export function dbContributeStore(db: AppDatabase): ContributeStore {
   async function attachVotes(rows: Contribution[]): Promise<ContributionWithVotes[]> {
     if (rows.length === 0) return []
@@ -31,6 +37,7 @@ export function dbContributeStore(db: AppDatabase): ContributeStore {
       await db.transaction(async (tx) => {
         await tx.insert(contributions).values(c)
         await tx.insert(votes).values({ contributionId: c.id, userId: c.authorId, direction: 1 })
+        await tx.execute(enqueueSql(c.id))
       })
     },
     async get(id) {
@@ -48,18 +55,24 @@ export function dbContributeStore(db: AppDatabase): ContributeStore {
       return attachVotes(rows as Contribution[])
     },
     async update(id, patch) {
-      const out = await db.update(contributions).set(patch).where(eq(contributions.id, id)).returning({ id: contributions.id })
-      if (out.length === 0) throw new Error(`contribution ${id} not found`)
+      await db.transaction(async (tx) => {
+        const out = await tx.update(contributions).set(patch).where(eq(contributions.id, id)).returning({ id: contributions.id })
+        if (out.length === 0) throw new Error(`contribution ${id} not found`)
+        await tx.execute(markDirtySql(id))
+      })
     },
     async setVote(id, userId, direction) {
-      if (direction === 0) {
-        await db.delete(votes).where(and(eq(votes.contributionId, id), eq(votes.userId, userId)))
-        return
-      }
-      await db
-        .insert(votes)
-        .values({ contributionId: id, userId, direction })
-        .onConflictDoUpdate({ target: [votes.contributionId, votes.userId], set: { direction } })
+      await db.transaction(async (tx) => {
+        if (direction === 0) {
+          await tx.delete(votes).where(and(eq(votes.contributionId, id), eq(votes.userId, userId)))
+        } else {
+          await tx
+            .insert(votes)
+            .values({ contributionId: id, userId, direction })
+            .onConflictDoUpdate({ target: [votes.contributionId, votes.userId], set: { direction } })
+        }
+        await tx.execute(markDirtySql(id))
+      })
     },
   }
 }

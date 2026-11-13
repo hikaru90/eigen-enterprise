@@ -44,6 +44,7 @@ describe('contribute-composer.svelte', () => {
     const { client, onchanged } = setup({ kind: 'bug', area: 'messages', duplicateOf: null })
     const send = page.getByTestId('contribute-send')
     await expect.element(send).toBeDisabled()
+    await expect.element(page.getByTestId('contribute-shared-note')).toHaveTextContent('shared with the eigenEnterprise makers, without names')
     await page.getByTestId('contribute-input').fill('  Threads lose my replies  ')
     await send.click()
     await expect.element(page.getByTestId('contribute-done')).toHaveTextContent('Thanks — it’s on the board.')

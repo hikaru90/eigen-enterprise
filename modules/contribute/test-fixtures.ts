@@ -1,17 +1,24 @@
 import type { JudgeChat } from './judge'
 import type { ContributeDeps } from './service'
 import { memoryContributeStore } from './memory-store'
+import { memoryShareState, memoryShareStore } from './share/memory-store'
 
 /** A judge answer as the gateway returns it. */
 export const judged = (json: unknown) => ({ choices: [{ message: { content: JSON.stringify(json) } }] })
 
-/** Deps over the in-memory store; the judge answers from a queue (fails loud when empty). */
-export function fixture(answers: unknown[] = []) {
-  const store = memoryContributeStore()
+/**
+ * Deps over the in-memory store; the judge answers from a queue (fails loud
+ * when empty). `share` is the sharing state the store's outbox hooks write to
+ * (sharing on unless `sharing: false`).
+ */
+export function fixture(answers: unknown[] = [], opts: { sharing?: boolean } = {}) {
+  let clock = Date.parse('2026-11-10T10:00:00Z')
+  const shareState = memoryShareState(opts.sharing ?? true, () => new Date(clock))
+  const store = memoryContributeStore(shareState)
+  const share = memoryShareStore(shareState)
   const queue = [...answers]
   const calls: Parameters<JudgeChat>[0][] = []
   const events: Array<{ type: string; principalId: string; payload: Record<string, unknown> }> = []
-  let clock = Date.parse('2026-11-10T10:00:00Z')
   let ids = 0
   const chat: JudgeChat = async (input) => {
     calls.push(input)
@@ -31,5 +38,9 @@ export function fixture(answers: unknown[] = []) {
     now: () => new Date((clock += 1000)),
     newId: () => `00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`,
   }
-  return { deps, store, calls, events, queue }
+  const tick = (ms: number) => {
+    clock += ms
+    return new Date(clock)
+  }
+  return { deps, store, calls, events, queue, share, shareState, now: () => new Date(clock), tick }
 }

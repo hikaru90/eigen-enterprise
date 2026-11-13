@@ -117,3 +117,35 @@ describe('contribute: the makers and the agent move proposals along', () => {
     expect((await listProposals(f.deps, null, ['shipped'])).map((p) => p.title)).toEqual(['A', 'B'])
   })
 })
+
+describe('contribute: sharing outbox hooks', () => {
+  it('sharing on: a new proposal gets a pending outbox row', async () => {
+    const { f, p } = await shared()
+    expect(f.shareState.outbox.get(p.id)).toMatchObject({ state: 'pending', summary: null, lastSentHash: null })
+  })
+
+  it('sharing off: a new proposal gets no row (and is never backfilled)', async () => {
+    const { f, p } = await shared(fixture([], { sharing: false }))
+    expect(f.shareState.outbox.has(p.id)).toBe(false)
+  })
+
+  it('a vote or a status change on a sent proposal makes it due again', async () => {
+    const { f, p } = await shared()
+    const sentAt = f.now()
+    f.shareState.outbox.set(p.id, { ...f.shareState.outbox.get(p.id)!, state: 'sent', lastSentHash: 'h', nextAttemptAt: new Date('2027-01-01'), updatedAt: sentAt })
+    const later = f.tick(60_000)
+    await voteProposal(f.deps, 'ben', p.id, 1)
+    expect(f.shareState.outbox.get(p.id)).toMatchObject({ state: 'scrubbed', nextAttemptAt: later })
+
+    f.shareState.outbox.set(p.id, { ...f.shareState.outbox.get(p.id)!, state: 'sent', nextAttemptAt: new Date('2027-01-01') })
+    await updateProposal(f.deps, owner, p.id, { status: 'in_progress' })
+    expect(f.shareState.outbox.get(p.id)?.state).toBe('scrubbed')
+  })
+
+  it('an excluded row stays excluded on a change', async () => {
+    const { f, p } = await shared()
+    f.shareState.outbox.set(p.id, { ...f.shareState.outbox.get(p.id)!, state: 'excluded' })
+    await voteProposal(f.deps, 'ben', p.id, 1)
+    expect(f.shareState.outbox.get(p.id)?.state).toBe('excluded')
+  })
+})

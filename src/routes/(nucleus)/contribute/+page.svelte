@@ -27,6 +27,7 @@
       proposals={data.proposals}
       hub={data.hub}
       canManage={data.canManage}
+      sharing={data.sharing}
       {client}
       onchanged={() => invalidate(CONTRIBUTE_DEPENDENCY)}
     />

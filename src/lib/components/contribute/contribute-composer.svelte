@@ -4,9 +4,9 @@
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import type { ContributeClient } from '$lib/contribute/client'
   import { AREA_LABEL, KIND_PHRASE, STATUS_LABEL, votesLabel } from '$lib/contribute/labels'
-  import { CONTRIBUTION_MAX_LENGTH } from '../../../../modules/contribute/types'
-  import VoiceDictation from '$lib/voice/voice-dictation.svelte'
   import { appendVoiceTranscript } from '$lib/voice/transcribe-voice-clip'
+  import VoiceDictation from '$lib/voice/voice-dictation.svelte'
+  import { CONTRIBUTION_MAX_LENGTH } from '../../../../modules/contribute/types'
 
   /**
    * The Contribute composer (Eigen's share bar, in the top bar's popover):
@@ -153,6 +153,10 @@
       <p class="text-sm font-medium">Make this app better</p>
       <p class="mt-0.5 text-xs text-foreground/60">
         An idea, a bug, something that feels rough — everyone in the company can see and vote on it.
+      </p>
+      <p class="mt-1 text-[11px] text-foreground/50" data-testid="contribute-shared-note">
+        Proposals are also shared with the eigenEnterprise makers, without names, unless the owner turned this off in
+        Settings → Company.
       </p>
     </div>
 

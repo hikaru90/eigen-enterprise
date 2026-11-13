@@ -6,6 +6,8 @@ import { checkLogo } from '$lib/server/company/logo'
 import { removeCompanyLogo, saveCompanyLogo, saveCompanyName } from '$lib/server/company/service'
 import { companyProfileStore } from '$lib/server/company/store'
 import { companyIdentity } from '$lib/server/overview/sources'
+import { ContributeError } from '../../../../../modules/contribute/errors'
+import { setSharing, shareStatus } from '../../../../../modules/contribute/share/service'
 
 /**
  * Settings → Company (Contribute `6a3b17ba`): the company's name and logo —
@@ -13,18 +15,26 @@ import { companyIdentity } from '$lib/server/overview/sources'
  * invites, the "not a member" message, the unclaimed page, the installed
  * app). Owner and admins only; the person clicking is the decision. Brand
  * styles stay in Brand.
+ *
+ * The owner also decides here whether proposals from the Contribute board are
+ * shared with the eigenEnterprise makers (plan/contribute-phone-home.md §5):
+ * on by default, the exact field list, and where sending stands.
  */
 
 const REASON = 'Only the owner or an admin can change the company name and logo.'
 
+const shareDeps = async () => (await import('../../../../../modules/contribute/share/live')).shareDeps()
+
 export const load: PageServerLoad = async ({ locals }) => {
-  await requireCapability(locals, 'company.manage', REASON)
+  const { role } = await requireCapability(locals, 'company.manage', REASON)
   const identity = await companyIdentity()
   return {
     company: {
       name: identity.name,
       logo: identity.logo ? { url: identity.logo.url, mime: identity.logo.mime } : null,
     },
+    // Owner only: sharing proposals with the makers.
+    share: role === 'owner' ? await shareStatus(await shareDeps()) : null,
   }
 }
 
@@ -46,6 +56,19 @@ export const actions: Actions = {
     if (!check.ok) return fail(check.status, { action: 'uploadLogo', error: check.error })
     await saveCompanyLogo({ bytes: check.bytes, mime: check.mime }, user.id, companyStorage())
     return { action: 'uploadLogo', ok: true }
+  },
+  setSharing: async ({ locals, request }) => {
+    const { user, role } = await requireCapability(locals, 'company.manage', REASON)
+    const form = await request.formData()
+    const enabled = form.get('enabled')
+    if (enabled !== 'on' && enabled !== 'off') return fail(400, { action: 'setSharing', error: 'Choose on or off.' })
+    try {
+      await setSharing(await shareDeps(), { id: user.id, isOwner: role === 'owner' }, { enabled: enabled === 'on', withdraw: form.get('withdraw') === 'on' })
+    } catch (err) {
+      if (err instanceof ContributeError) return fail(err.code === 'forbidden' ? 403 : err.code === 'invalid' ? 400 : 502, { action: 'setSharing', error: err.message })
+      throw err
+    }
+    return { action: 'setSharing', ok: true }
   },
   removeLogo: async ({ locals }) => {
     const { user } = await requireCapability(locals, 'company.manage', REASON)

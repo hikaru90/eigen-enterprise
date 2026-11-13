@@ -4,6 +4,7 @@ import { redirect } from '@sveltejs/kit'
 import { CONTRIBUTE_DEPENDENCY } from '$lib/contribute/board'
 import { canManage } from '../../../../modules/contribute/http'
 import { listProposals } from '../../../../modules/contribute/service'
+import { sharingStates, type ShareItemView } from '../../../../modules/contribute/share/service'
 import { CONTRIBUTION_STATUSES } from '../../../../modules/contribute/types'
 
 /**
@@ -24,7 +25,13 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     canManage(locals.user.id),
     foundingCompanyName(),
   ])
-  return { proposals, canManage: manage, companyName, hub: manage ? await hubProposals() : null }
+  // The owner and admins see each proposal's sharing with the central board.
+  let sharing: Record<string, ShareItemView> | null = null
+  if (manage) {
+    const { shareDeps } = await import('../../../../modules/contribute/share/live')
+    sharing = await sharingStates(await shareDeps(), proposals.map((p) => p.id))
+  }
+  return { proposals, canManage: manage, companyName, sharing, hub: manage ? await hubProposals() : null }
 }
 
 async function hubProposals(): Promise<HubProposalDto[] | null> {
