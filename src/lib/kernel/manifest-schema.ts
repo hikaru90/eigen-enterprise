@@ -3,6 +3,8 @@ import { toJSONSchema, z } from 'zod'
 const ID_PATTERN = /^[a-z][a-z0-9-]*$/
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/
 const TOOL_NAME_PATTERN = /^[a-z][a-z0-9_-]*\.[a-z][a-zA-Z0-9_-]*$/
+/** A tool namespace: exactly what TOOL_NAME_PATTERN allows before the "." (contribute-hub owns `contribute_hub.*`). */
+const NAMESPACE_PATTERN = /^[a-z][a-z0-9_-]*$/
 
 /** Published plugin contract for `ModuleManifest` — validated at `ModuleRegistry.register()`. */
 export const manifestSchema = z.object({
@@ -11,7 +13,7 @@ export const manifestSchema = z.object({
   version: z.string().regex(VERSION_PATTERN),
   description: z.string().min(1).optional(),
   /** Tool-name prefixes owned (omitted = [id]); must include id — checked at register(). */
-  toolNamespaces: z.array(z.string().regex(ID_PATTERN)).min(1).optional(),
+  toolNamespaces: z.array(z.string().regex(NAMESPACE_PATTERN)).min(1).optional(),
   /** true = agent machinery, not an owner-facing module card. */
   internal: z.boolean().optional(),
   /** Module ids this module needs switched on to work (its dependencies); never its own id — checked at register(). */
