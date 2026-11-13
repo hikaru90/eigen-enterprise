@@ -52,7 +52,7 @@
   const shortDay = (day: string, i: number) => `${WEEKDAY_NAMES[i].slice(0, 3)} ${Number(day.slice(8))} ${MONTH_NAMES[Number(day.slice(5, 7)) - 1].slice(0, 3)}`
   const hours = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`)
   const chip =
-    'block w-full truncate rounded px-1.5 py-0.5 text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/60'
+    'block w-full truncate rounded px-1.5 py-0.5 text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const tone = (o: OccurrenceDto) =>
     o.event?.canEdit === false ? 'border border-primary/40 bg-background text-foreground' : 'bg-primary/15 text-foreground hover:bg-primary/25'
 </script>
@@ -73,7 +73,7 @@
         {#each hours as h, i (h)}
           <button
             type="button"
-            class="absolute inset-x-0 flex items-start border-t border-border/60 pl-1 text-[11px] text-muted-foreground hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"
+            class="absolute inset-x-0 flex items-start border-t border-border/60 pl-1 text-xs text-muted-foreground hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"
             style="top: {i * HOUR_PX}px; height: {HOUR_PX}px"
             aria-label="New event at {h}"
             onclick={() => oncreate(day, h)}>{h}</button
@@ -82,7 +82,7 @@
         {#each placeTimed(items.timed, day, timeZone) as p (p.item.key)}
           <button
             type="button"
-            class="absolute overflow-hidden rounded px-1.5 py-0.5 text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/60 {tone(p.item)}"
+            class="absolute overflow-hidden rounded px-1.5 py-0.5 text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring {tone(p.item)}"
             style="top: {(p.top / 60) * HOUR_PX}px; height: {Math.max((p.height / 60) * HOUR_PX, 20)}px; left: calc(3rem + (100% - 3.25rem) * {p.column / p.columns}); width: calc((100% - 3.25rem) / {p.columns} - 2px)"
             data-testid="calendar-event"
             onclick={() => onopen(p.item)}
@@ -126,7 +126,7 @@
   <div class="grid grid-cols-7 gap-px overflow-hidden rounded-md border border-border bg-border" role="grid" aria-label="Month" data-testid="calendar-month">
     <div class="contents" role="row">
       {#each WEEKDAY_NAMES as name (name)}
-        <div role="columnheader" class="bg-muted/60 py-1 text-center text-[11px] font-medium text-muted-foreground" aria-label={name}>{name.slice(0, 2)}</div>
+        <div role="columnheader" class="bg-muted/60 py-1 text-center text-xs font-medium text-muted-foreground" aria-label={name}>{name.slice(0, 2)}</div>
       {/each}
     </div>
     {#each Array.from({ length: days.length / 7 }, (_, w) => days.slice(w * 7, w * 7 + 7)) as week (week[0])}
@@ -134,7 +134,7 @@
         {#each week as day (day)}
           {@const items = dayItems(occurrences, day, timeZone)}
           {@const list = [...items.allDay, ...items.timed]}
-          <div role="gridcell" class="min-h-20 min-w-0 bg-background p-0.5 sm:min-h-24 sm:p-1 {day.slice(0, 7) === month ? '' : 'text-muted-foreground/60'}" aria-label={longDay(day)}>
+          <div role="gridcell" class="min-h-20 min-w-0 bg-background p-0.5 sm:min-h-24 sm:p-1 {day.slice(0, 7) === month ? '' : 'text-muted-foreground'}" aria-label={longDay(day)}>
             <div class="flex items-center justify-between">
               <a
                 href={dayHref(day)}
@@ -149,7 +149,7 @@
               {/each}
             </ul>
             {#if list.length > MONTH_CHIPS}
-              <a href={dayHref(day)} class="block px-1 text-[11px] text-muted-foreground hover:underline">+{list.length - MONTH_CHIPS} more</a>
+              <a href={dayHref(day)} class="block px-1 text-xs text-muted-foreground hover:underline">+{list.length - MONTH_CHIPS} more</a>
             {/if}
           </div>
         {/each}
