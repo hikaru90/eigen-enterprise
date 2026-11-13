@@ -2,7 +2,7 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-11-13 — Contribute phone-home merged + e2e (main @ `8466816`, not pushed, not on the box)
+## 2026-11-13 — Contribute phone-home merged + e2e (pushed; on the local box: release ``, central board not configured there — no `CONTRIBUTE_HUB_URL`)
 
 - Merged into main: the wire contract + migrations 0136/0137 (`16d29d0`), the hub (`4cf3d93`), the install side (`fd61741`), the join fix (`8a795ae`: views pass `sharing` through; the new UI meets the page a11y guard, 13px and muted text), and the e2e journey.
 - E2E `src/routes/e2e/contribute-phone-home.e2e.ts` passes, alone and with `contribute.e2e.ts`. Covered: sharing on by default; a proposal with a name and a URL reaches the mock hub as exactly `HUB_CONTRIBUTION_KEYS` and nothing else; "Show what was sent" equals the PUT body; "Don't share" sends a signed DELETE with an empty body; sharing off sticks. Mock hub `scripts/mock-hub.ts` on :5198, a 4th Playwright webServer built on the contract's own schemas and verifier; dev-only harness trigger `POST /api/e2e/harness/contribute-share`.
