@@ -10,7 +10,7 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - **Decision:** `shareTick` runs one pass at a time per process (`oneAtATime`), so the harness trigger and the 60s ticker can't both create an install key.
 - **Still open:** `ee` doesn't write `CONTRIBUTE_HUB_URL` yet, so released installs show "central board not configured" and send nothing. Activating `contribute-hub` on os.cerberusblue.com and shipping the URL are owner steps. Also open: the one-time "sharing is on" notice; the hub install's own outbox rows sit as Waiting; register is unsigned, and a flood of new install ids isn't limited.
 
-## 2026-11-13 — Contribute board round 5: the 10 open proposals worked (main @ `f2dd0a3`, not pushed, not released, board statuses unchanged)
+## 2026-11-13 — Contribute board round 5: the 10 open proposals worked (main @ `f2dd0a3`; pushed with `3f34ac4`; on the local box in release `eigenenterprise-0.5.9-6a782a692cb8-linux-arm64`; not on production; board statuses unchanged)
 
 Orchestrated: one worktree stream per proposal (`.claude/worktrees/contrib-*`, branches `contrib/*`), merged in dependency order (calendar → email proposals; memory privacy → plugins), worktrees + branches pruned. Migrations were renumbered at merge because the phone-home work took 0136/0137 meanwhile: **0138_calendar, 0139_contact_history, 0140_calendar_proposals**. A fresh scratch DB migrated 0000→0140 clean (138 rows; scratch DB dropped).
 - **`eb674853` inbox first:** nothing new. It's already in code since S6 (`58201e6`: `/m/email` → 303 `/m/email/inbox`). It's only open on production until S7, which needs the owner's AWS/DNS steps.
