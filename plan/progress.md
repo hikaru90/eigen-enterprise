@@ -2,7 +2,7 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-11-13 — GitHub repos into Drive, Contacts into Email (working tree, not committed)
+## 2026-11-13 — GitHub repos into Drive, Contacts into Email (`b0d4cb4`, pushed; not yet on the box)
 
 - Owner request: "GitHub repos" and "Contacts" are no longer sidebar entries. `NESTED_IN` in `src/lib/shell/nav.ts` (repos → drive, contacts → email); Drive/Email carry their pages (and old addresses) as match prefixes.
 - Repos settings moved to `/drive/github` (inside the Drive layout and rail). `/m/repos` → 308 to `/drive/github`. New capability `repos.manage` (owner + admins, like the manifest) guards it in `GUARDED_PAGES`. Rail: "Connect GitHub" (plus icon) while there is no GitHub source root; once there is, the GitHub folder's tree shows a "Connect GitHub" / "Manage repos" button — both only for `repos.manage` holders.
