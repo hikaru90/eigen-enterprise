@@ -2,6 +2,18 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-13 — Plan: Contribute phone-home (plan only, nothing built)
+
+Owner: "we need it to be local to the company, but also send it to a place i own without personal informations". Plan: [`plan/contribute-phone-home.md`](contribute-phone-home.md).
+
+- **Confirmed state:** Contribute lives only in each install's own Postgres (`contributions`, `contribution_votes`, 0121); nothing syncs anywhere. Production titles (read over the cerberusblue MCP) contain teammates' names, the company domain in pasted URLs/errors and personal remarks, so the title can only leave as an LLM rewrite.
+- **Owner's answers (verbatim, relayed):** "q1: the machine on https://os.cerberusblue.com / q4: dont send names / q5: strip pii / q6: sahring on by default, toggleable".
+- **Decisions:** (D1) hub = `contribute-hub` module, active only on os.cerberusblue.com; (D2) per-install Ed25519 key + random install id, signed requests, revocable; (D3) strict allowlisted payload (LLM-scrubbed English summary, language, kind, area, status, score, app version, day) — authors, per-person votes, notes, exact times, company and person names never leave, no opt-in to send names; (D4) scrub failure or no AI provider = not sent and shown, never the raw title; (D5) sharing **on by default** with an owner toggle in Settings → Company (opt-out), outbox on the job-queue tick, offline = visible queue.
+- **Second round (owner, verbatim, relayed):** "Whoa. Those questions are far too finely granulated. Who may register? I don't know. Everybody?ly. Per default, you send data, you can revoke the sending of the data when you are in admin. There is no backfill. Test installed, and the language should be English, yeah, fine."
+- **Owner-confirmed:** Q2 any install may register (rate limit + revocation kept); Q3 **no hold window** — sent by default, an admin revokes afterwards ("Don't share" withdraws from the hub; the toggle stops sending); Q7 no backfill; Q8 box + e2e use a mock hub, never production; Q10 English summary. Q9 (back-channel) not raised — out of scope. Accepted risk: a scrub miss is only caught after sending.
+- **Working rule:** the owner finds detail questions too fine-grained — implementation details are decided by the builder and logged here as decisions; only real product choices go to the owner. Plan is final.
+- **Next:** build in the order of the plan's §6 (TDD). Activating the hub on production and shipping `CONTRIBUTE_HUB_URL` each need the owner's go.
+
 ## 2026-11-13 — GitHub repos into Drive, Contacts into Email (`b0d4cb4`, on the local box: release `eigenenterprise-0.5.9-0d8d3ef4bd5b-linux-arm64`)
 
 - Owner request: "GitHub repos" and "Contacts" are no longer sidebar entries. `NESTED_IN` in `src/lib/shell/nav.ts` (repos → drive, contacts → email); Drive/Email carry their pages (and old addresses) as match prefixes.
