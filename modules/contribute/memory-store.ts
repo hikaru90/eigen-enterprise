@@ -1,7 +1,11 @@
 import type { ContributeStore, Contribution, ContributionWithVotes } from './store'
+import { memoryEnqueue, memoryMarkDirty, memoryShareState, type MemoryShareState } from './share/memory-store'
 
-/** In-memory ContributeStore for unit tests (same semantics as the DB store). */
-export function memoryContributeStore(): ContributeStore & { rows: Map<string, Contribution> } {
+/**
+ * In-memory ContributeStore for unit tests (same semantics as the DB store,
+ * including the sharing outbox hooks, over the given share state).
+ */
+export function memoryContributeStore(share: MemoryShareState = memoryShareState()): ContributeStore & { rows: Map<string, Contribution> } {
   const rows = new Map<string, Contribution>()
   const votes = new Map<string, Map<string, 1 | -1>>()
   const withVotes = (c: Contribution): ContributionWithVotes => {
@@ -16,6 +20,7 @@ export function memoryContributeStore(): ContributeStore & { rows: Map<string, C
       if (rows.has(c.id)) throw new Error(`contribution ${c.id} exists`)
       rows.set(c.id, { ...c })
       votes.set(c.id, new Map([[c.authorId, 1]]))
+      memoryEnqueue(share, c.id, c.createdAt)
     },
     async get(id) {
       const c = rows.get(id)
@@ -31,12 +36,14 @@ export function memoryContributeStore(): ContributeStore & { rows: Map<string, C
       const c = rows.get(id)
       if (!c) throw new Error(`contribution ${id} not found`)
       rows.set(id, { ...c, ...patch })
+      memoryMarkDirty(share, id, patch.updatedAt)
     },
     async setVote(id, userId, direction) {
       const v = votes.get(id)
       if (!v) throw new Error(`contribution ${id} not found`)
       if (direction === 0) v.delete(userId)
       else v.set(userId, direction)
+      memoryMarkDirty(share, id, share.now())
     },
   }
 }
