@@ -146,6 +146,7 @@ export async function interpretThoughtPreview(input: {
   ]
 
   const response = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId: input.userId,
     messages,
     temperature: 0,

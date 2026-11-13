@@ -77,6 +77,7 @@ export async function detectProjectFromThought(
   input: ProjectDetectionInput,
 ): Promise<ProjectDetectionResult> {
   const response = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId: input.userId,
     messages: [
       {
@@ -104,7 +105,8 @@ export async function detectAndCreateProjectFromThought(
   if (!detection.projectLabel) {
     console.log('[project-detection] No project detected in thought', {
       userId: input.userId,
-      normalizedTextPreview: input.normalizedText.slice(0, 100),
+      // The thought is Memory text: its size, never its words.
+      normalizedChars: input.normalizedText.length,
     })
     return null
   }
@@ -135,7 +137,6 @@ export async function detectAndCreateProjectFromThought(
     console.log('[project-detection] LLM judge rejected project promotion', {
       userId: input.userId,
       entityId: resolution.entityId,
-      label: detection.projectLabel,
     })
     return null
   }
@@ -147,7 +148,6 @@ export async function detectAndCreateProjectFromThought(
   console.log('[project-detection] Promoted new project', {
     userId: input.userId,
     entityId: resolution.entityId,
-    label: detection.projectLabel,
   })
 
   return resolution.entityId

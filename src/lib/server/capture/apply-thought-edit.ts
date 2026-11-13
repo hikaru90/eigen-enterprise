@@ -1,4 +1,3 @@
-import { truncateEditPreview } from '$lib/server/capture/edit-phase-timing'
 import { lifecycleStatusEnum, type LifecycleStatus } from '$lib/server/db/brain.schema'
 import { llmChatCompletion, type ChatMessage } from '$lib/server/llm/llm-client'
 import { extractChatContent } from '$lib/server/ontology/llm-json'
@@ -146,7 +145,7 @@ export async function applyThoughtEditRequest(input: {
   console.info('[capture.edit.llm] request', {
     userId: input.userId,
     category: input.category,
-    editRequestPreview: truncateEditPreview(editRequest),
+    editRequestChars: editRequest.length,
     existingRawLen: input.existingRawText.length,
   })
 
@@ -177,6 +176,7 @@ export async function applyThoughtEditRequest(input: {
   ]
 
   const response = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId: input.userId,
     messages,
     temperature: 0,
@@ -189,7 +189,7 @@ export async function applyThoughtEditRequest(input: {
     console.info('[capture.edit.llm] parsed', {
       userId: input.userId,
       status: parsed.status ?? null,
-      summary: parsed.summary,
+      summaryChars: parsed.summary.length,
       rawTextLen: parsed.rawText.length,
       textUnchanged: parsed.rawText === input.existingRawText,
     })
@@ -199,7 +199,7 @@ export async function applyThoughtEditRequest(input: {
     console.error('[capture.edit.llm] parse failed', {
       userId: input.userId,
       message,
-      responsePreview: truncateEditPreview(content, 400),
+      responseChars: content.length,
     })
     throw new Error(`Failed to parse thought edit LLM response: ${message}`, { cause: err })
   }

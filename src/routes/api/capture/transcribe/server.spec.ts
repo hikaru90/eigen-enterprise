@@ -56,6 +56,7 @@ describe('POST /api/capture/transcribe', () => {
       expect(payload.transcript).toBe('hello world')
       expect(transcribeAudioMock).toHaveBeenCalledWith({
         userId: 'u1',
+        contentOrigin: 'memory',
         audio: expect.objectContaining({ format: 'webm', language: 'en' }),
       })
     })
@@ -81,6 +82,7 @@ describe('POST /api/capture/transcribe', () => {
       expect(res.status).toBe(200)
       expect(transcribeAudioMock).toHaveBeenCalledWith({
         userId: 'u1',
+        contentOrigin: 'memory',
         audio: expect.objectContaining({ format: 'wav', language: undefined }),
       })
     })
@@ -151,6 +153,7 @@ describe('POST /api/capture/transcribe', () => {
     expect(body.transcript).toBe('hello world')
     expect(transcribeAudioMock).toHaveBeenCalledWith({
       userId: 'u1',
+      contentOrigin: 'memory',
       audio: expect.objectContaining({ format: 'webm', language: 'en' }),
     })
   })

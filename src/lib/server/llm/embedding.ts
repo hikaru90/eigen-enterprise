@@ -83,7 +83,7 @@ export async function createThoughtEmbedding(userId: string, input: string): Pro
   if (cached) return cached
 
   const payload = compressForEmbedding(input)
-  const response = await llmCreateEmbeddings({ userId, input: payload })
+  const response = await llmCreateEmbeddings({ userId, input: payload, contentOrigin: 'memory' })
   const embedding = extractFirstEmbedding(response)
   setCachedQueryEmbedding(userId, input, embedding)
   return embedding
@@ -100,7 +100,7 @@ export async function createThoughtEmbeddings(
   }
 
   const payloads = inputs.map((text) => compressForEmbedding(text))
-  const response = await llmCreateEmbeddings({ userId, input: payloads })
+  const response = await llmCreateEmbeddings({ userId, input: payloads, contentOrigin: 'memory' })
   const embeddings = extractEmbeddings(response)
   if (embeddings.length !== inputs.length) {
     throw new Error(

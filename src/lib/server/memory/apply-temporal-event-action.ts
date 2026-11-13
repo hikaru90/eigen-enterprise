@@ -169,6 +169,7 @@ export async function applyTemporalEventActionRequest(input: {
   ]
 
   const response = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId: input.userId,
     messages,
     temperature: 0,

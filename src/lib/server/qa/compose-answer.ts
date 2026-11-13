@@ -528,8 +528,9 @@ export async function composeAnswer(input: ComposeAnswerInput): Promise<Composed
   let phaseStart = Date.now()
   console.info('[composeAnswer] phase=embedding start', {
     userId: input.userId,
-    question: trimmedQuestion,
-    retrievalQuery,
+    // Question and search query are Memory text: sizes only.
+    questionChars: trimmedQuestion.length,
+    retrievalQueryChars: retrievalQuery.length,
     retrievalPath,
     hasGroundingProfile,
   })
@@ -543,7 +544,6 @@ export async function composeAnswer(input: ComposeAnswerInput): Promise<Composed
   phaseStart = Date.now()
   console.info('[composeAnswer] phase=searching start', {
     topK: effectiveTopK,
-    retrievalQuery,
     temporal: queryIntent.temporal,
     temporalKind: queryIntent.kind,
   })
@@ -733,11 +733,9 @@ export async function composeAnswer(input: ComposeAnswerInput): Promise<Composed
       thoughtCount: contextItems.length,
       promptChars: messages.reduce((n, m) => n + m.content.length, 0),
     })
-    for (const message of messages) {
-      console.log(`[composeAnswer] prompt ${message.role}:\n${message.content}`)
-    }
     await input.onProgress?.('composing')
     const response = await llmChatCompletion({
+      contentOrigin: 'memory',
       userId: input.userId,
       messages,
       temperature: 0,

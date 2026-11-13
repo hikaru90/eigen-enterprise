@@ -18,7 +18,6 @@ import {
   MCP_TOOL_MAP,
 } from '$lib/server/mcp/registry'
 import type { McpToolContext } from '$lib/server/mcp/tools'
-import { redactForLog } from '$lib/server/observability/redact-for-log'
 import { sanitizeMcpToolResult } from '$lib/server/observability/strip-embeddings'
 import {
   formatComposedAnswerForUser,
@@ -188,9 +187,7 @@ function parseResponse(text: string): AgentResponse {
   }
 
   if (!parsed) {
-    console.error('[agent-loop] LLM response is not valid JSON', {
-      preview: trimmed.slice(0, 300),
-    })
+    console.error('[agent-loop] LLM response is not valid JSON', { chars: trimmed.length })
     return {
       type: 'parse_error',
       reason: 'The model response was not valid JSON.',
@@ -199,7 +196,7 @@ function parseResponse(text: string): AgentResponse {
   }
 
   if (typeof parsed !== 'object' || !parsed) {
-    console.error('[agent-loop] LLM response is not a JSON object', { parsed })
+    console.error('[agent-loop] LLM response is not a JSON object', { type: typeof parsed })
     return {
       type: 'parse_error',
       reason: 'The model response was not a JSON object.',
@@ -210,7 +207,10 @@ function parseResponse(text: string): AgentResponse {
   const obj = parsed as Record<string, unknown>
 
   if (typeof obj.tool === 'string' && obj.arguments && typeof obj.arguments === 'object') {
-    console.error('[agent-loop] parsed tool_call', { tool: obj.tool, arguments: obj.arguments })
+    console.error('[agent-loop] parsed tool_call', {
+      tool: obj.tool,
+      argumentKeys: Object.keys(obj.arguments),
+    })
     return {
       type: 'tool_call',
       tool: obj.tool,
@@ -220,13 +220,13 @@ function parseResponse(text: string): AgentResponse {
   }
 
   if (typeof obj.answer === 'string') {
-    console.error('[agent-loop] parsed final answer', { preview: obj.answer.slice(0, 80) })
+    console.error('[agent-loop] parsed final answer', { chars: obj.answer.length })
     return { type: 'final', content: obj.answer, thinking }
   }
 
   console.error('[agent-loop] JSON object has neither "tool" nor "answer" key', {
     keys: Object.keys(obj),
-    preview: trimmed.slice(0, 300),
+    chars: trimmed.length,
   })
   return {
     type: 'parse_error',
@@ -287,7 +287,8 @@ async function executeAgentToolCall(input: {
   }
 
   exec.onEvent?.({ type: 'tool_call', tool, arguments: args })
-  console.info('[agent-loop] tool start', { tool, arguments: args })
+  // This agent works on the person's Memory: logs name tools and argument keys, never values.
+  console.info('[agent-loop] tool start', { tool, argumentKeys: Object.keys(args) })
   exec.onEvent?.({ type: 'tool_executing', tool })
 
   const toolStart = Date.now()
@@ -297,18 +298,12 @@ async function executeAgentToolCall(input: {
 
     const preview = formatToolResultPreview(tool, result)
     exec.onEvent?.({ type: 'tool_result', tool, preview })
-    console.info('[agent-loop] tool done', {
-      tool,
-      durationMs: Date.now() - toolStart,
-      result: formatToolResultPreview(tool, redactForLog(result)),
-    })
+    console.info('[agent-loop] tool done', { tool, durationMs: Date.now() - toolStart })
     await logActivityCall(exec.db ?? getDb(), exec.userId, {
       provider: AGENT_TOOL_ACTIVITY_PROVIDER,
       operation: `tool_call.${tool}`,
       baseCostUsd: 0,
-      context: Object.entries(args)
-        .map(([k, v]) => `${k}: ${JSON.stringify(v).slice(0, 30)}`)
-        .join(', '),
+      context: `args: ${Object.keys(args).join(', ')}`,
       durationMs: Date.now() - toolStart,
     })
     captureServerEvent({
@@ -347,9 +342,7 @@ async function executeAgentToolCall(input: {
       provider: AGENT_TOOL_ACTIVITY_PROVIDER,
       operation: `tool_error.${tool}`,
       baseCostUsd: 0,
-      context: Object.entries(args)
-        .map(([k, v]) => `${k}: ${JSON.stringify(v).slice(0, 30)}`)
-        .join(', '),
+      context: `args: ${Object.keys(args).join(', ')}`,
       errorMessage,
       durationMs: Date.now() - toolStart,
     })
@@ -426,10 +419,8 @@ export async function agentChat(input: {
       messageCount: messages.length,
       promptChars: messages.reduce((n, m) => n + m.content.length, 0),
     })
-    for (const message of messages) {
-      console.log(`[agent-loop] prompt ${message.role}:\n${message.content}`)
-    }
     const raw = await llmChatCompletion({
+      contentOrigin: 'memory',
       userId: input.userId,
       messages,
       temperature: 0,
@@ -447,7 +438,7 @@ export async function agentChat(input: {
       return { response: 'The assistant did not produce a response.', messages }
     }
 
-    console.error('[agent-loop] LLM raw response', { preview: content.slice(0, 300) })
+    console.error('[agent-loop] LLM raw response', { chars: content.length })
     const parsed = parseResponse(content)
 
     if (parsed.thinking) {

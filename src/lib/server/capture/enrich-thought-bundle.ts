@@ -230,6 +230,7 @@ export async function extractEnrichThoughtBundle(input: {
   }
 
   const response = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId: input.context.userId,
     messages,
     temperature: 0,

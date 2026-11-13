@@ -131,8 +131,8 @@ type RoutingConfig = { ruleId?: string; model: string; provider?: Record<string,
 type AiMessageRole = 'system' | 'user' | 'assistant'
 type AiOutputChoice = { role: AiMessageRole; content: string }
 
-export type { LlmProviderKind, ResolvedLlmConfig } from '$lib/server/llm/types'
-import type { LlmProviderKind, ResolvedLlmConfig } from '$lib/server/llm/types'
+export type { LlmContentOrigin, LlmProviderKind, ResolvedLlmConfig } from '$lib/server/llm/types'
+import type { LlmContentOrigin, LlmProviderKind, ResolvedLlmConfig } from '$lib/server/llm/types'
 
 const EMBEDDING_DIMENSIONS = 1536
 const AI_ID_ALLOWED = /^[A-Za-z0-9\-_.~@()!':|]+$/
@@ -321,17 +321,41 @@ function extractChatResponseText(body: unknown): string {
   return ''
 }
 
-function logLlmChatRequest(logCtx: string, attempt: number, messages: ChatMessage[]): void {
+/** Memory text never reaches the logs: its calls log sizes, not words (LlmContentOrigin). */
+function keepsText(origin: LlmContentOrigin | undefined): boolean {
+  return origin !== 'memory'
+}
+
+function logLlmChatRequest(
+  logCtx: string,
+  attempt: number,
+  messages: ChatMessage[],
+  origin: LlmContentOrigin | undefined,
+): void {
   if (isGraphScaleQuiet()) return
   console.log(`[llm.chat:${logCtx}] request attempt ${attempt}/${3}`)
   for (const message of messages) {
-    console.log(`[llm.chat:${logCtx}] ${message.role}:\n${message.content}`)
+    console.log(
+      keepsText(origin)
+        ? `[llm.chat:${logCtx}] ${message.role}:\n${message.content}`
+        : `[llm.chat:${logCtx}] ${message.role}: (${origin}, ${message.content.length} chars not logged)`,
+    )
   }
 }
 
-function logLlmChatResponse(logCtx: string, attempt: number, body: unknown): void {
+function logLlmChatResponse(
+  logCtx: string,
+  attempt: number,
+  body: unknown,
+  origin: LlmContentOrigin | undefined,
+): void {
   if (isGraphScaleQuiet()) return
-  console.log(`[llm.chat:${logCtx}] response attempt ${attempt}:\n${extractChatResponseText(body)}`)
+  const text = extractChatResponseText(body)
+  console.log(
+    keepsText(origin)
+      ? `[llm.chat:${logCtx}] response attempt ${attempt}:\n${text}`
+      : `[llm.chat:${logCtx}] response attempt ${attempt}: (${origin}, ${text.length} chars not logged)`,
+  )
 }
 
 const EMBEDDING_LOG_INPUT_MAX = 100
@@ -345,6 +369,7 @@ function truncateForEmbeddingLog(text: string): string {
 function logLlmEmbeddingRequest(
   attempt: number,
   input: string | string[],
+  origin: LlmContentOrigin | undefined,
   logCtx = 'embedding',
 ): void {
   if (isGraphScaleQuiet()) {
@@ -352,6 +377,11 @@ function logLlmEmbeddingRequest(
     return
   }
   console.log(`[llm.embedding] request attempt ${attempt}/${3}`)
+  if (!keepsText(origin)) {
+    const count = Array.isArray(input) ? input.length : 1
+    console.log(`[llm.embedding] input: ${count} text(s) (${origin}, not logged)`)
+    return
+  }
   if (Array.isArray(input)) {
     for (const [index, text] of input.entries()) {
       console.log(`[llm.embedding] input[${index}]: ${truncateForEmbeddingLog(text)}`)
@@ -372,8 +402,16 @@ function logLlmSttRequest(
   )
 }
 
-function logLlmSttResponse(attempt: number, body: unknown): void {
+function logLlmSttResponse(
+  attempt: number,
+  body: unknown,
+  origin: LlmContentOrigin | undefined,
+): void {
   if (isGraphScaleQuiet()) return
+  if (!keepsText(origin)) {
+    console.log(`[llm.stt] response attempt ${attempt}: (${origin} transcript not logged)`)
+    return
+  }
   if (!body || typeof body !== 'object') {
     console.log(`[llm.stt] response attempt ${attempt}: (empty response)`)
     return
@@ -806,6 +844,24 @@ async function embeddingRoutingConfig(config: ResolvedLlmConfig): Promise<Routin
  */
 export const DEFAULT_CHAT_MAX_TOKENS = 8192
 
+/** The AI usage log's preview of a chat: its first user message, never Memory text. */
+function chatActivityPreview(
+  messages: ChatMessage[],
+  origin: LlmContentOrigin | undefined,
+): string | undefined {
+  if (!keepsText(origin)) return undefined
+  return messages.find((m) => m.role === 'user')?.content || ''
+}
+
+/** The AI usage log's preview of an embedding: its first input, never Memory text. */
+function embeddingActivityPreview(
+  input: string | string[],
+  origin: LlmContentOrigin | undefined,
+): string | undefined {
+  if (!keepsText(origin)) return undefined
+  return Array.isArray(input) ? input[0] : input
+}
+
 /**
  * Chat completions: `POST ${baseUrl}/chat/completions`.
  * Body uses `rule_id` from the user's LLM config (DB row) or LLM_RULE_CHAT env var.
@@ -830,6 +886,8 @@ export async function llmChatCompletion(input: {
   aiSessionId?: string
   /** Optional turn-level identifier for PostHog AI observability trace grouping. */
   aiTraceId?: string
+  /** `'memory'` when the messages carry a person's Memory: its text is never logged or analysed. */
+  contentOrigin?: LlmContentOrigin
   /**
    * OpenAI chat-completions `tools` definitions — passed through to the
    * gateway request body verbatim. Requires an OpenAI-shaped provider;
@@ -856,6 +914,7 @@ async function llmChatCompletionInner(input: {
   responseFormat?: 'json_object'
   aiSessionId?: string
   aiTraceId?: string
+  contentOrigin?: LlmContentOrigin
   tools?: unknown[]
   toolChoice?: unknown
 }): Promise<unknown> {
@@ -868,7 +927,9 @@ async function llmChatCompletionInner(input: {
   const logCtx = (input.logContext?.trim() || 'chat').replace(/\s+/g, '_')
   // sanitizeChatMessages spreads each message, so tool calls and attachments pass through it.
   const messages = sanitizeChatMessages(input.messages) as ChatMessage[]
-  const observedInput = messagesForObservability(messages)
+  const origin = input.contentOrigin
+  // Memory calls send PostHog the call's shape (model, tokens, latency), never its text.
+  const observedText = keepsText(origin) ? { $ai_input: messagesForObservability(messages) } : {}
   const aiSessionId = normalizeAiIdentifier(input.aiSessionId, `user-${input.userId}`)
   const aiTraceId = normalizeAiIdentifier(input.aiTraceId, randomUUID())
 
@@ -889,7 +950,7 @@ async function llmChatCompletionInner(input: {
       } else {
         console.info(`[graph-scale] llm ${logCtx} attempt ${attempt}/${maxAttempts}`)
       }
-      logLlmChatRequest(logCtx, attempt, messages)
+      logLlmChatRequest(logCtx, attempt, messages, origin)
       await waitForLlmRateLimit(input.userId)
       const fetchStart = Date.now()
       const timeoutMs = requestTimeoutMs()
@@ -942,7 +1003,7 @@ async function llmChatCompletionInner(input: {
           messageCount: messages.length,
           messageSizes: messages.map((m) => ({ role: m.role, len: m.content.length })),
           totalChars: messages.reduce((n, m) => n + m.content.length, 0),
-          responseBody: text,
+          responseBody: keepsText(origin) ? text : `(${origin}, ${text.length} chars not logged)`,
         })
         const message =
           typeof json === 'object' && json && 'error' in json
@@ -966,15 +1027,13 @@ async function llmChatCompletionInner(input: {
           total_tokens: usage?.total_tokens,
         })
       }
-      logLlmChatResponse(logCtx, attempt, json)
-      // Extract first user message for context preview
-      const firstUserMessage = input.messages.find((m) => m.role === 'user')?.content || ''
+      logLlmChatResponse(logCtx, attempt, json, origin)
       await logActivityCall(db, input.userId, {
         provider: activityProvider,
         gatewayHost,
         operation: `llm.chat.${logCtx}.success(attempt=${attempt})`,
         baseCostUsd: baseCost,
-        context: firstUserMessage,
+        context: chatActivityPreview(input.messages, origin),
         durationMs: attemptMs,
       })
       captureServerEvent({
@@ -985,9 +1044,9 @@ async function llmChatCompletionInner(input: {
           $ai_session_id: aiSessionId,
           $ai_model: routing.model,
           $ai_provider: config.provider,
-          $ai_input: observedInput,
+          ...observedText,
           $ai_input_tokens: usage?.prompt_tokens,
-          $ai_output_choices: extractAiOutputChoices(json),
+          ...(keepsText(origin) ? { $ai_output_choices: extractAiOutputChoices(json) } : {}),
           $ai_output_tokens: usage?.completion_tokens,
           $ai_latency: attemptMs / 1000,
           $ai_http_status: res.status,
@@ -1010,14 +1069,12 @@ async function llmChatCompletionInner(input: {
         afterMs: Date.now() - attemptStart,
         message: msg.slice(0, 500),
       })
-      // Extract first user message for context preview
-      const firstUserMessage = input.messages.find((m) => m.role === 'user')?.content || ''
       await logActivityCall(db, input.userId, {
         provider: activityProvider,
         gatewayHost,
         operation: `llm.chat.${logCtx}.error(attempt=${attempt})`,
         baseCostUsd: 0,
-        context: firstUserMessage,
+        context: chatActivityPreview(input.messages, origin),
         errorMessage: msg,
         durationMs: Date.now() - attemptStart,
       })
@@ -1030,7 +1087,7 @@ async function llmChatCompletionInner(input: {
             $ai_session_id: aiSessionId,
             $ai_model: routing.model,
             $ai_provider: config.provider,
-            $ai_input: observedInput,
+            ...observedText,
             $ai_is_error: true,
             $ai_error: msg,
             $ai_http_status: err instanceof LlmHttpError ? err.status : undefined,
@@ -1055,6 +1112,8 @@ async function llmChatCompletionInner(input: {
 export async function llmCreateEmbeddings(input: {
   userId: string
   input: string | string[]
+  /** `'memory'` when the texts are a person's Memory: they are never logged. */
+  contentOrigin?: LlmContentOrigin
 }): Promise<unknown> {
   return serialLlmRequestsEnabled()
     ? runLlmRequestGated(input.userId, () => llmCreateEmbeddingsInner(input))
@@ -1064,6 +1123,7 @@ export async function llmCreateEmbeddings(input: {
 async function llmCreateEmbeddingsInner(input: {
   userId: string
   input: string | string[]
+  contentOrigin?: LlmContentOrigin
 }): Promise<unknown> {
   const config = await loadLlmConfig(input.userId)
   const activityProvider = activityProviderForLlmConfig(config.provider)
@@ -1078,7 +1138,7 @@ async function llmCreateEmbeddingsInner(input: {
     const attemptStart = Date.now()
     const db = getDb()
     try {
-      logLlmEmbeddingRequest(attempt, input.input)
+      logLlmEmbeddingRequest(attempt, input.input, input.contentOrigin)
       await waitForLlmRateLimit(input.userId)
       const embAc = new AbortController()
       const embTimeoutMs = requestTimeoutMs()
@@ -1130,14 +1190,12 @@ async function llmCreateEmbeddingsInner(input: {
       }
 
       const baseCost = gatewayReportedCostUsdForLog(json)
-      // Extract preview from embedding input
-      const embeddingPreview = Array.isArray(input.input) ? input.input[0] : input.input
       await logActivityCall(db, input.userId, {
         provider: activityProvider,
         gatewayHost,
         operation: `llm.embedding.success(attempt=${attempt})`,
         baseCostUsd: baseCost,
-        context: embeddingPreview,
+        context: embeddingActivityPreview(input.input, input.contentOrigin),
         durationMs: Date.now() - attemptStart,
       })
 
@@ -1145,14 +1203,12 @@ async function llmCreateEmbeddingsInner(input: {
     } catch (err) {
       lastError = err
       const message = err instanceof Error ? err.message : String(err)
-      // Extract preview from embedding input
-      const embeddingPreview = Array.isArray(input.input) ? input.input[0] : input.input
       await logActivityCall(db, input.userId, {
         provider: activityProvider,
         gatewayHost,
         operation: `llm.embedding.error(attempt=${attempt})`,
         baseCostUsd: 0,
-        context: embeddingPreview,
+        context: embeddingActivityPreview(input.input, input.contentOrigin),
         errorMessage: message,
         durationMs: Date.now() - attemptStart,
       })
@@ -1212,6 +1268,8 @@ export async function llmCreateTranscription(input: {
   userId: string
   model: string
   audio: LlmTranscriptionAudio
+  /** `'memory'` for a voice note to Memory: its transcript is never logged. */
+  contentOrigin?: LlmContentOrigin
 }): Promise<unknown> {
   const config = await loadOpenRouterSttConfig(input.userId)
   const run = () => llmCreateTranscriptionDedicated(input, config)
@@ -1219,7 +1277,12 @@ export async function llmCreateTranscription(input: {
 }
 
 async function llmCreateTranscriptionDedicated(
-  input: { userId: string; model: string; audio: LlmTranscriptionAudio },
+  input: {
+    userId: string
+    model: string
+    audio: LlmTranscriptionAudio
+    contentOrigin?: LlmContentOrigin
+  },
   config: ResolvedLlmConfig,
 ): Promise<unknown> {
   const activityProvider = activityProviderForLlmConfig(config.provider)
@@ -1282,14 +1345,14 @@ async function llmCreateTranscriptionDedicated(
       }
 
       const sttCost = gatewayReportedCostUsdForLog(json)
-      logLlmSttResponse(attempt, json)
+      logLlmSttResponse(attempt, json, input.contentOrigin)
       await logActivityCall(db, input.userId, {
         provider: activityProvider,
         gatewayHost,
         operation: `llm.stt.success(attempt=${attempt},model=${input.model})`,
         baseCostUsd: sttCost,
         context:
-          sttTranscriptPreview(json) ||
+          (keepsText(input.contentOrigin) ? sttTranscriptPreview(json) : '') ||
           `stt:${input.model}${sttCost === 0 ? ' (usage cost missing from gateway)' : ''}`,
         durationMs: Date.now() - attemptStart,
       })

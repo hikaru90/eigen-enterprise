@@ -42,12 +42,6 @@ function errStack(err: unknown): string | undefined {
   return err instanceof Error ? err.stack : undefined
 }
 
-export function truncateEditPreview(text: string, max = 120): string {
-  const trimmed = text.trim()
-  if (trimmed.length <= max) return trimmed
-  return `${trimmed.slice(0, max - 1)}…`
-}
-
 export function createEditPhaseTimer(logCtx: EditLogContext): EditPhaseTimer {
   const startedAt = Date.now()
   const phases: EditPhaseEntry[] = []
@@ -98,7 +92,8 @@ export function logEditComplete(input: {
     path: input.path,
     textChanged: input.textChanged,
     nextStatus: input.nextStatus,
-    editSummary: input.editSummary,
+    // The summary describes the edit in the person's words — Memory text, never logged.
+    editSummaryChars: input.editSummary.length,
     wallMs: input.timing.wallMs,
     phaseSumMs: input.timing.phases.reduce((sum, p) => sum + p.ms, 0),
     phases: input.timing.phases,
@@ -110,11 +105,12 @@ export function logEditFailure(input: {
   logCtx: EditLogContext
   err: unknown
   timing: EditTimingReport
-  editRequestPreview?: string
+  /** Size of the edit request — its words are Memory text and never logged. */
+  editRequestChars?: number
 }): void {
   console.error('[capture.edit] failed', {
     ...input.logCtx,
-    editRequestPreview: input.editRequestPreview ?? null,
+    editRequestChars: input.editRequestChars ?? null,
     wallMs: input.timing.wallMs,
     phases: input.timing.phases,
     message: errMessage(input.err),

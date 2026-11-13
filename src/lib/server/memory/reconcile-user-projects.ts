@@ -197,6 +197,7 @@ export async function reconcileUserProjects(userId: string): Promise<ReconcileUs
   let demoted = 0
 
   const response = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId,
     messages: [
       {

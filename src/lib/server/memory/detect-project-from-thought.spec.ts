@@ -144,6 +144,29 @@ describe('detectAndCreateProjectFromThought', () => {
     expect(linkMock).toHaveBeenCalledWith('u1', 'e-new', 't1', 'ingest')
   })
 
+  it('never logs the thought or the project name — Memory text stays out of the logs', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      await detectAndCreateProjectFromThought({
+        userId: 'u1',
+        normalizedText: 'Working on Website Relaunch',
+        thoughtId: 't1',
+      })
+      promoteMock.mockResolvedValue(false)
+      await detectAndCreateProjectFromThought({
+        userId: 'u1',
+        normalizedText: 'Working on Website Relaunch',
+      })
+      llmMock.mockResolvedValue({ choices: [{ message: { content: '{"projectLabel":null}' } }] })
+      await detectAndCreateProjectFromThought({ userId: 'u1', normalizedText: 'my private worry' })
+      const logged = JSON.stringify(log.mock.calls)
+      expect(logged).not.toContain('Website Relaunch')
+      expect(logged).not.toContain('private worry')
+    } finally {
+      log.mockRestore()
+    }
+  })
+
   it('returns null when judge rejects promotion of a new hub', async () => {
     promoteMock.mockResolvedValue(false)
     await expect(

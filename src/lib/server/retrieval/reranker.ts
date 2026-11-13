@@ -87,6 +87,7 @@ export async function rerankCandidates<T extends RerankCandidate>(
   let response: unknown
   try {
     response = await llmChatCompletion({
+      contentOrigin: 'memory',
       userId,
       messages: [
         {
@@ -121,8 +122,9 @@ export async function rerankCandidates<T extends RerankCandidate>(
     rankedIds = parseRankedIdsFromRerankResponse(content, candidates)
     if (rankedIds.length === 0) {
       console.warn('[rerank] LLM returned no resolvable candidate IDs; keeping fusion order', {
-        query,
-        response: content.trim().slice(0, 200),
+        // Query and answer are Memory text: sizes only.
+        queryChars: query.length,
+        responseChars: content.trim().length,
       })
       return candidates
     }

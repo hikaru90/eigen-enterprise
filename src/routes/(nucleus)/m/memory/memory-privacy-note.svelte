@@ -18,12 +18,16 @@
    * - API keys authenticate only /api/mcp and /api/mail/send; MCP needs the
    *   key's "MCP access"; its delete_thought archives, delete_project dismisses.
    * - Capture, enrichment and search go through the gateway to the server's AI
-   *   provider; speech-to-text always goes to OpenRouter (llm-client.ts). When
-   *   POSTHOG_API_KEY is set, the gateway also sends each AI request's input and
-   *   output to PostHog ($ai_generation) — `analyticsSeesAi`.
+   *   provider; speech-to-text always goes to OpenRouter (llm-client.ts). Memory's
+   *   calls say `contentOrigin: 'memory'` (memory-content-origin.spec.ts): the
+   *   gateway logs and keeps their model, size, cost and timing — in server logs,
+   *   the AI usage log (activity_call_log) and, when POSTHOG_API_KEY is set,
+   *   PostHog's $ai_generation (`analyticsSeesAi`) — never their text. Memory's
+   *   own log lines carry ids and sizes; its pages send PostHog nothing read off
+   *   the page (enterPrivateAnalyticsSurface).
    * - Delete (deleteThoughtForUser) removes the row and everything derived;
-   *   server logs, the AI usage log (activity_call_log.context previews) and
-   *   backups (ee, owner-configured retention) keep their copies.
+   *   backups (ee, owner-configured retention) and log lines / AI usage previews
+   *   written before this change keep their copies.
    * Dismissed per visit (it sits in the Memory layout, so tab changes keep it closed).
    */
   let { analyticsSeesAi }: { analyticsSeesAi: boolean } = $props()
@@ -53,9 +57,10 @@
         </li>
         <li>
           To understand and search it, what you capture and search for is sent to this server’s AI
-          provider; voice notes are transcribed by OpenRouter.{#if analyticsSeesAi}
-            This server also sends AI requests, including your Memory text, to its product analytics
-            (PostHog).{/if}
+          provider; voice notes are transcribed by OpenRouter. The server’s logs and your AI usage
+          log note that Memory used AI — size, cost, time — never what you wrote.{#if analyticsSeesAi}
+            The same goes for this server’s product analytics (PostHog): how AI requests went, never
+            your Memory text.{/if}
         </li>
         <li>
           It is stored in the company’s database, so anyone with direct access to the server can
@@ -63,8 +68,8 @@
         </li>
         <li>
           Delete removes a thought for good — its text, search, dates and graph links. It doesn’t
-          reach copies made earlier: previews in your AI usage log, the server’s logs, and backups
-          if the owner set them up.
+          reach backups if the owner set them up, or log lines and AI usage previews written before
+          Memory stopped keeping your text there.
           <a
             href={resolve('/m/memory/settings#your-data')}
             class="font-medium text-foreground underline underline-offset-2"

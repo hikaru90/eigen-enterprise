@@ -460,6 +460,23 @@ describe('composeAnswer', () => {
     expect(userMessage.content).toContain('NOT evidence')
   })
 
+  it('never logs the question, the search query or the prompt — Memory text stays out of the logs', async () => {
+    const spies = (['log', 'info', 'warn', 'error'] as const).map((method) =>
+      vi.spyOn(console, method).mockImplementation(() => {}),
+    )
+    try {
+      await composeAnswer({ userId: 'u1', question: 'am I burning out at work?' })
+      const logged = JSON.stringify(spies.flatMap((spy) => spy.mock.calls))
+      expect(logged).not.toContain('burning out')
+      expect(logged).not.toContain('rice flour')
+      expect(llmChatCompletionMock).toHaveBeenCalledWith(
+        expect.objectContaining({ contentOrigin: 'memory' }),
+      )
+    } finally {
+      for (const spy of spies) spy.mockRestore()
+    }
+  })
+
   it('uses unified retrieval for "what am I about?" with higher topK', async () => {
     classifyQueryIntentMock.mockResolvedValue({ ...localIntent, scope: 'global' })
 

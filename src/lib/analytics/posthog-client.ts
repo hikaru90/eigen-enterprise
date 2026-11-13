@@ -8,6 +8,45 @@ const DEFAULT_EU_UI_HOST = 'https://eu.posthog.com'
 
 let initialized = false
 
+/**
+ * PostHog's own events a private surface still sends: page and identity bookkeeping and error
+ * tracking. Everything else PostHog reads off the page — autocapture with element text, rage and
+ * dead clicks, copied text, heatmaps, session-replay snapshots — is dropped while one is open.
+ * Named product events (`capture('thought_deleted', …)`) never start with `$` and carry ids only.
+ */
+const PRIVATE_SURFACE_POSTHOG_EVENTS = new Set([
+  '$pageview',
+  '$pageleave',
+  '$exception',
+  '$identify',
+  '$create_alias',
+  '$set',
+  '$groupidentify',
+  '$feature_flag_called',
+  '$opt_in',
+])
+
+/** How many private surfaces (Memory) are open — explicit, set by the surface itself. */
+let openPrivateSurfaces = 0
+
+/**
+ * Marks a surface that shows a person's private text (Memory): while it is open, PostHog gets no
+ * event built from the page's content. Returns the function that closes it (idempotent).
+ */
+export function enterPrivateAnalyticsSurface(): () => void {
+  openPrivateSurfaces += 1
+  let open = true
+  return () => {
+    if (!open) return
+    open = false
+    openPrivateSurfaces -= 1
+  }
+}
+
+function readsThePage(event: string): boolean {
+  return event.startsWith('$') && !PRIVATE_SURFACE_POSTHOG_EVENTS.has(event)
+}
+
 function posthogKey(): string | undefined {
   const key = PUBLIC_POSTHOG_KEY?.trim()
   return key || undefined
@@ -37,6 +76,7 @@ function ensureInit(): boolean {
     capture_pageview: false,
     capture_exceptions: true,
     before_send: (event) => {
+      if (event && openPrivateSurfaces > 0 && readsThePage(event.event)) return null
       if (event?.event !== '$exception') return event
       const values = event.properties?.$exception_list
       if (!Array.isArray(values) || values.length === 0) return event

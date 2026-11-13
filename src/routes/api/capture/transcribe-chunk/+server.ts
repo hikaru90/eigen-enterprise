@@ -26,6 +26,8 @@ export const POST: RequestHandler = async (event) => {
     const transcript = await transcribeAudio({
       userId: user.id,
       audio: { bytes: audio.bytes, format, language: audio.language },
+      // Voice notes to Memory: the transcript is never logged (LlmContentOrigin).
+      contentOrigin: 'memory',
     })
     return json({ transcript })
   } catch (err) {

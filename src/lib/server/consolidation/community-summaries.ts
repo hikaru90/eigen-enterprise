@@ -395,6 +395,7 @@ async function generateSummaryBatch(
   const contexts = await Promise.all(communityIds.map((id) => loadCommunityContext(userId, id)))
 
   const response = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId,
     messages: [
       { role: 'system', content: BATCH_SUMMARY_SYSTEM },

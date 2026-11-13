@@ -96,6 +96,7 @@ export async function generateRelevanceQuestion(
   ]
 
   const response = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId,
     messages,
     temperature: 0,

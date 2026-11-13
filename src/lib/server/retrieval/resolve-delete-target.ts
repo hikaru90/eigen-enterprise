@@ -144,6 +144,7 @@ export async function resolveDeleteTargets(params: {
   ]
 
   const raw = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId: params.userId,
     messages,
     temperature: 0,

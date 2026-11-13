@@ -158,9 +158,26 @@
     }
   }
 
+  /** The row's trash (confirmed in the detail): deletes the thought behind it for good. */
   async function onDeleteTask(eventId: string) {
-    await onQuickAction(eventId, 'archive')
-    selectedItem = null
+    updatingEventId = eventId
+    actionBusy = true
+    try {
+      const res = await fetch(`/api/temporal-events/${encodeURIComponent(eventId)}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) throw new Error((await res.text()) || `Request failed (${res.status})`)
+      const body = (await res.json()) as { summary: string }
+      optimisticItems = items.filter((item) => item.id !== eventId)
+      selectedItem = null
+      lastActionSummary = body.summary
+      await reloadProject()
+    } catch (err) {
+      lastActionSummary = err instanceof Error ? err.message : String(err)
+    } finally {
+      updatingEventId = null
+      actionBusy = false
+    }
   }
 
   async function openReview() {

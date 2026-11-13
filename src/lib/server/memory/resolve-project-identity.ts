@@ -360,6 +360,7 @@ export async function resolveProjectIdentity(
   })
 
   const response = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId: input.userId,
     messages: [
       {

@@ -57,6 +57,21 @@ describe('rerankCandidates', () => {
     await expect(rerankCandidates('u1', 'query', candidates)).rejects.toBeInstanceOf(RerankError)
   })
 
+  it('never logs the query or the model answer when it ranks nothing — Memory text stays out', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      llmChatCompletionMock.mockResolvedValue(
+        makeResponse('{"ranked": [], "note": "Anna pricing"}'),
+      )
+      await rerankCandidates('u1', 'what did Anna say about pricing', candidates).catch(() => null)
+      const logged = JSON.stringify(warn.mock.calls)
+      expect(logged).not.toContain('Anna')
+      expect(logged).not.toContain('pricing')
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it('returns input unchanged for single candidate', async () => {
     const single = [candidates[0]]
     const result = await rerankCandidates('u1', 'query', single)

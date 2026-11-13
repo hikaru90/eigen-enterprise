@@ -57,6 +57,7 @@ describe('POST /api/capture/transcribe-chunk', () => {
       expect(payload.transcript).toBe('hello there')
       expect(transcribeAudioMock).toHaveBeenCalledWith({
         userId: 'u1',
+        contentOrigin: 'memory',
         audio: expect.objectContaining({ format: 'webm', language: 'de' }),
       })
     })
@@ -115,6 +116,7 @@ describe('POST /api/capture/transcribe-chunk', () => {
     expect(body.transcript).toBe('hello there')
     expect(transcribeAudioMock).toHaveBeenCalledWith({
       userId: 'u1',
+      contentOrigin: 'memory',
       audio: expect.objectContaining({ format: 'webm', language: 'en' }),
     })
   })

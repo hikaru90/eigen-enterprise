@@ -793,4 +793,41 @@ describe('MCP tools', () => {
     ).rejects.toThrow(/Project not found/)
     expect(dismissProjectMock).not.toHaveBeenCalled()
   })
+
+  it('never logs search queries, edit requests or project names — Memory text stays out of the logs', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    try {
+      listThoughtsMock.mockResolvedValue([])
+      searchThoughtsMock.mockResolvedValue([])
+      await runRetrieveThoughtsTool({ userId: 'u1' }, { query: 'my secret worry' })
+      await runRetrieveThoughtsTool(
+        { userId: 'u1' },
+        { query: 'my secret worry', order: 'created_at' },
+      )
+      await runEditThoughtTool(
+        { userId: 'u1' },
+        { thought_id: 't1', edit_request: 'my secret worry', raw_text: 'my secret worry' },
+      ).catch(() => null)
+      const { runCreateProjectTool, runEditProjectTool } = await import('./tools')
+      createProjectMock.mockResolvedValue({
+        entityId: 'p-new',
+        label: 'Secret Project',
+        status: 'active',
+        source: 'manual',
+      })
+      await runCreateProjectTool({ userId: 'u1' }, { label: 'Secret Project' })
+      updateProjectLabelMock.mockResolvedValue({ entityId: 'p1', label: 'Secret Project' })
+      const { runDeleteProjectTool } = await import('./tools')
+      await runEditProjectTool({ userId: 'u1' }, { project_entity_id: 'p1', label: 'Secret Project' })
+      listProjectsForUserMock.mockResolvedValue([{ entityId: 'p1', label: 'Secret Project' }])
+      dismissProjectMock.mockResolvedValue(undefined)
+      await runDeleteProjectTool({ userId: 'u1' }, { project_entity_id: 'p1' })
+
+      const logged = JSON.stringify(info.mock.calls)
+      expect(logged).not.toContain('secret worry')
+      expect(logged).not.toContain('Secret Project')
+    } finally {
+      info.mockRestore()
+    }
+  })
 })

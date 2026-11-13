@@ -18,8 +18,8 @@ export const load: LayoutServerLoad = async (event) => {
   const active = (await kernel.activations.get(MEMORY_MODULE_ID)) === true
   return {
     memory: { name: manifest.name, description: manifest.description ?? '', active },
-    // The gateway sends every AI request's input/output to PostHog when its key is set
-    // (llm-client.ts $ai_generation): the "Who can see your Memory" note says so.
+    // With its key set, the gateway sends each AI request to PostHog (llm-client.ts
+    // $ai_generation) — Memory's without their text: the "Who can see your Memory" note says so.
     privacy: { analyticsSeesAi: Boolean(env.POSTHOG_API_KEY?.trim()) },
   }
 }

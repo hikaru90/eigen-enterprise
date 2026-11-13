@@ -68,6 +68,7 @@ export async function extractProjectsFromGroundingFacet(
   ].join('\n')
 
   const response = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId,
     messages: [
       {
