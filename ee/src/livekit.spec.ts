@@ -22,7 +22,7 @@ const os = workloadSchema.parse({
   tier: 'system',
   source: { kind: 'release', tarball: '/var/lib/ee/releases/os.tar.gz', sha256: 'a'.repeat(64) },
 })
-const settings: Settings = { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: 'rtc.os.example.com', rtcNodeIp: '203.0.113.7' }
+const settings: Settings = { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: 'rtc.os.example.com', rtcNodeIp: '203.0.113.7', contributeHub: 'off' }
 const state = (workloads: Workload[], s: Partial<Settings> = {}) => ({ workloads, settings: { ...settings, ...s } })
 
 describe('the livekit workload ee seeds', () => {
@@ -92,7 +92,7 @@ describe('linkedEnv: what ee wires between livekit and os', () => {
   })
 
   it('fails loudly when the node IP was never set — no guessing, no STUN', () => {
-    expect(() => linkedEnv(state([lk, os], { rtcNodeIp: null }), lk, secrets, 4102)).toThrow(/--node-ip/)
+    expect(() => linkedEnv(state([lk, os], { rtcNodeIp: null, contributeHub: 'off' }), lk, secrets, 4102)).toThrow(/--node-ip/)
   })
 
   it('fails loudly when the keys are missing (for livekit and for os)', () => {

@@ -118,7 +118,7 @@ function desired(sha: string, extra: Partial<DesiredState> = {}): DesiredState {
       }),
     ],
     routes: [{ host: 'site.example.com', workload: 'site' }],
-    settings: { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: null, rtcNodeIp: null },
+    settings: { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: null, rtcNodeIp: null, contributeHub: 'off' },
     ...extra,
   }
 }
@@ -476,7 +476,7 @@ describe('livekit-server as a system workload (calls)', () => {
         { host: 'os.example.com', workload: 'os' },
         { host: 'rtc.os.example.com', workload: 'livekit' },
       ],
-      settings: { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: 'rtc.os.example.com', rtcNodeIp: '203.0.113.7', ...settings },
+      settings: { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: 'rtc.os.example.com', rtcNodeIp: '203.0.113.7', contributeHub: 'off', ...settings },
     }
   }
   const envFile = (sys: FakeSystem, name: string) => sys.files.get(`/run/ee/env/${name}.env`) ?? ''
@@ -598,7 +598,7 @@ describe('livekit-server as a system workload (calls)', () => {
     sys.healthy.add(4100).add(4102)
     const journal = emptyJournal()
     await expect(
-      reconcile({ sys, repo: { read: async () => callsState(LK_A, { rtcNodeIp: null }) }, journal, secrets: callsSecrets(), healthTimeoutMs: 10_000 }),
+      reconcile({ sys, repo: { read: async () => callsState(LK_A, { rtcNodeIp: null, contributeHub: 'off' }) }, journal, secrets: callsSecrets(), healthTimeoutMs: 10_000 }),
     ).rejects.toThrow(/livekit: no node IP .*--node-ip/)
     expect(journal.workloads.livekit?.active).toBeNull()
     expect(journal.workloads.os?.active).toBe('a')
