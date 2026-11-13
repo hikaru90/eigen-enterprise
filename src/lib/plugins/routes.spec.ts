@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { CAPABILITIES, type Capabilities } from '$lib/access/capabilities'
-import { buildShellNav, NESTED_IN } from '$lib/shell/nav'
+import { buildShellNav, IN_SHELL, NESTED_IN } from '$lib/shell/nav'
 import { chatGatewayManifest } from '../../../modules/chat-gateway/manifest'
 import { moduleManifests } from '../../../modules/index'
 import { recapManifest } from '../../../modules/recap/manifest'
@@ -75,7 +75,10 @@ describe('plugin route map', () => {
   it('every sidebar entry but Settings leads to a page of its own plugin', () => {
     const nav = buildShellNav(plugins, new Map(plugins.map((m) => [m.id, true])), owner)
     const entries = nav.items.filter((i) => i.id !== 'settings')
-    expect(entries.map((i) => i.id).sort()).toEqual(plugins.map((m) => m.id).filter((id) => !(id in NESTED_IN)).sort())
+    const inShell: readonly string[] = IN_SHELL
+    expect(entries.map((i) => i.id).sort()).toEqual(
+      plugins.map((m) => m.id).filter((id) => !(id in NESTED_IN) && !inShell.includes(id)).sort(),
+    )
     for (const item of entries) {
       expect(routeOwner(item.href), item.href).toEqual({ owner: 'plugin', plugin: item.id, surface: 'page' })
     }
@@ -85,6 +88,29 @@ describe('plugin route map', () => {
     expect(NESTED_IN).toEqual({ repos: 'drive', contacts: 'email' })
     for (const id of Object.keys(NESTED_IN)) {
       expect(routeOwner(PLUGIN_ROUTES[id].page), id).toEqual({ owner: 'plugin', plugin: id, surface: 'page' })
+    }
+  })
+
+  it('the Assistant (in the shell, no sidebar entry) owns its conversation pages and APIs; the agent engine, approvals, activity log and speech stay core', () => {
+    expect(PLUGIN_ROUTES.assistant).toEqual({ page: '/assistant', api: ['/api/assistant', '/api/chat'] })
+    for (const path of ['/assistant', '/assistant/42', '/m/assistant']) {
+      expect(routeOwner(path), path).toEqual({ owner: 'plugin', plugin: 'assistant', surface: 'page' })
+    }
+    for (const path of ['/api/chat', '/api/assistant/conversation', '/api/assistant/activity']) {
+      expect(routeOwner(path), path).toEqual({ owner: 'plugin', plugin: 'assistant', surface: 'api' })
+    }
+    for (const path of [
+      '/assistant/activity',
+      '/api/agent/runs',
+      '/api/agent/runs/7/events',
+      '/api/agents',
+      '/api/approvals',
+      '/api/activity',
+      '/api/tts',
+      '/api/voice/transcribe',
+      '/api/capture/transcribe',
+    ]) {
+      expect(routeOwner(path), path).toEqual({ owner: 'core' })
     }
   })
 

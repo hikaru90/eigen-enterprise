@@ -104,11 +104,11 @@ describe('Settings → Plugins (owner and admins)', () => {
     expect(await activations.get('email')).toBe(true)
   })
 
-  it.each(['owner', 'admin'])('an %s sees every plugin with a sidebar entry, and the core as one line', async (role) => {
+  it.each(['owner', 'admin'])('an %s sees every plugin (each sidebar entry and the Assistant), and the core as one line', async (role) => {
     roleMock.mockResolvedValue(role)
     const data = await loaded()
     expect(data.plugins.map((p) => p.id).sort()).toEqual(
-      ['brand', 'calendar', 'calls', 'contacts', 'drive', 'email', 'memory', 'messages', 'repos', 'website'].sort(),
+      ['assistant', 'brand', 'calendar', 'calls', 'contacts', 'drive', 'email', 'memory', 'messages', 'repos', 'website'].sort(),
     )
     expect(data.core.map((c) => c.id).sort()).toEqual(['contribute', 'kernel', 'members', 'orchestrator'])
   })
@@ -126,6 +126,22 @@ describe('Settings → Plugins (owner and admins)', () => {
     expect(plugin(data, 'email').tools).toContain('email.send_mail')
     expect(plugin(data, 'calls').requires).toEqual([{ id: 'messages', name: 'Messages', active: true }])
     expect(plugin(data, 'messages').requiredBy).toEqual([{ id: 'calls', name: 'Calls', active: true }])
+  })
+
+  it('lists the Assistant as an official plugin with its owner-facing line and no tools; it switches off and on', async () => {
+    expect(plugin(await loaded(), 'assistant')).toMatchObject({
+      name: 'Assistant',
+      origin: 'official',
+      active: true,
+      tools: [],
+      requires: [],
+      requiredBy: [],
+    })
+    expect(plugin(await loaded(), 'assistant').description).toMatch(/assistant/i)
+    await actions.deactivate!(ev({ module_id: 'assistant' }))
+    expect(await activations.get('assistant')).toBe(false)
+    await actions.activate!(ev({ module_id: 'assistant' }))
+    expect(await activations.get('assistant')).toBe(true)
   })
 
   it('switching off goes through the kernel registry: the owner’s click is the approval, audited', async () => {

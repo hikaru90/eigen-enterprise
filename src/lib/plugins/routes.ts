@@ -125,20 +125,25 @@ export const PLUGIN_ROUTES: Record<string, PluginRoutes> = {
   contacts: { page: '/m/email/people', api: ['/api/contacts'] },
   // Inside the Drive area (Drive → GitHub); /m/repos redirects there.
   repos: { page: '/drive/github', api: [] },
+  // In the shell itself (no sidebar entry): the top bar, the panel and the
+  // conversations. The agent engine (/api/agent), approvals, the activity log
+  // (/assistant/activity) and speech stay core — see CORE_ROUTES.
+  assistant: { page: '/assistant', api: ['/api/assistant', '/api/chat'] },
   // Booted only when switched on (no page or API of their own beyond /m/<id>).
   'chat-gateway': { page: moduleHref('chat-gateway'), api: [] },
   recap: { page: moduleHref('recap'), api: [] },
 }
 
 /**
- * Routes no plugin owns: the core (kernel, agent, members, settings,
- * onboarding, auth). Settings → Plugins is here, so a switched-off plugin can
+ * Routes no plugin owns: the core (kernel, the agent engine, members,
+ * settings, onboarding, auth). Settings → Plugins is here, so a switched-off plugin can
  * always be switched back on. `/` matches only itself.
  */
 export const CORE_ROUTES: readonly string[] = [
   // Pages (src/routes/(nucleus))
   '/',
-  '/assistant',
+  // The company activity log (every plugin's and agent's actions, and spend) inside the Assistant's area.
+  '/assistant/activity',
   '/contribute',
   '/settings',
   // The generic module page; each plugin's /m/<id> belongs to that plugin.
@@ -149,11 +154,9 @@ export const CORE_ROUTES: readonly string[] = [
   '/api/agent',
   '/api/agents',
   '/api/approvals',
-  '/api/assistant',
   // Dictation in the assistant (and every mic) uses the capture transcription endpoints.
   '/api/capture/transcribe',
   '/api/capture/transcribe-chunk',
-  '/api/chat',
   '/api/claim',
   '/api/company',
   '/api/contribute',

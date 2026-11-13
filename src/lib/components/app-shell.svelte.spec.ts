@@ -1,5 +1,5 @@
 import { createRawSnippet } from 'svelte'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
 import { CAPABILITIES, type Capabilities } from '$lib/access/capabilities'
@@ -33,9 +33,10 @@ function renderShell(
   },
   companyLogo: string | null = null,
   presence: SelfPresence | null = null,
+  assistant = true,
 ) {
   return render(AppShell, {
-    shell: { companyName: 'Kindred Digital Labs', companyLogo, capabilities, nav },
+    shell: { companyName: 'Kindred Digital Labs', companyLogo, capabilities, nav, assistant },
     pathname,
     user,
     presence,
@@ -64,6 +65,36 @@ describe('app-shell.svelte', () => {
       await expect.element(page.getByTestId(`shell-nav-${id}`)).not.toBeInTheDocument()
     }
     await expect.element(page.getByTestId('assistant-bar-input')).toBeInTheDocument()
+  })
+
+  describe('with the Assistant switched off (round 5: off means off)', () => {
+    afterEach(() => vi.unstubAllGlobals())
+
+    it('has no assistant field, toggle or panel, and ⌘K opens nothing; the menu, Contribute and the page stay', async () => {
+      const fetchSpy = vi.fn(async () => new Response('{}', { status: 500 }))
+      vi.stubGlobal('fetch', fetchSpy)
+      renderShell('/m/website', undefined, null, null, false)
+      await expect.element(page.getByText('Page body')).toBeInTheDocument()
+      const topbar = page.getByTestId('shell-topbar')
+      await expect.element(topbar.getByTestId('contribute-trigger')).toBeInTheDocument()
+      await expect.element(topbar.getByTestId('shell-menu-toggle')).toBeInTheDocument()
+      await expect.element(page.getByTestId('assistant-bar')).not.toBeInTheDocument()
+      await expect.element(page.getByTestId('assistant-toggle')).not.toBeInTheDocument()
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }),
+      )
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }))
+      await expect.element(page.getByTestId('assistant-panel')).not.toBeInTheDocument()
+      // Nothing of the assistant is loaded or spoken to.
+      const urls = fetchSpy.mock.calls.map((c) => String((c as unknown[])[0]))
+      expect(
+        urls.filter((u) => u.startsWith('/api/assistant') || u.startsWith('/api/chat')),
+      ).toEqual([])
+      // The Contribute button still sits at the top right.
+      expect(topbar.element().lastElementChild?.matches('[data-testid="contribute-trigger"]')).toBe(
+        true,
+      )
+    })
   })
 
   it('has the Contribute button at the top right of the top bar, opening the proposal composer', async () => {

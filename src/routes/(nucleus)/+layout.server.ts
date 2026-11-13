@@ -6,6 +6,7 @@ import { appKernel } from '$lib/server/boot'
 import { speechToTextReadiness } from '$lib/server/llm/speech-readiness'
 import { companyIdentity } from '$lib/server/overview/sources'
 import { buildShellNav, type ShellData } from '$lib/shell/nav'
+import { ASSISTANT_MODULE_ID } from '../../../modules/assistant/manifest'
 
 /**
  * The app shell's data for signed-in pages: the company's name and logo
@@ -44,6 +45,7 @@ export const load: LayoutServerLoad = async ({
       companyLogo: identity.logo?.url ?? null,
       capabilities,
       nav: buildShellNav(kernel.modules.list(), activations, capabilities),
+      assistant: activations.get(ASSISTANT_MODULE_ID) === true,
       dictation: await speechToTextReadiness(locals.user.id),
     },
   }

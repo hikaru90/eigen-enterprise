@@ -86,6 +86,17 @@ describe('(nucleus) layout load', () => {
     expect(both.liveFeeds).toEqual({ calls: true, presence: true })
   })
 
+  it('tells the shell whether the Assistant is on: its top bar and panel exist only then (round 5)', async () => {
+    kernelHolder.kernel = await kernel(['assistant'])
+    const on = (await load(event({ id: 'owner' }))) as { shell: import('$lib/shell/nav').ShellData }
+    expect(on.shell.assistant).toBe(true)
+    kernelHolder.kernel = await kernel([])
+    const off = (await load(event({ id: 'owner' }))) as {
+      shell: import('$lib/shell/nav').ShellData
+    }
+    expect(off.shell.assistant).toBe(false)
+  })
+
   it('names the company and shows its logo from Settings → Company once set there', async () => {
     kernelHolder.kernel = await kernel([])
     journeyRows.splice(0, journeyRows.length, { status: 'active', state: { answers: { company_name: 'Kindred' } } })

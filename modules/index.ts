@@ -27,6 +27,7 @@ import { type VcsCommitter, vcsCommitterFromEnv } from '$lib/kernel/vcs'
 import { registerModuleTools, type WiredKernel } from '$lib/kernel/wiring'
 import type { AppDatabase } from '$lib/server/db/context'
 import { createGitHubTokenClient } from '$lib/server/github/token'
+import { ASSISTANT_MODULE_ID, assistantManifest } from './assistant/manifest'
 import { BRAND_MODULE_ID, brandManifest } from './brand/manifest'
 import { createBrandTools } from './brand/tools'
 import { CALENDAR_MODULE_ID, calendarManifest } from './calendar/manifest'
@@ -100,6 +101,7 @@ export const moduleManifests = [
   contactsManifest,
   reposManifest,
   calendarManifest,
+  assistantManifest,
 ] as const
 
 /**
@@ -133,6 +135,9 @@ export const SYSTEM_MODULE_IDS = [
   REPOS_MODULE_ID,
   // Calendar (plan/calendar.md): each member's appointments and colleagues' availability.
   CALENDAR_MODULE_ID,
+  // Assistant (round 5): the shell's top bar and panel and the conversations — an
+  // official plugin, switchable; the agent engine, registry and approvals stay core.
+  ASSISTANT_MODULE_ID,
 ] as const
 
 /** Tools that always require an approval decision before first execution. */

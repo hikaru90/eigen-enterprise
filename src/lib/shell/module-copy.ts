@@ -13,6 +13,7 @@ const BLURBS: Record<string, string> = {
   members: 'The people in your company, their roles and invites.',
   calendar: 'Your appointments by day, week and month, and when colleagues are free.',
   drive: 'Folders and files for the whole company: upload, share with people, preview documents and tables.',
+  assistant: 'Ask the assistant from every page, in the top bar and the side panel, and find your conversations.',
   recap: 'A short daily summary of what happened, sent to you.',
   'chat-gateway': 'Talk to the agent from your messaging apps.',
 }

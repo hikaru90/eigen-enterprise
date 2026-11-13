@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CAPABILITIES, type Capabilities } from '$lib/access/capabilities'
-import { buildShellNav, currentNavId, navItemCurrent, shellVisible } from './nav'
+import { buildShellNav, currentNavId, IN_SHELL, navItemCurrent, shellVisible } from './nav'
 
 const manifest = (id: string, name: string) => ({ id, name, description: `${name} does work.` })
 const owner = Object.fromEntries(CAPABILITIES.map((c) => [c, true])) as Capabilities
@@ -58,6 +58,21 @@ describe('buildShellNav', () => {
       ['Recap', '/m/recap', false],
       ['Settings', '/settings', true],
     ])
+  })
+
+  it('has no entry for the Assistant: it is the top bar and panel of the shell itself (on or off)', () => {
+    expect(IN_SHELL).toEqual(['assistant'])
+    for (const on of [true, false]) {
+      const nav = buildShellNav(
+        [manifest('assistant', 'Assistant'), manifest('messages', 'Messages')],
+        new Map([
+          ['assistant', on],
+          ['messages', true],
+        ]),
+        owner,
+      )
+      expect(nav.items.map((i) => i.id)).toEqual(['messages', 'settings'])
+    }
   })
 
   it('always carries Settings, even with no modules', () => {

@@ -122,8 +122,8 @@ describe('merged module manifests', () => {
     await expect(off('members')).rejects.toMatchObject({ code: 'core_module' })
     await expect(off('messages')).rejects.toMatchObject({ code: 'module_required', details: { requiredBy: ['calls'] } })
     await expect(off('drive')).rejects.toMatchObject({ code: 'module_required', details: { requiredBy: ['repos'] } })
-    for (const id of ['calls', 'messages', 'website', 'email', 'brand', 'memory', 'repos', 'drive', 'contacts', 'calendar']) await off(id)
-    for (const id of ['calls', 'messages', 'website', 'email', 'brand', 'memory', 'repos', 'drive', 'contacts', 'calendar'])
+    for (const id of ['calls', 'messages', 'website', 'email', 'brand', 'memory', 'repos', 'drive', 'contacts', 'calendar', 'assistant']) await off(id)
+    for (const id of ['calls', 'messages', 'website', 'email', 'brand', 'memory', 'repos', 'drive', 'contacts', 'calendar', 'assistant'])
       expect(await activations.get(id), id).toBe(false)
     expect(await activations.get('members')).toBe(true)
   })
@@ -139,6 +139,24 @@ describe('merged module manifests', () => {
     expect(await activations.get('website')).toBe(true)
   })
 
+  it('the Assistant is an official plugin: no tools of its own, switched off by a person it stays off — the agent cannot switch it back on', async () => {
+    const assistant = moduleManifests.find((m) => m.id === 'assistant')
+    expect(assistant).toMatchObject({ name: 'Assistant', tools: [] })
+    expect(assistant?.internal).toBeUndefined()
+    const { kernel: k, activations } = kernel()
+    const { registerAdminTools } = await import('$lib/kernel/admin-bootstrap')
+    await registerAdminTools(k)
+    await ensureSystemModulesActive(k)
+    const owner: ToolContext = { principal: { id: 'owner', kind: 'human', roles: ['admin'] }, requestId: 'r-a-off' }
+    const agent: ToolContext = { principal: { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] }, requestId: 'r-a-on' }
+    await k.approvalMode.set('allow_all', 'owner')
+    await k.registry.execute('kernel.module_deactivate', { module_id: 'assistant' }, owner)
+    await expect(k.registry.execute('kernel.module_activate', { module_id: 'assistant' }, agent)).rejects.toMatchObject({ code: 'module_switched_off' })
+    expect(await activations.get('assistant')).toBe(false)
+    await ensureSystemModulesActive(k)
+    expect(await activations.get('assistant')).toBe(false)
+  })
+
   it('every approval-gated tool is registered (no stale name in APPROVAL_REQUIRED_TOOLS)', async () => {
     const { kernel: k } = kernel()
     const { registerAdminTools } = await import('$lib/kernel/admin-bootstrap')
@@ -146,8 +164,8 @@ describe('merged module manifests', () => {
     for (const name of APPROVAL_REQUIRED_TOOLS) expect(k.registry.get(name), name).toBeDefined()
   })
 
-  it('system modules are website, email, members, memory, brand, messages, drive, contribute, calls, contacts, repos and calendar, and boot activates them', async () => {
-    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages', 'drive', 'contribute', 'calls', 'contacts', 'repos', 'calendar'])
+  it('system modules are website, email, members, memory, brand, messages, drive, contribute, calls, contacts, repos, calendar and assistant, and boot activates them', async () => {
+    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages', 'drive', 'contribute', 'calls', 'contacts', 'repos', 'calendar', 'assistant'])
     const { kernel: k, activations } = kernel()
     await ensureSystemModulesActive(k)
     expect(await activations.get('website')).toBe(true)
@@ -169,6 +187,8 @@ describe('merged module manifests', () => {
     expect(await k.modules.isToolActive('contacts.list')).toBe(true)
     // Calendar (plan/calendar.md): an official plugin, on from the start.
     expect(await k.modules.isToolActive('calendar.list')).toBe(true)
+    // Assistant (round 5): an official plugin, on from the start — on an existing company too (no record yet).
+    expect(await activations.get('assistant')).toBe(true)
     // Not a system module: the agent's internal tools keep their own activation.
     expect(await k.modules.isToolActive('repo.merge')).toBe(false)
   })
