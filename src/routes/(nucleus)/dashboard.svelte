@@ -4,7 +4,7 @@
   import Sparkles from '@lucide/svelte/icons/sparkles'
   import { resolve } from '$app/paths'
   import { canOpen, type Capabilities } from '$lib/access/capabilities'
-  import { useAssistant } from '$lib/components/assistant/context'
+  import { assistantIfOn } from '$lib/components/assistant/context'
   import ModuleCard from '$lib/components/module-card.svelte'
   import PageFrame from '$lib/components/page/page-frame.svelte'
   import PageHeader from '$lib/components/page/page-header.svelte'
@@ -39,7 +39,9 @@
     providerMissing: boolean
   } = $props()
 
-  const assistant = useAssistant()
+  // null while the Assistant plugin is switched off: no ask box, no way into a panel that is not there.
+  const assistant = assistantIfOn()
+  const canManagePlugins = $derived(canOpen(capabilities, '/settings/modules'))
 
   const timeFormat = new Intl.DateTimeFormat(undefined, { timeStyle: 'short' })
   const when = (iso: string) => timeFormat.format(new Date(iso))
@@ -106,31 +108,33 @@
   {/if}
 
   <!-- Ask: the assistant is one keystroke away on every page; here it is the first thing. -->
-  <section
-    class="mt-6 flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4 sm:flex-row sm:items-center"
-    aria-label="Ask the assistant"
-    data-testid="dashboard-ask"
-  >
-    <button
-      type="button"
-      class="flex min-w-0 flex-1 items-center gap-2.5 rounded-md border border-border bg-background px-3 py-2.5 text-left text-sm text-muted-foreground outline-none hover:border-foreground/25 focus-visible:ring-2 -ring"
-      onclick={() => assistant.focusBar()}
-      data-testid="dashboard-ask-button"
+  {#if assistant}
+    <section
+      class="mt-6 flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4 sm:flex-row sm:items-center"
+      aria-label="Ask the assistant"
+      data-testid="dashboard-ask"
     >
-      <Sparkles class="size-4 shrink-0 text-primary" aria-hidden="true" strokeWidth={1.75} />
-      <span class="min-w-0 truncate">Ask the assistant anything, or ask it to do the work…</span>
-    </button>
-    <div class="flex min-w-0 flex-wrap gap-1.5">
-      {#each suggestions as text (text)}
-        <button
-          type="button"
-          class="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-foreground/70 outline-none hover:border-foreground/25 hover:text-foreground focus-visible:ring-2 -ring"
-          onclick={() => assistant.prefill(text)}
-          data-testid="dashboard-suggestion">{text}</button
-        >
-      {/each}
-    </div>
-  </section>
+      <button
+        type="button"
+        class="flex min-w-0 flex-1 items-center gap-2.5 rounded-md border border-border bg-background px-3 py-2.5 text-left text-sm text-muted-foreground outline-none hover:border-foreground/25 focus-visible:ring-2 -ring"
+        onclick={() => assistant.focusBar()}
+        data-testid="dashboard-ask-button"
+      >
+        <Sparkles class="size-4 shrink-0 text-primary" aria-hidden="true" strokeWidth={1.75} />
+        <span class="min-w-0 truncate">Ask the assistant anything, or ask it to do the work…</span>
+      </button>
+      <div class="flex min-w-0 flex-wrap gap-1.5">
+        {#each suggestions as text (text)}
+          <button
+            type="button"
+            class="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-foreground/70 outline-none hover:border-foreground/25 hover:text-foreground focus-visible:ring-2 -ring"
+            onclick={() => assistant.prefill(text)}
+            data-testid="dashboard-suggestion">{text}</button
+          >
+        {/each}
+      </div>
+    </section>
+  {/if}
 
   <!-- Status tiles -->
   <div class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3" data-testid="overview-tiles">
@@ -149,7 +153,9 @@
       <span class="mt-0.5 text-xs text-muted-foreground" data-testid="overview-modules-hint"
         >{switchedOff === 0
           ? 'All switched on'
-          : `${switchedOff} switched off — ask the assistant to turn ${switchedOff === 1 ? 'it' : 'them'} on`}</span
+          : assistant
+            ? `${switchedOff} switched off — ask the assistant to turn ${switchedOff === 1 ? 'it' : 'them'} on`
+            : `${switchedOff} switched off`}</span
       >
     </a>
     <a
@@ -199,15 +205,30 @@
                   <span class="min-w-0 truncate">{approval.text}</span>
                 </span>
                 <!-- Approval cards are decided in the conversation that raised them. -->
-                <button
-                  type="button"
-                  onclick={() => assistant.openPanel('chat')}
-                  class="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium outline-none hover:bg-foreground/[0.04] focus-visible:ring-2 -ring"
-                  data-testid="overview-approval-review">Review</button
-                >
+                {#if assistant}
+                  <button
+                    type="button"
+                    onclick={() => assistant.openPanel('chat')}
+                    class="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium outline-none hover:bg-foreground/[0.04] focus-visible:ring-2 -ring"
+                    data-testid="overview-approval-review">Review</button
+                  >
+                {/if}
               </li>
             {/each}
           </ul>
+          {#if !assistant}
+            <p
+              class="mt-2 text-xs text-muted-foreground"
+              data-testid="overview-approvals-assistant-off"
+            >
+              The Assistant is switched off: approvals are decided in its conversation.{#if canManagePlugins}
+                Switch it on in <a
+                  href={resolve('/settings/modules')}
+                  class="underline underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 -ring"
+                  >Settings → Plugins</a
+                >.{/if}
+            </p>
+          {/if}
         {/if}
       </section>
 
@@ -294,15 +315,21 @@
               </a>
             </li>
           {/each}
-          <li>
-            <a href={resolve('/assistant')} class={sideLink} data-testid="dashboard-link-assistant">
-              <span class="min-w-0 truncate">Assistant conversations</span>
-              <ArrowUpRight
-                class="size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground"
-                aria-hidden="true"
-              />
-            </a>
-          </li>
+          {#if assistant}
+            <li>
+              <a
+                href={resolve('/assistant')}
+                class={sideLink}
+                data-testid="dashboard-link-assistant"
+              >
+                <span class="min-w-0 truncate">Assistant conversations</span>
+                <ArrowUpRight
+                  class="size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground"
+                  aria-hidden="true"
+                />
+              </a>
+            </li>
+          {/if}
           {#if canInvite}
             <li>
               <a

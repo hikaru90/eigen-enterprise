@@ -85,7 +85,7 @@ function stubFetch(): void {
 
 function renderShell() {
   return render(AppShell, {
-    shell: { companyName: 'Kindred Digital Labs', companyLogo: null, capabilities, nav },
+    shell: { companyName: 'Kindred Digital Labs', companyLogo: null, capabilities, nav, assistant: true },
     pathname: '/m/website',
     user: { name: 'Alex', email: 'alex@k.test' },
     language: 'en',

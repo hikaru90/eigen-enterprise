@@ -40,7 +40,8 @@
    * The signed-in app frame: a left sidebar on desktop (company = the
    * dashboard link, nav, user), a drawer on phones. The content column has
    * the assistant's top bar ("Ask the assistant…", ⌘K) and, below it, the
-   * page next to the assistant panel (polish P-1). The page area is a
+   * page next to the assistant panel (polish P-1) — both only while the
+   * Assistant plugin is on (shell.assistant). The page area is a
    * fixed-height column so full-height pages keep their own scroll container.
    */
   let {
@@ -68,25 +69,32 @@
   let drawerOpen = $state(false)
 
   // The one assistant: shared by the top bar, the panel and the pages inside the shell.
-  const assistant = new AssistantController({
-    fetch: (input, init) => fetch(input, init),
-    speak,
-    cancelSpeak,
-    storage: () => localStorage,
-    viewportWidth: () => window.innerWidth,
-  })
+  // Only while the Assistant plugin is on (round 5): switched off there is no
+  // assistant at all — no top bar field, no panel, nothing loaded. The page
+  // data of the load decides; a switch takes effect on the next full load.
+  // svelte-ignore state_referenced_locally
+  const assistant = shell.assistant
+    ? new AssistantController({
+        fetch: (input, init) => fetch(input, init),
+        speak,
+        cancelSpeak,
+        storage: () => localStorage,
+        viewportWidth: () => window.innerWidth,
+      })
+    : null
   provideAssistant(assistant)
 
   onMount(() => {
     // The welcome wizard's hand-off (handoff.ts): the agent's greeting streams into the panel.
-    assistant.startPendingHandoff()
+    assistant?.startPendingHandoff()
   })
 
   // A deep-linked draft (?prefill=, e.g. from the Apps "+" dialog) lands in the
   // assistant's composer for the member to review and send — never auto-sent.
+  // With the Assistant off the draft stays in the address: there is no composer.
   afterNavigate(({ to }) => {
     const prefill = to?.url.searchParams.get('prefill')
-    if (!to || !prefill) return
+    if (!to || !prefill || !assistant) return
     assistant.prefill(prefill)
     const clean = new URL(to.url)
     clean.searchParams.delete('prefill')
@@ -305,9 +313,11 @@
         {/if}
       </button>
       <div class="flex min-w-0 flex-1 justify-center">
-        <div class="flex w-full max-w-2xl min-w-0">
-          <AssistantBar {assistant} />
-        </div>
+        {#if assistant}
+          <div class="flex w-full max-w-2xl min-w-0">
+            <AssistantBar {assistant} />
+          </div>
+        {/if}
       </div>
       <!-- Top right: anyone proposes an improvement to the app (the Contribute board). -->
       <ContributeButton />
@@ -320,7 +330,7 @@
       >
         {@render children()}
       </div>
-      <AssistantPanel {assistant} {language} />
+      {#if assistant}<AssistantPanel {assistant} {language} />{/if}
     </div>
   </div>
 </div>

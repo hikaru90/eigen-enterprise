@@ -24,6 +24,8 @@
   function handleOnboardingComplete(): void {
     // Website already under way (e.g. opened earlier): the assistant simply continues it.
     if (!data.handoffAvailable) return
+    // Assistant switched off (round 5): no panel takes the greeting, so none is marked.
+    if (data.shell?.assistant !== true) return
     markHandoffPending()
   }
 </script>

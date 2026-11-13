@@ -50,6 +50,14 @@ const FIXED_ORDER = ['messages', 'calls', 'calendar', 'website', 'email', 'brand
  */
 export const NESTED_IN: Readonly<Record<string, string>> = { repos: 'drive', contacts: 'email' }
 
+/**
+ * Plugins that are part of the shell itself, not a sidebar entry: the
+ * Assistant is the top bar and panel on every page (switched off, the shell
+ * has neither — ShellData.assistant). Its pages are its own (the plugin
+ * route map); Settings → Plugins switches it.
+ */
+export const IN_SHELL = ['assistant'] as const
+
 /** The pages of the plugins nested in `parent` — its match prefixes. */
 function nestedMatch(parent: string): string[] {
   return Object.entries(NESTED_IN)
@@ -62,7 +70,10 @@ export function buildShellNav(
   activations: Map<string, boolean>,
   capabilities: Capabilities,
 ): ShellNav {
-  const visible = manifests.filter((m) => m.internal !== true && !(m.id in NESTED_IN))
+  const inShell: readonly string[] = IN_SHELL
+  const visible = manifests.filter(
+    (m) => m.internal !== true && !(m.id in NESTED_IN) && !inShell.includes(m.id),
+  )
   const moduleItem = (m: ManifestLike): ShellNavItem => {
     const match = nestedMatch(m.id)
     return {
@@ -94,6 +105,12 @@ export type ShellData = {
   /** What this person may open and do — every menu and card decides from this alone. */
   capabilities: Capabilities
   nav: ShellNav
+  /**
+   * The Assistant plugin is on: the shell shows its top bar field and panel
+   * and pages may use it. false = no assistant anywhere in the shell (off
+   * means off; a switch takes effect on the next load).
+   */
+  assistant: boolean
   /** Whether dictation (speech to text, always on OpenRouter) can work, and what is missing. */
   dictation: SpeechReadiness
 }
