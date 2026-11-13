@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
-import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core'
+import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core'
+import { inboxMessages, mailboxes } from './inbox.schema'
 
 /**
  * Calendar (migration 0138, plan/calendar.md K1). Company-level tables (no
@@ -79,3 +80,41 @@ export const calendarPreferences = pgTable('calendar_preferences', {
   defaultVisibility: text('default_visibility', { enum: ['company', 'busy', 'private'] }).notNull().default('busy'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
+
+/**
+ * An appointment the gateway found agreed in a mail of a personal inbox
+ * (migration 0140, plan/calendar.md §7, K7). Only the member it belongs to
+ * sees it; accepting creates the event (event_id) and sends the invitation.
+ */
+export const calendarProposals = pgTable(
+  'calendar_proposals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** The mailbox holder: the only one who sees, accepts, edits or dismisses it. */
+    memberId: text('member_id').notNull(),
+    mailboxId: uuid('mailbox_id')
+      .notNull()
+      .references(() => mailboxes.id, { onDelete: 'cascade' }),
+    /** The mail it was found in (one proposal per mail). */
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => inboxMessages.id, { onDelete: 'cascade' }),
+    state: text('state', { enum: ['open', 'accepted', 'dismissed'] }).notNull().default('open'),
+    title: text('title').notNull(),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+    timeZone: text('time_zone').notNull(),
+    location: text('location'),
+    /** How to join, as the mail says it (a link, a number). */
+    call: text('call'),
+    /** The people outside the company it is with: `{ email, name }` (email lower case). */
+    attendees: jsonb('attendees').$type<Array<{ email: string; name: string | null }>>().notNull().default([]),
+    eventId: uuid('event_id').references((): AnyPgColumn => calendarEvents.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('calendar_proposals_message_uniq').on(t.messageId),
+    index('calendar_proposals_member_state_idx').on(t.memberId, t.state, t.startsAt),
+  ],
+)

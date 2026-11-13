@@ -196,6 +196,8 @@ export type OutgoingMail = {
   references: string[]
   date: Date
   attachments: OutgoingAttachment[]
+  /** An iCalendar REQUEST (calendar K4): sent as a text/calendar; method=REQUEST alternative. */
+  icalEvent?: string
 }
 
 const addr = (p: MailPerson) => (p.name ? { name: p.name, address: p.address } : p.address)
@@ -214,6 +216,7 @@ export async function buildMime(m: OutgoingMail): Promise<Buffer> {
     ...(m.inReplyTo ? { inReplyTo: `<${m.inReplyTo}>` } : {}),
     ...(m.references.length > 0 ? { references: m.references.map((r) => `<${r}>`) } : {}),
     attachments: m.attachments.map((a) => ({ filename: a.filename, contentType: a.contentType, content: a.content })),
+    ...(m.icalEvent ? { icalEvent: { method: 'REQUEST', filename: 'invite.ics', content: m.icalEvent } } : {}),
   })
   return composer.compile().build()
 }

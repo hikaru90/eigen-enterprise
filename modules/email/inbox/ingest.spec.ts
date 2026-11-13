@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { describe, expect, it } from 'vitest'
-import { IngestRejected, ingestReceived, MAX_RAW_BYTES, parseReceipt, type IngestDeps } from './ingest'
+import { describe, expect, it, vi } from 'vitest'
+import { IngestRejected, ingestReceived, MAX_RAW_BYTES, parseReceipt, type IngestDeps, type StoredMail } from './ingest'
 import { ALTERNATIVE, HTML_ONLY, LOGO_BYTES, NO_FROM, PDF_BYTES, PLAIN, REPLY, WITH_ATTACHMENT } from './mime-fixtures'
 import { fakeRawMailSource } from './raw-source'
 import { BUCKET, received } from './receipt-fixtures'
@@ -18,7 +18,17 @@ async function setup() {
   const info = await createSharedMailbox(f.deps, 'olga', { groupId: 'g-sales', localPart: 'info', domainId: 'd-1' })
   const raw = fakeRawMailSource()
   const logs: Array<{ event: string; fields: Record<string, unknown> }> = []
-  const ingestDeps: IngestDeps = { store: f.store, raw, log: (event, fields) => logs.push({ event, fields }) }
+  const stored: StoredMail[] = []
+  let afterFails: Error | null = null
+  const ingestDeps: IngestDeps = {
+    store: f.store,
+    raw,
+    log: (event, fields) => logs.push({ event, fields }),
+    received: async (mail) => {
+      if (afterFails) throw afterFails
+      stored.push(mail)
+    },
+  }
   const put = (key: string, mime: string) => raw.objects.set(`${BUCKET}/${key}`, Buffer.from(mime))
   const ingest = (n: ReturnType<typeof received>) => {
     const parsed = parseReceipt(n)
@@ -26,7 +36,7 @@ async function setup() {
     return ingestReceived(ingestDeps, parsed.notification, BUCKET)
   }
   const rows = () => [...f.store.messages.values()]
-  return { ...f, ana, ben, info, raw, put, ingest, rows, logs }
+  return { ...f, ana, ben, info, raw, put, ingest, rows, logs, stored, failAfter: (e: Error | null) => (afterFails = e) }
 }
 
 describe('ingesting a received mail', () => {
@@ -294,5 +304,35 @@ describe('refusals', () => {
     const s = await setup()
     await expect(s.ingest(received())).rejects.toThrow(/no object/)
     expect(s.rows()).toEqual([])
+  })
+})
+
+describe('after a mail is stored (calendar K7 queues its appointment reading here)', () => {
+  it('tells the hook once per newly stored row, with the mailbox and folder — never for an SNS retry', async () => {
+    const s = await setup()
+    s.put('ses-msg-1', PLAIN)
+    await s.ingest(received({ recipients: ['ana.lind@example.com', 'info@example.com'] }))
+    expect(s.stored.map((m) => [m.mailbox.id, m.mailbox.kind, m.folder])).toEqual([
+      [s.ana.id, 'personal', 'inbox'],
+      [s.info.id, 'shared', 'inbox'],
+    ])
+    expect(s.stored.map((m) => m.messageId).sort()).toEqual(s.rows().map((r) => r.id).sort())
+    await s.ingest(received({ recipients: ['ana.lind@example.com', 'info@example.com'] }))
+    expect(s.stored).toHaveLength(2)
+  })
+
+  it('a failing hook is logged with ids only and keeps the stored mail', async () => {
+    const s = await setup()
+    s.put('ses-msg-1', PLAIN)
+    s.failAfter(new Error('queue down'))
+    const errors: unknown[][] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => void errors.push(args))
+    try {
+      expect(await s.ingest(received())).toEqual({ stored: 1, duplicates: 0, skipped: 0 })
+    } finally {
+      spy.mockRestore()
+    }
+    expect(s.rows()).toHaveLength(1)
+    expect(errors).toEqual([['[inbox] after-receive work failed', { messageId: s.rows()[0]!.id, mailboxId: s.ana.id, error: 'queue down' }]])
   })
 })

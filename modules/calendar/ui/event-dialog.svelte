@@ -61,8 +61,9 @@
   let confirmDelete = $state(false)
 
   const isNew = start.id === null
+  const fromMail = start.proposalId !== null
   const forOne = $derived(start.inSeries && scope === 'one')
-  const title = isNew ? 'New event' : start.canEdit ? 'Edit event' : 'Event'
+  const title = fromMail ? 'Appointment from mail' : isNew ? 'New event' : start.canEdit ? 'Edit event' : 'Event'
 
   /** "This event" shows the instance's time, "All events" the series' own. */
   function pickScope(next: 'one' | 'all') {
@@ -101,6 +102,8 @@
       <Dialog.Description>
         {#if !start.canEdit}
           On {start.ownerName}’s calendar — only they change it.
+        {:else if fromMail}
+          Not on your calendar yet. Saving adds it and sends the invitation to the guests outside the company.
         {:else}
           On your calendar. Colleagues see only what you choose below.
         {/if}
@@ -124,6 +127,7 @@
     {:else}
       <form method="POST" action="?/save" class="grid gap-4" data-testid="event-form" use:enhance={saved}>
         {#if start.id}<input type="hidden" name="id" value={start.id} />{/if}
+        {#if start.proposalId}<input type="hidden" name="proposalId" value={start.proposalId} />{/if}
         {#if start.inSeries}
           <input type="hidden" name="scope" value={scope} />
           <input type="hidden" name="occurrenceStart" value={start.occurrenceStart} />
@@ -285,7 +289,7 @@
 
         <div class="flex flex-wrap items-center justify-end gap-2">
           <Button type="button" variant="ghost" onclick={() => (open = false)}>Cancel</Button>
-          <Button type="submit">Save</Button>
+          <Button type="submit">{fromMail ? (external.length > 0 ? 'Save and send invitation' : 'Save') : 'Save'}</Button>
         </div>
       </form>
 

@@ -1,5 +1,6 @@
 import type { DownloadDeps } from './attachments'
 import type { InboxHub } from './hub'
+import type { IngestDeps } from './ingest'
 import type { RawMailSource } from './raw-source'
 import type { SendDeps } from './send'
 import type { InboxAudit, InboxDeps, InboxMember } from './service'
@@ -59,16 +60,22 @@ let inboundPromise: Promise<import('./inbound').InboundDeps> | null = null
 
 /**
  * Live wiring for /api/mail/ses-inbound: the receiving settings S2 stores
- * (topic, bucket), the raw mail from S3 with the company's SES keys, the DB store.
+ * (topic, bucket), the raw mail from S3 with the company's SES keys, the DB store,
+ * and what runs after each stored mail (`received`, given by the route: the
+ * calendar's appointment reading).
  */
-export function inboundDeps(): Promise<import('./inbound').InboundDeps> {
+export function inboundDeps(received: IngestDeps['received']): Promise<import('./inbound').InboundDeps> {
   inboundPromise ??= (async () => {
     const { appSql, createScopedDrizzle } = await import('$lib/server/db')
     const { defaultOwleryStore } = await import('../owlery/store')
     return {
       owlery: defaultOwleryStore(),
       fetch,
-      ingest: { store: dbInboxStore(createScopedDrizzle(appSql)), raw: await rawMailSource() },
+      ingest: {
+        store: dbInboxStore(createScopedDrizzle(appSql)),
+        raw: await rawMailSource(),
+        received,
+      },
     }
   })().catch((err) => {
     inboundPromise = null

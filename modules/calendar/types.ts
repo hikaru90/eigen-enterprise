@@ -116,3 +116,26 @@ export type BusyBlockDto = {
 export type FreeBusyDto = { memberId: string; name: string; blocks: BusyBlockDto[] }
 
 export type MemberOption = { id: string; name: string }
+
+/** An appointment found agreed in a mail (K7), as its mailbox holder sees it. */
+export type ProposalDto = {
+  id: string
+  state: 'open' | 'accepted' | 'dismissed'
+  title: string
+  /** UTC instants. */
+  start: string
+  end: string
+  timeZone: string
+  /** Wall times in timeZone (`YYYY-MM-DDTHH:mm`). */
+  localStart: string
+  localEnd: string
+  location: string | null
+  /** How to join, as the mail says it. */
+  call: string | null
+  /** The people outside the company it is with (they get the invitation). */
+  attendees: Array<{ email: string; name: string | null }>
+  /** The event made on accept. */
+  eventId: string | null
+  /** The mail it was found in. */
+  mail: { messageId: string; mailboxId: string; subject: string; from: { name: string | null; address: string } }
+}

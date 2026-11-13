@@ -17,7 +17,7 @@ async function setup(verdicts: { virus?: string } = {}) {
   raw.objects.set(`${BUCKET}/ses-msg-1`, Buffer.from(WITH_ATTACHMENT))
   const parsed = parseReceipt(received({ verdicts }))
   if (parsed.kind !== 'received') throw new Error('fixture')
-  await ingestReceived({ store: f.store, raw, log: () => {} }, parsed.notification, BUCKET)
+  await ingestReceived({ store: f.store, raw, log: () => {}, received: async () => {} }, parsed.notification, BUCKET)
   raw.reads.length = 0
   const deps: DownloadDeps = { inbox: f.deps, raw, bucket: async () => BUCKET }
   const parts = [...f.store.attachments.values()].sort((a, b) => a.partIndex - b.partIndex)

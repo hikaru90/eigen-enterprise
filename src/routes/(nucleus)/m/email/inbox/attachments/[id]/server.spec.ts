@@ -21,7 +21,7 @@ async function ingest(virus = 'PASS') {
   raw.objects.set(`${BUCKET}/ses-msg-1`, Buffer.from(WITH_ATTACHMENT))
   const parsed = parseReceipt(received({ verdicts: { virus } }))
   if (parsed.kind !== 'received') throw new Error('fixture')
-  await ingestReceived({ store: f.store, raw, log: () => {} }, parsed.notification, BUCKET)
+  await ingestReceived({ store: f.store, raw, log: () => {}, received: async () => {} }, parsed.notification, BUCKET)
   deps = { inbox: f.deps, raw, bucket: async () => BUCKET }
   return [...f.store.attachments.values()].find((a) => a.contentType === 'application/pdf')!
 }

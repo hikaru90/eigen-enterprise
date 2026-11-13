@@ -1,4 +1,4 @@
-# Calendar plugin (approved direction; K1 + K2 built, K3–K7 open)
+# Calendar plugin (approved direction; K1 + K2 built, K4 + K7 built for mail proposals, K3/K5/K6 open)
 
 Source: Contribute `df14e05a` (calendar with appointments, phone reminders before a call,
 company-visible vs private / "out of office") and `d8ec9006` (read agreed call appointments
@@ -80,16 +80,60 @@ with what colleagues see, member guests, notes; this event / all events for a se
 asks first; guests see the event read only); colleagues' availability (`?with=`); "New events by
 default" setting. Calendar sits after Calls in the sidebar.
 
+**K7 + K4 built for the mail flow** (branch `contrib/email-proposals`, migration `0140_calendar_proposals`,
+Contribute `d8ec9006`):
+- **Reading.** The inbox ingest calls a `received` hook per newly stored row (not for an SNS retry's
+  duplicate). A mail in the **Inbox folder of a personal mailbox** queues one `calendar_mail_proposal`
+  job (user job queue, deduped per mail) for the holder — only while Calendar is on; the job skips
+  itself while Calendar is off (logged). The job asks the gateway once (company provider, JSON mode,
+  temperature 0, cost context `calendar_mail_proposal`, attributed to the holder): "is an appointment
+  agreed here?" → title, wall start/end + IANA zone, place, call, participants — or null
+  (`modules/calendar/mail-extract.ts`). Code only validates (zod schema, real zone and wall times,
+  end after start, participants must be From/To/Cc addresses and never the reader; an appointment
+  already over is no proposal); an unreadable answer is retried 3×, then the job fails (the queue
+  retries it). No company AI provider → the job completes with one log line (ids only).
+- **Shared mailboxes are not read** (decision): no single person's calendar, and an invitation would
+  go out from a team address. Spam/Sent are not read either.
+- **Proposal** = a `calendar_proposals` row (member, mailbox, mail, state open/accepted/dismissed,
+  title, UTC start/end + zone, location, call, external guests `{email,name}`, event id, decided at).
+  One per mail; deleting the mail deletes it. Only the mailbox holder sees it, and only while the
+  mail is in their own personal mailbox; owner, admins and the agent see none
+  (`modules/calendar/proposals.ts`).
+- **UI.** On the opened mail in Email › Inbox (only while Calendar is on): Accept / Edit (→
+  `/m/calendar?date=…&proposal=<id>` opens the event dialog prefilled: the link as the place, or in
+  the notes beside a place; the people from the mail as external guests) / Dismiss. In Calendar:
+  "From your mail" lists the open ones with the same three actions and a link to the mail.
+- **Accept** claims the proposal (two accepts never both run), creates the event (`source
+  email_proposal`, external id = the mail) with the external guests, then sends the invitation;
+  if sending fails the event is deleted again and the proposal reopens ("nothing was added").
+- **Sending path (decision):** from the holder's **own personal mailbox** through the inbox's
+  raw-MIME send (`sendInvitation` in `modules/email/inbox/send.ts` → `owlery.sendMailboxMail`:
+  sender check, suppression list, SES raw send, a read copy in Sent) — so replies and RSVPs come back
+  to them. The mail is plain text + a `text/calendar; method=REQUEST` alternative (nodemailer
+  `icalEvent`); the ICS (`modules/calendar/ics.ts`) has METHOD:REQUEST, UID `<event id>@<sender
+  domain>`, DTSTAMP, UTC DTSTART/DTEND (no VTIMEZONE needed), SEQUENCE 0, ORGANIZER = the
+  mailbox, ATTENDEE per external guest (RSVP=TRUE), RFC 5545 escaping and 75-octet folding.
+  Member guests are not mailed (in-app). Never from a shared or disabled mailbox.
+- **Wiring** between the two plugins lives outside `modules/` (modules never import each other):
+  `src/lib/server/calendar/mail-proposals.ts` (the ingest hook the `/api/mail/ses-inbound` route
+  hands to `inboundDeps`, the job handler, the inbox read/send adapter, `calendarOn()`).
+- **Not built here:** the `calendar.propose_event` agent tool (a proposal is tied to a mail; an
+  agent-made proposal needs its own approval design); RSVP replies (REPLY) read from the inbox;
+  invitations for events made or changed in the dialog (REQUEST with SEQUENCE+1, CANCEL on delete);
+  in-app RSVP for member guests.
+
 **Still open:**
 - **K3** reminders (web push + in-app toast; a `calendar_reminders` table), "Add a call" / "Join
   call" (the `call_id` column exists, nothing sets it yet), presence "In a meeting".
-- **K4** invitations over company mail (iMIP REQUEST to external guests; replies from the inbox),
-  in-app RSVP for member guests (the `rsvp` column exists; no UI or service call yet).
+- **K4** (rest): invitations for events made or changed in the dialog (REQUEST with a higher
+  SEQUENCE on change, CANCEL on delete), RSVP replies (iMIP REPLY) read from the inbox into
+  `calendar_attendees.rsvp`, in-app RSVP for member guests (the `rsvp` column exists; no UI or
+  service call yet).
 - **K5/K6** Google / Microsoft sync — need the owner's OAuth apps (`plan/calendar-oauth-setup.md`);
   the sync must extend the RRULE subset (or keep unsupported rules read-only) and fill
   `source`/`external_id`/`etag`; a `calendar_connections` table.
-- **K7** email → proposal (after the inbox ingest); `calendar_proposals` table;
-  `calendar.propose_event` (approval-gated) agent tool.
+- **K7** (rest): the `calendar.propose_event` (approval-gated) agent tool; proposals for mail in
+  shared mailboxes if the owner wants them (needs a "whose calendar" rule).
 - "This and following events" for a series (not built: this event / all events only).
 - External guests can't be added in the dialog yet (kept when editing; the service takes them).
 

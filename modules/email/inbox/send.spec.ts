@@ -6,7 +6,7 @@ import { ingestReceived, parseReceipt } from './ingest'
 import { PDF_BYTES, WITH_ATTACHMENT } from './mime-fixtures'
 import { fakeRawMailSource } from './raw-source'
 import { BUCKET, received } from './receipt-fixtures'
-import { composeDraft, sendMail, type SendDeps, type SendInput } from './send'
+import { composeDraft, sendInvitation, sendMail, type SendDeps, type SendInput } from './send'
 import { addAlias, assignPersonalMailbox, createSharedMailbox, getThread, setMailboxDisabled } from './service'
 import { fixture, message } from './test-fixtures'
 
@@ -164,7 +164,7 @@ describe('sendMail: reply and forward', () => {
     s.raw.objects.set(`${BUCKET}/ses-msg-1`, Buffer.from(WITH_ATTACHMENT))
     const parsed = parseReceipt(received())
     if (parsed.kind !== 'received') throw new Error('fixture')
-    await ingestReceived({ store: s.store, raw: s.raw, log: () => {} }, parsed.notification, BUCKET)
+    await ingestReceived({ store: s.store, raw: s.raw, log: () => {}, received: async () => {} }, parsed.notification, BUCKET)
     const parent = [...s.store.messages.values()][0]!
     return { ...s, parent }
   }
@@ -261,5 +261,46 @@ describe('composeDraft', () => {
     const { deps, store, ana } = await setup()
     await store.insertMessage(message(ana.id, { id: 'p3' }))
     await expect(composeDraft(deps.inbox, 'olga', { mailboxId: ana.id, mode: 'reply', parentId: 'p3' })).rejects.toMatchObject({ code: 'not_found' })
+  })
+})
+
+describe('sendInvitation (calendar K4: an iMIP REQUEST from the member’s own mailbox)', () => {
+  const ics = (organizer: { name: string | null; address: string }) =>
+    ['BEGIN:VCALENDAR', 'VERSION:2.0', 'METHOD:REQUEST', 'BEGIN:VEVENT', `ORGANIZER;CN=${organizer.name}:mailto:${organizer.address}`, 'END:VEVENT', 'END:VCALENDAR', ''].join('\r\n')
+  const invite = (mailboxId: string) => ({
+    mailboxId,
+    to: [{ name: 'Mara Voss', address: 'mara@sender.example' }],
+    subject: 'Invitation: Call with Mara Voss',
+    text: 'Ana Lind invites you to: Call with Mara Voss',
+    ics,
+  })
+
+  it('goes out From the mailbox with a text/calendar; method=REQUEST part built for that organizer, and files a Sent copy', async () => {
+    const { deps, store, ana, sent } = await setup()
+    const out = await sendInvitation(deps, 'ana', invite(ana.id))
+    expect(sent).toHaveLength(1)
+    expect(sent[0]!.fromAddress).toBe('ana.lind@example.com')
+    expect(sent[0]!.recipients).toEqual({ to: ['mara@sender.example'], cc: [], bcc: [] })
+    const raw = Buffer.from(sent[0]!.raw).toString('utf8')
+    expect(raw).toMatch(/Content-Type: text\/calendar; charset=utf-8; method=REQUEST/i)
+    const mail = await parsedRaw(sent[0]!)
+    expect(mail.subject).toBe('Invitation: Call with Mara Voss')
+    expect(mail.text?.trim()).toBe('Ana Lind invites you to: Call with Mara Voss')
+    expect(raw.replace(/=\r\n/g, '')).toContain('ORGANIZER;CN=Ana Lind:mailto:ana.lind@example.com')
+    expect(await store.getMessage(out.id)).toMatchObject({ folder: 'sent', subject: 'Invitation: Call with Mara Voss', to: [{ name: 'Mara Voss', address: 'mara@sender.example' }] })
+  })
+
+  it('only from the member’s own personal mailbox, never a shared or disabled one', async () => {
+    const { deps, ana, sales, sent } = await setup()
+    await expect(sendInvitation(deps, 'sam', invite(sales.id))).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(sendInvitation(deps, 'ben', invite(ana.id))).rejects.toMatchObject({ code: 'not_found' })
+    await setMailboxDisabled(deps.inbox, 'olga', { mailboxId: ana.id, disabled: true })
+    await expect(sendInvitation(deps, 'ana', invite(ana.id))).rejects.toMatchObject({ code: 'invalid' })
+    expect(sent).toEqual([])
+  })
+
+  it('needs a guest', async () => {
+    const { deps, ana } = await setup()
+    await expect(sendInvitation(deps, 'ana', { ...invite(ana.id), to: [] })).rejects.toMatchObject({ code: 'invalid' })
   })
 })

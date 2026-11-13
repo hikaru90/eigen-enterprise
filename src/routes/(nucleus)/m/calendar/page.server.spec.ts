@@ -1,20 +1,72 @@
+import type { ProposalDeps, ProposalMailRef } from '../../../../../modules/calendar/proposals'
 import type { CalendarDeps } from '../../../../../modules/calendar/service'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const live = vi.hoisted(() => ({ deps: null as CalendarDeps | null }))
+const live = vi.hoisted(() => ({ deps: null as CalendarDeps | null, proposals: null as ProposalDeps | null }))
 vi.mock('../../../../../modules/calendar/live', () => ({
   calendarDeps: async () => live.deps,
   timeZoneFor: async () => 'Europe/Berlin',
 }))
+vi.mock('$lib/server/calendar/mail-proposals', () => ({
+  proposalDeps: async () => live.proposals,
+}))
 
-import { createEvent, defaultVisibility, listCalendar } from '../../../../../modules/calendar/service'
+import { memoryProposalStore, type ProposalRow } from '../../../../../modules/calendar/proposal-store'
+import { createEvent, defaultVisibility, getEvent, listCalendar } from '../../../../../modules/calendar/service'
 import { fixture, timed, user } from '../../../../../modules/calendar/test-fixtures'
 import { actions, load } from './+page.server'
 
+const MAIL = '10000000-0000-4000-8000-000000000001'
+const PROPOSAL = '30000000-0000-4000-8000-000000000001'
+const mailRef: ProposalMailRef = {
+  mailbox: { id: 'b-1', address: 'ana.lind@example.com', aliases: [] },
+  message: {
+    id: MAIL,
+    mailboxId: 'b-1',
+    folder: 'inbox',
+    subject: 'Re: Call?',
+    from: { name: 'Mara Voss', address: 'mara@sender.example' },
+    to: [],
+    cc: [],
+    receivedAt: new Date('2026-11-12T08:00:00Z'),
+    textBody: null,
+    htmlBody: null,
+  },
+}
+const proposalRow: ProposalRow = {
+  id: PROPOSAL,
+  memberId: 'ana',
+  mailboxId: 'b-1',
+  messageId: MAIL,
+  state: 'open',
+  title: 'Call with Mara Voss',
+  startsAt: new Date('2026-11-19T14:00:00Z'),
+  endsAt: new Date('2026-11-19T14:30:00Z'),
+  timeZone: 'Europe/Berlin',
+  location: null,
+  call: null,
+  attendees: [{ email: 'mara@sender.example', name: 'Mara Voss' }],
+  eventId: null,
+  createdAt: new Date('2026-11-12T08:01:00Z'),
+  decidedAt: null,
+}
+
 let f: ReturnType<typeof fixture>
-beforeEach(() => {
+let invitations: unknown[]
+beforeEach(async () => {
   f = fixture()
   live.deps = f.deps
+  invitations = []
+  const proposals = memoryProposalStore()
+  await proposals.insert(proposalRow)
+  live.proposals = {
+    calendar: f.deps,
+    proposals,
+    mail: {
+      personalMail: async (userId, messageId) => (userId === 'ana' && messageId === MAIL ? mailRef : null),
+      sendInvitation: async (_userId, mail) => void invitations.push(mail.to),
+    },
+  }
 })
 
 const signedIn = (id: string) => ({ user: { id, email: `${id}@test` } })
@@ -37,6 +89,8 @@ type Loaded = {
   defaultVisibility: string
   timeZones: string[]
   availability: { selected: string[]; days: string[]; people: Array<{ memberId: string; blocks: Array<{ kind: string; title: string | null }> }> }
+  proposals: Array<{ id: string; title: string }>
+  editProposal: string | null
 }
 
 describe('/m/calendar', () => {
@@ -104,5 +158,52 @@ describe('/m/calendar', () => {
     expect(await defaultVisibility(f.deps, user('ana'))).toBe('company')
     // Someone else's event: not found, as if it didn't exist.
     expect(await actions.delete({ locals: signedIn('ben'), request: post([['id', series.id]]) } as never)).toMatchObject({ status: 404 })
+  })
+})
+
+describe('/m/calendar: appointments from mail (K7)', () => {
+  it('lists the person’s open proposals — only theirs — and ?proposal= opens one for editing', async () => {
+    const ana = (await load({ locals: signedIn('ana'), url: at(`?proposal=${PROPOSAL}`) } as never)) as Loaded
+    expect(ana.proposals.map((p) => p.title)).toEqual(['Call with Mara Voss'])
+    expect(ana.editProposal).toBe(PROPOSAL)
+    const ben = (await load({ locals: signedIn('ben'), url: at('') } as never)) as Loaded
+    expect(ben.proposals).toEqual([])
+    await expect(load({ locals: signedIn('ben'), url: at(`?proposal=${PROPOSAL}`) } as never)).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('Accept creates the event and sends the invitation; Dismiss of a decided one is refused', async () => {
+    const out = await actions.acceptProposal({ locals: signedIn('ana'), request: post([['proposalId', PROPOSAL]]) } as never)
+    expect(out).toEqual({ action: 'acceptProposal', ok: true, invited: 1 })
+    expect(invitations).toEqual([[{ name: 'Mara Voss', address: 'mara@sender.example' }]])
+    expect((await listCalendar(f.deps, user('ana'), NOV)).map((o) => [o.title, o.event?.source])).toEqual([['Call with Mara Voss', 'email_proposal']])
+    expect(await actions.dismissProposal({ locals: signedIn('ana'), request: post([['proposalId', PROPOSAL]]) } as never)).toMatchObject({ status: 400 })
+  })
+
+  it('the dialog’s Save with a proposal accepts it as edited', async () => {
+    const out = await actions.save({
+      locals: signedIn('ana'),
+      request: post([
+        ['proposalId', PROPOSAL],
+        ['title', 'Q4 call'],
+        ['startDay', '2026-11-19'],
+        ['startTime', '16:00'],
+        ['endDay', '2026-11-19'],
+        ['endTime', '16:30'],
+        ['timeZone', 'Europe/Berlin'],
+        ['visibility', 'busy'],
+        ['repeat', 'none'],
+        ['guestEmail', 'mara@sender.example'],
+        ['guestEmailName', 'Mara Voss'],
+      ]),
+    } as never)
+    expect(out).toEqual({ action: 'save', ok: true, invited: 1 })
+    const [made] = await listCalendar(f.deps, user('ana'), NOV)
+    expect(await getEvent(f.deps, user('ana'), made!.event!.id)).toMatchObject({ title: 'Q4 call', start: '2026-11-19T15:00:00.000Z', source: 'email_proposal' })
+  })
+
+  it('someone else can’t accept or dismiss it (not found)', async () => {
+    expect(await actions.acceptProposal({ locals: signedIn('ben'), request: post([['proposalId', PROPOSAL]]) } as never)).toMatchObject({ status: 404 })
+    expect(await actions.dismissProposal({ locals: signedIn('ben'), request: post([['proposalId', PROPOSAL]]) } as never)).toMatchObject({ status: 404 })
+    expect(invitations).toEqual([])
   })
 })

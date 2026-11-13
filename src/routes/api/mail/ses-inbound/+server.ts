@@ -1,5 +1,6 @@
 import type { RequestHandler } from './$types'
 import { json } from '@sveltejs/kit'
+import { queueAppointmentScan } from '$lib/server/calendar/mail-proposals'
 import { handleInboundSns } from '../../../../../modules/email/inbox/inbound'
 import { inboundDeps } from '../../../../../modules/email/inbox/live'
 import { cachedCertFetcher, SnsSignatureError, verifySnsMessage } from '../../../../../modules/email/platform/sns-signature'
@@ -14,8 +15,8 @@ import { cachedCertFetcher, SnsSignatureError, verifySnsMessage } from '../../..
  */
 const fetchCert = cachedCertFetcher()
 
-/** Overridable in tests. */
-export const _deps = { inbound: inboundDeps, fetchCert }
+/** Overridable in tests. After each stored mail: Calendar K7 queues its appointment reading (skipped while Calendar is off). */
+export const _deps = { inbound: () => inboundDeps(queueAppointmentScan), fetchCert }
 
 export const POST: RequestHandler = async ({ request }) => {
   let body: unknown

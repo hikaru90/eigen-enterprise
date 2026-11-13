@@ -14,6 +14,7 @@
   import { Input } from '$lib/components/ui/input'
   import { ResumableStream } from '$lib/messages/resumable-stream'
   import { docTitle } from '$lib/shell/title'
+  import ProposalCard from '../../../../../../modules/calendar/ui/proposal-card.svelte'
   import ComposeForm from '../../../../../../modules/email/inbox/ui/compose-form.svelte'
   import FolderNav from '../../../../../../modules/email/inbox/ui/folder-nav.svelte'
   import MailReader from '../../../../../../modules/email/inbox/ui/mail-reader.svelte'
@@ -63,6 +64,16 @@
   /** One compose form per draft: a new mode or parent starts a fresh form; reloads of the same one keep what was typed. */
   const composeKey = $derived(inbox?.compose ? `${inbox.compose.mode}:${inbox.compose.parentId ?? ''}:${inbox.box.id}` : '')
   const messageHref = (id: string) => inboxHref(base, { ...here, m: id })
+  /** Calendar K7: the appointment's day in Calendar, and its dialog there (Edit). */
+  const calendarBase = resolve('/m/calendar')
+  const proposalLinks = $derived(
+    inbox?.proposal
+      ? {
+          edit: `${calendarBase}?date=${inbox.proposal.localStart.slice(0, 10)}&proposal=${inbox.proposal.id}`,
+          day: `${calendarBase}?date=${inbox.proposal.localStart.slice(0, 10)}`,
+        }
+      : null,
+  )
 
   /** A form action called from code (not a form): same endpoint and result shape as use:enhance. */
   async function post(action: 'read', messageId: string): Promise<string | null> {
@@ -273,6 +284,11 @@
             <ComposeForm draft={inbox.compose} submit={sendSubmit} {discardHref} busy={sending} error={sendError} />
           {/key}
         {:else if inbox.reader}
+          {#if inbox.proposal && proposalLinks}
+            <div class="border-b border-border p-3">
+              <ProposalCard proposal={inbox.proposal} editHref={proposalLinks.edit} calendarHref={proposalLinks.day} />
+            </div>
+          {/if}
           {#key inbox.reader.id}
             <MailReader
               bind:this={reader}

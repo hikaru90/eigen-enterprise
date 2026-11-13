@@ -1,6 +1,6 @@
-import type { OccurrenceDto } from './types'
+import type { OccurrenceDto, ProposalDto } from './types'
 import { describe, expect, it } from 'vitest'
-import { editDraft, eventFormInput, newDraft, repeatFromRrule, repeatToRrule, type RepeatForm } from './form'
+import { editDraft, eventFormInput, newDraft, proposalDraft, repeatFromRrule, repeatToRrule, type RepeatForm } from './form'
 
 const fd = (entries: Array<[string, string]>) => {
   const f = new FormData()
@@ -58,6 +58,7 @@ describe('eventFormInput', () => {
     expect(eventFormInput(fd(base))).toEqual({
       id: null,
       occurrenceStart: null,
+      proposalId: null,
       input: {
         title: ' Planning ',
         allDay: false,
@@ -158,5 +159,52 @@ describe('drafts for the dialog', () => {
       guestLabels: ['Ben Ode', 'Mara Voss'],
       externalGuests: [{ email: 'mara@northwind.example', name: 'Mara Voss' }],
     })
+  })
+})
+
+describe('the dialog for an appointment found in mail (K7 Edit)', () => {
+  const proposal: ProposalDto = {
+    id: 'p-1',
+    state: 'open',
+    title: 'Call with Mara Voss',
+    start: '2026-11-19T14:00:00.000Z',
+    end: '2026-11-19T14:30:00.000Z',
+    timeZone: 'Europe/Berlin',
+    localStart: '2026-11-19T15:00',
+    localEnd: '2026-11-19T15:30',
+    location: null,
+    call: 'https://meet.example/abc',
+    attendees: [{ email: 'mara@sender.example', name: 'Mara Voss' }],
+    eventId: null,
+    mail: { messageId: 'm-1', mailboxId: 'b-1', subject: 'Re: Call?', from: { name: 'Mara Voss', address: 'mara@sender.example' } },
+  }
+
+  it('starts as Accept would create it: the time in its zone, the link as the place, the people from the mail as guests', () => {
+    expect(proposalDraft(proposal, 'busy')).toMatchObject({
+      id: null,
+      proposalId: 'p-1',
+      title: 'Call with Mara Voss',
+      startDay: '2026-11-19',
+      startTime: '15:00',
+      endDay: '2026-11-19',
+      endTime: '15:30',
+      timeZone: 'Europe/Berlin',
+      location: 'https://meet.example/abc',
+      notes: '',
+      visibility: 'busy',
+      externalGuests: [{ email: 'mara@sender.example', name: 'Mara Voss' }],
+    })
+  })
+
+  it('with a place too, the link goes in the notes', () => {
+    expect(proposalDraft({ ...proposal, location: 'Café Einstein' }, 'company')).toMatchObject({ location: 'Café Einstein', notes: 'https://meet.example/abc' })
+  })
+
+  it('the posted form carries the proposal it accepts', () => {
+    const form = new FormData()
+    form.set('proposalId', 'p-1')
+    form.set('title', 'x')
+    expect(eventFormInput(form).proposalId).toBe('p-1')
+    expect(eventFormInput(new FormData()).proposalId).toBeNull()
   })
 })

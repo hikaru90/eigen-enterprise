@@ -1,7 +1,7 @@
 /** Calendar failures with their HTTP meaning (http.ts maps them). */
 export class CalendarError extends Error {
   constructor(
-    readonly code: 'invalid' | 'not_found' | 'forbidden',
+    readonly code: 'invalid' | 'not_found' | 'forbidden' | 'upstream',
     message: string,
     options?: { cause?: unknown },
   ) {
@@ -13,4 +13,6 @@ export const ERROR_STATUS: Record<CalendarError['code'], number> = {
   invalid: 400,
   forbidden: 403,
   not_found: 404,
+  /** The mail service refused the invitation (K4): nothing was added. */
+  upstream: 502,
 }

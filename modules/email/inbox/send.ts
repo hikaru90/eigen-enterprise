@@ -156,25 +156,51 @@ export async function sendMail(deps: SendDeps, userId: string, input: SendInput)
   const attachments = [...forwarded, ...uploads]
   checkAttachments(attachments.map((a) => a.content.byteLength))
 
+  const parentRefs = parent ? [...parent.references, ...(parent.messageId ? [parent.messageId] : [])] : []
+  return deliver(deps, sender, {
+    recipients,
+    subject,
+    text,
+    attachments,
+    inReplyTo: parent && input.mode !== 'forward' ? parent.messageId : null,
+    references: [...new Set(parentRefs)],
+    threadId: parent?.threadId ?? null,
+    icalEvent: null,
+  })
+}
+
+type Outgoing = {
+  recipients: { to: MailPerson[]; cc: MailPerson[]; bcc: MailPerson[] }
+  subject: string
+  text: string
+  attachments: OutgoingAttachment[]
+  inReplyTo: string | null
+  references: string[]
+  /** The parent's thread (a reply or forward); null starts a new one. */
+  threadId: string | null
+  /** An iCalendar REQUEST (calendar K4). */
+  icalEvent: string | null
+}
+
+/** Builds the raw mail, sends it through owlery and files the read copy in Sent. */
+async function deliver(deps: SendDeps, sender: Sender, m: Outgoing): Promise<SentResult> {
   const domain = sender.box.address.slice(sender.box.address.lastIndexOf('@') + 1)
   const ownMessageId = `${newId(deps.inbox)}@${domain}`
-  const parentRefs = parent ? [...parent.references, ...(parent.messageId ? [parent.messageId] : [])] : []
-  const references = [...new Set(parentRefs)]
-  const inReplyTo = parent && input.mode !== 'forward' ? parent.messageId : null
   const date = now(deps.inbox)
   const raw = await buildMime({
     from: sender.from,
-    to: recipients.to,
-    cc: recipients.cc,
-    subject,
-    text,
+    to: m.recipients.to,
+    cc: m.recipients.cc,
+    subject: m.subject,
+    text: m.text,
     messageId: ownMessageId,
-    inReplyTo,
+    inReplyTo: m.inReplyTo,
     // Our own id closes the list: Amazon SES may replace the Message-ID header,
     // and a reply carries References on, so it still threads back (S5 notes).
-    references: [...references, ownMessageId],
+    references: [...m.references, ownMessageId],
     date,
-    attachments,
+    attachments: m.attachments,
+    ...(m.icalEvent ? { icalEvent: m.icalEvent } : {}),
   })
   if (raw.byteLength > MAX_SEND_BYTES) {
     throw new InboxError('invalid', 'This mail is over 40 MB once encoded, more than Amazon SES sends. Leave out some attachments and send again.')
@@ -183,15 +209,15 @@ export async function sendMail(deps: SendDeps, userId: string, input: SendInput)
   const { sesMessageId } = await deps.transport.sendMailboxMail({
     fromAddress: sender.box.address,
     recipients: {
-      to: recipients.to.map((p) => p.address),
-      cc: recipients.cc.map((p) => p.address),
-      bcc: recipients.bcc.map((p) => p.address),
+      to: m.recipients.to.map((p) => p.address),
+      cc: m.recipients.cc.map((p) => p.address),
+      bcc: m.recipients.bcc.map((p) => p.address),
     },
     raw: new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength),
   })
 
   const id = newId(deps.inbox)
-  const threadId = parent?.threadId ?? newId(deps.inbox)
+  const threadId = m.threadId ?? newId(deps.inbox)
   const row: MessageRow & { sesMessageId: string } = {
     id,
     mailboxId: sender.box.id,
@@ -199,15 +225,15 @@ export async function sendMail(deps: SendDeps, userId: string, input: SendInput)
     threadId,
     messageId: ownMessageId,
     sesMessageId,
-    inReplyTo,
-    references,
+    inReplyTo: m.inReplyTo,
+    references: m.references,
     from: sender.from,
-    to: recipients.to,
-    cc: recipients.cc,
-    bcc: recipients.bcc,
-    subject,
-    snippet: snippetOf(text),
-    textBody: text,
+    to: m.recipients.to,
+    cc: m.recipients.cc,
+    bcc: m.recipients.bcc,
+    subject: m.subject,
+    snippet: snippetOf(m.text),
+    textBody: m.text,
     htmlBody: null,
     receivedAt: date,
     readAt: date,
@@ -218,7 +244,7 @@ export async function sendMail(deps: SendDeps, userId: string, input: SendInput)
     createdAt: date,
   }
   // Metadata only: the sent copy keeps no raw mail, so its attachments are listed, not downloadable (S5 notes).
-  const rows: AttachmentRow[] = attachments.map((a, partIndex) => ({
+  const rows: AttachmentRow[] = m.attachments.map((a, partIndex) => ({
     id: newId(deps.inbox),
     messageId: id,
     partIndex,
@@ -233,6 +259,43 @@ export async function sendMail(deps: SendDeps, userId: string, input: SendInput)
   const out = await deps.inbox.store.insertReceived(row, rows)
   if (!out.stored) throw new Error(`the sent copy ${sesMessageId} is already stored in mailbox ${sender.box.id}`)
   return { id, mailboxId: sender.box.id, threadId }
+}
+
+// ─── calendar invitations (plan/calendar.md §5, K4) ──────────────────────────
+
+export type InvitationInput = {
+  mailboxId: string
+  to: MailPerson[]
+  subject: string
+  text: string
+  /** The iCalendar REQUEST, built for the sending mailbox as the organizer. */
+  ics: (organizer: MailPerson) => string
+}
+
+/**
+ * An iMIP invitation (text/calendar; method=REQUEST next to the plain text)
+ * from the member's own personal mailbox — so a reply or RSVP comes back to
+ * them — through the same send path as any mail: sender check, suppression
+ * list, SES raw send, a read copy in Sent. Never from a shared or disabled
+ * mailbox.
+ */
+export async function sendInvitation(deps: SendDeps, userId: string, input: InvitationInput): Promise<SentResult> {
+  const sender = await sendableBox(deps.inbox, userId, input.mailboxId)
+  if (sender.box.kind !== 'personal' || sender.box.ownerUserId !== userId) {
+    throw new InboxError('forbidden', 'Invitations go out from your own mailbox only.')
+  }
+  if (input.to.length === 0) throw new InboxError('invalid', 'An invitation needs at least one guest.')
+  const recipients = dedupeRecipients({ to: input.to.map((p) => ({ name: p.name, address: p.address.trim().toLowerCase() })), cc: [], bcc: [] })
+  return deliver(deps, sender, {
+    recipients,
+    subject: cleanSubject(input.subject),
+    text: input.text.replace(/\r\n?/g, '\n'),
+    attachments: [],
+    inReplyTo: null,
+    references: [],
+    threadId: null,
+    icalEvent: input.ics(sender.from),
+  })
 }
 
 // ─── the compose form's prefill ───────────────────────────────────────────────

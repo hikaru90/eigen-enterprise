@@ -47,7 +47,7 @@ beforeEach(async () => {
       fetched.push(url)
       return new Response('<ConfirmSubscriptionResponse/>', { status: fetchStatus })
     }) as typeof fetch,
-    ingest: { store: f.store, raw, log: () => {} },
+    ingest: { store: f.store, raw, log: () => {}, received: async () => {} },
   }
   _deps.inbound = async () => deps
   _deps.fetchCert = async () => SIGNING_PEM
