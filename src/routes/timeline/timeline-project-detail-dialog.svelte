@@ -87,7 +87,7 @@
               <Button
                 type="button"
                 variant="ghost"
-                class="h-auto rounded-full p-1.5 text-destructive hover:text-destructive/80"
+                class="h-auto rounded-full p-1.5 text-destructive hover:bg-destructive/10"
                 aria-label={m.graph_timeline_delete_project()}
                 onclick={onDelete}
               >

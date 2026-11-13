@@ -93,7 +93,7 @@
           </p>
         </Drawer.Header>
         <Drawer.Close
-          class="text-destructive hover:text-destructive/80 shrink-0 rounded-md p-1.5 transition-colors -ring focus-visible:ring-1 focus-visible:outline-none"
+          class="text-destructive hover:bg-destructive/10 shrink-0 rounded-md p-1.5 transition-colors -ring focus-visible:ring-1 focus-visible:outline-none"
           aria-label={m.graph_close()}
         >
           <XIcon class="size-4" aria-hidden="true" />
