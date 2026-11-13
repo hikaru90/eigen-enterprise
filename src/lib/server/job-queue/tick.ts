@@ -1,5 +1,6 @@
 import { raceWithTimeout } from '$lib/server/async/race-with-timeout'
 import { pluginOn } from '$lib/server/plugins/background'
+import { tickContributeShare } from './contribute-share-tick'
 import { drainUserJobQueue } from './drain'
 import { tickEmailPlatform } from './email-tick'
 import { ensureOvernightJobsEnqueued } from './ensure-overnight'
@@ -33,6 +34,8 @@ async function runTickBody(): Promise<TickGlobalJobQueueResult> {
   const drain = await drainUserJobQueue()
   if (await pluginOn('email', 'email background work (DNS checks, scheduled sends, flows)')) await tickEmailPlatform()
   if (await pluginOn('repos', 'GitHub repo sync')) await tickRepos()
+  // Contribute is a system module (always on); sharing has its own owner switch in Settings → Company.
+  await tickContributeShare()
   const hasActivity = enqueued > 0 || drain.claimed > 0 || recoveredStale > 0
   const shouldHeartbeat = tickCount % HEARTBEAT_EVERY_TICKS === 0
   const shouldInspectBacklog = hasActivity || shouldHeartbeat || drain.claimed === 0

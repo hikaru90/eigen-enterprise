@@ -11,8 +11,11 @@ export type ExtendedPrivateEnv = typeof kitEnv & {
   COMPANY_DATA_DIR?: string
   COMPANY_KEYS_DIR?: string
   CONSOLIDATION_CRON_TZ?: string
+  /** The central Contribute board's origin (plan/contribute-phone-home.md §5); unset = not configured, nothing shared. */
+  CONTRIBUTE_HUB_URL?: string
   DB_POOL_MAX?: string
   EE_CLAIM_TOKEN_HASH?: string
+  EE_STATE_DIR?: string
   EE_CLAIM_EXPIRES_AT?: string
   EE_WORKLOAD?: string
   ERPNEXT_API_KEY?: string

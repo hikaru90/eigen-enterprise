@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { recoverMock, ensureMock, drainMock, snapshotMock, emailTickMock, pluginOnMock } = vi.hoisted(() => ({
+const { recoverMock, ensureMock, drainMock, snapshotMock, emailTickMock, pluginOnMock, shareTickMock } = vi.hoisted(() => ({
+  shareTickMock: vi.fn(async () => {}),
   recoverMock: vi.fn(),
   ensureMock: vi.fn(),
   drainMock: vi.fn(),
@@ -23,6 +24,9 @@ vi.mock('./email-tick', () => ({
 }))
 vi.mock('./repos-tick', () => ({
   tickRepos: vi.fn(async () => {}),
+}))
+vi.mock('./contribute-share-tick', () => ({
+  tickContributeShare: shareTickMock,
 }))
 vi.mock('$lib/server/plugins/background', () => ({
   pluginOn: pluginOnMock,
@@ -84,6 +88,8 @@ describe('tickGlobalJobQueue', () => {
     expect(ensureMock).not.toHaveBeenCalled()
     expect(emailTickMock).not.toHaveBeenCalled()
     expect(drainMock).toHaveBeenCalledOnce()
+    // Contribute is a system module: its sharing runs on every tick (its own switch is in Settings).
+    expect(shareTickMock).toHaveBeenCalledOnce()
     expect(pluginOnMock).toHaveBeenCalledWith('memory', 'overnight consolidation')
     expect(pluginOnMock).toHaveBeenCalledWith('email', 'email background work (DNS checks, scheduled sends, flows)')
   })

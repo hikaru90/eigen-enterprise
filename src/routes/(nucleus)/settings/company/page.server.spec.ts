@@ -5,8 +5,9 @@ import { sha256Hex, type BlobStore } from '../../../../../modules/drive/storage'
 
 const { roleMock, storage } = vi.hoisted(() => ({
   roleMock: vi.fn(async (_id: string): Promise<string | null> => 'admin'),
-  storage: { store: null as unknown, blobs: null as unknown },
+  storage: { store: null as unknown, blobs: null as unknown, share: null as unknown },
 }))
+vi.mock('../../../../../modules/contribute/share/live', () => ({ shareDeps: async () => storage.share }))
 vi.mock('$lib/server/auth/user-role', () => ({ getUserRole: roleMock }))
 vi.mock('$lib/server/company/live', () => ({ companyStorage: () => storage }))
 vi.mock('$lib/server/company/store', async (importOriginal) => ({
@@ -21,7 +22,38 @@ vi.mock('$lib/server/overview/sources', async () => {
   }
 })
 
+import { fixture } from '../../../../../modules/contribute/test-fixtures'
+import { HUB_NOT_CONFIGURED } from '../../../../../modules/contribute/share/hub'
+import { memoryInstallKeyStore } from '../../../../../modules/contribute/share/identity'
+import type { ShareDeps } from '../../../../../modules/contribute/share/service'
 import { actions, load } from './+page.server'
+
+function shareFixture() {
+  const f = fixture()
+  const deps: ShareDeps = {
+    share: f.share,
+    contributions: f.store,
+    keys: memoryInstallKeyStore(),
+    hub: () => ({ ok: false, reason: 'not_configured', message: HUB_NOT_CONFIGURED }),
+    transport: () => async () => {
+      throw new Error('no hub in this spec')
+    },
+    scrub: async () => {
+      throw new Error('no scrub in this spec')
+    },
+    appVersion: '0.5.9',
+    now: f.now,
+    providerReady: async () => true,
+  }
+  return { f, deps }
+}
+
+const sharingForm = (enabled: string, withdraw = false) => {
+  const f = new FormData()
+  f.set('enabled', enabled)
+  if (withdraw) f.set('withdraw', 'on')
+  return f
+}
 
 function memoryBlobs(): BlobStore & { shas: () => string[] } {
   const blobs = new Map<string, Uint8Array>()
@@ -64,6 +96,7 @@ describe('Settings → Company (owner and admins)', () => {
     roleMock.mockResolvedValue('admin')
     storage.store = memoryCompanyProfileStore()
     storage.blobs = memoryBlobs()
+    storage.share = shareFixture().deps
   })
 
   it.each(['member', null])('a %s gets 403 — the page and every action, changing nothing', async (role) => {
@@ -80,7 +113,7 @@ describe('Settings → Company (owner and admins)', () => {
   })
 
   it('shows the current name (the founding one until set here) and no logo', async () => {
-    expect(await load(ev() as never)).toEqual({ company: { name: 'Founding Name', logo: null } })
+    expect(await load(ev() as never)).toEqual({ company: { name: 'Founding Name', logo: null }, share: null })
   })
 
   it('saves the name, which then is the company name', async () => {
@@ -128,5 +161,17 @@ describe('Settings → Company (owner and admins)', () => {
       data: { action: 'uploadLogo', error: 'Choose an image file to upload.' },
     })
     expect((storage.blobs as ReturnType<typeof memoryBlobs>).shas()).toEqual([])
+  })
+
+  it('sharing with the makers: the owner sees the status and switches it; an admin neither sees nor switches it', async () => {
+    expect(((await load(ev() as never)) as { share: unknown }).share).toBeNull()
+    expect(await actions.setSharing!(ev(sharingForm('off')))).toMatchObject({ status: 403, data: { action: 'setSharing', error: expect.stringContaining('only the owner') } })
+    roleMock.mockResolvedValue('owner')
+    expect(((await load(ev() as never)) as { share: unknown }).share).toMatchObject({ enabled: true, notConfigured: HUB_NOT_CONFIGURED, waiting: 0 })
+    expect(await actions.setSharing!(ev(sharingForm('off')))).toEqual({ action: 'setSharing', ok: true })
+    expect(((await load(ev() as never)) as { share: { enabled: boolean } }).share.enabled).toBe(false)
+    expect(await actions.setSharing!(ev(sharingForm('maybe')))).toMatchObject({ status: 400 })
+    expect(await actions.setSharing!(ev(sharingForm('on', true)))).toMatchObject({ status: 400, data: { error: expect.stringContaining('withdraw') } })
+    expect(await actions.setSharing!(ev(sharingForm('on')))).toEqual({ action: 'setSharing', ok: true })
   })
 })

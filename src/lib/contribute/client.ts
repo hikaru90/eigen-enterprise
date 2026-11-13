@@ -1,3 +1,4 @@
+import type { SentView, ShareItemView } from '../../../modules/contribute/share/service'
 import type { ContributionArea, ContributionCheck, ContributionDto, ContributionKind, ContributionStatus, MyVote } from '../../../modules/contribute/types'
 
 /**
@@ -11,6 +12,10 @@ export type ContributeClient = {
   vote(id: string, direction: MyVote): Promise<ContributionDto>
   update(id: string, patch: { status?: ContributionStatus; note?: string | null }): Promise<ContributionDto>
   list(): Promise<{ proposals: ContributionDto[]; canManage: boolean }>
+  /** Owner/admins: "Show what was sent". */
+  sentPayload(id: string): Promise<SentView>
+  /** Owner/admins: "Don't share" (withdrawn from the central board if it was sent). */
+  dontShare(id: string): Promise<ShareItemView>
 }
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>
@@ -35,5 +40,8 @@ export function contributeClient(fetchFn: Fetch = (input, init) => fetch(input, 
     update: async (id, patch) =>
       (await call<{ proposal: ContributionDto }>(fetchFn, `/api/contribute/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch })).proposal,
     list: () => call<{ proposals: ContributionDto[]; canManage: boolean }>(fetchFn, '/api/contribute'),
+    sentPayload: (id) => call<SentView>(fetchFn, `/api/contribute/${encodeURIComponent(id)}/share`),
+    dontShare: async (id) =>
+      (await call<{ sharing: ShareItemView }>(fetchFn, `/api/contribute/${encodeURIComponent(id)}/share`, { method: 'DELETE' })).sharing,
   }
 }
