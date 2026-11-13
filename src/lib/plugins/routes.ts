@@ -158,6 +158,9 @@ export const CORE_ROUTES: readonly string[] = [
   '/api/e2e',
   '/api/grounding',
   '/api/health',
+  // The central Contribute board's machine endpoints (modules/contribute-hub): other installs call
+  // them without a session, signed per request; they answer 404 themselves while the hub module is off.
+  '/api/hub',
   '/api/keys',
   '/api/log',
   '/api/mcp',

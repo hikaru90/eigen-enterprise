@@ -100,6 +100,7 @@ describe('buildKernel wires the owner-chosen approval mode', () => {
       'contacts.create': 'internal',
       'contacts.update': 'internal',
       'contacts.log_contact': 'internal',
+      'contribute_hub.revoke_install': 'destructive',
       'drive.archive': 'internal',
       'drive.unarchive': 'internal',
       'drive.write_text': 'internal',
@@ -162,6 +163,7 @@ describe('moduleManifests', () => {
       'calls',
       'contacts',
       'repos',
+      'contribute-hub',
     ])
   })
 })
@@ -183,6 +185,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'calls',
       'contacts',
       'repos',
+      'contribute-hub',
     ])
     const toolNames = kernel.registry.list().map((t) => t.name)
     expect(toolNames).toContain('memory.retrieve_thoughts')
@@ -262,6 +265,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'contacts.create',
       'contacts.log_contact',
       'contacts.update',
+      'contribute_hub.revoke_install',
       'drive.archive',
       'drive.unarchive',
       'drive.write_text',
