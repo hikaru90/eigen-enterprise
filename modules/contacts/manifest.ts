@@ -20,7 +20,7 @@ export const CONTACTS_WRITE_TOOLS = ['contacts.create', 'contacts.update', 'cont
  * (tags: partner, customer, funder, investor, production, your own) and when
  * to follow up. Private to whoever adds a contact (plus the owner and admins)
  * until they share it with the company. Not Email's audience lists. A system
- * module (self-seeded active); the people's surface is /m/contacts, the
+ * module (self-seeded active); the people's surface is /m/email/people, the
  * agent's is these tools.
  */
 export const contactsManifest: ModuleManifest = {

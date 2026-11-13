@@ -42,18 +42,37 @@ export { moduleHref }
  */
 const FIXED_ORDER = ['messages', 'calls', 'website', 'email', 'brand', 'memory', 'drive'] as const
 
+/**
+ * Plugins whose pages live inside another entry's area (owner, 2026-11-13):
+ * no entry of their own; the parent's entry is current on their pages (and
+ * on their old addresses, which redirect). GitHub repos is Drive → GitHub,
+ * Contacts is Email → Contacts.
+ */
+export const NESTED_IN: Readonly<Record<string, string>> = { repos: 'drive', contacts: 'email' }
+
+/** The pages of the plugins nested in `parent` — its match prefixes. */
+function nestedMatch(parent: string): string[] {
+  return Object.entries(NESTED_IN)
+    .filter(([, p]) => p === parent)
+    .flatMap(([child]) => [PLUGIN_ROUTES[child]?.page ?? moduleHref(child), moduleHref(child)])
+}
+
 export function buildShellNav(
   manifests: readonly ManifestLike[],
   activations: Map<string, boolean>,
   capabilities: Capabilities,
 ): ShellNav {
-  const visible = manifests.filter((m) => m.internal !== true)
-  const moduleItem = (m: ManifestLike): ShellNavItem => ({
-    id: m.id,
-    name: m.name,
-    href: PLUGIN_ROUTES[m.id]?.page ?? moduleHref(m.id),
-    active: activations.get(m.id) === true,
-  })
+  const visible = manifests.filter((m) => m.internal !== true && !(m.id in NESTED_IN))
+  const moduleItem = (m: ManifestLike): ShellNavItem => {
+    const match = nestedMatch(m.id)
+    return {
+      id: m.id,
+      name: m.name,
+      href: PLUGIN_ROUTES[m.id]?.page ?? moduleHref(m.id),
+      active: activations.get(m.id) === true,
+      ...(match.length > 0 ? { match } : {}),
+    }
+  }
   const known = (id: string): ShellNavItem[] => visible.filter((m) => m.id === id).map(moduleItem)
   const fixed: readonly string[] = FIXED_ORDER
   const others = visible.filter((m) => !fixed.includes(m.id)).map(moduleItem)

@@ -7,7 +7,7 @@ import {
   formLogInput,
   liveContactsDeps,
   personActor,
-} from '../../../../../../modules/contacts/http'
+} from '../../../../../../../modules/contacts/http'
 import {
   contactTags,
   deleteContact,
@@ -15,17 +15,17 @@ import {
   logContact,
   setShared,
   updateContact,
-} from '../../../../../../modules/contacts/service'
+} from '../../../../../../../modules/contacts/service'
 
 /**
- * /m/contacts/[id]: one person — who can see them, log a contact, edit,
+ * /m/email/people/[id]: one person — who can see them, log a contact, edit,
  * share/unshare and delete. A contact you may not see is a 404.
  */
 export const load: PageServerLoad = async ({ locals, params }) => {
   const actor = personActor(locals.user)
   return contactsLoad(async () => {
     const d = await liveContactsDeps()
-    const { todayFor } = await import('../../../../../../modules/contacts/live')
+    const { todayFor } = await import('../../../../../../../modules/contacts/live')
     const [contact, tags, today] = await Promise.all([
       getContact(d, actor, params.id),
       contactTags(d, actor),
@@ -79,7 +79,7 @@ export const actions: Actions = {
       'delete',
       async () => {
         await deleteContact(await liveContactsDeps(), actor, params.id)
-        redirect(303, '/m/contacts')
+        redirect(303, '/m/email/people')
       },
       params.id,
     )

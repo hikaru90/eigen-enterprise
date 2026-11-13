@@ -6,10 +6,10 @@ import {
   formContactInput,
   liveContactsDeps,
   personActor,
-} from '../../../../../../modules/contacts/http'
-import { contactTags, createContact } from '../../../../../../modules/contacts/service'
+} from '../../../../../../../modules/contacts/http'
+import { contactTags, createContact } from '../../../../../../../modules/contacts/service'
 
-/** /m/contacts/new: add a person — private to you unless you share it with the company right away. */
+/** /m/email/people/new: add a person — private to you unless you share it with the company right away. */
 export const load: PageServerLoad = async ({ locals }) => {
   const actor = personActor(locals.user)
   return contactsLoad(async () => ({ tags: await contactTags(await liveContactsDeps(), actor) }))
@@ -23,7 +23,7 @@ export const actions: Actions = {
       const contact = await createContact(await liveContactsDeps(), actor, formContactInput(form), {
         shared: form.get('shared') === 'on',
       })
-      redirect(303, `/m/contacts/${contact.id}`)
+      redirect(303, `/m/email/people/${contact.id}`)
     })
   },
 }

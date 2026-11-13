@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { CAPABILITIES, type Capabilities } from '$lib/access/capabilities'
-import { buildShellNav } from '$lib/shell/nav'
+import { buildShellNav, NESTED_IN } from '$lib/shell/nav'
 import { chatGatewayManifest } from '../../../modules/chat-gateway/manifest'
 import { moduleManifests } from '../../../modules/index'
 import { recapManifest } from '../../../modules/recap/manifest'
@@ -75,9 +75,16 @@ describe('plugin route map', () => {
   it('every sidebar entry but Settings leads to a page of its own plugin', () => {
     const nav = buildShellNav(plugins, new Map(plugins.map((m) => [m.id, true])), owner)
     const entries = nav.items.filter((i) => i.id !== 'settings')
-    expect(entries.map((i) => i.id).sort()).toEqual(plugins.map((m) => m.id).sort())
+    expect(entries.map((i) => i.id).sort()).toEqual(plugins.map((m) => m.id).filter((id) => !(id in NESTED_IN)).sort())
     for (const item of entries) {
       expect(routeOwner(item.href), item.href).toEqual({ owner: 'plugin', plugin: item.id, surface: 'page' })
+    }
+  })
+
+  it('a plugin nested in another area (GitHub repos in Drive, Contacts in Email) still owns its page there', () => {
+    expect(NESTED_IN).toEqual({ repos: 'drive', contacts: 'email' })
+    for (const id of Object.keys(NESTED_IN)) {
+      expect(routeOwner(PLUGIN_ROUTES[id].page), id).toEqual({ owner: 'plugin', plugin: id, surface: 'page' })
     }
   })
 
@@ -101,7 +108,10 @@ describe('plugin route map', () => {
     ['/m/memory/tasks', 'memory', 'page'],
     ['/api/capture/submit', 'memory', 'api'],
     ['/api/timeline/projects', 'memory', 'api'],
+    ['/m/email/people/new', 'contacts', 'page'],
     ['/m/contacts/new', 'contacts', 'page'],
+    ['/drive/github', 'repos', 'page'],
+    ['/m/repos', 'repos', 'page'],
     ['/api/contacts/extract', 'contacts', 'api'],
     ['/m/website/apps/new', 'website', 'page'],
     ['/m/recap', 'recap', 'page'],

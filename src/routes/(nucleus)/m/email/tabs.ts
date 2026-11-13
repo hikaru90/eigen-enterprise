@@ -19,14 +19,17 @@ export const EMAIL_SETUP_TABS: readonly AreaTab[] = [
  * audience lists, and everything about how mail is set up behind one Setup
  * tab. Kept beside the routes: the shell's area-nav lists only the shell-owned
  * areas. The lists tab was called "Contacts" until the Contacts module (the
- * people you know, /m/contacts) arrived — renamed so the two aren't confused;
- * its id and route stay.
+ * people you know) arrived — renamed so the two aren't confused; its id and
+ * route stay. Contacts itself lives here since 2026-11-13 (owner: no separate
+ * nav entry): tab id `people`, label "Contacts", route /m/email/people.
  */
 export const EMAIL_TABS: readonly AreaTab[] = [
   // Your own mail first: /m/email lands here (plan/email-inbox.md S6, Contribute eb674853).
   { id: 'inbox', label: 'Inbox', href: '/m/email/inbox', match: ['/m/email/inbox'] },
   // The company-wide pending + sent log (the landing view until S6), owner and admins only.
   { id: 'company', label: 'Company mail', href: '/m/email/company' },
+  // The people you know (the Contacts plugin), every member's own.
+  { id: 'people', label: 'Contacts', href: '/m/email/people' },
   { id: 'contacts', label: 'Lists', href: '/m/email/contacts' },
   {
     id: 'setup',

@@ -20,6 +20,8 @@ const RULES: Record<Capability, (role: MemberRole | null) => boolean> = {
   'modules.manage': isAdminRole,
   'website.manage': isAdminRole,
   'brand.extract': isAdminRole,
+  // Drive → GitHub (the repos plugin's token form): owner and admins, like its manifest.
+  'repos.manage': isAdminRole,
 }
 
 export function roleCan(role: MemberRole | null, capability: Capability): boolean {

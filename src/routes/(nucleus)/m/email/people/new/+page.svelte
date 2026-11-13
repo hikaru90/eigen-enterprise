@@ -1,19 +1,19 @@
 <script lang="ts">
   import type { PageProps } from './$types'
   import { resolve } from '$app/paths'
-  import PageHeader from '$lib/components/page/page-header.svelte'
+  import SectionHeader from '$lib/components/page/section-header.svelte'
   import { docTitle } from '$lib/shell/title'
-  import ContactForm from '../../../../../../modules/contacts/ui/contact-form.svelte'
+  import ContactForm from '../../../../../../../modules/contacts/ui/contact-form.svelte'
 
-  /** /m/contacts/new: add a person you know. */
+  /** /m/email/people/new: add a person you know. */
   let { data, form }: PageProps = $props()
 </script>
 
 <svelte:head><title>{docTitle('Add a contact', 'Contacts')}</title></svelte:head>
 
-<a class="text-sm text-muted-foreground hover:text-foreground" href={resolve('/m/contacts')}>← All contacts</a>
+<a class="text-sm text-muted-foreground hover:text-foreground" href={resolve('/m/email/people')}>← All contacts</a>
 <div class="mt-3">
-  <PageHeader
+  <SectionHeader
     title="Add a contact"
     description="Only the name is needed — type it in, or tell me about them and the AI fills in the form for you to check. It stays private to you (and the company owner and admins) unless you share it."
   />

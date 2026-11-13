@@ -33,9 +33,12 @@ vi.mock('$lib/server/website/owner-run', () => ({
   logAppFailure: () => {},
   plainAppMessage: () => 'unavailable',
 }))
-// Only Settings → Modules reads the kernel (kernel.module_list, past its guard).
+// Settings → Modules reads the kernel (kernel.module_list, past its guard).
+// Drive → GitHub reads its activation and the (empty) connected tokens past its guard.
+vi.mock('../../../modules/repos/live', () => ({ reposService: () => ({ tokens: async () => [] }) }))
 vi.mock('$lib/server/boot', () => ({
   appKernel: async () => ({
+    activations: { get: async () => true },
     registry: {
       execute: async (name: string) => {
         if (name === 'kernel.module_list') return []
@@ -47,6 +50,7 @@ vi.mock('$lib/server/boot', () => ({
 
 import { load as brandEditor } from './brand/editor/[setId]/+page.server'
 import { load as brandExtract } from './brand/extract/+page.server'
+import { load as driveGithub } from './drive/github/+page.server'
 import { load as website } from './m/website/+page.server'
 import { load as approvals } from './settings/approvals/+page.server'
 import { _backupsDeps, load as backups } from './settings/backups/+page.server'
@@ -67,6 +71,7 @@ const LOADS: Record<string, { path: string; load: Load }> = {
   '/brand/extract': { path: '/brand/extract', load: brandExtract as Load },
   // A malformed set id is the editor's own 404 — past the guard.
   '/brand/editor': { path: '/brand/editor/not-a-set', load: brandEditor as Load },
+  '/drive/github': { path: '/drive/github', load: driveGithub as Load },
 }
 
 /** What a load does to this person: opens (a page or its own 404) or refuses (403 / sends away). */
@@ -88,7 +93,7 @@ async function outcome(load: Load, path: string): Promise<'opens' | 'refuses'> {
   }
 }
 
-const manifests = ['messages', 'calls', 'website', 'email', 'brand', 'memory', 'drive', 'contacts'].map((id) => ({
+const manifests = ['messages', 'calls', 'website', 'email', 'brand', 'memory', 'drive', 'recap'].map((id) => ({
   id,
   name: id,
 }))
@@ -123,11 +128,11 @@ describe('role-aware UI: the capability set and the route guards agree', () => {
 describe('role-aware UI: a member is never offered a page that refuses them', () => {
   const member = capabilitiesFor('member')
 
-  it('the nav has no guarded page they lack, and keeps modules it does not know (Contacts)', () => {
+  it('the nav has no guarded page they lack, and keeps modules it does not know (Recap)', () => {
     const items = buildShellNav(manifests, activations, member).items
     for (const item of items) expect(canOpen(member, item.href)).toBe(true)
     expect(items.map((i) => i.id)).not.toContain('website')
-    expect(items.map((i) => i.id)).toContain('contacts')
+    expect(items.map((i) => i.id)).toContain('recap')
   })
 
   it('the settings tabs hold only sections they can open', () => {

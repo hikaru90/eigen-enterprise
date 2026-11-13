@@ -6,7 +6,7 @@ import { REPOS_MODULE_ID, REPOS_TOOL_NAMES } from './manifest'
 /**
  * repos.* kernel tools (plan/github-drive.md §6): list the connected repos
  * with their status and Drive folder ids, and sync one now. Neither touches
- * the token — that only ever goes through the admin's own form on /m/repos.
+ * the token — that only ever goes through the admin's own form on /drive/github.
  */
 
 export type ReposToolDeps = { service?: () => Promise<ReposService> }

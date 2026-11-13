@@ -22,6 +22,8 @@ export const CAPABILITIES = [
   'website.manage',
   /** Brand → Extract and the visual-set editor. */
   'brand.extract',
+  /** Drive → GitHub: connecting GitHub repos (the token form). */
+  'repos.manage',
 ] as const
 
 export type Capability = (typeof CAPABILITIES)[number]
@@ -42,6 +44,7 @@ export const GUARDED_PAGES: readonly { prefix: string; capability: Capability }[
   { prefix: '/m/website', capability: 'website.manage' },
   { prefix: '/brand/extract', capability: 'brand.extract' },
   { prefix: '/brand/editor', capability: 'brand.extract' },
+  { prefix: '/drive/github', capability: 'repos.manage' },
 ]
 
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(`${prefix}/`)

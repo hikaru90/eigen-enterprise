@@ -4,8 +4,8 @@
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
   import PageFrame from '$lib/components/page/page-frame.svelte'
-  import PageHeader from '$lib/components/page/page-header.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
+  import StatusPill from '$lib/components/page/status-pill.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
@@ -62,7 +62,7 @@
   }
 </script>
 
-<svelte:head><title>{docTitle('GitHub repos')}</title></svelte:head>
+<svelte:head><title>{docTitle('GitHub repos', 'Drive')}</title></svelte:head>
 
 {#snippet steps()}
   <ol class="mt-3 list-decimal space-y-1.5 pl-5 text-sm text-muted-foreground">
@@ -111,11 +111,18 @@
 {/snippet}
 
 <PageFrame testid="repos-area">
-  <PageHeader
-    title="GitHub repos"
-    description="Read-only copies of your GitHub repos in Drive: branches, pull requests, recent activity and the Markdown docs, kept in sync every 15 minutes. eigenEnterprise never writes to GitHub."
-    status={{ label: data.active ? 'Active' : 'Not active', on: data.active }}
-  />
+  <!-- Inside Drive (Drive → GitHub): the rail holds the area's one h1. -->
+  <div class="-mt-8">
+    <SectionHeader
+      title="GitHub repos"
+      description="Read-only copies of your GitHub repos in Drive: branches, pull requests, recent activity and the Markdown docs, kept in sync every 15 minutes. eigenEnterprise never writes to GitHub."
+      testid="repos-header"
+    >
+      {#snippet actions()}
+        <StatusPill label={data.active ? 'Active' : 'Not active'} on={data.active} />
+      {/snippet}
+    </SectionHeader>
+  </div>
 
   {#if data.summaryNoModel}
     <p

@@ -2,20 +2,19 @@
   /* eslint-disable svelte/no-navigation-without-resolve -- the tag filter links add a query string to resolve() */
   import type { PageProps } from './$types'
   import { resolve } from '$app/paths'
-  import PageHeader from '$lib/components/page/page-header.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { docTitle } from '$lib/shell/title'
-  import { FOLLOW_UP_WINDOW_DAYS } from '../../../../../modules/contacts/types'
-  import ContactList from '../../../../../modules/contacts/ui/contact-list.svelte'
-  import ContactsPrivacyNote from '../../../../../modules/contacts/ui/contacts-privacy-note.svelte'
-  import FollowUpList from '../../../../../modules/contacts/ui/follow-up-list.svelte'
+  import { FOLLOW_UP_WINDOW_DAYS } from '../../../../../../modules/contacts/types'
+  import ContactList from '../../../../../../modules/contacts/ui/contact-list.svelte'
+  import ContactsPrivacyNote from '../../../../../../modules/contacts/ui/contacts-privacy-note.svelte'
+  import FollowUpList from '../../../../../../modules/contacts/ui/follow-up-list.svelte'
 
-  /** /m/contacts: who to follow up with next, then everyone you know (by tag, by search). */
+  /** /m/email/people: who to follow up with next, then everyone you know (by tag, by search). */
   let { data, form }: PageProps = $props()
 
-  const base = resolve('/m/contacts')
+  const base = resolve('/m/email/people')
   const filtered = $derived(data.filter.tag !== '' || data.filter.q.trim() !== '')
   const logError = $derived(
     form && 'error' in form && typeof form.error === 'string' && form.action === 'log' && form.id
@@ -31,17 +30,17 @@
   }
 </script>
 
-<svelte:head><title>{docTitle('Contacts')}</title></svelte:head>
+<svelte:head><title>{docTitle('Contacts', 'Email')}</title></svelte:head>
 
-<PageHeader
+<SectionHeader
   title="Contacts"
   description="The people you know: how to reach them, where you met, why they matter — and who to follow up with next."
-  status={{ label: data.contactsModule.active ? 'Active' : 'Not active', on: data.contactsModule.active }}
+  testid="contacts-header"
 >
   {#snippet actions()}
-    <Button href="/m/contacts/new" data-testid="contact-add">Add a contact</Button>
+    <Button href="/m/email/people/new" data-testid="contact-add">Add a contact</Button>
   {/snippet}
-</PageHeader>
+</SectionHeader>
 
 <div class="mt-6"><ContactsPrivacyNote /></div>
 

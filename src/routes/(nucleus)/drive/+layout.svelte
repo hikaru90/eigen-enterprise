@@ -5,18 +5,20 @@
   import FolderLockIcon from '@lucide/svelte/icons/folder-lock'
   import HardDriveIcon from '@lucide/svelte/icons/hard-drive'
   import MessageSquareIcon from '@lucide/svelte/icons/message-square'
+  import PlusIcon from '@lucide/svelte/icons/plus'
   import TrashIcon from '@lucide/svelte/icons/trash-2'
   import UsersIcon from '@lucide/svelte/icons/users'
   import { resolve } from '$app/paths'
   import { page } from '$app/state'
   import StatusPill from '$lib/components/page/status-pill.svelte'
-  import { driveSection, sourceSection, type DriveSection } from '$lib/drive/sections'
+  import { driveSection, GITHUB_SOURCE, sourceSection, type DriveSection } from '$lib/drive/sections'
 
   /**
    * The Drive area as an app (P-3): full width and height, no centred frame.
    * A left rail — the one `h1`, status, My drive · Shared with me · Messages
    * · one section per read-only source root (e.g. GitHub, listed from the
-   * roots that exist) · Archived · Trash, the storage note — and the browser
+   * roots that exist; "Connect GitHub" while there is no GitHub folder and the
+   * person may connect one) · Archived · Trash, the storage note — and the browser
    * or file view beside it.
    * On narrow screens the rail becomes a bar above the content.
    */
@@ -31,6 +33,7 @@
       | '/drive/messages'
       | '/drive/archived'
       | '/drive/trash'
+      | '/drive/github'
       | `/drive/folder/${string}`
     icon: typeof HardDriveIcon
   }
@@ -51,6 +54,10 @@
       href: `/drive/folder/${s.folderId}` as const,
       icon: FolderLockIcon,
     })),
+    // No GitHub folder yet: the way to connect one, for those who may (its button moves into the folder after).
+    ...(data.github && !data.sources.some((s) => s.source === GITHUB_SOURCE)
+      ? [{ id: 'github' as const, label: 'Connect GitHub', href: '/drive/github' as const, icon: PlusIcon }]
+      : []),
     ...after,
   ])
   const rootHref = $derived((page.data as { root?: { href: string } }).root?.href ?? null)

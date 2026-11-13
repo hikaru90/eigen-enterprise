@@ -5,11 +5,11 @@ import {
   formLogInput,
   liveContactsDeps,
   personActor,
-} from '../../../../../modules/contacts/http'
-import { followUps, listContacts, logContact, normaliseTag } from '../../../../../modules/contacts/service'
+} from '../../../../../../modules/contacts/http'
+import { followUps, listContacts, logContact, normaliseTag } from '../../../../../../modules/contacts/service'
 
 /**
- * /m/contacts: the people you know — "Follow up next" (who to write to next:
+ * /m/email/people: the people you know — "Follow up next" (who to write to next:
  * due and coming up, soonest first) and every contact you may see, filtered
  * by one tag and/or a name/organisation search (?tag=, ?q=). Today is the
  * person's own day (their preferred timezone).
@@ -22,7 +22,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     // The tag as stored (so the chip for it shows as current); a malformed one is a 400.
     const filter = { tag: rawTag.trim() === '' ? '' : normaliseTag(rawTag), q }
     const d = await liveContactsDeps()
-    const { todayFor } = await import('../../../../../modules/contacts/live')
+    const { todayFor } = await import('../../../../../../modules/contacts/live')
     const today = await todayFor(actor.userId)
     const [list, due] = await Promise.all([
       listContacts(d, actor, { tag: filter.tag, query: filter.q }),

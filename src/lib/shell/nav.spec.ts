@@ -63,14 +63,38 @@ describe('buildShellNav', () => {
   })
 
   it('never lists a page the person cannot open: no Website for a member, modules it does not know stay', () => {
-    const manifests = [manifest('messages', 'Messages'), manifest('website', 'Website'), manifest('contacts', 'Contacts')]
+    const manifests = [manifest('messages', 'Messages'), manifest('website', 'Website'), manifest('recap', 'Recap')]
     const active = new Map([
       ['messages', true],
       ['website', true],
-      ['contacts', true],
+      ['recap', true],
     ])
-    expect(buildShellNav(manifests, active, member).items.map((i) => i.id)).toEqual(['messages', 'contacts', 'settings'])
-    expect(buildShellNav(manifests, active, owner).items.map((i) => i.id)).toEqual(['messages', 'website', 'contacts', 'settings'])
+    expect(buildShellNav(manifests, active, member).items.map((i) => i.id)).toEqual(['messages', 'recap', 'settings'])
+    expect(buildShellNav(manifests, active, owner).items.map((i) => i.id)).toEqual(['messages', 'website', 'recap', 'settings'])
+  })
+
+  it('lists GitHub repos and Contacts inside Drive and Email, not as entries of their own (owner, 2026-11-13)', () => {
+    const nav = buildShellNav(
+      [manifest('email', 'Email'), manifest('drive', 'Drive'), manifest('repos', 'GitHub repos'), manifest('contacts', 'Contacts')],
+      new Map([
+        ['email', true],
+        ['drive', true],
+        ['repos', true],
+        ['contacts', true],
+      ]),
+      owner,
+    )
+    expect(nav.items.map((i) => i.id)).toEqual(['email', 'drive', 'settings'])
+    expect(nav.items.find((i) => i.id === 'drive')?.match).toEqual(['/drive/github', '/m/repos'])
+    expect(nav.items.find((i) => i.id === 'email')?.match).toEqual(['/m/email/people', '/m/contacts'])
+    for (const [path, id] of [
+      ['/drive/github', 'drive'],
+      ['/m/repos', 'drive'],
+      ['/m/email/people/abc', 'email'],
+      ['/m/contacts/new', 'email'],
+    ] as const) {
+      expect(currentNavId(nav.items, path)).toBe(id)
+    }
   })
 
   it('has no Assistant, Overview or Agent entry: the assistant is the top bar, the dashboard is the company badge (P-1, P-2)', () => {

@@ -1,14 +1,14 @@
-import type { ContactsDeps } from '../../../../../modules/contacts/service'
+import type { ContactsDeps } from '../../../../../../modules/contacts/service'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const live = vi.hoisted(() => ({ deps: null as ContactsDeps | null }))
-vi.mock('../../../../../modules/contacts/live', () => ({
+vi.mock('../../../../../../modules/contacts/live', () => ({
   contactsDeps: async () => live.deps,
   todayFor: async () => '2026-11-12',
 }))
 
-import { createContact, getContact } from '../../../../../modules/contacts/service'
-import { fixture, user } from '../../../../../modules/contacts/test-fixtures'
+import { createContact, getContact } from '../../../../../../modules/contacts/service'
+import { fixture, user } from '../../../../../../modules/contacts/test-fixtures'
 import { actions, load } from './+page.server'
 import { actions as detailActions, load as detailLoad } from './[id]/+page.server'
 import { actions as newActions } from './new/+page.server'
@@ -23,12 +23,12 @@ const signedIn = (id: string) => ({ user: { id, email: `${id}@test` } })
 const post = (entries: Array<[string, string]>) => {
   const body = new FormData()
   for (const [k, v] of entries) body.append(k, v)
-  return new Request('http://os.test/m/contacts', { method: 'POST', body })
+  return new Request('http://os.test/m/email/people', { method: 'POST', body })
 }
 
-describe('/m/contacts', () => {
+describe('/m/email/people', () => {
   it('sends signed-out visitors to /login', async () => {
-    await expect(load({ locals: { user: null }, url: new URL('http://os.test/m/contacts') } as never)).rejects.toMatchObject({
+    await expect(load({ locals: { user: null }, url: new URL('http://os.test/m/email/people') } as never)).rejects.toMatchObject({
       status: 302,
       location: '/login',
     })
@@ -38,7 +38,7 @@ describe('/m/contacts', () => {
     const mara = await createContact(f.deps, user('ana'), { name: 'Mara Voss', tags: ['investor'], nextFollowUpOn: '2026-11-12' })
     await createContact(f.deps, user('ana'), { name: 'Jon Park', tags: ['production'] })
     await createContact(f.deps, user('ben'), { name: 'Bens private', tags: ['secret'], nextFollowUpOn: '2026-11-12' })
-    const out = (await load({ locals: signedIn('ana'), url: new URL('http://os.test/m/contacts?tag=investor&q=voss') } as never)) as {
+    const out = (await load({ locals: signedIn('ana'), url: new URL('http://os.test/m/email/people?tag=investor&q=voss') } as never)) as {
       contacts: Array<{ id: string }>
       tags: string[]
       followUps: Array<{ id: string; due: string }>
@@ -62,13 +62,13 @@ describe('/m/contacts', () => {
   })
 })
 
-describe('/m/contacts/new', () => {
+describe('/m/email/people/new', () => {
   it('adds a private contact (or a shared one when asked) and opens it', async () => {
     const made = newActions.default({
       locals: signedIn('ana'),
       request: post([['name', 'Mara Voss'], ['channelType', 'email'], ['channelValue', 'mara@northwind.example'], ['tag', 'investor']]),
     } as never)
-    await expect(made).rejects.toMatchObject({ status: 303, location: expect.stringMatching(/^\/m\/contacts\/[0-9a-f-]{36}$/) })
+    await expect(made).rejects.toMatchObject({ status: 303, location: expect.stringMatching(/^\/m\/email\/people\/[0-9a-f-]{36}$/) })
     const [row] = [...f.store.rows.values()]
     expect(row).toMatchObject({ name: 'Mara Voss', shared: false, tags: ['investor'], channels: [{ type: 'email', value: 'mara@northwind.example' }] })
 
@@ -84,7 +84,7 @@ describe('/m/contacts/new', () => {
   })
 })
 
-describe('/m/contacts/[id]', () => {
+describe('/m/email/people/[id]', () => {
   it('is a 404 for someone who may not see it', async () => {
     const mara = await createContact(f.deps, user('ana'), { name: 'Mara Voss' })
     await expect(detailLoad({ locals: signedIn('ben'), params: { id: mara.id } } as never)).rejects.toMatchObject({ status: 404 })
@@ -109,7 +109,7 @@ describe('/m/contacts/[id]', () => {
     await detailActions.log(ctx([['id', mara.id], ['on', '2026-11-12']]))
     expect((await getContact(f.deps, user('ana'), mara.id)).lastContactedOn).toBe('2026-11-12')
 
-    await expect(detailActions.delete(ctx([]))).rejects.toMatchObject({ status: 303, location: '/m/contacts' })
+    await expect(detailActions.delete(ctx([]))).rejects.toMatchObject({ status: 303, location: '/m/email/people' })
     expect(f.store.rows.size).toBe(0)
   })
 })

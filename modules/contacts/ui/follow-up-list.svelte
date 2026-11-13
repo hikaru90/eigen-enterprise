@@ -48,7 +48,7 @@
                     : 'text-muted-foreground'}"
                 data-testid="follow-up-when">{DUE_LABEL[f.due]} · {relativeDays(f.daysFromToday)}</span
               >
-              <a class="text-sm font-medium hover:underline" href={resolve(`/m/contacts/${f.id}`)}>{f.name}</a>
+              <a class="text-sm font-medium hover:underline" href={resolve(`/m/email/people/${f.id}`)}>{f.name}</a>
               {#if f.organisation}<span class="text-xs text-muted-foreground">{f.organisation}</span>{/if}
             </div>
             {#if f.nextStep}<p class="mt-0.5 text-sm" data-testid="follow-up-step">{f.nextStep}</p>{/if}

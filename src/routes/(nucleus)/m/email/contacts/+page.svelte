@@ -19,7 +19,7 @@
 />
 <p class="mt-2 text-sm text-muted-foreground" data-testid="lists-contacts-pointer">
   Keeping track of the people you know — where you met, why they matter, when to follow up? That's
-  <a class="underline underline-offset-2 hover:text-foreground" href={resolve('/m/contacts')}>Contacts</a>.
+  <a class="underline underline-offset-2 hover:text-foreground" href={resolve('/m/email/people')}>Contacts</a>.
 </p>
 
 {#if data.email.isAdmin}

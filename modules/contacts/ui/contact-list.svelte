@@ -26,7 +26,7 @@
       <li class="grid gap-1.5 px-4 py-3 sm:px-5" data-testid="contact-row">
         <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <div class="flex min-w-0 flex-wrap items-baseline gap-x-2">
-            <a class="truncate text-sm font-medium hover:underline" href={resolve(`/m/contacts/${c.id}`)}>{c.name}</a>
+            <a class="truncate text-sm font-medium hover:underline" href={resolve(`/m/email/people/${c.id}`)}>{c.name}</a>
             {#if c.organisation || c.title}
               <span class="text-xs text-muted-foreground">{[c.title, c.organisation].filter(Boolean).join(' · ')}</span>
             {/if}

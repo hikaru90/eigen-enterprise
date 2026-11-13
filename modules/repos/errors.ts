@@ -1,6 +1,6 @@
 import type { GitHubTokenError, GitHubTokenErrorKind, TokenPermission } from '$lib/server/github/token-client'
 
-/** A problem the admin can fix, in plain words (shown on /m/repos and returned by tools). */
+/** A problem the admin can fix, in plain words (shown on /drive/github and returned by tools). */
 export class ReposError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options)

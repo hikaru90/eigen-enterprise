@@ -2,16 +2,15 @@
   import type { PageProps } from './$types'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
-  import PageHeader from '$lib/components/page/page-header.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
   import { docTitle } from '$lib/shell/title'
-  import { relativeDays, visibilityText } from '../../../../../../modules/contacts/types'
-  import ChannelLinks from '../../../../../../modules/contacts/ui/channel-links.svelte'
-  import ContactForm from '../../../../../../modules/contacts/ui/contact-form.svelte'
-  import LogContactForm from '../../../../../../modules/contacts/ui/log-contact-form.svelte'
+  import { relativeDays, visibilityText } from '../../../../../../../modules/contacts/types'
+  import ChannelLinks from '../../../../../../../modules/contacts/ui/channel-links.svelte'
+  import ContactForm from '../../../../../../../modules/contacts/ui/contact-form.svelte'
+  import LogContactForm from '../../../../../../../modules/contacts/ui/log-contact-form.svelte'
 
-  /** /m/contacts/[id]: one person — who can see them, log a contact, edit, share, delete. */
+  /** /m/email/people/[id]: one person — who can see them, log a contact, edit, share, delete. */
   let { data, form }: PageProps = $props()
   const c = $derived(data.contact)
   const errorFor = (action: string) => (form && 'error' in form && form.action === action ? form.error : null)
@@ -21,9 +20,9 @@
 
 <svelte:head><title>{docTitle(c.name, 'Contacts')}</title></svelte:head>
 
-<a class="text-sm text-muted-foreground hover:text-foreground" href={resolve('/m/contacts')}>← All contacts</a>
+<a class="text-sm text-muted-foreground hover:text-foreground" href={resolve('/m/email/people')}>← All contacts</a>
 <div class="mt-3">
-  <PageHeader title={c.name} description={[c.title, c.organisation].filter(Boolean).join(' · ') || null} />
+  <SectionHeader title={c.name} description={[c.title, c.organisation].filter(Boolean).join(' · ') || null} />
 </div>
 
 <div class="mt-5 grid max-w-2xl gap-4">

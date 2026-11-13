@@ -5,7 +5,7 @@ import { contactTags } from './service'
 import { EXTRACT_MODES } from './types'
 
 /**
- * The /m/contacts pages' seam onto the service: signed-in people only, form
+ * The /m/email/people pages' seam onto the service: signed-in people only, form
  * fields → service input, ContactsError → the page's error or a form failure
  * the page shows. Anything else is a real failure: logged and rethrown.
  */

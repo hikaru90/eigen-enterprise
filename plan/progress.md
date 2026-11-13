@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-13 — GitHub repos into Drive, Contacts into Email (working tree, not committed)
+
+- Owner request: "GitHub repos" and "Contacts" are no longer sidebar entries. `NESTED_IN` in `src/lib/shell/nav.ts` (repos → drive, contacts → email); Drive/Email carry their pages (and old addresses) as match prefixes.
+- Repos settings moved to `/drive/github` (inside the Drive layout and rail). `/m/repos` → 308 to `/drive/github`. New capability `repos.manage` (owner + admins, like the manifest) guards it in `GUARDED_PAGES`. Rail: "Connect GitHub" (plus icon) while there is no GitHub source root; once there is, the GitHub folder's tree shows a "Connect GitHub" / "Manage repos" button — both only for `repos.manage` holders.
+- Contacts moved to `/m/email/people` (list, `/new`, `/[id]`), a "Contacts" tab (id `people`) after Inbox in Email. `/m/contacts/**` → 308 to the matching `/m/email/people/**`.
+- Announced change (no silent removals): the Contacts and GitHub repos pages lose their own page h1 + status pill header; inside Email/Drive they use section headers (repos keeps its status pill beside its heading; Contacts' pill is dropped — a switched-off Contacts already shows the plugin-off page).
+
 ## 2026-11-12 — Email inbox S1–S6 on the local box (os.ee.localhost, release `eigenenterprise-0.5.7-04e0fab74381-linux-arm64`)
 
 Owner: "Release to the box". `scripts/release.sh arm64` then `ee/e2e/box.sh install os.ee.localhost`: a fresh install, health-gated first deploy, "✓ Your company is running". Built from `04e0fab`, which contains S1–S6 and round 4's v0.5.7.

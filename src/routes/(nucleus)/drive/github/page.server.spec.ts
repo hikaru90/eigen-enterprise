@@ -19,12 +19,12 @@ const locals = { user: { id: 'user-1', email: 'me@x.co' } }
 const post = (fields: Record<string, string>) => {
   const body = new FormData()
   for (const [k, v] of Object.entries(fields)) body.set(k, v)
-  return { locals, request: new Request('http://x/m/repos', { method: 'POST', body }) } as never
+  return { locals, request: new Request('http://x/drive/github', { method: 'POST', body }) } as never
 }
 type Act = keyof typeof actions
 const run = async (name: Act, fields: Record<string, string>) => (await actions[name]!(post(fields))) as Record<string, unknown>
 
-describe('/m/repos (admin only)', () => {
+describe('/drive/github (admin only)', () => {
   let t: ReturnType<typeof setup>
   beforeEach(() => {
     t = setup()

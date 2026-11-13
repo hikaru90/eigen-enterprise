@@ -16,11 +16,12 @@ describe('pageCapability', () => {
     ['/m/website/settings', 'website.manage'],
     ['/brand/extract', 'brand.extract'],
     ['/brand/editor/0b6f5d0e-0000-4000-8000-000000000000', 'brand.extract'],
+    ['/drive/github', 'repos.manage'],
   ])('%s is guarded by %s', (path, capability) => {
     expect(pageCapability(path)).toBe(capability)
   })
 
-  it.each(['/', '/settings', '/settings/llm', '/settings/api-keys', '/settings/passkeys', '/brand', '/brand/material', '/m/email', '/m/websites', '/messages', '/m/contacts'])(
+  it.each(['/', '/settings', '/settings/llm', '/settings/api-keys', '/settings/passkeys', '/brand', '/brand/material', '/m/email', '/m/websites', '/messages', '/m/email/people', '/drive'])(
     '%s needs no capability',
     (path) => {
       expect(pageCapability(path)).toBeNull()

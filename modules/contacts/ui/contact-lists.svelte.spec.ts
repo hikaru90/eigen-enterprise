@@ -56,7 +56,7 @@ describe('follow-up-list.svelte (who to write to next)', () => {
     await expect.element(when.nth(2)).toHaveTextContent('Coming up · in 4 days')
     await expect.element(page.getByTestId('follow-up-step')).toHaveTextContent('Call back')
     await expect.element(page.getByRole('link', { name: 'mara@northwind.example' }).first()).toHaveAttribute('href', 'mailto:mara@northwind.example')
-    await expect.element(page.getByRole('link', { name: 'Late One' })).toHaveAttribute('href', '/m/contacts/a')
+    await expect.element(page.getByRole('link', { name: 'Late One' })).toHaveAttribute('href', '/m/email/people/a')
   })
 
   it('"Log contact" opens the log form for that row (today filled in); Cancel closes it', async () => {

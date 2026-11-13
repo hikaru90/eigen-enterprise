@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { driveSection } from './sections'
+import { driveSection, githubButtonLabel, GITHUB_PAGE, GITHUB_SOURCE } from './sections'
 
 describe('driveSection', () => {
   it('section pages are their own section', () => {
@@ -31,5 +31,20 @@ describe('driveSection', () => {
     expect(driveSection('/drive/file/x', '/drive/folder/root-2', sources)).toBe('source:wiki')
     expect(driveSection('/drive/folder/f1', '/drive', sources)).toBe('mine')
     expect(() => driveSection('/drive/file/x', '/drive/folder/root-3', sources)).toThrow(/belongs to no section/)
+  })
+
+  it('Drive → GitHub (the repos settings) is the GitHub folder\'s section once it exists, else the "Connect GitHub" entry', () => {
+    expect(GITHUB_PAGE).toBe('/drive/github')
+    expect(GITHUB_SOURCE).toBe('repos')
+    expect(driveSection('/drive/github', null, [])).toBe('github')
+    expect(driveSection('/drive/github/', null, [{ source: 'wiki', href: '/drive/folder/w' }])).toBe('github')
+    expect(driveSection('/drive/github', null, [{ source: 'repos', href: '/drive/folder/root-1' }])).toBe('source:repos')
+  })
+})
+
+describe('githubButtonLabel', () => {
+  it('"Connect GitHub" while no repo is connected, "Manage repos" after', () => {
+    expect(githubButtonLabel(0)).toBe('Connect GitHub')
+    expect(githubButtonLabel(3)).toBe('Manage repos')
   })
 })

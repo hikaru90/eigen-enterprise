@@ -1,5 +1,20 @@
+import { REPOS_DRIVE_SOURCE } from '../../../modules/repos/manifest'
+
 /** The Drive rail's sections: the fixed ones, and one per source root (read-only source folders). */
-export type DriveSection = 'mine' | 'shared' | 'messages' | 'archived' | 'trash' | `source:${string}`
+export type DriveSection = 'mine' | 'shared' | 'messages' | 'archived' | 'trash' | 'github' | `source:${string}`
+
+/**
+ * Drive → GitHub: the GitHub repos plugin's settings (connecting repos with a
+ * token) live inside Drive (owner, 2026-11-13). Its read-only copies are the
+ * source root of `GITHUB_SOURCE`.
+ */
+export const GITHUB_PAGE = '/drive/github'
+export const GITHUB_SOURCE = REPOS_DRIVE_SOURCE
+
+/** The GitHub folder's button to the settings page: connect the first repo, or manage them. */
+export function githubButtonLabel(connectedRepos: number): string {
+  return connectedRepos === 0 ? 'Connect GitHub' : 'Manage repos'
+}
 
 /** A source root as the rail lists it (the server's SourceRootView): its id and where its tree starts. */
 export type SourceSection = { source: string; href: string }
@@ -31,6 +46,8 @@ export function driveSection(pathname: string, rootHref: string | null, sources:
   const path = pathname.replace(/\/+$/, '') || '/'
   const own = SECTION_OF_PAGE[path]
   if (own) return own
+  // The settings belong to the GitHub folder once it exists; before, to the "Connect GitHub" entry.
+  if (path === GITHUB_PAGE) return sources.some((s) => s.source === GITHUB_SOURCE) ? sourceSection(GITHUB_SOURCE) : 'github'
   if (path.startsWith('/drive/folder/') || path.startsWith('/drive/file/')) {
     if (rootHref === null) return null
     const section = SECTION_OF_ROOT[rootHref]
