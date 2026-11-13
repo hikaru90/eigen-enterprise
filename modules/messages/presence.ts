@@ -29,8 +29,12 @@ async function requireMember(d: MessagesDeps, userId: string): Promise<void> {
   if (!(await d.directory.role(userId))) throw new MessagesError('forbidden', 'only members of the company have a presence')
 }
 
-/** A heartbeat { clientId, state: active | idle | gone } from one of the person's tabs. */
-export async function reportPresence(d: MessagesDeps, p: PresencePort, actorId: string, body: Record<string, unknown>): Promise<void> {
+/**
+ * A heartbeat { clientId, state: active | idle | gone } from one of the
+ * person's tabs. Answers their own presence: the shell shows it in the main
+ * nav on every page (Contribute e4ef6be1) without opening the Messages feed.
+ */
+export async function reportPresence(d: MessagesDeps, p: PresencePort, actorId: string, body: Record<string, unknown>): Promise<Presence> {
   const { clientId, state } = body
   if (typeof clientId !== 'string' || !CLIENT_ID.test(clientId)) {
     throw new MessagesError('invalid', 'clientId must be 8–64 letters, digits, - or _')
@@ -40,6 +44,7 @@ export async function reportPresence(d: MessagesDeps, p: PresencePort, actorId: 
   }
   await requireMember(d, actorId)
   p.heartbeat(actorId, clientId, state as HeartbeatState)
+  return p.get(actorId)
 }
 
 /** { doNotDisturb: boolean } — the person's own toggle. */

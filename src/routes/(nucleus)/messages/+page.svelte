@@ -35,6 +35,7 @@
   import PresenceDot from '$lib/messages/presence-dot.svelte'
   import PresenceSelf from '$lib/messages/presence-self.svelte'
   import { ResumableStream } from '$lib/messages/resumable-stream'
+  import { getSelfPresence } from '$lib/messages/self-presence.svelte'
   import {
     applyFrame,
     formatSize,
@@ -90,6 +91,12 @@
   let presenceError = $state<string | null>(null)
   let dndSaving = $state(false)
   const presenceFor = (userId: string): PresenceView => presenceOf(presence, userId)
+  // My status in the main nav (Contribute e4ef6be1) hears what this page learns about me first.
+  const selfPresence = getSelfPresence()
+  function tellNav(people: PresenceView[]) {
+    const mine = people.find((p) => p.userId === data.me)
+    if (mine) selfPresence?.receive(mine)
+  }
 
   let listEl = $state<HTMLDivElement | null>(null)
   let composerEl = $state<HTMLTextAreaElement | null>(null)
@@ -478,8 +485,10 @@
           const { conversationId, unread } = payload as { conversationId: string; unread: number }
           setConversations(setUnread(conversations, conversationId, unread))
         } else if (type === 'presence') {
-          presence = applyPresence(presence, payload as PresenceFrame)
+          const frame = payload as PresenceFrame
+          presence = applyPresence(presence, frame)
           presenceError = null
+          tellNav(frame.people)
         } else if (type === 'presence-error') {
           presenceError = (payload as { error: string }).error
         }
@@ -512,6 +521,7 @@
       })
       presence = applyPresence(presence, { people: [mine], replace: false })
       presenceError = null
+      tellNav([mine])
     } catch (err) {
       presenceError = message(err)
     } finally {

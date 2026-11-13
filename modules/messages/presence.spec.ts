@@ -35,6 +35,13 @@ describe('reportPresence (the heartbeat)', () => {
     expect(tracker.get('bea').status).toBe('away')
   })
 
+  it('answers the reporter’s own presence (the shell shows it in the main nav, Contribute e4ef6be1)', async () => {
+    const { deps, tracker } = setup()
+    expect(await reportPresence(deps, tracker, 'bea', { clientId: CLIENT, state: 'active' })).toMatchObject({ userId: 'bea', status: 'online', doNotDisturb: false })
+    await setDoNotDisturb(deps, tracker, 'bea', { doNotDisturb: true })
+    expect(await reportPresence(deps, tracker, 'bea', { clientId: CLIENT, state: 'idle' })).toMatchObject({ userId: 'bea', status: 'dnd', doNotDisturb: true })
+  })
+
   it('validates the body', async () => {
     const { deps, tracker } = setup()
     expect(await code(reportPresence(deps, tracker, 'bea', { clientId: CLIENT, state: 'busy' }))).toBe('invalid')
