@@ -1,17 +1,7 @@
 <script lang="ts">
   /* eslint-disable svelte/no-navigation-without-resolve -- data-held hrefs go through appHref(), which calls resolve() */
   import type { Snippet } from 'svelte'
-  import type { Component } from 'svelte'
-  import Box from '@lucide/svelte/icons/box'
-  import Brain from '@lucide/svelte/icons/brain'
-  import CalendarDays from '@lucide/svelte/icons/calendar-days'
-  import Globe from '@lucide/svelte/icons/globe'
-  import HardDrive from '@lucide/svelte/icons/hard-drive'
-  import Mail from '@lucide/svelte/icons/mail'
   import Menu from '@lucide/svelte/icons/menu'
-  import MessagesSquare from '@lucide/svelte/icons/messages-square'
-  import Palette from '@lucide/svelte/icons/palette'
-  import Settings from '@lucide/svelte/icons/settings'
   import X from '@lucide/svelte/icons/x'
   import { onMount } from 'svelte'
   import { afterNavigate, replaceState } from '$app/navigation'
@@ -27,6 +17,8 @@
   import PresenceNav from '$lib/messages/presence-nav.svelte'
   import type { SelfPresence } from '$lib/messages/self-presence.svelte'
   import { appHref } from '$lib/shell/href'
+  import { iconFor } from '$lib/shell/module-icon'
+  import { toneOf } from '$lib/shell/module-tone'
   import { currentNavId, type ShellData, type ShellNavItem } from '$lib/shell/nav'
   import { cancelSpeak, speak } from '$lib/speech/tts'
 
@@ -101,18 +93,6 @@
     replaceState(clean, {})
   })
 
-  // Presentation only: an icon per known id; any other module gets the generic box.
-  const icons: Record<string, Component> = {
-    messages: MessagesSquare,
-    settings: Settings,
-    website: Globe,
-    email: Mail,
-    brand: Palette,
-    memory: Brain,
-    drive: HardDrive,
-    calendar: CalendarDays,
-  }
-  const iconFor = (id: string): Component => icons[id] ?? Box
   const currentId = $derived(currentNavId(shell.nav.items, pathname))
   const mainItems = $derived(shell.nav.items.filter((i) => i.id !== 'settings'))
   const footerItems = $derived(shell.nav.items.filter((i) => i.id === 'settings'))
@@ -151,31 +131,31 @@
   {@const Icon = iconFor(item.id)}
   {@const current = currentId === item.id}
   {@const dimmed = !item.active}
+  <!-- The website's nav: full pills, the current one inked; each part's icon
+       sits in a circle of the colour it wears on the website (module-tone.ts). -->
   <a
     href={appHref(item.href)}
     onclick={closeDrawer}
     aria-current={current ? 'page' : undefined}
     data-testid="shell-nav-{item.id}"
-    class="group flex h-8 min-w-0 items-center gap-2.5 rounded-md px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring/60
+    class="group flex h-10 min-w-0 items-center gap-3 rounded-full pr-3 pl-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring
       {current
-      ? 'bg-primary/[0.08] font-medium text-foreground'
+      ? 'bg-primary text-primary-foreground'
       : dimmed
-        ? 'text-foreground/40 hover:bg-primary/[0.05] hover:text-foreground/70'
-        : 'text-foreground/70 hover:bg-primary/[0.05] hover:text-foreground'}"
+        ? 'text-muted-foreground hover:bg-card'
+        : 'text-foreground hover:bg-card'}"
   >
-    <Icon
-      class="size-4 shrink-0 {current ? 'text-primary' : 'opacity-70 group-hover:opacity-100'}"
-      aria-hidden="true"
-      strokeWidth={1.75}
-    />
+    <span class="ico size-8 {dimmed ? 'ico-grey' : `ico-${toneOf(item.id)}`}" aria-hidden="true">
+      <Icon class="size-4" strokeWidth={1.75} />
+    </span>
     <span class="min-w-0 truncate">{item.name}</span>
-    {#if dimmed}<span class="ml-auto shrink-0 text-[10px] text-foreground/35">Off</span>{/if}
+    {#if dimmed}<span class="chip ml-auto h-6 shrink-0 px-2 {current ? '' : 'chip-line'}">Off</span>{/if}
   </a>
 {/snippet}
 
 {#snippet sidebar()}
   <div class="flex h-full min-h-0 flex-col">
-    <div class="flex h-14 shrink-0 items-center px-2">
+    <div class="flex shrink-0 items-center px-3 pt-4 pb-2">
       <!-- The company is the way home: its dashboard at / (polish P-2). -->
       <a
         href={resolve('/')}
@@ -183,40 +163,40 @@
         aria-current={onDashboard ? 'page' : undefined}
         data-testid="shell-company-link"
         title="Dashboard"
-        class="group flex h-10 min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/60
-          {onDashboard ? 'bg-primary/[0.08]' : 'hover:bg-primary/[0.05]'}"
+        class="group flex h-14 min-w-0 flex-1 items-center gap-3 rounded-full pr-4 pl-2 outline-none focus-visible:ring-2 focus-visible:ring-ring
+          {onDashboard ? 'bg-card' : 'hover:bg-card'}"
       >
         {#if companyLogo}
           <img
             src={companyLogo}
             alt=""
             data-testid="shell-company-logo"
-            class="size-7 shrink-0 rounded-md object-contain transition-transform group-hover:scale-105"
+            class="size-10 shrink-0 rounded-full object-contain transition-transform group-hover:scale-105"
           />
         {:else}
           <span
             data-testid="shell-company-badge"
-            class="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground shadow-sm transition-transform group-hover:scale-105"
+            class="flex size-10 shrink-0 items-center justify-center rounded-full bg-signal-yellow font-mono text-sm text-black transition-transform group-hover:scale-105"
             aria-hidden="true">{initial}</span
           >
         {/if}
         <span class="flex min-w-0 flex-col leading-tight">
-          <span class="truncate text-sm font-semibold tracking-tight" data-testid="shell-company"
+          <span class="truncate text-[15px] font-medium tracking-tight" data-testid="shell-company"
             >{companyName}</span
           >
-          <span class="truncate text-[11px] text-foreground/50">Dashboard</span>
+          <span class="mono-label truncate text-xs text-muted-foreground">Dashboard</span>
         </span>
       </a>
     </div>
-    <nav class="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-4" aria-label="Main">
-      <ul class="flex flex-col gap-px" data-testid="shell-nav">
+    <nav class="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-4" aria-label="Main">
+      <ul class="flex flex-col gap-1" data-testid="shell-nav">
         {#each mainItems as item (item.id)}<li>{@render navLink(item)}</li>{/each}
       </ul>
-      <ul class="mt-5 flex flex-col gap-px border-t border-border pt-3">
+      <ul class="mt-6 flex flex-col gap-1">
         {#each footerItems as item (item.id)}<li>{@render navLink(item)}</li>{/each}
       </ul>
     </nav>
-    <div class="flex shrink-0 items-center gap-2.5 border-t border-border px-3 py-3" data-testid="shell-user-footer">
+    <div class="mx-3 mb-3 flex shrink-0 items-center gap-2.5 rounded-full bg-card py-2 pr-2 pl-2.5" data-testid="shell-user-footer">
       {#if presence}
         <PresenceNav
           self={presence}
@@ -228,12 +208,12 @@
         <img
           src={userImage}
           alt=""
-          class="size-7 shrink-0 rounded-full object-cover"
+          class="size-8 shrink-0 rounded-full object-cover"
           data-testid="shell-user-avatar"
         />
       {:else}
         <span
-          class="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/[0.08] text-[11px] font-medium"
+          class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary font-mono text-xs text-primary-foreground"
           data-testid="shell-user-initial"
           aria-hidden="true">{userLabel.slice(0, 1).toUpperCase()}</span
         >
@@ -241,7 +221,7 @@
       {#if !presence}
         <div class="min-w-0 flex-1">
           <p class="truncate text-[13px] font-medium" data-testid="shell-user">{userLabel}</p>
-          {#if user?.name && user.email}<p class="truncate text-[11px] text-foreground/50">
+          {#if user?.name && user.email}<p class="truncate text-xs text-muted-foreground">
               {user.email}
             </p>{/if}
         </div>
@@ -257,7 +237,7 @@
 >
   <!-- Desktop sidebar -->
   <aside
-    class="hidden w-60 shrink-0 border-r border-border bg-sidebar md:block"
+    class="hidden w-64 shrink-0 bg-background md:block"
     data-testid="shell-sidebar"
   >
     {@render sidebar()}
@@ -274,7 +254,7 @@
       ></button>
       <aside
         id="shell-drawer"
-        class="absolute inset-y-0 left-0 w-72 max-w-[85vw] border-r border-border bg-sidebar pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl"
+        class="absolute inset-y-0 left-0 w-72 max-w-[85vw] rounded-r-[2rem] bg-background pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl"
         data-testid="shell-drawer"
       >
         {@render sidebar()}
@@ -285,12 +265,12 @@
   <div class="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="shell-column">
     <!-- The assistant's top bar, on every signed-in page (on phones with the menu). -->
     <header
-      class="box-content flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-3 pt-[env(safe-area-inset-top)] sm:px-4"
+      class="box-content flex h-16 shrink-0 items-center gap-2 bg-background px-3 pt-[env(safe-area-inset-top)] sm:px-6"
       data-testid="shell-topbar"
     >
       <button
         type="button"
-        class="relative -ml-1 flex size-8 shrink-0 items-center justify-center rounded-md text-foreground/70 outline-none hover:bg-primary/[0.05] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 md:hidden"
+        class="relative -ml-1 flex size-10 shrink-0 items-center justify-center rounded-full bg-card text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring md:hidden"
         aria-label={menuLabel}
         aria-expanded={drawerOpen}
         aria-controls="shell-drawer"
@@ -314,7 +294,7 @@
       </button>
       <div class="flex min-w-0 flex-1 justify-center">
         {#if assistant}
-          <div class="flex w-full max-w-2xl min-w-0">
+          <div class="flex w-full max-w-3xl min-w-0">
             <AssistantBar {assistant} />
           </div>
         {/if}

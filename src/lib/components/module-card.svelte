@@ -1,8 +1,10 @@
 <script lang="ts">
-  import ChevronRight from '@lucide/svelte/icons/chevron-right'
+  import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right'
   import type { Pathname } from '$app/types'
   import type { ModuleOverview } from '$lib/server/overview/overview'
   import { appHref } from '$lib/shell/href'
+  import { iconFor } from '$lib/shell/module-icon'
+  import { hasGrain, toneOf } from '$lib/shell/module-tone'
 
   /**
    * A dashboard card for one active module: status dot, key counts, link to
@@ -11,49 +13,50 @@
    * card shows the module but is no link — never a way into a 403.
    */
   let { module, href }: { module: ModuleOverview; href: Pathname | null } = $props()
+
+  // The part's colour and icon, as the website shows it (module-tone.ts).
+  const tone = $derived(toneOf(module.id))
+  const Icon = $derived(iconFor(module.id))
 </script>
 
 <svelte:element
   this={href ? 'a' : 'div'}
   href={href ? appHref(href) : undefined}
-  class="group flex min-w-0 flex-col rounded-lg border border-border bg-background p-4 outline-none {href
-    ? 'transition-[border-color,box-shadow] hover:border-foreground/20 hover:shadow-[0_1px_2px_rgb(0_0_0/0.04),0_4px_12px_rgb(0_0_0/0.04)] focus-visible:ring-2 -ring'
+  class="tile tile-{tone} group flex min-h-56 min-w-0 flex-col p-6 outline-none {hasGrain(tone) ? 'grain' : ''} {href
+    ? 'transition-transform hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
     : ''}"
   data-testid="module-card"
 >
-  <div class="flex min-w-0 items-center gap-2">
-    <span
-      class="size-2 shrink-0 rounded-full {module.active ? 'bg-eigen-green' : 'bg-foreground/20'}"
-      aria-hidden="true"
-    ></span>
-    <h3 class="min-w-0 flex-1 truncate text-sm font-medium">{module.name}</h3>
+  <div class="flex min-w-0 items-center justify-between gap-2">
+    <span class="ico {tone === 'black' || tone === 'blue' || tone === 'violet' ? 'ico-white' : 'ico-black'}" aria-hidden="true">
+      <Icon class="size-4" strokeWidth={1.75} />
+    </span>
+    <span class="chip chip-line chip-dot {module.active ? '' : 'chip-off'}">{module.active ? 'On' : 'Off'}</span>
+  </div>
+  <h3 class="display-m mt-auto flex min-w-0 items-center gap-2 pt-8">
+    <span class="min-w-0 truncate">{module.name}</span>
     {#if href}
-      <ChevronRight
-        class="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
+      <ArrowUpRight
+        class="size-5 shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
         aria-hidden="true"
       />
     {/if}
-  </div>
-  <p class="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{module.description}</p>
+  </h3>
+  <p class="tile-soft mt-2 line-clamp-2 text-sm leading-relaxed">{module.description}</p>
   {#if module.counts.length > 0}
-    <dl class="mt-4 flex flex-wrap gap-x-6 gap-y-2">
+    <dl class="mt-4 flex flex-wrap gap-2">
       {#each module.counts as count (count.label)}
-        <div class="min-w-0">
-          <dt class="text-xs text-muted-foreground">{count.label}</dt>
-          <dd
-            class="text-lg font-semibold tabular-nums leading-tight"
-            data-testid="module-card-count-{count.label}"
-          >
-            {count.value}
-          </dd>
+        <div class="chip chip-wash min-w-0">
+          <dt>{count.label}</dt>
+          <dd class="font-medium" data-testid="module-card-count-{count.label}">{count.value}</dd>
         </div>
       {/each}
     </dl>
   {:else if module.note}
-    <p class="mt-4 text-xs text-muted-foreground">{module.note}</p>
+    <p class="tile-soft mt-4 text-sm">{module.note}</p>
   {:else if module.results.length > 0}
-    <p class="mt-4 truncate text-xs text-foreground/70">
-      {module.results[0].label}{#if module.results[0].detail}<span class="text-muted-foreground">
+    <p class="mt-4 truncate text-sm">
+      {module.results[0].label}{#if module.results[0].detail}<span class="tile-soft">
           · {module.results[0].detail}</span
         >{/if}
     </p>

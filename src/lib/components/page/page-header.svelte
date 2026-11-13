@@ -37,11 +37,11 @@
   <div class="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-3">
     <div class="min-w-0">
       <div class="flex min-w-0 items-center gap-3">
-        <h1 class="min-w-0 truncate text-xl font-semibold tracking-tight">{title}</h1>
+        <h1 class="display-l min-w-0 truncate pb-1">{title}</h1>
         {#if status}<StatusPill label={status.label} on={status.on} />{/if}
       </div>
       {#if description}
-        <p class="mt-1.5 text-sm text-muted-foreground" data-testid="page-description">
+        <p class="mt-2 max-w-[60ch] text-[15px] text-muted-foreground" data-testid="page-description">
           {description}
         </p>
       {/if}
@@ -53,8 +53,9 @@
     {/if}
   </div>
   {#if tabs && tabs.length > 0}
+    <!-- The website's nav capsule: pills on a grey track, the current one inked. -->
     <nav
-      class="mt-5 flex gap-1 overflow-x-auto border-b border-border"
+      class="mt-6 flex w-fit max-w-full gap-0.5 overflow-x-auto rounded-full bg-card p-1"
       aria-label={navLabel ?? `${title} sections`}
       data-testid={navTestId}
     >
@@ -63,10 +64,10 @@
           href={appHref(tab.href)}
           aria-current={current === tab.id ? 'page' : undefined}
           data-testid={tabTestId(tab.id)}
-          class="-mb-px shrink-0 border-b-2 px-2.5 py-2.5 text-[13px] whitespace-nowrap transition-colors outline-none focus-visible:ring-2 -ring {current ===
+          class="shrink-0 rounded-full px-4 py-2 text-sm whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring {current ===
           tab.id
-            ? 'border-foreground font-medium text-foreground'
-            : 'border-transparent text-muted-foreground hover:text-foreground'}">{tab.label}</a
+            ? 'bg-primary text-primary-foreground'
+            : 'text-muted-foreground hover:bg-background hover:text-foreground'}">{tab.label}</a
         >
       {/each}
     </nav>

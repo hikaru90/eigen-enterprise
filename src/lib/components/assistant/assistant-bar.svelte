@@ -47,13 +47,16 @@
 
 <svelte:window onkeydown={onWindowKeydown} />
 
+<!-- The website's yellow "Ask the assistant" pill: a black icon circle, the field, a ⌘K chip. -->
 <div class="flex min-w-0 flex-1 items-center gap-2" data-testid="assistant-bar">
-  <form class="relative flex min-w-0 flex-1 items-center" onsubmit={submit} role="search">
-    <Sparkles
-      class="pointer-events-none absolute left-2.5 size-4 text-muted-foreground"
-      aria-hidden="true"
-      strokeWidth={1.75}
-    />
+  <form
+    class="tile-yellow relative flex h-11 min-w-0 flex-1 items-center gap-3 rounded-full pr-1.5 pl-1.5 transition-colors focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 hover:brightness-[1.04]"
+    onsubmit={submit}
+    role="search"
+  >
+    <span class="ico ico-black size-8" aria-hidden="true">
+      <Sparkles class="size-4" strokeWidth={1.75} />
+    </span>
     <input
       bind:this={inputEl}
       bind:value
@@ -65,17 +68,17 @@
       aria-label="Ask the assistant"
       aria-keyshortcuts={isMac ? 'Meta+K' : 'Control+K'}
       data-testid="assistant-bar-input"
-      class="h-8 w-full min-w-0 rounded-md border border-border bg-background pr-14 pl-8 text-sm text-foreground outline-none placeholder:text-muted-foreground hover:border-foreground/25 focus-visible:border-primary/60 focus-visible:ring-2 -ring"
+      class="assistant-bar-input h-full w-full min-w-0 border-0 bg-transparent text-[15px] font-medium text-black outline-none"
     />
     <kbd
-      class="pointer-events-none absolute right-2 hidden items-center gap-0.5 rounded border border-border bg-muted/60 px-1.5 py-px font-sans text-xs font-medium text-muted-foreground sm:inline-flex"
+      class="chip chip-line pointer-events-none hidden shrink-0 sm:inline-flex"
       data-testid="assistant-bar-shortcut"
       aria-hidden="true">{isMac ? '⌘' : 'Ctrl'} K</kbd
     >
   </form>
   <button
     type="button"
-    class="flex size-8 shrink-0 items-center justify-center rounded-md text-foreground/60 outline-none hover:bg-primary/[0.06] hover:text-foreground focus-visible:ring-2 -ring"
+    class="flex size-11 shrink-0 items-center justify-center rounded-full bg-card text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
     aria-label={assistant.open ? 'Close the assistant' : 'Open the assistant'}
     aria-expanded={assistant.open}
     aria-controls="assistant-panel"
@@ -89,3 +92,10 @@
     {/if}
   </button>
 </div>
+
+<style>
+  /* The field sits on the yellow tile: its placeholder is the tile's soft text, not the page's muted token. */
+  .assistant-bar-input::placeholder {
+    color: rgb(0 0 0 / 66%);
+  }
+</style>

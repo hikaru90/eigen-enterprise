@@ -1,7 +1,7 @@
 <script lang="ts" module>
   /** The dialog panel's surface (colour, radius, border, padding, shadow) — shared with the static design-system preview. */
   export const dialogSurfaceClass =
-    'bg-background grid w-full max-w-lg gap-4 rounded-lg border p-6 shadow-lg'
+    'bg-background grid w-full max-w-lg gap-4 rounded-[2rem] border-0 p-7 shadow-2xl'
 </script>
 
 <script lang="ts">

@@ -27,15 +27,15 @@
         <a
           href={home}
           rel={websiteOrigin ? 'external' : undefined}
-          class="text-xs text-muted-foreground underline-offset-2 hover:underline"
+          class="chip chip-line text-muted-foreground hover:text-foreground"
           data-testid="back-home">← Back to home</a
         >
       </p>
     {/if}
     <header class="text-center">
       <Wordmark href={home} />
-      <h1 class="mt-6 text-xl font-semibold tracking-tight">{title}</h1>
-      {#if subtitle}<p class="mt-1.5 text-sm text-muted-foreground">{subtitle}</p>{/if}
+      <h1 class="display-l mt-8">{title}</h1>
+      {#if subtitle}<p class="mt-3 text-[15px] text-muted-foreground">{subtitle}</p>{/if}
     </header>
     <div class="mt-8">
       {@render children()}

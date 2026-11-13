@@ -21,11 +21,11 @@
 
 <Popover.Root bind:open>
   <Popover.Trigger
-    class="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 text-[13px] text-foreground/70 outline-none hover:bg-primary/[0.05] hover:text-foreground focus-visible:ring-2 -ring data-[state=open]:bg-primary/[0.08] data-[state=open]:text-foreground"
+    class="mono-label flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-full px-1.5 text-xs text-foreground shadow-[inset_0_0_0_1px_var(--input)] outline-none hover:shadow-[inset_0_0_0_1px_var(--foreground)] focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-primary data-[state=open]:text-primary-foreground sm:pr-4"
     aria-label="Contribute: propose an improvement"
     data-testid="contribute-trigger"
   >
-    <Lightbulb class="size-4 shrink-0" aria-hidden="true" strokeWidth={1.75} />
+    <span class="ico ico-yellow size-8" aria-hidden="true"><Lightbulb class="size-4" strokeWidth={1.75} /></span>
     <span class="hidden sm:inline">Contribute</span>
   </Popover.Trigger>
   <Popover.Content align="end" side="bottom" sideOffset={6} class="w-[min(24rem,calc(100vw-1.5rem))] p-4">

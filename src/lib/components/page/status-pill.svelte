@@ -3,14 +3,13 @@
   let { label, on }: { label: string; on: boolean } = $props()
 </script>
 
+<!-- The website's status chip: mono, uppercase, a dot (the success token on, muted off). -->
 <span
-  class="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-xs font-medium {on
-    ? 'text-foreground'
-    : 'text-muted-foreground'}"
+  class="chip chip-line shrink-0 text-xs {on ? 'text-foreground' : 'text-muted-foreground'}"
   data-testid="module-status"
 >
   <span
-    class="size-1.5 rounded-full {on ? 'bg-success' : 'bg-muted-foreground/40'}"
+    class="size-2 rounded-full {on ? 'bg-success' : 'bg-muted-foreground/40'}"
     aria-hidden="true"
   ></span>
   {label}

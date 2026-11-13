@@ -1,15 +1,20 @@
 <script lang="ts">
   /* eslint-disable svelte/no-navigation-without-resolve -- data-held hrefs go through appHref(), which calls resolve() */
   import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right'
+  import Bot from '@lucide/svelte/icons/bot'
   import Sparkles from '@lucide/svelte/icons/sparkles'
+  import UserPlus from '@lucide/svelte/icons/user-plus'
   import { resolve } from '$app/paths'
   import { canOpen, type Capabilities } from '$lib/access/capabilities'
   import { assistantIfOn } from '$lib/components/assistant/context'
+  import DotMatrix from '$lib/components/dot-matrix.svelte'
   import ModuleCard from '$lib/components/module-card.svelte'
   import PageFrame from '$lib/components/page/page-frame.svelte'
   import PageHeader from '$lib/components/page/page-header.svelte'
   import type { Dashboard } from '$lib/server/overview/dashboard'
   import { appHref } from '$lib/shell/href'
+  import { iconFor } from '$lib/shell/module-icon'
+  import { toneOf } from '$lib/shell/module-tone'
   import type { ShellNavItem } from '$lib/shell/nav'
   import { groupActionsByDay } from './activity-groups'
 
@@ -73,10 +78,14 @@
     'Build me a landing page for a new offer',
   ]
 
-  const tile =
-    'flex min-w-0 flex-col rounded-lg border border-border bg-background px-4 py-3.5 text-left transition-colors outline-none hover:border-foreground/20 focus-visible:ring-2 -ring'
-  const sideLink =
-    'group flex min-w-0 items-center justify-between gap-2 rounded-md px-2.5 py-2 text-sm outline-none hover:bg-primary/[0.05] focus-visible:ring-2 -ring'
+  /** The display tile shows at most two digits, like the website's. */
+  const needsYouDisplay = $derived(needsYou > 99 ? '99+' : String(needsYou))
+
+  const statTile = 'tile flex min-h-44 min-w-0 flex-col p-6 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-transform hover:-translate-y-0.5'
+  const goLink =
+    'group flex h-12 min-w-0 items-center gap-3 rounded-full bg-card pr-4 pl-1.5 text-[15px] outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring'
+  const inkPill =
+    'mono-label inline-flex h-9 shrink-0 items-center rounded-full bg-primary px-4 text-xs text-primary-foreground outline-none hover:opacity-85 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
 </script>
 
 <PageFrame testid="dashboard">
@@ -90,67 +99,87 @@
   {#if providerMissing}
     <!-- Kept from the former full-screen gate: without a provider the assistant cannot work. -->
     <div
-      class="mt-6 flex min-w-0 flex-col gap-3 rounded-lg border border-primary/30 bg-primary/[0.05] px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+      class="tile tile-violet grain mt-8 flex min-w-0 flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between"
       data-testid="dashboard-provider-notice"
     >
-      <span class="min-w-0">
-        <span class="font-medium">Connect your AI provider.</span>
-        <span class="text-foreground/60"
-          >The assistant and agents work once a provider is connected.</span
-        >
+      <span class="flex min-w-0 items-center gap-4">
+        <span class="ico ico-white size-11" aria-hidden="true"><Sparkles class="size-5" strokeWidth={1.75} /></span>
+        <span class="min-w-0">
+          <span class="block text-lg font-medium">Connect your AI provider.</span>
+          <span class="tile-soft block text-[15px]"
+            >The assistant and agents work once a provider is connected.</span
+          >
+        </span>
       </span>
       <a
         href={resolve('/settings/llm')}
-        class="shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground outline-none hover:bg-primary/90 focus-visible:ring-2 -ring"
+        class="mono-label relative z-10 inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-white px-5 text-xs text-black outline-none hover:bg-white/90 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
         data-testid="dashboard-provider-connect">Connect provider</a
       >
     </div>
   {/if}
 
-  <!-- Ask: the assistant is one keystroke away on every page; here it is the first thing. -->
-  {#if assistant}
-    <section
-      class="mt-6 flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4 sm:flex-row sm:items-center"
-      aria-label="Ask the assistant"
-      data-testid="dashboard-ask"
-    >
-      <button
-        type="button"
-        class="flex min-w-0 flex-1 items-center gap-2.5 rounded-md border border-border bg-background px-3 py-2.5 text-left text-sm text-muted-foreground outline-none hover:border-foreground/25 focus-visible:ring-2 -ring"
-        onclick={() => assistant.focusBar()}
-        data-testid="dashboard-ask-button"
+  <!-- The collage: the company, at a glance — the website's hero, filled with this company. -->
+  <div class="mt-8 grid min-w-0 grid-cols-1 gap-3 md:grid-cols-6 xl:grid-cols-12" data-testid="overview-tiles">
+    <!-- Ask: the assistant is one keystroke away on every page; here it is the first thing. -->
+    {#if assistant}
+      <section
+        class="tile tile-ice relative flex min-h-72 min-w-0 flex-col overflow-hidden p-6 md:col-span-6 xl:col-span-7 xl:row-span-2 sm:p-8"
+        aria-label="Ask the assistant"
+        data-testid="dashboard-ask"
       >
-        <Sparkles class="size-4 shrink-0 text-primary" aria-hidden="true" strokeWidth={1.75} />
-        <span class="min-w-0 truncate">Ask the assistant anything, or ask it to do the work…</span>
-      </button>
-      <div class="flex min-w-0 flex-wrap gap-1.5">
-        {#each suggestions as text (text)}
-          <button
-            type="button"
-            class="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-foreground/70 outline-none hover:border-foreground/25 hover:text-foreground focus-visible:ring-2 -ring"
-            onclick={() => assistant.prefill(text)}
-            data-testid="dashboard-suggestion">{text}</button
-          >
-        {/each}
-      </div>
-    </section>
-  {/if}
+        <span class="orb pointer-events-none absolute -top-4 -right-4 size-36 sm:top-5 sm:right-5 sm:size-28" aria-hidden="true"></span>
+        <p class="tile-soft relative max-w-[30ch] text-[15px]">
+          Ask the assistant anything, or ask it to do the work.
+        </p>
+        <button
+          type="button"
+          class="relative mt-auto max-w-[22ch] pt-10 text-left text-2xl leading-tight font-medium tracking-tight outline-none hover:underline hover:decoration-1 hover:underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring sm:text-[1.75rem]"
+          onclick={() => assistant.focusBar()}
+          data-testid="dashboard-ask-button"
+        >
+          What should happen in the company today?
+        </button>
+        <div class="relative mt-6 flex min-w-0 flex-wrap gap-2">
+          {#each suggestions as text (text)}
+            <button
+              type="button"
+              class="h-10 rounded-full bg-white/80 px-4 text-sm text-black outline-none hover:bg-white focus-visible:ring-2 focus-visible:ring-ring"
+              onclick={() => assistant.prefill(text)}
+              data-testid="dashboard-suggestion">{text}</button
+            >
+          {/each}
+        </div>
+      </section>
+    {/if}
 
-  <!-- Status tiles -->
-  <div class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3" data-testid="overview-tiles">
-    <a href="#needs-you" class={tile} data-testid="dashboard-needs-you-tile">
-      <span class="text-xs text-muted-foreground">Needs you</span>
-      <span class="mt-1 flex items-center gap-2 text-2xl font-semibold tabular-nums">
-        {needsYou}
-        {#if needsYou > 0}<span class="size-2 rounded-full bg-eigen-green" aria-hidden="true"
-          ></span>{/if}
+    <a
+      href="#needs-you"
+      class="{statTile} tile-black md:col-span-6 {assistant ? 'xl:col-span-5 xl:row-span-2' : 'xl:col-span-6'}"
+      data-testid="dashboard-needs-you-tile"
+    >
+      <span class="flex items-center justify-between gap-2">
+        <span class="ico ico-white" aria-hidden="true"><Bot class="size-4" strokeWidth={1.75} /></span>
+        <span class="chip chip-line chip-dot {needsYou > 0 ? 'chip-wait' : ''}"
+          >{needsYou > 0 ? 'Waiting' : 'All clear'}</span
+        >
       </span>
-      <span class="mt-0.5 text-xs text-muted-foreground">Approvals and warnings</span>
+      <span class="my-4 block h-28 min-h-0 flex-1 xl:h-auto">
+        <DotMatrix text={needsYouDisplay} />
+      </span>
+      <span class="flex items-end justify-between gap-3">
+        <span class="flex min-w-0 flex-col gap-0.5">
+          <span class="text-[15px] font-medium">Needs you <span class="sr-only">: {needsYou}</span></span>
+          <span class="tile-soft font-mono text-xs uppercase tracking-[0.06em]">Approvals and warnings</span>
+        </span>
+      </span>
     </a>
-    <a href="#modules" class={tile}>
-      <span class="text-xs text-muted-foreground">Modules working for you</span>
-      <span class="mt-1 text-2xl font-semibold tabular-nums">{activeModules.length}</span>
-      <span class="mt-0.5 text-xs text-muted-foreground" data-testid="overview-modules-hint"
+
+    <a href="#modules" class="{statTile} tile-blue md:col-span-3 {assistant ? 'xl:col-span-4' : 'xl:col-span-3'}">
+      <span class="chip chip-line w-fit">Modules</span>
+      <span class="display-xl mt-auto pt-6 tabular-nums">{activeModules.length}</span>
+      <span class="mt-2 text-[15px] font-medium">Working for you</span>
+      <span class="tile-soft text-sm" data-testid="overview-modules-hint"
         >{switchedOff === 0
           ? 'All switched on'
           : assistant
@@ -160,48 +189,56 @@
     </a>
     <a
       href={websitePage ? appHref(websitePage) : '#modules'}
-      class={tile}
+      class="{statTile} tile-green md:col-span-3 {assistant ? 'xl:col-span-4' : 'xl:col-span-3'}"
       data-testid="overview-site-tile"
     >
-      <span class="text-xs text-muted-foreground">Apps</span>
-      <span class="mt-1 text-2xl font-semibold">{apps.value}</span>
-      <span class="mt-0.5 truncate text-xs text-muted-foreground">{apps.hint}</span>
+      <span class="chip chip-line w-fit">Apps</span>
+      <span class="display-xl mt-auto pt-6">{apps.value}</span>
+      <span class="mt-2 text-[15px] font-medium">On your website</span>
+      <span class="tile-soft truncate text-sm">{apps.hint}</span>
+    </a>
+    <a
+      href={resolve('/assistant/activity')}
+      class="{statTile} tile-violet grain md:col-span-6 {assistant ? 'xl:col-span-4' : 'xl:col-span-12'}"
+    >
+      <span class="chip chip-line w-fit">Agents</span>
+      <span class="display-xl mt-auto pt-6 tabular-nums">{overview.actions.length}</span>
+      <span class="mt-2 text-[15px] font-medium">Recent actions</span>
+      <span class="tile-soft text-sm">What the assistant did for the company</span>
     </a>
   </div>
 
-  <div class="mt-10 grid min-w-0 grid-cols-1 gap-10 xl:grid-cols-[minmax(0,1fr)_340px]">
+  <div class="mt-14 grid min-w-0 grid-cols-1 gap-12 xl:grid-cols-[minmax(0,1fr)_380px]">
     <div class="min-w-0">
       <!-- Needs you -->
       <section id="needs-you" class="scroll-mt-6" data-testid="overview-approvals">
-        <h2 class="text-[13px] font-medium">Needs you</h2>
+        <h2 class="display-m">Needs you</h2>
         {#if dashboard.backup}
           <div
-            class="mt-2 flex min-w-0 items-center justify-between gap-3 rounded-lg border border-red-700/40 px-4 py-2.5 text-sm"
+            class="mt-4 flex min-w-0 items-center justify-between gap-3 rounded-full bg-card py-1.5 pr-1.5 pl-2 text-[15px]"
             data-testid="overview-backup-notice"
             data-kind={dashboard.backup.kind}
           >
-            <span class="flex min-w-0 items-center gap-2.5">
-              <span class="size-1.5 shrink-0 rounded-full bg-red-700" aria-hidden="true"></span>
+            <span class="flex min-w-0 items-center gap-3">
+              <span class="chip chip-dot chip-bad chip-ink shrink-0">Backup</span>
               <span class="min-w-0 truncate">{dashboard.backup.text}</span>
             </span>
-            <a
-              href={resolve('/settings/backups')}
-              class="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium outline-none hover:bg-foreground/[0.04] focus-visible:ring-2 -ring"
-              >Open backups</a
-            >
+            <a href={resolve('/settings/backups')} class={inkPill}>Open backups</a>
           </div>
         {/if}
         {#if overview.approvals.length === 0 && !dashboard.backup}
-          <p class="mt-2 rounded-lg border border-border px-4 py-3 text-sm text-muted-foreground">
+          <p class="mt-4 flex items-center gap-3 rounded-full bg-card py-1.5 pr-5 pl-2 text-[15px] text-muted-foreground">
+            <span class="chip chip-dot chip-ink">Clear</span>
             Nothing waiting on you.
           </p>
         {:else if overview.approvals.length > 0}
-          <ul class="mt-2 divide-y divide-border overflow-hidden rounded-lg border border-border">
+          <ul class="mt-4 flex flex-col gap-2">
             {#each overview.approvals as approval (approval.id)}
-              <li class="flex min-w-0 items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                <span class="flex min-w-0 items-center gap-2.5">
-                  <span class="size-1.5 shrink-0 rounded-full bg-eigen-green" aria-hidden="true"
-                  ></span>
+              <li
+                class="flex min-w-0 items-center justify-between gap-3 rounded-full bg-card py-1.5 pr-1.5 pl-2 text-[15px]"
+              >
+                <span class="flex min-w-0 items-center gap-3">
+                  <span class="chip chip-dot chip-wait chip-ink shrink-0">Approve</span>
                   <span class="min-w-0 truncate">{approval.text}</span>
                 </span>
                 <!-- Approval cards are decided in the conversation that raised them. -->
@@ -209,7 +246,7 @@
                   <button
                     type="button"
                     onclick={() => assistant.openPanel('chat')}
-                    class="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium outline-none hover:bg-foreground/[0.04] focus-visible:ring-2 -ring"
+                    class={inkPill}
                     data-testid="overview-approval-review">Review</button
                   >
                 {/if}
@@ -218,13 +255,13 @@
           </ul>
           {#if !assistant}
             <p
-              class="mt-2 text-xs text-muted-foreground"
+              class="mt-3 text-sm text-muted-foreground"
               data-testid="overview-approvals-assistant-off"
             >
               The Assistant is switched off: approvals are decided in its conversation.{#if canManagePlugins}
                 Switch it on in <a
                   href={resolve('/settings/modules')}
-                  class="underline underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 -ring"
+                  class="underline underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                   >Settings → Plugins</a
                 >.{/if}
             </p>
@@ -232,13 +269,13 @@
         {/if}
       </section>
 
-      <!-- Active modules -->
-      <section id="modules" class="mt-10 scroll-mt-6">
-        <h2 class="text-[13px] font-medium">Modules</h2>
+      <!-- Active modules: each part in the colour it wears on the website. -->
+      <section id="modules" class="mt-14 scroll-mt-6">
+        <h2 class="display-m">Modules</h2>
         {#if activeModules.length === 0}
-          <p class="mt-2 text-sm text-muted-foreground">No module is active yet.</p>
+          <p class="mt-4 text-[15px] text-muted-foreground">No module is active yet.</p>
         {:else}
-          <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+          <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
             {#each activeModules as module (module.id)}
               <ModuleCard {module} href={pageOf(module.id)} />
             {/each}
@@ -247,48 +284,37 @@
       </section>
     </div>
 
-    <div class="flex min-w-0 flex-col gap-10">
-      <!-- Recent activity: one card, grouped by day, the time muted beside each item. -->
-      <section
-        class="min-w-0 overflow-hidden rounded-lg border border-border bg-muted/30"
-        data-testid="dashboard-activity"
-      >
-        <div class="flex items-baseline justify-between gap-2 border-b border-border px-4 py-3">
-          <h2 class="text-[13px] font-medium">Recent activity</h2>
+    <div class="flex min-w-0 flex-col gap-12">
+      <!-- Recent activity: one tile, grouped by day, the time beside each item. -->
+      <section class="tile tile-grey min-w-0 p-5" data-testid="dashboard-activity">
+        <div class="flex items-center justify-between gap-2 px-1">
+          <h2 class="display-m">Recent activity</h2>
           <a
             href={resolve('/assistant/activity')}
-            class="text-xs text-muted-foreground hover:text-foreground hover:underline">All activity</a
+            class="chip chip-line outline-none hover:bg-background focus-visible:ring-2 focus-visible:ring-ring">All activity</a
           >
         </div>
         {#if actionGroups.length === 0}
-          <p class="px-4 py-3 text-sm text-muted-foreground">Nothing yet.</p>
+          <p class="mt-4 px-1 text-[15px] text-muted-foreground">Nothing yet.</p>
         {:else}
-          <div class="flex flex-col gap-3 p-3" data-testid="overview-actions">
+          <div class="mt-4 flex flex-col gap-4" data-testid="overview-actions">
             {#each actionGroups as group (group.label)}
               <div class="min-w-0" data-testid="overview-actions-group">
-                <h3
-                  class="px-1 pb-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase"
-                >
+                <h3 class="mono-label px-1 pb-2 font-mono text-xs text-muted-foreground">
                   {group.label}
                 </h3>
-                <ol
-                  class="divide-y divide-border overflow-hidden rounded-md border border-border bg-background"
-                >
+                <ol class="flex flex-col gap-1.5">
                   {#each group.actions as action, i (i)}
-                    <li class="flex min-w-0 items-start gap-2.5 px-3 py-2">
+                    <li class="flex min-w-0 items-start gap-3 rounded-[1.25rem] bg-background px-4 py-2.5">
                       <span
-                        class="mt-1.5 size-1.5 shrink-0 rounded-full {action.ok
-                          ? 'bg-foreground/30'
-                          : 'bg-red-500'}"
+                        class="mt-1.5 size-2 shrink-0 rounded-full {action.ok ? 'bg-signal-green' : 'bg-destructive'}"
                         aria-hidden="true"
                       ></span>
                       <p class="min-w-0 flex-1 text-sm leading-snug wrap-break-word">
-                        {action.text}{#if !action.ok}<span class="text-xs text-red-600">
-                            · failed</span
-                          >{/if}
+                        {action.text}{#if !action.ok}<span class="text-destructive"> · failed</span>{/if}
                       </p>
                       <time
-                        class="shrink-0 pt-0.5 text-xs text-muted-foreground tabular-nums"
+                        class="shrink-0 pt-0.5 font-mono text-xs text-muted-foreground tabular-nums"
                         datetime={action.at}>{when(action.at)}</time
                       >
                     </li>
@@ -300,16 +326,18 @@
         {/if}
       </section>
 
-      <!-- Quick links -->
+      <!-- Quick links: the website's nav pills, each part in its colour. -->
       <section class="min-w-0" data-testid="dashboard-quick-links">
-        <h2 class="text-[13px] font-medium">Go to</h2>
-        <ul class="mt-2 flex flex-col gap-px">
+        <h2 class="display-m">Go to</h2>
+        <ul class="mt-4 flex flex-col gap-2">
           {#each quickLinks as item (item.id)}
+            {@const Icon = iconFor(item.id)}
             <li>
-              <a href={appHref(item.href)} class={sideLink} data-testid="dashboard-link-{item.id}">
-                <span class="min-w-0 truncate">{item.name}</span>
+              <a href={appHref(item.href)} class={goLink} data-testid="dashboard-link-{item.id}">
+                <span class="ico size-9 ico-{toneOf(item.id)}" aria-hidden="true"><Icon class="size-4" strokeWidth={1.75} /></span>
+                <span class="min-w-0 flex-1 truncate">{item.name}</span>
                 <ArrowUpRight
-                  class="size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground"
+                  class="size-4 shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
                   aria-hidden="true"
                 />
               </a>
@@ -317,14 +345,11 @@
           {/each}
           {#if assistant}
             <li>
-              <a
-                href={resolve('/assistant')}
-                class={sideLink}
-                data-testid="dashboard-link-assistant"
-              >
-                <span class="min-w-0 truncate">Assistant conversations</span>
+              <a href={resolve('/assistant')} class={goLink} data-testid="dashboard-link-assistant">
+                <span class="ico ico-yellow size-9" aria-hidden="true"><Sparkles class="size-4" strokeWidth={1.75} /></span>
+                <span class="min-w-0 flex-1 truncate">Assistant conversations</span>
                 <ArrowUpRight
-                  class="size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground"
+                  class="size-4 shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
                   aria-hidden="true"
                 />
               </a>
@@ -332,14 +357,11 @@
           {/if}
           {#if canInvite}
             <li>
-              <a
-                href={resolve('/settings/members')}
-                class={sideLink}
-                data-testid="dashboard-link-invite"
-              >
-                <span class="min-w-0 truncate">Invite a teammate</span>
+              <a href={resolve('/settings/members')} class={goLink} data-testid="dashboard-link-invite">
+                <span class="ico ico-peach size-9" aria-hidden="true"><UserPlus class="size-4" strokeWidth={1.75} /></span>
+                <span class="min-w-0 flex-1 truncate">Invite a teammate</span>
                 <ArrowUpRight
-                  class="size-3.5 shrink-0 text-muted-foreground group-hover:text-foreground"
+                  class="size-4 shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
                   aria-hidden="true"
                 />
               </a>

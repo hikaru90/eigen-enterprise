@@ -70,8 +70,18 @@
     --signal-blue: #1f43ff;
     --signal-green: #2ee86a;
     --signal-ice: #dcedf3;
+    --signal-paper: #ece9e3;
+    --gradient-violet: linear-gradient(140deg, #5a2fe0 0%, #9b2f8e 52%, #cf2f2f 100%);
+    --gradient-peach: linear-gradient(135deg, #ff9a3c 0%, #ff7386 58%, #ff5fa8 100%);
+    --gradient-orb: radial-gradient(
+      closest-side,
+      #d8fbff 0%,
+      #6fdcff 34%,
+      #2f7bff 70%,
+      rgb(31 67 255 / 0) 100%
+    );
     /* Website tiles are large-radius (18–40px); --radius is the card step. */
-    --radius: 1.25rem;
+    --radius: 1.5rem;
     --sidebar: #f7f7f7;
     --sidebar-foreground: #000000;
     --sidebar-primary: #000000;
@@ -155,6 +165,244 @@
   html {
     @apply bg-background font-sans;
     overflow-y: auto;
+  }
+}
+
+/*
+ * The website's widget language (../eigenEnterprise-website/src/app.css):
+ * large-radius tiles and full pills in flat, saturated colour, a few soft
+ * glows, small mono chips. The signal colours are the same in light and dark
+ * mode and under a brand style: they are the product's accents, the brand
+ * re-skins the page, text and primary actions around them.
+ *
+ * Text on a tile uses .tile-soft (secondary) — never a token with an opacity
+ * modifier, which would be measured against the page, not the tile.
+ */
+@layer components {
+  .tile {
+    position: relative;
+    min-width: 0;
+    border-radius: 2rem;
+  }
+  .tile-black {
+    background: #000000;
+    color: #ffffff;
+    --tile-soft: rgb(255 255 255 / 72%);
+    --tile-wash: rgb(255 255 255 / 14%);
+    --tile-line: rgb(255 255 255 / 30%);
+  }
+  .tile-yellow {
+    background: var(--signal-yellow);
+    color: #000000;
+    --tile-soft: rgb(0 0 0 / 72%);
+    --tile-wash: rgb(255 255 255 / 45%);
+    --tile-line: rgb(0 0 0 / 35%);
+  }
+  .tile-ice {
+    background: var(--signal-ice);
+    color: #000000;
+    --tile-soft: rgb(0 0 0 / 68%);
+    --tile-wash: rgb(255 255 255 / 70%);
+    --tile-line: rgb(0 0 0 / 30%);
+  }
+  .tile-blue {
+    background: var(--signal-blue);
+    color: #ffffff;
+    --tile-soft: rgb(255 255 255 / 86%);
+    --tile-wash: rgb(255 255 255 / 16%);
+    --tile-line: rgb(255 255 255 / 40%);
+  }
+  .tile-green {
+    background: var(--signal-green);
+    color: #000000;
+    --tile-soft: rgb(0 0 0 / 74%);
+    --tile-wash: rgb(255 255 255 / 35%);
+    --tile-line: rgb(0 0 0 / 35%);
+  }
+  .tile-grey {
+    background: var(--card);
+    color: var(--card-foreground);
+    --tile-soft: var(--muted-foreground);
+    --tile-wash: var(--background);
+    --tile-line: var(--input);
+  }
+  .tile-paper {
+    background: var(--signal-paper);
+    color: #000000;
+    --tile-soft: rgb(0 0 0 / 70%);
+    --tile-wash: rgb(255 255 255 / 60%);
+    --tile-line: rgb(0 0 0 / 30%);
+  }
+  .tile-violet {
+    background: var(--gradient-violet);
+    color: #ffffff;
+    --tile-soft: rgb(255 255 255 / 90%);
+    --tile-wash: rgb(255 255 255 / 16%);
+    --tile-line: rgb(255 255 255 / 45%);
+  }
+  .tile-peach {
+    background: var(--gradient-peach);
+    color: #000000;
+    --tile-soft: rgb(0 0 0 / 74%);
+    --tile-wash: rgb(255 255 255 / 35%);
+    --tile-line: rgb(0 0 0 / 35%);
+  }
+  .tile-soft {
+    color: var(--tile-soft);
+  }
+  /* A faint grain on the gradient tiles, as on the website. */
+  .grain::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.28;
+    mix-blend-mode: overlay;
+  }
+  /* The black tile keeps an edge on a dark page so it doesn't vanish. */
+  .dark .tile-black:not(.marketing-light-theme *) {
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 10%);
+  }
+
+  /* Chips: small mono labels in a pill (13px floor; the website's are 11px). */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    height: 1.75rem;
+    padding: 0 0.75rem;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .chip-line {
+    border-color: var(--tile-line, var(--input));
+  }
+  .chip-solid {
+    background: #ffffff;
+    color: #000000;
+  }
+  .chip-ink {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .chip-wash {
+    background: var(--tile-wash, var(--card));
+  }
+  .chip-dot::before {
+    content: '';
+    width: 0.45rem;
+    height: 0.45rem;
+    flex: none;
+    border-radius: 50%;
+    background: var(--chip-dot, #14c254);
+  }
+  .chip-wait {
+    --chip-dot: var(--signal-yellow);
+  }
+  .chip-off {
+    --chip-dot: currentColor;
+  }
+  .chip-bad {
+    --chip-dot: #e0281f;
+  }
+
+  /* Icon circles. */
+  .ico {
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 50%;
+  }
+  .ico-black {
+    background: #000000;
+    color: #ffffff;
+  }
+  .ico-white {
+    background: #ffffff;
+    color: #000000;
+  }
+  .ico-yellow {
+    background: var(--signal-yellow);
+    color: #000000;
+  }
+  .ico-blue {
+    background: var(--signal-blue);
+    color: #ffffff;
+  }
+  .ico-green {
+    background: var(--signal-green);
+    color: #000000;
+  }
+  .ico-ice {
+    background: var(--signal-ice);
+    color: #000000;
+  }
+  .ico-paper {
+    background: var(--signal-paper);
+    color: #000000;
+  }
+  .ico-violet {
+    background: var(--gradient-violet);
+    color: #ffffff;
+  }
+  .ico-peach {
+    background: var(--gradient-peach);
+    color: #000000;
+  }
+  .ico-grey {
+    background: var(--card);
+    color: var(--card-foreground);
+  }
+  .dark .tile-grey .ico-black:not(.marketing-light-theme *) {
+    background: #ffffff;
+    color: #000000;
+  }
+
+  /* The glow orb. */
+  .orb {
+    border-radius: 50%;
+    background: var(--gradient-orb);
+  }
+
+  /* Display type: Geist Serif at the website's tight tracking. */
+  .display-xl {
+    font-family: var(--font-heading, var(--font-display));
+    font-size: clamp(2.25rem, 4.6vw, 3.75rem);
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: -0.034em;
+  }
+  .display-l {
+    font-family: var(--font-heading, var(--font-display));
+    font-size: clamp(1.75rem, 3vw, 2.5rem);
+    font-weight: 400;
+    line-height: 1.04;
+    letter-spacing: -0.028em;
+  }
+  .display-m {
+    font-family: var(--font-heading, var(--font-display));
+    font-size: 1.625rem;
+    font-weight: 400;
+    line-height: 1.12;
+    letter-spacing: -0.015em;
+  }
+  .mono-label {
+    font-family: var(--font-mono);
+    font-weight: 400;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
   }
 }
 
