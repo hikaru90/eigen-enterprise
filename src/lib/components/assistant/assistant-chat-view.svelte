@@ -106,8 +106,8 @@
       {#if chat.load === 'loading'}
         <LoaderCircle class="size-4 animate-spin text-muted-foreground" aria-label="Loading" />
       {:else}
-        <p class="text-base tracking-wide text-muted-foreground/80">What do you need?</p>
-        <p class="text-xs text-muted-foreground/60">
+        <p class="text-base tracking-wide text-muted-foreground">What do you need?</p>
+        <p class="text-xs text-muted-foreground">
           Ask about anything in the company, or ask it to do the work.
         </p>
       {/if}
@@ -184,7 +184,7 @@
   <footer class="shrink-0 px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
     <div
       data-testid="nucleus-chatbox"
-      class="flex items-stretch gap-1.5 rounded-md border border-primary/70 bg-card p-1.5 focus-within:border-primary"
+      class="flex items-stretch gap-1.5 rounded-md border border-primary/70 bg-card p-1.5 focus-within:border-primary focus-within:ring-1 focus-within:ring-ring"
     >
       <div title={micSupported ? undefined : 'Voice input is not available in this browser'}>
         <VoiceInputButton

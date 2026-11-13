@@ -53,7 +53,7 @@
     {#if error}
       <p class="text-sm text-destructive" data-testid="activity-error">{error}</p>
     {:else if !activity || activity.items.length === 0}
-      <p class="text-sm text-foreground/55" data-testid="activity-empty">Nothing yet.</p>
+      <p class="text-sm text-muted-foreground" data-testid="activity-empty">Nothing yet.</p>
     {:else}
       <ul class="divide-y divide-border">
         {#each activity.items as item, i (i)}
@@ -62,7 +62,7 @@
             data-testid="activity-item"
           >
             <span
-              class="w-20 shrink-0 pt-0.5 text-right text-xs tabular-nums text-foreground/55"
+              class="w-20 shrink-0 pt-0.5 text-right text-xs tabular-nums text-muted-foreground"
               title={item.at}
             >
               {relative(item.at)}
@@ -82,7 +82,7 @@
   </Card.Content>
   {#if activity && !activity.managed}
     <Card.Footer>
-      <p class="text-xs text-foreground/55" data-testid="activity-unmanaged">
+      <p class="text-xs text-muted-foreground" data-testid="activity-unmanaged">
         Server events appear once this server is managed by ee.
       </p>
     </Card.Footer>

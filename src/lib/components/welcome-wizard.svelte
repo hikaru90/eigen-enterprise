@@ -356,7 +356,7 @@
       <div class="text-center" in:fade={{ duration: 400 * motion }}>
         <button
           type="button"
-          class="text-muted-foreground/40 hover:text-muted-foreground cursor-pointer text-sm tracking-wide"
+          class="text-muted-foreground hover:text-foreground cursor-pointer text-sm tracking-wide"
           onclick={advanceFromClick}
           aria-label="Continue"
         >
@@ -643,7 +643,7 @@
     {#if act !== 'boot' && act !== 'hello' && (history.length > 0 || (act === 'lines' && lineIndex > 0))}
       <button
         type="button"
-        class="text-muted-foreground/60 hover:text-muted-foreground text-xs"
+        class="text-muted-foreground hover:text-foreground text-xs"
         onclick={goBack}
         data-testid="onboarding-back"
       >
@@ -652,7 +652,7 @@
     {/if}
     <button
       type="button"
-      class="text-muted-foreground/60 hover:text-muted-foreground inline-flex items-center gap-1.5 text-xs disabled:opacity-50"
+      class="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-xs disabled:opacity-50"
       disabled={completing}
       onclick={() => void complete()}
       data-testid="skip-onboarding"

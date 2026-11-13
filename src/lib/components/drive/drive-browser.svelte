@@ -269,7 +269,7 @@
           data-testid="drive-path-root">{root.label}</a
         >
         {#each path as crumb (crumb.id)}
-          <span class="text-muted-foreground/60" aria-hidden="true">/</span>
+          <span class="text-muted-foreground" aria-hidden="true">/</span>
           <a
             href={folderHref(crumb.id)}
             class={crumb.id === folderId
@@ -289,7 +289,7 @@
           aria-hidden="true"
         />
         <input
-          class="h-8 w-44 rounded-md border border-input bg-background pr-2 pl-8 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/60 sm:w-60"
+          class="h-8 w-44 rounded-md border border-input bg-background pr-2 pl-8 text-sm outline-none focus-visible:ring-2 -ring sm:w-60"
           placeholder="Search by name"
           bind:value={search}
           aria-label="Search Drive by name"
@@ -518,7 +518,7 @@
                   {/if}
                   {#if desc?.readOnlyFrom}
                     <span
-                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground"
+                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-xs text-muted-foreground"
                       title={`Comes from ${desc.readOnlyFrom}; change it there`}
                       data-testid="drive-readonly-badge"
                     >
@@ -527,7 +527,7 @@
                   {/if}
                   {#if desc?.shared}
                     <span
-                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground"
+                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-xs text-muted-foreground"
                       title="Shared with others"
                       data-testid="drive-shared-badge"
                     >
@@ -536,7 +536,7 @@
                   {/if}
                   {#if archivedMark(item)}
                     <span
-                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground"
+                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-xs text-muted-foreground"
                       title={item.archivedAt ? 'Archived' : 'In an archived folder'}
                       data-testid="drive-archived-badge"
                     >
@@ -549,7 +549,7 @@
                 {#if desc?.ownerName}
                   <span class="flex min-w-0 items-center gap-2" data-testid="drive-owner">
                     <span
-                      class="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-foreground/80"
+                      class="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-foreground/80"
                       aria-hidden="true">{initialsOf(desc.ownerName)}</span
                     >
                     <span class="truncate text-muted-foreground">{desc.ownerName}</span>

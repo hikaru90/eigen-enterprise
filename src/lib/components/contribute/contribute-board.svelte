@@ -90,7 +90,7 @@
         onclick={() => (tab = t)}
         data-testid="contribute-tab-{t}"
       >
-        {TAB_LABEL[t]} <span class="text-foreground/50">{counts[t]}</span>
+        {TAB_LABEL[t]} <span class="text-muted-foreground">{counts[t]}</span>
       </button>
     {/each}
   </div>
@@ -109,7 +109,7 @@
           <div class="flex w-9 shrink-0 flex-col items-center" aria-label="Votes">
             <button
               type="button"
-              class="flex size-7 cursor-pointer items-center justify-center rounded-md hover:bg-primary/[0.06] disabled:cursor-default disabled:opacity-40 {p.myVote === 1 ? 'text-primary' : 'text-foreground/50'}"
+              class="flex size-7 cursor-pointer items-center justify-center rounded-md hover:bg-primary/[0.06] disabled:cursor-default disabled:opacity-40 {p.myVote === 1 ? 'text-primary' : 'text-muted-foreground'}"
               aria-label="Vote up"
               aria-pressed={p.myVote === 1}
               disabled={closed || busy === p.id}
@@ -120,7 +120,7 @@
             <span class="text-sm font-medium tabular-nums" data-testid="contribute-score">{p.score}</span>
             <button
               type="button"
-              class="flex size-7 cursor-pointer items-center justify-center rounded-md hover:bg-primary/[0.06] disabled:cursor-default disabled:opacity-40 {p.myVote === -1 ? 'text-primary' : 'text-foreground/50'}"
+              class="flex size-7 cursor-pointer items-center justify-center rounded-md hover:bg-primary/[0.06] disabled:cursor-default disabled:opacity-40 {p.myVote === -1 ? 'text-primary' : 'text-muted-foreground'}"
               aria-label="Vote down"
               aria-pressed={p.myVote === -1}
               disabled={closed || busy === p.id}
@@ -132,7 +132,7 @@
 
           <div class="min-w-0 flex-1">
             <p class="text-sm whitespace-pre-line [overflow-wrap:anywhere]">{p.title}</p>
-            <p class="mt-1 text-xs text-foreground/55">
+            <p class="mt-1 text-xs text-muted-foreground">
               {KIND_LABEL[p.kind]} · {AREA_LABEL[p.area]} · {p.own ? 'you' : p.authorName} · {dateFmt.format(new Date(p.createdAt))}
               {#if p.shippedAt}· shipped {dateFmt.format(new Date(p.shippedAt))}{/if}
             </p>
@@ -169,7 +169,7 @@
             {#if canManage && editingNote?.id !== p.id}
               <button
                 type="button"
-                class="mt-1.5 cursor-pointer text-xs text-foreground/50 hover:text-foreground"
+                class="mt-1.5 cursor-pointer text-xs text-muted-foreground hover:text-foreground"
                 onclick={() => (editingNote = { id: p.id, text: p.note ?? '' })}>{p.note ? 'Edit note' : 'Add a note'}</button
               >
             {/if}
@@ -189,7 +189,7 @@
               </select>
             </div>
           {:else}
-            <span class="shrink-0 self-start rounded-full bg-primary/[0.06] px-2 py-0.5 text-[11px] text-foreground/70">{STATUS_LABEL[p.status]}</span>
+            <span class="shrink-0 self-start rounded-full bg-primary/[0.06] px-2 py-0.5 text-xs text-foreground/70">{STATUS_LABEL[p.status]}</span>
           {/if}
         </li>
       {/each}

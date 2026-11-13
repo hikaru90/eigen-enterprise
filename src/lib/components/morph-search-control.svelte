@@ -200,7 +200,7 @@
       {#if searchFilterActive && !filterOpen}
         <button
           type="button"
-          class="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-destructive/20 text-destructive transition-colors hover:bg-destructive/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50 dark:bg-destructive/30 dark:hover:bg-destructive/40"
+          class="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-destructive/20 text-destructive transition-colors hover:bg-destructive/30 focus-visible:outline-none focus-visible:ring-1 -ring dark:bg-destructive/30 dark:hover:bg-destructive/40"
           onclick={() => {
             setSearch('')
           }}

@@ -193,7 +193,7 @@
       placeholder="What would make this app better for you?"
       aria-invalid={tooLong}
       disabled={working !== null}
-      class="min-h-24 w-full resize-y rounded-md border border-input bg-transparent px-2.5 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:opacity-60 aria-invalid:border-destructive"
+      class="min-h-24 w-full resize-y rounded-md border border-input bg-transparent px-2.5 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 -ring disabled:opacity-60 aria-invalid:border-destructive"
       data-testid="contribute-input"
     ></textarea>
 

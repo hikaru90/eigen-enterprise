@@ -57,7 +57,7 @@
   >
     {#each feed.lines as line (line.key)}
       {#if line.kind === 'run'}
-        <li class="px-4 py-1.5 text-xs text-foreground/50" data-testid="run-feed-marker">
+        <li class="px-4 py-1.5 text-xs text-muted-foreground" data-testid="run-feed-marker">
           {line.text}
         </li>
       {:else if line.kind === 'error'}
@@ -77,12 +77,12 @@
         </li>
       {:else if line.kind === 'user'}
         <li class="px-4 py-2.5 text-sm" data-testid="run-feed-user">
-          <span class="mr-2 text-xs text-foreground/50">Input</span>
+          <span class="mr-2 text-xs text-muted-foreground">Input</span>
           <span class="break-words whitespace-pre-wrap">{line.text}</span>
         </li>
       {:else if line.kind === 'assistant'}
         <li class="px-4 py-2.5 text-sm" data-testid="run-feed-assistant">
-          <span class="mr-2 text-xs text-foreground/50">Agent</span>
+          <span class="mr-2 text-xs text-muted-foreground">Agent</span>
           <span class="break-words whitespace-pre-wrap">{line.text}</span>
           {#if line.status === 'running'}<span
               class="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-foreground/40 align-middle"
@@ -92,21 +92,21 @@
       {:else}
         <li class="flex min-w-0 flex-col gap-0.5 px-4 py-2 text-sm" data-testid="run-feed-tool">
           <span class="flex min-w-0 items-center gap-2">
-            <span class="text-xs text-foreground/50">Tool</span>
+            <span class="text-xs text-muted-foreground">Tool</span>
             <code class="truncate font-mono text-[13px]">{line.text}</code>
             <Badge variant={line.status === 'error' ? 'destructive' : 'secondary'}>
               {toolStatus[line.status]}
             </Badge>
           </span>
           {#if argsPreview(line.args)}
-            <code class="truncate font-mono text-xs text-foreground/50"
+            <code class="truncate font-mono text-xs text-muted-foreground"
               >{argsPreview(line.args)}</code
             >
           {/if}
         </li>
       {/if}
     {:else}
-      <li class="px-4 py-3 text-sm text-foreground/55">No events yet.</li>
+      <li class="px-4 py-3 text-sm text-muted-foreground">No events yet.</li>
     {/each}
   </ol>
 </section>

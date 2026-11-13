@@ -255,7 +255,7 @@
               >
               {#each row as cell, c (c)}
                 <td
-                  class="border-r border-b p-0 align-top {r === 0
+                  class="border-r border-b p-0 align-top focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-primary {r === 0
                     ? 'bg-muted/40'
                     : ''} {active.r === r && active.c === c
                     ? 'outline-2 -outline-offset-2 outline-primary'

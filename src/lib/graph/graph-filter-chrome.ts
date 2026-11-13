@@ -32,7 +32,7 @@ export function graphFilterTriggerClass(
       ? 'inline-flex size-8 shrink-0 items-center justify-center'
       : 'inline-flex h-8 min-w-0 items-center justify-start gap-1.5 px-3 text-left'
   const showActive = active && variant === 'icon'
-  return `${sizeClass} rounded-full text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50 ${
+  return `${sizeClass} rounded-full text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 -ring ${
     showActive
       ? 'bg-black text-white dark:bg-foreground dark:text-background'
       : 'text-black hover:text-black/80 dark:text-foreground dark:hover:text-foreground/80'

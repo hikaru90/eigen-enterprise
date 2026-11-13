@@ -21,7 +21,7 @@
 
 <Popover.Root bind:open>
   <Popover.Trigger
-    class="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 text-[13px] text-foreground/70 outline-none hover:bg-primary/[0.05] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 data-[state=open]:bg-primary/[0.08] data-[state=open]:text-foreground"
+    class="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 text-[13px] text-foreground/70 outline-none hover:bg-primary/[0.05] hover:text-foreground focus-visible:ring-2 -ring data-[state=open]:bg-primary/[0.08] data-[state=open]:text-foreground"
     aria-label="Contribute: propose an improvement"
     data-testid="contribute-trigger"
   >

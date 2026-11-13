@@ -52,7 +52,7 @@
       {#each options as option (option.href)}
         <a
           href={option.href}
-          class="group flex items-start gap-3 rounded-lg border border-border p-4 transition-colors hover:border-foreground/25 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+          class="group flex items-start gap-3 rounded-lg border border-border p-4 transition-colors hover:border-foreground/25 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 -ring"
           data-testid="add-app-option"
         >
           <span class="rounded-md border border-border bg-muted/40 p-2"
@@ -62,7 +62,7 @@
             <span class="text-sm font-medium">{option.title}</span>
             <span class="text-xs leading-relaxed text-foreground/60">{option.description}</span>
           </span>
-          <ArrowUpRight class="mt-1 size-4 text-foreground/40 group-hover:text-foreground" />
+          <ArrowUpRight class="mt-1 size-4 text-muted-foreground group-hover:text-foreground" />
         </a>
       {/each}
       <!-- eslint-enable svelte/no-navigation-without-resolve -->

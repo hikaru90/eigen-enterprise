@@ -63,7 +63,7 @@
           href={appHref(tab.href)}
           aria-current={current === tab.id ? 'page' : undefined}
           data-testid={tabTestId(tab.id)}
-          class="-mb-px shrink-0 border-b-2 px-2.5 py-2.5 text-[13px] whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60 {current ===
+          class="-mb-px shrink-0 border-b-2 px-2.5 py-2.5 text-[13px] whitespace-nowrap transition-colors outline-none focus-visible:ring-2 -ring {current ===
           tab.id
             ? 'border-foreground font-medium text-foreground'
             : 'border-transparent text-muted-foreground hover:text-foreground'}">{tab.label}</a

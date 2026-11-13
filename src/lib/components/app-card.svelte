@@ -111,12 +111,12 @@
   <div class="flex min-w-0 items-center gap-2">
     <a
       {href}
-      class="min-w-0 truncate rounded-sm text-sm font-medium after:absolute after:inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+      class="min-w-0 truncate rounded-sm text-sm font-medium after:absolute after:inset-0 focus-visible:outline-none focus-visible:ring-2 -ring"
       data-testid="app-card-link"
     >
       {name}
     </a>
-    <ArrowUpRight class="ml-auto size-4 shrink-0 text-foreground/35" />
+    <ArrowUpRight class="ml-auto size-4 shrink-0 text-muted-foreground" />
   </div>
 
   {#if domains.length > 0}
@@ -135,15 +135,15 @@
       {/each}
     </div>
   {:else if kind === 'site'}
-    <span class="text-xs text-foreground/55">No domain yet</span>
+    <span class="text-xs text-muted-foreground">No domain yet</span>
   {/if}
 
   {#if repo}
-    <span class="truncate text-xs text-foreground/55"
+    <span class="truncate text-xs text-muted-foreground"
       >{kind === 'repository' ? branch : `${repo} · ${branch ?? ''}`}{rev ? `@${rev}` : ''}</span
     >
   {/if}
-  {#if accessLabel}<span class="text-xs text-foreground/55">{accessLabel}</span>{/if}
+  {#if accessLabel}<span class="text-xs text-muted-foreground">{accessLabel}</span>{/if}
   {#if kind === 'repository'}
     <span class="mt-auto border-t border-border pt-3 text-xs text-foreground/65"
       >Ready to configure <span aria-hidden="true">→</span></span
@@ -151,18 +151,18 @@
   {:else if state}
     <div class="mt-auto border-t border-border pt-3">
       {#if managed}<AppStatusDot status={state} />
-      {:else}<span class="text-xs text-foreground/55">Server not connected</span>{/if}
+      {:else}<span class="text-xs text-muted-foreground">Server not connected</span>{/if}
     </div>
   {/if}
 
   {#if pages}
-    <span class="text-xs text-foreground/55">
+    <span class="text-xs text-muted-foreground">
       {countLine(pages.published, 'page', 'pages')} published ·
       {countLine(pages.drafts, 'draft', 'drafts')}
     </span>
   {/if}
 
   {#if deployLine}
-    <span class="text-xs text-foreground/55">Last deploy: {deployLine}</span>
+    <span class="text-xs text-muted-foreground">Last deploy: {deployLine}</span>
   {/if}
 </div>

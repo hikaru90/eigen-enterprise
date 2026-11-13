@@ -37,7 +37,7 @@
     bind:value={draft}
     rows="2"
     autofocus
-    class="field-sizing-content max-h-60 min-h-16 w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+    class="field-sizing-content max-h-60 min-h-16 w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 -ring"
     aria-label="Edit message"
     data-testid="messages-edit-input"
     onkeydown={onKey}
@@ -46,7 +46,7 @@
     {#if !voiceActive}
       <Button size="sm" variant="outline" onclick={oncancel}>Cancel</Button>
       <Button size="sm" onclick={() => onsave(draft)} data-testid="messages-edit-save">Save</Button>
-      <span class="text-[11px] text-muted-foreground">Enter to save · Esc to cancel</span>
+      <span class="text-xs text-muted-foreground">Enter to save · Esc to cancel</span>
     {/if}
     <VoiceDictation
       bind:active={voiceActive}

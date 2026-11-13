@@ -79,7 +79,7 @@
           <li>
             <a
               href={resolve('/(nucleus)/assistant/[id]', { id: String(run.id) })}
-              class="group flex min-w-0 items-center gap-2 rounded-md px-2 py-2 text-sm outline-none hover:bg-primary/[0.05] focus-visible:ring-2 focus-visible:ring-ring/60"
+              class="group flex min-w-0 items-center gap-2 rounded-md px-2 py-2 text-sm outline-none hover:bg-primary/[0.05] focus-visible:ring-2 -ring"
               data-testid="assistant-history-item"
             >
               <span class="flex min-w-0 flex-1 flex-col">
@@ -89,7 +89,7 @@
                 </span>
               </span>
               <ChevronRight
-                class="size-4 shrink-0 text-foreground/30 group-hover:text-foreground/60"
+                class="size-4 shrink-0 text-muted-foreground group-hover:text-foreground"
                 aria-hidden="true"
               />
             </a>
