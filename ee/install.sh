@@ -2,6 +2,7 @@
 # eigenEnterprise installer (plan/phase-substrate.md §5).
 #
 #   curl -fsSL <base>/install.sh | sh -s -- --from <base> --node-ip <public IP> [--console-host os.example.com] [--acme-email you@example.com]
+#   [--contribute-hub https://<central board> | off]   (default: the official board, kept on upgrades)
 #   sh install.sh --from /root/release --node-ip <public IP>   (files copied to the box beforehand)
 #
 # <base> holds: LATEST (the release name), ee.mjs, ee.mjs.sha256, and per CPU
@@ -25,7 +26,7 @@ PASS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --from) FROM="$2"; shift 2 ;;
-    --console-host|--acme-email|--node-ip) PASS="$PASS $1 $2"; shift 2 ;;
+    --console-host|--acme-email|--node-ip|--contribute-hub) PASS="$PASS $1 $2"; shift 2 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done

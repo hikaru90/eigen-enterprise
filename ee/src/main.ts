@@ -23,6 +23,7 @@ import { SecretStore } from './secret-store.ts'
 import { HOSTNAME } from './spec.ts'
 import { mustRun, RealSystem } from './system.ts'
 import { RELEASES_URL, UPGRADES_DIR, upgrade, type Arch } from './upgrade.ts'
+import { parseContributeHubFlag } from './contribute-hub.ts'
 
 const USAGE = `ee — the company's init (plan/phase-substrate.md)
 
@@ -117,6 +118,7 @@ async function main(argv: string[]): Promise<void> {
           'console-host': { type: 'string' },
           'acme-email': { type: 'string' },
           'node-ip': { type: 'string' },
+          'contribute-hub': { type: 'string' },
         },
       })
       if (!values.release) throw new Error('--release <tarball> is required')
@@ -131,12 +133,14 @@ async function main(argv: string[]): Promise<void> {
       if (values['console-host'] && !HOSTNAME.test(values['console-host'])) {
         throw new Error(`--console-host "${values['console-host']}" is not a valid host name (e.g. os.example.com)`)
       }
+      const contributeHub = values['contribute-hub'] === undefined ? undefined : parseContributeHubFlag(values['contribute-hub'])
       const { consoleHost, claimToken } = await bootstrap(sys, {
         release: values.release,
         livekitRelease: values['livekit-release'],
         ...(values['console-host'] ? { consoleHost: values['console-host'] } : {}),
         ...(values['acme-email'] ? { acmeEmail: values['acme-email'] } : {}),
         ...(values['node-ip'] ? { nodeIp: values['node-ip'] } : {}),
+        ...(contributeHub ? { contributeHub } : {}),
       })
       console.log('→ first deploy (health-gated; migrations run now, this takes a minute)')
       const ee = new Ee(sys, await SecretStore.open(sys))

@@ -21,7 +21,7 @@ describe('the node IP LiveKit advertises (explicit, never guessed)', () => {
 
 describe('withLivekit: what a (re-)run seeds for calls', () => {
   const os = workloadSchema.parse({ name: 'os', tier: 'system', source: { kind: 'release', tarball: '/r/os.tgz', sha256: 'a'.repeat(64) } })
-  const settings = { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: null, rtcNodeIp: null }
+  const settings = { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: null, rtcNodeIp: null, contributeHub: 'off' }
   const lk = livekitWorkload('/var/lib/ee/releases/livekit-server-1.13.11-linux-x64.tar.gz', 'b'.repeat(64))
 
   it('adds the livekit workload, saves the node IP and routes the calls host', () => {

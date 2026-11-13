@@ -19,7 +19,7 @@ case "${1:-}" in
   install)
     # Calls media: the browser runs on this machine and reaches the published ports on
     # loopback, so LiveKit advertises 127.0.0.1 (a real server passes its public IP).
-    docker exec "$NAME" sh /release/install.sh --from /release --console-host "${2:-os.ee.test}" --node-ip 127.0.0.1 ;;
+    docker exec "$NAME" sh /release/install.sh --from /release --console-host "${2:-os.ee.test}" --node-ip 127.0.0.1 --contribute-hub off ;;
   shell) docker exec -it "$NAME" bash ;;
   down) docker rm -f "$NAME" ;;
   *) echo "usage: box.sh up|install [host]|shell|down" >&2; exit 2 ;;

@@ -2,6 +2,7 @@ import { isIP } from 'node:net'
 import { hostPortCollisions, routesSchema, workloadSchema, type Route, type Workload } from './spec.ts'
 import { mustRun, type System } from './system.ts'
 import { z } from 'zod'
+import { OFFICIAL_CONTRIBUTE_HUB } from './contribute-hub.ts'
 
 function assertNoHostPortCollisions(workloads: Workload[]): void {
   const collisions = hostPortCollisions(workloads)
@@ -32,6 +33,12 @@ export const settingsSchema = z
       .refine((ip) => isIP(ip) !== 0, { message: 'rtcNodeIp must be an IP address' })
       .nullable()
       .default(null),
+    /**
+     * The central Contribute board this install shares with, or `off`
+     * (contribute-hub.ts). Missing on companies from before it existed: they
+     * get the official board on their next upgrade.
+     */
+    contributeHub: z.union([z.literal('off'), z.url()]).default(OFFICIAL_CONTRIBUTE_HUB),
   })
   .strict()
 

@@ -14,6 +14,7 @@ import { workloadSchema, type WorkloadInput } from './spec.ts'
 import { mustRun, type System } from './system.ts'
 import { writeBackupTimer } from './backup/box.ts'
 import { BACKUP_SCOPE, storedConfigSchema } from './backup/service.ts'
+import { contributeHubEnv, resolveContributeHub, type ContributeHub } from './contribute-hub.ts'
 
 /**
  * `ee bootstrap` (§5): turn a fresh Ubuntu 24.04 / Debian 13 box into a running
@@ -31,6 +32,8 @@ export type BootstrapOptions = {
   acmeEmail?: string
   /** The IP LiveKit advertises for media; required on the first install, kept on re-runs. */
   nodeIp?: string
+  /** The central Contribute board, or 'off' (contribute-hub.ts); when omitted, the company's saved one. */
+  contributeHub?: ContributeHub
 }
 
 /**
@@ -360,11 +363,12 @@ async function seedCompany(sys: System, opts: BootstrapOptions, consoleHost: str
       existing ? { routes: s.routes, settings: s.settings, origin: existing.env.ORIGIN ?? `https://${s.settings.consoleHost}` } : null,
       { consoleHost, explicitHost: opts.consoleHost !== undefined, ...(opts.acmeEmail ? { acmeEmail: opts.acmeEmail } : {}) },
     )
+    const contributeHub = resolveContributeHub(opts.contributeHub, s.settings.contributeHub)
     const os = workloadSchema.parse({
       name: 'os',
       tier: 'system',
       source: { kind: 'release', tarball, sha256 },
-      env: {
+      env: contributeHubEnv({
         ...(existing?.env ?? {}),
         ORIGIN: routing.origin,
         AGE_GRAPH_NAME: 'eigen_graph',
@@ -378,7 +382,7 @@ async function seedCompany(sys: System, opts: BootstrapOptions, consoleHost: str
         EE_VCS_AUTOCOMMIT: '0',
         // Drive uploads: adapter-node's 512K default would refuse them (see body-limit.ts).
         BODY_SIZE_LIMIT: OS_BODY_SIZE_LIMIT,
-      },
+      }, contributeHub),
       secrets: [...OS_SECRETS, ...CLAIM_SECRETS],
       resources: { memoryMb: 2048, cpuPercent: 200 },
     })
@@ -386,7 +390,7 @@ async function seedCompany(sys: System, opts: BootstrapOptions, consoleHost: str
       {
         workloads: [...s.workloads.filter((w) => w.name !== 'os'), os],
         routes: routing.routes,
-        settings: { ...s.settings, ...routing.settings },
+        settings: { ...s.settings, ...routing.settings, contributeHub },
       },
       livekitWorkload(livekit.tarball, livekit.sha256),
       nodeIp,
