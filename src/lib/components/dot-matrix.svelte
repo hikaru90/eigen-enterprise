@@ -34,9 +34,15 @@
 <script lang="ts">
   /**
    * The website's dot-matrix display: a field of faint dots with the value
-   * lit in white. Decorative — the caller states the value in text too.
+   * lit (white, or the coral accent when it needs attention). Decorative —
+   * the caller states the value in text too.
    */
-  let { text, cols = 23, rows = 11 }: { text: string; cols?: number; rows?: number } = $props()
+  let {
+    text,
+    lit: litColour = '#ffffff',
+    cols = 23,
+    rows = 11,
+  }: { text: string; lit?: string; cols?: number; rows?: number } = $props()
 
   const lit = $derived(litDots(text))
   const width = $derived(Math.max(cols, lit.cols + 2))
@@ -59,6 +65,6 @@
   data-testid="dot-matrix"
 >
   {#each dots as d (`${d.x},${d.y}`)}
-    <circle cx={d.x + 0.5} cy={d.y + 0.5} r="0.36" fill={d.on ? '#ffffff' : 'rgb(255 255 255 / 0.075)'} />
+    <circle cx={d.x + 0.5} cy={d.y + 0.5} r="0.36" fill={d.on ? litColour : 'rgb(255 255 255 / 0.075)'} />
   {/each}
 </svg>

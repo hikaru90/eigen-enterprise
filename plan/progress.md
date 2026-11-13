@@ -73,6 +73,13 @@ Orchestrated: one worktree stream per proposal (`.claude/worktrees/contrib-*`, b
   - Final full run on `f2dd0a3`: check 0 errors; unit 831 files / 6949 passed, 0 failed; components 373/374 (the same pre-existing `app-detail-settings` failure).
 - **Not verified:** nothing in a browser, nothing on the box; e2e not run.
 
+## 2026-11-13 — App design, round 3: calmer, enterprise palette (main, on the local box)
+
+- **Why:** the owner liked round 2's structure but found it too neon, too big and too round. They gave a reference board: neutral tiles (off-white, greige, charcoal, black), a slate-blue dusk gradient, one warm coral glow, mono text.
+- **What:** the saturated signal colours (yellow, electric blue, green, ice, violet, peach) are gone. Tiles are now `ink`, `charcoal`, `stone`, `mist` and the `slate` gradient, with **coral used only where something needs you**: the Needs-you dot-matrix lights coral when there is something waiting, the approval chip dot, the current-page dot in the nav, the assistant's spark, the glow orb on the ask tile. Radii: `--radius` 1.5rem → 0.875rem, tiles 2rem → 1.25rem; pills only for buttons and chips; inputs, selects, tabs, nav rows and list rows use 8–14px corners. Sizes: sidebar 256 → 224px, nav rows 40 → 32px, top bar 64 → 56px, assistant field 44 → 36px, display type and tile paddings a step smaller, body text 15 → 14px. Nav icons are plain (no coloured circles); buttons use sans labels (mono stays for chips); chips are no longer uppercase. Focus ring is slate navy (#2f3a52; dark #a9b4cc) instead of electric blue.
+- **Decision log (owner may veto):** part tones — Website slate, Messages ink, Calls/Memory charcoal, Email/Brand/Calendar stone, everything else mist. Coral is the one accent; no part wears it.
+- **Note:** v0.5.10 (released to production by another session) already contains round 2; round 3 reaches production with the next release.
+
 ## 2026-11-13 — App design, round 2: the website's tile language in the shell and dashboard (main, on the local box)
 
 - **Why:** round 1 (`d89071f`) only swapped tokens (white page, rounder corners, Geist Serif). The owner rejected it: nothing in the app looked like the website. Round 2 brings over the website's actual design system (`../eigenEnterprise-website/src/app.css`): saturated colour tiles, pill widgets, mono chips, icon circles, the glow orb, the dot-matrix display, gradients with grain.

@@ -34,28 +34,28 @@
     /* Hex for meta theme-color — Android PWA title bar does not accept oklch(). */
     --theme-color: #ffffff;
     --foreground: #000000;
-    --card: #efefef;
+    --card: #f1f0ed;
     --card-foreground: #000000;
     --popover: #ffffff;
     --popover-foreground: #000000;
     --primary: #000000;
     --primary-foreground: #ffffff;
-    --secondary: #e4e4e4;
+    --secondary: #e7e5e0;
     --secondary-foreground: #000000;
-    --muted: #e4e4e4;
+    --muted: #e7e5e0;
     /* WCAG 2.1 AA (Contribute b73604ff): every pair below is held to 4.5:1
        (text) / 3:1 (input boundary, focus ring) by src/routes/layout.contrast.spec.ts.
        --border stays faint on purpose: it only draws decorative separators. */
     --muted-foreground: #5c5c5c;
-    --accent: #e4e4e4;
+    --accent: #e7e5e0;
     --accent-foreground: #000000;
     --destructive: oklch(0.45 0.185 27.325);
     /* Something is on / working (status pill "Active" dot); AA as text too. */
     --success: oklch(0.5 0.14 150);
     --border: rgb(0 0 0 / 10%);
     --input: rgb(0 0 0 / 47%);
-    /* The website's focus blue. */
-    --ring: #1f43ff;
+    /* Slate navy from the reference board: calm, AA on every light surface. */
+    --ring: #2f3a52;
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
@@ -65,31 +65,33 @@
     --gradient-eigen: linear-gradient(90deg, #22e876 0%, #8fe01f 60%, #22e876 99%);
     --color-eigen-green: #22e876;
     --color-eigen-lime: #8fe01f;
-    /* Website signal colours (the same in dark mode): highlights, selection. */
-    --signal-yellow: #ffc800;
-    --signal-blue: #1f43ff;
-    --signal-green: #2ee86a;
-    --signal-ice: #dcedf3;
-    --signal-paper: #ece9e3;
-    --gradient-violet: linear-gradient(140deg, #5a2fe0 0%, #9b2f8e 52%, #cf2f2f 100%);
-    --gradient-peach: linear-gradient(135deg, #ff9a3c 0%, #ff7386 58%, #ff5fa8 100%);
-    --gradient-orb: radial-gradient(
+    /* The tile palette (owner's reference board, 2026-11-13): neutral grounds,
+       one warm coral accent used sparingly, a slate-blue dusk gradient. The
+       same in light and dark mode and under a brand style. */
+    --tone-ink: #121212;
+    --tone-charcoal: #3a3a39;
+    --tone-stone: #dcd9d1;
+    --tone-coral: #e8532f;
+    --tone-coral-soft: #f6d3c5;
+    --gradient-slate: linear-gradient(180deg, #737c90 0%, #343c4f 55%, #14171f 100%);
+    --gradient-ember: linear-gradient(180deg, #8d8985 0%, #b7887a 55%, #d9876c 100%);
+    --gradient-glow: radial-gradient(
       closest-side,
-      #d8fbff 0%,
-      #6fdcff 34%,
-      #2f7bff 70%,
-      rgb(31 67 255 / 0) 100%
+      #ff6a3d 0%,
+      #ff9068 34%,
+      #f4c6ae 66%,
+      rgb(244 198 174 / 0) 100%
     );
-    /* Website tiles are large-radius (18–40px); --radius is the card step. */
-    --radius: 1.5rem;
+    /* Moderate radii: cards ~14px, tiles 20px, pills only for buttons and chips. */
+    --radius: 0.875rem;
     --sidebar: #f7f7f7;
     --sidebar-foreground: #000000;
     --sidebar-primary: #000000;
     --sidebar-primary-foreground: #ffffff;
-    --sidebar-accent: #e4e4e4;
+    --sidebar-accent: #e7e5e0;
     --sidebar-accent-foreground: #000000;
     --sidebar-border: rgb(0 0 0 / 10%);
-    --sidebar-ring: #1f43ff;
+    --sidebar-ring: #2f3a52;
     /* Scrim behind dialogs/drawers (C3): an active set tints it via the emitter. */
     --overlay: #000000;
   }
@@ -108,7 +110,7 @@
   }
 
   ::selection {
-    background: var(--signal-yellow);
+    background: var(--tone-coral-soft);
     color: #000000;
   }
 
@@ -169,11 +171,10 @@
 }
 
 /*
- * The website's widget language (../eigenEnterprise-website/src/app.css):
- * large-radius tiles and full pills in flat, saturated colour, a few soft
- * glows, small mono chips. The signal colours are the same in light and dark
- * mode and under a brand style: they are the product's accents, the brand
- * re-skins the page, text and primary actions around them.
+ * The website's widget language (../eigenEnterprise-website/src/app.css),
+ * toned down for the workspace (owner, 2026-11-13): tiles and pills, mono
+ * chips, the glow orb, the dot-matrix display — on neutral grounds with one
+ * coral accent, moderate radii and compact sizes.
  *
  * Text on a tile uses .tile-soft (secondary) — never a token with an opacity
  * modifier, which would be measured against the page, not the tile.
@@ -182,70 +183,49 @@
   .tile {
     position: relative;
     min-width: 0;
-    border-radius: 2rem;
+    border-radius: 1.25rem;
   }
-  .tile-black {
-    background: #000000;
+  .tile-ink {
+    background: var(--tone-ink);
     color: #ffffff;
-    --tile-soft: rgb(255 255 255 / 72%);
-    --tile-wash: rgb(255 255 255 / 14%);
-    --tile-line: rgb(255 255 255 / 30%);
+    --tile-soft: rgb(255 255 255 / 70%);
+    --tile-wash: rgb(255 255 255 / 10%);
+    --tile-line: rgb(255 255 255 / 26%);
   }
-  .tile-yellow {
-    background: var(--signal-yellow);
-    color: #000000;
-    --tile-soft: rgb(0 0 0 / 72%);
-    --tile-wash: rgb(255 255 255 / 45%);
-    --tile-line: rgb(0 0 0 / 35%);
+  .tile-charcoal {
+    background: var(--tone-charcoal);
+    color: #f2f2f0;
+    --tile-soft: rgb(242 242 240 / 74%);
+    --tile-wash: rgb(255 255 255 / 10%);
+    --tile-line: rgb(255 255 255 / 26%);
   }
-  .tile-ice {
-    background: var(--signal-ice);
-    color: #000000;
-    --tile-soft: rgb(0 0 0 / 68%);
-    --tile-wash: rgb(255 255 255 / 70%);
-    --tile-line: rgb(0 0 0 / 30%);
+  .tile-stone {
+    background: var(--tone-stone);
+    color: #171717;
+    --tile-soft: rgb(23 23 23 / 70%);
+    --tile-wash: rgb(255 255 255 / 55%);
+    --tile-line: rgb(23 23 23 / 24%);
   }
-  .tile-blue {
-    background: var(--signal-blue);
-    color: #ffffff;
-    --tile-soft: rgb(255 255 255 / 86%);
-    --tile-wash: rgb(255 255 255 / 16%);
-    --tile-line: rgb(255 255 255 / 40%);
-  }
-  .tile-green {
-    background: var(--signal-green);
-    color: #000000;
-    --tile-soft: rgb(0 0 0 / 74%);
-    --tile-wash: rgb(255 255 255 / 35%);
-    --tile-line: rgb(0 0 0 / 35%);
-  }
-  .tile-grey {
+  .tile-mist {
     background: var(--card);
     color: var(--card-foreground);
     --tile-soft: var(--muted-foreground);
     --tile-wash: var(--background);
-    --tile-line: var(--input);
+    --tile-line: var(--border);
   }
-  .tile-paper {
-    background: var(--signal-paper);
-    color: #000000;
-    --tile-soft: rgb(0 0 0 / 70%);
-    --tile-wash: rgb(255 255 255 / 60%);
-    --tile-line: rgb(0 0 0 / 30%);
-  }
-  .tile-violet {
-    background: var(--gradient-violet);
+  .tile-slate {
+    background: var(--gradient-slate);
     color: #ffffff;
-    --tile-soft: rgb(255 255 255 / 90%);
-    --tile-wash: rgb(255 255 255 / 16%);
-    --tile-line: rgb(255 255 255 / 45%);
+    --tile-soft: rgb(255 255 255 / 78%);
+    --tile-wash: rgb(255 255 255 / 12%);
+    --tile-line: rgb(255 255 255 / 30%);
   }
-  .tile-peach {
-    background: var(--gradient-peach);
-    color: #000000;
-    --tile-soft: rgb(0 0 0 / 74%);
-    --tile-wash: rgb(255 255 255 / 35%);
-    --tile-line: rgb(0 0 0 / 35%);
+  .tile-ember {
+    background: var(--gradient-ember);
+    color: #ffffff;
+    --tile-soft: rgb(255 255 255 / 86%);
+    --tile-wash: rgb(255 255 255 / 16%);
+    --tile-line: rgb(255 255 255 / 36%);
   }
   .tile-soft {
     color: var(--tile-soft);
@@ -258,38 +238,34 @@
     border-radius: inherit;
     pointer-events: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-    opacity: 0.28;
+    opacity: 0.22;
     mix-blend-mode: overlay;
   }
-  /* The black tile keeps an edge on a dark page so it doesn't vanish. */
-  .dark .tile-black:not(.marketing-light-theme *) {
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 10%);
+  /* Dark tiles keep an edge on a dark page so they don't vanish. */
+  .dark .tile-ink:not(.marketing-light-theme *),
+  .dark .tile-charcoal:not(.marketing-light-theme *) {
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 8%);
   }
 
-  /* Chips: small mono labels in a pill (13px floor; the website's are 11px). */
+  /* Chips: small mono labels in a pill (13px floor). */
   .chip {
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
-    height: 1.75rem;
-    padding: 0 0.75rem;
+    gap: 0.4rem;
+    height: 1.5rem;
+    padding: 0 0.6rem;
     border-radius: 999px;
     border: 1px solid transparent;
     font-family: var(--font-mono);
     font-size: 0.8125rem;
     font-weight: 400;
     line-height: 1;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    letter-spacing: 0.01em;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
   .chip-line {
-    border-color: var(--tile-line, var(--input));
-  }
-  .chip-solid {
-    background: #ffffff;
-    color: #000000;
+    border-color: var(--tile-line, var(--border));
   }
   .chip-ink {
     background: var(--primary);
@@ -300,20 +276,20 @@
   }
   .chip-dot::before {
     content: '';
-    width: 0.45rem;
-    height: 0.45rem;
+    width: 0.4rem;
+    height: 0.4rem;
     flex: none;
     border-radius: 50%;
-    background: var(--chip-dot, #14c254);
+    background: var(--chip-dot, var(--success));
   }
   .chip-wait {
-    --chip-dot: var(--signal-yellow);
+    --chip-dot: var(--tone-coral);
   }
   .chip-off {
     --chip-dot: currentColor;
   }
   .chip-bad {
-    --chip-dot: #e0281f;
+    --chip-dot: var(--destructive);
   }
 
   /* Icon circles. */
@@ -321,87 +297,63 @@
     display: inline-grid;
     place-items: center;
     flex: none;
-    width: 2.25rem;
-    height: 2.25rem;
+    width: 2rem;
+    height: 2rem;
     border-radius: 50%;
   }
-  .ico-black {
-    background: #000000;
+  .ico-ink {
+    background: var(--tone-ink);
     color: #ffffff;
   }
   .ico-white {
     background: #ffffff;
-    color: #000000;
+    color: #171717;
   }
-  .ico-yellow {
-    background: var(--signal-yellow);
-    color: #000000;
+  .ico-wash {
+    background: var(--tile-wash, var(--card));
+    color: currentColor;
   }
-  .ico-blue {
-    background: var(--signal-blue);
-    color: #ffffff;
-  }
-  .ico-green {
-    background: var(--signal-green);
-    color: #000000;
-  }
-  .ico-ice {
-    background: var(--signal-ice);
-    color: #000000;
-  }
-  .ico-paper {
-    background: var(--signal-paper);
-    color: #000000;
-  }
-  .ico-violet {
-    background: var(--gradient-violet);
-    color: #ffffff;
-  }
-  .ico-peach {
-    background: var(--gradient-peach);
-    color: #000000;
-  }
-  .ico-grey {
+  .ico-mist {
     background: var(--card);
     color: var(--card-foreground);
   }
-  .dark .tile-grey .ico-black:not(.marketing-light-theme *) {
-    background: #ffffff;
-    color: #000000;
+  .ico-coral {
+    background: var(--tone-coral);
+    color: #ffffff;
   }
 
-  /* The glow orb. */
+  /* The glow orb: the one warm light on a screen. */
   .orb {
     border-radius: 50%;
-    background: var(--gradient-orb);
+    background: var(--gradient-glow);
   }
 
-  /* Display type: Geist Serif at the website's tight tracking. */
+  /* Display type: Geist Serif at the website's tight tracking, sized for a workspace. */
   .display-xl {
     font-family: var(--font-heading, var(--font-display));
-    font-size: clamp(2.25rem, 4.6vw, 3.75rem);
+    font-size: clamp(1.875rem, 2.6vw, 2.5rem);
     font-weight: 400;
     line-height: 1;
-    letter-spacing: -0.034em;
+    letter-spacing: -0.03em;
   }
   .display-l {
     font-family: var(--font-heading, var(--font-display));
-    font-size: clamp(1.75rem, 3vw, 2.5rem);
+    font-size: clamp(1.5rem, 2vw, 1.875rem);
     font-weight: 400;
-    line-height: 1.04;
-    letter-spacing: -0.028em;
+    line-height: 1.1;
+    letter-spacing: -0.025em;
   }
   .display-m {
     font-family: var(--font-heading, var(--font-display));
-    font-size: 1.625rem;
+    font-size: 1.25rem;
     font-weight: 400;
-    line-height: 1.12;
+    line-height: 1.2;
     letter-spacing: -0.015em;
   }
   .mono-label {
     font-family: var(--font-mono);
     font-weight: 400;
-    letter-spacing: 0.07em;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
   }
 }
@@ -469,7 +421,7 @@
   --success: oklch(0.75 0.16 150);
   --border: rgb(255 255 255 / 10%);
   --input: rgb(255 255 255 / 40%);
-  --ring: #8ea2ff;
+  --ring: #a9b4cc;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -482,7 +434,7 @@
   --sidebar-accent: #333333;
   --sidebar-accent-foreground: #f2f2f2;
   --sidebar-border: rgb(255 255 255 / 10%);
-  --sidebar-ring: #8ea2ff;
+  --sidebar-ring: #a9b4cc;
 }
 
 /* Fonts are a NON-inline theme block on purpose (B4): the font-* utilities
@@ -537,10 +489,10 @@
   --color-foreground: var(--foreground);
   --color-background: var(--background);
   --color-overlay: var(--overlay);
-  --color-signal-yellow: var(--signal-yellow);
-  --color-signal-blue: var(--signal-blue);
-  --color-signal-green: var(--signal-green);
-  --color-signal-ice: var(--signal-ice);
+  --color-ink: var(--tone-ink);
+  --color-charcoal: var(--tone-charcoal);
+  --color-stone: var(--tone-stone);
+  --color-coral: var(--tone-coral);
   /* C3 (B4 gap): a set's own radius scale (--radius-sm..4xl) wins; without it
      the steps derive from --radius. Inline on purpose: the var() resolves on
      the element, so a scoped re-declaration (brand/system) re-derives too. */
@@ -571,24 +523,24 @@
     color-scheme: light;
     --background: #ffffff;
     --foreground: #000000;
-    --card: #efefef;
+    --card: #f1f0ed;
     --card-foreground: #000000;
     --popover: #ffffff;
     --popover-foreground: #000000;
     --primary: #000000;
     --primary-foreground: #ffffff;
-    --secondary: #e4e4e4;
+    --secondary: #e7e5e0;
     --secondary-foreground: #000000;
-    --muted: #e4e4e4;
+    --muted: #e7e5e0;
     --muted-foreground: #5c5c5c;
-    --accent: #e4e4e4;
+    --accent: #e7e5e0;
     --accent-foreground: #000000;
     /* Re-declared so OS dark mode cannot leak .dark's light red onto this white page. */
     --destructive: oklch(0.45 0.185 27.325);
     --success: oklch(0.5 0.14 150);
     --border: rgb(0 0 0 / 10%);
     --input: rgb(0 0 0 / 47%);
-    --ring: #1f43ff;
+    --ring: #2f3a52;
     /* The app shell's sidebar sits inside this light wrapper: its tokens must
        be light too, or the system dark theme paints a dark sidebar under
        this wrapper's dark text (black on black). */
@@ -596,10 +548,10 @@
     --sidebar-foreground: #000000;
     --sidebar-primary: #000000;
     --sidebar-primary-foreground: #ffffff;
-    --sidebar-accent: #e4e4e4;
+    --sidebar-accent: #e7e5e0;
     --sidebar-accent-foreground: #000000;
     --sidebar-border: rgb(0 0 0 / 10%);
-    --sidebar-ring: #1f43ff;
+    --sidebar-ring: #2f3a52;
   }
 }
 

@@ -18,7 +18,6 @@
   import type { SelfPresence } from '$lib/messages/self-presence.svelte'
   import { appHref } from '$lib/shell/href'
   import { iconFor } from '$lib/shell/module-icon'
-  import { toneOf } from '$lib/shell/module-tone'
   import { currentNavId, type ShellData, type ShellNavItem } from '$lib/shell/nav'
   import { cancelSpeak, speak } from '$lib/speech/tts'
 
@@ -131,31 +130,29 @@
   {@const Icon = iconFor(item.id)}
   {@const current = currentId === item.id}
   {@const dimmed = !item.active}
-  <!-- The website's nav: full pills, the current one inked; each part's icon
-       sits in a circle of the colour it wears on the website (module-tone.ts). -->
+  <!-- Compact rows with a moderate radius; the current one sits on the mist tile. -->
   <a
     href={appHref(item.href)}
     onclick={closeDrawer}
     aria-current={current ? 'page' : undefined}
     data-testid="shell-nav-{item.id}"
-    class="group flex h-10 min-w-0 items-center gap-3 rounded-full pr-3 pl-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring
+    class="group flex h-8 min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring
       {current
-      ? 'bg-primary text-primary-foreground'
+      ? 'bg-card font-medium text-foreground'
       : dimmed
         ? 'text-muted-foreground hover:bg-card'
         : 'text-foreground hover:bg-card'}"
   >
-    <span class="ico size-8 {dimmed ? 'ico-grey' : `ico-${toneOf(item.id)}`}" aria-hidden="true">
-      <Icon class="size-4" strokeWidth={1.75} />
-    </span>
+    <Icon class="size-4 shrink-0 {current ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'}" aria-hidden="true" strokeWidth={1.75} />
     <span class="min-w-0 truncate">{item.name}</span>
-    {#if dimmed}<span class="chip ml-auto h-6 shrink-0 px-2 {current ? '' : 'chip-line'}">Off</span>{/if}
+    {#if current}<span class="ml-auto size-1.5 shrink-0 rounded-full bg-coral" aria-hidden="true"></span>{/if}
+    {#if dimmed}<span class="chip chip-line ml-auto shrink-0">Off</span>{/if}
   </a>
 {/snippet}
 
 {#snippet sidebar()}
   <div class="flex h-full min-h-0 flex-col">
-    <div class="flex shrink-0 items-center px-3 pt-4 pb-2">
+    <div class="flex shrink-0 items-center px-3 pt-3 pb-1">
       <!-- The company is the way home: its dashboard at / (polish P-2). -->
       <a
         href={resolve('/')}
@@ -163,7 +160,7 @@
         aria-current={onDashboard ? 'page' : undefined}
         data-testid="shell-company-link"
         title="Dashboard"
-        class="group flex h-14 min-w-0 flex-1 items-center gap-3 rounded-full pr-4 pl-2 outline-none focus-visible:ring-2 focus-visible:ring-ring
+        class="group flex h-12 min-w-0 flex-1 items-center gap-2.5 rounded-xl px-2 outline-none focus-visible:ring-2 focus-visible:ring-ring
           {onDashboard ? 'bg-card' : 'hover:bg-card'}"
       >
         {#if companyLogo}
@@ -171,17 +168,17 @@
             src={companyLogo}
             alt=""
             data-testid="shell-company-logo"
-            class="size-10 shrink-0 rounded-full object-contain transition-transform group-hover:scale-105"
+            class="size-8 shrink-0 rounded-lg object-contain"
           />
         {:else}
           <span
             data-testid="shell-company-badge"
-            class="flex size-10 shrink-0 items-center justify-center rounded-full bg-signal-yellow font-mono text-sm text-black transition-transform group-hover:scale-105"
+            class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary font-mono text-sm text-primary-foreground"
             aria-hidden="true">{initial}</span
           >
         {/if}
         <span class="flex min-w-0 flex-col leading-tight">
-          <span class="truncate text-[15px] font-medium tracking-tight" data-testid="shell-company"
+          <span class="truncate text-sm font-medium tracking-tight" data-testid="shell-company"
             >{companyName}</span
           >
           <span class="mono-label truncate text-xs text-muted-foreground">Dashboard</span>
@@ -189,14 +186,14 @@
       </a>
     </div>
     <nav class="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-4" aria-label="Main">
-      <ul class="flex flex-col gap-1" data-testid="shell-nav">
+      <ul class="flex flex-col gap-0.5" data-testid="shell-nav">
         {#each mainItems as item (item.id)}<li>{@render navLink(item)}</li>{/each}
       </ul>
-      <ul class="mt-6 flex flex-col gap-1">
+      <ul class="mt-5 flex flex-col gap-0.5">
         {#each footerItems as item (item.id)}<li>{@render navLink(item)}</li>{/each}
       </ul>
     </nav>
-    <div class="mx-3 mb-3 flex shrink-0 items-center gap-2.5 rounded-full bg-card py-2 pr-2 pl-2.5" data-testid="shell-user-footer">
+    <div class="mx-3 mb-3 flex shrink-0 items-center gap-2.5 rounded-xl bg-card py-1.5 pr-1.5 pl-2" data-testid="shell-user-footer">
       {#if presence}
         <PresenceNav
           self={presence}
@@ -237,7 +234,7 @@
 >
   <!-- Desktop sidebar -->
   <aside
-    class="hidden w-64 shrink-0 bg-background md:block"
+    class="hidden w-56 shrink-0 bg-background md:block"
     data-testid="shell-sidebar"
   >
     {@render sidebar()}
@@ -254,7 +251,7 @@
       ></button>
       <aside
         id="shell-drawer"
-        class="absolute inset-y-0 left-0 w-72 max-w-[85vw] rounded-r-[2rem] bg-background pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl"
+        class="absolute inset-y-0 left-0 w-72 max-w-[85vw] rounded-r-2xl bg-background pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl"
         data-testid="shell-drawer"
       >
         {@render sidebar()}
@@ -265,12 +262,12 @@
   <div class="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="shell-column">
     <!-- The assistant's top bar, on every signed-in page (on phones with the menu). -->
     <header
-      class="box-content flex h-16 shrink-0 items-center gap-2 bg-background px-3 pt-[env(safe-area-inset-top)] sm:px-6"
+      class="box-content flex h-14 shrink-0 items-center gap-2 bg-background px-3 pt-[env(safe-area-inset-top)] sm:px-6"
       data-testid="shell-topbar"
     >
       <button
         type="button"
-        class="relative -ml-1 flex size-10 shrink-0 items-center justify-center rounded-full bg-card text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+        class="relative -ml-1 flex size-9 shrink-0 items-center justify-center rounded-full bg-card text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring md:hidden"
         aria-label={menuLabel}
         aria-expanded={drawerOpen}
         aria-controls="shell-drawer"
@@ -294,7 +291,7 @@
       </button>
       <div class="flex min-w-0 flex-1 justify-center">
         {#if assistant}
-          <div class="flex w-full max-w-3xl min-w-0">
+          <div class="flex w-full max-w-2xl min-w-0">
             <AssistantBar {assistant} />
           </div>
         {/if}
