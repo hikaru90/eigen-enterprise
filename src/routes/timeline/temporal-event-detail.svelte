@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { TemporalEventListItem } from '../api/temporal-events/+server'
   import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle'
-  import Trash2Icon from '@lucide/svelte/icons/trash-2'
   import XIcon from '@lucide/svelte/icons/x'
   import MemorySurfaceDrawer from '$lib/components/memory-surface-drawer.svelte'
   import { Button } from '$lib/components/ui/button'
@@ -9,8 +8,10 @@
   import { Input } from '$lib/components/ui/input'
   import { graphKindLabel } from '$lib/graph/graph-i18n'
   import { m } from '$lib/paraglide/messages.js'
+  import TemporalEventDeleteButton from './temporal-event-delete-button.svelte'
   import TemporalEventStatusButton from './temporal-event-status-button.svelte'
   import {
+    canArchiveTemporalEvent,
     completedEventSummaryClass,
     formatWhen,
     formatCreatedDate,
@@ -131,7 +132,7 @@
             {updatingEventId}
             onQuickAction={(id, action) => onQuickAction(id, action)}
           />
-          {#if !completed}
+          {#if canArchiveTemporalEvent(item)}
             <Button
               type="button"
               variant="outline"
@@ -143,18 +144,11 @@
               {m.graph_temporal_cancel()}
             </Button>
           {/if}
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            class="size-8"
+          <TemporalEventDeleteButton
+            summary={item.semanticSummary}
             disabled={busy}
-            title={m.graph_temporal_remove_event()}
-            onclick={() => onDelete(item.id)}
-          >
-            <Trash2Icon class="size-3.5" aria-hidden="true" />
-            <span class="sr-only">{m.graph_temporal_remove_event()}</span>
-          </Button>
+            onConfirm={() => onDelete(item.id)}
+          />
         </div>
       </div>
 

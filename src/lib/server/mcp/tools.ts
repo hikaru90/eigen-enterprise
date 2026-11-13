@@ -225,12 +225,10 @@ export async function runRetrieveThoughtsTool(context: McpToolContext, args: unk
 
   if (!query || order === 'created_at') {
     if (query && order === 'created_at') {
-      console.info(
-        '[mcp.tool:retrieve_thoughts] order=created_at ignores query for recent browse',
-        {
-          query,
-        },
-      )
+      // The query is Memory text: its size, never its words.
+      console.info('[mcp.tool:retrieve_thoughts] order=created_at ignores query for recent browse', {
+        queryChars: query.length,
+      })
     }
     const cursorCreatedAt =
       typeof body.cursor_created_at === 'string' ? new Date(body.cursor_created_at) : undefined
@@ -252,7 +250,7 @@ export async function runRetrieveThoughtsTool(context: McpToolContext, args: unk
 
   const retrieveStart = Date.now()
   console.info('[mcp.tool:retrieve_thoughts] start', {
-    query,
+    queryChars: query.length,
     topK: effectiveTopK,
     threshold: threshold ?? null,
     authorFilter: authorFilter ?? 'all',
@@ -339,7 +337,10 @@ export async function runAnswerQuestionTool(context: McpToolContext, args: unkno
   const referenceTime = parseOptionalIsoTimestamp(body.reference_time, 'reference_time')
   const authorFilter = parseAuthorScope(body)
   const answerStart = Date.now()
-  console.info('[mcp.tool:answer_question] start', { question, topK: topK ?? null })
+  console.info('[mcp.tool:answer_question] start', {
+    questionChars: question.length,
+    topK: topK ?? null,
+  })
   const result = await composeAnswer({
     userId: context.userId,
     question,
@@ -390,9 +391,10 @@ export async function runEditThoughtTool(context: McpToolContext, args: unknown)
   console.info('[mcp.edit_thought] start', {
     userId: context.userId,
     thoughtId,
-    editRequestPreview: editRequest.slice(0, 120),
+    // Edit request and replacement text are Memory text: sizes only.
+    editRequestChars: editRequest.length,
     hasRawText: rawTextReplacement !== undefined,
-    rawTextPreview: rawTextReplacement?.slice(0, 100),
+    rawTextChars: rawTextReplacement?.length ?? null,
   })
 
   try {
@@ -490,7 +492,7 @@ export async function runEditThoughtTool(context: McpToolContext, args: unknown)
     console.info('[mcp.edit_thought] ok', {
       userId: context.userId,
       thoughtId,
-      summary: updated.editSummary,
+      summaryChars: updated.editSummary.length,
       status: typeof afterMeta.status === 'string' ? afterMeta.status : 'open',
     })
 
@@ -852,13 +854,13 @@ export async function runCreateProjectTool(context: McpToolContext, args: unknow
     ? (statusRaw as 'active' | 'someday')
     : 'active'
 
-  console.info('[mcp.tool:create_project] start', { label, status })
+  // Project names are Memory text: logs carry ids and sizes, never the name.
+  console.info('[mcp.tool:create_project] start', { labelChars: label.length, status })
 
   const result = await createProject(context.userId, label, { status })
 
   console.info('[mcp.tool:create_project] done', {
     entityId: result.entityId,
-    label: result.label,
     status: result.status,
   })
 
@@ -884,7 +886,7 @@ export async function runEditProjectTool(context: McpToolContext, args: unknown)
 
   console.info('[mcp.tool:edit_project] start', {
     projectEntityId,
-    label: label ?? null,
+    labelChars: label?.length ?? null,
     status: statusRaw ?? null,
   })
 
@@ -909,7 +911,11 @@ export async function runEditProjectTool(context: McpToolContext, args: unknown)
     updates.status = statusResult.status
   }
 
-  console.info('[mcp.tool:edit_project] done', updates)
+  console.info('[mcp.tool:edit_project] done', {
+    entityId: updates.entityId,
+    labelChanged: updates.label !== undefined,
+    status: updates.status ?? null,
+  })
 
   return sanitizeMcpToolResult(updates)
 }
@@ -938,7 +944,6 @@ export async function runDeleteProjectTool(context: McpToolContext, args: unknow
 
   console.info('[mcp.tool:delete_project] done', {
     entityId: projectEntityId,
-    label: project.label,
   })
 
   return sanitizeMcpToolResult({

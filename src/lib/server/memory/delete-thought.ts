@@ -1,4 +1,5 @@
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm'
+import { isUuidV4 } from '$lib/random-uuid'
 import { WEBHOOK_DELIVERY_JOB } from '$lib/server/agents/constants'
 import { getDb } from '$lib/server/db'
 import {
@@ -15,6 +16,7 @@ import {
 import { removeThoughtGraphArtifacts } from '$lib/server/graph/age'
 import { pruneCanonicalEntitiesWithNoThoughtLinks } from '$lib/server/memory/canonical-entity-admin'
 import { notSystemProjectTask } from '$lib/server/memory/system-projects'
+import { thoughtIdFromTaskItemId } from '$lib/server/memory/temporal-event-list'
 
 export type DeleteThoughtResult =
   | { ok: true }
@@ -163,6 +165,34 @@ export async function deleteThoughtForUser(
   })
 
   return { ok: true }
+}
+
+/**
+ * Deletes, for good, the thought behind a Tasks / project row — the trash icon in a row's detail.
+ * A row is a task (`task:<thoughtId>`) or a date read from a thought (a temporal_event id). A
+ * date is part of the thought it came from, so the thought goes with all its dates: the same
+ * Delete as everywhere else in Memory (deleteThoughtForUser). Rows that are not the person's —
+ * or not ids at all — are not found.
+ */
+export async function deleteTimelineItemForUser(
+  userId: string,
+  itemId: string,
+): Promise<DeleteThoughtResult> {
+  const thoughtId = await thoughtIdBehindTimelineItem(userId, itemId.trim())
+  if (!thoughtId) return { ok: false, reason: 'not_found' }
+  return deleteThoughtForUser(userId, thoughtId)
+}
+
+async function thoughtIdBehindTimelineItem(userId: string, itemId: string): Promise<string | null> {
+  const taskThoughtId = thoughtIdFromTaskItemId(itemId)
+  if (taskThoughtId !== null) return isUuidV4(taskThoughtId) ? taskThoughtId : null
+  if (!isUuidV4(itemId)) return null
+  const [row] = await getDb()
+    .select({ thoughtId: temporalEvent.thoughtId })
+    .from(temporalEvent)
+    .where(and(eq(temporalEvent.id, itemId), eq(temporalEvent.userId, userId)))
+    .limit(1)
+  return row?.thoughtId ?? null
 }
 
 /** The person's archived thoughts — hidden from Memory's lists but still stored. */

@@ -20,7 +20,6 @@ import {
   createEditPhaseTimer,
   logEditComplete,
   logEditFailure,
-  truncateEditPreview,
 } from '$lib/server/capture/edit-phase-timing'
 import { reenrichThought } from '$lib/server/capture/enrich'
 import { enrichQueuedThought } from '$lib/server/capture/enrich-queued-thought'
@@ -177,9 +176,10 @@ export async function editStoredThought(
   const onProgress = options?.onProgress
   const logCtx = { userId, thoughtId }
   const timer = createEditPhaseTimer(logCtx)
-  const editRequestPreview = truncateEditPreview(editRequest)
+  // The edit request is Memory text: logs carry its size, never its words.
+  const editRequestChars = editRequest.trim().length
 
-  console.info('[capture.edit] start', { ...logCtx, editRequestPreview })
+  console.info('[capture.edit] start', { ...logCtx, editRequestChars })
 
   try {
     await timer.time('ensure_ontology_seeded', async () => {
@@ -530,7 +530,7 @@ export async function editStoredThought(
       logCtx,
       err,
       timing: timer.finish(),
-      editRequestPreview,
+      editRequestChars,
     })
     throw err
   }

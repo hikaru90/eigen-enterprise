@@ -143,6 +143,35 @@ describe('agentChat', () => {
     expect(llmChatCompletionMock).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps Memory text out of logs and the AI usage log, and marks its LLM calls as Memory', async () => {
+    const spies = (['log', 'info', 'warn', 'error'] as const).map((method) =>
+      vi.spyOn(console, method).mockImplementation(() => {}),
+    )
+    try {
+      answerQuestionMock.mockResolvedValue({
+        answer: 'Answer: You fear the layoffs.\nEvidence:\n- layoffs [id=t1]\nUnknown:\n- none',
+        citations: ['t1'],
+        retrieved: [],
+        conflicts: [],
+      })
+      llmChatCompletionMock.mockResolvedValueOnce(
+        llmJson({ tool: 'answer_question', arguments: { question: 'Am I afraid of the layoffs?' } }),
+      )
+      await agentChat({
+        userId: 'u1',
+        messages: [{ role: 'user', content: 'Am I afraid of the layoffs?' }],
+      })
+      const logged = JSON.stringify(spies.flatMap((spy) => spy.mock.calls))
+      expect(logged).not.toContain('layoffs')
+      expect(JSON.stringify(logActivityCallMock.mock.calls)).not.toContain('layoffs')
+      expect(llmChatCompletionMock).toHaveBeenCalledWith(
+        expect.objectContaining({ contentOrigin: 'memory' }),
+      )
+    } finally {
+      for (const spy of spies) spy.mockRestore()
+    }
+  })
+
   it('mandates answer_question for memory questions in the system prompt', async () => {
     answerQuestionMock.mockResolvedValue({
       answer: 'Answer: Not in memory.\nEvidence:\nUnknown:\n- workplace',

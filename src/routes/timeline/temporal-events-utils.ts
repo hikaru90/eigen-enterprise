@@ -269,6 +269,14 @@ export function isTemporalEventCompleted(item: TemporalEventListItem): boolean {
   return item.thoughtStatus === 'completed' || item.thoughtStatus === 'archived'
 }
 
+/**
+ * Archive (hide, keep stored) is offered on open and done rows alike. Before the row's trash
+ * deleted for good, that trash was the only way to archive a done row (Contribute 7fa15491).
+ */
+export function canArchiveTemporalEvent(item: TemporalEventListItem): boolean {
+  return item.lifecycleStatus !== 'archived' && item.thoughtStatus !== 'archived'
+}
+
 export function isTemporalEventOpen(item: TemporalEventListItem): boolean {
   return !isTemporalEventCompleted(item)
 }
@@ -970,7 +978,10 @@ export function filterRangeScopedDoneItems(
   items: readonly TemporalEventListItem[],
   now = new Date(),
 ): TemporalEventListItem[] {
-  return filterActiveItems([...items].filter((item) => isTemporalEventCompleted(item)), now)
+  return filterActiveItems(
+    [...items].filter((item) => isTemporalEventCompleted(item)),
+    now,
+  )
 }
 
 export function priorityDotColor(item: TemporalEventListItem): string {

@@ -228,6 +228,57 @@ describe.skipIf(!DATABASE_URL)('deleting a thought removes it from everything de
     expect(await db.withDbUser(userId, () => countArchivedThoughts(userId))).toBe(0)
   })
 
+  it("the Tasks tab's trash deletes the thought behind a row for good — task or date", async () => {
+    const { queueCapture } = await import('$lib/server/capture/queue-capture')
+    const capture = (text: string) =>
+      db.withDbUser(userId, () => queueCapture(userId, text, { skipWorker: true }))
+    const task = await capture('Call the therapist back')
+    const dated = await capture('Doctor appointment about the lump on Friday')
+    const [event] = await operator`
+      insert into temporal_event (user_id, thought_id, kind, active_period, time_precision,
+        timezone, confidence, semantic_summary, lexical_text)
+      values (${userId}, ${dated.thoughtId}, 'appointment', tsrange(now()::timestamp, null), 'day',
+        'UTC', 0.9, 'doctor appointment', 'doctor appointment') returning id`
+    const { deleteTimelineItemForUser } = await import('./delete-thought')
+
+    expect(
+      await db.withDbUser(userId, () =>
+        deleteTimelineItemForUser(userId, `task:${task.thoughtId}`),
+      ),
+    ).toEqual({ ok: true })
+    expect(await operator`select 1 from thought where id = ${task.thoughtId}`).toHaveLength(0)
+
+    expect(
+      await db.withDbUser(userId, () => deleteTimelineItemForUser(userId, String(event!.id))),
+    ).toEqual({ ok: true })
+    expect(await operator`select 1 from thought where id = ${dated.thoughtId}`).toHaveLength(0)
+    expect(await operator`select 1 from temporal_event where id = ${event!.id}`).toHaveLength(0)
+  })
+
+  it("the Tasks tab's trash can't reach another person's date, and unknown rows are not found", async () => {
+    const { queueCapture } = await import('$lib/server/capture/queue-capture')
+    const theirs = await db.withDbUser(otherId, () =>
+      queueCapture(otherId, 'Their private appointment', { skipWorker: true }),
+    )
+    const [event] = await operator`
+      insert into temporal_event (user_id, thought_id, kind, active_period, time_precision,
+        timezone, confidence, semantic_summary, lexical_text)
+      values (${otherId}, ${theirs.thoughtId}, 'appointment', tsrange(now()::timestamp, null),
+        'day', 'UTC', 0.9, 'their appointment', 'their appointment') returning id`
+    const { deleteTimelineItemForUser } = await import('./delete-thought')
+    const notFound = { ok: false, reason: 'not_found' }
+    expect(
+      await db.withDbUser(userId, () => deleteTimelineItemForUser(userId, String(event!.id))),
+    ).toEqual(notFound)
+    expect(await operator`select 1 from thought where id = ${theirs.thoughtId}`).toHaveLength(1)
+    expect(
+      await db.withDbUser(userId, () => deleteTimelineItemForUser(userId, 'task:not-a-uuid')),
+    ).toEqual(notFound)
+    expect(
+      await db.withDbUser(userId, () => deleteTimelineItemForUser(userId, 'not-a-uuid')),
+    ).toEqual(notFound)
+  })
+
   it('refuses a task of the company Roadmap (it is changed on the board)', async () => {
     const store = new MemoryRoadmapStore({
       ownerId: async () => userId,

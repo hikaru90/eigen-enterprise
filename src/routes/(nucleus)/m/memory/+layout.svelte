@@ -1,16 +1,21 @@
 <script lang="ts">
   import type { LayoutData } from './$types'
-  import type { Snippet } from 'svelte'
+  import { onMount, type Snippet } from 'svelte'
   import { page } from '$app/state'
   import { resolve } from '$app/paths'
   import Settings from '@lucide/svelte/icons/settings'
   import PageHeader from '$lib/components/page/page-header.svelte'
   import { activeMemorySurfaceTab, MEMORY_TABS } from '$lib/memory/memory-surface-nav'
+  import { enterPrivateAnalyticsSurface } from '$lib/analytics/posthog-client'
   import MemoryPrivacyNote from './memory-privacy-note.svelte'
 
   let { data, children }: { data: LayoutData; children: Snippet } = $props()
   const current = $derived(activeMemorySurfaceTab(page.url.pathname))
   const tabs = MEMORY_TABS.map((t) => ({ id: t.id, label: t.label, href: t.href }))
+
+  // Memory shows a person's private text: while it is open, product analytics gets nothing read
+  // off the page (no autocaptured element text, no session-replay snapshots) — posthog-client.ts.
+  onMount(() => enterPrivateAnalyticsSurface())
 </script>
 
 <!-- The Memory module page: the one page header with status, tabs below.

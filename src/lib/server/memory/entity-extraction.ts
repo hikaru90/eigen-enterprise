@@ -288,6 +288,7 @@ async function extractEntityMentionsOnce(
   ]
 
   const response = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId: input.userId,
     messages,
     temperature: 0,
@@ -369,6 +370,7 @@ export async function extractEntityTriples(input: {
   ]
 
   const response = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId: input.userId,
     messages,
     temperature: 0,
@@ -461,6 +463,7 @@ async function extractEntityGraphOnce(
   ]
 
   const response = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId: input.userId,
     messages,
     temperature: 0,

@@ -60,6 +60,7 @@ export async function deriveDeleteSearchQueries(params: {
   ]
 
   const raw = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId: params.userId,
     messages,
     temperature: 0,

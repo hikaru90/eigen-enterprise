@@ -116,6 +116,7 @@ export default defineConfig({
       'src/lib/components/drive/archived-view.svelte.spec.ts',
       'src/routes/(nucleus)/m/memory/memory-privacy-note.svelte.spec.ts',
       'src/routes/(nucleus)/m/memory/settings/your-data.svelte.spec.ts',
+      'src/routes/timeline/temporal-event-delete-button.svelte.spec.ts',
       'src/lib/components/contribute/contribute-composer.svelte.spec.ts',
       'src/lib/components/contribute/contribute-board.svelte.spec.ts',
       'src/lib/voice/voice-dictation.svelte.spec.ts',

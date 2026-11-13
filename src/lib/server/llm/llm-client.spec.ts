@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExtendedPrivateEnv } from '$lib/server/env/private-env'
 import { fetchMockInit, fetchMockUrl } from '$lib/test/vitest-mock-call'
 import { LlmNotConfiguredError } from './errors'
@@ -1868,5 +1868,207 @@ describe('llm client tool-calling passthrough', () => {
       content: '{\n  "status": "ok"\n}',
       tool_call_id: 'call_9',
     })
+  })
+})
+
+/**
+ * Memory text stays out of logs and analytics (Contribute 7fa15491). A call whose caller says
+ * its text is a person's Memory (`contentOrigin: 'memory'`) keeps its cost, tokens, model and
+ * timing — never the text: not in server logs, not in the AI usage log's preview, not in
+ * PostHog's `$ai_generation`.
+ */
+describe('memory content stays out of logs, the AI usage log and PostHog', () => {
+  const WORRY = 'I am afraid my cofounder wants to quit'
+  const ANSWER = 'You sound worried about your cofounder'
+  let consoleSpies: Array<ReturnType<typeof vi.spyOn>> = []
+
+  function logged(): string {
+    return JSON.stringify(consoleSpies.flatMap((spy) => spy.mock.calls))
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockEnv.LLM_BASE_URL = 'https://example.test'
+    mockEnv.LLM_RULE_CHAT = 'rule-chat'
+    mockEnv.LLM_RULE_EMBEDDING = 'rule-embed'
+    mockEnv.LLM_MODEL_CHAT = 'gpt-test'
+    mockEnv.LLM_MODEL_EMBEDDING = 'text-embedding-3-small'
+    mockEnv.LLM_MIN_REQUEST_INTERVAL_MS = '0'
+    mockEnv.LLM_REQUEST_TIMEOUT_MS = ''
+    mockEnv.LLM_API_KEY = 'key-1'
+    consoleSpies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((method) =>
+      vi.spyOn(console, method).mockImplementation(() => {}),
+    )
+  })
+
+  afterEach(() => {
+    for (const spy of consoleSpies) spy.mockRestore()
+  })
+
+  it('a memory chat keeps model, tokens and cost but no prompt or answer text', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        response(true, 200, {
+          usage: { prompt_tokens: 12, completion_tokens: 34, total_tokens: 46, cost: 0.002 },
+          choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: ANSWER } }],
+        }),
+      ),
+    )
+
+    await llmChatCompletion({
+      userId: 'u1',
+      messages: [
+        { role: 'system', content: 'Summarise the thought.' },
+        { role: 'user', content: WORRY },
+      ],
+      logContext: 'enrich',
+      contentOrigin: 'memory',
+    })
+
+    expect(logged()).not.toContain(WORRY)
+    expect(logged()).not.toContain(ANSWER)
+    expect(JSON.stringify(logActivityCallMock.mock.calls)).not.toContain(WORRY)
+    expect(JSON.stringify(captureServerEventMock.mock.calls)).not.toContain(WORRY)
+    expect(JSON.stringify(captureServerEventMock.mock.calls)).not.toContain(ANSWER)
+    expect(logActivityCallMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'u1',
+      expect.objectContaining({
+        operation: 'llm.chat.enrich.success(attempt=1)',
+        baseCostUsd: 0.002,
+        context: undefined,
+      }),
+    )
+    const [event] = captureServerEventMock.mock.calls[0] as [
+      { event: string; properties: Record<string, unknown> },
+    ]
+    expect(event.event).toBe('$ai_generation')
+    expect(event.properties).toMatchObject({
+      $ai_model: 'gpt-test',
+      $ai_input_tokens: 12,
+      $ai_output_tokens: 34,
+      $ai_stop_reason: 'stop',
+      $ai_latency: expect.any(Number),
+    })
+    expect(event.properties).not.toHaveProperty('$ai_input')
+    expect(event.properties).not.toHaveProperty('$ai_output_choices')
+  })
+
+  it('a failing memory chat keeps the error but no prompt text', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => response(false, 500, { error: 'down' })),
+    )
+
+    await expect(
+      llmChatCompletion({
+        userId: 'u1',
+        messages: [{ role: 'user', content: WORRY }],
+        contentOrigin: 'memory',
+      }),
+    ).rejects.toThrow(/LLM HTTP 500/)
+
+    expect(logged()).not.toContain(WORRY)
+    expect(JSON.stringify(logActivityCallMock.mock.calls)).not.toContain(WORRY)
+    expect(JSON.stringify(captureServerEventMock.mock.calls)).not.toContain(WORRY)
+    expect(logActivityCallMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'u1',
+      expect.objectContaining({ operation: 'llm.chat.chat.error(attempt=3)', context: undefined }),
+    )
+    expect(captureServerEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        properties: expect.objectContaining({ $ai_is_error: true, $ai_model: 'gpt-test' }),
+      }),
+    )
+    const [event] = captureServerEventMock.mock.calls[0] as [{ properties: object }]
+    expect(event.properties).not.toHaveProperty('$ai_input')
+  })
+
+  it('other chats still keep their text for observability', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        response(true, 200, {
+          choices: [{ message: { role: 'assistant', content: ANSWER } }],
+        }),
+      ),
+    )
+    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hello' }] })
+    expect(logActivityCallMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'u1',
+      expect.objectContaining({ context: 'hello' }),
+    )
+    expect(captureServerEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        properties: expect.objectContaining({
+          $ai_input: [{ role: 'user', content: 'hello' }],
+        }),
+      }),
+    )
+  })
+
+  it('a memory embedding keeps its cost but logs no input text', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        response(true, 200, { data: [{ embedding: [0.1] }], usage: { cost: 0.0001 } }),
+      ),
+    )
+
+    await llmCreateEmbeddings({ userId: 'u1', input: [WORRY, 'second'], contentOrigin: 'memory' })
+
+    expect(logged()).not.toContain(WORRY)
+    expect(JSON.stringify(logActivityCallMock.mock.calls)).not.toContain(WORRY)
+    expect(logActivityCallMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'u1',
+      expect.objectContaining({
+        operation: 'llm.embedding.success(attempt=1)',
+        baseCostUsd: 0.0001,
+        context: undefined,
+      }),
+    )
+  })
+
+  it('a failing memory embedding logs no input text', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => response(false, 500, { error: 'down' })),
+    )
+    await expect(
+      llmCreateEmbeddings({ userId: 'u1', input: WORRY, contentOrigin: 'memory' }),
+    ).rejects.toThrow()
+    expect(logged()).not.toContain(WORRY)
+    expect(JSON.stringify(logActivityCallMock.mock.calls)).not.toContain(WORRY)
+  })
+
+  it('a memory voice note keeps its cost but logs no transcript', async () => {
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
+    vi.mocked(isByokBilling).mockResolvedValue(false)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => response(true, 200, { text: WORRY, usage: { cost: 0.003 } })),
+    )
+
+    await llmCreateTranscription({
+      userId: 'u1',
+      model: 'qwen/qwen3-asr-flash-2026-02-10',
+      audio: { bytes: new Uint8Array([1]), format: 'webm' },
+      contentOrigin: 'memory',
+    })
+
+    expect(logged()).not.toContain(WORRY)
+    expect(JSON.stringify(logActivityCallMock.mock.calls)).not.toContain(WORRY)
+    expect(logActivityCallMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'u1',
+      expect.objectContaining({
+        baseCostUsd: 0.003,
+        context: 'stt:qwen/qwen3-asr-flash-2026-02-10',
+      }),
+    )
   })
 })

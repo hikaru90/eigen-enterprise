@@ -112,4 +112,46 @@ describe('posthog-client', () => {
     })
     expect(kept).not.toBeNull()
   })
+
+  it('sends nothing read off the page while a private surface (Memory) is open', async () => {
+    publicEnv.PUBLIC_POSTHOG_KEY = 'phc_test_key'
+    const { initPostHog, enterPrivateAnalyticsSurface } = await import('./posthog-client')
+    initPostHog()
+    const { before_send } = mockCallArg<{
+      before_send: (event: { event: string; properties?: Record<string, unknown> }) => unknown
+    }>(initMock, 0, 1)
+    const fromThePage = [
+      '$autocapture',
+      '$rageclick',
+      '$dead_click',
+      '$copy_autocapture',
+      '$snapshot',
+      '$$heatmap',
+    ]
+
+    const leave = enterPrivateAnalyticsSurface()
+    for (const event of fromThePage) {
+      expect(before_send({ event, properties: { $el_text: 'my private worry' } })).toBeNull()
+    }
+    expect(before_send({ event: 'thought_deleted', properties: { thought_id: 't1' } })).not.toBeNull()
+    expect(before_send({ event: '$pageview', properties: { $current_url: '/m/memory' } })).not.toBeNull()
+
+    leave()
+    expect(before_send({ event: '$autocapture', properties: {} })).not.toBeNull()
+    expect(before_send({ event: '$snapshot', properties: {} })).not.toBeNull()
+  })
+
+  it('a second leave of the same private surface does not end another one', async () => {
+    publicEnv.PUBLIC_POSTHOG_KEY = 'phc_test_key'
+    const { initPostHog, enterPrivateAnalyticsSurface } = await import('./posthog-client')
+    initPostHog()
+    const { before_send } = mockCallArg<{
+      before_send: (event: { event: string }) => unknown
+    }>(initMock, 0, 1)
+    const leaveFirst = enterPrivateAnalyticsSurface()
+    enterPrivateAnalyticsSurface()
+    leaveFirst()
+    leaveFirst()
+    expect(before_send({ event: '$autocapture' })).toBeNull()
+  })
 })

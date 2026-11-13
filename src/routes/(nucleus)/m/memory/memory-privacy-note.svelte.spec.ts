@@ -19,15 +19,20 @@ describe('MemoryPrivacyNote', () => {
     await expect.element(note()).toHaveTextContent(/direct access to the server/i)
     await expect.element(note()).toHaveTextContent(/delete removes a thought for good/i)
     await expect.element(note()).toHaveTextContent(/backups/i)
+    await expect
+      .element(note())
+      .toHaveTextContent(/server.s logs and your AI usage log note .* never what you wrote/i)
     await expect.element(note()).not.toHaveTextContent(/PostHog/i)
     await expect
       .element(page.getByRole('link', { name: /delete everything/i }))
       .toHaveAttribute('href', '/m/memory/settings#your-data')
   })
 
-  it('says AI requests also go to product analytics only when this server sends them there', async () => {
+  it('says product analytics sees how AI requests went, never their text — only when this server uses it', async () => {
     render(MemoryPrivacyNote, { analyticsSeesAi: true })
     await expect.element(note()).toHaveTextContent(/product analytics \(PostHog\)/i)
+    await expect.element(note()).toHaveTextContent(/never your Memory text/i)
+    await expect.element(note()).not.toHaveTextContent(/including your Memory text/i)
   })
 
   it('can be dismissed', async () => {

@@ -98,6 +98,7 @@ export async function generateGroundingQuestion(userId: string): Promise<Groundi
   ]
 
   const response = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId,
     messages,
     temperature: 0,

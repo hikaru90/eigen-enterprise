@@ -175,6 +175,7 @@ export async function resolveThoughtCategory(input: {
     systemChars: messages[0]?.content.length ?? 0,
   })
   const response = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId: input.userId,
     messages,
     temperature: 0,

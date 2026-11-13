@@ -1,6 +1,7 @@
 import type { TemporalEventListItem } from '../api/temporal-events/+server'
 import { describe, expect, it, vi } from 'vitest'
 import {
+  canArchiveTemporalEvent,
   agendaSectionForItem,
   buildMonthGrid,
   calendarDateKey,
@@ -1065,5 +1066,21 @@ describe('project grouping in today view', () => {
 
     expect(groups).toHaveLength(2)
     expect(focus.length + later.length).toBe(0)
+  })
+})
+
+describe('canArchiveTemporalEvent', () => {
+  it('offers Archive for open and done rows — the trash deletes for good now', () => {
+    expect(canArchiveTemporalEvent(item({ lifecycleStatus: 'open', thoughtStatus: 'open' }))).toBe(
+      true,
+    )
+    expect(
+      canArchiveTemporalEvent(item({ lifecycleStatus: 'completed', thoughtStatus: 'completed' })),
+    ).toBe(true)
+  })
+
+  it('does not offer Archive for a row that is archived already', () => {
+    expect(canArchiveTemporalEvent(item({ lifecycleStatus: 'archived' }))).toBe(false)
+    expect(canArchiveTemporalEvent(item({ thoughtStatus: 'archived' }))).toBe(false)
   })
 })

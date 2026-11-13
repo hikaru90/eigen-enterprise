@@ -192,6 +192,7 @@ export async function judgeGtdProjectHub(
   }
 
   const response = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId,
     messages: [
       {
@@ -298,6 +299,7 @@ export async function auditGtdProjectProfiles(userId: string): Promise<{ demoted
 
   const allowedEntityIds = new Set(entries.map((e) => e.context.entityId))
   const response = await llmChatCompletion({
+    contentOrigin: 'memory',
     userId,
     messages: [
       {
