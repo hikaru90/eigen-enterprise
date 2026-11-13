@@ -119,6 +119,8 @@ export const PLUGIN_ROUTES: Record<string, PluginRoutes> = {
     ],
   },
   drive: { page: '/drive', api: ['/api/drive'] },
+  // Pages only: the calendar's reads and writes are the page's load and form actions.
+  calendar: { page: '/m/calendar', api: [] },
   // Inside the Email area (Email → Contacts); /m/contacts/** redirects there.
   contacts: { page: '/m/email/people', api: ['/api/contacts'] },
   // Inside the Drive area (Drive → GitHub); /m/repos redirects there.

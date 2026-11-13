@@ -11,6 +11,7 @@ const BLURBS: Record<string, string> = {
   brand: 'How your company looks and sounds: the chosen style and everything it shapes.',
   memory: 'Tasks, projects and notes you and the agent keep, and a place to capture a thought.',
   members: 'The people in your company, their roles and invites.',
+  calendar: 'Your appointments by day, week and month, and when colleagues are free.',
   drive: 'Folders and files for the whole company: upload, share with people, preview documents and tables.',
   recap: 'A short daily summary of what happened, sent to you.',
   'chat-gateway': 'Talk to the agent from your messaging apps.',

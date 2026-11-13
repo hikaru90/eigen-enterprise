@@ -29,6 +29,8 @@ import type { AppDatabase } from '$lib/server/db/context'
 import { createGitHubTokenClient } from '$lib/server/github/token'
 import { BRAND_MODULE_ID, brandManifest } from './brand/manifest'
 import { createBrandTools } from './brand/tools'
+import { CALENDAR_MODULE_ID, calendarManifest } from './calendar/manifest'
+import { createCalendarTools } from './calendar/tools'
 import { CALLS_MODULE_ID, callsManifest } from './calls/manifest'
 import { createCallsTools } from './calls/tools'
 import { DbAllowlistStore } from './chat-gateway/db-stores'
@@ -97,6 +99,7 @@ export const moduleManifests = [
   callsManifest,
   contactsManifest,
   reposManifest,
+  calendarManifest,
 ] as const
 
 /**
@@ -128,6 +131,8 @@ export const SYSTEM_MODULE_IDS = [
   CONTACTS_MODULE_ID,
   // GitHub repos (plan/github-drive.md): read-only repo copies in Drive; idle until a token is pasted.
   REPOS_MODULE_ID,
+  // Calendar (plan/calendar.md): each member's appointments and colleagues' availability.
+  CALENDAR_MODULE_ID,
 ] as const
 
 /** Tools that always require an approval decision before first execution. */
@@ -300,6 +305,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createCallsTools({ service: liveCallsService }),
     ...createContactsTools(),
     ...createReposTools(),
+    ...createCalendarTools(),
   ])
 
   return {

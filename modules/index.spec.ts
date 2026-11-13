@@ -162,6 +162,7 @@ describe('moduleManifests', () => {
       'calls',
       'contacts',
       'repos',
+      'calendar',
     ])
   })
 })
@@ -183,6 +184,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'calls',
       'contacts',
       'repos',
+      'calendar',
     ])
     const toolNames = kernel.registry.list().map((t) => t.name)
     expect(toolNames).toContain('memory.retrieve_thoughts')
@@ -217,6 +219,8 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect(toolNames).toContain('contacts.list')
     expect(toolNames).toContain('contacts.follow_ups')
     expect(toolNames).toContain('contacts.log_contact')
+    expect(toolNames).toContain('calendar.list')
+    expect(toolNames).toContain('calendar.free_busy')
     expect(toolNames.length).toBe(
       moduleManifests.reduce((sum, m) => sum + m.tools.length, 0),
     )

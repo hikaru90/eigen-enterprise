@@ -3,7 +3,7 @@ import { canOpen, type Capabilities } from '$lib/access/capabilities'
 import { moduleHref, PLUGIN_ROUTES } from '$lib/plugins/routes'
 /**
  * The app shell's navigation (phase-cohesion rule 1, phase-workspace W-7,
- * polish P-1/P-2): one fixed order — Messages, Calls, Website, Email, Brand,
+ * polish P-1/P-2): one fixed order — Messages, Calls, Calendar, Website, Email, Brand,
  * Memory, Drive, Settings. The assistant is not a nav entry: it is the shell's top bar
  * and panel on every page. The dashboard at `/` is the company badge at the
  * top of the sidebar, not an entry either. Module
@@ -40,7 +40,7 @@ export { moduleHref }
  * page in the plugin route map ($lib/plugins/routes) — the same map the
  * plugin gate reads, so a dimmed entry leads to its switched-off page.
  */
-const FIXED_ORDER = ['messages', 'calls', 'website', 'email', 'brand', 'memory', 'drive'] as const
+const FIXED_ORDER = ['messages', 'calls', 'calendar', 'website', 'email', 'brand', 'memory', 'drive'] as const
 
 /**
  * Plugins whose pages live inside another entry's area (owner, 2026-11-13):

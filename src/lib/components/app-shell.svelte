@@ -4,6 +4,7 @@
   import type { Component } from 'svelte'
   import Box from '@lucide/svelte/icons/box'
   import Brain from '@lucide/svelte/icons/brain'
+  import CalendarDays from '@lucide/svelte/icons/calendar-days'
   import Globe from '@lucide/svelte/icons/globe'
   import HardDrive from '@lucide/svelte/icons/hard-drive'
   import Mail from '@lucide/svelte/icons/mail'
@@ -90,6 +91,7 @@
     brand: Palette,
     memory: Brain,
     drive: HardDrive,
+    calendar: CalendarDays,
   }
   const iconFor = (id: string): Component => icons[id] ?? Box
   const currentId = $derived(currentNavId(shell.nav.items, pathname))
