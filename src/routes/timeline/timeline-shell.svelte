@@ -415,14 +415,14 @@
 
   {#if snoozedItems.length > 0}
     <div class="border-border shrink-0 border-b px-3 py-1.5">
-      <p class="text-muted-foreground mb-1 font-mono text-[10px] uppercase">
+      <p class="text-muted-foreground mb-1 font-mono text-xs uppercase">
         {m.graph_timeline_snoozed()} ({snoozedItems.length})
       </p>
       <div class="flex flex-wrap gap-1">
         {#each snoozedItems as item (item.id)}
           <button
             type="button"
-            class="text-muted-foreground hover:text-foreground rounded-sm border border-border px-2 py-0.5 text-[10px]"
+            class="text-muted-foreground hover:text-foreground rounded-sm border border-border px-2 py-0.5 text-xs"
             onclick={() => selectItem(item)}
           >
             {item.semanticSummary}
@@ -448,12 +448,12 @@
         <p class="text-muted-foreground text-sm" data-testid="timeline-empty">
           {mode === 'tasks' ? m.graph_tasks_empty() : m.graph_temporal_empty()}
         </p>
-        <p class="text-muted-foreground/70 text-xs">
+        <p class="text-muted-foreground text-xs">
           {mode === 'tasks' ? m.graph_tasks_empty_hint() : m.graph_temporal_empty_hint()}
         </p>
       {:else}
         <p class="text-muted-foreground text-sm">{m.graph_temporal_no_open()}</p>
-        <p class="text-muted-foreground/70 text-xs">{m.graph_temporal_no_open_hint()}</p>
+        <p class="text-muted-foreground text-xs">{m.graph_temporal_no_open_hint()}</p>
       {/if}
     </div>
   {:else if data.phase === 'ready'}

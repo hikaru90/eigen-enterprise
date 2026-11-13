@@ -73,7 +73,7 @@
   <div class="grid shrink-0 grid-cols-7 border-b border-border">
     {#each weekdayLabels as label (label)}
       <div
-        class="text-muted-foreground border-border border-r px-1 py-1 text-center font-mono text-[10px] last:border-r-0"
+        class="text-muted-foreground border-border border-r px-1 py-1 text-center font-mono text-xs last:border-r-0"
       >
         {label}
       </div>
@@ -96,7 +96,7 @@
         role="gridcell"
       >
         <span
-          class="text-muted-foreground mb-0.5 font-mono text-[10px] {isCurrentMonth(day)
+          class="text-muted-foreground mb-0.5 font-mono text-xs {isCurrentMonth(day)
             ? 'text-foreground'
             : ''}"
         >
@@ -106,7 +106,7 @@
           {#each dayEvents as ev (ev.id)}
             <button
               type="button"
-              class="truncate rounded px-1 py-0.5 text-left font-mono text-[9px] leading-tight text-white {selectedItemId ===
+              class="truncate rounded px-1 py-0.5 text-left font-mono text-xs leading-tight text-white {selectedItemId ===
               ev.id
                 ? 'ring-2 ring-foreground ring-offset-1'
                 : ''}"

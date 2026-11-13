@@ -58,7 +58,7 @@
       {m.graph_timeline_project_empty_tasks()}
     </p>
   {:else}
-    <div class="text-muted-foreground mb-2 flex justify-between px-1 font-mono text-[10px]">
+    <div class="text-muted-foreground mb-2 flex justify-between px-1 font-mono text-xs">
       <span>{formatAxisDate(range.startMs)}</span>
       <span>{formatAxisDate(range.endMs)}</span>
     </div>
@@ -108,7 +108,7 @@
               ></div>
             {:else}
               <span
-                class="text-muted-foreground absolute inset-y-0 left-2 flex items-center font-mono text-[10px]"
+                class="text-muted-foreground absolute inset-y-0 left-2 flex items-center font-mono text-xs"
               >
                 {m.graph_timeline_project_gantt_undated()}
               </span>

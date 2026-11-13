@@ -121,7 +121,7 @@
       </div>
       {#if item.projectLabel}
         <span
-          class="text-foreground shrink-0 max-w-[120px] truncate rounded-full border border-border px-2 py-0.5 text-[10px] leading-tight dark:text-foreground"
+          class="text-foreground shrink-0 max-w-[120px] truncate rounded-full border border-border px-2 py-0.5 text-xs leading-tight dark:text-foreground"
           title={item.projectLabel}
         >
           {item.projectLabel}
@@ -131,11 +131,11 @@
 
     <div class="flex flex-col gap-0.5">
       {#if showWhen && item.startAt}
-        <span class="text-foreground/60 font-mono text-[10px] leading-tight"
+        <span class="text-foreground/60 font-mono text-xs leading-tight"
           >{m.graph_temporal_when()} {formatWhen(item, timeZone)}</span
         >
       {/if}
-      <span class="text-muted-foreground font-mono text-[10px] leading-tight"
+      <span class="text-muted-foreground font-mono text-xs leading-tight"
         >Created {formatCreatedDate(item)}</span
       >
     </div>
@@ -143,13 +143,13 @@
     {#if item.durationMinutes || item.energyLevel || isTaskListItem(item)}
       <div class="flex flex-wrap items-center gap-1.5">
         {#if item.durationMinutes}
-          <span class="text-muted-foreground font-mono text-[10px]">
+          <span class="text-muted-foreground font-mono text-xs">
             {m.graph_timeline_duration_min({ minutes: item.durationMinutes })}
           </span>
         {/if}
         {#if item.energyLevel}
           <span
-            class="rounded-full border px-2 py-0.5 text-[10px] {energyPillClasses(
+            class="rounded-full border px-2 py-0.5 text-xs {energyPillClasses(
               item.energyLevel,
             )}"
           >
@@ -158,7 +158,7 @@
         {/if}
         {#if isTaskListItem(item)}
           <span
-            class="text-muted-foreground rounded-full border border-border px-2 py-0.5 text-[11px] font-medium"
+            class="text-muted-foreground rounded-full border border-border px-2 py-0.5 text-xs font-medium"
           >
             {m.graph_timeline_open_loop()}
           </span>

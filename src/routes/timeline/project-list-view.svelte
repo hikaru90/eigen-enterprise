@@ -63,11 +63,11 @@
           </div>
           <div class="flex flex-col gap-0.5">
             {#if item.startAt}
-              <span class="text-foreground/60 font-mono text-[10px] leading-tight"
+              <span class="text-foreground/60 font-mono text-xs leading-tight"
                 >{m.graph_temporal_when()} {formatWhen(item)}</span
               >
             {/if}
-            <span class="text-muted-foreground font-mono text-[10px] leading-tight"
+            <span class="text-muted-foreground font-mono text-xs leading-tight"
               >Created {formatCreatedDate(item)}</span
             >
           </div>

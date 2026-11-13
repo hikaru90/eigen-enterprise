@@ -51,30 +51,30 @@
               {item.semanticSummary}
             </span>
             <span
-              class="text-muted-foreground shrink-0 font-mono text-[10px] uppercase tracking-wide"
+              class="text-muted-foreground shrink-0 font-mono text-xs uppercase tracking-wide"
             >
               {kindLabel(item.kind)}
             </span>
             {#if isTemporalEventCompleted(item)}
               <span
-                class="text-muted-foreground shrink-0 rounded-sm border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase"
+                class="text-muted-foreground shrink-0 rounded-sm border border-border px-1.5 py-0.5 font-mono text-xs uppercase"
               >
                 Done
               </span>
             {/if}
           </div>
-          <p class="text-muted-foreground font-mono text-[11px]">
+          <p class="text-muted-foreground font-mono text-xs">
             {item.startAt ? 'Due: ' + formatWhen(item) + ' · ' : ''}created {formatCreatedDate(
               item,
             )}
           </p>
-          <p class="text-muted-foreground/80 line-clamp-1 text-[11px]">{item.thoughtText}</p>
+          <p class="text-muted-foreground line-clamp-1 text-xs">{item.thoughtText}</p>
         </div>
       </button>
       <TemporalEventStatusButton {item} {updatingEventId} compact {onQuickAction} />
       {#if item.graphSyncStatus !== 'synced'}
         <span
-          class="text-destructive shrink-0 font-mono text-[10px]"
+          class="text-destructive shrink-0 font-mono text-xs"
           title={item.graphSyncError ?? 'Graph sync pending'}
         >
           {item.graphSyncStatus}

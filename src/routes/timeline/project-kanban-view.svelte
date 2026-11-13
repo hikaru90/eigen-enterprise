@@ -241,7 +241,7 @@
           aria-hidden="true"
         ></span>
         <h3 class="text-foreground text-xs font-semibold">{col.label}</h3>
-        <span class="text-muted-foreground ml-auto font-mono text-[10px]">{col.items.length}</span>
+        <span class="text-muted-foreground ml-auto font-mono text-xs">{col.items.length}</span>
       </header>
       <ul class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
         {#each col.items as item (item.id)}
@@ -284,7 +284,7 @@
                   {item.semanticSummary}
                 </p>
                 {#if item.startAt}
-                  <p class="text-muted-foreground mt-1 font-mono text-[10px]">
+                  <p class="text-muted-foreground mt-1 font-mono text-xs">
                     {formatWhen(item)}
                   </p>
                 {/if}

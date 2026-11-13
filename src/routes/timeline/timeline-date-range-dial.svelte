@@ -123,7 +123,7 @@
     aria-labelledby="timeline-date-range-trigger"
   >
     <div id="timeline-date-range-panel" class="flex flex-col gap-2">
-      <p class="text-muted-foreground font-mono text-[10px] uppercase tracking-wide">Date range</p>
+      <p class="text-muted-foreground font-mono text-xs uppercase tracking-wide">Date range</p>
       <div class="flex gap-1.5">
         <Input
           class="h-8 flex-1 font-mono text-xs"
@@ -149,7 +149,7 @@
         </Button>
       </div>
       {#if error}
-        <p class="text-destructive text-[11px] leading-snug">{error}</p>
+        <p class="text-destructive text-xs leading-snug">{error}</p>
       {/if}
       <div class="flex flex-col gap-1">
         {#each presets as preset (preset.id)}
