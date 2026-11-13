@@ -26,6 +26,7 @@
     <ContributeBoard
       proposals={data.proposals}
       canManage={data.canManage}
+      sharing={data.sharing}
       {client}
       onchanged={() => invalidate(CONTRIBUTE_DEPENDENCY)}
     />

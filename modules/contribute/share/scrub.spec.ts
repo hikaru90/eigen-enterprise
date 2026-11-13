@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
 import type { JudgeChat } from '../judge'
+import { describe, expect, it } from 'vitest'
 import { judged } from '../test-fixtures'
 import { buildScrubMessages, parseScrubOutput, SCRUB_LOG_CONTEXT, SCRUB_MAX_ATTEMPTS, ScrubFailedError, scrubTitle } from './scrub'
 

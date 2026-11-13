@@ -22,10 +22,10 @@ vi.mock('$lib/server/overview/sources', async () => {
   }
 })
 
-import { fixture } from '../../../../../modules/contribute/test-fixtures'
+import type { ShareDeps } from '../../../../../modules/contribute/share/service'
 import { HUB_NOT_CONFIGURED } from '../../../../../modules/contribute/share/hub'
 import { memoryInstallKeyStore } from '../../../../../modules/contribute/share/identity'
-import type { ShareDeps } from '../../../../../modules/contribute/share/service'
+import { fixture } from '../../../../../modules/contribute/test-fixtures'
 import { actions, load } from './+page.server'
 
 function shareFixture() {

@@ -1,13 +1,15 @@
 <script lang="ts">
+  import type { SentView, ShareItemView } from '../../../../modules/contribute/share/service'
   import type { ContributionDto, ContributionStatus } from '../../../../modules/contribute/types'
   import ChevronDown from '@lucide/svelte/icons/chevron-down'
   import ChevronUp from '@lucide/svelte/icons/chevron-up'
   import { BOARD_TABS, inTab, nextVote, tabCounts, type BoardTab } from '$lib/contribute/board'
   import type { ContributeClient } from '$lib/contribute/client'
   import { AREA_LABEL, KIND_LABEL, STATUS_LABEL } from '$lib/contribute/labels'
-  import { CONTRIBUTION_STATUSES } from '../../../../modules/contribute/types'
-  import VoiceDictation from '$lib/voice/voice-dictation.svelte'
+  import { SHARE_STATE_LABEL } from '$lib/contribute/share-fields'
   import { appendVoiceTranscript } from '$lib/voice/transcribe-voice-clip'
+  import VoiceDictation from '$lib/voice/voice-dictation.svelte'
+  import { CONTRIBUTION_STATUSES } from '../../../../modules/contribute/types'
 
   /**
    * The Contribute board (Eigen's board tabs): Requested · In progress ·
@@ -15,16 +17,22 @@
    * back; shipped is closed). The owner and admins move a proposal along and
    * leave the note people read — the agent does the same through the tools.
    * Changes show at once, then the page reloads the server's truth.
+   *
+   * The owner and admins also see each proposal's sharing with the
+   * eigenEnterprise makers (Waiting · Shared · Not shared · Failed), the exact
+   * payload ("Show what was sent") and can stop one ("Don't share").
    */
   type Props = {
     proposals: ContributionDto[]
     canManage: boolean
-    client: Pick<ContributeClient, 'vote' | 'update'>
+    /** Sharing state per proposal id; null when this person does not manage the board. */
+    sharing: Record<string, ShareItemView> | null
+    client: Pick<ContributeClient, 'vote' | 'update' | 'sentPayload' | 'dontShare'>
     /** Something changed: reload the board from the server. */
     onchanged: () => Promise<void>
   }
 
-  let { proposals, canManage, client, onchanged }: Props = $props()
+  let { proposals, canManage, sharing, client, onchanged }: Props = $props()
 
   let tab = $state<BoardTab>('requested')
   /** This person's latest change per proposal, shown until the reload lands. */
@@ -33,6 +41,11 @@
   let noteVoiceActive = $state(false)
   let error = $state<string | null>(null)
   let editingNote = $state<{ id: string; text: string } | null>(null)
+
+  /** "Show what was sent", opened per proposal. */
+  let sentOpen = $state<Record<string, SentView>>({})
+  /** This person's "Don't share", shown until the reload lands. */
+  let shareOverrides = $state<Record<string, ShareItemView>>({})
 
   const shown = $derived(proposals.map((p) => overrides[p.id] ?? p))
   const counts = $derived(tabCounts(shown))
@@ -66,6 +79,37 @@
 
   function setStatus(p: ContributionDto, status: ContributionStatus): void {
     if (status !== p.status) void run(p.id, () => client.update(p.id, { status }))
+  }
+
+  async function toggleSent(id: string): Promise<void> {
+    if (sentOpen[id]) {
+      delete sentOpen[id]
+      return
+    }
+    busy = id
+    error = null
+    try {
+      sentOpen[id] = await client.sentPayload(id)
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      busy = null
+    }
+  }
+
+  async function dontShare(id: string): Promise<void> {
+    busy = id
+    error = null
+    try {
+      shareOverrides[id] = await client.dontShare(id)
+      delete sentOpen[id]
+      await onchanged()
+      delete shareOverrides[id]
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      busy = null
+    }
   }
 
   function saveNote(p: ContributionDto): void {
@@ -105,6 +149,7 @@
     <ul class="divide-y divide-border rounded-md border border-border">
       {#each rows as p (p.id)}
         {@const closed = p.status === 'shipped'}
+        {@const share = shareOverrides[p.id] ?? sharing?.[p.id]}
         <li class="flex gap-3 p-3" data-testid="contribute-row">
           <div class="flex w-9 shrink-0 flex-col items-center" aria-label="Votes">
             <button
@@ -165,6 +210,51 @@
               <p class="mt-2 rounded-md bg-primary/[0.04] px-2.5 py-1.5 text-xs text-foreground/80" data-testid="contribute-note">
                 {p.note}
               </p>
+            {/if}
+            {#if share}
+              <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-testid="contribute-sharing">
+                <span
+                  class="rounded-full px-2 py-0.5 text-[11px] {share.state === 'failed'
+                    ? 'bg-destructive/10 text-destructive'
+                    : 'bg-primary/[0.06] text-foreground/70'}"
+                  data-testid="contribute-share-state"
+                  >{SHARE_STATE_LABEL[share.state]}{share.withdrawing ? ' · being withdrawn' : ''}</span
+                >
+                {#if share.error}
+                  <span class="text-foreground/60 [overflow-wrap:anywhere]" data-testid="contribute-share-error">{share.error}</span>
+                {/if}
+                <button
+                  type="button"
+                  class="cursor-pointer text-foreground/50 hover:text-foreground"
+                  disabled={busy === p.id}
+                  onclick={() => void toggleSent(p.id)}>{sentOpen[p.id] ? 'Hide what was sent' : 'Show what was sent'}</button
+                >
+                {#if share.state !== 'not_shared'}
+                  <button
+                    type="button"
+                    class="cursor-pointer text-foreground/50 hover:text-destructive"
+                    disabled={busy === p.id}
+                    onclick={() => void dontShare(p.id)}>Don't share</button
+                  >
+                {/if}
+              </div>
+              {#if sentOpen[p.id]}
+                {@const sent = sentOpen[p.id]}
+                <div class="mt-2 rounded-md border border-border p-2 text-xs" data-testid="contribute-sent">
+                  {#if sent.payload}
+                    <p class="text-foreground/60">
+                      {sent.isOnHub
+                        ? 'Exactly what the eigenEnterprise makers have:'
+                        : 'What the next update to the makers carries (the last one sent differs):'}
+                    </p>
+                    <pre
+                      class="mt-1 overflow-x-auto text-[11px] whitespace-pre-wrap [overflow-wrap:anywhere]"
+                      data-testid="contribute-sent-payload">{JSON.stringify(sent.payload, null, 2)}</pre>
+                  {:else}
+                    <p class="text-foreground/60">Nothing has been prepared or sent for this proposal.</p>
+                  {/if}
+                </div>
+              {/if}
             {/if}
             {#if canManage && editingNote?.id !== p.id}
               <button

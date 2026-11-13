@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto'
 import type { ContributionArea, ContributionKind, ContributionStatus } from '../types'
+import { createHash } from 'node:crypto'
 import { HUB_CONTRIBUTION_KEYS, hubContributionV1, type HubContributionV1 } from './contract'
 
 /**

@@ -248,7 +248,7 @@ export async function withdrawEverything(d: ShareWorkerDeps): Promise<void> {
   try {
     res = await d.transport(config.url)(signedRequest(key, 'DELETE', HUB_PATHS.install(key.installId), '', at))
   } catch (err) {
-    throw new Error(networkError(err))
+    throw new Error(networkError(err), { cause: err })
   }
   if (res.status === 404 || classifyHub(res.status) === 'ok') {
     await d.share.withdrawAll(at)

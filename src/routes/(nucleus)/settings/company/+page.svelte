@@ -3,6 +3,7 @@
   import { applyAction, deserialize, enhance } from '$app/forms'
   import { invalidateAll } from '$app/navigation'
   import { LOGO_TYPES, MAX_COMPANY_NAME_LENGTH, MAX_LOGO_BYTES, refuseLogoFile } from '$lib/company/identity'
+  import ShareSettingsCard from '$lib/components/contribute/share-settings-card.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { docTitle } from '$lib/shell/title'
@@ -23,6 +24,7 @@
   const initial = $derived((data.company.name ?? '?').slice(0, 1).toUpperCase())
   const nameResult = $derived(form?.action === 'saveName' ? form : null)
   const logoResult = $derived(form?.action === 'uploadLogo' || form?.action === 'removeLogo' ? form : null)
+  const shareResult = $derived(form?.action === 'setSharing' ? form : null)
 
   /** What this page knows before the server answers: a file on its way, or why it was not sent. */
   type LogoLocal = { kind: 'uploading'; fileName: string } | { kind: 'refused'; error: string }
@@ -231,4 +233,8 @@
       Files and Folders → Google Chrome. Dropping or pasting an image works without that.
     </p>
   </section>
+
+  {#if data.share}
+    <ShareSettingsCard status={data.share} result={shareResult} />
+  {/if}
 </div>

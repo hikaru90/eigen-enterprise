@@ -1,8 +1,8 @@
+import type { JudgeChat } from '../judge'
 import { z } from 'zod'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
 import { parseLlmJsonPayload } from '$lib/server/memory/llm-json-content'
 import { extractChatContent } from '$lib/server/ontology/llm-json'
-import type { JudgeChat } from '../judge'
 
 /**
  * The scrub (plan/contribute-phone-home.md §4.2): one gateway call on the
