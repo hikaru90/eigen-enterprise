@@ -52,14 +52,21 @@ export function signedRequest(key: InstallKey, method: HubRequest['method'], pat
 }
 
 /**
- * ok: done · retry: network, 5xx, 429 (backoff) · revoked: 401/403 (the hub
- * refused this install) · refused: any other answer (no retry).
+ * The hub's answers (from the hub workstream): 200/201 ok · 401 bad
+ * signature, unknown install or replay · 403 revoked · 409 (register only)
+ * this install id is registered with another key · 429 rate limit · 400
+ * schema.
+ *
+ * ok: done · retry: network, 5xx, 429 (backoff) · unauthorized: 401 (register
+ * again, then retry) · revoked: 403 (the hub refused this install) ·
+ * refused: any other answer (no retry).
  */
-export type HubOutcome = 'ok' | 'retry' | 'revoked' | 'refused'
+export type HubOutcome = 'ok' | 'retry' | 'unauthorized' | 'revoked' | 'refused'
 
 export function classifyHub(status: number): HubOutcome {
   if (status >= 200 && status < 300) return 'ok'
-  if (status === 401 || status === 403) return 'revoked'
+  if (status === 401) return 'unauthorized'
+  if (status === 403) return 'revoked'
   if (status === 429 || status >= 500) return 'retry'
   return 'refused'
 }

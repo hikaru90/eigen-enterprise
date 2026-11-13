@@ -17,8 +17,12 @@ import { ScrubFailedError } from './scrub'
  * changed since the last send. Excluded rows still on the hub get their
  * DELETE. Network/5xx/429 back off 1 min doubling to 6 h with no attempt
  * limit (offline boxes catch up); other refusals are `failed`, not retried;
- * 401/403 means the hub refused this install: revoked, visible in Settings,
- * nothing more is sent. A failure here never touches a local proposal.
+ * 403 means the hub refused this install: revoked, visible in Settings,
+ * nothing more is sent. 401 (unknown install, replay, bad signature) clears
+ * the registration so the next tick registers again, and the row backs off.
+ * Register is unsigned JSON (hub contract); 409 there = this install id has
+ * another key on the hub, which stops sharing like a revocation.
+ * DELETEs carry an empty body (the hub refuses any body). A failure here never touches a local proposal.
  */
 
 export const SHARE_BATCH = 20
@@ -28,6 +32,8 @@ export const BACKOFF_CAP_MS = 6 * 60 * 60_000
 
 export const NO_PROVIDER_MESSAGE = 'No AI provider: the owner connects one under Settings → AI provider, then waiting proposals are shared.'
 export const REVOKED_MESSAGE = 'The central board refused this install (HTTP {status}). Nothing more is sent.'
+export const KEY_CONFLICT_MESSAGE =
+  'The central board already knows this install id with a different key (HTTP 409). Nothing is sent until that is resolved.'
 
 /** Delay before the n-th retry (n ≥ 1): 1 min, 2, 4 … capped at 6 h. */
 export function backoffMs(attempts: number): number {
@@ -102,7 +108,8 @@ async function ensureRegistered(d: ShareWorkerDeps, settings: ShareSettings, hub
   const body = JSON.stringify(hubRegisterV1.parse({ v: 1, install_id: key.installId, public_key: key.publicKey, app_version: d.appVersion }))
   let res: HubResponse
   try {
-    res = await hub(signedRequest(key, 'POST', HUB_PATHS.register, body, at))
+    // Unsigned: the hub learns the key from this request.
+    res = await hub({ method: 'POST', path: HUB_PATHS.register, body, headers: {} })
   } catch (err) {
     await d.share.setLastError(networkError(err), at)
     return null
@@ -113,11 +120,12 @@ async function ensureRegistered(d: ShareWorkerDeps, settings: ShareSettings, hub
     return key
   }
   if (outcome === 'revoked') await d.share.setRevoked(at, revokedMessage(res.status))
+  else if (res.status === 409) await d.share.setRevoked(at, KEY_CONFLICT_MESSAGE)
   else await d.share.setLastError(`Registering with the central board failed. ${hubError(res)}`, at)
   return null
 }
 
-type RowResult = 'sent' | 'unchanged' | 'withdrawn' | 'retried' | 'failed' | 'revoked' | 'gone'
+type RowResult = 'sent' | 'unchanged' | 'withdrawn' | 'retried' | 'failed' | 'revoked' | 'reregister' | 'gone'
 
 export async function runShareTick(d: ShareWorkerDeps): Promise<ShareTickResult> {
   const settings = await d.share.settings()
@@ -137,6 +145,10 @@ export async function runShareTick(d: ShareWorkerDeps): Promise<ShareTickResult>
   for (const row of rows) {
     const r = await processRow(d, hub, key, row)
     if (r === 'revoked') break
+    if (r === 'reregister') {
+      out.retried++
+      break
+    }
     if (r !== 'gone') out[r]++
   }
   return out
@@ -147,6 +159,13 @@ async function retry(d: ShareWorkerDeps, row: OutboxEntry, error: string): Promi
   const at = d.now()
   await d.share.markRetry(row.contributionId, error, attempts, new Date(at.getTime() + backoffMs(attempts)), at)
   return 'retried'
+}
+
+/** 401: the hub does not know this install (any more) or refused the signature — register again next tick, back off this row. */
+async function reregister(d: ShareWorkerDeps, row: OutboxEntry, res: HubResponse): Promise<'reregister'> {
+  await retry(d, row, hubError(res))
+  await d.share.setRegistered(null, d.now())
+  return 'reregister'
 }
 
 async function processRow(d: ShareWorkerDeps, hub: HubTransport, key: InstallKey, row: OutboxEntry): Promise<RowResult> {
@@ -170,6 +189,7 @@ async function processRow(d: ShareWorkerDeps, hub: HubTransport, key: InstallKey
       await d.share.setRevoked(d.now(), revokedMessage(res.status))
       return 'revoked'
     }
+    if (outcome === 'unauthorized') return reregister(d, row, res)
     // Still on the hub: keep trying (a refusal at the 6 h cap), never claim it is gone.
     if (outcome === 'refused') {
       const at = d.now()
@@ -223,6 +243,7 @@ async function processRow(d: ShareWorkerDeps, hub: HubTransport, key: InstallKey
     await d.share.setRevoked(d.now(), revokedMessage(res.status))
     return 'revoked'
   }
+  if (outcome === 'unauthorized') return reregister(d, row, res)
   if (outcome === 'retry') return retry(d, row, hubError(res))
   await d.share.markFailed(id, hubError(res), d.now())
   return 'failed'
@@ -237,7 +258,8 @@ async function processRow(d: ShareWorkerDeps, hub: HubTransport, key: InstallKey
 export async function withdrawEverything(d: ShareWorkerDeps): Promise<void> {
   const settings = await d.share.settings()
   const at = d.now()
-  if (!settings.installId || !settings.registeredAt) {
+  // Never made an identity → nothing ever reached the hub. Otherwise always DELETE (the hub answers 200 when nothing is there).
+  if (!settings.installId) {
     await d.share.withdrawAll(at)
     return
   }

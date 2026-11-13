@@ -18,7 +18,15 @@ function fakeHub() {
   let publicKey: string | null = null
   const transport = async (req: HubRequest): Promise<HubResponse> => {
     requests.push(req)
-    if (req.method === 'POST') publicKey = hubRegisterV1.parse(JSON.parse(req.body)).public_key
+    if (req.method === 'POST') {
+      // Register is unsigned JSON.
+      expect(req.headers).toEqual({})
+      publicKey = hubRegisterV1.parse(JSON.parse(req.body)).public_key
+      const next = answers.shift() ?? 201
+      if (next instanceof Error) throw next
+      return { status: next, text: next >= 400 ? `nope ${next}` : '' }
+    }
+    if (req.method === 'DELETE' && req.body !== '') return { status: 400, text: 'DELETE takes no body' }
     const v = verifyHubRequest({ method: req.method, path: req.path, body: req.body, headers: req.headers, publicKey: publicKey!, now: Number(req.headers['x-ee-timestamp']) })
     if (!v.ok) throw new Error(`fake hub: bad signature (${v.reason})`)
     const next = answers.shift() ?? 200
@@ -132,7 +140,7 @@ describe('share worker', () => {
     expect(await runShareTick(s.deps)).toMatchObject({ skipped: 'nothing_due' })
   })
 
-  it('401/403 on a send or on register: the install is revoked, shown, and nothing more is sent', async () => {
+  it('403 on a send or on register: the install is revoked, shown, and nothing more is sent', async () => {
     const s = setup()
     const a = await s.propose('one')
     await s.propose('two')
@@ -147,9 +155,31 @@ describe('share worker', () => {
 
     const r = setup()
     await r.propose()
-    r.hub.answers.push(401)
+    r.hub.answers.push(403)
     expect(await runShareTick(r.deps)).toMatchObject({ skipped: 'revoked' })
     expect(r.hub.puts()).toHaveLength(0)
+  })
+
+  it('409 on register (this install id has another key on the hub) stops sharing and says why', async () => {
+    const s = setup()
+    await s.propose()
+    s.hub.answers.push(409)
+    expect(await runShareTick(s.deps)).toMatchObject({ skipped: 'revoked' })
+    expect((await s.f.share.settings()).lastError).toContain('different key (HTTP 409)')
+    expect(s.hub.puts()).toHaveLength(0)
+  })
+
+  it('401 on a send (unknown install, replay): registers again on the next tick and sends', async () => {
+    const s = setup()
+    const p = await s.propose()
+    s.hub.answers.push(200, 401)
+    expect(await runShareTick(s.deps)).toMatchObject({ retried: 1 })
+    expect((await s.f.share.settings()).registeredAt).toBeNull()
+    expect((await s.f.share.settings()).revokedAt).toBeNull()
+    expect(await s.f.share.entry(p.id)).toMatchObject({ state: 'scrubbed', attempts: 1 })
+    s.f.tick(61_000)
+    expect(await runShareTick(s.deps)).toMatchObject({ sent: 1 })
+    expect(s.hub.requests.filter((r) => r.method === 'POST')).toHaveLength(2)
   })
 
   it('a failed register is shown and retried on the next tick; nothing is sent meanwhile', async () => {
@@ -237,8 +267,13 @@ describe('share worker', () => {
     expect(await s.f.share.entry(p.id)).toMatchObject({ state: 'excluded', lastSentHash: null })
     expect((await s.f.share.settings()).registeredAt).toBeNull()
 
-    s.hub.answers.push(502)
-    await expect(withdrawEverything({ ...s.deps, share: s.f.share })).resolves.toBeUndefined() // not registered: nothing on the hub
+    // Again: the hub answers 200 for an install that is already gone.
+    await expect(withdrawEverything(s.deps)).resolves.toBeUndefined()
+    expect(s.hub.requests.filter((r) => r.method === 'DELETE').every((r) => r.body === '')).toBe(true)
+    // No identity yet: nothing ever reached the hub, nothing to ask.
+    const fresh = setup()
+    await withdrawEverything(fresh.deps)
+    expect(fresh.hub.requests).toHaveLength(0)
     const t = setup()
     await t.propose()
     await runShareTick(t.deps)

@@ -19,7 +19,7 @@ function setup(opts: { hub?: HubConfig; providerReady?: boolean } = {}) {
     hub: () => opts.hub ?? { ok: true, url: 'https://hub.test' },
     transport: () => async (req) => {
       requests.push(req)
-      if (keys.key) {
+      if (keys.key && req.method !== 'POST') {
         const v = verifyHubRequest({ ...req, headers: req.headers, publicKey: keys.key.publicKey, now: Number(req.headers['x-ee-timestamp']) })
         if (!v.ok) throw new Error('bad signature')
       }
