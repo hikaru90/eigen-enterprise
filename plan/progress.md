@@ -2,6 +2,15 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-13 — v0.5.10 on production (os.cerberusblue.com): Contribute phone-home live, central board on
+
+Owner: "Yes, go live", then "Ship all of main" (so v0.5.10 also carries the other sessions' unreleased work since v0.5.9: design overhaul, Calendar + appointments from mail, contact history + import, the Assistant as a plugin, a11y page guard, brand material, memory privacy, presence in the nav).
+- **ee:** installs share with the official central board by default. `ee bootstrap --contribute-hub <https origin|off>`, saved as `settings.contributeHub` in the company repo and kept across upgrades; companies from before it existed get `https://os.cerberusblue.com` on their next upgrade. ee writes it as the os workload's `CONTRIBUTE_HUB_URL` (removed for `off`). The local box passes `--contribute-hub off` (owner Q8). Commits `2772656`, `9189bad`.
+- **Release:** commit `bd9a336`, tag `v0.5.10`, main + tag pushed through the pre-push gate (6959 passed). Release run 43509393402 green, 12 assets.
+- **Upgrade:** `ee upgrade --from …/download/v0.5.10`, detached (log `/root/ee-upgrade-0.5.10.log`), safety copy `/var/lib/ee/upgrades/2026-11-13T21-21-57Z`. Runs `eigenenterprise-0.5.10-bd9a336d6dcc` on slot b; `/login` 200, `/api/health` 200; the app process has `CONTRIBUTE_HUB_URL=https://os.cerberusblue.com`; the phone-home tables exist; production's 46 existing proposals are `excluded` (no backfill).
+- **Hub on:** `kernel.module_activate contribute-hub` on production → active. `POST /api/hub/register {}` → 400 (strict schema), unsigned `PUT /api/hub/contributions/:id` → 401. 0 installs registered so far: other installs send once they upgrade to v0.5.10.
+- **Not verified:** no real install has registered and sent yet (no signed request against production, so no test data on the real board); "All installs" not opened signed in; no "sharing is on" notice yet, though existing companies start sharing on their upgrade (owner Q6).
+
 ## 2026-11-13 — Contribute phone-home merged + e2e (pushed; on the local box: release `eigenenterprise-0.5.9-6a782a692cb8-linux-arm64`, central board not configured there — no `CONTRIBUTE_HUB_URL`)
 
 - Merged into main: the wire contract + migrations 0136/0137 (`16d29d0`), the hub (`4cf3d93`), the install side (`fd61741`), the join fix (`8a795ae`: views pass `sharing` through; the new UI meets the page a11y guard, 13px and muted text), and the e2e journey.
