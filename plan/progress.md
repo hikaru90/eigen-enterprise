@@ -2,7 +2,14 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-11-14 — Email: inbox and setup fixed after the owner's review ("unusable right now") (main `6dce00b`, `646a661`; on the local box: release `eigenenterprise-0.5.11-646a66136c15-linux-arm64`; not pushed, not on production)
+## 2026-11-14 — v0.5.12 on production (os.cerberusblue.com): email inbox + setup fixes
+
+Owner: "Yes, ship it".
+- **Release:** commit `0c8909a`, tag `v0.5.12` (on top of `6dce00b`, `646a661`, `5a2df3f`). Main + tag pushed through the pre-push gate (7013 passed, 0 lint errors). Release run 43577923055 green, 12 assets.
+- **Upgrade:** `ee upgrade --from …/download/v0.5.12`, detached (log `/root/ee-upgrade-0.5.12.log`), safety copy `/var/lib/ee/upgrades/2026-11-14T08-56-52Z`. Runs `eigenenterprise-0.5.12-0c8909ab5d16`; migrations 0141 + 0142 ran in the health-gated deploy; `/login` 200, `/api/health` 200; `ee status` applied = desired, no reconcile error.
+- **Not verified:** adopting `cerberusblue.com` against the real SES account (nobody pressed Add domain on production yet, so `email.domain_list` is still `[]`); the new inbox not opened signed in on production.
+
+## 2026-11-14 — Email: inbox and setup fixed after the owner's review ("unusable right now") (main `6dce00b`, `646a661`; on the local box: release `eigenenterprise-0.5.11-646a66136c15-linux-arm64`; shipped in v0.5.12)
 
 Owner feedback: the Inbox showed nothing; Setup refused the domain the default sender already uses ("already set up in Amazon SES"); a separate Domains tab; setup tabs too close to the tab bar.
 - **Root cause on production:** `cerberusblue.com` is a verified SES identity (the default sender `hello@cerberusblue.com` sends through it), but ee had no domain row (`email.domain_list` → `[]`). `addDomain` always called CreateEmailIdentity, Amazon answered AlreadyExists, and with no domain ee couldn't create a mailbox, so the Inbox stayed empty.
