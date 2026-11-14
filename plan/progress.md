@@ -2,7 +2,7 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-11-14 — Email: inbox and setup fixed after the owner's review ("unusable right now")
+## 2026-11-14 — Email: inbox and setup fixed after the owner's review ("unusable right now") (main `6dce00b`, `646a661`; on the local box: release `eigenenterprise-0.5.11-646a66136c15-linux-arm64`; not pushed, not on production)
 
 Owner feedback: the Inbox showed nothing; Setup refused the domain the default sender already uses ("already set up in Amazon SES"); a separate Domains tab; setup tabs too close to the tab bar.
 - **Root cause on production:** `cerberusblue.com` is a verified SES identity (the default sender `hello@cerberusblue.com` sends through it), but ee had no domain row (`email.domain_list` → `[]`). `addDomain` always called CreateEmailIdentity, Amazon answered AlreadyExists, and with no domain ee couldn't create a mailbox, so the Inbox stayed empty.
