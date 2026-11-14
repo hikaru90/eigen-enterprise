@@ -73,6 +73,13 @@ Orchestrated: one worktree stream per proposal (`.claude/worktrees/contrib-*`, b
   - Final full run on `f2dd0a3`: check 0 errors; unit 831 files / 6949 passed, 0 failed; components 373/374 (the same pre-existing `app-detail-settings` failure).
 - **Not verified:** nothing in a browser, nothing on the box; e2e not run.
 
+## 2026-11-14 — v0.5.11 on production (os.cerberusblue.com): the workspace design
+
+Owner: "commit and push", then "deploy to os.cerberusblue.com".
+- **Release:** commit `fae6426`, tag `v0.5.11` (on top of the design rounds 3 `0c3ac76` and 4 `4f60dbb`; nothing else unreleased on main). Main + tag pushed through the pre-push gate (6994 passed, 0 lint errors, typecheck clean). Release run 43531364751 green, 12 assets.
+- **Upgrade:** `ee upgrade --from …/download/v0.5.11`, detached (log `/root/ee-upgrade-0.5.11.log`), safety copy `/var/lib/ee/upgrades/2026-11-14T00-05-53Z`. Runs `eigenenterprise-0.5.11-fae642671aa2`; `/login` 200, `/api/health` 200; served theme-color `#000000` and the CSS carries the new frame (`ink-scope`, `--gradient-dusk`); `ee status` applied = desired, no reconcile error.
+- **Not verified:** nobody signed in on production to look at the dashboard (no screenshots); brand-styled companies on production not checked.
+
 ## 2026-11-13 — App design, round 4: the reference board, copied (main, on the local box)
 
 - **Why:** round 3 toned things down but didn't copy the owner's reference board. The owner wanted its colours, gradients, small details and above all its shapes taken over 1:1, especially which elements are pill-round and which are near-square.
