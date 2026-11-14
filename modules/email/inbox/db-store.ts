@@ -1,12 +1,12 @@
-import type { AddressRow, AttachmentRow, FolderCount, InboxStore, MailboxRow, MailPerson, MessageRow, MessageSummary } from './store'
-import type { Folder } from './types'
-import { and, asc, desc, eq, getTableColumns, ilike, inArray, or, sql } from 'drizzle-orm'
+import type { AddressRow, AttachmentRow, FolderCount, InboxStore, LabelRow, MailboxRow, MailPerson, MessageRow, MessageSummary } from './store'
+import type { Folder, LabelColor } from './types'
+import { and, asc, desc, eq, exists, getTableColumns, ilike, inArray, isNull, notInArray, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { AppDatabase } from '$lib/server/db/context'
 import { rowsFromDbExecute } from '$lib/server/db/execute-rows'
-import { inboxAttachments, inboxMessages, mailboxAddresses, mailboxes } from '$lib/server/db/inbox.schema'
-import { INBOX_NOTIFY_CHANNEL } from './store'
-import { VERDICTS } from './types'
+import { inboxAttachments, inboxLabels, inboxMessageLabels, inboxMessages, mailboxAddresses, mailboxes } from '$lib/server/db/inbox.schema'
+import { HIDDEN_FROM_VIEWS, INBOX_NOTIFY_CHANNEL } from './store'
+import { LABEL_COLORS, VERDICTS } from './types'
 
 /** InboxStore over Postgres (company-level tables, migrations 0129 + 0131). */
 
@@ -23,6 +23,11 @@ function parsed<T>(schema: z.ZodType<T>, value: unknown, what: string, id: strin
 }
 
 type SummaryRecord = Omit<typeof inboxMessages.$inferSelect, 'textBody' | 'htmlBody'>
+
+function toLabel(r: typeof inboxLabels.$inferSelect): LabelRow {
+  if (!(LABEL_COLORS as readonly string[]).includes(r.color)) throw new Error(`inbox label ${r.id} has an unknown colour: ${r.color}`)
+  return { ...r, color: r.color as LabelColor }
+}
 
 function toSummary(r: SummaryRecord): MessageSummary {
   return {
@@ -158,8 +163,8 @@ export function dbInboxStore(db: AppDatabase): InboxStore {
       const [r] = await db.select().from(inboxMessages).where(eq(inboxMessages.id, id)).limit(1)
       return r ? toMessage(r) : null
     },
-    async listMessages(mailboxId, folder, limit, search) {
-      const pattern = search === undefined ? null : containsPattern(search)
+    async listMessages(mailboxId, query, limit) {
+      const pattern = query.search === undefined ? null : containsPattern(query.search)
       const matches = pattern
         ? or(
             ilike(inboxMessages.subject, pattern),
@@ -168,13 +173,39 @@ export function dbInboxStore(db: AppDatabase): InboxStore {
             ilike(inboxMessages.snippet, pattern),
           )
         : undefined
+      const withAttachments = exists(db.select({ one: sql`1` }).from(inboxAttachments).where(eq(inboxAttachments.messageId, inboxMessages.id)))
       const rows = await db
-        .select(summaryColumns)
+        .select({
+          ...summaryColumns,
+          hasAttachments: sql<boolean>`${withAttachments}`,
+          labelIds: sql<string[]>`coalesce((select array_agg(${inboxMessageLabels.labelId}::text order by ${inboxMessageLabels.labelId}) from ${inboxMessageLabels} where ${inboxMessageLabels.messageId} = ${inboxMessages.id}), '{}')`,
+        })
         .from(inboxMessages)
-        .where(and(eq(inboxMessages.mailboxId, mailboxId), eq(inboxMessages.folder, folder), matches))
-        .orderBy(desc(inboxMessages.receivedAt), desc(inboxMessages.id))
+        .where(
+          and(
+            eq(inboxMessages.mailboxId, mailboxId),
+            query.folder === null ? notInArray(inboxMessages.folder, [...HIDDEN_FROM_VIEWS]) : eq(inboxMessages.folder, query.folder),
+            matches,
+            query.starred ? eq(inboxMessages.starred, true) : undefined,
+            query.labelId === undefined
+              ? undefined
+              : exists(
+                  db
+                    .select({ one: sql`1` })
+                    .from(inboxMessageLabels)
+                    .where(and(eq(inboxMessageLabels.messageId, inboxMessages.id), eq(inboxMessageLabels.labelId, query.labelId))),
+                ),
+            query.filter === 'unread' ? isNull(inboxMessages.readAt) : undefined,
+            query.filter === 'attachments' ? withAttachments : undefined,
+          ),
+        )
+        .orderBy(
+          ...(query.sort === 'oldest'
+            ? [asc(inboxMessages.receivedAt), asc(inboxMessages.id)]
+            : [desc(inboxMessages.receivedAt), desc(inboxMessages.id)]),
+        )
         .limit(limit)
-      return rows.map(toSummary)
+      return rows.map(({ hasAttachments, labelIds, ...r }) => ({ ...toSummary(r), hasAttachments: Boolean(hasAttachments), labelIds }))
     },
     async folderCounts(mailboxId) {
       const rows = await db
@@ -206,6 +237,44 @@ export function dbInboxStore(db: AppDatabase): InboxStore {
     async getAttachment(id) {
       const [r] = await db.select().from(inboxAttachments).where(eq(inboxAttachments.id, id)).limit(1)
       return r ?? null
+    },
+    async listLabels(mailboxId) {
+      const rows = await db
+        .select()
+        .from(inboxLabels)
+        .where(eq(inboxLabels.mailboxId, mailboxId))
+        .orderBy(sql`lower(${inboxLabels.name})`)
+      return rows.map(toLabel)
+    },
+    async getLabel(id) {
+      const [r] = await db.select().from(inboxLabels).where(eq(inboxLabels.id, id)).limit(1)
+      return r ? toLabel(r) : null
+    },
+    async insertLabel(row) {
+      await db.insert(inboxLabels).values(row)
+    },
+    async deleteLabel(id) {
+      await db.transaction(async (tx) => {
+        const out = await tx.delete(inboxLabels).where(eq(inboxLabels.id, id)).returning({ mailboxId: inboxLabels.mailboxId })
+        if (out.length > 0) await tx.execute(sql`select pg_notify(${INBOX_NOTIFY_CHANNEL}, ${out[0]!.mailboxId})`)
+      })
+    },
+    async messageLabelIds(messageId) {
+      const rows = await db
+        .select({ labelId: inboxMessageLabels.labelId })
+        .from(inboxMessageLabels)
+        .where(eq(inboxMessageLabels.messageId, messageId))
+        .orderBy(sql`${inboxMessageLabels.labelId}::text`)
+      return rows.map((r) => r.labelId)
+    },
+    async setMessageLabel(messageId, labelId, on) {
+      await db.transaction(async (tx) => {
+        if (on) await tx.insert(inboxMessageLabels).values({ messageId, labelId }).onConflictDoNothing()
+        else await tx.delete(inboxMessageLabels).where(and(eq(inboxMessageLabels.messageId, messageId), eq(inboxMessageLabels.labelId, labelId)))
+        const [m] = await tx.select({ mailboxId: inboxMessages.mailboxId }).from(inboxMessages).where(eq(inboxMessages.id, messageId))
+        if (!m) throw new Error(`inbox message ${messageId} not found`)
+        await tx.execute(sql`select pg_notify(${INBOX_NOTIFY_CHANNEL}, ${m.mailboxId})`)
+      })
     },
     async stats() {
       const result = await db.execute(sql`

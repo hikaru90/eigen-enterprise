@@ -1,8 +1,9 @@
 <script lang="ts">
   /* eslint-disable svelte/no-navigation-without-resolve -- hrefs come from the page, built on resolve('/m/email/inbox') */
-  import type { MessageListItem } from '../view'
+  import type { LabelView, MessageListItem } from '../view'
+  import Paperclip from '@lucide/svelte/icons/paperclip'
   import Star from '@lucide/svelte/icons/star'
-  import { personLabel, shortWhen } from './display'
+  import { labelDot, personLabel, shortWhen } from './display'
 
   /**
    * One folder's mail, newest first. Opening goes through `onopen` (the page
@@ -11,6 +12,7 @@
    */
   let {
     messages,
+    labels = [],
     selectedId,
     label,
     empty,
@@ -19,6 +21,8 @@
     now = new Date(),
   }: {
     messages: MessageListItem[]
+    /** The mailbox's labels, to name the ones on each mail (an id no longer among them is not shown). */
+    labels?: LabelView[]
     selectedId: string | null
     label: string
     empty: string
@@ -26,6 +30,8 @@
     onopen: (item: MessageListItem, event: MouseEvent) => void
     now?: Date
   } = $props()
+
+  const labelById = $derived(new Map(labels.map((l) => [l.id, l])))
 
   function click(item: MessageListItem, event: MouseEvent) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
@@ -55,11 +61,24 @@
             <span class="truncate">{personLabel(m.from)}</span>
           </span>
           <span class="flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
+            {#if m.hasAttachments}<Paperclip class="size-3.5" aria-hidden="true" /><span class="sr-only">Has attachments.&nbsp;</span>{/if}
             {#if m.starred}<Star class="size-3.5 fill-current text-amber-500" aria-hidden="true" /><span class="sr-only">Starred.&nbsp;</span>{/if}
             <time datetime={m.receivedAt}>{shortWhen(m.receivedAt, now)}</time>
           </span>
           <span class="col-span-2 truncate text-sm {m.unread ? 'font-medium text-foreground' : 'text-foreground/90'}">{m.subject || '(no subject)'}</span>
           <span class="col-span-2 truncate text-xs text-muted-foreground">{m.snippet}</span>
+          {#if m.labelIds.some((id) => labelById.has(id))}
+            <span class="col-span-2 mt-1 flex flex-wrap gap-1">
+              {#each m.labelIds as id (id)}
+                {@const l = labelById.get(id)}
+                {#if l}
+                  <span class="inline-flex items-center gap-1 rounded-full border border-border px-1.5 py-px text-[11px] text-foreground/80" data-testid="inbox-item-label"
+                    ><span class="size-1.5 rounded-full" style:background={labelDot(l.color)} aria-hidden="true"></span>{l.name}</span
+                  >
+                {/if}
+              {/each}
+            </span>
+          {/if}
         </a>
       </li>
     {/each}

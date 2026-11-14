@@ -1,6 +1,6 @@
 import type { ThreadView } from './service'
-import type { AttachmentRow, FolderCount, MailPerson, MessageRow, MessageSummary } from './store'
-import type { Folder } from './types'
+import type { AttachmentRow, FolderCount, LabelRow, ListedMessage, MailPerson, MessageRow } from './store'
+import type { Folder, LabelColor } from './types'
 import { attachmentUrl, mailDocument, sanitizeMailHtml } from './html'
 import { FOLDERS } from './types'
 
@@ -27,6 +27,14 @@ export type MessageListItem = {
   receivedAt: string
   unread: boolean
   starred: boolean
+  hasAttachments: boolean
+  labelIds: string[]
+}
+
+export type LabelView = { id: string; name: string; color: LabelColor }
+
+export function labelView(l: LabelRow): LabelView {
+  return { id: l.id, name: l.name, color: l.color }
 }
 
 export type AttachmentView = {
@@ -80,7 +88,7 @@ export function folderViews(counts: Record<Folder, FolderCount>): FolderView[] {
   return FOLDERS.map((folder) => ({ folder, label: FOLDER_LABELS[folder], ...counts[folder] }))
 }
 
-export function listItem(m: MessageSummary): MessageListItem {
+export function listItem(m: ListedMessage): MessageListItem {
   return {
     id: m.id,
     from: m.from,
@@ -89,6 +97,8 @@ export function listItem(m: MessageSummary): MessageListItem {
     receivedAt: m.receivedAt.toISOString(),
     unread: m.readAt === null,
     starred: m.starred,
+    hasAttachments: m.hasAttachments,
+    labelIds: m.labelIds,
   }
 }
 

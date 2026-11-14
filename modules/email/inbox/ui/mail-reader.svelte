@@ -2,6 +2,7 @@
   /* eslint-disable svelte/no-navigation-without-resolve -- hrefs come from the page, built on resolve('/m/email/inbox'); attachment links are same-origin download routes */
   import type { ReaderMessage, ReaderView } from '../view'
   import type { SubmitFunction } from '@sveltejs/kit'
+  import type { Snippet } from 'svelte'
   import ArrowLeft from '@lucide/svelte/icons/arrow-left'
   import Forward from '@lucide/svelte/icons/forward'
   import Paperclip from '@lucide/svelte/icons/paperclip'
@@ -28,6 +29,7 @@
     busy = false,
     error = null,
     compose = null,
+    extra,
   }: {
     reader: ReaderView
     backHref: string
@@ -37,6 +39,8 @@
     error?: string | null
     /** Reply / Reply all / Forward of the opened mail (S5); null when nothing can be sent from here. */
     compose?: { reply: string; replyAll: string; forward: string } | null
+    /** More actions after the built-in ones (the page's label picker). */
+    extra?: Snippet
   } = $props()
 
   let heading: HTMLHeadingElement | undefined = $state()
@@ -92,6 +96,7 @@
       {:else}
         {@render flagForm('star', 'Star', 'inbox-star', true)}
       {/if}
+      {@render extra?.()}
     </div>
   </div>
 

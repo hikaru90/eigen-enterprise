@@ -96,7 +96,7 @@ test.describe('email platform', () => {
     await expect(page.getByTestId('domain-summary')).toContainText('Verified')
 
     // ── Senders: a named address on the verified domain.
-    await page.getByTestId('email-tab-senders').click()
+    await page.getByTestId('email-setup-tab-senders').click()
     await page.locator('#sender-address').fill(`news@${domain}`)
     await page.locator('#sender-name').fill('Kindred News')
     await page.getByRole('button', { name: 'Add sender' }).click()
@@ -104,7 +104,7 @@ test.describe('email platform', () => {
     await expect(page.getByTestId(`sender-row-${sender}`).getByTestId('sender-default')).toBeVisible()
 
     // ── Test mail from the new sender → Logs → timeline.
-    await page.getByTestId('email-tab-overview').click()
+    await page.getByTestId('email-setup-tab-account').click()
     await page.locator('#test-from').selectOption(`news@${domain}`)
     await page.getByTestId('email-send-test').click()
     await expect(page.getByTestId('email-test-sent')).toContainText(email)
@@ -112,7 +112,7 @@ test.describe('email platform', () => {
     expect(testMail).toMatchObject({ from: `"Kindred News" <news@${domain}>`, to: email })
     await expect(page.getByTestId('email-step-test')).toHaveAttribute('data-done', 'true')
 
-    await page.getByTestId('email-tab-logs').click()
+    await page.getByTestId('email-setup-tab-logs').click()
     const row = page.getByTestId('log-row').filter({ hasText: 'Test email from your company' })
     await expect(row.getByTestId('message-status')).toHaveText('Sent')
     await row.getByRole('link').click()
@@ -130,7 +130,7 @@ test.describe('email platform', () => {
     await expect(page.getByTestId('log-subject').locator('..').getByTestId('message-status')).toHaveText('Delivered')
 
     // ── API: one button makes a sending key; the curl example holds this server's endpoint + the key.
-    await page.getByTestId('email-tab-api').click()
+    await page.getByTestId('email-setup-tab-api').click()
     await page.getByTestId('create-sending-key').click()
     const key = (await page.getByTestId('sending-key-value').textContent())!.trim()
     expect(key).toMatch(/^eigen_[0-9a-f]+$/)
@@ -150,7 +150,7 @@ test.describe('email platform', () => {
     const sentBody = (await sent.json()) as { id: string; status: string }
     expect(sentBody.status).toBe('sent')
 
-    await page.getByTestId('email-tab-logs').click()
+    await page.getByTestId('email-setup-tab-logs').click()
     await expect(page.getByTestId('log-row').filter({ hasText: 'Order shipped' })).toContainText('API')
 
     // ── A permanent bounce suppresses the reader; the next API send is suppressed, not sent.
@@ -162,7 +162,7 @@ test.describe('email platform', () => {
         bounce: { bounceType: 'Permanent', bouncedRecipients: [{ emailAddress: reader, diagnosticCode: '550 user unknown' }] },
       },
     })
-    await page.getByTestId('email-tab-suppression').click()
+    await page.getByTestId('email-setup-tab-suppression').click()
     await expect(page.getByTestId(`suppressed-${reader}`)).toContainText('Bounced')
     const again = await api.post('/api/mail/send', {
       headers: { Authorization: `Bearer ${key}` },
@@ -194,7 +194,7 @@ test.describe('email platform', () => {
     await expect(page.getByTestId('layout-preview')).toHaveAttribute('srcdoc', /content goes here/)
 
     // A template inside it: variables detected, preview renders the sample values.
-    await page.getByTestId('email-tab-templates').click()
+    await page.getByTestId('email-setup-tab-templates').click()
     await page.locator('#template-name').fill(`Welcome ${stamp}`)
     await page.locator('#template-layout').selectOption({ label: `Brand ${stamp}` })
     await page.getByRole('button', { name: 'Create template' }).click()
@@ -262,7 +262,7 @@ test.describe('email platform', () => {
     const listUrl = page.url()
 
     // A flow on it: send the template, then wait two days.
-    await page.getByTestId('email-tab-flows').click()
+    await page.getByTestId('email-setup-tab-flows').click()
     await page.locator('#flow-name').fill(`Welcome ${stamp}`)
     await page.locator('#flow-list').selectOption({ label: `News ${stamp}` })
     await page.getByRole('button', { name: 'Create flow' }).click()

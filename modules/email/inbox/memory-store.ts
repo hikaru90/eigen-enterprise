@@ -1,5 +1,5 @@
-import type { AddressRow, AttachmentRow, FolderCount, InboxStore, MailboxRow, MailboxStats, MessageRow } from './store'
 import type { Folder } from './types'
+import { HIDDEN_FROM_VIEWS, type AddressRow, type AttachmentRow, type FolderCount, type InboxStore, type LabelRow, type MailboxRow, type MailboxStats, type MessageRow } from './store'
 
 /**
  * In-memory InboxStore for unit tests (same semantics as the DB store).
@@ -10,12 +10,16 @@ export function memoryInboxStore(): InboxStore & {
   addresses: Map<string, AddressRow>
   messages: Map<string, MessageRow>
   attachments: Map<string, AttachmentRow>
+  labels: Map<string, LabelRow>
   notified: string[]
 } {
   const mailboxes = new Map<string, MailboxRow>()
   const addresses = new Map<string, AddressRow>()
   const messages = new Map<string, MessageRow>()
   const attachments = new Map<string, AttachmentRow>()
+  const labels = new Map<string, LabelRow>()
+  /** message id → label ids */
+  const tagged = new Map<string, Set<string>>()
   const notified: string[] = []
   const copy = <T>(v: T): T => structuredClone(v)
   return {
@@ -23,6 +27,7 @@ export function memoryInboxStore(): InboxStore & {
     addresses,
     messages,
     attachments,
+    labels,
     notified,
     async insertMailbox(m, primary) {
       if (mailboxes.has(m.id)) throw new Error(`mailbox ${m.id} exists`)
@@ -112,16 +117,27 @@ export function memoryInboxStore(): InboxStore & {
       const m = messages.get(id)
       return m ? copy(m) : null
     },
-    async listMessages(mailboxId, folder, limit, search) {
-      const needle = search?.toLowerCase()
+    async listMessages(mailboxId, query, limit) {
+      const needle = query.search?.toLowerCase()
+      const hasAttachments = (id: string) => [...attachments.values()].some((x) => x.messageId === id)
       const hit = (m: MessageRow) =>
-        needle === undefined ||
-        [m.subject, m.from.name ?? '', m.from.address, m.snippet].some((v) => v.toLowerCase().includes(needle))
+        (needle === undefined ||
+          [m.subject, m.from.name ?? '', m.from.address, m.snippet].some((v) => v.toLowerCase().includes(needle))) &&
+        (query.folder === null ? !HIDDEN_FROM_VIEWS.includes(m.folder) : m.folder === query.folder) &&
+        (!query.starred || m.starred) &&
+        (query.labelId === undefined || (tagged.get(m.id)?.has(query.labelId) ?? false)) &&
+        (query.filter !== 'unread' || m.readAt === null) &&
+        (query.filter !== 'attachments' || hasAttachments(m.id))
+      const dir = query.sort === 'oldest' ? -1 : 1
       return [...messages.values()]
-        .filter((m) => m.mailboxId === mailboxId && m.folder === folder && hit(m))
-        .sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime() || b.id.localeCompare(a.id))
+        .filter((m) => m.mailboxId === mailboxId && hit(m))
+        .sort((a, b) => dir * (b.receivedAt.getTime() - a.receivedAt.getTime() || b.id.localeCompare(a.id)))
         .slice(0, limit)
-        .map(({ textBody: _t, htmlBody: _h, ...summary }) => copy(summary))
+        .map(({ textBody: _t, htmlBody: _h, ...summary }) => ({
+          ...copy(summary),
+          labelIds: [...(tagged.get(summary.id) ?? [])].filter((id) => labels.has(id)).sort(),
+          hasAttachments: hasAttachments(summary.id),
+        }))
     },
     async folderCounts(mailboxId) {
       const out = new Map<Folder, FolderCount>()
@@ -147,6 +163,40 @@ export function memoryInboxStore(): InboxStore & {
     async getAttachment(id) {
       const a = attachments.get(id)
       return a ? copy(a) : null
+    },
+    async listLabels(mailboxId) {
+      return [...labels.values()]
+        .filter((l) => l.mailboxId === mailboxId)
+        .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
+        .map(copy)
+    },
+    async getLabel(id) {
+      const l = labels.get(id)
+      return l ? copy(l) : null
+    },
+    async insertLabel(row) {
+      const clash = [...labels.values()].some((l) => l.mailboxId === row.mailboxId && l.name.toLowerCase() === row.name.toLowerCase())
+      if (clash) throw new Error(`label ${row.name} exists`)
+      labels.set(row.id, copy(row))
+    },
+    async deleteLabel(id) {
+      const l = labels.get(id)
+      if (!l) return
+      labels.delete(id)
+      for (const set of tagged.values()) set.delete(id)
+      notified.push(l.mailboxId)
+    },
+    async messageLabelIds(messageId) {
+      return [...(tagged.get(messageId) ?? [])].filter((id) => labels.has(id)).sort()
+    },
+    async setMessageLabel(messageId, labelId, on) {
+      const m = messages.get(messageId)
+      if (!m) throw new Error(`message ${messageId} not found`)
+      const set = tagged.get(messageId) ?? new Set<string>()
+      if (on) set.add(labelId)
+      else set.delete(labelId)
+      tagged.set(messageId, set)
+      notified.push(m.mailboxId)
     },
     async stats() {
       const out = new Map<string, MailboxStats>()

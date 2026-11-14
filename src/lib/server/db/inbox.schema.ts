@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import { user } from './auth.schema'
 import { mailDomains } from './email.schema'
 
@@ -109,4 +109,33 @@ export const inboxAttachments = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [uniqueIndex('inbox_attachments_part_idx').on(t.messageId, t.partIndex)],
+)
+
+/** A mailbox's labels (migration 0142): named, one colour from INBOX_LABEL_COLORS, any number per mail. */
+export const inboxLabels = pgTable(
+  'inbox_labels',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    mailboxId: uuid('mailbox_id')
+      .notNull()
+      .references(() => mailboxes.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    color: text('color').notNull(),
+    createdBy: text('created_by').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('inbox_labels_name_idx').on(t.mailboxId, sql`lower(${t.name})`)],
+)
+
+export const inboxMessageLabels = pgTable(
+  'inbox_message_labels',
+  {
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => inboxMessages.id, { onDelete: 'cascade' }),
+    labelId: uuid('label_id')
+      .notNull()
+      .references(() => inboxLabels.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.messageId, t.labelId] }), index('inbox_message_labels_label_idx').on(t.labelId)],
 )

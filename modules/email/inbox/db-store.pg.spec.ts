@@ -109,7 +109,7 @@ describe.skipIf(!url)('inbox store (Postgres)', () => {
     await store.insertMessage(newer)
     await expect(store.insertMessage({ ...older, id: randomUUID() })).rejects.toThrow() // same SES message, same mailbox
 
-    const list = await store.listMessages(m.id, 'inbox', 10)
+    const list = await store.listMessages(m.id, { folder: 'inbox' }, 10)
     expect(list.map((x) => x.id)).toEqual([newer.id, older.id])
     expect(list[0]).not.toHaveProperty('textBody')
     expect(await store.getMessage(older.id)).toMatchObject({ textBody: 'Hi Ana, how are you?', from: older.from, verdicts: older.verdicts })
@@ -195,7 +195,7 @@ describe.skipIf(!url)('inbox store (Postgres)', () => {
     await put({ sesMessageId: `s2-${run}`, subject: 'Lunch', from: { name: 'Jo Berg', address: 'jo@partner.example' }, snippet: 'at 100% noon', receivedAt: new Date('2026-11-02') })
     await put({ sesMessageId: `s3-${run}`, subject: 'No name', from: { name: null, address: 'robot@x.example' }, snippet: 'a_b', receivedAt: new Date('2026-11-03') })
     await put({ sesMessageId: `s4-${run}`, subject: 'quarterly in archive', folder: 'archive' })
-    const subjects = async (search?: string) => (await store.listMessages(m.id, 'inbox', 10, search)).map((x) => x.subject)
+    const subjects = async (search?: string) => (await store.listMessages(m.id, { folder: 'inbox', ...(search === undefined ? {} : { search }) }, 10)).map((x) => x.subject)
     expect(await subjects()).toEqual(['No name', 'Lunch', 'Quarterly NUMBERS'])
     expect(await subjects('quarterly')).toEqual(['Quarterly NUMBERS'])
     expect(await subjects('JO BERG')).toEqual(['Lunch'])
@@ -206,6 +206,47 @@ describe.skipIf(!url)('inbox store (Postgres)', () => {
     expect(await subjects('a_b')).toEqual(['No name'])
     expect(await subjects('_')).toEqual(['No name'])
     expect(await subjects('\\')).toEqual([])
+  })
+
+  it('filters, sorts, spans folders for Starred and labels, and keeps labels per mail', async () => {
+    const store = dbInboxStore(db)
+    const m = box({ kind: 'shared', ownerUserId: null, groupId: `g3-${run}` })
+    await store.insertMailbox(m, addr(m.id, `organize-${run}`))
+    const put = async (over: Parameters<typeof message>[1]) => {
+      const row = message(m.id, { id: randomUUID(), threadId: randomUUID(), sesMessageId: randomUUID(), ...over })
+      await store.insertMessage(row)
+      return row.id
+    }
+    const old = await put({ subject: 'old', readAt: new Date('2026-11-02'), receivedAt: new Date('2026-11-01') })
+    const mid = await put({ subject: 'mid', starred: true, receivedAt: new Date('2026-11-05') })
+    const arch = await put({ subject: 'arch', folder: 'archive', starred: true, receivedAt: new Date('2026-11-03') })
+    await put({ subject: 'junk', folder: 'spam', starred: true, receivedAt: new Date('2026-11-04') })
+    await sql`insert into inbox_attachments (message_id, part_index, filename, content_type, size_bytes, checksum, blocked)
+              values (${mid}, 0, 'a.pdf', 'application/pdf', 10, 'x', false)`
+    const subjects = async (q: Parameters<typeof store.listMessages>[1]) => (await store.listMessages(m.id, q, 10)).map((x) => x.subject)
+    expect(await subjects({ folder: 'inbox', sort: 'oldest' })).toEqual(['old', 'mid'])
+    expect(await subjects({ folder: 'inbox', filter: 'unread' })).toEqual(['mid'])
+    expect(await subjects({ folder: 'inbox', filter: 'attachments' })).toEqual(['mid'])
+    expect(await subjects({ folder: null, starred: true })).toEqual(['mid', 'arch'])
+
+    const label = { id: randomUUID(), mailboxId: m.id, name: 'Clients', color: 'slate' as const, createdBy: ben, createdAt: new Date() }
+    await store.insertLabel(label)
+    await expect(store.insertLabel({ ...label, id: randomUUID(), name: 'CLIENTS' })).rejects.toThrow()
+    expect((await store.listLabels(m.id)).map((l) => l.name)).toEqual(['Clients'])
+    await store.setMessageLabel(old, label.id, true)
+    await store.setMessageLabel(old, label.id, true)
+    await store.setMessageLabel(arch, label.id, true)
+    expect(await subjects({ folder: null, labelId: label.id })).toEqual(['arch', 'old'])
+    const listed = await store.listMessages(m.id, { folder: 'inbox' }, 10)
+    expect(listed.map((x) => [x.subject, x.labelIds, x.hasAttachments])).toEqual([
+      ['mid', [], true],
+      ['old', [label.id], false],
+    ])
+    await store.setMessageLabel(old, label.id, false)
+    expect(await subjects({ folder: null, labelId: label.id })).toEqual(['arch'])
+    await store.deleteLabel(label.id)
+    expect(await store.listLabels(m.id)).toEqual([])
+    expect((await store.listMessages(m.id, { folder: 'archive' }, 10))[0]!.labelIds).toEqual([])
   })
 
   it('counts per folder, lists a thread oldest first, and changes a mail with a notify', async () => {

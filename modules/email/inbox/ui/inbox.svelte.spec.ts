@@ -25,8 +25,15 @@ const item = (over: Partial<MessageListItem> = {}): MessageListItem => ({
   receivedAt: '2026-11-12T08:00:00.000Z',
   unread: true,
   starred: false,
+  hasAttachments: false,
+  labelIds: [],
   ...over,
 })
+
+const labels = [
+  { id: 'l1', name: 'Clients', color: 'slate' as const },
+  { id: 'l2', name: 'Invoices', color: 'coral' as const },
+]
 
 const reader = (over: Partial<ReaderView> = {}): ReaderView => ({
   id: 'm1',
@@ -55,15 +62,46 @@ const reader = (over: Partial<ReaderView> = {}): ReaderView => ({
   ...over,
 })
 
+const navProps = (over: Record<string, unknown> = {}) => ({
+  folders,
+  current: { kind: 'folder', folder: 'inbox' } as const,
+  href: (f: string) => `/m/email/inbox?folder=${f}`,
+  starredHref: '/m/email/inbox?view=starred',
+  labels,
+  labelHref: (id: string) => `/m/email/inbox?label=${id}`,
+  mailboxId: 'b1',
+  submit: () => {},
+  ...over,
+})
+
 describe('folder-nav.svelte', () => {
   it('lists the folders with unread counts (never for Sent) and marks the current one', async () => {
-    render(FolderNav, { folders, current: 'inbox', href: (f: string) => `/m/email/inbox?folder=${f}` })
+    render(FolderNav, navProps())
     const nav = page.getByRole('navigation', { name: 'Folders' })
     await expect.element(nav.getByRole('link', { name: /Inbox/ })).toHaveAttribute('aria-current', 'page')
     await expect.element(page.getByTestId('inbox-folder-inbox-unread')).toHaveTextContent('2 unread')
     await expect.element(nav.getByRole('link', { name: 'Sent', exact: true })).toHaveAttribute('href', '/m/email/inbox?folder=sent')
     await expect.element(page.getByTestId('inbox-folder-sent-unread')).not.toBeInTheDocument()
     await expect.element(nav.getByRole('link', { name: 'Spam' })).not.toHaveAttribute('aria-current')
+  })
+
+  it('has Starred right under the Inbox, and the labels below the folders', async () => {
+    render(FolderNav, navProps({ current: { kind: 'label', labelId: 'l2' } }))
+    const nav = page.getByRole('navigation', { name: 'Folders' })
+    await expect.element(nav.getByRole('link', { name: 'Starred' })).toHaveAttribute('href', '/m/email/inbox?view=starred')
+    const labelNav = page.getByRole('navigation', { name: 'Labels' })
+    await expect.element(labelNav.getByRole('link', { name: 'Clients' })).toHaveAttribute('href', '/m/email/inbox?label=l1')
+    await expect.element(labelNav.getByRole('link', { name: 'Invoices' })).toHaveAttribute('aria-current', 'page')
+    await expect.element(nav.getByRole('link', { name: /Inbox/ })).not.toHaveAttribute('aria-current')
+  })
+
+  it('makes a new label with a name and a colour', async () => {
+    render(FolderNav, navProps({ labels: [] }))
+    await expect.element(page.getByText('No labels yet.')).toBeVisible()
+    await page.getByRole('button', { name: 'New label' }).click()
+    await expect.element(page.getByLabelText('Label name')).toBeVisible()
+    await expect.element(page.getByRole('radio', { name: 'Coral' })).toBeInTheDocument()
+    await expect.element(page.getByRole('button', { name: 'Create label' })).toBeVisible()
   })
 })
 
@@ -85,6 +123,21 @@ describe('message-list.svelte', () => {
     await expect.element(second).toHaveTextContent('(no subject)')
     await expect.element(second).toHaveAttribute('aria-current', 'true')
     await expect.element(second).toHaveAttribute('href', '/m/email/inbox?m=m2')
+  })
+
+  it('marks mail with attachments and shows its labels', async () => {
+    render(MessageList, {
+      messages: [item({ hasAttachments: true, labelIds: ['l2', 'gone'] })],
+      labels,
+      selectedId: null,
+      label: 'Mail',
+      empty: 'No mail.',
+      href: () => '#m1',
+      onopen: () => {},
+    })
+    const row = page.getByTestId('inbox-item-m1')
+    await expect.element(row).toHaveTextContent(/Has attachments\./)
+    await expect.element(row.getByTestId('inbox-item-label')).toHaveTextContent('Invoices')
   })
 
   it('opening a mail goes through the page’s handler', async () => {

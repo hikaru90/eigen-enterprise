@@ -1,7 +1,21 @@
-import type { AddressRow, AttachmentRow, FolderCount, InboxStore, MailboxRow, MessageRow, MessageSummary } from './store'
+import type { AddressRow, AttachmentRow, FolderCount, InboxStore, LabelRow, ListedMessage, ListQuery, MailboxRow, MessageRow, MessageSummary } from './store'
 import type { MemberRole } from '$lib/server/auth/user-role'
 import { InboxError } from './errors'
-import { FOLDERS, MOVE_TARGETS, normalizeLocalPart, suggestLocalPart, type Folder, type MailboxKind, type MoveTarget } from './types'
+import {
+  FOLDERS,
+  LABEL_COLORS,
+  LIST_FILTERS,
+  LIST_SORTS,
+  MAX_LABEL_CHARS,
+  MOVE_TARGETS,
+  normalizeLocalPart,
+  suggestLocalPart,
+  type Folder,
+  type ListFilter,
+  type ListSort,
+  type MailboxKind,
+  type MoveTarget,
+} from './types'
 
 /**
  * Mailboxes and who reads them (plan/email-inbox.md, owner decisions
@@ -303,7 +317,7 @@ export async function listMessages(
   input: { mailboxId: string; folder: Folder },
 ): Promise<MessageSummary[]> {
   const m = await readable(deps, userId, input.mailboxId)
-  return deps.store.listMessages(m.id, input.folder, MESSAGE_PAGE)
+  return deps.store.listMessages(m.id, { folder: input.folder }, MESSAGE_PAGE)
 }
 
 export async function getMessage(deps: InboxDeps, userId: string, messageId: string): Promise<MessageRow> {
@@ -339,16 +353,105 @@ export async function folderCounts(deps: InboxDeps, userId: string, mailboxId: s
 
 export const MAX_SEARCH_CHARS = 200
 
-/** One folder, newest first; `search` is the reader's search box (a literal substring, never a classifier). */
+/**
+ * One view of a mailbox: a folder, Starred (`view: 'starred'`) or a label (`labelId`) — the last two span
+ * every folder but Spam and Trash. `search` is the reader's search box (a literal substring, never a
+ * classifier); `filter` narrows to unread mail or mail with attachments; `sort` is by received time.
+ */
 export async function listFolder(
   deps: InboxDeps,
   userId: string,
-  input: { mailboxId: string; folder: Folder; search?: string | null },
-): Promise<MessageSummary[]> {
+  input: {
+    mailboxId: string
+    folder?: Folder
+    view?: 'starred'
+    labelId?: string
+    search?: string | null
+    filter?: ListFilter | null
+    sort?: ListSort | null
+  },
+): Promise<ListedMessage[]> {
   const search = (input.search ?? '').trim()
   if (search.length > MAX_SEARCH_CHARS) throw new InboxError('invalid', `Keep the search under ${MAX_SEARCH_CHARS} characters.`)
+  if (input.filter && !(LIST_FILTERS as readonly string[]).includes(input.filter)) throw new InboxError('invalid', 'Unknown filter.')
+  if (input.sort && !(LIST_SORTS as readonly string[]).includes(input.sort)) throw new InboxError('invalid', 'Unknown sort order.')
   const m = await readable(deps, userId, input.mailboxId)
-  return deps.store.listMessages(m.id, input.folder, MESSAGE_PAGE, search === '' ? undefined : search)
+  const query: ListQuery = { folder: input.folder ?? null }
+  if (input.view === 'starred') query.starred = true
+  if (input.labelId !== undefined) {
+    const label = await deps.store.getLabel(input.labelId)
+    if (!label || label.mailboxId !== m.id) throw new InboxError('not_found', 'No such label.')
+    query.labelId = label.id
+  }
+  if (query.folder === null && !query.starred && query.labelId === undefined) {
+    throw new InboxError('invalid', 'Pick a folder, Starred or a label.')
+  }
+  if (search !== '') query.search = search
+  if (input.filter) query.filter = input.filter
+  if (input.sort) query.sort = input.sort
+  return deps.store.listMessages(m.id, query, MESSAGE_PAGE)
+}
+
+// ─── labels ───────────────────────────────────────────────────────────────────
+
+/** A mailbox's labels, by name; whoever reads the mailbox sees and uses them. */
+export async function listLabels(deps: InboxDeps, userId: string, mailboxId: string): Promise<LabelRow[]> {
+  const m = await readable(deps, userId, mailboxId)
+  return deps.store.listLabels(m.id)
+}
+
+export async function createLabel(
+  deps: InboxDeps,
+  userId: string,
+  input: { mailboxId: string; name: string; color: string },
+): Promise<LabelRow> {
+  const m = await readable(deps, userId, input.mailboxId)
+  const name = input.name.trim().replace(/\s+/g, ' ')
+  if (name === '') throw new InboxError('invalid', 'Give the label a name.')
+  if (name.length > MAX_LABEL_CHARS) throw new InboxError('invalid', `Keep a label name to ${MAX_LABEL_CHARS} characters.`)
+  if (!(LABEL_COLORS as readonly string[]).includes(input.color)) throw new InboxError('invalid', 'Pick one of the label colours.')
+  const clash = (await deps.store.listLabels(m.id)).find((l) => l.name.toLowerCase() === name.toLowerCase())
+  if (clash) throw new InboxError('invalid', `There is already a label called “${clash.name}”.`)
+  const row: LabelRow = {
+    id: newId(deps),
+    mailboxId: m.id,
+    name,
+    color: input.color as LabelRow['color'],
+    createdBy: userId,
+    createdAt: now(deps),
+  }
+  await deps.store.insertLabel(row)
+  return row
+}
+
+/** The label is gone from the mailbox and from every mail; the mail itself stays where it is. */
+export async function deleteLabel(deps: InboxDeps, userId: string, input: { labelId: string }): Promise<void> {
+  const label = await deps.store.getLabel(input.labelId)
+  if (!label) throw new InboxError('not_found', 'No such label.')
+  try {
+    await readable(deps, userId, label.mailboxId)
+  } catch {
+    throw new InboxError('not_found', 'No such label.')
+  }
+  await deps.store.deleteLabel(label.id)
+}
+
+/** The labels on one mail this person reads. */
+export async function messageLabelIds(deps: InboxDeps, userId: string, messageId: string): Promise<string[]> {
+  const msg = await getMessage(deps, userId, messageId)
+  return deps.store.messageLabelIds(msg.id)
+}
+
+/** Puts a label on a mail or takes it off — only a label of the mail's own mailbox. */
+export async function setMessageLabel(
+  deps: InboxDeps,
+  userId: string,
+  input: { messageId: string; labelId: string; on: boolean },
+): Promise<void> {
+  const msg = await getMessage(deps, userId, input.messageId)
+  const label = await deps.store.getLabel(input.labelId)
+  if (!label || label.mailboxId !== msg.mailboxId) throw new InboxError('not_found', 'No such label.')
+  await deps.store.setMessageLabel(msg.id, label.id, input.on)
 }
 
 export type ThreadView = {

@@ -28,6 +28,18 @@ vi.mock('$lib/server/calendar/mail-proposals', () => ({
   calendarOn: async () => cal.on,
   proposalDeps: async () => cal.deps,
 }))
+/** The platform side: which domains receive mail (the owner's "receiving is off" note) and the receipt-rule sync. */
+const platform = vi.hoisted(() => ({ domains: [] as Array<{ id: string; name: string; receiving: boolean }>, synced: 0 }))
+vi.mock('../../../../../../modules/email/platform/service', async (orig) => ({
+  ...(await orig<typeof import('../../../../../../modules/email/platform/service')>()),
+  emailPlatform: () => ({ listDomains: async () => platform.domains }),
+}))
+vi.mock('../../../../../../modules/email/platform/receiving-sync', () => ({
+  syncMailReceiving: async () => {
+    platform.synced++
+    return null
+  },
+}))
 vi.mock('../access.server', async (orig) => {
   const real = await orig<typeof import('../access.server')>()
   return { ...real, requireMember: vi.fn(async () => me) }
@@ -59,8 +71,9 @@ const run = async (query = '') => {
   const depends = vi.fn()
   const out = (await load({ locals: {}, url: new URL(`https://os.example.com/m/email/inbox${query}`), depends } as never)) as {
     inbox: Inbox | null
+    start: { canCreate: boolean; domains?: Array<{ id: string; name: string }>; suggested?: string | null } | null
   }
-  return { inbox: out.inbox, depends }
+  return { inbox: out.inbox, start: out.start, depends }
 }
 const status = async (query: string) => {
   try {
@@ -83,6 +96,8 @@ let salesBox = ''
 beforeEach(async () => {
   f = fixture()
   sent = []
+  platform.domains = []
+  platform.synced = 0
   me = { userId: 'ana', email: 'ana@home.example', isAdmin: false }
   anaBox = (await assignPersonalMailbox(f.deps, 'olga', { memberId: 'ana', localPart: 'ana.lind', domainId: 'd-1' })).id
   salesBox = (await createSharedMailbox(f.deps, 'olga', { groupId: 'g-sales', localPart: 'sales', domainId: 'd-1' })).id
@@ -122,7 +137,7 @@ describe('Email › Inbox load', () => {
 
   it('answers not found for someone else’s mailbox or mail, the owner included, and for junk in the URL', async () => {
     me = { userId: 'olga', email: 'olga@home.example', isAdmin: true }
-    expect(await run()).toEqual({ inbox: null, depends: expect.any(Function) })
+    expect(await run()).toMatchObject({ inbox: null, start: { canCreate: true } })
     expect(await status(`?m=${M1}`)).toBe(404)
     expect(await status(`?box=${anaBox}`)).toBe(404)
     me = { userId: 'ben', email: 'ben@home.example', isAdmin: false }
@@ -134,8 +149,49 @@ describe('Email › Inbox load', () => {
   })
 
   it('a member with no mailbox gets none (the page explains who assigns one)', async () => {
+    me = { userId: 'ben', email: 'ben@home.example', isAdmin: false }
+    expect(await run()).toMatchObject({ inbox: null, start: { canCreate: false } })
+  })
+
+  it('an admin with no mailbox can create their own on a verified domain, right from the Inbox', async () => {
     me = { userId: 'adam', email: 'adam@home.example', isAdmin: true }
-    expect((await run()).inbox).toBeNull()
+    expect((await run()).start).toEqual({ canCreate: true, domains: [{ id: 'd-1', name: 'example.com' }], suggested: 'adam.admin' })
+    expect(await post('createMine', { localPart: 'adam', domainId: 'd-1' })).toMatchObject({ ok: true, address: 'adam@example.com' })
+    expect(platform.synced).toBe(1)
+    const { inbox, start } = await run()
+    expect(start).toBeNull()
+    expect(inbox!.box.address).toBe('adam@example.com')
+    // A member can't create one this way.
+    me = { userId: 'ben', email: 'ben@home.example', isAdmin: false }
+    await expect(post('createMine', { localPart: 'ben', domainId: 'd-1' })).resolves.toMatchObject({ status: 400 })
+  })
+
+  it('tells the owner when the mailbox’s domain does not receive mail yet', async () => {
+    me = { userId: 'ana', email: 'ana@home.example', isAdmin: true }
+    platform.domains = [{ id: 'dom', name: 'example.com', receiving: false }]
+    expect(((await run()).inbox as unknown as { receivingOff: unknown }).receivingOff).toEqual({ domainId: 'dom', domain: 'example.com' })
+    platform.domains = [{ id: 'dom', name: 'example.com', receiving: true }]
+    expect(((await run()).inbox as unknown as { receivingOff: unknown }).receivingOff).toBeNull()
+  })
+
+  it('labels: create, put on a mail, list by label, filter and sort from the URL, remove', async () => {
+    expect(await post('createLabel', { mailboxId: anaBox, name: 'Clients', color: 'sage' })).toMatchObject({ ok: true })
+    const { inbox } = await run()
+    const label = (inbox as unknown as { labels: Array<{ id: string; name: string }> }).labels[0]!
+    expect(label.name).toBe('Clients')
+    expect(await post('label', { messageId: M1, labelId: label.id, on: '1' })).toMatchObject({ ok: true })
+    const byLabel = (await run(`?label=${label.id}`)).inbox!
+    expect(byLabel.messages.map((m) => m.id)).toEqual([M1])
+    expect(byLabel.folder).toBeNull()
+    const opened = (await run(`?label=${label.id}&m=${M1}`)).inbox as unknown as { readerLabelIds: string[] }
+    expect(opened.readerLabelIds).toEqual([label.id])
+    expect((await run('?sort=oldest')).inbox!.messages.map((m) => m.id)).toEqual([M1, M2])
+    expect((await run('?filter=unread')).inbox!.messages.map((m) => m.id)).toEqual([M2, M1])
+    expect(await status(`?label=10000000-0000-4000-8000-0000000000ff`)).toBe(404)
+    // Someone else's label can't go on your mail.
+    await expect(post('label', { messageId: M1, labelId: 'not-a-uuid', on: '1' })).resolves.toMatchObject({ status: 400 })
+    expect(await post('deleteLabel', { labelId: label.id })).toMatchObject({ ok: true })
+    expect(await status(`?label=${label.id}`)).toBe(404)
   })
 })
 

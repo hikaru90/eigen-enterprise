@@ -1,5 +1,5 @@
 import type { MailPerson } from '../store'
-import type { Folder, MoveTarget } from '../types'
+import type { Folder, LabelColor, MoveTarget } from '../types'
 
 /** Small view helpers for the Inbox page (client-safe). */
 
@@ -54,4 +54,27 @@ export function fileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+/** Label colours: the board's muted grounds plus its one coral accent (fixed in light and dark mode). */
+const LABEL_DOTS: Record<LabelColor, string> = {
+  slate: '#3f4f66',
+  stone: '#767676',
+  sage: '#6f8a6a',
+  sky: '#6e8fb0',
+  sand: '#b39a6b',
+  coral: 'var(--tone-coral)',
+}
+
+export const LABEL_COLOR_NAMES: Record<LabelColor, string> = {
+  slate: 'Slate',
+  stone: 'Stone',
+  sage: 'Sage',
+  sky: 'Sky',
+  sand: 'Sand',
+  coral: 'Coral',
+}
+
+export function labelDot(color: LabelColor): string {
+  return LABEL_DOTS[color]
 }

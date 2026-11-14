@@ -974,6 +974,13 @@
       "when": 1795200000141,
       "tag": "0141_mail_domain_adopted",
       "breakpoints": true
+    },
+    {
+      "idx": 142,
+      "version": "7",
+      "when": 1795200000142,
+      "tag": "0142_inbox_labels",
+      "breakpoints": true
     }
   ]
 }

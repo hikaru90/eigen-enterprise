@@ -1,4 +1,4 @@
-import type { Folder, MailboxKind, Verdict } from './types'
+import type { Folder, LabelColor, ListFilter, ListSort, MailboxKind, Verdict } from './types'
 
 /**
  * Persistence seam for mailboxes and received mail (migration 0129): the DB
@@ -66,6 +66,29 @@ export type MessageRow = {
 }
 
 export type MessageSummary = Omit<MessageRow, 'textBody' | 'htmlBody'>
+
+/** A mail as a list shows it: its labels and whether it has attachments. */
+export type ListedMessage = MessageSummary & { labelIds: string[]; hasAttachments: boolean }
+
+/** A mailbox's label (migration 0142). */
+export type LabelRow = { id: string; mailboxId: string; name: string; color: LabelColor; createdBy: string; createdAt: Date }
+
+/**
+ * Which mail a list shows. `folder` null = every folder but Spam and Trash (Starred, a label).
+ * `search` (already trimmed, non-empty) is a literal, case-insensitive substring of the subject,
+ * the sender's name or address, or the snippet.
+ */
+export type ListQuery = {
+  folder: Folder | null
+  search?: string
+  starred?: boolean
+  labelId?: string
+  filter?: ListFilter
+  sort?: ListSort
+}
+
+/** The folders a cross-folder view (Starred, a label) leaves out. */
+export const HIDDEN_FROM_VIEWS: readonly Folder[] = ['spam', 'trash']
 
 /**
  * One attachment of a received mail (migration 0131). The bytes stay in the raw
@@ -135,11 +158,8 @@ export type InboxStore = {
   /** The mailboxes these exact addresses deliver into (disabled ones included); unknown addresses are absent. */
   mailboxesFor(addresses: string[]): Promise<AddressMailbox[]>
   getMessage(id: string): Promise<MessageRow | null>
-  /**
-   * Newest first. `search` (already trimmed, non-empty) is a literal,
-   * case-insensitive substring of the subject, the sender's name or address, or the snippet.
-   */
-  listMessages(mailboxId: string, folder: Folder, limit: number, search?: string): Promise<MessageSummary[]>
+  /** One view of a mailbox, newest first unless `sort` says oldest. */
+  listMessages(mailboxId: string, query: ListQuery, limit: number): Promise<ListedMessage[]>
   /** Total and unread per folder of one mailbox (folders with no mail are absent). */
   folderCounts(mailboxId: string): Promise<Map<Folder, FolderCount>>
   /** Every mail of one thread in one mailbox, oldest first. */
@@ -147,6 +167,17 @@ export type InboxStore = {
   /** Changes one mail and notifies INBOX_NOTIFY_CHANNEL with its mailbox id (other open tabs follow). */
   updateMessage(id: string, patch: MessagePatch): Promise<void>
   getAttachment(id: string): Promise<AttachmentRow | null>
+  /** A mailbox's labels by name (case-insensitive). */
+  listLabels(mailboxId: string): Promise<LabelRow[]>
+  getLabel(id: string): Promise<LabelRow | null>
+  /** Fails if the mailbox already has a label of that name (any case). */
+  insertLabel(row: LabelRow): Promise<void>
+  /** Deletes the label and takes it off every mail; notifies INBOX_NOTIFY_CHANNEL. */
+  deleteLabel(id: string): Promise<void>
+  /** The label ids on one mail, sorted. */
+  messageLabelIds(messageId: string): Promise<string[]>
+  /** Puts a label on a mail (idempotent) or takes it off; notifies INBOX_NOTIFY_CHANNEL. */
+  setMessageLabel(messageId: string, labelId: string, on: boolean): Promise<void>
   /** Counts and sizes per mailbox id (mailboxes with no mail are absent). */
   stats(): Promise<Map<string, MailboxStats>>
 }

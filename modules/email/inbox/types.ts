@@ -14,6 +14,20 @@ export type Folder = (typeof FOLDERS)[number]
 export const MOVE_TARGETS = ['inbox', 'archive', 'trash', 'spam'] as const satisfies readonly Folder[]
 export type MoveTarget = (typeof MOVE_TARGETS)[number]
 
+/**
+ * Views of a mailbox besides its folders: Starred spans every folder but Spam and Trash
+ * (a label's view does too). Filters narrow any view; sort is by received time.
+ */
+export const LIST_FILTERS = ['unread', 'attachments'] as const
+export type ListFilter = (typeof LIST_FILTERS)[number]
+export const LIST_SORTS = ['newest', 'oldest'] as const
+export type ListSort = (typeof LIST_SORTS)[number]
+
+/** Label colours: the muted board palette plus the one coral accent. */
+export const LABEL_COLORS = ['slate', 'stone', 'sage', 'sky', 'sand', 'coral'] as const
+export type LabelColor = (typeof LABEL_COLORS)[number]
+export const MAX_LABEL_CHARS = 40
+
 /** What the compose form is for (S5). */
 export const COMPOSE_MODES = ['new', 'reply', 'replyAll', 'forward'] as const
 export type ComposeMode = (typeof COMPOSE_MODES)[number]

@@ -9,17 +9,26 @@ import { InboxError } from '../../../../../../modules/email/inbox/errors'
 import { inboxDeps, sendDeps } from '../../../../../../modules/email/inbox/live'
 import { composeDraft, sendMail } from '../../../../../../modules/email/inbox/send'
 import {
+  assignPersonalMailbox,
+  createLabel,
+  deleteLabel,
   folderCounts,
   getThread,
   listFolder,
+  listLabels,
+  mailboxAdmin,
+  messageLabelIds,
   moveMessage,
   readableMailboxes,
+  setMessageLabel,
   setRead,
   setStarred,
 } from '../../../../../../modules/email/inbox/service'
 import { COMPOSE_MODES, type ComposeMode } from '../../../../../../modules/email/inbox/types'
 import { isUuid, parseInboxQuery } from '../../../../../../modules/email/inbox/url'
-import { folderViews, listItem, readerView } from '../../../../../../modules/email/inbox/view'
+import { folderViews, labelView, listItem, readerView } from '../../../../../../modules/email/inbox/view'
+import { syncMailReceiving } from '../../../../../../modules/email/platform/receiving-sync'
+import { emailPlatform } from '../../../../../../modules/email/platform/service'
 import { act, field, requireMember } from '../access.server'
 import { INBOX_DEPENDENCY } from './dependency'
 
@@ -49,7 +58,7 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   if (boxes.length === 0) {
     // Nothing is readable: a named mailbox or mail is not found, like for anyone else.
     if (state.box || state.m) error(404, state.m ? 'No such mail.' : 'No such mailbox.')
-    return { inbox: null }
+    return { inbox: null, start: await startState(me) }
   }
 
   let thread: Awaited<ReturnType<typeof getThread>> | null = null
@@ -65,12 +74,25 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const box = boxes.find((b) => b.id === boxId)
   if (!box) error(404, 'No such mailbox.')
   if (thread && thread.message.mailboxId !== box.id) error(404, 'No such mail.')
-  const folder = state.folder ?? thread?.message.folder ?? 'inbox'
+  // Starred and a label are views across folders; otherwise one folder (the opened mail's, else the Inbox).
+  const crossView = state.view !== null || state.label !== null
+  const folder = crossView ? null : (state.folder ?? thread?.message.folder ?? 'inbox')
+  const labels = await listLabels(deps, me.userId, box.id)
+  const label = state.label ? labels.find((l) => l.id === state.label) : null
+  if (state.label && !label) error(404, 'No such label.')
 
   let searchError: string | null = null
   let messages: Awaited<ReturnType<typeof listFolder>> = []
   try {
-    messages = await listFolder(deps, me.userId, { mailboxId: box.id, folder, search: state.q })
+    messages = await listFolder(deps, me.userId, {
+      mailboxId: box.id,
+      ...(folder ? { folder } : {}),
+      ...(state.view ? { view: state.view } : {}),
+      ...(label ? { labelId: label.id } : {}),
+      search: state.q,
+      filter: state.filter,
+      sort: state.sort,
+    })
   } catch (err) {
     if (!(err instanceof InboxError && err.code === 'invalid')) throw err
     searchError = err.message
@@ -93,20 +115,50 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   }
 
   return {
+    start: null,
     inbox: {
       boxes: boxes.map((b) => ({ id: b.id, address: b.address, displayName: b.displayName, kind: b.kind, disabled: b.disabled })),
       box: { id: box.id, address: box.address, kind: box.kind, disabled: box.disabled },
       folder,
+      view: state.view,
+      label: label ? labelView(label) : null,
+      filter: state.filter,
+      sort: state.sort,
       q: state.q,
       searchError,
       folders: folderViews(await folderCounts(deps, me.userId, box.id)),
+      labels: labels.map(labelView),
       messages: messages.map(listItem),
       reader: thread ? readerView(thread, { origin: url.origin, images: state.images }) : null,
+      readerLabelIds: thread ? await messageLabelIds(deps, me.userId, thread.message.id) : [],
+      receivingOff: me.isAdmin ? await receivingOffFor(box.address) : null,
       compose,
       sent: state.sent,
       proposal,
     },
   }
+}
+
+/**
+ * No mailbox yet: what stands between this person and their inbox. The owner or an admin can
+ * create their own mailbox right here (on a verified domain); a member is told who assigns one.
+ */
+async function startState(me: { userId: string; isAdmin: boolean }) {
+  if (!me.isAdmin) return { canCreate: false as const }
+  const admin = await mailboxAdmin(await inboxDeps(), me.userId)
+  const self = admin.members.find((m) => m.id === me.userId)
+  return {
+    canCreate: true as const,
+    domains: admin.domains.map((d) => ({ id: d.id, name: d.name })),
+    suggested: self?.suggested ?? null,
+  }
+}
+
+/** For the owner and admins: the mailbox's domain doesn't receive mail yet (sending already works). */
+async function receivingOffFor(address: string): Promise<{ domainId: string; domain: string } | null> {
+  const domainName = address.slice(address.lastIndexOf('@') + 1)
+  const d = (await emailPlatform().listDomains()).find((x) => x.name === domainName)
+  return d && !d.receiving ? { domainId: d.id, domain: d.name } : null
 }
 
 /** Accept / Dismiss on the mail: the calendar's rules, refused while Calendar is switched off. */
@@ -174,6 +226,45 @@ export const actions: Actions = {
       return { sent }
     })
   },
+  /** The owner or an admin gives themself a personal mailbox from the empty Inbox. */
+  createMine: async ({ locals, request }) => {
+    const me = await requireMember(locals)
+    const form = await request.formData()
+    return act('createMine', async () => {
+      const box = await assignPersonalMailbox(await inboxDeps(), me.userId, {
+        memberId: me.userId,
+        localPart: field(form, 'localPart'),
+        domainId: field(form, 'domainId'),
+      })
+      const receivingError = await syncMailReceiving()
+      return { address: box.address, ...(receivingError ? { receivingError } : {}) }
+    })
+  },
+  createLabel: async ({ locals, request }) => {
+    const me = await requireMember(locals)
+    const form = await request.formData()
+    return act('createLabel', async () => {
+      const mailboxId = field(form, 'mailboxId')
+      if (!isUuid(mailboxId)) throw new InboxError('not_found', 'No such mailbox.')
+      const label = await createLabel(await inboxDeps(), me.userId, { mailboxId, name: field(form, 'name'), color: field(form, 'color') })
+      return { labelId: label.id }
+    })
+  },
+  deleteLabel: async ({ locals, request }) => {
+    const me = await requireMember(locals)
+    const form = await request.formData()
+    return act('deleteLabel', async () => {
+      const labelId = field(form, 'labelId')
+      if (!isUuid(labelId)) throw new InboxError('not_found', 'No such label.')
+      await deleteLabel(await inboxDeps(), me.userId, { labelId })
+      return {}
+    })
+  },
+  label: messageAction('label', async (userId, messageId, form) => {
+    const labelId = field(form, 'labelId')
+    if (!isUuid(labelId)) throw new InboxError('not_found', 'No such label.')
+    await setMessageLabel(await inboxDeps(), userId, { messageId, labelId, on: field(form, 'on') === '1' })
+  }),
   acceptProposal: proposalAction('acceptProposal'),
   dismissProposal: proposalAction('dismissProposal'),
   read: messageAction('read', async (userId, messageId) => setRead(await inboxDeps(), userId, { messageId, read: true })),
