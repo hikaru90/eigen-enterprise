@@ -34,7 +34,7 @@
   />
   {#if current === 'setup'}
     <nav
-      class="-mt-2 mb-6 flex flex-wrap gap-1"
+      class="mt-4 mb-6 flex flex-wrap gap-1"
       aria-label="Email setup sections"
       data-testid="email-setup-nav"
     >

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { NO_DOMAIN_IDENTITY } from '../owlery/ses'
 import { applyIdentityCheck, dueForCheck, isSendable, verificationErrorMessage } from './verification'
 
 const now = new Date('2026-11-04T12:00:00Z')
@@ -8,6 +9,9 @@ const check = (verification: string, dkim = verification, mailFrom = verificatio
   dkim,
   mailFrom,
   errorType,
+  dkimOrigin: 'EXTERNAL',
+  dkimTokens: ['ee'],
+  mailFromDomain: 'mail.kindred.com' as string | null,
 })
 
 describe('applyIdentityCheck', () => {
@@ -35,7 +39,7 @@ describe('applyIdentityCheck', () => {
   })
 
   it('an identity Amazon forgot is reported, not silently re-created', () => {
-    const next = applyIdentityCheck({ exists: false, verification: 'NOT_STARTED', dkim: 'NOT_STARTED', mailFrom: 'NOT_STARTED', errorType: null }, false, now)
+    const next = applyIdentityCheck(NO_DOMAIN_IDENTITY, false, now)
     expect(next).toMatchObject({ status: 'NOT_STARTED', isVerifying: true })
     expect(next.errorMessage).toMatch(/no longer knows this domain/)
   })
@@ -43,6 +47,13 @@ describe('applyIdentityCheck', () => {
   it('names unknown error types instead of hiding them', () => {
     expect(verificationErrorMessage('SOME_NEW_THING', 'PENDING')).toMatch(/some new thing/)
     expect(verificationErrorMessage(null, 'PENDING')).toBeNull()
+  })
+})
+
+describe('applyIdentityCheck without a MAIL FROM subdomain', () => {
+  it('is done once the domain and DKIM verify (Amazon\'s own MAIL FROM needs nothing)', () => {
+    const next = applyIdentityCheck({ ...check('SUCCESS', 'SUCCESS', 'NOT_STARTED'), mailFromDomain: null }, false, now)
+    expect(next).toMatchObject({ status: 'SUCCESS', isVerifying: false })
   })
 })
 

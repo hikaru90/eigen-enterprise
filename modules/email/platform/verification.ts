@@ -48,7 +48,9 @@ export function applyIdentityCheck(
   now: Date,
 ): DomainVerificationState {
   const status = check.exists ? check.verification : 'NOT_STARTED'
-  const done = status === 'SUCCESS' && check.dkim === 'SUCCESS' && check.mailFrom === 'SUCCESS'
+  // Without a MAIL FROM subdomain Amazon uses its own: nothing to wait for there.
+  const mailFromDone = check.mailFromDomain === null || check.mailFrom === 'SUCCESS'
+  const done = status === 'SUCCESS' && check.dkim === 'SUCCESS' && mailFromDone
   return {
     status,
     dkimStatus: check.dkim,

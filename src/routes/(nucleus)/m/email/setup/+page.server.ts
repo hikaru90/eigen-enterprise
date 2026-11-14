@@ -1,4 +1,5 @@
 import type { Actions, PageServerLoad } from './$types'
+import { redirect } from '@sveltejs/kit'
 import { MailSetupError } from '$lib/server/mail/company-mail'
 import { receivingIamPolicy } from '../../../../../../modules/email/owlery/receiving'
 import { describeSesError } from '../../../../../../modules/email/owlery/ses'
@@ -30,6 +31,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       me: { email: me.email },
       account: null,
       domains: [],
+      suggestedDomain: null,
       senders: [],
       counts: { total: 0, byStatus: {} as Record<string, number> },
       sentAny: false,
@@ -85,7 +87,14 @@ export const load: PageServerLoad = async ({ locals }) => {
       name: d.name,
       status: d.status,
       sendable: d.sendable,
+      adopted: d.adopted,
+      tracking: d.tracking,
+      receiving: d.receiving,
+      recordsDone: d.records.filter((r) => r.required && r.status === 'SUCCESS').length,
+      recordsRequired: d.records.filter((r) => r.required).length,
     })),
+    // The default sender's domain, until it is added: the obvious first domain.
+    suggestedDomain: suggestDomain(settings.emailFrom, domains.map((d) => d.name)),
     senders: senders.map((s) => ({
       address: s.address,
       displayName: s.displayName,
@@ -103,7 +112,28 @@ export const load: PageServerLoad = async ({ locals }) => {
   }
 }
 
+/** The domain of the default sender, unless it (or a domain it sits under) is already added. */
+function suggestDomain(sender: string, added: string[]): string | null {
+  const at = sender.lastIndexOf('@')
+  if (at < 0) return null
+  const domain = sender.slice(at + 1).toLowerCase()
+  return added.includes(domain) ? null : domain
+}
+
 export const actions: Actions = {
+  /**
+   * Adds a sender domain (moved here from the Domains tab, 2026-11-14). A domain the SES
+   * account already has is adopted as it is; either way its DNS page opens next.
+   */
+  addDomain: async ({ locals, request }) => {
+    const me = await requireAdmin(locals)
+    const name = field(await request.formData(), 'name')
+    const out = await act('addDomain', async () => ({
+      id: (await emailPlatform().addDomain(name, me.userId)).id,
+    }))
+    if ('id' in out && typeof out.id === 'string') throw redirect(303, `/m/email/domains/${out.id}`)
+    return out
+  },
   /** A real test email to the signed-in owner, from the chosen (or default) sender. */
   test: async ({ locals, request }) => {
     const me = await requireAdmin(locals)

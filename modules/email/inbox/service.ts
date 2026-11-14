@@ -86,7 +86,7 @@ async function freshAddress(deps: InboxDeps, localPart: string, domainId: string
   const local = normalizeLocalPart(localPart)
   if (!local.ok) throw new InboxError('invalid', local.message)
   const domain = (await deps.domains()).find((d) => d.id === domainId)
-  if (!domain) throw new InboxError('invalid', 'Pick a verified domain. Domains are added and verified under Setup › Domains.')
+  if (!domain) throw new InboxError('invalid', 'Pick a verified domain. Domains are added and verified under Setup › Account.')
   const address = `${local.value}@${domain.name.toLowerCase()}`
   if (await deps.store.getAddress(address)) throw new InboxError('taken', `${address} is already in use. Pick another address.`)
   return { address, domainId: domain.id }

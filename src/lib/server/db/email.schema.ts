@@ -14,8 +14,17 @@ export const mailDomains = pgTable('mail_domains', {
   /** SES VerificationStatus: NOT_STARTED | PENDING | SUCCESS | FAILED | TEMPORARY_FAILURE. */
   status: text('status').notNull().default('NOT_STARTED'),
   dkimSelector: text('dkim_selector').notNull(),
-  /** Base64 SPKI public key published as the DKIM TXT record. The private key lives only at Amazon. */
-  publicKey: text('public_key').notNull(),
+  /**
+   * Base64 SPKI public key published as the DKIM TXT record (our BYO-DKIM). The private key lives only at Amazon.
+   * Null for an adopted domain: Amazon's Easy DKIM (`dkimTokens`) or a key the owner published elsewhere.
+   */
+  publicKey: text('public_key'),
+  /** Easy DKIM tokens of an adopted domain: one CNAME `<token>._domainkey` → `<token>.dkim.amazonses.com` each. */
+  dkimTokens: jsonb('dkim_tokens').$type<string[]>(),
+  /** The custom MAIL FROM subdomain at Amazon (mail.<domain> for ours); null = Amazon's own MAIL FROM. */
+  mailFromDomain: text('mail_from_domain'),
+  /** Already in the owner's Amazon SES account when added here: removing it here leaves it at Amazon. */
+  adopted: boolean('adopted').notNull().default(false),
   dkimStatus: text('dkim_status').notNull().default('NOT_STARTED'),
   mailFromStatus: text('mail_from_status').notNull().default('NOT_STARTED'),
   dmarcAdded: boolean('dmarc_added').notNull().default(false),

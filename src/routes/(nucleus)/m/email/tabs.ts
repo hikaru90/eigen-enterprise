@@ -1,9 +1,12 @@
 import type { AreaTab } from '$lib/shell/area-nav'
 
-/** The setup sections: SES account, domains, senders, mailboxes (receiving addresses), templates, flows, logs, the API. */
+/**
+ * The setup sections: SES account (with its domains), senders, mailboxes (receiving addresses), templates, flows,
+ * logs, the API. Domains were their own tab until 2026-11-14 (owner: "shouldn't that be inside of account?"):
+ * they are listed and added under Account now; a domain's DNS page stays at /m/email/domains/<id>.
+ */
 export const EMAIL_SETUP_TABS: readonly AreaTab[] = [
-  { id: 'account', label: 'Account', href: '/m/email/setup' },
-  { id: 'domains', label: 'Domains', href: '/m/email/domains' },
+  { id: 'account', label: 'Account', href: '/m/email/setup', match: ['/m/email/domains'] },
   { id: 'senders', label: 'Senders', href: '/m/email/senders' },
   { id: 'mailboxes', label: 'Mailboxes', href: '/m/email/mailboxes' },
   { id: 'templates', label: 'Templates', href: '/m/email/templates' },
@@ -35,7 +38,7 @@ export const EMAIL_TABS: readonly AreaTab[] = [
     id: 'setup',
     label: 'Setup',
     href: '/m/email/setup',
-    match: EMAIL_SETUP_TABS.map((t) => t.href),
+    match: EMAIL_SETUP_TABS.flatMap((t) => [t.href, ...(t.match ?? [])]),
   },
 ]
 

@@ -61,6 +61,24 @@ export type DomainIdentityInfo = {
   mailFrom: string
   /** VerificationInfo.ErrorType (HOST_NOT_FOUND, INVALID_VALUE …) or null. */
   errorType: string | null
+  /** DkimAttributes.SigningAttributesOrigin: AWS_SES (Easy DKIM), EXTERNAL (BYO-DKIM), or null when unknown. */
+  dkimOrigin: string | null
+  /** DkimAttributes.Tokens: the Easy DKIM CNAME tokens (for BYO-DKIM, the selector). */
+  dkimTokens: string[]
+  /** MailFromAttributes.MailFromDomain; null = Amazon's own MAIL FROM (amazonses.com). */
+  mailFromDomain: string | null
+}
+
+/** A domain identity SES has never heard of. */
+export const NO_DOMAIN_IDENTITY: DomainIdentityInfo = {
+  exists: false,
+  verification: 'NOT_STARTED',
+  dkim: 'NOT_STARTED',
+  mailFrom: 'NOT_STARTED',
+  errorType: null,
+  dkimOrigin: null,
+  dkimTokens: [],
+  mailFromDomain: null,
 }
 
 export type CreateDomainIdentityInput = {
@@ -206,10 +224,13 @@ export const awsSes: SesFactory = (c) => {
           dkim: String(out.DkimAttributes?.Status ?? 'NOT_STARTED'),
           mailFrom: String(out.MailFromAttributes?.MailFromDomainStatus ?? 'NOT_STARTED'),
           errorType: out.VerificationInfo?.ErrorType ? String(out.VerificationInfo.ErrorType) : null,
+          dkimOrigin: out.DkimAttributes?.SigningAttributesOrigin ? String(out.DkimAttributes.SigningAttributesOrigin) : null,
+          dkimTokens: out.DkimAttributes?.Tokens ?? [],
+          mailFromDomain: out.MailFromAttributes?.MailFromDomain || null,
         }
       } catch (err) {
         if (awsErrorCode(err) === 'NotFoundException') {
-          return { exists: false, verification: 'NOT_STARTED', dkim: 'NOT_STARTED', mailFrom: 'NOT_STARTED', errorType: null }
+          return NO_DOMAIN_IDENTITY
         }
         throw err
       }

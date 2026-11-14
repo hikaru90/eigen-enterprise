@@ -15,12 +15,13 @@ export type DnsStatus = 'NOT_STARTED' | 'PENDING' | 'SUCCESS' | 'FAILED' | 'TEMP
 export type DnsRecord = {
   /** What the record is for, in plain words. */
   purpose: 'dkim' | 'mail_from_mx' | 'spf' | 'dmarc' | 'inbound_mx'
-  type: 'MX' | 'TXT'
+  type: 'MX' | 'TXT' | 'CNAME'
   /** The full record name (FQDN). */
   name: string
   /** The name relative to the DNS zone — what most DNS providers' "Host" field wants. */
   host: string
-  value: string
+  /** Null only for a DKIM key the owner published outside ee (Amazon never shows its public half). */
+  value: string | null
   priority: number | null
   status: DnsStatus
   /** DMARC is recommended, not required for sending. */
@@ -31,7 +32,12 @@ export type DomainDnsState = {
   name: string
   region: string
   dkimSelector: string
-  publicKey: string
+  /** Our BYO-DKIM public key; null for an adopted domain. */
+  publicKey: string | null
+  /** Easy DKIM tokens of an adopted domain (CNAMEs to Amazon); null otherwise. */
+  dkimTokens: string[] | null
+  /** The MAIL FROM subdomain; null = Amazon's own MAIL FROM (no records to publish). */
+  mailFromDomain: string | null
   dkimStatus: string
   mailFromStatus: string
   dmarcAdded: boolean
@@ -118,41 +124,62 @@ export function inboundMxSeen(mx: MxRecord[], region: string): boolean {
  * domain does not receive mail (no record is shown then).
  */
 export function dnsRecords(d: DomainDnsState, inboundMx: DnsStatus | null): DnsRecord[] {
-  const mailFrom = mailFromDomain(d.name)
-  const dkimName = `${d.dkimSelector}._domainkey.${d.name}`
   const dmarcName = `_dmarc.${registrableDomain(d.name)}`
   const mailFromStatus = asStatus(d.mailFromStatus)
+  const dkimStatus = asStatus(d.dkimStatus)
+  const dkim: DnsRecord[] = d.dkimTokens
+    ? d.dkimTokens.map((token) => {
+        const name = `${token}._domainkey.${d.name}`
+        return {
+          purpose: 'dkim' as const,
+          type: 'CNAME' as const,
+          name,
+          host: hostOf(name, d.name),
+          value: `${token}.dkim.amazonses.com`,
+          priority: null,
+          status: dkimStatus,
+          required: true,
+        }
+      })
+    : [
+        {
+          purpose: 'dkim',
+          type: 'TXT',
+          name: `${d.dkimSelector}._domainkey.${d.name}`,
+          host: hostOf(`${d.dkimSelector}._domainkey.${d.name}`, d.name),
+          value: d.publicKey === null ? null : `p=${d.publicKey}`,
+          priority: null,
+          status: dkimStatus,
+          required: true,
+        },
+      ]
+  const mailFrom: DnsRecord[] = d.mailFromDomain
+    ? [
+        {
+          purpose: 'mail_from_mx',
+          type: 'MX',
+          name: d.mailFromDomain,
+          host: hostOf(d.mailFromDomain, d.name),
+          value: `feedback-smtp.${d.region}.amazonses.com`,
+          priority: 10,
+          status: mailFromStatus,
+          required: true,
+        },
+        {
+          purpose: 'spf',
+          type: 'TXT',
+          name: d.mailFromDomain,
+          host: hostOf(d.mailFromDomain, d.name),
+          value: 'v=spf1 include:amazonses.com ~all',
+          priority: null,
+          status: mailFromStatus,
+          required: true,
+        },
+      ]
+    : []
   return [
-    {
-      purpose: 'dkim',
-      type: 'TXT',
-      name: dkimName,
-      host: hostOf(dkimName, d.name),
-      value: `p=${d.publicKey}`,
-      priority: null,
-      status: asStatus(d.dkimStatus),
-      required: true,
-    },
-    {
-      purpose: 'mail_from_mx',
-      type: 'MX',
-      name: mailFrom,
-      host: hostOf(mailFrom, d.name),
-      value: `feedback-smtp.${d.region}.amazonses.com`,
-      priority: 10,
-      status: mailFromStatus,
-      required: true,
-    },
-    {
-      purpose: 'spf',
-      type: 'TXT',
-      name: mailFrom,
-      host: hostOf(mailFrom, d.name),
-      value: 'v=spf1 include:amazonses.com ~all',
-      priority: null,
-      status: mailFromStatus,
-      required: true,
-    },
+    ...dkim,
+    ...mailFrom,
     {
       purpose: 'dmarc',
       type: 'TXT',

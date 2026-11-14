@@ -77,11 +77,11 @@ test.describe('email platform', () => {
     // Delivery events are wired (the fake SNS confirms at once).
     await expect(page.getByTestId('email-events')).toHaveAttribute('data-status', 'ready')
 
-    // ── Domains: add → DNS records → verify (fake) → re-check.
+    // ── Domains (under Account since 2026-11-14): add inline → DNS records → verify (fake) → re-check.
+    // The step prefills the default sender's domain.
+    await expect(page.locator('#domain-name-step')).toHaveValue('kindred.test')
+    await page.locator('#domain-name-step').fill(domain.toUpperCase())
     await page.getByTestId('email-step-add-domain').click()
-    await expect(page).toHaveURL(/\/m\/email\/domains$/)
-    await page.locator('#domain-name').fill(domain.toUpperCase())
-    await page.getByRole('button', { name: 'Add domain' }).click()
     await expect(page).toHaveURL(/\/m\/email\/domains\/[0-9a-f-]+$/)
     await expect(page.getByTestId('domain-name')).toHaveText(domain)
     const records = page.getByTestId('dns-records')

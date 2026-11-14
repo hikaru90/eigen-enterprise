@@ -14,7 +14,9 @@ const domain = (over: Partial<Parameters<typeof dnsRecords>[0]> = {}) => ({
   name: 'kindred.com',
   region: 'eu-central-1',
   dkimSelector: 'ee',
-  publicKey: 'MIIBIjANBgkqh',
+  publicKey: 'MIIBIjANBgkqh' as string | null,
+  dkimTokens: null as string[] | null,
+  mailFromDomain: 'mail.kindred.com' as string | null,
   dkimStatus: 'PENDING',
   mailFromStatus: 'PENDING',
   dmarcAdded: false,
@@ -38,6 +40,25 @@ describe('normalizeDomain', () => {
 })
 
 describe('dnsRecords', () => {
+  it('an adopted Easy DKIM domain shows Amazon\'s three CNAMEs instead of our TXT key', () => {
+    const records = dnsRecords(domain({ publicKey: null, dkimTokens: ['t1', 't2', 't3'], dkimStatus: 'SUCCESS' }), null)
+    expect(records.filter((r) => r.purpose === 'dkim').map((r) => [r.type, r.host, r.value])).toEqual([
+      ['CNAME', 't1._domainkey', 't1.dkim.amazonses.com'],
+      ['CNAME', 't2._domainkey', 't2.dkim.amazonses.com'],
+      ['CNAME', 't3._domainkey', 't3.dkim.amazonses.com'],
+    ])
+  })
+
+  it('a key published outside ee shows the record by name, without a value to copy', () => {
+    const [dkim] = dnsRecords(domain({ publicKey: null, dkimTokens: null, dkimSelector: 'sel1' }), null)
+    expect(dkim).toMatchObject({ type: 'TXT', host: 'sel1._domainkey', value: null })
+  })
+
+  it('no MAIL FROM subdomain: no MAIL FROM MX or SPF records', () => {
+    const records = dnsRecords(domain({ mailFromDomain: null }), null)
+    expect(records.map((r) => r.purpose)).toEqual(['dkim', 'dmarc'])
+  })
+
   it('lists DKIM, MAIL FROM MX + SPF and the recommended DMARC record with zone-relative hosts', () => {
     expect(dnsRecords(domain(), null)).toEqual([
       {
@@ -84,7 +105,7 @@ describe('dnsRecords', () => {
   })
 
   it('places a subdomain’s records under the subdomain and DMARC at the registrable domain', () => {
-    const records = dnsRecords(domain({ name: 'news.kindred.co.uk', dkimStatus: 'SUCCESS', mailFromStatus: 'FAILED', dmarcAdded: true }), null)
+    const records = dnsRecords(domain({ name: 'news.kindred.co.uk', mailFromDomain: 'mail.news.kindred.co.uk', dkimStatus: 'SUCCESS', mailFromStatus: 'FAILED', dmarcAdded: true }), null)
     expect(records.map((r) => [r.purpose, r.name, r.host, r.status])).toEqual([
       ['dkim', 'ee._domainkey.news.kindred.co.uk', 'ee._domainkey.news', 'SUCCESS'],
       ['mail_from_mx', 'mail.news.kindred.co.uk', 'mail.news', 'FAILED'],

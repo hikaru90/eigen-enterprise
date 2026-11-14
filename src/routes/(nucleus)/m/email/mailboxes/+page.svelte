@@ -81,8 +81,8 @@
   {/if}
 {:else if data.admin.domains.length === 0}
   <p class="mt-4 max-w-2xl text-sm text-muted-foreground" data-testid="mailboxes-need-domain">
-    Mailboxes need a verified domain. <a class="underline underline-offset-4" href={resolve('/m/email/domains')}
-      >Add one under Domains</a
+    Mailboxes need a verified domain. <a class="underline underline-offset-4" href={resolve('/m/email/setup')}
+      >Add one under Setup › Account</a
     >.
   </p>
 {:else}

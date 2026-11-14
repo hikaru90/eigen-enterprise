@@ -7,7 +7,6 @@ describe('Email area tabs (your inbox first, setup behind one tab)', () => {
     expect(EMAIL_TABS.map((t) => t.label)).toEqual(['Inbox', 'Company mail', 'Contacts', 'Lists', 'Setup'])
     expect(EMAIL_SETUP_TABS.map((t) => t.label)).toEqual([
       'Account',
-      'Domains',
       'Senders',
       'Mailboxes',
       'Templates',
@@ -17,6 +16,9 @@ describe('Email area tabs (your inbox first, setup behind one tab)', () => {
       'Suppression',
       'API',
     ])
+  })
+  it('domains live under Account (no Domains tab since 2026-11-14)', () => {
+    expect(EMAIL_SETUP_TABS[0]).toEqual({ id: 'account', label: 'Account', href: '/m/email/setup', match: ['/m/email/domains'] })
   })
   it('the Inbox is where /m/email lands; Company mail (the company-wide pending + sent log) is for the owner and admins only', () => {
     expect(EMAIL_TABS[0]).toEqual({ id: 'inbox', label: 'Inbox', href: '/m/email/inbox', match: ['/m/email/inbox'] })
@@ -53,7 +55,8 @@ describe('Email area tabs (your inbox first, setup behind one tab)', () => {
   })
   it.each([
     ['/m/email/setup', 'account'],
-    ['/m/email/domains/1', 'domains'],
+    ['/m/email/domains/1', 'account'],
+    ['/m/email/domains', 'account'],
     ['/m/email/logs/1', 'logs'],
     ['/m/email/mailboxes', 'mailboxes'],
     ['/m/email/api', 'api'],

@@ -127,6 +127,32 @@ describe.skipIf(!hasDb)('EmailPlatform (test database)', () => {
     expect(verified.records.every((r) => r.status === 'SUCCESS')).toBe(true)
   })
 
+  it('adopts a domain already in the SES account: Amazon\'s DKIM and MAIL FROM, no new key, left at Amazon on removal', async () => {
+    ses.existingDomain('kindred.com', { verified: true, dkimTokens: ['aaa', 'bbb', 'ccc'], mailFromDomain: null })
+    const d = await platform.addDomain('kindred.com', 'u1')
+    expect(ses.domains.has('kindred.com')).toBe(false)
+    expect(d).toMatchObject({ name: 'kindred.com', adopted: true, publicKey: null, status: 'SUCCESS', sendable: true, isVerifying: false })
+    const dkim = d.records.filter((r) => r.purpose === 'dkim')
+    expect(dkim.map((r) => [r.type, r.name, r.value, r.status])).toEqual([
+      ['CNAME', 'aaa._domainkey.kindred.com', 'aaa.dkim.amazonses.com', 'SUCCESS'],
+      ['CNAME', 'bbb._domainkey.kindred.com', 'bbb.dkim.amazonses.com', 'SUCCESS'],
+      ['CNAME', 'ccc._domainkey.kindred.com', 'ccc.dkim.amazonses.com', 'SUCCESS'],
+    ])
+    // Amazon's own MAIL FROM: no MAIL FROM records to publish.
+    expect(d.records.some((r) => r.purpose === 'mail_from_mx' || r.purpose === 'spf')).toBe(false)
+
+    await platform.deleteDomain(d.id)
+    expect(ses.deleted).toEqual([])
+    expect(await platform.getDomain(d.id)).toBeNull()
+  })
+
+  it('adopts a domain with a custom MAIL FROM and keeps that subdomain', async () => {
+    ses.existingDomain('kindred.com', { verified: false, mailFromDomain: 'bounce.kindred.com' })
+    const d = await platform.addDomain('kindred.com', 'u1')
+    expect(d).toMatchObject({ adopted: true, mailFromDomain: 'bounce.kindred.com', status: 'PENDING', isVerifying: true })
+    expect(d.records.find((r) => r.purpose === 'mail_from_mx')).toMatchObject({ name: 'bounce.kindred.com', host: 'bounce' })
+  })
+
   it('receiving: warns with the current MX, provisions on the first domain, follows mailboxes, and switches off', async () => {
     const d = await platform.addDomain('kindred.com', 'u1')
     await expect(platform.setDomainReceiving(d.id, true, 'https://os.kindred.test')).rejects.toThrow(/not verified yet/)
@@ -217,7 +243,7 @@ describe.skipIf(!hasDb)('EmailPlatform (test database)', () => {
   it('a sender needs a verified domain; the default sender cannot be removed', async () => {
     const d = await platform.addDomain('kindred.com', 'u1')
     await expect(platform.addSender({ address: 'news@kindred.com', displayName: 'Kindred News' }, 'u1')).rejects.toThrow(/not verified yet/)
-    await expect(platform.addSender({ address: 'x@elsewhere.test', displayName: null }, 'u1')).rejects.toThrow(/under Domains/)
+    await expect(platform.addSender({ address: 'x@elsewhere.test', displayName: null }, 'u1')).rejects.toThrow(/under Setup › Account/)
     ses.verify('kindred.com')
     await platform.refreshDomain(d.id)
     const sender = await platform.addSender({ address: 'News@Kindred.com', displayName: 'Kindred News' }, 'u1')

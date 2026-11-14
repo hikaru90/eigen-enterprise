@@ -5,7 +5,7 @@ import { env } from '$lib/server/env/private-env'
 import { MailSetupError } from '$lib/server/mail/company-mail'
 import { ReceivingSetupError, receivingService, type ReceivingService, type ReceivingState } from '../owlery/receiving'
 import { owleryService, SEND_SCHEDULED_JOB, type OwleryService } from '../owlery/service'
-import { describeSesError } from '../owlery/ses'
+import { describeSesError, type DomainIdentityInfo } from '../owlery/ses'
 import {
   DKIM_SELECTOR,
   dnsRecords,
@@ -180,7 +180,11 @@ export class EmailPlatform {
     }
   }
 
-  /** Registers the domain at Amazon with our own DKIM key and its MAIL FROM subdomain. */
+  /**
+   * Registers the domain at Amazon with our own DKIM key and its MAIL FROM subdomain —
+   * or, when the SES account already has it (set up in the console, or the default
+   * sender's domain), adopts it as it is: Amazon's DKIM records and MAIL FROM, no new key.
+   */
   async addDomain(input: string, createdBy: string): Promise<DomainView> {
     let name: string
     try {
@@ -190,6 +194,13 @@ export class EmailPlatform {
     }
     if (await this.deps.store.getDomainByName(name)) throw new EmailPlatformError(`${name} is already added.`)
     const { ses, settings } = await this.deps.owlery.ses()
+    let existing
+    try {
+      existing = await ses.getDomainIdentity(name)
+    } catch (err) {
+      throw new EmailPlatformError(describeSesError(err))
+    }
+    if (existing.exists) return this.adoptDomain(name, settings.region, existing, createdBy)
     const keys = generateDkimKeyPair()
     try {
       await ses.createDomainIdentity({
@@ -207,10 +218,28 @@ export class EmailPlatform {
       status: 'PENDING',
       dkimSelector: DKIM_SELECTOR,
       publicKey: keys.publicKey,
+      mailFromDomain: mailFromDomain(name),
       dkimStatus: 'PENDING',
       mailFromStatus: 'PENDING',
       isVerifying: true,
       createdBy,
+    })
+    return this.view(row)
+  }
+
+  /** Stores a domain the SES account already has, with the records Amazon set up for it. */
+  private async adoptDomain(name: string, region: string, check: DomainIdentityInfo, createdBy: string): Promise<DomainView> {
+    const easy = check.dkimOrigin !== 'EXTERNAL'
+    const row = await this.deps.store.insertDomain({
+      name,
+      region,
+      dkimSelector: easy ? DKIM_SELECTOR : (check.dkimTokens[0] ?? DKIM_SELECTOR),
+      publicKey: null,
+      dkimTokens: easy ? check.dkimTokens : null,
+      mailFromDomain: check.mailFromDomain,
+      adopted: true,
+      createdBy,
+      ...applyIdentityCheck(check, await this.dmarcFound(name), this.now()),
     })
     return this.view(row)
   }
@@ -237,7 +266,11 @@ export class EmailPlatform {
       throw new EmailPlatformError(describeSesError(err))
     }
     const next = applyIdentityCheck(check, await this.dmarcFound(d.name), this.now())
-    return this.view(await this.deps.store.updateDomain(id, next))
+    // An adopted domain follows Amazon's DKIM and MAIL FROM, which the owner may change in the console.
+    const adopted = d.adopted && check.exists
+      ? { dkimTokens: check.dkimOrigin === 'EXTERNAL' ? null : check.dkimTokens, mailFromDomain: check.mailFromDomain }
+      : {}
+    return this.view(await this.deps.store.updateDomain(id, { ...next, ...adopted }))
   }
 
   /** "Re-check": restarts the background checks for a failed domain too. */
@@ -266,10 +299,13 @@ export class EmailPlatform {
         `${settings.emailFrom} is your default sender (it sends sign-in codes). Make another sender the default first.`,
       )
     }
-    try {
-      await ses.deleteIdentity(d.name)
-    } catch (err) {
-      throw new EmailPlatformError(describeSesError(err))
+    // An adopted domain was in the SES account before ee: it stays there.
+    if (!d.adopted) {
+      try {
+        await ses.deleteIdentity(d.name)
+      } catch (err) {
+        throw new EmailPlatformError(describeSesError(err))
+      }
     }
     await this.deps.store.deleteDomain(id)
   }
@@ -368,7 +404,7 @@ export class EmailPlatform {
       return this.deps.store.upsertSender({ address, displayName, domainId: domain.id, createdBy })
     }
     if (!(await this.deps.owlery.senderVerified(address))) {
-      throw new EmailPlatformError(`Add ${domainName} under Domains and verify it first, then add ${address} here.`)
+      throw new EmailPlatformError(`Add ${domainName} under Setup › Account and verify it first, then add ${address} here.`)
     }
     return this.deps.store.upsertSender({ address, displayName, domainId: null, createdBy })
   }

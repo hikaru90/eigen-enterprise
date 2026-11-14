@@ -37,6 +37,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       tracking: d.tracking,
       isVerifying: d.isVerifying,
       errorMessage: d.errorMessage,
+      adopted: d.adopted,
       lastCheckedAt: d.lastCheckedAt?.toISOString() ?? null,
       records: d.records,
     },
@@ -72,7 +73,7 @@ export const actions: Actions = {
       await emailPlatform().deleteDomain(params.id)
       return {}
     })
-    if ('ok' in out && out.ok === true) throw redirect(303, '/m/email/domains')
+    if ('ok' in out && out.ok === true) throw redirect(303, '/m/email/setup')
     return out
   },
 }

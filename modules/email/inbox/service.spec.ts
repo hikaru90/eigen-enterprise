@@ -70,7 +70,7 @@ describe('assigning a personal mailbox', () => {
     })
     await expect(assignPersonalMailbox(deps, 'olga', { memberId: 'ana', localPart: 'ana', domainId: 'd-pending' })).rejects.toMatchObject({
       code: 'invalid',
-      message: 'Pick a verified domain. Domains are added and verified under Setup › Domains.',
+      message: 'Pick a verified domain. Domains are added and verified under Setup › Account.',
     })
     await expect(assignPersonalMailbox(deps, 'olga', { memberId: 'ana', localPart: 'an..a', domainId: 'd-1' })).rejects.toMatchObject({
       code: 'invalid',

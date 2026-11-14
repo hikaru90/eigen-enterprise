@@ -14,7 +14,7 @@
 
   const PURPOSE: Record<string, string> = {
     dkim: 'DKIM — signs every mail so inboxes know it really comes from you.',
-    mail_from_mx: 'Mail-from (MX) — bounces come back to Amazon through mail.<domain>.',
+    mail_from_mx: 'Mail-from (MX) — bounces come back to Amazon through this subdomain.',
     spf: 'SPF — allows Amazon SES to send for your mail-from address.',
     dmarc: 'DMARC (recommended) — tells inboxes what to do with mail that fails the checks.',
     inbound_mx:
@@ -50,7 +50,7 @@
 <div class="mt-8">
   <a
     class="text-[13px] text-muted-foreground hover:text-foreground"
-    href={resolve('/m/email/domains')}>← Back to domains</a
+    href={resolve('/m/email/setup')}>← Back to setup</a
   >
   <div class="mt-2 flex flex-wrap items-center gap-3">
     <h2 class="text-base font-semibold tracking-tight" data-testid="domain-name">{d.name}</h2>
@@ -66,6 +66,12 @@
       few hours to appear.
     {/if}
   </p>
+  {#if d.adopted}
+    <p class="mt-1 text-sm text-muted-foreground" data-testid="domain-adopted">
+      This domain was already in your Amazon SES account, so ee uses it as it is set up there. If
+      these records are already at your DNS provider, there is nothing to add.
+    </p>
+  {/if}
   {#if d.errorMessage}<p
       class="mt-2 text-sm text-destructive"
       role="alert"
@@ -87,7 +93,7 @@
       </tr>
     </thead>
     <tbody class="divide-y divide-border align-top">
-      {#each d.records as r (r.purpose)}
+      {#each d.records as r (`${r.purpose}:${r.name}`)}
         <tr data-testid={`dns-record-${r.purpose}`}>
           <td class="px-4 py-3 font-mono text-xs">{r.type}</td>
           <td class="px-4 py-3">
@@ -98,12 +104,18 @@
             <p class="mt-1 text-[11px] text-muted-foreground">{r.name}</p>
           </td>
           <td class="px-4 py-3">
-            <div class="flex items-start gap-1">
-              <code class="max-w-[28rem] font-mono text-xs break-all" data-testid="dns-value"
-                >{r.value}</code
-              >
-              <CopyButton value={r.value} label={`Copy value of the ${r.purpose} record`} />
-            </div>
+            {#if r.value === null}
+              <p class="text-xs text-muted-foreground" data-testid="dns-value">
+                The public key you published with this DKIM key (Amazon doesn’t show it).
+              </p>
+            {:else}
+              <div class="flex items-start gap-1">
+                <code class="max-w-[28rem] font-mono text-xs break-all" data-testid="dns-value"
+                  >{r.value}</code
+                >
+                <CopyButton value={r.value} label={`Copy value of the ${r.purpose} record`} />
+              </div>
+            {/if}
             <p class="mt-1 text-[11px] text-muted-foreground">{purpose(r.purpose)}</p>
           </td>
           <td class="px-4 py-3 text-xs tabular-nums">{r.priority ?? '—'}</td>
@@ -259,7 +271,9 @@
       use:enhance={({ cancel }) => {
         if (
           !confirm(
-            `Remove ${d.name}? Mail can no longer be sent from it, and its senders are removed.`,
+            d.adopted
+              ? `Remove ${d.name} from ee? Its senders here are removed; the domain stays in your Amazon SES account.`
+              : `Remove ${d.name}? Mail can no longer be sent from it, and its senders are removed.`,
           )
         )
           return cancel()

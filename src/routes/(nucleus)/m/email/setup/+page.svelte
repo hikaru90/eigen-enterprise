@@ -4,10 +4,12 @@
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
   import CopyButton from '$lib/components/email/copy-button.svelte'
+  import DnsStatus from '$lib/components/email/dns-status.svelte'
   import MessageStatus from '$lib/components/email/message-status.svelte'
   import SesConnectForm from '$lib/components/email/ses-connect-form.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
+  import { Input } from '$lib/components/ui/input'
   import { docTitle } from '$lib/shell/title'
 
   let { data, form }: PageProps = $props()
@@ -39,14 +41,18 @@
       detail:
         data.domains.length > 0
           ? `${data.domains.map((d) => d.name).join(', ')}`
-          : 'Send from your own domain (like yourcompany.com) with DKIM, SPF and DMARC, so mail lands in inboxes.',
+          : data.suggestedDomain
+            ? `Your default sender is at ${data.suggestedDomain}. Add it here; if it is already set up in Amazon SES, ee uses it as it is.`
+            : 'Send from your own domain (like yourcompany.com) with DKIM, SPF and DMARC, so mail lands in inboxes.',
     },
     {
       id: 'dns',
       title: 'Publish the DNS records',
       done: Boolean(verifiedDomain),
       detail: verifiedDomain
-        ? `${verifiedDomain.name} is verified.`
+        ? verifiedDomain.adopted
+          ? `${verifiedDomain.name} is verified at Amazon; its DNS records are already in place.`
+          : `${verifiedDomain.name} is verified.`
         : firstDomain
           ? `Add the records for ${firstDomain.name} at your DNS provider. ee checks every minute and tells you when Amazon sees them.`
           : 'After adding a domain you get four records to copy into your DNS provider.',
@@ -84,6 +90,45 @@
 </script>
 
 <svelte:head><title>{docTitle('Email setup')}</title></svelte:head>
+
+{#snippet addDomainForm(where: 'step' | 'list')}
+  <form
+    method="POST"
+    action="?/addDomain"
+    class="mt-3 flex max-w-xl flex-wrap items-center gap-2"
+    data-testid="domain-add"
+    use:enhance={() => {
+      busy = 'addDomain'
+      return async ({ update }) => {
+        await update()
+        busy = null
+      }
+    }}
+  >
+    <label class="sr-only" for={`domain-name-${where}`}>Domain</label>
+    <Input
+      id={`domain-name-${where}`}
+      name="name"
+      required
+      class="h-8 max-w-64 flex-1"
+      placeholder="yourcompany.com"
+      autocomplete="off"
+      value={where === 'step' ? (data.suggestedDomain ?? '') : ''}
+      disabled={busy === 'addDomain'}
+    />
+    <Button
+      type="submit"
+      size="sm"
+      variant={where === 'step' ? 'default' : 'outline'}
+      disabled={busy === 'addDomain'}
+      data-testid={where === 'step' ? 'email-step-add-domain' : undefined}
+      >{busy === 'addDomain' ? 'Adding…' : where === 'step' ? 'Add domain' : 'Add another domain'}</Button
+    >
+    {#if feedback('addDomain')?.error}
+      <p class="w-full text-sm text-destructive" role="alert">{feedback('addDomain')?.error}</p>
+    {/if}
+  </form>
+{/snippet}
 
 <div class="grid gap-x-10 gap-y-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
   <section aria-labelledby="setup-heading">
@@ -144,12 +189,7 @@
                 {/if}
               {/if}
             {:else if step.id === 'domain' && account && !step.done && isAdmin}
-              <Button
-                class="mt-3"
-                size="sm"
-                href="/m/email/domains"
-                data-testid="email-step-add-domain">Add a domain</Button
-              >
+              {@render addDomainForm('step')}
             {:else if step.id === 'dns' && firstDomain && !step.done}
               <Button
                 class="mt-3"
@@ -206,6 +246,50 @@
         </li>
       {/each}
     </ol>
+
+    {#if account}
+      <section id="domains" class="mt-8 scroll-mt-6" aria-labelledby="domains-heading">
+        <SectionHeader
+          title="Domains"
+          description="The domains you send from. Open one for its DNS records, receiving and tracking."
+        />
+        <span id="domains-heading" class="sr-only">Domains</span>
+        {#if data.domains.length === 0}
+          <p class="mt-3 text-sm text-muted-foreground" data-testid="domains-empty">
+            No domains yet.
+          </p>
+        {:else}
+          <ul
+            class="mt-3 divide-y divide-border rounded-lg border border-border"
+            data-testid="domains-list"
+          >
+            {#each data.domains as d (d.id)}
+              <li>
+                <a
+                  class="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 hover:bg-muted/50 sm:px-5"
+                  href={resolve(`/m/email/domains/${d.id}`)}
+                  data-testid={`domain-row-${d.name}`}
+                >
+                  <span class="min-w-0 flex-1 truncate text-sm font-medium">{d.name}</span>
+                  <span class="text-xs text-muted-foreground"
+                    >{d.recordsDone} of {d.recordsRequired} required records found</span
+                  >
+                  {#if d.receiving}<span class="text-xs text-muted-foreground">Receives mail</span
+                    >{/if}
+                  {#if d.tracking}<span class="text-xs text-muted-foreground"
+                      >Open & click tracking</span
+                    >{/if}
+                  <DnsStatus status={d.status} />
+                </a>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        {#if isAdmin && data.domains.length > 0}
+          <div class="mt-3">{@render addDomainForm('list')}</div>
+        {/if}
+      </section>
+    {/if}
   </section>
 
   <aside class="flex flex-col gap-6" aria-label="Account">

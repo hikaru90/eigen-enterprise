@@ -35,7 +35,7 @@
       <p class="mt-5 max-w-2xl text-sm text-muted-foreground" data-testid="senders-need-domain">
         New senders need a verified domain. <a
           class="underline underline-offset-4"
-          href={resolve('/m/email/domains')}>Add one under Domains</a
+          href={resolve('/m/email/setup')}>Add one under Setup › Account</a
         >.
       </p>
     {:else}

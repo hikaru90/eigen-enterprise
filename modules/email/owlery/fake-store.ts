@@ -5,6 +5,7 @@ import { asc, eq, or, sql } from 'drizzle-orm'
 import type { DbHandle } from '$lib/kernel/db-stores'
 import type { AppDatabase } from '$lib/server/db/context'
 import { mailFakeIdentities, mailFakeSent } from '$lib/server/db/mail-fake.schema'
+import { NO_DOMAIN_IDENTITY } from './ses'
 
 /**
  * The fake mail transport for the RUNNING app (MAIL_TRANSPORT=fake). Same
@@ -73,7 +74,8 @@ export function fakeStoreSes(store: FakeMailStore): SesFactory {
       getDomainIdentity: async (domain) => {
         const id = await store.getIdentity(domain)
         const s = !id.exists ? 'NOT_STARTED' : id.verified ? 'SUCCESS' : 'PENDING'
-        return { exists: id.exists, verification: s, dkim: s, mailFrom: s, errorType: null }
+        if (!id.exists) return NO_DOMAIN_IDENTITY
+        return { exists: true, verification: s, dkim: s, mailFrom: s, errorType: null, dkimOrigin: 'EXTERNAL', dkimTokens: ['ee'], mailFromDomain: `mail.${domain}` }
       },
       deleteIdentity: (identity) => store.deleteIdentity(identity),
       ensureEventDestination: async () => {},
