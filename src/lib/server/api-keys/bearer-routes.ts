@@ -11,7 +11,7 @@
  * keys (creating a fresh key would be an escalation to MCP). Key management is
  * for the signed-in owner only.
  */
-export const API_KEY_ROUTES = ['/api/mcp', '/api/mail/send'] as const
+export const API_KEY_ROUTES = ['/api/mcp', '/api/mail/send', '/api/mail/subscribe'] as const
 
 /** `pathname` is `url.pathname`, never a full URL. Exact match or a sub-path. */
 export function isApiKeyRoute(pathname: string): boolean {

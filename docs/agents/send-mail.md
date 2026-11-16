@@ -19,7 +19,7 @@ The rest of this page is for everything else: curl, scripts, agents elsewhere.
 - The key looks like `eigen_<hex>` and is shown once. Keep it in a secret
   (e.g. `EIGEN_API_KEY`); never put it in a prompt, a log or a repo.
 - Only API keys work here. A browser session cookie gets `401`. And a key works
-  only on `/api/mail/send` and `/api/mcp`; everywhere else it is ignored.
+  only on `/api/mail/send`, `/api/mail/subscribe` and `/api/mcp`; everywhere else it is ignored.
 - A key cannot grant itself (or another key) "Can send mail"; only the signed-in owner can.
 
 ## Send
@@ -61,6 +61,19 @@ Always send an `idempotencyKey`. Retry with the **same** key and the **same** bo
 on network errors, `429` (after `Retry-After` seconds), `502` and `503`. Within 24h the
 same key returns the first result (same `id`) and never sends twice. A failed send
 does not use up the key. Never retry `400`, `401` or `403` without fixing the cause.
+
+## Add someone to a list (sign-up forms)
+
+For a sign-up form on an app (a waitlist, a newsletter), the app's server adds the visitor to a
+contact list with the same key: `POST /api/mail/subscribe` with
+`{"listId":"<uuid>","email":"ada@example.com","firstName":"Ada"}` (`firstName` optional; unknown
+fields are rejected). Only lists with **public sign-up** on accept contacts here, so a leaked key
+cannot fill a private list. On a double-opt-in list the person gets the confirmation mail first.
+
+- `200` `{"status":"pending"|"subscribed"|…,"created":true|false}`: `pending` means a confirmation mail is on its way; `created: false` means they were already on the list.
+- `400` a bad body or an address the list refuses (`message` says why), `401` no key, `403` the key may not send mail, `404` no list with public sign-up has this id, `429` more than 300 sign-ups per key per hour (`Retry-After`).
+
+Limit each visitor in the app itself; the key's limit is shared by everyone who uses the form.
 
 ## Amazon SES sandbox
 

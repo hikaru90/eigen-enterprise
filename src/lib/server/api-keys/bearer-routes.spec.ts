@@ -3,7 +3,7 @@ import { API_KEY_ROUTES, isApiKeyRoute, parseBearerApiKey } from './bearer-route
 
 describe('isApiKeyRoute', () => {
   it('accepts exactly the routes built for API keys', () => {
-    expect(API_KEY_ROUTES).toEqual(['/api/mcp', '/api/mail/send'])
+    expect(API_KEY_ROUTES).toEqual(['/api/mcp', '/api/mail/send', '/api/mail/subscribe'])
     for (const route of API_KEY_ROUTES) expect(isApiKeyRoute(route)).toBe(true)
   })
 
@@ -24,6 +24,7 @@ describe('isApiKeyRoute', () => {
       '/api/approvals/mode',
       '/api/mail',
       '/api/mail/send-later',
+      '/api/mail/subscribers',
       '/api/mcpx',
       '/api',
     ]) {
