@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { PageData } from './$types'
+  import Pencil from '@lucide/svelte/icons/pencil'
   import { onMount } from 'svelte'
+  import { invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
   import {
     applyBatch,
@@ -11,6 +13,8 @@
     type RunSnapshot,
   } from '$lib/agent-runs/feed'
   import AgentRunFeed from '$lib/components/agent-run-feed.svelte'
+  import RunTitleEditor from '$lib/components/assistant/run-title-editor.svelte'
+  import { Button } from '$lib/components/ui/button'
   import { docTitle } from '$lib/shell/title'
 
   let { data }: { data: PageData } = $props()
@@ -56,9 +60,40 @@
   data-testid="back-link">← Back to conversations</a
 >
 <header class="mt-2 flex min-w-0 flex-col gap-1" data-testid="run-header">
-  <h2 class="text-base font-semibold tracking-tight wrap-break-word" data-testid="run-title">
-    {data.run.title}
-  </h2>
+  <RunTitleEditor
+    runId={data.run.id}
+    title={data.run.title}
+    renamable={data.run.renamable}
+    {fetch}
+    onrenamed={() => void invalidateAll()}
+    inputClass="text-base font-semibold"
+  >
+    {#snippet display(start)}
+      <div class="group/run flex min-w-0 items-center gap-1">
+        <!-- Double-click is a shortcut; the pencil button is the accessible way in. -->
+        <h2
+          class="text-base font-semibold tracking-tight wrap-break-word"
+          data-testid="run-title"
+          ondblclick={start}
+        >
+          {data.run.title}
+        </h2>
+        {#if data.run.renamable}
+          <Button
+            size="icon"
+            variant="ghost"
+            class="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+            aria-label="Rename conversation"
+            title="Rename"
+            data-testid="run-title-rename"
+            onclick={start}
+          >
+            <Pencil class="size-3.5" aria-hidden="true" />
+          </Button>
+        {/if}
+      </div>
+    {/snippet}
+  </RunTitleEditor>
   <p class="flex min-w-0 flex-wrap items-center gap-x-3 text-sm text-muted-foreground">
     <span class="text-xs">Started {when(data.run.createdAt)}</span>
     <span class="text-xs">Last activity {when(data.run.updatedAt)}</span>

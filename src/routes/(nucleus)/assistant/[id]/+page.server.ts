@@ -12,7 +12,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   }
   if (!/^[1-9]\d*$/.test(params.id)) throw error(400, `invalid run id: ${params.id}`)
   const id = Number(params.id)
-  const run = (await agentRunsSource().list()).find((r) => r.id === id)
+  const run = (await agentRunsSource().list(access.userId)).find((r) => r.id === id)
   if (!run) throw error(404, `unknown run ${id}`)
   return { run }
 }

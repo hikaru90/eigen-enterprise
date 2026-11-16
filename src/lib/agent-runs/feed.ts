@@ -14,6 +14,8 @@ export type RunSummary = {
   agentId: string
   /** Readable name: "Chat with <member>" or "Background task: …" (titles.ts). */
   title: string
+  /** The viewer owns this conversation and may rename it (Contribute 495e40bb). */
+  renamable: boolean
   createdAt: string
   updatedAt: string
 }

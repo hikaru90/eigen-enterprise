@@ -32,13 +32,14 @@ describe('createAgentRunsSource', () => {
       harness: vi.fn(),
       memberNames: async () => new Map([['user-a', 'Ada Park']]),
     })
-    const runs = await source.list()
+    const runs = await source.list('viewer')
     expect(runs.map((r) => r.id)).toEqual([1, 2])
     expect(Object.keys(runs[0]).sort()).toEqual([
       'agentId',
       'conversationKey',
       'createdAt',
       'id',
+      'renamable',
       'title',
       'updatedAt',
     ])
@@ -57,7 +58,7 @@ describe('createAgentRunsSource', () => {
       memberNames: async () => new Map([['user-a', 'Ada Park']]),
       chatTopics,
     })
-    const runs = await source.list()
+    const runs = await source.list('viewer')
     // The chat session id is the key's part after `<agentId>:`.
     expect(chatTopics).toHaveBeenCalledWith(expect.arrayContaining(['a', 'b']))
     expect(Object.fromEntries(runs.map((r) => [r.conversationKey, r.title]))).toEqual({
@@ -81,5 +82,46 @@ describe('createAgentRunsSource', () => {
     const source = createAgentRunsSource({ index, harness })
     expect(await source.watch(99)).toBeNull()
     expect(harness).not.toHaveBeenCalled()
+  })
+  it('marks only the viewer\'s own conversations renamable', async () => {
+    const index = await seeded()
+    const source = createAgentRunsSource({ index, harness: vi.fn() })
+    const runs = await source.list('user-b')
+    expect(Object.fromEntries(runs.map((r) => [r.id, r.renamable]))).toEqual({ 1: false, 2: true })
+  })
+
+  it('renames the owner\'s conversation; the name wins over every derived title', async () => {
+    const index = await seeded()
+    const chatTopics = vi.fn(async () => new Map([['b', 'Build me a bakery site']]))
+    const source = createAgentRunsSource({ index, harness: vi.fn(), chatTopics })
+    const before = (await index.listConversations()).find((r) => r.id === 2)!.updatedAt
+    const result = await source.rename('user-b', 2, 'Bakery website')
+    expect(result).toMatchObject({ ok: true, run: { id: 2, title: 'Bakery website', renamable: true } })
+    // Renaming is not activity: the list order (updated_at) stays.
+    expect((await index.listConversations()).find((r) => r.id === 2)!.updatedAt).toEqual(before)
+    // Read-time auto titles (first message) never replace a member's name.
+    const runs = await source.list('user-a')
+    expect(runs.find((r) => r.id === 2)!.title).toBe('Bakery website')
+  })
+
+  it('refuses to rename another member\'s conversation and leaves it as it was', async () => {
+    const index = await seeded()
+    const source = createAgentRunsSource({ index, harness: vi.fn() })
+    expect(await source.rename('user-a', 2, 'Hijacked')).toEqual({
+      ok: false,
+      status: 403,
+      error: 'Only the member who had this conversation can rename it.',
+    })
+    expect((await index.listConversations()).find((r) => r.id === 2)!.userTitle).toBeNull()
+  })
+
+  it('reports an unknown conversation as 404', async () => {
+    const index = await seeded()
+    const source = createAgentRunsSource({ index, harness: vi.fn() })
+    expect(await source.rename('user-a', 99, 'x')).toEqual({
+      ok: false,
+      status: 404,
+      error: 'unknown run 99',
+    })
   })
 })
