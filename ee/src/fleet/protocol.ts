@@ -27,6 +27,8 @@ export const FLEET_PATHS = {
   enroll: '/api/fleet/v1/enroll',
   /** Every pollSeconds: report in, desired state out. Signed. */
   poll: '/api/fleet/v1/poll',
+  /** When desired.escrowBackupKey is true: hand the control plane a copy of the backup key. Signed; 204 when held. */
+  escrow: '/api/fleet/v1/escrow',
 } as const
 
 export const FLEET_HEADERS = {
@@ -46,7 +48,7 @@ export const POLL_SECONDS = { min: 15, max: 3600, default: 60 } as const
  * must leave every other field at its neutral value for that box. New features
  * are added here (append only), never repurposed.
  */
-export const FLEET_FEATURES = ['release', 'suspended', 'backup', 'platformAi', 'backupRequestedAt'] as const
+export const FLEET_FEATURES = ['release', 'suspended', 'backup', 'platformAi', 'backupRequestedAt', 'escrowBackupKey'] as const
 export type FleetFeature = (typeof FLEET_FEATURES)[number]
 
 const base64 = z.string().regex(/^[A-Za-z0-9+/]+={0,2}$/)
@@ -144,6 +146,13 @@ const desiredKnown = {
   platformAi: platformAiV1.nullable().optional(),
   /** Take a backup if the last good one is older than this. */
   backupRequestedAt: isoTime.nullable().optional(),
+  /**
+   * true: the control plane holds no copy of this box's backup key; send it to
+   * FLEET_PATHS.escrow (owner decision 2026-11-16: hosting keeps a copy so it
+   * can restore a company after a host failure without the owner's recovery
+   * code). A box without a sealed key yet does nothing until it has one.
+   */
+  escrowBackupKey: z.boolean().optional(),
 }
 
 export const desiredV1 = z.object(desiredKnown).strip()
@@ -157,6 +166,19 @@ export function parseDesired(raw: unknown): { desired: DesiredV1; ignoredFields:
     raw && typeof raw === 'object' ? Object.keys(raw).filter((k) => !known.has(k)).sort() : []
   return { desired, ignoredFields }
 }
+
+// ── escrow: a copy of the backup key for the control plane ──────────────────
+
+/** The backup key (32 bytes, base64) decrypts every snapshot, and a snapshot holds the rest (master key, sealed root key). */
+export const backupKeyV1 = z.string().regex(/^[A-Za-z0-9+/]{43}=$/)
+
+export const escrowRequestV1 = z
+  .object({
+    protocol: z.literal(FLEET_PROTOCOL),
+    backupKey: backupKeyV1,
+  })
+  .strict()
+export type EscrowRequestV1 = z.infer<typeof escrowRequestV1>
 
 // ── signing ──────────────────────────────────────────────────────────────────
 

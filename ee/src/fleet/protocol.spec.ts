@@ -5,6 +5,7 @@ import {
   FLEET_PATHS,
   desiredV1,
   enrollRequestV1,
+  escrowRequestV1,
   newBoxKey,
   parseDesired,
   reportV1,
@@ -92,5 +93,22 @@ describe('fleet messages', () => {
     expect(() =>
       desiredV1.parse({ protocol: 1, pollSeconds: 60, platformAi: { llmBaseUrl: 'https://a.b', llmApiKey: 'k', llmModelChat: 'c', llmModelEmbedding: 'e', extra: 1 } }),
     ).toThrow()
+  })
+})
+
+describe('escrow (the control plane keeps a copy of the backup key)', () => {
+  const backupKey = Buffer.alloc(32, 7).toString('base64')
+
+  it('carries exactly one 32-byte base64 backup key', () => {
+    expect(escrowRequestV1.parse({ protocol: 1, backupKey })).toEqual({ protocol: 1, backupKey })
+    expect(() => escrowRequestV1.parse({ protocol: 1, backupKey: Buffer.alloc(16).toString('base64') })).toThrow()
+    expect(() => escrowRequestV1.parse({ protocol: 1, backupKey, recoveryCode: 'EE1-x' })).toThrow()
+  })
+
+  it('the desired state may ask for it', () => {
+    const { desired, ignoredFields } = parseDesired({ protocol: 1, pollSeconds: 60, escrowBackupKey: true })
+    expect(desired.escrowBackupKey).toBe(true)
+    expect(ignoredFields).toEqual([])
+    expect(FLEET_PATHS.escrow).toBe('/api/fleet/v1/escrow')
   })
 })
