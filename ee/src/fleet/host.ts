@@ -71,7 +71,7 @@ export function fleetHost(ee: Ee): FleetHost {
       try {
         got = await osGet('/api/fleet/backup-key', token)
       } catch (err) {
-        throw new Error(`os could not give the backup key: ${(err as Error).message}`)
+        throw new Error(`os could not give the backup key: ${(err as Error).message}`, { cause: err })
       }
       // The body is never echoed: it may hold the key.
       if (got.status !== 200) throw new Error(`os could not give the backup key: HTTP ${got.status}`)

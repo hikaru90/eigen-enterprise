@@ -53,7 +53,7 @@ async function signedManifest(d: UpgradeDeps, from: string) {
   try {
     return trustedManifest(manifest, sig, d.releaseKeyPem)
   } catch (err) {
-    throw new Error(`upgrade refused, nothing changed: ${(err as Error).message}`)
+    throw new Error(`upgrade refused, nothing changed: ${(err as Error).message}`, { cause: err })
   }
 }
 
@@ -129,7 +129,7 @@ export async function upgrade(
     manifest.check('install.sh', await d.sha256File(`${dir}/install.sh`))
   } catch (err) {
     await d.remove(`${dir}/install.sh`)
-    throw new Error(`upgrade refused, nothing changed: ${(err as Error).message}`)
+    throw new Error(`upgrade refused, nothing changed: ${(err as Error).message}`, { cause: err })
   }
   const code = await d.runLive('sh', [`${dir}/install.sh`, '--from', opts.from, ...(opts.nodeIp ? ['--node-ip', opts.nodeIp] : [])])
   if (code !== 0) {

@@ -61,7 +61,7 @@ function fakeHost(opts: { managed?: boolean } = {}) {
       hasKey: vi.fn(() => true),
       key: vi.fn((): string | null => SEALED),
       config: () => backupCfg,
-      configure: vi.fn(async (input: any) => {
+      configure: vi.fn(async (input: { target: BackupConfig['target']; schedule: { hour: number }; retentionDays: number; author: string }) => {
         backupCfg = { target: input.target, schedule: { hour: input.schedule.hour, minute: 7 }, retentionDays: input.retentionDays, configuredAt: 'now', configuredBy: input.author, keyCreatedAt: 'now' }
         health = { state: 'ok', lastSuccessAt: 'now' }
         return {}
