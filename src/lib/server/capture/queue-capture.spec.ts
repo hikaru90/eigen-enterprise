@@ -538,6 +538,41 @@ describe('requeueEnrichThought', () => {
     expect(result).toEqual({ ok: true })
     expect(scheduleCaptureEnrichWorkerMock).toHaveBeenCalledWith('u1')
   })
+  it('requeues never-enriched rows that have no queue status', async () => {
+    selectMock.mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi
+            .fn()
+            .mockResolvedValue([{ id: 't1', enrichQueueStatus: null, enrichedAt: null }]),
+        }),
+      }),
+    })
+    updateMock.mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    })
+
+    const result = await requeueEnrichThought('u1', 't1')
+    expect(result).toEqual({ ok: true })
+    expect(scheduleCaptureEnrichWorkerMock).toHaveBeenCalledWith('u1')
+  })
+
+  it('returns not_retryable for enriched rows that have no queue status', async () => {
+    selectMock.mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi
+            .fn()
+            .mockResolvedValue([{ id: 't1', enrichQueueStatus: null, enrichedAt: new Date() }]),
+        }),
+      }),
+    })
+
+    const result = await requeueEnrichThought('u1', 't1')
+    expect(result).toEqual({ ok: false, reason: 'not_retryable' })
+  })
 })
 
 describe('requeueOrphanedCompleteEnrichRows', () => {
