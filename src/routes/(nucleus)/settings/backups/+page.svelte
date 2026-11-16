@@ -33,13 +33,18 @@
   const tested = $derived(testedKey === fieldsKey)
   let busy = $state<'test' | 'save' | 'run' | null>(null)
 
-  // The recovery code: from the save response only; once dismissed it is gone for good.
+  // The recovery code: from the save response, or pending once in the load (the box got its backup key
+  // from the fleet before the owner set backups up); once dismissed it is gone for good.
   let codeDismissed = $state(false)
   let codeStored = $state(false)
+  // Held from the first load: the server hands it out once, so a later reload of the data has none.
+  const pendingCode = untrack(() => data.pendingRecoveryCode ?? null)
   const recoveryCode = $derived(
-    form?.action === 'save' && 'recoveryCode' in form && typeof form.recoveryCode === 'string' && !codeDismissed
-      ? form.recoveryCode
-      : null,
+    codeDismissed
+      ? null
+      : form?.action === 'save' && 'recoveryCode' in form && typeof form.recoveryCode === 'string'
+        ? form.recoveryCode
+        : pendingCode,
   )
   let copied = $state(false)
 

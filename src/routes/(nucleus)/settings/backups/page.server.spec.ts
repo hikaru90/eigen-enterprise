@@ -18,6 +18,7 @@ function wire(answers: Record<string, { status: number; data: unknown }>) {
   }
   _backupsDeps.client = () => new EeClient(transport)
   _backupsDeps.companyKey = async () => ({ backupKey: 'K'.repeat(43) + '=', recoveryCode: 'EE1-AAAAA-…', created: false })
+  _backupsDeps.takePendingRecoveryCode = async () => null
   return calls
 }
 
@@ -56,12 +57,35 @@ describe('Settings → Backups (owner only, D11)', () => {
 
   it('load: ee status, or the plain not-managed state off an ee box', async () => {
     wire({ 'GET /v1/backups': { status: 200, data: status }, 'GET /v1/backups/restore': { status: 200, data: { job: null } } })
-    expect(await load(ev() as never)).toEqual({ backups: { managed: true, status, snapshots: null, job: null } })
+    expect(await load(ev() as never)).toEqual({ backups: { managed: true, status, snapshots: null, job: null }, pendingRecoveryCode: null })
     _backupsDeps.client = () =>
       new EeClient(async () => {
         throw new SubstrateUnavailableError('ENOENT')
       })
     expect(await load(ev() as never)).toMatchObject({ backups: { managed: false } })
+  })
+
+  it('load: a recovery code still pending (the box got its key from the fleet) is shown to the owner once', async () => {
+    wire({ 'GET /v1/backups': { status: 200, data: status }, 'GET /v1/backups/restore': { status: 200, data: { job: null } } })
+    let pending: string | null = 'EE1-PENDING'
+    const take = vi.fn(async () => {
+      const code = pending
+      pending = null
+      return code
+    })
+    _backupsDeps.takePendingRecoveryCode = take
+    expect(await load(ev() as never)).toMatchObject({ pendingRecoveryCode: 'EE1-PENDING' })
+    expect(await load(ev() as never)).toMatchObject({ pendingRecoveryCode: null })
+    expect(take).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(['admin', 'member'])('a pending recovery code is never taken for a %s', async (role) => {
+    roleMock.mockResolvedValue(role)
+    wire({})
+    const take = vi.fn(async () => 'EE1-PENDING')
+    _backupsDeps.takePendingRecoveryCode = take
+    await expect(load(ev() as never)).rejects.toMatchObject({ status: 403 })
+    expect(take).not.toHaveBeenCalled()
   })
 
   it('test connection: sends the target (prefix trimmed), surfaces the plain failure', async () => {

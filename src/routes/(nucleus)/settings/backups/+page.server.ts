@@ -4,6 +4,7 @@ import { requireCapability } from '$lib/server/auth/require-capability'
 import {
   backupKeyFromRecoveryCode,
   companyBackupKey,
+  takePendingRecoveryCode,
   type BackupKeyMaterial,
 } from '$lib/server/backups/company-key'
 import {
@@ -44,6 +45,8 @@ export const _backupsDeps = {
   companyName: async (): Promise<string | null> =>
     (await import('$lib/server/overview/sources')).foundingCompanyName(),
   backupKeyFromCode: (code: string): Promise<string> => backupKeyFromRecoveryCode(code),
+  /** The recovery code the owner never saw (the fleet created the root key); taking it marks it shown. */
+  takePendingRecoveryCode: (): Promise<string | null> => takePendingRecoveryCode(),
 }
 
 export async function _requireOwner(locals: App.Locals): Promise<string> {
@@ -55,8 +58,14 @@ async function requireOwner(locals: App.Locals): Promise<string> {
   return `human:${user.id}`
 }
 
-export const load: PageServerLoad = async ({ locals }): Promise<{ backups: BackupsPageData }> => {
+export const load: PageServerLoad = async ({ locals }): Promise<{ backups: BackupsPageData; pendingRecoveryCode?: string | null }> => {
   await requireOwner(locals)
+  const backups = await loadBackups()
+  // Shown once: a managed box got its backup key from os before the owner ever set backups up.
+  return { backups, pendingRecoveryCode: backups.managed ? await _backupsDeps.takePendingRecoveryCode() : null }
+}
+
+async function loadBackups(): Promise<BackupsPageData> {
   try {
     const client = _backupsDeps.client()
     const status = await client.backups()
@@ -70,9 +79,9 @@ export const load: PageServerLoad = async ({ locals }): Promise<{ backups: Backu
         snapshots = { ok: false, error: err.message }
       }
     }
-    return { backups: { managed: true, status, snapshots, job } }
+    return { managed: true, status, snapshots, job }
   } catch (err) {
-    if (err instanceof SubstrateUnavailableError) return { backups: { managed: false, reason: err.message } }
+    if (err instanceof SubstrateUnavailableError) return { managed: false, reason: err.message }
     throw err
   }
 }

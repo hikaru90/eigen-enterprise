@@ -1,3 +1,5 @@
+import { rm, stat, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import {
   deriveBackupKey,
   generateRootKey,
@@ -44,4 +46,31 @@ export async function companyBackupKey(env: NodeJS.ProcessEnv = process.env): Pr
 export async function backupKeyFromRecoveryCode(code: string): Promise<string> {
   const { identity } = await rootKeyFromRecoveryCode(code)
   return deriveBackupKey(identity).toString('base64')
+}
+
+/**
+ * When the box got its backup key from os without the owner (managed mode,
+ * /api/fleet/backup-key) and that created the company root key, the owner has
+ * never seen the recovery code. A marker file beside the sealed root key says
+ * so: company-level key state already lives there, so no table. It holds no
+ * secret; the code is re-derived from the sealed key when it is shown.
+ */
+const PENDING_MARKER = 'recovery-code-pending'
+
+export async function markRecoveryCodePending(env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  await writeFile(join(resolveCompanyKeysDir(env), PENDING_MARKER), `${new Date().toISOString()}\n`, { mode: 0o600 })
+}
+
+/** The recovery code the owner has not seen yet, once: taking it marks it shown. Null when none is pending. */
+export async function takePendingRecoveryCode(env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
+  const marker = join(resolveCompanyKeysDir(env), PENDING_MARKER)
+  try {
+    await stat(marker)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw err
+  }
+  const { recoveryCode } = await companyBackupKey(env)
+  await rm(marker)
+  return recoveryCode
 }
