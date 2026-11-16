@@ -47,14 +47,14 @@
 
 <svelte:window onkeydown={onWindowKeydown} />
 
-<!-- The ask pill on the frame: the board's coral-rimmed face as its icon, the field, a ⌘K chip. -->
+<!-- The ask pill on the frame: the website's yellow assistant spark, the field, a ⌘K chip. -->
 <div class="flex min-w-0 flex-1 items-center gap-2" data-testid="assistant-bar">
   <form
     class="relative flex h-9 min-w-0 flex-1 items-center gap-2.5 rounded-full bg-card pr-1.5 pl-1 transition-colors focus-within:ring-2 focus-within:ring-ring hover:bg-accent"
     onsubmit={submit}
     role="search"
   >
-    <span class="ring-face grid size-7 shrink-0 place-items-center text-[#111111]" aria-hidden="true">
+    <span class="mark mark-yellow size-7 rounded-full" aria-hidden="true" data-testid="assistant-bar-spark">
       <Sparkles class="size-3.5" strokeWidth={2} />
     </span>
     <input

@@ -101,6 +101,44 @@
       #ef6a46 86%,
       #f2541f 100%
     );
+    /* The website's accents (../eigenEnterprise-website/src/app.css), brought
+       back in small doses (2026-11-16): each part's colour on its mark (the
+       icon square), the assistant's yellow and blue orb, and the website's dark
+       gradients as grounds. Fixed in light and dark mode and under a brand style. */
+    --tone-yellow: #ffc800;
+    --tone-ice: #dcedf3;
+    --tone-blue: #1f43ff;
+    --tone-green: #2ee86a;
+    --tone-green-deep: #0c3a1d;
+    --tone-paper: #ece9e3;
+    --tone-tile: #efefef;
+    --gradient-violet: linear-gradient(140deg, #5a2fe0 0%, #9b2f8e 52%, #cf2f2f 100%);
+    --gradient-peach: linear-gradient(135deg, #ff9a3c 0%, #ff7386 58%, #ff5fa8 100%);
+    --gradient-orb: radial-gradient(
+      closest-side,
+      #d8fbff 0%,
+      #6fdcff 34%,
+      #2f7bff 70%,
+      rgba(31, 67, 255, 0) 100%
+    );
+    /* The website's black "We run it" section: a coral glow from the top
+       right, a slate glow from the bottom left. The app frame wears it. */
+    --gradient-night:
+      radial-gradient(55% 60% at 100% 0%, rgba(255, 92, 40, 0.2), rgba(255, 92, 40, 0) 70%),
+      radial-gradient(45% 55% at 0% 100%, rgba(84, 110, 140, 0.3), rgba(84, 110, 140, 0) 70%),
+      #000000;
+    /* The website's "Upgrades" pillar: warm light rising from below on near-black
+       (a step softer than the website's, next to the coral heat capsule). */
+    --gradient-glow:
+      radial-gradient(
+        80% 45% at 50% 115%,
+        rgba(255, 122, 46, 0.85) 0%,
+        rgba(229, 54, 31, 0.55) 40%,
+        rgba(229, 54, 31, 0) 72%
+      ),
+      #111111;
+    /* The website's grain, in place of photography, on gradient grounds. */
+    --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     /* Radii follow the board: stages and cards near-square, widgets squircle,
        controls and chips pill, capsules stadium. --radius is the card step. */
     --radius: 0.75rem;
@@ -129,8 +167,9 @@
     font-family: var(--font-heading, var(--font-sans));
   }
 
+  /* The website's yellow highlight. */
   ::selection {
-    background: var(--tone-coral-soft);
+    background: var(--tone-yellow);
     color: #000000;
   }
 
@@ -247,8 +286,97 @@
     --on-soft: #3a3a3a;
     --on-wash: rgb(255 255 255 / 55%);
   }
+  /* The website's ice tile (where its assistant asks): light and calm. */
+  .stage-ice {
+    --stage-bg: var(--tone-ice);
+    --stage-fg: #111111;
+    --on-soft: #3d4a50;
+    --on-wash: rgb(255 255 255 / 70%);
+    background: var(--stage-bg);
+    color: var(--stage-fg);
+  }
+  /* The website's warm pillar: light rising from below on near-black. */
+  .stage-glow {
+    --stage-bg: #111111;
+    --stage-fg: #f2f2f2;
+    --on-soft: #b5b5b5;
+    --on-wash: rgb(255 255 255 / 10%);
+    background: var(--gradient-glow);
+    color: var(--stage-fg);
+  }
   .on-soft {
     color: var(--on-soft);
+  }
+
+  /* The website's faint grain on gradient grounds (the element must be positioned). */
+  .grain::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background-image: var(--noise);
+    opacity: 0.22;
+    mix-blend-mode: overlay;
+  }
+
+  /* The app frame in the website's night: black, a coral glow top right, slate bottom left. */
+  .frame-night {
+    background: var(--gradient-night);
+  }
+
+  /* A part's mark: its icon on a square in the part's website colour
+     (module-tone.ts markOf). The stage under it stays neutral. */
+  .mark {
+    display: grid;
+    place-items: center;
+    flex: none;
+    background: var(--mark-bg);
+    color: var(--mark-fg);
+  }
+  .mark-blue {
+    --mark-bg: var(--tone-blue);
+    --mark-fg: #ffffff;
+  }
+  .mark-ice {
+    --mark-bg: var(--tone-ice);
+    --mark-fg: #111111;
+  }
+  .mark-green {
+    --mark-bg: var(--tone-green);
+    --mark-fg: #111111;
+  }
+  .mark-violet {
+    --mark-bg: var(--gradient-violet);
+    --mark-fg: #ffffff;
+  }
+  .mark-peach {
+    --mark-bg: var(--gradient-peach);
+    --mark-fg: #111111;
+  }
+  .mark-yellow {
+    --mark-bg: var(--tone-yellow);
+    --mark-fg: #111111;
+  }
+  .mark-grey {
+    --mark-bg: var(--tone-tile);
+    --mark-fg: #111111;
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 8%);
+  }
+  .mark-ink {
+    --mark-bg: var(--tone-ink);
+    --mark-fg: #ffffff;
+  }
+  .mark-white {
+    --mark-bg: #ffffff;
+    --mark-fg: #111111;
+  }
+
+  /* The assistant's face on the website: a blue orb. Decorative. */
+  .orb {
+    flex: none;
+    border-radius: 50%;
+    background: var(--gradient-orb);
   }
 
   /* The floating label at the top of a stage (the board's "−" / "+" pills). */
@@ -387,6 +515,10 @@
   }
   .chip-wait {
     --chip-dot: var(--tone-coral);
+  }
+  /* The website's green "live" dot. */
+  .chip-live {
+    --chip-dot: var(--tone-green);
   }
   .chip-off {
     --chip-dot: currentColor;

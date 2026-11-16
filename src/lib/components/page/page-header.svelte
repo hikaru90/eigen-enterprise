@@ -3,15 +3,20 @@
   import type { Snippet } from 'svelte'
   import type { AreaTab } from '$lib/shell/area-nav'
   import { appHref } from '$lib/shell/href'
+  import { iconFor } from '$lib/shell/module-icon'
+  import { markOf } from '$lib/shell/module-tone'
   import StatusPill from './status-pill.svelte'
 
   /**
    * The one page header (C3b): h1 title, optional one-line description,
    * optional status pill, optional actions on the right, optional sub-nav
-   * tabs below. Every area page in the shell uses it.
+   * tabs below. Every area page in the shell uses it. `part` (the area's
+   * module id) puts the part's mark — its icon on its website colour — next
+   * to the title, as on the dashboard's module cards.
    */
   let {
     title,
+    part,
     description,
     status,
     actions,
@@ -22,6 +27,7 @@
     tabTestId = (id: string) => `area-tab-${id}`,
   }: {
     title: string
+    part?: string | null
     description?: string | null
     status?: { label: string; on: boolean } | null
     actions?: Snippet
@@ -31,12 +37,19 @@
     navTestId?: string
     tabTestId?: (id: string) => string
   } = $props()
+
+  const Icon = $derived(part ? iconFor(part) : null)
 </script>
 
 <header class="flex min-w-0 flex-col" data-testid="page-header">
   <div class="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-3">
     <div class="min-w-0">
       <div class="flex min-w-0 items-center gap-3">
+        {#if part && Icon}
+          <span class="mark mark-{markOf(part)} size-8 rounded-[0.625rem]" aria-hidden="true" data-testid="page-mark">
+            <Icon class="size-4" strokeWidth={1.75} />
+          </span>
+        {/if}
         <h1 class="min-w-0 truncate text-[1.375rem] leading-tight font-medium tracking-[-0.02em]">{title}</h1>
         {#if status}<StatusPill label={status.label} on={status.on} />{/if}
       </div>

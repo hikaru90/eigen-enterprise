@@ -7,7 +7,11 @@ import {
   AA_UI,
   THEME_CONTRAST_PAIRS,
   auditContrast,
+  composite,
+  contrastRatio,
+  parseColor,
   type ContrastPair,
+  type Rgba,
 } from '../../modules/brand/style-format/contrast'
 import { cssBlock, stripCssComments, themeContexts } from '../lib/a11y/theme-contexts'
 
@@ -100,6 +104,65 @@ describe('app theme tokens meet WCAG 2.1 AA', () => {
       }
     })
   }
+})
+
+/**
+ * The website's accents and gradients (2026-11-16): part marks, the ice and
+ * glow stages, the night frame. Their colours are custom properties on their
+ * classes (`--mark-bg`/`--mark-fg`, `--stage-bg`/`--stage-fg`/`--on-soft`), so
+ * they are measured here like the tokens: against EVERY stop of a gradient.
+ */
+describe('website accents meet WCAG 2.1 AA', () => {
+  const root = block(':root')
+  const resolveVars = (value: string): string => {
+    let out = value
+    for (let i = 0; i < 4 && out.includes('var('); i++) {
+      out = out.replace(/var\((--[\w-]+)\)/g, (_, name: string) => {
+        const v = root[name]
+        if (v === undefined) throw new Error(`layout.css :root does not declare ${name}`)
+        return v
+      })
+    }
+    return out
+  }
+  /** The opaque colours a foreground can land on: each stop, translucent stops over the opaque base. */
+  const surfaces = (value: string): Rgba[] => {
+    const literals = resolveVars(value).match(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)/gi)
+    if (!literals) throw new Error(`no colour stops in "${value}"`)
+    const colours = literals.map((c) => parseColor(c, value))
+    const base = colours.findLast((c) => c.alpha === 1)
+    if (!base) throw new Error(`"${value}" has no opaque stop to paint on`)
+    return colours.map((c) => (c.alpha === 1 ? c : composite(c, base)))
+  }
+  const colour = (value: string): Rgba => parseColor(resolveVars(value), value)
+  const worst = (fg: string, on: string): number =>
+    Math.min(...surfaces(on).map((s) => contrastRatio(colour(fg), s)))
+
+  for (const name of ['blue', 'ice', 'green', 'violet', 'peach', 'yellow', 'grey', 'ink', 'white']) {
+    it(`.mark-${name}: the glyph on every stop of its square ≥ ${AA_UI}:1`, () => {
+      const mark = block(`.mark-${name}`)
+      expect(worst(mark['--mark-fg'], mark['--mark-bg'])).toBeGreaterThanOrEqual(AA_UI)
+    })
+  }
+
+  it(`.stage-ice: text and secondary text ≥ ${AA_TEXT}:1`, () => {
+    const stage = block('.stage-ice')
+    expect(worst(stage['--stage-fg'], stage['--stage-bg'])).toBeGreaterThanOrEqual(AA_TEXT)
+    expect(worst(stage['--on-soft'], stage['--stage-bg'])).toBeGreaterThanOrEqual(AA_TEXT)
+  })
+
+  it(`.stage-glow: text and secondary text on its dark ground ≥ ${AA_TEXT}:1 (the glow rises behind the widget)`, () => {
+    const stage = block('.stage-glow')
+    expect(worst(stage['--stage-fg'], stage['--stage-bg'])).toBeGreaterThanOrEqual(AA_TEXT)
+    expect(worst(stage['--on-soft'], stage['--stage-bg'])).toBeGreaterThanOrEqual(AA_TEXT)
+  })
+
+  it(`the night frame: frame text on every glow ≥ ${AA_TEXT}:1`, () => {
+    const frame = CONTEXTS['app frame']
+    for (const token of ['--foreground', '--muted-foreground'] as const) {
+      expect(worst(frame[token], root['--gradient-night'])).toBeGreaterThanOrEqual(AA_TEXT)
+    }
+  })
 })
 
 function rem(value: string): number {

@@ -65,6 +65,8 @@ async function newOwner(context: BrowserContext, page: Page): Promise<void> {
 
 type ShellLook = {
   sidebarBg: string
+  frameBg: string
+  frameImage: string
   highlightBg: string
   badgeBg: string
   badgeImage: string
@@ -81,6 +83,8 @@ async function shellLook(page: Page): Promise<ShellLook> {
     }
     return {
       sidebarBg: cs('[data-testid="shell-sidebar"]').backgroundColor,
+      frameBg: cs('[data-testid="app-shell"]').backgroundColor,
+      frameImage: cs('[data-testid="app-shell"]').backgroundImage,
       highlightBg: cs('[data-testid="shell-sidebar"] [aria-current="page"]').backgroundColor,
       badgeBg: cs('[data-testid="shell-company-badge"]').backgroundColor,
       badgeImage: cs('[data-testid="shell-company-badge"]').backgroundImage,
@@ -135,9 +139,12 @@ test('the chosen style re-skins the whole shell, and a second choice changes it 
   await expect(page.getByRole('heading', { name: 'Pick a direction' })).toBeVisible()
   await expect(page.getByText('The branding module is inactive')).toHaveCount(0)
 
-  // ---- no active set: the app's own look (the board's black frame, the coral-rimmed badge) ----
+  // ---- no active set: the app's own look (the board's black frame in the website's night —
+  //      coral and slate glows — the sidebar sits on it; the coral-rimmed badge) ----
   const before = await tour(page, '0-default')
-  expect(before.look.sidebarBg).toBe('rgb(0, 0, 0)')
+  expect(before.look.frameBg).toBe('rgb(0, 0, 0)')
+  expect(before.look.frameImage).toMatch(/^radial-gradient\(.*radial-gradient\(/)
+  expect(before.look.sidebarBg).toBe('rgba(0, 0, 0, 0)')
   expect(before.look.badgeImage).toMatch(/^radial-gradient\(/)
   expect(before.look.bodyFont).toMatch(/^Inter,/)
   expect(before.heading).toMatch(/^Inter,/)

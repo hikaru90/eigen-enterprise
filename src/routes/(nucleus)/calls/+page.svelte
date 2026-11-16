@@ -125,6 +125,7 @@
 <PageFrame testid="calls">
   <PageHeader
     title="Calls"
+    part="calls"
     description="Video calls with your team. Call from a direct message or channel header, or start a meeting with anyone here."
   >
     {#snippet actions()}

@@ -39,5 +39,12 @@ describe('page-header: the one page frame', () => {
     await expect.element(page.getByTestId('page-description')).not.toBeInTheDocument()
     await expect.element(page.getByTestId('module-status')).not.toBeInTheDocument()
     await expect.element(page.getByRole('navigation')).not.toBeInTheDocument()
+    await expect.element(page.getByTestId('page-mark')).not.toBeInTheDocument()
+  })
+
+  it("shows the area's part mark in its website colour next to the title", async () => {
+    render(PageHeader, { props: { title: 'Website', part: 'website' } })
+    await expect.element(page.getByRole('heading', { level: 1, name: 'Website' })).toBeVisible()
+    await expect.element(page.getByTestId('page-mark')).toHaveClass(/\bmark-blue\b/)
   })
 })

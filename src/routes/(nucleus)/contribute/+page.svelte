@@ -20,6 +20,7 @@
 <PageFrame testid="contribute">
   <PageHeader
     title="Contribute"
+    part="contribute"
     description={`Ideas, bugs and polish requests from everyone at ${data.companyName ?? 'your company'}. Propose one with Contribute at the top right and vote for the ones you want most; an agent picks them up from here.`}
   />
   <div class="mt-6">

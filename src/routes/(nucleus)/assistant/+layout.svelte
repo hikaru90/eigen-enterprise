@@ -24,6 +24,7 @@
 <PageFrame>
   <PageHeader
     title="Assistant"
+    part="assistant"
     description="Everything the company's assistant talked about and did, live as it happens."
     {tabs}
     {current}

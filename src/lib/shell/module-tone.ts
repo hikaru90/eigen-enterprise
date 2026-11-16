@@ -24,3 +24,31 @@ export function toneOf(id: string): Tone {
 export function isDark(tone: Tone): boolean {
   return tone === 'ink' || tone === 'charcoal'
 }
+
+/**
+ * A part's mark: the colour of its icon square (2026-11-16). The website
+ * gives every part a colour (../eigenEnterprise-website, "What's inside");
+ * the app keeps the stages neutral and lets the colour show only on the
+ * small mark — on module cards and next to an area's title. The classes
+ * live in src/routes/layout.css (`.mark-*`).
+ */
+export type Mark = 'blue' | 'ice' | 'green' | 'violet' | 'peach' | 'yellow' | 'grey' | 'ink' | 'white'
+
+const MARKS: Record<string, Mark> = {
+  website: 'blue',
+  email: 'ice',
+  messages: 'ink',
+  calls: 'green',
+  calendar: 'green',
+  memory: 'violet',
+  drive: 'grey',
+  brand: 'yellow',
+  members: 'peach',
+  contacts: 'peach',
+  assistant: 'yellow',
+}
+
+/** The part's mark; a part without a colour is neutral: ink on a light stage, white on a dark one. */
+export function markOf(id: string, onDark = false): Mark {
+  return MARKS[id] ?? (onDark ? 'white' : 'ink')
+}

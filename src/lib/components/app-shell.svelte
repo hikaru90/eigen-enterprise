@@ -237,14 +237,15 @@
   </div>
 {/snippet}
 
-<!-- The board's black gutters: sidebar and top bar on ink, the page a light panel inside. -->
+<!-- The board's black gutters, in the website's night (a coral glow top right, slate
+     bottom left): sidebar and top bar sit on it, the page is a light panel inside. -->
 <div
-  class="flex h-dvh w-full flex-row overflow-hidden text-foreground {inkFrame ? 'bg-ink' : 'bg-sidebar'}"
+  class="flex h-dvh w-full flex-row overflow-hidden text-foreground {inkFrame ? 'frame-night' : 'bg-sidebar'}"
   data-testid="app-shell"
 >
   <!-- Desktop sidebar -->
   <aside
-    class="hidden w-56 shrink-0 text-foreground md:block {inkFrame ? 'ink-scope bg-ink' : 'bg-sidebar'}"
+    class="hidden w-56 shrink-0 text-foreground md:block {inkFrame ? 'ink-scope' : 'bg-sidebar'}"
     data-testid="shell-sidebar"
   >
     {@render sidebar()}

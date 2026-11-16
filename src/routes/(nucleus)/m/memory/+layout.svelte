@@ -25,6 +25,7 @@
   <div class="w-full px-4 pt-6 sm:px-8 sm:pt-10">
     <PageHeader
       title={data.memory.name}
+      part="memory"
       description="Tasks, projects and notes you and the agent keep — and a place to capture a thought."
       status={{ label: data.memory.active ? 'Active' : 'Not active', on: data.memory.active }}
       {tabs}

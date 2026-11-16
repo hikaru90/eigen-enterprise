@@ -24,6 +24,7 @@
 <PageFrame testid="email-area">
   <PageHeader
     title="Email"
+    part="email"
     description="Your inbox and the mailboxes you share. Company mail shows what the company is sending; Setup holds the Amazon SES account, domains, mailboxes, senders, flows, logs and the API."
     {status}
     {tabs}

@@ -23,6 +23,7 @@
   <PageFrame testid="settings-frame">
     <PageHeader
       title="Settings"
+      part="settings"
       description="What applies to the whole company. Each module keeps its own settings on its page."
       {tabs}
       {current}

@@ -5,10 +5,12 @@ import CalendarDays from '@lucide/svelte/icons/calendar-days'
 import Contact from '@lucide/svelte/icons/contact'
 import Globe from '@lucide/svelte/icons/globe'
 import HardDrive from '@lucide/svelte/icons/hard-drive'
+import Lightbulb from '@lucide/svelte/icons/lightbulb'
 import Mail from '@lucide/svelte/icons/mail'
 import MessagesSquare from '@lucide/svelte/icons/messages-square'
 import Palette from '@lucide/svelte/icons/palette'
 import Settings from '@lucide/svelte/icons/settings'
+import Sparkles from '@lucide/svelte/icons/sparkles'
 import Video from '@lucide/svelte/icons/video'
 
 /** Presentation only: an icon per known module id; any other module gets the generic box. */
@@ -23,6 +25,9 @@ const ICONS: Record<string, Component> = {
   calendar: CalendarDays,
   calls: Video,
   contacts: Contact,
+  // Not modules, but areas with a page header (their mark).
+  assistant: Sparkles,
+  contribute: Lightbulb,
 }
 
 export function iconFor(id: string): Component {

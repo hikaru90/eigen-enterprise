@@ -4,7 +4,7 @@
   import type { ModuleOverview } from '$lib/server/overview/overview'
   import { appHref } from '$lib/shell/href'
   import { iconFor } from '$lib/shell/module-icon'
-  import { isDark, toneOf } from '$lib/shell/module-tone'
+  import { isDark, markOf, toneOf } from '$lib/shell/module-tone'
 
   /**
    * A dashboard card for one active module: status dot, key counts, link to
@@ -14,12 +14,13 @@
    */
   let { module, href }: { module: ModuleOverview; href: Pathname | null } = $props()
 
-  // The part's stage and its icon (module-tone.ts).
+  // The part's neutral stage, its website colour on the mark, its icon (module-tone.ts).
   const tone = $derived(toneOf(module.id))
+  const mark = $derived(markOf(module.id, isDark(tone)))
   const Icon = $derived(iconFor(module.id))
 </script>
 
-<!-- A stage (near-square) with a squircle icon, the name, and its counts as pills. -->
+<!-- A stage (near-square) with the part's mark, the name, and its counts as pills. -->
 <svelte:element
   this={href ? 'a' : 'div'}
   href={href ? appHref(href) : undefined}
@@ -29,12 +30,7 @@
   data-testid="module-card"
 >
   <div class="flex min-w-0 items-center justify-between gap-2">
-    <span
-      class="grid size-10 shrink-0 place-items-center rounded-[0.75rem] {isDark(tone)
-        ? 'bg-white text-[#111111]'
-        : 'bg-ink text-white'}"
-      aria-hidden="true"
-    >
+    <span class="mark mark-{mark} size-10 rounded-[0.75rem]" aria-hidden="true" data-testid="module-card-mark">
       <Icon class="size-[18px]" strokeWidth={1.75} />
     </span>
     <span class="chip chip-wash chip-dot {module.active ? '' : 'chip-off'}">{module.active ? 'On' : 'Off'}</span>

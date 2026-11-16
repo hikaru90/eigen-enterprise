@@ -59,10 +59,12 @@
   const website = $derived(overview.modules.find((m) => m.id === 'website') ?? null)
   const countOf = (label: string) => website?.counts.find((c) => c.label === label)?.value ?? 0
   const apps = $derived.by(() => {
-    if (!website || !website.active) return { value: 'Off', hint: 'Website module not active' }
+    if (!website || !website.active) return { value: 'Off', hint: 'Website module not active', live: false }
     const total = countOf('Apps')
-    if (total === 0) return { value: '—', hint: website.note ?? 'No apps yet' }
-    return { value: String(total), hint: `${countOf('Healthy')} healthy` }
+    if (total === 0) return { value: '—', hint: website.note ?? 'No apps yet', live: false }
+    const healthy = countOf('Healthy')
+    // The website's green "live" dot while at least one app is healthy.
+    return { value: String(total), hint: `${healthy} healthy`, live: healthy > 0 }
   })
   const title = $derived(greetingName ? `Welcome back, ${greetingName}` : 'Welcome back')
   const quickLinks = $derived(navItems.filter((i) => i.active && i.id !== 'settings'))
@@ -153,14 +155,16 @@
   <!-- The board: near-square stages, one widget on each. -->
   <div class="mt-4 grid min-w-0 grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3" data-testid="overview-tiles">
     {#if assistant}
-      <!-- Ask: the grey squircle with the mono greeting (the board's "Hey, Annie"). -->
-      <section class="stage stage-white min-h-80" aria-label="Ask the assistant" data-testid="dashboard-ask">
+      <!-- Ask: the website's ice tile with the assistant's blue orb, the mono greeting
+           (the board's "Hey, Annie"); suggestions are white pills that turn the assistant's yellow. -->
+      <section class="stage stage-ice min-h-80" aria-label="Ask the assistant" data-testid="dashboard-ask">
         <span class="stage-tag">Assistant</span>
-        <div class="squircle widget-grey flex w-full max-w-[19rem] flex-col items-center px-4 pt-5 pb-4 text-center">
-          <p class="text-[13px] leading-snug">Ask anything, or ask it to do the work</p>
+        <div class="flex w-full max-w-[19rem] flex-col items-center text-center">
+          <span class="orb size-20" aria-hidden="true" data-testid="dashboard-ask-orb"></span>
+          <p class="on-soft mt-3 text-[13px] leading-snug">Ask anything, or ask it to do the work</p>
           <button
             type="button"
-            class="display-mono mt-5 rounded-full px-2 outline-none hover:underline hover:decoration-1 hover:underline-offset-[6px] focus-visible:ring-2 focus-visible:ring-white"
+            class="display-mono mt-2 rounded-full px-2 outline-none hover:underline hover:decoration-1 hover:underline-offset-[6px] focus-visible:ring-2 focus-visible:ring-ring"
             onclick={() => assistant.focusBar()}
             data-testid="dashboard-ask-button">Hey, {greetingName ?? 'there'}</button
           >
@@ -168,7 +172,7 @@
             {#each suggestions as text (text)}
               <button
                 type="button"
-                class="chip chip-wash h-7 px-3 outline-none hover:bg-[#555555] focus-visible:ring-2 focus-visible:ring-white"
+                class="chip h-7 bg-white px-3 outline-none transition-colors hover:bg-(--tone-yellow) focus-visible:ring-2 focus-visible:ring-ring"
                 onclick={() => assistant.prefill(text)}
                 data-testid="dashboard-suggestion">{text}</button
               >
@@ -176,7 +180,7 @@
           </div>
           <button
             type="button"
-            class="ctrl ctrl-circle ctrl-wash mt-4 outline-none hover:bg-[#555555] focus-visible:ring-2 focus-visible:ring-white"
+            class="ctrl ctrl-circle ctrl-ink mt-4 outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Ask the assistant"
             onclick={() => assistant.focusBar()}
           >
@@ -190,7 +194,7 @@
          coral while something waits; a hairline legend, ticks on the edges. -->
     <a
       href="#needs-you"
-      class="stage stage-dusk min-h-80 {stageLink} {assistant ? '' : 'xl:col-span-2'}"
+      class="stage stage-dusk grain min-h-80 {stageLink} {assistant ? '' : 'xl:col-span-2'}"
       data-testid="dashboard-needs-you-tile"
     >
       <span class="stage-tag">Needs you</span>
@@ -214,10 +218,11 @@
       </span>
     </a>
 
-    <!-- Apps: coral heat in a cream capsule on charcoal (the board's "Stress level"). -->
+    <!-- Apps: coral heat in a cream capsule (the board's "Stress level") over the
+         website's warm pillar — light rising from below on near-black. -->
     <a
       href={websitePage ? appHref(websitePage) : '#modules'}
-      class="stage stage-charcoal min-h-80 {stageLink}"
+      class="stage stage-glow grain min-h-80 {stageLink}"
       data-testid="overview-site-tile"
     >
       <span class="stage-tag">Apps</span>
@@ -234,7 +239,9 @@
             />
           </svg>
         </span>
-        <span class="chip chip-taupe h-7 max-w-full px-3"><span class="truncate">{apps.hint}</span></span>
+        <span class="chip chip-taupe h-7 max-w-full px-3 {apps.live ? 'chip-dot chip-live' : ''}" data-testid="overview-apps-hint"
+          ><span class="truncate">{apps.hint}</span></span
+        >
       </span>
     </a>
 

@@ -18,6 +18,7 @@
 <PageFrame>
   <PageHeader
     title={data.module.name}
+    part={data.module.id}
     description={data.module.description || null}
     status={{ label: data.module.active ? 'Active' : 'Not active', on: data.module.active }}
   />

@@ -31,6 +31,18 @@ describe('module-card.svelte', () => {
     await expect.element(page.getByText('Only the owner can see these results.')).toBeInTheDocument()
   })
 
+  it("wears the part's website colour on its mark, on a neutral stage", async () => {
+    render(ModuleCard, { module, href: '/m/website' })
+    await expect.element(page.getByTestId('module-card')).toHaveClass(/\bstage-ink\b/)
+    await expect.element(page.getByTestId('module-card-mark')).toHaveClass(/\bmark-blue\b/)
+  })
+
+  it('gives a part without a colour a neutral mark', async () => {
+    render(ModuleCard, { module: { ...module, id: 'some-new-module', name: 'New' }, href: null })
+    await expect.element(page.getByTestId('module-card')).toHaveClass(/\bstage-white\b/)
+    await expect.element(page.getByTestId('module-card-mark')).toHaveClass(/\bmark-ink\b/)
+  })
+
   it('is no link when the person cannot open the module page (no 403 behind a card)', async () => {
     render(ModuleCard, { module, href: null })
     await expect.element(page.getByTestId('module-card')).toBeInTheDocument()

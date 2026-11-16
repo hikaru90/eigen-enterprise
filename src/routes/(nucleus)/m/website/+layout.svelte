@@ -19,6 +19,7 @@
 <PageFrame>
   <PageHeader
     title="Website"
+    part="website"
     description={ownerModuleBlurb('website', '')}
     status={{ label: data.website.active ? 'Active' : 'Not active', on: data.website.active }}
     tabs={WEBSITE_TABS}

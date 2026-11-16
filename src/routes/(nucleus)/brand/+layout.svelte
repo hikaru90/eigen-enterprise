@@ -21,6 +21,7 @@
   <PageFrame>
     <PageHeader
       title="Brand"
+      part="brand"
       description={ownerModuleBlurb('brand', '')}
       {tabs}
       {current}

@@ -128,7 +128,23 @@ as the solid coral card (`--gradient-coral`) and as the taupe-into-coral transcr
 1px hairline on their left (`.hairline`); white tick marks on the black widget's edges;
 the dot-matrix display (coral when something waits); grey pill controls with a white
 glyph (`.ctrl`); transcripts fade out at the edge (`.fade-end`). Coral appears only where
-something needs attention or as the assistant's face — never as a part's colour.
+something needs attention — never as a part's colour.
+
+**The website's accents (2026-11-16).** Taken from `../eigenEnterprise-website/src/app.css`
+in small doses, on top of the board — the stages stay neutral:
+| Accent | Where |
+| --- | --- |
+| Part colours (`.mark-*`, `markOf()` in `src/lib/shell/module-tone.ts`): Website blue, Email ice, Messages ink, Calls/Calendar green, Memory violet gradient, Drive grey, Brand yellow, Members/Contacts peach gradient | only on a part's **mark** — its icon square on module cards and next to an area's title (`PageHeader part=`). Never a whole stage. |
+| Yellow `#ffc800` | the assistant: the spark on the top bar's ask pill, suggestion pills on hover, text selection |
+| Blue orb (`.orb`) | the assistant's face on the dashboard's Ask stage |
+| Ice `#dcedf3` (`.stage-ice`) | the dashboard's Ask stage |
+| Night (`.frame-night`, `--gradient-night`) | the app frame: black with a faint coral glow top right and slate bottom left (the website's "We run it" section); sidebar and top bar sit on it |
+| Warm pillar (`.stage-glow`, `--gradient-glow`) | the dashboard's Apps stage, behind the heat capsule |
+| Green `#2ee86a` (`.chip-live`) | the "live" dot: at least one app healthy |
+| Grain (`.grain`) | on gradient stages (dusk, glow) |
+
+One mark per card or header; no part colour in the nav or the "Go to" pills. Every new
+surface is held to AA in `src/routes/layout.contrast.spec.ts` (against every gradient stop).
 
 ## Page frame (app shell, C3b — binding)
 
