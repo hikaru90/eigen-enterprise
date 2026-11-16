@@ -5,6 +5,7 @@ const {
   recoverStaleMock,
   requeueInFlightMock,
   requeueOrphanedMock,
+  requeueUnqueuedMock,
   listPendingMock,
   shouldScheduleMock,
   scheduleWorkerMock,
@@ -15,6 +16,7 @@ const {
   recoverStaleMock: vi.fn(),
   requeueInFlightMock: vi.fn(),
   requeueOrphanedMock: vi.fn(),
+  requeueUnqueuedMock: vi.fn(),
   listPendingMock: vi.fn(),
   shouldScheduleMock: vi.fn(),
   scheduleWorkerMock: vi.fn(),
@@ -27,6 +29,7 @@ vi.mock('$lib/server/capture/queue-capture', () => ({
   recoverStaleEnrichProcessingRows: recoverStaleMock,
   requeueInFlightProcessingRows: requeueInFlightMock,
   requeueOrphanedCompleteEnrichRows: requeueOrphanedMock,
+  requeueUnqueuedUnenrichedRows: requeueUnqueuedMock,
 }))
 
 vi.mock('$lib/server/capture/capture-confirmation', () => ({
@@ -58,6 +61,7 @@ describe('syncCaptureEnrichQueue', () => {
     recoverStaleMock.mockResolvedValue(0)
     requeueInFlightMock.mockResolvedValue(0)
     requeueOrphanedMock.mockResolvedValue(0)
+    requeueUnqueuedMock.mockResolvedValue(0)
     listPendingMock.mockResolvedValue([])
     isWorkerActiveMock.mockReturnValue(false)
     autoConfirmStaleMock.mockResolvedValue(0)
@@ -66,16 +70,19 @@ describe('syncCaptureEnrichQueue', () => {
   it('recovers stale rows, auto-confirms stranded confirmation drafts, and lists active queue ids', async () => {
     recoverStaleMock.mockResolvedValue(2)
     requeueOrphanedMock.mockResolvedValue(1)
+    requeueUnqueuedMock.mockResolvedValue(4)
     autoConfirmStaleMock.mockResolvedValue(3)
     listPendingMock.mockResolvedValue(['t1'])
 
     const result = await syncCaptureEnrichQueue('u1')
     expect(autoConfirmStaleMock).toHaveBeenCalledWith('u1')
+    expect(requeueUnqueuedMock).toHaveBeenCalledWith('u1')
     expect(result).toEqual({
       finalizedEnriched: 0,
       recoveredStale: 2,
       requeuedInFlight: 0,
       requeuedOrphaned: 1,
+      requeuedUnqueued: 4,
       autoConfirmedDrafts: 3,
       activeThoughtIds: ['t1'],
     })
@@ -101,6 +108,7 @@ describe('syncAndScheduleCaptureEnrichQueue', () => {
     recoverStaleMock.mockResolvedValue(0)
     requeueInFlightMock.mockResolvedValue(0)
     requeueOrphanedMock.mockResolvedValue(0)
+    requeueUnqueuedMock.mockResolvedValue(0)
     listPendingMock.mockResolvedValue([])
     shouldScheduleMock.mockResolvedValue(true)
     isWorkerActiveMock.mockReturnValue(false)
