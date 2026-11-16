@@ -2,6 +2,8 @@
   /* eslint-disable svelte/no-navigation-without-resolve -- data-held hrefs go through appHref(), which calls resolve() */
   import type { Snippet } from 'svelte'
   import Menu from '@lucide/svelte/icons/menu'
+  import PanelLeftClose from '@lucide/svelte/icons/panel-left-close'
+  import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open'
   import X from '@lucide/svelte/icons/x'
   import { onMount } from 'svelte'
   import { afterNavigate, replaceState } from '$app/navigation'
@@ -19,6 +21,7 @@
   import { appHref } from '$lib/shell/href'
   import { iconFor } from '$lib/shell/module-icon'
   import { currentNavId, type ShellData, type ShellNavItem } from '$lib/shell/nav'
+  import { isSidebarToggleKey, readSidebarCollapsed, writeSidebarCollapsed } from '$lib/shell/sidebar-pref'
   import { cancelSpeak, speak } from '$lib/speech/tts'
 
   /**
@@ -34,6 +37,17 @@
    * page next to the assistant panel (polish P-1) — both only while the
    * Assistant plugin is on (shell.assistant). The page area is a
    * fixed-height column so full-height pages keep their own scroll container.
+   *
+   * One scroll container (Contribute df2f73e7): the frame is exactly the
+   * viewport (h-dvh) and clips; every flex parent down to the content column
+   * may shrink (min-h-0) and the content column is the one that scrolls. The
+   * frame, the panel and the content column are positioned, so absolutely
+   * placed descendants are clipped by them — unpositioned, their containing
+   * block is the page itself and they stretch the document past the frame
+   * (the blank scrollable space under the content).
+   *
+   * The desktop sidebar collapses (Contribute ff714496) from the top bar or
+   * ⌘\ / Ctrl+\, remembered per browser; phones keep the drawer.
    */
   let {
     shell,
@@ -65,6 +79,8 @@
   } = $props()
 
   let drawerOpen = $state(false)
+  // Read on mount: the server cannot know this browser's choice.
+  let sidebarCollapsed = $state(false)
 
   // The one assistant: shared by the top bar, the panel and the pages inside the shell.
   // Only while the Assistant plugin is on (round 5): switched off there is no
@@ -83,6 +99,7 @@
   provideAssistant(assistant)
 
   onMount(() => {
+    sidebarCollapsed = readSidebarCollapsed(() => localStorage)
     // The welcome wizard's hand-off (handoff.ts): the agent's greeting streams into the panel.
     assistant?.startPendingHandoff()
   })
@@ -121,7 +138,16 @@
   function toggleDrawer(): void {
     drawerOpen = !drawerOpen
   }
+  function toggleSidebar(): void {
+    sidebarCollapsed = !sidebarCollapsed
+    writeSidebarCollapsed(() => localStorage, sidebarCollapsed)
+  }
   function onKeydown(event: KeyboardEvent): void {
+    if (isSidebarToggleKey(event)) {
+      event.preventDefault()
+      toggleSidebar()
+      return
+    }
     if (event.key === 'Escape' && drawerOpen) {
       drawerOpen = false
       event.preventDefault()
@@ -194,7 +220,7 @@
         </span>
       </a>
     </div>
-    <nav class="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-4" aria-label="Main">
+    <nav class="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-4" aria-label="Main" data-testid="shell-nav-scroll">
       <ul class="flex flex-col gap-0.5" data-testid="shell-nav">
         {#each mainItems as item (item.id)}<li>{@render navLink(item)}</li>{/each}
       </ul>
@@ -240,16 +266,19 @@
 <!-- The board's black gutters, in the website's night (a coral glow top right, slate
      bottom left): sidebar and top bar sit on it, the page is a light panel inside. -->
 <div
-  class="flex h-dvh w-full flex-row overflow-hidden text-foreground {inkFrame ? 'frame-night' : 'bg-sidebar'}"
+  class="relative flex h-dvh w-full flex-row overflow-hidden text-foreground {inkFrame ? 'frame-night' : 'bg-sidebar'}"
   data-testid="app-shell"
 >
-  <!-- Desktop sidebar -->
-  <aside
-    class="hidden w-56 shrink-0 text-foreground md:block {inkFrame ? 'ink-scope' : 'bg-sidebar'}"
-    data-testid="shell-sidebar"
-  >
-    {@render sidebar()}
-  </aside>
+  <!-- Desktop sidebar (collapsible; phones use the drawer below) -->
+  {#if !sidebarCollapsed}
+    <aside
+      id="shell-sidebar"
+      class="hidden min-h-0 w-56 shrink-0 text-foreground md:block {inkFrame ? 'ink-scope' : 'bg-sidebar'}"
+      data-testid="shell-sidebar"
+    >
+      {@render sidebar()}
+    </aside>
+  {/if}
 
   {#if drawerOpen}
     <div class="fixed inset-0 z-40 md:hidden">
@@ -300,6 +329,24 @@
           />
         {/if}
       </button>
+      <!-- Desktop: collapse / expand the sidebar (⌘\ / Ctrl+\). -->
+      <button
+        type="button"
+        class="hidden size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring md:flex"
+        aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        aria-expanded={!sidebarCollapsed}
+        aria-controls="shell-sidebar"
+        aria-keyshortcuts="Meta+Backslash Control+Backslash"
+        title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        onclick={toggleSidebar}
+        data-testid="shell-sidebar-toggle"
+      >
+        {#if sidebarCollapsed}
+          <PanelLeftOpen class="size-4" aria-hidden="true" strokeWidth={1.75} />
+        {:else}
+          <PanelLeftClose class="size-4" aria-hidden="true" strokeWidth={1.75} />
+        {/if}
+      </button>
       <div class="flex min-w-0 flex-1 justify-center">
         {#if assistant}
           <div class="flex w-full max-w-2xl min-w-0">
@@ -312,11 +359,13 @@
     </header>
 
     <div
-      class="mx-2 mb-[max(0.5rem,env(safe-area-inset-bottom))] flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden rounded-xl bg-background md:ml-0"
+      class="relative mx-2 mb-[max(0.5rem,env(safe-area-inset-bottom))] flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden rounded-xl bg-background {sidebarCollapsed
+        ? ''
+        : 'md:ml-0'}"
       data-testid="shell-panel"
     >
       <div
-        class="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto"
+        class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain"
         data-testid="shell-content"
       >
         {@render children()}

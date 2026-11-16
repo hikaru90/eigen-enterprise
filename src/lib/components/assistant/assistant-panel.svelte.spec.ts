@@ -95,6 +95,7 @@ function renderShell() {
 
 const barInput = () => page.getByTestId('assistant-bar-input')
 const panel = () => page.getByTestId('assistant-panel')
+const spotlightBackdrop = () => page.getByTestId('assistant-spotlight-backdrop')
 
 beforeEach(() => {
   calls = []
@@ -144,6 +145,91 @@ describe('assistant top bar', () => {
     await expect.element(barInput()).toHaveValue('')
     const chat = calls.find((c) => c.url === '/api/chat')
     expect(chat?.body).toEqual({ message: 'What is new?', sessionId: 's-1' })
+    // Asking closes the spotlight; the answer is in the panel.
+    await expect.element(spotlightBackdrop()).not.toBeInTheDocument()
+  })
+})
+
+describe('the spotlight (Contribute ccb12fab)', () => {
+  const spotlight = () => page.getByTestId('assistant-spotlight')
+  let opener: HTMLButtonElement
+
+  beforeEach(() => {
+    opener = document.createElement('button')
+    opener.textContent = 'Somewhere on the page'
+    document.body.append(opener)
+  })
+  afterEach(() => opener.remove())
+
+  async function openFromOpener(): Promise<void> {
+    opener.focus()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }))
+    await expect.element(barInput()).toHaveFocus()
+  }
+
+  it('rests in the top bar as a pill, not a dialog', async () => {
+    renderShell()
+    await expect.element(barInput()).toBeInTheDocument()
+    await expect.element(spotlight()).not.toHaveAttribute('role')
+    await expect.element(spotlightBackdrop()).not.toBeInTheDocument()
+  })
+
+  it('⌘K floats it over a dimmed page as a modal dialog', async () => {
+    renderShell()
+    await openFromOpener()
+    await expect.element(spotlight()).toHaveAttribute('role', 'dialog')
+    await expect.element(spotlight()).toHaveAttribute('aria-modal', 'true')
+    await expect.element(spotlight()).toHaveAccessibleName('Ask the assistant')
+    await expect.element(spotlightBackdrop()).toBeInTheDocument()
+    // The same input floats: ⌘K focused it, nothing else was mounted.
+    expect(spotlight().element().contains(barInput().element())).toBe(true)
+    await expect.element(page.getByTestId('assistant-spotlight-hint')).toHaveTextContent('Esc')
+  })
+
+  it('clicking the pill opens it too', async () => {
+    renderShell()
+    await barInput().click()
+    await expect.element(spotlight()).toHaveAttribute('role', 'dialog')
+  })
+
+  it('Esc closes it and gives focus back; the panel stays as it was', async () => {
+    renderShell()
+    await openFromOpener()
+    barInput().element().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await expect.element(spotlightBackdrop()).not.toBeInTheDocument()
+    await expect.element(spotlight()).not.toHaveAttribute('role')
+    expect(document.activeElement).toBe(opener)
+    await expect.element(panel()).not.toBeInTheDocument()
+  })
+
+  it('a click on the dimmed page closes it and gives focus back', async () => {
+    renderShell()
+    await openFromOpener()
+    // Dispatched: component specs load no CSS, so the backdrop has no box to point at.
+    spotlightBackdrop().element().dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+    spotlightBackdrop().element().dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await expect.element(spotlightBackdrop()).not.toBeInTheDocument()
+    expect(document.activeElement).toBe(opener)
+  })
+
+  it('traps focus: Tab and Shift+Tab stay inside', async () => {
+    renderShell()
+    await openFromOpener()
+    for (const shiftKey of [false, true, false]) {
+      const tab = new KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true })
+      document.activeElement!.dispatchEvent(tab)
+      expect(tab.defaultPrevented).toBe(true)
+      expect(spotlight().element().contains(document.activeElement)).toBe(true)
+    }
+  })
+
+  it('keeps the draft when it closes without asking', async () => {
+    renderShell()
+    await openFromOpener()
+    await barInput().fill('half a thought')
+    barInput().element().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await expect.element(spotlightBackdrop()).not.toBeInTheDocument()
+    await expect.element(barInput()).toHaveValue('half a thought')
   })
 })
 
