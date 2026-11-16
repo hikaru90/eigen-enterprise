@@ -2,6 +2,14 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-16 — Contribute board: what's live marked shipped
+
+Owner: "mark the integrated points as done". Checked against production (v0.5.10 shipped all of round 5; v0.5.12 the inbox).
+- **Shipped:** `eb674853` inbox first, `b8a87a25` Email landing + follow-up + history/import, `e4ef6be1` status bottom-left, `d8ec9006` appointments from mail, `7fa15491` memory privacy (note names what's left: log rows from before v0.5.10).
+- **In progress, note updated:** `df14e05a` calendar (requested → in progress: reminders, call from event, Google/Outlook sync open), `c05c3a40` plugins (Assistant is a plugin; Memory split, contract, company plugins open), `b73604ff` accessibility (about 60 left), `288dc1d2` brand material (download/export, logo, AI copy open).
+- **Unchanged:** `ffa2aa98` (blocked on headless Chromium) and the 15 proposals nobody has worked on yet (11-13/14: Inbox vs Company mail wording, contacts pipeline view, info texts as pop-ups, Drive close button + file dates, dashboard tiles, week view side by side, assistant scope/read-aloud/voice input, swipe gestures, logo crop, memory tasks).
+- Notes on Ony's proposals are in German (the board's convention), on Alex's in English.
+
 ## 2026-11-14 — v0.5.12 on production (os.cerberusblue.com): email inbox + setup fixes
 
 Owner: "Yes, ship it".
