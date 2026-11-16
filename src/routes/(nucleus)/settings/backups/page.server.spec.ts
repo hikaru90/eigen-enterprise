@@ -19,6 +19,7 @@ function wire(answers: Record<string, { status: number; data: unknown }>) {
   _backupsDeps.client = () => new EeClient(transport)
   _backupsDeps.companyKey = async () => ({ backupKey: 'K'.repeat(43) + '=', recoveryCode: 'EE1-AAAAA-…', created: false })
   _backupsDeps.takePendingRecoveryCode = async () => null
+  _backupsDeps.hostingKeepsKey = () => false
   return calls
 }
 
@@ -57,7 +58,7 @@ describe('Settings → Backups (owner only, D11)', () => {
 
   it('load: ee status, or the plain not-managed state off an ee box', async () => {
     wire({ 'GET /v1/backups': { status: 200, data: status }, 'GET /v1/backups/restore': { status: 200, data: { job: null } } })
-    expect(await load(ev() as never)).toEqual({ backups: { managed: true, status, snapshots: null, job: null }, pendingRecoveryCode: null })
+    expect(await load(ev() as never)).toEqual({ backups: { managed: true, status, snapshots: null, job: null }, pendingRecoveryCode: null, hostingKeepsKey: false })
     _backupsDeps.client = () =>
       new EeClient(async () => {
         throw new SubstrateUnavailableError('ENOENT')
@@ -77,6 +78,12 @@ describe('Settings → Backups (owner only, D11)', () => {
     expect(await load(ev() as never)).toMatchObject({ pendingRecoveryCode: 'EE1-PENDING' })
     expect(await load(ev() as never)).toMatchObject({ pendingRecoveryCode: null })
     expect(take).toHaveBeenCalledTimes(2)
+  })
+
+  it('load: on a managed box (hosting holds a copy of the backup key) the page is told so', async () => {
+    wire({ 'GET /v1/backups': { status: 200, data: status }, 'GET /v1/backups/restore': { status: 200, data: { job: null } } })
+    _backupsDeps.hostingKeepsKey = () => true
+    expect(await load(ev() as never)).toMatchObject({ hostingKeepsKey: true })
   })
 
   it.each(['admin', 'member'])('a pending recovery code is never taken for a %s', async (role) => {

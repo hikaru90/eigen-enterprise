@@ -1,5 +1,6 @@
 import type { Actions, PageServerLoad } from './$types'
 import { fail } from '@sveltejs/kit'
+import { env } from '$env/dynamic/private'
 import { requireCapability } from '$lib/server/auth/require-capability'
 import {
   backupKeyFromRecoveryCode,
@@ -47,6 +48,11 @@ export const _backupsDeps = {
   backupKeyFromCode: (code: string): Promise<string> => backupKeyFromRecoveryCode(code),
   /** The recovery code the owner never saw (the fleet created the root key); taking it marks it shown. */
   takePendingRecoveryCode: (): Promise<string | null> => takePendingRecoveryCode(),
+  /**
+   * A managed box (ee injected EE_FLEET_LOCAL_TOKEN): the hosting control plane keeps an
+   * encrypted copy of the backup key (plan/phase-managed-box.md D7), so the page must say so.
+   */
+  hostingKeepsKey: (): boolean => Boolean(env.EE_FLEET_LOCAL_TOKEN),
 }
 
 export async function _requireOwner(locals: App.Locals): Promise<string> {
@@ -58,11 +64,15 @@ async function requireOwner(locals: App.Locals): Promise<string> {
   return `human:${user.id}`
 }
 
-export const load: PageServerLoad = async ({ locals }): Promise<{ backups: BackupsPageData; pendingRecoveryCode?: string | null }> => {
+export const load: PageServerLoad = async ({ locals }): Promise<{ backups: BackupsPageData; pendingRecoveryCode?: string | null; hostingKeepsKey: boolean }> => {
   await requireOwner(locals)
   const backups = await loadBackups()
   // Shown once: a managed box got its backup key from os before the owner ever set backups up.
-  return { backups, pendingRecoveryCode: backups.managed ? await _backupsDeps.takePendingRecoveryCode() : null }
+  return {
+    backups,
+    pendingRecoveryCode: backups.managed ? await _backupsDeps.takePendingRecoveryCode() : null,
+    hostingKeepsKey: _backupsDeps.hostingKeepsKey(),
+  }
 }
 
 async function loadBackups(): Promise<BackupsPageData> {
