@@ -1,4 +1,4 @@
-import type { Channel } from './types'
+import type { Channel, PipelineStage, Via } from './types'
 
 /** A stored contact (the row). Dates are `YYYY-MM-DD` days. */
 export type ContactRow = {
@@ -13,6 +13,14 @@ export type ContactRow = {
   lastContactedOn: string | null
   nextFollowUpOn: string | null
   nextStep: string | null
+  /** The pipeline list (migration 0144). */
+  stage: PipelineStage
+  /** Who on our side holds it (a member's user id). */
+  ownerId: string | null
+  via: Via | null
+  latestStatus: string | null
+  /** Set exactly while stage = waiting (the DB checks it). */
+  waitingSince: string | null
   /** A person's user id, or the agent's principal id when no person was behind it. */
   createdBy: string
   createdByKind: 'user' | 'agent'
@@ -24,7 +32,22 @@ export type ContactRow = {
 export type ContactPatch = Partial<
   Pick<
     ContactRow,
-    'name' | 'organisation' | 'title' | 'channels' | 'metHow' | 'whyRelevant' | 'tags' | 'lastContactedOn' | 'nextFollowUpOn' | 'nextStep' | 'shared'
+    | 'name'
+    | 'organisation'
+    | 'title'
+    | 'channels'
+    | 'metHow'
+    | 'whyRelevant'
+    | 'tags'
+    | 'lastContactedOn'
+    | 'nextFollowUpOn'
+    | 'nextStep'
+    | 'stage'
+    | 'ownerId'
+    | 'via'
+    | 'latestStatus'
+    | 'waitingSince'
+    | 'shared'
   >
 > & { updatedAt: Date }
 

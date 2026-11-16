@@ -8,7 +8,7 @@ import { dbContactsStore } from './db-store'
 
 /**
  * The DB store against real Postgres (the test DB, :5433). Needs DATABASE_URL
- * with migrations applied (0124, 0139); skipped without it. Rows are tagged with a
+ * with migrations applied (0124, 0139, 0144); skipped without it. Rows are tagged with a
  * per-run creator id so parallel runs never see each other's contacts.
  */
 
@@ -45,6 +45,11 @@ describe.skipIf(!url)('contacts store (Postgres)', () => {
       lastContactedOn: null,
       nextFollowUpOn: null,
       nextStep: null,
+      stage: 'inbox',
+      ownerId: null,
+      via: null,
+      latestStatus: null,
+      waitingSince: null,
       createdBy: run,
       createdByKind: 'user',
       shared: false,
@@ -74,6 +79,17 @@ describe.skipIf(!url)('contacts store (Postgres)', () => {
     const got = await store.get(r.id)
     expect(got).toEqual({ ...r, createdAt: got!.createdAt, updatedAt: got!.updatedAt })
     expect(await store.get(randomUUID())).toBeNull()
+  })
+
+  it('round-trips the pipeline fields (0144); the DB refuses a wait without waiting and an unknown stage', async () => {
+    const store = dbContactsStore(db)
+    const r = row({ stage: 'waiting', ownerId: run, via: 'meeting', latestStatus: 'Sent the deck', waitingSince: '2026-11-10' })
+    await store.insert(r)
+    expect(await store.get(r.id)).toMatchObject({ stage: 'waiting', ownerId: run, via: 'meeting', latestStatus: 'Sent the deck', waitingSince: '2026-11-10' })
+    await store.update(r.id, { stage: 'keep_in_touch', waitingSince: null, updatedAt: new Date() })
+    expect(await store.get(r.id)).toMatchObject({ stage: 'keep_in_touch', waitingSince: null })
+    await expect(store.update(r.id, { waitingSince: '2026-11-10', updatedAt: new Date() })).rejects.toThrow()
+    await expect(store.insert(row({ stage: 'done' as never }))).rejects.toThrow()
   })
 
   it('scopes, filters by tag, searches name and organisation literally, and orders by name', async () => {

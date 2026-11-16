@@ -7,12 +7,21 @@ import {
   getContact,
   listContacts,
   logContact,
+  pipeline,
   updateContact,
   type Actor,
   type ContactInput,
   type ContactsDeps,
 } from './service'
-import { CHANNEL_TYPES, CONTACT_LIMITS, DEFAULT_TAGS, FOLLOW_UP_WINDOW_DAYS } from './types'
+import {
+  CHANNEL_TYPES,
+  CONTACT_LIMITS,
+  DEFAULT_TAGS,
+  FOLLOW_UP_WINDOW_DAYS,
+  PIPELINE_STAGES,
+  VIA_TYPES,
+  WAITING_REVIEW_DAYS,
+} from './types'
 
 /**
  * contacts.* kernel tools: the agent's hands on the people tracker (in-app
@@ -37,6 +46,13 @@ export type ContactsToolDeps = {
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'a date as YYYY-MM-DD')
 const id = z.string().min(1).describe('the contact id')
+const stage = z
+  .enum(PIPELINE_STAGES)
+  .describe(
+    'the pipeline list (GTD): next = our move, a concrete next step we own; waiting = we wait on their reply; keep_in_touch = nothing open, check in on next_follow_up_on (the tickler); inbox = not contacted / not processed yet',
+  )
+const via = z.enum(VIA_TYPES).describe('how we are in touch with them')
+const latestStatus = z.string().max(CONTACT_LIMITS.latestStatus).describe('where things stand, in a line')
 const channel = z.object({ type: z.enum(CHANNEL_TYPES), value: z.string().min(1).max(CONTACT_LIMITS.channelValue) }).strict()
 
 const fields = {
@@ -57,6 +73,19 @@ const fields = {
   last_contacted_on: day.nullable().optional(),
   next_follow_up_on: day.nullable().optional(),
   next_step: z.string().max(CONTACT_LIMITS.nextStep).nullable().optional().describe('what to do at the next follow-up'),
+  stage: stage.optional(),
+  owner_id: z
+    .string()
+    .min(1)
+    .nullable()
+    .optional()
+    .describe('who on our side holds the contact: a member’s user id (contacts.pipeline lists the people); null = nobody'),
+  via: via.nullable().optional(),
+  latest_status: latestStatus.nullable().optional(),
+  waiting_since: day
+    .nullable()
+    .optional()
+    .describe('only with stage waiting: since when we wait for their reply; defaults to today when the wait starts'),
 }
 
 const listInput = z
@@ -67,6 +96,12 @@ const listInput = z
   .strict()
 const getInput = z.object({ id }).strict()
 const followUpsInput = z.object({ today: day.optional().describe('defaults to today (UTC)') }).strict()
+const pipelineInput = z
+  .object({
+    today: day.optional().describe('defaults to today (UTC)'),
+    stage: stage.optional().describe('only this list'),
+  })
+  .strict()
 const createInput = z.object({ name: z.string().min(1).max(CONTACT_LIMITS.name), ...fields }).strict()
 const updateInput = z.object({ id, name: z.string().min(1).max(CONTACT_LIMITS.name).optional(), ...fields }).strict()
 const logInput = z
@@ -76,6 +111,9 @@ const logInput = z
     how_it_went: z.string().max(CONTACT_LIMITS.logNote).nullable().optional().describe('what happened and how it went; kept in the contact’s history'),
     next_follow_up_on: day.nullable().optional().describe('the next follow-up; none when left out'),
     next_step: z.string().max(CONTACT_LIMITS.nextStep).nullable().optional(),
+    stage: stage.optional().describe('where they are now; left out, the list stays as it is. waiting starts the wait on the day you were in touch'),
+    via: via.nullable().optional(),
+    latest_status: latestStatus.nullable().optional(),
   })
   .strict()
 
@@ -93,6 +131,11 @@ function contactInput(i: Fields): ContactInput {
     lastContactedOn: i.last_contacted_on,
     nextFollowUpOn: i.next_follow_up_on,
     nextStep: i.next_step,
+    stage: i.stage,
+    ownerId: i.owner_id,
+    via: i.via,
+    latestStatus: i.latest_status,
+    waitingSince: i.waiting_since,
   }
 }
 
@@ -158,6 +201,19 @@ export function createContactsTools(opts: ContactsToolDeps = {}): ToolDescriptor
       },
     },
     {
+      name: 'contacts.pipeline',
+      module: CONTACTS_MODULE_ID,
+      summary: `The contact pipeline, Getting Things Done style: every contact you may see in its list — next (our move: a next step we own), waiting (on their reply, since when), keep_in_touch (tickler: check in on next_follow_up_on), inbox (not contacted yet) — each with who on our side holds it, how we are in touch, latest status, next step and its day. The weekly review flags what to look at: days that have passed, replies waited on longer than ${WAITING_REVIEW_DAYS} days, our moves with no next step, and the inbox. Also lists the people who can hold a contact (their ids for owner_id). Move a contact with contacts.update (stage) or contacts.log_contact.`,
+      auditClass: 'read',
+      inputSchema: pipelineInput,
+      permission: { roles: ['admin', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = pipelineInput.parse(input)
+        const out = await pipeline(await deps(), await actorOf(ctx), i.today ?? today())
+        return i.stage ? { ...out, groups: out.groups.filter((g) => g.stage === i.stage) } : out
+      },
+    },
+    {
       name: 'contacts.create',
       module: CONTACTS_MODULE_ID,
       summary:
@@ -167,12 +223,14 @@ export function createContactsTools(opts: ContactsToolDeps = {}): ToolDescriptor
       activity: () => 'Added a contact',
       inputSchema: createInput,
       permission: { roles: ['admin', 'agent'] },
-      handler: async (ctx, input) => createContact(await deps(), await actorOf(ctx), contactInput(createInput.parse(input))),
+      handler: async (ctx, input) =>
+        createContact(await deps(), await actorOf(ctx), contactInput(createInput.parse(input)), { today: today() }),
     },
     {
       name: 'contacts.update',
       module: CONTACTS_MODULE_ID,
-      summary: 'Change a contact: only the fields you send change; null (or empty text) clears an optional field; channels and tags replace the whole list.',
+      summary:
+        'Change a contact: only the fields you send change; null (or empty text) clears an optional field; channels and tags replace the whole list. Moves it between pipeline lists (stage), sets who holds it (owner_id), how we are in touch (via) and the latest status.',
       auditClass: 'mutate',
       approvalRisk: 'internal',
       activity: () => 'Updated a contact',
@@ -180,14 +238,14 @@ export function createContactsTools(opts: ContactsToolDeps = {}): ToolDescriptor
       permission: { roles: ['admin', 'agent'] },
       handler: async (ctx, input) => {
         const { id: contactId, ...rest } = updateInput.parse(input)
-        return updateContact(await deps(), await actorOf(ctx), contactId, contactInput(rest))
+        return updateContact(await deps(), await actorOf(ctx), contactId, contactInput(rest), { today: today() })
       },
     },
     {
       name: 'contacts.log_contact',
       module: CONTACTS_MODULE_ID,
       summary:
-        'Record that you were in touch with a contact (sets last contacted; kept in the contact’s history with how it went) and set the next follow-up and next step — the previous follow-up is done, so leaving them out clears them.',
+        'Record that you were in touch with a contact (sets last contacted; kept in the contact’s history with how it went) and set the next follow-up and next step — the previous follow-up is done, so leaving them out clears them. Say where they are now with stage (e.g. waiting after you wrote and expect a reply); left out, the pipeline list stays as it is.',
       auditClass: 'mutate',
       approvalRisk: 'internal',
       activity: () => 'Logged being in touch with a contact',
@@ -200,6 +258,9 @@ export function createContactsTools(opts: ContactsToolDeps = {}): ToolDescriptor
           note: i.how_it_went,
           nextFollowUpOn: i.next_follow_up_on,
           nextStep: i.next_step,
+          stage: i.stage,
+          via: i.via,
+          latestStatus: i.latest_status,
         })
       },
     },

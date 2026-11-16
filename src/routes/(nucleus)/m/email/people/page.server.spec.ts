@@ -17,6 +17,7 @@ import { actions, load } from './+page.server'
 import { actions as detailActions, load as detailLoad } from './[id]/+page.server'
 import { actions as importActions } from './import/+page.server'
 import { actions as newActions } from './new/+page.server'
+import { actions as pipelineActions, load as pipelineLoad } from './pipeline/+page.server'
 
 let f: ReturnType<typeof fixture>
 beforeEach(() => {
@@ -171,5 +172,48 @@ describe('/m/email/people/import', () => {
 
   it('sends signed-out visitors to /login', async () => {
     await expect(importActions.preview({ locals: { user: null }, request: candidates([mara]) } as never)).rejects.toMatchObject({ status: 302 })
+  })
+})
+
+describe('/m/email/people/pipeline', () => {
+  it('sends signed-out visitors to /login', async () => {
+    await expect(pipelineLoad({ locals: { user: null } } as never)).rejects.toMatchObject({ status: 302, location: '/login' })
+  })
+
+  it('loads what the person sees in its list, for their today', async () => {
+    const mara = await createContact(f.deps, user('ana'), { name: 'Mara Voss' })
+    await createContact(f.deps, user('ben'), { name: 'Bens private' })
+    const out = (await pipelineLoad({ locals: signedIn('ana') } as never)) as {
+      pipeline: { today: string; groups: Array<{ stage: string; items: Array<{ id: string }> }> }
+    }
+    expect(out.pipeline.today).toBe('2026-11-12')
+    expect(out.pipeline.groups.map((g) => [g.stage, g.items.map((i) => i.id)])).toEqual([
+      ['next', []],
+      ['waiting', []],
+      ['keep_in_touch', []],
+      ['inbox', [mara.id]],
+    ])
+  })
+
+  it('an inline change sends only its field; moving to "waiting" starts the wait on the person’s today', async () => {
+    const mara = await createContact(f.deps, user('ana'), { name: 'Mara Voss', nextStep: 'Send the deck' })
+    const ok = await pipelineActions.update({ locals: signedIn('ana'), request: post([['id', mara.id], ['stage', 'waiting']]) } as never)
+    expect(ok).toEqual({ action: 'update', id: mara.id })
+    expect(await getContact(f.deps, user('ana'), mara.id)).toMatchObject({ stage: 'waiting', waitingSince: '2026-11-12', nextStep: 'Send the deck' })
+    await pipelineActions.update({ locals: signedIn('ana'), request: post([['id', mara.id], ['ownerId', 'ben'], ['via', 'phone']]) } as never)
+    expect(await getContact(f.deps, user('ana'), mara.id)).toMatchObject({ ownerId: 'ben', via: 'phone', nextStep: 'Send the deck' })
+    // Blank clears an optional field.
+    await pipelineActions.update({ locals: signedIn('ana'), request: post([['id', mara.id], ['ownerId', '']]) } as never)
+    expect(await getContact(f.deps, user('ana'), mara.id)).toMatchObject({ ownerId: null })
+    const bad = await pipelineActions.update({ locals: signedIn('ana'), request: post([['id', mara.id], ['ownerId', 'stranger']]) } as never)
+    expect(bad).toMatchObject({ status: 400, data: { action: 'update', id: mara.id } })
+  })
+
+  it('"Log contact" with where they are now; "Leave as it is" keeps the list', async () => {
+    const mara = await createContact(f.deps, user('ana'), { name: 'Mara Voss' })
+    await pipelineActions.log({ locals: signedIn('ana'), request: post([['id', mara.id], ['on', '2026-11-12'], ['stage', '']]) } as never)
+    expect(await getContact(f.deps, user('ana'), mara.id)).toMatchObject({ stage: 'inbox', lastContactedOn: '2026-11-12' })
+    await pipelineActions.log({ locals: signedIn('ana'), request: post([['id', mara.id], ['on', '2026-11-12'], ['stage', 'waiting']]) } as never)
+    expect(await getContact(f.deps, user('ana'), mara.id)).toMatchObject({ stage: 'waiting', waitingSince: '2026-11-12' })
   })
 })
