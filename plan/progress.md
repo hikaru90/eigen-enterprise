@@ -2,6 +2,19 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-16 — Managed box (hosted offer, box side): M1–M5 merged (main `193e741` … `e83889b`; not released, not on the box)
+
+Owner: hosted companies each get their own VM on rented bare-metal servers (Hetzner or Netcup dedicated), card required at signup, modularly extensible; "just build it". Plan: `plan/phase-managed-box.md`. The control plane is a separate private repo, `eigenEnterprise-cloud` (local only, not on GitHub yet).
+- **Fleet protocol** `ee/src/fleet/protocol.ts` (`193e741`): pull only, level-triggered desired state, Ed25519 per box, feature list so a newer control plane never breaks an older box. The control plane vendors it verbatim.
+- **M1–M3 install flags** (merge `2549258`): `--rtc-ports <tcp>,<udp>` (defaults 7881/7882, else both in 20000–29999), `--trusted-proxy <IPv4 CIDR>` (Caddy's public server takes PROXY v2 from it only), `--claim-hash <sha256>` (first install only; no link printed). All kept on re-runs; a self-hosted install without them is unchanged.
+- **M4 managed mode** (merge `02064df`, `4e76b7e`): `ee managed enroll|status`; the daemon polls and applies release (detached `systemd-run ee upgrade`), suspended (every public host answers a 503 paused page), backup target, backup now, platform AI (LLM_* secrets on os). os answers ee on loopback with a per-box bearer token: `/api/fleet/seats` (production Better Auth users) and `/api/fleet/backup-key`; both 404 on a self-hosted install. `/api/fleet` is core in the plugin route map (`e83889b`).
+- **M5 signed releases** (merge `c41f634`): `SHA256SUMS` + Ed25519 `SHA256SUMS.sig`; install.sh and `ee upgrade` verify before running anything; the release workflow refuses to publish without the `EE_RELEASE_SIGNING_KEY` secret.
+- **Announced behaviour change (M5):** until the owner runs `scripts/release-key.sh` (commit its output, set the GitHub secret it prints), every release, install and `box.sh install` fails with "this build has no release signing key". There is deliberately no unsigned path.
+- **Decisions:** the host-port allow-list is now "the company's configured LiveKit ports", enforced where the company repo reads/commits (it holds both workloads and settings); a managed box gets its backup key from os, and when that call created the company root key the owner's Backups page shows the recovery code once (marker file `recovery-code-pending` next to the sealed root key; no migration); seats = production accounts; fleet-set backup targets never overwrite one the owner set by hand.
+- **Gates:** ee 294 passed / 3 skipped; app unit 7047 passed / 1 failed → fixed (`e83889b`, route map), the fleet + backups specs 31 passed; `npm run check` 0 errors.
+- **Not verified:** nothing ran on the box (blocked by the signing key) or against a real control plane; the Caddy `proxy_protocol` wrapper, the paused page, the loopback seats call and the detached upgrade are unit-tested only.
+- **Open (owner):** whether the control plane may hold a copy of each hosted company's backup key, so we can restore after a host failure without the owner's recovery code. Today only the owner's code opens the backups.
+
 ## 2026-11-16 — App design, round 5: the website's accents and gradients, in small doses (main `6e5a39a`, on the local box)
 
 Owner: "take more of the color accents and gradient from the website and re introduce them tastefully into the dashboard and eigen-enterprise ui".
