@@ -3,11 +3,12 @@ import type { BackupConfig, BackupRun, Health } from '../backup/service.ts'
 import { settingsSchema, type DesiredState } from '../company-repo.ts'
 import { EE_VERSION } from '../version.ts'
 import { BOX_KEY, FLEET_BACKUP_MARK, FLEET_SCOPE, FleetAgent, FleetError, LOCAL_TOKEN, UPGRADE_UNIT, type FleetHost } from './agent.ts'
-import { FLEET_FEATURES, FLEET_PATHS, newBoxKey, reportV1, verifyFleetRequest } from './protocol.ts'
+import { escrowRequestV1, FLEET_FEATURES, FLEET_PATHS, newBoxKey, reportV1, verifyFleetRequest } from './protocol.ts'
 
 const BOX = '0b9a7c3e-1f2d-4c5b-8a6e-9d8c7b6a5f4e'
 const CP = 'https://hosting.example.com'
 const TOKEN = 't'.repeat(40)
+const SEALED = 'S'.repeat(43) + '='
 
 type Call = { url: string; init: RequestInit }
 
@@ -30,7 +31,7 @@ function fakeHost(opts: { managed?: boolean } = {}) {
   const calls: Call[] = []
   const commits: string[] = []
   const logs: Array<{ type: string; message: string }> = []
-  let answer: () => Response = () => Response.json({ protocol: 1, pollSeconds: 60 })
+  let answer: (url: string) => Response = () => Response.json({ protocol: 1, pollSeconds: 60 })
   const host = {
     read: async () => structuredClone(state),
     change: vi.fn(async (message: string, mutate: (s: typeof state) => typeof state) => {
@@ -58,6 +59,7 @@ function fakeHost(opts: { managed?: boolean } = {}) {
     backupKey: vi.fn(async (_token: string): Promise<string> => 'K'.repeat(43) + '='),
     backups: {
       hasKey: vi.fn(() => true),
+      key: vi.fn((): string | null => SEALED),
       config: () => backupCfg,
       configure: vi.fn(async (input: any) => {
         backupCfg = { target: input.target, schedule: { hour: input.schedule.hour, minute: 7 }, retentionDays: input.retentionDays, configuredAt: 'now', configuredBy: input.author, keyCreatedAt: 'now' }
@@ -76,7 +78,7 @@ function fakeHost(opts: { managed?: boolean } = {}) {
     startUpgrade: vi.fn(async () => {}),
     fetch: vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       calls.push({ url: String(url), init: init ?? {} })
-      return answer()
+      return answer(String(url))
     }),
     now: () => new Date('2026-11-16T12:00:00Z'),
     log: async (type: string, message: string) => void logs.push({ type, message }),
@@ -89,7 +91,7 @@ function fakeHost(opts: { managed?: boolean } = {}) {
     commits,
     logs,
     state: () => state,
-    setAnswer: (a: () => Response) => (answer = a),
+    setAnswer: (a: (url: string) => Response) => (answer = a),
     setBackup: (c: BackupConfig | null, r: BackupRun[] = [], h?: Health) => {
       backupCfg = c
       runs = r
@@ -292,6 +294,46 @@ describe('fleet: desired state (level-triggered)', () => {
     f.setAnswer(desired({ backup: target }))
     await agent.poll()
     expect(f.host.backupKey).not.toHaveBeenCalled()
+  })
+
+  it('escrowBackupKey: sends a signed escrow request with the sealed key after the backup step', async () => {
+    const f = fakeHost({ managed: true })
+    const agent = new FleetAgent(f.host)
+    f.setAnswer((url) => (url.endsWith(FLEET_PATHS.escrow) ? new Response(null, { status: 204 }) : desired({ escrowBackupKey: true })()))
+    const r = await agent.poll()
+    expect(r).toMatchObject({ ok: true, error: null })
+    const call = f.calls.find((c) => c.url === `${CP}${FLEET_PATHS.escrow}`)!
+    expect(call.init.method).toBe('POST')
+    const headers = Object.fromEntries(Object.entries(call.init.headers as Record<string, string>).map(([k, v]) => [k.toLowerCase(), v]))
+    const v = verifyFleetRequest({ publicKey: f.box.publicKey, method: 'POST', path: FLEET_PATHS.escrow, body: String(call.init.body), headers, now: f.host.now().getTime() })
+    expect(v.ok).toBe(true)
+    expect(escrowRequestV1.parse(JSON.parse(String(call.init.body)))).toEqual({ protocol: 1, backupKey: SEALED })
+    expect(f.logs.some((l) => l.type === 'fleet.backup_key_escrowed')).toBe(true)
+    for (const l of f.logs) expect(l.message).not.toContain(SEALED)
+  })
+
+  it('escrowBackupKey: no request without a sealed key, or when the field is absent or false', async () => {
+    for (const extra of [{ escrowBackupKey: true }, {}, { escrowBackupKey: false }]) {
+      const f = fakeHost({ managed: true })
+      if ('escrowBackupKey' in extra && extra.escrowBackupKey) f.host.backups.key.mockReturnValue(null)
+      const agent = new FleetAgent(f.host)
+      f.setAnswer(desired(extra))
+      expect((await agent.poll()).ok).toBe(true)
+      expect(f.calls.filter((c) => c.url.endsWith(FLEET_PATHS.escrow))).toHaveLength(0)
+    }
+  })
+
+  it('escrowBackupKey: a 409 shows in the poll error and the key appears nowhere', async () => {
+    const f = fakeHost({ managed: true })
+    const agent = new FleetAgent(f.host)
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    f.setAnswer((url) => (url.endsWith(FLEET_PATHS.escrow) ? new Response('already holds a different key', { status: 409 }) : desired({ escrowBackupKey: true })()))
+    const r = await agent.poll()
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/escrowBackupKey: .*answered 409: already holds a different key/)
+    expect(r.error).not.toContain(SEALED)
+    for (const l of f.logs) expect(l.message).not.toContain(SEALED)
+    for (const c of err.mock.calls) expect(String(c)).not.toContain(SEALED)
   })
 
   it('backup: never touches a target the owner set by hand', async () => {

@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from 'node:crypto'
 import { Transform, type TransformCallback } from 'node:stream'
+import { backupKeyV1 } from '../fleet/protocol.ts'
 
 /**
  * The backup object format "EEBK v1" (README.md next to this file): every
@@ -226,4 +227,11 @@ export function deriveBackupKey(rootKeyBytes: Buffer): Buffer {
 /** Recovery code → the backup key that encrypted the snapshots. */
 export function backupKeyFromRecoveryCode(code: string): Buffer {
   return deriveBackupKey(parseCompanyRecoveryCode(code))
+}
+
+/** The backup key itself (base64, e.g. the control plane's escrowed copy) → the key that encrypted the snapshots. */
+export function backupKeyFromBase64(line: string): Buffer {
+  const parsed = backupKeyV1.safeParse(line.trim())
+  if (!parsed.success) throw new Error('that is not a backup key (expected 32 bytes as base64, 44 characters ending in "=")')
+  return Buffer.from(parsed.data, 'base64')
 }

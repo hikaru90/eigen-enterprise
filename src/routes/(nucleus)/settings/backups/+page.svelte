@@ -152,13 +152,24 @@
       data-testid="backups-recovery-code"
     >
       <h3 class="text-sm font-semibold">Store your company recovery code safely</h3>
-      <p class="text-xs text-foreground/70">
-        Without it, your backups can't be read — not by you, not by us, not by anyone. It is the one
-        recovery code of your company: the same code also unlocks the company's encrypted data. If
-        this server is ever lost, you will need it to bring the company back. It is shown <strong
-          >only this once</strong
-        > here: put it in your password manager or print it and keep it somewhere safe.
-      </p>
+      {#if data.hostingKeepsKey}
+        <p class="text-xs text-foreground/70" data-testid="backups-recovery-code-hosted">
+          It is the one recovery code of your company: the same code also unlocks the company's
+          encrypted data, and it restores the company from its backups on any server. Your hosting
+          provider also keeps an encrypted copy of the backup key, so it can restore the company after a
+          server failure; your recovery code still restores it too, with or without the provider. It is
+          shown <strong>only this once</strong> here: put it in your password manager or print it and keep
+          it somewhere safe.
+        </p>
+      {:else}
+        <p class="text-xs text-foreground/70">
+          Without it, your backups can't be read — not by you, not by us, not by anyone. It is the one
+          recovery code of your company: the same code also unlocks the company's encrypted data. If
+          this server is ever lost, you will need it to bring the company back. It is shown <strong
+            >only this once</strong
+          > here: put it in your password manager or print it and keep it somewhere safe.
+        </p>
+      {/if}
       <div class="flex gap-2">
         <input
           readonly
@@ -478,6 +489,12 @@
         On this server: choose <strong>Restore…</strong> next to a backup above. It replaces the whole
         company with that backup, after checking every file.
       </p>
+      {#if data.hostingKeepsKey}
+        <p class="text-xs text-foreground/70" data-testid="backups-restore-help-hosted">
+          Your hosting provider keeps an encrypted copy of the backup key and can restore the company for
+          you after a server failure. You can also do it yourself with your recovery code:
+        </p>
+      {/if}
       <p class="text-xs text-foreground/70">If this server is lost:</p>
       <ol class="list-decimal space-y-1.5 pl-5 text-xs text-foreground/70">
         <li>Get a fresh server and install eigenEnterprise on it, the same way as the first time.</li>
