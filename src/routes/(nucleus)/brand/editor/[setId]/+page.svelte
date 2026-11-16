@@ -157,7 +157,9 @@
   <title>{docTitle(`Editor: ${set.name}`, 'Brand')}</title>
 </svelte:head>
 
-<div class="flex min-h-dvh flex-col bg-neutral-50 text-neutral-900">
+<!-- Fills the shell's content pane (flex-1), never the viewport: min-h-dvh
+     inside the pane overflowed it by the top bar's height (Contribute df2f73e7). -->
+<div class="flex flex-1 flex-col bg-neutral-50 text-neutral-900">
   <header class="flex flex-wrap items-center gap-3 border-b bg-white px-4 py-2">
     <a class="text-sm underline" href={resolve('/brand')}>← Brand</a>
     <label class="flex items-center gap-2 text-sm">

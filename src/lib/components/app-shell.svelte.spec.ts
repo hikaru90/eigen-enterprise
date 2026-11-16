@@ -1,10 +1,11 @@
 import { createRawSnippet } from 'svelte'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
 import { CAPABILITIES, type Capabilities } from '$lib/access/capabilities'
 import { SelfPresence } from '$lib/messages/self-presence.svelte'
 import { buildShellNav } from '$lib/shell/nav'
+import { SIDEBAR_COLLAPSED_KEY } from '$lib/shell/sidebar-pref'
 import AppShell from './app-shell.svelte'
 
 const capabilities = Object.fromEntries(CAPABILITIES.map((c) => [c, true])) as Capabilities
@@ -46,6 +47,8 @@ function renderShell(
 }
 
 describe('app-shell.svelte', () => {
+  beforeEach(() => localStorage.removeItem(SIDEBAR_COLLAPSED_KEY))
+
   it('shows the company, the nav from the registry, the user and the page', async () => {
     renderShell()
     await expect.element(page.getByTestId('shell-company').first()).toHaveTextContent('Kindred Digital Labs')
@@ -187,6 +190,81 @@ describe('app-shell.svelte', () => {
       await expect.element(page.getByTestId('shell-menu-presence')).not.toBeInTheDocument()
       await expect.element(page.getByTestId('shell-menu-toggle')).toHaveAccessibleName('Open menu')
       await expect.element(page.getByTestId('shell-user').first()).toHaveTextContent('Alex')
+    })
+  })
+
+  describe('one scroll container for the page (Contribute df2f73e7)', () => {
+    const scrolls = (el: Element) => /(^|\s)overflow(-[xy])?-(auto|scroll)(\s|$)/.test(el.className)
+
+    it('the frame is exactly the viewport and clips; only the content column scrolls', async () => {
+      renderShell()
+      await expect.element(page.getByText('Page body')).toBeInTheDocument()
+      const shell = page.getByTestId('app-shell').element()
+      // Fixed to the viewport and clipping — and positioned, so absolutely
+      // placed descendants (sr-only labels, menus) are clipped by it instead
+      // of stretching the document below the frame.
+      for (const c of ['relative', 'h-dvh', 'overflow-hidden']) expect(shell.classList).toContain(c)
+      const content = page.getByTestId('shell-content').element()
+      for (const c of ['relative', 'min-h-0', 'flex-1', 'overflow-y-auto']) {
+        expect(content.classList).toContain(c)
+      }
+      // Every flex parent between the frame and the content may shrink and clips.
+      for (const id of ['shell-column', 'shell-panel']) {
+        const el = page.getByTestId(id).element()
+        for (const c of ['min-h-0', 'flex-1']) expect(el.classList).toContain(c)
+        expect(scrolls(el)).toBe(false)
+      }
+      // Nothing else in the frame scrolls but the nav list itself.
+      const scrollers = [shell, ...shell.querySelectorAll('*')].filter(scrolls)
+      expect(scrollers.map((el) => el.getAttribute('data-testid') ?? el.tagName.toLowerCase())).toEqual([
+        'shell-nav-scroll',
+        'shell-content',
+      ])
+    })
+  })
+
+  describe('the sidebar toggle (Contribute ff714496)', () => {
+    const toggle = () => page.getByTestId('shell-sidebar-toggle')
+    const backslash = (mod: { metaKey?: boolean; ctrlKey?: boolean }) =>
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '\\', code: 'Backslash', bubbles: true, ...mod }))
+
+    it('collapses and expands the desktop sidebar and remembers the choice', async () => {
+      renderShell()
+      await expect.element(page.getByTestId('shell-sidebar')).toBeInTheDocument()
+      await expect.element(toggle()).toHaveAccessibleName('Collapse sidebar')
+      await expect.element(toggle()).toHaveAttribute('aria-expanded', 'true')
+      await toggle().click()
+      await expect.element(page.getByTestId('shell-sidebar')).not.toBeInTheDocument()
+      await expect.element(toggle()).toHaveAccessibleName('Expand sidebar')
+      await expect.element(toggle()).toHaveAttribute('aria-expanded', 'false')
+      expect(localStorage.getItem(SIDEBAR_COLLAPSED_KEY)).toBe('1')
+      await expect.element(page.getByText('Page body')).toBeInTheDocument()
+      await toggle().click()
+      await expect.element(page.getByTestId('shell-sidebar')).toBeInTheDocument()
+      expect(localStorage.getItem(SIDEBAR_COLLAPSED_KEY)).toBe('0')
+    })
+
+    it('opens collapsed when the viewer collapsed it before', async () => {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, '1')
+      renderShell()
+      await expect.element(toggle()).toHaveAccessibleName('Expand sidebar')
+      await expect.element(page.getByTestId('shell-sidebar')).not.toBeInTheDocument()
+    })
+
+    it('⌘\\ and Ctrl+\\ toggle it from anywhere', async () => {
+      renderShell()
+      await expect.element(page.getByTestId('shell-sidebar')).toBeInTheDocument()
+      backslash({ metaKey: true })
+      await expect.element(page.getByTestId('shell-sidebar')).not.toBeInTheDocument()
+      backslash({ ctrlKey: true })
+      await expect.element(page.getByTestId('shell-sidebar')).toBeInTheDocument()
+    })
+
+    it('the phone menu is untouched: collapsed or not, the drawer opens with the nav', async () => {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, '1')
+      renderShell()
+      await page.getByTestId('shell-menu-toggle').click({ force: true })
+      await expect.element(page.getByTestId('shell-drawer').getByTestId('shell-nav-website')).toBeInTheDocument()
     })
   })
 })
