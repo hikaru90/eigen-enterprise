@@ -4,8 +4,12 @@ import {
   assertInCatalog,
   CATALOG,
   CatalogGapError,
+  DEFAULT_RTC_PORTS,
+  hostPortAllowlist,
   hostPortCollisions,
+  hostPortViolations,
   routesSchema,
+  rtcPortsSchema,
   workloadSchema,
 } from './spec.ts'
 
@@ -143,8 +147,31 @@ describe('host ports (system workloads only, from an allow-list)', () => {
     [{ port: 7881, proto: 'udp' }],
     [{ port: 7882, proto: 'tcp' }],
     [{ port: 5432, proto: 'tcp' }],
-  ])('rejects a port outside the allow-list: %o', (p) => {
-    expect(() => workloadSchema.parse(sys([p]))).toThrow(/allow-list/)
+  ])('rejects a port outside the default allow-list: %o', (p) => {
+    const w = workloadSchema.parse(sys([p]))
+    expect(hostPortViolations([w], hostPortAllowlist(DEFAULT_RTC_PORTS))).toEqual([expect.stringMatching(/allow-list/)])
+  })
+
+  it('the allow-list is exactly the company rtc ports: a hosted pair replaces 7881/7882', () => {
+    const hosted = hostPortAllowlist({ tcp: 21000, udp: 21001 })
+    expect(hosted).toEqual([{ port: 21000, proto: 'tcp' }, { port: 21001, proto: 'udp' }])
+    const def = workloadSchema.parse(sys([{ port: 7881, proto: 'tcp' }, { port: 7882, proto: 'udp' }]))
+    const mine = workloadSchema.parse(sys([{ port: 21000, proto: 'tcp' }, { port: 21001, proto: 'udp' }]))
+    expect(hostPortViolations([mine], hosted)).toEqual([])
+    expect(hostPortViolations([def], hosted)).toHaveLength(2)
+    expect(hostPortViolations([mine], hostPortAllowlist(DEFAULT_RTC_PORTS))).toHaveLength(2)
+  })
+
+  it.each([
+    [{ tcp: 7881, udp: 7882 }, true],
+    [{ tcp: 20000, udp: 29999 }, true],
+    [{ tcp: 7881, udp: 21000 }, false],
+    [{ tcp: 21000, udp: 21000 }, false],
+    [{ tcp: 19999, udp: 21000 }, false],
+    [{ tcp: 21000, udp: 30000 }, false],
+    [{ tcp: 7882, udp: 7881 }, false],
+  ])('rtc ports %o valid: %s', (p, ok) => {
+    expect(rtcPortsSchema.safeParse(p).success).toBe(ok)
   })
 
   it('rejects the same port twice in one workload', () => {

@@ -99,6 +99,7 @@ describe('renderCaddyConfig', () => {
       ],
       upstreams: { os: { kind: 'proxy', port: 4100 } },
       acmeEmail: null,
+      trustedProxy: null,
     })
     const json = JSON.stringify(cfg)
     expect(json).toContain('"dial":"127.0.0.1:4100"')
@@ -115,6 +116,7 @@ describe('renderCaddyConfig', () => {
       ],
       upstreams: { os: { kind: 'proxy', port: 4100 } },
       acmeEmail: 'ops@kindred.digital',
+      trustedProxy: null,
     }) as { apps: { tls: { automation: { policies: unknown[] } } } }
     expect(cfg.apps.tls.automation.policies).toEqual([
       { subjects: ['kindred.digital'], issuers: [{ module: 'acme', email: 'ops@kindred.digital' }] },
@@ -122,9 +124,37 @@ describe('renderCaddyConfig', () => {
     ])
   })
 
+  it('self-hosted (no trusted proxy): no listener wrappers anywhere', () => {
+    const cfg = renderCaddyConfig({
+      routes: [{ host: 'os.example.com', workload: 'os' }],
+      upstreams: { os: { kind: 'proxy', port: 4100 } },
+      acmeEmail: null,
+      trustedProxy: null,
+      internal: [{ port: 4000, workload: 'os' }],
+    })
+    expect(JSON.stringify(cfg)).not.toContain('listener_wrappers')
+  })
+
+  it('behind a router: the public server takes PROXY protocol from it only; loopback servers never', () => {
+    const cfg = renderCaddyConfig({
+      routes: [{ host: 'os.example.com', workload: 'os' }],
+      upstreams: { os: { kind: 'proxy', port: 4100 } },
+      acmeEmail: null,
+      trustedProxy: '10.0.0.1/32',
+      internal: [{ port: 4000, workload: 'os' }],
+    }) as { apps: { http: { servers: Record<string, Record<string, unknown>> } } }
+    const servers = cfg.apps.http.servers
+    expect(servers.ee!.listen).toEqual([':443', ':80'])
+    expect(servers.ee!.listener_wrappers).toEqual([
+      { wrapper: 'proxy_protocol', allow: ['10.0.0.1/32'], timeout: '5s' },
+      { wrapper: 'tls' },
+    ])
+    expect(servers['internal-os']!.listener_wrappers).toBeUndefined()
+  })
+
   it('fails loudly when a route points at a workload with no live upstream', () => {
     expect(() =>
-      renderCaddyConfig({ routes: [{ host: 'a.example.com', workload: 'ghost' }], upstreams: {}, acmeEmail: null }),
+      renderCaddyConfig({ routes: [{ host: 'a.example.com', workload: 'ghost' }], upstreams: {}, acmeEmail: null, trustedProxy: null }),
     ).toThrow(/no live upstream/)
   })
 })

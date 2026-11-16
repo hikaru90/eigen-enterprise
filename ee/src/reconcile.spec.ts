@@ -118,7 +118,7 @@ function desired(sha: string, extra: Partial<DesiredState> = {}): DesiredState {
       }),
     ],
     routes: [{ host: 'site.example.com', workload: 'site' }],
-    settings: { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: null, rtcNodeIp: null, contributeHub: 'off' },
+    settings: { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: null, rtcNodeIp: null, contributeHub: 'off', rtcPorts: { tcp: 7881, udp: 7882 }, trustedProxy: null },
     ...extra,
   }
 }
@@ -469,14 +469,14 @@ describe('livekit-server as a system workload (calls)', () => {
       rev: 'r'.repeat(40),
       // HEAD lists workloads/ sorted by file name: livekit (ports 4100/4101), then os (4102/4103).
       workloads: [
-        workloadSchema.parse(livekitWorkload(`/rel/lk-${lkSha}.tgz`, lkSha)),
+        workloadSchema.parse(livekitWorkload(`/rel/lk-${lkSha}.tgz`, lkSha, { tcp: 7881, udp: 7882 })),
         workloadSchema.parse({ name: 'os', tier: 'system', source: { kind: 'release', tarball: `/rel/${OS_SHA}.tgz`, sha256: OS_SHA } }),
       ],
       routes: [
         { host: 'os.example.com', workload: 'os' },
         { host: 'rtc.os.example.com', workload: 'livekit' },
       ],
-      settings: { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: 'rtc.os.example.com', rtcNodeIp: '203.0.113.7', contributeHub: 'off', ...settings },
+      settings: { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: 'rtc.os.example.com', rtcNodeIp: '203.0.113.7', contributeHub: 'off', rtcPorts: { tcp: 7881, udp: 7882 }, trustedProxy: null, ...settings },
     }
   }
   const envFile = (sys: FakeSystem, name: string) => sys.files.get(`/run/ee/env/${name}.env`) ?? ''
@@ -509,6 +509,27 @@ describe('livekit-server as a system workload (calls)', () => {
     const servers = (sys.caddyLoads.at(-1) as { apps: { http: { servers: Record<string, { listen: string[]; routes: unknown[] }> } } }).apps.http.servers
     expect(servers['internal-livekit']?.listen).toEqual(['127.0.0.1:4001'])
     expect(JSON.stringify(servers['internal-livekit']?.routes)).toContain('"dial":"127.0.0.1:4100"')
+  })
+
+  it('a hosted box: livekit binds and listens on the company rtc ports, and the public edge takes PROXY protocol from the router', async () => {
+    const sys = callsBox()
+    sys.healthy.add(4100).add(4102)
+    const rtcPorts = { tcp: 21000, udp: 21001 }
+    const base = callsState(LK_A, { rtcPorts, trustedProxy: '10.0.0.1/32' })
+    const state: DesiredState = {
+      ...base,
+      workloads: base.workloads.map((w) => (w.name === 'livekit' ? workloadSchema.parse(livekitWorkload(`/rel/lk-${LK_A}.tgz`, LK_A, rtcPorts)) : w)),
+    }
+    await reconcile({ sys, repo: { read: async () => state }, journal: emptyJournal(), secrets: callsSecrets(), healthTimeoutMs: 10_000 })
+    const unit = sys.files.get('/etc/systemd/system/ee-livekit-a.service')!
+    expect(unit).toContain('SocketBindAllow=tcp:21000')
+    expect(unit).toContain('SocketBindAllow=udp:21001')
+    expect(unit).not.toContain('7881')
+    expect(livekitConfigIn(sys, 'a').rtc).toMatchObject({ tcp_port: 21000, udp_port: 21001 })
+    const servers = (sys.caddyLoads.at(-1) as { apps: { http: { servers: Record<string, { listener_wrappers?: unknown }> } } }).apps.http.servers
+    expect(servers.ee?.listener_wrappers).toEqual([{ wrapper: 'proxy_protocol', allow: ['10.0.0.1/32'], timeout: '5s' }, { wrapper: 'tls' }])
+    expect(servers['internal-os']?.listener_wrappers).toBeUndefined()
+    expect(servers['internal-livekit']?.listener_wrappers).toBeUndefined()
   })
 
   it('os gets LIVEKIT_API_KEY, LIVEKIT_API_SECRET and LIVEKIT_URL through its root-only env file', async () => {
@@ -598,7 +619,7 @@ describe('livekit-server as a system workload (calls)', () => {
     sys.healthy.add(4100).add(4102)
     const journal = emptyJournal()
     await expect(
-      reconcile({ sys, repo: { read: async () => callsState(LK_A, { rtcNodeIp: null, contributeHub: 'off' }) }, journal, secrets: callsSecrets(), healthTimeoutMs: 10_000 }),
+      reconcile({ sys, repo: { read: async () => callsState(LK_A, { rtcNodeIp: null, contributeHub: 'off', rtcPorts: { tcp: 7881, udp: 7882 }, trustedProxy: null }) }, journal, secrets: callsSecrets(), healthTimeoutMs: 10_000 }),
     ).rejects.toThrow(/livekit: no node IP .*--node-ip/)
     expect(journal.workloads.livekit?.active).toBeNull()
     expect(journal.workloads.os?.active).toBe('a')
