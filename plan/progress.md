@@ -2,6 +2,16 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-16 — Calls in their own tab + one mic/speaker choice for calls and voice (main `eb65bb1`, `966c3d9`, `c104295`; not released, not on the box)
+
+Owner: "can we make the audio input selectable for calls and for tts? also when in a call navigating away from a page should be prohibited, or a call always opens in a separate tab. so the main instance is kept clean". Two worktree streams, merged.
+- **Audio devices** (`eb65bb1`, `966c3d9`): calls already had a mic/speaker/camera picker; dictation, voice messages, the voice input button and TTS ignored it. Now one choice per browser (still localStorage `ee.calls.devices`, so existing call choices survive) is used everywhere. New `src/lib/voice/microphone.ts`: chosen mic → exact `deviceId`; gone → explicit error naming it ("…Choose another under Audio devices in the settings menu"), never another mic; nothing chosen → browser default. TTS plays through the chosen speaker (`setSinkId`); a refused sink = silence + warn. Settings menu: **Audio devices** (Microphone, Speaker, "System default", unplugged choice shown as "not connected", "Allow microphone to see devices" before permission).
+- **Calls in their own tab** (`c104295`): every entry point (Messages call button, incoming-call toast Accept, `/calls` Join/Rejoin/New meeting) opens the call in a tab named `ee-call-<id>` (Join on an open call focuses it, no reload); starts reserve the tab in the click and close it on failure; a blocked popup is an explicit error, never same-tab. `/calls/[id]` is full-screen without the shell and owns the live call; in-app navigation is cancelled mid-call ("Hang up first"), reload/close asks first; hang-up closes a script-opened tab. One-call-at-a-time across tabs via BroadcastChannel (`call-presence.svelte.ts`; decision: the feed lags behind LiveKit webhooks and reads reconnects as "left"; scope = same browser, as before). LiveKit no longer disconnects on the leave prompt when the person stays (`livekit-room.ts`).
+- **Removed (announced):** the docked **mini call** in the main instance (status, mute/camera, devices, hang-up, back to call, ended/rejoin) — `mini-call.svelte`, its mount, 7 specs, its e2e steps — and the `callClock` helper. It existed for round-4 A2 (navigating hung up the call); the call tab solves A2 without it.
+- **Gates:** streams: unit green, check 0 errors, lint clean, calls e2e 5/5 journeys (new tab followed, main tab browses freely, navigation blocked, Rejoin focuses without reload). Merged main: check 0 errors (32 warnings baseline), unit 7136 passed / 131 skipped, calls + voice + settings component specs 67/67. E2E not re-run after the merge.
+- **Known gaps:** a crashed call tab leaves other tabs thinking I am in that call until reload. Accept errors now show in the call tab, not the toast.
+- **Found, not fixed:** `voice-input-button.svelte.spec.ts` is not in the component suite; run by hand, 3 old tests fail (the stop control now reports as a "meter", not a "button").
+
 ## 2026-11-16 — Memory: thoughts stuck on "Indexing in background" forever (main `43a5b5b` + `7e1db29`, merge `9538da9`; hotfix v0.5.13 on production)
 
 Owner: "indexing in background is stalling forever, it doesnt work!" (production).
