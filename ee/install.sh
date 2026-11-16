@@ -5,7 +5,8 @@
 #   [--contribute-hub https://<central board> | off]   (default: the official board, kept on upgrades)
 #   sh install.sh --from /root/release --node-ip <public IP>   (files copied to the box beforehand)
 #
-# <base> holds: LATEST (the release name), ee.mjs, ee.mjs.sha256, and per CPU
+# <base> holds: SHA256SUMS + SHA256SUMS.sig (Ed25519-signed by the release key, checked
+# before anything is installed), LATEST (the release name), ee.mjs, and per CPU
 # eigenenterprise-<version>-<sha>-linux-<x64|arm64>.tar.gz (+ .sha256) and
 # livekit-server-<LIVEKIT_VERSION>-linux-<x64|arm64>.tar.gz (+ .sha256).
 # Published: <base> = https://github.com/hikaru90/eigen-enterprise/releases/latest/download
@@ -54,17 +55,43 @@ fetch() { # fetch <name> <dest>
   esac
 }
 
-verify() { # verify <file> <sha256-file-with-"hash  name">
-  expected=$(cut -d' ' -f1 < "$2")
-  actual=$(sha256sum "$1" | cut -d' ' -f1)
-  [ "$expected" = "$actual" ] || { echo "✗ checksum mismatch for $1" >&2; exit 1; }
+# BEGIN SIGNED RELEASE (plan/phase-managed-box.md M5; ee/src/install-verify.spec.ts runs this block)
+# Only a release whose SHA256SUMS is signed by the project's Ed25519 key installs.
+release_public_key() {
+# BEGIN RELEASE PUBLIC KEY (written by scripts/release-key.sh)
+  echo 'PLACEHOLDER: no release signing key yet'
+# END RELEASE PUBLIC KEY
 }
+
+verify_release() { # verify_release <dir>: <dir>/SHA256SUMS is signed (<dir>/SHA256SUMS.sig, base64) by the release key
+  release_public_key > "$1/release-key.pem"
+  grep -q -- '-----BEGIN PUBLIC KEY-----' "$1/release-key.pem" || { echo "✗ this build has no release signing key (run scripts/release-key.sh)" >&2; exit 1; }
+  tr -d '\r\n' < "$1/SHA256SUMS.sig" | openssl base64 -d -A > "$1/SHA256SUMS.sig.bin" 2>/dev/null \
+    && openssl pkeyutl -verify -pubin -inkey "$1/release-key.pem" -rawin -in "$1/SHA256SUMS" -sigfile "$1/SHA256SUMS.sig.bin" >/dev/null 2>&1 \
+    || { echo "✗ the release SHA256SUMS is not signed by the eigenEnterprise release key — refusing to install" >&2; exit 1; }
+  SIGNED_SUMS="$1/SHA256SUMS"
+}
+
+signed() { # signed <file> <name>: <file> is the <name> the verified SHA256SUMS lists
+  [ -n "${SIGNED_SUMS:-}" ] || { echo "✗ internal: signed() before verify_release" >&2; exit 1; }
+  expected=$(awk -v n="$2" '$2 == n || $2 == "*" n { print $1 }' "$SIGNED_SUMS")
+  [ -n "$expected" ] || { echo "✗ the signed SHA256SUMS does not list $2" >&2; exit 1; }
+  actual=$(sha256sum "$1" | cut -d' ' -f1)
+  [ "$expected" = "$actual" ] || { echo "✗ checksum mismatch for $2 (not the signed release)" >&2; exit 1; }
+}
+# END SIGNED RELEASE
 
 command -v curl >/dev/null || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl ca-certificates xz-utils >/dev/null; }
 command -v xz >/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq xz-utils >/dev/null
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
+
+step "verifying the release signature"
+command -v openssl >/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq openssl >/dev/null
+fetch SHA256SUMS "$WORK/SHA256SUMS"
+fetch SHA256SUMS.sig "$WORK/SHA256SUMS.sig"
+verify_release "$WORK"
 
 RUNTIME="/opt/ee/runtimes/node-22"
 if [ ! -x "$RUNTIME/bin/node" ] || [ "$("$RUNTIME/bin/node" -v)" != "v$NODE_VERSION" ]; then
@@ -80,8 +107,7 @@ fi
 
 step "installing ee"
 fetch ee.mjs "$WORK/ee.mjs"
-fetch ee.mjs.sha256 "$WORK/ee.mjs.sha256"
-verify "$WORK/ee.mjs" "$WORK/ee.mjs.sha256"
+signed "$WORK/ee.mjs" ee.mjs
 install -D -m 0755 "$WORK/ee.mjs" /opt/ee/ee.mjs
 cat > /usr/local/bin/ee <<SH
 #!/bin/sh
@@ -93,7 +119,9 @@ step "fetching the eigenEnterprise release"
 case "$FROM" in
   http://*|https://*)
     # LATEST names the release (eigenenterprise-<version>-<sha>); each CPU has its own tarball.
-    NAME=$(curl -fsSL --retry 3 "$FROM/LATEST" | tr -d '[:space:]')
+    fetch LATEST "$WORK/LATEST"
+    signed "$WORK/LATEST" LATEST
+    NAME=$(tr -d '[:space:]' < "$WORK/LATEST")
     case "$NAME" in
       eigenenterprise-[0-9]*) RELEASE="$NAME-linux-$ARCH.tar.gz" ;;
       *) echo "✗ $FROM/LATEST does not name a release" >&2; exit 1 ;;
@@ -102,14 +130,12 @@ case "$FROM" in
 esac
 [ -n "$RELEASE" ] || { echo "✗ no eigenenterprise release for linux-$ARCH in $FROM" >&2; exit 1; }
 fetch "$RELEASE" "$WORK/$RELEASE"
-fetch "$RELEASE.sha256" "$WORK/$RELEASE.sha256"
-verify "$WORK/$RELEASE" "$WORK/$RELEASE.sha256"
+signed "$WORK/$RELEASE" "$RELEASE"
 
 step "fetching livekit-server $LIVEKIT_VERSION (calls)"
 LIVEKIT="livekit-server-$LIVEKIT_VERSION-linux-$ARCH.tar.gz"
 fetch "$LIVEKIT" "$WORK/$LIVEKIT"
-fetch "$LIVEKIT.sha256" "$WORK/$LIVEKIT.sha256"
-verify "$WORK/$LIVEKIT" "$WORK/$LIVEKIT.sha256"
+signed "$WORK/$LIVEKIT" "$LIVEKIT"
 
 # shellcheck disable=SC2086
 /usr/local/bin/ee bootstrap --release "$WORK/$RELEASE" --livekit-release "$WORK/$LIVEKIT" $PASS

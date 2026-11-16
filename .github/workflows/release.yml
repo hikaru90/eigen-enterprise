@@ -3,7 +3,8 @@
 # Each CPU builds on its own native runner (no emulation), then one job publishes
 # a GitHub Release with: LATEST, install.sh, ee.mjs (+ .sha256) and
 # eigenenterprise-<version>-<sha>-linux-{x64,arm64}.tar.gz (+ .sha256) and
-# livekit-server-<version>-linux-{x64,arm64}.tar.gz (+ .sha256), which install.sh fetches for calls.
+# livekit-server-<version>-linux-{x64,arm64}.tar.gz (+ .sha256), which install.sh fetches for calls,
+# plus SHA256SUMS over all of them and SHA256SUMS.sig (Ed25519, secret EE_RELEASE_SIGNING_KEY).
 #
 # Install:  curl -fsSL https://github.com/hikaru90/eigen-enterprise/releases/latest/download/install.sh \
 #             | sh -s -- --from https://github.com/hikaru90/eigen-enterprise/releases/latest/download
@@ -71,6 +72,21 @@ jobs:
           cp built/release-*/eigenenterprise-*.tar.gz* out/
           cp built/release-*/livekit-server-*.tar.gz* out/
           (cd out && sha256sum -c --quiet *.sha256)
+      - name: Sign the release (SHA256SUMS + Ed25519 SHA256SUMS.sig, verified by install.sh and ee upgrade)
+        env:
+          EE_RELEASE_SIGNING_KEY: ${{ secrets.EE_RELEASE_SIGNING_KEY }}
+        run: |
+          [ -n "$EE_RELEASE_SIGNING_KEY" ] || { echo "the EE_RELEASE_SIGNING_KEY secret is not set (scripts/release-key.sh prints how) — refusing to publish an unsigned release" >&2; exit 1; }
+          key=$(mktemp) && trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$EE_RELEASE_SIGNING_KEY" > "$key"
+          # The per-file .sha256 files stay for older installers; SHA256SUMS covers every published asset.
+          (cd out && rm -f SHA256SUMS SHA256SUMS.sig && sha256sum $(ls | grep -v '\.sha256$') > ../SHA256SUMS)
+          mv SHA256SUMS out/SHA256SUMS
+          openssl pkeyutl -sign -rawin -inkey "$key" -in out/SHA256SUMS | openssl base64 -A > out/SHA256SUMS.sig
+          openssl pkey -in "$key" -pubout > release-public.pem
+          openssl base64 -d -A < out/SHA256SUMS.sig > sig.bin
+          openssl pkeyutl -verify -pubin -inkey release-public.pem -rawin -in out/SHA256SUMS -sigfile sig.bin
+          cat out/SHA256SUMS
           ls -la out
       - name: Publish the GitHub Release
         env:

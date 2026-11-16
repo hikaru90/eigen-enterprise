@@ -27,7 +27,7 @@ curl -fsSL https://github.com/hikaru90/eigen-enterprise/releases/latest/download
 
 Optional: `--console-host os.example.com` (otherwise `<ip>.sslip.io`) and `--acme-email you@example.com`. With your own console host, also create a DNS record for `rtc.os.example.com` (calls) pointing at the server.
 
-The installer verifies every download by checksum, then prints a private **claim link** — open it to become the company's owner. Lost it? `ee claim-link`.
+The installer verifies the release signature and every download's checksum (see [Signed releases](#signed-releases)), then prints a private **claim link** — open it to become the company's owner. Lost it? `ee claim-link`.
 
 ## After the install
 
@@ -55,6 +55,16 @@ An upgrade keeps everything — people, messages, Drive files, websites and apps
 **First upgrade to a release with calls (v0.5.3 or later):** it stops once, before changing anything, and asks for the node IP. Open 7881/tcp and 7882/udp (host firewall and the provider's firewall, if either is on), then run `ee upgrade --node-ip <public IP>`. The IP is saved; later upgrades don't ask again. This first upgrade also redeploys every workload once (the console and apps switch without downtime).
 
 Servers installed before `ee upgrade` existed (no `ee upgrade` command yet): run the install line above once — it upgrades in place the same way and brings `ee upgrade` with it.
+
+## Signed releases
+
+Every release carries `SHA256SUMS` (the sha256 of each asset) and `SHA256SUMS.sig`, an Ed25519 signature by the project's release key. The public key is built into `install.sh` and `ee`; the private key never leaves the owner's machine and the release workflow's `EE_RELEASE_SIGNING_KEY` secret.
+
+- `install.sh` checks the signature with OpenSSL (Debian 13 / Ubuntu 24.04 ship OpenSSL 3) and then every file it uses against `SHA256SUMS` — before installing anything, for `--from <url>` and `--from <dir>` alike. A missing or wrong signature, or one changed file, stops it.
+- `ee upgrade` checks the signature and the downloaded `install.sh` before running it as root; otherwise it refuses and changes nothing.
+- There is no way to skip the check. A build made before the key existed says "this build has no release signing key".
+
+The key is made once with `scripts/release-key.sh` (it prints the `gh secret set` command). Copying a release to the server by hand (`--from <dir>`) needs `SHA256SUMS` and `SHA256SUMS.sig` next to the other files.
 
 ## Roll back
 

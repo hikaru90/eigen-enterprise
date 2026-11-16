@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { readdir, writeFile } from 'node:fs/promises'
+import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { request } from 'node:http'
 import { isIP } from 'node:net'
 import { basename } from 'node:path'
@@ -19,6 +19,7 @@ import { Ee, startControlServer } from './daemon.ts'
 import { loadJournal } from './journal.ts'
 import { PATHS } from './paths.ts'
 import { renderLiveEnvFiles } from './reconcile.ts'
+import { RELEASE_PUBLIC_KEY_PEM, sha256Hex } from './release-key.ts'
 import { SecretStore } from './secret-store.ts'
 import { HOSTNAME } from './spec.ts'
 import { mustRun, RealSystem } from './system.ts'
@@ -214,6 +215,8 @@ async function main(argv: string[]): Promise<void> {
           mkdirp: (p) => sys.mkdirp(p, 0o700),
           writeFile: (p, content) => sys.writeFile(p, content, 0o600),
           remove: (p) => sys.remove(p),
+          sha256File: async (p) => sha256Hex(await readFile(p)),
+          releaseKeyPem: RELEASE_PUBLIC_KEY_PEM,
           now: () => new Date(),
           log: (l) => console.log(l),
         },

@@ -4,6 +4,7 @@
 #   dist/release/ee.mjs                                          (the ee binary bundle)
 #   dist/release/install.sh
 #   dist/release/LATEST                                          (the release name, for install.sh --from <url>)
+#   dist/release/SHA256SUMS                                      (all of the above; the workflow re-makes and signs it)
 #   dist/release/livekit-server-<LIVEKIT_VERSION>-linux-<arch>.tar.gz (+ .sha256)   (calls, plan/video-calls.md §4)
 # Published by .github/workflows/release.yml (amd64 + arm64) on a v* tag.
 # The tarball is built inside a Linux container so production node_modules match the
@@ -75,5 +76,17 @@ find "$OUT" -name "livekit-server-*-linux-${NODE_ARCH}.tar.gz*" ! -name "$LIVEKI
 (cd "$OUT" && shasum -a 256 "$LIVEKIT_NAME.tar.gz" > "$LIVEKIT_NAME.tar.gz.sha256")
 
 printf '%s\n' "eigenenterprise-${VERSION}-${SHA}" > "$OUT/LATEST"
+# One manifest over everything this build produced (signed in the release workflow, M5).
+(cd "$OUT" && shasum -a 256 LATEST install.sh ee.mjs "$NAME.tar.gz" "$LIVEKIT_NAME.tar.gz" > SHA256SUMS)
+rm -f "$OUT/SHA256SUMS.sig"
+# On the owner's machine the release key signs it too, so the local box (ee/e2e/box.sh) installs it.
+# CI builds have no key here: the publish job signs the combined manifest.
+SIGNING_KEY="$HOME/.config/eigenenterprise/release-signing.pem"
+if [ -f "$SIGNING_KEY" ]; then
+  openssl pkeyutl -sign -rawin -inkey "$SIGNING_KEY" -in "$OUT/SHA256SUMS" | openssl base64 -A > "$OUT/SHA256SUMS.sig"
+  echo "✓ signed SHA256SUMS with $SIGNING_KEY"
+else
+  echo "! SHA256SUMS is unsigned (no $SIGNING_KEY): install.sh refuses this build until it is signed (scripts/release-key.sh)"
+fi
 echo "✓ $OUT/$NAME.tar.gz"
 echo "✓ $OUT/$LIVEKIT_NAME.tar.gz"
