@@ -17,12 +17,11 @@
   import { gridLayout, stageOf } from './layout'
 
   /**
-   * The call page's view of the live call (plan/video-calls.md §3). The call
-   * itself lives above the page (ActiveCall, owned by the nucleus layout):
-   * mounting this view opens it — joins, or just shows it when I am in it
-   * already — and leaving the page keeps it running (the docked mini call
-   * takes over). Only the hang-up button, closing the tab or the call ending
-   * ends it. In another call already → it says so plainly and joins nothing.
+   * The call tab's view of the live call (plan/video-calls.md §3). The call
+   * itself is the ActiveCall the call page owns: mounting this view opens it —
+   * joins, or just shows it when I am in it already. Only the hang-up button,
+   * closing the tab or the call ending ends it. In another call already → it
+   * says so plainly and joins nothing.
    *
    * The stage uses the space: a shared screen big with people in a strip;
    * two people → the other fills the stage and I am a small self view;
@@ -33,14 +32,20 @@
     active,
     call,
     me,
+    leaveLabel,
     onleave,
+    onhungup,
     onopen,
   }: {
     active: ActiveCall
     call: CallDto
     me: string
-    /** After hanging up, or "Back to calls". */
+    /** The leave button's words once the call is over or never started ("Close", "Back to calls"). */
+    leaveLabel: string
+    /** The leave button. */
     onleave: () => void
+    /** After the hang-up button left the call. */
+    onhungup: () => void
     /** Go to the call I am in (from "already in a call"). */
     onopen: (callId: string) => void
   } = $props()
@@ -74,7 +79,7 @@
 
   async function hangUp() {
     await active.hangUp()
-    onleave()
+    onhungup()
   }
 
   function toggleDevices() {
@@ -170,7 +175,7 @@
               onclick={() => active.call && onopen(active.call.id)}>Back to your call</button
             >
             <button type="button" class="h-9 rounded-md border border-white/20 px-4 text-sm font-semibold hover:bg-white/10" data-testid="call-back" onclick={onleave}
-              >Back to calls</button
+              >{leaveLabel}</button
             >
           </div>
         {:else}
@@ -203,7 +208,7 @@
             >
           {/if}
           <button type="button" class="h-9 rounded-md border border-white/20 px-4 text-sm font-semibold hover:bg-white/10" data-testid="call-back" onclick={onleave}
-            >Back to calls</button
+            >{leaveLabel}</button
           >
         </div>
       </div>
@@ -222,7 +227,7 @@
             >
           {/if}
           <button type="button" class="h-9 rounded-md border border-white/20 px-4 text-sm font-semibold hover:bg-white/10" data-testid="call-back" onclick={onleave}
-            >Back to calls</button
+            >{leaveLabel}</button
           >
         </div>
       </div>

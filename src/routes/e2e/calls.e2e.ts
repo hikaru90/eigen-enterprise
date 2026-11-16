@@ -7,10 +7,11 @@ import { completeProfileViaApi, profileNames, registerUser } from './test-helper
  * the harness's real livekit-server (playwright.config.ts starts it; joins and
  * leaves reach the console only through LiveKit's signed webhook). Chromium's
  * fake camera/microphone stand in for devices. DM call, decline, missed, a
- * three-person channel call, and (Contribute round 4) a call that survives
- * moving around the app — docked mini call, back to call, device pickers.
- * Screenshots go to CALLS_SHOTS (default
- * test-results/calls).
+ * three-person channel call, and a call in its own tab (owner, 2026-11-16):
+ * every call opens in a tab of its own, the main tab browses freely while
+ * the call goes on, the call tab cannot be navigated away from mid-call, and
+ * hanging up closes it. Device pickers. Screenshots go to CALLS_SHOTS
+ * (default test-results/calls).
  */
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim()
@@ -90,19 +91,48 @@ async function openDm(from: Member, to: Member) {
   ).toBeVisible()
 }
 
-/** Click Call in the open conversation; the caller lands on the call page. Returns the call id. */
-async function startCall(caller: Page): Promise<string> {
-  await expect(caller.getByTestId('messages-call')).toHaveAttribute('data-live', 'false')
-  await caller.getByTestId('messages-call').click()
-  await caller.waitForURL(/\/calls\/[0-9a-f-]{36}$/)
-  const id = new URL(caller.url()).pathname.split('/').pop()!
-  await expect(caller.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
-  return id
+const CALL_URL = /\/calls\/[0-9a-f-]{36}$/
+
+/** Click `trigger` in the member's main tab and follow the call tab it opens. */
+async function callTabFrom(m: Member, trigger: () => Promise<void>): Promise<Page> {
+  const before = m.page.url()
+  const [tab] = await Promise.all([m.ctx.waitForEvent('page'), trigger()])
+  await tab.waitForURL(CALL_URL)
+  // The main tab stays where it was: the call never runs in it.
+  expect(m.page.url()).toBe(before)
+  await expect(m.page.getByTestId('call-view')).toHaveCount(0)
+  return tab
+}
+
+/** Click Call in the open conversation; the call opens in its own tab. */
+async function startCall(caller: Member): Promise<{ id: string; tab: Page }> {
+  await expect(caller.page.getByTestId('messages-call')).toHaveAttribute('data-live', 'false')
+  const tab = await callTabFrom(caller, () => caller.page.getByTestId('messages-call').click())
+  const id = new URL(tab.url()).pathname.split('/').pop()!
+  await expect(tab.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
+  // Full-screen: no app shell, nothing to wander off to mid-call.
+  await expect(tab.getByTestId('shell-nav-messages')).toHaveCount(0)
+  return { id, tab }
 }
 
 /** The incoming-call toast for this call, on whatever nucleus page the callee is on. */
 const toast = (page: Page, callId: string) =>
   page.locator(`[data-testid="incoming-call"][data-call-id="${callId}"]`)
+
+/** Accept on the toast: the call opens (and is answered) in its own tab. */
+async function accept(m: Member, callId: string): Promise<Page> {
+  const ring = toast(m.page, callId)
+  const tab = await callTabFrom(m, () => ring.getByTestId('incoming-call-accept').click())
+  expect(new URL(tab.url()).pathname).toBe(`/calls/${callId}`)
+  await expect(ring).toHaveCount(0)
+  await expect(tab.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
+  return tab
+}
+
+/** Hang up: the call tab the app opened closes itself. */
+async function hangUp(tab: Page) {
+  await Promise.all([tab.waitForEvent('close'), tab.getByTestId('call-hangup').click()])
+}
 
 const remoteTiles = (page: Page) =>
   page.locator('[data-testid="call-tile"][data-local="false"][data-kind="camera"]')
@@ -166,20 +196,19 @@ test('DM call: ring on another page, accept, both see each other, hang up → "C
     'page',
   )
 
-  const callId = await startCall(ann.page)
-  await expect(ann.page.getByTestId('call-status')).toHaveText('Waiting for others to join…')
+  const { id: callId, tab: annCall } = await startCall(ann)
+  await expect(annCall.getByTestId('call-status')).toHaveText('Waiting for others to join…')
 
   const ring = toast(ben.page, callId)
   await expect(ring).toBeVisible()
   await expect(ring.getByTestId('incoming-call-caller')).toHaveText(ann.name)
   await ben.page.screenshot({ path: `${SHOTS}/dm-01-incoming-toast.png` })
-  await ring.getByTestId('incoming-call-accept').click()
-  await ben.page.waitForURL(new RegExp(`/calls/${callId}$`))
-  await expect(ben.page.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
+  const benCall = await accept(ben, callId)
+  await expect(ben.page).toHaveURL(/\/drive/)
 
-  await expectRemoteVideo(ann.page, [ben.name])
-  await expectRemoteVideo(ben.page, [ann.name])
-  await expect(ann.page.getByTestId('call-status')).toHaveText('2 in the call')
+  await expectRemoteVideo(annCall, [ben.name])
+  await expectRemoteVideo(benCall, [ann.name])
+  await expect(annCall.getByTestId('call-status')).toHaveText('2 in the call')
   // The webhook (not the browsers) put both in the call.
   await expect.poll(async () => (await stored(callId)).state).toBe('active')
   const live = await stored(callId)
@@ -190,18 +219,21 @@ test('DM call: ring on another page, accept, both see each other, hang up → "C
       .sort(),
   ).toEqual([ann.id, ben.id].sort())
 
-  await ann.page.screenshot({ path: `${SHOTS}/dm-02-call-desktop.png` })
-  await ben.page.setViewportSize(PHONE)
-  await expectRemoteVideo(ben.page, [ann.name])
-  await ben.page.screenshot({ path: `${SHOTS}/dm-03-call-phone.png` })
+  await annCall.screenshot({ path: `${SHOTS}/dm-02-call-desktop.png` })
+  await benCall.setViewportSize(PHONE)
+  await expectRemoteVideo(benCall, [ann.name])
+  await benCall.screenshot({ path: `${SHOTS}/dm-03-call-phone.png` })
 
-  await ann.page.getByTestId('call-hangup').click()
-  await ann.page.waitForURL(/\/calls$/)
-  await expect(ben.page.getByTestId('call-ended')).toBeVisible()
-  await expect(ben.page.getByTestId('call-ended')).toHaveAttribute('data-reason', 'call_over')
-  await expect(ben.page.getByTestId('call-ended')).toContainText('The call has ended.')
-  await ben.page.screenshot({ path: `${SHOTS}/dm-04-ended-phone.png` })
+  await hangUp(annCall)
+  const ended = benCall.getByTestId('call-ended')
+  await expect(ended).toBeVisible()
+  await expect(ended).toHaveAttribute('data-reason', 'call_over')
+  await expect(ended).toContainText('The call has ended.')
+  await benCall.screenshot({ path: `${SHOTS}/dm-04-ended-phone.png` })
   await expect.poll(async () => (await stored(callId)).state).toBe('ended')
+  // The call is over: its tab offers Close (the app opened it) and closes.
+  await expect(ended.getByTestId('call-back')).toHaveText('Close')
+  await Promise.all([benCall.waitForEvent('close'), ended.getByTestId('call-back').click()])
 
   for (const [who, other] of [
     [ann, ben],
@@ -228,7 +260,7 @@ test('DM call declined: the caller is told, "Declined call" in the DM', async ({
   await openDm(ann, ben)
   await ben.page.goto('/drive')
 
-  const callId = await startCall(ann.page)
+  const { id: callId, tab: annCall } = await startCall(ann)
   // Ann is really in the room before Bob says no.
   await expect
     .poll(
@@ -242,9 +274,9 @@ test('DM call declined: the caller is told, "Declined call" in the DM', async ({
   await expect(ring).toHaveCount(0)
   await expect(ben.page).toHaveURL(/\/drive/)
 
-  await expect(ann.page.getByTestId('call-ended')).toHaveAttribute('data-reason', 'call_over')
-  await expect(ann.page.getByTestId('call-ended')).toContainText('The call was declined.')
-  await ann.page.screenshot({ path: `${SHOTS}/declined-01-caller.png` })
+  await expect(annCall.getByTestId('call-ended')).toHaveAttribute('data-reason', 'call_over')
+  await expect(annCall.getByTestId('call-ended')).toContainText('The call was declined.')
+  await annCall.screenshot({ path: `${SHOTS}/declined-01-caller.png` })
   expect((await stored(callId)).state).toBe('declined')
 
   for (const [who, other] of [
@@ -272,17 +304,17 @@ test('DM call nobody answers: rings out, the caller is told, "Missed call" in th
   await openDm(ann, ben)
   await ben.page.goto('/drive')
 
-  const callId = await startCall(ann.page)
+  const { id: callId, tab: annCall } = await startCall(ann)
   const ring = toast(ben.page, callId)
   await expect(ring).toBeVisible()
 
   // The ring window closes: the toast goes away and the room is closed under the caller.
   await expect(ring).toHaveCount(0, { timeout: 75_000 })
-  await expect(ann.page.getByTestId('call-ended')).toHaveAttribute('data-reason', 'call_over', {
+  await expect(annCall.getByTestId('call-ended')).toHaveAttribute('data-reason', 'call_over', {
     timeout: 30_000,
   })
-  await expect(ann.page.getByTestId('call-ended')).toContainText('Nobody answered.')
-  await ann.page.screenshot({ path: `${SHOTS}/missed-01-caller.png` })
+  await expect(annCall.getByTestId('call-ended')).toContainText('Nobody answered.')
+  await annCall.screenshot({ path: `${SHOTS}/missed-01-caller.png` })
   expect((await stored(callId)).state).toBe('missed')
 
   for (const [who, other] of [
@@ -327,42 +359,39 @@ test('three-person channel call: two accept, everyone sees two remote videos, al
   await ben.page.goto('/drive')
   await cat.page.goto('/calls')
 
-  const callId = await startCall(ann.page)
+  const { id: callId, tab: annCall } = await startCall(ann)
+  const tabs: Page[] = []
   for (const m of [ben, cat]) {
     const ring = toast(m.page, callId)
     await expect(ring).toBeVisible()
     await expect(ring.getByTestId('incoming-call-where')).toHaveText(`Call in #${channel}`)
-    await ring.getByTestId('incoming-call-accept').click()
-    await m.page.waitForURL(new RegExp(`/calls/${callId}$`))
+    tabs.push(await accept(m, callId))
   }
+  const [benCall, catCall] = tabs
 
-  await expectRemoteVideo(ann.page, [ben.name, cat.name])
-  await expectRemoteVideo(ben.page, [ann.name, cat.name])
-  await expectRemoteVideo(cat.page, [ann.name, ben.name])
-  await expect(ann.page.getByTestId('call-status')).toHaveText('3 in the call')
-  await ann.page.screenshot({ path: `${SHOTS}/channel-01-call-desktop.png` })
-  await cat.page.setViewportSize(PHONE)
-  await expectRemoteVideo(cat.page, [ann.name, ben.name])
+  await expectRemoteVideo(annCall, [ben.name, cat.name])
+  await expectRemoteVideo(benCall, [ann.name, cat.name])
+  await expectRemoteVideo(catCall, [ann.name, ben.name])
+  await expect(annCall.getByTestId('call-status')).toHaveText('3 in the call')
+  await annCall.screenshot({ path: `${SHOTS}/channel-01-call-desktop.png` })
+  await catCall.setViewportSize(PHONE)
+  await expectRemoteVideo(catCall, [ann.name, ben.name])
   // Three people: a grid sized to the window — on a 375px phone, one column.
-  await expect(ann.page.getByTestId('call-view')).toHaveAttribute('data-mode', 'grid')
-  await expect(cat.page.getByTestId('call-grid')).toHaveAttribute('data-columns', '1')
-  await cat.page.screenshot({ path: `${SHOTS}/channel-02-call-phone.png`, fullPage: true })
+  await expect(annCall.getByTestId('call-view')).toHaveAttribute('data-mode', 'grid')
+  await expect(catCall.getByTestId('call-grid')).toHaveAttribute('data-columns', '1')
+  await catCall.screenshot({ path: `${SHOTS}/channel-02-call-phone.png`, fullPage: true })
 
   // One leaves: the call goes on for the other two.
-  await ben.page.getByTestId('call-hangup').click()
-  await ben.page.waitForURL(/\/calls$/)
-  await expectRemoteVideo(ann.page, [cat.name])
-  await expectRemoteVideo(cat.page, [ann.name])
+  await hangUp(benCall)
+  await expectRemoteVideo(annCall, [cat.name])
+  await expectRemoteVideo(catCall, [ann.name])
   expect((await stored(callId)).state).toBe('active')
 
-  await ann.page.getByTestId('call-hangup').click()
-  await ann.page.waitForURL(/\/calls$/)
-  await cat.page.getByTestId('call-hangup').click()
-  await cat.page.waitForURL(/\/calls$/)
+  await hangUp(annCall)
+  await hangUp(catCall)
   await expect.poll(async () => (await stored(callId)).state).toBe('ended')
 
   for (const m of [ann, ben, cat]) {
-    await m.page.setViewportSize(DESKTOP)
     await openMessages(m.page)
     await conv(m.page, channel).click()
     await expect(callLines(m.page)).toHaveCount(1)
@@ -374,10 +403,6 @@ test('three-person channel call: two accept, everyone sees two remote videos, al
   await ben.ctx.close()
   await cat.ctx.close()
 })
-
-/** The docked mini call (on every nucleus page but the call's own, while I am in it). */
-const mini = (page: Page, callId: string) =>
-  page.locator(`[data-testid="mini-call"][data-call-id="${callId}"]`)
 
 /** Exactly these people are in the room right now, as LiveKit's webhook told the console. */
 async function inRoom(callId: string, ids: string[]) {
@@ -391,7 +416,7 @@ async function inRoom(callId: string, ids: string[]) {
   ).toEqual([...ids].sort())
 }
 
-test('the call survives moving around the app: mini call elsewhere, back to call shows video; devices can be chosen', async ({
+test('a call runs in its own tab: the main tab browses freely, the call tab cannot be left mid-call; devices can be chosen', async ({
   browser,
 }) => {
   test.setTimeout(240_000)
@@ -401,61 +426,87 @@ test('the call survives moving around the app: mini call elsewhere, back to call
   await openDm(ann, ben)
   await ben.page.goto('/drive')
 
-  const callId = await startCall(ann.page)
-  const ring = toast(ben.page, callId)
-  await expect(ring).toBeVisible()
-  await ring.getByTestId('incoming-call-accept').click()
-  await ben.page.waitForURL(new RegExp(`/calls/${callId}$`))
-  await expectRemoteVideo(ann.page, [ben.name])
-  await expectRemoteVideo(ben.page, [ann.name])
+  const { id: callId, tab: annCall } = await startCall(ann)
+  await expect(toast(ben.page, callId)).toBeVisible()
+  const benCall = await accept(ben, callId)
+  await expectRemoteVideo(annCall, [ben.name])
+  await expectRemoteVideo(benCall, [ann.name])
   // Two people: the other person fills the stage, I am the small self view.
-  await expect(ann.page.getByTestId('call-view')).toHaveAttribute('data-mode', 'pair')
+  await expect(annCall.getByTestId('call-view')).toHaveAttribute('data-mode', 'pair')
   await expect.poll(async () => (await stored(callId)).state).toBe('active')
-  await expect(mini(ann.page, callId)).toHaveCount(0)
 
-  // Ann looks something up in Email, Ben goes to Drive — in-app navigation, no reloads.
+  // The main tabs browse the app — in-app navigation, no reloads — and stay clean.
   await ann.page.getByTestId('shell-nav-email').click()
   await ann.page.waitForURL(/\/m\/email/)
-  await ben.page.getByTestId('shell-nav-drive').click()
-  await ben.page.waitForURL(/\/drive/)
-  for (const [who, other] of [
-    [ann, ben],
-    [ben, ann],
-  ] as const) {
-    const dock = mini(who.page, callId)
-    await expect(dock).toBeVisible()
-    await expect(dock).toHaveAttribute('data-phase', 'connected')
-    await expect(dock.getByTestId('mini-call-who')).toHaveText(other.name)
-    await expect(dock.getByTestId('mini-call-status')).toHaveText(/^\d+:\d\d$/)
-    await expect(who.page.getByTestId('call-view')).toHaveCount(0)
+  await ben.page.getByTestId('shell-nav-messages').click()
+  await ben.page.waitForURL(/\/messages/)
+  for (const m of [ann, ben]) {
+    await expect(m.page.getByTestId('call-view')).toHaveCount(0)
+    await expect(m.page.getByTestId('mini-call')).toHaveCount(0)
   }
-  await ann.page.screenshot({ path: `${SHOTS}/nav-01-mini-call-desktop.png` })
-  await ben.page.setViewportSize(PHONE)
-  await ben.page.screenshot({ path: `${SHOTS}/nav-02-mini-call-phone.png` })
-  // Nobody left the room while away from the call page.
+  await ann.page.screenshot({ path: `${SHOTS}/tab-01-main-tab-email.png` })
+  // The calls go on in their tabs.
+  for (const [tab, other] of [
+    [annCall, ben],
+    [benCall, ann],
+  ] as const) {
+    await expect(tab.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
+    await expectRemoteVideo(tab, [other.name])
+  }
   await inRoom(callId, [ann.id, ben.id])
 
-  // Mute from the dock.
-  await mini(ann.page, callId).getByTestId('mini-call-mic').click()
-  await expect(mini(ann.page, callId).getByTestId('mini-call-mic')).toHaveAttribute('data-on', 'false')
+  // The main tab knows I am in a call (another tab): Join on /calls brings
+  // the call's tab to the front instead of loading the call a second time.
+  await annCall.evaluate(() => ((window as unknown as { __callTabMark: number }).__callTabMark = 1))
+  await ann.page.getByTestId('shell-nav-calls').click()
+  await ann.page.waitForURL(/\/calls$/)
+  const join = ann.page.locator(`[data-testid="calls-live-item"][data-id="${callId}"]`).getByTestId('calls-join')
+  await expect(join).toHaveText('Rejoin')
+  const pages = ann.ctx.pages().length
+  await join.click()
+  await expect(ann.page.getByTestId('calls-join-error')).toHaveCount(0)
+  expect(ann.ctx.pages()).toHaveLength(pages)
+  expect(await annCall.evaluate(() => (window as unknown as { __callTabMark?: number }).__callTabMark)).toBe(1)
+  await expect(annCall.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
+  // One call at a time across tabs: a meeting cannot be started from the main tab.
+  await ann.page.getByTestId('calls-new-meeting').click()
+  await ann.page.locator(`[data-testid="calls-meeting-person"][data-email="${ben.email}"]`).check()
+  await ann.page.getByTestId('calls-meeting-start').click()
+  await expect(ann.page.getByTestId('calls-meeting-error')).toContainText("You're already in a call")
+  expect(ann.ctx.pages()).toHaveLength(pages)
+  await ann.page.keyboard.press('Escape')
 
-  // Back to call: the call page shows the live call again, video attached.
-  await mini(ben.page, callId).getByTestId('mini-call-back').click()
-  await ben.page.waitForURL(new RegExp(`/calls/${callId}$`))
-  await expect(mini(ben.page, callId)).toHaveCount(0)
-  await expect(ben.page.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
-  await expectRemoteVideo(ben.page, [ann.name])
-  await expect(remoteTiles(ben.page)).toHaveAttribute('data-muted', 'true')
-  await ben.page.screenshot({ path: `${SHOTS}/nav-03-back-to-call-phone.png` })
-  await mini(ann.page, callId).getByTestId('mini-call-back').click()
-  await ann.page.waitForURL(new RegExp(`/calls/${callId}$`))
-  await expectRemoteVideo(ann.page, [ben.name])
-  await expect(ann.page.getByTestId('call-mic')).toHaveAttribute('data-on', 'false')
+  // In the call tab, navigating away is refused while the call is live.
+  await annCall.evaluate(() => {
+    const a = document.createElement('a')
+    a.href = '/drive'
+    a.textContent = 'Drive'
+    a.dataset.testid = 'stray-link'
+    document.body.append(a)
+  })
+  await annCall.getByTestId('stray-link').click()
+  await expect(annCall.getByTestId('call-tab-notice')).toHaveText("You're in a call. Hang up first to leave it.")
+  expect(new URL(annCall.url()).pathname).toBe(`/calls/${callId}`)
+  await expect(annCall.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
+  await annCall.screenshot({ path: `${SHOTS}/tab-02-leave-blocked.png` })
+  // Closing the tab asks first (the browser's own "leave this page?"); staying keeps the call.
+  const asked = annCall.waitForEvent('dialog')
+  await annCall.close({ runBeforeUnload: true })
+  const dialog = await asked
+  expect(dialog.type()).toBe('beforeunload')
+  await dialog.dismiss()
+  expect(annCall.isClosed()).toBe(false)
+  await expect(annCall.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
   await inRoom(callId, [ann.id, ben.id])
+
+  // Mute in the call tab: Ben sees it.
+  await annCall.getByTestId('call-mic').click()
+  await expect(annCall.getByTestId('call-mic')).toHaveAttribute('data-on', 'false')
+  await expect(remoteTiles(benCall)).toHaveAttribute('data-muted', 'true')
 
   // Devices (Chromium's fake devices): another microphone; remembered in this browser.
-  await ann.page.getByTestId('call-devices-toggle').click()
-  const micSelect = ann.page.getByTestId('call-device-audioinput')
+  await annCall.getByTestId('call-devices-toggle').click()
+  const micSelect = annCall.getByTestId('call-device-audioinput')
   await expect(micSelect).toBeVisible()
   const mics = await micSelect
     .locator('option')
@@ -464,23 +515,28 @@ test('the call survives moving around the app: mini call elsewhere, back to call
   const otherMic = mics.find((id) => id !== 'default' && id !== 'communications')!
   await micSelect.selectOption(otherMic)
   await expect(micSelect).toHaveValue(otherMic)
-  await expect(ann.page.getByTestId('call-device-problem')).toHaveCount(0)
+  await expect(annCall.getByTestId('call-device-problem')).toHaveCount(0)
   // Chromium can route call sound to a chosen speaker (setSinkId): no "cannot choose" note.
-  await expect(ann.page.getByTestId('call-speaker-unsupported')).toHaveCount(0)
-  await expect(ann.page.getByTestId('call-device-videoinput')).toBeVisible()
-  await ann.page.screenshot({ path: `${SHOTS}/nav-04-devices-desktop.png` })
-  const remembered = await ann.page.evaluate(() => localStorage.getItem('ee.calls.devices'))
+  await expect(annCall.getByTestId('call-speaker-unsupported')).toHaveCount(0)
+  await expect(annCall.getByTestId('call-device-videoinput')).toBeVisible()
+  await annCall.screenshot({ path: `${SHOTS}/tab-03-devices-desktop.png` })
+  const remembered = await annCall.evaluate(() => localStorage.getItem('ee.calls.devices'))
   expect(JSON.parse(remembered ?? '{}')).toMatchObject({ audioinput: otherMic })
   // The call goes on after the switch: Ben still gets Ann's video.
-  await expectRemoteVideo(ben.page, [ann.name])
+  await expectRemoteVideo(benCall, [ann.name])
 
-  // Hang up from the dock on another page: the DM call ends for both.
-  await ann.page.getByTestId('shell-nav-messages').click()
-  await ann.page.waitForURL(/\/messages/)
-  await mini(ann.page, callId).getByTestId('mini-call-hangup').click()
-  await expect(mini(ann.page, callId)).toHaveCount(0)
-  await expect(ben.page.getByTestId('call-ended')).toHaveAttribute('data-reason', 'call_over')
+  // Hang up: Ann's call tab closes, the DM call ends for both, and the main
+  // tab may start calls again.
+  await hangUp(annCall)
+  await expect(benCall.getByTestId('call-ended')).toHaveAttribute('data-reason', 'call_over')
   await expect.poll(async () => (await stored(callId)).state).toBe('ended')
+  await ann.page.getByTestId('calls-new-meeting').click()
+  await ann.page.locator(`[data-testid="calls-meeting-person"][data-email="${ben.email}"]`).check()
+  const [meetingTab] = await Promise.all([ann.ctx.waitForEvent('page'), ann.page.getByTestId('calls-meeting-start').click()])
+  await meetingTab.waitForURL(CALL_URL)
+  await expect(meetingTab.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
+  expect(new URL(ann.page.url()).pathname).toBe('/calls')
+  await hangUp(meetingTab)
 
   await ann.ctx.close()
   await ben.ctx.close()

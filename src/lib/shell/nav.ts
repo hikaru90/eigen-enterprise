@@ -117,16 +117,17 @@ export type ShellData = {
 
 /**
  * Whether a page renders inside the shell. The welcome tour and the first-run
- * provider gate are full-screen flows of their own; signed-out pages carry no
- * shell data at all.
+ * provider gate are full-screen flows of their own, and so is a call's own tab
+ * (no nav to wander off to mid-call); signed-out pages carry no shell data at all.
  */
 export function shellVisible(data: {
   shell?: ShellData | null
   showWelcome?: boolean
   needsOnboarding?: boolean
+  callTab?: boolean
 }): boolean {
   if (!data.shell) return false
-  return data.showWelcome !== true && data.needsOnboarding !== true
+  return data.showWelcome !== true && data.needsOnboarding !== true && data.callTab !== true
 }
 
 /** Route match: exact for "/", segment prefix for everything else. */

@@ -6,15 +6,13 @@ import CallView from './call-view.svelte'
 import { CallRequestError, type CallDto, type CallTokenDto } from './client'
 import { DEVICES_KEY } from './devices'
 import { FakeRoom, fakeCall, fakeEnv, fakeToken, memoryStorage, remotePerson } from './fake-room'
-import { LiveCalls } from './live-calls.svelte'
-import MiniCall from './mini-call.svelte'
 
-/** The live call as the nucleus layout holds it, over a fake room (no server). */
-function liveCall(opts: { room?: FakeRoom; env?: Partial<CallEnv>; token?: () => Promise<CallTokenDto> } = {}) {
+/** The live call as the call page holds it, over a fake room (no server). */
+function liveCall(opts: { room?: FakeRoom; env?: Partial<CallEnv>; token?: () => Promise<CallTokenDto>; accept?: () => Promise<CallDto> } = {}) {
   const room = opts.room ?? new FakeRoom()
   const env = fakeEnv(opts.env)
   const client = {
-    accept: vi.fn(async () => fakeCall()),
+    accept: vi.fn(opts.accept ?? (async () => fakeCall())),
     token: vi.fn(opts.token ?? (async () => fakeToken)),
     hangup: vi.fn(async () => fakeCall({ state: 'ended' })),
     get: vi.fn(async () => fakeCall({ state: 'missed' })),
@@ -26,9 +24,10 @@ function liveCall(opts: { room?: FakeRoom; env?: Partial<CallEnv>; token?: () =>
 
 function view(active: ActiveCall, call: CallDto = fakeCall()) {
   const onleave = vi.fn()
+  const onhungup = vi.fn()
   const onopen = vi.fn()
-  const r = render(CallView, { active, call, me: 'ann', onleave, onopen })
-  return { onleave, onopen, r }
+  const r = render(CallView, { active, call, me: 'ann', leaveLabel: 'Close', onleave, onhungup, onopen })
+  return { onleave, onhungup, onopen, r }
 }
 
 function setup(opts: Parameters<typeof liveCall>[0] & { call?: CallDto } = {}) {
@@ -118,11 +117,13 @@ describe('call-view.svelte', () => {
     await expect.element(page.getByRole('button', { name: 'Share screen' })).toBeInTheDocument()
   })
 
-  it('hang up leaves the room, tells the server once, then leaves the page', async () => {
-    const { room, client, onleave, r } = setup()
+  it('hang up leaves the room, tells the server once, then says so (the call tab closes itself)', async () => {
+    const { room, client, onhungup, onleave, r } = setup()
     await connected()
     await page.getByTestId('call-hangup').click()
-    await vi.waitFor(() => expect(onleave).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(onhungup).toHaveBeenCalledOnce())
+    expect(onleave).not.toHaveBeenCalled()
+    await expect.element(page.getByTestId('call-ended')).toHaveAttribute('data-reason', 'hung_up')
     expect(room.disconnects).toBe(1)
     expect(client.hangup).toHaveBeenCalledExactlyOnceWith('call-1', { keepalive: false })
     r.unmount()
@@ -188,13 +189,31 @@ describe('call-view.svelte', () => {
     await expect.element(page.getByTestId('call-camera')).toHaveAttribute('data-on', 'false')
   })
 
-  it('the call closing on the server ends the view with how it ended', async () => {
-    const { room, client } = setup()
+  it('the call closing on the server ends the view with how it ended; the leave button is the page\'s', async () => {
+    const { room, client, onleave, onhungup } = setup()
     await connected()
     room.emit({ type: 'disconnected', reason: 'call_over' })
     await expect.element(page.getByTestId('call-ended')).toHaveAttribute('data-reason', 'call_over')
     await expect.element(page.getByTestId('call-ended')).toHaveTextContent('Nobody answered.')
     expect(client.get).toHaveBeenCalledWith('call-1')
+    const back = page.getByTestId('call-back')
+    await expect.element(back).toHaveTextContent('Close')
+    await back.click()
+    expect(onleave).toHaveBeenCalledOnce()
+    expect(onhungup).not.toHaveBeenCalled()
+  })
+
+  it('a refused accept (Accept on the toast opens this tab, which answers): says why here', async () => {
+    const { client, createRoom } = setup({
+      call: fakeCall({}, 'none'),
+      accept: async () => {
+        throw new CallRequestError({ kind: 'over', message: 'this call is over' })
+      },
+    })
+    const problem = page.getByTestId('call-problem')
+    await expect.element(problem.getByRole('alert')).toHaveTextContent('this call is over')
+    expect(client.token).not.toHaveBeenCalled()
+    expect(createRoom).not.toHaveBeenCalled()
   })
 
   it('a lost connection offers Rejoin, which joins again', async () => {
@@ -251,94 +270,5 @@ describe('device picker in the call controls', () => {
     await page.getByTestId('call-devices-toggle').click()
     env.media.change([...env.media.list, { kind: 'audioinput', deviceId: 'mic-new', label: 'Conference mic' }])
     await vi.waitFor(() => expect((page.getByTestId('call-device-audioinput').element() as HTMLSelectElement).options).toHaveLength(3))
-  })
-})
-
-describe('mini-call.svelte (docked on other pages)', () => {
-  function dock(active: ActiveCall, opts: { hidden?: boolean; live?: LiveCalls } = {}) {
-    const onopen = vi.fn()
-    const live = opts.live ?? new LiveCalls()
-    const r = render(MiniCall, { active, live, hidden: opts.hidden ?? false, onopen })
-    return { onopen, live, r }
-  }
-
-  async function inCall(over: Partial<CallDto> = {}) {
-    const l = liveCall()
-    l.active.open(fakeCall(over), 'ann')
-    await vi.waitFor(() => expect(l.active.state.camera).toBe(true))
-    return l
-  }
-
-  it('nothing shown without a call, nor on the call page itself', async () => {
-    const { active } = liveCall()
-    dock(active)
-    expect(page.getByTestId('mini-call').elements()).toHaveLength(0)
-    const l = await inCall()
-    dock(l.active, { hidden: true })
-    expect(page.getByTestId('mini-call').elements()).toHaveLength(0)
-  })
-
-  it('shows who is in it and how long it runs; Back to call opens the call', async () => {
-    const { active, room } = await inCall()
-    const live = new LiveCalls()
-    live.apply('call.state', fakeCall({ state: 'active', answeredAt: new Date(Date.now() - 65_000).toISOString(), ringUntil: new Date(Date.now() + 1000).toISOString() }))
-    room.remote = [remotePerson()]
-    room.emit({ type: 'participants' })
-    const { onopen } = dock(active, { live })
-    const mini = page.getByTestId('mini-call')
-    await expect.element(mini.getByTestId('mini-call-title')).toHaveTextContent('Ann Example, Ben Example')
-    await expect.element(mini.getByTestId('mini-call-who')).toHaveTextContent('Ben Example')
-    await expect.element(mini.getByTestId('mini-call-people')).toHaveAttribute('data-count', '2')
-    await expect.element(mini.getByTestId('mini-call-status')).toHaveTextContent(/^1:0\d$/)
-    await mini.getByTestId('mini-call-back').click()
-    expect(onopen).toHaveBeenCalledExactlyOnceWith('call-1')
-  })
-
-  it('alone in the call: waiting for others', async () => {
-    const { active } = await inCall()
-    dock(active)
-    await expect.element(page.getByTestId('mini-call-status')).toHaveTextContent('Waiting for others…')
-    await expect.element(page.getByTestId('mini-call-who')).toHaveTextContent('Only you')
-  })
-
-  it('mute and camera drive the room; hang up ends the call and the dock goes', async () => {
-    const { active, room, client } = await inCall()
-    dock(active)
-    await page.getByTestId('mini-call-mic').click()
-    expect(room.devices.microphone).toBe(false)
-    await expect.element(page.getByTestId('mini-call-mic')).toHaveAttribute('data-on', 'false')
-    await page.getByTestId('mini-call-camera').click()
-    expect(room.devices.camera).toBe(false)
-    await page.getByTestId('mini-call-hangup').click()
-    await expect.element(page.getByTestId('mini-call')).not.toBeInTheDocument()
-    expect(client.hangup).toHaveBeenCalledExactlyOnceWith('call-1', { keepalive: false })
-    expect(room.disconnects).toBe(1)
-    expect(active.call).toBeNull()
-  })
-
-  it('the device picker opens from the dock too', async () => {
-    const { active, room } = await inCall()
-    dock(active)
-    await page.getByTestId('mini-call-devices-toggle').click()
-    await page.getByTestId('call-device-audioinput').selectOptions('mic-usb')
-    await vi.waitFor(() => expect(room.switches).toEqual([['audioinput', 'mic-usb']]))
-  })
-
-  it('the call ending while I am elsewhere: the dock says so until dismissed', async () => {
-    const { active, room } = await inCall()
-    dock(active)
-    room.emit({ type: 'disconnected', reason: 'call_over' })
-    await expect.element(page.getByTestId('mini-call-ended')).toHaveTextContent('The call has ended.')
-    await page.getByTestId('mini-call-dismiss').click()
-    await expect.element(page.getByTestId('mini-call')).not.toBeInTheDocument()
-  })
-
-  it('a lost connection: Rejoin from the dock', async () => {
-    const { active, room, client } = await inCall()
-    dock(active)
-    room.emit({ type: 'disconnected', reason: 'connection_lost' })
-    await page.getByTestId('mini-call-rejoin').click()
-    await expect.element(page.getByTestId('mini-call')).toHaveAttribute('data-phase', 'connected')
-    expect(client.token).toHaveBeenCalledTimes(2)
   })
 })

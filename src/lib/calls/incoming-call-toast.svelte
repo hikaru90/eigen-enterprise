@@ -5,6 +5,7 @@
   import X from '@lucide/svelte/icons/x'
   import { onDestroy, onMount } from 'svelte'
   import UserAvatar from '$lib/components/user-avatar.svelte'
+  import { openCallTab, type OpenWindow } from './call-tab'
   import { problemOf, type CallDto, type CallsClient } from './client'
   import { webAudioRinger, type Ringer } from './ringtone'
 
@@ -13,25 +14,31 @@
    * the nucleus layout. Shows every call ringing for me with Accept / Decline
    * and plays the ringtone while anything rings. The feed (LiveCalls) hides a
    * call when it stops ringing for me — answered elsewhere, cancelled, missed.
+   *
+   * Accept opens the call in its own tab (call-tab.ts) right in the click and
+   * the call tab answers it (ActiveCall accepts before joining): a refused
+   * accept ("this call is over") is shown there, in the tab I am looking at.
+   * Here the ring stops at once. A blocked tab is said here and the call keeps
+   * ringing, so Accept can be tried again once pop-ups are allowed.
    */
   let {
     live,
     client,
-    onjoin,
     inCall = null,
     ringer = webAudioRinger(),
+    open,
   }: {
     live: LiveCalls
-    client: Pick<CallsClient, 'accept' | 'decline'>
-    /** The call I am in right now (one call at a time: another one cannot be accepted). */
+    client: Pick<CallsClient, 'decline'>
+    /** The call I am in right now, in any tab (one call at a time: another one cannot be accepted). */
     inCall?: string | null
-    /** Go to the call page (after a successful accept). */
-    onjoin: (callId: string) => void
     ringer?: Ringer
+    /** window.open (a spec's fake in component specs). */
+    open?: OpenWindow
   } = $props()
 
-  let busy = $state<Record<string, 'accept' | 'decline'>>({})
-  /** A refused accept/decline stays visible until dismissed, even after the call stops ringing. */
+  let busy = $state<Record<string, 'decline'>>({})
+  /** A refused decline or a blocked tab stays visible until dismissed, even after the call stops ringing. */
   let failed = $state<Array<{ call: CallDto; message: string }>>([])
 
   const ringing = $derived(live.ringing)
@@ -56,20 +63,34 @@
 
   const blocked = (c: CallDto) => inCall !== null && inCall !== c.id
 
-  async function answer(c: CallDto, action: 'accept' | 'decline') {
-    if (busy[c.id]) return
-    if (action === 'accept' && blocked(c)) return
-    busy = { ...busy, [c.id]: action }
+  const fail = (c: CallDto, err: unknown) =>
+    (failed = [...failed.filter((f) => f.call.id !== c.id), { call: c, message: problemOf(err).message }])
+
+  /** Synchronous on purpose: the tab must open within the click. */
+  function accept(c: CallDto) {
+    if (busy[c.id] || blocked(c)) return
     try {
-      if (action === 'accept') await client.accept(c.id)
-      else await client.decline(c.id)
+      openCallTab(c.id, open)
+    } catch (err) {
+      fail(c, err)
+      return
+    }
+    failed = failed.filter((f) => f.call.id !== c.id)
+    live.dismiss(c.id)
+    syncRingtone()
+  }
+
+  async function decline(c: CallDto) {
+    if (busy[c.id]) return
+    busy = { ...busy, [c.id]: 'decline' }
+    try {
+      await client.decline(c.id)
       live.dismiss(c.id)
       syncRingtone()
-      if (action === 'accept') onjoin(c.id)
     } catch (err) {
       live.dismiss(c.id)
       syncRingtone()
-      failed = [...failed.filter((f) => f.call.id !== c.id), { call: c, message: problemOf(err).message }]
+      fail(c, err)
     } finally {
       busy = Object.fromEntries(Object.entries(busy).filter(([id]) => id !== c.id))
     }
@@ -78,11 +99,7 @@
 
 {#if ringing.length > 0 || failed.length > 0}
   <div
-    class={[
-      'pointer-events-none fixed inset-x-0 top-0 z-[60] flex flex-col items-center gap-2 p-3 sm:inset-x-auto sm:top-auto sm:right-0 sm:items-end sm:p-5',
-      // Above the docked mini call while I am in a call.
-      inCall ? 'sm:bottom-40' : 'sm:bottom-0',
-    ]}
+    class="pointer-events-none fixed inset-x-0 top-0 z-[60] flex flex-col items-center gap-2 p-3 sm:inset-x-auto sm:top-auto sm:right-0 sm:bottom-0 sm:items-end sm:p-5"
     data-testid="incoming-calls"
   >
     {#each ringing as c (c.id)}
@@ -113,7 +130,7 @@
           title="Decline"
           disabled={busy[c.id] !== undefined}
           data-testid="incoming-call-decline"
-          onclick={() => answer(c, 'decline')}><PhoneOff class="size-4" /></button
+          onclick={() => decline(c)}><PhoneOff class="size-4" /></button
         >
         <button
           type="button"
@@ -122,7 +139,7 @@
           title="Accept"
           disabled={busy[c.id] !== undefined || blocked(c)}
           data-testid="incoming-call-accept"
-          onclick={() => answer(c, 'accept')}><Phone class="size-4" /></button
+          onclick={() => accept(c)}><Phone class="size-4" /></button
         >
       </div>
     {/each}

@@ -7,9 +7,10 @@
   import Users from '@lucide/svelte/icons/users'
   import Video from '@lucide/svelte/icons/video'
   import { onDestroy, onMount } from 'svelte'
-  import { goto, invalidate } from '$app/navigation'
+  import { invalidate } from '$app/navigation'
   import { resolve } from '$app/paths'
-  import { getActiveCall } from '$lib/calls/active-call.svelte'
+  import { getCallPresence } from '$lib/calls/call-presence.svelte'
+  import { openCallTab, reserveCallTab } from '$lib/calls/call-tab'
   import { callsClient, problemOf, type CallDto } from '$lib/calls/client'
   import { CALLS_DEPENDENCY, historyOf } from '$lib/calls/format'
   import { getLiveCalls } from '$lib/calls/live-calls.svelte'
@@ -25,12 +26,13 @@
   /**
    * /calls (plan/video-calls.md §3): live calls to join or rejoin (from the
    * layout's call feed), my recent calls, and New meeting — pick people,
-   * start a meeting, land on its call page.
+   * start a meeting. Every call opens in its own tab (call-tab.ts); this page
+   * stays as it is.
    */
   let { data }: { data: PageData } = $props()
 
   const liveCalls = getLiveCalls()
-  const activeCall = getActiveCall()
+  const presence = getCallPresence()
   const client = callsClient()
 
   const isLive = (c: CallDto) => c.state === 'ringing' || c.state === 'active'
@@ -39,7 +41,21 @@
   const recent = $derived(data.calls.filter((c) => !isLive(c)))
   const others = $derived(data.people.filter((p) => p.id !== data.me))
 
-  const openCall = (id: string) => goto(resolve(`/calls/${id}`))
+  /** Join / Rejoin: the call's tab (focused when it is open already). One call at a time across tabs. */
+  let joinError = $state<string | null>(null)
+  function joinCall(c: CallDto) {
+    joinError = null
+    const current = presence.current
+    if (current && current.id !== c.id) {
+      joinError = `You're already in a call (${current.title}). Hang up first to join this one.`
+      return
+    }
+    try {
+      openCallTab(c.id)
+    } catch (err) {
+      joinError = problemOf(err).message
+    }
+  }
   const conversationHref = (c: CallDto) => `${resolve('/messages')}?c=${encodeURIComponent(c.contextId ?? '')}`
 
   const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
@@ -95,17 +111,27 @@
     e.preventDefault()
     if (meetingPeople.length === 0 || starting) return
     // One call at a time: never ring people for a meeting I cannot join.
-    if (activeCall.inCall && activeCall.call) {
-      meetingError = `You're already in a call (${activeCall.call.title}). Hang up first to start a meeting.`
+    const current = presence.current
+    if (current) {
+      meetingError = `You're already in a call (${current.title}). Hang up first to start a meeting.`
+      return
+    }
+    meetingError = null
+    // The tab opens in the submit itself (popup blockers); a blocked tab rings no one.
+    let tab: ReturnType<typeof reserveCallTab>
+    try {
+      tab = reserveCallTab()
+    } catch (err) {
+      meetingError = problemOf(err).message
       return
     }
     starting = true
-    meetingError = null
     try {
       const call = await client.start({ contextKind: 'meeting', userIds: meetingPeople, title: meetingTitle.trim() || null })
       meetingOpen = false
-      await openCall(call.id)
+      tab.show(call.id)
     } catch (err) {
+      tab.cancel()
       meetingError = problemOf(err).message
     } finally {
       starting = false
@@ -144,6 +170,7 @@
   {#if live.length > 0}
     <section class="mt-8 max-w-2xl" aria-labelledby="calls-live">
       <h2 id="calls-live" class="text-sm font-semibold text-muted-foreground">Live now</h2>
+      {#if joinError}<p class="mt-2 text-sm text-destructive" role="alert" data-testid="calls-join-error">{joinError}</p>{/if}
       <ul class="mt-2 flex flex-col gap-2" data-testid="calls-live">
         {#each live as c (c.id)}
           <li class="flex items-center gap-3 rounded-lg border border-emerald-600/30 bg-emerald-600/5 px-4 py-3" data-testid="calls-live-item" data-id={c.id}>
@@ -156,7 +183,7 @@
                 {c.state === 'ringing' ? `Ringing · started by ${c.startedByName}` : `In progress · ${inRoom(c)} in the call`}
               </p>
             </div>
-            <Button size="sm" class="bg-emerald-600 text-white hover:bg-emerald-700" onclick={() => openCall(c.id)} data-testid="calls-join"
+            <Button size="sm" class="bg-emerald-600 text-white hover:bg-emerald-700" onclick={() => joinCall(c)} data-testid="calls-join"
               >{c.participants.some((p) => p.userId === data.me && p.joinedAt !== null) ? 'Rejoin' : 'Join'}</Button
             >
           </li>

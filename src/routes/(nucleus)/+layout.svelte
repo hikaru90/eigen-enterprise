@@ -1,13 +1,10 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
-  import { goto } from '$app/navigation'
-  import { resolve } from '$app/paths'
   import { page } from '$app/state'
-  import { browserActiveCall, setActiveCall } from '$lib/calls/active-call.svelte'
+  import { browserPresenceChannel, CallPresence, setCallPresence } from '$lib/calls/call-presence.svelte'
   import { callsClient } from '$lib/calls/client'
   import IncomingCallToast from '$lib/calls/incoming-call-toast.svelte'
   import { LiveCalls, setLiveCalls } from '$lib/calls/live-calls.svelte'
-  import MiniCall from '$lib/calls/mini-call.svelte'
   import AppShell from '$lib/components/app-shell.svelte'
   import { PresenceHeartbeat } from '$lib/messages/presence'
   import { SelfPresence, setSelfPresence } from '$lib/messages/self-presence.svelte'
@@ -20,8 +17,9 @@
   // incoming-call toast and the Messages call button.
   const liveCalls = setLiveCalls(new LiveCalls())
   const calls = callsClient()
-  // The live call lives here, above the pages: moving around the app keeps it.
-  const activeCall = setActiveCall(browserActiveCall(calls))
+  // A call runs in its own tab (the call page owns it); every tab knows which
+  // call this browser is in — one call at a time across tabs.
+  const callPresence = setCallPresence(new CallPresence())
   const resume = () => liveCalls.resume()
   const onVisible = () => {
     if (document.visibilityState === 'visible') resume()
@@ -42,6 +40,7 @@
 
   onMount(() => {
     if (!data.user) return
+    callPresence.connect(browserPresenceChannel)
     // Only for plugins that are on: the plugin gate answers 409 otherwise, and
     // a feed would retry forever. A switch takes effect on the next full load.
     if (data.liveFeeds?.calls) {
@@ -63,7 +62,7 @@
 
   onDestroy(() => {
     liveCalls.close()
-    activeCall.close()
+    callPresence.close()
     presenceBeat?.stop()
     if (typeof window === 'undefined') return
     window.removeEventListener('online', resume)
@@ -71,8 +70,9 @@
   })
 
   // Decided from page data, no effect: the welcome tour and the first-run
-  // provider gate on / set showWelcome / needsOnboarding and run full-screen.
-  const pageFlags = $derived(page.data as { showWelcome?: boolean; needsOnboarding?: boolean })
+  // provider gate on / set showWelcome / needsOnboarding and run full-screen;
+  // so does a call's own tab (callTab).
+  const pageFlags = $derived(page.data as { showWelcome?: boolean; needsOnboarding?: boolean; callTab?: boolean })
   const withShell = $derived(shellVisible({ shell: data.shell, ...pageFlags }))
   // B4: with an active visual set the nucleus consumes the brand tokens (the
   // root :root/.dark override). The light pin + bg-white only apply to the
@@ -111,17 +111,6 @@
     {@render children()}
   {/if}
   {#if data.user}
-    <MiniCall
-      active={activeCall}
-      live={liveCalls}
-      hidden={page.route.id === '/(nucleus)/calls/[id]' && page.params.id === activeCall.call?.id}
-      onopen={(id) => goto(resolve(`/calls/${id}`))}
-    />
-    <IncomingCallToast
-      live={liveCalls}
-      client={calls}
-      inCall={activeCall.inCall ? (activeCall.call?.id ?? null) : null}
-      onjoin={(id) => goto(resolve(`/calls/${id}`))}
-    />
+    <IncomingCallToast live={liveCalls} client={calls} inCall={callPresence.current?.id ?? null} />
   {/if}
 </div>
