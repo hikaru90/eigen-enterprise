@@ -59,7 +59,11 @@ fetch() { # fetch <name> <dest>
 # Only a release whose SHA256SUMS is signed by the project's Ed25519 key installs.
 release_public_key() {
 # BEGIN RELEASE PUBLIC KEY (written by scripts/release-key.sh)
-  echo 'PLACEHOLDER: no release signing key yet'
+  cat <<'PEM'
+-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAKvl3XdC1tUoV6fLiwOpijRl2xs92UJmt4rRqvzJPRvA=
+-----END PUBLIC KEY-----
+PEM
 # END RELEASE PUBLIC KEY
 }
 
