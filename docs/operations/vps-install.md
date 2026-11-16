@@ -29,6 +29,16 @@ Optional: `--console-host os.example.com` (otherwise `<ip>.sslip.io`) and `--acm
 
 The installer verifies every download by checksum, then prints a private **claim link** — open it to become the company's owner. Lost it? `ee claim-link`.
 
+## After the install
+
+The whole setup fits in one sitting:
+
+1. **Rent a server** that meets the [requirements](#requirements) and open the ports.
+2. **Run the installer** as root (above). It finishes with "Your company is running" and the claim link.
+3. **Open the claim link.** It makes you the owner. It works once, for seven days; `ee claim-link` prints a new one.
+4. **Tell the assistant about your company.** Connect your AI provider, then answer the assistant's questions about what you do and who for. It sets up the rest from your answers.
+5. **Invite your team.** Send invite links. Each person adds their name, a photo and a passkey, and lands in Messages.
+
 ## Upgrade (over the air)
 
 ```sh
