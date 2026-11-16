@@ -46,6 +46,10 @@ const USAGE = `ee — the company's init (plan/phase-substrate.md)
       restore on a fresh server: --endpoint <url> --region <r> --bucket <b> [--prefix <p>]
       [--addressing path|virtual] --access-key-id <id>   (secret key asked on stdin)
 
+  ee managed enroll --control-plane <https origin> --token <enroll token>
+                                         (hand this server to a hosting control plane; it then polls it)
+  ee managed status
+
   ee daemon        (run by ee.service)
   ee render-env    (run by ee-env.service at boot)
   ee restore-apply --snapshot <id>   (run by ee-restore.service, which Settings → Backups starts
@@ -223,7 +227,16 @@ async function main(argv: string[]): Promise<void> {
       }
       await tick()
       setInterval(tick, 60_000)
+      ee.fleet.start()
       return
+    }
+    case 'managed': {
+      const [verb, ...flags] = rest
+      if (verb === 'status') return print(call('GET', '/v1/managed'))
+      if (verb !== 'enroll') throw new Error(USAGE)
+      const { values } = parseArgs({ args: flags, options: { 'control-plane': { type: 'string' }, token: { type: 'string' } } })
+      if (!values['control-plane'] || !values.token) throw new Error('--control-plane <https origin> and --token <enroll token> are required')
+      return print(call('POST', '/v1/managed/enroll', { controlPlane: values['control-plane'], token: values.token, author: who() }))
     }
     case 'render-env': {
       const secrets = await SecretStore.open(sys)

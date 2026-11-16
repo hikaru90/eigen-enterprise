@@ -20,6 +20,21 @@ export type CaddyInput = {
    * deploy (e.g. pg_cron → eigenEnterprise). Never exposed publicly.
    */
   internal?: Array<{ port: number; workload: string }>
+  /** Managed box paused by the control plane: every public route answers PAUSED_PAGE (503). */
+  suspended?: boolean
+}
+
+/** What every public host shows while a managed company is suspended (plan/phase-managed-box.md D5). */
+export const PAUSED_PAGE =
+  '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Paused</title></head>' +
+  '<body style="font-family:system-ui,sans-serif;max-width:32rem;margin:20vh auto;padding:0 1rem;color:#333"><h1 style="font-size:1.4rem">This company is paused</h1>' +
+  '<p>Its data is safe. It will be back as soon as it is resumed.</p></body></html>'
+
+const pausedHandler: Json = {
+  handler: 'static_response',
+  status_code: 503,
+  headers: { 'Content-Type': ['text/html; charset=utf-8'], 'Retry-After': ['3600'] },
+  body: PAUSED_PAGE,
 }
 
 type Json = Record<string, unknown>
@@ -41,6 +56,10 @@ export function renderCaddyConfig(input: CaddyInput): Json {
   for (const r of input.routes) {
     const up = input.upstreams[r.workload]
     if (!up) throw new Error(`route ${r.host} → ${r.workload}: workload has no live upstream`)
+    if (input.suspended) {
+      routes.push({ match: [{ host: [r.host] }], handle: [pausedHandler], terminal: true })
+      continue
+    }
     const subroutes: Json[] = []
     if (r.rootRewrite) {
       subroutes.push({ match: [{ path: ['/'] }], handle: [{ handler: 'rewrite', uri: r.rootRewrite }] })

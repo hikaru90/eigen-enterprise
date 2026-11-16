@@ -118,7 +118,7 @@ function desired(sha: string, extra: Partial<DesiredState> = {}): DesiredState {
       }),
     ],
     routes: [{ host: 'site.example.com', workload: 'site' }],
-    settings: { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: null, rtcNodeIp: null, contributeHub: 'off' },
+    settings: { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: null, rtcNodeIp: null, contributeHub: 'off', managed: null, suspended: false },
     ...extra,
   }
 }
@@ -476,7 +476,7 @@ describe('livekit-server as a system workload (calls)', () => {
         { host: 'os.example.com', workload: 'os' },
         { host: 'rtc.os.example.com', workload: 'livekit' },
       ],
-      settings: { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: 'rtc.os.example.com', rtcNodeIp: '203.0.113.7', contributeHub: 'off', ...settings },
+      settings: { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: 'rtc.os.example.com', rtcNodeIp: '203.0.113.7', contributeHub: 'off', managed: null, suspended: false, ...settings },
     }
   }
   const envFile = (sys: FakeSystem, name: string) => sys.files.get(`/run/ee/env/${name}.env`) ?? ''
