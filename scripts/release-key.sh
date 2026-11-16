@@ -8,7 +8,7 @@
 # never overwritten), embeds the public key in ee/src/release-key.ts and
 # ee/install.sh (between the "BEGIN/END RELEASE PUBLIC KEY" markers), and prints
 # the command that hands the private key to the release workflow.
-# Needs OpenSSL 3 (raw Ed25519); macOS's LibreSSL is not enough (brew install openssl@3).
+# Needs OpenSSL 3 or newer (raw Ed25519); macOS's LibreSSL is not enough (brew install openssl@3).
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 DIR="$HOME/.config/eigenenterprise"
@@ -20,7 +20,7 @@ SH="$ROOT/ee/install.sh"
 for f in "$TS" "$SH"; do
   grep -q '^// BEGIN RELEASE PUBLIC KEY\|^# BEGIN RELEASE PUBLIC KEY' "$f" || { echo "✗ no BEGIN RELEASE PUBLIC KEY marker in $f" >&2; exit 1; }
 done
-openssl version | grep -q '^OpenSSL 3' || { echo "✗ needs OpenSSL 3 (found: $(openssl version))" >&2; exit 1; }
+openssl version | grep -Eq '^OpenSSL ([3-9]|[1-9][0-9]+)\.' || { echo "✗ needs OpenSSL 3 or newer (found: $(openssl version))" >&2; exit 1; }
 
 mkdir -p "$DIR" && chmod 700 "$DIR"
 (umask 077 && openssl genpkey -algorithm ed25519 -out "$KEY")
