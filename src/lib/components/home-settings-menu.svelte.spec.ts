@@ -120,6 +120,25 @@ describe('home-settings-menu.svelte', () => {
     window.localStorage.removeItem('ee-voice')
   })
 
+  it('Audio devices, next to the voice toggle, opens the microphone + speaker choice', async () => {
+    render(HomeSettingsMenu)
+
+    await page.getByRole('button', { name: 'Settings menu' }).click()
+    const toggle = page.getByTestId('audio-devices-toggle')
+    await expect.element(toggle).toHaveTextContent('Audio devices')
+    expect(page.getByTestId('voice-toggle').element().nextElementSibling).toBe(toggle.element())
+    await expect.element(page.getByTestId('audio-devices')).not.toBeInTheDocument()
+
+    await toggle.click()
+    await expect.element(toggle).toHaveAttribute('aria-expanded', 'true')
+    await expect.element(page.getByRole('group', { name: 'Audio devices' })).toBeInTheDocument()
+    await expect.element(page.getByText('Microphone', { exact: true })).toBeInTheDocument()
+    await expect.element(page.getByText('Speaker', { exact: true })).toBeInTheDocument()
+
+    await toggle.click()
+    await expect.element(page.getByTestId('audio-devices')).not.toBeInTheDocument()
+  })
+
   it('the sound toggle flips the persisted flag — on by default, off stays off', async () => {
     window.localStorage.removeItem('ee-sound')
     render(HomeSettingsMenu)
