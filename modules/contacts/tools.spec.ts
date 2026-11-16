@@ -1,4 +1,4 @@
-import type { ContactDto, FollowUpDto } from './types'
+import type { ContactDto, FollowUpDto, Pipeline } from './types'
 import { describe, expect, it } from 'vitest'
 import type { ToolContext } from '$lib/kernel/types'
 import { CONTACTS_TOOL_NAMES } from './manifest'
@@ -29,7 +29,7 @@ describe('contacts.* tools', () => {
 
   it('reads are read-class; writes are mutate-class, internal-risk and say what they did without naming the person', async () => {
     const { tools } = await setup()
-    for (const name of ['contacts.list', 'contacts.get', 'contacts.follow_ups']) expect(tools[name].auditClass).toBe('read')
+    for (const name of ['contacts.list', 'contacts.get', 'contacts.follow_ups', 'contacts.pipeline']) expect(tools[name].auditClass).toBe('read')
     for (const name of ['contacts.create', 'contacts.update', 'contacts.log_contact']) {
       expect(tools[name]).toMatchObject({ auditClass: 'mutate', approvalRisk: 'internal' })
     }
@@ -94,6 +94,35 @@ describe('contacts.* tools', () => {
     expect(out.followUps.map((c) => [c.id, c.due])).toEqual([[anasPrivate.id, 'upcoming']])
     const later = (await tools['contacts.follow_ups'].handler(humanCtx('ana'), { today: '2026-11-20' })) as { followUps: FollowUpDto[] }
     expect(later.followUps.map((c) => c.due)).toEqual(['overdue'])
+  })
+
+  it('works the pipeline: reads the lists and the review, moves a contact, sets who holds it and how we are in touch', async () => {
+    const { tools, anasPrivate } = await setup()
+    const ctx = humanCtx('ana')
+    const before = (await tools['contacts.pipeline'].handler(ctx, {})) as Pipeline
+    expect(before.today).toBe('2026-11-12')
+    expect(before.groups.map((g) => [g.stage, g.items.map((i) => i.id)])).toEqual([
+      ['next', []],
+      ['waiting', []],
+      ['keep_in_touch', []],
+      ['inbox', [anasPrivate.id]],
+    ])
+    expect(before.people.map((p) => p.id)).toContain('ben')
+    const moved = (await tools['contacts.update'].handler(ctx, {
+      id: anasPrivate.id,
+      stage: 'waiting',
+      owner_id: 'ben',
+      via: 'email',
+      latest_status: 'Sent the deck',
+    })) as ContactDto
+    // The wait starts today (the tools' day).
+    expect(moved).toMatchObject({ stage: 'waiting', waitingSince: '2026-11-12', ownerId: 'ben', via: 'email', latestStatus: 'Sent the deck' })
+    const waiting = (await tools['contacts.pipeline'].handler(ctx, { stage: 'waiting', today: '2026-11-25' })) as Pipeline
+    expect(waiting.groups).toHaveLength(1)
+    expect(waiting.groups[0]!.items[0]!.review).toMatchObject({ daysWaiting: 13, staleWaiting: true })
+    const logged = (await tools['contacts.log_contact'].handler(ctx, { id: anasPrivate.id, stage: 'next', next_step: 'Book a call' })) as ContactDto
+    expect(logged).toMatchObject({ stage: 'next', waitingSince: null, nextStep: 'Book a call' })
+    await expect(tools['contacts.update'].handler(ctx, { id: anasPrivate.id, stage: 'won' })).rejects.toThrow()
   })
 
   it('rejects unknown keys: sharing is a person’s decision, not the agent’s', async () => {

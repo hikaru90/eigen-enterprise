@@ -26,6 +26,20 @@ export const contacts = pgTable(
     lastContactedOn: date('last_contacted_on', { mode: 'string' }),
     nextFollowUpOn: date('next_follow_up_on', { mode: 'string' }),
     nextStep: text('next_step'),
+    /**
+     * The pipeline list it sits in (migration 0144, Contribute 8c6a0cb7), GTD-style and set by a person or an
+     * explicit tool call — never inferred: inbox (not contacted yet), next (ours to act), waiting (on their
+     * reply, since waiting_since), keep_in_touch (next_follow_up_on is the tickler).
+     */
+    stage: text('stage', { enum: ['inbox', 'next', 'waiting', 'keep_in_touch'] }).notNull().default('inbox'),
+    /** Who on our side holds the contact: a company member's user id. */
+    ownerId: text('owner_id'),
+    /** How we are in touch: email, phone, linkedin, meeting, message, other. */
+    via: text('via', { enum: ['email', 'phone', 'linkedin', 'meeting', 'message', 'other'] }),
+    /** Where things stand, in a line. */
+    latestStatus: text('latest_status'),
+    /** Waiting for their reply since this day (set exactly while stage = waiting). */
+    waitingSince: date('waiting_since', { mode: 'string' }),
     /** A person's user id, or the agent's principal id (created_by_kind = 'agent'). */
     createdBy: text('created_by').notNull(),
     createdByKind: text('created_by_kind', { enum: ['user', 'agent'] }).notNull(),
@@ -38,6 +52,7 @@ export const contacts = pgTable(
     index('contacts_created_by_idx').on(t.createdBy),
     index('contacts_next_follow_up_idx').on(t.nextFollowUpOn).where(sql`${t.nextFollowUpOn} IS NOT NULL`),
     index('contacts_tags_idx').using('gin', t.tags),
+    index('contacts_stage_idx').on(t.stage),
   ],
 )
 

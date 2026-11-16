@@ -6,6 +6,7 @@ export const CONTACTS_TOOL_NAMES = [
   'contacts.list',
   'contacts.get',
   'contacts.follow_ups',
+  'contacts.pipeline',
   'contacts.create',
   'contacts.update',
   'contacts.log_contact',

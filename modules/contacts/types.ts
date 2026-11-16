@@ -29,6 +29,8 @@ export const CONTACT_LIMITS = {
   metHow: 1000,
   whyRelevant: 2000,
   nextStep: 500,
+  /** "Latest status" in the pipeline. */
+  latestStatus: 500,
   /** "How it went" on a logged contact. */
   logNote: 2000,
   channelValue: 300,
@@ -39,6 +41,63 @@ export const CONTACT_LIMITS = {
 
 /** "Follow up next" lists what is due and what comes up within this many days. */
 export const FOLLOW_UP_WINDOW_DAYS = 14
+
+// ── The pipeline (Contribute 8c6a0cb7), worked the Getting Things Done way ─────
+
+/**
+ * The list a contact sits in — one at a time, set by a person (or an explicit
+ * tool call / "Log a contact"), never read out of text. In the order the
+ * pipeline shows them (Ony's 1–4):
+ * - next: the ball is in our court — a concrete next step we own (GTD next actions; "Wir sind dran");
+ * - waiting: we wait on their reply, since a day (GTD waiting for; "Warten auf Antwort");
+ * - keep_in_touch: nothing open — check in on the tickler day (GTD tickler; "Im Loop halten");
+ * - inbox: not contacted yet, not processed (GTD inbox; "Noch nicht angeschrieben").
+ */
+export const PIPELINE_STAGES = ['next', 'waiting', 'keep_in_touch', 'inbox'] as const
+export type PipelineStage = (typeof PIPELINE_STAGES)[number]
+
+export const STAGE_INFO: Record<PipelineStage, { label: string; gtd: string; hint: string; dateLabel: string }> = {
+  next: {
+    label: 'Our move',
+    gtd: 'Next actions',
+    hint: 'The ball is in our court: each one has a concrete next step and someone on our side who does it.',
+    dateLabel: 'Due',
+  },
+  waiting: {
+    label: 'Waiting for a reply',
+    gtd: 'Waiting for',
+    hint: 'We wrote; they answer next. Chase the ones that have waited too long.',
+    dateLabel: 'Chase on',
+  },
+  keep_in_touch: {
+    label: 'Keep in the loop',
+    gtd: 'Tickler',
+    hint: 'Nothing open right now — check in with them on the tickler day.',
+    dateLabel: 'Check in on',
+  },
+  inbox: {
+    label: 'Not contacted yet',
+    gtd: 'Inbox',
+    hint: 'Not processed yet: decide the first step and who does it, then move them on.',
+    dateLabel: 'Due',
+  },
+}
+
+/** How we are in touch with someone (the pipeline's "via"). */
+export const VIA_TYPES = ['email', 'phone', 'linkedin', 'meeting', 'message', 'other'] as const
+export type Via = (typeof VIA_TYPES)[number]
+
+export const VIA_LABELS: Record<Via, string> = {
+  email: 'Email',
+  phone: 'Phone',
+  linkedin: 'LinkedIn',
+  meeting: 'Meeting',
+  message: 'Message',
+  other: 'Other',
+}
+
+/** The weekly review flags a reply we have waited on for longer than this many days. */
+export const WAITING_REVIEW_DAYS = 7
 
 /** One contact as a person (or the agent) sees it. Dates are `YYYY-MM-DD` days. */
 export type ContactDto = {
@@ -55,6 +114,17 @@ export type ContactDto = {
   lastContactedOn: string | null
   nextFollowUpOn: string | null
   nextStep: string | null
+  /** The pipeline list it sits in. */
+  stage: PipelineStage
+  /** Who on our side holds the contact (a member's user id), and their name. */
+  ownerId: string | null
+  ownerName: string | null
+  /** How we are in touch. */
+  via: Via | null
+  /** Where things stand, in a line. */
+  latestStatus: string | null
+  /** Waiting for their reply since (set exactly while stage = waiting). */
+  waitingSince: string | null
   /** false = private to its creator (plus the company owner and admins). */
   shared: boolean
   /** The viewer added it. */
@@ -71,6 +141,35 @@ export type FollowUpDue = 'overdue' | 'today' | 'upcoming'
 
 /** A contact in "Follow up next": its follow-up day relative to today. */
 export type FollowUpDto = ContactDto & { nextFollowUpOn: string; due: FollowUpDue; daysFromToday: number }
+
+/** What the weekly review notices about one contact in the pipeline. */
+export type PipelineReview = {
+  /** Days from today to its follow-up / tickler day (negative = past), or null when it has none. */
+  daysFromToday: number | null
+  /** Its follow-up / tickler day has passed. */
+  overdue: boolean
+  /** Days we have been waiting on their reply (waiting only). */
+  daysWaiting: number | null
+  /** Waiting longer than WAITING_REVIEW_DAYS. */
+  staleWaiting: boolean
+  /** "Our move" without a concrete next step written down. */
+  missingNextStep: boolean
+  /** Any of the above (or still in the inbox): the weekly review looks at it. */
+  needsReview: boolean
+}
+
+export type PipelineItem = ContactDto & { review: PipelineReview }
+
+export type PipelineGroup = { stage: PipelineStage; items: PipelineItem[] }
+
+/** The pipeline: every contact the viewer sees, in its list, with what the weekly review should look at. */
+export type Pipeline = {
+  today: string
+  groups: PipelineGroup[]
+  review: { waitingTooLong: number; overdue: number; nextWithoutStep: number; inbox: number; waitingDays: number }
+  /** The people who can hold a contact (company members), by name. */
+  people: Array<{ id: string; name: string }>
+}
 
 /** Who can see a contact, said plainly (the list, the detail page and the agent all use this). */
 export function visibilityText(c: Pick<ContactDto, 'shared' | 'own' | 'createdByName'>): string {

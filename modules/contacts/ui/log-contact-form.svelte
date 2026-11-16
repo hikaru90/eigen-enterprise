@@ -7,7 +7,7 @@
   import { Textarea } from '$lib/components/ui/textarea'
   import { readDescription, type ReadDescription } from '../client'
   import { LOG_FIELDS, planFields, type Change, type LogFieldKey } from '../prefill'
-  import { CONTACT_LIMITS } from '../types'
+  import { CONTACT_LIMITS, PIPELINE_STAGES, STAGE_INFO } from '../types'
   import DescribeThem from './describe-them.svelte'
 
   /**
@@ -27,6 +27,7 @@
     oncancel,
     ondone,
     read = readDescription,
+    askStage = false,
   }: {
     contactId: string
     name: string
@@ -38,6 +39,8 @@
     ondone?: () => void
     /** The AI's reading of a description (tests pass a double). */
     read?: ReadDescription
+    /** Offer "Where they are now" (the pipeline list): left as it is unless the person picks one. */
+    askStage?: boolean
   } = $props()
 
   const startDay = untrack(() => today)
@@ -131,6 +134,19 @@
         bind:value={fields.nextStep}
       />
     </div>
+    {#if askStage}
+      <div class="grid gap-1.5 sm:col-span-3">
+        <Label for={`log-stage-${contactId}`}>Where they are now</Label>
+        <select
+          id={`log-stage-${contactId}`}
+          name="stage"
+          class="border-input bg-card h-8 max-w-xs rounded-md border px-2 text-sm"
+        >
+          <option value="">Leave as it is</option>
+          {#each PIPELINE_STAGES as s (s)}<option value={s}>{STAGE_INFO[s].label}</option>{/each}
+        </select>
+      </div>
+    {/if}
     {#if error}<p class="text-sm text-destructive sm:col-span-3" role="alert">{error}</p>{/if}
     <div class="flex gap-2 sm:col-span-3">
       <Button type="submit" size="sm" data-testid="log-contact-submit">Log it</Button>

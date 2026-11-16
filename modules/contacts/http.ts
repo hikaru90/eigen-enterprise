@@ -53,9 +53,24 @@ export function formContactInput(form: FormData): ContactInput {
   }
 }
 
-/** The "Log a contact" form. */
-export function formLogInput(form: FormData): { on: string; note: string; nextFollowUpOn: string; nextStep: string } {
-  return { on: text(form, 'on'), note: text(form, 'note'), nextFollowUpOn: text(form, 'nextFollowUpOn'), nextStep: text(form, 'nextStep') }
+/** The "Log a contact" form ("Where they are now" only when the form asks it; blank = leave as it is). */
+export function formLogInput(form: FormData): { on: string; note: string; nextFollowUpOn: string; nextStep: string; stage?: string } {
+  return {
+    on: text(form, 'on'),
+    note: text(form, 'note'),
+    nextFollowUpOn: text(form, 'nextFollowUpOn'),
+    nextStep: text(form, 'nextStep'),
+    ...(form.has('stage') ? { stage: text(form, 'stage') } : {}),
+  }
+}
+
+/** The pipeline's inline edits: only the fields the request sends (blank clears an optional one). */
+export const PIPELINE_FORM_FIELDS = ['stage', 'ownerId', 'via', 'latestStatus', 'nextStep', 'nextFollowUpOn', 'waitingSince'] as const
+
+export function formPipelineInput(form: FormData): ContactInput {
+  const out: Record<string, string> = {}
+  for (const key of PIPELINE_FORM_FIELDS) if (form.has(key)) out[key] = text(form, key)
+  return out
 }
 
 /** A form action: a ContactsError comes back to the form as `{ action, id, error }` with its status. */

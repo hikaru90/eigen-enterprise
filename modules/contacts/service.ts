@@ -8,6 +8,9 @@ import {
   DEFAULT_TAGS,
   FOLLOW_UP_WINDOW_DAYS,
   IMPORT_MAX,
+  PIPELINE_STAGES,
+  VIA_TYPES,
+  WAITING_REVIEW_DAYS,
   dayIn,
   type Channel,
   type ChannelType,
@@ -17,6 +20,10 @@ import {
   type ImportCandidate,
   type ImportPreview,
   type ImportPreviewRow,
+  type Pipeline,
+  type PipelineItem,
+  type PipelineStage,
+  type Via,
 } from './types'
 
 /**
@@ -73,6 +80,14 @@ export type ContactInput = {
   lastContactedOn?: unknown
   nextFollowUpOn?: unknown
   nextStep?: unknown
+  /** The pipeline list: next, waiting, keep_in_touch, inbox. */
+  stage?: unknown
+  /** Who on our side holds it: a company member's user id (null clears). */
+  ownerId?: unknown
+  via?: unknown
+  latestStatus?: unknown
+  /** Only while waiting: since when (defaults to today when the wait starts). */
+  waitingSince?: unknown
 }
 
 const FIELDS = [
@@ -86,6 +101,11 @@ const FIELDS = [
   'lastContactedOn',
   'nextFollowUpOn',
   'nextStep',
+  'stage',
+  'ownerId',
+  'via',
+  'latestStatus',
+  'waitingSince',
 ] as const satisfies ReadonlyArray<keyof ContactInput>
 
 const now = (d: ContactsDeps) => (d.now ? d.now() : new Date())
@@ -125,6 +145,27 @@ function requiredDay(value: unknown, label: string): string {
   const day = optionalDay(value, label)
   if (!day) throw new ContactsError('invalid', `Say which day: ${label} must be a date (YYYY-MM-DD).`)
   return day
+}
+
+function parseStage(value: unknown): PipelineStage {
+  if (typeof value === 'string' && (PIPELINE_STAGES as readonly string[]).includes(value)) return value as PipelineStage
+  throw new ContactsError('invalid', `stage must be one of ${PIPELINE_STAGES.join(', ')}, got ${JSON.stringify(value ?? null)}`)
+}
+
+/** How we are in touch: undefined = not sent, null or blank = clear it. */
+function optionalVia(value: unknown): Via | null | undefined {
+  if (value === undefined) return undefined
+  if (value === null || value === '') return null
+  if (typeof value === 'string' && (VIA_TYPES as readonly string[]).includes(value)) return value as Via
+  throw new ContactsError('invalid', `via must be one of ${VIA_TYPES.join(', ')}, got ${JSON.stringify(value)}`)
+}
+
+/** A member's user id as sent (checked against the company in checkOwner): undefined = not sent, null or blank = nobody. */
+function optionalOwner(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined
+  if (value === null || value === '') return null
+  if (typeof value !== 'string') throw new ContactsError('invalid', 'ownerId must be a member’s user id')
+  return value.trim()
 }
 
 function parseChannels(value: unknown): Channel[] {
@@ -191,8 +232,51 @@ function parseFields(input: ContactInput): Omit<ContactPatch, 'updatedAt' | 'sha
   if (nextFollowUpOn !== undefined) out.nextFollowUpOn = nextFollowUpOn
   const nextStep = optionalText(input.nextStep, 'A next step', CONTACT_LIMITS.nextStep)
   if (nextStep !== undefined) out.nextStep = nextStep
+  if (input.stage !== undefined) out.stage = parseStage(input.stage)
+  const ownerId = optionalOwner(input.ownerId)
+  if (ownerId !== undefined) out.ownerId = ownerId
+  const via = optionalVia(input.via)
+  if (via !== undefined) out.via = via
+  const latestStatus = optionalText(input.latestStatus, 'A latest status', CONTACT_LIMITS.latestStatus)
+  if (latestStatus !== undefined) out.latestStatus = latestStatus
+  const waitingSince = optionalDay(input.waitingSince, 'Waiting since')
+  if (waitingSince !== undefined) out.waitingSince = waitingSince
   return out
 }
+
+/** The person who holds a contact must be in the company (fail loud otherwise). */
+async function checkOwner(d: ContactsDeps, ownerId: string | null | undefined): Promise<void> {
+  if (ownerId === undefined || ownerId === null) return
+  if (!(await d.roleOf(ownerId))) {
+    throw new ContactsError('invalid', `${JSON.stringify(ownerId)} is not in the company, so they can’t hold a contact.`)
+  }
+}
+
+/**
+ * The stage and the day the wait began, together: waiting has a waiting-since
+ * day (the one sent, the one it already had, else `today`), every other list
+ * has none. Never guessed from text — the stage is what was sent or what it was.
+ */
+function resolveStage(
+  current: { stage: PipelineStage; waitingSince: string | null },
+  fields: { stage?: PipelineStage; waitingSince?: string | null },
+  today: string | undefined,
+): { stage: PipelineStage; waitingSince: string | null } {
+  const stage = fields.stage ?? current.stage
+  if (stage !== 'waiting') {
+    if (fields.waitingSince) throw new ContactsError('invalid', 'Only a contact you are waiting on has a “waiting since” day.')
+    return { stage, waitingSince: null }
+  }
+  if (fields.waitingSince === null) throw new ContactsError('invalid', 'Waiting for a reply needs the day the wait began.')
+  const waitingSince = fields.waitingSince ?? (current.stage === 'waiting' ? current.waitingSince : null) ?? today ?? null
+  if (waitingSince === null) {
+    throw new ContactsError('invalid', 'Say since when you are waiting for their reply (waitingSince, YYYY-MM-DD).')
+  }
+  return { stage, waitingSince }
+}
+
+/** `today` as callers pass it: a day, or absent. */
+const optionalToday = (value: unknown) => (value === undefined ? undefined : requiredDay(value, 'today'))
 
 // ── who is looking ────────────────────────────────────────────────────────────
 
@@ -224,6 +308,12 @@ function toDto(row: ContactRow, names: Map<string, string>, v: Viewer): ContactD
     lastContactedOn: row.lastContactedOn,
     nextFollowUpOn: row.nextFollowUpOn,
     nextStep: row.nextStep,
+    stage: row.stage,
+    ownerId: row.ownerId,
+    ownerName: row.ownerId === null ? null : (names.get(row.ownerId) ?? 'a former member'),
+    via: row.via,
+    latestStatus: row.latestStatus,
+    waitingSince: row.waitingSince,
     shared: row.shared,
     own: isOwn(v, row),
     createdByName: row.createdByKind === 'agent' ? 'the agent' : (names.get(row.createdBy) ?? 'a former member'),
@@ -315,6 +405,64 @@ export async function followUps(d: ContactsDeps, actor: Actor, rawToday: unknown
   })
 }
 
+/** Soonest day first, contacts without one last; then by name. */
+function bySoonest(day: (i: PipelineItem) => string | null) {
+  return (a: PipelineItem, b: PipelineItem) => {
+    const da = day(a)
+    const db = day(b)
+    if (da !== db) return da === null ? 1 : db === null ? -1 : da.localeCompare(db)
+    return a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.id.localeCompare(b.id)
+  }
+}
+
+/**
+ * The pipeline (Contribute 8c6a0cb7, GTD): every contact the actor sees (like
+ * the list), in the list a person put it in — our move (next actions),
+ * waiting for a reply, keep in the loop (tickler), not contacted yet (inbox) —
+ * with what the weekly review should look at: a follow-up or tickler day that
+ * has passed, a reply waited on for longer than WAITING_REVIEW_DAYS, our move
+ * with no next step written down, and whatever is still in the inbox.
+ */
+export async function pipeline(d: ContactsDeps, actor: Actor, rawToday: unknown): Promise<Pipeline> {
+  const today = requiredDay(rawToday, 'today')
+  const v = await viewerOf(d, actor)
+  const [rows, names] = await Promise.all([d.store.list(scopeOf(v), {}), d.directory.names()])
+  const items = rows.map((row): PipelineItem => {
+    const daysFromToday = row.nextFollowUpOn === null ? null : dayNumber(row.nextFollowUpOn) - dayNumber(today)
+    const daysWaiting = row.stage === 'waiting' && row.waitingSince !== null ? dayNumber(today) - dayNumber(row.waitingSince) : null
+    const overdue = daysFromToday !== null && daysFromToday < 0
+    const staleWaiting = daysWaiting !== null && daysWaiting > WAITING_REVIEW_DAYS
+    const missingNextStep = row.stage === 'next' && row.nextStep === null
+    return {
+      ...toDto(row, names, v),
+      review: {
+        daysFromToday,
+        overdue,
+        daysWaiting,
+        staleWaiting,
+        missingNextStep,
+        needsReview: overdue || staleWaiting || missingNextStep || row.stage === 'inbox',
+      },
+    }
+  })
+  const order = (stage: PipelineStage) =>
+    stage === 'waiting' ? bySoonest((i) => i.waitingSince) : stage === 'inbox' ? bySoonest(() => null) : bySoonest((i) => i.nextFollowUpOn)
+  const groups = PIPELINE_STAGES.map((stage) => ({ stage, items: items.filter((i) => i.stage === stage).sort(order(stage)) }))
+  const count = (p: (i: PipelineItem) => boolean) => items.filter(p).length
+  return {
+    today,
+    groups,
+    review: {
+      waitingTooLong: count((i) => i.review.staleWaiting),
+      overdue: count((i) => i.review.overdue),
+      nextWithoutStep: count((i) => i.review.missingNextStep),
+      inbox: count((i) => i.stage === 'inbox'),
+      waitingDays: WAITING_REVIEW_DAYS,
+    },
+    people: [...names].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)),
+  }
+}
+
 // ── writes ────────────────────────────────────────────────────────────────────
 
 /** Add a contact: private to its creator unless a person shares it with the company right away. */
@@ -322,11 +470,13 @@ export async function createContact(
   d: ContactsDeps,
   actor: Actor,
   input: ContactInput,
-  opts: { shared?: boolean } = {},
+  opts: { shared?: boolean; today?: unknown } = {},
 ): Promise<ContactDto> {
   const v = await viewerOf(d, actor)
   const name = parseName(input.name)
   const fields = parseFields(input)
+  await checkOwner(d, fields.ownerId)
+  const placed = resolveStage({ stage: 'inbox', waitingSince: null }, fields, optionalToday(opts.today))
   const shared = opts.shared === true
   if (shared && v.userId === null) throw new ContactsError('forbidden', 'Only a person shares a contact with the company.')
   const at = now(d)
@@ -342,6 +492,11 @@ export async function createContact(
     lastContactedOn: fields.lastContactedOn ?? null,
     nextFollowUpOn: fields.nextFollowUpOn ?? null,
     nextStep: fields.nextStep ?? null,
+    ...placed,
+    // Held by whoever adds it, unless they say otherwise (the agent on its own: nobody).
+    ownerId: fields.ownerId !== undefined ? fields.ownerId : v.userId,
+    via: fields.via ?? null,
+    latestStatus: fields.latestStatus ?? null,
     createdBy: v.principalId,
     createdByKind: v.userId === null ? 'agent' : 'user',
     shared,
@@ -354,12 +509,22 @@ export async function createContact(
 }
 
 /** Change the fields that are sent; blank text or null clears an optional field. */
-export async function updateContact(d: ContactsDeps, actor: Actor, rawId: unknown, input: ContactInput): Promise<ContactDto> {
+export async function updateContact(
+  d: ContactsDeps,
+  actor: Actor,
+  rawId: unknown,
+  input: ContactInput,
+  opts: { today?: unknown } = {},
+): Promise<ContactDto> {
   const v = await viewerOf(d, actor)
   const row = await visibleRow(d, v, rawId)
   const fields = parseFields(input)
+  if (FIELDS.every((f) => !(f in fields))) throw new ContactsError('invalid', 'Nothing to change.')
+  await checkOwner(d, fields.ownerId)
+  const placed = resolveStage(row, fields, optionalToday(opts.today))
+  // The wait's day follows the stage: recorded as a change only when it does change.
+  if (placed.waitingSince !== row.waitingSince) fields.waitingSince = placed.waitingSince
   const changed = FIELDS.filter((f) => f in fields)
-  if (changed.length === 0) throw new ContactsError('invalid', 'Nothing to change.')
   await d.store.update(row.id, { ...fields, updatedAt: now(d) })
   await d.audit({ type: 'contacts.updated', principalId: v.principalId, payload: { id: row.id, fields: changed } })
   return view(d, v, row.id)
@@ -373,7 +538,16 @@ export async function logContact(
   d: ContactsDeps,
   actor: Actor,
   rawId: unknown,
-  input: { on: unknown; note?: unknown; nextFollowUpOn?: unknown; nextStep?: unknown },
+  input: {
+    on: unknown
+    note?: unknown
+    nextFollowUpOn?: unknown
+    nextStep?: unknown
+    /** Where they are now (left out or blank: the list stays as it is). "waiting" starts the wait on `on`. */
+    stage?: unknown
+    via?: unknown
+    latestStatus?: unknown
+  },
 ): Promise<ContactDto> {
   const v = await viewerOf(d, actor)
   const row = await visibleRow(d, v, rawId)
@@ -384,6 +558,14 @@ export async function logContact(
   if (nextFollowUpOn !== null && nextFollowUpOn < on) {
     throw new ContactsError('invalid', 'The next follow-up can’t be before the day you were in touch.')
   }
+  const stage = input.stage === undefined || input.stage === '' ? undefined : parseStage(input.stage)
+  const via = optionalVia(input.via)
+  const latestStatus = optionalText(input.latestStatus, 'A latest status', CONTACT_LIMITS.latestStatus)
+  // Moved to "waiting" here: a new wait starts on the day you were in touch.
+  const placed =
+    stage === undefined
+      ? { stage: row.stage, waitingSince: row.waitingSince }
+      : resolveStage({ stage: row.stage, waitingSince: null }, { stage, waitingSince: stage === 'waiting' ? on : undefined }, on)
   const at = now(d)
   // The history keeps what was due (the follow-up this answered) and what comes next.
   const entry: LogEntryRow = {
@@ -399,7 +581,15 @@ export async function logContact(
     loggedByKind: v.userId === null ? 'agent' : 'user',
     createdAt: at,
   }
-  await d.store.recordLog(entry, { lastContactedOn: on, nextFollowUpOn, nextStep, updatedAt: at })
+  await d.store.recordLog(entry, {
+    lastContactedOn: on,
+    nextFollowUpOn,
+    nextStep,
+    ...placed,
+    ...(via !== undefined ? { via } : {}),
+    ...(latestStatus !== undefined ? { latestStatus } : {}),
+    updatedAt: at,
+  })
   await d.audit({ type: 'contacts.contact_logged', principalId: v.principalId, payload: { id: row.id } })
   return view(d, v, row.id)
 }
@@ -586,6 +776,11 @@ export async function importContacts(
             lastContactedOn: null,
             nextFollowUpOn: null,
             nextStep: null,
+            stage: 'inbox' as const,
+            ownerId: v.userId,
+            via: null,
+            latestStatus: null,
+            waitingSince: null,
             createdBy: v.userId,
             createdByKind: 'user' as const,
             shared: opts.shared,

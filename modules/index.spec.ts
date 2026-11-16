@@ -223,6 +223,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect(toolNames).toContain('calls.end')
     expect(toolNames).toContain('contacts.list')
     expect(toolNames).toContain('contacts.follow_ups')
+    expect(toolNames).toContain('contacts.pipeline')
     expect(toolNames).toContain('contacts.log_contact')
     expect(toolNames).toContain('calendar.list')
     expect(toolNames).toContain('calendar.free_busy')
