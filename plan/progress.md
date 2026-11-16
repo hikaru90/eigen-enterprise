@@ -2,6 +2,16 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-16 — Managed box: the control plane keeps a copy of the backup key (main `69444b2`, merge `6fb1be5`; not released)
+
+Owner decision (D7 in `plan/phase-managed-box.md`): "Yes, keep a copy" — hosting may restore a company after a host failure without the owner's recovery code.
+- **Protocol** (`69444b2`): feature `escrowBackupKey`, desired `escrowBackupKey: true` while the control plane holds no copy, signed `POST /api/fleet/v1/escrow {protocol, backupKey}` (204 held / 409 a different key is held). Re-vendored byte-identical into eigenEnterprise-cloud.
+- **Box** (`14129a8`): after the backup step the agent sends the sealed backup key once it has one; the key is in no error, log or journal line. The backup key alone is enough: each snapshot carries the master key and the sealed root key.
+- **Restore with the copy** (`b6cbd78`): `ee restore … --backup-key-stdin` takes the backup key (base64) instead of the recovery code on the line after the S3 secret.
+- **Owner-facing** (`a33c19f`): on a managed box, Settings › Backups no longer says "not by us"; it says the hosting provider also keeps an encrypted copy and the recovery code still restores the company. Self-hosted wording unchanged.
+- **Gates:** ee 301 passed / 3 skipped (tsc: the 13 known `daemon.spec.ts` errors, unchanged); app unit 7049 passed / 126 skipped.
+- **Not verified:** nothing ran against a real control plane or on the box; the managed-box wording has a load test, no component test.
+
 ## 2026-11-16 — Managed box (hosted offer, box side): M1–M5 merged (main `193e741` … `e83889b`; not released, not on the box)
 
 Owner: hosted companies each get their own VM on rented bare-metal servers (Hetzner or Netcup dedicated), card required at signup, modularly extensible; "just build it". Plan: `plan/phase-managed-box.md`. The control plane is a separate private repo, `eigenEnterprise-cloud` (local only, not on GitHub yet).
