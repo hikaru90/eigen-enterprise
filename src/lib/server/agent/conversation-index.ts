@@ -24,6 +24,8 @@ export type DurableConversationRow = {
   runPrincipalId: string | null
   /** A background run's tool surface; null for chat conversations. */
   runTools: DurableRunToolRecord[] | null
+  /** The owning member's own name for the conversation; null until they rename it. */
+  userTitle: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -56,8 +58,10 @@ export type DurableConversationIndex = {
   resolveByProviderSession(providerSessionId: string): Promise<DurableConversationRow | undefined>
   resolveByPiConversationId(piConversationId: string): Promise<DurableConversationRow | undefined>
   listConversations(): Promise<DurableConversationRow[]>
-  /** Stamp `updated_at` (the index has no other mutable column). */
+  /** Stamp `updated_at` (activity). */
   touch(id: number): Promise<void>
+  /** Set the member-chosen name. Not activity: `updated_at` stays. False when no such row. */
+  setUserTitle(id: number, title: string): Promise<boolean>
 }
 
 function rowOf(record: typeof durableConversations.$inferSelect): DurableConversationRow {
@@ -70,6 +74,7 @@ function rowOf(record: typeof durableConversations.$inferSelect): DurableConvers
     providerSessionId: record.providerSessionId,
     runPrincipalId: record.runPrincipalId ?? null,
     runTools: record.runTools ?? null,
+    userTitle: record.userTitle ?? null,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   }
@@ -152,6 +157,16 @@ export class DbDurableConversationIndex implements DurableConversationIndex {
       .set({ updatedAt: new Date() })
       .where(eq(durableConversations.id, id))
   }
+
+  async setUserTitle(id: number, title: string): Promise<boolean> {
+    const db = await this.db()
+    const updated = await db
+      .update(durableConversations)
+      .set({ userTitle: title })
+      .where(eq(durableConversations.id, id))
+      .returning({ id: durableConversations.id })
+    return updated.length > 0
+  }
 }
 
 /** In-memory double (unit tests; the shape DB-backed agents see). */
@@ -169,6 +184,7 @@ export class InMemoryDurableConversationIndex implements DurableConversationInde
       ...input,
       runPrincipalId: input.runPrincipalId ?? null,
       runTools: input.runTools ?? null,
+      userTitle: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     }
@@ -196,5 +212,12 @@ export class InMemoryDurableConversationIndex implements DurableConversationInde
     const row = this.rows.get(id)
     if (!row) throw new Error(`unknown durable conversation row: ${id}`)
     row.updatedAt = new Date()
+  }
+
+  async setUserTitle(id: number, title: string): Promise<boolean> {
+    const row = this.rows.get(id)
+    if (!row) return false
+    row.userTitle = title
+    return true
   }
 }

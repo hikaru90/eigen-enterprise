@@ -7,5 +7,5 @@ import { agentRunsSource } from '$lib/server/agent-runs/source'
 export const GET: RequestHandler = async ({ locals }) => {
   const access = await runViewAccess(locals.user)
   if (!access.ok) return json({ error: access.error }, { status: access.status })
-  return json({ runs: await agentRunsSource().list() })
+  return json({ runs: await agentRunsSource().list(access.userId) })
 }

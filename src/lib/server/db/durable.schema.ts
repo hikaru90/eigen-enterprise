@@ -30,6 +30,12 @@ export const durableConversations = pgTable('durable_conversations', {
   runPrincipalId: text('run_principal_id'),
   /** A background run's tool surface (NULL for chat rows). */
   runTools: jsonb('run_tools').$type<DurableRunToolRecord[]>(),
+  /**
+   * The name the owning member gave the conversation (migration 0143). NULL
+   * until they rename it; derived titles are computed at read time and never
+   * written here, so a member's name is never overwritten automatically.
+   */
+  userTitle: text('user_title'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })

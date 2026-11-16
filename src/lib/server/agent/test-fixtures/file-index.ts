@@ -18,6 +18,7 @@ export class FileIndex implements DurableConversationIndex {
       ...input,
       runPrincipalId: input.runPrincipalId ?? null,
       runTools: input.runTools ?? null,
+      userTitle: null,
       id: rows.length + 1,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -38,4 +39,12 @@ export class FileIndex implements DurableConversationIndex {
     return this.rows()
   }
   async touch() {}
+  async setUserTitle(id: number, title: string) {
+    const rows = this.rows()
+    const row = rows.find((r) => r.id === id)
+    if (!row) return false
+    row.userTitle = title
+    writeFileSync(this.path, JSON.stringify(rows))
+    return true
+  }
 }

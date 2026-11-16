@@ -91,6 +91,7 @@ export default defineConfig({
       'src/lib/components/overview-module.svelte.spec.ts',
       'src/lib/components/app-shell.svelte.spec.ts',
       'src/lib/components/assistant/assistant-panel.svelte.spec.ts',
+      'src/lib/components/assistant/assistant-history.svelte.spec.ts',
       'src/lib/components/module-card.svelte.spec.ts',
       'src/lib/components/error-panel.svelte.spec.ts',
       'src/routes/(nucleus)/settings/company/company-page.svelte.spec.ts',

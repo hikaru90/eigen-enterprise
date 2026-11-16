@@ -10,5 +10,5 @@ export const load: PageServerLoad = async ({ locals }) => {
     if (access.status === 401) throw redirect(302, '/login')
     throw error(access.status, access.error)
   }
-  return { runs: await agentRunsSource().list() }
+  return { runs: await agentRunsSource().list(access.userId) }
 }

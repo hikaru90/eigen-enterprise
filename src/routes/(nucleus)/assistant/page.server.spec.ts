@@ -41,6 +41,8 @@ describe('/assistant (conversations) loads', () => {
     listMock.mockResolvedValue([run])
     expect(await listLoad(ev({ id: 'u' }))).toEqual({ runs: [run] })
     expect(await detailLoad(ev({ id: 'u' }))).toEqual({ run })
+    // `renamable` is computed from the signed-in member's side.
+    expect(listMock).toHaveBeenCalledWith('u')
     await expect(detailLoad(ev({ id: 'u' }, '9'))).rejects.toMatchObject({ status: 404 })
     await expect(detailLoad(ev({ id: 'u' }, 'x'))).rejects.toMatchObject({ status: 400 })
   })
