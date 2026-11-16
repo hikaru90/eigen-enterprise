@@ -2,6 +2,14 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-16 — Hosted companies run in containers (D8, merge `3c66c8f`; not released)
+
+Owner: "then go with containers!" — Netcup root servers are KVM guests (no `/dev/kvm`), Hetzner AX unavailable. Each hosted company runs in an unprivileged Incus system container (isolated idmap, nesting on); VM hosts stay supported in eigenEnterprise-cloud (merge `f563ad2`).
+- **Box:** inside a container (`systemd-detect-virt --container`, `ee/src/container.ts`) bootstrap refuses unless the host gives `net.core.rmem_max`/`wmem_max` ≥ 5000000 (LiveKit UDP buffers); nothing else in the install needed privileges. Self-hosted installs unchanged.
+- **Trade-off:** companies share the host kernel; container hosts need prompt kernel + Incus patches.
+- **Gates:** ee 308 passed / 3 skipped, tsc the 13 known, lint 0 errors.
+- **Not verified:** no install has run inside a real container (systemd sandboxing with nesting, LiveKit, Postgres with an isolated idmap are the risks).
+
 ## 2026-11-16 — Managed box: the control plane keeps a copy of the backup key (main `69444b2`, merge `6fb1be5`; not released)
 
 Owner decision (D7 in `plan/phase-managed-box.md`): "Yes, keep a copy" — hosting may restore a company after a host failure without the owner's recovery code.
