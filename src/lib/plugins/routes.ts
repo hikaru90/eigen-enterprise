@@ -161,6 +161,9 @@ export const CORE_ROUTES: readonly string[] = [
   '/api/company',
   '/api/contribute',
   '/api/e2e',
+  // A managed box's ee asks os on loopback (seats, backup key), with the per-box bearer token;
+  // they answer 404 themselves on a self-hosted install (no EE_FLEET_LOCAL_TOKEN).
+  '/api/fleet',
   '/api/grounding',
   '/api/health',
   // The central Contribute board's machine endpoints (modules/contribute-hub): other installs call
