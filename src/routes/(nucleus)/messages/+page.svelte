@@ -11,7 +11,7 @@
   import Users from '@lucide/svelte/icons/users'
   import X from '@lucide/svelte/icons/x'
   import { onDestroy, onMount, tick } from 'svelte'
-  import { goto, replaceState } from '$app/navigation'
+  import { replaceState } from '$app/navigation'
   import { resolve } from '$app/paths'
   import { page } from '$app/state'
   import CallButton from '$lib/calls/call-button.svelte'
@@ -64,7 +64,6 @@
   // Calls (plan/video-calls.md §2): the header's Call / Join button reads the layout's one call feed.
   const liveCalls = getLiveCalls()
   const calls = callsClient()
-  const openCall = (id: string) => goto(resolve(`/calls/${id}`))
 
   type Person = { id: string; name: string; email: string; image?: string | null }
 
@@ -863,7 +862,6 @@
           contextId={selected.id}
           live={liveCalls.liveFor(selected.kind, selected.id)}
           client={calls}
-          onopen={openCall}
         />
 
         <div class="relative shrink-0">

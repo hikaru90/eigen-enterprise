@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
+import { CALL_TAB_BLOCKED, type CallTabWindow, type OpenWindow } from './call-tab'
 import { CallRequestError, type CallDto } from './client'
 import IncomingCallToast from './incoming-call-toast.svelte'
 import { LiveCalls } from './live-calls.svelte'
@@ -21,13 +22,34 @@ const ringing = (over: Partial<CallDto> = {}): CallDto => ({
   ...over,
 })
 
-function setup(inCall: string | null = null) {
+/** A blank tab as window.open hands it back (null: the browser blocked it). */
+function fakeTab() {
+  const t = {
+    name: '',
+    hrefs: [] as string[],
+    location: {
+      pathname: 'blank',
+      get href() {
+        return t.location.pathname
+      },
+      set href(v: string) {
+        t.hrefs.push(v)
+        t.location.pathname = v
+      },
+    },
+    focus: vi.fn(),
+    close: vi.fn(),
+  }
+  return t
+}
+
+function setup(inCall: string | null = null, tab: ReturnType<typeof fakeTab> | null = fakeTab()) {
   const live = new LiveCalls()
-  const client = { accept: vi.fn(async (id: string) => ringing({ id, state: 'active' })), decline: vi.fn(async (id: string) => ringing({ id, state: 'declined' })) }
-  const onjoin = vi.fn()
+  const client = { decline: vi.fn(async (id: string) => ringing({ id, state: 'declined' })) }
+  const open = vi.fn<OpenWindow>(() => tab as CallTabWindow | null)
   const ringer = { start: vi.fn(), stop: vi.fn() }
-  render(IncomingCallToast, { live, client, onjoin, ringer, inCall })
-  return { live, client, onjoin, ringer }
+  render(IncomingCallToast, { live, client, open, ringer, inCall })
+  return { live, client, open, tab, ringer }
 }
 
 describe('incoming-call-toast.svelte', () => {
@@ -38,30 +60,29 @@ describe('incoming-call-toast.svelte', () => {
     expect(ringer.stop).toHaveBeenCalled()
   })
 
-  it('a ringing call shows who calls and rings; Accept answers it, then goes to the call', async () => {
-    const { live, client, onjoin, ringer } = setup()
+  it('a ringing call shows who calls and rings; Accept opens the call in its own tab (which answers it) and the ring stops', async () => {
+    const { live, client, open, tab, ringer } = setup()
     live.apply('call.ringing', ringing())
     const toast = page.getByTestId('incoming-call')
     await expect.element(toast.getByTestId('incoming-call-caller')).toHaveTextContent('Ben Example')
     await expect.element(toast.getByTestId('incoming-call-where')).toHaveTextContent('Video call')
     expect(ringer.start).toHaveBeenCalled()
     await page.getByTestId('incoming-call-accept').click()
-    expect(client.accept).toHaveBeenCalledExactlyOnceWith('call-1')
+    expect(open).toHaveBeenCalledExactlyOnceWith('', 'ee-call-call-1')
+    expect(tab!.hrefs).toEqual(['/calls/call-1'])
     expect(client.decline).not.toHaveBeenCalled()
-    await vi.waitFor(() => expect(onjoin).toHaveBeenCalledExactlyOnceWith('call-1'))
     await expect.element(toast).not.toBeInTheDocument()
     expect(ringer.stop).toHaveBeenCalled()
   })
 
   it('Decline declines and hides the toast; it never opens the call', async () => {
-    const { live, client, onjoin } = setup()
+    const { live, client, open } = setup()
     live.apply('call.ringing', ringing({ contextKind: 'channel', contextId: 'ch-1', title: '#general' }))
     await expect.element(page.getByTestId('incoming-call-where')).toHaveTextContent('Call in #general')
     await page.getByTestId('incoming-call-decline').click()
     expect(client.decline).toHaveBeenCalledExactlyOnceWith('call-1')
     await expect.element(page.getByTestId('incoming-call')).not.toBeInTheDocument()
-    expect(onjoin).not.toHaveBeenCalled()
-    expect(client.accept).not.toHaveBeenCalled()
+    expect(open).not.toHaveBeenCalled()
   })
 
   it('the toast goes away when the call stops ringing for me (state frame), and the ringtone stops', async () => {
@@ -74,24 +95,31 @@ describe('incoming-call-toast.svelte', () => {
     expect(ringer.stop).toHaveBeenCalled()
   })
 
-  it('a refused accept says why', async () => {
-    const { live, client, onjoin } = setup()
-    client.accept.mockRejectedValueOnce(new CallRequestError({ kind: 'over', message: 'this call is over' }))
+  it('the browser blocked the call tab: says so, and the call keeps ringing so Accept can be tried again', async () => {
+    const { live } = setup(null, null)
     live.apply('call.ringing', ringing())
     await page.getByTestId('incoming-call-accept').click()
-    await expect.element(page.getByTestId('incoming-call-error')).toHaveTextContent('this call is over')
-    expect(onjoin).not.toHaveBeenCalled()
+    await expect.element(page.getByTestId('incoming-call-error')).toHaveTextContent(CALL_TAB_BLOCKED)
+    await expect.element(page.getByTestId('incoming-call')).toBeInTheDocument()
+    await expect.element(page.getByTestId('incoming-call-accept')).toBeEnabled()
   })
 
-  it('already in another call: says so plainly, Accept is off, Decline still works', async () => {
-    const { live, client, onjoin } = setup('call-current')
+  it('a refused decline says why', async () => {
+    const { live, client } = setup()
+    client.decline.mockRejectedValueOnce(new CallRequestError({ kind: 'over', message: 'this call is over' }))
+    live.apply('call.ringing', ringing())
+    await page.getByTestId('incoming-call-decline').click()
+    await expect.element(page.getByTestId('incoming-call-error')).toHaveTextContent('this call is over')
+  })
+
+  it('already in another call (in any tab): says so plainly, Accept is off, Decline still works', async () => {
+    const { live, client, open } = setup('call-current')
     live.apply('call.ringing', ringing({ id: 'call-2' }))
     const toast = page.getByTestId('incoming-call')
     await expect.element(toast.getByTestId('incoming-call-busy')).toHaveTextContent("You're already in a call. Hang up to answer this one.")
     await expect.element(toast.getByTestId('incoming-call-accept')).toBeDisabled()
-    expect(client.accept).not.toHaveBeenCalled()
     await toast.getByTestId('incoming-call-decline').click()
     expect(client.decline).toHaveBeenCalledExactlyOnceWith('call-2')
-    expect(onjoin).not.toHaveBeenCalled()
+    expect(open).not.toHaveBeenCalled()
   })
 })

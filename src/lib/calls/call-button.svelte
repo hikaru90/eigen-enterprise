@@ -2,51 +2,62 @@
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import Video from '@lucide/svelte/icons/video'
   import X from '@lucide/svelte/icons/x'
-  import { getActiveCall } from './active-call.svelte'
+  import { getCallPresence } from './call-presence.svelte'
+  import { openCallTab, reserveCallTab, type OpenWindow } from './call-tab'
   import { problemOf, type CallDto, type CallsClient } from './client'
 
   /**
    * The call button in a DM or channel header (plan/video-calls.md §2):
    * "Call" starts a call that rings the conversation's members; when a call
-   * is already live there it says "Join" and opens that call. Refusals (e.g.
-   * "Calls are not set up on this server") are shown under the button.
-   * One call at a time: while I am in another call it says so and starts
-   * nothing (no one is rung).
+   * is already live there it says "Join" and opens that call — always in the
+   * call's own tab (call-tab.ts). Refusals (e.g. "Calls are not set up on this
+   * server", a blocked tab) are shown under the button.
+   * One call at a time: while I am in another call (in any tab of this
+   * browser) it says so and starts nothing (no one is rung).
    */
   let {
     kind,
     contextId,
     live = null,
     client,
-    onopen,
+    open,
   }: {
     kind: 'dm' | 'channel'
     contextId: string
     /** The live call in this conversation, from the call feed. */
     live?: CallDto | null
     client: Pick<CallsClient, 'start'>
-    /** Go to the call page. */
-    onopen: (callId: string) => void
+    /** window.open (a spec's fake in component specs). */
+    open?: OpenWindow
   } = $props()
 
-  const active = getActiveCall()
+  const presence = getCallPresence()
 
   let busy = $state(false)
   let error = $state<string | null>(null)
 
   async function onclick() {
     error = null
-    const current = active.inCall ? active.call : null
+    const current = presence.current
     if (current && current.id !== live?.id) {
       error = `You're already in a call (${current.title}). Hang up first to ${live ? 'join' : 'start'} this one.`
       return
     }
-    if (live) return onopen(live.id)
+    // The tab opens in the click itself (popup blockers); a blocked tab rings no one.
+    let tab: ReturnType<typeof reserveCallTab>
+    try {
+      if (live) return openCallTab(live.id, open)
+      tab = reserveCallTab(open)
+    } catch (err) {
+      error = problemOf(err).message
+      return
+    }
     busy = true
     try {
       const call = await client.start({ contextKind: kind, contextId })
-      onopen(call.id)
+      tab.show(call.id)
     } catch (err) {
+      tab.cancel()
       error = problemOf(err).message
     } finally {
       busy = false

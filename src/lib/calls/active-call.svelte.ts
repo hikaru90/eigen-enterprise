@@ -1,4 +1,3 @@
-import { getContext, setContext } from 'svelte'
 import { callReducer, initialCallState, type CallEvent, type CallParticipant, type CallViewState, type Device } from './call-state'
 import { problemOf, type CallDto, type CallsClient } from './client'
 import {
@@ -18,15 +17,17 @@ import { nextSpeaker } from './layout'
 import { MediaError, type CallRoom, type RoomSignal } from './room'
 
 /**
- * The live call, above the pages (Contribute round 4: "I opened Email during
- * a call and it hung up"). The nucleus layout owns ONE ActiveCall; the call
- * page only shows it and the docked mini call shows it everywhere else, so
- * moving around the app never leaves the call.
+ * The live call of one call tab. A call always runs in its own browser tab
+ * (call-tab.ts; owner, 2026-11-16): the call page owns ONE ActiveCall, and
+ * the tab cannot be navigated away from while the call is live, so the main
+ * instance stays clean. (Before, the nucleus layout owned it and a docked
+ * mini call followed the person around the app — Contribute round 4.)
  *
  * The call ends only by: the hang-up button (hangUp), the tab closing or
- * being left (pagehide → keepalive hang-up), the nucleus layout going away
- * (close), or the call ending on the server. One call at a time: opening
- * another while in one is refused ('busy') — the page says so plainly.
+ * being left (pagehide → keepalive hang-up), the call page going away
+ * (close), or the call ending on the server. One call at a time in a tab:
+ * opening another while in one is refused ('busy'); across tabs, the call
+ * tab tells the others (call-presence.svelte.ts, fed by subscribe).
  *
  * Media goes through the injected CallRoom (LiveKit in the app, a fake in
  * specs); the browser bits (window, mediaDevices, storage) come from `env`,
@@ -84,6 +85,8 @@ export class ActiveCall {
   /** /hangup was sent for the current call: never twice. */
   #hungUp = false
   #listening = false
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- subscriber callbacks are never rendered
+  #listeners = new Set<() => void>()
 
   constructor(deps: ActiveCallDeps) {
     this.#deps = deps
@@ -130,6 +133,12 @@ export class ActiveCall {
     return this.#call !== null && (p === 'connecting' || p === 'connected' || p === 'reconnecting')
   }
 
+  /** Called after every change of the call or its phase (call presence across tabs — no effect needed). */
+  subscribe(fn: () => void): () => void {
+    this.#listeners.add(fn)
+    return () => this.#listeners.delete(fn)
+  }
+
   /**
    * The call page asks to show this call. In it already → 'here'; in another
    * one → 'busy' (nothing changes); otherwise it joins this one.
@@ -139,6 +148,7 @@ export class ActiveCall {
     this.#forget()
     this.#call = call
     this.#me = me
+    this.#notify()
     void this.#join()
     return 'joining'
   }
@@ -159,7 +169,7 @@ export class ActiveCall {
     void this.#join()
   }
 
-  /** Forget a call that is over (its page or the mini call was closed). A live call stays. */
+  /** Forget a call that is over (its view was closed). A live call stays. */
   release(): void {
     if (!this.inCall) this.#forget()
   }
@@ -242,6 +252,11 @@ export class ActiveCall {
 
   #dispatch(e: CallEvent) {
     this.#s = callReducer(this.#s, e)
+    this.#notify()
+  }
+
+  #notify() {
+    for (const fn of [...this.#listeners]) fn()
   }
 
   #refresh() {
@@ -311,6 +326,7 @@ export class ActiveCall {
     this.#finalState = null
     this.#deviceProblem = null
     this.#hungUp = false
+    this.#notify()
   }
 
   /** Switch to the remembered devices that are plugged in (before mic + camera turn on). */
@@ -398,23 +414,6 @@ export class ActiveCall {
     await Promise.all([disconnecting, told])
   }
 }
-
-const KEY = Symbol('active-call')
-
-/** The nucleus layout owns the live call; pages and components under it read it. */
-export function setActiveCall(active: ActiveCall): ActiveCall {
-  return setContext(KEY, active)
-}
-
-export function getActiveCall(): ActiveCall {
-  const active = getContext<ActiveCall | undefined>(KEY)
-  if (!active) throw new Error('calls: no live call — getActiveCall() works only under the nucleus layout')
-  return active
-}
-
-/** For component specs: the context a component under the nucleus layout sees. */
-// eslint-disable-next-line svelte/prefer-svelte-reactivity -- a Svelte mount `context` map, never rendered
-export const activeCallContext = (active: ActiveCall) => new Map<unknown, unknown>([[KEY, active]])
 
 /** The browser's side of the env (read when the first call starts). */
 export function browserCallEnv(): CallEnv {

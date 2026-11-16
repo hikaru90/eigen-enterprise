@@ -55,7 +55,9 @@ export function mediaFailureOf(err: unknown): MediaFailure {
 }
 
 export function createLiveKitRoom(): CallRoom {
-  const room = new Room({ adaptiveStream: true, dynacast: true })
+  // Not on beforeunload: the call tab asks "leave this page?" there, and staying
+  // must keep the call. Leaving for real is ActiveCall's pagehide (disconnect + hang-up).
+  const room = new Room({ adaptiveStream: true, dynacast: true, disconnectOnPageLeave: false })
   const listeners = new Set<(s: RoomSignal) => void>()
   const emit = (s: RoomSignal) => {
     for (const fn of [...listeners]) fn(s)

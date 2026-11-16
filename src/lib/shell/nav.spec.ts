@@ -167,6 +167,10 @@ describe('shellVisible', () => {
     expect(shellVisible({ shell, showWelcome: true, needsOnboarding: false })).toBe(false)
     expect(shellVisible({ shell, showWelcome: false, needsOnboarding: true })).toBe(false)
   })
+  it("hides the shell in a call's own tab", () => {
+    expect(shellVisible({ shell, callTab: true })).toBe(false)
+    expect(shellVisible({ shell, callTab: false })).toBe(true)
+  })
   it('hides the shell when there is no signed-in shell data', () => {
     expect(shellVisible({ shell: null })).toBe(false)
   })
