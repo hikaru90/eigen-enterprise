@@ -12,6 +12,7 @@ import { SecretStore } from './secret-store.ts'
 import { generateSecret } from './secrets.ts'
 import { DEFAULT_RTC_PORTS, HOSTED_RTC_PORT_RANGE, rtcPortsSchema, workloadSchema, type RtcPorts, type WorkloadInput } from './spec.ts'
 import { mustRun, type System } from './system.ts'
+import { assertContainerHostReady, detectContainer } from './container.ts'
 import { writeBackupTimer } from './backup/box.ts'
 import { BACKUP_SCOPE, storedConfigSchema } from './backup/service.ts'
 import { contributeHubEnv, resolveContributeHub, type ContributeHub } from './contribute-hub.ts'
@@ -501,6 +502,8 @@ export async function bootstrap(
 ): Promise<{ consoleHost: string; claimToken: string | null; claimIssuedElsewhere: boolean }> {
   if (process.getuid?.() !== 0) throw new Error('ee bootstrap must run as root')
   await assertSupportedOs(sys)
+  // Hosted (unprivileged Incus container, D8): kernel tunables are the host's; refuse before installing if it lacks them.
+  await assertContainerHostReady(sys, await detectContainer(sys), step)
   if (!(await sys.exists(opts.release))) throw new Error(`release tarball ${opts.release} not found`)
   if (!(await sys.exists(opts.livekitRelease))) throw new Error(`livekit-server release tarball ${opts.livekitRelease} not found`)
   // Before anything is installed: a first install (or an upgrade from before calls) must name the node IP.
