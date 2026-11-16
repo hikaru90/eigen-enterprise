@@ -228,6 +228,17 @@ describe.skipIf(!hasDb)('EmailPlatform (test database)', () => {
     expect(sent.map((m) => m.status).sort()).toEqual(['bounced', 'delivered'])
   })
 
+  it('lists messages from, or not from, a set of sources (transactional apart from marketing mail)', async () => {
+    const base = { status: 'delivered' as const, fromAddress: 'hello@kindred.test', subject: 's', html: null, text: 'x', contentStored: true }
+    for (const source of ['system', 'api', 'flow', 'double_opt_in'] as const) {
+      await store.insertMessage({ ...base, source, toAddress: `${source}@x.co` })
+    }
+    const marketing = await store.listMessages({ sources: ['flow'], limit: 10 })
+    expect(marketing.map((m) => m.source)).toEqual(['flow'])
+    const transactional = await store.listMessages({ excludeSources: ['flow'], limit: 10 })
+    expect(transactional.map((m) => m.source).sort()).toEqual(['api', 'double_opt_in', 'system'])
+  })
+
   it('the background pass re-checks only domains that are due', async () => {
     const d = await platform.addDomain('kindred.com', 'u1')
     expect(await platform.refreshDueDomains()).toBe(1)

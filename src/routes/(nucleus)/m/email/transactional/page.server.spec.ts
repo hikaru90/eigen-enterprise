@@ -26,7 +26,7 @@ const row = (id: string, status: string) => ({
   createdAt: new Date('2026-11-11T09:00:00Z'),
 })
 
-describe('Email › Company mail (the company-wide pending + sent log; owner and admins)', () => {
+describe('Email › Transactional mail (the automatic mail the company sends: pending + sent; owner and admins)', () => {
   it('is for the owner and admins only: members get the admin refusal and nothing is read', async () => {
     requireAdminMock.mockRejectedValueOnce(Object.assign(new Error('Only the owner or an admin can change email settings.'), { status: 403 }))
     await expect(run()).rejects.toMatchObject({ status: 403 })
@@ -45,14 +45,14 @@ describe('Email › Company mail (the company-wide pending + sent log; owner and
     expect(listMock).not.toHaveBeenCalled()
   })
 
-  it('lists pending sends (scheduled, queued) apart from sent mail', async () => {
+  it('lists pending sends (scheduled, queued) apart from sent mail, leaving out marketing (flow) mail', async () => {
     settingsMock.mockResolvedValue({ region: 'eu-west-1' })
     listMock.mockImplementation(async (f: { statuses?: string[] }) =>
       f.statuses ? [row('p1', 'scheduled')] : [row('s1', 'delivered')],
     )
     const out = await run()
-    expect(listMock).toHaveBeenCalledWith({ statuses: ['scheduled', 'queued'], limit: 10 })
-    expect(listMock).toHaveBeenCalledWith({ excludeStatuses: ['scheduled', 'queued'], limit: 10 })
+    expect(listMock).toHaveBeenCalledWith({ statuses: ['scheduled', 'queued'], excludeSources: ['flow'], limit: 10 })
+    expect(listMock).toHaveBeenCalledWith({ excludeStatuses: ['scheduled', 'queued'], excludeSources: ['flow'], limit: 10 })
     expect(out).toEqual({
       connected: true,
       pending: [

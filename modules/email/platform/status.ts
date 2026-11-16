@@ -63,3 +63,10 @@ export const SOURCE_LABEL: Record<string, string> = {
   flow: 'Flow',
   double_opt_in: 'Double opt-in',
 }
+
+/**
+ * Which sent-mail sources are marketing mail (to people on a list, sent by a flow); every other source is
+ * transactional (sign-in codes, receipts, notifications, opt-in confirmations, the assistant's and the API's
+ * sends). The Email area shows them apart (Contribute d7080d17). Typed against the source column in the pages.
+ */
+export const MARKETING_SOURCES = ['flow'] as const

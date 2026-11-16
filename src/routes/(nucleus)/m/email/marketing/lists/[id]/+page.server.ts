@@ -1,9 +1,9 @@
 import type { Actions, PageServerLoad } from './$types'
 import { error, redirect } from '@sveltejs/kit'
 import { CONTACT_STATUSES, type ContactStatus } from '$lib/server/db/email-contacts.schema'
-import { AudienceError } from '../../../../../../../modules/email/platform/flows/service'
-import { emailPlatform } from '../../../../../../../modules/email/platform/service'
-import { act, field, requireAdmin, requireMember } from '../../access.server'
+import { AudienceError } from '../../../../../../../../modules/email/platform/flows/service'
+import { emailPlatform } from '../../../../../../../../modules/email/platform/service'
+import { act, field, requireAdmin, requireMember } from '../../../access.server'
 
 /** One contact list: its settings, its people, adding and importing them. */
 export const load: PageServerLoad = async ({ locals, params, url }) => {
@@ -81,6 +81,6 @@ export const actions: Actions = {
   delete: async ({ locals, params }) => {
     await requireAdmin(locals)
     await emailPlatform().audience.deleteList(params.id)
-    throw redirect(303, '/m/email/contacts')
+    throw redirect(303, '/m/email/marketing/lists')
   },
 }

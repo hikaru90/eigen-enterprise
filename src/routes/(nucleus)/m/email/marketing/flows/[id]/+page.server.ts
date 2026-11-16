@@ -1,8 +1,8 @@
 import type { Actions, PageServerLoad } from './$types'
 import { error, redirect } from '@sveltejs/kit'
-import { AudienceError } from '../../../../../../../modules/email/platform/flows/service'
-import { emailPlatform } from '../../../../../../../modules/email/platform/service'
-import { act, field, requireAdmin, requireMember } from '../../access.server'
+import { AudienceError } from '../../../../../../../../modules/email/platform/flows/service'
+import { emailPlatform } from '../../../../../../../../modules/email/platform/service'
+import { act, field, requireAdmin, requireMember } from '../../../access.server'
 
 /** The flow editor (a vertical list of steps), its people and what happened. */
 export const load: PageServerLoad = async ({ locals, params }) => {
@@ -79,6 +79,6 @@ export const actions: Actions = {
   delete: async ({ locals, params }) => {
     await requireAdmin(locals)
     await emailPlatform().audience.deleteFlow(params.id)
-    throw redirect(303, '/m/email/flows')
+    throw redirect(303, '/m/email/marketing/flows')
   },
 }

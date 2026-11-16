@@ -133,6 +133,7 @@ export default defineConfig({
       'modules/contacts/ui/*.svelte.spec.ts',
       'modules/calendar/ui/*.svelte.spec.ts',
       'modules/email/inbox/ui/*.svelte.spec.ts',
+      'src/lib/components/email/*.svelte.spec.ts',
       'src/lib/components/brand-picker/picker.svelte.spec.ts',
     ],
     exclude: ['src/routes/demo/playwright/**/*.ts', '**/*.e2e.ts'],

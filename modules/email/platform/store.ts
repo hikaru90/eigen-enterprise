@@ -59,6 +59,10 @@ export type MessageListFilter = {
   statuses?: readonly MessageStatus[]
   /** No messages in these statuses. */
   excludeStatuses?: readonly MessageStatus[]
+  /** Only messages from one of these sources (marketing mail: `flow`). */
+  sources?: readonly MailSource[]
+  /** No messages from these sources (transactional mail: everything but `flow`). */
+  excludeSources?: readonly MailSource[]
   /** Matches recipient or subject (case-insensitive). */
   search?: string
   limit: number
@@ -229,6 +233,8 @@ export class EmailStore {
       ...(f.status ? [eq(mailMessages.status, f.status)] : []),
       ...(f.statuses ? [inArray(mailMessages.status, [...f.statuses])] : []),
       ...(f.excludeStatuses ? [notInArray(mailMessages.status, [...f.excludeStatuses])] : []),
+      ...(f.sources ? [inArray(mailMessages.source, [...f.sources])] : []),
+      ...(f.excludeSources ? [notInArray(mailMessages.source, [...f.excludeSources])] : []),
       ...(f.search
         ? [or(ilike(mailMessages.toAddress, `%${f.search}%`), ilike(mailMessages.subject, `%${f.search}%`))!]
         : []),

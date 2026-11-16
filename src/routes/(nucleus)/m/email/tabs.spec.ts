@@ -1,42 +1,64 @@
 import { describe, expect, it } from 'vitest'
 import { currentAreaTab } from '$lib/shell/area-nav'
-import { EMAIL_SETUP_TABS, EMAIL_TABS, emailTabs } from './tabs'
+import { EMAIL_MARKETING_TABS, EMAIL_SETUP_TABS, EMAIL_TABS, emailMarketingTabs, emailTabs } from './tabs'
 
-describe('Email area tabs (your inbox first, setup behind one tab)', () => {
-  it('shows mail first and puts the setup sections behind Setup', () => {
-    expect(EMAIL_TABS.map((t) => t.label)).toEqual(['Inbox', 'Company mail', 'Contacts', 'Lists', 'Setup'])
+describe('Email area tabs (the three kinds of mail first, setup behind one tab)', () => {
+  it('names the three kinds of mail — personal, transactional, marketing — then Contacts and Setup', () => {
+    expect(EMAIL_TABS.map((t) => t.label)).toEqual([
+      'Personal mail',
+      'Transactional mail',
+      'Marketing mail',
+      'Contacts',
+      'Setup',
+    ])
     expect(EMAIL_SETUP_TABS.map((t) => t.label)).toEqual([
       'Account',
       'Senders',
       'Mailboxes',
       'Templates',
       'Layouts',
-      'Flows',
       'Logs',
       'Suppression',
       'API',
     ])
   })
+  it('Marketing mail holds the lists, the flows on them and what they sent', () => {
+    expect(EMAIL_MARKETING_TABS).toEqual([
+      { id: 'lists', label: 'Lists', href: '/m/email/marketing/lists', match: ['/m/email/marketing/lists'] },
+      { id: 'flows', label: 'Flows', href: '/m/email/marketing/flows' },
+      { id: 'sent', label: 'Sent', href: '/m/email/marketing/sent' },
+    ])
+    expect(EMAIL_TABS.find((t) => t.id === 'marketing')).toEqual({
+      id: 'marketing',
+      label: 'Marketing mail',
+      href: '/m/email/marketing/lists',
+      match: ['/m/email/marketing'],
+    })
+  })
+  it('what the flows sent is for the owner and admins only; every member sees the lists and flows', () => {
+    expect(emailMarketingTabs({ isAdmin: true }).map((t) => t.id)).toEqual(['lists', 'flows', 'sent'])
+    expect(emailMarketingTabs({ isAdmin: false }).map((t) => t.id)).toEqual(['lists', 'flows'])
+  })
   it('domains live under Account (no Domains tab since 2026-11-14)', () => {
     expect(EMAIL_SETUP_TABS[0]).toEqual({ id: 'account', label: 'Account', href: '/m/email/setup', match: ['/m/email/domains'] })
   })
-  it('the Inbox is where /m/email lands; Company mail (the company-wide pending + sent log) is for the owner and admins only', () => {
-    expect(EMAIL_TABS[0]).toEqual({ id: 'inbox', label: 'Inbox', href: '/m/email/inbox', match: ['/m/email/inbox'] })
-    expect(EMAIL_TABS[1]).toEqual({ id: 'company', label: 'Company mail', href: '/m/email/company' })
-    expect(emailTabs({ isAdmin: true }).map((t) => t.id)).toEqual(['inbox', 'company', 'people', 'contacts', 'setup'])
-    expect(emailTabs({ isAdmin: false }).map((t) => t.id)).toEqual(['inbox', 'people', 'contacts', 'setup'])
+  it('Personal mail (the inbox) is where /m/email lands; Transactional mail is for the owner and admins only', () => {
+    expect(EMAIL_TABS[0]).toEqual({ id: 'inbox', label: 'Personal mail', href: '/m/email/inbox', match: ['/m/email/inbox'] })
+    expect(EMAIL_TABS[1]).toEqual({ id: 'transactional', label: 'Transactional mail', href: '/m/email/transactional' })
+    expect(emailTabs({ isAdmin: true }).map((t) => t.id)).toEqual(['inbox', 'transactional', 'marketing', 'people', 'setup'])
+    expect(emailTabs({ isAdmin: false }).map((t) => t.id)).toEqual(['inbox', 'marketing', 'people', 'setup'])
   })
-  it('calls the audience lists "Lists" (people you know live in Contacts); the route stays', () => {
-    expect(EMAIL_TABS.find((t) => t.id === 'contacts')).toEqual({ id: 'contacts', label: 'Lists', href: '/m/email/contacts' })
-  })
-  it('has a Contacts tab (the people you know) after Inbox, before Lists — Contacts lives inside Email', () => {
+  it('has a Contacts tab (the people you know) — Contacts lives inside Email', () => {
     expect(EMAIL_TABS.find((t) => t.id === 'people')).toEqual({ id: 'people', label: 'Contacts', href: '/m/email/people' })
   })
   it.each([
-    ['/m/email/company', 'company'],
+    ['/m/email/transactional', 'transactional'],
     ['/m/email/inbox', 'inbox'],
     ['/m/email/inbox/attachments/1', 'inbox'],
-    ['/m/email/contacts/abc', 'contacts'],
+    ['/m/email/marketing/lists', 'marketing'],
+    ['/m/email/marketing/lists/abc', 'marketing'],
+    ['/m/email/marketing/flows/1', 'marketing'],
+    ['/m/email/marketing/sent', 'marketing'],
     ['/m/email/people', 'people'],
     ['/m/email/people/new', 'people'],
     ['/m/email/people/abc', 'people'],
@@ -46,7 +68,6 @@ describe('Email area tabs (your inbox first, setup behind one tab)', () => {
     ['/m/email/mailboxes', 'setup'],
     ['/m/email/templates/1', 'setup'],
     ['/m/email/layouts', 'setup'],
-    ['/m/email/flows/1', 'setup'],
     ['/m/email/logs/1', 'setup'],
     ['/m/email/suppression', 'setup'],
     ['/m/email/api', 'setup'],
@@ -62,5 +83,14 @@ describe('Email area tabs (your inbox first, setup behind one tab)', () => {
     ['/m/email/api', 'api'],
   ] as const)('setup section %s → %s', (path, id) => {
     expect(currentAreaTab(EMAIL_SETUP_TABS, path)).toBe(id)
+  })
+  it.each([
+    ['/m/email/marketing/lists', 'lists'],
+    ['/m/email/marketing/lists/abc', 'lists'],
+    ['/m/email/marketing/flows', 'flows'],
+    ['/m/email/marketing/flows/1', 'flows'],
+    ['/m/email/marketing/sent', 'sent'],
+  ] as const)('marketing section %s → %s', (path, id) => {
+    expect(currentAreaTab(EMAIL_MARKETING_TABS, path)).toBe(id)
   })
 })
