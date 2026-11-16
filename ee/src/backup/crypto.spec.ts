@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { Readable, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { describe, expect, it } from 'vitest'
-import { BackupAuthError, backupKeyFromRecoveryCode, companyRecoveryCode, decryptStream, encryptStream, HEADER_LEN, newBackupKey, parseCompanyRecoveryCode, TAG_LEN } from './crypto.ts'
+import { BackupAuthError, backupKeyFromBase64, backupKeyFromRecoveryCode, companyRecoveryCode, decryptStream, encryptStream, HEADER_LEN, newBackupKey, parseCompanyRecoveryCode, TAG_LEN } from './crypto.ts'
 
 async function run(input: Buffer, t: NodeJS.ReadWriteStream, pieces = 7): Promise<Buffer> {
   const out: Buffer[] = []
@@ -80,5 +80,24 @@ describe('the company recovery code (shared with the app\'s gitstore)', () => {
     expect(() => parseCompanyRecoveryCode(CODE.replace('0W3GE', '0W3GF'))).toThrow(/typo/)
     expect(() => parseCompanyRecoveryCode(CODE.slice(0, 20))).toThrow(/too short/)
     expect(() => parseCompanyRecoveryCode('ABC-123')).toThrow(/EE1-/)
+  })
+})
+
+describe('backupKeyFromBase64 (ee restore --backup-key-stdin)', () => {
+  it('decodes a valid 32-byte base64 key, trimming the line', () => {
+    const k = randomBytes(32)
+    expect(backupKeyFromBase64(` ${k.toString('base64')}\n`).equals(k)).toBe(true)
+  })
+  it('refuses anything that is not 32 bytes of base64, without echoing it', () => {
+    for (const bad of ['', 'not-base64!', randomBytes(16).toString('base64'), 'EE1-ABCD']) {
+      let msg = ''
+      try {
+        backupKeyFromBase64(bad)
+      } catch (e) {
+        msg = (e as Error).message
+      }
+      expect(msg).toMatch(/backup key/)
+      if (bad) expect(msg).not.toContain(bad)
+    }
   })
 })

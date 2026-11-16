@@ -7,7 +7,7 @@ import { createInterface } from 'node:readline'
 import { parseArgs } from 'node:util'
 import { z } from 'zod'
 import { applyRestore, restoreOnBox } from './backup/box.ts'
-import { backupKeyFromRecoveryCode } from './backup/crypto.ts'
+import { backupKeyFromBase64, backupKeyFromRecoveryCode } from './backup/crypto.ts'
 import { S3Client, s3TargetSchema, type S3Target } from './backup/s3.ts'
 import { BACKUP_SCOPE, storedConfigSchema } from './backup/service.ts'
 import { runApply, SNAPSHOT_ID } from './backup/restore.ts'
@@ -49,6 +49,8 @@ const USAGE = `ee — the company's init (plan/phase-substrate.md)
   ee restore --verify [--snapshot <id|latest>]   (download + decrypt + check, touches nothing)
       restore on a fresh server: --endpoint <url> --region <r> --bucket <b> [--prefix <p>]
       [--addressing path|virtual] --access-key-id <id>   (secret key asked on stdin)
+      --backup-key-stdin   (the line after the S3 secret is the backup key itself, base64, instead of the
+                            recovery code: a hosted company restored with the control plane's escrowed copy)
 
   ee managed enroll --control-plane <https origin> --token <enroll token>
                                          (hand this server to a hosting control plane; it then polls it)
@@ -329,6 +331,7 @@ async function main(argv: string[]): Promise<void> {
           prefix: { type: 'string' },
           addressing: { type: 'string' },
           'access-key-id': { type: 'string' },
+          'backup-key-stdin': { type: 'boolean' },
         },
       })
       if (!values.verify && !values.snapshot) throw new Error('--snapshot <id|latest> is required (or --verify)')
@@ -352,8 +355,14 @@ async function main(argv: string[]): Promise<void> {
         if (!raw) throw new Error('backups are not set up on this server: pass --endpoint --region --bucket [--prefix] --access-key-id')
         target = storedConfigSchema.parse(JSON.parse(raw)).target
       }
-      console.error('Company recovery code (EE1-…):')
-      const key = backupKeyFromRecoveryCode(await ask.next())
+      let key: Buffer
+      if (values['backup-key-stdin']) {
+        console.error('Backup key (base64):')
+        key = backupKeyFromBase64(await ask.next())
+      } else {
+        console.error('Company recovery code (EE1-…):')
+        key = backupKeyFromRecoveryCode(await ask.next())
+      }
       ask.close()
       const s3 = new S3Client(target)
       const id = await resolveSnapshot(s3, values.snapshot ?? 'latest')
