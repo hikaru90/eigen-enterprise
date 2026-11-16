@@ -6,6 +6,7 @@ import {
   recoverStaleEnrichProcessingRows,
   requeueInFlightProcessingRows,
   requeueOrphanedCompleteEnrichRows,
+  requeueUnqueuedUnenrichedRows,
 } from '$lib/server/capture/queue-capture'
 
 export type SyncCaptureEnrichQueueResult = {
@@ -13,6 +14,7 @@ export type SyncCaptureEnrichQueueResult = {
   recoveredStale: number
   requeuedInFlight: number
   requeuedOrphaned: number
+  requeuedUnqueued: number
   autoConfirmedDrafts: number
   activeThoughtIds: string[]
 }
@@ -28,6 +30,7 @@ export async function syncCaptureEnrichQueue(
     ? 0
     : await requeueInFlightProcessingRows(userId)
   const requeuedOrphaned = await requeueOrphanedCompleteEnrichRows(userId)
+  const requeuedUnqueued = await requeueUnqueuedUnenrichedRows(userId)
   const autoConfirmedDrafts = await autoConfirmStaleAwaitingConfirmationDrafts(userId)
   const activeThoughtIds = await listPendingEnrichThoughtIds(userId)
   return {
@@ -35,6 +38,7 @@ export async function syncCaptureEnrichQueue(
     recoveredStale,
     requeuedInFlight,
     requeuedOrphaned,
+    requeuedUnqueued,
     autoConfirmedDrafts,
     activeThoughtIds,
   }

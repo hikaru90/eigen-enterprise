@@ -480,6 +480,46 @@ export async function requeueOrphanedCompleteEnrichRows(userId: string): Promise
   return orphaned.length
 }
 
+/**
+ * Queue thoughts the enrich queue never saw: no queue status and never enriched
+ * (rows written before the queue existed). Without this nothing ever picks them up
+ * and the capture page shows them indexing forever. Returns the number requeued.
+ */
+export async function requeueUnqueuedUnenrichedRows(userId: string): Promise<number> {
+  const db = getDb()
+  const unqueued = await db
+    .select({ id: thought.id })
+    .from(thought)
+    .where(
+      and(
+        eq(thought.userId, userId),
+        isNull(thought.enrichQueueStatus),
+        isNull(thought.enrichedAt),
+      ),
+    )
+
+  if (unqueued.length === 0) return 0
+
+  await db
+    .update(thought)
+    .set({
+      enrichQueueStatus: 'pending' satisfies EnrichQueueStatus,
+      enrichQueueError: null,
+    })
+    .where(
+      and(
+        eq(thought.userId, userId),
+        isNull(thought.enrichQueueStatus),
+        inArray(
+          thought.id,
+          unqueued.map((row) => row.id),
+        ),
+      ),
+    )
+
+  return unqueued.length
+}
+
 const RETRYABLE_ENRICH_STATUSES: EnrichQueueStatus[] = ['pending', 'processing', 'failed']
 
 /** Re-queue one thought for background enrich (user-initiated retry). */
@@ -503,8 +543,10 @@ export async function requeueEnrichThought(
   }
 
   const status = existing.enrichQueueStatus
-  const orphanedComplete = status === 'complete' && existing.enrichedAt == null
-  if (!orphanedComplete && (!status || !RETRYABLE_ENRICH_STATUSES.includes(status))) {
+  const neverEnriched = existing.enrichedAt == null
+  const orphanedComplete = status === 'complete' && neverEnriched
+  const unqueued = status == null && neverEnriched
+  if (!orphanedComplete && !unqueued && (!status || !RETRYABLE_ENRICH_STATUSES.includes(status))) {
     return { ok: false, reason: 'not_retryable' }
   }
 
