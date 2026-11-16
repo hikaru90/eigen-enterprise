@@ -19,6 +19,10 @@ function makeAudioElement() {
       element.played += 1
     }),
     pause: vi.fn(),
+    sinkId: '',
+    setSinkId: vi.fn(async (id: string) => {
+      element.sinkId = id
+    }) as ((id: string) => Promise<void>) | undefined,
   }
   return element
 }
@@ -147,5 +151,46 @@ describe('tts — the assistant speaks (gateway voice)', () => {
     cancelSpeak()
     // The pending request was aborted via its signal; nothing played.
     expect(audioElement.played).toBe(0)
+  })
+
+  describe('the speaker chosen for this browser (shared with calls)', () => {
+    const chooseSpeaker = (id: string) => storage.set('ee.calls.devices', JSON.stringify({ audiooutput: id }))
+
+    it('plays through the remembered speaker, chosen before playback starts', async () => {
+      chooseSpeaker('spk-2')
+      audioElement.play.mockImplementation(async () => {
+        expect(audioElement.sinkId).toBe('spk-2')
+        audioElement.played += 1
+      })
+      speak('hello')
+      await vi.waitFor(() => expect(audioElement.played).toBe(1))
+      expect(audioElement.setSinkId).toHaveBeenCalledWith('spk-2')
+    })
+
+    it('nothing remembered: the browser default output, no sink chosen', async () => {
+      speak('hello')
+      await vi.waitFor(() => expect(audioElement.played).toBe(1))
+      expect(audioElement.setSinkId).not.toHaveBeenCalled()
+    })
+
+    it('the speaker cannot be chosen (setSinkId fails): warned, and silent — never another device', async () => {
+      chooseSpeaker('gone')
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      audioElement.setSinkId = vi.fn(async () => {
+        throw Object.assign(new Error('not found'), { name: 'NotFoundError' })
+      })
+      speak('hello')
+      await vi.waitFor(() => expect(warn).toHaveBeenCalledWith(expect.stringContaining('[tts]'), expect.anything()))
+      await new Promise((r) => setTimeout(r, 0))
+      expect(audioElement.played).toBe(0)
+      warn.mockRestore()
+    })
+
+    it('a browser without setSinkId plays on the current output (the settings row says it cannot choose)', async () => {
+      chooseSpeaker('spk-2')
+      audioElement.setSinkId = undefined
+      speak('hello')
+      await vi.waitFor(() => expect(audioElement.played).toBe(1))
+    })
   })
 })

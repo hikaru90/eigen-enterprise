@@ -9,7 +9,14 @@
  * ON by default (consistent with the boot sound, owner decision 2026-09-07);
  * `ee-voice` in localStorage is the in-app toggle (settings menu). Speaking is
  * formatting normalization of assistant text only — never semantic logic.
+ *
+ * The voice plays on the speaker chosen for this browser (Audio devices in the
+ * settings menu; the same choice calls use, `$lib/calls/devices`). A speaker
+ * that cannot be chosen (setSinkId rejects) means silence, console-warned —
+ * never the voice on a different device. A browser without setSinkId plays on
+ * its current output; the settings row says it cannot choose.
  */
+import { readRemembered } from '$lib/calls/devices'
 
 const STORAGE_KEY = 'ee-voice'
 
@@ -91,6 +98,20 @@ async function speakGatewayText(text: string): Promise<void> {
     if (currentFetch !== fetchController) return
     const audio = new Audio(URL.createObjectURL(blob))
     currentAudio = audio
+    const speaker = readRemembered(window.localStorage).audiooutput
+    if (speaker && typeof audio.setSinkId === 'function') {
+      try {
+        await audio.setSinkId(speaker)
+      } catch (err) {
+        console.warn('[tts] the chosen speaker could not be used — staying silent.', err)
+        if (currentAudio === audio) {
+          URL.revokeObjectURL(audio.src)
+          currentAudio = null
+        }
+        return
+      }
+      if (currentAudio !== audio) return // cancelled while choosing the speaker
+    }
     audio.onended = () => {
       if (currentAudio === audio) {
         URL.revokeObjectURL(audio.src)

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import AudioLines from '@lucide/svelte/icons/audio-lines'
+  import ChevronDown from '@lucide/svelte/icons/chevron-down'
   import Download from '@lucide/svelte/icons/download'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import LogOut from '@lucide/svelte/icons/log-out'
@@ -9,6 +11,7 @@
   import VolumeX from '@lucide/svelte/icons/volume-x'
   import { goto, invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
+  import AudioDevicesSettings from '$lib/components/audio-devices-settings.svelte'
   import * as Popover from '$lib/components/ui/popover'
   import { isStandalone } from '$lib/pwa/install'
   import InstallAppDialog from '$lib/pwa/install-app-dialog.svelte'
@@ -21,7 +24,9 @@
    * extension roadmap, API keys and provider live on their pages; restarting
    * onboarding clears the welcome stamp and reloads page data so the boot
    * sequence takes over the homepage again. Sound (boot sequence, default on)
-   * and assistant voice toggle here; sign out ends the session. "Install app"
+   * and assistant voice toggle here; "Audio devices" opens the microphone + speaker choice
+   * (shared with calls) used by dictation, voice messages and the assistant's voice; sign out
+   * ends the session. "Install app"
    * (hidden inside the installed app) installs eigenEnterprise on this device.
    */
 
@@ -30,6 +35,7 @@
   let signingOut = $state(false)
   let soundOn = $state(true)
   let voiceOn = $state(true)
+  let devicesOpen = $state(false)
   let error = $state<string | null>(null)
   let runningAsApp = $state(false)
   let installDialog = $state<ReturnType<typeof InstallAppDialog> | null>(null)
@@ -52,6 +58,7 @@
   function syncMenu(): void {
     soundOn = isSoundEnabled()
     voiceOn = isVoiceEnabled()
+    devicesOpen = false
     runningAsApp = isStandalone()
   }
 
@@ -149,6 +156,20 @@
       <Speech class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
       {voiceOn ? 'Voice on' : 'Voice off'}
     </button>
+    <button
+      type="button"
+      class="flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm text-foreground hover:bg-white/25 disabled:opacity-50 dark:hover:bg-white/10"
+      aria-expanded={devicesOpen}
+      onclick={() => (devicesOpen = !devicesOpen)}
+      data-testid="audio-devices-toggle"
+    >
+      <AudioLines class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
+      <span class="flex-1">Audio devices</span>
+      <ChevronDown class="size-3.5 shrink-0 opacity-60 transition-transform {devicesOpen ? 'rotate-180' : ''}" strokeWidth={1.75} />
+    </button>
+    {#if devicesOpen}
+      <AudioDevicesSettings />
+    {/if}
     <div class="bg-border my-1 h-px"></div>
     <button
       type="button"
