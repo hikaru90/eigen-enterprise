@@ -19,6 +19,13 @@ case "${1:-}" in
   install)
     # Calls media: the browser runs on this machine and reaches the published ports on
     # loopback, so LiveKit advertises 127.0.0.1 (a real server passes its public IP).
+    # The box is a container, so the install demands the HOST's UDP buffer limits
+    # (D8). These sysctls are global and only writable from the host's network
+    # namespace, so a throwaway privileged container on the Docker VM's host
+    # network raises them (only ever up, never lowered). Docker Desktop resets its
+    # VM on restart, hence on every install.
+    docker run --rm --privileged --net=host --platform "linux/${EE_BOX_ARCH:-arm64}" --entrypoint sh ee-box -c \
+      'set -e; for k in rmem_max wmem_max; do f=/proc/sys/net/core/$k; [ "$(cat $f)" -ge 5000000 ] || echo 5000000 > $f; echo "→ host net.core.$k = $(cat $f)"; done'
     docker exec "$NAME" sh /release/install.sh --from /release --console-host "${2:-os.ee.test}" --node-ip 127.0.0.1 --contribute-hub off ;;
   shell) docker exec -it "$NAME" bash ;;
   down) docker rm -f "$NAME" ;;
