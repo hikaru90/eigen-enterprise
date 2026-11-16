@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { DEVICES_KEY, deviceOptions, readRemembered, remember, selectedDevice, type DeviceInfo } from './devices'
+import { DEVICES_KEY, deviceOptions, forget, micConstraints, readRemembered, remember, selectedDevice, type DeviceInfo } from './devices'
 
 const info = (kind: DeviceInfo['kind'], deviceId: string, label = ''): DeviceInfo => ({ kind, deviceId, label })
 
@@ -80,5 +80,30 @@ describe('selectedDevice', () => {
   })
   it('nothing listed: nothing selected', () => {
     expect(selectedDevice([], 'mic-2')).toBeNull()
+  })
+})
+
+describe('one choice per browser, shared by calls and voice', () => {
+  it('keeps the storage key calls already wrote, so existing choices survive', () => {
+    expect(DEVICES_KEY).toBe('ee.calls.devices')
+  })
+
+  it('forget drops one kind (back to the browser default) and keeps the others', () => {
+    const s = memoryStorage()
+    remember(s, 'audioinput', 'mic-2')
+    remember(s, 'audiooutput', 'spk-1')
+    forget(s, 'audioinput')
+    expect(readRemembered(s)).toEqual({ audiooutput: 'spk-1' })
+  })
+})
+
+describe('micConstraints', () => {
+  it('no remembered microphone: the browser default ({ audio: true })', () => {
+    expect(micConstraints({})).toEqual({ audio: true })
+    expect(micConstraints({ audiooutput: 'spk-1' })).toEqual({ audio: true })
+  })
+
+  it('a remembered microphone: exactly that device, never another', () => {
+    expect(micConstraints({ audioinput: 'mic-2' })).toEqual({ audio: { deviceId: { exact: 'mic-2' } } })
   })
 })

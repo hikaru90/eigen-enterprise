@@ -204,4 +204,38 @@ describe('voice-input-button.svelte', () => {
     })
     expect(component.stopRef).toBeUndefined()
   })
+
+  describe('the microphone chosen for this browser (shared with calls)', () => {
+    afterEach(() => {
+      window.localStorage.removeItem('ee.calls.devices')
+    })
+
+    it('records from exactly the chosen microphone', async () => {
+      window.localStorage.setItem('ee.calls.devices', JSON.stringify({ audioinput: 'mic-2' }))
+      render(VoiceInputButtonTestHarness, { ontranscript: vi.fn() })
+      await page.getByRole('button', { name: 'Start voice input' }).click()
+      await vi.waitFor(() =>
+        expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({ audio: { deviceId: { exact: 'mic-2' } } }),
+      )
+    })
+
+    it('the chosen microphone is gone: the error names it, and nothing records from another mic', async () => {
+      window.localStorage.setItem('ee.calls.devices', JSON.stringify({ audioinput: 'mic-2' }))
+      const getUserMedia = vi.mocked(navigator.mediaDevices.getUserMedia)
+      getUserMedia.mockRejectedValueOnce(new DOMException('gone', 'OverconstrainedError'))
+      vi.mocked(navigator.mediaDevices.enumerateDevices).mockResolvedValueOnce([
+        { kind: 'audioinput', deviceId: 'mic-2', label: 'USB Headset', groupId: 'g' } as MediaDeviceInfo,
+      ])
+      const onerror = vi.fn()
+      render(VoiceInputButtonTestHarness, { ontranscript: vi.fn(), onerror })
+      await page.getByRole('button', { name: 'Start voice input' }).click()
+      await vi.waitFor(() =>
+        expect(onerror).toHaveBeenCalledWith(
+          'The chosen microphone (USB Headset) is not available. Choose another under Audio devices in the settings menu.',
+        ),
+      )
+      expect(getUserMedia).toHaveBeenCalledTimes(1)
+      await expect.element(page.getByRole('button', { name: 'Start voice input' })).toBeInTheDocument()
+    })
+  })
 })

@@ -9,6 +9,7 @@
   } from '$lib/capture/streaming-stt-scheduler'
   import { transcribeRecordedAudio, transcribeAudioChunk } from '$lib/capture/transcribe-audio'
   import { Button } from '$lib/components/ui/button'
+  import { browserMicrophoneDeps, openMicrophone } from '$lib/voice/microphone'
 
   let {
     disabled = false,
@@ -124,7 +125,7 @@
       onPartial: (text) => onpartialtranscript?.(text),
     })
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mediaStream = await openMicrophone(browserMicrophoneDeps())
       stream = mediaStream
       startLevelMeter(mediaStream)
       const preferredMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')

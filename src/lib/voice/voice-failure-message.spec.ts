@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { chosenMicrophoneMessage } from './microphone'
 import { VOICE_FAILURE_TEXT, voiceFailureMessage } from './voice-failure-message'
 
 describe('voiceFailureMessage', () => {
@@ -16,5 +17,12 @@ describe('voiceFailureMessage', () => {
       VOICE_FAILURE_TEXT.transcribe,
     )
     expect(voiceFailureMessage({ reason: 'request', detail: 'Failed to fetch', retryable: true })).toBe(VOICE_FAILURE_TEXT.transcribe)
+  })
+
+  it('a chosen microphone that is gone is named, with where to choose another', () => {
+    expect(voiceFailureMessage({ reason: 'chosen-microphone', detail: 'USB Headset', retryable: false })).toBe(
+      chosenMicrophoneMessage('USB Headset'),
+    )
+    expect(voiceFailureMessage({ reason: 'chosen-microphone', retryable: false })).toBe(chosenMicrophoneMessage(null))
   })
 })

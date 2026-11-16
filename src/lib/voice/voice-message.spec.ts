@@ -5,6 +5,7 @@ import {
   fakeStream,
   micSignal,
 } from '$lib/test/voice-doubles'
+import { DEVICES_KEY, type DeviceInfo } from '$lib/calls/devices'
 import { CLIP_DECODE_SAMPLE_RATE, type DecodedClip } from './clip-speech'
 import { TranscribeRequestError } from './transcribe-voice-clip'
 import {
@@ -35,6 +36,9 @@ function speechClip(): DecodedClip {
 function setup(options?: {
   transcribe?: (clip: Blob, signal: AbortSignal) => Promise<string>
   decodeClip?: (clip: Blob) => Promise<DecodedClip>
+  /** The device choices this browser remembers (`ee.calls.devices`); none by default. */
+  remembered?: Record<string, string>
+  devices?: DeviceInfo[]
 }) {
   const log: string[] = []
   const stream = fakeStream()
@@ -65,6 +69,11 @@ function setup(options?: {
       },
       decodeClip,
       now: () => Date.now(),
+      deviceStorage: {
+        getItem: (k: string) => (k === DEVICES_KEY && options?.remembered ? JSON.stringify(options.remembered) : null),
+        setItem: () => {},
+      },
+      enumerateDevices: async () => options?.devices ?? [],
     },
   })
   return { session, stream, getUserMedia, transcribe, decodeClip, events, views, log }
@@ -194,6 +203,33 @@ describe('voice message session', () => {
       getUserMedia.mockRejectedValueOnce(Object.assign(new Error('x'), { name: 'NotFoundError' }))
       await session.start()
       expect(session.view().failure).toMatchObject({ reason: 'microphone', retryable: false })
+    })
+
+    it('records from the microphone chosen for this browser (the same choice calls use)', async () => {
+      const { session, getUserMedia } = setup({ remembered: { audioinput: 'mic-2' } })
+      await session.start()
+      expect(getUserMedia).toHaveBeenCalledWith({ audio: { deviceId: { exact: 'mic-2' } } })
+      expect(session.view().phase).toBe('recording')
+    })
+
+    it('the chosen microphone is gone: a failure naming it, never a recording from another mic', async () => {
+      const { session, getUserMedia, events } = setup({
+        remembered: { audioinput: 'mic-2' },
+        devices: [{ kind: 'audioinput', deviceId: 'mic-2', label: 'USB Headset' }],
+      })
+      getUserMedia.mockRejectedValueOnce(Object.assign(new Error('x'), { name: 'OverconstrainedError' }))
+      await session.start()
+      expect(getUserMedia).toHaveBeenCalledTimes(1)
+      expect(session.view().failure).toEqual({ reason: 'chosen-microphone', detail: 'USB Headset', retryable: false })
+      expect(events.onerror).toHaveBeenCalledWith(expect.objectContaining({ reason: 'chosen-microphone' }))
+      expect(FakeMediaRecorder.instances).toHaveLength(0)
+    })
+
+    it('the chosen microphone is gone and no longer listed: the failure carries no name', async () => {
+      const { session, getUserMedia } = setup({ remembered: { audioinput: 'mic-2' } })
+      getUserMedia.mockRejectedValueOnce(Object.assign(new Error('x'), { name: 'NotFoundError' }))
+      await session.start()
+      expect(session.view().failure).toEqual({ reason: 'chosen-microphone', retryable: false })
     })
 
     it('stops the tracks when the clip was discarded while the permission prompt was open', async () => {

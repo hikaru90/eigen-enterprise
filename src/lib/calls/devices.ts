@@ -1,7 +1,12 @@
 /**
- * Choosing the microphone, speaker and camera in a call (Contribute round 4).
- * Pure helpers: the list from `enumerateDevices`, the choice remembered per
- * browser (localStorage), and which entry the picker shows as selected.
+ * Choosing the microphone, speaker and camera (Contribute round 4; shared
+ * with voice since 2026-11). ONE choice per browser (localStorage
+ * `ee.calls.devices` — the key calls first wrote, kept so existing choices
+ * survive): calls switch to it, and dictation, voice messages and the voice
+ * input button record from the chosen microphone while the assistant's
+ * voice plays on the chosen speaker. Pure helpers: the list from
+ * `enumerateDevices`, the remembered choice, which entry a picker shows as
+ * selected, and the microphone constraint.
  */
 
 export type DeviceKind = 'audioinput' | 'audiooutput' | 'videoinput'
@@ -49,13 +54,29 @@ export function readRemembered(storage: DeviceStorage): Remembered {
     }
     return out
   } catch (err) {
-    console.error(`[calls] the remembered call devices (${DEVICES_KEY}) are unreadable; choose them again`, err)
+    console.error(`[devices] the remembered audio/video devices (${DEVICES_KEY}) are unreadable; choose them again`, err)
     return {}
   }
 }
 
 export function remember(storage: DeviceStorage, kind: DeviceKind, id: string): void {
   storage.setItem(DEVICES_KEY, JSON.stringify({ ...readRemembered(storage), [kind]: id }))
+}
+
+/** Back to the browser's default for this kind (the other choices stay). */
+export function forget(storage: DeviceStorage, kind: DeviceKind): void {
+  const rest = { ...readRemembered(storage) }
+  delete rest[kind]
+  storage.setItem(DEVICES_KEY, JSON.stringify(rest))
+}
+
+/**
+ * What to ask getUserMedia for: exactly the chosen microphone, or — with no
+ * choice made — the browser's default (the honest default, not a fallback).
+ */
+export function micConstraints(remembered: Remembered): MediaStreamConstraints {
+  const id = remembered.audioinput
+  return id ? { audio: { deviceId: { exact: id } } } : { audio: true }
 }
 
 /** The entry the picker shows: the device in use, else the browser default, else the first one. */

@@ -13,7 +13,9 @@
  * The session is a plain state machine with injected browser APIs, so it runs without a
  * browser in unit tests. The writer turns its views into UI; nothing here knows about Svelte.
  */
+import type { DeviceInfo, DeviceStorage } from '$lib/calls/devices'
 import { clipHasSpeechLevelSound, decodeClip, type DecodedClip } from './clip-speech'
+import { browserDeviceStorage, ChosenMicrophoneUnavailable, openMicrophone } from './microphone'
 
 /** VM-8: a clip is sent automatically at this length. */
 export const VOICE_MESSAGE_MAX_MS = 5 * 60 * 1000
@@ -39,6 +41,8 @@ export type VoiceFailureReason =
   | 'permission'
   /** No usable microphone. */
   | 'microphone'
+  /** The microphone chosen for this browser is gone (`detail`: its name, when still listed). */
+  | 'chosen-microphone'
   /** The recorder failed, or produced no audio. */
   | 'recorder'
   /** The browser ended the recording by itself (a call, an unplugged mic). */
@@ -82,6 +86,10 @@ export type VoiceMessageDeps = {
   /** Decodes the finished clip to samples; rejects when the codec cannot be decoded. */
   decodeClip: (clip: Blob) => Promise<DecodedClip>
   now: () => number
+  /** Where this browser remembers its chosen devices (`null`: none can be chosen). */
+  deviceStorage: DeviceStorage | null
+  /** Lists the devices (to name a chosen microphone that failed). */
+  enumerateDevices: () => Promise<DeviceInfo[]>
 }
 
 export type VoiceMessageOptions = {
@@ -122,6 +130,8 @@ function browserDeps(): VoiceMessageDeps {
     createAudioContext: () => (typeof AudioContext === 'undefined' ? null : new AudioContext()),
     decodeClip,
     now: () => performance.now(),
+    deviceStorage: browserDeviceStorage(),
+    enumerateDevices: () => navigator.mediaDevices.enumerateDevices(),
   }
 }
 
@@ -415,9 +425,17 @@ export function createVoiceMessageSession(options: VoiceMessageOptions): VoiceMe
 
     let mediaStream: MediaStream
     try {
-      mediaStream = await deps.getUserMedia({ audio: true })
+      mediaStream = await openMicrophone({
+        getUserMedia: deps.getUserMedia,
+        enumerateDevices: deps.enumerateDevices,
+        storage: deps.deviceStorage,
+      })
     } catch (err) {
       if (mine !== epoch) return
+      if (err instanceof ChosenMicrophoneUnavailable) {
+        fail({ reason: 'chosen-microphone', ...(err.label ? { detail: err.label } : {}), retryable: false })
+        return
+      }
       const name = err !== null && typeof err === 'object' && 'name' in err ? String(err.name) : ''
       fail({ reason: MIC_DENIED.has(name) ? 'permission' : 'microphone', retryable: false })
       return

@@ -1,3 +1,4 @@
+import { chosenMicrophoneMessage } from './microphone'
 import type { VoiceFailure } from './voice-message'
 
 export const VOICE_FAILURE_TEXT = {
@@ -23,6 +24,8 @@ export function voiceFailureMessage(failure: VoiceFailure): string {
     case 'interrupted':
     case 'empty':
       return VOICE_FAILURE_TEXT[failure.reason]
+    case 'chosen-microphone':
+      return chosenMicrophoneMessage(failure.detail ?? null)
     case 'request':
       return (failure.status === 400 || failure.status === 503) && failure.detail
         ? failure.detail
