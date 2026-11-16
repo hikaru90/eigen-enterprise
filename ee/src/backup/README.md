@@ -61,6 +61,21 @@ key or the code; a later config with a different key is refused (it would
 orphan every snapshot). The page shows the same `EE1-…` code to confirm it is
 stored. `ee restore` asks for that code and derives the backup key from it.
 
+### Escrow on a managed box
+
+A box enrolled with a hosting control plane hands it a copy of the sealed
+backup key when the desired state says `escrowBackupKey: true`
+(`fleet/agent.ts`, signed POST to `/api/fleet/v1/escrow`; decision D7 in
+`plan/phase-managed-box.md`). The key decrypts every snapshot, and a snapshot
+holds the master key and the sealed company root key, so the key alone is a
+full restore. An operator restores a hosted company with that copy:
+
+    printf '%s\n%s\n' "$S3_SECRET" "$BACKUP_KEY" | ee restore --snapshot latest \
+      --endpoint … --bucket … --access-key-id … --backup-key-stdin
+
+The owner's recovery code keeps working the same; Settings › Backups says
+hosting holds a copy. The key is never logged or put in an error.
+
 ## S3 client: own implementation (`s3.ts`)
 
 ee ships as one bundled `ee.mjs` with zod as its only dependency. The AWS SDK v3
