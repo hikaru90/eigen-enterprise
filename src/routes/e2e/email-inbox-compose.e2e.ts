@@ -93,9 +93,9 @@ test('reply threads and stays out of the company log; new mail to two; forward w
   expect(reply.references).toEqual(expect.arrayContaining([`<${numbers.messageId}>`]))
   expect(reply.text).toContain('Thanks, Mara!')
 
-  // ── Not in the company log: no mail_messages row, not on Company mail, not in Logs.
+  // ── Not in the company log: no mail_messages row, not on Transactional mail, not in Logs.
   expect(await sql()`select id from mail_messages where subject like ${`%Numbers ${stamp}%`}`).toHaveLength(0)
-  await page.goto('/m/email/company')
+  await page.goto('/m/email/transactional')
   await expect(page.getByTestId('email-sent-header').or(page.getByTestId('email-not-connected'))).toBeVisible()
   await expect(page.getByText(`Re: Numbers ${stamp}`)).toHaveCount(0)
   await page.goto('/m/email/logs')

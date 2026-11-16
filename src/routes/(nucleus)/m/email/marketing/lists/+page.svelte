@@ -15,7 +15,7 @@
 
 <SectionHeader
   title="Lists"
-  description="Lists of people who get your mail — a newsletter, your customers. Everyone can unsubscribe with one click; flows start when someone joins a list."
+  description="The people who agreed to get your marketing mail — a newsletter, product news. Everyone can unsubscribe with one click; flows start when someone joins a list."
 />
 <p class="mt-2 text-sm text-muted-foreground" data-testid="lists-contacts-pointer">
   Keeping track of the people you know — where you met, why they matter, when to follow up? That's
@@ -56,7 +56,7 @@
       <li>
         <a
           class="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 hover:bg-muted/50 sm:px-5"
-          href={resolve(`/m/email/contacts/${l.id}`)}
+          href={resolve(`/m/email/marketing/lists/${l.id}`)}
           data-testid={`list-row-${l.name}`}
         >
           <span class="min-w-0 flex-1 truncate text-sm font-medium">{l.name}</span>

@@ -24,7 +24,7 @@
     <p class="mt-5 text-sm text-muted-foreground">
       A flow starts when someone joins a list. <a
         class="underline underline-offset-4"
-        href={resolve('/m/email/contacts')}>Create a list</a
+        href={resolve('/m/email/marketing/lists')}>Create a list</a
       > first.
     </p>
   {:else}
@@ -68,7 +68,7 @@
       <li>
         <a
           class="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 hover:bg-muted/50 sm:px-5"
-          href={resolve(`/m/email/flows/${f.id}`)}
+          href={resolve(`/m/email/marketing/flows/${f.id}`)}
           data-testid={`flow-row-${f.name}`}
         >
           <span class="min-w-0 flex-1">

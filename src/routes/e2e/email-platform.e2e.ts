@@ -254,7 +254,7 @@ test.describe('email platform', () => {
     await expect(page).toHaveURL(/\/m\/email\/templates\/[0-9a-f-]+$/)
 
     // A double-opt-in list.
-    await page.getByTestId('email-tab-contacts').click()
+    await page.getByTestId('email-tab-marketing').click()
     await page.locator('#list-name').fill(`News ${stamp}`)
     await page.getByTestId('list-doi').check()
     await page.getByRole('button', { name: 'Create list' }).click()
@@ -262,11 +262,11 @@ test.describe('email platform', () => {
     const listUrl = page.url()
 
     // A flow on it: send the template, then wait two days.
-    await page.getByTestId('email-setup-tab-flows').click()
+    await page.getByTestId('email-marketing-tab-flows').click()
     await page.locator('#flow-name').fill(`Welcome ${stamp}`)
     await page.locator('#flow-list').selectOption({ label: `News ${stamp}` })
     await page.getByRole('button', { name: 'Create flow' }).click()
-    await expect(page).toHaveURL(/\/m\/email\/flows\/[0-9a-f-]+$/)
+    await expect(page).toHaveURL(/\/m\/email\/marketing\/flows\/[0-9a-f-]+$/)
     const flowUrl = page.url()
     await page.getByTestId('flow-add-send').click()
     await page.getByTestId('flow-step-1').getByLabel('Template').selectOption({ label: `Flow mail ${stamp}` })

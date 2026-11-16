@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { FlowStep } from '../../../../../../../modules/email/platform/flows/engine'
+  import type { FlowStep } from '../../../../../../../../modules/email/platform/flows/engine'
   import type { PageProps } from './$types'
   import ArrowDown from '@lucide/svelte/icons/arrow-down'
   import ArrowUp from '@lucide/svelte/icons/arrow-up'
@@ -72,7 +72,7 @@
 <div class="mt-8">
   <a
     class="text-[13px] text-muted-foreground hover:text-foreground"
-    href={resolve('/m/email/flows')}>← Back to flows</a
+    href={resolve('/m/email/marketing/flows')}>← Back to flows</a
   >
   <div class="mt-2 flex flex-wrap items-center gap-3">
     <h2 class="text-base font-semibold tracking-tight">{data.flow.name}</h2>

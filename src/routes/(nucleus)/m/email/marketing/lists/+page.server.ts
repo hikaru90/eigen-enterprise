@@ -1,9 +1,9 @@
 import type { Actions, PageServerLoad } from './$types'
 import { redirect } from '@sveltejs/kit'
-import { emailPlatform } from '../../../../../../modules/email/platform/service'
-import { act, field, requireAdmin, requireMember } from '../access.server'
+import { emailPlatform } from '../../../../../../../modules/email/platform/service'
+import { act, field, requireAdmin, requireMember } from '../../access.server'
 
-/** Email › Lists (route /m/email/contacts): lists of people who get your mail, with their subscription state. */
+/** Email › Lists (route /m/email/marketing/lists; /m/email/contacts until 2026-11-16): lists of people who get your mail, with their subscription state. */
 export const load: PageServerLoad = async ({ locals }) => {
   await requireMember(locals)
   const lists = await emailPlatform().audience.listLists()
@@ -31,7 +31,7 @@ export const actions: Actions = {
       return { id: l.id }
     })
     if ('id' in out && typeof out.id === 'string')
-      throw redirect(303, `/m/email/contacts/${out.id}`)
+      throw redirect(303, `/m/email/marketing/lists/${out.id}`)
     return out
   },
 }

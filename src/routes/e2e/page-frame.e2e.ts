@@ -118,13 +118,13 @@ test('every area page wears the one page header', async ({ page, context }) => {
   await page.goto('/')
   await expect(page.locator('body')).not.toContainText(/kernel|GTD|hybrid retrieval/)
   await expect(page.getByTestId('overview-modules-hint')).not.toContainText('available')
-  // Email: your inbox first (/m/email lands there); the company's pending + sent mail under
-  // Company mail (owner and admins); the developer recipe is the API section under Setup.
+  // Email: personal mail (the inbox) first (/m/email lands there); the company's automatic pending + sent mail under
+  // Transactional mail (owner and admins); the developer recipe is the API section under Setup.
   await page.goto('/m/email')
   await expect(page).toHaveURL(/\/m\/email\/inbox$/)
   await expect(page.getByTestId('email-tab-inbox')).toHaveAttribute('aria-current', 'page')
   await expect(page.getByTestId('email-tab-setup')).toBeVisible()
-  await page.getByTestId('email-tab-company').click()
+  await page.getByTestId('email-tab-transactional').click()
   await expect(page.getByTestId('email-pending-header').or(page.getByTestId('email-not-connected'))).toBeVisible()
   await page.goto('/m/email/setup')
   await expect(page.getByTestId('email-setup-tab-api')).toBeVisible()

@@ -1,7 +1,7 @@
 import type { Actions, PageServerLoad } from './$types'
 import { redirect } from '@sveltejs/kit'
-import { emailPlatform } from '../../../../../../modules/email/platform/service'
-import { act, field, requireAdmin, requireMember } from '../access.server'
+import { emailPlatform } from '../../../../../../../modules/email/platform/service'
+import { act, field, requireAdmin, requireMember } from '../../access.server'
 
 /** Email › Flows: automations that mail people when they join a list. */
 export const load: PageServerLoad = async ({ locals }) => {
@@ -34,7 +34,7 @@ export const actions: Actions = {
       )
       return { id: f.id }
     })
-    if ('id' in out && typeof out.id === 'string') throw redirect(303, `/m/email/flows/${out.id}`)
+    if ('id' in out && typeof out.id === 'string') throw redirect(303, `/m/email/marketing/flows/${out.id}`)
     return out
   },
 }

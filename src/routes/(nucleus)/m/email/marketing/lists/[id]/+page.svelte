@@ -11,7 +11,7 @@
 
   let { data, form }: PageProps = $props()
   const l = $derived(data.list)
-  const base = $derived(resolve(`/m/email/contacts/${data.list.id}`))
+  const base = $derived(resolve(`/m/email/marketing/lists/${data.list.id}`))
   const feedback = (action: string) =>
     form && form.action === action
       ? (form as {
@@ -43,7 +43,7 @@
 <div class="mt-8">
   <a
     class="text-[13px] text-muted-foreground hover:text-foreground"
-    href={resolve('/m/email/contacts')}>← Back to lists</a
+    href={resolve('/m/email/marketing/lists')}>← Back to lists</a
   >
   <h2 class="mt-2 text-base font-semibold tracking-tight" data-testid="list-name">{l.name}</h2>
   {#if l.description}<p class="mt-1 text-sm text-muted-foreground">{l.description}</p>{/if}
