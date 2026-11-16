@@ -8,6 +8,27 @@ import { emit, OS_INTERNAL_PORT } from '../reconcile.ts'
 import { mustRun } from '../system.ts'
 import { FLEET_AUTHOR, UPGRADE_UNIT, type FleetHost } from './agent.ts'
 
+/** GET on os's loopback port with the fleet bearer token; rejects on a connection error or timeout. */
+function osGet(path: string, token: string): Promise<{ status: number; raw: string }> {
+  return new Promise((resolve, reject) => {
+    const req = request(
+      { host: '127.0.0.1', port: OS_INTERNAL_PORT, path, method: 'GET', timeout: 5000, headers: { authorization: `Bearer ${token}` } },
+      (res) => {
+        let raw = ''
+        res.on('data', (d) => (raw += String(d)))
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, raw }))
+        res.on('error', reject)
+      },
+    )
+    req.on('error', reject)
+    req.on('timeout', () => {
+      req.destroy()
+      reject(new Error(`os did not answer ${path} within 5s`))
+    })
+    req.end()
+  })
+}
+
 /** The real box behind the fleet agent: every effect goes through ee's own paths (Ee.change, BackupService, the System seam). */
 export function fleetHost(ee: Ee): FleetHost {
   const sys = ee.sys
@@ -36,31 +57,35 @@ export function fleetHost(ee: Ee): FleetHost {
       const gb = (blocks: number) => Math.round(((blocks * s.bsize) / 1e9) * 100) / 100
       return { usedGb: gb(s.blocks - s.bfree), totalGb: gb(s.blocks) }
     },
-    seats: (token) =>
-      new Promise((resolve) => {
-        const req = request(
-          { host: '127.0.0.1', port: OS_INTERNAL_PORT, path: '/api/fleet/seats', method: 'GET', timeout: 5000, headers: { authorization: `Bearer ${token}` } },
-          (res) => {
-            let raw = ''
-            res.on('data', (d) => (raw += String(d)))
-            res.on('end', () => {
-              try {
-                const n = (JSON.parse(raw) as { seats?: unknown }).seats
-                resolve(res.statusCode === 200 && typeof n === 'number' && Number.isInteger(n) && n >= 0 ? n : null)
-              } catch {
-                resolve(null)
-              }
-            })
-          },
-        )
-        req.on('error', () => resolve(null))
-        req.on('timeout', () => {
-          req.destroy()
-          resolve(null)
-        })
-        req.end()
-      }),
+    seats: async (token) => {
+      try {
+        const { status, raw } = await osGet('/api/fleet/seats', token)
+        const n = (JSON.parse(raw) as { seats?: unknown }).seats
+        return status === 200 && typeof n === 'number' && Number.isInteger(n) && n >= 0 ? n : null
+      } catch {
+        return null
+      }
+    },
+    backupKey: async (token) => {
+      let got: { status: number; raw: string }
+      try {
+        got = await osGet('/api/fleet/backup-key', token)
+      } catch (err) {
+        throw new Error(`os could not give the backup key: ${(err as Error).message}`)
+      }
+      // The body is never echoed: it may hold the key.
+      if (got.status !== 200) throw new Error(`os could not give the backup key: HTTP ${got.status}`)
+      let key: unknown
+      try {
+        key = (JSON.parse(got.raw) as { backupKey?: unknown }).backupKey
+      } catch {
+        key = undefined
+      }
+      if (typeof key !== 'string' || !/^[A-Za-z0-9+/]{43}=$/.test(key)) throw new Error('os answered no valid backup key')
+      return key
+    },
     backups: {
+      hasKey: () => ee.backups.key() !== null,
       config: () => ee.backups.config(),
       configure: (input) => ee.backups.configure(input),
       unconfigure: async (author) => {

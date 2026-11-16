@@ -55,7 +55,9 @@ function fakeHost(opts: { managed?: boolean } = {}) {
     reconcileError: () => 'reconcile finished with errors:\n- route x: y has nothing live',
     disk: async () => ({ usedGb: 12.5, totalGb: 80 }),
     seats: vi.fn(async () => 4),
+    backupKey: vi.fn(async (_token: string): Promise<string> => 'K'.repeat(43) + '='),
     backups: {
+      hasKey: vi.fn(() => true),
       config: () => backupCfg,
       configure: vi.fn(async (input: any) => {
         backupCfg = { target: input.target, schedule: { hour: input.schedule.hour, minute: 7 }, retentionDays: input.retentionDays, configuredAt: 'now', configuredBy: input.author, keyCreatedAt: 'now' }
@@ -255,6 +257,41 @@ describe('fleet: desired state (level-triggered)', () => {
     await agent.poll()
     expect(f.host.backups.unconfigure).toHaveBeenCalledTimes(1)
     expect(f.secrets[FLEET_SCOPE]![FLEET_BACKUP_MARK]).toBeUndefined()
+  })
+
+  it('backup: no key sealed yet → asks os for it over loopback and configures with it', async () => {
+    const f = fakeHost({ managed: true })
+    f.host.backups.hasKey.mockReturnValue(false)
+    const agent = new FleetAgent(f.host)
+    f.setAnswer(desired({ backup: target }))
+    const r = await agent.poll()
+    expect(r.ok).toBe(true)
+    expect(f.host.backupKey).toHaveBeenCalledWith('local-token')
+    expect(f.host.backups.configure).toHaveBeenCalledWith({ target: { ...target, addressing: 'path' }, schedule: { hour: 3 }, retentionDays: 30, author: 'fleet', backupKey: 'K'.repeat(43) + '=' })
+  })
+
+  it('backup: os cannot give the key → error in the poll, nothing configured, retried next tick', async () => {
+    const f = fakeHost({ managed: true })
+    f.host.backups.hasKey.mockReturnValue(false)
+    f.host.backupKey.mockRejectedValueOnce(new Error('os could not give the backup key: HTTP 503'))
+    const agent = new FleetAgent(f.host)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    f.setAnswer(desired({ backup: target }))
+    const r = await agent.poll()
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/backup: os could not give the backup key/)
+    expect(f.host.backups.configure).not.toHaveBeenCalled()
+    expect(f.secrets[FLEET_SCOPE]![FLEET_BACKUP_MARK]).toBeUndefined()
+    expect((await agent.poll()).ok).toBe(true)
+    expect(f.host.backups.configure).toHaveBeenCalledTimes(1)
+  })
+
+  it('backup: a sealed key is never fetched again', async () => {
+    const f = fakeHost({ managed: true })
+    const agent = new FleetAgent(f.host)
+    f.setAnswer(desired({ backup: target }))
+    await agent.poll()
+    expect(f.host.backupKey).not.toHaveBeenCalled()
   })
 
   it('backup: never touches a target the owner set by hand', async () => {

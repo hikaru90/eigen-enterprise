@@ -70,7 +70,11 @@ export type FleetHost = {
   disk(): Promise<{ usedGb: number; totalGb: number } | null>
   /** GET os /api/fleet/seats with the token; null when os can't say. */
   seats(token: string): Promise<number | null>
+  /** GET os /api/fleet/backup-key with the token (base64); throws with os's reason. Never logged. */
+  backupKey(token: string): Promise<string>
   backups: {
+    /** A backup key is sealed on this box. */
+    hasKey(): boolean
     config(): BackupConfig | null
     configure(input: unknown): Promise<unknown>
     /** Drop the saved target (the sealed key stays). */
@@ -305,10 +309,24 @@ export class FleetAgent {
     if (cfg && !owned) return
     const next = { ...target!, addressing: 'path' as const }
     if (cfg && (Object.keys(next) as Array<keyof typeof next>).every((k) => cfg.target[k] === next[k])) return
+    // No key sealed yet: only os can derive it (from the company root key); ask it on loopback.
+    // A failure throws into the poll's error and the next tick tries again.
+    let backupKey: string | undefined
+    if (!this.host.backups.hasKey()) {
+      const token = this.host.secrets.all()['os']?.[LOCAL_TOKEN]
+      if (!token) throw new Error(`no backup key sealed and no ${LOCAL_TOKEN} to ask os for it`)
+      backupKey = await this.host.backupKey(token)
+    }
     // Mark first: a target saved by this call is the fleet's even if ee stops right after.
     if (!owned) await this.host.secrets.set(FLEET_SCOPE, FLEET_BACKUP_MARK, '1')
     try {
-      await this.host.backups.configure({ target: next, schedule: FLEET_BACKUP_SCHEDULE, retentionDays: FLEET_BACKUP_RETENTION_DAYS, author: FLEET_AUTHOR })
+      await this.host.backups.configure({
+        target: next,
+        schedule: FLEET_BACKUP_SCHEDULE,
+        retentionDays: FLEET_BACKUP_RETENTION_DAYS,
+        author: FLEET_AUTHOR,
+        ...(backupKey ? { backupKey } : {}),
+      })
     } catch (err) {
       if (!cfg) await this.host.secrets.delete(FLEET_SCOPE, FLEET_BACKUP_MARK)
       throw err
