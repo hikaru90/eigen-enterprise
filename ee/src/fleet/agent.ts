@@ -4,6 +4,7 @@ import { generateSecret } from '../secrets.ts'
 import { EE_VERSION } from '../version.ts'
 import {
   enrollRequestV1,
+  escrowRequestV1,
   enrollResponseV1,
   FLEET_FEATURES,
   FLEET_PATHS,
@@ -75,6 +76,8 @@ export type FleetHost = {
   backups: {
     /** A backup key is sealed on this box. */
     hasKey(): boolean
+    /** The sealed backup key (base64), null before one is sealed. Never logged. */
+    key(): string | null
     config(): BackupConfig | null
     configure(input: unknown): Promise<unknown>
     /** Drop the saved target (the sealed key stays). */
@@ -250,9 +253,26 @@ export class FleetAgent {
     if (d.suspended !== undefined) await step('suspended', () => this.applySuspended(d.suspended!))
     if (d.platformAi !== undefined) await step('platformAi', () => this.applyPlatformAi(d.platformAi!))
     if (d.backup !== undefined) await step('backup', () => this.applyBackup(d.backup!))
+    if (d.escrowBackupKey === true) await step('escrowBackupKey', () => this.applyEscrowBackupKey())
     if (d.backupRequestedAt !== undefined && d.backupRequestedAt !== null) await step('backupRequestedAt', () => this.applyBackupNow(d.backupRequestedAt!))
     if (d.release !== undefined && d.release !== null) await step('release', () => this.applyRelease(d.release!))
     return errors
+  }
+
+  /** Hand the control plane a copy of the sealed backup key (owner decision D7). None sealed yet → a later poll sends it. */
+  private async applyEscrowBackupKey(): Promise<void> {
+    const backupKey = this.host.backups.key()
+    if (backupKey === null) return
+    const managed = (await this.host.read()).settings.managed
+    if (!managed) throw new Error('not enrolled')
+    const privateKey = this.host.secrets.all()[FLEET_SCOPE]?.[BOX_KEY]
+    if (!privateKey) throw new Error(`the box key is missing from the secret store (${FLEET_SCOPE}/${BOX_KEY}); this box cannot sign its escrow request`)
+    const body = JSON.stringify(escrowRequestV1.parse({ protocol: FLEET_PROTOCOL, backupKey }))
+    const headers = signFleetRequest({ boxId: managed.boxId, privateKey, method: 'POST', path: FLEET_PATHS.escrow, body, now: this.host.now().getTime() })
+    const url = `${managed.controlPlane}${FLEET_PATHS.escrow}`
+    const res = await this.host.fetch(url, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body })
+    if (!res.ok) throw new Error(`${url} answered ${res.status}: ${await failText(res)}`)
+    await this.host.log('fleet.backup_key_escrowed', `the control plane (${managed.controlPlane}) now holds a copy of this box's backup key`)
   }
 
   private async applyPollSeconds(pollSeconds: number): Promise<void> {

@@ -86,6 +86,7 @@ export function fleetHost(ee: Ee): FleetHost {
     },
     backups: {
       hasKey: () => ee.backups.key() !== null,
+      key: () => ee.backups.key()?.toString('base64') ?? null,
       config: () => ee.backups.config(),
       configure: (input) => ee.backups.configure(input),
       unconfigure: async (author) => {
