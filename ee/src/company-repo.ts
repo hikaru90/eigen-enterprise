@@ -30,6 +30,14 @@ export const ipv4CidrSchema = z.cidrv4({ message: 'must be an IPv4 CIDR, e.g. 10
  * so a half-written file is never observed.
  */
 
+export const managedSchema = z
+  .object({
+    controlPlane: z.url().refine((u) => new URL(u).protocol === 'https:', { message: 'must be https' }),
+    boxId: z.uuid(),
+    pollSeconds: z.number().int().min(15).max(3600),
+  })
+  .strict()
+
 export const settingsSchema = z
   .object({
     /** Console host (the operator surface). Drives the os workload's ORIGIN. */
@@ -65,6 +73,10 @@ export const settingsSchema = z
      * get the official board on their next upgrade.
      */
     contributeHub: z.union([z.literal('off'), z.url()]).default(OFFICIAL_CONTRIBUTE_HUB),
+    /** Managed mode (fleet/agent.ts): the hosting control plane this box polls; null = self-hosted. */
+    managed: managedSchema.nullable().default(null),
+    /** Managed box paused by the control plane: every public host answers 503 (caddy.ts). */
+    suspended: z.boolean().default(false),
   })
   .strict()
 

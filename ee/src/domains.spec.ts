@@ -7,7 +7,7 @@ const source = { kind: 'release', tarball: '/var/lib/ee/releases/x.tar.gz', sha2
 const os = workloadSchema.parse({ name: 'os', tier: 'system', source, env: { ORIGIN: 'https://os.example.com' } })
 const lk = workloadSchema.parse(livekitWorkload('/var/lib/ee/releases/lk.tar.gz', 'b'.repeat(64), { tcp: 7881, udp: 7882 }))
 const site = workloadSchema.parse({ name: 'site', tier: 'app', source })
-const settings = { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: null, rtcNodeIp: '203.0.113.7', contributeHub: 'off', rtcPorts: { tcp: 7881, udp: 7882 }, trustedProxy: null }
+const settings = { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: null, rtcNodeIp: '203.0.113.7', contributeHub: 'off', rtcPorts: { tcp: 7881, udp: 7882 }, trustedProxy: null, managed: null, suspended: false }
 
 const base = (workloads = [os, lk, site]) =>
   withCallsHost({ workloads, routes: [{ host: 'os.example.com', workload: 'os' }], settings })

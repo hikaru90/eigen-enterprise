@@ -18,6 +18,8 @@ import { BackupService, type BackupDeps } from './backup/service.ts'
 import { backupRoute, restoreRoute } from './backup/control.ts'
 import { launchRestoreUnit, productionSources, restoreUnitActive, writeBackupTimer } from './backup/box.ts'
 import { RestoreService, type RestoreDeps } from './backup/restore.ts'
+import { FleetAgent, FleetError } from './fleet/agent.ts'
+import { fleetHost } from './fleet/host.ts'
 
 /**
  * The control API (§3.1): typed verbs over a unix socket, readable only by root
@@ -32,6 +34,8 @@ export class Ee {
   lastReconcileError: string | null = null
   readonly backups: BackupService
   readonly restore: RestoreService
+  /** Managed mode (fleet/agent.ts); polls only once enrolled. */
+  readonly fleet: FleetAgent
 
   constructor(
     readonly sys: System,
@@ -71,6 +75,7 @@ export class Ee {
       applyActive: () => restoreUnitActive(sys),
       ...restoreDeps,
     })
+    this.fleet = new FleetAgent(fleetHost(this))
   }
 
   async load(): Promise<void> {
@@ -227,6 +232,20 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
       if (url.pathname.startsWith('/v1/backups')) {
         const b = (await restoreRoute(ee.restore, route, () => body(req))) ?? (await backupRoute(ee.backups, route, () => body(req)))
         if (b) return send(res, b.status, b.data)
+      }
+      if (route === 'POST /v1/managed/enroll') {
+        // The token is a one-time secret: it goes to the control plane only, never into a log or the journal.
+        const i = z.object({ controlPlane: z.string().min(1).max(400), token: z.string().min(1).max(256), author }).strict().parse(await body(req))
+        try {
+          return send(res, 200, { managed: await ee.fleet.enroll({ controlPlane: i.controlPlane, token: i.token }) })
+        } catch (err) {
+          if (err instanceof FleetError) throw new HttpError(err.status, err.message)
+          throw err
+        }
+      }
+      if (route === 'GET /v1/managed') {
+        const { settings } = await ee.repo.read()
+        return send(res, 200, { managed: settings.managed, suspended: settings.suspended, lastPoll: ee.fleet.lastPoll })
       }
       if (route === 'POST /v1/reconcile') {
         try {

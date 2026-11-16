@@ -1,0 +1,301 @@
+import { describe, expect, it, vi } from 'vitest'
+import type { BackupConfig, BackupRun, Health } from '../backup/service.ts'
+import { settingsSchema, type DesiredState } from '../company-repo.ts'
+import { EE_VERSION } from '../version.ts'
+import { BOX_KEY, FLEET_BACKUP_MARK, FLEET_SCOPE, FleetAgent, FleetError, LOCAL_TOKEN, UPGRADE_UNIT, type FleetHost } from './agent.ts'
+import { FLEET_FEATURES, FLEET_PATHS, newBoxKey, reportV1, verifyFleetRequest } from './protocol.ts'
+
+const BOX = '0b9a7c3e-1f2d-4c5b-8a6e-9d8c7b6a5f4e'
+const CP = 'https://hosting.example.com'
+const TOKEN = 't'.repeat(40)
+
+type Call = { url: string; init: RequestInit }
+
+function fakeHost(opts: { managed?: boolean } = {}) {
+  const box = newBoxKey()
+  const secrets: Record<string, Record<string, string>> = { os: { BETTER_AUTH_SECRET: 'x' } }
+  let state: Omit<DesiredState, 'rev'> = {
+    workloads: [{ name: 'os', tier: 'system', source: { kind: 'release', tarball: '/var/lib/ee/releases/eigenenterprise-0.5.12-aaaaaaaaaaaa-linux-x64.tar.gz', sha256: 'a'.repeat(64) }, env: {}, secrets: ['BETTER_AUTH_SECRET'], deploy: {} } as never],
+    routes: [{ host: 'os.acme.example.com', workload: 'os' } as never, { host: 'rtc.os.acme.example.com', workload: 'livekit' } as never],
+    settings: settingsSchema.parse({ consoleHost: 'os.acme.example.com', callsHost: 'rtc.os.acme.example.com' }),
+  }
+  if (opts.managed) {
+    state.settings.managed = { controlPlane: CP, boxId: BOX, pollSeconds: 60 }
+    secrets[FLEET_SCOPE] = { [BOX_KEY]: box.privateKey }
+    secrets['os']![LOCAL_TOKEN] = 'local-token'
+  }
+  let backupCfg: BackupConfig | null = null
+  let runs: BackupRun[] = []
+  let health: Health = { state: 'unconfigured' }
+  const calls: Call[] = []
+  const commits: string[] = []
+  const logs: Array<{ type: string; message: string }> = []
+  let answer: () => Response = () => Response.json({ protocol: 1, pollSeconds: 60 })
+  const host = {
+    read: async () => structuredClone(state),
+    change: vi.fn(async (message: string, mutate: (s: typeof state) => typeof state) => {
+      state = mutate(structuredClone(state))
+      commits.push(message)
+      return { reconcileError: null }
+    }),
+    reconcile: vi.fn(async () => {}),
+    secrets: {
+      all: () => secrets,
+      set: async (scope: string, name: string, value: string) => {
+        secrets[scope] = { ...(secrets[scope] ?? {}), [name]: value }
+      },
+      delete: async (scope: string, name: string) => {
+        if (!secrets[scope]?.[name]) return false
+        delete secrets[scope]![name]
+        return true
+      },
+    },
+    osRelease: async () => 'eigenenterprise-0.5.12-aaaaaaaaaaaa-linux-x64.tar.gz',
+    osHealth: async () => 'healthy' as const,
+    reconcileError: () => 'reconcile finished with errors:\n- route x: y has nothing live',
+    disk: async () => ({ usedGb: 12.5, totalGb: 80 }),
+    seats: vi.fn(async () => 4),
+    backups: {
+      config: () => backupCfg,
+      configure: vi.fn(async (input: any) => {
+        backupCfg = { target: input.target, schedule: { hour: input.schedule.hour, minute: 7 }, retentionDays: input.retentionDays, configuredAt: 'now', configuredBy: input.author, keyCreatedAt: 'now' }
+        health = { state: 'ok', lastSuccessAt: 'now' }
+        return {}
+      }),
+      unconfigure: vi.fn(async () => {
+        backupCfg = null
+        health = { state: 'unconfigured' }
+      }),
+      status: async () => ({ health, runs }),
+      start: vi.fn(async () => ({})),
+      isRunning: () => false,
+    },
+    upgradeActive: vi.fn(async () => false),
+    startUpgrade: vi.fn(async () => {}),
+    fetch: vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), init: init ?? {} })
+      return answer()
+    }),
+    now: () => new Date('2026-11-16T12:00:00Z'),
+    log: async (type: string, message: string) => void logs.push({ type, message }),
+  }
+  return {
+    host: host as unknown as FleetHost & typeof host,
+    box,
+    secrets,
+    calls,
+    commits,
+    logs,
+    state: () => state,
+    setAnswer: (a: () => Response) => (answer = a),
+    setBackup: (c: BackupConfig | null, r: BackupRun[] = [], h?: Health) => {
+      backupCfg = c
+      runs = r
+      health = h ?? (c ? { state: 'ok', lastSuccessAt: 'x' } : { state: 'unconfigured' })
+    },
+  }
+}
+
+const desired = (extra: Record<string, unknown> = {}) => () => Response.json({ protocol: 1, pollSeconds: 60, ...extra })
+const target = { endpoint: 'https://s3.example.com', region: 'eu-central-1', bucket: 'acme-backups', prefix: 'box', accessKeyId: 'AKIA', secretAccessKey: 'SECRET-S3' }
+
+describe('fleet: enroll', () => {
+  it('seals a new box key, POSTs the enroll request, saves managed + declares the loopback token on os', async () => {
+    const f = fakeHost()
+    f.setAnswer(() => Response.json({ boxId: BOX, pollSeconds: 30 }))
+    const agent = new FleetAgent(f.host)
+    vi.spyOn(agent, 'start').mockImplementation(() => {})
+    const managed = await agent.enroll({ controlPlane: CP, token: TOKEN })
+    expect(managed).toEqual({ controlPlane: CP, boxId: BOX, pollSeconds: 30 })
+    expect(f.calls[0]!.url).toBe(`${CP}${FLEET_PATHS.enroll}`)
+    const sent = JSON.parse(String(f.calls[0]!.init.body))
+    expect(sent).toMatchObject({ protocol: 1, enrollToken: TOKEN, eeVersion: EE_VERSION, features: [...FLEET_FEATURES] })
+    expect(f.secrets[FLEET_SCOPE]![BOX_KEY]).toBeTruthy()
+    expect(sent.publicKey).not.toBe(f.secrets[FLEET_SCOPE]![BOX_KEY])
+    expect(f.secrets['os']![LOCAL_TOKEN]).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect(f.state().settings.managed).toEqual(managed)
+    expect(f.state().workloads[0]!.secrets).toContain(LOCAL_TOKEN)
+    expect(agent.start).toHaveBeenCalled()
+    // Nothing secret reaches the journal.
+    for (const l of f.logs) expect(l.message).not.toContain(TOKEN)
+  })
+
+  it('refuses when already enrolled, a non-https origin, and a failed control plane answer', async () => {
+    await expect(new FleetAgent(fakeHost({ managed: true }).host).enroll({ controlPlane: CP, token: TOKEN })).rejects.toThrow(/already enrolled/)
+    await expect(new FleetAgent(fakeHost().host).enroll({ controlPlane: 'http://hosting.example.com', token: TOKEN })).rejects.toThrow(FleetError)
+    await expect(new FleetAgent(fakeHost().host).enroll({ controlPlane: `${CP}/path`, token: TOKEN })).rejects.toThrow(/origin/)
+    const f = fakeHost()
+    f.setAnswer(() => new Response('bad token', { status: 403 }))
+    await expect(new FleetAgent(f.host).enroll({ controlPlane: CP, token: TOKEN })).rejects.toThrow(/403/)
+    expect(f.state().settings.managed).toBeNull()
+  })
+})
+
+describe('fleet: poll', () => {
+  it('sends a signed, valid report and keeps unknown desired fields for the next one', async () => {
+    const f = fakeHost({ managed: true })
+    f.setAnswer(desired({ futureThing: 1 }))
+    const agent = new FleetAgent(f.host)
+    const r = await agent.poll()
+    expect(r).toMatchObject({ ok: true, ignoredFields: ['futureThing'] })
+    const call = f.calls[0]!
+    expect(call.url).toBe(`${CP}${FLEET_PATHS.poll}`)
+    const headers = call.init.headers as Record<string, string>
+    const v = verifyFleetRequest({ publicKey: f.box.publicKey, method: 'POST', path: FLEET_PATHS.poll, body: String(call.init.body), headers, now: f.host.now().getTime() })
+    expect(v).toEqual({ ok: true, boxId: BOX })
+    const report = reportV1.parse(JSON.parse(String(call.init.body)))
+    expect(report).toMatchObject({
+      eeVersion: EE_VERSION,
+      release: 'eigenenterprise-0.5.12-aaaaaaaaaaaa-linux-x64.tar.gz',
+      health: { os: 'healthy', reconcileError: 'reconcile finished with errors: - route x: y has nothing live' },
+      seats: 4,
+      hosts: ['os.acme.example.com', 'rtc.os.acme.example.com'],
+      disk: { usedGb: 12.5, totalGb: 80 },
+      backup: null,
+      ignoredFields: [],
+    })
+    expect(f.host.seats).toHaveBeenCalledWith('local-token')
+    await agent.poll()
+    expect(JSON.parse(String(f.calls[1]!.init.body)).ignoredFields).toEqual(['futureThing'])
+  })
+
+  it('a failed poll is a result, journaled once per distinct error, never a throw', async () => {
+    const f = fakeHost({ managed: true })
+    f.setAnswer(() => new Response('down', { status: 502 }))
+    const agent = new FleetAgent(f.host)
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(await agent.poll()).toMatchObject({ ok: false, error: expect.stringContaining('502') })
+    await agent.poll()
+    expect(f.logs.filter((l) => l.type === 'fleet.poll_failed')).toHaveLength(1)
+    expect(err).toHaveBeenCalledTimes(2)
+    f.setAnswer(() => Response.json({ protocol: 1 }))
+    expect((await agent.poll()).ok).toBe(false)
+    expect(agent.lastPoll?.error).toMatch(/pollSeconds/)
+    err.mockRestore()
+  })
+
+  it('runs one poll at a time', async () => {
+    const f = fakeHost({ managed: true })
+    f.setAnswer(desired())
+    const agent = new FleetAgent(f.host)
+    const [a, b] = [agent.poll(), agent.poll()]
+    expect(a).toBe(b)
+    await a
+    expect(f.calls).toHaveLength(1)
+  })
+})
+
+describe('fleet: desired state (level-triggered)', () => {
+  it('pollSeconds and suspended are committed only on change', async () => {
+    const f = fakeHost({ managed: true })
+    f.setAnswer(desired({ pollSeconds: 120, suspended: true }))
+    const agent = new FleetAgent(f.host)
+    await agent.poll()
+    expect(f.state().settings.managed?.pollSeconds).toBe(120)
+    expect(f.state().settings.suspended).toBe(true)
+    const n = f.commits.length
+    await agent.poll()
+    expect(f.commits).toHaveLength(n)
+    f.setAnswer(desired({ pollSeconds: 120, suspended: false }))
+    await agent.poll()
+    expect(f.state().settings.suspended).toBe(false)
+  })
+
+  it('release: starts the detached upgrade only when the running release differs and no upgrade runs', async () => {
+    const f = fakeHost({ managed: true })
+    const agent = new FleetAgent(f.host)
+    f.setAnswer(desired({ release: { name: 'eigenenterprise-0.5.12-aaaaaaaaaaaa-linux-x64.tar.gz', from: 'https://r.example.com/v1' } }))
+    await agent.poll()
+    expect(f.host.startUpgrade).not.toHaveBeenCalled()
+    f.setAnswer(desired({ release: { name: 'eigenenterprise-0.6.0-bbbbbbbbbbbb-linux-x64.tar.gz', from: 'https://r.example.com/v2' } }))
+    await agent.poll()
+    expect(f.host.startUpgrade).toHaveBeenCalledWith('https://r.example.com/v2')
+    f.host.upgradeActive.mockResolvedValue(true)
+    await agent.poll()
+    expect(f.host.startUpgrade).toHaveBeenCalledTimes(1)
+    expect(f.logs.some((l) => l.message.includes(UPGRADE_UNIT))).toBe(true)
+  })
+
+  it('platformAi: sets + declares the four LLM secrets on os, redeploys only on change, null removes them', async () => {
+    const f = fakeHost({ managed: true })
+    const agent = new FleetAgent(f.host)
+    const ai = { llmBaseUrl: 'https://llm.example.com', llmApiKey: 'sk-PLATFORM', llmModelChat: 'chat-1', llmModelEmbedding: 'embed-1' }
+    f.setAnswer(desired({ platformAi: ai }))
+    await agent.poll()
+    expect(f.secrets['os']).toMatchObject({ LLM_BASE_URL: ai.llmBaseUrl, LLM_API_KEY: 'sk-PLATFORM', LLM_MODEL_CHAT: 'chat-1', LLM_MODEL_EMBEDDING: 'embed-1' })
+    expect(f.state().workloads[0]!.secrets).toEqual(expect.arrayContaining(['LLM_BASE_URL', 'LLM_API_KEY', 'LLM_MODEL_CHAT', 'LLM_MODEL_EMBEDDING']))
+    const n = f.commits.length
+    await agent.poll()
+    expect(f.commits).toHaveLength(n)
+    expect(f.host.reconcile).not.toHaveBeenCalled()
+    f.setAnswer(desired({ platformAi: { ...ai, llmModelChat: 'chat-2' } }))
+    await agent.poll()
+    expect(f.host.reconcile).toHaveBeenCalledTimes(1)
+    expect(f.secrets['os']!['LLM_MODEL_CHAT']).toBe('chat-2')
+    f.setAnswer(desired({ platformAi: null }))
+    await agent.poll()
+    expect(f.secrets['os']!['LLM_API_KEY']).toBeUndefined()
+    expect(f.state().workloads[0]!.secrets).not.toContain('LLM_API_KEY')
+    for (const l of f.logs) expect(l.message).not.toContain('sk-PLATFORM')
+  })
+
+  it('backup: configures the fleet target, reconfigures only on change, null removes only its own', async () => {
+    const f = fakeHost({ managed: true })
+    const agent = new FleetAgent(f.host)
+    f.setAnswer(desired({ backup: target }))
+    await agent.poll()
+    expect(f.host.backups.configure).toHaveBeenCalledWith({ target: { ...target, addressing: 'path' }, schedule: { hour: 3 }, retentionDays: 30, author: 'fleet' })
+    expect(f.secrets[FLEET_SCOPE]![FLEET_BACKUP_MARK]).toBe('1')
+    await agent.poll()
+    expect(f.host.backups.configure).toHaveBeenCalledTimes(1)
+    f.setAnswer(desired({ backup: { ...target, bucket: 'acme-backups-2' } }))
+    await agent.poll()
+    expect(f.host.backups.configure).toHaveBeenCalledTimes(2)
+    f.setAnswer(desired({ backup: null }))
+    await agent.poll()
+    expect(f.host.backups.unconfigure).toHaveBeenCalledTimes(1)
+    expect(f.secrets[FLEET_SCOPE]![FLEET_BACKUP_MARK]).toBeUndefined()
+  })
+
+  it('backup: never touches a target the owner set by hand', async () => {
+    const f = fakeHost({ managed: true })
+    f.setBackup({ target: { ...target, bucket: 'owners-own', addressing: 'virtual' }, schedule: { hour: 1, minute: 2 }, retentionDays: 9, configuredAt: 'x', configuredBy: 'owner:al', keyCreatedAt: 'x' })
+    const agent = new FleetAgent(f.host)
+    f.setAnswer(desired({ backup: target }))
+    await agent.poll()
+    f.setAnswer(desired({ backup: null }))
+    await agent.poll()
+    expect(f.host.backups.configure).not.toHaveBeenCalled()
+    expect(f.host.backups.unconfigure).not.toHaveBeenCalled()
+  })
+
+  it('backup: a failed configure is reported and leaves no fleet mark', async () => {
+    const f = fakeHost({ managed: true })
+    f.host.backups.configure.mockRejectedValueOnce(new Error('the backup key (derived from the company recovery code) is required the first time'))
+    const agent = new FleetAgent(f.host)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    f.setAnswer(desired({ backup: target, suspended: true }))
+    const r = await agent.poll()
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/backup: the backup key/)
+    expect(f.secrets[FLEET_SCOPE]![FLEET_BACKUP_MARK]).toBeUndefined()
+    // The other fields still applied.
+    expect(f.state().settings.suspended).toBe(true)
+  })
+
+  it('backupRequestedAt: runs a backup when no run started since the request', async () => {
+    const f = fakeHost({ managed: true })
+    const cfg = { target: { ...target, addressing: 'path' as const }, schedule: { hour: 3, minute: 1 }, retentionDays: 30, configuredAt: 'x', configuredBy: 'fleet', keyCreatedAt: 'x' }
+    const run = (startedAt: string, status: BackupRun['status']) => ({ startedAt, status, endedAt: startedAt }) as BackupRun
+    f.setBackup(cfg, [run('2026-11-15T03:00:00Z', 'succeeded')])
+    const agent = new FleetAgent(f.host)
+    f.setAnswer(desired({ backupRequestedAt: '2026-11-16T11:00:00Z' }))
+    await agent.poll()
+    expect(f.host.backups.start).toHaveBeenCalledWith('manual', 'fleet')
+    f.setBackup(cfg, [run('2026-11-16T11:30:00Z', 'failed'), run('2026-11-15T03:00:00Z', 'succeeded')], { state: 'failed', at: 'x', error: 'bucket gone' })
+    await agent.poll()
+    expect(f.host.backups.start).toHaveBeenCalledTimes(1)
+    const report = JSON.parse(String(f.calls.at(-1)!.init.body))
+    expect(report.backup).toEqual({ lastOkAt: '2026-11-15T03:00:00Z', lastError: 'bucket gone' })
+  })
+})
