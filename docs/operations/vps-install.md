@@ -14,6 +14,15 @@ Releases are published on GitHub for **x64 (amd64)** and **arm64**: <https://git
 | Ports | 80/tcp and 443/tcp (Caddy gets certificates from Let's Encrypt); 7881/tcp and 7882/udp (call media) |
 | DNS | your console host and `rtc.<console host>` (calls) point at the server — only with `--console-host` |
 
+## Inside a container (hosted)
+
+Hosted companies run in an unprivileged Incus system container (decision D8 in `plan/phase-managed-box.md`). The install is the same; a container can't set kernel tunables, so `ee bootstrap` reads the ones it needs and refuses with the host setting to fix when they're too small:
+
+- `net.core.rmem_max` >= 5000000
+- `net.core.wmem_max` >= 5000000
+
+Set them on the host (ee-host setup), not in the container. On a VM or bare metal nothing changes.
+
 ## Install
 
 As root on the server:

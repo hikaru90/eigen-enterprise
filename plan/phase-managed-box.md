@@ -36,6 +36,7 @@ VM's ee ── HTTPS pull, Ed25519-signed ──► control plane (fleet protoco
 - **D5** Suspended = every host answers 503 with a short "paused" page; os, data and backups keep running (reversible at once).
 - **D6** Seats = active human members (no agents, no service principals), counted by os.
 - **D7** (owner, 2026-11-16) Escrow: the control plane keeps a copy of each hosted company's backup key, so hosting can restore a company after a host failure without the owner's recovery code. Desired `escrowBackupKey: true` (= the control plane holds no copy) → the box POSTs the sealed key, signed, to `/api/fleet/v1/escrow` (204 held, 409 a different key already held); no sealed key yet → a later poll sends it. The key alone restores everything (`ee restore --backup-key-stdin`). Settings › Backups on a managed box says so; the recovery code still restores the company too.
+- **D8** (owner, 2026-11-16) Containers: a hosted company runs in an unprivileged Incus system container (security.nesting=true, isolated idmap, Debian 13 cloud image, systemd as PID 1), not a VM. The install is unchanged in outcome; kernel tunables are the host's job: `ee bootstrap` detects the container (`systemd-detect-virt --container`) and refuses unless the host gives `net.core.rmem_max` and `net.core.wmem_max` >= 5000000 (LiveKit's UDP buffers). A VM / bare-metal install is unaffected.
 
 ## 3. Owner steps (not code)
 
