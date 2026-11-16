@@ -16,6 +16,14 @@ export function newClaim(now: Date = new Date()): { token: string; hash: string;
   }
 }
 
+/** A claim link minted by whoever set up this server (`ee bootstrap --claim-hash`): only its SHA-256 reaches the box. */
+export const CLAIM_HASH = /^[0-9a-f]{64}$/
+
+export function claimFromHash(hash: string, now: Date = new Date()): { hash: string; expiresAt: string } {
+  if (!CLAIM_HASH.test(hash)) throw new Error('--claim-hash must be 64 lowercase hex characters (the SHA-256 of the claim token)')
+  return { hash, expiresAt: new Date(now.getTime() + CLAIM_TTL_DAYS * 86_400_000).toISOString() }
+}
+
 export function claimUrl(consoleHost: string, token: string): string {
   return `https://${consoleHost}/claim?token=${encodeURIComponent(token)}`
 }

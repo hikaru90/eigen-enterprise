@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  LIVEKIT_HOST_PORTS,
+  livekitHostPorts,
   LIVEKIT_WEBHOOK_URL,
   LIVEKIT_WORKLOAD,
   generateLivekitKeys,
@@ -10,19 +10,19 @@ import {
 } from './livekit.ts'
 import type { Settings } from './company-repo.ts'
 import type { SecretMap } from './secrets.ts'
-import { workloadSchema, type Workload } from './spec.ts'
+import { hostPortAllowlist, workloadSchema, type Workload } from './spec.ts'
 
 const KEY = 'APIabcdef012345'
 const SECRET = 's'.repeat(43)
 const secrets: SecretMap = { livekit: { LIVEKIT_API_KEY: KEY, LIVEKIT_API_SECRET: SECRET } }
 
-const lk = workloadSchema.parse(livekitWorkload('/var/lib/ee/releases/livekit-server-1.13.11-linux-arm64.tar.gz', 'c'.repeat(64)))
+const lk = workloadSchema.parse(livekitWorkload('/var/lib/ee/releases/livekit-server-1.13.11-linux-arm64.tar.gz', 'c'.repeat(64), { tcp: 7881, udp: 7882 }))
 const os = workloadSchema.parse({
   name: 'os',
   tier: 'system',
   source: { kind: 'release', tarball: '/var/lib/ee/releases/os.tar.gz', sha256: 'a'.repeat(64) },
 })
-const settings: Settings = { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: 'rtc.os.example.com', rtcNodeIp: '203.0.113.7', contributeHub: 'off' }
+const settings: Settings = { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: 'rtc.os.example.com', rtcNodeIp: '203.0.113.7', contributeHub: 'off', rtcPorts: { tcp: 7881, udp: 7882 }, trustedProxy: null }
 const state = (workloads: Workload[], s: Partial<Settings> = {}) => ({ workloads, settings: { ...settings, ...s } })
 
 describe('the livekit workload ee seeds', () => {
@@ -37,7 +37,7 @@ describe('the livekit workload ee seeds', () => {
       ],
       secrets: [],
     })
-    expect(LIVEKIT_HOST_PORTS).toEqual(lk.ports)
+    expect(livekitHostPorts({ tcp: 7881, udp: 7882 })).toEqual(lk.ports)
   })
 
   it('the webhook goes to the console on its stable loopback listener (whichever os slot is live)', () => {
@@ -47,7 +47,7 @@ describe('the livekit workload ee seeds', () => {
 
 describe('livekitConfig (livekit.yaml)', () => {
   it('signalling on loopback at the slot port, media on the fixed host ports, explicit node IP, keys and signed webhook', () => {
-    expect(livekitConfig({ port: 4102, nodeIp: '203.0.113.7', apiKey: KEY, apiSecret: SECRET })).toEqual({
+    expect(livekitConfig({ port: 4102, nodeIp: '203.0.113.7', rtcPorts: { tcp: 7881, udp: 7882 }, apiKey: KEY, apiSecret: SECRET })).toEqual({
       port: 4102,
       bind_addresses: ['127.0.0.1'],
       rtc: { tcp_port: 7881, udp_port: 7882, use_external_ip: false, node_ip: '203.0.113.7' },
@@ -56,12 +56,22 @@ describe('livekitConfig (livekit.yaml)', () => {
     })
   })
 
+  it('a hosted box: the workload opens and LiveKit listens on the company rtc ports, which are the allow-list', () => {
+    const rtc = { tcp: 21000, udp: 21001 }
+    const w = workloadSchema.parse(livekitWorkload('/r/lk.tgz', 'c'.repeat(64), rtc))
+    expect(w.ports).toEqual([{ port: 21000, proto: 'tcp' }, { port: 21001, proto: 'udp' }])
+    expect(w.ports).toEqual(hostPortAllowlist(rtc))
+    expect(hostPortAllowlist({ tcp: 7881, udp: 7882 })).toEqual(lk.ports)
+    const env = linkedEnv(state([w, os], { rtcPorts: rtc }), w, secrets, 4102)
+    expect(JSON.parse(env.LIVEKIT_CONFIG!).rtc).toMatchObject({ tcp_port: 21000, udp_port: 21001 })
+  })
+
   it('refuses a secret LiveKit would call too short (under 32 characters)', () => {
-    expect(() => livekitConfig({ port: 4102, nodeIp: '203.0.113.7', apiKey: KEY, apiSecret: 'short' })).toThrow(/32/)
+    expect(() => livekitConfig({ port: 4102, nodeIp: '203.0.113.7', rtcPorts: { tcp: 7881, udp: 7882 }, apiKey: KEY, apiSecret: 'short' })).toThrow(/32/)
   })
 
   it('refuses a node IP that is not an IP address', () => {
-    expect(() => livekitConfig({ port: 4102, nodeIp: 'auto', apiKey: KEY, apiSecret: SECRET })).toThrow(/IP/)
+    expect(() => livekitConfig({ port: 4102, nodeIp: 'auto', rtcPorts: { tcp: 7881, udp: 7882 }, apiKey: KEY, apiSecret: SECRET })).toThrow(/IP/)
   })
 })
 
@@ -70,7 +80,7 @@ describe('linkedEnv: what ee wires between livekit and os', () => {
     const env = linkedEnv(state([lk, os]), lk, secrets, 4102)
     expect(Object.keys(env)).toEqual(['LIVEKIT_CONFIG'])
     expect(env.LIVEKIT_CONFIG).not.toContain('\n')
-    expect(JSON.parse(env.LIVEKIT_CONFIG!)).toEqual(livekitConfig({ port: 4102, nodeIp: '203.0.113.7', apiKey: KEY, apiSecret: SECRET }))
+    expect(JSON.parse(env.LIVEKIT_CONFIG!)).toEqual(livekitConfig({ port: 4102, nodeIp: '203.0.113.7', rtcPorts: { tcp: 7881, udp: 7882 }, apiKey: KEY, apiSecret: SECRET }))
   })
 
   it('os gets the key, the secret and the calls URL (the contract with the Calls module)', () => {
@@ -92,7 +102,7 @@ describe('linkedEnv: what ee wires between livekit and os', () => {
   })
 
   it('fails loudly when the node IP was never set — no guessing, no STUN', () => {
-    expect(() => linkedEnv(state([lk, os], { rtcNodeIp: null, contributeHub: 'off' }), lk, secrets, 4102)).toThrow(/--node-ip/)
+    expect(() => linkedEnv(state([lk, os], { rtcNodeIp: null, contributeHub: 'off', rtcPorts: { tcp: 7881, udp: 7882 }, trustedProxy: null }), lk, secrets, 4102)).toThrow(/--node-ip/)
   })
 
   it('fails loudly when the keys are missing (for livekit and for os)', () => {

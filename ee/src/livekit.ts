@@ -2,14 +2,15 @@ import { randomBytes } from 'node:crypto'
 import { isIP } from 'node:net'
 import type { Settings } from './company-repo.ts'
 import { generateSecret, type SecretMap } from './secrets.ts'
-import { HOST_PORT_ALLOWLIST, OS_INTERNAL_PORT, type HostPort, type Workload, type WorkloadInput } from './spec.ts'
+import { hostPortAllowlist, OS_INTERNAL_PORT, type HostPort, type RtcPorts, type Workload, type WorkloadInput } from './spec.ts'
 
 /**
  * livekit-server as a system workload (plan/video-calls.md §4).
  *
  * - Signalling (HTTP + WebSocket) listens on loopback at the slot port ee gives
  *   every workload; Caddy routes the calls host (rtc.<console host>) to it.
- * - Media is on two fixed host ports: 7881/tcp (ICE over TCP) and 7882/udp (UDP mux).
+ * - Media is on two host ports from settings.rtcPorts (ICE over TCP, UDP mux):
+ *   7881/tcp + 7882/udp self-hosted, a per-box pair behind a shared-IP router.
  * - The node IP it advertises is explicit (settings.rtcNodeIp); missing = an error.
  * - Its API key/secret live once in the secret store (scope "livekit"); os gets
  *   the same values plus LIVEKIT_URL — the env contract with the Calls module.
@@ -22,17 +23,13 @@ import { HOST_PORT_ALLOWLIST, OS_INTERNAL_PORT, type HostPort, type Workload, ty
 
 export const LIVEKIT_WORKLOAD = 'livekit'
 
-export const LIVEKIT_TCP_PORT = 7881
-export const LIVEKIT_UDP_PORT = 7882
-export const LIVEKIT_HOST_PORTS: HostPort[] = [
-  { port: LIVEKIT_TCP_PORT, proto: 'tcp' },
-  { port: LIVEKIT_UDP_PORT, proto: 'udp' },
-]
-// The allow-list is exactly LiveKit's ports; keep them from drifting apart.
-for (const p of LIVEKIT_HOST_PORTS) {
-  if (!HOST_PORT_ALLOWLIST.some((a) => a.port === p.port && a.proto === p.proto)) {
-    throw new Error(`livekit host port ${p.proto}/${p.port} is not on HOST_PORT_ALLOWLIST`)
-  }
+/**
+ * The host ports the livekit workload opens: the company's rtc ports. The
+ * host-port allow-list is derived from the same setting (hostPortAllowlist),
+ * so the two cannot drift apart (livekit.spec.ts checks it).
+ */
+export function livekitHostPorts(rtc: RtcPorts): HostPort[] {
+  return hostPortAllowlist(rtc)
 }
 
 /** The console's stable loopback listener (Caddy's internal server for os), so a webhook never misses a slot swap. */
@@ -57,17 +54,17 @@ export function generateLivekitKeys(): Record<(typeof LIVEKIT_SECRETS)[number], 
 }
 
 /** The livekit workload as the company repo holds it. */
-export function livekitWorkload(tarball: string, sha256: string): WorkloadInput {
+export function livekitWorkload(tarball: string, sha256: string, rtc: RtcPorts): WorkloadInput {
   return {
     name: LIVEKIT_WORKLOAD,
     tier: 'system',
     source: { kind: 'release', tarball, sha256 },
-    ports: LIVEKIT_HOST_PORTS,
+    ports: livekitHostPorts(rtc),
     resources: { memoryMb: 1024, cpuPercent: 200 },
   }
 }
 
-export type LivekitConfigInput = { port: number; nodeIp: string; apiKey: string; apiSecret: string }
+export type LivekitConfigInput = { port: number; nodeIp: string; rtcPorts: RtcPorts; apiKey: string; apiSecret: string }
 
 /** livekit.yaml, as an object (rendered as JSON, which is YAML). */
 export function livekitConfig(i: LivekitConfigInput): Record<string, unknown> {
@@ -79,7 +76,7 @@ export function livekitConfig(i: LivekitConfigInput): Record<string, unknown> {
     port: i.port,
     // Signalling only on loopback: browsers reach it through Caddy (TLS) on the calls host.
     bind_addresses: ['127.0.0.1'],
-    rtc: { tcp_port: LIVEKIT_TCP_PORT, udp_port: LIVEKIT_UDP_PORT, use_external_ip: false, node_ip: i.nodeIp },
+    rtc: { tcp_port: i.rtcPorts.tcp, udp_port: i.rtcPorts.udp, use_external_ip: false, node_ip: i.nodeIp },
     keys: { [i.apiKey]: i.apiSecret },
     webhook: { api_key: i.apiKey, urls: [LIVEKIT_WEBHOOK_URL] },
   }
@@ -113,7 +110,7 @@ export function linkedEnv(state: LinkState, w: Workload, secrets: SecretMap, por
           're-run the installer with `--node-ip <public IP of this server>`',
       )
     }
-    const config = livekitConfig({ port, nodeIp, ...livekitKeys(secrets, LIVEKIT_WORKLOAD) })
+    const config = livekitConfig({ port, nodeIp, rtcPorts: state.settings.rtcPorts, ...livekitKeys(secrets, LIVEKIT_WORKLOAD) })
     return { LIVEKIT_CONFIG: JSON.stringify(config) }
   }
   if (w.name === 'os' && calls) {

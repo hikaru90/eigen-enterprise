@@ -45,4 +45,29 @@ describe('CompanyRepo: host ports', () => {
     ).rejects.toThrow(/udp\/7882 is held by both livekit and livekit-two/)
     expect(await repo.head()).toBe(first)
   })
+
+  it('accepts exactly the company rtc ports: a hosted pair commits with its setting, the default pair does not', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'ee-company-'))
+    const repo = new CompanyRepo(new RealSystem(), dir)
+    await repo.init()
+    const source = { kind: 'release' as const, tarball: '/r/lk.tgz', sha256: 'a'.repeat(64) }
+    const lk = (tcp: number, udp: number) => ({ name: 'livekit', tier: 'system' as const, source, ports: [{ port: tcp, proto: 'tcp' as const }, { port: udp, proto: 'udp' as const }] })
+    const hosted = { tcp: 21000, udp: 21001 }
+    await repo.commit('hosted', 'owner:test', (s) => ({ ...s, workloads: [lk(21000, 21001)] as never, settings: { ...s.settings, rtcPorts: hosted } }))
+    expect((await repo.read()).settings.rtcPorts).toEqual(hosted)
+    await expect(repo.commit('drift', 'owner:test', (s) => ({ ...s, workloads: [lk(7881, 7882)] as never }))).rejects.toThrow(/allow-list/)
+    await expect(
+      repo.commit('no setting', 'owner:test', (s) => ({ ...s, workloads: [lk(21000, 21001)] as never, settings: { ...s.settings, rtcPorts: { tcp: 7881, udp: 7882 } } })),
+    ).rejects.toThrow(/allow-list/)
+  })
+
+  it('an existing company without the new settings reads with the defaults (self-hosted unchanged)', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'ee-company-'))
+    const repo = new CompanyRepo(new RealSystem(), dir)
+    await repo.init()
+    await repo.commit('first', 'owner:test', (s) => s)
+    const s = (await repo.read()).settings
+    expect(s.rtcPorts).toEqual({ tcp: 7881, udp: 7882 })
+    expect(s.trustedProxy).toBeNull()
+  })
 })

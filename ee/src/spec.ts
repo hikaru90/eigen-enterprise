@@ -12,7 +12,8 @@ import { z } from 'zod'
  * no capabilities, no host paths, no privileged mode. Unknown keys are
  * rejected (`strict`), so nothing can be smuggled in. The one exception is
  * `ports` (plan/video-calls.md §4, owner decision 2): a SYSTEM workload may
- * open host ports, and only those on HOST_PORT_ALLOWLIST.
+ * open host ports, and only the company's LiveKit ports (hostPortAllowlist,
+ * enforced by the company repo, which holds the settings).
  */
 
 export const NAME = /^[a-z][a-z0-9-]{1,30}$/
@@ -63,13 +64,51 @@ export const gitSource = z
   .strict()
 
 /**
- * The only host ports a workload can ever open: LiveKit's media ports (ICE/TCP
- * fallback, UDP mux). Everything else reaches a workload through Caddy.
+ * LiveKit's media ports (ICE/TCP fallback, UDP mux), a company setting
+ * (settings.rtcPorts, `ee bootstrap --rtc-ports`). Self-hosted: 7881/7882.
+ * A hosted box behind a shared-IP router gets its own pair in 20000–29999
+ * (the same number on the host and in the VM).
  */
-export const HOST_PORT_ALLOWLIST = [
-  { port: 7881, proto: 'tcp' },
-  { port: 7882, proto: 'udp' },
-] as const
+export const DEFAULT_RTC_PORTS = { tcp: 7881, udp: 7882 } as const
+export const HOSTED_RTC_PORT_RANGE = { min: 20000, max: 29999 } as const
+
+export const rtcPortsSchema = z
+  .object({ tcp: z.number().int(), udp: z.number().int() })
+  .strict()
+  .refine(
+    (p) =>
+      (p.tcp === DEFAULT_RTC_PORTS.tcp && p.udp === DEFAULT_RTC_PORTS.udp) ||
+      (p.tcp !== p.udp && [p.tcp, p.udp].every((n) => n >= HOSTED_RTC_PORT_RANGE.min && n <= HOSTED_RTC_PORT_RANGE.max)),
+    {
+      message: `rtc ports must be ${DEFAULT_RTC_PORTS.tcp}/tcp + ${DEFAULT_RTC_PORTS.udp}/udp, or two different ports in ${HOSTED_RTC_PORT_RANGE.min}–${HOSTED_RTC_PORT_RANGE.max}`,
+    },
+  )
+
+export type RtcPorts = z.infer<typeof rtcPortsSchema>
+
+/**
+ * The only host ports a workload can ever open: exactly the company's LiveKit
+ * media ports. Everything else reaches a workload through Caddy.
+ */
+export function hostPortAllowlist(rtc: RtcPorts): HostPort[] {
+  return [
+    { port: rtc.tcp, proto: 'tcp' },
+    { port: rtc.udp, proto: 'udp' },
+  ]
+}
+
+/** Host ports not on the company's allow-list, in plain words (empty = all allowed). */
+export function hostPortViolations(workloads: Workload[], allowlist: HostPort[]): string[] {
+  const out: string[] = []
+  for (const w of workloads) {
+    for (const p of w.ports ?? []) {
+      if (!allowlist.some((a) => a.port === p.port && a.proto === p.proto)) {
+        out.push(`${w.name}: ${hostPortKey(p)} is not on the host-port allow-list (${allowlist.map(hostPortKey).join(', ')})`)
+      }
+    }
+  }
+  return out
+}
 
 export const hostPortSchema = z
   .object({
@@ -91,7 +130,7 @@ export const workloadSchema = z
      * Optional, not defaulted: a workload without ports serializes as before, so its
      * deploy fingerprint does not change.
      */
-    ports: z.array(hostPortSchema).max(HOST_PORT_ALLOWLIST.length).optional(),
+    ports: z.array(hostPortSchema).max(2).optional(),
     source: z.discriminatedUnion('kind', [releaseSource, gitSource]),
     env: envRecord.default({}),
     /** Secret NAMES only; values live in ee's encrypted store (D9). */
@@ -120,13 +159,6 @@ export const workloadSchema = z
     const seen = new Set<string>()
     for (const p of ports) {
       const key = hostPortKey(p)
-      if (!HOST_PORT_ALLOWLIST.some((a) => a.port === p.port && a.proto === p.proto)) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['ports'],
-          message: `${key} is not on the host-port allow-list (${HOST_PORT_ALLOWLIST.map(hostPortKey).join(', ')})`,
-        })
-      }
       if (seen.has(key)) ctx.addIssue({ code: 'custom', path: ['ports'], message: `${key} is listed twice` })
       seen.add(key)
     }

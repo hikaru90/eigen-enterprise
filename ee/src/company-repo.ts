@@ -1,13 +1,28 @@
 import { isIP } from 'node:net'
-import { hostPortCollisions, routesSchema, workloadSchema, type Route, type Workload } from './spec.ts'
+import {
+  DEFAULT_RTC_PORTS,
+  hostPortAllowlist,
+  hostPortCollisions,
+  hostPortViolations,
+  routesSchema,
+  rtcPortsSchema,
+  workloadSchema,
+  type Route,
+  type Workload,
+} from './spec.ts'
 import { mustRun, type System } from './system.ts'
 import { z } from 'zod'
 import { OFFICIAL_CONTRIBUTE_HUB } from './contribute-hub.ts'
 
-function assertNoHostPortCollisions(workloads: Workload[]): void {
+function assertHostPorts(workloads: Workload[], settings: Settings): void {
   const collisions = hostPortCollisions(workloads)
   if (collisions.length > 0) throw new Error(`company repo: host port collision: ${collisions.join('; ')}`)
+  const violations = hostPortViolations(workloads, hostPortAllowlist(settings.rtcPorts))
+  if (violations.length > 0) throw new Error(`company repo: ${violations.join('; ')}`)
 }
+
+/** An IPv4 CIDR (a.b.c.d/n), the only form `--trusted-proxy` takes. */
+export const ipv4CidrSchema = z.cidrv4({ message: 'must be an IPv4 CIDR, e.g. 10.0.0.1/32' })
 
 /**
  * The company repo (D4): desired state as files in git. ee is its only writer;
@@ -33,6 +48,17 @@ export const settingsSchema = z
       .refine((ip) => isIP(ip) !== 0, { message: 'rtcNodeIp must be an IP address' })
       .nullable()
       .default(null),
+    /**
+     * LiveKit's media host ports (`ee bootstrap --rtc-ports`): 7881/tcp + 7882/udp
+     * on a self-hosted box; a hosted box behind a shared-IP router gets its own pair.
+     */
+    rtcPorts: rtcPortsSchema.default({ ...DEFAULT_RTC_PORTS }),
+    /**
+     * The router in front of this box (`ee bootstrap --trusted-proxy`, IPv4 CIDR):
+     * when set, the public Caddy server takes PROXY protocol v2 from it only.
+     * null = connections arrive directly (self-hosted).
+     */
+    trustedProxy: ipv4CidrSchema.nullable().default(null),
     /**
      * The central Contribute board this install shares with, or `off`
      * (contribute-hub.ts). Missing on companies from before it existed: they
@@ -95,11 +121,11 @@ export class CompanyRepo {
       }
       workloads.push(parsed.data)
     }
-    assertNoHostPortCollisions(workloads)
     const routes = routesSchema.parse(JSON.parse((await this.showAtHead('routes.json')) ?? '[]'))
     const settingsRaw = await this.showAtHead('settings.json')
     if (settingsRaw === null) throw new Error('company repo: settings.json missing')
     const settings = settingsSchema.parse(JSON.parse(settingsRaw))
+    assertHostPorts(workloads, settings)
     return { rev, workloads, routes, settings }
   }
 
@@ -117,9 +143,9 @@ export class CompanyRepo {
       : { rev: '', workloads: [], routes: [], settings: settingsSchema.parse({ consoleHost: 'unset' }) }
     const next = mutate({ workloads: current.workloads, routes: current.routes, settings: current.settings })
     const workloads = next.workloads.map((w) => workloadSchema.parse(w))
-    assertNoHostPortCollisions(workloads)
     const routes = routesSchema.parse(next.routes)
     const settings = settingsSchema.parse(next.settings)
+    assertHostPorts(workloads, settings)
     const names = new Set(workloads.map((w) => w.name))
     for (const r of routes) {
       if (!names.has(r.workload)) throw new Error(`route ${r.host} points at unknown workload ${r.workload}`)

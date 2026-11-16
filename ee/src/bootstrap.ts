@@ -2,15 +2,15 @@ import { generateKeyPairSync, randomBytes } from 'node:crypto'
 import { isIP } from 'node:net'
 import { basename } from 'node:path'
 import { OS_BODY_SIZE_LIMIT } from './body-limit.ts'
-import { newClaim } from './claim.ts'
-import { CompanyRepo, type DesiredState } from './company-repo.ts'
+import { claimFromHash, newClaim } from './claim.ts'
+import { CompanyRepo, ipv4CidrSchema, type DesiredState, type Settings } from './company-repo.ts'
 import { withCallsHost } from './domains.ts'
 import { LIVEKIT_SECRETS, LIVEKIT_WORKLOAD, generateLivekitKeys, livekitWorkload } from './livekit.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
 import { OS_INTERNAL_PORT } from './reconcile.ts'
 import { SecretStore } from './secret-store.ts'
 import { generateSecret } from './secrets.ts'
-import { workloadSchema, type WorkloadInput } from './spec.ts'
+import { DEFAULT_RTC_PORTS, HOSTED_RTC_PORT_RANGE, rtcPortsSchema, workloadSchema, type RtcPorts, type WorkloadInput } from './spec.ts'
 import { mustRun, type System } from './system.ts'
 import { writeBackupTimer } from './backup/box.ts'
 import { BACKUP_SCOPE, storedConfigSchema } from './backup/service.ts'
@@ -34,6 +34,12 @@ export type BootstrapOptions = {
   nodeIp?: string
   /** The central Contribute board, or 'off' (contribute-hub.ts); when omitted, the company's saved one. */
   contributeHub?: ContributeHub
+  /** LiveKit's media host ports; when omitted, the company's (7881/7882 on a first install). */
+  rtcPorts?: RtcPorts
+  /** The router in front of this box (IPv4 CIDR, PROXY protocol); when omitted, the company's (none on a first install). */
+  trustedProxy?: string
+  /** First install only: the SHA-256 of a claim token minted by whoever set up this server. */
+  claimHash?: string
 }
 
 /**
@@ -53,15 +59,56 @@ export function resolveNodeIp(flag: string | undefined, stored: string | null): 
   return ip
 }
 
+/** `--rtc-ports <tcp>,<udp>`, checked in plain words. */
+export function parseRtcPortsFlag(raw: string): RtcPorts {
+  const m = /^(\d{1,5}),(\d{1,5})$/.exec(raw.trim())
+  const parsed = m ? rtcPortsSchema.safeParse({ tcp: Number(m[1]), udp: Number(m[2]) }) : null
+  if (!parsed?.success) {
+    throw new Error(
+      `--rtc-ports "${raw}" is not valid: pass <tcp>,<udp> — either ${DEFAULT_RTC_PORTS.tcp},${DEFAULT_RTC_PORTS.udp} ` +
+        `or two different ports between ${HOSTED_RTC_PORT_RANGE.min} and ${HOSTED_RTC_PORT_RANGE.max}`,
+    )
+  }
+  return parsed.data
+}
+
+/** LiveKit's media ports: an explicit --rtc-ports wins, else the company's, else 7881/7882. */
+export function resolveRtcPorts(flag: RtcPorts | undefined, stored: RtcPorts | null): RtcPorts {
+  return rtcPortsSchema.parse(flag ?? stored ?? DEFAULT_RTC_PORTS)
+}
+
+/** `--trusted-proxy <IPv4 CIDR>`, checked in plain words. */
+export function parseTrustedProxyFlag(raw: string): string {
+  if (!ipv4CidrSchema.safeParse(raw).success) {
+    throw new Error(`--trusted-proxy "${raw}" is not an IPv4 CIDR (e.g. 10.0.0.1/32: the router in front of this server)`)
+  }
+  return raw
+}
+
+/** The router in front of the box: an explicit --trusted-proxy wins, else the company's (null = none). */
+export function resolveTrustedProxy(flag: string | undefined, stored: string | null): string | null {
+  return flag ?? stored
+}
+
+/** `--claim-hash` seeds the first install's claim; on a company that already exists it would do nothing, so it is refused. */
+export function assertClaimHashAllowed(claimHash: string | undefined, seeded: boolean): void {
+  if (claimHash !== undefined && seeded) {
+    throw new Error(
+      '--claim-hash only works on the first install: this server already has a company (and its claim link). ' +
+        'Re-run without --claim-hash; for a new link run: ee claim-link',
+    )
+  }
+}
+
 type SeedState = Omit<DesiredState, 'rev'>
 
-/** Put the livekit workload (this release) in the company, save the node IP, and route the calls host. */
-export function withLivekit(s: SeedState, livekit: WorkloadInput, nodeIp: string): SeedState {
+/** Put the livekit workload (this release) in the company, save the node IP and media ports, and route the calls host. */
+export function withLivekit(s: SeedState, livekit: WorkloadInput, nodeIp: string, rtcPorts: RtcPorts): SeedState {
   const w = workloadSchema.parse(livekit)
   return withCallsHost({
     workloads: [...s.workloads.filter((x) => x.name !== w.name), w],
     routes: s.routes,
-    settings: { ...s.settings, rtcNodeIp: nodeIp },
+    settings: { ...s.settings, rtcNodeIp: nodeIp, rtcPorts },
   })
 }
 
@@ -316,7 +363,14 @@ async function installTarball(sys: System, src: string): Promise<{ tarball: stri
   return { tarball, sha256: await sys.sha256File(tarball) }
 }
 
-async function seedCompany(sys: System, opts: BootstrapOptions, consoleHost: string, nodeIp: string): Promise<string | null> {
+type Claim = { token: string | null; issuedElsewhere: boolean }
+
+async function seedCompany(
+  sys: System,
+  opts: BootstrapOptions,
+  consoleHost: string,
+  net: { nodeIp: string; rtcPorts: RtcPorts; trustedProxy: string | null },
+): Promise<Claim> {
   step('installing the eigenEnterprise release')
   const { tarball, sha256 } = await installTarball(sys, opts.release)
   step('installing the livekit-server release (calls)')
@@ -346,12 +400,16 @@ async function seedCompany(sys: System, opts: BootstrapOptions, consoleHost: str
   }
 
   // First install only: mint the claim link. Re-runs never mint a new one (`ee claim-link` does).
-  let claimToken: string | null = null
+  // With --claim-hash, whoever set up the server minted the token; only its hash lands here.
+  const claimed: Claim = { token: null, issuedElsewhere: false }
   if (have['EE_CLAIM_TOKEN_HASH'] === undefined) {
-    const claim = newClaim()
+    const claim = opts.claimHash !== undefined ? { ...claimFromHash(opts.claimHash), token: null } : newClaim()
     await secrets.set('os', 'EE_CLAIM_TOKEN_HASH', claim.hash)
     await secrets.set('os', 'EE_CLAIM_EXPIRES_AT', claim.expiresAt)
-    claimToken = claim.token
+    claimed.token = claim.token
+    claimed.issuedElsewhere = opts.claimHash !== undefined
+  } else if (opts.claimHash !== undefined) {
+    throw new Error('--claim-hash only works on the first install: this server already has a claim link (ee claim-link makes a new one)')
   }
 
   step('writing the company repo')
@@ -390,13 +448,14 @@ async function seedCompany(sys: System, opts: BootstrapOptions, consoleHost: str
       {
         workloads: [...s.workloads.filter((w) => w.name !== 'os'), os],
         routes: routing.routes,
-        settings: { ...s.settings, ...routing.settings, contributeHub },
+        settings: { ...s.settings, ...routing.settings, contributeHub, trustedProxy: net.trustedProxy },
       },
-      livekitWorkload(livekit.tarball, livekit.sha256),
-      nodeIp,
+      livekitWorkload(livekit.tarball, livekit.sha256, net.rtcPorts),
+      net.nodeIp,
+      net.rtcPorts,
     )
   })
-  return claimToken
+  return claimed
 }
 
 type Routing = {
@@ -439,7 +498,7 @@ export function bootstrapRouting(
 export async function bootstrap(
   sys: System,
   opts: BootstrapOptions,
-): Promise<{ consoleHost: string; claimToken: string | null }> {
+): Promise<{ consoleHost: string; claimToken: string | null; claimIssuedElsewhere: boolean }> {
   if (process.getuid?.() !== 0) throw new Error('ee bootstrap must run as root')
   await assertSupportedOs(sys)
   if (!(await sys.exists(opts.release))) throw new Error(`release tarball ${opts.release} not found`)
@@ -447,9 +506,12 @@ export async function bootstrap(
   // Before anything is installed: a first install (or an upgrade from before calls) must name the node IP.
   // (The repo exists only where git is installed: a fresh box has neither.)
   const company = new CompanyRepo(sys, PATHS.company)
-  const stored =
-    (await sys.exists(`${PATHS.company}/.git`)) && (await company.head()) ? (await company.read()).settings.rtcNodeIp : null
-  const nodeIp = resolveNodeIp(opts.nodeIp, stored)
+  const stored: Settings | null =
+    (await sys.exists(`${PATHS.company}/.git`)) && (await company.head()) ? (await company.read()).settings : null
+  assertClaimHashAllowed(opts.claimHash, stored !== null)
+  const nodeIp = resolveNodeIp(opts.nodeIp, stored?.rtcNodeIp ?? null)
+  const rtcPorts = resolveRtcPorts(opts.rtcPorts, stored?.rtcPorts ?? null)
+  const trustedProxy = resolveTrustedProxy(opts.trustedProxy, stored?.trustedProxy ?? null)
   await installPackages(sys)
   await usersAndDirs(sys)
   await configurePostgres(sys)
@@ -461,6 +523,6 @@ export async function bootstrap(
   const existing = (await repo.head()) ? (await repo.read()).settings.consoleHost : null
   const consoleHost =
     opts.consoleHost ?? existing ?? `${(await detectPublicIpv4(sys)).replace(/\./g, '-')}.sslip.io`
-  const claimToken = await seedCompany(sys, opts, consoleHost, nodeIp)
-  return { consoleHost, claimToken }
+  const claim = await seedCompany(sys, opts, consoleHost, { nodeIp, rtcPorts, trustedProxy })
+  return { consoleHost, claimToken: claim.token, claimIssuedElsewhere: claim.issuedElsewhere }
 }

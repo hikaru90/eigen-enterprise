@@ -12,8 +12,8 @@ import { S3Client, s3TargetSchema, type S3Target } from './backup/s3.ts'
 import { BACKUP_SCOPE, storedConfigSchema } from './backup/service.ts'
 import { runApply, SNAPSHOT_ID } from './backup/restore.ts'
 import { fetchSnapshot, resolveSnapshot } from './backup/snapshot.ts'
-import { bootstrap } from './bootstrap.ts'
-import { CLAIM_TTL_DAYS, claimUrl } from './claim.ts'
+import { bootstrap, parseRtcPortsFlag, parseTrustedProxyFlag } from './bootstrap.ts'
+import { CLAIM_HASH, CLAIM_TTL_DAYS, claimUrl } from './claim.ts'
 import { CompanyRepo } from './company-repo.ts'
 import { Ee, startControlServer } from './daemon.ts'
 import { loadJournal } from './journal.ts'
@@ -30,6 +30,9 @@ const USAGE = `ee — the company's init (plan/phase-substrate.md)
   ee bootstrap --release <tarball> --livekit-release <tarball> [--console-host <host>]
                [--acme-email <email>] [--node-ip <ip>]   (--node-ip: the public IP calls media
                                          reach this server on; required once, then kept)
+               [--rtc-ports <tcp>,<udp>] [--trusted-proxy <IPv4 CIDR>] [--claim-hash <sha256>]
+                                         (hosted boxes behind a shared-IP router; kept on re-runs,
+                                          --claim-hash on the first install only)
   ee upgrade [--check] [--from <release-url>] [--node-ip <ip>]   (update over the air to the newest
                                          release; keeps everything, takes a safety copy first)
   ee claim-link                          (new private link to claim this server)
@@ -119,6 +122,9 @@ async function main(argv: string[]): Promise<void> {
           'acme-email': { type: 'string' },
           'node-ip': { type: 'string' },
           'contribute-hub': { type: 'string' },
+          'rtc-ports': { type: 'string' },
+          'trusted-proxy': { type: 'string' },
+          'claim-hash': { type: 'string' },
         },
       })
       if (!values.release) throw new Error('--release <tarball> is required')
@@ -134,13 +140,21 @@ async function main(argv: string[]): Promise<void> {
         throw new Error(`--console-host "${values['console-host']}" is not a valid host name (e.g. os.example.com)`)
       }
       const contributeHub = values['contribute-hub'] === undefined ? undefined : parseContributeHubFlag(values['contribute-hub'])
-      const { consoleHost, claimToken } = await bootstrap(sys, {
+      const rtcPorts = values['rtc-ports'] === undefined ? undefined : parseRtcPortsFlag(values['rtc-ports'])
+      const trustedProxy = values['trusted-proxy'] === undefined ? undefined : parseTrustedProxyFlag(values['trusted-proxy'])
+      if (values['claim-hash'] !== undefined && !CLAIM_HASH.test(values['claim-hash'])) {
+        throw new Error('--claim-hash must be 64 lowercase hex characters (the SHA-256 of the claim token)')
+      }
+      const { consoleHost, claimToken, claimIssuedElsewhere } = await bootstrap(sys, {
         release: values.release,
         livekitRelease: values['livekit-release'],
         ...(values['console-host'] ? { consoleHost: values['console-host'] } : {}),
         ...(values['acme-email'] ? { acmeEmail: values['acme-email'] } : {}),
         ...(values['node-ip'] ? { nodeIp: values['node-ip'] } : {}),
         ...(contributeHub ? { contributeHub } : {}),
+        ...(rtcPorts ? { rtcPorts } : {}),
+        ...(trustedProxy ? { trustedProxy } : {}),
+        ...(values['claim-hash'] !== undefined ? { claimHash: values['claim-hash'] } : {}),
       })
       console.log('→ first deploy (health-gated; migrations run now, this takes a minute)')
       const ee = new Ee(sys, await SecretStore.open(sys))
@@ -152,7 +166,11 @@ async function main(argv: string[]): Promise<void> {
         // the daemon on old code (its error is still reported after this).
         await sys.run('systemctl', ['restart', 'ee.service'])
       }
-      if (claimToken) {
+      if (claimIssuedElsewhere) {
+        console.log(
+          `\n✓ Your company is running: https://${consoleHost}\n\n  Its claim link was issued by whoever set up this server — ask them for it.\n`,
+        )
+      } else if (claimToken) {
         console.log(`\n✓ Your company is running. Claim it — this private link makes you its owner:\n\n  ${claimUrl(consoleHost, claimToken)}\n\n  (works once, for ${CLAIM_TTL_DAYS} days; lost it? run: ee claim-link)\n`)
       } else {
         console.log(`\n✓ Your company is running: https://${consoleHost}\n`)

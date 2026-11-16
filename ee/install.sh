@@ -14,8 +14,14 @@
 #
 # Calls (livekit-server): --node-ip is the IP browsers send call media to. It is
 # required on the first install (and on the first upgrade to a release with calls),
-# then kept. The server's firewall must let in 7881/tcp and 7882/udp, and DNS for
+# then kept. The server's firewall must let in the media ports — 7881/tcp and
+# 7882/udp, or the pair given with --rtc-ports <tcp>,<udp> — and DNS for
 # rtc.<console host> must point here (the calls host follows the console host).
+#
+# Hosted boxes (a VM behind a shared-IP router; self-hosted installs pass none of these):
+#   --rtc-ports <tcp>,<udp>      the media port pair the router forwards to this VM (20000–29999), kept on re-runs
+#   --trusted-proxy <IPv4 CIDR>  the router; Caddy then takes PROXY protocol v2 from it on :443/:80, kept on re-runs
+#   --claim-hash <sha256>        first install only: the claim link was minted by whoever set up the server
 set -eu
 
 NODE_VERSION="22.23.3"
@@ -26,7 +32,7 @@ PASS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --from) FROM="$2"; shift 2 ;;
-    --console-host|--acme-email|--node-ip|--contribute-hub) PASS="$PASS $1 $2"; shift 2 ;;
+    --console-host|--acme-email|--node-ip|--contribute-hub|--rtc-ports|--trusted-proxy|--claim-hash) PASS="$PASS $1 $2"; shift 2 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done

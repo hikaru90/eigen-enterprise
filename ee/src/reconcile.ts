@@ -532,6 +532,7 @@ export async function reconcile(ctx: ReconcileContext): Promise<DesiredState> {
     routes: routable,
     upstreams,
     acmeEmail: desired.settings.acmeEmail,
+    trustedProxy: desired.settings.trustedProxy,
     internal: [
       { port: OS_INTERNAL_PORT, workload: 'os' },
       ...(desired.workloads.some((w) => w.name === LIVEKIT_WORKLOAD) ? [{ port: LIVEKIT_INTERNAL_PORT, workload: LIVEKIT_WORKLOAD }] : []),

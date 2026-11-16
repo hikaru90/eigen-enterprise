@@ -15,6 +15,8 @@ export type CaddyInput = {
   upstreams: Record<string, Upstream>
   /** ACME account email; null = Caddy's default (no email). */
   acmeEmail: string | null
+  /** The router's IPv4 CIDR when the box sits behind one speaking PROXY protocol (settings.trustedProxy); null = direct. */
+  trustedProxy: string | null
   /**
    * Stable loopback listeners for workloads whose slot port changes on every
    * deploy (e.g. pg_cron → eigenEnterprise). Never exposed publicly.
@@ -70,7 +72,16 @@ export function renderCaddyConfig(input: CaddyInput): Json {
   // Reserved TLDs can never get a public certificate: Caddy's local CA covers them (test boxes only).
   if (local.length > 0) policies.push({ subjects: local, issuers: [{ module: 'internal' }] })
 
-  const servers: Json = { ee: { listen: [':443', ':80'], routes } }
+  const publicServer: Json = { listen: [':443', ':80'], routes }
+  if (input.trustedProxy) {
+    // Behind a shared-IP router (SNI passthrough + PROXY v2): the real client
+    // address comes from the PROXY header, accepted only from the router.
+    publicServer.listener_wrappers = [
+      { wrapper: 'proxy_protocol', allow: [input.trustedProxy], timeout: '5s' },
+      { wrapper: 'tls' },
+    ]
+  }
+  const servers: Json = { ee: publicServer }
   for (const i of input.internal ?? []) {
     const up = input.upstreams[i.workload]
     if (!up) continue
