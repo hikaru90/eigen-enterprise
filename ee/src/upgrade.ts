@@ -1,4 +1,8 @@
 /**
+ * Only a signed release runs: the release's SHA256SUMS must carry a valid
+ * Ed25519 signature by the embedded release key (release-key.ts), and the
+ * downloaded install.sh must match it, before it runs as root.
+ *
  * `ee upgrade`: update this server over the air to the newest published
  * eigenEnterprise release, keeping everything (people, websites, repos,
  * domains, secrets, backups).
@@ -12,6 +16,7 @@
  */
 
 import { AGE_REPAIR_SQL } from './age-repair.ts'
+import { trustedManifest } from './release-key.ts'
 
 /** The newest public release (GitHub serves `latest/download/<asset>` from the newest release). */
 export const RELEASES_URL = 'https://github.com/hikaru90/eigen-enterprise/releases/latest/download'
@@ -34,8 +39,22 @@ export type UpgradeDeps = {
   mkdirp(path: string): Promise<void>
   writeFile(path: string, content: string): Promise<void>
   remove(path: string): Promise<void>
+  /** sha256 (hex) of a local file. */
+  sha256File(path: string): Promise<string>
+  /** The release public key (PEM): RELEASE_PUBLIC_KEY_PEM in production. */
+  releaseKeyPem: string
   now(): Date
   log(line: string): void
+}
+
+/** The release's SHA256SUMS, verified against the release key — before anything changes. */
+async function signedManifest(d: UpgradeDeps, from: string) {
+  const [manifest, sig] = [await d.fetchText(`${from}/SHA256SUMS`), await d.fetchText(`${from}/SHA256SUMS.sig`)]
+  try {
+    return trustedManifest(manifest, sig, d.releaseKeyPem)
+  } catch (err) {
+    throw new Error(`upgrade refused, nothing changed: ${(err as Error).message}`)
+  }
 }
 
 /** The tarball for this CPU in the release at `from` (its LATEST names the release). */
@@ -97,12 +116,21 @@ export async function upgrade(
   d.log(`  this server runs: ${current ?? 'no release'}`)
   if (opts.check) return 'available'
 
+  d.log('→ verifying the release signature')
+  const manifest = await signedManifest(d, opts.from)
+
   const dir = `${UPGRADES_DIR}/${d.now().toISOString().replace(/\.\d+Z$/, 'Z').replace(/:/g, '-')}`
   d.log(`→ taking a safety copy (database + ee state) in ${dir}`)
   await safetyCopy(d, dir)
 
   d.log('→ running the release installer (keeps people, websites, repos, domains and secrets)')
   await d.download(`${opts.from}/install.sh`, `${dir}/install.sh`)
+  try {
+    manifest.check('install.sh', await d.sha256File(`${dir}/install.sh`))
+  } catch (err) {
+    await d.remove(`${dir}/install.sh`)
+    throw new Error(`upgrade refused, nothing changed: ${(err as Error).message}`)
+  }
   const code = await d.runLive('sh', [`${dir}/install.sh`, '--from', opts.from, ...(opts.nodeIp ? ['--node-ip', opts.nodeIp] : [])])
   if (code !== 0) {
     throw new Error(

