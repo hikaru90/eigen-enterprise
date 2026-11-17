@@ -4,6 +4,7 @@ import type { ZodType } from 'zod'
 import { randomUUID } from 'node:crypto'
 import {
   InMemoryApprovalStore,
+  sameApprovalInput,
   StaticApprovalPolicy,
   type ApprovalPolicy,
   type ApprovalStore,
@@ -80,6 +81,14 @@ export class KernelRegistry {
         `tool ${descriptor.name} (${descriptor.auditClass}) declares no activity; every non-read tool must say in plain words what it did`,
       )
     }
+    if (descriptor.approvalAlways === true) {
+      if (descriptor.auditClass === 'read') {
+        throw new Error(`tool ${descriptor.name} is a read tool; only a tool that changes something can be always-ask (approvalAlways)`)
+      }
+      if (descriptor.approvalRisk === undefined) {
+        throw new Error(`always-ask tool ${descriptor.name} declares no approvalRisk; every gated tool must declare one`)
+      }
+    }
     this.approvalPolicy.validateTool?.(descriptor)
     this.tools.set(descriptor.name, descriptor)
   }
@@ -124,8 +133,12 @@ export class KernelRegistry {
     }
 
     // (c) approval gate: everything non-read (mutate + external), per injected policy and existing decisions.
+    // Always-ask tools bypass the policy entirely: no approval mode can wave them through.
+    if (descriptor.approvalAlways === true) await this.alwaysAskGate(name, input, ctx)
     const decision =
-      descriptor.auditClass === 'read' ? 'pass' : await this.approvalPolicy.decide(descriptor, ctx)
+      descriptor.auditClass === 'read' || descriptor.approvalAlways === true
+        ? 'pass'
+        : await this.approvalPolicy.decide(descriptor, ctx)
     if (decision === 'auto_approved') {
       await emitKernelEvent(this.eventSink, {
         type: 'approval.auto_approved',
@@ -184,6 +197,40 @@ export class KernelRegistry {
     }
 
     return result
+  }
+
+  /**
+   * The always-on approval wall (ToolDescriptor.approvalAlways): one decided
+   * approval covers exactly one call with exactly the approved input, and is
+   * consumed atomically before the handler runs. Anything else waits.
+   */
+  private async alwaysAskGate(name: string, input: unknown, ctx: ToolContext): Promise<void> {
+    const latest = await this.approvalStore.latestFor(name, ctx.principal.id)
+    if (latest?.status === 'pending') {
+      throw new KernelError('approval_required', `tool ${name} is awaiting approval`, {
+        approvalId: latest.id,
+        tool: name,
+      })
+    }
+    if (
+      latest?.status === 'approved' &&
+      latest.consumedAt === undefined &&
+      sameApprovalInput(latest.input, input) &&
+      (await this.approvalStore.consume(latest.id))
+    ) {
+      return
+    }
+    const created = await this.approvalStore.create({
+      id: randomUUID(),
+      toolName: name,
+      input,
+      principalId: ctx.principal.id,
+      status: 'pending',
+    })
+    throw new KernelError('approval_required', `tool ${name} requires approval`, {
+      approvalId: created.id,
+      tool: name,
+    })
   }
 
   private async audit(

@@ -46,6 +46,8 @@ export const kernelApprovals = pgTable('kernel_approvals', {
   status: text('status', { enum: ['pending', 'approved', 'denied'] }).notNull(),
   decidedBy: text('decided_by'),
   decidedAt: timestamp('decided_at', { withTimezone: true }),
+  /** Migration 0143: when an always-ask tool ran on this approval (one approval, one call). */
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
 

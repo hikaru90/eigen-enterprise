@@ -49,6 +49,7 @@ function makeRichApprovalStore(requests: ApprovalRequest[]): {
     },
     listPending: async () => requests.filter((r) => r.status === 'pending'),
     latestFor: async () => null,
+    consume: async () => false,
     list: async (status?: ApprovalStatus) => {
       spy.calls.push(status)
       return status === undefined ? [...requests] : requests.filter((r) => r.status === status)
@@ -64,7 +65,7 @@ function toolByName(tools: ToolDescriptor[], name: string): ToolDescriptor {
 }
 
 describe('createAdminTools surface', () => {
-  const tools = createAdminTools({
+  const tools = createAdminTools({ tool: () => undefined,
     modules: makeModules(new InMemoryActivationStore(), [makeManifest('memory')]),
     activations: new InMemoryActivationStore(),
     approvals: makeRichApprovalStore([]).store,
@@ -124,7 +125,7 @@ describe('kernel.module_list handler', () => {
     const activations = new InMemoryActivationStore()
     await activations.set('memory', true)
     const modules = makeModules(activations, [makeManifest('memory'), makeManifest('email')])
-    const [listTool] = createAdminTools({
+    const [listTool] = createAdminTools({ tool: () => undefined,
       modules,
       activations,
       approvals: makeRichApprovalStore([]).store,
@@ -163,7 +164,7 @@ describe('kernel.module_list handler', () => {
       makeManifest('messages'),
       { ...makeManifest('calls'), requires: ['messages'] },
     ])
-    const [listTool] = createAdminTools({ modules, activations, approvals: makeRichApprovalStore([]).store })
+    const [listTool] = createAdminTools({ tool: () => undefined, modules, activations, approvals: makeRichApprovalStore([]).store })
 
     const result = (await listTool.handler(makeCtx(), {})) as Array<Record<string, unknown>>
     const byId = Object.fromEntries(result.map((m) => [m.id, m]))
@@ -178,7 +179,7 @@ describe('kernel.module_activate / kernel.module_deactivate handlers', () => {
   it('activate flips the module active via the module registry', async () => {
     const activations = new InMemoryActivationStore()
     const modules = makeModules(activations, [makeManifest('memory')])
-    const tools = createAdminTools({
+    const tools = createAdminTools({ tool: () => undefined,
       modules,
       activations,
       approvals: makeRichApprovalStore([]).store,
@@ -193,7 +194,7 @@ describe('kernel.module_activate / kernel.module_deactivate handlers', () => {
   it('deactivate flips the module inactive', async () => {
     const activations = new InMemoryActivationStore()
     const modules = makeModules(activations, [makeManifest('memory')])
-    const tools = createAdminTools({
+    const tools = createAdminTools({ tool: () => undefined,
       modules,
       activations,
       approvals: makeRichApprovalStore([]).store,
@@ -215,7 +216,7 @@ describe('kernel.module_activate / kernel.module_deactivate handlers', () => {
       { ...makeManifest('messages'), name: 'Messages' },
       { ...makeManifest('calls'), name: 'Calls', requires: ['messages'] },
     ])
-    const tools = createAdminTools({ modules, activations, approvals: makeRichApprovalStore([]).store })
+    const tools = createAdminTools({ tool: () => undefined, modules, activations, approvals: makeRichApprovalStore([]).store })
     return {
       activations,
       activate: toolByName(tools, 'kernel.module_activate'),
@@ -291,7 +292,7 @@ describe('kernel.module_activate / kernel.module_deactivate handlers', () => {
   it('lets an agent switch on a plugin that was never set up (no activation record)', async () => {
     const activations = new InMemoryActivationStore()
     const modules = makeModules(activations, [makeManifest('memory')])
-    const tools = createAdminTools({ modules, activations, approvals: makeRichApprovalStore([]).store })
+    const tools = createAdminTools({ tool: () => undefined, modules, activations, approvals: makeRichApprovalStore([]).store })
     const activate = toolByName(tools, 'kernel.module_activate')
     await expect(activate.handler(makeCtx({ kind: 'agent', roles: ['admin', 'agent'] }), { module_id: 'memory' })).resolves.toEqual({
       module_id: 'memory',
@@ -310,7 +311,7 @@ describe('kernel.module_activate / kernel.module_deactivate handlers', () => {
   it('throws loud on unknown module ids and leaves the store untouched', async () => {
     const activations = new InMemoryActivationStore()
     const modules = makeModules(activations, [makeManifest('memory')])
-    const tools = createAdminTools({
+    const tools = createAdminTools({ tool: () => undefined,
       modules,
       activations,
       approvals: makeRichApprovalStore([]).store,
@@ -327,7 +328,7 @@ describe('kernel.module_activate / kernel.module_deactivate handlers', () => {
 describe('kernel.approvals_list handler', () => {
   it('passes the optional status filter through to the store', async () => {
     const { store, spy } = makeRichApprovalStore([])
-    const tools = createAdminTools({
+    const tools = createAdminTools({ tool: () => undefined,
       modules: makeModules(new InMemoryActivationStore(), []),
       activations: new InMemoryActivationStore(),
       approvals: store,
@@ -350,7 +351,7 @@ describe('kernel.approvals_list handler', () => {
       },
     ]
     const { store } = makeRichApprovalStore(requests)
-    const tools = createAdminTools({
+    const tools = createAdminTools({ tool: () => undefined,
       modules: makeModules(new InMemoryActivationStore(), []),
       activations: new InMemoryActivationStore(),
       approvals: store,
@@ -372,7 +373,7 @@ describe('kernel.approvals_decide handler', () => {
       status: 'pending',
     }
     const { store } = makeRichApprovalStore([pending])
-    const tools = createAdminTools({
+    const tools = createAdminTools({ tool: () => undefined,
       modules: makeModules(new InMemoryActivationStore(), []),
       activations: new InMemoryActivationStore(),
       approvals: store,
@@ -384,5 +385,53 @@ describe('kernel.approvals_decide handler', () => {
       decision: 'approved',
     })
     expect(result).toMatchObject({ id: 'req-9', status: 'approved', decidedBy: 'principal-1' })
+  })
+
+  describe('always-ask tools (approvalAlways): only a person decides', () => {
+    const alwaysAsk: ToolDescriptor = {
+      name: 'settings.update',
+      module: 'kernel',
+      summary: 'x',
+      inputSchema: z.object({}),
+      permission: { roles: ['admin'] },
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      approvalAlways: true,
+      activity: () => 'Changed a setting',
+      handler: async () => ({}),
+    }
+    const pending: ApprovalRequest = {
+      id: 'req-10',
+      toolName: 'settings.update',
+      input: {},
+      principalId: 'orchestrator',
+      status: 'pending',
+    }
+    function decideTool() {
+      const tools = createAdminTools({
+        modules: makeModules(new InMemoryActivationStore(), []),
+        activations: new InMemoryActivationStore(),
+        approvals: makeRichApprovalStore([pending]).store,
+        tool: (name) => (name === alwaysAsk.name ? alwaysAsk : undefined),
+      })
+      return toolByName(tools, 'kernel.approvals_decide')
+    }
+
+    it('refuses an agent deciding it, approve or deny', async () => {
+      for (const decision of ['approved', 'denied'] as const) {
+        await expect(
+          decideTool().handler(makeCtx({ id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] }), {
+            approval_id: 'req-10',
+            decision,
+          }),
+        ).rejects.toMatchObject({ code: 'human_decision_required' })
+      }
+    })
+
+    it('lets the signed-in person decide it', async () => {
+      await expect(
+        decideTool().handler(makeCtx(), { approval_id: 'req-10', decision: 'approved' }),
+      ).resolves.toMatchObject({ status: 'approved', decidedBy: 'principal-1' })
+    })
   })
 })

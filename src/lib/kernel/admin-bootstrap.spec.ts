@@ -65,6 +65,7 @@ function makeRichApprovalStore(requests: ApprovalRequest[]): {
     },
     listPending: async () => requests.filter((r) => r.status === 'pending'),
     latestFor: async () => null,
+    consume: async () => false,
     list: async (status?: ApprovalStatus) => {
       spy.calls.push(status)
       return status === undefined ? [...requests] : requests.filter((r) => r.status === status)

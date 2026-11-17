@@ -60,6 +60,7 @@ export async function registerAdminTools(
     modules: kernel.modules,
     activations: kernel.activations,
     approvals,
+    tool: (name) => kernel.registry.get(name),
   })
   registerModuleTools(kernel.registry, kernel.modules, tools)
 }
@@ -95,6 +96,7 @@ export function listableApprovalStore(store: ApprovalStore, db?: DbHandle): Admi
     decide: (id, status, decidedBy) => store.decide(id, status, decidedBy),
     listPending: () => store.listPending(),
     latestFor: (toolName, principalId) => store.latestFor(toolName, principalId),
+    consume: (id) => store.consume(id),
     list,
   }
 }
@@ -107,6 +109,7 @@ const approvalColumns = {
   status: kernelApprovals.status,
   decidedBy: kernelApprovals.decidedBy,
   decidedAt: kernelApprovals.decidedAt,
+  consumedAt: kernelApprovals.consumedAt,
 }
 
 async function listApprovalsFromDb(
@@ -127,5 +130,6 @@ async function listApprovalsFromDb(
     status: row.status,
     ...(row.decidedBy === null ? {} : { decidedBy: row.decidedBy }),
     ...(row.decidedAt === null ? {} : { decidedAt: row.decidedAt.toISOString() }),
+    ...(row.consumedAt ? { consumedAt: row.consumedAt.toISOString() } : {}),
   }))
 }

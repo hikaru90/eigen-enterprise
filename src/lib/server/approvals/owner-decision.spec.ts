@@ -29,10 +29,11 @@ function adminRegistry() {
     },
     listPending: () => store.listPending(),
     latestFor: (t: string, p: string) => store.latestFor(t, p),
+    consume: (id: string) => store.consume(id),
     list: async (status?: ApprovalStatus) =>
       [...all.values()].filter((r) => status === undefined || r.status === status),
   }
-  const tools = createAdminTools({
+  const tools = createAdminTools({ tool: () => undefined,
     modules: { list: () => [], get: () => undefined } as never,
     activations: {} as never,
     approvals,

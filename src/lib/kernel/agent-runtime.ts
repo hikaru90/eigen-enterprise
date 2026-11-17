@@ -220,7 +220,12 @@ export class AgentRuntime {
     return {
       agent,
       principal,
-      executeTool: (name, input) => this.registry.execute(name, input, { principal, requestId }),
+      executeTool: (name, input) =>
+        this.registry.execute(name, input, {
+          principal,
+          requestId,
+          ...(options?.llmUserId ? { actingUserId: options.llmUserId } : {}),
+        }),
       listTools: () => listings,
       emit: async (event) => {
         await emitKernelEvent(this.eventSink, {

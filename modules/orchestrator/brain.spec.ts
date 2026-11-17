@@ -52,7 +52,7 @@ describe('orchestrator persona prompt', () => {
     modules.register(kernelManifest)
     await activations.set('kernel', true)
     const approvals = Object.assign(new InMemoryApprovalStore(), { list: async () => [] })
-    for (const t of createAdminTools({ modules, activations, approvals })) registry.register(t)
+    for (const t of createAdminTools({ tool: () => undefined, modules, activations, approvals })) registry.register(t)
     const runtime = new AgentRuntime({
       registry,
       isToolActive: (name) => modules.isToolActive(name),
