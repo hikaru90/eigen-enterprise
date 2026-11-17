@@ -6,6 +6,7 @@
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
   import { docTitle } from '$lib/shell/title'
+  import NextUpStrip from '../../../../../../../modules/contacts/ui/next-up-strip.svelte'
   import PipelineBoard from '../../../../../../../modules/contacts/ui/pipeline-board.svelte'
 
   /** /m/email/people/pipeline: the contact pipeline, worked the GTD way. */
@@ -44,6 +45,9 @@
     <Button href={resolve('/m/email/people/new')}>Add a contact</Button>
   {/snippet}
 </SectionHeader>
+
+<!-- A log that fails from the strip comes back on the board's row (the board opens the form with the reason). -->
+<div class="mt-4"><NextUpStrip today={data.pipeline.today} /></div>
 
 <div class="mt-4">
   <PipelineBoard pipeline={data.pipeline} onsave={save} {logError} />

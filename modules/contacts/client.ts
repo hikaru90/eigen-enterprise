@@ -1,4 +1,4 @@
-import type { DraftFor, ExtractMode } from './types'
+import type { DraftFor, ExtractMode, NextUp } from './types'
 
 /** "Tell me about them" from the browser: the AI's reading of a description. Saves nothing. */
 
@@ -23,4 +23,31 @@ export const readDescription: ReadDescription = async (mode, text) => {
   if (!res.ok) throw new Error(typeof body?.error === 'string' ? body.error : `Contacts couldn’t read that (HTTP ${res.status}).`)
   if (!body?.draft || typeof body.draft !== 'object') throw new Error('Contacts answered without a draft.')
   return body.draft as DraftFor<typeof mode>
+}
+
+// ── Next up ──────────────────────────────────────────────────────────────────
+
+export const CONTACTS_NEXT_UP_URL = '/api/contacts/next-up'
+
+/** The assistant's pick, or why there is none: `unavailable` = no AI provider set up (said plainly, no list). */
+export type NextUpResult = { ok: true; nextUp: NextUp } | { ok: false; unavailable: boolean; message: string }
+
+export type LoadNextUp = (refresh: boolean) => Promise<NextUpResult>
+
+/** GET the (cached) pick, or POST to ask the assistant again. */
+export const loadNextUp: LoadNextUp = async (refresh) => {
+  const res = await fetch(CONTACTS_NEXT_UP_URL, { method: refresh ? 'POST' : 'GET' })
+  const raw = await res.text()
+  let body: { nextUp?: NextUp; error?: unknown; code?: unknown } | null
+  try {
+    body = JSON.parse(raw) as { nextUp?: NextUp; error?: unknown; code?: unknown }
+  } catch {
+    return { ok: false, unavailable: false, message: `Couldn’t load suggestions (HTTP ${res.status}).` }
+  }
+  if (!res.ok) {
+    const message = typeof body?.error === 'string' ? body.error : `Couldn’t load suggestions (HTTP ${res.status}).`
+    return { ok: false, unavailable: body?.code === 'unavailable', message }
+  }
+  if (!body?.nextUp || !Array.isArray(body.nextUp.items)) return { ok: false, unavailable: false, message: 'Contacts answered without suggestions.' }
+  return { ok: true, nextUp: body.nextUp }
 }

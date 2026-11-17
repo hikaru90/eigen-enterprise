@@ -57,6 +57,20 @@ export const contacts = pgTable(
 )
 
 /**
+ * Contacts "Next up" (migration 0145, Contribute 057ebd74): the assistant's
+ * last pick of who to write to next, one row per person — a cache, so the
+ * Contacts page doesn't ask the AI on every visit. The picks
+ * ([{ contactId, kind, reason }]) are validated by the service on read.
+ */
+export const contactNextUp = pgTable('contact_next_up', {
+  userId: text('user_id').primaryKey(),
+  /** The person's day it was made for (a new day is a new pick). */
+  day: date('day', { mode: 'string' }).notNull(),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull(),
+  suggestions: jsonb('suggestions').$type<unknown>().notNull().default(sql`'[]'::jsonb`),
+})
+
+/**
  * Contact history (migration 0139, Contribute b8a87a25): one row per "Log a
  * contact" — the day, how it went, the follow-up it answered and the one it
  * set. Visible to whoever may see the contact (decided in the service); goes

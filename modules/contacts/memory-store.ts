@@ -1,4 +1,4 @@
-import type { ContactFilter, ContactRow, ContactScope, ContactsStore, LogEntryRow } from './store'
+import type { ContactFilter, ContactRow, ContactScope, ContactsStore, LogEntryRow, NextUpCache, NextUpEntry } from './store'
 
 /** In-memory ContactsStore for unit tests (same semantics as the DB store). */
 export function memoryContactsStore(): ContactsStore & { rows: Map<string, ContactRow>; log: LogEntryRow[] } {
@@ -69,6 +69,21 @@ export function memoryContactsStore(): ContactsStore & { rows: Map<string, Conta
         .filter((e) => e.contactId === contactId)
         .sort((a, b) => b.on.localeCompare(a.on) || b.createdAt.getTime() - a.createdAt.getTime())
         .map((e) => ({ ...e }))
+    },
+  }
+}
+
+/** In-memory NextUpCache for unit tests. */
+export function memoryNextUpCache(): NextUpCache & { entries: Map<string, NextUpEntry> } {
+  const entries = new Map<string, NextUpEntry>()
+  return {
+    entries,
+    async get(userId) {
+      const e = entries.get(userId)
+      return e ? structuredClone(e) : null
+    },
+    async put(entry) {
+      entries.set(entry.userId, structuredClone(entry))
     },
   }
 }

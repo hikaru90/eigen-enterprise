@@ -100,3 +100,13 @@ export type ContactsStore = {
 export type Directory = {
   names(): Promise<Map<string, string>>
 }
+
+/** One person's cached "Next up" pick (migration 0145). `suggestions` is checked by the service on read. */
+export type NextUpEntry = { userId: string; day: string; generatedAt: Date; suggestions: unknown }
+
+/** Where the last pick per person is kept: the DB in production, in memory in unit tests. */
+export type NextUpCache = {
+  get(userId: string): Promise<NextUpEntry | null>
+  /** Replaces the person's pick. */
+  put(entry: NextUpEntry): Promise<void>
+}

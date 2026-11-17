@@ -41,25 +41,24 @@ describe('/m/email/people', () => {
     })
   })
 
-  it('lists what the person may see (tag + search), the tags to filter by and who to follow up with', async () => {
+  it('lists what the person may see (tag + search), the tags to filter by and today (no follow-up list any more: Next up replaced it)', async () => {
     const mara = await createContact(f.deps, user('ana'), { name: 'Mara Voss', tags: ['investor'], nextFollowUpOn: '2026-11-12' })
     await createContact(f.deps, user('ana'), { name: 'Jon Park', tags: ['production'] })
     await createContact(f.deps, user('ben'), { name: 'Bens private', tags: ['secret'], nextFollowUpOn: '2026-11-12' })
     const out = (await load({ locals: signedIn('ana'), url: new URL('http://os.test/m/email/people?tag=investor&q=voss') } as never)) as {
       contacts: Array<{ id: string }>
       tags: string[]
-      followUps: Array<{ id: string; due: string }>
       today: string
       filter: { tag: string; q: string }
     }
     expect(out.contacts.map((c) => c.id)).toEqual([mara.id])
     expect(out.tags).not.toContain('secret')
-    expect(out.followUps.map((c) => [c.id, c.due])).toEqual([[mara.id, 'today']])
+    expect(out).not.toHaveProperty('followUps')
     expect(out.today).toBe('2026-11-12')
     expect(out.filter).toEqual({ tag: 'investor', q: 'voss' })
   })
 
-  it('logs a contact from the follow-up list; a bad follow-up day comes back to that row', async () => {
+  it('logs a contact from Next up; a bad follow-up day comes back to that contact', async () => {
     const mara = await createContact(f.deps, user('ana'), { name: 'Mara Voss', nextFollowUpOn: '2026-11-12' })
     const ok = await actions.log({ locals: signedIn('ana'), request: post([['id', mara.id], ['on', '2026-11-12'], ['nextFollowUpOn', '2026-11-30']]) } as never)
     expect(ok).toEqual({ action: 'log', id: mara.id })

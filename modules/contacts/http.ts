@@ -1,3 +1,4 @@
+import type { NextUpPorts } from './next-up'
 import type { Actor, ContactInput, ContactsDeps } from './service'
 import { error, fail, json, redirect } from '@sveltejs/kit'
 import { ContactsError, ERROR_STATUS } from './errors'
@@ -116,6 +117,43 @@ export async function contactsExtractResponse(user: { id: string } | null | unde
   } catch (err) {
     if (err instanceof ContactsError) return json({ error: err.message, code: err.code }, { status: ERROR_STATUS[err.code] })
     console.error('[contacts.extract] request failed', err)
+    return json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+  }
+}
+
+/** What the "Next up" endpoint runs on: live by default, doubles in unit tests. */
+export type NextUpWiring = {
+  deps: () => Promise<ContactsDeps>
+  ports: () => Promise<NextUpPorts>
+  today: (userId: string) => Promise<string>
+}
+
+const liveNextUpWiring: NextUpWiring = {
+  deps: liveContactsDeps,
+  ports: async () => (await import('./next-up')).liveNextUpPorts(),
+  today: async (userId) => (await import('./live')).todayFor(userId),
+}
+
+/**
+ * GET /api/contacts/next-up (the cached pick, or a new one when it is stale)
+ * and POST (refresh: "Suggest again") → `{ nextUp }`. Signed-in people in the
+ * company only; no AI provider → 503 `{ error, code: 'unavailable' }`; the
+ * provider failing or an unreadable answer → 502; anything else logged, 500.
+ */
+export async function contactsNextUpResponse(
+  user: { id: string } | null | undefined,
+  opts: { refresh: boolean },
+  wiring: NextUpWiring = liveNextUpWiring,
+): Promise<Response> {
+  if (!user) return json({ error: 'sign in first' }, { status: 401 })
+  try {
+    const actor = personActor(user)
+    const { nextUp } = await import('./next-up')
+    const [d, ports, today] = await Promise.all([wiring.deps(), wiring.ports(), wiring.today(actor.userId)])
+    return json({ nextUp: await nextUp(d, ports, actor, { today, refresh: opts.refresh }) })
+  } catch (err) {
+    if (err instanceof ContactsError) return json({ error: err.message, code: err.code }, { status: ERROR_STATUS[err.code] })
+    console.error('[contacts.next-up] request failed', err)
     return json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
 }

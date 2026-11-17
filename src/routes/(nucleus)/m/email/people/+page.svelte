@@ -6,12 +6,11 @@
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { docTitle } from '$lib/shell/title'
-  import { FOLLOW_UP_WINDOW_DAYS } from '../../../../../../modules/contacts/types'
   import ContactList from '../../../../../../modules/contacts/ui/contact-list.svelte'
   import ContactsPrivacyNote from '../../../../../../modules/contacts/ui/contacts-privacy-note.svelte'
-  import FollowUpList from '../../../../../../modules/contacts/ui/follow-up-list.svelte'
+  import NextUpStrip from '../../../../../../modules/contacts/ui/next-up-strip.svelte'
 
-  /** /m/email/people: who to follow up with next, then everyone you know (by tag, by search). */
+  /** /m/email/people: the assistant's "Next up", then everyone you know (by tag, by search). */
   let { data, form }: PageProps = $props()
 
   const base = resolve('/m/email/people')
@@ -32,11 +31,8 @@
 
 <svelte:head><title>{docTitle('Contacts', 'Email')}</title></svelte:head>
 
-<SectionHeader
-  title="Contacts"
-  description="The people you know: how to reach them, where you met, why they matter — and who to follow up with next."
-  testid="contacts-header"
->
+<SectionHeader title="Contacts" testid="contacts-header">
+  {#snippet info()}<ContactsPrivacyNote />{/snippet}
   {#snippet actions()}
     <Button variant="outline" href="/m/email/people/pipeline" data-testid="contact-pipeline">Pipeline</Button>
     <Button variant="outline" href="/m/email/people/import" data-testid="contact-import">Import</Button>
@@ -44,16 +40,7 @@
   {/snippet}
 </SectionHeader>
 
-<div class="mt-6"><ContactsPrivacyNote /></div>
-
-<SectionHeader
-  title="Follow up next"
-  description={`Who to write to next: overdue, due today and the next ${FOLLOW_UP_WINDOW_DAYS} days — yours and the shared ones.`}
-  testid="follow-ups-section"
-/>
-<div class="mt-3">
-  <FollowUpList followUps={data.followUps} today={data.today} {logError} />
-</div>
+<div class="mt-4"><NextUpStrip today={data.today} {logError} /></div>
 
 <SectionHeader title="Everyone" description="Your contacts and the ones shared with the company, by name." testid="contacts-section" />
 <div class="mt-3 grid gap-3">
