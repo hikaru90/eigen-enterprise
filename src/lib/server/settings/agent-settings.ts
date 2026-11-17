@@ -1,6 +1,6 @@
-import type { SettingChange, SettingsPort, SettingsView } from '$lib/kernel/settings-tools'
 import { and, eq } from 'drizzle-orm'
 import { KernelError } from '$lib/kernel/errors'
+import type { SettingChange, SettingsPort, SettingsView } from '$lib/kernel/settings-tools'
 import { getUserRole } from '$lib/server/auth/user-role'
 import { saveCompanyName } from '$lib/server/company/service'
 import { companyProfileStore } from '$lib/server/company/store'
