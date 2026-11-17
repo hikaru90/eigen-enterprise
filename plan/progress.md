@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-17 — Backup health tick works outside a request (it never did)
+
+- Production logged `[backup-health] tick failed: getDb() was called outside an active request` 144 times a day: the 10-minute tick (src/lib/server/backups/live.ts) read kernel_events with `getDb()`, which only works inside a request. So the "backup missed" warning could never fire. The backups themselves ran (ee's timer).
+- `companyDb()` in `$lib/server/db`: the request handle inside a request, the pooled app handle outside one, for company-level tables (no RLS). The kernel's default store handle (modules/index.ts) had the same rule inline and now uses it; the tick reads kernel_events through it.
+- The tick's push to the owner reads their push subscriptions (per-user rows) and now runs inside `withDbUser(owner)`, like the job queue; it would have thrown the same way the first time a warning was due.
+- Tests: `src/lib/server/backups/live.spec.ts` (both paths outside a request), `db/index.spec.ts` (companyDb inside/outside a request). 7269 app tests, check 0 errors. Reaches boxes with the next release.
+
 ## 2026-11-17 — Stray WAL archiver switched off on every box (found on the first hosted container)
 
 - Found on `test1` / `test2` (Netcup container host, golden image `ee-golden-ct`): Debian's `postgresql-common` 278 (trixie) enables `pg_receivewal@16-main` through `postgresql@.service.wants`. On first start it created the replication slot `pg_receivewal_service`; once ee writes its own `pg_hba.conf` (no replication line) the archiver can never connect again, the slot stays inactive and Postgres keeps every WAL file for it — the disk would fill over time (18 MB held after an hour on an idle box). Production (PGDG `postgresql-common` 293) does not have it.

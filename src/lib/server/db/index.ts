@@ -158,3 +158,17 @@ export function createScopedDrizzle(reserved: postgres.Sql): AppDatabase {
   attachReservedBeginIfMissing(reserved)
   return drizzle(reserved, { schema })
 }
+
+let pooledCompanyDb: AppDatabase | undefined
+
+/**
+ * A handle for company-level tables (kernel tables: no RLS, no tenant scoping): the request's handle
+ * inside a request, the pooled app handle outside one. Background loops (the orchestrator poll, the
+ * backup health tick) run outside any request, where `getDb()` throws by design.
+ */
+export function companyDb(): AppDatabase {
+  const scoped = appDbAsyncLocal.getStore()
+  if (scoped) return scoped
+  pooledCompanyDb ??= createScopedDrizzle(appSql)
+  return pooledCompanyDb
+}

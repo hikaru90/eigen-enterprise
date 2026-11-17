@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { building } from '$app/environment'
 import { moduleSource } from '$lib/kernel/cloudevents'
 import { emitKernelEvent } from '$lib/kernel/events'
-import { getDb } from '$lib/server/db'
+import { companyDb, withDbUser } from '$lib/server/db'
 import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
 import { kernelEvents } from '$lib/server/db/kernel.schema'
@@ -22,7 +22,8 @@ export function liveBackupHealthDeps(client = new EeClient()): BackupHealthDeps 
       }
     },
     hasEvent: async (id) =>
-      (await getDb().select({ id: kernelEvents.id }).from(kernelEvents).where(eq(kernelEvents.id, id)).limit(1)).length > 0,
+      // kernel_events is company-level; this tick runs outside any request (companyDb, not getDb).
+      (await companyDb().select({ id: kernelEvents.id }).from(kernelEvents).where(eq(kernelEvents.id, id)).limit(1)).length > 0,
     emit: async (e) => {
       const { appKernel } = await import('$lib/server/boot')
       const kernel = await appKernel()
@@ -33,7 +34,8 @@ export function liveBackupHealthDeps(client = new EeClient()): BackupHealthDeps 
       return row?.id ?? null
     },
     push: async (userId, p) => {
-      const r = await sendPushToUser(userId, p)
+      // The owner's push subscriptions are per-user rows (RLS): read them in the owner's own context.
+      const r = await withDbUser(userId, () => sendPushToUser(userId, p))
       if (r.sent === 0) throw new Error(`push not delivered: ${r.errors.join('; ') || 'no live subscription'}`)
     },
   }

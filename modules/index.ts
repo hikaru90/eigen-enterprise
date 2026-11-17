@@ -245,10 +245,8 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
       // poll loop, which runs outside any request/ALS context) still get a
       // working audit/activation/approval path. Per-user tools keep their own
       // scoped sessions regardless of which handle the kernel stores use.
-      const { appDbAsyncLocal, appSql, createScopedDrizzle } = await import('$lib/server/db')
-      const scoped = appDbAsyncLocal.getStore()
-      if (scoped) return scoped
-      return createScopedDrizzle(appSql)
+      const { companyDb } = await import('$lib/server/db')
+      return companyDb()
     })
 
   // Cached in-process (the plugin gate reads it per request); every switch is

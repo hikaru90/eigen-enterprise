@@ -57,6 +57,16 @@ describe('db/index', () => {
     expect(fn).toHaveBeenCalled()
   }, 10_000)
 
+  it('companyDb: the request handle inside a request, the pooled app handle outside one (background loops)', async () => {
+    // Kernel tables are company-level (no RLS). A background tick (backup health) has no request
+    // context; getDb() throws there, companyDb() must not.
+    const { companyDb, appDbAsyncLocal } = await import('./index')
+    const outside = companyDb()
+    expect(outside).toEqual({ mocked: true })
+    const requestDb = { request: true } as never
+    expect(appDbAsyncLocal.run(requestDb, () => companyDb())).toBe(requestDb)
+  })
+
   it('closeAppDbPool closes postgres pool', async () => {
     const { closeAppDbPool } = await import('./index')
     await closeAppDbPool()
