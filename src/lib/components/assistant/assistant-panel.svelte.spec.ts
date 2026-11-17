@@ -88,7 +88,6 @@ function renderShell() {
     shell: { companyName: 'Kindred Digital Labs', companyLogo: null, capabilities, nav, assistant: true },
     pathname: '/m/website',
     user: { name: 'Alex', email: 'alex@k.test' },
-    language: 'en',
     children,
   })
 }

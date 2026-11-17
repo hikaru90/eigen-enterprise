@@ -6,6 +6,7 @@ import { llmChatCompletion } from '$lib/server/llm/llm-client'
 import { STT_CLIP_MAX_AUDIO_BYTES, sttFormatFromMime } from '$lib/server/llm/stt-audio'
 import { transcribeAudio } from '$lib/server/llm/stt-client'
 import { judgeTranscript } from '$lib/server/llm/stt-judge'
+import { loadTranscriptionPrompt } from '$lib/server/llm/stt-vocabulary'
 import { loadWritingSamples } from '$lib/server/llm/stt-writing-samples'
 import { readAudioUpload } from '../../capture/audio-upload'
 import { TRANSCRIBE_FAILED_MESSAGE } from './messages'
@@ -13,6 +14,8 @@ import { TRANSCRIBE_FAILED_MESSAGE } from './messages'
 /**
  * Transcribes one voice message (ported from eigen's voice messages): the whole clip
  * (≤ 5 minutes), once, for any text box that takes dictation (Messages, Contribute). The
+ * model gets the company's vocabulary (`stt-vocabulary.ts`: company, people, UI language as a
+ * hint — no forced language, the model hears which one is spoken). The
  * gateway retries the provider call itself; the audio is never stored and never logged.
  *
  * A company feature any member uses, so it runs on the company's AI provider (the owner's,
@@ -36,12 +39,19 @@ export const POST: RequestHandler = async (event) => {
 
   try {
     const transcript = await onCompanyProvider(async () => {
-      const heard = await transcribeAudio({ userId: user.id, audio: { bytes: audio.bytes, format } })
+      const prompt = await loadTranscriptionPrompt(user.id)
+      // the judge's evidence is read while the model listens, not after
+      const samples = loadWritingSamples(user.id)
+      samples.catch(() => {}) // awaited below; a rejection is never left unhandled meanwhile
+      const heard = await transcribeAudio({
+        userId: user.id,
+        audio: { bytes: audio.bytes, format, ...(prompt ? { prompt } : {}) },
+      })
       if (heard === '') return ''
       const verdict = await judgeTranscript(llmChatCompletion, {
         userId: user.id,
         transcript: heard,
-        writingSamples: await loadWritingSamples(user.id),
+        writingSamples: await samples,
       })
       return verdict === 'artefact' ? '' : heard
     })

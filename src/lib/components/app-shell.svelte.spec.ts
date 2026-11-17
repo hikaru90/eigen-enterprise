@@ -41,7 +41,6 @@ function renderShell(
     pathname,
     user,
     presence,
-    language: 'en',
     children,
   })
 }

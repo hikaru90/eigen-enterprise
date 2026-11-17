@@ -1,6 +1,6 @@
 import type { SpeechFeature, SpeechModelStatus } from '$lib/voice/dictation-readiness'
 import { env } from '$lib/server/env/private-env'
-import { STT_MODEL } from './stt-client'
+import { STT_MODEL, STT_PREVIEW_MODEL } from './stt-client'
 import { ttsModelId } from './tts-client'
 
 export type { SpeechFeature, SpeechModelStatus } from '$lib/voice/dictation-readiness'
@@ -18,6 +18,7 @@ export type SpeechModel = { feature: SpeechFeature; model: string }
 export function speechModels(): SpeechModel[] {
   return [
     { feature: 'dictation', model: STT_MODEL },
+    { feature: 'dictation_preview', model: STT_PREVIEW_MODEL },
     { feature: 'voice', model: ttsModelId() },
   ]
 }

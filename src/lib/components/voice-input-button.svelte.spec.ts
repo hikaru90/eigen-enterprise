@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
+import { transcribeAudioChunk, transcribeRecordedAudio } from '$lib/capture/transcribe-audio'
 import VoiceInputButtonTestHarness from './voice-input-button-test-harness.svelte'
 
 vi.mock('$lib/capture/transcribe-audio', () => ({
@@ -10,6 +11,7 @@ vi.mock('$lib/capture/transcribe-audio', () => ({
 
 /** Minimal MediaRecorder stub that records lifecycle calls without real audio. */
 class FakeMediaRecorder {
+  static last: FakeMediaRecorder | null = null
   static isTypeSupported(mime: string) {
     return mime === 'audio/webm' || mime === 'audio/webm;codecs=opus'
   }
@@ -25,6 +27,11 @@ class FakeMediaRecorder {
   constructor(stream: MediaStream, opts?: MediaRecorderOptions) {
     this.stream = stream
     this.opts = opts
+    FakeMediaRecorder.last = this
+  }
+  /** The recorder hands over a timeslice of audio. */
+  emit(bytes = 8) {
+    this.ondataavailable?.({ data: new Blob([new Uint8Array(bytes)], { type: this.mimeType }) } as never)
   }
   start() {
     this.startSpy()
@@ -33,6 +40,7 @@ class FakeMediaRecorder {
   stop() {
     this.stopSpy()
     this.state = 'inactive'
+    this.onstop?.()
   }
 }
 
@@ -123,6 +131,9 @@ describe('voice-input-button.svelte', () => {
 
   beforeEach(() => {
     stream = installStubs()
+    FakeMediaRecorder.last = null
+    vi.mocked(transcribeAudioChunk).mockClear()
+    vi.mocked(transcribeRecordedAudio).mockClear()
   })
 
   afterEach(() => {
@@ -188,10 +199,13 @@ describe('voice-input-button.svelte', () => {
       .toBeInTheDocument()
     const tracks = stream.getTracks()
 
-    component.stopRef!()
+    // the same function a parent held on to (the bound prop itself is cleared on stop)
+    const stop = component.stopRef!
+    stop()
     expect(onstop).toHaveBeenCalledTimes(1)
+    expect(component.stopRef).toBeUndefined()
     // Second call is a no-op (guard returns early).
-    expect(() => component.stopRef!()).not.toThrow()
+    expect(() => stop()).not.toThrow()
     expect(onstop).toHaveBeenCalledTimes(1)
     for (const track of tracks) {
       expect(track.stop).toHaveBeenCalledTimes(1)
@@ -203,6 +217,47 @@ describe('voice-input-button.svelte', () => {
       ontranscript: vi.fn(),
     })
     expect(component.stopRef).toBeUndefined()
+  })
+
+  it('while recording the stop control stays a button, with the mic level as a meter inside it', async () => {
+    render(VoiceInputButtonTestHarness, { ontranscript: vi.fn() })
+    await page.getByRole('button', { name: 'Start voice input' }).click()
+    const stop = page.getByRole('button', { name: 'Stop recording and transcribe' })
+    await expect.element(stop).toHaveAttribute('aria-pressed', 'true')
+    await expect.element(page.getByRole('meter', { name: 'Microphone level' })).toBeInTheDocument()
+  })
+
+  it('records speech-sized opus (32 kbps), not the browser default', async () => {
+    render(VoiceInputButtonTestHarness, { ontranscript: vi.fn() })
+    await page.getByRole('button', { name: 'Start voice input' }).click()
+    await vi.waitFor(() => expect(FakeMediaRecorder.last).not.toBeNull())
+    expect(FakeMediaRecorder.last!.opts).toEqual({ audioBitsPerSecond: 32_000, mimeType: 'audio/webm;codecs=opus' })
+  })
+
+  it('without a live-text caller nothing is sent before Stop; Stop sends the clip once, with no forced language', async () => {
+    const ontranscript = vi.fn()
+    vi.mocked(transcribeRecordedAudio).mockResolvedValueOnce('hallo zusammen')
+    render(VoiceInputButtonTestHarness, { ontranscript })
+    await page.getByRole('button', { name: 'Start voice input' }).click()
+    await vi.waitFor(() => expect(FakeMediaRecorder.last).not.toBeNull())
+    FakeMediaRecorder.last!.emit()
+    FakeMediaRecorder.last!.emit()
+    expect(transcribeAudioChunk).not.toHaveBeenCalled()
+
+    await page.getByRole('button', { name: 'Stop recording and transcribe' }).click()
+    await vi.waitFor(() => expect(ontranscript).toHaveBeenCalledWith('hallo zusammen'))
+    expect(transcribeRecordedAudio).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(transcribeRecordedAudio).mock.calls[0]![1]).toEqual({ language: undefined })
+  })
+
+  it('a caller that shows live text gets previews while recording', async () => {
+    const onpartialtranscript = vi.fn()
+    vi.mocked(transcribeAudioChunk).mockResolvedValueOnce('hallo')
+    render(VoiceInputButtonTestHarness, { ontranscript: vi.fn(), onpartialtranscript })
+    await page.getByRole('button', { name: 'Start voice input' }).click()
+    await vi.waitFor(() => expect(FakeMediaRecorder.last).not.toBeNull())
+    FakeMediaRecorder.last!.emit()
+    await vi.waitFor(() => expect(onpartialtranscript).toHaveBeenCalledWith('hallo'))
   })
 
   describe('the microphone chosen for this browser (shared with calls)', () => {

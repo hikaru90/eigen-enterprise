@@ -7,11 +7,13 @@ const m = vi.hoisted(() => ({
   transcribeAudio: vi.fn(),
   judgeTranscript: vi.fn(),
   loadWritingSamples: vi.fn(),
+  loadTranscriptionPrompt: vi.fn(),
   onCompanyProvider: vi.fn(),
   llmChatCompletion: vi.fn(),
 }))
 
 vi.mock('$lib/server/llm/stt-client', () => ({ transcribeAudio: m.transcribeAudio }))
+vi.mock('$lib/server/llm/stt-vocabulary', () => ({ loadTranscriptionPrompt: m.loadTranscriptionPrompt }))
 vi.mock('$lib/server/llm/stt-writing-samples', () => ({ loadWritingSamples: m.loadWritingSamples }))
 vi.mock('$lib/server/llm/llm-client', () => ({ llmChatCompletion: m.llmChatCompletion }))
 vi.mock('$lib/server/llm/company-provider', () => ({ onCompanyProvider: m.onCompanyProvider }))
@@ -33,6 +35,7 @@ describe('POST /api/voice/transcribe', () => {
     for (const fn of Object.values(m)) fn.mockReset()
     m.onCompanyProvider.mockImplementation((fn: () => Promise<unknown>) => fn())
     m.loadWritingSamples.mockResolvedValue(['hallo'])
+    m.loadTranscriptionPrompt.mockResolvedValue('Dictation in the workspace of Acme. Names that may come up: Ony.')
   })
 
   it('401s without a user', async () => {
@@ -51,12 +54,33 @@ describe('POST /api/voice/transcribe', () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ transcript: 'ship the release' })
     expect(m.onCompanyProvider).toHaveBeenCalledTimes(1)
-    expect(m.transcribeAudio).toHaveBeenCalledWith({ userId: 'u1', audio: expect.objectContaining({ format: 'webm' }) })
+    expect(m.transcribeAudio).toHaveBeenCalledWith({
+      userId: 'u1',
+      audio: expect.objectContaining({ format: 'webm', prompt: 'Dictation in the workspace of Acme. Names that may come up: Ony.' }),
+    })
+    // no forced language: the model hears which one is spoken
+    expect(m.transcribeAudio.mock.calls[0]![0].audio).not.toHaveProperty('language')
     expect(m.judgeTranscript).toHaveBeenCalledWith(m.llmChatCompletion, {
       userId: 'u1',
       transcript: 'ship the release',
       writingSamples: ['hallo'],
     })
+  })
+
+  it('reads the judge\'s evidence while the model listens, not after it', async () => {
+    let heardDone = false
+    m.loadWritingSamples.mockImplementation(async () => {
+      expect(heardDone).toBe(false)
+      return []
+    })
+    m.transcribeAudio.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 5))
+      heardDone = true
+      return 'hallo'
+    })
+    m.judgeTranscript.mockResolvedValue('dictation')
+    expect(await (await call(clip())).json()).toEqual({ transcript: 'hallo' })
+    expect(m.loadWritingSamples).toHaveBeenCalledTimes(1)
   })
 
   it('answers "" for an artefact of recognition on silence', async () => {

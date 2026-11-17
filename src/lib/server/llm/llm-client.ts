@@ -1225,6 +1225,12 @@ export type LlmTranscriptionAudio = {
   bytes: Uint8Array
   format: string
   language?: string
+  /**
+   * Vocabulary/spelling context. OpenRouter's STT body has no `prompt`; it reaches OpenAI's
+   * transcription `prompt` through the provider passthrough (`provider.options.openai`), and
+   * other providers never see it.
+   */
+  prompt?: string
 }
 
 function sttTranscriptPreview(body: unknown): string {
@@ -1321,6 +1327,7 @@ async function llmCreateTranscriptionDedicated(
               format: input.audio.format,
             },
             ...(input.audio.language ? { language: input.audio.language } : {}),
+            ...(input.audio.prompt ? { provider: { options: { openai: { prompt: input.audio.prompt } } } } : {}),
             temperature: 0,
           }),
         })

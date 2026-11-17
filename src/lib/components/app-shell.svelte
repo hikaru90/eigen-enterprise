@@ -53,7 +53,6 @@
     shell,
     pathname,
     user,
-    language,
     presence,
     inkFrame = true,
     children,
@@ -61,8 +60,6 @@
     shell: ShellData
     pathname: string
     user: { name?: string | null; email?: string | null; image?: string | null } | null
-    /** The member's speech language (voice input in the assistant). */
-    language: string
     /**
      * My own status (Contribute e4ef6be1), shown at the foot of the nav and
      * on the phone's menu button; null while Messages, which owns presence,
@@ -370,7 +367,7 @@
       >
         {@render children()}
       </div>
-      {#if assistant}<AssistantPanel {assistant} {language} />{/if}
+      {#if assistant}<AssistantPanel {assistant} />{/if}
     </div>
   </div>
 </div>

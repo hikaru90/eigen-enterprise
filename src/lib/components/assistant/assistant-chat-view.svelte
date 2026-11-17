@@ -18,7 +18,7 @@
    * transcript (markdown, quiet tool lines, approval cards) and the composer
    * (voice, send/stop). Behavior moved unchanged from the old chat at `/`.
    */
-  let { assistant, language }: { assistant: AssistantController; language: string } = $props()
+  let { assistant }: { assistant: AssistantController } = $props()
 
   const chat = $derived(assistant.chat)
   let inputEl = $state<HTMLInputElement | undefined>(undefined)
@@ -188,7 +188,6 @@
     >
       <div title={micSupported ? undefined : 'Voice input is not available in this browser'}>
         <VoiceInputButton
-          {language}
           disabled={chat.busy}
           bind:stopRef={voiceStopFn}
           ontranscript={handleVoiceTranscript}

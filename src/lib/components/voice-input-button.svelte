@@ -10,10 +10,22 @@
   import { transcribeRecordedAudio, transcribeAudioChunk } from '$lib/capture/transcribe-audio'
   import { Button } from '$lib/components/ui/button'
   import { browserMicrophoneDeps, openMicrophone } from '$lib/voice/microphone'
+  import { VOICE_AUDIO_BITS_PER_SECOND } from '$lib/voice/voice-message'
 
+  /**
+   * Record-then-transcribe voice input (the assistant composer, Memory capture). Stop uploads
+   * the whole clip once (`/api/capture/transcribe`, the accurate model with the company's
+   * vocabulary). Only a caller that shows live text (`onpartialtranscript`) gets previews while
+   * recording; without one nothing is sent before Stop — previews nobody sees only cost money
+   * and queue ahead of the real transcription.
+   *
+   * `language` forces the spoken language; leave it out unless the person chose one — the
+   * model hears which language is spoken (a never-chosen default forced German speech into
+   * English, Contribute be1ad246).
+   */
   let {
     disabled = false,
-    language = 'en',
+    language,
     ontranscript,
     onpartialtranscript,
     onerror,
@@ -120,10 +132,13 @@
     if (!micSupported || busy || disabled) return
     chunks = []
     sttScheduler?.reset()
-    sttScheduler = createStreamingSttScheduler({
-      onTranscribe: (blob, signal) => transcribeAudioChunk(blob, { language, signal }),
-      onPartial: (text) => onpartialtranscript?.(text),
-    })
+    const showPartial = onpartialtranscript
+    sttScheduler = showPartial
+      ? createStreamingSttScheduler({
+          onTranscribe: (blob, signal) => transcribeAudioChunk(blob, { language, signal }),
+          onPartial: (text) => showPartial(text),
+        })
+      : null
     try {
       const mediaStream = await openMicrophone(browserMicrophoneDeps())
       stream = mediaStream
@@ -136,9 +151,12 @@
             ? 'audio/wav'
             : ''
       recorderMimeType = preferredMime || 'audio/webm'
-      const recorder = preferredMime
-        ? new MediaRecorder(mediaStream, { mimeType: preferredMime })
-        : new MediaRecorder(mediaStream)
+      // speech needs no more than 32 kbps opus: a quarter of the browser's default, so the
+      // upload after Stop is a quarter as long
+      const recorder = new MediaRecorder(mediaStream, {
+        audioBitsPerSecond: VOICE_AUDIO_BITS_PER_SECOND,
+        ...(preferredMime ? { mimeType: preferredMime } : {}),
+      })
       // Prefer the recorder's reported MIME (mock fixtures may be WAV).
       if (recorder.mimeType?.trim()) {
         recorderMimeType = recorder.mimeType
@@ -286,16 +304,17 @@
       ? 'Transcribing'
       : 'Start voice input'}
   aria-pressed={recording}
-  role={recording ? 'meter' : undefined}
-  aria-valuenow={recording ? pulseSize : undefined}
-  aria-valuemin={recording ? 0 : undefined}
-  aria-valuemax={recording ? 100 : undefined}
 >
   {#if recording}
+    <!-- the mic level: a meter inside the stop button (the button stays a button) -->
     <div
       class="pointer-events-none absolute bottom-0 left-0 right-0 z-0 bg-primary/30 transition-[height] duration-100 ease-out"
       style="height: {pulseSize}%"
-      aria-hidden="true"
+      role="meter"
+      aria-label="Microphone level"
+      aria-valuenow={pulseSize}
+      aria-valuemin={0}
+      aria-valuemax={100}
     ></div>
   {/if}
   <span class="relative z-10 inline-flex items-center justify-center">

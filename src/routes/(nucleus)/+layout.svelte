@@ -101,7 +101,6 @@
       shell={data.shell}
       pathname={page.url.pathname}
       user={data.user}
-      language={data.preferredLanguage}
       presence={selfPresence}
       inkFrame={!brandActive}
     >

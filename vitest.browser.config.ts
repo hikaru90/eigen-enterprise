@@ -131,6 +131,7 @@ export default defineConfig({
       'src/lib/components/contribute/contribute-views.svelte.spec.ts',
       'src/lib/components/contribute/share-settings-card.svelte.spec.ts',
       'src/lib/voice/voice-dictation.svelte.spec.ts',
+      'src/lib/components/voice-input-button.svelte.spec.ts',
       'modules/brand/water-flow.svelte.spec.ts',
       'modules/contacts/ui/*.svelte.spec.ts',
       'modules/calendar/ui/*.svelte.spec.ts',

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { parseSttTranscript, STT_MODEL, transcribeAudio } from './stt-client'
+import { parseSttTranscript, STT_MODEL, STT_PREVIEW_MODEL, transcribeAudio } from './stt-client'
 
 const { llmCreateTranscriptionMock } = vi.hoisted(() => ({
   llmCreateTranscriptionMock: vi.fn(),
@@ -39,8 +39,15 @@ describe('transcribeAudio', () => {
     llmCreateTranscriptionMock.mockReset()
   })
 
-  it('pins eigen\'s model: qwen3-asr-0.6b (qwen3-asr-flash-2026-02-10 has no OpenRouter endpoints, so every clip failed)', () => {
-    expect(STT_MODEL).toBe('qwen/qwen3-asr-0.6b')
+  it('pins gpt-4o-transcribe for the kept transcript (be1ad246: qwen3-asr-0.6b misheard German words and names)', () => {
+    expect(STT_MODEL).toBe('openai/gpt-4o-transcribe')
+  })
+
+  it('live previews stay on the cheap qwen3-asr-0.6b (each is replaced by the final transcript)', async () => {
+    expect(STT_PREVIEW_MODEL).toBe('qwen/qwen3-asr-0.6b')
+    llmCreateTranscriptionMock.mockResolvedValue({ text: 'so far' })
+    await transcribeAudio({ userId: 'u1', audio: { bytes: new Uint8Array([1]), format: 'webm' }, pass: 'preview' })
+    expect(llmCreateTranscriptionMock).toHaveBeenCalledWith(expect.objectContaining({ model: 'qwen/qwen3-asr-0.6b' }))
   })
 
   it('calls the gateway with the pinned STT model, whatever the env says', async () => {
@@ -52,7 +59,7 @@ describe('transcribeAudio', () => {
     expect(out).toBe('typed speech')
     expect(llmCreateTranscriptionMock).toHaveBeenCalledWith({
       userId: 'u1',
-      model: 'qwen/qwen3-asr-0.6b',
+      model: 'openai/gpt-4o-transcribe',
       audio: { bytes: new Uint8Array([1, 2, 3]), format: 'webm', language: 'en' },
     })
   })

@@ -28,6 +28,8 @@ export const POST: RequestHandler = async (event) => {
       audio: { bytes: audio.bytes, format, language: audio.language },
       // Voice notes to Memory: the transcript is never logged (LlmContentOrigin).
       contentOrigin: 'memory',
+      // a live preview, replaced by /api/capture/transcribe's final text
+      pass: 'preview',
     })
     return json({ transcript })
   } catch (err) {
