@@ -171,6 +171,37 @@ export type Pipeline = {
   people: Array<{ id: string; name: string }>
 }
 
+// ── Next up (Contribute 057ebd74): the assistant's pick of who to write to next ─
+
+/**
+ * What to do with a suggested contact, as the AI picks it (never derived from text here):
+ * write = our move, write to them; reply = they wrote or asked, we owe an answer;
+ * chase = we have waited long enough, nudge them; check_in = keep in the loop, say hello.
+ */
+export const NEXT_UP_KINDS = ['write', 'reply', 'chase', 'check_in'] as const
+export type NextUpKind = (typeof NEXT_UP_KINDS)[number]
+
+export const NEXT_UP_KIND_LABELS: Record<NextUpKind, string> = {
+  write: 'Write',
+  reply: 'Reply',
+  chase: 'Nudge',
+  check_in: 'Check in',
+}
+
+/** How many the AI suggests: at least NEXT_UP_MIN (fewer only when there are fewer candidates), at most NEXT_UP_MAX. */
+export const NEXT_UP_MIN = 5
+export const NEXT_UP_MAX = 10
+/** A pick is reused for this long (and only on the day it was made), unless the person asks again. */
+export const NEXT_UP_TTL_HOURS = 4
+/** At most this many contacts go to the AI, the ones whose day is closest first. */
+export const NEXT_UP_CANDIDATES_MAX = 60
+export const NEXT_UP_REASON_MAX = 160
+
+export type NextUpItem = { contact: ContactDto; kind: NextUpKind; reason: string }
+
+/** The pick as the page shows it: contacts acted on since it was made are left out. */
+export type NextUp = { generatedAt: string; items: NextUpItem[] }
+
 /** Who can see a contact, said plainly (the list, the detail page and the agent all use this). */
 export function visibilityText(c: Pick<ContactDto, 'shared' | 'own' | 'createdByName'>): string {
   if (c.shared) return 'Shared with the company: everyone in the company can see and update it.'

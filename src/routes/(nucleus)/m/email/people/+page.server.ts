@@ -6,13 +6,15 @@ import {
   liveContactsDeps,
   personActor,
 } from '../../../../../../modules/contacts/http'
-import { followUps, listContacts, logContact, normaliseTag } from '../../../../../../modules/contacts/service'
+import { listContacts, logContact, normaliseTag } from '../../../../../../modules/contacts/service'
 
 /**
- * /m/email/people: the people you know — "Follow up next" (who to write to next:
- * due and coming up, soonest first) and every contact you may see, filtered
- * by one tag and/or a name/organisation search (?tag=, ?q=). Today is the
- * person's own day (their preferred timezone).
+ * /m/email/people: the people you know — every contact you may see, filtered
+ * by one tag and/or a name/organisation search (?tag=, ?q=). "Next up" (who to
+ * write to next) is the assistant's pick, fetched by the page from
+ * /api/contacts/next-up; it replaced the date-only "Follow up next" list
+ * (Contribute 12626c2f / 057ebd74). Today is the person's own day (their
+ * preferred timezone).
  */
 export const load: PageServerLoad = async ({ locals, url }) => {
   const actor = personActor(locals.user)
@@ -23,17 +25,13 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     const filter = { tag: rawTag.trim() === '' ? '' : normaliseTag(rawTag), q }
     const d = await liveContactsDeps()
     const { todayFor } = await import('../../../../../../modules/contacts/live')
-    const today = await todayFor(actor.userId)
-    const [list, due] = await Promise.all([
-      listContacts(d, actor, { tag: filter.tag, query: filter.q }),
-      followUps(d, actor, today),
-    ])
-    return { contacts: list.contacts, tags: list.tags, followUps: due, today, filter }
+    const [list, today] = await Promise.all([listContacts(d, actor, { tag: filter.tag, query: filter.q }), todayFor(actor.userId)])
+    return { contacts: list.contacts, tags: list.tags, today, filter }
   })
 }
 
 export const actions: Actions = {
-  /** "Log contact" on a follow-up row. */
+  /** "Log contact" on a Next up suggestion (with where they are now). */
   log: async ({ locals, request }) => {
     const actor = personActor(locals.user)
     const form = await request.formData()

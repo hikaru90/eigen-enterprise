@@ -1,7 +1,7 @@
-import type { ContactFilter, ContactRow, ContactScope, ContactsStore } from './store'
+import type { ContactFilter, ContactRow, ContactScope, ContactsStore, NextUpCache } from './store'
 import { and, asc, desc, eq, ilike, isNotNull, lte, or, sql, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
-import { contactLogEntries, contacts } from '$lib/server/db/contacts.schema'
+import { contactLogEntries, contactNextUp, contacts } from '$lib/server/db/contacts.schema'
 import type { AppDatabase } from '$lib/server/db/context'
 import { rowsFromDbExecute } from '$lib/server/db/execute-rows'
 import { CHANNEL_TYPES } from './types'
@@ -95,6 +95,25 @@ export function dbContactsStore(db: AppDatabase): ContactsStore {
         .from(contactLogEntries)
         .where(eq(contactLogEntries.contactId, contactId))
         .orderBy(desc(contactLogEntries.on), desc(contactLogEntries.createdAt), desc(contactLogEntries.id))
+    },
+  }
+}
+
+/** NextUpCache over Postgres (migration 0145): one row per person, replaced on every new pick. */
+export function dbNextUpCache(db: AppDatabase): NextUpCache {
+  return {
+    async get(userId) {
+      const [r] = await db.select().from(contactNextUp).where(eq(contactNextUp.userId, userId)).limit(1)
+      return r ? { userId: r.userId, day: r.day, generatedAt: r.generatedAt, suggestions: r.suggestions } : null
+    },
+    async put(entry) {
+      await db
+        .insert(contactNextUp)
+        .values(entry)
+        .onConflictDoUpdate({
+          target: contactNextUp.userId,
+          set: { day: entry.day, generatedAt: entry.generatedAt, suggestions: entry.suggestions },
+        })
     },
   }
 }

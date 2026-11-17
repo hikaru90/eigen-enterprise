@@ -153,7 +153,7 @@ export function buildLogExtractMessages(input: { text: string; today: string }):
 
 // ── validation ────────────────────────────────────────────────────────────────
 
-function readJson<T>(response: unknown, schema: z.ZodType<T>): T {
+export function readJson<T>(response: unknown, schema: z.ZodType<T>): T {
   const parsed = schema.safeParse(parseLlmJsonPayload(extractChatContent(response)))
   if (!parsed.success) {
     const issue = parsed.error.issues[0]
@@ -205,8 +205,8 @@ function describedText(value: unknown): string {
 }
 
 /** A gateway failure as a plain Contacts error; anything that isn't one stays a real failure. */
-function gatewayError(err: unknown): unknown {
-  if (isLlmNotConfiguredError(err)) return new ContactsError('unavailable', NO_PROVIDER_MESSAGE, { cause: err })
+function gatewayError(err: unknown, noProvider: string): unknown {
+  if (isLlmNotConfiguredError(err)) return new ContactsError('unavailable', noProvider, { cause: err })
   if (isLlmHttpError(err)) {
     return new ContactsError('upstream', `The company’s AI provider refused the request (HTTP ${err.status}); try again later.`, {
       cause: err,
@@ -215,31 +215,43 @@ function gatewayError(err: unknown): unknown {
   return err
 }
 
+/** One Contacts AI call: its cost context and its plain sentences on failure. */
+export type ContactsAiCall = { logContext: string; noProvider: string; unreadable: (tries: number, error: string) => string }
+
+const EXTRACT_CALL: ContactsAiCall = {
+  logContext: EXTRACT_LOG_CONTEXT,
+  noProvider: NO_PROVIDER_MESSAGE,
+  unreadable: (tries, error) => `The AI’s answer couldn’t be read (${tries} tries: ${error}). Try again, or fill in the form yourself.`,
+}
+
 /**
  * Exactly EXTRACT_MAX_ATTEMPTS tries at a readable answer, then a plain error.
  * A missing provider or a refusal is not retried (the gateway retries
- * transport failures itself).
+ * transport failures itself). Shared by every Contacts AI call (extract, next up).
  */
-async function ask<T>(chat: ExtractChat, userId: string, messages: ChatMessage[], parse: (response: unknown) => T): Promise<T> {
+export async function askContactsAi<T>(
+  chat: ExtractChat,
+  userId: string,
+  messages: ChatMessage[],
+  parse: (response: unknown) => T,
+  call: ContactsAiCall = EXTRACT_CALL,
+): Promise<T> {
   let lastError = ''
   for (let attempt = 1; attempt <= EXTRACT_MAX_ATTEMPTS; attempt++) {
     let response: unknown
     try {
-      response = await chat({ userId, messages, temperature: 0, logContext: EXTRACT_LOG_CONTEXT, responseFormat: 'json_object' })
+      response = await chat({ userId, messages, temperature: 0, logContext: call.logContext, responseFormat: 'json_object' })
     } catch (err) {
-      throw gatewayError(err)
+      throw gatewayError(err, call.noProvider)
     }
     try {
       return parse(response)
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err)
-      console.warn('[contacts.extract] attempt failed', { attempt, error: lastError.slice(0, 200) })
+      console.warn(`[${call.logContext}] attempt failed`, { attempt, error: lastError.slice(0, 200) })
     }
   }
-  throw new ContactsError(
-    'upstream',
-    `The AI’s answer couldn’t be read (${EXTRACT_MAX_ATTEMPTS} tries: ${lastError}). Try again, or fill in the form yourself.`,
-  )
+  throw new ContactsError('upstream', call.unreadable(EXTRACT_MAX_ATTEMPTS, lastError))
 }
 
 /** The contact form's prefill from a free description. */
@@ -249,13 +261,13 @@ export async function extractContactDraft(
 ): Promise<ContactDraft> {
   const text = describedText(input.text)
   const messages = buildContactExtractMessages({ text, today: input.today, tags: input.tags })
-  return ask(chat, input.userId, messages, (r) => parseContactExtractOutput(r, input))
+  return askContactsAi(chat, input.userId, messages, (r) => parseContactExtractOutput(r, input))
 }
 
 /** "Log a contact"'s prefill from a free description. */
 export async function extractLogDraft(chat: ExtractChat, input: { userId: string; text: unknown; today: string }): Promise<LogDraft> {
   const text = describedText(input.text)
-  return ask(chat, input.userId, buildLogExtractMessages({ text, today: input.today }), (r) => parseLogExtractOutput(r, input))
+  return askContactsAi(chat, input.userId, buildLogExtractMessages({ text, today: input.today }), (r) => parseLogExtractOutput(r, input))
 }
 
 /** The live gateway call: on the company's AI provider (the owner's), attributed to whoever asked. */

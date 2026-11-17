@@ -4,7 +4,7 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { AppDatabase } from '$lib/server/db/context'
-import { dbContactsStore } from './db-store'
+import { dbContactsStore, dbNextUpCache } from './db-store'
 
 /**
  * The DB store against real Postgres (the test DB, :5433). Needs DATABASE_URL
@@ -190,5 +190,36 @@ describe.skipIf(!url)('contacts store (Postgres)', () => {
     const c = row({ name: 'Import C' })
     await expect(store.insertMany([c, row({ name: ' ' })])).rejects.toThrow()
     expect(await store.get(c.id)).toBeNull()
+  })
+})
+
+describe.skipIf(!url)('contacts next-up cache (Postgres, migration 0145)', () => {
+  let sql: postgres.Sql
+  let cache: ReturnType<typeof dbNextUpCache>
+  const userId = `pg-spec-next-up-${randomUUID()}`
+
+  beforeAll(() => {
+    sql = postgres(url!, { prepare: false, max: 2, onnotice: () => {} })
+    cache = dbNextUpCache(drizzle(sql) as unknown as AppDatabase)
+  })
+
+  afterAll(async () => {
+    await sql`delete from contact_next_up where user_id = ${userId}`
+    await sql.end()
+  })
+
+  it('keeps one pick per person and replaces it', async () => {
+    expect(await cache.get(userId)).toBeNull()
+    const first = {
+      userId,
+      day: '2026-11-12',
+      generatedAt: new Date('2026-11-12T10:00:00Z'),
+      suggestions: [{ contactId: 'a', kind: 'write', reason: 'r' }],
+    }
+    await cache.put(first)
+    expect(await cache.get(userId)).toEqual(first)
+    const second = { userId, day: '2026-11-13', generatedAt: new Date('2026-11-13T08:00:00Z'), suggestions: [] }
+    await cache.put(second)
+    expect(await cache.get(userId)).toEqual(second)
   })
 })
