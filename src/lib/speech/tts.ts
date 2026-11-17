@@ -25,13 +25,27 @@ export function isVoiceEnabled(): boolean {
   return window.localStorage.getItem(STORAGE_KEY) !== 'off'
 }
 
+const voiceListeners = new Set<(enabled: boolean) => void>()
+
+/**
+ * Every place that shows the voice switch (the settings menu, the assistant's chat) hears each
+ * change, so they never disagree. Returns the unsubscribe.
+ */
+export function onVoiceEnabledChange(listener: (enabled: boolean) => void): () => void {
+  voiceListeners.add(listener)
+  return () => voiceListeners.delete(listener)
+}
+
+/** Off means off now: what is being read (or still loading) stops at once. */
 export function setVoiceEnabled(enabled: boolean): void {
   if (typeof window === 'undefined' || !window.localStorage) return
   if (enabled) {
     window.localStorage.removeItem(STORAGE_KEY)
   } else {
     window.localStorage.setItem(STORAGE_KEY, 'off')
+    cancelSpeak()
   }
+  for (const listener of voiceListeners) listener(enabled)
 }
 
 /**
