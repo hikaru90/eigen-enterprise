@@ -59,9 +59,9 @@ describe('contact-list.svelte', () => {
 describe('contacts-privacy-note.svelte', () => {
   it('behind a "?" button: states who can see a contact, what sharing does and what the agent sees', async () => {
     render(ContactsPrivacyNote)
-    await expect.element(page.getByTestId('contacts-privacy-panel')).not.toBeInTheDocument()
+    await expect.element(page.getByTestId('contacts-privacy-content')).not.toBeInTheDocument()
     await page.getByRole('button', { name: 'Who can see your contacts?' }).click()
-    const note = page.getByTestId('contacts-privacy-panel')
+    const note = page.getByTestId('contacts-privacy-content')
     await expect.element(note).toHaveTextContent(/private: only you, the company owner and admins/i)
     await expect.element(note).toHaveTextContent(/everyone in it can see and update it/i)
     await expect.element(note).toHaveTextContent(/assistant works for you, it sees what you see/i)

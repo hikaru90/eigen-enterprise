@@ -24,13 +24,16 @@
     <PageHeader
       title="Settings"
       part="settings"
-      description="What applies to the whole company. Each module keeps its own settings on its page."
       {tabs}
       {current}
       navLabel="Settings sections"
       navTestId="settings-nav"
       tabTestId={(id) => `settings-nav-${id}`}
-    />
+    >
+      {#snippet info()}
+        <p>What applies to the whole company. Each module keeps its own settings on its page.</p>
+      {/snippet}
+    </PageHeader>
     <div class="mt-8 max-w-2xl">
       {@render children()}
     </div>

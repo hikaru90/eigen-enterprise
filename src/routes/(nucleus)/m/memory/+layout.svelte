@@ -26,7 +26,6 @@
     <PageHeader
       title={data.memory.name}
       part="memory"
-      description="Tasks, projects and notes you and the agent keep — and a place to capture a thought."
       status={{ label: data.memory.active ? 'Active' : 'Not active', on: data.memory.active }}
       {tabs}
       {current}
@@ -34,6 +33,10 @@
       navTestId="memory-nav"
       tabTestId={(id) => `memory-tab-${id}`}
     >
+      {#snippet info()}
+        <p>Tasks, projects and notes you and the agent keep — and a place to capture a thought.</p>
+        <MemoryPrivacyNote analyticsSeesAi={data.privacy.analyticsSeesAi} />
+      {/snippet}
       {#snippet actions()}
         <a
           href={resolve('/m/memory/settings')}
@@ -48,7 +51,6 @@
         </a>
       {/snippet}
     </PageHeader>
-    <div class="mt-4"><MemoryPrivacyNote analyticsSeesAi={data.privacy.analyticsSeesAi} /></div>
   </div>
   <div class="flex min-h-0 w-full flex-1 flex-col">
     {@render children()}

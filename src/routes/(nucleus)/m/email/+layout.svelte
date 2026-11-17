@@ -39,7 +39,7 @@
     kind
       ? MAIL_KINDS[kind].line
       : current === 'people'
-        ? 'The people you know: where you met, why they matter, when to follow up.'
+        ? 'The people you know: where you met, why they matter, what to do next.'
         : 'How your company sends and receives mail: the Amazon SES account, domains, senders, mailboxes, templates, logs and the API.',
   )
 </script>
@@ -48,7 +48,6 @@
   <PageHeader
     title="Email"
     part="email"
-    {description}
     {status}
     {tabs}
     {current}
@@ -58,6 +57,9 @@
   >
     {#snippet actions()}
       <MailKindsInfo current={kind} />
+    {/snippet}
+    {#snippet info()}
+      <p>{description}</p>
     {/snippet}
   </PageHeader>
   {#if sections}

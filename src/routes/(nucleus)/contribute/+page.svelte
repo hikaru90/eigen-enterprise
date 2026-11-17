@@ -21,8 +21,14 @@
   <PageHeader
     title="Contribute"
     part="contribute"
-    description={`Ideas, bugs and polish requests from everyone at ${data.companyName ?? 'your company'}. Propose one with Contribute at the top right and vote for the ones you want most; an agent picks them up from here.`}
-  />
+  >
+    {#snippet info()}
+      <p>
+        Ideas, bugs and polish requests from everyone at {data.companyName ?? 'your company'}. Propose one with
+        Contribute at the top right and vote for the ones you want most; an agent picks them up from here.
+      </p>
+    {/snippet}
+  </PageHeader>
   <div class="mt-6">
     <ContributeViews
       proposals={data.proposals}

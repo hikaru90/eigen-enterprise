@@ -1,3 +1,4 @@
+import { createRawSnippet } from 'svelte'
 import { describe, expect, it } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
@@ -40,6 +41,27 @@ describe('page-header: the one page frame', () => {
     await expect.element(page.getByTestId('module-status')).not.toBeInTheDocument()
     await expect.element(page.getByRole('navigation')).not.toBeInTheDocument()
     await expect.element(page.getByTestId('page-mark')).not.toBeInTheDocument()
+    await expect.element(page.getByTestId('page-info')).not.toBeInTheDocument()
+  })
+
+  it('puts the explanation behind a "?" next to the title, not on the page', async () => {
+    const info = createRawSnippet(() => ({ render: () => '<p>Domains, mailboxes and senders live under Setup.</p>' }))
+    render(PageHeader, { props: { title: 'Email', info } })
+    await expect.element(page.getByText('Domains, mailboxes and senders')).not.toBeInTheDocument()
+    const button = page.getByRole('button', { name: 'About Email' })
+    await expect.element(button).toBeVisible()
+    await button.click()
+    await expect
+      .element(page.getByRole('dialog', { name: 'About Email' }))
+      .toHaveTextContent('Domains, mailboxes and senders live under Setup.')
+  })
+
+  it('names the info button with infoLabel when given', async () => {
+    const info = createRawSnippet(() => ({ render: () => '<p>Who can see it.</p>' }))
+    render(PageHeader, { props: { title: 'Memory', info, infoLabel: 'About Memory and who can see it' } })
+    await expect
+      .element(page.getByRole('button', { name: 'About Memory and who can see it' }))
+      .toBeVisible()
   })
 
   it("shows the area's part mark in its website colour next to the title", async () => {

@@ -3,7 +3,7 @@ import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
 import MemoryPrivacyNote from './memory-privacy-note.svelte'
 
-const note = () => page.getByRole('note', { name: 'Who can see your Memory' })
+const note = () => page.getByRole('region', { name: 'Who can see your Memory' })
 
 describe('MemoryPrivacyNote', () => {
   it('states who can read it, what the assistant and keys can do, what leaves the server, and delete', async () => {
@@ -37,11 +37,5 @@ describe('MemoryPrivacyNote', () => {
     await expect.element(note()).toHaveTextContent(/product analytics \(PostHog\)/i)
     await expect.element(note()).toHaveTextContent(/never your Memory text/i)
     await expect.element(note()).not.toHaveTextContent(/including your Memory text/i)
-  })
-
-  it('can be dismissed', async () => {
-    render(MemoryPrivacyNote, { analyticsSeesAi: false })
-    await page.getByRole('button', { name: 'Dismiss' }).click()
-    await expect.element(note()).not.toBeInTheDocument()
   })
 })

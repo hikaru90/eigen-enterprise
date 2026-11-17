@@ -25,12 +25,15 @@
   <PageHeader
     title="Assistant"
     part="assistant"
-    description="Everything the company's assistant talked about and did, live as it happens."
     {tabs}
     {current}
     navLabel="Assistant sections"
     navTestId="assistant-area-nav"
     tabTestId={(id) => `assistant-nav-${id}`}
-  />
+  >
+    {#snippet info()}
+      <p>Everything the company's assistant talked about and did, live as it happens.</p>
+    {/snippet}
+  </PageHeader>
   {@render children()}
 </PageFrame>

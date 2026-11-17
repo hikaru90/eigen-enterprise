@@ -22,13 +22,16 @@
     <PageHeader
       title="Brand"
       part="brand"
-      description={ownerModuleBlurb('brand', '')}
       {tabs}
       {current}
       navLabel="Brand sections"
       navTestId="brand-nav"
       tabTestId={(id) => `brand-tab-${id}`}
-    />
+    >
+      {#snippet info()}
+        <p>{ownerModuleBlurb('brand', '')}</p>
+      {/snippet}
+    </PageHeader>
     {@render children()}
   </PageFrame>
 {:else}

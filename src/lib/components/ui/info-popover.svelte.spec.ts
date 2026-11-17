@@ -4,22 +4,55 @@ import { render } from 'vitest-browser-svelte'
 import { page, userEvent } from 'vitest/browser'
 import InfoPopover from './info-popover.svelte'
 
-const children = createRawSnippet(() => ({ render: () => '<p>Only you and admins see it.</p>' }))
+const children = createRawSnippet(() => ({
+  render: () => '<p>Mail the agent sends for you shows up here.</p>',
+}))
 
-describe('info-popover.svelte (a "?" in place of an info box)', () => {
-  it('is a named button that opens the text; Esc closes it and focus goes back to the button', async () => {
-    render(InfoPopover, { label: 'Who can see this?', children, testid: 'info' })
-    const button = page.getByRole('button', { name: 'Who can see this?' })
-    await expect.element(page.getByText('Only you and admins see it.')).not.toBeInTheDocument()
-    await button.click()
-    const panel = page.getByTestId('info-panel')
-    await expect.element(panel).toBeVisible()
-    await expect.element(panel).toHaveTextContent('Who can see this?')
-    await expect.element(panel).toHaveTextContent('Only you and admins see it.')
-    await expect.element(button).toHaveAttribute('aria-expanded', 'true')
+const trigger = () => page.getByRole('button', { name: 'About Email' })
+const panel = () => page.getByRole('dialog', { name: 'About Email' })
+
+describe('InfoPopover: page info on demand', () => {
+  it('is a closed, always-present button; the content is not shown by default', async () => {
+    render(InfoPopover, { label: 'About Email', children })
+    await expect.element(trigger()).toBeVisible()
+    await expect.element(trigger()).toHaveAttribute('aria-expanded', 'false')
+    await expect.element(page.getByText('Mail the agent sends for you')).not.toBeInTheDocument()
+  })
+
+  it('opens the content on click, wired with aria-expanded and aria-controls', async () => {
+    render(InfoPopover, { label: 'About Email', children })
+    await trigger().click()
+    await expect.element(panel()).toBeVisible()
+    await expect.element(panel()).toHaveTextContent('Mail the agent sends for you shows up here.')
+    await expect.element(trigger()).toHaveAttribute('aria-expanded', 'true')
+    const id = panel().element().id
+    expect(id).toBeTruthy()
+    await expect.element(trigger()).toHaveAttribute('aria-controls', id)
+  })
+
+  it('closes on Escape and returns focus to the button', async () => {
+    render(InfoPopover, { label: 'About Email', children })
+    await trigger().click()
+    await expect.element(panel()).toBeVisible()
     await userEvent.keyboard('{Escape}')
-    await expect.element(panel).not.toBeInTheDocument()
-    await expect.element(button).toHaveFocus()
-    await expect.element(button).toHaveAttribute('aria-expanded', 'false')
+    await expect.element(panel()).not.toBeInTheDocument()
+    await expect.element(trigger()).toHaveAttribute('aria-expanded', 'false')
+    await expect.element(trigger()).toHaveFocus()
+  })
+
+  it('closes on a click outside', async () => {
+    render(InfoPopover, { label: 'About Email', children })
+    await trigger().click()
+    await expect.element(panel()).toBeVisible()
+    await userEvent.click(document.body, { position: { x: 5, y: 5 } })
+    await expect.element(panel()).not.toBeInTheDocument()
+  })
+
+  it('opens again after closing — the info is never gone for good', async () => {
+    render(InfoPopover, { label: 'About Email', children })
+    await trigger().click()
+    await userEvent.keyboard('{Escape}')
+    await trigger().click()
+    await expect.element(panel()).toBeVisible()
   })
 })

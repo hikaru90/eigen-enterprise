@@ -1,6 +1,7 @@
 <script lang="ts">
   /* eslint-disable svelte/no-navigation-without-resolve -- tab hrefs go through appHref(), which calls resolve() */
   import type { Snippet } from 'svelte'
+  import InfoPopover from '$lib/components/ui/info-popover.svelte'
   import type { AreaTab } from '$lib/shell/area-nav'
   import { appHref } from '$lib/shell/href'
   import { iconFor } from '$lib/shell/module-icon'
@@ -8,9 +9,11 @@
   import StatusPill from './status-pill.svelte'
 
   /**
-   * The one page header (C3b): h1 title, optional one-line description,
-   * optional status pill, optional actions on the right, optional sub-nav
-   * tabs below. Every area page in the shell uses it. `part` (the area's
+   * The one page header (C3b): h1 title, optional short subline
+   * (`description`, a few words — not an explanation), optional status pill,
+   * optional actions on the right, optional sub-nav tabs below. What a page
+   * is and how it works goes in `info`: a "?" button next to the title opens
+   * it on demand (Contribute 19fc700d, b732961f), never a block on the page. Every area page in the shell uses it. `part` (the area's
    * module id) puts the part's mark — its icon on its website colour — next
    * to the title, as on the dashboard's module cards.
    */
@@ -18,6 +21,8 @@
     title,
     part,
     description,
+    info,
+    infoLabel,
     status,
     actions,
     tabs,
@@ -29,6 +34,8 @@
     title: string
     part?: string | null
     description?: string | null
+    info?: Snippet
+    infoLabel?: string
     status?: { label: string; on: boolean } | null
     actions?: Snippet
     tabs?: readonly Pick<AreaTab, 'id' | 'label' | 'href'>[]
@@ -51,6 +58,7 @@
           </span>
         {/if}
         <h1 class="min-w-0 truncate text-[1.375rem] leading-tight font-medium tracking-[-0.02em]">{title}</h1>
+        {#if info}<InfoPopover label={infoLabel ?? `About ${title}`} testid="page-info" children={info} />{/if}
         {#if status}<StatusPill label={status.label} on={status.on} />{/if}
       </div>
       {#if description}

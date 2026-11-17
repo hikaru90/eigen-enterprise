@@ -152,8 +152,13 @@
   <PageHeader
     title="Calls"
     part="calls"
-    description="Video calls with your team. Call from a direct message or channel header, or start a meeting with anyone here."
   >
+    {#snippet info()}
+      <p>
+        Video calls with your team. Call from a direct message or channel header, or start a meeting with anyone
+        here.
+      </p>
+    {/snippet}
     {#snippet actions()}
       <Button onclick={openMeeting} disabled={data.notConfigured !== null} data-testid="calls-new-meeting">
         <Video class="size-4" aria-hidden="true" /> New meeting

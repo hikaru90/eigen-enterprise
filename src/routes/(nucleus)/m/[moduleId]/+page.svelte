@@ -15,12 +15,16 @@
 
 <svelte:head><title>{docTitle(data.module.name)}</title></svelte:head>
 
+{#snippet moduleInfo()}
+  <p>{data.module.description}</p>
+{/snippet}
+
 <PageFrame>
   <PageHeader
     title={data.module.name}
     part={data.module.id}
-    description={data.module.description || null}
     status={{ label: data.module.active ? 'Active' : 'Not active', on: data.module.active }}
+    info={data.module.description ? moduleInfo : undefined}
   />
 
   {#if !data.module.active}

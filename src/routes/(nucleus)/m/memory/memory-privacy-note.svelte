@@ -1,6 +1,4 @@
 <script lang="ts">
-  import InfoIcon from '@lucide/svelte/icons/info'
-  import XIcon from '@lucide/svelte/icons/x'
   import { resolve } from '$app/paths'
 
   /**
@@ -13,12 +11,8 @@
    *   reads another person's Memory. Exception: the Roadmap system project lives
    *   in the owner's Memory — members read it, admins and the agent's roadmap.*
    *   tools change it (modules/orchestrator/roadmap).
-   * - The company assistant's memory.* read tools run as its own principal
-   *   id (modules/memory/tools.ts), never as the person. Its writes (capture,
-   *   create/update note) land in the Memory of the person it is answering
-   *   (modules/memory/assistant-writes.ts): thoughts as theirs, notes marked as
-   *   the assistant's, and it changes only notes it wrote; working for no one,
-   *   it writes nothing.
+   * - The company assistant's memory.* kernel tools run as its own principal
+   *   id (modules/memory/tools.ts), never as the person.
    * - API keys authenticate only /api/mcp and /api/mail/send; MCP needs the
    *   key's "MCP access"; its delete_thought archives, delete_project dismisses.
    * - Capture, enrichment and search go through the gateway to the server's AI
@@ -32,65 +26,44 @@
    * - Delete (deleteThoughtForUser) removes the row and everything derived;
    *   backups (ee, owner-configured retention) and log lines / AI usage previews
    *   written before this change keep their copies.
-   * Dismissed per visit (it sits in the Memory layout, so tab changes keep it closed).
+   * Shown on demand in Memory's "?" popover next to its title (Contribute
+   * 19fc700d, b732961f), on every Memory tab.
    */
   let { analyticsSeesAi }: { analyticsSeesAi: boolean } = $props()
-  let open = $state(true)
 </script>
 
-{#if open}
-  <aside
-    role="note"
-    aria-labelledby="memory-privacy-title"
-    class="flex gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm"
-    data-testid="memory-privacy-note"
-  >
-    <InfoIcon class="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-    <div class="min-w-0 flex-1 space-y-1.5">
-      <p id="memory-privacy-title" class="font-medium">Who can see your Memory</p>
-      <ul class="list-disc space-y-1 pl-4 text-muted-foreground">
-        <li>
-          Only you. Other members, admins and the owner can’t open or search your thoughts, tasks,
-          projects or notes. The one exception is the company’s Roadmap project: everyone sees it,
-          and admins and the assistant change it.
-        </li>
-        <li>
-          The company’s assistant doesn’t read it either. When you ask, it adds thoughts and notes to
-          your Memory — notes marked as the assistant’s — and changes only the notes it wrote. An app or agent you give an API key with
-          MCP access (Settings → API keys) can read and add to it as you, until you revoke the key —
-          it can archive thoughts, but never delete them.
-        </li>
-        <li>
-          To understand and search it, what you capture and search for is sent to this server’s AI
-          provider; voice notes are transcribed by OpenRouter. The server’s logs and your AI usage
-          log note that Memory used AI — size, cost, time — never what you wrote.{#if analyticsSeesAi}
-            The same goes for this server’s product analytics (PostHog): how AI requests went, never
-            your Memory text.{/if}
-        </li>
-        <li>
-          It is stored in the company’s database, so anyone with direct access to the server can
-          read it.
-        </li>
-        <li>
-          Delete removes a thought for good — its text, search, dates and graph links. It doesn’t
-          reach backups if the owner set them up, or log lines and AI usage previews written before
-          Memory stopped keeping your text there.
-          <a
-            href={resolve('/m/memory/settings#your-data')}
-            class="font-medium text-foreground underline underline-offset-2"
-          >
-            Delete everything
-          </a>
-        </li>
-      </ul>
-    </div>
-    <button
-      type="button"
-      class="size-6 shrink-0 rounded text-muted-foreground hover:text-foreground"
-      aria-label="Dismiss"
-      onclick={() => (open = false)}
-    >
-      <XIcon class="mx-auto size-4" aria-hidden="true" />
-    </button>
-  </aside>
-{/if}
+<section aria-labelledby="memory-privacy-title" class="space-y-1.5" data-testid="memory-privacy-note">
+  <h2 id="memory-privacy-title" class="font-medium text-foreground">Who can see your Memory</h2>
+  <ul class="list-disc space-y-1 pl-4">
+    <li>
+      Only you. Other members, admins and the owner can’t open or search your thoughts, tasks,
+      projects or notes. The one exception is the company’s Roadmap project: everyone sees it,
+      and admins and the assistant change it.
+    </li>
+    <li>
+      The company’s assistant doesn’t read it either. When you ask, it adds thoughts and notes to
+      your Memory — notes marked as the assistant’s — and changes only the notes it wrote. An app or agent you give an API key with
+      MCP access (Settings → API keys) can read and add to it as you, until you revoke the key —
+      it can archive thoughts, but never delete them.
+    </li>
+    <li>
+      To understand and search it, what you capture and search for is sent to this server’s AI
+      provider; voice notes are transcribed by OpenRouter. The server’s logs and your AI usage
+      log note that Memory used AI — size, cost, time — never what you wrote.{#if analyticsSeesAi}
+        The same goes for this server’s product analytics (PostHog): how AI requests went, never
+        your Memory text.{/if}
+    </li>
+    <li>
+      It is stored in the company’s database, so anyone with direct access to the server can
+      read it.
+    </li>
+    <li>
+      Delete removes a thought for good — its text, search, dates and graph links. It doesn’t
+      reach backups if the owner set them up, or log lines and AI usage previews written before
+      Memory stopped keeping your text there.
+      <a href={resolve('/m/memory/settings#your-data')}>
+        Delete everything
+      </a>
+    </li>
+  </ul>
+</section>
