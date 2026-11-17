@@ -76,6 +76,30 @@ export function viewRange(view: View, date: string, timeZone: string): { from: D
   return { from: dayStart(parseDay(days[0])!, timeZone), to: dayStart(parseDay(addDays(days.at(-1)!, 1))!, timeZone), days }
 }
 
+/**
+ * A week on a phone shows fewer days side by side (Contribute a02c5126) and
+ * pages through them: the first day of each page, the last flush with Sunday.
+ */
+export function weekPages(length: number, visible: number): number[] {
+  const pages: number[] = []
+  for (let i = 0; i < length; i += visible) pages.push(Math.min(i, length - visible))
+  return [...new Set(pages)]
+}
+
+/** The page a week opens on: the one with today, else the first. */
+export function weekStart(days: readonly string[], today: string, visible: number): number {
+  const i = days.indexOf(today)
+  if (i < 0) return 0
+  return weekPages(days.length, visible).findLast((p) => p <= i) ?? 0
+}
+
+/** The next or previous page of a week; past its ends, the next or previous week. */
+export function stepWeek(offset: number, length: number, visible: number, direction: -1 | 1): { offset: number } | { shift: -1 | 1 } {
+  const pages = weekPages(length, visible)
+  const next = pages.indexOf(offset) + direction
+  return next < 0 || next >= pages.length ? { shift: direction } : { offset: pages[next] }
+}
+
 type Timed = { start: string; end: string; allDay: boolean }
 
 function bounds(day: string, tz: string): { start: number; end: number } {

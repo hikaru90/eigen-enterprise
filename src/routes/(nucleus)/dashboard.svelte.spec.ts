@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
 import { CAPABILITIES, type Capabilities } from '$lib/access/capabilities'
 import { AssistantController } from '$lib/components/assistant/assistant-controller.svelte'
+import type { TileId } from '$lib/dashboard/tiles'
 import type { Dashboard } from '$lib/server/overview/dashboard'
 import { buildShellNav } from '$lib/shell/nav'
 import Harness from './dashboard-test-harness.svelte'
@@ -58,9 +59,14 @@ const controller = () =>
     viewportWidth: () => 1280,
   })
 
-function renderDashboard(assistant: AssistantController | null) {
+function renderDashboard(
+  assistant: AssistantController | null,
+  tiles: { hiddenTiles?: TileId[]; saveHiddenTiles?: (hidden: TileId[]) => Promise<void> } = {},
+) {
   return render(Harness, {
     assistant,
+    hiddenTiles: tiles.hiddenTiles ?? [],
+    saveHiddenTiles: tiles.saveHiddenTiles ?? (async () => {}),
     dashboard,
     greetingName: 'Alex',
     companyName: 'Kindred',
@@ -102,5 +108,36 @@ describe('dashboard.svelte', () => {
     await expect
       .element(page.getByTestId('overview-modules-hint'))
       .toHaveTextContent(/^1 switched off$/)
+  })
+
+  it('every tile closes with its ×; hidden tiles come back from "Hidden tiles"; each change is saved', async () => {
+    const save = vi.fn(async (_hidden: TileId[]) => {})
+    renderDashboard(controller(), { hiddenTiles: ['activity'], saveHiddenTiles: save })
+    // Hidden for this person (on every device): not on the board, offered back.
+    await expect.element(page.getByTestId('dashboard-activity')).not.toBeInTheDocument()
+    await expect.element(page.getByTestId('dashboard-hidden-tiles')).toHaveTextContent('Recent activity')
+
+    await page.getByRole('button', { name: 'Hide Apps' }).click()
+    await expect.element(page.getByTestId('overview-site-tile')).not.toBeInTheDocument()
+    expect(save).toHaveBeenLastCalledWith(['apps', 'activity'])
+
+    await page.getByRole('button', { name: 'Show Recent activity' }).click()
+    await expect.element(page.getByTestId('dashboard-activity')).toBeInTheDocument()
+    expect(save).toHaveBeenLastCalledWith(['apps'])
+    for (const name of ['Assistant', 'Waiting on you', 'Recent activity', 'Approvals and warnings']) {
+      await expect.element(page.getByRole('button', { name: `Hide ${name}` })).toBeInTheDocument()
+    }
+  })
+
+  it('a change that could not be saved is undone and says so', async () => {
+    renderDashboard(controller(), { saveHiddenTiles: async () => Promise.reject(new Error('offline')) })
+    await page.getByRole('button', { name: 'Hide Apps' }).click()
+    await expect.element(page.getByRole('alert')).toHaveTextContent('Could not save your tiles: offline')
+    await expect.element(page.getByTestId('overview-site-tile')).toBeInTheDocument()
+  })
+
+  it('with the Assistant off, a hidden Assistant tile is not offered back', async () => {
+    renderDashboard(null, { hiddenTiles: ['ask'] })
+    await expect.element(page.getByTestId('dashboard-hidden-tiles')).not.toBeInTheDocument()
   })
 })

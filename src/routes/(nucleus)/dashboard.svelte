@@ -3,6 +3,7 @@
   import Plus from '@lucide/svelte/icons/plus'
   import Sparkles from '@lucide/svelte/icons/sparkles'
   import UserPlus from '@lucide/svelte/icons/user-plus'
+  import X from '@lucide/svelte/icons/x'
   import { resolve } from '$app/paths'
   import { canOpen, type Capabilities } from '$lib/access/capabilities'
   import { assistantIfOn } from '$lib/components/assistant/context'
@@ -10,6 +11,7 @@
   import ModuleCard from '$lib/components/module-card.svelte'
   import PageFrame from '$lib/components/page/page-frame.svelte'
   import PageHeader from '$lib/components/page/page-header.svelte'
+  import { hideTile, showTile, TILE_LABELS, type TileId } from '$lib/dashboard/tiles'
   import type { Dashboard } from '$lib/server/overview/dashboard'
   import { appHref } from '$lib/shell/href'
   import { iconFor } from '$lib/shell/module-icon'
@@ -24,7 +26,9 @@
    * stages, each holding one widget — squircle, stadium or card. Every link here is
    * one this person may open: module cards and the Apps tile link to the
    * module's nav entry (the nav leaves out pages they can't open), the invite
-   * link follows the capability set.
+   * link follows the capability set. Every tile closes with its × and comes
+   * back from "Hidden tiles" (Contribute 06894ad7); the choice is the person's
+   * preference, saved on each change (`saveHiddenTiles`), so it holds on every device.
    */
   let {
     dashboard,
@@ -33,6 +37,8 @@
     navItems,
     capabilities,
     providerMissing,
+    hiddenTiles,
+    saveHiddenTiles,
   }: {
     dashboard: Dashboard
     greetingName: string | null
@@ -42,7 +48,29 @@
     capabilities: Capabilities
     /** The company's AI provider is not connected: the assistant cannot work until it is. */
     providerMissing: boolean
+    /** The tiles this person closed, as last saved. */
+    hiddenTiles: readonly TileId[]
+    /** Saves the whole list; a rejection undoes the change on the board. */
+    saveHiddenTiles: (hidden: TileId[]) => Promise<void>
   } = $props()
+
+  // The board shows the person's choice at once; the saved list catches up behind it.
+  // svelte-ignore state_referenced_locally
+  let hidden = $state<TileId[]>([...hiddenTiles])
+  let tilesError = $state<string | null>(null)
+  const shown = (id: TileId) => !hidden.includes(id)
+
+  async function changeTiles(next: TileId[]): Promise<void> {
+    const before = hidden
+    hidden = next
+    tilesError = null
+    try {
+      await saveHiddenTiles(next)
+    } catch (err) {
+      hidden = before
+      tilesError = `Could not save your tiles: ${err instanceof Error ? err.message : String(err)}`
+    }
+  }
 
   // null while the Assistant plugin is switched off: no ask box, no way into a panel that is not there.
   const assistant = assistantIfOn()
@@ -72,6 +100,8 @@
   const pageOf = (id: string) => navItems.find((i) => i.id === id)?.href ?? null
   const websitePage = $derived(website ? pageOf(website.id) : null)
   const canInvite = $derived(canOpen(capabilities, '/settings/members'))
+  // The Assistant tile exists only while the Assistant is on: nothing to bring back otherwise.
+  const restorable = $derived(hidden.filter((id) => id !== 'ask' || assistant))
 
   /** Drafts for the assistant: they wait in its composer, never sent on their own. */
   const suggestions = [
@@ -96,8 +126,16 @@
     'inline-flex h-8 shrink-0 items-center rounded-full bg-primary px-3.5 text-sm font-medium text-primary-foreground outline-none hover:opacity-85 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
   const stageLink =
     'outline-none transition-transform hover:-translate-y-px focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
+  const closeTile =
+    'absolute top-3.5 right-3.5 z-10 grid size-7 place-items-center rounded-full bg-white/70 text-[#111111] outline-none transition-opacity hover:bg-white focus-visible:ring-2 focus-visible:ring-ring pointer-fine:opacity-0 pointer-fine:group-hover/tile:opacity-100 pointer-fine:focus-visible:opacity-100'
   const row = 'flex h-11 min-w-0 items-center justify-between gap-3 rounded-full bg-background pr-1.5 pl-1.5 text-sm'
 </script>
+
+{#snippet close(id: TileId)}
+  <button type="button" class={closeTile} aria-label="Hide {TILE_LABELS[id]}" title="Hide this tile" onclick={() => changeTiles(hideTile(hidden, id))} data-testid="dashboard-hide-{id}">
+    <X class="size-3.5" aria-hidden="true" strokeWidth={2} />
+  </button>
+{/snippet}
 
 <PageFrame testid="dashboard">
   <PageHeader
@@ -153,11 +191,12 @@
   {/if}
 
   <!-- The board: near-square stages, one widget on each. -->
-  <div class="mt-4 grid min-w-0 grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3" data-testid="overview-tiles">
-    {#if assistant}
+  <div class="mt-4 grid min-w-0 grid-flow-row-dense grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3" data-testid="overview-tiles">
+    {#if assistant && shown('ask')}
+      <div class="group/tile relative min-w-0">
       <!-- Ask: the website's ice tile with the assistant's blue orb, the mono greeting
            (the board's "Hey, Annie"); suggestions are white pills that turn the assistant's yellow. -->
-      <section class="stage stage-ice min-h-80" aria-label="Ask the assistant" data-testid="dashboard-ask">
+      <section class="stage stage-ice h-full min-h-80" aria-label="Ask the assistant" data-testid="dashboard-ask">
         <span class="stage-tag">Assistant</span>
         <div class="flex w-full max-w-[19rem] flex-col items-center text-center">
           <span class="orb size-20" aria-hidden="true" data-testid="dashboard-ask-orb"></span>
@@ -188,13 +227,17 @@
           </button>
         </div>
       </section>
+      {@render close('ask')}
+      </div>
     {/if}
 
     <!-- Needs you: the black squircle on slate dusk, the count on the dot-matrix,
          coral while something waits; a hairline legend, ticks on the edges. -->
+    {#if shown('needs-you')}
+    <div class="group/tile relative min-w-0 {assistant ? '' : 'xl:col-span-2'}">
     <a
       href="#needs-you"
-      class="stage stage-dusk grain min-h-80 {stageLink} {assistant ? '' : 'xl:col-span-2'}"
+      class="stage stage-dusk grain h-full min-h-80 {stageLink}"
       data-testid="dashboard-needs-you-tile"
     >
       <span class="stage-tag">Needs you</span>
@@ -217,12 +260,17 @@
         <span class="sr-only">{needsYou} waiting on you</span>
       </span>
     </a>
+    {@render close('needs-you')}
+    </div>
+    {/if}
 
     <!-- Apps: coral heat in a cream capsule (the board's "Stress level") over the
          website's warm pillar — light rising from below on near-black. -->
+    {#if shown('apps')}
+    <div class="group/tile relative min-w-0">
     <a
       href={websitePage ? appHref(websitePage) : '#modules'}
-      class="stage stage-glow grain min-h-80 {stageLink}"
+      class="stage stage-glow grain h-full min-h-80 {stageLink}"
       data-testid="overview-site-tile"
     >
       <span class="stage-tag">Apps</span>
@@ -244,9 +292,14 @@
         >
       </span>
     </a>
+    {@render close('apps')}
+    </div>
+    {/if}
 
     <!-- Recent activity: the taupe-into-coral transcript card on stone. -->
-    <section class="stage stage-stone min-h-80" data-testid="dashboard-activity">
+    {#if shown('activity')}
+    <div class="group/tile relative min-w-0">
+    <section class="stage stage-stone h-full min-h-80" data-testid="dashboard-activity">
       <span class="stage-tag">Agents</span>
       <div class="widget-ember flex w-full max-w-[19.5rem] flex-col overflow-hidden rounded-[1.75rem] p-2.5">
         <div class="flex min-w-0 items-center gap-3 rounded-[1.25rem] bg-black/20 py-2 pr-2 pl-2">
@@ -279,14 +332,19 @@
         {/if}
       </div>
     </section>
+    {@render close('activity')}
+    </div>
+    {/if}
 
     <!-- Needs you, in full: pill rows on a white stage. -->
+    {#if shown('approvals')}
+    <div class="group/tile relative min-w-0 {assistant ? 'md:col-span-2' : ''} xl:col-span-2">
     <section
       id="needs-you"
-      class="stage stage-white scroll-mt-6 items-stretch justify-start gap-3 p-5 {assistant ? 'md:col-span-2' : ''} xl:col-span-2"
+      class="stage stage-white h-full scroll-mt-6 items-stretch justify-start gap-3 p-5"
       data-testid="overview-approvals"
     >
-      <div class="hairline">
+      <div class="hairline pr-8">
         <h2 class="text-[15px] leading-snug font-medium">Needs you</h2>
         <p class="on-soft text-sm">Approvals and warnings, waiting on a person</p>
       </div>
@@ -344,7 +402,26 @@
         {/if}
       {/if}
     </section>
+    {@render close('approvals')}
+    </div>
+    {/if}
   </div>
+
+  {#if tilesError}
+    <p class="mt-2 text-sm text-destructive" role="alert" data-testid="dashboard-tiles-error">{tilesError}</p>
+  {/if}
+  {#if restorable.length > 0}
+    <!-- The tiles this person closed, to bring back. -->
+    <div class="mt-3 flex min-w-0 flex-wrap items-center gap-1.5" data-testid="dashboard-hidden-tiles">
+      <span class="mr-1 text-sm text-muted-foreground">Hidden tiles</span>
+      {#each restorable as id (id)}
+        <button type="button" class={goPill} aria-label="Show {TILE_LABELS[id]}" onclick={() => changeTiles(showTile(hidden, id))}>
+          <Plus class="size-4 shrink-0 text-muted-foreground group-hover:text-foreground" aria-hidden="true" strokeWidth={1.75} />
+          <span class="truncate">{TILE_LABELS[id]}</span>
+        </button>
+      {/each}
+    </div>
+  {/if}
 
   <!-- Active modules: each part on its stage (module-tone.ts). -->
   <section id="modules" class="mt-8 scroll-mt-6">

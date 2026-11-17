@@ -156,6 +156,25 @@ describe('app-shell.svelte', () => {
     await expect.element(page.getByTestId('shell-drawer')).not.toBeInTheDocument()
   })
 
+  it('on touch, a swipe in from the left edge opens the drawer and a swipe left closes it (b6625f4c)', async () => {
+    renderShell()
+    const flick = async (testid: string, from: number, to: number, pointerType = 'touch') => {
+      const el = (await page.getByTestId(testid).elements())[0]
+      for (const [type, x] of [['pointerdown', from], ['pointermove', (from + to) / 2], ['pointerup', to]] as const) {
+        el.dispatchEvent(new PointerEvent(type, { pointerId: 5, pointerType, isPrimary: true, clientX: x, clientY: 400, bubbles: true }))
+      }
+    }
+    // A swipe the wrong way, or a mouse drag, opens nothing.
+    await flick('shell-edge-swipe', 120, 4)
+    await flick('shell-edge-swipe', 4, 160, 'mouse')
+    await expect.element(page.getByTestId('shell-drawer')).not.toBeInTheDocument()
+    await flick('shell-edge-swipe', 4, 160)
+    await expect.element(page.getByTestId('shell-drawer')).toBeInTheDocument()
+    await expect.element(page.getByTestId('shell-edge-swipe')).not.toBeInTheDocument()
+    await flick('shell-drawer', 240, 60)
+    await expect.element(page.getByTestId('shell-drawer')).not.toBeInTheDocument()
+  })
+
   describe('my status at the foot of the nav (Contribute e4ef6be1)', () => {
     const dnd = () => {
       const self = new SelfPresence({ fetch: async () => new Response(null, { status: 500 }) })

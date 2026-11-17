@@ -14,6 +14,7 @@
   import { provideAssistant } from '$lib/components/assistant/context'
   import ContributeButton from '$lib/components/contribute/contribute-button.svelte'
   import HomeSettingsMenu from '$lib/components/home-settings-menu.svelte'
+  import { swipe } from '$lib/gestures/swipe-action'
   import { presenceLabel } from '$lib/messages/presence'
   import PresenceDot from '$lib/messages/presence-dot.svelte'
   import PresenceNav from '$lib/messages/presence-nav.svelte'
@@ -277,8 +278,24 @@
     </aside>
   {/if}
 
+  <!-- Phones, touch (Contribute b6625f4c): a swipe in from the left edge opens the drawer,
+       a swipe left closes it. The edge strip starts below the top bar, clear of the menu button. -->
+  {#if !drawerOpen}
+    <div
+      class="fixed bottom-0 left-0 z-30 w-4 md:hidden"
+      style="top: calc(3.5rem + env(safe-area-inset-top)); touch-action: pan-y"
+      aria-hidden="true"
+      data-testid="shell-edge-swipe"
+      use:swipe={{ onswipe: (s) => s.direction === 'right' && (drawerOpen = true) }}
+    ></div>
+  {/if}
+
   {#if drawerOpen}
-    <div class="fixed inset-0 z-40 md:hidden">
+    <div
+      class="fixed inset-0 z-40 md:hidden"
+      style="touch-action: pan-y"
+      use:swipe={{ onswipe: (s) => s.direction === 'left' && closeDrawer() }}
+    >
       <button
         type="button"
         class="absolute inset-0 bg-overlay/30"

@@ -3,6 +3,7 @@ import { redirect } from '@sveltejs/kit'
 import { eq } from 'drizzle-orm'
 import { splitDisplayName } from '$lib/server/auth-user-name'
 import { getUserRole, isAdminRole } from '$lib/server/auth/user-role'
+import { getHiddenTiles } from '$lib/server/dashboard/hidden-tiles'
 import { getDb } from '$lib/server/db'
 import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
@@ -77,6 +78,8 @@ export const load: PageServerLoad = async (event) => {
     showWelcome,
     // The dashboard (polish P-2) once the full-screen first-run tour is done.
     dashboard: showWelcome ? null : await loadDashboard(userId),
+    // The tiles this person closed with their × (Contribute 06894ad7): hidden on every device.
+    hiddenTiles: showWelcome ? [] : await getHiddenTiles(userId),
     greetingName: greetingName(event.locals.user, displayName),
     // Back from the provider's sign-in redirect (OpenRouter callback): don't replay the tour.
     returnedFromProvider: event.url.searchParams.get('provider') === 'connected',
