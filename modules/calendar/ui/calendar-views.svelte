@@ -168,7 +168,7 @@
           </div>
           {#if allDay.some((list) => list.length > 0)}
             <div class="border-t border-border/60" style={columns}>
-              <div class="px-1 py-1 text-right text-[11px] leading-tight text-muted-foreground">All day</div>
+              <div class="px-1 py-1 text-right text-[13px] leading-tight text-muted-foreground">All day</div>
               {#each shown as day, d (day)}
                 <ul class="grid min-w-0 content-start gap-0.5 border-l border-border/60 p-0.5" aria-label="All day on {longDay(day)}">
                   {#each allDay[d] as o (o.key)}
@@ -183,7 +183,7 @@
           <div class="relative" aria-hidden="true">
             {#each hours as h, i (h)}
               {#if i > 0}
-                <span class="absolute right-1.5 -translate-y-1/2 text-[11px] text-muted-foreground tabular-nums" style="top: {i * HOUR_PX}px">{h}</span>
+                <span class="absolute right-1.5 -translate-y-1/2 text-[13px] text-muted-foreground tabular-nums" style="top: {i * HOUR_PX}px">{h}</span>
               {/if}
             {/each}
           </div>
