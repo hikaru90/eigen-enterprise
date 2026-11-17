@@ -212,6 +212,7 @@ describe('website.activity: tool events from the kernel audit', () => {
         toolEvent({ tool: 'website.app_remove', activity: 'Removed the app “shop”' }),
         toolEvent({ tool: 'github.app_create', activity: 'Deployed kindred/old as the app “old”' }),
         toolEvent({ tool: 'website.publish_page', activity: 'Published the About page' }),
+        toolEvent({ tool: 'website.delete_page', activity: 'Deleted the Old page' }),
         toolEvent({ tool: 'website.create_page' }),
         toolEvent({ tool: 'website.update_page' }),
         toolEvent({ tool: 'website.github_connect_repo', activity: 'Connected kindred/shop' }),
@@ -230,6 +231,7 @@ describe('website.activity: tool events from the kernel audit', () => {
     expect(byText.get('Removed the app “shop”')).toMatchObject({ kind: 'app' })
     expect(byText.get('Deployed kindred/old as the app “old”')).toMatchObject({ kind: 'app' })
     expect(byText.get('Published the About page')).toMatchObject({ kind: 'page' })
+    expect(byText.get('Deleted the Old page')).toMatchObject({ kind: 'page' })
     expect(byText.get('Connected kindred/shop')).toMatchObject({ kind: 'server' })
   })
 

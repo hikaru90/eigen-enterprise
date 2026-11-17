@@ -576,3 +576,99 @@ describe('KernelRegistry activity (plain words for the owner)', () => {
     expect(payload.activityError).toMatch(/activity of memory.echo failed: bad copy/)
   })
 })
+
+describe('KernelRegistry: always-ask tools (approvalAlways)', () => {
+  const toolName = 'settings.update'
+
+  function setup(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all') {
+    const sink = new InMemoryEventSink()
+    const store = new InMemoryApprovalStore()
+    // Not in the gated list on purpose: approvalAlways alone is the wall.
+    const policy = new ModeAwareApprovalPolicy(new Set(), new InMemoryApprovalModeStore(mode))
+    const registry = new KernelRegistry({ eventSink: sink, approvalPolicy: policy, approvalStore: store })
+    const ran: unknown[] = []
+    registry.register(
+      makeTool({
+        name: toolName,
+        module: 'settings',
+        inputSchema: z.object({ value: z.string(), extra: z.number().optional() }),
+        auditClass: 'mutate',
+        approvalRisk: 'internal',
+        approvalAlways: true,
+        handler: async (_c, input) => {
+          ran.push(input)
+          return { ok: true }
+        },
+      }),
+    )
+    return { registry, sink, store, ran }
+  }
+
+  it('waits for a decision in every approval mode, even allow_all', async () => {
+    for (const mode of ['ask', 'reasonable', 'allow_all'] as const) {
+      const { registry, sink, store, ran } = setup(mode)
+      await expect(registry.execute(toolName, { value: 'a' }, makeCtx())).rejects.toMatchObject({
+        code: 'approval_required',
+      })
+      expect(ran).toHaveLength(0)
+      expect(await store.listPending()).toHaveLength(1)
+      expect(sink.events.map((e) => e.type)).not.toContain('approval.auto_approved')
+    }
+  })
+
+  it('an approval lets exactly one call with exactly the approved input through', async () => {
+    const { registry, store, ran } = setup()
+    const ctx = makeCtx()
+    await registry.execute(toolName, { value: 'a' }, ctx).catch(() => undefined)
+    const [pending] = await store.listPending()
+    await store.decide(pending.id, 'approved', 'the-owner')
+
+    await expect(registry.execute(toolName, { value: 'a' }, ctx)).resolves.toEqual({ ok: true })
+    expect(ran).toEqual([{ value: 'a' }])
+
+    // Consumed: the same call again needs a new decision.
+    await expect(registry.execute(toolName, { value: 'a' }, ctx)).rejects.toMatchObject({
+      code: 'approval_required',
+    })
+    expect(ran).toHaveLength(1)
+    const again = await store.listPending()
+    expect(again).toHaveLength(1)
+    expect(again[0].id).not.toBe(pending.id)
+  })
+
+  it('an approval for one input never lets a different input through', async () => {
+    const { registry, store, ran } = setup()
+    const ctx = makeCtx()
+    await registry.execute(toolName, { value: 'a' }, ctx).catch(() => undefined)
+    const [pending] = await store.listPending()
+    await store.decide(pending.id, 'approved', 'the-owner')
+
+    await expect(registry.execute(toolName, { value: 'b' }, ctx)).rejects.toMatchObject({
+      code: 'approval_required',
+    })
+    expect(ran).toHaveLength(0)
+    const fresh = await store.listPending()
+    expect(fresh).toHaveLength(1)
+    expect(fresh[0].input).toEqual({ value: 'b' })
+  })
+
+  it('input equality ignores key order (jsonb does not keep it)', async () => {
+    const { registry, store, ran } = setup()
+    const ctx = makeCtx()
+    await registry.execute(toolName, { value: 'a', extra: 1 }, ctx).catch(() => undefined)
+    const [pending] = await store.listPending()
+    await store.decide(pending.id, 'approved', 'the-owner')
+    await registry.execute(toolName, { extra: 1, value: 'a' }, ctx)
+    expect(ran).toHaveLength(1)
+  })
+
+  it('refuses to register an always-ask read tool or one without approvalRisk', () => {
+    const registry = new KernelRegistry()
+    expect(() => registry.register(makeTool({ name: 'settings.get', approvalAlways: true }))).toThrow(
+      /read tool/,
+    )
+    expect(() =>
+      registry.register(makeTool({ name: 'settings.update', auditClass: 'mutate', approvalAlways: true })),
+    ).toThrow(/approvalRisk/)
+  })
+})

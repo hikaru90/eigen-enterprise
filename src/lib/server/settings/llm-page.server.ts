@@ -6,14 +6,9 @@ import { and, eq } from 'drizzle-orm'
 import { isUserAdmin } from '$lib/server/auth/user-role'
 import { decryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import { getDb } from '$lib/server/db'
-import {
-  userPreference,
-  llmProviderConfig,
-  llmActiveProvider,
-  type BillingMode,
-} from '$lib/server/db/schema'
+import { llmProviderConfig, llmActiveProvider } from '$lib/server/db/schema'
 import { env } from '$lib/server/env/private-env'
-import { assertByokConfigured } from '$lib/server/llm/preferences'
+import { setActiveLlmProvider } from '$lib/server/llm/active-provider'
 import {
   providerLabel,
   saveProviderConfig,
@@ -172,23 +167,7 @@ export const llmSettingsActions: Actions = {
     }
 
     try {
-      const userId = event.locals.user.id
-      await assertByokConfigured(userId)
-      const db = getDb()
-      await db
-        .insert(llmActiveProvider)
-        .values({ userId, provider })
-        .onConflictDoUpdate({
-          target: llmActiveProvider.userId,
-          set: { provider, updatedAt: new Date() },
-        })
-      await db
-        .insert(userPreference)
-        .values({ userId, billingMode: 'byok' as BillingMode })
-        .onConflictDoUpdate({
-          target: userPreference.userId,
-          set: { billingMode: 'byok' as BillingMode, updatedAt: new Date() },
-        })
+      await setActiveLlmProvider(getDb(), event.locals.user.id, provider)
       return {
         llmMessage: `Active provider set to ${provider === 'eurouter' ? 'EUrouter' : 'OpenRouter'}.`,
       }

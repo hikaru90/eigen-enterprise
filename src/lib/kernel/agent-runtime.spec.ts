@@ -356,6 +356,33 @@ describe('AgentRuntime — tool surface + execution path', () => {
     expect(seen).toHaveLength(1)
     expect(seen[0].principal).toEqual({ id: 'agent-1', kind: 'agent', roles: ['agent'] })
     expect(typeof seen[0].requestId).toBe('string')
+    // No person on this dispatch: no acting user is invented.
+    expect(seen[0].actingUserId).toBeUndefined()
+  })
+
+  it('tool calls carry the person the turn acts for (dispatch llmUserId) as actingUserId', async () => {
+    const seen: ToolContext[] = []
+    const fx = makeFixture({
+      tools: [
+        tool('memory.echo', 'memory', ['agent'], async (ctx) => {
+          seen.push(ctx)
+          return {}
+        }),
+      ],
+      manifests: [modOn('memory')],
+      roles: ['agent'],
+    })
+    await fx.activations.set('memory', true)
+    fx.runtime.registerAgent(agentConfig())
+    fx.run.mockImplementation(async (_sid, _input, ctx: EngineContext) => {
+      await ctx.executeTool('memory.echo', {})
+      return 'done'
+    })
+
+    await fx.runtime.dispatch('agent-1', 's', 'hi', undefined, { llmUserId: 'user-7' })
+
+    expect(seen[0].actingUserId).toBe('user-7')
+    expect(seen[0].principal.id).toBe('agent-1')
   })
 
   it('EngineContext.emit defaults principal + kernel source and reaches the sink', async () => {

@@ -405,5 +405,53 @@ describe('DbApprovalStore', () => {
       new DbApprovalStore(empty.db).latestFor('email.send_mail', 'p1'),
     ).resolves.toBeNull()
   })
+
+  it('maps consumedAt when a row carries it', async () => {
+    const { db } = makeFakeDb({
+      ...noopHandlers,
+      onSelect: () => [
+        {
+          ...request,
+          status: 'approved' as const,
+          decidedBy: 'the-owner',
+          decidedAt: new Date('2026-09-07T12:00:00.000Z'),
+          consumedAt: new Date('2026-09-07T12:01:00.000Z'),
+        },
+      ],
+    })
+    const latest = await new DbApprovalStore(db).latestFor('settings.update', 'p1')
+    expect(latest).toMatchObject({ consumedAt: '2026-09-07T12:01:00.000Z' })
+  })
+
+  it('openFor selects the pair’s pending and approved-unconsumed rows, newest first', async () => {
+    const { db } = makeFakeDb({
+      ...noopHandlers,
+      onSelect: (table, query) => {
+        if (table !== 'kernel_approvals') throw new Error(`unexpected select: ${table}`)
+        expect(query.where).toHaveLength(1)
+        expect(query.orderBy).toHaveLength(1)
+        return [{ ...request, decidedBy: null, decidedAt: null, consumedAt: null }]
+      },
+    })
+    const open = await new DbApprovalStore(db).openFor('email.send_mail', 'p1')
+    expect(open).toEqual([request])
+  })
+
+  it('consume sets consumedAt in one guarded update: true once, false when nothing matched', async () => {
+    const hit = makeFakeDb({
+      ...noopHandlers,
+      onUpdate: (table, set, where) => {
+        if (table !== 'kernel_approvals') throw new Error(`unexpected update: ${table}`)
+        expect(set).toMatchObject({ consumedAt: expect.any(Date) })
+        // id + approved + not yet consumed, combined into one condition.
+        expect(where).toHaveLength(1)
+        return [{ id: 'a1' }]
+      },
+    })
+    await expect(new DbApprovalStore(hit.db).consume('a1')).resolves.toBe(true)
+
+    const miss = makeFakeDb(noopHandlers)
+    await expect(new DbApprovalStore(miss.db).consume('a1')).resolves.toBe(false)
+  })
 })
 

@@ -34,6 +34,10 @@ describe('createWebsiteTools', () => {
     expect(byName.get('website.create_page')?.auditClass).toBe('mutate')
     expect(byName.get('website.update_page')?.auditClass).toBe('mutate')
     expect(byName.get('website.publish_page')?.auditClass).toBe('mutate')
+    expect(byName.get('website.delete_page')?.auditClass).toBe('mutate')
+    // Deleting is irreversible: destructive, and always a person's decision (any approval mode).
+    expect(byName.get('website.delete_page')?.approvalRisk).toBe('destructive')
+    expect(byName.get('website.delete_page')?.approvalAlways).toBe(true)
     expect(byName.get('website.get_page')?.auditClass).toBe('read')
     expect(byName.get('website.list_pages')?.auditClass).toBe('read')
     for (const descriptor of tools) {
@@ -160,6 +164,37 @@ describe('website tools through the kernel registry pipeline', () => {
     await registry.execute('website.publish_page', { slug: 'a', visibility: 'private' }, ctx)
     await expect(registry.execute('website.get_page', { slug: 'a' }, ctx)).resolves.toMatchObject({
       visibility: 'private',
+    })
+  })
+
+  it('delete_page waits for a person every time, then deletes exactly the approved page', async () => {
+    const { registry, activations, store, sink } = makeRegistry()
+    await activations.set('website', true)
+    await registry.execute('website.create_page', { slug: 'a', title: 'A', body: 'x' }, ctx)
+    await registry.execute('website.create_page', { slug: 'b', title: 'B', body: 'x' }, ctx)
+    const agent: ToolContext = {
+      principal: { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] },
+      requestId: 'req-2',
+    }
+
+    const gated = await registry.execute('website.delete_page', { slug: 'a' }, agent).catch((e) => e)
+    expect(gated).toMatchObject({ code: 'approval_required' })
+    expect(await store.getPage('a')).not.toBeNull()
+
+    await registry.getApprovalStore().decide(gated.details.approvalId, 'approved', 'the-owner')
+    // The approval covers page "a" only.
+    await expect(registry.execute('website.delete_page', { slug: 'b' }, agent)).rejects.toMatchObject({
+      code: 'approval_required',
+    })
+    await expect(registry.execute('website.delete_page', { slug: 'a' }, agent)).resolves.toMatchObject({
+      slug: 'a',
+    })
+    expect(await store.getPage('a')).toBeNull()
+    expect(await store.getPage('b')).not.toBeNull()
+    expect(sink.events.at(-1)?.payload).toMatchObject({
+      tool: 'website.delete_page',
+      ok: true,
+      activity: 'Deleted the A page',
     })
   })
 

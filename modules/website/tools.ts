@@ -42,6 +42,10 @@ const publishPageInput = z.object({
   visibility: z.enum(['public', 'private']),
 })
 
+const deletePageInput = z.object({
+  slug: z.string().min(1),
+})
+
 const getPageInput = z.object({
   slug: z.string().min(1),
 })
@@ -112,6 +116,22 @@ export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[]
         const parsed = publishPageInput.parse(input)
         return store.setVisibility(parsed.slug, parsed.visibility)
       },
+    },
+    {
+      name: 'website.delete_page',
+      module: WEBSITE_MODULE_ID,
+      summary:
+        'Delete one website content object (page or doc) by slug, for good — it cannot be restored. Always waits for the owner’s approval, whatever the approval mode. Fails loud when the slug is unknown.',
+      auditClass: 'mutate',
+      activity: (input: z.infer<typeof deletePageInput>, output?: WebsitePage) =>
+        output === undefined
+          ? `Tried to delete ${pageName(undefined, input.slug)}`
+          : `Deleted ${pageName(output.title, input.slug)}`,
+      approvalRisk: 'destructive',
+      approvalAlways: true,
+      inputSchema: deletePageInput,
+      permission: { roles: ['admin', 'agent'] },
+      handler: async (_ctx, input) => store.deletePage(deletePageInput.parse(input).slug),
     },
     {
       name: 'website.get_page',

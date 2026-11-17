@@ -1,7 +1,7 @@
 import type { KernelEvent, EventSink } from './events'
 import type { ActivationStore } from './modules'
 import type { Principal, PrincipalStore } from './principals'
-import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull, or, sql } from 'drizzle-orm'
 import type { AppDatabase } from '$lib/server/db/context'
 import {
   kernelApprovalMode,
@@ -154,6 +154,7 @@ type ApprovalRow = {
   status: ApprovalStatus
   decidedBy: string | null
   decidedAt: Date | null
+  consumedAt?: Date | null
 }
 
 function toApprovalRequest(row: ApprovalRow): ApprovalRequest {
@@ -165,6 +166,7 @@ function toApprovalRequest(row: ApprovalRow): ApprovalRequest {
     status: row.status,
     ...(row.decidedBy === null ? {} : { decidedBy: row.decidedBy }),
     ...(row.decidedAt === null ? {} : { decidedAt: row.decidedAt.toISOString() }),
+    ...(row.consumedAt ? { consumedAt: row.consumedAt.toISOString() } : {}),
   }
 }
 
@@ -176,6 +178,7 @@ const approvalColumns = {
   status: kernelApprovals.status,
   decidedBy: kernelApprovals.decidedBy,
   decidedAt: kernelApprovals.decidedAt,
+  consumedAt: kernelApprovals.consumedAt,
 }
 
 /** ApprovalStore persisting to kernel_approvals. */
@@ -240,6 +243,40 @@ export class DbApprovalStore implements ApprovalStore {
       .orderBy(desc(kernelApprovals.createdAt))
       .limit(1)
     return rows[0] ? toApprovalRequest(rows[0]) : null
+  }
+
+  async openFor(toolName: string, principalId: string): Promise<ApprovalRequest[]> {
+    const rows = await (await resolveDb(this.db))
+      .select(approvalColumns)
+      .from(kernelApprovals)
+      .where(
+        and(
+          eq(kernelApprovals.toolName, toolName),
+          eq(kernelApprovals.principalId, principalId),
+          or(
+            eq(kernelApprovals.status, 'pending'),
+            and(eq(kernelApprovals.status, 'approved'), isNull(kernelApprovals.consumedAt)),
+          ),
+        ),
+      )
+      .orderBy(desc(kernelApprovals.createdAt))
+    return rows.map(toApprovalRequest)
+  }
+
+  async consume(id: string): Promise<boolean> {
+    // One guarded UPDATE: of two concurrent calls on the same approval, exactly one wins.
+    const rows = await (await resolveDb(this.db))
+      .update(kernelApprovals)
+      .set({ consumedAt: new Date() })
+      .where(
+        and(
+          eq(kernelApprovals.id, id),
+          eq(kernelApprovals.status, 'approved'),
+          isNull(kernelApprovals.consumedAt),
+        ),
+      )
+      .returning({ id: kernelApprovals.id })
+    return rows.length === 1
   }
 }
 

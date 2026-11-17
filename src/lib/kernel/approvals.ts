@@ -11,6 +11,8 @@ export type ApprovalRequest = {
   status: ApprovalStatus
   decidedBy?: string
   decidedAt?: string
+  /** Set once an always-ask tool (approvalAlways) ran on this approval: it never lets a second call through. */
+  consumedAt?: string
 }
 
 /**
@@ -108,6 +110,34 @@ export type ApprovalStore = {
    * The registry's approval gate uses this to let an approved decision through.
    */
   latestFor(toolName: string, principalId: string): Promise<ApprovalRequest | null>
+  /**
+   * Atomically marks an approved, not yet consumed request consumed. True
+   * when this call consumed it; false when it was not approved or already
+   * consumed (a concurrent call won) — the caller must then not run.
+   */
+  consume(id: string): Promise<boolean>
+  /**
+   * The open requests of a tool+principal pair: pending, or approved and not
+   * yet consumed — newest first. The always-ask gate matches the call's input
+   * against these (an approval covers only its own input).
+   */
+  openFor(toolName: string, principalId: string): Promise<ApprovalRequest[]>
+}
+
+/** Structural equality of two JSON inputs, independent of object key order (jsonb reorders keys). */
+export function sameApprovalInput(a: unknown, b: unknown): boolean {
+  return canonicalJson(a) === canonicalJson(b)
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
 }
 
 export class InMemoryApprovalStore implements ApprovalStore {
@@ -143,6 +173,24 @@ export class InMemoryApprovalStore implements ApprovalStore {
       if (req.toolName === toolName && req.principalId === principalId) latest = req
     }
     return latest
+  }
+
+  async openFor(toolName: string, principalId: string): Promise<ApprovalRequest[]> {
+    return [...this.requests.values()]
+      .filter(
+        (r) =>
+          r.toolName === toolName &&
+          r.principalId === principalId &&
+          (r.status === 'pending' || (r.status === 'approved' && r.consumedAt === undefined)),
+      )
+      .reverse()
+  }
+
+  async consume(id: string): Promise<boolean> {
+    const existing = this.requests.get(id)
+    if (!existing || existing.status !== 'approved' || existing.consumedAt !== undefined) return false
+    this.requests.set(id, { ...existing, consumedAt: new Date().toISOString() })
+    return true
   }
 }
 

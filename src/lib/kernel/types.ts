@@ -19,6 +19,14 @@ export type ToolContext = {
     roles: string[]
   }
   requestId: string
+  /**
+   * The signed-in person an agent turn acts for (web session user, Telegram
+   * allowlist principal) — the gateway identity its model calls resolve
+   * under. Set by the agent runtime from the dispatch; absent for direct
+   * human calls (the principal IS the person) and ownerless runs. Identity
+   * only: it never grants a permission (permissions stay on `principal`).
+   */
+  actingUserId?: string
 }
 
 export type ToolDescriptor = {
@@ -41,6 +49,15 @@ export type ToolDescriptor = {
   auditClass: AuditClass
   /** Required for every tool the approval policy gates (load-time error otherwise). */
   approvalRisk?: ApprovalRisk
+  /**
+   * The always-on approval wall: every call waits for a person's decision in
+   * EVERY approval mode (allow_all included), the decision covers exactly one
+   * call with exactly the approved input, and only a human principal can
+   * decide it (kernel.approvals_decide refuses agents). Enforced by the
+   * registry itself, not the pluggable policy. Non-read tools only; requires
+   * approvalRisk (registration fails loud otherwise).
+   */
+  approvalAlways?: true
   /**
    * What this call did, in plain words for the owner: one short past-tense
    * sentence ("Published the About page"). Required for every non-read tool

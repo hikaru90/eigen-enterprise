@@ -19,6 +19,8 @@ export type KernelErrorCode =
   | 'unknown_module'
   | 'module_required'
   | 'module_switched_off'
+  | 'human_decision_required'
+  | 'not_configured'
 
 const KNOWN_CODES: readonly KernelErrorCode[] = [
   'permission_denied',
@@ -41,6 +43,8 @@ const KNOWN_CODES: readonly KernelErrorCode[] = [
   'unknown_module',
   'module_required',
   'module_switched_off',
+  'human_decision_required',
+  'not_configured',
 ]
 
 /** Exhaustive per code — adding a KernelErrorCode without a title is a type error. */
@@ -65,6 +69,8 @@ const PROBLEM_TITLES: Record<KernelErrorCode, string> = {
   unknown_module: 'Unknown module',
   module_required: 'Module required',
   module_switched_off: 'Switched off by a person',
+  human_decision_required: 'Only a person can decide this',
+  not_configured: 'Not set up',
 }
 
 const PROBLEM_STATUS: Partial<Record<KernelErrorCode, number>> = {
@@ -89,6 +95,10 @@ const PROBLEM_STATUS: Partial<Record<KernelErrorCode, number>> = {
   module_required: 409,
   // A plugin a person switched off: only a person (owner/admin) switches it back on.
   module_switched_off: 409,
+  // An always-ask approval (approvalAlways): only a human principal decides it.
+  human_decision_required: 403,
+  // The company has not set this up yet (no owner, a feature off on this deployment).
+  not_configured: 409,
 }
 
 /** RFC 9457 problem-details object as produced by `KernelError.toProblemJson`. */

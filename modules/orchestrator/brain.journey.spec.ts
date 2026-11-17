@@ -618,7 +618,7 @@ describe('journey artifacts on a fresh server (module not yet active)', () => {
     })
     await activations.set('kernel', true)
     const adminApprovals = Object.assign(new InMemoryApprovalStore(), { list: async () => [] })
-    for (const t of createAdminTools({ modules, activations, approvals: adminApprovals })) registry.register(t)
+    for (const t of createAdminTools({ tool: () => undefined, modules, activations, approvals: adminApprovals })) registry.register(t)
     const pages = new Map<string, { slug: string; visibility: string }>()
     const tool = (name: string, handler: ToolDescriptor['handler']): ToolDescriptor => ({
       name,

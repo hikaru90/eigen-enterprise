@@ -1009,6 +1009,13 @@
       "when": 1795200000146,
       "tag": "0146_dashboard_hidden_tiles",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1795200000147,
+      "tag": "0147_kernel_approval_consumed",
+      "breakpoints": true
     }
   ]
 }

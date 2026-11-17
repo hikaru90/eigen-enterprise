@@ -24,6 +24,21 @@ describe('orchestrator persona: where results live', () => {
   })
 })
 
+describe('orchestrator persona: reach beyond modules (Contribute d80e155d)', () => {
+  it('answers "which model are you" from kernel.whoami, never "I do not know"', () => {
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('kernel.whoami')
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/never guess/i)
+  })
+
+  it('knows it reaches settings through settings.get / settings.update, and that a change waits for the owner', () => {
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('settings.get')
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('settings.update')
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/always waits for the owner/i)
+    // Not limited to naming modules any more.
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/not only (its )?modules/i)
+  })
+})
+
 describe('orchestrator persona prompt', () => {
   it('keeps the orchestrator identity lines', () => {
     expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(
@@ -52,7 +67,7 @@ describe('orchestrator persona prompt', () => {
     modules.register(kernelManifest)
     await activations.set('kernel', true)
     const approvals = Object.assign(new InMemoryApprovalStore(), { list: async () => [] })
-    for (const t of createAdminTools({ modules, activations, approvals })) registry.register(t)
+    for (const t of createAdminTools({ tool: () => undefined, modules, activations, approvals })) registry.register(t)
     const runtime = new AgentRuntime({
       registry,
       isToolActive: (name) => modules.isToolActive(name),

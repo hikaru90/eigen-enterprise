@@ -237,7 +237,7 @@ describe('durable engine over real pi-durable', () => {
     modules.register({ id: 'website', name: 'Website', version: '0.1.0', tools: ['website.list_pages'], permissions: { roles: ['admin'] } })
     await activations.set('kernel', true)
     const approvals = Object.assign(new InMemoryApprovalStore(), { list: async () => [] })
-    for (const tool of createAdminTools({ modules, activations, approvals })) registry.register(tool)
+    for (const tool of createAdminTools({ tool: () => undefined, modules, activations, approvals })) registry.register(tool)
     registry.register({
       name: 'website.list_pages',
       module: 'website',

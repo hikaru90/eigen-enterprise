@@ -1,4 +1,4 @@
-/** Plain-language copy for every tool the kernel gates (modules/index APPROVAL_REQUIRED_TOOLS). */
+/** Plain-language copy for every tool the kernel gates (modules/index APPROVAL_REQUIRED_TOOLS, plus always-ask tools). */
 const APPROVAL_ACTION_COPY: Record<string, string> = {
   'email.send_mail': 'Send an email',
   'email.domain_add': 'Add a sender domain',
@@ -11,6 +11,8 @@ const APPROVAL_ACTION_COPY: Record<string, string> = {
   'brand.set_activate': 'Make a brand guideline set the active one',
   'brand.visual_set_activate': 'Make a visual brand set live across the company',
   'website.publish_page': 'Publish a page of your website',
+  'website.delete_page': 'Delete a page of your website for good',
+  'settings.update': 'Change a company setting',
   'repo.merge': 'Merge agent work into the company repository',
   'kernel.module_deactivate': 'Switch off a module',
   'website.github_connect_repo': 'Connect a GitHub repository',

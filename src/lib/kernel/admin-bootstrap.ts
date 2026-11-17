@@ -11,6 +11,7 @@ import {
   KERNEL_ADMIN_TOOL_NAMES,
   KERNEL_MODULE_ID,
 } from './admin-tools'
+import { createSettingsTools, KERNEL_SETTINGS_TOOL_NAMES, type SettingsPort } from './settings-tools'
 import { registerModuleTools } from './wiring'
 
 /**
@@ -30,6 +31,8 @@ export type RegisterAdminToolsOptions = {
    * no RLS), matching the orchestrator's background path.
    */
   db?: DbHandle
+  /** Overrides the live company-settings port (tests inject fakes; the live one imports the server lazily). */
+  settings?: SettingsPort
 }
 
 /**
@@ -50,7 +53,9 @@ export async function registerAdminTools(
   // a no-op, partial registration stays loud.
   const alreadyRegistered =
     kernel.modules.get(KERNEL_MODULE_ID) !== undefined &&
-    KERNEL_ADMIN_TOOL_NAMES.every((name) => kernel.registry.get(name) !== undefined)
+    [...KERNEL_ADMIN_TOOL_NAMES, ...KERNEL_SETTINGS_TOOL_NAMES].every(
+      (name) => kernel.registry.get(name) !== undefined,
+    )
   if (alreadyRegistered) return
 
   kernel.modules.register(kernelManifest)
@@ -60,8 +65,26 @@ export async function registerAdminTools(
     modules: kernel.modules,
     activations: kernel.activations,
     approvals,
+    tool: (name) => kernel.registry.get(name),
   })
+  tools.push(
+    ...createSettingsTools({
+      port: options.settings ?? liveSettingsPort(),
+      approvalMode: kernel.approvalMode,
+    }),
+  )
   registerModuleTools(kernel.registry, kernel.modules, tools)
+}
+
+/** The live settings port, loaded on first use so registering the tools touches no server module. */
+function liveSettingsPort(): SettingsPort {
+  const live = async () => (await import('$lib/server/settings/agent-settings')).agentSettingsPort
+  return {
+    modelFor: async (identity) => (await live()).modelFor(identity),
+    person: async (id) => (await live()).person(id),
+    read: async () => (await live()).read(),
+    apply: async (change, actor) => (await live()).apply(change, actor),
+  }
 }
 
 /**
@@ -95,6 +118,8 @@ export function listableApprovalStore(store: ApprovalStore, db?: DbHandle): Admi
     decide: (id, status, decidedBy) => store.decide(id, status, decidedBy),
     listPending: () => store.listPending(),
     latestFor: (toolName, principalId) => store.latestFor(toolName, principalId),
+    consume: (id) => store.consume(id),
+    openFor: (toolName, principalId) => store.openFor(toolName, principalId),
     list,
   }
 }
@@ -107,6 +132,7 @@ const approvalColumns = {
   status: kernelApprovals.status,
   decidedBy: kernelApprovals.decidedBy,
   decidedAt: kernelApprovals.decidedAt,
+  consumedAt: kernelApprovals.consumedAt,
 }
 
 async function listApprovalsFromDb(
@@ -127,5 +153,6 @@ async function listApprovalsFromDb(
     status: row.status,
     ...(row.decidedBy === null ? {} : { decidedBy: row.decidedBy }),
     ...(row.decidedAt === null ? {} : { decidedAt: row.decidedAt.toISOString() }),
+    ...(row.consumedAt ? { consumedAt: row.consumedAt.toISOString() } : {}),
   }))
 }
