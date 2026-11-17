@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { sha256Hex, type BlobStore } from '../../../../modules/drive/storage'
-import { readCompanyLogo, removeCompanyLogo, resolveCompanyIdentity, saveCompanyLogo, saveCompanyName, type CompanyDeps } from './service'
+import { readCompanyLogo, readCompanyLogoOriginal, removeCompanyLogo, resolveCompanyIdentity, saveCompanyLogo, saveCompanyName, type CompanyDeps } from './service'
 import { memoryCompanyProfileStore } from './store'
 
 function memoryBlobs(): BlobStore & { shas: () => string[] } {
@@ -94,6 +94,34 @@ describe('logo', () => {
     expect(await readCompanyLogo(sha256Hex(png), d)).toEqual({ bytes: png, mime: 'image/png' })
     expect(await readCompanyLogo(sha256Hex(svg), d)).toBeNull()
     expect(await readCompanyLogo('not-a-sha', d)).toBeNull()
+  })
+
+  it('a cropped logo keeps its original and crop; both are served, and replacing or removing it drops both', async () => {
+    const d = deps()
+    const original = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 9, 9, 9])
+    const crop = { left: 10, top: 0, size: 100 }
+    await saveCompanyLogo({ bytes: png, mime: 'image/png', original: { bytes: original, mime: 'image/jpeg', crop } }, 'u1', d)
+    expect(d.blobs.shas().sort()).toEqual([sha256Hex(png), sha256Hex(original)].sort())
+    const identity = await resolveCompanyIdentity(d)
+    expect(identity.logo).toMatchObject({
+      sha256: sha256Hex(png),
+      mime: 'image/png',
+      original: { sha256: sha256Hex(original), mime: 'image/jpeg', crop, url: `/api/company/logo/${sha256Hex(original)}` },
+    })
+    expect(await readCompanyLogo(sha256Hex(original), d)).toEqual({ bytes: original, mime: 'image/jpeg' })
+    expect(await readCompanyLogoOriginal(d)).toEqual({ bytes: original, mime: 'image/jpeg', crop })
+
+    // Re-cropping: a new cut from the same original keeps the original's bytes.
+    const recut = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 4, 4])
+    await saveCompanyLogo({ bytes: recut, mime: 'image/png', original: { bytes: original, mime: 'image/jpeg', crop: { left: 0, top: 0, size: 50 } } }, 'u1', d)
+    expect(d.blobs.shas().sort()).toEqual([sha256Hex(recut), sha256Hex(original)].sort())
+
+    await saveCompanyLogo({ bytes: svg, mime: 'image/svg+xml' }, 'u1', d)
+    expect(d.blobs.shas()).toEqual([sha256Hex(svg)])
+    expect(await readCompanyLogoOriginal(d)).toBeNull()
+    await saveCompanyLogo({ bytes: png, mime: 'image/png', original: { bytes: original, mime: 'image/jpeg', crop } }, 'u1', d)
+    await removeCompanyLogo('u1', d)
+    expect(d.blobs.shas()).toEqual([])
   })
 
   it('fails loud when the current logo is missing on disk', async () => {

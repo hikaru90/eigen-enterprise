@@ -53,6 +53,29 @@ describe.skipIf(!url)('company profile store (Postgres)', () => {
     expect(await store.get()).toMatchObject({ name: 'Kindred Labs', logo: null })
   })
 
+  it('keeps a cropped logo’s original and crop, and hands them back when replaced', async () => {
+    const store = dbCompanyProfileStore(db)
+    const cropped = { sha256: sha('c'), mime: 'image/png' as const, original: { sha256: sha('d'), mime: 'image/jpeg' as const, crop: { left: -12.5, top: 3.25, size: 400 } } }
+    await store.setLogo(cropped, 'u1')
+    expect((await store.get())?.logo).toEqual(cropped)
+    expect(await store.setLogo({ sha256: sha('e'), mime: 'image/svg+xml' }, 'u1')).toEqual({ previous: cropped })
+    expect((await store.get())?.logo).toEqual({ sha256: sha('e'), mime: 'image/svg+xml' })
+  })
+
+  it('the table refuses half an original, or an original without a logo', async () => {
+    await expect(
+      sql`insert into company_profile (logo_sha256, logo_mime, logo_original_sha256, updated_by) values (${sha('a')}, 'image/png', ${sha('b')}, 'x')`,
+    ).rejects.toThrow(/company_profile_logo_original_set_check/)
+    await expect(
+      sql`insert into company_profile (logo_original_sha256, logo_original_mime, logo_crop_left, logo_crop_top, logo_crop_size, updated_by)
+          values (${sha('b')}, 'image/png', 0, 0, 10, 'x')`,
+    ).rejects.toThrow(/company_profile_logo_original_set_check/)
+    await expect(
+      sql`insert into company_profile (logo_sha256, logo_mime, logo_original_sha256, logo_original_mime, logo_crop_left, logo_crop_top, logo_crop_size, updated_by)
+          values (${sha('a')}, 'image/png', ${sha('b')}, 'image/svg+xml', 0, 0, 10, 'x')`,
+    ).rejects.toThrow(/company_profile_logo_original_mime_check/)
+  })
+
   it('the table refuses what the app never writes', async () => {
     await expect(sql`insert into company_profile (id, updated_by) values ('other', 'x')`).rejects.toThrow(/company_profile_singleton/)
     await expect(sql`insert into company_profile (name, updated_by) values ('  ', 'x')`).rejects.toThrow(/company_profile_name_check/)

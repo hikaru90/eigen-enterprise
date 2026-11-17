@@ -75,6 +75,7 @@ export default defineConfig({
     include: [
       'src/lib/components/smoke.svelte.spec.ts',
       'src/lib/components/settings/speech-status.svelte.spec.ts',
+      'src/lib/components/settings/logo-cropper.svelte.spec.ts',
       'src/routes/(nucleus)/brand/material/flyer-preview.svelte.spec.ts',
       'src/routes/(nucleus)/brand/material/banner-preview.svelte.spec.ts',
       'src/routes/(nucleus)/brand/material/poster-preview.svelte.spec.ts',

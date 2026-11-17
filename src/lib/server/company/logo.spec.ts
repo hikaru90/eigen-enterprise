@@ -1,7 +1,7 @@
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import { MAX_LOGO_BYTES } from '$lib/company/identity'
-import { checkLogo, MAX_LOGO_PX, MIN_LOGO_PX, resolveCompanyLogoDir } from './logo'
+import { checkLogo, cropLogo, CROPPED_LOGO_PX, MAX_LOGO_PX, MIN_LOGO_PX, resolveCompanyLogoDir } from './logo'
 
 const raster = (format: 'png' | 'jpeg' | 'webp', width = 64, height = 32) =>
   sharp({ create: { width, height, channels: 3, background: '#336699' } })
@@ -106,6 +106,59 @@ describe('checkLogo — SVG', () => {
       error: 'The file is not an SVG image.',
     })
     expect(await checkLogo(await raster('png'), 'image/svg+xml')).toMatchObject({ ok: false, status: 400 })
+  })
+})
+
+describe('cropLogo', () => {
+  /** 400×200: red on the left half, blue on the right. */
+  const halves = () =>
+    sharp({ create: { width: 400, height: 200, channels: 3, background: '#ff0000' } })
+      .composite([{ input: { create: { width: 200, height: 200, channels: 3, background: '#0000ff' } }, left: 200, top: 0 }])
+      .png()
+      .toBuffer()
+      .then((b) => new Uint8Array(b))
+
+  async function pixel(bytes: Uint8Array, x: number, y: number) {
+    const { data, info } = await sharp(Buffer.from(bytes)).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    const at = (y * info.width + x) * 4
+    return [...data.subarray(at, at + 4)]
+  }
+
+  it('cuts the square out as a PNG, transparent where it reaches past the image', async () => {
+    const cut = await cropLogo(await halves(), { left: 0, top: -100, size: 400 })
+    expect(cut).toMatchObject({ ok: true, mime: 'image/png', width: 400, height: 400 })
+    if (!cut.ok) return
+    expect((await sharp(Buffer.from(cut.bytes)).metadata()).format).toBe('png')
+    expect(await pixel(cut.bytes, 200, 20)).toEqual([0, 0, 0, 0])
+    expect(await pixel(cut.bytes, 100, 200)).toEqual([255, 0, 0, 255])
+    expect(await pixel(cut.bytes, 300, 200)).toEqual([0, 0, 255, 255])
+  })
+
+  it('a zoomed-in crop shows only that part of the image', async () => {
+    const cut = await cropLogo(await halves(), { left: 250, top: 50, size: 100 })
+    expect(cut).toMatchObject({ ok: true, width: 100, height: 100 })
+    if (cut.ok) expect(await pixel(cut.bytes, 50, 50)).toEqual([0, 0, 255, 255])
+  })
+
+  it(`is at most ${CROPPED_LOGO_PX} pixels wide`, async () => {
+    const big = new Uint8Array(await sharp({ create: { width: 2000, height: 1000, channels: 3, background: '#336699' } }).jpeg().toBuffer())
+    expect(await cropLogo(big, { left: 0, top: 0, size: 1000 })).toMatchObject({ ok: true, width: CROPPED_LOGO_PX, height: CROPPED_LOGO_PX })
+  })
+
+  it('crops the image the way it is shown: turned upright by its EXIF orientation', async () => {
+    // Stored 40×20, shown 20×40 (orientation 6: turn 90° clockwise).
+    const turned = new Uint8Array(await sharp({ create: { width: 40, height: 20, channels: 3, background: '#336699' } }).jpeg().withMetadata({ orientation: 6 }).toBuffer())
+    expect(await cropLogo(turned, { left: 0, top: 20, size: 20 })).toMatchObject({ ok: true, width: 20, height: 20 })
+    expect(await cropLogo(turned, { left: 20, top: 0, size: 20 })).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('refuses a crop it cannot use, saying why', async () => {
+    expect(await cropLogo(await halves(), { left: 0, top: 0, size: 4 })).toEqual({
+      ok: false,
+      status: 400,
+      error: 'The crop is too small (at least 16 pixels of the image).',
+    })
+    expect(await cropLogo(await halves(), 'nonsense')).toMatchObject({ ok: false, status: 400 })
   })
 })
 

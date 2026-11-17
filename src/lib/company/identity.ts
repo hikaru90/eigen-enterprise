@@ -15,6 +15,12 @@ export type LogoType = (typeof LOGO_TYPES)[number]
 
 export const MAX_LOGO_BYTES = 1024 * 1024
 
+/** Raster logos are zoomed and positioned before they are stored; an SVG is kept as drawn. */
+export const CROPPABLE_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const
+export type CroppableLogoType = (typeof CROPPABLE_LOGO_TYPES)[number]
+export const isCroppableLogoType = (v: unknown): v is CroppableLogoType =>
+  typeof v === 'string' && (CROPPABLE_LOGO_TYPES as readonly string[]).includes(v)
+
 export const isLogoType = (v: unknown): v is LogoType =>
   typeof v === 'string' && (LOGO_TYPES as readonly string[]).includes(v)
 
