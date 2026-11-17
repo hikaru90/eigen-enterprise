@@ -9,6 +9,11 @@ vi.mock('$lib/server/llm/stt-client', () => ({
   transcribeAudio: transcribeAudioMock,
 }))
 
+// the company's vocabulary goes with every kept transcription (be1ad246)
+vi.mock('$lib/server/llm/stt-vocabulary', () => ({
+  loadTranscriptionPrompt: vi.fn(async () => 'Names that may come up: Ony.'),
+}))
+
 function makeAudioFile(size: number, type = 'audio/webm') {
   return new File([new Uint8Array(size)], 'recording.webm', { type })
 }
@@ -57,7 +62,7 @@ describe('POST /api/capture/transcribe', () => {
       expect(transcribeAudioMock).toHaveBeenCalledWith({
         userId: 'u1',
         contentOrigin: 'memory',
-        audio: expect.objectContaining({ format: 'webm', language: 'en' }),
+        audio: expect.objectContaining({ format: 'webm', language: 'en', prompt: 'Names that may come up: Ony.' }),
       })
     })
 
@@ -154,7 +159,7 @@ describe('POST /api/capture/transcribe', () => {
     expect(transcribeAudioMock).toHaveBeenCalledWith({
       userId: 'u1',
       contentOrigin: 'memory',
-      audio: expect.objectContaining({ format: 'webm', language: 'en' }),
+      audio: expect.objectContaining({ format: 'webm', language: 'en', prompt: 'Names that may come up: Ony.' }),
     })
   })
 

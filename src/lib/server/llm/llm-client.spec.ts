@@ -919,6 +919,32 @@ describe('llmCreateTranscription', () => {
     expect(body.input_audio.data).toBe(Buffer.from([1, 2, 3]).toString('base64'))
   })
 
+  it('passes the vocabulary prompt to OpenAI through the provider passthrough, never as a forced language', async () => {
+    const fetchMock = vi.fn(async () => response(true, 200, { text: 'hallo', usage: { cost: 0.001 } }))
+    vi.stubGlobal('fetch', fetchMock)
+    await llmCreateTranscription({
+      userId: 'u1',
+      model: 'openai/gpt-4o-transcribe',
+      audio: { bytes: new Uint8Array([1]), format: 'webm', prompt: 'Names that may come up: Ony.' },
+    })
+    const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as Record<string, unknown>
+    expect(body.provider).toEqual({ options: { openai: { prompt: 'Names that may come up: Ony.' } } })
+    expect(body).not.toHaveProperty('language')
+    expect(body).not.toHaveProperty('prompt')
+  })
+
+  it('no prompt: no provider options at all', async () => {
+    const fetchMock = vi.fn(async () => response(true, 200, { text: 'x', usage: { cost: 0.001 } }))
+    vi.stubGlobal('fetch', fetchMock)
+    await llmCreateTranscription({
+      userId: 'u1',
+      model: 'openai/gpt-4o-transcribe',
+      audio: { bytes: new Uint8Array([1]), format: 'webm' },
+    })
+    const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as Record<string, unknown>
+    expect(body).not.toHaveProperty('provider')
+  })
+
   it('logs OpenRouter STT cost from usage.cost in activity', async () => {
     const fetchMock = vi.fn(async () =>
       response(true, 200, { text: 'hello', usage: { cost: 0.0035 } }),

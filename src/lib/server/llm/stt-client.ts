@@ -2,20 +2,35 @@ import type { LlmContentOrigin } from './types'
 import { llmCreateTranscription } from './llm-client'
 
 /**
- * OpenRouter model id for speech-to-text (`/audio/transcriptions`) — fixed in code, there is
- * no environment override (as in eigen). It must have live endpoints that accept browser
- * `webm`/opus and Safari `m4a` uploads. Qwen3 ASR 0.6B is eigen's choice (2026-10-28; 1.7b hung
- * or was slow). `qwen/qwen3-asr-flash-2026-02-10`, used here before, has no OpenRouter
- * endpoints, so every clip failed with "Couldn't transcribe the recording" (2026-11-11).
- * Known trade-off: 0.6B can invent text on quiet audio — stopped before the upload by the
- * browser's check (`$lib/voice/clip-speech.ts`) and judged by an LLM after (`stt-judge.ts`).
+ * OpenRouter model ids for speech-to-text (`/audio/transcriptions`) — fixed in code, there is
+ * no environment override (as in eigen). Each must have live endpoints that accept browser
+ * `webm`/opus and Safari `m4a` uploads (checked at boot and on Settings → AI provider).
+ *
+ * The transcript a person keeps: `openai/gpt-4o-transcribe` (2026-11-17, Contribute be1ad246 —
+ * "some words aren't recognised" on German dictation). It is the most accurate model OpenRouter
+ * serves for German and for names, answers a 1-minute clip in a few seconds, and takes a
+ * vocabulary prompt (`stt-vocabulary.ts`). It replaced `qwen/qwen3-asr-0.6b` (eigen's pick for
+ * cost: the smallest model, weakest on German and on names, and prone to inventing text on
+ * quiet audio — still stopped before the upload by `$lib/voice/clip-speech.ts` and judged after
+ * by `stt-judge.ts`).
  */
-export const STT_MODEL = 'qwen/qwen3-asr-0.6b'
+export const STT_MODEL = 'openai/gpt-4o-transcribe'
+
+/**
+ * Live previews while a Memory voice note records (`/api/capture/transcribe-chunk`): the
+ * whole clip so far is re-sent every few seconds and each preview is replaced by the final
+ * transcript, so the cheapest live model does it — the final text always comes from
+ * {@link STT_MODEL}.
+ */
+export const STT_PREVIEW_MODEL = 'qwen/qwen3-asr-0.6b'
 
 export type SttAudioInput = {
   bytes: Uint8Array
   format: string
+  /** ISO-639-1: forces the language. Only sent when a person chose it — never a default. */
   language?: string
+  /** Spelling/vocabulary context (`stt-vocabulary.ts`); never forces a language. */
+  prompt?: string
 }
 
 /**
@@ -47,10 +62,12 @@ export async function transcribeAudio(input: {
   audio: SttAudioInput
   /** `'memory'` for a voice note to Memory: the transcript is never logged. */
   contentOrigin?: LlmContentOrigin
+  /** `'preview'`: a live preview that the final transcript replaces ({@link STT_PREVIEW_MODEL}). */
+  pass?: 'final' | 'preview'
 }): Promise<string> {
   const body = await llmCreateTranscription({
     userId: input.userId,
-    model: STT_MODEL,
+    model: input.pass === 'preview' ? STT_PREVIEW_MODEL : STT_MODEL,
     audio: input.audio,
     contentOrigin: input.contentOrigin,
   })

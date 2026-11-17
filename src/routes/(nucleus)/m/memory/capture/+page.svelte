@@ -964,7 +964,6 @@
         {/if}
         <div class="flex items-center gap-2">
           <VoiceInputButton
-            language={data.preferredLanguage}
             disabled={loading}
             bind:stopRef={voiceStopFn}
             onstart={() => {

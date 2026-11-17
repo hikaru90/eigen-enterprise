@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cancelSpeak, isVoiceEnabled, setVoiceEnabled, speak } from './tts'
+import { cancelSpeak, isVoiceEnabled, onVoiceEnabledChange, setVoiceEnabled, speak } from './tts'
 
 /**
  * The assistant speaks through the LLM gateway (/api/tts → qwen tts) — the
@@ -151,6 +151,38 @@ describe('tts — the assistant speaks (gateway voice)', () => {
     cancelSpeak()
     // The pending request was aborted via its signal; nothing played.
     expect(audioElement.played).toBe(0)
+  })
+
+  describe('switching the voice off (b34ce781: reading aloud is toggleable)', () => {
+    it('stops what is being read right now', async () => {
+      speak('a long answer')
+      await vi.waitFor(() => expect(audioElement.played).toBe(1))
+      setVoiceEnabled(false)
+      expect(audioElement.pause).toHaveBeenCalledTimes(1)
+    })
+
+    it('switched off while the voice is still loading: it never plays', async () => {
+      let answer: (res: Response) => void = () => {}
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => new Promise<Response>((resolve) => (answer = resolve))),
+      )
+      speak('slow gateway')
+      setVoiceEnabled(false)
+      answer(new Response(new Blob([new Uint8Array([1])]), { status: 200 }))
+      await new Promise((r) => setTimeout(r, 10))
+      expect(audioElement.played).toBe(0)
+    })
+
+    it('tells every toggle (settings menu, chat) about the change, until it unsubscribes', () => {
+      const seen: boolean[] = []
+      const unsubscribe = onVoiceEnabledChange((on) => seen.push(on))
+      setVoiceEnabled(false)
+      setVoiceEnabled(true)
+      unsubscribe()
+      setVoiceEnabled(false)
+      expect(seen).toEqual([false, true])
+    })
   })
 
   describe('the speaker chosen for this browser (shared with calls)', () => {

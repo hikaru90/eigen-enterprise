@@ -12,18 +12,21 @@
   import ChatMarkdown from '$lib/components/chat-markdown.svelte'
   import { Button } from '$lib/components/ui/button'
   import VoiceInputButton from '$lib/components/voice-input-button.svelte'
+  import VoiceOutputToggle from './voice-output-toggle.svelte'
 
   /**
    * The Chat tab: the current conversation with the company's agent —
    * transcript (markdown, quiet tool lines, approval cards) and the composer
    * (voice, send/stop). Behavior moved unchanged from the old chat at `/`.
    */
-  let { assistant, language }: { assistant: AssistantController; language: string } = $props()
+  let { assistant }: { assistant: AssistantController } = $props()
 
   const chat = $derived(assistant.chat)
   let inputEl = $state<HTMLInputElement | undefined>(undefined)
   let transcriptEl = $state<HTMLDivElement | undefined>(undefined)
   let voiceStopFn = $state<(() => void) | undefined>(undefined)
+  /** Why the last voice input failed, shown under the composer until the next try. */
+  let voiceError = $state<string | null>(null)
 
   const micSupported =
     typeof navigator !== 'undefined' &&
@@ -188,12 +191,13 @@
     >
       <div title={micSupported ? undefined : 'Voice input is not available in this browser'}>
         <VoiceInputButton
-          {language}
           disabled={chat.busy}
           bind:stopRef={voiceStopFn}
           ontranscript={handleVoiceTranscript}
+          onstart={() => (voiceError = null)}
           onerror={(message) => {
             console.error('[assistant] voice input failed', message)
+            voiceError = message
           }}
         />
       </div>
@@ -207,6 +211,7 @@
         class="min-w-0 flex-1 border-0 bg-transparent px-1.5 text-sm text-foreground shadow-none outline-none placeholder:text-muted-foreground"
         disabled={chat.busy}
       />
+      <VoiceOutputToggle />
       <Button
         type="button"
         onclick={chat.busy ? () => chat.stop() : send}
@@ -221,6 +226,9 @@
         {/if}
       </Button>
     </div>
+    {#if voiceError}
+      <p class="mt-1.5 px-1 text-xs text-destructive" role="alert" data-testid="assistant-voice-error">{voiceError}</p>
+    {/if}
     {#if chat.isAdmin && chat.approvalMode}
       <div class="mt-2 px-1">
         <ApprovalModeSelect

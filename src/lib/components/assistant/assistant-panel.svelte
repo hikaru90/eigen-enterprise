@@ -14,7 +14,7 @@
    * the edge), collapsible — and a full-screen sheet on phones. It lives in
    * the shell, so the conversation survives client-side navigation.
    */
-  let { assistant, language }: { assistant: AssistantController; language: string } = $props()
+  let { assistant }: { assistant: AssistantController } = $props()
 
   const tabs: Array<{ id: AssistantTab; label: string }> = [
     { id: 'chat', label: 'Chat' },
@@ -175,7 +175,7 @@
       class="flex min-h-0 flex-1 flex-col"
     >
       {#if assistant.tab === 'chat'}
-        <AssistantChatView {assistant} {language} />
+        <AssistantChatView {assistant} />
       {:else if assistant.tab === 'history'}
         <AssistantHistory {assistant} />
       {:else}

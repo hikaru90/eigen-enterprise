@@ -15,8 +15,11 @@ export const DICTATION_MISSING_MESSAGE: Record<SpeechMissing, string> = {
   platform_key: 'Dictation isn’t set up on this server yet (no platform OpenRouter key).',
 }
 
-/** dictation = speech to text; voice = the assistant speaking. */
-export type SpeechFeature = 'dictation' | 'voice'
+/**
+ * dictation = speech to text; dictation_preview = the live preview while a Memory voice note
+ * records (replaced by the dictation model's final text); voice = the assistant speaking.
+ */
+export type SpeechFeature = 'dictation' | 'dictation_preview' | 'voice'
 /** One speech model's live endpoints on OpenRouter, or why that could not be checked. */
 export type SpeechModelStatus =
   | { feature: SpeechFeature; model: string; endpoints: number; providers: string[] }
