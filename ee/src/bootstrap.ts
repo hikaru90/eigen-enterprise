@@ -143,6 +143,21 @@ export const aptInstallArgs = (pkgs: string[]) => [
 const apt = (sys: System, pkgs: string[]) => mustRun(sys, 'env', aptInstallArgs(pkgs), { timeoutMs: 900_000 })
 
 /** Restart Caddy only when its unit changed; a re-run otherwise keeps it serving (no dropped requests). */
+/**
+ * Debian's postgresql-common (278, trixie) enables `pg_receivewal@<cluster>` for every cluster. ee never
+ * archives WAL that way (backups are ee's own, src/backup), and the slot it creates on first start stays
+ * inactive once ee's pg_hba.conf has no replication line, so Postgres keeps every WAL file for it and the
+ * disk fills. Masked (a package upgrade cannot switch it on again), stopped, and its own slot dropped.
+ */
+export function strayWalArchiverOff(pg: string): { mask: string[]; stop: string[]; dropSlotSql: string } {
+  const unit = `pg_receivewal@${pg}-main.service`
+  return {
+    mask: ['mask', '--quiet', unit],
+    stop: ['stop', unit],
+    dropSlotSql: "select pg_drop_replication_slot(slot_name) from pg_replication_slots where slot_name = 'pg_receivewal_service' and not active",
+  }
+}
+
 export function caddyUnitAction(previous: string | null, next: string): 'restart' | 'start' {
   return previous === next ? 'start' : 'restart'
 }
@@ -225,7 +240,14 @@ async function configurePostgres(sys: System): Promise<void> {
   if (changed) await mustRun(sys, 'systemctl', ['restart', 'postgresql'])
   else await mustRun(sys, 'systemctl', ['start', 'postgresql'])
   for (let i = 0; i < 30; i++) {
-    if ((await sys.run('runuser', ['-u', 'postgres', '--', 'pg_isready', '-q'])).code === 0) return
+    if ((await sys.run('runuser', ['-u', 'postgres', '--', 'pg_isready', '-q'])).code === 0) {
+      const off = strayWalArchiverOff(PG)
+      await mustRun(sys, 'systemctl', off.mask)
+      // Not loaded on a host whose postgresql-common never shipped it: nothing to stop then.
+      await sys.run('systemctl', off.stop)
+      await mustRun(sys, 'runuser', ['-u', 'postgres', '--', 'psql', '-v', 'ON_ERROR_STOP=1', '-qAtc', off.dropSlotSql])
+      return
+    }
     await sys.sleep(1000)
   }
   throw new Error('Postgres did not become ready within 30s (journalctl -u postgresql@16-main)')

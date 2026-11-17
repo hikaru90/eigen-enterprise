@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-17 — Stray WAL archiver switched off on every box (found on the first hosted container)
+
+- Found on `test1` / `test2` (Netcup container host, golden image `ee-golden-ct`): Debian's `postgresql-common` 278 (trixie) enables `pg_receivewal@16-main` through `postgresql@.service.wants`. On first start it created the replication slot `pg_receivewal_service`; once ee writes its own `pg_hba.conf` (no replication line) the archiver can never connect again, the slot stays inactive and Postgres keeps every WAL file for it — the disk would fill over time (18 MB held after an hour on an idle box). Production (PGDG `postgresql-common` 293) does not have it.
+- `ee bootstrap` → `configurePostgres` now masks and stops `pg_receivewal@<pg>-main` (masked, so a package upgrade cannot enable it again) and drops the `pg_receivewal_service` slot only while it is inactive (`strayWalArchiverOff`, spec in `bootstrap-state.spec.ts`). ee never archives WAL that way; its backups are `src/backup`. Every `ee upgrade` re-runs bootstrap, so existing boxes heal with the next release.
+- ee: 310 tests, lint 0 errors, tsc only the 13 known `daemon.spec.ts` errors. Not released yet.
+- Also found on the hosted box, fixed in eigenEnterprise-cloud (`c836cb9`): the control plane sent the backup prefix `companies/<id>/`; ee's S3 target rule refuses the trailing slash, so no backup ran. Follow-up worth doing: give `fleet-protocol.ts` the same prefix rule as `src/backup/s3.ts`, so the control plane's own parse refuses it.
+
 ## 2026-11-17 — Matryoshka embeddings: Qwen3 shortened to 1536 (not released)
 
 - **Decision (owner, 2026-11-17):** hosted companies embed with `qwen/qwen3-embedding-8b` (4096-dim natively, Matryoshka-trained). Storage and the pgvector index stay at 1536 (4096 is over pgvector's 2000-dim index limit).

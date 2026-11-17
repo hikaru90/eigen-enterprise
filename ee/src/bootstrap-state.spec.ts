@@ -5,6 +5,7 @@ import {
   bootstrapRouting,
   caddyUnitAction,
   parseRtcPortsFlag,
+  strayWalArchiverOff,
   parseTrustedProxyFlag,
   resolveNodeIp,
   resolveRtcPorts,
@@ -129,5 +130,19 @@ describe('re-runs keep the sites up (upgrade = re-run)', () => {
     const args = aptInstallArgs(['postgresql-16', 'caddy'])
     expect(args).toContain('--no-upgrade')
     expect(args.slice(-2)).toEqual(['postgresql-16', 'caddy'])
+  })
+})
+
+describe('the WAL archiver Debian switches on by itself (never ee\'s; its slot would keep every WAL)', () => {
+  it('masks and stops the cluster\'s pg_receivewal unit, so a package upgrade cannot switch it on again', () => {
+    const off = strayWalArchiverOff('16')
+    expect(off.mask).toEqual(['mask', '--quiet', 'pg_receivewal@16-main.service'])
+    expect(off.stop).toEqual(['stop', 'pg_receivewal@16-main.service'])
+  })
+  it('drops only the archiver\'s own slot, and only while nothing is using it', () => {
+    const { dropSlotSql } = strayWalArchiverOff('16')
+    expect(dropSlotSql).toContain("slot_name = 'pg_receivewal_service'")
+    expect(dropSlotSql).toContain('not active')
+    expect(dropSlotSql).toMatch(/pg_drop_replication_slot\(slot_name\)/)
   })
 })
