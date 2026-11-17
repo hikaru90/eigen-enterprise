@@ -3,6 +3,7 @@
   import { markHandoffPending } from '$lib/components/assistant/handoff'
   import HomeSettingsMenu from '$lib/components/home-settings-menu.svelte'
   import WelcomeWizard from '$lib/components/welcome-wizard.svelte'
+  import { saveHiddenTiles } from '$lib/dashboard/save-tiles'
   import { docTitle } from '$lib/shell/title'
   import Dashboard from './dashboard.svelte'
 
@@ -61,5 +62,7 @@
     navItems={data.shell.nav.items}
     capabilities={data.shell.capabilities}
     providerMissing={data.providerMissing}
+    hiddenTiles={data.hiddenTiles}
+    saveHiddenTiles={(hidden) => saveHiddenTiles(fetch, hidden)}
   />
 {/if}

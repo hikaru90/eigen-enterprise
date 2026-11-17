@@ -40,6 +40,8 @@ const loadDashboardMock = vi.hoisted(() =>
   vi.fn(async () => ({ overview: { modules: [], actions: [], approvals: [] }, backup: null })),
 )
 vi.mock('$lib/server/overview/dashboard', () => ({ loadDashboard: loadDashboardMock }))
+const hiddenTilesMock = vi.hoisted(() => vi.fn(async () => ['apps']))
+vi.mock('$lib/server/dashboard/hidden-tiles', () => ({ getHiddenTiles: hiddenTilesMock }))
 
 /** Stand-in for event.fetch against GET /api/approvals/mode (built by another workstream). */
 function modeFetch(res: { ok: boolean; body?: unknown }) {
@@ -281,8 +283,9 @@ describe('nucleus page server load', () => {
   it('the dashboard loads only once the first-run flows are done', async () => {
     isCompanyProviderReadyMock.mockResolvedValue(false)
     const first = await load(withFetch({ locals: { user: { id: 'u1' } }, url: new URL('https://os.test/') } as never))
-    expect(first).toMatchObject({ showWelcome: true, dashboard: null })
+    expect(first).toMatchObject({ showWelcome: true, dashboard: null, hiddenTiles: [] })
     expect(loadDashboardMock).not.toHaveBeenCalled()
+    expect(hiddenTilesMock).not.toHaveBeenCalled()
 
     isCompanyProviderReadyMock.mockResolvedValue(true)
     getDbMock.mockReturnValue(selectChain({ welcomeCompletedAt: new Date() }))
@@ -292,7 +295,10 @@ describe('nucleus page server load', () => {
       showWelcome: false,
       needsOnboarding: false,
       dashboard: { overview: { modules: [], actions: [], approvals: [] }, backup: null },
+      // The tiles this person closed (Contribute 06894ad7), from their preference.
+      hiddenTiles: ['apps'],
     })
+    expect(hiddenTilesMock).toHaveBeenCalledWith('u1')
   })
 
   it('greets by the first name of the account, else of the onboarding name', async () => {

@@ -601,6 +601,8 @@ export const userPreference = pgTable(
     welcomeCompletedAt: timestamp('welcome_completed_at'),
     /** The name given during the boot sequence — "Hello, {name}." NULL = never asked/skipped. */
     displayName: text('display_name'),
+    /** Dashboard tiles this person closed with their × (src/lib/dashboard/tiles.ts). Empty = all shown. */
+    dashboardHiddenTiles: jsonb('dashboard_hidden_tiles').$type<string[]>().notNull().default([]),
     updatedAt: timestamp('updated_at')
       .defaultNow()
       .$onUpdate(() => new Date())
