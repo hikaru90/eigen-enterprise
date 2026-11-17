@@ -11,6 +11,7 @@ import { resolveBillingUserId } from '$lib/server/db/tenant-context'
 import { env } from '$lib/server/env/private-env'
 import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
 import { gatewayReportedCostUsdForLog, type TokenUsage } from '$lib/server/llm/gateway-cost'
+import { fitEmbeddingResponse } from '$lib/server/llm/matryoshka'
 import {
   assertEurouterGatewayConfigured,
   routingRuleLookupErrorMessage,
@@ -1230,7 +1231,8 @@ async function llmCreateEmbeddingsInner(input: {
         durationMs: Date.now() - attemptStart,
       })
 
-      return json
+      // A gateway may ignore `dimensions` for a Matryoshka model (Qwen3: 4096 natively).
+      return fitEmbeddingResponse(routing.model, json, EMBEDDING_DIMENSIONS)
     } catch (err) {
       lastError = err
       const message = err instanceof Error ? err.message : String(err)

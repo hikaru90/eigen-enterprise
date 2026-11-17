@@ -327,6 +327,22 @@ describe('llm client retries', () => {
     )
   })
 
+  it('asks for 1536 dims and shortens a Matryoshka model that ignored it (Qwen3: 4096)', async () => {
+    mockEnv.LLM_MODEL_EMBEDDING = 'qwen/qwen3-embedding-8b'
+    const fetchMock = vi.fn(async () =>
+      response(true, 200, { data: [{ embedding: Array.from({ length: 4096 }, () => 0.5) }] }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const out = (await llmCreateEmbeddings({ userId: 'u1', input: 'hello' })) as {
+      data: { embedding: number[] }[]
+    }
+    const sent = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)
+    expect(sent).toMatchObject({ model: 'qwen/qwen3-embedding-8b', dimensions: 1536 })
+    expect(out.data[0]!.embedding).toHaveLength(1536)
+    expect(Math.hypot(...out.data[0]!.embedding)).toBeCloseTo(1, 10)
+  })
+
   it('embedding succeeds after retries', async () => {
     const fetchMock = vi
       .fn()

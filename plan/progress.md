@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-17 — Matryoshka embeddings: Qwen3 shortened to 1536 (not released)
+
+- **Decision (owner, 2026-11-17):** hosted companies embed with `qwen/qwen3-embedding-8b` (4096-dim natively, Matryoshka-trained). Storage and the pgvector index stay at 1536 (4096 is over pgvector's 2000-dim index limit).
+- `src/lib/server/llm/matryoshka.ts`: we still send `dimensions: 1536`; when the gateway ignores it for a model in an explicit table of Matryoshka-trained models (Qwen3-Embedding 0.6b/4b/8b, OpenAI text-embedding-3-small/large), `llmCreateEmbeddings` keeps the first 1536 values and scales them back to unit length. Any other model with the wrong length still fails loud in `embedding.ts`; never pads; an all-zero prefix throws. Tests: `matryoshka.spec.ts` (7), `llm-client.spec.ts` (request carries 1536, 4096 answer comes back 1536 / unit length).
+- Not verified: whether OpenRouter honors `dimensions` for Qwen3 (no live call made); either way the stored vector is 1536.
+
 ## 2026-11-17 — Contribute board round 7: the open proposals (merges `86c78be` … `5590f41`; not released, not on the box, board statuses unchanged)
 
 Owner: "take the contributions of the cerberusblue mcp and integrate them". Board read via the `cerberusblue` MCP: 28 open. Already built in round 6 (merged, never released): `495e40bb`, `d7080d17`, `8c6a0cb7`, `df2f73e7`, `ff714496`, `ccb12fab`. The five in-progress multi-part items (plugins, a11y, calendar, brand extract, brand material) not touched. The remaining 15 went to seven worktree streams, all merged.
