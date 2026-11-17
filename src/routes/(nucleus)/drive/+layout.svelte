@@ -10,12 +10,15 @@
   import UsersIcon from '@lucide/svelte/icons/users'
   import { resolve } from '$app/paths'
   import { page } from '$app/state'
+  import DrivePrivacyNote from '$lib/components/drive/drive-privacy-note.svelte'
   import StatusPill from '$lib/components/page/status-pill.svelte'
+  import InfoPopover from '$lib/components/ui/info-popover.svelte'
   import { driveSection, GITHUB_SOURCE, sourceSection, type DriveSection } from '$lib/drive/sections'
+  import { ownerModuleBlurb } from '$lib/shell/module-copy'
 
   /**
    * The Drive area as an app (P-3): full width and height, no centred frame.
-   * A left rail — the one `h1`, status, My drive · Shared with me · Messages
+   * A left rail — the one `h1`, its "?" (what Drive is, who can see it), status, My drive · Shared with me · Messages
    * · one section per read-only source root (e.g. GitHub, listed from the
    * roots that exist; "Connect GitHub" while there is no GitHub folder and the
    * person may connect one) · Archived · Trash, the storage note — and the browser
@@ -71,6 +74,10 @@
   >
     <div class="flex items-center gap-2 md:px-2">
       <h1 class="text-lg font-semibold tracking-tight">{data.drive.name}</h1>
+      <InfoPopover label="About {data.drive.name}" testid="drive-info">
+        <p>{ownerModuleBlurb('drive', '')}</p>
+        <DrivePrivacyNote />
+      </InfoPopover>
       <StatusPill label={data.drive.active ? 'Active' : 'Not active'} on={data.drive.active} />
     </div>
     <nav

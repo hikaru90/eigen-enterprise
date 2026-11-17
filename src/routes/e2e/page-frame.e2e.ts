@@ -68,7 +68,8 @@ test('every area page wears the one page header', async ({ page, context }) => {
     await page.goto(path)
     await expect(header(page).getByRole('heading', { level: 1, name: title })).toBeVisible()
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
-    await expect(header(page).getByTestId('page-description')).toBeVisible()
+    // The dashboard keeps its one-line subline; every area's explanation sits behind the "?" by its title.
+    await expect(header(page).getByTestId(path === '/' ? 'page-description' : 'page-info')).toBeVisible()
     if (nav) {
       // Tabs sit BELOW the title, exactly one current.
       const tabs = page.getByTestId(nav)

@@ -20,7 +20,6 @@
   <PageHeader
     title="Website"
     part="website"
-    description={ownerModuleBlurb('website', '')}
     status={{ label: data.website.active ? 'Active' : 'Not active', on: data.website.active }}
     tabs={WEBSITE_TABS}
     {current}
@@ -28,6 +27,9 @@
     navTestId="website-nav"
     tabTestId={(id) => `website-tab-${id}`}
   >
+    {#snippet info()}
+      <p>{ownerModuleBlurb('website', '')}</p>
+    {/snippet}
     {#snippet actions()}
       {#if page.url.pathname === '/m/website'}
         <Button data-testid="add-app" onclick={() => (addOpen = true)}>

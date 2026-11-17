@@ -25,14 +25,20 @@
   <PageHeader
     title="Email"
     part="email"
-    description="Your inbox and the mailboxes you share. Company mail shows what the company is sending; Setup holds the Amazon SES account, domains, mailboxes, senders, flows, logs and the API."
     {status}
     {tabs}
     {current}
     navLabel="Email sections"
     navTestId="email-nav"
     tabTestId={(id) => `email-tab-${id}`}
-  />
+  >
+    {#snippet info()}
+      <p>
+        Your inbox and the mailboxes you share. Company mail shows what the company is sending; Setup holds the
+        Amazon SES account, domains, mailboxes, senders, flows, logs and the API.
+      </p>
+    {/snippet}
+  </PageHeader>
   {#if current === 'setup'}
     <nav
       class="mt-4 mb-6 flex flex-wrap gap-1"

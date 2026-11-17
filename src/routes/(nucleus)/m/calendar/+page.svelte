@@ -72,7 +72,10 @@
 <svelte:head><title>{docTitle('Calendar')}</title></svelte:head>
 
 <PageFrame testid="calendar-area">
-  <PageHeader title="Calendar" part="calendar" description="Your appointments, and when colleagues are free. Colleagues see only what you choose per event.">
+  <PageHeader title="Calendar" part="calendar">
+    {#snippet info()}
+      <p>Your appointments, and when colleagues are free. Colleagues see only what you choose per event.</p>
+    {/snippet}
     {#snippet actions()}
       <Button onclick={() => oncreate(data.date, null)} data-testid="calendar-new">New event</Button>
     {/snippet}
