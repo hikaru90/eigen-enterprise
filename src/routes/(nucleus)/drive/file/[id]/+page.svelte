@@ -8,7 +8,8 @@
   import LockIcon from '@lucide/svelte/icons/lock'
   import Share2Icon from '@lucide/svelte/icons/share-2'
   import UsersIcon from '@lucide/svelte/icons/users'
-  import { invalidateAll } from '$app/navigation'
+  import XIcon from '@lucide/svelte/icons/x'
+  import { goto, invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
   import ArchiveBanner from '$lib/components/drive/archive-banner.svelte'
   import DocEditor from '$lib/components/drive/doc-editor.svelte'
@@ -16,7 +17,7 @@
   import ShareDialog from '$lib/components/drive/share-dialog.svelte'
   import { Button } from '$lib/components/ui/button'
   import { driveApi, formatSize } from '$lib/drive/api'
-  import { driveItemKind, initialsOf } from '$lib/drive/display'
+  import { datedLabel, driveItemKind, initialsOf } from '$lib/drive/display'
   import { docTitle } from '$lib/shell/title'
 
   /**
@@ -52,7 +53,34 @@
     file: 'File',
   } as const
   const kindLabel = $derived(KIND_LABEL[driveItemKind(data.file)])
+  const dated = $derived(data.file.dated ? datedLabel(data.file.dated) : null)
   let sharing = $state(false)
+
+  /** Closing the viewer goes back to the folder the file is in (or the path's root at the top level). */
+  const back = $derived.by(() => {
+    const parent = data.path.at(-1)
+    return parent
+      ? { href: resolve(`/drive/folder/${parent.id}`), label: parent.name }
+      : { href: data.root.href, label: data.root.label }
+  })
+
+  /** Escape closes the viewer — unless it belongs to a dialog, a field being typed in, or someone else took it. */
+  function onKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Escape' || event.defaultPrevented || sharing) return
+    const target = event.target
+    if (target instanceof Element) {
+      if (target.closest('[role="dialog"], [role="alertdialog"]')) return
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return
+      }
+    }
+    void goto(back.href)
+  }
 
   async function restore(revisionId: string) {
     await driveApi.restoreRevision(data.file.id, revisionId)
@@ -77,6 +105,8 @@
 
 <svelte:head><title>{docTitle(data.file.name, 'Drive')}</title></svelte:head>
 
+<svelte:window onkeydown={onKeydown} />
+
 {#snippet details()}
   <section class="flex flex-col gap-3" data-testid="drive-file-details">
     <h2 class="text-base font-semibold">Details</h2>
@@ -85,6 +115,10 @@
       <dd>{kindLabel}{data.file.mime ? ` · ${data.file.mime}` : ''}</dd>
       <dt class="text-muted-foreground">Size</dt>
       <dd class="tabular-nums">{formatSize(meta.size)}</dd>
+      {#if dated}
+        <dt class="text-muted-foreground">From</dt>
+        <dd data-testid="drive-file-dated-detail">{dated.full}</dd>
+      {/if}
       <dt class="text-muted-foreground">Changed</dt>
       <dd>{fmt(meta.updatedAt)}</dd>
       <dt class="text-muted-foreground">Owner</dt>
@@ -135,41 +169,55 @@
   <header
     class="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3 sm:px-6"
   >
-    <div class="min-w-0">
-      <nav
-        aria-label="Folder path"
-        class="flex flex-wrap items-center gap-1 text-sm"
-        data-testid="drive-path"
+    <div class="flex min-w-0 items-start gap-2">
+      <a
+        href={back.href}
+        class="-ml-1.5 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        aria-label={`Close and go back to ${back.label}`}
+        title={`Close (Esc) — back to ${back.label}`}
+        data-testid="drive-file-close"
       >
-        <a
-          href={data.root.href}
-          class="text-muted-foreground hover:text-foreground"
-          data-testid="drive-path-root">{data.root.label}</a
+        <XIcon class="size-5" aria-hidden="true" />
+      </a>
+      <div class="min-w-0">
+        <nav
+          aria-label="Folder path"
+          class="flex flex-wrap items-center gap-1 text-sm"
+          data-testid="drive-path"
         >
-        {#each data.path as crumb (crumb.id)}
-          <span class="text-muted-foreground">/</span>
           <a
-            href={resolve(`/drive/folder/${crumb.id}`)}
-            class="text-muted-foreground hover:text-foreground">{crumb.name}</a
+            href={data.root.href}
+            class="text-muted-foreground hover:text-foreground"
+            data-testid="drive-path-root">{data.root.label}</a
           >
-        {/each}
-      </nav>
-      <h2 class="mt-0.5 flex min-w-0 items-center gap-2 text-lg font-semibold">
-        <span class="truncate">{data.file.name}</span>
-        {#if data.described.readOnlyFrom}
-          <span
-            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-xs font-normal text-muted-foreground"
-            title={`Comes from ${data.described.readOnlyFrom}; change it there`}
-            data-testid="drive-readonly-badge"
-          >
-            <LockIcon class="size-3" aria-hidden="true" />
-            {data.described.readOnlyFrom} · read-only
-          </span>
-        {/if}
-      </h2>
-      <p class="text-sm text-muted-foreground" data-testid="drive-file-meta">
-        {`${formatSize(meta.size)} · changed ${fmt(meta.updatedAt)}${data.canEdit ? '' : ' · view only'}`}
-      </p>
+          {#each data.path as crumb (crumb.id)}
+            <span class="text-muted-foreground">/</span>
+            <a
+              href={resolve(`/drive/folder/${crumb.id}`)}
+              class="text-muted-foreground hover:text-foreground">{crumb.name}</a
+            >
+          {/each}
+        </nav>
+        <h2 class="mt-0.5 flex min-w-0 items-center gap-2 text-lg font-semibold">
+          <span class="truncate">{data.file.name}</span>
+          {#if data.described.readOnlyFrom}
+            <span
+              class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-xs font-normal text-muted-foreground"
+              title={`Comes from ${data.described.readOnlyFrom}; change it there`}
+              data-testid="drive-readonly-badge"
+            >
+              <LockIcon class="size-3" aria-hidden="true" />
+              {data.described.readOnlyFrom} · read-only
+            </span>
+          {/if}
+        </h2>
+        <p class="text-sm text-muted-foreground" data-testid="drive-file-meta">
+          {#if dated}<span title={dated.full} data-testid="drive-file-dated"
+              >{dated.month} <span class="text-muted-foreground/70">{dated.kind}</span></span
+            > ·
+          {/if}{`${formatSize(meta.size)} · changed ${fmt(meta.updatedAt)}${data.canEdit ? '' : ' · view only'}`}
+        </p>
+      </div>
     </div>
     <div class="flex items-center gap-2">
       {#if data.canEdit && !data.file.archivedAt}

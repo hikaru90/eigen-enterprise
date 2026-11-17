@@ -19,7 +19,13 @@
   import { resolve } from '$app/paths'
   import { Button } from '$lib/components/ui/button'
   import { driveApi, formatSize, type DriveItem, type ItemDescription } from '$lib/drive/api'
-  import { driveItemKind, initialsOf, shortWhen, type DriveItemKind } from '$lib/drive/display'
+  import {
+    datedLabel,
+    driveItemKind,
+    initialsOf,
+    shortWhen,
+    type DriveItemKind,
+  } from '$lib/drive/display'
   import DriveItemActions from './drive-item-actions.svelte'
   import NameDialog from './name-dialog.svelte'
 
@@ -241,6 +247,14 @@
   const toolbarBtn =
     'inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm hover:bg-muted disabled:opacity-50'
 </script>
+
+{#snippet dated(d: NonNullable<DriveItem['dated']>)}
+  {@const label = datedLabel(d)}
+  <span class="whitespace-nowrap" title={label.full} data-testid="drive-dated"
+    ><time datetime={new Date(d.at).toISOString()}>{label.month}</time>
+    <span class="text-xs text-muted-foreground/70">{label.kind}</span></span
+  >
+{/snippet}
 
 <section
   class="relative flex min-h-0 flex-1 flex-col"
@@ -483,6 +497,11 @@
             <th class="hidden w-32 px-3 py-2 font-medium sm:table-cell"
               >{trashView ? 'Trashed' : 'Modified'}</th
             >
+            <th
+              class="hidden w-36 px-3 py-2 font-medium md:table-cell"
+              title="When the file is from: taken or created as the file records it, else when it was uploaded"
+              >From</th
+            >
             <th class="hidden w-24 px-3 py-2 font-medium md:table-cell">Size</th>
             <th class="w-52 px-3 py-2"><span class="sr-only">Actions</span></th>
           </tr>
@@ -522,7 +541,8 @@
                       title={`Comes from ${desc.readOnlyFrom}; change it there`}
                       data-testid="drive-readonly-badge"
                     >
-                      <LockIcon class="size-3" aria-hidden="true" /> {desc.readOnlyFrom} · read-only
+                      <LockIcon class="size-3" aria-hidden="true" />
+                      {desc.readOnlyFrom} · read-only
                     </span>
                   {/if}
                   {#if desc?.shared}
@@ -562,6 +582,13 @@
                 <time datetime={new Date(whenOf(item)).toISOString()} title={fullWhen(whenOf(item))}
                   >{shortWhen(whenOf(item))}</time
                 >
+              </td>
+              <td class="hidden px-3 py-2 text-muted-foreground md:table-cell">
+                {#if item.dated}
+                  {@render dated(item.dated)}
+                {:else}
+                  —
+                {/if}
               </td>
               <td class="hidden px-3 py-2 text-muted-foreground tabular-nums md:table-cell"
                 >{item.type === 'file' ? formatSize(item.size) : '—'}</td
@@ -654,6 +681,9 @@
                   ? ` · ${formatSize(item.size)}`
                   : ''}</span
               >
+              {#if item.dated}
+                <span class="shrink-0">{@render dated(item.dated)}</span>
+              {/if}
             </div>
             <div
               class="absolute top-1.5 right-1.5 rounded-md bg-background/90 shadow-sm transition-opacity md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100"

@@ -120,6 +120,7 @@ export default defineConfig({
       'src/lib/components/drive/drive-browser.svelte.spec.ts',
       'src/lib/components/drive/drive-privacy-note.svelte.spec.ts',
       'src/lib/components/drive/archived-view.svelte.spec.ts',
+      'src/routes/\\(nucleus\\)/drive/file/\\[id\\]/file-page.svelte.spec.ts',
       'src/routes/(nucleus)/m/memory/memory-privacy-note.svelte.spec.ts',
       'src/routes/(nucleus)/m/memory/settings/your-data.svelte.spec.ts',
       'src/routes/timeline/temporal-event-delete-button.svelte.spec.ts',
