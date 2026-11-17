@@ -1,9 +1,10 @@
 import type { Actions, PageServerLoad } from './$types'
 import { fail } from '@sveltejs/kit'
+import { isCroppableLogoType } from '$lib/company/identity'
 import { requireCapability } from '$lib/server/auth/require-capability'
 import { companyStorage } from '$lib/server/company/live'
-import { checkLogo } from '$lib/server/company/logo'
-import { removeCompanyLogo, saveCompanyLogo, saveCompanyName } from '$lib/server/company/service'
+import { checkLogo, cropLogo } from '$lib/server/company/logo'
+import { readCompanyLogoOriginal, removeCompanyLogo, saveCompanyLogo, saveCompanyName } from '$lib/server/company/service'
 import { companyProfileStore } from '$lib/server/company/store'
 import { companyIdentity } from '$lib/server/overview/sources'
 import { ContributeError } from '../../../../../modules/contribute/errors'
@@ -16,12 +17,27 @@ import { setSharing, shareStatus } from '../../../../../modules/contribute/share
  * app). Owner and admins only; the person clicking is the decision. Brand
  * styles stay in Brand.
  *
+ * A raster logo (PNG, JPEG, WebP) arrives with the crop the person chose
+ * (Contribute `8c371cea`: zoom and position it in a square frame): the logo
+ * stored is that crop, and the upload is kept as its original, so "Adjust"
+ * can crop it again later. An SVG is kept as drawn.
+ *
  * The owner also decides here whether proposals from the Contribute board are
  * shared with the eigenEnterprise makers (plan/contribute-phone-home.md §5):
  * on by default, the exact field list, and where sending stands.
  */
 
 const REASON = 'Only the owner or an admin can change the company name and logo.'
+
+/** The crop field as sent (JSON); undefined when it is missing or not JSON. cropLogo checks what it says. */
+function parseCrop(raw: FormDataEntryValue | null): unknown {
+  if (typeof raw !== 'string' || raw === '') return undefined
+  try {
+    return JSON.parse(raw) as unknown
+  } catch {
+    return undefined
+  }
+}
 
 const shareDeps = async () => (await import('../../../../../modules/contribute/share/live')).shareDeps()
 
@@ -31,7 +47,13 @@ export const load: PageServerLoad = async ({ locals }) => {
   return {
     company: {
       name: identity.name,
-      logo: identity.logo ? { url: identity.logo.url, mime: identity.logo.mime } : null,
+      logo: identity.logo
+        ? {
+            url: identity.logo.url,
+            mime: identity.logo.mime,
+            original: identity.logo.original ? { url: identity.logo.original.url, crop: identity.logo.original.crop } : null,
+          }
+        : null,
     },
     // Owner only: sharing proposals with the makers.
     share: role === 'owner' ? await shareStatus(await shareDeps()) : null,
@@ -48,14 +70,41 @@ export const actions: Actions = {
   },
   uploadLogo: async ({ locals, request }) => {
     const { user } = await requireCapability(locals, 'company.manage', REASON)
-    const file = (await request.formData()).get('logo')
+    const form = await request.formData()
+    const file = form.get('logo')
     if (!(file instanceof File) || file.size === 0) {
       return fail(400, { action: 'uploadLogo', error: 'Choose an image file to upload.' })
     }
     const check = await checkLogo(new Uint8Array(await file.arrayBuffer()), file.type)
     if (!check.ok) return fail(check.status, { action: 'uploadLogo', error: check.error })
-    await saveCompanyLogo({ bytes: check.bytes, mime: check.mime }, user.id, companyStorage())
+    if (!isCroppableLogoType(check.mime)) {
+      await saveCompanyLogo({ bytes: check.bytes, mime: check.mime }, user.id, companyStorage())
+      return { action: 'uploadLogo', ok: true }
+    }
+    const crop = parseCrop(form.get('crop'))
+    if (crop === undefined) return fail(400, { action: 'uploadLogo', error: 'Position the logo in the frame, then save.' })
+    const cut = await cropLogo(check.bytes, crop)
+    if (!cut.ok) return fail(cut.status, { action: 'uploadLogo', error: cut.error })
+    await saveCompanyLogo(
+      { bytes: cut.bytes, mime: cut.mime, original: { bytes: check.bytes, mime: check.mime, crop: cut.crop } },
+      user.id,
+      companyStorage(),
+    )
     return { action: 'uploadLogo', ok: true }
+  },
+  recropLogo: async ({ locals, request }) => {
+    const { user } = await requireCapability(locals, 'company.manage', REASON)
+    const crop = parseCrop((await request.formData()).get('crop'))
+    if (crop === undefined) return fail(400, { action: 'recropLogo', error: 'Position the logo in the frame, then save.' })
+    const storage = companyStorage()
+    const original = await readCompanyLogoOriginal(storage)
+    if (!original) {
+      return fail(400, { action: 'recropLogo', error: 'This logo has no kept original to crop again; upload it again.' })
+    }
+    const cut = await cropLogo(original.bytes, crop)
+    if (!cut.ok) return fail(cut.status, { action: 'recropLogo', error: cut.error })
+    await saveCompanyLogo({ bytes: cut.bytes, mime: cut.mime, original: { ...original, crop: cut.crop } }, user.id, storage)
+    return { action: 'recropLogo', ok: true }
   },
   setSharing: async ({ locals, request }) => {
     const { user, role } = await requireCapability(locals, 'company.manage', REASON)

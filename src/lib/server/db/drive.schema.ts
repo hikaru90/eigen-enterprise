@@ -48,6 +48,9 @@ export const driveFile = pgTable(
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     archivedBy: text('archived_by'),
     source: text('source'),
+    /** When the file says it is from (migration 0143): EXIF capture or PDF creation; both null when it records none. */
+    contentDate: timestamp('content_date', { withTimezone: true }),
+    contentDateKind: text('content_date_kind', { enum: ['taken', 'created'] }),
   },
   (t) => [
     index('drive_file_folder_idx').on(t.folderId),
@@ -55,6 +58,8 @@ export const driveFile = pgTable(
     index('drive_file_archived_idx').on(t.archivedAt).where(sql`${t.archivedAt} is not null`),
     index('drive_file_live_updated_idx').on(t.updatedAt).where(sql`${t.trashedAt} is null and ${t.archivedAt} is null`),
     check('drive_file_archived_pair_check', sql`(${t.archivedAt} is null) = (${t.archivedBy} is null)`),
+    check('drive_file_content_date_pair_check', sql`(${t.contentDate} is null) = (${t.contentDateKind} is null)`),
+    check('drive_file_content_date_kind_check', sql`${t.contentDateKind} is null or ${t.contentDateKind} in ('taken', 'created')`),
   ],
 )
 

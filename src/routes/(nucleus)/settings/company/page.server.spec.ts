@@ -85,9 +85,10 @@ const nameForm = (name: string) => {
   f.set('name', name)
   return f
 }
-const logoForm = (bytes: Uint8Array, type: string, name = 'logo.png') => {
+const logoForm = (bytes: Uint8Array, type: string, name = 'logo.png', crop?: { left: number; top: number; size: number }) => {
   const f = new FormData()
   f.set('logo', new File([bytes as BlobPart], name, { type }))
+  if (crop) f.set('crop', JSON.stringify(crop))
   return f
 }
 
@@ -104,6 +105,7 @@ describe('Settings → Company (owner and admins)', () => {
     await expect(load(ev() as never)).rejects.toMatchObject({ status: 403 })
     await expect(actions.saveName!(ev(nameForm('Hijack')))).rejects.toMatchObject({ status: 403 })
     await expect(actions.uploadLogo!(ev(logoForm(await png(), 'image/png')))).rejects.toMatchObject({ status: 403 })
+    await expect(actions.recropLogo!(ev())).rejects.toMatchObject({ status: 403 })
     await expect(actions.removeLogo!(ev())).rejects.toMatchObject({ status: 403 })
     expect(await (storage.store as ReturnType<typeof memoryCompanyProfileStore>).get()).toBeNull()
   })
@@ -129,15 +131,58 @@ describe('Settings → Company (owner and admins)', () => {
     })
   })
 
+  it('uploads a raster logo with its crop, keeps the original, and crops it again later', async () => {
+    const first = await png()
+    const crop = { left: 0, top: 0, size: 48 }
+    expect(await actions.uploadLogo!(ev(logoForm(first, 'image/png', 'logo.png', crop)))).toEqual({ action: 'uploadLogo', ok: true })
+    const blobs = storage.blobs as ReturnType<typeof memoryBlobs>
+    const data = (await load(ev() as never)) as { company: { logo: { url: string; mime: string; original: unknown } | null } }
+    const cutSha = blobs.shas().find((s) => s !== sha256Hex(first))!
+    expect(data.company.logo).toEqual({
+      url: `/api/company/logo/${cutSha}`,
+      mime: 'image/png',
+      original: { url: `/api/company/logo/${sha256Hex(first)}`, crop },
+    })
+
+    const recrop = new FormData()
+    recrop.set('crop', JSON.stringify({ left: 8, top: 8, size: 32 }))
+    expect(await actions.recropLogo!(ev(recrop))).toEqual({ action: 'recropLogo', ok: true })
+    const again = (await load(ev() as never)) as { company: { logo: { url: string; original: { crop: unknown } } } }
+    expect(again.company.logo.original.crop).toEqual({ left: 8, top: 8, size: 32 })
+    expect(again.company.logo.url).not.toBe(`/api/company/logo/${cutSha}`)
+    // The first cut went; the original stays.
+    expect(blobs.shas()).toHaveLength(2)
+    expect(blobs.shas()).toContain(sha256Hex(first))
+    expect(blobs.shas()).not.toContain(cutSha)
+  })
+
+  it('refuses a raster logo without a usable crop, and a re-crop with no original', async () => {
+    expect(await actions.uploadLogo!(ev(logoForm(await png(), 'image/png')))).toMatchObject({
+      status: 400,
+      data: { action: 'uploadLogo', error: 'Position the logo in the frame, then save.' },
+    })
+    expect(await actions.uploadLogo!(ev(logoForm(await png(), 'image/png', 'logo.png', { left: 0, top: 0, size: 2 })))).toMatchObject({
+      status: 400,
+      data: { action: 'uploadLogo', error: expect.stringContaining('too small') },
+    })
+    const recrop = new FormData()
+    recrop.set('crop', JSON.stringify({ left: 0, top: 0, size: 32 }))
+    expect(await actions.recropLogo!(ev(recrop))).toMatchObject({
+      status: 400,
+      data: { action: 'recropLogo', error: 'This logo has no kept original to crop again; upload it again.' },
+    })
+    expect((storage.blobs as ReturnType<typeof memoryBlobs>).shas()).toEqual([])
+  })
+
   it('uploads, replaces and removes the logo', async () => {
     const first = await png()
-    expect(await actions.uploadLogo!(ev(logoForm(first, 'image/png')))).toEqual({ action: 'uploadLogo', ok: true })
-    const data = (await load(ev() as never)) as { company: { logo: { url: string; mime: string } | null } }
-    expect(data.company.logo).toEqual({ url: `/api/company/logo/${sha256Hex(first)}`, mime: 'image/png' })
+    expect(await actions.uploadLogo!(ev(logoForm(first, 'image/png', 'logo.png', { left: 0, top: 0, size: 48 })))).toEqual({ action: 'uploadLogo', ok: true })
+    expect(((await load(ev() as never)) as { company: { logo: { mime: string } | null } }).company.logo).toMatchObject({ mime: 'image/png' })
 
     const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10"><rect width="20" height="10"/></svg>')
     expect(await actions.uploadLogo!(ev(logoForm(svg, 'image/svg+xml', 'logo.svg')))).toEqual({ action: 'uploadLogo', ok: true })
     const blobs = storage.blobs as ReturnType<typeof memoryBlobs>
+    // The SVG replaced the cut and its original.
     expect(blobs.shas()).toHaveLength(1)
     expect(blobs.shas()).not.toContain(sha256Hex(first))
 

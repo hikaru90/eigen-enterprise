@@ -207,6 +207,9 @@ export function createDriveSourceWriter(deps: SourceWriterDeps): DriveSourceWrit
         archivedAt: null,
         archivedBy: null,
         source,
+        // Sources write Markdown: it records no date of its own.
+        contentDate: null,
+        contentDateKind: null,
       }
       await store.insertFile(file)
       await store.putSourceItem({ source, externalKey: key, itemId: file.id, kind: 'file', parentKey, contentSha: blob.sha256 })

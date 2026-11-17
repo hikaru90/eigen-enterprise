@@ -352,3 +352,19 @@ describe('resolveMaxUploadBytes', () => {
     expect(() => resolveMaxUploadBytes({ DRIVE_MAX_UPLOAD_BYTES: '10MB' })).toThrow(/positive whole number/)
   })
 })
+
+describe('drive service: when a file is from (Contribute 0c945439)', () => {
+  it('dates a PDF by the creation date it records, and anything else by when it was uploaded', async () => {
+    const { drive, store } = await setup()
+    const letter = await drive.upload(alice, null, { name: 'letter.pdf', bytes: text('%PDF-1.4\n<< /CreationDate (D:19870512093000Z) >>\n%%EOF'), mime: 'application/pdf' })
+    expect(letter.dated).toEqual({ at: new Date('1987-05-12T09:30:00.000Z'), kind: 'created' })
+    expect(await store.getFile(letter.id)).toMatchObject({ contentDate: new Date('1987-05-12T09:30:00.000Z'), contentDateKind: 'created' })
+    const note = await drive.upload(alice, null, { name: 'note.txt', bytes: text('hello'), mime: null })
+    const stored = await store.getFile(note.id)
+    expect(stored).toMatchObject({ contentDate: null, contentDateKind: null })
+    expect(note.dated).toEqual({ at: stored!.createdAt, kind: 'uploaded' })
+    // Listings carry the same date.
+    const listed = (await drive.listFolder(alice, null)).items.find((i) => i.id === letter.id)
+    expect(listed?.dated).toEqual({ at: new Date('1987-05-12T09:30:00.000Z'), kind: 'created' })
+  })
+})

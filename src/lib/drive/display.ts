@@ -36,3 +36,23 @@ export function shortWhen(at: string | Date, now: Date = new Date()): string {
     ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
   })
 }
+
+const DATED_KIND = { taken: 'Taken', created: 'Created', uploaded: 'Uploaded', added: 'Added' } as const
+
+/**
+ * When a file is from, to the month (Contribute `0c945439`): "Mar 2019" plus
+ * the kind of date — taken / created (what the file records about itself) or
+ * uploaded / added (when it reached the Drive). A recorded date is its own
+ * wall clock stored as UTC, so it is read in UTC; an upload in local time.
+ */
+export function datedLabel(dated: NonNullable<DriveItem['dated']>): {
+  month: string
+  kind: NonNullable<DriveItem['dated']>['kind']
+  full: string
+} {
+  const at = new Date(dated.at)
+  const timeZone = dated.kind === 'taken' || dated.kind === 'created' ? 'UTC' : undefined
+  const month = at.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone })
+  const long = at.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone })
+  return { month, kind: dated.kind, full: `${DATED_KIND[dated.kind]} ${long}` }
+}

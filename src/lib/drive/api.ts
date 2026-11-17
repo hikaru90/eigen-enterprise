@@ -15,6 +15,8 @@ export type DriveItem = {
   inArchive?: boolean
   size?: number
   mime?: string
+  /** Files: when the file is from (its own recorded date, else when it was uploaded or added). */
+  dated?: { at: string | Date; kind: 'taken' | 'created' | 'uploaded' | 'added' }
 }
 export type Crumb = { id: string; name: string }
 /** One folder's archived items in the Archived view. */

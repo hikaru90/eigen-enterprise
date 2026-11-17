@@ -54,8 +54,21 @@ describe.skipIf(!url)('drive store (Postgres): archive state', () => {
       archivedAt: null,
       archivedBy: null,
       source: null,
+      contentDate: null as Date | null,
+      contentDateKind: null as 'taken' | 'created' | null,
     }
   }
+
+  it('stores the date a file records about itself, and refuses half a date', async () => {
+    const { dbDriveStore: store } = await import('./db-store')
+    const f = folder()
+    await store.insertFolder(f)
+    const x = { ...file(f.id, '2024-02-01T00:00:00Z'), contentDate: at('2019-03-14T09:30:00Z'), contentDateKind: 'taken' as const }
+    await store.insertFile(x)
+    expect(await store.getFile(x.id)).toMatchObject({ contentDate: at('2019-03-14T09:30:00Z'), contentDateKind: 'taken' })
+    const half = { ...file(f.id, '2024-02-01T00:00:00Z'), contentDate: at('2019-03-14T09:30:00Z') }
+    await expect(store.insertFile(half)).rejects.toThrow()
+  })
 
   it('archivedAt/archivedBy are stored and cleared on files and folders', async () => {
     const { dbDriveStore: store } = await import('./db-store')
@@ -122,7 +135,7 @@ describe.skipIf(!url)('drive store (Postgres): source folders (0133)', () => {
     for (const f of [root, sub, plain]) await store.insertFolder(f)
     const fileId = randomUUID()
     files.push(fileId)
-    await store.insertFile({ id: fileId, folderId: sub.id, name: 'Overview.md', ownerId: 'pg-spec', mime: 'text/markdown', size: 1, sha256: 'b'.repeat(64), createdAt: at, updatedAt: at, trashedAt: null, archivedAt: null, archivedBy: null, source })
+    await store.insertFile({ id: fileId, folderId: sub.id, name: 'Overview.md', ownerId: 'pg-spec', mime: 'text/markdown', size: 1, sha256: 'b'.repeat(64), createdAt: at, updatedAt: at, trashedAt: null, archivedAt: null, archivedBy: null, source, contentDate: null, contentDateKind: null })
     expect(await store.getFolder(sub.id)).toMatchObject({ source })
     expect(await store.getFolder(plain.id)).toMatchObject({ source: null })
     expect(await store.getFile(fileId)).toMatchObject({ source })

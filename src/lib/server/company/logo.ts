@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import DOMPurify, { type Config } from 'isomorphic-dompurify'
 import sharp from 'sharp'
 import { bareLogoType, isLogoType, LOGO_TYPE_LABEL, refuseLogoFile, type LogoType } from '$lib/company/identity'
+import { checkLogoCrop, type LogoCrop } from '$lib/company/logo-crop'
 import { diskBlobStore, resolveDriveStorageDir, type BlobStore } from '../../../../modules/drive/storage'
 
 /**
@@ -119,6 +120,57 @@ export async function checkLogo(bytes: Uint8Array, declaredType: string | null):
   const type = bareLogoType(declaredType)
   if (!isLogoType(type)) throw new Error(`refuseLogoFile let through a non-logo type: ${type}`)
   return type === 'image/svg+xml' ? checkSvg(bytes) : checkRaster(type, bytes)
+}
+
+/** A cropped logo is at most this many pixels wide (it shows at 48 px at most; this keeps it sharp on any screen). */
+export const CROPPED_LOGO_PX = 512
+
+/**
+ * Cuts a crop (checkLogoCrop: a square in the image's pixels, which may reach
+ * past its edges) out of a raster logo that passed checkLogo, as a PNG at
+ * most CROPPED_LOGO_PX wide — PNG so what lies past the image stays
+ * transparent. The image is turned upright by its EXIF orientation first,
+ * the way the browser showed it while cropping.
+ */
+export type LogoCut =
+  | { ok: true; mime: 'image/png'; bytes: Uint8Array; width: number; height: number; crop: LogoCrop }
+  | { ok: false; status: 400; error: string }
+
+export async function cropLogo(original: Uint8Array, rawCrop: unknown): Promise<LogoCut> {
+  const { data, info } = await sharp(Buffer.from(original)).rotate().ensureAlpha().png().toBuffer({ resolveWithObject: true })
+  const checked = checkLogoCrop(rawCrop, { width: info.width, height: info.height })
+  if (!checked.ok) return { ok: false, status: 400, error: checked.error }
+  const crop = checked.crop
+  const { left, top, size } = crop
+  const out = Math.max(MIN_LOGO_PX, Math.min(CROPPED_LOGO_PX, Math.round(size)))
+  const scale = out / size
+  // The part of the image inside the square, in image pixels, then where it lands in the output.
+  const x0 = Math.max(0, Math.floor(left))
+  const y0 = Math.max(0, Math.floor(top))
+  const x1 = Math.min(info.width, Math.ceil(left + size))
+  const y1 = Math.min(info.height, Math.ceil(top + size))
+  // Rounding the shown part and its place against the same edges keeps it inside the output.
+  const dx0 = Math.max(0, Math.round((x0 - left) * scale))
+  const dy0 = Math.max(0, Math.round((y0 - top) * scale))
+  const dx1 = Math.min(out, Math.round((x1 - left) * scale))
+  const dy1 = Math.min(out, Math.round((y1 - top) * scale))
+  const canvas = sharp({ create: { width: out, height: out, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+  const layers =
+    dx1 > dx0 && dy1 > dy0
+      ? [
+          {
+            input: await sharp(data)
+              .extract({ left: x0, top: y0, width: x1 - x0, height: y1 - y0 })
+              .resize(dx1 - dx0, dy1 - dy0, { fit: 'fill' })
+              .png()
+              .toBuffer(),
+            left: dx0,
+            top: dy0,
+          },
+        ]
+      : []
+  const bytes = new Uint8Array(await canvas.composite(layers).png().toBuffer())
+  return { ok: true, mime: 'image/png', bytes, width: out, height: out, crop }
 }
 
 /** <drive storage dir>/company — fails loud like the Drive when no storage is configured. */

@@ -67,6 +67,27 @@ describe('drive-browser: the full-width listing', () => {
     expect(page.getByTestId('drive-shared-badge').elements()).toHaveLength(1)
   })
 
+  it('shows the month and year each file is from, and what kind of date it is', async () => {
+    const photo = { ...image, id: 'i2', name: 'harbour.jpg', dated: { at: '2019-03-14T09:30:00.000Z', kind: 'taken' as const } }
+    const upload = { ...image, id: 'i3', name: 'notes.png', dated: { at: '2026-11-04T10:00:00.000Z', kind: 'uploaded' as const } }
+    render(DriveBrowser, { props: { folderId: null, items: [folder, photo, upload], canEdit: true, describe: {} } })
+    const dated = page.getByTestId('drive-dated')
+    await expect.element(dated.nth(0)).toHaveTextContent('Mar 2019')
+    await expect.element(dated.nth(0)).toHaveTextContent('taken')
+    await expect.element(dated.nth(0)).toHaveAttribute('title', 'Taken March 2019')
+    await expect.element(dated.nth(1)).toHaveTextContent('Nov 2026')
+    await expect.element(dated.nth(1)).toHaveTextContent('uploaded')
+    // Folders are not from a date.
+    expect(dated.elements()).toHaveLength(2)
+  })
+
+  it('the grid says when a file is from too', async () => {
+    const photo = { ...image, id: 'i2', name: 'harbour.jpg', dated: { at: '2019-03-14T09:30:00.000Z', kind: 'taken' as const } }
+    render(DriveBrowser, { props: { folderId: null, items: [photo], canEdit: true, describe: {} } })
+    await page.getByTestId('drive-view-grid').click()
+    await expect.element(page.getByTestId('drive-dated')).toHaveTextContent('Mar 2019')
+  })
+
   it('a read-only source folder: "<source> · read-only" badges, no toolbar actions, no row edits', async () => {
     const overview: DriveItem & { canEdit: boolean; canManage: boolean } = {
       type: 'file',
