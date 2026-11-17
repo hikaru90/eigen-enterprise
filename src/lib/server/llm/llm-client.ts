@@ -836,6 +836,37 @@ async function embeddingRoutingConfig(config: ResolvedLlmConfig): Promise<Routin
   )
 }
 
+/** What a chat completion for this identity resolves to right now — the truthful "which model am I". */
+export type ChatModelDescription = {
+  provider: LlmProviderKind
+  /** The upstream model name the gateway sends (resolved from the routing rule when no model is set). */
+  model: string
+  routingRuleId: string | null
+  billing: 'byok' | 'platform'
+  gatewayHost: string
+}
+
+/**
+ * The provider + model a chat completion for `userId` resolves to, by the
+ * exact resolution llmChatCompletion uses (billing identity, BYOK/platform
+ * config, routing). Never returns credentials. Callers wrap it the way they
+ * wrap the completion itself (e.g. onCompanyProvider + withDbUser for the
+ * orchestrator's durable calls).
+ */
+export async function describeChatModel(userId: string): Promise<ChatModelDescription> {
+  const billingUserId = resolveBillingUserId(userId)
+  const byok = await isByokBilling(billingUserId)
+  const config = await loadLlmConfig(userId)
+  const routing = await chatRoutingConfig(config)
+  return {
+    provider: config.provider,
+    model: routing.model,
+    routingRuleId: routing.ruleId ?? null,
+    billing: byok ? 'byok' : 'platform',
+    gatewayHost: gatewayHostFromBaseUrl(config.baseUrl),
+  }
+}
+
 /**
  * Default completion budget when callers omit maxTokens.
  * Gateways that treat missing max_tokens as the full model context window

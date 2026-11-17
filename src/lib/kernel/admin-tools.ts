@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { approvalActionLabel } from '$lib/chat/approval-copy'
 import { KernelError } from './errors'
 import { moduleSwitchedOff, type ActivationStore, type ModuleManifest, type ModuleRegistry } from './modules'
+import { KERNEL_SETTINGS_TOOL_NAMES } from './settings-tools'
 
 /**
  * Kernel admin surface: module activation and approval decisions as regular
@@ -37,9 +38,12 @@ export const kernelManifest: ModuleManifest = {
   name: 'Kernel',
   // The kernel's own admin surface: never an owner-facing module card or page.
   internal: true,
-  version: '0.1.0',
-  description: 'Module activation and approval-decision administration for the kernel itself.',
-  tools: [...KERNEL_ADMIN_TOOL_NAMES],
+  version: '0.2.0',
+  description:
+    'Module activation, approval decisions, who the agent runs as (whoami) and the company settings (read; changes always wait for a person).',
+  // `settings`: the company settings tools (settings-tools.ts) belong to the kernel core.
+  toolNamespaces: [KERNEL_MODULE_ID, 'settings'],
+  tools: [...KERNEL_ADMIN_TOOL_NAMES, ...KERNEL_SETTINGS_TOOL_NAMES],
   permissions: { roles: ['admin'] },
 }
 

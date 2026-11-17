@@ -134,7 +134,11 @@ export class KernelRegistry {
 
     // (c) approval gate: everything non-read (mutate + external), per injected policy and existing decisions.
     // Always-ask tools bypass the policy entirely: no approval mode can wave them through.
-    if (descriptor.approvalAlways === true) await this.alwaysAskGate(name, input, ctx)
+    // Their input is validated first: a person is never asked to approve a call that cannot run.
+    if (descriptor.approvalAlways === true) {
+      parseInput(descriptor.inputSchema, input, name)
+      await this.alwaysAskGate(name, input, ctx)
+    }
     const decision =
       descriptor.auditClass === 'read' || descriptor.approvalAlways === true
         ? 'pass'

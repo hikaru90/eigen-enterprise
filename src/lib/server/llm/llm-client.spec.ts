@@ -4,6 +4,7 @@ import { fetchMockInit, fetchMockUrl } from '$lib/test/vitest-mock-call'
 import { LlmNotConfiguredError } from './errors'
 import {
   DEFAULT_CHAT_MAX_TOKENS,
+  describeChatModel,
   llmChatCompletion,
   llmCreateEmbeddings,
   llmCreateTranscription,
@@ -2071,4 +2072,42 @@ describe('memory content stays out of logs, the AI usage log and PostHog', () =>
       }),
     )
   })
+})
+
+describe('describeChatModel (what the gateway resolves for a chat call, no secrets)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockEnv.LLM_BASE_URL = 'https://example.test'
+    mockEnv.LLM_RULE_CHAT = 'rule-chat'
+    mockEnv.LLM_MODEL_CHAT = 'gpt-test'
+    mockEnv.LLM_API_KEY = 'key-1'
+    getDbMock.mockImplementation(() => {
+      const chain: Record<string, unknown> = {}
+      chain.select = () => chain
+      chain.from = () => chain
+      chain.where = () => chain
+      chain.limit = () => Promise.resolve([])
+      return chain
+    })
+  })
+
+  it('reports the provider, model, routing rule, billing and gateway host the chat call would use', async () => {
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
+    vi.mocked(isByokBilling).mockResolvedValue(true)
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const described = await describeChatModel('u1')
+
+    expect(described).toEqual({
+      provider: 'eurouter',
+      model: 'gpt-test',
+      routingRuleId: 'rule-chat',
+      billing: 'byok',
+      gatewayHost: 'example.test',
+    })
+    expect(JSON.stringify(described)).not.toContain('key-1')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
 })
