@@ -1,5 +1,7 @@
 /** Drive metadata (Postgres in production, memory in tests). Bytes live in the BlobStore. */
 
+import type { ContentDateKind } from './content-date'
+
 export type DriveFolder = {
   id: string
   parentId: string | null
@@ -29,6 +31,9 @@ export type DriveFile = {
   archivedAt: Date | null
   archivedBy: string | null
   source: string | null
+  /** When the file says it is from (migration 0143, see content-date.ts); both null when it records none. */
+  contentDate: Date | null
+  contentDateKind: ContentDateKind | null
 }
 
 /** A source's stable key → its Drive item (drive_source_items, migration 0133). */

@@ -2,6 +2,7 @@ import type { AccessLevel, DriveAccessPort, Grant, GrantSubject } from './access
 import type { BlobStore } from './storage'
 import type { DriveFile, DriveFolder, DriveRevision, DriveStore } from './store'
 import { randomUUID } from 'node:crypto'
+import { contentDateOf } from './content-date'
 import { holderOf, isLive, LOCK_TTL_MS, type EditLockStore, type LockHolder } from './locks'
 import { isRevisioned, isTextFile, mimeFor } from './preview'
 
@@ -75,10 +76,18 @@ export type ItemView = {
   inArchive?: boolean
   size?: number
   mime?: string
+  /**
+   * Files: when the file is from — the date it records about itself (a photo
+   * taken, a PDF created), else when it was uploaded (or added by a source).
+   */
+  dated?: ItemDated
   /** What the actor may do with it (set on listings; the server checks again on every act). */
   canEdit?: boolean
   canManage?: boolean
 }
+
+/** When a file is from, and what kind of date that is (see ItemView.dated). */
+export type ItemDated = { at: Date; kind: 'taken' | 'created' | 'uploaded' | 'added' }
 
 /**
  * A listing row's owner and sharing state (see describeItems); `readOnlyFrom`
@@ -190,7 +199,12 @@ const fileView = (f: DriveFile): ItemView => ({
   archivedBy: f.archivedBy,
   size: f.size,
   mime: f.mime,
+  dated: datedOf(f),
 })
+function datedOf(f: DriveFile): ItemDated {
+  if (f.contentDate && f.contentDateKind) return { at: f.contentDate, kind: f.contentDateKind }
+  return { at: f.createdAt, kind: f.source === null ? 'uploaded' : 'added' }
+}
 const byName = (a: ItemView, b: ItemView) => a.name.localeCompare(b.name)
 
 export function createDriveService(deps: DriveDeps) {
@@ -377,12 +391,14 @@ export function createDriveService(deps: DriveDeps) {
     await requireTarget(actor, folderId)
     const blob = await blobs.put(bytes)
     const at = now()
+    const type = mimeFor(name, mime)
+    const recorded = await contentDateOf(bytes, type)
     const file: DriveFile = {
       id: randomUUID(),
       folderId,
       name,
       ownerId: ownerIdOf(actor),
-      mime: mimeFor(name, mime),
+      mime: type,
       size: blob.size,
       sha256: blob.sha256,
       createdAt: at,
@@ -391,6 +407,8 @@ export function createDriveService(deps: DriveDeps) {
       archivedAt: null,
       archivedBy: null,
       source: null,
+      contentDate: recorded?.at ?? null,
+      contentDateKind: recorded?.kind ?? null,
     }
     await store.insertFile(file)
     await grantCreator(actor, 'file', file.id)
