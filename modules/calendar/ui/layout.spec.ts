@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dayItems, parseView, placeTimed, shiftDate, viewDays, viewHeading } from './layout'
+import { dayItems, parseView, placeTimed, shiftDate, stepWeek, viewDays, viewHeading, weekPages, weekStart } from './layout'
 
 const ev = (start: string, end: string, allDay = false) => ({ start, end, allDay })
 
@@ -58,5 +58,30 @@ describe('placing events on a day (Berlin)', () => {
       { item: c, top: 720, height: 15, column: 0, columns: 1 },
       { item: late, top: 1380, height: 60, column: 0, columns: 1 },
     ])
+  })
+})
+
+describe('paging a week on a phone (fewer days side by side)', () => {
+  it('pages of the visible days, the last one flush with Sunday', () => {
+    expect(weekPages(7, 3)).toEqual([0, 3, 4])
+    expect(weekPages(7, 7)).toEqual([0])
+  })
+
+  it('opens on the page with today, else on Monday', () => {
+    const days = viewDays('week', '2026-11-18')
+    expect(weekStart(days, '2026-11-18', 3)).toBe(0)
+    expect(weekStart(days, '2026-11-19', 3)).toBe(3)
+    expect(weekStart(days, '2026-11-22', 3)).toBe(4)
+    expect(weekStart(days, '2026-12-01', 3)).toBe(0)
+    expect(weekStart(days, '2026-11-22', 7)).toBe(0)
+  })
+
+  it('steps through the week, then hands over to the next or previous week', () => {
+    expect(stepWeek(0, 7, 3, 1)).toEqual({ offset: 3 })
+    expect(stepWeek(3, 7, 3, 1)).toEqual({ offset: 4 })
+    expect(stepWeek(4, 7, 3, 1)).toEqual({ shift: 1 })
+    expect(stepWeek(4, 7, 3, -1)).toEqual({ offset: 3 })
+    expect(stepWeek(0, 7, 3, -1)).toEqual({ shift: -1 })
+    expect(stepWeek(0, 7, 7, 1)).toEqual({ shift: 1 })
   })
 })

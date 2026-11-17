@@ -5,6 +5,7 @@
   import type { PageProps } from './$types'
   import { onMount } from 'svelte'
   import { enhance } from '$app/forms'
+  import { goto } from '$app/navigation'
   import { resolve } from '$app/paths'
   import PageFrame from '$lib/components/page/page-frame.svelte'
   import PageHeader from '$lib/components/page/page-header.svelte'
@@ -126,6 +127,7 @@
           dayHref={(day) => href('day', day)}
           {onopen}
           {oncreate}
+          onshift={(direction) => goto(href(data.view, shiftDate(data.view, data.date, direction)))}
         />
       {/key}
       <p class="mt-2 text-xs text-muted-foreground">Times in {data.timeZone.replaceAll('_', ' ')}.</p>
