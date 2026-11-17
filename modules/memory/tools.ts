@@ -1,5 +1,13 @@
 import { z } from 'zod'
-import type { ToolDescriptor } from '$lib/kernel/types'
+import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
+import {
+  assistantCaptureThought,
+  assistantCreateTextFile,
+  assistantUpdateTextFile,
+  liveMemoryWriterOf,
+  requireWriter,
+  type MemoryWriter,
+} from './assistant-writes'
 import { MEMORY_TOOL_NAMES } from './manifest'
 
 /**
@@ -8,7 +16,21 @@ import { MEMORY_TOOL_NAMES } from './manifest'
  * ToolContext to the McpToolContext the underlying functions expect:
  * the principal id is the user id. The heavy import is deferred to call time
  * so that bootstrapping the kernel never touches the DB or retrieval stack.
+ * Writes (capture, create/update note) resolve who they land with first —
+ * see assistant-writes.ts: the company assistant writes for the person it
+ * works for, or fails loud; it never writes as its own principal id.
  */
+
+export type MemoryToolDeps = {
+  /** Who a write lands with (live: liveMemoryWriterOf). */
+  writerOf?: (ctx: ToolContext) => Promise<MemoryWriter | null>
+}
+
+const WRITE_TOOLS = new Set<string>([
+  'memory.capture_thought',
+  'memory.create_text_file',
+  'memory.update_text_file',
+])
 
 const optionalPositiveInt = z.number().int().positive().optional()
 const optionalAuthorScope = z.enum(['user', 'agent', 'all']).optional()
@@ -35,12 +57,47 @@ async function runMemoryTool(
       return tools.runGetTextFileTool(mcpCtx, input)
     case 'memory.search_text_files':
       return tools.runSearchTextFilesTool(mcpCtx, input)
+    case 'memory.create_text_file':
+      return tools.runCreateTextFileTool(mcpCtx, input)
+    case 'memory.update_text_file':
+      return tools.runUpdateTextFileTool(mcpCtx, input)
   }
   throw new Error(`no memory tool implementation wired for ${name}`)
 }
 
-/** Kernel descriptors for the read-oriented memory surface plus capture. */
-export function createMemoryTools(): ToolDescriptor[] {
+async function runAssistantWrite(
+  name: (typeof MEMORY_TOOL_NAMES)[number],
+  userId: string,
+  input: unknown,
+): Promise<unknown> {
+  switch (name) {
+    case 'memory.capture_thought':
+      return assistantCaptureThought(userId, input as Parameters<typeof assistantCaptureThought>[1])
+    case 'memory.create_text_file':
+      return assistantCreateTextFile(userId, input as Parameters<typeof assistantCreateTextFile>[1])
+    case 'memory.update_text_file':
+      return assistantUpdateTextFile(userId, input as Parameters<typeof assistantUpdateTextFile>[1])
+  }
+  throw new Error(`${name} is not a memory write`)
+}
+
+/** Kernel descriptors for the read-oriented memory surface plus capture and notes. */
+export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
+  const writerOf = opts.writerOf ?? liveMemoryWriterOf
+
+  async function handle(
+    name: (typeof MEMORY_TOOL_NAMES)[number],
+    ctx: ToolContext,
+    input: unknown,
+  ): Promise<unknown> {
+    if (!WRITE_TOOLS.has(name)) return runMemoryTool(name, ctx, input)
+    const writer = requireWriter(await writerOf(ctx))
+    if (writer.kind === 'self') {
+      return runMemoryTool(name, { principal: { id: writer.userId } }, input)
+    }
+    return runAssistantWrite(name, writer.userId, input)
+  }
+
   const tool = (
     name: (typeof MEMORY_TOOL_NAMES)[number],
     summary: string,
@@ -55,13 +112,13 @@ export function createMemoryTools(): ToolDescriptor[] {
     inputSchema,
     ...(activity === undefined ? {} : { activity }),
     permission: { roles: ['admin', 'agent'] },
-    handler: (ctx, input) => runMemoryTool(name, ctx, input),
+    handler: (ctx, input) => handle(name, ctx, input),
   })
 
   return [
     tool(
       'memory.capture_thought',
-      'Capture and store a raw thought (background enrichment: embedding, entities, graph links).',
+      'Save a thought, task, idea or reminder to Memory (background enrichment: category, embedding, entities, graph links). Working for a person, it lands in their Memory as theirs; returns the thought id, not its text.',
       'mutate',
       z.object({
         raw: z.string().min(1),
@@ -113,6 +170,29 @@ export function createMemoryTools(): ToolDescriptor[] {
         cursor_updated_at: z.string().optional(),
         cursor_id: z.string().optional(),
       }),
+    ),
+    tool(
+      'memory.create_text_file',
+      'Write a note (title and/or body text) into Memory › Notes. Working for a person, it lands in their Notes marked as written by the assistant; returns the note id and title.',
+      'mutate',
+      z.object({
+        title: z.string().optional(),
+        body: z.string().optional(),
+        as_user: z.boolean().optional(),
+        author: z.string().optional(),
+      }),
+      () => 'Wrote a note',
+    ),
+    tool(
+      'memory.update_text_file',
+      'Change the title and/or body of a note (body replaces the whole text). Working for a person, only notes the assistant wrote can be changed.',
+      'mutate',
+      z.object({
+        text_file_id: z.string().min(1),
+        title: z.string().optional(),
+        body: z.string().optional(),
+      }),
+      () => 'Changed a note',
     ),
     tool(
       'memory.get_text_file',

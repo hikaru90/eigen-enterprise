@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
 import postgres from 'postgres'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createMemoryTools } from '../../../../modules/memory/tools'
 import { ORCHESTRATOR_PRINCIPAL } from '../../../../modules/orchestrator/brain'
 
@@ -11,6 +11,11 @@ import { ORCHESTRATOR_PRINCIPAL } from '../../../../modules/orchestrator/brain'
  * the code. Runs against the test database with the app's RLS role.
  */
 const DATABASE_URL = process.env.DATABASE_URL?.trim()
+
+// Enrichment (LLM) is not what these facts are about; the queued row is.
+vi.mock('$lib/server/capture/capture-enrich-worker', () => ({
+  scheduleCaptureEnrichWorker: () => {},
+}))
 
 describe.skipIf(!DATABASE_URL)('who can read a person’s Memory', () => {
   const tag = `${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`
@@ -87,5 +92,87 @@ describe.skipIf(!DATABASE_URL)('who can read a person’s Memory', () => {
       )
     expect(outcome).not.toContain(thoughtId)
     expect(outcome).not.toContain('private worry')
+  })
+
+  const memoryTool = (name: string) => {
+    const found = createMemoryTools().find((t) => t.name === name)
+    if (!found) throw new Error(`${name} descriptor missing`)
+    return found
+  }
+  const asAssistant = { principal: ORCHESTRATOR_PRINCIPAL, requestId: 'r2' }
+
+  it('the assistant saves a thought into the Memory of the person it works for — never as itself', async () => {
+    // Production 2026-11-17: this seeded ontology kinds for user_id 'orchestrator' and failed.
+    const saved = (await db.withDbUser(member, () =>
+      memoryTool('memory.capture_thought').handler(asAssistant, {
+        raw: 'Call the plumber on Friday',
+      }),
+    )) as { thoughtId: string; status: string }
+    expect(saved).toEqual({ thoughtId: expect.any(String), status: 'queued' })
+    const [row] = await operator`
+      select user_id, author, capture_source from thought where id = ${saved.thoughtId}`
+    expect(row).toEqual({ user_id: member, author: 'user', capture_source: 'agent' })
+    const [asItself] = await operator`
+      select
+        (select count(*) from ontology_entity_kind where user_id = ${ORCHESTRATOR_PRINCIPAL.id})::int as kinds,
+        (select count(*) from thought where user_id = ${ORCHESTRATOR_PRINCIPAL.id})::int as thoughts`
+    expect(asItself).toEqual({ kinds: 0, thoughts: 0 })
+  })
+
+  it('working for no one, the assistant’s Memory writes fail loud and save nothing', async () => {
+    for (const [name, input] of [
+      ['memory.capture_thought', { raw: 'orphan thought' }],
+      ['memory.create_text_file', { title: 'Orphan note', body: 'nobody asked' }],
+    ] as const) {
+      await expect(memoryTool(name).handler(asAssistant, input)).rejects.toMatchObject({
+        name: 'KernelError',
+        code: 'permission_denied',
+        message: expect.stringMatching(/works for no one/i),
+      })
+    }
+    const [none] = await operator`
+      select (select count(*) from text_file where user_id = ${ORCHESTRATOR_PRINCIPAL.id})::int as notes`
+    expect(none).toEqual({ notes: 0 })
+  })
+
+  it('the assistant writes notes into the person’s Memory, marked as its own, and changes only those', async () => {
+    const created = (await db.withDbUser(member, () =>
+      memoryTool('memory.create_text_file').handler(asAssistant, {
+        title: 'Packing list',
+        body: 'passport',
+      }),
+    )) as { textFileId: string; title: string }
+    expect(created).toEqual({ textFileId: expect.any(String), title: 'Packing list' })
+    const [note] = await operator`
+      select user_id, author, author_label, author_key_id from text_file where id = ${created.textFileId}`
+    expect(note).toEqual({
+      user_id: member,
+      author: 'agent',
+      author_label: 'Assistant',
+      author_key_id: null,
+    })
+
+    const updated = (await db.withDbUser(member, () =>
+      memoryTool('memory.update_text_file').handler(asAssistant, {
+        text_file_id: created.textFileId,
+        title: 'Packing list (Rome)',
+      }),
+    )) as { textFileId: string; title: string }
+    expect(updated).toMatchObject({ textFileId: created.textFileId, title: 'Packing list (Rome)' })
+    // What it hands back never carries the note's text.
+    expect(JSON.stringify(updated)).not.toContain('passport')
+
+    const [own] = await operator`
+      select id from text_file where user_id = ${member} and author = 'user' limit 1`
+    await expect(
+      db.withDbUser(member, () =>
+        memoryTool('memory.update_text_file').handler(asAssistant, {
+          text_file_id: own.id,
+          body: 'overwritten',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'permission_denied' })
+    const [kept] = await operator`select title from text_file where id = ${own.id}`
+    expect(kept).toEqual({ title: 'Private note' })
   })
 })

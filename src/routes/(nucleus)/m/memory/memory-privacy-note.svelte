@@ -13,8 +13,12 @@
    *   reads another person's Memory. Exception: the Roadmap system project lives
    *   in the owner's Memory — members read it, admins and the agent's roadmap.*
    *   tools change it (modules/orchestrator/roadmap).
-   * - The company assistant's memory.* kernel tools run as its own principal
-   *   id (modules/memory/tools.ts), never as the person.
+   * - The company assistant's memory.* read tools run as its own principal
+   *   id (modules/memory/tools.ts), never as the person. Its writes (capture,
+   *   create/update note) land in the Memory of the person it is answering
+   *   (modules/memory/assistant-writes.ts): thoughts as theirs, notes marked as
+   *   the assistant's, and it changes only notes it wrote; working for no one,
+   *   it writes nothing.
    * - API keys authenticate only /api/mcp and /api/mail/send; MCP needs the
    *   key's "MCP access"; its delete_thought archives, delete_project dismisses.
    * - Capture, enrichment and search go through the gateway to the server's AI
@@ -51,7 +55,8 @@
           and admins and the assistant change it.
         </li>
         <li>
-          The company’s assistant doesn’t read it either. An app or agent you give an API key with
+          The company’s assistant doesn’t read it either. When you ask, it adds thoughts and notes to
+          your Memory — notes marked as the assistant’s — and changes only the notes it wrote. An app or agent you give an API key with
           MCP access (Settings → API keys) can read and add to it as you, until you revoke the key —
           it can archive thoughts, but never delete them.
         </li>

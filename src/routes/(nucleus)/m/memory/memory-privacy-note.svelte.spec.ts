@@ -12,6 +12,10 @@ describe('MemoryPrivacyNote', () => {
     await expect.element(note()).toHaveTextContent(/only you/i)
     await expect.element(note()).toHaveTextContent(/other members, admins and the owner can.t/i)
     await expect.element(note()).toHaveTextContent(/assistant doesn.t read it/i)
+    await expect
+      .element(note())
+      .toHaveTextContent(/when you ask, it adds thoughts and notes to your Memory/i)
+    await expect.element(note()).toHaveTextContent(/changes only the notes it wrote/i)
     await expect.element(note()).toHaveTextContent(/API key with MCP access/i)
     await expect.element(note()).toHaveTextContent(/archive.*never delete/i)
     await expect.element(note()).toHaveTextContent(/AI provider/i)

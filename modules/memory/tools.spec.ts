@@ -11,6 +11,8 @@ vi.mock('$lib/server/mcp/tools', () => ({
   runListTextFilesTool: runMock,
   runGetTextFileTool: runMock,
   runSearchTextFilesTool: runMock,
+  runCreateTextFileTool: runMock,
+  runUpdateTextFileTool: runMock,
 }))
 
 import type { ToolContext } from '$lib/kernel/types'
@@ -42,20 +44,49 @@ describe('createMemoryTools', () => {
     }
   })
 
-  it('marks capture as mutate and the rest as read', () => {
+  it('marks capture and note writes as mutate and the rest as read', () => {
     const byName = new Map(tools.map((t) => [t.name, t]))
-    expect(byName.get('memory.capture_thought')?.auditClass).toBe('mutate')
-    for (const name of [...MEMORY_TOOL_NAMES].filter((n) => n !== 'memory.capture_thought')) {
+    const writes = ['memory.capture_thought', 'memory.create_text_file', 'memory.update_text_file']
+    for (const name of writes) expect(byName.get(name)?.auditClass).toBe('mutate')
+    for (const name of [...MEMORY_TOOL_NAMES].filter((n) => !writes.includes(n))) {
       expect(byName.get(name)?.auditClass).toBe('read')
     }
+  })
+
+  it('a write lands with the person the writer resolves to, not the principal id', async () => {
+    runMock.mockClear()
+    const asSelf = createMemoryTools({
+      writerOf: async () => ({ kind: 'self', userId: 'person-1' }),
+    })
+    const create = asSelf.find((t) => t.name === 'memory.create_text_file')!
+    await create.handler(ctx, { title: 'Hello' })
+    expect(runMock).toHaveBeenCalledWith({ userId: 'person-1' }, { title: 'Hello' })
+  })
+
+  it('a write by an agent working for no one fails loud before touching Memory', async () => {
+    runMock.mockClear()
+    const forNoOne = createMemoryTools({ writerOf: async () => null })
+    for (const name of [
+      'memory.capture_thought',
+      'memory.create_text_file',
+      'memory.update_text_file',
+    ]) {
+      const descriptor = forNoOne.find((t) => t.name === name)!
+      await expect(
+        descriptor.handler(ctx, { raw: 'x', text_file_id: 'f', title: 't' }),
+      ).rejects.toMatchObject({
+        code: 'permission_denied',
+        message: expect.stringMatching(/works for no one/i),
+      })
+    }
+    expect(runMock).not.toHaveBeenCalled()
   })
 
   it('validates required inputs with zod', () => {
     const byName = new Map(tools.map((t) => [t.name, t]))
     expect(byName.get('memory.capture_thought')?.inputSchema.safeParse({}).success).toBe(false)
     expect(
-      byName.get('memory.capture_thought')?.inputSchema.safeParse({ raw: 'remember this' })
-        .success,
+      byName.get('memory.capture_thought')?.inputSchema.safeParse({ raw: 'remember this' }).success,
     ).toBe(true)
     expect(
       byName.get('memory.get_project_timeline')?.inputSchema.safeParse({
