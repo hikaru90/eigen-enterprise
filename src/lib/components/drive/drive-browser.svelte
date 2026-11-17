@@ -252,7 +252,7 @@
   {@const label = datedLabel(d)}
   <span class="whitespace-nowrap" title={label.full} data-testid="drive-dated"
     ><time datetime={new Date(d.at).toISOString()}>{label.month}</time>
-    <span class="text-xs text-muted-foreground/70">{label.kind}</span></span
+    <span class="text-xs text-muted-foreground">{label.kind}</span></span
   >
 {/snippet}
 

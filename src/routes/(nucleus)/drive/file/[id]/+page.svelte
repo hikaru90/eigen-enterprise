@@ -213,7 +213,7 @@
         </h2>
         <p class="text-sm text-muted-foreground" data-testid="drive-file-meta">
           {#if dated}<span title={dated.full} data-testid="drive-file-dated"
-              >{dated.month} <span class="text-muted-foreground/70">{dated.kind}</span></span
+              >{dated.month} <span class="text-xs">{dated.kind}</span></span
             > ·
           {/if}{`${formatSize(meta.size)} · changed ${fmt(meta.updatedAt)}${data.canEdit ? '' : ' · view only'}`}
         </p>
