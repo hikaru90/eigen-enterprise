@@ -423,6 +423,20 @@ describe('DbApprovalStore', () => {
     expect(latest).toMatchObject({ consumedAt: '2026-09-07T12:01:00.000Z' })
   })
 
+  it('openFor selects the pair’s pending and approved-unconsumed rows, newest first', async () => {
+    const { db } = makeFakeDb({
+      ...noopHandlers,
+      onSelect: (table, query) => {
+        if (table !== 'kernel_approvals') throw new Error(`unexpected select: ${table}`)
+        expect(query.where).toHaveLength(1)
+        expect(query.orderBy).toHaveLength(1)
+        return [{ ...request, decidedBy: null, decidedAt: null, consumedAt: null }]
+      },
+    })
+    const open = await new DbApprovalStore(db).openFor('email.send_mail', 'p1')
+    expect(open).toEqual([request])
+  })
+
   it('consume sets consumedAt in one guarded update: true once, false when nothing matched', async () => {
     const hit = makeFakeDb({
       ...noopHandlers,

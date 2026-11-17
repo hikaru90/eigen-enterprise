@@ -106,6 +106,21 @@ function storeBehavior(name: string, makeStore: () => WebsiteStore) {
       )
     })
 
+    it('deletePage removes the page and returns what was deleted', async () => {
+      const store = makeStore()
+      await store.createPage({ slug: 'about', title: 'About', body: 'x' })
+
+      const deleted = await store.deletePage('about')
+      expect(deleted).toMatchObject({ slug: 'about', title: 'About' })
+      expect(await store.getPage('about')).toBeNull()
+    })
+
+    it('deletePage throws loud for an unknown slug', async () => {
+      const store = makeStore()
+
+      await expect(store.deletePage('nope')).rejects.toThrow(/unknown website page: nope/)
+    })
+
     it('listPages returns all pages and filters by kind and visibility', async () => {
       const store = makeStore()
       await store.createPage({ slug: 'home', title: 'Home', body: 'x', visibility: 'public' })
@@ -165,9 +180,11 @@ storeBehavior('InMemoryWebsiteStore', () => new InMemoryWebsiteStore())
  * configurable returning row. Dispatches on table name; fails loud on
  * unexpected tables.
  */
-function makeFakeDb(options: { selectRows?: () => unknown[]; returningRow?: unknown } = {}) {
+function makeFakeDb(
+  options: { selectRows?: () => unknown[]; returningRow?: unknown; deleteNone?: boolean } = {},
+) {
   const calls: Array<{
-    op: 'insert' | 'select' | 'update'
+    op: 'insert' | 'select' | 'update' | 'delete'
     table: string
     values?: unknown
     set?: unknown
@@ -205,6 +222,17 @@ function makeFakeDb(options: { selectRows?: () => unknown[]; returningRow?: unkn
           }
           return node
         },
+      }
+    },
+    delete(table: unknown) {
+      const name = tableName(table)
+      return {
+        where: () => ({
+          returning: async () => {
+            calls.push({ op: 'delete', table: name })
+            return options.deleteNone ? [] : [options.returningRow ?? {}]
+          },
+        }),
       }
     },
     update(table: unknown) {
@@ -316,6 +344,18 @@ describe('DbWebsiteStore', () => {
 
     expect(fake.calls.at(-1)).toMatchObject({ op: 'update', table: 'website_content' })
     expect(fake.calls.at(-1)?.set).toMatchObject({ visibility: 'private' })
+  })
+
+  it('deletePage deletes by slug and maps the deleted row; unknown slug fails loud', async () => {
+    const fake = makeFakeDb({ returningRow: dbRow })
+    const deleted = await new DbWebsiteStore(fake.db).deletePage('about')
+    expect(deleted).toMatchObject({ id: 'row-1', slug: 'about' })
+    expect(fake.calls).toEqual([{ op: 'delete', table: 'website_content' }])
+
+    const none = makeFakeDb({ deleteNone: true })
+    await expect(new DbWebsiteStore(none.db).deletePage('nope')).rejects.toThrow(
+      /unknown website page: nope/,
+    )
   })
 
   it('listPages selects the content table', async () => {

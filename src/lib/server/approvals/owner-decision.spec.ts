@@ -30,6 +30,7 @@ function adminRegistry() {
     listPending: () => store.listPending(),
     latestFor: (t: string, p: string) => store.latestFor(t, p),
     consume: (id: string) => store.consume(id),
+    openFor: (t: string, p: string) => store.openFor(t, p),
     list: async (status?: ApprovalStatus) =>
       [...all.values()].filter((r) => status === undefined || r.status === status),
   }

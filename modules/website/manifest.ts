@@ -13,6 +13,7 @@ export const WEBSITE_TOOL_NAMES = [
   'website.create_page',
   'website.update_page',
   'website.publish_page',
+  'website.delete_page',
   'website.get_page',
   'website.list_pages',
   'website.site_info',

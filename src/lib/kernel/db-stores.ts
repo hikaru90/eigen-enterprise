@@ -1,7 +1,7 @@
 import type { KernelEvent, EventSink } from './events'
 import type { ActivationStore } from './modules'
 import type { Principal, PrincipalStore } from './principals'
-import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull, or, sql } from 'drizzle-orm'
 import type { AppDatabase } from '$lib/server/db/context'
 import {
   kernelApprovalMode,
@@ -243,6 +243,24 @@ export class DbApprovalStore implements ApprovalStore {
       .orderBy(desc(kernelApprovals.createdAt))
       .limit(1)
     return rows[0] ? toApprovalRequest(rows[0]) : null
+  }
+
+  async openFor(toolName: string, principalId: string): Promise<ApprovalRequest[]> {
+    const rows = await (await resolveDb(this.db))
+      .select(approvalColumns)
+      .from(kernelApprovals)
+      .where(
+        and(
+          eq(kernelApprovals.toolName, toolName),
+          eq(kernelApprovals.principalId, principalId),
+          or(
+            eq(kernelApprovals.status, 'pending'),
+            and(eq(kernelApprovals.status, 'approved'), isNull(kernelApprovals.consumedAt)),
+          ),
+        ),
+      )
+      .orderBy(desc(kernelApprovals.createdAt))
+    return rows.map(toApprovalRequest)
   }
 
   async consume(id: string): Promise<boolean> {

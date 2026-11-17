@@ -205,20 +205,18 @@ export class KernelRegistry {
    * consumed atomically before the handler runs. Anything else waits.
    */
   private async alwaysAskGate(name: string, input: unknown, ctx: ToolContext): Promise<void> {
-    const latest = await this.approvalStore.latestFor(name, ctx.principal.id)
-    if (latest?.status === 'pending') {
+    const open = (await this.approvalStore.openFor(name, ctx.principal.id)).filter((r) =>
+      sameApprovalInput(r.input, input),
+    )
+    for (const approved of open.filter((r) => r.status === 'approved')) {
+      if (await this.approvalStore.consume(approved.id)) return
+    }
+    const pending = open.find((r) => r.status === 'pending')
+    if (pending) {
       throw new KernelError('approval_required', `tool ${name} is awaiting approval`, {
-        approvalId: latest.id,
+        approvalId: pending.id,
         tool: name,
       })
-    }
-    if (
-      latest?.status === 'approved' &&
-      latest.consumedAt === undefined &&
-      sameApprovalInput(latest.input, input) &&
-      (await this.approvalStore.consume(latest.id))
-    ) {
-      return
     }
     const created = await this.approvalStore.create({
       id: randomUUID(),

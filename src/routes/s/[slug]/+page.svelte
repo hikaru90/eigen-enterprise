@@ -1,9 +1,12 @@
 <script lang="ts">
-  import type { PageData } from './$types'
+  import type { ActionData, PageData } from './$types'
   import WaterFlow from '../../../../modules/brand/water-flow.svelte'
   import { renderWebsiteMarkdown } from '../../../../modules/website/markdown'
 
-  let { data }: { data: PageData } = $props()
+  let { data, form }: { data: PageData; form: ActionData } = $props()
+
+  /** Two-step delete: the first click asks, the second deletes for good. */
+  let confirmingDelete = $state(false)
 
   const bodyHtml = $derived(renderWebsiteMarkdown(data.body))
   const updatedOn = $derived(data.updatedAt.slice(0, 10))
@@ -37,6 +40,22 @@
   </div>
   <footer>
     <time datetime={data.updatedAt}>Updated {updatedOn}</time>
+    {#if data.canDelete}
+      <div class="website-owner-actions" data-testid="page-delete">
+        {#if confirmingDelete}
+          <form method="POST" action="?/deletePage">
+            <span>Delete “{data.title}” for good? It cannot be restored.</span>
+            <button type="submit" class="danger">Delete for good</button>
+            <button type="button" onclick={() => (confirmingDelete = false)}>Keep it</button>
+          </form>
+        {:else}
+          <button type="button" onclick={() => (confirmingDelete = true)}>Delete page</button>
+        {/if}
+        {#if form?.error}
+          <p role="alert">{form.error}</p>
+        {/if}
+      </div>
+    {/if}
   </footer>
 </article>
 
@@ -106,5 +125,37 @@
     margin-top: 3rem;
     font-size: 0.85rem;
     color: #8a8a8a;
+  }
+
+  .website-owner-actions {
+    position: relative;
+    margin-top: 1rem;
+  }
+
+  .website-owner-actions form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .website-owner-actions button {
+    padding: 0.25rem 0.625rem;
+    border: 1px solid #3a3a3a;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: #c9c9c9;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+
+  .website-owner-actions button.danger {
+    border-color: #7a2a2a;
+    color: #f0a0a0;
+  }
+
+  .website-owner-actions p {
+    margin: 0.5rem 0 0;
+    color: #f0a0a0;
   }
 </style>

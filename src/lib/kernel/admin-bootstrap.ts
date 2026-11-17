@@ -97,6 +97,7 @@ export function listableApprovalStore(store: ApprovalStore, db?: DbHandle): Admi
     listPending: () => store.listPending(),
     latestFor: (toolName, principalId) => store.latestFor(toolName, principalId),
     consume: (id) => store.consume(id),
+    openFor: (toolName, principalId) => store.openFor(toolName, principalId),
     list,
   }
 }

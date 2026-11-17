@@ -61,6 +61,8 @@ export type WebsiteStore = {
   updatePage(slug: string, patch: UpdatePagePatch): Promise<WebsitePage>
   /** The publish/unpublish flip. Throws loud when the slug is unknown. */
   setVisibility(slug: string, visibility: WebsiteVisibility): Promise<WebsitePage>
+  /** Removes the page for good and returns what was deleted. Throws loud when the slug is unknown. */
+  deletePage(slug: string): Promise<WebsitePage>
   createContact(input: CreateContactInput): Promise<WebsiteContact>
 }
 
@@ -126,6 +128,12 @@ export class InMemoryWebsiteStore implements WebsiteStore {
     const updated: WebsitePage = { ...page, visibility, updatedAt: nowIso() }
     this.pages.set(slug, updated)
     return updated
+  }
+
+  async deletePage(slug: string): Promise<WebsitePage> {
+    const page = requireSlugKnown(this.pages.get(slug) ?? null, slug)
+    this.pages.delete(slug)
+    return page
   }
 
   async createContact(input: CreateContactInput): Promise<WebsiteContact> {
@@ -268,6 +276,14 @@ export class DbWebsiteStore implements WebsiteStore {
       .returning()
     if (!rows[0]) throw new Error(`website page visibility update returned no row: ${slug}`)
     return toPage(rows[0])
+  }
+
+  async deletePage(slug: string): Promise<WebsitePage> {
+    const rows = await (await resolveDb(this.db))
+      .delete(websiteContent)
+      .where(eq(websiteContent.slug, slug))
+      .returning()
+    return requireSlugKnown(rows[0] ? toPage(rows[0]) : null, slug)
   }
 
   async createContact(input: CreateContactInput): Promise<WebsiteContact> {

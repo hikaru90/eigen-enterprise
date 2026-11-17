@@ -11,6 +11,7 @@ const APPROVAL_ACTION_COPY: Record<string, string> = {
   'brand.set_activate': 'Make a brand guideline set the active one',
   'brand.visual_set_activate': 'Make a visual brand set live across the company',
   'website.publish_page': 'Publish a page of your website',
+  'website.delete_page': 'Delete a page of your website for good',
   'repo.merge': 'Merge agent work into the company repository',
   'kernel.module_deactivate': 'Switch off a module',
   'website.github_connect_repo': 'Connect a GitHub repository',

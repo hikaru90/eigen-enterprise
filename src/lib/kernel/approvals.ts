@@ -116,6 +116,12 @@ export type ApprovalStore = {
    * consumed (a concurrent call won) — the caller must then not run.
    */
   consume(id: string): Promise<boolean>
+  /**
+   * The open requests of a tool+principal pair: pending, or approved and not
+   * yet consumed — newest first. The always-ask gate matches the call's input
+   * against these (an approval covers only its own input).
+   */
+  openFor(toolName: string, principalId: string): Promise<ApprovalRequest[]>
 }
 
 /** Structural equality of two JSON inputs, independent of object key order (jsonb reorders keys). */
@@ -167,6 +173,17 @@ export class InMemoryApprovalStore implements ApprovalStore {
       if (req.toolName === toolName && req.principalId === principalId) latest = req
     }
     return latest
+  }
+
+  async openFor(toolName: string, principalId: string): Promise<ApprovalRequest[]> {
+    return [...this.requests.values()]
+      .filter(
+        (r) =>
+          r.toolName === toolName &&
+          r.principalId === principalId &&
+          (r.status === 'pending' || (r.status === 'approved' && r.consumedAt === undefined)),
+      )
+      .reverse()
   }
 
   async consume(id: string): Promise<boolean> {

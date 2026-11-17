@@ -173,7 +173,8 @@ export function toolEventKind(tool: string): ActivityKind {
   if (
     tool === 'website.create_page' ||
     tool === 'website.update_page' ||
-    tool === 'website.publish_page'
+    tool === 'website.publish_page' ||
+    tool === 'website.delete_page'
   )
     return 'page'
   return 'server'
