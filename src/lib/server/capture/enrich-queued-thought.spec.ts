@@ -154,7 +154,6 @@ const baseBundle = {
   entityGraph: { mentions: [], triples: [] },
 }
 
-
 describe('enrichQueuedThought', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -217,6 +216,37 @@ describe('enrichQueuedThought', () => {
     expect(notifyThoughtEnrichedMock).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'u1', thoughtId: 't1', category: 'task' }),
     )
+  })
+
+  it('keeps the category the person chose when they captured it (categorySource person)', async () => {
+    const db = makeDb([
+      [baseRow],
+      [{ metadata: { encrypted: true }, metadataEncrypted: 'enc:{"categorySource":"person"}' }],
+      [{ n: 5 }],
+      [{ enrichedAt: new Date('2026-06-01T00:05:00.000Z') }],
+      [
+        {
+          normalizedText: 'raw input',
+          category: 'task',
+          enrichedAt: new Date('2026-06-01T00:05:00.000Z'),
+        },
+      ],
+    ])
+    getDbMock.mockReturnValue(db)
+    extractEnrichThoughtBundleMock.mockResolvedValue({
+      ...baseBundle,
+      category: { key: 'idea', ontologyEntityKindId: 'ek-idea', confidence: 0.6, alternatives: [] },
+    })
+
+    await enrichQueuedThought('u1', 't1')
+
+    const set = (db.updateSet.mock.calls as unknown as [Record<string, unknown>][])[0]![0]
+    expect(set).not.toHaveProperty('category')
+    expect(set).not.toHaveProperty('ontologyEntityKindId')
+    expect(set).toHaveProperty('embedding')
+    const metadata = JSON.parse(String(set.metadataEncrypted).slice(4)) as Record<string, unknown>
+    expect(metadata.categorySource).toBe('person')
+    expect(markEnrichQueueCompleteMock).toHaveBeenCalledWith('t1')
   })
 
   it('decrypts encrypted raw/normalized text before enriching', async () => {

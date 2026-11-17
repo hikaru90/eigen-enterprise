@@ -61,7 +61,21 @@ export const POST: RequestHandler = async (event) => {
     error(400, err instanceof Error ? err.message : 'Invalid captured_at')
   }
 
-  const captureOpts = { source: 'ui' as const, ...(capturedAt ? { capturedAt } : {}) }
+  // A thought category the person chose (Tasks › Add a task sends 'task'); the
+  // capture checks it against their ontology and enrichment keeps it.
+  const category =
+    typeof body === 'object' && body && 'category' in body
+      ? (body as { category?: unknown }).category
+      : undefined
+  if (category !== undefined && (typeof category !== 'string' || !category.trim())) {
+    error(400, 'category must be a thought category key')
+  }
+
+  const captureOpts = {
+    source: 'ui' as const,
+    ...(capturedAt ? { capturedAt } : {}),
+    ...(category ? { category } : {}),
+  }
 
   const accept = event.request.headers?.get('accept') ?? ''
   const streamNdjson = accept.includes('application/x-ndjson')

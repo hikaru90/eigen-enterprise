@@ -6,6 +6,8 @@ export type SubmitCaptureOptions = {
   onProgress?: (event: ProgressEvent) => void
   /** When false, only JSON mode is used (service worker / background). */
   streamProgress?: boolean
+  /** A thought category the person chose (Tasks › Add a task sends 'task'). */
+  category?: string
 }
 
 export function isLikelyOfflineError(err: unknown): boolean {
@@ -39,7 +41,7 @@ export async function submitCaptureRaw(
   const res = await fetch('/api/capture/submit', {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept },
-    body: JSON.stringify({ raw }),
+    body: JSON.stringify(options?.category ? { raw, category: options.category } : { raw }),
     credentials: 'same-origin',
     signal: options?.signal,
   })

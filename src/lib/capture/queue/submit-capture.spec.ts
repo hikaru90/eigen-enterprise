@@ -38,4 +38,27 @@ describe('submitCaptureRaw', () => {
 
     vi.unstubAllGlobals()
   })
+
+  it('sends the category the person chose (Tasks › Add a task)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ thought: { id: 't2', normalizedText: 'x', category: 'task' } }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await submitCaptureRaw('Renew passport', { streamProgress: false, category: 'task' })
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/capture/submit',
+      expect.objectContaining({
+        body: JSON.stringify({ raw: 'Renew passport', category: 'task' }),
+      }),
+    )
+
+    vi.unstubAllGlobals()
+  })
 })

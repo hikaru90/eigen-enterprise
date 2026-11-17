@@ -226,16 +226,20 @@ export async function enrichQueuedThought(
       } = prefetched.category
 
       await time('persist_classify_embed', async () => {
+        const metadata = await loadThoughtMetadata(userId, thoughtId)
+        // The person picked the category when they captured it (e.g. Tasks › Add a
+        // task): it stays; the model's guess never overrides a person's choice.
+        const personChoseCategory = metadata.categorySource === 'person'
         await db
           .update(thought)
           .set({
-            category,
-            ontologyEntityKindId,
+            ...(personChoseCategory ? {} : { category, ontologyEntityKindId }),
             embedding: sql`${toPgVectorLiteral(prefetched.embedding)}::vector`,
-            metadataEncrypted: await encryptMetadataPatch(userId, thoughtId, {
-              categorySource: 'llm',
-              categoryConfidence,
-              categoryAlternatives,
+            metadataEncrypted: await encryptMetadata(userId, {
+              ...metadata,
+              ...(personChoseCategory
+                ? {}
+                : { categorySource: 'llm', categoryConfidence, categoryAlternatives }),
               enrichmentContext: context.completeness,
             }),
           })
@@ -317,11 +321,10 @@ export async function enrichQueuedThought(
   }
 }
 
-async function encryptMetadataPatch(
+async function loadThoughtMetadata(
   userId: string,
   thoughtId: string,
-  patch: Record<string, unknown>,
-): Promise<string> {
+): Promise<Record<string, unknown>> {
   const db = getDb()
   const [existing] = await db
     .select({ metadata: thought.metadata, metadataEncrypted: thought.metadataEncrypted })
@@ -329,7 +332,6 @@ async function encryptMetadataPatch(
     .where(eq(thought.id, thoughtId))
     .limit(1)
 
-  let base: Record<string, unknown> = {}
   if (existing?.metadataEncrypted) {
     const json = await decryptTenantValue({
       userId,
@@ -337,16 +339,20 @@ async function encryptMetadataPatch(
       column: 'metadata',
       ciphertext: existing.metadataEncrypted,
     })
-    base = JSON.parse(json) as Record<string, unknown>
-  } else if (existing?.metadata && typeof existing.metadata === 'object') {
-    base = { ...(existing.metadata as Record<string, unknown>) }
+    return JSON.parse(json) as Record<string, unknown>
   }
+  if (existing?.metadata && typeof existing.metadata === 'object') {
+    return { ...(existing.metadata as Record<string, unknown>) }
+  }
+  return {}
+}
 
+function encryptMetadata(userId: string, metadata: Record<string, unknown>): Promise<string> {
   return encryptTenantValue({
     userId,
     table: 'thought',
     column: 'metadata',
-    plaintext: JSON.stringify({ ...base, ...patch }),
+    plaintext: JSON.stringify(metadata),
   })
 }
 
