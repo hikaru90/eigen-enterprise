@@ -72,6 +72,12 @@ export type QueueCaptureOptions = {
   awaitConfirmation?: boolean
   /** Override thought.createdAt (e.g. backdated haystack session date from external driver). */
   capturedAt?: Date
+  /**
+   * A thought category key the PERSON chose (e.g. Tasks › Add a task → 'task').
+   * Stored from the start with metadata.categorySource 'person'; enrichment
+   * keeps it. Must be an active thought category of their ontology.
+   */
+  category?: string
 }
 
 async function resolvePlaceholderOntologyKindId(userId: string): Promise<string> {
@@ -86,6 +92,16 @@ async function resolvePlaceholderOntologyKindId(userId: string): Promise<string>
   return kind.id
 }
 
+async function resolvePersonCategoryKindId(userId: string, key: string): Promise<string> {
+  await ensureUserOntologySeeded(getDb(), userId)
+  const loaded = await loadOntologyForUser(getDb(), userId)
+  const kind = loaded.entityKindsByKey.get(key)
+  if (!kind || !kind.active || kind.kindType !== 'thought_category') {
+    throw new Error(`"${key}" is not a thought category in this Memory`)
+  }
+  return kind.id
+}
+
 /**
  * Insert one thought row (full text, no LLM). Returns immediately.
  */
@@ -96,7 +112,11 @@ export async function queueCapture(
 ): Promise<QueueCaptureResult> {
   const { normalized, metadata } = normalizeThoughtText(rawInput)
   const lexicalText = computeLexicalText(normalized)
-  const ontologyEntityKindId = await resolvePlaceholderOntologyKindId(userId)
+  const personCategory = options?.category
+  const category = personCategory ?? QUEUE_PLACEHOLDER_CATEGORY
+  const ontologyEntityKindId = personCategory
+    ? await resolvePersonCategoryKindId(userId, personCategory)
+    : await resolvePlaceholderOntologyKindId(userId)
   const source = options?.source ?? 'api'
   const authorship = resolveMemoryAuthorship({
     author: options?.author,
@@ -140,6 +160,7 @@ export async function queueCapture(
     column: 'metadata',
     plaintext: JSON.stringify({
       ...metadata,
+      ...(personCategory ? { categorySource: 'person' } : {}),
       queueTier,
       ...(awaitConfirmation ? { confirmationGate: true } : {}),
     }),
@@ -158,7 +179,7 @@ export async function queueCapture(
         rawInputEncrypted,
         normalizedPreview: normalized,
         normalizedPreviewEncrypted,
-        category: QUEUE_PLACEHOLDER_CATEGORY,
+        category,
         metadataPreview: { encrypted: true },
         revisionCount: 0,
         ...authorValues,
@@ -174,7 +195,7 @@ export async function queueCapture(
         normalizedText: normalized,
         normalizedTextEncrypted,
         lexicalText,
-        category: QUEUE_PLACEHOLDER_CATEGORY,
+        category,
         ontologyEntityKindId,
         metadata: {
           encrypted: true,
@@ -208,7 +229,7 @@ export async function queueCapture(
       upsertThoughtNode({
         id: stored.id,
         userId,
-        category: QUEUE_PLACEHOLDER_CATEGORY,
+        category,
         author: graphAuthorProperty(authorship),
       }),
       TIER1_GRAPH_ANCHOR_TIMEOUT_MS,

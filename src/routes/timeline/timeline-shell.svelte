@@ -4,6 +4,7 @@
   import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle'
   import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw'
   import { onMount } from 'svelte'
+  import { submitCaptureRaw } from '$lib/capture/queue/submit-capture'
   import MorphSearchControl from '$lib/components/morph-search-control.svelte'
   import { Button } from '$lib/components/ui/button'
   import type { CurrentUserView } from '$lib/memory/current-user-view'
@@ -26,6 +27,7 @@
   import TemporalTimelineNudge from './temporal-timeline-nudge.svelte'
   import TemporalTimelineOptionsPopover from './temporal-timeline-options-popover.svelte'
   import TemporalTodaySegmentTabs from './temporal-today-segment-tabs.svelte'
+  import TimelineAddTask from './timeline-add-task.svelte'
   import TimelineAgentAssignDialog from './timeline-agent-assign-dialog.svelte'
   import { shouldRefetchForViewChange, shouldRefetchPrefetchForView } from './timeline-client-loads'
   import { filterTimelineItemsBySearch } from './timeline-data-derive'
@@ -321,6 +323,16 @@
     })()
   }
 
+  /** Tasks › Add a task: the person says it is a task, so it is captured as one. */
+  async function addTask(text: string) {
+    const saved = await submitCaptureRaw(text, { category: 'task', streamProgress: false })
+    await withThoughtSyncReloadSuppressedAsync(async () => {
+      await data.load({ silent: data.phase === 'ready' })
+      notifyThoughtChanged(saved.id, 'edit', 'global')
+    })
+    nowSegment = 'todo'
+  }
+
   function setNowSegment(segment: NowSegment) {
     nowSegment = segment
   }
@@ -412,6 +424,10 @@
       <TemporalTodaySegmentTabs segment={nowSegment} {tabCounts} onSegmentChange={setNowSegment} />
     {/if}
   </TemporalTimelineHeader>
+
+  {#if mode === 'tasks'}
+    <TimelineAddTask {addTask} />
+  {/if}
 
   {#if snoozedItems.length > 0}
     <div class="border-border shrink-0 border-b px-3 py-1.5">

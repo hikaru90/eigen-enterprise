@@ -71,6 +71,8 @@ export type CaptureThoughtOptions = {
   authorKeyId?: string | null
   /** Override thought.createdAt for temporal anchoring at enrich (external drivers, eval fixtures). */
   capturedAt?: Date
+  /** A thought category the person chose (see QueueCaptureOptions.category). */
+  category?: string
 }
 
 async function decryptThoughtRow<
@@ -144,6 +146,7 @@ export async function captureThought(
     authorKeyId: options?.authorKeyId,
     skipWorker: awaitEnrichment,
     capturedAt: options?.capturedAt,
+    ...(options?.category ? { category: options.category } : {}),
   })
 
   if (awaitEnrichment) {

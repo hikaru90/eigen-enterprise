@@ -69,6 +69,29 @@ describe('POST /api/capture/submit', () => {
     expect(res.status).toBe(200)
   })
 
+  it('passes a category the person chose (Tasks › Add a task) to the capture', async () => {
+    captureThoughtMock.mockResolvedValue({ id: 't1' })
+    const res = await POST({
+      locals: { user: { id: 'u1' } },
+      request: { json: vi.fn(async () => ({ raw: 'Renew passport', category: 'task' })) },
+    } as never)
+    expect(captureThoughtMock).toHaveBeenCalledWith('u1', 'Renew passport', {
+      source: 'ui',
+      category: 'task',
+    })
+    expect(res.status).toBe(200)
+  })
+
+  it('rejects a category that is not a non-empty string', async () => {
+    await expect(
+      POST({
+        locals: { user: { id: 'u1' } },
+        request: { json: vi.fn(async () => ({ raw: 'x', category: 3 })) },
+      } as never),
+    ).rejects.toMatchObject({ status: 400 })
+    expect(captureThoughtMock).not.toHaveBeenCalled()
+  })
+
   it('streams ndjson when Accept includes application/x-ndjson', async () => {
     captureThoughtMock.mockImplementation(
       async (
