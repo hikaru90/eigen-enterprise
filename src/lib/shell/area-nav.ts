@@ -40,6 +40,7 @@ export const BRAND_TABS: readonly AreaTab[] = [
   // sent you back to Style while no style was chosen (Contribute polish).
   { id: 'style', label: 'Style', href: '/brand', match: ['/brand/system'] },
   { id: 'material', label: 'Material', href: '/brand/material' },
+  { id: 'social', label: 'Social', href: '/brand/social' },
   { id: 'extract', label: 'Extract', href: '/brand/extract' },
 ]
 

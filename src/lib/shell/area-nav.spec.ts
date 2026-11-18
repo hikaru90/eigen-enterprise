@@ -6,7 +6,7 @@ describe('area sub-navigation (one page frame)', () => {
   it('lists the tabs of each area in one order', () => {
     expect(ASSISTANT_TABS.map((t) => t.label)).toEqual(['Conversations', 'Activity'])
     expect(WEBSITE_TABS.map((t) => t.label)).toEqual(['Apps', 'Site', 'Settings'])
-    expect(BRAND_TABS.map((t) => t.label)).toEqual(['Style', 'Material', 'Extract'])
+    expect(BRAND_TABS.map((t) => t.label)).toEqual(['Style', 'Material', 'Social', 'Extract'])
     expect(DRIVE_TABS.map((t) => t.label)).toEqual(['My drive', 'Shared with me', 'Trash'])
   })
   it.each([
@@ -22,6 +22,7 @@ describe('area sub-navigation (one page frame)', () => {
     [BRAND_TABS, '/brand', 'style'],
     [BRAND_TABS, '/brand/system', 'style'],
     [BRAND_TABS, '/brand/material', 'material'],
+    [BRAND_TABS, '/brand/social', 'social'],
     [BRAND_TABS, '/brand/extract', 'extract'],
     [DRIVE_TABS, '/drive', 'mine'],
     [DRIVE_TABS, '/drive/folder/abc', 'mine'],
@@ -41,7 +42,7 @@ describe('area tabs follow the capability set (Contribute 2bda4814)', () => {
     Object.fromEntries(CAPABILITIES.map((c) => [c, granted])) as Capabilities
 
   it('a member is not offered Brand → Extract (it answers 403); an admin is', () => {
-    expect(openableTabs(BRAND_TABS, caps(false)).map((t) => t.id)).toEqual(['style', 'material'])
-    expect(openableTabs(BRAND_TABS, caps(true)).map((t) => t.id)).toEqual(['style', 'material', 'extract'])
+    expect(openableTabs(BRAND_TABS, caps(false)).map((t) => t.id)).toEqual(['style', 'material', 'social'])
+    expect(openableTabs(BRAND_TABS, caps(true)).map((t) => t.id)).toEqual(['style', 'material', 'social', 'extract'])
   })
 })

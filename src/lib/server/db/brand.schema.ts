@@ -1,4 +1,6 @@
 import {
+  bigint,
+  date,
   index,
   integer,
   jsonb,
@@ -270,3 +272,54 @@ export const brandVisualSets = pgTable('brand_visual_sets', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
+
+// ---------------------------------------------------------------------------
+// Brand › Social (Contribute 6ff283ef, migration 0153): social posts in the
+// company's style — a branded graphic (copy as data, drawn from the active
+// visual set) or uploaded media, one caption per network. Media bytes live
+// content-addressed on disk (<drive dir>/brand-social); rows keep metadata.
+// ---------------------------------------------------------------------------
+
+export type BrandSocialGraphic = { headline: string; body: string; cta: string; mode: 'light' | 'dark' }
+
+export const brandSocialPosts = pgTable(
+  'brand_social_posts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    title: text('title').notNull(),
+    source: text('source', { enum: ['graphic', 'upload'] }).notNull(),
+    format: text('format', { enum: ['square', 'portrait', 'story', 'landscape'] }),
+    graphic: jsonb('graphic').$type<BrandSocialGraphic>(),
+    networks: jsonb('networks').$type<string[]>().notNull(),
+    captions: jsonb('captions').$type<Record<string, string>>().default({}).notNull(),
+    status: text('status', { enum: ['draft', 'ready', 'posted'] })
+      .default('draft')
+      .notNull(),
+    plannedFor: date('planned_for', { mode: 'string' }),
+    createdBy: text('created_by').notNull(),
+    createdByKind: text('created_by_kind', { enum: ['user', 'agent'] }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index('brand_social_posts_created_idx').on(table.createdAt)],
+)
+
+export const brandSocialMedia = pgTable(
+  'brand_social_media',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    postId: uuid('post_id')
+      .notNull()
+      .references(() => brandSocialPosts.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    name: text('name').notNull(),
+    mime: text('mime').notNull(),
+    size: bigint('size', { mode: 'number' }).notNull(),
+    sha256: text('sha256').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    unique('brand_social_media_position_unique').on(table.postId, table.position),
+    index('brand_social_media_sha_idx').on(table.sha256),
+  ],
+)

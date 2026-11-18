@@ -24,7 +24,8 @@
     cssVars: Record<string, string>
     darkCssVars: Record<string, string> | null
     mode: 'light' | 'dark'
-    format: MaterialFormat
+    /** Any sized format: the material catalog's, or Brand › Social's aspect ratios. */
+    format: Pick<MaterialFormat, 'id' | 'width' | 'height'>
     testid: string
     class?: string
     children: Snippet

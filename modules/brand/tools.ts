@@ -3,6 +3,7 @@ import { KernelError } from '$lib/kernel/errors'
 import type { ToolDescriptor, ToolContext } from '$lib/kernel/types'
 import { createBrandExtractTools, type BrandExtractToolDeps } from './extract/tools'
 import { createBrandSelectionTools, type BrandSelectionToolDeps } from './selection/tools'
+import { createBrandSocialTools, type BrandSocialToolDeps } from './social/tools'
 import {
   createSetInputSchema,
   defaultBrandStore,
@@ -30,6 +31,8 @@ export type BrandToolDeps = {
   extract?: BrandExtractToolDeps
   /** Deps for the phase-2d M4 selection wizard tools (store/corpus seams). */
   selection?: BrandSelectionToolDeps
+  /** Deps for the Social post library tools (posts/voice/chat seams). */
+  social?: BrandSocialToolDeps
 }
 
 /** G8: strategic brand decisions are human-owned; agents never self-author boundaries (G19). */
@@ -100,6 +103,7 @@ export function createBrandTools(deps: BrandToolDeps = {}): ToolDescriptor[] {
   return [
     ...createBrandExtractTools(deps.extract ?? {}),
     ...createBrandSelectionTools({ store, ...(deps.selection ?? {}) }),
+    ...createBrandSocialTools({ brand: store, ...(deps.social ?? {}) }),
     {
       name: 'brand.set_create',
       module: 'brand',

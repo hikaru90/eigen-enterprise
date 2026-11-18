@@ -1030,6 +1030,13 @@
       "when": 1795200000149,
       "tag": "0149_company_logo_original",
       "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1795200000153,
+      "tag": "0153_brand_social_posts",
+      "breakpoints": true
     }
   ]
 }
