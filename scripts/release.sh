@@ -45,8 +45,12 @@ docker run --rm --platform "linux/$ARCH" -v "$OUT:/out" -w /work node:22-bookwor
   mkdir -p /stage
   cp -r build drizzle scripts package.json package-lock.json ee.json /stage/
   mkdir -p /stage/src/lib/server/db && cp src/lib/server/db/enable_rls.sql /stage/src/lib/server/db/
-  # Same as the Dockerfile runner: scripts/ (migrations, role setup) import dev deps like postgres.
-  cd /stage && npm ci --ignore-scripts --no-audit --no-fund --loglevel=error
+  # Production packages only: what build/server and the preStart scripts (postgres) import at runtime.
+  # Build and test tools (paraglide's 250 MB native binary, vite, eslint, three for the client …) stay out.
+  cd /stage && npm ci --omit=dev --ignore-scripts --no-audit --no-fund --loglevel=error
+  # Nothing reads these at runtime: the server starts without --enable-source-maps, and no .d.ts or
+  # README is ever loaded. (PostHog's source-map upload runs on the build tree, not on the release.)
+  find build node_modules -type f \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' -o -iname '*.md' \) -delete
   tar -czf /out/$NAME.tar.gz -C /stage .
 "
 rm -f "$OUT/src.tar"
