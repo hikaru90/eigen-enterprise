@@ -4,7 +4,8 @@ import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { AppDatabase } from '$lib/server/db/context'
 import { CALLS_NOTIFY_CHANNEL, dbCallsStore } from './db-store'
-import { accept, joined, newCall } from './state'
+import { hashGuestToken } from './guests'
+import { accept, addGuests, guestIdentity, joined, nameGuest, newCall, revokeGuest } from './state'
 
 /**
  * The Calls store against real Postgres (the test DB, :5433, migration 0122
@@ -117,5 +118,42 @@ describe.skipIf(!url)('dbCallsStore (Postgres)', () => {
     expect(await store.ringingStartedBefore(new Date(Date.now() - 60_000))).toContain(old.call.id)
     await expect(sql`update "call" set state = 'ended' where id = ${old.call.id}`).rejects.toThrow() // ended needs ended_at
     await expect(sql`update "call" set context_id = 'x' where id = ${old.call.id}`).rejects.toThrow() // a meeting has no context
+  })
+
+  it('windowed meetings with guests: stored, found by token hash, guests added / named / revoked, swept by window end', async () => {
+    const store = dbCallsStore(db)
+    const t = new Date(Math.floor(Date.now() / 1000) * 1000)
+    const start = new Date(t.getTime() - 3_600_000)
+    const base = make({ contextKind: 'meeting', contextId: null, invitees: [], now: t, window: { start, end: new Date(start.getTime() + 1_800_000) } })
+    const g = (n: number) => ({
+      id: randomUUID(),
+      callId: base.call.id,
+      email: `g${n}@example.org`,
+      tokenHash: hashGuestToken(`${base.call.id}-${n}`),
+      invitedBy: 'pg-ann',
+      invitedAt: t,
+      displayName: null,
+      revokedAt: null,
+    })
+    const rec = addGuests(base, [g(1)], t)
+    expect(await store.insert(rec)).toEqual({ ok: true })
+    expect(await store.get(rec.call.id)).toEqual(rec)
+    expect((await store.getByGuestTokenHash(rec.guests[0]!.tokenHash))?.call.id).toBe(rec.call.id)
+    expect(await store.getByGuestTokenHash(hashGuestToken('nobody'))).toBeNull()
+    expect((await store.liveForUser('pg-ann')).map((r) => r.call.id)).toContain(rec.call.id)
+
+    const g2 = g(2)
+    await store.mutate(rec.call.id, (r) => revokeGuest(nameGuest(addGuests(r, [g2], t), rec.guests[0]!.id, 'Ony Kunde'), g2.id, t))
+    const got = (await store.get(rec.call.id))!
+    expect(got.guests.map((x) => [x.email, x.displayName, x.revokedAt?.getTime() ?? null])).toEqual([
+      ['g1@example.org', 'Ony Kunde', null],
+      ['g2@example.org', null, t.getTime()],
+    ])
+    expect(got.participants.map((p) => p.userId)).toContain(guestIdentity(g2.id))
+
+    expect(await store.windowsEndedBefore(new Date(t.getTime() - 60_000))).toContain(rec.call.id)
+    expect(await store.windowsEndedBefore(new Date(start.getTime()))).not.toContain(rec.call.id)
+    await expect(sql`update call_guest set token_hash = 'plain-token' where id = ${g2.id}`).rejects.toThrow() // hashes only
+    await expect(sql`update "call" set scheduled_end = scheduled_start where id = ${rec.call.id}`).rejects.toThrow()
   })
 })

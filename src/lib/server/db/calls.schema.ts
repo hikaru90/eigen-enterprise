@@ -1,9 +1,11 @@
 import { primaryKey, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 /**
- * Calls (migration 0122). Company-level tables (no RLS): access is decided in
- * the calls service (modules/calls/service.ts). The partial unique index
- * call_live_context_idx (one live call per DM/channel) lives in the SQL.
+ * Calls (migrations 0122, 0152). Company-level tables (no RLS): access is
+ * decided in the calls service (modules/calls/service.ts). The partial unique
+ * index call_live_context_idx (one live call per DM/channel) and the schedule
+ * checks live in the SQL. call_guest: people outside the company invited by
+ * email; only the SHA-256 of their link token is stored.
  */
 
 export const calls = pgTable('call', {
@@ -13,11 +15,27 @@ export const calls = pgTable('call', {
   contextId: text('context_id'),
   title: text('title').notNull(),
   startedBy: text('started_by').notNull(),
-  state: text('state', { enum: ['ringing', 'active', 'ended', 'missed', 'declined'] })
+  state: text('state', { enum: ['scheduled', 'ringing', 'active', 'ended', 'missed', 'declined'] })
     .default('ringing')
     .notNull(),
   startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
   endedAt: timestamp('ended_at', { withTimezone: true }),
+  scheduledStart: timestamp('scheduled_start', { withTimezone: true }),
+  scheduledEnd: timestamp('scheduled_end', { withTimezone: true }),
+  externalUrl: text('external_url'),
+})
+
+export const callGuests = pgTable('call_guest', {
+  id: uuid('id').primaryKey(),
+  callId: uuid('call_id')
+    .notNull()
+    .references(() => calls.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  tokenHash: text('token_hash').notNull().unique('call_guest_token_hash_unique'),
+  invitedBy: text('invited_by').notNull(),
+  invitedAt: timestamp('invited_at', { withTimezone: true }).defaultNow().notNull(),
+  displayName: text('display_name'),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
 })
 
 export const callParticipants = pgTable(

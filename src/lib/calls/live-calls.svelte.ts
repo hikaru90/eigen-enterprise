@@ -25,7 +25,7 @@ type Entry = { call: CallDto; ringing: boolean }
 
 const CLOSED = 2
 const RETRY_MS = [5_000, 15_000, 60_000]
-const isLive = (c: CallDto) => c.state === 'ringing' || c.state === 'active'
+const isLive = (c: CallDto) => c.state === 'scheduled' || c.state === 'ringing' || c.state === 'active'
 
 export class LiveCalls {
   #calls = $state<Record<string, Entry>>({})

@@ -6,6 +6,7 @@ const person = (identity: string, over: Partial<CallParticipant> = {}): CallPart
   identity,
   name: identity.toUpperCase(),
   isLocal: false,
+  guest: false,
   micOn: true,
   cameraOn: false,
   speaking: false,

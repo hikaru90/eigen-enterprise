@@ -1,4 +1,4 @@
-import type { CallsService, StartInput } from './service'
+import type { CallsService, ScheduleInput, StartInput } from './service'
 import { json } from '@sveltejs/kit'
 import { CallsError } from './errors'
 
@@ -24,6 +24,47 @@ export async function callsRoute(
     if (err instanceof CallsError) return json({ error: err.message, code: err.code }, { status: STATUS[err.code] })
     console.error('[calls] request failed', err)
     return json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+  }
+}
+
+/**
+ * The public guest routes (/api/calls/guest/[token]/*): no session — the
+ * unguessable link token is the proof, checked by the service. Same error
+ * mapping; never cached.
+ */
+export async function guestRoute(service: () => Promise<CallsService>, run: (service: CallsService) => Promise<unknown>): Promise<Response> {
+  const headers = { 'cache-control': 'no-store' }
+  try {
+    return json(await run(await service()), { headers })
+  } catch (err) {
+    if (err instanceof CallsError) return json({ error: err.message, code: err.code }, { status: STATUS[err.code], headers })
+    console.error('[calls] guest request failed', err)
+    return json({ error: err instanceof Error ? err.message : String(err) }, { status: 500, headers })
+  }
+}
+
+/** POST /api/calls/meetings body → ScheduleInput (shape only; the service validates emails, times, links). */
+export function scheduleInputOf(body: Record<string, unknown>): ScheduleInput {
+  const { userIds, guests, title, startsAt, durationMinutes, externalUrl, timeZone } = body
+  if (userIds !== undefined && (!Array.isArray(userIds) || userIds.some((u) => typeof u !== 'string'))) {
+    throw new CallsError('invalid', 'userIds must be a list of ids')
+  }
+  if (title !== undefined && title !== null && typeof title !== 'string') throw new CallsError('invalid', 'title must be text')
+  if (startsAt !== undefined && startsAt !== null && typeof startsAt !== 'string') throw new CallsError('invalid', 'startsAt is an ISO time or null (now)')
+  const start = typeof startsAt === 'string' ? new Date(startsAt) : null
+  if (start && Number.isNaN(start.getTime())) throw new CallsError('invalid', 'startsAt is not a time')
+  if (durationMinutes !== undefined && durationMinutes !== null && typeof durationMinutes !== 'number') {
+    throw new CallsError('invalid', 'durationMinutes must be a number')
+  }
+  if (externalUrl !== undefined && externalUrl !== null && typeof externalUrl !== 'string') throw new CallsError('invalid', 'externalUrl must be text')
+  return {
+    userIds: userIds as string[] | undefined,
+    guests,
+    title: title ?? null,
+    startsAt: start,
+    durationMinutes: durationMinutes ?? null,
+    externalUrl: externalUrl ?? null,
+    timeZone,
   }
 }
 

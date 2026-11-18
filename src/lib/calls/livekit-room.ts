@@ -8,6 +8,7 @@ import {
   type Participant,
   type RemoteTrack,
 } from 'livekit-client'
+import { GUEST_ATTRIBUTE, GUEST_ROLE } from '../../../modules/calls/guest-attribute'
 import { MediaError, type CallRoom, type RoomSignal } from './room'
 
 /**
@@ -114,6 +115,8 @@ export function createLiveKitRoom(): CallRoom {
       identity: p.identity,
       name: p.name || p.identity,
       isLocal,
+      // Set in the guest's token by the server (modules/calls/livekit.ts mintGuestToken); people cannot change it.
+      guest: p.attributes[GUEST_ATTRIBUTE] === GUEST_ROLE,
       micOn: p.isMicrophoneEnabled,
       cameraOn: p.isCameraEnabled && !!camera?.track && !camera.isMuted,
       speaking: p.isSpeaking,

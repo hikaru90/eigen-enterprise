@@ -86,6 +86,7 @@ describe('tilesOf', () => {
     identity: 'x',
     name: 'X',
     isLocal: false,
+    guest: false,
     micOn: true,
     cameraOn: true,
     speaking: false,

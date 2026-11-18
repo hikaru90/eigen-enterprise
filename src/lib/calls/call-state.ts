@@ -123,6 +123,8 @@ export type CallParticipant = {
   identity: string
   name: string
   isLocal: boolean
+  /** Someone outside the company (their tile says "Guest"). */
+  guest: boolean
   micOn: boolean
   cameraOn: boolean
   speaking: boolean
@@ -138,6 +140,7 @@ export type CallTile = {
   identity: string
   name: string
   isLocal: boolean
+  guest: boolean
   micOn: boolean
   speaking: boolean
   stream: MediaStream | null
@@ -152,6 +155,7 @@ export function tilesOf(participants: readonly CallParticipant[]): CallTile[] {
     identity: p.identity,
     name: p.name,
     isLocal: p.isLocal,
+    guest: p.guest,
     micOn: p.micOn,
     speaking: kind === 'camera' && p.speaking,
     stream: kind === 'camera' ? (p.cameraOn ? p.camera : null) : p.screen,

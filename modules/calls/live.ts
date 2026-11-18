@@ -37,6 +37,11 @@ export type CallsPorts = { contexts: CallContextPort; log: CallLogPort }
 export function callsService(ports: CallsPorts): Promise<CallsService> {
   servicePromise ??= (async () => {
     const { appSql, createScopedDrizzle } = await import('$lib/server/db')
+    const { companyMail } = await import('$lib/server/mail')
+    const { normalizeAuthOrigin } = await import('$lib/server/auth')
+    const { env } = await import('$lib/server/env/private-env')
+    const { foundingCompanyName } = await import('$lib/server/overview/sources')
+    const mail = companyMail()
     const service = createCallsService({
       store: dbCallsStore(createScopedDrizzle(appSql)),
       contexts: ports.contexts,
@@ -44,9 +49,17 @@ export function callsService(ports: CallsPorts): Promise<CallsService> {
       directory: await liveDirectory(),
       livekit: () => livekitConfig(process.env),
       rooms: liveRoomControl(() => livekitConfig(process.env)),
+      // Guest invitations: company mail like every transactional send (system source: no body in the log).
+      mail: {
+        isConfigured: () => mail.isConfigured(),
+        send: (input) => mail.send({ ...input, source: 'system' }),
+      },
+      origin: () => normalizeAuthOrigin(env.ORIGIN),
+      companyName: () => foundingCompanyName(),
     })
     const sweep = setInterval(() => {
       service.expireRinging().catch((err) => console.error('[calls] ring-timeout sweep failed', err))
+      service.expireWindows().catch((err) => console.error('[calls] meeting-window sweep failed', err))
     }, SWEEP_MS)
     sweep.unref()
     return service

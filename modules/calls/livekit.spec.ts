@@ -1,6 +1,6 @@
 import { TokenVerifier } from 'livekit-server-sdk'
 import { describe, expect, it } from 'vitest'
-import { livekitConfig, mintRoomToken, TOKEN_TTL_SECONDS } from './livekit'
+import { GUEST_ATTRIBUTE, livekitConfig, mintGuestToken, mintRoomToken, TOKEN_TTL_SECONDS } from './livekit'
 
 const env = { LIVEKIT_URL: 'wss://rtc.os.example.test', LIVEKIT_API_URL: 'http://127.0.0.1:4001', LIVEKIT_API_KEY: 'APItestkey', LIVEKIT_API_SECRET: 'test-secret-that-is-long-enough-0123456789' }
 
@@ -55,5 +55,28 @@ describe('mintRoomToken', () => {
   it('a token signed with another secret does not verify', async () => {
     const out = await mintRoomToken(livekitConfig(env), { room: 'r', identity: 'u', name: 'U' })
     await expect(new TokenVerifier(env.LIVEKIT_API_KEY, 'another-secret-entirely-0123456789abcdef').verify(out.token)).rejects.toThrow()
+  })
+})
+
+describe('mintGuestToken (people outside the company)', () => {
+  it('joins that one room only, publishes its own camera, mic and screen, no data, no admin; marked a guest', async () => {
+    const cfg = livekitConfig(env)
+    const out = await mintGuestToken(cfg, { room: 'ee-call-1', identity: 'guest:g1', name: 'Ony Kunde', notAfter: new Date(Date.now() + 3_600_000), now: new Date() })
+    const claims = await new TokenVerifier(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET).verify(out.token)
+    expect(claims.sub).toBe('guest:g1')
+    expect(claims.name).toBe('Ony Kunde')
+    expect(claims.attributes).toEqual({ [GUEST_ATTRIBUTE]: 'guest' })
+    expect(claims.video).toMatchObject({ roomJoin: true, room: 'ee-call-1', canPublish: true, canSubscribe: true, canPublishData: false, canUpdateOwnMetadata: false })
+    expect(claims.video?.canPublishSources).toEqual(['camera', 'microphone', 'screen_share'])
+    for (const k of ['roomCreate', 'roomAdmin', 'roomList', 'roomRecord', 'ingressAdmin', 'hidden', 'agent'] as const) expect(claims.video?.[k]).toBeFalsy()
+    expect(claims.exp! - claims.nbf!).toBeLessThanOrEqual(TOKEN_TTL_SECONDS)
+  })
+
+  it('never outlives the guest window', async () => {
+    const notAfter = new Date(Date.now() + 120_000)
+    const out = await mintGuestToken(livekitConfig(env), { room: 'r', identity: 'guest:g1', name: 'G', notAfter, now: new Date() })
+    const claims = await new TokenVerifier(env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET).verify(out.token)
+    expect(claims.exp! * 1000).toBeLessThanOrEqual(notAfter.getTime() + 1000)
+    await expect(mintGuestToken(livekitConfig(env), { room: 'r', identity: 'guest:g1', name: 'G', notAfter: new Date(Date.now() - 1), now: new Date() })).rejects.toThrow()
   })
 })

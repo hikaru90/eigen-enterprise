@@ -56,6 +56,7 @@ export class FakeRoom implements CallRoom {
       identity: 'ann',
       name: 'Ann Example',
       isLocal: true,
+      guest: false,
       micOn: this.devices.microphone,
       cameraOn: this.devices.camera,
       speaking: false,
@@ -154,9 +155,14 @@ export const fakeCall = (over: Partial<CallDto> = {}, response: 'accepted' | 'no
   endedAt: null,
   ringUntil: '2026-11-11T09:00:45.000Z',
   participants: [
-    { userId: 'ben', name: 'Ben Example', response: 'accepted', joinedAt: null, leftAt: null, inRoom: false },
-    { userId: 'ann', name: 'Ann Example', response, joinedAt: null, leftAt: null, inRoom: false },
+    { userId: 'ben', name: 'Ben Example', guest: false, response: 'accepted', joinedAt: null, leftAt: null, inRoom: false },
+    { userId: 'ann', name: 'Ann Example', guest: false, response, joinedAt: null, leftAt: null, inRoom: false },
   ],
+  scheduledStart: null,
+  scheduledEnd: null,
+  closesAt: null,
+  externalUrl: null,
+  guests: [],
   ...over,
 })
 
@@ -172,6 +178,7 @@ export const remotePerson = (over: Partial<CallParticipant> = {}): CallParticipa
   identity: 'ben',
   name: 'Ben Example',
   isLocal: false,
+  guest: false,
   micOn: false,
   cameraOn: true,
   speaking: false,

@@ -1,6 +1,6 @@
-import type { Call, CallContextKind, CallRecord, CallsStore, InsertResult, Participant } from './store'
-import { and, desc, eq, inArray, lte, sql, type SQL } from 'drizzle-orm'
-import { callParticipants, calls } from '$lib/server/db/calls.schema'
+import type { Call, CallContextKind, CallRecord, CallsStore, Guest, InsertResult, Participant } from './store'
+import { and, desc, eq, inArray, isNotNull, lte, sql, type SQL } from 'drizzle-orm'
+import { callGuests, callParticipants, calls } from '$lib/server/db/calls.schema'
 import type { AppDatabase } from '$lib/server/db/context'
 import { sameRecord } from './state'
 
@@ -13,7 +13,7 @@ export const LIVE_CONTEXT_INDEX = 'call_live_context_idx'
 type Tx = Parameters<Parameters<AppDatabase['transaction']>[0]>[0]
 type Db = Tx | AppDatabase
 
-const LIVE = ['ringing', 'active'] as const
+const LIVE = ['scheduled', 'ringing', 'active'] as const
 
 /** postgres-js reports a unique violation as code 23505 with the constraint's name (drizzle wraps it in `cause`). */
 function isUniqueViolation(err: unknown, constraint: string): boolean {
@@ -35,10 +35,21 @@ async function withParticipants(db: Db, rows: Call[]): Promise<CallRecord[]> {
       ),
     )
     .orderBy(callParticipants.invitedAt, callParticipants.userId)) as Participant[]
+  const gs = (await db
+    .select()
+    .from(callGuests)
+    .where(
+      inArray(
+        callGuests.callId,
+        rows.map((r) => r.id),
+      ),
+    )
+    .orderBy(callGuests.invitedAt, callGuests.email)) as Guest[]
   // The starter first, then by invitation (stable across reads).
   return rows.map((call) => ({
     call,
     participants: ps.filter((p) => p.callId === call.id).sort((a, b) => Number(b.userId === call.startedBy) - Number(a.userId === call.startedBy)),
+    guests: gs.filter((g) => g.callId === call.id),
   }))
 }
 
@@ -60,6 +71,7 @@ export function dbCallsStore(db: AppDatabase): CallsStore {
       try {
         await db.transaction(async (tx) => {
           await tx.insert(calls).values(rec.call)
+          if (rec.guests.length > 0) await tx.insert(callGuests).values(rec.guests)
           if (rec.participants.length > 0) await tx.insert(callParticipants).values(rec.participants)
           await notify(tx, rec.call.id)
         })
@@ -71,6 +83,8 @@ export function dbCallsStore(db: AppDatabase): CallsStore {
     },
     get: (id) => one(db, eq(calls.id, id)),
     getByRoom: (roomName) => one(db, eq(calls.roomName, roomName)),
+    getByGuestTokenHash: (tokenHash) =>
+      one(db, inArray(calls.id, db.select({ id: callGuests.callId }).from(callGuests).where(eq(callGuests.tokenHash, tokenHash)))),
     liveForContext: (kind: CallContextKind, contextId: string) =>
       one(db, and(eq(calls.contextKind, kind), eq(calls.contextId, contextId), inArray(calls.state, [...LIVE]))!),
     async listForUser(userId, limit) {
@@ -89,6 +103,13 @@ export function dbCallsStore(db: AppDatabase): CallsStore {
         .where(and(eq(calls.state, 'ringing'), lte(calls.startedAt, cutoff)))
       return rows.map((r) => r.id)
     },
+    async windowsEndedBefore(cutoff) {
+      const rows = await db
+        .select({ id: calls.id })
+        .from(calls)
+        .where(and(inArray(calls.state, ['scheduled', 'active']), isNotNull(calls.scheduledEnd), lte(calls.scheduledEnd, cutoff)))
+      return rows.map((r) => r.id)
+    },
     async mutate(id, change) {
       return db.transaction(async (tx) => {
         const [row] = (await tx.select().from(calls).where(eq(calls.id, id)).for('update')) as Call[]
@@ -97,9 +118,17 @@ export function dbCallsStore(db: AppDatabase): CallsStore {
         const after = change(structuredClone(before))
         if (sameRecord(before, after)) return { before, after }
         await tx.update(calls).set({ state: after.call.state, endedAt: after.call.endedAt, title: after.call.title }).where(eq(calls.id, id))
+        // Guests before participants: a new guest's row exists before its participant row.
+        for (const g of after.guests) {
+          const was = before.guests.find((x) => x.id === g.id)
+          if (!was) await tx.insert(callGuests).values(g)
+          else if (was.displayName !== g.displayName || was.revokedAt?.getTime() !== g.revokedAt?.getTime()) {
+            await tx.update(callGuests).set({ displayName: g.displayName, revokedAt: g.revokedAt }).where(eq(callGuests.id, g.id))
+          }
+        }
         for (const p of after.participants) {
           const was = before.participants.find((x) => x.userId === p.userId)
-          if (was && sameRecord({ call: before.call, participants: [was] }, { call: before.call, participants: [p] })) continue
+          if (was && sameRecord({ call: before.call, participants: [was], guests: [] }, { call: before.call, participants: [p], guests: [] })) continue
           await tx
             .insert(callParticipants)
             .values(p)

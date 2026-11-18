@@ -45,9 +45,27 @@ export function fixture(opts: { env?: Record<string, string | undefined> } = {})
       logged.push(ended)
     },
   }
+  const removed: [string, string][] = []
   const rooms: RoomControl = {
     async closeRoom(room) {
       closed.push(room)
+    },
+    async removeParticipant(room, identity) {
+      removed.push([room, identity])
+    },
+  }
+  const mail = {
+    configured: true,
+    sent: [] as { to: string; subject: string; html: string; text: string; replyTo?: string }[],
+    /** Addresses whose send throws (SES refused). */
+    failFor: new Set<string>(),
+    async isConfigured() {
+      return this.configured
+    },
+    async send(input: { to: string; subject: string; html: string; text: string; replyTo?: string }) {
+      if (this.failFor.has(input.to)) throw new Error('SES said no')
+      this.sent.push(input)
+      return { id: `mail-${this.sent.length}`, status: 'sent' }
     },
   }
   let t = Date.UTC(2026, 10, 11, 9, 0, 0)
@@ -64,10 +82,13 @@ export function fixture(opts: { env?: Record<string, string | undefined> } = {})
     directory,
     livekit: () => livekitConfig(env),
     rooms,
+    mail,
+    origin: () => 'https://os.example.test',
+    companyName: async () => 'Example Co',
     now: clock.now,
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`,
   }
   const service = createCallsService(deps)
   const user = (userId: string) => ({ kind: 'user' as const, userId })
-  return { store, directory, contexts, closed, logged, clock, deps, service, user }
+  return { store, directory, contexts, closed, removed, mail, logged, clock, deps, service, user }
 }

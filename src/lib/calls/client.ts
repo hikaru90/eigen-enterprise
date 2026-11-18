@@ -1,4 +1,4 @@
-import type { CallDto, CallTokenDto } from '../../../modules/calls/service'
+import type { CallDto, CallTokenDto, GuestJoinDto, ScheduleResult } from '../../../modules/calls/service'
 import { problemFromResponse, type CallProblem } from './call-state'
 
 /**
@@ -8,7 +8,19 @@ import { problemFromResponse, type CallProblem } from './call-state'
  * server", shown as the server says it).
  */
 
-export type { CallDto, CallTokenDto }
+export type { CallDto, CallTokenDto, GuestJoinDto, ScheduleResult }
+
+/** The New call dialog's request (POST /api/calls/meetings). */
+export type ScheduleCall = {
+  guests: string[]
+  userIds: string[]
+  title: string | null
+  /** ISO time; null = now. */
+  startsAt: string | null
+  durationMinutes: number
+  externalUrl: string | null
+  timeZone: string
+}
 export type StartCall =
   | { contextKind: 'dm' | 'channel'; contextId: string }
   | { contextKind: 'meeting'; userIds: string[]; title?: string | null }
@@ -28,6 +40,9 @@ export type CallsClient = {
   /** keepalive: still delivered while the page unloads (closing the tab mid-call). */
   hangup(id: string, opts?: { keepalive?: boolean }): Promise<CallDto>
   token(id: string): Promise<CallTokenDto>
+  schedule(input: ScheduleCall): Promise<ScheduleResult>
+  inviteGuests(id: string, guests: string[], timeZone: string): Promise<ScheduleResult>
+  revokeGuest(id: string, guestId: string): Promise<CallDto>
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -54,6 +69,31 @@ export function callsClient(): CallsClient {
     decline: (id) => call(`${at(id)}/decline`, { method: 'POST' }),
     hangup: (id, opts) => call(`${at(id)}/hangup`, { method: 'POST', keepalive: opts?.keepalive === true }),
     token: (id) => request<CallTokenDto>(`${at(id)}/token`),
+    schedule: (input) => request<ScheduleResult>('/api/calls/meetings', { method: 'POST', body: JSON.stringify(input) }),
+    inviteGuests: (id, guests, timeZone) => request<ScheduleResult>(`${at(id)}/guests`, { method: 'POST', body: JSON.stringify({ guests, timeZone }) }),
+    revokeGuest: (id, guestId) => call(`${at(id)}/guests/${encodeURIComponent(guestId)}`, { method: 'DELETE' }),
+  }
+}
+
+/**
+ * A guest's side (the public /join/[token] page): the same four calls the
+ * call view needs, answered by the guest routes. "Accept" is the join with
+ * the name the guest typed; the room token comes from that same join.
+ */
+export function guestCallsClient(linkToken: string, name: () => string): Pick<CallsClient, 'accept' | 'token' | 'hangup' | 'get'> {
+  const base = `/api/calls/guest/${encodeURIComponent(linkToken)}`
+  let joined: GuestJoinDto | null = null
+  const join = async () => (joined = await request<GuestJoinDto>(`${base}/join`, { method: 'POST', body: JSON.stringify({ name: name() }) }))
+  return {
+    accept: async () => (await join()).call,
+    // Every (re)join asks for a fresh token: the last one may be used up or close to expiry.
+    token: async () => {
+      const t = joined?.token ?? (await join()).token
+      joined = null
+      return t
+    },
+    hangup: (_id, opts) => call(`${base}/leave`, { method: 'POST', keepalive: opts?.keepalive === true }),
+    get: () => call(base),
   }
 }
 
