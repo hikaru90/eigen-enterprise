@@ -116,6 +116,8 @@ export default defineConfig({
       'src/lib/calls/incoming-call-toast.svelte.spec.ts',
       'src/lib/calls/call-button.svelte.spec.ts',
       'src/lib/calls/call-presence.svelte.spec.ts',
+      'src/lib/calls/new-call-form.svelte.spec.ts',
+      'src/lib/calls/guest-join.svelte.spec.ts',
       'src/lib/components/repo-connect-steps.svelte.spec.ts',
       'src/lib/components/website-activity-panel.svelte.spec.ts',
       'src/lib/components/website-settings.svelte.spec.ts',

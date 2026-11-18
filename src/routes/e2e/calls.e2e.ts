@@ -469,10 +469,10 @@ test('a call runs in its own tab: the main tab browses freely, the call tab cann
   expect(await annCall.evaluate(() => (window as unknown as { __callTabMark?: number }).__callTabMark)).toBe(1)
   await expect(annCall.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
   // One call at a time across tabs: a meeting cannot be started from the main tab.
-  await ann.page.getByTestId('calls-new-meeting').click()
-  await ann.page.locator(`[data-testid="calls-meeting-person"][data-email="${ben.email}"]`).check()
-  await ann.page.getByTestId('calls-meeting-start').click()
-  await expect(ann.page.getByTestId('calls-meeting-error')).toContainText("You're already in a call")
+  await ann.page.getByTestId('calls-new-call').click()
+  await ann.page.locator(`[data-testid="new-call-person"][data-email="${ben.email}"]`).check()
+  await ann.page.getByTestId('new-call-submit').click()
+  await expect(ann.page.getByTestId('new-call-error')).toContainText("You're already in a call")
   expect(ann.ctx.pages()).toHaveLength(pages)
   await ann.page.keyboard.press('Escape')
 
@@ -530,9 +530,9 @@ test('a call runs in its own tab: the main tab browses freely, the call tab cann
   await hangUp(annCall)
   await expect(benCall.getByTestId('call-ended')).toHaveAttribute('data-reason', 'call_over')
   await expect.poll(async () => (await stored(callId)).state).toBe('ended')
-  await ann.page.getByTestId('calls-new-meeting').click()
-  await ann.page.locator(`[data-testid="calls-meeting-person"][data-email="${ben.email}"]`).check()
-  const [meetingTab] = await Promise.all([ann.ctx.waitForEvent('page'), ann.page.getByTestId('calls-meeting-start').click()])
+  await ann.page.getByTestId('calls-new-call').click()
+  await ann.page.locator(`[data-testid="new-call-person"][data-email="${ben.email}"]`).check()
+  const [meetingTab] = await Promise.all([ann.ctx.waitForEvent('page'), ann.page.getByTestId('new-call-submit').click()])
   await meetingTab.waitForURL(CALL_URL)
   await expect(meetingTab.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
   expect(new URL(ann.page.url()).pathname).toBe('/calls')
@@ -540,4 +540,67 @@ test('a call runs in its own tab: the main tab browses freely, the call tab cann
 
   await ann.ctx.close()
   await ben.ctx.close()
+})
+
+test('a guest outside the company joins from a personal link (no account), shows as "Guest", and the host withdraws the link', async ({
+  browser,
+}) => {
+  test.setTimeout(240_000)
+  const suffix = Date.now().toString(36)
+  const ann = await member(browser, 'admin', `Ada ${suffix}`)
+  const guestEmail = `kunde-${suffix}@example.org`
+  await ann.page.goto('/calls')
+  await expect(ann.page.locator('body')).toHaveAttribute('data-eigen-hydrated', 'true')
+
+  // New call: guests by email first; start now → the host's call tab opens, the guest's link comes back once.
+  await ann.page.getByTestId('calls-new-call').click()
+  await ann.page.getByLabel('Guests (email)').fill(guestEmail)
+  await expect(ann.page.getByLabel('Other call link (Zoom, Teams, Google Meet …)')).toBeVisible()
+  const scheduled = ann.page.waitForResponse((r) => r.url().endsWith('/api/calls/meetings') && r.request().method() === 'POST')
+  const [annCall] = await Promise.all([ann.ctx.waitForEvent('page'), ann.page.getByTestId('new-call-submit').click()])
+  const out = (await (await scheduled).json()) as { call: { id: string }; invitations: { url: string; email: string }[] }
+  expect(out.invitations.map((i) => i.email)).toEqual([guestEmail])
+  await expect(ann.page.getByTestId('new-call-invitation')).toContainText(guestEmail)
+  await annCall.waitForURL(CALL_URL)
+  await expect(annCall.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
+  const [row] = await sql()`select token_hash from call_guest where call_id = ${out.call.id}`
+  expect(row.token_hash).toMatch(/^[0-9a-f]{64}$/)
+  expect(out.invitations[0]!.url).not.toContain(row.token_hash)
+
+  // The guest: a fresh browser, no account. Name → preview → join.
+  const guestCtx = await browser.newContext({ viewport: PHONE, permissions: ['camera', 'microphone'] })
+  const guest = await guestCtx.newPage()
+  const link = new URL(out.invitations[0]!.url)
+  await guest.goto(link.pathname)
+  await expect(guest.locator('body')).toHaveAttribute('data-eigen-hydrated', 'true')
+  await expect(guest.getByTestId('guest-state')).toHaveAttribute('data-status', 'ok')
+  await guest.getByLabel('Your name').fill('Ony Kunde')
+  await guest.getByTestId('guest-continue').click()
+  await expect(guest.getByTestId('guest-preview-video')).toBeVisible()
+  await guest.getByTestId('guest-join').click()
+  await expect(guest.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
+  await guest.screenshot({ path: `${SHOTS}/guest-01-in-call-phone.png` })
+
+  await expectRemoteVideo(annCall, ['Ony Kunde'])
+  await expect(remoteTiles(annCall).getByTestId('call-guest-badge')).toHaveText(/guest/i)
+  await expectRemoteVideo(guest, [ann.name])
+  await expect
+    .poll(async () => (await stored(out.call.id)).people.find((p) => String(p.user_id).startsWith('guest:'))?.joined_at ?? null)
+    .not.toBeNull()
+  await annCall.screenshot({ path: `${SHOTS}/guest-02-host-sees-guest.png` })
+
+  // The host withdraws the link: the guest is removed from the room and the link stops working.
+  await ann.page.getByTestId('new-call-done').click()
+  const item = ann.page.locator(`[data-testid="calls-live-item"][data-id="${out.call.id}"]`)
+  await item.getByTestId('calls-guests').click()
+  await ann.page.getByRole('button', { name: `Withdraw the link of ${guestEmail}` }).click()
+  await expect(ann.page.locator('[data-testid="meeting-guest"]')).toHaveAttribute('data-revoked', 'true')
+  await expect(guest.getByTestId('call-view')).not.toHaveAttribute('data-phase', 'connected', { timeout: 20_000 })
+  await expect(remoteTiles(annCall)).toHaveCount(0, { timeout: 20_000 })
+  await guest.goto(link.pathname)
+  await expect(guest.getByTestId('guest-state')).toHaveAttribute('data-status', 'revoked')
+
+  await hangUp(annCall)
+  await guestCtx.close()
+  await ann.ctx.close()
 })

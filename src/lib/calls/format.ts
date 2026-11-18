@@ -31,6 +31,8 @@ export function historyOf(call: CallDto, me: string): CallHistory {
   const mine = call.participants.find((p) => p.userId === me)
   const out = (outcome: string, tone: CallHistory['tone'], live = false): CallHistory => ({ outcome, tone, direction, live })
   switch (call.state) {
+    case 'scheduled':
+      return out(call.externalUrl ? 'On another service' : 'Open to join', 'normal', true)
     case 'ringing':
       return out('Ringing', 'normal', true)
     case 'active':

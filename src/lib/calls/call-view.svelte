@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ActiveCall } from './active-call.svelte'
+  import type { ActiveCall, StartWith } from './active-call.svelte'
   import type { CallDto } from './client'
   import Mic from '@lucide/svelte/icons/mic'
   import MicOff from '@lucide/svelte/icons/mic-off'
@@ -36,6 +36,7 @@
     onleave,
     onhungup,
     onopen,
+    startWith = { microphone: true, camera: true },
   }: {
     active: ActiveCall
     call: CallDto
@@ -48,6 +49,8 @@
     onhungup: () => void
     /** Go to the call I am in (from "already in a call"). */
     onopen: (callId: string) => void
+    /** Devices to turn on once connected (a guest's choice on the preview). */
+    startWith?: StartWith
   } = $props()
 
   const GAP = 8
@@ -69,7 +72,7 @@
   const portrait = $derived(stageH > stageW)
 
   onMount(() => {
-    active.open(call, me)
+    active.open(call, me, startWith)
     opened = true
   })
 
@@ -185,7 +188,7 @@
               type="button"
               class="h-9 rounded-md bg-white px-4 text-sm font-semibold text-neutral-900 hover:bg-white/90"
               data-testid="call-join"
-              onclick={() => active.open(call, me)}>Join this call</button
+              onclick={() => active.open(call, me, startWith)}>Join this call</button
             >
           </div>
         {/if}

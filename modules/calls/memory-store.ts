@@ -51,6 +51,17 @@ export class MemoryCallsStore implements CallsStore {
     return r ? this.copy(r) : null
   }
 
+  async getByGuestTokenHash(tokenHash: string) {
+    const r = [...this.records.values()].find((x) => x.guests.some((g) => g.tokenHash === tokenHash))
+    return r ? this.copy(r) : null
+  }
+
+  async windowsEndedBefore(cutoff: Date) {
+    return [...this.records.values()]
+      .filter((r) => isLive(r.call.state) && r.call.scheduledEnd !== null && r.call.scheduledEnd.getTime() <= cutoff.getTime())
+      .map((r) => r.call.id)
+  }
+
   async liveForContext(kind: CallContextKind, contextId: string) {
     const r = [...this.records.values()].find((x) => x.call.contextKind === kind && x.call.contextId === contextId && isLive(x.call.state))
     return r ? this.copy(r) : null

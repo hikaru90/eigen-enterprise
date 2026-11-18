@@ -58,6 +58,8 @@ export type ActiveCallDeps = {
 
 export type OpenResult = 'joining' | 'here' | 'busy'
 
+export type StartWith = { microphone: boolean; camera: boolean }
+
 type Selected = Record<DeviceKind, string | null>
 const noneSelected = (): Selected => ({ audioinput: null, audiooutput: null, videoinput: null })
 
@@ -78,6 +80,8 @@ export class ActiveCall {
   readonly #deps: ActiveCallDeps
   #env: CallEnv | null = null
   #me = ''
+  /** Which devices turn on once connected (a guest's choice on the preview; otherwise both). */
+  #startWith: StartWith = { microphone: true, camera: true }
   #room: CallRoom | null = null
   #unsubscribe = () => {}
   /** Each join gets a number; a join that is no longer the current one stops (hung up mid-join). */
@@ -143,11 +147,12 @@ export class ActiveCall {
    * The call page asks to show this call. In it already → 'here'; in another
    * one → 'busy' (nothing changes); otherwise it joins this one.
    */
-  open(call: CallDto, me: string): OpenResult {
+  open(call: CallDto, me: string, startWith: StartWith = { microphone: true, camera: true }): OpenResult {
     if (this.inCall && this.#call) return this.#call.id === call.id ? 'here' : 'busy'
     this.#forget()
     this.#call = call
     this.#me = me
+    this.#startWith = startWith
     this.#notify()
     void this.#join()
     return 'joining'
@@ -382,9 +387,9 @@ export class ActiveCall {
       this.#refresh()
       await this.#applyRemembered(room, env)
       if (stale()) return
-      await this.turn('microphone', true)
+      if (this.#startWith.microphone) await this.turn('microphone', true)
       if (stale()) return
-      await this.turn('camera', true)
+      if (this.#startWith.camera) await this.turn('camera', true)
     } catch (err) {
       if (stale()) return
       this.#detachRoom()
