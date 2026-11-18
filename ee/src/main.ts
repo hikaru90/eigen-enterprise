@@ -34,8 +34,9 @@ const USAGE = `ee — the company's init (plan/phase-substrate.md)
                [--release-source <install.sh --from>]   (where updates come from; install.sh passes it)
                                          (hosted boxes behind a shared-IP router; kept on re-runs,
                                           --claim-hash on the first install only)
-  ee upgrade [--check] [--from <release-url>] [--node-ip <ip>]   (update over the air to the newest
-                                         release; keeps everything, takes a safety copy first)
+  ee upgrade [--check] [--from <release-url>] [--node-ip <ip>] [--expect <release>]   (update over the
+                                         air to the newest release; keeps everything, takes a safety copy
+                                         first; --expect: only that release, e.g. eigenenterprise-0.5.19-<sha>)
   ee upgrade-apply --job <id>           (run by ee-upgrade.service, which Settings → Updates starts through ee)
   ee claim-link                          (new private link to claim this server)
   ee status
@@ -191,7 +192,7 @@ async function main(argv: string[]): Promise<void> {
     case 'upgrade': {
       const { values } = parseArgs({
         args: rest,
-        options: { check: { type: 'boolean' }, from: { type: 'string' }, 'node-ip': { type: 'string' } },
+        options: { check: { type: 'boolean' }, from: { type: 'string' }, 'node-ip': { type: 'string' }, expect: { type: 'string' } },
       })
       if (process.getuid?.() !== 0) throw new Error('ee upgrade must run as root')
       if (values['node-ip'] && isIP(values['node-ip']) === 0) {
@@ -210,6 +211,7 @@ async function main(argv: string[]): Promise<void> {
           arch: hostArch(),
           check: values.check === true,
           ...(values['node-ip'] ? { nodeIp: values['node-ip'] } : {}),
+          ...(values.expect !== undefined ? { expect: values.expect } : {}),
         },
       )
       if (values.check && result === 'available') console.log('  run `ee upgrade` to install it')

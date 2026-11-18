@@ -115,7 +115,8 @@ export function fleetHost(ee: Ee): FleetHost {
     },
     upgradeActive: async () => (await sys.run('systemctl', ['is-active', '--quiet', `${UPGRADE_UNIT}.service`])).code === 0,
     // Detached: the upgrade restarts ee.service, which must not take the upgrade down with it.
-    startUpgrade: async (from) => void (await mustRun(sys, 'systemd-run', [`--unit=${UPGRADE_UNIT}`, '--collect', '/usr/local/bin/ee', 'upgrade', '--from', from])),
+    startUpgrade: async (from, release) =>
+      void (await mustRun(sys, 'systemd-run', [`--unit=${UPGRADE_UNIT}`, '--collect', '/usr/local/bin/ee', 'upgrade', '--from', from, '--expect', release])),
     fetch: (input, init) => fetch(input, init),
     now: () => sys.now(),
     log: async (type, message) => {

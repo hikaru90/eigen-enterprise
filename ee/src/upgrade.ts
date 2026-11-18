@@ -29,6 +29,16 @@ export const RELEASES_URL = 'https://github.com/hikaru90/eigen-enterprise/releas
 export const UPGRADES_DIR = '/var/lib/ee/upgrades'
 const KEEP_SAFETY_COPIES = 3
 const RELEASE_NAME = /^eigenenterprise-\d+\.\d+\.\d+-[0-9a-f]{12}$/
+const RELEASE_TARBALL = /^(eigenenterprise-\d+\.\d+\.\d+-[0-9a-f]{12})-linux-(?:x64|arm64)\.tar\.gz$/
+
+/**
+ * The release a name refers to (eigenenterprise-<version>-<sha>), whether it is the release itself or
+ * one CPU's tarball of it; null for anything else. A release is the same on every CPU.
+ */
+export function releaseOf(name: string): string | null {
+  if (RELEASE_NAME.test(name)) return name
+  return RELEASE_TARBALL.exec(name)?.[1] ?? null
+}
 
 export type Arch = 'x64' | 'arm64'
 

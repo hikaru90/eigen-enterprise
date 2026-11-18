@@ -37,6 +37,11 @@ export class FakeSes {
   failAccount: Error | null = null
   failSend: Error | null = null
   failCreateDomain: Error | null = null
+  /**
+   * Managed mode's box policy: GetEmailIdentity is allowed only on identities tagged for this box,
+   * so one that doesn't exist yet is AccessDenied (no tag to match), never NotFound.
+   */
+  tagScopedReads = false
   /** Domain identities that were set up at Amazon outside ee (Easy DKIM tokens, MAIL FROM). */
   external = new Map<string, { verified: boolean; dkimTokens: string[]; mailFromDomain: string | null; origin: string }>()
 
@@ -88,6 +93,7 @@ export class FakeSes {
       },
       getDomainIdentity: async (domain) => {
         const id = this.identities.get(domain)
+        if (!id && this.tagScopedReads) throw awsError('AccessDeniedException', `not authorized to perform: ses:GetEmailIdentity on identity/${domain}`)
         if (!id) return NO_DOMAIN_IDENTITY
         const s = id.verified ? 'SUCCESS' : 'PENDING'
         const ext = this.external.get(domain)

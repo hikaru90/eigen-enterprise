@@ -1,6 +1,7 @@
 import type { BackupConfig, BackupRun, Health } from '../backup/service.ts'
 import type { DesiredState, Settings } from '../company-repo.ts'
 import { generateSecret } from '../secrets.ts'
+import { releaseOf } from '../upgrade.ts'
 import { EE_VERSION } from '../version.ts'
 import {
   enrollRequestV1,
@@ -98,7 +99,8 @@ export type FleetHost = {
     isRunning(): boolean
   }
   upgradeActive(): Promise<boolean>
-  startUpgrade(from: string): Promise<void>
+  /** `ee upgrade --from <from> --expect <release>` as a detached unit: it installs that release or nothing. */
+  startUpgrade(from: string, release: string): Promise<void>
   fetch: typeof fetch
   now(): Date
   /** Loud: journal (when new) + stderr. Never given a secret value. */
@@ -131,6 +133,8 @@ export class FleetAgent {
   private lastLogged: string | null = null
   /** Per loopback question, the last os failure journaled (each distinct one once). */
   private readonly osErrors = new Map<string, string>()
+  /** The last release target an upgrade was started for, and when (a failed one is retried slowly). */
+  private lastUpgrade: { release: string; at: number } | null = null
 
   constructor(private readonly host: FleetHost) {}
 
@@ -468,12 +472,22 @@ export class FleetAgent {
   }
 
   private async applyRelease(release: NonNullable<DesiredV1['release']>): Promise<void> {
-    if ((await this.host.osRelease()) === release.name) return
+    // The target names a release; the box runs that release's tarball for its own CPU.
+    const target = releaseOf(release.name)
+    if (target === null) throw new Error(`the release target "${release.name.slice(0, 120)}" is not a release name`)
+    const running = await this.host.osRelease()
+    if (running !== null && releaseOf(running) === target) return
     if (await this.host.upgradeActive()) return
-    await this.host.startUpgrade(release.from)
-    await this.host.log('fleet.upgrade_started', `upgrading to ${release.name} from ${release.from} (${UPGRADE_UNIT}.service)`)
+    const now = this.host.now().getTime()
+    if (this.lastUpgrade?.release === target && now - this.lastUpgrade.at < UPGRADE_RETRY_MS) return
+    this.lastUpgrade = { release: target, at: now }
+    await this.host.startUpgrade(release.from, target)
+    await this.host.log('fleet.upgrade_started', `upgrading to ${target} from ${release.from} (${UPGRADE_UNIT}.service)`)
   }
 }
+
+/** A started upgrade that didn't bring the target (refused, failed, rolled back) is started again after this, not every poll. */
+const UPGRADE_RETRY_MS = 15 * 60_000
 
 /** Add/remove names on the os workload's declared secrets. */
 function declareOnOs(s: Omit<DesiredState, 'rev'>, add: string[], remove: string[]): Omit<DesiredState, 'rev'> {

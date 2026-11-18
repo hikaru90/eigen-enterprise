@@ -63,6 +63,8 @@ function setup() {
     db: async () => ({}) as never,
     origin: () => 'https://os.example',
   })
+  // Like the real box key: reads are scoped by the ee-box tag (plan/managed-mail.md, T0).
+  ses.tagScopedReads = true
   return { ses, owlery, platform, fetched, ...m }
 }
 
@@ -82,6 +84,21 @@ describe('EmailPlatform domains in managed mode', () => {
       'a1.dkim.amazonses.com', 'b2.dkim.amazonses.com', 'c3.dkim.amazonses.com',
     ])
     expect(ses.calls.filter((c) => PROVISIONING.includes(c))).toEqual([])
+  })
+
+  it('before the control plane creates the identity, Amazon says AccessDenied: still pending, never the own-SES IAM advice', async () => {
+    const { platform } = setup()
+    const d = await platform.addDomain('kindred.test', 'u1')
+    const checked = await platform.refreshDomain(d.id)
+    expect(checked).toMatchObject({ status: 'NOT_STARTED', errorMessage: MANAGED_DOMAIN_PENDING_MESSAGE, sendable: false })
+    expect(checked.lastCheckedAt).not.toBeNull()
+    const again = await platform.recheckDomain(d.id)
+    expect(again.errorMessage).not.toMatch(/AmazonSESFullAccess|IAM/)
+  })
+
+  it('the pending text promises no timing it cannot keep and says what to do if it stays', () => {
+    expect(MANAGED_DOMAIN_PENDING_MESSAGE).not.toMatch(/a minute or two/)
+    expect(MANAGED_DOMAIN_PENDING_MESSAGE).toMatch(/support/i)
   })
 
   it('receiving only sets the flag (MX shows); delete only removes the row', async () => {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { AGE_REPAIR_SQL } from './age-repair.ts'
 import { sha256Hex } from './release-key.ts'
-import { latestTarball, RELEASES_URL, rollbackSteps, upgrade, type UpgradeDeps } from './upgrade.ts'
+import { latestTarball, releaseOf, RELEASES_URL, rollbackSteps, upgrade, type UpgradeDeps } from './upgrade.ts'
 
 const LATEST = 'eigenenterprise-0.4.0-1bb02b405565'
 
@@ -213,5 +213,16 @@ describe('upgrade from Settings → Updates (pinned to the approved release, ste
       'safety-copy /var/lib/ee/upgrades/2026-11-10T15-30-00Z',
       'installing /var/lib/ee/upgrades/2026-11-10T15-30-00Z',
     ])
+  })
+})
+
+describe('releaseOf: the release a name refers to, on any CPU', () => {
+  it('a release name is itself; each CPU tarball of it names the same release', () => {
+    expect(releaseOf('eigenenterprise-0.5.19-e7df63979e8e')).toBe('eigenenterprise-0.5.19-e7df63979e8e')
+    expect(releaseOf('eigenenterprise-0.5.19-e7df63979e8e-linux-x64.tar.gz')).toBe('eigenenterprise-0.5.19-e7df63979e8e')
+    expect(releaseOf('eigenenterprise-0.5.19-e7df63979e8e-linux-arm64.tar.gz')).toBe('eigenenterprise-0.5.19-e7df63979e8e')
+  })
+  it('anything else is no release', () => {
+    for (const n of ['latest', 'eigenenterprise-0.5.19-e7df63979e8e-linux-riscv.tar.gz', 'livekit-server-1.13.11-linux-x64.tar.gz', '']) expect(releaseOf(n)).toBeNull()
   })
 })

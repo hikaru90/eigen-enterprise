@@ -219,11 +219,51 @@ describe('fleet: desired state (level-triggered)', () => {
     expect(f.host.startUpgrade).not.toHaveBeenCalled()
     f.setAnswer(desired({ release: { name: 'eigenenterprise-0.6.0-bbbbbbbbbbbb-linux-x64.tar.gz', from: 'https://r.example.com/v2' } }))
     await agent.poll()
-    expect(f.host.startUpgrade).toHaveBeenCalledWith('https://r.example.com/v2')
+    expect(f.host.startUpgrade).toHaveBeenCalledWith('https://r.example.com/v2', 'eigenenterprise-0.6.0-bbbbbbbbbbbb')
     f.host.upgradeActive.mockResolvedValue(true)
     await agent.poll()
     expect(f.host.startUpgrade).toHaveBeenCalledTimes(1)
     expect(f.logs.some((l) => l.message.includes(UPGRADE_UNIT))).toBe(true)
+  })
+
+  it('release: the target names a release, not a CPU — an arm64 target on an x64 box running it starts nothing', async () => {
+    const f = fakeHost({ managed: true })
+    f.setAnswer(desired({ release: { name: 'eigenenterprise-0.5.12-aaaaaaaaaaaa-linux-arm64.tar.gz', from: 'https://r.example.com/v1' } }))
+    await new FleetAgent(f.host).poll()
+    f.setAnswer(desired({ release: { name: 'eigenenterprise-0.5.12-aaaaaaaaaaaa', from: 'https://r.example.com/v1' } }))
+    await new FleetAgent(f.host).poll()
+    expect(f.host.startUpgrade).not.toHaveBeenCalled()
+  })
+
+  it('release: the upgrade may install only the target (never whatever is newest at from)', async () => {
+    const f = fakeHost({ managed: true })
+    f.setAnswer(desired({ release: { name: 'eigenenterprise-0.6.0-bbbbbbbbbbbb-linux-arm64.tar.gz', from: 'https://r.example.com/v2' } }))
+    await new FleetAgent(f.host).poll()
+    expect(f.host.startUpgrade).toHaveBeenCalledWith('https://r.example.com/v2', 'eigenenterprise-0.6.0-bbbbbbbbbbbb')
+  })
+
+  it('release: a target that did not take is started again after 15 minutes, not every poll', async () => {
+    const f = fakeHost({ managed: true })
+    let now = new Date('2026-11-16T12:00:00Z').getTime()
+    f.host.now = () => new Date(now)
+    const agent = new FleetAgent(f.host)
+    f.setAnswer(desired({ release: { name: 'eigenenterprise-0.6.0-bbbbbbbbbbbb', from: 'https://r.example.com/v2' } }))
+    await agent.poll()
+    now += 60_000
+    await agent.poll()
+    expect(f.host.startUpgrade).toHaveBeenCalledTimes(1)
+    now += 15 * 60_000
+    await agent.poll()
+    expect(f.host.startUpgrade).toHaveBeenCalledTimes(2)
+  })
+
+  it('release: a target that is not a release name is a poll error, nothing started', async () => {
+    const f = fakeHost({ managed: true })
+    f.setAnswer(desired({ release: { name: 'latest', from: 'https://r.example.com/v2' } }))
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(await new FleetAgent(f.host).poll()).toMatchObject({ ok: false, error: expect.stringContaining('not a release name') })
+    expect(f.host.startUpgrade).not.toHaveBeenCalled()
+    err.mockRestore()
   })
 
   it('platformAi: sets + declares the four PLATFORM_LLM_* secrets on os, redeploys only on change, null removes them', async () => {

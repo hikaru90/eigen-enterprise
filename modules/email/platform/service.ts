@@ -5,7 +5,7 @@ import { env } from '$lib/server/env/private-env'
 import { MailSetupError } from '$lib/server/mail/company-mail'
 import { ReceivingSetupError, receivingService, type ReceivingService, type ReceivingState } from '../owlery/receiving'
 import { owleryService, SEND_SCHEDULED_JOB, type OwleryService } from '../owlery/service'
-import { describeSesError, type DomainIdentityInfo } from '../owlery/ses'
+import { awsErrorCode, describeSesError, NO_DOMAIN_IDENTITY, type DomainIdentityInfo } from '../owlery/ses'
 import {
   DKIM_SELECTOR,
   dnsRecords,
@@ -39,7 +39,8 @@ import { applyIdentityCheck, dueForCheck } from './verification'
 export const BOUGHT_DOMAIN_CREATOR = 'domains'
 
 /** D8: managed mode, a domain the control plane has not created at SES yet. */
-export const MANAGED_DOMAIN_PENDING_MESSAGE = 'eigenEnterprise Mail is adding this domain (a minute or two).'
+export const MANAGED_DOMAIN_PENDING_MESSAGE =
+  'eigenEnterprise Mail has not set this domain up at Amazon yet. This normally happens within a few minutes of adding it; if it still says this after 15 minutes, contact support.'
 
 export type DomainView = DomainRow & { records: DnsRecord[]; sendable: boolean }
 
@@ -313,7 +314,10 @@ export class EmailPlatform {
     try {
       check = await ses.getDomainIdentity(d.name)
     } catch (err) {
-      throw new EmailPlatformError(describeSesError(err))
+      // Managed mode: the box key may only read identities tagged for this box, so one the control
+      // plane hasn't created yet is AccessDenied (no tag to match), not NotFound.
+      if (settings.mode === 'managed' && awsErrorCode(err) === 'AccessDeniedException') check = NO_DOMAIN_IDENTITY
+      else throw new EmailPlatformError(describeSesError(err))
     }
     if (settings.mode === 'managed') {
       if (!check.exists) {
