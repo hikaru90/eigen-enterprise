@@ -217,7 +217,7 @@ export function createContactsTools(opts: ContactsToolDeps = {}): ToolDescriptor
       name: 'contacts.create',
       module: CONTACTS_MODULE_ID,
       summary:
-        'Add a person to Contacts. It is private to the person you work for (plus the company owner and admins) until they share it themselves.',
+        'Add a person to Contacts. It starts as the default for new contacts — the person you work for’s own setting, else the company’s (private or the whole team); working on your own, the company’s. Only people change who sees a contact afterwards.',
       auditClass: 'mutate',
       approvalRisk: 'internal',
       activity: () => 'Added a contact',

@@ -81,7 +81,7 @@ describe('import-preview.svelte', () => {
   }
 
   it('new people are ticked; the known one and the broken row are reported, not imported; unticking leaves someone out', async () => {
-    render(ImportPreviewView, { preview })
+    render(ImportPreviewView, { preview, visibility: 'team' })
     await expect.element(page.getByTestId('import-counts')).toHaveTextContent('2 new · 1 already in your contacts · 1 can’t be imported')
     await expect.element(page.getByTestId('import-duplicate')).toHaveTextContent('jon@atelier.example is already in your contacts as Jon P.')
     await expect.element(page.getByTestId('import-invalid')).toHaveTextContent('Row 4 — Give the contact a name.')
@@ -92,6 +92,17 @@ describe('import-preview.svelte', () => {
     await expect.element(page.getByTestId('import-confirm')).toHaveTextContent('Import 1 contact')
     expect(chosen().map((c) => c.name)).toEqual(['Mara Voss'])
     expect(submitted).toBe(0)
+  })
+
+  it('shows the visibility the import will use: your default, changeable before importing', async () => {
+    render(ImportPreviewView, { preview, visibility: 'team' })
+    await expect.element(page.getByTestId('import-visibility-team')).toBeChecked()
+    await expect.element(page.getByTestId('import-visibility')).toHaveTextContent(/Whole team\s*\(your default\)/)
+    await expect
+      .element(page.getByTestId('import-visibility'))
+      .toHaveTextContent(/including people who join later, will see and update them/)
+    await page.getByTestId('import-visibility-private').click()
+    await expect.element(page.getByTestId('import-visibility')).toHaveTextContent(/Only you, the company owner and admins will see them/)
   })
 })
 

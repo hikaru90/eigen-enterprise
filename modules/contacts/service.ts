@@ -1,10 +1,11 @@
-import type { ContactPatch, ContactRow, ContactScope, ContactsStore, Directory, LogEntryRow } from './store'
+import type { ContactPatch, ContactRow, ContactScope, ContactsStore, Directory, LogEntryRow, ShareRow, SharingChange } from './store'
 import { randomUUID } from 'node:crypto'
 import type { MemberRole } from '$lib/server/auth/user-role'
 import { ContactsError } from './errors'
 import {
   CHANNEL_TYPES,
   CONTACT_LIMITS,
+  CONTACT_VISIBILITIES,
   DEFAULT_TAGS,
   FOLLOW_UP_WINDOW_DAYS,
   IMPORT_MAX,
@@ -15,6 +16,7 @@ import {
   type Channel,
   type ChannelType,
   type ContactDto,
+  type ContactVisibility,
   type FollowUpDto,
   type HistoryItem,
   type ImportCandidate,
@@ -23,7 +25,11 @@ import {
   type Pipeline,
   type PipelineItem,
   type PipelineStage,
+  type ShareChoices,
+  type SharedWith,
+  type SharingResult,
   type Via,
+  type VisibilityDefaults,
 } from './types'
 
 /**
@@ -31,8 +37,14 @@ import {
  * side, on every call (the tables carry no RLS, like Drive's and Contribute's):
  * - a contact is private to whoever added it, plus the company owner and
  *   admins — the same rule Drive applies to an unshared item;
- * - shared with the company, everyone in the company sees and updates it;
- *   only its creator, the owner and admins share/unshare or delete it;
+ * - shared with the whole team (contacts.shared), every member of the
+ *   company sees and updates it — whoever joins later too, since it is
+ *   checked when contacts are read (migration 0150, Contribute 9d28020a);
+ * - shared with people or groups (contact_shares), they see and update it;
+ *   a group share follows the group's membership as it is when read;
+ * - only its creator, the owner and admins change who sees it or delete it;
+ * - a new contact starts as the person's own default (Contacts settings),
+ *   else the company's (set by the owner or an admin), else private;
  * - a contact the viewer can't see is "not found" (its existence is not
  *   leaked); one they see but may not manage is "forbidden";
  * - the agent on its own (no person behind it) acts with admin rights, like
@@ -291,11 +303,44 @@ async function viewerOf(d: ContactsDeps, actor: Actor): Promise<Viewer> {
 }
 
 const isOwn = (v: Viewer, row: ContactRow) => v.userId !== null && row.createdByKind === 'user' && row.createdBy === v.userId
-const canSee = (v: Viewer, row: ContactRow) => v.all || row.shared || isOwn(v, row)
 /** Share/unshare and delete: a person who added it, the owner, admins — never the agent. */
 const canManage = (v: Viewer, row: ContactRow) => v.userId !== null && (v.all || isOwn(v, row))
 
-function toDto(row: ContactRow, names: Map<string, string>, v: Viewer): ContactDto {
+/** What a DTO needs besides the row: names, groups, the viewer's groups and the rows' shares. */
+type DtoContext = {
+  names: Map<string, string>
+  groupNames: Map<string, string>
+  viewerGroups: Set<string>
+  shares: Map<string, ShareRow[]>
+}
+
+async function dtoContext(d: ContactsDeps, v: Viewer, rows: readonly ContactRow[]): Promise<DtoContext> {
+  const [names, groups, shares] = await Promise.all([
+    d.directory.names(),
+    d.directory.groups(),
+    rows.length === 0 ? Promise.resolve([]) : d.store.shares(rows.map((r) => r.id)),
+  ])
+  const byContact = new Map<string, ShareRow[]>()
+  for (const sh of shares) byContact.set(sh.contactId, [...(byContact.get(sh.contactId) ?? []), sh])
+  return {
+    names,
+    groupNames: new Map(groups.map((g) => [g.id, g.name])),
+    viewerGroups: new Set(v.userId === null ? [] : groups.filter((g) => g.memberIds.includes(v.userId!)).map((g) => g.id)),
+    shares: byContact,
+  }
+}
+
+function sharedWithOf(row: ContactRow, ctx: DtoContext): SharedWith[] {
+  return (ctx.shares.get(row.id) ?? []).map((sh) => ({
+    kind: sh.kind,
+    id: sh.subjectId,
+    name: sh.kind === 'user' ? (ctx.names.get(sh.subjectId) ?? 'a former member') : (ctx.groupNames.get(sh.subjectId) ?? 'a deleted group'),
+  }))
+}
+
+function toDto(row: ContactRow, ctx: DtoContext, v: Viewer): ContactDto {
+  const names = ctx.names
+  const shares = ctx.shares.get(row.id) ?? []
   return {
     id: row.id,
     name: row.name,
@@ -315,6 +360,9 @@ function toDto(row: ContactRow, names: Map<string, string>, v: Viewer): ContactD
     latestStatus: row.latestStatus,
     waitingSince: row.waitingSince,
     shared: row.shared,
+    sharedWith: sharedWithOf(row, ctx),
+    sharedWithViewer:
+      v.userId !== null && shares.some((sh) => (sh.kind === 'user' ? sh.subjectId === v.userId : ctx.viewerGroups.has(sh.subjectId))),
     own: isOwn(v, row),
     createdByName: row.createdByKind === 'agent' ? 'the agent' : (names.get(row.createdBy) ?? 'a former member'),
     canManage: canManage(v, row),
@@ -323,19 +371,26 @@ function toDto(row: ContactRow, names: Map<string, string>, v: Viewer): ContactD
   }
 }
 
+const scopeOf = (v: Viewer): ContactScope => (v.all || v.userId === null ? { kind: 'all' } : { kind: 'person', userId: v.userId })
+
+/** The contact if the viewer sees it — decided by the store's scope, the one place visibility lives. */
 async function visibleRow(d: ContactsDeps, v: Viewer, rawId: unknown): Promise<ContactRow> {
-  const row = await d.store.get(parseId(rawId))
-  if (!row || !canSee(v, row)) throw new ContactsError('not_found', 'contact not found')
+  const id = parseId(rawId)
+  const [row] = await d.store.list(scopeOf(v), { ids: [id] })
+  if (!row) throw new ContactsError('not_found', 'contact not found')
   return row
+}
+
+async function dtos(d: ContactsDeps, v: Viewer, rows: readonly ContactRow[]): Promise<ContactDto[]> {
+  const ctx = await dtoContext(d, v, rows)
+  return rows.map((r) => toDto(r, ctx, v))
 }
 
 async function view(d: ContactsDeps, v: Viewer, id: string): Promise<ContactDto> {
   const row = await d.store.get(id)
   if (!row) throw new ContactsError('not_found', 'contact not found')
-  return toDto(row, await d.directory.names(), v)
+  return (await dtos(d, v, [row]))[0]!
 }
-
-const scopeOf = (v: Viewer): ContactScope => (v.all || v.userId === null ? { kind: 'all' } : { kind: 'person', userId: v.userId })
 
 // ── reads ─────────────────────────────────────────────────────────────────────
 
@@ -353,12 +408,8 @@ export async function listContacts(
   const tag = typeof filter.tag === 'string' && filter.tag.trim() !== '' ? normaliseTag(filter.tag) : undefined
   const query = typeof filter.query === 'string' && filter.query.trim() !== '' ? filter.query.trim().slice(0, CONTACT_LIMITS.name) : undefined
   const scope = scopeOf(v)
-  const [rows, tags, names] = await Promise.all([
-    d.store.list(scope, { ...(tag ? { tag } : {}), ...(query ? { query } : {}) }),
-    tagsIn(d, scope),
-    d.directory.names(),
-  ])
-  return { contacts: rows.map((r) => toDto(r, names, v)), tags }
+  const [rows, tags] = await Promise.all([d.store.list(scope, { ...(tag ? { tag } : {}), ...(query ? { query } : {}) }), tagsIn(d, scope)])
+  return { contacts: await dtos(d, v, rows), tags }
 }
 
 async function tagsIn(d: ContactsDeps, scope: ContactScope): Promise<string[]> {
@@ -373,7 +424,7 @@ export async function contactTags(d: ContactsDeps, actor: Actor): Promise<string
 
 export async function getContact(d: ContactsDeps, actor: Actor, rawId: unknown): Promise<ContactDto> {
   const v = await viewerOf(d, actor)
-  return toDto(await visibleRow(d, v, rawId), await d.directory.names(), v)
+  return (await dtos(d, v, [await visibleRow(d, v, rawId)]))[0]!
 }
 
 const dayNumber = (day: string) => Date.parse(`${day}T00:00:00Z`) / 86_400_000
@@ -393,11 +444,12 @@ export async function followUps(d: ContactsDeps, actor: Actor, rawToday: unknown
   const today = requiredDay(rawToday, 'today')
   const v = await viewerOf(d, actor)
   const scope: ContactScope = v.userId === null ? { kind: 'all' } : { kind: 'person', userId: v.userId }
-  const [rows, names] = await Promise.all([d.store.followUps(scope, addDays(today, FOLLOW_UP_WINDOW_DAYS)), d.directory.names()])
+  const rows = await d.store.followUps(scope, addDays(today, FOLLOW_UP_WINDOW_DAYS))
+  const ctx = await dtoContext(d, v, rows)
   return rows.map((row) => {
     const daysFromToday = dayNumber(row.nextFollowUpOn!) - dayNumber(today)
     return {
-      ...toDto(row, names, v),
+      ...toDto(row, ctx, v),
       nextFollowUpOn: row.nextFollowUpOn!,
       due: daysFromToday < 0 ? 'overdue' : daysFromToday === 0 ? 'today' : 'upcoming',
       daysFromToday,
@@ -426,7 +478,9 @@ function bySoonest(day: (i: PipelineItem) => string | null) {
 export async function pipeline(d: ContactsDeps, actor: Actor, rawToday: unknown): Promise<Pipeline> {
   const today = requiredDay(rawToday, 'today')
   const v = await viewerOf(d, actor)
-  const [rows, names] = await Promise.all([d.store.list(scopeOf(v), {}), d.directory.names()])
+  const rows = await d.store.list(scopeOf(v), {})
+  const ctx = await dtoContext(d, v, rows)
+  const names = ctx.names
   const items = rows.map((row): PipelineItem => {
     const daysFromToday = row.nextFollowUpOn === null ? null : dayNumber(row.nextFollowUpOn) - dayNumber(today)
     const daysWaiting = row.stage === 'waiting' && row.waitingSince !== null ? dayNumber(today) - dayNumber(row.waitingSince) : null
@@ -434,7 +488,7 @@ export async function pipeline(d: ContactsDeps, actor: Actor, rawToday: unknown)
     const staleWaiting = daysWaiting !== null && daysWaiting > WAITING_REVIEW_DAYS
     const missingNextStep = row.stage === 'next' && row.nextStep === null
     return {
-      ...toDto(row, names, v),
+      ...toDto(row, ctx, v),
       review: {
         daysFromToday,
         overdue,
@@ -465,7 +519,12 @@ export async function pipeline(d: ContactsDeps, actor: Actor, rawToday: unknown)
 
 // ── writes ────────────────────────────────────────────────────────────────────
 
-/** Add a contact: private to its creator unless a person shares it with the company right away. */
+/**
+ * Add a contact. `shared` is the person's choice on the form (true = whole
+ * team, false = private); left out, it starts as their default (theirs, else
+ * the company's, else private). The agent on its own never chooses: its
+ * contacts follow the company default.
+ */
 export async function createContact(
   d: ContactsDeps,
   actor: Actor,
@@ -477,8 +536,9 @@ export async function createContact(
   const fields = parseFields(input)
   await checkOwner(d, fields.ownerId)
   const placed = resolveStage({ stage: 'inbox', waitingSince: null }, fields, optionalToday(opts.today))
-  const shared = opts.shared === true
-  if (shared && v.userId === null) throw new ContactsError('forbidden', 'Only a person shares a contact with the company.')
+  if (opts.shared !== undefined && typeof opts.shared !== 'boolean') throw new ContactsError('invalid', 'shared must be true or false')
+  if (opts.shared === true && v.userId === null) throw new ContactsError('forbidden', 'Only a person shares a contact with the company.')
+  const shared = opts.shared ?? (await defaultsOf(d, v)).effective === 'team'
   const at = now(d)
   const row: ContactRow = {
     id: newId(d),
@@ -645,7 +705,11 @@ export async function contactHistory(
   return items.sort((a, b) => b.day.localeCompare(a.day) || b.at.localeCompare(a.at))
 }
 
-/** Share with the company (true) or make private again (false): its creator, the owner, admins. */
+/**
+ * One contact: share with the whole team (true) or make private again (false
+ * — also ends its shares with people and groups): its creator, the owner,
+ * admins.
+ */
 export async function setShared(d: ContactsDeps, actor: Actor, rawId: unknown, shared: unknown): Promise<ContactDto> {
   if (typeof shared !== 'boolean') throw new ContactsError('invalid', 'shared must be true or false')
   const v = await viewerOf(d, actor)
@@ -653,11 +717,174 @@ export async function setShared(d: ContactsDeps, actor: Actor, rawId: unknown, s
   if (!canManage(v, row)) {
     throw new ContactsError('forbidden', 'Only the person who added this contact, the owner and admins change who can see it.')
   }
-  if (row.shared !== shared) {
-    await d.store.update(row.id, { shared, updatedAt: now(d) })
-    await d.audit({ type: 'contacts.sharing_changed', principalId: v.principalId, payload: { id: row.id, shared } })
+  const hasShares = (await d.store.shares([row.id])).length > 0
+  if (row.shared !== shared || (!shared && hasShares)) {
+    await d.store.applySharing(
+      [row.id],
+      shared ? { kind: 'share', team: true, userIds: [], groupIds: [] } : { kind: 'private' },
+      v.principalId,
+      now(d),
+    )
+    await d.audit({
+      type: 'contacts.sharing_changed',
+      principalId: v.principalId,
+      payload: { id: row.id, shared },
+    })
   }
   return view(d, v, row.id)
+}
+
+// ── sharing many at once, defaults (migration 0150, Contribute 9d28020a) ──────
+
+/** One bulk change covers at most this many contacts (the list never shows more than an import adds, times a few). */
+export const SHARING_MAX = 1000
+
+function parseIds(raw: unknown): string[] {
+  if (!Array.isArray(raw) || raw.length === 0) throw new ContactsError('invalid', 'Choose at least one contact.')
+  if (raw.length > SHARING_MAX) throw new ContactsError('invalid', `Change at most ${SHARING_MAX} contacts at once.`)
+  return [...new Set(raw.map((id) => parseId(id)))]
+}
+
+function parseIdList(raw: unknown, what: string): string[] {
+  if (raw === undefined) return []
+  if (!Array.isArray(raw) || raw.some((x) => typeof x !== 'string' || x.trim() === '')) {
+    throw new ContactsError('invalid', `${what} must be a list of ids.`)
+  }
+  return [...new Set(raw.map((x: string) => x.trim()))]
+}
+
+/** Whom to share with: the whole team and/or existing members and groups (at least one). */
+async function parseTargets(d: ContactsDeps, raw: unknown): Promise<Extract<SharingChange, { kind: 'share' }>> {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) throw new ContactsError('invalid', 'Say whom to share with.')
+  const t = raw as { team?: unknown; userIds?: unknown; groupIds?: unknown }
+  if (t.team !== undefined && typeof t.team !== 'boolean') throw new ContactsError('invalid', 'team must be true or false')
+  const team = t.team === true
+  const userIds = parseIdList(t.userIds, 'People')
+  const groupIds = parseIdList(t.groupIds, 'Groups')
+  if (!team && userIds.length === 0 && groupIds.length === 0) {
+    throw new ContactsError('invalid', 'Choose the whole team, a person or a group to share with.')
+  }
+  const [names, groups] = await Promise.all([d.directory.names(), d.directory.groups()])
+  const unknownUser = userIds.find((id) => !names.has(id))
+  if (unknownUser !== undefined) throw new ContactsError('invalid', `No such member: ${unknownUser}`)
+  const unknownGroup = groupIds.find((id) => !groups.some((g) => g.id === id))
+  if (unknownGroup !== undefined) throw new ContactsError('invalid', `No such group: ${unknownGroup}`)
+  return { kind: 'share', team, userIds, groupIds }
+}
+
+/**
+ * Applies one change to every chosen contact the person may change (theirs;
+ * every one for the owner and admins) in one go; the rest are skipped and
+ * reported — seen but not theirs by name, not seen as "not found" (nothing
+ * about it leaks). People only: the agent never changes who sees a contact.
+ */
+async function changeSharing(d: ContactsDeps, actor: Actor, rawIds: unknown, change: SharingChange): Promise<SharingResult> {
+  const v = await viewerOf(d, actor)
+  if (v.userId === null) throw new ContactsError('forbidden', 'Only a person changes who can see contacts.')
+  const ids = parseIds(rawIds)
+  const visible = await d.store.list(scopeOf(v), { ids })
+  const byId = new Map(visible.map((r) => [r.id, r]))
+  const changed: string[] = []
+  const skipped: SharingResult['skipped'] = []
+  for (const id of ids) {
+    const row = byId.get(id)
+    if (!row) skipped.push({ id, name: null, reason: 'not_found' })
+    else if (!canManage(v, row)) skipped.push({ id, name: row.name, reason: 'not_yours' })
+    else changed.push(id)
+  }
+  if (changed.length > 0) {
+    await d.store.applySharing(changed, change, v.principalId, now(d))
+    await d.audit({
+      type: 'contacts.sharing_changed',
+      principalId: v.principalId,
+      payload:
+        change.kind === 'private'
+          ? { ids: changed, shared: false, private: true }
+          : {
+              ids: changed,
+              team: change.team,
+              userIds: [...change.userIds],
+              groupIds: [...change.groupIds],
+            },
+    })
+  }
+  return { changed, skipped }
+}
+
+/** "Share with…" for many contacts: adds the whole team and/or people and groups (existing shares stay). */
+export async function shareContacts(d: ContactsDeps, actor: Actor, rawIds: unknown, rawTargets: unknown): Promise<SharingResult> {
+  return changeSharing(d, actor, rawIds, await parseTargets(d, rawTargets))
+}
+
+/** "Make private" for many contacts: no whole-team share and no people or group shares left. */
+export async function makeContactsPrivate(d: ContactsDeps, actor: Actor, rawIds: unknown): Promise<SharingResult> {
+  return changeSharing(d, actor, rawIds, { kind: 'private' })
+}
+
+/** The members and groups a person can share with, by name. */
+export async function shareChoices(d: ContactsDeps, actor: Actor): Promise<ShareChoices> {
+  await viewerOf(d, actor)
+  const [names, groups] = await Promise.all([d.directory.names(), d.directory.groups()])
+  const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name)
+  return {
+    people: [...names].map(([id, name]) => ({ id, name })).sort(byName),
+    groups: groups.map((g) => ({ id: g.id, name: g.name })).sort(byName),
+  }
+}
+
+/**
+ * Precedence (decision 2026-11-18): the person's own choice, else the
+ * company default the owner or an admin set, else private. The agent on its
+ * own has no own choice: the company default.
+ */
+async function defaultsOf(d: ContactsDeps, v: Viewer): Promise<VisibilityDefaults> {
+  const stored = await d.store.defaults(v.userId)
+  return { ...stored, effective: stored.person ?? stored.company ?? 'private' }
+}
+
+export async function visibilityDefaults(d: ContactsDeps, actor: Actor): Promise<VisibilityDefaults> {
+  return defaultsOf(d, await viewerOf(d, actor))
+}
+
+/** Contacts settings: the defaults, and whether this person may set the company's (the owner and admins). */
+export async function contactSettings(d: ContactsDeps, actor: Actor): Promise<{ defaults: VisibilityDefaults; canSetCompany: boolean }> {
+  const v = await viewerOf(d, actor)
+  return { defaults: await defaultsOf(d, v), canSetCompany: v.userId !== null && v.all }
+}
+
+/** private | team | '' / null (follow the company default). */
+function parseVisibilityChoice(raw: unknown): ContactVisibility | null {
+  if (raw === null || raw === '' || raw === 'company') return null
+  if (typeof raw === 'string' && (CONTACT_VISIBILITIES as readonly string[]).includes(raw)) return raw as ContactVisibility
+  throw new ContactsError('invalid', `A default is one of ${CONTACT_VISIBILITIES.join(', ')} (or the company's).`)
+}
+
+/** A person's own default for new contacts (null = follow the company's). */
+export async function setMyDefaultVisibility(d: ContactsDeps, actor: Actor, raw: unknown): Promise<VisibilityDefaults> {
+  const v = await viewerOf(d, actor)
+  if (v.userId === null) throw new ContactsError('forbidden', 'A person sets their own default, not the agent.')
+  const value = parseVisibilityChoice(raw)
+  await d.store.setPersonDefault(v.userId, value)
+  await d.audit({
+    type: 'contacts.default_visibility_set',
+    principalId: v.principalId,
+    payload: { scope: 'person', visibility: value },
+  })
+  return defaultsOf(d, v)
+}
+
+/** The company-wide default for new contacts (null = private): the owner and admins only. */
+export async function setCompanyDefaultVisibility(d: ContactsDeps, actor: Actor, raw: unknown): Promise<VisibilityDefaults> {
+  const v = await viewerOf(d, actor)
+  if (v.userId === null || !v.all) throw new ContactsError('forbidden', 'Only the company owner and admins set the company default.')
+  const value = parseVisibilityChoice(raw)
+  await d.store.setCompanyDefault(value, v.principalId)
+  await d.audit({
+    type: 'contacts.default_visibility_set',
+    principalId: v.principalId,
+    payload: { scope: 'company', visibility: value },
+  })
+  return defaultsOf(d, v)
 }
 
 /** Delete for good: its creator, the owner, admins. */
@@ -750,16 +977,18 @@ export async function previewImport(d: ContactsDeps, actor: Actor, raw: unknown)
 /**
  * The confirmed import: the rows are checked again; one that is not
  * importable stops it (nothing added); duplicates are skipped and reported,
- * the known contact is never changed; the new ones are added together,
- * private to the importer unless they share them with the company.
+ * the known contact is never changed; the new ones are added together, as
+ * the importer chose (true = whole team) or, left out, as their default.
  */
 export async function importContacts(
   d: ContactsDeps,
   actor: Actor,
   raw: unknown,
-  opts: { shared: boolean },
+  opts: { shared?: boolean } = {},
 ): Promise<{ created: ContactDto[]; skipped: ImportPreviewRow[] }> {
   const v = await importer(d, actor)
+  if (opts.shared !== undefined && typeof opts.shared !== 'boolean') throw new ContactsError('invalid', 'shared must be true or false')
+  const shared = opts.shared ?? (await defaultsOf(d, v)).effective === 'team'
   const { rows } = await preview(d, v, raw)
   const invalid = rows.find((r) => r.status === 'invalid')
   if (invalid && invalid.status === 'invalid') {
@@ -783,7 +1012,7 @@ export async function importContacts(
             waitingSince: null,
             createdBy: v.userId,
             createdByKind: 'user' as const,
-            shared: opts.shared,
+            shared,
             createdAt: at,
             updatedAt: at,
           },
@@ -795,8 +1024,7 @@ export async function importContacts(
   await d.audit({
     type: 'contacts.imported',
     principalId: v.principalId,
-    payload: { ids: created.map((r) => r.id), shared: opts.shared, skipped: skipped.length },
+    payload: { ids: created.map((r) => r.id), shared, skipped: skipped.length },
   })
-  const names = await d.directory.names()
-  return { created: created.map((r) => toDto(r, names, v)), skipped }
+  return { created: await dtos(d, v, created), skipped }
 }

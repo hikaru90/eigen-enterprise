@@ -1,13 +1,47 @@
-import type { ContactFilter, ContactRow, ContactScope, ContactsStore, LogEntryRow, NextUpCache, NextUpEntry } from './store'
+import type {
+  ContactFilter,
+  ContactRow,
+  ContactScope,
+  ContactsStore,
+  LogEntryRow,
+  NextUpCache,
+  NextUpEntry,
+  ShareRow,
+  StoredDefaults,
+} from './store'
+import type { ContactVisibility } from './types'
 
-/** In-memory ContactsStore for unit tests (same semantics as the DB store). */
-export function memoryContactsStore(): ContactsStore & { rows: Map<string, ContactRow>; log: LogEntryRow[] } {
+/**
+ * In-memory ContactsStore for unit tests (same semantics as the DB store).
+ * `groups` stands in for Members › Groups (id → name and members), read at
+ * query time like the DB store's join on member_group_member.
+ */
+export function memoryContactsStore(): ContactsStore & {
+  rows: Map<string, ContactRow>
+  log: LogEntryRow[]
+  shareRows: ShareRow[]
+  groups: Map<string, { name: string; members: Set<string> }>
+  personDefaults: Map<string, ContactVisibility>
+  companyDefault: { value: ContactVisibility | null }
+} {
   const rows = new Map<string, ContactRow>()
   const log: LogEntryRow[] = []
-  const inScope = (scope: ContactScope, r: ContactRow) => scope.kind === 'all' || r.shared || r.createdBy === scope.userId
+  const shareRows: ShareRow[] = []
+  const groups = new Map<string, { name: string; members: Set<string> }>()
+  const personDefaults = new Map<string, ContactVisibility>()
+  const companyDefault = { value: null as ContactVisibility | null }
+  const sharedWithPerson = (r: ContactRow, userId: string) =>
+    shareRows.some(
+      (s) =>
+        s.contactId === r.id &&
+        ((s.kind === 'user' && s.subjectId === userId) || (s.kind === 'group' && groups.get(s.subjectId)?.members.has(userId) === true)),
+    )
+  const inScope = (scope: ContactScope, r: ContactRow) =>
+    scope.kind === 'all' || r.shared || r.createdBy === scope.userId || sharedWithPerson(r, scope.userId)
   const byName = (a: ContactRow, b: ContactRow) =>
     a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.id.localeCompare(b.id)
   const matches = (r: ContactRow, f: ContactFilter) => {
+    if (f.ids !== undefined && !f.ids.includes(r.id)) return false
     if (f.tag !== undefined && !r.tags.includes(f.tag)) return false
     if (f.query !== undefined) {
       const q = f.query.toLowerCase()
@@ -19,6 +53,10 @@ export function memoryContactsStore(): ContactsStore & { rows: Map<string, Conta
   return {
     rows,
     log,
+    shareRows,
+    groups,
+    personDefaults,
+    companyDefault,
     async insert(r) {
       if (rows.has(r.id)) throw new Error(`contact ${r.id} exists`)
       rows.set(r.id, copy(r))
@@ -57,6 +95,51 @@ export function memoryContactsStore(): ContactsStore & { rows: Map<string, Conta
     async delete(id) {
       rows.delete(id)
       for (let i = log.length - 1; i >= 0; i--) if (log[i]!.contactId === id) log.splice(i, 1)
+      for (let i = shareRows.length - 1; i >= 0; i--) if (shareRows[i]!.contactId === id) shareRows.splice(i, 1)
+    },
+    async shares(ids) {
+      return shareRows.filter((s) => ids.includes(s.contactId)).map((s) => ({ ...s }))
+    },
+    async applySharing(ids, change, _grantedBy, at) {
+      for (const id of ids) if (!rows.has(id)) throw new Error(`contact ${id} not found`)
+      for (const id of ids) {
+        const r = rows.get(id)!
+        if (change.kind === 'private') {
+          rows.set(id, { ...r, shared: false, updatedAt: at })
+          for (let i = shareRows.length - 1; i >= 0; i--) if (shareRows[i]!.contactId === id) shareRows.splice(i, 1)
+          continue
+        }
+        if (change.team) rows.set(id, { ...r, shared: true, updatedAt: at })
+        const add = [
+          ...change.userIds.map((subjectId) => ({
+            contactId: id,
+            kind: 'user' as const,
+            subjectId,
+          })),
+          ...change.groupIds.map((subjectId) => ({
+            contactId: id,
+            kind: 'group' as const,
+            subjectId,
+          })),
+        ]
+        for (const s of add) {
+          if (!shareRows.some((x) => x.contactId === s.contactId && x.kind === s.kind && x.subjectId === s.subjectId)) shareRows.push(s)
+        }
+        if (add.length > 0) rows.set(id, { ...rows.get(id)!, updatedAt: at })
+      }
+    },
+    async defaults(userId): Promise<StoredDefaults> {
+      return {
+        person: userId === null ? null : (personDefaults.get(userId) ?? null),
+        company: companyDefault.value,
+      }
+    },
+    async setPersonDefault(userId, visibility) {
+      if (visibility === null) personDefaults.delete(userId)
+      else personDefaults.set(userId, visibility)
+    },
+    async setCompanyDefault(visibility) {
+      companyDefault.value = visibility
     },
     async recordLog(entry, patch) {
       const r = rows.get(entry.contactId)

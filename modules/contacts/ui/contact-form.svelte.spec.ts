@@ -20,6 +20,8 @@ const contact = (over: Partial<ContactDto> = {}): ContactDto => ({
   nextFollowUpOn: '2026-11-20',
   nextStep: 'Send the deck',
   shared: false,
+  sharedWith: [],
+  sharedWithViewer: false,
   own: true,
   createdByName: 'Ana Lind',
   canManage: true,
@@ -29,14 +31,23 @@ const contact = (over: Partial<ContactDto> = {}): ContactDto => ({
 })
 
 describe('contact-form.svelte', () => {
+  it('a new contact starts at your default (Whole team here); you may change it before adding', async () => {
+    render(ContactForm, { submitLabel: 'Add contact', newVisibility: 'team' })
+    await expect.element(page.getByTestId('contact-visibility-team')).toBeChecked()
+    await expect.element(page.getByText(/including people who join later/i)).toBeVisible()
+    await page.getByTestId('contact-visibility-private').click()
+    await expect.element(page.getByText(/only you, the company owner and admins/i)).toBeVisible()
+  })
+
   it('offers the default tags (partner, customer, funder, investor, production) and one empty channel to start', async () => {
-    render(ContactForm, { submitLabel: 'Add contact', offerShare: true })
+    render(ContactForm, { submitLabel: 'Add contact', newVisibility: 'private' })
     for (const tag of ['partner', 'customer', 'funder', 'investor', 'production']) {
       await expect.element(page.getByRole('checkbox', { name: tag })).not.toBeChecked()
     }
     await expect.element(page.getByRole('textbox', { name: 'Channel 1' })).toHaveValue('')
     await expect.element(page.getByRole('combobox', { name: 'Channel 1 type' })).toHaveValue('email')
-    await expect.element(page.getByTestId('contact-share-now')).not.toBeChecked()
+    await expect.element(page.getByTestId('contact-visibility-private')).toBeChecked()
+    await expect.element(page.getByTestId('contact-visibility-team')).not.toBeChecked()
     await expect.element(page.getByText(/only you, the company owner and admins/i)).toBeVisible()
   })
 
@@ -49,7 +60,7 @@ describe('contact-form.svelte', () => {
     await expect.element(page.getByRole('checkbox', { name: 'printing' })).not.toBeChecked()
     await expect.element(page.getByRole('combobox', { name: 'Channel 1 type' })).toHaveValue('linkedin')
     await expect.element(page.getByLabelText('Next follow-up')).toHaveValue('2026-11-20')
-    await expect.element(page.getByTestId('contact-share-now')).not.toBeInTheDocument()
+    await expect.element(page.getByTestId('contact-visibility')).not.toBeInTheDocument()
   })
 
   it('adds and removes channels; removing the last leaves one empty row', async () => {
@@ -117,7 +128,12 @@ describe('contact-form.svelte: tell me about them', () => {
         nextStep: 'Send the deck',
       }),
     )
-    render(ContactForm, { submitLabel: 'Add contact', offerShare: true, describeOpen: true, read })
+    render(ContactForm, {
+      submitLabel: 'Add contact',
+      newVisibility: 'private',
+      describeOpen: true,
+      read,
+    })
     await page.getByRole('textbox', { name: 'Tell me about them' }).fill('Mara Voss from Northwind, an investor')
     await page.getByRole('button', { name: 'Fill in the form' }).click()
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ChannelType, ContactDto, ContactDraft } from '../types'
+  import type { ChannelType, ContactDto, ContactDraft, ContactVisibility } from '../types'
   import { untrack } from 'svelte'
   import { enhance } from '$app/forms'
   import { Button } from '$lib/components/ui/button'
@@ -10,6 +10,7 @@
   import { CONTACT_FIELDS, newChannels, newTags, planFields, type Change, type ContactFieldKey } from '../prefill'
   import { CHANNEL_LABELS, CHANNEL_TYPES, CONTACT_LIMITS, DEFAULT_TAGS } from '../types'
   import DescribeThem from './describe-them.svelte'
+  import VisibilityChoice from './visibility-choice.svelte'
 
   /**
    * Add or edit a contact: who they are, how to reach them (any number of
@@ -27,7 +28,7 @@
     action,
     submitLabel,
     error = null,
-    offerShare = false,
+    newVisibility = null,
     describeOpen = false,
     read = readDescription,
   }: {
@@ -38,8 +39,8 @@
     action?: string
     submitLabel: string
     error?: string | null
-    /** The create form: offer "share with the company" right away. */
-    offerShare?: boolean
+    /** The create form: who sees it, starting at the person's default (Private / Whole team). */
+    newVisibility?: ContactVisibility | null
     /** Start with "Tell me about them" unfolded (the create form). */
     describeOpen?: boolean
     /** The AI's reading of a description (tests pass a double). */
@@ -298,16 +299,8 @@
       </div>
     </div>
 
-    {#if offerShare}
-      <label class="flex items-start gap-2 text-sm">
-        <input type="checkbox" name="shared" class="mt-0.5" data-testid="contact-share-now" />
-        <span>
-          Share with the company
-          <span class="block text-xs text-muted-foreground"
-            >Unchecked, only you, the company owner and admins can see this contact.</span
-          >
-        </span>
-      </label>
+    {#if newVisibility}
+      <VisibilityChoice initial={newVisibility} />
     {/if}
 
     {#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}

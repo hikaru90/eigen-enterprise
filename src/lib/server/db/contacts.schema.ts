@@ -1,5 +1,7 @@
 import { sql } from 'drizzle-orm'
-import { boolean, date, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { boolean, check, date, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { user } from './auth.schema'
+import { memberGroup } from './team.schema'
 
 /**
  * Contacts (migration 0124, plan/contribute-round-3.md W1): the people the
@@ -43,7 +45,10 @@ export const contacts = pgTable(
     /** A person's user id, or the agent's principal id (created_by_kind = 'agent'). */
     createdBy: text('created_by').notNull(),
     createdByKind: text('created_by_kind', { enum: ['user', 'agent'] }).notNull(),
-    /** false = private to its creator (plus the owner and admins). */
+    /**
+     * Shared with the whole team: every member of the company, now and later (read time, migration 0150).
+     * false = private to its creator (plus the owner and admins) and whoever contact_shares names.
+     */
     shared: boolean('shared').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -98,3 +103,53 @@ export const contactLogEntries = pgTable(
   },
   (t) => [index('contact_log_entries_contact_idx').on(t.contactId, t.on.desc(), t.createdAt.desc())],
 )
+
+/**
+ * A contact shared with one person or one group (migration 0150, Contribute
+ * 9d28020a). A group share follows the group's membership when contacts are
+ * read. Removing a member or deleting a group drops their shares (cascade).
+ */
+export const contactShares = pgTable(
+  'contact_shares',
+  {
+    contactId: uuid('contact_id')
+      .notNull()
+      .references(() => contacts.id, { onDelete: 'cascade' }),
+    subjectKind: text('subject_kind', { enum: ['user', 'group'] }).notNull(),
+    userId: text('user_id').references(() => user.id, { onDelete: 'cascade' }),
+    groupId: text('group_id').references(() => memberGroup.id, { onDelete: 'cascade' }),
+    grantedBy: text('granted_by').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('contact_shares_subject_unique').on(t.contactId, t.subjectKind, sql`coalesce(${t.userId}, ${t.groupId})`),
+    index('contact_shares_user_idx')
+      .on(t.userId)
+      .where(sql`${t.userId} IS NOT NULL`),
+    index('contact_shares_group_idx')
+      .on(t.groupId)
+      .where(sql`${t.groupId} IS NOT NULL`),
+    check(
+      'contact_shares_subject_shape',
+      sql`(${t.subjectKind} = 'user' AND ${t.userId} IS NOT NULL AND ${t.groupId} IS NULL)
+        OR (${t.subjectKind} = 'group' AND ${t.groupId} IS NOT NULL AND ${t.userId} IS NULL)`,
+    ),
+  ],
+)
+
+/** A person's own default for new contacts (migration 0150); no row = follow the company's. */
+export const contactPreferences = pgTable('contact_preferences', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  defaultVisibility: text('default_visibility', { enum: ['private', 'team'] }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+/** The company-wide default for new contacts (migration 0150): one row (id = true); no row = private. */
+export const contactCompanySettings = pgTable('contact_company_settings', {
+  id: boolean('id').primaryKey().default(true),
+  defaultVisibility: text('default_visibility', { enum: ['private', 'team'] }).notNull(),
+  updatedBy: text('updated_by').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})

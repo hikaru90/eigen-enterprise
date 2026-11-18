@@ -2,7 +2,7 @@ import type { NextUpPorts } from './next-up'
 import type { Actor, ContactInput, ContactsDeps } from './service'
 import { error, fail, json, redirect } from '@sveltejs/kit'
 import { ContactsError, ERROR_STATUS } from './errors'
-import { contactTags } from './service'
+import { contactTags, makeContactsPrivate, shareContacts } from './service'
 import { EXTRACT_MODES } from './types'
 
 /**
@@ -52,6 +52,18 @@ export function formContactInput(form: FormData): ContactInput {
     nextFollowUpOn: text(form, 'nextFollowUpOn'),
     nextStep: text(form, 'nextStep'),
   }
+}
+
+/**
+ * "Who sees it" on the add and import forms: `visibility` = team (shared with
+ * the whole team) or private; left out = the person's default. Anything else is refused.
+ */
+export function formShared(form: FormData): boolean | undefined {
+  if (!form.has('visibility')) return undefined
+  const v = text(form, 'visibility')
+  if (v === 'team') return true
+  if (v === 'private') return false
+  throw new ContactsError('invalid', 'Who sees it is either private or the whole team.')
 }
 
 /** The "Log a contact" form ("Where they are now" only when the form asks it; blank = leave as it is). */
@@ -165,5 +177,41 @@ export async function contactsLoad<T>(run: () => Promise<T>): Promise<T> {
   } catch (err) {
     if (err instanceof ContactsError) error(ERROR_STATUS[err.code], err.code === 'not_found' ? 'No such contact' : err.message)
     throw err
+  }
+}
+
+/**
+ * POST /api/contacts/sharing — many contacts at once (Contribute 9d28020a):
+ * `{ action: 'share', ids, targets: { team?, userIds?, groupIds? } }` adds
+ * the whole team and/or people and groups; `{ action: 'private', ids }` makes
+ * them private. One call; → `{ changed, skipped }` (skipped: not yours, or not
+ * one you see). Signed-in people only; ContactsError → its status.
+ */
+export async function contactsSharingResponse(
+  user: { id: string } | null | undefined,
+  request: Request,
+  deps: () => Promise<ContactsDeps> = liveContactsDeps,
+): Promise<Response> {
+  if (!user) return json({ error: 'sign in first' }, { status: 401 })
+  try {
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      throw new ContactsError('invalid', 'expected a JSON object body')
+    }
+    const { action, ids, targets } = (body && typeof body === 'object' ? body : {}) as {
+      action?: unknown
+      ids?: unknown
+      targets?: unknown
+    }
+    const actor = personActor(user)
+    if (action === 'share') return json(await shareContacts(await deps(), actor, ids, targets))
+    if (action === 'private') return json(await makeContactsPrivate(await deps(), actor, ids))
+    throw new ContactsError('invalid', 'action must be share or private')
+  } catch (err) {
+    if (err instanceof ContactsError) return json({ error: err.message, code: err.code }, { status: ERROR_STATUS[err.code] })
+    console.error('[contacts.sharing] request failed', err)
+    return json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
 }

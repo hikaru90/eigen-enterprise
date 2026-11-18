@@ -130,14 +130,24 @@ describe('who can see a contact', () => {
   })
 
   it('says it plainly', () => {
-    expect(visibilityText({ shared: false, own: true, createdByName: 'Ana Lind' })).toBe(
+    const none = { sharedWith: [] }
+    expect(visibilityText({ ...none, shared: false, own: true, createdByName: 'Ana Lind' })).toBe(
       'Private: only you, the company owner and admins can see it.',
     )
-    expect(visibilityText({ shared: false, own: false, createdByName: 'Ana Lind' })).toBe(
+    expect(visibilityText({ ...none, shared: false, own: false, createdByName: 'Ana Lind' })).toBe(
       'Private to Ana Lind: only they, the company owner and admins can see it.',
     )
-    expect(visibilityText({ shared: true, own: false, createdByName: 'Ana Lind' })).toBe(
-      'Shared with the company: everyone in the company can see and update it.',
+    expect(visibilityText({ ...none, shared: true, own: false, createdByName: 'Ana Lind' })).toBe(
+      'Shared with the whole team: everyone in the company, including people who join later, can see and update it.',
+    )
+    const withBenAndSales = {
+      sharedWith: [
+        { kind: 'user' as const, id: 'ben', name: 'Ben Ode' },
+        { kind: 'group' as const, id: 'g', name: 'Sales' },
+      ],
+    }
+    expect(visibilityText({ ...withBenAndSales, shared: false, own: true, createdByName: 'Ana Lind' })).toBe(
+      'Shared with Ben Ode and Sales: they, you, the company owner and admins can see and update it.',
     )
   })
 })

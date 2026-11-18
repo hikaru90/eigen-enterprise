@@ -174,8 +174,8 @@ export async function nextUp(
   input: { today: string; refresh?: boolean },
 ): Promise<NextUp> {
   const p = await pipeline(d, actor, input.today)
-  // Personal, like "Follow up next" was: your own and the shared contacts, not other people's private ones.
-  const visible = p.groups.flatMap((g) => g.items).filter((i) => i.own || i.shared)
+  // Personal, like "Follow up next" was: your own and the ones shared with the team or with you, not other people's private ones.
+  const visible = p.groups.flatMap((g) => g.items).filter((i) => i.own || i.shared || i.sharedWithViewer)
   const now = d.now?.() ?? new Date()
 
   const cached = await ports.cache.get(actor.userId)

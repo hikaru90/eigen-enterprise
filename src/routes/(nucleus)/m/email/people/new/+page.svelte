@@ -15,14 +15,14 @@
 <div class="mt-3">
   <SectionHeader
     title="Add a contact"
-    description="Only the name is needed — type it in, or tell me about them and the AI fills in the form for you to check. It stays private to you (and the company owner and admins) unless you share it."
+    description="Only the name is needed — type it in, or tell me about them and the AI fills in the form for you to check. Who sees it starts at your default for new contacts."
   />
 </div>
 <div class="mt-6">
   <ContactForm
     suggestedTags={data.tags}
     submitLabel="Add contact"
-    offerShare
+    newVisibility={data.visibility}
     describeOpen
     error={form && 'error' in form ? form.error : null}
   />

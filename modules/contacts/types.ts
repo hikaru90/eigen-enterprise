@@ -125,8 +125,15 @@ export type ContactDto = {
   latestStatus: string | null
   /** Waiting for their reply since (set exactly while stage = waiting). */
   waitingSince: string | null
-  /** false = private to its creator (plus the company owner and admins). */
+  /**
+   * Shared with the whole team: every member of the company, now and later (migration 0150 — the
+   * column predates people/group shares and kept its name). false = not shared with the whole team.
+   */
   shared: boolean
+  /** The people and groups it is shared with (besides the whole team), by name. */
+  sharedWith: SharedWith[]
+  /** The viewer sees it because it is shared with them or a group they are in. */
+  sharedWithViewer: boolean
   /** The viewer added it. */
   own: boolean
   /** Who added it, in words ("Ana Lind", "the agent"). */
@@ -202,11 +209,68 @@ export type NextUpItem = { contact: ContactDto; kind: NextUpKind; reason: string
 /** The pick as the page shows it: contacts acted on since it was made are left out. */
 export type NextUp = { generatedAt: string; items: NextUpItem[] }
 
+// ── who can see a contact (migration 0150, Contribute 9d28020a) ───────────────
+
+/**
+ * How a new contact starts: private to whoever adds it (plus the owner and
+ * admins) or shared with the whole team (every member, now and later).
+ */
+export const CONTACT_VISIBILITIES = ['private', 'team'] as const
+export type ContactVisibility = (typeof CONTACT_VISIBILITIES)[number]
+
+export const VISIBILITY_LABELS: Record<ContactVisibility, string> = {
+  private: 'Private',
+  team: 'Whole team',
+}
+
+/** One person or group a contact is shared with. */
+export type SharedWith = { kind: 'user' | 'group'; id: string; name: string }
+
+/** Whom "Share with…" adds: the whole team and/or people and groups. */
+export type ShareTargets = { team: boolean; userIds: string[]; groupIds: string[] }
+
+/** What a bulk "Share with…" / "Make private" did: the ones changed, and the ones left alone and why. */
+export type SharingResult = {
+  changed: string[]
+  /** not_yours: you see it but only its creator, the owner and admins change who sees it; not_found: not one you see. */
+  skipped: Array<{ id: string; name: string | null; reason: 'not_yours' | 'not_found' }>
+}
+
+/** Where a person's default for new contacts comes from (per-person overrides company, else private). */
+export type VisibilityDefaults = {
+  /** The person's own choice, or null = follow the company default. */
+  person: ContactVisibility | null
+  /** The company-wide default the owner or an admin set, or null = private. */
+  company: ContactVisibility | null
+  /** What a new contact of theirs starts as. */
+  effective: ContactVisibility
+}
+
+/** Who can share a contact with: the members and groups of the company, by name. */
+export type ShareChoices = {
+  people: Array<{ id: string; name: string }>
+  groups: Array<{ id: string; name: string }>
+}
+
+const listNames = (names: readonly string[]) =>
+  names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
+
 /** Who can see a contact, said plainly (the list, the detail page and the agent all use this). */
-export function visibilityText(c: Pick<ContactDto, 'shared' | 'own' | 'createdByName'>): string {
-  if (c.shared) return 'Shared with the company: everyone in the company can see and update it.'
+export function visibilityText(c: Pick<ContactDto, 'shared' | 'own' | 'createdByName' | 'sharedWith'>): string {
+  if (c.shared) return 'Shared with the whole team: everyone in the company, including people who join later, can see and update it.'
+  const owner = c.own ? 'you' : c.createdByName
+  if (c.sharedWith.length > 0) {
+    return `Shared with ${listNames(c.sharedWith.map((s) => s.name))}: they, ${owner}, the company owner and admins can see and update it.`
+  }
   if (c.own) return 'Private: only you, the company owner and admins can see it.'
   return `Private to ${c.createdByName}: only they, the company owner and admins can see it.`
+}
+
+/** The short label in the list: "Whole team", "Shared with Ana, Sales", "Private". */
+export function visibilityLabel(c: Pick<ContactDto, 'shared' | 'own' | 'createdByName' | 'sharedWith'>): string {
+  if (c.shared) return 'Whole team'
+  if (c.sharedWith.length > 0) return `Shared with ${listNames(c.sharedWith.map((s) => s.name))}`
+  return c.own ? 'Private' : `Private to ${c.createdByName}`
 }
 
 /** "in 3 days", "today", "2 days ago" — for a follow-up or last-contacted day. */

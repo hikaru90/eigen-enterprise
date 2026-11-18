@@ -33,6 +33,8 @@ const item = (id: string, name: string, stage: PipelineStage, over: Partial<Pipe
   latestStatus: null,
   waitingSince: null,
   shared: true,
+  sharedWith: [],
+  sharedWithViewer: false,
   own: true,
   createdByName: 'Ana Lind',
   canManage: true,

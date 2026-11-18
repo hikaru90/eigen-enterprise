@@ -24,6 +24,8 @@ const contact = (over: Partial<ContactDto> = {}): ContactDto => ({
   latestStatus: null,
   waitingSince: '2026-11-01',
   shared: false,
+  sharedWith: [],
+  sharedWithViewer: false,
   own: true,
   createdByName: 'Ana Lind',
   canManage: true,

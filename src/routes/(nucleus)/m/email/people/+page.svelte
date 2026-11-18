@@ -1,11 +1,13 @@
 <script lang="ts">
   /* eslint-disable svelte/no-navigation-without-resolve -- the tag filter links add a query string to resolve() */
   import type { PageProps } from './$types'
+  import { invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { docTitle } from '$lib/shell/title'
+  import { changeSharing } from '../../../../../../modules/contacts/client'
   import ContactList from '../../../../../../modules/contacts/ui/contact-list.svelte'
   import ContactsPrivacyNote from '../../../../../../modules/contacts/ui/contacts-privacy-note.svelte'
   import NextUpStrip from '../../../../../../modules/contacts/ui/next-up-strip.svelte'
@@ -34,6 +36,7 @@
 <SectionHeader title="Contacts" testid="contacts-header">
   {#snippet info()}<ContactsPrivacyNote />{/snippet}
   {#snippet actions()}
+    <Button variant="ghost" href="/m/email/people/settings" data-testid="contact-settings">Settings</Button>
     <Button variant="outline" href="/m/email/people/pipeline" data-testid="contact-pipeline">Pipeline</Button>
     <Button variant="outline" href="/m/email/people/import" data-testid="contact-import">Import</Button>
     <Button href="/m/email/people/new" data-testid="contact-add">Add a contact</Button>
@@ -42,7 +45,11 @@
 
 <div class="mt-4"><NextUpStrip today={data.today} {logError} /></div>
 
-<SectionHeader title="Everyone" description="Your contacts and the ones shared with the company, by name." testid="contacts-section" />
+<SectionHeader
+  title="Everyone"
+  description="Your contacts and the ones shared with the whole team or with you, by name. Select some to share them or make them private."
+  testid="contacts-section"
+/>
 <div class="mt-3 grid gap-3">
   <form method="GET" action={base} class="flex max-w-2xl flex-wrap items-center gap-2" role="search" data-testid="contacts-search">
     {#if data.filter.tag}<input type="hidden" name="tag" value={data.filter.tag} />{/if}
@@ -77,6 +84,7 @@
   <ContactList
     contacts={data.contacts}
     today={data.today}
+    sharing={{ choices: data.choices, change: changeSharing, onchanged: () => invalidateAll() }}
     empty={filtered
       ? 'Nobody matches. Try another tag or search.'
       : 'No contacts yet. Add the people you know — where you met, why they matter, when to follow up.'}

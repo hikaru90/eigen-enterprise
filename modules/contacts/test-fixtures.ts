@@ -4,12 +4,24 @@ import { memoryContactsStore } from './memory-store'
 
 /**
  * Deps over the in-memory store: Olga owns the company, Adam is an admin, Ana
- * and Ben are members. A fixed clock and sequential ids keep tests exact.
+ * and Ben are members; `join` adds one later. `store.groups` are the company's
+ * groups (none to start). A fixed clock and sequential ids keep tests exact.
  */
 export function fixture() {
   const store = memoryContactsStore()
   const events: Array<{ type: string; principalId: string; payload: Record<string, unknown> }> = []
   const roles: Record<string, MemberRole> = { olga: 'owner', adam: 'admin', ana: 'member', ben: 'member' }
+  const people = new Map([
+    ['olga', 'Olga Owner'],
+    ['adam', 'Adam Admin'],
+    ['ana', 'Ana Lind'],
+    ['ben', 'Ben Ode'],
+  ])
+  /** Someone joins the company (a member) — as late as a test likes. */
+  const join = (userId: string, name: string) => {
+    roles[userId] = 'member'
+    people.set(userId, name)
+  }
   let clock = Date.parse('2026-11-12T09:00:00Z')
   let ids = 0
   /** What the mail port answers, and who asked it with which addresses. */
@@ -21,13 +33,9 @@ export function fixture() {
   const deps: ContactsDeps = {
     store,
     directory: {
-      names: async () =>
-        new Map([
-          ['olga', 'Olga Owner'],
-          ['adam', 'Adam Admin'],
-          ['ana', 'Ana Lind'],
-          ['ben', 'Ben Ode'],
-        ]),
+      names: async () => new Map(people),
+      // Members › Groups as the store keeps them (tests add groups and members, also later).
+      groups: async () => [...store.groups].map(([id, g]) => ({ id, name: g.name, memberIds: [...g.members] })),
     },
     roleOf: async (userId) => roles[userId] ?? null,
     audit: async (e) => {
@@ -36,7 +44,7 @@ export function fixture() {
     now: () => new Date((clock += 1000)),
     newId: () => `00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`,
   }
-  return { deps, store, events, mail, mailWith }
+  return { deps, store, events, mail, mailWith, join }
 }
 
 export const user = (userId: string) => ({ kind: 'user' as const, userId })

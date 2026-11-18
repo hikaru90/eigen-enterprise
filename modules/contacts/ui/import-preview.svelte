@@ -1,9 +1,10 @@
 <script lang="ts">
-  import type { ImportPreview } from '../types'
+  import type { ContactVisibility, ImportPreview } from '../types'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
   import { Button } from '$lib/components/ui/button'
   import { CHANNEL_LABELS } from '../types'
+  import VisibilityChoice from './visibility-choice.svelte'
 
   /**
    * Import, step 2: who would be added. New people are ticked (untick anyone
@@ -11,11 +12,21 @@
    * and never imported again or changed; rows that can't be imported say
    * why. Nothing is saved until “Import”.
    */
-  let { preview, action = '?/import', error = null }: { preview: ImportPreview; action?: string; error?: string | null } = $props()
+  let {
+    preview,
+    visibility,
+    action = '?/import',
+    error = null,
+  }: {
+    preview: ImportPreview
+    /** The importer's default for new contacts: what the import uses unless they change it here. */
+    visibility: ContactVisibility
+    action?: string
+    error?: string | null
+  } = $props()
 
   /** New rows you unticked. */
   let left = $state<number[]>([])
-  let shared = $state(false)
 
   const newRows = $derived(preview.rows.filter((r) => r.status === 'new'))
   const chosen = $derived(newRows.filter((r) => !left.includes(r.index)))
@@ -87,13 +98,7 @@
 
   <form method="POST" {action} use:enhance class="grid gap-3" data-testid="import-confirm-form">
     <input type="hidden" name="candidates" value={JSON.stringify(chosen.map((r) => r.contact))} data-testid="import-chosen" />
-    <label class="flex items-center gap-2 text-sm">
-      <input type="checkbox" name="shared" bind:checked={shared} />
-      Share them with the company
-    </label>
-    <p class="text-xs text-muted-foreground">
-      {shared ? 'Everyone in the company will see and update them.' : 'Private: only you, the company owner and admins will see them.'}
-    </p>
+    <VisibilityChoice initial={visibility} plural testid="import-visibility" />
     {#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
     <div class="flex flex-wrap gap-2">
       <Button type="submit" disabled={chosen.length === 0} data-testid="import-confirm"
