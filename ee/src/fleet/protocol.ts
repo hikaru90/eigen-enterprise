@@ -48,7 +48,7 @@ export const POLL_SECONDS = { min: 15, max: 3600, default: 60 } as const
  * must leave every other field at its neutral value for that box. New features
  * are added here (append only), never repurposed.
  */
-export const FLEET_FEATURES = ['release', 'suspended', 'backup', 'platformAi', 'backupRequestedAt', 'escrowBackupKey', 'mail'] as const
+export const FLEET_FEATURES = ['release', 'suspended', 'backup', 'platformAi', 'backupRequestedAt', 'escrowBackupKey', 'mail', 'domains'] as const
 export type FleetFeature = (typeof FLEET_FEATURES)[number]
 
 const base64 = z.string().regex(/^[A-Za-z0-9+/]+={0,2}$/)
@@ -156,6 +156,17 @@ export const managedMailV1 = z
   })
   .strict()
 
+/**
+ * Managed domains (plan/managed-domains.md DM6, Contract): os calls the control plane's domains API
+ * at `apiBase` with this per-box bearer token (search, buy, status). ee hands both to os as secrets.
+ */
+export const managedDomainsV1 = z
+  .object({
+    apiBase: httpsOrigin,
+    token: z.string().min(32).max(256),
+  })
+  .strict()
+
 /** Known fields, each optional so a box can tell "not sent" from "sent as null". */
 const desiredKnown = {
   protocol: z.literal(FLEET_PROTOCOL),
@@ -179,6 +190,8 @@ const desiredKnown = {
   escrowBackupKey: z.boolean().optional(),
   /** Managed mail on our SES (the company's own SES credentials take precedence in os); null = none. */
   mail: managedMailV1.nullable().optional(),
+  /** Managed domains: os's credential for the control plane's domains API; null = none. */
+  domains: managedDomainsV1.nullable().optional(),
 }
 
 export const desiredV1 = z.object(desiredKnown).strip()

@@ -114,7 +114,7 @@ describe('fleet: enroll', () => {
     expect(managed).toEqual({ controlPlane: CP, boxId: BOX, pollSeconds: 30 })
     expect(f.calls[0]!.url).toBe(`${CP}${FLEET_PATHS.enroll}`)
     const sent = JSON.parse(String(f.calls[0]!.init.body))
-    expect(sent).toMatchObject({ protocol: 1, enrollToken: TOKEN, eeVersion: EE_VERSION, features: [...FLEET_FEATURES] })
+    expect(sent).toMatchObject({ protocol: 1, enrollToken: TOKEN, eeVersion: EE_VERSION, features: FLEET_FEATURES.filter((f) => f !== 'domains') })
     expect(f.secrets[FLEET_SCOPE]![BOX_KEY]).toBeTruthy()
     expect(sent.publicKey).not.toBe(f.secrets[FLEET_SCOPE]![BOX_KEY])
     expect(f.secrets['os']![LOCAL_TOKEN]).toMatch(/^[A-Za-z0-9_-]{43}$/)

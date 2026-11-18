@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-18 — Managed domains planned and started: buy a domain in onboarding (plan approved: "Build it")
+
+- **Owner decisions:** domains are registered with **Route 53 in our AWS project** (the project must be upgraded to the Paid plan first: on Free every Route 53 Domains call is refused, "Free Tier accounts are not supported for this service"); price = **AWS price + margin**, charged through Stripe at purchase and yearly; the **company is the registrant**; onboarding gets **separate Domain and Email steps** (owner: "domain and email step should be disjunct"). Plan: `plan/managed-domains.md`.
+- **Decisions of record (owner may veto):** DM1 per-TLD EUR price table in Cloud ops (AWS's USD cost shown, below-cost refused); DM2 charge first, refund on a failed registration, renew 30 days ahead; DM3 registrant data passed through, not stored; DM4 records only in zones we host; DM5 a bought domain becomes a mail domain; DM6 os calls the control plane's domains API with a per-box token from desired state (ee's API is a root-only socket).
+- **Contract committed first** (this commit): `FLEET_FEATURES` += `domains`, `desired.domains` = `managedDomainsV1` (`apiBase`, `token`). ee leaves `domains` out of its announced features until applyDomains exists. ee 317/317.
+- **Changed (announced):** the onboarding "mail" act becomes two acts, Domain then Email; the own-SES path stays for self-hosted boxes.
+
 ## 2026-11-18 — Managed mail T0 spike done (AWS only; no code changed)
 
 - **Setup:** AWS CLI 2.41.0 + Agent Toolkit for AWS; profile `eigen` signed in to the owner's AWS "new experience" project (account `234768039527`, Free plan). The toolkit's AWS rules are appended to `AGENTS.md` between `BEGIN/END AWS Agent Toolkit rules` markers (owner's choice).

@@ -141,6 +141,24 @@ describe('managed mail', () => {
   })
 })
 
+describe('managed domains', () => {
+  const domains = { apiBase: 'https://cloud.example.com', token: 'd'.repeat(43) }
+
+  it('domains is a feature, appended after mail', () => {
+    expect(FLEET_FEATURES.indexOf('domains')).toBe(FLEET_FEATURES.indexOf('mail') + 1)
+  })
+
+  it('desired.domains is strict, nullable, optional; https api base and a 32–256 char token', () => {
+    expect(parseDesired({ protocol: 1, pollSeconds: 60, domains }).desired.domains).toEqual(domains)
+    expect(parseDesired({ protocol: 1, pollSeconds: 60, domains: null }).desired.domains).toBeNull()
+    expect(parseDesired({ protocol: 1, pollSeconds: 60 }).desired.domains).toBeUndefined()
+    expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, domains: { ...domains, extra: 1 } })).toThrow()
+    expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, domains: { ...domains, apiBase: 'http://cloud.example.com' } })).toThrow()
+    expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, domains: { ...domains, token: 'short' } })).toThrow()
+    expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, domains: { apiBase: domains.apiBase } })).toThrow()
+  })
+})
+
 describe('escrow (the control plane keeps a copy of the backup key)', () => {
   const backupKey = Buffer.alloc(32, 7).toString('base64')
 
