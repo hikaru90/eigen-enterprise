@@ -77,4 +77,14 @@ describe('notifyNewMessage', () => {
     // Carl: two unread in the DM, one in #general.
     expect(badges).toEqual([{ userId: 'carl', badge: 3 }])
   })
+
+  it('a quoted reply in a channel pushes the quoted author ("replied to you")', async () => {
+    const { deps } = fixture()
+    const pub = await createChannel(deps, 'owner', { name: 'general', private: false })
+    const { message: original } = await postMessage(deps, 'bea', pub.id, 'question')
+    const { message, conversation } = await postMessage(deps, 'carl', pub.id, 'answer', { replyToId: original.id })
+    const { port, sent } = pushFake(['bea', 'owner', 'carl'])
+    expect(await notifyNewMessage(deps, port, conversation, message)).toEqual(['bea'])
+    expect(sent[0].title).toBe('Carl Member replied to you in #general')
+  })
 })

@@ -44,6 +44,8 @@ export const messages = pgTable('messages', {
   body: text('body').notNull(),
   /** The thread's parent (C2); null = a top-level message. */
   parentId: uuid('parent_id').references((): AnyPgColumn => messages.id, { onDelete: 'set null' }),
+  /** The message this one quotes (0151, WhatsApp-style "Reply"); same conversation, enforced by the service. */
+  replyToId: uuid('reply_to_id').references((): AnyPgColumn => messages.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   editedAt: timestamp('edited_at', { withTimezone: true }),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),

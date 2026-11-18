@@ -12,8 +12,9 @@ export const GET: RequestHandler = ({ locals, params, url }) =>
   )
 
 /**
- * Post { body (Markdown), parentId? (a thread reply), attachmentIds? (files
- * uploaded via ./attachments) }. DMs, @mentions and thread participants get a
+ * Post { body (Markdown), parentId? (a thread reply), replyToId? (the message
+ * this one quotes — same conversation only), attachmentIds? (files uploaded
+ * via ./attachments) }. DMs, @mentions and thread participants get a
  * push when they are not looking at it.
  */
 export const POST: RequestHandler = ({ locals, params, request }) =>
@@ -23,8 +24,12 @@ export const POST: RequestHandler = ({ locals, params, request }) =>
     if (b.parentId !== undefined && b.parentId !== null && typeof b.parentId !== 'string') {
       throw new MessagesError('invalid', 'parentId must be a message id')
     }
+    if (b.replyToId !== undefined && b.replyToId !== null && typeof b.replyToId !== 'string') {
+      throw new MessagesError('invalid', 'replyToId must be a message id')
+    }
     const { message, conversation, parent } = await postMessage(d, userId, params.id, b.body, {
       parentId: (b.parentId as string | null | undefined) ?? null,
+      replyToId: (b.replyToId as string | null | undefined) ?? null,
       attachmentIds: stringList(b.attachmentIds, 'attachmentIds'),
     })
     const { pushNewMessage } = await import('../../../../../../../modules/messages/live')

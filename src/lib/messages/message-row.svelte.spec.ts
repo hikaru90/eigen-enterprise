@@ -1,8 +1,8 @@
+import type { MessageView } from './view'
 import { describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import MessageRow from './message-row.svelte'
-import type { MessageView } from './view'
 
 const base: MessageView = {
   id: 'm1',
@@ -21,6 +21,7 @@ const base: MessageView = {
   reactions: [],
   attachments: [],
   call: null,
+  replyTo: null,
 }
 
 const props = (over: Partial<Parameters<typeof render<typeof MessageRow>>[1]> = {}) => ({
@@ -129,5 +130,82 @@ describe('message-row.svelte', () => {
     render(MessageRow, props({ message: { ...line, call: { callId: 'c2', outcome: 'missed' as const, durationSeconds: null } } }))
     await expect.element(page.getByTestId('messages-call-line')).toHaveTextContent('Missed call')
     await expect.element(page.getByTestId('messages-call-line')).toHaveAttribute('data-outcome', 'missed')
+  })
+})
+
+describe('message-row.svelte — quoted replies (Contribute 2a58bcc8)', () => {
+  const quote = {
+    id: 'o1',
+    parentId: null,
+    deleted: false,
+    authorId: 'carl',
+    authorName: 'Carl Member',
+    snippet: 'Lunch at noon?',
+    attachment: null,
+    call: false,
+  }
+
+  it('"Reply" in the hover toolbar quotes the message', async () => {
+    const onquote = vi.fn()
+    render(MessageRow, props({ onquote }))
+    await page.getByTestId('messages-item').hover()
+    await page.getByTestId('messages-quote').click()
+    expect(onquote).toHaveBeenCalledOnce()
+  })
+
+  it('right-click opens the message menu; Reply from it quotes, Esc closes it', async () => {
+    const onquote = vi.fn()
+    render(MessageRow, props({ onquote, onreply: vi.fn() }))
+    await page.getByTestId('messages-body').click({ button: 'right' })
+    const menu = page.getByTestId('messages-context-menu')
+    await expect.element(menu).toBeVisible()
+    await expect.element(page.getByTestId('messages-menu-quote')).toHaveFocus()
+    await expect.element(page.getByTestId('messages-menu-thread')).toBeInTheDocument()
+    await page.getByTestId('messages-menu-quote').click()
+    expect(onquote).toHaveBeenCalledOnce()
+    expect(menu.elements()).toHaveLength(0)
+
+    await page.getByTestId('messages-body').click({ button: 'right' })
+    await expect.element(menu).toBeVisible()
+    await userEvent.keyboard('{Escape}')
+    expect(menu.elements()).toHaveLength(0)
+    await expect.element(page.getByTestId('messages-item')).toHaveFocus()
+  })
+
+  it('keyboard: a focused row replies with R', async () => {
+    const onquote = vi.fn()
+    render(MessageRow, props({ onquote }))
+    ;(page.getByTestId('messages-item').element() as HTMLElement).focus()
+    await userEvent.keyboard('r')
+    expect(onquote).toHaveBeenCalledOnce()
+  })
+
+  it('a reply shows its quote (author and first line) and clicking it opens the original', async () => {
+    const onopenquote = vi.fn()
+    render(MessageRow, props({ message: { ...base, replyTo: quote }, onopenquote }))
+    const q = page.getByTestId('reply-quote')
+    await expect.element(q).toHaveAttribute('data-reply-to', 'o1')
+    await expect.element(page.getByTestId('reply-quote-author')).toHaveTextContent('Carl Member')
+    await expect.element(page.getByTestId('reply-quote-snippet')).toHaveTextContent('Lunch at noon?')
+    await q.click()
+    expect(onopenquote).toHaveBeenCalledOnce()
+  })
+
+  it('a quote of a voice message shows the voice marker; a deleted original says so', async () => {
+    const r = render(
+      MessageRow,
+      props({ message: { ...base, replyTo: { ...quote, snippet: '', attachment: { kind: 'voice' as const, label: 'Voice message', count: 1 } } } }),
+    )
+    await expect.element(page.getByTestId('reply-quote-file')).toHaveAttribute('data-kind', 'voice')
+    await expect.element(page.getByTestId('reply-quote-file')).toHaveTextContent('Voice message')
+    r.unmount()
+    render(MessageRow, props({ message: { ...base, replyTo: { ...quote, deleted: true, authorId: null, authorName: null, snippet: '' } } }))
+    await expect.element(page.getByTestId('reply-quote-deleted')).toHaveTextContent('Original message deleted')
+    await expect.element(page.getByTestId('reply-quote')).toBeDisabled()
+  })
+
+  it('the original a quote jumped to is highlighted', async () => {
+    render(MessageRow, props({ highlighted: true }))
+    await expect.element(page.getByTestId('messages-item')).toHaveAttribute('data-highlighted', 'true')
   })
 })

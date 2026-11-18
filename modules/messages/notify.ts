@@ -2,7 +2,8 @@ import type { Conversation, Person } from './store'
 import { canUse, listConversations, type MessageDto, type MessagesDeps } from './service'
 
 /**
- * Push for DMs, @mentions (C1) and thread replies to the thread's participants (C2). A mention is the composer's syntax
+ * Push for DMs, @mentions (C1), thread replies to the thread's participants (C2)
+ * and quoted replies to the quoted author. A mention is the composer's syntax
  * `@handle`, where a person's handles are their email's local part and their
  * name without spaces (case-insensitive) — a lookup against the member list,
  * not a guess at meaning. Recipients are never the author, never someone who
@@ -52,6 +53,8 @@ export async function notifyNewMessage(
     ...(c.kind === 'dm' ? await d.store.memberIds(c.id) : mentionedIds(m.body, people)),
     // A thread reply reaches the thread's participants (its starter and everyone who replied).
     ...(m.parentId ? await d.store.threadParticipants(m.parentId) : []),
+    // A quoted reply reaches the quoted message's author.
+    ...(m.replyTo?.authorId ? [m.replyTo.authorId] : []),
   ]
   const now = d.now ? d.now() : new Date()
   const viewing = new Set(await d.store.viewersSince(c.id, new Date(now.getTime() - VIEWING_WINDOW_MS)))
@@ -64,12 +67,15 @@ export async function notifyNewMessage(
   }
   const where = c.kind === 'dm' ? '' : ` in #${c.name}`
   const title = m.parentId ? `${m.authorName} replied in a thread${where}` : c.kind === 'dm' ? m.authorName : `${m.authorName}${where}`
+  // In a channel the quoted author learns it was them being answered; everyone else gets the plain title.
+  const titleFor = (userId: string) =>
+    !m.parentId && c.kind === 'channel' && m.replyTo?.authorId === userId ? `${m.authorName} replied to you${where}` : title
   const body = m.body.trim() ? snippet(m.body) : m.attachments.map((a) => a.name).join(', ')
   for (const userId of recipients) {
     try {
       const badge = (await listConversations(d, userId)).reduce((sum, c) => sum + c.unread, 0)
       await push.send(userId, {
-        title,
+        title: titleFor(userId),
         body,
         url: `/messages?c=${encodeURIComponent(c.id)}${m.parentId ? `&t=${encodeURIComponent(m.parentId)}` : ''}`,
         tag: `messages-${c.id}`,

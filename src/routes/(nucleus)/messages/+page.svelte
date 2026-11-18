@@ -34,6 +34,8 @@
   } from '$lib/messages/presence'
   import PresenceDot from '$lib/messages/presence-dot.svelte'
   import PresenceSelf from '$lib/messages/presence-self.svelte'
+  import type { ReplyQuote as Quote } from '$lib/messages/quote'
+  import ReplyQuote from '$lib/messages/reply-quote.svelte'
   import { ResumableStream } from '$lib/messages/resumable-stream'
   import { getSelfPresence } from '$lib/messages/self-presence.svelte'
   import {
@@ -42,6 +44,7 @@
     groupByDay,
     mergeMessages,
     messageRows,
+    quoteOf,
     setUnread,
     upsertConversation,
     type AttachmentView,
@@ -125,6 +128,16 @@
   let dragging = $state(false)
   let nextKey = 0
 
+  // Quoted replies (Contribute 2a58bcc8): what the composer (or the thread's) is replying to, and the jump target.
+  let replyingTo = $state<MessageView | null>(null)
+  let threadReplyingTo = $state<MessageView | null>(null)
+  let threadComposerEl = $state<HTMLTextAreaElement | null>(null)
+  let highlightId = $state<string | null>(null)
+  let notice = $state<string | null>(null)
+  let highlightTimer: ReturnType<typeof setTimeout> | undefined
+  /** How far back a quote's jump pages before saying the original isn't loaded. */
+  const QUOTE_JUMP_PAGES = 10
+
   const selected = $derived(conversations.find((c) => c.id === selectedId) ?? null)
   const channels = $derived(conversations.filter((c) => c.kind === 'channel'))
   const dms = $derived(conversations.filter((c) => c.kind === 'dm'))
@@ -188,6 +201,10 @@
     editingId = null
     pickerFor = null
     pendingFiles = []
+    replyingTo = null
+    threadReplyingTo = null
+    highlightId = null
+    notice = null
     members = null
     membersError = null
     membersOpen = false
@@ -265,10 +282,14 @@
     try {
       const { message: posted } = await api<{ message: MessageView }>(
         `/api/messages/conversations/${selectedId}/messages`,
-        { method: 'POST', body: JSON.stringify({ body, attachmentIds: readyFiles.map((f) => f.fileId) }) },
+        {
+          method: 'POST',
+          body: JSON.stringify({ body, replyToId: replyingTo?.id ?? null, attachmentIds: readyFiles.map((f) => f.fileId) }),
+        },
       )
       draft = ''
       pendingFiles = []
+      replyingTo = null
       now = new Date()
       messages = mergeMessages(messages, [posted])
       await tick()
@@ -343,6 +364,7 @@
   async function openThread(parentId: string, updateUrl = true) {
     threadError = null
     threadDraft = ''
+    threadReplyingTo = null
     pickerFor = null
     try {
       const t = await api<{ parent: MessageView; replies: MessageView[] }>(`/api/messages/messages/${parentId}/thread`)
@@ -357,6 +379,7 @@
 
   function closeThread() {
     thread = null
+    threadReplyingTo = null
     setUrl(selectedId, null)
   }
 
@@ -368,9 +391,10 @@
     try {
       const { message: reply, parent } = await api<{ message: MessageView; parent: MessageView | null }>(
         `/api/messages/conversations/${selectedId}/messages`,
-        { method: 'POST', body: JSON.stringify({ body: threadDraft, parentId }) },
+        { method: 'POST', body: JSON.stringify({ body: threadDraft, parentId, replyToId: threadReplyingTo?.id ?? null }) },
       )
       threadDraft = ''
+      threadReplyingTo = null
       now = new Date()
       applyLocal({ action: 'created', message: reply, parent, unread: 0 })
       await tick()
@@ -384,6 +408,12 @@
 
   /** Folds a frame (live or our own) into the log, the open thread and its parent. */
   function applyLocal(f: MessageFrame) {
+    // A pending reply follows its original: edited, the preview updates; deleted, the reply is dropped.
+    if (f.action === 'edited' || f.action === 'deleted') {
+      const gone = f.action === 'deleted'
+      if (replyingTo?.id === f.message.id) replyingTo = gone ? null : f.message
+      if (threadReplyingTo?.id === f.message.id) threadReplyingTo = gone ? null : f.message
+    }
     const t = thread
     const out = applyFrame(messages, t ? { parentId: t.parent.id, replies: t.replies } : null, f)
     messages = out.log
@@ -393,6 +423,56 @@
       if (f.parent && f.parent.id === parent.id) parent = f.parent
       thread = { parent, replies: out.replies ?? t.replies }
     }
+  }
+
+  // ── quoted replies ──────────────────────────────────────────────────────
+  /** "Reply": quote `m` in the composer of the pane it was picked in (the log's or the thread's). */
+  async function startQuote(m: MessageView, where: 'log' | 'thread') {
+    pickerFor = null
+    notice = null
+    if (where === 'thread') threadReplyingTo = m
+    else replyingTo = m
+    await tick()
+    ;(where === 'thread' ? threadComposerEl : composerEl)?.focus()
+  }
+
+  const rowSelector = (scope: 'messages-item' | 'thread-item', id: string) => `[data-testid="${scope}"][data-id="${CSS.escape(id)}"]`
+
+  function highlight(el: HTMLElement, id: string) {
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    el.focus({ preventScroll: true })
+    highlightId = id
+    clearTimeout(highlightTimer)
+    highlightTimer = setTimeout(() => (highlightId = null), 1600)
+  }
+
+  /**
+   * A quote was clicked: scroll to the original and mark it briefly. A thread
+   * reply opens its thread; an original further back pages in older history
+   * (up to QUOTE_JUMP_PAGES) and otherwise says it isn't loaded.
+   */
+  async function jumpToQuote(q: Quote) {
+    notice = null
+    if (q.deleted) return
+    if (q.parentId !== null) {
+      if (thread?.parent.id !== q.parentId) await openThread(q.parentId)
+      await tick()
+      const el = threadListEl?.querySelector<HTMLElement>(rowSelector('thread-item', q.id))
+      if (el) highlight(el, q.id)
+      else notice = 'The original message is no longer in its thread.'
+      return
+    }
+    const id = selectedId
+    let pages = 0
+    while (!messages.some((m) => m.id === q.id) && hasMore && pages < QUOTE_JUMP_PAGES && selectedId === id) {
+      await loadEarlier()
+      pages++
+    }
+    if (selectedId !== id) return
+    await tick()
+    const el = listEl?.querySelector<HTMLElement>(rowSelector('messages-item', q.id))
+    if (el) highlight(el, q.id)
+    else notice = 'The original message is too far back to show here. Use "Load earlier" to go further.'
   }
 
   // ── reactions, edit, delete ─────────────────────────────────────────────
@@ -536,11 +616,13 @@
     }
   }
 
-  /** Esc closes the reaction picker, then the thread. */
+  /** Esc closes the reaction picker, then the members list, then cancels a pending reply. */
   function onWindowKey(e: KeyboardEvent) {
     if (e.key !== 'Escape' || e.defaultPrevented) return
     if (pickerFor) pickerFor = null
     else if (membersOpen) membersOpen = false
+    else if (threadReplyingTo && document.activeElement === threadComposerEl) threadReplyingTo = null
+    else if (replyingTo) replyingTo = null
   }
 
   onMount(() => {
@@ -564,6 +646,7 @@
     stream?.close()
     if (heartbeat) clearInterval(heartbeat)
     if (clock) clearInterval(clock)
+    clearTimeout(highlightTimer)
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('online', onOnline)
@@ -972,6 +1055,9 @@
                 repliers={m.replierIds.map(rowPerson)}
                 {mentions}
                 {now}
+                highlighted={highlightId === m.id}
+                onquote={() => startQuote(m, 'log')}
+                onopenquote={() => m.replyTo && jumpToQuote(m.replyTo)}
                 onreact={(emoji) => react(m, emoji)}
                 ontogglepicker={() => (pickerFor = pickerFor === m.id ? null : m.id)}
                 onreply={() => openThread(m.id)}
@@ -1008,6 +1094,12 @@
         ondrop={onDrop}
       >
         {#snippet above()}
+          {#if replyingTo}
+            <ReplyQuote quote={quoteOf(replyingTo)} composer ondismiss={() => (replyingTo = null)} />
+          {/if}
+          {#if notice}
+            <p class="px-3 pt-2 text-xs text-muted-foreground" role="status" data-testid="messages-notice">{notice}</p>
+          {/if}
           {#if errorText}
             <p class="px-3 pt-2 text-xs text-destructive" role="alert" data-testid="messages-error">{errorText}</p>
           {/if}
@@ -1091,6 +1183,7 @@
       {/if}
       <MessageComposer
         bind:value={threadDraft}
+        bind:textarea={threadComposerEl}
         placeholder="Reply…"
         label="Reply"
         canSend={!threadSending && threadDraft.trim().length > 0}
@@ -1099,7 +1192,13 @@
         sendTestid="thread-send"
         hint={false}
         onsend={sendReply}
-      />
+      >
+        {#snippet above()}
+          {#if threadReplyingTo}
+            <ReplyQuote quote={quoteOf(threadReplyingTo)} composer ondismiss={() => (threadReplyingTo = null)} />
+          {/if}
+        {/snippet}
+      </MessageComposer>
     </aside>
   {/if}
 </div>
@@ -1117,6 +1216,9 @@
     reactionEmoji={data.reactionEmoji}
     {mentions}
     {now}
+    highlighted={highlightId === m.id}
+    onquote={() => startQuote(m, 'thread')}
+    onopenquote={() => m.replyTo && jumpToQuote(m.replyTo)}
     onreact={(emoji) => react(m, emoji)}
     ontogglepicker={() => (pickerFor = pickerFor === m.id ? null : m.id)}
     onstartedit={() => startEdit(m)}

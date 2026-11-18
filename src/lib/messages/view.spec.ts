@@ -6,6 +6,7 @@ import {
   groupByDay,
   mergeMessages,
   messageRows,
+  quoteOf,
   reactionTitle,
   relativeTime,
   setUnread,
@@ -32,6 +33,7 @@ const msg = (id: string, createdAt: string, authorId = 'a'): MessageView => ({
   reactions: [],
   attachments: [],
   call: null,
+  replyTo: null,
 })
 
 describe('mergeMessages', () => {
@@ -170,5 +172,54 @@ describe('relativeTime / threadSummary', () => {
   it('summarises a thread', () => {
     expect(threadSummary({ replyCount: 3, lastReplyAt: '2026-11-04T10:00:00.000Z' }, now)).toBe('3 replies · last reply 2h ago')
     expect(threadSummary({ replyCount: 1, lastReplyAt: null }, now)).toBe('1 reply')
+  })
+})
+
+describe('quoted replies (Contribute 2a58bcc8)', () => {
+  const original = { ...msg('o', '2026-11-03T09:00:00.000Z', 'bea'), authorName: 'Bea', body: 'first line\nsecond' }
+  const reply = { ...msg('r', '2026-11-03T09:01:00.000Z', 'carl'), replyTo: quoteOf(original) }
+
+  it('quoteOf: the composer preview of a message — author, first line, file marker', () => {
+    expect(quoteOf(original)).toEqual({
+      id: 'o',
+      parentId: null,
+      deleted: false,
+      authorId: 'bea',
+      authorName: 'Bea',
+      snippet: 'first line',
+      attachment: null,
+      call: false,
+    })
+    const voice = { ...original, body: '', attachments: [{ fileId: 'f', name: 'v.webm', mime: 'audio/webm', size: 3, image: false }] }
+    expect(quoteOf(voice).attachment).toEqual({ kind: 'voice', label: 'Voice message', count: 1 })
+  })
+
+  it('an edit of the original refreshes every quote of it, in the log and the open thread', () => {
+    const edited = { ...original, body: 'fixed', editedAt: '2026-11-03T09:05:00.000Z' }
+    const threadReply = { ...msg('t', '2026-11-03T09:02:00.000Z'), parentId: 'p', replyTo: quoteOf(original) }
+    const out = applyFrame([original, reply], { parentId: 'p', replies: [threadReply] }, { action: 'edited', message: edited, parent: null, unread: 0 })
+    expect(out.log.find((m) => m.id === 'r')?.replyTo?.snippet).toBe('fixed')
+    expect(out.replies?.[0].replyTo?.snippet).toBe('fixed')
+  })
+
+  it('a deleted original turns its quotes into "deleted" with nothing of it left', () => {
+    const gone = { ...original, deleted: true, body: '' }
+    const out = applyFrame([original, reply], null, { action: 'deleted', message: gone, parent: null, unread: 0 })
+    expect(out.log.find((m) => m.id === 'r')?.replyTo).toEqual({
+      id: 'o',
+      parentId: null,
+      deleted: true,
+      authorId: null,
+      authorName: null,
+      snippet: '',
+      attachment: null,
+      call: false,
+    })
+  })
+
+  it('a reaction on the original leaves its quotes alone', () => {
+    const reacted = { ...original, reactions: [{ emoji: '👍', userIds: ['carl'], names: ['Carl'] }] }
+    const out = applyFrame([original, reply], null, { action: 'reacted', message: reacted, parent: null, unread: 0 })
+    expect(out.log.find((m) => m.id === 'r')).toBe(reply)
   })
 })

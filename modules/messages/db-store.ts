@@ -1,4 +1,3 @@
-import { THREAD_REPLIERS, type Attachment, type Conversation, type Message, type MessageEvent, type MessagesStore, type NewEvent, type Reaction, type ThreadStats } from './store'
 import { and, asc, count, desc, eq, exists, gt, inArray, isNull, lt, max, ne, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { AppDatabase } from '$lib/server/db/context'
@@ -11,6 +10,7 @@ import {
   messageReactions as reactions,
   messages,
 } from '$lib/server/db/messages.schema'
+import { THREAD_REPLIERS, type Attachment, type Conversation, type Message, type MessageEvent, type MessagesStore, type NewEvent, type Reaction, type ThreadStats } from './store'
 
 /** Postgres channel every app process LISTENs on; the payload is the event id. */
 export const MESSAGES_NOTIFY_CHANNEL = 'ee_messages'
@@ -137,6 +137,10 @@ export function dbMessagesStore(db: AppDatabase): MessagesStore {
     async getMessage(id) {
       const [row] = await db.select().from(messages).where(eq(messages.id, id)).limit(1)
       return (row as Message | undefined) ?? null
+    },
+    async getMessages(ids) {
+      if (ids.length === 0) return []
+      return (await db.select().from(messages).where(inArray(messages.id, ids))) as Message[]
     },
     async updateMessage(id, patch) {
       await db.update(messages).set(patch).where(eq(messages.id, id))

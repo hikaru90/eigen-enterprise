@@ -1,5 +1,6 @@
 import type { AccessLevel, AccessPort, GrantInput } from './access-port'
 import { randomUUID } from 'node:crypto'
+import { attachmentMarker, quoteSnippet, type ReplyQuote } from '$lib/messages/quote'
 import { CALL_OUTCOMES, type Attachment, type CallSummary, type Conversation, type Directory, type Message, type MessagesStore, type Person } from './store'
 
 /**
@@ -87,6 +88,8 @@ export type MessageDto = {
   attachments: AttachmentDto[]
   /** A call line ("Call, 4 min" / "Missed call"); null for ordinary messages and deleted ones. */
   call: CallSummary | null
+  /** The quoted original ("Reply"); null when this message quotes nothing. */
+  replyTo: ReplyQuote | null
 }
 
 export type ConversationSummary = {
@@ -142,11 +145,29 @@ export async function messageDtos(d: MessagesDeps, ms: Message[], people?: Map<s
   if (ms.length === 0) return []
   const map = people ?? (await peopleById(d))
   const ids = ms.map((m) => m.id)
-  const [stats, reactions, files] = await Promise.all([
+  const quotedIds = [...new Set(ms.flatMap((m) => (m.replyToId ? [m.replyToId] : [])))]
+  const [stats, reactions, files, originals] = await Promise.all([
     d.store.threadStats(ms.filter((m) => m.parentId === null).map((m) => m.id)),
     d.store.reactionsFor(ids),
-    d.store.attachmentsFor(ids),
+    d.store.attachmentsFor([...new Set([...ids, ...quotedIds])]),
+    d.store.getMessages(quotedIds),
   ])
+  const originalById = new Map(originals.map((o) => [o.id, o]))
+  const quoteOf = (id: string): ReplyQuote => {
+    const o = originalById.get(id)
+    // A missing row is as unavailable as a deleted one: nothing of it is shown.
+    if (!o || o.deletedAt) return { id, parentId: o?.parentId ?? null, deleted: true, authorId: null, authorName: null, snippet: '', attachment: null, call: false }
+    return {
+      id,
+      parentId: o.parentId,
+      deleted: false,
+      authorId: o.authorId,
+      authorName: displayName(map.get(o.authorId)),
+      snippet: quoteSnippet(o.body),
+      attachment: attachmentMarker(files.filter((a) => a.messageId === o.id)),
+      call: o.call !== null,
+    }
+  }
   return ms.map((m) => {
     const st = stats.get(m.id)
     const deleted = m.deletedAt !== null
@@ -182,6 +203,7 @@ export async function messageDtos(d: MessagesDeps, ms: Message[], people?: Map<s
             .filter((a) => a.messageId === m.id)
             .map((a) => ({ fileId: a.fileId, name: a.name, mime: a.mime, size: a.size, image: isInlineImage(a.mime) })),
       call: deleted ? null : m.call,
+      replyTo: m.replyToId ? quoteOf(m.replyToId) : null,
     }
   })
 }
@@ -324,7 +346,12 @@ export function normalizeBody(raw: string): string {
   return body
 }
 
-export type PostOptions = { parentId?: string | null; attachmentIds?: string[] }
+export type PostOptions = {
+  parentId?: string | null
+  /** The message this one quotes ("Reply"): any live message of the same conversation. */
+  replyToId?: string | null
+  attachmentIds?: string[]
+}
 
 export async function postMessage(
   d: MessagesDeps,
@@ -346,6 +373,13 @@ export async function postMessage(
     if (parent.parentId !== null) throw new MessagesError('invalid', 'reply to the thread’s first message')
     if (parent.deletedAt) throw new MessagesError('invalid', 'that message was deleted')
   }
+  let replyTo: Message | null = null
+  if (opts.replyToId) {
+    replyTo = isId(opts.replyToId) ? await d.store.getMessage(opts.replyToId) : null
+    // Another conversation's message answers "not found": its existence never leaks.
+    if (!replyTo || replyTo.conversationId !== c.id) throw new MessagesError('not_found', 'the message you reply to was not found')
+    if (replyTo.deletedAt) throw new MessagesError('invalid', 'the message you reply to was deleted')
+  }
   const files = await attachableFiles(d, actorId, c, attachmentIds)
   const m: Message = {
     id: newId(d),
@@ -353,6 +387,7 @@ export async function postMessage(
     authorId: actorId,
     body,
     parentId: parent?.id ?? null,
+    replyToId: replyTo?.id ?? null,
     createdAt: now(d),
     editedAt: null,
     deletedAt: null,
@@ -612,6 +647,7 @@ export async function postCallLine(d: MessagesDeps, input: CallLineInput): Promi
     authorId: input.authorId,
     body: '',
     parentId: null,
+    replyToId: null,
     createdAt: now(d),
     editedAt: null,
     deletedAt: null,
