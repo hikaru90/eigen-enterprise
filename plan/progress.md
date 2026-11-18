@@ -2,13 +2,16 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-11-18 — Managed mail T0 spike, first half (AWS only; no code changed)
+## 2026-11-18 — Managed mail T0 spike done (AWS only; no code changed)
 
 - **Setup:** AWS CLI 2.41.0 + Agent Toolkit for AWS; profile `eigen` signed in to the owner's AWS "new experience" project (account `234768039527`, Free plan). The toolkit's AWS rules are appended to `AGENTS.md` between `BEGIN/END AWS Agent Toolkit rules` markers (owner's choice).
 - **Decision (owner, 2026-11-18): managed mail runs in eu-north-1 on this project**, not eu-central-1. AWS locks a new-experience project to its contact country's Region (Europe → eu-north-1) and its managed SCP denies SES/SNS in eu-central-1. `plan/managed-mail.md` D2, shape and owner steps updated. No code change: the control plane reads `MAIL_AWS_REGION`, os reads `EE_MAIL_REGION`. Own-SES mode and production (os.cerberusblue.com, eu-central-1) are untouched.
-- **Proven with real calls as a box key** (details in `plan/managed-mail.md` "T0 result"): `ses:TenantName` scoping, foreign-domain send denied, tag-scoped GetEmailIdentity, tenant read, S3 prefix scoping, no Create*/account-level calls. The IAM simulator can't evaluate `ses:TenantName`, so only real calls count.
-- **Broke / found:** (1) T3's suppression statement (`Resource: "*"` + `ses:TenantName`) denies the box its own tenant's list; fix = tenant ARN as resource (in eigenEnterprise-cloud `drivers/mail-policy.ts`, not changed here). (2) While a domain is unverified, SES checks the sending address's ARN, which has no tag, so T3's tag-based send statement denies; whether it works after verification is open.
-- **Next:** owner adds the four DNS records for `t0.eigenenterprise.app` (owner: the spike uses eigenenterprise.app, not cerberusblue.com) (table in the plan) → second half of T0 (delivered send, bounce/complaint events, one real inbound mail) → fix T3's policy → production access request for this account.
+- **Domain (owner):** the spike uses `t0.eigenenterprise.app` (Cloudflare; owner added 3 DKIM CNAMEs + MX), not cerberusblue.com.
+- **Proven with real calls as a box key** (details and the proven policy JSON in `plan/managed-mail.md` "T0 result"): delivered sends as its own tenant; Send/Delivery/Bounce/Complaint events on its topic (events carry `mail.tenant`); `ses:TenantName` scoping; SES enforces the tenant association ("Tenant not associated with resources"); tag-scoped GetEmailIdentity; tenant read + tenant suppression list; receiving round trip into `t0spike/` (Received notification, verdicts PASS) read and deleted by the box; another company's prefix denied; no Create*/account-level calls. The IAM simulator can't evaluate `ses:TenantName`, so only real calls count.
+- **Broke / found (T3, eigenEnterprise-cloud `drivers/mail-policy.ts`, not changed here):** (1) the tag condition on identities never matches for SendEmail, so **every managed send would be denied**; fix = `identity/*` + `ses:TenantName` only. (2) The suppression statement (`Resource: "*"` + `ses:TenantName`) denies the box its own list; fix = tenant ARN as resource. (3) SES forwards bounce/complaint reports to the sender by email by default; the control plane should set `EmailForwardingEnabled=false` per identity.
+- **Left in AWS:** tenant `ee-t0spike`, both t0 identities, config sets, topics, shared bucket, active rule set `ee-mail` + rule `ee-t0spike`. Removed: the box IAM user + key, SQS probes.
+- **T3 fixed** (eigenEnterprise-cloud `d94cac6`, merge `4948fb5`): all three fixes with tests first; cloud suite 162/162, check 0 errors. The error names the driver ignores match real AWS.
+- **Next:** production access request for this account (still sandbox: 200/day) → release (control plane first) → T4. SNS → HTTPS to a real box is only proven in T4.
 
 ## 2026-11-18 — Pre-push gate no longer kills the push (owner: "Yes, fix the hook")
 

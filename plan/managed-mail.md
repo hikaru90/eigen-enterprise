@@ -19,7 +19,7 @@ auto-pause.
 ## Shape
 
 ```
-control plane (eigenEnterprise-cloud), our AWS account, eu-central-1
+control plane (eigenEnterprise-cloud), our AWS account, eu-north-1
   provision job  → tenant ee-<boxId>, config sets ee-<boxId> + ee-<boxId>-tracking,
                    SNS topics ee-<boxId>-mail-events / ee-<boxId>-inbound (https → the box),
                    IAM user ee-<boxId> + key, receipt rule ee-<boxId> in the shared active rule set
@@ -38,14 +38,17 @@ SES/SNS ── https ──▶ os /api/mail/ses-events, /api/mail/ses-inbound   
   exactly as today. On a managed box, credentials the owner saved for their own SES **take
   precedence**; without them the box uses managed mail. **Nothing is removed.** Production
   (os.cerberusblue.com) stays on its own SES account.
-- **D2 One account, one region, one tenant per company.** A dedicated AWS account, eu-central-1,
-  tenant `ee-<boxId>`, tenant-scoped suppression list (one company's bounces never block another
+- **D2 One account, one region, one tenant per company.** A dedicated AWS account, **eu-north-1**
+  (owner, 2026-11-18: the account is an AWS "new experience" project, which AWS locks to the
+  Region of its contact country; eu-central-1 is denied by AWS's managed SCP. Stockholm is in the
+  EU and has SES sending and receiving), tenant `ee-<boxId>`, tenant-scoped suppression list (one company's bounces never block another
   company's mail), AWS's standard reputation policy (high-risk sending auto-pauses the tenant).
 - **D3 The box holds a scoped key; we don't relay.** The key arrives in desired state, like
-  `platformAi`, and becomes os secrets. IAM (T0 confirms in the policy simulator):
-  `ses:SendEmail` on identities tagged `ee-box=<boxId>` and on its two config sets, with
-  `ses:TenantName = ee-<boxId>`; `ses:GetEmailIdentity` on its tagged identities; `ses:GetTenant`
-  on its tenant; tenant-scoped suppression list/delete; `s3:GetObject` + `s3:DeleteObject` on
+  `platformAi`, and becomes os secrets. IAM (proven by T0 with real calls, see "T0 result"):
+  `ses:SendEmail` on `identity/*` and on its two config sets + its tenant, all with
+  `ses:TenantName = ee-<boxId>` (SES refuses identities not associated with that tenant; a tag
+  condition on identities never matches for SendEmail); `ses:GetEmailIdentity` on its tagged
+  identities; `ses:GetTenant` and suppression list/get/delete on its tenant ARN; `s3:GetObject` + `s3:DeleteObject` on
   `<inbound bucket>/<boxId>/*`. Nothing else: no GetAccount, no Create*, no receipt rules.
 - **D4 Provisioning lives in the control plane.** In managed mode os never calls
   CreateEmailIdentity, DeleteEmailIdentity, receipt-rule, SNS, bucket or event-destination APIs.
@@ -96,7 +99,7 @@ SES/SNS ── https ──▶ os /api/mail/ses-events, /api/mail/ses-inbound   
 
 | # | Slice | Where | Done when |
 |---|---|---|---|
-| T0 | Spike on our account: tenant, Easy DKIM identity, the D3 policy, a rule with an S3 prefix, SNS to HTTPS | AWS | Policy JSON confirmed (simulator + one real send, one denied send as another company's domain); recorded here |
+| T0 | Spike on our account: tenant, Easy DKIM identity, the D3 policy, a rule with an S3 prefix, SNS to HTTPS | AWS | Policy JSON confirmed (simulator + one real send, one denied send as another company's domain); recorded here. **Done 2026-11-18**, see "T0 result" (T3 policy needs 3 fixes) |
 | T1 | Protocol + ee: the contract above; `applyMail` (secrets on os, like platform AI); report reads os loopback | `ee/src/fleet/*` | Schema + agent specs |
 | T2 | os managed mode: settings from `EE_MAIL_*`, TenantName on sends, domains without provisioning (Easy DKIM via GetEmailIdentity), receiving flag only, pinned webhooks + prefix, unknown recipient deleted, tenant pause + suppression, Setup UI + onboarding, loopback route | `modules/email/*`, `src/lib/server/mail/*`, `src/routes/*` | Unit + component tests with fakes; own-SES specs green and untouched |
 | T3 | Control plane: AWS driver (+ fake), instance mail columns, provision/deprovision steps, `mail_sync` from the report, `desired.mail` | `eigenEnterprise-cloud` | Its tests against the fake; idempotent re-run |
@@ -106,9 +109,88 @@ T1 ∥ T2 → T3 (vendors T1's protocol) → T0 + T4 need the owner's AWS accoun
 
 ## Owner steps (not code)
 
-A dedicated AWS account for hosted mail; SES production access for it in eu-central-1 (we draft
+A dedicated AWS account for hosted mail; SES production access for it in eu-north-1 (we draft
 the use-case text); a sending-quota increase for the first customers; an IAM key for the control
 plane (env `MAIL_AWS_*`). Tracked in `plan/progress.md`.
+
+**Account (2026-11-18):** AWS "new experience" project, account `234768039527`, eu-north-1,
+Free plan ($100 credits, upgrade to Paid required by 2027-05-18 or when credits run out;
+irreversible, applies to all projects). AWS's managed SCPs allow `ses:*`, `sns:*`, `s3:*` and
+IAM users + access keys (groups, login profiles, providers are denied). Risks: near the spend
+limit AWS denies `ses:CreateConfigurationSet` and `sns:CreateTopic` (no new companies), and at
+the limit it **pauses the whole project** (every company's mail stops). SES sandbox: 200/day,
+1/s, production access not yet requested.
+
+## T0 result (done 2026-11-18; account above, eu-north-1)
+
+Everything below was proven with **real calls as a box key**. The IAM policy simulator can't
+decide `ses:TenantName` (even a policy that only checks that key is `implicitDeny`), so it is no
+proof for sends.
+
+**Resources left in place** (for T4 to compare against): tenant `ee-t0spike`
+(`…:tenant/ee-t0spike/tn-b6532c81c100087b8cf9853d6575b`, suppression scope TENANT), identities
+`t0.eigenenterprise.app` (verified, Easy DKIM, tag `ee-box=t0spike`, default config set,
+associated) and `t0-other.eigenenterprise.app` (unverified, tag `ee-box=t0other`), config sets
+`ee-t0spike` + `-tracking`, SNS `ee-t0spike-mail-events` (event destination on the config set) and
+`ee-t0spike-inbound`, bucket `ee-mail-inbound-234768039527-eu-north-1` (public access blocked; SES
+may PutObject from rule set `ee-mail`), **active rule set `ee-mail`** with rule `ee-t0spike`.
+Removed: IAM user `ee-t0spike` and its key, the SQS probe queues. DNS in Cloudflare: three DKIM
+CNAMEs + MX `t0` → `inbound-smtp.eu-north-1.amazonaws.com` on `eigenenterprise.app`.
+
+**What works**
+- Sending as its own tenant: delivered to the success, bounce and complaint simulators. Events on
+  the topic: Send, Delivery, Bounce, Complaint (`abuse`). Each event carries `mail.tenant` and the
+  tag `ses:tenant`, plus `ses:configuration-set` and `ses:caller-identity`.
+- `ses:TenantName` scoping: a send with no tenant name, or with another company's tenant name, is
+  denied. A tenant that doesn't exist is `NotFoundException` ("Tenant X for AwsAccountId … not found").
+- **SES enforces the tenant association:** a send through a verified identity that isn't associated
+  with the named tenant fails with `AccessDeniedException` "Tenant not associated with resources
+  [identity/…]". IAM pins the tenant name, so a box can only send through identities the control
+  plane associated with its tenant.
+- Reads: GetEmailIdentity on its own tagged identity works and on another company's is denied;
+  GetTenant on its own tenant works; the tenant-scoped suppression list works.
+- No Create*: CreateEmailIdentity and the account-level suppression list are denied.
+- Receiving round trip: a mail to `hello@t0.eigenenterprise.app` landed under `t0spike/` with a
+  `Received` notification on the inbound topic (spam, virus, DKIM and SPF all PASS). The box key
+  read and deleted it; it is denied another company's prefix.
+
+**What T3's policy (`eigenEnterprise-cloud` `drivers/mail-policy.ts`) needs to change**
+1. **Sending with a tag condition on identities is always denied.** SES checks the verified domain's
+   ARN (`identity/<domain>`; while the domain is unverified, the sending address's ARN), but
+   `aws:ResourceTag` on an identity doesn't match for SendEmail. It does match for GetEmailIdentity
+   and on configuration sets. Fix: `SendAsOwnIdentities` = `Resource: identity/*`, condition
+   `ses:TenantName` only. That is safe because of the enforced association above, and the policy
+   never changes when a company's domains change (D5 holds). Naming each domain's ARN also works,
+   but it would rewrite the box policy on every domain change.
+2. **Suppression:** `Resource: "*"` + `ses:TenantName` denies the box its own tenant's list.
+   Fix: `Resource: [tenantArn]`, no condition (calls pass `TenantName`).
+3. **New:** SES emails bounce and complaint reports back to the sender by default ("feedback
+   forwarding"), so they arrive as inbound mail. Managed mode gets them from SNS. So the control
+   plane should switch forwarding off per identity (`PutEmailIdentityFeedbackAttributes`,
+   `EmailForwardingEnabled=false`), otherwise they land in the company's inbox, or are deleted as
+   unrouted.
+
+Proven box policy (box `t0spike`):
+
+```json
+[
+  { "Sid": "SendAsOwnIdentities", "Action": "ses:SendEmail", "Resource": ["arn:aws:ses:eu-north-1:234768039527:identity/*"],
+    "Condition": { "StringEquals": { "ses:TenantName": "ee-t0spike" } } },
+  { "Sid": "SendThroughOwnConfigSetsAndTenant", "Action": "ses:SendEmail",
+    "Resource": ["…:configuration-set/ee-t0spike", "…:configuration-set/ee-t0spike-tracking", "…:tenant/ee-t0spike/<id>"],
+    "Condition": { "StringEquals": { "ses:TenantName": "ee-t0spike" } } },
+  { "Sid": "ReadOwnIdentities", "Action": "ses:GetEmailIdentity", "Resource": ["…:identity/*"],
+    "Condition": { "StringEquals": { "aws:ResourceTag/ee-box": "t0spike" } } },
+  { "Sid": "ReadOwnTenant", "Action": "ses:GetTenant", "Resource": ["…:tenant/ee-t0spike/<id>"] },
+  { "Sid": "OwnTenantSuppressionList", "Action": ["ses:ListSuppressedDestinations", "ses:GetSuppressedDestination", "ses:DeleteSuppressedDestination"],
+    "Resource": ["…:tenant/ee-t0spike/<id>"] },
+  { "Sid": "OwnInboundMail", "Action": ["s3:GetObject", "s3:DeleteObject"], "Resource": ["arn:aws:s3:::<bucket>/t0spike/*"] }
+]
+```
+(all `"Effect": "Allow"`; a send without a configuration set is denied, which is fine because os
+always names one.)
+
+**Not tested:** SNS → HTTPS to a real box (T4); production access (still in the sandbox).
 
 ## Open (owner, product choices)
 
