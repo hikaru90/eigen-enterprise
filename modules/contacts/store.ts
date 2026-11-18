@@ -1,4 +1,4 @@
-import type { Channel, PipelineStage, Via } from './types'
+import type { Channel, ContactVisibility, PipelineStage, Via } from './types'
 
 /** A stored contact (the row). Dates are `YYYY-MM-DD` days. */
 export type ContactRow = {
@@ -24,6 +24,7 @@ export type ContactRow = {
   /** A person's user id, or the agent's principal id when no person was behind it. */
   createdBy: string
   createdByKind: 'user' | 'agent'
+  /** Shared with the whole team: every member, now and later (checked at read time, never a copy of member ids). */
   shared: boolean
   createdAt: Date
   updatedAt: Date
@@ -69,12 +70,23 @@ export type LogEntryRow = {
 
 /**
  * Which contacts a query may return: every one (the owner, admins, the agent
- * on its own) or one person's own plus the shared ones.
+ * on its own) or what one person sees — their own, the ones shared with the
+ * whole team, and the ones shared with them or with a group they are in
+ * (group membership as it is at the time of the query).
  */
 export type ContactScope = { kind: 'all' } | { kind: 'person'; userId: string }
 
-/** A list filter: one tag (exact, normalised) and/or a name/organisation search. */
-export type ContactFilter = { tag?: string; query?: string }
+/** A list filter: one tag (exact, normalised), a name/organisation search, and/or these ids only. */
+export type ContactFilter = { tag?: string; query?: string; ids?: readonly string[] }
+
+/** One person or group a contact is shared with (migration 0150). */
+export type ShareRow = { contactId: string; kind: 'user' | 'group'; subjectId: string }
+
+/** A bulk change of who sees contacts: add shares, or make them private (no shares at all). */
+export type SharingChange = { kind: 'share'; team: boolean; userIds: readonly string[]; groupIds: readonly string[] } | { kind: 'private' }
+
+/** The stored defaults for new contacts: the person's own choice and the company's (null = not set). */
+export type StoredDefaults = { person: ContactVisibility | null; company: ContactVisibility | null }
 
 /** Persistence seam: the DB store in production, the in-memory one in unit tests. */
 export type ContactsStore = {
@@ -94,11 +106,25 @@ export type ContactsStore = {
   recordLog(entry: LogEntryRow, patch: ContactPatch): Promise<void>
   /** A contact's log entries, newest day first (then newest logged first). */
   logEntries(contactId: string): Promise<LogEntryRow[]>
+  /** The people and groups these contacts are shared with. */
+  shares(contactIds: readonly string[]): Promise<ShareRow[]>
+  /** Applies one sharing change to every one of these contacts, together (all or none). */
+  applySharing(contactIds: readonly string[], change: SharingChange, grantedBy: string, at: Date): Promise<void>
+  /** The person's and the company's default for new contacts. */
+  defaults(userId: string | null): Promise<StoredDefaults>
+  /** The person's own default (null = follow the company's). */
+  setPersonDefault(userId: string, visibility: ContactVisibility | null): Promise<void>
+  /** The company-wide default (null = private). */
+  setCompanyDefault(visibility: ContactVisibility | null, by: string): Promise<void>
 }
 
-/** Display names of the people in the company. */
+/** A group of company members (Members › Groups). */
+export type DirectoryGroup = { id: string; name: string; memberIds: string[] }
+
+/** Display names of the people in the company, and its groups. */
 export type Directory = {
   names(): Promise<Map<string, string>>
+  groups(): Promise<DirectoryGroup[]>
 }
 
 /** One person's cached "Next up" pick (migration 0145). `suggestions` is checked by the service on read. */

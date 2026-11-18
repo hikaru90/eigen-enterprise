@@ -5,7 +5,7 @@ import { dayIn } from './types'
 
 /**
  * Live wiring: the DB store over the app pool (company-level table, no RLS),
- * company roles and member names from the members tables, kernel events for
+ * company roles, member names and groups from the members tables, kernel events for
  * the audit trail.
  */
 
@@ -15,6 +15,14 @@ const directory: Directory = {
   async names() {
     const { dbMemberStore } = await import('$lib/server/members/db-store')
     return new Map((await dbMemberStore.listMembers()).map((m) => [m.id, m.name || m.email]))
+  },
+  async groups() {
+    const { dbGroupStore } = await import('$lib/server/members/groups-db-store')
+    return (await dbGroupStore.listGroups()).map((g) => ({
+      id: g.id,
+      name: g.name,
+      memberIds: g.memberIds,
+    }))
   },
 }
 

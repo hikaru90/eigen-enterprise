@@ -1,4 +1,4 @@
-import type { DraftFor, ExtractMode, NextUp } from './types'
+import type { DraftFor, ExtractMode, NextUp, ShareTargets, SharingResult } from './types'
 
 /** "Tell me about them" from the browser: the AI's reading of a description. Saves nothing. */
 
@@ -50,4 +50,31 @@ export const loadNextUp: LoadNextUp = async (refresh) => {
   }
   if (!body?.nextUp || !Array.isArray(body.nextUp.items)) return { ok: false, unavailable: false, message: 'Contacts answered without suggestions.' }
   return { ok: true, nextUp: body.nextUp }
+}
+
+// ── Sharing many at once (Contribute 9d28020a) ───────────────────────────────
+
+export const CONTACTS_SHARING_URL = '/api/contacts/sharing'
+
+export type SharingRequest = { action: 'share'; ids: string[]; targets: ShareTargets } | { action: 'private'; ids: string[] }
+
+export type ChangeSharing = (request: SharingRequest) => Promise<SharingResult>
+
+/** POST one sharing change for the chosen contacts; the server's plain sentence on failure. */
+export const changeSharing: ChangeSharing = async (request) => {
+  const res = await fetch(CONTACTS_SHARING_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+  const raw = await res.text()
+  let body: (Partial<SharingResult> & { error?: unknown }) | null
+  try {
+    body = JSON.parse(raw) as Partial<SharingResult> & { error?: unknown }
+  } catch {
+    throw new Error(`Couldn’t change who sees them (HTTP ${res.status}).`)
+  }
+  if (!res.ok) throw new Error(typeof body?.error === 'string' ? body.error : `Couldn’t change who sees them (HTTP ${res.status}).`)
+  if (!Array.isArray(body?.changed) || !Array.isArray(body?.skipped)) throw new Error('Contacts answered without a result.')
+  return { changed: body.changed, skipped: body.skipped }
 }

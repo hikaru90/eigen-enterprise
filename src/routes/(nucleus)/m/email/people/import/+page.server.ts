@@ -1,7 +1,7 @@
 import type { Actions, PageServerLoad } from './$types'
 import { ContactsError } from '../../../../../../../modules/contacts/errors'
-import { contactsAction, contactsLoad, liveContactsDeps, personActor } from '../../../../../../../modules/contacts/http'
-import { contactTags, importContacts, previewImport } from '../../../../../../../modules/contacts/service'
+import { contactsAction, contactsLoad, formShared, liveContactsDeps, personActor } from '../../../../../../../modules/contacts/http'
+import { contactTags, importContacts, previewImport, visibilityDefaults } from '../../../../../../../modules/contacts/service'
 
 /**
  * /m/email/people/import: contacts from a vCard (.vcf) or CSV file. The file
@@ -11,8 +11,12 @@ import { contactTags, importContacts, previewImport } from '../../../../../../..
  */
 export const load: PageServerLoad = async ({ locals }) => {
   const actor = personActor(locals.user)
-  // Only people in the company (contactTags checks).
-  return contactsLoad(async () => ({ tags: await contactTags(await liveContactsDeps(), actor) }))
+  // Only people in the company (contactTags checks); the visibility the import will use unless changed.
+  return contactsLoad(async () => {
+    const d = await liveContactsDeps()
+    const [tags, defaults] = await Promise.all([contactTags(d, actor), visibilityDefaults(d, actor)])
+    return { tags, visibility: defaults.effective }
+  })
 }
 
 /** The candidates the page sends (JSON in one form field). */
@@ -39,7 +43,8 @@ export const actions: Actions = {
     const actor = personActor(locals.user)
     const form = await request.formData()
     return contactsAction('import', async () => {
-      const out = await importContacts(await liveContactsDeps(), actor, candidatesField(form), { shared: form.get('shared') === 'on' })
+      const shared = formShared(form)
+      const out = await importContacts(await liveContactsDeps(), actor, candidatesField(form), shared === undefined ? {} : { shared })
       return {
         action: 'import' as const,
         imported: out.created.map((c) => ({ id: c.id, name: c.name })),

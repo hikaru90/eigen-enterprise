@@ -1,9 +1,17 @@
 import type { ContactFilter, ContactRow, ContactScope, ContactsStore, NextUpCache } from './store'
-import { and, asc, desc, eq, ilike, isNotNull, lte, or, sql, type SQL } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, isNotNull, lte, or, sql, type SQL } from 'drizzle-orm'
 import { z } from 'zod'
-import { contactLogEntries, contactNextUp, contacts } from '$lib/server/db/contacts.schema'
+import {
+  contactCompanySettings,
+  contactLogEntries,
+  contactNextUp,
+  contactPreferences,
+  contacts,
+  contactShares,
+} from '$lib/server/db/contacts.schema'
 import type { AppDatabase } from '$lib/server/db/context'
 import { rowsFromDbExecute } from '$lib/server/db/execute-rows'
+import { memberGroupMember } from '$lib/server/db/team.schema'
 import { CHANNEL_TYPES } from './types'
 
 /** ContactsStore over Postgres (company-level tables, migrations 0124 + 0139). */
@@ -22,12 +30,24 @@ function containsPattern(text: string): string {
   return `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
 }
 
+/**
+ * What a person sees, decided in the query itself: their own, the whole
+ * team's (contacts.shared — every member, whoever joined when), and the ones
+ * shared with them or with a group they are in right now.
+ */
 function scoped(scope: ContactScope): SQL | undefined {
-  return scope.kind === 'all' ? undefined : or(eq(contacts.createdBy, scope.userId), eq(contacts.shared, true))
+  if (scope.kind === 'all') return undefined
+  const me = scope.userId
+  return or(
+    eq(contacts.createdBy, me),
+    eq(contacts.shared, true),
+    sql`exists (select 1 from ${contactShares} where ${contactShares.contactId} = ${contacts.id} and (${contactShares.userId} = ${me} or ${contactShares.groupId} in (select ${memberGroupMember.groupId} from ${memberGroupMember} where ${memberGroupMember.userId} = ${me})))`,
+  )
 }
 
 function filtered(filter: ContactFilter): SQL[] {
   const out: SQL[] = []
+  if (filter.ids !== undefined) out.push(filter.ids.length === 0 ? sql`false` : inArray(contacts.id, [...filter.ids]))
   if (filter.tag !== undefined) out.push(sql`${contacts.tags} @> ARRAY[${filter.tag}]::text[]`)
   if (filter.query !== undefined) {
     const pattern = containsPattern(filter.query)
@@ -95,6 +115,95 @@ export function dbContactsStore(db: AppDatabase): ContactsStore {
         .from(contactLogEntries)
         .where(eq(contactLogEntries.contactId, contactId))
         .orderBy(desc(contactLogEntries.on), desc(contactLogEntries.createdAt), desc(contactLogEntries.id))
+    },
+    async shares(ids) {
+      if (ids.length === 0) return []
+      const rows = await db
+        .select()
+        .from(contactShares)
+        .where(inArray(contactShares.contactId, [...ids]))
+        .orderBy(asc(contactShares.createdAt))
+      return rows.map((r) => ({
+        contactId: r.contactId,
+        kind: r.subjectKind,
+        subjectId: (r.subjectKind === 'user' ? r.userId : r.groupId)!,
+      }))
+    },
+    async applySharing(ids, change, grantedBy, at) {
+      if (ids.length === 0) return
+      await db.transaction(async (tx) => {
+        const touched = await tx
+          .update(contacts)
+          .set(
+            change.kind === 'private'
+              ? { shared: false, updatedAt: at }
+              : change.team
+                ? { shared: true, updatedAt: at }
+                : { updatedAt: at },
+          )
+          .where(inArray(contacts.id, [...ids]))
+          .returning({ id: contacts.id })
+        if (touched.length !== ids.length) throw new Error('a contact to share was not found')
+        if (change.kind === 'private') {
+          await tx.delete(contactShares).where(inArray(contactShares.contactId, [...ids]))
+          return
+        }
+        const values = ids.flatMap((contactId) => [
+          ...change.userIds.map((userId) => ({
+            contactId,
+            subjectKind: 'user' as const,
+            userId,
+            groupId: null,
+            grantedBy,
+            createdAt: at,
+          })),
+          ...change.groupIds.map((groupId) => ({
+            contactId,
+            subjectKind: 'group' as const,
+            userId: null,
+            groupId,
+            grantedBy,
+            createdAt: at,
+          })),
+        ])
+        // Already shared with them: kept as it was.
+        if (values.length > 0) await tx.insert(contactShares).values(values).onConflictDoNothing()
+      })
+    },
+    async defaults(userId) {
+      const [company] = await db.select().from(contactCompanySettings).where(eq(contactCompanySettings.id, true)).limit(1)
+      const [person] =
+        userId === null ? [] : await db.select().from(contactPreferences).where(eq(contactPreferences.userId, userId)).limit(1)
+      return {
+        person: person?.defaultVisibility ?? null,
+        company: company?.defaultVisibility ?? null,
+      }
+    },
+    async setPersonDefault(userId, visibility) {
+      if (visibility === null) {
+        await db.delete(contactPreferences).where(eq(contactPreferences.userId, userId))
+        return
+      }
+      await db
+        .insert(contactPreferences)
+        .values({ userId, defaultVisibility: visibility, updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: contactPreferences.userId,
+          set: { defaultVisibility: visibility, updatedAt: new Date() },
+        })
+    },
+    async setCompanyDefault(visibility, by) {
+      if (visibility === null) {
+        await db.delete(contactCompanySettings).where(eq(contactCompanySettings.id, true))
+        return
+      }
+      await db
+        .insert(contactCompanySettings)
+        .values({ id: true, defaultVisibility: visibility, updatedBy: by, updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: contactCompanySettings.id,
+          set: { defaultVisibility: visibility, updatedBy: by, updatedAt: new Date() },
+        })
     },
   }
 }

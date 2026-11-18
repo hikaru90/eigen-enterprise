@@ -1030,6 +1030,13 @@
       "when": 1795200000149,
       "tag": "0149_company_logo_original",
       "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1795200000150,
+      "tag": "0150_contact_sharing",
+      "breakpoints": true
     }
   ]
 }

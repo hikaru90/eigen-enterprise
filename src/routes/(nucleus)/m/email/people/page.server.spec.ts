@@ -15,9 +15,10 @@ import { createContact, getContact } from '../../../../../../modules/contacts/se
 import { fixture, user } from '../../../../../../modules/contacts/test-fixtures'
 import { actions, load } from './+page.server'
 import { actions as detailActions, load as detailLoad } from './[id]/+page.server'
-import { actions as importActions } from './import/+page.server'
-import { actions as newActions } from './new/+page.server'
+import { actions as importActions, load as importLoad } from './import/+page.server'
+import { actions as newActions, load as newLoad } from './new/+page.server'
 import { actions as pipelineActions, load as pipelineLoad } from './pipeline/+page.server'
+import { actions as settingsActions, load as settingsLoad } from './settings/+page.server'
 
 let f: ReturnType<typeof fixture>
 beforeEach(() => {
@@ -78,8 +79,44 @@ describe('/m/email/people/new', () => {
     const [row] = [...f.store.rows.values()]
     expect(row).toMatchObject({ name: 'Mara Voss', shared: false, tags: ['investor'], channels: [{ type: 'email', value: 'mara@northwind.example' }] })
 
-    await expect(newActions.default({ locals: signedIn('ana'), request: post([['name', 'Lee'], ['shared', 'on']]) } as never)).rejects.toMatchObject({ status: 303 })
+    await expect(
+      newActions.default({
+        locals: signedIn('ana'),
+        request: post([
+          ['name', 'Lee'],
+          ['visibility', 'team'],
+        ]),
+      } as never),
+    ).rejects.toMatchObject({ status: 303 })
     expect([...f.store.rows.values()].find((r) => r.name === 'Lee')?.shared).toBe(true)
+    expect(
+      await newActions.default({
+        locals: signedIn('ana'),
+        request: post([
+          ['name', 'X'],
+          ['visibility', 'everyone'],
+        ]),
+      } as never),
+    ).toMatchObject({
+      status: 400,
+    })
+  })
+
+  it('offers your default for new contacts; left out, the contact starts as it', async () => {
+    expect(await newLoad({ locals: signedIn('ana') } as never)).toMatchObject({
+      visibility: 'private',
+    })
+    await settingsActions.mine({
+      locals: signedIn('ana'),
+      request: post([['visibility', 'team']]),
+    } as never)
+    expect(await newLoad({ locals: signedIn('ana') } as never)).toMatchObject({
+      visibility: 'team',
+    })
+    await expect(newActions.default({ locals: signedIn('ana'), request: post([['name', 'Kai']]) } as never)).rejects.toMatchObject({
+      status: 303,
+    })
+    expect([...f.store.rows.values()].find((r) => r.name === 'Kai')?.shared).toBe(true)
   })
 
   it('a contact without a name comes back to the form', async () => {
@@ -148,11 +185,31 @@ describe('/m/email/people/import', () => {
     expect(f.store.rows.size).toBe(1)
   })
 
-  it('imports what the person confirmed (shared when ticked) and reports the skipped ones', async () => {
+  it('shows the visibility it will use: your default', async () => {
+    expect(await importLoad({ locals: signedIn('ana') } as never)).toMatchObject({
+      visibility: 'private',
+    })
+    await settingsActions.company({
+      locals: signedIn('olga'),
+      request: post([['visibility', 'team']]),
+    } as never)
+    expect(await importLoad({ locals: signedIn('ana') } as never)).toMatchObject({
+      visibility: 'team',
+    })
+  })
+
+  it('imports what the person confirmed (whole team when chosen) and reports the skipped ones', async () => {
     const out = (await importActions.import({
       locals: signedIn('ana'),
-      request: post([['candidates', JSON.stringify([jon, mara])], ['shared', 'on']]),
-    } as never)) as { action: string; imported: Array<{ id: string; name: string }>; skipped: number }
+      request: post([
+        ['candidates', JSON.stringify([jon, mara])],
+        ['visibility', 'team'],
+      ]),
+    } as never)) as {
+      action: string
+      imported: Array<{ id: string; name: string }>
+      skipped: number
+    }
     expect(out).toMatchObject({ action: 'import', skipped: 0 })
     expect(out.imported.map((c) => c.name)).toEqual(['Jon Park', 'Mara Voss'])
     expect([...f.store.rows.values()].every((r) => r.shared)).toBe(true)
@@ -214,5 +271,55 @@ describe('/m/email/people/pipeline', () => {
     expect(await getContact(f.deps, user('ana'), mara.id)).toMatchObject({ stage: 'inbox', lastContactedOn: '2026-11-12' })
     await pipelineActions.log({ locals: signedIn('ana'), request: post([['id', mara.id], ['on', '2026-11-12'], ['stage', 'waiting']]) } as never)
     expect(await getContact(f.deps, user('ana'), mara.id)).toMatchObject({ stage: 'waiting', waitingSince: '2026-11-12' })
+  })
+})
+
+describe('/m/email/people/settings', () => {
+  it('a person sets their own default; only the owner and admins set the company’s', async () => {
+    expect(await settingsLoad({ locals: signedIn('ana') } as never)).toEqual({
+      defaults: { person: null, company: null, effective: 'private' },
+      canSetCompany: false,
+    })
+    expect(
+      await settingsActions.mine({
+        locals: signedIn('ana'),
+        request: post([['visibility', 'team']]),
+      } as never),
+    ).toEqual({
+      action: 'mine',
+      saved: true,
+    })
+    expect(
+      await settingsActions.company({
+        locals: signedIn('ana'),
+        request: post([['visibility', 'team']]),
+      } as never),
+    ).toMatchObject({
+      status: 403,
+      data: { action: 'company' },
+    })
+    expect(
+      await settingsActions.company({
+        locals: signedIn('adam'),
+        request: post([['visibility', 'private']]),
+      } as never),
+    ).toEqual({
+      action: 'company',
+      saved: true,
+    })
+    expect(await settingsLoad({ locals: signedIn('olga') } as never)).toMatchObject({
+      canSetCompany: true,
+    })
+    expect(await settingsLoad({ locals: signedIn('ana') } as never)).toMatchObject({
+      defaults: { person: 'team', company: 'private', effective: 'team' },
+    })
+    // Back to following the company.
+    await settingsActions.mine({
+      locals: signedIn('ana'),
+      request: post([['visibility', '']]),
+    } as never)
+    expect(await settingsLoad({ locals: signedIn('ana') } as never)).toMatchObject({
+      defaults: { person: null, effective: 'private' },
+    })
   })
 })

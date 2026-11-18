@@ -6,7 +6,7 @@ import {
   liveContactsDeps,
   personActor,
 } from '../../../../../../modules/contacts/http'
-import { listContacts, logContact, normaliseTag } from '../../../../../../modules/contacts/service'
+import { listContacts, logContact, normaliseTag, shareChoices } from '../../../../../../modules/contacts/service'
 
 /**
  * /m/email/people: the people you know — every contact you may see, filtered
@@ -14,7 +14,8 @@ import { listContacts, logContact, normaliseTag } from '../../../../../../module
  * write to next) is the assistant's pick, fetched by the page from
  * /api/contacts/next-up; it replaced the date-only "Follow up next" list
  * (Contribute 12626c2f / 057ebd74). Today is the person's own day (their
- * preferred timezone).
+ * preferred timezone). `choices` = the people and groups to share the
+ * selected contacts with (Contribute 9d28020a; /api/contacts/sharing applies it).
  */
 export const load: PageServerLoad = async ({ locals, url }) => {
   const actor = personActor(locals.user)
@@ -25,8 +26,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     const filter = { tag: rawTag.trim() === '' ? '' : normaliseTag(rawTag), q }
     const d = await liveContactsDeps()
     const { todayFor } = await import('../../../../../../modules/contacts/live')
-    const [list, today] = await Promise.all([listContacts(d, actor, { tag: filter.tag, query: filter.q }), todayFor(actor.userId)])
-    return { contacts: list.contacts, tags: list.tags, today, filter }
+    const [list, today, choices] = await Promise.all([
+      listContacts(d, actor, { tag: filter.tag, query: filter.q }),
+      todayFor(actor.userId),
+      shareChoices(d, actor),
+    ])
+    return { contacts: list.contacts, tags: list.tags, today, filter, choices }
   })
 }
 

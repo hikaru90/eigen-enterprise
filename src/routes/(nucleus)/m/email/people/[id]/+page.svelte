@@ -38,12 +38,20 @@
       {#if !c.own}<span class="block text-xs text-muted-foreground">Added by {c.createdByName}.</span>{/if}
     </p>
     {#if c.canManage}
-      <form method="POST" action="?/share" use:enhance>
-        <input type="hidden" name="shared" value={c.shared ? 'false' : 'true'} />
-        <Button type="submit" variant="outline" size="sm" data-testid="contact-share-toggle"
-          >{c.shared ? 'Make private' : 'Share with the company'}</Button
-        >
-      </form>
+      <div class="flex flex-wrap gap-2">
+        {#if !c.shared}
+          <form method="POST" action="?/share" use:enhance>
+            <input type="hidden" name="shared" value="true" />
+            <Button type="submit" variant="outline" size="sm" data-testid="contact-share-toggle">Share with the whole team</Button>
+          </form>
+        {/if}
+        {#if c.shared || c.sharedWith.length > 0}
+          <form method="POST" action="?/share" use:enhance>
+            <input type="hidden" name="shared" value="false" />
+            <Button type="submit" variant="outline" size="sm" data-testid="contact-make-private">Make private</Button>
+          </form>
+        {/if}
+      </div>
     {/if}
     {#if errorFor('share')}<p class="w-full text-sm text-destructive" role="alert">{errorFor('share')}</p>{/if}
   </aside>

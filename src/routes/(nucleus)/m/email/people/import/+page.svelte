@@ -12,7 +12,7 @@
    * new and who you already have (step 2, nothing saved), import what you
    * confirm.
    */
-  let { form }: PageProps = $props()
+  let { data, form }: PageProps = $props()
   const errorFor = (action: string) => (form && 'error' in form && form.action === action ? form.error : null)
   const preview = $derived(form && 'preview' in form ? form.preview : null)
   const done = $derived(
@@ -28,7 +28,7 @@
 <div class="mt-3">
   <SectionHeader
     title="Import contacts"
-    description="From a vCard (.vcf) or a CSV table. You check who is new first; people you already have (same email) are never changed."
+    description={`From a vCard (.vcf) or a CSV table. You check who is new first; people you already have (same email) are never changed. New ones will be ${data.visibility === 'team' ? 'shared with the whole team' : 'private'} (your default) unless you choose otherwise.`}
     testid="import-header"
   />
 </div>
@@ -47,7 +47,7 @@
       </div>
     </div>
   {:else if preview}
-    <ImportPreview {preview} error={errorFor('import')} />
+    <ImportPreview {preview} visibility={data.visibility} error={errorFor('import')} />
   {:else}
     <ImportFile error={errorFor('preview')} />
   {/if}
