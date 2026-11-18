@@ -2,6 +2,16 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-18 — Memory: ee never set EMBEDDING_COMPRESS_INTENSITY (no thought indexed on any ee install); capture page errors shown (v0.5.17)
+
+Owner: "Opened it, check" → the 15 never-indexed thoughts (see the v0.5.13 entry) were still untouched on v0.5.16; owner: "Yes, fix and release".
+- **Root cause 1 (production log, since 11-17):** `EMBEDDING_COMPRESS_INTENSITY is not set (required: lite | full | ultra)`. `src/lib/server/llm/embedding.ts` fails loud without it (by design), and ee's os workload env (`ee/src/bootstrap.ts`) never wrote it; only `.env` / `.env.example` have it. So on every ee install (production, the box) embedding throws: nothing gets indexed and semantic retrieval fails (also what the assistant reported as "Memory is broken").
+- **Fix:** `ee/src/embedding-compress.ts` → `OS_EMBEDDING_COMPRESS_INTENSITY = 'full'` (the `.env.example` value; decision), written into the os env by bootstrap, which `ee upgrade` re-runs, so existing servers get it on upgrade. Spec checks the value is one the app accepts, matches `.env.example`, and that bootstrap writes it.
+- **Root cause 2 (unexplained, made visible):** the owner opened `/m/memory/capture` on v0.5.13 but the rows were never requeued, and no server error was logged. The same UPDATE run on production as `eigen_app` with the owner's RLS context matched all 15 (rolled back), so the server can do it; the request never got there or failed client-side. The page swallowed every failure (`if (!res.ok) return`, `catch {}` in the mount reload, the 1.5 s poll and the one-shot refresh). Now `pollCaptureRecentSync` takes `onError` (message on failure, null on the next success) and the page shows "Couldn't refresh your recent thoughts…" with the reason, still retrying. Spec first (red → green).
+- **Gates:** `npm run ci:local` 0 lint errors, 0 check errors, unit 7428 passed; ee 322 passed.
+- **Release base:** `origin/main` (`7696200`) + this fix, not local main: local main had 6 unpushed commits from another session (domains DM1 ee code, AWS mail T0 notes) that weren't mine to ship. Local main isn't merged yet: the main checkout has another session's uncommitted edits to `ee/src/bootstrap.ts`, which this change also touches.
+- **Still open:** the assistant's `memory.capture_thought` passes its agent principal (`orchestrator`) as `user_id`, so the ontology seed insert fails (`Failed query: insert into "ontology_entity_kind" … orchestrator`). Brand site capture still lacks `chromium-bidi`.
+
 ## 2026-11-18 — Managed mail T0 spike, first half (AWS only; no code changed)
 
 - **Setup:** AWS CLI 2.41.0 + Agent Toolkit for AWS; profile `eigen` signed in to the owner's AWS "new experience" project (account `234768039527`, Free plan). The toolkit's AWS rules are appended to `AGENTS.md` between `BEGIN/END AWS Agent Toolkit rules` markers (owner's choice).
