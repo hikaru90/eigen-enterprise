@@ -277,9 +277,15 @@ export async function runUpgradeApply(
   if (!job || job.id !== jobId || job.status !== 'running' || job.step !== 'handover') {
     throw new Error(`no update ${jobId} is waiting to be applied (start it from Settings → Updates, or use \`ee upgrade\`)`)
   }
-  const save = async () => {
-    job.updatedAt = d.now().toISOString()
-    await writeJob(d, job)
+  // One write at a time: steps and output lines arrive together, and the box writes via temp file + rename.
+  let saving: Promise<void> = Promise.resolve()
+  const save = () => {
+    const next = saving.then(async () => {
+      job.updatedAt = d.now().toISOString()
+      await writeJob(d, job)
+    })
+    saving = next.catch(() => undefined)
+    return next
   }
   const hooks: ApplyHooks = {
     step: async (step, safetyCopy) => {

@@ -227,7 +227,9 @@ async function main(argv: string[]): Promise<void> {
         async (hooks, job) => {
           // Output lines are recorded in order; the upgrade's own calls are not awaited per line.
           let lines: Promise<void> = Promise.resolve()
-          const line = (l: string) => void (lines = lines.then(() => hooks.line(l)))
+          let lineError: unknown = null
+          const line = (l: string) =>
+            void (lines = lines.then(() => hooks.line(l)).catch((err: unknown) => void (lineError ??= err)))
           const result = await upgrade(
             boxUpgradeDeps(sys, {
               log: line,
@@ -241,6 +243,7 @@ async function main(argv: string[]): Promise<void> {
             { from: job.from, arch: hostArch(), check: false, expect: job.release, onStep: (step, detail) => hooks.step(step, step === 'safety-copy' ? detail : undefined) },
           )
           await lines
+          if (lineError) throw lineError
           if (result !== 'upgraded') throw new Error(`nothing was changed: this server already runs ${job.release}`)
           const now = await installedOsRelease(sys)
           if (now !== `${job.release}-linux-${hostArch()}.tar.gz`) {

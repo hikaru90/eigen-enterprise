@@ -234,6 +234,31 @@ describe('runUpgradeApply (the ee-upgrade.service side)', () => {
     expect(done.log).toEqual(expect.arrayContaining(['→ first deploy (health-gated)', `✓ updated to ${NEW}`]))
   })
 
+  it('steps and lines arriving together are saved one at a time (the box writes via a temp file + rename)', async () => {
+    const { f, job } = await handedOver()
+    let inFlight = 0
+    const write = f.deps.writeFile
+    f.deps.writeFile = async (p, c) => {
+      if (++inFlight > 1) throw new Error('two writes of the state file at once')
+      await new Promise((r) => setTimeout(r, 2))
+      await write(p, c)
+      inFlight--
+    }
+    await runUpgradeApply(
+      f.deps,
+      job.id,
+      async (p) => {
+        void p.line('→ newest release')
+        void p.line('→ verifying the release signature')
+        await Promise.all([p.step('verifying'), p.line('installer output'), p.step('safety-copy', '/var/lib/ee/upgrades/x')])
+        return `${NEW}-linux-arm64.tar.gz`
+      },
+      () => {},
+    )
+    expect(await f.job()).toMatchObject({ status: 'succeeded', safetyCopy: '/var/lib/ee/upgrades/x' })
+    expect((await f.job()).log).toEqual(expect.arrayContaining(['→ newest release', '→ verifying the release signature', 'installer output']))
+  })
+
   it('a failure is recorded with where the safety copy is', async () => {
     const { f, job } = await handedOver()
     await expect(
