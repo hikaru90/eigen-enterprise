@@ -83,7 +83,8 @@ SES/SNS ── https ──▶ os /api/mail/ses-events, /api/mail/ses-inbound   
   (absent = box doesn't do mail).
 - `desired.mail`: nullable optional `managedMailV1` = `{ region, accessKeyId, secretAccessKey,
   tenant, configurationSet, trackingConfigurationSet, eventsTopicArn, inboundTopicArn,
-  inboundBucket, inboundPrefix }`, all strings, strict.
+  inboundBucket, inboundPrefix }`, all strings, strict. `inboundPrefix` is the bare box id (no
+  slash); S3 keys are `<inboundPrefix>/<messageId>`.
 - os secrets (ee sets them like `PLATFORM_AI_SECRETS`): `EE_MAIL_REGION`, `EE_MAIL_ACCESS_KEY_ID`,
   `EE_MAIL_SECRET_ACCESS_KEY`, `EE_MAIL_TENANT`, `EE_MAIL_CONFIG_SET`, `EE_MAIL_TRACKING_CONFIG_SET`,
   `EE_MAIL_EVENTS_TOPIC_ARN`, `EE_MAIL_INBOUND_TOPIC_ARN`, `EE_MAIL_INBOUND_BUCKET`,

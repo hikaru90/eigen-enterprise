@@ -2,6 +2,17 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-18 — Managed mail built: T1 + T2 here, T3 in eigenEnterprise-cloud (not released, not on the box; real AWS unproven)
+
+- **Scrutiny changed the plan** (`plan/managed-mail.md`, commit after `d3ca361`): receiving is one receipt rule **per company** (~195 companies per account+region, more accounts after that), not 20,000 domains; desired `mail` carries static config only, because env changes redeploy os, so domain status and DKIM tokens come from the box's own GetEmailIdentity and pause status from GetTenant; suppression is per tenant; the control plane ships first because its report schema is strict; SES over HTTPS only (hosted boxes block outbound SMTP anyway).
+- **T1** (merge `a019bbf`): protocol feature `mail`, `report.mail.domains`, `desired.mail` (`managedMailV1`); ee `applyMail` → os secrets `EE_MAIL_*` (shared helper with platform AI); report reads os `GET /api/fleet/mail-domains`. ee fleet 33/33, ee suite 315.
+- **T2** (merge `7c4819f`): os managed mode when no own-SES credentials and `EE_MAIL_*` are set (partial set fails loud): TenantName on sends, domains without provisioning (Easy DKIM tokens from SES), receiving = flag + MX only, webhooks pinned to the env topic ARNs and to keys under `<boxId>/`, unrouted inbound deleted, tenant pause + tenant suppression in plain words, "eigenEnterprise Mail" setup card (own-SES form stays under "Use your own Amazon SES instead"), onboarding step done. **Migration 0155_managed_mail_sender** (renumbered from 0150 at merge; main had 0151/0154): the managed default sender, since an `owlery_settings` row means own SES; the first sender on a company domain becomes the default, and until one exists `isConfigured()` stays false.
+- **T3** (eigenEnterprise-cloud merge `a17b8f1`): SES/SESv1/SNS/IAM driver + fake, box IAM policy (unit-tested), env `MAIL_AWS_REGION|ACCESS_KEY_ID|SECRET_ACCESS_KEY`, `MAIL_INBOUND_BUCKET`, `MAIL_RULE_SET`, migration `0006_managed_mail`, provision step `managed_mail` (after `wait_enrolled`: names need the box id), deprovision `delete_managed_mail`, `mail_sync` job on changed reported domains, `desired.mail`. 161/161, check 0 errors.
+- **Contract fix at review:** the control plane sent `inboundPrefix` as `<boxId>/` while the box checks `<prefix>/`, so all inbound mail would have been refused. The contract is now the bare box id (`aac7d18`).
+- **Gates on merged main:** check 0 errors (32 warnings baseline), unit 7323 passed / 142 skipped, test-DB migrate clean. E2E not run; nothing tried on the box.
+- **Not verified (T0 + T4 need the owner's AWS account):** whether `ses:TenantName` and the tenant-scoped suppression conditions work as written, the exact AWS "exists/not found" error names, the shared inbound bucket's SES-write policy + lifecycle rule (not created by code yet), and teardown leaving inbound objects in S3. If the inbound subscription is removed, the box only logs it.
+- **Next:** owner creates the dedicated AWS account (production access, quota, control-plane key) → T0 → release (control plane first, then boxes) → T4.
+
 ## 2026-11-18 — Managed mail planned: hosted companies on our SES, one tenant each (plan only)
 
 - **Decision (owner, 2026-11-18):** hosted companies send and receive mail through **our** Amazon SES account, one SES tenant per company. No AWS account, console step or production-access wait for the customer. Plan: `plan/managed-mail.md`.
