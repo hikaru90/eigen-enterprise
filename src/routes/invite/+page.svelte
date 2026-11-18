@@ -42,7 +42,7 @@
         <PasskeyStep
           email={data.email ?? ''}
           passkeyName="Passkey from the invite"
-          doneHref={resolve('/messages')}
+          doneHref="/messages"
           testId="invite"
           skipWarning="Without a passkey you can’t sign in again once this session ends (or on another device) — this company has no sign-in by email. Add one in Settings → Passkeys before you sign out."
         />

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resolve } from '$app/paths'
   import { authClient } from '$lib/auth-client'
   import { Button } from '$lib/components/ui/button'
 
@@ -17,8 +18,8 @@
     email: string
     /** Name the passkey gets in Settings → Passkeys. */
     passkeyName: string
-    /** Where to go once the passkey exists, or after skipping. */
-    doneHref: string
+    /** The route to go to once the passkey exists, or after skipping. */
+    doneHref: '/' | '/messages'
     /** Why skipping is risky here, in plain words. */
     skipWarning: string
     /** data-testid prefix (`invite`, `claim`). */
@@ -41,7 +42,7 @@
             : res.error.message || 'The passkey could not be created.'
         return
       }
-      window.location.href = doneHref
+      window.location.href = resolve(doneHref)
     } catch (err) {
       error = err instanceof Error ? err.message : 'The passkey could not be created.'
     } finally {
@@ -64,7 +65,7 @@
   {#if confirmSkip}
     <div class="space-y-2 rounded-[4px] border border-destructive/40 bg-destructive/5 p-3 text-xs" role="alert" data-testid="{testId}-skip-warning">
       <p>{skipWarning}</p>
-      <a href={doneHref} class="underline underline-offset-4" data-testid="{testId}-skip-confirm">Continue without a passkey</a>
+      <a href={resolve(doneHref)} class="underline underline-offset-4" data-testid="{testId}-skip-confirm">Continue without a passkey</a>
     </div>
   {:else}
     <p class="text-muted-foreground text-xs">

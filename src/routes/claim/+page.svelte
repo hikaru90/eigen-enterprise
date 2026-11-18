@@ -31,7 +31,7 @@
         <PasskeyStep
           email={data.email ?? ''}
           passkeyName="Passkey from the claim"
-          doneHref={resolve('/')}
+          doneHref="/"
           testId="claim"
           skipWarning="Without a passkey you can’t sign in again once this session ends (or on another device) until email is set up — sign-in codes go out by email, and the onboarding’s email step comes next. Add one in Settings → Passkeys before you sign out."
         />
