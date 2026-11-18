@@ -190,4 +190,34 @@ describe('pollCaptureRecentSync', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/capture/recent?author=user', { cache: 'no-store' })
     cancel()
   })
+
+  it('reports a failing request instead of swallowing it, and clears it once a request succeeds', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'Internal Error' })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ recentThoughts: [], recentThoughtDetails: [] }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const errors: (string | null)[] = []
+    const cancel = pollCaptureRecentSync({
+      limit: 8,
+      getState: () => ({ snippets: [], details: {} }),
+      pollMs: 100,
+      onSync: () => {},
+      onError: (message) => {
+        errors.push(message)
+      },
+    })
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(errors).toEqual(['Internal Error'])
+    await vi.advanceTimersByTimeAsync(100)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(errors).toEqual(['Internal Error', null])
+    cancel()
+  })
 })
