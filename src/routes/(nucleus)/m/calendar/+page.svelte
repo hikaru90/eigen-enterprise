@@ -16,8 +16,9 @@
   import AvailabilityPanel from '../../../../../modules/calendar/ui/availability-panel.svelte'
   import CalendarViews from '../../../../../modules/calendar/ui/calendar-views.svelte'
   import EventDialog from '../../../../../modules/calendar/ui/event-dialog.svelte'
-  import { shiftDate, VIEW_LABELS, VIEWS, type View } from '../../../../../modules/calendar/ui/layout'
+  import { isoWeek, shiftDate, VIEW_LABELS, VIEWS, type View } from '../../../../../modules/calendar/ui/layout'
   import ProposalCard from '../../../../../modules/calendar/ui/proposal-card.svelte'
+  import WeekNumbersToggle from '../../../../../modules/calendar/ui/week-numbers-toggle.svelte'
   import { inboxHref } from '../../../../../modules/email/inbox/url'
 
   /**
@@ -67,6 +68,7 @@
     dialogOpen && form !== formAtOpen && form && 'error' in form && typeof form.error === 'string' && (form.action === 'save' || form.action === 'delete') ? form.error : null,
   )
   const prefsError = $derived(form && 'error' in form && form.action === 'preferences' && typeof form.error === 'string' ? form.error : null)
+  const weekNumbersError = $derived(form && 'error' in form && form.action === 'weekNumbers' && typeof form.error === 'string' ? form.error : null)
   const selectClass = 'border-input bg-background h-8 rounded-md border px-2 text-xs'
 </script>
 
@@ -87,9 +89,20 @@
       <Button href={href(data.view, shiftDate(data.view, data.date, -1))} variant="outline" size="sm" aria-label="Previous {data.view}">‹</Button>
       <Button href={href(data.view, data.today)} variant="outline" size="sm">Today</Button>
       <Button href={href(data.view, shiftDate(data.view, data.date, 1))} variant="outline" size="sm" aria-label="Next {data.view}">›</Button>
-      <h2 class="ml-2 text-sm font-semibold" data-testid="calendar-heading">{data.heading}</h2>
+      <h2 class="ml-2 text-sm font-semibold" data-testid="calendar-heading">
+        {data.heading}
+        {#if data.weekNumbers && data.view !== 'month'}
+          <span class="ml-1.5 rounded border border-border px-1.5 py-0.5 text-[13px] font-normal text-muted-foreground tabular-nums" data-testid="calendar-week-number"
+            >Week {isoWeek(data.days[0])}</span
+          >
+        {/if}
+      </h2>
     </div>
-    <nav class="flex rounded-md border border-border p-0.5" aria-label="Calendar view">
+    <div class="flex flex-wrap items-center gap-2">
+      <form method="POST" action="?/weekNumbers" use:enhance={() => async ({ update }) => update({ reset: false })}>
+        <WeekNumbersToggle on={data.weekNumbers} />
+      </form>
+      <nav class="flex rounded-md border border-border p-0.5" aria-label="Calendar view">
       {#each VIEWS as v (v)}
         <a
           href={href(v, data.date)}
@@ -98,8 +111,10 @@
           data-testid="calendar-view-{v}">{VIEW_LABELS[v]}</a
         >
       {/each}
-    </nav>
+      </nav>
+    </div>
   </div>
+  {#if weekNumbersError}<p class="mt-2 text-[13px] text-destructive" role="alert">{weekNumbersError}</p>{/if}
 
   {#if data.proposals.length > 0}
     <section class="mt-5 grid gap-2" aria-labelledby="calendar-proposals-heading" data-testid="calendar-proposals">
@@ -131,6 +146,8 @@
           {onopen}
           {oncreate}
           onshift={(direction) => goto(href(data.view, shiftDate(data.view, data.date, direction)))}
+          weekNumbers={data.weekNumbers}
+          columnsKey={data.user ? `ee.calendar.week-columns.${data.user.id}` : undefined}
         />
       {/key}
       <p class="mt-2 text-xs text-muted-foreground">Times in {data.timeZone.replaceAll('_', ' ')}.</p>

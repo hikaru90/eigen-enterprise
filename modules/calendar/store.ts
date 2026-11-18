@@ -88,4 +88,7 @@ export type CalendarStore = {
   inRange(memberIds: readonly string[], from: Date, to: Date): Promise<EventRow[]>
   defaultVisibility(memberId: string): Promise<Visibility | null>
   setDefaultVisibility(memberId: string, visibility: Visibility, at: Date): Promise<void>
+  /** Whether the member's views show ISO week numbers; null when they never chose. */
+  weekNumbers(memberId: string): Promise<boolean | null>
+  setWeekNumbers(memberId: string, on: boolean, at: Date): Promise<void>
 }

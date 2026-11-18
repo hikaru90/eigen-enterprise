@@ -1,7 +1,7 @@
 import type { OccurrenceDto } from '../types'
 import { describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import CalendarViews from './calendar-views.svelte'
 import { viewDays } from './layout'
 
@@ -134,5 +134,89 @@ describe('calendar-views.svelte', () => {
     await expect.element(cell).toHaveTextContent('+1 more')
     expect((await cell.getByTestId('calendar-event').elements()).length).toBe(3)
     await expect.element(cell.getByRole('link', { name: '18' })).toHaveAttribute('href', '/m/calendar?view=day&date=2026-11-18')
+    expect(await page.getByRole('rowheader').elements()).toHaveLength(0)
+  })
+
+  it('month with week numbers: each week starts with its ISO week', async () => {
+    render(CalendarViews, { ...props('month', []), weekNumbers: true })
+    const weeks = await page.getByRole('rowheader').elements()
+    expect(weeks.map((w) => w.textContent?.trim())).toEqual(['44', '45', '46', '47', '48', '49'])
+    await expect.element(page.getByRole('rowheader', { name: 'Week 47' })).toBeVisible()
+    expect((await page.getByRole('gridcell').elements()).length).toBe(42)
+  })
+})
+
+describe('calendar-views.svelte: resizable days in the week', () => {
+  const KEY = 'test.week-columns'
+  const widthOf = async (name: string) => (await page.getByRole('group', { name }).element()).getBoundingClientRect().width
+  const MON = 'Monday, 16 November 2026'
+  const TUE = 'Tuesday, 17 November 2026'
+
+  it('arrow keys on a day’s edge widen or narrow it, the others share the rest; Home makes them equal again', async () => {
+    localStorage.removeItem(KEY)
+    await page.viewport(1280, 900)
+    render(CalendarViews, { ...props('week', [planning]), columnsKey: KEY })
+    const edge = page.getByRole('separator', { name: 'Resize Monday' })
+    await expect.element(edge).toHaveAttribute('aria-valuenow', '14')
+    expect(Math.abs((await widthOf(MON)) - (await widthOf(TUE)))).toBeLessThan(1)
+    await expect.element(page.getByRole('button', { name: 'Reset column widths' })).not.toBeInTheDocument()
+
+    ;((await edge.element()) as HTMLElement).focus()
+    await userEvent.keyboard('{ArrowRight}{ArrowRight}{ArrowRight}')
+    await expect.element(edge).toHaveAttribute('aria-valuenow', '20')
+    expect(await widthOf(MON)).toBeGreaterThan((await widthOf(TUE)) * 1.3)
+    expect(JSON.parse(localStorage.getItem(KEY)!)[0]).toBeCloseTo(20.29, 1)
+    // The event still fills its day, whatever the widths.
+    await expect.element(page.getByRole('group', { name: 'Wednesday, 18 November 2026' }).getByRole('button', { name: /Planning/ })).toBeVisible()
+
+    await userEvent.keyboard('{Home}')
+    await expect.element(edge).toHaveAttribute('aria-valuenow', '14')
+    expect(localStorage.getItem(KEY)).toBeNull()
+  })
+
+  it('remembers the widths in this browser; “Reset column widths” or a double-click makes them equal', async () => {
+    const wide = [40, 10, 10, 10, 10, 10, 10]
+    localStorage.setItem(KEY, JSON.stringify(wide))
+    await page.viewport(1280, 900)
+    render(CalendarViews, { ...props('week', []), columnsKey: KEY })
+    await expect.element(page.getByRole('separator', { name: 'Resize Monday' })).toHaveAttribute('aria-valuenow', '40')
+    expect(await widthOf(MON)).toBeGreaterThan((await widthOf(TUE)) * 3.5)
+    await page.getByRole('button', { name: 'Reset column widths' }).click()
+    await expect.element(page.getByRole('separator', { name: 'Resize Monday' })).toHaveAttribute('aria-valuenow', '14')
+    expect(localStorage.getItem(KEY)).toBeNull()
+
+    localStorage.setItem(KEY, JSON.stringify(wide))
+    render(CalendarViews, { ...props('week', []), columnsKey: KEY })
+    const edge = page.getByRole('separator', { name: 'Resize Monday' }).last()
+    await expect.element(edge).toHaveAttribute('aria-valuenow', '40')
+    // (Component specs run without Tailwind, so the thin edge has no box to point at.)
+    ;(await edge.element()).dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+    await expect.element(edge).toHaveAttribute('aria-valuenow', '14')
+    localStorage.removeItem(KEY)
+  })
+
+  it('dragging a day’s edge with the pointer sets its width', async () => {
+    localStorage.removeItem(KEY)
+    await page.viewport(1280, 900)
+    render(CalendarViews, { ...props('week', []), columnsKey: KEY })
+    const edge = (await page.getByRole('separator', { name: 'Resize Monday' }).element()) as HTMLElement
+    const x = edge.getBoundingClientRect().left
+    const at = (type: string, clientX: number) => edge.dispatchEvent(new PointerEvent(type, { pointerId: 1, pointerType: 'mouse', clientX, clientY: 20, bubbles: true }))
+    at('pointerdown', x)
+    at('pointermove', x + 100)
+    at('pointerup', x + 100)
+    expect(await widthOf(MON)).toBeGreaterThan((await widthOf(TUE)) + 80)
+    expect(JSON.parse(localStorage.getItem(KEY)!)).toHaveLength(7)
+    localStorage.removeItem(KEY)
+  })
+
+  it('not on a phone: three equal days, no edges to drag', async () => {
+    localStorage.setItem(KEY, JSON.stringify([40, 10, 10, 10, 10, 10, 10]))
+    await page.viewport(375, 800)
+    render(CalendarViews, { ...props('week', []), columnsKey: KEY })
+    await expect.element(page.getByTestId('calendar-week')).toHaveAttribute('data-days', '3')
+    expect(await page.getByRole('separator').elements()).toHaveLength(0)
+    expect(Math.abs((await widthOf(MON)) - (await widthOf(TUE)))).toBeLessThan(1)
+    localStorage.removeItem(KEY)
   })
 })

@@ -87,6 +87,7 @@ type Loaded = {
   occurrences: Array<{ title: string }>
   members: Array<{ id: string; name: string }>
   defaultVisibility: string
+  weekNumbers: boolean
   timeZones: string[]
   availability: { selected: string[]; days: string[]; people: Array<{ memberId: string; blocks: Array<{ kind: string; title: string | null }> }> }
   proposals: Array<{ id: string; title: string }>
@@ -158,6 +159,20 @@ describe('/m/calendar', () => {
     expect(await defaultVisibility(f.deps, user('ana'))).toBe('company')
     // Someone else's event: not found, as if it didn't exist.
     expect(await actions.delete({ locals: signedIn('ben'), request: post([['id', series.id]]) } as never)).toMatchObject({ status: 404 })
+  })
+
+  it('week numbers: off by default, turned on and off per person', async () => {
+    const weekNumbersOf = async (id: string) => ((await load({ locals: signedIn(id), url: at('') } as never)) as Loaded).weekNumbers
+    expect(await weekNumbersOf('ana')).toBe(false)
+    expect(await actions.weekNumbers({ locals: signedIn('ana'), request: post([['weekNumbers', 'on']]) } as never)).toEqual({ action: 'weekNumbers', ok: true })
+    expect(await weekNumbersOf('ana')).toBe(true)
+    expect(await weekNumbersOf('ben')).toBe(false)
+    await actions.weekNumbers({ locals: signedIn('ana'), request: post([['weekNumbers', 'off']]) } as never)
+    expect(await weekNumbersOf('ana')).toBe(false)
+    expect(await actions.weekNumbers({ locals: signedIn('ana'), request: post([['weekNumbers', 'maybe']]) } as never)).toMatchObject({
+      status: 400,
+      data: { action: 'weekNumbers' },
+    })
   })
 })
 

@@ -70,6 +70,18 @@ export function viewHeading(view: View, date: string): string {
   return `${a.d} – ${dayMonth(days[6])} ${b.y}`
 }
 
+/**
+ * The ISO 8601 week of a day (Contribute 9ae58a4e): weeks run Monday to
+ * Sunday and week 1 is the one with the year's first Thursday — so a week
+ * belongs to the year its Thursday is in (2027-01-01 is week 53 of 2026).
+ */
+export function isoWeek(day: string): number {
+  const thursday = parseDay(addDays(day, 3 - weekdayOf(day)))!
+  const jan1 = Date.UTC(thursday.year, 0, 1)
+  const dayOfYear = Math.round((Date.UTC(thursday.year, thursday.month - 1, thursday.day) - jan1) / 86_400_000)
+  return Math.floor(dayOfYear / 7) + 1
+}
+
 /** The UTC range a view covers in a zone (for the load). */
 export function viewRange(view: View, date: string, timeZone: string): { from: Date; to: Date; days: string[] } {
   const days = viewDays(view, date)

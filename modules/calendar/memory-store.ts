@@ -6,6 +6,7 @@ export function memoryCalendarStore(): CalendarStore & { events: Map<string, Eve
   const events = new Map<string, EventRow>()
   const guests = new Map<string, AttendeeRow>()
   const prefs = new Map<string, Visibility>()
+  const weekNumbers = new Map<string, boolean>()
   const copy = (r: EventRow): EventRow => ({ ...r, exdates: r.exdates.map((d) => new Date(d)) })
   const t = (d: Date) => d.getTime()
 
@@ -71,6 +72,12 @@ export function memoryCalendarStore(): CalendarStore & { events: Map<string, Eve
     },
     async setDefaultVisibility(memberId, visibility) {
       prefs.set(memberId, visibility)
+    },
+    async weekNumbers(memberId) {
+      return weekNumbers.get(memberId) ?? null
+    },
+    async setWeekNumbers(memberId, on) {
+      weekNumbers.set(memberId, on)
     },
   }
 }

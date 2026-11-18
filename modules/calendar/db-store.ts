@@ -114,5 +114,19 @@ export function dbCalendarStore(db: AppDatabase): CalendarStore {
         .values({ memberId, defaultVisibility: visibility, updatedAt: at })
         .onConflictDoUpdate({ target: calendarPreferences.memberId, set: { defaultVisibility: visibility, updatedAt: at } })
     },
+    async weekNumbers(memberId) {
+      const [r] = await db
+        .select({ on: calendarPreferences.showWeekNumbers })
+        .from(calendarPreferences)
+        .where(eq(calendarPreferences.memberId, memberId))
+        .limit(1)
+      return r?.on ?? null
+    },
+    async setWeekNumbers(memberId, on, at) {
+      await db
+        .insert(calendarPreferences)
+        .values({ memberId, showWeekNumbers: on, updatedAt: at })
+        .onConflictDoUpdate({ target: calendarPreferences.memberId, set: { showWeekNumbers: on, updatedAt: at } })
+    },
   }
 }

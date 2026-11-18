@@ -10,6 +10,8 @@ import {
   freeBusy,
   listCalendar,
   setDefaultVisibility,
+  setShowWeekNumbers,
+  showWeekNumbers,
   updateEvent,
 } from '../../../../../modules/calendar/service'
 import { parseDay } from '../../../../../modules/calendar/time'
@@ -52,11 +54,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     const availabilityDays = view === 'month' ? viewDays('week', date) : range.days
     const availabilityRange = viewRange(view === 'month' ? 'week' : view, date, timeZone)
     const selected = [...new Set(url.searchParams.getAll('with'))]
-    const [proposals, occurrences, members, visibility, people] = await Promise.all([
+    const [proposals, occurrences, members, visibility, weekNumbers, people] = await Promise.all([
       openProposals(await liveProposalDeps(), actor),
       listCalendar(d, actor, { from: range.from.toISOString(), to: range.to.toISOString() }),
       d.members(),
       defaultVisibility(d, actor),
+      showWeekNumbers(d, actor),
       selected.length === 0
         ? Promise.resolve([])
         : freeBusy(d, actor, { memberIds: selected, from: availabilityRange.from.toISOString(), to: availabilityRange.to.toISOString() }),
@@ -71,6 +74,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       occurrences,
       members: members.filter((m) => m.id !== actor.userId).map((m) => ({ id: m.id, name: m.name || m.email })),
       defaultVisibility: visibility,
+      weekNumbers,
       timeZones: zoneList(),
       availability: { selected, days: availabilityDays, people },
       proposals,
@@ -143,6 +147,15 @@ export const actions: Actions = {
     return calendarAction('preferences', async () => {
       await setDefaultVisibility(await liveCalendarDeps(), actor, text(form, 'defaultVisibility'))
       return { action: 'preferences' as const, ok: true }
+    })
+  },
+  /** The "Week numbers" switch by the view picker (Contribute 9ae58a4e): on or off. */
+  weekNumbers: async ({ locals, request }) => {
+    const actor = personActor(locals.user)
+    const form = await request.formData()
+    return calendarAction('weekNumbers', async () => {
+      await setShowWeekNumbers(await liveCalendarDeps(), actor, text(form, 'weekNumbers'))
+      return { action: 'weekNumbers' as const, ok: true }
     })
   },
 }
