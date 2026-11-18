@@ -5,7 +5,8 @@
   import type { Swipe } from '$lib/gestures/swipe'
   import { swipe } from '$lib/gestures/swipe-action'
   import { localOf } from '../time'
-  import { dayItems, longDay, MONTH_NAMES, placeTimed, stepWeek, WEEKDAY_NAMES, weekPages, weekStart, type View } from './layout'
+  import { equalWidths, fitWidths, isEqualWidths, KEY_STEP, minPercent, parseWidths, setWidth } from './column-widths'
+  import { dayItems, isoWeek, longDay, MONTH_NAMES, placeTimed, stepWeek, WEEKDAY_NAMES, weekPages, weekStart, type View } from './layout'
 
   /**
    * The calendar itself, phone-first (375 px): a day as an hour grid, a week
@@ -16,6 +17,10 @@
    * (`onopen`); tapping an empty hour or "+" starts a new one (`oncreate`).
    * On touch screens a swipe left / right moves to the next / previous
    * period (`onshift`); in a paged week it first pages through the week's days.
+   * Contribute 9ae58a4e: with `weekNumbers` a month starts each week with its
+   * ISO week; a whole week's days can be made wider or narrower by dragging
+   * (or arrow-keying) the edges between their heads — remembered in this
+   * browser under `columnsKey`; never on a phone's paged week.
    */
   let {
     view,
@@ -28,6 +33,8 @@
     onopen,
     oncreate,
     onshift,
+    weekNumbers = false,
+    columnsKey,
   }: {
     view: View
     days: readonly string[]
@@ -42,6 +49,10 @@
     oncreate: (day: string, time: string | null) => void
     /** The next (1) or previous (-1) day, week or month. */
     onshift: (direction: -1 | 1) => void
+    /** Each month week starts with its ISO week number. */
+    weekNumbers?: boolean
+    /** Where this browser keeps the person's week column widths (localStorage); none: not remembered. */
+    columnsKey?: string
   } = $props()
 
   const HOUR_PX = 48
@@ -55,7 +66,23 @@
   let offset = $state(0)
   const lastPage = $derived(weekPages(days.length, visible).at(-1) ?? 0)
 
+  /** The week's day widths in percent (all seven shown); the hour gutter is apart. */
+  let widths = $state(equalWidths(7))
+  /** The width of the week's head row in px (gutter included), for the minimum. */
+  let headWidth = $state(0)
+  const GUTTER_PX = 48
+  const resizable = $derived(view === 'week' && visible === days.length)
+  const minWidth = $derived(minPercent(headWidth - GUTTER_PX, 7))
+  const shownWidths = $derived(resizable ? fitWidths(widths, minWidth) : equalWidths(visible))
+
   onMount(() => {
+    if (view === 'week' && columnsKey) {
+      try {
+        widths = parseWidths(localStorage.getItem(columnsKey), 7) ?? widths
+      } catch {
+        // Storage blocked (private window): equal widths this visit.
+      }
+    }
     // Day and week open at 07:00 (or the first event, when earlier).
     if (view !== 'month' && scroller) {
       const tops = days.flatMap((d) => placeTimed(dayItems(occurrences, d, timeZone).timed, d, timeZone).map((p) => p.top))
@@ -77,6 +104,52 @@
     if ('shift' in step) return false
     offset = step.offset
     return true
+  }
+
+  /** The widths from now on, kept in this browser (equal ones: nothing kept). */
+  function commit(next: number[]): void {
+    widths = next
+    if (!columnsKey) return
+    try {
+      if (isEqualWidths(next)) localStorage.removeItem(columnsKey)
+      else localStorage.setItem(columnsKey, JSON.stringify(next))
+    } catch {
+      // Storage blocked: the widths last this visit.
+    }
+  }
+  const resetWidths = () => commit(equalWidths(7))
+
+  /** Edge `i` is day i's right edge: right widens it, left narrows it; Home makes all days equal. */
+  function onEdgeKey(e: KeyboardEvent, i: number): void {
+    const step = e.key === 'ArrowRight' ? KEY_STEP : e.key === 'ArrowLeft' ? -KEY_STEP : 0
+    if (step !== 0) commit(setWidth(shownWidths, i, shownWidths[i] + step, minWidth))
+    else if (e.key === 'Home') resetWidths()
+    else return
+    e.preventDefault()
+  }
+
+  function onEdgeDown(e: PointerEvent, i: number): void {
+    if (e.button !== 0) return
+    // The edge's drag, not a swipe to the next week.
+    e.stopPropagation()
+    e.preventDefault()
+    const start = shownWidths
+    const x0 = e.clientX
+    const areaPx = headWidth - GUTTER_PX
+    const move = (m: PointerEvent) => {
+      if (m.pointerId !== e.pointerId || !(areaPx > 0)) return
+      widths = setWidth(start, i, start[i] + ((m.clientX - x0) / areaPx) * 100, minWidth)
+    }
+    const up = (u: PointerEvent) => {
+      if (u.pointerId !== e.pointerId) return
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+      commit(widths)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
   }
 
   // Swipe left = forward in time, like turning a page.
@@ -139,13 +212,13 @@
   {:else if view === 'week'}
     {@const shown = days.slice(offset, offset + visible)}
     <!-- The grid is the view (inline, not a utility): the hour gutter, then the days side by side. -->
-    {@const columns = `display: grid; grid-template-columns: 3rem repeat(${shown.length}, minmax(0, 1fr))`}
+    {@const columns = `display: grid; grid-template-columns: 3rem ${shownWidths.map((w) => `minmax(0, ${w}fr)`).join(' ')}`}
     {@const allDay = shown.map((day) => dayItems(occurrences, day, timeZone).allDay)}
     <section aria-label="Week" data-testid="calendar-week" data-days={shown.length}>
       <div bind:this={scroller} class="relative max-h-[70dvh] overflow-y-auto rounded-md border border-border">
         <!-- The days' heads and their all-day events stay on top while the hours scroll. -->
         <div class="sticky top-0 z-10 border-b border-border bg-background">
-          <div style={columns}>
+          <div style={columns} bind:clientWidth={headWidth}>
             <div class="flex items-center justify-center">
               {#if visible < days.length}
                 <button type="button" class={pageButton} aria-label="Earlier days" disabled={offset === 0} onclick={() => page(-1)}>‹</button>
@@ -154,7 +227,7 @@
             </div>
             {#each shown as day (day)}
               {@const i = days.indexOf(day)}
-              <div class="flex min-w-0 items-center justify-between gap-1 border-l border-border/60 py-1 pr-0.5 pl-1.5" data-testid="calendar-week-head">
+              <div class="relative flex min-w-0 items-center justify-between gap-1 border-l border-border/60 py-1 pr-0.5 pl-1.5" data-testid="calendar-week-head">
                 <a href={dayHref(day)} class="flex min-w-0 items-center gap-1 rounded text-xs hover:underline" aria-current={day === today ? 'date' : undefined} aria-label={longDay(day)}>
                   <span class="truncate text-muted-foreground">{WEEKDAY_NAMES[i].slice(0, 3)}</span>
                   <span class="inline-flex size-6 shrink-0 items-center justify-center rounded-full font-medium {day === today ? 'bg-primary text-primary-foreground' : ''}"
@@ -163,6 +236,27 @@
                   <span class="sr-only">{MONTH_NAMES[Number(day.slice(5, 7)) - 1]}</span>
                 </a>
                 <button type="button" class="shrink-0 rounded px-1 text-xs text-muted-foreground hover:bg-muted" aria-label="New event on {longDay(day)}" onclick={() => oncreate(day, null)}>+</button>
+                {#if resizable && i < days.length - 1}
+                  <!-- A focusable separator is a widget (the WAI-ARIA window splitter). -->
+                  <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+                  <div
+                    role="separator"
+                    tabindex="0"
+                    aria-orientation="vertical"
+                    aria-label="Resize {WEEKDAY_NAMES[i]}"
+                    aria-valuenow={Math.round(shownWidths[i])}
+                    aria-valuemin={Math.round(minWidth)}
+                    aria-valuemax={Math.round(100 - 6 * minWidth)}
+                    title="Drag to resize, double-click to reset"
+                    class="group absolute inset-y-0 -right-1.5 z-20 flex w-3 cursor-col-resize justify-center rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    style="touch-action: none"
+                    onpointerdown={(e) => onEdgeDown(e, i)}
+                    onkeydown={(e) => onEdgeKey(e, i)}
+                    ondblclick={resetWidths}
+                  >
+                    <span class="h-full w-0.5 rounded-full bg-transparent group-hover:bg-border group-focus-visible:bg-ring"></span>
+                  </div>
+                {/if}
               </div>
             {/each}
           </div>
@@ -217,16 +311,33 @@
           {/each}
         </div>
       </div>
+      {#if resizable && !isEqualWidths(widths)}
+        <div class="mt-1 flex justify-end">
+          <button type="button" class="rounded px-1 text-[13px] text-muted-foreground hover:text-foreground hover:underline" onclick={resetWidths}>Reset column widths</button>
+        </div>
+      {/if}
     </section>
   {:else}
-    <div class="grid grid-cols-7 gap-px overflow-hidden rounded-md border border-border bg-border" role="grid" aria-label="Month" data-testid="calendar-month">
+    <div
+      class="grid gap-px overflow-hidden rounded-md border border-border bg-border"
+      style="grid-template-columns: {weekNumbers ? '1.75rem ' : ''}repeat(7, minmax(0, 1fr))"
+      role="grid"
+      aria-label="Month"
+      data-testid="calendar-month"
+    >
       <div class="contents" role="row">
+        {#if weekNumbers}
+          <div role="columnheader" class="bg-muted/60 py-1 text-center text-[13px] text-muted-foreground" aria-label="Week">W</div>
+        {/if}
         {#each WEEKDAY_NAMES as name (name)}
           <div role="columnheader" class="bg-muted/60 py-1 text-center text-xs font-medium text-muted-foreground" aria-label={name}>{name.slice(0, 2)}</div>
         {/each}
       </div>
       {#each Array.from({ length: days.length / 7 }, (_, w) => days.slice(w * 7, w * 7 + 7)) as week (week[0])}
         <div class="contents" role="row">
+          {#if weekNumbers}
+            <div role="rowheader" class="bg-muted/30 pt-1.5 text-center text-[13px] text-muted-foreground tabular-nums" aria-label="Week {isoWeek(week[0])}">{isoWeek(week[0])}</div>
+          {/if}
           {#each week as day (day)}
             {@const items = dayItems(occurrences, day, timeZone)}
             {@const list = [...items.allDay, ...items.timed]}

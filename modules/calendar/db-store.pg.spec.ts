@@ -154,4 +154,18 @@ describe.skipIf(!url)('calendar store (Postgres)', () => {
     await store.setDefaultVisibility(ben, 'company', new Date())
     expect(await store.defaultVisibility(ben)).toBe('company')
   })
+
+  it('keeps week numbers per member, apart from the default visibility', async () => {
+    const store = dbCalendarStore(db)
+    expect(await store.weekNumbers(ana)).toBeNull()
+    // A member with no preferences yet: week numbers on, the default visibility at its default.
+    await store.setWeekNumbers(ana, true, new Date())
+    expect(await store.weekNumbers(ana)).toBe(true)
+    expect(await store.defaultVisibility(ana)).toBe('busy')
+    await store.setDefaultVisibility(ana, 'private', new Date())
+    expect(await store.weekNumbers(ana)).toBe(true)
+    await store.setWeekNumbers(ana, false, new Date())
+    expect(await store.weekNumbers(ana)).toBe(false)
+    expect(await store.defaultVisibility(ana)).toBe('private')
+  })
 })

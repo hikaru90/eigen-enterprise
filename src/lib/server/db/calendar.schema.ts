@@ -74,10 +74,14 @@ export const calendarAttendees = pgTable(
   ],
 )
 
-/** A member's calendar settings: what colleagues see of a new event by default. */
+/**
+ * A member's calendar settings: what colleagues see of a new event by
+ * default, and whether their views show ISO week numbers (migration 0154).
+ */
 export const calendarPreferences = pgTable('calendar_preferences', {
   memberId: text('member_id').primaryKey(),
   defaultVisibility: text('default_visibility', { enum: ['company', 'busy', 'private'] }).notNull().default('busy'),
+  showWeekNumbers: boolean('show_week_numbers').notNull().default(false),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
 

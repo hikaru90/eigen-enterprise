@@ -7,6 +7,8 @@ import {
   getEvent,
   listCalendar,
   setDefaultVisibility,
+  setShowWeekNumbers,
+  showWeekNumbers,
   updateEvent,
 } from './service'
 import { agent, fixture, timed, user } from './test-fixtures'
@@ -46,6 +48,20 @@ describe('creating an event', () => {
     expect((await createEvent(deps, user('ana'), timed('2026-11-16', '10:00', '11:00'))).visibility).toBe('private')
     expect((await createEvent(deps, user('ana'), timed('2026-11-16', '12:00', '13:00', { visibility: 'company' }))).visibility).toBe('company')
     await expect(setDefaultVisibility(deps, user('ana'), 'secret')).rejects.toMatchObject({ code: 'invalid' })
+  })
+
+  it('week numbers are each member’s own choice: off until turned on, kept apart from the default visibility', async () => {
+    const { deps, events } = fixture()
+    expect(await showWeekNumbers(deps, user('ana'))).toBe(false)
+    await setDefaultVisibility(deps, user('ana'), 'private')
+    expect(await setShowWeekNumbers(deps, user('ana'), 'on')).toBe(true)
+    expect(await showWeekNumbers(deps, user('ana'))).toBe(true)
+    expect(await showWeekNumbers(deps, user('ben'))).toBe(false)
+    expect(await defaultVisibility(deps, user('ana'))).toBe('private')
+    await setShowWeekNumbers(deps, user('ana'), 'off')
+    expect(await showWeekNumbers(deps, user('ana'))).toBe(false)
+    await expect(setShowWeekNumbers(deps, user('ana'), 'yes')).rejects.toMatchObject({ code: 'invalid' })
+    expect(events.at(-1)).toEqual({ type: 'calendar.week_numbers_set', principalId: 'ana', payload: { on: false } })
   })
 
   it('all-day events cover whole days in their zone (the end day is inclusive)', async () => {

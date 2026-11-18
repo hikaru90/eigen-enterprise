@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dayItems, parseView, placeTimed, shiftDate, stepWeek, viewDays, viewHeading, weekPages, weekStart } from './layout'
+import { dayItems, isoWeek, parseView, placeTimed, shiftDate, stepWeek, viewDays, viewHeading, weekPages, weekStart } from './layout'
 
 const ev = (start: string, end: string, allDay = false) => ({ start, end, allDay })
 
@@ -83,5 +83,24 @@ describe('paging a week on a phone (fewer days side by side)', () => {
     expect(stepWeek(4, 7, 3, -1)).toEqual({ offset: 3 })
     expect(stepWeek(0, 7, 3, -1)).toEqual({ shift: -1 })
     expect(stepWeek(0, 7, 7, 1)).toEqual({ shift: 1 })
+  })
+})
+
+describe('ISO 8601 week numbers', () => {
+  it('weeks start on Monday; week 1 holds the year’s first Thursday', () => {
+    expect(isoWeek('2026-11-16')).toBe(47)
+    expect(isoWeek('2026-11-22')).toBe(47)
+    expect(isoWeek('2026-11-23')).toBe(48)
+    expect(isoWeek('2026-01-01')).toBe(1)
+  })
+
+  it('across year boundaries: late December can be week 1, early January week 52 or 53', () => {
+    expect(isoWeek('2026-12-31')).toBe(53)
+    expect(isoWeek('2027-01-01')).toBe(53)
+    expect(isoWeek('2027-01-04')).toBe(1)
+    expect(isoWeek('2020-12-31')).toBe(53)
+    expect(isoWeek('2021-01-03')).toBe(53)
+    expect(isoWeek('2024-12-30')).toBe(1)
+    expect(isoWeek('2023-01-01')).toBe(52)
   })
 })

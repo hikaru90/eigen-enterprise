@@ -443,6 +443,21 @@ export async function setDefaultVisibility(d: CalendarDeps, actor: Actor, raw: u
   return visibility
 }
 
+/** Whether a member's views show ISO week numbers (Contribute 9ae58a4e): off until they turn it on. */
+export async function showWeekNumbers(d: CalendarDeps, actor: Actor): Promise<boolean> {
+  const me = personOf(await viewerOf(d, actor))
+  return (await d.store.weekNumbers(me)) ?? false
+}
+
+/** `raw` is the switch's value: "on" or "off". */
+export async function setShowWeekNumbers(d: CalendarDeps, actor: Actor, raw: unknown): Promise<boolean> {
+  const on = oneOf(raw, ['on', 'off'] as const, 'Week numbers') === 'on'
+  const v = await viewerOf(d, actor)
+  await d.store.setWeekNumbers(personOf(v), on, now(d))
+  await d.audit({ type: 'calendar.week_numbers_set', principalId: v.principalId, payload: { on } })
+  return on
+}
+
 // ── writes ────────────────────────────────────────────────────────────────────
 
 type Fields = Partial<Pick<EventRow, 'title' | 'notes' | 'location' | 'visibility' | 'status' | 'callId'>>
