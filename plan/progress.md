@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-19 — Domain search said "No endings are offered for that name" because nothing is priced; brand capture loads again (owner: "i still cant register domains. why?")
+
+- **Why domains couldn't be bought:** `/ops/domains` has no TLD price, and the control plane only offers priced endings, so every search answered `{"results":[]}` in 80 ms (checked from `ee-one` with its own token) and the onboarding read that as "No endings are offered for that name. Try another one." The fix that unblocks buying is data: the owner sets prices per ending on /ops/domains. Not verified yet: the real Route 53 availability call (it only runs once an ending is priced).
+- **No silent empty list (control plane, eigenEnterprise-cloud):** with no priced ending the search answers 503 "Buying a domain here is not open yet: no domain ending has a price. Contact support, or connect a domain you already have." (`flow.test.ts`). **os:** the domains client passes a 503's words through (`PASS_THROUGH` += 503, `client.spec.ts`), so the onboarding shows them.
+- **Brand capture (pre-existing):** `playwright` was a devDependency, so the build bundled it and its optional `chromium-bidi` requires became static imports of a package that isn't installed — the capture chunk couldn't load on any box. `playwright` and `playwright-core@1.59.1` (imported directly by `capture.ts`) are now dependencies, so the build leaves them external; the release check loads `capture-*.js` (`captureSite`) fine. A box without Chromium now gets capture's own `BrowserUnavailableError`. Release stays ~116 MB.
+
 ## 2026-11-18 — Release tarball 294 → 117 MB; the owner gets a passkey at claim; dashboard says when email is missing (owner: "slim, then fix owner lockout")
 
 - **Slim release** (`scripts/release.sh`): the stage now installs with `npm ci --omit=dev` and deletes `*.map`, `*.d.ts`/`.d.mts`/`.d.cts` and `*.md` from `build/` and `node_modules`. Measured on arm64 0.5.20: **294 → 117 MB** gzipped; installed `node_modules` 1,224 → 443 MB. Dropped: paraglide's `@lix-js/sdk` (253 MB native binary + 50 MB wasm, build-time only), prettier/eslint/lucide and other dev tools, all source maps.

@@ -50,6 +50,7 @@ describe('domainsClient (control plane domains API)', () => {
   it.each([
     [402, 'Add a payment method first (Settings › Billing).'],
     [400, 'postalCode is invalid.'],
+    [503, 'Buying a domain here is not open yet: no domain ending has a price. Contact support, or connect a domain you already have.'],
   ])('a %i keeps its status and the control plane’s words', async (status, error) => {
     cp.purchaseRefusal = { status, body: { error } }
     const err = await domainsClient(cp.config(), cp.fetch)

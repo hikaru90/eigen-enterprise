@@ -35,8 +35,8 @@ export class DomainsApiError extends Error {
   }
 }
 
-/** Statuses the person can act on: invalid input, no payment method (409 is read as a conflict). */
-const PASS_THROUGH = new Set([400, 402])
+/** Statuses the person can act on: invalid input, no payment method, buying not open (503); 409 is read as a conflict. */
+const PASS_THROUGH = new Set([400, 402, 503])
 
 export type DomainsClient = {
   search(q: string): Promise<DomainSearchResult[]>
