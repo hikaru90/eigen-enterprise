@@ -529,7 +529,7 @@ describe('welcome-wizard.svelte — the Domain act, then the Email act', () => {
 
     const confirm = page.getByTestId('domain-confirm')
     await expect.element(confirm.getByText(/costs €12\.00 a year/)).toBeInTheDocument()
-    await expect.element(confirm.getByText(/renews every year/)).toBeInTheDocument()
+    await expect.element(confirm.getByText(/renews every year at €12\.00/)).toBeInTheDocument()
     await expect.element(confirm.getByText(/can’t be refunded/)).toBeInTheDocument()
     expect(callsTo('/api/domains/purchases')).toHaveLength(0)
 

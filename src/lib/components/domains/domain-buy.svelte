@@ -298,7 +298,7 @@
       </p>
       <ul class="mt-4 list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
         <li>{price} is charged now to the company’s card.</li>
-        <li>It renews every year, charged to the same card.</li>
+        <li>It renews every year at {price}, charged to the same card.</li>
         <li>A registration can’t be refunded. If the registration itself fails, the charge is refunded in full.</li>
         <li>It is registered to {organization.trim()}; the company owns it.</li>
       </ul>
