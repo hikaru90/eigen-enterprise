@@ -38,23 +38,28 @@ export const load: PageServerLoad = async ({ locals }) => {
       recent: [],
     }
   }
+  const managed = settings.mode === 'managed'
   let sandbox: boolean | null = null
+  let paused = false
   let accountError: string | null = null
   try {
-    sandbox = await (await platform.owlery.ses()).ses.isSandbox()
+    // eigenEnterprise Mail never calls GetAccount (D8): no sandbox; the tenant's pause instead.
+    if (managed) paused = await platform.owlery.tenantPaused()
+    else sandbox = await (await platform.owlery.ses()).ses.isSandbox()
   } catch (err) {
-    accountError = describeSesError(err)
+    accountError = err instanceof MailSetupError ? err.message : describeSesError(err)
   }
   const [domains, senders, counts, recent, receiving] = await Promise.all([
     platform.listDomains(),
     platform.listSenders(),
     platform.store.countMessages(),
     platform.store.listMessages({ limit: 5 }),
-    platform.receivingState(),
+    managed ? null : platform.receivingState(),
   ])
   return {
     me: { email: me.email },
     account: {
+      managed: managed ? { paused } : null,
       region: settings.region,
       sender: settings.emailFrom,
       sandbox,

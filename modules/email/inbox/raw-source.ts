@@ -1,5 +1,5 @@
 import type { SesCredentials } from '../owlery/ses'
-import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { DeleteObjectCommand, GetObjectCommand, S3Client } from '@aws-sdk/client-s3'
 
 /**
  * Where the raw MIME of a received mail is read from: the company's inbound
@@ -10,6 +10,9 @@ export type RawMailSource = {
   /** The object's bytes. Throws when it can't be read (the ingest route answers 5xx so SNS retries). */
   getRaw(bucket: string, key: string): Promise<Uint8Array>
 }
+
+/** A raw source that can also delete an object (managed mode: unrouted mail is deleted, D7). */
+export type DeletableRawMailSource = RawMailSource & { deleteRaw(bucket: string, key: string): Promise<void> }
 
 /** The object is larger than SES receiving ever writes (40 MB): not ours to parse. */
 export class RawMailTooLarge extends Error {
@@ -23,8 +26,20 @@ export class RawMailTooLarge extends Error {
  * S3 over the company's saved SES credentials (resolved per call, so a key
  * change applies at once). An object over `maxBytes` is refused before its body is read.
  */
-export function s3RawMailSource(credentials: () => Promise<SesCredentials>, maxBytes: number): RawMailSource {
+export function s3RawMailSource(credentials: () => Promise<SesCredentials>, maxBytes: number): DeletableRawMailSource {
+  const client = async () => {
+    const c = await credentials()
+    return new S3Client({ region: c.region, credentials: { accessKeyId: c.accessKeyId, secretAccessKey: c.secretAccessKey } })
+  }
   return {
+    async deleteRaw(bucket, key) {
+      const s3 = await client()
+      try {
+        await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }))
+      } finally {
+        s3.destroy()
+      }
+    },
     async getRaw(bucket, key) {
       const c = await credentials()
       const client = new S3Client({ region: c.region, credentials: { accessKeyId: c.accessKeyId, secretAccessKey: c.secretAccessKey } })
@@ -43,12 +58,18 @@ export function s3RawMailSource(credentials: () => Promise<SesCredentials>, maxB
 }
 
 /** In-memory objects keyed `bucket/key`; `reads` lists every read in order. */
-export function fakeRawMailSource(): RawMailSource & { objects: Map<string, Uint8Array>; reads: string[] } {
+export function fakeRawMailSource(): DeletableRawMailSource & { objects: Map<string, Uint8Array>; reads: string[]; deleted: string[] } {
   const objects = new Map<string, Uint8Array>()
   const reads: string[] = []
+  const deleted: string[] = []
   return {
     objects,
     reads,
+    deleted,
+    async deleteRaw(bucket, key) {
+      deleted.push(`${bucket}/${key}`)
+      objects.delete(`${bucket}/${key}`)
+    },
     async getRaw(bucket, key) {
       reads.push(`${bucket}/${key}`)
       const hit = objects.get(`${bucket}/${key}`)

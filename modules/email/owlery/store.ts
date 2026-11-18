@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import type { DbHandle } from '$lib/kernel/db-stores'
 import { decryptEnvelope, encryptEnvelope } from '$lib/server/crypto/envelope'
 import type { AppDatabase } from '$lib/server/db/context'
-import { owlerySettings, type EventsStatus } from '$lib/server/db/owlery.schema'
+import { managedMailSender, owlerySettings, type EventsStatus } from '$lib/server/db/owlery.schema'
 
 /**
  * Persistence for the company's Amazon SES settings (one row). The secret
@@ -70,6 +70,9 @@ export type OwleryStore = {
   writeEmailFrom(emailFrom: string, updatedBy: string): Promise<void>
   /** Deletes the row (only the e2e harness reset under MAIL_TRANSPORT=fake). */
   clear(): Promise<void>
+  /** eigenEnterprise Mail's default sender (managed mode has no owlery_settings row). */
+  readManagedSender(): Promise<string | null>
+  writeManagedSender(emailFrom: string, updatedBy: string): Promise<void>
 }
 
 export const SEAL_AAD = 'owlery-ses-secret-access-key'
@@ -141,6 +144,19 @@ export class DbOwleryStore implements OwleryStore {
   async clear(): Promise<void> {
     await (await resolveDb(this.db)).delete(owlerySettings)
   }
+
+  async readManagedSender(): Promise<string | null> {
+    const [row] = await (await resolveDb(this.db)).select().from(managedMailSender).limit(1)
+    return row?.emailFrom ?? null
+  }
+
+  async writeManagedSender(emailFrom: string, updatedBy: string): Promise<void> {
+    const values = { id: 'managed', emailFrom, updatedBy, updatedAt: new Date() }
+    await (await resolveDb(this.db))
+      .insert(managedMailSender)
+      .values(values)
+      .onConflictDoUpdate({ target: managedMailSender.id, set: values })
+  }
 }
 
 export function defaultOwleryStore(): OwleryStore {
@@ -172,5 +188,12 @@ export class InMemoryOwleryStore implements OwleryStore {
   }
   async clear() {
     this.row = null
+  }
+  managedSender: string | null = null
+  async readManagedSender() {
+    return this.managedSender
+  }
+  async writeManagedSender(emailFrom: string) {
+    this.managedSender = emailFrom
   }
 }

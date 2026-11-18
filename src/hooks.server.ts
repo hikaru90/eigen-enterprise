@@ -24,7 +24,7 @@ import { startJobQueueTicker } from '$lib/server/job-queue/ticker'
 import { startNotificationDispatchTicker } from '$lib/server/memory/notification-dispatch-ticker'
 import { startBackupHealthTicker } from '$lib/server/backups/live'
 import { logOpsStartupDiagnostics } from '$lib/server/ops/startup-diagnostics'
-import { configuredMailTransport } from '../modules/email/owlery/service'
+import { configuredMailTransport, configuredManagedMail } from '../modules/email/owlery/service'
 import { installPromptShutdown } from '$lib/server/shutdown'
 import { csrfRefusal, isForbiddenCrossSiteForm } from '$lib/server/csrf'
 import { pluginHandle } from '$lib/server/plugins/handle'
@@ -39,6 +39,8 @@ if (!building) {
   if (configuredMailTransport() === 'fake') {
     console.warn('[mail] MAIL_TRANSPORT=fake: no email leaves this server; mails are captured in mail_fake_sent')
   }
+  // eigenEnterprise Mail: all ten EE_MAIL_* or none; a partial set throws here.
+  configuredManagedMail()
   logOpsStartupDiagnostics()
   startJobQueueTicker()
   startNotificationDispatchTicker()

@@ -6,6 +6,7 @@ import {
   DeleteSuppressedDestinationCommand,
   GetAccountCommand,
   GetEmailIdentityCommand,
+  GetTenantCommand,
   PutEmailIdentityMailFromAttributesCommand,
   SendEmailCommand,
   SESv2Client,
@@ -36,6 +37,8 @@ export type SesSendInput = {
   headers?: MailHeader[]
   /** Message tags echoed back in every SES event (we tag our log id). */
   tags?: Record<string, string>
+  /** eigenEnterprise Mail: the company's SES tenant (managed mode only). */
+  tenantName?: string
 }
 
 /**
@@ -50,6 +53,8 @@ export type SesRawSendInput = {
   raw: Uint8Array
   configurationSet?: string
   tags?: Record<string, string>
+  /** eigenEnterprise Mail: the company's SES tenant (managed mode only). */
+  tenantName?: string
 }
 
 /** What SES says about a domain identity (GetEmailIdentity), in its own words. */
@@ -110,8 +115,13 @@ export type SesApi = {
   deleteIdentity(identity: string): Promise<void>
   /** CreateConfigurationSet + an SNS event destination; both idempotent. */
   ensureEventDestination(input: { configurationSet: string; topicArn: string; events: SesEventType[] }): Promise<void>
-  /** DeleteSuppressedDestination (Amazon's account-level list); a missing entry counts as removed. */
-  removeFromAccountSuppression(email: string): Promise<void>
+  /**
+   * DeleteSuppressedDestination: Amazon's account-level list, or the tenant's
+   * own list when `tenantName` is given (managed mode); a missing entry counts as removed.
+   */
+  removeFromAccountSuppression(email: string, tenantName?: string): Promise<void>
+  /** GetTenant: whether the tenant may send (DISABLED when AWS paused it for bounces or complaints). */
+  getTenantSendingStatus(tenantName: string): Promise<'ENABLED' | 'REINSTATED' | 'DISABLED'>
 }
 
 export type SesFactory = (credentials: SesCredentials) => SesApi
@@ -163,6 +173,7 @@ export const awsSes: SesFactory = (c) => {
           Destination: { ToAddresses: [input.to] },
           ...(input.replyTo ? { ReplyToAddresses: [input.replyTo] } : {}),
           ...(input.configurationSet ? { ConfigurationSetName: input.configurationSet } : {}),
+          ...(input.tenantName ? { TenantName: input.tenantName } : {}),
           ...(tags.length > 0 ? { EmailTags: tags } : {}),
           Content: {
             Simple: {
@@ -191,6 +202,7 @@ export const awsSes: SesFactory = (c) => {
             ...(input.recipients.bcc.length > 0 ? { BccAddresses: input.recipients.bcc } : {}),
           },
           ...(input.configurationSet ? { ConfigurationSetName: input.configurationSet } : {}),
+          ...(input.tenantName ? { TenantName: input.tenantName } : {}),
           ...(tags.length > 0 ? { EmailTags: tags } : {}),
           Content: { Raw: { Data: input.raw } },
         }),
@@ -252,8 +264,18 @@ export const awsSes: SesFactory = (c) => {
         ),
       )
     },
-    async removeFromAccountSuppression(email) {
-      await ignore('NotFoundException', () => client.send(new DeleteSuppressedDestinationCommand({ EmailAddress: email })))
+    async removeFromAccountSuppression(email, tenantName) {
+      await ignore('NotFoundException', () =>
+        client.send(new DeleteSuppressedDestinationCommand({ EmailAddress: email, ...(tenantName ? { TenantName: tenantName } : {}) })),
+      )
+    },
+    async getTenantSendingStatus(tenantName) {
+      const out = await client.send(new GetTenantCommand({ TenantName: tenantName }))
+      const status = out.Tenant?.SendingStatus
+      if (status !== 'ENABLED' && status !== 'REINSTATED' && status !== 'DISABLED') {
+        throw new Error(`Amazon SES returned no sending status for the tenant ${tenantName}`)
+      }
+      return status
     },
   }
 }

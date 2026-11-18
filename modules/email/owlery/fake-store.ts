@@ -80,6 +80,7 @@ export function fakeStoreSes(store: FakeMailStore): SesFactory {
       deleteIdentity: (identity) => store.deleteIdentity(identity),
       ensureEventDestination: async () => {},
       removeFromAccountSuppression: async () => {},
+      getTenantSendingStatus: async () => 'ENABLED',
     }
     return api
   }
