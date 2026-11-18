@@ -3,6 +3,8 @@
  * conversation list's reaction to live frames. Shared by the page and its tests.
  */
 
+import { attachmentMarker, quoteSnippet, type ReplyQuote } from './quote'
+
 export type ReactionView = { emoji: string; userIds: string[]; names: string[] }
 export type AttachmentView = { fileId: string; name: string; mime: string; size: number; image: boolean }
 
@@ -24,6 +26,8 @@ export type MessageView = {
   attachments: AttachmentView[]
   /** A call line (posted by Calls when a call here ended); null for ordinary messages. */
   call: CallLineView | null
+  /** The quoted original ("Reply"); null when this message quotes nothing. */
+  replyTo: ReplyQuote | null
 }
 
 /** A call line's structured data (rendered as "Call, 4 min" / "Missed call"). */
@@ -58,7 +62,33 @@ export function applyFrame(
     const parent = f.parent
     if (parent && nextLog.some((x) => x.id === parent.id)) nextLog = mergeMessages(nextLog, [parent])
   }
+  if (f.action === 'edited' || f.action === 'deleted') {
+    nextLog = refreshQuotes(nextLog, m)
+    if (replies) replies = refreshQuotes(replies, m)
+  }
   return { log: nextLog, replies }
+}
+
+/** The quote of `m` as the service builds it (the composer's preview; refreshed quotes after an edit/delete). */
+export function quoteOf(m: MessageView): ReplyQuote {
+  if (m.deleted) return { id: m.id, parentId: m.parentId, deleted: true, authorId: null, authorName: null, snippet: '', attachment: null, call: false }
+  return {
+    id: m.id,
+    parentId: m.parentId,
+    deleted: false,
+    authorId: m.authorId,
+    authorName: m.authorName,
+    snippet: quoteSnippet(m.body),
+    attachment: attachmentMarker(m.attachments),
+    call: m.call !== null,
+  }
+}
+
+/** Rebuilds the quotes of `original` in `list` (unchanged messages keep their identity). */
+function refreshQuotes(list: MessageView[], original: MessageView): MessageView[] {
+  if (!list.some((x) => x.replyTo?.id === original.id)) return list
+  const q = quoteOf(original)
+  return list.map((x) => (x.replyTo?.id === original.id ? { ...x, replyTo: q } : x))
 }
 
 /** Whether `me` reacted with this emoji. */

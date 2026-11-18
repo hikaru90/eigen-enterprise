@@ -35,6 +35,8 @@ export type Message = {
   authorId: string
   body: string
   parentId: string | null
+  /** The message this one quotes ("Reply"); always in the same conversation. */
+  replyToId: string | null
   createdAt: Date
   editedAt: Date | null
   deletedAt: Date | null
@@ -105,6 +107,8 @@ export type MessagesStore = {
   /** Inserts a call line unless that call already has one; true = inserted. */
   insertCallLine(m: Message & { call: CallSummary }): Promise<boolean>
   getMessage(id: string): Promise<Message | null>
+  /** The messages with these ids that exist (any order). */
+  getMessages(ids: string[]): Promise<Message[]>
   updateMessage(id: string, patch: Partial<Pick<Message, 'body' | 'editedAt' | 'deletedAt'>>): Promise<void>
   /** Newest-first page of TOP-LEVEL messages strictly older than `before` (by createdAt, then id). */
   listMessagesBefore(conversationId: string, before: Message | null, limit: number): Promise<Message[]>

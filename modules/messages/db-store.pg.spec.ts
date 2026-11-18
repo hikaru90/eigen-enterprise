@@ -75,9 +75,9 @@ describe.skipIf(!url)('message_events × interleaved transactions (Postgres)', (
     let done = false
     const reader = (async () => {
       while (!done) {
-        const batch = (await store.eventsAfter(cursor, 1000)).filter((e) => e.conversationId === conversationId)
-        for (const e of batch) delivered.push(e.id)
+        // One read per poll: a second read could advance the cursor past an event the first missed.
         const all = await store.eventsAfter(cursor, 1000)
+        for (const e of all) if (e.conversationId === conversationId) delivered.push(e.id)
         if (all.length) cursor = all.at(-1)!.id
         await new Promise((r) => setTimeout(r, 2))
       }
@@ -94,11 +94,11 @@ describe.skipIf(!url)('message_events × interleaved transactions (Postgres)', (
   it('thread stats: live reply count, last reply and the latest distinct repliers (P-5 summary avatars)', async () => {
     const store = dbMessagesStore(db)
     const at = (min: number) => new Date(Date.UTC(2026, 10, 4, 9, min))
-    const parent = { id: randomUUID(), conversationId, authorId: 'olga', body: 'p', parentId: null, createdAt: at(0), editedAt: null, deletedAt: null, call: null }
+    const parent = { id: randomUUID(), conversationId, authorId: 'olga', body: 'p', parentId: null, replyToId: null, createdAt: at(0), editedAt: null, deletedAt: null, call: null }
     await store.insertMessage(parent)
     const replies: Array<[string, number, boolean]> = [['bea', 1, false], ['carl', 2, false], ['bea', 3, false], ['dan', 4, false], ['eve', 5, true]]
     for (const [authorId, min, deleted] of replies) {
-      await store.insertMessage({ id: randomUUID(), conversationId, authorId, body: 'r', parentId: parent.id, createdAt: at(min), editedAt: null, deletedAt: deleted ? at(6) : null, call: null })
+      await store.insertMessage({ id: randomUUID(), conversationId, authorId, body: 'r', parentId: parent.id, replyToId: null, createdAt: at(min), editedAt: null, deletedAt: deleted ? at(6) : null, call: null })
     }
     const st = (await store.threadStats([parent.id])).get(parent.id)
     expect(st).toEqual({ replyCount: 4, lastReplyAt: at(4), replierIds: ['dan', 'bea', 'carl'] })
@@ -114,6 +114,7 @@ describe.skipIf(!url)('message_events × interleaved transactions (Postgres)', (
       authorId: 'bea',
       body: '',
       parentId: null,
+      replyToId: null,
       createdAt: new Date(),
       editedAt: null,
       deletedAt: null,
@@ -125,5 +126,20 @@ describe.skipIf(!url)('message_events × interleaved transactions (Postgres)', (
     expect(await store.insertCallLine(line({ callId, outcome: 'ended', durationSeconds: 245 }))).toBe(false)
     await expect(store.insertCallLine(line({ callId: randomUUID(), outcome: 'missed', durationSeconds: 10 }))).rejects.toThrow()
     await expect(store.insertCallLine(line({ callId: randomUUID(), outcome: 'hung', durationSeconds: null }))).rejects.toThrow()
+  })
+
+  it('quoted replies (0151): reply_to_id is stored, getMessages batches, and a hard-deleted original clears the link', async () => {
+    const store = dbMessagesStore(db)
+    const base = { conversationId, authorId: 'bea', parentId: null, editedAt: null, deletedAt: null, call: null }
+    const original = { ...base, id: randomUUID(), body: 'original', replyToId: null, createdAt: new Date() }
+    const reply = { ...base, id: randomUUID(), body: 'reply', replyToId: original.id, createdAt: new Date() }
+    await store.insertMessage(original)
+    await store.insertMessage(reply)
+    expect(await store.getMessage(reply.id)).toMatchObject({ replyToId: original.id })
+    expect((await store.getMessages([original.id, reply.id, randomUUID()])).map((m) => m.id).sort()).toEqual([original.id, reply.id].sort())
+    expect(await store.getMessages([])).toEqual([])
+    await sql`delete from messages where id = ${original.id}`
+    expect(await store.getMessage(reply.id)).toMatchObject({ replyToId: null })
+    await expect(store.insertMessage({ ...base, id: randomUUID(), body: 'dangling', replyToId: randomUUID(), createdAt: new Date() })).rejects.toThrow()
   })
 })

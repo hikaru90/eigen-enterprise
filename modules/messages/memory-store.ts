@@ -81,6 +81,12 @@ export class MemoryMessagesStore implements MessagesStore {
   async getMessage(id: string) {
     return this.messages.get(id) ?? null
   }
+  async getMessages(ids: string[]) {
+    return ids.flatMap((id) => {
+      const m = this.messages.get(id)
+      return m ? [m] : []
+    })
+  }
   async updateMessage(id: string, patch: Partial<Pick<Message, 'body' | 'editedAt' | 'deletedAt'>>) {
     const m = this.messages.get(id)
     if (m) Object.assign(m, patch)

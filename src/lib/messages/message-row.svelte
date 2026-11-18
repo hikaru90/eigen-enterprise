@@ -8,13 +8,16 @@
   import Pencil from '@lucide/svelte/icons/pencil'
   import Phone from '@lucide/svelte/icons/phone'
   import PhoneMissed from '@lucide/svelte/icons/phone-missed'
+  import Reply from '@lucide/svelte/icons/reply'
   import SmilePlus from '@lucide/svelte/icons/smile-plus'
   import Trash2 from '@lucide/svelte/icons/trash-2'
+  import { tick } from 'svelte'
   import { resolve } from '$app/paths'
   import { callLineLabel } from '$lib/calls/format'
   import UserAvatar from '$lib/components/user-avatar.svelte'
   import { renderMessageMarkdown, type MentionOptions } from './markdown'
   import MessageEdit from './message-edit.svelte'
+  import ReplyQuote from './reply-quote.svelte'
   import { formatSize, reactedBy, reactionTitle, relativeTime, threadSummary, type MessageView } from './view'
 
   /**
@@ -23,6 +26,10 @@
    * A floating toolbar (react, reply in thread, edit, delete) appears at the
    * row's top right on hover/focus; reactions are pills under the body; a
    * thread shows its summary with the latest repliers' avatars.
+   * "Reply" (Contribute 2a58bcc8) quotes the message in the composer: from the
+   * toolbar, the row's context menu (right-click, the menu key, Shift+F10) or
+   * R on a focused row. A reply shows its quote above the text; clicking it
+   * jumps to the original.
    */
   let {
     message: m,
@@ -44,6 +51,9 @@
     onsaveedit,
     oncanceledit,
     ondelete,
+    onquote,
+    onopenquote,
+    highlighted = false,
   }: {
     message: MessageView
     grouped?: boolean
@@ -65,7 +75,76 @@
     onsaveedit?: (body: string) => void
     oncanceledit?: () => void
     ondelete?: () => void
+    /** Shows "Reply": quote this message in the composer. */
+    onquote?: () => void
+    /** The quote above this reply was clicked: show the original. */
+    onopenquote?: () => void
+    /** Briefly marked: the original a quote jumped to. */
+    highlighted?: boolean
   } = $props()
+
+  let rowEl = $state<HTMLElement | null>(null)
+  let menuEl = $state<HTMLDivElement | null>(null)
+  let menu = $state<{ x: number; y: number } | null>(null)
+  const MENU_WIDTH = 200
+
+  /** Our menu instead of the browser's, except over a link, an image or selected text, which keep theirs. */
+  async function onContextMenu(e: MouseEvent) {
+    if (!toolbar || !rowEl) return
+    const target = e.target as Element | null
+    if (target?.closest('a, img, textarea, input')) return
+    const selection = window.getSelection()
+    if (selection && !selection.isCollapsed && rowEl.contains(selection.anchorNode)) return
+    e.preventDefault()
+    const rect = rowEl.getBoundingClientRect()
+    // The menu key / Shift+F10 report no pointer position: open at the row's top right.
+    const fromKeyboard = e.clientX === 0 && e.clientY === 0
+    const x = fromKeyboard ? rect.width - MENU_WIDTH - 16 : e.clientX - rect.left
+    menu = { x: Math.max(8, Math.min(x, rect.width - MENU_WIDTH - 8)), y: fromKeyboard ? 8 : e.clientY - rect.top }
+    await tick()
+    menuEl?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
+  }
+
+  function closeMenu(refocus = false) {
+    menu = null
+    if (refocus) rowEl?.focus()
+  }
+
+  function pick(action: (() => void) | undefined) {
+    closeMenu()
+    action?.()
+  }
+
+  function onMenuKey(e: KeyboardEvent) {
+    if (!menuEl) return
+    const items = [...menuEl.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+    const i = items.indexOf(document.activeElement as HTMLButtonElement)
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      closeMenu(true)
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      const next = (i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+      items[next]?.focus()
+    } else if (e.key === 'Tab') {
+      closeMenu()
+    }
+  }
+
+  function onMenuFocusOut(e: FocusEvent) {
+    const next = e.relatedTarget as Node | null
+    if (!next || !menuEl?.contains(next)) closeMenu()
+  }
+
+  /** R on the focused row replies (the row itself, never while typing in it). */
+  function onRowKey(e: KeyboardEvent) {
+    if (e.target !== rowEl || !toolbar || !onquote) return
+    if (e.key.toLowerCase() === 'r' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+      e.preventDefault()
+      onquote()
+    }
+  }
 
   const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
   const fullFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'short' })
@@ -77,15 +156,24 @@
   <span class="ml-1 text-xs text-muted-foreground" title={fullFmt.format(new Date(at))} data-testid="messages-edited">(edited)</span>
 {/snippet}
 
+<!-- A focusable row (ARIA feed pattern): Tab reaches its actions, the menu key opens its menu, R replies. -->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 <article
+  bind:this={rowEl}
   class={[
-    'group/row relative flex gap-2 px-4 py-0.5 hover:bg-foreground/[0.03] focus-within:bg-foreground/[0.03] sm:px-5',
+    'group/row relative flex gap-2 px-4 py-0.5 transition-colors duration-700 outline-none hover:bg-foreground/[0.03] focus-within:bg-foreground/[0.03] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:px-5',
     grouped ? '' : 'mt-2 pt-1.5',
-    pickerOpen ? 'bg-foreground/[0.03]' : '',
+    pickerOpen || menu ? 'bg-foreground/[0.03]' : '',
+    highlighted ? 'bg-(--tone-yellow)/25 hover:bg-(--tone-yellow)/25 focus-within:bg-(--tone-yellow)/25' : '',
   ]}
+  tabindex="0"
+  aria-label="{m.authorName}, {timeFmt.format(at)}"
   data-testid={inThread ? 'thread-item' : 'messages-item'}
   data-id={m.id}
   data-grouped={grouped ? 'true' : 'false'}
+  data-highlighted={highlighted ? 'true' : undefined}
+  oncontextmenu={onContextMenu}
+  onkeydown={onRowKey}
 >
   <div class="w-9 shrink-0">
     {#if grouped}
@@ -106,6 +194,10 @@
         <span class="text-[15px] font-bold" data-testid="messages-author">{m.authorName}</span>
         <time class="text-xs text-muted-foreground" datetime={m.createdAt} title={fullFmt.format(at)}>{timeFmt.format(at)}</time>
       </p>
+    {/if}
+
+    {#if m.replyTo && !m.deleted}
+      <ReplyQuote quote={m.replyTo} onopen={() => onopenquote?.()} />
     {/if}
 
     {#if m.deleted}
@@ -246,6 +338,16 @@
         data-testid="messages-react"
         onclick={ontogglepicker}><SmilePlus class="size-4" /></button
       >
+      {#if onquote}
+        <button
+          type="button"
+          class="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+          aria-label="Reply"
+          title="Reply (R)"
+          data-testid="messages-quote"
+          onclick={() => onquote()}><Reply class="size-4" /></button
+        >
+      {/if}
       {#if !inThread}
         <button
           type="button"
@@ -298,7 +400,42 @@
       {/if}
     </div>
   {/if}
+
+  {#if menu && toolbar}
+    <div
+      bind:this={menuEl}
+      class="absolute z-30 grid rounded-lg border border-border bg-popover p-1 text-sm shadow-md"
+      style:left="{menu.x}px"
+      style:top="{menu.y}px"
+      style:width="{MENU_WIDTH}px"
+      role="menu"
+      tabindex="-1"
+      aria-label="Message actions"
+      data-testid="messages-context-menu"
+      onkeydown={onMenuKey}
+      onfocusout={onMenuFocusOut}
+    >
+      {#if onquote}{@render item('Reply', 'messages-menu-quote', Reply, onquote)}{/if}
+      {#if !inThread && onreply}{@render item('Reply in thread', 'messages-menu-thread', MessageSquare, onreply)}{/if}
+      {@render item('Add reaction', 'messages-menu-react', SmilePlus, ontogglepicker)}
+      {#if canEdit}{@render item('Edit', 'messages-menu-edit', Pencil, onstartedit)}{/if}
+      {#if canDelete}{@render item('Delete', 'messages-menu-delete', Trash2, ondelete, true)}{/if}
+    </div>
+  {/if}
 </article>
+
+{#snippet item(label: string, testid: string, Icon: typeof Reply, action: (() => void) | undefined, danger = false)}
+  <button
+    type="button"
+    role="menuitem"
+    class={[
+      'flex h-8 items-center gap-2 rounded-md px-2 text-left outline-none',
+      danger ? 'text-destructive hover:bg-destructive/10 focus:bg-destructive/10' : 'hover:bg-foreground/[0.06] focus:bg-foreground/[0.06]',
+    ]}
+    data-testid={testid}
+    onclick={() => pick(action)}><Icon class={['size-4 shrink-0', danger ? '' : 'text-muted-foreground']} aria-hidden="true" />{label}</button
+  >
+{/snippet}
 
 <style>
   .message-body :global(p) {

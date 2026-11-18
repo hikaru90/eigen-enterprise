@@ -40,6 +40,16 @@ describe('messages.* tools (read only)', () => {
     await expect(tools['messages.read'].handler(ctx('agent-1', 'agent'), { conversation_id: dm.id })).rejects.toThrow(/not found/)
   })
 
+  it('messages.read shows which message a reply quotes (replyTo), so the agent follows the conversation', async () => {
+    const { tools, deps, general } = await seeded()
+    const [original] = (await tools['messages.read'].handler(ctx('agent-1', 'agent'), { channel: 'general' }) as { messages: Array<{ id: string }> }).messages
+    await postMessage(deps, 'carl', general.id, 'agreed', { replyToId: original.id })
+    const read = (await tools['messages.read'].handler(ctx('agent-1', 'agent'), { channel: 'general' })) as {
+      messages: Array<{ body: string; replyTo: { id: string; snippet: string } | null }>
+    }
+    expect(read.messages.at(-1)).toMatchObject({ body: 'agreed', replyTo: { id: original.id, snippet: 'hello **team**' } })
+  })
+
   it('a person reads with their own access', async () => {
     const { tools, dm, lead } = await seeded()
     const read = (await tools['messages.read'].handler(ctx('bea', 'human'), { conversation_id: dm.id })) as {
