@@ -186,3 +186,32 @@ describe('rollbackSteps', () => {
     expect([...at].sort((a, b) => a - b)).toEqual(at)
   })
 })
+
+describe('upgrade from Settings → Updates (pinned to the approved release, steps reported)', () => {
+  it('refuses a release other than the approved one before anything changes', async () => {
+    const { deps, calls } = fake()
+    await expect(
+      upgrade(deps, { from: RELEASES_URL, arch: 'arm64', check: false, expect: 'eigenenterprise-0.4.1-aaaaaaaaaaaa' }),
+    ).rejects.toThrow(/nothing changed: .* holds eigenenterprise-0\.4\.0-1bb02b405565-linux-arm64\.tar\.gz, not the approved eigenenterprise-0\.4\.1/)
+    expect(calls.filter((c) => !c.startsWith('fetch'))).toEqual([])
+  })
+
+  it('reports verifying, safety-copy (with its directory) and installing, in order', async () => {
+    const { deps } = fake()
+    const steps: string[] = []
+    expect(
+      await upgrade(deps, {
+        from: RELEASES_URL,
+        arch: 'arm64',
+        check: false,
+        expect: LATEST,
+        onStep: async (s, detail) => void steps.push(`${s} ${detail}`),
+      }),
+    ).toBe('upgraded')
+    expect(steps).toEqual([
+      `verifying ${RELEASES_URL}`,
+      'safety-copy /var/lib/ee/upgrades/2026-11-10T15-30-00Z',
+      'installing /var/lib/ee/upgrades/2026-11-10T15-30-00Z',
+    ])
+  })
+})

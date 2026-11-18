@@ -20,6 +20,7 @@ describe('settings sub-navigation', () => {
       'API keys',
       'Approval mode',
       'Plugins',
+      'Updates',
     ])
     expect(settingsSections(owner).map((s) => s.id).at(-1)).toBe('backups')
   })
@@ -32,6 +33,11 @@ describe('settings sub-navigation', () => {
     expect(settingsSections(owner).some((s) => s.id === 'modules')).toBe(true)
     expect(settingsSections(admin).some((s) => s.id === 'modules')).toBe(true)
     expect(settingsSections(member).some((s) => s.id === 'modules')).toBe(false)
+  })
+  it('Updates (updating eigenEnterprise on this server) is for the owner and admins', () => {
+    expect(settingsSections(owner).some((s) => s.id === 'updates')).toBe(true)
+    expect(settingsSections(admin).some((s) => s.id === 'updates')).toBe(true)
+    expect(settingsSections(member).some((s) => s.id === 'updates')).toBe(false)
   })
   it('a member sees only the sections they can open', () => {
     expect(settingsSections(member).map((s) => s.id)).toEqual(['account', 'llm', 'passkeys', 'api-keys'])
@@ -49,6 +55,7 @@ describe('settings sub-navigation', () => {
     ['/settings/api-keys', 'api-keys'],
     ['/settings/backups', 'backups'],
     ['/settings/modules', 'modules'],
+    ['/settings/updates', 'updates'],
     ['/settings/extensions', null],
   ])('%s -> %s', (path, id) => {
     expect(currentSettingsSection(path)).toBe(id)

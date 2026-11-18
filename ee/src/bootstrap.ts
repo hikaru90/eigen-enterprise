@@ -1,3 +1,4 @@
+import type { ReleaseSource } from './release-source.ts'
 import { generateKeyPairSync, randomBytes } from 'node:crypto'
 import { isIP } from 'node:net'
 import { basename } from 'node:path'
@@ -35,6 +36,8 @@ export type BootstrapOptions = {
   nodeIp?: string
   /** The central Contribute board, or 'off' (contribute-hub.ts); when omitted, the company's saved one. */
   contributeHub?: ContributeHub
+  /** Where this release came from (install.sh's --from); kept on re-runs that do not pass it. */
+  releaseSource?: ReleaseSource
   /** LiveKit's media host ports; when omitted, the company's (7881/7882 on a first install). */
   rtcPorts?: RtcPorts
   /** The router in front of this box (IPv4 CIDR, PROXY protocol); when omitted, the company's (none on a first install). */
@@ -471,7 +474,13 @@ async function seedCompany(
       {
         workloads: [...s.workloads.filter((w) => w.name !== 'os'), os],
         routes: routing.routes,
-        settings: { ...s.settings, ...routing.settings, contributeHub, trustedProxy: net.trustedProxy },
+        settings: {
+          ...s.settings,
+          ...routing.settings,
+          contributeHub,
+          trustedProxy: net.trustedProxy,
+          releaseSource: opts.releaseSource ?? s.settings.releaseSource,
+        },
       },
       livekitWorkload(livekit.tarball, livekit.sha256, net.rtcPorts),
       net.nodeIp,

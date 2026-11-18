@@ -12,6 +12,7 @@ import {
 } from './spec.ts'
 import { mustRun, type System } from './system.ts'
 import { z } from 'zod'
+import { releaseSourceSchema } from './release-source.ts'
 import { OFFICIAL_CONTRIBUTE_HUB } from './contribute-hub.ts'
 
 function assertHostPorts(workloads: Workload[], settings: Settings): void {
@@ -77,6 +78,12 @@ export const settingsSchema = z
     managed: managedSchema.nullable().default(null),
     /** Managed box paused by the control plane: every public host answers 503 (caddy.ts). */
     suspended: z.boolean().default(false),
+    /**
+     * Where this server's releases come from (`ee bootstrap --release-source`, install.sh passes its
+     * --from), so Settings → Updates can look for a newer signed release. null: installed before it was
+     * recorded; the next `ee upgrade` records it.
+     */
+    releaseSource: releaseSourceSchema.nullable().default(null),
   })
   .strict()
 

@@ -141,5 +141,10 @@ LIVEKIT="livekit-server-$LIVEKIT_VERSION-linux-$ARCH.tar.gz"
 fetch "$LIVEKIT" "$WORK/$LIVEKIT"
 signed "$WORK/$LIVEKIT" "$LIVEKIT"
 
+# Where updates come from (Settings → Updates): this --from, a directory made absolute.
+case "$FROM" in
+  http://*|https://*) SOURCE="$FROM" ;;
+  *) SOURCE=$(cd "$FROM" && pwd) ;;
+esac
 # shellcheck disable=SC2086
-/usr/local/bin/ee bootstrap --release "$WORK/$RELEASE" --livekit-release "$WORK/$LIVEKIT" $PASS
+/usr/local/bin/ee bootstrap --release "$WORK/$RELEASE" --livekit-release "$WORK/$LIVEKIT" --release-source "$SOURCE" $PASS

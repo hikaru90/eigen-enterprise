@@ -17,6 +17,7 @@ describe('capabilitiesFor (one set, from the role)', () => {
       'members.manage': true,
       'approvals.manage': true,
       'backups.manage': false,
+      'updates.manage': true,
       'modules.manage': true,
       'website.manage': true,
       'brand.extract': true,
@@ -36,6 +37,8 @@ describe('capabilitiesFor (one set, from the role)', () => {
     expect(roleCan('admin', 'company.manage')).toBe(true)
     expect(roleCan('member', 'company.manage')).toBe(false)
     expect(roleCan('admin', 'backups.manage')).toBe(false)
+    expect(roleCan('admin', 'updates.manage')).toBe(true)
+    expect(roleCan('member', 'updates.manage')).toBe(false)
   })
 })
 

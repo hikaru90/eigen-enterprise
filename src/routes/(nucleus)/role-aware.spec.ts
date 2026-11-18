@@ -57,6 +57,7 @@ import { _backupsDeps, load as backups } from './settings/backups/+page.server'
 import { load as company } from './settings/company/+page.server'
 import { load as members } from './settings/members/+page.server'
 import { load as modules } from './settings/modules/+page.server'
+import { _updatesDeps, load as updates } from './settings/updates/+page.server'
 
 type Load = (event: never) => Promise<unknown>
 
@@ -67,6 +68,7 @@ const LOADS: Record<string, { path: string; load: Load }> = {
   '/settings/approvals': { path: '/settings/approvals', load: approvals as Load },
   '/settings/backups': { path: '/settings/backups', load: backups as Load },
   '/settings/modules': { path: '/settings/modules', load: modules as Load },
+  '/settings/updates': { path: '/settings/updates', load: updates as Load },
   '/m/website': { path: '/m/website', load: website as Load },
   '/brand/extract': { path: '/brand/extract', load: brandExtract as Load },
   // A malformed set id is the editor's own 404 — past the guard.
@@ -104,6 +106,12 @@ describe('role-aware UI: the capability set and the route guards agree', () => {
     _backupsDeps.client = () =>
       ({
         backups: async () => {
+          throw new SubstrateUnavailableError('not on a box in this spec')
+        },
+      }) as never
+    _updatesDeps.client = () =>
+      ({
+        upgrade: async () => {
           throw new SubstrateUnavailableError('not on a box in this spec')
         },
       }) as never
@@ -155,6 +163,7 @@ describe('role-aware UI: a member is never offered a page that refuses them', ()
       '/settings/company',
       '/settings/members',
       '/settings/modules',
+      '/settings/updates',
     ])
     roleMock.mockResolvedValue('member')
     for (const href of hidden) {

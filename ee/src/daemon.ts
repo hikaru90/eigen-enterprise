@@ -20,6 +20,10 @@ import { launchRestoreUnit, productionSources, restoreUnitActive, writeBackupTim
 import { RestoreService, type RestoreDeps } from './backup/restore.ts'
 import { FleetAgent, FleetError } from './fleet/agent.ts'
 import { fleetHost } from './fleet/host.ts'
+import { UPGRADE_UNIT as FLEET_UPGRADE_UNIT } from './fleet/agent.ts'
+import { fetchReleaseText, hostArch, installedOsRelease } from './upgrade.ts'
+import { UPGRADE_UNIT, upgradeRoute, UpgradeService, type UpgradeServiceDeps } from './upgrade-job.ts'
+import { RELEASE_PUBLIC_KEY_PEM } from './release-key.ts'
 
 /**
  * The control API (§3.1): typed verbs over a unix socket, readable only by root
@@ -36,12 +40,15 @@ export class Ee {
   readonly restore: RestoreService
   /** Managed mode (fleet/agent.ts); polls only once enrolled. */
   readonly fleet: FleetAgent
+  /** Settings → Updates (upgrade-job.ts). */
+  readonly upgrades: UpgradeService
 
   constructor(
     readonly sys: System,
     readonly secrets: SecretStore,
     backupDeps: Partial<BackupDeps> = {},
     restoreDeps: Partial<RestoreDeps> = {},
+    upgradeDeps: Partial<UpgradeServiceDeps> = {},
   ) {
     this.repo = new CompanyRepo(sys, PATHS.company)
     this.backups = new BackupService({
@@ -76,12 +83,52 @@ export class Ee {
       ...restoreDeps,
     })
     this.fleet = new FleetAgent(fleetHost(this))
+    const unitActive = async (unit: string) => (await sys.run('systemctl', ['is-active', '--quiet', unit])).code === 0
+    this.upgrades = new UpgradeService({
+      readFile: (p) => sys.readFile(p),
+      writeFile: (p, c, m) => sys.writeFile(p, c, m),
+      stateFile: PATHS.upgradeState,
+      now: () => sys.now(),
+      emit: async (type, message, data) => {
+        emit(this.journal, sys, type, 'os', message, data)
+        await saveJournal(sys, this.journal)
+      },
+      settings: async () => {
+        const { settings } = await this.repo.read()
+        return { managed: settings.managed !== null, releaseSource: settings.releaseSource }
+      },
+      installed: () => installedOsRelease(sys, this.repo),
+      arch: hostArch(),
+      fetchText: fetchReleaseText,
+      releaseKeyPem: RELEASE_PUBLIC_KEY_PEM,
+      // Detached: the installer restarts ee.service and redeploys os; the update must outlive both.
+      launch: async (id) =>
+        void (await mustRun(sys, 'systemd-run', [
+          `--unit=${UPGRADE_UNIT}`,
+          '--description=eigenEnterprise update (Settings → Updates)',
+          '--collect',
+          '--quiet',
+          '--property=Type=exec',
+          '/usr/local/bin/ee',
+          'upgrade-apply',
+          '--job',
+          id,
+        ])),
+      unitActive: () => unitActive(UPGRADE_UNIT),
+      otherBusy: async () => {
+        if (await unitActive(`${FLEET_UPGRADE_UNIT}.service`)) return 'the hosting provider is updating this server; wait for it to finish'
+        return this.restore.busy()
+      },
+      ...upgradeDeps,
+    })
   }
 
   async load(): Promise<void> {
     this.journal = await loadJournal(this.sys)
     // Settle a check/restore cut off by a restart, and journal a restore the unit finished.
     await this.restore.job()
+    // The same for an update from Settings → Updates (its unit restarts ee mid-way).
+    await this.upgrades.job()
   }
 
   /** Serialize every mutation and reconcile; ee never runs two at once. */
@@ -232,6 +279,10 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
       if (url.pathname.startsWith('/v1/backups')) {
         const b = (await restoreRoute(ee.restore, route, () => body(req))) ?? (await backupRoute(ee.backups, route, () => body(req)))
         if (b) return send(res, b.status, b.data)
+      }
+      if (url.pathname.startsWith('/v1/upgrade')) {
+        const u = await upgradeRoute(ee.upgrades, route, () => body(req))
+        if (u) return send(res, u.status, u.data)
       }
       if (route === 'POST /v1/managed/enroll') {
         // The token is a one-time secret: it goes to the control plane only, never into a log or the journal.

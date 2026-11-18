@@ -253,8 +253,65 @@ export type RestoreJob = {
   announced: boolean
 }
 
+/** Where a box's releases come from (ee/src/release-source.ts). */
+export type ReleaseSource = { kind: 'github'; repo: string } | { kind: 'dir'; path: string } | { kind: 'url'; base: string }
+
+export type UpgradeStep = 'handover' | 'verifying' | 'safety-copy' | 'installing' | 'done'
+
+/** The last update from Settings → Updates, as ee records it (ee/src/upgrade-job.ts; survives the restarts). */
+export type UpgradeJob = {
+  id: string
+  /** The release approved: eigenenterprise-<version>-<sha>. */
+  release: string
+  from: string
+  author: string
+  status: 'running' | 'succeeded' | 'failed'
+  step: UpgradeStep
+  startedAt: string
+  updatedAt: string
+  endedAt: string | null
+  installedBefore: string | null
+  installedAfter: string | null
+  /** The safety copy's directory on the server (ROLLBACK.txt inside says how to go back). */
+  safetyCopy: string | null
+  error: string | null
+  log: string[]
+  announced: boolean
+}
+
+export type UpgradeInfo = {
+  installed: { tarball: string; version: string } | null
+  managed: boolean
+  source: ReleaseSource | null
+  job: UpgradeJob | null
+}
+
+/** newer / rebuild (same version, another build) are offered; installed / older are not. */
+export type LatestRelease = {
+  name: string
+  version: string
+  notes: string | null
+  from: string
+  state: 'newer' | 'rebuild' | 'installed' | 'older'
+}
+
 export class EeClient {
   constructor(private readonly transport: EeTransport = socketTransport()) {}
+
+  /** What runs, where releases come from, the last update (no network on ee's side). */
+  upgrade(): Promise<UpgradeInfo> {
+    return this.call('GET', '/v1/upgrade')
+  }
+
+  /** The newest signed release at this box's source (ee fetches and verifies it). */
+  latestRelease(): Promise<{ latest: LatestRelease }> {
+    return this.call('GET', '/v1/upgrade/latest')
+  }
+
+  /** Update to `release` (the one the person approved); ee refuses anything else. */
+  startUpgrade(i: { release: string; author: string }): Promise<{ job: UpgradeJob }> {
+    return this.call('POST', '/v1/upgrade', i)
+  }
 
   private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
     const { status, data } = await this.transport(method, path, body)

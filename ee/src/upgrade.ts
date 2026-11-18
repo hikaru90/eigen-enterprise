@@ -15,8 +15,13 @@
  * whether or not off-box backups are configured.
  */
 
+import { readdir, readFile, writeFile } from 'node:fs/promises'
+import { basename } from 'node:path'
 import { AGE_REPAIR_SQL } from './age-repair.ts'
-import { trustedManifest } from './release-key.ts'
+import { CompanyRepo } from './company-repo.ts'
+import { PATHS } from './paths.ts'
+import { RELEASE_PUBLIC_KEY_PEM, sha256Hex, trustedManifest } from './release-key.ts'
+import type { System } from './system.ts'
 
 /** The newest public release (GitHub serves `latest/download/<asset>` from the newest release). */
 export const RELEASES_URL = 'https://github.com/hikaru90/eigen-enterprise/releases/latest/download'
@@ -48,7 +53,7 @@ export type UpgradeDeps = {
 }
 
 /** The release's SHA256SUMS, verified against the release key — before anything changes. */
-async function signedManifest(d: UpgradeDeps, from: string) {
+export async function signedManifest(d: Pick<UpgradeDeps, 'fetchText' | 'releaseKeyPem'>, from: string) {
   const [manifest, sig] = [await d.fetchText(`${from}/SHA256SUMS`), await d.fetchText(`${from}/SHA256SUMS.sig`)]
   try {
     return trustedManifest(manifest, sig, d.releaseKeyPem)
@@ -57,14 +62,22 @@ async function signedManifest(d: UpgradeDeps, from: string) {
   }
 }
 
-/** The tarball for this CPU in the release at `from` (its LATEST names the release). */
-export async function latestTarball(d: UpgradeDeps, from: string, arch: Arch): Promise<string> {
+/** The release at `from`, as its LATEST names it (eigenenterprise-<version>-<sha>). */
+export async function latestName(d: Pick<UpgradeDeps, 'fetchText'>, from: string): Promise<string> {
   const name = (await d.fetchText(`${from}/LATEST`)).trim()
   if (!RELEASE_NAME.test(name)) {
     throw new Error(`${from}/LATEST is not a release name (got "${name.slice(0, 80)}") — is --from a release?`)
   }
-  return `${name}-linux-${arch}.tar.gz`
+  return name
 }
+
+/** The tarball for this CPU in the release at `from` (its LATEST names the release). */
+export async function latestTarball(d: UpgradeDeps, from: string, arch: Arch): Promise<string> {
+  return `${await latestName(d, from)}-linux-${arch}.tar.gz`
+}
+
+/** What an upgrade is doing now (Settings → Updates shows it; upgrade-job.ts). */
+export type UpgradeStep = 'verifying' | 'safety-copy' | 'installing'
 
 const shellQuote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 
@@ -104,9 +117,21 @@ The restored company repo names the release that ran before, so ee redeploys it.
 
 export async function upgrade(
   d: UpgradeDeps,
-  opts: { from: string; arch: Arch; check: boolean; nodeIp?: string },
+  opts: {
+    from: string
+    arch: Arch
+    check: boolean
+    nodeIp?: string
+    /** The release the owner approved (Settings → Updates): any other release at `from` is refused. */
+    expect?: string
+    /** Each step as it starts (`safety-copy` carries the safety copy's directory). */
+    onStep?: (step: UpgradeStep, detail: string) => Promise<void>
+  },
 ): Promise<'up-to-date' | 'available' | 'upgraded'> {
   const latest = await latestTarball(d, opts.from, opts.arch)
+  if (opts.expect !== undefined && latest !== `${opts.expect}-linux-${opts.arch}.tar.gz`) {
+    throw new Error(`upgrade refused, nothing changed: ${opts.from} holds ${latest}, not the approved ${opts.expect}`)
+  }
   const current = await d.installed()
   if (current === latest) {
     d.log(`✓ this server already runs the newest release (${latest})`)
@@ -117,13 +142,16 @@ export async function upgrade(
   if (opts.check) return 'available'
 
   d.log('→ verifying the release signature')
+  await opts.onStep?.('verifying', opts.from)
   const manifest = await signedManifest(d, opts.from)
 
   const dir = `${UPGRADES_DIR}/${d.now().toISOString().replace(/\.\d+Z$/, 'Z').replace(/:/g, '-')}`
   d.log(`→ taking a safety copy (database + ee state) in ${dir}`)
+  await opts.onStep?.('safety-copy', dir)
   await safetyCopy(d, dir)
 
   d.log('→ running the release installer (keeps people, websites, repos, domains and secrets)')
+  await opts.onStep?.('installing', dir)
   await d.download(`${opts.from}/install.sh`, `${dir}/install.sh`)
   try {
     manifest.check('install.sh', await d.sha256File(`${dir}/install.sh`))
@@ -140,4 +168,48 @@ export async function upgrade(
   }
   d.log(`✓ upgraded to ${latest} — safety copy and rollback steps kept in ${dir}`)
   return 'upgraded'
+}
+
+/** This CPU, as release tarballs name it. */
+export function hostArch(): Arch {
+  if (process.arch === 'x64' || process.arch === 'arm64') return process.arch
+  throw new Error(`unsupported CPU ${process.arch}`)
+}
+
+/** A release file: GET over http(s), or read from a directory source (an absolute path). */
+async function getRelease(url: string): Promise<Buffer> {
+  if (url.startsWith('/')) return readFile(url)
+  const res = await fetch(url, { redirect: 'follow' })
+  if (!res.ok) throw new Error(`GET ${url} → ${res.status}`)
+  return Buffer.from(await res.arrayBuffer())
+}
+
+export const fetchReleaseText = async (url: string): Promise<string> => (await getRelease(url)).toString('utf8')
+
+/** The os release tarball the company repo runs now (basename), null on a server without one. */
+export async function installedOsRelease(sys: System, repo = new CompanyRepo(sys, PATHS.company)): Promise<string | null> {
+  const os = (await repo.read()).workloads.find((w) => w.name === 'os')
+  return os?.source.kind === 'release' ? basename(os.source.tarball) : null
+}
+
+/** The real UpgradeDeps on a box; `runLive` and `log` say where the installer's output goes. */
+export function boxUpgradeDeps(sys: System, out: Pick<UpgradeDeps, 'runLive' | 'log'>): UpgradeDeps {
+  return {
+    fetchText: fetchReleaseText,
+    download: async (url, dest) => writeFile(dest, await getRelease(url), { mode: 0o600 }),
+    run: (cmd, args) => sys.run(cmd, args, { timeoutMs: 1_800_000 }),
+    installed: () => installedOsRelease(sys),
+    listUpgrades: async () =>
+      readdir(UPGRADES_DIR).catch((err: NodeJS.ErrnoException) => {
+        if (err.code === 'ENOENT') return []
+        throw err
+      }),
+    mkdirp: (p) => sys.mkdirp(p, 0o700),
+    writeFile: (p, content) => sys.writeFile(p, content, 0o600),
+    remove: (p) => sys.remove(p),
+    sha256File: async (p) => sha256Hex(await readFile(p)),
+    releaseKeyPem: RELEASE_PUBLIC_KEY_PEM,
+    now: () => new Date(),
+    ...out,
+  }
 }

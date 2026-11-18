@@ -339,3 +339,39 @@ describe('control API: deploys (progress + log per attempt)', () => {
     expect(r.data).toEqual({ files: ['package.json', 'server.js'], truncated: false })
   })
 })
+
+describe('control API: updates (Settings → Updates)', () => {
+  const desired = (managed: boolean) =>
+    ({
+      settings: {
+        managed: managed ? { controlPlane: 'https://cp.example.com', boxId: '00000000-0000-4000-8000-000000000000', pollSeconds: 60 } : null,
+        releaseSource: { kind: 'github', repo: 'hikaru90/eigen-enterprise' },
+      },
+      workloads: [{ name: 'os', source: { kind: 'release', tarball: '/var/lib/ee/releases/eigenenterprise-0.5.16-14424746613a-linux-arm64.tar.gz' } }],
+    }) as never
+
+  it('GET /v1/upgrade: what runs, where releases come from, no update yet', async () => {
+    const { ee, call } = await start()
+    vi.spyOn(ee.repo, 'read').mockResolvedValue(desired(false))
+    const r = await call('GET', '/v1/upgrade')
+    expect(r).toEqual({
+      status: 200,
+      data: {
+        installed: { tarball: 'eigenenterprise-0.5.16-14424746613a-linux-arm64.tar.gz', version: '0.5.16' },
+        managed: false,
+        source: { kind: 'github', repo: 'hikaru90/eigen-enterprise' },
+        job: null,
+      },
+    })
+  })
+
+  it('POST /v1/upgrade on a managed box: 409, nothing started', async () => {
+    const { sys, ee, call } = await start()
+    vi.spyOn(ee.repo, 'read').mockResolvedValue(desired(true))
+    const runs = vi.spyOn(sys, 'run')
+    const r = await call('POST', '/v1/upgrade', { release: 'eigenenterprise-0.5.17-aaaaaaaaaaaa', author: 'human:u1' })
+    expect(r.status).toBe(409)
+    expect(JSON.stringify(r.data)).toMatch(/hosting provider/)
+    expect(runs.mock.calls.some(([cmd]) => cmd === 'systemd-run')).toBe(false)
+  })
+})

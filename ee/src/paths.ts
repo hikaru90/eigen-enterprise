@@ -23,6 +23,8 @@ export const PATHS = {
   backupRuns: '/var/lib/ee/backups.json',
   /** The last check/restore job from Settings → Backups (backup/restore.ts); outlives the restore's restart. */
   restoreState: '/var/lib/ee/restore.json',
+  /** The last update from Settings → Updates (upgrade-job.ts); outlives the update's restarts. */
+  upgradeState: '/var/lib/ee/upgrade.json',
   /** Root-only scratch for one backup/restore run (emptied after). */
   backupTmp: '/var/lib/ee/backup-tmp',
   /** The os workload's persistent state (Drive under drive/, the agent under agent/). */

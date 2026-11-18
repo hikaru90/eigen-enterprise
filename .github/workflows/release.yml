@@ -31,6 +31,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The release notes (NOTES.md) are the commits since the previous v* tag.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -45,6 +48,7 @@ jobs:
           name: release-${{ matrix.arch }}
           path: |
             dist/release/LATEST
+            dist/release/NOTES.md
             dist/release/install.sh
             dist/release/ee.mjs
             dist/release/ee.mjs.sha256
@@ -64,11 +68,11 @@ jobs:
           path: built
       - name: Both builds agree on the release name, the installer and ee
         run: |
-          for f in LATEST install.sh ee.mjs.sha256; do
+          for f in LATEST NOTES.md install.sh ee.mjs.sha256; do
             cmp built/release-amd64/$f built/release-arm64/$f || { echo "$f differs between the amd64 and arm64 builds" >&2; exit 1; }
           done
           mkdir out
-          cp built/release-amd64/{LATEST,install.sh,ee.mjs,ee.mjs.sha256} out/
+          cp built/release-amd64/{LATEST,NOTES.md,install.sh,ee.mjs,ee.mjs.sha256} out/
           cp built/release-*/eigenenterprise-*.tar.gz* out/
           cp built/release-*/livekit-server-*.tar.gz* out/
           (cd out && sha256sum -c --quiet *.sha256)
@@ -92,14 +96,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          {
+            cat out/NOTES.md
+            printf '\nRelease %s.\n\nInstall on a fresh Ubuntu 24.04 / Debian 13 server (as root):\n\n    curl -fsSL https://github.com/%s/releases/latest/download/install.sh | sh -s -- --from https://github.com/%s/releases/latest/download\n\nUpdate an installed server from Settings → Updates, or run `ee upgrade` on it (it keeps everything).\n' "$(cat out/LATEST)" "$GITHUB_REPOSITORY" "$GITHUB_REPOSITORY"
+          } > notes.md
           gh release create "$GITHUB_REF_NAME" out/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "eigenEnterprise $GITHUB_REF_NAME" \
             --latest \
-            --notes "Release $(cat out/LATEST).
-
-          Install on a fresh Ubuntu 24.04 / Debian 13 server (as root):
-
-              curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/latest/download/install.sh | sh -s -- --from https://github.com/$GITHUB_REPOSITORY/releases/latest/download
-
-          Upgrade an installed server: \`ee upgrade\` (or re-run the line above — it keeps everything)."
+            --notes-file notes.md

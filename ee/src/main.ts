@@ -1,8 +1,6 @@
 import { spawn } from 'node:child_process'
-import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { request } from 'node:http'
 import { isIP } from 'node:net'
-import { basename } from 'node:path'
 import { createInterface } from 'node:readline'
 import { parseArgs } from 'node:util'
 import { z } from 'zod'
@@ -19,11 +17,12 @@ import { Ee, startControlServer } from './daemon.ts'
 import { loadJournal } from './journal.ts'
 import { PATHS } from './paths.ts'
 import { renderLiveEnvFiles } from './reconcile.ts'
-import { RELEASE_PUBLIC_KEY_PEM, sha256Hex } from './release-key.ts'
 import { SecretStore } from './secret-store.ts'
 import { HOSTNAME } from './spec.ts'
 import { mustRun, RealSystem } from './system.ts'
-import { RELEASES_URL, UPGRADES_DIR, upgrade, type Arch } from './upgrade.ts'
+import { boxUpgradeDeps, hostArch, installedOsRelease, RELEASES_URL, upgrade } from './upgrade.ts'
+import { parseReleaseSource } from './release-source.ts'
+import { runUpgradeApply } from './upgrade-job.ts'
 import { parseContributeHubFlag } from './contribute-hub.ts'
 
 const USAGE = `ee — the company's init (plan/phase-substrate.md)
@@ -32,10 +31,12 @@ const USAGE = `ee — the company's init (plan/phase-substrate.md)
                [--acme-email <email>] [--node-ip <ip>]   (--node-ip: the public IP calls media
                                          reach this server on; required once, then kept)
                [--rtc-ports <tcp>,<udp>] [--trusted-proxy <IPv4 CIDR>] [--claim-hash <sha256>]
+               [--release-source <install.sh --from>]   (where updates come from; install.sh passes it)
                                          (hosted boxes behind a shared-IP router; kept on re-runs,
                                           --claim-hash on the first install only)
   ee upgrade [--check] [--from <release-url>] [--node-ip <ip>]   (update over the air to the newest
                                          release; keeps everything, takes a safety copy first)
+  ee upgrade-apply --job <id>           (run by ee-upgrade.service, which Settings → Updates starts through ee)
   ee claim-link                          (new private link to claim this server)
   ee status
   ee reconcile
@@ -132,6 +133,7 @@ async function main(argv: string[]): Promise<void> {
           'rtc-ports': { type: 'string' },
           'trusted-proxy': { type: 'string' },
           'claim-hash': { type: 'string' },
+          'release-source': { type: 'string' },
         },
       })
       if (!values.release) throw new Error('--release <tarball> is required')
@@ -152,6 +154,7 @@ async function main(argv: string[]): Promise<void> {
       if (values['claim-hash'] !== undefined && !CLAIM_HASH.test(values['claim-hash'])) {
         throw new Error('--claim-hash must be 64 lowercase hex characters (the SHA-256 of the claim token)')
       }
+      const releaseSource = values['release-source'] === undefined ? undefined : parseReleaseSource(values['release-source'])
       const { consoleHost, claimToken, claimIssuedElsewhere } = await bootstrap(sys, {
         release: values.release,
         livekitRelease: values['livekit-release'],
@@ -162,6 +165,7 @@ async function main(argv: string[]): Promise<void> {
         ...(rtcPorts ? { rtcPorts } : {}),
         ...(trustedProxy ? { trustedProxy } : {}),
         ...(values['claim-hash'] !== undefined ? { claimHash: values['claim-hash'] } : {}),
+        ...(releaseSource ? { releaseSource } : {}),
       })
       console.log('→ first deploy (health-gated; migrations run now, this takes a minute)')
       const ee = new Ee(sys, await SecretStore.open(sys))
@@ -193,47 +197,60 @@ async function main(argv: string[]): Promise<void> {
       if (values['node-ip'] && isIP(values['node-ip']) === 0) {
         throw new Error(`--node-ip "${values['node-ip']}" is not an IP address`)
       }
-      const arch: Arch = process.arch === 'x64' || process.arch === 'arm64' ? process.arch : (() => {
-        throw new Error(`unsupported CPU ${process.arch}`)
-      })()
-      const get = async (url: string) => {
-        const res = await fetch(url, { redirect: 'follow' })
-        if (!res.ok) throw new Error(`GET ${url} → ${res.status}`)
-        return res
-      }
       const result = await upgrade(
-        {
-          fetchText: async (url) => (await get(url)).text(),
-          download: async (url, dest) => writeFile(dest, Buffer.from(await (await get(url)).arrayBuffer()), { mode: 0o600 }),
-          run: (cmd, args) => sys.run(cmd, args, { timeoutMs: 1_800_000 }),
+        boxUpgradeDeps(sys, {
           runLive: (cmd, args) =>
             new Promise((resolve, reject) => {
               spawn(cmd, args, { stdio: 'inherit' }).on('error', reject).on('exit', (code) => resolve(code ?? 1))
             }),
-          installed: async () => {
-            const os = (await new CompanyRepo(sys, PATHS.company).read()).workloads.find((w) => w.name === 'os')
-            return os?.source.kind === 'release' ? basename(os.source.tarball) : null
-          },
-          listUpgrades: async () => readdir(UPGRADES_DIR).catch((err: NodeJS.ErrnoException) => {
-            if (err.code === 'ENOENT') return []
-            throw err
-          }),
-          mkdirp: (p) => sys.mkdirp(p, 0o700),
-          writeFile: (p, content) => sys.writeFile(p, content, 0o600),
-          remove: (p) => sys.remove(p),
-          sha256File: async (p) => sha256Hex(await readFile(p)),
-          releaseKeyPem: RELEASE_PUBLIC_KEY_PEM,
-          now: () => new Date(),
           log: (l) => console.log(l),
-        },
+        }),
         {
           from: values.from ?? RELEASES_URL,
-          arch,
+          arch: hostArch(),
           check: values.check === true,
           ...(values['node-ip'] ? { nodeIp: values['node-ip'] } : {}),
         },
       )
       if (values.check && result === 'available') console.log('  run `ee upgrade` to install it')
+      return
+    }
+    case 'upgrade-apply': {
+      // Settings → Updates (upgrade-job.ts): the daemon checked the release and recorded the job, then
+      // started this as ee-upgrade.service, which outlives ee.service and the os workload restarting.
+      const { values } = parseArgs({ args: rest, options: { job: { type: 'string' } } })
+      if (!values.job || !/^[0-9a-f-]{36}$/.test(values.job)) throw new Error('--job <id> is required (Settings → Updates starts this)')
+      if (process.getuid?.() !== 0) throw new Error('ee upgrade-apply must run as root')
+      await runUpgradeApply(
+        { readFile: (p) => sys.readFile(p), writeFile: (p, c, m) => sys.writeFile(p, c, m), stateFile: PATHS.upgradeState, now: () => new Date() },
+        values.job,
+        async (hooks, job) => {
+          // Output lines are recorded in order; the upgrade's own calls are not awaited per line.
+          let lines: Promise<void> = Promise.resolve()
+          const line = (l: string) => void (lines = lines.then(() => hooks.line(l)))
+          const result = await upgrade(
+            boxUpgradeDeps(sys, {
+              log: line,
+              runLive: (cmd, args) =>
+                new Promise((resolve, reject) => {
+                  const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+                  for (const stream of [child.stdout, child.stderr]) createInterface({ input: stream }).on('line', line)
+                  child.on('error', reject).on('close', (code) => resolve(code ?? 1))
+                }),
+            }),
+            { from: job.from, arch: hostArch(), check: false, expect: job.release, onStep: (step, detail) => hooks.step(step, step === 'safety-copy' ? detail : undefined) },
+          )
+          await lines
+          if (result !== 'upgraded') throw new Error(`nothing was changed: this server already runs ${job.release}`)
+          const now = await installedOsRelease(sys)
+          if (now !== `${job.release}-linux-${hostArch()}.tar.gz`) {
+            throw new Error(`the installer finished, but the company repo runs ${now ?? 'no release'}, not ${job.release}`)
+          }
+          return now
+        },
+        (l) => console.log(l),
+      )
+      console.log('✓ updated')
       return
     }
     case 'daemon': {

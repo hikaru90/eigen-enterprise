@@ -102,6 +102,7 @@ export default defineConfig({
       'src/routes/(nucleus)/dashboard.svelte.spec.ts',
       // Brackets/parentheses escaped: [snapshot] is a glob class otherwise.
       'src/routes/\\(nucleus\\)/settings/backups/restore/\\[snapshot\\]/restore-page.svelte.spec.ts',
+      'src/routes/(nucleus)/settings/updates/updates-page.svelte.spec.ts',
       'src/lib/components/module-settings-section.svelte.spec.ts',
       'src/lib/components/github-app-connect.svelte.spec.ts',
       'src/lib/components/app-deploy-progress.svelte.spec.ts',

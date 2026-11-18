@@ -4,6 +4,7 @@
 #   dist/release/ee.mjs                                          (the ee binary bundle)
 #   dist/release/install.sh
 #   dist/release/LATEST                                          (the release name, for install.sh --from <url>)
+#   dist/release/NOTES.md                                        (what changed since the previous v* tag; Settings → Updates shows it)
 #   dist/release/SHA256SUMS                                      (all of the above; the workflow re-makes and signs it)
 #   dist/release/livekit-server-<LIVEKIT_VERSION>-linux-<arch>.tar.gz (+ .sha256)   (calls, plan/video-calls.md §4)
 # Published by .github/workflows/release.yml (amd64 + arm64) on a v* tag.
@@ -76,8 +77,15 @@ find "$OUT" -name "livekit-server-*-linux-${NODE_ARCH}.tar.gz*" ! -name "$LIVEKI
 (cd "$OUT" && shasum -a 256 "$LIVEKIT_NAME.tar.gz" > "$LIVEKIT_NAME.tar.gz.sha256")
 
 printf '%s\n' "eigenenterprise-${VERSION}-${SHA}" > "$OUT/LATEST"
+# Release notes: the commits since the previous release tag (signed with the rest, so Settings → Updates
+# shows exactly what was signed). CI checks out the full history for this.
+PREV=$(git -C "$ROOT" describe --tags --abbrev=0 --match 'v[0-9]*' --exclude "v$VERSION" HEAD) || { echo "✗ no earlier v* tag to write release notes from" >&2; exit 1; }
+{
+  printf '# eigenEnterprise %s\n\nChanges since %s:\n\n' "$VERSION" "$PREV"
+  git -C "$ROOT" log --no-merges --format='- %s' "$PREV..HEAD" | head -n 80
+} > "$OUT/NOTES.md"
 # One manifest over everything this build produced (signed in the release workflow, M5).
-(cd "$OUT" && shasum -a 256 LATEST install.sh ee.mjs "$NAME.tar.gz" "$LIVEKIT_NAME.tar.gz" > SHA256SUMS)
+(cd "$OUT" && shasum -a 256 LATEST NOTES.md install.sh ee.mjs "$NAME.tar.gz" "$LIVEKIT_NAME.tar.gz" > SHA256SUMS)
 rm -f "$OUT/SHA256SUMS.sig"
 # On the owner's machine the release key signs it too, so the local box (ee/e2e/box.sh) installs it.
 # CI builds have no key here: the publish job signs the combined manifest.

@@ -25,6 +25,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { id: 'approvals', name: 'Approval mode', href: '/settings/approvals' },
   // Every plugin, on or off, and the switch (owner, 2026-11-12) — owner and admins.
   { id: 'modules', name: 'Plugins', href: '/settings/modules' },
+  // Updating eigenEnterprise on this server (ee does it) — owner and admins.
+  { id: 'updates', name: 'Updates', href: '/settings/updates' },
   // The owner's alone: backups hold the company's recovery code (D11).
   { id: 'backups', name: 'Backups', href: '/settings/backups' },
 ]
