@@ -14,6 +14,7 @@ describe('settings sub-navigation', () => {
     expect(settingsSections(admin).map((s) => s.name)).toEqual([
       'Account',
       'Company',
+      'Domains',
       'Members & invites',
       'AI provider',
       'Passkeys & sessions',

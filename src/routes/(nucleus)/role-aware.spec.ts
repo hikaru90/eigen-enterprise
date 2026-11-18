@@ -48,6 +48,12 @@ vi.mock('$lib/server/boot', () => ({
   }),
 }))
 
+// Settings → Domains reads the mail domains and (on a managed box) the control plane, past its guard.
+vi.mock('$lib/server/domains/env', () => ({ domainsFromEnv: () => null }))
+vi.mock('../../../modules/email/platform/service', () => ({
+  emailPlatform: () => ({ listDomains: async () => [], owlery: { mode: async () => null } }),
+}))
+
 import { load as brandEditor } from './brand/editor/[setId]/+page.server'
 import { load as brandExtract } from './brand/extract/+page.server'
 import { load as driveGithub } from './drive/github/+page.server'
@@ -55,6 +61,7 @@ import { load as website } from './m/website/+page.server'
 import { load as approvals } from './settings/approvals/+page.server'
 import { _backupsDeps, load as backups } from './settings/backups/+page.server'
 import { load as company } from './settings/company/+page.server'
+import { load as domains } from './settings/domains/+page.server'
 import { load as members } from './settings/members/+page.server'
 import { load as modules } from './settings/modules/+page.server'
 import { _updatesDeps, load as updates } from './settings/updates/+page.server'
@@ -64,6 +71,7 @@ type Load = (event: never) => Promise<unknown>
 /** The real load of every guarded page (GUARDED_PAGES), at a path below its prefix. */
 const LOADS: Record<string, { path: string; load: Load }> = {
   '/settings/company': { path: '/settings/company', load: company as Load },
+  '/settings/domains': { path: '/settings/domains', load: domains as Load },
   '/settings/members': { path: '/settings/members', load: members as Load },
   '/settings/approvals': { path: '/settings/approvals', load: approvals as Load },
   '/settings/backups': { path: '/settings/backups', load: backups as Load },
@@ -161,6 +169,7 @@ describe('role-aware UI: a member is never offered a page that refuses them', ()
       '/settings/approvals',
       '/settings/backups',
       '/settings/company',
+      '/settings/domains',
       '/settings/members',
       '/settings/modules',
       '/settings/updates',

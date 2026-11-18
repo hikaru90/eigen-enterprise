@@ -8,7 +8,7 @@
  */
 
 export const CAPABILITIES = [
-  /** Settings → Company: the company name and logo. */
+  /** Settings → Company (the company name and logo) and Settings → Domains. */
   'company.manage',
   /** Settings → Members & invites. */
   'members.manage',
@@ -39,6 +39,8 @@ export type Capabilities = Readonly<Record<Capability, boolean>>
  */
 export const GUARDED_PAGES: readonly { prefix: string; capability: Capability }[] = [
   { prefix: '/settings/company', capability: 'company.manage' },
+  // The company's domains belong with its name: the same people manage them.
+  { prefix: '/settings/domains', capability: 'company.manage' },
   { prefix: '/settings/members', capability: 'members.manage' },
   { prefix: '/settings/approvals', capability: 'approvals.manage' },
   { prefix: '/settings/backups', capability: 'backups.manage' },

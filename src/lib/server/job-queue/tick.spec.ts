@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { recoverMock, ensureMock, drainMock, snapshotMock, emailTickMock, pluginOnMock, shareTickMock } = vi.hoisted(() => ({
+const { recoverMock, ensureMock, drainMock, snapshotMock, emailTickMock, pluginOnMock, shareTickMock, domainsTickMock } = vi.hoisted(() => ({
+  domainsTickMock: vi.fn(async () => {}),
   shareTickMock: vi.fn(async () => {}),
   recoverMock: vi.fn(),
   ensureMock: vi.fn(),
@@ -21,6 +22,9 @@ vi.mock('./snapshot', () => ({
 }))
 vi.mock('./email-tick', () => ({
   tickEmailPlatform: emailTickMock,
+}))
+vi.mock('./domains-tick', () => ({
+  tickManagedDomains: domainsTickMock,
 }))
 vi.mock('./repos-tick', () => ({
   tickRepos: vi.fn(async () => {}),
@@ -87,6 +91,7 @@ describe('tickGlobalJobQueue', () => {
     await expect(tickGlobalJobQueue()).resolves.toEqual({ enqueued: 0, drain: { claimed: 0, completed: 0, failed: 0 } })
     expect(ensureMock).not.toHaveBeenCalled()
     expect(emailTickMock).not.toHaveBeenCalled()
+    expect(domainsTickMock).not.toHaveBeenCalled()
     expect(drainMock).toHaveBeenCalledOnce()
     // Contribute is a system module: its sharing runs on every tick (its own switch is in Settings).
     expect(shareTickMock).toHaveBeenCalledOnce()
@@ -99,5 +104,7 @@ describe('tickGlobalJobQueue', () => {
     await tickGlobalJobQueue()
     expect(ensureMock).toHaveBeenCalledOnce()
     expect(emailTickMock).toHaveBeenCalledOnce()
+    // Bought domains become mail domains with the email work (managed-domains DM5).
+    expect(domainsTickMock).toHaveBeenCalledOnce()
   })
 })

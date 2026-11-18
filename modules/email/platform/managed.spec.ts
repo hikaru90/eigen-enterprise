@@ -109,6 +109,31 @@ describe('EmailPlatform domains in managed mode', () => {
     await expect(platform.addSender({ address: 'me@gmail.test', displayName: null }, 'u1')).rejects.toThrow(/company’s own domains/)
   })
 
+  it('a bought domain (managed-domains DM5) is added with receiving on, once', async () => {
+    const { platform, ses, domains } = setup()
+    const first = await platform.addBoughtDomain('acme.eu')
+    expect(first).toMatchObject({ added: true })
+    expect([...domains.values()]).toEqual([
+      expect.objectContaining({ name: 'acme.eu', receiving: true, createdBy: 'domains', errorMessage: MANAGED_DOMAIN_PENDING_MESSAGE }),
+    ])
+    expect(await platform.addBoughtDomain('ACME.eu')).toMatchObject({ added: false })
+    expect(domains.size).toBe(1)
+    expect(ses.calls.filter((c) => PROVISIONING.includes(c))).toEqual([])
+  })
+
+  it('outside managed mode a bought domain is refused in plain words (its records live in our zone)', async () => {
+    const owlery = new OwleryService({
+      store: new InMemoryOwleryStore(),
+      key: () => owlerySealKey('k'),
+      ses: new FakeSes().factory,
+      sns: new FakeSns().factory,
+      log: new InMemoryMailLog(),
+      managed: () => null,
+    })
+    const platform = new EmailPlatform({ ...(setup().platform as unknown as { deps: object }).deps, owlery } as never)
+    await expect(platform.addBoughtDomain('acme.eu')).rejects.toThrow(/eigenEnterprise Mail/)
+  })
+
   it('suppression removal names the tenant', async () => {
     const { platform, ses, removed } = setup()
     await platform.unsuppress('x@y.test')

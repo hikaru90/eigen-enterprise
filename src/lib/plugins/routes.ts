@@ -160,6 +160,8 @@ export const CORE_ROUTES: readonly string[] = [
   '/api/claim',
   '/api/company',
   '/api/contribute',
+  // The company's domains (buy, connect): Settings › Domains and the onboarding's Domain act (plan/managed-domains.md).
+  '/api/domains',
   '/api/e2e',
   // A managed box's ee asks os on loopback (seats, backup key), with the per-box bearer token;
   // they answer 404 themselves on a self-hosted install (no EE_FLEET_LOCAL_TOKEN).

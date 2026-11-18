@@ -8,6 +8,8 @@ import { getDb } from '$lib/server/db'
 import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
 import { userPreference } from '$lib/server/db/schema'
+import { domainsFromEnv } from '$lib/server/domains/env'
+import { registrantDefaults } from '$lib/server/domains/registrant-defaults'
 import { isCompanyProviderReady } from '$lib/server/llm/provider-ready'
 import { companyMail } from '$lib/server/mail'
 import { managedMailFromEnv } from '$lib/server/mail/managed-env'
@@ -73,6 +75,13 @@ export const load: PageServerLoad = async (event) => {
   const providerMissing = !isHarness && companyOnboarding && !providerReady
   const needsOnboarding = providerMissing && showWelcome
 
+  // The owner sets up company email in the onboarding (sign-in codes depend on it): a domain, then the
+  // sender address. With eigenEnterprise Mail that is still to do until a default sender exists, but there
+  // are no keys (plan/managed-domains.md, "The two onboarding steps").
+  const needsMail = !isHarness && isAdmin && !(await companyMail().isConfigured())
+  const managedMail = managedMailFromEnv() !== null
+  const canBuyDomain = domainsFromEnv() !== null
+
   return {
     needsOnboarding,
     providerMissing,
@@ -88,8 +97,15 @@ export const load: PageServerLoad = async (event) => {
     handoffAvailable: showWelcome && (await onboardingFactsFor(userId))?.website === 'not_started',
     byokUiEnabled: isByokUiEnabled(),
     displayName,
-    // The owner sets up company email in the onboarding (sign-in codes depend on it); eigenEnterprise Mail needs no setup.
-    needsMail: !isHarness && isAdmin && !(await companyMail().isConfigured()) && managedMailFromEnv() === null,
+    needsMail,
+    // The Domain act: buying is offered on managed boxes (EE_DOMAINS_*); the Email act needs no keys with eigenEnterprise Mail.
+    domainSetup: needsMail
+      ? {
+          managedMail,
+          canBuy: canBuyDomain,
+          registrant: canBuyDomain && showWelcome ? await registrantDefaults(event.locals.user) : null,
+        }
+      : null,
   }
 }
 

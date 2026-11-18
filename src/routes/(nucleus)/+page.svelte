@@ -48,6 +48,7 @@
     <WelcomeWizard
       providerReady={!data.needsOnboarding}
       needsMail={data.needsMail}
+      domainSetup={data.domainSetup}
       byokUiEnabled={data.byokUiEnabled}
       displayName={data.displayName}
       returnedFromProvider={data.returnedFromProvider}

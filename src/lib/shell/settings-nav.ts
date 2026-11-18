@@ -18,6 +18,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { id: 'account', name: 'Account', href: '/settings' },
   // The company's name and logo (top left of the app) — owner and admins.
   { id: 'company', name: 'Company', href: '/settings/company' },
+  // The company's domains: bought through eigenEnterprise or connected (plan/managed-domains.md) — owner and admins.
+  { id: 'domains', name: 'Domains', href: '/settings/domains' },
   { id: 'members', name: 'Members & invites', href: '/settings/members' },
   { id: 'llm', name: 'AI provider', href: '/settings/llm' },
   { id: 'passkeys', name: 'Passkeys & sessions', href: '/settings/passkeys' },
