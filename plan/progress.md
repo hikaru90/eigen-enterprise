@@ -19,6 +19,14 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - **Not verified:** the click in a real browser on the box. The pane doesn't trust Caddy's local CA, and signing in needs the owner's email code (component spec covers the page: steps, reconnect through 502/network errors, result). Production needs one SSH `ee upgrade` to record its release source, then Settings → Updates works there.
 - **Not done:** a restore does not yet refuse while an update runs (an update refuses while a restore runs).
 
+## 2026-11-18 — Hosted boxes run on the platform AI from hosting (merge `56f01b7`, `fa39299`; not released)
+
+- **Owner:** "we want to provide inference ourselves"; the onboarding provider step was flawed ("subscription shows copilot and openrouter (which is not a subscription)").
+- **Bug found:** the control plane hands each hosted company an OpenRouter key + models (`desired.platformAi`), ee wrote them as `LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL_*`, which os reads as the self-hosted BYOK pair, while its default `platform_credits` mode wanted `SERVICE_API_KEY_*`. So a hosted box counted as having no AI (`isCompanyProviderReady` false → the "needs a mind" step) and platform chat wasn't wired.
+- **Fix:** ee writes `PLATFORM_LLM_BASE_URL`, `_API_KEY`, `_MODEL_CHAT`, `_MODEL_EMBEDDING` (all or none, partial fails loud at os start); os has a declared provider kind `platform` that `platform_credits` uses first; cost tracking attached (activity label `platform`). A BYOK choice in Settings still overrides. Self-hosted env paths unchanged.
+- **Changed (announced):** on managed boxes ee deletes the fleet-set `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL_CHAT`, `LLM_MODEL_EMBEDDING` (they masqueraded as BYOK); a BYOK credential saved without a model on a hosted box no longer borrows those as defaults. The OpenRouter sign-in moved from "Use a subscription I have" to "Use an API key" ("Sign in to OpenRouter to create a key"); the subscription card names only GitHub Copilot (Claude/ChatGPT sign-ins were named but never offered).
+- **Not covered:** platform dictation (speech-to-text) on hosted boxes still needs `OPENROUTER_*` service env.
+
 ## 2026-11-18 — Managed domains planned and started: buy a domain in onboarding (plan approved: "Build it")
 
 - **Owner decisions:** domains are registered with **Route 53 in our AWS project** (the project must be upgraded to the Paid plan first: on Free every Route 53 Domains call is refused, "Free Tier accounts are not supported for this service"); price = **AWS price + margin**, charged through Stripe at purchase and yearly; the **company is the registrant**; onboarding gets **separate Domain and Email steps** (owner: "domain and email step should be disjunct"). Plan: `plan/managed-domains.md`.
