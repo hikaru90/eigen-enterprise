@@ -23,6 +23,7 @@ import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { startJobQueueTicker } from '$lib/server/job-queue/ticker'
 import { startNotificationDispatchTicker } from '$lib/server/memory/notification-dispatch-ticker'
 import { startBackupHealthTicker } from '$lib/server/backups/live'
+import { platformAiFromEnv } from '$lib/server/llm/platform-llm'
 import { logOpsStartupDiagnostics } from '$lib/server/ops/startup-diagnostics'
 import { configuredMailTransport, configuredManagedMail } from '../modules/email/owlery/service'
 import { installPromptShutdown } from '$lib/server/shutdown'
@@ -41,6 +42,8 @@ if (!building) {
   }
   // eigenEnterprise Mail: all ten EE_MAIL_* or none; a partial set throws here.
   configuredManagedMail()
+  // The platform AI from hosting: all four PLATFORM_LLM_* or none; a partial set throws here.
+  platformAiFromEnv()
   logOpsStartupDiagnostics()
   startJobQueueTicker()
   startNotificationDispatchTicker()

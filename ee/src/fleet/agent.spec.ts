@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { BackupConfig, BackupRun, Health } from '../backup/service.ts'
 import { settingsSchema, type DesiredState } from '../company-repo.ts'
 import { EE_VERSION } from '../version.ts'
-import { BOX_KEY, FLEET_BACKUP_MARK, FLEET_SCOPE, FleetAgent, FleetError, LOCAL_TOKEN, UPGRADE_UNIT, type FleetHost } from './agent.ts'
+import { BOX_KEY, FLEET_BACKUP_MARK, FLEET_SCOPE, FleetAgent, FleetError, LEGACY_PLATFORM_AI_SECRETS, LOCAL_TOKEN, UPGRADE_UNIT, type FleetHost } from './agent.ts'
 import { escrowRequestV1, FLEET_FEATURES, FLEET_PATHS, newBoxKey, reportV1, verifyFleetRequest } from './protocol.ts'
 
 const BOX = '0b9a7c3e-1f2d-4c5b-8a6e-9d8c7b6a5f4e'
@@ -225,14 +225,20 @@ describe('fleet: desired state (level-triggered)', () => {
     expect(f.logs.some((l) => l.message.includes(UPGRADE_UNIT))).toBe(true)
   })
 
-  it('platformAi: sets + declares the four LLM secrets on os, redeploys only on change, null removes them', async () => {
+  it('platformAi: sets + declares the four PLATFORM_LLM_* secrets on os, redeploys only on change, null removes them', async () => {
     const f = fakeHost({ managed: true })
     const agent = new FleetAgent(f.host)
     const ai = { llmBaseUrl: 'https://llm.example.com', llmApiKey: 'sk-PLATFORM', llmModelChat: 'chat-1', llmModelEmbedding: 'embed-1' }
+    const names = ['PLATFORM_LLM_BASE_URL', 'PLATFORM_LLM_API_KEY', 'PLATFORM_LLM_MODEL_CHAT', 'PLATFORM_LLM_MODEL_EMBEDDING']
     f.setAnswer(desired({ platformAi: ai }))
-    await agent.poll()
-    expect(f.secrets['os']).toMatchObject({ LLM_BASE_URL: ai.llmBaseUrl, LLM_API_KEY: 'sk-PLATFORM', LLM_MODEL_CHAT: 'chat-1', LLM_MODEL_EMBEDDING: 'embed-1' })
-    expect(f.state().workloads[0]!.secrets).toEqual(expect.arrayContaining(['LLM_BASE_URL', 'LLM_API_KEY', 'LLM_MODEL_CHAT', 'LLM_MODEL_EMBEDDING']))
+    expect((await agent.poll()).ok).toBe(true)
+    expect(f.secrets['os']).toMatchObject({ PLATFORM_LLM_BASE_URL: ai.llmBaseUrl, PLATFORM_LLM_API_KEY: 'sk-PLATFORM', PLATFORM_LLM_MODEL_CHAT: 'chat-1', PLATFORM_LLM_MODEL_EMBEDDING: 'embed-1' })
+    expect(f.state().workloads[0]!.secrets).toEqual(expect.arrayContaining(names))
+    // Never under the self-hosted BYOK names: os must not read the platform AI as the owner's own key.
+    for (const legacy of LEGACY_PLATFORM_AI_SECRETS) {
+      expect(f.secrets['os']![legacy]).toBeUndefined()
+      expect(f.state().workloads[0]!.secrets).not.toContain(legacy)
+    }
     const n = f.commits.length
     await agent.poll()
     expect(f.commits).toHaveLength(n)
@@ -240,12 +246,49 @@ describe('fleet: desired state (level-triggered)', () => {
     f.setAnswer(desired({ platformAi: { ...ai, llmModelChat: 'chat-2' } }))
     await agent.poll()
     expect(f.host.reconcile).toHaveBeenCalledTimes(1)
-    expect(f.secrets['os']!['LLM_MODEL_CHAT']).toBe('chat-2')
+    expect(f.secrets['os']!['PLATFORM_LLM_MODEL_CHAT']).toBe('chat-2')
     f.setAnswer(desired({ platformAi: null }))
     await agent.poll()
-    expect(f.secrets['os']!['LLM_API_KEY']).toBeUndefined()
-    expect(f.state().workloads[0]!.secrets).not.toContain('LLM_API_KEY')
+    for (const name of names) {
+      expect(f.secrets['os']![name]).toBeUndefined()
+      expect(f.state().workloads[0]!.secrets).not.toContain(name)
+    }
     for (const l of f.logs) expect(l.message).not.toContain('sk-PLATFORM')
+  })
+
+  it('platformAi: a box an older ee configured has its fleet-set LLM_* retired in the same step (one commit), then stays still', async () => {
+    const f = fakeHost({ managed: true })
+    // What the older ee left on os: the platform AI under the self-hosted BYOK names, declared.
+    Object.assign(f.secrets['os']!, { LLM_BASE_URL: 'https://llm.example.com', LLM_API_KEY: 'sk-OLD', LLM_MODEL_CHAT: 'chat-1', LLM_MODEL_EMBEDDING: 'embed-1' })
+    f.state().workloads[0]!.secrets.push(...LEGACY_PLATFORM_AI_SECRETS)
+    const agent = new FleetAgent(f.host)
+    const ai = { llmBaseUrl: 'https://llm.example.com', llmApiKey: 'sk-PLATFORM', llmModelChat: 'chat-1', llmModelEmbedding: 'embed-1' }
+    f.setAnswer(desired({ platformAi: ai }))
+    const n = f.commits.length
+    expect((await agent.poll()).ok).toBe(true)
+    expect(f.commits).toHaveLength(n + 1)
+    expect(f.secrets['os']).toMatchObject({ PLATFORM_LLM_BASE_URL: ai.llmBaseUrl, PLATFORM_LLM_API_KEY: 'sk-PLATFORM' })
+    for (const legacy of LEGACY_PLATFORM_AI_SECRETS) {
+      expect(f.secrets['os']![legacy]).toBeUndefined()
+      expect(f.state().workloads[0]!.secrets).not.toContain(legacy)
+    }
+    expect(f.state().workloads[0]!.secrets).toContain('BETTER_AUTH_SECRET')
+    await agent.poll()
+    expect(f.commits).toHaveLength(n + 1)
+    expect(f.host.reconcile).not.toHaveBeenCalled()
+    for (const l of f.logs) expect(l.message).not.toMatch(/sk-PLATFORM|sk-OLD/)
+  })
+
+  it('platformAi null on a box an older ee configured: the fleet-set LLM_* go too', async () => {
+    const f = fakeHost({ managed: true })
+    Object.assign(f.secrets['os']!, { LLM_BASE_URL: 'https://llm.example.com', LLM_API_KEY: 'sk-OLD', LLM_MODEL_CHAT: 'chat-1', LLM_MODEL_EMBEDDING: 'embed-1' })
+    f.state().workloads[0]!.secrets.push(...LEGACY_PLATFORM_AI_SECRETS)
+    f.setAnswer(desired({ platformAi: null }))
+    expect((await new FleetAgent(f.host).poll()).ok).toBe(true)
+    for (const legacy of LEGACY_PLATFORM_AI_SECRETS) {
+      expect(f.secrets['os']![legacy]).toBeUndefined()
+      expect(f.state().workloads[0]!.secrets).not.toContain(legacy)
+    }
   })
 
   it('report omits mail when os cannot say (older os)', async () => {

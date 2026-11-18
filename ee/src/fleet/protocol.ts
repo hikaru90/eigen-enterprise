@@ -130,7 +130,7 @@ export const backupTargetV1 = z
 
 export const platformAiV1 = z
   .object({
-    /** The os workload's LLM_BASE_URL / LLM_API_KEY / LLM_MODEL_CHAT / LLM_MODEL_EMBEDDING (the gateway's platform path). */
+    /** The os workload's PLATFORM_LLM_BASE_URL / _API_KEY / _MODEL_CHAT / _MODEL_EMBEDDING (the gateway's platform path; never the BYOK LLM_* names). */
     llmBaseUrl: httpsOrigin,
     llmApiKey: z.string().min(1).max(512),
     llmModelChat: z.string().min(1).max(200),

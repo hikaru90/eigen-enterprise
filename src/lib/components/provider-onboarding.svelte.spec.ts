@@ -107,26 +107,39 @@ describe('provider-onboarding.svelte', () => {
     await expect.element(page.getByRole('textbox', { name: 'API key' })).not.toBeInTheDocument()
   })
 
-  it('lists only the tool-capable subscription sign-ins (no Claude / ChatGPT: their API shapes carry no tool calls)', async () => {
+  it('the subscription card names only real subscriptions (OpenRouter is pay-per-use, not one)', async () => {
+    renderWizard({ byokUiEnabled: true })
+    const subscription = page.getByRole('button', { name: /Use a subscription I have/ })
+    await expect.element(subscription).toHaveTextContent(/Copilot/)
+    await expect.element(subscription).not.toHaveTextContent(/OpenRouter/)
+    await expect
+      .element(page.getByRole('button', { name: /Use an API key/ }))
+      .toHaveTextContent(/OpenRouter/)
+  })
+
+  it('lists only the tool-capable subscription sign-ins (no Claude / ChatGPT: their API shapes carry no tool calls; no OpenRouter: an API key)', async () => {
     renderWizard({ byokUiEnabled: true })
     await page.getByText('Use a subscription I have').click()
     await expect.element(page.getByText('Claude Pro/Max')).not.toBeInTheDocument()
     await expect.element(page.getByText('ChatGPT Plus/Pro')).not.toBeInTheDocument()
     await expect.element(page.getByText('GitHub Copilot')).toBeInTheDocument()
-    await expect.element(page.getByText(/Sign in with OpenRouter/)).toBeInTheDocument()
+    await expect.element(page.getByText(/OpenRouter/)).not.toBeInTheDocument()
     await expect.element(page.getByRole('button', { name: /Groq/ })).not.toBeInTheDocument()
   })
 
-  it('shows OpenRouter model selection before the sign-in redirect', async () => {
+  it('offers the OpenRouter sign-in on the API-key path, with model selection before the redirect', async () => {
     renderWizard({ byokUiEnabled: true })
-    await page.getByText('Use a subscription I have').click()
-    await page.getByText(/Sign in with OpenRouter/).click()
+    await page.getByText('Use an API key').click()
+    await page.getByRole('button', { name: /Sign in to OpenRouter to create a key/ }).click()
     const orChat = page.getByRole('combobox', { name: 'Chat model' })
     await expect.element(orChat).toBeInTheDocument()
     await orChat.fill('mock/openrouter-chat')
     await expect.element(page.getByRole('button', { name: 'Continue' })).toBeEnabled()
     // No sign-in redirect before the model is picked — the step is still the model list.
     await expect.element(orChat).toBeInTheDocument()
+    // Back leads to the API-key providers, where the sign-in lives now.
+    await page.getByRole('button', { name: /Back/ }).click()
+    await expect.element(page.getByRole('button', { name: /EUrouter/ })).toBeInTheDocument()
   })
 
   it('lists catalog providers on the API-key path with EMPTY model inputs', async () => {

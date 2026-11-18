@@ -89,7 +89,43 @@ describe('isUserProviderReady', () => {
   it('never throws on an empty database', async () => {
     await expect(isUserProviderReady('u1')).resolves.toBe(false)
   })
+
+  describe('platform AI from hosting (PLATFORM_LLM_*)', () => {
+    function setPlatformAi() {
+      Object.assign(mockEnv, PLATFORM_AI)
+    }
+
+    it('is true on platform credits with only the platform AI set (a hosted box: no service keys)', async () => {
+      setPlatformAi()
+      await expect(isUserProviderReady('u1')).resolves.toBe(true)
+    })
+
+    it('is true even when the active-provider row says openrouter (the platform AI is the platform path)', async () => {
+      mockSequentialDbLimitResults([], [{ provider: 'openrouter' }])
+      setPlatformAi()
+      await expect(isUserProviderReady('u1')).resolves.toBe(true)
+    })
+
+    it('a user who chose BYOK still needs their own key: platform AI does not make them ready', async () => {
+      mockSequentialDbLimitResults([{ billingMode: 'byok' }], [])
+      setPlatformAi()
+      await expect(isUserProviderReady('u1')).resolves.toBe(false)
+    })
+
+    it('a partial platform AI fails loud, naming what is missing', async () => {
+      setPlatformAi()
+      delete mockEnv.PLATFORM_LLM_API_KEY
+      await expect(isUserProviderReady('u1')).rejects.toThrow(/PLATFORM_LLM_API_KEY is not set/)
+    })
+  })
 })
+
+const PLATFORM_AI = {
+  PLATFORM_LLM_BASE_URL: 'https://llm.example.test/api/v1',
+  PLATFORM_LLM_API_KEY: 'sk-platform',
+  PLATFORM_LLM_MODEL_CHAT: 'vendor/chat-1',
+  PLATFORM_LLM_MODEL_EMBEDDING: 'vendor/embed-1',
+}
 
 describe('isCompanyProviderReady', () => {
   it('asks about the company provider (the owner’s account), not the member’s own settings', async () => {
@@ -108,6 +144,21 @@ describe('isCompanyProviderReady', () => {
     })
     expect(ready).toBe(true)
     expect(asked).toEqual(['db:owner-1', 'ready:owner-1'])
+  })
+
+  it('a hosted box with the platform AI env is ready (the onboarding skips the provider step)', async () => {
+    const { isCompanyProviderReady } = await import('./provider-ready')
+    for (const key of Object.keys(mockEnv)) delete mockEnv[key]
+    Object.assign(mockEnv, PLATFORM_AI)
+    hasSavedByokLlmCredentialsMock.mockResolvedValue(false)
+    mockSequentialDbLimitResults([], [])
+    const ready = await isCompanyProviderReady({
+      companyAccountId: async () => 'owner-1',
+      withDbUser: async (_userId, fn) => fn(),
+      isUserProviderReady,
+    })
+    expect(ready).toBe(true)
+    for (const key of Object.keys(mockEnv)) delete mockEnv[key]
   })
 
   it('is not ready when the company has no owner yet (no company provider exists)', async () => {

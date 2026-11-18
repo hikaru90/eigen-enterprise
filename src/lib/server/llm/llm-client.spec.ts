@@ -1222,6 +1222,125 @@ describe('llm client platform gateway credentials', () => {
   })
 })
 
+describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
+  const PLATFORM_AI = {
+    PLATFORM_LLM_BASE_URL: 'https://platform-llm.example/api/v1/',
+    PLATFORM_LLM_API_KEY: 'sk-platform',
+    PLATFORM_LLM_MODEL_CHAT: 'vendor/platform-chat',
+    PLATFORM_LLM_MODEL_EMBEDDING: 'vendor/platform-embed',
+  }
+  const env = mockEnv as Record<string, string | undefined>
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    mockSequentialDbLimitResults()
+    // A hosted box: the platform AI only, no service-account keys.
+    mockEnv.LLM_BASE_URL = ''
+    mockEnv.LLM_API_KEY = ''
+    mockEnv.SERVICE_API_KEY_EUROUTER = ''
+    mockEnv.SERVICE_API_KEY_OPENROUTER = ''
+    mockEnv.LLM_MODEL_CHAT = ''
+    mockEnv.LLM_MODEL_EMBEDDING = ''
+    mockEnv.LLM_MIN_REQUEST_INTERVAL_MS = '0'
+    mockEnv.LLM_REQUEST_TIMEOUT_MS = ''
+    Object.assign(env, PLATFORM_AI)
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
+    vi.mocked(isByokBilling).mockResolvedValue(false)
+  })
+
+  afterEach(() => {
+    for (const name of Object.keys(PLATFORM_AI)) delete env[name]
+    mockEnv.LLM_BASE_URL = 'https://example.test'
+    mockEnv.LLM_API_KEY = 'key-1'
+    mockEnv.SERVICE_API_KEY_EUROUTER = 'service-eurouter-key'
+    mockEnv.SERVICE_API_KEY_OPENROUTER = 'service-openrouter-key'
+    mockEnv.LLM_MODEL_CHAT = 'gpt-test'
+    mockEnv.LLM_MODEL_EMBEDDING = 'text-embedding-3-small'
+  })
+
+  it('platform credits chat goes to the platform AI endpoint with its key and chat model, cost logged', async () => {
+    const fetchMock = vi.fn(async () =>
+      response(true, 200, { usage: { prompt_tokens: 1, cost: 0.0042 }, choices: [] }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+    expect(fetchMockUrl(fetchMock, 0)).toBe('https://platform-llm.example/api/v1/chat/completions')
+    const init = fetchMockInit(fetchMock, 0)
+    expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer sk-platform')
+    const body = JSON.parse(String(init?.body)) as { model?: string; rule_id?: string }
+    expect(body.model).toBe('vendor/platform-chat')
+    expect(body.rule_id).toBeUndefined()
+    expect(logActivityCallMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'u1',
+      expect.objectContaining({
+        provider: 'platform',
+        gatewayHost: 'platform-llm.example',
+        baseCostUsd: 0.0042,
+      }),
+    )
+  })
+
+  it('the platform AI is the platform path even when the active-provider row says openrouter', async () => {
+    mockEnv.SERVICE_API_KEY_OPENROUTER = 'service-openrouter-key'
+    mockSequentialDbLimitResults([{ provider: 'openrouter' }])
+    const fetchMock = vi.fn(async () => response(true, 200, { usage: { cost: 0.001 }, choices: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+    expect(fetchMockUrl(fetchMock, 0)).toBe('https://platform-llm.example/api/v1/chat/completions')
+    expect((fetchMockInit(fetchMock, 0)?.headers as Record<string, string>).Authorization).toBe(
+      'Bearer sk-platform',
+    )
+  })
+
+  it('embeddings use the platform embedding model', async () => {
+    const fetchMock = vi.fn(async () =>
+      response(true, 200, { data: [{ embedding: [0.1, 0.2] }], usage: { cost: 0.0001 } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    await llmCreateEmbeddings({ userId: 'u1', input: 'hello' })
+    expect(fetchMockUrl(fetchMock, 0)).toBe('https://platform-llm.example/api/v1/embeddings')
+    const body = JSON.parse(String(fetchMockInit(fetchMock, 0)?.body)) as { model?: string }
+    expect(body.model).toBe('vendor/platform-embed')
+  })
+
+  it('describes the platform AI as the chat model (billing platform)', async () => {
+    await expect(describeChatModel('u1')).resolves.toEqual({
+      provider: 'platform',
+      model: 'vendor/platform-chat',
+      routingRuleId: null,
+      billing: 'platform',
+      gatewayHost: 'platform-llm.example',
+    })
+  })
+
+  it('a user who chose BYOK still runs on their own key, not the platform AI', async () => {
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
+    vi.mocked(isByokBilling).mockResolvedValue(true)
+    mockEnv.LLM_BASE_URL = 'https://byok-gw.example/v1'
+    mockEnv.LLM_API_KEY = 'byok-key'
+    mockEnv.LLM_MODEL_CHAT = 'byok-model'
+    const fetchMock = vi.fn(async () => response(true, 200, { choices: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+    expect(fetchMockUrl(fetchMock, 0)).toBe('https://byok-gw.example/v1/chat/completions')
+    expect((fetchMockInit(fetchMock, 0)?.headers as Record<string, string>).Authorization).toBe(
+      'Bearer byok-key',
+    )
+  })
+
+  it('a partial platform AI fails loud instead of falling back to another path', async () => {
+    delete env.PLATFORM_LLM_MODEL_CHAT
+    mockEnv.LLM_BASE_URL = 'https://example.test'
+    mockEnv.SERVICE_API_KEY_EUROUTER = 'service-eurouter-key'
+    vi.stubGlobal('fetch', vi.fn())
+    await expect(
+      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
+    ).rejects.toThrow(/PLATFORM_LLM_MODEL_CHAT is not set/)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
 describe('llm client BYOK DB credentials', () => {
   beforeEach(async () => {
     vi.clearAllMocks()

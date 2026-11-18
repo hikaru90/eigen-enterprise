@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { getDb } from '$lib/server/db'
 import { llmActiveProvider, userPreference } from '$lib/server/db/schema'
 import { env } from '$lib/server/env/private-env'
+import { readPlatformAiConfig } from '$lib/server/llm/platform-ai'
 import { hasSavedByokLlmCredentials } from '$lib/server/llm/preferences'
 import type { LlmProviderKind } from '$lib/server/llm/types'
 
@@ -10,10 +11,13 @@ function hasEnv(...names: Array<string | undefined>): boolean {
 }
 
 /**
- * Platform credits path: mirrors loadPlatformLlmConfig's env requirements without
- * throwing — EUrouter service account by default, OpenRouter when the active row says so.
+ * Platform credits path: mirrors loadPlatformLlmConfig's env requirements — the platform AI
+ * from hosting (PLATFORM_LLM_*, all four) first, else the self-hosted service account:
+ * EUrouter by default, OpenRouter when the active row says so. A partial platform AI throws
+ * (it fails loud at start too).
  */
 function platformEnvConfigured(provider: LlmProviderKind): boolean {
+  if (readPlatformAiConfig(env as Record<string, string | undefined>)) return true
   return provider === 'openrouter'
     ? hasEnv(env.OPENROUTER_BASE_URL, env.SERVICE_API_KEY_OPENROUTER)
     : hasEnv(env.LLM_BASE_URL, env.SERVICE_API_KEY_EUROUTER)
