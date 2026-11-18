@@ -44,14 +44,15 @@ status) and Email setup as today.
 ## Shape
 
 ```
-box os ── Domain act ──▶ ee (loopback) ──signed──▶ control plane   search / quote / buy
+box ee ◀── desired {domains: {apiBase, token}} → os secrets EE_DOMAINS_*
+box os ──Bearer──▶ control plane /api/domains/v1/  search / purchases / domains (status)
 control plane ── charge (Stripe) ──▶ RegisterDomain (Route 53, us-east-1, company as registrant)
+              ── 'configuring': the domain joins the company's mail domains (SES identity, tenant)
               ── hosted zone (created with the registration) ──▶ records:
                    SES: 3 DKIM CNAMEs, MAIL FROM MX + SPF, DMARC (p=none to start)
                    receiving: MX → inbound-smtp.eu-north-1.amazonaws.com
-                   website: the box's host record + _ee-verify TXT (custom host claim verifies itself)
-              ── tenant association + identity, as mail_sync already does
-box ee ◀── desired {domains: [{name, state, renewsAt}]} ── os shows status, adds it as mail domain
+                   website: apex + www A, _ee-verify TXT for both (custom host claims verify)
+              ── 'active'
 ```
 
 ## Decisions of record (mine; owner may veto)
@@ -68,7 +69,12 @@ box ee ◀── desired {domains: [{name, state, renewsAt}]} ── os shows st
 - **DM4 Records are written only to zones we host and only for that company's domain.** A domain
   the customer brings (option b) stays in their DNS; we never ask for their DNS credentials.
 - **DM5 Bought domains become mail domains automatically** (sending and receiving), so the Email
-  step only picks the address.
+  step only picks the address. The control plane does it at `configuring` (DKIM needs the SES
+  identity before the domain can be `active`); os adding an `active` domain is idempotent.
+- **DM7 (control plane, at build):** registrant data lives in process memory only until Route 53
+  accepts it; a restart in between fails the purchase in plain words (refunded if charged). A
+  renewal charges the price the company accepted. A 409 says `reason: taken | price_changed` with
+  the current `priceCents`, so os never reads error text.
 - **DM6 os calls the control plane's domains API with a per-box token** handed in desired state,
   like `platformAi`'s key. ee's own API is a root-only unix socket os can't reach, and going through
   the poll would make a search wait up to a poll interval. The token only reaches that company's
@@ -88,14 +94,15 @@ box ee ◀── desired {domains: [{name, state, renewsAt}]} ── os shows st
   - `POST /api/domains/v1/purchases` `{ name, acceptedPriceCents, registrant }` → 202
     `{ name, state }`. `registrant` = `{ firstName, lastName, organization, email, phone
     ("+49.301234567"), addressLine1, addressLine2?, city, postalCode, countryCode (ISO 3166-1
-    alpha-2), state? }`. 409 when taken or the price changed (body says which), 402 when the
+    alpha-2), state? }`. 409 `{ error, reason: 'taken' | 'price_changed', priceCents|null }`, 402 when the
     company has no payment method, 400 on invalid fields.
   - `GET /api/domains/v1/domains` → `{ domains: [{ name, state: 'charging' | 'registering' |
     'configuring' | 'active' | 'failed', error|null, renewsAt|null, autoRenew }] }`.
 - Records the control plane writes in a bought domain's zone (`configuring` → `active`): the SES
   identity's 3 DKIM CNAMEs (it waits for mail_sync to create the identity), MAIL FROM `mail.<d>`
   MX + SPF TXT, `MX 10 inbound-smtp.<region>.amazonaws.com`, `_dmarc` TXT `v=DMARC1; p=none`,
-  `_ee-verify.<d>` TXT (the company's claim token), apex + `www` A to the company's host IPv4.
+  `_ee-verify.<d>` and `_ee-verify.www.<d>` TXT (the company's claim token), apex + `www` A to
+  the company's host IPv4.
 - os, on a domain turning `active`: adds it as a mail domain with receiving on (managed mode),
   which goes up in `report.mail.domains` as today.
 
