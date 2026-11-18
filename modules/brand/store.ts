@@ -279,6 +279,7 @@ export type BrandStore = {
   listVoiceExamples(setId: string): Promise<BrandVoiceExample[]>
   listLexicon(setId: string): Promise<BrandLexiconEntry[]>
   listCriteria(setId: string): Promise<BrandCriterion[]>
+  listGlossary(setId: string): Promise<BrandGlossaryEntry[]>
 
   // Visual sets (phase-2d M4): draft-only writes, one active set per company.
   /** Create a draft visual set from a wizard selection (requires resolved cssVars, V3). */
@@ -587,6 +588,10 @@ export class InMemoryBrandStore implements BrandStore {
 
   async listCriteria(setId: string): Promise<BrandCriterion[]> {
     return this.criteria.filter((c) => c.setId === setId)
+  }
+
+  async listGlossary(setId: string): Promise<BrandGlossaryEntry[]> {
+    return this.glossary.filter((g) => g.setId === setId).sort((a, b) => a.term.localeCompare(b.term))
   }
 
   private requireDraftSet(setId: string): BrandGuidelineSet {
@@ -1103,6 +1108,16 @@ export class DbBrandStore implements BrandStore {
       .where(eq(brandCriteria.setId, setId))
       .orderBy(brandCriteria.contentType, brandCriteria.criterion)
     return rows.map(toCriterion)
+  }
+
+  async listGlossary(setId: string): Promise<BrandGlossaryEntry[]> {
+    const database = await resolveDb(this.db)
+    const rows = await database
+      .select()
+      .from(brandGlossary)
+      .where(eq(brandGlossary.setId, setId))
+      .orderBy(brandGlossary.term)
+    return rows.map(toGlossaryEntry)
   }
 
   // -- Visual sets (phase-2d M4) -------------------------------------------

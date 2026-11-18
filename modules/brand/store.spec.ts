@@ -208,6 +208,15 @@ describe('InMemoryBrandStore — set lifecycle', () => {
     expect(examples.map((e) => e.label).sort()).toEqual(['bad', 'good'])
     await expect(store.listCriteria(set.id)).resolves.toEqual([])
   })
+
+  it('lists a set’s glossary by term (the voice context social captions read)', async () => {
+    const store = new InMemoryBrandStore()
+    const set = await store.createSet({ locale: 'en', context: validContext() })
+    await store.addGlossaryEntry({ setId: set.id, term: 'nucleus', definition: 'The core app.' })
+    await store.addGlossaryEntry({ setId: set.id, term: 'box', definition: 'The local install.' })
+    const glossary = await store.listGlossary(set.id)
+    expect(glossary.map((g) => g.term)).toEqual(['box', 'nucleus'])
+  })
 })
 
 // ---------------------------------------------------------------------------

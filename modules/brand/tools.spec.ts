@@ -72,6 +72,9 @@ describe('createBrandTools', () => {
       'brand.selection_matches',
       'brand.visual_set_get',
       'brand.visual_set_list',
+      'brand.social_post_list',
+      'brand.social_post_get',
+      'brand.social_caption_suggest',
     ]
     const externals = ['brand.extract_start', 'brand.extract_propose']
     for (const descriptor of tools) {
@@ -85,6 +88,9 @@ describe('createBrandTools', () => {
     for (const descriptor of tools) {
       if (descriptor.name === 'brand.picker_choose') {
         expect(descriptor.permission.roles).toEqual(['owner'])
+      } else if (descriptor.name.startsWith('brand.social_')) {
+        // Social posts are working content, not guidelines: the assistant drafts them.
+        expect(descriptor.permission.roles).toEqual(['admin', 'agent'])
       } else if (descriptor.auditClass === 'read') {
         expect(descriptor.permission.roles).toEqual(['admin', 'agent'])
       } else {
