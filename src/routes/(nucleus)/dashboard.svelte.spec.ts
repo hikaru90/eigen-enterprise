@@ -62,6 +62,7 @@ const controller = () =>
 function renderDashboard(
   assistant: AssistantController | null,
   tiles: { hiddenTiles?: TileId[]; saveHiddenTiles?: (hidden: TileId[]) => Promise<void> } = {},
+  notices: { mailMissing?: boolean } = {},
 ) {
   return render(Harness, {
     assistant,
@@ -73,10 +74,23 @@ function renderDashboard(
     navItems,
     capabilities,
     providerMissing: false,
+    mailMissing: notices.mailMissing ?? false,
   })
 }
 
 describe('dashboard.svelte', () => {
+  it('without company email: a notice says sign-in codes depend on it and links to the email setup', async () => {
+    renderDashboard(controller(), {}, { mailMissing: true })
+    await expect.element(page.getByTestId('dashboard-mail-notice')).toHaveTextContent(/Set up company email/)
+    await expect.element(page.getByTestId('dashboard-mail-notice')).toHaveTextContent(/sign-in codes/)
+    await expect.element(page.getByTestId('dashboard-mail-setup')).toHaveAttribute('href', '/m/email/setup')
+  })
+
+  it('with company email set up: no email notice', async () => {
+    renderDashboard(controller())
+    await expect.element(page.getByTestId('dashboard-mail-notice')).not.toBeInTheDocument()
+  })
+
   it('with the Assistant on: the ask box, the approval Review, the conversations link and the activity log', async () => {
     renderDashboard(controller())
     await expect.element(page.getByTestId('dashboard-ask')).toBeInTheDocument()

@@ -7,22 +7,35 @@
   import { Label } from '$lib/components/ui/label'
   import { docTitle } from '$lib/shell/title'
   import PublicFrame from '$lib/components/page/public-frame.svelte'
+  import PasskeyStep from '$lib/components/passkey-step.svelte'
 
-  /** Claim this server: the installer's private link → your email → you own the company. */
+  /** Claim this server: the installer's private link → your email → you own the company → a passkey. */
   let { data, form }: { data: PageData; form: ActionData } = $props()
 </script>
 
 <svelte:head>
-  <title>{docTitle('Claim your company')}</title>
+  <title>{docTitle(data.step === 'passkey' ? 'Create your passkey' : 'Claim your company')}</title>
 </svelte:head>
 
 <PublicFrame
-  title="Claim your company"
-  subtitle={data.ok ? 'Your company is installed. Claim it.' : null}
+  title={data.step === 'passkey' ? 'Create your passkey' : 'Claim your company'}
+  subtitle={data.step === 'passkey'
+    ? `It's yours. A passkey is how you sign in to ${data.companyName ?? 'your company'} from now on.`
+    : data.ok
+      ? 'Your company is installed. Claim it.'
+      : null}
 >
   <Card.Root class="border border-border shadow-none">
     <Card.Content class="space-y-4">
-      {#if data.ok}
+      {#if data.step === 'passkey'}
+        <PasskeyStep
+          email={data.email ?? ''}
+          passkeyName="Passkey from the claim"
+          doneHref={resolve('/')}
+          testId="claim"
+          skipWarning="Without a passkey you can’t sign in again once this session ends (or on another device) until email is set up — sign-in codes go out by email, and the onboarding’s email step comes next. Add one in Settings → Passkeys before you sign out."
+        />
+      {:else if data.ok}
         <form method="post" use:enhance class="space-y-4" data-testid="claim-form">
           <input type="hidden" name="token" value={data.token} />
           <div class="space-y-1">

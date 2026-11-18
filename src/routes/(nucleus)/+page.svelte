@@ -63,6 +63,7 @@
     navItems={data.shell.nav.items}
     capabilities={data.shell.capabilities}
     providerMissing={data.providerMissing}
+    mailMissing={data.needsMail}
     hiddenTiles={data.hiddenTiles}
     saveHiddenTiles={(hidden) => saveHiddenTiles(fetch, hidden)}
   />

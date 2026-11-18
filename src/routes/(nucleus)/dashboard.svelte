@@ -37,6 +37,7 @@
     navItems,
     capabilities,
     providerMissing,
+    mailMissing,
     hiddenTiles,
     saveHiddenTiles,
   }: {
@@ -48,6 +49,8 @@
     capabilities: Capabilities
     /** The company's AI provider is not connected: the assistant cannot work until it is. */
     providerMissing: boolean
+    /** An admin, and the company has no sender yet: sign-in codes and mail can't go out. */
+    mailMissing: boolean
     /** The tiles this person closed, as last saved. */
     hiddenTiles: readonly TileId[]
     /** Saves the whole list; a rejection undoes the change on the board. */
@@ -186,6 +189,27 @@
         href={resolve('/settings/llm')}
         class="inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-white px-4 text-sm font-medium text-black outline-none hover:bg-[#e8e8e8] focus-visible:ring-2 focus-visible:ring-white sm:ml-auto"
         data-testid="dashboard-provider-connect">Connect provider</a
+      >
+    </div>
+  {/if}
+
+  {#if mailMissing}
+    <!-- Sign-in codes go out by email: without a sender nobody gets back in by code (passkeys still work). -->
+    <div
+      class="mt-4 flex min-w-0 flex-col gap-3 rounded-[1.75rem] bg-ink p-2 text-white sm:flex-row sm:items-center sm:rounded-full"
+      data-testid="dashboard-mail-notice"
+    >
+      <span class="flex min-w-0 items-center gap-3">
+        <span class="ring-face size-9 shrink-0" aria-hidden="true"></span>
+        <span class="min-w-0 text-sm">
+          <span class="font-medium">Set up company email.</span>
+          <span class="text-[#a3a3a3]">Until then no email goes out — not even sign-in codes, so only passkeys get anyone back in.</span>
+        </span>
+      </span>
+      <a
+        href={resolve('/m/email/setup')}
+        class="inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-white px-4 text-sm font-medium text-black outline-none hover:bg-[#e8e8e8] focus-visible:ring-2 focus-visible:ring-white sm:ml-auto"
+        data-testid="dashboard-mail-setup">Set up email</a
       >
     </div>
   {/if}

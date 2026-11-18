@@ -8,6 +8,7 @@ import { claimCompany, claimConfigFromEnv, claimMessage, claimStatus, ClaimError
 import { authDb } from '$lib/server/db/auth-db'
 import { claimConsumed, user } from '$lib/server/db/auth.schema'
 import { env } from '$lib/server/env/private-env'
+import { foundingCompanyName } from '$lib/server/overview/sources'
 
 /** First-run handover: the installer's private link makes its holder the owner (see $lib/server/auth/claim). */
 
@@ -28,10 +29,14 @@ const deps = (event?: Pick<RequestEvent, 'request' | 'getClientAddress'>) => ({
 })
 
 export const load: PageServerLoad = async (event) => {
+  // Step 2, signed in as the new owner: a passkey, the way back in before email is set up.
+  if (event.locals.user && event.url.searchParams.get('step') === 'passkey') {
+    return { step: 'passkey' as const, token: '', ok: true, message: null, email: event.locals.user.email, companyName: await foundingCompanyName() }
+  }
   const token = event.url.searchParams.get('token') ?? ''
   const status = await claimStatus(token, deps())
   if (status === 'already_claimed' && event.locals.user) throw redirect(302, '/')
-  return { token, ok: status === 'ok', message: status === 'ok' ? null : claimMessage(status) }
+  return { step: 'claim' as const, token, ok: status === 'ok', message: status === 'ok' ? null : claimMessage(status), email: null, companyName: null }
 }
 
 export const actions: Actions = {
@@ -45,7 +50,8 @@ export const actions: Actions = {
       const message = err instanceof ClaimError ? err.message : getSafeErrorMessage(err, 'Claiming failed')
       return fail(400, { email, message })
     }
-    // Signed in as the owner: the onboarding takes it from here.
-    throw redirect(303, '/')
+    // Signed in as the owner. Sign-in codes go out by email, which isn't set up yet: a passkey first,
+    // so the end of this session doesn't lock the owner out. Then the onboarding takes it from here.
+    throw redirect(303, '/claim?step=passkey')
   },
 }

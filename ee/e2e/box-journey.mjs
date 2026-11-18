@@ -98,6 +98,10 @@ try {
     await shot(page, 'claim')
     await page.locator('#email').fill(email)
     await page.getByRole('button', { name: 'Claim' }).click()
+    // Step 2: the owner's passkey. Headless Chromium has no authenticator, so the journey skips it.
+    await page.getByTestId('claim-passkey-step').waitFor({ timeout: 60_000 })
+    await page.getByTestId('claim-skip-passkey').click()
+    await page.getByTestId('claim-skip-confirm').click()
     await page.waitForURL((u) => u.pathname !== '/claim', { timeout: 60_000 })
     if (ownerState) await ctx.storageState({ path: ownerState })
     pass()
