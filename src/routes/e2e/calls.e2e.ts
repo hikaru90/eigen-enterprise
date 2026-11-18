@@ -550,6 +550,7 @@ test('a guest outside the company joins from a personal link (no account), shows
   const ann = await member(browser, 'admin', `Ada ${suffix}`)
   const guestEmail = `kunde-${suffix}@example.org`
   await ann.page.goto('/calls')
+  await expect(ann.page.locator('body')).toHaveAttribute('data-eigen-hydrated', 'true')
 
   // New call: guests by email first; start now → the host's call tab opens, the guest's link comes back once.
   await ann.page.getByTestId('calls-new-call').click()
@@ -571,6 +572,7 @@ test('a guest outside the company joins from a personal link (no account), shows
   const guest = await guestCtx.newPage()
   const link = new URL(out.invitations[0]!.url)
   await guest.goto(link.pathname)
+  await expect(guest.locator('body')).toHaveAttribute('data-eigen-hydrated', 'true')
   await expect(guest.getByTestId('guest-state')).toHaveAttribute('data-status', 'ok')
   await guest.getByLabel('Your name').fill('Ony Kunde')
   await guest.getByTestId('guest-continue').click()
