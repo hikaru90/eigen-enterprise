@@ -35,6 +35,8 @@ export const FLEET_BACKUP_MARK = 'BACKUP_SET_BY_FLEET'
 export const LOCAL_TOKEN = 'EE_FLEET_LOCAL_TOKEN'
 export const PLATFORM_AI_SECRETS = ['LLM_BASE_URL', 'LLM_API_KEY', 'LLM_MODEL_CHAT', 'LLM_MODEL_EMBEDDING'] as const
 export const MAIL_SECRETS = ['EE_MAIL_REGION', 'EE_MAIL_ACCESS_KEY_ID', 'EE_MAIL_SECRET_ACCESS_KEY', 'EE_MAIL_TENANT', 'EE_MAIL_CONFIG_SET', 'EE_MAIL_TRACKING_CONFIG_SET', 'EE_MAIL_EVENTS_TOPIC_ARN', 'EE_MAIL_INBOUND_TOPIC_ARN', 'EE_MAIL_INBOUND_BUCKET', 'EE_MAIL_INBOUND_PREFIX'] as const
+/** os's credential for the control plane's domains API (plan/managed-domains.md DM6); all or none. */
+export const DOMAINS_SECRETS = ['EE_DOMAINS_API_BASE', 'EE_DOMAINS_TOKEN'] as const
 export const UPGRADE_UNIT = 'ee-fleet-upgrade'
 export const FLEET_AUTHOR = 'fleet'
 /** Fleet-set backups: daily at 03:xx UTC, kept 30 days (the target is the control plane's; the cadence is ee's). */
@@ -42,8 +44,7 @@ export const FLEET_BACKUP_SCHEDULE = { hour: 3 } as const
 export const FLEET_BACKUP_RETENTION_DAYS = 30
 
 /** Exactly the desired-state features this box implements. */
-// 'domains' is announced once applyDomains exists (plan/managed-domains.md DM1).
-export const IMPLEMENTED_FEATURES: FleetFeature[] = FLEET_FEATURES.filter((f) => f !== 'domains')
+export const IMPLEMENTED_FEATURES: FleetFeature[] = [...FLEET_FEATURES]
 
 export class FleetError extends Error {
   constructor(
@@ -259,6 +260,7 @@ export class FleetAgent {
     if (d.suspended !== undefined) await step('suspended', () => this.applySuspended(d.suspended!))
     if (d.platformAi !== undefined) await step('platformAi', () => this.applyPlatformAi(d.platformAi!))
     if (d.mail !== undefined) await step('mail', () => this.applyMail(d.mail!))
+    if (d.domains !== undefined) await step('domains', () => this.applyDomains(d.domains!))
     if (d.backup !== undefined) await step('backup', () => this.applyBackup(d.backup!))
     if (d.escrowBackupKey === true) await step('escrowBackupKey', () => this.applyEscrowBackupKey())
     if (d.backupRequestedAt !== undefined && d.backupRequestedAt !== null) await step('backupRequestedAt', () => this.applyBackupNow(d.backupRequestedAt!))
@@ -327,6 +329,17 @@ export class FleetAgent {
       removed: 'managed: mail removed from os',
       type: 'fleet.mail',
       log: want ? `managed mail set for os (${mail!.region}, tenant ${mail!.tenant})` : 'managed mail removed from os',
+    })
+  }
+
+  /** The token is a secret: only the API base reaches the journal. */
+  private async applyDomains(domains: DesiredV1['domains']): Promise<void> {
+    const want: Record<(typeof DOMAINS_SECRETS)[number], string> | null = domains ? { EE_DOMAINS_API_BASE: domains.apiBase, EE_DOMAINS_TOKEN: domains.token } : null
+    await this.applyOsSecrets(DOMAINS_SECRETS, want, {
+      set: 'managed: domains API set for os',
+      removed: 'managed: domains API removed from os',
+      type: 'fleet.domains',
+      log: want ? `managed domains API set for os (${domains!.apiBase})` : 'managed domains API removed from os',
     })
   }
 
