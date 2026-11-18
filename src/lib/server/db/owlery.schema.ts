@@ -31,3 +31,15 @@ export const owlerySettings = pgTable('owlery_settings', {
   receivingRuleSet: text('receiving_rule_set'),
   receivingCallbackUrl: text('receiving_callback_url'),
 })
+
+/**
+ * eigenEnterprise Mail's default sender (migration 0150, plan/managed-mail.md):
+ * in managed mode there is no owlery_settings row (that row means "own SES"),
+ * so the default sender lives here. One row.
+ */
+export const managedMailSender = pgTable('managed_mail_sender', {
+  id: text('id').primaryKey().default('managed'),
+  emailFrom: text('email_from').notNull(),
+  updatedBy: text('updated_by').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})

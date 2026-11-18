@@ -5,6 +5,7 @@
   import { resolve } from '$app/paths'
   import CopyButton from '$lib/components/email/copy-button.svelte'
   import DnsStatus from '$lib/components/email/dns-status.svelte'
+  import ManagedMailCard from '$lib/components/email/managed-mail-card.svelte'
   import MessageStatus from '$lib/components/email/message-status.svelte'
   import SesConnectForm from '$lib/components/email/ses-connect-form.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
@@ -26,14 +27,23 @@
 
   type Step = { id: string; title: string; done: boolean; detail: string }
   const steps = $derived<Step[]>([
-    {
-      id: 'connect',
-      title: 'Connect Amazon SES',
-      done: Boolean(account),
-      detail: account
-        ? `Connected in ${account.region}. Default sender: ${account.sender}.`
-        : 'Mail goes out through your own Amazon SES account. Paste an access key and choose who mail comes from.',
-    },
+    account?.managed
+      ? {
+          id: 'connect',
+          title: 'eigenEnterprise Mail',
+          done: true,
+          detail: account.sender
+            ? `Mail goes out through eigenEnterprise Mail. Default sender: ${account.sender}.`
+            : 'Mail goes out through eigenEnterprise Mail. Add your domain; its first sender becomes the default.',
+        }
+      : {
+          id: 'connect',
+          title: 'Connect Amazon SES',
+          done: Boolean(account),
+          detail: account
+            ? `Connected in ${account.region}. Default sender: ${account.sender}.`
+            : 'Mail goes out through your own Amazon SES account. Paste an access key and choose who mail comes from.',
+        },
     {
       id: 'domain',
       title: 'Add your domain',
@@ -162,7 +172,20 @@
             <p class="mt-0.5 text-sm text-muted-foreground">{step.detail}</p>
 
             {#if step.id === 'connect'}
-              {#if !account}
+              {#if account?.managed}
+                {#if isAdmin}
+                  <details class="mt-3" data-testid="email-own-ses">
+                    <summary class="cursor-pointer text-[13px] text-muted-foreground"
+                      >Use your own Amazon SES instead</summary
+                    >
+                    <p class="mt-2 text-xs text-muted-foreground">
+                      Once your own keys are saved, mail goes out through your Amazon SES account
+                      instead of eigenEnterprise Mail.
+                    </p>
+                    <div class="mt-3"><SesConnectForm /></div>
+                  </details>
+                {/if}
+              {:else if !account}
                 {#if isAdmin}
                   <div class="mt-4"><SesConnectForm /></div>
                 {:else}
@@ -294,8 +317,15 @@
 
   <aside class="flex flex-col gap-6" aria-label="Account">
     <div>
-      <SectionHeader title="Amazon SES account" />
-      {#if account}
+      <SectionHeader title={account?.managed ? 'Mail account' : 'Amazon SES account'} />
+      {#if account?.managed}
+        <ManagedMailCard
+          region={account.region}
+          sender={account.sender}
+          paused={account.managed.paused}
+          error={account.accountError}
+        />
+      {:else if account}
         <dl
           class="mt-3 divide-y divide-border rounded-lg border border-border text-sm"
           data-testid="email-account"

@@ -24,6 +24,12 @@ export class FakeSes {
   deleted: string[] = []
   eventDestinations: { configurationSet: string; topicArn: string; events: SesEventType[] }[] = []
   unsuppressed: string[] = []
+  /** The tenant each removal named (managed mode), parallel to `unsuppressed`. */
+  unsuppressedTenants: (string | undefined)[] = []
+  /** eigenEnterprise Mail: GetTenant's SendingStatus per tenant (missing = ENABLED). */
+  tenantStatus = new Map<string, 'ENABLED' | 'REINSTATED' | 'DISABLED'>()
+  /** Every SES call by name, to prove managed mode never provisions. */
+  calls: string[] = []
   sent: SesSendInput[] = []
   rawSent: SesRawSendInput[] = []
   credentials: SesCredentials[] = []
@@ -54,7 +60,7 @@ export class FakeSes {
 
   factory: SesFactory = (c) => {
     this.credentials.push(c)
-    const api: SesApi = {
+    const raw: SesApi = {
       getIdentity: async (id) => this.identities.get(id) ?? { exists: false, verified: false },
       createIdentity: async (id) => {
         this.created.push(id)
@@ -118,10 +124,21 @@ export class FakeSes {
       ensureEventDestination: async (input) => {
         this.eventDestinations.push(input)
       },
-      removeFromAccountSuppression: async (email) => {
+      removeFromAccountSuppression: async (email, tenantName) => {
         this.unsuppressed.push(email)
+        this.unsuppressedTenants.push(tenantName)
       },
+      getTenantSendingStatus: async (tenantName) => this.tenantStatus.get(tenantName) ?? 'ENABLED',
     }
+    const api = Object.fromEntries(
+      Object.entries(raw).map(([name, fn]) => [
+        name,
+        (...args: unknown[]) => {
+          this.calls.push(name)
+          return (fn as (...a: unknown[]) => unknown)(...args)
+        },
+      ]),
+    ) as SesApi
     return api
   }
 }

@@ -1,5 +1,7 @@
 import { z } from 'zod'
 import { env } from '$lib/server/env/private-env'
+import type { ManagedMailConfig } from '$lib/server/mail/managed-config'
+import { managedMailFromEnv } from '$lib/server/mail/managed-env'
 import {
   MailNotConfiguredError,
   MailSetupError,
@@ -17,11 +19,29 @@ import { awsSns, EventsSetupError, type SnsApi, type SnsFactory } from './sns'
 import { defaultOwleryStore, owlerySealKey, sealSecret, unsealSecret, type OwleryEvents, type OwleryStore } from './store'
 import { resolveMailTransport, type MailTransport } from './transport'
 
-export type OwlerySettings = SesCredentials & { emailFrom: string } & OwleryEvents
+/**
+ * `own`: the owner's own Amazon SES account (owlery_settings). `managed`:
+ * eigenEnterprise Mail (plan/managed-mail.md) — the control plane's SES tenant,
+ * configured from EE_MAIL_*; own credentials, once saved, take precedence (D1).
+ */
+export type MailMode = 'own' | 'managed'
+
+export type OwlerySettings = SesCredentials & { emailFrom: string } & OwleryEvents & {
+  mode: MailMode
+  /** The SES tenant every send names (managed mode), else null. */
+  tenant: string | null
+}
 
 export type OwleryStatus =
   | { configured: false }
-  | { configured: true; region: string; sender: string; senderVerified: boolean; sandbox: boolean }
+  | { configured: true; region: string; sender: string; senderVerified: boolean; sandbox: boolean; managed?: true; paused?: boolean }
+
+/** D8: AWS paused the company's tenant (SendingStatus DISABLED). */
+export const MANAGED_PAUSED_MESSAGE = 'Sending is paused because too many mails bounced or were marked as spam. Contact support.'
+
+/** Managed mode before a default sender exists (system mail has nothing to go out from). */
+export const MANAGED_NO_SENDER_MESSAGE =
+  'eigenEnterprise Mail has no default sender yet. Add a domain under Email › Setup, then a sender on it under Email › Senders.'
 
 /** The slice of the email store the one send path needs (sender check, suppression, the log, jobs). */
 export type MailLog = Pick<
@@ -35,6 +55,8 @@ export type OwleryServiceDeps = {
   log: MailLog
   ses?: SesFactory
   sns?: SnsFactory
+  /** eigenEnterprise Mail's config (EE_MAIL_*), or null on a box without it. */
+  managed?: () => ManagedMailConfig | null
   now?: () => number
 }
 
@@ -72,6 +94,13 @@ async function identityState(ses: SesApi, address: string): Promise<'verified' |
   const domain = address.slice(address.lastIndexOf('@') + 1)
   if ((await ses.getIdentity(domain)).verified) return 'verified'
   return own.exists ? 'pending' : 'missing'
+}
+
+/** Managed mode: the box may only read its tagged domain identities (D3), so only the domain is asked. */
+async function managedIdentityState(ses: SesApi, address: string): Promise<'verified' | 'pending' | 'missing'> {
+  const domain = address.slice(address.lastIndexOf('@') + 1)
+  const id = await ses.getIdentity(domain)
+  return id.verified ? 'verified' : id.exists ? 'pending' : 'missing'
 }
 
 function sandboxMessage(recipient: string): string {
@@ -133,7 +162,8 @@ export class OwleryService implements CompanyMail {
     const now = this.deps.now?.() ?? Date.now()
     if (this.cache && now - this.cache.at < CACHE_MS) return this.cache.value
     const row = await this.deps.store.read()
-    const value = row
+    const managed = row ? null : (this.deps.managed?.() ?? null)
+    const value: OwlerySettings | null = row
       ? {
           region: row.region,
           accessKeyId: row.accessKeyId,
@@ -145,8 +175,26 @@ export class OwleryService implements CompanyMail {
           eventsCallbackUrl: row.eventsCallbackUrl,
           configSet: row.configSet,
           trackingConfigSet: row.trackingConfigSet,
+          mode: 'own' as const,
+          tenant: null,
         }
-      : null
+      : managed
+        ? {
+            region: managed.region,
+            accessKeyId: managed.accessKeyId,
+            secretAccessKey: managed.secretAccessKey,
+            emailFrom: (await this.deps.store.readManagedSender()) ?? '',
+            // The control plane wired the configuration sets and topics (D4): ready by contract.
+            eventsStatus: 'ready' as const,
+            eventsError: null,
+            eventsTopicArn: managed.eventsTopicArn,
+            eventsCallbackUrl: null,
+            configSet: managed.configSet,
+            trackingConfigSet: managed.trackingConfigSet,
+            mode: 'managed' as const,
+            tenant: managed.tenant,
+          }
+        : null
     this.cache = { at: now, value }
     return value
   }
@@ -157,8 +205,43 @@ export class OwleryService implements CompanyMail {
     this.cache = null
   }
 
+  /** Mail can go out: an own SES account, or eigenEnterprise Mail with a default sender. */
   async isConfigured(): Promise<boolean> {
-    return (await this.settings()) !== null
+    const s = await this.settings()
+    return s !== null && s.emailFrom !== ''
+  }
+
+  /** Which mail this box uses, or null when neither own SES nor eigenEnterprise Mail is there. */
+  async mode(): Promise<MailMode | null> {
+    return (await this.settings())?.mode ?? null
+  }
+
+  /** eigenEnterprise Mail's static config while the box is in managed mode, else null. */
+  async managedConfig(): Promise<ManagedMailConfig | null> {
+    return (await this.mode()) === 'managed' ? (this.deps.managed?.() ?? null) : null
+  }
+
+  /** Managed mode: whether AWS paused the company's tenant (GetTenant). False in own mode. */
+  async tenantPaused(): Promise<boolean> {
+    const s = await this.settings()
+    if (!s?.tenant) return false
+    try {
+      return (await this.client(s).getTenantSendingStatus(s.tenant)) === 'DISABLED'
+    } catch (err) {
+      throw new MailSetupError(describeSesError(err), { cause: err })
+    }
+  }
+
+  /** A send failed in managed mode: the D8 pause message when the tenant is paused, else Amazon's reason. */
+  private async sendFailure(s: OwlerySettings, err: unknown): Promise<string> {
+    if (s.tenant) {
+      try {
+        if ((await this.client(s).getTenantSendingStatus(s.tenant)) === 'DISABLED') return MANAGED_PAUSED_MESSAGE
+      } catch {
+        // GetTenant failing too: Amazon's own reason for the failed send is the better message.
+      }
+    }
+    return describeSesError(err)
   }
 
   private client(s: SesCredentials): SesApi {
@@ -183,10 +266,11 @@ export class OwleryService implements CompanyMail {
     if (!s) throw new MailNotConfiguredError()
     const source = input.source ?? 'system'
     const fromAddress = (input.from ?? s.emailFrom).trim().toLowerCase()
+    if (!fromAddress) throw new MailSetupError(MANAGED_NO_SENDER_MESSAGE)
 
     const check = await this.deps.log.checkSender(fromAddress)
-    // The default sender passed Amazon's own check when it was saved.
-    if (!check.ok && fromAddress !== s.emailFrom.toLowerCase()) throw new MailSetupError(check.reason)
+    // The default sender passed Amazon's own check when it was saved (own SES; managed senders are domain senders only).
+    if (!check.ok && (s.mode === 'managed' || fromAddress !== s.emailFrom.toLowerCase())) throw new MailSetupError(check.reason)
     const from = formatFrom(fromAddress, check.ok ? check.displayName : null)
     const tracking = check.ok && check.tracking
 
@@ -264,9 +348,12 @@ export class OwleryService implements CompanyMail {
         recipients: input.recipients,
         raw: input.raw,
         ...(configurationSet ? { configurationSet } : {}),
+        ...(s.tenant ? { tenantName: s.tenant } : {}),
         tags: { [WEBMAIL_TAG]: '1' },
       }))
     } catch (err) {
+      // Managed mode never calls GetAccount (D8): no sandbox there.
+      if (s.mode === 'managed') throw new MailSetupError(await this.sendFailure(s, err), { cause: err })
       if (awsErrorCode(err) === 'MessageRejected') {
         // Which rejection it is comes from GetAccount (structured), never from Amazon's wording.
         let sandbox = false
@@ -300,7 +387,7 @@ export class OwleryService implements CompanyMail {
     }
     if (row.html === null || row.text === null) throw new Error(`scheduled message ${row.id} has no stored body`)
     const check = await this.deps.log.checkSender(row.fromAddress)
-    if (!check.ok && row.fromAddress !== s.emailFrom.toLowerCase()) {
+    if (!check.ok && (s.mode === 'managed' || row.fromAddress !== s.emailFrom.toLowerCase())) {
       await this.deps.log.updateMessage(row.id, { status: 'failed', error: check.reason })
       await this.deps.log.addEvent(row.id, 'failed', { error: check.reason })
       return
@@ -333,13 +420,14 @@ export class OwleryService implements CompanyMail {
         ...(row.replyTo ? { replyTo: row.replyTo } : {}),
         ...(configurationSet ? { configurationSet } : {}),
         ...(row.headers && row.headers.length > 0 ? { headers: row.headers } : {}),
+        ...(s.tenant ? { tenantName: s.tenant } : {}),
         tags: { [LOG_ID_TAG]: row.id },
       })
       await this.deps.log.updateMessage(row.id, { status: 'sent', sesMessageId: messageId })
       await this.deps.log.addEvent(row.id, 'sent', null)
       return messageId
     } catch (err) {
-      const message = describeSesError(err)
+      const message = s.mode === 'managed' ? await this.sendFailure(s, err) : describeSesError(err)
       await this.deps.log.updateMessage(row.id, { status: 'failed', error: message })
       await this.deps.log.addEvent(row.id, 'failed', { error: message })
       throw new MailSetupError(message, { cause: err })
@@ -351,6 +439,17 @@ export class OwleryService implements CompanyMail {
     if (!s) return { configured: false }
     const ses = this.client(s)
     try {
+      if (s.mode === 'managed') {
+        return {
+          configured: true,
+          region: s.region,
+          sender: s.emailFrom,
+          senderVerified: s.emailFrom !== '' && (await managedIdentityState(ses, s.emailFrom)) === 'verified',
+          sandbox: false,
+          managed: true,
+          paused: (await ses.getTenantSendingStatus(s.tenant!)) === 'DISABLED',
+        }
+      }
       return {
         configured: true,
         region: s.region,
@@ -365,9 +464,9 @@ export class OwleryService implements CompanyMail {
 
   /** Whether Amazon accepts mail From this address right now (an address or its whole domain verified). */
   async senderVerified(address: string): Promise<boolean> {
-    const { ses } = await this.ses()
+    const { ses, settings } = await this.ses()
     try {
-      return (await identityState(ses, address)) === 'verified'
+      return (await (settings.mode === 'managed' ? managedIdentityState : identityState)(ses, address)) === 'verified'
     } catch (err) {
       throw new MailSetupError(describeSesError(err), { cause: err })
     }
@@ -375,7 +474,8 @@ export class OwleryService implements CompanyMail {
 
   /** Makes another verified sender the default (system mail and sends without their own from). */
   async setDefaultSender(address: string, updatedBy: string): Promise<void> {
-    await this.deps.store.writeEmailFrom(address.trim().toLowerCase(), updatedBy)
+    if ((await this.mode()) === 'managed') await this.deps.store.writeManagedSender(address.trim().toLowerCase(), updatedBy)
+    else await this.deps.store.writeEmailFrom(address.trim().toLowerCase(), updatedBy)
     this.cache = null
   }
 
@@ -425,6 +525,7 @@ export class OwleryService implements CompanyMail {
    */
   async setupEvents(origin: string): Promise<OwleryEvents> {
     const { sns, settings } = await this.sns()
+    if (settings.mode === 'managed') throw new MailSetupError('eigenEnterprise Mail wires delivery events itself; nothing to set up here.')
     const ses = this.client(settings)
     const names = eventResourceNames(origin)
     const callbackUrl = `${origin.replace(/\/+$/, '')}/api/mail/ses-events`
@@ -464,6 +565,8 @@ export class OwleryService implements CompanyMail {
 
   /** SNS confirmed (or cancelled) our subscription. */
   async markEvents(patch: Partial<OwleryEvents>): Promise<void> {
+    // Managed mode: the events wiring is the control plane's; nothing is stored here.
+    if ((await this.mode()) === 'managed') return
     await this.deps.store.writeEvents(patch)
     this.cache = null
   }
@@ -474,6 +577,11 @@ const host = globalThis as { __eeOwleryService?: OwleryService }
 /** The mail transport this process runs with (MAIL_TRANSPORT, see transport.ts). Throws on bad config. */
 export function configuredMailTransport(): MailTransport {
   return resolveMailTransport(env)
+}
+
+/** eigenEnterprise Mail's config from EE_MAIL_* (null without it). Throws on a partial set. */
+export function configuredManagedMail(): ManagedMailConfig | null {
+  return managedMailFromEnv()
 }
 
 /**
@@ -491,6 +599,7 @@ export function owleryService(): OwleryService {
         if (!master) throw new Error('TENANT_MASTER_KEY is required to unseal the Amazon SES secret')
         return owlerySealKey(master)
       },
+      managed: configuredManagedMail,
       ...(transport === 'fake' ? { ses: fakeStoreSes(defaultFakeMailStore()), sns: fakeSns } : {}),
     })
   }

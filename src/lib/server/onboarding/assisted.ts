@@ -1,9 +1,10 @@
 import { desc, eq } from 'drizzle-orm'
 import { isUserAdmin } from '$lib/server/auth/user-role'
 import { getDb } from '$lib/server/db'
-import { companyMail } from '$lib/server/mail'
 import { kernelJourneys } from '$lib/server/db/journey.schema'
 import { llmActiveProvider, userPreference } from '$lib/server/db/schema'
+import { companyMail } from '$lib/server/mail'
+import { managedMailFromEnv } from '$lib/server/mail/managed-env'
 import { WEBSITE_FOUNDING_JOURNEY } from '../../../../modules/orchestrator/brain'
 import {
   websiteStatusFrom,
@@ -25,7 +26,8 @@ export async function onboardingFactsFor(
     .from(userPreference)
     .where(eq(userPreference.userId, llmUserId))
     .limit(1)
-  const emailConfigured = await companyMail().isConfigured()
+  // eigenEnterprise Mail: nothing for the owner to connect, the step counts as done.
+  const emailConfigured = (await companyMail().isConfigured()) || managedMailFromEnv() !== null
   const [active] = await db
     .select({ provider: llmActiveProvider.provider })
     .from(llmActiveProvider)

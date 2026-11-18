@@ -1,7 +1,7 @@
 import type { DownloadDeps } from './attachments'
 import type { InboxHub } from './hub'
 import type { IngestDeps } from './ingest'
-import type { RawMailSource } from './raw-source'
+import type { DeletableRawMailSource } from './raw-source'
 import type { SendDeps } from './send'
 import type { InboxAudit, InboxDeps, InboxMember } from './service'
 import { dbInboxStore } from './db-store'
@@ -68,12 +68,16 @@ export function inboundDeps(received: IngestDeps['received']): Promise<import('.
   inboundPromise ??= (async () => {
     const { appSql, createScopedDrizzle } = await import('$lib/server/db')
     const { defaultOwleryStore } = await import('../owlery/store')
+    const { owleryService } = await import('../owlery/service')
+    const raw = await rawMailSource()
     return {
       owlery: defaultOwleryStore(),
       fetch,
+      managed: () => owleryService().managedConfig(),
       ingest: {
         store: dbInboxStore(createScopedDrizzle(appSql)),
-        raw: await rawMailSource(),
+        raw,
+        discard: (bucket: string, key: string) => raw.deleteRaw(bucket, key),
         received,
       },
     }
@@ -88,7 +92,7 @@ export function inboundDeps(received: IngestDeps['received']): Promise<import('.
  * Where raw received mail is read from: the company's inbound S3 bucket, or —
  * under MAIL_TRANSPORT=fake, like SES and SNS — the process's fake bucket.
  */
-async function rawMailSource(): Promise<RawMailSource> {
+async function rawMailSource(): Promise<DeletableRawMailSource> {
   const { configuredMailTransport } = await import('../owlery/service')
   const { processFakeRawMailSource, s3RawMailSource } = await import('./raw-source')
   const { MAX_RAW_BYTES } = await import('./ingest')
@@ -97,6 +101,9 @@ async function rawMailSource(): Promise<RawMailSource> {
 
 /** The company's inbound bucket (stored by the receiving setup); fails loud before receiving is set up. */
 async function inboundBucket(): Promise<string> {
+  const { owleryService } = await import('../owlery/service')
+  const managed = await owleryService().managedConfig()
+  if (managed) return managed.inboundBucket
   const { defaultOwleryStore } = await import('../owlery/store')
   const bucket = (await defaultOwleryStore().read())?.receivingBucket
   if (!bucket) throw new Error('Receiving has no inbound bucket stored, so attachments cannot be read.')

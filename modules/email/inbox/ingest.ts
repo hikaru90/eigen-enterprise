@@ -84,7 +84,7 @@ export function folderOf(n: ReceivedNotification): Folder {
   return v.spam === 'FAIL' || v.virus === 'FAIL' || dmarcSaysSpam ? 'spam' : 'inbox'
 }
 
-export type IngestLog = (event: 'received', fields: Record<string, string | number>) => void
+export type IngestLog = (event: 'received' | 'discarded', fields: Record<string, string | number>) => void
 
 /** One mail newly stored in one mailbox (what the calendar reads appointments from, K7). */
 export type StoredMail = { messageId: string; mailbox: MailboxRow; folder: Folder }
@@ -99,6 +99,11 @@ export type IngestDeps = {
    */
   received: (mail: StoredMail) => Promise<void>
   newId?: () => string
+  /**
+   * Deletes a raw mail object (managed mode: mail to an address nobody holds is
+   * deleted, no bounce, D7). Required when ingest runs with `managed`.
+   */
+  discard?: (bucket: string, key: string) => Promise<void>
   /** Ids, counts and sizes only. Default: console.info. */
   log?: IngestLog
 }
@@ -114,12 +119,23 @@ export type IngestResult = {
 
 const defaultLog: IngestLog = (event, fields) => console.info(`[inbox] ${event}`, fields)
 
-export async function ingestReceived(deps: IngestDeps, n: ReceivedNotification, bucket: string): Promise<IngestResult> {
+/** eigenEnterprise Mail: the shared bucket holds every company's mail under its own prefix (D9). */
+export type ManagedIngest = { prefix: string }
+
+export async function ingestReceived(
+  deps: IngestDeps,
+  n: ReceivedNotification,
+  bucket: string,
+  managed?: ManagedIngest,
+): Promise<IngestResult> {
   const action = n.receipt.action
   if (action.type !== 'S3') throw new IngestRejected(`The receipt action is ${action.type}, not S3.`)
   if (action.bucketName !== bucket) throw new IngestRejected('The receipt names a bucket that is not this company’s inbound bucket.')
   if (!action.objectKey) throw new IngestRejected('The receipt has no S3 object key.')
   const key = action.objectKey
+  if (managed && !key.startsWith(`${managed.prefix}/`)) {
+    throw new IngestRejected('The receipt names an object outside this company’s prefix of the inbound bucket.')
+  }
   const newId = deps.newId ?? randomUUID
   const log = deps.log ?? defaultLog
   const sesMessageId = n.mail.messageId
@@ -132,6 +148,12 @@ export async function ingestReceived(deps: IngestDeps, n: ReceivedNotification, 
   const reaching = new Set(found.filter((f) => f.mailbox.disabledAt === null).map((f) => f.address))
   const skipped = recipients.filter((r) => !reaching.has(r)).length
   if (targets.size === 0) {
+    if (managed) {
+      if (!deps.discard) throw new Error('managed ingest needs discard to delete mail nobody receives')
+      await deps.discard(bucket, key)
+      log('discarded', { sesMessageId, skipped })
+      return { stored: 0, duplicates: 0, skipped }
+    }
     log('received', { sesMessageId, stored: 0, duplicates: 0, skipped, sizeBytes: 0 })
     return { stored: 0, duplicates: 0, skipped }
   }

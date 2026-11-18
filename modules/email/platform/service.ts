@@ -35,6 +35,9 @@ import { applyIdentityCheck, dueForCheck } from './verification'
  * path; this service only adds what surrounds it.
  */
 
+/** D8: managed mode, a domain the control plane has not created at SES yet. */
+export const MANAGED_DOMAIN_PENDING_MESSAGE = 'eigenEnterprise Mail is adding this domain (a minute or two).'
+
 export type DomainView = DomainRow & { records: DnsRecord[]; sendable: boolean }
 
 /** `mail_suppressions.source` for an address a webmail send bounced or complained on (no message id: there is no log row). */
@@ -194,6 +197,22 @@ export class EmailPlatform {
     }
     if (await this.deps.store.getDomainByName(name)) throw new EmailPlatformError(`${name} is already added.`)
     const { ses, settings } = await this.deps.owlery.ses()
+    // Managed mode (D4, D6): the control plane creates the identity with Easy DKIM; os only records the wish.
+    if (settings.mode === 'managed') {
+      const row = await this.deps.store.insertDomain({
+        name,
+        region: settings.region,
+        status: 'NOT_STARTED',
+        dkimSelector: DKIM_SELECTOR,
+        publicKey: null,
+        dkimTokens: [],
+        mailFromDomain: null,
+        isVerifying: true,
+        errorMessage: MANAGED_DOMAIN_PENDING_MESSAGE,
+        createdBy,
+      })
+      return this.view(row)
+    }
     let existing
     try {
       existing = await ses.getDomainIdentity(name)
@@ -258,12 +277,27 @@ export class EmailPlatform {
   async refreshDomain(id: string): Promise<DomainView> {
     const d = await this.deps.store.getDomain(id)
     if (!d) throw new EmailPlatformError('That domain does not exist (any more).')
-    const { ses } = await this.deps.owlery.ses()
+    const { ses, settings } = await this.deps.owlery.ses()
     let check
     try {
       check = await ses.getDomainIdentity(d.name)
     } catch (err) {
       throw new EmailPlatformError(describeSesError(err))
+    }
+    if (settings.mode === 'managed') {
+      if (!check.exists) {
+        return this.view(
+          await this.deps.store.updateDomain(id, {
+            status: 'NOT_STARTED',
+            errorMessage: MANAGED_DOMAIN_PENDING_MESSAGE,
+            isVerifying: true,
+            lastCheckedAt: this.now(),
+          }),
+        )
+      }
+      // Easy DKIM: Amazon's tokens become the three CNAMEs dns.ts shows.
+      const next = applyIdentityCheck(check, await this.dmarcFound(d.name), this.now())
+      return this.view(await this.deps.store.updateDomain(id, { ...next, dkimTokens: check.dkimTokens, mailFromDomain: check.mailFromDomain }))
     }
     const next = applyIdentityCheck(check, await this.dmarcFound(d.name), this.now())
     // An adopted domain follows Amazon's DKIM and MAIL FROM, which the owner may change in the console.
@@ -299,8 +333,8 @@ export class EmailPlatform {
         `${settings.emailFrom} is your default sender (it sends sign-in codes). Make another sender the default first.`,
       )
     }
-    // An adopted domain was in the SES account before ee: it stays there.
-    if (!d.adopted) {
+    // An adopted domain was in the SES account before ee: it stays there. Managed mode: the control plane removes it (D4).
+    if (!d.adopted && settings.mode !== 'managed') {
       try {
         await ses.deleteIdentity(d.name)
       } catch (err) {
@@ -325,6 +359,9 @@ export class EmailPlatform {
 
   /** "Set up receiving" (Setup › Account): provisions at Amazon, then syncs the rules. The outcome is stored. */
   async setupReceiving(origin: string) {
+    if ((await this.deps.owlery.mode()) === 'managed') {
+      throw new EmailPlatformError('eigenEnterprise Mail sets up receiving itself. Turn on receiving for a domain instead.')
+    }
     return this.deps.receiving.setup(origin, await this.receivingRecipients())
   }
 
@@ -334,6 +371,8 @@ export class EmailPlatform {
    * state), null when the rules match.
    */
   async syncReceiving(): Promise<string | null> {
+    // Managed mode: os keeps exact-address routing; the receipt rule is the control plane's (D7).
+    if ((await this.deps.owlery.mode()) === 'managed') return null
     try {
       await this.deps.receiving.syncRules(await this.receivingRecipients())
       return null
@@ -355,6 +394,8 @@ export class EmailPlatform {
       throw new EmailPlatformError(`${d.name} is not verified yet. Finish its DNS records first, then turn on receiving.`)
     }
     const row = await this.deps.store.updateDomain(id, { receiving: on })
+    // Managed mode (D7): the control plane's rule follows report.mail.domains; only the flag (and its MX record) here.
+    if ((await this.deps.owlery.mode()) === 'managed') return { domain: await this.view(row), receivingError: null }
     const state = await this.deps.receiving.state()
     let receivingError: string | null
     if (on && (!state || state.receivingStatus === 'not_set_up' || state.receivingStatus === 'failed')) {
@@ -373,8 +414,8 @@ export class EmailPlatform {
     const rows = await this.deps.store.listSenders()
     const def = settings.emailFrom.toLowerCase()
     const list = rows.map((r) => ({ ...r, isDefault: r.address === def }))
-    // The default sender saved during setup is always listed, even before it has a row.
-    if (!list.some((r) => r.isDefault)) {
+    // The default sender saved during setup is always listed, even before it has a row (managed mode may have none yet).
+    if (def !== '' && !list.some((r) => r.isDefault)) {
       list.unshift({
         id: '',
         address: def,
@@ -401,7 +442,16 @@ export class EmailPlatform {
       if (domain.status !== 'SUCCESS') {
         throw new EmailPlatformError(`${domainName} is not verified yet. Finish its DNS records first, then add the sender.`)
       }
-      return this.deps.store.upsertSender({ address, displayName, domainId: domain.id, createdBy })
+      const sender = await this.deps.store.upsertSender({ address, displayName, domainId: domain.id, createdBy })
+      // Managed mode: the first sender becomes the default, so sign-in codes have an address to go out from.
+      const { settings } = await this.deps.owlery.ses()
+      if (settings.mode === 'managed' && settings.emailFrom === '') await this.deps.owlery.setDefaultSender(address, createdBy)
+      return sender
+    }
+    if ((await this.deps.owlery.mode()) === 'managed') {
+      throw new EmailPlatformError(
+        `With eigenEnterprise Mail, mail goes out only from the company’s own domains. Add ${domainName} under Email › Setup first, then add ${address} here.`,
+      )
     }
     if (!(await this.deps.owlery.senderVerified(address))) {
       throw new EmailPlatformError(`Add ${domainName} under Setup › Account and verify it first, then add ${address} here.`)
@@ -445,9 +495,10 @@ export class EmailPlatform {
   /** Removes it here and from Amazon's own account-level list (both, or a plain error). */
   async unsuppress(email: string): Promise<void> {
     const address = normalizeEmail(email)
-    const { ses } = await this.deps.owlery.ses()
+    const { ses, settings } = await this.deps.owlery.ses()
     try {
-      await ses.removeFromAccountSuppression(address)
+      // Managed mode: the tenant's own suppression list (D2).
+      await ses.removeFromAccountSuppression(address, settings.tenant ?? undefined)
     } catch (err) {
       throw new EmailPlatformError(`Amazon still blocks ${address}: ${describeSesError(err)}`)
     }
@@ -505,6 +556,7 @@ export class EmailPlatform {
    * unsubscribe, or apply the SES event inside a notification.
    */
   async handleSnsMessage(m: SnsMessage): Promise<{ status: number; body: Record<string, unknown> }> {
+    // Managed mode: the events topic is EE_MAIL_EVENTS_TOPIC_ARN (D9), carried in the synthesized settings.
     const settings = await this.deps.owlery.settings()
     if (!settings?.eventsTopicArn || settings.eventsTopicArn !== m.TopicArn) {
       return { status: 403, body: { error: 'This SNS topic does not belong to this company.' } }
@@ -545,7 +597,8 @@ export class EmailPlatform {
 
   /** Re-checks domains still waiting on DNS (cadence: verification.dueForCheck). */
   async refreshDueDomains(): Promise<number> {
-    if (!(await this.deps.owlery.isConfigured())) return 0
+    // Settings, not isConfigured: managed mode checks domains before it has a default sender.
+    if (!(await this.deps.owlery.settings())) return 0
     const now = this.now()
     let n = 0
     for (const d of await this.deps.store.verifyingDomains()) {

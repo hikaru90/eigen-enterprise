@@ -10,6 +10,7 @@ import { user } from '$lib/server/db/auth.schema'
 import { userPreference } from '$lib/server/db/schema'
 import { isCompanyProviderReady } from '$lib/server/llm/provider-ready'
 import { companyMail } from '$lib/server/mail'
+import { managedMailFromEnv } from '$lib/server/mail/managed-env'
 import { companyOnboardingFor, joinedByInvite } from '$lib/server/members/joined'
 import { onboardingFactsFor } from '$lib/server/onboarding/assisted'
 import { completeWelcomeOnboarding, setAccountName } from '$lib/server/onboarding/welcome'
@@ -87,8 +88,8 @@ export const load: PageServerLoad = async (event) => {
     handoffAvailable: showWelcome && (await onboardingFactsFor(userId))?.website === 'not_started',
     byokUiEnabled: isByokUiEnabled(),
     displayName,
-    // The owner sets up company email in the onboarding (sign-in codes depend on it).
-    needsMail: !isHarness && isAdmin && !(await companyMail().isConfigured()),
+    // The owner sets up company email in the onboarding (sign-in codes depend on it); eigenEnterprise Mail needs no setup.
+    needsMail: !isHarness && isAdmin && !(await companyMail().isConfigured()) && managedMailFromEnv() === null,
   }
 }
 

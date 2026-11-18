@@ -3031,3 +3031,8 @@ was an LLM promise with no execution behind it.
 
 **Decision logged**
 - Voice + sound default ON; independent toggles (settings menu). Tab mute stays the user's lever.
+
+## 2026-11-18 — managed mail T2 (os managed mode), branch mail-t2
+- os runs on eigenEnterprise Mail when all ten EE_MAIL_* are set and no own SES keys are saved (own keys win, D1); partial set throws at boot.
+- Sends carry TenantName; no provisioning calls in managed mode; domains via GetEmailIdentity (Easy DKIM); receiving = flag only; webhooks pinned to env ARNs + `${prefix}/`; unrouted inbound deleted; tenant pause → D8 message; tenant-scoped unsuppress; setup card + "Use your own Amazon SES instead"; GET /api/fleet/mail-domains.
+- Decision: managed default sender lives in new table managed_mail_sender (migration 0150), since an owlery_settings row means "own SES"; the first sender added on a company domain becomes the default. Until then isConfigured() is false (sign-in codes keep their dev/no-mail path), while the onboarding mail step counts as done.
