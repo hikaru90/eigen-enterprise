@@ -4,7 +4,8 @@ import { registerUser } from './test-helpers'
 
 /**
  * Phase-2a/2b: provider onboarding is two questions (method → provider), catalog-driven,
- * with subscription sign-ins (Copilot, OpenRouter) and explicit model selection.
+ * with sign-ins (the Copilot subscription; OpenRouter's key-creating sign-in on the API-key
+ * path) and explicit model selection.
  *
  * These tests drive the SERVER CONTRACT through the session-shared request context
  * (deterministic — no UI typing races) and assert the gate on the nucleus surface:

@@ -4,13 +4,37 @@ import { llmActiveProvider } from '$lib/server/db/schema'
 import { env } from '$lib/server/env/private-env'
 import { LlmNotConfiguredError } from '$lib/server/llm/errors'
 import { assertEurouterGatewayConfigured } from '$lib/server/llm/llm-config-guard'
+import {
+  PLATFORM_AI_PROVIDER,
+  readPlatformAiConfig,
+  type PlatformAiConfig,
+} from '$lib/server/llm/platform-ai'
 import type { LlmProviderKind, ResolvedLlmConfig } from '$lib/server/llm/types'
 
+/** This process's platform AI from hosting (PLATFORM_LLM_*), or null. Throws on a partial set. */
+export function platformAiFromEnv(): PlatformAiConfig | null {
+  return readPlatformAiConfig(env as Record<string, string | undefined>)
+}
+
 /**
- * Platform-managed gateway credentials (Eigen service account).
- * Used when billing_mode is platform_credits.
+ * Platform-managed gateway credentials. Used when billing_mode is platform_credits.
+ * The platform AI from hosting (a hosted box) first; otherwise the self-hosted
+ * service account: EUrouter by default, OpenRouter when the active row says so.
  */
 export async function loadPlatformLlmConfig(userId: string): Promise<ResolvedLlmConfig> {
+  const platformAi = platformAiFromEnv()
+  if (platformAi) {
+    return {
+      provider: PLATFORM_AI_PROVIDER,
+      baseUrl: platformAi.baseUrl,
+      apiKey: platformAi.apiKey,
+      ruleChat: null,
+      ruleEmbedding: null,
+      modelChat: platformAi.modelChat,
+      modelEmbedding: platformAi.modelEmbedding,
+    }
+  }
+
   const [activeRow] = await withBillingUserDbRead(userId, (db) =>
     db.select().from(llmActiveProvider).where(eq(llmActiveProvider.userId, userId)).limit(1),
   )

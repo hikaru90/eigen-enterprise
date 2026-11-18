@@ -46,6 +46,11 @@ export type ExtendedPrivateEnv = typeof kitEnv & {
   OAUTH_OPENAI_AUTH_BASE_URL?: string
   OAUTH_OPENAI_CODEX_BASE_URL?: string
   PASSKEY_ORIGIN?: string
+  /** The platform AI from hosting (ee sets all four from the fleet's platformAi; llm/platform-ai.ts). */
+  PLATFORM_LLM_BASE_URL?: string
+  PLATFORM_LLM_API_KEY?: string
+  PLATFORM_LLM_MODEL_CHAT?: string
+  PLATFORM_LLM_MODEL_EMBEDDING?: string
   FEEDBACK_INBOX_EMAIL?: string
   NODE_ENV?: string
   PAYPAL_CLIENT_SECRET?: string

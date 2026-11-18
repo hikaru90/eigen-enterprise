@@ -48,7 +48,8 @@
   let modelChat = $state('')
   let modelEmbedding = $state('')
 
-  // Subscription sign-in state (model step + device/paste cards)
+  // Sign-in state (model step + device/paste cards): the Copilot subscription, and the
+  // OpenRouter sign-in that creates an API key (offered on the API-key path).
   type SubscriptionFlow = 'github_copilot' | 'openrouter-signin'
   let subscriptionFlow = $state<SubscriptionFlow | null>(null)
   let subChatModels = $state<CatalogModel[]>([])
@@ -371,7 +372,7 @@
         >
           <span class="block text-sm font-medium">Use a subscription I have</span>
           <span class="text-muted-foreground mt-0.5 block text-xs">
-            Sign in with your existing account (Claude, ChatGPT, Copilot, OpenRouter)
+            Sign in with an account you already pay for (GitHub Copilot)
           </span>
         </button>
         <button
@@ -398,72 +399,70 @@
               Sign in with your GitHub account — no API key. Chat only.
             </span>
           </button>
-          <button
-            type="button"
-            class="border-2 px-4 py-4 text-left transition-colors hover:border-black"
-            onclick={() => chooseSubscription('openrouter-signin')}
-          >
-            <span class="block text-sm font-medium">Sign in with OpenRouter</span>
-            <span class="text-muted-foreground mt-0.5 block text-xs">
-              Create a key through your OpenRouter account automatically.
-            </span>
-          </button>
           {#if error}
             <p class="text-destructive text-xs leading-relaxed">{error}</p>
           {/if}
-          {#if connecting}
-            <p class="text-muted-foreground flex items-center gap-2 text-xs">
-              <LoaderCircle class="size-3.5 animate-spin" strokeWidth={1.75} />
-              Redirecting to sign-in…
-            </p>
-          {/if}
-        </div>
-      {:else if catalogLoading}
-        <p class="text-muted-foreground mt-8 flex items-center gap-2 text-xs">
-          <LoaderCircle class="size-3.5 animate-spin" strokeWidth={1.75} />
-          Loading providers…
-        </p>
-      {:else if catalogError}
-        <div class="mt-8">
-          <p class="text-destructive text-xs leading-relaxed">{catalogError}</p>
-          <button
-            type="button"
-            class="mt-3 h-9 border-2 border-black px-4 text-xs font-medium"
-            onclick={() => void loadCatalog()}
-          >
-            Retry
-          </button>
         </div>
       {:else}
-        <div class="mt-6">
-          <input
-            type="search"
-            placeholder="Search providers…"
-            bind:value={providerSearch}
-            class="focus:border-black h-10 w-full border border-black/20 bg-white px-3 text-sm outline-none"
-          />
-          <div class="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
-            {#each filteredCatalog as entry (entry.id)}
-              <button
-                type="button"
-                class="w-full border border-black/15 px-4 py-3 text-left transition-colors hover:border-black"
-                onclick={() => chooseApiKeyProvider(entry)}
-              >
-                <span class="block text-sm font-medium">{entry.name}</span>
-                <span class="text-muted-foreground mt-0.5 block text-xs">
-                  {entry.chatModels.length} chat models{entry.embeddingModels.length
-                    ? ` · ${entry.embeddingModels.length} embedding models`
-                    : ''}
-                </span>
-              </button>
-            {:else}
-              <p class="text-muted-foreground text-xs">No provider matches that search.</p>
-            {/each}
+        <!-- OpenRouter is pay-per-use with an API key, not a subscription: its sign-in
+             (OAuth that creates a key) lives on the API-key path. -->
+        <button
+          type="button"
+          class="mt-8 w-full border-2 px-4 py-4 text-left transition-colors hover:border-black"
+          onclick={() => chooseSubscription('openrouter-signin')}
+        >
+          <span class="block text-sm font-medium">Sign in to OpenRouter to create a key</span>
+          <span class="text-muted-foreground mt-0.5 block text-xs">
+            No key yet? Sign in and OpenRouter creates one for this workspace.
+          </span>
+        </button>
+        {#if catalogLoading}
+          <p class="text-muted-foreground mt-6 flex items-center gap-2 text-xs">
+            <LoaderCircle class="size-3.5 animate-spin" strokeWidth={1.75} />
+            Loading providers…
+          </p>
+        {:else if catalogError}
+          <div class="mt-6">
+            <p class="text-destructive text-xs leading-relaxed">{catalogError}</p>
+            <button
+              type="button"
+              class="mt-3 h-9 border-2 border-black px-4 text-xs font-medium"
+              onclick={() => void loadCatalog()}
+            >
+              Retry
+            </button>
           </div>
-          {#if error}
-            <p class="text-destructive mt-3 text-xs leading-relaxed">{error}</p>
-          {/if}
-        </div>
+        {:else}
+          <div class="mt-6">
+            <input
+              type="search"
+              placeholder="Search providers…"
+              bind:value={providerSearch}
+              class="focus:border-black h-10 w-full border border-black/20 bg-white px-3 text-sm outline-none"
+            />
+            <div class="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+              {#each filteredCatalog as entry (entry.id)}
+                <button
+                  type="button"
+                  class="w-full border border-black/15 px-4 py-3 text-left transition-colors hover:border-black"
+                  onclick={() => chooseApiKeyProvider(entry)}
+                >
+                  <span class="block text-sm font-medium">{entry.name}</span>
+                  <span class="text-muted-foreground mt-0.5 block text-xs">
+                    {entry.chatModels.length} chat models{entry.embeddingModels.length
+                      ? ` · ${entry.embeddingModels.length} embedding models`
+                      : ''}
+                  </span>
+                </button>
+              {:else}
+                <p class="text-muted-foreground text-xs">No provider matches that search.</p>
+              {/each}
+            </div>
+            {#if error}
+              <p class="text-destructive mt-3 text-xs leading-relaxed">{error}</p>
+            {/if}
+          </div>
+        {/if}
       {/if}
     {:else if step === 'models'}
       <div class="mt-8 space-y-3">
@@ -544,6 +543,15 @@
           >
             Continue
           </button>
+          {#if error}
+            <p class="text-destructive text-xs leading-relaxed">{error}</p>
+          {/if}
+          {#if connecting && subscriptionFlow === 'openrouter-signin'}
+            <p class="text-muted-foreground flex items-center gap-2 text-xs">
+              <LoaderCircle class="size-3.5 animate-spin" strokeWidth={1.75} />
+              Redirecting to sign-in…
+            </p>
+          {/if}
         {/if}
       </div>
     {:else if step === 'credentials' && selectedProvider}
