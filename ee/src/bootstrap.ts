@@ -4,6 +4,7 @@ import { basename } from 'node:path'
 import { writeBackupTimer } from './backup/box.ts'
 import { BACKUP_SCOPE, storedConfigSchema } from './backup/service.ts'
 import { OS_BODY_SIZE_LIMIT } from './body-limit.ts'
+import { OS_EMBEDDING_COMPRESS_INTENSITY } from './embedding-compress.ts'
 import { claimFromHash, newClaim } from './claim.ts'
 import { CompanyRepo, ipv4CidrSchema, type DesiredState, type Settings } from './company-repo.ts'
 import { assertContainerHostReady, detectContainer } from './container.ts'
@@ -463,6 +464,8 @@ async function seedCompany(
         EE_VCS_AUTOCOMMIT: '0',
         // Drive uploads: adapter-node's 512K default would refuse them (see body-limit.ts).
         BODY_SIZE_LIMIT: OS_BODY_SIZE_LIMIT,
+        // The app refuses to embed without it; without it no thought is ever indexed.
+        EMBEDDING_COMPRESS_INTENSITY: OS_EMBEDDING_COMPRESS_INTENSITY,
       }, contributeHub),
       secrets: [...OS_SECRETS, ...CLAIM_SECRETS],
       resources: { memoryMb: 2048, cpuPercent: 200 },

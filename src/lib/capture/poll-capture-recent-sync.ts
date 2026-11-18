@@ -59,6 +59,8 @@ export function pollCaptureRecentSync(input: {
     details: Record<string, CaptureSubmitResult>
   }
   onSync: (next: RecentCaptureMergeResult) => void
+  /** Called with the failure message when a request fails, and with null once one succeeds again. */
+  onError?: (message: string | null) => void
   pollMs?: number
 }): () => void {
   const pollMs = input.pollMs ?? CAPTURE_RECENT_SYNC_POLL_MS
@@ -95,8 +97,10 @@ export function pollCaptureRecentSync(input: {
       if (listChanged || detailChanged || serverFilledEmptyLocal) {
         input.onSync(merged)
       }
-    } catch {
-      // Transient errors — retry on next interval.
+      input.onError?.(null)
+    } catch (e) {
+      // Retried on the next interval, but never silent: the page shows it.
+      input.onError?.(e instanceof Error ? e.message : String(e))
     }
     if (cancelled) return
     timer = setTimeout(() => {

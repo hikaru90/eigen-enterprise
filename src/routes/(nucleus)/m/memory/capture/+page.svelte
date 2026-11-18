@@ -197,6 +197,9 @@
       !showOnboarding,
   )
 
+  /** Why the recent list can't be refreshed (shown, never swallowed); null when the last request worked. */
+  let recentSyncError = $state<string | null>(null)
+
   async function reloadRecentThoughts() {
     try {
       const params = new SvelteURLSearchParams()
@@ -204,7 +207,11 @@
       appendViewToSearchParams(params, dataView)
       if (recentFilter.category) params.set('category', recentFilter.category)
       const res = await fetch(`/api/capture/recent?${params.toString()}`)
-      if (!res.ok) return
+      if (!res.ok) {
+        recentSyncError = (await res.text()) || `Failed to load recent captures (${res.status})`
+        return
+      }
+      recentSyncError = null
       const payload = (await res.json()) as {
         recentThoughts: CaptureRecentThoughtSnippet[]
         recentThoughtDetails: CaptureSubmitResult[]
@@ -213,8 +220,8 @@
       thoughtDetails = Object.fromEntries(
         payload.recentThoughtDetails.map((thought) => [thought.id, thought]),
       )
-    } catch {
-      // Transient errors — poll will retry.
+    } catch (e) {
+      recentSyncError = e instanceof Error ? e.message : String(e)
     }
   }
 
@@ -362,8 +369,9 @@
         getState: () => ({ snippets: recentThoughts, details: thoughtDetails }),
       })
       applyRecentCaptureSync(merged)
-    } catch {
-      // Transient errors — poll will retry.
+      recentSyncError = null
+    } catch (e) {
+      recentSyncError = e instanceof Error ? e.message : String(e)
     }
   }
 
@@ -597,6 +605,9 @@
       getFilter: () => ({ ...recentFilter, ...viewToListApiParams(dataView) }),
       getState: () => ({ snippets: recentThoughts, details: thoughtDetails }),
       onSync: applyRecentCaptureSync,
+      onError: (message) => {
+        recentSyncError = message
+      },
     })
 
     const unsub = subscribeCaptureQueue((message) => {
@@ -1028,6 +1039,11 @@
 
   <div class="relative z-0 flex min-h-0 flex-1 flex-col overflow-hidden px-5 pt-6">
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {#if recentSyncError}
+        <p class="text-destructive mb-3 text-sm" role="alert">
+          Couldn't refresh your recent thoughts, so indexing status may be out of date: {recentSyncError}
+        </p>
+      {/if}
       <CaptureRecentThoughts
         thoughts={recentThoughts}
         {thoughtDetails}
