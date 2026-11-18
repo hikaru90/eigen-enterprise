@@ -114,7 +114,7 @@ describe('fleet: enroll', () => {
     expect(managed).toEqual({ controlPlane: CP, boxId: BOX, pollSeconds: 30 })
     expect(f.calls[0]!.url).toBe(`${CP}${FLEET_PATHS.enroll}`)
     const sent = JSON.parse(String(f.calls[0]!.init.body))
-    expect(sent).toMatchObject({ protocol: 1, enrollToken: TOKEN, eeVersion: EE_VERSION, features: FLEET_FEATURES.filter((f) => f !== 'domains') })
+    expect(sent).toMatchObject({ protocol: 1, enrollToken: TOKEN, eeVersion: EE_VERSION, features: [...FLEET_FEATURES] })
     expect(f.secrets[FLEET_SCOPE]![BOX_KEY]).toBeTruthy()
     expect(sent.publicKey).not.toBe(f.secrets[FLEET_SCOPE]![BOX_KEY])
     expect(f.secrets['os']![LOCAL_TOKEN]).toMatch(/^[A-Za-z0-9_-]{43}$/)
@@ -161,6 +161,7 @@ describe('fleet: poll', () => {
     })
     expect(f.host.seats).toHaveBeenCalledWith('local-token')
     expect(report.features).toContain('mail')
+    expect(report.features).toContain('domains')
     expect(report.mail).toEqual({ domains: [{ name: 'acme.example.com', receive: true }] })
     expect(f.host.mailDomains).toHaveBeenCalledWith('local-token')
     await agent.poll()
@@ -287,6 +288,51 @@ describe('fleet: desired state (level-triggered)', () => {
       expect(f.state().workloads[0]!.secrets).not.toContain(name)
     }
     for (const l of f.logs) expect(l.message).not.toMatch(/SECRET-MAIL|AKIAMAIL/)
+  })
+
+  it('domains: sets + declares EE_DOMAINS_API_BASE + EE_DOMAINS_TOKEN on os, redeploys only on change, null removes them', async () => {
+    const f = fakeHost({ managed: true })
+    const agent = new FleetAgent(f.host)
+    const domains = { apiBase: 'https://hosting.example.com', token: 'D'.repeat(48) }
+    const names = ['EE_DOMAINS_API_BASE', 'EE_DOMAINS_TOKEN']
+    f.setAnswer(desired({ domains }))
+    expect((await agent.poll()).ok).toBe(true)
+    expect(f.secrets['os']).toMatchObject({ EE_DOMAINS_API_BASE: 'https://hosting.example.com', EE_DOMAINS_TOKEN: domains.token })
+    expect(f.state().workloads[0]!.secrets).toEqual(expect.arrayContaining(names))
+    const n = f.commits.length
+    await agent.poll()
+    expect(f.commits).toHaveLength(n)
+    expect(f.host.reconcile).not.toHaveBeenCalled()
+    const rotated = 'E'.repeat(48)
+    f.setAnswer(desired({ domains: { ...domains, token: rotated } }))
+    expect((await agent.poll()).ok).toBe(true)
+    expect(f.host.reconcile).toHaveBeenCalledTimes(1)
+    expect(f.commits).toHaveLength(n)
+    expect(f.secrets['os']!['EE_DOMAINS_TOKEN']).toBe(rotated)
+    f.setAnswer(desired({ domains: null }))
+    expect((await agent.poll()).ok).toBe(true)
+    for (const name of names) {
+      expect(f.secrets['os']![name]).toBeUndefined()
+      expect(f.state().workloads[0]!.secrets).not.toContain(name)
+    }
+    // The token is a secret: never in the journal or a commit message.
+    for (const l of f.logs) expect(l.message).not.toMatch(/DDDD|EEEE/)
+    for (const c of f.commits) expect(c).not.toMatch(/DDDD|EEEE/)
+  })
+
+  it('domains: a desired state without domains leaves the EE_DOMAINS_* secrets alone', async () => {
+    const f = fakeHost({ managed: true })
+    const agent = new FleetAgent(f.host)
+    const domains = { apiBase: 'https://hosting.example.com', token: 'D'.repeat(48) }
+    f.setAnswer(desired({ domains }))
+    await agent.poll()
+    const n = f.commits.length
+    f.setAnswer(desired())
+    expect((await agent.poll()).ok).toBe(true)
+    expect(f.secrets['os']).toMatchObject({ EE_DOMAINS_API_BASE: domains.apiBase, EE_DOMAINS_TOKEN: domains.token })
+    expect(f.state().workloads[0]!.secrets).toEqual(expect.arrayContaining(['EE_DOMAINS_API_BASE', 'EE_DOMAINS_TOKEN']))
+    expect(f.commits).toHaveLength(n)
+    expect(f.host.reconcile).not.toHaveBeenCalled()
   })
 
   it('backup: configures the fleet target, reconfigures only on change, null removes only its own', async () => {
