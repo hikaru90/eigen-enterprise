@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-18 — v0.5.18 released, on the box and on production (Settings → Updates live)
+
+- `[release] v0.5.18` (`9f836fc`, tag `v0.5.18`, release run 44346541913 green). First release with a signed `NOTES.md` (also the GitHub release body). Carries Settings → Updates and the managed-domains work merged on main (DM1–DM3, real Route 53 still unproven).
+- **Box:** updated 0.5.16 (`40fad60`) → 0.5.18 through the Settings → Updates path itself (`POST /v1/upgrade`, release built into `/release`): succeeded, safety copy `/var/lib/ee/upgrades/2026-11-18T16-24-34Z`, health 200.
+- **Production** (owner: "then ssh and upgrade please"): 0.5.17 → 0.5.18 with `ee upgrade --from …/download/v0.5.18` (`/root/ee-upgrade-0.5.18.log`, safety copy `/var/lib/ee/upgrades/2026-11-18T16-32-01Z`), health 200. It now records `releaseSource: github hikaru90/eigen-enterprise`; `GET /v1/upgrade/latest` there verifies v0.5.18 and its notes → "installed". From the next release on, production updates from Settings → Updates.
+
 ## 2026-11-18 — Memory: ee never set EMBEDDING_COMPRESS_INTENSITY (no thought indexed on any ee install); capture page errors shown (v0.5.17)
 
 Owner: "Opened it, check" → the 15 never-indexed thoughts (see the v0.5.13 entry) were still untouched on v0.5.16; owner: "Yes, fix and release".
