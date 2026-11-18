@@ -77,8 +77,8 @@ box ee ◀── desired {domains: [{name, state, renewsAt}]} ── os shows st
 ## Contract (fixed, so the streams build in parallel)
 
 - `FLEET_FEATURES` += `'domains'` (append).
-- `desired.domains`: nullable optional `managedDomainsV1` = `{ apiBase: https origin, token: string
-  (32–256) }`, strict. Sent only to boxes announcing `domains`, for companies with a Stripe
+- `desired.domains`: nullable optional `managedDomainsV1` = `{ apiBase: https origin (no path; os
+  joins the full `/api/domains/v1/...` paths), token: string (32–256) }`, strict. Sent only to boxes announcing `domains`, for companies with a Stripe
   customer. ee sets os secrets `EE_DOMAINS_API_BASE`, `EE_DOMAINS_TOKEN` (all or none; a partial
   set fails loud at os start), null removes them, like platform AI.
 - Control-plane API, `Authorization: Bearer <token>`, JSON, errors `{ error: string }`:
@@ -104,7 +104,7 @@ box ee ◀── desired {domains: [{name, state, renewsAt}]} ── os shows st
 | # | Slice | Where | Done when |
 |---|---|---|---|
 | DM0 | Owner: upgrade the AWS project to Paid; then a spike: availability, prices, one real registration of a cheap test domain (owner approves the purchase), zone records, SES identity verifies | AWS | Recorded here with the real error names and timings |
-| DM1 | Protocol + ee: signed `domains/search`, `domains/quote`, `domains/buy`; `desired.domains`; loopback routes for os | `ee/src/fleet/*` | Schema + agent specs |
+| DM1 | Protocol + ee: `desired.domains`; ee sets `EE_DOMAINS_*` on os (like platform AI) and announces `domains` | `ee/src/fleet/*` | Schema + agent specs. **Done** (`fa24949`) |
 | DM2 | os: Domain act and Email act split; Settings › Domains; status from desired; bought domain → mail domain | `src/lib/components/*`, `modules/email/*`, `src/routes/*` | Component + unit tests; own-SES and "I have a domain" paths unchanged |
 | DM3 | Control plane: Route 53 Domains + zone driver (+ fake), domains table, TLD price table in ops, Stripe charge/refund/renewal, register + records jobs | `eigenEnterprise-cloud` | Tests against the fakes; idempotent re-runs |
 | DM4 | Real proof on `one.eigenenterprise.app`: buy a domain in onboarding, mail sends from it, the website answers on it | box + control plane | Owner sees it working |
