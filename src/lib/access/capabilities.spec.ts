@@ -7,6 +7,7 @@ const all = Object.fromEntries(CAPABILITIES.map((c) => [c, true])) as Capabiliti
 describe('pageCapability', () => {
   it.each([
     ['/settings/company', 'company.manage'],
+    ['/settings/domains', 'company.manage'],
     ['/settings/members', 'members.manage'],
     ['/settings/approvals', 'approvals.manage'],
     ['/settings/backups', 'backups.manage'],

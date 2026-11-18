@@ -26,6 +26,7 @@ import { startBackupHealthTicker } from '$lib/server/backups/live'
 import { platformAiFromEnv } from '$lib/server/llm/platform-llm'
 import { logOpsStartupDiagnostics } from '$lib/server/ops/startup-diagnostics'
 import { configuredMailTransport, configuredManagedMail } from '../modules/email/owlery/service'
+import { domainsFromEnv } from '$lib/server/domains/env'
 import { installPromptShutdown } from '$lib/server/shutdown'
 import { csrfRefusal, isForbiddenCrossSiteForm } from '$lib/server/csrf'
 import { pluginHandle } from '$lib/server/plugins/handle'
@@ -44,6 +45,8 @@ if (!building) {
   configuredManagedMail()
   // The platform AI from hosting: all four PLATFORM_LLM_* or none; a partial set throws here.
   platformAiFromEnv()
+  // Managed domains: both EE_DOMAINS_* or none; a partial set throws here (plan/managed-domains.md).
+  domainsFromEnv()
   logOpsStartupDiagnostics()
   startJobQueueTicker()
   startNotificationDispatchTicker()

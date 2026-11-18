@@ -4,7 +4,6 @@ import { getDb } from '$lib/server/db'
 import { kernelJourneys } from '$lib/server/db/journey.schema'
 import { llmActiveProvider, userPreference } from '$lib/server/db/schema'
 import { companyMail } from '$lib/server/mail'
-import { managedMailFromEnv } from '$lib/server/mail/managed-env'
 import { WEBSITE_FOUNDING_JOURNEY } from '../../../../modules/orchestrator/brain'
 import {
   websiteStatusFrom,
@@ -26,8 +25,8 @@ export async function onboardingFactsFor(
     .from(userPreference)
     .where(eq(userPreference.userId, llmUserId))
     .limit(1)
-  // eigenEnterprise Mail: nothing for the owner to connect, the step counts as done.
-  const emailConfigured = (await companyMail().isConfigured()) || managedMailFromEnv() !== null
+  // eigenEnterprise Mail: no keys, but the step is done only once there is a sender address (a domain first).
+  const emailConfigured = await companyMail().isConfigured()
   const [active] = await db
     .select({ provider: llmActiveProvider.provider })
     .from(llmActiveProvider)

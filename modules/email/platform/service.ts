@@ -35,6 +35,9 @@ import { applyIdentityCheck, dueForCheck } from './verification'
  * path; this service only adds what surrounds it.
  */
 
+/** created_by of a domain os added because the company bought it (DM5). */
+export const BOUGHT_DOMAIN_CREATOR = 'domains'
+
 /** D8: managed mode, a domain the control plane has not created at SES yet. */
 export const MANAGED_DOMAIN_PENDING_MESSAGE = 'eigenEnterprise Mail is adding this domain (a minute or two).'
 
@@ -198,21 +201,7 @@ export class EmailPlatform {
     if (await this.deps.store.getDomainByName(name)) throw new EmailPlatformError(`${name} is already added.`)
     const { ses, settings } = await this.deps.owlery.ses()
     // Managed mode (D4, D6): the control plane creates the identity with Easy DKIM; os only records the wish.
-    if (settings.mode === 'managed') {
-      const row = await this.deps.store.insertDomain({
-        name,
-        region: settings.region,
-        status: 'NOT_STARTED',
-        dkimSelector: DKIM_SELECTOR,
-        publicKey: null,
-        dkimTokens: [],
-        mailFromDomain: null,
-        isVerifying: true,
-        errorMessage: MANAGED_DOMAIN_PENDING_MESSAGE,
-        createdBy,
-      })
-      return this.view(row)
-    }
+    if (settings.mode === 'managed') return this.view(await this.insertManagedDomain(name, settings.region, createdBy, false))
     let existing
     try {
       existing = await ses.getDomainIdentity(name)
@@ -244,6 +233,48 @@ export class EmailPlatform {
       createdBy,
     })
     return this.view(row)
+  }
+
+  /** Managed mode: only the wish is recorded; the control plane creates the identity (Easy DKIM) from report.mail.domains. */
+  private insertManagedDomain(name: string, region: string, createdBy: string, receiving: boolean): Promise<DomainRow> {
+    return this.deps.store.insertDomain({
+      name,
+      region,
+      status: 'NOT_STARTED',
+      dkimSelector: DKIM_SELECTOR,
+      publicKey: null,
+      dkimTokens: [],
+      mailFromDomain: null,
+      isVerifying: true,
+      errorMessage: MANAGED_DOMAIN_PENDING_MESSAGE,
+      receiving,
+      createdBy,
+    })
+  }
+
+  /**
+   * A domain the company bought through eigenEnterprise (plan/managed-domains.md
+   * DM5): it becomes a mail domain with sending and receiving, because the
+   * control plane writes every record (DKIM, MAIL FROM, MX, DMARC) into the zone
+   * it hosts. Idempotent: a domain already added stays as it is. Managed mode
+   * only — with the company's own Amazon SES those records would not match.
+   */
+  async addBoughtDomain(input: string): Promise<{ added: boolean; domain: DomainView }> {
+    let name: string
+    try {
+      name = normalizeDomain(input)
+    } catch (err) {
+      throw new EmailPlatformError((err as Error).message)
+    }
+    const settings = await this.deps.owlery.settings()
+    if (settings?.mode !== 'managed') {
+      throw new EmailPlatformError(
+        `${name} was bought through eigenEnterprise, and its email records are written for eigenEnterprise Mail. This server sends with ${settings ? 'your own Amazon SES' : 'no email yet'}, so add ${name} under Email › Setup yourself.`,
+      )
+    }
+    const existing = await this.deps.store.getDomainByName(name)
+    if (existing) return { added: false, domain: await this.view(existing) }
+    return { added: true, domain: await this.view(await this.insertManagedDomain(name, settings.region, BOUGHT_DOMAIN_CREATOR, true)) }
   }
 
   /** Stores a domain the SES account already has, with the records Amazon set up for it. */

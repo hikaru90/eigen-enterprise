@@ -389,3 +389,316 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
     expect(welcomeCalls).toEqual([])
   })
 })
+
+// ─── The Domain and Email acts (plan/managed-domains.md) ──────────────────────
+
+const REGISTRANT = { firstName: 'Ada', lastName: 'Lovelace', organization: 'Acme GmbH', email: 'ada@acme.test' }
+const MANAGED_BUY = {
+  ...OWNER_NO_MAIL,
+  domainSetup: { managedMail: true, canBuy: true, registrant: REGISTRANT },
+  domainPollMs: 20,
+}
+const MANAGED_NO_BUY = { ...OWNER_NO_MAIL, domainSetup: { managedMail: true, canBuy: false, registrant: null } }
+
+type Call = [string, { method?: string; body?: string } | undefined]
+const callsTo = (url: string) => (fetchMock.mock.calls as Call[]).filter(([u]) => u === url)
+
+const dkim = (name: string, status: string) => ({
+  purpose: 'dkim',
+  type: 'CNAME',
+  name: `a1._domainkey.${name}`,
+  host: 'a1._domainkey',
+  value: 'a1.dkim.amazonses.com',
+  priority: null,
+  status,
+  required: true,
+})
+const connectedDomain = (name: string, verified: boolean) => ({
+  id: 'd-1',
+  name,
+  status: verified ? 'SUCCESS' : 'PENDING',
+  sendable: verified,
+  isVerifying: !verified,
+  errorMessage: null,
+  adopted: false,
+  lastCheckedAt: null,
+  records: [dkim(name, verified ? 'SUCCESS' : 'PENDING')],
+})
+
+/** A fake os: domains API + sender route; `states` is what successive reads of /api/domains show for acme.eu. */
+function fakeOs(opts: { states?: string[]; purchase?: { status: number; body: unknown } } = {}) {
+  const states = [...(opts.states ?? [])]
+  fetchMock.mockImplementation((url: string, init?: { method?: string; body?: string }) => {
+    if (url.startsWith('/api/domains/search')) {
+      return Promise.resolve(
+        json(200, {
+          results: [
+            { name: 'acme.eu', available: true, priceCents: 1200, currency: 'EUR' },
+            { name: 'acme.com', available: false, priceCents: null, currency: 'EUR' },
+          ],
+        }),
+      )
+    }
+    if (url === '/api/domains/purchases') {
+      return Promise.resolve(
+        json(opts.purchase?.status ?? 202, opts.purchase?.body ?? { name: 'acme.eu', state: 'charging' }),
+      )
+    }
+    if (url === '/api/domains') {
+      const state = states.length > 1 ? states.shift()! : states[0]
+      const error = state === 'failed' ? 'The registry refused acme.eu.' : null
+      return Promise.resolve(
+        json(200, {
+          canBuy: true,
+          domains: state ? [{ name: 'acme.eu', state, error, renewsAt: null, autoRenew: true }] : [],
+        }),
+      )
+    }
+    if (url === '/api/domains/connected') {
+      const { name } = JSON.parse(init!.body!) as { name: string }
+      return Promise.resolve(json(200, { domain: connectedDomain(name, false) }))
+    }
+    if (url === '/api/domains/connected/d-1/check') {
+      return Promise.resolve(json(200, { domain: connectedDomain('acme.test', true) }))
+    }
+    if (url === '/api/onboarding/sender') {
+      const { address } = JSON.parse(init!.body!) as { address: string }
+      return Promise.resolve(json(200, { ok: true, address, ready: false }))
+    }
+    return Promise.resolve(json(200, { ok: true }))
+  })
+}
+
+async function openDomainAct(): Promise<void> {
+  await walkLines(ALL_LINES)
+  await page.getByTestId('onboarding-continue').click()
+  await expect.element(page.getByTestId('onboarding-mail-domain')).toBeInTheDocument()
+}
+
+async function fillRegistrant(): Promise<void> {
+  await page.getByRole('textbox', { name: 'Phone country code' }).fill('+49')
+  await page.getByRole('textbox', { name: 'Phone number' }).fill('30 1234567')
+  await page.getByRole('textbox', { name: 'Street and number' }).fill('Hauptstr. 1')
+  await page.getByRole('textbox', { name: 'Postal code' }).fill('10115')
+  await page.getByRole('textbox', { name: 'City', exact: true }).fill('Berlin')
+  await page.getByRole('combobox', { name: 'Country' }).selectOptions('DE')
+}
+
+async function searchAndChoose(): Promise<void> {
+  await page.getByTestId('onboarding-domain-buy').click()
+  await page.getByRole('textbox', { name: 'The name you want' }).fill('acme')
+  await page.getByRole('button', { name: 'Search' }).click()
+  await page.getByRole('button', { name: 'Choose acme.eu' }).click()
+}
+
+describe('welcome-wizard.svelte — the Domain act, then the Email act', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.stubGlobal('fetch', fetchMock)
+    window.localStorage.setItem('ee-voice', 'off')
+    return () => {
+      vi.unstubAllGlobals()
+      window.localStorage.removeItem('ee-voice')
+    }
+  })
+
+  it('buy path: search, yearly prices, prefilled registrant, an honest confirmation, progress, then the sender address', async () => {
+    fakeOs({ states: ['', 'charging', 'registering', 'configuring', 'active'] })
+    render(WelcomeWizard, MANAGED_BUY)
+    await openDomainAct()
+    await expect.element(page.getByText('Your company’s address on the internet.')).toBeInTheDocument()
+    await expect
+      .element(page.getByTestId('onboarding-have-domain'))
+      .toHaveTextContent('I already have one')
+    await expect.element(page.getByTestId('onboarding-domain-skip')).toBeInTheDocument()
+
+    await page.getByTestId('onboarding-domain-buy').click()
+    await page.getByRole('textbox', { name: 'The name you want' }).fill('acme')
+    await page.getByRole('button', { name: 'Search' }).click()
+    await expect.element(page.getByText('€12.00 / year')).toBeInTheDocument()
+    await expect.element(page.getByText('Taken')).toBeInTheDocument()
+    expect(callsTo('/api/domains/search?q=acme')).toHaveLength(1)
+
+    await page.getByRole('button', { name: 'Choose acme.eu' }).click()
+    // Prefilled from what os knows about the company and the owner.
+    await expect.element(page.getByRole('textbox', { name: 'Company' })).toHaveValue('Acme GmbH')
+    await expect.element(page.getByRole('textbox', { name: 'First name' })).toHaveValue('Ada')
+    await expect.element(page.getByRole('textbox', { name: 'Email' })).toHaveValue('ada@acme.test')
+    await fillRegistrant()
+    await page.getByRole('button', { name: 'Continue' }).click()
+
+    const confirm = page.getByTestId('domain-confirm')
+    await expect.element(confirm.getByText(/costs €12\.00 a year/)).toBeInTheDocument()
+    await expect.element(confirm.getByText(/renews every year/)).toBeInTheDocument()
+    await expect.element(confirm.getByText(/can’t be refunded/)).toBeInTheDocument()
+    expect(callsTo('/api/domains/purchases')).toHaveLength(0)
+
+    await page.getByRole('button', { name: 'Buy for €12.00 / year' }).click()
+    await vi.waitFor(() => expect(callsTo('/api/domains/purchases')).toHaveLength(1))
+    expect(JSON.parse(callsTo('/api/domains/purchases')[0][1]!.body!)).toEqual({
+      name: 'acme.eu',
+      acceptedPriceCents: 1200,
+      registrant: {
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        organization: 'Acme GmbH',
+        email: 'ada@acme.test',
+        phone: '+49.301234567',
+        addressLine1: 'Hauptstr. 1',
+        city: 'Berlin',
+        postalCode: '10115',
+        countryCode: 'DE',
+      },
+    })
+
+    // Progress polls until active, then the act moves on by itself to the sender address on that domain.
+    await expect.element(page.getByTestId('onboarding-mail-managed')).toBeInTheDocument()
+    await expect.element(page.getByTestId('sender-domain')).toHaveTextContent('@acme.eu')
+    // No keys with eigenEnterprise Mail.
+    await expect.element(page.getByLabelText('Secret access key')).not.toBeInTheDocument()
+    await page.getByRole('button', { name: 'Use this address' }).click()
+    await expect
+      .element(page.getByText('Sign-in codes and the company’s mail go out from hello@acme.eu.'))
+      .toBeInTheDocument()
+    expect(JSON.parse(callsTo('/api/onboarding/sender')[0][1]!.body!)).toEqual({
+      address: 'hello@acme.eu',
+    })
+    await page.getByTestId('onboarding-continue').click()
+    await expect.element(page.getByText(MIND_HEADING)).toBeInTheDocument()
+  })
+
+  it('a purchase already on its way (a reload, Settings › Domains) shows its progress instead of the choices', async () => {
+    fakeOs({ states: ['registering'] })
+    render(WelcomeWizard, MANAGED_BUY)
+    await openDomainAct()
+    await expect.element(page.getByTestId('domain-progress')).toBeInTheDocument()
+    await expect.element(page.getByTestId('onboarding-domain-buy')).not.toBeInTheDocument()
+    await expect.element(page.getByTestId('domain-step-registering')).toBeInTheDocument()
+    // Continuing early is fine: the sender address can be picked while it finishes.
+    await page.getByTestId('onboarding-continue').click()
+    await expect.element(page.getByTestId('sender-domain')).toHaveTextContent('@acme.eu')
+  })
+
+  it('a registration that fails says so in the control plane’s words and offers another name', async () => {
+    fakeOs({ states: ['', 'failed'] })
+    render(WelcomeWizard, MANAGED_BUY)
+    await openDomainAct()
+    await searchAndChoose()
+    await fillRegistrant()
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByRole('button', { name: 'Buy for €12.00 / year' }).click()
+    await expect.element(page.getByText(/The registry refused acme\.eu\./)).toBeInTheDocument()
+    await page.getByTestId('onboarding-domain-retry').click()
+    await expect.element(page.getByRole('textbox', { name: 'The name you want' })).toBeInTheDocument()
+  })
+
+  it('a price change asks again at the new price; buying then accepts that price', async () => {
+    fakeOs({
+      purchase: {
+        status: 409,
+        body: { error: 'The price changed.', reason: 'price_changed', priceCents: 1400 },
+      },
+    })
+    render(WelcomeWizard, MANAGED_BUY)
+    await openDomainAct()
+    await searchAndChoose()
+    await fillRegistrant()
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByRole('button', { name: 'Buy for €12.00 / year' }).click()
+    await expect
+      .element(page.getByText('The price of acme.eu changed to €14.00 a year. Buy it at the new price?'))
+      .toBeInTheDocument()
+    await expect.element(page.getByTestId('domain-confirm').getByText(/costs €14\.00 a year/)).toBeInTheDocument()
+    fakeOs()
+    await page.getByRole('button', { name: 'Buy for €14.00 / year' }).click()
+    await vi.waitFor(() => expect(callsTo('/api/domains/purchases')).toHaveLength(2))
+    expect(JSON.parse(callsTo('/api/domains/purchases')[1][1]!.body!)).toMatchObject({
+      name: 'acme.eu',
+      acceptedPriceCents: 1400,
+    })
+    await expect.element(page.getByTestId('domain-progress')).toBeInTheDocument()
+  })
+
+  it('a name taken meanwhile goes back to fresh results with the control plane’s words', async () => {
+    fakeOs({
+      purchase: {
+        status: 409,
+        body: { error: 'acme.eu was just registered by someone else.', reason: 'taken', priceCents: null },
+      },
+    })
+    render(WelcomeWizard, MANAGED_BUY)
+    await openDomainAct()
+    await searchAndChoose()
+    await fillRegistrant()
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByRole('button', { name: 'Buy for €12.00 / year' }).click()
+    await expect
+      .element(page.getByText('acme.eu was just registered by someone else.'))
+      .toBeInTheDocument()
+    await expect.element(page.getByTestId('domain-results')).toBeInTheDocument()
+    expect(callsTo('/api/domains/search?q=acme')).toHaveLength(2)
+  })
+
+  it('have-one path: enter the domain, see its DNS records, check them, then pick the sender on it', async () => {
+    fakeOs()
+    render(WelcomeWizard, MANAGED_NO_BUY)
+    await openDomainAct()
+    // Without EE_DOMAINS_* nothing is for sale and the domain list is never read.
+    await expect.element(page.getByTestId('onboarding-domain-buy')).not.toBeInTheDocument()
+    expect(callsTo('/api/domains')).toHaveLength(0)
+
+    await page.getByTestId('onboarding-have-domain').click()
+    await page.getByRole('textbox', { name: 'Your domain' }).fill('acme.test')
+    await page.getByRole('button', { name: 'Add' }).click()
+    await expect.element(page.getByTestId('dns-record-dkim')).toBeInTheDocument()
+    await expect.element(page.getByText('a1.dkim.amazonses.com')).toBeInTheDocument()
+    expect(JSON.parse(callsTo('/api/domains/connected')[0][1]!.body!)).toEqual({
+      name: 'acme.test',
+    })
+
+    await page.getByRole('button', { name: 'Check the records now' }).click()
+    await expect.element(page.getByText(/Verified — mail can go out/)).toBeInTheDocument()
+    expect(callsTo('/api/domains/connected/d-1/check')).toHaveLength(1)
+
+    await page.getByTestId('onboarding-continue').click()
+    await expect.element(page.getByTestId('sender-domain')).toHaveTextContent('@acme.test')
+    // Back returns to the Domain act.
+    await page.getByTestId('onboarding-back').click()
+    await expect.element(page.getByTestId('onboarding-mail-domain')).toBeInTheDocument()
+  })
+
+  it('skip: the Email act says there is no domain and offers Back; Continue goes on without email', async () => {
+    fakeOs()
+    render(WelcomeWizard, MANAGED_BUY)
+    await openDomainAct()
+    await page.getByTestId('onboarding-domain-skip').click()
+    const none = page.getByTestId('onboarding-mail-no-domain')
+    await expect.element(none).toBeInTheDocument()
+    await expect.element(none.getByText(/needs one/)).toBeInTheDocument()
+    await page.getByTestId('onboarding-back').click()
+    await expect.element(page.getByTestId('onboarding-domain-buy')).toBeInTheDocument()
+    await page.getByTestId('onboarding-domain-skip').click()
+    await page.getByTestId('onboarding-continue').click()
+    await expect.element(page.getByText(MIND_HEADING)).toBeInTheDocument()
+    expect(callsTo('/api/onboarding/sender')).toHaveLength(0)
+  })
+
+  it('self-hosted without domains config: only "I have a domain" (then your own Amazon SES) and skip', async () => {
+    fakeOs()
+    render(WelcomeWizard, {
+      ...OWNER_NO_MAIL,
+      domainSetup: { managedMail: false, canBuy: false, registrant: null },
+    })
+    await openDomainAct()
+    await expect.element(page.getByTestId('onboarding-domain-buy')).not.toBeInTheDocument()
+    await expect
+      .element(page.getByTestId('onboarding-have-domain'))
+      .toHaveTextContent('I have a domain and DNS access')
+    expect(callsTo('/api/domains')).toHaveLength(0)
+    await page.getByTestId('onboarding-domain-skip').click()
+    await expect.element(page.getByTestId('onboarding-mail-no-domain')).toBeInTheDocument()
+    await page.getByTestId('onboarding-back').click()
+    await page.getByTestId('onboarding-have-domain').click()
+    await expect.element(page.getByLabelText('Secret access key')).toBeInTheDocument()
+  })
+})

@@ -1,6 +1,7 @@
 import { raceWithTimeout } from '$lib/server/async/race-with-timeout'
 import { pluginOn } from '$lib/server/plugins/background'
 import { tickContributeShare } from './contribute-share-tick'
+import { tickManagedDomains } from './domains-tick'
 import { drainUserJobQueue } from './drain'
 import { tickEmailPlatform } from './email-tick'
 import { ensureOvernightJobsEnqueued } from './ensure-overnight'
@@ -32,7 +33,11 @@ async function runTickBody(): Promise<TickGlobalJobQueueResult> {
   // The drain stays: it runs what is already queued (agent webhooks, onboarding).
   const enqueued = (await pluginOn('memory', 'overnight consolidation')) ? await ensureOvernightJobsEnqueued() : 0
   const drain = await drainUserJobQueue()
-  if (await pluginOn('email', 'email background work (DNS checks, scheduled sends, flows)')) await tickEmailPlatform()
+  if (await pluginOn('email', 'email background work (DNS checks, scheduled sends, flows)')) {
+    await tickEmailPlatform()
+    // Bought domains become mail domains (plan/managed-domains.md DM5).
+    await tickManagedDomains()
+  }
   if (await pluginOn('repos', 'GitHub repo sync')) await tickRepos()
   // Contribute is a system module (always on); sharing has its own owner switch in Settings → Company.
   await tickContributeShare()

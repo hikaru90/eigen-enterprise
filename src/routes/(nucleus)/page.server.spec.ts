@@ -35,6 +35,15 @@ vi.mock('$lib/server/onboarding/welcome', () => ({
 const onboardingFactsMock = vi.hoisted(() => vi.fn())
 vi.mock('$lib/server/onboarding/assisted', () => ({ onboardingFactsFor: onboardingFactsMock }))
 vi.mock('$lib/server/mail', () => ({ companyMail: () => ({ isConfigured: mailConfiguredMock }) }))
+const { managedMailMock, domainsConfigMock } = vi.hoisted(() => ({
+  managedMailMock: vi.fn((): unknown => null),
+  domainsConfigMock: vi.fn((): unknown => null),
+}))
+vi.mock('$lib/server/mail/managed-env', () => ({ managedMailFromEnv: managedMailMock }))
+vi.mock('$lib/server/domains/env', () => ({ domainsFromEnv: domainsConfigMock }))
+vi.mock('$lib/server/domains/registrant-defaults', () => ({
+  registrantDefaults: async (u: { email: string }) => ({ firstName: 'Ada', lastName: '', organization: 'Acme', email: u.email }),
+}))
 
 const loadDashboardMock = vi.hoisted(() =>
   vi.fn(async () => ({ overview: { modules: [], actions: [], approvals: [] }, backup: null })),
@@ -95,6 +104,27 @@ describe('nucleus page server load', () => {
     onboardingFactsMock.mockResolvedValue({ website: 'not_started' })
     roleMock.mockResolvedValue('owner')
     mailConfiguredMock.mockResolvedValue(true)
+  })
+
+  it('a managed box asks for the domain and the sender too (no keys) until a sender exists; buying where EE_DOMAINS_* is set', async () => {
+    isCompanyProviderReadyMock.mockResolvedValue(true)
+    mailConfiguredMock.mockResolvedValue(false)
+    managedMailMock.mockReturnValue({ tenant: 'ee-box1' })
+    domainsConfigMock.mockReturnValue({ apiBase: 'https://cloud.test', token: 't' })
+    const event = { locals: { user: { id: 'u1', email: 'ada@acme.test' } }, url: new URL('https://os.test/') } as never
+    expect(await load(withFetch(event))).toMatchObject({
+      needsMail: true,
+      domainSetup: {
+        managedMail: true,
+        canBuy: true,
+        registrant: { firstName: 'Ada', organization: 'Acme', email: 'ada@acme.test' },
+      },
+    })
+    domainsConfigMock.mockReturnValue(null)
+    expect(await load(withFetch(event))).toMatchObject({ domainSetup: { managedMail: true, canBuy: false, registrant: null } })
+    mailConfiguredMock.mockResolvedValue(true)
+    expect(await load(withFetch(event))).toMatchObject({ needsMail: false, domainSetup: null })
+    managedMailMock.mockReturnValue(null)
   })
 
   it('a member who just joined goes straight to Messages — no company onboarding, no provider setup', async () => {

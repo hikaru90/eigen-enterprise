@@ -3,7 +3,7 @@
   import RefreshCw from '@lucide/svelte/icons/refresh-cw'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
-  import CopyButton from '$lib/components/email/copy-button.svelte'
+  import DnsRecordsTable from '$lib/components/email/dns-records-table.svelte'
   import DnsStatus from '$lib/components/email/dns-status.svelte'
   import { Button } from '$lib/components/ui/button'
   import { docTitle } from '$lib/shell/title'
@@ -12,15 +12,6 @@
   const d = $derived(data.domain)
   let busy = $state<string | null>(null)
 
-  const PURPOSE: Record<string, string> = {
-    dkim: 'DKIM — signs every mail so inboxes know it really comes from you.',
-    mail_from_mx: 'Mail-from (MX) — bounces come back to Amazon through this subdomain.',
-    spf: 'SPF — allows Amazon SES to send for your mail-from address.',
-    dmarc: 'DMARC (recommended) — tells inboxes what to do with mail that fails the checks.',
-    inbound_mx:
-      'Receiving (MX) — sends all mail for <domain> to Amazon SES, which hands it to eigenEnterprise.',
-  }
-  const purpose = (p: string) => PURPOSE[p]!.replace('<domain>', d.name)
   const when = (iso: string | null) =>
     iso
       ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
@@ -81,49 +72,8 @@
     </p>{/if}
 </div>
 
-<div class="mt-6 overflow-x-auto rounded-lg border border-border">
-  <table class="w-full min-w-[44rem] text-left text-sm" data-testid="dns-records">
-    <thead class="border-b border-border text-xs text-muted-foreground">
-      <tr>
-        <th class="px-4 py-2.5 font-medium">Type</th>
-        <th class="px-4 py-2.5 font-medium">Host / name</th>
-        <th class="px-4 py-2.5 font-medium">Value</th>
-        <th class="px-4 py-2.5 font-medium">Priority</th>
-        <th class="px-4 py-2.5 font-medium">Status</th>
-      </tr>
-    </thead>
-    <tbody class="divide-y divide-border align-top">
-      {#each d.records as r (`${r.purpose}:${r.name}`)}
-        <tr data-testid={`dns-record-${r.purpose}`}>
-          <td class="px-4 py-3 font-mono text-xs">{r.type}</td>
-          <td class="px-4 py-3">
-            <div class="flex items-start gap-1">
-              <code class="font-mono text-xs break-all">{r.host}</code>
-              <CopyButton value={r.host} label={`Copy host of the ${r.purpose} record`} />
-            </div>
-            <p class="mt-1 text-[11px] text-muted-foreground">{r.name}</p>
-          </td>
-          <td class="px-4 py-3">
-            {#if r.value === null}
-              <p class="text-xs text-muted-foreground" data-testid="dns-value">
-                The public key you published with this DKIM key (Amazon doesn’t show it).
-              </p>
-            {:else}
-              <div class="flex items-start gap-1">
-                <code class="max-w-[28rem] font-mono text-xs break-all" data-testid="dns-value"
-                  >{r.value}</code
-                >
-                <CopyButton value={r.value} label={`Copy value of the ${r.purpose} record`} />
-              </div>
-            {/if}
-            <p class="mt-1 text-[11px] text-muted-foreground">{purpose(r.purpose)}</p>
-          </td>
-          <td class="px-4 py-3 text-xs tabular-nums">{r.priority ?? '—'}</td>
-          <td class="px-4 py-3"><DnsStatus status={r.status} /></td>
-        </tr>
-      {/each}
-    </tbody>
-  </table>
+<div class="mt-6">
+  <DnsRecordsTable domain={d.name} records={d.records} />
 </div>
 
 <p class="mt-2 text-xs text-muted-foreground">Last checked {when(d.lastCheckedAt)}.</p>

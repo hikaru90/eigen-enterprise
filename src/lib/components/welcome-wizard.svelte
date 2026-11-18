@@ -3,7 +3,13 @@
   import { onMount } from 'svelte'
   import { fade, fly } from 'svelte/transition'
   import { invalidateAll } from '$app/navigation'
+  import DomainBuy from '$lib/components/domains/domain-buy.svelte'
+  import DomainConnect from '$lib/components/domains/domain-connect.svelte'
+  import DomainProgress from '$lib/components/domains/domain-progress.svelte'
   import ProviderOnboarding from '$lib/components/provider-onboarding.svelte'
+  import type { ConnectedDomain } from '$lib/domains/connected'
+  import type { BoughtDomain } from '$lib/domains/contract'
+  import { EMPTY_REGISTRANT, type RegistrantDefaults } from '$lib/domains/registrant-defaults'
   import {
     isSoundEnabled,
     playActPulse,
@@ -16,6 +22,8 @@
   let {
     providerReady = false,
     needsMail = false,
+    domainSetup = null,
+    domainPollMs = 5000,
     byokUiEnabled = true,
     displayName = null,
     returnedFromProvider = false,
@@ -25,6 +33,18 @@
     providerReady?: boolean
     /** The owner hasn't set up company email yet (sign-in codes depend on it). */
     needsMail?: boolean
+    /**
+     * How the Domain and Email acts work here (plan/managed-domains.md): with
+     * eigenEnterprise Mail (no keys) and whether this box can buy a domain.
+     * Absent = a self-hosted box: "I have a domain", then your own Amazon SES.
+     */
+    domainSetup?: {
+      managedMail: boolean
+      canBuy: boolean
+      registrant: RegistrantDefaults | null
+    } | null
+    /** How often the bought domain's progress is read (tests shorten it). */
+    domainPollMs?: number
     byokUiEnabled?: boolean
     displayName?: string | null
     /** Back from the provider's sign-in redirect: the tour already ran up to the mind. */
@@ -39,12 +59,14 @@
    * Every act carries tangible purpose or it does not exist
    * (see .pi/skills/tangible-purpose-ui/SKILL.md):
    *   boot → hello → name (only if unknown) → lines (one per step) →
-   *   mail (owner only, until login-code email works) → mind (only if no
-   *   provider) → handoff into the chat, where the AI takes over.
+   *   domain → mail (owner only, until login-code email works: the company's
+   *   domain first — bought here, one it already has, or skipped — then the
+   *   sender address on it) → mind (only if no provider) → handoff into the
+   *   chat, where the AI takes over.
    * Every step has a visible Continue and Back; "Skip for now" stays a muted
    * corner link — completing and skipping mean the same thing.
    */
-  type Act = 'boot' | 'hello' | 'name' | 'lines' | 'mail' | 'mind'
+  type Act = 'boot' | 'hello' | 'name' | 'lines' | 'domain' | 'mail' | 'mind'
 
   type Line = { text: string; quiet?: boolean }
   const BASE_LINES: Line[] = [
@@ -67,6 +89,8 @@
 
   const MIND_HEADING = 'Now, it needs a mind to think with.'
   const MAIL_HEADING = 'Email for your login codes'
+  const DOMAIN_HEADING = 'Your company’s address on the internet.'
+  const SENDER_HEADING = 'Your sender address.'
 
   /** Common Amazon SES regions, in plain words. */
   const SES_REGIONS: Array<{ id: string; label: string }> = [
@@ -90,6 +114,10 @@
   // email is saved) must not reshuffle the steps under the user.
   // svelte-ignore state_referenced_locally
   const askMail = needsMail
+  // svelte-ignore state_referenced_locally
+  const setup = domainSetup
+  const managedMail = setup?.managedMail ?? false
+  const canBuy = setup?.canBuy ?? false
   const lines: Line[] = askMail ? [...BASE_LINES, LOGIN_LINE] : BASE_LINES
 
   let act = $state<Act>('boot')
@@ -111,8 +139,23 @@
   /** Amazon still has to confirm the send-from address (409 verify_sender). */
   let mailVerifyAddress = $state<string | null>(null)
   let mailSentTo = $state<string | null>(null)
-  /** Sending email needs a domain the owner controls (DNS records verify it with Amazon). */
-  let mailDomainReady = $state(false)
+  /** The Domain act: which way the owner chose (null = still choosing). */
+  let domainChoice = $state<'buy' | 'have' | null>(null)
+  /** A purchase the control plane accepted (or one found on the way): its progress shows. */
+  let bought = $state<{ name: string } | null>(null)
+  let boughtFailed = $state<string | null>(null)
+  /** Moves on by itself once, when the bought domain turns ready. */
+  let boughtAutoContinued = false
+  let connected = $state<ConnectedDomain | null>(null)
+  let domainError = $state<string | null>(null)
+  /** The domain the Email act sends from (managed); null when skipped. */
+  let domainName = $state<string | null>(null)
+  /** The owner chose "Skip this step" in the Domain act. */
+  let domainSkipped = $state(false)
+  let senderLocal = $state('hello')
+  let senderSaving = $state(false)
+  let senderError = $state<string | null>(null)
+  let senderSet = $state<{ address: string; ready: boolean } | null>(null)
   let error = $state<string | null>(null)
   let reducedMotion = $state(false)
 
@@ -134,6 +177,7 @@
     if (act !== 'boot' && act !== 'hello') history = [...history, act]
     act = next
     if (next === 'lines') lineIndex = 0
+    if (next === 'domain' && canBuy && !bought) void resumePurchase()
     // The opening breathes on its own; the timer starts when the act appears,
     // so it can never fire early.
     if (next === 'hello') later(() => act === 'hello' && enterFromHello(), 2200)
@@ -143,7 +187,8 @@
     if (next === 'hello') speak(greeting)
     else if (next === 'name') speak('What should I call you?')
     else if (next === 'lines') speak(lines[0].text)
-    else if (next === 'mail') speak(MAIL_HEADING)
+    else if (next === 'domain') speak(managedMail || canBuy ? DOMAIN_HEADING : 'First: you need your own domain.')
+    else if (next === 'mail') speak(managedMail ? SENDER_HEADING : MAIL_HEADING)
     else if (next === 'mind') speak(MIND_HEADING)
   }
 
@@ -161,7 +206,7 @@
       speak(lines[lineIndex].text)
       return
     }
-    if (askMail) advanceTo('mail')
+    if (askMail) advanceTo('domain')
     else afterMail()
   }
 
@@ -173,8 +218,11 @@
   }
 
   function goBack(): void {
-    if (act === 'mail' && mailDomainReady && !mailSentTo) {
-      mailDomainReady = false
+    // Inside the Domain act, Back returns to the three choices — unless a purchase is already on its way.
+    if (act === 'domain' && domainChoice !== null && !bought) {
+      domainChoice = null
+      connected = null
+      domainError = null
       return
     }
     if (act === 'lines' && lineIndex > 0) {
@@ -254,6 +302,76 @@
   function onMindConnected(): void {
     if (isSoundEnabled()) playConnectChime()
     void complete()
+  }
+
+  /** A purchase started earlier (a reload, or Settings › Domains) shows its progress instead of the choices. */
+  async function resumePurchase(): Promise<void> {
+    try {
+      const res = await fetch('/api/domains')
+      const body = (await res.json().catch(() => null)) as { domains?: BoughtDomain[]; error?: string } | null
+      if (!res.ok) throw new Error(body?.error ?? `Reading the company’s domains failed (HTTP ${res.status}).`)
+      if (!Array.isArray(body?.domains)) throw new Error('The domain list came back empty-handed.')
+      const open = body.domains.find((d) => d.state === 'active') ?? body.domains.find((d) => d.state !== 'failed')
+      if (open && !bought) bought = { name: open.name }
+    } catch (err) {
+      domainError = err instanceof Error ? err.message : String(err)
+    }
+  }
+
+  function onBought(detail: { name: string }): void {
+    if (isSoundEnabled()) playConnectChime()
+    boughtFailed = null
+    bought = { name: detail.name }
+  }
+
+  /** The bought domain is ready: on to the sender address (once — Back can return here). */
+  function onBoughtActive(): void {
+    if (boughtAutoContinued || !bought) return
+    boughtAutoContinued = true
+    continueWithDomain(bought.name)
+  }
+
+  function continueWithDomain(name: string): void {
+    domainName = name
+    domainSkipped = false
+    advanceTo('mail')
+  }
+
+  function skipDomain(): void {
+    domainName = null
+    domainSkipped = true
+    advanceTo('mail')
+  }
+
+  /** Self-hosted: the owner has a domain; the DNS records come from Amazon SES in the next act. */
+  function haveOwnDomain(): void {
+    domainSkipped = false
+    advanceTo('mail')
+  }
+
+  /** Managed Email act: the sender address on the company's domain becomes the default sender. */
+  async function submitSender(): Promise<void> {
+    if (senderSaving || !domainName) return
+    senderSaving = true
+    senderError = null
+    try {
+      const res = await fetch('/api/onboarding/sender', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ address: `${senderLocal.trim()}@${domainName}` }),
+      })
+      const body = (await res.json().catch(() => null)) as
+        | { address?: string; ready?: boolean; error?: string }
+        | null
+      if (!res.ok) throw new Error(body?.error ?? `Saving the sender address failed (HTTP ${res.status}).`)
+      if (!body?.address) throw new Error('The server did not say which address it saved.')
+      senderSet = { address: body.address, ready: body.ready === true }
+      if (isSoundEnabled()) playConnectChime()
+    } catch (err) {
+      senderError = err instanceof Error ? err.message : String(err)
+    } finally {
+      senderSaving = false
+    }
   }
 
   type MailResponse = {
@@ -448,31 +566,245 @@
           </button>
         </div>
       </div>
-    {:else if act === 'mail' && !mailDomainReady}
+    {:else if act === 'domain'}
       <div
         class="mx-auto w-full max-w-md text-center"
         in:fly={{ y: 10 * motion, duration: 700 * motion }}
         data-testid="onboarding-mail-domain"
       >
+        {#if !managedMail && !canBuy}
+          <!-- A self-hosted box: its own domain, verified through its own Amazon SES (the next act). -->
+          <h1 class="text-2xl font-light tracking-tight text-balance sm:text-3xl">
+            First: you need your own domain.
+          </h1>
+          <p class="text-muted-foreground mt-4 text-sm text-balance">
+            Email is sent from an address at your own domain — like hello@yourcompany.com. Amazon only
+            sends for a domain you prove is yours, and you prove it by adding a few DNS records.
+          </p>
+          <p class="text-muted-foreground mt-3 text-sm text-balance">
+            So you need two things: a domain you own, and access to its DNS settings — usually where
+            you bought it (Namecheap, GoDaddy, Cloudflare, IONOS, …).
+          </p>
+          <button
+            type="button"
+            class="mt-8 h-11 bg-primary px-10 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            onclick={haveOwnDomain}
+            data-testid="onboarding-have-domain"
+          >
+            I have a domain and DNS access
+          </button>
+        {:else if bought}
+          <h1 class="text-2xl font-light tracking-tight text-balance sm:text-3xl">{DOMAIN_HEADING}</h1>
+          <div class="mt-8">
+            {#key bought.name}
+              <DomainProgress
+                name={bought.name}
+                pollMs={domainPollMs}
+                onactive={onBoughtActive}
+                onfailed={(e) => (boughtFailed = e)}
+              />
+            {/key}
+          </div>
+          {#if boughtFailed}
+            <button
+              type="button"
+              class="mt-8 h-11 bg-primary px-10 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              onclick={() => {
+                bought = null
+                boughtFailed = null
+                domainChoice = 'buy'
+              }}
+              data-testid="onboarding-domain-retry"
+            >
+              Choose another name
+            </button>
+          {:else}
+            <button
+              type="button"
+              class="mt-8 h-11 bg-primary px-10 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              onclick={() => bought && continueWithDomain(bought.name)}
+              data-testid="onboarding-continue"
+            >
+              Continue
+            </button>
+          {/if}
+        {:else if domainChoice === 'buy'}
+          <h1 class="text-2xl font-light tracking-tight text-balance sm:text-3xl">Find your name.</h1>
+          <div class="mt-8">
+            <DomainBuy registrant={setup?.registrant ?? EMPTY_REGISTRANT} onbought={onBought} />
+          </div>
+        {:else if domainChoice === 'have'}
+          <h1 class="text-2xl font-light tracking-tight text-balance sm:text-3xl">Your domain.</h1>
+          <p class="text-muted-foreground mt-4 text-sm text-balance">
+            Enter it; you then add a few DNS records where you manage it, and eigenEnterprise checks
+            them.
+          </p>
+          <div class="mt-8">
+            <DomainConnect onconnected={(d) => (connected = d)} />
+          </div>
+          {#if connected}
+            <button
+              type="button"
+              class="mt-8 h-11 bg-primary px-10 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              onclick={() => connected && continueWithDomain(connected.name)}
+              data-testid="onboarding-continue"
+            >
+              Continue
+            </button>
+          {/if}
+        {:else}
+          <h1 class="text-2xl font-light tracking-tight text-balance sm:text-3xl">{DOMAIN_HEADING}</h1>
+          <p class="text-muted-foreground mt-4 text-sm text-balance">
+            Your email, your sign-in codes and later your website live on your own domain — like
+            yourcompany.com.
+          </p>
+          <div class="mt-8 flex flex-col items-center gap-3">
+            {#if canBuy}
+              <button
+                type="button"
+                class="h-11 w-64 bg-primary px-10 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                onclick={() => (domainChoice = 'buy')}
+                data-testid="onboarding-domain-buy"
+              >
+                Buy one here
+              </button>
+            {/if}
+            <button
+              type="button"
+              class={canBuy
+                ? 'h-11 w-64 px-10 text-sm font-medium text-foreground underline-offset-4 hover:underline'
+                : 'h-11 w-64 bg-primary px-10 text-sm font-medium text-primary-foreground hover:bg-primary/90'}
+              onclick={() => (domainChoice = 'have')}
+              data-testid="onboarding-have-domain"
+            >
+              I already have one
+            </button>
+          </div>
+          {#if domainError}
+            <p class="text-destructive mt-4 text-sm leading-relaxed" role="alert">{domainError}</p>
+          {/if}
+        {/if}
+        {#if !bought}
+          <div>
+            <button
+              type="button"
+              class="text-muted-foreground hover:text-foreground mt-8 text-xs"
+              onclick={skipDomain}
+              data-testid="onboarding-domain-skip"
+            >
+              Skip this step
+            </button>
+          </div>
+        {/if}
+      </div>
+    {:else if act === 'mail' && (managedMail ? domainName === null : domainSkipped)}
+      <div
+        class="mx-auto w-full max-w-md text-center"
+        in:fly={{ y: 10 * motion, duration: 700 * motion }}
+        data-testid="onboarding-mail-no-domain"
+      >
         <h1 class="text-2xl font-light tracking-tight text-balance sm:text-3xl">
-          First: you need your own domain.
+          {managedMail ? SENDER_HEADING : MAIL_HEADING}
         </h1>
         <p class="text-muted-foreground mt-4 text-sm text-balance">
-          Email is sent from an address at your own domain — like hello@yourcompany.com. Amazon only
-          sends for a domain you prove is yours, and you prove it by adding a few DNS records.
-        </p>
-        <p class="text-muted-foreground mt-3 text-sm text-balance">
-          So you need two things: a domain you own, and access to its DNS settings — usually where
-          you bought it (Namecheap, GoDaddy, Cloudflare, IONOS, …).
+          Email goes out from an address at your own domain, so this step needs one. Go back to
+          {canBuy ? 'buy or connect' : 'add'} a domain — or continue without email for now and set it up
+          later in Settings.
         </p>
         <button
           type="button"
-          class="mt-8 h-11 bg-primary px-10 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-          onclick={() => (mailDomainReady = true)}
-          data-testid="onboarding-have-domain"
+          class="mt-8 h-11 bg-primary px-10 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          disabled={completing}
+          onclick={afterMail}
+          data-testid="onboarding-continue"
         >
-          I have a domain and DNS access
+          {#if completing}
+            <LoaderCircle class="mx-auto size-4 animate-spin" strokeWidth={1.75} />
+          {:else}
+            Continue
+          {/if}
         </button>
+      </div>
+    {:else if act === 'mail' && managedMail}
+      <div
+        class="mx-auto w-full max-w-md"
+        in:fly={{ y: 10 * motion, duration: 700 * motion }}
+        data-testid="onboarding-mail-managed"
+      >
+        <h1 class="text-center text-2xl font-light tracking-tight text-balance sm:text-3xl">
+          {SENDER_HEADING}
+        </h1>
+        {#if senderSet}
+          <p class="mt-8 text-center text-base text-balance" role="status">
+            Sign-in codes and the company’s mail go out from {senderSet.address}.
+          </p>
+          {#if !senderSet.ready}
+            <p class="text-muted-foreground mt-3 text-center text-sm text-balance">
+              Sending starts as soon as {domainName} is verified — usually a few minutes.
+            </p>
+          {/if}
+          <div class="text-center">
+            <button
+              type="button"
+              class="mt-8 h-11 bg-primary px-10 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              disabled={completing}
+              onclick={afterMail}
+              data-testid="onboarding-continue"
+            >
+              {#if completing}
+                <LoaderCircle class="mx-auto size-4 animate-spin" strokeWidth={1.75} />
+              {:else}
+                Continue
+              {/if}
+            </button>
+          </div>
+        {:else}
+          <p class="text-muted-foreground mt-3 text-center text-sm text-balance">
+            Sign-in codes and the company’s mail go out from this address. eigenEnterprise Mail sends
+            it — there are no keys to set up.
+          </p>
+          <form
+            class="mt-8 flex flex-col gap-5"
+            onsubmit={(e) => {
+              e.preventDefault()
+              void submitSender()
+            }}
+          >
+            <label class="text-xs text-muted-foreground">
+              Sender address
+              <span class="flex items-end gap-1">
+                <input
+                  bind:value={senderLocal}
+                  type="text"
+                  required
+                  autocomplete="off"
+                  spellcheck="false"
+                  class={inputClass}
+                  disabled={senderSaving}
+                />
+                <span class="pb-2 text-base text-foreground" data-testid="sender-domain"
+                  >@{domainName}</span
+                >
+              </span>
+            </label>
+            <button
+              type="submit"
+              class="mt-2 h-11 bg-primary px-10 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              disabled={senderSaving}
+            >
+              {#if senderSaving}
+                <LoaderCircle class="mx-auto size-4 animate-spin" strokeWidth={1.75} />
+              {:else}
+                Use this address
+              {/if}
+            </button>
+          </form>
+          {#if senderError}
+            <p class="text-destructive mt-4 text-center text-sm leading-relaxed" role="alert">
+              {senderError}
+            </p>
+          {/if}
+        {/if}
       </div>
     {:else if act === 'mail'}
       <div
