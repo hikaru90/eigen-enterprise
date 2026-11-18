@@ -66,6 +66,19 @@ export function fleetHost(ee: Ee): FleetHost {
         return null
       }
     },
+    mailDomains: async (token) => {
+      try {
+        const { status, raw } = await osGet('/api/fleet/mail-domains', token)
+        if (status !== 200) return null
+        const domains = (JSON.parse(raw) as { domains?: unknown }).domains
+        const ok =
+          Array.isArray(domains) &&
+          domains.every((d) => d && typeof d === 'object' && typeof (d as { name?: unknown }).name === 'string' && typeof (d as { receive?: unknown }).receive === 'boolean')
+        return ok ? (domains as Array<{ name: string; receive: boolean }>).map((d) => ({ name: d.name, receive: d.receive })) : null
+      } catch {
+        return null
+      }
+    },
     backupKey: async (token) => {
       let got: { status: number; raw: string }
       try {

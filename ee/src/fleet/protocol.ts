@@ -48,7 +48,7 @@ export const POLL_SECONDS = { min: 15, max: 3600, default: 60 } as const
  * must leave every other field at its neutral value for that box. New features
  * are added here (append only), never repurposed.
  */
-export const FLEET_FEATURES = ['release', 'suspended', 'backup', 'platformAi', 'backupRequestedAt', 'escrowBackupKey'] as const
+export const FLEET_FEATURES = ['release', 'suspended', 'backup', 'platformAi', 'backupRequestedAt', 'escrowBackupKey', 'mail'] as const
 export type FleetFeature = (typeof FLEET_FEATURES)[number]
 
 const base64 = z.string().regex(/^[A-Za-z0-9+/]+={0,2}$/)
@@ -103,6 +103,12 @@ export const reportV1 = z
       .object({ lastOkAt: isoTime.nullable(), lastError: z.string().max(2000).nullable() })
       .strict()
       .nullable(),
+    /** The company's mail domains (from os); absent = this box doesn't do mail, null = os can't say. */
+    mail: z
+      .object({ domains: z.array(z.object({ name: z.string().min(1).max(253), receive: z.boolean() }).strict()).max(50) })
+      .strict()
+      .nullable()
+      .optional(),
     /** Desired-state fields the box received but doesn't implement (so the control plane can see drift). */
     ignoredFields: z.array(z.string().max(64)).max(50).default([]),
   })
@@ -132,6 +138,24 @@ export const platformAiV1 = z
   })
   .strict()
 
+const mailField = z.string().min(1).max(512)
+
+/** Managed mail (plan/managed-mail.md D5): only what never changes per box; domain status comes from SES. */
+export const managedMailV1 = z
+  .object({
+    region: z.string().min(1).max(64),
+    accessKeyId: z.string().min(1).max(256),
+    secretAccessKey: z.string().min(1).max(256),
+    tenant: z.string().min(1).max(64),
+    configurationSet: z.string().min(1).max(64),
+    trackingConfigurationSet: z.string().min(1).max(64),
+    eventsTopicArn: mailField,
+    inboundTopicArn: mailField,
+    inboundBucket: z.string().min(3).max(63),
+    inboundPrefix: z.string().min(1).max(200),
+  })
+  .strict()
+
 /** Known fields, each optional so a box can tell "not sent" from "sent as null". */
 const desiredKnown = {
   protocol: z.literal(FLEET_PROTOCOL),
@@ -153,6 +177,8 @@ const desiredKnown = {
    * code). A box without a sealed key yet does nothing until it has one.
    */
   escrowBackupKey: z.boolean().optional(),
+  /** Managed mail on our SES (the company's own SES credentials take precedence in os); null = none. */
+  mail: managedMailV1.nullable().optional(),
 }
 
 export const desiredV1 = z.object(desiredKnown).strip()
