@@ -178,7 +178,7 @@
   <form onsubmit={submit} class="flex flex-col gap-4" data-testid="new-call-form" novalidate>
     <div class="flex flex-col gap-1.5">
       <Label for="new-call-guests">Guests (email)</Label>
-      <div class="flex flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 focus-within:ring-2 focus-within:ring-ring/50">
+      <div class="flex flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5 focus-within:ring-2 focus-within:ring-ring">
         {#each guestList as g (g)}
           <span
             class={[

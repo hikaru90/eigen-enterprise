@@ -79,6 +79,6 @@
     {#if tile.kind === 'camera' && !tile.micOn}<MicOff class="size-3.5 shrink-0 text-red-400" aria-label="Muted" data-testid="call-muted" />{/if}
     {#if tile.kind === 'screen'}<ScreenShare class="size-3.5 shrink-0" aria-hidden="true" />{/if}
     <span class="truncate" data-testid="call-tile-name">{tile.name}{tile.isLocal ? ' (you)' : ''}{tile.kind === 'screen' ? ' · screen' : ''}</span>
-    {#if tile.guest}<span class="shrink-0 rounded bg-white/15 px-1 text-[0.6875rem] leading-4 font-semibold tracking-wide uppercase" data-testid="call-guest-badge">Guest</span>{/if}
+    {#if tile.guest}<span class="shrink-0 rounded bg-white/15 px-1 text-[0.8125rem] leading-4 font-semibold tracking-wide uppercase" data-testid="call-guest-badge">Guest</span>{/if}
   </div>
 </div>
