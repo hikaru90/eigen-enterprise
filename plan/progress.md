@@ -2,6 +2,15 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-18 — Managed mail on one.eigenenterprise.app: upgrades dropped ee's os loopback token (fixed in ee, box unblocked by hand)
+
+- **What broke:** on one.eigenenterprise.app the domain eigenenterprise.app sat at "eigenEnterprise Mail is adding this domain (a minute or two)" for hours; Re-check said "These AWS keys are not allowed to use Amazon SES…". Amazon had no identity for it. Chain: ee's bootstrap re-run (every upgrade; the box went to 0.5.18 at 16:34 UTC) rebuilt os's declared secrets from `[...OS_SECRETS, ...CLAIM_SECRETS]`, dropping `EE_FLEET_LOCAL_TOKEN` (made only at enroll). os then answered 404 to every loopback question; `host.mailDomains`/`seats` turned that into a silent `null`, the report went out without `mail`, so the control plane never enqueued `mail_sync` and never created the SES identity. Billing seats stopped reporting the same way. The fleet re-adds `EE_MAIL_*`/`PLATFORM_LLM_*` every poll, so only the token stayed lost.
+- **Box unblocked (prod, owner OK "Yes, fix both"):** `ee secret set os EE_FLEET_LOCAL_TOKEN` (fresh random value) on `ee-one` (rs500-1). os redeployed to slot a; within a poll `mail_sync` created `identity/eigenenterprise.app`, tagged and associated with tenant `ee-5862c012…`.
+- **Fix (ee):** the fleet keeps the token declared every poll (`applyLocalToken`, level-triggered like mail; made again if the store lost it; no-op otherwise). Bootstrap keeps every declared os secret that still has a value (`resolveOsSecrets`) — the same drop also hit owner `ee secret set` names and forced an os redeploy after each upgrade. A loopback question os doesn't answer now throws in `host.ts` (status only, never the body) and is journaled once per distinct error (`fleet.os_unanswered`) + stderr every poll. Tests: `agent.spec.ts` (4 new), `bootstrap-state.spec.ts` (3 new); ee 362 passed; tsc's 13 errors are pre-existing in `daemon.spec.ts`.
+- **Also misleading (os, open):** managed mode's `GetEmailIdentity` on an identity that doesn't exist yet is `AccessDeniedException` (the box policy's `aws:ResourceTag` condition can't match a missing resource), so `refreshDomain` shows the own-SES IAM advice; and "a minute or two" is a fixed string, not tracked progress.
+- **Seen, not fixed:** ee on `ee-one` logged "upgrading to eigenenterprise-0.5.18…" every minute from 16:35 to 16:49 UTC while already on 0.5.18. The deployed control plane predates `2f3d784` (no `mail_confirm` ever enqueued); 6 local `eigenEnterprise-cloud` commits are unpushed.
+- **Not shipped yet:** needs a release + box upgrade.
+
 ## 2026-11-18 — v0.5.18 released, on the box and on production (Settings → Updates live)
 
 - `[release] v0.5.18` (`9f836fc`, tag `v0.5.18`, release run 44346541913 green). First release with a signed `NOTES.md` (also the GitHub release body). Carries Settings → Updates and the managed-domains work merged on main (DM1–DM3, real Route 53 still unproven).

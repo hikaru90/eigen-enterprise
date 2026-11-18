@@ -9,6 +9,16 @@ import { mustRun } from '../system.ts'
 import { FLEET_AUTHOR, UPGRADE_UNIT, type FleetHost } from './agent.ts'
 
 /** GET on os's loopback port with the fleet bearer token; rejects on a connection error or timeout. */
+/** os's answer as JSON; anything but a 200 with JSON throws, naming the status (never the body: it may echo secrets). */
+function osJson(got: { status: number; raw: string }, path: string): unknown {
+  if (got.status !== 200) throw new Error(`os answered ${got.status} on ${path}`)
+  try {
+    return JSON.parse(got.raw)
+  } catch {
+    throw new Error(`os answered ${path} with something that is not JSON`)
+  }
+}
+
 function osGet(path: string, token: string): Promise<{ status: number; raw: string }> {
   return new Promise((resolve, reject) => {
     const req = request(
@@ -58,26 +68,17 @@ export function fleetHost(ee: Ee): FleetHost {
       return { usedGb: gb(s.blocks - s.bfree), totalGb: gb(s.blocks) }
     },
     seats: async (token) => {
-      try {
-        const { status, raw } = await osGet('/api/fleet/seats', token)
-        const n = (JSON.parse(raw) as { seats?: unknown }).seats
-        return status === 200 && typeof n === 'number' && Number.isInteger(n) && n >= 0 ? n : null
-      } catch {
-        return null
-      }
+      const n = (osJson(await osGet('/api/fleet/seats', token), '/api/fleet/seats') as { seats?: unknown }).seats
+      if (typeof n === 'number' && Number.isInteger(n) && n >= 0) return n
+      throw new Error('os answered /api/fleet/seats without a seat count')
     },
     mailDomains: async (token) => {
-      try {
-        const { status, raw } = await osGet('/api/fleet/mail-domains', token)
-        if (status !== 200) return null
-        const domains = (JSON.parse(raw) as { domains?: unknown }).domains
-        const ok =
-          Array.isArray(domains) &&
-          domains.every((d) => d && typeof d === 'object' && typeof (d as { name?: unknown }).name === 'string' && typeof (d as { receive?: unknown }).receive === 'boolean')
-        return ok ? (domains as Array<{ name: string; receive: boolean }>).map((d) => ({ name: d.name, receive: d.receive })) : null
-      } catch {
-        return null
-      }
+      const domains = (osJson(await osGet('/api/fleet/mail-domains', token), '/api/fleet/mail-domains') as { domains?: unknown }).domains
+      const ok =
+        Array.isArray(domains) &&
+        domains.every((d) => d && typeof d === 'object' && typeof (d as { name?: unknown }).name === 'string' && typeof (d as { receive?: unknown }).receive === 'boolean')
+      if (!ok) throw new Error('os answered /api/fleet/mail-domains without a domain list')
+      return (domains as Array<{ name: string; receive: boolean }>).map((d) => ({ name: d.name, receive: d.receive }))
     },
     backupKey: async (token) => {
       let got: { status: number; raw: string }

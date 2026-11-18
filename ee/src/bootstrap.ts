@@ -383,6 +383,15 @@ export const OS_SECRETS = [
 /** Claim-link state (hash + expiry only), declared on os so the app can check a claim. */
 export const CLAIM_SECRETS = ['EE_CLAIM_TOKEN_HASH', 'EE_CLAIM_EXPIRES_AT'] as const
 
+/**
+ * os's declared secrets after a (re-)run: the bootstrap set, plus whatever the fleet or the owner
+ * declared since (the loopback token, managed mail, platform AI, `ee secret set`) while it still
+ * has a value. Rebuilding the list from the bootstrap set alone dropped those on every upgrade.
+ */
+export function resolveOsSecrets(base: readonly string[], declared: readonly string[] | null, values: Record<string, string>): string[] {
+  return [...new Set([...base, ...(declared ?? []).filter((n) => values[n] !== undefined)])]
+}
+
 /** Copy a release tarball into ee's releases dir (once) and return where it is and its checksum. */
 async function installTarball(sys: System, src: string): Promise<{ tarball: string; sha256: string }> {
   const tarball = `${PATHS.releases}/${basename(src)}`
@@ -470,7 +479,7 @@ async function seedCompany(
         // The app refuses to embed without it; without it no thought is ever indexed.
         EMBEDDING_COMPRESS_INTENSITY: OS_EMBEDDING_COMPRESS_INTENSITY,
       }, contributeHub),
-      secrets: [...OS_SECRETS, ...CLAIM_SECRETS],
+      secrets: resolveOsSecrets([...OS_SECRETS, ...CLAIM_SECRETS], existing?.secrets ?? null, secrets.all()['os'] ?? {}),
       resources: { memoryMb: 2048, cpuPercent: 200 },
     })
     return withLivekit(

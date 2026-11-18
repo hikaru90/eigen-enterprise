@@ -24,6 +24,7 @@ function fakeHost(opts: { managed?: boolean } = {}) {
     state.settings.managed = { controlPlane: CP, boxId: BOX, pollSeconds: 60 }
     secrets[FLEET_SCOPE] = { [BOX_KEY]: box.privateKey }
     secrets['os']![LOCAL_TOKEN] = 'local-token'
+    ;(state.workloads[0] as { secrets: string[] }).secrets.push(LOCAL_TOKEN)
   }
   let backupCfg: BackupConfig | null = null
   let runs: BackupRun[] = []
@@ -289,6 +290,49 @@ describe('fleet: desired state (level-triggered)', () => {
       expect(f.secrets['os']![legacy]).toBeUndefined()
       expect(f.state().workloads[0]!.secrets).not.toContain(legacy)
     }
+  })
+
+  it('local token: re-declared on os when a bootstrap re-run (upgrade) dropped it, value kept', async () => {
+    const f = fakeHost({ managed: true })
+    f.state().workloads[0]!.secrets = f.state().workloads[0]!.secrets.filter((n) => n !== LOCAL_TOKEN)
+    f.setAnswer(desired())
+    expect((await new FleetAgent(f.host).poll()).ok).toBe(true)
+    expect(f.state().workloads[0]!.secrets).toContain(LOCAL_TOKEN)
+    expect(f.secrets['os']![LOCAL_TOKEN]).toBe('local-token')
+    expect(f.logs.map((l) => l.type)).toContain('fleet.local_token')
+  })
+
+  it('local token: made again when the secret store lost it', async () => {
+    const f = fakeHost({ managed: true })
+    delete f.secrets['os']![LOCAL_TOKEN]
+    f.setAnswer(desired())
+    expect((await new FleetAgent(f.host).poll()).ok).toBe(true)
+    expect(f.secrets['os']![LOCAL_TOKEN]).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect(f.state().workloads[0]!.secrets).toContain(LOCAL_TOKEN)
+  })
+
+  it('local token: nothing committed or redeployed while it is in place', async () => {
+    const f = fakeHost({ managed: true })
+    f.setAnswer(desired())
+    await new FleetAgent(f.host).poll()
+    expect(f.commits).toEqual([])
+    expect(f.host.reconcile).not.toHaveBeenCalled()
+  })
+
+  it('os refusing a loopback question is journaled once per distinct error; the report goes out without it', async () => {
+    const f = fakeHost({ managed: true })
+    f.host.mailDomains.mockRejectedValue(new Error('os answered 404 on /api/fleet/mail-domains'))
+    f.setAnswer(desired())
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const agent = new FleetAgent(f.host)
+    expect((await agent.poll()).ok).toBe(true)
+    await agent.poll()
+    expect(JSON.parse(String(f.calls[0]!.init.body))).not.toHaveProperty('mail')
+    expect(f.logs.filter((l) => l.type === 'fleet.os_unanswered')).toEqual([
+      { type: 'fleet.os_unanswered', message: expect.stringContaining('404 on /api/fleet/mail-domains') },
+    ])
+    expect(err).toHaveBeenCalledWith(expect.stringContaining('404 on /api/fleet/mail-domains'))
+    err.mockRestore()
   })
 
   it('report omits mail when os cannot say (older os)', async () => {

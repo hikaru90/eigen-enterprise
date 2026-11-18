@@ -8,6 +8,7 @@ import {
   strayWalArchiverOff,
   parseTrustedProxyFlag,
   resolveNodeIp,
+  resolveOsSecrets,
   resolveRtcPorts,
   resolveTrustedProxy,
   withLivekit,
@@ -144,5 +145,20 @@ describe('the WAL archiver Debian switches on by itself (never ee\'s; its slot w
     expect(dropSlotSql).toContain("slot_name = 'pg_receivewal_service'")
     expect(dropSlotSql).toContain('not active')
     expect(dropSlotSql).toMatch(/pg_drop_replication_slot\(slot_name\)/)
+  })
+})
+
+describe("os's declared secrets on a (re-)run (upgrade)", () => {
+  const base = ['BETTER_AUTH_SECRET', 'EE_CLAIM_TOKEN_HASH']
+  it('first install: the bootstrap set', () => {
+    expect(resolveOsSecrets(base, null, { BETTER_AUTH_SECRET: 'x', EE_CLAIM_TOKEN_HASH: 'h' })).toEqual(base)
+  })
+  it('a re-run keeps what the fleet or the owner declared since (the loopback token, managed mail, ee secret set)', () => {
+    const declared = ['BETTER_AUTH_SECRET', 'EE_CLAIM_TOKEN_HASH', 'EE_FLEET_LOCAL_TOKEN', 'EE_MAIL_TENANT', 'STRIPE_KEY']
+    const values = { BETTER_AUTH_SECRET: 'x', EE_CLAIM_TOKEN_HASH: 'h', EE_FLEET_LOCAL_TOKEN: 't', EE_MAIL_TENANT: 'ee-1', STRIPE_KEY: 's' }
+    expect(resolveOsSecrets(base, declared, values)).toEqual(['BETTER_AUTH_SECRET', 'EE_CLAIM_TOKEN_HASH', 'EE_FLEET_LOCAL_TOKEN', 'EE_MAIL_TENANT', 'STRIPE_KEY'])
+  })
+  it('a declared name with no value left is dropped: os never runs with a declared secret that has none', () => {
+    expect(resolveOsSecrets(base, [...base, 'GONE'], { BETTER_AUTH_SECRET: 'x', EE_CLAIM_TOKEN_HASH: 'h' })).toEqual(base)
   })
 })

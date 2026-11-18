@@ -78,9 +78,9 @@ export type FleetHost = {
   osHealth(): Promise<'healthy' | 'unhealthy' | 'unknown'>
   reconcileError(): string | null
   disk(): Promise<{ usedGb: number; totalGb: number } | null>
-  /** GET os /api/fleet/seats with the token; null when os can't say. */
+  /** GET os /api/fleet/seats with the token; throws with the reason when os doesn't answer (the agent journals it). */
   seats(token: string): Promise<number | null>
-  /** GET os /api/fleet/mail-domains with the token; null when os can't say (e.g. an older os). */
+  /** GET os /api/fleet/mail-domains with the token; throws with the reason when os doesn't answer (e.g. an older os, or os without the token). */
   mailDomains(token: string): Promise<Array<{ name: string; receive: boolean }> | null>
   /** GET os /api/fleet/backup-key with the token (base64); throws with os's reason. Never logged. */
   backupKey(token: string): Promise<string>
@@ -129,6 +129,8 @@ export class FleetAgent {
   private timer: ReturnType<typeof setTimeout> | null = null
   private polling: Promise<PollResult> | null = null
   private lastLogged: string | null = null
+  /** Per loopback question, the last os failure journaled (each distinct one once). */
+  private readonly osErrors = new Map<string, string>()
 
   constructor(private readonly host: FleetHost) {}
 
@@ -236,14 +238,14 @@ export class FleetAgent {
     const b = await this.host.backups.status()
     const lastOk = b.runs.find((r) => r.status === 'succeeded')
     const backupError = b.health.state === 'failed' ? b.health.error : b.health.state === 'missing' ? b.health.message : null
-    const mailDomains = token ? await this.host.mailDomains(token) : null
+    const mailDomains = token ? await this.askOs('mailDomains', () => this.host.mailDomains(token)) : null
     return reportV1.parse({
       protocol: FLEET_PROTOCOL,
       eeVersion: EE_VERSION,
       features: IMPLEMENTED_FEATURES,
       release: await this.host.osRelease(),
       health: { os: await this.host.osHealth(), reconcileError: reconcileError === null ? null : reconcileError.replace(/\s*\n\s*/g, ' ').slice(0, 2000) },
-      seats: token ? await this.host.seats(token) : null,
+      seats: token ? await this.askOs('seats', () => this.host.seats(token)) : null,
       hosts: hosts.slice(0, 200),
       disk: await this.host.disk(),
       backup: b.health.state === 'unconfigured' ? null : { lastOkAt: lastOk ? (lastOk.endedAt ?? lastOk.startedAt) : null, lastError: backupError?.slice(0, 2000) ?? null },
@@ -262,6 +264,7 @@ export class FleetAgent {
         errors.push(`${name}: ${(err as Error).message}`)
       }
     }
+    await step('localToken', () => this.applyLocalToken())
     await step('pollSeconds', () => this.applyPollSeconds(d.pollSeconds))
     if (d.suspended !== undefined) await step('suspended', () => this.applySuspended(d.suspended!))
     if (d.platformAi !== undefined) await step('platformAi', () => this.applyPlatformAi(d.platformAi!))
@@ -380,6 +383,38 @@ export class FleetAgent {
     for (const n of remove) await this.host.secrets.delete('os', n)
     const retiredNow = retired.filter((n) => !gone(n))
     await this.host.log(text.type, retiredNow.length ? `${text.log}; retired ${retiredNow.join(', ')} (set by an older ee)` : text.log)
+  }
+
+  /**
+   * os's loopback token (seats, mail domains, backup key), made at enroll. Kept declared on every
+   * poll: a bootstrap re-run (every upgrade) rebuilds os's secret list without it, and os then
+   * answers 404 to every loopback question.
+   */
+  private async applyLocalToken(): Promise<void> {
+    const value = this.host.secrets.all()['os']?.[LOCAL_TOKEN] ?? generateSecret(32)
+    await this.applyOsSecrets([LOCAL_TOKEN] as const, { [LOCAL_TOKEN]: value }, {
+      set: 'managed: os loopback token declared',
+      removed: 'managed: os loopback token removed',
+      type: 'fleet.local_token',
+      log: 'the os loopback token was missing on os and is declared again (seats, mail domains, backup key)',
+    })
+  }
+
+  /** One loopback question to os for the report: a failure leaves the field out, goes to stderr every time and to the journal once per distinct error. */
+  private async askOs<T>(question: string, ask: () => Promise<T | null>): Promise<T | null> {
+    try {
+      const answer = await ask()
+      this.osErrors.delete(question)
+      return answer
+    } catch (err) {
+      const error = (err as Error).message
+      console.error(`fleet: ${error}`)
+      if (this.osErrors.get(question) !== error) {
+        this.osErrors.set(question, error)
+        await this.host.log('fleet.os_unanswered', `${error} (the report goes out without it; asked again every poll)`).catch(() => undefined)
+      }
+      return null
+    }
   }
 
   private fleetOwnsBackup(): boolean {
