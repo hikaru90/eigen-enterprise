@@ -34,6 +34,7 @@ export const FLEET_BACKUP_MARK = 'BACKUP_SET_BY_FLEET'
 /** Bearer token ee uses for os's loopback /api/fleet/seats; in the os workload's env. */
 export const LOCAL_TOKEN = 'EE_FLEET_LOCAL_TOKEN'
 export const PLATFORM_AI_SECRETS = ['LLM_BASE_URL', 'LLM_API_KEY', 'LLM_MODEL_CHAT', 'LLM_MODEL_EMBEDDING'] as const
+export const MAIL_SECRETS = ['EE_MAIL_REGION', 'EE_MAIL_ACCESS_KEY_ID', 'EE_MAIL_SECRET_ACCESS_KEY', 'EE_MAIL_TENANT', 'EE_MAIL_CONFIG_SET', 'EE_MAIL_TRACKING_CONFIG_SET', 'EE_MAIL_EVENTS_TOPIC_ARN', 'EE_MAIL_INBOUND_TOPIC_ARN', 'EE_MAIL_INBOUND_BUCKET', 'EE_MAIL_INBOUND_PREFIX'] as const
 export const UPGRADE_UNIT = 'ee-fleet-upgrade'
 export const FLEET_AUTHOR = 'fleet'
 /** Fleet-set backups: daily at 03:xx UTC, kept 30 days (the target is the control plane's; the cadence is ee's). */
@@ -71,6 +72,8 @@ export type FleetHost = {
   disk(): Promise<{ usedGb: number; totalGb: number } | null>
   /** GET os /api/fleet/seats with the token; null when os can't say. */
   seats(token: string): Promise<number | null>
+  /** GET os /api/fleet/mail-domains with the token; null when os can't say (e.g. an older os). */
+  mailDomains(token: string): Promise<Array<{ name: string; receive: boolean }> | null>
   /** GET os /api/fleet/backup-key with the token (base64); throws with os's reason. Never logged. */
   backupKey(token: string): Promise<string>
   backups: {
@@ -225,6 +228,7 @@ export class FleetAgent {
     const b = await this.host.backups.status()
     const lastOk = b.runs.find((r) => r.status === 'succeeded')
     const backupError = b.health.state === 'failed' ? b.health.error : b.health.state === 'missing' ? b.health.message : null
+    const mailDomains = token ? await this.host.mailDomains(token) : null
     return reportV1.parse({
       protocol: FLEET_PROTOCOL,
       eeVersion: EE_VERSION,
@@ -235,6 +239,7 @@ export class FleetAgent {
       hosts: hosts.slice(0, 200),
       disk: await this.host.disk(),
       backup: b.health.state === 'unconfigured' ? null : { lastOkAt: lastOk ? (lastOk.endedAt ?? lastOk.startedAt) : null, lastError: backupError?.slice(0, 2000) ?? null },
+      ...(mailDomains ? { mail: { domains: mailDomains } } : {}),
       ignoredFields: this.ignoredFields,
     })
   }
@@ -252,6 +257,7 @@ export class FleetAgent {
     await step('pollSeconds', () => this.applyPollSeconds(d.pollSeconds))
     if (d.suspended !== undefined) await step('suspended', () => this.applySuspended(d.suspended!))
     if (d.platformAi !== undefined) await step('platformAi', () => this.applyPlatformAi(d.platformAi!))
+    if (d.mail !== undefined) await step('mail', () => this.applyMail(d.mail!))
     if (d.backup !== undefined) await step('backup', () => this.applyBackup(d.backup!))
     if (d.escrowBackupKey === true) await step('escrowBackupKey', () => this.applyEscrowBackupKey())
     if (d.backupRequestedAt !== undefined && d.backupRequestedAt !== null) await step('backupRequestedAt', () => this.applyBackupNow(d.backupRequestedAt!))
@@ -292,24 +298,57 @@ export class FleetAgent {
     const want: Record<(typeof PLATFORM_AI_SECRETS)[number], string> | null = ai
       ? { LLM_BASE_URL: ai.llmBaseUrl, LLM_API_KEY: ai.llmApiKey, LLM_MODEL_CHAT: ai.llmModelChat, LLM_MODEL_EMBEDDING: ai.llmModelEmbedding }
       : null
+    await this.applyOsSecrets(PLATFORM_AI_SECRETS, want, {
+      set: 'managed: platform AI set for os',
+      removed: 'managed: platform AI removed from os',
+      type: 'fleet.platform_ai',
+      log: want ? `platform AI set for os (${ai!.llmBaseUrl}, ${ai!.llmModelChat})` : 'platform AI removed from os',
+    })
+  }
+
+  private async applyMail(mail: DesiredV1['mail']): Promise<void> {
+    const want: Record<(typeof MAIL_SECRETS)[number], string> | null = mail
+      ? {
+          EE_MAIL_REGION: mail.region,
+          EE_MAIL_ACCESS_KEY_ID: mail.accessKeyId,
+          EE_MAIL_SECRET_ACCESS_KEY: mail.secretAccessKey,
+          EE_MAIL_TENANT: mail.tenant,
+          EE_MAIL_CONFIG_SET: mail.configurationSet,
+          EE_MAIL_TRACKING_CONFIG_SET: mail.trackingConfigurationSet,
+          EE_MAIL_EVENTS_TOPIC_ARN: mail.eventsTopicArn,
+          EE_MAIL_INBOUND_TOPIC_ARN: mail.inboundTopicArn,
+          EE_MAIL_INBOUND_BUCKET: mail.inboundBucket,
+          EE_MAIL_INBOUND_PREFIX: mail.inboundPrefix,
+        }
+      : null
+    await this.applyOsSecrets(MAIL_SECRETS, want, {
+      set: 'managed: mail set for os',
+      removed: 'managed: mail removed from os',
+      type: 'fleet.mail',
+      log: want ? `managed mail set for os (${mail!.region}, tenant ${mail!.tenant})` : 'managed mail removed from os',
+    })
+  }
+
+  /** Level-triggered: a set of os secrets the fleet owns, all or none. Values never reach a log or commit message. */
+  private async applyOsSecrets<N extends string>(names: readonly N[], want: Record<N, string> | null, text: { set: string; removed: string; type: string; log: string }): Promise<void> {
     const have = this.host.secrets.all()['os'] ?? {}
     const state = await this.host.read()
     const declared = state.workloads.find((w) => w.name === 'os')?.secrets ?? []
-    const same = PLATFORM_AI_SECRETS.every((n) => (want ? have[n] === want[n] && declared.includes(n) : have[n] === undefined && !declared.includes(n)))
+    const same = names.every((n) => (want ? have[n] === want[n] && declared.includes(n) : have[n] === undefined && !declared.includes(n)))
     if (same) return
-    if (want) for (const n of PLATFORM_AI_SECRETS) if (have[n] !== want[n]) await this.host.secrets.set('os', n, want[n])
-    const message = want ? 'managed: platform AI set for os' : 'managed: platform AI removed from os'
-    const needsDeclare = want ? PLATFORM_AI_SECRETS.some((n) => !declared.includes(n)) : PLATFORM_AI_SECRETS.some((n) => declared.includes(n))
+    if (want) for (const n of names) if (have[n] !== want[n]) await this.host.secrets.set('os', n, want[n])
+    const message = want ? text.set : text.removed
+    const needsDeclare = want ? names.some((n) => !declared.includes(n)) : names.some((n) => declared.includes(n))
     // New values on declared secrets change os's fingerprint, so a plain reconcile redeploys it (health-gated).
     if (needsDeclare) {
-      const r = await this.host.change(message, (s) => declareOnOs(s, want ? [...PLATFORM_AI_SECRETS] : [], want ? [] : [...PLATFORM_AI_SECRETS]))
+      const r = await this.host.change(message, (s) => declareOnOs(s, want ? [...names] : [], want ? [] : [...names]))
       if (r.reconcileError) throw new Error(r.reconcileError)
     } else {
       await this.host.reconcile()
     }
     // Undeclared first, then forgotten: os never runs with a declared secret that has no value.
-    if (!want) for (const n of PLATFORM_AI_SECRETS) await this.host.secrets.delete('os', n)
-    await this.host.log('fleet.platform_ai', want ? `platform AI set for os (${ai!.llmBaseUrl}, ${ai!.llmModelChat})` : 'platform AI removed from os')
+    if (!want) for (const n of names) await this.host.secrets.delete('os', n)
+    await this.host.log(text.type, text.log)
   }
 
   private fleetOwnsBackup(): boolean {

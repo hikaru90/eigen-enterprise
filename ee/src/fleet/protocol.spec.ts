@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  FLEET_FEATURES,
   FLEET_HEADERS,
   FLEET_MAX_SKEW_MS,
   FLEET_PATHS,
@@ -93,6 +94,50 @@ describe('fleet messages', () => {
     expect(() =>
       desiredV1.parse({ protocol: 1, pollSeconds: 60, platformAi: { llmBaseUrl: 'https://a.b', llmApiKey: 'k', llmModelChat: 'c', llmModelEmbedding: 'e', extra: 1 } }),
     ).toThrow()
+  })
+})
+
+describe('managed mail', () => {
+  const mail = {
+    region: 'eu-central-1',
+    accessKeyId: 'AKIAMAIL',
+    secretAccessKey: 'SECRET-MAIL',
+    tenant: 'ee-box',
+    configurationSet: 'ee-box',
+    trackingConfigurationSet: 'ee-box-tracking',
+    eventsTopicArn: 'arn:aws:sns:eu-central-1:1:events',
+    inboundTopicArn: 'arn:aws:sns:eu-central-1:1:inbound',
+    inboundBucket: 'ee-inbound',
+    inboundPrefix: 'box/',
+  }
+  const report = {
+    protocol: 1, eeVersion: '0.5.12', features: ['mail'], release: null, health: { os: 'healthy', reconcileError: null },
+    seats: null, hosts: [], disk: null, backup: null,
+  }
+
+  it('mail is a feature', () => {
+    expect(FLEET_FEATURES).toContain('mail')
+  })
+
+  it('desired.mail is strict, nullable, optional; every field a non-empty string', () => {
+    expect(parseDesired({ protocol: 1, pollSeconds: 60, mail }).desired.mail).toEqual(mail)
+    expect(parseDesired({ protocol: 1, pollSeconds: 60, mail: null }).desired.mail).toBeNull()
+    expect(parseDesired({ protocol: 1, pollSeconds: 60 }).desired.mail).toBeUndefined()
+    expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, mail: { ...mail, extra: 1 } })).toThrow()
+    expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, mail: { ...mail, tenant: '' } })).toThrow()
+    const { inboundPrefix: _p, ...partial } = mail
+    expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, mail: partial })).toThrow()
+  })
+
+  it('report.mail carries the domains, optional and nullable, strict', () => {
+    const domains = [{ name: 'acme.example.com', receive: true }]
+    expect(reportV1.parse({ ...report, mail: { domains } }).mail).toEqual({ domains })
+    expect(reportV1.parse({ ...report, mail: null }).mail).toBeNull()
+    expect(reportV1.parse(report).mail).toBeUndefined()
+    expect(() => reportV1.parse({ ...report, mail: { domains, extra: 1 } })).toThrow()
+    expect(() => reportV1.parse({ ...report, mail: { domains: [{ name: 'a.b', receive: true, x: 1 }] } })).toThrow()
+    expect(() => reportV1.parse({ ...report, mail: { domains: [{ name: 'x'.repeat(254), receive: true }] } })).toThrow()
+    expect(() => reportV1.parse({ ...report, mail: { domains: Array.from({ length: 51 }, (_, i) => ({ name: `d${i}.com`, receive: false })) } })).toThrow()
   })
 })
 

@@ -56,6 +56,7 @@ function fakeHost(opts: { managed?: boolean } = {}) {
     reconcileError: () => 'reconcile finished with errors:\n- route x: y has nothing live',
     disk: async () => ({ usedGb: 12.5, totalGb: 80 }),
     seats: vi.fn(async () => 4),
+    mailDomains: vi.fn(async (_token: string): Promise<Array<{ name: string; receive: boolean }> | null> => [{ name: 'acme.example.com', receive: true }]),
     backupKey: vi.fn(async (_token: string): Promise<string> => 'K'.repeat(43) + '='),
     backups: {
       hasKey: vi.fn(() => true),
@@ -159,6 +160,9 @@ describe('fleet: poll', () => {
       ignoredFields: [],
     })
     expect(f.host.seats).toHaveBeenCalledWith('local-token')
+    expect(report.features).toContain('mail')
+    expect(report.mail).toEqual({ domains: [{ name: 'acme.example.com', receive: true }] })
+    expect(f.host.mailDomains).toHaveBeenCalledWith('local-token')
     await agent.poll()
     expect(JSON.parse(String(f.calls[1]!.init.body)).ignoredFields).toEqual(['futureThing'])
   })
@@ -241,6 +245,48 @@ describe('fleet: desired state (level-triggered)', () => {
     expect(f.secrets['os']!['LLM_API_KEY']).toBeUndefined()
     expect(f.state().workloads[0]!.secrets).not.toContain('LLM_API_KEY')
     for (const l of f.logs) expect(l.message).not.toContain('sk-PLATFORM')
+  })
+
+  it('report omits mail when os cannot say (older os)', async () => {
+    const f = fakeHost({ managed: true })
+    f.host.mailDomains.mockResolvedValue(null)
+    await new FleetAgent(f.host).poll()
+    expect(JSON.parse(String(f.calls[0]!.init.body))).not.toHaveProperty('mail')
+  })
+
+  it('mail: sets + declares the EE_MAIL_* secrets on os, redeploys only on change, null removes them', async () => {
+    const f = fakeHost({ managed: true })
+    const agent = new FleetAgent(f.host)
+    const mail = {
+      region: 'eu-central-1', accessKeyId: 'AKIAMAIL', secretAccessKey: 'SECRET-MAIL', tenant: `ee-${BOX}`,
+      configurationSet: 'ee-cs', trackingConfigurationSet: 'ee-cs-tracking',
+      eventsTopicArn: 'arn:aws:sns:eu-central-1:1:events', inboundTopicArn: 'arn:aws:sns:eu-central-1:1:inbound',
+      inboundBucket: 'ee-inbound', inboundPrefix: `${BOX}/`,
+    }
+    const names = ['EE_MAIL_REGION', 'EE_MAIL_ACCESS_KEY_ID', 'EE_MAIL_SECRET_ACCESS_KEY', 'EE_MAIL_TENANT', 'EE_MAIL_CONFIG_SET', 'EE_MAIL_TRACKING_CONFIG_SET', 'EE_MAIL_EVENTS_TOPIC_ARN', 'EE_MAIL_INBOUND_TOPIC_ARN', 'EE_MAIL_INBOUND_BUCKET', 'EE_MAIL_INBOUND_PREFIX']
+    f.setAnswer(desired({ mail }))
+    expect((await agent.poll()).ok).toBe(true)
+    expect(f.secrets['os']).toMatchObject({
+      EE_MAIL_REGION: 'eu-central-1', EE_MAIL_ACCESS_KEY_ID: 'AKIAMAIL', EE_MAIL_SECRET_ACCESS_KEY: 'SECRET-MAIL', EE_MAIL_TENANT: `ee-${BOX}`,
+      EE_MAIL_CONFIG_SET: 'ee-cs', EE_MAIL_TRACKING_CONFIG_SET: 'ee-cs-tracking', EE_MAIL_EVENTS_TOPIC_ARN: mail.eventsTopicArn,
+      EE_MAIL_INBOUND_TOPIC_ARN: mail.inboundTopicArn, EE_MAIL_INBOUND_BUCKET: 'ee-inbound', EE_MAIL_INBOUND_PREFIX: `${BOX}/`,
+    })
+    expect(f.state().workloads[0]!.secrets).toEqual(expect.arrayContaining(names))
+    const n = f.commits.length
+    await agent.poll()
+    expect(f.commits).toHaveLength(n)
+    expect(f.host.reconcile).not.toHaveBeenCalled()
+    f.setAnswer(desired({ mail: { ...mail, secretAccessKey: 'SECRET-MAIL-2' } }))
+    await agent.poll()
+    expect(f.host.reconcile).toHaveBeenCalledTimes(1)
+    expect(f.secrets['os']!['EE_MAIL_SECRET_ACCESS_KEY']).toBe('SECRET-MAIL-2')
+    f.setAnswer(desired({ mail: null }))
+    await agent.poll()
+    for (const name of names) {
+      expect(f.secrets['os']![name]).toBeUndefined()
+      expect(f.state().workloads[0]!.secrets).not.toContain(name)
+    }
+    for (const l of f.logs) expect(l.message).not.toMatch(/SECRET-MAIL|AKIAMAIL/)
   })
 
   it('backup: configures the fleet target, reconfigures only on change, null removes only its own', async () => {
