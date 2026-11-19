@@ -69,6 +69,7 @@ export function newCall(i: NewCallInput): CallRecord {
     joinedAt: null,
     leftAt: null,
     response,
+    transcribe: true,
   })
   const invitees = [...new Set(i.invitees)].filter((u) => u !== i.startedBy)
   const window = i.window ?? null
@@ -110,6 +111,7 @@ export function addGuests(rec: CallRecord, guests: Guest[], now: Date): CallReco
     joinedAt: null,
     leftAt: null,
     response: 'accepted',
+    transcribe: true,
   }))
   return { call: rec.call, participants: [...rec.participants, ...rows], guests: [...rec.guests, ...guests] }
 }
@@ -128,6 +130,18 @@ export function revokeGuest(rec: CallRecord, guestId: string, now: Date): CallRe
   if (!g) throw new CallsError('not_found', 'guest not found')
   if (g.revokedAt) return rec
   return { ...rec, guests: rec.guests.map((x) => (x.id === guestId ? { ...x, revokedAt: now } : x)) }
+}
+
+/**
+ * A person turns the transcription of their own microphone on or off (call
+ * transcripts: consent per person, on by default). Only in a live call.
+ */
+export function setTranscribe(rec: CallRecord, userId: string, on: boolean): CallRecord {
+  if (!isLive(rec.call.state)) throw new CallsError('conflict', 'this call is over')
+  const p = participant(rec, userId)
+  if (!p) throw new CallsError('not_found', 'call not found')
+  if (p.transcribe === on) return rec
+  return { ...rec, participants: rec.participants.map((x) => (x.userId === userId ? { ...x, transcribe: on } : x)) }
 }
 
 /** A windowed meeting whose window closed while nobody is in: over. */
@@ -151,7 +165,7 @@ const participant = (rec: CallRecord, userId: string) => rec.participants.find((
 
 function patch(rec: CallRecord, userId: string, change: Partial<Participant>, now: Date): CallRecord {
   const existing = participant(rec, userId)
-  const base: Participant = existing ?? { callId: rec.call.id, userId, invitedAt: now, joinedAt: null, leftAt: null, response: 'none' }
+  const base: Participant = existing ?? { callId: rec.call.id, userId, invitedAt: now, joinedAt: null, leftAt: null, response: 'none', transcribe: true }
   const next = { ...base, ...change }
   return {
     call: rec.call,
@@ -317,6 +331,7 @@ export function sameRecord(a: CallRecord, b: CallRecord): boolean {
     return (
       !!pb &&
       pa.response === pb.response &&
+      pa.transcribe === pb.transcribe &&
       time(pa.invitedAt) === time(pb.invitedAt) &&
       time(pa.joinedAt) === time(pb.joinedAt) &&
       time(pa.leftAt) === time(pb.leftAt)

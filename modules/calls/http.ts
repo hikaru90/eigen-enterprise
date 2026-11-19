@@ -5,11 +5,12 @@ import { CallsError } from './errors'
 /**
  * Shared plumbing for /api/calls/*: signed-in only, the live service, and
  * CallsError → HTTP status (not_found 404, forbidden 403, invalid 400,
- * conflict 409, not_configured 503 — "Calls are not set up on this server").
+ * conflict 409, not_configured 503 — "Calls are not set up on this server",
+ * unavailable 503 — e.g. no speech to text for transcripts).
  * Anything else is a 500 with its message, logged.
  */
 
-const STATUS: Record<CallsError['code'], number> = { not_found: 404, forbidden: 403, invalid: 400, conflict: 409, not_configured: 503 }
+const STATUS: Record<CallsError['code'], number> = { not_found: 404, forbidden: 403, invalid: 400, conflict: 409, not_configured: 503, unavailable: 503 }
 
 export async function callsRoute(
   user: { id: string } | null | undefined,

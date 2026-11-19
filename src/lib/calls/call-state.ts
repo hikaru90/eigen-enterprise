@@ -18,7 +18,8 @@ export type Device = 'microphone' | 'camera' | 'screen'
 export type MediaFailure = 'permission_denied' | 'not_found' | 'in_use' | 'other'
 
 /** What stops the call page from joining (fatal until retried). */
-export type CallProblem = { kind: 'not_configured' | 'over' | 'failed'; message: string }
+/** unavailable: a part of the call the server has not set up (speech to text for transcripts); the call itself works. */
+export type CallProblem = { kind: 'not_configured' | 'unavailable' | 'over' | 'failed'; message: string }
 
 export type MediaNotice = { device: Device; failure: MediaFailure; message: string }
 
@@ -114,6 +115,7 @@ export function callReducer(s: CallViewState, e: CallEvent): CallViewState {
 export function problemFromResponse(status: number, body: { code?: unknown; error?: unknown }): CallProblem {
   const message = typeof body.error === 'string' && body.error ? body.error : `request failed (${status})`
   if (body.code === 'not_configured') return { kind: 'not_configured', message }
+  if (body.code === 'unavailable') return { kind: 'unavailable', message }
   if (body.code === 'conflict' || body.code === 'not_found') return { kind: 'over', message }
   return { kind: 'failed', message }
 }

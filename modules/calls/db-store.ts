@@ -134,7 +134,7 @@ export function dbCallsStore(db: AppDatabase): CallsStore {
             .values(p)
             .onConflictDoUpdate({
               target: [callParticipants.callId, callParticipants.userId],
-              set: { joinedAt: p.joinedAt, leftAt: p.leftAt, response: p.response },
+              set: { joinedAt: p.joinedAt, leftAt: p.leftAt, response: p.response, transcribe: p.transcribe },
             })
         }
         await notify(tx, id)

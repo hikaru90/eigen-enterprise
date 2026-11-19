@@ -1079,6 +1079,13 @@
       "when": 1795200000156,
       "tag": "0156_message_voice_recordings",
       "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1795200000157,
+      "tag": "0157_call_transcripts",
+      "breakpoints": true
     }
   ]
 }

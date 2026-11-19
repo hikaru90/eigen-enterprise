@@ -1,4 +1,4 @@
-import type { CallDto, CallTokenDto, GuestJoinDto, ScheduleResult } from '../../../modules/calls/service'
+import type { CallDto, CallTokenDto, GuestJoinDto, ScheduleResult, TranscriptSegmentDto } from '../../../modules/calls/service'
 import { problemFromResponse, type CallProblem } from './call-state'
 
 /**
@@ -8,7 +8,7 @@ import { problemFromResponse, type CallProblem } from './call-state'
  * server", shown as the server says it).
  */
 
-export type { CallDto, CallTokenDto, GuestJoinDto, ScheduleResult }
+export type { CallDto, CallTokenDto, GuestJoinDto, ScheduleResult, TranscriptSegmentDto }
 
 /** The New call dialog's request (POST /api/calls/meetings). */
 export type ScheduleCall = {
@@ -43,7 +43,21 @@ export type CallsClient = {
   schedule(input: ScheduleCall): Promise<ScheduleResult>
   inviteGuests(id: string, guests: string[], timeZone: string): Promise<ScheduleResult>
   revokeGuest(id: string, guestId: string): Promise<CallDto>
+  /** One chunk of my own microphone (call transcripts): its segment, or null when it held no speech. */
+  transcribe(id: string, chunk: Blob, durationMs: number): Promise<TranscriptSegmentDto | null>
+  /** Turn the transcription of my own microphone on or off. */
+  setTranscription(id: string, on: boolean): Promise<CallDto>
 }
+
+/** The calls the live call (ActiveCall + CallTranscription) needs; a member's or a guest's. */
+export type LiveCallClient = Pick<CallsClient, 'accept' | 'token' | 'hangup' | 'get' | 'transcribe' | 'setTranscription'>
+
+/** A chunk goes as its raw audio (exempt from the CSRF origin check, like dictation) with its length in a header. */
+const chunkInit = (chunk: Blob, durationMs: number): RequestInit => ({
+  method: 'POST',
+  body: chunk,
+  headers: { 'content-type': chunk.type || 'application/octet-stream', 'x-chunk-duration-ms': String(Math.round(durationMs)) },
+})
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   let res: Response
@@ -72,15 +86,17 @@ export function callsClient(): CallsClient {
     schedule: (input) => request<ScheduleResult>('/api/calls/meetings', { method: 'POST', body: JSON.stringify(input) }),
     inviteGuests: (id, guests, timeZone) => request<ScheduleResult>(`${at(id)}/guests`, { method: 'POST', body: JSON.stringify({ guests, timeZone }) }),
     revokeGuest: (id, guestId) => call(`${at(id)}/guests/${encodeURIComponent(guestId)}`, { method: 'DELETE' }),
+    transcribe: async (id, chunk, durationMs) => (await request<{ segment: TranscriptSegmentDto | null }>(`${at(id)}/transcript`, chunkInit(chunk, durationMs))).segment,
+    setTranscription: (id, on) => call(`${at(id)}/transcription`, { method: 'POST', body: JSON.stringify({ on }) }),
   }
 }
 
 /**
- * A guest's side (the public /join/[token] page): the same four calls the
+ * A guest's side (the public /join/[token] page): the same calls the
  * call view needs, answered by the guest routes. "Accept" is the join with
  * the name the guest typed; the room token comes from that same join.
  */
-export function guestCallsClient(linkToken: string, name: () => string): Pick<CallsClient, 'accept' | 'token' | 'hangup' | 'get'> {
+export function guestCallsClient(linkToken: string, name: () => string): LiveCallClient {
   const base = `/api/calls/guest/${encodeURIComponent(linkToken)}`
   let joined: GuestJoinDto | null = null
   const join = async () => (joined = await request<GuestJoinDto>(`${base}/join`, { method: 'POST', body: JSON.stringify({ name: name() }) }))
@@ -94,6 +110,8 @@ export function guestCallsClient(linkToken: string, name: () => string): Pick<Ca
     },
     hangup: (_id, opts) => call(`${base}/leave`, { method: 'POST', keepalive: opts?.keepalive === true }),
     get: () => call(base),
+    transcribe: async (_id, chunk, durationMs) => (await request<{ segment: TranscriptSegmentDto | null }>(`${base}/transcript`, chunkInit(chunk, durationMs))).segment,
+    setTranscription: (_id, on) => call(`${base}/transcription`, { method: 'POST', body: JSON.stringify({ on }) }),
   }
 }
 

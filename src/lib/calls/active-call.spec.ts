@@ -267,3 +267,39 @@ describe('ActiveCall: choosing devices', () => {
     expect(room.switches).toEqual([])
   })
 })
+
+describe('ActiveCall: the call as the server sees it now (clock, transcription switches)', () => {
+  it('update takes a newer view of the same call and tells subscribers; another call is ignored', async () => {
+    const { active } = setup()
+    active.open(fakeCall(), 'ann')
+    await settled(active)
+    const heard = vi.fn()
+    active.subscribe(heard)
+    active.update(fakeCall({ state: 'active', answeredAt: '2026-11-11T09:00:05.000Z' }))
+    expect(active.call?.answeredAt).toBe('2026-11-11T09:00:05.000Z')
+    expect(heard).toHaveBeenCalledOnce()
+    active.update(fakeCall({ id: 'call-2', answeredAt: null }))
+    expect(active.call?.answeredAt).toBe('2026-11-11T09:00:05.000Z')
+    expect(heard).toHaveBeenCalledOnce()
+  })
+
+  it('refresh asks the server for the call and takes it', async () => {
+    const { active, client } = setup()
+    active.open(fakeCall(), 'ann')
+    await settled(active)
+    client.get.mockResolvedValueOnce(fakeCall({ state: 'active', answeredAt: '2026-11-11T09:00:07.000Z' }))
+    await active.refresh()
+    expect(client.get).toHaveBeenCalledWith('call-1')
+    expect(active.call?.answeredAt).toBe('2026-11-11T09:00:07.000Z')
+  })
+
+  it('microphoneTrack: my microphone while it is on, null when off or not in a room', async () => {
+    const { active } = setup()
+    expect(active.microphoneTrack()).toBeNull()
+    active.open(fakeCall(), 'ann')
+    await settled(active)
+    expect(active.microphoneTrack()).not.toBeNull()
+    await active.turn('microphone', false)
+    expect(active.microphoneTrack()).toBeNull()
+  })
+})

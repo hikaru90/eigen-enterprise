@@ -34,6 +34,7 @@ import {
   newCall,
   revokeGuest,
   RING_TIMEOUT_MS,
+  setTranscribe,
   ringUntil,
   roomFinished,
   sameRecord,
@@ -50,6 +51,7 @@ import {
   type CallsStore,
   type Guest,
 } from './store'
+import { MAX_CHUNK_BYTES, MAX_CHUNK_MS, MAX_SEGMENT_TEXT, type TranscriptSegment, type TranscriptStore } from './transcript'
 
 /**
  * Calls core (plan/video-calls.md §1). Starts calls for a DM, a channel or a
@@ -89,9 +91,36 @@ export type CallsDeps = {
   /** The console's public origin (guest links), read at use time. */
   origin: () => string
   companyName: () => Promise<string | null>
+  /** Call transcript segments (./transcript.ts). */
+  transcripts: TranscriptStore
+  /** Speech to text for one chunk (the gateway's transcription, on the company's provider in the live wiring). */
+  speech: CallSpeech
   now?: () => Date
   newId?: () => string
 }
+
+/**
+ * One chunk of someone's microphone → its text ("" = no speech). `userId` is
+ * whom the usage is attributed to (the speaker; for a guest, the host). Throws
+ * CallsError('unavailable') when the server has no speech-to-text set up.
+ */
+export type CallSpeech = (input: { userId: string; audio: { bytes: Uint8Array; format: string } }) => Promise<string>
+
+/** One recorded chunk of a person's own microphone, as uploaded (never stored). */
+export type TranscriptChunk = { bytes: Uint8Array; format: string; durationMs: number }
+
+export type TranscriptSegmentDto = {
+  seq: number
+  speakerId: string
+  speakerKind: 'member' | 'guest'
+  speakerName: string
+  startedAt: string
+  endedAt: string
+  text: string
+}
+
+/** A call's transcript as someone who was in it reads it. */
+export type CallTranscriptDto = { call: CallDto; segments: TranscriptSegmentDto[] }
 
 /** What Calls needs from company mail (companyMail() from $lib/server/mail in the live wiring). */
 export type CallsMail = {
@@ -160,6 +189,8 @@ export type CallParticipantDto = {
   joinedAt: string | null
   leftAt: string | null
   inRoom: boolean
+  /** Their own microphone is transcribed (consent per person, on by default). */
+  transcribing: boolean
 }
 
 export type CallDto = {
@@ -203,6 +234,16 @@ export type CallView = { call: CallDto; ringing: boolean }
 export type CallsService = ReturnType<typeof createCallsService>
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null)
+
+const segmentDto = (s: TranscriptSegment): TranscriptSegmentDto => ({
+  seq: s.seq,
+  speakerId: s.speakerId,
+  speakerKind: s.speakerKind,
+  speakerName: s.speakerName,
+  startedAt: s.startedAt.toISOString(),
+  endedAt: s.endedAt.toISOString(),
+  text: s.text,
+})
 const displayName = (p: CallPerson | undefined) => (p ? p.name.trim() || p.email : null)
 
 export function createCallsService(d: CallsDeps) {
@@ -248,6 +289,7 @@ export function createCallsService(d: CallsDeps) {
             joinedAt: iso(p.joinedAt),
             leftAt: iso(p.leftAt),
             inRoom: inRoom(p),
+            transcribing: p.transcribe,
           }
         }),
       scheduledStart: iso(call.scheduledStart),
@@ -409,6 +451,49 @@ export function createCallsService(d: CallsDeps) {
     const status = guestLinkStatus(out.rec, out.guest, now())
     if (status !== 'ok') throw GUEST_REFUSAL[status]
     return out
+  }
+
+  /** A chunk's shape: some audio, a duration the server can place on its clock. */
+  function checkChunk(chunk: TranscriptChunk): void {
+    if (!(chunk.bytes instanceof Uint8Array) || chunk.bytes.length === 0) throw new CallsError('invalid', 'the audio chunk is empty')
+    if (chunk.bytes.length > MAX_CHUNK_BYTES) throw new CallsError('invalid', `an audio chunk is at most ${MAX_CHUNK_BYTES} bytes`)
+    if (!Number.isInteger(chunk.durationMs) || chunk.durationMs <= 0 || chunk.durationMs > MAX_CHUNK_MS) {
+      throw new CallsError('invalid', `an audio chunk lasts 1 ms to ${MAX_CHUNK_MS / 1000} s`)
+    }
+  }
+
+  /** May this participant's microphone be transcribed right now? */
+  function transcribable(rec: CallRecord, participantId: string): void {
+    if (!isLive(rec.call.state)) throw new CallsError('conflict', 'this call is over')
+    if (rec.call.externalUrl) throw new CallsError('conflict', 'this call takes place on another service')
+    const p = rec.participants.find((x) => x.userId === participantId)
+    if (!p || p.response !== 'accepted') throw new CallsError('conflict', 'join the call before sending audio')
+    if (!p.transcribe) throw new CallsError('conflict', 'transcription of your microphone is off')
+  }
+
+  /**
+   * The chunk's text, stored as one segment timed on the server's clock: it
+   * ends when the chunk arrived (`receivedAt`, read before transcribing) and
+   * starts `durationMs` before. The audio is passed on once and dropped.
+   */
+  async function transcribeInto(
+    rec: CallRecord,
+    speaker: { id: string; kind: 'member' | 'guest'; name: string; billedTo: string },
+    chunk: TranscriptChunk,
+    receivedAt: Date,
+  ): Promise<{ segment: TranscriptSegmentDto | null }> {
+    const text = (await d.speech({ userId: speaker.billedTo, audio: { bytes: chunk.bytes, format: chunk.format } })).trim()
+    if (text === '') return { segment: null }
+    const segment = await d.transcripts.add({
+      callId: rec.call.id,
+      speakerId: speaker.id,
+      speakerKind: speaker.kind,
+      speakerName: speaker.name.slice(0, 200),
+      startedAt: new Date(receivedAt.getTime() - chunk.durationMs),
+      endedAt: receivedAt,
+      text: text.slice(0, MAX_SEGMENT_TEXT),
+    })
+    return { segment: segmentDto(segment) }
   }
 
   async function act(userId: string, id: string, transition: (rec: CallRecord, userId: string, at: Date) => CallRecord) {
@@ -687,6 +772,70 @@ export function createCallsService(d: CallsDeps) {
       const after = await mutate(rec.call.id, (r) => hangup(r, guestIdentity(guest.id), now()))
       return dto(after, await peopleById(), { forGuest: true })
     },
+
+    /** One ~30 s chunk of my own microphone → one segment of the call's transcript (null: no speech). */
+    async transcribeChunk(userId: string, id: string, chunk: TranscriptChunk): Promise<{ segment: TranscriptSegmentDto | null }> {
+      const receivedAt = now()
+      checkChunk(chunk)
+      const rec = await visible(userId, id)
+      transcribable(rec, userId)
+      const name = displayName((await peopleById()).get(userId))
+      if (!name) throw new CallsError('not_found', 'call not found')
+      return transcribeInto(rec, { id: userId, kind: 'member', name, billedTo: userId }, chunk, receivedAt)
+    },
+
+    /** A guest's chunk (their link is the proof). Billed to whoever set up the meeting. */
+    async guestTranscribeChunk(token: string, chunk: TranscriptChunk): Promise<{ segment: TranscriptSegmentDto | null }> {
+      const receivedAt = now()
+      checkChunk(chunk)
+      const { rec, guest } = await usableGuest(token)
+      const identity = guestIdentity(guest.id)
+      transcribable(rec, identity)
+      if (!guest.displayName) throw new CallsError('conflict', 'join the call before sending audio')
+      return transcribeInto(rec, { id: identity, kind: 'guest', name: guest.displayName, billedTo: rec.call.startedBy }, chunk, receivedAt)
+    },
+
+    /** I turn the transcription of my own microphone on or off (everyone in the call sees it). */
+    async setTranscription(userId: string, id: string, on: boolean): Promise<CallDto> {
+      if (typeof on !== 'boolean') throw new CallsError('invalid', 'on is true or false')
+      await visible(userId, id)
+      return dto(await mutate(id, (r) => setTranscribe(r, userId, on)), await peopleById())
+    },
+
+    async guestSetTranscription(token: string, on: boolean): Promise<CallDto> {
+      if (typeof on !== 'boolean') throw new CallsError('invalid', 'on is true or false')
+      const { rec, guest } = await usableGuest(token)
+      const after = await mutate(rec.call.id, (r) => setTranscribe(r, guestIdentity(guest.id), on))
+      return dto(after, await peopleById(), { forGuest: true })
+    },
+
+    /**
+     * The call's transcript, merged by time — for people who were in the call
+     * (joined it at least once). Someone who may see the call but never joined
+     * is refused; anyone else does not see the call at all.
+     */
+    async transcript(userId: string, id: string): Promise<CallTranscriptDto> {
+      const rec = await visible(userId, id)
+      const p = rec.participants.find((x) => x.userId === userId)
+      if (!p || p.joinedAt === null) throw new CallsError('forbidden', 'only people who were in the call can read its transcript')
+      const segments = await d.transcripts.list(id)
+      return { call: dto(rec, await peopleById()), segments: segments.map(segmentDto) }
+    },
+
+    /** Segments per call for my call list — only calls I was in (the ones whose transcript I may read). */
+    async transcriptCounts(userId: string, calls: CallDto[]): Promise<Record<string, number>> {
+      const mine = calls.filter((c) => c.participants.some((p) => p.userId === userId && p.joinedAt !== null)).map((c) => c.id)
+      return Object.fromEntries(await d.transcripts.countByCall(mine))
+    },
+
+    /**
+     * A call's segments merged by time; with `since` (a seq), only what
+     * arrived after it — for a reader that follows a call live (the Company
+     * Brain listening in, a follow-up). NO access check: it is for the
+     * company's own server-side readers; anything a person asks for goes
+     * through transcript().
+     */
+    listTranscriptSegments: (callId: string, since?: number): Promise<TranscriptSegment[]> => d.transcripts.list(callId, since),
 
     /** Stores every windowed meeting whose window closed with nobody in it as over; returns how many changed. */
     async expireWindows(): Promise<number> {

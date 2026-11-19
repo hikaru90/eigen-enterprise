@@ -7,9 +7,12 @@
   import { browserActiveCall } from '$lib/calls/active-call.svelte'
   import { getCallPresence } from '$lib/calls/call-presence.svelte'
   import { callTabName, leaveDecision, openCallTab } from '$lib/calls/call-tab'
+  import { browserCallTranscription } from '$lib/calls/call-transcription.svelte'
   import CallView from '$lib/calls/call-view.svelte'
   import { callsClient, problemOf } from '$lib/calls/client'
+  import { getLiveCalls } from '$lib/calls/live-calls.svelte'
   import { docTitle } from '$lib/shell/title'
+  import { TRANSCRIPT_CHUNK_MS } from '../../../../../modules/calls/transcript'
 
   /**
    * The call page is a call's own tab (call-tab.ts; owner, 2026-11-16: "a
@@ -23,20 +26,37 @@
    * the app opened it; otherwise (an address typed in) the ended state stays
    * with a way back to /calls. A call that ended on its own (declined, missed,
    * over) says so and offers Close — the tab does not vanish under the person.
+   *
+   * The call feed (the nucleus layout's) keeps the call's view current — its
+   * answer time (the clock) and who is transcribed. This page also owns the
+   * transcription of my microphone (CallTranscription), connected on mount.
    */
   let { data }: { data: PageData } = $props()
 
   const presence = getCallPresence()
-  const active = browserActiveCall(callsClient())
+  const liveCalls = getLiveCalls()
+  const client = callsClient()
+  const active = browserActiveCall(client)
+  // svelte-ignore state_referenced_locally
+  const transcription = browserCallTranscription(active, data.me, client, TRANSCRIPT_CHUNK_MS)
 
   /** The app opened this tab (window.open), so it may close it again. */
   let closable = $state(false)
   let notice = $state<string | null>(null)
   let untrack = () => {}
+  let unfeed = () => {}
+
+  /** The feed's newest view of this call (it leaves the feed once over: the ended view needs nothing more). */
+  function fromFeed() {
+    const c = liveCalls.calls.find((x) => x.id === data.call.id)
+    if (c) active.update(c)
+  }
 
   onMount(() => {
     closable = window.opener !== null
     untrack = presence.track(active)
+    transcription.connect()
+    unfeed = liveCalls.subscribe(fromFeed)
   })
 
   // Named after its call on every arrival, so Join / Accept elsewhere finds this tab.
@@ -46,7 +66,9 @@
 
   onDestroy(() => {
     untrack()
+    unfeed()
     active.close()
+    transcription.close()
     if (typeof window !== 'undefined' && window.name.startsWith(callTabName(''))) window.name = ''
   })
 
@@ -98,6 +120,8 @@
       onleave={leave}
       onhungup={hungUp}
       onopen={openOther}
+      {transcription}
+      transcriptHref={resolve('/(nucleus)/calls/[id]/transcript', { id: data.call.id })}
     />
   {/key}
 </div>

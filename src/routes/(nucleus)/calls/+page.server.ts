@@ -4,7 +4,8 @@ import { CALLS_DEPENDENCY } from '$lib/calls/format'
 
 /**
  * /calls (plan/video-calls.md §3): my recent calls (who, when, how long,
- * missed / declined), live calls to rejoin, and the company's people for
+ * missed / declined, a Transcript link where one was kept), live calls to
+ * rejoin, and the company's people for
  * "New meeting" (every member may start one — owner decision 6). Whether the
  * server has LiveKit is stated plainly (`notConfigured`), never hidden.
  */
@@ -24,14 +25,14 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     notConfigured = err.message
   }
 
-  const [calls, members] = await Promise.all([
-    (await liveCallsService()).list({ kind: 'user', userId: locals.user.id }),
-    dbMemberStore.listMembers(),
-  ])
+  const service = await liveCallsService()
+  const [calls, members] = await Promise.all([service.list({ kind: 'user', userId: locals.user.id }), dbMemberStore.listMembers()])
   return {
     me: locals.user.id,
     notConfigured,
     calls,
+    /** Transcript segments per call I was in (a Transcript link where there are any). */
+    transcripts: await service.transcriptCounts(locals.user.id, calls),
     people: members.map((m) => ({
       id: m.id,
       name: m.name.trim() || m.email,

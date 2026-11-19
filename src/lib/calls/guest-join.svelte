@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { GuestPageView } from '../../../modules/calls/service'
   import type { ActiveCall } from './active-call.svelte'
+  import type { CallTranscription } from './call-transcription.svelte'
   import type { CallDto } from './client'
   import Mic from '@lucide/svelte/icons/mic'
   import MicOff from '@lucide/svelte/icons/mic-off'
@@ -20,11 +21,17 @@
    * join. Inside its window: your name → camera and microphone preview (turn
    * either off) → join. In the call the guest has the same call view as
    * everyone, labelled "Guest" for the others.
+   *
+   * Call transcripts: the preview says the call is transcribed and that the
+   * guest can turn theirs off in the call (on by default, like everyone's).
+   * A guest has no call feed, so the call's view is refreshed every
+   * REFRESH_MS while in the call (its clock, who is transcribed).
    */
   let {
     view,
     call,
     makeActive,
+    makeTranscription,
     getMedia,
   }: {
     /** null: the link is not known. */
@@ -32,6 +39,8 @@
     call: CallDto | null
     /** The live call for this guest (LiveKit in the app, a fake in specs); `name` is read at join time. */
     makeActive: (name: () => string) => ActiveCall
+    /** The transcription of the guest's own microphone in this call (`me` = their identity). */
+    makeTranscription: (active: ActiveCall, me: string) => CallTranscription
     getMedia: (c: MediaStreamConstraints) => Promise<MediaStream>
   } = $props()
 
@@ -45,6 +54,9 @@
   let micOn = $state(true)
   let camOn = $state(true)
   let active = $state<ActiveCall | null>(null)
+  let transcription = $state<CallTranscription | null>(null)
+  const REFRESH_MS = 10_000
+  let refresher: ReturnType<typeof setInterval> | undefined
 
   const dayFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'short' })
   const timeFmt = new Intl.DateTimeFormat(undefined, { timeStyle: 'short' })
@@ -99,14 +111,29 @@
   }
 
   function join() {
+    if (!view) return
     stopPreview()
-    active = makeActive(() => name.trim())
+    const a = makeActive(() => name.trim())
+    const t = makeTranscription(a, view.identity)
+    t.connect()
+    active = a
+    transcription = t
+    refresher = setInterval(() => {
+      if (a.inCall) a.refresh().catch((err: unknown) => console.error('[calls] refreshing the guest call failed', err))
+    }, REFRESH_MS)
     step = 'call'
   }
 
-  function back() {
+  function leaveCall() {
+    clearInterval(refresher)
     active?.close()
+    transcription?.close()
+  }
+
+  function back() {
+    leaveCall()
     active = null
+    transcription = null
     step = 'name'
   }
 
@@ -121,7 +148,7 @@
 
   onDestroy(() => {
     stopPreview()
-    active?.close()
+    leaveCall()
   })
 </script>
 
@@ -137,6 +164,7 @@
       onhungup={() => {}}
       onopen={() => {}}
       startWith={{ microphone: micOn, camera: camOn }}
+      {transcription}
     />
   </div>
 {:else}
@@ -203,6 +231,10 @@
             >
           </div>
           {#if mediaProblem}<p class="text-sm text-muted-foreground" role="status" data-testid="guest-media-problem">{mediaProblem}</p>{/if}
+          <p class="text-center text-xs text-muted-foreground" data-testid="guest-transcript-notice">
+            This call is transcribed: what you say is written down for the people in the call. You can turn it off for your
+            microphone in the call.
+          </p>
           <Button type="button" onclick={join} data-testid="guest-join">Join the call</Button>
           <button type="button" class="text-xs text-muted-foreground hover:text-foreground" onclick={() => (stopPreview(), (step = 'name'))}>Change name</button>
         </div>

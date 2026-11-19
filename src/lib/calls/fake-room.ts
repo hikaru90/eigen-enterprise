@@ -51,6 +51,11 @@ export class FakeRoom implements CallRoom {
     return this.active[kind] ?? null
   }
   async startAudio() {}
+  /** My microphone while it is on: a stand-in track (specs never record real audio). */
+  readonly micTrack = { kind: 'audio', id: 'fake-mic', enabled: true } as unknown as MediaStreamTrack
+  microphoneTrack(): MediaStreamTrack | null {
+    return this.connectedWith && this.devices.microphone ? this.micTrack : null
+  }
   participants(): CallParticipant[] {
     const me: CallParticipant = {
       identity: 'ann',
@@ -155,8 +160,8 @@ export const fakeCall = (over: Partial<CallDto> = {}, response: 'accepted' | 'no
   endedAt: null,
   ringUntil: '2026-11-11T09:00:45.000Z',
   participants: [
-    { userId: 'ben', name: 'Ben Example', guest: false, response: 'accepted', joinedAt: null, leftAt: null, inRoom: false },
-    { userId: 'ann', name: 'Ann Example', guest: false, response, joinedAt: null, leftAt: null, inRoom: false },
+    { userId: 'ben', name: 'Ben Example', guest: false, response: 'accepted', joinedAt: null, leftAt: null, inRoom: false, transcribing: true },
+    { userId: 'ann', name: 'Ann Example', guest: false, response, joinedAt: null, leftAt: null, inRoom: false, transcribing: true },
   ],
   scheduledStart: null,
   scheduledEnd: null,

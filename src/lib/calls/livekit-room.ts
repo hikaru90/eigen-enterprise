@@ -154,6 +154,10 @@ export function createLiveKitRoom(): CallRoom {
     activeDevice(kind) {
       return room.getActiveDevice(kind) ?? null
     },
+    microphoneTrack() {
+      const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone)
+      return pub?.track && !pub.isMuted ? pub.track.mediaStreamTrack : null
+    },
     async startAudio() {
       await room.startAudio()
       emit({ type: 'audio', blocked: !room.canPlaybackAudio })

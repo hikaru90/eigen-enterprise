@@ -79,6 +79,10 @@ describe('problemFromResponse', () => {
     expect(problemFromResponse(500, { error: 'boom' })).toEqual({ kind: 'failed', message: 'boom' })
     expect(problemFromResponse(502, {})).toEqual({ kind: 'failed', message: 'request failed (502)' })
   })
+
+  it('a part of the call the server has not set up (speech to text for transcripts): unavailable', () => {
+    expect(problemFromResponse(503, { code: 'unavailable', error: 'No speech to text' })).toEqual({ kind: 'unavailable', message: 'No speech to text' })
+  })
 })
 
 describe('tilesOf', () => {

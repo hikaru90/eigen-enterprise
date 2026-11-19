@@ -32,6 +32,11 @@ export type CallRoom = {
   switchDevice(kind: DeviceKind, deviceId: string): Promise<void>
   /** The device in use for this kind, as far as the room knows (null: not decided yet). */
   activeDevice(kind: DeviceKind): string | null
+  /**
+   * My own microphone as the room publishes it (the device chosen, muting
+   * included); null while it is off. Call transcripts record this track.
+   */
+  microphoneTrack(): MediaStreamTrack | null
   /** Plays remote audio after a click when the browser blocked autoplay. */
   startAudio(): Promise<void>
   participants(): CallParticipant[]

@@ -1,6 +1,9 @@
 <script lang="ts">
   import type { ActiveCall, StartWith } from './active-call.svelte'
+  import type { CallTranscription } from './call-transcription.svelte'
   import type { CallDto } from './client'
+  import Captions from '@lucide/svelte/icons/captions'
+  import CaptionsOff from '@lucide/svelte/icons/captions-off'
   import Mic from '@lucide/svelte/icons/mic'
   import MicOff from '@lucide/svelte/icons/mic-off'
   import PhoneOff from '@lucide/svelte/icons/phone-off'
@@ -14,6 +17,7 @@
   import { onDestroy, onMount } from 'svelte'
   import CallTile from './call-tile.svelte'
   import DevicePicker from './device-picker.svelte'
+  import { callClock } from './format'
   import { gridLayout, stageOf } from './layout'
 
   /**
@@ -27,6 +31,11 @@
    * two people → the other fills the stage and I am a small self view;
    * otherwise a grid sized to the count and the stage's aspect, the active
    * speaker emphasised.
+   *
+   * The header shows how long the call has been going (from the server's
+   * answer time: the same number for everyone, kept on a rejoin) and, with
+   * `transcription`, that the call is transcribed and by whom; the controls
+   * carry my own transcription switch.
    */
   let {
     active,
@@ -37,6 +46,8 @@
     onhungup,
     onopen,
     startWith = { microphone: true, camera: true },
+    transcription = null,
+    transcriptHref = null,
   }: {
     active: ActiveCall
     call: CallDto
@@ -51,6 +62,10 @@
     onopen: (callId: string) => void
     /** Devices to turn on once connected (a guest's choice on the preview). */
     startWith?: StartWith
+    /** Call transcripts for this view (the indicator and my switch); null: this view shows none. */
+    transcription?: CallTranscription | null
+    /** Where the call's transcript is read after the call (people of the company); null: no link. */
+    transcriptHref?: string | null
   } = $props()
 
   const GAP = 8
@@ -71,14 +86,25 @@
   const wide = $derived(stageW >= 640 && stageW > stageH * 1.2)
   const portrait = $derived(stageH > stageW)
 
+  /** The clock's "now", ticking each second from mount (an interval, not an effect). */
+  let nowMs = $state(Date.now())
+  let tick: ReturnType<typeof setInterval> | undefined
+
   onMount(() => {
     active.open(call, me, startWith)
     opened = true
+    tick = setInterval(() => (nowMs = Date.now()), 1000)
   })
 
   onDestroy(() => {
+    clearInterval(tick)
     if (active.call?.id === call.id) active.release()
   })
+
+  /** The call as the server last told us (the feed / refreshes update it): its answer time starts the clock. */
+  const answeredAt = $derived(mine ? active.call?.answeredAt ?? null : null)
+  const clock = $derived(answeredAt && (s.phase === 'connected' || s.phase === 'reconnecting') ? callClock(answeredAt, nowMs) : null)
+  const transcribed = $derived(transcription && mine && active.inCall ? transcription.transcribed : [])
 
   async function hangUp() {
     await active.hangUp()
@@ -160,6 +186,18 @@
       <h1 class="truncate text-base font-semibold" data-testid="call-title">{call.title}</h1>
       <p class="truncate text-xs text-neutral-400" data-testid="call-status">{status}</p>
     </div>
+    {#if transcribed.length > 0}
+      <span
+        class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium"
+        role="status"
+        title={`Transcribed: ${transcribed.join(', ')}`}
+        data-testid="call-transcript-indicator"
+        ><span class="size-1.5 rounded-full bg-red-500" aria-hidden="true"></span>Transcript on</span
+      >
+    {/if}
+    {#if clock}
+      <span class="shrink-0 font-mono text-sm tabular-nums text-neutral-300" aria-label={`Call time ${clock}`} data-testid="call-clock">{clock}</span>
+    {/if}
   </header>
 
   {#if !opened}
@@ -220,7 +258,14 @@
     <div class="grid flex-1 place-items-center p-6 text-center" data-testid="call-ended" data-reason={s.ended}>
       <div class="max-w-sm">
         <p class="text-base font-semibold">{endedText}</p>
-        <div class="mt-5 flex justify-center gap-2">
+        <div class="mt-5 flex flex-wrap justify-center gap-2">
+          {#if transcriptHref && (s.ended === 'hung_up' || s.ended === 'call_over')}
+            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the page passes it through resolve() -->
+            <a href={transcriptHref}
+              class="inline-flex h-9 items-center rounded-md border border-white/20 px-4 text-sm font-semibold hover:bg-white/10"
+              data-testid="call-transcript-link">Transcript</a
+            >
+          {/if}
           {#if s.ended === 'connection_lost' || s.ended === 'joined_elsewhere'}
             <button
               type="button"
@@ -237,7 +282,7 @@
     </div>
   {:else}
     <div class="relative flex min-h-0 flex-1 flex-col p-2 sm:p-3">
-      {#if s.notices.length > 0 || active.audioBlocked}
+      {#if s.notices.length > 0 || active.audioBlocked || transcription?.problem}
         <div class="absolute inset-x-2 top-2 z-10 mx-auto flex max-w-2xl flex-col gap-2 sm:inset-x-3 sm:top-3">
           {#each s.notices as n (n.device)}
             <div
@@ -253,6 +298,20 @@
               >
             </div>
           {/each}
+          {#if transcription?.problem}
+            <div
+              class="flex items-start gap-2 rounded-lg border border-amber-400/30 bg-neutral-900/95 p-3 text-sm"
+              role="alert"
+              data-testid="call-transcript-problem"
+            >
+              <p class="min-w-0 flex-1">{transcription.problem}</p>
+              {#if !transcription.unavailable}
+                <button type="button" class="text-neutral-400 hover:text-white" aria-label="Dismiss" onclick={() => transcription?.dismissProblem()}
+                  ><X class="size-4" /></button
+                >
+              {/if}
+            </div>
+          {/if}
           {#if active.audioBlocked}
             <button
               type="button"
@@ -316,6 +375,22 @@
         {@render control(s.camera ? 'Turn camera off' : 'Turn camera on', !s.camera, 'call-camera', s.camera, () => active.turn('camera', !s.camera))}
         {#if active.canShareScreen}
           {@render control(s.screen ? 'Stop sharing' : 'Share screen', s.screen, 'call-screen', s.screen, () => active.turn('screen', !s.screen))}
+        {/if}
+        {#if transcription && !transcription.unavailable}
+          <button
+            type="button"
+            class={[
+              'grid size-12 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-50',
+              transcription.on ? 'bg-white/15 text-white hover:bg-white/25' : 'bg-white text-neutral-900 hover:bg-white/90',
+            ]}
+            aria-label={transcription.on ? 'Stop transcribing my microphone' : 'Transcribe my microphone'}
+            title={transcription.on ? 'Your microphone is transcribed — click to stop' : 'Your microphone is not transcribed — click to turn it on'}
+            aria-pressed={transcription.on}
+            disabled={s.phase !== 'connected'}
+            data-testid="call-transcribe"
+            onclick={() => transcription?.toggle()}
+            >{#if transcription.on}<Captions class="size-5" />{:else}<CaptionsOff class="size-5" />{/if}</button
+          >
         {/if}
         <button
           type="button"

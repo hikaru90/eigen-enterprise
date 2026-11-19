@@ -1,10 +1,12 @@
 import type { CallContextPort, CallLogPort } from './context-port'
 import type { CallsDirectory } from './store'
 import { CALLS_NOTIFY_CHANNEL, dbCallsStore } from './db-store'
+import { CallsError } from './errors'
 import { CallsHub } from './hub'
 import { liveRoomControl, livekitConfig } from './livekit'
-import { createCallsService, type CallsService } from './service'
+import { createCallsService, type CallSpeech, type CallsService } from './service'
 import { RING_TIMEOUT_MS } from './state'
+import { dbTranscriptStore } from './transcript-db-store'
 
 /**
  * Live wiring: the Postgres store over the app pool (company-level tables, no
@@ -30,6 +32,32 @@ async function liveDirectory(): Promise<CallsDirectory> {
   }
 }
 
+/**
+ * Call transcripts' speech to text: the app's one transcription path
+ * (`transcribeAudio`, STT_MODEL qwen/qwen3-asr-1.7b, through the gateway) on
+ * the company's AI provider — like dictation, so every member (and a guest,
+ * billed to the host) is transcribed without a provider of their own.
+ *
+ * Declared as private content (`contentOrigin: 'memory'`, the gateway's only
+ * "never keep the text" origin): what people say in a call is not written to
+ * the server log or the AI usage log; cost, model and timing are kept.
+ *
+ * No vocabulary prompt (it has no effect on this model, plan/progress.md
+ * 2026-11-19) and no LLM judge per chunk: the browser drops silent chunks
+ * before upload ($lib/voice/clip-speech.ts).
+ */
+const liveSpeech: CallSpeech = async ({ userId, audio }) => {
+  const { onCompanyProvider } = await import('$lib/server/llm/company-provider')
+  const { isLlmNotConfiguredError } = await import('$lib/server/llm/errors')
+  const { transcribeAudio } = await import('$lib/server/llm/stt-client')
+  try {
+    return await onCompanyProvider(() => transcribeAudio({ userId, audio, contentOrigin: 'memory' }))
+  } catch (err) {
+    if (isLlmNotConfiguredError(err)) throw new CallsError('unavailable', err instanceof Error ? err.message : String(err))
+    throw new Error(`speech to text failed: ${err instanceof Error ? err.message : String(err)}`, { cause: err })
+  }
+}
+
 /** What the composition root hands Calls: its conversation ports, both answered by Messages. */
 export type CallsPorts = { contexts: CallContextPort; log: CallLogPort }
 
@@ -42,8 +70,11 @@ export function callsService(ports: CallsPorts): Promise<CallsService> {
     const { env } = await import('$lib/server/env/private-env')
     const { foundingCompanyName } = await import('$lib/server/overview/sources')
     const mail = companyMail()
+    const db = createScopedDrizzle(appSql)
     const service = createCallsService({
-      store: dbCallsStore(createScopedDrizzle(appSql)),
+      store: dbCallsStore(db),
+      transcripts: dbTranscriptStore(db),
+      speech: liveSpeech,
       contexts: ports.contexts,
       log: ports.log,
       directory: await liveDirectory(),
