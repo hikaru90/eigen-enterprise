@@ -290,18 +290,19 @@ export class EmailPlatform {
       mailFromDomain: check.mailFromDomain,
       adopted: true,
       createdBy,
-      ...applyIdentityCheck(check, await this.dmarcFound(name), this.now()),
+      ...applyIdentityCheck(check, await this.dmarcRecords(name), this.now()),
     })
     return this.view(row)
   }
 
-  private async dmarcFound(domain: string): Promise<boolean> {
+  /** How many DMARC records the registrable domain publishes (RFC 7489: exactly one, else none applies). */
+  private async dmarcRecords(domain: string): Promise<number> {
     try {
       const txt = await this.deps.resolveTxt(`_dmarc.${registrableDomain(domain)}`)
-      return txt.some((parts) => parts.join('').toUpperCase().startsWith('V=DMARC1'))
+      return txt.filter((parts) => parts.join('').toUpperCase().startsWith('V=DMARC1')).length
     } catch {
       // NXDOMAIN / no TXT: no DMARC record (yet).
-      return false
+      return 0
     }
   }
 
@@ -331,10 +332,10 @@ export class EmailPlatform {
         )
       }
       // Easy DKIM: Amazon's tokens become the three CNAMEs dns.ts shows.
-      const next = applyIdentityCheck(check, await this.dmarcFound(d.name), this.now())
+      const next = applyIdentityCheck(check, await this.dmarcRecords(d.name), this.now())
       return this.view(await this.deps.store.updateDomain(id, { ...next, dkimTokens: check.dkimTokens, mailFromDomain: check.mailFromDomain }))
     }
-    const next = applyIdentityCheck(check, await this.dmarcFound(d.name), this.now())
+    const next = applyIdentityCheck(check, await this.dmarcRecords(d.name), this.now())
     // An adopted domain follows Amazon's DKIM and MAIL FROM, which the owner may change in the console.
     const adopted = d.adopted && check.exists
       ? { dkimTokens: check.dkimOrigin === 'EXTERNAL' ? null : check.dkimTokens, mailFromDomain: check.mailFromDomain }

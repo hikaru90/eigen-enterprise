@@ -22,7 +22,8 @@ export type DomainVerificationState = {
 
 const ERROR_COPY: Record<string, string> = {
   HOST_NOT_FOUND: 'Amazon could not find the DNS records yet. Add them at your DNS provider; changes can take up to a few hours to appear.',
-  INVALID_VALUE: 'A DNS record has the wrong value. Copy it again exactly as shown (no quotes or spaces added).',
+  INVALID_VALUE:
+    'Amazon found a different record at one of these names. Often a record is already there — some DNS providers add an empty DKIM record for every name when a domain is set to send no email (Cloudflare does). Remove the record that is in the way, then copy each value exactly as shown (no quotes or spaces added).',
   DNS_SERVER_ERROR: 'Your DNS provider did not answer Amazon. This is usually temporary — ee keeps checking.',
   TYPE_NOT_FOUND: 'A DNS record has the wrong type. The DKIM and SPF records are TXT, the mail record is MX.',
   SERVICE_ERROR: 'Amazon had a problem checking the domain. ee keeps checking.',
@@ -44,7 +45,8 @@ export function isSendable(status: string): boolean {
 
 export function applyIdentityCheck(
   check: DomainIdentityInfo,
-  dmarcFound: boolean,
+  /** How many DMARC records the registrable domain publishes (more than one means none counts). */
+  dmarcRecords: number,
   now: Date,
 ): DomainVerificationState {
   const status = check.exists ? check.verification : 'NOT_STARTED'
@@ -55,14 +57,22 @@ export function applyIdentityCheck(
     status,
     dkimStatus: check.dkim,
     mailFromStatus: check.mailFrom,
-    dmarcAdded: dmarcFound,
+    dmarcAdded: dmarcRecords === 1,
     // FAILED stops the background checks; a manual re-check starts them again.
     isVerifying: !done && status !== 'FAILED',
-    errorMessage: check.exists
-      ? verificationErrorMessage(check.errorType, status)
-      : 'Amazon no longer knows this domain. Remove it here and add it again.',
+    errorMessage: joinMessages(
+      check.exists ? verificationErrorMessage(check.errorType, status) : 'Amazon no longer knows this domain. Remove it here and add it again.',
+      dmarcRecords > 1
+        ? `There are ${dmarcRecords} DMARC records (TXT at _dmarc); inboxes ignore them all when there is more than one — keep exactly one.`
+        : null,
+    ),
     lastCheckedAt: now,
   }
+}
+
+function joinMessages(...parts: (string | null)[]): string | null {
+  const kept = parts.filter((p): p is string => p !== null)
+  return kept.length ? kept.join(' ') : null
 }
 
 /** Background re-check cadence: every minute in the first hour after adding, then every 10 minutes. */

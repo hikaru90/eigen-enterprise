@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-19 — Onboarding with a domain you already own: works in code; DNS conflicts are now named (owner: "check if i can onboard if i already own a domain")
+
+- **Checked on `ee-one` (eigenenterprise.app, added via "I already have one"):** os has the domain with Amazon's 3 Easy DKIM tokens and MAIL FROM `mail.eigenenterprise.app`; status PENDING; no sender yet. The code path holds: add domain → records table → Continue → sender (allowed while unverified, `ready:false`) → tour done; sending starts once SES verifies.
+- **What blocks it is the zone (Cloudflare):** the domain has Cloudflare's "sends no email" protection — `*._domainkey` TXT `"v=DKIM1; p="` (an empty DKIM key on every selector, which is why SES reports INVALID_VALUE before any CNAME exists), `v=spf1 -all` on the apex, and DMARC `p=reject; sp=reject; adkim=s; aspf=s`. The onboarding then had the owner add `v=DMARC1; p=none;` → **two DMARC records**, which inboxes treat as none. None of the 3 DKIM CNAMEs nor the MAIL FROM MX/SPF are in DNS yet.
+- **Fixes (os):** DMARC is counted, not just detected — exactly one counts as added; more than one adds "There are N DMARC records … keep exactly one" to the domain's message (`applyIdentityCheck(check, dmarcRecords, now)`; `verification.spec.ts` +3). INVALID_VALUE now names the usual cause (a record already at that name, e.g. a DNS provider's "no email" protection; Cloudflare named). The records table says CNAMEs must not be proxied (Cloudflare "DNS only") and the DMARC row says to keep a single record (`dns-records-table.svelte.spec.ts`, new). Gates: email 324 passed; svelte-check 0 errors; lint 0 errors.
+
 ## 2026-11-19 — Domain search said "No endings are offered for that name" because nothing is priced; brand capture loads again (owner: "i still cant register domains. why?")
 
 - **Why domains couldn't be bought:** `/ops/domains` has no TLD price, and the control plane only offers priced endings, so every search answered `{"results":[]}` in 80 ms (checked from `ee-one` with its own token) and the onboarding read that as "No endings are offered for that name. Try another one." The fix that unblocks buying is data: the owner sets prices per ending on /ops/domains. Not verified yet: the real Route 53 availability call (it only runs once an ending is priced).

@@ -15,25 +15,42 @@ const check = (verification: string, dkim = verification, mailFrom = verificatio
 })
 
 describe('applyIdentityCheck', () => {
+  it('two DMARC records are no DMARC at all: not counted as added, and the reason says to keep one', () => {
+    const next = applyIdentityCheck(check('PENDING', 'PENDING', 'PENDING', 'HOST_NOT_FOUND'), 2, now)
+    expect(next.dmarcAdded).toBe(false)
+    expect(next.errorMessage).toMatch(/Amazon could not find the DNS records yet/)
+    expect(next.errorMessage).toMatch(/2 DMARC records.*keep exactly one/)
+  })
+
+  it('one DMARC record counts as added, with no DMARC note', () => {
+    const next = applyIdentityCheck(check('SUCCESS'), 1, now)
+    expect(next).toMatchObject({ dmarcAdded: true, errorMessage: null })
+  })
+
+  it('a wrong value names the usual cause: a record already at that name (a DNS provider’s "no email" protection)', () => {
+    expect(verificationErrorMessage('INVALID_VALUE', 'PENDING')).toMatch(/already/)
+    expect(verificationErrorMessage('INVALID_VALUE', 'PENDING')).toMatch(/no email/)
+  })
+
   it('keeps verifying while DNS is pending, with the plain reason', () => {
-    const next = applyIdentityCheck(check('PENDING', 'PENDING', 'PENDING', 'HOST_NOT_FOUND'), false, now)
+    const next = applyIdentityCheck(check('PENDING', 'PENDING', 'PENDING', 'HOST_NOT_FOUND'), 0, now)
     expect(next).toMatchObject({ status: 'PENDING', isVerifying: true, dmarcAdded: false, lastCheckedAt: now })
     expect(next.errorMessage).toMatch(/could not find the DNS records/)
     expect(isSendable(next.status)).toBe(false)
   })
 
   it('verified but MAIL FROM still pending: sendable, keeps checking', () => {
-    const next = applyIdentityCheck(check('SUCCESS', 'SUCCESS', 'PENDING'), true, now)
+    const next = applyIdentityCheck(check('SUCCESS', 'SUCCESS', 'PENDING'), 1, now)
     expect(next).toMatchObject({ status: 'SUCCESS', mailFromStatus: 'PENDING', isVerifying: true, dmarcAdded: true, errorMessage: null })
     expect(isSendable(next.status)).toBe(true)
   })
 
   it('everything verified: stops checking', () => {
-    expect(applyIdentityCheck(check('SUCCESS'), false, now)).toMatchObject({ status: 'SUCCESS', isVerifying: false })
+    expect(applyIdentityCheck(check('SUCCESS'), 0, now)).toMatchObject({ status: 'SUCCESS', isVerifying: false })
   })
 
   it('FAILED (72h without records) stops checking and says how to restart', () => {
-    const next = applyIdentityCheck(check('FAILED'), false, now)
+    const next = applyIdentityCheck(check('FAILED'), 0, now)
     expect(next).toMatchObject({ status: 'FAILED', isVerifying: false })
     expect(next.errorMessage).toMatch(/Re-check/)
   })

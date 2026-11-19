@@ -14,11 +14,13 @@
     dkim: 'DKIM — signs every mail so inboxes know it really comes from you.',
     mail_from_mx: 'Mail-from (MX) — bounces come back to Amazon through this subdomain.',
     spf: 'SPF — allows Amazon SES to send for your mail-from address.',
-    dmarc: 'DMARC (recommended) — tells inboxes what to do with mail that fails the checks.',
+    dmarc:
+      'DMARC (recommended) — tells inboxes what to do with mail that fails the checks. Keep only one DMARC record: if the domain already has one, leave that one instead of adding this.',
     inbound_mx:
       'Receiving (MX) — sends all mail for <domain> to Amazon SES, which hands it to eigenEnterprise.',
   }
   const purpose = (p: string) => PURPOSE[p]!.replace('<domain>', domain)
+  const hasCname = $derived(records.some((r) => r.type === 'CNAME'))
 </script>
 
 <div class="overflow-x-auto rounded-lg border border-border">
@@ -65,3 +67,9 @@
     </tbody>
   </table>
 </div>
+{#if hasCname}
+  <p class="mt-2 text-xs text-muted-foreground" data-testid="dns-cname-hint">
+    CNAME records must point straight at Amazon: if your DNS provider can proxy them, turn that off (at
+    Cloudflare: “DNS only”, the grey cloud).
+  </p>
+{/if}
