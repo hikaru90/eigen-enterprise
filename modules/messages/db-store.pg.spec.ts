@@ -142,4 +142,18 @@ describe.skipIf(!url)('message_events × interleaved transactions (Postgres)', (
     expect(await store.getMessage(reply.id)).toMatchObject({ replyToId: null })
     await expect(store.insertMessage({ ...base, id: randomUUID(), body: 'dangling', replyToId: randomUUID(), createdAt: new Date() })).rejects.toThrow()
   })
+
+  it('voice recordings (0156): an attachment keeps its recording length; ordinary files have none', async () => {
+    const store = dbMessagesStore(db)
+    const m = { id: randomUUID(), conversationId, authorId: 'bea', body: 'Treffen um drei', parentId: null, replyToId: null, createdAt: new Date(), editedAt: null, deletedAt: null, call: null }
+    await store.insertMessage(m)
+    await store.insertAttachments([
+      { messageId: m.id, fileId: 'voice-file', position: 0, name: 'Voice message.webm', mime: 'audio/webm;codecs=opus', size: 9000, voiceDurationMs: 4200 },
+      { messageId: m.id, fileId: 'plain-file', position: 1, name: 'notes.md', mime: 'text/markdown', size: 4, voiceDurationMs: null },
+    ])
+    expect(await store.attachmentsFor([m.id])).toEqual([
+      { messageId: m.id, fileId: 'voice-file', position: 0, name: 'Voice message.webm', mime: 'audio/webm;codecs=opus', size: 9000, voiceDurationMs: 4200 },
+      { messageId: m.id, fileId: 'plain-file', position: 1, name: 'notes.md', mime: 'text/markdown', size: 4, voiceDurationMs: null },
+    ])
+  })
 })

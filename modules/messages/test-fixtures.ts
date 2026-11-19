@@ -41,6 +41,8 @@ type FakeFolder = { id: string; parentId: string | null; name: string; grants: G
 export class FakeDrive implements AttachmentPort {
   folders: FakeFolder[] = []
   files: DriveFileInfo[] = []
+  /** Each uploaded file's bytes, by file id. */
+  bytes = new Map<string, Uint8Array>()
   private n = 0
   constructor(
     private readonly access: FakeAccessPort,
@@ -87,11 +89,17 @@ export class FakeDrive implements AttachmentPort {
       ownerId: actorId,
     }
     this.files.push(info)
+    this.bytes.set(info.id, file.bytes.slice())
     return { ok: true as const, file: info }
   }
   async fileInfo(actorId: string, fileId: string) {
     const f = this.files.find((x) => x.id === fileId)
     return f && this.allowed(actorId, f.folderId, 'view') ? f : null
+  }
+  async read(actorId: string, fileId: string) {
+    const f = await this.fileInfo(actorId, fileId)
+    const bytes = f ? this.bytes.get(f.id) : undefined
+    return f && bytes ? { mime: f.mime, bytes } : null
   }
 }
 

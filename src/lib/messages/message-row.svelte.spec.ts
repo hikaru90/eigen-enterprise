@@ -20,6 +20,7 @@ const base: MessageView = {
   replierIds: [],
   reactions: [],
   attachments: [],
+  voice: [],
   call: null,
   replyTo: null,
 }
@@ -44,6 +45,25 @@ describe('message-row.svelte', () => {
     await expect.element(page.getByTestId('messages-body').getByText('team')).toBeInTheDocument()
     const mention = page.getByTestId('messages-body').getByText('@Carl')
     await expect.element(mention).toHaveAttribute('data-mention', 'me')
+  })
+
+  it('a voice message plays its recording from above the transcript; one without a kept recording is just its text', async () => {
+    render(MessageRow, props({ message: { ...base, body: 'Treffen um drei', voice: [{ fileId: 'f-1', mime: 'audio/webm', size: 9000, durationMs: 4200 }] } }))
+    const player = page.getByTestId('messages-voice')
+    await expect.element(player).toBeInTheDocument()
+    await expect.element(player.getByRole('button', { name: 'Play voice message' })).toBeInTheDocument()
+    const audio = player.element().querySelector('audio')!
+    expect(audio.getAttribute('src')).toBe('/api/messages/messages/m1/voice/f-1')
+    // above the transcript
+    const body = page.getByTestId('messages-body').element()
+    expect(player.element().compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await expect.element(page.getByTestId('messages-body')).toHaveTextContent('Treffen um drei')
+  })
+
+  it('a message without a kept recording shows no player', async () => {
+    render(MessageRow, props({ message: { ...base, body: 'dictated before recordings were kept' } }))
+    await expect.element(page.getByTestId('messages-body')).toHaveTextContent('dictated before recordings were kept')
+    expect(page.getByTestId('messages-voice').elements()).toHaveLength(0)
   })
 
   it('a grouped row has no avatar or name, only the time in the gutter', async () => {

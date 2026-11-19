@@ -15,6 +15,11 @@ export const MAX_BODY = 8000
 export const MAX_DM_MEMBERS = 8
 export const PAGE_SIZE = 50
 export const MAX_ATTACHMENTS = 10
+/**
+ * The longest voice recording a message keeps: the recorder sends itself at 5 minutes
+ * (`$lib/voice/voice-message` VOICE_MESSAGE_MAX_MS), plus the moment stopping takes.
+ */
+export const MAX_VOICE_CLIP_MS = 5 * 60 * 1000 + 10_000
 
 /** The reaction picker's set (C2): a compact, fixed list — anything else is refused. */
 export const REACTION_EMOJI = ['👍', '❤️', '😂', '🎉', '😮', '😢', '🙏', '👀', '✅', '🔥'] as const
@@ -40,6 +45,8 @@ export type AttachmentPort = {
   ): Promise<{ ok: true; file: DriveFileInfo } | { ok: false; error: string }>
   /** The file when the person may view it, else null. */
   fileInfo(actorId: string, fileId: string): Promise<DriveFileInfo | null>
+  /** The file's bytes, read AS the person (the Drive's own view check applies), else null. */
+  read(actorId: string, fileId: string): Promise<{ mime: string; bytes: Uint8Array } | null>
 }
 
 export type MessagesDeps = {
@@ -65,6 +72,8 @@ export class MessagesError extends Error {
 
 export type ReactionDto = { emoji: string; userIds: string[]; names: string[] }
 export type AttachmentDto = { fileId: string; name: string; mime: string; size: number; image: boolean }
+/** A voice message's kept recording (played above its transcript); bytes via readVoiceClip. */
+export type VoiceClipDto = { fileId: string; mime: string; size: number; durationMs: number }
 
 export type MessageDto = {
   id: string
@@ -85,7 +94,10 @@ export type MessageDto = {
   /** Who replied in the thread, most recent first (at most three — the summary's avatars). */
   replierIds: string[]
   reactions: ReactionDto[]
+  /** Ordinary files (voice recordings are in `voice`, not here). */
   attachments: AttachmentDto[]
+  /** The dictated recording(s) of a voice message, whose transcript is the body; empty otherwise. */
+  voice: VoiceClipDto[]
   /** A call line ("Call, 4 min" / "Missed call"); null for ordinary messages and deleted ones. */
   call: CallSummary | null
   /** The quoted original ("Reply"); null when this message quotes nothing. */
@@ -139,6 +151,8 @@ const displayName = (p: Person | undefined) => (p ? p.name.trim() || p.email : '
 
 /** Raster images the browser shows inline (SVG is never inlined: active content). */
 export const isInlineImage = (mime: string) => /^image\/(png|jpe?g|gif|webp|avif)$/i.test(mime)
+/** A voice recording is stored and served as what the recorder made: any audio media type. */
+const isAudio = (mime: string) => /^audio\//i.test(mime)
 
 /** DTOs for a batch of messages: thread stats, reactions and attachments loaded once. */
 export async function messageDtos(d: MessagesDeps, ms: Message[], people?: Map<string, Person>): Promise<MessageDto[]> {
@@ -200,8 +214,15 @@ export async function messageDtos(d: MessagesDeps, ms: Message[], people?: Map<s
       attachments: deleted
         ? []
         : files
-            .filter((a) => a.messageId === m.id)
+            .filter((a) => a.messageId === m.id && a.voiceDurationMs === null)
             .map((a) => ({ fileId: a.fileId, name: a.name, mime: a.mime, size: a.size, image: isInlineImage(a.mime) })),
+      voice: deleted
+        ? []
+        : files.flatMap((a) =>
+            a.messageId === m.id && a.voiceDurationMs !== null
+              ? [{ fileId: a.fileId, mime: a.mime, size: a.size, durationMs: a.voiceDurationMs }]
+              : [],
+          ),
       call: deleted ? null : m.call,
       replyTo: m.replyToId ? quoteOf(m.replyToId) : null,
     }
@@ -351,7 +372,15 @@ export type PostOptions = {
   /** The message this one quotes ("Reply"): any live message of the same conversation. */
   replyToId?: string | null
   attachmentIds?: string[]
+  /**
+   * The dictated recording(s) the body was transcribed from, uploaded like attachments
+   * (./attachments) and kept for playback; `durationMs` is the recorder's own measure
+   * (a recorder's WebM carries no length).
+   */
+  voiceClips?: VoiceClipInput[]
 }
+
+export type VoiceClipInput = { fileId: string; durationMs: number }
 
 export async function postMessage(
   d: MessagesDeps,
@@ -361,10 +390,21 @@ export async function postMessage(
   opts: PostOptions = {},
 ): Promise<{ message: MessageDto; conversation: Conversation; parent: MessageDto | null }> {
   const attachmentIds = [...new Set(opts.attachmentIds ?? [])]
-  if (attachmentIds.length > MAX_ATTACHMENTS) {
+  const voiceClips = opts.voiceClips ?? []
+  const voiceIds = [...new Set(voiceClips.map((v) => v.fileId))]
+  if (voiceIds.length !== voiceClips.length || voiceIds.some((id) => attachmentIds.includes(id))) {
+    throw new MessagesError('invalid', 'a file is attached once: as a file or as a voice recording')
+  }
+  for (const v of voiceClips) {
+    if (!Number.isInteger(v.durationMs) || v.durationMs < 1 || v.durationMs > MAX_VOICE_CLIP_MS) {
+      throw new MessagesError('invalid', `a voice recording is 1 ms to ${MAX_VOICE_CLIP_MS} ms long`)
+    }
+  }
+  if (attachmentIds.length + voiceIds.length > MAX_ATTACHMENTS) {
     throw new MessagesError('invalid', `a message carries at most ${MAX_ATTACHMENTS} files`)
   }
-  const body = attachmentIds.length > 0 && rawBody.trim() === '' ? '' : normalizeBody(rawBody)
+  const hasFiles = attachmentIds.length + voiceIds.length > 0
+  const body = hasFiles && rawBody.trim() === '' ? '' : normalizeBody(rawBody)
   const c = await visible(d, actorId, conversationId, 'edit')
   let parent: Message | null = null
   if (opts.parentId) {
@@ -380,6 +420,8 @@ export async function postMessage(
     if (!replyTo || replyTo.conversationId !== c.id) throw new MessagesError('not_found', 'the message you reply to was not found')
     if (replyTo.deletedAt) throw new MessagesError('invalid', 'the message you reply to was deleted')
   }
+  const recordings = await attachableFiles(d, actorId, c, voiceIds)
+  if (recordings.some((f) => !isAudio(f.mime))) throw new MessagesError('invalid', 'a voice recording must be an audio file')
   const files = await attachableFiles(d, actorId, c, attachmentIds)
   const m: Message = {
     id: newId(d),
@@ -394,8 +436,20 @@ export async function postMessage(
     call: null,
   }
   await d.store.insertMessage(m)
+  // The recording comes first (it is played above the transcript), then the ordinary files.
+  const durationOf = new Map(voiceClips.map((v) => [v.fileId, v.durationMs]))
   await d.store.insertAttachments(
-    files.map((f, position): Attachment => ({ messageId: m.id, fileId: f.id, position, name: f.name, mime: f.mime, size: f.size })),
+    [...recordings, ...files].map(
+      (f, position): Attachment => ({
+        messageId: m.id,
+        fileId: f.id,
+        position,
+        name: f.name,
+        mime: f.mime,
+        size: f.size,
+        voiceDurationMs: durationOf.get(f.id) ?? null,
+      }),
+    ),
   )
   // A thread reply leaves the main log's read state alone (the reply is not in it).
   if (!parent) await d.store.setLastRead(c.id, actorId, m.createdAt)
@@ -476,6 +530,27 @@ export async function uploadAttachments(
     else errors.push(r.error)
   }
   return { uploaded, errors }
+}
+
+/**
+ * A voice message's recording, for playback: only to people who may see the conversation
+ * (anyone else gets "not found", like the message itself), only a live message's own
+ * recording, and read from the Drive AS the person, so the folder's access holds as well.
+ */
+export async function readVoiceClip(
+  d: MessagesDeps,
+  actorId: string,
+  messageId: string,
+  fileId: string,
+): Promise<{ mime: string; bytes: Uint8Array }> {
+  const m = isId(messageId) ? await d.store.getMessage(messageId) : null
+  if (!m || m.deletedAt) throw new MessagesError('not_found', 'voice message not found')
+  await visible(d, actorId, m.conversationId)
+  const clip = (await d.store.attachmentsFor([m.id])).find((a) => a.fileId === fileId && a.voiceDurationMs !== null)
+  if (!clip) throw new MessagesError('not_found', 'voice message not found')
+  const file = await requireDrive(d).read(actorId, clip.fileId)
+  if (!file) throw new MessagesError('not_found', 'voice message not found')
+  return { mime: clip.mime, bytes: file.bytes }
 }
 
 export type MessagePage = { messages: MessageDto[]; hasMore: boolean }

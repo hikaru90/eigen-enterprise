@@ -78,6 +78,15 @@ async function liveAttachmentPort(): Promise<AttachmentPort> {
         throw err
       }
     },
+    async read(actorId, fileId) {
+      try {
+        const { file, bytes } = await drive.readFile({ kind: 'user', userId: actorId }, fileId)
+        return { mime: file.mime, bytes }
+      } catch (err) {
+        if (err instanceof DriveError && (err.code === 'not_found' || err.code === 'forbidden')) return null
+        throw err
+      }
+    },
   }
 }
 

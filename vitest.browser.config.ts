@@ -112,6 +112,7 @@ export default defineConfig({
       'src/lib/components/add-app-dialog.svelte.spec.ts',
       'src/lib/messages/message-row.svelte.spec.ts',
       'src/lib/messages/reply-quote.svelte.spec.ts',
+      'src/lib/messages/voice-player.svelte.spec.ts',
       'src/lib/messages/presence-dot.svelte.spec.ts',
       'src/lib/messages/presence-nav.svelte.spec.ts',
       'src/lib/calls/call-view.svelte.spec.ts',

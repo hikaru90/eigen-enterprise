@@ -18,7 +18,8 @@
   import { renderMessageMarkdown, type MentionOptions } from './markdown'
   import MessageEdit from './message-edit.svelte'
   import ReplyQuote from './reply-quote.svelte'
-  import { formatSize, reactedBy, reactionTitle, relativeTime, threadSummary, type MessageView } from './view'
+  import { formatSize, reactedBy, reactionTitle, relativeTime, threadSummary, voiceClipUrl, type MessageView } from './view'
+  import VoicePlayer from './voice-player.svelte'
 
   /**
    * One message, Slack-style: avatar + bold name + time, or — continuing the
@@ -218,6 +219,9 @@
     {:else if editing}
       <MessageEdit body={m.body} onsave={(b) => onsaveedit?.(b)} oncancel={() => oncanceledit?.()} />
     {:else}
+      {#each m.voice as clip (clip.fileId)}
+        <div class="mt-0.5 mb-1"><VoicePlayer src={voiceClipUrl(m.id, clip.fileId)} durationMs={clip.durationMs} testid="messages-voice" /></div>
+      {/each}
       {#if m.body}
         <div class="message-body text-[15px] leading-6 break-words" data-testid="messages-body">
           <!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized by renderMessageMarkdown (DOMPurify allowlist) -->

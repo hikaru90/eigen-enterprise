@@ -11,14 +11,16 @@
   import { tick } from 'svelte'
   import VoiceDictation from '$lib/voice/voice-dictation.svelte'
   import { appendVoiceTranscript } from '$lib/voice/transcribe-voice-clip'
+  import type { VoiceRecording } from '$lib/voice/voice-message'
   import { applyFormat, insertAt, type Edit, type Format } from './composer'
 
   /**
    * The message box, Slack-style: a bordered box with a formatting row
    * (bold, italic, strikethrough, code, link — they insert Markdown), the
    * text, and a bottom row with attach, emoji, dictation and send. Enter sends,
-   * Shift+Enter is a new line. Dictation appends its transcript to the text;
-   * while a voice message exists the bar takes the bottom row.
+   * Shift+Enter is a new line. Dictation appends its transcript to the text
+   * and hands the recording to `onrecording` (the box sending it keeps it for
+   * playback); while a voice message exists the bar takes the bottom row.
    */
   let {
     value = $bindable(''),
@@ -38,6 +40,7 @@
     ondragover,
     ondragleave,
     ondrop,
+    onrecording,
     above,
   }: {
     value?: string
@@ -58,6 +61,8 @@
     ondragover?: (e: DragEvent) => void
     ondragleave?: (e: DragEvent) => void
     ondrop?: (e: DragEvent) => void
+    /** A dictated recording, whose transcript was just appended: sent along, it plays back above the text. */
+    onrecording?: (recording: VoiceRecording) => void
     /** Pending files, errors: inside the box, above the text. */
     above?: Snippet
   } = $props()
@@ -65,8 +70,9 @@
   let emojiOpen = $state(false)
   let voiceActive = $state(false)
 
-  async function addTranscript(text: string) {
+  async function addTranscript(text: string, recording: VoiceRecording) {
     value = appendVoiceTranscript(value, text)
+    onrecording?.(recording)
     await tick()
     textarea?.focus()
     textarea?.setSelectionRange(value.length, value.length)
@@ -204,7 +210,7 @@
         bind:active={voiceActive}
         class={voiceActive ? '' : 'ml-auto'}
         testid="{inputTestid}-voice"
-        ontranscript={(text) => void addTranscript(text)}
+        ontranscript={(text, recording) => void addTranscript(text, recording)}
       />
       {#if !voiceActive}
       <button

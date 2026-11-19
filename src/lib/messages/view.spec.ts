@@ -12,6 +12,7 @@ import {
   setUnread,
   threadSummary,
   upsertConversation,
+  voiceClipUrl,
   type ConversationView,
   type MessageView,
 } from './view'
@@ -32,6 +33,7 @@ const msg = (id: string, createdAt: string, authorId = 'a'): MessageView => ({
   replierIds: [],
   reactions: [],
   attachments: [],
+  voice: [],
   call: null,
   replyTo: null,
 })
@@ -192,6 +194,13 @@ describe('quoted replies (Contribute 2a58bcc8)', () => {
     })
     const voice = { ...original, body: '', attachments: [{ fileId: 'f', name: 'v.webm', mime: 'audio/webm', size: 3, image: false }] }
     expect(quoteOf(voice).attachment).toEqual({ kind: 'voice', label: 'Voice message', count: 1 })
+    // a dictated message with its kept recording: the transcript and the voice marker, as the server quotes it
+    const dictated = { ...original, body: 'Treffen um drei', voice: [{ fileId: 'v', mime: 'audio/webm', size: 3, durationMs: 1200 }] }
+    expect(quoteOf(dictated)).toMatchObject({ snippet: 'Treffen um drei', attachment: { kind: 'voice', label: 'Voice message', count: 1 } })
+  })
+
+  it('a voice clip’s recording is fetched from its message', () => {
+    expect(voiceClipUrl('m 1', 'f/1')).toBe('/api/messages/messages/m%201/voice/f%2F1')
   })
 
   it('an edit of the original refreshes every quote of it, in the log and the open thread', () => {
