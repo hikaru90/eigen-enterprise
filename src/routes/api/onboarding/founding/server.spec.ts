@@ -58,6 +58,32 @@ function fixture() {
     handler: async () => [...pages.values()],
   }
 
+  // The tone-of-voice document is internal: it lands in Drive, never on the website.
+  const driveFiles = new Set<string>()
+  const createDocument: ToolDescriptor = {
+    name: 'drive.create_document',
+    module: 'drive',
+    summary: 'fake drive create',
+    auditClass: 'mutate',
+    activity: () => 'Did a test action',
+    inputSchema: z.looseObject({ name: z.string(), content: z.string() }),
+    permission: { roles: ['admin', 'agent'] },
+    handler: async (_ctx: ToolContext, input: unknown) => {
+      const name = `${(input as { name: string }).name}.md`
+      driveFiles.add(name)
+      return { file: { type: 'file', name } }
+    },
+  }
+  const driveList: ToolDescriptor = {
+    name: 'drive.list',
+    module: 'drive',
+    summary: 'fake drive list',
+    auditClass: 'read',
+    inputSchema: z.looseObject({}),
+    permission: { roles: ['admin', 'agent'] },
+    handler: async () => ({ items: [...driveFiles].map((name) => ({ type: 'file', name })) }),
+  }
+
   const registry = new KernelRegistry({
     eventSink: sink,
     approvalPolicy: new StaticApprovalPolicy(new Set(['website.publish_page'])),
@@ -67,6 +93,8 @@ function fixture() {
   registry.register(createPage)
   registry.register(publishPage)
   registry.register(listPages)
+  registry.register(createDocument)
+  registry.register(driveList)
 
   const journeys = new InMemoryJourneyStore()
   bootAppMock.mockResolvedValue({

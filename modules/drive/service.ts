@@ -624,11 +624,16 @@ export function createDriveService(deps: DriveDeps) {
       return fileView(await addFile(actor, folderId, file.name, file.bytes, file.mime))
     },
 
-    /** New → Document (.md) / Table (.csv): an empty file, its first revision stored. */
-    async createDocument(actor: Actor, folderId: string | null, kind: 'md' | 'csv', rawName?: string): Promise<ItemView> {
+    /**
+     * New → Document (.md) / Table (.csv): an empty file (its first save is its
+     * first revision), or — with `content` (the agent's drive.create_document) —
+     * a file with that text as its first revision.
+     */
+    async createDocument(actor: Actor, folderId: string | null, kind: 'md' | 'csv', rawName?: string, content?: string): Promise<ItemView> {
       const base = rawName?.trim() || (kind === 'md' ? 'Untitled document' : 'Untitled table')
       const name = base.toLowerCase().endsWith(`.${kind}`) ? base : `${base}.${kind}`
-      return fileView(await addFile(actor, folderId, name, new Uint8Array(), kind === 'md' ? 'text/markdown' : 'text/csv'))
+      const bytes = new TextEncoder().encode(content ?? '')
+      return fileView(await addFile(actor, folderId, name, bytes, kind === 'md' ? 'text/markdown' : 'text/csv'))
     },
 
     async rename(actor: Actor, type: ItemType, id: string, rawName: string): Promise<ItemView> {

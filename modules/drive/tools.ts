@@ -27,6 +27,9 @@ export const ARCHIVE_BATCH_MAX = 100
 const listInput = z.object({ folder_id: z.string().min(1).nullable().optional() }).strict()
 const readInput = z.object({ file_id: z.string().min(1) }).strict()
 const writeInput = z.object({ file_id: z.string().min(1), content: z.string() }).strict()
+const createInput = z
+  .object({ name: z.string().trim().min(1), content: z.string(), folder_id: z.string().min(1).nullable().optional() })
+  .strict()
 const itemsInput = z
   .object({
     items: z
@@ -40,6 +43,15 @@ const suggestInput = z.object({ older_than_days: z.number().int().min(SUGGEST_MI
 
 export function actorOf(ctx: ToolContext): Actor {
   return ctx.principal.kind === 'human' ? { kind: 'user', userId: ctx.principal.id } : { kind: 'agent', id: ctx.principal.id }
+}
+
+/**
+ * Who a NEW document belongs to: the agent working for a person creates it as
+ * that person (it lands in their Drive, theirs to manage, within their own
+ * access — like Memory notes); otherwise the calling principal.
+ */
+function creatorOf(ctx: ToolContext): Actor {
+  return ctx.principal.kind !== 'human' && ctx.actingUserId ? { kind: 'user', userId: ctx.actingUserId } : actorOf(ctx)
 }
 
 async function liveService(): Promise<DriveService> {
@@ -90,6 +102,25 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
         const i = writeInput.parse(input)
         const out = await (await service()).writeText(actorOf(ctx), i.file_id, i.content)
         return { file: out.file, revision: { id: out.revision.id, createdAt: out.revision.createdAt } }
+      },
+    },
+    {
+      name: 'drive.create_document',
+      module: DRIVE_MODULE_ID,
+      summary:
+        'Create a new Markdown (.md) document in Drive with its text (name, content; folder_id, omit for the top level). This is where the company’s internal documents go — pitch decks, project descriptions, funding/investor documents, plans, briefs, meeting notes — never the public website. Working for a person, it lands in their Drive as theirs. Revise it later with drive.write_text.',
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: (input: z.infer<typeof createInput>, output: unknown) => {
+        const name = (output as { file?: { name?: string } } | undefined)?.file?.name
+        return name ? `Created ${name} in Drive` : `Tried to create ${input.name} in Drive`
+      },
+      inputSchema: createInput,
+      permission: { roles: ['admin', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = createInput.parse(input)
+        const file = await (await service()).createDocument(creatorOf(ctx), i.folder_id ?? null, 'md', i.name, i.content)
+        return { file }
       },
     },
     {

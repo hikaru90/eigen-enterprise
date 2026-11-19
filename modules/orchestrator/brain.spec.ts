@@ -39,6 +39,22 @@ describe('orchestrator persona: reach beyond modules (Contribute d80e155d)', () 
   })
 })
 
+describe('orchestrator persona: the website is public, internal documents go to Drive or Memory › Notes (Contribute)', () => {
+  it('routes internal documents away from the website and names the tools for them', () => {
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('WHERE CONTENT GOES')
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/website is the company’s public website/i)
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/pitch decks, project descriptions, funding/i)
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/never become website pages, not even private ones/i)
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('drive.create_document')
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('memory.create_text_file')
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('Memory › Notes')
+  })
+
+  it('names Drive among the modules it can offer', () => {
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/name the modules \([^)]*\bdrive\b[^)]*\)/)
+  })
+})
+
 describe('orchestrator persona prompt', () => {
   it('keeps the orchestrator identity lines', () => {
     expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(
@@ -105,7 +121,7 @@ describe('orchestrator persona prompt', () => {
     expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/you route, you do not interview/)
     expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/mission control, not a questionnaire/)
     // Platform step 1: the owner-facing cut; the agent's own tools are not offered as modules.
-    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/website, email, brand, memory, chat-gateway, recap/)
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/website, drive, email, brand, memory, chat-gateway, recap/)
     expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/repo and roadmap tools are not modules to offer/)
     expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/hand off/)
   })

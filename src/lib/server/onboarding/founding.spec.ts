@@ -5,7 +5,7 @@ import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryJourneyStore } from '$lib/kernel/playbook'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
-import { ORCHESTRATOR_AGENT_ID, WEBSITE_FOUNDING_JOURNEY } from '../../../../modules/orchestrator/brain'
+import { BRAND_TONE_DOCUMENT, ORCHESTRATOR_AGENT_ID, WEBSITE_FOUNDING_JOURNEY } from '../../../../modules/orchestrator/brain'
 import { openWebsiteFoundingJourney, recordFoundingInterview } from './founding'
 
 /**
@@ -22,6 +22,7 @@ function fixture() {
   const sink = new InMemoryEventSink()
   const approvals = new InMemoryApprovalStore()
   const pages = new Map<string, FakePage>()
+  const driveFiles = new Map<string, string>()
   const toolCalls: Array<{ tool: string; input: Record<string, unknown> }> = []
 
   const createPage: ToolDescriptor = {
@@ -69,6 +70,31 @@ function fixture() {
       [...pages.values()].map((p) => ({ slug: p.slug, visibility: p.visibility })),
   }
 
+  const createDocument: ToolDescriptor = {
+    name: 'drive.create_document',
+    module: 'drive',
+    summary: 'fake drive create',
+    auditClass: 'mutate',
+    activity: () => 'Did a test action',
+    inputSchema: z.looseObject({ name: z.string(), content: z.string() }),
+    permission: { roles: ['admin', 'agent'] },
+    handler: async (_ctx: ToolContext, input: unknown) => {
+      const args = input as { name: string; content: string }
+      toolCalls.push({ tool: 'drive.create_document', input: args })
+      driveFiles.set(`${args.name}.md`, args.content)
+      return { file: { type: 'file', name: `${args.name}.md` } }
+    },
+  }
+  const driveList: ToolDescriptor = {
+    name: 'drive.list',
+    module: 'drive',
+    summary: 'fake drive list',
+    auditClass: 'read',
+    inputSchema: z.looseObject({}),
+    permission: { roles: ['admin', 'agent'] },
+    handler: async () => ({ items: [...driveFiles.keys()].map((name) => ({ type: 'file', name })) }),
+  }
+
   const registry = new KernelRegistry({
     eventSink: sink,
     approvalPolicy: new StaticApprovalPolicy(new Set(['website.publish_page'])),
@@ -78,6 +104,8 @@ function fixture() {
   registry.register(createPage)
   registry.register(publishPage)
   registry.register(listPages)
+  registry.register(createDocument)
+  registry.register(driveList)
 
   const journeys = new InMemoryJourneyStore()
 
@@ -94,7 +122,7 @@ function fixture() {
       answers,
     })
 
-  return { sink, approvals, pages, toolCalls, journeys, submit }
+  return { sink, approvals, pages, driveFiles, toolCalls, journeys, submit }
 }
 
 describe('openWebsiteFoundingJourney (phase-2e handoff)', () => {
@@ -163,15 +191,17 @@ describe('recordFoundingInterview (onboarding founding endpoint logic)', () => {
       'website.create_page',
       'website.create_page',
       'website.create_page',
-      'website.create_page',
+      'drive.create_document',
     ])
     const home = fx.toolCalls[0]!.input
     expect(home).toMatchObject({ slug: 'home', title: 'Home' })
     expect(String(home.body)).toContain('# Kindred Digital Labs')
+    // The brand doc is internal: a Drive Markdown document, never a website page.
     const brandDoc = fx.toolCalls[3]!.input
-    expect(brandDoc).toMatchObject({ slug: 'brand-tone-of-voice', title: 'Brand — Tone of Voice' })
-    expect(String(brandDoc.body)).toContain('warm, direct, technical')
-    expect(String(brandDoc.body)).toContain('Kindred Digital Labs')
+    expect(brandDoc).toMatchObject({ name: BRAND_TONE_DOCUMENT })
+    expect(String(brandDoc.content)).toContain('warm, direct, technical')
+    expect(String(brandDoc.content)).toContain('Kindred Digital Labs')
+    expect(fx.pages.has('brand-tone-of-voice')).toBe(false)
 
     // Gated: journey stays active, no completion event yet.
     expect((await fx.approvals.listPending()).map((p) => p.toolName)).toEqual([

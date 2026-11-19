@@ -1,6 +1,13 @@
 import { WEBSITE_MODULE_ID } from './manifest'
 import { z } from 'zod'
-import type { ToolDescriptor } from '$lib/kernel/types'
+import { KernelError } from '$lib/kernel/errors'
+import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
+import {
+  createPageAudienceClassifier,
+  liveAudienceChat,
+  type PageAudienceClassifier,
+  type PageDraft,
+} from './page-audience'
 import { buildSiteInfo, siteOrigin } from './site-info'
 import { defaultWebsiteStore, type WebsitePage, type WebsiteStore } from './store'
 
@@ -16,7 +23,16 @@ export type WebsiteToolDeps = {
   store?: WebsiteStore
   /** This server's absolute origin; production reads the configured console ORIGIN. */
   origin?: () => string | Promise<string>
+  /** Public website content or an internal document? Production: the LLM gateway (page-audience.ts). */
+  classify?: PageAudienceClassifier
 }
+
+/** Where internal documents go instead (named in descriptions and in the refusal). */
+export const INTERNAL_DOCUMENT_TOOLS = ['drive.create_document', 'memory.create_text_file'] as const
+
+/** One routing sentence every page-writing tool carries, so the agent never picks the website for internal documents. */
+const PUBLIC_ONLY =
+  'The website is the company’s public website: only content meant for visitors. Internal documents (pitch decks, project descriptions, funding/investor documents, plans, briefs, meeting notes) never go here, not even as a private page — save them to Drive as Markdown with drive.create_document, or to Memory › Notes with memory.create_text_file. Agent writes are checked and refused when the content is an internal document.'
 
 async function configuredOrigin(): Promise<string> {
   const { env } = await import('$env/dynamic/private')
@@ -63,36 +79,72 @@ function pageName(title: string | undefined, slug: string): string {
   return title === undefined ? `the page “${slug}”` : `the ${title} page`
 }
 
+/**
+ * The internal-document guard (Contribute: internal documents are never
+ * website pages). Agent and service principals only: a person writing their
+ * own page is never second-guessed. The model judges (page-audience.ts);
+ * internal → the call is refused before anything is written, with the tools
+ * to use instead.
+ */
+async function requirePublicContent(
+  classify: PageAudienceClassifier,
+  ctx: ToolContext,
+  page: PageDraft,
+): Promise<void> {
+  if (ctx.principal.kind === 'human') return
+  const verdict = await classify({ userId: ctx.actingUserId ?? ctx.principal.id, page })
+  if (verdict.audience === 'public_website') return
+  throw new KernelError(
+    'invalid_input',
+    `Not put on the website: “${page.title}” is an internal document, not public website content (${verdict.reason}). The website is the company’s public site. Save it to Drive as Markdown with drive.create_document, or to Memory › Notes with memory.create_text_file.`,
+    { refused: 'internal_document', reason: verdict.reason, saveWith: [...INTERNAL_DOCUMENT_TOOLS] },
+  )
+}
+
 /** Kernel descriptors for the website content surface. */
 export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[] {
   const store = deps.store ?? defaultWebsiteStore()
   const origin = deps.origin ?? configuredOrigin
+  const classify = deps.classify ?? createPageAudienceClassifier({ chat: liveAudienceChat })
 
   return [
     {
       name: 'website.create_page',
       module: WEBSITE_MODULE_ID,
-      summary:
-        'Create one website content object (markdown body, kind page|doc, visibility private|public). Fails loud on duplicate slug.',
+      summary: `Create one page of the public website (markdown body; kind page, or doc for public documentation such as a customer FAQ; visibility private = an unpublished draft of a public page, public = live). Fails loud on duplicate slug. ${PUBLIC_ONLY}`,
       auditClass: 'mutate',
       activity: (input: z.infer<typeof createPageInput>, output?: WebsitePage) =>
         `Created ${pageName(output?.title ?? input.title, input.slug)}`,
       inputSchema: createPageInput,
       permission: { roles: ['admin', 'agent'] },
-      handler: async (_ctx, input) => store.createPage(createPageInput.parse(input)),
+      handler: async (ctx, input) => {
+        const parsed = createPageInput.parse(input)
+        await requirePublicContent(classify, ctx, parsed)
+        return store.createPage(parsed)
+      },
     },
     {
       name: 'website.update_page',
       module: WEBSITE_MODULE_ID,
-      summary:
-        'Update title and/or body of one website content object by slug. Fails loud when the slug is unknown.',
+      summary: `Update title and/or body of one public website page by slug. Fails loud when the slug is unknown. ${PUBLIC_ONLY}`,
       auditClass: 'mutate',
       activity: (input: z.infer<typeof updatePageInput>, output?: WebsitePage) =>
         `Updated ${pageName(output?.title ?? input.title, input.slug)}`,
       inputSchema: updatePageInput,
       permission: { roles: ['admin', 'agent'] },
-      handler: async (_ctx, input) => {
+      handler: async (ctx, input) => {
         const parsed = updatePageInput.parse(input)
+        const current = await store.getPage(parsed.slug)
+        // Unknown slug: nothing to judge — the store fails loud below.
+        if (current && (parsed.title !== undefined || parsed.body !== undefined)) {
+          await requirePublicContent(classify, ctx, {
+            slug: current.slug,
+            title: parsed.title ?? current.title,
+            body: parsed.body ?? current.body,
+            kind: current.kind,
+            visibility: current.visibility,
+          })
+        }
         return store.updatePage(parsed.slug, {
           ...(parsed.title === undefined ? {} : { title: parsed.title }),
           ...(parsed.body === undefined ? {} : { body: parsed.body }),
@@ -102,8 +154,7 @@ export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[]
     {
       name: 'website.publish_page',
       module: WEBSITE_MODULE_ID,
-      summary:
-        'Flip the visibility of one website content object between public and private. Fails loud when the slug is unknown.',
+      summary: `Flip the visibility of one website page between public (live on the public website) and private (draft). Fails loud when the slug is unknown. ${PUBLIC_ONLY}`,
       auditClass: 'mutate',
       activity: (input: z.infer<typeof publishPageInput>, output?: WebsitePage) =>
         input.visibility === 'public'
@@ -112,8 +163,19 @@ export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[]
       approvalRisk: 'public',
       inputSchema: publishPageInput,
       permission: { roles: ['admin', 'agent'] },
-      handler: async (_ctx, input) => {
+      handler: async (ctx, input) => {
         const parsed = publishPageInput.parse(input)
+        const current = parsed.visibility === 'public' ? await store.getPage(parsed.slug) : null
+        // Going live is judged on the stored page; taking a page private never is.
+        if (current) {
+          await requirePublicContent(classify, ctx, {
+            slug: current.slug,
+            title: current.title,
+            body: current.body,
+            kind: current.kind,
+            visibility: 'public',
+          })
+        }
         return store.setVisibility(parsed.slug, parsed.visibility)
       },
     },
