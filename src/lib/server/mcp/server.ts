@@ -92,6 +92,9 @@ export function createMcpServer(
         requestId: randomUUID(),
       }),
     )
+    // A tool that advertises an outputSchema must return structuredContent:
+    // MCP clients reject the call otherwise. The text copy stays for clients
+    // that only read content.
     return {
       content: [
         {
@@ -99,6 +102,9 @@ export function createMcpServer(
           text: JSON.stringify(result),
         },
       ],
+      ...(descriptor.outputSchema === undefined
+        ? {}
+        : { structuredContent: result as Record<string, unknown> }),
     }
   })
 

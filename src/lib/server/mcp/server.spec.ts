@@ -151,6 +151,32 @@ describe('createMcpServer over a kernel registry', () => {
     expect('outputSchema' in plain!).toBe(false)
   })
 
+  it('returns structuredContent for a tool with an outputSchema (MCP clients require it)', async () => {
+    const { kernel } = await makeFixtureKernel(['beta'])
+    kernel.registry.register({
+      name: 'beta.structured',
+      module: 'beta',
+      summary: 'returns a typed payload',
+      inputSchema: z.object({ value: z.string() }),
+      outputSchema: z.object({ doubled: z.number() }),
+      permission: { roles: ['admin', 'agent'] },
+      auditClass: 'read',
+      handler: async () => ({ doubled: 2 }),
+    })
+    const { call } = await handlers(kernel)
+
+    const structured = (await call({
+      params: { name: 'beta.structured', arguments: { value: 'x' } },
+    })) as { content: Array<{ text: string }>; structuredContent?: unknown }
+    expect(structured.structuredContent).toEqual({ doubled: 2 })
+    expect(JSON.parse(structured.content[0].text)).toEqual({ doubled: 2 })
+
+    const plain = (await call({ params: { name: 'beta.read', arguments: {} } })) as {
+      structuredContent?: unknown
+    }
+    expect('structuredContent' in plain).toBe(false)
+  })
+
   it('lists nothing when every module is inactive', async () => {
     const { kernel } = await makeFixtureKernel([])
     const { list } = await handlers(kernel)
