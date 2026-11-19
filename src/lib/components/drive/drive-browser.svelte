@@ -5,6 +5,7 @@
   import FileTextIcon from '@lucide/svelte/icons/file-text'
   import FolderIcon from '@lucide/svelte/icons/folder'
   import FolderPlusIcon from '@lucide/svelte/icons/folder-plus'
+  import FolderUpIcon from '@lucide/svelte/icons/folder-up'
   import ImageIcon from '@lucide/svelte/icons/image'
   import LayoutGridIcon from '@lucide/svelte/icons/layout-grid'
   import ListIcon from '@lucide/svelte/icons/list'
@@ -26,6 +27,16 @@
     shortWhen,
     type DriveItemKind,
   } from '$lib/drive/display'
+  import {
+    collectDropped,
+    droppedSources,
+    entriesFromPicked,
+    planUpload,
+    runUpload,
+    type UploadFailure,
+    type UploadPlan,
+    type UploadProgress,
+  } from '$lib/drive/upload'
   import DriveItemActions from './drive-item-actions.svelte'
   import NameDialog from './name-dialog.svelte'
 
@@ -33,9 +44,16 @@
    * One Drive listing as a full-width app pane (P-3): a toolbar (path, search,
    * New folder, New ▸ Folder / Document / Table, Upload, list ⇄ grid), then
    * the items — a list (icon, name, owner, modified, size, sharing; actions on
-   * hover) or a grid (image previews, type icons). Files dropped anywhere on
-   * the pane upload here, with an overlay saying where. The server checks
-   * every act again; the buttons only hide what the person can't do anyway.
+   * hover) or a grid (image previews, type icons). Files and folders dropped
+   * from the desktop upload here — or into the folder row they are dropped on
+   * — with an overlay saying where; "Upload folder" picks a whole folder. A
+   * folder's tree is recreated, then its files go up one by one with
+   * progress, and every file that didn't land is listed with why. Items the
+   * person may edit can be dragged onto a folder row to move them there.
+   * Drop targets are whatever folder rows are rendered now (looked up from
+   * the drop's own element), so a folder created in this view takes drops at
+   * once. The server checks every act again; the buttons only hide what the
+   * person can't do anyway.
    */
   let {
     folderId,
@@ -54,10 +72,10 @@
   }: {
     folderId: string | null
     path?: Array<{ id: string; name: string }>
-    items: DriveItem[]
+    items: Listed[]
     canEdit: boolean
     query?: string
-    results?: DriveItem[] | null
+    results?: Listed[] | null
     /** Owner names and sharing per item, keyed `type:id` (the server's describeItems). */
     describe?: Record<string, ItemDescription>
     emptyText?: string
@@ -73,6 +91,9 @@
 
   const VIEW_KEY = 'drive-view'
   type View = 'list' | 'grid'
+  type Listed = DriveItem & { canEdit?: boolean; canManage?: boolean }
+  /** The type a Drive row's drag carries (moves within Drive, never an upload). */
+  const ITEM_DRAG = 'application/x-ee-drive-item'
 
   let error = $state<string | null>(null)
   let notice = $state<string | null>(null)
@@ -86,6 +107,13 @@
     submit: (name: string) => Promise<void>
   } | null>(null)
   let fileInput = $state<HTMLInputElement | null>(null)
+  let folderInput = $state<HTMLInputElement | null>(null)
+  /** The Drive row being dragged (a move), while it is. */
+  let draggedItem = $state<Listed | null>(null)
+  /** The folder row under the current drag, when it takes the drop. */
+  let dropFolder = $state<Listed | null>(null)
+  let progress = $state<UploadProgress | null>(null)
+  let failures = $state<UploadFailure[]>([])
   let search = $state(query)
   let view = $state<View>('list')
 
@@ -93,6 +121,10 @@
   const dropEnabled = $derived(canEdit && !trashView)
   const dragging = $derived(dragDepth > 0)
   const here = $derived(path.length > 0 ? path[path.length - 1]!.name : root.label)
+  /** A folder row that takes drops: one the person may edit, never the item being dragged itself. */
+  const takesDrops = (item: Listed) =>
+    dropEnabled && item.type === 'folder' && item.canEdit === true && item.id !== draggedItem?.id
+  const draggable = (item: Listed) => !trashView && item.canEdit === true
 
   onMount(() => {
     try {
@@ -122,6 +154,7 @@
   async function run<T>(act: () => Promise<T>, ok?: string | ((out: T) => string)) {
     error = null
     notice = null
+    failures = []
     busy = true
     try {
       const out = await act()
@@ -134,45 +167,124 @@
     }
   }
 
-  async function uploadFiles(files: File[]) {
-    if (files.length === 0) return
+  /** Uploads a plan into `target` (null: the current view), then says what landed and lists what didn't. */
+  async function upload(plan: UploadPlan, target: Listed | null) {
+    if (plan.files.length === 0 && plan.folders.length === 0 && plan.failures.length === 0) return
     error = null
     notice = null
+    failures = []
     busy = true
+    progress = { done: 0, total: plan.files.length, current: '' }
     try {
-      const out = await driveApi.upload(folderId, files)
-      if (out.errors.length > 0) error = out.errors.join(' ')
-      if (out.uploaded.length > 0)
-        notice = `Uploaded ${out.uploaded.length} file${out.uploaded.length === 1 ? '' : 's'}.`
+      const out = await runUpload(
+        plan,
+        target ? target.id : folderId,
+        driveApi,
+        (p) => (progress = p),
+      )
+      failures = out.failures
+      if (out.stopped) error = `The upload stopped: ${out.stopped}`
+      const landed: string[] = []
+      if (out.uploaded > 0) landed.push(`${out.uploaded} file${out.uploaded === 1 ? '' : 's'}`)
+      if (out.folders > 0)
+        landed.push(
+          `${out.uploaded > 0 ? 'in ' : ''}${out.folders} folder${out.folders === 1 ? '' : 's'}`,
+        )
+      if (landed.length > 0)
+        notice = `Uploaded ${landed.join(' ')}${target ? ` to ${target.name}` : ''}.`
       await invalidateAll()
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
       busy = false
+      progress = null
     }
+  }
+
+  function uploadPicked(input: HTMLInputElement) {
+    const plan = planUpload(entriesFromPicked([...(input.files ?? [])]))
+    input.value = ''
+    void upload(plan, null)
   }
 
   const carriesFiles = (event: DragEvent) =>
     [...(event.dataTransfer?.types ?? [])].includes('Files')
+  /** The folder row this drag event is over, when that row takes drops. */
+  function folderUnder(event: DragEvent): Listed | null {
+    const el = event.target instanceof Element ? event.target.closest('[data-drop-folder]') : null
+    const id = el?.getAttribute('data-drop-folder')
+    const folder = id ? shown.find((i) => i.type === 'folder' && i.id === id) : undefined
+    return folder && takesDrops(folder) ? folder : null
+  }
 
   function onDragEnter(event: DragEvent) {
-    if (!dropEnabled || !carriesFiles(event)) return
+    if (!dropEnabled) return
+    if (draggedItem) {
+      dropFolder = folderUnder(event)
+      if (dropFolder) event.preventDefault()
+      return
+    }
+    if (!carriesFiles(event)) return
     event.preventDefault()
     dragDepth += 1
+    dropFolder = folderUnder(event)
   }
   function onDragOver(event: DragEvent) {
-    if (!dropEnabled || !carriesFiles(event)) return
+    if (!dropEnabled) return
+    if (draggedItem) {
+      dropFolder = folderUnder(event)
+      // Only a folder row takes a move; anywhere else the drop isn't offered.
+      if (dropFolder) {
+        event.preventDefault()
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+      }
+      return
+    }
+    if (!carriesFiles(event)) return
     event.preventDefault()
+    dropFolder = folderUnder(event)
   }
   function onDragLeave(event: DragEvent) {
-    if (!dropEnabled || !carriesFiles(event)) return
+    if (!dropEnabled || draggedItem || !carriesFiles(event)) return
     dragDepth = Math.max(0, dragDepth - 1)
+    if (dragDepth === 0) dropFolder = null
   }
   function onDrop(event: DragEvent) {
     event.preventDefault()
+    const target = dropEnabled ? folderUnder(event) : null
     dragDepth = 0
+    dropFolder = null
     if (!dropEnabled) return
-    void uploadFiles([...(event.dataTransfer?.files ?? [])])
+    const moved = draggedItem
+    if (moved) {
+      draggedItem = null
+      if (target)
+        void run(() => driveApi.move(moved, target.id), `Moved “${moved.name}” to ${target.name}.`)
+      return
+    }
+    if (!event.dataTransfer || !carriesFiles(event)) return
+    if (busy) {
+      error = 'Wait for the current upload to finish, then drop again.'
+      return
+    }
+    // Read the items now: the browser empties them once this handler returns.
+    const sources = droppedSources(event.dataTransfer)
+    void collectDropped(sources).then(
+      (plan) => upload(plan, target),
+      (err: unknown) =>
+        (error = `Couldn’t read what was dropped: ${err instanceof Error ? err.message : String(err)}`),
+    )
+  }
+
+  function onRowDragStart(event: DragEvent, item: Listed) {
+    if (!event.dataTransfer) return
+    draggedItem = item
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData(ITEM_DRAG, `${item.type}:${item.id}`)
+  }
+  function onRowDragEnd() {
+    draggedItem = null
+    dropFolder = null
   }
 
   function newFolder() {
@@ -256,6 +368,14 @@
   >
 {/snippet}
 
+{#snippet dropBadge(item: Listed)}
+  <span
+    class="inline-flex shrink-0 items-center rounded-full bg-primary px-1.5 py-px text-xs font-medium text-primary-foreground"
+    data-testid="drive-drop-target"
+    data-name={item.name}>{draggedItem ? 'Move here' : 'Upload here'}</span
+  >
+{/snippet}
+
 <section
   class="relative flex min-h-0 flex-1 flex-col"
   data-testid="drive-browser"
@@ -336,11 +456,26 @@
           multiple
           class="hidden"
           data-testid="drive-upload-input"
-          onchange={(e) => {
-            const input = e.currentTarget as HTMLInputElement
-            void uploadFiles([...(input.files ?? [])])
-            input.value = ''
-          }}
+          onchange={(e) => uploadPicked(e.currentTarget)}
+        />
+        <button
+          type="button"
+          class={toolbarBtn}
+          onclick={() => folderInput?.click()}
+          disabled={busy}
+          title="Upload a folder with everything in it"
+          data-testid="drive-upload-folder"
+        >
+          <FolderUpIcon class="size-4" aria-hidden="true" />
+          <span class="sr-only lg:not-sr-only">Upload folder</span>
+        </button>
+        <input
+          bind:this={folderInput}
+          type="file"
+          webkitdirectory
+          class="hidden"
+          data-testid="drive-upload-folder-input"
+          onchange={(e) => uploadPicked(e.currentTarget)}
         />
         <div class="relative">
           <Button
@@ -435,6 +570,45 @@
         {error}
       </p>
     {/if}
+    {#if progress}
+      <div
+        class="flex flex-col gap-1.5 rounded-md border px-3 py-2 text-sm"
+        role="status"
+        data-testid="drive-upload-progress"
+      >
+        <p class="truncate">
+          Uploading {Math.min(progress.done + 1, progress.total)} of {progress.total} file{progress.total ===
+          1
+            ? ''
+            : 's'}{progress.current ? ` · ${progress.current}` : ''}
+        </p>
+        <progress
+          class="h-1.5 w-full accent-primary"
+          max={Math.max(progress.total, 1)}
+          value={progress.done}
+        >
+          {progress.done} of {progress.total}
+        </progress>
+      </div>
+    {/if}
+    {#if failures.length > 0}
+      <div
+        class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        role="alert"
+        data-testid="drive-upload-failures"
+      >
+        <p class="font-medium">
+          {failures.length === 1 ? '1 item wasn’t' : `${failures.length} items weren’t`} uploaded:
+        </p>
+        <ul class="mt-1 max-h-48 list-disc overflow-y-auto pl-5">
+          {#each failures as failure, i (i)}
+            <li data-testid="drive-upload-failure">
+              <span class="font-medium">{failure.path}</span> — {failure.reason}
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
     {#if notice}
       <p
         class="rounded-md border px-3 py-2 text-sm text-muted-foreground"
@@ -472,7 +646,7 @@
           <p class="max-w-sm text-sm text-muted-foreground">{emptyHint}</p>
         {/if}
         {#if !results && dropEnabled}
-          <p class="text-sm text-muted-foreground">Drop files here, or</p>
+          <p class="text-sm text-muted-foreground">Drop files or folders here, or</p>
           <div class="flex gap-2">
             <Button
               size="sm"
@@ -482,8 +656,22 @@
             >
               <FolderPlusIcon class="size-4" aria-hidden="true" /> New folder
             </Button>
-            <Button size="sm" onclick={() => fileInput?.click()} data-testid="drive-empty-upload">
+            <Button
+              size="sm"
+              onclick={() => fileInput?.click()}
+              disabled={busy}
+              data-testid="drive-empty-upload"
+            >
               <UploadIcon class="size-4" aria-hidden="true" /> Upload files
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onclick={() => folderInput?.click()}
+              disabled={busy}
+              data-testid="drive-empty-upload-folder"
+            >
+              <FolderUpIcon class="size-4" aria-hidden="true" /> Upload folder
             </Button>
           </div>
         {/if}
@@ -512,10 +700,17 @@
             {@const Icon = ICONS[kind]}
             {@const desc = descOf(item)}
             <tr
-              class="group border-b border-border/60 last:border-0 hover:bg-muted/50"
+              class="group border-b border-border/60 last:border-0 hover:bg-muted/50 {dropFolder?.id ===
+              item.id
+                ? 'bg-primary/10 outline-2 -outline-offset-2 outline-primary'
+                : ''}"
               data-testid="drive-row"
               data-name={item.name}
               data-type={item.type}
+              data-drop-folder={takesDrops(item) ? item.id : undefined}
+              draggable={draggable(item) ? 'true' : undefined}
+              ondragstart={(e) => draggable(item) && onRowDragStart(e, item)}
+              ondragend={onRowDragEnd}
             >
               <td class="px-3 py-2">
                 <span class="flex min-w-0 items-center gap-2.5">
@@ -534,6 +729,9 @@
                       href={openHref(item)}
                       data-testid="drive-open">{item.name}</a
                     >
+                  {/if}
+                  {#if dropFolder?.id === item.id}
+                    {@render dropBadge(item)}
                   {/if}
                   {#if desc?.readOnlyFrom}
                     <span
@@ -614,10 +812,17 @@
           {@const Icon = ICONS[kind]}
           {@const desc = descOf(item)}
           <li
-            class="group relative flex flex-col overflow-hidden rounded-lg border border-border bg-card transition-shadow hover:shadow-md"
+            class="group relative flex flex-col overflow-hidden rounded-lg border bg-card transition-shadow hover:shadow-md {dropFolder?.id ===
+            item.id
+              ? 'border-primary ring-2 ring-primary'
+              : 'border-border'}"
             data-testid="drive-row"
             data-name={item.name}
             data-type={item.type}
+            data-drop-folder={takesDrops(item) ? item.id : undefined}
+            draggable={draggable(item) ? 'true' : undefined}
+            ondragstart={(e) => draggable(item) && onRowDragStart(e, item)}
+            ondragend={onRowDragEnd}
           >
             <a
               href={trashView ? undefined : openHref(item)}
@@ -650,6 +855,9 @@
                   href={openHref(item)}
                   data-testid="drive-open">{item.name}</a
                 >
+              {/if}
+              {#if dropFolder?.id === item.id}
+                {@render dropBadge(item)}
               {/if}
               {#if desc?.readOnlyFrom}
                 <LockIcon
@@ -696,13 +904,13 @@
     {/if}
   </div>
 
-  {#if dragging}
+  {#if dragging && !draggedItem}
     <div
       class="pointer-events-none absolute inset-2 z-30 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary bg-primary/5 backdrop-blur-[1px]"
       data-testid="drive-drop-overlay"
     >
       <UploadIcon class="size-8 text-primary" aria-hidden="true" />
-      <p class="text-sm font-medium">Drop to upload to {here}</p>
+      <p class="text-sm font-medium">Drop to upload to {dropFolder ? dropFolder.name : here}</p>
     </div>
   {/if}
 </section>
