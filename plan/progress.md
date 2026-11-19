@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-19 — eigenEnterprise Mail: Senders said "Connect Amazon SES first" with a verified domain (owner: "where do i setup default sender" → "it should be set up")
+
+- **What broke (ee-one):** managed mail, eigenenterprise.app verified, no sender yet. Email › Senders gated on `isConfigured()`, which in managed mode stays false until a default sender exists — but the first sender added on Senders is what becomes the default (`addSender`). So the page showed "Connect Amazon SES first" and the only way to add the first sender was the onboarding Email act.
+- **Fix:** Senders opens once mail is connected (`owlery.settings()` non-null: own SES or eigenEnterprise Mail) and returns `connected` itself; the Email layout's unused `configured` flag is gone (Senders was its only reader). Test: `senders/page.server.spec.ts` (3). Gates: unit 902 files passed; svelte-check 0 errors; lint clean on touched files.
+- **Seen, not fixed (DNS on the same domain):** DMARC and MX were live at Cloudflare and 1.1.1.1/8.8.8.8 while the domain page said "Not found yet" / "Waiting for DNS". DMARC is stored and only re-read on a re-check; background checks stop once DKIM + MAIL FROM are done, so a DMARC added after verification waits for "Re-check now". MX is read live per view; the box resolver likely still held a negative answer (Cloudflare SOA negative TTL 1800 s). Not confirmed on the box (no SSH from this session).
+- **Next:** release + let ee-one upgrade; then add the first sender (e.g. hello@eigenenterprise.app) on Senders.
+
 ## 2026-11-19 — Owner locked out after signing out (no passkey, no email): unlocked, and it can't happen silently again (owner: "i get Session is not fresh" → "i logged out and now i am locked out")
 
 - **Why "Session is not fresh":** Better Auth only registers a passkey for a session signed in within the last day (`freshAge`, default 1 day), but sessions here last a year. The owner of `ee-one` claimed on 2026-11-17, skipped the passkey, and on day two couldn't add one; without company email there is no code to sign in again with — then signing out ended the only way in.
