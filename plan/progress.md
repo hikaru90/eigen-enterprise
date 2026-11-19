@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-19 — Contribute sharing: proposals never reached the central board (owner: "where are the contributions landing?")
+
+- **What broke:** one.eigenenterprise.app registered with the central board on os.cerberusblue.com (install `46faacaa…`, 13:50 CET, v0.5.24) but sent nothing: `hub_contributions` on production had 0 rows. On ee-one all 9 outbox rows sat `pending` with "The scrub failed: getDb() was called outside an active request (missing app DB context)". The scrub runs on the job-queue tick, outside a request; the gateway reads provider config and records cost through `getDb()`. The e2e missed it because its harness trigger runs inside a request, which has a DB context.
+- **Fixed:** `modules/contribute/share/background-scrub.ts` runs the scrub inside `withDbUser(owner)` on the company provider (same shape as `isCompanyProviderReady`); `live.ts` wires it. Test `background-scrub.spec.ts` (3): the gateway call sees a DB context though the tick has none, attributed to the owner, no owner → loud error. Commit `1447c59`, released as **v0.5.27** (`1bde9a8`, tag `v0.5.27`).
+- **Where proposals show:** each install's own board; the scrubbed copy shows on os.cerberusblue.com under Contribute → **All installs** (owner/admins), not under "This company".
+- **Next:** ee-one has to run 0.5.27 (owner sets the /ops target); its pending rows then go out on their next retry (backoff, no resend needed). Check `hub_contributions` on production afterwards.
+
 ## 2026-11-19 — App icon backdrop is the logo's own background (owner: "make the pwa favicons background color match the background color of the company avatar image")
 
 - **Changed:** `maskable` and `apple` logo icons no longer always sit on the site's `--background` (white by default). When the logo's outermost pixel ring is one opaque color (≥90% of edge pixels within ±20 per channel of the median — tolerates anti-aliasing/JPEG noise), that color is the backdrop, so the margin around a square avatar continues it. Transparent or mixed edges (a mark touching the edge, a disc) keep the brand background. The logo is now resized `inside` (no transparent letterbox) so its real edge can be read; the `any` icons (favicon, dock) are unchanged: the logo on transparency. `solidEdgeColor` in `src/lib/server/pwa/icon.ts`.
