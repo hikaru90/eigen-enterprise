@@ -33,7 +33,7 @@ export type IdentityColors = { tile: string; glyph: string; background: string }
  * icon URLs carry the version and are cached immutable, so installed apps only
  * pick up a new rendering through a new version.
  */
-export const ICON_RENDER_REVISION = 2
+export const ICON_RENDER_REVISION = 3
 
 /** FNV-1a, base 36 — a cache key, not security. */
 function shortHash(s: string): string {

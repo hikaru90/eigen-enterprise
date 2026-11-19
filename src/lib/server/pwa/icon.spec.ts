@@ -93,6 +93,15 @@ describe('renderLogoIcon', () => {
     expect(w.at(256, 60)).toEqual(TEAL)
   })
 
+  it('reads the background past an anti-aliased (partly transparent) outermost ring', async () => {
+    // Like the Cerberus Blue logo: the solid square sits half a pixel in, so its outer ring is semi-transparent.
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect x="0.5" y="0.5" width="99" height="99" fill="#103a4c"/><circle cx="50" cy="50" r="30" fill="#ff0000"/></svg>'
+    const avatar = new Uint8Array(await sharp(Buffer.from(svg)).png().toBuffer())
+    const p = await pixels(await renderLogoIcon({ logo: avatar, colors, kind: 'maskable', size: 512 }))
+    const corner = p.at(1, 1)
+    for (const [got, want] of [[corner.r, 0x10], [corner.g, 0x3a], [corner.b, 0x4c]]) expect(Math.abs(got - want)).toBeLessThanOrEqual(2)
+  })
+
   it('keeps the brand background for a logo whose edge is not one solid color (a mark touching the edge)', async () => {
     // A black bar across the middle touches the left and right edges only.
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect y="40" width="100" height="20" fill="#000000"/></svg>'

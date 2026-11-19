@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import opentype from 'opentype.js'
-import sharp from 'sharp'
+import sharp, { type Sharp } from 'sharp'
 import type { IconKind, IdentityColors } from '$lib/pwa/identity'
 
 /**
@@ -96,12 +96,10 @@ export async function renderLogoIcon(opts: {
   if (!meta.width || !meta.height) throw new Error(`[pwa] the company logo has no size (format ${meta.format})`)
   const density = meta.format === 'svg' ? Math.min(2400, Math.max(1, (72 * inner) / Math.max(meta.width, meta.height))) : undefined
   // `inside`, not `contain`: no transparent letterbox, so the logo's real edge can be read below.
-  const art = await sharp(Buffer.from(logo), density ? { density } : {})
-    .resize(inner, inner, { fit: 'inside' })
-    .ensureAlpha()
-    .png()
-    .toBuffer()
-  const background = kind === 'any' ? { r: 0, g: 0, b: 0, alpha: 0 } : ((await solidEdgeColor(art)) ?? colors.background)
+  const raster = sharp(Buffer.from(logo), density ? { density } : {}).ensureAlpha()
+  const art = await raster.clone().resize(inner, inner, { fit: 'inside' }).png().toBuffer()
+  // The edge is read at the logo's own resolution: resizing up would widen its anti-aliased border.
+  const background = kind === 'any' ? { r: 0, g: 0, b: 0, alpha: 0 } : ((await solidEdgeColor(raster.clone())) ?? colors.background)
   return sharp({ create: { width: size, height: size, channels: 4, background } })
     .composite([{ input: art, gravity: 'centre' }])
     .png()
@@ -112,18 +110,24 @@ export async function renderLogoIcon(opts: {
 const SOLID_EDGE_SHARE = 0.9
 /** Per-channel distance from that color still counted as it (anti-aliasing, JPEG noise). */
 const EDGE_TOLERANCE = 20
+/** How far in from the logo's border its background is read (past anti-aliasing). */
+const EDGE_INSET_MAX = 3
 
 /**
  * The logo's background color: the opaque color (within a small tolerance for
- * anti-aliasing and compression) that covers nearly all of its outermost
- * pixel ring — or null when the edge is transparent or mixed.
+ * anti-aliasing and compression) that covers nearly all of a pixel ring just
+ * inside its border — or null when the edge is transparent or mixed.
  */
-async function solidEdgeColor(png: Buffer): Promise<{ r: number; g: number; b: number; alpha: number } | null> {
-  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+async function solidEdgeColor(image: Sharp): Promise<{ r: number; g: number; b: number; alpha: number } | null> {
+  const { data, info } = await image.raw().toBuffer({ resolveWithObject: true })
   const { width, height } = info
+  // The ring a few pixels in: the outermost pixels of a rasterized or resized
+  // logo are often anti-aliased into partial transparency.
+  const inset = Math.min(EDGE_INSET_MAX, Math.floor(Math.min(width, height) / 8))
+  const [x0, x1, y0, y1] = [inset, width - 1 - inset, inset, height - 1 - inset]
   const edge: number[] = []
-  for (let x = 0; x < width; x++) edge.push(x, (height - 1) * width + x)
-  for (let y = 1; y < height - 1; y++) edge.push(y * width, y * width + width - 1)
+  for (let x = x0; x <= x1; x++) edge.push(y0 * width + x, y1 * width + x)
+  for (let y = y0 + 1; y < y1; y++) edge.push(y * width + x0, y * width + x1)
   const opaque = edge.filter((p) => data[p * 4 + 3] >= 250)
   if (opaque.length < edge.length * SOLID_EDGE_SHARE) return null
   // The per-channel median is the candidate; nearly every edge pixel must sit close to it.
