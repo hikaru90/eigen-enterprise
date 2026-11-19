@@ -39,6 +39,68 @@ describe('toolInputJsonSchema', () => {
     expect(schema).toMatchObject({ type: 'object', required: ['value'] })
     expect(schema.properties).toMatchObject({ value: { type: 'string' } })
   })
+
+  // MCP (tools/list) and LLM tool APIs require a top-level `type: "object"`
+  // schema without top-level oneOf/anyOf/allOf. zod emits a bare
+  // `{oneOf: [...]}` for a discriminated union and `{anyOf: [...]}` for a
+  // union — the advertised schema must be one object schema instead.
+  it('advertises a discriminated union of objects as one top-level object schema', () => {
+    const schema = toolInputJsonSchema(
+      z.discriminatedUnion('setting', [
+        z.object({ setting: z.literal('company_name'), value: z.string().min(1) }),
+        z.object({ setting: z.literal('ai_active_provider'), value: z.enum(['eurouter', 'openrouter']) }),
+        z.object({ setting: z.literal('ai_chat_model'), provider: z.string().min(1), value: z.string().min(1) }),
+      ]),
+    )
+
+    expect(schema.type).toBe('object')
+    expect(schema).not.toHaveProperty('oneOf')
+    expect(schema).not.toHaveProperty('anyOf')
+    expect(schema).not.toHaveProperty('allOf')
+    expect(schema.properties).toEqual({
+      setting: { type: 'string', enum: ['company_name', 'ai_active_provider', 'ai_chat_model'] },
+      value: {
+        anyOf: [
+          { type: 'string', minLength: 1 },
+          { type: 'string', enum: ['eurouter', 'openrouter'] },
+        ],
+      },
+      provider: { type: 'string', minLength: 1 },
+    })
+    // Only what every shape requires is required at the top level.
+    expect([...(schema.required as string[])].sort()).toEqual(['setting', 'value'])
+    // The per-shape requirements stay visible to the caller.
+    expect(schema.description).toBe(
+      'Exactly one of these shapes: {setting: "company_name", value} | {setting: "ai_active_provider", value} | {setting: "ai_chat_model", provider, value}',
+    )
+  })
+
+  it('advertises a plain union of objects as one top-level object schema', () => {
+    const schema = toolInputJsonSchema(
+      z.union([z.object({ a: z.string() }).strict(), z.object({ b: z.number().optional() }).strict()]),
+    )
+    expect(schema).toMatchObject({
+      type: 'object',
+      properties: { a: { type: 'string' }, b: { type: 'number' } },
+      required: [],
+      additionalProperties: false,
+      description: 'Exactly one of these shapes: {a} | {b?}',
+    })
+    expect(schema).not.toHaveProperty('anyOf')
+  })
+
+  it('keeps the union description ahead of the shape list', () => {
+    const schema = toolInputJsonSchema(
+      z.union([z.object({ a: z.string() }), z.object({ b: z.string() })]).describe('Pick one.'),
+    )
+    expect(schema.description).toBe('Pick one. Exactly one of these shapes: {a} | {b}')
+    expect(schema).not.toHaveProperty('additionalProperties')
+  })
+
+  it('fails loud for a tool input that is not an object or a union of objects', () => {
+    expect(() => toolInputJsonSchema(z.string())).toThrow(/object/)
+    expect(() => toolInputJsonSchema(z.union([z.object({ a: z.string() }), z.string()]))).toThrow(/object/)
+  })
 })
 
 describe('toolOutputJsonSchema', () => {
