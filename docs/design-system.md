@@ -181,7 +181,7 @@ Every area page inside the shell opens the same way. Use the shared components i
   width (`sm:grid-cols-2 xl:grid-cols-3 …`) instead of capping the frame.
 - App-style areas (Messages, Drive) and full-pane tools (the brand set editor) render
   their own panes without the frame's padding.
-- The **assistant** is not a page: the shell's top bar ("Ask the assistant… ⌘K") opens
+- The **assistant** is not a page: the shell's top bar ("Ask the company brain… ⌘K") opens
   it as a resizable panel on the right of every signed-in page. Its linkable pages
   (`/assistant`, `/assistant/[id]`, `/assistant/activity`) use the frame like any area.
 
