@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { includeIgnoreFile } from '@eslint/compat'
 import js from '@eslint/js'
@@ -10,6 +12,18 @@ import ts from 'typescript-eslint'
 import svelteConfig from './svelte.config.js'
 
 const gitignorePath = path.resolve(import.meta.dirname, '.gitignore')
+
+/**
+ * svelte.config.js for the Svelte parser, whole. `eslint --cache` keys its
+ * cache on the config and can't serialize functions (the runes switch, the
+ * adapter, kit's tsconfig hook, mdsvex), so it reads `toJSON()` instead
+ * (ESLint's documented hook): the hash of svelte.config.js — editing that file
+ * invalidates the cache.
+ */
+const svelteConfigHash = createHash('sha256')
+  .update(readFileSync(path.resolve(import.meta.dirname, 'svelte.config.js')))
+  .digest('hex')
+const lintSvelteConfig = { ...svelteConfig, toJSON: () => ({ svelteConfig: svelteConfigHash }) }
 
 /** Ban `$effect` / `$effect.pre` for control flow (see AGENTS.md / no-svelte-effect). */
 const noEffectRestrictedSyntax = [
@@ -89,7 +103,7 @@ export default defineConfig(
         projectService: true,
         extraFileExtensions: ['.svelte'],
         parser: ts.parser,
-        svelteConfig,
+        svelteConfig: lintSvelteConfig,
       },
     },
     rules: {
