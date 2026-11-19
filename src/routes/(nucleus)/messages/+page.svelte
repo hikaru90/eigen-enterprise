@@ -22,6 +22,7 @@
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
   import UserAvatar from '$lib/components/user-avatar.svelte'
+  import { createDrafts } from '$lib/messages/drafts'
   import MessageComposer from '$lib/messages/message-composer.svelte'
   import MessageRow, { type RowPerson } from '$lib/messages/message-row.svelte'
   import {
@@ -83,6 +84,9 @@
   let hasMore = $state(false)
   let loadingEarlier = $state(false)
   let draft = $state('')
+  // Unsent text stays per conversation in this browser: restored on open, cleared on send.
+  // svelte-ignore state_referenced_locally
+  const drafts = createDrafts(data.me, () => localStorage)
   let sending = $state(false)
   let errorText = $state<string | null>(null)
   let live = $state<'connecting' | 'live' | 'reconnecting'>('connecting')
@@ -194,6 +198,7 @@
   // ── conversation selection ──────────────────────────────────────────────
   async function openConversation(id: string, updateUrl = true) {
     selectedId = id
+    draft = drafts.read(id)
     messages = []
     hasMore = false
     errorText = null
@@ -276,18 +281,21 @@
   // ── composer + attachments ──────────────────────────────────────────────
   async function send() {
     const body = draft
-    if (!selectedId || !canSend) return
+    const id = selectedId
+    if (!id || !canSend) return
     sending = true
     errorText = null
     try {
       const { message: posted } = await api<{ message: MessageView }>(
-        `/api/messages/conversations/${selectedId}/messages`,
+        `/api/messages/conversations/${id}/messages`,
         {
           method: 'POST',
           body: JSON.stringify({ body, replyToId: replyingTo?.id ?? null, attachmentIds: readyFiles.map((f) => f.fileId) }),
         },
       )
-      draft = ''
+      drafts.clear(id)
+      // Switched away while sending: that conversation's restored draft stays.
+      if (selectedId === id) draft = ''
       pendingFiles = []
       replyingTo = null
       now = new Date()
@@ -1087,6 +1095,9 @@
         formTestid="messages-composer-form"
         {dragging}
         onsend={send}
+        ondraft={(text) => {
+          if (selectedId) drafts.write(selectedId, text)
+        }}
         onattach={() => fileInput?.click()}
         onpaste={onPaste}
         ondragover={onDragOver}

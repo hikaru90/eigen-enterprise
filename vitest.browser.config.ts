@@ -111,6 +111,8 @@ export default defineConfig({
       'src/lib/components/app-card.svelte.spec.ts',
       'src/lib/components/add-app-dialog.svelte.spec.ts',
       'src/lib/messages/message-row.svelte.spec.ts',
+      'src/lib/messages/message-edit.svelte.spec.ts',
+      'src/lib/messages/message-composer.svelte.spec.ts',
       'src/lib/messages/reply-quote.svelte.spec.ts',
       'src/lib/messages/presence-dot.svelte.spec.ts',
       'src/lib/messages/presence-nav.svelte.spec.ts',
