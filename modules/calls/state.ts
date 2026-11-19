@@ -93,6 +93,8 @@ export function newCall(i: NewCallInput): CallRecord {
     },
     participants: [...(i.startedByParticipant ? [row(i.startedBy, 'accepted')] : []), ...invitees.map((u) => row(u, 'none'))],
     guests: [],
+    brainListens: [],
+    brainShared: [],
   }
 }
 
@@ -113,7 +115,7 @@ export function addGuests(rec: CallRecord, guests: Guest[], now: Date): CallReco
     response: 'accepted',
     transcribe: true,
   }))
-  return { call: rec.call, participants: [...rec.participants, ...rows], guests: [...rec.guests, ...guests] }
+  return { ...rec, participants: [...rec.participants, ...rows], guests: [...rec.guests, ...guests] }
 }
 
 /** The name a guest gave on the guest page. */
@@ -168,17 +170,18 @@ function patch(rec: CallRecord, userId: string, change: Partial<Participant>, no
   const base: Participant = existing ?? { callId: rec.call.id, userId, invitedAt: now, joinedAt: null, leftAt: null, response: 'none', transcribe: true }
   const next = { ...base, ...change }
   return {
-    call: rec.call,
+    ...rec,
     participants: existing ? rec.participants.map((p) => (p.userId === userId ? next : p)) : [...rec.participants, next],
-    guests: rec.guests,
   }
 }
 
+/** Over: whoever is still in leaves, and the Company Brain stops listening (offBy null: the call's end). */
 function finish(rec: CallRecord, state: CallState, now: Date): CallRecord {
   return {
+    ...rec,
     call: { ...rec.call, state, endedAt: now },
     participants: rec.participants.map((p) => (inRoom(p) ? { ...p, leftAt: now } : p)),
-    guests: rec.guests,
+    brainListens: rec.brainListens.map((l) => (l.offAt === null ? { ...l, offAt: now } : l)),
   }
 }
 
@@ -310,7 +313,9 @@ export function sameRecord(a: CallRecord, b: CallRecord): boolean {
     time(ca.scheduledEnd) !== time(cb.scheduledEnd) ||
     ca.externalUrl !== cb.externalUrl ||
     a.participants.length !== b.participants.length ||
-    a.guests.length !== b.guests.length
+    a.guests.length !== b.guests.length ||
+    a.brainListens.length !== b.brainListens.length ||
+    a.brainShared.length !== b.brainShared.length
   ) {
     return false
   }
@@ -326,6 +331,16 @@ export function sameRecord(a: CallRecord, b: CallRecord): boolean {
     )
   })
   if (!sameGuests) return false
+  const sameListens = a.brainListens.every((la) => {
+    const lb = b.brainListens.find((x) => x.id === la.id)
+    return !!lb && la.onBy === lb.onBy && la.offBy === lb.offBy && time(la.onAt) === time(lb.onAt) && time(la.offAt) === time(lb.offAt)
+  })
+  if (!sameListens) return false
+  const sameShared = a.brainShared.every((sa) => {
+    const sb = b.brainShared.find((x) => x.id === sa.id)
+    return !!sb && time(sa.sharedAt) === time(sb.sharedAt)
+  })
+  if (!sameShared) return false
   return a.participants.every((pa) => {
     const pb = b.participants.find((x) => x.userId === pa.userId)
     return (

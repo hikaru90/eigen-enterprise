@@ -1,4 +1,6 @@
+import type { BrainAskInput, BrainRecapInput } from './brain'
 import type { CallContext, CallContextPort, CallEnded, CallLogPort, ConversationKind } from './context-port'
+import { MemoryBrainAnswerStore } from './brain'
 import { livekitConfig, type RoomControl } from './livekit'
 import { MemoryCallsDirectory, MemoryCallsStore } from './memory-store'
 import { createCallsService, type CallsDeps, type CallSpeech } from './service'
@@ -78,6 +80,21 @@ export function fixture(opts: { env?: Record<string, string | undefined> } = {})
     },
   }
   const transcripts = new MemoryTranscriptStore()
+  /** The Company Brain, faked: what it answers next (queued), and every ask / recap it was given. */
+  const brain = {
+    queue: [] as string[],
+    asks: [] as BrainAskInput[],
+    recaps: [] as BrainRecapInput[],
+    next(text: string) {
+      this.queue.push(text)
+    },
+  }
+  const brainAnswers = new MemoryBrainAnswerStore()
+  const brainOut = () => {
+    const text = brain.queue.shift()
+    if (text === undefined) throw new Error('fixture: no Brain answer queued (call f.brain.next first)')
+    return text
+  }
   let t = Date.UTC(2026, 10, 11, 9, 0, 0)
   let n = 0
   const clock = {
@@ -102,10 +119,21 @@ export function fixture(opts: { env?: Record<string, string | undefined> } = {})
       if (text === undefined) throw new Error('fixture: no speech queued for this chunk (call f.speech.next first)')
       return text
     },
+    brain: {
+      async answer(input) {
+        brain.asks.push(input)
+        return brainOut()
+      },
+      async recap(input) {
+        brain.recaps.push(input)
+        return brainOut()
+      },
+    },
+    brainAnswers,
     now: clock.now,
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`,
   }
   const service = createCallsService(deps)
   const user = (userId: string) => ({ kind: 'user' as const, userId })
-  return { store, directory, contexts, closed, removed, mail, logged, clock, deps, service, user, speech, transcripts }
+  return { store, directory, contexts, closed, removed, mail, logged, clock, deps, service, user, speech, transcripts, brain, brainAnswers }
 }

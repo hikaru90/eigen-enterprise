@@ -2,6 +2,8 @@
   import type { PageData } from './$types'
   import ArrowLeft from '@lucide/svelte/icons/arrow-left'
   import { resolve } from '$app/paths'
+  import BrainRecap from '$lib/calls/brain-recap.svelte'
+  import { brainClient } from '$lib/calls/client'
   import { readingTurns } from '$lib/calls/format'
   import PageFrame from '$lib/components/page/page-frame.svelte'
   import PageHeader from '$lib/components/page/page-header.svelte'
@@ -18,6 +20,9 @@
   const turns = $derived(readingTurns(data.segments, since))
   const when = $derived(new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'short' }).format(new Date(data.call.answeredAt ?? data.call.startedAt)))
   const live = $derived(data.call.state === 'scheduled' || data.call.state === 'ringing' || data.call.state === 'active')
+  /** Over, and I switched the Company Brain on in it: the recap is offered (generated only on my click). */
+  const recapOffered = $derived(!live && data.call.brain.turnedOnBy.includes(data.me))
+  const brainApi = brainClient()
 </script>
 
 <svelte:head><title>{docTitle(`Transcript: ${data.call.title}`, 'Calls')}</title></svelte:head>
@@ -32,6 +37,9 @@
       <p class="text-sm text-muted-foreground" role="status" data-testid="call-transcript-live">
         The call is still going: what is said now appears here when you reload.
       </p>
+    {/if}
+    {#if recapOffered}
+      <BrainRecap callId={data.call.id} client={brainApi} />
     {/if}
     {#if turns.length === 0}
       <p class="rounded-xl bg-white p-6 text-center text-sm text-muted-foreground" data-testid="call-transcript-empty">

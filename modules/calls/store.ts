@@ -2,7 +2,8 @@
  * Calls domain types and the storage seam (Postgres in db-store.ts,
  * in-memory in memory-store.ts for tests). Tables: `call`, `call_participant`
  * (drizzle/0122_calls.sql), `call_guest` (drizzle/0152_call_guest_invites.sql),
- * `call_transcript_segment` (drizzle/0157_call_transcripts.sql, ./transcript.ts).
+ * `call_transcript_segment` (drizzle/0157_call_transcripts.sql, ./transcript.ts),
+ * `call_brain_listen` and `call_brain_answer` (drizzle/0159_call_brain.sql, ./brain.ts).
  */
 
 export const CALL_CONTEXT_KINDS = ['dm', 'channel', 'meeting'] as const
@@ -71,7 +72,41 @@ export type Guest = {
   revokedAt: Date | null
 }
 
-export type CallRecord = { call: Call; participants: Participant[]; guests: Guest[] }
+/**
+ * One stretch of the Company Brain listening to a call (./brain.ts): switched
+ * on by a company member in the call, off by anyone in it — or by the call
+ * ending (offBy null). At most one is open per call.
+ */
+export type BrainListen = {
+  id: string
+  callId: string
+  onBy: string
+  onAt: Date
+  offAt: Date | null
+  /** Who switched it off; null while open, or when the call's end closed it. */
+  offBy: string | null
+}
+
+/** A Brain answer its asker shared with the call (the colleagues in it see it). */
+export type SharedBrainAnswer = {
+  id: string
+  callId: string
+  askedBy: string
+  question: string
+  answer: string
+  askedAt: Date
+  sharedAt: Date
+}
+
+export type CallRecord = {
+  call: Call
+  participants: Participant[]
+  guests: Guest[]
+  /** When the Company Brain listened (oldest first). */
+  brainListens: BrainListen[]
+  /** Brain answers shared with the call (oldest first). */
+  brainShared: SharedBrainAnswer[]
+}
 
 /** A second live call for the same DM/channel loses: the caller gets the existing one. */
 export type InsertResult = { ok: true } | { ok: false; existing: CallRecord | null }

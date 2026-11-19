@@ -5,11 +5,12 @@
   import { afterNavigate, beforeNavigate, goto } from '$app/navigation'
   import { resolve } from '$app/paths'
   import { browserActiveCall } from '$lib/calls/active-call.svelte'
+  import { CallBrain } from '$lib/calls/call-brain.svelte'
   import { getCallPresence } from '$lib/calls/call-presence.svelte'
   import { callTabName, leaveDecision, openCallTab } from '$lib/calls/call-tab'
   import { browserCallTranscription } from '$lib/calls/call-transcription.svelte'
   import CallView from '$lib/calls/call-view.svelte'
-  import { callsClient, problemOf } from '$lib/calls/client'
+  import { brainClient, callsClient, problemOf } from '$lib/calls/client'
   import { getLiveCalls } from '$lib/calls/live-calls.svelte'
   import { docTitle } from '$lib/shell/title'
   import { TRANSCRIPT_CHUNK_MS } from '../../../../../modules/calls/transcript'
@@ -39,6 +40,10 @@
   const active = browserActiveCall(client)
   // svelte-ignore state_referenced_locally
   const transcription = browserCallTranscription(active, data.me, client, TRANSCRIPT_CHUNK_MS)
+  // The Company Brain (members only): off until someone in the call switches it on; it answers only when asked.
+  const brainApi = brainClient()
+  // svelte-ignore state_referenced_locally
+  const brain = new CallBrain({ active, me: data.me, client: brainApi })
 
   /** The app opened this tab (window.open), so it may close it again. */
   let closable = $state(false)
@@ -121,6 +126,8 @@
       onhungup={hungUp}
       onopen={openOther}
       {transcription}
+      {brain}
+      brainRecap={brainApi}
       transcriptHref={resolve('/(nucleus)/calls/[id]/transcript', { id: data.call.id })}
     />
   {/key}

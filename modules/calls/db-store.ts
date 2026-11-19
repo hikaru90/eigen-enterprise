@@ -1,6 +1,6 @@
-import type { Call, CallContextKind, CallRecord, CallsStore, Guest, InsertResult, Participant } from './store'
-import { and, desc, eq, inArray, isNotNull, lte, sql, type SQL } from 'drizzle-orm'
-import { callGuests, callParticipants, calls } from '$lib/server/db/calls.schema'
+import type { BrainListen, Call, CallContextKind, CallRecord, CallsStore, Guest, InsertResult, Participant, SharedBrainAnswer } from './store'
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, sql, type SQL } from 'drizzle-orm'
+import { callBrainAnswers, callBrainListens, callGuests, callParticipants, calls } from '$lib/server/db/calls.schema'
 import type { AppDatabase } from '$lib/server/db/context'
 import { sameRecord } from './state'
 
@@ -45,11 +45,21 @@ async function withParticipants(db: Db, rows: Call[]): Promise<CallRecord[]> {
       ),
     )
     .orderBy(callGuests.invitedAt, callGuests.email)) as Guest[]
+  const ids = rows.map((r) => r.id)
+  const ls = (await db.select().from(callBrainListens).where(inArray(callBrainListens.callId, ids)).orderBy(asc(callBrainListens.onAt), asc(callBrainListens.id))) as BrainListen[]
+  // Only the shared answers belong to the call record; an unshared one is its asker's (brain-db-store.ts).
+  const shared = (await db
+    .select()
+    .from(callBrainAnswers)
+    .where(and(inArray(callBrainAnswers.callId, ids), isNotNull(callBrainAnswers.sharedAt)))
+    .orderBy(asc(callBrainAnswers.sharedAt), asc(callBrainAnswers.id))) as SharedBrainAnswer[]
   // The starter first, then by invitation (stable across reads).
   return rows.map((call) => ({
     call,
     participants: ps.filter((p) => p.callId === call.id).sort((a, b) => Number(b.userId === call.startedBy) - Number(a.userId === call.startedBy)),
     guests: gs.filter((g) => g.callId === call.id),
+    brainListens: ls.filter((l) => l.callId === call.id),
+    brainShared: shared.filter((s) => s.callId === call.id),
   }))
 }
 
@@ -73,6 +83,7 @@ export function dbCallsStore(db: AppDatabase): CallsStore {
           await tx.insert(calls).values(rec.call)
           if (rec.guests.length > 0) await tx.insert(callGuests).values(rec.guests)
           if (rec.participants.length > 0) await tx.insert(callParticipants).values(rec.participants)
+          if (rec.brainListens.length > 0 || rec.brainShared.length > 0) throw new Error(`calls: a new call has no Company Brain yet (${rec.call.id})`)
           await notify(tx, rec.call.id)
         })
         return { ok: true }
@@ -128,7 +139,8 @@ export function dbCallsStore(db: AppDatabase): CallsStore {
         }
         for (const p of after.participants) {
           const was = before.participants.find((x) => x.userId === p.userId)
-          if (was && sameRecord({ call: before.call, participants: [was], guests: [] }, { call: before.call, participants: [p], guests: [] })) continue
+          const only = (x: Participant): CallRecord => ({ call: before.call, participants: [x], guests: [], brainListens: [], brainShared: [] })
+          if (was && sameRecord(only(was), only(p))) continue
           await tx
             .insert(callParticipants)
             .values(p)
@@ -136,6 +148,24 @@ export function dbCallsStore(db: AppDatabase): CallsStore {
               target: [callParticipants.callId, callParticipants.userId],
               set: { joinedAt: p.joinedAt, leftAt: p.leftAt, response: p.response, transcribe: p.transcribe },
             })
+        }
+        // The Company Brain: new listening stretches inserted, a closed one updated.
+        for (const l of after.brainListens) {
+          const was = before.brainListens.find((x) => x.id === l.id)
+          if (!was) await tx.insert(callBrainListens).values(l)
+          else if (was.offAt?.getTime() !== l.offAt?.getTime() || was.offBy !== l.offBy) {
+            await tx.update(callBrainListens).set({ offAt: l.offAt, offBy: l.offBy }).where(eq(callBrainListens.id, l.id))
+          }
+        }
+        // A newly shared answer: its asker's own row, marked shared (it must exist, unshared, theirs).
+        for (const s of after.brainShared) {
+          if (before.brainShared.some((x) => x.id === s.id)) continue
+          const marked = await tx
+            .update(callBrainAnswers)
+            .set({ sharedAt: s.sharedAt })
+            .where(and(eq(callBrainAnswers.id, s.id), eq(callBrainAnswers.callId, id), eq(callBrainAnswers.askedBy, s.askedBy), isNull(callBrainAnswers.sharedAt)))
+            .returning({ id: callBrainAnswers.id })
+          if (marked.length !== 1) throw new Error(`calls: sharing answer ${s.id} of ${id} matched no unshared answer of its asker`)
         }
         await notify(tx, id)
         return { before, after }

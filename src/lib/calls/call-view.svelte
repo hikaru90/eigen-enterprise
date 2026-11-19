@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { ActiveCall, StartWith } from './active-call.svelte'
+  import type { CallBrain } from './call-brain.svelte'
   import type { CallTranscription } from './call-transcription.svelte'
-  import type { CallDto } from './client'
+  import type { BrainClient, CallDto } from './client'
+  import Brain from '@lucide/svelte/icons/brain'
   import Captions from '@lucide/svelte/icons/captions'
   import CaptionsOff from '@lucide/svelte/icons/captions-off'
   import Mic from '@lucide/svelte/icons/mic'
@@ -15,6 +17,8 @@
   import Volume2 from '@lucide/svelte/icons/volume-2'
   import X from '@lucide/svelte/icons/x'
   import { onDestroy, onMount } from 'svelte'
+  import BrainRecap from './brain-recap.svelte'
+  import CallBrainPanel from './call-brain-panel.svelte'
   import CallTile from './call-tile.svelte'
   import DevicePicker from './device-picker.svelte'
   import { callClock } from './format'
@@ -36,6 +40,12 @@
    * answer time: the same number for everyone, kept on a rejoin) and, with
    * `transcription`, that the call is transcribed and by whom; the controls
    * carry my own transcription switch.
+   *
+   * The Company Brain (modules/calls/brain.ts): everyone in the call — guests
+   * too — sees "Company Brain listening" in the header while it is on. With
+   * `brain` (people of the company) the controls open its panel: the switch,
+   * "Ask the Brain", my private answers and what was shared. With
+   * `brainRecap`, the ended screen offers whoever switched it on a recap.
    */
   let {
     active,
@@ -48,6 +58,8 @@
     startWith = { microphone: true, camera: true },
     transcription = null,
     transcriptHref = null,
+    brain = null,
+    brainRecap = null,
   }: {
     active: ActiveCall
     call: CallDto
@@ -66,7 +78,18 @@
     transcription?: CallTranscription | null
     /** Where the call's transcript is read after the call (people of the company); null: no link. */
     transcriptHref?: string | null
+    /** The Company Brain, my side (members); null: no panel (a guest only sees the indicator). */
+    brain?: CallBrain | null
+    /** The recap after the call, offered to whoever switched the Brain on; null: no offer. */
+    brainRecap?: Pick<BrainClient, 'brainRecap'> | null
   } = $props()
+
+  let brainOpen = $state(false)
+
+  function toggleBrainPanel() {
+    brainOpen = !brainOpen
+    if (brainOpen) void brain?.load()
+  }
 
   const GAP = 8
   let stageW = $state(0)
@@ -105,6 +128,13 @@
   const answeredAt = $derived(mine ? active.call?.answeredAt ?? null : null)
   const clock = $derived(answeredAt && (s.phase === 'connected' || s.phase === 'reconnecting') ? callClock(answeredAt, nowMs) : null)
   const transcribed = $derived(transcription && mine && active.inCall ? transcription.transcribed : [])
+  /** The indicator everyone in the call sees (my own switch shows at once). */
+  const brainListening = $derived(mine && active.inCall && (brain ? brain.listening : active.call?.brain.listening === true))
+  const brainBy = $derived(mine ? (active.call?.brain.byName ?? null) : null)
+  /** I am out of the call and switched the Brain on in it: offer the recap (the server says so if the call still goes on). */
+  const recapOffered = $derived(
+    brainRecap !== null && mine && (s.ended === 'call_over' || s.ended === 'hung_up') && (active.call?.brain.turnedOnBy.includes(me) ?? false),
+  )
 
   async function hangUp() {
     await active.hangUp()
@@ -195,6 +225,17 @@
         ><span class="size-1.5 rounded-full bg-red-500" aria-hidden="true"></span>Transcript on</span
       >
     {/if}
+    {#if brainListening}
+      <span
+        class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium"
+        role="status"
+        title={brainBy
+          ? `${brainBy} switched the Company Brain on. It only listens and answers only when someone asks it.`
+          : 'The Company Brain is listening. It only listens and answers only when someone asks it.'}
+        data-testid="call-brain-indicator"
+        ><span class="size-1.5 rounded-full bg-amber-300" aria-hidden="true"></span>Company Brain listening</span
+      >
+    {/if}
     {#if clock}
       <span class="shrink-0 font-mono text-sm tabular-nums text-neutral-300" aria-label={`Call time ${clock}`} data-testid="call-clock">{clock}</span>
     {/if}
@@ -258,6 +299,9 @@
     <div class="grid flex-1 place-items-center p-6 text-center" data-testid="call-ended" data-reason={s.ended}>
       <div class="max-w-sm">
         <p class="text-base font-semibold">{endedText}</p>
+        {#if recapOffered && brainRecap && active.call}
+          <div class="mt-5"><BrainRecap callId={active.call.id} client={brainRecap} tone="dark" /></div>
+        {/if}
         <div class="mt-5 flex flex-wrap justify-center gap-2">
           {#if transcriptHref && (s.ended === 'hung_up' || s.ended === 'call_over')}
             <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the page passes it through resolve() -->
@@ -281,7 +325,8 @@
       </div>
     </div>
   {:else}
-    <div class="relative flex min-h-0 flex-1 flex-col p-2 sm:p-3">
+    <div class="relative flex min-h-0 flex-1">
+    <div class="relative flex min-h-0 min-w-0 flex-1 flex-col p-2 sm:p-3">
       {#if s.notices.length > 0 || active.audioBlocked || transcription?.problem}
         <div class="absolute inset-x-2 top-2 z-10 mx-auto flex max-w-2xl flex-col gap-2 sm:inset-x-3 sm:top-3">
           {#each s.notices as n (n.device)}
@@ -358,6 +403,13 @@
         {/if}
       </div>
     </div>
+    {#if brain && brainOpen && active.inCall}
+      <!-- Beside the stage on a wide screen; over it on a phone. -->
+      <div class="absolute inset-0 z-20 sm:static sm:z-auto sm:w-80 sm:shrink-0 sm:border-l sm:border-white/10">
+        <CallBrainPanel {brain} onclose={() => (brainOpen = false)} />
+      </div>
+    {/if}
+    </div>
   {/if}
 
   {#if mine && active.inCall}
@@ -390,6 +442,24 @@
             data-testid="call-transcribe"
             onclick={() => transcription?.toggle()}
             >{#if transcription.on}<Captions class="size-5" />{:else}<CaptionsOff class="size-5" />{/if}</button
+          >
+        {/if}
+        {#if brain}
+          <button
+            type="button"
+            class={[
+              'relative grid size-12 shrink-0 place-items-center rounded-full transition-colors',
+              brainOpen ? 'bg-white text-neutral-900 hover:bg-white/90' : 'bg-white/15 text-white hover:bg-white/25',
+            ]}
+            aria-label="Company Brain"
+            title={brain.listening ? 'Company Brain: listening — ask it, or switch it off' : 'Company Brain: off — bring it into this call'}
+            aria-expanded={brainOpen}
+            data-testid="call-brain-button"
+            onclick={toggleBrainPanel}
+            ><Brain class="size-5" />{#if brain.listening}<span
+                class="absolute top-2 right-2 size-2 rounded-full bg-amber-300"
+                aria-hidden="true"
+              ></span>{/if}</button
           >
         {/if}
         <button
