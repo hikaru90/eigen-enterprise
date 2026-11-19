@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
 import { ActiveCall, type CallEnv } from './active-call.svelte'
+import { CallTranscription } from './call-transcription.svelte'
 import CallView from './call-view.svelte'
 import { CallRequestError, type CallDto, type CallTokenDto } from './client'
 import { DEVICES_KEY } from './devices'
@@ -270,5 +271,122 @@ describe('device picker in the call controls', () => {
     await page.getByTestId('call-devices-toggle').click()
     env.media.change([...env.media.list, { kind: 'audioinput', deviceId: 'mic-new', label: 'Conference mic' }])
     await vi.waitFor(() => expect((page.getByTestId('call-device-audioinput').element() as HTMLSelectElement).options).toHaveLength(3))
+  })
+})
+
+describe('call-view.svelte: how long the call has been going', () => {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString()
+
+  it('no clock until someone answered; then mm:ss counted from the server’s answer time', async () => {
+    const { active } = setup({ call: fakeCall({ answeredAt: null }) })
+    await connected()
+    await expect.element(page.getByTestId('call-clock')).not.toBeInTheDocument()
+    // The call feed brings the answer time (the same for everyone, kept on a rejoin).
+    active.update(fakeCall({ state: 'active', answeredAt: ago(65_000) }))
+    await expect.element(page.getByTestId('call-clock')).toHaveTextContent(/^01:0[56]$/)
+    await expect.element(page.getByTestId('call-clock')).toHaveAttribute('aria-label', expect.stringMatching(/^Call time 01:0[56]$/))
+  })
+
+  it('it keeps ticking, and from an hour on reads h:mm:ss', async () => {
+    setup({ call: fakeCall({ state: 'active', answeredAt: ago(3_725_000) }) })
+    await connected()
+    await expect.element(page.getByTestId('call-clock')).toHaveTextContent(/^1:02:0[5-7]$/)
+    const first = page.getByTestId('call-clock').element().textContent
+    await vi.waitFor(() => expect(page.getByTestId('call-clock').element().textContent).not.toBe(first), { timeout: 2500 })
+  })
+})
+
+describe('call-view.svelte: transcription indicator and my switch', () => {
+  function withTranscription(call: CallDto) {
+    const room = new FakeRoom()
+    const env = fakeEnv()
+    const client = {
+      accept: vi.fn(async () => call),
+      token: vi.fn(async () => fakeToken),
+      hangup: vi.fn(async () => ({ ...call, state: 'ended' as const })),
+      get: vi.fn(async () => call),
+      transcribe: vi.fn(async () => null),
+      setTranscription: vi.fn(async (_id: string, on: boolean) => ({
+        ...call,
+        participants: call.participants.map((p) => (p.userId === 'ann' ? { ...p, transcribing: on } : p)),
+      })),
+    }
+    const active = new ActiveCall({ client, createRoom: async () => room, env: () => env })
+    const recorded: MediaStreamTrack[] = []
+    const transcription = new CallTranscription({
+      active,
+      me: 'ann',
+      client,
+      record: (track) => (recorded.push(track), { stop: async () => new Blob(['x'], { type: 'audio/webm' }) }),
+      hasSpeech: async () => true,
+      chunkMs: 30_000,
+      now: () => Date.now(),
+      setTimer: (fn, ms) => setTimeout(fn, ms),
+      clearTimer: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
+    })
+    // The call page owns it, like the ActiveCall: connected on mount.
+    transcription.connect()
+    render(CallView, { active, call, me: 'ann', leaveLabel: 'Close', onleave: vi.fn(), onhungup: vi.fn(), onopen: vi.fn(), transcription })
+    return { client, transcription, recorded, room }
+  }
+
+  const both = (benOn: boolean) =>
+    fakeCall({
+      state: 'active',
+      answeredAt: new Date().toISOString(),
+      participants: [
+        { userId: 'ben', name: 'Ben Example', guest: false, response: 'accepted', joinedAt: new Date().toISOString(), leftAt: null, inRoom: true, transcribing: benOn },
+        { userId: 'ann', name: 'Ann Example', guest: false, response: 'accepted', joinedAt: new Date().toISOString(), leftAt: null, inRoom: true, transcribing: true },
+      ],
+    })
+
+  it('everyone sees that the call is transcribed, and by whom; my switch is on by default', async () => {
+    const { recorded } = withTranscription(both(true))
+    await connected()
+    const indicator = page.getByTestId('call-transcript-indicator')
+    await expect.element(indicator).toHaveTextContent('Transcript on')
+    await expect.element(indicator).toHaveAttribute('title', 'Transcribed: Ben Example, Ann Example')
+    await expect.element(page.getByTestId('call-transcribe')).toHaveAttribute('aria-pressed', 'true')
+    await expect.element(page.getByTestId('call-transcribe')).toHaveAccessibleName('Stop transcribing my microphone')
+    await vi.waitFor(() => expect(recorded).toHaveLength(1))
+  })
+
+  it('I turn mine off: the server is told, the switch shows it; the indicator stays while Ben is transcribed', async () => {
+    const { client } = withTranscription(both(true))
+    await connected()
+    await page.getByRole('button', { name: 'Stop transcribing my microphone' }).click()
+    expect(client.setTranscription).toHaveBeenCalledWith('call-1', false)
+    await expect.element(page.getByTestId('call-transcribe')).toHaveAttribute('aria-pressed', 'false')
+    await expect.element(page.getByTestId('call-transcribe')).toHaveAccessibleName('Transcribe my microphone')
+    await expect.element(page.getByTestId('call-transcript-indicator')).toHaveAttribute('title', 'Transcribed: Ben Example')
+  })
+
+  it('nobody transcribed (Ben is off, then I turn mine off): no indicator', async () => {
+    const { transcription } = withTranscription(both(false))
+    await connected()
+    await expect.element(page.getByTestId('call-transcript-indicator')).toHaveAttribute('title', 'Transcribed: Ann Example')
+    await page.getByRole('button', { name: 'Stop transcribing my microphone' }).click()
+    await expect.element(page.getByTestId('call-transcript-indicator')).not.toBeInTheDocument()
+    expect(transcription.on).toBe(false)
+  })
+
+  it('a transcription problem is shown in the server’s words and can be dismissed', async () => {
+    const { client } = withTranscription(both(true))
+    client.setTranscription.mockRejectedValueOnce(new CallRequestError({ kind: 'failed', message: 'could not reach the server' }))
+    await connected()
+    await page.getByRole('button', { name: 'Stop transcribing my microphone' }).click()
+    const problem = page.getByTestId('call-transcript-problem')
+    await expect.element(problem).toHaveTextContent('Your transcription could not be turned off: could not reach the server')
+    // Nothing changed on the server: still on.
+    await expect.element(page.getByTestId('call-transcribe')).toHaveAttribute('aria-pressed', 'true')
+    await problem.getByRole('button', { name: 'Dismiss' }).click()
+    await expect.element(problem).not.toBeInTheDocument()
+  })
+
+  it('no transcription wiring (a view without it): no indicator, no switch', async () => {
+    setup({ call: both(true) })
+    await connected()
+    await expect.element(page.getByTestId('call-transcribe')).not.toBeInTheDocument()
+    await expect.element(page.getByTestId('call-transcript-indicator')).not.toBeInTheDocument()
   })
 })

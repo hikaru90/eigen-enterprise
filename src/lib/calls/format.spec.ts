@@ -1,6 +1,6 @@
 import type { CallDto } from './client'
 import { describe, expect, it } from 'vitest'
-import { callLineLabel, durationLabel, historyOf } from './format'
+import { callClock, callLineLabel, durationLabel, historyOf, readingTurns } from './format'
 
 describe('durationLabel', () => {
   it('whole minutes (at least one), hours past an hour', () => {
@@ -9,6 +9,43 @@ describe('durationLabel', () => {
     expect(durationLabel(245)).toBe('4 min')
     expect(durationLabel(3600)).toBe('1 h')
     expect(durationLabel(3900)).toBe('1 h 5 min')
+  })
+})
+
+describe('callClock (the running clock in the call)', () => {
+  const since = '2026-11-19T10:00:00.000Z'
+  const at = (ms: number) => Date.parse(since) + ms
+  it('mm:ss under an hour, h:mm:ss from an hour on', () => {
+    expect(callClock(since, at(0))).toBe('00:00')
+    expect(callClock(since, at(999))).toBe('00:00')
+    expect(callClock(since, at(65_000))).toBe('01:05')
+    expect(callClock(since, at(3_599_999))).toBe('59:59')
+    expect(callClock(since, at(3_600_000))).toBe('1:00:00')
+    expect(callClock(since, at(3_725_000))).toBe('1:02:05')
+    expect(callClock(since, at(36_000_000 + 61_000))).toBe('10:01:01')
+  })
+  it('a browser clock a little behind the server never shows a negative time', () => {
+    expect(callClock(since, at(-4_000))).toBe('00:00')
+  })
+})
+
+describe('readingTurns (the transcript page)', () => {
+  const seg = (seq: number, speakerId: string, startedAt: string, text: string) => ({
+    seq,
+    speakerId,
+    speakerKind: 'member' as const,
+    speakerName: speakerId.toUpperCase(),
+    startedAt: `2026-11-19T10:${startedAt}.000Z`,
+    endedAt: `2026-11-19T10:${startedAt}.000Z`,
+    text,
+  })
+  it('one speaker in a row is one turn, its time from the call start (mm:ss)', () => {
+    const turns = readingTurns([seg(1, 'a', '00:30', 'eins'), seg(2, 'a', '01:00', 'zwei'), seg(3, 'b', '01:05', 'drei'), seg(4, 'a', '02:00', 'vier')], '2026-11-19T10:00:00.000Z')
+    expect(turns).toEqual([
+      { key: 1, speakerName: 'A', guest: false, at: '00:30', text: 'eins zwei' },
+      { key: 3, speakerName: 'B', guest: false, at: '01:05', text: 'drei' },
+      { key: 4, speakerName: 'A', guest: false, at: '02:00', text: 'vier' },
+    ])
   })
 })
 

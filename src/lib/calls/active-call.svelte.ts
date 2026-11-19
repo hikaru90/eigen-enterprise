@@ -174,6 +174,29 @@ export class ActiveCall {
     void this.#join()
   }
 
+  /**
+   * A newer view of this call from the server (the call feed, a refresh, a
+   * transcription switch): when someone answered (the call's clock), who is
+   * transcribed. Another call's view is ignored.
+   */
+  update(call: CallDto): void {
+    if (this.#call?.id !== call.id) return
+    this.#call = call
+    this.#notify()
+  }
+
+  /** Ask the server for this call now (a guest has no call feed). */
+  async refresh(): Promise<void> {
+    const call = this.#call
+    if (!call) return
+    this.update(await this.#deps.client.get(call.id))
+  }
+
+  /** My microphone as the room publishes it; null while it is off or I am in no room. */
+  microphoneTrack(): MediaStreamTrack | null {
+    return this.#room ? this.#room.microphoneTrack() : null
+  }
+
   /** Forget a call that is over (its view was closed). A live call stays. */
   release(): void {
     if (!this.inCall) this.#forget()

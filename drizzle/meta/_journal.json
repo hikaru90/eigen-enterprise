@@ -1072,6 +1072,13 @@
       "when": 1795200000155,
       "tag": "0155_managed_mail_sender",
       "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1795200000157,
+      "tag": "0157_call_transcripts",
+      "breakpoints": true
     }
   ]
 }

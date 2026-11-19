@@ -1,7 +1,8 @@
 /**
  * Calls domain types and the storage seam (Postgres in db-store.ts,
  * in-memory in memory-store.ts for tests). Tables: `call`, `call_participant`
- * (drizzle/0122_calls.sql), `call_guest` (drizzle/0152_call_guest_invites.sql).
+ * (drizzle/0122_calls.sql), `call_guest` (drizzle/0152_call_guest_invites.sql),
+ * `call_transcript_segment` (drizzle/0157_call_transcripts.sql, ./transcript.ts).
  */
 
 export const CALL_CONTEXT_KINDS = ['dm', 'channel', 'meeting'] as const
@@ -46,6 +47,11 @@ export type Participant = {
   /** Set when they leave; cleared when they rejoin. */
   leftAt: Date | null
   response: CallResponse
+  /**
+   * Their own microphone is transcribed (call transcripts, migration 0157):
+   * consent per person, on by default, switched by them alone.
+   */
+  transcribe: boolean
 }
 
 /**

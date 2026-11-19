@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
 import { ActiveCall } from './active-call.svelte'
+import { CallTranscription } from './call-transcription.svelte'
 import { fakeCall, fakeEnv, FakeRoom, fakeToken } from './fake-room'
 import GuestJoin from './guest-join.svelte'
 
@@ -29,7 +30,7 @@ const guestCall = () =>
     title: 'Kick-off',
     state: 'scheduled',
     startedBy: 'ann',
-    participants: [{ userId: 'guest:g1', name: 'Guest', guest: true, response: 'accepted', joinedAt: null, leftAt: null, inRoom: false }],
+    participants: [{ userId: 'guest:g1', name: 'Guest', guest: true, response: 'accepted', joinedAt: null, leftAt: null, inRoom: false, transcribing: true }],
   })
 
 function mount(props: { view: GuestPageView | null; media?: 'ok' | 'denied' }) {
@@ -52,8 +53,23 @@ function mount(props: { view: GuestPageView | null; media?: 'ok' | 'denied' }) {
     vi.spyOn(s, 'getTracks').mockReturnValue([{ stop, kind: 'video', enabled: true } as unknown as MediaStreamTrack])
     return s
   })
-  render(GuestJoin, { props: { view: props.view, call: props.view ? guestCall() : null, makeActive, getMedia } as never })
-  return { room, names, makeActive, getMedia, stop }
+  const transcription = { setTranscription: vi.fn(async () => guestCall()), transcribe: vi.fn(async () => null) }
+  const makeTranscription = vi.fn(
+    (active: ActiveCall, me: string) =>
+      new CallTranscription({
+        active,
+        me,
+        client: transcription,
+        record: () => ({ stop: async () => new Blob(['x'], { type: 'audio/webm' }) }),
+        hasSpeech: async () => true,
+        chunkMs: 30_000,
+        now: () => Date.now(),
+        setTimer: (fn, ms) => setTimeout(fn, ms),
+        clearTimer: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
+      }),
+  )
+  render(GuestJoin, { props: { view: props.view, call: props.view ? guestCall() : null, makeActive, makeTranscription, getMedia } as never })
+  return { room, names, makeActive, makeTranscription, getMedia, stop, transcription }
 }
 
 describe('guest page link states', () => {
@@ -94,6 +110,20 @@ describe('guest page joining', () => {
     await expect.element(page.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
     expect(names).toContain('Ony Kunde')
     expect(room.devices).toMatchObject({ microphone: true, camera: false })
+  })
+
+  it('before joining, the guest is told the call is transcribed and that they can turn theirs off; in the call: the switch', async () => {
+    const { makeTranscription, transcription } = mount({ view: view() })
+    await page.getByLabelText('Your name').fill('Ony')
+    await page.getByTestId('guest-continue').click()
+    await expect.element(page.getByTestId('guest-transcript-notice')).toHaveTextContent(/transcribed/i)
+    await expect.element(page.getByTestId('guest-transcript-notice')).toHaveTextContent(/turn it off/i)
+    await page.getByTestId('guest-join').click()
+    await expect.element(page.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
+    expect(makeTranscription).toHaveBeenCalledWith(expect.any(ActiveCall), 'guest:g1')
+    await expect.element(page.getByTestId('call-transcript-indicator')).toHaveTextContent('Transcript on')
+    await page.getByRole('button', { name: 'Stop transcribing my microphone' }).click()
+    expect(transcription.setTranscription).toHaveBeenCalledWith('call-1', false)
   })
 
   it('camera / mic refused: says how to allow it, still lets them join with devices off', async () => {

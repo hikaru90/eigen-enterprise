@@ -2,6 +2,7 @@
   import type { PageData } from './$types'
   import CalendarClock from '@lucide/svelte/icons/calendar-clock'
   import ExternalLink from '@lucide/svelte/icons/external-link'
+  import FileText from '@lucide/svelte/icons/file-text'
   import Hash from '@lucide/svelte/icons/hash'
   import PhoneIncoming from '@lucide/svelte/icons/phone-incoming'
   import PhoneMissed from '@lucide/svelte/icons/phone-missed'
@@ -285,6 +286,13 @@
                 <UserAvatar name={p.name} size="sm" class="ring-2 ring-background" />
               {/each}
             </span>
+            {#if data.transcripts[c.id]}
+              <a
+                href={resolve('/(nucleus)/calls/[id]/transcript', { id: c.id })}
+                class="inline-flex shrink-0 items-center gap-1 rounded-full bg-foreground/[0.06] px-2.5 py-1 text-xs font-medium hover:bg-foreground/[0.1]"
+                data-testid="calls-transcript-link"><FileText class="size-3.5" aria-hidden="true" />Transcript</a
+              >
+            {/if}
           </li>
         {/each}
       </ul>

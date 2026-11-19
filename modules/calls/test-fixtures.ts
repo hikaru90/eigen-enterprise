@@ -1,7 +1,8 @@
 import type { CallContext, CallContextPort, CallEnded, CallLogPort, ConversationKind } from './context-port'
 import { livekitConfig, type RoomControl } from './livekit'
 import { MemoryCallsDirectory, MemoryCallsStore } from './memory-store'
-import { createCallsService, type CallsDeps } from './service'
+import { createCallsService, type CallsDeps, type CallSpeech } from './service'
+import { MemoryTranscriptStore } from './transcript'
 
 export const TEST_LIVEKIT_ENV = {
   LIVEKIT_URL: 'wss://rtc.os.example.test',
@@ -68,6 +69,15 @@ export function fixture(opts: { env?: Record<string, string | undefined> } = {})
       return { id: `mail-${this.sent.length}`, status: 'sent' }
     },
   }
+  /** Speech to text, faked: what the next chunk "says" (queued), and every chunk it heard. */
+  const speech = {
+    queue: [] as string[],
+    calls: [] as Parameters<CallSpeech>[0][],
+    next(text: string) {
+      this.queue.push(text)
+    },
+  }
+  const transcripts = new MemoryTranscriptStore()
   let t = Date.UTC(2026, 10, 11, 9, 0, 0)
   let n = 0
   const clock = {
@@ -85,10 +95,17 @@ export function fixture(opts: { env?: Record<string, string | undefined> } = {})
     mail,
     origin: () => 'https://os.example.test',
     companyName: async () => 'Example Co',
+    transcripts,
+    speech: async (input) => {
+      speech.calls.push(input)
+      const text = speech.queue.shift()
+      if (text === undefined) throw new Error('fixture: no speech queued for this chunk (call f.speech.next first)')
+      return text
+    },
     now: clock.now,
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`,
   }
   const service = createCallsService(deps)
   const user = (userId: string) => ({ kind: 'user' as const, userId })
-  return { store, directory, contexts, closed, removed, mail, logged, clock, deps, service, user }
+  return { store, directory, contexts, closed, removed, mail, logged, clock, deps, service, user, speech, transcripts }
 }

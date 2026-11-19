@@ -1,14 +1,22 @@
 <script lang="ts">
   import type { PageData } from './$types'
-  import { browserActiveCall } from '$lib/calls/active-call.svelte'
-  import { guestCallsClient } from '$lib/calls/client'
+  import { browserActiveCall, type ActiveCall } from '$lib/calls/active-call.svelte'
+  import { browserCallTranscription } from '$lib/calls/call-transcription.svelte'
+  import { guestCallsClient, type LiveCallClient } from '$lib/calls/client'
   import GuestJoin from '$lib/calls/guest-join.svelte'
   import { docTitle } from '$lib/shell/title'
+  import { TRANSCRIPT_CHUNK_MS } from '../../../../modules/calls/transcript'
 
   /** A guest's call link (proposal 844bab56): the page is GuestJoin over the guest routes. */
   let { data }: { data: PageData } = $props()
 
-  const makeActive = (name: () => string) => browserActiveCall(guestCallsClient(data.token, name))
+  /** One guest client per join: the call and the transcription of the guest's microphone share it. */
+  let client: LiveCallClient | null = null
+  const makeActive = (name: () => string) => browserActiveCall((client = guestCallsClient(data.token, name)))
+  const makeTranscription = (active: ActiveCall, me: string) => {
+    if (!client) throw new Error('calls: the guest call has no client yet')
+    return browserCallTranscription(active, me, client, TRANSCRIPT_CHUNK_MS)
+  }
   const getMedia = (c: MediaStreamConstraints) => {
     if (!navigator.mediaDevices?.getUserMedia) return Promise.reject(new Error('this browser offers no camera or microphone here'))
     return navigator.mediaDevices.getUserMedia(c)
@@ -20,4 +28,4 @@
   <meta name="robots" content="noindex" />
 </svelte:head>
 
-<GuestJoin view={data.view} call={data.call} {makeActive} {getMedia} />
+<GuestJoin view={data.view} call={data.call} {makeActive} {makeTranscription} {getMedia} />
