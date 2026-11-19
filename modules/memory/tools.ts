@@ -9,6 +9,7 @@ import {
   type MemoryWriter,
 } from './assistant-writes'
 import { MEMORY_TOOL_NAMES } from './manifest'
+import { createTaskTools, type TaskToolDeps } from './task-tools'
 
 /**
  * Kernel tool descriptors wrapping the existing MCP memory tool
@@ -24,6 +25,8 @@ import { MEMORY_TOOL_NAMES } from './manifest'
 export type MemoryToolDeps = {
   /** Who a write lands with (live: liveMemoryWriterOf). */
   writerOf?: (ctx: ToolContext) => Promise<MemoryWriter | null>
+  /** The tasks.* tools (task-tools.ts); they share writerOf unless given their own. */
+  tasks?: TaskToolDeps
 }
 
 const WRITE_TOOLS = new Set<string>([
@@ -81,7 +84,7 @@ async function runAssistantWrite(
   throw new Error(`${name} is not a memory write`)
 }
 
-/** Kernel descriptors for the read-oriented memory surface plus capture and notes. */
+/** Kernel descriptors for the read-oriented memory surface plus capture and notes, and the tasks.* tools. */
 export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
   const writerOf = opts.writerOf ?? liveMemoryWriterOf
 
@@ -211,5 +214,6 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
         include_agent: z.boolean().optional(),
       }),
     ),
+    ...createTaskTools({ writerOf: opts.writerOf, ...opts.tasks }),
   ]
 }

@@ -62,6 +62,39 @@ describe('drive.* tools', () => {
     expect(await drive.listRevisions({ kind: 'agent', id: 'agent:1' }, doc.id)).toHaveLength(1)
   })
 
+  it('drive.create_document: a new Markdown file with its text (one revision), the place for internal documents', async () => {
+    const { drive, tool, agent } = await setup()
+    const create = tool('drive.create_document')
+    expect(create).toMatchObject({ auditClass: 'mutate', approvalRisk: 'internal' })
+    expect(create.summary).toMatch(/internal documents/i)
+    expect(create.summary).toMatch(/pitch decks/i)
+    expect(create.activity!({ name: 'Pitch deck', content: '' }, { file: { name: 'Pitch deck.md' } })).toBe('Created Pitch deck.md in Drive')
+    expect(create.activity!({ name: 'Pitch deck', content: '' }, undefined)).toBe('Tried to create Pitch deck in Drive')
+
+    const out = (await create.handler(agent, { name: 'Pitch deck', content: '# Seed round\n' })) as { file: { id: string; name: string } }
+    expect(out.file.name).toBe('Pitch deck.md')
+    expect(await tool('drive.read').handler(agent, { file_id: out.file.id })).toMatchObject({ content: '# Seed round\n' })
+    expect(await drive.listRevisions({ kind: 'agent', id: 'agent:1' }, out.file.id)).toHaveLength(1)
+    // A name that already ends in .md keeps it.
+    const named = (await create.handler(agent, { name: 'brief.md', content: 'x' })) as { file: { name: string } }
+    expect(named.file.name).toBe('brief.md')
+  })
+
+  it('drive.create_document working for a person lands in their Drive as theirs, with their own access', async () => {
+    const { drive, tool, agent } = await setup()
+    const forAlice = { ...agent, actingUserId: 'alice' }
+    const out = (await tool('drive.create_document').handler(forAlice, { name: 'Project brief', content: 'b' })) as {
+      file: { id: string; ownerId: string }
+    }
+    expect(out.file.ownerId).toBe('alice')
+    expect((await drive.listFolder({ kind: 'user', userId: 'alice' }, null)).items.map((i) => i.name)).toEqual(['Project brief.md'])
+    // Into a folder the person cannot see: refused as for them.
+    const bobs = await drive.createFolder({ kind: 'user', userId: 'bob' }, null, 'Private')
+    await expect(
+      tool('drive.create_document').handler(forAlice, { name: 'x', content: 'y', folder_id: bobs.id }),
+    ).rejects.toMatchObject({ code: 'not_found' })
+  })
+
   it('rejects unknown input keys', async () => {
     const { tool, agent } = await setup()
     await expect(tool('drive.read').handler(agent, { file_id: 'x', path: '/etc' })).rejects.toThrow()

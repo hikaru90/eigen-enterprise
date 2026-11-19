@@ -187,6 +187,8 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   'members.group_delete',
   // Drive: an agent's write replaces a company file's text (kept as a revision).
   'drive.write_text',
+  // Drive: an agent's new document (internal documents go here, never the website).
+  'drive.create_document',
   // Drive archive: hides items from everyone's normal view (reversible, nothing deleted).
   'drive.archive',
   'drive.unarchive',

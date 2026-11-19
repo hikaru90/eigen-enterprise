@@ -287,7 +287,8 @@ test.describe('website-founding journey (live)', () => {
         'website.create_page:executed',
         'website.create_page:executed',
         'website.create_page:executed',
-        'website.create_page:executed',
+        // The tone-of-voice doc is internal: Drive (Markdown), never a website page.
+        'drive.create_document:executed',
         'website.publish_page:executed',
         'website.publish_page:approval_pending',
       ].sort(),

@@ -5,6 +5,8 @@ import { appKernel } from '$lib/server/boot'
 import { getDb } from '$lib/server/db'
 import { kernelEvents } from '$lib/server/db/kernel.schema'
 import { EeClient, SubstrateUnavailableError } from '$lib/server/ee/client'
+import { assignedTaskDeps } from '$lib/server/memory/assigned-tasks/live'
+import { needsYouTasks, type NeedsYouTasks } from '$lib/server/memory/assigned-tasks/service'
 import { buildOverview, type Overview } from '$lib/server/overview/overview'
 import { humanContext, overviewResultSources } from '$lib/server/overview/sources'
 
@@ -15,6 +17,8 @@ export type Dashboard = {
   overview: Overview
   /** The owner's nightly-backup problem, if any (plan/phase-backups.md). */
   backup: BackupNotice | null
+  /** Tasks other members assigned to this person (open), and news on the ones they assigned (unseen). */
+  tasks: NeedsYouTasks
 }
 
 /**
@@ -54,7 +58,11 @@ export async function loadDashboard(userId: string): Promise<Dashboard> {
     pendingApprovals: () => kernel.approvals.listPending(),
   })
 
-  return { overview, backup: role === 'owner' ? await ownerBackupNotice() : null }
+  return {
+    overview,
+    backup: role === 'owner' ? await ownerBackupNotice() : null,
+    tasks: await needsYouTasks(await assignedTaskDeps(), userId),
+  }
 }
 
 /** A failed or missing nightly backup is the owner's to fix (plan/phase-backups.md). */

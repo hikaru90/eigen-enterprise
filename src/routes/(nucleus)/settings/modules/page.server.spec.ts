@@ -144,7 +144,7 @@ describe('Settings → Plugins (owner and admins)', () => {
       requires: [],
       requiredBy: [],
     })
-    expect(plugin(await loaded(), 'assistant').description).toMatch(/assistant/i)
+    expect(plugin(await loaded(), 'assistant').description).toMatch(/company brain/i)
     await actions.deactivate!(ev({ module_id: 'assistant' }))
     expect(await activations.get('assistant')).toBe(false)
     await actions.activate!(ev({ module_id: 'assistant' }))

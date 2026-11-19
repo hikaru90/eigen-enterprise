@@ -196,6 +196,36 @@ describe('nucleus-chat harness turns', () => {
 })
 
 describe('nucleusTurnsFromPersisted', () => {
+  it('a user turn keeps its attached files (chips) — name, kind and size', () => {
+    const attachments = [{ name: 'q3.pdf', kind: 'pdf' as const, sizeBytes: 4096 }]
+    expect(
+      nucleusTurnsFromPersisted(
+        [
+          { role: 'user', content: 'Summarise this.', metadata: { attachments } },
+          { role: 'user', content: 'and this', metadata: null },
+        ],
+        {},
+      ),
+    ).toEqual([
+      { role: 'user', content: 'Summarise this.', attachments },
+      { role: 'user', content: 'and this' },
+    ])
+    expect(userTurn('see file', attachments)).toEqual({
+      role: 'user',
+      content: 'see file',
+      attachments,
+    })
+  })
+
+  it('a malformed stored attachment list fails loud', () => {
+    expect(() =>
+      nucleusTurnsFromPersisted(
+        [{ role: 'user', content: 'x', metadata: { attachments: [{ name: 1 }] } }],
+        {},
+      ),
+    ).toThrow()
+  })
+
   it('a card saved without an id is linked to the pending request for its tool', () => {
     const turns = nucleusTurnsFromPersisted(
       [

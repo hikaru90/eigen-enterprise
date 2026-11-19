@@ -102,6 +102,7 @@ describe('buildKernel wires the owner-chosen approval mode', () => {
       'contacts.log_contact': 'internal',
       'contribute_hub.revoke_install': 'destructive',
       'drive.archive': 'internal',
+      'drive.create_document': 'internal',
       'drive.unarchive': 'internal',
       'drive.write_text': 'internal',
       'email.contact_add': 'internal',
@@ -212,6 +213,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect(toolNames).toContain('drive.list')
     expect(toolNames).toContain('drive.read')
     expect(toolNames).toContain('drive.write_text')
+    expect(toolNames).toContain('drive.create_document')
     expect(toolNames).toContain('drive.archive')
     expect(toolNames).toContain('drive.unarchive')
     expect(toolNames).toContain('drive.list_archived')
@@ -274,6 +276,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'contacts.update',
       'contribute_hub.revoke_install',
       'drive.archive',
+      'drive.create_document',
       'drive.unarchive',
       'drive.write_text',
       'email.contact_add',

@@ -6,6 +6,7 @@ export const DRIVE_TOOL_NAMES = [
   'drive.list',
   'drive.read',
   'drive.write_text',
+  'drive.create_document',
   'drive.archive',
   'drive.unarchive',
   'drive.list_archived',
