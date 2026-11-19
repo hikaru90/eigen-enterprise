@@ -7,7 +7,7 @@ import DriveBrowser from './drive-browser.svelte'
 const { gotoMock, invalidateAllMock, api } = vi.hoisted(() => ({
   gotoMock: vi.fn(),
   invalidateAllMock: vi.fn(),
-  api: { archive: vi.fn(), unarchive: vi.fn() },
+  api: { archive: vi.fn(), unarchive: vi.fn(), createFolder: vi.fn(), upload: vi.fn(), move: vi.fn() },
 }))
 vi.mock('$app/navigation', () => ({ goto: gotoMock, invalidateAll: invalidateAllMock }))
 vi.mock('$app/paths', () => ({ base: '', resolve: (path: string) => path }))
@@ -41,6 +41,24 @@ const image: DriveItem & { canEdit: boolean; canManage: boolean } = {
   canEdit: false,
   canManage: false,
 }
+const newFolder: DriveItem & { canEdit: boolean; canManage: boolean } = {
+  ...folder,
+  id: 'f-new',
+  name: 'Fresh',
+}
+
+/** A drag event as the browser fires it, carrying `data`. */
+function fire(target: Element, type: string, data: DataTransfer) {
+  target.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: data }))
+}
+function desktopFiles(...names: string[]) {
+  const data = new DataTransfer()
+  for (const n of names) data.items.add(new File(['x'], n))
+  return data
+}
+const rowNamed = (name: string) =>
+  page.getByTestId('drive-row').elements().find((el) => el.getAttribute('data-name') === name)!
+
 const describe_ = {
   'folder:f1': { ownerName: 'Ada Owner', shared: true, readOnlyFrom: null },
   'file:i1': { ownerName: 'Ben Member', shared: null, readOnlyFrom: null },
@@ -49,7 +67,7 @@ const describe_ = {
 describe('drive-browser: the full-width listing', () => {
   beforeEach(() => {
     localStorage.clear()
-    vi.clearAllMocks()
+    vi.resetAllMocks()
   })
 
   it('lists items with owner initials and name, size, and a sharing badge where the viewer may know', async () => {
@@ -198,5 +216,166 @@ describe('drive-browser: the full-width listing', () => {
     expect(page.getByTestId('drive-archived-badge').elements()).toHaveLength(1)
     await expect.element(page.getByRole('button', { name: 'Unarchive Projects' })).toBeInTheDocument()
     expect(page.getByTestId('drive-archive').elements()).toHaveLength(0)
+  })
+
+  it('a folder created in this view takes files dropped from the desktop at once (no reload)', async () => {
+    api.createFolder.mockResolvedValue(newFolder)
+    api.upload.mockResolvedValue({ uploaded: [image], errors: [] })
+    const view = render(DriveBrowser, { props: { folderId: null, items: [image], canEdit: true } })
+    // invalidateAll brings the new listing, as the page's load would.
+    invalidateAllMock.mockImplementation(async () => {
+      view.rerender({ folderId: null, items: [newFolder, image], canEdit: true })
+    })
+    await page.getByTestId('drive-new-folder-button').click()
+    await page.getByTestId('drive-name-input').fill('Fresh')
+    await page.getByTestId('drive-name-save').click()
+    expect(api.createFolder).toHaveBeenCalledWith(null, 'Fresh')
+    await expect.element(page.getByTestId('drive-row').first()).toHaveAttribute('data-name', 'Fresh')
+
+    const target = rowNamed('Fresh')
+    const files = desktopFiles('a.txt')
+    fire(target, 'dragenter', files)
+    fire(target, 'dragover', files)
+    await expect.element(page.getByTestId('drive-drop-overlay')).toHaveTextContent('Drop to upload to Fresh')
+    fire(target, 'drop', files)
+    await expect.poll(() => api.upload.mock.calls.length).toBe(1)
+    expect(api.upload.mock.calls[0]![0]).toBe('f-new')
+    expect(api.upload.mock.calls[0]![1].map((f: File) => f.name)).toEqual(['a.txt'])
+    await expect.element(page.getByTestId('drive-notice')).toHaveTextContent('Uploaded 1 file to Fresh.')
+  })
+
+  it('files dropped on the pane but not on a folder still upload here', async () => {
+    api.upload.mockResolvedValue({ uploaded: [image], errors: [] })
+    render(DriveBrowser, { props: { folderId: 'f0', path: [{ id: 'f0', name: 'Top' }], items: [folder, image], canEdit: true } })
+    const files = desktopFiles('b.txt')
+    fire(rowNamed('mood.png'), 'dragenter', files)
+    fire(rowNamed('mood.png'), 'dragover', files)
+    await expect.element(page.getByTestId('drive-drop-overlay')).toHaveTextContent('Drop to upload to Top')
+    fire(rowNamed('mood.png'), 'drop', files)
+    await expect.poll(() => api.upload.mock.calls.length).toBe(1)
+    expect(api.upload.mock.calls[0]![0]).toBe('f0')
+  })
+
+  it('a Drive item dragged onto a folder (also one created in this view) moves into it', async () => {
+    api.move.mockResolvedValue({ ...image, parentId: 'f-new' })
+    const editableImage = { ...image, canEdit: true }
+    const view = render(DriveBrowser, { props: { folderId: null, items: [editableImage], canEdit: true } })
+    view.rerender({ folderId: null, items: [newFolder, editableImage], canEdit: true })
+    await expect.element(page.getByTestId('drive-row').first()).toHaveAttribute('data-name', 'Fresh')
+    const source = rowNamed('mood.png')
+    expect(source.getAttribute('draggable')).toBe('true')
+    const data = new DataTransfer()
+    fire(source, 'dragstart', data)
+    fire(rowNamed('Fresh'), 'dragenter', data)
+    fire(rowNamed('Fresh'), 'dragover', data)
+    await expect.element(page.getByTestId('drive-drop-target')).toHaveAttribute('data-name', 'Fresh')
+    // Moving within Drive is not an upload.
+    expect(page.getByTestId('drive-drop-overlay').elements()).toHaveLength(0)
+    fire(rowNamed('Fresh'), 'drop', data)
+    await expect.poll(() => api.move.mock.calls.length).toBe(1)
+    expect(api.move).toHaveBeenCalledWith(expect.objectContaining({ type: 'file', id: 'i1' }), 'f-new')
+    expect(api.upload).not.toHaveBeenCalled()
+    await expect.element(page.getByTestId('drive-notice')).toHaveTextContent('Moved “mood.png” to Fresh.')
+  })
+
+  it('what the viewer may not edit cannot be dragged, nor dropped onto', async () => {
+    const viewOnlyFolder = { ...folder, id: 'f9', name: 'Theirs', canEdit: false }
+    render(DriveBrowser, { props: { folderId: null, items: [viewOnlyFolder, image], canEdit: true } })
+    expect(rowNamed('mood.png').getAttribute('draggable')).not.toBe('true')
+    const files = desktopFiles('c.txt')
+    fire(rowNamed('Theirs'), 'dragenter', files)
+    fire(rowNamed('Theirs'), 'dragover', files)
+    // The drop goes to the current view, not into the read-only folder.
+    await expect.element(page.getByTestId('drive-drop-overlay')).toHaveTextContent('Drop to upload to My drive')
+  })
+
+  it('Upload folder recreates the folder tree here and uploads each file into its folder, with progress', async () => {
+    let n = 0
+    api.createFolder.mockImplementation(async (_parent: string | null, name: string) => ({ ...folder, id: `d${++n}`, name }))
+    let release!: () => void
+    const held = new Promise<void>((ok) => (release = ok))
+    api.upload.mockImplementation(async (_folderId: string | null, files: File[]) => {
+      if (files[0]!.name === 'b.txt') await held
+      return { uploaded: files.map((f) => ({ ...image, name: f.name })), errors: [] }
+    })
+    render(DriveBrowser, { props: { folderId: 'f0', path: [{ id: 'f0', name: 'Top' }], items: [], canEdit: true } })
+    await expect.element(page.getByTestId('drive-upload-folder')).toBeInTheDocument()
+    const input = page.getByTestId('drive-upload-folder-input').element() as HTMLInputElement
+    expect(input.webkitdirectory).toBe(true)
+    const picked = [
+      ['a.txt', 'Trip/a.txt'],
+      ['b.txt', 'Trip/day 2/b.txt'],
+    ].map(([name, rel]) => {
+      const f = new File(['x'], name!)
+      Object.defineProperty(f, 'webkitRelativePath', { value: rel })
+      return f
+    })
+    Object.defineProperty(input, 'files', { value: picked, configurable: true })
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+
+    await expect.element(page.getByTestId('drive-upload-progress')).toHaveTextContent('Uploading 2 of 2 files · Trip/day 2/b.txt')
+    release()
+    await expect.element(page.getByTestId('drive-notice')).toHaveTextContent('Uploaded 2 files in 2 folders.')
+    expect(api.createFolder.mock.calls).toEqual([
+      ['f0', 'Trip'],
+      ['d1', 'day 2'],
+    ])
+    expect(api.upload.mock.calls.map(([id, files]) => [id, files.map((f: File) => f.name)])).toEqual([
+      ['d1', ['a.txt']],
+      ['d2', ['b.txt']],
+    ])
+    expect(page.getByTestId('drive-upload-progress').elements()).toHaveLength(0)
+    expect(invalidateAllMock).toHaveBeenCalled()
+  })
+
+  it('a folder dropped from the desktop onto a folder row lands inside it; what didn’t upload is listed by path', async () => {
+    let n = 0
+    api.createFolder.mockImplementation(async (_parent: string | null, name: string) => ({ ...folder, id: `d${++n}`, name }))
+    api.upload.mockImplementation(async (_folderId: string | null, files: File[]) =>
+      files[0]!.name === 'huge.bin'
+        ? { uploaded: [], errors: ['“huge.bin” is 120 MB; files can be at most 100 MB.'] }
+        : { uploaded: [{ ...image, name: files[0]!.name }], errors: [] },
+    )
+    const kid = (name: string) =>
+      ({ isFile: true, isDirectory: false, name, file: (ok: (f: File) => void) => ok(new File(['x'], name)) }) as unknown as FileSystemEntry
+    const tree = {
+      isFile: false,
+      isDirectory: true,
+      name: 'Photos',
+      createReader: () => {
+        let read = false
+        return {
+          readEntries: (ok: (e: FileSystemEntry[]) => void) => {
+            ok(read ? [] : [kid('one.jpg'), kid('huge.bin')])
+            read = true
+          },
+        }
+      },
+    }
+    // The browser hands a dropped folder over as a directory entry.
+    const original = DataTransferItem.prototype.webkitGetAsEntry
+    DataTransferItem.prototype.webkitGetAsEntry = function () {
+      return tree as unknown as FileSystemEntry
+    }
+    try {
+      render(DriveBrowser, { props: { folderId: null, items: [folder], canEdit: true } })
+      const data = desktopFiles('Photos')
+      fire(rowNamed('Projects'), 'dragenter', data)
+      fire(rowNamed('Projects'), 'dragover', data)
+      await expect.element(page.getByTestId('drive-drop-target')).toHaveTextContent('Upload here')
+      fire(rowNamed('Projects'), 'drop', data)
+      await expect.element(page.getByTestId('drive-notice')).toHaveTextContent('Uploaded 1 file in 1 folder to Projects.')
+    } finally {
+      DataTransferItem.prototype.webkitGetAsEntry = original
+    }
+    expect(api.createFolder).toHaveBeenCalledWith('f1', 'Photos')
+    expect(api.upload.mock.calls.map(([id, files]) => [id, files[0].name])).toEqual([
+      ['d1', 'one.jpg'],
+      ['d1', 'huge.bin'],
+    ])
+    await expect.element(page.getByTestId('drive-upload-failures')).toHaveTextContent('1 item wasn’t uploaded:')
+    await expect
+      .element(page.getByTestId('drive-upload-failure'))
+      .toHaveTextContent('Photos/huge.bin — “huge.bin” is 120 MB; files can be at most 100 MB.')
   })
 })
