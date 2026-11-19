@@ -77,6 +77,30 @@ describe('renderLogoIcon', () => {
     }
   })
 
+  it('maskable and Apple icons take the logo\'s own background when its edge is one solid color', async () => {
+    // A square avatar: a red disc on a solid teal square — the icon's margin is teal, not the site background.
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#127a74"/><circle cx="50" cy="50" r="30" fill="#ff0000"/></svg>'
+    const avatar = new Uint8Array(await sharp(Buffer.from(svg)).png().toBuffer())
+    const TEAL = { r: 0x12, g: 0x7a, b: 0x74, a: 255 }
+    for (const kind of ['maskable', 'apple'] as const) {
+      const p = await pixels(await renderLogoIcon({ logo: avatar, colors, kind, size: 512 }))
+      expect(p.at(1, 1)).toEqual(TEAL)
+      expect(p.at(256, 256)).toEqual(RED)
+    }
+    // A wide logo on a solid color: the letterbox bands match it too.
+    const wide = await sharp({ create: { width: 400, height: 100, channels: 4, background: '#127a74' } }).png().toBuffer()
+    const w = await pixels(await renderLogoIcon({ logo: new Uint8Array(wide), colors, kind: 'apple', size: 512 }))
+    expect(w.at(256, 60)).toEqual(TEAL)
+  })
+
+  it('keeps the brand background for a logo whose edge is not one solid color (a mark touching the edge)', async () => {
+    // A black bar across the middle touches the left and right edges only.
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect y="40" width="100" height="20" fill="#000000"/></svg>'
+    const mark = new Uint8Array(await sharp(Buffer.from(svg)).png().toBuffer())
+    const p = await pixels(await renderLogoIcon({ logo: mark, colors, kind: 'apple', size: 512 }))
+    expect(p.at(1, 1)).toEqual(BACKGROUND)
+  })
+
   it('keeps the logo inside the maskable safe zone', async () => {
     const p = await pixels(await renderLogoIcon({ logo: await redDisc(), colors, kind: 'maskable', size: 512 }))
     // The central 80% circle has radius 205; the logo stays inside it.

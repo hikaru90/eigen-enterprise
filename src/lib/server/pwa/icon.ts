@@ -74,8 +74,12 @@ ${path ? `<path d="${path}" fill="${colors.glyph}"/>` : ''}
  * (contain — never cropped; an SVG is rasterized at the icon's size):
  *
  * - any: the logo itself on transparency, filling the icon (favicons, docks)
- * - maskable: on the brand background, inside the 80% safe zone (Android masks it)
- * - apple: on the brand background with a small margin (iOS rounds the corners)
+ * - maskable: on the backdrop, inside the 80% safe zone (Android masks it)
+ * - apple: on the backdrop with a small margin (iOS rounds the corners)
+ *
+ * The backdrop is the logo's own background when its edge is one solid color
+ * (a square avatar on a colored ground), so the margin continues the logo;
+ * otherwise the brand background.
  */
 const LOGO_SHARE: Record<IconKind, number> = { any: 1, maskable: 0.56, apple: 0.8 }
 
@@ -91,13 +95,44 @@ export async function renderLogoIcon(opts: {
   const meta = await sharp(Buffer.from(logo)).metadata()
   if (!meta.width || !meta.height) throw new Error(`[pwa] the company logo has no size (format ${meta.format})`)
   const density = meta.format === 'svg' ? Math.min(2400, Math.max(1, (72 * inner) / Math.max(meta.width, meta.height))) : undefined
+  // `inside`, not `contain`: no transparent letterbox, so the logo's real edge can be read below.
   const art = await sharp(Buffer.from(logo), density ? { density } : {})
-    .resize(inner, inner, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .resize(inner, inner, { fit: 'inside' })
+    .ensureAlpha()
     .png()
     .toBuffer()
-  const background = kind === 'any' ? { r: 0, g: 0, b: 0, alpha: 0 } : colors.background
+  const background = kind === 'any' ? { r: 0, g: 0, b: 0, alpha: 0 } : ((await solidEdgeColor(art)) ?? colors.background)
   return sharp({ create: { width: size, height: size, channels: 4, background } })
     .composite([{ input: art, gravity: 'centre' }])
     .png()
     .toBuffer()
+}
+
+/** Share of edge pixels that must be one opaque color for it to count as the logo's background. */
+const SOLID_EDGE_SHARE = 0.9
+/** Per-channel distance from that color still counted as it (anti-aliasing, JPEG noise). */
+const EDGE_TOLERANCE = 20
+
+/**
+ * The logo's background color: the opaque color (within a small tolerance for
+ * anti-aliasing and compression) that covers nearly all of its outermost
+ * pixel ring — or null when the edge is transparent or mixed.
+ */
+async function solidEdgeColor(png: Buffer): Promise<{ r: number; g: number; b: number; alpha: number } | null> {
+  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  const { width, height } = info
+  const edge: number[] = []
+  for (let x = 0; x < width; x++) edge.push(x, (height - 1) * width + x)
+  for (let y = 1; y < height - 1; y++) edge.push(y * width, y * width + width - 1)
+  const opaque = edge.filter((p) => data[p * 4 + 3] >= 250)
+  if (opaque.length < edge.length * SOLID_EDGE_SHARE) return null
+  // The per-channel median is the candidate; nearly every edge pixel must sit close to it.
+  const median = [0, 1, 2].map((c) => {
+    const values = opaque.map((p) => data[p * 4 + c]).sort((a, b) => a - b)
+    return values[values.length >> 1]
+  })
+  const near = opaque.filter((p) => [0, 1, 2].every((c) => Math.abs(data[p * 4 + c] - median[c]) <= EDGE_TOLERANCE))
+  if (near.length < edge.length * SOLID_EDGE_SHARE) return null
+  const mean = (c: number) => Math.round(near.reduce((sum, p) => sum + data[p * 4 + c], 0) / near.length)
+  return { r: mean(0), g: mean(1), b: mean(2), alpha: 1 }
 }

@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-19 — App icon backdrop is the logo's own background (owner: "make the pwa favicons background color match the background color of the company avatar image")
+
+- **Changed:** `maskable` and `apple` logo icons no longer always sit on the site's `--background` (white by default). When the logo's outermost pixel ring is one opaque color (≥90% of edge pixels within ±20 per channel of the median — tolerates anti-aliasing/JPEG noise), that color is the backdrop, so the margin around a square avatar continues it. Transparent or mixed edges (a mark touching the edge, a disc) keep the brand background. The logo is now resized `inside` (no transparent letterbox) so its real edge can be read; the `any` icons (favicon, dock) are unchanged: the logo on transparency. `solidEdgeColor` in `src/lib/server/pwa/icon.ts`.
+- **Decision:** `ICON_RENDER_REVISION` (src/lib/pwa/identity.ts) is part of the identity version — icon URLs are `immutable`, so a renderer change must change the version for installed apps to refetch. Bump it whenever icon rendering changes.
+- **Gates:** pwa + layout specs 64 passed (2 new); typecheck 0 errors; lint clean on touched files. Not released to the box yet. Already-installed apps on iOS keep their home-screen icon until re-added (iOS snapshots it at install).
+
 ## 2026-11-19 — Favicon and installed-app icons are the company logo (owner: "favicon should be the logo of the company! Also the icon of the pwa should use this company icon")
 
 - **Shipped (uncommitted):** with a logo set in Settings → Company, `/app-icon/*` draws every icon from it: favicon (32), apple-touch (180), manifest `any` 192/512 and `maskable` 512. `any` = the logo itself on transparency (contain, never cropped); `maskable` = logo at 56% on the brand background (inside the 80% safe zone); `apple` = logo at 80% on the brand background. SVG logos are rasterized at the icon's size (density from the SVG's own size). Without a logo it is the monogram as before; with neither logo nor name, the product's static icons. `renderLogoIcon` in `src/lib/server/pwa/icon.ts`; the identity carries the logo sha256, so a new logo is a new icon version (installed icons and favicon refresh).

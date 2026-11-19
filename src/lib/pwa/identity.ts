@@ -28,6 +28,13 @@ export type IdentityTokens = {
 
 export type IdentityColors = { tile: string; glyph: string; background: string }
 
+/**
+ * Bump when the icon renderer (src/lib/server/pwa/icon.ts) draws differently:
+ * icon URLs carry the version and are cached immutable, so installed apps only
+ * pick up a new rendering through a new version.
+ */
+export const ICON_RENDER_REVISION = 2
+
 /** FNV-1a, base 36 — a cache key, not security. */
 function shortHash(s: string): string {
   let h = 0x811c9dc5
@@ -56,7 +63,7 @@ export function identityTokens(
     primary,
     primaryForeground,
     background,
-    version: shortHash(JSON.stringify([name, initial, logoSha256, primary, primaryForeground, background])),
+    version: shortHash(JSON.stringify([ICON_RENDER_REVISION, name, initial, logoSha256, primary, primaryForeground, background])),
   }
 }
 
