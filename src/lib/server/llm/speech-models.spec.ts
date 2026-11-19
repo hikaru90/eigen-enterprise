@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+// stt-client's imports open the db module, which needs a URL (never connected here)
+const TEST_DB = 'postgres://test@localhost:5433/test'
+const { mockEnv } = vi.hoisted(() => ({ mockEnv: { DATABASE_URL: 'postgres://test@localhost:5433/test' } as Record<string, string | undefined> }))
+vi.mock('$lib/server/env/private-env', () => ({ env: mockEnv }))
+
 import {
   checkSpeechModelEndpoints,
+  speechEndpointBaseUrl,
   reportSpeechModelsAtStartup,
   resetSpeechModelCheckCache,
   speechModelProblems,
@@ -95,5 +101,32 @@ describe('reportSpeechModelsAtStartup', () => {
     const log = { error: vi.fn() }
     await reportSpeechModelsAtStartup(log, async () => [{ feature: 'dictation', model: 'a', endpoints: 1, providers: ['x'] }])
     expect(log.error).not.toHaveBeenCalled()
+  })
+})
+
+describe('speechEndpointBaseUrl', () => {
+  beforeEach(() => {
+    for (const k of Object.keys(mockEnv)) delete mockEnv[k]
+    mockEnv.DATABASE_URL = TEST_DB
+  })
+
+  it('a hosted box asks the platform AI endpoint, where its speech runs', () => {
+    Object.assign(mockEnv, {
+      PLATFORM_LLM_BASE_URL: 'https://openrouter.ai/api/v1/',
+      PLATFORM_LLM_API_KEY: 'sk-platform',
+      PLATFORM_LLM_MODEL_CHAT: 'vendor/chat',
+      PLATFORM_LLM_MODEL_EMBEDDING: 'vendor/embed',
+      OPENROUTER_BASE_URL: 'https://other.example/api/v1',
+    })
+    expect(speechEndpointBaseUrl()).toBe('https://openrouter.ai/api/v1')
+  })
+
+  it('a self-hosted box asks OPENROUTER_BASE_URL', () => {
+    mockEnv.OPENROUTER_BASE_URL = 'https://openrouter.example/api/v1'
+    expect(speechEndpointBaseUrl()).toBe('https://openrouter.example/api/v1')
+  })
+
+  it('neither set: nothing (the check then says so)', () => {
+    expect(speechEndpointBaseUrl()).toBeUndefined()
   })
 })

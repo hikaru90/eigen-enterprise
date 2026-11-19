@@ -16,10 +16,9 @@ export const DICTATION_MISSING_MESSAGE: Record<SpeechMissing, string> = {
 }
 
 /**
- * dictation = speech to text; dictation_preview = the live preview while a Memory voice note
- * records (replaced by the dictation model's final text); voice = the assistant speaking.
+ * dictation = speech to text (one model, live previews included); voice = the assistant speaking.
  */
-export type SpeechFeature = 'dictation' | 'dictation_preview' | 'voice'
+export type SpeechFeature = 'dictation' | 'voice'
 /** One speech model's live endpoints on OpenRouter, or why that could not be checked. */
 export type SpeechModelStatus =
   | { feature: SpeechFeature; model: string; endpoints: number; providers: string[] }

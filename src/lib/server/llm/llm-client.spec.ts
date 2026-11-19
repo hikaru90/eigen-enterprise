@@ -1329,6 +1329,55 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
     )
   })
 
+  it('platform credits speech-to-text runs on the platform AI key (a hosted box has no service account), cost logged as platform', async () => {
+    mockEnv.OPENROUTER_BASE_URL = ''
+    const fetchMock = vi.fn(async () => response(true, 200, { text: 'hallo', usage: { cost: 0.00007 } }))
+    vi.stubGlobal('fetch', fetchMock)
+    await llmCreateTranscription({
+      userId: 'u1',
+      model: 'qwen/qwen3-asr-1.7b',
+      audio: { bytes: new Uint8Array([1]), format: 'webm' },
+    })
+    expect(fetchMockUrl(fetchMock, 0)).toBe('https://platform-llm.example/api/v1/audio/transcriptions')
+    expect((fetchMockInit(fetchMock, 0)?.headers as Record<string, string>).Authorization).toBe(
+      'Bearer sk-platform',
+    )
+    expect(logActivityCallMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'u1',
+      expect.objectContaining({ provider: 'platform', gatewayHost: 'platform-llm.example' }),
+    )
+    mockEnv.OPENROUTER_BASE_URL = 'https://openrouter.example/api/v1'
+  })
+
+  it('the platform AI wins over a service-account key for speech too', async () => {
+    mockEnv.SERVICE_API_KEY_OPENROUTER = 'service-openrouter-key'
+    const fetchMock = vi.fn(async () => response(true, 200, { text: 'x', usage: { cost: 0.001 } }))
+    vi.stubGlobal('fetch', fetchMock)
+    await llmCreateTranscription({
+      userId: 'u1',
+      model: 'qwen/qwen3-asr-1.7b',
+      audio: { bytes: new Uint8Array([1]), format: 'webm' },
+    })
+    expect((fetchMockInit(fetchMock, 0)?.headers as Record<string, string>).Authorization).toBe(
+      'Bearer sk-platform',
+    )
+  })
+
+  it('a partial platform AI fails speech loud too, never the service account', async () => {
+    delete env.PLATFORM_LLM_API_KEY
+    mockEnv.SERVICE_API_KEY_OPENROUTER = 'service-openrouter-key'
+    vi.stubGlobal('fetch', vi.fn())
+    await expect(
+      llmCreateTranscription({
+        userId: 'u1',
+        model: 'qwen/qwen3-asr-1.7b',
+        audio: { bytes: new Uint8Array([1]), format: 'webm' },
+      }),
+    ).rejects.toThrow(/PLATFORM_LLM_API_KEY is not set/)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it('a partial platform AI fails loud instead of falling back to another path', async () => {
     delete env.PLATFORM_LLM_MODEL_CHAT
     mockEnv.LLM_BASE_URL = 'https://example.test'

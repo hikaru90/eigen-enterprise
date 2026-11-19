@@ -1,6 +1,7 @@
 import type { SpeechFeature, SpeechModelStatus } from '$lib/voice/dictation-readiness'
 import { env } from '$lib/server/env/private-env'
-import { STT_MODEL, STT_PREVIEW_MODEL } from './stt-client'
+import { STT_MODEL } from './stt-client'
+import { readPlatformAiConfig } from './platform-ai'
 import { ttsModelId } from './tts-client'
 
 export type { SpeechFeature, SpeechModelStatus } from '$lib/voice/dictation-readiness'
@@ -18,7 +19,6 @@ export type SpeechModel = { feature: SpeechFeature; model: string }
 export function speechModels(): SpeechModel[] {
   return [
     { feature: 'dictation', model: STT_MODEL },
-    { feature: 'dictation_preview', model: STT_PREVIEW_MODEL },
     { feature: 'voice', model: ttsModelId() },
   ]
 }
@@ -47,11 +47,18 @@ async function checkOne(fetchFn: FetchFn, baseUrl: string, m: SpeechModel): Prom
   }
 }
 
+/** Where this box's speech runs: the platform AI on a hosted box, else OPENROUTER_BASE_URL. */
+export function speechEndpointBaseUrl(): string | undefined {
+  const platformAi = readPlatformAiConfig(env as Record<string, string | undefined>)
+  if (platformAi) return platformAi.baseUrl
+  return env.OPENROUTER_BASE_URL?.trim().replace(/\/$/, '') || undefined
+}
+
 export async function checkSpeechModelEndpoints(
   opts: { fetchFn?: FetchFn; baseUrl?: string | undefined; models?: SpeechModel[] } = {},
 ): Promise<SpeechModelStatus[]> {
   const models = opts.models ?? speechModels()
-  const baseUrl = ('baseUrl' in opts ? opts.baseUrl : env.OPENROUTER_BASE_URL)?.trim().replace(/\/$/, '')
+  const baseUrl = ('baseUrl' in opts ? opts.baseUrl : speechEndpointBaseUrl())?.trim().replace(/\/$/, '')
   if (!baseUrl) return models.map((m) => ({ ...m, error: 'OPENROUTER_BASE_URL is not set' }))
 
   const key = `${baseUrl}|${models.map((m) => m.model).join(',')}`

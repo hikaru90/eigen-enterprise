@@ -90,7 +90,25 @@ export async function loadPlatformLlmConfig(userId: string): Promise<ResolvedLlm
   }
 }
 
+/**
+ * Speech-to-text on platform credits. A hosted box runs it on the platform AI (the per-company
+ * key the hosting provisions; its endpoint serves OpenRouter's `/audio/transcriptions`, part of
+ * the platform AI contract in `platform-ai.ts`), so speech is billed like chat. Otherwise the
+ * self-hosted service account (`SERVICE_API_KEY_OPENROUTER`). A partial platform AI throws.
+ */
 export async function loadPlatformOpenRouterSttConfig(): Promise<ResolvedLlmConfig> {
+  const platformAi = platformAiFromEnv()
+  if (platformAi) {
+    return {
+      provider: PLATFORM_AI_PROVIDER,
+      baseUrl: platformAi.baseUrl,
+      apiKey: platformAi.apiKey,
+      ruleChat: null,
+      ruleEmbedding: null,
+      modelChat: null,
+      modelEmbedding: null,
+    }
+  }
   const baseUrl = env.OPENROUTER_BASE_URL?.trim()
   const apiKey = env.SERVICE_API_KEY_OPENROUTER?.trim()
   if (!baseUrl) {

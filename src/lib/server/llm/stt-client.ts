@@ -6,23 +6,15 @@ import { llmCreateTranscription } from './llm-client'
  * no environment override (as in eigen). Each must have live endpoints that accept browser
  * `webm`/opus and Safari `m4a` uploads (checked at boot and on Settings → AI provider).
  *
- * The transcript a person keeps: `openai/gpt-4o-transcribe` (2026-11-17, Contribute be1ad246 —
- * "some words aren't recognised" on German dictation). It is the most accurate model OpenRouter
- * serves for German and for names, answers a 1-minute clip in a few seconds, and takes a
- * vocabulary prompt (`stt-vocabulary.ts`). It replaced `qwen/qwen3-asr-0.6b` (eigen's pick for
- * cost: the smallest model, weakest on German and on names, and prone to inventing text on
- * quiet audio — still stopped before the upload by `$lib/voice/clip-speech.ts` and judged after
- * by `stt-judge.ts`).
+ * One model for every transcript in the app — dictation, Memory voice notes and their live
+ * previews, and call transcripts: `qwen/qwen3-asr-1.7b` (owner, 2026-11-19, on price: about
+ * $0.03 per hour of audio against $0.36 for `openai/gpt-4o-transcribe`, which it replaces).
+ * Known trade-off: it is weaker on names than gpt-4o-transcribe, and its OpenRouter endpoints
+ * list no supported parameters, so the vocabulary prompt (`stt-vocabulary.ts`) is sent but may
+ * have no effect. Quiet audio is still stopped before the upload by `$lib/voice/clip-speech.ts`
+ * and judged after by `stt-judge.ts`.
  */
-export const STT_MODEL = 'openai/gpt-4o-transcribe'
-
-/**
- * Live previews while a Memory voice note records (`/api/capture/transcribe-chunk`): the
- * whole clip so far is re-sent every few seconds and each preview is replaced by the final
- * transcript, so the cheapest live model does it — the final text always comes from
- * {@link STT_MODEL}.
- */
-export const STT_PREVIEW_MODEL = 'qwen/qwen3-asr-0.6b'
+export const STT_MODEL = 'qwen/qwen3-asr-1.7b'
 
 export type SttAudioInput = {
   bytes: Uint8Array
@@ -62,12 +54,10 @@ export async function transcribeAudio(input: {
   audio: SttAudioInput
   /** `'memory'` for a voice note to Memory: the transcript is never logged. */
   contentOrigin?: LlmContentOrigin
-  /** `'preview'`: a live preview that the final transcript replaces ({@link STT_PREVIEW_MODEL}). */
-  pass?: 'final' | 'preview'
 }): Promise<string> {
   const body = await llmCreateTranscription({
     userId: input.userId,
-    model: input.pass === 'preview' ? STT_PREVIEW_MODEL : STT_MODEL,
+    model: STT_MODEL,
     audio: input.audio,
     contentOrigin: input.contentOrigin,
   })

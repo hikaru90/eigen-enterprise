@@ -5,7 +5,8 @@
  *
  * An OpenAI-compatible endpoint that routes by model name, with a per-company key. It is
  * its own declared provider kind ({@link PLATFORM_AI_PROVIDER}): what sits behind the URL is
- * the hosting's business and is never inferred from it. It is the gateway's platform path
+ * the hosting's business and is never inferred from it. The contract includes OpenRouter's
+ * `/audio/transcriptions` (JSON `input_audio`): speech on platform credits runs here too. It is the gateway's platform path
  * (billing mode `platform_credits`, the default); a BYOK choice in Settings overrides it.
  * Never read as the self-hosted BYOK pair (LLM_BASE_URL + LLM_API_KEY).
  */

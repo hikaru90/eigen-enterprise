@@ -16,7 +16,6 @@
 
   const FEATURE_LABEL: Record<SpeechFeature, string> = {
     dictation: 'Dictation (speech to text)',
-    dictation_preview: 'Live preview while a voice note records',
     voice: 'Assistant voice (text to speech)',
   }
 
