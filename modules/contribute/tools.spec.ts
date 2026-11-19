@@ -1,3 +1,4 @@
+import type { HubProposalDto } from './hub/types'
 import type { ContributionDto } from './types'
 import { describe, expect, it } from 'vitest'
 import type { ToolContext } from '$lib/kernel/types'
@@ -49,6 +50,40 @@ describe('contribute.* tools', () => {
     const listed = (await tools['contribute.list'].handler(humanCtx('ana'), { status: 'all' })) as { proposals: ContributionDto[] }
     expect(listed.proposals.find((p) => p.id === a.id)).toMatchObject({ myVote: 1, own: true })
     await expect(tools['contribute.update'].handler(humanCtx('ben'), { id: a.id, status: 'shipped' })).rejects.toMatchObject({ code: 'forbidden' })
+  })
+
+  it('on the central board, lists what every install shared next to this company’s proposals', async () => {
+    const f = fixture()
+    const own = await shareProposal(f.deps, 'ana', { title: 'Dark mode', kind: 'idea', area: 'everywhere' })
+    const shared = [{ installId: 'i-1', remoteId: 'r-1', summary: 'Assign tasks to members', status: 'requested' }] as unknown as HubProposalDto[]
+    const asked: (readonly string[])[] = []
+    const tools = Object.fromEntries(
+      createContributeTools({
+        deps: async () => f.deps,
+        actor: async (ctx) => ({ id: ctx.principal.id, kind: 'human', canManage: ctx.principal.id !== 'ben' }),
+        hub: async () => async (statuses) => {
+          asked.push(statuses)
+          return shared
+        },
+      }).map((t) => [t.name, t]),
+    )
+
+    const listed = (await tools['contribute.list'].handler(humanCtx('ana'), {})) as { proposals: ContributionDto[]; allInstalls?: HubProposalDto[] }
+    expect(listed.proposals.map((p) => p.id)).toEqual([own.id])
+    expect(listed.allInstalls).toEqual(shared)
+    expect(asked).toEqual([['requested', 'in_progress']])
+
+    // Like the "All installs" tab: only people who manage the board see it.
+    const plain = (await tools['contribute.list'].handler(humanCtx('ben'), {})) as Record<string, unknown>
+    expect('allInstalls' in plain).toBe(false)
+  })
+
+  it('on any other install, lists only this company’s proposals', async () => {
+    const f = fixture()
+    await shareProposal(f.deps, 'ana', { title: 'Dark mode', kind: 'idea', area: 'everywhere' })
+    const list = createContributeTools({ deps: async () => f.deps, hub: async () => null }).find((t) => t.name === 'contribute.list')!
+    const listed = (await list.handler(agentCtx, {})) as Record<string, unknown>
+    expect('allInstalls' in listed).toBe(false)
   })
 
   it('says what it did in plain words', () => {

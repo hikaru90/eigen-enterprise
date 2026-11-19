@@ -1,3 +1,4 @@
+import type { HubProposalDto } from './hub/types'
 import { z } from 'zod'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { CONTRIBUTE_MODULE_ID } from './manifest'
@@ -46,19 +47,34 @@ async function liveActor(ctx: ToolContext): Promise<ContributeActor> {
   return { id: ctx.principal.id, kind: 'human', canManage: await isUserAdmin(ctx.principal.id) }
 }
 
+/** Lists the central board's proposals, or null when this install is not the central board. */
+export type HubLister = (statuses: readonly ContributionStatus[]) => Promise<HubProposalDto[]>
+
+async function liveHub(): Promise<HubLister | null> {
+  const { contributeHubActive, contributeHubDeps } = await import('./hub/live')
+  if (!(await contributeHubActive())) return null
+  const { listHubProposals } = await import('./hub/service')
+  return async (statuses) => listHubProposals(await contributeHubDeps(), statuses)
+}
+
 const viewer = (ctx: ToolContext) => (ctx.principal.kind === 'human' ? ctx.principal.id : null)
 
 export function createContributeTools(
-  opts: { deps?: () => Promise<ContributeDeps>; actor?: (ctx: ToolContext) => Promise<ContributeActor> } = {},
+  opts: {
+    deps?: () => Promise<ContributeDeps>
+    actor?: (ctx: ToolContext) => Promise<ContributeActor>
+    hub?: () => Promise<HubLister | null>
+  } = {},
 ): ToolDescriptor[] {
   const deps = opts.deps ?? liveDeps
   const actor = opts.actor ?? liveActor
+  const hub = opts.hub ?? liveHub
   return [
     {
       name: 'contribute.list',
       module: CONTRIBUTE_MODULE_ID,
       summary:
-        'List the improvements people in the company proposed for the app (the Contribute board): id, title, kind (idea|bug|polish), area, status, net votes, author, note. Default: open ones (requested + in progress), most wanted first.',
+        'List the improvements people in the company proposed for the app (the Contribute board): id, title, kind (idea|bug|polish), area, status, net votes, author, note. Default: open ones (requested + in progress), most wanted first. On the central board install, for those who manage the board, `allInstalls` also lists what every eigenEnterprise install shared (no names: installId, remoteId, English summary, kind, area, status, score; details via contribute_hub.get).',
       auditClass: 'read',
       inputSchema: listInput,
       permission: { roles: ['admin', 'agent'] },
@@ -66,7 +82,11 @@ export function createContributeTools(
         const i = listInput.parse(input)
         const statuses: readonly ContributionStatus[] =
           i.status === 'open' ? OPEN_STATUSES : i.status === 'all' ? CONTRIBUTION_STATUSES : [i.status]
-        return { proposals: await listProposals(await deps(), viewer(ctx), statuses) }
+        const proposals = await listProposals(await deps(), viewer(ctx), statuses)
+        // Like the "All installs" tab on /contribute: the central board only, for those who manage it.
+        const listHub = await hub()
+        if (listHub === null || !(await actor(ctx)).canManage) return { proposals }
+        return { proposals, allInstalls: await listHub(statuses) }
       },
     },
     {
