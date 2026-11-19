@@ -28,7 +28,8 @@ const data = {
   lastDeploy: null,
   nodeVersions: ['22'],
   contractFields: {},
-  secretNames: ['SHOP_SECRET'],
+  // Declared + set names (the substrate read); app.env holds the ones with a sealed value.
+  secretNames: ['SHOP_REGION', 'SHOP_SECRET'],
   managed: true,
   howtoUrl: 'https://os.example.com/docs/send-mail.md',
 }
@@ -50,8 +51,9 @@ describe('app detail settings', () => {
     await page.getByRole('link', { name: 'App settings', exact: true }).click()
     await expect.element(page.getByText('Domains & routing', { exact: true })).toBeVisible()
     await expect.element(page.getByText('Build settings', { exact: true })).toBeVisible()
-    await expect.element(page.getByText(/^SHOP_REGION\s+••••••••$/)).toBeVisible()
-    await expect.element(page.getByText(/^SHOP_SECRET\s+sealed$/)).toBeVisible()
+    // One "Environment variables & secrets" list, each name once: sealed, or declared but unset.
+    await expect.element(page.getByText(/^SHOP_REGION\s+sealed$/)).toBeVisible()
+    await expect.element(page.getByText(/^SHOP_SECRET\s+needed by the repo, not set$/)).toBeVisible()
     await expect
       .element(page.getByText('Allow this app to send email', { exact: true }))
       .toBeVisible()

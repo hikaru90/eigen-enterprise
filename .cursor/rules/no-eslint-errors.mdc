@@ -5,7 +5,7 @@ alwaysApply: true
 
 # No ESLint Errors
 
-CI runs `npm run lint` on every PR (`.github/workflows/test-coverage.yml`). **Do not introduce ESLint errors or warnings** in changed files, and fix lint issues you touch — do not leave them for CI.
+The local CI gate (`npm run ci:local`, run by the pre-push hook) runs `npm run lint`. **Do not introduce ESLint errors or warnings** in changed files, and fix lint issues you touch — do not leave them for CI.
 
 ## Non-negotiable
 

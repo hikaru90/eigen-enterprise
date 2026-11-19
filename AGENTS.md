@@ -37,6 +37,7 @@
 
 | Task | Command |
 |---|---|
+| Push (runs the local CI gate first — the only test gate; GitHub Actions runs no tests) | `npm run push -- origin main` |
 | Unit tests | `npm test` |
 | Coverage | `npm run test:coverage` |
 | Typecheck | `npm run check` |

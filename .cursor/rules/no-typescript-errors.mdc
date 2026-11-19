@@ -5,7 +5,7 @@ alwaysApply: true
 
 # No TypeScript Errors
 
-CI runs `npm run check` (`svelte-check`) on every PR (`.github/workflows/test-coverage.yml`). **Do not introduce TypeScript errors** in changed files, and fix type issues you touch — do not leave them for CI.
+The local CI gate (`npm run ci:local`, run by the pre-push hook) runs `npm run check` (`svelte-check`). **Do not introduce TypeScript errors** in changed files, and fix type issues you touch — do not leave them for CI.
 
 ## Non-negotiable
 

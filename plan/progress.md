@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-19 — Tests run only locally before push; GitHub Actions runs none (owner: "can we skip the test on github actions? and make the test mandatory before pushing?")
+
+- **Removed (announced, owner's call):** `.github/workflows/test-coverage.yml` (lint, svelte-naming, check, unit, components, coverage report). It had failed on every push since at least v0.5.22 (~10 min each) and gated nothing; coverage was `continue-on-error`. GitHub Actions now runs only `release.yml` (v* tags) and `oss-secrets-guard.yml` (kept: the public-repo leak guard, not a test suite).
+- **Mandatory before push:** the pre-push hook (`.githooks/pre-push`, installed by `npm install` via `core.hooksPath`) blocks any push whose commits the local gate hasn't passed. `ci:local` now also runs `test:components` (real Svelte in a real browser, ~2.5 min locally), so it covers everything the workflow did except the non-blocking coverage report. Bypass is only `--no-verify`. Use `npm run push -- <args>` so the gate runs before git connects (no dropped connection). AGENTS.md command table and the `.cursor` rules that cited the workflow are updated.
+- **Fixed on the way:** `app-detail-settings.svelte.spec.ts` still expected the pre-`e2026e1` two-card env layout (`SHOP_REGION ••••••••`); it now asserts the one list: a set name shows "sealed", a declared-but-unset one "needed by the repo, not set".
+- **Not covered by anything now:** coverage numbers (`npm run test:coverage` by hand); a push with `--no-verify`.
+
 ## 2026-11-19 — eigenEnterprise Mail: Senders said "Connect Amazon SES first" with a verified domain (owner: "where do i setup default sender" → "it should be set up")
 
 - **What broke (ee-one):** managed mail, eigenenterprise.app verified, no sender yet. Email › Senders gated on `isConfigured()`, which in managed mode stays false until a default sender exists — but the first sender added on Senders is what becomes the default (`addSender`). So the page showed "Connect Amazon SES first" and the only way to add the first sender was the onboarding Email act.

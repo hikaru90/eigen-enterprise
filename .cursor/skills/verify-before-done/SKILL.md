@@ -15,7 +15,7 @@ After any feature, bug fix, or behavior-changing edit, **you run verification yo
 
 ## CI parity (run this)
 
-CI (`.github/workflows/test-coverage.yml`) runs lint → naming → typecheck → unit tests. Match it locally:
+The local CI gate (`npm run ci:local`, run by the pre-push hook; GitHub Actions runs no tests) runs lint → naming → typecheck → unit → component tests. Match it:
 
 ```bash
 npm run ci:local
@@ -82,7 +82,7 @@ Before ending the turn after implementation work:
 
 ## Reference
 
-- CI workflow: `.github/workflows/test-coverage.yml`
+- CI gate: `npm run ci:local` (`scripts/ci-gate.sh`, `.githooks/pre-push`)
 - ESLint rule: `.cursor/rules/no-eslint-errors.mdc`
 - TypeScript rule: `.cursor/rules/no-typescript-errors.mdc`
 - Testing: `docs/testing/README.md`
