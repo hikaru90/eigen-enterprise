@@ -188,10 +188,6 @@ export const BRAIN_CALL_SYSTEM_PROMPT = [
   "Use the asker's memory only when it answers the question. It is theirs: do not mention memories that are not needed for the answer.",
 ].join('\n')
 
-/** The instructions of the one step that reads the asker's Memory for an answer. */
-export const BRAIN_MEMORY_QUESTION_PREFIX =
-  'Answer only from what is stored; if nothing stored answers this, say it is not in memory — do not guess names, dates or facts. Question asked during a call: '
-
 /** The messages for one answer: the standing prompt, then the call, what was heard, the asker's memory, the question. */
 export function brainAnswerMessages(input: BrainAskInput & { memory: string }): { role: 'system' | 'user'; content: string }[] {
   return [
@@ -211,7 +207,7 @@ export function brainAnswerMessages(input: BrainAskInput & { memory: string }): 
         '',
         `${input.askerName} asks: ${input.question}`,
         '',
-        "Answer briefly. If it isn't clearly in the transcript or the memory above, say you don't know.",
+        "Answer briefly, in the language of the question, without citation ids. If it isn't clearly in the transcript or the memory above, say you don't know.",
       ].join('\n'),
     },
   ]

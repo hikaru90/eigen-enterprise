@@ -70,8 +70,8 @@ describe.skipIf(!url)('Company Brain stores (Postgres)', () => {
 
   it('at most one open stretch per call (the database says so too)', async () => {
     const id = await make()
-    await sql`insert into call_brain_listen (id, call_id, on_by, on_at) values (${randomUUID()}, ${id}, 'pg-ann', ${at(1)})`
-    await expect(sql`insert into call_brain_listen (id, call_id, on_by, on_at) values (${randomUUID()}, ${id}, 'pg-ben', ${at(2)})`).rejects.toThrow()
+    await sql`insert into call_brain_listen (id, call_id, on_by, on_at) values (${randomUUID()}, ${id}, 'pg-ann', ${at(1).toISOString()})`
+    await expect(sql`insert into call_brain_listen (id, call_id, on_by, on_at) values (${randomUUID()}, ${id}, 'pg-ben', ${at(2).toISOString()})`).rejects.toThrow()
   })
 
   it('an answer is private until its asker shares it; the call record carries shared answers only', async () => {

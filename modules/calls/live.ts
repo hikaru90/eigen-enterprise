@@ -1,5 +1,8 @@
 import type { CallContextPort, CallLogPort } from './context-port'
+import type { CallBrain } from './brain'
 import type { CallsDirectory } from './store'
+import { dbBrainAnswerStore } from './brain-db-store'
+import { liveBrain } from './brain-live'
 import { CALLS_NOTIFY_CHANNEL, dbCallsStore } from './db-store'
 import { CallsError } from './errors'
 import { CallsHub } from './hub'
@@ -58,6 +61,25 @@ const liveSpeech: CallSpeech = async ({ userId, audio }) => {
   }
 }
 
+/**
+ * The Company Brain in a call (./brain-live.ts: the assistant's answer path,
+ * as the asker). No AI provider on this server → 'unavailable' (the call goes
+ * on; the panel says so), any other failure stays a failure.
+ */
+async function brainCall<T>(fn: () => Promise<T>): Promise<T> {
+  const { isLlmNotConfiguredError } = await import('$lib/server/llm/errors')
+  try {
+    return await fn()
+  } catch (err) {
+    if (isLlmNotConfiguredError(err)) throw new CallsError('unavailable', err instanceof Error ? err.message : String(err))
+    throw err
+  }
+}
+const liveCallBrain: CallBrain = {
+  answer: (input) => brainCall(() => liveBrain.answer(input)),
+  recap: (input) => brainCall(() => liveBrain.recap(input)),
+}
+
 /** What the composition root hands Calls: its conversation ports, both answered by Messages. */
 export type CallsPorts = { contexts: CallContextPort; log: CallLogPort }
 
@@ -75,6 +97,8 @@ export function callsService(ports: CallsPorts): Promise<CallsService> {
       store: dbCallsStore(db),
       transcripts: dbTranscriptStore(db),
       speech: liveSpeech,
+      brain: liveCallBrain,
+      brainAnswers: dbBrainAnswerStore(db),
       contexts: ports.contexts,
       log: ports.log,
       directory: await liveDirectory(),
