@@ -47,3 +47,20 @@ describe('renderMessageMarkdown', () => {
     expect(html).toContain('href="https://y.test"')
   })
 })
+
+describe('renderMessageMarkdown — the author’s line breaks', () => {
+  it('a single line break is a <br>', () => {
+    expect(renderMessageMarkdown('a\nb')).toBe('<p>a<br>b</p>\n')
+  })
+
+  it('each empty line between blocks is kept as an empty line, never collapsed', () => {
+    expect(renderMessageMarkdown('a\n\nb')).toBe('<p>a</p>\n<br>\n<p>b</p>\n')
+    expect(renderMessageMarkdown('a\n\n\n\nb')).toBe('<p>a</p>\n<br><br><br>\n<p>b</p>\n')
+    expect(renderMessageMarkdown('- x\n- y\n\n\nc')).toContain('</ul>\n<br><br>\n<p>c</p>')
+  })
+
+  it('no empty lines before the first or after the last block; code blocks keep their own', () => {
+    expect(renderMessageMarkdown('a\n\n\n')).toBe('<p>a</p>\n')
+    expect(renderMessageMarkdown('```\nx\n\n\ny\n```')).toBe('<pre><code>x\n\n\ny\n</code></pre>\n')
+  })
+})

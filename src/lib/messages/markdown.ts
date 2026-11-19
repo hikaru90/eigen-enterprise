@@ -1,6 +1,6 @@
 import type { Config } from 'dompurify'
 import DOMPurify from 'isomorphic-dompurify'
-import { Marked, type TokenizerAndRendererExtension } from 'marked'
+import { Marked, type Token, type TokenizerAndRendererExtension, type TokensList } from 'marked'
 
 /**
  * Team messages are Markdown written by people: render GFM, then sanitize to a
@@ -53,6 +53,34 @@ function mentionExtension(opts: MentionOptions): TokenizerAndRendererExtension {
   }
 }
 
+/**
+ * Empty lines the author typed between blocks. Markdown folds any run of
+ * blank lines into one paragraph break; a chat message keeps them: each
+ * empty line is a `<br>` line between the blocks.
+ */
+type BlankLinesToken = { type: 'blankLines'; raw: string; count: number }
+
+const blankLines: TokenizerAndRendererExtension = {
+  name: 'blankLines',
+  level: 'block',
+  renderer(token) {
+    return `${'<br>'.repeat((token as unknown as BlankLinesToken).count)}\n`
+  },
+}
+
+/** Top-level `space` tokens between two blocks become their empty lines (a gap of n newlines is n − 1 empty lines). */
+function keepBlankLines(tokens: TokensList): TokensList {
+  const out = tokens.flatMap((t, i): Token[] => {
+    if (t.type !== 'space') return [t]
+    const between = i > 0 && tokens.slice(i + 1).some((n) => n.type !== 'space')
+    const count = t.raw.split('\n').length - 2
+    if (!between || count < 1) return []
+    const blank: BlankLinesToken = { type: 'blankLines', raw: t.raw, count }
+    return [blank as unknown as Token]
+  })
+  return Object.assign(out, { links: tokens.links })
+}
+
 function makeMarked(mentions?: MentionOptions): Marked {
   const m = new Marked({ gfm: true, breaks: true })
   m.use({
@@ -61,6 +89,7 @@ function makeMarked(mentions?: MentionOptions): Marked {
         return escapeHtml(text)
       },
     },
+    extensions: [blankLines],
   })
   if (mentions && mentions.names.length > 0) m.use({ extensions: [mentionExtension(mentions)] })
   return m
@@ -92,7 +121,8 @@ function markLink(node: Element) {
 
 export function renderMessageMarkdown(source: string, mentions?: MentionOptions): string {
   if (!source.trim()) return ''
-  const raw = markedFor(mentions).parse(source, { async: false })
+  const marked = markedFor(mentions)
+  const raw = marked.parser(keepBlankLines(marked.lexer(source)))
   // Scoped hook: added for this call only, so other DOMPurify users are untouched.
   DOMPurify.addHook('afterSanitizeAttributes', markLink)
   try {

@@ -209,3 +209,30 @@ describe('message-row.svelte — quoted replies (Contribute 2a58bcc8)', () => {
     await expect.element(page.getByTestId('messages-item')).toHaveAttribute('data-highlighted', 'true')
   })
 })
+
+describe('message-row.svelte — the author’s line breaks (Contribute: "übernimmt nicht meine Umbrüche")', () => {
+  /** How many lines the body takes on screen, measured against a one-line message. */
+  function lines(body: string, over: Partial<MessageView> = {}): number {
+    const one = render(MessageRow, props({ message: { ...base, id: 'one', body: 'x' } }))
+    const unit = one.container.querySelector<HTMLElement>('[data-testid="messages-body"]')!.getBoundingClientRect().height
+    one.unmount()
+    const r = render(MessageRow, props({ message: { ...base, body, ...over } }))
+    const h = r.container.querySelector<HTMLElement>('[data-testid="messages-body"]')!.getBoundingClientRect().height
+    r.unmount()
+    return Math.round(h / unit)
+  }
+
+  it('a Shift+Enter line break is a new line', () => {
+    expect(lines('Hallo\nwie geht’s?')).toBe(2)
+  })
+
+  it('an empty line the author typed stays an empty line — one, or several', () => {
+    expect(lines('Hallo\n\nwie geht’s?')).toBe(3)
+    expect(lines('Hallo\n\n\nwie geht’s?')).toBe(4)
+    expect(lines('eins\n\nzwei\n\ndrei')).toBe(5)
+  })
+
+  it('an edited message keeps its empty lines, with "(edited)" on the last line', () => {
+    expect(lines('Hallo\n\nwie geht’s?', { editedAt: '2026-11-04T09:05:00.000Z' })).toBe(3)
+  })
+})
