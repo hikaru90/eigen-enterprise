@@ -13,7 +13,7 @@ export const KIND_CATALOG: Readonly<Record<ContributionKind, string>> = {
 
 export const AREA_CATALOG: Readonly<Record<ContributionArea, string>> = {
   dashboard: 'Dashboard — the home page at / with "Needs you", the modules and recent activity.',
-  assistant: 'Assistant — the AI assistant: the "Ask the assistant" top bar, its chat panel, history and activity.',
+  assistant: 'Assistant — the AI assistant: the "Ask the company brain" top bar, its chat panel, history and activity.',
   messages: 'Messages — the team chat: channels, direct messages, threads, reactions, notifications.',
   website: 'Website — the public site, its pages, hosting, apps, domains and GitHub deploys.',
   email: 'Email — company email: domains, senders, templates, contacts, flows, sending logs.',

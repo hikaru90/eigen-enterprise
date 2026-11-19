@@ -18,7 +18,7 @@ export type AssistantDeps = AssistantChatDeps & {
 }
 
 /**
- * The one assistant (polish P-1): the shell's top bar ("Ask the assistant…",
+ * The one assistant (polish P-1): the shell's top bar ("Ask the company brain…",
  * ⌘K) and the panel on the right of every signed-in page share this state.
  * Explicit methods only — the bar, the panel and pages (dashboard, run list)
  * call them from their own event handlers.

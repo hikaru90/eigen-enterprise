@@ -119,7 +119,7 @@
     switchedOff === 0
       ? 'All switched on'
       : assistant
-        ? `${switchedOff} switched off — ask the assistant to turn ${switchedOff === 1 ? 'it' : 'them'} on`
+        ? `${switchedOff} switched off — ask the company brain to turn ${switchedOff === 1 ? 'it' : 'them'} on`
         : `${switchedOff} switched off`,
   )
 
@@ -220,7 +220,7 @@
       <div class="group/tile relative min-w-0">
       <!-- Ask: the website's ice tile with the assistant's blue orb, the mono greeting
            (the board's "Hey, Annie"); suggestions are white pills that turn the assistant's yellow. -->
-      <section class="stage stage-ice h-full min-h-80" aria-label="Ask the assistant" data-testid="dashboard-ask">
+      <section class="stage stage-ice h-full min-h-80" aria-label="Ask the company brain" data-testid="dashboard-ask">
         <span class="stage-tag">Assistant</span>
         <div class="flex w-full max-w-[19rem] flex-col items-center text-center">
           <span class="orb size-20" aria-hidden="true" data-testid="dashboard-ask-orb"></span>
@@ -244,7 +244,7 @@
           <button
             type="button"
             class="ctrl ctrl-circle ctrl-ink mt-4 outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label="Ask the assistant"
+            aria-label="Ask the company brain"
             onclick={() => assistant.focusBar()}
           >
             <Plus class="size-4" aria-hidden="true" strokeWidth={2} />

@@ -34,7 +34,7 @@
    *
    * The signed-in app frame: a left sidebar on desktop (company = the
    * dashboard link, nav, user), a drawer on phones. The content column has
-   * the assistant's top bar ("Ask the assistant…", ⌘K) and, below it, the
+   * the assistant's top bar ("Ask the company brain…", ⌘K) and, below it, the
    * page next to the assistant panel (polish P-1) — both only while the
    * Assistant plugin is on (shell.assistant). The page area is a
    * fixed-height column so full-height pages keep their own scroll container.

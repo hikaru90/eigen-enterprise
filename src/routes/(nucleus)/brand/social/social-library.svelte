@@ -114,7 +114,7 @@
     <div class="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-6 py-16 text-center" data-testid="social-empty">
       <h3 class="text-base font-semibold">No posts yet</h3>
       <p class="max-w-sm text-sm text-foreground/55">
-        Ask the assistant for a post in your style, start a graphic, or upload posts you’ve already made.
+        Ask the company brain for a post in your style, start a graphic, or upload posts you’ve already made.
       </p>
     </div>
   {:else}

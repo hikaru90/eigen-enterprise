@@ -5,7 +5,7 @@ export const ASSISTANT_MODULE_ID = 'assistant'
 /**
  * The Assistant (owner, 2026-11-12: every sidebar entry is a plugin, the
  * Assistant/Chat among them): the members' conversation with the company
- * agent — the shell's top bar ("Ask the assistant…", ⌘K) and panel, the
+ * agent — the shell's top bar ("Ask the company brain…", ⌘K) and panel, the
  * conversation pages (/assistant, /assistant/[id]) and their APIs
  * (/api/chat, /api/assistant/**). An official plugin: seeded on once,
  * Settings → Plugins switches it off; switched off, the shell has no top bar
