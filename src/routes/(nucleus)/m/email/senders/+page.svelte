@@ -23,7 +23,7 @@
   description="The addresses your company sends from, with the name recipients see. The default sender sends sign-in codes, notifications and every mail that names no sender."
 />
 
-{#if !data.email.configured}
+{#if !data.connected}
   <p class="mt-4 text-sm text-muted-foreground">
     Connect Amazon SES first — <a class="underline underline-offset-4" href={resolve('/m/email/setup')}
       >under Setup › Account</a

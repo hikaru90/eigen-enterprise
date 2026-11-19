@@ -2,13 +2,18 @@ import type { Actions, PageServerLoad } from './$types'
 import { emailPlatform } from '../../../../../../modules/email/platform/service'
 import { act, field, requireAdmin, requireMember } from '../access.server'
 
-/** Email › Senders: named from-addresses on verified domains; one is the default. */
+/**
+ * Email › Senders: named from-addresses on verified domains; one is the default.
+ * Open once mail is connected (own SES or eigenEnterprise Mail), not once a default
+ * sender exists: with eigenEnterprise Mail the first sender added here becomes the default.
+ */
 export const load: PageServerLoad = async ({ locals }) => {
   await requireMember(locals)
   const platform = emailPlatform()
-  if (!(await platform.owlery.isConfigured())) return { senders: [], domains: [] }
+  if (!(await platform.owlery.settings())) return { connected: false, senders: [], domains: [] }
   const [senders, domains] = await Promise.all([platform.listSenders(), platform.listDomains()])
   return {
+    connected: true,
     senders: senders.map((s) => ({
       id: s.id,
       address: s.address,
