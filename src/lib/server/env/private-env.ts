@@ -17,6 +17,9 @@ export type ExtendedPrivateEnv = typeof kitEnv & {
   EE_CLAIM_TOKEN_HASH?: string
   EE_STATE_DIR?: string
   EE_CLAIM_EXPIRES_AT?: string
+  /** `ee owner-link`: the one-hour owner sign-in link (hash + expiry only). */
+  EE_OWNER_LINK_HASH?: string
+  EE_OWNER_LINK_EXPIRES_AT?: string
   EE_WORKLOAD?: string
   ERPNEXT_API_KEY?: string
   ERPNEXT_API_SECRET?: string

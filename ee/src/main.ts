@@ -39,6 +39,7 @@ const USAGE = `ee — the company's init (plan/phase-substrate.md)
                                          first; --expect: only that release, e.g. eigenenterprise-0.5.19-<sha>)
   ee upgrade-apply --job <id>           (run by ee-upgrade.service, which Settings → Updates starts through ee)
   ee claim-link                          (new private link to claim this server)
+  ee owner-link                          (one-hour link that signs the owner back in: no passkey, no email yet)
   ee status
   ee reconcile
   ee domain add <host> [--workload os] [--role console|public|app]
@@ -296,6 +297,17 @@ async function main(argv: string[]): Promise<void> {
       if (status >= 400) return print(Promise.resolve({ status, data }))
       const d = data as { url: string; expiresAt: string; reconcileError: string | null }
       console.log(`\nClaim link (works once, until ${d.expiresAt}):\n\n  ${d.url}\n`)
+      if (d.reconcileError) {
+        console.error(`✗ the server could not apply it yet: ${d.reconcileError}`)
+        process.exitCode = 1
+      }
+      return
+    }
+    case 'owner-link': {
+      const { status, data } = await call('POST', '/v1/owner-link', { author: who() })
+      if (status >= 400) return print(Promise.resolve({ status, data }))
+      const d = data as { url: string; expiresAt: string; reconcileError: string | null }
+      console.log(`\nOwner sign-in link (works once, until ${d.expiresAt}):\n\n  ${d.url}\n`)
       if (d.reconcileError) {
         console.error(`✗ the server could not apply it yet: ${d.reconcileError}`)
         process.exitCode = 1

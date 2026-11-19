@@ -13,7 +13,7 @@ import { mustRun, type System } from './system.ts'
 import { addDomain, removeDomain, setConsoleHost } from './domains.ts'
 import { fetchSource, readRepoFile, readTree, SourceReadError, TREE_MAX_DEPTH } from './sources.ts'
 import { checkDeployKey, createDeployKey, deleteDeployKey, KEY_ID, REPO } from './deploy-keys.ts'
-import { claimState, claimUrl, newClaim } from './claim.ts'
+import { claimState, claimUrl, newClaim, newOwnerLink, OWNER_LINK_SECRETS, ownerLinkUrl } from './claim.ts'
 import { BackupService, type BackupDeps } from './backup/service.ts'
 import { backupRoute, restoreRoute } from './backup/control.ts'
 import { launchRestoreUnit, productionSources, restoreUnitActive, writeBackupTimer } from './backup/box.ts'
@@ -363,6 +363,41 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
           reconcileError = (err as Error).message
         }
         return send(res, 200, { url: claimUrl(desired.settings.consoleHost, claim.token), expiresAt: claim.expiresAt, reconcileError })
+      }
+      if (route === 'POST /v1/owner-link') {
+        // Back in as the owner (no passkey, no company email yet): a one-hour, single-use link. Like a
+        // claim link, only the hash + expiry are stored and the token goes back once, to root on the box.
+        const i = z.object({ author }).strict().parse(await body(req))
+        const state = await claimState(ee.sys, OS_INTERNAL_PORT)
+        if (state === 'open') throw new HttpError(409, 'nobody owns this company yet; run `ee claim-link` to claim it')
+        if (state === 'unreachable') throw new HttpError(503, 'eigenEnterprise is not answering, so ee cannot tell whether the company has an owner; no owner link minted')
+        const link = newOwnerLink()
+        await ee.exclusive(async () => {
+          await ee.secrets.set('os', 'EE_OWNER_LINK_HASH', link.hash)
+          await ee.secrets.set('os', 'EE_OWNER_LINK_EXPIRES_AT', link.expiresAt)
+        })
+        emit(ee.journal, ee.sys, 'owner_link.issued', 'os', `owner sign-in link issued by ${i.author} (expires ${link.expiresAt})`)
+        const desired = await ee.repo.read()
+        const os = desired.workloads.find((w) => w.name === 'os')
+        if (!os) throw new HttpError(404, 'no workload os')
+        const missing = OWNER_LINK_SECRETS.filter((n) => !os.secrets.includes(n))
+        let reconcileError: string | null = null
+        if (missing.length > 0) {
+          // First link on this box: declaring the two secrets redeploys os with them (health-gated).
+          reconcileError = (
+            await ee.change(`secret: os declares ${missing.join(', ')}`, i.author, (s) => ({
+              ...s,
+              workloads: s.workloads.map((w) => (w.name === 'os' ? { ...w, secrets: [...w.secrets, ...missing] } : w)),
+            }))
+          ).reconcileError
+        } else {
+          try {
+            await ee.reconcile()
+          } catch (err) {
+            reconcileError = (err as Error).message
+          }
+        }
+        return send(res, 200, { url: ownerLinkUrl(desired.settings.consoleHost, link.token), expiresAt: link.expiresAt, reconcileError })
       }
       if (route === 'POST /v1/sources/fetch') {
         const i = fetchInput.parse(await body(req))

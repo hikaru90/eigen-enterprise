@@ -11,6 +11,7 @@
   import VolumeX from '@lucide/svelte/icons/volume-x'
   import { goto, invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
+  import { requestSignOut } from '$lib/auth/sign-out'
   import AudioDevicesSettings from '$lib/components/audio-devices-settings.svelte'
   import * as Popover from '$lib/components/ui/popover'
   import { isStandalone } from '$lib/pwa/install'
@@ -33,6 +34,8 @@
   let menuOpen = $state(false)
   let restarting = $state(false)
   let signingOut = $state(false)
+  /** Why signing out was held back (it would end the only way back in); null when it wasn't. */
+  let lockout = $state<string | null>(null)
   let soundOn = $state(true)
   let voiceOn = $state(true)
   let devicesOpen = $state(false)
@@ -81,15 +84,17 @@
     }
   }
 
-  async function signOut(): Promise<void> {
+  async function signOut(confirmLockout = false): Promise<void> {
     if (signingOut) return
     signingOut = true
     error = null
     try {
-      const res = await fetch('/api/session/sign-out', { method: 'POST', credentials: 'include' })
-      if (!res.ok) {
-        throw new Error(`Sign out failed (HTTP ${res.status}).`)
+      const r = await requestSignOut(confirmLockout)
+      if (!r.ok) {
+        lockout = r.lockout
+        return
       }
+      lockout = null
       await goto(resolve('/login'))
       menuOpen = false
     } catch (err) {
@@ -199,6 +204,15 @@
       {/if}
       Sign out
     </button>
+    {#if lockout}
+      <div class="mt-1 space-y-1.5 px-2 text-xs leading-relaxed" role="alert" data-testid="sign-out-lockout">
+        <p class="text-destructive">{lockout}</p>
+        <p class="flex gap-3">
+          <a href={resolve('/settings/passkeys')} class="underline underline-offset-4" onclick={() => (menuOpen = false)}>Add a passkey</a>
+          <button type="button" class="underline underline-offset-4" onclick={() => void signOut(true)} data-testid="sign-out-anyway">Sign out anyway</button>
+        </p>
+      </div>
+    {/if}
     {#if error}
       <p class="text-destructive mt-1 px-2 text-xs leading-relaxed" role="alert">
         {error}

@@ -13,6 +13,7 @@ const OUTSIDE_SHELL_ALLOWLIST = new Set([
   'login', // signed out: sign in
   'signup', // signed out: create the account
   'claim', // signed out: the installer's one-time owner claim
+  'owner-link', // signed out: `ee owner-link`, the owner back in without passkey or email
   'invite', // signed out: accept an invite
   'join/[token]', // public: a guest's personal call link (no account, no install — proposal 844bab56)
   'welcome/profile', // signed in, full screen before the shell: the required profile step (P-5 profile gate)

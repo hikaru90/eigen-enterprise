@@ -150,6 +150,52 @@ describe('control API: claim links (ee claim-link)', () => {
   })
 })
 
+describe('control API: owner link (back in as the owner)', () => {
+  it('mints a one-hour link once the company has an owner, and declares its secrets on os', async () => {
+    const { sys, ee, call } = await start()
+    sys.httpPaths = { '/api/claim/open': false, '/api/health': true }
+    vi.spyOn(ee.repo, 'read').mockResolvedValue({ settings: { consoleHost: 'os.kindred.test' }, workloads: [{ name: 'os', secrets: ['A'] }] } as never)
+    const change = vi.spyOn(ee, 'change').mockResolvedValue({ rev: 'r', reconcileError: null })
+    const r = await call('POST', '/v1/owner-link', { author: 'root' })
+    expect(r.status).toBe(200)
+    const d = r.data as { url: string; expiresAt: string }
+    expect(d.url).toMatch(/^https:\/\/os\.kindred\.test\/owner-link\?token=/)
+    expect(new Date(d.expiresAt).getTime() - Date.now()).toBeLessThanOrEqual(60 * 60_000)
+    expect(ee.secrets.all()['os']?.['EE_OWNER_LINK_HASH']).toMatch(/^[0-9a-f]{64}$/)
+    expect(change).toHaveBeenCalledWith('secret: os declares EE_OWNER_LINK_HASH, EE_OWNER_LINK_EXPIRES_AT', 'root', expect.any(Function))
+    expect(ee.journal.events.map((e) => e.type)).toContain('owner_link.issued')
+  })
+
+  it('a second link only re-deploys (the secrets are declared already)', async () => {
+    const { sys, ee, call } = await start()
+    sys.httpPaths = { '/api/claim/open': false, '/api/health': true }
+    vi.spyOn(ee.repo, 'read').mockResolvedValue({
+      settings: { consoleHost: 'os.kindred.test' },
+      workloads: [{ name: 'os', secrets: ['EE_OWNER_LINK_HASH', 'EE_OWNER_LINK_EXPIRES_AT'] }],
+    } as never)
+    const change = vi.spyOn(ee, 'change')
+    const reconcile = vi.spyOn(ee, 'reconcile').mockResolvedValue(undefined as never)
+    expect((await call('POST', '/v1/owner-link', { author: 'root' })).status).toBe(200)
+    expect(change).not.toHaveBeenCalled()
+    expect(reconcile).toHaveBeenCalled()
+  })
+
+  it('refuses while nobody owns the company (that is a claim link), and stores nothing', async () => {
+    const { sys, ee, call } = await start()
+    sys.httpPaths = { '/api/claim/open': true, '/api/health': true }
+    const r = await call('POST', '/v1/owner-link', { author: 'root' })
+    expect(r.status).toBe(409)
+    expect(JSON.stringify(r.data)).toMatch(/ee claim-link/)
+    expect(ee.secrets.all()['os']?.['EE_OWNER_LINK_HASH']).toBeUndefined()
+  })
+
+  it('refuses when eigenEnterprise is not answering (cannot tell)', async () => {
+    const { sys, call } = await start()
+    sys.httpPaths = {}
+    expect((await call('POST', '/v1/owner-link', { author: 'root' })).status).toBe(503)
+  })
+})
+
 describe('control API: deploy keys', () => {
   it('create → check → delete; only the public key ever comes back', async () => {
     const { sys, ee, call } = await start()

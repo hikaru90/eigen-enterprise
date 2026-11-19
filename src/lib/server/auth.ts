@@ -1,8 +1,8 @@
+import { passkey } from '@better-auth/passkey'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { betterAuth } from 'better-auth/minimal'
 import { emailOTP } from 'better-auth/plugins/email-otp'
 import { sveltekitCookies } from 'better-auth/svelte-kit'
-import { passkey } from '@better-auth/passkey'
 import { count } from 'drizzle-orm'
 import { dev } from '$app/environment'
 import { getRequestEvent } from '$app/server'
@@ -11,14 +11,15 @@ import { syncOwleryContactForVerifiedUser } from '$lib/server/auth-owlery-sync'
 import { buildSocialProvidersConfig, listEnabledSocialProviderIds } from '$lib/server/auth-social'
 import { normalizeUserNameFields } from '$lib/server/auth-user-name'
 import { deliverSignInCode, recordDeliveryFailure } from '$lib/server/auth/deliver-code'
+import { freshSessionHook } from '$lib/server/auth/fresh-session'
 import { claimScope, inviteScope, NotAMemberError, ownerPolicyForNewUser } from '$lib/server/auth/owner-policy'
-import { dbMemberStore } from '$lib/server/members/db-store'
-import { foundingCompanyName } from '$lib/server/overview/sources'
 import { authDb } from '$lib/server/db/auth-db'
 import { user as userTable } from '$lib/server/db/auth.schema'
 import { recordSignInCode } from '$lib/server/e2e/verification-link-store'
 import { env } from '$lib/server/env/private-env'
 import { companyMail } from '$lib/server/mail'
+import { dbMemberStore } from '$lib/server/members/db-store'
+import { foundingCompanyName } from '$lib/server/overview/sources'
 
 const socialProviders = buildSocialProvidersConfig(env)
 const enabledSocialProviderIds = listEnabledSocialProviderIds(env)
@@ -92,7 +93,11 @@ export const auth = betterAuth({
     // active day extends it, so a used machine never times out mid-work.
     expiresIn: 60 * 60 * 24 * 365,
     updateAge: 60 * 60 * 24,
+    // Better Auth's "signed in within a day" check is off; `hooks.before` below runs ours, which
+    // only asks for a new sign-in when an email code can actually deliver one (fresh-session.ts).
+    freshAge: 0,
   },
+  hooks: { before: freshSessionHook(() => companyMail().isConfigured()) },
   ...(enabledSocialProviderIds.length > 0
     ? {
         socialProviders,

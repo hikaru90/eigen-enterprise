@@ -28,6 +28,28 @@ export function claimUrl(consoleHost: string, token: string): string {
   return `https://${consoleHost}/claim?token=${encodeURIComponent(token)}`
 }
 
+/**
+ * The owner link (getting back in): once the company has an owner, root on the box can still sign
+ * that owner in — `ee owner-link` mints a one-hour, single-use link, and the server keeps only its
+ * SHA-256 + expiry. For an owner with no passkey and no company email yet (sign-in codes need email).
+ */
+export const OWNER_LINK_TTL_MS = 60 * 60_000
+/** Declared on os once the first owner link is minted; a bootstrap re-run keeps them (resolveOsSecrets). */
+export const OWNER_LINK_SECRETS = ['EE_OWNER_LINK_HASH', 'EE_OWNER_LINK_EXPIRES_AT'] as const
+
+export function newOwnerLink(now: Date = new Date()): { token: string; hash: string; expiresAt: string } {
+  const token = randomBytes(24).toString('base64url')
+  return {
+    token,
+    hash: createHash('sha256').update(token).digest('hex'),
+    expiresAt: new Date(now.getTime() + OWNER_LINK_TTL_MS).toISOString(),
+  }
+}
+
+export function ownerLinkUrl(consoleHost: string, token: string): string {
+  return `https://${consoleHost}/owner-link?token=${encodeURIComponent(token)}`
+}
+
 /** eigenEnterprise answers here (GET, on OS_INTERNAL_PORT): 200 while nobody has claimed it, 409 once an owner exists. */
 export const CLAIM_OPEN_PATH = '/api/claim/open'
 export const OS_HEALTH_PATH = '/api/health'

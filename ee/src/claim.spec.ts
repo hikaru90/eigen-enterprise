@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { claimUrl, newClaim } from './claim.ts'
+import { claimUrl, newClaim, newOwnerLink, ownerLinkUrl } from './claim.ts'
 
 describe('claim link', () => {
   it('keeps only the hash on the server, expiring in 7 days', () => {
@@ -13,5 +13,18 @@ describe('claim link', () => {
   })
   it('builds the console link', () => {
     expect(claimUrl('os.kindred.digital', 'a+b')).toBe('https://os.kindred.digital/claim?token=a%2Bb')
+  })
+})
+
+describe('owner link', () => {
+  it('keeps only the hash on the server, expiring in one hour', () => {
+    const now = new Date('2026-11-19T12:00:00Z')
+    const l = newOwnerLink(now)
+    expect(l.token.length).toBeGreaterThanOrEqual(32)
+    expect(l.hash).toBe(createHash('sha256').update(l.token).digest('hex'))
+    expect(l.expiresAt).toBe('2026-11-19T13:00:00.000Z')
+  })
+  it('builds the console link', () => {
+    expect(ownerLinkUrl('os.kindred.digital', 'a+b')).toBe('https://os.kindred.digital/owner-link?token=a%2Bb')
   })
 })

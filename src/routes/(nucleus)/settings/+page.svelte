@@ -6,6 +6,7 @@
   import { goto, invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
   import { resetPostHog } from '$lib/analytics/posthog-client'
+  import { requestSignOut } from '$lib/auth/sign-out'
   import ProfileEditor from '$lib/components/profile-editor.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
@@ -21,19 +22,20 @@
 
   let signingOut = $state(false)
   let signOutError = $state<string | null>(null)
+  /** Why signing out was held back (it would end the only way back in); null when it wasn't. */
+  let lockout = $state<string | null>(null)
 
-  async function signOut() {
+  async function signOut(confirmLockout = false) {
     if (signingOut) return
     signingOut = true
     signOutError = null
     try {
-      const res = await fetch('/api/session/sign-out', {
-        method: 'POST',
-        credentials: 'include',
-      })
-      if (!res.ok) {
-        throw new Error(`Sign out failed (HTTP ${res.status}).`)
+      const r = await requestSignOut(confirmLockout)
+      if (!r.ok) {
+        lockout = r.lockout
+        return
       }
+      lockout = null
       resetPostHog()
       await goto(resolve('/login'), { invalidateAll: true })
     } catch (err) {
@@ -101,6 +103,15 @@
       {/if}
       Sign out
     </Button>
+    {#if lockout}
+      <div class="w-full space-y-1.5 text-xs" role="alert" data-testid="sign-out-lockout">
+        <p class="text-destructive">{lockout}</p>
+        <p class="flex gap-3">
+          <a href={resolve('/settings/passkeys')} class="underline underline-offset-4">Add a passkey</a>
+          <button type="button" class="underline underline-offset-4" onclick={() => void signOut(true)} data-testid="sign-out-anyway">Sign out anyway</button>
+        </p>
+      </div>
+    {/if}
     {#if signOutError}
       <p class="w-full text-xs text-destructive" role="alert">{signOutError}</p>
     {/if}
