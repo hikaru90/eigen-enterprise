@@ -10,6 +10,7 @@ import { InMemoryJourneyStore, initialJourneyState } from '$lib/kernel/playbook'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import {
+  BRAND_TONE_DOCUMENT,
   HARNESS_OBSERVATION_HEADER,
   JourneyAwareAgentRuntime,
   ORCHESTRATOR_AGENT_ID,
@@ -47,13 +48,16 @@ type Fixture = {
   engineInputs: string[]
   toolCalls: Array<{ tool: string; input: Record<string, unknown> }>
   pages: Map<string, FakePage>
+  /** Drive's top level, by file name (the tone-of-voice document lands here). */
+  driveFiles: Map<string, { name: string; content: string }>
   script: string[]
 }
 
-function fixture(options: { failOnSlug?: string } = {}): Fixture {
+function fixture(options: { failOnSlug?: string; failOnDocument?: boolean } = {}): Fixture {
   const sink = new InMemoryEventSink()
   const approvals = new InMemoryApprovalStore()
   const pages = new Map<string, FakePage>()
+  const driveFiles: Fixture['driveFiles'] = new Map()
   const toolCalls: Fixture['toolCalls'] = []
   const engineInputs: string[] = []
   const script: string[] = []
@@ -103,6 +107,33 @@ function fixture(options: { failOnSlug?: string } = {}): Fixture {
       [...pages.values()].map((p) => ({ slug: p.slug, visibility: p.visibility })),
   }
 
+  const createDocument: ToolDescriptor = {
+    name: 'drive.create_document',
+    module: 'drive',
+    summary: 'fake drive create',
+    auditClass: 'mutate',
+    activity: () => 'Did a test action',
+    inputSchema: z.looseObject({ name: z.string(), content: z.string() }),
+    permission: { roles: ['admin', 'agent'] },
+    handler: async (_ctx: ToolContext, input: unknown) => {
+      const args = input as { name: string; content: string }
+      toolCalls.push({ tool: 'drive.create_document', input: args })
+      if (options.failOnDocument) throw new Error('Drive storage is full')
+      const name = `${args.name}.md`
+      driveFiles.set(name, { name, content: args.content })
+      return { file: { type: 'file', name } }
+    },
+  }
+  const driveList: ToolDescriptor = {
+    name: 'drive.list',
+    module: 'drive',
+    summary: 'fake drive list',
+    auditClass: 'read',
+    inputSchema: z.looseObject({}),
+    permission: { roles: ['admin', 'agent'] },
+    handler: async () => ({ items: [...driveFiles.values()].map((f) => ({ type: 'file', name: f.name })) }),
+  }
+
   const registry = new KernelRegistry({
     eventSink: sink,
     approvalPolicy: new StaticApprovalPolicy(new Set(['website.publish_page'])),
@@ -112,6 +143,8 @@ function fixture(options: { failOnSlug?: string } = {}): Fixture {
   registry.register(createPage)
   registry.register(publishPage)
   registry.register(listPages)
+  registry.register(createDocument)
+  registry.register(driveList)
 
   const engine: LoopEngine = {
     run: async (_sessionId, input) => {
@@ -134,7 +167,7 @@ function fixture(options: { failOnSlug?: string } = {}): Fixture {
   runtime.registerEngine('durable', engine)
   runtime.registerAgent(orchestratorAgentConfig())
 
-  return { runtime, journeys, sink, approvals, engineInputs, toolCalls, pages, script }
+  return { runtime, journeys, sink, approvals, engineInputs, toolCalls, pages, driveFiles, script }
 }
 
 async function runFoundingJourney(fx: Fixture, sinks?: Parameters<JourneyAwareAgentRuntime['dispatch']>[3]): Promise<string[]> {
@@ -234,12 +267,13 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     // Skeleton after the name + positioning; brand doc last (it needs the tone
     // answer too). The publish is gated BEFORE its handler runs (registry
     // approval gate) — it never reaches this handler-level log; the pending
-    // approval request pins it.
+    // approval request pins it. The brand doc is an internal document: Drive
+    // (Markdown), never a website page (Contribute).
     expect(byTool).toEqual([
       'website.create_page', // home
       'website.create_page', // about
       'website.create_page', // contact
-      'website.create_page', // brand doc (after tone, the final step)
+      'drive.create_document', // brand doc (after tone, the final step)
     ])
 
     const home = fx.toolCalls[0]!.input
@@ -250,14 +284,12 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     expect(fx.toolCalls[2]!.input).toMatchObject({ slug: 'contact', title: 'Contact' })
 
     const brandDoc = fx.toolCalls[3]!.input
-    expect(brandDoc).toMatchObject({
-      slug: 'brand-tone-of-voice',
-      title: 'Brand — Tone of Voice',
-      kind: 'doc',
-      visibility: 'private',
-    })
-    expect(String(brandDoc.body)).toContain('warm, direct, technical')
-    expect(String(brandDoc.body)).toContain('Kindred Digital Labs')
+    expect(BRAND_TONE_DOCUMENT).toBe('Brand — Tone of Voice')
+    expect(brandDoc).toEqual({ name: BRAND_TONE_DOCUMENT, content: expect.any(String) })
+    expect(String(brandDoc.content)).toContain('# Brand — Tone of Voice')
+    expect(String(brandDoc.content)).toContain('warm, direct, technical')
+    expect(String(brandDoc.content)).toContain('Kindred Digital Labs')
+    expect(fx.pages.has('brand-tone-of-voice')).toBe(false)
   })
 
   it('gates publishes: approval_required records pending, surfaces the event, journey stays active', async () => {
@@ -288,7 +320,7 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
       ['website.create_page', 'executed'],
       ['website.create_page', 'executed'],
       ['website.publish_page', 'approval_pending'],
-      ['website.create_page', 'executed'],
+      ['drive.create_document', 'executed'],
     ])
   })
 
@@ -329,7 +361,7 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
   })
 
   it('hands artifact errors back to the agent for one more step — never thrown to the caller', async () => {
-    const fx = fixture({ failOnSlug: 'brand-tone-of-voice' })
+    const fx = fixture({ failOnDocument: true })
     await fx.journeys.create(
       WEBSITE_FOUNDING_JOURNEY.kind,
       initialJourneyState('session-1', WEBSITE_FOUNDING_JOURNEY.specVersion),
@@ -354,7 +386,7 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     const observation = fx.engineInputs.at(-1)!
     expect(observation).toContain(HARNESS_OBSERVATION_HEADER)
     expect(observation).toContain('"code":"tool_failed"')
-    expect(observation).toContain('duplicate website slug')
+    expect(observation).toContain('Drive storage is full')
     // The ledger keeps the failed artifact pending: it retries next turn.
     const row = await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
     expect(row?.state.captured).toContain('tone')
@@ -519,12 +551,15 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     // The production incident: pages exist outside the ledger (legacy row /
     // an agent tool call created them). Retried creates must probe first and
     // record the ledger entry — never throw duplicate slug on later turns.
-    for (const slug of ['home', 'about', 'contact', 'brand-tone-of-voice']) {
+    for (const slug of ['home', 'about', 'contact']) {
       fx.pages.set(slug, { slug, visibility: 'private' })
     }
+    fx.driveFiles.set(`${BRAND_TONE_DOCUMENT}.md`, { name: `${BRAND_TONE_DOCUMENT}.md`, content: 'Already here.' })
     await runFoundingJourney(fx)
 
     expect(fx.toolCalls.filter((c) => c.tool === 'website.create_page')).toEqual([])
+    expect(fx.toolCalls.filter((c) => c.tool === 'drive.create_document')).toEqual([])
+    expect(fx.driveFiles.get(`${BRAND_TONE_DOCUMENT}.md`)?.content).toBe('Already here.')
     const row = await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
     expect(
       row?.state.artifacts

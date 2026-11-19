@@ -159,6 +159,27 @@ const publishPageApplied: NonNullable<JourneyArtifact['alreadyApplied']> = async
   return page?.visibility === visibility
 }
 
+/**
+ * The founding tone-of-voice document: an INTERNAL document, so it lives in
+ * Drive as Markdown, never on the website (Contribute: internal documents are
+ * never website pages). Its file name is its identity for the probe below.
+ */
+export const BRAND_TONE_DOCUMENT = 'Brand — Tone of Voice'
+
+/** Already in Drive: a file of exactly this name at the agent's top level (a pure read through the registry). */
+const driveDocumentApplied: NonNullable<JourneyArtifact['alreadyApplied']> = async ({
+  input,
+  registry,
+  principal,
+  requestId,
+}) => {
+  const listed = (await executeRemediatingInactiveModule(registry, 'drive.list', {}, { principal, requestId })) as {
+    items: Array<{ type: string; name: string }>
+  }
+  const fileName = `${(input as { name: string }).name}.md`
+  return listed.items.some((item) => item.type === 'file' && item.name === fileName)
+}
+
 export const WEBSITE_FOUNDING_JOURNEY: JourneySpec = {
   kind: 'website_founding',
   // v2: the phase-2e founding order (company_name → positioning → tone).
@@ -246,20 +267,20 @@ export const WEBSITE_FOUNDING_JOURNEY: JourneySpec = {
     {
       // Final step: the brand doc needs the tone answer, so it is this step's
       // artifact — by the time tone is captured, name + positioning exist too.
+      // It is an internal document: Drive (Markdown), not a website page. Same
+      // position in the ledger (tone/0), so specVersion stays: a row that
+      // already recorded the old website doc keeps it; nothing re-runs.
       id: 'tone',
       promptFragment:
         'Collect the company’s tone of voice — three words the user gives (or confirms) count as captured.',
       artifacts: [
         {
-          tool: 'website.create_page',
-          alreadyApplied: createPageApplied,
+          tool: 'drive.create_document',
+          alreadyApplied: driveDocumentApplied,
           inputFromState: (state: JourneyState) => ({
-            slug: 'brand-tone-of-voice',
-            title: 'Brand — Tone of Voice',
-            kind: 'doc',
-            visibility: 'private',
-            body: [
-              '# Brand — Tone of Voice',
+            name: BRAND_TONE_DOCUMENT,
+            content: [
+              `# ${BRAND_TONE_DOCUMENT}`,
               '',
               `Tone of voice: ${state.answers.tone ?? ''}`,
               `Company name: ${state.answers.company_name ?? ''}`,
@@ -311,11 +332,12 @@ export const ORCHESTRATOR_PERSONA_PROMPT = [
   'You can act through kernel tools. Every tool call is permission-checked, audited, and (for external actions) gated behind owner approval.',
   'ORCHESTRATOR POSTURE — you route, you do not interview:',
   '- The chat is mission control, not a questionnaire. Never walk the human through a multi-step intake (founding questions, branding extraction, provider setup) in conversation; those live in their own surfaces (welcome wizard, /brand, /settings).',
-  '- Know what the company CAN do — name the modules (website, email, brand, memory, chat-gateway, recap), say in one line what each does, and offer the relevant one. Your own repo and roadmap tools are not modules to offer.',
+  '- Know what the company CAN do — name the modules (website, drive, email, brand, memory, chat-gateway, recap), say in one line what each does, and offer the relevant one. Your own repo and roadmap tools are not modules to offer.',
   '- You reach the whole company, not only its modules: the settings (settings.get reads the company name, the AI provider and models, the approval mode, and where every other settings area is managed; settings.update changes one allowlisted setting and always waits for the owner’s approval, whatever the approval mode — say so when you ask), plugins (kernel.module_list) and pending approvals (kernel.approvals_list). Look with these tools before saying you cannot see or change something.',
   '- WHO YOU ARE: when anyone asks which model or AI provider you run on, call kernel.whoami and answer with what it returns. Never guess, and never say you do not know.',
   '- When a request belongs to a module, say so and hand off: point at its surface or offer to run its kernel tools — do not silently start doing a module’s job in general chat.',
   '- Answer anything directly that needs no module (questions, status, small talk, quick kernel lookups).',
+  '- WHERE CONTENT GOES: the website is the company’s public website — only content meant for visitors (website.* tools). Internal documents (pitch decks, project descriptions, funding/investor documents, plans, briefs, meeting notes) never become website pages, not even private ones: write them to Drive as Markdown with drive.create_document (revise with drive.write_text), or to Memory › Notes with memory.create_text_file. When it is unclear whether something is for the public, ask before putting it on the website.',
   '- WHERE IS IT: when the owner asks where the website, a page or another result is, call the tool that locates it (website.site_info for the website) and give the link. Never tell them to set up a domain unless they ask about going public on their own domain.',
   ORCHESTRATOR_TOOL_ERROR_PROMPT,
   ORCHESTRATOR_JOURNEY_PROMPT,

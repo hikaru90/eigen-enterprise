@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import type { PageAudienceClassifier } from './page-audience'
+import { describe, expect, it, vi } from 'vitest'
 import { InMemoryApprovalStore, StaticApprovalPolicy } from '$lib/kernel/approvals'
 import { KernelError } from '$lib/kernel/errors'
 import { InMemoryEventSink } from '$lib/kernel/events'
@@ -26,7 +27,7 @@ describe('websiteManifest', () => {
 })
 
 describe('createWebsiteTools', () => {
-  const tools = createWebsiteTools({ store: new InMemoryWebsiteStore() })
+  const tools = createWebsiteTools({ store: new InMemoryWebsiteStore(), classify: async () => ({ audience: 'public_website', reason: 'x' }) })
   const byName = new Map(tools.map((t) => [t.name, t]))
 
   it('builds exactly the manifest tools with correct audit classes', () => {
@@ -95,7 +96,10 @@ describe('website tools through the kernel registry pipeline', () => {
       approvalStore: approvals,
       vcsCommitter: vcs,
     })
-    const descriptors: ToolDescriptor[] = createWebsiteTools({ store })
+    const descriptors: ToolDescriptor[] = createWebsiteTools({
+      store,
+      classify: async () => ({ audience: 'public_website', reason: 'Public copy.' }),
+    })
     for (const descriptor of descriptors) registry.register(descriptor)
     return { store, sink, activations, commits, registry }
   }
@@ -246,5 +250,158 @@ describe('website tools through the kernel registry pipeline', () => {
         { ...ctx, principal: { id: 'p2', kind: 'human', roles: ['viewer'] } },
       ),
     ).rejects.toSatisfy((err: unknown) => err instanceof KernelError && err.code === 'permission_denied')
+  })
+})
+
+describe('the website is the public site: tool descriptions route internal documents away', () => {
+  const tools = createWebsiteTools({ store: new InMemoryWebsiteStore(), classify: async () => ({ audience: 'public_website', reason: 'x' }) })
+  const summary = (name: string) => tools.find((t) => t.name === name)!.summary
+
+  it.each(['website.create_page', 'website.update_page', 'website.publish_page'])(
+    '%s says the website is public-only and names the Drive and Memory › Notes tools',
+    (name) => {
+      expect(summary(name)).toMatch(/public website/i)
+      expect(summary(name)).toMatch(/internal documents/i)
+      expect(summary(name)).toContain('drive.create_document')
+      expect(summary(name)).toContain('memory.create_text_file')
+    },
+  )
+
+  it('private is a draft of a public page, not a store for internal documents', () => {
+    expect(summary('website.create_page')).toMatch(/private = an unpublished draft/i)
+  })
+})
+
+describe('internal-document guard on agent page writes (Contribute: never a website page)', () => {
+  const agent: ToolContext = {
+    principal: { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] },
+    requestId: 'req-agent',
+    actingUserId: 'owner-1',
+  }
+  const service: ToolContext = {
+    principal: { id: 'svc-1', kind: 'service', roles: ['admin', 'agent'] },
+    requestId: 'req-svc',
+  }
+  const human: ToolContext = {
+    principal: { id: 'owner-1', kind: 'human', roles: ['admin', 'agent'] },
+    requestId: 'req-human',
+  }
+
+  function setup(verdict: Awaited<ReturnType<PageAudienceClassifier>>) {
+    const store = new InMemoryWebsiteStore()
+    const classify = vi.fn<PageAudienceClassifier>().mockResolvedValue(verdict)
+    const registry = new KernelRegistry({
+      eventSink: new InMemoryEventSink(),
+      approvalPolicy: new StaticApprovalPolicy(new Set()),
+      approvalStore: new InMemoryApprovalStore(),
+      vcsCommitter: null,
+    })
+    for (const d of createWebsiteTools({ store, classify })) registry.register(d)
+    return { store, classify, registry }
+  }
+  const internal = { audience: 'internal_document', reason: 'Fundraising terms for investors.' } as const
+  const publicCopy = { audience: 'public_website', reason: 'Product page for visitors.' } as const
+  const deck = { slug: 'pitch-deck', title: 'Seed pitch deck', body: '# We raise €1.5M', kind: 'doc' as const }
+
+  it('create_page refuses an internal document: no page, a clear error naming Drive and Memory › Notes', async () => {
+    const { registry, store, classify } = setup(internal)
+    const err = await registry.execute('website.create_page', deck, agent).catch((e) => e)
+    expect(err).toBeInstanceOf(KernelError)
+    expect(err).toMatchObject({
+      code: 'invalid_input',
+      details: {
+        refused: 'internal_document',
+        reason: 'Fundraising terms for investors.',
+        saveWith: ['drive.create_document', 'memory.create_text_file'],
+      },
+    })
+    expect(err.message).toMatch(/not put on the website/i)
+    expect(err.message).toContain('Fundraising terms for investors.')
+    expect(err.message).toContain('drive.create_document')
+    expect(err.message).toContain('memory.create_text_file')
+    expect(await store.getPage('pitch-deck')).toBeNull()
+    expect(classify).toHaveBeenCalledWith({
+      userId: 'owner-1',
+      page: { slug: 'pitch-deck', title: 'Seed pitch deck', body: '# We raise €1.5M', kind: 'doc', visibility: 'private' },
+    })
+  })
+
+  it('create_page creates public website content', async () => {
+    const { registry, store, classify } = setup(publicCopy)
+    await expect(
+      registry.execute('website.create_page', { slug: 'pricing', title: 'Pricing', body: '# Plans' }, agent),
+    ).resolves.toMatchObject({ slug: 'pricing' })
+    expect(await store.getPage('pricing')).not.toBeNull()
+    expect(classify).toHaveBeenCalledTimes(1)
+  })
+
+  it('service principals are checked too; without an acting person the principal is the gateway identity', async () => {
+    const { registry, store, classify } = setup(internal)
+    await expect(registry.execute('website.create_page', deck, service)).rejects.toMatchObject({ code: 'invalid_input' })
+    expect(await store.getPage('pitch-deck')).toBeNull()
+    expect(classify.mock.calls[0]![0].userId).toBe('svc-1')
+  })
+
+  it('a person writing their own page is never second-guessed (no classifier call)', async () => {
+    const { registry, store, classify } = setup(internal)
+    await expect(registry.execute('website.create_page', deck, human)).resolves.toMatchObject({ slug: 'pitch-deck' })
+    await expect(
+      registry.execute('website.update_page', { slug: 'pitch-deck', body: '# More' }, human),
+    ).resolves.toMatchObject({ body: '# More' })
+    await expect(
+      registry.execute('website.publish_page', { slug: 'pitch-deck', visibility: 'public' }, human),
+    ).resolves.toMatchObject({ visibility: 'public' })
+    expect(await store.getPage('pitch-deck')).not.toBeNull()
+    expect(classify).not.toHaveBeenCalled()
+  })
+
+  it('update_page judges the page as it would read after the change; internal → unchanged', async () => {
+    const { registry, store, classify } = setup(internal)
+    await store.createPage({ slug: 'about', title: 'About', body: '# About us' })
+    await expect(
+      registry.execute('website.update_page', { slug: 'about', body: '# Project brief (internal)' }, agent),
+    ).rejects.toMatchObject({ code: 'invalid_input', details: { refused: 'internal_document' } })
+    expect((await store.getPage('about'))?.body).toBe('# About us')
+    expect(classify).toHaveBeenCalledWith({
+      userId: 'owner-1',
+      page: { slug: 'about', title: 'About', body: '# Project brief (internal)', kind: 'page', visibility: 'private' },
+    })
+  })
+
+  it('update_page on an unknown slug fails loud as before (nothing to judge)', async () => {
+    const { registry, classify } = setup(publicCopy)
+    await expect(registry.execute('website.update_page', { slug: 'nope', title: 'x' }, agent)).rejects.toThrow(
+      /unknown website page: nope/,
+    )
+    expect(classify).not.toHaveBeenCalled()
+  })
+
+  it('publish_page to public judges the stored page; internal → stays private', async () => {
+    const { registry, store, classify } = setup(internal)
+    await store.createPage({ slug: 'deck', title: 'Deck', body: '# Investors only' })
+    await expect(
+      registry.execute('website.publish_page', { slug: 'deck', visibility: 'public' }, agent),
+    ).rejects.toMatchObject({ code: 'invalid_input', details: { refused: 'internal_document' } })
+    expect((await store.getPage('deck'))?.visibility).toBe('private')
+    expect(classify).toHaveBeenCalledWith({
+      userId: 'owner-1',
+      page: { slug: 'deck', title: 'Deck', body: '# Investors only', kind: 'page', visibility: 'public' },
+    })
+  })
+
+  it('taking a page private is never blocked (no classifier call)', async () => {
+    const { registry, store, classify } = setup(internal)
+    await store.createPage({ slug: 'deck', title: 'Deck', body: 'x', visibility: 'public' })
+    await expect(
+      registry.execute('website.publish_page', { slug: 'deck', visibility: 'private' }, agent),
+    ).resolves.toMatchObject({ visibility: 'private' })
+    expect(classify).not.toHaveBeenCalled()
+  })
+
+  it('a classifier failure fails the call loud and creates nothing (no fallback)', async () => {
+    const { registry, store, classify } = setup(publicCopy)
+    classify.mockRejectedValueOnce(new Error('The AI’s answer could not be read'))
+    await expect(registry.execute('website.create_page', deck, agent)).rejects.toThrow(/could not be read/)
+    expect(await store.getPage('pitch-deck')).toBeNull()
   })
 })
