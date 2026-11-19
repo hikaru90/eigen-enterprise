@@ -2,6 +2,7 @@
   import type { AssistantController } from './assistant-controller.svelte'
   import KeyRound from '@lucide/svelte/icons/key-round'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
+  import Paperclip from '@lucide/svelte/icons/paperclip'
   import SendHorizontal from '@lucide/svelte/icons/send-horizontal'
   import Square from '@lucide/svelte/icons/square'
   import { onMount } from 'svelte'
@@ -12,16 +13,24 @@
   import ChatMarkdown from '$lib/components/chat-markdown.svelte'
   import { Button } from '$lib/components/ui/button'
   import VoiceInputButton from '$lib/components/voice-input-button.svelte'
+  import AttachmentChip from './attachment-chip.svelte'
+  import { ASSISTANT_ATTACHMENT_ACCEPT, ASSISTANT_ATTACHMENT_LIMITS_TEXT } from './attachments'
   import VoiceOutputToggle from './voice-output-toggle.svelte'
 
   /**
    * The Chat tab: the current conversation with the company's agent —
-   * transcript (markdown, quiet tool lines, approval cards) and the composer
-   * (voice, send/stop). Behavior moved unchanged from the old chat at `/`.
+   * transcript (markdown, quiet tool lines, approval cards) and the composer:
+   * attach · message · microphone · send/stop, the microphone directly left of send
+   * (Contribute: improve voice input), and "Read replies aloud" labelled under it.
    */
   let { assistant }: { assistant: AssistantController } = $props()
 
   const chat = $derived(assistant.chat)
+  const attachments = $derived(assistant.attachments)
+  let fileInputEl = $state<HTMLInputElement | undefined>(undefined)
+  const canSend = $derived(
+    !attachments.reading && (assistant.draft.trim().length > 0 || attachments.ready.length > 0),
+  )
   let inputEl = $state<HTMLInputElement | undefined>(undefined)
   let transcriptEl = $state<HTMLDivElement | undefined>(undefined)
   let voiceStopFn = $state<(() => void) | undefined>(undefined)
@@ -50,11 +59,19 @@
   })
 
   function send(): void {
+    if (!canSend || chat.busy) return
     const text = assistant.draft.trim()
-    if (!text || chat.busy) return
     voiceStopFn?.()
     assistant.draft = ''
-    assistant.ask(text)
+    assistant.ask(text, attachments.take())
+  }
+
+  function handleFilesChosen(e: Event): void {
+    const input = e.currentTarget as HTMLInputElement
+    const files = [...(input.files ?? [])]
+    // Cleared so choosing the same file again fires another change.
+    input.value = ''
+    if (files.length > 0) void attachments.add(files)
   }
 
   function handleKeydown(e: KeyboardEvent): void {
@@ -127,9 +144,24 @@
         {#if entry.role === 'user'}
           <div class="flex w-full flex-row justify-end py-1.5">
             <div
-              class="max-w-[85%] min-w-0 rounded-sm bg-primary px-3.5 py-2 wrap-break-word text-primary-foreground"
+              class="flex max-w-[85%] min-w-0 flex-col gap-1.5 rounded-sm bg-primary px-3.5 py-2 wrap-break-word text-primary-foreground"
             >
-              <ChatMarkdown content={entry.content} tone="user" />
+              {#if entry.attachments?.length}
+                <ul class="flex flex-wrap gap-1.5" aria-label="Attached files">
+                  {#each entry.attachments as file, i (i)}
+                    <AttachmentChip
+                      name={file.name}
+                      kind={file.kind}
+                      sizeBytes={file.sizeBytes}
+                      tone="user"
+                      testid="assistant-message-attachment"
+                    />
+                  {/each}
+                </ul>
+              {/if}
+              {#if entry.content}
+                <ChatMarkdown content={entry.content} tone="user" />
+              {/if}
             </div>
           </div>
         {:else if entry.role === 'assistant'}
@@ -185,11 +217,60 @@
   {/if}
 
   <footer class="shrink-0 px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+    {#if attachments.items.length > 0}
+      <ul class="mb-1.5 flex flex-wrap gap-1.5 px-0.5" aria-label="Files to send">
+        {#each attachments.items as item (item.key)}
+          <AttachmentChip
+            name={item.name}
+            kind={item.status === 'ready' ? item.attachment.kind : null}
+            sizeBytes={item.sizeBytes}
+            reading={item.status === 'reading'}
+            onremove={() => attachments.remove(item.key)}
+            testid="assistant-composer-attachment"
+          />
+        {/each}
+      </ul>
+    {/if}
     <div
       data-testid="nucleus-chatbox"
       class="flex items-stretch gap-1.5 rounded-md border border-primary/70 bg-card p-1.5 focus-within:border-primary focus-within:ring-1 focus-within:ring-ring"
     >
-      <div title={micSupported ? undefined : 'Voice input is not available in this browser'}>
+      <input
+        bind:this={fileInputEl}
+        type="file"
+        multiple
+        accept={ASSISTANT_ATTACHMENT_ACCEPT}
+        class="hidden"
+        tabindex="-1"
+        aria-hidden="true"
+        data-testid="assistant-attach-input"
+        onchange={handleFilesChosen}
+      />
+      <button
+        type="button"
+        class="grid w-9 shrink-0 cursor-pointer place-items-center rounded-sm text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        aria-label="Attach files"
+        title={`Attach files: ${ASSISTANT_ATTACHMENT_LIMITS_TEXT}`}
+        data-testid="assistant-attach"
+        disabled={chat.busy}
+        onclick={() => fileInputEl?.click()}
+      >
+        <Paperclip class="size-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+      </button>
+      <input
+        bind:this={inputEl}
+        bind:value={assistant.draft}
+        onkeydown={handleKeydown}
+        placeholder="What do you need?"
+        aria-label="Message"
+        data-testid="assistant-composer-input"
+        class="min-w-0 flex-1 border-0 bg-transparent px-1.5 text-sm text-foreground shadow-none outline-none placeholder:text-muted-foreground"
+        disabled={chat.busy}
+      />
+      <div
+        title={micSupported ? 'Speak your message' : 'Voice input is not available in this browser'}
+        data-testid="assistant-mic"
+      >
         <VoiceInputButton
           disabled={chat.busy}
           bind:stopRef={voiceStopFn}
@@ -201,22 +282,12 @@
           }}
         />
       </div>
-      <input
-        bind:this={inputEl}
-        bind:value={assistant.draft}
-        onkeydown={handleKeydown}
-        placeholder="What do you need?"
-        aria-label="Message"
-        data-testid="assistant-composer-input"
-        class="min-w-0 flex-1 border-0 bg-transparent px-1.5 text-sm text-foreground shadow-none outline-none placeholder:text-muted-foreground"
-        disabled={chat.busy}
-      />
-      <VoiceOutputToggle />
       <Button
         type="button"
         onclick={chat.busy ? () => chat.stop() : send}
-        disabled={!chat.busy && !assistant.draft.trim()}
+        disabled={!chat.busy && !canSend}
         aria-label={chat.busy ? 'Stop' : 'Send'}
+        data-testid="assistant-send"
         class="rounded-sm bg-primary px-3 text-primary-foreground hover:bg-primary/90"
       >
         {#if chat.busy}
@@ -226,9 +297,21 @@
         {/if}
       </Button>
     </div>
+    {#each attachments.errors as message, i (i)}
+      <p
+        class="mt-1.5 px-1 text-xs text-destructive"
+        role="alert"
+        data-testid="assistant-attachment-error"
+      >
+        {message}
+      </p>
+    {/each}
     {#if voiceError}
       <p class="mt-1.5 px-1 text-xs text-destructive" role="alert" data-testid="assistant-voice-error">{voiceError}</p>
     {/if}
+    <div class="mt-1 flex items-center px-0.5">
+      <VoiceOutputToggle />
+    </div>
     {#if chat.isAdmin && chat.approvalMode}
       <div class="mt-2 px-1">
         <ApprovalModeSelect

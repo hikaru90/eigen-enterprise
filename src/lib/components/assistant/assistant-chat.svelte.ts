@@ -1,3 +1,4 @@
+import type { AssistantAttachment } from './attachments'
 import type { ApprovalModeState, AssistantConversation } from './types'
 import {
   ApprovalRequestFailed,
@@ -29,7 +30,7 @@ export type AssistantChatDeps = {
 }
 
 type ChatRequestBody =
-  | { message: string; sessionId?: string }
+  | { message: string; attachments?: AssistantAttachment[]; sessionId?: string }
   | { bootstrap: true; onboardingHandoff: true; sessionId?: string }
   | { bootstrap: true; approvalContinuation: string; sessionId?: string }
 
@@ -122,14 +123,22 @@ export class AssistantChat {
     }
   }
 
-  /** Send one member message (the top bar and the panel composer both end here). */
-  async send(text: string): Promise<void> {
+  /**
+   * Send one member message (the top bar and the panel composer both end here). Attached
+   * files (already read) go with it; a message may be files alone.
+   */
+  async send(text: string, attachments: AssistantAttachment[] = []): Promise<void> {
     const message = text.trim()
-    if (!message || this.busy) return
+    if ((!message && attachments.length === 0) || this.busy) return
     this.#deps.cancelSpeak()
     await this.ensureLoaded()
-    this.#append(userTurn(message))
-    await this.#stream({ message })
+    this.#append(
+      userTurn(
+        message,
+        attachments.map(({ name, kind, sizeBytes }) => ({ name, kind, sizeBytes })),
+      ),
+    )
+    await this.#stream(attachments.length > 0 ? { message, attachments } : { message })
   }
 
   /** The agent's first turn after the scripted onboarding (no member speech). */
