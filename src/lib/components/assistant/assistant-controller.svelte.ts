@@ -1,5 +1,7 @@
+import type { AssistantAttachment } from './attachments'
 import type { AssistantTab } from './types'
 import { AssistantChat, type AssistantChatDeps } from './assistant-chat.svelte'
+import { ComposerAttachments } from './composer-attachments.svelte'
 import { takePendingHandoff } from './handoff'
 import {
   PANEL_DEFAULT_WIDTH,
@@ -31,6 +33,8 @@ export class AssistantController {
   draft = $state('')
 
   readonly chat: AssistantChat
+  /** Files waiting in the panel composer (they survive closing the panel, like the draft). */
+  readonly attachments: ComposerAttachments
   readonly fetch: typeof globalThis.fetch
 
   /** Registered by the bar / the panel composer when they mount. */
@@ -43,6 +47,7 @@ export class AssistantController {
     this.#deps = deps
     this.fetch = deps.fetch
     this.chat = new AssistantChat(deps)
+    this.attachments = new ComposerAttachments(deps.fetch)
     const remembered = readPanelWidth(deps.storage)
     if (remembered !== null) this.width = clampPanelWidth(remembered, deps.viewportWidth())
   }
@@ -73,16 +78,17 @@ export class AssistantController {
   }
 
   /** Submit from the top bar or the panel composer: the panel opens on the chat. */
-  ask(text: string): void {
-    if (!text.trim()) return
+  ask(text: string, attachments: AssistantAttachment[] = []): void {
+    if (!text.trim() && attachments.length === 0) return
     this.openPanel('chat')
-    void this.chat.send(text)
+    void this.chat.send(text, attachments)
   }
 
   /** A fresh chat session; the composer is ready for its first message. */
   newConversation(): void {
     this.chat.reset()
     this.draft = ''
+    this.attachments.clear()
     this.openPanel('chat')
     queueMicrotask(() => this.composerInput?.focus())
   }

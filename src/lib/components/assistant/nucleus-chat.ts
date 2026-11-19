@@ -2,6 +2,7 @@ import { approvalActionLabel } from '$lib/chat/approval-copy'
 import { toolLabel } from '$lib/chat/chat-stream-types'
 import type { ChatProgressEvent } from '$lib/chat/consume-chat-ndjson'
 import type { PersistedChatMessage } from '$lib/chat/normalize-messages'
+import { storedAttachmentMetas, type AssistantAttachmentMeta } from './attachments'
 
 /**
  * The nucleus transcript model. User and assistant turns are the conversation;
@@ -14,6 +15,8 @@ export type NucleusConversationTurn = {
   failed?: boolean
   /** On a failed turn: render the provider-setup action link (view owns the URL). */
   providerSetup?: true
+  /** A member turn's attached files (chips: name, kind, size — the text went to the model). */
+  attachments?: AssistantAttachmentMeta[]
 }
 
 export type NucleusToolPreviewTurn = {
@@ -43,8 +46,13 @@ export type NucleusTurn = NucleusConversationTurn | NucleusToolPreviewTurn | Nuc
 
 export type NucleusChatEntry = NucleusTurn & { key: string }
 
-export function userTurn(text: string): NucleusConversationTurn {
-  return { role: 'user', content: text }
+export function userTurn(
+  text: string,
+  attachments: AssistantAttachmentMeta[] = [],
+): NucleusConversationTurn {
+  return attachments.length > 0
+    ? { role: 'user', content: text, attachments }
+    : { role: 'user', content: text }
 }
 
 /**
@@ -151,7 +159,7 @@ export function nucleusTurnsFromPersisted(
   const out: NucleusTurn[] = []
   for (const m of messages) {
     if (m.role === 'user') {
-      out.push(userTurn(m.content))
+      out.push(userTurn(m.content, storedAttachmentMetas(m.metadata)))
       continue
     }
     if (m.role !== 'assistant') continue

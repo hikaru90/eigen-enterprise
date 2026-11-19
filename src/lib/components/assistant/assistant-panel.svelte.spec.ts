@@ -34,8 +34,25 @@ function stubFetch(): void {
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
-      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null })
+      const formBody = init?.body instanceof FormData ? init.body : null
+      calls.push({
+        url,
+        body: formBody ?? (init?.body ? JSON.parse(String(init.body)) : null),
+      })
       if (url === '/api/assistant/conversation') return Response.json(conversation)
+      if (url === '/api/assistant/attachments') {
+        const file = formBody?.get('file')
+        if (!(file instanceof File)) throw new Error('attachment upload without a file')
+        if (file.name.endsWith('.docx')) {
+          return Response.json(
+            { error: `“${file.name}” isn't a file the assistant can read.` },
+            { status: 415 },
+          )
+        }
+        return Response.json({
+          attachment: { name: file.name, kind: 'text', sizeBytes: file.size, text: await file.text() },
+        })
+      }
       if (url === '/api/chat') {
         const body = JSON.parse(String(init?.body)) as { message?: string }
         return ndjson([
@@ -345,6 +362,113 @@ describe('assistant panel', () => {
     await expect
       .element(page.getByTestId('assistant-provider-setup'))
       .toHaveAttribute('href', '/settings/llm')
+  })
+
+  describe('the composer (Contribute: voice input, the speaker, attached documents)', () => {
+    const chatbox = () => page.getByTestId('nucleus-chatbox')
+
+    function chooseFiles(files: File[]): void {
+      const input = page.getByTestId('assistant-attach-input').element() as HTMLInputElement
+      const transfer = new DataTransfer()
+      for (const file of files) transfer.items.add(file)
+      input.files = transfer.files
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+
+    it('reads attach, message, microphone, send — the mic directly left of send', async () => {
+      await openPanel()
+      const box = chatbox().element()
+      const order = [
+        'assistant-attach',
+        'assistant-composer-input',
+        'assistant-mic',
+        'assistant-send',
+      ].map((id) => box.querySelector(`[data-testid="${id}"]`))
+      for (const el of order) expect(el).not.toBeNull()
+      for (let i = 1; i < order.length; i++) {
+        expect(
+          order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy()
+      }
+      expect(order[2]!.nextElementSibling).toBe(order[3])
+      await expect
+        .element(page.getByRole('button', { name: 'Attach files' }))
+        .toBeInTheDocument()
+    })
+
+    it('the speaker says what it is: a labelled "Read replies aloud" switch with its state', async () => {
+      await openPanel()
+      const toggle = page.getByRole('switch', { name: 'Read replies aloud: on' })
+      await expect.element(toggle).toBeVisible()
+      await expect.element(toggle).toHaveTextContent('Read replies aloud: On')
+      await toggle.click()
+      await expect
+        .element(page.getByRole('switch', { name: 'Read replies aloud: off' }))
+        .toBeInTheDocument()
+      localStorage.removeItem('ee-voice')
+    })
+
+    it('an attached file shows as a chip, goes with the message, and stays on the sent message', async () => {
+      await openPanel()
+      chooseFiles([new File(['Ship the bakery site.'], 'notes.md', { type: 'text/markdown' })])
+      const pending = page.getByTestId('assistant-composer-attachment')
+      await expect.element(pending).toHaveTextContent('notes.md')
+      await page.getByTestId('assistant-composer-input').fill('Summarise this.')
+      await page.getByTestId('assistant-send').click()
+
+      const sent = page.getByTestId('assistant-message-attachment')
+      await expect.element(sent).toHaveTextContent('notes.md')
+      await expect.element(pending).not.toBeInTheDocument()
+      const chat = calls.find((c) => c.url === '/api/chat')
+      expect(chat?.body).toEqual({
+        message: 'Summarise this.',
+        attachments: [
+          { name: 'notes.md', kind: 'text', sizeBytes: 21, text: 'Ship the bakery site.' },
+        ],
+        sessionId: 's-1',
+      })
+    })
+
+    it('a file alone can be sent, and a chip can be removed before sending', async () => {
+      await openPanel()
+      const send = page.getByTestId('assistant-send')
+      await expect.element(send).toBeDisabled()
+      chooseFiles([new File(['a'], 'a.txt'), new File(['b'], 'b.txt')])
+      await expect.element(page.getByText('b.txt')).toBeInTheDocument()
+      await page.getByRole('button', { name: 'Remove a.txt' }).click()
+      await expect.element(page.getByText('a.txt')).not.toBeInTheDocument()
+      await expect.element(send).toBeEnabled()
+      await send.click()
+      await expect.element(page.getByTestId('assistant-message-attachment')).toHaveTextContent('b.txt')
+      const chat = calls.find((c) => c.url === '/api/chat')
+      expect(chat?.body).toMatchObject({ message: '', attachments: [{ name: 'b.txt' }] })
+    })
+
+    it('a file the assistant cannot read is refused in plain words', async () => {
+      await openPanel()
+      chooseFiles([new File([new Uint8Array([0x50, 0x4b, 0x03, 0x04])], 'brief.docx')])
+      await expect
+        .element(page.getByTestId('assistant-attachment-error'))
+        .toHaveTextContent('“brief.docx” isn\'t a file the assistant can read.')
+      await expect.element(page.getByTestId('assistant-composer-attachment')).not.toBeInTheDocument()
+    })
+
+    it('a saved message shows its attached files', async () => {
+      conversation = {
+        ...conversation,
+        turns: [
+          {
+            role: 'user',
+            content: 'Summarise this.',
+            attachments: [{ name: 'q3.pdf', kind: 'pdf', sizeBytes: 1_258_291 }],
+          },
+        ],
+      }
+      await openPanel()
+      const chip = page.getByTestId('assistant-message-attachment')
+      await expect.element(chip).toHaveTextContent('q3.pdf')
+      await expect.element(chip).toHaveTextContent('1.2 MB')
+    })
   })
 
   it('streams the onboarding greeting into the panel, which opens on its own', async () => {

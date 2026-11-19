@@ -6,6 +6,12 @@ import { compactChatIntermediateSteps } from '$lib/chat/normalize-messages'
 import type { EngineSurfaceEvent } from '$lib/kernel/engine'
 import { runWithTrace } from '$lib/server/activity/trace-context'
 import {
+  AssistantAttachmentError,
+  attachmentMetadata,
+  composeAgentMessage,
+  parseChatAttachments,
+} from '$lib/server/assistant/attachments'
+import {
   appDbAsyncLocal,
   appSql,
   createScopedDrizzle,
@@ -202,6 +208,11 @@ export type AgentChatPostBody = {
   onboardingHandoff?: unknown
   /** Owner-decision continuation: the decided approval id (POST /api/chat only). */
   approvalContinuation?: unknown
+  /**
+   * Files read at attach time (POST /api/assistant/attachments) sent with a member message:
+   * their text goes into the agent's input, their name/kind/size onto the stored turn.
+   */
+  attachments?: unknown
 }
 
 /**
@@ -254,12 +265,27 @@ export async function handleAgentChatPost(
   const message = typeof body.message === 'string' ? body.message.trim() : ''
   const briefingPeriod = typeof body.briefingPeriod === 'string' ? body.briefingPeriod.trim() : ''
 
-  if (!message && !bootstrap) {
+  if (bootstrap && body.attachments !== undefined) {
+    error(400, 'attachments come only with a member message')
+  }
+  let attachments
+  try {
+    attachments = parseChatAttachments(body.attachments)
+  } catch (err) {
+    if (err instanceof AssistantAttachmentError) error(err.status, err.message)
+    throw err
+  }
+
+  if (!message && !bootstrap && attachments.length === 0) {
     console.error(`[${options.logTag ?? 'api/chat'}] empty message`)
     error(400, 'message is required')
   }
 
-  const agentUserMessage = options.resolveAgentUserMessage({ bootstrap, message, briefingPeriod })
+  const agentUserMessage = composeAgentMessage(
+    options.resolveAgentUserMessage({ bootstrap, message, briefingPeriod }),
+    attachments,
+  )
+  const userMessageMetadata = attachmentMetadata(attachments)
 
   const db = getDb()
   const sessionKey =
@@ -273,6 +299,7 @@ export async function handleAgentChatPost(
       userId: user.id,
       role: 'user',
       content: message,
+      ...(userMessageMetadata ? { metadata: userMessageMetadata } : {}),
     })
   }
 

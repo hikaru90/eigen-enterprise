@@ -38,23 +38,34 @@ describe('voice-output-toggle.svelte', () => {
     window.localStorage.removeItem('ee-voice')
   })
 
-  const toggle = () => page.getByRole('button', { name: 'Read replies aloud' })
+  const toggle = () => page.getByTestId('assistant-voice-toggle')
 
   it('shows the voice as on by default, and off once switched off — the one ee-voice setting', async () => {
     render(VoiceOutputToggle)
-    await expect.element(toggle()).toHaveAttribute('aria-pressed', 'true')
+    await expect.element(toggle()).toHaveAttribute('aria-checked', 'true')
     await toggle().click()
-    await expect.element(toggle()).toHaveAttribute('aria-pressed', 'false')
+    await expect.element(toggle()).toHaveAttribute('aria-checked', 'false')
     expect(window.localStorage.getItem('ee-voice')).toBe('off')
     await toggle().click()
-    await expect.element(toggle()).toHaveAttribute('aria-pressed', 'true')
+    await expect.element(toggle()).toHaveAttribute('aria-checked', 'true')
     expect(window.localStorage.getItem('ee-voice')).toBeNull()
+  })
+
+  it('says what it does and its state — in words, in its tooltip, and to assistive tech (Contribute: clarify the speaker)', async () => {
+    render(VoiceOutputToggle)
+    await expect.element(page.getByRole('switch', { name: 'Read replies aloud: on' })).toBeInTheDocument()
+    await expect.element(toggle()).toHaveTextContent('Read replies aloud: On')
+    await expect.element(toggle()).toHaveAttribute('title', 'Replies are read aloud as they arrive. Click to stop reading them aloud.')
+    await toggle().click()
+    await expect.element(page.getByRole('switch', { name: 'Read replies aloud: off' })).toBeInTheDocument()
+    await expect.element(toggle()).toHaveTextContent('Read replies aloud: Off')
+    await expect.element(toggle()).toHaveAttribute('title', 'Replies are not read aloud. Click to have them read aloud.')
   })
 
   it('starts as off when it was switched off before (in the settings menu or here)', async () => {
     window.localStorage.setItem('ee-voice', 'off')
     render(VoiceOutputToggle)
-    await expect.element(toggle()).toHaveAttribute('aria-pressed', 'false')
+    await expect.element(toggle()).toHaveAttribute('aria-checked', 'false')
   })
 
   it('switching off stops the reply being read right now', async () => {
@@ -68,8 +79,8 @@ describe('voice-output-toggle.svelte', () => {
 
   it('follows the settings menu switch while it is shown', async () => {
     render(VoiceOutputToggle)
-    await expect.element(toggle()).toHaveAttribute('aria-pressed', 'true')
+    await expect.element(toggle()).toHaveAttribute('aria-checked', 'true')
     setVoiceEnabled(false)
-    await expect.element(toggle()).toHaveAttribute('aria-pressed', 'false')
+    await expect.element(toggle()).toHaveAttribute('aria-checked', 'false')
   })
 })

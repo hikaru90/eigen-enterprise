@@ -651,4 +651,79 @@ describe('POST /api/chat — harness dispatch', () => {
     expect(enqueueFailedCalls(consoleSpy)).toHaveLength(0)
     consoleSpy.mockRestore()
   })
+
+  describe('attached files (Contribute: attach documents in the AI assistant)', () => {
+    const notes = { name: 'notes.md', kind: 'text', sizeBytes: 21, text: 'Ship the bakery site.' }
+    const report = { name: 'q3.pdf', kind: 'pdf', sizeBytes: 4096, text: 'Revenue grew 12%.' }
+
+    it('the text of the files reaches the model with the message; the stored turn keeps only name, kind, size', async () => {
+      const { POST } = await import('./+server')
+      runtimeDispatchMock.mockResolvedValue('Read them.')
+      const db = buildMainDb()
+      getDbMock.mockReturnValue(db)
+
+      const res = await POST({
+        locals: { user: { id: 'u1' } },
+        request: ndjsonRequest({ message: 'Summarise these.', attachments: [notes, report] }),
+      } as never)
+      await res.text()
+
+      const message = runtimeDispatchMock.mock.calls[0]![2] as string
+      expect(message.startsWith('Summarise these.')).toBe(true)
+      expect(message).toContain('<attached_file name="notes.md"')
+      expect(message).toContain('Ship the bakery site.')
+      expect(message).toContain('<attached_file name="q3.pdf"')
+      expect(message).toContain('Revenue grew 12%.')
+
+      const values = (db.insert.mock.results[1]!.value as { values: ReturnType<typeof vi.fn> })
+        .values
+      const userRow = values.mock.calls[1]![0] as Record<string, unknown>
+      expect(userRow).toMatchObject({ role: 'user', content: 'Summarise these.' })
+      expect(userRow.metadata).toEqual({
+        attachments: [
+          { name: 'notes.md', kind: 'text', sizeBytes: 21 },
+          { name: 'q3.pdf', kind: 'pdf', sizeBytes: 4096 },
+        ],
+      })
+      expect(JSON.stringify(userRow)).not.toContain('Revenue grew')
+    })
+
+    it('a message may be files alone', async () => {
+      const { POST } = await import('./+server')
+      runtimeDispatchMock.mockResolvedValue('Got it.')
+      const res = await POST({
+        locals: { user: { id: 'u1' } },
+        request: ndjsonRequest({ message: '', attachments: [notes] }),
+      } as never)
+      await res.text()
+      expect(runtimeDispatchMock.mock.calls[0]![2]).toContain('Ship the bakery site.')
+    })
+
+    it('refuses malformed or oversized attachments before the agent runs, and on app-made turns', async () => {
+      const { POST } = await import('./+server')
+      await expect(
+        POST({
+          locals: { user: { id: 'u1' } },
+          request: ndjsonRequest({ message: 'x', attachments: [{ name: 'x' }] }),
+        } as never),
+      ).rejects.toMatchObject({ status: 400 })
+      await expect(
+        POST({
+          locals: { user: { id: 'u1' } },
+          request: ndjsonRequest({
+            message: 'x',
+            attachments: Array.from({ length: 6 }, () => notes),
+          }),
+        } as never),
+      ).rejects.toMatchObject({ status: 413 })
+      await expect(
+        POST({
+          locals: { user: { id: 'u1' } },
+          request: ndjsonRequest({ bootstrap: true, onboardingHandoff: true, attachments: [notes] }),
+        } as never),
+      ).rejects.toMatchObject({ status: 400 })
+      expect(runtimeDispatchMock).not.toHaveBeenCalled()
+      expect(handoffDispatchMock).not.toHaveBeenCalled()
+    })
+  })
 })
