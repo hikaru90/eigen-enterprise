@@ -1,4 +1,13 @@
-import type { CallDto, CallTokenDto, GuestJoinDto, ScheduleResult, TranscriptSegmentDto } from '../../../modules/calls/service'
+import type {
+  BrainAnswerDto,
+  CallBrainDto,
+  CallDto,
+  CallTokenDto,
+  GuestJoinDto,
+  ScheduleResult,
+  SharedBrainAnswerDto,
+  TranscriptSegmentDto,
+} from '../../../modules/calls/service'
 import { problemFromResponse, type CallProblem } from './call-state'
 
 /**
@@ -8,7 +17,7 @@ import { problemFromResponse, type CallProblem } from './call-state'
  * server", shown as the server says it).
  */
 
-export type { CallDto, CallTokenDto, GuestJoinDto, ScheduleResult, TranscriptSegmentDto }
+export type { BrainAnswerDto, CallBrainDto, CallDto, CallTokenDto, GuestJoinDto, ScheduleResult, SharedBrainAnswerDto, TranscriptSegmentDto }
 
 /** The New call dialog's request (POST /api/calls/meetings). */
 export type ScheduleCall = {
@@ -47,6 +56,30 @@ export type CallsClient = {
   transcribe(id: string, chunk: Blob, durationMs: number): Promise<TranscriptSegmentDto | null>
   /** Turn the transcription of my own microphone on or off. */
   setTranscription(id: string, on: boolean): Promise<CallDto>
+}
+
+/** The Company Brain in a call (members only — a guest has none of these). */
+export type BrainClient = {
+  /** Switch it on or off for everyone in the call. */
+  setBrain(id: string, on: boolean): Promise<CallDto>
+  /** Ask it; the answer is mine alone. */
+  askBrain(id: string, question: string): Promise<BrainAnswerDto>
+  /** My own answers in this call. */
+  myBrainAnswers(id: string): Promise<BrainAnswerDto[]>
+  /** Share one of my answers with the colleagues in the call. */
+  shareBrainAnswer(id: string, answerId: string): Promise<CallDto>
+  /** After the call: a recap, generated now, for whoever switched it on. */
+  brainRecap(id: string): Promise<string>
+}
+
+export function brainClient(): BrainClient {
+  return {
+    setBrain: (id, on) => call(`${at(id)}/brain`, { method: 'POST', body: JSON.stringify({ on }) }),
+    askBrain: async (id, question) => (await request<{ answer: BrainAnswerDto }>(`${at(id)}/brain/ask`, { method: 'POST', body: JSON.stringify({ question }) })).answer,
+    myBrainAnswers: async (id) => (await request<{ answers: BrainAnswerDto[] }>(`${at(id)}/brain`)).answers,
+    shareBrainAnswer: (id, answerId) => call(`${at(id)}/brain/answers/${encodeURIComponent(answerId)}/share`, { method: 'POST' }),
+    brainRecap: async (id) => (await request<{ recap: string }>(`${at(id)}/brain/recap`, { method: 'POST' })).recap,
+  }
 }
 
 /** The calls the live call (ActiveCall + CallTranscription) needs; a member's or a guest's. */

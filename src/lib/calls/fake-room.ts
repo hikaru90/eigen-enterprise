@@ -168,6 +168,7 @@ export const fakeCall = (over: Partial<CallDto> = {}, response: 'accepted' | 'no
   closesAt: null,
   externalUrl: null,
   guests: [],
+  brain: { listening: false, by: null, byName: null, since: null, turnedOnBy: [], shared: [] },
   ...over,
 })
 

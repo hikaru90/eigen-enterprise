@@ -1,0 +1,54 @@
+<script lang="ts">
+  import type { BrainClient } from './client'
+  import { problemOf } from './client'
+
+  /**
+   * After a call, for whoever switched the Company Brain on: an offer, not a
+   * post. The recap of what it heard is generated only when they click, and
+   * shown to them here — nobody else gets it. `tone`: the dark call view or
+   * a light page (the transcript).
+   */
+  let { callId, client, tone = 'light' }: { callId: string; client: Pick<BrainClient, 'brainRecap'>; tone?: 'dark' | 'light' } = $props()
+
+  let recap = $state<string | null>(null)
+  let busy = $state(false)
+  let problem = $state<string | null>(null)
+
+  async function generate() {
+    busy = true
+    problem = null
+    try {
+      recap = await client.brainRecap(callId)
+    } catch (err) {
+      problem = problemOf(err).message
+    } finally {
+      busy = false
+    }
+  }
+</script>
+
+<div class="flex w-full flex-col gap-2 text-left" data-testid="call-brain-recap">
+  {#if recap}
+    <div class={['rounded-lg p-4 text-sm', tone === 'dark' ? 'bg-white/5 text-neutral-50' : 'bg-white text-foreground']}>
+      <p class={['text-xs', tone === 'dark' ? 'text-neutral-400' : 'text-muted-foreground']}>Recap from the Company Brain · only you see it</p>
+      <p class="mt-2 whitespace-pre-wrap" data-testid="call-brain-recap-text">{recap}</p>
+    </div>
+  {:else}
+    <p class={['text-sm', tone === 'dark' ? 'text-neutral-400' : 'text-muted-foreground']}>
+      You switched the Company Brain on in this call. It can recap what it heard — for you only, nothing is posted.
+    </p>
+    <button
+      type="button"
+      class={[
+        'h-9 w-fit rounded-md px-4 text-sm font-semibold disabled:opacity-50',
+        tone === 'dark' ? 'bg-white text-neutral-900 hover:bg-white/90' : 'bg-foreground text-background hover:bg-foreground/90',
+      ]}
+      disabled={busy}
+      data-testid="call-brain-recap-button"
+      onclick={generate}>{busy ? 'Writing the recap…' : 'Recap this call'}</button
+    >
+  {/if}
+  {#if problem}
+    <p class="text-sm text-red-500" role="alert" data-testid="call-brain-recap-problem">{problem}</p>
+  {/if}
+</div>
