@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-19 — Downgrades: a box can be moved back to an older release, as far as its DOWNGRADE_FLOOR allows (owner: "make it so, that we can also downgrade")
+
+- **What blocked it:** the control plane sent every box `from = …/releases/latest/download`, and `ee upgrade --expect` refuses anything but what LATEST names there — so only the newest release was installable. ee itself (`upgrade()`, `install.sh`) never refused an older release; Settings → Updates still does (it offers the newest only — unchanged).
+- **How:** the control plane (eigenEnterprise-cloud, separate entry there) now sends each box its target's own folder, `…/releases/download/v<version>`, whose LATEST names that release; ee needs no change (ee ≥ 0.5.20 upgrades whenever running ≠ target, older or newer — pinned by `agent.spec.ts` "an older target is installed too").
+- **The floor (decision):** older code must not run on what it can't read — migrations are forward-only (an older os would run on a schema it never saw) and ee parses its state strictly (`.strict()` in `company-repo.ts`/`spec.ts`, so an older ee refuses fields a newer one wrote). Every release now ships a signed **`DOWNGRADE_FLOOR`** (`scripts/downgrade-floor.mjs`, run by `release.sh`, in SHA256SUMS, published by `release.yml`): the oldest release with no change since in `drizzle/`, `ee/src/{company-repo,spec,secrets,journal}.ts`, never below 0.5.20. /ops refuses a target below the floor of any newer release a company runs; a release without the file (≤ 0.5.24) can't be gone back from (fail closed). Today nothing persistent changed since v0.5.20, so the next release's floor is 0.5.20. Tests: `scripts/downgrade-floor.spec.ts` (4).
+- **Not done:** a downgrade keeps the data (no restore); the safety copy `ee upgrade` takes first is the way back if an older release misbehaves.
+
 ## 2026-11-19 — Owner locked out after signing out (no passkey, no email): unlocked, and it can't happen silently again (owner: "i get Session is not fresh" → "i logged out and now i am locked out")
 
 - **Why "Session is not fresh":** Better Auth only registers a passkey for a session signed in within the last day (`freshAge`, default 1 day), but sessions here last a year. The owner of `ee-one` claimed on 2026-11-17, skipped the passkey, and on day two couldn't add one; without company email there is no code to sign in again with — then signing out ended the only way in.

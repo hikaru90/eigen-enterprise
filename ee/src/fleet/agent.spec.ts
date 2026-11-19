@@ -242,6 +242,13 @@ describe('fleet: desired state (level-triggered)', () => {
     expect(f.host.startUpgrade).toHaveBeenCalledWith('https://r.example.com/v2', 'eigenenterprise-0.6.0-bbbbbbbbbbbb')
   })
 
+  it('release: an older target is installed too (a downgrade from the release\'s own folder)', async () => {
+    const f = fakeHost({ managed: true })
+    f.setAnswer(desired({ release: { name: 'eigenenterprise-0.5.10-cccccccccccc', from: 'https://github.com/o/r/releases/download/v0.5.10' } }))
+    await new FleetAgent(f.host).poll()
+    expect(f.host.startUpgrade).toHaveBeenCalledWith('https://github.com/o/r/releases/download/v0.5.10', 'eigenenterprise-0.5.10-cccccccccccc')
+  })
+
   it('release: a target that did not take is started again after 15 minutes, not every poll', async () => {
     const f = fakeHost({ managed: true })
     let now = new Date('2026-11-16T12:00:00Z').getTime()
