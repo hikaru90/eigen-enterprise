@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { InMemoryApprovalStore } from '$lib/kernel/approvals'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
 
-const { kernelHolder, roleMock, backupsMock, eventRows, journeyRows } = vi.hoisted(() => ({
+const { kernelHolder, roleMock, backupsMock, eventRows, journeyRows, assignedTasks } = vi.hoisted(() => ({
+  assignedTasks: { deps: null as unknown },
   kernelHolder: { kernel: null as unknown },
   roleMock: vi.fn(async (): Promise<string> => 'admin'),
   backupsMock: vi.fn(),
@@ -55,7 +56,26 @@ vi.mock('$lib/server/db', () => {
   }
 })
 
+vi.mock('$lib/server/memory/assigned-tasks/live', () => ({ assignedTaskDeps: async () => assignedTasks.deps }))
+
+import { memoryAssignedTaskStore } from '$lib/server/memory/assigned-tasks/memory-store'
+import { assignTask, completeTask, type AssignedTaskDeps } from '$lib/server/memory/assigned-tasks/service'
 import { loadDashboard } from './dashboard'
+
+function taskDeps(): AssignedTaskDeps {
+  const people = [
+    { id: 'owner', name: 'Alex', email: 'alex@k.co' },
+    { id: 'ony', name: 'Ony', email: 'ony@k.co' },
+  ]
+  const deps: AssignedTaskDeps = {
+    store: memoryAssignedTaskStore(),
+    directory: { get: async (id) => people.find((p) => p.id === id) ?? null, list: async () => people },
+    notify: async () => {},
+  }
+  assignedTasks.deps = deps
+  return deps
+}
+taskDeps()
 
 async function kernel(active: string[]) {
   const activations = new InMemoryActivationStore()
@@ -163,5 +183,17 @@ describe('the dashboard at / (loadDashboard)', () => {
     backupsMock.mockRejectedValueOnce(new SubstrateUnavailableError('ENOENT'))
     expect((await loadDashboard('owner')).backup).toBeNull()
     roleMock.mockResolvedValue('admin')
+  })
+
+  it('Needs you holds the tasks other members assigned to this person, and the news on the ones they assigned', async () => {
+    kernelHolder.kernel = await kernel(['website'])
+    const deps = taskDeps()
+    const t = await assignTask(deps, { userId: 'owner', via: 'assistant' }, { assigneeId: 'ony', title: 'Send the Q4 deck', dueOn: '2026-11-21' })
+    const ony = await loadDashboard('ony')
+    expect(ony.tasks.assignedToMe).toMatchObject([{ title: 'Send the Q4 deck', dueOn: '2026-11-21', assigner: { name: 'Alex' } }])
+    expect((await loadDashboard('owner')).tasks).toEqual({ assignedToMe: [], updates: [] })
+    await completeTask(deps, { userId: 'ony', via: 'person' }, t.id)
+    expect((await loadDashboard('owner')).tasks.updates).toMatchObject([{ title: 'Send the Q4 deck', update: { kind: 'completed' } }])
+    expect((await loadDashboard('ony')).tasks.assignedToMe).toEqual([])
   })
 })

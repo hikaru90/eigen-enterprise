@@ -22,6 +22,7 @@ const navItems = buildShellNav(
 
 const dashboard: Dashboard = {
   backup: null,
+  tasks: { assignedToMe: [], updates: [] },
   overview: {
     modules: [
       {
@@ -62,13 +63,13 @@ const controller = () =>
 function renderDashboard(
   assistant: AssistantController | null,
   tiles: { hiddenTiles?: TileId[]; saveHiddenTiles?: (hidden: TileId[]) => Promise<void> } = {},
-  notices: { mailMissing?: boolean } = {},
+  notices: { mailMissing?: boolean; tasks?: Dashboard['tasks'] } = {},
 ) {
   return render(Harness, {
     assistant,
     hiddenTiles: tiles.hiddenTiles ?? [],
     saveHiddenTiles: tiles.saveHiddenTiles ?? (async () => {}),
-    dashboard,
+    dashboard: notices.tasks ? { ...dashboard, tasks: notices.tasks } : dashboard,
     greetingName: 'Alex',
     companyName: 'Kindred',
     navItems,
@@ -148,6 +149,46 @@ describe('dashboard.svelte', () => {
     await page.getByRole('button', { name: 'Hide Apps' }).click()
     await expect.element(page.getByRole('alert')).toHaveTextContent('Could not save your tiles: offline')
     await expect.element(page.getByTestId('overview-site-tile')).toBeInTheDocument()
+  })
+
+  it('Needs you holds a task assigned to this person (who, due day, context; Open and Done) and news on one they assigned (Got it)', async () => {
+    const task = {
+      id: 't1',
+      title: 'Send the Q4 deck',
+      context: 'Before the call.',
+      dueOn: '2026-11-21',
+      status: 'open' as const,
+      createdVia: 'assistant' as const,
+      createdAt: '2026-11-19T09:00:00.000Z',
+      completedAt: null,
+      assigner: { id: 'ony', name: 'Ony' },
+      assignee: { id: 'u1', name: 'Alex' },
+      role: 'assignee' as const,
+      update: { kind: 'assigned' as const, at: '2026-11-19T09:00:00.000Z' },
+      comments: [],
+    }
+    const update = {
+      ...task,
+      id: 't2',
+      title: 'Book the venue',
+      status: 'done' as const,
+      dueOn: null,
+      assigner: { id: 'u1', name: 'Alex' },
+      assignee: { id: 'sam', name: 'Sam' },
+      role: 'assigner' as const,
+      update: { kind: 'completed' as const, at: '2026-11-19T11:00:00.000Z' },
+    }
+    renderDashboard(controller(), {}, { tasks: { assignedToMe: [task], updates: [update] } })
+    await expect
+      .element(page.getByTestId('dashboard-task-assigned'))
+      .toHaveTextContent(/Send the Q4 deck.*From Ony · via the assistant · due 21 Nov 2026 · Before the call\./)
+    await expect.element(page.getByTestId('dashboard-task-done')).toBeInTheDocument()
+    await expect.element(page.getByTestId('dashboard-task-update')).toHaveTextContent(/Sam completed 'Book the venue'.*To Sam/)
+    await expect.element(page.getByTestId('dashboard-task-seen')).toBeInTheDocument()
+    const links = page.getByRole('link', { name: 'Open' })
+    await expect.element(links.first()).toHaveAttribute('href', '/m/memory/tasks#assigned-t1')
+    // 1 approval + 2 tasks waiting.
+    await expect.element(page.getByText('3 waiting on you')).toBeInTheDocument()
   })
 
   it('with the Assistant off, a hidden Assistant tile is not offered back', async () => {
