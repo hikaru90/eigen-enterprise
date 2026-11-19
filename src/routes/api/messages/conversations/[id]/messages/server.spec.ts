@@ -1,7 +1,7 @@
 import type { MessagesDeps } from '../../../../../../../modules/messages/service'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createChannel, postMessage } from '../../../../../../../modules/messages/service'
-import { fixture } from '../../../../../../../modules/messages/test-fixtures'
+import { createChannel, postMessage, uploadAttachments } from '../../../../../../../modules/messages/service'
+import { depthFixture, fixture } from '../../../../../../../modules/messages/test-fixtures'
 
 /** POST /api/messages/conversations/:id/messages — quoted replies (Contribute 2a58bcc8). */
 
@@ -47,5 +47,27 @@ describe('POST messages with replyToId', () => {
     expect((await post('bea', b.id, { body: 'x', replyToId: inA.id })).status).toBe(404)
     expect((await post('bea', b.id, { body: 'x', replyToId: 42 })).status).toBe(400)
     expect(live.pushed).toEqual([])
+  })
+})
+
+describe('POST messages with voiceClips', () => {
+  it('posts the transcript with its kept recording', async () => {
+    const f = depthFixture()
+    live.deps = f.deps
+    const ch = await createChannel(f.deps, 'owner', { name: 'general', private: false })
+    const { uploaded } = await uploadAttachments(f.deps, 'bea', ch.id, [{ name: 'Voice message.webm', mime: 'audio/webm', bytes: new Uint8Array(8) }])
+    const res = await post('bea', ch.id, { body: 'dictated', voiceClips: [{ fileId: uploaded[0].fileId, durationMs: 2500 }] })
+    expect(res.status).toBe(200)
+    const { message } = (await res.json()) as { message: { body: string; voice: Array<{ fileId: string; durationMs: number }> } }
+    expect(message).toMatchObject({ body: 'dictated', voice: [{ fileId: uploaded[0].fileId, durationMs: 2500 }] })
+  })
+
+  it('refuses a malformed voiceClips list (400)', async () => {
+    const f = depthFixture()
+    live.deps = f.deps
+    const ch = await createChannel(f.deps, 'owner', { name: 'general', private: false })
+    expect((await post('bea', ch.id, { body: 'x', voiceClips: 'nope' })).status).toBe(400)
+    expect((await post('bea', ch.id, { body: 'x', voiceClips: [{ fileId: 3, durationMs: 1 }] })).status).toBe(400)
+    expect((await post('bea', ch.id, { body: 'x', voiceClips: [{ fileId: 'f' }] })).status).toBe(400)
   })
 })

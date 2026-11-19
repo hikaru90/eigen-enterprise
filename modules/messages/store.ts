@@ -67,7 +67,16 @@ export type NewEvent = Omit<MessageEvent, 'id' | 'createdAt'>
 export type Reaction = { messageId: string; userId: string; emoji: string; createdAt: Date }
 
 /** A Drive file a message carries (display snapshot; bytes + access stay in the Drive). */
-export type Attachment = { messageId: string; fileId: string; position: number; name: string; mime: string; size: number }
+export type Attachment = {
+  messageId: string
+  fileId: string
+  position: number
+  name: string
+  mime: string
+  size: number
+  /** Set: this file is the message's dictated voice recording, this long; null for ordinary files. */
+  voiceDurationMs: number | null
+}
 
 export type ThreadStats = {
   replyCount: number

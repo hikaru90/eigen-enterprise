@@ -12,7 +12,7 @@ import {
   createVoiceMessageSession,
   formatVoiceTimer,
   micLevelFromSamples,
-  VOICE_AUDIO_BITS_PER_SECOND,
+  VOICE_MESSAGE_BITS_PER_SECOND,
   VOICE_MESSAGE_MAX_MS,
   VOICE_TIMESLICE_MS,
   WAVEFORM_BARS,
@@ -132,14 +132,14 @@ describe('voice message session', () => {
       expect(transcribe).not.toHaveBeenCalled()
     })
 
-    it('records with one MediaRecorder per tap: timeslice 1000 ms, 32 kbps', async () => {
+    it('records with one MediaRecorder per tap: timeslice 1000 ms, 48 kbps (the recording is kept and played back)', async () => {
       const { session } = setup()
       await session.start()
       expect(FakeMediaRecorder.instances).toHaveLength(1)
       expect(recorder().startCalls).toEqual([VOICE_TIMESLICE_MS])
       expect(VOICE_TIMESLICE_MS).toBe(1000)
-      expect(recorder().options?.audioBitsPerSecond).toBe(VOICE_AUDIO_BITS_PER_SECOND)
-      expect(VOICE_AUDIO_BITS_PER_SECOND).toBe(32_000)
+      expect(recorder().options?.audioBitsPerSecond).toBe(VOICE_MESSAGE_BITS_PER_SECOND)
+      expect(VOICE_MESSAGE_BITS_PER_SECOND).toBe(48_000)
     })
 
     it('prefers audio/webm;codecs=opus, then audio/mp4, then the recorder default', async () => {
@@ -157,7 +157,7 @@ describe('voice message session', () => {
       const bare = setup()
       await bare.session.start()
       expect(recorder(2).options).not.toHaveProperty('mimeType')
-      expect(recorder(2).options?.audioBitsPerSecond).toBe(32_000)
+      expect(recorder(2).options?.audioBitsPerSecond).toBe(48_000)
     })
 
     it('asks for the microphone fresh on every tap and uses a new recorder each time', async () => {
@@ -320,7 +320,8 @@ describe('voice message session', () => {
       expect(transcribe.mock.calls[0]![1]).toBeInstanceOf(AbortSignal)
 
       expect(events.ontranscript).toHaveBeenCalledTimes(1)
-      expect(events.ontranscript).toHaveBeenCalledWith('hello world')
+      // the transcript comes with the recording itself: the very clip that was transcribed
+      expect(events.ontranscript).toHaveBeenCalledWith('hello world', { clip, durationMs: expect.any(Number) })
       expect(session.view().phase).toBe('idle')
       for (const track of stream.tracks) expect(track.stop).toHaveBeenCalled()
       expect(events.onstop).toHaveBeenCalledTimes(1)
@@ -350,7 +351,19 @@ describe('voice message session', () => {
       expect(recorder().state).toBe('inactive')
       finish('done')
       await sending
-      expect(events.ontranscript).toHaveBeenCalledWith('done')
+      expect(events.ontranscript).toHaveBeenCalledWith('done', expect.objectContaining({ clip: expect.any(Blob) }))
+    })
+
+    it('hands over the recording with its length as recorded (WebM from a recorder carries none)', async () => {
+      const { session, events } = setup()
+      await session.start()
+      recorder().emitChunk([1])
+      await vi.advanceTimersByTimeAsync(3_000)
+      await session.send()
+      const [, recording] = events.ontranscript.mock.calls[0]!
+      expect(recording.durationMs).toBeGreaterThanOrEqual(3_000)
+      expect(recording.durationMs).toBeLessThan(3_100)
+      expect(recording.clip.type).toBe('audio/webm;codecs=opus')
     })
 
     it('trims the transcript', async () => {
@@ -358,7 +371,7 @@ describe('voice message session', () => {
       await session.start()
       recorder().emitChunk([1])
       await session.send()
-      expect(events.ontranscript).toHaveBeenCalledWith('spoken words')
+      expect(events.ontranscript).toHaveBeenCalledWith('spoken words', expect.objectContaining({ clip: expect.any(Blob) }))
     })
 
     it('sends only once: a second send while transcribing or idle is ignored', async () => {
@@ -492,7 +505,7 @@ describe('voice message session', () => {
       expect(transcribe.mock.calls[1]![0]).toBe(transcribe.mock.calls[0]![0])
       expect(FakeMediaRecorder.instances).toHaveLength(1)
       expect(events.ontranscript).toHaveBeenCalledTimes(1)
-      expect(events.ontranscript).toHaveBeenCalledWith('second try')
+      expect(events.ontranscript).toHaveBeenCalledWith('second try', { clip: transcribe.mock.calls[0]![0], durationMs: expect.any(Number) })
       expect(session.view().phase).toBe('idle')
     })
 
@@ -606,7 +619,7 @@ describe('voice message session', () => {
       expect(transcribe).not.toHaveBeenCalled()
       await vi.advanceTimersByTimeAsync(1)
       expect(transcribe).toHaveBeenCalledTimes(1)
-      expect(events.ontranscript).toHaveBeenCalledWith('hello world')
+      expect(events.ontranscript).toHaveBeenCalledWith('hello world', expect.objectContaining({ clip: expect.any(Blob) }))
     })
 
     it('a message sent by hand cancels the cap (no second send later)', async () => {
@@ -755,7 +768,7 @@ describe('silence never becomes text — Layer 1, the audio check before upload'
     const s = setup({ decodeClip: async () => decoded(frames(1000, 0.05)) })
     await recordAndSend(s)
     expect(s.transcribe).toHaveBeenCalledTimes(1)
-    expect(s.events.ontranscript).toHaveBeenCalledWith('hello world')
+    expect(s.events.ontranscript).toHaveBeenCalledWith('hello world', expect.objectContaining({ clip: expect.any(Blob) }))
   })
 
   it('judges the finished clip itself: the decoder gets the assembled blob', async () => {
@@ -792,7 +805,7 @@ describe('silence never becomes text — Layer 1, the audio check before upload'
     await recordAndSend(s)
     expect(s.transcribe).toHaveBeenCalledTimes(1)
     expect(warn).toHaveBeenCalled()
-    expect(s.events.ontranscript).toHaveBeenCalledWith('hello world')
+    expect(s.events.ontranscript).toHaveBeenCalledWith('hello world', expect.objectContaining({ clip: expect.any(Blob) }))
   })
 
   it('shows the transcribing state while the clip is being checked, and Cancel stops it', async () => {

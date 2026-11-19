@@ -68,7 +68,11 @@ describe('voice-dictation.svelte', () => {
     expect(fetchMock).not.toHaveBeenCalled()
     await page.getByTestId('voice-send').click()
     await expect.poll(() => ontranscript.mock.calls.length).toBe(1)
-    expect(ontranscript).toHaveBeenCalledWith('ship the release')
+    // the transcript comes with the recording itself (kept for playback), exactly as uploaded
+    const [text, recording] = ontranscript.mock.calls[0]!
+    expect(text).toBe('ship the release')
+    expect(recording.clip).toBe(fetchMock.mock.calls[0]![1].body)
+    expect(recording.durationMs).toBeGreaterThan(0)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0]![0]).toBe(VOICE_TRANSCRIBE_URL)
     await expect.element(page.getByTestId('voice-mic')).toBeInTheDocument()
@@ -95,7 +99,7 @@ describe('voice-dictation.svelte', () => {
     await expect.element(page.getByTestId('voice-error')).toHaveTextContent(VOICE_FAILURE_TEXT.transcribe)
     await page.getByTestId('voice-retry').click()
     await expect.poll(() => ontranscript.mock.calls.length).toBe(1)
-    expect(ontranscript).toHaveBeenCalledWith('second try')
+    expect(ontranscript).toHaveBeenCalledWith('second try', expect.objectContaining({ clip: expect.any(Blob) }))
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(fetchMock.mock.calls[1]![1].body).toBe(fetchMock.mock.calls[0]![1].body)
   })
@@ -173,6 +177,27 @@ describe('dictation in the text boxes', () => {
     await page.getByTestId('composer-voice-send').click()
     await expect.element(page.getByTestId('composer')).toHaveValue('Fix the login and the dashboard')
     await expect.element(page.getByTestId('composer-send')).toBeInTheDocument()
+  })
+
+  it('message composer: the recording itself is handed on, to be sent with the transcript', async () => {
+    const onrecording = vi.fn()
+    render(MessageComposer, {
+      placeholder: 'Message',
+      label: 'Message',
+      canSend: true,
+      emoji: ['👍'],
+      inputTestid: 'composer',
+      sendTestid: 'composer-send',
+      onsend: vi.fn(),
+      onrecording,
+    })
+    await dictate('composer-voice')
+    await expect.element(page.getByTestId('composer')).toHaveValue('and the dashboard')
+    expect(onrecording).toHaveBeenCalledTimes(1)
+    const [recording] = onrecording.mock.calls[0]!
+    expect(recording.clip).toBeInstanceOf(Blob)
+    expect(recording.clip.size).toBeGreaterThan(0)
+    expect(recording.durationMs).toBeGreaterThan(0)
   })
 
   it('message edit: dictation appends to the edited body', async () => {

@@ -3,7 +3,8 @@
  *
  * One tap records one clip: a single MediaRecorder with a 1 s timeslice, the chunks held in
  * memory only. Send stops the recorder and uploads the WHOLE clip once; the transcript comes
- * back as one piece of text. The level meter is display only: it never decides what is
+ * back as one piece of text, handed over together with the clip itself (a writer that keeps
+ * the recording, like Messages, sends it with the text). The level meter is display only: it never decides what is
  * uploaded, and a flat meter (a suspended AudioContext) does not stop the recording.
  *
  * Before the upload the FINISHED clip is decoded and checked for speech-level sound
@@ -21,8 +22,14 @@ import { browserDeviceStorage, ChosenMicrophoneUnavailable, openMicrophone } fro
 export const VOICE_MESSAGE_MAX_MS = 5 * 60 * 1000
 /** VM-2: how often the recorder hands over audio (chunks stay in memory). */
 export const VOICE_TIMESLICE_MS = 1000
-/** VM-2: recorder bitrate hint; the server's upload limit is sized from it. */
+/** VM-2: recorder bitrate hint for transcription-only recorders; the server's upload limit is sized from it. */
 export const VOICE_AUDIO_BITS_PER_SECOND = 32_000
+/**
+ * The voice message's bitrate hint: its recording is kept and played back in Messages (not
+ * only transcribed), so it is recorded for listening — 48 kbps mono Opus is clear speech, and
+ * AAC (Safari's audio/mp4) is still clean there. 5 minutes ≈ 1.8 MB, well under the upload limit.
+ */
+export const VOICE_MESSAGE_BITS_PER_SECOND = 48_000
 /**
  * Bars kept for the scrolling waveform (≈ 12.8 s of history). More than a phone shows: the
  * bar clips the oldest on the left, so a wide desktop field fills and a narrow one just scrolls.
@@ -60,6 +67,13 @@ export type VoiceFailure = {
   status?: number
   /** The clip is still in memory: Retry uploads it again. */
   retryable: boolean
+}
+
+/** A finished clip as the recorder made it (never transcoded), and how long it is. */
+export type VoiceRecording = {
+  clip: Blob
+  /** Measured while recording: a recorder's WebM carries no length of its own. */
+  durationMs: number
 }
 
 export type VoiceMessagePhase = 'idle' | 'starting' | 'recording' | 'transcribing' | 'failed'
@@ -101,8 +115,8 @@ export type VoiceMessageOptions = {
   onstart?: () => void
   /** The microphone was released (sent, discarded or failed); once per recording. */
   onstop?: () => void
-  /** Once per successful clip, after the session is idle again. */
-  ontranscript?: (text: string) => void
+  /** Once per successful clip, after the session is idle again: the transcript and the recording it came from. */
+  ontranscript?: (text: string, recording: VoiceRecording) => void
   /** Each time a message fails. */
   onerror?: (failure: VoiceFailure) => void
   deps?: Partial<VoiceMessageDeps>
@@ -187,6 +201,8 @@ export function createVoiceMessageSession(options: VoiceMessageOptions): VoiceMe
   let chunks: Blob[] = []
   /** The assembled clip, kept in memory until it is transcribed or discarded. */
   let clip: Blob | null = null
+  /** How long the assembled clip is (from start to the recorder's stop). */
+  let clipMs = 0
   /** The clip passed the audio check (or could not be decoded); a Retry does not check it again. */
   let clipChecked = false
   let micOpen = false
@@ -408,10 +424,11 @@ export function createVoiceMessageSession(options: VoiceMessageOptions): VoiceMe
       fail({ reason: 'empty', retryable: true })
       return
     }
+    const recording: VoiceRecording = { clip, durationMs: clipMs }
     clip = null
     epoch += 1
     goIdle()
-    if (!silent) options.ontranscript?.(text)
+    if (!silent) options.ontranscript?.(text, recording)
   }
 
   /* ————— the public actions ————— */
@@ -452,7 +469,7 @@ export function createVoiceMessageSession(options: VoiceMessageOptions): VoiceMe
     let current: MediaRecorder
     try {
       current = deps.createRecorder(mediaStream, {
-        audioBitsPerSecond: VOICE_AUDIO_BITS_PER_SECOND,
+        audioBitsPerSecond: VOICE_MESSAGE_BITS_PER_SECOND,
         ...(mimeType ? { mimeType } : {}),
       })
     } catch (err) {
@@ -478,6 +495,7 @@ export function createVoiceMessageSession(options: VoiceMessageOptions): VoiceMe
       if (view.phase !== 'recording') return
       detachRecorder()
       clip = assembleClip(current)
+      clipMs = Math.round(deps.now() - startedAt)
       clipChecked = false
       fail({ reason: 'interrupted', retryable: clip !== null })
     }
@@ -495,7 +513,8 @@ export function createVoiceMessageSession(options: VoiceMessageOptions): VoiceMe
     const mine = epoch
     stopTimers()
     // the waveform and the timer freeze where the clip ended
-    emit({ phase: 'transcribing', elapsedMs: deps.now() - startedAt })
+    const endedMs = deps.now() - startedAt
+    emit({ phase: 'transcribing', elapsedMs: endedMs })
     closeAudioContext()
     const current = detachRecorder()
     if (current && current.state !== 'inactive') {
@@ -510,6 +529,7 @@ export function createVoiceMessageSession(options: VoiceMessageOptions): VoiceMe
     if (mine !== epoch) return
     releaseMicrophone()
     clip = assembleClip(current)
+    clipMs = Math.round(endedMs)
     clipChecked = false
     if (!clip) {
       fail({ reason: 'recorder', retryable: false })

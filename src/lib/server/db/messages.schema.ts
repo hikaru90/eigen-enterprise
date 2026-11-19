@@ -81,7 +81,7 @@ export const messageReactions = pgTable(
   (t) => [primaryKey({ columns: [t.messageId, t.userId, t.emoji], name: 'message_reactions_pk' })],
 )
 
-/** Drive files a message carries (C2, 0111): a display snapshot; bytes + access live in the Drive. */
+/** Drive files a message carries (C2, 0111; voice recordings 0156): a display snapshot; bytes + access live in the Drive. */
 export const messageAttachments = pgTable(
   'message_attachments',
   {
@@ -93,6 +93,8 @@ export const messageAttachments = pgTable(
     name: text('name').notNull(),
     mime: text('mime').notNull(),
     size: bigint('size', { mode: 'number' }).notNull(),
+    /** Set: this file is the message's dictated voice recording, this long (0156). Null for ordinary files. */
+    voiceDurationMs: integer('voice_duration_ms'),
   },
   (t) => [primaryKey({ columns: [t.messageId, t.fileId], name: 'message_attachments_pk' })],
 )

@@ -5,6 +5,7 @@
   import Hash from '@lucide/svelte/icons/hash'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import Lock from '@lucide/svelte/icons/lock'
+  import Mic from '@lucide/svelte/icons/mic'
   import Paperclip from '@lucide/svelte/icons/paperclip'
   import Plus from '@lucide/svelte/icons/plus'
   import SquarePen from '@lucide/svelte/icons/square-pen'
@@ -53,9 +54,11 @@
     type MessageFrame,
     type MessageView,
   } from '$lib/messages/view'
+  import { uploadVoiceRecording } from '$lib/messages/voice-upload'
   import { syncAppBadge, totalUnread } from '$lib/pwa/badge'
   import NotificationsBanner from '$lib/pwa/notifications-banner.svelte'
   import { docTitle } from '$lib/shell/title'
+  import { formatVoiceTimer, type VoiceRecording } from '$lib/voice/voice-message'
 
   /**
    * Messages (phase-workspace C1/C2, polish-1 Slack layout): a full-bleed app
@@ -127,7 +130,8 @@
   let pickerFor = $state<string | null>(null)
   let deleteTarget = $state<MessageView | null>(null)
   let deleteError = $state<string | null>(null)
-  type PendingFile = { key: number; name: string; status: 'uploading' | 'ready'; file?: AttachmentView }
+  /** A file to send; `voiceMs` marks the dictated recording of the text (kept for playback), this long. */
+  type PendingFile = { key: number; name: string; status: 'uploading' | 'ready'; file?: AttachmentView; voiceMs?: number }
   let pendingFiles = $state<PendingFile[]>([])
   let dragging = $state(false)
   let nextKey = 0
@@ -151,8 +155,13 @@
   const others = $derived(people.filter((p) => p.id !== data.me))
   const myself = $derived(peopleById.get(data.me) ?? null)
   const uploading = $derived(pendingFiles.some((f) => f.status === 'uploading'))
-  const readyFiles = $derived(pendingFiles.filter((f) => f.status === 'ready' && f.file).map((f) => f.file as AttachmentView))
-  const canSend = $derived(!sending && !uploading && (draft.trim().length > 0 || readyFiles.length > 0))
+  const readyFiles = $derived(
+    pendingFiles.filter((f) => f.status === 'ready' && f.file && f.voiceMs === undefined).map((f) => f.file as AttachmentView),
+  )
+  const readyVoice = $derived(
+    pendingFiles.flatMap((f) => (f.status === 'ready' && f.file && f.voiceMs !== undefined ? [{ fileId: f.file.fileId, durationMs: f.voiceMs }] : [])),
+  )
+  const canSend = $derived(!sending && !uploading && (draft.trim().length > 0 || readyFiles.length > 0 || readyVoice.length > 0))
 
   const firstWord = (name: string) => name.trim().split(/\s+/)[0] ?? ''
   /** @mention highlighting: everyone's full and first names; yours marked as "me". */
@@ -290,7 +299,12 @@
         `/api/messages/conversations/${id}/messages`,
         {
           method: 'POST',
-          body: JSON.stringify({ body, replyToId: replyingTo?.id ?? null, attachmentIds: readyFiles.map((f) => f.fileId) }),
+          body: JSON.stringify({
+            body,
+            replyToId: replyingTo?.id ?? null,
+            attachmentIds: readyFiles.map((f) => f.fileId),
+            voiceClips: readyVoice,
+          }),
         },
       )
       drafts.clear(id)
@@ -339,6 +353,24 @@
     } catch (err) {
       pendingFiles = pendingFiles.filter((p) => !keys.includes(p.key))
       errorText = message(err)
+    }
+  }
+
+  /** The dictated recording of what was just appended to the draft: uploaded now, sent with the message, played above it. */
+  async function attachVoice(recording: VoiceRecording) {
+    const id = selectedId
+    if (!id) return
+    errorText = null
+    const key = ++nextKey
+    const voiceMs = Math.max(1, Math.round(recording.durationMs))
+    pendingFiles = [...pendingFiles, { key, name: 'Voice message', status: 'uploading', voiceMs }]
+    try {
+      const file = await uploadVoiceRecording(id, recording.clip)
+      if (selectedId !== id) return
+      pendingFiles = pendingFiles.map((p) => (p.key === key ? { ...p, status: 'ready' as const, file } : p))
+    } catch (err) {
+      pendingFiles = pendingFiles.filter((p) => p.key !== key)
+      errorText = `The recording could not be kept (the text is in the box): ${message(err)}`
     }
   }
 
@@ -518,7 +550,7 @@
     deleteError = null
     try {
       await api(`/api/messages/messages/${m.id}`, { method: 'DELETE' })
-      applyLocal({ action: 'deleted', message: { ...m, deleted: true, body: '', reactions: [], attachments: [] }, parent: null, unread: 0 })
+      applyLocal({ action: 'deleted', message: { ...m, deleted: true, body: '', reactions: [], attachments: [], voice: [] }, parent: null, unread: 0 })
       deleteTarget = null
     } catch (err) {
       deleteError = message(err)
@@ -1103,6 +1135,7 @@
         ondragover={onDragOver}
         ondragleave={() => (dragging = false)}
         ondrop={onDrop}
+        onrecording={(recording) => void attachVoice(recording)}
       >
         {#snippet above()}
           {#if replyingTo}
@@ -1122,14 +1155,16 @@
                   data-testid="messages-pending-file"
                   data-status={p.status}
                   data-name={p.name}
+                  data-voice={p.voiceMs !== undefined}
                 >
-                  {#if p.status === 'uploading'}<LoaderCircle class="size-4 shrink-0 animate-spin text-muted-foreground" aria-label="Uploading" />{:else}<Paperclip
+                  {#if p.status === 'uploading'}<LoaderCircle class="size-4 shrink-0 animate-spin text-muted-foreground" aria-label="Uploading" />{:else if p.voiceMs !== undefined}<Mic
                       class="size-4 shrink-0 text-muted-foreground"
                       aria-hidden="true"
-                    />{/if}
+                    />{:else}<Paperclip class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />{/if}
                   <span class="min-w-0">
                     <span class="block truncate font-medium">{p.name}</span>
-                    {#if p.file}<span class="block text-xs text-muted-foreground">{formatSize(p.file.size)}</span>{/if}
+                    {#if p.voiceMs !== undefined}<span class="block text-xs text-muted-foreground">{formatVoiceTimer(p.voiceMs)} · plays with the text</span
+                      >{:else if p.file}<span class="block text-xs text-muted-foreground">{formatSize(p.file.size)}</span>{/if}
                   </span>
                   <button
                     type="button"

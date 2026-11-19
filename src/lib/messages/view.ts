@@ -7,6 +7,8 @@ import { attachmentMarker, quoteSnippet, type ReplyQuote } from './quote'
 
 export type ReactionView = { emoji: string; userIds: string[]; names: string[] }
 export type AttachmentView = { fileId: string; name: string; mime: string; size: number; image: boolean }
+/** A voice message's kept recording (played above its transcript). */
+export type VoiceClipView = { fileId: string; mime: string; size: number; durationMs: number }
 
 export type MessageView = {
   id: string
@@ -24,6 +26,8 @@ export type MessageView = {
   replierIds: string[]
   reactions: ReactionView[]
   attachments: AttachmentView[]
+  /** The dictated recording(s) of a voice message (its transcript is the body); empty otherwise. */
+  voice: VoiceClipView[]
   /** A call line (posted by Calls when a call here ended); null for ordinary messages. */
   call: CallLineView | null
   /** The quoted original ("Reply"); null when this message quotes nothing. */
@@ -69,6 +73,11 @@ export function applyFrame(
   return { log: nextLog, replies }
 }
 
+/** Where a voice clip's recording is played from (members of the conversation only). */
+export function voiceClipUrl(messageId: string, fileId: string): string {
+  return `/api/messages/messages/${encodeURIComponent(messageId)}/voice/${encodeURIComponent(fileId)}`
+}
+
 /** The quote of `m` as the service builds it (the composer's preview; refreshed quotes after an edit/delete). */
 export function quoteOf(m: MessageView): ReplyQuote {
   if (m.deleted) return { id: m.id, parentId: m.parentId, deleted: true, authorId: null, authorName: null, snippet: '', attachment: null, call: false }
@@ -79,7 +88,8 @@ export function quoteOf(m: MessageView): ReplyQuote {
     authorId: m.authorId,
     authorName: m.authorName,
     snippet: quoteSnippet(m.body),
-    attachment: attachmentMarker(m.attachments),
+    // the recording first, as the service stores it: a dictated message is quoted as a voice message
+    attachment: attachmentMarker([...m.voice.map((v) => ({ name: 'Voice message', mime: v.mime })), ...m.attachments]),
     call: m.call !== null,
   }
 }

@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types'
-import { messagesRoute, readJson, stringList } from '../../../../../../../modules/messages/http'
+import { messagesRoute, readJson, stringList, voiceClipList } from '../../../../../../../modules/messages/http'
 import { listMessages, MessagesError, postMessage } from '../../../../../../../modules/messages/service'
 
 /** History, newest page first in time order; ?before=<messageId> pages back. */
@@ -14,7 +14,8 @@ export const GET: RequestHandler = ({ locals, params, url }) =>
 /**
  * Post { body (Markdown), parentId? (a thread reply), replyToId? (the message
  * this one quotes — same conversation only), attachmentIds? (files uploaded
- * via ./attachments) }. DMs, @mentions and thread participants get a
+ * via ./attachments), voiceClips? ([{ fileId, durationMs }]: the dictated
+ * recording(s) the body was transcribed from, uploaded via ./attachments) }. DMs, @mentions and thread participants get a
  * push when they are not looking at it.
  */
 export const POST: RequestHandler = ({ locals, params, request }) =>
@@ -31,6 +32,7 @@ export const POST: RequestHandler = ({ locals, params, request }) =>
       parentId: (b.parentId as string | null | undefined) ?? null,
       replyToId: (b.replyToId as string | null | undefined) ?? null,
       attachmentIds: stringList(b.attachmentIds, 'attachmentIds'),
+      voiceClips: voiceClipList(b.voiceClips),
     })
     const { pushNewMessage } = await import('../../../../../../../modules/messages/live')
     pushNewMessage(d, conversation, message)

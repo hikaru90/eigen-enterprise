@@ -1072,6 +1072,13 @@
       "when": 1795200000155,
       "tag": "0155_managed_mail_sender",
       "breakpoints": true
+    },
+    {
+      "idx": 156,
+      "version": "7",
+      "when": 1795200000156,
+      "tag": "0156_message_voice_recordings",
+      "breakpoints": true
     }
   ]
 }

@@ -16,13 +16,15 @@
     VOICE_MESSAGE_MAX_MS,
     type VoiceMessageSession,
     type VoiceMessageView,
+    type VoiceRecording,
   } from './voice-message'
 
   /**
    * Dictation for a text box (eigen's voice messages): a mic button that, once tapped, turns
    * into the voice bar — discard, a live waveform, the timer against the 5-minute cap, and
-   * "done". Done uploads the whole clip once; the transcript comes back through `ontranscript`
-   * and the box appends it to what was typed. Transcribing shows the wait with Cancel; a
+   * "done". Done uploads the whole clip once; the transcript comes back through `ontranscript`,
+   * with the recording itself (a box that keeps it, like Messages, sends it along), and the box
+   * appends the text to what was typed. Transcribing shows the wait with Cancel; a
    * failure shows the plain message with Retry (when the clip is still in memory) and Dismiss.
    *
    * Place it in the box's action row: idle it is one icon button, active it grows to fill the
@@ -38,7 +40,8 @@
     testid = 'voice',
     class: className = '',
   }: {
-    ontranscript: (text: string) => void
+    /** The transcript, and the recording it was heard from (kept by boxes that play it back). */
+    ontranscript: (text: string, recording: VoiceRecording) => void
     disabled?: boolean
     /** True while a voice message exists (recording, transcribing or failed). */
     active?: boolean
@@ -59,7 +62,7 @@
         view = next
         active = next.phase === 'recording' || next.phase === 'transcribing' || next.phase === 'failed'
       },
-      ontranscript: (text) => ontranscript(text),
+      ontranscript: (text, recording) => ontranscript(text, recording),
       onerror: (failure) => console.warn('[voice] message failed', failure.reason, failure.status ?? ''),
     })
   })
