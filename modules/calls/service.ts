@@ -1,5 +1,20 @@
 import type { CallContextPort, CallLogPort } from './context-port'
 import { randomUUID } from 'node:crypto'
+import {
+  brainListening,
+  brainOff,
+  brainOn,
+  brainTurnedOnBy,
+  heardSegments,
+  heardTranscriptText,
+  heardTurns,
+  MAX_BRAIN_ANSWER,
+  MAX_BRAIN_QUESTION,
+  openListen,
+  shareBrainAnswer,
+  type BrainAnswerStore,
+  type CallBrain,
+} from './brain'
 import { CallsError } from './errors'
 import {
   guestJoinUrl,
@@ -95,6 +110,10 @@ export type CallsDeps = {
   transcripts: TranscriptStore
   /** Speech to text for one chunk (the gateway's transcription, on the company's provider in the live wiring). */
   speech: CallSpeech
+  /** The Company Brain's answers and recaps (./brain.ts) — called only on an explicit ask. */
+  brain: CallBrain
+  /** The Brain's answers, private to their askers until shared. */
+  brainAnswers: BrainAnswerStore
   now?: () => Date
   newId?: () => string
 }
@@ -217,7 +236,37 @@ export type CallDto = {
   externalUrl: string | null
   /** People invited from outside (empty in a guest's own view). */
   guests: CallGuestDto[]
+  /** The Company Brain (off unless someone in the call switched it on). */
+  brain: CallBrainDto
 }
+
+/** A Brain answer its asker shared with the call. */
+export type SharedBrainAnswerDto = {
+  id: string
+  askedBy: string
+  askedByName: string
+  question: string
+  answer: string
+  askedAt: string
+  sharedAt: string
+}
+
+/** The Company Brain in this call, as everyone in it sees it. */
+export type CallBrainDto = {
+  /** It is listening right now (the indicator everyone in the call sees). */
+  listening: boolean
+  /** Who switched it on (this stretch); null while off. */
+  by: string | null
+  byName: string | null
+  since: string | null
+  /** Members who switched it on in this call: the recap is offered to them. Empty in a guest's view. */
+  turnedOnBy: string[]
+  /** Answers shared with the call. Empty in a guest's view: the company's knowledge stays with its people. */
+  shared: SharedBrainAnswerDto[]
+}
+
+/** One answer of the Brain, as its asker (alone) sees it. */
+export type BrainAnswerDto = { id: string; question: string; answer: string; askedAt: string; shared: boolean }
 
 export type CallGuestDto = { id: string; email: string; name: string | null; revoked: boolean; joined: boolean; inRoom: boolean }
 
@@ -302,7 +351,62 @@ export function createCallsService(d: CallsDeps) {
             const p = participantOf(guestIdentity(g.id))
             return { id: g.id, email: g.email, name: g.displayName, revoked: g.revokedAt !== null, joined: !!p?.joinedAt, inRoom: !!p && inRoom(p) }
           }),
+      brain: brainDto(rec, people, opts),
     }
+  }
+
+  function brainDto(rec: CallRecord, people: Map<string, CallPerson>, opts: { forGuest?: boolean }): CallBrainDto {
+    const open = brainListening(rec) ? openListen(rec) : null
+    const nameOf = (userId: string) => displayName(people.get(userId)) ?? 'Former member'
+    return {
+      listening: open !== null,
+      by: open?.onBy ?? null,
+      byName: open ? nameOf(open.onBy) : null,
+      since: open ? open.onAt.toISOString() : null,
+      turnedOnBy: opts.forGuest ? [] : brainTurnedOnBy(rec),
+      shared: opts.forGuest
+        ? []
+        : rec.brainShared.map((a) => ({
+            id: a.id,
+            askedBy: a.askedBy,
+            askedByName: nameOf(a.askedBy),
+            question: a.question,
+            answer: a.answer,
+            askedAt: a.askedAt.toISOString(),
+            sharedAt: a.sharedAt.toISOString(),
+          })),
+    }
+  }
+
+  /** The Company Brain is for the company's people: guests (and anyone else) are refused before any call is read. */
+  async function brainMember(userId: string): Promise<void> {
+    if (!(await d.directory.role(userId))) throw new CallsError('forbidden', 'only people of the company can use the Company Brain')
+  }
+
+  /** In this live call right now (accepted it). */
+  function inTheCall(rec: CallRecord, userId: string): void {
+    if (!isLive(rec.call.state)) throw new CallsError('conflict', 'this call is over')
+    const p = rec.participants.find((x) => x.userId === userId)
+    if (!p || p.response !== 'accepted') throw new CallsError('conflict', 'join the call first')
+  }
+
+  /** Who was in the call, by name (guests marked) — for the Brain's prompt. */
+  function peopleInCall(view: CallDto): string[] {
+    return view.participants.filter((p) => p.joinedAt !== null).map((p) => (p.guest ? `${p.name} (guest)` : p.name))
+  }
+
+  /** What the Brain heard in this call (only while it listened), as it reads it. */
+  async function heardText(rec: CallRecord, view: CallDto): Promise<string> {
+    const heard = heardSegments(rec, await d.transcripts.list(rec.call.id), now())
+    return heardTranscriptText(heardTurns(heard), new Date(view.answeredAt ?? view.startedAt))
+  }
+
+  function parseQuestion(raw: unknown): string {
+    if (typeof raw !== 'string') throw new CallsError('invalid', 'question is text')
+    const q = raw.trim()
+    if (q === '') throw new CallsError('invalid', 'ask a question')
+    if (q.length > MAX_BRAIN_QUESTION) throw new CallsError('invalid', `a question is at most ${MAX_BRAIN_QUESTION} characters`)
+    return q
   }
 
   /** May this person be in (and see) this call right now? Fail closed. */
@@ -836,6 +940,84 @@ export function createCallsService(d: CallsDeps) {
      * through transcript().
      */
     listTranscriptSegments: (callId: string, since?: number): Promise<TranscriptSegment[]> => d.transcripts.list(callId, since),
+
+    /**
+     * Company Brain: switch it on (a member in the live call) or off (anyone
+     * in it). Everyone in the call sees the change. Nothing is answered here.
+     */
+    async setBrain(userId: string, id: string, on: boolean): Promise<CallDto> {
+      if (typeof on !== 'boolean') throw new CallsError('invalid', 'on is true or false')
+      await brainMember(userId)
+      const rec = await visible(userId, id)
+      inTheCall(rec, userId)
+      const after = await mutate(id, (r) => (on ? brainOn(r, userId, now(), newId()) : brainOff(r, userId, now())))
+      return dto(after, await peopleById())
+    },
+
+    /**
+     * Someone in the call asks the Brain (the only way it ever answers): from
+     * what it heard while listening and the asker's own Memory, run as the
+     * asker. The answer is theirs alone until they share it.
+     */
+    async askBrain(userId: string, id: string, rawQuestion: unknown): Promise<BrainAnswerDto> {
+      const question = parseQuestion(rawQuestion)
+      await brainMember(userId)
+      const rec = await visible(userId, id)
+      inTheCall(rec, userId)
+      if (!brainListening(rec)) throw new CallsError('conflict', 'the Company Brain is not listening to this call; switch it on first')
+      const people = await peopleById()
+      const askerName = displayName(people.get(userId))
+      if (!askerName) throw new CallsError('not_found', 'call not found')
+      const view = dto(rec, people)
+      const heard = await heardText(rec, view)
+      const text = (await d.brain.answer({ askerId: userId, askerName, question, callTitle: rec.call.title, people: peopleInCall(view), heard })).trim()
+      if (text === '') throw new Error(`calls: the Company Brain gave an empty answer (${id})`)
+      const answer = { id: newId(), callId: id, askedBy: userId, question, answer: text.slice(0, MAX_BRAIN_ANSWER), askedAt: now() }
+      await d.brainAnswers.add(answer)
+      return { id: answer.id, question, answer: answer.answer, askedAt: answer.askedAt.toISOString(), shared: false }
+    },
+
+    /** My own answers in this call (the panel after a reload). */
+    async myBrainAnswers(userId: string, id: string): Promise<BrainAnswerDto[]> {
+      await brainMember(userId)
+      const rec = await visible(userId, id)
+      return (await d.brainAnswers.listMine(id, userId)).map((a) => ({
+        id: a.id,
+        question: a.question,
+        answer: a.answer,
+        askedAt: a.askedAt.toISOString(),
+        shared: rec.brainShared.some((s) => s.id === a.id),
+      }))
+    },
+
+    /** The asker shares one of their answers with the colleagues in the call (labelled: the Brain, asked by them). */
+    async shareBrainAnswer(userId: string, id: string, answerId: unknown): Promise<CallDto> {
+      if (typeof answerId !== 'string') throw new CallsError('invalid', 'answerId is text')
+      await brainMember(userId)
+      await visible(userId, id)
+      const a = await d.brainAnswers.get(answerId)
+      if (!a || a.callId !== id || a.askedBy !== userId) throw new CallsError('not_found', 'answer not found')
+      const shared = { id: a.id, callId: a.callId, askedBy: a.askedBy, question: a.question, answer: a.answer, askedAt: a.askedAt }
+      const after = await mutate(id, (r) => shareBrainAnswer(r, shared, now()))
+      return dto(after, await peopleById())
+    },
+
+    /**
+     * After the call: a recap of what the Brain heard — generated now, on this
+     * request, for someone who switched it on; shown to them, posted nowhere.
+     */
+    async brainRecap(userId: string, id: string): Promise<{ recap: string }> {
+      await brainMember(userId)
+      const rec = await visible(userId, id)
+      if (isLive(rec.call.state)) throw new CallsError('conflict', 'the recap is there once the call is over')
+      if (!brainTurnedOnBy(rec).includes(userId)) throw new CallsError('forbidden', 'the recap is offered to whoever switched the Company Brain on')
+      const view = dto(rec, await peopleById())
+      const heard = await heardText(rec, view)
+      if (heard === '') throw new CallsError('conflict', 'the Company Brain heard nothing in this call')
+      const recap = (await d.brain.recap({ userId, callTitle: rec.call.title, people: peopleInCall(view), heard })).trim()
+      if (recap === '') throw new Error(`calls: the Company Brain gave an empty recap (${id})`)
+      return { recap }
+    },
 
     /** Stores every windowed meeting whose window closed with nobody in it as over; returns how many changed. */
     async expireWindows(): Promise<number> {
