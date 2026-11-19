@@ -4,6 +4,7 @@
   import Sparkles from '@lucide/svelte/icons/sparkles'
   import UserPlus from '@lucide/svelte/icons/user-plus'
   import X from '@lucide/svelte/icons/x'
+  import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
   import { canOpen, type Capabilities } from '$lib/access/capabilities'
   import { assistantIfOn } from '$lib/components/assistant/context'
@@ -12,6 +13,7 @@
   import PageFrame from '$lib/components/page/page-frame.svelte'
   import PageHeader from '$lib/components/page/page-header.svelte'
   import { hideTile, showTile, TILE_LABELS, type TileId } from '$lib/dashboard/tiles'
+  import { metaLine, updateLine } from '$lib/memory/assigned-task-format'
   import type { Dashboard } from '$lib/server/overview/dashboard'
   import { appHref } from '$lib/shell/href'
   import { iconFor } from '$lib/shell/module-icon'
@@ -86,7 +88,11 @@
   const actionGroups = $derived(groupActionsByDay(overview.actions, new Date()))
   const activeModules = $derived(overview.modules.filter((m) => m.active))
   const switchedOff = $derived(overview.modules.length - activeModules.length)
-  const needsYou = $derived(overview.approvals.length + (dashboard.backup ? 1 : 0))
+  const tasks = $derived(dashboard.tasks)
+  const taskCount = $derived(tasks.assignedToMe.length + tasks.updates.length)
+  const needsYou = $derived(overview.approvals.length + taskCount + (dashboard.backup ? 1 : 0))
+  // Assigned tasks live in Memory › Tasks; the dashboard's buttons post to that page's actions.
+  const tasksPage = resolve('/m/memory/tasks')
   const website = $derived(overview.modules.find((m) => m.id === 'website') ?? null)
   const countOf = (label: string) => website?.counts.find((c) => c.label === label)?.value ?? 0
   const apps = $derived.by(() => {
@@ -132,6 +138,9 @@
   const closeTile =
     'absolute top-3.5 right-3.5 z-10 grid size-7 place-items-center rounded-full bg-white/70 text-[#111111] outline-none transition-opacity hover:bg-white focus-visible:ring-2 focus-visible:ring-ring pointer-fine:opacity-0 pointer-fine:group-hover/tile:opacity-100 pointer-fine:focus-visible:opacity-100'
   const row = 'flex h-11 min-w-0 items-center justify-between gap-3 rounded-full bg-background pr-1.5 pl-1.5 text-sm'
+  const taskRow = 'flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-[1.375rem] bg-background py-1.5 pr-1.5 pl-1.5 text-sm'
+  const softPill =
+    'inline-flex h-8 shrink-0 items-center rounded-full bg-muted px-3.5 text-sm font-medium outline-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
 </script>
 
 {#snippet close(id: TileId)}
@@ -278,6 +287,9 @@
             Approvals<span class="on-soft font-mono">{overview.approvals.length}</span>
           </span>
           <span class="hairline flex flex-col text-sm leading-tight">
+            Tasks<span class="on-soft font-mono">{taskCount}</span>
+          </span>
+          <span class="hairline flex flex-col text-sm leading-tight">
             Warnings<span class="on-soft font-mono">{dashboard.backup ? 1 : 0}</span>
           </span>
         </span>
@@ -370,7 +382,7 @@
     >
       <div class="hairline pr-8">
         <h2 class="text-[15px] leading-snug font-medium">Needs you</h2>
-        <p class="on-soft text-sm">Approvals and warnings, waiting on a person</p>
+        <p class="on-soft text-sm">Approvals, tasks and warnings, waiting on a person</p>
       </div>
       {#if dashboard.backup}
         <div class={row} data-testid="overview-backup-notice" data-kind={dashboard.backup.kind}>
@@ -383,7 +395,52 @@
           <a href={resolve('/settings/backups')} class={inkPill}>Open backups</a>
         </div>
       {/if}
-      {#if overview.approvals.length === 0 && !dashboard.backup}
+      {#if taskCount > 0}
+        <!-- Tasks other members gave this person, and what happened on the ones they gave out. -->
+        <ul class="flex flex-col gap-1.5" data-testid="dashboard-tasks">
+          {#each tasks.assignedToMe as task (task.id)}
+            <li class={taskRow} data-testid="dashboard-task-assigned">
+              <span class="flex min-w-0 items-center gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-full bg-ink" aria-hidden="true"
+                  ><span class="size-2 rounded-full bg-coral"></span></span
+                >
+                <span class="flex min-w-0 flex-col">
+                  <span class="truncate">{task.title}</span>
+                  <span class="truncate text-muted-foreground">{metaLine(task)}{task.context ? ` · ${task.context}` : ''}</span>
+                </span>
+              </span>
+              <span class="flex shrink-0 items-center gap-1.5">
+                <a href="{tasksPage}#assigned-{task.id}" class={softPill}>Open</a>
+                <form method="POST" action="{tasksPage}?/complete" use:enhance>
+                  <input type="hidden" name="task_id" value={task.id} />
+                  <button type="submit" class={inkPill} data-testid="dashboard-task-done">Done</button>
+                </form>
+              </span>
+            </li>
+          {/each}
+          {#each tasks.updates as task (task.id)}
+            <li class={taskRow} data-testid="dashboard-task-update">
+              <span class="flex min-w-0 items-center gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-full bg-ink" aria-hidden="true"
+                  ><span class="size-2 rounded-full bg-white"></span></span
+                >
+                <span class="flex min-w-0 flex-col">
+                  <span class="truncate">{updateLine(task)}</span>
+                  <span class="truncate text-muted-foreground">{metaLine(task)}</span>
+                </span>
+              </span>
+              <span class="flex shrink-0 items-center gap-1.5">
+                <a href="{tasksPage}#assigned-{task.id}" class={softPill}>Open</a>
+                <form method="POST" action="{tasksPage}?/seen" use:enhance>
+                  <input type="hidden" name="task_id" value={task.id} />
+                  <button type="submit" class={inkPill} data-testid="dashboard-task-seen">Got it</button>
+                </form>
+              </span>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      {#if overview.approvals.length === 0 && !dashboard.backup && taskCount === 0}
         <p class="{row} pr-4 text-muted-foreground">
           <span class="flex min-w-0 items-center gap-3">
             <span class="grid size-8 shrink-0 place-items-center rounded-full bg-ink" aria-hidden="true"
