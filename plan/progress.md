@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-19 — Favicon and installed-app icons are the company logo (owner: "favicon should be the logo of the company! Also the icon of the pwa should use this company icon")
+
+- **Shipped (uncommitted):** with a logo set in Settings → Company, `/app-icon/*` draws every icon from it: favicon (32), apple-touch (180), manifest `any` 192/512 and `maskable` 512. `any` = the logo itself on transparency (contain, never cropped); `maskable` = logo at 56% on the brand background (inside the 80% safe zone); `apple` = logo at 80% on the brand background. SVG logos are rasterized at the icon's size (density from the SVG's own size). Without a logo it is the monogram as before; with neither logo nor name, the product's static icons. `renderLogoIcon` in `src/lib/server/pwa/icon.ts`; the identity carries the logo sha256, so a new logo is a new icon version (installed icons and favicon refresh).
+- **Decision:** the logo becomes public *as rendered icons* — the uploaded file stays behind sign-in at `/api/company/logo`; `/app-icon/*` only serves re-rendered PNGs (the manifest and favicon must load before sign-in).
+- **Open, not fixed:** the owner can't install a second instance as an app on Android Chrome. Both live manifests (os.cerberusblue.com "Cerberus Blue", one.eigenenterprise.app "Eigen Enterprise") are per origin with their own name and icons, and all icons/service worker answer 200 — no code cause found yet; waiting on what Chrome shows on the second install.
+- **Gates:** pwa + layout specs 62 passed; typecheck 0 errors; lint clean on touched files. Not committed, not on the box.
+
 ## 2026-11-19 — Tests run only locally before push; GitHub Actions runs none (owner: "can we skip the test on github actions? and make the test mandatory before pushing?")
 
 - **Removed (announced, owner's call):** `.github/workflows/test-coverage.yml` (lint, svelte-naming, check, unit, components, coverage report). It had failed on every push since at least v0.5.22 (~10 min each) and gated nothing; coverage was `continue-on-error`. GitHub Actions now runs only `release.yml` (v* tags) and `oss-secrets-guard.yml` (kept: the public-repo leak guard, not a test suite).

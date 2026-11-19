@@ -3,10 +3,11 @@ import { PRODUCT_NAME } from './manifest'
 
 /**
  * The installed app's identity, per instance: the company's name and its
+ * icon — the company logo (Settings → Company) when there is one, else its
  * monogram (initial on the brand's primary color — the same badge the shell's
- * sidebar shows), so two companies installed on one phone are two clearly
- * different apps. Without a name it is the product (static icons); without
- * an active visual set it uses the app's own colors (layout.css :root).
+ * sidebar shows) — so two companies installed on one phone are two clearly
+ * different apps. Without a logo or a name it is the product (static icons);
+ * without an active visual set it uses the app's own colors (layout.css :root).
  */
 
 /** The app's own tokens (src/routes/layout.css :root) when no brand is active. */
@@ -16,6 +17,8 @@ export type IdentityTokens = {
   name: string
   /** null = unnamed company → the product icons. */
   initial: string | null
+  /** The company logo's sha256 (its icons are drawn from it); null = no logo. */
+  logo: string | null
   primary: string
   primaryForeground: string
   background: string
@@ -35,7 +38,11 @@ function shortHash(s: string): string {
   return (h >>> 0).toString(36)
 }
 
-export function identityTokens(companyName: string | null, cssVars: Record<string, string> | null): IdentityTokens {
+export function identityTokens(
+  companyName: string | null,
+  cssVars: Record<string, string> | null,
+  logoSha256: string | null = null,
+): IdentityTokens {
   const primary = cssVars?.['--primary'] ?? APP_TOKENS.primary
   const primaryForeground = cssVars?.['--primary-foreground'] ?? APP_TOKENS.primaryForeground
   const background = cssVars?.['--background'] ?? APP_TOKENS.background
@@ -45,11 +52,17 @@ export function identityTokens(companyName: string | null, cssVars: Record<strin
   return {
     name,
     initial,
+    logo: logoSha256,
     primary,
     primaryForeground,
     background,
-    version: shortHash(JSON.stringify([name, initial, primary, primaryForeground, background])),
+    version: shortHash(JSON.stringify([name, initial, logoSha256, primary, primaryForeground, background])),
   }
+}
+
+/** The company's own icons (its logo, else its monogram) are served; false = the product's static icons. */
+export function hasCompanyIcons(t: IdentityTokens): boolean {
+  return t.logo !== null || t.initial !== null
 }
 
 function hex(token: string, value: string): string {

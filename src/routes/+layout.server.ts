@@ -3,12 +3,12 @@ import { redirect } from '@sveltejs/kit'
 import { eq } from 'drizzle-orm'
 import { normalizeUiLocale } from '$lib/i18n/ui-locale'
 import { cookieMaxAge, cookieName } from '$lib/paraglide/runtime'
-import { identityTokens } from '$lib/pwa/identity'
+import { hasCompanyIcons, identityTokens } from '$lib/pwa/identity'
 import { getUserRole, isAdminRole } from '$lib/server/auth/user-role'
 import { getDb } from '$lib/server/db'
 import { userPreference } from '$lib/server/db/schema'
 import { listAuthorLayersForUser } from '$lib/server/memory/authorship'
-import { foundingCompanyName } from '$lib/server/overview/sources'
+import { companyIdentity } from '$lib/server/overview/sources'
 import { profileGateRedirect } from '$lib/server/profile/gate'
 import { defaultBrandStore } from '../../modules/brand/store'
 
@@ -60,13 +60,11 @@ export const load: LayoutServerLoad = async ({ locals, cookies, route, url }) =>
   // the root layout can emit the global :root override. Null = no active set
   // = the app keeps its own style (legit state, never a fallback); every
   // other store failure propagates loud.
-  const [activeVisualSet, companyName] = await Promise.all([
-    defaultBrandStore().findActiveVisualSet(),
-    foundingCompanyName(),
-  ])
+  const [activeVisualSet, company] = await Promise.all([defaultBrandStore().findActiveVisualSet(), companyIdentity()])
   // The installed app's identity (src/lib/pwa/identity.ts): the head links the
-  // company's monogram icons (null = the product's) and names the home-screen app.
-  const identity = identityTokens(companyName, activeVisualSet?.cssVars ?? null)
+  // company's icons — its logo, else its monogram (null = the product's) — and
+  // names the home-screen app.
+  const identity = identityTokens(company.name, activeVisualSet?.cssVars ?? null, company.logo?.sha256 ?? null)
 
   return {
     user: locals.user ?? null,
@@ -78,6 +76,6 @@ export const load: LayoutServerLoad = async ({ locals, cookies, route, url }) =>
     activeVisualSet: activeVisualSet
       ? { cssVars: activeVisualSet.cssVars, darkCssVars: activeVisualSet.darkCssVars }
       : null,
-    app: { name: identity.name, iconVersion: identity.initial ? identity.version : null },
+    app: { name: identity.name, iconVersion: hasCompanyIcons(identity) ? identity.version : null },
   }
 }

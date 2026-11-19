@@ -1,9 +1,9 @@
 import { identityTokens, type IdentityTokens } from '$lib/pwa/identity'
-import { foundingCompanyName } from '$lib/server/overview/sources'
+import { companyIdentity } from '$lib/server/overview/sources'
 import { defaultBrandStore } from '../../../../modules/brand/store'
 
-/** This instance's app identity: the company's name and its active brand. */
+/** This instance's app identity: the company's name, its logo and its active brand. */
 export async function loadIdentityTokens(): Promise<IdentityTokens> {
-  const [name, visualSet] = await Promise.all([foundingCompanyName(), defaultBrandStore().findActiveVisualSet()])
-  return identityTokens(name, visualSet?.cssVars ?? null)
+  const [company, visualSet] = await Promise.all([companyIdentity(), defaultBrandStore().findActiveVisualSet()])
+  return identityTokens(company.name, visualSet?.cssVars ?? null, company.logo?.sha256 ?? null)
 }

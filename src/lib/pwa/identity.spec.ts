@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { identityColors, identityTokens, parseIconVariant } from './identity'
+import { hasCompanyIcons, identityColors, identityTokens, parseIconVariant } from './identity'
 
 const brand = {
   '--primary': 'oklch(0.536 0.14 250)',
@@ -36,6 +36,20 @@ describe('identityTokens', () => {
   it('takes the first character, not half of one', () => {
     expect(identityTokens('Ölwerk', null).initial).toBe('Ö')
     expect(identityTokens('𝔸lpha', null).initial).toBe('𝔸')
+  })
+
+  it('carries the company logo (by its sha256) when there is one, and a new logo gives a new version', () => {
+    const sha = 'a'.repeat(64)
+    expect(identityTokens('Acme', brand).logo).toBeNull()
+    expect(identityTokens('Acme', brand, sha).logo).toBe(sha)
+    expect(identityTokens('Acme', brand, sha).version).not.toBe(identityTokens('Acme', brand).version)
+    expect(identityTokens('Acme', brand, sha).version).not.toBe(identityTokens('Acme', brand, 'b'.repeat(64)).version)
+  })
+
+  it('has its own icons once it has a logo or a name; the product icons before', () => {
+    expect(hasCompanyIcons(identityTokens(null, null))).toBe(false)
+    expect(hasCompanyIcons(identityTokens('Acme', null))).toBe(true)
+    expect(hasCompanyIcons(identityTokens(null, null, 'a'.repeat(64)))).toBe(true)
   })
 
   it('a new name or new brand colors give a new version (installed icons refresh), the same ones do not', () => {

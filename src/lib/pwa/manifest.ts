@@ -1,4 +1,4 @@
-import type { IdentityColors, IdentityTokens } from './identity'
+import { hasCompanyIcons, type IdentityColors, type IdentityTokens } from './identity'
 
 /**
  * The installable app (Web App Manifest): eigenEnterprise on a phone's home
@@ -32,7 +32,7 @@ const PRODUCT_ICONS: ManifestIcon[] = [
 
 export function webAppManifest(t: IdentityTokens, colors: IdentityColors): WebAppManifest {
   const v = t.version
-  const icons: ManifestIcon[] = t.initial
+  const icons: ManifestIcon[] = hasCompanyIcons(t)
     ? [
         { src: `/app-icon/any-192.png?v=${v}`, sizes: '192x192', type: 'image/png', purpose: 'any' },
         { src: `/app-icon/any-512.png?v=${v}`, sizes: '512x512', type: 'image/png', purpose: 'any' },

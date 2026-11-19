@@ -45,6 +45,16 @@ describe('webAppManifest', () => {
     expect(m).toMatchObject({ theme_color: '#faf6ee', background_color: '#faf6ee' })
   })
 
+  it("uses the company's logo icons (versioned) once it has a logo, even before it has a name", () => {
+    const tokens = identityTokens(null, brand, 'a'.repeat(64))
+    const m = webAppManifest(tokens, identityColors(tokens))
+    expect(m.icons.map((i) => i.src)).toEqual([
+      `/app-icon/any-192.png?v=${tokens.version}`,
+      `/app-icon/any-512.png?v=${tokens.version}`,
+      `/app-icon/maskable-512.png?v=${tokens.version}`,
+    ])
+  })
+
   it('an unnamed company gets the product icons, and every one of them exists', () => {
     const m = manifestFor(null, null)
     expect(m.icons.map((i) => `${i.sizes} ${i.purpose}`)).toEqual(['192x192 any', '512x512 any', '512x512 maskable'])

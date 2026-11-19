@@ -68,3 +68,36 @@ ${path ? `<path d="${path}" fill="${colors.glyph}"/>` : ''}
 </svg>`
   return sharp(Buffer.from(svg)).png().toBuffer()
 }
+
+/**
+ * The company logo (Settings → Company) as an app icon, whole and centered
+ * (contain — never cropped; an SVG is rasterized at the icon's size):
+ *
+ * - any: the logo itself on transparency, filling the icon (favicons, docks)
+ * - maskable: on the brand background, inside the 80% safe zone (Android masks it)
+ * - apple: on the brand background with a small margin (iOS rounds the corners)
+ */
+const LOGO_SHARE: Record<IconKind, number> = { any: 1, maskable: 0.56, apple: 0.8 }
+
+export async function renderLogoIcon(opts: {
+  logo: Uint8Array
+  colors: IdentityColors
+  kind: IconKind
+  size: number
+}): Promise<Buffer> {
+  const { logo, colors, kind, size } = opts
+  const inner = Math.round(size * LOGO_SHARE[kind])
+  // An SVG is rasterized at the density that makes it `inner` pixels (its own size may be tiny or huge).
+  const meta = await sharp(Buffer.from(logo)).metadata()
+  if (!meta.width || !meta.height) throw new Error(`[pwa] the company logo has no size (format ${meta.format})`)
+  const density = meta.format === 'svg' ? Math.min(2400, Math.max(1, (72 * inner) / Math.max(meta.width, meta.height))) : undefined
+  const art = await sharp(Buffer.from(logo), density ? { density } : {})
+    .resize(inner, inner, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toBuffer()
+  const background = kind === 'any' ? { r: 0, g: 0, b: 0, alpha: 0 } : colors.background
+  return sharp({ create: { width: size, height: size, channels: 4, background } })
+    .composite([{ input: art, gravity: 'centre' }])
+    .png()
+    .toBuffer()
+}

@@ -18,8 +18,11 @@ vi.mock('$lib/server/auth/harness-account', () => ({ isHarnessUser: isHarnessUse
 vi.mock('../../modules/brand/store', () => ({
   defaultBrandStore: () => ({ findActiveVisualSet: findActiveVisualSetMock }),
 }))
-const { foundingCompanyNameMock } = vi.hoisted(() => ({ foundingCompanyNameMock: vi.fn(async (): Promise<string | null> => null) }))
-vi.mock('$lib/server/overview/sources', () => ({ foundingCompanyName: foundingCompanyNameMock }))
+type Identity = { name: string | null; logo: { sha256: string } | null }
+const { companyIdentityMock } = vi.hoisted(() => ({
+  companyIdentityMock: vi.fn(async (): Promise<Identity> => ({ name: null, logo: null })),
+}))
+vi.mock('$lib/server/overview/sources', () => ({ companyIdentity: companyIdentityMock }))
 
 function makeCookies() {
   return {
@@ -105,7 +108,7 @@ describe('layout server load', () => {
       cssVars: { '--primary': '#5b2a6e', '--primary-foreground': '#ffffff', '--background': '#faf6ee' },
       darkCssVars: null,
     })
-    foundingCompanyNameMock.mockResolvedValueOnce('Kindred')
+    companyIdentityMock.mockResolvedValueOnce({ name: 'Kindred', logo: null })
     getDbMock.mockReturnValue({ selectDistinct: vi.fn().mockReturnValue({ from: vi.fn().mockResolvedValue([]) }) })
 
     const result = (await load({ locals: { user: undefined }, cookies: makeCookies() } as never)) as {
@@ -113,6 +116,20 @@ describe('layout server load', () => {
     }
     expect(result.app.name).toBe('Kindred')
     expect(result.app.iconVersion).toMatch(/^[0-9a-z]+$/)
+  })
+
+  it('links the logo icons (a new version per logo) once the company has a logo, even without a name', async () => {
+    findActiveVisualSetMock.mockResolvedValue(null)
+    getDbMock.mockReturnValue({ selectDistinct: vi.fn().mockReturnValue({ from: vi.fn().mockResolvedValue([]) }) })
+    type Result = { app: { name: string; iconVersion: string | null } }
+    const loadWith = async (identity: Identity) => {
+      companyIdentityMock.mockResolvedValueOnce(identity)
+      return ((await load({ locals: { user: undefined }, cookies: makeCookies() } as never)) as Result).app
+    }
+    const a = await loadWith({ name: null, logo: { sha256: 'a'.repeat(64) } })
+    const b = await loadWith({ name: null, logo: { sha256: 'b'.repeat(64) } })
+    expect(a).toMatchObject({ name: 'eigenEnterprise', iconVersion: expect.stringMatching(/^[0-9a-z]+$/) })
+    expect(b.iconVersion).not.toBe(a.iconVersion)
   })
 
   it('propagates brand store failures loud — only "none active" resolves null', async () => {
