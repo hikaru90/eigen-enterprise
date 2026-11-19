@@ -3,10 +3,10 @@ import type { ShareDeps } from './service'
 import { APP_VERSION } from '$lib/app-version'
 import { env } from '$lib/server/env/private-env'
 import { dbContributeStore } from '../db-store'
+import { backgroundScrub } from './background-scrub'
 import { dbShareStore } from './db-store'
 import { fetchHubTransport, hubConfig } from './hub'
 import { sealedInstallKeyStore } from './identity'
-import { scrubTitle } from './scrub'
 import { oneAtATime, runShareTick, type ShareTickResult } from './worker'
 
 /**
@@ -39,10 +39,12 @@ async function keyStore(): Promise<InstallKeyStore> {
 async function scrub(title: string) {
   const { llmChatCompletion } = await import('$lib/server/llm/llm-client')
   const { companyOwnerId, onCompanyProvider } = await import('$lib/server/llm/company-provider')
-  return onCompanyProvider(async () => {
-    const owner = await companyOwnerId()
-    if (!owner) throw new Error('the company has no owner')
-    return scrubTitle((input) => llmChatCompletion(input), { userId: owner, title })
+  const { withDbUser } = await import('$lib/server/db')
+  return backgroundScrub(title, {
+    ownerId: companyOwnerId,
+    onCompanyProvider: (fn) => onCompanyProvider(fn),
+    withDbUser: (userId, fn) => withDbUser(userId, () => fn()),
+    chat: (input) => llmChatCompletion(input),
   })
 }
 
