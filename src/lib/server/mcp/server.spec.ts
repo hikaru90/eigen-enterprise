@@ -171,7 +171,7 @@ describe('createMcpServer over a kernel registry', () => {
     expect(structured.structuredContent).toEqual({ doubled: 2 })
     expect(JSON.parse(structured.content[0].text)).toEqual({ doubled: 2 })
 
-    const plain = (await call({ params: { name: 'beta.read', arguments: {} } })) as {
+    const plain = (await call({ params: { name: 'beta.read', arguments: { value: 'x' } } })) as {
       structuredContent?: unknown
     }
     expect('structuredContent' in plain).toBe(false)
