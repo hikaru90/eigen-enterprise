@@ -33,6 +33,7 @@
     hint = true,
     dragging = false,
     onsend,
+    ondraft,
     onattach,
     onpaste,
     ondragover,
@@ -52,6 +53,8 @@
     hint?: boolean
     dragging?: boolean
     onsend: () => void
+    /** The text after every change the person makes (typing, formatting, emoji, dictation): the page keeps it as the draft. */
+    ondraft?: (value: string) => void
     /** Shows the attach button. */
     onattach?: () => void
     onpaste?: (e: ClipboardEvent) => void
@@ -67,6 +70,7 @@
 
   async function addTranscript(text: string) {
     value = appendVoiceTranscript(value, text)
+    ondraft?.(value)
     await tick()
     textarea?.focus()
     textarea?.setSelectionRange(value.length, value.length)
@@ -74,6 +78,7 @@
 
   async function apply(edit: Edit) {
     value = edit.text
+    ondraft?.(value)
     await tick()
     textarea?.focus()
     textarea?.setSelectionRange(edit.selectionStart, edit.selectionEnd)
@@ -154,6 +159,7 @@
       aria-label={label}
       data-testid={inputTestid}
       onkeydown={onKey}
+      oninput={(e) => ondraft?.(e.currentTarget.value)}
       {onpaste}
     ></textarea>
     <div class="relative flex items-center gap-0.5 px-1.5 pb-1.5">
