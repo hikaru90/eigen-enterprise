@@ -125,7 +125,7 @@
       bind:this={dialogEl}
       role={active ? 'dialog' : undefined}
       aria-modal={active ? 'true' : undefined}
-      aria-label={active ? 'Ask the assistant' : undefined}
+      aria-label={active ? 'Ask the company brain' : undefined}
       class={active
         ? 'fixed inset-x-4 top-[18vh] z-[56] mx-auto flex h-14 max-w-2xl'
         : 'flex h-full min-w-0 flex-1'}
@@ -155,8 +155,8 @@
           type="text"
           enterkeyhint="send"
           autocomplete="off"
-          placeholder="Ask the assistant…"
-          aria-label="Ask the assistant"
+          placeholder="Ask the company brain…"
+          aria-label="Ask the company brain"
           aria-keyshortcuts={isMac ? 'Meta+K' : 'Control+K'}
           data-testid="assistant-bar-input"
           class={[

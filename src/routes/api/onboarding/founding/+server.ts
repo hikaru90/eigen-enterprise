@@ -61,7 +61,7 @@ export const POST: RequestHandler = async (event) => {
       return json(
         {
           error:
-            'Your company website already exists. Ask the assistant to change it — the founding interview runs once.',
+            'Your company website already exists. Ask the company brain to change it — the founding interview runs once.',
         },
         { status: 409 },
       )

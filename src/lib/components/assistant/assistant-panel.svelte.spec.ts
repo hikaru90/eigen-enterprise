@@ -117,7 +117,7 @@ afterEach(() => {
 describe('assistant top bar', () => {
   it('sits in the shell with the ⌘K / Ctrl+K hint', async () => {
     renderShell()
-    await expect.element(barInput()).toHaveAttribute('placeholder', 'Ask the assistant…')
+    await expect.element(barInput()).toHaveAttribute('placeholder', 'Ask the company brain…')
     await expect.element(page.getByTestId('assistant-bar-shortcut')).toHaveTextContent(/K$/)
     await expect.element(page.getByText('Page body')).toBeInTheDocument()
     await expect.element(panel()).not.toBeInTheDocument()
@@ -178,7 +178,7 @@ describe('the spotlight (Contribute ccb12fab)', () => {
     await openFromOpener()
     await expect.element(spotlight()).toHaveAttribute('role', 'dialog')
     await expect.element(spotlight()).toHaveAttribute('aria-modal', 'true')
-    await expect.element(spotlight()).toHaveAccessibleName('Ask the assistant')
+    await expect.element(spotlight()).toHaveAccessibleName('Ask the company brain')
     await expect.element(spotlightBackdrop()).toBeInTheDocument()
     // The same input floats: ⌘K focused it, nothing else was mounted.
     expect(spotlight().element().contains(barInput().element())).toBe(true)

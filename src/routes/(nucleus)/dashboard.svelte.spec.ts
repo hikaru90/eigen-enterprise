@@ -103,7 +103,7 @@ describe('dashboard.svelte', () => {
       .toHaveAttribute('href', '/assistant/activity')
     await expect
       .element(page.getByTestId('overview-modules-hint'))
-      .toHaveTextContent('1 switched off — ask the assistant to turn it on')
+      .toHaveTextContent('1 switched off — ask the company brain to turn it on')
   })
 
   it('with the Assistant switched off: no ask box, no Review into the panel, no conversations link — the approvals and the activity log stay', async () => {
