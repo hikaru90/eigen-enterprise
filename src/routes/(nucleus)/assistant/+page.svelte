@@ -3,6 +3,7 @@
   import Pencil from '@lucide/svelte/icons/pencil'
   import { invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
+  import BrainKnows from '$lib/components/assistant/brain-knows.svelte'
   import { useAssistant } from '$lib/components/assistant/context'
   import RunTitleEditor from '$lib/components/assistant/run-title-editor.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
@@ -28,15 +29,16 @@
     >
   {/snippet}
 </SectionHeader>
+<BrainKnows count={data.knownDecisions} />
 
 {#if data.runs.length === 0}
   <div
     class="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-4 py-3 text-sm text-muted-foreground"
     data-testid="runs-empty"
   >
-    <span>No conversations yet. Ask the assistant anything and it starts one.</span>
+    <span>No conversations yet. Ask the company brain anything and it starts one.</span>
     <Button size="sm" variant="outline" onclick={() => assistant.focusBar()}
-      >Ask the assistant</Button
+      >Ask the company brain</Button
     >
   </div>
 {:else}
