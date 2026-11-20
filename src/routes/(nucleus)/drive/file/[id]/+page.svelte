@@ -389,6 +389,7 @@
                   name={data.file.name}
                   canEdit={data.canEdit && !data.file.archivedAt}
                   heartbeatMs={data.heartbeatMs}
+                  folderId={data.file.parentId}
                   onsaved={(f) => (saved = f)}
                 />
               {:catch err}
