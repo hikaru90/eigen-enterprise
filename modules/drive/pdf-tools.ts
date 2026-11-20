@@ -2,6 +2,7 @@ import type { DriveService, ItemView } from './service'
 import { z } from 'zod'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import type { OrganiseResult, PdfSource } from '$lib/office/pdf/organise'
+import { pageRangesLabel } from '$lib/office/pdf/organise-plan'
 import { DRIVE_MODULE_ID } from './manifest'
 import { officeKind } from './preview'
 import { DriveError } from './service'
@@ -120,19 +121,6 @@ async function run<T>(work: (lib: Organise) => Promise<T>): Promise<T> {
 
 const zeroBased = (pages: number[]) => pages.map((p) => p - 1)
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
-
-/** "2–4, 7" for the pages 2, 3, 4 and 7. */
-export function pageRangesLabel(pages: number[]): string {
-  const sorted = [...new Set(pages)].sort((a, b) => a - b)
-  const parts: string[] = []
-  for (let i = 0; i < sorted.length; i++) {
-    let j = i
-    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j]! + 1) j++
-    parts.push(j === i ? String(sorted[i]) : `${sorted[i]}–${sorted[j]}`)
-    i = j
-  }
-  return parts.join(', ')
-}
 
 function baseName(name: string): string {
   return name.toLowerCase().endsWith('.pdf') ? name.slice(0, -4) : name
@@ -340,7 +328,7 @@ export function createDrivePdfTools({ service }: DrivePdfToolDeps): ToolDescript
       handler: async (ctx, input) => {
         const i = mergeInput.parse(input)
         const drive = await service()
-        const read = []
+        const read: Array<Awaited<ReturnType<typeof readPdf>>> = []
         for (const id of i.file_ids) read.push(await readPdf(drive, ctx, id))
         const first = read[0]!.file
         const result = await run((lib) => lib.mergePdfs(read.map((r) => r.source)))

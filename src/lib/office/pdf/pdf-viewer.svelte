@@ -1,9 +1,17 @@
+<script lang="ts" module>
+  import type PdfOrganiser from './pdf-organiser.svelte'
+  import type { ComponentProps } from 'svelte'
+
+  type OrganiserProps = ComponentProps<typeof PdfOrganiser>
+</script>
+
 <script lang="ts">
   import type { OfficeViewerProps } from '../viewers'
   import type { TextContent } from 'pdfjs-dist/types/src/display/api'
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down'
   import ChevronUpIcon from '@lucide/svelte/icons/chevron-up'
   import CircleAlertIcon from '@lucide/svelte/icons/circle-alert'
+  import LayoutGridIcon from '@lucide/svelte/icons/layout-grid'
   import ListTreeIcon from '@lucide/svelte/icons/list-tree'
   import LockIcon from '@lucide/svelte/icons/lock'
   import MaximizeIcon from '@lucide/svelte/icons/maximize'
@@ -14,9 +22,9 @@
   import XIcon from '@lucide/svelte/icons/x'
   import ZoomInIcon from '@lucide/svelte/icons/zoom-in'
   import ZoomOutIcon from '@lucide/svelte/icons/zoom-out'
-  import { flushSync, onMount, tick } from 'svelte'
+  import { flushSync, onMount, tick, type Component } from 'svelte'
   import { Button } from '$lib/components/ui/button'
-  import { driveApi } from '$lib/drive/api'
+  import { driveApi, type DriveItem } from '$lib/drive/api'
   import {
     findInPage,
     itemRanges,
@@ -54,9 +62,11 @@
    * one continuous scroll, drawn only near the viewport; thumbnails, the
    * file's bookmarks and page labels; zoom (fit width/page, steps,
    * ⌘/Ctrl+wheel, pinch) that keeps the reading position; find as you type;
-   * selectable text. View only — editing comes with the next milestones.
+   * selectable text. With edit access, "Organise pages" (P2,
+   * ./pdf-organiser.svelte) rotates, deletes, reorders, inserts, extracts and
+   * splits pages and saves them as a new revision.
    */
-  let { fileId, name }: OfficeViewerProps = $props()
+  let { fileId, name, canEdit, heartbeatMs, onsaved, folderId }: OfficeViewerProps = $props()
 
   type OutlineNode = {
     title: string
@@ -91,6 +101,13 @@
   let pageError = $state<string | null>(null)
   let navError = $state<string | null>(null)
   let password = $state('')
+  /** Organise mode: the page grid replaces the reading view (loaded on first use). */
+  let organiser = $state.raw<Component<OrganiserProps> | null>(null)
+  let organising = $state(false)
+  let organiseError = $state<string | null>(null)
+  /** After a save: what the new revision could not keep. */
+  let savedNotice = $state.raw<{ warnings: string[] } | null>(null)
+  let needsPassword = $state(false)
 
   const count = $derived(sizes.length)
   const tops = $derived(pageTops(sizes, zoom))
@@ -124,7 +141,9 @@
   let lib: PdfJs | null = null
   let task: PdfLoadingTask | null = null
   let doc: PdfDocument | null = null
-  let pages: PdfPage[] = []
+  let pages = $state.raw<PdfPage[]>([])
+  /** The file's bytes as opened (pdf.js keeps its own copy): what Organise builds on. */
+  let sourceBytes = $state.raw<Uint8Array | null>(null)
   let submitPassword: ((password: string) => void) | null = null
   let destroyed = false
   // eslint-disable-next-line svelte/prefer-svelte-reactivity -- page slots for the drawing code, never rendered
@@ -172,10 +191,17 @@
       fail('The file could not be loaded.', err)
       return
     }
+    await openBytes(bytes)
+  }
+
+  async function openBytes(bytes: Uint8Array) {
+    sourceBytes = bytes
     try {
       lib = await loadPdfJs()
-      task = await openPdf(bytes, (submit, incorrect) => {
+      // pdf.js hands the buffer it is given over to its worker: it gets a copy.
+      task = await openPdf(bytes.slice(), (submit, incorrect) => {
         submitPassword = submit
+        needsPassword = true
         status = { kind: 'password', incorrect }
         void tick().then(() => passwordInput?.focus())
       })
@@ -206,6 +232,50 @@
     flushSync()
     applyFit(zoomMode)
     updateVisible()
+  }
+
+  /** Shows other bytes of this file (after Organise saved, or when it changed meanwhile). */
+  async function reopen(bytes: Uint8Array) {
+    const old = task
+    for (const v of views.values()) v.destroy()
+    views.clear()
+    texts.clear()
+    thumbsDrawn.clear()
+    query = ''
+    matches = []
+    selected = null
+    pinned = null
+    status = { kind: 'loading' }
+    sizes = []
+    await openBytes(bytes)
+    void old?.destroy()
+  }
+
+  // --- organise ------------------------------------------------------------
+
+  async function startOrganising() {
+    organiseError = null
+    savedNotice = null
+    try {
+      organiser ??= (await import('./pdf-organiser.svelte')).default
+      organising = true
+    } catch (err) {
+      organiseError = `Organise could not be opened: ${err instanceof Error ? err.message : String(err)}`
+    }
+  }
+
+  function onOrganised(file: DriveItem, bytes: Uint8Array, warnings: string[]) {
+    organising = false
+    savedNotice = { warnings }
+    onsaved?.(file)
+    void reopen(bytes)
+  }
+
+  function onChangedMeanwhile(bytes: Uint8Array) {
+    organising = false
+    void reopen(bytes).then(() => {
+      if (status.kind === 'ready') void startOrganising()
+    })
   }
 
   function fail(message: string, err: unknown) {
@@ -303,7 +373,7 @@
     return (el: HTMLElement) => {
       hosts.set(i, el)
       return () => {
-        hosts.delete(i)
+        if (hosts.get(i) === el) hosts.delete(i)
       }
     }
   }
@@ -402,7 +472,7 @@
   }
 
   function onResize() {
-    if (destroyed || !scroller || status.kind !== 'ready') return
+    if (destroyed || !scroller || status.kind !== 'ready' || organising) return
     if (zoomMode !== 'custom') applyFit(zoomMode)
     updateVisible()
   }
@@ -611,7 +681,7 @@
   // --- keys --------------------------------------------------------------
 
   function onKeydown(event: KeyboardEvent) {
-    if (status.kind !== 'ready' || event.defaultPrevented) return
+    if (status.kind !== 'ready' || event.defaultPrevented || organising) return
     const mod = event.metaKey || event.ctrlKey
     const target = event.target
     if (target instanceof Element && target.closest('[role="dialog"], [role="alertdialog"]')) return
@@ -691,10 +761,24 @@
   data-status={status.kind}
   data-zoom={zoom}
 >
+  {#if organising && organiser && sourceBytes}
+    {@const Organiser = organiser}
+    <Organiser
+      {fileId}
+      {name}
+      {folderId}
+      {heartbeatMs}
+      base={{ bytes: sourceBytes, name, pages }}
+      onsaved={onOrganised}
+      onchanged={onChangedMeanwhile}
+      onclose={() => (organising = false)}
+    />
+  {/if}
   <div
     class="flex flex-wrap items-center gap-1 border-b bg-muted/30 px-2 py-1.5 text-sm"
     role="toolbar"
     aria-label="PDF tools"
+    style:display={organising ? 'none' : undefined}
   >
     <Button
       variant="ghost"
@@ -785,6 +869,18 @@
       onclick={() => applyFit('fit-page')}
       data-testid="pdf-fit-page"><MaximizeIcon class="size-4" /></Button
     >
+    {#if canEdit}
+      <Button
+        variant="ghost"
+        size="sm"
+        title={needsPassword
+          ? 'Password-protected PDFs can’t be organised yet'
+          : 'Rotate, delete, reorder, insert and extract pages'}
+        disabled={status.kind !== 'ready' || needsPassword}
+        onclick={startOrganising}
+        data-testid="pdf-organise"><LayoutGridIcon class="size-4" /> Organise pages</Button
+      >
+    {/if}
     <Button
       variant="ghost"
       size="icon-sm"
@@ -843,7 +939,39 @@
       {/if}
     </div>
   </div>
-  {#if pageError || navError}
+  {#if !organising && (organiseError || savedNotice)}
+    <div
+      class="border-b px-3 py-1.5 text-sm {organiseError
+        ? 'border-destructive/40 bg-destructive/10 text-destructive'
+        : 'bg-muted/40'}"
+      role={organiseError ? 'alert' : 'status'}
+      data-testid="pdf-organise-notice"
+    >
+      {#if organiseError}
+        {organiseError}
+      {:else if savedNotice}
+        <p class="flex items-center gap-2">
+          <span class="flex-1"
+            >Saved the pages as a new version{savedNotice.warnings.length
+              ? '. Not everything could be kept:'
+              : '.'}</span
+          >
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Dismiss"
+            onclick={() => (savedNotice = null)}><XIcon class="size-4" /></Button
+          >
+        </p>
+        {#if savedNotice.warnings.length}
+          <ul class="list-disc pl-5" data-testid="pdf-organise-warnings">
+            {#each savedNotice.warnings as w (w)}<li>{w}</li>{/each}
+          </ul>
+        {/if}
+      {/if}
+    </div>
+  {/if}
+  {#if !organising && (pageError || navError)}
     <p
       class="border-b border-destructive/40 bg-destructive/10 px-3 py-1.5 text-sm text-destructive"
       role="alert"
@@ -853,7 +981,7 @@
     </p>
   {/if}
 
-  <div class="pdf-body">
+  <div class="pdf-body" style:display={organising ? 'none' : undefined}>
     {#if sidebar && status.kind === 'ready'}
       <nav
         bind:this={sidebarEl}

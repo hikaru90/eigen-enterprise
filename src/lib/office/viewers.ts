@@ -14,6 +14,12 @@ export type OfficeViewerProps = {
   canEdit: boolean
   /** The edit-lock heartbeat interval (W-6). */
   heartbeatMs: number
+  /**
+   * The file's folder (null: top level), where new files go — the pages a PDF
+   * viewer extracts or splits off land next to the file. The page may omit it
+   * (unknown): then such actions stay off rather than guess.
+   */
+  folderId?: string | null
   /** After a save: the file as the server has it now (size, changed time). */
   onsaved?: (file: DriveItem) => void
 }

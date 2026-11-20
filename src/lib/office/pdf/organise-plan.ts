@@ -59,7 +59,11 @@ export function checkedPages(pages: readonly number[], count: number): number[] 
 }
 
 /** Turns the pages at `indices` by `by` degrees. */
-export function planRotate(plan: PagePlan, indices: readonly number[], by: number): PageSlot[] {
+export function planRotate<T extends PageSlot>(
+  plan: readonly T[],
+  indices: readonly number[],
+  by: number,
+): T[] {
   const chosen = new Set(checkedPages(indices, plan.length))
   return plan.map((slot, i) => {
     if (!chosen.has(i)) return slot
@@ -67,12 +71,15 @@ export function planRotate(plan: PagePlan, indices: readonly number[], by: numbe
       // A blank page has no content to turn: it swaps its sides on a quarter turn.
       return turn(0, by) % 180 === 0 ? slot : { ...slot, width: slot.height, height: slot.width }
     }
-    return { ...slot, rotate: turn(slot.rotate, by) }
+    return { ...slot, rotate: turn((slot as T & { kind: 'page' }).rotate, by) }
   })
 }
 
 /** Removes the pages at `indices`; at least one page must stay. */
-export function planDelete(plan: PagePlan, indices: readonly number[]): PageSlot[] {
+export function planDelete<T extends PageSlot>(
+  plan: readonly T[],
+  indices: readonly number[],
+): T[] {
   const chosen = new Set(checkedPages(indices, plan.length))
   if (chosen.size === plan.length)
     throw new PdfOrganiseError('A PDF needs at least one page, so not every page can be deleted.')
@@ -84,7 +91,11 @@ export function planDelete(plan: PagePlan, indices: readonly number[]): PageSlot
  * them ends up at position `to` of the result (0-based; at most
  * `plan.length - indices.length`).
  */
-export function planMove(plan: PagePlan, indices: readonly number[], to: number): PageSlot[] {
+export function planMove<T extends PageSlot>(
+  plan: readonly T[],
+  indices: readonly number[],
+  to: number,
+): T[] {
   const moved = checkedPages(indices, plan.length)
   const rest = plan.filter((_, i) => !moved.includes(i))
   if (!Number.isInteger(to) || to < 0 || to > rest.length)
@@ -103,7 +114,7 @@ export function dropTarget(indices: readonly number[], before: number): number {
 }
 
 /** A new order as a permutation of every page (0-based indices in their new order). */
-export function planReorder(plan: PagePlan, order: readonly number[]): PageSlot[] {
+export function planReorder<T extends PageSlot>(plan: readonly T[], order: readonly number[]): T[] {
   if (order.length !== plan.length)
     throw new PdfOrganiseError(
       `The new order must list every page once: the PDF has ${plan.length} pages, the order names ${order.length}.`,
@@ -115,7 +126,11 @@ export function planReorder(plan: PagePlan, order: readonly number[]): PageSlot[
 }
 
 /** Inserts `slots` before position `at` (0 … plan.length). */
-export function planInsert(plan: PagePlan, at: number, slots: readonly PageSlot[]): PageSlot[] {
+export function planInsert<T extends PageSlot>(
+  plan: readonly T[],
+  at: number,
+  slots: readonly T[],
+): T[] {
   if (!Number.isInteger(at) || at < 0 || at > plan.length)
     throw new PdfOrganiseError(
       `Pages can be inserted at position 1 to ${plan.length + 1}, not ${Number.isInteger(at) ? at + 1 : at}.`,
@@ -124,7 +139,7 @@ export function planInsert(plan: PagePlan, at: number, slots: readonly PageSlot[
 }
 
 /** The pages at `indices`, in document order (what "extract" takes). */
-export function planPick(plan: PagePlan, indices: readonly number[]): PageSlot[] {
+export function planPick<T extends PageSlot>(plan: readonly T[], indices: readonly number[]): T[] {
   return checkedPages(indices, plan.length).map((i) => plan[i]!)
 }
 
@@ -134,4 +149,17 @@ export function isUnchanged(plan: PagePlan, count: number): boolean {
     plan.length === count &&
     plan.every((s, i) => s.kind === 'page' && s.source === 0 && s.page === i && s.rotate === 0)
   )
+}
+
+/** "2–4, 7" for the pages 2, 3, 4 and 7 (page numbers, as people say them). */
+export function pageRangesLabel(pages: readonly number[]): string {
+  const sorted = [...new Set(pages)].sort((a, b) => a - b)
+  const parts: string[] = []
+  for (let i = 0; i < sorted.length; i++) {
+    let j = i
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j]! + 1) j++
+    parts.push(j === i ? String(sorted[i]) : `${sorted[i]}–${sorted[j]}`)
+    i = j
+  }
+  return parts.join(', ')
 }

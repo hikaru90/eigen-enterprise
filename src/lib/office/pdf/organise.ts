@@ -219,7 +219,9 @@ async function counted(pdf: PdfSource) {
 export async function composePdf(sources: PdfSource[], plan: PagePlan): Promise<OrganiseResult> {
   if (sources.length === 0) throw new PdfOrganiseError('There is no PDF to take pages from.')
   if (plan.length === 0) throw new PdfOrganiseError('A PDF needs at least one page.')
-  const loaded = await Promise.all(sources.map(load))
+  // Only what the plan uses is read (the base always: it carries the catalog).
+  const wanted = (i: number) => i === 0 || plan.some((s) => s.kind === 'page' && s.source === i)
+  const loaded = await Promise.all(sources.map((s, i) => (wanted(i) ? load(s) : null)))
   const used = loaded.map(() => new Set<number>())
   for (const slot of plan) {
     if (slot.kind === 'blank') {
@@ -248,10 +250,11 @@ export async function composePdf(sources: PdfSource[], plan: PagePlan): Promise<
     removedBase.size > 0
 
   // Labels are read before anything moves.
-  const labels = loaded.map((l) => readPageLabels(l.doc))
+  const labels = loaded.map((l) => (l ? readPageLabels(l.doc) : null))
 
   // Prune every source against its own deleted pages first: nothing kept may point at them.
   loaded.forEach((src, i) => {
+    if (!src) return
     const removed = new Set(src.pages.filter((_, p) => !used[i]!.has(p)))
     if (i === 0) pruneBase(src, removed, warnings)
     else if (used[i]!.size > 0) {
