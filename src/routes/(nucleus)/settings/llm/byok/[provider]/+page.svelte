@@ -18,8 +18,6 @@
     apiKey = pd.apiKey
     ruleChat = 'ruleChat' in pd ? (pd.ruleChat ?? '') : ''
     ruleEmbedding = 'ruleEmbedding' in pd ? (pd.ruleEmbedding ?? '') : ''
-    modelChat = 'modelChat' in pd ? (pd.modelChat ?? '') : ''
-    modelEmbedding = 'modelEmbedding' in pd ? (pd.modelEmbedding ?? '') : ''
   }
 
   const pd0 = data.providerData
@@ -27,8 +25,6 @@
   let apiKey = $state(pd0.apiKey)
   let ruleChat = $state('ruleChat' in pd0 ? (pd0.ruleChat ?? '') : '')
   let ruleEmbedding = $state('ruleEmbedding' in pd0 ? (pd0.ruleEmbedding ?? '') : '')
-  let modelChat = $state('modelChat' in pd0 ? (pd0.modelChat ?? '') : '')
-  let modelEmbedding = $state('modelEmbedding' in pd0 ? (pd0.modelEmbedding ?? '') : '')
 
   afterNavigate(() => {
     applyProviderData()
@@ -41,7 +37,7 @@
 
 <div class="space-y-4">
   <a
-    href={resolve('/settings/llm?tab=byok')}
+    href={resolve('/settings/llm')}
     class="text-muted-foreground inline-flex items-center gap-1 text-xs hover:text-foreground"
   >
     <ChevronLeft class="size-4" strokeWidth={1.75} />
@@ -60,7 +56,7 @@
       return async ({ result, update }) => {
         await update()
         if (result.type === 'success') {
-          await goto(resolve('/settings/llm?tab=byok'))
+          await goto(resolve('/settings/llm'))
         }
       }
     }}
@@ -116,28 +112,10 @@
         />
       </div>
     {:else}
-      <div class="space-y-1">
-        <Label for="modelChat">Chat model</Label>
-        <input
-          id="modelChat"
-          type="text"
-          name="modelChat"
-          bind:value={modelChat}
-          placeholder="qwen/qwen3-6b-flash"
-          class="border-input bg-background text-foreground h-9 w-full border px-2.5 text-xs"
-        />
-      </div>
-      <div class="space-y-1">
-        <Label for="modelEmbedding">Embedding model</Label>
-        <input
-          id="modelEmbedding"
-          type="text"
-          name="modelEmbedding"
-          bind:value={modelEmbedding}
-          placeholder="qwen/qwen3-embedding-8b"
-          class="border-input bg-background text-foreground h-9 w-full border px-2.5 text-xs"
-        />
-      </div>
+      <p class="text-muted-foreground text-xs" data-testid="openrouter-models-note">
+        The models are the company's choice under Settings → AI provider → Models; this key runs
+        them.
+      </p>
     {/if}
 
     <Button type="submit" variant="outline" size="sm" class="rounded-[4px]">Save</Button>

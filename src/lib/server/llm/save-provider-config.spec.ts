@@ -184,4 +184,27 @@ describe('saveProviderConfig', () => {
     })
     expect(useOwnKeyMock).not.toHaveBeenCalled()
   })
+
+  it('a re-save that sends no model fields keeps the stored models (Settings sends none since CB1)', async () => {
+    const { insert, calls } = makeInsertRecorder()
+    getDbMock.mockReturnValue({ insert })
+    await saveProviderConfig({ userId: 'member-1', provider: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'k' })
+    const conflictSet = callFor(calls, llmProviderConfig).conflictSet as Record<string, unknown>
+    expect(conflictSet).not.toHaveProperty('modelChat')
+    expect(conflictSet).not.toHaveProperty('modelEmbedding')
+    expect(conflictSet).toMatchObject({ baseUrl: 'https://openrouter.ai/api/v1', apiKeyEncrypted: 'encrypted-blob' })
+  })
+
+  it('an explicit null still clears a field', async () => {
+    const { insert, calls } = makeInsertRecorder()
+    getDbMock.mockReturnValue({ insert })
+    await saveProviderConfig({
+      userId: 'member-1',
+      provider: 'eurouter',
+      baseUrl: 'https://api.eurouter.ai/v1',
+      apiKey: 'k',
+      ruleChat: null,
+    })
+    expect(callFor(calls, llmProviderConfig).conflictSet).toMatchObject({ ruleChat: null })
+  })
 })

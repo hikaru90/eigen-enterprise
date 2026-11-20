@@ -105,12 +105,21 @@ export async function saveProviderConfig(input: SaveProviderConfigInput): Promis
     modelEmbedding: input.modelEmbedding?.trim() || null,
   }
 
+  // A field the caller did not send (undefined) keeps what is stored: Settings no longer sends
+  // model fields (CB1: the company's slots pick the models), and re-saving a key must not wipe
+  // the model an install's existing vectors were made with before its embedding is pinned.
+  const keep = (['modelChat', 'modelEmbedding', 'ruleChat', 'ruleEmbedding'] as const).filter(
+    (field) => input[field] === undefined,
+  )
+  const set: Partial<typeof values> = { ...values }
+  for (const field of keep) delete set[field]
+
   await db
     .insert(llmProviderConfig)
     .values(values)
     .onConflictDoUpdate({
       target: [llmProviderConfig.userId, llmProviderConfig.provider],
-      set: { ...values, updatedAt: new Date() },
+      set: { ...set, updatedAt: new Date() },
     })
 
   if (input.setActive !== false) {

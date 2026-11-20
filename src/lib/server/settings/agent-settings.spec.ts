@@ -161,13 +161,18 @@ describe('agentSettingsPort.apply', () => {
     ).rejects.toMatchObject({ code: 'not_configured' })
   })
 
-  it('ai_chat_model updates a saved provider row; EUrouter and unsaved providers fail loud', async () => {
-    m.updateReturning.mockResolvedValue([{ provider: 'openrouter' }])
+  it('ai_chat_model updates a saved provider row outside the pool namespace; OpenRouter, EUrouter and unsaved providers fail loud', async () => {
+    m.updateReturning.mockResolvedValue([{ provider: 'mistral' }])
     await agentSettingsPort.apply(
-      { setting: 'ai_chat_model', provider: 'openrouter', value: 'openai/gpt-x' },
+      { setting: 'ai_chat_model', provider: 'mistral', value: 'mistral-large' },
       'u-actor',
     )
-    expect(m.updateSet).toHaveBeenCalledWith(expect.objectContaining({ modelChat: 'openai/gpt-x' }))
+    expect(m.updateSet).toHaveBeenCalledWith(expect.objectContaining({ modelChat: 'mistral-large' }))
+
+    // CB1: an OpenRouter key runs the company's chat slot; the free-text model is gone
+    await expect(
+      agentSettingsPort.apply({ setting: 'ai_chat_model', provider: 'openrouter', value: 'openai/gpt-x' }, 'u-actor'),
+    ).rejects.toMatchObject({ code: 'invalid_input', message: expect.stringMatching(/ai_slot_model/) })
 
     await expect(
       agentSettingsPort.apply({ setting: 'ai_chat_model', provider: 'eurouter', value: 'x' }, 'u-actor'),

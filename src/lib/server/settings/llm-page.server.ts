@@ -111,15 +111,11 @@ export async function loadLlmSettingsPage(event: RequestEvent) {
         apiKey: eurouterApiKey,
         ruleChat: eurouterRow?.ruleChat ?? '',
         ruleEmbedding: eurouterRow?.ruleEmbedding ?? '',
-        modelChat: eurouterRow?.modelChat || env.LLM_MODEL_CHAT?.trim() || '',
-        modelEmbedding: eurouterRow?.modelEmbedding || env.LLM_MODEL_EMBEDDING?.trim() || '',
       },
       openrouter: {
         configured: isProviderConfigured(openrouterRow),
         baseUrl: openrouterRow?.baseUrl ?? '',
         apiKey: openrouterApiKey,
-        modelChat: openrouterRow?.modelChat || env.LLM_MODEL_CHAT?.trim() || '',
-        modelEmbedding: openrouterRow?.modelEmbedding || env.LLM_MODEL_EMBEDDING?.trim() || '',
       },
     },
   }
@@ -167,12 +163,11 @@ export const llmSettingsActions: Actions = {
     const apiKey = formData.get('apiKey')?.toString().trim() ?? ''
     const ruleChat = formData.get('ruleChat')?.toString().trim() || null
     const ruleEmbedding = formData.get('ruleEmbedding')?.toString().trim() || null
-    const modelChat = formData.get('modelChat')?.toString().trim() || null
-    const modelEmbedding = formData.get('modelEmbedding')?.toString().trim() || null
     const setActive = formData.get('setActive') !== 'false'
 
     try {
-      // Single persistence path shared with the onboarding provider step.
+      // Single persistence path shared with the onboarding provider step. No model fields:
+      // the models are the company's slots (CB1); a key's stored models are left as they are.
       await saveProviderConfig({
         userId: event.locals.user.id,
         provider: provider as LlmProviderId,
@@ -180,8 +175,6 @@ export const llmSettingsActions: Actions = {
         apiKey,
         ruleChat,
         ruleEmbedding,
-        modelChat,
-        modelEmbedding,
         setActive,
       })
       return { llmMessage: `${providerLabel(provider as LlmProviderId)} saved.` }
@@ -230,25 +223,24 @@ export const llmSettingsActions: Actions = {
     }
 
     const formData = await event.request.formData()
-    const modelChat = formData.get('modelChat')?.toString().trim() || null
-    const modelEmbedding = formData.get('modelEmbedding')?.toString().trim() || null
     const ruleChat = formData.get('ruleChat')?.toString().trim() || null
     const ruleEmbedding = formData.get('ruleEmbedding')?.toString().trim() || null
     const provider = formData.get('provider')?.toString().trim() || 'eurouter'
 
-    if (provider !== 'eurouter' && provider !== 'openrouter') {
+    // CB1: models are the company's slots (setSlot); only EUrouter keeps its routing rules here.
+    if (provider === 'openrouter') {
+      return fail(400, {
+        modelMessage: 'OpenRouter runs the company’s models: choose them under Models (Settings → AI provider).',
+      })
+    }
+    if (provider !== 'eurouter') {
       return fail(400, { modelMessage: 'Invalid provider.' })
     }
 
     try {
       const db = getDb()
       const userId = event.locals.user.id
-
-      // For EUrouter, use routing rules; for OpenRouter, use model names
-      const isEurouter = provider === 'eurouter'
-      const updateData = isEurouter
-        ? { ruleChat, ruleEmbedding, updatedAt: new Date() }
-        : { modelChat, modelEmbedding, updatedAt: new Date() }
+      const updateData = { ruleChat, ruleEmbedding, updatedAt: new Date() }
 
       // Update or insert provider config
       const existing = await db
@@ -270,14 +262,8 @@ export const llmSettingsActions: Actions = {
           .values({
             userId,
             provider,
-            baseUrl:
-              provider === 'openrouter'
-                ? env.OPENROUTER_BASE_URL?.trim() || 'https://openrouter.ai/api/v1'
-                : env.LLM_BASE_URL?.trim() || 'https://api.eurouter.ai/v1',
-            apiKey:
-              provider === 'openrouter'
-                ? env.OPENROUTER_API_KEY?.trim() || 'placeholder'
-                : env.LLM_API_KEY?.trim() || 'placeholder',
+            baseUrl: env.LLM_BASE_URL?.trim() || 'https://api.eurouter.ai/v1',
+            apiKey: env.LLM_API_KEY?.trim() || 'placeholder',
             ...updateData,
           })
           .onConflictDoUpdate({

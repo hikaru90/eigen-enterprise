@@ -117,6 +117,12 @@ async function apply(change: SettingChange, actorUserId: string): Promise<void> 
       return
     }
     case 'ai_chat_model': {
+      if (change.provider === 'openrouter') {
+        throw new KernelError(
+          'invalid_input',
+          'An OpenRouter key runs the company’s chat slot (CB1): change ai_slot_model {slot: chat} instead.',
+        )
+      }
       if (change.provider === 'eurouter') {
         throw new KernelError(
           'invalid_input',

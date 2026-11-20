@@ -11,10 +11,6 @@
 
   let { data, form }: { data: PageData; form: ActionData } = $props()
 
-  let selectedProvider = $state<'eurouter' | 'openrouter'>(
-    data.activeProvider === 'openrouter' ? 'openrouter' : 'eurouter',
-  )
-
   const providers = [
     { id: 'openrouter' as const, label: 'OpenRouter' },
     { id: 'eurouter' as const, label: 'EUrouter' },
@@ -190,12 +186,12 @@
         {/if}
       </section>
 
-      <section class="space-y-3">
+      <section class="space-y-3" data-testid="eurouter-rules">
         <div>
-          <h3 class="text-sm font-semibold">Provider models</h3>
+          <h3 class="text-sm font-semibold">EUrouter routing rules</h3>
           <p class="mt-1 text-sm text-muted-foreground">
-            Optional. Choose which models the provider uses; leave a field empty to keep the default.
-            {#if !data.byokConfigured}Connect a provider above first.{/if}
+            Only for an EUrouter key: EUrouter picks its models by routing rule. Every other key runs
+            on the models chosen above.
           </p>
         </div>
 
@@ -209,70 +205,32 @@
           }}
           class="space-y-4 rounded-lg border border-border p-4"
         >
-          <input type="hidden" name="provider" value={selectedProvider} />
+          <input type="hidden" name="provider" value="eurouter" />
           <div class="space-y-1.5">
-            <Label for="model-provider">Provider</Label>
-            <select
-              id="model-provider"
-              bind:value={selectedProvider}
-              class="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm text-foreground outline-none focus-visible:ring-2 -ring"
-            >
-              <option value="eurouter">EUrouter</option>
-              <option value="openrouter">OpenRouter</option>
-            </select>
+            <Label for="ruleChat">Chat routing rule</Label>
+            <Input
+              id="ruleChat"
+              type="text"
+              name="ruleChat"
+              value={data.providers?.eurouter?.ruleChat ?? ''}
+              placeholder="Routing rule ID from EUrouter"
+              class="font-mono"
+            />
+          </div>
+          <div class="space-y-1.5">
+            <Label for="ruleEmbedding">Search routing rule</Label>
+            <Input
+              id="ruleEmbedding"
+              type="text"
+              name="ruleEmbedding"
+              value={data.providers?.eurouter?.ruleEmbedding ?? ''}
+              placeholder="Routing rule ID from EUrouter"
+              class="font-mono"
+            />
           </div>
 
-          {#if selectedProvider === 'openrouter'}
-            <div class="space-y-1.5">
-              <Label for="modelChat">Chat model</Label>
-              <Input
-                id="modelChat"
-                type="text"
-                name="modelChat"
-                value={data.providers?.openrouter?.modelChat ?? ''}
-                placeholder="e.g. openai/gpt-4o-mini"
-              />
-            </div>
-            <div class="space-y-1.5">
-              <Label for="modelEmbedding">Search model</Label>
-              <Input
-                id="modelEmbedding"
-                type="text"
-                name="modelEmbedding"
-                value={data.providers?.openrouter?.modelEmbedding ?? ''}
-                placeholder="e.g. openai/text-embedding-3-small"
-              />
-              <p class="text-xs text-muted-foreground">
-                Used to find related memories (an embedding model).
-              </p>
-            </div>
-          {:else}
-            <div class="space-y-1.5">
-              <Label for="ruleChat">Chat routing rule</Label>
-              <Input
-                id="ruleChat"
-                type="text"
-                name="ruleChat"
-                value={data.providers?.eurouter?.ruleChat ?? ''}
-                placeholder="Routing rule ID from EUrouter"
-                class="font-mono"
-              />
-            </div>
-            <div class="space-y-1.5">
-              <Label for="ruleEmbedding">Search routing rule</Label>
-              <Input
-                id="ruleEmbedding"
-                type="text"
-                name="ruleEmbedding"
-                value={data.providers?.eurouter?.ruleEmbedding ?? ''}
-                placeholder="Routing rule ID from EUrouter"
-                class="font-mono"
-              />
-            </div>
-          {/if}
-
           <div class="flex items-center gap-3">
-            <Button type="submit" variant="outline" size="sm">Save models</Button>
+            <Button type="submit" variant="outline" size="sm">Save rules</Button>
             {#if form?.modelMessage}
               <p class="text-sm text-muted-foreground">{form.modelMessage}</p>
             {/if}

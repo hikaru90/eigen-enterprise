@@ -46,8 +46,8 @@ function data(over: Record<string, unknown> = {}, ai: Record<string, unknown> = 
     activeProvider: 'eurouter',
     speech: { dictation: { ready: true }, models: [] },
     providers: {
-      eurouter: { configured: false, baseUrl: '', apiKey: '', ruleChat: '', ruleEmbedding: '', modelChat: '', modelEmbedding: '' },
-      openrouter: { configured: false, baseUrl: '', apiKey: '', modelChat: '', modelEmbedding: '' },
+      eurouter: { configured: false, baseUrl: '', apiKey: '', ruleChat: '', ruleEmbedding: '' },
+      openrouter: { configured: false, baseUrl: '', apiKey: '' },
     },
     ai: {
       useEigenInference: true,
@@ -120,6 +120,14 @@ describe('Settings → AI provider', () => {
     await expect.element(page.getByRole('switch', { name: 'Use eigenInference' })).toHaveAttribute('aria-checked', 'false')
     await expect.element(page.getByTestId('llm-providers')).toBeVisible()
     await expect.element(page.getByRole('link', { name: /OpenRouter/ })).toHaveAttribute('href', '/settings/llm/byok/openrouter')
+  })
+
+  it('Advanced has no free-text model fields: only EUrouter keeps its routing rules (CB1)', async () => {
+    render(AiPage, props(data({}, { useEigenInference: false })))
+    await expect.element(page.getByTestId('eurouter-rules')).toBeVisible()
+    await expect.element(page.getByLabelText('Chat routing rule')).toBeVisible()
+    expect(document.querySelector('input[name="modelChat"]')).toBeNull()
+    expect(document.querySelector('input[name="modelEmbedding"]')).toBeNull()
   })
 
   it('a member sees the choices but cannot change them, and no keys', async () => {

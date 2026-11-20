@@ -89,7 +89,7 @@ const UPDATABLE: ReadonlyArray<{ setting: SettingChange['setting']; description:
   {
     setting: 'ai_chat_model',
     description:
-      'The chat model of a saved provider that routes by model name (not EUrouter): {provider, value: model name}.',
+      'The chat model of a saved provider outside the model pool (not EUrouter, not OpenRouter — OpenRouter runs ai_slot_model): {provider, value: model name}.',
   },
   {
     setting: 'ai_chat_routing_rule',
