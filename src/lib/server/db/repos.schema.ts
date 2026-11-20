@@ -34,6 +34,12 @@ export const repoSources = pgTable(
     claimedUntil: timestamp('claimed_until', { withTimezone: true }),
     etags: jsonb('etags').$type<Record<string, string>>().notNull().default({}),
     branchHeads: jsonb('branch_heads').$type<Record<string, string>>().notNull().default({}),
+    /**
+     * The pre-0161 per-path doc shas. Unused since 0161 (repo_source_files
+     * replaced it) and never written by new code — it stays only so the old
+     * blue-green slot keeps working. -- dropped in a later release (D15)
+     */
+    docShas: jsonb('doc_shas').$type<Record<string, string>>().notNull().default({}),
     /** Migration 0161: 'all' (every file of the default branch) or 'docs' (Markdown only). */
     copyMode: text('copy_mode').notNull().default('all'),
     /** The last fetched state (dates as ISO strings), rendered again on a 304. */

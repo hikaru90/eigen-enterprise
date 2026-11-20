@@ -231,7 +231,8 @@ export function createReposService(deps: SyncDeps): ReposService {
     async removeToken(tokenId) {
       const token = await requireToken(tokenId)
       const mine = (await store.sources()).filter((s) => s.tokenId === token.id)
-      for (const s of mine) await removeRepoFolder(drive, s.repoId)
+      const leaving = new Set(mine.map((s) => s.id))
+      for (const s of mine) await removeRepoFolder({ drive, store }, s, leaving)
       await store.deleteToken(token.id)
       return { removedRepos: mine.filter((s) => s.enabled).length }
     },
@@ -245,7 +246,7 @@ export function createReposService(deps: SyncDeps): ReposService {
       }
       if (!syncing) {
         if (!existing || !existing.enabled) throw new ReposError('That repo is not synced.')
-        await removeRepoFolder(drive, repoId)
+        await removeRepoFolder({ drive, store }, existing)
         await store.updateSource(existing.id, { ...FRESH_STATE, enabled: false })
         return { fullName: existing.fullName }
       }

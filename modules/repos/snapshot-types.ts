@@ -60,8 +60,14 @@ export type NotCopiedReason =
   | 'file_size'
   | 'file_count'
   | 'total_size'
-  /** A path segment Drive can't hold (contains `\`, longer than 255, `.` or `..`). */
+  /** A path segment Drive can't hold (Drive's checkName: empty, edge whitespace, `/` or `\`, over 255, `.` or `..`). */
   | 'name'
+  /**
+   * GitHub's archive lacks the file or serves other bytes (.gitattributes
+   * export-ignore / export-subst / eol filters), and the per-sync cap on
+   * one-by-one fetches was reached. Retried on the next sync.
+   */
+  | 'archive_filtered'
   /** A gitlink (tree entry of type commit); `sha` is the pinned commit. */
   | 'submodule'
   /** Tree entry mode 120000. */

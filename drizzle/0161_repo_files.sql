@@ -3,7 +3,10 @@
 --
 -- The per-path blob shas leave `repo_sources.doc_shas` (one jsonb row is no
 -- home for 50,000 paths) and become one `repo_source_files` row per copied
--- path, keyed (source_id, path). The table cascades with its repo_sources row,
+-- path, keyed (source_id, path). Expand/contract (plan/phase-substrate.md
+-- D15): `doc_shas` stays here, defaulted and unused by the new code, so the
+-- old blue-green slot keeps working during the switch-over.
+-- doc_shas: dropped in a later release (D15). The table cascades with its repo_sources row,
 -- like repo_sources itself does with repo_source_tokens.
 --
 -- Existing sources arrive with an empty repo_source_files table, so their next
@@ -27,5 +30,3 @@ DO $$ BEGIN
 	ALTER TABLE "repo_sources" ADD CONSTRAINT "repo_sources_copy_mode_check" CHECK ("copy_mode" IN ('all', 'docs'));
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
---> statement-breakpoint
-ALTER TABLE "repo_sources" DROP COLUMN IF EXISTS "doc_shas";

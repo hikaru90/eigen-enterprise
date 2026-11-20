@@ -2,7 +2,6 @@ import type { DriveSourcePort } from './drive-port'
 import type { ReposSyncedPayload, SyncLog, TickResult, TokenClientFactory } from './sync'
 import { hostname } from 'node:os'
 import { env } from '$lib/server/env/private-env'
-import { readTarGz } from '$lib/server/github/tar'
 import { redactForLog } from '$lib/server/observability/redact-for-log'
 import { dbReposStore } from './db-store'
 import { REPOS_MODULE_ID } from './manifest'
@@ -10,6 +9,7 @@ import { tokenSealKey } from './seal'
 import { createReposService, type ReposService } from './service'
 import { liveSummarizer } from './summary'
 import { REPOS_SYNCED_EVENT } from './sync'
+import { liveTarballReader, liveTarballSweeper } from './tarball'
 
 /**
  * Live wiring of the GitHub repos plugin: the Postgres store, the sealing key
@@ -18,7 +18,14 @@ import { REPOS_SYNCED_EVENT } from './sync'
  * GitHub token client — because a module never imports another module.
  */
 
-export type ReposPorts = { drive: DriveSourcePort; client: TokenClientFactory }
+export type ReposPorts = {
+  drive: DriveSourcePort
+  client: TokenClientFactory
+  /** The directory the token client downloads tarballs into (its GitHubTokenConfig.tarballDir); swept every tick. */
+  tarballDir: string
+  /** The token client's tarball cap (its GitHubTokenConfig.tarballMaxBytes), named in the "archive too large" message. */
+  tarballMaxBytes: number
+}
 
 let ports: ReposPorts | null = null
 let live: ReposService | null = null
@@ -48,9 +55,12 @@ export function reposService(): ReposService {
     store: dbReposStore(),
     drive: ports.drive,
     client: ports.client,
-    // The streaming tar reader (src/lib/server/github/tar.ts, M1): the sync's
-    // only way to consume a downloaded tarball.
-    readTarball: readTarGz,
+    // The streaming tar reader and the temp-file sweeper (M1, via tarball.ts):
+    // the sync's only way to consume and clean up downloaded tarballs.
+    readTarball: liveTarballReader,
+    sweepTarballs: liveTarballSweeper,
+    tarballDir: ports.tarballDir,
+    tarballMaxBytes: ports.tarballMaxBytes,
     key: () => tokenSealKey(env.TENANT_MASTER_KEY),
     now: () => new Date(),
     owner: `${hostname()}:${process.pid}`,

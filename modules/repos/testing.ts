@@ -1,9 +1,10 @@
 import type { DriveSourceId, DriveSourceItem, DriveSourcePort, DriveSourceRoot, DriveSourceBatchItem } from './drive-port'
+import type { TarballEntry, TarballHeader, TarballReader } from './tarball'
 import { createHash, randomUUID } from 'node:crypto'
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { gzipSync } from 'fflate'
+import { gunzipSync, gzipSync } from 'fflate'
 import { gitBlobSha } from '$lib/server/github/git'
 import type {
   Conditional,
@@ -54,10 +55,16 @@ export type FakeRepoData = {
   tree?: { truncated: boolean; entries: FakeTreeEntry[] }
   /** Blob sha → bytes. Tarballs and blob fetches read from here. */
   blobs?: Record<string, Uint8Array>
+  /**
+   * What `.gitattributes` does to GitHub's archive (never to the tree or the
+   * blob API): `exclude` leaves paths (and folders, by prefix) out
+   * (export-ignore); `replace` serves other bytes for a path (export-subst,
+   * eol filters).
+   */
+  archive?: { exclude?: string[]; replace?: Record<string, Uint8Array> }
 }
 
 const enc = new TextEncoder()
-const dec = new TextDecoder()
 const etagOf = (v: unknown) => `"${createHash('sha1').update(JSON.stringify(v)).digest('hex').slice(0, 12)}"`
 
 /** A fixture file: its entry carries the real git blob sha of its bytes, so the sync's integrity check passes. */
@@ -135,14 +142,17 @@ export class FakeGitHub {
       return e === etag ? { notModified: true, etag: e } : { notModified: false, etag: e, data: structuredClone(v) }
     }
     const tarballOf = (d: FakeRepoData, commitSha: string): string => {
-      // A real gzipped ustar archive (below): every fetchable blob at its repo
-      // path under the top folder <owner>-<repo>-<sha>/, like codeload's.
+      // A real gzipped tar archive (below): every regular file of the tree at
+      // its repo path under the top folder <owner>-<repo>-<sha>/, like
+      // codeload's — over-limit files included (an entry without fixture
+      // bytes is served as zeros of its size). .gitattributes effects apply.
       const top = `${d.repo.owner}-${d.repo.name}-${commitSha}`
+      const excluded = (p: string) => (d.archive?.exclude ?? []).some((x) => p === x || p.startsWith(`${x}/`))
       const files = (d.tree?.entries ?? [])
-        .filter((e) => e.mode !== '160000' && e.mode !== '120000' && e.size !== null && d.blobs?.[e.sha] && d.blobs![e.sha]!.byteLength === e.size)
-        .map((e) => ({ path: `${top}/${e.path}`, bytes: d.blobs![e.sha]! }))
+        .filter((e) => e.mode !== '160000' && e.mode !== '120000' && e.size !== null && !excluded(e.path))
+        .map((e) => ({ path: `${top}/${e.path}`, bytes: d.archive?.replace?.[e.path] ?? d.blobs?.[e.sha] ?? new Uint8Array(e.size!) }))
       const path = join(tmpdir(), `fake-tarball-${randomUUID()}.tar.gz`)
-      writeFileSync(path, writeUstarGz(files))
+      writeFileSync(path, writeTarGz(files))
       return path
     }
     return {
@@ -158,12 +168,8 @@ export class FakeGitHub {
       openPulls: (fullName, etag) =>
         call('openPulls', fullName, () => conditional(data(fullName).pulls.filter((p) => p.state === 'open'), etag)),
       tree: (fullName) => call('tree', fullName, () => structuredClone(data(fullName).tree ?? { entries: [], truncated: false })),
-      blobText: (fullName, sha) =>
-        call('blob', fullName, () => {
-          const b = data(fullName).blobs?.[sha]
-          if (b === undefined) throw new Error(`fake blob ${sha} missing`)
-          return dec.decode(b)
-        }),
+      // The repos sync reads bytes only (blobBytes); a text read is a bug there.
+      blobText: () => Promise.reject(new Error('the repos sync never reads blobs as text: use blobBytes')),
       blobBytes: (fullName, sha) =>
         call('blob', fullName, () => {
           const b = data(fullName).blobs?.[sha]
@@ -177,27 +183,28 @@ export class FakeGitHub {
   }
 }
 
-// ── a real gzipped ustar archive, for the tarball path ────────────────────────
-// Test-only writer (the production tar writer is modules/drive/tar.ts, which
-// the module boundary — no module imports another — keeps this fake from
-// importing). Regular files, short ustar paths, gzip through fflate: a real
-// archive, read back by M1's production reader through the seam, so the sync's
-// tarball consumption (strip, pick, sha check, batching) runs for real.
+// ── a real gzipped tar archive, for the tarball path ──────────────────────────
+// Test-only writer and reader (the production tar writer is
+// modules/drive/tar.ts and the production reader src/lib/server/github/tar.ts;
+// the module boundary keeps this fake from importing the writer). Regular
+// files, ustar headers, pax `path` records for paths over 100 bytes — like
+// git archive writes them — gzip through fflate.
 
 const BLOCK = 512
 
 const octal = (n: number, width: number) => n.toString(8).padStart(width - 1, '0') + '\0'
 
-function ustarHeader(path: string, size: number): Uint8Array {
+function tarHeader(name: Uint8Array, size: number, type: '0' | 'x'): Uint8Array {
+  if (name.byteLength > 100) throw new Error('tarHeader: name over 100 bytes (use a pax record)')
   const h = new Uint8Array(BLOCK)
-  h.set(enc.encode(path.length > 100 ? path.slice(-100) : path), 0)
+  h.set(name, 0)
   h.set(enc.encode(octal(0o644, 8)), 100)
   h.set(enc.encode(octal(0, 8)), 108)
   h.set(enc.encode(octal(0, 8)), 116)
   h.set(enc.encode(octal(size, 12)), 124)
   h.set(enc.encode(octal(0, 12)), 136)
   h.set(enc.encode('        '), 148)
-  h.set(enc.encode('0'), 156)
+  h.set(enc.encode(type), 156)
   h.set(enc.encode('ustar\0'), 257)
   h.set(enc.encode('00'), 263)
   let sum = 0
@@ -206,11 +213,32 @@ function ustarHeader(path: string, size: number): Uint8Array {
   return h
 }
 
-/** A gzipped ustar archive of regular files, like codeload's tarball. */
-export function writeUstarGz(files: Array<{ path: string; bytes: Uint8Array }>): Uint8Array {
+/** One pax record, `"<len> path=<value>\n"`, where <len> counts the whole record including itself. */
+function paxRecord(key: string, value: string): Uint8Array {
+  const body = ` ${key}=${value}\n`
+  const bodyLen = enc.encode(body).byteLength
+  let len = bodyLen + 1
+  while (String(len).length + bodyLen !== len) len += 1
+  return enc.encode(`${len}${body}`)
+}
+
+const pad = (n: number) => new Uint8Array((BLOCK - (n % BLOCK)) % BLOCK)
+
+/** A gzipped tar archive of regular files, like codeload's (pax `path` records for long paths). */
+export function writeTarGz(files: Array<{ path: string; bytes: Uint8Array }>): Uint8Array {
   const out: Uint8Array[] = []
   for (const f of files) {
-    out.push(ustarHeader(f.path, f.bytes.byteLength), f.bytes, new Uint8Array((BLOCK - (f.bytes.byteLength % BLOCK)) % BLOCK))
+    const name = enc.encode(f.path)
+    if (name.byteLength > 100) {
+      const pax = paxRecord('path', f.path)
+      out.push(tarHeader(enc.encode('PaxHeader'), pax.byteLength, 'x'), pax, pad(pax.byteLength))
+      // The ustar name field keeps a whole-character prefix (the pax record wins).
+      let short = f.path.slice(0, 100)
+      while (enc.encode(short).byteLength > 100) short = short.slice(0, -1)
+      out.push(tarHeader(enc.encode(short), f.bytes.byteLength, '0'), f.bytes, pad(f.bytes.byteLength))
+    } else {
+      out.push(tarHeader(name, f.bytes.byteLength, '0'), f.bytes, pad(f.bytes.byteLength))
+    }
   }
   out.push(new Uint8Array(2 * BLOCK))
   const total = out.reduce((n, b) => n + b.byteLength, 0)
@@ -223,12 +251,76 @@ export function writeUstarGz(files: Array<{ path: string; bytes: Uint8Array }>):
   return gzipSync(tar)
 }
 
+const field = (h: Uint8Array, from: number, len: number) => {
+  const f = h.subarray(from, from + len)
+  const end = f.indexOf(0)
+  return new TextDecoder().decode(end === -1 ? f : f.subarray(0, end))
+}
+
+/**
+ * The reader contract M1 ships (`readTarGz(path, { want })`), over the fake's
+ * own archives: `want` sees each regular file's header, and only wanted
+ * entries are yielded — an unwanted entry's bytes are never handed out.
+ * Logs what was offered and what was yielded, so a test can pin that a
+ * 21 MB file or an unchanged file is never read.
+ */
+export class FakeTarReader {
+  /** Every regular file's path as offered to `want` (top folder included). */
+  offered: string[] = []
+  /** The paths whose bytes were yielded. */
+  yielded: string[] = []
+
+  readonly read: TarballReader = (filePath, opts) => this.entries(filePath, opts.want)
+
+  private async *entries(filePath: string, want: (h: TarballHeader) => boolean): AsyncGenerator<TarballEntry, void, void> {
+    const tar = gunzipSync(readFileSync(filePath))
+    let at = 0
+    let paxPath: string | null = null
+    while (at + BLOCK <= tar.byteLength) {
+      const h = tar.subarray(at, at + BLOCK)
+      if (h.every((b) => b === 0)) return
+      const size = parseInt(field(h, 124, 12).trim() || '0', 8)
+      const type = String.fromCharCode(h[156]!)
+      const body = at + BLOCK
+      at = body + size + pad(size).byteLength
+      if (type === 'x') {
+        const text = new TextDecoder().decode(tar.subarray(body, body + size))
+        for (const rec of text.split('\n')) {
+          const m = /^\d+ path=(.*)$/.exec(rec)
+          if (m) paxPath = m[1]!
+        }
+        continue
+      }
+      const path = paxPath ?? field(h, 0, 100)
+      paxPath = null
+      if (type !== '0' && type !== '\0') continue
+      const header = { path, size, mode: parseInt(field(h, 100, 8).trim() || '0', 8) }
+      this.offered.push(path)
+      if (!want(header)) continue
+      this.yielded.push(path)
+      yield { path, mode: header.mode, bytes: tar.slice(body, body + size) }
+    }
+    throw new Error('fake tar: archive ended without the zero-block end marker')
+  }
+}
+
 // ── the Drive source port ─────────────────────────────────────────────────────
 
 /** Every port write, in order (reads and idempotent no-ops are not writes). */
 export type DriveCall = { op: 'upsertFolder' | 'upsertText' | 'upsertBytes' | 'upsertMany' | 'remove'; key: string; n?: number }
 
+/** Drive's own name rule, as modules/drive/source-writer.ts `checkName` enforces it: the fake refuses what Drive refuses. */
+function checkName(name: string): void {
+  if (!name || name !== name.trim() || name.length > 255 || /[/\\]/.test(name) || name === '.' || name === '..')
+    throw new Error(`drive source item name refused: ${JSON.stringify(name.slice(0, 40))}`)
+}
+
 export class FakeDrivePort implements DriveSourcePort {
+  /** Every list() call's prefix (undefined = the whole source). */
+  lists: Array<string | undefined> = []
+  /** Make the n-th upsertMany call (1-based, counting every call so far: see manyCalls) fail and roll back. */
+  failManyAt: number | null = null
+  manyCalls = 0
   readonly roots = new Map<DriveSourceId, DriveSourceRoot>()
   /** Not readonly: an upsertMany rollback restores the previous map wholesale. */
   items = new Map<string, DriveSourceItem & { name: string; content?: string; bytes?: Uint8Array; mime?: string }>()
@@ -255,7 +347,7 @@ export class FakeDrivePort implements DriveSourcePort {
   }
 
   async upsertFolder(source: DriveSourceId, key: string, parentKey: string | null, name: string) {
-    if (name.includes('/')) throw new Error(`folder name ${name} contains /`)
+    checkName(name)
     this.requireParent(source, parentKey)
     const cur = this.items.get(this.k(source, key))
     if (!cur || cur.name !== name || cur.parentKey !== parentKey) this.calls.push({ op: 'upsertFolder', key })
@@ -265,7 +357,7 @@ export class FakeDrivePort implements DriveSourcePort {
   }
 
   async upsertText(source: DriveSourceId, key: string, parentKey: string | null, name: string, content: string) {
-    if (name.includes('/')) throw new Error(`file name ${name} contains /`)
+    checkName(name)
     this.requireParent(source, parentKey)
     const sha = createHash('sha256').update(content, 'utf8').digest('hex')
     const cur = this.items.get(this.k(source, key))
@@ -280,7 +372,7 @@ export class FakeDrivePort implements DriveSourcePort {
   }
 
   async upsertBytes(source: DriveSourceId, key: string, parentKey: string | null, name: string, bytes: Uint8Array, mime: string) {
-    if (name.includes('/')) throw new Error(`file name ${name} contains /`)
+    checkName(name)
     this.requireParent(source, parentKey)
     const sha = createHash('sha256').update(bytes).digest('hex')
     const cur = this.items.get(this.k(source, key))
@@ -301,7 +393,9 @@ export class FakeDrivePort implements DriveSourcePort {
     const backupCalls = [...this.calls]
     const backupWrites = this.writes
     const backupSeq = this.seq
+    this.manyCalls += 1
     try {
+      if (this.failManyAt === this.manyCalls) throw new Error(`fake drive: upsertMany #${this.manyCalls} failed`)
       for (const i of items) {
         if (i.kind === 'folder') await this.upsertFolder(source, i.key, i.parentKey, i.name)
         else if (i.kind === 'text') await this.upsertText(source, i.key, i.parentKey, i.name, i.content)
@@ -330,6 +424,7 @@ export class FakeDrivePort implements DriveSourcePort {
   }
 
   async list(source: DriveSourceId, keyPrefix?: string) {
+    this.lists.push(keyPrefix)
     return [...this.items.entries()]
       .filter(([k]) => k.startsWith(`${source}\u0000`))
       .map(([, v]) => v)

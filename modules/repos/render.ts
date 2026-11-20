@@ -1,4 +1,5 @@
 import type { BranchSnap, CommitLite, NotCopied, PullSnap, RepoSnapshot, SummaryState } from './snapshot-types'
+import { treeFolderName } from './names'
 
 /**
  * Snapshot → the generated Markdown pages of one repo's Drive folder
@@ -53,6 +54,7 @@ const NOT_COPIED_REASON: Record<NotCopied['reason'], string> = {
   submodule: 'a submodule',
   symlink: 'a symlink',
   lfs: 'a Git LFS pointer',
+  archive_filtered: "left out of GitHub's archive (.gitattributes), fetched one by one up to 2,000 per sync",
 }
 
 function cutoff(s: RepoSnapshot, days: number): string {
@@ -120,7 +122,7 @@ function filesSection(s: RepoSnapshot): string[] {
   if (t.commitSha === null || t.count === 0) out.push(`No ${what}s on \`${s.repo.defaultBranch}\`.`)
   else
     out.push(
-      `${t.count} ${what}${t.count === 1 ? '' : 's'}, ${mb(t.bytes)} from \`${s.repo.defaultBranch}\` @ \`${short(t.commitSha)}\`, in the ${s.repo.defaultBranch} folder.`,
+      `${t.count} ${what}${t.count === 1 ? '' : 's'}, ${mb(t.bytes)} from \`${s.repo.defaultBranch}\` @ \`${short(t.commitSha)}\`, in the ${treeFolderName(s.repo.defaultBranch)} folder.`,
     )
   if (t.notCopied.length > 0) {
     out.push('', '### Not copied', '')

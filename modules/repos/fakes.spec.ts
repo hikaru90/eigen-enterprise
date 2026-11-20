@@ -1,10 +1,13 @@
+import { writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { gitBlobSha } from '$lib/server/github/git'
 import { readTarGz } from '$lib/server/github/tar'
 import { REPOS_DRIVE_SOURCE as SRC } from './manifest'
 import { TOKEN, setup } from './test-setup'
-import { FakeDrivePort, FakeGitHub, sampleRepo } from './testing'
+import { FakeDrivePort, FakeGitHub, FakeTarReader, sampleRepo, writeTarGz } from './testing'
 
 /**
  * The full-mirror fakes, pinned themselves (the coverage M1's worktree
@@ -30,20 +33,24 @@ describe('FakeGitHub.blobBytes and tarball (the fake is honest)', () => {
     const path = await t.deps.client(TOKEN).tarball('kindred/shop', head)
     try {
       const entries: Array<{ path: string; bytes: Uint8Array }> = []
-      for await (const e of readTarGz(path)) entries.push({ path: e.path, bytes: e.bytes })
+      for await (const e of readTarGz(path, { want: () => true })) entries.push({ path: e.path, bytes: e.bytes })
       const top = `kindred-shop-${head}`
-      // Like codeload's: every regular file of the commit — the LFS pointer and
-      // the backslash path included (the sync's pick logic skips those); the
-      // symlink and the submodule gitlink never enter an archive, and the
-      // over-size entry has no real blob to serve.
+      // Like codeload's: every regular file of the commit — the LFS pointer,
+      // the backslash path and the 21 MB file included (the sync's pick logic
+      // skips those); the symlink and the submodule gitlink never enter an archive.
       expect(entries.map((e) => e.path).sort()).toEqual(
-        ['README.md', 'assets/logo.png', 'assets/video.mp4', 'docs/guide/intro.mdx', 'docs/huge.md', 'docs/weird\\name.md', 'package.json', 'src/index.ts', 'src/util/format.ts']
+        ['README.md', 'assets/logo.png', 'assets/video.mp4', 'docs/guide/intro.mdx', 'docs/huge.md', 'docs/weird\\name.md', 'media/iso.bin', 'package.json', 'src/index.ts', 'src/util/format.ts']
           .map((p) => `${top}/${p}`)
           .sort(),
       )
       // The bytes round-trip through gzip and tar, and each keeps its git blob sha.
       for (const e of entries) {
         const pathPart = e.path.slice(top.length + 1)
+        if (pathPart === 'media/iso.bin') {
+          // No fixture bytes behind it (it is never fetched): served as zeros of the listed size.
+          expect(e.bytes.byteLength).toBe(21 * 1024 * 1024)
+          continue
+        }
         const entry = t.data.tree!.entries.find((x) => x.path === pathPart)!
         expect(gitBlobSha(e.bytes)).toBe(entry.sha)
       }
@@ -61,6 +68,41 @@ describe('FakeGitHub.blobBytes and tarball (the fake is honest)', () => {
     await client.tarball('kindred/shop', 'a1'.padEnd(40, '0'))
     await client.repo('kindred/shop', null)
     expect(client.lastBudget()!.remaining).toBe(before - 2) // identity + tarball + repo each cost 1
+  })
+})
+
+describe('FakeTarReader and writeTarGz (the reader contract M1 ships)', () => {
+  const file = (bytes: Uint8Array) => {
+    const p = join(tmpdir(), `fake-tar-spec-${Math.random().toString(36).slice(2)}.tar.gz`)
+    writeFileSync(p, bytes)
+    return p
+  }
+  const long = `top/${'nested/'.repeat(20)}file.ts`
+
+  it('writes long paths as pax records that the production reader reads back whole', async () => {
+    const p = file(writeTarGz([{ path: long, bytes: new TextEncoder().encode('x') }, { path: 'top/a.ts', bytes: new Uint8Array([1]) }]))
+    try {
+      const seen: string[] = []
+      for await (const e of readTarGz(p, { want: () => true })) seen.push(e.path)
+      expect(seen).toEqual([long, 'top/a.ts'])
+    } finally {
+      await rm(p, { force: true })
+    }
+  })
+
+  it('offers every regular file’s header to want and yields only the wanted ones', async () => {
+    const p = file(writeTarGz([{ path: long, bytes: new Uint8Array(3) }, { path: 'top/a.ts', bytes: new Uint8Array([1, 2]) }]))
+    try {
+      const reader = new FakeTarReader()
+      const headers: Array<{ path: string; size: number }> = []
+      const out: string[] = []
+      for await (const e of reader.read(p, { want: (h) => (headers.push({ path: h.path, size: h.size }), h.path === 'top/a.ts') })) out.push(e.path)
+      expect(headers).toEqual([{ path: long, size: 3 }, { path: 'top/a.ts', size: 2 }])
+      expect(out).toEqual(['top/a.ts'])
+      expect(reader.yielded).toEqual(['top/a.ts'])
+    } finally {
+      await rm(p, { force: true })
+    }
   })
 })
 

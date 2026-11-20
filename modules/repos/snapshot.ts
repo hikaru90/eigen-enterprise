@@ -1,5 +1,7 @@
 import type { BranchSnap, CommitLite, CopyMode, FileSnap, NotCopied, PendingSnapshot, PullSnap, RepoSnapshot, TreePlan, TreeSnap } from './snapshot-types'
 import type { GitHubTokenClient, TokenCommit, TokenPull, TokenRepo } from '$lib/server/github/token-client'
+import { extensionOf, MIME_BY_EXT } from './mime'
+import { isDriveName } from './names'
 
 /**
  * One sync's reads from GitHub (plan/github-drive.md §3,
@@ -16,6 +18,13 @@ import type { GitHubTokenClient, TokenCommit, TokenPull, TokenRepo } from '$lib/
 export const FILE_LIMITS = { files: 50_000, fileBytes: 20 * 1024 * 1024, totalBytes: 2 * 1024 * 1024 * 1024 } as const
 /** Up to this many changed blobs are fetched one by one; more (or a first sync, or a truncated tree) takes the tarball. */
 export const SMALL_BLOB_LIMIT = 50
+/**
+ * Files the tarball lacks or serves differently from the tree (.gitattributes
+ * export-ignore, export-subst, eol filters) are fetched one by one, at most
+ * this many per sync; the rest are listed as `archive_filtered` and retried
+ * on the next sync.
+ */
+export const MAX_ARCHIVE_RECOVERIES = 2_000
 export const BUDGET_FLOOR = 500
 export const COMMITS_PER_BRANCH = 100
 const WINDOW_MS = 30 * 86_400_000
@@ -97,8 +106,8 @@ const isDoc = (path: string) => /\.(md|mdx)$/i.test(path)
  */
 export type PickableEntry = { path: string; size: number | null; sha?: string; mode?: string }
 
-/** A path segment Drive can't hold as a name: contains a backslash, is `.`/`..`, or is longer than 255 characters. */
-const badSegment = (s: string) => s.includes('\\') || s === '.' || s === '..' || s.length > 255
+/** A path segment Drive can't hold as a name (Drive's own checkName rule, see names.ts). */
+const badSegment = (s: string) => !isDriveName(s)
 
 /**
  * Applies the copy mode and the full-mirror limits (§2.4, §2.5): shallow paths
@@ -145,12 +154,14 @@ export function isLfsPointer(bytes: Uint8Array): boolean {
 
 /**
  * The MIME type a copied file is written with (§2.8 — a byte-format check,
- * never a semantic one). GitHub gives us none, so text that decodes as strict
- * UTF-8 is written as text/plain (code previews, drive.read); everything else
- * is written as application/octet-stream, which tells Drive's writer to derive
- * the type from the name through its own MIME_BY_EXT table.
+ * never a semantic one): Drive's extension table first (copied in mime.ts);
+ * with no entry, text that decodes as strict UTF-8 is `text/plain;
+ * charset=utf-8` (code previews, drive.read), anything else
+ * `application/octet-stream`.
  */
-export function mimeForFile(bytes: Uint8Array): string {
+export function mimeForFile(name: string, bytes: Uint8Array): string {
+  const byExt = MIME_BY_EXT[extensionOf(name)]
+  if (byExt) return byExt
   try {
     new TextDecoder('utf-8', { fatal: true }).decode(bytes)
     return 'text/plain; charset=utf-8'
@@ -254,10 +265,13 @@ export async function takeSnapshot(client: GitHubTokenClient, state: SyncState, 
     prevTree !== null &&
     prevTree.commitSha === defaultHead &&
     prevTree.mode === state.copyMode &&
-    (state.storedFiles.length > 0 || prevTree.count === 0)
+    (state.storedFiles.length > 0 || prevTree.count === 0) &&
+    !prevTree.notCopied.some((n) => n.reason === 'archive_filtered')
   ) {
-    // Neither the head nor the copy mode moved, and the stored rows are there:
-    // keep the tree as it stands (the caller reconciles Drive against them).
+    // Neither the head nor the copy mode moved, the stored rows are there and
+    // nothing waits for a retry: keep the tree as it stands (the caller
+    // reconciles Drive against the rows). Files left out as archive_filtered
+    // have no row, so re-reading the tree makes them "changed" again.
     treeSnap = { ...prevTree }
   } else {
     guard()
@@ -278,7 +292,8 @@ export async function takeSnapshot(client: GitHubTokenClient, state: SyncState, 
     tree = {
       commitSha: defaultHead,
       mode: state.copyMode,
-      picked: picked.copied.map((e) => ({ path: e.path, sha: e.sha, size: e.size })),
+      // A known LFS pointer is listed (notCopied), not copied: it never counts as picked.
+      picked: picked.copied.filter((e) => prevLfs.get(e.path) !== e.sha).map((e) => ({ path: e.path, sha: e.sha, size: e.size })),
       changed,
       gone,
       notCopied: [...picked.notCopied, ...stillLfs.map((e) => ({ path: e.path, size: e.size, reason: 'lfs' as const, sha: e.sha }))],

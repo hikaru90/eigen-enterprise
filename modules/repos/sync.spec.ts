@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { gitBlobSha } from '$lib/server/github/git'
 import { REPOS_DRIVE_SOURCE as SRC } from './manifest'
-import { BUDGET_FLOOR } from './snapshot'
-import { SYNC_EVERY_MS } from './sync'
+import { BUDGET_FLOOR, MAX_ARCHIVE_RECOVERIES } from './snapshot'
+import { SYNC_EVERY_MS, TARBALL_SWEEP_AGE_MS } from './sync'
 import { TOKEN, setup } from './test-setup'
 import { commit, pull, removeFile, setFile, tokenError } from './testing'
 
@@ -46,15 +47,25 @@ describe('repos poller: one sync', () => {
     expect(t.drive.file(SRC, T)?.name).toBe('main')
     // Text and bytes both ride through the tarball; code opens as text, the PNG does not.
     expect(new TextDecoder().decode(t.drive.file(SRC, `${T}/README.md`)!.bytes!)).toBe('# Shop\n\nHello.\n')
-    expect(t.drive.file(SRC, `${T}/README.md`)!.mime).toBe('text/plain; charset=utf-8')
+    // MIME: the extension table first (Drive's), then strict UTF-8 → text.
+    expect(t.drive.file(SRC, `${T}/README.md`)!.mime).toBe('text/markdown')
+    expect(t.drive.file(SRC, `${T}/package.json`)!.mime).toBe('application/json')
     expect(t.drive.file(SRC, `${T}/src/index.ts`)!.mime).toBe('text/plain; charset=utf-8')
-    expect(t.drive.file(SRC, `${T}/assets/logo.png`)!.mime).toBe('application/octet-stream')
+    expect(t.drive.file(SRC, `${T}/assets/logo.png`)!.mime).toBe('image/png')
     expect([...t.drive.file(SRC, `${T}/assets/logo.png`)!.bytes!]).toEqual([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 73, 72, 68, 82,
     ])
     // One tarball request, no per-blob fetches.
     expect(t.gh.calls).toContain('tarball kindred/shop')
     expect(t.gh.calls.filter((c) => c.startsWith('blob'))).toEqual([])
+    // Memory: the archive carries the 21 MB file (codeload would), but the
+    // reader is never asked for its bytes — only picked, under-limit paths are.
+    const top = 'kindred-shop-' + 'a1'.padEnd(40, '0')
+    expect(t.tar.offered).toContain(`${top}/media/iso.bin`)
+    expect(t.tar.yielded).not.toContain(`${top}/media/iso.bin`)
+    expect(t.tar.yielded.map((p) => p.slice(top.length + 1)).sort()).toEqual(
+      ['README.md', 'assets/logo.png', 'assets/video.mp4', 'docs/guide/intro.mdx', 'docs/huge.md', 'package.json', 'src/index.ts', 'src/util/format.ts'].sort(),
+    )
     // Overview: what was copied and what was not, with the reason.
     const overview = t.drive.file(SRC, 'repo:4242/Overview.md')!.content!
     expect(overview).toMatch(/7 files, [\d.]+ (KB|MB) from `main` @ `a100000`, in the main folder\./)
@@ -121,6 +132,8 @@ describe('repos poller: one sync', () => {
     expect(files.size).toBe(7)
     expect(files.get('src/index.ts')).toBe(t.data.tree!.entries.find((e) => e.path === 'src/index.ts')!.sha)
     expect(t.drive.file(SRC, `${T}/README.md`)!.contentSha).toBe(before.get(`${SRC}\0${T}/README.md`)!.contentSha)
+    // The known LFS pointer stays listed, not counted as copied.
+    expect(t.drive.file(SRC, 'repo:4242/Overview.md')!.content).toMatch(/7 files, /)
   })
 
   it('60 files changed: the tarball, not 61 blob fetches', async () => {
@@ -131,9 +144,13 @@ describe('repos poller: one sync', () => {
     push(t, 'a3', 'Generated files')
     t.advance(16 * MIN)
     t.gh.calls = []
+    t.tar.yielded = []
     await t.service.tick()
     expect(t.gh.calls.filter((c) => c.startsWith('blob'))).toEqual([])
     expect(t.gh.calls.filter((c) => c.startsWith('tarball'))).toEqual(['tarball kindred/shop'])
+    // Only the 60 changed files are read out of the archive; unchanged ones are skipped unread.
+    expect(t.tar.yielded).toHaveLength(60)
+    expect(t.tar.yielded.every((p) => p.includes('/src/gen/'))).toBe(true)
     expect(t.drive.file(SRC, `${T}/src/gen/g59.ts`)!.mime).toBe('text/plain; charset=utf-8')
     const [row] = await t.store.sources()
     expect((await t.store.sourceFiles(row!.id)).length).toBe(67)
@@ -203,7 +220,7 @@ describe('repos poller: one sync', () => {
     const t = setup()
     await t.connect()
     const [row] = await t.store.sources()
-    // The pre-0161 snapshot shape: docs, no tree; the doc_shas column is gone, the file table empty.
+    // The pre-0161 snapshot shape: docs, no tree; doc_shas is no longer read (dropped one release later, D15), the file table empty.
     await t.store.updateSource(row!.id, {
       branchHeads: { main: 'a1'.padEnd(40, '0') },
       snapshot: {
@@ -239,6 +256,189 @@ describe('repos poller: one sync', () => {
     expect(overview).not.toContain('cut the file list')
     const [row] = await t.store.sources()
     expect((row!.snapshot as { tree: { truncated: boolean } }).tree.truncated).toBe(true)
+  })
+})
+
+describe('repos poller: the archive differs from the tree (.gitattributes)', () => {
+  it('an export-ignore’d folder is fetched blob by blob and verified against the tree', async () => {
+    const t = setup()
+    t.data.archive = { exclude: ['docs'] }
+    await t.connect()
+    expect((await t.service.tick()).synced).toBe(1)
+    expect(t.gh.calls.filter((c) => c.startsWith('blob'))).toEqual(['blob kindred/shop', 'blob kindred/shop'])
+    expect(new TextDecoder().decode(t.drive.file(SRC, `${T}/docs/guide/intro.mdx`)!.bytes!)).toBe('# Intro\n')
+    expect(t.drive.keys(SRC)).toContain(`${T}/docs/huge.md`)
+    const [row] = await t.store.sources()
+    expect((await t.store.sourceFiles(row!.id)).map((f) => f.path)).toContain('docs/guide/intro.mdx')
+    expect(t.drive.file(SRC, 'repo:4242/Overview.md')!.content).toMatch(/7 files, /)
+  })
+
+  it('an export-subst’d file (other bytes in the archive) is fetched as the tree has it', async () => {
+    const t = setup()
+    t.data.archive = { replace: { 'package.json': new TextEncoder().encode('{"name":"shop","version":"$Format:%H$"}\n') } }
+    await t.connect()
+    expect((await t.service.tick()).synced).toBe(1)
+    expect(t.gh.calls.filter((c) => c.startsWith('blob'))).toEqual(['blob kindred/shop'])
+    expect(new TextDecoder().decode(t.drive.file(SRC, `${T}/package.json`)!.bytes!)).toBe('{"name":"shop","version":"1.2.0"}\n')
+  })
+
+  it(`over ${MAX_ARCHIVE_RECOVERIES} recoveries: the rest are listed as "archive_filtered" and retried next sync`, async () => {
+    const t = setup()
+    const extra = MAX_ARCHIVE_RECOVERIES + 5
+    for (let i = 0; i < extra; i++) setFile(t.data, `gen/f${String(i).padStart(5, '0')}.ts`, `export const f = ${i}\n`)
+    t.data.archive = { exclude: ['gen'] }
+    await t.connect()
+    expect((await t.service.tick()).synced).toBe(1)
+    expect(t.gh.calls.filter((c) => c.startsWith('blob'))).toHaveLength(MAX_ARCHIVE_RECOVERIES)
+    const [row] = await t.store.sources()
+    const rows = await t.store.sourceFiles(row!.id)
+    expect(rows).toHaveLength(7 + MAX_ARCHIVE_RECOVERIES)
+    const filtered = (row!.snapshot as { tree: { notCopied: Array<{ path: string; reason: string }> } }).tree.notCopied.filter((n) => n.reason === 'archive_filtered')
+    expect(filtered).toHaveLength(5)
+    for (const n of filtered) {
+      expect(rows.map((r) => r.path)).not.toContain(n.path)
+      expect(t.drive.keys(SRC)).not.toContain(`${T}/${n.path}`)
+    }
+    const overview = t.drive.file(SRC, 'repo:4242/Overview.md')!.content!
+    expect(overview).toContain("left out of GitHub's archive (.gitattributes), fetched one by one up to 2,000 per sync")
+    // The next sync (head unchanged) picks the rest up.
+    t.advance(16 * MIN)
+    t.gh.calls = []
+    expect((await t.service.tick()).synced).toBe(1)
+    expect(t.gh.calls.filter((c) => c.startsWith('blob'))).toHaveLength(5)
+    expect(await t.store.sourceFiles(row!.id)).toHaveLength(7 + extra)
+    const after = (await t.store.sources())[0]!.snapshot as { tree: { count: number; notCopied: Array<{ reason: string }> } }
+    expect(after.tree.notCopied.filter((n) => n.reason === 'archive_filtered')).toEqual([])
+    expect(after.tree.count).toBe(7 + extra)
+  })
+})
+
+describe('repos poller: names, long paths, folders', () => {
+  it('names Drive refuses are listed as "name"; the sync still succeeds', async () => {
+    const t = setup()
+    for (const p of ['docs/ notes.md', `src/${'z'.repeat(300)}.ts`]) setFile(t.data, p, 'x\n')
+    await t.connect()
+    expect((await t.service.tick()).synced).toBe(1)
+    const notCopied = ((await t.store.sources())[0]!.snapshot as { tree: { notCopied: Array<{ path: string; reason: string }> } }).tree.notCopied
+    expect(notCopied).toContainEqual(expect.objectContaining({ path: 'docs/ notes.md', reason: 'name' }))
+    expect(notCopied).toContainEqual(expect.objectContaining({ path: `src/${'z'.repeat(300)}.ts`, reason: 'name' }))
+  })
+
+  it('a default branch like release/2.x: the folder is "release-2.x", the key stays repo:<id>/tree', async () => {
+    const t = setup()
+    t.data.repo = { ...t.data.repo, defaultBranch: 'release/2.x' }
+    t.data.branches[0] = { name: 'release/2.x', headSha: 'a1'.padEnd(40, '0') }
+    t.data.commits['release/2.x'] = t.data.commits.main!
+    await t.connect()
+    expect((await t.service.tick()).synced).toBe(1)
+    expect(t.drive.file(SRC, T)?.name).toBe('release-2.x')
+    expect(t.drive.file(SRC, 'repo:4242/Overview.md')!.content).toContain('in the release-2.x folder')
+  })
+
+  it('a branch name Drive can’t hold even with - for /: the folder is "default branch"', async () => {
+    const t = setup()
+    const long = 'b'.repeat(300)
+    t.data.repo = { ...t.data.repo, defaultBranch: long }
+    t.data.branches[0] = { name: long, headSha: 'a1'.padEnd(40, '0') }
+    t.data.commits[long] = t.data.commits.main!
+    await t.connect()
+    expect((await t.service.tick()).synced).toBe(1)
+    expect(t.drive.file(SRC, T)?.name).toBe('default branch')
+  })
+
+  it('a path over 100 bytes rides the tarball in a pax record and lands whole', async () => {
+    const t = setup()
+    const long = `src/${'deep/'.repeat(24)}a-file-with-a-long-name.ts`
+    expect(long.length).toBeGreaterThan(100)
+    setFile(t.data, long, 'export const deep = true\n')
+    await t.connect()
+    expect((await t.service.tick()).synced).toBe(1)
+    expect(new TextDecoder().decode(t.drive.file(SRC, `${T}/${long}`)!.bytes!)).toBe('export const deep = true\n')
+    expect(t.gh.calls.filter((c) => c.startsWith('blob'))).toEqual([])
+  })
+
+  it('a renamed default branch whose head moved with only deletions still renames the folder', async () => {
+    const t = setup()
+    await t.connect()
+    await t.service.tick()
+    removeFile(t.data, 'src/util/format.ts')
+    t.data.repo = { ...t.data.repo, defaultBranch: 'trunk' }
+    t.data.branches[0] = { name: 'trunk', headSha: 'a5'.padEnd(40, '0') }
+    t.data.commits.trunk = [commit('a5', 'Drop the formatter', t.clock.now.toISOString()), ...t.data.commits.main!]
+    t.advance(16 * MIN)
+    t.drive.calls.length = 0
+    expect((await t.service.tick()).synced).toBe(1)
+    expect(t.drive.file(SRC, T)?.name).toBe('trunk')
+    expect(t.drive.keys(SRC)).not.toContain(`${T}/src/util/format.ts`)
+    expect(t.drive.writesUnder(T).filter((c) => c.op === 'upsertBytes')).toEqual([])
+  })
+
+  it('never lists the whole source: every Drive listing is scoped to the repo', async () => {
+    const t = setup()
+    await t.connect()
+    await t.service.tick()
+    t.advance(16 * MIN)
+    await t.service.tick()
+    expect(t.drive.lists.length).toBeGreaterThan(0)
+    expect(t.drive.lists.every((p) => p === 'repo:4242')).toBe(true)
+  })
+})
+
+describe('repos poller: reconcile and partial writes', () => {
+  it('more than 50 files missing in Drive (head unchanged): refetched through the tarball, not blob by blob', async () => {
+    const t = setup()
+    await t.connect()
+    for (let i = 0; i < 60; i++) setFile(t.data, `src/gen/g${String(i).padStart(2, '0')}.ts`, `export const g${i} = ${i}\n`)
+    await t.service.tick()
+    await t.drive.remove(SRC, `${T}/src/gen`)
+    t.advance(16 * MIN)
+    t.gh.calls = []
+    expect((await t.service.tick()).synced).toBe(1)
+    expect(t.gh.calls.filter((c) => c.startsWith('blob'))).toEqual([])
+    expect(t.gh.calls.filter((c) => c.startsWith('tarball'))).toEqual(['tarball kindred/shop'])
+    expect(new TextDecoder().decode(t.drive.file(SRC, `${T}/src/gen/g42.ts`)!.bytes!)).toBe('export const g42 = 42\n')
+  })
+
+  it('a failure in Drive batch 2 leaves file rows = Drive for batch 1; the next sync completes', async () => {
+    const t = setup()
+    for (let i = 0; i < 700; i++) setFile(t.data, `lib/m${String(i).padStart(3, '0')}.ts`, `export const m = ${i}\n`)
+    await t.connect()
+    t.drive.failManyAt = t.drive.manyCalls + 2
+    expect((await t.service.tick()).failed).toBe(1)
+    const [row] = await t.store.sources()
+    const rows = await t.store.sourceFiles(row!.id)
+    const driveFiles = t.drive.keys(SRC).filter((k) => k.startsWith(`${T}/`) && t.drive.file(SRC, k)!.kind === 'file')
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.length).toBeLessThan(707)
+    expect(rows.map((r) => `${T}/${r.path}`).sort()).toEqual(driveFiles.sort())
+    for (const r of rows) expect(gitBlobSha(t.drive.file(SRC, `${T}/${r.path}`)!.bytes!)).toBe(r.sha)
+
+    t.advance(16 * MIN)
+    expect((await t.service.tick()).synced).toBe(1)
+    expect(await t.store.sourceFiles(row!.id)).toHaveLength(707)
+  })
+})
+
+describe('repos poller: the tarball limits and temp files', () => {
+  it('an archive over the limit stops the repo in plain words, due again at the normal interval', async () => {
+    const t = setup()
+    await t.connect()
+    t.gh.failures.push({ method: 'tarball', fullName: 'kindred/shop', error: tokenError('too_large', { status: null }) })
+    expect((await t.service.tick()).failed).toBe(1)
+    const [row] = await t.store.sources()
+    expect(row!.lastError).toBe("This repo's archive is over 4 GB. Switch it to docs only, or ask for a higher limit.")
+    expect(row!.dueAt.getTime()).toBe(t.clock.now.getTime() + SYNC_EVERY_MS)
+    expect(row!.claimedBy).toBeNull()
+  })
+
+  it('every tick sweeps tarball temp files older than 6 hours, once, also when nothing is due', async () => {
+    const t = setup()
+    await t.service.tick()
+    expect(t.sweeps).toEqual([{ dir: '/fake/drive/tmp', olderThanMs: 6 * 3_600_000, now: t.clock.now }])
+    expect(TARBALL_SWEEP_AGE_MS).toBe(6 * 3_600_000)
+    await t.connect()
+    await t.service.tick()
+    expect(t.sweeps).toHaveLength(2)
   })
 })
 
