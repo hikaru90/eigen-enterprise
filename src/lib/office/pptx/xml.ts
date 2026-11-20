@@ -38,8 +38,9 @@ export function isEl(n: Node | null | undefined): n is Element {
  * branch this reader understands: the first `mc:Choice` whose `Requires`
  * namespaces are all understood, else `mc:Fallback` (Part 3 §10.2.1).
  */
-export function kids(el: Element): Element[] {
+export function kids(el: Element | null | undefined): Element[] {
   const out: Element[] = []
+  if (!el) return out
   for (let n = el.firstChild; n; n = n.nextSibling) {
     if (!isEl(n)) continue
     if (n.namespaceURI === NS.mc && n.localName === 'AlternateContent') out.push(...kids(chooseAlternate(n)))
