@@ -1,7 +1,7 @@
-import { Mark, type Node as PMNode } from 'prosemirror-model'
 import type { OpcPackage } from '../../ooxml/package'
-import { children, NS, REL, wc } from '../xml'
 import type { SourceRegistry } from './registry'
+import { Mark, type Node as PMNode } from 'prosemirror-model'
+import { children, NS, REL, wc } from '../xml'
 import { FORMAT_MARKS, formatMarks, rowWidth, type FormatMark, type IndentTwips, type ParagraphAttrs } from './schema'
 import { needsPreserve, NS_W14, PPR_ORDER, removeChildren, RPR_ORDER, setOrdered, setW, TCPR_ORDER, wChild, writer, type Writer } from './wml'
 

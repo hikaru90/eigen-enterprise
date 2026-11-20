@@ -1,5 +1,5 @@
-import { DOMParser, XMLSerializer, type Node as XmldomNode } from '@xmldom/xmldom'
 import type { Node as PMNode, Schema } from 'prosemirror-model'
+import { DOMParser, XMLSerializer, type Node as XmldomNode } from '@xmldom/xmldom'
 import { strToU8 } from 'fflate'
 import { parseDocx, type DocxDocument } from '../model'
 import { parseNumbering, type Numbering } from '../numbering'

@@ -1,5 +1,5 @@
-import type { Mark, Node as PMNode } from 'prosemirror-model'
 import type { ParagraphProps, RunProps } from '../properties'
+import type { Mark, Node as PMNode } from 'prosemirror-model'
 
 /**
  * The editor's side table from ProseMirror nodes back to the WordprocessingML

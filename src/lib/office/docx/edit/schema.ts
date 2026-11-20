@@ -1,11 +1,11 @@
-import { Schema, type DOMOutputSpec, type Mark, type MarkSpec, type Node as PMNode, type NodeSpec } from 'prosemirror-model'
 import type { DocxDocument } from '../model'
 import type { Numbering } from '../numbering'
+import type { SourceRegistry } from './registry'
+import { Schema, type DOMOutputSpec, type Mark, type MarkSpec, type Node as PMNode, type NodeSpec } from 'prosemirror-model'
 import { fontStack } from '../fonts'
 import { alignOfJc, mergeRun, type ParagraphProps, type RunProps } from '../properties'
 import { AUTO_SPACING_PT, borderCss, HIGHLIGHT, paragraphCss, runCss, UNDERLINE } from '../render'
 import { paragraphRunBase, resolveParagraphProps } from '../styles'
-import type { SourceRegistry } from './registry'
 
 /**
  * The ProseMirror schema for the WordprocessingML the editor knows

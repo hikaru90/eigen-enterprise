@@ -1,13 +1,13 @@
+import type { Node as PMNode } from 'prosemirror-model'
 import { DOMParser, XMLSerializer, type Node as XmldomNode } from '@xmldom/xmldom'
 import { strFromU8, unzipSync } from 'fflate'
 import { EditorState, TextSelection } from 'prosemirror-state'
-import type { Node as PMNode } from 'prosemirror-model'
 import { describe, expect, it } from 'vitest'
 import { parseDocx, paragraphText } from '../model'
 import { buildDocx, inlineImage, p, PNG_1PX, r, sectPr } from '../test-utils/builder'
 import { extractText } from '../text'
-import { openForEditing } from './session'
 import { writeDocument } from './serialize'
+import { openForEditing } from './session'
 
 const W14 = 'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"'
 
@@ -214,6 +214,17 @@ describe('docx editing: lossless round trip', () => {
     expect(now[3]).toContain('<w:r><w:tab/></w:r>')
     expect(now[3]).toContain('<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>')
     for (const i of [6, 7, 8]) expect(now[i]).toBe(before[i])
+  })
+
+  it('a table with a row that has no cells is kept byte-identical, not edited in place', () => {
+    const table = `<w:tbl><w:tblGrid><w:gridCol w:w="3000"/></w:tblGrid><w:tr><w:tc>${p(r('Cell'))}</w:tc></w:tr><w:tr><w:trPr/></w:tr></w:tbl>`
+    const src = buildDocx({ body: p(r('Text')) + table + sectPr() })
+    const session = openForEditing(src)
+    // The editor carries such a table as one piece instead of rows and cells.
+    expect(session.initial.child(1).type.name).toBe('opaque_block')
+    const state = EditorState.create({ doc: session.initial })
+    const out = session.serialize(state.tr.insertText('!', after(state.doc, 'Text')).doc)
+    expect(bodyParts(docXml(out))[1]).toBe(bodyParts(docXml(src))[1])
   })
 })
 

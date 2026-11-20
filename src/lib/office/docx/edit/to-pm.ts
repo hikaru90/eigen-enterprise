@@ -1,11 +1,11 @@
+import type { SourceRegistry } from './registry'
+import type { IndentTwips, ParagraphAttrs } from './schema'
 import { Mark, type Node as PMNode, type Schema } from 'prosemirror-model'
 import { inlineText, type Block, type DocxDocument, type Inline, type Table, type TableCell } from '../model'
 import { parseParagraphProps, parseRunProps } from '../properties'
 import { cellCss } from '../render'
 import { symbolChar } from '../symbols'
 import { attr, children, descendants, intOr, isEl, NS, onOff, wa, wc } from '../xml'
-import type { SourceRegistry } from './registry'
-import type { IndentTwips, ParagraphAttrs } from './schema'
 
 /**
  * WordprocessingML → ProseMirror. Content is read from the XML itself (the
@@ -242,9 +242,9 @@ function fieldChip(ctx: Ctx, els: Element[], level: 'para' | 'run', marks: reado
   if (model?.type === 'field') {
     const result = inlineText(model.children).replace(/\s+/g, ' ').trim()
     const label = result ? (result.length > PREVIEW ? `${result.slice(0, PREVIEW)}…` : result) : `{${model.code || 'field'}}`
-    return ctx.schema.node('opaque', { ref, kind: 'chip', label, title: `Field: ${model.instruction.trim()}`, level }, null, marks)
+    return ctx.schema.node('opaque', { ref, kind: 'chip', label, title: `Field: ${model.instruction.trim()}`, level }, undefined, marks)
   }
-  return ctx.schema.node('opaque', { ref, kind: 'chip', label: fallback, title: fallback, level }, null, marks)
+  return ctx.schema.node('opaque', { ref, kind: 'chip', label: fallback, title: fallback, level }, undefined, marks)
 }
 
 /** Inline content of a paragraph or hyperlink. */
@@ -295,8 +295,8 @@ function paraOpaque(ctx: Ctx, c: Element, marks: readonly Mark[]): PMNode {
   const isW = c.namespaceURI === NS.w
   if (isW && (MARKERS.has(n) || n === 'bookmarkStart')) {
     const name = wa(c, 'name')
-    if (n === 'bookmarkStart' && name && !name.startsWith('_')) return ctx.schema.node('opaque', { ref, kind: 'chip', label: '⚑', title: `Bookmark: ${name}`, level: 'para' }, null, marks)
-    return ctx.schema.node('opaque', { ref, kind: 'marker', label: '', title: qname(c), level: 'para' }, null, marks)
+    if (n === 'bookmarkStart' && name && !name.startsWith('_')) return ctx.schema.node('opaque', { ref, kind: 'chip', label: '⚑', title: `Bookmark: ${name}`, level: 'para' }, undefined, marks)
+    return ctx.schema.node('opaque', { ref, kind: 'marker', label: '', title: qname(c), level: 'para' }, undefined, marks)
   }
   const text = textInside(c)
   const what =
@@ -311,7 +311,7 @@ function paraOpaque(ctx: Ctx, c: Element, marks: readonly Mark[]): PMNode {
             : n === 'smartTag' || n === 'customXml'
               ? 'Tagged text'
               : `Kept as it is (${qname(c)})`
-  return ctx.schema.node('opaque', { ref, kind: 'chip', label: text || what, title: `${what}${text ? `: ${text}` : ''} — kept unchanged`, level: 'para' }, null, marks)
+  return ctx.schema.node('opaque', { ref, kind: 'chip', label: text || what, title: `${what}${text ? `: ${text}` : ''} — kept unchanged`, level: 'para' }, undefined, marks)
 }
 
 // ---------------------------------------------------------------- runs
@@ -350,7 +350,7 @@ function readRun(ctx: Ctx, r: Element, link: Mark | null): PMNode[] {
   if (content.length === 0) {
     // An empty run: nothing to show, its XML kept in place.
     const ref = reg.add({ kind: 'opaque', els: [r] })
-    return [schema.node('opaque', { ref, kind: 'marker', label: '', title: 'w:r', level: 'para' }, null, link ? [link] : [])]
+    return [schema.node('opaque', { ref, kind: 'marker', label: '', title: 'w:r', level: 'para' }, undefined, link ? [link] : [])]
   }
   const fmt = marksOf(schema, rPr)
   const runRef = reg.add({ kind: 'run', el: r, nodes: [], marks: fmt, direct: parseRunProps(rPr, ctx.doc.themeFonts) })
@@ -358,7 +358,7 @@ function readRun(ctx: Ctx, r: Element, link: Mark | null): PMNode[] {
   const out: PMNode[] = []
   const element = (el: Element) => reg.add({ kind: 'element', el })
   const opaque = (el: Element, kind: 'chip' | 'marker' | 'text', label: string, title: string) =>
-    schema.node('opaque', { ref: reg.add({ kind: 'opaque', els: [el] }), kind, label, title, level: 'run' }, null, marks)
+    schema.node('opaque', { ref: reg.add({ kind: 'opaque', els: [el] }), kind, label, title, level: 'run' }, undefined, marks)
   for (const c of content) {
     const n = c.localName
     if (c.namespaceURI === NS.w) {
@@ -369,13 +369,13 @@ function readRun(ctx: Ctx, r: Element, link: Mark | null): PMNode[] {
         continue
       }
       if (n === 'tab') {
-        out.push(schema.node('tab', { ref: element(c) }, null, marks))
+        out.push(schema.node('tab', { ref: element(c) }, undefined, marks))
         continue
       }
       if (n === 'br' || n === 'cr') {
         const type = n === 'br' ? wa(c, 'type') : null
-        if (type === 'page' || type === 'column') out.push(schema.node('page_break', { ref: element(c), kind: type }, null, marks))
-        else out.push(schema.node('hard_break', { ref: element(c) }, null, marks))
+        if (type === 'page' || type === 'column') out.push(schema.node('page_break', { ref: element(c), kind: type }, undefined, marks))
+        else out.push(schema.node('hard_break', { ref: element(c) }, undefined, marks))
         continue
       }
       if (n === 'drawing' || n === 'pict' || n === 'object') {
@@ -440,27 +440,31 @@ function picture(ctx: Ctx, el: Element, marks: readonly Mark[]): PMNode {
         name: '',
         floating: model.floating,
       },
-      null,
+      undefined,
       marks,
     )
   }
   const label = model?.type === 'placeholder' ? model.label : 'Drawing'
-  return ctx.schema.node('opaque', { ref: ctx.reg.add({ kind: 'opaque', els: [el] }), kind: 'chip', label, title: `${label} — kept unchanged`, level: 'run' }, null, marks)
+  return ctx.schema.node('opaque', { ref: ctx.reg.add({ kind: 'opaque', els: [el] }), kind: 'chip', label, title: `${label} — kept unchanged`, level: 'run' }, undefined, marks)
 }
 
 // ---------------------------------------------------------------- tables
 
 /** Tables made of rows and cells only (no content controls or custom XML around them) are editable. */
 function editableTable(tbl: Element): boolean {
+  let rows = 0
   for (const c of children(tbl)) {
     if (c.namespaceURI !== NS.w) return false
     if (c.localName === 'tblPr' || c.localName === 'tblGrid') continue
     if (c.localName !== 'tr') return false
-    for (const k of children(c)) {
+    rows++
+    const kids = children(c)
+    if (!kids.some((k) => isEl(k, NS.w, 'tc'))) return false
+    for (const k of kids) {
       if (k.namespaceURI !== NS.w || !['tblPrEx', 'trPr', 'tc'].includes(k.localName)) return false
     }
   }
-  return true
+  return rows > 0
 }
 
 function readTable(ctx: Ctx, tbl: Element): PMNode {
@@ -488,7 +492,6 @@ function readTable(ctx: Ctx, tbl: Element): PMNode {
       cellEntry.node = cell
       cells.push(cell)
     }
-    if (cells.length === 0) cells.push(schema.node('table_cell', null, [schema.node('paragraph')]))
     const row = schema.node('table_row', { ref: rowRef }, cells)
     rowEntry.node = row
     rows.push(row)
