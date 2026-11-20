@@ -82,10 +82,23 @@ export type TokenPull = {
   htmlUrl: string
 }
 
-export type TokenTreeEntry = { path: string; sha: string; size: number }
+/**
+ * Git file mode as GitHub reports it: regular file, executable, symlink or
+ * submodule. How each mode is treated (copy, list as skipped) is the sync's
+ * decision, not the client's.
+ */
+export type TokenTreeMode = '100644' | '100755' | '120000' | '160000'
+
+export type TokenTreeEntry = {
+  path: string
+  mode: TokenTreeMode
+  sha: string
+  /** Blob size in bytes; null for submodule entries (`mode: '160000'`). */
+  size: number | null
+}
 
 export type TokenTree = {
-  /** Blob entries only. */
+  /** File, executable, symlink and submodule entries; directories are dropped. */
   entries: TokenTreeEntry[]
   /** GitHub cut the recursive tree short. */
   truncated: boolean

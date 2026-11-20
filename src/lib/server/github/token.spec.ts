@@ -1,4 +1,5 @@
 import type { GitHubTokenError } from './token-client'
+import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { createGitHubTokenClient, isGitHubTokenError, tokenRequest } from './token'
 import {
@@ -19,7 +20,10 @@ const TOKEN = 'github_pat_11ABCDEFG0123456789_secretsecretsecretsecret'
 
 function client(routes: Parameters<typeof fakeGitHub>[0], timeoutMs = 5000) {
   const fake = fakeGitHub(routes)
-  return { ...fake, gh: createGitHubTokenClient({ token: TOKEN, fetch: fake.impl, timeoutMs }) }
+  return {
+    ...fake,
+    gh: createGitHubTokenClient({ token: TOKEN, fetch: fake.impl, timeoutMs, tarballDir: tmpdir() }),
+  }
 }
 
 async function failure(p: Promise<unknown>): Promise<GitHubTokenError> {
@@ -63,8 +67,8 @@ describe('token client: requests', () => {
 
   it('needs a token and a positive timeout', () => {
     const { impl } = fakeGitHub({})
-    expect(() => createGitHubTokenClient({ token: '', fetch: impl, timeoutMs: 1000 })).toThrow()
-    expect(() => createGitHubTokenClient({ token: TOKEN, fetch: impl, timeoutMs: 0 })).toThrow()
+    expect(() => createGitHubTokenClient({ token: '', fetch: impl, timeoutMs: 1000, tarballDir: tmpdir() })).toThrow()
+    expect(() => createGitHubTokenClient({ token: TOKEN, fetch: impl, timeoutMs: 0, tarballDir: tmpdir() })).toThrow()
   })
 
   it('rejects a repo name that is not owner/name', async () => {
@@ -337,6 +341,7 @@ describe('token client: errors', () => {
         throw new TypeError('fetch failed')
       }) as typeof fetch,
       timeoutMs: 1000,
+      tarballDir: tmpdir(),
     })
     const err = await failure(gh.identity())
     expect(err.kind).toBe('unavailable')
@@ -356,6 +361,7 @@ describe('token client: errors', () => {
         })
       }) as typeof fetch,
       timeoutMs: 20,
+      tarballDir: tmpdir(),
     })
     const err = await failure(gh.identity())
     expect(err.kind).toBe('unavailable')
@@ -399,6 +405,7 @@ describe('token client: the token never leaks', () => {
         throw new Error(`connect failed with ${new Headers(init?.headers).get('authorization')}`)
       }) as typeof fetch,
       timeoutMs: 1000,
+      tarballDir: tmpdir(),
     })
     errors.push(await network.identity().catch((e: unknown) => e))
     errors.push(
@@ -492,6 +499,7 @@ describe('token client: identity', () => {
       fetch: (async () =>
         new Response(JSON.stringify(userBody), { status: 200 })) as unknown as typeof fetch,
       timeoutMs: 1000,
+      tarballDir: tmpdir(),
     })
     await expect(gh.identity()).rejects.toThrow(/rate-limit headers/)
   })
@@ -671,11 +679,29 @@ describe('token client: activity endpoints', () => {
     })
     expect(await gh.tree('octo-org/repo-1', 'a'.repeat(40))).toEqual({
       entries: [
-        { path: 'README.md', sha: '1'.repeat(40), size: 1200 },
-        { path: 'docs/guide.md', sha: '3'.repeat(40), size: 640 },
+        { path: 'README.md', mode: '100644', sha: '1'.repeat(40), size: 1200 },
+        { path: 'docs/guide.md', mode: '100644', sha: '3'.repeat(40), size: 640 },
+        { path: 'docs/current', mode: '120000', sha: '5'.repeat(40), size: 11 },
+        { path: 'vendor/lib', mode: '160000', sha: '4'.repeat(40), size: null },
       ],
       truncated: true,
     })
+  })
+
+  it('blobBytes: base64 decoded without UTF-8 conversion or binary loss', async () => {
+    const bytes = Uint8Array.from([0, 0xff, 0xfe, 0x80, 0x41, 0, 0x42])
+    const content = Buffer.from(bytes).toString('base64').replace(/(.{4})/g, '$1\n')
+    const { gh } = client({
+      [`GET /repos/octo-org/repo-1/git/blobs/${'1'.repeat(40)}`]: {
+        status: 200,
+        body: { ...blobBody(''), content, size: bytes.byteLength },
+      },
+    })
+
+    const out = await gh.blobBytes('octo-org/repo-1', '1'.repeat(40))
+    expect(out).toBeInstanceOf(Uint8Array)
+    expect(Buffer.isBuffer(out)).toBe(false)
+    expect(out).toEqual(bytes)
   })
 
   it('blobText: base64 (with GitHub line breaks) decoded as UTF-8', async () => {

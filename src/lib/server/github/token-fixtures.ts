@@ -141,6 +141,7 @@ export const treeBody = {
     { path: 'README.md', mode: '100644', type: 'blob', sha: '1'.repeat(40), size: 1200 },
     { path: 'docs', mode: '040000', type: 'tree', sha: '2'.repeat(40) },
     { path: 'docs/guide.md', mode: '100644', type: 'blob', sha: '3'.repeat(40), size: 640 },
+    { path: 'docs/current', mode: '120000', type: 'blob', sha: '5'.repeat(40), size: 11 },
     { path: 'vendor/lib', mode: '160000', type: 'commit', sha: '4'.repeat(40) },
   ],
   truncated: false,

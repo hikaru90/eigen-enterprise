@@ -1,4 +1,5 @@
 import type { GitHubTokenError } from './token-client'
+import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { GitHubApiError } from './api'
 import {
@@ -17,7 +18,7 @@ async function tokenError(
   const { impl } = fakeGitHub({
     'GET /repos/octo-org/repo-1': { status, body: { message: 'x' }, headers },
   })
-  const gh = createGitHubTokenClient({ token: 'github_pat_x', fetch: impl, timeoutMs: 1000 })
+  const gh = createGitHubTokenClient({ token: 'github_pat_x', fetch: impl, timeoutMs: 1000, tarballDir: tmpdir() })
   return (await gh.repo('octo-org/repo-1', null).catch((e: unknown) => e)) as GitHubTokenError
 }
 
