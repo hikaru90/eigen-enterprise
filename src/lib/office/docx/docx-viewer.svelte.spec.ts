@@ -81,6 +81,21 @@ describe('DocxViewer', () => {
     expect((parts[1] as HTMLElement).style.marginTop).toBe('0px')
   })
 
+  it('keeps a heading with the paragraph after it (w:keepNext) and an unsplittable paragraph whole (w:keepLines)', async () => {
+    // A4 with 1" margins leaves 697.9pt; 34 lines of exactly 20pt fill 680pt, the 15pt heading still fits after them.
+    const exact = (pt: number) => `<w:spacing w:before="0" w:after="0" w:line="${pt * 20}" w:lineRule="exact"/>`
+    const filler = Array.from({ length: 34 }, (_, i) => p(r(`Filler ${i + 1}`), exact(20))).join('')
+    const heading = p(r('Results'), `<w:keepNext/><w:outlineLvl w:val="0"/>${exact(15)}`)
+    const kept = p(r('Line one') + '<w:r><w:br/></w:r>' + r('Line two') + '<w:r><w:br/></w:r>' + r('Line three'), `<w:keepLines/>${exact(20)}`)
+    readBytes.mockResolvedValue(buildDocx({ body: filler + heading + kept + sectPr(A4) }))
+    render(DocxViewer, props)
+    const all = await laidOut(2)
+    expect(all[0]!.querySelectorAll('.docx-p')).toHaveLength(34)
+    const second = [...all[1]!.querySelectorAll('.docx-p')].map((x) => x.textContent)
+    expect(second).toEqual(['Results', 'Line oneLine twoLine three'])
+    expect(all[1]!.querySelector('[role="heading"]')?.getAttribute('aria-level')).toBe('1')
+  })
+
   it('splits a table at a row boundary and repeats its header row', async () => {
     const row = (a: string, header = false) =>
       `<w:tr>${header ? '<w:trPr><w:tblHeader/></w:trPr>' : ''}<w:tc>${p(r(a))}</w:tc><w:tc>${p(r(`${a} detail`))}</w:tc></w:tr>`
