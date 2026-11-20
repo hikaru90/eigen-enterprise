@@ -2,6 +2,41 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-20 — Company brain stage 0 + 1 (CB0, CB1, CB3, CB4) merged into main (owner: "Yes, start them"; not pushed, not released)
+
+- **Merges:**
+  - CB4 `registry-first gate` (merge after `a92225c5`);
+  - CB0 `north-star eval` (`84a3781a`);
+  - CB1 `0a5c9e67`;
+  - CB3 `04edc7e8`;
+  - follow-ups `1fe99bb9` (parity map: the eigenInference actions are `settings.update`) and `deddefc3` (pinned member tool lists include the new `drive.app_*`).
+- **The parity gate worked on its first real change:** CB1's four new Settings actions failed it until they were mapped to their registry tool.
+- **CB0 baseline:**
+  - **Tool level (no model), before CB3:**
+    - leak tests 11/14 pass;
+    - Knows questions whose sources the brain's tools can reach at all: 10/22;
+    - 9 cases of content reaching someone not entitled to it.
+  - **After CB3:**
+    - the 5 leaks to non-admin members are gone (the brain read Drive as the agent, so every member could get private docs through chat);
+    - reachable Knows sources rose to 17/22.
+  - **Real-model baseline: not measured.** There is no provider key locally (all LLM env empty). Command: `npm run eval:brain -- --mode chat --provider platform` with `PLATFORM_LLM_*` set.
+- **Open, owner's call:** 4 leaks remain, all by design today. Owner and admins see everyone's private Drive files and unshared contacts in the UI, which goes against the agreed rule "private = only the owner, no override". Not changed. Removing it takes admin capability away, so it needs to be announced first.
+- **Announced behaviour changes (stage 1):**
+  - **CB1:**
+    - the chat model comes from the chat slot (hosted boxes move to the recommended model);
+    - the service-account env pairs and the free-text model fields are removed;
+    - "Advanced" (own keys) is owner-only.
+  - **CB3:**
+    - non-admin members lose 109 tools through the brain (pinned in `boot.wiring.spec.ts`: `MEMBER_LOSES_VIA_BRAIN`), among them `email.*` and `website.*`;
+    - approvals are per person;
+    - Telegram senders must be linked to a member;
+    - Telegram conversations restart once.
+- **Follow-up seen while reviewing:** some of what members lose may be things they can do in the UI. Example: if a member can send mail from a mailbox in the UI, `email.send_mail` being admin-only is a tool permission that's stricter than the UI. That's tool-permission parity, cleared module by module in CB8–CB13.
+- **Next:**
+  - push + release (owner's go);
+  - after the upgrade, retry Ony's 5 and the owner's 15 failed thoughts on os.cerberusblue.com;
+  - CB1b (control plane), CB2 (Jev in the gateway), then stage 2.
+
 ## 2026-11-20 — CB3: the company brain acts as the person (merged into main, not pushed, not released)
 
 - **Shipped (commits `2fecf88a` [kernel], `1e249557` [brain], then the CB0 merge + eval ratchet on the branch):**
@@ -74,6 +109,39 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - Fix the e2e harness regression and make both Drive journeys green.
   - Push and release to the box.
   - Then the milestone 2 streams: P2 page organisation plus agent PDF tools, D2 Word editing (ProseMirror, lossless), S2 slide editing.
+
+## 2026-11-20 — Drive: run a web app folder and see it live (owner: "Yes, build it")
+
+- **Plan:** `plan/phase-drive-app-preview.md`, approved. Run is admins only, and previews use wildcard DNS `*.preview.<console host>`. The contract (`7a87de4b`) was fixed before the two streams branched.
+- **Shipped P1, ee (`87902fbc`):**
+  - New: `ee/src/previews.ts` and `preview-tar.ts`, the `/v1/previews` verbs, the `ee-preview` user created at bootstrap, and in-memory Caddy routes (`Host` → `localhost:<port>`, plus a 503 "starting" page so the certificate is issued during install).
+  - How it runs: the port is found through the unit's cgroup ∩ `ss`. Previews stop after 30 minutes idle and are wiped when ee starts. Only one preview is active at a time.
+  - The snapshot is checked header by header before unpacking (no links, devices, `..` or absolute paths; at most 20,000 files and 200 MiB).
+- **Shipped P2, kernel + Drive (`2e4e3ff8`):**
+  - Three tools: `drive.app_status`, `drive.app_run` and `drive.app_stop`. The Drive module is now 0.3.0.
+  - `webApp` detection: the folder's own `package.json` with `scripts.dev` or `scripts.start`; the lockfile is reported.
+  - A ustar writer (`modules/drive/tar.ts`) and the snapshot walker (skips `node_modules`/`.git`, keeps archived files, fails loud on duplicate names or limits).
+  - The folder page's **Run app** panel: state, log tail, Stop, Restart, Open in new tab, and a frame on the preview origin. It polls every 5 s while starting and every 30 s while running.
+- **Decisions:**
+  - Run and Stop need a human plus a new capability, `drive.run_apps` (owner and admin), because every signed-in caller already gets the kernel `admin` role.
+  - Status is open to members who can view the folder: they see the running app, without controls.
+  - `drive.app_stop` also takes `preview_id`, so the panel can stop a preview from another folder when ee answers "busy".
+  - `requireHuman` gained an optional `where` argument (existing callers unchanged).
+  - The preview frame's sandbox includes `allow-same-origin`, which is safe because the preview has its own origin, never the OS's.
+  - Each run gets a fresh directory and installs share an npm cache (`/var/lib/ee/preview-cache`).
+  - Both units also get `InaccessiblePaths` over ee, Postgres, Caddy and the state dirs.
+- **Announced:** every folder page now makes one status call to ee on load, which also marks the preview as seen. Admins gain `drive.run_apps`.
+- **Verified on the local box** (release with these merges, `os.ee.localhost`):
+  - A Vite 5 folder snapshot was handed to ee over the control socket. `npm ci` ran in 1 s and `vite` ran as `ee-preview`.
+  - `https://pv….preview.os.ee.localhost/` served the page through Caddy, with Vite's client injected. The HMR websocket upgraded (101).
+  - DELETE stopped the unit and removed its directory.
+  - Unit: 8072 passed, with 1 failure (`role-aware.spec.ts` `/settings/company`, `getDb() outside request`) that fails the same way on `main` before these merges. ee: 441 passed. Drive components: 41 passed. Typecheck: 0 errors.
+- **Not verified:**
+  - The Drive UI on the box, end to end: the in-app browser doesn't trust the box's local CA, and no Playwright e2e with a fake ee was written. The kernel side is covered by unit and component tests only.
+  - pnpm/yarn through corepack. Yarn 1 may reject `--immutable`.
+  - A real wildcard DNS name on a public box.
+- **Known gap (needs a decision later):** a preview can reach other loopback services on the box, including Caddy's internal os listener. systemd `IPAddressDeny=localhost` would also drop Caddy's proxied connections into the preview, so the fix is a network namespace per preview. That's a follow-up, not a switch.
+- **Next:** push, release to production boxes, then P3 (Make it an app → Website module).
 
 ## 2026-11-20 — Drive: HTML files render as pages; plan for running web app folders (owner: "HTML currently gets rendered as text … there should be an option for seeing HTML files as … rendered HTML files in the drive … a simple way to do npm run dev")
 
