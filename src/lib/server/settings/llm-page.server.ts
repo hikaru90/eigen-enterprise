@@ -1,6 +1,4 @@
 import type { Actions, RequestEvent } from '@sveltejs/kit'
-import { checkSpeechModelEndpoints } from '$lib/server/llm/speech-models'
-import { speechToTextReadiness } from '$lib/server/llm/speech-readiness'
 import { fail, redirect } from '@sveltejs/kit'
 import { and, eq } from 'drizzle-orm'
 import { isUserAdmin } from '$lib/server/auth/user-role'
@@ -10,10 +8,19 @@ import { llmProviderConfig, llmActiveProvider } from '$lib/server/db/schema'
 import { env } from '$lib/server/env/private-env'
 import { setActiveLlmProvider } from '$lib/server/llm/active-provider'
 import {
+  CompanyAiInputError,
+  readCompanyAiView,
+  setCompanySlotModel,
+  setCompanyUseEigenInference,
+} from '$lib/server/llm/company-ai-settings'
+import { companyOwnerId } from '$lib/server/llm/company-provider'
+import {
   providerLabel,
   saveProviderConfig,
   type LlmProviderId,
 } from '$lib/server/llm/save-provider-config'
+import { checkSpeechModelEndpoints, speechModels } from '$lib/server/llm/speech-models'
+import { speechToTextReadiness } from '$lib/server/llm/speech-readiness'
 import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 
 export type { LlmProviderId } from '$lib/server/llm/save-provider-config'
@@ -39,7 +46,7 @@ export async function loadLlmSettingsPage(event: RequestEvent) {
   }
 
   const userId = event.locals.user.id
-  const isAdmin = await isUserAdmin(userId)
+  const [isAdmin, ownerId, ai] = await Promise.all([isUserAdmin(userId), companyOwnerId(), readCompanyAiView()])
 
   const [activeRow] = await getDb()
     .select({ provider: llmActiveProvider.provider })
@@ -79,17 +86,24 @@ export async function loadLlmSettingsPage(event: RequestEvent) {
     (openrouterRow?.baseUrl?.trim() && openrouterApiKey.trim()),
   )
 
-  const [dictation, speechModels] = await Promise.all([
+  const slotModel = (slot: 'stt' | 'tts') => ai.slots.find((s) => s.slot === slot)!.model
+  const [dictation, speechModelStatus] = await Promise.all([
     speechToTextReadiness(userId),
-    checkSpeechModelEndpoints(),
+    checkSpeechModelEndpoints({ models: speechModels({ stt: slotModel('stt'), tts: slotModel('tts') }) }),
   ])
 
   return {
     isAdmin,
+    /** Owners and admins switch eigenInference and pick the slot models (company settings). */
+    canManageAi: isAdmin,
+    /** The company's own keys live on the owner's account: only the owner manages them. */
+    isOwner: ownerId === userId,
+    /** Settings → AI (CB1): the switch, the slots, the install's embedding model. */
+    ai,
     byokConfigured,
     activeProvider,
     /** Speech always runs on OpenRouter: whether dictation can work, and each speech model's endpoints. */
-    speech: { dictation, models: speechModels },
+    speech: { dictation, models: speechModelStatus },
     providers: {
       eurouter: {
         configured: isProviderConfigured(eurouterRow),
@@ -112,6 +126,33 @@ export async function loadLlmSettingsPage(event: RequestEvent) {
 }
 
 export const llmSettingsActions: Actions = {
+  setEigenInference: async (event) => {
+    if (!event.locals.user) return fail(401, { aiMessage: 'You must be signed in.' })
+    if (!(await isUserAdmin(event.locals.user.id))) {
+      return fail(403, { aiMessage: 'Only owners and admins change the company’s AI.' })
+    }
+    const on = (await event.request.formData()).get('on') === 'true'
+    await setCompanyUseEigenInference(on, event.locals.user.id)
+    return { aiMessage: on ? 'The company runs on eigenInference.' : 'The company runs on its own key.' }
+  },
+
+  setSlot: async (event) => {
+    if (!event.locals.user) return fail(401, { slotMessage: 'You must be signed in.' })
+    if (!(await isUserAdmin(event.locals.user.id))) {
+      return fail(403, { slotMessage: 'Only owners and admins choose the company’s models.' })
+    }
+    const formData = await event.request.formData()
+    const slot = formData.get('slot')?.toString() ?? ''
+    const model = formData.get('model')?.toString() ?? ''
+    try {
+      await setCompanySlotModel(slot, model, event.locals.user.id)
+      return { slotMessage: `Saved: ${model}.` }
+    } catch (error) {
+      if (error instanceof CompanyAiInputError) return fail(400, { slotMessage: error.message })
+      throw error
+    }
+  },
+
   saveLlmConfig: async (event) => {
     if (!event.locals.user) {
       return fail(401, { llmMessage: 'You must be signed in.' })

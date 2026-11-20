@@ -45,6 +45,20 @@ vi.mock('$lib/server/llm/company-provider', () => ({
   onCompanyProvider: async (fn: () => Promise<unknown>) => fn(),
 }))
 vi.mock('$lib/server/llm/llm-client', () => ({ describeChatModel: vi.fn() }))
+vi.mock('$lib/server/llm/company-ai-settings', async (actual) => ({
+  ...(await actual<typeof import('$lib/server/llm/company-ai-settings')>()),
+  readCompanyAiView: async () => ({
+    useEigenInference: false,
+    eigenInferenceAvailable: false,
+    slots: [
+      { slot: 'chat', model: '~deepseek/deepseek-flash-latest', pick: null, options: [] },
+      { slot: 'stt', model: 'qwen/qwen3-asr-1.7b', pick: null, options: [] },
+      { slot: 'tts', model: 'qwen/qwen-audio-3.0-tts-flash', pick: null, options: [] },
+      { slot: 'decision', model: 'typesafe/jev-1.13', pick: null, options: [] },
+    ],
+    embeddingModel: 'qwen/qwen3-embedding-8b',
+  }),
+}))
 vi.mock('$lib/server/llm/active-provider', () => ({ setActiveLlmProvider: m.setActive }))
 vi.mock('$lib/server/overview/sources', () => ({
   companyIdentity: async () => ({ name: 'Kindred', logo: null }),
@@ -72,7 +86,6 @@ describe('agentSettingsPort.read', () => {
   it('reads the owner’s AI settings and never carries a credential', async () => {
     m.selectQueue.push(
       [{ provider: 'openrouter' }],
-      [{ billingMode: 'byok' }],
       [
         {
           provider: 'openrouter',
@@ -94,6 +107,14 @@ describe('agentSettingsPort.read', () => {
     expect(view).toEqual({
       company: { name: 'Kindred', hasLogo: false },
       ai: {
+        eigenInference: false,
+        slots: [
+          { slot: 'chat', model: '~deepseek/deepseek-flash-latest', pick: null },
+          { slot: 'stt', model: 'qwen/qwen3-asr-1.7b', pick: null },
+          { slot: 'tts', model: 'qwen/qwen-audio-3.0-tts-flash', pick: null },
+          { slot: 'decision', model: 'typesafe/jev-1.13', pick: null },
+        ],
+        embeddingModel: 'qwen/qwen3-embedding-8b',
         activeProvider: 'openrouter',
         billing: 'byok',
         providers: [
@@ -162,5 +183,10 @@ describe('agentSettingsPort.apply', () => {
     m.updateReturning.mockResolvedValue([{ provider: 'eurouter' }])
     await agentSettingsPort.apply({ setting: 'ai_chat_routing_rule', value: 'rule-9' }, 'u-actor')
     expect(m.updateSet).toHaveBeenCalledWith(expect.objectContaining({ ruleChat: 'rule-9' }))
+  })
+  it('ai_slot_model only takes a model from the pool (invalid input names the choices)', async () => {
+    await expect(
+      agentSettingsPort.apply({ setting: 'ai_slot_model', slot: 'chat', value: 'vendor/unvetted' }, 'u-actor'),
+    ).rejects.toMatchObject({ code: 'invalid_input', message: expect.stringMatching(/Choose one of/) })
   })
 })

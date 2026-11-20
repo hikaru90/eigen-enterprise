@@ -5,8 +5,14 @@ import { getUserRole } from '$lib/server/auth/user-role'
 import { saveCompanyName } from '$lib/server/company/service'
 import { companyProfileStore } from '$lib/server/company/store'
 import { withDbUser } from '$lib/server/db'
-import { llmActiveProvider, llmProviderConfig, userPreference } from '$lib/server/db/schema'
+import { llmActiveProvider, llmProviderConfig } from '$lib/server/db/schema'
 import { setActiveLlmProvider } from '$lib/server/llm/active-provider'
+import {
+  CompanyAiInputError,
+  readCompanyAiView,
+  setCompanySlotModel,
+  setCompanyUseEigenInference,
+} from '$lib/server/llm/company-ai-settings'
 import { companyOwnerId, onCompanyProvider } from '$lib/server/llm/company-provider'
 import { describeChatModel } from '$lib/server/llm/llm-client'
 import { companyIdentity } from '$lib/server/overview/sources'
@@ -45,18 +51,18 @@ async function read(): Promise<SettingsView> {
       .from(llmActiveProvider)
       .where(eq(llmActiveProvider.userId, owner))
       .limit(1)
-    const [pref] = await db
-      .select({ billingMode: userPreference.billingMode })
-      .from(userPreference)
-      .where(eq(userPreference.userId, owner))
-      .limit(1)
     const rows = await db.select().from(llmProviderConfig).where(eq(llmProviderConfig.userId, owner))
+    const companyAi = await readCompanyAiView()
     return {
       company: { name: identity.name, hasLogo: identity.logo !== null },
       ai: {
+        eigenInference: companyAi.useEigenInference,
+        slots: companyAi.slots.map(({ slot, model, pick }) => ({ slot, model, pick })),
+        embeddingModel: companyAi.embeddingModel,
         // The same default the gateway applies when no row exists (llm-client resolveActiveProviderLlmConfig).
         activeProvider: active?.provider ?? 'eurouter',
-        billing: pref?.billingMode === 'byok' ? 'byok' : 'platform',
+        // the company's source (CB1), not the owner's old per-account billing mode
+        billing: companyAi.useEigenInference ? 'platform' : 'byok',
         providers: rows.map((row) => ({
           provider: row.provider,
           configured: hasCredentials(row),
@@ -122,6 +128,17 @@ async function apply(change: SettingChange, actorUserId: string): Promise<void> 
     }
     case 'ai_chat_routing_rule':
       await setProviderColumn(await requireOwner(), 'eurouter', { ruleChat: change.value })
+      return
+    case 'ai_use_eigen_inference':
+      await withDbUser(actorUserId, () => setCompanyUseEigenInference(change.value, actorUserId))
+      return
+    case 'ai_slot_model':
+      try {
+        await withDbUser(actorUserId, () => setCompanySlotModel(change.slot, change.value, actorUserId))
+      } catch (err) {
+        if (err instanceof CompanyAiInputError) throw new KernelError('invalid_input', err.message)
+        throw err
+      }
       return
   }
 }

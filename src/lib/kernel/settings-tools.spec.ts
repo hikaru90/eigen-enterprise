@@ -21,6 +21,9 @@ function view(overrides: Partial<SettingsView> = {}): SettingsView {
   return {
     company: { name: 'Kindred Digital Labs', hasLogo: false },
     ai: {
+      eigenInference: false,
+      slots: [{ slot: 'chat', model: '~deepseek/deepseek-flash-latest', pick: null }],
+      embeddingModel: null,
       activeProvider: 'openrouter',
       billing: 'byok',
       providers: [
@@ -132,6 +135,8 @@ describe('settings.get', () => {
       'ai_active_provider',
       'ai_chat_model',
       'ai_chat_routing_rule',
+      'ai_use_eigen_inference',
+      'ai_slot_model',
     ])
     expect(JSON.stringify(out)).not.toContain('sk-secret')
   })
