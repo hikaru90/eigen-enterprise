@@ -408,6 +408,17 @@
               class="min-h-[75vh] w-full flex-1"
               data-testid="drive-pdf"
             ></iframe>
+          {:else if data.kind === 'text' && data.textError}
+            <div
+              class="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-12 text-sm text-muted-foreground"
+              data-testid="drive-text-too-large"
+            >
+              <FileIcon class="size-10" />
+              <p>{data.textError}</p>
+              <Button variant="outline" href={`${contentUrl}?download=1`} download
+                ><DownloadIcon class="size-4" /> Download</Button
+              >
+            </div>
           {:else if data.kind === 'text'}
             <pre
               class="flex-1 overflow-auto px-6 py-5 text-sm whitespace-pre-wrap"

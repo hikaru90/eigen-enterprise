@@ -15,6 +15,9 @@ import { driveViewUrl } from '$lib/server/drive-view'
 const CSV_PREVIEW_ROWS = 500
 /** Text previews show at most this many characters. */
 const TEXT_PREVIEW_CHARS = 200_000
+/** Plain-text previews never load more than 2 MB; the original stays downloadable. */
+export const TEXT_PREVIEW_MAX_BYTES = 2 * 1024 * 1024
+const TEXT_PREVIEW_TOO_LARGE = 'This file is too large to preview, download it instead.'
 
 /**
  * Open a file (/drive/file/[id]). People who may edit a Markdown/CSV file
@@ -33,13 +36,17 @@ export const load: PageServerLoad = async (event) => {
     const kind = previewKind(info.file.name, info.file.mime ?? '')
     let html: string | null = null
     let text: string | null = null
+    let textError: string | null = null
     let table: { rows: string[][]; truncated: boolean } | null = null
     let content: string | null = null
     let viewUrl: string | null = null
     if (kind === 'html' && actor.kind === 'user') {
       viewUrl = driveViewUrl({ userId: actor.userId, folderId: info.file.parentId ?? null, fileId: info.file.id, fileName: info.file.name })
     }
-    if (kind === 'markdown' || kind === 'csv' || kind === 'html' || kind === 'text') {
+    // Without a size nothing is known to be too large: read and let the slice below apply.
+    if (kind === 'text' && info.file.size !== undefined && info.file.size > TEXT_PREVIEW_MAX_BYTES) {
+      textError = TEXT_PREVIEW_TOO_LARGE
+    } else if (kind === 'markdown' || kind === 'csv' || kind === 'html' || kind === 'text') {
       content = (await drive.readText(actor, event.params.id)).content
       if (kind === 'markdown') html = renderDriveMarkdown(content)
       else if (kind === 'csv') {
@@ -61,6 +68,7 @@ export const load: PageServerLoad = async (event) => {
       kind,
       html,
       text,
+      textError,
       table,
       viewUrl,
       revisions,
