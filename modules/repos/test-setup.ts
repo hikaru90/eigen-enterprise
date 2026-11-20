@@ -1,5 +1,6 @@
 import type { SummaryInput, SummaryResult } from './summary'
 import type { ReposSyncedPayload, SyncDeps } from './sync'
+import { readTarGz } from '$lib/server/github/tar'
 import { tokenSealKey } from './seal'
 import { createReposService } from './service'
 import { InMemoryReposStore } from './store'
@@ -28,6 +29,7 @@ export function setup(start = '2026-11-12T14:00:00Z') {
     store,
     drive,
     client: (t) => gh.client(t),
+    readTarball: readTarGz, // the production reader against the fake's real gzipped archive
     key: () => tokenSealKey(MASTER),
     now: () => clock.now,
     owner: 'test-slot',

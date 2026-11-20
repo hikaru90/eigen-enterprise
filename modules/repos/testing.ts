@@ -1,5 +1,10 @@
-import type { DriveSourceId, DriveSourceItem, DriveSourcePort, DriveSourceRoot } from './drive-port'
-import { createHash } from 'node:crypto'
+import type { DriveSourceId, DriveSourceItem, DriveSourcePort, DriveSourceRoot, DriveSourceBatchItem } from './drive-port'
+import { createHash, randomUUID } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { gzipSync } from 'fflate'
+import { gitBlobSha } from '$lib/server/github/git'
 import type {
   Conditional,
   GitHubTokenClient,
@@ -13,13 +18,14 @@ import type {
   TokenIdentity,
   TokenPull,
   TokenRepo,
-  TokenTree,
+  TokenTreeMode,
 } from '$lib/server/github/token-client'
 
 /**
- * Test fakes for the two S0 contracts: a GitHub that answers the token client
- * calls from in-memory data (with ETags and a rate budget), and a Drive source
- * writer that keeps the key → item map in memory.
+ * Test fakes for the contracts: a GitHub that answers the token client calls
+ * from in-memory data (with ETags, a rate budget, real gzipped tarballs and
+ * per-blob bytes) and a Drive source writer that keeps the key → item map in
+ * memory with a call log, so a sync can be pinned to zero tree writes.
  */
 
 export function tokenError(
@@ -35,6 +41,9 @@ export function tokenError(
   }) as GitHubTokenError
 }
 
+/** A tree entry exactly as the token client's listing reports it (mode included). */
+export type FakeTreeEntry = { path: string; sha: string; size: number | null; mode: TokenTreeMode }
+
 export type FakeRepoData = {
   repo: TokenRepo
   branches: TokenBranch[]
@@ -42,11 +51,41 @@ export type FakeRepoData = {
   commits: Record<string, TokenCommit[]>
   compare?: Record<string, TokenCompare>
   pulls: TokenPull[]
-  tree?: TokenTree
-  blobs?: Record<string, string>
+  tree?: { truncated: boolean; entries: FakeTreeEntry[] }
+  /** Blob sha → bytes. Tarballs and blob fetches read from here. */
+  blobs?: Record<string, Uint8Array>
 }
 
+const enc = new TextEncoder()
+const dec = new TextDecoder()
 const etagOf = (v: unknown) => `"${createHash('sha1').update(JSON.stringify(v)).digest('hex').slice(0, 12)}"`
+
+/** A fixture file: its entry carries the real git blob sha of its bytes, so the sync's integrity check passes. */
+export function fakeFile(path: string, content: string | Uint8Array, over: { mode?: TokenTreeMode; size?: number } = {}): { entry: FakeTreeEntry; bytes: Uint8Array } {
+  const bytes = typeof content === 'string' ? enc.encode(content) : content
+  const sha = gitBlobSha(bytes)
+  return { entry: { path, sha, size: over.size ?? bytes.byteLength, mode: over.mode ?? '100644' }, bytes }
+}
+
+/** Adds (or replaces) a fixture file in tree and blobs. */
+export function setFile(d: FakeRepoData, path: string, content: string | Uint8Array): void {
+  const { entry, bytes } = fakeFile(path, content)
+  const entries = d.tree!.entries
+  const i = entries.findIndex((e) => e.path === path)
+  if (i >= 0) entries.splice(i, 1)
+  entries.push(entry)
+  d.blobs![entry.sha] = bytes
+}
+
+/** Removes a fixture file from tree and blobs. */
+export function removeFile(d: FakeRepoData, path: string): void {
+  d.tree!.entries = d.tree!.entries.filter((e) => e.path !== path)
+}
+
+/** A minimal valid PNG: the signature plus junk (never valid UTF-8). */
+const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 'I'.charCodeAt(0), 'H'.charCodeAt(0), 'D'.charCodeAt(0), 'R'.charCodeAt(0)])
+
+const LFS_POINTER = 'version https://git-lfs.github.com/spec/v1\noid sha256:3b06e8f8b3d10a26c5a4a8a4a0b1a2c3d4e5f60718293a4b5c6d7e8f9012345\nsize 48151623\n'
 
 export class FakeGitHub {
   readonly repos = new Map<string, FakeRepoData>()
@@ -83,7 +122,8 @@ export class FakeGitHub {
       }
       this.budget = { ...this.budget, remaining: this.budget.remaining - this.costPerCall }
       last = { ...this.budget }
-      return Promise.resolve(run())
+      // A sync throw inside run() (a missing blob, a missing repo) rejects like any other failure.
+      return Promise.resolve().then(run)
     }
     const data = (fullName: string) => {
       const d = this.repos.get(fullName)
@@ -93,6 +133,17 @@ export class FakeGitHub {
     const conditional = <T>(v: T, etag: string | null): Conditional<T> => {
       const e = etagOf(v)
       return e === etag ? { notModified: true, etag: e } : { notModified: false, etag: e, data: structuredClone(v) }
+    }
+    const tarballOf = (d: FakeRepoData, commitSha: string): string => {
+      // A real gzipped ustar archive (below): every fetchable blob at its repo
+      // path under the top folder <owner>-<repo>-<sha>/, like codeload's.
+      const top = `${d.repo.owner}-${d.repo.name}-${commitSha}`
+      const files = (d.tree?.entries ?? [])
+        .filter((e) => e.mode !== '160000' && e.mode !== '120000' && e.size !== null && d.blobs?.[e.sha] && d.blobs![e.sha]!.byteLength === e.size)
+        .map((e) => ({ path: `${top}/${e.path}`, bytes: d.blobs![e.sha]! }))
+      const path = join(tmpdir(), `fake-tarball-${randomUUID()}.tar.gz`)
+      writeFileSync(path, writeUstarGz(files))
+      return path
     }
     return {
       identity: () => call('identity', null, () => ({ ...this.identities.get(token)!, budget: { ...this.budget } })),
@@ -109,19 +160,79 @@ export class FakeGitHub {
       tree: (fullName) => call('tree', fullName, () => structuredClone(data(fullName).tree ?? { entries: [], truncated: false })),
       blobText: (fullName, sha) =>
         call('blob', fullName, () => {
-          const t = data(fullName).blobs?.[sha]
-          if (t === undefined) throw new Error(`fake blob ${sha} missing`)
-          return t
+          const b = data(fullName).blobs?.[sha]
+          if (b === undefined) throw new Error(`fake blob ${sha} missing`)
+          return dec.decode(b)
         }),
+      blobBytes: (fullName, sha) =>
+        call('blob', fullName, () => {
+          const b = data(fullName).blobs?.[sha]
+          if (b === undefined) throw new Error(`fake blob ${sha} missing`)
+          return b.slice()
+        }),
+      tarball: (fullName, commitSha) => call('tarball', fullName, () => tarballOf(data(fullName), commitSha)),
       checkAccess: (fullName) => call('checkAccess', fullName, () => [...(this.missing.get(fullName) ?? [])]),
       lastBudget: () => last,
     }
   }
 }
 
+// ── a real gzipped ustar archive, for the tarball path ────────────────────────
+// Test-only writer (the production tar writer is modules/drive/tar.ts, which
+// the module boundary — no module imports another — keeps this fake from
+// importing). Regular files, short ustar paths, gzip through fflate: a real
+// archive, read back by M1's production reader through the seam, so the sync's
+// tarball consumption (strip, pick, sha check, batching) runs for real.
+
+const BLOCK = 512
+
+const octal = (n: number, width: number) => n.toString(8).padStart(width - 1, '0') + '\0'
+
+function ustarHeader(path: string, size: number): Uint8Array {
+  const h = new Uint8Array(BLOCK)
+  h.set(enc.encode(path.length > 100 ? path.slice(-100) : path), 0)
+  h.set(enc.encode(octal(0o644, 8)), 100)
+  h.set(enc.encode(octal(0, 8)), 108)
+  h.set(enc.encode(octal(0, 8)), 116)
+  h.set(enc.encode(octal(size, 12)), 124)
+  h.set(enc.encode(octal(0, 12)), 136)
+  h.set(enc.encode('        '), 148)
+  h.set(enc.encode('0'), 156)
+  h.set(enc.encode('ustar\0'), 257)
+  h.set(enc.encode('00'), 263)
+  let sum = 0
+  for (const b of h) sum += b
+  h.set(enc.encode(sum.toString(8).padStart(6, '0') + '\0 '), 148)
+  return h
+}
+
+/** A gzipped ustar archive of regular files, like codeload's tarball. */
+export function writeUstarGz(files: Array<{ path: string; bytes: Uint8Array }>): Uint8Array {
+  const out: Uint8Array[] = []
+  for (const f of files) {
+    out.push(ustarHeader(f.path, f.bytes.byteLength), f.bytes, new Uint8Array((BLOCK - (f.bytes.byteLength % BLOCK)) % BLOCK))
+  }
+  out.push(new Uint8Array(2 * BLOCK))
+  const total = out.reduce((n, b) => n + b.byteLength, 0)
+  const tar = new Uint8Array(total)
+  let at = 0
+  for (const b of out) {
+    tar.set(b, at)
+    at += b.byteLength
+  }
+  return gzipSync(tar)
+}
+
+// ── the Drive source port ─────────────────────────────────────────────────────
+
+/** Every port write, in order (reads and idempotent no-ops are not writes). */
+export type DriveCall = { op: 'upsertFolder' | 'upsertText' | 'upsertBytes' | 'upsertMany' | 'remove'; key: string; n?: number }
+
 export class FakeDrivePort implements DriveSourcePort {
   readonly roots = new Map<DriveSourceId, DriveSourceRoot>()
-  readonly items = new Map<string, DriveSourceItem & { name: string; content?: string }>()
+  /** Not readonly: an upsertMany rollback restores the previous map wholesale. */
+  items = new Map<string, DriveSourceItem & { name: string; content?: string; bytes?: Uint8Array; mime?: string }>()
+  calls: DriveCall[] = []
   writes = 0
   private seq = 0
 
@@ -142,25 +253,70 @@ export class FakeDrivePort implements DriveSourcePort {
     this.roots.set(source, r)
     return { ...r }
   }
+
   async upsertFolder(source: DriveSourceId, key: string, parentKey: string | null, name: string) {
     if (name.includes('/')) throw new Error(`folder name ${name} contains /`)
     this.requireParent(source, parentKey)
     const cur = this.items.get(this.k(source, key))
+    if (!cur || cur.name !== name || cur.parentKey !== parentKey) this.calls.push({ op: 'upsertFolder', key })
     const item = { key, kind: 'folder' as const, itemId: cur?.itemId ?? this.id('folder'), parentKey, contentSha: null, name }
     this.items.set(this.k(source, key), item)
     return item.itemId
   }
+
   async upsertText(source: DriveSourceId, key: string, parentKey: string | null, name: string, content: string) {
     if (name.includes('/')) throw new Error(`file name ${name} contains /`)
     this.requireParent(source, parentKey)
     const sha = createHash('sha256').update(content, 'utf8').digest('hex')
     const cur = this.items.get(this.k(source, key))
     const changed = cur?.contentSha !== sha
-    if (changed) this.writes += 1
+    if (changed) {
+      this.calls.push({ op: 'upsertText', key })
+      this.writes += 1
+    }
     const item = { key, kind: 'file' as const, itemId: cur?.itemId ?? this.id('file'), parentKey, contentSha: sha, name, content }
     this.items.set(this.k(source, key), item)
     return { fileId: item.itemId, changed }
   }
+
+  async upsertBytes(source: DriveSourceId, key: string, parentKey: string | null, name: string, bytes: Uint8Array, mime: string) {
+    if (name.includes('/')) throw new Error(`file name ${name} contains /`)
+    this.requireParent(source, parentKey)
+    const sha = createHash('sha256').update(bytes).digest('hex')
+    const cur = this.items.get(this.k(source, key))
+    const changed = cur?.contentSha !== sha
+    if (changed) {
+      this.calls.push({ op: 'upsertBytes', key })
+      this.writes += 1
+    }
+    const item = { key, kind: 'file' as const, itemId: cur?.itemId ?? this.id('file'), parentKey, contentSha: sha, name, bytes: bytes.slice(), mime }
+    this.items.set(this.k(source, key), item)
+    return { fileId: item.itemId, changed }
+  }
+
+  async upsertMany(source: DriveSourceId, items: DriveSourceBatchItem[]) {
+    // The port's contract: one batch, one transaction — any failure rolls back
+    // the whole batch (items, ids, write counts and the call log with it).
+    const backupItems = new Map(this.items)
+    const backupCalls = [...this.calls]
+    const backupWrites = this.writes
+    const backupSeq = this.seq
+    try {
+      for (const i of items) {
+        if (i.kind === 'folder') await this.upsertFolder(source, i.key, i.parentKey, i.name)
+        else if (i.kind === 'text') await this.upsertText(source, i.key, i.parentKey, i.name, i.content)
+        else await this.upsertBytes(source, i.key, i.parentKey, i.name, i.bytes, i.mime)
+      }
+    } catch (err) {
+      this.items = backupItems
+      this.calls = backupCalls
+      this.writes = backupWrites
+      this.seq = backupSeq
+      throw err
+    }
+    if (items.length > 0) this.calls.push({ op: 'upsertMany', key: items[0]!.key, n: items.length })
+  }
+
   async remove(source: DriveSourceId, keyPrefix: string) {
     let n = 0
     for (const [k, v] of this.items) {
@@ -169,12 +325,16 @@ export class FakeDrivePort implements DriveSourcePort {
         n += 1
       }
     }
+    if (n > 0) this.calls.push({ op: 'remove', key: keyPrefix, n })
     return n
   }
-  async list(source: DriveSourceId) {
+
+  async list(source: DriveSourceId, keyPrefix?: string) {
     return [...this.items.entries()]
       .filter(([k]) => k.startsWith(`${source}\u0000`))
-      .map(([, v]) => ({ key: v.key, kind: v.kind, itemId: v.itemId, parentKey: v.parentKey, contentSha: v.contentSha }))
+      .map(([, v]) => v)
+      .filter((v) => !keyPrefix || v.key === keyPrefix || v.key.startsWith(`${keyPrefix}/`))
+      .map((v) => ({ key: v.key, kind: v.kind, itemId: v.itemId, parentKey: v.parentKey, contentSha: v.contentSha }))
   }
 
   /** Test helper: the file at a key. */
@@ -186,6 +346,10 @@ export class FakeDrivePort implements DriveSourcePort {
       .filter(([k]) => k.startsWith(`${source}\u0000`))
       .map(([, v]) => v.key)
       .sort()
+  }
+  /** Test helper: every write call whose key sits under `prefix`. */
+  writesUnder(prefix: string): DriveCall[] {
+    return this.calls.filter((c) => c.key === prefix || c.key.startsWith(`${prefix}/`))
   }
 }
 
@@ -218,8 +382,29 @@ export const pull = (over: Partial<TokenPull> & Pick<TokenPull, 'number' | 'titl
   ...over,
 })
 
-/** A small repo: main, an active feature branch, a quiet branch, two PRs and docs. */
+/**
+ * A small repo: main, an active feature branch, a quiet branch, two PRs and a
+ * default branch with docs, code, a PNG, a submodule, a symlink, a Git LFS
+ * pointer, a path Drive can't hold and one file over the 20 MB limit — so a
+ * first sync exercises every skip reason (plan/github-drive-full-mirror.md §8).
+ */
 export function sampleRepo(): FakeRepoData {
+  const files = [
+    fakeFile('README.md', '# Shop\n\nHello.\n'),
+    fakeFile('docs/guide/intro.mdx', '# Intro\n'),
+    fakeFile('docs/huge.md', `${'# Big\n\n'}${'x'.repeat(300 * 1024)}`),
+    fakeFile('src/index.ts', 'export const shop = 1\n'),
+    fakeFile('src/util/format.ts', 'export const money = (n: number) => `€${n.toFixed(2)}`\n'),
+    fakeFile('package.json', '{"name":"shop","version":"1.2.0"}\n'),
+    fakeFile('assets/logo.png', PNG_BYTES),
+    fakeFile('assets/video.mp4', LFS_POINTER),
+    fakeFile('docs/weird\\name.md', '# A path Drive cannot hold\n'),
+    fakeFile('docs/top.md', '../README.md', { mode: '120000' }), // a symlink
+  ]
+  const entries: FakeTreeEntry[] = files.map((f) => f.entry)
+  // A submodule gitlink (no size) and one file over the 20 MB per-file limit (never fetched).
+  entries.push({ path: 'vendor/lib', sha: '5ub5h45h'.padEnd(40, 'f'), size: null, mode: '160000' })
+  entries.push({ path: 'media/iso.bin', sha: 'f'.padEnd(40, '0'), size: 21 * 1024 * 1024, mode: '100644' })
   return {
     repo: {
       id: 4242,
@@ -256,15 +441,7 @@ export function sampleRepo(): FakeRepoData {
         mergedAt: T('2026-11-05T10:00:00Z'),
       }),
     ],
-    tree: {
-      truncated: false,
-      entries: [
-        { path: 'README.md', sha: 'r1', size: 20 },
-        { path: 'docs/guide/intro.mdx', sha: 'g1', size: 30 },
-        { path: 'src/index.ts', sha: 's1', size: 999 },
-        { path: 'docs/huge.md', sha: 'h1', size: 300 * 1024 },
-      ],
-    },
-    blobs: { r1: '# Shop\n\nHello.\n', g1: '# Intro\n' },
+    tree: { truncated: false, entries },
+    blobs: Object.fromEntries(files.map((f) => [f.entry.sha, f.bytes])),
   }
 }
