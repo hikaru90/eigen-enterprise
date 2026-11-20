@@ -22,6 +22,78 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - **Running:** three worktree streams, each on milestone 1 (P1 PDF viewer, D1 DOCX faithful view, S1 PPTX faithful view), each with agent text extraction.
 - **Next:** review and merge each stream, run the e2e journey per format, release to the box, then milestone 2 per format.
 
+## 2026-11-20 — Company brain milestones CB0–CB16 (owner: "Yes, milestones")
+
+- **Plan:** `plan/phase-company-brain.md` §10. No code changed.
+- **Stages and milestones:**
+  - **0 (measure):** CB0, the north-star eval with Knows/Does/Keeps suites, run first.
+  - **1 (foundations):**
+    - CB1 eigenInference and the slots;
+    - CB1b self-hosted boxes rent it (cloud repo);
+    - CB2 Jev in the gateway, shadow first;
+    - CB3 the brain acts as the person;
+    - CB4 registry-first parity test with a human-only list and a debt list.
+  - **2 (knowledge model):** CB5 company graph → CB6 reporting contract → CB7 context on every turn.
+  - **3 (modules move in, parallel):** CB8 Drive, CB9 messages, CB10 calls, CB11 mail, CB12 calendar/contacts/tasks, CB13 website/brand/members/settings, CB14 Memory onto the dial.
+  - **4:** CB15 background runs.
+  - **5:** CB16 decks, on the PPTX stream of `plan/phase-office-files.md`.
+- **Decisions:**
+  - The curated pool is one repo file, `src/lib/server/llm/model-pool.ts`.
+  - The status of a decision kind changes only by commit, after reviewing `decision_log`.
+  - The parity debt list may only shrink.
+  - Self-hosted boxes renting eigenInference builds on the control plane's existing Stripe + OpenRouter key provisioning.
+- **Announced (no silent removals), each in its milestone:**
+  - CB1 removes the platform EUrouter path, the service-account env pairs and the free-text provider fields.
+  - CB3 removes the admin reach non-admins have through the brain.
+  - CB11 reverses mail's exclusion from the brain.
+  - CB14 replaces the September memory copy.
+- **Next:** CB0 + CB1 + CB3 + CB4 start in parallel.
+
+## 2026-11-20 — Company brain concept agreed (owner: "take a meta view on the thing and then discuss with me how the app should conceptually work")
+
+- **Concept:** `plan/phase-company-brain.md`, rewritten from the fix list into the concept. Milestones follow once the owner confirms. No code changed.
+- **Decisions (owner, in discussion):**
+  - **Graph + vectors.** Activity edges (metadata) are visible to the team by default; content nodes carry access rights.
+  - **A dial on every artifact:** Private / Shared with some / Shared with everyone.
+    - Authored work starts private; communication starts with its own audience.
+    - Private = owner only, with no override.
+    - The owner of something the AI created is the person who prompted it.
+  - **Others never read a person's thoughts on demand.** A private thought reaches someone else only with its owner's approval.
+  - **Meta level** (independent of the dial): Jev sorts what the content is about into shared, abstract (shapes understanding, never shown or quoted) or private.
+  - **Observation, not judgment** for anything said about a person.
+  - **Decision shape picks the engine:** Jev for closed sets, the LLM only writes. Rolled out shadow → enforce per kind.
+  - **eigenInference:**
+    - one toggle, on by default; one service account on paid/hosted plans; BYOK stays possible;
+    - role-slot dropdowns from a curated pool: chat, STT, TTS, decision = Jev.
+  - **One agent**, always acting as a specific person, with sessions per person and per conversation. It is called **the company brain** and has no other name; eigenInference is the inference-rental program, not the agent.
+  - **EigenMesh is the parent, used as a clean room.** No file sync; the eE memory code gets replaced piece by piece.
+- **Superseded:** email's exclusion from the brain (`plan/email-inbox.md:78`). Mail joins with its mailbox audience.
+- **AGENTS.md:** three guardrails added (decision shape picks the engine; no UI-only actions; observation, not judgment). The heuristics line now says "a model" instead of "LLM".
+- **Proposed, open:** embeddings as a fifth, fixed slot (changing it means re-indexing).
+
+## 2026-11-20 — Company brain assessed and planned (owner: "the app should be able to do everything by talking to an agent … assess the situation, plan for it")
+
+- **Plan (draft):** `plan/phase-company-brain.md`, milestones B0–B8 and decisions D1–D10. No code changed.
+- **Found:**
+  - **G0:** Memory ingest fails on production now. Ony Yan (Contribute 19cf0d97) gets "Platform EUrouter not configured: set LLM_BASE_URL".
+  - **G1:** The agent reads Memory as principal `orchestrator`, so it sees no one's thoughts.
+  - **G2:** The agent runs with admin roles for every member.
+  - **G3:** Nothing but personal thoughts reaches the brain. No module ingests its data.
+  - **G4:** The prompt carries no company, member or brand context.
+  - **G5:** Tool parity is partial (email inbox, calendar writes, posting messages, Drive upload/search, memory edits are UI-only).
+  - **G6:** `startBackgroundRun` has no caller.
+  - **G7:** The brain is eigen `897ff29a` (2026-09-03), never synced. 109 eigen brain commits since.
+  - **G8:** Decks don't exist, and pptx/Drive PDFs can't be read.
+- **Correction on record:** `plan/durable-findings.md` still says `builtin-json` is the engine of record. That is stale: durable is the only engine.
+- **Decisions proposed (owner can veto):**
+  - The agent acts as the asking member (delegated principal). This is an announced change: non-admins lose admin reach via chat.
+  - One permission-checked knowledge index fed by a module manifest contract.
+  - A parity test for every UI mutation.
+  - EigenMesh synced file by file onto eE's gateway, with Jev later and never a boot requirement.
+  - Decks as a Drive document type rendered with brand tokens.
+- **Open owner questions:** Q1 thoughts private by default with "share with company"? Q2 email in the brain for mailbox readers (reverses `plan/email-inbox.md:78`)? Q3 decks in this phase?
+- **Next:** B0 (production ingest), then B1 (delegated principal), then the parallel lanes B3/B5/B6/B7.
+
 ## 2026-11-19 — Contribute board round: 13 proposals built in parallel (owner: "look at cerberus mcp contribute tab. make an implementation plan, start subagents")
 
 Plan and triage: `plan/contribute-round-2026-11-19.md`. One worktree per workstream, merged into main by the orchestrator.

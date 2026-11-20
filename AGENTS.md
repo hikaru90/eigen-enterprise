@@ -28,7 +28,10 @@
 - **TDD:** tests first for features/fixes (vitest unit; Playwright headed for e2e). No weakening assertions to green a build — fix root causes, never work around them.
 - **No fallbacks / no silent degradation:** no `|| 'localhost'` default envs, no bypass paths, no temporary shims. Fail loud with explicit errors.
 - **No silent removals:** removing or replacing working functionality (a workflow, an option, a page, a tool) is announced to the owner BEFORE it ships — in the session summary and `plan/progress.md`. Regressions of working flows are treated as bugs, not refactor side effects.
-- **No string heuristics for meaning:** never regex/keyword/substring logic to decide semantic anything (classification, routing, entity typing). Always LLM + ontology + JSON schema. Post-LLM code may only parse/validate/persist.
+- **No string heuristics for meaning:** never regex/keyword/substring logic to decide semantic anything (classification, routing, entity typing). Always a model + ontology + schema. Post-model code may only parse/validate/persist.
+- **Decision shape picks the engine (owner maxim, 2026-11-20):** an answer from a closed set (yes/no, category, band, visibility, observation vs judgment, one of N) is a **decision-model (Jev)** question; new text is the LLM's job, and the LLM then only writes, never also decides; vectors → embedding model; structure → no model. Mixed steps are split. See `plan/phase-company-brain.md` §5.
+- **No UI-only actions:** everything clickable is a kernel registry action first (so CLI + MCP + the agent get it); the UI is a client of the registry.
+- **Observation, not judgment:** what the brain shares about a person is what a camera could have observed ("emailed Acme 5×"), never an evaluation ("only emailed 5 people").
 - **Svelte:** no `$effect` for control flow — explicit events, handlers, `onMount`. `$derived` for pure view state is fine.
 - **LLM middleware:** all model calls go through the gateway (`src/lib/server/llm/`) — never direct provider calls. Cost tracking stays attached.
 - **Secrets:** never commit; never log raw credentials (redact `*key`, `*token`, `*secret`, `password`).
