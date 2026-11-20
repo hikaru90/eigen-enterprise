@@ -3,6 +3,7 @@ import { pluginOn } from '$lib/server/plugins/background'
 import { tickContributeShare } from './contribute-share-tick'
 import { tickManagedDomains } from './domains-tick'
 import { drainUserJobQueue } from './drain'
+import { tickDriveBlobs } from './drive-blobs-tick'
 import { tickEmailPlatform } from './email-tick'
 import { ensureOvernightJobsEnqueued } from './ensure-overnight'
 import { recoverStaleRunningJobs } from './recover-stale-running'
@@ -39,6 +40,8 @@ async function runTickBody(): Promise<TickGlobalJobQueueResult> {
     await tickManagedDomains()
   }
   if (await pluginOn('repos', 'GitHub repo sync')) await tickRepos()
+  // Drive is a system module: its unreferenced-blob sweep runs hourly, plugin or not.
+  await tickDriveBlobs()
   // Contribute is a system module (always on); sharing has its own owner switch in Settings → Company.
   await tickContributeShare()
   const hasActivity = enqueued > 0 || drain.claimed > 0 || recoveredStale > 0

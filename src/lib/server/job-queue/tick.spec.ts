@@ -29,6 +29,9 @@ vi.mock('./domains-tick', () => ({
 vi.mock('./repos-tick', () => ({
   tickRepos: vi.fn(async () => {}),
 }))
+vi.mock('./drive-blobs-tick', () => ({
+  tickDriveBlobs: vi.fn(async () => {}),
+}))
 vi.mock('./contribute-share-tick', () => ({
   tickContributeShare: shareTickMock,
 }))
