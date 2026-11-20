@@ -182,6 +182,7 @@ export function applyOp(pkg: OpcPackage, op: DeckOp): OpResult {
     rollback(rec)
     throw err
   }
+  dropUnsaved(rec)
   const parts: PartState[] = []
   const touched: string[] = []
   for (const was of rec.before.values()) {
@@ -195,7 +196,11 @@ export function applyOp(pkg: OpcPackage, op: DeckOp): OpResult {
 
 function rollback(rec: Rec) {
   restore(rec.pkg, [...rec.before.values()])
-  // Parts read (and maybe edited in memory) but never saved: drop their edited DOM.
+  dropUnsaved(rec)
+}
+
+/** Parts read (and maybe edited in memory) but not saved: their cached DOM goes, the bytes stay. */
+function dropUnsaved(rec: Rec) {
   for (const part of rec.read) if (rec.pkg.has(part) && !rec.before.has(part.toLowerCase())) rec.pkg.setBytes(part, rec.pkg.bytes(part))
 }
 
@@ -356,8 +361,10 @@ function slideOf(deck: Deck, part: string): Slide {
 
 type Found = { slide: Slide; node: ShapeNode; el: Element }
 
-function shapeOf(deck: Deck, slidePart: string, id: string): Found {
+function shapeOf(rec: Rec, deck: Deck, slidePart: string, id: string): Found {
   const slide = slideOf(deck, slidePart)
+  // Its DOM may be edited: a failed or empty operation drops those edits again (see applyOp).
+  rec.read.add(slide.part)
   const hits = [...walkShapes(slide.shapes)].filter((s) => s.id === id && s.kind !== 'other')
   if (hits.length === 0) throw new PptxError(`Slide ${slide.number} has no shape ${id}.`)
   if (hits.length > 1) throw new PptxError(`Slide ${slide.number} has more than one shape with id ${id}; it can't be edited safely.`)
@@ -498,7 +505,7 @@ function writeXfrm(el: Element, current: Xfrm | GroupXfrm, patch: XfrmPatch) {
 
 function setXfrm(rec: Rec, op: Extract<DeckOp, { kind: 'setXfrm' }>) {
   const deck = deckOf(rec)
-  const { slide, node, el } = shapeOf(deck, op.slide, op.shape)
+  const { slide, node, el } = shapeOf(rec, deck, op.slide, op.shape)
   const current = effectiveXfrm(deck, slide, node)
   if (!current) throw new PptxError(`${node.name || 'The shape'} has no position to change.`)
   for (const t of twins(el)) writeXfrm(t, current, op.xfrm)
@@ -510,7 +517,7 @@ function setXfrm(rec: Rec, op: Extract<DeckOp, { kind: 'setXfrm' }>) {
 // Shapes
 
 function arrange(rec: Rec, op: Extract<DeckOp, { kind: 'arrange' }>) {
-  const { slide, el } = shapeOf(deckOf(rec), op.slide, op.shape)
+  const { slide, el } = shapeOf(rec, deckOf(rec), op.slide, op.shape)
   const slot = slotOf(el)
   const parent = slot.parentNode as Element
   const slots = shapeSlots(parent)
@@ -523,7 +530,7 @@ function arrange(rec: Rec, op: Extract<DeckOp, { kind: 'arrange' }>) {
 }
 
 function deleteShape(rec: Rec, op: Extract<DeckOp, { kind: 'deleteShape' }>) {
-  const { slide, el } = shapeOf(deckOf(rec), op.slide, op.shape)
+  const { slide, el } = shapeOf(rec, deckOf(rec), op.slide, op.shape)
   const slot = slotOf(el)
   slot.parentNode!.removeChild(slot)
   rec.save(slide.part, el.ownerDocument!)
@@ -535,7 +542,7 @@ const DUPLICATE_OFFSET = 182880
 
 function duplicateShape(rec: Rec, op: Extract<DeckOp, { kind: 'duplicateShape' }>) {
   const deck = deckOf(rec)
-  const { slide, node, el } = shapeOf(deck, op.slide, op.shape)
+  const { slide, node, el } = shapeOf(rec, deck, op.slide, op.shape)
   const doc = el.ownerDocument!
   const slot = slotOf(el)
   const copy = slot.cloneNode(true) as Element
@@ -623,7 +630,7 @@ function shownText(runEl: Element, slide: Slide): string {
   return a(runEl, 't')?.textContent ?? ''
 }
 
-function textBodyOf(found: Found): { body: Element; paragraphs: Element[] } {
+function textBodyOf(found: Found): { body: Element; paragraphs: Element[]; created: boolean } {
   if (found.node.kind !== 'sp' || found.node.connector) throw new PptxError(`${found.node.name || 'This shape'} has no text.`)
   let body = p(found.el, 'txBody')
   if (!body) {
@@ -631,8 +638,9 @@ function textBodyOf(found: Found): { body: Element; paragraphs: Element[] } {
     body = fragment(doc, '<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="en-US"/></a:p></p:txBody>')
     const ext = elementKids(found.el).find((k) => k.namespaceURI === NS.p && k.localName === 'extLst')
     found.el.insertBefore(body, ext ?? null)
+    return { body, paragraphs: children(body, NS.a, 'p'), created: true }
   }
-  return { body, paragraphs: children(body, NS.a, 'p') }
+  return { body, paragraphs: children(body, NS.a, 'p'), created: false }
 }
 
 function rPrFrom(source: Element | null, doc: XMLDocument): Element | null {
@@ -651,7 +659,7 @@ function rPrFrom(source: Element | null, doc: XMLDocument): Element | null {
  * exactly its old runs, unchanged, stays the same element; the others are
  * rebuilt from the paragraph and runs they came from (properties cloned).
  */
-function writeParagraphs(body: Element, old: Element[], edits: ParagraphEdit[], slide: Slide) {
+function writeParagraphs(body: Element, old: Element[], edits: ParagraphEdit[], slide: Slide): boolean {
   const doc = body.ownerDocument!
   const oldRuns = old.map(runEls)
   const runEl = (ref: RunRef | null) => (ref ? (oldRuns[ref.p]?.[ref.r] ?? null) : null)
@@ -707,18 +715,20 @@ function writeParagraphs(body: Element, old: Element[], edits: ParagraphEdit[], 
     if (end) pEl.appendChild(end.cloneNode(true))
     out.push(pEl)
   }
+  // Nothing changed: leave the part alone (saving would re-serialize it).
+  if (out.length === old.length && out.every((el, i) => el === old[i])) return false
   for (const o of old) if (!reused.has(o)) body.removeChild(o)
   // Kept paragraphs move into the new order; new ones go in between.
   const ext = elementKids(body).find((k) => k.namespaceURI === NS.a && k.localName === 'extLst') ?? null
   for (const el of out) body.insertBefore(el, ext)
+  return true
 }
 
 function setText(rec: Rec, op: Extract<DeckOp, { kind: 'setText' }>) {
-  const found = shapeOf(deckOf(rec), op.slide, op.shape)
-  const { body, paragraphs } = textBodyOf(found)
+  const found = shapeOf(rec, deckOf(rec), op.slide, op.shape)
+  const { body, paragraphs, created } = textBodyOf(found)
   for (const e of op.paragraphs) for (const r of e.runs) if (r.kind === 'text' && /[\r\n]/.test(r.text)) throw new PptxError('A text run cannot contain a line break; use a break run.')
-  writeParagraphs(body, paragraphs, op.paragraphs, found.slide)
-  rec.save(found.slide.part, found.el.ownerDocument!)
+  if (writeParagraphs(body, paragraphs, op.paragraphs, found.slide) || created) rec.save(found.slide.part, found.el.ownerDocument!)
   return null
 }
 
@@ -760,7 +770,7 @@ function endPropsOf(pEl: Element): Element {
 }
 
 function formatRuns(rec: Rec, op: Extract<DeckOp, { kind: 'formatRuns' }>) {
-  const found = shapeOf(deckOf(rec), op.slide, op.shape)
+  const found = shapeOf(rec, deckOf(rec), op.slide, op.shape)
   const { paragraphs } = textBodyOf(found)
   const range = op.range
   if (range && cmpPos(range.start, range.end) >= 0) return null
@@ -828,7 +838,7 @@ function pPrOf(pEl: Element): Element {
 }
 
 function formatParagraphs(rec: Rec, op: Extract<DeckOp, { kind: 'formatParagraphs' }>) {
-  const found = shapeOf(deckOf(rec), op.slide, op.shape)
+  const found = shapeOf(rec, deckOf(rec), op.slide, op.shape)
   const { paragraphs } = textBodyOf(found)
   const picked = op.paragraphs ?? paragraphs.map((_, i) => i)
   const targets = picked.map((i) => {
@@ -1096,8 +1106,7 @@ function setNotes(rec: Rec, op: Extract<DeckOp, { kind: 'setNotes' }>) {
     const first = runs.findIndex((r) => r.localName === 'r')
     return { from: k, runs: line ? [{ kind: 'text', text: line, from: k !== null && first >= 0 ? { p: k, r: first } : null }] : [] }
   })
-  writeParagraphs(body, old, edits, slide)
-  rec.save(notesPart, doc)
+  if (writeParagraphs(body, old, edits, slide) || rec.before.has(notesPart.toLowerCase())) rec.save(notesPart, doc)
   return null
 }
 
