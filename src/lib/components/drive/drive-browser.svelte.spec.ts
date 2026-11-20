@@ -117,6 +117,19 @@ describe('drive-browser: the full-width listing', () => {
       .toHaveAttribute('href', '/drive/file/source-1999')
   }, 15_000)
 
+  it('new search results start again at their first page', async () => {
+    const many = (prefix: string, n: number) =>
+      Array.from({ length: n }, (_, i) => ({ ...image, id: `${prefix}-${i}`, name: `${prefix}-${String(i).padStart(4, '0')}.txt`, mime: 'text/plain' }))
+    const base = { folderId: 'source-root', root: { label: 'GitHub', href: '/drive/folder/source-root' }, items: [], canEdit: false }
+    const { rerender } = render(DriveBrowser, { props: { ...base, query: 'a', results: many('a', 450) } })
+    await page.getByTestId('drive-page-next').click()
+    await page.getByTestId('drive-page-next').click()
+    await expect.element(page.getByTestId('drive-page-summary')).toHaveTextContent('401–450 of 450')
+    await rerender({ ...base, query: 'b', results: many('b', 900) })
+    await expect.element(page.getByTestId('drive-page-summary')).toHaveTextContent('1–200 of 900')
+    await expect.element(page.getByTestId('drive-row').first()).toHaveAttribute('data-name', 'b-0000.txt')
+  })
+
   it('shows the month and year each file is from, and what kind of date it is', async () => {
     const photo = { ...image, id: 'i2', name: 'harbour.jpg', dated: { at: '2019-03-14T09:30:00.000Z', kind: 'taken' as const } }
     const upload = { ...image, id: 'i3', name: 'notes.png', dated: { at: '2026-11-04T10:00:00.000Z', kind: 'uploaded' as const } }

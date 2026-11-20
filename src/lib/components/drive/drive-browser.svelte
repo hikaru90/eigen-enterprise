@@ -119,10 +119,12 @@
   let failures = $state<UploadFailure[]>([])
   let search = $state(query)
   let view = $state<View>('list')
-  let requestedPage = $state(1)
+  /** The page asked for, and the listing it was asked for in: new results (or a new folder) start at page 1. */
+  let paging = $state.raw<{ of: Listed[] | null; page: number }>({ of: null, page: 1 })
 
   const shown = $derived(results ?? items)
   const pageCount = $derived(Math.max(1, Math.ceil(shown.length / PAGE_SIZE)))
+  const requestedPage = $derived(paging.of === shown ? paging.page : 1)
   const currentPage = $derived(Math.min(requestedPage, pageCount))
   const firstShown = $derived((currentPage - 1) * PAGE_SIZE)
   const visible = $derived(shown.slice(firstShown, firstShown + PAGE_SIZE))
@@ -153,11 +155,11 @@
   }
 
   function previousPage() {
-    requestedPage = Math.max(1, currentPage - 1)
+    paging = { of: shown, page: Math.max(1, currentPage - 1) }
   }
 
   function nextPage() {
-    requestedPage = Math.min(pageCount, currentPage + 1)
+    paging = { of: shown, page: Math.min(pageCount, currentPage + 1) }
   }
 
   const folderHref = (id: string) => resolve(`/drive/folder/${id}`)
@@ -333,6 +335,7 @@
 
   function submitSearch(event: SubmitEvent) {
     event.preventDefault()
+    paging = { of: null, page: 1 }
     const q = search.trim()
     void goto(q ? `${hereHref()}?q=${encodeURIComponent(q)}` : hereHref(), { keepFocus: true })
   }
