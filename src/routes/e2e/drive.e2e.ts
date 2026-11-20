@@ -1,7 +1,7 @@
 import { deflateSync } from 'node:zlib'
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import postgres from 'postgres'
-import { completeProfileViaApi, profileNames, registerUser } from './test-helpers'
+import { completeProfileViaApi, gotoHydrated, profileNames, registerUser } from './test-helpers'
 
 /**
  * Drive core (plan/phase-workspace.md D1) with TWO members in two browser
@@ -123,7 +123,7 @@ test('Drive: two members — create, upload, share view → edit, preview, renam
 
   // A: Drive from the nav, one page frame, storage shown. (Not from `/`: a new
   // admin's first visit there is the full-screen welcome tour, without the shell.)
-  await a.goto('/messages')
+  await gotoHydrated(a, '/messages')
   await a.getByTestId('shell-sidebar').getByTestId('shell-nav-drive').click()
   await expect(a).toHaveURL(/\/drive$/)
   await expect(a.getByTestId('drive-tab-mine')).toHaveAttribute('aria-current', 'page')
@@ -167,24 +167,24 @@ test('Drive: two members — create, upload, share view → edit, preview, renam
   await expect
     .poll(async () => (await a.request.put(`/api/drive/files/${notesId}/text`, { data: { content: '# Kickoff\n\n- **Scope** agreed\n- Budget in the CSV\n' } })).status(), { timeout: 60_000 })
     .toBe(200)
-  await a.goto(notesUrl)
+  await gotoHydrated(a, notesUrl)
   await expect(a.getByTestId('drive-markdown').locator('h1')).toHaveText('Kickoff')
   await expect(a.getByTestId('drive-revision')).toHaveCount(1)
   await a.screenshot({ path: `${SHOTS}/01-owner-notes-preview.png`, fullPage: true })
 
-  await a.goto(folderUrl)
+  await gotoHydrated(a, folderUrl)
   await expect(a.getByTestId('drive-row')).toHaveCount(3)
   await a.screenshot({ path: `${SHOTS}/02-owner-projects-folder.png`, fullPage: true })
 
   // B sees nothing yet; the folder itself is a 404 for them.
-  await b.goto('/drive/shared')
+  await gotoHydrated(b, '/drive/shared')
   // (Not "empty": public channels' attachment folders — Messages / #channel, C2 — are shared with everyone.)
   await expect(b.getByRole('heading', { name: 'Drive', exact: true })).toBeVisible()
   await expect(row(b, 'Projects')).toHaveCount(0)
   expect((await b.request.get(`/api/drive/files/${notesId}/text`)).status()).toBe(404)
 
   // A shares Projects with B: view.
-  await a.goto('/drive')
+  await gotoHydrated(a, '/drive')
   await row(a, 'Projects').getByTestId('drive-share').click()
   await expect(a.getByTestId('drive-share-dialog')).toBeVisible()
   await a.getByTestId('drive-share-pick').selectOption(`user:${memberB.id}`)
@@ -197,7 +197,7 @@ test('Drive: two members — create, upload, share view → edit, preview, renam
   await expect(a.getByTestId('drive-share-dialog')).toBeHidden()
 
   // B: Shared with me → Projects → previews; no rename/trash/share offered.
-  await b.goto('/drive/shared')
+  await gotoHydrated(b, '/drive/shared')
   await expect(b.getByTestId('drive-tab-shared')).toHaveAttribute('aria-current', 'page')
   await expect(row(b, 'Projects')).toBeVisible()
   await expect(row(b, 'Projects').getByTestId('drive-rename')).toHaveCount(0)
@@ -241,7 +241,7 @@ test('Drive: two members — create, upload, share view → edit, preview, renam
   expect((await b.request.put(`/api/drive/files/${notesId}/text`, { data: { content: 'x' } })).status()).toBe(403)
 
   // A raises B to edit.
-  await a.goto('/drive')
+  await gotoHydrated(a, '/drive')
   // Right after a navigation the page may still be hydrating: retry the click until the dialog is up.
   await expect(async () => {
     await row(a, 'Projects').getByTestId('drive-share').click()
@@ -253,7 +253,7 @@ test('Drive: two members — create, upload, share view → edit, preview, renam
   await expect(a.getByTestId('drive-share-dialog')).toBeHidden()
 
   // B can now rename notes.md.
-  await b.goto(folderUrl)
+  await gotoHydrated(b, folderUrl)
   await row(b, 'notes.md').getByTestId('drive-rename').click()
   await nameDialog(b, renamed)
   await expect(b.getByTestId('drive-notice')).toHaveText(`Renamed to “${renamed}”.`)
@@ -262,7 +262,7 @@ test('Drive: two members — create, upload, share view → edit, preview, renam
   await b.screenshot({ path: `${SHOTS}/09-member-renamed-with-edit.png`, fullPage: true })
 
   // A sees B's rename; search finds it.
-  await a.goto(`/drive?q=${encodeURIComponent(renamed.slice(0, -3))}`)
+  await gotoHydrated(a, `/drive?q=${encodeURIComponent(renamed.slice(0, -3))}`)
   await expect(row(a, renamed)).toBeVisible()
   await a.screenshot({ path: `${SHOTS}/10-owner-search.png`, fullPage: true })
 

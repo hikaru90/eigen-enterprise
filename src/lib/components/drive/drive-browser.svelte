@@ -684,131 +684,139 @@
         {/if}
       </div>
     {:else if view === 'list'}
-      <table class="w-full table-fixed text-sm" data-testid="drive-list">
-        <thead class="sticky top-0 z-10 bg-background text-left text-xs text-muted-foreground">
-          <tr class="border-b border-border">
-            <th class="px-3 py-2 font-medium">Name</th>
-            <th class="hidden w-48 px-3 py-2 font-medium lg:table-cell">Owner</th>
-            <th class="hidden w-32 px-3 py-2 font-medium sm:table-cell"
-              >{trashView ? 'Trashed' : 'Modified'}</th
-            >
-            <th
-              class="hidden w-36 px-3 py-2 font-medium md:table-cell"
-              title="When the file is from: taken or created as the file records it, else when it was uploaded"
-              >From</th
-            >
-            <th class="hidden w-24 px-3 py-2 font-medium md:table-cell">Size</th>
-            <th class="w-52 px-3 py-2"><span class="sr-only">Actions</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each shown as item (item.type + item.id)}
-            {@const kind = driveItemKind(item)}
-            {@const Icon = ICONS[kind]}
-            {@const desc = descOf(item)}
-            <tr
-              class="group border-b border-border/60 last:border-0 hover:bg-muted/50 {dropFolder?.id ===
-              item.id
-                ? 'bg-primary/10 outline-2 -outline-offset-2 outline-primary'
-                : ''}"
-              data-testid="drive-row"
-              data-name={item.name}
-              data-type={item.type}
-              data-drop-folder={takesDrops(item) ? item.id : undefined}
-              draggable={draggable(item) ? 'true' : undefined}
-              ondragstart={(e) => draggable(item) && onRowDragStart(e, item)}
-              ondragend={onRowDragEnd}
-            >
-              <td class="px-3 py-2">
-                <span class="flex min-w-0 items-center gap-2.5">
-                  <span
-                    class="flex size-7 shrink-0 items-center justify-center rounded-md {TILE[kind]}"
-                    title={KIND_LABEL[kind]}
-                  >
-                    <Icon class="size-4" aria-hidden="true" />
-                  </span>
-                  <span class="sr-only">{KIND_LABEL[kind]}:</span>
-                  {#if trashView}
-                    <span class="truncate">{item.name}</span>
-                  {:else}
-                    <a
-                      class="truncate font-medium hover:underline"
-                      href={openHref(item)}
-                      data-testid="drive-open">{item.name}</a
-                    >
-                  {/if}
-                  {#if dropFolder?.id === item.id}
-                    {@render dropBadge(item)}
-                  {/if}
-                  {#if desc?.readOnlyFrom}
-                    <span
-                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-xs text-muted-foreground"
-                      title={`Comes from ${desc.readOnlyFrom}; change it there`}
-                      data-testid="drive-readonly-badge"
-                    >
-                      <LockIcon class="size-3" aria-hidden="true" />
-                      {desc.readOnlyFrom} · read-only
-                    </span>
-                  {/if}
-                  {#if desc?.shared}
-                    <span
-                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-xs text-muted-foreground"
-                      title="Shared with others"
-                      data-testid="drive-shared-badge"
-                    >
-                      <UsersIcon class="size-3" aria-hidden="true" /> Shared
-                    </span>
-                  {/if}
-                  {#if archivedMark(item)}
-                    <span
-                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-xs text-muted-foreground"
-                      title={item.archivedAt ? 'Archived' : 'In an archived folder'}
-                      data-testid="drive-archived-badge"
-                    >
-                      <ArchiveIcon class="size-3" aria-hidden="true" /> Archived
-                    </span>
-                  {/if}
-                </span>
-              </td>
-              <td class="hidden px-3 py-2 lg:table-cell">
-                {#if desc?.ownerName}
-                  <span class="flex min-w-0 items-center gap-2" data-testid="drive-owner">
-                    <span
-                      class="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-foreground/80"
-                      aria-hidden="true">{initialsOf(desc.ownerName)}</span
-                    >
-                    <span class="truncate text-muted-foreground">{desc.ownerName}</span>
-                  </span>
-                {:else}
-                  <span class="text-muted-foreground">—</span>
-                {/if}
-              </td>
-              <td class="hidden px-3 py-2 text-muted-foreground sm:table-cell">
-                <time datetime={new Date(whenOf(item)).toISOString()} title={fullWhen(whenOf(item))}
-                  >{shortWhen(whenOf(item))}</time
-                >
-              </td>
-              <td class="hidden px-3 py-2 text-muted-foreground md:table-cell">
-                {#if item.dated}
-                  {@render dated(item.dated)}
-                {:else}
-                  —
-                {/if}
-              </td>
-              <td class="hidden px-3 py-2 text-muted-foreground tabular-nums md:table-cell"
-                >{item.type === 'file' ? formatSize(item.size) : '—'}</td
+      <!-- Optional columns follow the list's own width (container queries), not the window's:
+           beside the nav and the Drive sections a 1280px window leaves ~800px, and fixed
+           columns sized for the window squeezed the name to nothing. The name keeps ≥ ~14rem. -->
+      <div class="@container">
+        <table class="w-full table-fixed text-sm" data-testid="drive-list">
+          <thead class="sticky top-0 z-10 bg-background text-left text-xs text-muted-foreground">
+            <tr class="border-b border-border">
+              <th class="px-3 py-2 font-medium">Name</th>
+              <th class="hidden w-48 px-3 py-2 font-medium @5xl:table-cell">Owner</th>
+              <th class="hidden w-32 px-3 py-2 font-medium @xl:table-cell"
+                >{trashView ? 'Trashed' : 'Modified'}</th
               >
-              <td class="px-3 py-1.5 text-right">
-                <span
-                  class="inline-flex transition-opacity md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100"
-                >
-                  <DriveItemActions {item} {trashView} {run} />
-                </span>
-              </td>
+              <th
+                class="hidden w-36 px-3 py-2 font-medium @4xl:table-cell"
+                title="When the file is from: taken or created as the file records it, else when it was uploaded"
+                >From</th
+              >
+              <th class="hidden w-24 px-3 py-2 font-medium @2xl:table-cell">Size</th>
+              <th class="w-52 px-3 py-2"><span class="sr-only">Actions</span></th>
             </tr>
-          {/each}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {#each shown as item (item.type + item.id)}
+              {@const kind = driveItemKind(item)}
+              {@const Icon = ICONS[kind]}
+              {@const desc = descOf(item)}
+              <tr
+                class="group border-b border-border/60 last:border-0 hover:bg-muted/50 {dropFolder?.id ===
+                item.id
+                  ? 'bg-primary/10 outline-2 -outline-offset-2 outline-primary'
+                  : ''}"
+                data-testid="drive-row"
+                data-name={item.name}
+                data-type={item.type}
+                data-drop-folder={takesDrops(item) ? item.id : undefined}
+                draggable={draggable(item) ? 'true' : undefined}
+                ondragstart={(e) => draggable(item) && onRowDragStart(e, item)}
+                ondragend={onRowDragEnd}
+              >
+                <td class="px-3 py-2">
+                  <span class="flex min-w-0 items-center gap-2.5">
+                    <span
+                      class="flex size-7 shrink-0 items-center justify-center rounded-md {TILE[
+                        kind
+                      ]}"
+                      title={KIND_LABEL[kind]}
+                    >
+                      <Icon class="size-4" aria-hidden="true" />
+                    </span>
+                    <span class="sr-only">{KIND_LABEL[kind]}:</span>
+                    {#if trashView}
+                      <span class="truncate">{item.name}</span>
+                    {:else}
+                      <a
+                        class="truncate font-medium hover:underline"
+                        href={openHref(item)}
+                        data-testid="drive-open">{item.name}</a
+                      >
+                    {/if}
+                    {#if dropFolder?.id === item.id}
+                      {@render dropBadge(item)}
+                    {/if}
+                    {#if desc?.readOnlyFrom}
+                      <span
+                        class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-xs text-muted-foreground"
+                        title={`Comes from ${desc.readOnlyFrom}; change it there`}
+                        data-testid="drive-readonly-badge"
+                      >
+                        <LockIcon class="size-3" aria-hidden="true" />
+                        {desc.readOnlyFrom} · read-only
+                      </span>
+                    {/if}
+                    {#if desc?.shared}
+                      <span
+                        class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-xs text-muted-foreground"
+                        title="Shared with others"
+                        data-testid="drive-shared-badge"
+                      >
+                        <UsersIcon class="size-3" aria-hidden="true" /> Shared
+                      </span>
+                    {/if}
+                    {#if archivedMark(item)}
+                      <span
+                        class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-xs text-muted-foreground"
+                        title={item.archivedAt ? 'Archived' : 'In an archived folder'}
+                        data-testid="drive-archived-badge"
+                      >
+                        <ArchiveIcon class="size-3" aria-hidden="true" /> Archived
+                      </span>
+                    {/if}
+                  </span>
+                </td>
+                <td class="hidden px-3 py-2 @5xl:table-cell">
+                  {#if desc?.ownerName}
+                    <span class="flex min-w-0 items-center gap-2" data-testid="drive-owner">
+                      <span
+                        class="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-foreground/80"
+                        aria-hidden="true">{initialsOf(desc.ownerName)}</span
+                      >
+                      <span class="truncate text-muted-foreground">{desc.ownerName}</span>
+                    </span>
+                  {:else}
+                    <span class="text-muted-foreground">—</span>
+                  {/if}
+                </td>
+                <td class="hidden px-3 py-2 text-muted-foreground @xl:table-cell">
+                  <time
+                    datetime={new Date(whenOf(item)).toISOString()}
+                    title={fullWhen(whenOf(item))}>{shortWhen(whenOf(item))}</time
+                  >
+                </td>
+                <td class="hidden px-3 py-2 text-muted-foreground @4xl:table-cell">
+                  {#if item.dated}
+                    {@render dated(item.dated)}
+                  {:else}
+                    —
+                  {/if}
+                </td>
+                <td class="hidden px-3 py-2 text-muted-foreground tabular-nums @2xl:table-cell"
+                  >{item.type === 'file' ? formatSize(item.size) : '—'}</td
+                >
+                <td class="px-3 py-1.5 text-right">
+                  <span
+                    class="inline-flex transition-opacity md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100"
+                  >
+                    <DriveItemActions {item} {trashView} {run} />
+                  </span>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
     {:else}
       <ul
         class="grid grid-cols-2 gap-3 pt-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6"

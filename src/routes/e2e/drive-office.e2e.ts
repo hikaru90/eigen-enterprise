@@ -3,7 +3,7 @@ import postgres from 'postgres'
 import { buildDocx, p, r, sectPr } from '../../lib/office/docx/test-utils/builder'
 import { makePdf } from '../../lib/office/pdf/fixtures'
 import { buildPptx, para, sp, xfrm } from '../../lib/office/pptx/test-utils/build-pptx'
-import { completeProfileViaApi, profileNames, registerUser } from './test-helpers'
+import { completeProfileViaApi, gotoHydrated, profileNames, registerUser } from './test-helpers'
 
 /**
  * Office files in the Drive (plan/phase-office-files.md): a member uploads a
@@ -43,7 +43,7 @@ test('Drive: PDF, Word and PowerPoint open in their own viewers and read as text
     slides: [{ shapes: sp({ id: 2, name: 'Title', ph: '<p:ph type="title"/>', xfrm: xfrm(457200, 457200, 8229600, 1143000), body: para('Our pitch') }), notes: ['Open with the customer story'] }],
   })
 
-  await page.goto('/drive')
+  await gotoHydrated(page, '/drive')
   await page.getByTestId('drive-upload-input').setInputFiles([
     { name: names.pdf, mimeType: 'application/pdf', buffer: Buffer.from(pdf) },
     { name: names.docx, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from(docx) },

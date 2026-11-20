@@ -146,6 +146,16 @@ async function passProfileStep(page: Page, profile: RegisterUserOptions['profile
 }
 
 /**
+ * A full page load, then the app's hydration (root layout sets
+ * body[data-eigen-hydrated]): a click or file input before that reaches
+ * markup with no handlers yet and does nothing.
+ */
+export async function gotoHydrated(page: Page, url: string): Promise<void> {
+  await page.goto(url)
+  await expect(page.locator('body')).toHaveAttribute('data-eigen-hydrated', 'true')
+}
+
+/**
  * Register a fresh test user and return their credentials + the context with session cookies.
  */
 export async function registerUser(
@@ -159,7 +169,8 @@ export async function registerUser(
   const email = `e2e-${id}@${emailDomain}`
 
   // Passwordless (Better Auth emailOTP): email + terms → Create account → 6-digit code.
-  await page.goto('/signup')
+  // A click before hydration posts the bare form (no code step): wait for the app first.
+  await gotoHydrated(page, '/signup')
   await page.getByRole('button', { name: 'Create account' }).waitFor({ state: 'visible' })
   const emailInput = page.locator('#email')
   await emailInput.fill(email)
