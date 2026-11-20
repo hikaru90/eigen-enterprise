@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { moduleInactiveError, type ActivationStore } from '$lib/kernel/modules'
-import { toolInputJsonSchema, toolOutputJsonSchema } from '$lib/kernel/openapi'
+import { strictToolSchema, toolInputJsonSchema, toolOutputJsonSchema } from '$lib/kernel/openapi'
 import type { KernelRegistry } from '$lib/kernel/registry'
 import { sanitizeMcpToolResult } from '$lib/server/observability/strip-embeddings'
 
@@ -29,10 +29,10 @@ export async function listMcpTools(
     out.push({
       name: tool.name,
       description: tool.summary,
-      inputSchema: toolInputJsonSchema(tool.inputSchema),
+      inputSchema: strictToolSchema(toolInputJsonSchema(tool.inputSchema)),
       ...(tool.outputSchema === undefined
         ? {}
-        : { outputSchema: toolOutputJsonSchema(tool.outputSchema) }),
+        : { outputSchema: strictToolSchema(toolOutputJsonSchema(tool.outputSchema)) }),
     })
   }
   return out

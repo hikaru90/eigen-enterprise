@@ -2,7 +2,7 @@ import type { ToolDescriptor } from './types'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { InMemoryActivationStore } from './modules'
-import { generateOpenApi, toolOutputJsonSchema } from './openapi'
+import { generateOpenApi, strictToolSchema, toolOutputJsonSchema } from './openapi'
 import { KernelRegistry } from './registry'
 
 /**
@@ -104,7 +104,7 @@ describe('MCP ↔ OpenAPI surface parity', () => {
     expect(Object.keys(doc.paths)).toHaveLength(4)
   })
 
-  it('round-trips a declared outputSchema identically across registry, MCP listing, and OpenAPI 200', async () => {
+  it('round-trips a declared outputSchema across registry, MCP listing (strict subset), and OpenAPI 200 (full JSON Schema)', async () => {
     const { registry, activations } = await makeFixture()
     const { listMcpTools } = await import('$lib/server/mcp/server')
 
@@ -114,7 +114,9 @@ describe('MCP ↔ OpenAPI surface parity', () => {
 
     const mcp = await listMcpTools(registry, activations)
     const listing = mcp.find((t) => t.name === 'beta.send')
-    expect(listing?.outputSchema).toEqual(expected)
+    // MCP advertises the strict-subset projection every client accepts
+    // (strictToolSchema); OpenAPI 3.1 documents the full JSON Schema.
+    expect(listing?.outputSchema).toEqual(strictToolSchema(expected))
 
     const doc = generateOpenApi(registry, { title: 'parity', version: '0.0.0' })
     const responseSchema =

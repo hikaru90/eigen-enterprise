@@ -126,6 +126,130 @@ export function toolOutputJsonSchema(schema: ZodType): Record<string, unknown> {
   return toJSONSchema(schema, { io: 'output' }) as Record<string, unknown>
 }
 
+/**
+ * Projection of an advertised tool schema onto the strict function subset
+ * every MCP client accepts (MCP plus the OpenAPI/Gemini function subset).
+ * One schema outside it is enough for a strict client to reject the whole
+ * tools/list — Cloud Code did (2026-11-20): the zod-emitted `$schema` root
+ * key, `"type": ["string", "null"]` unions, nested combinators from nullable
+ * unions, records (`propertyNames` + `additionalProperties`), `const`,
+ * `default`, `pattern`, `minLength`/`maxLength` and non-date `format`s.
+ *
+ * Advertising only — calls are still validated against the original zod
+ * schema by the registry. The agent runtime and the OpenAPI document keep
+ * the full schemas; only the MCP listing (and the CLI listing mirroring it)
+ * projects.
+ */
+export function strictToolSchema(schema: JsonSchema): JsonSchema {
+  return projectSubsetNode(schema)
+}
+
+const SUBSET_FORMATS = new Set(['date-time', 'date', 'time'])
+const UNION_KEYS = ['oneOf', 'anyOf', 'allOf'] as const
+
+function isSchemaNode(value: unknown): value is JsonSchema {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function projectSubsetNode(node: JsonSchema): JsonSchema {
+  const unionKey = UNION_KEYS.find((key) => key in node)
+  if (unionKey !== undefined) return projectSubsetUnion(node, unionKey)
+
+  const out: JsonSchema = {}
+  if (Array.isArray(node.type)) {
+    const types = node.type.filter((type): type is string => typeof type === 'string')
+    const scalar = types.find((type) => type !== 'null')
+    if (scalar !== undefined) out.type = scalar
+    if (types.includes('null')) out.nullable = true
+  } else if (node.type !== undefined) {
+    out.type = node.type
+  }
+  if ('const' in node) out.enum = [node.const]
+  for (const key of [
+    'title',
+    'description',
+    'enum',
+    'nullable',
+    'minimum',
+    'maximum',
+    'minItems',
+    'maxItems',
+  ] as const) {
+    if (key in node) out[key] = node[key]
+  }
+  if (typeof node.format === 'string' && SUBSET_FORMATS.has(node.format)) out.format = node.format
+  if ('items' in node) {
+    if (!isSchemaNode(node.items)) {
+      throw new Error(`array items must be a single schema; got ${JSON.stringify(node.items)}`)
+    }
+    out.items = projectSubsetNode(node.items)
+  }
+  if ('properties' in node && isSchemaNode(node.properties)) {
+    out.properties = Object.fromEntries(
+      Object.entries(node.properties).map(([key, property]) => [
+        key,
+        projectSubsetNode(property as JsonSchema),
+      ]),
+    )
+  }
+  if ('required' in node) out.required = node.required
+  return out
+}
+
+/**
+ * One subset schema for a combinator node: same-typed branches merge (their
+ * enums concatenate), a null branch becomes `nullable: true`, and anything
+ * else collapses to an untyped schema whose description lists the projected
+ * shapes — the honest shape when no single type is true.
+ */
+function projectSubsetUnion(root: JsonSchema, unionKey: (typeof UNION_KEYS)[number]): JsonSchema {
+  const members = root[unionKey]
+  if (!Array.isArray(members) || members.some((member) => !isSchemaNode(member))) {
+    throw new Error(`combinator members must be schemas; got ${JSON.stringify(members)}`)
+  }
+  const projected = members.map((member) => projectSubsetNode(member))
+  const nonNull = projected.filter((member) => member.type !== 'null')
+  const nullable =
+    nonNull.length !== projected.length || projected.some((member) => member.nullable === true)
+  const rootDescription = typeof root.description === 'string' ? root.description : undefined
+
+  if (nonNull.length === 0) {
+    return { type: 'null', description: unionDescription(rootDescription, unionKey, projected) }
+  }
+  // A merge into one typed schema keeps every constraint the subset can
+  // express; only a mixed collapse loses shapes, so only it advertises them.
+  if (unionKey === 'allOf' || new Set(nonNull.map((member) => member.type)).size > 1) {
+    return {
+      ...(nullable ? { nullable: true } : {}),
+      description: unionDescription(rootDescription, unionKey, projected),
+    }
+  }
+
+  const out: JsonSchema = { type: nonNull[0].type }
+  if (nonNull.every((member) => Array.isArray(member.enum))) {
+    out.enum = [...new Set(nonNull.flatMap((member) => member.enum as unknown[]))]
+  }
+  const minimums = nonNull.map((member) => member.minimum).filter((v) => v !== undefined)
+  if (minimums.length === nonNull.length) out.minimum = Math.max(...(minimums as number[]))
+  const maximums = nonNull.map((member) => member.maximum).filter((v) => v !== undefined)
+  if (maximums.length === nonNull.length) out.maximum = Math.min(...(maximums as number[]))
+  if (nullable) out.nullable = true
+  if (rootDescription !== undefined) out.description = rootDescription
+  return out
+}
+
+function unionDescription(
+  rootDescription: string | undefined,
+  unionKey: (typeof UNION_KEYS)[number],
+  projected: JsonSchema[],
+): string {
+  const lead = unionKey === 'allOf' ? 'All of' : 'One of'
+  const shapes = projected.map((member) => JSON.stringify(member)).join(' | ')
+  return [rootDescription, `${lead}: ${shapes}`]
+    .filter((part): part is string => part !== undefined)
+    .join(' ')
+}
+
 export type OpenApiSchema = Record<string, unknown>
 
 const PROBLEM_SCHEMA: OpenApiSchema = {

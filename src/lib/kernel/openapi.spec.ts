@@ -1,7 +1,7 @@
 import type { ToolDescriptor } from './types'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { generateOpenApi, toolInputJsonSchema, toolOutputJsonSchema } from './openapi'
+import { generateOpenApi, strictToolSchema, toolInputJsonSchema, toolOutputJsonSchema } from './openapi'
 import { KernelRegistry } from './registry'
 
 function makeTool(overrides: Partial<ToolDescriptor> = {}): ToolDescriptor {
@@ -108,6 +108,99 @@ describe('toolOutputJsonSchema', () => {
     const schema = toolOutputJsonSchema(z.object({ echoed: z.string(), sent: z.boolean() }))
     expect(schema).toMatchObject({ type: 'object', required: ['echoed', 'sent'] })
     expect(schema.properties).toMatchObject({ echoed: { type: 'string' }, sent: { type: 'boolean' } })
+  })
+})
+
+describe('strictToolSchema', () => {
+  // The advertised zod schema carries keywords and shapes (the `$schema`
+  // root key, `"type": ["string", "null"]`, nested combinators, records)
+  // that strict MCP clients — Cloud Code rejected the whole tools/list over
+  // them, 2026-11-20 — refuse. strictToolSchema projects onto the subset
+  // every client accepts; the registry still validates calls with zod.
+  it('strips the zod $schema root key from input and output schemas', () => {
+    const input = toolInputJsonSchema(z.object({ value: z.string() }))
+    expect('$schema' in input).toBe(true)
+    expect(strictToolSchema(input)).not.toHaveProperty('$schema')
+  })
+
+  it('rewrites type unions to a scalar type plus nullable', () => {
+    const projected = strictToolSchema({
+      type: 'object',
+      properties: { url: { type: ['string', 'null'], description: 'repo url' } },
+      required: ['url'],
+      additionalProperties: false,
+    })
+    expect(projected.properties.url).toEqual({ type: 'string', nullable: true, description: 'repo url' })
+    expect(projected).not.toHaveProperty('additionalProperties')
+    expect(projected.required).toEqual(['url'])
+  })
+
+  it('collapses a nullable union into one typed schema', () => {
+    const projected = strictToolSchema({
+      anyOf: [{ type: 'string', enum: ['email', 'call'] }, { type: 'null' }],
+    })
+    expect(projected).toEqual({ type: 'string', enum: ['email', 'call'], nullable: true })
+  })
+
+  it('merges same-typed union branches and keeps a shared numeric bound', () => {
+    const projected = strictToolSchema({
+      anyOf: [
+        { type: 'string', enum: ['a'] },
+        { type: 'string', enum: ['b'] },
+      ],
+    })
+    expect(projected).toEqual({ type: 'string', enum: ['a', 'b'] })
+  })
+
+  it('collapses a mixed union to an untyped schema whose description lists the shapes', () => {
+    const projected = strictToolSchema({
+      description: 'The new value.',
+      anyOf: [
+        { type: 'string', minLength: 1 },
+        { type: 'string', enum: ['eurouter', 'openrouter'] },
+        { type: 'boolean' },
+      ],
+    })
+    expect(projected.type).toBeUndefined()
+    expect(projected.description).toContain('The new value.')
+    expect(projected.description).toContain('eurouter')
+    expect(projected.description).toContain('boolean')
+  })
+
+  it('flattens a record (propertyNames + additionalProperties) to a plain object', () => {
+    const projected = strictToolSchema({
+      type: 'object',
+      description: 'CSS variables.',
+      propertyNames: { type: 'string', pattern: '^--[a-z-]+$' },
+      additionalProperties: { type: 'string' },
+    })
+    expect(projected).toEqual({ type: 'object', description: 'CSS variables.' })
+  })
+
+  it('converts const to a one-value enum', () => {
+    const projected = strictToolSchema({
+      type: 'object',
+      properties: { kind: { const: 'github' } },
+      required: ['kind'],
+    })
+    expect(projected.properties.kind).toEqual({ enum: ['github'] })
+  })
+
+  it('keeps subset keywords and drops the rest, recursing through properties and items', () => {
+    const projected = strictToolSchema({
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      type: 'object',
+      properties: {
+        when: { type: 'string', format: 'date-time' },
+        id: { type: 'string', format: 'uuid', pattern: '^[0-9a-f-]+$' },
+        count: { type: 'integer', minimum: 0, maximum: 10, exclusiveMinimum: 0 },
+        tags: { type: 'array', items: { type: 'string' }, minItems: 1 },
+      },
+    })
+    expect(projected.properties.when).toEqual({ type: 'string', format: 'date-time' })
+    expect(projected.properties.id).toEqual({ type: 'string' })
+    expect(projected.properties.count).toEqual({ type: 'integer', minimum: 0, maximum: 10 })
+    expect(projected.properties.tags).toEqual({ type: 'array', items: { type: 'string' }, minItems: 1 })
   })
 })
 

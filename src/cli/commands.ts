@@ -1,7 +1,7 @@
 import type { ParsedCliArgs } from './args'
 import { KernelError } from '$lib/kernel/errors'
 import type { ActivationStore } from '$lib/kernel/modules'
-import { generateOpenApi, toolInputJsonSchema } from '$lib/kernel/openapi'
+import { generateOpenApi, strictToolSchema, toolInputJsonSchema } from '$lib/kernel/openapi'
 import type { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext } from '$lib/kernel/types'
 import { listMcpTools } from '$lib/server/mcp/server'
@@ -149,7 +149,9 @@ async function toolList(ctx: CliCommandContext, args: ParsedCliArgs): Promise<un
     .map((tool) => ({
       name: tool.name,
       description: tool.summary,
-      inputSchema: toolInputJsonSchema(tool.inputSchema),
+      // Same strict-subset projection the MCP listing serves — this listing
+      // mirrors what MCP clients see.
+      inputSchema: strictToolSchema(toolInputJsonSchema(tool.inputSchema)),
     }))
 }
 

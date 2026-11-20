@@ -19,7 +19,9 @@ import { listMcpTools } from './server'
  * Contract: the production MCP tools/list — every module tool, the kernel
  * admin + settings tools and the agent admin tools, all modules active — is
  * a result MCP clients accept. One non-object inputSchema (settings.update's
- * discriminated union, 2026-11-19) made Claude Code reject the whole list.
+ * discriminated union, 2026-11-19) made Claude Code reject the whole list;
+ * schemas outside the strict function subset (the zod `$schema` root key,
+ * type unions, nested combinators — 2026-11-20) made Cloud Code reject it.
  */
 async function productionToolList() {
   const kernel = buildKernel({
@@ -74,6 +76,64 @@ describe('MCP tools/list contract (all registered tools)', () => {
       .filter((t) => ['oneOf', 'anyOf', 'allOf'].some((k) => k in t.inputSchema))
       .map((t) => t.name)
     expect(combinators).toEqual([])
+  })
+
+  // The strict function-schema subset every MCP client accepts — MCP plus
+  // the OpenAPI/Gemini function subset. One schema outside it is enough for
+  // a strict client (Cloud Code, 2026-11-20) to reject the whole list, so
+  // the visitor checks every advertised node, at any depth.
+  it('advertises every schema inside the strict function subset', async () => {
+    const { tools } = await productionToolList()
+    const subsetKeys = new Set([
+      'type',
+      'title',
+      'description',
+      'enum',
+      'items',
+      'properties',
+      'required',
+      'nullable',
+      'format',
+      'minimum',
+      'maximum',
+      'minItems',
+      'maxItems',
+    ])
+    const subsetFormats = new Set(['date-time', 'date', 'time'])
+    const offenders: string[] = []
+    const visit = (node: unknown, path: string, tool: string): void => {
+      if (typeof node !== 'object' || node === null) return
+      const schema = node as Record<string, unknown>
+      for (const key of Object.keys(schema)) {
+        if (!subsetKeys.has(key)) offenders.push(`${tool}${path}: unsupported key ${key}`)
+      }
+      if (schema.type !== undefined && typeof schema.type !== 'string') {
+        offenders.push(`${tool}${path}: non-scalar type ${JSON.stringify(schema.type)}`)
+      }
+      if (schema.format !== undefined && !subsetFormats.has(schema.format as string)) {
+        offenders.push(`${tool}${path}: format ${String(schema.format)}`)
+      }
+      if (Array.isArray(schema.enum) && schema.enum.length === 0) {
+        offenders.push(`${tool}${path}: empty enum`)
+      }
+      // An untyped node survives only as an honest mixed-union collapse,
+      // which always carries its shapes in the description.
+      if (schema.type === undefined && !('description' in schema)) {
+        offenders.push(`${tool}${path}: untyped node without description`)
+      }
+      const properties = schema.properties
+      if (typeof properties === 'object' && properties !== null) {
+        for (const [key, child] of Object.entries(properties as Record<string, unknown>)) {
+          visit(child, `${path}.properties.${key}`, tool)
+        }
+      }
+      if (schema.items !== undefined) visit(schema.items, `${path}.items`, tool)
+    }
+    for (const tool of tools) {
+      visit(tool.inputSchema, '', tool.name)
+      if (tool.outputSchema !== undefined) visit(tool.outputSchema, '.outputSchema', tool.name)
+    }
+    expect(offenders).toEqual([])
   })
 
   it('is a valid tools/list result for the MCP SDK client schema', async () => {
