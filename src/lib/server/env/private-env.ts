@@ -31,6 +31,9 @@ export type ExtendedPrivateEnv = typeof kitEnv & {
   EVAL_ENRICHMENT_KICK_CONCURRENCY?: string
   GITHUB_CLIENT_ID?: string
   GITHUB_CLIENT_SECRET?: string
+  /** The fine-grained-token GitHub client's API root and tarball redirect origin; unset = the real GitHub (test seam for the e2e mock). */
+  GITHUB_TOKEN_API_BASE_URL?: string
+  GITHUB_CODELOAD_BASE_URL?: string
   GRAPH_SCALE_QUIET?: string
   GRAPH_SCALE_SPEND?: string
   LLM_MODEL_CHAT?: string

@@ -349,3 +349,110 @@ function codeload(
     throw new Error(`unexpected URL ${url}`)
   }) as typeof fetch
 }
+
+describe('GitHubTokenClient with configured bases (the e2e mock GitHub seam)', () => {
+  const MOCK_API = 'http://127.0.0.1:5197'
+  const MOCK_CODELOAD = 'http://localhost:5197'
+
+  it('sends every API request, Link pages and the tarball to apiBase, never to api.github.com', async () => {
+    const dir = await directory()
+    const calls: string[] = []
+    const archive = Uint8Array.from([7, 8, 9])
+    const fetch = (async (input: string | URL | Request) => {
+      const url = String(input)
+      calls.push(url)
+      if (url === `${MOCK_API}/user`) {
+        return new Response(JSON.stringify({ login: 'octo' }), { status: 200, headers: rateHeaders() })
+      }
+      if (url === `${MOCK_API}/user/repos?page=2`) return new Response('[]', { status: 200, headers: rateHeaders() })
+      if (url.startsWith(`${MOCK_API}/user/repos?`)) {
+        return new Response('[]', {
+          status: 200,
+          headers: { link: `<${MOCK_API}/user/repos?page=2>; rel="next"`, ...rateHeaders() },
+        })
+      }
+      if (url === `${MOCK_API}${API_PATH}`) {
+        return new Response(null, { status: 302, headers: { location: `${MOCK_CODELOAD}/x.tar.gz`, ...rateHeaders() } })
+      }
+      if (url === `${MOCK_CODELOAD}/x.tar.gz`) return new Response(archive, { status: 200 })
+      throw new Error(`unexpected URL ${url}`)
+    }) as typeof fetch
+    const gh = createGitHubTokenClient({
+      token: TOKEN,
+      fetch,
+      timeoutMs: 1000,
+      tarballDir: dir,
+      tarballTimeoutMs: 1000,
+      tarballMaxBytes: 1024,
+      apiBase: `${MOCK_API}/`,
+      codeloadOrigin: MOCK_CODELOAD,
+    })
+
+    expect((await gh.identity()).login).toBe('octo')
+    expect(await gh.repos()).toEqual([])
+    expect(new Uint8Array(await readFile(await gh.tarball('octo-org/repo-1', SHA)))).toEqual(archive)
+    expect(calls).toContain(`${MOCK_API}/user/repos?page=2`)
+    expect(calls.some((url) => url.startsWith(API))).toBe(false)
+  })
+
+  it('refuses a redirect to anything but codeloadOrigin, the real codeload included', async () => {
+    for (const location of [
+      'https://codeload.github.com/x.tar.gz',
+      `${MOCK_API}/x.tar.gz`,
+      'http://localhost:5198/x.tar.gz',
+    ]) {
+      const dir = await directory()
+      const calls: string[] = []
+      const fetch = (async (input: string | URL | Request) => {
+        calls.push(String(input))
+        return new Response(null, { status: 302, headers: { location, ...rateHeaders() } })
+      }) as typeof fetch
+      const gh = createGitHubTokenClient({
+        token: TOKEN,
+        fetch,
+        timeoutMs: 1000,
+        tarballDir: dir,
+        tarballTimeoutMs: 1000,
+        tarballMaxBytes: 1024,
+        apiBase: MOCK_API,
+        codeloadOrigin: MOCK_CODELOAD,
+      })
+      await expect(gh.tarball('octo-org/repo-1', SHA)).rejects.toThrow(/refusing to follow/)
+      expect(calls).toEqual([`${MOCK_API}${API_PATH}`])
+      expect(await readdir(dir)).toEqual([])
+    }
+  })
+
+  it('refuses a Link page outside apiBase (the token stays on the configured root)', async () => {
+    const fetch = (async () =>
+      new Response('[]', {
+        status: 200,
+        headers: { link: `<${API}/user/repos?page=2>; rel="next"`, ...rateHeaders() },
+      })) as typeof fetch
+    const gh = createGitHubTokenClient({
+      token: TOKEN,
+      fetch,
+      timeoutMs: 1000,
+      tarballDir: '/tmp',
+      tarballTimeoutMs: 1000,
+      tarballMaxBytes: 1024,
+      apiBase: MOCK_API,
+      codeloadOrigin: MOCK_CODELOAD,
+    })
+    await expect(gh.repos()).rejects.toThrow(/refusing to send the GitHub token outside/)
+  })
+
+  it('fails loud on a malformed apiBase or a codeloadOrigin that is not a bare origin', () => {
+    const base = {
+      token: TOKEN,
+      fetch: (async () => new Response(null)) as typeof fetch,
+      timeoutMs: 1000,
+      tarballDir: '/tmp',
+      tarballTimeoutMs: 1,
+      tarballMaxBytes: 1,
+    }
+    expect(() => createGitHubTokenClient({ ...base, apiBase: 'api.github.com' })).toThrow(/apiBase/)
+    expect(() => createGitHubTokenClient({ ...base, codeloadOrigin: 'http://localhost:5197/' })).toThrow(/codeloadOrigin/)
+    expect(() => createGitHubTokenClient({ ...base, codeloadOrigin: 'nope' })).toThrow(/codeloadOrigin/)
+  })
+})

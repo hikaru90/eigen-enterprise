@@ -42,6 +42,7 @@ import { mkdir, open, readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
 const API = 'https://api.github.com'
+const CODELOAD = 'https://codeload.github.com'
 const PER_PAGE = 100
 /** 50 pages × 100 = 5,000 items; beyond that something is wrong. */
 const MAX_PAGES = 50
@@ -59,6 +60,15 @@ export type GitHubTokenConfig = {
   tarballTimeoutMs: number
   /** A download past this many bytes is aborted and its partial file removed. */
   tarballMaxBytes: number
+  /** The REST API root; unset = https://api.github.com. A test seam (the e2e mock GitHub). */
+  apiBase?: string
+  /** The only origin a tarball redirect may point at; unset = https://codeload.github.com. */
+  codeloadOrigin?: string
+}
+
+/** The API root the token is sent to: `config.apiBase` or api.github.com, no trailing slash. */
+function apiRoot(config: Pick<GitHubTokenConfig, 'apiBase'>): string {
+  return (config.apiBase ?? API).replace(/\/+$/, '')
 }
 
 class TokenRequestError extends Error implements GitHubTokenError {
@@ -170,10 +180,10 @@ function kindFor(status: number): GitHubTokenErrorKind {
 }
 
 /** `path` is relative to the API root, or an absolute `Link` URL on the API root. */
-function resolve(path: string): { url: string; path: string } {
-  if (path.startsWith('/')) return { url: `${API}${path}`, path }
-  if (path.startsWith(`${API}/`)) return { url: path, path: path.slice(API.length) }
-  throw new Error(`refusing to send the GitHub token outside ${API}: ${path.split('?')[0]}`)
+function resolve(api: string, path: string): { url: string; path: string } {
+  if (path.startsWith('/')) return { url: `${api}${path}`, path }
+  if (path.startsWith(`${api}/`)) return { url: path, path: path.slice(api.length) }
+  throw new Error(`refusing to send the GitHub token outside ${api}: ${path.split('?')[0]}`)
 }
 
 /** The headers every api.github.com request carries. */
@@ -262,14 +272,14 @@ function failWith(
  * `write_refused` before anything is sent.
  */
 export async function tokenRequest(
-  config: Pick<GitHubTokenConfig, 'token' | 'fetch' | 'timeoutMs'>,
+  config: Pick<GitHubTokenConfig, 'token' | 'fetch' | 'timeoutMs' | 'apiBase'>,
   method: string,
   pathOrUrl: string,
   etag: string | null,
   onBudget?: (b: RateBudget) => void,
   permission: TokenPermission | null = null,
 ): Promise<RawResponse> {
-  const { url, path } = resolve(pathOrUrl)
+  const { url, path } = resolve(apiRoot(config), pathOrUrl)
   if (method !== 'GET') {
     throw new TokenRequestError(
       'write_refused',
@@ -461,6 +471,12 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
     throw new Error('createGitHubTokenClient needs a positive tarballTimeoutMs (the codeload download limit)')
   if (!(config.tarballMaxBytes > 0))
     throw new Error('createGitHubTokenClient needs a positive tarballMaxBytes (the codeload download size cap)')
+  if (config.apiBase !== undefined && !/^https?:\/\/[^/]/.test(config.apiBase))
+    throw new Error(`createGitHubTokenClient apiBase must be an http(s) URL, got ${JSON.stringify(config.apiBase)}`)
+  if (config.codeloadOrigin !== undefined && originOf(config.codeloadOrigin) !== config.codeloadOrigin)
+    throw new Error(
+      `createGitHubTokenClient codeloadOrigin must be a bare origin (scheme://host[:port]), got ${JSON.stringify(config.codeloadOrigin)}`,
+    )
 
   let budget: RateBudget | null = null
   const budgetSeen = (b: RateBudget) => {
@@ -719,6 +735,14 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
   }
 }
 
+function originOf(url: string): string | null {
+  try {
+    return new URL(url).origin
+  } catch {
+    return null
+  }
+}
+
 const TARBALL_FILE = /^github-tarball-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tar\.gz$/
 
 /**
@@ -736,7 +760,7 @@ async function tarballRedirect(
   try {
     let res: Response
     try {
-      res = await config.fetch(`${API}${path}`, {
+      res = await config.fetch(`${apiRoot(config)}${path}`, {
         method: 'GET',
         redirect: 'manual',
         headers: authHeaders(config.token, null),
@@ -766,13 +790,14 @@ async function tarballRedirect(
           `GitHub ${path} → ${res.status} without a parsable Location header`,
         )
       }
-      if (target.origin !== 'https://codeload.github.com') {
+      const codeload = config.codeloadOrigin ?? CODELOAD
+      if (target.origin !== codeload) {
         throw new TokenRequestError(
           'unavailable',
           res.status,
           path,
           null,
-          `GitHub ${path} redirects to ${target.origin}, not https://codeload.github.com; refusing to follow`,
+          `GitHub ${path} redirects to ${target.origin}, not ${codeload}; refusing to follow`,
         )
       }
       return target

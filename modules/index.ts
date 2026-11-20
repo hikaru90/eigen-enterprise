@@ -306,6 +306,9 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
         tarballDir: githubTarballDir(),
         tarballTimeoutMs: GITHUB_TARBALL_TIMEOUT_MS,
         tarballMaxBytes: GITHUB_TARBALL_MAX_BYTES,
+        // Test seam (the e2e mock GitHub); same precedent as llm/oauth/github-copilot.ts.
+        apiBase: process.env.GITHUB_TOKEN_API_BASE_URL?.trim() || 'https://api.github.com',
+        codeloadOrigin: process.env.GITHUB_CODELOAD_BASE_URL?.trim() || 'https://codeload.github.com',
       }),
     tarballDir: githubTarballDir,
     tarballMaxBytes: GITHUB_TARBALL_MAX_BYTES,
