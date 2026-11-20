@@ -341,7 +341,7 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div
       bind:this={presenterEl}
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black outline-none"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black"
       role="dialog"
       aria-modal="true"
       aria-label={`Presenting ${name}`}
