@@ -323,7 +323,11 @@
             {/if}
           {:else if data.kind === 'html'}
             <div class="flex items-center justify-between gap-2 border-b px-3 py-2">
-              <div class="inline-flex rounded-md border p-0.5 text-sm" role="group" aria-label="Show as">
+              <div
+                class="inline-flex rounded-md border p-0.5 text-sm"
+                role="group"
+                aria-label="Show as"
+              >
                 {#each HTML_VIEWS as [value, label] (value)}
                   <button
                     type="button"
@@ -370,7 +374,8 @@
               />
             </div>
           {:else if officeViewer}
-            {#key data.file.id}
+            <!-- Keyed on the content too: a restored version reopens in the viewer. -->
+            {#key `${data.file.id}:${data.file.updatedAt}`}
               {#await officeViewer()}
                 <div
                   class="flex flex-1 items-center justify-center text-sm text-muted-foreground"
@@ -387,7 +392,11 @@
                   onsaved={(f) => (saved = f)}
                 />
               {:catch err}
-                <p class="m-6 text-sm text-destructive" role="alert" data-testid="drive-office-error">
+                <p
+                  class="m-6 text-sm text-destructive"
+                  role="alert"
+                  data-testid="drive-office-error"
+                >
                   The viewer could not be loaded: {err instanceof Error ? err.message : String(err)}
                 </p>
               {/await}
@@ -425,6 +434,16 @@
               {revisions}
               authors={data.authors}
               canRestore={false}
+              onrestore={restore}
+            />
+          {:else if officeViewer}
+            <!-- Office files: download any version; restore one (it becomes the newest, the viewer reopens it). -->
+            <RevisionsPanel
+              fileId={data.file.id}
+              kind="office"
+              {revisions}
+              authors={data.authors}
+              canRestore={data.canEdit && !data.file.archivedAt}
               onrestore={restore}
             />
           {/if}

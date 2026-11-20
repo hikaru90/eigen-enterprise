@@ -5,7 +5,11 @@
   import CsvEditor from './csv-editor.svelte'
   import MarkdownEditor from './markdown-editor.svelte'
 
-  /** The revisions of a Markdown/CSV file (newest first): who and when, view one, restore one (= a new revision). */
+  /**
+   * The revisions of a file (newest first): who and when, view one, restore
+   * one (= a new revision). Markdown/CSV versions open in a read-only
+   * editor; an office file's (PDF, Word, PowerPoint) download as that file.
+   */
   let {
     fileId,
     kind,
@@ -15,7 +19,7 @@
     onrestore,
   }: {
     fileId: string
-    kind: 'markdown' | 'csv'
+    kind: 'markdown' | 'csv' | 'office'
     revisions: Revision[]
     authors: Record<string, string>
     canRestore: boolean
@@ -76,15 +80,27 @@
             {#if rev.restoredFrom}<span
                 class="block text-xs text-muted-foreground"
                 data-testid="drive-revision-restored-from"
-                >Restored from {author(rev.restoredFrom.authorId)}, {fmt(rev.restoredFrom.createdAt)}</span
+                >Restored from {author(rev.restoredFrom.authorId)}, {fmt(
+                  rev.restoredFrom.createdAt,
+                )}</span
               >{/if}
           </span>
-          <Button
-            size="sm"
-            variant="ghost"
-            onclick={() => view(rev, i)}
-            data-testid="drive-revision-view">View</Button
-          >
+          {#if kind === 'office'}
+            <Button
+              size="sm"
+              variant="ghost"
+              href={`/api/drive/files/${fileId}/content?revision=${encodeURIComponent(rev.id)}`}
+              download
+              data-testid="drive-revision-download">Download</Button
+            >
+          {:else}
+            <Button
+              size="sm"
+              variant="ghost"
+              onclick={() => view(rev, i)}
+              data-testid="drive-revision-view">View</Button
+            >
+          {/if}
           {#if i > 0 && canRestore}
             <Button
               size="sm"

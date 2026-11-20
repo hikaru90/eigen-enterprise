@@ -877,6 +877,14 @@ export function createDriveService(deps: DriveDeps) {
       return { revision: rev, content: new TextDecoder().decode(await blobs.get(rev.sha256)) }
     },
 
+    /** The bytes of one revision (an earlier version of an office file, to download). */
+    async readRevisionBytes(actor: Actor, id: string, revisionId: string): Promise<{ file: DriveFile; revision: DriveRevision; bytes: Uint8Array }> {
+      const file = await requireFile(actor, id, 'view')
+      const rev = await store.getRevision(revisionId)
+      if (!rev || rev.fileId !== file.id) throw new DriveError('not_found', 'No such revision.')
+      return { file, revision: rev, bytes: await blobs.get(rev.sha256) }
+    },
+
     /** Who is editing (view access is enough to ask). */
     async lockStatus(actor: Actor, id: string): Promise<LockView> {
       await requireFile(actor, id, 'view')

@@ -88,7 +88,15 @@ test('Drive: PDF, Word and PowerPoint open in their own viewers and read as text
   expect((await put(docxId, docx)).status()).toBe(200)
   expect((await put(docxId, pdf)).status()).toBe(400)
   const revs = await page.request.get(`/api/drive/files/${docxId}/revisions`)
-  expect(((await revs.json()) as { revisions: unknown[] }).revisions).toHaveLength(2)
+  const versions = ((await revs.json()) as { revisions: Array<{ id: string }> }).revisions
+  expect(versions).toHaveLength(2)
+  // An earlier version downloads as that file.
+  const older = await page.request.get(`/api/drive/files/${docxId}/content?revision=${versions[1]!.id}`)
+  expect(older.status()).toBe(200)
+  expect(older.headers()['content-disposition']).toMatch(/^attachment; filename\*=UTF-8''letter-\d+%20\(version%20/)
+  // The file page lists the versions beside the viewer.
+  await gotoHydrated(page, `/drive/file/${docxId}`)
+  await expect(page.getByTestId('drive-revision-download')).toHaveCount(2)
 
   await ctx.close()
 })

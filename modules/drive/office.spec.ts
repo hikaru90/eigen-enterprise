@@ -125,3 +125,27 @@ describe('drive: reading an office file as text', () => {
     await expect(drive.readText(alice, f.id)).rejects.toMatchObject({ code: 'invalid', message: expect.stringMatching(/could not be read: bad xref table/) })
   })
 })
+
+describe('drive: earlier versions of an office file', () => {
+  it('reads the bytes of one revision, and restoring one saves it again as the newest', async () => {
+    const { drive } = await setup()
+    const f = await drive.upload(alice, null, { name: 'plan.pdf', bytes: pdf('v1'), mime: 'application/pdf' })
+    await drive.writeBytes(alice, f.id, pdf('v2'))
+    const [, first] = await drive.listRevisions(alice, f.id)
+    const old = await drive.readRevisionBytes(alice, f.id, first!.id)
+    expect(new TextDecoder().decode(old.bytes)).toContain('v1')
+    expect(old.file.name).toBe('plan.pdf')
+    await drive.restoreRevision(alice, f.id, first!.id)
+    expect(new TextDecoder().decode((await drive.readFile(alice, f.id)).bytes)).toContain('v1')
+    expect(await drive.listRevisions(alice, f.id)).toHaveLength(3)
+  })
+
+  it('a revision of another file, or of a file you cannot see, is not found', async () => {
+    const { drive } = await setup()
+    const a = await drive.upload(alice, null, { name: 'a.pdf', bytes: pdf('a'), mime: 'application/pdf' })
+    const b = await drive.upload(alice, null, { name: 'b.pdf', bytes: pdf('b'), mime: 'application/pdf' })
+    const [revA] = await drive.listRevisions(alice, a.id)
+    await expectCode(drive.readRevisionBytes(alice, b.id, revA!.id), 'not_found')
+    await expectCode(drive.readRevisionBytes(bob, a.id, revA!.id), 'not_found')
+  })
+})
