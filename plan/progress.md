@@ -2,6 +2,19 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-20 — Plan: GitHub repos mirror every file, not only docs (owner: "Plan full mirror")
+
+- **Why:** connected repos showed only Markdown. That was by design: `plan/github-drive.md` said "No code files", and `modules/repos/snapshot.ts` `isDoc` keeps `.md`/`.mdx`. The owner wants all folders and code.
+- **Plan:** [`plan/github-drive-full-mirror.md`](github-drive-full-mirror.md). Status: proposed, written for another agent to pick up (streams M0–M4). Nothing is implemented yet.
+- **Decisions (owner may veto):**
+  1. The tree goes under a folder named after the default branch.
+  2. **`Docs/` goes away**: docs move to their real paths under `<branch>/`. This is a visible change.
+  3. Per-repo "all files / docs only", default all.
+  4. Tarball for big changes, single blobs for ≤ 50.
+  5. Limits: 50k files, 20 MB per file, 2 GB per repo.
+  6. Submodules, symlinks and LFS are listed, not copied.
+  7. The whole company still has view access to the code.
+
 ## 2026-11-20 — Drive e2e journeys green again: three root causes (owner: "Yes, diagnose e2e")
 
 - **Result:** `drive.e2e.ts` and the new `drive-office.e2e.ts` both pass at `00ad3192` in an isolated checkout (2 passed, 32s).
