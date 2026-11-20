@@ -40,7 +40,7 @@ export function createCallsTools(opts: CallsToolDeps): ToolDescriptor[] {
         'List video calls, newest first: a person’s calls (DMs, channels, meetings), or for the agent the meetings it started. Each with state, people and times.',
       auditClass: 'read',
       inputSchema: listInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) => ({ calls: await (await service()).list(actorOf(ctx), listInput.parse(input).limit) }),
     },
     {
@@ -56,7 +56,7 @@ export function createCallsTools(opts: CallsToolDeps): ToolDescriptor[] {
         return input.context_kind === 'meeting' ? 'Tried to start a meeting' : `Tried to start a call in ${input.context_kind} ${input.context_id ?? ''}`.trim()
       },
       inputSchema: startInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) => {
         const i = startInput.parse(input)
         const call = await (await service()).start(actorOf(ctx), {
@@ -78,7 +78,7 @@ export function createCallsTools(opts: CallsToolDeps): ToolDescriptor[] {
         return call ? `Ended the call ${calledWhat(call)}` : `Tried to end call ${input.call_id}`
       },
       inputSchema: endInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) => ({ call: await (await service()).end(actorOf(ctx), endInput.parse(input).call_id) }),
     },
   ]

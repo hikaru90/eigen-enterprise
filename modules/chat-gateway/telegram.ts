@@ -165,6 +165,14 @@ export function chunkMessage(text: string, maxLen = DEFAULT_CHUNK_MAX_LEN): stri
   return chunks
 }
 
+/**
+ * What a sender who is not linked to a member hears (CB3): the company brain
+ * answers only as a member of the company, so it says why it does not answer
+ * and what to do — never a reply as anyone else.
+ */
+export const TELEGRAM_NOT_LINKED_REPLY =
+  'This Telegram account is not linked to a member of this company, so the company brain cannot answer you here. Ask the owner to link your Telegram account to your member account.'
+
 export type TelegramGatewayDeps = {
   allowlist: AllowlistStore
   sessions: SessionStore
@@ -174,9 +182,12 @@ export type TelegramGatewayDeps = {
 }
 
 /**
- * One poll cycle: allowlist gate → session touch → kernel events → orchestrator
- * → chunked reply. Denied users get a `gateway.telegram.denied` event and are
- * skipped silently (no reply). Message content never enters events.
+ * One poll cycle: link gate (allowlist entry → a current member) → session
+ * touch → kernel events → the company brain AS THAT MEMBER → chunked reply.
+ * A sender with no link, or linked to someone who is no longer a member, gets
+ * a `gateway.telegram.denied` event (with the reason) and one clear reply
+ * (TELEGRAM_NOT_LINKED_REPLY) — the brain never answers them as anyone.
+ * Message content never enters events.
  */
 export class TelegramGateway {
   constructor(private readonly deps: TelegramGatewayDeps) {}
@@ -204,18 +215,24 @@ export class TelegramGateway {
     if (fromId === undefined || fromId === null || fromId === '') return
 
     const externalUserId = String(fromId)
+    const externalChatId = String(chatId)
     const allowed = await this.deps.allowlist.isAllowed(TELEGRAM_PLATFORM, externalUserId)
     if (!allowed) {
-      await this.deny(externalUserId, String(chatId))
+      await this.deny(externalUserId, externalChatId, 'not_linked')
       return
     }
     const principalId = await this.deps.allowlist.principalFor(TELEGRAM_PLATFORM, externalUserId)
     if (principalId === null) {
-      await this.deny(externalUserId, String(chatId))
+      await this.deny(externalUserId, externalChatId, 'not_linked')
+      return
+    }
+    // The link must name a CURRENT member: the brain answers as them, or not at all.
+    const person = await this.deps.brain.personFor(principalId)
+    if (!person) {
+      await this.deny(externalUserId, externalChatId, 'not_a_member')
       return
     }
 
-    const externalChatId = String(chatId)
     const session = await this.deps.sessions.touch(TELEGRAM_PLATFORM, externalChatId, principalId)
 
     await emitKernelEvent(this.deps.events, {
@@ -227,7 +244,7 @@ export class TelegramGateway {
     })
 
     const reply = await this.deps.brain.respond(
-      { sessionId: session.id, platform: TELEGRAM_PLATFORM, externalChatId, principalId },
+      { sessionId: session.id, platform: TELEGRAM_PLATFORM, externalChatId, principalId, person },
       text,
     )
 
@@ -236,11 +253,16 @@ export class TelegramGateway {
     }
   }
 
-  private async deny(externalUserId: string, externalChatId: string): Promise<void> {
+  private async deny(
+    externalUserId: string,
+    externalChatId: string,
+    reason: 'not_linked' | 'not_a_member',
+  ): Promise<void> {
     await emitKernelEvent(this.deps.events, {
       type: 'gateway.telegram.denied',
       source: moduleSource('chat-gateway'),
-      payload: { platform: TELEGRAM_PLATFORM, externalUserId, externalChatId },
+      payload: { platform: TELEGRAM_PLATFORM, externalUserId, externalChatId, reason },
     })
+    await this.deps.client.sendMessage(externalChatId, TELEGRAM_NOT_LINKED_REPLY)
   }
 }

@@ -17,9 +17,11 @@ import { createTaskTools, type TaskToolDeps } from './task-tools'
  * ToolContext to the McpToolContext the underlying functions expect:
  * the principal id is the user id. The heavy import is deferred to call time
  * so that bootstrapping the kernel never touches the DB or retrieval stack.
- * Writes (capture, create/update note) resolve who they land with first —
- * see assistant-writes.ts: the company assistant writes for the person it
- * works for, or fails loud; it never writes as its own principal id.
+ * When the company brain acts for a person the principal IS that person
+ * (CB3): reads see their own Memory under row-level security — only theirs —
+ * and writes land with them, marked as coming through the brain (see
+ * assistant-writes.ts). Every member reaches these tools (role 'member'):
+ * Memory is per person, never the company's.
  */
 
 export type MemoryToolDeps = {
@@ -28,6 +30,9 @@ export type MemoryToolDeps = {
   /** The tasks.* tools (task-tools.ts); they share writerOf unless given their own. */
   tasks?: TaskToolDeps
 }
+
+/** Every member's own Memory: members, admins, and agent principals that are a person (MCP keys). */
+export const MEMORY_TOOL_ROLES = ['admin', 'member', 'agent']
 
 const WRITE_TOOLS = new Set<string>([
   'memory.capture_thought',
@@ -114,7 +119,7 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
     auditClass,
     inputSchema,
     ...(activity === undefined ? {} : { activity }),
-    permission: { roles: ['admin', 'agent'] },
+    permission: { roles: MEMORY_TOOL_ROLES },
     handler: (ctx, input) => handle(name, ctx, input),
   })
 

@@ -1,5 +1,6 @@
 import type { ContactDto } from './types'
 import { describe, expect, it } from 'vitest'
+import { delegatedPrincipal } from '$lib/kernel/principals'
 import type { ToolContext } from '$lib/kernel/types'
 import {
   createContact,
@@ -254,11 +255,10 @@ describe('the default for new contacts', () => {
     const chosen = await importContacts(f.deps, ana, [{ name: 'Kai Private' }], { shared: false })
     expect(chosen.created.map((c) => c.shared)).toEqual([false])
 
-    let behalf: string | null = 'ana'
     const tools = Object.fromEntries(
       createContactsTools({
         deps: async () => f.deps,
-        onBehalfOf: async () => behalf,
+        agentPerson: async () => null,
         today: () => '2026-11-12',
       }).map((t) => [t.name, t]),
     )
@@ -266,13 +266,13 @@ describe('the default for new contacts', () => {
       principal: { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] },
       requestId: 'r1',
     }
-    // Working for Ana: her default.
-    const forAna = (await tools['contacts.create']!.handler(agentCtx, {
+    // The brain acting as Ana (CB3): her default.
+    const asAna: ToolContext = { principal: delegatedPrincipal({ id: 'ana', roles: ['member'] }, 'orchestrator'), requestId: 'r2' }
+    const forAna = (await tools['contacts.create']!.handler(asAna, {
       name: 'Via the agent',
     })) as ContactDto
     expect(forAna).toMatchObject({ shared: true, own: true })
-    // On its own: the company default (private until the owner or an admin sets it).
-    behalf = null
+    // An agent principal that is no person: the company default (private until the owner or an admin sets it).
     expect(((await tools['contacts.create']!.handler(agentCtx, { name: 'Agent found' })) as ContactDto).shared).toBe(false)
     await setCompanyDefaultVisibility(f.deps, olga, 'team')
     expect(

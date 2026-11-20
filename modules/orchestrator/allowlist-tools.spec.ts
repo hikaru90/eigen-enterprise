@@ -47,15 +47,21 @@ const chatGatewayManifest: ModuleManifest = {
   permissions: { roles: ['owner', 'admin'] },
 }
 
+/** The company's members: a link may only name one of them. */
+const members = {
+  personFor: async (id: string) =>
+    ['p1', 'principal-42', 'principal-7'].includes(id) ? { id, roles: ['member'] } : null,
+}
+
 function makeRegistry(allowlist: AllowlistStore): KernelRegistry {
   const registry = new KernelRegistry({ eventSink: new InMemoryEventSink() })
-  for (const tool of createAllowlistAdminTools(allowlist)) registry.register(tool)
+  for (const tool of createAllowlistAdminTools(allowlist, members)) registry.register(tool)
   return registry
 }
 
 describe('createAllowlistAdminTools — descriptors', () => {
   it('declares exactly the manifest-listed allowlist tools, owner-only, correct audit classes', () => {
-    const tools = createAllowlistAdminTools(inMemoryAllowlist())
+    const tools = createAllowlistAdminTools(inMemoryAllowlist(), members)
 
     expect(tools.map((t) => t.name)).toEqual([...CHAT_GATEWAY_ALLOWLIST_TOOLS])
     const byName = new Map(tools.map((t) => [t.name, t]))
@@ -99,6 +105,20 @@ describe('createAllowlistAdminTools — registry execution', () => {
 
     expect(result).toMatchObject({ ok: true })
     expect(await allowlist.principalFor('telegram', '42')).toBe('principal-42')
+  })
+
+  it('allowlist_add links only to a member: anything else is refused, nothing stored (CB3)', async () => {
+    const allowlist = inMemoryAllowlist()
+    const registry = makeRegistry(allowlist)
+
+    await expect(
+      registry.execute(
+        'chat-gateway.allowlist_add',
+        { platform: 'telegram', external_user_id: '42', principal_id: 'orchestrator' },
+        ownerCtx,
+      ),
+    ).rejects.toMatchObject({ code: 'invalid_input', message: expect.stringMatching(/not a member/) })
+    expect(await allowlist.list()).toEqual([])
   })
 
   it('allowlist_add validates input against the zod schema (fail loud invalid_input)', async () => {
@@ -173,7 +193,7 @@ describe('allowlist tools — manifest wiring', () => {
     const modules = new ModuleRegistry(new InMemoryActivationStore())
     modules.register(chatGatewayManifest)
 
-    const tools = createAllowlistAdminTools(inMemoryAllowlist())
+    const tools = createAllowlistAdminTools(inMemoryAllowlist(), members)
     for (const tool of tools) {
       expect(tool.name.startsWith(`${tool.module}.`)).toBe(true)
       expect(modules.get(tool.module)?.tools).toContain(tool.name)

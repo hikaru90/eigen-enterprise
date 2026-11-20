@@ -25,7 +25,17 @@ const { bootAppMock, runtimeDispatchMock, handoffDispatchMock, getDbMock, appSql
 
 vi.mock('$lib/server/boot', () => ({ bootApp: bootAppMock }))
 const isUserAdminMock = vi.hoisted(() => vi.fn(async () => false))
-vi.mock('$lib/server/auth/user-role', () => ({ isUserAdmin: isUserAdminMock }))
+/** The company's members (CB3): u1 and u2 are members without admin rights, owner-1 runs the company; anyone else is no member. */
+const personForMock = vi.hoisted(() =>
+  vi.fn(async (id: string) =>
+    id === 'u1' || id === 'u2'
+      ? { id, roles: ['member'] }
+      : id === 'owner-1'
+        ? { id, roles: ['admin', 'member'] }
+        : null,
+  ),
+)
+vi.mock('$lib/server/auth/user-role', () => ({ isUserAdmin: isUserAdminMock, personFor: personForMock }))
 vi.mock('$lib/server/db', () => ({
   getDb: getDbMock,
   appSql: appSqlMock,
@@ -179,7 +189,7 @@ describe('POST /api/chat — harness dispatch', () => {
     const [sessionId, sinks, dispatchOptions] = handoffDispatchMock.mock.calls[0]
     expect(sessionId).toBe(SESSION_ID)
     expect(typeof sinks.stream).toBe('function')
-    expect(dispatchOptions).toEqual({ llmUserId: 'u1' })
+    expect(dispatchOptions).toEqual({ person: { id: 'u1', roles: ['member'] } })
     expect(lines.at(-1)).toMatchObject({ type: 'done', response: 'You did it. Website first?' })
   })
 
@@ -323,7 +333,7 @@ describe('POST /api/chat — harness dispatch', () => {
     ).rejects.toMatchObject({ status: 404 })
   })
 
-  it('dispatches through the kernel runtime as the orchestrator agent with the session and sinks', async () => {
+  it('dispatches through the kernel runtime as the SIGNED-IN MEMBER (their roles, never the admin agent) with the session and sinks', async () => {
     const { POST } = await import('./+server')
     runtimeDispatchMock.mockResolvedValue('Runtime reply.')
 
@@ -342,7 +352,20 @@ describe('POST /api/chat — harness dispatch', () => {
     expect(message).toBe('hello')
     expect(typeof sinks.stream).toBe('function')
     expect(typeof sinks.surfaceEvent).toBe('function')
-    expect(dispatchOptions).toEqual({ llmUserId: 'u1' })
+    // CB3: the person the brain acts as — a member's own roles, no 'admin', no agent identity.
+    expect(dispatchOptions).toEqual({ person: { id: 'u1', roles: ['member'] } })
+  })
+
+  it('refuses a signed-in account that is not a member: the brain never runs (no fallback identity)', async () => {
+    const { POST } = await import('./+server')
+    await expect(
+      POST({
+        locals: { user: { id: 'stranger' } },
+        request: ndjsonRequest({ message: 'hello' }),
+      } as never),
+    ).rejects.toMatchObject({ status: 403 })
+    expect(runtimeDispatchMock).not.toHaveBeenCalled()
+    expect(bootAppMock).not.toHaveBeenCalled()
   })
 
   it('streams harness events (tool.preview, message_delta) and persists the turn', async () => {
@@ -518,7 +541,6 @@ describe('POST /api/chat — harness dispatch', () => {
       registry,
       isToolActive: async () => true,
       eventSink: sink,
-      rolesFor: () => ['admin', 'agent'],
       journeys,
       spec: WEBSITE_FOUNDING_JOURNEY,
     })
@@ -536,11 +558,12 @@ describe('POST /api/chat — harness dispatch', () => {
     })
     runtime.registerAgent(orchestratorAgentConfig())
     await journeys.create(WEBSITE_FOUNDING_JOURNEY.kind, initialJourneyState(SESSION_ID, WEBSITE_FOUNDING_JOURNEY.specVersion))
-    await runtime.dispatch('orchestrator', SESSION_ID, 'Acme')
+    await runtime.dispatch('orchestrator', SESSION_ID, 'Acme', undefined, { person: { id: 'u1', roles: ['admin', 'member'] } })
     bootAppMock.mockResolvedValue({ kernel: { eventSink: kernelEvents }, orchestrator: { runtime } })
 
+    // The owner's turn (an admin): the journey step runs as them and reaches the website tool.
     const res = await POST({
-      locals: { user: { id: 'u1' } },
+      locals: { user: { id: 'owner-1' } },
       request: ndjsonRequest({ message: 'We build things.' }),
     } as never)
 

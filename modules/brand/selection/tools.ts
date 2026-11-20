@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
+import { isDirectHuman } from '$lib/kernel/principals'
 import type { ToolDescriptor, ToolContext } from '$lib/kernel/types'
 import { brandCorpus, type CorpusRegistry } from '../corpus/runtime'
 import { createVisualSetInputSchema, defaultBrandStore, type BrandStore, type BrandVisualSet } from '../store'
@@ -33,10 +34,11 @@ export type BrandSelectionToolDeps = {
 }
 
 function requireHuman(ctx: ToolContext): void {
-  if (ctx.principal.kind !== 'human') {
+  // The person's own click: the brain acting for them (CB3) does not count (G8).
+  if (!isDirectHuman(ctx.principal)) {
     throw new KernelError(
       'permission_denied',
-      `brand visual identity mutation requires a human principal (G8); principal ${ctx.principal.id} is ${ctx.principal.kind}`,
+      `brand visual identity mutation requires a human principal (G8); principal ${ctx.principal.id} is ${ctx.principal.kind}${ctx.principal.via ? ` via the ${ctx.principal.via}` : ''}`,
     )
   }
 }

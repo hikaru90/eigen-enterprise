@@ -17,6 +17,9 @@ import {
   type OnboardingFacts,
 } from './onboarding-context'
 
+/** The person every brain turn acts as (CB3: no person, no turn): the owner, an admin. */
+const AS_OWNER = { person: { id: 'owner-1', roles: ['admin', 'member'] } }
+
 /**
  * Assisted onboarding hand-off: after the scripted setup, the ORCHESTRATOR
  * AGENT speaks first (with the onboarding context block) and opens the
@@ -66,10 +69,10 @@ function fixture(): Fx {
     registry,
     isToolActive: async () => true,
     eventSink: sink,
-    rolesFor: () => ['admin', 'agent'],
     journeys,
     spec: WEBSITE_FOUNDING_JOURNEY,
-    onboardingFacts: async (llmUserId) => (llmUserId ? facts.current : null),
+    // Only u1 is mid-onboarding; any other person has no onboarding facts.
+    onboardingFacts: async (personId) => (personId === 'u1' ? facts.current : null),
   })
   runtime.registerEngine('durable', fake('durable'))
   runtime.registerAgent(orchestratorAgentConfig())
@@ -81,7 +84,7 @@ describe('onboarding hand-off — the agent takes over after the scripted setup'
     const fx = fixture()
     fx.script.push('You did it — your company is set up. Shall we start with your website?')
 
-    const reply = await fx.runtime.dispatchOnboardingHandoff('s1', undefined, { llmUserId: 'u1' })
+    const reply = await fx.runtime.dispatchOnboardingHandoff('s1', undefined, { person: { id: 'u1', roles: ['admin', 'member'] } })
 
     expect(reply).toBe('You did it — your company is set up. Shall we start with your website?')
     expect(fx.inputs).toHaveLength(1)
@@ -97,14 +100,14 @@ describe('onboarding hand-off — the agent takes over after the scripted setup'
     const fx = fixture()
     fx.facts.current = { ...handedOff, welcomeCompleted: false }
     fx.script.push('You did it.')
-    await expect(fx.runtime.dispatchOnboardingHandoff('s1', undefined, { llmUserId: 'u1' })).resolves.toBe('You did it.')
+    await expect(fx.runtime.dispatchOnboardingHandoff('s1', undefined, { person: { id: 'u1', roles: ['admin', 'member'] } })).resolves.toBe('You did it.')
   })
 
   it('website already under way: the precondition goes to the agent, which answers — nothing thrown', async () => {
     const fx = fixture()
     fx.facts.current = { ...handedOff, website: 'in_progress' }
     fx.script.push('Welcome back — your website is already on its way.')
-    await expect(fx.runtime.dispatchOnboardingHandoff('s1', undefined, { llmUserId: 'u1' })).resolves.toBe(
+    await expect(fx.runtime.dispatchOnboardingHandoff('s1', undefined, { person: { id: 'u1', roles: ['admin', 'member'] } })).resolves.toBe(
       'Welcome back — your website is already on its way.',
     )
     expect(fx.inputs).toHaveLength(1)
@@ -119,7 +122,6 @@ describe('onboarding hand-off — the agent takes over after the scripted setup'
       registry: new KernelRegistry({ eventSink: new InMemoryEventSink(), vcsCommitter: null }),
       isToolActive: async () => true,
       eventSink: new InMemoryEventSink(),
-      rolesFor: () => ['admin', 'agent'],
       journeys: fx.journeys,
       spec: WEBSITE_FOUNDING_JOURNEY,
       onboardingFacts: async () => {
@@ -134,7 +136,7 @@ describe('onboarding hand-off — the agent takes over after the scripted setup'
       },
     })
     fx.runtime.registerAgent(orchestratorAgentConfig())
-    await expect(fx.runtime.dispatchOnboardingHandoff('s1', undefined, { llmUserId: 'u1' })).resolves.toBe(
+    await expect(fx.runtime.dispatchOnboardingHandoff('s1', undefined, { person: { id: 'u1', roles: ['admin', 'member'] } })).resolves.toBe(
       'Hi! Good to see you.',
     )
     expect(seen[0]).toContain('onboarding.facts')
@@ -144,7 +146,7 @@ describe('onboarding hand-off — the agent takes over after the scripted setup'
   it('next turns carry the context block until the agent starts the website', async () => {
     const fx = fixture()
     fx.script.push('What would you like instead?')
-    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'not yet', undefined, { llmUserId: 'u1' })
+    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'not yet', undefined, { person: { id: 'u1', roles: ['admin', 'member'] } })
     expect(fx.inputs[0]!.input.startsWith('[company onboarding context]')).toBe(true)
     expect(fx.inputs[0]!.input.endsWith('not yet')).toBe(true)
     // The injected block is composed by code: the owner's own words travel
@@ -157,9 +159,7 @@ describe('onboarding hand-off — the agent takes over after the scripted setup'
     const fx = fixture()
     fx.script.push(`Great — what’s your company called?\n${ONBOARDING_START_WEBSITE_MARKER}`)
 
-    const reply = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'yes, website', undefined, {
-      llmUserId: 'u1',
-    })
+    const reply = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'yes, website', undefined, { person: { id: 'u1', roles: ['admin', 'member'] } })
 
     expect(reply).toBe('Great — what’s your company called?')
     const journey = await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
@@ -171,18 +171,18 @@ describe('onboarding hand-off — the agent takes over after the scripted setup'
     // Next turn: the journey drives (journey context, the name is captured verbatim).
     fx.facts.current = { ...handedOff, website: 'in_progress' }
     fx.script.push('Nice.')
-    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'Kindred Digital Labs', undefined, { llmUserId: 'u1' })
+    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'Kindred Digital Labs', undefined, { person: { id: 'u1', roles: ['admin', 'member'] } })
     expect(fx.inputs[1]!.input.startsWith('[company journey context')).toBe(true)
     const after = await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
     expect(after!.state.answers.company_name).toBe('Kindred Digital Labs')
   })
 
-  it('no onboarding block for non-human turns or once the website is done', async () => {
+  it('no onboarding block for a person who is not onboarding, or once the website is done', async () => {
     const fx = fixture()
     fx.script.push('hi', 'hi')
-    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'hello')
+    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'hello', undefined, AS_OWNER)
     fx.facts.current = { ...handedOff, website: 'done' }
-    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'hello', undefined, { llmUserId: 'u1' })
+    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'hello', undefined, { person: { id: 'u1', roles: ['admin', 'member'] } })
     expect(fx.inputs.map((i) => i.input)).toEqual(['hello', 'hello'])
   })
 })

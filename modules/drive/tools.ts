@@ -8,10 +8,12 @@ import { DRIVE_MODULE_ID } from './manifest'
  * drive.* kernel tools: list a folder, read a text file, write a Markdown/CSV
  * file (a new revision), archive and unarchive, list the archive, and ask for
  * archive suggestions. Every call runs through the Drive service's access
- * checks as the calling principal: a person with their own access, the agent
- * with admin rights (like members.*). Writing, archiving and unarchiving are
- * mutate-class and wait on the company's approval mode; suggesting changes
- * nothing.
+ * checks as the calling principal: a person with their own access — also when
+ * the company brain acts for them (CB3: the principal IS the person, so the
+ * brain sees and changes exactly what they may); an agent principal that is
+ * no person keeps the agent's access. Every member reaches these tools (role
+ * 'member'). Writing, archiving and unarchiving are mutate-class and wait on
+ * the company's approval mode; suggesting changes nothing.
  */
 
 export type DriveToolDeps = {
@@ -45,14 +47,8 @@ export function actorOf(ctx: ToolContext): Actor {
   return ctx.principal.kind === 'human' ? { kind: 'user', userId: ctx.principal.id } : { kind: 'agent', id: ctx.principal.id }
 }
 
-/**
- * Who a NEW document belongs to: the agent working for a person creates it as
- * that person (it lands in their Drive, theirs to manage, within their own
- * access — like Memory notes); otherwise the calling principal.
- */
-function creatorOf(ctx: ToolContext): Actor {
-  return ctx.principal.kind !== 'human' && ctx.actingUserId ? { kind: 'user', userId: ctx.actingUserId } : actorOf(ctx)
-}
+/** Every member's own Drive access; the brain reaches it as the member. */
+const DRIVE_ROLES = ['admin', 'member', 'agent']
 
 async function liveService(): Promise<DriveService> {
   const { driveService } = await import('./index')
@@ -70,7 +66,7 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
         'List a Drive folder (folder_id; omit for the top level): its folders and files with ids, names, sizes and types. Archived items are left out (drive.list_archived lists them).',
       auditClass: 'read',
       inputSchema: listInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: DRIVE_ROLES },
       handler: async (ctx, input) => {
         const i = listInput.parse(input)
         const out = await (await service()).listFolder(actorOf(ctx), i.folder_id ?? null)
@@ -83,7 +79,7 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
       summary: 'Read a file from Drive as text by file_id: Markdown, CSV and plain text as they are; PDF, Word (.docx) and PowerPoint (.pptx) as their extracted text (an error says when a format cannot be read yet).',
       auditClass: 'read',
       inputSchema: readInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: DRIVE_ROLES },
       handler: async (ctx, input) => (await service()).readText(actorOf(ctx), readInput.parse(input).file_id),
     },
     {
@@ -97,7 +93,7 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
         return name ? `Saved a new version of ${name} in Drive` : `Tried to save file ${input.file_id} in Drive`
       },
       inputSchema: writeInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: DRIVE_ROLES },
       handler: async (ctx, input) => {
         const i = writeInput.parse(input)
         const out = await (await service()).writeText(actorOf(ctx), i.file_id, i.content)
@@ -116,10 +112,11 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
         return name ? `Created ${name} in Drive` : `Tried to create ${input.name} in Drive`
       },
       inputSchema: createInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: DRIVE_ROLES },
       handler: async (ctx, input) => {
         const i = createInput.parse(input)
-        const file = await (await service()).createDocument(creatorOf(ctx), i.folder_id ?? null, 'md', i.name, i.content)
+        // A new document belongs to its creator: the person (also via the brain), in their own Drive.
+        const file = await (await service()).createDocument(actorOf(ctx), i.folder_id ?? null, 'md', i.name, i.content)
         return { file }
       },
     },
@@ -135,7 +132,7 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
         return done.length === 1 ? `Archived ${done[0]!.name} in Drive` : `Archived ${done.length} items in Drive`
       },
       inputSchema: itemsInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: DRIVE_ROLES },
       handler: async (ctx, input) => (await service()).archiveMany(actorOf(ctx), itemsInput.parse(input).items),
     },
     {
@@ -150,7 +147,7 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
         return done.length === 1 ? `Brought ${done[0]!.name} back from the Drive archive` : `Brought ${done.length} items back from the Drive archive`
       },
       inputSchema: itemsInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: DRIVE_ROLES },
       handler: async (ctx, input) => {
         const out = await (await service()).unarchiveMany(actorOf(ctx), itemsInput.parse(input).items)
         return { unarchived: out.unarchived.map((u) => ({ ...u.item, stillIn: u.stillIn })), errors: out.errors }
@@ -162,7 +159,7 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
       summary: 'List the archived Drive items you can open, grouped by the folder they are in: ids, names, when and by whom each was archived.',
       auditClass: 'read',
       inputSchema: emptyInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: DRIVE_ROLES },
       handler: async (ctx, input) => {
         emptyInput.parse(input)
         return { groups: await (await service()).archived(actorOf(ctx)) }
@@ -174,7 +171,7 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
       summary: `Suggest which Drive files could be archived: takes the files you can edit that have not changed for older_than_days (default ${SUGGEST_DEFAULT_DAYS}; ${SUGGEST_MIN_DAYS} to ${SUGGEST_MAX_DAYS}) and asks the AI which look done with, each with a one-line reason. Archives nothing: show the suggestions to the person and archive only what they confirm (drive.archive).`,
       auditClass: 'read',
       inputSchema: suggestInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: DRIVE_ROLES },
       handler: async (ctx, input) => {
         const i = suggestInput.parse(input)
         const out = await suggestArchive(

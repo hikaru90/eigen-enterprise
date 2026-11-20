@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { delegatedPrincipal } from '$lib/kernel/principals'
 import { memoryEditLockStore } from './locks'
 import { memoryDriveAccess } from './memory-access'
 import { createDriveService } from './service'
@@ -80,9 +81,20 @@ describe('drive.* tools', () => {
     expect(named.file.name).toBe('brief.md')
   })
 
-  it('drive.create_document working for a person lands in their Drive as theirs, with their own access', async () => {
-    const { drive, tool, agent } = await setup()
-    const forAlice = { ...agent, actingUserId: 'alice' }
+  it('the brain acting as a person sees exactly their Drive, never another member\'s (CB3)', async () => {
+    const { drive, tool } = await setup()
+    const asAlice = { principal: delegatedPrincipal({ id: 'alice', roles: ['member'] }, 'orchestrator'), requestId: 'r' }
+    await drive.createDocument({ kind: 'user', userId: 'alice' }, null, 'md', 'mine')
+    const bobs = await drive.createDocument({ kind: 'user', userId: 'bob' }, null, 'md', 'secret')
+    expect((await tool('drive.list').handler(asAlice, {})) as { items: Array<{ name: string }> }).toMatchObject({
+      items: [{ name: 'mine.md' }],
+    })
+    await expect(tool('drive.read').handler(asAlice, { file_id: bobs.id })).rejects.toMatchObject({ code: 'not_found' })
+  })
+
+  it('drive.create_document as a person (the brain acting for them) lands in their Drive as theirs, with their own access', async () => {
+    const { drive, tool } = await setup()
+    const forAlice = { principal: delegatedPrincipal({ id: 'alice', roles: ['member'] }, 'orchestrator'), requestId: 'r' }
     const out = (await tool('drive.create_document').handler(forAlice, { name: 'Project brief', content: 'b' })) as {
       file: { id: string; ownerId: string }
     }

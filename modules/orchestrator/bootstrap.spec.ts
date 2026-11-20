@@ -4,7 +4,7 @@ import { InMemoryApprovalStore } from '$lib/kernel/approvals'
 import type { LoopEngine } from '$lib/kernel/engine'
 import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryActivationStore, ModuleRegistry, type ModuleManifest } from '$lib/kernel/modules'
-import type { PrincipalStore } from '$lib/kernel/principals'
+import type { PersonDirectory, PersonRef, PrincipalStore } from '$lib/kernel/principals'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolDescriptor, ToolContext } from '$lib/kernel/types'
 import type { WiredKernel } from '$lib/kernel/wiring'
@@ -55,8 +55,12 @@ function fakeDurable(reply: (sessionId: string, input: string) => string = (_s, 
   return { run: async (sessionId, input) => reply(sessionId, input) }
 }
 
+/** The company's members (CB3: the brain acts only as one of them). */
+const P1: PersonRef = { id: 'p1', roles: ['admin', 'member'] }
+const people: PersonDirectory = { personById: async (id) => (id === P1.id ? P1 : null) }
+
 function bootOptions(overrides: Partial<OrchestratorBootOptions> = {}): OrchestratorBootOptions {
-  return { startLoop: false, engines: [['durable', fakeDurable()]], ...overrides }
+  return { startLoop: false, engines: [['durable', fakeDurable()]], people, ...overrides }
 }
 
 afterEach(() => {
@@ -144,8 +148,11 @@ describe('bootstrapOrchestrator — harness runtime seeding (phase-1b)', () => {
       bootOptions({ engines: [['durable', fakeDurable(() => 'hello from harness')]] }),
     )
 
+    // The gateway resolves the linked member first; the brain answers AS them.
+    expect(await boot.brain.personFor('p1')).toEqual(P1)
+    expect(await boot.brain.personFor('orchestrator')).toBeNull()
     const reply = await boot.brain.respond(
-      { sessionId: 'session-1', platform: 'telegram', externalChatId: '100', principalId: 'p1' },
+      { sessionId: 'session-1', platform: 'telegram', externalChatId: '100', principalId: 'p1', person: P1 },
       'hi',
     )
     expect(reply).toBe('hello from harness')
@@ -156,7 +163,9 @@ describe('bootstrapOrchestrator — harness runtime seeding (phase-1b)', () => {
     // Reply content never lands in event payloads.
     const replied = sink.events.find((e) => e.type === 'agent.replied')!
     expect(JSON.stringify(replied.payload)).not.toContain('hello from harness')
-    expect(replied.payload).toMatchObject({ agentId: 'orchestrator', sessionId: 'session-1' })
+    // One conversation per chat AND person; the person is the principal, via the brain.
+    expect(replied.payload).toMatchObject({ agentId: 'orchestrator', sessionId: 'session-1:p1', via: 'brain' })
+    expect(replied.principalId).toBe('p1')
   })
 })
 
@@ -208,7 +217,7 @@ describe('bootstrapOrchestrator — chat-gateway stage active', () => {
     const { kernel } = inMemoryKernel()
     const stage = fakeStage()
 
-    const boot = await bootstrapOrchestrator(kernel, async () => stage, { engines: [['durable', fakeDurable()]] })
+    const boot = await bootstrapOrchestrator(kernel, async () => stage, { engines: [['durable', fakeDurable()]], people })
 
     expect(boot.status()).toEqual({ chatGateway: 'active', loopRunning: true })
     await boot.loop!.stop()
@@ -239,9 +248,9 @@ describe('bootstrapOrchestrator — chat-gateway stage active', () => {
 
     const boot = await bootstrapOrchestrator(kernel, activeStage, bootOptions())
 
-    const brain = boot.brain as unknown as { offeredTools(): Promise<Array<{ name: string }>> }
-    const offered = await brain.offeredTools()
-    expect(offered.map((t) => t.name)).toContain('testmod.echo')
+    expect((await boot.brain.offeredTools(P1)).map((t) => t.name)).toContain('testmod.echo')
+    // A member without admin rights is offered nothing admin-only.
+    expect((await boot.brain.offeredTools({ id: 'm', roles: ['member'] })).map((t) => t.name)).not.toContain('testmod.echo')
 
     await boot.loop!.stop()
   })
@@ -271,7 +280,7 @@ describe('bootstrapOrchestrator — extra engine injection (composition-root sea
       verificationPolicy: 'none',
       enabled: true,
     })
-    const reply = await boot.runtime.dispatch('pi-test-agent', 'session-1', 'hello')
+    const reply = await boot.runtime.dispatch('pi-test-agent', 'session-1', 'hello', undefined, { person: P1 })
     expect(reply).toBe('pi:session-1:hello')
   })
 })

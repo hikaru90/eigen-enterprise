@@ -58,7 +58,8 @@ export function createBrandSocialTools(deps: BrandSocialToolDeps = {}): ToolDesc
   const posts = () => deps.posts ?? defaultSocialPostStore()
   const brand = () => deps.brand ?? defaultBrandStore()
   const chat = deps.chat ?? liveCaptionChat
-  const permission = { roles: ['admin', 'agent'] }
+  // Any member works on the company's social posts (the /brand/social page): the brain does too, as them.
+  const permission = { roles: ['admin', 'member', 'agent'] }
 
   return [
     {
@@ -124,7 +125,7 @@ export function createBrandSocialTools(deps: BrandSocialToolDeps = {}): ToolDesc
           { posts: posts(), brand: brand(), chat },
           {
             postId: i.postId,
-            userId: ctx.actingUserId ?? ctx.principal.id,
+            userId: ctx.principal.id,
             ...(i.networks ? { networks: i.networks } : {}),
             ...(i.locale ? { locale: i.locale } : {}),
             ...(i.brief ? { brief: i.brief } : {}),

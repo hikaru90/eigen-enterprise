@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
+import { isDirectHuman } from '$lib/kernel/principals'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { defaultBrandStore, type BrandStore, type BrandVisualSet } from '../store'
 import { loadPickerIndex, pickerIndexSourceFromEnv, toVisualSetVars, type PickerTree } from '../taxonomy/load-index'
@@ -25,7 +26,7 @@ export type BrandPickerToolDeps = {
 const pickerChooseInput = z.object({ nodeId: z.string().min(1) })
 
 function requireOwnerHuman(ctx: ToolContext): void {
-  if (ctx.principal.kind !== 'human' || !ctx.principal.roles.includes('owner')) {
+  if (!isDirectHuman(ctx.principal) || !ctx.principal.roles.includes('owner')) {
     throw new KernelError(
       'permission_denied',
       `choosing the company style is the owner's own click; principal ${ctx.principal.id} (${ctx.principal.kind}) is not the owner`,

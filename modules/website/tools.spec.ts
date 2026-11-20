@@ -4,6 +4,7 @@ import { InMemoryApprovalStore, StaticApprovalPolicy } from '$lib/kernel/approva
 import { KernelError } from '$lib/kernel/errors'
 import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
+import { delegatedPrincipal } from '$lib/kernel/principals'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import type { VcsCommitter } from '$lib/kernel/vcs'
@@ -273,10 +274,10 @@ describe('the website is the public site: tool descriptions route internal docum
 })
 
 describe('internal-document guard on agent page writes (Contribute: never a website page)', () => {
+  // The company brain acting as the owner (CB3): still judged — it is not the owner's own click.
   const agent: ToolContext = {
-    principal: { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] },
+    principal: delegatedPrincipal({ id: 'owner-1', roles: ['admin', 'member'] }, 'orchestrator'),
     requestId: 'req-agent',
-    actingUserId: 'owner-1',
   }
   const service: ToolContext = {
     principal: { id: 'svc-1', kind: 'service', roles: ['admin', 'agent'] },

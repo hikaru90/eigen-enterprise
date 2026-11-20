@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
+import { isDirectHuman } from '$lib/kernel/principals'
 import type { ToolDescriptor, ToolContext } from '$lib/kernel/types'
 import { createBrandExtractTools, type BrandExtractToolDeps } from './extract/tools'
 import { createBrandSelectionTools, type BrandSelectionToolDeps } from './selection/tools'
@@ -37,10 +38,11 @@ export type BrandToolDeps = {
 
 /** G8: strategic brand decisions are human-owned; agents never self-author boundaries (G19). */
 function requireHuman(ctx: ToolContext): void {
-  if (ctx.principal.kind !== 'human') {
+  // The person's own click: the brain acting for them (CB3) does not count (G8).
+  if (!isDirectHuman(ctx.principal)) {
     throw new KernelError(
       'permission_denied',
-      `brand guideline mutation requires a human principal (G8); principal ${ctx.principal.id} is ${ctx.principal.kind}`,
+      `brand guideline mutation requires a human principal (G8); principal ${ctx.principal.id} is ${ctx.principal.kind}${ctx.principal.via ? ` via the ${ctx.principal.via}` : ''}`,
     )
   }
 }

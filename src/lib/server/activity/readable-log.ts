@@ -96,7 +96,9 @@ export function toLogEntry(
   const p = record(event.payload)
   const details = [event.type]
   const module = moduleOf(event)
-  const isAgent = event.principalId !== undefined && agentIds.has(event.principalId)
+  // The brain acts as a person (CB3): its calls carry the person as principalId
+  // and `via: 'brain'` as provenance — still the agent's doing on this log.
+  const isAgent = (event.principalId !== undefined && agentIds.has(event.principalId)) || p.via === 'brain'
 
   let actor = 'Agent'
   let text: string

@@ -22,11 +22,12 @@ import type { EventSink } from '$lib/kernel/events'
 import { CHAT_GATEWAY_MODULE_ID, type Brain } from '$lib/kernel/gateway'
 import { ModuleRegistry, type ActivationStore } from '$lib/kernel/modules'
 import type { PrincipalStore } from '$lib/kernel/principals'
-import { KernelRegistry } from '$lib/kernel/registry'
+import { KernelRegistry, type PrincipalScope } from '$lib/kernel/registry'
 import { type VcsCommitter, vcsCommitterFromEnv } from '$lib/kernel/vcs'
 import { registerModuleTools, type WiredKernel } from '$lib/kernel/wiring'
 import type { AppDatabase } from '$lib/server/db/context'
 import { createGitHubTokenClient } from '$lib/server/github/token'
+import { livePrincipalScope } from '$lib/server/kernel/principal-scope'
 import { ASSISTANT_MODULE_ID, assistantManifest } from './assistant/manifest'
 import { BRAND_MODULE_ID, brandManifest } from './brand/manifest'
 import { createBrandTools } from './brand/tools'
@@ -213,6 +214,12 @@ export type BootstrapKernelOptions = {
   vcsCommitter?: VcsCommitter | null
   /** Overrides the repo engine (tests inject one with fake runners). */
   repoEngine?: RepoEngine
+  /**
+   * Row-level-security scope of every person's tool call (CB3). bootstrapKernel
+   * wires the live one (src/lib/server/kernel/principal-scope.ts); a bare
+   * buildKernel (in-memory specs) runs handlers as called.
+   */
+  principalScope?: PrincipalScope
 }
 
 /**
@@ -272,6 +279,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     approvalPolicy: new ModeAwareApprovalPolicy(APPROVAL_REQUIRED_TOOLS, approvalMode),
     approvalStore,
     vcsCommitter,
+    ...(options.principalScope ? { principalScope: options.principalScope } : {}),
   })
 
   provideReposPorts({
@@ -357,7 +365,7 @@ let singleton: WiredKernel | null = null
 
 /** Process-wide kernel (first call wins; later options are ignored). */
 export function bootstrapKernel(options: BootstrapKernelOptions = {}): WiredKernel {
-  if (!singleton) singleton = buildKernel(options)
+  if (!singleton) singleton = buildKernel({ principalScope: livePrincipalScope, ...options })
   return singleton
 }
 
@@ -393,7 +401,8 @@ export async function bootstrapChatGateway(
   kernel.modules.register(gatewayBoot.manifest)
   registerModuleTools(kernel.registry, kernel.modules, [
     gatewayBoot.statusTool,
-    ...createAllowlistAdminTools(gatewayBoot.allowlist),
+    // A link names a member: the brain resolves who that is.
+    ...createAllowlistAdminTools(gatewayBoot.allowlist, { personFor: (id) => brain.personFor(id) }),
   ])
 
   return gatewayBoot

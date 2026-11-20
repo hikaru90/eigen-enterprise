@@ -77,7 +77,7 @@ export function createContributeTools(
         'List the improvements people in the company proposed for the app (the Contribute board): id, title, kind (idea|bug|polish), area, status, net votes, author, note. Default: open ones (requested + in progress), most wanted first. On the central board install, for those who manage the board, `allInstalls` also lists what every eigenEnterprise install shared (no names: installId, remoteId, English summary, kind, area, status, score; details via contribute_hub.get).',
       auditClass: 'read',
       inputSchema: listInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) => {
         const i = listInput.parse(input)
         const statuses: readonly ContributionStatus[] =
@@ -95,7 +95,7 @@ export function createContributeTools(
       summary: 'Read one proposal from the Contribute board by id.',
       auditClass: 'read',
       inputSchema: getInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) => getProposal(await deps(), viewer(ctx), getInput.parse(input).id),
     },
     {
@@ -109,7 +109,7 @@ export function createContributeTools(
         return input.status ? `Marked ${what} ${STATUS_WORDS[input.status]}` : `Updated the note on ${what}`
       },
       inputSchema: updateInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) => {
         const i = updateInput.parse(input)
         return updateProposal(await deps(), await actor(ctx), i.id, { status: i.status, note: i.note })

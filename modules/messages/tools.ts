@@ -52,7 +52,7 @@ export function createMessagesTools(opts: { deps?: () => Promise<MessagesDeps> }
         'List the team chat conversations you may read: channels (and, for a person, their direct messages) with unread counts.',
       auditClass: 'read',
       inputSchema: listInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx) => {
         const d = await deps()
         if (isPerson(ctx)) return { conversations: await listConversations(d, ctx.principal.id) }
@@ -68,7 +68,7 @@ export function createMessagesTools(opts: { deps?: () => Promise<MessagesDeps> }
         'Read recent messages (Markdown) of one conversation you may see, by conversation_id or channel name; page back with before_id.',
       auditClass: 'read',
       inputSchema: readInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) => {
         const i = readInput.parse(input)
         const d = await deps()

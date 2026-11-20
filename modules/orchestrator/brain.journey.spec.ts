@@ -7,6 +7,7 @@ import { KernelError } from '$lib/kernel/errors'
 import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryActivationStore, ModuleRegistry } from '$lib/kernel/modules'
 import { InMemoryJourneyStore, initialJourneyState } from '$lib/kernel/playbook'
+import { delegatedPrincipal } from '$lib/kernel/principals'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import {
@@ -18,6 +19,9 @@ import {
   executeStepArtifacts,
   orchestratorAgentConfig,
 } from './brain'
+
+/** The person every brain turn acts as (CB3: no person, no turn): the owner, an admin. */
+const AS_OWNER = { person: { id: 'owner-1', roles: ['admin', 'member'] } }
 
 /**
  * Journey lifecycle tests: pure fakes (no DB, no real LLM). The fake loop
@@ -160,7 +164,6 @@ function fixture(options: { failOnSlug?: string; failOnDocument?: boolean } = {}
     registry,
     isToolActive: async () => true,
     eventSink: sink,
-    rolesFor: () => ['admin', 'agent'],
     journeys,
     spec: WEBSITE_FOUNDING_JOURNEY,
   })
@@ -179,13 +182,13 @@ async function runFoundingJourney(fx: Fixture, sinks?: Parameters<JourneyAwareAg
   // Phase-2e step order: the boot sequence's seeded greeting asks the company
   // name first — the journey steps match that founding order.
   fx.script.push(`Great — noted.\n${marker('company_name')}`)
-  const r1 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'Kindred Digital Labs', sinks)
+  const r1 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'Kindred Digital Labs', sinks, AS_OWNER)
 
   fx.script.push(`Love it.\n${marker('positioning')}`)
-  const r2 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'an AI-native company OS', sinks)
+  const r2 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'an AI-native company OS', sinks, AS_OWNER)
 
   fx.script.push(`Perfect.\n${marker('tone')}`)
-  const r3 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'warm, direct, technical', sinks)
+  const r3 = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'warm, direct, technical', sinks, AS_OWNER)
 
   return [r1, r2, r3]
 }
@@ -194,13 +197,13 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
   it('never opens a journey from chat replies — onboarding owns the start (regression pin)', async () => {
     const fx = fixture()
     fx.script.push('Just chatting!')
-    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'hello there')
+    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'hello there', undefined, AS_OWNER)
     expect(await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)).toBeNull()
 
     // Even a reply quoting the exact retired opening question creates nothing:
     // the persona no longer asks it, and the driver no longer starts journeys.
     fx.script.push(`Sure!\n${OLD_OPENING_QUESTION}`)
-    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'i need a website')
+    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'i need a website', undefined, AS_OWNER)
 
     expect(await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)).toBeNull()
   })
@@ -214,7 +217,7 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     const row = await fx.journeys.create(WEBSITE_FOUNDING_JOURNEY.kind, initialJourneyState('session-1'))
 
     fx.script.push('Just chatting!')
-    const reply = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'hi')
+    const reply = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'hi', undefined, AS_OWNER)
 
     expect(reply).toBe('Just chatting!')
     expect(fx.engineInputs[0]).not.toContain('[company journey context')
@@ -332,7 +335,7 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     await fx.approvals.decide(pending[0]!.id, 'approved', 'owner')
 
     fx.script.push('Published!')
-    const reply = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'nice')
+    const reply = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'nice', undefined, AS_OWNER)
 
     expect(reply).toBe('Published!')
     const publishes = fx.toolCalls.filter((c) => c.tool === 'website.publish_page')
@@ -347,7 +350,22 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     expect(completed).toHaveLength(1)
     expect(completed[0]!.payload).toMatchObject({ kind: 'website_founding' })
     expect(String(completed[0]!.payload)).not.toContain('warm, direct')
-    expect(completed[0]!.principalId).toBe('orchestrator')
+    // The journey completed on the owner's turn: the person, not an agent identity (CB3).
+    expect(completed[0]!.principalId).toBe('owner-1')
+  })
+
+  it('a member’s turn runs the step artifacts as that member: website writes are refused and handed back (CB3)', async () => {
+    const fx = fixture()
+    const member = { person: { id: 'member-1', roles: ['member'] } }
+    await fx.journeys.create(WEBSITE_FOUNDING_JOURNEY.kind, initialJourneyState('session-1', WEBSITE_FOUNDING_JOURNEY.specVersion))
+    fx.script.push(`Got it.\n${marker('company_name')}`)
+    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'Kindred Digital Labs', undefined, member)
+    fx.script.push(`Noted.\n${marker('positioning')}`, 'I could not create the pages: only the owner or an admin can.')
+    const reply = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'an AI-native company OS', undefined, member)
+
+    expect(fx.toolCalls.filter((c) => c.tool === 'website.create_page')).toEqual([])
+    expect(fx.engineInputs.at(-1)).toContain('permission_denied')
+    expect(reply).toBe('I could not create the pages: only the owner or an admin can.')
   })
 
   it('surfaces the approval gate as text on sink-less surfaces (Telegram path)', async () => {
@@ -368,17 +386,17 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     )
 
     fx.script.push(`Great.\n${marker('company_name')}`)
-    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'Kindred Digital Labs')
+    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'Kindred Digital Labs', undefined, AS_OWNER)
 
     fx.script.push(`Noted.\n${marker('positioning')}`)
-    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'an AI-native company OS')
+    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'an AI-native company OS', undefined, AS_OWNER)
 
     // The brand doc is the tone step's artifact (the final step): the failure
     // surfaces on the turn that captures tone — as an observation the model sees.
     fx.script.push(`All done, your brand doc is live!\n${marker('tone')}`)
     fx.script.push('I could not save your brand page just now — I will retry on your next message.')
     const before = fx.engineInputs.length
-    const reply = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'warm, direct, technical')
+    const reply = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'warm, direct, technical', undefined, AS_OWNER)
 
     expect(reply.startsWith('I could not save your brand page just now — I will retry on your next message.')).toBe(true)
     expect(reply).not.toContain('All done')
@@ -400,7 +418,6 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
       registry: bare,
       isToolActive: async () => true,
       eventSink: fx.sink,
-      rolesFor: () => ['admin', 'agent'],
       journeys: fx.journeys,
       spec: WEBSITE_FOUNDING_JOURNEY,
     })
@@ -418,8 +435,8 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
       initialJourneyState('session-1', WEBSITE_FOUNDING_JOURNEY.specVersion),
     )
 
-    await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'Acme')
-    const reply = await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'We build things.')
+    await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'Acme', undefined, AS_OWNER)
+    const reply = await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'We build things.', undefined, AS_OWNER)
 
     expect(reply).toBe('The website tools are not available yet; I will set that up.')
     expect(inputs.at(-1)).toContain(HARNESS_OBSERVATION_HEADER)
@@ -444,7 +461,6 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
       registry,
       isToolActive: async () => true,
       eventSink: sink,
-      rolesFor: () => ['admin', 'agent'],
       journeys,
       spec: WEBSITE_FOUNDING_JOURNEY,
     })
@@ -459,8 +475,8 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     runtime.registerAgent(orchestratorAgentConfig())
     await journeys.create(WEBSITE_FOUNDING_JOURNEY.kind, initialJourneyState('s1', WEBSITE_FOUNDING_JOURNEY.specVersion))
 
-    await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'Acme')
-    const reply = await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'We build things.')
+    await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'Acme', undefined, AS_OWNER)
+    const reply = await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'We build things.', undefined, AS_OWNER)
 
     expect(reply).toBe('Your website module is still switching on — give me a moment.')
     // The remediation itself fails (kernel.module_activate unknown): the agent sees it.
@@ -503,7 +519,6 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
       registry,
       isToolActive: async () => true,
       eventSink: sink,
-      rolesFor: () => ['admin', 'agent'],
       journeys,
       spec: WEBSITE_FOUNDING_JOURNEY,
     })
@@ -518,8 +533,8 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     runtime.registerAgent(orchestratorAgentConfig())
     await journeys.create(WEBSITE_FOUNDING_JOURNEY.kind, initialJourneyState('s1', WEBSITE_FOUNDING_JOURNEY.specVersion))
 
-    await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'Acme')
-    await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'We build things.')
+    await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'Acme', undefined, AS_OWNER)
+    await runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'We build things.', undefined, AS_OWNER)
 
     expect(activateCalls).toEqual([])
     expect(await activations.get('website')).toBe(false)
@@ -533,7 +548,7 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
       throw new Error('connection reset')
     }
     fx.script.push('I could not load where we left off — let us continue anyway.')
-    const reply = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'hi')
+    const reply = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'hi', undefined, AS_OWNER)
     expect(reply).toBe('I could not load where we left off — let us continue anyway.')
     expect(fx.engineInputs[0]).toContain(HARNESS_OBSERVATION_HEADER)
     expect(fx.engineInputs[0]).toContain('journey.load')
@@ -543,7 +558,7 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
   it('a harness (engine) failure still rejects — the chat entry owns that case', async () => {
     const fx = fixture()
     // Script empty: the fake engine throws like an LLM outage.
-    await expect(fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'hi')).rejects.toThrow(/script exhausted/)
+    await expect(fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'hi', undefined, AS_OWNER)).rejects.toThrow(/script exhausted/)
   })
 
   it('records already-applied artifacts as executed instead of re-running them (duplicate-slug incident)', async () => {
@@ -572,7 +587,7 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     // The user's exact scenario: a plain "hi" while the journey is active
     // must never surface a duplicate-slug error — retries are idempotent.
     fx.script.push('Still here.')
-    const reply = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'hi')
+    const reply = await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'hi', undefined, AS_OWNER)
     // Sink-less surface: the pending publish is still announced in text —
     // but the turn itself succeeds, no duplicate-slug throw.
     expect(reply).toContain('Still here.')
@@ -607,7 +622,7 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
       enabled: true,
     })
     fx.script.push('plain answer')
-    const reply = await fx.runtime.dispatch('other-agent', 'session-1', 'hi')
+    const reply = await fx.runtime.dispatch('other-agent', 'session-1', 'hi', undefined, AS_OWNER)
     expect(reply).toBe('plain answer')
     expect(fx.engineInputs[0]).toBe('hi')
     expect(await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)).toBeNull()
@@ -619,7 +634,7 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
     const pendingAfterInterview = (await fx.approvals.listPending()).length
 
     fx.script.push(`Still gated.\n${marker('positioning')}`)
-    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'status?')
+    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 'session-1', 'status?', undefined, AS_OWNER)
 
     expect(pendingAfterInterview).toBe(1)
     expect(await fx.approvals.listPending()).toHaveLength(1)
@@ -685,7 +700,9 @@ describe('journey artifacts on a fresh server (module not yet active)', () => {
     state.captured.push('company_name', 'positioning')
     state.answers = { company_name: 'Acme', positioning: 'We build things.' }
 
-    const result = await executeStepArtifacts({ registry, spec: WEBSITE_FOUNDING_JOURNEY, state })
+    // As the brain acting for the owner (CB3): an admin's rights activate a never-switched-on module.
+    const principal = delegatedPrincipal(AS_OWNER.person, ORCHESTRATOR_AGENT_ID)
+    const result = await executeStepArtifacts({ registry, spec: WEBSITE_FOUNDING_JOURNEY, state, principal })
 
     expect(await activations.get('website')).toBe(true)
     expect([...pages.keys()].sort()).toEqual(['about', 'contact', 'home'])

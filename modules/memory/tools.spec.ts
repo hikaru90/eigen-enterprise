@@ -41,7 +41,8 @@ describe('createMemoryTools', () => {
     expect(tools.map((t) => t.name).sort()).toEqual([...MEMORY_TOOL_NAMES].sort())
     for (const descriptor of tools) {
       expect(descriptor.module).toBe('memory')
-      expect(descriptor.permission.roles).toEqual(['admin', 'agent'])
+      // Every member's own Memory (CB3: the brain reaches it as the member).
+      expect(descriptor.permission.roles).toEqual(['admin', 'member', 'agent'])
       expect(descriptor.summary.length).toBeGreaterThan(0)
     }
   })

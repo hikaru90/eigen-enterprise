@@ -22,6 +22,7 @@ import {
   type JourneyState,
   type JourneyStore,
 } from '$lib/kernel/playbook'
+import { delegatedPrincipal, requirePerson, type PersonDirectory, type PersonRef } from '$lib/kernel/principals'
 import type { KernelRegistry } from '$lib/kernel/registry'
 import { disciplineSections } from './discipline'
 import {
@@ -47,30 +48,19 @@ import { connectedReposBlock, type ConnectedReposPort } from './repos-context'
  */
 
 /**
- * The orchestrator principal: the company agent that executes kernel tools on
- * behalf of gateway users. Every tool call runs under this principal —
- * permissions, approval gate, and audit all see it.
+ * The company brain's agent id. It is NOT an identity the brain acts as: the
+ * brain always acts as a person (CB3, plan/phase-company-brain.md §7) — every
+ * tool call runs as that person's delegated principal (their id and roles,
+ * `via: 'brain'`, this agent id for provenance). There is no admin agent
+ * principal any more.
  */
-export const ORCHESTRATOR_PRINCIPAL: {
-  id: string
-  kind: 'agent'
-  roles: string[]
-} = { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] }
-
-export const ORCHESTRATOR_AGENT_ID = ORCHESTRATOR_PRINCIPAL.id
-
-/**
- * Gateway billing/config identity for the orchestrator's LLM calls. The
- * llm-client resolves platform credentials for it (LLM_BASE_URL /
- * SERVICE_API_KEY_* env or the platform DB config).
- */
-export const ORCHESTRATOR_LLM_USER_ID = 'orchestrator'
+export const ORCHESTRATOR_AGENT_ID = 'orchestrator'
 
 /**
  * The website-founding journey: brand Q&A (tone, name, positioning) → site
  * skeleton → publish (owner-approval gated). Declarative, versioned data on
  * the kernel playbook primitive; artifact tools execute through the kernel
- * registry under ORCHESTRATOR_PRINCIPAL.
+ * registry as the person whose turn (or wizard) drives the step.
  *
  * The journey is OPENED BY ONBOARDING (the welcome wizard's founding
  * interview — src/lib/server/onboarding/founding.ts), never by chat replies:
@@ -335,6 +325,7 @@ export const ORCHESTRATOR_PERSONA_PROMPT = [
   '- Know what the company CAN do — name the modules (website, drive, email, brand, memory, chat-gateway, recap), say in one line what each does, and offer the relevant one. Your own repo and roadmap tools are not modules to offer.',
   '- You reach the whole company, not only its modules: the settings (settings.get reads the company name, the AI provider and models, the approval mode, and where every other settings area is managed; settings.update changes one allowlisted setting and always waits for the owner’s approval, whatever the approval mode — say so when you ask), plugins (kernel.module_list) and pending approvals (kernel.approvals_list). Look with these tools before saying you cannot see or change something.',
   '- WHO YOU ARE: when anyone asks which model or AI provider you run on, call kernel.whoami and answer with what it returns. Never guess, and never say you do not know.',
+  '- YOU ACT AS THE PERSON: every tool call runs as the person you are talking with — their rights, never more; you see their own Memory, Drive and calendar, never anyone else’s. A tool you are not offered, or one refused for permission, is something this person may not do themselves: say so plainly, and that the owner or an admin can.',
   '- When a request belongs to a module, say so and hand off: point at its surface or offer to run its kernel tools — do not silently start doing a module’s job in general chat.',
   '- Answer anything directly that needs no module (questions, status, small talk, quick kernel lookups).',
   '- WHERE CONTENT GOES: the website is the company’s public website — only content meant for visitors (website.* tools). Internal documents (pitch decks, project descriptions, funding/investor documents, plans, briefs, meeting notes) never become website pages, not even private ones: write them to Drive as Markdown with drive.create_document (revise with drive.write_text), or to Memory › Notes with memory.create_text_file. When it is unclear whether something is for the public, ask before putting it on the website.',
@@ -410,7 +401,7 @@ export type JourneyAwareRuntimeOptions = AgentRuntimeOptions & {
  * - STEP CAPTURE: the agent appends the exact `[[journey:<id>:captured]]`
  *   protocol token; the driver strips markers from the user-facing reply,
  *   advances the state, and fires the step's artifact tools DIRECTLY via the
- *   kernel registry under ORCHESTRATOR_PRINCIPAL — permissions, audit, and the
+ *   kernel registry as the turn's person (via the brain) — permissions, audit, and the
  *   approval gate apply there. `approval_required` is expected control flow:
  *   the ledger records 'approval_pending' and retries on later turns; any
  *   other artifact error is handed back to the agent (harnessObservationBlock)
@@ -457,12 +448,13 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
    */
   async dispatchOnboardingHandoff(
     sessionId: string,
-    sinks?: EngineStreamSinks,
-    options?: DispatchOptions,
+    sinks: EngineStreamSinks | undefined,
+    options: DispatchOptions,
   ): Promise<string> {
+    requirePerson(options?.person)
     const failures: ToolErrorResult[] = []
     const resolved = this.onboardingFacts
-      ? await this.attempt(failures, 'onboarding.facts', () => this.onboardingFacts!(options?.llmUserId))
+      ? await this.attempt(failures, 'onboarding.facts', () => this.onboardingFacts!(options.person.id))
       : { ok: true as const, value: null }
     const facts = resolved.ok && resolved.value ? { ...resolved.value, welcomeCompleted: true } : null
     if (facts && assistedOnboardingActive(facts)) {
@@ -512,8 +504,8 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     sessionId: string,
     failures: ToolErrorResult[],
     input: string,
-    sinks?: EngineStreamSinks,
-    options?: DispatchOptions,
+    sinks: EngineStreamSinks | undefined,
+    options: DispatchOptions,
     ownerText: string = input,
   ): Promise<string> {
     const reply = await super.dispatch(
@@ -536,8 +528,8 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     agentId: string,
     sessionId: string,
     failures: ToolErrorResult[],
-    sinks?: EngineStreamSinks,
-    options?: DispatchOptions,
+    sinks: EngineStreamSinks | undefined,
+    options: DispatchOptions,
   ): Promise<string> {
     const reply = await super.dispatch(
       agentId,
@@ -560,8 +552,8 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     input: string,
     /** The owner's own words in `input` ('' for the app-made hand-off turn). */
     ownerText: string,
-    sinks?: EngineStreamSinks,
-    options?: DispatchOptions,
+    sinks: EngineStreamSinks | undefined,
+    options: DispatchOptions,
   ): Promise<string> {
     const firstStep = this.spec.steps[0]
     if (!firstStep) throw new Error(`journey spec ${this.spec.kind} has no steps`)
@@ -592,12 +584,14 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     agentId: string,
     sessionId: string,
     input: string,
-    sinks?: EngineStreamSinks,
-    options?: DispatchOptions,
+    sinks: EngineStreamSinks | undefined,
+    options: DispatchOptions,
   ): Promise<string> {
     if (agentId !== ORCHESTRATOR_AGENT_ID) {
       return super.dispatch(agentId, sessionId, input, sinks, options)
     }
+    // No person, no turn — before any journey or onboarding state is touched.
+    requirePerson(options?.person)
 
     const failures: ToolErrorResult[] = []
     // Every orchestrator turn carries the connected repos (when there are any);
@@ -616,7 +610,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     // start marker) while it is active, else a plain orchestrator turn.
     if (!row) {
       const facts = await this.attempt(failures, 'onboarding.facts', () =>
-        this.activeOnboardingFacts(options?.llmUserId),
+        this.activeOnboardingFacts(options.person.id),
       )
       if (!facts.ok) return this.dispatchObserved(agentId, sessionId, failures, `${context}${input}`, sinks, options, input)
       if (facts.value) return this.dispatchOnboardingTurn(facts.value, sessionId, `${context}${input}`, input, sinks, options)
@@ -630,7 +624,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
         await this.journeys.updateState(row.id, row.state, 'abandoned')
         await emitKernelEvent(this.kernelEventSink, {
           type: 'journey.abandoned',
-          principalId: ORCHESTRATOR_AGENT_ID,
+          principalId: options.person.id,
           source: KERNEL_EVENT_SOURCE,
           payload: { journeyId: row.id, kind: row.kind, reason: 'spec_version' },
         })
@@ -641,9 +635,9 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     return this.dispatchJourneyTurn(row, agentId, sessionId, input, sinks, options, context)
   }
 
-  private async activeOnboardingFacts(llmUserId: string | undefined): Promise<OnboardingFacts | null> {
+  private async activeOnboardingFacts(personId: string): Promise<OnboardingFacts | null> {
     if (!this.onboardingFacts) return null
-    const facts = await this.onboardingFacts(llmUserId)
+    const facts = await this.onboardingFacts(personId)
     return facts && assistedOnboardingActive(facts) ? facts : null
   }
 
@@ -652,8 +646,8 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     agentId: string,
     sessionId: string,
     input: string,
-    sinks?: EngineStreamSinks,
-    options?: DispatchOptions,
+    sinks: EngineStreamSinks | undefined,
+    options: DispatchOptions,
     /** Per-turn context ahead of the user input (the connected repos block), '' for none. */
     context = '',
   ): Promise<string> {
@@ -687,7 +681,12 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
     }
     const cleanReply = stripJourneyMarkers(reply, this.spec)
 
-    const { allExecuted, newlyPending, failures } = await this.runStepArtifacts(state, sinks)
+    // The step's artifacts run as the person whose answer completed it, via the brain.
+    const { allExecuted, newlyPending, failures } = await this.runStepArtifacts(
+      state,
+      delegatedPrincipal(options.person, agentId),
+      sinks,
+    )
 
     const allCaptured = this.spec.steps.every((step) => state.captured.includes(step.id))
     await this.attempt(failures, 'journey.save', async () => {
@@ -695,7 +694,7 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
         await this.journeys.updateState(row.id, state, 'completed')
         await emitKernelEvent(this.kernelEventSink, {
           type: 'journey.completed',
-          principalId: ORCHESTRATOR_AGENT_ID,
+          principalId: options.person.id,
           source: KERNEL_EVENT_SOURCE,
           payload: { journeyId: row.id, kind: row.kind },
         })
@@ -721,12 +720,14 @@ export class JourneyAwareAgentRuntime extends AgentRuntime {
    */
   private runStepArtifacts(
     state: JourneyState,
+    principal: JourneyArtifactPrincipal,
     sinks?: EngineStreamSinks,
   ): Promise<StepArtifactsResult> {
     return executeStepArtifacts({
       registry: this.kernelRegistry,
       spec: this.spec,
       state,
+      principal,
       ...(sinks?.surfaceEvent ? { surfaceEvent: sinks.surfaceEvent } : {}),
     })
   }
@@ -746,9 +747,10 @@ function recordArtifact(
 }
 
 /**
- * Executes pending step artifacts in spec order via the kernel registry
- * (ORCHESTRATOR_PRINCIPAL; approvals + audit apply there). Shared by the chat
- * journey driver and the onboarding founding endpoint.
+ * Executes pending step artifacts in spec order via the kernel registry as
+ * `principal` — the person driving the step (their chat turn via the brain,
+ * or the owner's own wizard); permissions, approvals and audit apply there.
+ * Shared by the chat journey driver and the onboarding founding endpoint.
  *
  * 'approval_required' is expected control flow: the state ledger records
  * 'approval_pending' and later turns retry until the owner decides. The
@@ -768,10 +770,12 @@ export async function executeStepArtifacts(options: {
   registry: KernelRegistry
   spec: JourneySpec
   state: JourneyState
+  /** Who the artifacts run as: the person driving the step. */
+  principal: JourneyArtifactPrincipal
   /** Optional surface sink for approval gates (chat streams); best-effort. */
   surfaceEvent?: (event: EngineSurfaceEvent) => void
 }): Promise<StepArtifactsResult> {
-  const { registry, spec, state } = options
+  const { registry, spec, state, principal } = options
   const requestId = randomUUID()
   let newlyPending = false
   const failures: ToolErrorResult[] = []
@@ -791,7 +795,7 @@ export async function executeStepArtifacts(options: {
           (await artifact.alreadyApplied({
             input,
             registry,
-            principal: ORCHESTRATOR_PRINCIPAL,
+            principal,
             requestId,
           }))
         ) {
@@ -802,7 +806,7 @@ export async function executeStepArtifacts(options: {
           registry,
           artifact.tool,
           input,
-          { principal: ORCHESTRATOR_PRINCIPAL, requestId },
+          { principal, requestId },
         )
         recordArtifact(state, step.id, index, artifact.tool, 'executed')
       } catch (err) {
@@ -834,31 +838,49 @@ export async function executeStepArtifacts(options: {
 }
 
 /**
- * Thin Brain adapter over the harness: gateway sessions dispatch through the
- * AgentRuntime as agent 'orchestrator'. Tool-surface filtering, permissions,
- * approvals, audit, events, budget, and the journey driver live in the
- * runtime — not here.
+ * One durable conversation per gateway chat AND person: a group chat where two
+ * linked members write keeps two conversations (CB3: sessions are per person
+ * and per conversation; the harness refuses a conversation of another person).
+ */
+export function gatewayConversationSession(session: TelegramSessionRef): string {
+  return `${session.sessionId}:${session.person.id}`
+}
+
+/**
+ * Thin Brain adapter over the harness: a gateway chat dispatches through the
+ * AgentRuntime as the MEMBER linked to the sender (the allowlist maps the
+ * Telegram user to a member id; the gateway resolves that member through
+ * personFor — their current roles — and refuses anyone unlinked or no longer a
+ * member): never a fallback to an agent identity. Tool-surface filtering,
+ * permissions, approvals, audit, events, budget, and the journey driver live
+ * in the runtime — not here.
  */
 export class OrchestratorBrain implements Brain {
   private readonly runtime: AgentRuntime
+  private readonly people: PersonDirectory
 
-  constructor(options: { runtime: AgentRuntime }) {
+  constructor(options: { runtime: AgentRuntime; people: PersonDirectory }) {
     this.runtime = options.runtime
+    this.people = options.people
+  }
+
+  /** The member a gateway link names, as a person the brain may act as — or null (not a member). */
+  personFor(memberId: string): Promise<PersonRef | null> {
+    return this.people.personById(memberId)
   }
 
   async respond(session: TelegramSessionRef, text: string): Promise<string> {
-    // The allowlisted human principal id IS the auth user id — their BYOK
-    // provider config pays for the run, exactly like the web chatbox.
-    return this.runtime.dispatch(ORCHESTRATOR_AGENT_ID, session.sessionId, text, undefined, {
-      llmUserId: session.principalId,
+    requirePerson(session.person)
+    return this.runtime.dispatch(ORCHESTRATOR_AGENT_ID, gatewayConversationSession(session), text, undefined, {
+      person: session.person,
     })
   }
 
   /**
-   * The fail-closed tool surface the agent is offered right now (activation ∩
-   * scope ∩ role filtered by the runtime) — parity with the pre-harness brain.
+   * The fail-closed tool surface the brain offers `person` right now
+   * (activation ∩ scope ∩ the person's roles).
    */
-  async offeredTools(): Promise<Array<{ name: string }>> {
-    return this.runtime.listAgentTools(ORCHESTRATOR_AGENT_ID)
+  async offeredTools(person: PersonRef): Promise<Array<{ name: string }>> {
+    return this.runtime.listAgentTools(ORCHESTRATOR_AGENT_ID, person)
   }
 }

@@ -1,4 +1,5 @@
 import { KernelError } from '$lib/kernel/errors'
+import { isDirectHuman } from '$lib/kernel/principals'
 import type { ToolContext } from '$lib/kernel/types'
 
 /**
@@ -7,7 +8,8 @@ import type { ToolContext } from '$lib/kernel/types'
  * on the strength of it. Returns the commit author for ee.
  */
 export function requireHuman(ctx: ToolContext, tool: string): string {
-  if (ctx.principal.kind !== 'human') {
+  // The person at their own keyboard — never the brain acting for them (CB3).
+  if (!isDirectHuman(ctx.principal)) {
     throw new KernelError(
       'permission_denied',
       `${tool} changes this server; only a human can do that (ask the owner to do it in Settings → Hosting)`,

@@ -7,14 +7,11 @@ import {
 import type { LoopEngine } from '$lib/kernel/engine'
 import type { AllowlistStore, SessionStore } from '$lib/kernel/gateway'
 import { InMemoryJourneyStore, type JourneyStore } from '$lib/kernel/playbook'
+import type { PersonDirectory } from '$lib/kernel/principals'
 import { registerModuleTools, type WiredKernel } from '$lib/kernel/wiring'
 import { OrchestratorBrain } from './brain'
 import { JourneyAwareAgentRuntime } from './brain'
-import {
-  orchestratorAgentConfig,
-  ORCHESTRATOR_PRINCIPAL,
-  WEBSITE_FOUNDING_JOURNEY,
-} from './brain'
+import { orchestratorAgentConfig, WEBSITE_FOUNDING_JOURNEY } from './brain'
 import { createTelegramLoop, type TelegramGatewayLike, type TelegramLoopHandle } from './loop'
 import { connectedReposPort, type ConnectedReposPort } from './repos-context'
 
@@ -60,6 +57,12 @@ export type OrchestratorBoot = {
 }
 
 export type OrchestratorBootOptions = {
+  /**
+   * The company's members as people the brain acts for (CB3): the gateway
+   * answers a linked Telegram sender as their member through it. Required —
+   * the brain has no identity of its own to fall back to.
+   */
+  people: PersonDirectory
   /** Start the Telegram poll loop immediately (default true; tests pass false). */
   startLoop?: boolean
   /** Overrides the harness runtime (tests inject an in-memory one). */
@@ -119,7 +122,7 @@ function spendCapUsdFromEnv(env: Record<string, string | undefined>): number | u
 export async function bootstrapOrchestrator(
   kernel: WiredKernel,
   wireGateway: (brain: OrchestratorBrain) => Promise<OrchestratorGatewayStage | null>,
-  options: OrchestratorBootOptions = {},
+  options: OrchestratorBootOptions,
 ): Promise<OrchestratorBoot> {
   const env = options.env ?? process.env
 
@@ -134,7 +137,6 @@ export async function bootstrapOrchestrator(
       registry: kernel.registry,
       isToolActive: (name) => kernel.modules.isToolActive(name),
       eventSink: kernel.eventSink,
-      rolesFor: () => ORCHESTRATOR_PRINCIPAL.roles,
       journeys: options.journeys ?? new InMemoryJourneyStore(),
       spec: WEBSITE_FOUNDING_JOURNEY,
       ...(options.onboardingFacts ? { onboardingFacts: options.onboardingFacts } : {}),
@@ -150,7 +152,7 @@ export async function bootstrapOrchestrator(
   }
   runtime.registerAgent(orchestratorAgentConfig({ spendCapUsd: spendCapUsdFromEnv(env) }))
 
-  const brain = new OrchestratorBrain({ runtime })
+  const brain = new OrchestratorBrain({ runtime, people: options.people })
 
   // AGENT ADMIN REGISTRATION (flagged edit, phase-1b): register the 'agent'
   // module self-seeded active, next to the kernel admin pattern — the admin

@@ -89,8 +89,8 @@ describe('createBrandTools', () => {
       if (descriptor.name === 'brand.picker_choose') {
         expect(descriptor.permission.roles).toEqual(['owner'])
       } else if (descriptor.name.startsWith('brand.social_')) {
-        // Social posts are working content, not guidelines: the assistant drafts them.
-        expect(descriptor.permission.roles).toEqual(['admin', 'agent'])
+        // Social posts are working content, not guidelines: every member (and the brain as them) drafts them.
+        expect(descriptor.permission.roles).toEqual(['admin', 'member', 'agent'])
       } else if (descriptor.auditClass === 'read') {
         expect(descriptor.permission.roles).toEqual(['admin', 'agent'])
       } else {

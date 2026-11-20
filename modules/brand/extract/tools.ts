@@ -1,6 +1,7 @@
 import type { CaptureResult } from './capture'
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
+import { isDirectHuman } from '$lib/kernel/principals'
 import type { ToolDescriptor, ToolContext } from '$lib/kernel/types'
 import { digestFacts } from './facts-digest'
 import { checkGuideUpload, guideDigest } from './guide'
@@ -53,10 +54,11 @@ export type BrandExtractToolDeps = {
 }
 
 function requireHuman(ctx: ToolContext): void {
-  if (ctx.principal.kind !== 'human') {
+  // The person's own click: the brain acting for them (CB3) does not count (G8).
+  if (!isDirectHuman(ctx.principal)) {
     throw new KernelError(
       'permission_denied',
-      `brand extraction requires a human principal (G8); principal ${ctx.principal.id} is ${ctx.principal.kind}`,
+      `brand extraction requires a human principal (G8); principal ${ctx.principal.id} is ${ctx.principal.kind}${ctx.principal.via ? ` via the ${ctx.principal.via}` : ''}`,
     )
   }
 }

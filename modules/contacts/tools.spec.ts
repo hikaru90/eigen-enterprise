@@ -1,21 +1,25 @@
 import type { ContactDto, FollowUpDto, Pipeline } from './types'
 import { describe, expect, it } from 'vitest'
+import { delegatedPrincipal } from '$lib/kernel/principals'
 import type { ToolContext } from '$lib/kernel/types'
 import { CONTACTS_TOOL_NAMES } from './manifest'
 import { createContact } from './service'
 import { fixture, user } from './test-fixtures'
 import { createContactsTools } from './tools'
 
+/** An agent principal that is no person (an API key of no member). */
 const agentCtx: ToolContext = { principal: { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] }, requestId: 'r1' }
+/** The company brain acting as this member (CB3: the principal IS the person). */
+const brainFor = (id: string): ToolContext => ({ principal: delegatedPrincipal({ id, roles: ['member'] }, 'orchestrator'), requestId: 'r3' })
 const humanCtx = (id: string): ToolContext => ({ principal: { id, kind: 'human', roles: ['admin'] }, requestId: 'r2' })
 
-async function setup(opts: { onBehalfOf?: string | null } = {}) {
+async function setup(opts: { agentPerson?: string | null } = {}) {
   const f = fixture()
   const anasPrivate = await createContact(f.deps, user('ana'), { name: 'Mara Voss', tags: ['investor'], nextFollowUpOn: '2026-11-13' })
   const bensPrivate = await createContact(f.deps, user('ben'), { name: 'Jon Park', nextFollowUpOn: '2026-11-14' })
   const list = createContactsTools({
     deps: async () => f.deps,
-    onBehalfOf: async () => opts.onBehalfOf ?? null,
+    agentPerson: async () => opts.agentPerson ?? null,
     today: () => '2026-11-12',
   })
   const tools = Object.fromEntries(list.map((t) => [t.name, t]))
@@ -45,14 +49,21 @@ describe('contacts.* tools', () => {
     expect(out.contacts.map((c) => c.id)).toEqual([anasPrivate.id])
   })
 
-  it('the agent working for a person sees exactly what that person sees', async () => {
-    const { tools, bensPrivate, anasPrivate } = await setup({ onBehalfOf: 'ben' })
+  it('the brain acting as a person sees exactly what that person sees (CB3)', async () => {
+    const { tools, bensPrivate, anasPrivate } = await setup()
+    const asBen = brainFor('ben')
+    const out = (await tools['contacts.list'].handler(asBen, {})) as { contacts: ContactDto[] }
+    expect(out.contacts.map((c) => c.id)).toEqual([bensPrivate.id])
+    await expect(tools['contacts.get'].handler(asBen, { id: anasPrivate.id })).rejects.toMatchObject({ code: 'not_found' })
+    // What it adds is that person's own private contact.
+    const made = (await tools['contacts.create'].handler(asBen, { name: 'Lee' })) as ContactDto
+    expect(made).toMatchObject({ own: true, shared: false, createdByName: 'Ben Ode' })
+  })
+
+  it('an agent key that belongs to a person is that person', async () => {
+    const { tools, bensPrivate } = await setup({ agentPerson: 'ben' })
     const out = (await tools['contacts.list'].handler(agentCtx, {})) as { contacts: ContactDto[] }
     expect(out.contacts.map((c) => c.id)).toEqual([bensPrivate.id])
-    await expect(tools['contacts.get'].handler(agentCtx, { id: anasPrivate.id })).rejects.toMatchObject({ code: 'not_found' })
-    // What it adds is that person's own private contact.
-    const made = (await tools['contacts.create'].handler(agentCtx, { name: 'Lee' })) as ContactDto
-    expect(made).toMatchObject({ own: true, shared: false, createdByName: 'Ben Ode' })
   })
 
   it('the agent on its own acts with admin rights, like Drive', async () => {

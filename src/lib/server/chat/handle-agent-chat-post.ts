@@ -115,14 +115,28 @@ async function reportTurnFailure(
   }
 }
 
+/**
+ * Briefing turns. They name only registry tools the brain is offered for every
+ * member (CB3: all of them are member tools, read as the person — their own
+ * Memory, tasks and calendar). Pinned by src/lib/server/chat/briefing-tools.spec.ts.
+ */
 export const BRIEFING_BOOTSTRAP_MESSAGES: Record<string, string> = {
   morning:
-    "Give my morning briefing: today's agenda, top 3 priorities, and open loops. Use list_projects and get_project_timeline for project agendas, answer_question for priorities/open loops, and retrieve_thoughts only to browse recent thoughts. Be calm and concise.",
+    "Give my morning briefing: today's agenda, top 3 priorities, and open loops. Use calendar.list for today's agenda, memory.list_projects and memory.get_project_timeline for project next actions and deadlines, tasks.list for the tasks assigned to and by me, and memory.retrieve_thoughts for recent thoughts and open loops. Be calm and concise.",
   evening:
-    'Give my evening review: what was completed today, what rolls over, and gentle suggestions for tomorrow. Use list_projects and get_project_timeline for project status, and answer_question for what completed or rolls over.',
+    'Give my evening review: what was completed today, what rolls over, and gentle suggestions for tomorrow. Use memory.list_projects and memory.get_project_timeline for project status, tasks.list for assigned tasks, and memory.retrieve_thoughts for what I captured today.',
   weekly:
-    'Give my weekly review: completions this week, overdue debt, patterns, and 2–3 focus suggestions for next week. Use list_projects, get_project_timeline, answer_question, and retrieve_thoughts only to browse recent thoughts.',
+    'Give my weekly review: completions this week, overdue debt, patterns, and 2–3 focus suggestions for next week. Use memory.list_projects, memory.get_project_timeline, tasks.list, and memory.retrieve_thoughts for this week’s thoughts.',
 }
+
+/** The registry tools the briefing turns tell the brain to use (briefing-tools.spec.ts pins them to the registry). */
+export const BRIEFING_TOOLS = [
+  'calendar.list',
+  'memory.list_projects',
+  'memory.get_project_timeline',
+  'tasks.list',
+  'memory.retrieve_thoughts',
+] as const
 
 async function getOrCreateSession(
   db: ReturnType<typeof getDb>,

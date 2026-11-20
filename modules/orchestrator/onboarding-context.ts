@@ -20,8 +20,8 @@ export type OnboardingFacts = {
   website: 'not_started' | 'in_progress' | 'done'
 }
 
-/** Resolves the onboarding facts for the conversing human; null = not a human chat. */
-export type OnboardingFactsResolver = (llmUserId: string | undefined) => Promise<OnboardingFacts | null>
+/** Resolves the onboarding facts for the person the turn acts as (their member id). */
+export type OnboardingFactsResolver = (personId: string) => Promise<OnboardingFacts | null>
 
 /** The exact token the agent appends when the user agreed to start the website. */
 export const ONBOARDING_START_WEBSITE_MARKER = '[[onboarding:website:start]]'

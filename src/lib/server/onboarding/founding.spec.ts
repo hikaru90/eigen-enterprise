@@ -5,7 +5,7 @@ import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryJourneyStore } from '$lib/kernel/playbook'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
-import { BRAND_TONE_DOCUMENT, ORCHESTRATOR_AGENT_ID, WEBSITE_FOUNDING_JOURNEY } from '../../../../modules/orchestrator/brain'
+import { BRAND_TONE_DOCUMENT, WEBSITE_FOUNDING_JOURNEY } from '../../../../modules/orchestrator/brain'
 import { openWebsiteFoundingJourney, recordFoundingInterview } from './founding'
 
 /**
@@ -119,6 +119,8 @@ function fixture() {
       journeys,
       eventSink: sink,
       sessionId: 'onboarding:u1',
+      // The owner at their own keyboard (the wizard): a direct person principal (CB3).
+      principal: { id: 'u1', kind: 'human', roles: ['admin', 'member'] },
       answers,
     })
 
@@ -236,7 +238,8 @@ describe('recordFoundingInterview (onboarding founding endpoint logic)', () => {
     const completed = fx.sink.events.filter((e) => e.type === 'journey.completed')
     expect(completed).toHaveLength(1)
     expect(completed[0]!.payload).toMatchObject({ kind: WEBSITE_FOUNDING_JOURNEY.kind })
-    expect(completed[0]!.principalId).toBe(ORCHESTRATOR_AGENT_ID)
+    // Completed by the person who submitted the wizard, not an agent identity (CB3).
+    expect(completed[0]!.principalId).toBe('u1')
     expect(String(completed[0]!.payload)).not.toContain('precise')
     expect(await fx.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)).toBeNull()
   })

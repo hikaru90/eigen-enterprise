@@ -7,6 +7,9 @@ import { KernelRegistry } from '$lib/kernel/registry'
 import { JourneyAwareAgentRuntime, ORCHESTRATOR_AGENT_ID, WEBSITE_FOUNDING_JOURNEY, orchestratorAgentConfig } from './brain'
 import { CONNECTED_REPOS_MAX, connectedReposBlock, type ConnectedRepo, type ConnectedReposPort } from './repos-context'
 
+/** The person every brain turn acts as (CB3: no person, no turn): the owner, an admin. */
+const AS_OWNER = { person: { id: 'owner-1', roles: ['admin', 'member'] } }
+
 const repo = (over: Partial<ConnectedRepo> & Pick<ConnectedRepo, 'fullName'>): ConnectedRepo => ({
   lastPushAt: new Date('2026-11-11T16:20:00Z'),
   openPulls: 1,
@@ -67,7 +70,6 @@ describe('orchestrator turns carry the block (through the port, never an import 
       registry,
       isToolActive: async () => true,
       eventSink: sink,
-      rolesFor: () => ['admin', 'agent'],
       journeys: new InMemoryJourneyStore(),
       spec: WEBSITE_FOUNDING_JOURNEY,
       ...(port ? { connectedRepos: port } : {}),
@@ -79,7 +81,7 @@ describe('orchestrator turns carry the block (through the port, never an import 
 
   it('prepends the block; the owner text stays their own words', async () => {
     const fx = fixture(async () => [repo({ fullName: 'kindred/shop' })])
-    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'what is happening on the shop?')
+    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'what is happening on the shop?', undefined, AS_OWNER)
     expect(fx.inputs[0]!.input.startsWith('[connected GitHub repos]\n')).toBe(true)
     expect(fx.inputs[0]!.input.endsWith('\n\n---\n\nwhat is happening on the shop?')).toBe(true)
     expect(fx.inputs[0]!.ownerText).toBe('what is happening on the shop?')
@@ -87,10 +89,10 @@ describe('orchestrator turns carry the block (through the port, never an import 
 
   it('plugin off or nothing synced (the port answers []) → the turn is untouched', async () => {
     const fx = fixture(async () => [])
-    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'hello')
+    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'hello', undefined, AS_OWNER)
     expect(fx.inputs).toEqual([{ input: 'hello' }])
     const none = fixture()
-    await none.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'hello')
+    await none.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'hello', undefined, AS_OWNER)
     expect(none.inputs).toEqual([{ input: 'hello' }])
   })
 
@@ -98,7 +100,7 @@ describe('orchestrator turns carry the block (through the port, never an import 
     const fx = fixture(async () => {
       throw new Error('db down')
     })
-    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'hello')
+    await fx.runtime.dispatch(ORCHESTRATOR_AGENT_ID, 's1', 'hello', undefined, AS_OWNER)
     expect(fx.inputs[0]!.input).toContain('"tool":"repos.connected"')
     expect(fx.inputs[0]!.input.endsWith('hello')).toBe(true)
   })

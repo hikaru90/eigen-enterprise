@@ -1,6 +1,7 @@
 import { WEBSITE_MODULE_ID } from './manifest'
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
+import { isDirectHuman } from '$lib/kernel/principals'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import {
   createPageAudienceClassifier,
@@ -81,8 +82,8 @@ function pageName(title: string | undefined, slug: string): string {
 
 /**
  * The internal-document guard (Contribute: internal documents are never
- * website pages). Agent and service principals only: a person writing their
- * own page is never second-guessed. The model judges (page-audience.ts);
+ * website pages). Agent and service principals — and the brain acting for a
+ * person (CB3) — only: a person writing their own page is never second-guessed. The model judges (page-audience.ts);
  * internal → the call is refused before anything is written, with the tools
  * to use instead.
  */
@@ -91,8 +92,8 @@ async function requirePublicContent(
   ctx: ToolContext,
   page: PageDraft,
 ): Promise<void> {
-  if (ctx.principal.kind === 'human') return
-  const verdict = await classify({ userId: ctx.actingUserId ?? ctx.principal.id, page })
+  if (isDirectHuman(ctx.principal)) return
+  const verdict = await classify({ userId: ctx.principal.id, page })
   if (verdict.audience === 'public_website') return
   throw new KernelError(
     'invalid_input',
