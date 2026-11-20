@@ -1,6 +1,6 @@
 import type { DriveAccessPort } from './access-port'
 import type { BlobStore } from './storage'
-import type { DriveFile, DriveFolder, DriveSourceRow, DriveStore } from './store'
+import type { DriveFile, DriveFolder, DriveSourceRow, DriveStore, FilePatch, FolderPatch } from './store'
 import { randomUUID } from 'node:crypto'
 import { sha256Hex } from './storage'
 
@@ -36,6 +36,20 @@ export type DriveSourceItem = {
   contentSha: string | null
 }
 
+type DriveSourceItemLocation = {
+  key: string
+  parentKey: string | null
+  name: string
+}
+
+/** One item in an atomic source-writer batch. Parents precede their children. */
+export type DriveSourceBatchItem = DriveSourceItemLocation &
+  (
+    | { kind: 'folder' }
+    | { kind: 'text'; content: string }
+    | { kind: 'bytes'; bytes: Uint8Array; mime: string }
+  )
+
 export type DriveSourceWriter = {
   /** Creates the source's root folder on first use (with the company-wide view grant) or renames it; returns it. Idempotent. */
   ensureRoot(source: DriveSourceId, name: string): Promise<DriveSourceRoot>
@@ -43,10 +57,14 @@ export type DriveSourceWriter = {
   upsertFolder(source: DriveSourceId, key: string, parentKey: string | null, name: string): Promise<string>
   /** Creates or updates a `text/markdown` file (no revisions); a blob and `updatedAt` only when the sha256 changed. */
   upsertText(source: DriveSourceId, key: string, parentKey: string | null, name: string, content: string): Promise<{ fileId: string; changed: boolean }>
+  /** Creates or updates bytes with an explicit MIME type (no revisions), with the same idempotence as upsertText. */
+  upsertBytes(source: DriveSourceId, key: string, parentKey: string | null, name: string, bytes: Uint8Array, mime: string): Promise<{ fileId: string; changed: boolean }>
+  /** Atomically writes one parents-first batch (the caller batches about 500 items). */
+  upsertMany(source: DriveSourceId, items: DriveSourceBatchItem[]): Promise<void>
   /** Deletes for good every item whose key is `keyPrefix` or starts with `keyPrefix + '/'`; returns how many. */
   remove(source: DriveSourceId, keyPrefix: string): Promise<number>
-  /** Every item of the source (the root excluded). */
-  list(source: DriveSourceId): Promise<DriveSourceItem[]>
+  /** Source items in key order, optionally the exact key and its descendants only. */
+  list(source: DriveSourceId, keyPrefix?: string): Promise<DriveSourceItem[]>
 }
 
 export type SourceWriterDeps = {
@@ -68,46 +86,246 @@ function checkId(what: string, value: string): void {
   if (!value) throw new Error(`drive source ${what} must be non-empty`)
 }
 
+type BatchResult = Array<{ itemId: string; changed: boolean }>
+
 export function createDriveSourceWriter(deps: SourceWriterDeps): DriveSourceWriter {
   const { store, blobs, access } = deps
   const now = deps.now ?? (() => new Date())
 
-  async function rootOf(source: string): Promise<DriveFolder | null> {
-    const roots = (await store.sourceRoots()).filter((r) => r.source === source)
+  async function rootOf(source: string, from: DriveStore = store): Promise<DriveFolder | null> {
+    const roots = (await from.sourceRoots()).filter((r) => r.source === source)
     if (roots.length > 1) throw new Error(`drive source ${source} has ${roots.length} root folders`)
     return roots[0] ?? null
   }
 
-  async function requireRoot(source: string): Promise<DriveFolder> {
-    const root = await rootOf(source)
+  async function requireRoot(source: string, from: DriveStore = store): Promise<DriveFolder> {
+    const root = await rootOf(source, from)
     if (!root) throw new Error(`drive source ${source} has no root folder yet: call ensureRoot first`)
     return root
   }
 
-  /** The Drive folder a parent key names (null = the root); it must be a folder of this source. */
-  async function parentFolderId(source: string, parentKey: string | null): Promise<string> {
-    if (parentKey === null) return (await requireRoot(source)).id
-    const parent = await store.getSourceItem(source, parentKey)
-    if (!parent) throw new Error(`drive source ${source}: parent ${parentKey} does not exist`)
-    if (parent.kind !== 'folder') throw new Error(`drive source ${source}: parent ${parentKey} is a file, not a folder`)
-    return parent.itemId
-  }
-
   /** The folders from `folderId` up (itself included). */
-  async function chainIds(folderId: string): Promise<string[]> {
+  async function chainIds(from: DriveStore, folderId: string): Promise<string[]> {
     const out: string[] = []
     let id: string | null = folderId
     while (id) {
       if (out.includes(id)) throw new Error(`drive folder cycle at ${id}`)
       out.push(id)
-      const f: DriveFolder | null = await store.getFolder(id)
-      if (!f) throw new Error(`drive folder ${id} is missing`)
-      id = f.parentId
+      const folder = await from.getFolder(id)
+      if (!folder) throw new Error(`drive folder ${id} is missing`)
+      id = folder.parentId
     }
     return out
   }
 
-  const toItem = (r: DriveSourceRow): DriveSourceItem => ({ key: r.externalKey, kind: r.kind, itemId: r.itemId, parentKey: r.parentKey, contentSha: r.contentSha })
+  const toItem = (row: DriveSourceRow): DriveSourceItem => ({
+    key: row.externalKey,
+    kind: row.kind,
+    itemId: row.itemId,
+    parentKey: row.parentKey,
+    contentSha: row.contentSha,
+  })
+
+  /** Blob deletion is post-commit: a metadata rollback never deletes bytes another file still uses. */
+  async function removeUnreferenced(shas: Iterable<string>): Promise<void> {
+    const candidates = [...new Set(shas)]
+    if (candidates.length === 0) return
+    const used = new Set(await store.usedBlobShas(candidates))
+    for (const sha of candidates) if (!used.has(sha)) await blobs.remove(sha)
+  }
+
+  async function writeBatch(source: DriveSourceId, items: DriveSourceBatchItem[]): Promise<BatchResult> {
+    checkId('id', source)
+    const keys = new Set<string>()
+    for (const item of items) {
+      checkId('key', item.key)
+      checkName(item.name)
+      if (keys.has(item.key)) throw new Error(`drive source ${source}: duplicate key ${item.key} in batch`)
+      keys.add(item.key)
+      if (item.kind === 'bytes' && (!item.mime || item.mime !== item.mime.trim())) {
+        throw new Error(`drive source ${source}: ${item.key} needs an explicit, trimmed MIME type`)
+      }
+    }
+    if (items.length === 0) return []
+
+    const createdBlobs = new Set<string>()
+    const retiredBlobs = new Set<string>()
+    try {
+      const written = await store.transaction(async (tx) => {
+        const root = await requireRoot(source, tx)
+        const lookupKeys = [...new Set(items.flatMap((item) => (item.parentKey === null ? [item.key] : [item.key, item.parentKey])))]
+        const existingRows = await tx.getSourceItems(source, lookupKeys)
+        const rowsByKey = new Map(existingRows.map((row) => [row.externalKey, row] as const))
+        const [folderRows, fileRows] = await Promise.all([
+          tx.getFolders(existingRows.filter((row) => row.kind === 'folder').map((row) => row.itemId)),
+          tx.getFiles(existingRows.filter((row) => row.kind === 'file').map((row) => row.itemId)),
+        ])
+        const foldersById = new Map(folderRows.map((row) => [row.id, row] as const))
+        const filesById = new Map(fileRows.map((row) => [row.id, row] as const))
+        const newFolders: DriveFolder[] = []
+        const newFiles: DriveFile[] = []
+        const folderUpdates: Array<{ id: string; patch: FolderPatch; moved: boolean }> = []
+        const fileUpdates: Array<{ id: string; patch: FilePatch }> = []
+        const sourceUpdates: DriveSourceRow[] = []
+        const results: BatchResult = []
+        const blobWrites = new Map<string, Promise<{ sha256: string; size: number; created: boolean }>>()
+
+        const putBlob = (bytes: Uint8Array, sha: string) => {
+          const existing = blobWrites.get(sha)
+          if (existing) return existing
+          const write = blobs.put(bytes).then((blob) => {
+            if (blob.sha256 !== sha) throw new Error(`drive blob store returned ${blob.sha256} for content hashed as ${sha}`)
+            if (blob.created) createdBlobs.add(sha)
+            return blob
+          })
+          blobWrites.set(sha, write)
+          return write
+        }
+
+        for (const item of items) {
+          let parentId = root.id
+          if (item.parentKey !== null) {
+            const parent = rowsByKey.get(item.parentKey)
+            if (!parent) throw new Error(`drive source ${source}: parent ${item.parentKey} does not exist`)
+            if (parent.kind !== 'folder') throw new Error(`drive source ${source}: parent ${item.parentKey} is a file, not a folder`)
+            parentId = parent.itemId
+          }
+          const existing = rowsByKey.get(item.key)
+
+          if (item.kind === 'folder') {
+            if (existing && existing.kind !== 'folder') throw new Error(`drive source ${source}: ${item.key} is a file, not a folder`)
+            let folder = existing ? foldersById.get(existing.itemId) : null
+            if (existing && !folder) throw new Error(`drive source ${source}: folder ${existing.itemId} for ${item.key} is missing`)
+            if (!folder) {
+              const at = now()
+              folder = {
+                id: randomUUID(),
+                parentId,
+                name: item.name,
+                ownerId: source,
+                createdAt: at,
+                updatedAt: at,
+                trashedAt: null,
+                archivedAt: null,
+                archivedBy: null,
+                source,
+              }
+              newFolders.push(folder)
+              foldersById.set(folder.id, folder)
+            } else if (folder.name !== item.name || folder.parentId !== parentId) {
+              folderUpdates.push({
+                id: folder.id,
+                patch: { name: item.name, parentId, updatedAt: now() },
+                moved: folder.parentId !== parentId,
+              })
+            }
+            const sourceRow: DriveSourceRow = {
+              source,
+              externalKey: item.key,
+              itemId: folder.id,
+              kind: 'folder',
+              parentKey: item.parentKey,
+              contentSha: null,
+            }
+            if (!existing || existing.parentKey !== item.parentKey) sourceUpdates.push(sourceRow)
+            rowsByKey.set(item.key, sourceRow)
+            results.push({ itemId: folder.id, changed: false })
+            continue
+          }
+
+          if (existing && existing.kind !== 'file') throw new Error(`drive source ${source}: ${item.key} is a folder, not a file`)
+          const content = item.kind === 'text' ? new TextEncoder().encode(item.content) : item.bytes
+          const mime = item.kind === 'text' ? 'text/markdown' : item.mime
+          const sha = sha256Hex(content)
+          let file = existing ? filesById.get(existing.itemId) : null
+          if (existing && !file) throw new Error(`drive source ${source}: file ${existing.itemId} for ${item.key} is missing`)
+          const changed = !file || file.sha256 !== sha
+          let size = content.byteLength
+          if (changed) {
+            const blob = await putBlob(content, sha)
+            size = blob.size
+            if (file) retiredBlobs.add(file.sha256)
+          }
+          if (!file) {
+            const at = now()
+            file = {
+              id: randomUUID(),
+              folderId: parentId,
+              name: item.name,
+              ownerId: source,
+              mime,
+              size,
+              sha256: sha,
+              createdAt: at,
+              updatedAt: at,
+              trashedAt: null,
+              archivedAt: null,
+              archivedBy: null,
+              source,
+              // Source bytes record no Drive-owned content date.
+              contentDate: null,
+              contentDateKind: null,
+            }
+            newFiles.push(file)
+            filesById.set(file.id, file)
+          } else {
+            const patch: FilePatch = {}
+            if (changed) Object.assign(patch, { sha256: sha, size, updatedAt: now() })
+            if (file.name !== item.name) patch.name = item.name
+            if (file.folderId !== parentId) patch.folderId = parentId
+            if (file.mime !== mime) patch.mime = mime
+            if (Object.keys(patch).length > 0) fileUpdates.push({ id: file.id, patch })
+          }
+          const sourceRow: DriveSourceRow = {
+            source,
+            externalKey: item.key,
+            itemId: file.id,
+            kind: 'file',
+            parentKey: item.parentKey,
+            contentSha: sha,
+          }
+          if (!existing || existing.parentKey !== item.parentKey || existing.contentSha !== sha) sourceUpdates.push(sourceRow)
+          rowsByKey.set(item.key, sourceRow)
+          results.push({ itemId: file.id, changed })
+        }
+
+        // Multi-row inserts keep new items to three metadata statements, not one per item.
+        await tx.insertFolders(newFolders)
+        for (const update of folderUpdates) {
+          if (update.moved && (await chainIds(tx, update.patch.parentId as string)).includes(update.id)) {
+            const key = items.find((item) => rowsByKey.get(item.key)?.itemId === update.id)?.key
+            throw new Error(`drive source ${source}: ${key} can't move into itself`)
+          }
+          await tx.updateFolder(update.id, update.patch)
+        }
+        await tx.insertFiles(newFiles)
+        for (const update of fileUpdates) await tx.updateFile(update.id, update.patch)
+        await tx.putSourceItems(sourceUpdates)
+        return results
+      })
+      await removeUnreferenced(retiredBlobs)
+      return written
+    } catch (err) {
+      const cleanupErrors: unknown[] = []
+      for (const sha of createdBlobs) {
+        try {
+          // A concurrent writer may have committed a reference to the same content.
+          if (!(await store.blobInUse(sha))) await blobs.remove(sha)
+        } catch (cleanupError) {
+          cleanupErrors.push(cleanupError)
+        }
+      }
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError([err, ...cleanupErrors], `drive source ${source}: batch failed and new-blob cleanup also failed`, { cause: err })
+      }
+      throw err
+    }
+  }
+
+  async function upsertBytes(source: DriveSourceId, key: string, parentKey: string | null, name: string, bytes: Uint8Array, mime: string) {
+    const [result] = await writeBatch(source, [{ key, parentKey, name, kind: 'bytes', bytes, mime }])
+    return { fileId: result!.itemId, changed: result!.changed }
+  }
 
   return {
     async ensureRoot(source, name) {
@@ -138,116 +356,73 @@ export function createDriveSourceWriter(deps: SourceWriterDeps): DriveSourceWrit
     },
 
     async upsertFolder(source, key, parentKey, name) {
-      checkId('key', key)
-      checkName(name)
-      const parentId = await parentFolderId(source, parentKey)
-      const existing = await store.getSourceItem(source, key)
-      if (existing) {
-        if (existing.kind !== 'folder') throw new Error(`drive source ${source}: ${key} is a file, not a folder`)
-        const folder = await store.getFolder(existing.itemId)
-        if (!folder) throw new Error(`drive source ${source}: folder ${existing.itemId} for ${key} is missing`)
-        if (folder.parentId !== parentId && (await chainIds(parentId)).includes(folder.id)) {
-          throw new Error(`drive source ${source}: ${key} can't move into itself (${parentKey})`)
-        }
-        if (folder.name !== name || folder.parentId !== parentId) await store.updateFolder(folder.id, { name, parentId, updatedAt: now() })
-        if (existing.parentKey !== parentKey) await store.putSourceItem({ ...existing, parentKey })
-        return folder.id
-      }
-      const at = now()
-      const folder: DriveFolder = {
-        id: randomUUID(),
-        parentId,
-        name,
-        ownerId: source,
-        createdAt: at,
-        updatedAt: at,
-        trashedAt: null,
-        archivedAt: null,
-        archivedBy: null,
-        source,
-      }
-      await store.insertFolder(folder)
-      await store.putSourceItem({ source, externalKey: key, itemId: folder.id, kind: 'folder', parentKey, contentSha: null })
-      return folder.id
+      const [result] = await writeBatch(source, [{ key, parentKey, name, kind: 'folder' }])
+      return result!.itemId
     },
 
     async upsertText(source, key, parentKey, name, content) {
-      checkId('key', key)
-      checkName(name)
-      const folderId = await parentFolderId(source, parentKey)
-      const bytes = new TextEncoder().encode(content)
-      const sha = sha256Hex(bytes)
-      const existing = await store.getSourceItem(source, key)
-      if (existing) {
-        if (existing.kind !== 'file') throw new Error(`drive source ${source}: ${key} is a folder, not a file`)
-        const file = await store.getFile(existing.itemId)
-        if (!file) throw new Error(`drive source ${source}: file ${existing.itemId} for ${key} is missing`)
-        const changed = file.sha256 !== sha
-        if (changed) {
-          const blob = await blobs.put(bytes)
-          await store.updateFile(file.id, { sha256: blob.sha256, size: blob.size, updatedAt: now(), name, folderId })
-          if (!(await store.blobInUse(file.sha256))) await blobs.remove(file.sha256)
-        } else if (file.name !== name || file.folderId !== folderId) await store.updateFile(file.id, { name, folderId })
-        if (changed || existing.parentKey !== parentKey || existing.contentSha !== sha) await store.putSourceItem({ ...existing, parentKey, contentSha: sha })
-        return { fileId: file.id, changed }
-      }
-      const blob = await blobs.put(bytes)
-      const at = now()
-      const file: DriveFile = {
-        id: randomUUID(),
-        folderId,
-        name,
-        ownerId: source,
-        mime: 'text/markdown',
-        size: blob.size,
-        sha256: blob.sha256,
-        createdAt: at,
-        updatedAt: at,
-        trashedAt: null,
-        archivedAt: null,
-        archivedBy: null,
-        source,
-        // Sources write Markdown: it records no date of its own.
-        contentDate: null,
-        contentDateKind: null,
-      }
-      await store.insertFile(file)
-      await store.putSourceItem({ source, externalKey: key, itemId: file.id, kind: 'file', parentKey, contentSha: blob.sha256 })
-      return { fileId: file.id, changed: true }
+      const [result] = await writeBatch(source, [{ key, parentKey, name, kind: 'text', content }])
+      return { fileId: result!.itemId, changed: result!.changed }
+    },
+
+    upsertBytes,
+
+    async upsertMany(source, items) {
+      await writeBatch(source, items)
     },
 
     async remove(source, keyPrefix) {
+      checkId('id', source)
       checkId('key prefix', keyPrefix)
-      const doomed = (await store.listSourceItems(source)).filter((r) => r.externalKey === keyPrefix || r.externalKey.startsWith(`${keyPrefix}/`))
-      const files = doomed.filter((r) => r.kind === 'file')
-      for (const r of files) {
-        const file = await store.getFile(r.itemId)
-        if (file) {
-          await dropGrants(source, 'file', file.id)
-          await store.deleteFile(file.id)
-          if (!(await store.blobInUse(file.sha256))) await blobs.remove(file.sha256)
-        }
-        await store.deleteSourceItem(source, r.externalKey)
+      const doomed = await store.listSourceItems(source, keyPrefix)
+      if (doomed.length === 0) return 0
+      const fileRows = doomed.filter((row) => row.kind === 'file')
+      const folderRows = doomed.filter((row) => row.kind === 'folder')
+      const [files, folders] = await Promise.all([
+        store.getFiles(fileRows.map((row) => row.itemId)),
+        store.getFolders(folderRows.map((row) => row.itemId)),
+      ])
+      const filesById = new Map(files.map((file) => [file.id, file] as const))
+      const foldersById = new Map(folders.map((folder) => [folder.id, folder] as const))
+      for (const row of fileRows) {
+        if (!filesById.has(row.itemId)) throw new Error(`drive source ${source}: file ${row.itemId} for ${row.externalKey} is missing`)
       }
-      // Folders deepest first, each empty by then (anything else inside is a bug: fail loud).
-      const folders = doomed.filter((r) => r.kind === 'folder')
-      const depth = new Map<string, number>()
-      for (const r of folders) depth.set(r.itemId, (await chainIds(r.itemId)).length)
-      folders.sort((a, b) => depth.get(b.itemId)! - depth.get(a.itemId)!)
-      for (const r of folders) {
-        const kids = await store.children(r.itemId)
-        if (kids.folders.length > 0 || kids.files.length > 0) {
-          throw new Error(`drive source ${source}: folder ${r.externalKey} still holds items outside ${keyPrefix}`)
-        }
-        await dropGrants(source, 'folder', r.itemId)
-        await store.deleteFolder(r.itemId)
-        await store.deleteSourceItem(source, r.externalKey)
+      for (const row of folderRows) {
+        if (!foldersById.has(row.itemId)) throw new Error(`drive source ${source}: folder ${row.itemId} for ${row.externalKey} is missing`)
       }
+
+      // Nothing mapped outside the prefix (or a person's unmapped item) may be deleted with the folder.
+      const children = await store.childrenOfFolders(folderRows.map((row) => row.itemId))
+      const folderIds = new Set(folderRows.map((row) => row.itemId))
+      const fileIds = new Set(fileRows.map((row) => row.itemId))
+      const folderById = new Map(folderRows.map((row) => [row.itemId, row] as const))
+      for (const child of children.folders) {
+        if (!folderIds.has(child.id)) {
+          const parent = folderById.get(child.parentId!)!
+          throw new Error(`drive source ${source}: folder ${parent.externalKey} still holds items outside ${keyPrefix}`)
+        }
+      }
+      for (const child of children.files) {
+        if (!fileIds.has(child.id)) {
+          const parent = folderById.get(child.folderId!)!
+          throw new Error(`drive source ${source}: folder ${parent.externalKey} still holds items outside ${keyPrefix}`)
+        }
+      }
+
+      for (const row of doomed) await dropGrants(source, row.kind, row.itemId)
+      await store.transaction(async (tx) => {
+        await tx.deleteFiles([...fileIds])
+        await tx.deleteFolders([...folderIds])
+        await tx.deleteSourceItems(source, doomed.map((row) => row.externalKey))
+      })
+      await removeUnreferenced(files.map((file) => file.sha256))
       return doomed.length
     },
 
-    async list(source) {
-      return (await store.listSourceItems(source)).map(toItem)
+    async list(source, keyPrefix) {
+      checkId('id', source)
+      if (keyPrefix !== undefined) checkId('key prefix', keyPrefix)
+      return (await store.listSourceItems(source, keyPrefix)).map(toItem)
     },
   }
 

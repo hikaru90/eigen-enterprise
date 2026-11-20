@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { memoryEditLockStore } from './locks'
 import { memoryDriveAccess } from './memory-access'
 import { createDriveService, type Actor } from './service'
@@ -215,8 +215,119 @@ describe('source writer (the system writer, no access checks)', () => {
     await expect(writer.upsertText('repos', 'g', 'f', 'g.md', 'x')).rejects.toThrow(/is a file, not a folder/)
   })
 
-  it('remove deletes by key prefix for good (items, rows, unused blobs) and leaves the rest', async () => {
+  it('upsertBytes keeps the explicit MIME, shares one blob per content, and never revises or churns unchanged bytes', async () => {
     const { writer, store, blobs, drive } = await setup()
+    await writer.ensureRoot('repos', 'GitHub')
+    await writer.upsertFolder('repos', 'repo:1', null, 'acme')
+    const put = vi.spyOn(blobs, 'put')
+    const png = Uint8Array.from([0, 255, 1, 2, 3])
+    const first = await writer.upsertBytes('repos', 'repo:1/pixel.png', 'repo:1', 'pixel.png', png, 'image/png')
+    const original = (await store.getFile(first.fileId))!
+    expect(first.changed).toBe(true)
+    expect(original).toMatchObject({ mime: 'image/png', sha256: sha256Hex(png), size: png.byteLength })
+    expect(await store.listRevisions(first.fileId)).toEqual([])
+
+    const same = await writer.upsertBytes('repos', 'repo:1/pixel.png', 'repo:1', 'pixel.png', png, 'image/png')
+    expect(same).toEqual({ fileId: first.fileId, changed: false })
+    expect((await store.getFile(first.fileId))!.updatedAt).toEqual(original.updatedAt)
+    const duplicate = await writer.upsertBytes('repos', 'repo:1/copy.png', 'repo:1', 'copy.png', png, 'image/png')
+    expect((await store.getFile(duplicate.fileId))!.sha256).toBe(original.sha256)
+    await expect(put.mock.results[0]!.value).resolves.toMatchObject({ created: true })
+    await expect(put.mock.results[1]!.value).resolves.toMatchObject({ created: false })
+    expect((await drive.readFile(alice, first.fileId)).file.mime).toBe('image/png')
+    expect(new Uint8Array(await (await drive.readFile(alice, first.fileId)).bytes)).toEqual(png)
+
+    // A metadata-only correction does not rewrite content or touch its changed time.
+    const renamed = await writer.upsertBytes('repos', 'repo:1/pixel.png', 'repo:1', 'renamed.bin', png, 'application/x-pixel')
+    expect(renamed.changed).toBe(false)
+    expect((await store.getFile(first.fileId))!).toMatchObject({ name: 'renamed.bin', mime: 'application/x-pixel', updatedAt: original.updatedAt })
+  })
+
+  it('a binary written by the new call stays read-only for people and agents', async () => {
+    const { writer, drive } = await setup()
+    await writer.ensureRoot('repos', 'GitHub')
+    await writer.upsertFolder('repos', 'repo:1', null, 'acme')
+    const file = await writer.upsertBytes('repos', 'repo:1/pixel.png', 'repo:1', 'pixel.png', Uint8Array.of(1), 'image/png')
+    for (const actor of [owner, alice, agent]) {
+      expect((await drive.fileInfo(actor, file.fileId)).canEdit).toBe(false)
+      await refused(drive.rename(actor, 'file', file.fileId, 'other.png'))
+      await refused(drive.writeText(actor, file.fileId, 'changed'))
+      await refused(drive.moveToTrash(actor, 'file', file.fileId))
+    }
+  })
+
+  it('upsertMany writes the mixed union parents-first with bulk metadata operations and no unchanged-content churn', async () => {
+    const { writer, store, blobs, drive } = await setup()
+    await writer.ensureRoot('repos', 'GitHub')
+    const getSourceItem = vi.spyOn(store, 'getSourceItem')
+    const insertFolder = vi.spyOn(store, 'insertFolder')
+    const insertFile = vi.spyOn(store, 'insertFile')
+    const putSourceItem = vi.spyOn(store, 'putSourceItem')
+    const png = Uint8Array.of(0, 255, 10)
+    const items = [
+      { key: 'repo:1', kind: 'folder' as const, parentKey: null, name: 'acme' },
+      { key: 'repo:1/Overview.md', kind: 'text' as const, parentKey: 'repo:1', name: 'Overview.md', content: '# acme\n' },
+      { key: 'repo:1/src', kind: 'folder' as const, parentKey: 'repo:1', name: 'src' },
+      { key: 'repo:1/src/index.ts', kind: 'bytes' as const, parentKey: 'repo:1/src', name: 'index.ts', bytes: bytes('export const n = 1\n'), mime: 'text/plain; charset=utf-8' },
+      { key: 'repo:1/pixel.png', kind: 'bytes' as const, parentKey: 'repo:1', name: 'pixel.png', bytes: png, mime: 'image/png' },
+    ]
+    await writer.upsertMany('repos', items)
+    expect(getSourceItem).not.toHaveBeenCalled()
+    expect(insertFolder).not.toHaveBeenCalled()
+    expect(insertFile).not.toHaveBeenCalled()
+    expect(putSourceItem).not.toHaveBeenCalled()
+    expect((await writer.list('repos')).map((i) => i.key).sort()).toEqual(items.map((i) => i.key).sort())
+    expect((await drive.readText(alice, (await store.getSourceItem('repos', 'repo:1/src/index.ts'))!.itemId)).content).toBe('export const n = 1\n')
+    const codeId = (await store.getSourceItem('repos', 'repo:1/src/index.ts'))!.itemId
+    const code = (await store.getFile(codeId))!
+    expect(code.mime).toBe('text/plain; charset=utf-8')
+    const imageId = (await store.getSourceItem('repos', 'repo:1/pixel.png'))!.itemId
+    expect((await store.getFile(imageId))!.mime).toBe('image/png')
+    expect(await store.listRevisions(codeId)).toEqual([])
+    expect(await store.listRevisions(imageId)).toEqual([])
+
+    const put = vi.spyOn(blobs, 'put')
+    await writer.upsertMany('repos', items)
+    expect(put).not.toHaveBeenCalled()
+    expect((await store.getFile(codeId))!.updatedAt).toEqual(code.updatedAt)
+  })
+
+  it('upsertMany rolls back metadata and cleans new blobs when any item fails', async () => {
+    const { writer, store, blobs } = await setup()
+    const root = await writer.ensureRoot('repos', 'GitHub')
+    const original = bytes('new content')
+    vi.spyOn(store, 'putSourceItems').mockRejectedValue(new Error('forced metadata failure'))
+    await expect(
+      writer.upsertMany('repos', [
+        { key: 'repo:1', kind: 'folder', parentKey: null, name: 'acme' },
+        { key: 'repo:1/a.txt', kind: 'bytes', parentKey: 'repo:1', name: 'a.txt', bytes: original, mime: 'text/plain' },
+      ]),
+    ).rejects.toThrow('forced metadata failure')
+    expect(await writer.list('repos')).toEqual([])
+    expect(await store.children(root.folderId)).toEqual({ folders: [], files: [] })
+    expect(await blobs.has(sha256Hex(original))).toBe(false)
+  })
+
+  it('list uses exact-or-descendant prefixes and isolates sources and sibling prefixes', async () => {
+    const { writer } = await setup()
+    await writer.ensureRoot('repos', 'GitHub')
+    await writer.ensureRoot('wiki', 'Wiki')
+    for (const source of ['repos', 'wiki']) {
+      await writer.upsertFolder(source, 'repo:1', null, 'one')
+      await writer.upsertFolder(source, 'repo:1/docs', 'repo:1', 'docs')
+      await writer.upsertText(source, 'repo:1/docs/a.md', 'repo:1/docs', 'a.md', source)
+      await writer.upsertText(source, 'repo:1/overview.md', 'repo:1', 'overview.md', source)
+      await writer.upsertFolder(source, 'repo:10', null, 'ten')
+    }
+    expect((await writer.list('repos', 'repo:1')).map((i) => i.key)).toEqual(['repo:1', 'repo:1/docs', 'repo:1/docs/a.md', 'repo:1/overview.md'])
+    expect((await writer.list('repos', 'repo:1/docs/a.md')).map((i) => i.key)).toEqual(['repo:1/docs/a.md'])
+    expect((await writer.list('repos', 'repo:1/docs')).map((i) => i.key)).toEqual(['repo:1/docs', 'repo:1/docs/a.md'])
+    expect((await writer.list('repos', 'repo:2'))).toEqual([])
+    expect((await writer.list('wiki', 'repo:1')).map((i) => i.contentSha)).toContain(sha256Hex(bytes('wiki')))
+  })
+
+  it('remove deletes by key prefix for good (items, rows, unused blobs) and leaves the rest', async () => {
+    const { writer, store, blobs, drive, access } = await setup()
     await writer.ensureRoot('repos', 'GitHub')
     const one = await writer.upsertFolder('repos', 'repo:1', null, 'acme')
     await writer.upsertFolder('repos', 'repo:1/docs', 'repo:1', 'docs')
@@ -225,8 +336,15 @@ describe('source writer (the system writer, no access checks)', () => {
     await writer.upsertFolder('repos', 'repo:10', null, 'other')
     const keep = await writer.upsertText('repos', 'repo:10/Overview.md', 'repo:10', 'Overview.md', 'shared bytes')
     await drive.setGrants(admin, 'folder', one, [{ subject: { kind: 'company' }, level: 'view' }])
+    const deleteFile = vi.spyOn(store, 'deleteFile')
+    const deleteFolder = vi.spyOn(store, 'deleteFolder')
+    const deleteSourceItem = vi.spyOn(store, 'deleteSourceItem')
 
     expect(await writer.remove('repos', 'repo:1')).toBe(4)
+    expect(deleteFile).not.toHaveBeenCalled()
+    expect(deleteFolder).not.toHaveBeenCalled()
+    expect(deleteSourceItem).not.toHaveBeenCalled()
+    expect(access.grants.filter((g) => g.resourceId === one)).toEqual([])
     expect((await writer.list('repos')).map((i) => i.key)).toEqual(['repo:10', 'repo:10/Overview.md'])
     expect(await store.getFolder(one)).toBeNull()
     expect(await store.getFile(guide.fileId)).toBeNull()
@@ -234,5 +352,21 @@ describe('source writer (the system writer, no access checks)', () => {
     expect(await blobs.has(sha256Hex(bytes('shared bytes')))).toBe(true)
     expect(await store.getFile(keep.fileId)).not.toBeNull()
     expect(await writer.remove('repos', 'repo:1')).toBe(0)
+  })
+
+  it('remove fails loud on inconsistent source mappings and items outside the prefix', async () => {
+    const { writer, store } = await setup()
+    await writer.ensureRoot('repos', 'GitHub')
+    await writer.upsertFolder('repos', 'repo:1', null, 'acme')
+    const file = await writer.upsertText('repos', 'repo:1/a.md', 'repo:1', 'a.md', 'a')
+    await store.deleteFile(file.fileId)
+    await expect(writer.remove('repos', 'repo:1')).rejects.toThrow(/missing/)
+    expect((await writer.list('repos', 'repo:1')).map((i) => i.key)).toEqual(['repo:1', 'repo:1/a.md'])
+
+    const outside = await setup()
+    await outside.writer.ensureRoot('repos', 'GitHub')
+    await outside.writer.upsertFolder('repos', 'repo:1', null, 'acme')
+    await outside.writer.upsertText('repos', 'elsewhere', 'repo:1', 'outside-key-prefix.md', 'outside')
+    await expect(outside.writer.remove('repos', 'repo:1')).rejects.toThrow(/outside repo:1/)
   })
 })
