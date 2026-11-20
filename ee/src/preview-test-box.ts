@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
  * starts listening some time after its unit starts.
  */
 export class PreviewBox implements System {
-  files = new Map<string, string>()
+  files = new Map<string, string>([['/etc/resolv.conf', 'nameserver 9.9.9.9\n']])
   symlinks = new Set<string>()
   /** Tarball content → the files it unpacks to. */
   archives = new Map<string, Record<string, string>>()
@@ -72,8 +72,18 @@ export class PreviewBox implements System {
     return { pid: 4242, lines: d.listen.map((a) => `LISTEN 0      511    ${a}   0.0.0.0:*    users:(("node",pid=4242,fd=20))`), exited: false }
   }
 
-  async run(cmd: string, args: string[]): Promise<RunResult> {
+  /** Exit code of the forwarder unit's listen (0: it listens on 10.237.0.2:8080). */
+  forwarderFails = false
+
+  async run(cmd: string, args: string[], opts?: { input?: string }): Promise<RunResult> {
+    // Inside the preview namespace: record it, then answer as the inner command.
+    if (cmd === 'nsenter') {
+      this.commands.push([cmd, ...args])
+      const inner = args.filter((a) => !a.startsWith('--net='))
+      return this.run(inner[0]!, inner.slice(1), opts)
+    }
     this.commands.push([cmd, ...args])
+    if (cmd === 'readlink') return { code: 0, stdout: `${args.at(-1)}\n`, stderr: '' }
     const ok = (stdout = ''): RunResult => ({ code: 0, stdout, stderr: '' })
     if (cmd === 'stat') {
       const p = args.at(-1)!
@@ -98,7 +108,12 @@ export class PreviewBox implements System {
     }
     if (cmd === 'ss') {
       const lines = this.usedPorts.map((p) => `LISTEN 0 4096 127.0.0.1:${p} 0.0.0.0:* users:(("other",pid=1,fd=3))`)
-      for (const [unit, state] of this.units) if (state === 'active') lines.push(...this.dev(unit).lines)
+      for (const [unit, state] of this.units) {
+        if (state !== 'active') continue
+        if (unit.startsWith('ee-preview-fwd-')) {
+          if (!this.forwarderFails) lines.push('LISTEN 0 511 10.237.0.2:8080 0.0.0.0:* users:(("node",pid=4343,fd=18))')
+        } else lines.push(...this.dev(unit).lines)
+      }
       return ok(lines.join('\n') + (lines.length ? '\n' : ''))
     }
     if (cmd === 'journalctl') return ok((this.journals.get(args[args.indexOf('-u') + 1]!.replace(/\.service$/, '')) ?? []).join('\n'))
@@ -111,7 +126,7 @@ export class PreviewBox implements System {
         this.units.delete(unit)
         return stopped ? { code: 143, stdout: '', stderr: '' } : { code: this.installExit, stdout: '', stderr: '' }
       }
-      this.units.set(unit, 'active')
+      this.units.set(unit, this.forwarderFails && unit.startsWith('ee-preview-fwd-') ? 'failed' : 'active')
       this.devStartedAt.set(unit, this.clock)
       this.files.set(`/sys/fs/cgroup/system.slice/${unit}.service/cgroup.procs`, '4242\n')
       return ok()

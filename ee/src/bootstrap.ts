@@ -179,7 +179,8 @@ async function assertSupportedOs(sys: System): Promise<void> {
 async function installPackages(sys: System): Promise<void> {
   step('installing base packages')
   await mustRun(sys, 'apt-get', ['update', '-qq'], { timeoutMs: 300_000 })
-  await apt(sys, ['ca-certificates', 'curl', 'gnupg', 'git', 'openssh-client', 'postgresql-common', 'debian-keyring', 'debian-archive-keyring', 'apt-transport-https'])
+  // iproute2 + nftables: the Drive app preview network (preview-net.ts).
+  await apt(sys, ['ca-certificates', 'curl', 'gnupg', 'git', 'openssh-client', 'iproute2', 'nftables', 'postgresql-common', 'debian-keyring', 'debian-archive-keyring', 'apt-transport-https'])
 
   if (!(await sys.exists('/etc/apt/sources.list.d/pgdg.list')) && !(await sys.exists('/etc/apt/sources.list.d/pgdg.sources'))) {
     step('adding the official PostgreSQL apt repository')

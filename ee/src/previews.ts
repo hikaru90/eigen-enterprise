@@ -2,6 +2,7 @@ import type { PreviewRoute } from './caddy.ts'
 import { posix } from 'node:path'
 import { z } from 'zod'
 import { PATHS } from './paths.ts'
+import { ensurePreviewNet, FORWARD_PORT, forwarderScript, NETNS_PATH, NS_ADDR, type PreviewNet } from './preview-net.ts'
 import { scanTarball, UnsafeTarballError, type TarSummary } from './preview-tar.ts'
 import { HOSTNAME } from './spec.ts'
 import { mustRun, type System } from './system.ts'
@@ -11,7 +12,9 @@ import { mustRun, type System } from './system.ts'
  * the kernel"): a web-app folder snapshot runs sandboxed and ephemeral as user
  * ee-preview, served at <id>.preview.<console host>. One active preview per box;
  * nothing about a preview is ever written to the company repo, and none survives
- * an ee restart.
+ * an ee restart. Its units run in the preview network namespace (preview-net.ts):
+ * internet yes, the box and private ranges no; Caddy reaches it through a
+ * forwarder unit on NS_ADDR:FORWARD_PORT.
  *
  *   POST   /v1/previews          { id, tarball, sha256, folderName, author } → 202 { preview }
  *                                409 urn:ee:preview_busy { running } · 422 urn:ee:preview_rejected
@@ -57,6 +60,11 @@ const INACCESSIBLE = [
   PATHS.osState.replace(/\/os$/, ''),
   '/var/lib/postgresql',
   '/var/lib/caddy',
+  // Unix sockets ignore network namespaces: hide the box's own.
+  '/run/postgresql',
+  '/run/caddy',
+  '/run/dbus',
+  '/run/credentials',
 ]
 
 export class PreviewError extends Error {
@@ -84,6 +92,8 @@ export type PreviewDeps = {
   portDeadlineMs: number
   /** Stop after this long without /seen. */
   idleMs: number
+  /** Set up (or repair) the preview network namespace (preview-net.ts). */
+  net(sys: System): Promise<PreviewNet>
 }
 
 const startInput = z
@@ -119,6 +129,7 @@ type Rec = {
   installSince: number | null
   runSince: number | null
   upstream: { dial: string; port: number } | null
+  net: PreviewNet | null
   cancelled: boolean
 }
 
@@ -126,6 +137,9 @@ const ACTIVE: PreviewState[] = ['installing', 'starting', 'running']
 const isActive = (r: Rec) => ACTIVE.includes(r.state)
 const installUnit = (id: string) => `ee-preview-install-${id}`
 const runUnit = (id: string) => `ee-preview-${id}`
+const forwardUnit = (id: string) => `ee-preview-fwd-${id}`
+/** A command run inside the preview network namespace (ss sees only its sockets there). */
+const inNetns = (cmd: string, args: string[]): [string, string[]] => ['nsenter', [`--net=${NETNS_PATH}`, cmd, ...args]]
 
 /** A failure that ends a preview with this message (and its log). */
 class PreviewFailure extends Error {}
@@ -138,7 +152,7 @@ export class PreviewService {
   private lastDirMs = 0
 
   constructor(deps: Pick<PreviewDeps, 'sys' | 'consoleHost' | 'emit' | 'edgeChanged'> & Partial<PreviewDeps>) {
-    this.d = { scan: scanTarball, portDeadlineMs: 5 * 60_000, idleMs: 30 * 60_000, ...deps }
+    this.d = { scan: scanTarball, portDeadlineMs: 5 * 60_000, idleMs: 30 * 60_000, net: ensurePreviewNet, ...deps }
   }
 
   private get sys(): System {
@@ -211,6 +225,7 @@ export class PreviewService {
           installSince: null,
           runSince: null,
           upstream: null,
+          net: null,
           cancelled: false,
         }
         own = null
@@ -267,6 +282,12 @@ export class PreviewService {
       await this.unpack(rec)
       if (rec.cancelled) return
       const install = await this.plan(rec)
+      if (rec.cancelled) return
+      try {
+        rec.net = await this.d.net(this.sys)
+      } catch (err) {
+        throw new PreviewFailure(`the preview network could not be set up: ${(err as Error).message}`)
+      }
       if (rec.cancelled) return
       await this.installDeps(rec, install)
       if (rec.cancelled) return
@@ -340,7 +361,10 @@ export class PreviewService {
   }
 
   private sandbox(rec: Rec, writable: string[]): string[] {
+    if (!rec.net) throw new Error(`preview ${rec.id}: no network set up before its units`)
     return [
+      '-p', `NetworkNamespacePath=${NETNS_PATH}`,
+      '-p', `BindReadOnlyPaths=${rec.net.resolvConf}:${rec.net.resolvTarget}`,
       '-p', `User=${PREVIEW_USER}`,
       '-p', `Group=${PREVIEW_USER}`,
       '-p', 'NoNewPrivileges=yes',
@@ -426,7 +450,7 @@ export class PreviewService {
         throw new PreviewFailure('the dev server exited before it listened on a port')
       }
       const found = await this.listening(unit, port)
-      if (found) return found
+      if (found) return await this.expose(rec, found)
       if (this.sys.now().getTime() >= deadline) {
         throw new PreviewFailure(`the dev server did not listen on a port within ${Math.round(this.d.portDeadlineMs / 60_000)} minutes`)
       }
@@ -434,9 +458,45 @@ export class PreviewService {
     }
   }
 
-  /** A free TCP port for PORT (the app may ignore it: the port watch finds the real one). */
+  /**
+   * Make the dev server reachable from the box: a listener on all addresses
+   * (or on NS_ADDR) is dialed directly; one on the namespace's loopback only
+   * gets a forwarder unit on NS_ADDR:FORWARD_PORT.
+   */
+  private async expose(rec: Rec, found: { dial: string; port: number }): Promise<{ dial: string; port: number } | null> {
+    if (!found.dial.startsWith('127.') && !found.dial.startsWith('[')) return { dial: `${NS_ADDR}:${found.port}`, port: found.port }
+    const unit = forwardUnit(rec.id)
+    await this.sys.run('systemctl', ['reset-failed', `${unit}.service`])
+    const launched = await this.exclusive(async () => {
+      if (rec.cancelled) return false
+      await mustRun(this.sys, 'systemd-run', [
+        '--collect',
+        '--quiet',
+        `--unit=${unit}`,
+        ...this.sandbox(rec, [rec.dir]),
+        '-p', 'MemoryMax=64M',
+        `${NODE_BIN}/node`,
+        '-e',
+        forwarderScript({ host: found.dial.slice(0, found.dial.lastIndexOf(':')), port: found.port }),
+      ])
+      return true
+    })
+    if (!launched) return null
+    const deadline = this.sys.now().getTime() + 15_000
+    for (;;) {
+      if (rec.cancelled) return null
+      const up = parseListeners(await mustRun(this.sys, ...inNetns('ss', ['-ltnH']))).some((l) => l.address === NS_ADDR && l.port === FORWARD_PORT)
+      if (up) return { dial: `${NS_ADDR}:${FORWARD_PORT}`, port: found.port }
+      const state = (await this.sys.run('systemctl', ['is-active', `${unit}.service`])).stdout.trim()
+      if (state !== 'active' && state !== 'activating') throw new PreviewFailure(`the preview forwarder exited (${state}); is port ${FORWARD_PORT} taken inside the app?`)
+      if (this.sys.now().getTime() >= deadline) throw new PreviewFailure(`the preview forwarder did not listen on ${NS_ADDR}:${FORWARD_PORT} within 15 seconds`)
+      await this.sys.sleep(500)
+    }
+  }
+
+  /** A free TCP port for PORT inside the namespace (the app may ignore it: the port watch finds the real one). */
   private async freePort(): Promise<number> {
-    const used = new Set(parseListeners(await mustRun(this.sys, 'ss', ['-ltnH'])).map((l) => l.port))
+    const used = new Set(parseListeners(await mustRun(this.sys, ...inNetns('ss', ['-ltnH']))).map((l) => l.port))
     for (let p = PORT_RANGE.min; p <= PORT_RANGE.max; p++) if (!used.has(p)) return p
     throw new PreviewFailure(`no free port in ${PORT_RANGE.min}–${PORT_RANGE.max}`)
   }
@@ -448,7 +508,7 @@ export class PreviewService {
     const procs = await this.sys.readFile(`/sys/fs/cgroup${cgroup}/cgroup.procs`)
     if (!procs) return null
     const pids = new Set(procs.split('\n').map((l) => l.trim()).filter(Boolean).map(Number))
-    const mine = parseListeners(await mustRun(this.sys, 'ss', ['-ltnpH']))
+    const mine = parseListeners(await mustRun(this.sys, ...inNetns('ss', ['-ltnpH'])))
       .filter((l) => l.pids.some((p) => pids.has(p)))
       .map((l) => ({ ...l, rank: dialRank(l.address) }))
       .filter((l): l is typeof l & { rank: { rank: number; dial: string } } => l.rank !== null)
@@ -460,7 +520,7 @@ export class PreviewService {
   /** End a preview: stop its units, keep its log, remove its files and its route. */
   private async halt(rec: Rec, state: 'failed' | 'stopped', error: string | null, meta: { author?: string; why: string } | { author?: string }): Promise<void> {
     rec.cancelled = true
-    const units = [`${installUnit(rec.id)}.service`, `${runUnit(rec.id)}.service`]
+    const units = [`${installUnit(rec.id)}.service`, `${runUnit(rec.id)}.service`, `${forwardUnit(rec.id)}.service`]
     await this.sys.run('systemctl', ['stop', ...units])
     for (const u of units) {
       const s = (await this.sys.run('systemctl', ['is-active', u])).stdout.trim()
@@ -562,11 +622,11 @@ export class PreviewService {
       const units = listed
         .split('\n')
         .map((l) => l.trim().split(/\s+/)[0] ?? '')
-        .filter((u) => /^ee-preview-(install-)?pv[0-9a-f]{12}\.service$/.test(u))
+        .filter((u) => /^ee-preview-(install-|fwd-)?pv[0-9a-f]{12}\.service$/.test(u))
       if (units.length > 0) {
         await mustRun(this.sys, 'systemctl', ['stop', ...units])
         await this.sys.run('systemctl', ['reset-failed', ...units])
-        for (const u of units.filter((x) => !x.startsWith('ee-preview-install-'))) {
+        for (const u of units.filter((x) => !x.startsWith('ee-preview-install-') && !x.startsWith('ee-preview-fwd-'))) {
           const id = u.slice('ee-preview-'.length, -'.service'.length)
           await this.d.emit('preview.stopped', `preview ${id} stopped: ee restarted (previews are never restored)`, { id })
         }
@@ -597,10 +657,14 @@ export function parseListeners(out: string): Listener[] {
   return res
 }
 
-/** How Caddy reaches a listener over loopback; null: not reachable from 127.0.0.1/[::1]. */
+/**
+ * How a listener inside the preview namespace is reached: on all addresses or
+ * on NS_ADDR, directly (dial 0.0.0.0 → NS_ADDR in expose); on loopback only,
+ * through the forwarder. null: not reachable.
+ */
 function dialRank(address: string): { rank: number; dial: string } | null {
-  if (address.startsWith('127.')) return { rank: 0, dial: '127.0.0.1' }
-  if (address === '0.0.0.0' || address === '*') return { rank: 1, dial: '127.0.0.1' }
+  if (address === '0.0.0.0' || address === '*' || address === NS_ADDR) return { rank: 0, dial: NS_ADDR }
+  if (address.startsWith('127.')) return { rank: 1, dial: '127.0.0.1' }
   if (address === '[::1]') return { rank: 2, dial: '[::1]' }
   if (address === '[::]' || address === '[::ffff:127.0.0.1]') return { rank: 3, dial: '[::1]' }
   return null

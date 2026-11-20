@@ -141,9 +141,13 @@ describe('previews: run a Drive web-app folder (plan/phase-drive-app-preview.md)
     const { done } = await t.svc.start(t.handOff(VITE))
     expect(t.svc.routes()).toEqual([{ host: `${ID}.preview.os.example.com`, upstream: null }])
     await done
-    expect(t.svc.routes()).toEqual([{ host: `${ID}.preview.os.example.com`, upstream: { dial: '127.0.0.1:5173', port: 5173 } }])
+    // Vite on the namespace's loopback: Caddy dials the forwarder on 10.237.0.2:8080.
+    expect(t.svc.routes()).toEqual([{ host: `${ID}.preview.os.example.com`, upstream: { dial: '10.237.0.2:8080', port: 5173 } }])
     expect(t.edgeChanges()).toBeGreaterThanOrEqual(2)
     expect(t.box.ran('ss').every((c) => c.join(' ').startsWith('ss -ltn'))).toBe(true)
+    // Every socket listing is the preview namespace's, never the host's.
+    expect(t.box.ran('nsenter').length).toBe(t.box.ran('ss').length)
+    expect(t.box.ran('nsenter').every((c) => c[1] === '--net=/run/netns/ee-preview')).toBe(true)
   })
 
   it('journals started and running, with the author', async () => {
@@ -224,17 +228,21 @@ describe('previews: run a Drive web-app folder (plan/phase-drive-app-preview.md)
     expect(t.box.clock - start).toBeLessThan(10_000)
   })
 
-  it('port watch: only the unit cgroup counts; 127.0.0.1 is preferred; an IPv6-only listener is dialed as [::1]', async () => {
+  it('port watch: only the unit cgroup counts; all-addresses listeners are dialed directly, loopback ones through the forwarder', async () => {
     const t = setup()
     t.box.usedPorts = [5432]
-    t.box.devServer = { afterMs: 1000, listen: ['[::1]:5174', '127.0.0.1:24678'] }
+    t.box.devServer = { afterMs: 1000, listen: ['[::1]:5174', '0.0.0.0:3000'] }
     await run(t, t.handOff(VITE))
-    expect(t.svc.routes()[0]!.upstream).toEqual({ dial: '127.0.0.1:24678', port: 24678 })
+    expect(t.svc.routes()[0]!.upstream).toEqual({ dial: '10.237.0.2:3000', port: 3000 })
+    expect(t.box.ran('systemd-run').some((c) => c.includes(`--unit=ee-preview-fwd-${ID}`))).toBe(false)
 
     const u = setup()
     u.box.devServer = { afterMs: 1000, listen: ['[::1]:5173'] }
     await run(u, u.handOff(VITE))
-    expect(u.svc.routes()[0]!.upstream).toEqual({ dial: '[::1]:5173', port: 5173 })
+    expect(u.svc.routes()[0]!.upstream).toEqual({ dial: '10.237.0.2:8080', port: 5173 })
+    const fwd = u.box.ran('systemd-run').find((c) => c.includes(`--unit=ee-preview-fwd-${ID}`))!
+    expect(fwd.at(-1)).toContain('net.connect(5173, "::1")')
+    expect(fwd.at(-1)).toContain('server.listen(8080, "10.237.0.2")')
   })
 
   it('the port it hands the app (PORT) is a free one in 41000–41999', async () => {
@@ -419,11 +427,13 @@ describe('previews: one at a time, restart, stop, idle, ee start', () => {
 
   it('ee start stops every leftover preview unit and wipes the preview dirs', async () => {
     const t = setup()
-    t.box.leftovers = [`ee-preview-${ID}.service`, `ee-preview-install-${OTHER}.service`, 'ee-os-a.service']
+    t.box.leftovers = [`ee-preview-${ID}.service`, `ee-preview-fwd-${ID}.service`, `ee-preview-install-${OTHER}.service`, 'ee-os-a.service']
     t.box.files.set(`${PATHS.previews}/${ID}-1/package.json`, '{}')
     await t.svc.wipe()
     const stops = t.box.ran('systemctl').filter((c) => c[1] === 'stop')
-    expect(stops).toEqual([['systemctl', 'stop', `ee-preview-${ID}.service`, `ee-preview-install-${OTHER}.service`]])
+    expect(stops).toEqual([['systemctl', 'stop', `ee-preview-${ID}.service`, `ee-preview-fwd-${ID}.service`, `ee-preview-install-${OTHER}.service`]])
+    // One stopped event per preview, not per unit.
+    expect(t.events.filter((e) => e.type === 'preview.stopped')).toHaveLength(1)
     expect(await t.box.exists(PATHS.previews)).toBe(false)
     expect(await t.svc.list()).toEqual([])
   })
@@ -437,5 +447,47 @@ describe('previews: one at a time, restart, stop, idle, ee start', () => {
       [OTHER, 'running'],
       [ID, 'failed'],
     ])
+  })
+})
+
+describe('previews: network isolation (preview-net.ts)', () => {
+  it('both units and the forwarder run in the preview namespace, with its resolv.conf, the box sockets hidden', async () => {
+    const t = setup()
+    await run(t, t.handOff(VITE))
+    const units = t.box.ran('systemd-run')
+    expect(units).toHaveLength(3)
+    for (const u of units) {
+      expect(prop(u, 'NetworkNamespacePath')).toEqual(['/run/netns/ee-preview'])
+      expect(prop(u, 'BindReadOnlyPaths')).toEqual(['/var/lib/ee/preview-net/resolv.conf:/etc/resolv.conf'])
+      for (const sock of ['/run/postgresql', '/run/caddy', '/run/dbus']) expect(prop(u, 'InaccessiblePaths')[0]).toContain(`-${sock}`)
+      expect(prop(u, 'User')).toEqual(['ee-preview'])
+    }
+  })
+
+  it('sets the network up before installing, and a broken network fails the preview before any unit runs', async () => {
+    const t = setup()
+    await run(t, t.handOff(VITE))
+    const firstNetns = t.box.commands.findIndex((c) => c[0] === 'ip' && c[1] === 'netns')
+    const firstUnit = t.box.commands.findIndex((c) => c[0] === 'systemd-run')
+    expect(firstNetns).toBeGreaterThanOrEqual(0)
+    expect(firstNetns).toBeLessThan(firstUnit)
+    expect(t.box.ran('nft')).toHaveLength(1)
+
+    const u = setup()
+    u.box.files.set('/etc/resolv.conf', 'nameserver 127.0.0.53\n')
+    const view = await run(u, u.handOff(VITE))
+    expect(view.state).toBe('failed')
+    expect(view.error).toMatch(/preview network could not be set up: no DNS server for previews/)
+    expect(u.box.ran('systemd-run')).toHaveLength(0)
+  })
+
+  it('a forwarder that cannot listen fails the preview and every unit stops', async () => {
+    const t = setup()
+    t.box.forwarderFails = true
+    const view = await run(t, t.handOff(VITE))
+    expect(view.state).toBe('failed')
+    expect(view.error).toMatch(/preview forwarder exited/)
+    expect(t.box.units.get(`ee-preview-${ID}`)).toBe('inactive')
+    expect(t.svc.routes()).toEqual([])
   })
 })
