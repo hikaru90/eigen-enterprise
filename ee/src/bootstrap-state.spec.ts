@@ -4,6 +4,8 @@ import {
   assertClaimHashAllowed,
   bootstrapRouting,
   caddyUnitAction,
+  ensureSystemUser,
+  SANDBOX_USERS,
   parseRtcPortsFlag,
   strayWalArchiverOff,
   parseTrustedProxyFlag,
@@ -16,6 +18,24 @@ import {
 import { claimFromHash } from './claim.ts'
 import { livekitWorkload } from './livekit.ts'
 import { workloadSchema } from './spec.ts'
+import { PreviewBox } from './preview-test-box.ts'
+
+describe('sandbox users (ee-build for builds, ee-preview for Drive app previews)', () => {
+  it('bootstrap creates both; a re-run (upgrade) adds a missing one and keeps an existing one', async () => {
+    expect(SANDBOX_USERS).toEqual(['ee-build', 'ee-preview'])
+    const sys = new PreviewBox()
+    const existing = new Set(['ee-build'])
+    sys.run = async (cmd, args) => {
+      sys.commands.push([cmd, ...args])
+      if (cmd === 'id') return existing.has(args.at(-1)!) ? { code: 0, stdout: '998\n', stderr: '' } : { code: 1, stdout: '', stderr: 'no such user' }
+      if (cmd === 'useradd') existing.add(args.at(-1)!)
+      return { code: 0, stdout: '', stderr: '' }
+    }
+    for (const u of SANDBOX_USERS) await ensureSystemUser(sys, u)
+    for (const u of SANDBOX_USERS) await ensureSystemUser(sys, u)
+    expect(sys.commands.filter((c) => c[0] === 'useradd')).toEqual([['useradd', '--system', '--no-create-home', '--shell', '/usr/sbin/nologin', 'ee-preview']])
+  })
+})
 
 describe('the node IP LiveKit advertises (explicit, never guessed)', () => {
   it('an explicit --node-ip wins and is saved', () => {

@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { createServer, request, type Server } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -8,6 +8,7 @@ import { controlHandler, Ee } from './daemon.ts'
 import { DeployRun, forgetDeploys } from './deploys.ts'
 import { emptyJournal } from './journal.ts'
 import { PATHS } from './paths.ts'
+import { PreviewBox } from './preview-test-box.ts'
 import { SecretStore } from './secret-store.ts'
 import type { RunResult, System } from './system.ts'
 
@@ -419,5 +420,95 @@ describe('control API: updates (Settings → Updates)', () => {
     expect(r.status).toBe(409)
     expect(JSON.stringify(r.data)).toMatch(/hosting provider/)
     expect(runs.mock.calls.some(([cmd]) => cmd === 'systemd-run')).toBe(false)
+  })
+})
+
+describe('control API: Drive app previews (plan/phase-drive-app-preview.md)', () => {
+  const ID = 'pv3f9a0c12be47'
+  type Reply = { status: number; data: Record<string, any> } // eslint-disable-line @typescript-eslint/no-explicit-any
+  async function previewBox() {
+    const sys = new PreviewBox()
+    sys.files.set(PATHS.masterKey, randomBytes(32).toString('base64'))
+    const ee = new Ee(sys, await SecretStore.open(sys), {}, {}, {}, { scan: async () => ({ files: 3, bytes: 10 }) })
+    ee.journal = emptyJournal()
+    vi.spyOn(ee.repo, 'read').mockResolvedValue({ settings: { consoleHost: 'os.ee.localhost' } } as never)
+    // What a reconcile hands the edge: desired state's routes (ee adds the previews).
+    vi.spyOn(ee, 'reconcile').mockImplementation(async () => {
+      await ee['loadEdge']({ routes: [{ host: 'os.ee.localhost', workload: 'os' }], upstreams: { os: { kind: 'proxy', port: 4100 } }, acmeEmail: null, trustedProxy: null })
+      return undefined as never
+    })
+    dir = await mkdtemp(join(tmpdir(), 'ee-ctl-'))
+    const socketPath = join(dir, 'ee.sock')
+    server = createServer(controlHandler(ee))
+    await new Promise<void>((r) => server!.listen(socketPath, r))
+    const call = (method: string, path: string, body?: unknown) =>
+      new Promise<Reply>((resolve, reject) => {
+        const text = body === undefined ? '' : JSON.stringify(body)
+        const req = request({ socketPath, path, method, headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(text) } }, (res) => {
+          let raw = ''
+          res.on('data', (d) => (raw += String(d)))
+          res.on('end', () => resolve({ status: res.statusCode ?? 0, data: raw ? JSON.parse(raw) : null }))
+        })
+        req.on('error', reject)
+        req.end(text)
+      })
+    const handOff = (id = ID) => {
+      const content = `TAR-${id}-${sys.clock}`
+      sys.archives.set(content, { 'package.json': JSON.stringify({ scripts: { dev: 'vite' } }), 'package-lock.json': '{}' })
+      const tarball = `${PATHS.osState}/previews/${id}-${sys.clock}.tar.gz`
+      sys.files.set(tarball, content)
+      return { id, tarball, sha256: createHash('sha256').update(content).digest('hex'), folderName: 'vite-app', author: 'user:alex' }
+    }
+    const lastEdgeHosts = () => {
+      const cfg = sys.caddyLoads.at(-1) as { apps: { http: { servers: { ee: { routes: Array<{ match: Array<{ host: string[] }>; handle: unknown[] }> } } } } }
+      return cfg.apps.http.servers.ee.routes.map((r) => ({ host: r.match[0]!.host[0], handler: (r.handle[0] as { handler: string }).handler }))
+    }
+    return { sys, ee, call, handOff, lastEdgeHosts }
+  }
+
+  it('start → status → seen → stop over the socket, with the edge following', async () => {
+    const { ee, call, handOff, lastEdgeHosts } = await previewBox()
+    const started = await call('POST', '/v1/previews', handOff())
+    expect(started.status).toBe(202)
+    expect(started.data.preview).toMatchObject({ id: ID, state: 'installing', host: `${ID}.preview.os.ee.localhost`, url: `https://${ID}.preview.os.ee.localhost/` })
+    await ee.previews.settled()
+
+    const one = await call('GET', `/v1/previews/${ID}`)
+    expect(one.status).toBe(200)
+    expect(one.data.preview).toMatchObject({ state: 'running', script: 'dev', error: null })
+    expect(lastEdgeHosts()).toEqual([
+      { host: 'os.ee.localhost', handler: 'subroute' },
+      { host: `${ID}.preview.os.ee.localhost`, handler: 'reverse_proxy' },
+    ])
+
+    const list = await call('GET', '/v1/previews')
+    expect(list.data.previews.map((p: { id: string }) => p.id)).toEqual([ID])
+
+    const busy = await call('POST', '/v1/previews', handOff('pv000000000001'))
+    expect(busy.status).toBe(409)
+    expect(busy.data).toMatchObject({ type: 'urn:ee:preview_busy', running: { id: ID, folderName: 'vite-app', state: 'running' } })
+
+    expect((await call('POST', `/v1/previews/${ID}/seen`, {})).status).toBe(200)
+
+    const stopped = await call('DELETE', `/v1/previews/${ID}`, { author: 'user:alex' })
+    expect(stopped.status).toBe(200)
+    expect(stopped.data.preview.state).toBe('stopped')
+    expect(lastEdgeHosts()).toEqual([{ host: 'os.ee.localhost', handler: 'subroute' }])
+    expect(ee.journal.events.map((e) => e.type).filter((t) => t.startsWith('preview.'))).toEqual(['preview.started', 'preview.running', 'preview.stopped'])
+  })
+
+  it('answers problem types the kernel can tell apart', async () => {
+    const { call, handOff } = await previewBox()
+    const missing = await call('GET', `/v1/previews/${ID}`)
+    expect(missing.status).toBe(404)
+    expect(missing.data.type).toBe('urn:ee:preview_not_found')
+    expect((await call('GET', '/v1/previews/not-an-id')).status).toBe(404)
+    const bad = await call('POST', '/v1/previews', { ...handOff(), id: 'nope' })
+    expect(bad.status).toBe(400)
+    expect(bad.data.type).toBe('urn:ee:invalid_input')
+    const outside = await call('POST', '/v1/previews', { ...handOff(), tarball: '/etc/shadow' })
+    expect(outside.status).toBe(422)
+    expect(outside.data.type).toBe('urn:ee:preview_rejected')
+    expect((await call('DELETE', `/v1/previews/${ID}`, { author: 'user:alex' })).status).toBe(404)
   })
 })
