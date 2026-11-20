@@ -21,6 +21,8 @@ export const REL_TYPE = {
   slideMaster: `${REL}slideMaster`,
   theme: `${REL}theme`,
   notesSlide: `${REL}notesSlide`,
+  notesMaster: `${REL}notesMaster`,
+  comments: `${REL}comments`,
   image: `${REL}image`,
   hyperlink: `${REL}hyperlink`,
   tableStyles: `${REL}tableStyles`,

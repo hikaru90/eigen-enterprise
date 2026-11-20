@@ -242,6 +242,8 @@ export type Master = {
   bg: Background | null
   shapes: ShapeNode[]
   txStyles: { title: ListStyle; body: ListStyle; other: ListStyle }
+  /** The master's layouts in its own order (p:sldLayoutIdLst), used by slides or not. */
+  layouts: string[]
 }
 export type Layout = { part: string; master: string; name: string; clrMapOvr: Record<string, string> | null; bg: Background | null; shapes: ShapeNode[]; showMasterSp: boolean }
 export type Slide = {
@@ -879,16 +881,25 @@ function relOfType(pkg: OpcPackage, part: string, type: string): string | null {
   return pkg.relationships(part).find((r) => r.type === type && !r.external && r.part && pkg.has(r.part))?.part ?? null
 }
 
-/** Opens a deck: the package (for media and, later, saving) and its model. Throws PptxError/OpcError with a reason. */
+/** Opens a deck: the package (for media and saving) and its model. Throws PptxError/OpcError with a reason. */
 export function openDeck(bytes: Uint8Array): { pkg: OpcPackage; deck: Deck } {
   const pkg = readPackage(bytes)
-  let presPart: string
+  return { pkg, deck: readDeck(pkg) }
+}
+
+/** The presentation part of a package (the main part). */
+export function presentationPart(pkg: OpcPackage): string {
   try {
-    presPart = pkg.mainPart(REL_OFFICE_DOCUMENT)
+    return pkg.mainPart(REL_OFFICE_DOCUMENT)
   } catch (err) {
     if (err instanceof OpcError) throw new PptxError('This file has no presentation in it.')
     throw err
   }
+}
+
+/** Reads the deck model from a package as it is now (after edits, ./ops.ts). */
+export function readDeck(pkg: OpcPackage): Deck {
+  const presPart = presentationPart(pkg)
   const pres = rootOf(pkg, presPart, 'presentation')
   const pctx = ctxFor(pkg, presPart)
   const sz = p(pres, 'sldSz')
@@ -918,11 +929,19 @@ export function openDeck(bytes: Uint8Array): { pkg: OpcPackage; deck: Deck } {
         bg: parseBackground(ctx, cSld),
         shapes: parseShapes(ctx, p(cSld, 'spTree')),
         txStyles: { title: parseListStyle(ctx, p(tx, 'titleStyle')), body: parseListStyle(ctx, p(tx, 'bodyStyle')), other: parseListStyle(ctx, p(tx, 'otherStyle')) },
+        layouts: [],
       },
       part,
       root,
     )
     masters[part] = m
+    for (const id of children(p(root, 'sldLayoutIdLst'), NS.p, 'sldLayoutId')) {
+      const rel = ctx.rels.get(relAttr(id, 'id') ?? '')
+      if (rel?.part && pkg.has(rel.part)) {
+        layout(rel.part)
+        m.layouts.push(rel.part)
+      }
+    }
     return m
   }
 
@@ -1011,7 +1030,7 @@ export function openDeck(bytes: Uint8Array): { pkg: OpcPackage; deck: Deck } {
     presPart,
     pres,
   )
-  return { pkg, deck }
+  return deck
 }
 
 /** Every shape of a tree, depth first, groups included. */

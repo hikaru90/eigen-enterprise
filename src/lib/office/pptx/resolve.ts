@@ -172,6 +172,8 @@ export type RSlide = {
   height: number
   background: RFill
   nodes: RNode[]
+  /** Where the slide's own shapes start in `nodes` (before: master and layout graphics). */
+  ownStart: number
   /** Things on the slide that could not be placed (no position anywhere in their inheritance): named, not dropped. */
   notShown: string[]
 }
@@ -180,6 +182,8 @@ export type RSlide = {
 // Context
 
 type Ctx = {
+  /** Editing: shapes with an empty text body still get their (empty) text box, to type into. */
+  keepEmptyText: boolean
   deck: Deck
   slide: Slide | null
   master: Master
@@ -189,12 +193,13 @@ type Ctx = {
   slideIndex: Map<string, number>
 }
 
-function contextFor(deck: Deck, slide: Slide): Ctx {
+function contextFor(deck: Deck, slide: Slide, keepEmptyText: boolean): Ctx {
   const layout = deck.layouts[slide.layout]!
   const master = deck.masters[layout.master]!
   const theme = deck.themes[master.theme]!
   const clrMap = slide.clrMapOvr ?? layout.clrMapOvr ?? master.clrMap
   return {
+    keepEmptyText,
     deck,
     slide,
     master,
@@ -645,7 +650,7 @@ function fontRefLayer(style: ShapeStyle | null): ListStyle | null {
 
 function textOfShape(ctx: Ctx, chain: ShapeNode[], geometry: BuiltGeometry): RText | null {
   const own = textOf(chain[0]!)
-  if (!own || own.paragraphs.every((p) => p.runs.every((r) => r.kind !== 'break' && r.text === ''))) return null
+  if (!own || (!ctx.keepEmptyText && own.paragraphs.every((p) => p.runs.every((r) => r.kind !== 'break' && r.text === '')))) return null
   const bodyPr = [...chain].reverse().reduce((acc, s) => ({ ...acc, ...(textOf(s)?.bodyPr ?? {}) }), {} as TextBody['bodyPr'])
   const lists: ListStyle[] = [ctx.deck.defaultTextStyle, masterStyleFor(ctx.master, chain[0]!.ph)]
   const fontRef = fontRefLayer(styleOf(chain[0]!))
@@ -817,11 +822,14 @@ function backgroundOf(ctx: Ctx, bg: Background | null): RFill | null {
   return refFill(bg.ref, ctx)
 }
 
-/** A slide, ready to draw: background, then master and layout graphics (unless hidden), then its own shapes. */
-export function resolveSlide(deck: Deck, index: number): RSlide {
+/**
+ * A slide, ready to draw: background, then master and layout graphics (unless
+ * hidden), then its own shapes. `editing` keeps empty text boxes (to type into).
+ */
+export function resolveSlide(deck: Deck, index: number, opts: { editing?: boolean } = {}): RSlide {
   const slide = deck.slides[index]
   if (!slide) throw new RangeError(`The deck has no slide ${index + 1}.`)
-  const ctx = contextFor(deck, slide)
+  const ctx = contextFor(deck, slide, opts.editing ?? false)
   const layout = ctx.layout!
   const background = backgroundOf(ctx, slide.bg) ?? backgroundOf(ctx, layout.bg) ?? backgroundOf(ctx, ctx.master.bg) ?? { kind: 'solid' as const, color: { r: 255, g: 255, b: 255, a: 1 } }
   const nodes: RNode[] = []
@@ -836,11 +844,12 @@ export function resolveSlide(deck: Deck, index: number): RSlide {
     if (layout.showMasterSp) graphics(ctx.master.shapes)
     graphics(layout.shapes)
   }
+  const ownStart = nodes.length
   for (const s of slide.shapes) {
     const n = resolveShape(ctx, s, [], null, true, notShown)
     if (n) nodes.push(n)
   }
-  return { index, width: px(deck.size.cx), height: px(deck.size.cy), background, nodes, notShown }
+  return { index, width: px(deck.size.cx), height: px(deck.size.cy), background, nodes, ownStart, notShown }
 }
 
 /** The text a shape inherits for its placeholder kind, exported for tests and extraction. */
