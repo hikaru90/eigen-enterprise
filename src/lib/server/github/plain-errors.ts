@@ -54,6 +54,8 @@ export function plainGitHubTokenMessage(err: GitHubTokenError, what: string): st
       return 'GitHub is not answering right now. Syncing tries again on its own.'
     case 'write_refused':
       return 'eigenEnterprise only reads from GitHub. This change was stopped before it reached GitHub.'
+    case 'too_large':
+      return `${what} is too large to copy from GitHub in one download. Syncing stops here; ask in the chat to raise the limit.`
   }
 }
 

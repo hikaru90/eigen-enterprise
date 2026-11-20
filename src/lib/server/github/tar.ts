@@ -1,21 +1,29 @@
 /**
  * Streaming reader for GitHub commit tarballs (plan/github-drive-full-mirror.md
- * §3). Gunzips on the fly with fflate's streaming `Gunzip` (single- and
- * multi-member gzip), then iterates ustar entries — including the prefix field
- * and pax extended headers for long paths — one at a time. Only ever one
- * entry's bytes are held in memory; the archive itself stays on disk.
+ * §3). Gunzips on the fly with fflate's streaming `Gunzip` (single-member gzip,
+ * which is what codeload sends), then iterates ustar entries — including the
+ * prefix field and pax extended headers for long paths — one at a time.
+ *
+ * Memory stays bounded: the caller's `want(header)` decides per regular file
+ * whether its bytes are needed; unwanted entries (and directories, links and
+ * other non-file entries) are streamed past chunk by chunk, never buffered.
+ * Only a wanted entry's bytes are ever held whole.
  *
  * Archive bytes are untrusted external data: every field is bounds-checked,
- * header checksums are verified, names must decode as strict UTF-8, and
- * malformed or truncated structure fails loud. Directories, symlinks and other
- * non-file entries are part of every valid archive and are skipped by design —
- * the tree API reports them with their modes; nothing malformed is skipped.
- * fflate's streaming Gunzip does not verify the gzip checksum trailer, so gzip
- * corruption surfaces here as tar structure errors (checksum/truncation); the
- * caller's git blob sha check (§2.6) is the end-to-end integrity gate.
+ * header checksums are verified, names must decode as strict UTF-8, paths
+ * must be relative with no empty, `.` or `..` segment, the archive must end
+ * in two zero blocks followed by nothing but zero padding, and the gzip
+ * trailer (CRC32 + ISIZE, which fflate does not check) is verified against
+ * the inflated stream. The trailer can only be checked at the very end, so a
+ * consumer treats entries as provisional until the generator completes; the
+ * caller's git blob sha check (§2.6) is the per-file integrity gate.
  */
-import { createReadStream } from 'node:fs'
+import { createReadStream, type ReadStream } from 'node:fs'
+import { crc32 } from 'node:zlib'
 import { Gunzip } from 'fflate'
+
+/** What `want` is shown for each regular file before its bytes are read. */
+export type TarHeader = { path: string; size: number; mode: number }
 
 /** A regular file from the archive, with the archive's own path spelling. */
 export type TarEntry = {
@@ -40,33 +48,94 @@ const UTF8 = new TextDecoder('utf-8', { fatal: true })
 /**
  * Pulls gunzipped chunks from the file on disk, reading a little at a time.
  * fflate's `ondata` fires synchronously during `push`, so a finished read
- * leaves its output in `ready` and nothing is buffered beyond it.
+ * leaves its output in `ready` and nothing is buffered beyond it. At the end
+ * of the file it checks the gzip trailer against the inflated stream.
  */
 class InflatedChunks {
   private readonly ready: Uint8Array[] = []
+  private stream?: ReadStream
   private reader?: AsyncIterator<Uint8Array>
   private gun?: Gunzip
   private done = false
+  /** CRC32 and length (mod 2^32) of everything inflated so far. */
+  private crc = 0
+  private inflated = 0
+  /** The last 8 raw bytes read: the gzip trailer once the file ends. */
+  private tail = new Uint8Array(0)
+  private raw = 0
 
   constructor(private readonly path: string) {}
 
-  /** The next gunzipped chunk, or null once the file is exhausted. */
+  /** The next gunzipped chunk, or null once the file is exhausted and verified. */
   async next(): Promise<Uint8Array | null> {
     if (this.ready.length > 0) return this.ready.shift() ?? null
     if (this.done) return null
-    this.gun ??= new Gunzip((chunk) => {
-      this.ready.push(chunk)
-    })
-    this.reader ??= createReadStream(this.path)[Symbol.asyncIterator]()
+    if (!this.gun) {
+      this.gun = new Gunzip((chunk) => {
+        this.crc = crc32(chunk, this.crc)
+        this.inflated = (this.inflated + chunk.byteLength) % 2 ** 32
+        this.ready.push(chunk)
+      })
+      this.gun.onmember = () => {
+        throw new TarError(
+          'the archive is a multi-member gzip; this reader only verifies single-member gzip (what GitHub sends)',
+        )
+      }
+    }
+    this.stream ??= createReadStream(this.path)
+    this.reader ??= this.stream[Symbol.asyncIterator]()
     for (;;) {
       const { done, value } = await this.reader.next()
       if (done || value === undefined) {
-        this.gun.push(new Uint8Array(0), true)
+        this.push(new Uint8Array(0), true)
         this.done = true
+        this.verifyTrailer()
         return this.ready.shift() ?? null
       }
-      this.gun.push(value, false)
+      const chunk = new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+      this.raw += chunk.byteLength
+      this.tail =
+        chunk.byteLength >= 8
+          ? chunk.slice(chunk.byteLength - 8)
+          : Uint8Array.from([...this.tail, ...chunk].slice(-8))
+      this.push(chunk, false)
       if (this.ready.length > 0) return this.ready.shift() ?? null
+    }
+  }
+
+  /** Stops reading and releases the file descriptor; safe to call twice. */
+  close(): void {
+    this.done = true
+    this.stream?.destroy()
+  }
+
+  private push(chunk: Uint8Array, final: boolean): void {
+    try {
+      this.gun!.push(chunk, final)
+    } catch (err) {
+      if (err instanceof TarError) throw err
+      throw new TarError(`the gzip stream is corrupt: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  private verifyTrailer(): void {
+    // 10-byte header + at least an empty deflate block + the 8-byte trailer.
+    if (this.raw < 18 || this.tail.byteLength !== 8) {
+      throw new TarError(`the gzip stream is too short (${this.raw} bytes) to carry its trailer`)
+    }
+    const view = new DataView(this.tail.buffer, this.tail.byteOffset, 8)
+    const storedCrc = view.getUint32(0, true)
+    const storedSize = view.getUint32(4, true)
+    const crc = this.crc >>> 0
+    if (storedCrc !== crc) {
+      throw new TarError(
+        `the gzip trailer CRC32 ${storedCrc.toString(16)} does not match the inflated data (${crc.toString(16)}); the archive is corrupt`,
+      )
+    }
+    if (storedSize !== this.inflated) {
+      throw new TarError(
+        `the gzip trailer size ${storedSize} does not match the inflated data (${this.inflated} bytes mod 2^32); the archive is corrupt`,
+      )
     }
   }
 }
@@ -103,16 +172,52 @@ function parseOctal(field: Uint8Array, what: string): number {
 }
 
 /**
- * Iterates a `.tar.gz` on disk. Yields regular files only; the generator's
- * end means the archive ended cleanly at its zero-block end marker.
+ * A path from the archive must stay inside it: relative, and no empty, `.`
+ * or `..` segment. Anything else fails loud with the path named.
  */
-export async function* readTarGz(path: string): AsyncGenerator<TarEntry, void, void> {
+function checkPath(path: string, at: number): void {
+  const segments = path.split('/')
+  if (path.startsWith('/') || segments.some((seg) => seg === '' || seg === '.' || seg === '..')) {
+    throw new TarError(
+      `tar entry ${JSON.stringify(path)} (header at byte ${at}) has an unsafe path: it must be relative with no empty, "." or ".." segment`,
+    )
+  }
+}
+
+/** Type flags of entries that carry no file content for us; streamed past. */
+const NON_FILE_TYPES = '123456'
+
+/**
+ * Iterates a `.tar.gz` on disk. `want` sees each regular file's header first;
+ * only wanted files are read into memory and yielded, everything else is
+ * streamed past. The generator's normal end means the archive ended cleanly
+ * (two zero blocks, then only zero padding) and the gzip trailer matched.
+ * The file is closed on every exit, including an early `break`/`return()`.
+ */
+export async function* readTarGz(
+  path: string,
+  opts: { want: (h: TarHeader) => boolean },
+): AsyncGenerator<TarEntry, void, void> {
   const source = new InflatedChunks(path)
+  try {
+    yield* entries(source, opts.want)
+  } finally {
+    source.close()
+  }
+}
+
+async function* entries(
+  source: InflatedChunks,
+  want: (h: TarHeader) => boolean,
+): AsyncGenerator<TarEntry, void, void> {
   const queued: Uint8Array[] = []
   let queuedBytes = 0
   /** Bytes of the uncompressed tar consumed so far, for error context. */
   let consumed = 0
-  /** Overrides from the pax extended header preceding the next entry. */
+  /**
+   * Overrides from the pax extended header(s) preceding the next entry. They
+   * apply to the next non-pax entry only, never to another pax header's body.
+   */
   let paxPath: string | null = null
   let paxSize: number | null = null
 
@@ -214,7 +319,9 @@ export async function* readTarGz(path: string): AsyncGenerator<TarEntry, void, v
       if (body[at + length - 1] !== 0x0a) {
         throw new TarError(`malformed pax record at byte ${at}: record does not end with a newline`)
       }
-      const keyValue = cString(body.subarray(space + 1, at + length - 1), 'pax record')
+      const record = body.subarray(space + 1, at + length - 1)
+      if (record.includes(0)) throw new TarError(`malformed pax record at byte ${at}: contains a NUL byte`)
+      const keyValue = cString(record, 'pax record')
       const eq = keyValue.indexOf('=')
       if (eq <= 0) throw new TarError(`malformed pax record at byte ${at}: no key=value`)
       const key = keyValue.slice(0, eq)
@@ -231,22 +338,51 @@ export async function* readTarGz(path: string): AsyncGenerator<TarEntry, void, v
     return { path, size }
   }
 
+  /** After the first zero block: one more, then nothing but zero padding to EOF. */
+  const finish = async (): Promise<void> => {
+    if (!(await ensure(BLOCK)) || !isZeroBlock(take(BLOCK))) {
+      throw new TarError(
+        `tar end marker at byte ${consumed - BLOCK} is a single zero block; an archive ends with two`,
+      )
+    }
+    consumed += BLOCK
+    for (;;) {
+      if (queuedBytes === 0) {
+        const chunk = await source.next()
+        if (chunk === null) return
+        queued.push(chunk)
+        queuedBytes += chunk.byteLength
+      }
+      const chunk = queued.shift()!
+      queuedBytes -= chunk.byteLength
+      const bad = chunk.findIndex((byte) => byte !== 0)
+      if (bad !== -1) {
+        throw new TarError(`unexpected data at byte ${consumed + bad} after the end marker; the archive is corrupt`)
+      }
+      consumed += chunk.byteLength
+    }
+  }
+
   for (;;) {
     if (!(await ensure(BLOCK))) {
       throw new TarError(
         `truncated tar: the stream ended at byte ${consumed} without the end marker`,
       )
     }
+    const headerAt = consumed
     const header = take(BLOCK)
     consumed += BLOCK
-    if (isZeroBlock(header)) return
+    if (isZeroBlock(header)) {
+      await finish()
+      return
+    }
 
     const storedChecksum = parseOctal(header.subarray(148, 156), 'header checksum')
     let checksum = 0
     for (let i = 0; i < BLOCK; i++) checksum += i >= 148 && i < 156 ? 0x20 : header[i]!
     if (checksum !== storedChecksum) {
       throw new TarError(
-        `tar header at byte ${consumed - BLOCK} fails its checksum (stored ${storedChecksum}, computed ${checksum}); the archive is corrupt`,
+        `tar header at byte ${headerAt} fails its checksum (stored ${storedChecksum}, computed ${checksum}); the archive is corrupt`,
       )
     }
 
@@ -261,7 +397,7 @@ export async function* readTarGz(path: string): AsyncGenerator<TarEntry, void, v
       magic[0] === 0x75 && magic[1] === 0x73 && magic[2] === 0x74 && magic[3] === 0x61 && magic[4] === 0x72 && magic[5] === 0x20
     if (!isPosixUstar && !isGnuUstar) {
       throw new TarError(
-        `tar header at byte ${consumed - BLOCK} has magic ${JSON.stringify(String.fromCharCode(...magic))}; this reader only accepts ustar archives`,
+        `tar header at byte ${headerAt} has magic ${JSON.stringify(String.fromCharCode(...magic))}; this reader only accepts ustar archives`,
       )
     }
     // Only POSIX ustar has a prefix field; GNU format reuses those bytes.
@@ -272,19 +408,21 @@ export async function* readTarGz(path: string): AsyncGenerator<TarEntry, void, v
         `tar entry ${name} encodes its size in GNU base-256 (≥ 8 GiB); this reader rejects entries over 8 GiB`,
       )
     }
-    const size = paxSize ?? parseOctal(sizeField, 'size field')
+    const isPax = type === 'x' || type === 'g'
+    const size = isPax ? parseOctal(sizeField, 'size field') : (paxSize ?? parseOctal(sizeField, 'size field'))
     if (size >= MAX_ENTRY_BYTES) {
       throw new TarError(
         `tar entry ${name} declares ${size} bytes; this reader rejects entries of 8 GiB or more`,
       )
     }
 
-    if (type === 'x' || type === 'g') {
+    if (isPax) {
       const body = await readBody(size, type === 'x' ? 'a pax extended header' : 'the pax global header')
       if (type === 'x') {
+        // Several 'x' headers in a row merge; a later key wins.
         const overrides = parsePax(body)
-        paxPath = overrides.path
-        paxSize = overrides.size
+        paxPath = overrides.path ?? paxPath
+        paxSize = overrides.size ?? paxSize
       }
       // 'g' (git's pax_global_header) carries archive-wide metadata, not
       // per-entry overrides; it is read and dropped.
@@ -296,26 +434,33 @@ export async function* readTarGz(path: string): AsyncGenerator<TarEntry, void, v
       )
     }
 
-    const isRegular = header[156] === 0x30 || header[156] === 0x00
+    const entryPath = paxPath ?? (prefix === '' ? name : `${prefix}/${name}`)
+    paxPath = null
+    paxSize = null
+
+    // Regular files: '0', NUL (pre-POSIX) and '7' (contiguous file, read as regular).
+    const isRegular = header[156] === 0x30 || header[156] === 0x00 || type === '7'
     if (!isRegular) {
-      // Known non-file entry types: links ('1','2'), directories ('5'),
-      // devices ('3','4'), fifos ('6'), contiguous files ('7').
-      if (!'1234567'.includes(type)) {
-        throw new TarError(`tar entry ${name} has unknown type ${JSON.stringify(type)}`)
+      // Known non-file entry types: links ('1','2'), devices ('3','4'),
+      // directories ('5'), fifos ('6').
+      if (!NON_FILE_TYPES.includes(type) || header[156] === 0x00) {
+        throw new TarError(`tar entry ${entryPath} has unknown type ${JSON.stringify(type)}`)
       }
-      await skipBody(size, name)
-      paxPath = null
-      paxSize = null
+      // Directory names carry one trailing slash.
+      checkPath(type === '5' && entryPath.endsWith('/') ? entryPath.slice(0, -1) : entryPath, headerAt)
+      await skipBody(size, entryPath)
       continue
     }
 
-    const path = paxPath ?? (prefix === '' ? name : `${prefix}/${name}`)
-    paxPath = null
-    paxSize = null
-    if (path === '') {
-      throw new TarError(`tar regular-file header at byte ${consumed - BLOCK} has an empty name`)
+    if (entryPath === '') {
+      throw new TarError(`tar regular-file header at byte ${headerAt} has an empty name`)
     }
-    const bytes = await readBody(size, path)
-    yield { path, mode, bytes }
+    checkPath(entryPath, headerAt)
+    if (!want({ path: entryPath, size, mode })) {
+      await skipBody(size, entryPath)
+      continue
+    }
+    const bytes = await readBody(size, entryPath)
+    yield { path: entryPath, mode, bytes }
   }
 }

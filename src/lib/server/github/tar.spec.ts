@@ -1,15 +1,31 @@
+import type { ReadStream } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gzipSync } from 'fflate'
-import { afterEach, describe, expect, it } from 'vitest'
-import { readTarGz } from './tar'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { readTarGz, TarError, type TarHeader } from './tar'
+
+/** Every read stream the reader opens, so tests can see it was closed. */
+const streams = vi.hoisted(() => [] as ReadStream[])
+vi.mock('node:fs', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs')>()
+  return {
+    ...fs,
+    createReadStream: ((...args: Parameters<typeof fs.createReadStream>) => {
+      const stream = fs.createReadStream(...args)
+      streams.push(stream)
+      return stream
+    }) as typeof fs.createReadStream,
+  }
+})
 
 const BLOCK = 512
 const encoder = new TextEncoder()
 const dirs: string[] = []
 
 afterEach(async () => {
+  streams.splice(0)
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true })
 })
 
@@ -79,18 +95,35 @@ function paxEntry(record: Uint8Array): Uint8Array[] {
 }
 
 async function archive(tar: Uint8Array): Promise<string> {
+  return file(gzipSync(tar))
+}
+
+async function file(bytes: Uint8Array): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'github-tar-reader-'))
   dirs.push(dir)
   const path = join(dir, 'repo.tar.gz')
-  // Tiny compressed writes make the reader cross chunk boundaries inside headers and bodies.
-  await writeFile(path, gzipSync(tar))
+  await writeFile(path, bytes)
   return path
 }
 
-async function collect(path: string) {
+const END = new Uint8Array(2 * BLOCK)
+const all = () => true
+
+async function collect(path: string, want: (h: TarHeader) => boolean = all) {
   const entries = []
-  for await (const entry of readTarGz(path)) entries.push(entry)
+  for await (const entry of readTarGz(path, { want })) entries.push(entry)
   return entries
+}
+
+async function failure(p: Promise<unknown>): Promise<TarError> {
+  const err = await p.then(
+    () => {
+      throw new Error('expected a TarError')
+    },
+    (e: unknown) => e,
+  )
+  expect(err).toBeInstanceOf(TarError)
+  return err as TarError
 }
 
 describe('readTarGz', () => {
@@ -171,5 +204,167 @@ describe('readTarGz', () => {
     const badGzip = join(dir, 'bad.tar.gz')
     await writeFile(badGzip, Uint8Array.from([0x1f, 0x8b, 0x08, 0, 1, 2, 3]))
     await expect(collect(badGzip)).rejects.toThrow()
+  })
+
+  it('asks want() per regular file with its header and skips unwanted bodies without yielding them', async () => {
+    const big = new Uint8Array(3 * 1024 * 1024).fill(7)
+    const path = await archive(
+      concat([
+        header({ path: 'docs', size: 0, type: '5' }),
+        ...entry('skip/big.bin', big),
+        ...entry('keep.txt', encoder.encode('kept'), 0o755),
+        END,
+      ]),
+    )
+    const seen: TarHeader[] = []
+    const entries = await collect(path, (h) => {
+      seen.push(h)
+      return h.path === 'keep.txt'
+    })
+    expect(seen).toEqual([
+      { path: 'skip/big.bin', size: big.byteLength, mode: 0o644 },
+      { path: 'keep.txt', size: 4, mode: 0o755 },
+    ])
+    expect(entries).toEqual([{ path: 'keep.txt', mode: 0o755, bytes: encoder.encode('kept') }])
+  })
+
+  it('streams past an unwanted entry declaring 7 GiB without allocating it (fails on truncation, not memory)', async () => {
+    const path = await archive(
+      concat([header({ path: 'huge.bin', size: 7 * 1024 ** 3 }), new Uint8Array(4 * BLOCK)]),
+    )
+    const err = await failure(collect(path, () => false))
+    expect(err.message).toMatch(/truncated/)
+    expect(err.message).toContain('huge.bin')
+  })
+
+  it('closes the file when the consumer stops early', async () => {
+    const path = await archive(
+      concat([...entry('a.txt', encoder.encode('a')), ...entry('b.txt', encoder.encode('b')), END]),
+    )
+    for await (const entry of readTarGz(path, { want: all })) {
+      expect(entry.path).toBe('a.txt')
+      break
+    }
+    expect(streams).toHaveLength(1)
+    expect(streams[0]!.destroyed).toBe(true)
+  })
+
+  it('closes the file when the archive turns out to be corrupt', async () => {
+    const bad = header({ path: 'b.txt', size: 0 })
+    bad[0] = 0x7a
+    const path = await archive(concat([...entry('a.txt', encoder.encode('a')), bad, END]))
+    await failure(collect(path))
+    expect(streams).toHaveLength(1)
+    expect(streams[0]!.destroyed).toBe(true)
+  })
+
+  it('applies a pax size only to the next file entry, never to a following pax header body', async () => {
+    const longPath = `${'p'.repeat(150)}/file.txt`
+    const path = await archive(
+      concat([
+        ...paxEntry(paxRecord('size', '5')),
+        ...paxEntry(paxRecord('path', longPath)),
+        // The ustar size field says 0; the first pax header's size (5) wins for this entry.
+        header({ path: 'short', size: 0 }),
+        encoder.encode('hello'),
+        padding(5),
+        ...entry('after.txt', encoder.encode('after')),
+        END,
+      ]),
+    )
+    const entries = await collect(path)
+    expect(entries.map((e) => [e.path, new TextDecoder().decode(e.bytes)])).toEqual([
+      [longPath, 'hello'],
+      ['after.txt', 'after'],
+    ])
+  })
+
+  it.each([
+    ['/etc/passwd'],
+    ['a/../../b'],
+    ['..'],
+    ['a//b'],
+    ['./a'],
+    ['a/./b'],
+    ['a/'],
+  ])('rejects the unsafe path %j loudly, naming it', async (bad) => {
+    const path = await archive(concat([...entry(bad, encoder.encode('x')), END]))
+    const err = await failure(collect(path))
+    expect(err.message).toContain(JSON.stringify(bad))
+  })
+
+  it('rejects an unsafe pax path too', async () => {
+    const path = await archive(
+      concat([...paxEntry(paxRecord('path', 'repo/../../escape')), ...entry('fine.txt', encoder.encode('x')), END]),
+    )
+    const err = await failure(collect(path))
+    expect(err.message).toContain('repo/../../escape')
+  })
+
+  it('accepts record padding of zeros after the end marker (git archive pads to 10240 bytes)', async () => {
+    const tar = concat([...entry('a.txt', encoder.encode('a')), END])
+    const padded = concat([tar, new Uint8Array(10240 - tar.byteLength)])
+    expect((await collect(await archive(padded))).map((e) => e.path)).toEqual(['a.txt'])
+  })
+
+  it('requires two zero blocks at the end', async () => {
+    const path = await archive(concat([...entry('a.txt', encoder.encode('a')), new Uint8Array(BLOCK)]))
+    const err = await failure(collect(path))
+    expect(err.message).toMatch(/end marker/)
+  })
+
+  it('rejects garbage after the end marker', async () => {
+    const garbage = new Uint8Array(BLOCK)
+    garbage[100] = 1
+    const path = await archive(concat([...entry('a.txt', encoder.encode('a')), END, garbage]))
+    const err = await failure(collect(path))
+    expect(err.message).toMatch(/after the end marker/)
+  })
+
+  it('verifies the gzip trailer: a wrong CRC32 fails loud', async () => {
+    const gz = gzipSync(concat([...entry('a.txt', encoder.encode('a')), END]))
+    gz[gz.byteLength - 8] ^= 0xff
+    const err = await failure(collect(await file(gz)))
+    expect(err.message).toMatch(/CRC/)
+  })
+
+  it('verifies the gzip trailer: a wrong ISIZE fails loud', async () => {
+    const gz = gzipSync(concat([...entry('a.txt', encoder.encode('a')), END]))
+    gz[gz.byteLength - 1] ^= 0x01
+    const err = await failure(collect(await file(gz)))
+    expect(err.message).toMatch(/size/i)
+  })
+
+  it('rejects a GNU base-256 size (an entry of 8 GiB or more)', async () => {
+    const h = header({ path: 'huge.bin', size: 0, sizeText: '' })
+    // Base-256: high bit set in the first byte of the size field; recompute the checksum.
+    h.fill(0, 124, 136)
+    h[124] = 0x80
+    h[135] = 0x02
+    h.fill(0x20, 148, 156)
+    let checksum = 0
+    for (const byte of h) checksum += byte
+    h.set(encoder.encode(checksum.toString(8).padStart(6, '0') + '\0 '), 148)
+    const err = await failure(collect(await archive(concat([h, END]))))
+    expect(err.message).toMatch(/base-256/)
+    expect(err.message).toContain('huge.bin')
+  })
+
+  it("reads type '7' (contiguous file) entries as regular files", async () => {
+    const path = await archive(
+      concat([header({ path: 'c.bin', size: 3, type: '7' }), encoder.encode('abc'), padding(3), END]),
+    )
+    expect(await collect(path)).toEqual([{ path: 'c.bin', mode: 0o644, bytes: encoder.encode('abc') }])
+  })
+
+  it('rejects multi-member gzip, whose trailers it cannot verify', async () => {
+    const tar = concat([...entry('a.txt', encoder.encode('a')), END])
+    const err = await failure(collect(await file(concat([gzipSync(tar.slice(0, BLOCK)), gzipSync(tar.slice(BLOCK))]))))
+    expect(err.message).toMatch(/multi-member/)
+  })
+
+  it('rejects a gzip stream cut off before its trailer', async () => {
+    const gz = gzipSync(concat([...entry('a.txt', encoder.encode('a')), END]))
+    await failure(collect(await file(gz.slice(0, gz.byteLength - 4))))
   })
 })
