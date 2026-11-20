@@ -43,6 +43,8 @@ export const ARCHIVE_BATCH_MAX = 100
 
 const listInput = z.object({ folder_id: z.string().min(1).nullable().optional() }).strict()
 const readInput = z.object({ file_id: z.string().min(1) }).strict()
+/** drive.read returns at most 2 MB of text: more would flood the agent's context; the file stays downloadable. */
+export const DRIVE_READ_MAX_BYTES = 2 * 1024 * 1024
 const writeInput = z.object({ file_id: z.string().min(1), content: z.string() }).strict()
 const createInput = z
   .object({ name: z.string().trim().min(1), content: z.string(), folder_id: z.string().min(1).nullable().optional() })
@@ -137,7 +139,7 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
       auditClass: 'read',
       inputSchema: readInput,
       permission: { roles: DRIVE_ROLES },
-      handler: async (ctx, input) => (await service()).readText(actorOf(ctx), readInput.parse(input).file_id),
+      handler: async (ctx, input) => (await service()).readText(actorOf(ctx), readInput.parse(input).file_id, { maxBytes: DRIVE_READ_MAX_BYTES }),
     },
     {
       name: 'drive.write_text',

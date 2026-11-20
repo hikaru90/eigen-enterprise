@@ -20,7 +20,7 @@ async function setup() {
   const dir = await mkdtemp(join(tmpdir(), 'drive-tools-'))
   dirs.push(dir)
   const access = memoryDriveAccess({ users: { alice: { role: 'member' }, bob: { role: 'member' } } })
-  const drive = createDriveService({ store: memoryDriveStore(), blobs: diskBlobStore(dir), access, maxUploadBytes: 1 << 20, locks: memoryEditLockStore() })
+  const drive = createDriveService({ store: memoryDriveStore(), blobs: diskBlobStore(dir), access, maxUploadBytes: 4 << 20, locks: memoryEditLockStore() })
   const chat = vi.fn<SuggestChat>()
   // The suggestion's clock runs far ahead of the files': every file counts as long unchanged.
   const tools = createDriveTools({ service: async () => drive, chat, now: () => new Date('2099-01-01T00:00:00Z') })
@@ -61,6 +61,19 @@ describe('drive.* tools', () => {
     await tool('drive.write_text').handler(agent, { file_id: doc.id, content: 'a,b\n' })
     expect(await tool('drive.read').handler(agent, { file_id: doc.id })).toMatchObject({ content: 'a,b\n' })
     expect(await drive.listRevisions({ kind: 'agent', id: 'agent:1' }, doc.id)).toHaveLength(1)
+  })
+
+  it('drive.read refuses text over 2 MB with a clear error (download it instead); 2 MB itself reads', async () => {
+    const { drive, tool, agent } = await setup()
+    const alice = { kind: 'user' as const, userId: 'alice' }
+    const max = 2 * 1024 * 1024
+    const big = await drive.upload(alice, null, { name: 'big.txt', bytes: new Uint8Array(max + 1).fill(97), mime: 'text/plain' })
+    const edge = await drive.upload(alice, null, { name: 'edge.txt', bytes: new Uint8Array(max).fill(97), mime: 'text/plain' })
+    await expect(tool('drive.read').handler(agent, { file_id: big.id })).rejects.toMatchObject({
+      code: 'too_large',
+      message: expect.stringMatching(/“big\.txt” is too large to read as text \(more than 2(\.0)? MB\); download it instead/),
+    })
+    expect(((await tool('drive.read').handler(agent, { file_id: edge.id })) as { content: string }).content).toHaveLength(max)
   })
 
   it('drive.create_document: a new Markdown file with its text (one revision), the place for internal documents', async () => {

@@ -123,6 +123,19 @@
 
 <svelte:window onkeydown={onKeydown} />
 
+{#snippet tooLarge(message: string)}
+  <div
+    class="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-12 text-sm text-muted-foreground"
+    data-testid="drive-text-too-large"
+  >
+    <FileIcon class="size-10" />
+    <p>{message}</p>
+    <Button variant="outline" href={`${contentUrl}?download=1`} download
+      ><DownloadIcon class="size-4" /> Download</Button
+    >
+  </div>
+{/snippet}
+
 {#snippet details()}
   <section class="flex flex-col gap-3" data-testid="drive-file-details">
     <h2 class="text-base font-semibold">Details</h2>
@@ -284,7 +297,9 @@
           data-testid="drive-preview"
           data-kind={data.kind}
         >
-          {#if data.kind === 'markdown'}
+          {#if data.textError && data.kind !== 'html'}
+            {@render tooLarge(data.textError)}
+          {:else if data.kind === 'markdown'}
             {#if data.html}
               <article
                 class="drive-markdown max-w-3xl px-6 py-5 text-sm leading-relaxed"
@@ -359,6 +374,8 @@
                 class="min-h-[75vh] w-full flex-1 bg-white"
                 data-testid="drive-html"
               ></iframe>
+            {:else if data.textError}
+              {@render tooLarge(data.textError)}
             {:else}
               <pre
                 class="flex-1 overflow-auto px-6 py-5 text-sm whitespace-pre-wrap"
@@ -408,17 +425,6 @@
               class="min-h-[75vh] w-full flex-1"
               data-testid="drive-pdf"
             ></iframe>
-          {:else if data.kind === 'text' && data.textError}
-            <div
-              class="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-12 text-sm text-muted-foreground"
-              data-testid="drive-text-too-large"
-            >
-              <FileIcon class="size-10" />
-              <p>{data.textError}</p>
-              <Button variant="outline" href={`${contentUrl}?download=1`} download
-                ><DownloadIcon class="size-4" /> Download</Button
-              >
-            </div>
           {:else if data.kind === 'text'}
             <pre
               class="flex-1 overflow-auto px-6 py-5 text-sm whitespace-pre-wrap"

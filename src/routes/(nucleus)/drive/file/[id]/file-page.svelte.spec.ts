@@ -119,6 +119,22 @@ describe('drive file page: text preview limits', () => {
     await expect.element(page.getByTestId('drive-file-download')).toHaveAttribute('href', '/api/drive/files/p1/content?download=1')
     await expect.element(page.getByTestId('drive-text')).not.toBeInTheDocument()
   })
+
+  it('says the same for a Markdown file over the cap, instead of an empty document', async () => {
+    const d = data()
+    render(
+      FilePage,
+      props(
+        data({
+          file: { ...d.file, name: 'huge.md', mime: 'text/markdown', size: 2 * 1024 * 1024 + 1, dated: null },
+          kind: 'markdown',
+          textError: 'This file is too large to preview, download it instead.',
+        }),
+      ),
+    )
+    await expect.element(page.getByTestId('drive-text-too-large')).toHaveTextContent('too large to preview, download')
+    await expect.element(page.getByText('This document is empty.')).not.toBeInTheDocument()
+  })
 })
 
 describe('drive file page: HTML files render as pages', () => {
