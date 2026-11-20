@@ -1,7 +1,8 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { BLOB_GC_GRACE_MS, sweepUnreferencedBlobs } from './blob-gc'
 import { memoryEditLockStore } from './locks'
 import { memoryDriveAccess } from './memory-access'
 import { createDriveService, type Actor } from './service'
@@ -40,7 +41,13 @@ async function setup() {
   const now = () => new Date((t += 1000))
   const drive = createDriveService({ store, blobs, access, maxUploadBytes: 1 << 20, locks: memoryEditLockStore(), now })
   const writer = createDriveSourceWriter({ store, blobs, access, now })
-  return { drive, writer, store, blobs, access }
+  /** Ages every blob past the grace period and runs the sweep (what the periodic job does). */
+  const sweep = async () => {
+    const old = new Date(Date.now() - 2 * BLOB_GC_GRACE_MS)
+    for (const b of await blobs.list()) await utimes(join(dir, 'blobs', b.sha256.slice(0, 2), b.sha256.slice(2, 4), b.sha256), old, old)
+    return sweepUnreferencedBlobs({ store, blobs }, new Date(Date.now() - BLOB_GC_GRACE_MS))
+  }
+  return { drive, writer, store, blobs, access, sweep }
 }
 
 /** GitHub / acme / site / Overview.md, as the repos plugin would write it. */
@@ -163,7 +170,7 @@ describe('source writer (the system writer, no access checks)', () => {
   })
 
   it('upsertText stores text/markdown without revisions; the same content is a no-op, new content one blob write', async () => {
-    const { writer, store, blobs } = await setup()
+    const { writer, store, blobs, sweep } = await setup()
     await writer.ensureRoot('repos', 'GitHub')
     await writer.upsertFolder('repos', 'repo:1', null, 'acme')
     const first = await writer.upsertText('repos', 'repo:1/Overview.md', 'repo:1', 'Overview.md', 'v1')
@@ -182,8 +189,11 @@ describe('source writer (the system writer, no access checks)', () => {
     expect(f2.sha256).toBe(sha256Hex(bytes('v2')))
     expect(f2.updatedAt.getTime()).toBeGreaterThan(f1.updatedAt.getTime())
     expect(await store.listRevisions(first.fileId)).toEqual([])
-    // The old bytes are no longer used anywhere, so they're gone.
+    // The old bytes are no longer used anywhere: the writer leaves them, the sweep removes them.
+    expect(await blobs.has(sha256Hex(bytes('v1')))).toBe(true)
+    await sweep()
     expect(await blobs.has(sha256Hex(bytes('v1')))).toBe(false)
+    expect(await blobs.has(sha256Hex(bytes('v2')))).toBe(true)
     expect(await writer.list('repos')).toEqual([
       { key: 'repo:1', kind: 'folder', itemId: expect.any(String), parentKey: null, contentSha: null },
       { key: 'repo:1/Overview.md', kind: 'file', itemId: first.fileId, parentKey: 'repo:1', contentSha: sha256Hex(bytes('v2')) },
@@ -292,8 +302,8 @@ describe('source writer (the system writer, no access checks)', () => {
     expect((await store.getFile(codeId))!.updatedAt).toEqual(code.updatedAt)
   })
 
-  it('upsertMany rolls back metadata and cleans new blobs when any item fails', async () => {
-    const { writer, store, blobs } = await setup()
+  it('upsertMany rolls back metadata when any item fails; its new blobs wait for the sweep (another writer may use them)', async () => {
+    const { writer, store, blobs, sweep } = await setup()
     const root = await writer.ensureRoot('repos', 'GitHub')
     const original = bytes('new content')
     vi.spyOn(store, 'putSourceItems').mockRejectedValue(new Error('forced metadata failure'))
@@ -305,7 +315,43 @@ describe('source writer (the system writer, no access checks)', () => {
     ).rejects.toThrow('forced metadata failure')
     expect(await writer.list('repos')).toEqual([])
     expect(await store.children(root.folderId)).toEqual({ folders: [], files: [] })
+    expect(await blobs.has(sha256Hex(original))).toBe(true)
+    await sweep()
     expect(await blobs.has(sha256Hex(original))).toBe(false)
+  })
+
+  it('upsertMany writes every blob before it opens the transaction', async () => {
+    const { writer, store, blobs } = await setup()
+    await writer.ensureRoot('repos', 'GitHub')
+    const order: string[] = []
+    const put = blobs.put.bind(blobs)
+    vi.spyOn(blobs, 'put').mockImplementation(async (b) => {
+      order.push('put')
+      return put(b)
+    })
+    const transaction = store.transaction.bind(store)
+    vi.spyOn(store, 'transaction').mockImplementation(async (work) => {
+      order.push('transaction')
+      return transaction(work)
+    })
+    await writer.upsertMany('repos', [
+      { key: 'repo:1', kind: 'folder', parentKey: null, name: 'acme' },
+      { key: 'repo:1/a.md', kind: 'text', parentKey: 'repo:1', name: 'a.md', content: 'a' },
+      { key: 'repo:1/b.png', kind: 'bytes', parentKey: 'repo:1', name: 'b.png', bytes: Uint8Array.of(1), mime: 'image/png' },
+    ])
+    expect(order).toEqual(['put', 'put', 'transaction'])
+  })
+
+  it('upsertMany refuses a batch over 500 items before writing anything', async () => {
+    const { writer, blobs } = await setup()
+    await writer.ensureRoot('repos', 'GitHub')
+    const put = vi.spyOn(blobs, 'put')
+    const items = Array.from({ length: 501 }, (_, i) => ({ key: `f${i}`, kind: 'text' as const, parentKey: null, name: `f${i}.md`, content: `${i}` }))
+    await expect(writer.upsertMany('repos', items)).rejects.toThrow(/501 items.*at most 500/)
+    expect(put).not.toHaveBeenCalled()
+    expect(await writer.list('repos')).toEqual([])
+    await writer.upsertMany('repos', items.slice(0, 500))
+    expect(await writer.list('repos')).toHaveLength(500)
   })
 
   it('list uses exact-or-descendant prefixes and isolates sources and sibling prefixes', async () => {
@@ -327,7 +373,7 @@ describe('source writer (the system writer, no access checks)', () => {
   })
 
   it('remove deletes by key prefix for good (items, rows, unused blobs) and leaves the rest', async () => {
-    const { writer, store, blobs, drive, access } = await setup()
+    const { writer, store, blobs, drive, access, sweep } = await setup()
     await writer.ensureRoot('repos', 'GitHub')
     const one = await writer.upsertFolder('repos', 'repo:1', null, 'acme')
     await writer.upsertFolder('repos', 'repo:1/docs', 'repo:1', 'docs')
@@ -339,34 +385,53 @@ describe('source writer (the system writer, no access checks)', () => {
     const deleteFile = vi.spyOn(store, 'deleteFile')
     const deleteFolder = vi.spyOn(store, 'deleteFolder')
     const deleteSourceItem = vi.spyOn(store, 'deleteSourceItem')
+    const transaction = vi.spyOn(store, 'transaction')
+    const listGrants = vi.spyOn(access, 'listGrants')
+    const dropSystemGrants = vi.spyOn(access, 'dropSystemGrants')
 
     expect(await writer.remove('repos', 'repo:1')).toBe(4)
     expect(deleteFile).not.toHaveBeenCalled()
     expect(deleteFolder).not.toHaveBeenCalled()
     expect(deleteSourceItem).not.toHaveBeenCalled()
+    // One transaction; the grants of every doomed item in one batched call, never one lookup per item.
+    expect(transaction).toHaveBeenCalledOnce()
+    expect(listGrants).not.toHaveBeenCalled()
+    expect(dropSystemGrants).toHaveBeenCalledOnce()
+    expect(dropSystemGrants.mock.calls[0]![1]).toHaveLength(4)
     expect(access.grants.filter((g) => g.resourceId === one)).toEqual([])
     expect((await writer.list('repos')).map((i) => i.key)).toEqual(['repo:10', 'repo:10/Overview.md'])
     expect(await store.getFolder(one)).toBeNull()
     expect(await store.getFile(guide.fileId)).toBeNull()
+    expect(await blobs.has(sha256Hex(bytes('only here')))).toBe(true)
+    await sweep()
     expect(await blobs.has(sha256Hex(bytes('only here')))).toBe(false)
     expect(await blobs.has(sha256Hex(bytes('shared bytes')))).toBe(true)
     expect(await store.getFile(keep.fileId)).not.toBeNull()
     expect(await writer.remove('repos', 'repo:1')).toBe(0)
   })
 
-  it('remove fails loud on inconsistent source mappings and items outside the prefix', async () => {
+  it('remove drops a stale mapping (its file or folder already gone) without error', async () => {
     const { writer, store } = await setup()
     await writer.ensureRoot('repos', 'GitHub')
-    await writer.upsertFolder('repos', 'repo:1', null, 'acme')
+    const repo = await writer.upsertFolder('repos', 'repo:1', null, 'acme')
+    const empty = await writer.upsertFolder('repos', 'repo:1/empty', 'repo:1', 'empty')
     const file = await writer.upsertText('repos', 'repo:1/a.md', 'repo:1', 'a.md', 'a')
     await store.deleteFile(file.fileId)
-    await expect(writer.remove('repos', 'repo:1')).rejects.toThrow(/missing/)
-    expect((await writer.list('repos', 'repo:1')).map((i) => i.key)).toEqual(['repo:1', 'repo:1/a.md'])
+    await store.deleteFolder(empty)
+    expect(await writer.remove('repos', 'repo:1')).toBe(3)
+    expect(await writer.list('repos')).toEqual([])
+    expect(await store.getFolder(repo)).toBeNull()
+  })
 
-    const outside = await setup()
-    await outside.writer.ensureRoot('repos', 'GitHub')
-    await outside.writer.upsertFolder('repos', 'repo:1', null, 'acme')
-    await outside.writer.upsertText('repos', 'elsewhere', 'repo:1', 'outside-key-prefix.md', 'outside')
-    await expect(outside.writer.remove('repos', 'repo:1')).rejects.toThrow(/outside repo:1/)
+  it('remove fails loud on items outside the prefix and then deletes nothing', async () => {
+    const { writer, store } = await setup()
+    await writer.ensureRoot('repos', 'GitHub')
+    const repo = await writer.upsertFolder('repos', 'repo:1', null, 'acme')
+    const inside = await writer.upsertText('repos', 'repo:1/a.md', 'repo:1', 'a.md', 'a')
+    await writer.upsertText('repos', 'elsewhere', 'repo:1', 'outside-key-prefix.md', 'outside')
+    await expect(writer.remove('repos', 'repo:1')).rejects.toThrow(/outside repo:1/)
+    expect((await writer.list('repos', 'repo:1')).map((i) => i.key)).toEqual(['repo:1', 'repo:1/a.md'])
+    expect(await store.getFolder(repo)).not.toBeNull()
+    expect(await store.getFile(inside.fileId)).not.toBeNull()
   })
 })

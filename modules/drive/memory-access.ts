@@ -57,6 +57,10 @@ export function memoryDriveAccess(opts: MemoryAccessOptions): DriveAccessPort & 
     async dropResource(_actor, type, id) {
       for (let i = grants.length - 1; i >= 0; i--) if (grants[i]!.resourceType === type && grants[i]!.resourceId === id) grants.splice(i, 1)
     },
+    async dropSystemGrants(_principal, resources) {
+      const doomed = new Set(resources.map((r) => `${r.resourceType}:${r.resourceId}`))
+      for (let i = grants.length - 1; i >= 0; i--) if (doomed.has(`${grants[i]!.resourceType}:${grants[i]!.resourceId}`)) grants.splice(i, 1)
+    },
     async systemGrants(_principal, type, id, next) {
       assertCompanyOnly(next)
       for (let i = grants.length - 1; i >= 0; i--) if (grants[i]!.resourceType === type && grants[i]!.resourceId === id) grants.splice(i, 1)
