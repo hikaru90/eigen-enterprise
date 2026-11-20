@@ -179,6 +179,10 @@
         status = { kind: 'password', incorrect }
         void tick().then(() => passwordInput?.focus())
       })
+      if (destroyed) {
+        void task.destroy()
+        return
+      }
       doc = await task.promise
       pages = await Promise.all(Array.from({ length: doc.numPages }, (_, i) => doc!.getPage(i + 1)))
       const [pageLabels, bookmarks] = await Promise.all([doc.getPageLabels(), doc.getOutline()])
@@ -223,7 +227,7 @@
   // --- what is on screen -------------------------------------------------
 
   function devicePixelRatio() {
-    return window.devicePixelRatio || 1
+    return window.devicePixelRatio
   }
 
   function onScroll() {
