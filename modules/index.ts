@@ -239,6 +239,8 @@ function reposDrivePort(): DriveSourcePort {
     ensureRoot: async (...a) => (await driveSourceWriter()).ensureRoot(...a),
     upsertFolder: async (...a) => (await driveSourceWriter()).upsertFolder(...a),
     upsertText: async (...a) => (await driveSourceWriter()).upsertText(...a),
+    upsertBytes: async (...a) => (await driveSourceWriter()).upsertBytes(...a),
+    upsertMany: async (...a) => (await driveSourceWriter()).upsertMany(...a),
     remove: async (...a) => (await driveSourceWriter()).remove(...a),
     list: async (...a) => (await driveSourceWriter()).list(...a),
   }
