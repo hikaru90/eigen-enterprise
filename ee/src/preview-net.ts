@@ -26,6 +26,7 @@ export const NET_CIDR = '10.237.0.0/30'
 export const FORWARD_PORT = 8080
 export const NFT_TABLE = 'ee_preview'
 export const PREVIEW_RESOLV = `${PATHS.root}/preview-net/resolv.conf`
+export const PREVIEW_NFT = `${PATHS.root}/preview-net/ruleset.nft`
 
 /** Address ranges a preview never reaches (besides the box itself), except its DNS servers. */
 const PRIVATE_V4 = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16', '100.64.0.0/10', '127.0.0.0/8']
@@ -116,8 +117,10 @@ export async function ensurePreviewNet(sys: System): Promise<PreviewNet> {
   await mustRun(sys, 'ip', ['-n', PREVIEW_NETNS, 'link', 'set', 'lo', 'up'])
   await mustRun(sys, 'ip', ['-n', PREVIEW_NETNS, 'route', 'replace', 'default', 'via', HOST_ADDR])
   await mustRun(sys, 'sysctl', ['-qw', 'net.ipv4.ip_forward=1'])
-  await mustRun(sys, 'nft', ['-f', '-'], { input: nftRuleset(resolvers) })
   await sys.mkdirp(`${PATHS.root}/preview-net`, 0o755)
+  // A file, not stdin: nft refuses a pipe ("Not a regular file: /dev/stdin").
+  await sys.writeFile(PREVIEW_NFT, nftRuleset(resolvers), 0o600)
+  await mustRun(sys, 'nft', ['-f', PREVIEW_NFT])
   await sys.writeFile(PREVIEW_RESOLV, resolvers.map((r) => `nameserver ${r}`).join('\n') + '\n', 0o644)
   // /etc/resolv.conf may be a symlink (systemd-resolved's stub): mount over the file it points at.
   const resolvTarget = (await mustRun(sys, 'readlink', ['-f', '/etc/resolv.conf'])).trim()

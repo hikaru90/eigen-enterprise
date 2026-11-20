@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ensurePreviewNet, forwarderScript, nftRuleset, parseResolvers, PREVIEW_RESOLV } from './preview-net.ts'
+import { ensurePreviewNet, forwarderScript, nftRuleset, parseResolvers, PREVIEW_NFT, PREVIEW_RESOLV } from './preview-net.ts'
 import { PreviewBox } from './preview-test-box.ts'
 
 describe('preview network (isolation for Drive app previews)', () => {
@@ -37,7 +37,8 @@ describe('preview network (isolation for Drive app previews)', () => {
     expect(cmds).toContain('ip netns add ee-preview')
     expect(cmds).toContain('ip -n ee-preview route replace default via 10.237.0.1')
     expect(cmds).toContain('sysctl -qw net.ipv4.ip_forward=1')
-    expect(cmds).toContain('nft -f -')
+    expect(cmds).toContain(`nft -f ${PREVIEW_NFT}`)
+    expect(box.files.get(PREVIEW_NFT)).toContain('table inet ee_preview {')
 
     // Already there: no second namespace or link.
     const again = new PreviewBox()
