@@ -2,6 +2,39 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-20 — Office files milestone 1 merged: our own PDF, Word and PowerPoint viewers in the Drive (plan/phase-office-files.md)
+
+- **Shipped (merged into main, not pushed, not on the box):**
+  - **PDF P1** (`1bbd3676`, gate `7b3b63cb`):
+    - pdf.js in a worker, continuous pages that only render near the screen
+    - thumbnails, bookmarks, page labels, zoom (fit, steps, ⌘+wheel, pinch), find with highlights, a text layer, dark pages, a password prompt
+    - `drive.read` → Markdown per page.
+  - **DOCX D1** (`0e3d61e7`):
+    - our own WordprocessingML model: styles, numbering, sections, tables, images, fields, notes
+    - a paginated viewer: true page size, headers/footers, line and row splitting, keep-with-next, footnotes
+    - `drive.read` → Markdown with headings from outline levels.
+  - **PPTX S1** (`d6e37cae`):
+    - a deck model with master → layout → slide inheritance, a colour-transform engine, 37 hand-written preset geometries
+    - SVG rendering, a thumbnail rail, notes, presenter mode
+    - `drive.read` → Markdown per slide with notes.
+  - **Shared** (`c880c4c5`): broken XML now raises OpcError; the browser gate pre-bundles xmldom.
+- **Announced replacement (§6):** a PDF in the Drive now opens in the Drive's own viewer instead of the browser's built-in one; `drive.e2e.ts` was updated to match. Word and PowerPoint files, which used to show only a download, now open in viewers. Download stays available for every format.
+- **Dependencies:** pdfjs-dist 6.5 (Apache-2.0; bundled data under BSD/OFL/MIT), pdf-lib 1.17 (MIT, test fixtures only), @xmldom/xmldom 0.9 (MIT). No GPL.
+- **Clean room:** implementers worked from the plan and ISO 32000 / ECMA-376 only. None of the three reference projects' code was read, installed or copied.
+- **Gate:** `npm run ci:local` is green on main after all three merges (7944 unit tests, 627 component tests, 0 type errors).
+- **What broke / open:**
+  - The new journey `src/routes/e2e/drive-office.e2e.ts` hasn't passed yet. On current main both it and the existing `drive.e2e.ts` fail before reaching any office code: signup never shows the code step, `/drive` returns 500, and the error page's root layout hits `getDb() was called outside an active request`. This is not caused by the office work, but it isn't diagnosed yet.
+  - Worktrees under `.claude/worktrees/` fail `npm run check`: svelte-check's `--incremental` skips paths containing `/.`. All three streams hit this, so worktree streams can't run the gate in place.
+- **Known gaps (milestone 1 is view-only):**
+  - **PDF:** no clickable links, no tagged-PDF reading order.
+  - **DOCX:** floating objects are placed in line; charts, equations and EMF are shown as placeholders; multi-column sections render as one column; comments aren't shown.
+  - **PPTX:** charts, SmartArt, effects and video are shown as placeholders.
+  - In every case a visible note says what isn't shown.
+- **Next:**
+  - Fix the e2e harness regression and make both Drive journeys green.
+  - Push and release to the box.
+  - Then the milestone 2 streams: P2 page organisation plus agent PDF tools, D2 Word editing (ProseMirror, lossless), S2 slide editing.
+
 ## 2026-11-20 — Drive: HTML files render as pages; plan for running web app folders (owner: "HTML currently gets rendered as text … there should be an option for seeing HTML files as … rendered HTML files in the drive … a simple way to do npm run dev")
 
 - **Built (not committed yet):** `.html`/`.htm` files open as the page itself, with a **Page | Source** switch and **Open in new tab**.
