@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -54,5 +54,43 @@ describe('diskBlobStore', () => {
     await blobs.remove(sha256)
     expect(await blobs.has(sha256)).toBe(false)
     await expect(blobs.get('../../etc/passwd')).rejects.toThrow(/not a sha256/)
+  })
+
+  const pathOf = (dir: string, sha: string) => join(dir, 'blobs', sha.slice(0, 2), sha.slice(2, 4), sha)
+  const age = async (dir: string, sha: string, at: Date) => utimes(pathOf(dir, sha), at, at)
+
+  it('a put of bytes already stored refreshes the blob’s time, so a sweep’s grace period covers every writer', async () => {
+    const { dir, blobs } = await store()
+    const { sha256 } = await blobs.put(new TextEncoder().encode('old'))
+    await age(dir, sha256, new Date('2020-01-01T00:00:00Z'))
+    expect(await blobs.put(new TextEncoder().encode('old'))).toMatchObject({ created: false })
+    expect((await stat(pathOf(dir, sha256))).mtime.getTime()).toBeGreaterThan(Date.parse('2026-01-01T00:00:00Z'))
+  })
+
+  it('lists stored blobs with their times (temporary files are not blobs)', async () => {
+    const { dir, blobs } = await store()
+    const a = await blobs.put(new TextEncoder().encode('a'))
+    const b = await blobs.put(new TextEncoder().encode('b'))
+    await age(dir, a.sha256, new Date('2020-01-01T00:00:00Z'))
+    await writeFile(`${pathOf(dir, b.sha256)}.123.tmp`, 'half')
+    const listed = await blobs.list()
+    expect(listed.map((x) => x.sha256).sort()).toEqual([a.sha256, b.sha256].sort())
+    expect(listed.find((x) => x.sha256 === a.sha256)!.modifiedAt).toEqual(new Date('2020-01-01T00:00:00Z'))
+    expect(await (await store()).blobs.list()).toEqual([])
+  })
+
+  it('removeIfOlderThan removes an old blob only, and never one a writer refreshed', async () => {
+    const { dir, blobs } = await store()
+    const old = await blobs.put(new TextEncoder().encode('old'))
+    const fresh = await blobs.put(new TextEncoder().encode('fresh'))
+    await age(dir, old.sha256, new Date('2020-01-01T00:00:00Z'))
+    const cutoff = new Date('2021-01-01T00:00:00Z')
+    expect(await blobs.removeIfOlderThan(old.sha256, cutoff)).toBe(true)
+    expect(await blobs.has(old.sha256)).toBe(false)
+    expect(await blobs.removeIfOlderThan(fresh.sha256, cutoff)).toBe(false)
+    expect(await blobs.has(fresh.sha256)).toBe(true)
+    // Already gone is not an error: nothing to remove.
+    expect(await blobs.removeIfOlderThan(old.sha256, cutoff)).toBe(false)
+    expect(await readdir(join(dir, 'blobs', fresh.sha256.slice(0, 2), fresh.sha256.slice(2, 4)))).toEqual([fresh.sha256])
   })
 })
