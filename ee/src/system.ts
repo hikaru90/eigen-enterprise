@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises'
 import { request } from 'node:http'
 import { dirname } from 'node:path'
 import { PATHS } from './paths.ts'
@@ -17,7 +17,7 @@ export type RunOpts = { cwd?: string; input?: string; timeoutMs?: number; env?: 
 
 export type System = {
   readFile(path: string): Promise<string | null>
-  /** Atomic write (temp + rename) with the given mode. */
+  /** Durable atomic write (temp + fsync + rename + directory fsync) with the given mode. */
   writeFile(path: string, content: string, mode?: number): Promise<void>
   mkdirp(path: string, mode?: number): Promise<void>
   exists(path: string): Promise<boolean>
@@ -32,6 +32,53 @@ export type System = {
   now(): Date
 }
 
+/** The file operations a durable write needs (a seam so the order is tested). */
+export type DurableFs = {
+  mkdir(path: string, opts: { recursive: true }): Promise<unknown>
+  open(
+    path: string,
+    flags: 'w' | 'r',
+    mode?: number,
+  ): Promise<{
+    writeFile(data: string): Promise<void>
+    chmod(mode: number): Promise<void>
+    sync(): Promise<void>
+    close(): Promise<void>
+  }>
+  rename(from: string, to: string): Promise<void>
+}
+
+const nodeFs: DurableFs = { mkdir, open: (p, flags, mode) => open(p, flags, mode), rename }
+
+/**
+ * Replace `path` so that after a crash or power cut it holds either the old
+ * content or the new — never an empty or partial file. Temp file + rename
+ * alone is not enough: without fsync the rename can reach the disk before the
+ * data does (the box once came back with a 0-byte journal.json and ee
+ * crash-looped on it). So: write the temp file, fsync it, rename, then fsync
+ * the directory so the rename itself is durable.
+ */
+export async function durableWrite(path: string, content: string, mode: number, fs: DurableFs): Promise<void> {
+  const dir = dirname(path)
+  await fs.mkdir(dir, { recursive: true })
+  const tmp = `${path}.ee-tmp-${process.pid}`
+  const file = await fs.open(tmp, 'w', mode)
+  try {
+    await file.writeFile(content)
+    await file.chmod(mode)
+    await file.sync()
+  } finally {
+    await file.close()
+  }
+  await fs.rename(tmp, path)
+  const d = await fs.open(dir, 'r')
+  try {
+    await d.sync()
+  } finally {
+    await d.close()
+  }
+}
+
 export class RealSystem implements System {
   async readFile(path: string): Promise<string | null> {
     try {
@@ -43,11 +90,7 @@ export class RealSystem implements System {
   }
 
   async writeFile(path: string, content: string, mode = 0o644): Promise<void> {
-    await mkdir(dirname(path), { recursive: true })
-    const tmp = `${path}.ee-tmp-${process.pid}`
-    await writeFile(tmp, content, { mode })
-    await chmod(tmp, mode)
-    await rename(tmp, path)
+    await durableWrite(path, content, mode, nodeFs)
   }
 
   async mkdirp(path: string, mode = 0o755): Promise<void> {
