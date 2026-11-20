@@ -295,6 +295,43 @@ export type LatestRelease = {
   state: 'newer' | 'rebuild' | 'installed' | 'older'
 }
 
+/** A Drive folder previewed on this box (plan/phase-drive-app-preview.md, the ee ↔ kernel contract). */
+export type PreviewState = 'installing' | 'starting' | 'running' | 'failed' | 'stopped'
+
+export type PreviewView = {
+  /** pv + 12 hex: sha256 of the Drive folder id (the kernel computes it, ee validates it). */
+  id: string
+  /** For "Another app is running: <name>". */
+  folderName: string
+  state: PreviewState
+  /** <id>.preview.<console host> */
+  host: string
+  /** https://<host>/ */
+  url: string
+  /** null until ee has read package.json. */
+  script: 'dev' | 'start' | null
+  startedAt: string
+  lastSeenAt: string
+  /** Why it failed or stopped (e.g. "idle for 30 minutes", "add a lockfile …"). */
+  error: string | null
+  /** The last 200 lines: install + dev server output. */
+  log: string[]
+}
+
+/** ee's problem type when another preview is active (409, with `running`). */
+export const PREVIEW_BUSY = 'urn:ee:preview_busy'
+
+/** ee refused a preview because another one is active: `running` is that one. */
+export class PreviewBusyError extends SubstrateError {
+  constructor(
+    message: string,
+    readonly running: PreviewView,
+    body: unknown,
+  ) {
+    super(409, message, PREVIEW_BUSY, body)
+  }
+}
+
 export class EeClient {
   constructor(private readonly transport: EeTransport = socketTransport()) {}
 
@@ -316,7 +353,11 @@ export class EeClient {
   private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
     const { status, data } = await this.transport(method, path, body)
     if (status >= 400) {
-      const problem = data as { detail?: string; type?: string } | null
+      const problem = data as { detail?: string; type?: string; running?: PreviewView } | null
+      if (problem?.type === PREVIEW_BUSY) {
+        if (!problem.running) throw new SubstrateError(status, `ee answered ${PREVIEW_BUSY} without the running preview`, PREVIEW_BUSY, data)
+        throw new PreviewBusyError(problem.detail ?? `another preview is running: ${problem.running.folderName}`, problem.running, data)
+      }
       throw new SubstrateError(
         status,
         problem?.detail ?? `HTTP ${status}`,
@@ -476,6 +517,35 @@ export class EeClient {
    */
   restoreBackup(i: { snapshotId: string; backupKey: string; author: string }): Promise<{ job: RestoreJob }> {
     return this.call('POST', '/v1/backups/restore', i)
+  }
+  /**
+   * Run a Drive folder snapshot (a tarball under $EE_STATE_DIR/previews/) as
+   * preview `id`. The same id restarts it from the new tarball; another
+   * active id → PreviewBusyError.
+   */
+  startPreview(i: {
+    id: string
+    tarball: string
+    sha256: string
+    folderName: string
+    author: string
+  }): Promise<{ preview: PreviewView }> {
+    return this.call('POST', '/v1/previews', i)
+  }
+  previews(): Promise<{ previews: PreviewView[] }> {
+    return this.call('GET', '/v1/previews')
+  }
+  /** One preview; SubstrateError 404 when ee doesn't know the id. */
+  preview(id: string): Promise<{ preview: PreviewView }> {
+    return this.call('GET', `/v1/previews/${encodeURIComponent(id)}`)
+  }
+  /** Someone has the preview open: resets its idle clock. */
+  previewSeen(id: string): Promise<{ preview: PreviewView }> {
+    return this.call('POST', `/v1/previews/${encodeURIComponent(id)}/seen`, {})
+  }
+  /** Stops the preview and removes its files (state `stopped`). */
+  stopPreview(id: string, i: { author: string }): Promise<{ preview: PreviewView }> {
+    return this.call('DELETE', `/v1/previews/${encodeURIComponent(id)}`, i)
   }
   setSecret(i: {
     workload: string

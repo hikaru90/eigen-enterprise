@@ -22,6 +22,7 @@ describe('capabilitiesFor (one set, from the role)', () => {
       'website.manage': true,
       'brand.extract': true,
       'repos.manage': true,
+      'drive.run_apps': true,
     })
   })
 

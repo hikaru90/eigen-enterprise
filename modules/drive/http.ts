@@ -1,6 +1,7 @@
 import type { AccessLevel, GrantSubject } from './access-port'
 import { error, json, type RequestEvent } from '@sveltejs/kit'
 import { z } from 'zod'
+import { AppBusyError } from './app-preview'
 import { DriveError, type Actor, type ItemType } from './service'
 
 /**
@@ -16,6 +17,12 @@ export const DRIVE_STATUS: Record<DriveError['code'], number> = {
   locked: 409,
   unavailable: 503,
   upstream: 502,
+  busy: 409,
+}
+
+/** A DriveError as the JSON body the browser client reads: the sentence, the code, and its structured context. */
+export function driveErrorBody(err: DriveError): Record<string, unknown> {
+  return { error: err.message, code: err.code, ...(err.holder ? { holder: err.holder } : {}), ...(err instanceof AppBusyError ? { running: err.running } : {}) }
 }
 
 export function requestActor(event: Pick<RequestEvent, 'locals'>): Actor {
@@ -29,7 +36,7 @@ export async function driveJson(run: () => Promise<unknown>): Promise<Response> 
   try {
     return json((await run()) ?? { ok: true })
   } catch (err) {
-    if (err instanceof DriveError) return json({ error: err.message, code: err.code, ...(err.holder ? { holder: err.holder } : {}) }, { status: DRIVE_STATUS[err.code] })
+    if (err instanceof DriveError) return json(driveErrorBody(err), { status: DRIVE_STATUS[err.code] })
     throw err
   }
 }

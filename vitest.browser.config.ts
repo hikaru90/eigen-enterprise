@@ -139,6 +139,8 @@ export default defineConfig({
       'src/lib/components/drive/drive-browser.svelte.spec.ts',
       'src/lib/components/drive/drive-privacy-note.svelte.spec.ts',
       'src/lib/components/drive/archived-view.svelte.spec.ts',
+      // Drive: run a web app folder (plan/phase-drive-app-preview.md).
+      'src/lib/components/drive/app-preview.svelte.spec.ts',
       // Office viewers (plan/phase-office-files.md): every format's component specs.
       'src/lib/office/**/*.svelte.spec.ts',
       'src/routes/\\(nucleus\\)/drive/file/\\[id\\]/file-page.svelte.spec.ts',
