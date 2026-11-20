@@ -7,6 +7,10 @@ import { extractOfficeText } from '$lib/office/text'
 import { contentDateOf } from './content-date'
 import { holderOf, isLive, LOCK_TTL_MS, type EditLockStore, type LockHolder } from './locks'
 import { isRevisioned, isTextDocument, isTextFile, mimeFor, officeKind } from './preview'
+import { SNAPSHOT_MAX_BYTES, SNAPSHOT_MAX_FILES, SNAPSHOT_SKIP_DIRS, webAppOf, type WebApp } from './web-app'
+
+/** One file of a folder snapshot (snapshotFiles): its path below the folder, and how to read its bytes. */
+export type SnapshotFile = { path: string; size: number; sha256: string; mtime: Date; read: () => Promise<Uint8Array> }
 
 /**
  * Drive: folders and files, sharing, trash and text revisions. Every read and
@@ -38,8 +42,12 @@ export type ItemType = 'folder' | 'file'
 
 export class DriveError extends Error {
   constructor(
-    /** `unavailable`: no AI provider for the company; `upstream`: the provider failed or answered unreadably. */
-    readonly code: 'not_found' | 'forbidden' | 'invalid' | 'too_large' | 'locked' | 'unavailable' | 'upstream',
+    /**
+     * `unavailable`: no AI provider for the company, or no ee to run an app on;
+     * `upstream`: the provider failed or answered unreadably; `busy`: another
+     * app preview is running (app-preview.ts AppBusyError).
+     */
+    readonly code: 'not_found' | 'forbidden' | 'invalid' | 'too_large' | 'locked' | 'unavailable' | 'upstream' | 'busy',
     message: string,
     /** For `locked`: who holds the edit lock now. */
     readonly holder?: LockHolder & { name: string },
@@ -750,6 +758,61 @@ export function createDriveService(deps: DriveDeps) {
         folder = await requireFolder(actor, hits[0]!.id, 'view')
       }
       throw new Error('unreachable: the loop returns on the last segment')
+    },
+
+    /**
+     * Whether a folder is a web app (web-app.ts): its own top-level
+     * package.json, not trashed. Two of them fail loud, like readAtPath.
+     * Needs view access on the folder.
+     */
+    async webApp(actor: Actor, folderId: string): Promise<{ folder: ItemView; webApp: WebApp | null }> {
+      const folder = await requireFolder(actor, folderId, 'view')
+      const files = (await store.children(folder.id)).files.filter((f) => !f.trashedAt)
+      const pkgs = files.filter((f) => f.name === 'package.json')
+      if (pkgs.length > 1) throw new DriveError('invalid', `There are ${pkgs.length} items named "package.json" in “${folder.name}”; rename one so it is clear which one runs.`)
+      if (pkgs.length === 0) return { folder: folderView(folder), webApp: null }
+      const text = new TextDecoder().decode(await blobs.get(pkgs[0]!.sha256))
+      return { folder: folderView(folder), webApp: webAppOf(text, files.map((f) => f.name)) }
+    },
+
+    /** A folder the actor can view (not trashed), as a listing shows it. */
+    async folderInfo(actor: Actor, folderId: string): Promise<ItemView> {
+      return folderView(await requireFolder(actor, folderId, 'view'))
+    },
+
+    /**
+     * Every file below a folder as it is now, for an app preview's snapshot:
+     * paths relative to the folder, trashed items and node_modules/.git
+     * directories (at any depth) left out, archived ones kept (archive is a
+     * view state, the files are still the folder's). Fails loud over the
+     * contract's limits and when two items share a name at one path (a tar
+     * can't hold both). Needs view access on the folder; a grant covers
+     * everything below it, so the files inside need no check of their own.
+     * `read` returns a file's bytes.
+     */
+    async snapshotFiles(actor: Actor, folderId: string): Promise<{ folder: ItemView; files: SnapshotFile[]; bytes: number }> {
+      const root = await requireFolder(actor, folderId, 'view')
+      const files: SnapshotFile[] = []
+      let bytes = 0
+      const walk = async (folder: DriveFolder, prefix: string): Promise<void> => {
+        const kids = await store.children(folder.id)
+        const folders = kids.folders.filter((f) => !f.trashedAt && !SNAPSHOT_SKIP_DIRS.has(f.name)).sort((a, b) => a.name.localeCompare(b.name))
+        const live = kids.files.filter((f) => !f.trashedAt).sort((a, b) => a.name.localeCompare(b.name))
+        const count = new Map<string, number>()
+        for (const n of [...folders.map((f) => f.name), ...live.map((f) => f.name)]) count.set(n, (count.get(n) ?? 0) + 1)
+        for (const [name, n] of count) {
+          if (n > 1) throw new DriveError('invalid', `There are ${n} items named "${name}" in “${prefix ? `${root.name}/${prefix.slice(0, -1)}` : root.name}”; rename one so the app's files are clear.`)
+        }
+        for (const f of live) {
+          bytes += f.size
+          files.push({ path: `${prefix}${f.name}`, size: f.size, sha256: f.sha256, mtime: f.updatedAt, read: () => blobs.get(f.sha256) })
+          if (files.length > SNAPSHOT_MAX_FILES) throw new DriveError('too_large', `“${root.name}” has more than ${SNAPSHOT_MAX_FILES.toLocaleString('en')} files (node_modules and .git left out); an app can run with at most that many.`)
+          if (bytes > SNAPSHOT_MAX_BYTES) throw new DriveError('too_large', `“${root.name}” holds more than ${formatBytes(SNAPSHOT_MAX_BYTES)} (node_modules and .git left out); an app can run with at most that much.`)
+        }
+        for (const f of folders) await walk(f, `${prefix}${f.name}/`)
+      }
+      await walk(root, '')
+      return { folder: folderView(root), files, bytes }
     },
 
     async readText(actor: Actor, id: string): Promise<{ file: ItemView; content: string }> {

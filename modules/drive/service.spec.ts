@@ -415,3 +415,101 @@ describe('drive service: reading a file by its path inside a folder (rendered HT
     await expectCode(drive.readAtPath(bob, root.id, ['index.html']), 'not_found')
   })
 })
+
+describe('drive: web app folders (plan/phase-drive-app-preview.md)', () => {
+  async function app(pkg: string, extra: Array<[string, string]> = []) {
+    const s = await setup(1 << 20)
+    const root = await s.drive.createFolder(alice, null, 'shop')
+    await s.drive.upload(alice, root.id, { name: 'package.json', bytes: text(pkg), mime: 'application/json' })
+    for (const [name, body] of extra) await s.drive.upload(alice, root.id, { name, bytes: text(body), mime: null })
+    return { ...s, root }
+  }
+
+  it('a top-level package.json with a dev script is a web app; the lockfile next to it is named', async () => {
+    const { drive, root } = await app('{"scripts":{"dev":"vite","start":"node server.js"}}', [['pnpm-lock.yaml', 'lockfileVersion: 9']])
+    expect(await drive.webApp(alice, root.id)).toMatchObject({ folder: { id: root.id, name: 'shop' }, webApp: { script: 'dev', lockfile: 'pnpm-lock.yaml' } })
+  })
+
+  it('falls back to start, and says lockfile null when there is none (Run will fail, not hide)', async () => {
+    const { drive, root } = await app('{"scripts":{"start":"node server.js"}}')
+    expect((await drive.webApp(alice, root.id)).webApp).toEqual({ script: 'start', lockfile: null })
+  })
+
+  it('no package.json, a nested one only, a trashed one, or invalid JSON: not a web app (no crash)', async () => {
+    const s = await setup(1 << 20)
+    const root = await s.drive.createFolder(alice, null, 'repo')
+    const sub = await s.drive.createFolder(alice, root.id, 'web')
+    await s.drive.upload(alice, sub.id, { name: 'package.json', bytes: text('{"scripts":{"dev":"vite"}}'), mime: null })
+    expect((await s.drive.webApp(alice, root.id)).webApp).toBeNull()
+    const trashed = await s.drive.upload(alice, root.id, { name: 'package.json', bytes: text('{"scripts":{"dev":"vite"}}'), mime: null })
+    await s.drive.moveToTrash(alice, 'file', trashed.id)
+    expect((await s.drive.webApp(alice, root.id)).webApp).toBeNull()
+    const broken = await app('{"scripts": {"dev": "vite"')
+    expect((await broken.drive.webApp(alice, broken.root.id)).webApp).toBeNull()
+  })
+
+  it('two package.json files in the folder fail loud; it needs view access', async () => {
+    const { drive, root } = await app('{"scripts":{"dev":"vite"}}', [['package.json', '{}']])
+    await expect(drive.webApp(alice, root.id)).rejects.toMatchObject({ code: 'invalid', message: expect.stringMatching(/2 items named "package.json"/) })
+    await expectCode(drive.webApp(bob, root.id), 'not_found')
+  })
+
+  it('a snapshot lists every live file by its relative path, without node_modules, .git or the trash', async () => {
+    const { drive, root } = await app('{"scripts":{"dev":"vite"}}', [['package-lock.json', '{}']])
+    const src = await drive.createFolder(alice, root.id, 'src')
+    await drive.upload(alice, src.id, { name: 'main.ts', bytes: text('1'), mime: null })
+    const lib = await drive.createFolder(alice, src.id, 'lib')
+    await drive.upload(alice, lib.id, { name: 'a.ts', bytes: text('22'), mime: null })
+    const nm = await drive.createFolder(alice, root.id, 'node_modules')
+    await drive.upload(alice, nm.id, { name: 'vite.js', bytes: text('x'), mime: null })
+    const nested = await drive.createFolder(alice, src.id, 'node_modules')
+    await drive.upload(alice, nested.id, { name: 'x.js', bytes: text('x'), mime: null })
+    const git = await drive.createFolder(alice, root.id, '.git')
+    await drive.upload(alice, git.id, { name: 'HEAD', bytes: text('ref'), mime: null })
+    const gone = await drive.upload(alice, src.id, { name: 'old.ts', bytes: text('old'), mime: null })
+    await drive.moveToTrash(alice, 'file', gone.id)
+    const archived = await drive.upload(alice, src.id, { name: 'kept.ts', bytes: text('k'), mime: null })
+    await drive.archive(alice, 'file', archived.id)
+    const snap = await drive.snapshotFiles(alice, root.id)
+    expect(snap.folder.name).toBe('shop')
+    expect(snap.files.map((f) => f.path)).toEqual(['package-lock.json', 'package.json', 'src/kept.ts', 'src/main.ts', 'src/lib/a.ts'])
+    expect(snap.bytes).toBe(snap.files.reduce((n, f) => n + f.size, 0))
+    expect(new TextDecoder().decode(await snap.files.find((f) => f.path === 'src/lib/a.ts')!.read())).toBe('22')
+  })
+
+  it('two items with one name at a path fail loud (a file and a folder count too)', async () => {
+    const { drive, root } = await app('{}')
+    const src = await drive.createFolder(alice, root.id, 'src')
+    await drive.upload(alice, src.id, { name: 'main.ts', bytes: text('1'), mime: null })
+    await drive.createFolder(alice, src.id, 'main.ts')
+    await expect(drive.snapshotFiles(alice, root.id)).rejects.toMatchObject({ code: 'invalid', message: expect.stringMatching(/2 items named "main.ts" in “shop\/src”/) })
+  })
+
+  it('fails loud over 200 MB or 20,000 files; needs view access', async () => {
+    const at = new Date()
+    const row = (folderId: string, name: string, size: number) => ({
+      id: `f-${folderId}-${name}`,
+      folderId,
+      name,
+      ownerId: 'alice',
+      mime: 'text/plain',
+      size,
+      sha256: 'a'.repeat(64),
+      createdAt: at,
+      updatedAt: at,
+      trashedAt: null,
+      archivedAt: null,
+      archivedBy: null,
+      source: null,
+      contentDate: null,
+      contentDateKind: null,
+    })
+    const big = await app('{}')
+    await big.store.insertFile(row(big.root.id, 'huge.bin', 200 * 1024 * 1024))
+    await expect(big.drive.snapshotFiles(alice, big.root.id)).rejects.toMatchObject({ code: 'too_large', message: expect.stringMatching(/more than 200 MB/) })
+    const many = await app('{}')
+    for (let i = 0; i < 20_000; i++) await many.store.insertFile(row(many.root.id, `f${i}.txt`, 0))
+    await expect(many.drive.snapshotFiles(alice, many.root.id)).rejects.toMatchObject({ code: 'too_large', message: expect.stringMatching(/more than 20,000 files/) })
+    await expectCode(many.drive.snapshotFiles(bob, many.root.id), 'not_found')
+  })
+})

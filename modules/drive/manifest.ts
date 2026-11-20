@@ -11,6 +11,9 @@ export const DRIVE_TOOL_NAMES = [
   'drive.unarchive',
   'drive.list_archived',
   'drive.suggest_archive',
+  'drive.app_status',
+  'drive.app_run',
+  'drive.app_stop',
 ] as const
 
 /**
@@ -21,9 +24,9 @@ export const DRIVE_TOOL_NAMES = [
 export const driveManifest: ModuleManifest = {
   id: DRIVE_MODULE_ID,
   name: 'Drive',
-  version: '0.2.0',
+  version: '0.3.0',
   description:
-    'Folders and files for the whole company: upload, share, preview; Markdown and CSV keep revisions; archive what is done with (AI suggestions you confirm).',
+    'Folders and files for the whole company: upload, share, preview; Markdown and CSV keep revisions; archive what is done with (AI suggestions you confirm); run a web app folder and see it live (admins).',
   tools: [...DRIVE_TOOL_NAMES],
   permissions: { roles: ['admin', 'agent'] },
 }

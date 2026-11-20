@@ -1,6 +1,12 @@
 import type { Actor, DriveService } from './service'
 import { z } from 'zod'
+import { KernelError } from '$lib/kernel/errors'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
+import { roleCan } from '$lib/server/auth/capabilities'
+import type { MemberRole } from '$lib/server/auth/roles'
+import { EeClient } from '$lib/server/ee/client'
+import { requireHuman } from '$lib/server/ee/human'
+import { appStatus, PREVIEW_ID, runApp, stopApp, type AppPreviewDeps } from './app-preview'
 import { liveSuggestChat, SUGGEST_DEFAULT_DAYS, SUGGEST_MAX_DAYS, SUGGEST_MIN_DAYS, suggestArchive, type SuggestChat } from './archive-suggest'
 import { DRIVE_MODULE_ID } from './manifest'
 
@@ -11,7 +17,10 @@ import { DRIVE_MODULE_ID } from './manifest'
  * checks as the calling principal: a person with their own access, the agent
  * with admin rights (like members.*). Writing, archiving and unarchiving are
  * mutate-class and wait on the company's approval mode; suggesting changes
- * nothing.
+ * nothing. drive.app_* run a web app folder on this server through ee
+ * (app-preview.ts): status is a read anyone who can view the folder (and the
+ * agent) may do; Run and Stop are a person's act, owner or admin, never
+ * approval-gated for the agent (D11: refused outright).
  */
 
 export type DriveToolDeps = {
@@ -19,6 +28,12 @@ export type DriveToolDeps = {
   /** The gateway call behind drive.suggest_archive (tests inject a fake). */
   chat?: SuggestChat
   now?: () => Date
+  /** ee's control API behind drive.app_* (tests inject a recording transport). */
+  ee?: EeClient
+  /** A person's company role (drive.app_run / app_stop are owner and admins only). */
+  roleOf?: (userId: string) => Promise<MemberRole | null>
+  /** Where EE_STATE_DIR comes from (the snapshot hand-off dir). */
+  env?: Record<string, string | undefined>
 }
 
 /** Batch size for one archive/unarchive call (one approval). */
@@ -40,6 +55,25 @@ const itemsInput = z
   .strict()
 const emptyInput = z.object({}).strict()
 const suggestInput = z.object({ older_than_days: z.number().int().min(SUGGEST_MIN_DAYS).max(SUGGEST_MAX_DAYS).optional() }).strict()
+const folderInput = z.object({ folder_id: z.string().min(1) }).strict()
+/** By folder, or by preview id (the one "Another app is running" names). */
+const stopInput = z.union([folderInput, z.object({ preview_id: z.string().regex(PREVIEW_ID, 'not an app preview id (pv + 12 hex)') }).strict()])
+
+/**
+ * D11 + owner decision 1 (plan/phase-drive-app-preview.md): Run and Stop run
+ * uploaded code on this server, so only a person, and only an owner or admin
+ * (the kernel role every signed-in caller carries is not the company role).
+ */
+async function requireAppAdmin(ctx: ToolContext, tool: string, roleOf: (userId: string) => Promise<MemberRole | null>): Promise<string> {
+  const author = requireHuman(ctx, tool, 'the folder’s page in Drive')
+  if (!roleCan(await roleOf(ctx.principal.id), 'drive.run_apps')) throw new KernelError('permission_denied', 'Only an owner or admin can run or stop apps in Drive.')
+  return author
+}
+
+async function liveRole(userId: string): Promise<MemberRole | null> {
+  const { getUserRole } = await import('$lib/server/auth/user-role')
+  return getUserRole(userId)
+}
 
 export function actorOf(ctx: ToolContext): Actor {
   return ctx.principal.kind === 'human' ? { kind: 'user', userId: ctx.principal.id } : { kind: 'agent', id: ctx.principal.id }
@@ -62,6 +96,14 @@ async function liveService(): Promise<DriveService> {
 export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
   const service = opts.service ?? liveService
   const chat = opts.chat ?? liveSuggestChat
+  const roleOf = opts.roleOf ?? liveRole
+  let ee = opts.ee
+  const appDeps = async (): Promise<AppPreviewDeps> => ({
+    drive: await service(),
+    ee: (ee ??= new EeClient()),
+    env: opts.env ?? process.env,
+    ...(opts.now ? { now: opts.now } : {}),
+  })
   return [
     {
       name: 'drive.list',
@@ -194,6 +236,52 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
             reason: s.reason,
           })),
         }
+      },
+    },
+    {
+      name: 'drive.app_status',
+      module: DRIVE_MODULE_ID,
+      summary:
+        'Whether a Drive folder is a web app (its own package.json with a dev or start script, and which lockfile it has: webApp) and its app preview on this server, if any: state (installing, starting, running, failed, stopped), url, error and the last 200 log lines. Use the log to help fix a failing start. Reading it counts as someone looking (it keeps a running preview from stopping when idle). managed:false means this server does not run apps (no ee).',
+      auditClass: 'read',
+      inputSchema: folderInput,
+      permission: { roles: ['admin', 'agent', 'member'] },
+      handler: async (ctx, input) => appStatus(await appDeps(), actorOf(ctx), folderInput.parse(input).folder_id),
+    },
+    {
+      name: 'drive.app_run',
+      module: DRIVE_MODULE_ID,
+      summary:
+        'Run a Drive web app folder on this server (owner or admin, a person only — never the agent): copies the folder as it is now (without node_modules and .git), installs it from its lockfile and starts its dev script, at its own address. Running it again restarts it from a fresh copy. Only one app runs at a time.',
+      auditClass: 'mutate',
+      activity: (input: z.infer<typeof folderInput>, output: unknown) => {
+        const name = (output as { preview?: { folderName?: string } } | undefined)?.preview?.folderName
+        return name ? `Started the app in the Drive folder “${name}”` : `Tried to start the app in Drive folder ${input.folder_id}`
+      },
+      inputSchema: folderInput,
+      permission: { roles: ['admin'] },
+      handler: async (ctx, input) => {
+        const author = await requireAppAdmin(ctx, 'drive.app_run', roleOf)
+        return runApp(await appDeps(), actorOf(ctx), folderInput.parse(input).folder_id, author)
+      },
+    },
+    {
+      name: 'drive.app_stop',
+      module: DRIVE_MODULE_ID,
+      summary:
+        'Stop a Drive folder’s app preview on this server and remove its copy (owner or admin, a person only). By folder_id, or by preview_id for the app another folder is running.',
+      auditClass: 'mutate',
+      activity: (input: z.infer<typeof stopInput>, output: unknown) => {
+        const name = (output as { preview?: { folderName?: string } } | undefined)?.preview?.folderName
+        if (name) return `Stopped the app of the Drive folder “${name}”`
+        return 'folder_id' in input ? `Tried to stop the app in Drive folder ${input.folder_id}` : `Tried to stop the app preview ${input.preview_id}`
+      },
+      inputSchema: stopInput,
+      permission: { roles: ['admin'] },
+      handler: async (ctx, input) => {
+        const author = await requireAppAdmin(ctx, 'drive.app_stop', roleOf)
+        const i = stopInput.parse(input)
+        return stopApp(await appDeps(), 'folder_id' in i ? { actor: actorOf(ctx), folderId: i.folder_id } : { previewId: i.preview_id }, author)
       },
     },
   ]

@@ -26,6 +26,8 @@ export const CAPABILITIES = [
   'brand.extract',
   /** Drive → GitHub: connecting GitHub repos (the token form). */
   'repos.manage',
+  /** Drive: Run / Stop / Restart a web app folder on this server (plan/phase-drive-app-preview.md). */
+  'drive.run_apps',
 ] as const
 
 export type Capability = (typeof CAPABILITIES)[number]
