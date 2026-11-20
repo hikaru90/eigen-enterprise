@@ -108,7 +108,7 @@ describe('getProviderCatalog', () => {
 
     expect(providers[0]?.id).toBe('eurouter')
     expect(providers[0]?.baseUrl).toBe('https://api.eurouter.ai/v1')
-    expect(providers[0]?.envVar).toBe('SERVICE_API_KEY_EUROUTER')
+    expect(providers[0]?.envVar).toBe('LLM_API_KEY')
   })
 
   it('serves from cache without refetching within the cache window', async () => {

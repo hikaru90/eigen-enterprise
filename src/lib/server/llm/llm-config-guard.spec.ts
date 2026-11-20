@@ -22,7 +22,7 @@ describe('llm-config-guard', () => {
     expect(() =>
       assertEurouterGatewayConfigured({
         baseUrl: DOCKER_PLACEHOLDER_LLM_BASE_URL,
-        context: 'platform',
+        context: 'byok',
       }),
     ).toThrow(/Docker placeholder/)
   })
@@ -32,7 +32,7 @@ describe('llm-config-guard', () => {
       assertEurouterGatewayConfigured({
         baseUrl: 'https://api.eurouter.ai/v1',
         ruleChat: '00000000-0000-0000-0000-000000000001',
-        context: 'platform',
+        context: 'byok',
       }),
     ).toThrow(/Docker placeholders/)
   })

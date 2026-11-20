@@ -105,12 +105,21 @@ export async function saveProviderConfig(input: SaveProviderConfigInput): Promis
     modelEmbedding: input.modelEmbedding?.trim() || null,
   }
 
+  // A field the caller did not send (undefined) keeps what is stored: Settings no longer sends
+  // model fields (CB1: the company's slots pick the models), and re-saving a key must not wipe
+  // the model an install's existing vectors were made with before its embedding is pinned.
+  const keep = (['modelChat', 'modelEmbedding', 'ruleChat', 'ruleEmbedding'] as const).filter(
+    (field) => input[field] === undefined,
+  )
+  const set: Partial<typeof values> = { ...values }
+  for (const field of keep) delete set[field]
+
   await db
     .insert(llmProviderConfig)
     .values(values)
     .onConflictDoUpdate({
       target: [llmProviderConfig.userId, llmProviderConfig.provider],
-      set: { ...values, updatedAt: new Date() },
+      set: { ...set, updatedAt: new Date() },
     })
 
   if (input.setActive !== false) {
@@ -130,6 +139,20 @@ export async function saveProviderConfig(input: SaveProviderConfigInput): Promis
       target: userPreference.userId,
       set: { billingMode: 'byok' as BillingMode, updatedAt: new Date() },
     })
+
+  // The company's key is the owner's (CB1): the owner connecting a key and making it active
+  // is the company choosing its own key, so "Use eigenInference" turns off. A key another
+  // person saves stays on their account and changes nothing for the company.
+  if (input.setActive !== false && (await companySwitch.ownerId()) === userId) {
+    await companySwitch.useOwnKey(userId)
+  }
+}
+
+/** Seam for specs: who the company owner is, and turning the company onto its own key. */
+export const companySwitch = {
+  ownerId: async (): Promise<string | null> => (await import('./company-provider')).companyOwnerId(),
+  useOwnKey: async (by: string): Promise<void> =>
+    (await import('./company-ai')).companyAiStore().setUseEigenInference(false, by),
 }
 
 /**

@@ -2,11 +2,11 @@ import { env } from '$lib/server/env/private-env'
 import { llmCreateSpeech } from './llm-client'
 
 /**
- * OpenRouter model id for speech synthesis (`/audio/speech`). Qwen TTS, the successor
- * of qwen/qwen3-tts-flash-2026-02-10, which had no OpenRouter endpoints (every call
- * failed). Live endpoint (Alibaba) on 2026-11-11.
+ * Speech synthesis (`/audio/speech`) runs on the company's text-to-speech slot (CB1,
+ * `model-pool.ts`); the pool's pick is Qwen TTS (`qwen/qwen-audio-3.0-tts-flash`, the successor
+ * of qwen/qwen3-tts-flash-2026-02-10, which had no OpenRouter endpoints). The model is never
+ * set by environment: `LLM_MODEL_TTS` is gone (a slot only holds a pool model).
  */
-export const TTS_MODEL_OPENROUTER_DEFAULT = 'qwen/qwen-audio-3.0-tts-flash'
 
 /**
  * Voice id passed through to the gateway model; must be one of the model's
@@ -16,13 +16,6 @@ export const TTS_MODEL_OPENROUTER_DEFAULT = 'qwen/qwen-audio-3.0-tts-flash'
 export const TTS_VOICE_DEFAULT = 'longanhuan_v3.6'
 
 const TTS_MAX_TEXT_CHARS = 4000
-
-/** The model speech synthesis calls (the env override, else the default). */
-export function ttsModelId(): string {
-  const override = env.LLM_MODEL_TTS?.trim()
-  if (!override) return TTS_MODEL_OPENROUTER_DEFAULT
-  return override
-}
 
 function ttsVoice(): string {
   const override = env.LLM_TTS_VOICE?.trim()
@@ -44,5 +37,5 @@ export async function synthesizeSpeech(input: {
   if (text.length > TTS_MAX_TEXT_CHARS) {
     throw new Error(`TTS refused: text exceeds ${TTS_MAX_TEXT_CHARS} chars`)
   }
-  return llmCreateSpeech({ userId: input.userId, model: ttsModelId(), voice: ttsVoice(), text })
+  return llmCreateSpeech({ userId: input.userId, voice: ttsVoice(), text })
 }

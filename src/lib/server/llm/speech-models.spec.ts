@@ -54,13 +54,6 @@ describe('checkSpeechModelEndpoints', () => {
     expect(out[1]).toMatchObject({ feature: 'voice', error: expect.stringMatching(/unexpected/) })
   })
 
-  it('without OPENROUTER_BASE_URL there is nothing to ask: every model says so', async () => {
-    const fetchFn = vi.fn()
-    const out = await checkSpeechModelEndpoints({ fetchFn, baseUrl: undefined, models: MODELS })
-    expect(fetchFn).not.toHaveBeenCalled()
-    expect(out.every((s) => 'error' in s && /OPENROUTER_BASE_URL/.test(s.error))).toBe(true)
-  })
-
   it('is cached for a while, so pages that show it stay fast', async () => {
     const fetchFn = fakeFetch({
       'qwen/qwen3-asr-0.6b': endpointsBody(['A']),
@@ -121,12 +114,8 @@ describe('speechEndpointBaseUrl', () => {
     expect(speechEndpointBaseUrl()).toBe('https://openrouter.ai/api/v1')
   })
 
-  it('a self-hosted box asks OPENROUTER_BASE_URL', () => {
+  it("a self-hosted box asks OpenRouter's public catalog (the pool's namespace); OPENROUTER_BASE_URL is not read", () => {
     mockEnv.OPENROUTER_BASE_URL = 'https://openrouter.example/api/v1'
-    expect(speechEndpointBaseUrl()).toBe('https://openrouter.example/api/v1')
-  })
-
-  it('neither set: nothing (the check then says so)', () => {
-    expect(speechEndpointBaseUrl()).toBeUndefined()
+    expect(speechEndpointBaseUrl()).toBe('https://openrouter.ai/api/v1')
   })
 })

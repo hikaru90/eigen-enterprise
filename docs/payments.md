@@ -6,10 +6,10 @@ Eigen bills LLM usage in two modes. Wallet top-ups use PayPal when the operator 
 
 | Mode                                 | `user_preference.billing_mode` | Who pays the gateway         | API keys used                                                                    |
 | ------------------------------------ | ------------------------------ | ---------------------------- | -------------------------------------------------------------------------------- |
-| **Eigen platform credits** (default) | `platform_credits`             | User wallet (PayPal top-ups) | Operator service keys (`SERVICE_API_KEY_EUROUTER`, `SERVICE_API_KEY_OPENROUTER`) |
-| **Bring your own key (BYOK)**        | `byok`                         | User's gateway account       | User keys saved under Settings → LLM → BYOK (with optional env fallbacks)        |
+| **eigenInference** (default)         | `company_ai.use_eigen_inference` on  | eigenEnterprise (provider cost + 20%) | The hosting's per-company key (`PLATFORM_LLM_*`)                          |
+| **The company's own key**            | `company_ai.use_eigen_inference` off | The company's gateway account         | The owner's key under Settings → AI provider → Advanced (optional env fallbacks) |
 
-Users switch mode on **Settings → LLM** under **Billing method**.
+Since CB1 the source is the company's, not each user's: one switch, **Use eigenInference**, in Settings → AI provider (owners and admins). A user's own `billing_mode` no longer decides where calls go.
 
 **Onboarding:** Platform-credits users top up via PayPal before first capture. The required **grounding conversation** at `/grounding` also bills the wallet like any other chat session.
 
@@ -73,19 +73,20 @@ There is no user-facing billing currency picker; PayPal settlement is always USD
 
 Each successful platform call debits only **provider-reported** `usage.cost` (no token estimates). Missing cost fails the request (hard failure per project guardrails).
 
-## Operator env vars (platform LLM)
+## Operator env vars (eigenInference)
 
-| Variable                               | Purpose                                                                         |
-| -------------------------------------- | ------------------------------------------------------------------------------- |
-| `LLM_BASE_URL`                         | EUrouter origin for platform chat/embeddings                                    |
-| `SERVICE_API_KEY_EUROUTER`             | EUrouter service key                                                            |
-| `OPENROUTER_BASE_URL`                  | OpenRouter origin (platform STT and OpenRouter platform path)                   |
-| `SERVICE_API_KEY_OPENROUTER`           | OpenRouter service key for platform STT and OpenRouter platform chat/embeddings |
-| `LLM_RULE_CHAT` / `LLM_RULE_EMBEDDING` | EUrouter routing rule UUIDs                                                     |
+| Variable                       | Purpose                                                                     |
+| ------------------------------ | --------------------------------------------------------------------------- |
+| `PLATFORM_LLM_BASE_URL`        | eigenInference endpoint (set by ee from the hosting)                        |
+| `PLATFORM_LLM_API_KEY`         | The company's eigenInference key (one key for every model slot)            |
+| `PLATFORM_LLM_MODEL_EMBEDDING` | The install's embedding model, pinned on the first embedding               |
+| `PLATFORM_LLM_MODEL_CHAT`      | Kept for the fleet protocol; not read (the chat slot decides)               |
+
+The self-hosted service accounts (`SERVICE_API_KEY_EUROUTER` with `LLM_BASE_URL`, `SERVICE_API_KEY_OPENROUTER` with `OPENROUTER_BASE_URL`) were removed in CB1: paste that key under Settings → AI provider → Advanced.
 
 ## User BYOK env fallbacks
 
-When no DB row exists under Settings → LLM → BYOK:
+When the owner saved no key under Settings → AI provider → Advanced:
 
 | Variable                                     | Provider                   |
 | -------------------------------------------- | -------------------------- |
@@ -96,8 +97,8 @@ Saved DB credentials always take priority over env for BYOK.
 
 ## Speech-to-text (dictation)
 
-- **Platform credits:** `SERVICE_API_KEY_OPENROUTER` + wallet debit via `withPlatformBilling`.
-- **BYOK:** User's saved OpenRouter config (or `OPENROUTER_*` env fallback only if unset).
+- **eigenInference:** the speech-to-text slot on `PLATFORM_LLM_*`.
+- **Own key:** the owner's saved OpenRouter key (or the `OPENROUTER_*` env fallback only if unset).
 
 ## RLS and database roles
 

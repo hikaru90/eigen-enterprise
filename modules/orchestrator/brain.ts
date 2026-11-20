@@ -60,9 +60,9 @@ export const ORCHESTRATOR_PRINCIPAL: {
 export const ORCHESTRATOR_AGENT_ID = ORCHESTRATOR_PRINCIPAL.id
 
 /**
- * Gateway billing/config identity for the orchestrator's LLM calls. The
- * llm-client resolves platform credentials for it (LLM_BASE_URL /
- * SERVICE_API_KEY_* env or the platform DB config).
+ * Gateway attribution identity for the orchestrator's LLM calls (usage and
+ * activity rows). Since CB1 the gateway resolves the company's model slots
+ * for every caller (src/lib/server/llm/slots.ts), this id included.
  */
 export const ORCHESTRATOR_LLM_USER_ID = 'orchestrator'
 

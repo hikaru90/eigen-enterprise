@@ -34,7 +34,12 @@ export const BOX_KEY = 'BOX_PRIVATE_KEY'
 export const FLEET_BACKUP_MARK = 'BACKUP_SET_BY_FLEET'
 /** Bearer token ee uses for os's loopback /api/fleet/seats; in the os workload's env. */
 export const LOCAL_TOKEN = 'EE_FLEET_LOCAL_TOKEN'
-/** The hosting's platform AI on os, under names that say what they are (os reads them as its platform path, never as BYOK); all or none. */
+/**
+ * The hosting's platform AI on os = eigenInference (CB1), under names that say what they are (os reads them as its
+ * eigenInference credential, never as BYOK); all or none. One key per company covers every model slot: chat,
+ * embeddings, speech to text, text to speech and decisions (os `src/lib/server/llm/platform-ai.ts` states the
+ * contract). os pins `_MODEL_EMBEDDING` as the install's embedding model and no longer reads `_MODEL_CHAT`.
+ */
 export const PLATFORM_AI_SECRETS = ['PLATFORM_LLM_BASE_URL', 'PLATFORM_LLM_API_KEY', 'PLATFORM_LLM_MODEL_CHAT', 'PLATFORM_LLM_MODEL_EMBEDDING'] as const
 /**
  * Where an older ee put the platform AI: os's self-hosted BYOK names, so os mistook it for the owner's own key.

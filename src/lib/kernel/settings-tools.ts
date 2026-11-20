@@ -45,9 +45,18 @@ const providerSchema = z.object({
   ruleEmbedding: z.string().nullable(),
 })
 
+/** The role slots a company picks a model for (embedding is fixed per install, not a setting). */
+export const AI_SLOTS = ['chat', 'stt', 'tts', 'decision'] as const
+
 const settingsViewSchema = z.object({
   company: z.object({ name: z.string().nullable(), hasLogo: z.boolean() }),
   ai: z.object({
+    /** Settings → AI: "Use eigenInference" (CB1). Off = the company's own key (the providers below). */
+    eigenInference: z.boolean(),
+    /** The model each choosable slot runs on (a pool model; pick null = the pool's pick). */
+    slots: z.array(z.object({ slot: z.enum(AI_SLOTS), model: z.string(), pick: z.string().nullable() })),
+    /** The install's embedding model, fixed per install (null until the first embedding pins it). */
+    embeddingModel: z.string().nullable(),
     activeProvider: z.string(),
     billing: z.enum(['byok', 'platform']),
     providers: z.array(providerSchema),
@@ -66,6 +75,8 @@ export const settingChangeSchema = z.discriminatedUnion('setting', [
     value: z.string().min(1),
   }),
   z.object({ setting: z.literal('ai_chat_routing_rule'), value: z.string().min(1) }),
+  z.object({ setting: z.literal('ai_use_eigen_inference'), value: z.boolean() }),
+  z.object({ setting: z.literal('ai_slot_model'), slot: z.enum(AI_SLOTS), value: z.string().min(1) }),
 ])
 export type SettingChange = z.infer<typeof settingChangeSchema>
 
@@ -78,11 +89,21 @@ const UPDATABLE: ReadonlyArray<{ setting: SettingChange['setting']; description:
   {
     setting: 'ai_chat_model',
     description:
-      'The chat model of a saved provider that routes by model name (not EUrouter): {provider, value: model name}.',
+      'The chat model of a saved provider outside the model pool (not EUrouter, not OpenRouter — OpenRouter runs ai_slot_model): {provider, value: model name}.',
   },
   {
     setting: 'ai_chat_routing_rule',
     description: 'The EUrouter chat routing rule id (EUrouter routes by rule, not model name).',
+  },
+  {
+    setting: 'ai_use_eigen_inference',
+    description:
+      'Settings → AI, "Use eigenInference": true = every model call runs on eigenInference; false = on the company’s own key.',
+  },
+  {
+    setting: 'ai_slot_model',
+    description:
+      'The model a role slot runs on: {slot: chat | stt | tts | decision, value: a model from the curated pool}. settings.get lists each slot; embedding is fixed per install.',
   },
 ]
 
@@ -150,6 +171,10 @@ function changeSentence(change: SettingChange): string {
       return `Set the chat model of ${change.provider} to ${change.value}`
     case 'ai_chat_routing_rule':
       return 'Set the EUrouter chat routing rule'
+    case 'ai_use_eigen_inference':
+      return change.value ? 'Switched the company to eigenInference' : 'Switched the company to its own AI key'
+    case 'ai_slot_model':
+      return `Set the ${change.slot} model to ${change.value}`
   }
 }
 

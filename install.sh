@@ -445,11 +445,12 @@ echo ""
 echo "Next steps:"
 echo "  1. Edit .env and set LLM credentials:"
 if [ "$BILLING" = platform ]; then
-	echo "     Platform credits — SERVICE_API_KEY_EUROUTER, LLM_BASE_URL,"
-	echo "     LLM_RULE_CHAT, LLM_RULE_EMBEDDING, and PayPal (PAYPAL_*)."
+	echo "     eigenInference — set by the hosting (PLATFORM_LLM_*), and PayPal (PAYPAL_*)."
+	echo "     Without it, the owner turns off \"Use eigenInference\" and adds the"
+	echo "     company's own key in Settings → AI provider → Advanced."
 else
 	echo "     BYOK — LLM_BASE_URL, LLM_API_KEY, LLM_RULE_CHAT, LLM_RULE_EMBEDDING"
-	echo "     (users configure keys in Settings → LLM → BYOK)."
+	echo "     (or the owner saves the company key in Settings → AI provider → Advanced)."
 fi
 echo "  2. docker compose up -d --build"
 echo "  3. Open ${ORIGIN} and sign in (or use ADMIN_* bootstrap if set)."

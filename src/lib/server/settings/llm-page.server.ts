@@ -1,6 +1,4 @@
 import type { Actions, RequestEvent } from '@sveltejs/kit'
-import { checkSpeechModelEndpoints } from '$lib/server/llm/speech-models'
-import { speechToTextReadiness } from '$lib/server/llm/speech-readiness'
 import { fail, redirect } from '@sveltejs/kit'
 import { and, eq } from 'drizzle-orm'
 import { isUserAdmin } from '$lib/server/auth/user-role'
@@ -10,10 +8,19 @@ import { llmProviderConfig, llmActiveProvider } from '$lib/server/db/schema'
 import { env } from '$lib/server/env/private-env'
 import { setActiveLlmProvider } from '$lib/server/llm/active-provider'
 import {
+  CompanyAiInputError,
+  readCompanyAiView,
+  setCompanySlotModel,
+  setCompanyUseEigenInference,
+} from '$lib/server/llm/company-ai-settings'
+import { companyOwnerId } from '$lib/server/llm/company-provider'
+import {
   providerLabel,
   saveProviderConfig,
   type LlmProviderId,
 } from '$lib/server/llm/save-provider-config'
+import { checkSpeechModelEndpoints, speechModels } from '$lib/server/llm/speech-models'
+import { speechToTextReadiness } from '$lib/server/llm/speech-readiness'
 import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
 
 export type { LlmProviderId } from '$lib/server/llm/save-provider-config'
@@ -39,7 +46,7 @@ export async function loadLlmSettingsPage(event: RequestEvent) {
   }
 
   const userId = event.locals.user.id
-  const isAdmin = await isUserAdmin(userId)
+  const [isAdmin, ownerId, ai] = await Promise.all([isUserAdmin(userId), companyOwnerId(), readCompanyAiView()])
 
   const [activeRow] = await getDb()
     .select({ provider: llmActiveProvider.provider })
@@ -79,17 +86,24 @@ export async function loadLlmSettingsPage(event: RequestEvent) {
     (openrouterRow?.baseUrl?.trim() && openrouterApiKey.trim()),
   )
 
-  const [dictation, speechModels] = await Promise.all([
+  const slotModel = (slot: 'stt' | 'tts') => ai.slots.find((s) => s.slot === slot)!.model
+  const [dictation, speechModelStatus] = await Promise.all([
     speechToTextReadiness(userId),
-    checkSpeechModelEndpoints(),
+    checkSpeechModelEndpoints({ models: speechModels({ stt: slotModel('stt'), tts: slotModel('tts') }) }),
   ])
 
   return {
     isAdmin,
+    /** Owners and admins switch eigenInference and pick the slot models (company settings). */
+    canManageAi: isAdmin,
+    /** The company's own keys live on the owner's account: only the owner manages them. */
+    isOwner: ownerId === userId,
+    /** Settings → AI (CB1): the switch, the slots, the install's embedding model. */
+    ai,
     byokConfigured,
     activeProvider,
     /** Speech always runs on OpenRouter: whether dictation can work, and each speech model's endpoints. */
-    speech: { dictation, models: speechModels },
+    speech: { dictation, models: speechModelStatus },
     providers: {
       eurouter: {
         configured: isProviderConfigured(eurouterRow),
@@ -97,21 +111,44 @@ export async function loadLlmSettingsPage(event: RequestEvent) {
         apiKey: eurouterApiKey,
         ruleChat: eurouterRow?.ruleChat ?? '',
         ruleEmbedding: eurouterRow?.ruleEmbedding ?? '',
-        modelChat: eurouterRow?.modelChat || env.LLM_MODEL_CHAT?.trim() || '',
-        modelEmbedding: eurouterRow?.modelEmbedding || env.LLM_MODEL_EMBEDDING?.trim() || '',
       },
       openrouter: {
         configured: isProviderConfigured(openrouterRow),
         baseUrl: openrouterRow?.baseUrl ?? '',
         apiKey: openrouterApiKey,
-        modelChat: openrouterRow?.modelChat || env.LLM_MODEL_CHAT?.trim() || '',
-        modelEmbedding: openrouterRow?.modelEmbedding || env.LLM_MODEL_EMBEDDING?.trim() || '',
       },
     },
   }
 }
 
 export const llmSettingsActions: Actions = {
+  setEigenInference: async (event) => {
+    if (!event.locals.user) return fail(401, { aiMessage: 'You must be signed in.' })
+    if (!(await isUserAdmin(event.locals.user.id))) {
+      return fail(403, { aiMessage: 'Only owners and admins change the company’s AI.' })
+    }
+    const on = (await event.request.formData()).get('on') === 'true'
+    await setCompanyUseEigenInference(on, event.locals.user.id)
+    return { aiMessage: on ? 'The company runs on eigenInference.' : 'The company runs on its own key.' }
+  },
+
+  setSlot: async (event) => {
+    if (!event.locals.user) return fail(401, { slotMessage: 'You must be signed in.' })
+    if (!(await isUserAdmin(event.locals.user.id))) {
+      return fail(403, { slotMessage: 'Only owners and admins choose the company’s models.' })
+    }
+    const formData = await event.request.formData()
+    const slot = formData.get('slot')?.toString() ?? ''
+    const model = formData.get('model')?.toString() ?? ''
+    try {
+      await setCompanySlotModel(slot, model, event.locals.user.id)
+      return { slotMessage: `Saved: ${model}.` }
+    } catch (error) {
+      if (error instanceof CompanyAiInputError) return fail(400, { slotMessage: error.message })
+      throw error
+    }
+  },
+
   saveLlmConfig: async (event) => {
     if (!event.locals.user) {
       return fail(401, { llmMessage: 'You must be signed in.' })
@@ -126,12 +163,11 @@ export const llmSettingsActions: Actions = {
     const apiKey = formData.get('apiKey')?.toString().trim() ?? ''
     const ruleChat = formData.get('ruleChat')?.toString().trim() || null
     const ruleEmbedding = formData.get('ruleEmbedding')?.toString().trim() || null
-    const modelChat = formData.get('modelChat')?.toString().trim() || null
-    const modelEmbedding = formData.get('modelEmbedding')?.toString().trim() || null
     const setActive = formData.get('setActive') !== 'false'
 
     try {
-      // Single persistence path shared with the onboarding provider step.
+      // Single persistence path shared with the onboarding provider step. No model fields:
+      // the models are the company's slots (CB1); a key's stored models are left as they are.
       await saveProviderConfig({
         userId: event.locals.user.id,
         provider: provider as LlmProviderId,
@@ -139,8 +175,6 @@ export const llmSettingsActions: Actions = {
         apiKey,
         ruleChat,
         ruleEmbedding,
-        modelChat,
-        modelEmbedding,
         setActive,
       })
       return { llmMessage: `${providerLabel(provider as LlmProviderId)} saved.` }
@@ -189,25 +223,24 @@ export const llmSettingsActions: Actions = {
     }
 
     const formData = await event.request.formData()
-    const modelChat = formData.get('modelChat')?.toString().trim() || null
-    const modelEmbedding = formData.get('modelEmbedding')?.toString().trim() || null
     const ruleChat = formData.get('ruleChat')?.toString().trim() || null
     const ruleEmbedding = formData.get('ruleEmbedding')?.toString().trim() || null
     const provider = formData.get('provider')?.toString().trim() || 'eurouter'
 
-    if (provider !== 'eurouter' && provider !== 'openrouter') {
+    // CB1: models are the company's slots (setSlot); only EUrouter keeps its routing rules here.
+    if (provider === 'openrouter') {
+      return fail(400, {
+        modelMessage: 'OpenRouter runs the company’s models: choose them under Models (Settings → AI provider).',
+      })
+    }
+    if (provider !== 'eurouter') {
       return fail(400, { modelMessage: 'Invalid provider.' })
     }
 
     try {
       const db = getDb()
       const userId = event.locals.user.id
-
-      // For EUrouter, use routing rules; for OpenRouter, use model names
-      const isEurouter = provider === 'eurouter'
-      const updateData = isEurouter
-        ? { ruleChat, ruleEmbedding, updatedAt: new Date() }
-        : { modelChat, modelEmbedding, updatedAt: new Date() }
+      const updateData = { ruleChat, ruleEmbedding, updatedAt: new Date() }
 
       // Update or insert provider config
       const existing = await db
@@ -229,14 +262,8 @@ export const llmSettingsActions: Actions = {
           .values({
             userId,
             provider,
-            baseUrl:
-              provider === 'openrouter'
-                ? env.OPENROUTER_BASE_URL?.trim() || 'https://openrouter.ai/api/v1'
-                : env.LLM_BASE_URL?.trim() || 'https://api.eurouter.ai/v1',
-            apiKey:
-              provider === 'openrouter'
-                ? env.OPENROUTER_API_KEY?.trim() || 'placeholder'
-                : env.LLM_API_KEY?.trim() || 'placeholder',
+            baseUrl: env.LLM_BASE_URL?.trim() || 'https://api.eurouter.ai/v1',
+            apiKey: env.LLM_API_KEY?.trim() || 'placeholder',
             ...updateData,
           })
           .onConflictDoUpdate({

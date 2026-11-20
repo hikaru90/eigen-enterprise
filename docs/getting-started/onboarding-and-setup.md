@@ -96,8 +96,8 @@ Create only the accounts that match how you want billing and auth to work.
 
 | Account                                              | When you need it                                         | What it is used for                                                                                                                                    |
 | ---------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **[EUrouter](https://eurouter.ai)**                  | Platform credits and/or EUrouter BYOK                    | Gateway for chat + embeddings via routing rules (`LLM_BASE_URL`, `SERVICE_API_KEY_EUROUTER`, `LLM_RULE_CHAT`, `LLM_RULE_EMBEDDING`).                   |
-| **[OpenRouter](https://openrouter.ai)**              | Platform credits, OpenRouter BYOK, and/or speech-to-text | Gateway for chat, embeddings, and dictation STT (`OPENROUTER_BASE_URL`, `SERVICE_API_KEY_OPENROUTER` or `OPENROUTER_API_KEY`, optional `LLM_MODEL_*`). |
+| **[OpenRouter](https://openrouter.ai)**              | The company's own key (eigenInference off)               | Every model slot: chat, embeddings, speech to text, text to speech, decisions. Pasted by the owner in Settings → AI provider → Advanced.               |
+| **[EUrouter](https://eurouter.ai)**                  | Optional: the company's own EUrouter key                 | Chat + embeddings via routing rules (Settings → AI provider → Advanced, or `LLM_BASE_URL` + `LLM_API_KEY` + `LLM_RULE_*`). Speech still needs OpenRouter. |
 | **[PayPal Developer](https://developer.paypal.com)** | Wallet top-ups (platform credits)                        | In-app credit purchases (`PAYPAL_API_BASE`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`). Omit if all users will use BYOK only.                         |
 | **Google Cloud OAuth client**                        | Optional social sign-in                                  | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — callback `{ORIGIN}/api/auth/callback/google`.                                                             |
 | **GitHub OAuth app**                                 | Optional social sign-in                                  | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` — callback `{ORIGIN}/api/auth/callback/github`.                                                             |
@@ -119,37 +119,25 @@ Copy [`.env.example`](./.env.example) to `.env` and set values before `docker co
 | `DATABASE_URL`       | App connection string                            | Compose default: `postgres://eigen:eigen@db:5432/eigen`                                                 |
 | `DATABASE_ADMIN_URL` | Migrations, RLS, pg_cron                         | Same superuser URL as above for self-hosted                                                             |
 
-#### Required for LLM — at least one billing path must work
+#### AI — a box needs no AI env of its own (CB1)
 
-**Option A — Platform credits (Eigen wallet, default user billing mode)**
+Settings → AI provider has one switch, **Use eigenInference**, and the role slots (chat, speech to text, text to speech, decisions) picked from the curated pool (`src/lib/server/llm/model-pool.ts`); the embedding model is fixed per install.
 
-Users top up via PayPal; the app calls your service-account gateway keys.
+**eigenInference on (default):** every call runs on eigenInference. On a hosted box ee sets `PLATFORM_LLM_BASE_URL`, `PLATFORM_LLM_API_KEY`, `PLATFORM_LLM_MODEL_CHAT`, `PLATFORM_LLM_MODEL_EMBEDDING` from the hosting (all four or none). A self-hosted box without them shows "eigenInference is not connected on this server" until the owner turns the switch off and adds the company's own key.
 
-| Variable                     | Purpose                                                                           |
-| ---------------------------- | --------------------------------------------------------------------------------- |
-| `SERVICE_API_KEY_EUROUTER`   | EUrouter service key (platform billing)                                           |
-| `LLM_BASE_URL`               | EUrouter API origin (no trailing slash), e.g. `https://api.eurouter.ai/v1`        |
-| `LLM_RULE_CHAT`              | EUrouter routing rule UUID for chat                                               |
-| `LLM_RULE_EMBEDDING`         | EUrouter routing rule UUID for embeddings                                         |
-| `SERVICE_API_KEY_OPENROUTER` | OpenRouter service key (if using OpenRouter as platform provider)                 |
-| `OPENROUTER_BASE_URL`        | OpenRouter API origin, e.g. `https://openrouter.ai/api/v1`                        |
-| `PAYPAL_API_BASE`            | `https://api-m.sandbox.paypal.com` (sandbox) or `https://api-m.paypal.com` (live) |
-| `PAYPAL_CLIENT_ID`           | PayPal REST app client ID                                                         |
-| `PAYPAL_CLIENT_SECRET`       | PayPal REST app secret                                                            |
-
-**Option B — BYOK only (users supply keys in Settings → LLM → BYOK)**
-
-You may still set env fallbacks used when a user has not saved keys in the database:
+**eigenInference off:** the company's own key, saved by the owner under Settings → AI provider → Advanced. Optional deployment-wide fallbacks, read only when the owner saved none:
 
 | Variable                               | Purpose                     |
 | -------------------------------------- | --------------------------- |
+| `OPENROUTER_BASE_URL`                  | OpenRouter base URL         |
+| `OPENROUTER_API_KEY`                   | OpenRouter API key fallback |
 | `LLM_BASE_URL`                         | EUrouter base URL           |
 | `LLM_API_KEY`                          | EUrouter API key fallback   |
 | `LLM_RULE_CHAT` / `LLM_RULE_EMBEDDING` | EUrouter rule UUIDs         |
-| `OPENROUTER_BASE_URL`                  | OpenRouter base URL         |
-| `OPENROUTER_API_KEY`                   | OpenRouter API key fallback |
 
-Users on BYOK must configure credentials in the UI (or rely on these env fallbacks) and set billing mode to **Bring your own key** in Settings.
+**Removed in CB1:** the self-hosted service accounts `SERVICE_API_KEY_EUROUTER` (with `LLM_BASE_URL`) and `SERVICE_API_KEY_OPENROUTER` (with `OPENROUTER_BASE_URL`). A server that used them: turn off "Use eigenInference" and paste the same key under Advanced (OpenRouter; or EUrouter with its rule UUIDs).
+
+PayPal (`PAYPAL_API_BASE`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`) is only for wallet top-ups.
 
 #### Recommended for production
 
@@ -218,7 +206,7 @@ Direct them to:
 | --------------------------------------------------- | ------------------------- | ---------------------- | ---------------------- |
 | Docker / Postgres / AGE                             | Eigen                     | You                    | —                      |
 | `BETTER_AUTH_SECRET`, `TENANT_MASTER_KEY`, `ORIGIN` | Eigen                     | You                    | —                      |
-| Service gateway keys (`SERVICE_API_KEY_*`)          | Eigen                     | You                    | —                      |
+| eigenInference (`PLATFORM_LLM_*`)                   | Eigen (hosting)           | — (or own key in Settings) | —                  |
 | PayPal (wallet top-ups)                             | Eigen (if offered)        | You (optional)         | Pays via PayPal UI     |
 | Personal LLM keys                                   | Only if switching to BYOK | —                      | BYOK tab in Settings   |
 | Welcome tour                                        | Yes                       | —                      | Yes                    |
