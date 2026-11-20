@@ -2,6 +2,25 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-20 — Office files are editable: P2/D2/S2 merged (PDF organise, Word editing, PowerPoint editing)
+
+- **What shipped** — milestone 2 of all three office streams ([`plan/phase-office-files.md`](phase-office-files.md) §4), per the handoff in `plan/office-files-handoff.md`:
+  - **PDF P2 "Organise pages":** rotate, delete, drag-reorder, insert blank / pages from another Drive PDF, extract to a new file, split — staged with undo in a page grid, saved as ONE revision through the office edit session (W-6 lock, takeover, stale-version guard, visible warnings). Agent tools `drive.pdf_rotate / delete_pages / reorder / extract_pages / split / merge`, access-checked through the Drive service. Branch `1d9a9b81`, merged `6ee906b8`.
+  - **Word D2 editing:** ProseMirror schema mapped to and from WordprocessingML; bold/italic/styles/lists/tables/images/links; undo/redo; lossless round-trip (untouched XML byte-identical — including tables whose rows have no cells, which are kept, not rewritten); autosave under the edit lock (one revision per session), lock-lost banner with takeover. Branch `51d82c04`, merged `af3cb427`.
+  - **PowerPoint S2 slide editing:** in-place text editing, move/resize/rotate with handles, arrange, insert text box/picture, slide rail operations (add from layout, duplicate, hide, reorder, delete), notes, exact undo via inverse ops; untouched slides stay byte-identical. Branch `40cfcf26`, merged `a91f7419`.
+  - Orchestrator wiring: the file page passes `folderId={data.file.parentId}` so PDF extract/split land next to the file (`10e83d71`); e2e editing journeys (`fce8594b`); `OfficeViewerProps` gained optional `folderId` (omitted = those actions stay off, never guess).
+- **Announcements (required by the handoff):**
+  - **Office files are now editable in the Drive** — all three formats view AND edit, every save a revision, download unchanged.
+  - **The Word editor uses a flowing page-width "Edit" layout; pages exist only in view mode** (no live pagination while editing). This was a taken decision, not a silent choice.
+- **Decisions:**
+  - `d5dd7275`: vite `optimizeDeps.include` pre-bundles the office dep set (the 63 lucide icons + pdf-lib, pdfjs-dist, prosemirror-\*, @xmldom/xmldom, fflate used by the office code). The viewers load lazily from the file page, so every late-discovered dep re-ran dep optimization and **reloaded the page mid-interaction** in dev/e2e — the first editing-journey run failed exactly there ("optimized dependencies changed. reloading" wiped the clicked state). Dev-server-only; builds unaffected.
+- **What broke / was found (both pre-existing, verified at `c5e83a2f` before the merges):**
+  - The office e2e journeys were already red on main: the test DB's `repo_sources` lacked `doc_shas` — migration `0134_repos.sql` had been applied to the test DB from a repos-worktree state older than the committed file (applied-vs-committed drift; `db:migrate` can't see it). Fixed the test DB to the committed end state (`ALTER TABLE repo_sources ADD COLUMN doc_shas jsonb DEFAULT '{}' NOT NULL`). Fresh databases are unaffected; worth a general "never edit an applied migration" reminder to every stream.
+  - A colleague session landed `1d2376e3` (MCP strict projection) and `51f511e7` on main during this work; `51f511e7` also fixed a gap my P2 merge introduced (the six `drive.pdf_*` tools missing from `boot.wiring.spec.ts`'s member reach).
+- **Tests:** full gate `npm run ci:local` green after the merges, and green again on `d5dd7275` (which includes the colleague's two commits). e2e in an isolated checkout: `drive.e2e.ts` and both `drive-office.e2e.ts` journeys green, including the new editing journey (organise a PDF page → save → reopen changed → revision; edit a Word paragraph; edit a slide title — each format).
+- **Worktrees:** the three stream worktrees and their branches pruned after merging; e2e scratchpads (`ee-e2e-iso`, `ee-e2e-bisect`) removed.
+- **Next:** owner decides push + release (`npm run push -- origin main`, then `scripts/release.sh arm64 && ee/e2e/box.sh install os.ee.localhost`). Milestone 3 (PDF annotate & forms, Word comments & tracked changes, PowerPoint comments, PDF export, co-editing) waits for the owner's go-ahead per the plan.
+
 ## 2026-11-20 — Main green again: M0 contract implementers completed, member reach lists the pdf tools (owner: "commit and push, fix the error")
 
 - **Why:** the CI gate (lint → naming → check → unit → components) was red on main, so nothing could push. Three workstreams had landed without it (the gate only runs on `npm run push`):
