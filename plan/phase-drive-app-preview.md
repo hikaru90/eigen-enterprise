@@ -93,3 +93,84 @@ Drive folder page ◀── status (installing · starting · running · failed 
   libraries outside the catalog fail with their own log.
 - **Dev servers that ignore `HOST`** and bind 0.0.0.0 are still unreachable from outside: the unit
   has no host ports, and the firewall stays shut.
+
+## Contract between ee and the kernel (fixed 2026-11-20, both streams build against it)
+
+**Preview id:** `pv` + the first 12 hex characters of sha256(Drive folder id), e.g. `pv3f9a0c12be47`
+(regex `^pv[0-9a-f]{12}$`). It's stable per folder, so restarts keep the same host and certificate
+(Let's Encrypt rate limits). The kernel computes it, and ee only validates it.
+
+**Host:** `<id>.preview.<console host>` (e.g. `pv3f9a0c12be47.preview.os.example.com`). On a
+`.localhost`/`.test` console host, Caddy's internal issuer covers it, as for the console today.
+
+**Snapshot hand-off:** the kernel writes a gzip tarball of the folder (paths relative to the folder
+root, regular files only, without `node_modules/` and `.git/`, at most 200 MB unpacked and 20,000
+files) to `$EE_STATE_DIR/previews/<id>-<unix ms>.tar.gz`. On the box `$EE_STATE_DIR` is
+`/var/lib/ee-state/os` (`PATHS.osState`). ee accepts a tarball only under
+`${PATHS.osState}/previews/`, checks its sha256, copies it into its own dir and deletes the
+kernel's copy.
+
+**Control API (ee/src/daemon.ts, JSON, like every verb):**
+
+| Verb | Body | Answer |
+|---|---|---|
+| `POST /v1/previews` | `{ id, tarball, sha256, folderName, author }` | `202 { preview }`. `409 urn:ee:preview_busy { running: PreviewView }` when another id is active (not stopped/failed). Same id: restart (stop, then start from the new tarball). |
+| `GET /v1/previews` | — | `200 { previews: PreviewView[] }` |
+| `GET /v1/previews/:id` | — | `200 { preview }`, `404` unknown |
+| `POST /v1/previews/:id/seen` | `{}` | `200 { preview }`. Resets the idle clock (the Drive calls it while someone has the preview open). |
+| `DELETE /v1/previews/:id` | `{ author }` | `200 { preview }` (state `stopped`), and its files are removed |
+
+```ts
+type PreviewState = 'installing' | 'starting' | 'running' | 'failed' | 'stopped'
+type PreviewView = {
+  id: string                 // pv…
+  folderName: string         // for "another preview is running: <name>"
+  state: PreviewState
+  host: string               // <id>.preview.<console host>
+  url: string                // https://<host>/
+  script: 'dev' | 'start' | null   // null until package.json was read
+  startedAt: string          // ISO
+  lastSeenAt: string         // ISO
+  error: string | null       // why it failed / stopped (e.g. "idle for 30 minutes", "no lockfile")
+  log: string[]              // last 200 lines: install + dev server output
+}
+```
+
+**ee behaviour:**
+- **Install:** `npm ci` (or `pnpm install --frozen-lockfile` / `yarn install --immutable` through
+  corepack, picked by which lockfile is present), in a capped transient unit like the build unit.
+  It runs as user `ee-preview` with network on, MemoryMax 1 GB and 15 minutes at most. No lockfile
+  → `failed`, "add a lockfile (package-lock.json, pnpm-lock.yaml or yarn.lock)".
+- **Run:** the `dev` script, else `start`, else `failed` ("package.json has no dev or start
+  script"). It runs as transient unit `ee-preview-<id>` with user `ee-preview`, NoNewPrivileges,
+  ProtectSystem=strict, ProtectHome, PrivateTmp, PrivateDevices, ReadWritePaths = its own dir only,
+  and MemoryMax 1 GB. The env is `PORT=<free port 41000–41999>`, `HOST=127.0.0.1`,
+  `NODE_ENV=development` and the catalog Node 22 on PATH: no company env, secrets, DB or kernel
+  socket.
+- **Port watch:** within 5 minutes, ee finds the TCP port a process of the unit's cgroup listens
+  on (cgroup.procs ∩ `ss -ltnpH`). The first one wins, and preferably 127.0.0.1. If none appears,
+  the preview is `failed` with the log.
+- **Caddy:** route `<host>` → `reverse_proxy 127.0.0.1:<port>`, with `Host` rewritten to
+  `localhost:<port>` and websockets passed through. The route lives in memory, not in the company
+  repo: `caddy.ts` renders the active previews alongside the desired routes.
+- **Stop:** on DELETE, after 30 minutes since `lastSeenAt` (checked every minute), and on ee start
+  (every leftover `ee-preview-*` unit is stopped and the preview dirs are wiped). Previews are never
+  restored after a restart.
+- **Journal:** `preview.started`, `preview.running`, `preview.failed` and `preview.stopped`, each
+  with the author when known.
+
+**Kernel (P2):**
+- **Actions:** `drive.app_status {folder_id}` (read; any role that can view the folder; also
+  returns `webApp`); `drive.app_run {folder_id}` (human-only and admin-only, like a deploy:
+  snapshot → `POST /v1/previews`); `drive.app_stop {folder_id}` (human-only, admin-only).
+- **Detection, `webApp`:** `{ script: 'dev'|'start', lockfile: string|null } | null`, from the
+  folder's own `package.json` (top level only): valid JSON with `scripts.dev` or `scripts.start`.
+  It's a file fact. `lockfile: null` is shown as a reason Run will fail, so Run isn't silently
+  hidden.
+- **Folder page:** admins see **Run app** when `webApp` is set. Once it's started, a panel shows
+  state, the log tail, **Stop**, **Restart**, **Open in new tab** and a frame on `url` (sandbox
+  `allow-scripts allow-same-origin allow-forms allow-popups`: it's its own origin, so same-origin
+  is its own, not the OS's). While the panel is open, the page polls `drive.app_status` (which
+  calls `/seen`) every 5 s while installing/starting and every 30 s while running.
+- **Without ee** (`SubstrateUnavailableError`), Run fails loud: "Running apps needs the
+  eigenEnterprise server (ee)". Never a fake success.
