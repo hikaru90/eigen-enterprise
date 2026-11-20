@@ -100,3 +100,105 @@ test('Drive: PDF, Word and PowerPoint open in their own viewers and read as text
 
   await ctx.close()
 })
+
+test('Drive: PDF, Word and PowerPoint edits save, reopen changed, and keep a revision', async ({ browser }) => {
+  test.setTimeout(240_000)
+  const stamp = Date.now()
+  const names = { pdf: `organise-${stamp}.pdf`, docx: `minutes-${stamp}.docx`, pptx: `deck-${stamp}.pptx` }
+  const ctx = await browser.newContext()
+  const page = await ctx.newPage()
+  const { email } = await registerUser(ctx, page, { emailDomain: 'test.eigen' })
+  const rows = await sql()`update "user" set role = 'admin', name = 'Ed Owner', account_kind = 'production', onboarding_completed = true where email = ${email} returning id`
+  expect(rows).toHaveLength(1)
+  await completeProfileViaApi(page, profileNames('Ed Owner'))
+
+  const pdf = await makePdf([{ lines: ['Revenue grew in the third quarter'] }, { lines: ['Next steps'] }], { title: 'Quarterly brief' })
+  const docx = buildDocx({ body: p(r('Dear team, the office viewers are live.')) + sectPr() })
+  const pptx = buildPptx({
+    slides: [{ shapes: sp({ id: 2, name: 'Title', ph: '<p:ph type="title"/>', xfrm: xfrm(457200, 457200, 8229600, 1143000), body: para('Our pitch') }) }],
+  })
+
+  await gotoHydrated(page, '/drive')
+  await page.getByTestId('drive-upload-input').setInputFiles([
+    { name: names.pdf, mimeType: 'application/pdf', buffer: Buffer.from(pdf) },
+    { name: names.docx, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from(docx) },
+    { name: names.pptx, mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', buffer: Buffer.from(pptx) },
+  ])
+  await expect(page.getByTestId('drive-notice')).toHaveText('Uploaded 3 files.')
+
+  const revisions = async (id: string) => {
+    const res = await page.request.get(`/api/drive/files/${id}/revisions`)
+    expect(res.status()).toBe(200)
+    return (((await res.json()) as { revisions: Array<{ id: string }> }).revisions).length
+  }
+  const text = async (id: string) => {
+    const res = await page.request.get(`/api/drive/files/${id}/text`)
+    expect(res.status()).toBe(200)
+    return ((await res.json()) as { content: string }).content
+  }
+
+  // PDF: organise — delete the first page, save (one revision), reopen with one page left.
+  await row(page, names.pdf).getByTestId('drive-open').click()
+  await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-status', 'ready')
+  await expect(page.getByTestId('pdf-page-count')).toHaveText('of 2')
+  const pdfId = page.url().split('/').pop()!
+  await page.getByTestId('pdf-organise').click()
+  await expect(page.getByTestId('pdf-org-page')).toHaveCount(2)
+  await page.getByTestId('pdf-org-page').first().click()
+  await page.getByTestId('pdf-org-delete').click()
+  await expect(page.getByTestId('pdf-org-page')).toHaveCount(1)
+  await page.getByTestId('pdf-org-save').click()
+  // Saving closes the organiser; the viewer reopens the new bytes itself.
+  await expect(page.getByTestId('pdf-organiser')).toHaveCount(0)
+  await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-status', 'ready')
+  await expect(page.getByTestId('pdf-page-count')).toHaveText('of 1')
+  await page.screenshot({ path: `${SHOTS}/04-pdf-organised.png`, fullPage: true })
+  expect(await revisions(pdfId)).toBe(2)
+  expect(await text(pdfId)).not.toContain('Revenue grew')
+  expect(await text(pdfId)).toContain('Next steps')
+  await gotoHydrated(page, `/drive/file/${pdfId}`)
+  await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-status', 'ready')
+  await expect(page.getByTestId('pdf-page-count')).toHaveText('of 1')
+
+  // Word: edit the paragraph in the flowing Edit layout; the autosave writes one revision.
+  await page.goBack()
+  await row(page, names.docx).getByTestId('drive-open').click()
+  await expect(page.getByTestId('docx-viewer')).toContainText('Dear team, the office viewers are live.')
+  const docxId = page.url().split('/').pop()!
+  await page.getByTestId('docx-edit').click()
+  const surface = page.locator('.docx-edit-surface')
+  await expect(surface).toBeVisible()
+  // A triple click selects the paragraph; typing replaces it.
+  await surface.click({ clickCount: 3 })
+  await page.keyboard.type('Dear team, the office viewers are live. Now they edit.')
+  await expect(page.getByTestId('docx-save-state')).toHaveAttribute('data-status', 'saved', { timeout: 30_000 })
+  await page.screenshot({ path: `${SHOTS}/05-docx-editing.png`, fullPage: true })
+  await page.getByTestId('docx-done').click()
+  await expect(page.getByTestId('docx-viewer')).toContainText('Now they edit.')
+  expect(await revisions(docxId)).toBe(2)
+  expect(await text(docxId)).toContain('Now they edit.')
+  await gotoHydrated(page, `/drive/file/${docxId}`)
+  await expect(page.getByTestId('docx-viewer')).toContainText('Now they edit.')
+
+  // PowerPoint: double-click the title, type, Escape; the autosave writes one revision.
+  await page.goBack()
+  await row(page, names.pptx).getByTestId('drive-open').click()
+  await expect(page.getByTestId('pptx-slide').first()).toContainText('Our pitch')
+  const pptxId = page.url().split('/').pop()!
+  await page.getByTestId('pptx-edit').click()
+  await page.locator('[data-testid="pptx-hit"][aria-label="Title"]').dblclick()
+  const titleEditor = page.getByTestId('pptx-text-editor')
+  await expect(titleEditor).toHaveAttribute('contenteditable', 'true')
+  await page.keyboard.type(' — edited')
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('pptx-save-state')).toHaveAttribute('data-status', 'saved', { timeout: 30_000 })
+  await page.screenshot({ path: `${SHOTS}/06-pptx-edited.png`, fullPage: true })
+  await page.getByTestId('pptx-done').click()
+  await expect(page.getByTestId('pptx-slide').first()).toContainText('Our pitch — edited')
+  expect(await revisions(pptxId)).toBe(2)
+  expect(await text(pptxId)).toContain('Our pitch — edited')
+  await gotoHydrated(page, `/drive/file/${pptxId}`)
+  await expect(page.getByTestId('pptx-slide').first()).toContainText('Our pitch — edited')
+
+  await ctx.close()
+})
