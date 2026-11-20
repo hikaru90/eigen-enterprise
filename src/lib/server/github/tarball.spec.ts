@@ -1,8 +1,8 @@
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createGitHubTokenClient, type GitHubTokenConfig } from './token'
+import { createGitHubTokenClient, sweepTarballs, type GitHubTokenConfig } from './token'
 import { API, rateHeaders } from './token-fixtures'
 
 const TOKEN = 'github_pat_11ABCDEFG0123456789_secretsecretsecretsecret'
@@ -36,8 +36,18 @@ describe('GitHubTokenClient.tarball', () => {
       token: TOKEN,
       fetch: (async () => new Response(null, { status: 500 })) as typeof fetch,
       timeoutMs: 1000,
+      tarballTimeoutMs: 1000,
+      tarballMaxBytes: 1000,
     }
     expect(() => createGitHubTokenClient(config as GitHubTokenConfig)).toThrow(/tarballDir/)
+  })
+
+  it('requires an explicit download timeout and size cap', async () => {
+    const base = { token: TOKEN, fetch: (async () => new Response(null)) as typeof fetch, timeoutMs: 1000, tarballDir: '/tmp' }
+    expect(() => createGitHubTokenClient({ ...base, tarballMaxBytes: 1 } as GitHubTokenConfig)).toThrow(/tarballTimeoutMs/)
+    expect(() => createGitHubTokenClient({ ...base, tarballTimeoutMs: 1 } as GitHubTokenConfig)).toThrow(/tarballMaxBytes/)
+    expect(() => createGitHubTokenClient({ ...base, tarballTimeoutMs: 0, tarballMaxBytes: 1 })).toThrow(/tarballTimeoutMs/)
+    expect(() => createGitHubTokenClient({ ...base, tarballTimeoutMs: 1, tarballMaxBytes: -1 })).toThrow(/tarballMaxBytes/)
   })
 
   it('manually follows one GET 302 to codeload, streams a unique file, and counts only the API budget response', async () => {
@@ -62,7 +72,7 @@ describe('GitHubTokenClient.tarball', () => {
       }
       throw new Error(`unexpected URL ${url}`)
     }) as typeof fetch
-    const gh = createGitHubTokenClient({ token: TOKEN, fetch, timeoutMs: 1000, tarballDir: dir })
+    const gh = createGitHubTokenClient({ token: TOKEN, fetch, timeoutMs: 1000, tarballDir: dir, tarballTimeoutMs: 1000, tarballMaxBytes: 1024 * 1024 })
 
     const first = await gh.tarball('octo-org/repo-1', SHA)
     const second = await gh.tarball('octo-org/repo-1', SHA)
@@ -98,7 +108,7 @@ describe('GitHubTokenClient.tarball', () => {
         headers: { location: 'https://evil.example/archive', ...rateHeaders() },
       })
     }) as typeof fetch
-    const gh = createGitHubTokenClient({ token: TOKEN, fetch, timeoutMs: 1000, tarballDir: dir })
+    const gh = createGitHubTokenClient({ token: TOKEN, fetch, timeoutMs: 1000, tarballDir: dir, tarballTimeoutMs: 1000, tarballMaxBytes: 1024 * 1024 })
 
     await expect(gh.tarball('octo-org/repo-1', SHA)).rejects.toThrow(/codeload/)
     expect(calls).toEqual([`${API}${API_PATH}`])
@@ -119,7 +129,7 @@ describe('GitHubTokenClient.tarball', () => {
       })
       return new Response(body, { status: 200 })
     }) as typeof fetch
-    const gh = createGitHubTokenClient({ token: TOKEN, fetch, timeoutMs: 1000, tarballDir: dir })
+    const gh = createGitHubTokenClient({ token: TOKEN, fetch, timeoutMs: 1000, tarballDir: dir, tarballTimeoutMs: 1000, tarballMaxBytes: 1024 * 1024 })
 
     const error = await gh.tarball('octo-org/repo-1', SHA).catch((err: unknown) => err)
     expect(error).toMatchObject({ kind: 'unavailable', path: API_PATH })
@@ -135,7 +145,7 @@ describe('GitHubTokenClient.tarball', () => {
         status: 403,
         headers: { 'retry-after': '30', ...rateHeaders(0) },
       })) as typeof fetch
-    const gh = createGitHubTokenClient({ token: TOKEN, fetch, timeoutMs: 1000, tarballDir: dir })
+    const gh = createGitHubTokenClient({ token: TOKEN, fetch, timeoutMs: 1000, tarballDir: dir, tarballTimeoutMs: 1000, tarballMaxBytes: 1024 * 1024 })
 
     const error = await gh.tarball('octo-org/repo-1', SHA).catch((err: unknown) => err)
     expect(error).toMatchObject({ kind: 'rate_limited', status: 403, path: API_PATH })
@@ -143,4 +153,180 @@ describe('GitHubTokenClient.tarball', () => {
     expect(String((error as Error).cause)).not.toContain(TOKEN)
     expect(await readdir(dir)).toEqual([])
   })
+
+  it('names the temp file github-tarball-<uuid>.tar.gz', async () => {
+    const dir = await directory()
+    const gh = client(dir, codeload(() => bytes(Uint8Array.from([1]))))
+    const file = await gh.tarball('octo-org/repo-1', SHA)
+    expect(file).toMatch(new RegExp(`^${dir}/github-tarball-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.tar\\.gz$`))
+  })
+
+  it('follows a 307 exactly like a 302', async () => {
+    const dir = await directory()
+    const calls: string[] = []
+    const gh = client(dir, codeload(() => bytes(Uint8Array.from([9, 8, 7])), 307, calls))
+    const file = await gh.tarball('octo-org/repo-1', SHA)
+    expect(new Uint8Array(await readFile(file))).toEqual(Uint8Array.from([9, 8, 7]))
+    expect(calls).toEqual([`${API}${API_PATH}`, CODELOAD])
+  })
+
+  it.each([
+    ['missing', undefined],
+    ['malformed', 'not a url'],
+  ])('fails loud on a %s Location header', async (_, location) => {
+    const dir = await directory()
+    const fetch = (async () =>
+      new Response(null, {
+        status: 302,
+        headers: { ...(location ? { location } : {}), ...rateHeaders() },
+      })) as typeof fetch
+    const gh = client(dir, fetch)
+    const error = await gh.tarball('octo-org/repo-1', SHA).catch((err: unknown) => err)
+    expect(error).toMatchObject({ kind: 'unavailable', status: 302, path: API_PATH })
+    expect((error as Error).message).toMatch(/Location/)
+    expect(await readdir(dir)).toEqual([])
+  })
+
+  it('fails loud when codeload answers non-200', async () => {
+    const dir = await directory()
+    const gh = client(dir, codeload(() => new Response('boom', { status: 502 })))
+    const error = await gh.tarball('octo-org/repo-1', SHA).catch((err: unknown) => err)
+    expect(error).toMatchObject({ kind: 'unavailable', status: 502, path: API_PATH })
+    expect(await readdir(dir)).toEqual([])
+  })
+
+  it('does not follow a redirect from codeload', async () => {
+    const dir = await directory()
+    const calls: string[] = []
+    const gh = client(
+      dir,
+      codeload(() => new Response(null, { status: 302, headers: { location: `${CODELOAD}?again` } }), 302, calls),
+    )
+    const error = await gh.tarball('octo-org/repo-1', SHA).catch((err: unknown) => err)
+    expect(error).toMatchObject({ kind: 'unavailable', status: 302, path: API_PATH })
+    expect(calls).toEqual([`${API}${API_PATH}`, CODELOAD])
+    expect(await readdir(dir)).toEqual([])
+  })
+
+  it('times the download with tarballTimeoutMs, not timeoutMs: a slow but finishing stream succeeds', async () => {
+    const dir = await directory()
+    const slow = () =>
+      new ReadableStream<Uint8Array>({
+        async start(controller) {
+          for (let i = 0; i < 4; i++) {
+            await new Promise((r) => setTimeout(r, 15))
+            controller.enqueue(Uint8Array.from([i]))
+          }
+          controller.close()
+        },
+      })
+    const gh = client(dir, codeload(() => new Response(slow(), { status: 200 })), { timeoutMs: 20, tarballTimeoutMs: 2000 })
+    const file = await gh.tarball('octo-org/repo-1', SHA)
+    expect(new Uint8Array(await readFile(file))).toEqual(Uint8Array.from([0, 1, 2, 3]))
+  })
+
+  it('aborts a download that outlives tarballTimeoutMs and removes the partial file', async () => {
+    const dir = await directory()
+    // A body that sends one chunk and then hangs, ignoring the abort signal.
+    const hanging = () =>
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(Uint8Array.from([1, 2, 3]))
+        },
+      })
+    const gh = client(dir, codeload(() => new Response(hanging(), { status: 200 })), { tarballTimeoutMs: 50 })
+    const started = Date.now()
+    const error = await gh.tarball('octo-org/repo-1', SHA).catch((err: unknown) => err)
+    expect(Date.now() - started).toBeLessThan(1000)
+    expect(error).toMatchObject({ kind: 'unavailable', path: API_PATH })
+    expect((error as Error).message).toMatch(/50 ms/)
+    expect(await readdir(dir)).toEqual([])
+  })
+
+  it('aborts a download over tarballMaxBytes and removes the partial file', async () => {
+    const dir = await directory()
+    let cancelled = false
+    const endless = () =>
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.enqueue(new Uint8Array(400))
+        },
+        cancel() {
+          cancelled = true
+        },
+      })
+    const gh = client(dir, codeload(() => new Response(endless(), { status: 200 })), { tarballMaxBytes: 1000 })
+    const error = await gh.tarball('octo-org/repo-1', SHA).catch((err: unknown) => err)
+    expect(error).toMatchObject({ kind: 'too_large', status: null, path: API_PATH })
+    expect((error as Error).message).toContain(API_PATH)
+    expect((error as Error).message).toContain('1000')
+    expect(cancelled).toBe(true)
+    expect(await readdir(dir)).toEqual([])
+  })
+
+  it('refuses a download whose content-length is over tarballMaxBytes before writing anything', async () => {
+    const dir = await directory()
+    const gh = client(
+      dir,
+      codeload(() => new Response(bytes(new Uint8Array(10)), { status: 200, headers: { 'content-length': '5000' } })),
+      { tarballMaxBytes: 1000 },
+    )
+    const error = await gh.tarball('octo-org/repo-1', SHA).catch((err: unknown) => err)
+    expect(error).toMatchObject({ kind: 'too_large', path: API_PATH })
+    expect(await readdir(dir)).toEqual([])
+  })
 })
+
+describe('sweepTarballs', () => {
+  it('deletes only leftover github-tarball-*.tar.gz files older than the threshold', async () => {
+    const dir = await directory()
+    const now = new Date('2026-11-20T12:00:00Z')
+    const old = 'github-tarball-11111111-1111-4111-8111-111111111111.tar.gz'
+    const fresh = 'github-tarball-22222222-2222-4222-8222-222222222222.tar.gz'
+    const other = 'notes.tar.gz'
+    for (const name of [old, fresh, other]) await writeFile(join(dir, name), 'x')
+    const hourAgo = new Date(now.getTime() - 60 * 60 * 1000)
+    const minuteAgo = new Date(now.getTime() - 60 * 1000)
+    await utimes(join(dir, old), hourAgo, hourAgo)
+    await utimes(join(dir, other), hourAgo, hourAgo)
+    await utimes(join(dir, fresh), minuteAgo, minuteAgo)
+
+    const removed = await sweepTarballs(dir, 10 * 60 * 1000, now)
+
+    expect(removed).toEqual([join(dir, old)])
+    expect((await readdir(dir)).sort()).toEqual([fresh, other].sort())
+  })
+})
+
+type Limits = { timeoutMs?: number; tarballTimeoutMs?: number; tarballMaxBytes?: number }
+
+function client(dir: string, fetch: typeof globalThis.fetch, limits: Limits = {}) {
+  return createGitHubTokenClient({
+    token: TOKEN,
+    fetch,
+    timeoutMs: limits.timeoutMs ?? 1000,
+    tarballDir: dir,
+    tarballTimeoutMs: limits.tarballTimeoutMs ?? 1000,
+    tarballMaxBytes: limits.tarballMaxBytes ?? 1024 * 1024,
+  })
+}
+
+/** The API answers `status` to codeload; codeload answers with `download()`. */
+function codeload(
+  download: () => Response | ReadableStream<Uint8Array>,
+  status = 302,
+  calls: string[] = [],
+): typeof fetch {
+  return (async (input: string | URL | Request) => {
+    const url = String(input)
+    calls.push(url)
+    if (url === `${API}${API_PATH}`) {
+      return new Response(null, { status, headers: { location: CODELOAD, ...rateHeaders() } })
+    }
+    if (url === CODELOAD) {
+      const out = download()
+      return out instanceof Response ? out : new Response(out, { status: 200 })
+    }
+    throw new Error(`unexpected URL ${url}`)
+  }) as typeof fetch
+}

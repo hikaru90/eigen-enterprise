@@ -1,7 +1,7 @@
+import type { ReadStream } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { ReadStream } from 'node:fs'
 import { gzipSync } from 'fflate'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readTarGz, TarError, type TarHeader } from './tar'
