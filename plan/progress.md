@@ -2,6 +2,26 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-20 — Office files in the Drive: foundation landed, PDF/DOCX/PPTX streams started (owner: "clean room versions … as the file handler for certain file types in the drive … start sub agents")
+
+- **Plan:** `plan/phase-office-files.md`. It covers our own viewers and editors for PDF, Word and PowerPoint.
+  - The references are storytold/pdfcraft, eigenpal/docx-editor and eigenpal/pptx-editor. We take only their feature lists from the READMEs; implementers never read their code.
+- **Decision: TypeScript-first** (owner approved 2026-11-20).
+  - Svelte for the interface; normal page elements, SVG and 2D canvas for drawing. No WebGL, and no Rust for now.
+  - The same code runs in the browser, in agent tools and in the `ee` CLI.
+  - A WASM module only if profiling shows a real bottleneck (PDF raster or OCR).
+  - Libraries: pdf.js (Apache-2.0) and pdf-lib (MIT) for PDF, ProseMirror (MIT) for DOCX editing (D2), fflate, and `@xmldom/xmldom` (MIT, new).
+- **Licence note:** the Eigenpal editors keep tracked changes, comments, collaboration and PDF export under an evaluation-only licence, so ours are written strictly clean-room (D3 and later).
+- **Shipped `c3b46ebc` (foundation F, plan §3):**
+  - Office file kinds and icons in the Drive.
+  - Binary saves with revisions: `writeBytes`, available as `PUT /api/drive/files/[id]/content`.
+  - An edit-session helper, a viewer registry, `drive.read` handing off to per-format text extraction (each says "not supported yet" until its format lands), and the lossless OPC package layer.
+- **Announced behaviour changes:**
+  - PDF/DOCX/PPTX files now keep revisions and take the W-6 edit lock. Before, PDFs could not be locked.
+  - The browser's own PDF preview stays until the new viewer is registered, so nothing is removed yet.
+- **Running:** three worktree streams, each on milestone 1 (P1 PDF viewer, D1 DOCX faithful view, S1 PPTX faithful view), each with agent text extraction.
+- **Next:** review and merge each stream, run the e2e journey per format, release to the box, then milestone 2 per format.
+
 ## 2026-11-19 — Contribute board round: 13 proposals built in parallel (owner: "look at cerberus mcp contribute tab. make an implementation plan, start subagents")
 
 Plan and triage: `plan/contribute-round-2026-11-19.md`. One worktree per workstream, merged into main by the orchestrator.
