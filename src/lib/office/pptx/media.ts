@@ -32,9 +32,10 @@ export function imageSize(bytes: Uint8Array, contentType: string): { width: numb
 
 /**
  * Object URLs for a package's images, made on first use and released with
- * `dispose()` when the viewer goes away.
+ * `dispose()` when the viewer goes away; `forget(part)` drops one whose
+ * bytes changed (an edit added, removed or restored it).
  */
-export function createMediaSource(pkg: OpcPackage): { media: MediaSource; dispose: () => void } {
+export function createMediaSource(pkg: OpcPackage): { media: MediaSource; forget: (part: string) => void; dispose: () => void } {
   const made = new Map<string, { url: string; width: number | null; height: number | null }>()
   return {
     media(part) {
@@ -48,6 +49,12 @@ export function createMediaSource(pkg: OpcPackage): { media: MediaSource; dispos
       const entry = { url, width: size?.width ?? null, height: size?.height ?? null }
       made.set(part, entry)
       return entry
+    },
+    forget(part) {
+      const hit = made.get(part)
+      if (!hit) return
+      URL.revokeObjectURL(hit.url)
+      made.delete(part)
     },
     dispose() {
       for (const { url } of made.values()) URL.revokeObjectURL(url)

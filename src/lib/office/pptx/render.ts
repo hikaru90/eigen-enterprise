@@ -319,7 +319,8 @@ function spacingCss(s: RParagraph['lineSpacing'], em: number): string {
   return 'pct' in s ? n(s.pct * em) + 'em' : n(s.px) + 'px'
 }
 
-function paragraphHtml(p: RParagraph, first: boolean, opts: RenderOptions): string {
+function paragraphHtml(p: RParagraph, index: number, opts: RenderOptions): string {
+  const first = index === 0
   const sizes = p.runs.filter((r) => r.text.length > 0).map((r) => r.size)
   const size = sizes.length ? Math.max(...sizes) : p.endSize
   const style: string[] = [
@@ -345,13 +346,14 @@ function paragraphHtml(p: RParagraph, first: boolean, opts: RenderOptions): stri
     else bs.push(`margin-${end}:0.5em`)
     html += `<span class="pptx-bullet" aria-hidden="true" style="${escAttr(bs.join(';'))}">${escText(b.text)}</span>`
   }
-  for (const r of p.runs) {
+  // data-r: the run's index in the paragraph (the editor maps edited text back to its runs, ./text-edit.ts).
+  for (const [ri, r] of p.runs.entries()) {
     if (r.isBreak) {
-      html += '<br/>'
+      html += `<br data-r="${ri}"/>`
       continue
     }
     if (!r.text) continue
-    const span = `<span style="${escAttr(runStyle(r))}">${escText(r.text)}</span>`
+    const span = `<span data-r="${ri}" style="${escAttr(runStyle(r))}">${escText(r.text)}</span>`
     if (r.link && opts.links) {
       if (r.link.kind === 'url') html += `<a href="${escAttr(r.link.href)}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:inherit">${span}</a>`
       else if (r.link.kind === 'slide') html += `<span role="link" tabindex="0" data-slide-link="${r.link.index}" style="cursor:pointer">${span}</span>`
@@ -359,11 +361,11 @@ function paragraphHtml(p: RParagraph, first: boolean, opts: RenderOptions): stri
     } else html += span
   }
   if (!p.runs.some((r) => r.text.length > 0 || r.isBreak)) html += '<br/>'
-  return `<p style="${escAttr(style.join(';'))}">${html}</p>`
+  return `<p data-p="${index}" style="${escAttr(style.join(';'))}">${html}</p>`
 }
 
 function paragraphsHtml(paragraphs: RParagraph[], opts: RenderOptions): string {
-  return paragraphs.map((p, i) => paragraphHtml(p, i === 0, opts)).join('')
+  return paragraphs.map((p, i) => paragraphHtml(p, i, opts)).join('')
 }
 
 function textHtml(t: RText, opts: RenderOptions): string {
@@ -559,7 +561,13 @@ export function renderSlideSvg(slide: RSlide, opts: RenderOptions): string {
     const img = imageMarkup(slide.background, W, H, opts, defs)
     bg = img.problem ? `<rect width="${n(W)}" height="${n(H)}" fill="#fff"/>${label(`Background: ${img.problem}`, W, H / 8, 'badge')}` : img.svg
   } else bg = `<rect width="${n(W)}" height="${n(H)}" ${paint('fill', slide.background, defs, W, H)}/>`
-  const body = slide.nodes.map((node) => nodeSvg(node, opts, defs)).join('')
+  // data-sid marks the slide's own top-level shapes by id (the editor finds and moves them).
+  const body = slide.nodes
+    .map((node, i) => {
+      const svg = nodeSvg(node, opts, defs)
+      return i >= slide.ownStart && node.id ? svg.replace(/^<g /, `<g data-sid="${escAttr(node.id)}" `) : svg
+    })
+    .join('')
   const notShown = slide.notShown.length ? label(`Not shown: ${slide.notShown.join(', ')}`, W, 24, 'badge') : ''
   const aria = opts.label ? ` role="img" aria-label="${escAttr(opts.label)}"` : ''
   return (
