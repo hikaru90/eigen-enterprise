@@ -349,24 +349,22 @@ const TAB_ALIGN: Record<string, TabStop['align']> = {
 }
 const LEADERS = new Set(['none', 'dot', 'hyphen', 'underscore', 'heavy', 'middleDot'])
 
+/** ST_Jc (§17.18.44) as a logical alignment: left/start → start, right/end → end, both and the kashida/Thai variants → justify. */
+export function alignOfJc(jc: string): NonNullable<ParagraphProps['align']> {
+  if (jc === 'center') return 'center'
+  if (jc === 'right' || jc === 'end') return 'end'
+  if (jc === 'both' || jc === 'lowKashida' || jc === 'mediumKashida' || jc === 'highKashida' || jc === 'thaiDistribute') return 'justify'
+  if (jc === 'distribute') return 'distribute'
+  return 'start'
+}
+
 export function parseParagraphProps(pPr: Element | null, theme: ThemeFonts): ParagraphProps {
   const out: ParagraphProps = {}
   if (!pPr) return out
   const style = wa(wc(pPr, 'pStyle'), 'val')
   if (style) out.styleId = style
   const jc = wa(wc(pPr, 'jc'), 'val')
-  if (jc) {
-    out.align =
-      jc === 'center'
-        ? 'center'
-        : jc === 'right' || jc === 'end'
-          ? 'end'
-          : jc === 'both' || jc === 'lowKashida' || jc === 'mediumKashida' || jc === 'highKashida' || jc === 'thaiDistribute'
-            ? 'justify'
-            : jc === 'distribute'
-              ? 'distribute'
-              : 'start'
-  }
+  if (jc) out.align = alignOfJc(jc)
   const ind = wc(pPr, 'ind')
   if (ind) {
     const i: NonNullable<ParagraphProps['indent']> = {}
