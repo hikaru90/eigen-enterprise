@@ -28,4 +28,5 @@ export type OfficeViewerModule = { default: Component<OfficeViewerProps> }
  */
 export const OFFICE_VIEWERS: Partial<Record<OfficeKind, () => Promise<OfficeViewerModule>>> = {
   pdf: () => import('./pdf/pdf-viewer.svelte'),
+  docx: () => import('./docx/docx-viewer.svelte'),
 }
