@@ -2,7 +2,10 @@
  * PDFs made in tests (never downloaded samples): pdf-lib for ordinary files,
  * a small hand writer for an encrypted one (pdf-lib can't encrypt). Shared
  * by the Node unit tests and the browser component tests, so no Node APIs.
+ * pdf-lib comes from its self-contained ES bundle: the browser test runner
+ * doesn't pre-bundle the CommonJS deflate library its modules import.
  */
+import type { PDFRef } from 'pdf-lib'
 import {
   PDFDocument,
   PDFName,
@@ -10,8 +13,7 @@ import {
   PDFString,
   StandardFonts,
   degrees,
-  type PDFRef,
-} from 'pdf-lib'
+} from 'pdf-lib/dist/pdf-lib.esm.js'
 
 export type FixturePage = {
   /** Lines of text, top to bottom; an empty string leaves a paragraph gap. */

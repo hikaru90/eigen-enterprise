@@ -47,7 +47,6 @@ export async function extractText(bytes: Uint8Array): Promise<string> {
     cMapUrl: dataDir('cmaps'),
     cMapPacked: true,
     standardFontDataUrl: dataDir('standard_fonts'),
-    isEvalSupported: false,
     stopAtErrors: true,
     verbosity: 0,
   })
