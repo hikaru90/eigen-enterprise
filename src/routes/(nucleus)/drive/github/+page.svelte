@@ -14,7 +14,15 @@
   /** GitHub repos: paste a read-only token, pick repos, see how each sync went. Admin only. */
   let { data, form }: PageProps = $props()
 
-  type Feedback = { action?: string; ok?: boolean; error?: string; login?: string; fullName?: string; status?: string }
+  type Feedback = {
+    action?: string
+    ok?: boolean
+    error?: string
+    login?: string
+    fullName?: string
+    status?: string
+    copyMode?: 'all' | 'docs'
+  }
   const feedback = (action: string): Feedback | null =>
     form && (form as Feedback).action === action ? (form as Feedback) : null
 
@@ -56,6 +64,30 @@
       )
         cancel()
     }
+
+  /**
+   * All files or docs only (plan/github-drive-full-mirror.md §6). Docs only
+   * removes every other file from the repo's Drive folder on the next sync,
+   * so it asks first; going back to all files removes nothing.
+   */
+  function changeCopyMode(
+    e: Event & { currentTarget: HTMLSelectElement },
+    fullName: string,
+    branch: string,
+    current: 'all' | 'docs',
+  ) {
+    const select = e.currentTarget
+    if (
+      select.value === 'docs' &&
+      !confirm(
+        `Copy only the Markdown docs of ${fullName}? Every file that is not Markdown is removed from its Drive folder (GitHub / ${fullName} / ${branch}) on the next sync. The repo on GitHub is not touched.`,
+      )
+    ) {
+      select.value = current
+      return
+    }
+    select.form?.requestSubmit()
+  }
 
   function submitOnChange(e: Event & { currentTarget: HTMLInputElement }) {
     e.currentTarget.form?.requestSubmit()
@@ -115,7 +147,7 @@
   <div class="-mt-8">
     <SectionHeader
       title="GitHub repos"
-      description="Read-only copies of your GitHub repos in Drive: branches, pull requests, recent activity and the Markdown docs, kept in sync every 15 minutes. eigenEnterprise never writes to GitHub."
+      description="Read-only copies of your GitHub repos in Drive: branches, pull requests, recent activity and every file of the default branch (or only the Markdown docs, per repo), kept in sync every 15 minutes. eigenEnterprise never writes to GitHub."
       testid="repos-header"
     >
       {#snippet actions()}
@@ -199,10 +231,30 @@
                   · next {time(r.nextDueAt)}
                 {/if}
               </span>
+              <form method="POST" action="?/setCopyMode" use:enhance class="flex items-center gap-2">
+                <input type="hidden" name="repoId" value={r.repoId} />
+                <label for={`copy-mode-${r.id}`} class="text-xs text-muted-foreground">Copies</label>
+                <select
+                  id={`copy-mode-${r.id}`}
+                  name="mode"
+                  class="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                  value={r.copyMode}
+                  onchange={(e) => changeCopyMode(e, r.fullName, r.defaultBranch, r.copyMode)}
+                  data-testid={`repos-copy-mode-${r.fullName}`}
+                >
+                  <option value="all">All files</option>
+                  <option value="docs">Docs only</option>
+                </select>
+              </form>
               <form method="POST" action="?/syncNow" use:enhance>
                 <input type="hidden" name="sourceId" value={r.id} />
                 <Button type="submit" size="sm" variant="outline">Sync now</Button>
               </form>
+              <p class="w-full text-xs text-muted-foreground">
+                In Drive under GitHub / {r.fullName} / {r.defaultBranch}: {r.copyMode === 'docs'
+                  ? 'the Markdown docs'
+                  : 'every file'} of {r.defaultBranch}.
+              </p>
               {#if r.lastError}
                 <p class="w-full text-xs text-destructive">{r.lastError}</p>
               {/if}
@@ -225,6 +277,15 @@
             </li>
           {/each}
         </ul>
+      {/if}
+      {#if feedback('setCopyMode')?.error}
+        <p class="mt-2 text-sm text-destructive" role="alert">{feedback('setCopyMode')?.error}</p>
+      {:else if feedback('setCopyMode')?.ok}
+        <p class="mt-2 text-sm text-muted-foreground" role="status" data-testid="repos-copy-mode-status">
+          {feedback('setCopyMode')?.fullName} now copies {feedback('setCopyMode')?.copyMode === 'docs'
+            ? 'only the Markdown docs'
+            : 'all files'}; the next sync applies it.
+        </p>
       {/if}
       {#if feedback('syncNow')?.error}
         <p class="mt-2 text-sm text-destructive" role="alert">{feedback('syncNow')?.error}</p>

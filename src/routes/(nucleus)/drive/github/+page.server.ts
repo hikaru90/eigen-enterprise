@@ -77,6 +77,8 @@ export const load: PageServerLoad = async ({ locals }) => {
             id: r.id,
             repoId: r.repoId,
             fullName: r.fullName,
+            defaultBranch: r.defaultBranch,
+            copyMode: r.copyMode,
             lastSyncedAt: iso(r.lastSyncedAt),
             nextDueAt: iso(r.nextDueAt),
             lastError: r.lastError,
@@ -122,6 +124,17 @@ export const actions: Actions = {
     const syncing = field(form, 'syncing') === 'true'
     const repos = await service()
     return act('setRepo', async () => ({ ...(await repos.setRepo(field(form, 'tokenId'), repoId, syncing)), syncing }))
+  },
+  /** All files or docs only (plan/github-drive-full-mirror.md §6); the same as the tool repos.set_copy_mode. */
+  setCopyMode: async ({ locals, request }) => {
+    await requireAdmin(locals)
+    const form = await request.formData()
+    const repoId = Number(field(form, 'repoId'))
+    if (!Number.isSafeInteger(repoId) || repoId <= 0) return fail(400, { action: 'setCopyMode', error: 'Pick a repo from the list.' })
+    const mode = field(form, 'mode')
+    if (mode !== 'all' && mode !== 'docs') return fail(400, { action: 'setCopyMode', error: 'Choose all files or docs only.' })
+    const repos = await service()
+    return act('setCopyMode', async () => await repos.setCopyMode(repoId, mode))
   },
   syncNow: async ({ locals, request }) => {
     await requireAdmin(locals)

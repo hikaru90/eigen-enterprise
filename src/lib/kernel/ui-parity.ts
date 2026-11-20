@@ -104,6 +104,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/drive/github ?/addToken': human(GITHUB_TOKEN),
   '/(nucleus)/drive/github ?/removeToken': human(GITHUB_TOKEN),
   '/(nucleus)/drive/github ?/replaceToken': human(GITHUB_TOKEN),
+  '/(nucleus)/drive/github ?/setCopyMode': tool('repos.set_copy_mode'),
   '/(nucleus)/drive/github ?/setRepo': debt('repos', 'Choose a repo to sync into Drive, or stop syncing it.'),
   '/(nucleus)/drive/github ?/syncNow': tool('repos.sync_now'),
 

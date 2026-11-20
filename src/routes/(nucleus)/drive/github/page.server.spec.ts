@@ -80,6 +80,37 @@ describe('/drive/github (admin only)', () => {
     expect(await run('setRepo', { tokenId: tok!.id, repoId: 'abc', syncing: 'true' })).toMatchObject({ status: 400 })
   })
 
+  it('shows each repo copy mode and branch; setCopyMode switches it (docs only, then all again) and makes it due now', async () => {
+    await t.connect()
+    await t.service.tick()
+    type Page = { tokens: Array<{ repos: Array<Record<string, unknown>> }> }
+    let page = (await load({ locals } as never)) as Page
+    expect(page.tokens[0]!.repos[0]).toMatchObject({ fullName: 'kindred/shop', copyMode: 'all', defaultBranch: 'main' })
+
+    expect(await run('setCopyMode', { repoId: '4242', mode: 'docs' })).toEqual({ action: 'setCopyMode', ok: true, fullName: 'kindred/shop', copyMode: 'docs' })
+    const [src] = await t.store.sources()
+    expect(src!.copyMode).toBe('docs')
+    expect(src!.dueAt).toEqual(t.clock.now)
+    page = (await load({ locals } as never)) as Page
+    expect(page.tokens[0]!.repos[0]).toMatchObject({ copyMode: 'docs' })
+    // The next sync applies it: only the Markdown stays.
+    await run('syncNow', { sourceId: src!.id })
+    expect(t.drive.keys('repos').some((k) => k.endsWith('src/index.ts'))).toBe(false)
+
+    expect(await run('setCopyMode', { repoId: '4242', mode: 'all' })).toMatchObject({ ok: true, copyMode: 'all' })
+    await run('syncNow', { sourceId: src!.id })
+    expect(t.drive.keys('repos').some((k) => k.endsWith('src/index.ts'))).toBe(true)
+  })
+
+  it('setCopyMode refuses a bad mode or repo with a plain error, and non-admins', async () => {
+    await t.connect()
+    expect(await run('setCopyMode', { repoId: '4242', mode: 'everything' })).toMatchObject({ status: 400, data: { action: 'setCopyMode', error: 'Choose all files or docs only.' } })
+    expect(await run('setCopyMode', { repoId: 'abc', mode: 'docs' })).toMatchObject({ status: 400, data: { action: 'setCopyMode', error: 'Pick a repo from the list.' } })
+    expect(await run('setCopyMode', { repoId: '999', mode: 'docs' })).toMatchObject({ status: 400, data: { action: 'setCopyMode', error: expect.stringContaining('That repo is not connected.') } })
+    adminMock.mockResolvedValue(false)
+    await expect(run('setCopyMode', { repoId: '4242', mode: 'docs' })).rejects.toMatchObject({ status: 403 })
+  })
+
   it('shows how the summary went: written, or why it is missing (no model selected, a failure)', async () => {
     t.summaries.next = { status: 'no_model', message: 'No model is selected for summaries. The owner selects one under Settings → AI provider.' }
     await t.connect()

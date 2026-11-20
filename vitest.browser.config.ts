@@ -145,6 +145,7 @@ export default defineConfig({
       // Office viewers (plan/phase-office-files.md): every format's component specs.
       'src/lib/office/**/*.svelte.spec.ts',
       'src/routes/\\(nucleus\\)/drive/file/\\[id\\]/file-page.svelte.spec.ts',
+      'src/routes/(nucleus)/drive/github/github-page.svelte.spec.ts',
       'src/routes/(nucleus)/m/memory/memory-privacy-note.svelte.spec.ts',
       'src/routes/(nucleus)/m/memory/settings/your-data.svelte.spec.ts',
       'src/routes/(nucleus)/m/memory/tasks/assigned-tasks.svelte.spec.ts',
