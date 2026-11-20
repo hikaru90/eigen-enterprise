@@ -240,7 +240,26 @@ function reposDrivePort(): DriveSourcePort {
     upsertFolder: async (...a) => (await driveSourceWriter()).upsertFolder(...a),
     upsertText: async (...a) => (await driveSourceWriter()).upsertText(...a),
     remove: async (...a) => (await driveSourceWriter()).remove(...a),
-    list: async (...a) => (await driveSourceWriter()).list(...a),
+    // The writer has no prefix filter yet (full mirror M1,
+    // plan/github-drive-full-mirror.md); filtering its list is exact either way.
+    list: async (source, keyPrefix) => {
+      const items = await (await driveSourceWriter()).list(source)
+      return keyPrefix === undefined
+        ? items
+        : items.filter((i) => i.key === keyPrefix || i.key.startsWith(`${keyPrefix}/`))
+    },
+    // Full-mirror M0 contracts (plan/github-drive-full-mirror.md): the Drive
+    // writer grows these in M1; calling them fails loud until then.
+    upsertBytes: async () => {
+      throw new Error(
+        'drive source upsertBytes is not implemented yet (full mirror M1, plan/github-drive-full-mirror.md)',
+      )
+    },
+    upsertMany: async () => {
+      throw new Error(
+        'drive source upsertMany is not implemented yet (full mirror M1, plan/github-drive-full-mirror.md)',
+      )
+    },
   }
 }
 

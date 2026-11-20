@@ -616,6 +616,19 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
       }
     },
 
+    // Full-mirror M0 contracts (plan/github-drive-full-mirror.md): the M2
+    // stream implements these; calling them fails loud until then.
+    async blobBytes(): Promise<Uint8Array> {
+      throw new Error(
+        'GitHub blobBytes is not implemented yet (full mirror M2, plan/github-drive-full-mirror.md)',
+      )
+    },
+    async tarball(): Promise<string> {
+      throw new Error(
+        'GitHub tarball is not implemented yet (full mirror M2, plan/github-drive-full-mirror.md)',
+      )
+    },
+
     async checkAccess(fullName): Promise<TokenPermission[]> {
       const { base } = splitFullName(fullName)
       // Metadata first: a 403/404 here means the token can't see the repo (no_access, thrown).

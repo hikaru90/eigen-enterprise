@@ -2,6 +2,26 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-20 — Main green again: M0 contract implementers completed, member reach lists the pdf tools (owner: "commit and push, fix the error")
+
+- **Why:** the CI gate (lint → naming → check → unit → components) was red on main, so nothing could push. Three workstreams had landed without it (the gate only runs on `npm run push`):
+  1. `fce8594b` (drive office) added the six `drive.pdf_*` tools (member-reachable by design, `DRIVE_ROLES`) but never put them in `boot.wiring.spec.ts`'s `MEMBER_KEEPS_VIA_BRAIN`.
+  2. `dc1f69c4` (full-mirror **M0 = types only**) extended `DriveSourcePort` (+`upsertBytes`, `upsertMany`, `list(prefix)`) and `GitHubTokenClient` (+`blobBytes`, `tarball`) in the two contract files only — leaving the composition-root adapter, the live token client and the fakes type-broken (6 `svelte-check` errors). The plan stages implementation for M1–M3 ("merge after M1+M2").
+- **Fix:** spec list completed with the six tools; the adapter forwards the existing writer and filters `list` by prefix (exact semantics); the not-yet-built methods (`upsertBytes`/`upsertMany`/`blobBytes`/`tarball`) fail loud everywhere they must exist — live client, adapter, fakes — each pointing at `plan/github-drive-full-mirror.md` and its milestone. No silent degradation: calling them before their streams land is an explicit error, and nothing calls them today (verified).
+- **Note:** eslint's `--cache` served a stale `no-unused-vars` error for `parity.spec.ts` once; a direct run was clean. Cleared `node_modules/.cache/eslint` before the gate run.
+- **Next:** the full-mirror M1–M3 streams replace the loud stubs with real implementations + specs.
+
+## 2026-11-20 — MCP tools/list projected to the strict function subset (Cloud Code fix)
+
+- **Why:** a colleague's Google Cloud Code refused to add the MCP ("tool definitions are malformed") and rejects the whole list for one bad schema. Diagnosis against the real 164-tool payload: **every** tool carried zod v4's `$schema` root key; 28 `"type":["string","null"]` unions; 37 nested `anyOf` (nullable unions, `settings.update`'s merged `value`); 11 `propertyNames` + schema-valued `additionalProperties` (z.record); plus `default`/`pattern`/non-date `format` keywords. The 2026-11-19 contract fix guarded only the top level — Cloud Code validates every node.
+- **What shipped:** `strictToolSchema` in `src/lib/kernel/openapi.ts` — a pure projection onto the subset every MCP client accepts (scalar `type` + `nullable`, no combinators anywhere, no `$schema`/`propertyNames`/`additionalProperties`/`default`/`pattern`/`minLength`, `format` only date/date-time/time, `const`→one-value `enum`, same-typed unions merged, mixed unions collapsed to untyped + description listing the shapes). Applied in `listMcpTools` (`src/lib/server/mcp/server.ts`, input + output schemas) and the CLI `ee tool list` mirror (`src/cli/commands.ts`). Tests: strict-subset visitor over the full production tool list in `tools-list-contract.spec.ts`; 8 unit cases in `openapi.spec.ts`; `parity.spec.ts` updated (MCP serves the projection, OpenAPI 3.1 keeps the full schema).
+- **Decisions:**
+  1. **Owner (2026-11-20): dotted tool names stay** (`namespace.toolname`), outside the MCP 2025-06-18 name pattern `^[a-zA-Z0-9_-]{1,64}$`. A client that enforces that pattern will still refuse — accepted; if Cloud Code still fails after this fix, this is the next suspect.
+  2. Projection lives at the MCP/CLI boundary only. The agent runtime (`agent-runtime.ts:222`) and the OpenAPI document keep the full JSON Schema — the in-house agent's tool guidance is not degraded.
+  3. Advertising-only change: calls are still validated by the original zod schemas in the registry.
+- **What broke:** nothing from this change (full suite green except below). Pre-existing on main, verified by stash: `boot.wiring.spec.ts` fails since `fce8594b` (new `drive.pdf_*` tools missing from the member-reach expectation); `npm run check` (6 errors) and `npm run lint` (1 error) fail in untouched svelte/company-os files.
+- **Next:** colleague retries adding the MCP in Cloud Code; release to the box (`scripts/release.sh arm64 && ee/e2e/box.sh install os.ee.localhost`) so any hosted instance serves the projected list.
+
 ## 2026-11-20 — Plan: GitHub repos mirror every file, not only docs (owner: "Plan full mirror")
 
 - **Why:** connected repos showed only Markdown. That was by design: `plan/github-drive.md` said "No code files", and `modules/repos/snapshot.ts` `isDoc` keeps `.md`/`.mdx`. The owner wants all folders and code.

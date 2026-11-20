@@ -113,6 +113,16 @@ export class FakeGitHub {
           if (t === undefined) throw new Error(`fake blob ${sha} missing`)
           return t
         }),
+      // Full-mirror M0 contracts (plan/github-drive-full-mirror.md): the M2
+      // stream implements these against its specs; calling them fails loud until then.
+      blobBytes: () =>
+        Promise.reject(
+          new Error('FakeGitHub.blobBytes is not implemented yet (full mirror M2, plan/github-drive-full-mirror.md)'),
+        ),
+      tarball: () =>
+        Promise.reject(
+          new Error('FakeGitHub.tarball is not implemented yet (full mirror M2, plan/github-drive-full-mirror.md)'),
+        ),
       checkAccess: (fullName) => call('checkAccess', fullName, () => [...(this.missing.get(fullName) ?? [])]),
       lastBudget: () => last,
     }
@@ -171,10 +181,23 @@ export class FakeDrivePort implements DriveSourcePort {
     }
     return n
   }
-  async list(source: DriveSourceId) {
+  // Full-mirror M0 contracts (plan/github-drive-full-mirror.md): the M1
+  // stream implements these against its specs; calling them fails loud until then.
+  async upsertBytes(): Promise<{ fileId: string; changed: boolean }> {
+    throw new Error(
+      'FakeDrivePort.upsertBytes is not implemented yet (full mirror M1, plan/github-drive-full-mirror.md)',
+    )
+  }
+  async upsertMany(): Promise<void> {
+    throw new Error(
+      'FakeDrivePort.upsertMany is not implemented yet (full mirror M1, plan/github-drive-full-mirror.md)',
+    )
+  }
+  async list(source: DriveSourceId, keyPrefix?: string) {
     return [...this.items.entries()]
       .filter(([k]) => k.startsWith(`${source}\u0000`))
       .map(([, v]) => ({ key: v.key, kind: v.kind, itemId: v.itemId, parentKey: v.parentKey, contentSha: v.contentSha }))
+      .filter((i) => keyPrefix === undefined || i.key === keyPrefix || i.key.startsWith(`${keyPrefix}/`))
   }
 
   /** Test helper: the file at a key. */
