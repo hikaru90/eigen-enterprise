@@ -197,3 +197,130 @@ describe.skipIf(!url)('drive store (Postgres): source folders (0133)', () => {
     }
   })
 })
+
+describe.skipIf(!url)('drive store (Postgres): source batching (full-mirror M2)', () => {
+  const source = `pg-spec-${randomUUID()}`
+  const bytes = (s: string) => new TextEncoder().encode(s)
+
+  beforeAll(() => {
+    sql = postgres(url!, { prepare: false, max: 4, onnotice: () => {} })
+  })
+
+  afterAll(async () => {
+    await sql`delete from drive_source_items where source = ${source}`
+    await sql`delete from drive_file where source = ${source}`
+    await sql`delete from drive_folder where source = ${source}`
+    await sql.end()
+  })
+
+  /** The writer over the real store, with a counting in-memory blob store. */
+  async function makeWriter() {
+    const { dbDriveStore: store } = await import('./db-store')
+    const { createDriveSourceWriter } = await import('./source-writer')
+    const { memoryDriveAccess } = await import('./memory-access')
+    const { sha256Hex } = await import('./storage')
+    const blobs = new Map<string, Uint8Array>()
+    let puts = 0
+    const writer = createDriveSourceWriter({
+      store,
+      access: memoryDriveAccess({ users: {} }),
+      blobs: {
+        put: async (b) => {
+          puts += 1
+          const sha = sha256Hex(b)
+          const had = blobs.has(sha)
+          blobs.set(sha, b)
+          return { sha256: sha, size: b.byteLength, created: !had }
+        },
+        get: async (sha) => blobs.get(sha)!,
+        has: async (sha) => blobs.has(sha),
+        remove: async (sha) => void blobs.delete(sha),
+      },
+    })
+    return { writer, store, blobCount: () => puts, blobsHas: (sha: string) => blobs.has(sha) }
+  }
+
+  it('transaction rolls back everything a failed batch wrote', async () => {
+    const { dbDriveStore: store } = await import('./db-store')
+    const folder = { id: randomUUID(), parentId: null, name: 'doomed', ownerId: source, createdAt: new Date(), updatedAt: new Date(), trashedAt: null, archivedAt: null, archivedBy: null, source }
+    const file = { id: randomUUID(), folderId: folder.id, name: 'doomed.md', ownerId: source, mime: 'text/markdown', size: 2, sha256: 'a'.repeat(64), createdAt: new Date(), updatedAt: new Date(), trashedAt: null, archivedAt: null, archivedBy: null, source, contentDate: null, contentDateKind: null }
+    await expect(
+      store.transaction(async (tx) => {
+        await tx.insertFolder(folder)
+        await tx.insertFile(file)
+        await tx.putSourceItem({ source, externalKey: 'doomed', itemId: folder.id, kind: 'folder', parentKey: null, contentSha: null })
+        throw new Error('forced failure inside the transaction')
+      }),
+    ).rejects.toThrow('forced failure inside the transaction')
+    expect(await store.getFolder(folder.id)).toBeNull()
+    expect(await store.getFile(file.id)).toBeNull()
+    expect(await store.getSourceItem(source, 'doomed')).toBeNull()
+  })
+
+  it('upsertMany writes a 500-scale parents-first batch atomically; a rerun touches no blobs', async () => {
+    const { writer, store, blobCount } = await makeWriter()
+    await writer.ensureRoot(source, 'GitHub')
+    const items = [
+      { key: 'repo:1', kind: 'folder' as const, parentKey: null, name: 'acme' },
+      { key: 'repo:1/src', kind: 'folder' as const, parentKey: 'repo:1', name: 'src' },
+    ]
+    for (let i = 0; i < 500; i++)
+      items.push({
+        key: `repo:1/src/file-${String(i).padStart(3, '0')}.ts`,
+        kind: 'text' as const,
+        parentKey: 'repo:1/src',
+        name: `file-${String(i).padStart(3, '0')}.ts`,
+        content: `export const n = ${i}\n`,
+      })
+    items.push({ key: 'repo:1/logo.png', kind: 'bytes' as const, parentKey: 'repo:1', name: 'logo.png', bytes: Uint8Array.of(0, 255, 1), mime: 'image/png' })
+    items.push({ key: 'repo:2', kind: 'folder' as const, parentKey: null, name: 'other' })
+    items.push({ key: 'repo:2/notes.md', kind: 'text' as const, parentKey: 'repo:2', name: 'notes.md', content: 'other repo\n' })
+    await writer.upsertMany(source, items)
+
+    expect((await writer.list(source)).map((i) => i.key)).toHaveLength(items.length)
+    // Exact key or descendants, never a string prefix: repo:1 does not pull in repo:2.
+    expect((await writer.list(source, 'repo:1')).map((i) => i.key)).not.toContain('repo:2/notes.md')
+    expect((await writer.list(source, 'repo:1'))).toHaveLength(503)
+    expect((await writer.list(source, 'repo:1')).map((i) => i.key).filter((k) => k.startsWith('repo:1/'))).toHaveLength(502)
+    expect((await writer.list(source, 'repo:2')).map((i) => i.key)).toEqual(['repo:2', 'repo:2/notes.md'])
+
+    const { sha256Hex } = await import('./storage')
+    const png = (await store.getSourceItem(source, 'repo:1/logo.png'))!
+    expect(png.contentSha).toBe(sha256Hex(Uint8Array.of(0, 255, 1)))
+    expect((await store.getFile(png.itemId))!.mime).toBe('image/png')
+    const oneText = (await store.getSourceItem(source, 'repo:1/src/file-000.ts'))!
+    expect((await store.getFile(oneText.itemId))!.mime).toBe('text/markdown')
+
+    const putsAfterFirst = blobCount()
+    await writer.upsertMany(source, items)
+    expect(blobCount()).toBe(putsAfterFirst)
+  })
+
+  it('remove deletes one repo prefix batched and releases only then-unreferenced blobs', async () => {
+    const { writer, store, blobsHas } = await makeWriter()
+    await writer.ensureRoot(source, 'GitHub')
+    const { sha256Hex } = await import('./storage')
+    const shared = bytes('shared bytes')
+    const keep = Uint8Array.of(0, 255, 1)
+    await writer.upsertMany(source, [
+      { key: 'repo:8', kind: 'folder', parentKey: null, name: 'eight' },
+      { key: 'repo:8/logo.png', kind: 'bytes', parentKey: 'repo:8', name: 'logo.png', bytes: keep, mime: 'image/png' },
+      { key: 'repo:9', kind: 'folder', parentKey: null, name: 'nine' },
+      { key: 'repo:9/a.md', kind: 'bytes', parentKey: 'repo:9', name: 'a.md', bytes: shared, mime: 'text/plain' },
+      { key: 'repo:9/deep', kind: 'folder', parentKey: 'repo:9', name: 'deep' },
+      { key: 'repo:9/deep/b.md', kind: 'bytes', parentKey: 'repo:9/deep', name: 'b.md', bytes: shared, mime: 'text/plain' },
+    ])
+    const sha = sha256Hex(shared)
+    expect(await blobsHas(sha)).toBe(true)
+
+    expect(await writer.remove(source, 'repo:9')).toBe(4)
+    expect(await writer.list(source, 'repo:9')).toEqual([])
+    for (const key of ['repo:9', 'repo:9/a.md', 'repo:9/deep', 'repo:9/deep/b.md'])
+      expect(await store.getSourceItem(source, key)).toBeNull()
+    expect(await store.getSourceItem(source, 'repo:8/logo.png')).not.toBeNull()
+    // The shared blob went with its last referencing files; repo:8's stays.
+    expect(await blobsHas(sha)).toBe(false)
+    expect(await blobsHas(sha256Hex(keep))).toBe(true)
+    expect(await writer.remove(source, 'repo:9')).toBe(0)
+  })
+})
