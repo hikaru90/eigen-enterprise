@@ -99,5 +99,8 @@ describe('OPC package (ECMA-376 Part 2)', () => {
     expect(() => readPackage(zipSync({ 'a.txt': strToU8('x') }))).toThrow(/\[Content_Types\]\.xml/)
     const pkg = readPackage(sample())
     expect(() => pkg.bytes('/nope.xml')).toThrow(/no part \/nope\.xml/)
+    const broken = readPackage(sample({ 'word/document.xml': strToU8('<w:document><w:body></w:document>') }))
+    expect(() => broken.xml('/word/document.xml')).toThrow(OpcError)
+    expect(() => broken.xml('/word/document.xml')).toThrow(/\/word\/document\.xml is not well-formed XML/)
   })
 })

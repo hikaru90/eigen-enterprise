@@ -65,6 +65,8 @@ export default defineConfig({
     noDiscovery: true,
     holdUntilCrawlEnd: false,
     exclude: ['vitest-browser-svelte', '@testing-library/svelte-core', 'svelte'],
+    // CommonJS packages the office viewers import (noDiscovery: they must be listed).
+    include: ['@xmldom/xmldom'],
   },
   test: {
     name: 'components',

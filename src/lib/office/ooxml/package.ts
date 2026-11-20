@@ -61,11 +61,17 @@ const zipName = (part: string) => part.replace(/^\//, '')
 
 function parseXml(text: string, where: string): XMLDocument {
   const errors: string[] = []
-  const doc = new DOMParser({
-    onError: (level, msg) => {
-      if (level !== 'warning') errors.push(msg)
-    },
-  }).parseFromString(text, 'application/xml') as unknown as XMLDocument
+  let doc: XMLDocument
+  try {
+    doc = new DOMParser({
+      onError: (level, msg) => {
+        if (level !== 'warning') errors.push(msg)
+      },
+    }).parseFromString(text, 'application/xml') as unknown as XMLDocument
+  } catch (err) {
+    // xmldom throws on fatal errors (unclosed tags, unbound prefixes) instead of reporting them.
+    throw new OpcError(`${where} is not well-formed XML: ${err instanceof Error ? err.message : String(err)}`)
+  }
   if (errors.length > 0 || !doc.documentElement) throw new OpcError(`${where} is not well-formed XML: ${errors[0] ?? 'empty document'}`)
   return doc
 }
