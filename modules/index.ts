@@ -3,6 +3,7 @@ import type { CallsHub } from './calls/hub'
 import type { CallsService } from './calls/service'
 import type { MessagesDeps } from './messages/service'
 import type { DriveSourcePort } from './repos/drive-port'
+import { join } from 'node:path'
 import { CachedActivationStore } from '$lib/kernel/activation-cache'
 import {
   ModeAwareApprovalPolicy,
@@ -46,6 +47,7 @@ import { CONTRIBUTE_MODULE_ID, contributeManifest } from './contribute/manifest'
 import { createContributeTools } from './contribute/tools'
 import { driveSourceWriter } from './drive'
 import { DRIVE_MODULE_ID, driveManifest } from './drive/manifest'
+import { resolveDriveStorageDir } from './drive/storage'
 import { createDriveTools } from './drive/tools'
 import { EMAIL_MODULE_ID, emailManifest } from './email/manifest'
 import { createOwleryTools } from './email/owlery/tools'
@@ -228,6 +230,16 @@ export type BootstrapKernelOptions = {
  * inject fakes for in-memory use.
  */
 const GITHUB_TIMEOUT_MS = 20_000
+/**
+ * A tarball download (plan/github-drive-full-mirror.md §3) runs inside one
+ * repo's sync claim (CLAIM_LEASE_MS, 10 min), so it must end well before the
+ * claim lapses and another process could take the same repo.
+ */
+const GITHUB_TARBALL_TIMEOUT_MS = 8 * 60_000
+/** The download cap: the plan's 2 GB per repo (§2.4). */
+const GITHUB_TARBALL_MAX_BYTES = 2 * 1024 ** 3
+/** Where tarballs are streamed: under Drive's storage dir (fails loud without one, never a default). */
+const githubTarballDir = () => join(resolveDriveStorageDir(process.env), 'github-tarballs')
 
 /**
  * Drive's source writer as the repos plugin's DriveSourcePort (modules never
@@ -242,26 +254,7 @@ function reposDrivePort(): DriveSourcePort {
     upsertBytes: async (...a) => (await driveSourceWriter()).upsertBytes(...a),
     upsertMany: async (...a) => (await driveSourceWriter()).upsertMany(...a),
     remove: async (...a) => (await driveSourceWriter()).remove(...a),
-    // The writer has no prefix filter yet (full mirror M1,
-    // plan/github-drive-full-mirror.md); filtering its list is exact either way.
-    list: async (source, keyPrefix) => {
-      const items = await (await driveSourceWriter()).list(source)
-      return keyPrefix === undefined
-        ? items
-        : items.filter((i) => i.key === keyPrefix || i.key.startsWith(`${keyPrefix}/`))
-    },
-    // Full-mirror M0 contracts (plan/github-drive-full-mirror.md): the Drive
-    // writer grows these in M1; calling them fails loud until then.
-    upsertBytes: async () => {
-      throw new Error(
-        'drive source upsertBytes is not implemented yet (full mirror M1, plan/github-drive-full-mirror.md)',
-      )
-    },
-    upsertMany: async () => {
-      throw new Error(
-        'drive source upsertMany is not implemented yet (full mirror M1, plan/github-drive-full-mirror.md)',
-      )
-    },
+    list: async (...a) => (await driveSourceWriter()).list(...a),
   }
 }
 
@@ -305,7 +298,17 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
 
   provideReposPorts({
     drive: reposDrivePort(),
-    client: (token) => createGitHubTokenClient({ token, fetch, timeoutMs: GITHUB_TIMEOUT_MS }),
+    client: (token) =>
+      createGitHubTokenClient({
+        token,
+        fetch,
+        timeoutMs: GITHUB_TIMEOUT_MS,
+        tarballDir: githubTarballDir(),
+        tarballTimeoutMs: GITHUB_TARBALL_TIMEOUT_MS,
+        tarballMaxBytes: GITHUB_TARBALL_MAX_BYTES,
+      }),
+    tarballDir: githubTarballDir,
+    tarballMaxBytes: GITHUB_TARBALL_MAX_BYTES,
   })
 
   // The orchestrator's "Connected GitHub repos" block: only while the plugin is

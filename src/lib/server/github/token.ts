@@ -38,7 +38,7 @@ import type {
   TokenTreeEntry,
 } from './token-client'
 import { randomUUID } from 'node:crypto'
-import { open, readdir, rm, stat } from 'node:fs/promises'
+import { mkdir, open, readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
 const API = 'https://api.github.com'
@@ -868,6 +868,7 @@ async function downloadTarball(config: GitHubTokenConfig, path: string, target: 
     // A body that ignores the abort signal must still stop: cancel it ourselves.
     const onAbort = () => void reader.cancel().catch(() => {})
     controller.signal.addEventListener('abort', onAbort, { once: true })
+    await mkdir(config.tarballDir, { recursive: true })
     const file = join(config.tarballDir, `github-tarball-${randomUUID()}.tar.gz`)
     const handle = await open(file, 'wx', 0o600)
     let received = 0
@@ -921,7 +922,13 @@ export async function sweepTarballs(dir: string, olderThanMs: number, now: Date)
   if (!(olderThanMs >= 0)) throw new Error(`sweepTarballs needs a non-negative olderThanMs, got ${olderThanMs}`)
   const cutoff = now.getTime() - olderThanMs
   const removed: string[] = []
-  for (const name of await readdir(dir)) {
+  const names = await readdir(dir).catch((err: NodeJS.ErrnoException) => {
+    // No tarball was ever downloaded here (tarball() creates the directory): nothing to sweep.
+    if (err.code === 'ENOENT') return null
+    throw err
+  })
+  if (names === null) return removed
+  for (const name of names) {
     if (!TARBALL_FILE.test(name)) continue
     const file = join(dir, name)
     const info = await stat(file).catch((err: NodeJS.ErrnoException) => {

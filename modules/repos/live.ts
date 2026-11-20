@@ -21,8 +21,11 @@ import { liveTarballReader, liveTarballSweeper } from './tarball'
 export type ReposPorts = {
   drive: DriveSourcePort
   client: TokenClientFactory
-  /** The directory the token client downloads tarballs into (its GitHubTokenConfig.tarballDir); swept every tick. */
-  tarballDir: string
+  /**
+   * The directory the token client downloads tarballs into (its GitHubTokenConfig.tarballDir); swept every tick.
+   * Resolved on first use, so building the kernel touches no storage config (it fails loud then, not at build).
+   */
+  tarballDir: () => string
   /** The token client's tarball cap (its GitHubTokenConfig.tarballMaxBytes), named in the "archive too large" message. */
   tarballMaxBytes: number
 }
@@ -59,7 +62,7 @@ export function reposService(): ReposService {
     // the sync's only way to consume and clean up downloaded tarballs.
     readTarball: liveTarballReader,
     sweepTarballs: liveTarballSweeper,
-    tarballDir: ports.tarballDir,
+    tarballDir: ports.tarballDir(),
     tarballMaxBytes: ports.tarballMaxBytes,
     key: () => tokenSealKey(env.TENANT_MASTER_KEY),
     now: () => new Date(),

@@ -97,6 +97,20 @@ describe('GitHubTokenClient.tarball', () => {
     })
   })
 
+  it('creates the tarball directory on first use (a fresh box has none yet)', async () => {
+    const dir = join(await directory(), 'github-tarballs', 'nested')
+    const archive = new Uint8Array([1, 2, 3])
+    const fetch = (async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url === `${API}${API_PATH}`) return new Response(null, { status: 302, headers: { location: CODELOAD, ...rateHeaders(4900) } })
+      if (url === CODELOAD) return new Response(archive, { status: 200 })
+      throw new Error(`unexpected URL ${url}`)
+    }) as typeof fetch
+    const gh = createGitHubTokenClient({ token: TOKEN, fetch, timeoutMs: 1000, tarballDir: dir, tarballTimeoutMs: 1000, tarballMaxBytes: 1024 })
+    const file = await gh.tarball('octo-org/repo-1', SHA)
+    expect(new Uint8Array(await readFile(file))).toEqual(archive)
+  })
+
   it('refuses a redirect off codeload without sending credentials to that origin', async () => {
     const dir = await directory()
     const calls: string[] = []
@@ -278,6 +292,11 @@ describe('GitHubTokenClient.tarball', () => {
 })
 
 describe('sweepTarballs', () => {
+  it('finds nothing to sweep when no tarball was ever downloaded (the directory does not exist yet)', async () => {
+    const dir = join(await directory(), 'never-created')
+    await expect(sweepTarballs(dir, 0, new Date())).resolves.toEqual([])
+  })
+
   it('deletes only leftover github-tarball-*.tar.gz files older than the threshold', async () => {
     const dir = await directory()
     const now = new Date('2026-11-20T12:00:00Z')
