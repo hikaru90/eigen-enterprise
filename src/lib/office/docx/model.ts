@@ -33,6 +33,7 @@ import {
   type TableLayer,
   type TableRegion,
 } from './styles'
+import { symbolChar } from './symbols'
 import { attr, children, child, descendants, GRAPHIC, isEl, NS, onOff, REL, twipsPt, wa, wc, wcs } from './xml'
 
 /**
@@ -1050,7 +1051,7 @@ export function inlineText(inlines: readonly Inline[]): string {
         out += '\n'
         break
       case 'symbol':
-        out += String.fromCodePoint(i.code)
+        out += symbolChar(i.font, i.code).char
         break
       case 'link':
       case 'field':
