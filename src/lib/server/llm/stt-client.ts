@@ -2,19 +2,17 @@ import type { LlmContentOrigin } from './types'
 import { llmCreateTranscription } from './llm-client'
 
 /**
- * OpenRouter model ids for speech-to-text (`/audio/transcriptions`) — fixed in code, there is
- * no environment override (as in eigen). Each must have live endpoints that accept browser
- * `webm`/opus and Safari `m4a` uploads (checked at boot and on Settings → AI provider).
- *
- * One model for every transcript in the app — dictation, Memory voice notes and their live
- * previews, and call transcripts: `qwen/qwen3-asr-1.7b` (owner, 2026-11-19, on price: about
- * $0.03 per hour of audio against $0.36 for `openai/gpt-4o-transcribe`, which it replaces).
- * Known trade-off: it is weaker on names than gpt-4o-transcribe, and its OpenRouter endpoints
- * list no supported parameters, so the vocabulary prompt (`stt-vocabulary.ts`) is sent but may
- * have no effect. Quiet audio is still stopped before the upload by `$lib/voice/clip-speech.ts`
- * and judged after by `stt-judge.ts`.
+ * Speech to text (`/audio/transcriptions`) runs on the company's speech-to-text slot (CB1,
+ * `model-pool.ts`): one model for every transcript in the app — dictation, Memory voice notes
+ * and their live previews, and call transcripts. Today the pool's pick is
+ * `qwen/qwen3-asr-1.7b` (owner, 2026-11-19, on price: about $0.03 per hour of audio against
+ * $0.36 for `openai/gpt-4o-transcribe`, which it replaced). Every pool model must have live
+ * endpoints that accept browser `webm`/opus and Safari `m4a` uploads (checked at boot and on
+ * Settings → AI). Known trade-off: it is weaker on names than gpt-4o-transcribe, and its
+ * OpenRouter endpoints list no supported parameters, so the vocabulary prompt
+ * (`stt-vocabulary.ts`) is sent but may have no effect. Quiet audio is still stopped before the
+ * upload by `$lib/voice/clip-speech.ts` and judged after by `stt-judge.ts`.
  */
-export const STT_MODEL = 'qwen/qwen3-asr-1.7b'
 
 export type SttAudioInput = {
   bytes: Uint8Array
@@ -57,7 +55,6 @@ export async function transcribeAudio(input: {
 }): Promise<string> {
   const body = await llmCreateTranscription({
     userId: input.userId,
-    model: STT_MODEL,
     audio: input.audio,
     contentOrigin: input.contentOrigin,
   })

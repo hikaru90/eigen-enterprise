@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { llmActiveProvider, llmProviderConfig, userPreference } from '$lib/server/db/schema'
-import { saveProviderConfig } from './save-provider-config'
+import { companySwitch, saveProviderConfig } from './save-provider-config'
 
 const { getDbMock, encryptTenantValueMock } = vi.hoisted(() => ({
   getDbMock: vi.fn(),
@@ -11,6 +11,8 @@ vi.mock('$lib/server/db', () => ({ getDb: getDbMock }))
 vi.mock('$lib/server/crypto/tenant-encryption', () => ({
   encryptTenantValue: encryptTenantValueMock,
 }))
+
+const useOwnKeyMock = vi.fn(async () => {})
 
 type InsertCall = { table: unknown; values: unknown; conflictSet: unknown }
 
@@ -40,6 +42,8 @@ describe('saveProviderConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     encryptTenantValueMock.mockResolvedValue('encrypted-blob')
+    companySwitch.ownerId = async () => 'owner-1'
+    companySwitch.useOwnKey = useOwnKeyMock
   })
 
   it('rejects an empty provider id (ids are free-form text, but never empty)', async () => {
@@ -152,5 +156,32 @@ describe('saveProviderConfig', () => {
 
     expect(() => callFor(calls, llmActiveProvider)).toThrow()
     expect(callFor(calls, userPreference).conflictSet).toMatchObject({ billingMode: 'byok' })
+  })
+
+  it("the owner making a key active turns the company's \"Use eigenInference\" off (CB1)", async () => {
+    const { insert } = makeInsertRecorder()
+    getDbMock.mockReturnValue({ insert })
+    await saveProviderConfig({ userId: 'owner-1', provider: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'k' })
+    expect(useOwnKeyMock).toHaveBeenCalledWith('owner-1')
+  })
+
+  it('a key someone else saves changes nothing for the company', async () => {
+    const { insert } = makeInsertRecorder()
+    getDbMock.mockReturnValue({ insert })
+    await saveProviderConfig({ userId: 'member-1', provider: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'k' })
+    expect(useOwnKeyMock).not.toHaveBeenCalled()
+  })
+
+  it('the owner saving a key without making it active leaves the switch alone', async () => {
+    const { insert } = makeInsertRecorder()
+    getDbMock.mockReturnValue({ insert })
+    await saveProviderConfig({
+      userId: 'owner-1',
+      provider: 'openrouter',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      apiKey: 'k',
+      setActive: false,
+    })
+    expect(useOwnKeyMock).not.toHaveBeenCalled()
   })
 })

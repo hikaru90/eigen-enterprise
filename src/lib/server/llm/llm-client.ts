@@ -1,27 +1,15 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
-import { and, eq } from 'drizzle-orm'
 import { activityProviderForLlmConfig } from '$lib/server/activity/gateway-providers'
 import { logActivityCall } from '$lib/server/activity/log-call'
 import { captureServerEvent } from '$lib/server/analytics/posthog-server'
-import { decryptTenantValue, encryptTenantValue } from '$lib/server/crypto/tenant-encryption'
-import { getDb, withDbUser } from '$lib/server/db'
-import { llmProviderConfig, llmActiveProvider } from '$lib/server/db/schema'
-import { resolveBillingUserId } from '$lib/server/db/tenant-context'
+import { getDb } from '$lib/server/db'
 import { env } from '$lib/server/env/private-env'
 import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
 import { gatewayReportedCostUsdForLog, type TokenUsage } from '$lib/server/llm/gateway-cost'
+import { routingRuleLookupErrorMessage } from '$lib/server/llm/llm-config-guard'
 import { fitEmbeddingResponse } from '$lib/server/llm/matryoshka'
-import {
-  assertEurouterGatewayConfigured,
-  routingRuleLookupErrorMessage,
-} from '$lib/server/llm/llm-config-guard'
-import { copilotChatBaseUrl, fetchCopilotAccessToken } from '$lib/server/llm/oauth/github-copilot'
-import {
-  loadPlatformLlmConfig,
-  loadPlatformOpenRouterSttConfig,
-} from '$lib/server/llm/platform-llm'
-import { isByokBilling } from '$lib/server/llm/preferences'
+import { companySlotSource, resolveSlot, type SlotTarget } from '$lib/server/llm/slots'
 import { isGraphScaleQuiet } from '$lib/server/observability/graph-scale-quiet'
 import { sanitizeChatMessages } from '$lib/server/observability/strip-embeddings'
 
@@ -489,239 +477,6 @@ async function waitForSttRateLimit(userId: string): Promise<void> {
   await slot
 }
 
-/**
- * Loads credentials for a specific LLM provider. DB rows take priority over environment variables.
- */
-async function loadLlmProviderConfig(
-  userId: string,
-  provider: LlmProviderKind,
-): Promise<ResolvedLlmConfig> {
-  const row = await withDbUser(userId, async (db) => {
-    const [loaded] = await db
-      .select()
-      .from(llmProviderConfig)
-      .where(and(eq(llmProviderConfig.userId, userId), eq(llmProviderConfig.provider, provider)))
-      .limit(1)
-    if (!loaded?.baseUrl) return null
-
-    const authType = (loaded.authType ?? 'api_key') as 'api_key' | 'oauth'
-    if (authType === 'oauth') {
-      const access = loaded.oauthAccessEncrypted
-        ? await decryptTenantValue({
-            userId,
-            table: 'llm_provider_config',
-            column: 'oauth_access',
-            ciphertext: loaded.oauthAccessEncrypted,
-          })
-        : ''
-      const refresh = loaded.oauthRefreshEncrypted
-        ? await decryptTenantValue({
-            userId,
-            table: 'llm_provider_config',
-            column: 'oauth_refresh',
-            ciphertext: loaded.oauthRefreshEncrypted,
-          })
-        : ''
-      const expiresAtMs = loaded.oauthExpiresAt?.getTime() ?? Number.MAX_SAFE_INTEGER
-
-      // Rotating OAuth: re-exchange the long-lived token when expired and persist the
-      // rotated access token. Non-expiring OAuth (OpenRouter key) passes through.
-      if ((!access || Date.now() >= expiresAtMs) && refresh) {
-        let rotated: {
-          access: string
-          refresh: string
-          expiresAtMs: number
-          meta?: Record<string, unknown> | null
-        }
-        if (provider === 'github_copilot') {
-          const session = await fetchCopilotAccessToken(refresh)
-          rotated = {
-            access: session.access,
-            refresh: session.refresh,
-            expiresAtMs: session.expiresAtMs,
-            meta: { availableModelIds: session.availableModelIds },
-          }
-        } else {
-          rotated = { access, refresh, expiresAtMs: Number.MAX_SAFE_INTEGER, meta: null }
-        }
-        const oauthAccessEncrypted = await encryptTenantValue({
-          userId,
-          table: 'llm_provider_config',
-          column: 'oauth_access',
-          plaintext: rotated.access,
-        })
-        const oauthRefreshEncrypted =
-          rotated.refresh === refresh
-            ? (loaded.oauthRefreshEncrypted ?? null)
-            : await encryptTenantValue({
-                userId,
-                table: 'llm_provider_config',
-                column: 'oauth_refresh',
-                plaintext: rotated.refresh,
-              })
-        await getDb()
-          .update(llmProviderConfig)
-          .set({
-            oauthAccessEncrypted,
-            oauthRefreshEncrypted,
-            oauthExpiresAt: new Date(rotated.expiresAtMs),
-            oauthMeta: rotated.meta ?? loaded.oauthMeta ?? null,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(eq(llmProviderConfig.userId, userId), eq(llmProviderConfig.provider, provider)),
-          )
-        const baseUrl =
-          provider === 'github_copilot'
-            ? copilotChatBaseUrl(rotated.access)
-            : (loaded.baseUrl?.replace(/\/$/, '') ?? '')
-        return {
-          provider,
-          baseUrl,
-          apiKey: rotated.access,
-          ruleChat: loaded.ruleChat,
-          ruleEmbedding: loaded.ruleEmbedding,
-          modelChat: loaded.modelChat,
-          modelEmbedding: loaded.modelEmbedding,
-        }
-      }
-
-      if (!access) {
-        throw new LlmNotConfiguredError(
-          `${provider} credential needs to be renewed — connect it again under Settings → LLM.`,
-        )
-      }
-
-      const baseUrl =
-        provider === 'github_copilot'
-          ? copilotChatBaseUrl(access)
-          : loaded.baseUrl.replace(/\/$/, '')
-      return {
-        provider,
-        baseUrl,
-        apiKey: access,
-        ruleChat: loaded.ruleChat,
-        ruleEmbedding: loaded.ruleEmbedding,
-        modelChat: loaded.modelChat,
-        modelEmbedding: loaded.modelEmbedding,
-      }
-    }
-
-    const apiKey = loaded.apiKeyEncrypted
-      ? await decryptTenantValue({
-          userId,
-          table: 'llm_provider_config',
-          column: 'api_key',
-          ciphertext: loaded.apiKeyEncrypted,
-        })
-      : (loaded.apiKey ?? '')
-    if (!apiKey.trim()) return null
-
-    return { ...loaded, apiKey }
-  })
-
-  if (row?.baseUrl && row.apiKey) {
-    const baseUrl = row.baseUrl.replace(/\/$/, '')
-    const ruleChat = row.ruleChat?.trim() || null
-    const ruleEmbedding = row.ruleEmbedding?.trim() || null
-    if (provider === 'eurouter') {
-      assertEurouterGatewayConfigured({
-        baseUrl,
-        ruleChat,
-        ruleEmbedding,
-        context: 'byok',
-      })
-    }
-    return {
-      provider,
-      baseUrl,
-      apiKey: row.apiKey,
-      ruleChat,
-      ruleEmbedding,
-      modelChat: row.modelChat?.trim() || null,
-      modelEmbedding: row.modelEmbedding?.trim() || null,
-    }
-  }
-
-  if (provider === 'openrouter') {
-    const baseUrl = env.OPENROUTER_BASE_URL?.trim()
-    const apiKey = env.OPENROUTER_API_KEY?.trim()
-    if (!baseUrl) {
-      throw new LlmNotConfiguredError(
-        'OpenRouter not configured for speech-to-text: set OPENROUTER_BASE_URL or save OpenRouter credentials in Settings → LLM Provider',
-      )
-    }
-    if (!apiKey) {
-      throw new LlmNotConfiguredError(
-        'OpenRouter not configured for speech-to-text: set OPENROUTER_API_KEY or save OpenRouter credentials in Settings → LLM Provider',
-      )
-    }
-    return {
-      provider: 'openrouter',
-      baseUrl: baseUrl.replace(/\/$/, ''),
-      apiKey,
-      ruleChat: null,
-      ruleEmbedding: null,
-      modelChat: null,
-      modelEmbedding: null,
-    }
-  }
-
-  const baseUrl = env.LLM_BASE_URL?.trim()
-  const apiKey = env.LLM_API_KEY?.trim()
-  if (!baseUrl) {
-    throw new LlmNotConfiguredError(
-      'LLM not configured: set LLM_BASE_URL in environment or configure via Settings → LLM Provider',
-    )
-  }
-  if (!apiKey) {
-    throw new LlmNotConfiguredError(
-      'LLM not configured: set LLM_API_KEY in environment or configure via Settings → LLM Provider',
-    )
-  }
-
-  const ruleChat = env.LLM_RULE_CHAT?.trim() || null
-  const ruleEmbedding = env.LLM_RULE_EMBEDDING?.trim() || null
-  const normalizedBaseUrl = baseUrl.replace(/\/$/, '')
-  assertEurouterGatewayConfigured({
-    baseUrl: normalizedBaseUrl,
-    ruleChat,
-    ruleEmbedding,
-    context: 'byok',
-  })
-
-  return {
-    provider: 'eurouter',
-    baseUrl: normalizedBaseUrl,
-    apiKey,
-    ruleChat,
-    ruleEmbedding,
-    modelChat: null,
-    modelEmbedding: null,
-  }
-}
-
-/** Active provider row + DB/env credentials (EUrouter or OpenRouter BYOK shapes). */
-async function resolveActiveProviderLlmConfig(userId: string): Promise<ResolvedLlmConfig> {
-  const [activeRow] = await withDbUser(userId, async (db) =>
-    db.select().from(llmActiveProvider).where(eq(llmActiveProvider.userId, userId)).limit(1),
-  )
-  const provider = (activeRow?.provider ?? 'eurouter') as LlmProviderKind
-  return loadLlmProviderConfig(userId, provider)
-}
-
-/**
- * Loads LLM config for billing (gateway keys + active provider preference).
- * Uses resolveBillingUserId so eval tenants bill/configure via the operator, not the
- * ephemeral eval user. Unrelated to tenant envelope encryption (thought/BYOK-at-rest DEK).
- */
-async function loadLlmConfig(userId: string): Promise<ResolvedLlmConfig> {
-  const billingUserId = resolveBillingUserId(userId)
-  if (await isByokBilling(billingUserId)) {
-    return resolveActiveProviderLlmConfig(billingUserId)
-  }
-  return loadPlatformLlmConfig(billingUserId)
-}
 
 /**
  * Resolves a routing rule to its model + provider config (cached).
@@ -784,11 +539,18 @@ export async function resolveRoutingRuleById(
   return resolved
 }
 
+/**
+ * The model a chat call sends. On eigenInference and an OpenRouter key: the company's chat slot
+ * (a pool model), unless the caller is a dedicated tool identity with an explicit model. A
+ * bring-your-own-key provider outside the pool's namespace routes as it always did.
+ */
 async function chatRoutingConfig(
-  config: ResolvedLlmConfig,
+  target: SlotTarget,
   ruleOverride?: string,
   modelOverride?: string,
 ): Promise<RoutingConfig> {
+  if (target.model) return { model: modelOverride?.trim() || target.model }
+  const config = target.config
   // Every non-EUrouter provider (OpenRouter, Copilot, models.dev catalog, …) is
   // OpenAI-compatible and routes by direct model name.
   if (config.provider !== 'eurouter') {
@@ -810,7 +572,10 @@ async function chatRoutingConfig(
   )
 }
 
-async function embeddingRoutingConfig(config: ResolvedLlmConfig): Promise<RoutingConfig> {
+/** The install's fixed embedding model; a bring-your-own-key provider outside the pool routes as it always did. */
+async function embeddingRoutingConfig(target: SlotTarget): Promise<RoutingConfig> {
+  if (target.model) return { model: target.model }
+  const config = target.config
   // Every non-EUrouter provider (OpenRouter, Copilot, models.dev catalog, …) is
   // OpenAI-compatible and routes by direct model name.
   if (config.provider !== 'eurouter') {
@@ -849,16 +614,14 @@ export type ChatModelDescription = {
 
 /**
  * The provider + model a chat completion for `userId` resolves to, by the
- * exact resolution llmChatCompletion uses (billing identity, BYOK/platform
- * config, routing). Never returns credentials. Callers wrap it the way they
- * wrap the completion itself (e.g. onCompanyProvider + withDbUser for the
- * orchestrator's durable calls).
+ * exact resolution llmChatCompletion uses (the company's chat slot, routing).
+ * Never returns credentials.
  */
 export async function describeChatModel(userId: string): Promise<ChatModelDescription> {
-  const billingUserId = resolveBillingUserId(userId)
-  const byok = await isByokBilling(billingUserId)
-  const config = await loadLlmConfig(userId)
-  const routing = await chatRoutingConfig(config)
+  const target = await resolveSlot('chat', userId)
+  const config = target.config
+  const byok = target.source === 'byok'
+  const routing = await chatRoutingConfig(target)
   return {
     provider: config.provider,
     model: routing.model,
@@ -951,11 +714,12 @@ async function llmChatCompletionInner(input: {
   toolChoice?: unknown
 }): Promise<unknown> {
   assertAttachmentsOnUserMessages(input.messages)
-  const config = await loadLlmConfig(input.userId)
+  const target = await resolveSlot('chat', input.userId)
+  const config = target.config
   const activityProvider = activityProviderForLlmConfig(config.provider)
   const gatewayHost = gatewayHostFromBaseUrl(config.baseUrl)
   const url = `${config.baseUrl}/chat/completions`
-  const routing = await chatRoutingConfig(config, input.routingRuleId, input.modelOverride)
+  const routing = await chatRoutingConfig(target, input.routingRuleId, input.modelOverride)
   const logCtx = (input.logContext?.trim() || 'chat').replace(/\s+/g, '_')
   // sanitizeChatMessages spreads each message, so tool calls and attachments pass through it.
   const messages = sanitizeChatMessages(input.messages) as ChatMessage[]
@@ -1157,11 +921,12 @@ async function llmCreateEmbeddingsInner(input: {
   input: string | string[]
   contentOrigin?: LlmContentOrigin
 }): Promise<unknown> {
-  const config = await loadLlmConfig(input.userId)
+  const target = await resolveSlot('embedding', input.userId)
+  const config = target.config
   const activityProvider = activityProviderForLlmConfig(config.provider)
   const gatewayHost = gatewayHostFromBaseUrl(config.baseUrl)
   const url = `${config.baseUrl}/embeddings`
-  const routing = await embeddingRoutingConfig(config)
+  const routing = await embeddingRoutingConfig(target)
 
   const maxAttempts = 3
   let lastError: unknown
@@ -1280,38 +1045,39 @@ function sttTranscriptPreview(body: unknown): string {
 }
 
 /**
- * OpenRouter credentials for speech-to-text.
- * — Platform credits: Eigen service account (`SERVICE_API_KEY_OPENROUTER`).
- * — BYOK: user DB credentials first, then deployment `OPENROUTER_*` env fallback (same as chat).
- */
-/**
- * Where speech-to-text's credentials come from. Audio always goes to OpenRouter, whatever chat
- * provider the company picked: the billing user's own OpenRouter key (BYOK), or the platform's.
+ * Where speech-to-text's credentials come from: the company's source (Settings → AI). Audio
+ * always goes to an OpenRouter-namespace endpoint, whatever chat provider the company picked:
+ * eigenInference, or the company's own OpenRouter key.
  */
 export async function sttCredentialSource(userId: string): Promise<'byok' | 'platform'> {
-  return (await isByokBilling(resolveBillingUserId(userId))) ? 'byok' : 'platform'
+  return (await companySlotSource(userId)) === 'byok' ? 'byok' : 'platform'
 }
 
-/** The OpenRouter config a transcription uses; throws LlmNotConfiguredError when it is missing. */
+/** The endpoint + key a transcription uses; throws LlmNotConfiguredError when it is missing. */
 export async function loadOpenRouterSttConfig(userId: string): Promise<ResolvedLlmConfig> {
-  if ((await sttCredentialSource(userId)) === 'byok') {
-    return loadLlmProviderConfig(resolveBillingUserId(userId), 'openrouter')
+  return (await resolveSlot('stt', userId)).config
+}
+
+/** The model a slot resolves to (pool slots on an OpenRouter-namespace endpoint always carry one). */
+function slotModel(target: SlotTarget): string {
+  if (!target.model) {
+    throw new LlmNotConfiguredError(`The ${target.slot} slot resolved without a model.`)
   }
-  return loadPlatformOpenRouterSttConfig()
+  return target.model
 }
 
 /**
- * Speech-to-text via OpenRouter `POST /audio/transcriptions` (OpenAI-compatible JSON body).
+ * Speech-to-text via OpenRouter `POST /audio/transcriptions` (OpenAI-compatible JSON body), on
+ * the company's speech-to-text slot.
  */
 export async function llmCreateTranscription(input: {
   userId: string
-  model: string
   audio: LlmTranscriptionAudio
   /** `'memory'` for a voice note to Memory: its transcript is never logged. */
   contentOrigin?: LlmContentOrigin
 }): Promise<unknown> {
-  const config = await loadOpenRouterSttConfig(input.userId)
-  const run = () => llmCreateTranscriptionDedicated(input, config)
+  const target = await resolveSlot('stt', input.userId)
+  const run = () => llmCreateTranscriptionDedicated({ ...input, model: slotModel(target) }, target.config)
   return serialLlmRequestsEnabled() ? runLlmRequestGated(input.userId, run) : run()
 }
 
@@ -1423,17 +1189,16 @@ async function llmCreateTranscriptionDedicated(
  * Text-to-speech via OpenRouter `POST /audio/speech` (OpenAI-compatible).
  * Returns the gateway's raw audio bytes (mp3) — the assistant's voice is the
  * gateway's neural TTS, never the browser's speechSynthesis.
- * Billing mirrors STT: the same OpenRouter config (BYOK user row first, then
- * the deployment service account).
+ * Runs on the company's text-to-speech slot (eigenInference or the company's
+ * own OpenRouter key), like speech to text.
  */
 export async function llmCreateSpeech(input: {
   userId: string
-  model: string
   voice: string
   text: string
 }): Promise<Uint8Array> {
-  const config = await loadOpenRouterSttConfig(input.userId)
-  const run = () => llmCreateSpeechDedicated(input, config)
+  const target = await resolveSlot('tts', input.userId)
+  const run = () => llmCreateSpeechDedicated({ ...input, model: slotModel(target) }, target.config)
   return serialLlmRequestsEnabled() ? runLlmRequestGated(input.userId, run) : run()
 }
 

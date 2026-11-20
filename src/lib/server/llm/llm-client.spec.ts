@@ -68,6 +68,32 @@ vi.mock('$lib/server/llm/preferences', () => ({
   isByokBilling: vi.fn(async () => true),
 }))
 
+/**
+ * Since CB1 the gateway resolves the COMPANY's source (the Settings → AI switch), not the
+ * caller's billing mode. These specs keep steering it through the `isByokBilling` mock: the
+ * switch is off (own key) exactly when it answers true. The company's key is on account 'u1'.
+ */
+const { companyPicks, pinnedEmbedding } = vi.hoisted(() => ({
+  companyPicks: { chat: null as string | null, stt: null as string | null, tts: null as string | null, decision: null as string | null },
+  pinnedEmbedding: { model: null as string | null },
+}))
+vi.mock('$lib/server/llm/company-ai', () => ({
+  companyAiStore: () => ({
+    read: async () => {
+      const { isByokBilling } = await import('$lib/server/llm/preferences')
+      return {
+        useEigenInference: !(await isByokBilling('u1')),
+        picks: { ...companyPicks },
+        embeddingModel: pinnedEmbedding.model,
+      }
+    },
+    pinEmbeddingModel: async (model: string) => model,
+  }),
+}))
+vi.mock('$lib/server/llm/company-provider', () => ({
+  companyOwnerId: async () => 'u1',
+}))
+
 vi.mock('$lib/server/crypto/tenant-encryption', () => ({
   decryptTenantValue: decryptTenantValueMock,
 }))
@@ -866,7 +892,6 @@ describe('llmCreateTranscription', () => {
     })
     await llmCreateTranscription({
       userId: 'u1',
-      model: 'qwen/qwen3-asr-flash-2026-02-10',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
     expect(String(fetchMockUrl(fetchMock, 0))).toBe(
@@ -885,7 +910,6 @@ describe('llmCreateTranscription', () => {
     vi.stubGlobal('fetch', fetchMock)
     await llmCreateTranscription({
       userId: 'u1',
-      model: 'qwen/qwen3-asr-flash-2026-02-10',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
     expect(String(fetchMockUrl(fetchMock, 0))).toBe(
@@ -902,7 +926,6 @@ describe('llmCreateTranscription', () => {
     vi.stubGlobal('fetch', fetchMock)
     await llmCreateTranscription({
       userId: 'u1',
-      model: 'qwen/qwen3-asr-flash-2026-02-10',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
     expect(String(fetchMockUrl(fetchMock, 0))).toBe(
@@ -919,7 +942,6 @@ describe('llmCreateTranscription', () => {
     vi.stubGlobal('fetch', fetchMock)
     const out = await llmCreateTranscription({
       userId: 'u1',
-      model: 'qwen/qwen3-asr-flash-2026-02-10',
       audio: { bytes: new Uint8Array([1, 2, 3]), format: 'webm', language: 'en' },
     })
     expect((out as { text: string }).text).toBe('hello')
@@ -930,7 +952,7 @@ describe('llmCreateTranscription', () => {
       input_audio: { data: string; format: string }
       language: string
     }
-    expect(body.model).toBe('qwen/qwen3-asr-flash-2026-02-10')
+    expect(body.model).toBe('qwen/qwen3-asr-1.7b')
     expect(body.input_audio.format).toBe('webm')
     expect(body.language).toBe('en')
     expect(body.input_audio.data).toBe(Buffer.from([1, 2, 3]).toString('base64'))
@@ -941,7 +963,6 @@ describe('llmCreateTranscription', () => {
     vi.stubGlobal('fetch', fetchMock)
     await llmCreateTranscription({
       userId: 'u1',
-      model: 'openai/gpt-4o-transcribe',
       audio: { bytes: new Uint8Array([1]), format: 'webm', prompt: 'Names that may come up: Ony.' },
     })
     const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as Record<string, unknown>
@@ -955,7 +976,6 @@ describe('llmCreateTranscription', () => {
     vi.stubGlobal('fetch', fetchMock)
     await llmCreateTranscription({
       userId: 'u1',
-      model: 'openai/gpt-4o-transcribe',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
     const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as Record<string, unknown>
@@ -969,7 +989,6 @@ describe('llmCreateTranscription', () => {
     vi.stubGlobal('fetch', fetchMock)
     await llmCreateTranscription({
       userId: 'u1',
-      model: 'qwen/qwen3-asr-flash-2026-02-10',
       audio: { bytes: new Uint8Array([1, 2, 3]), format: 'webm' },
     })
     expect(logActivityCallMock).toHaveBeenCalledWith(
@@ -992,7 +1011,6 @@ describe('llmCreateTranscription', () => {
     vi.stubGlobal('fetch', fetchMock)
     const out = await llmCreateTranscription({
       userId: 'u1',
-      model: 'qwen/qwen3-asr-flash-2026-02-10',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
     expect((out as { text: string }).text).toBe('retry ok')
@@ -1012,7 +1030,6 @@ describe('llmCreateTranscription', () => {
     await expect(
       llmCreateTranscription({
         userId: 'u1',
-        model: 'qwen/qwen3-asr-flash-2026-02-10',
         audio: { bytes: new Uint8Array([1]), format: 'webm' },
       }),
     ).rejects.toThrow(/LLM STT HTTP 502/)
@@ -1034,7 +1051,6 @@ describe('llmCreateTranscription', () => {
     await expect(
       llmCreateTranscription({
         userId: 'u1',
-        model: 'qwen/qwen3-asr-flash-2026-02-10',
         audio: { bytes: new Uint8Array([1]), format: 'webm' },
       }),
     ).rejects.toThrow(/LLM STT HTTP 400/)
@@ -1048,7 +1064,6 @@ describe('llmCreateTranscription', () => {
     await expect(
       llmCreateTranscription({
         userId: 'u1',
-        model: 'qwen/qwen3-asr-flash-2026-02-10',
         audio: { bytes: new Uint8Array([1]), format: 'webm' },
       }),
     ).rejects.toThrow(/failed after 3 attempts/)
@@ -1064,7 +1079,6 @@ describe('llmCreateTranscription', () => {
     vi.stubGlobal('fetch', fetchMock)
     await llmCreateTranscription({
       userId: 'u1',
-      model: 'qwen/qwen3-asr-flash-2026-02-10',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
     expect(logActivityCallMock).toHaveBeenCalledWith(
@@ -1086,7 +1100,6 @@ describe('llmCreateTranscription', () => {
     )
     await llmCreateTranscription({
       userId: 'u1',
-      model: 'qwen/qwen3-asr-flash-2026-02-10',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
     expect(logActivityCallMock).toHaveBeenCalledWith(
@@ -1103,14 +1116,13 @@ describe('llmCreateTranscription', () => {
     )
     await llmCreateTranscription({
       userId: 'u1',
-      model: 'qwen/qwen3-asr-flash-2026-02-10',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
     expect(logActivityCallMock).toHaveBeenCalledWith(
       expect.anything(),
       'u1',
       expect.objectContaining({
-        context: 'stt:qwen/qwen3-asr-flash-2026-02-10 (usage cost missing from gateway)',
+        context: 'stt:qwen/qwen3-asr-1.7b (usage cost missing from gateway)',
       }),
     )
   })
@@ -1122,7 +1134,6 @@ describe('llmCreateTranscription', () => {
     await expect(
       llmCreateTranscription({
         userId: 'u1',
-        model: 'qwen/qwen3-asr-flash-2026-02-10',
         audio: { bytes: new Uint8Array([1]), format: 'webm' },
       }),
     ).rejects.toThrow(/OPENROUTER_BASE_URL/)
@@ -1135,7 +1146,6 @@ describe('llmCreateTranscription', () => {
     await expect(
       llmCreateTranscription({
         userId: 'u1',
-        model: 'qwen/qwen3-asr-flash-2026-02-10',
         audio: { bytes: new Uint8Array([1]), format: 'webm' },
       }),
     ).rejects.toThrow(/OPENROUTER_API_KEY/)
@@ -1148,7 +1158,6 @@ describe('llmCreateTranscription', () => {
     await expect(
       llmCreateTranscription({
         userId: 'u1',
-        model: 'qwen/qwen3-asr-flash-2026-02-10',
         audio: { bytes: new Uint8Array([1]), format: 'webm' },
       }),
     ).rejects.toThrow(/SERVICE_API_KEY_OPENROUTER/)
@@ -1160,7 +1169,6 @@ describe('llmCreateTranscription', () => {
     await expect(
       llmCreateTranscription({
         userId: 'u1',
-        model: 'qwen/qwen3-asr-flash-2026-02-10',
         audio: { bytes: new Uint8Array([1]), format: 'webm' },
       }),
     ).rejects.toThrow(/LLM STT request timed out after 1ms/)
@@ -1226,8 +1234,8 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
   const PLATFORM_AI = {
     PLATFORM_LLM_BASE_URL: 'https://platform-llm.example/api/v1/',
     PLATFORM_LLM_API_KEY: 'sk-platform',
-    PLATFORM_LLM_MODEL_CHAT: 'vendor/platform-chat',
-    PLATFORM_LLM_MODEL_EMBEDDING: 'vendor/platform-embed',
+    PLATFORM_LLM_MODEL_CHAT: 'openai/gpt-5-mini',
+    PLATFORM_LLM_MODEL_EMBEDDING: 'openai/text-embedding-3-small',
   }
   const env = mockEnv as Record<string, string | undefined>
 
@@ -1258,7 +1266,7 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
     mockEnv.LLM_MODEL_EMBEDDING = 'text-embedding-3-small'
   })
 
-  it('platform credits chat goes to the platform AI endpoint with its key and chat model, cost logged', async () => {
+  it('eigenInference chat goes to the platform AI endpoint with its key and the company chat slot (PLATFORM_LLM_MODEL_CHAT is not read), cost logged', async () => {
     const fetchMock = vi.fn(async () =>
       response(true, 200, { usage: { prompt_tokens: 1, cost: 0.0042 }, choices: [] }),
     )
@@ -1268,7 +1276,7 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
     const init = fetchMockInit(fetchMock, 0)
     expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer sk-platform')
     const body = JSON.parse(String(init?.body)) as { model?: string; rule_id?: string }
-    expect(body.model).toBe('vendor/platform-chat')
+    expect(body.model).toBe('~deepseek/deepseek-flash-latest')
     expect(body.rule_id).toBeUndefined()
     expect(logActivityCallMock).toHaveBeenCalledWith(
       expect.anything(),
@@ -1293,7 +1301,7 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
     )
   })
 
-  it('embeddings use the platform embedding model', async () => {
+  it('embeddings pin the embedding model the hosting provisioned (PLATFORM_LLM_MODEL_EMBEDDING)', async () => {
     const fetchMock = vi.fn(async () =>
       response(true, 200, { data: [{ embedding: [0.1, 0.2] }], usage: { cost: 0.0001 } }),
     )
@@ -1301,13 +1309,13 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
     await llmCreateEmbeddings({ userId: 'u1', input: 'hello' })
     expect(fetchMockUrl(fetchMock, 0)).toBe('https://platform-llm.example/api/v1/embeddings')
     const body = JSON.parse(String(fetchMockInit(fetchMock, 0)?.body)) as { model?: string }
-    expect(body.model).toBe('vendor/platform-embed')
+    expect(body.model).toBe('openai/text-embedding-3-small')
   })
 
   it('describes the platform AI as the chat model (billing platform)', async () => {
     await expect(describeChatModel('u1')).resolves.toEqual({
       provider: 'platform',
-      model: 'vendor/platform-chat',
+      model: '~deepseek/deepseek-flash-latest',
       routingRuleId: null,
       billing: 'platform',
       gatewayHost: 'platform-llm.example',
@@ -1335,7 +1343,6 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
     vi.stubGlobal('fetch', fetchMock)
     await llmCreateTranscription({
       userId: 'u1',
-      model: 'qwen/qwen3-asr-1.7b',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
     expect(fetchMockUrl(fetchMock, 0)).toBe('https://platform-llm.example/api/v1/audio/transcriptions')
@@ -1356,7 +1363,6 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
     vi.stubGlobal('fetch', fetchMock)
     await llmCreateTranscription({
       userId: 'u1',
-      model: 'qwen/qwen3-asr-1.7b',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
     expect((fetchMockInit(fetchMock, 0)?.headers as Record<string, string>).Authorization).toBe(
@@ -1371,7 +1377,6 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
     await expect(
       llmCreateTranscription({
         userId: 'u1',
-        model: 'qwen/qwen3-asr-1.7b',
         audio: { bytes: new Uint8Array([1]), format: 'webm' },
       }),
     ).rejects.toThrow(/PLATFORM_LLM_API_KEY is not set/)
@@ -1487,45 +1492,45 @@ describe('llm client BYOK DB credentials', () => {
   })
 })
 
-describe('llm client OpenRouter routing', () => {
+describe('llm client OpenRouter routing (an OpenRouter key runs the company slots)', () => {
+  function openRouterRow(overrides: Record<string, unknown> = {}) {
+    return {
+      provider: 'openrouter',
+      baseUrl: 'https://db-openrouter.example/api/v1',
+      apiKey: 'db-key',
+      apiKeyEncrypted: null,
+      ruleChat: null,
+      ruleEmbedding: null,
+      modelChat: null,
+      modelEmbedding: null,
+      ...overrides,
+    }
+  }
+
   beforeEach(async () => {
     vi.clearAllMocks()
     mockEnv.LLM_MIN_REQUEST_INTERVAL_MS = '0'
     mockEnv.LLM_REQUEST_TIMEOUT_MS = ''
     mockEnv.LLM_MODEL_CHAT = ''
     mockEnv.LLM_MODEL_EMBEDDING = ''
+    companyPicks.chat = null
+    pinnedEmbedding.model = null
     const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(true)
   })
 
-  it('BYOK OpenRouter chat uses modelChat from DB', async () => {
-    const { isByokBilling } = await import('$lib/server/llm/preferences')
-    vi.mocked(isByokBilling).mockResolvedValue(true)
-    mockSequentialDbLimitResults(
-      [{ provider: 'openrouter' }],
-      [
-        {
-          provider: 'openrouter',
-          baseUrl: 'https://db-openrouter.example/api/v1',
-          apiKey: 'db-key',
-          apiKeyEncrypted: null,
-          ruleChat: null,
-          ruleEmbedding: null,
-          modelChat: 'openrouter/chat-model',
-          modelEmbedding: null,
-        },
-      ],
-    )
-    const fetchMock = vi.fn(async () =>
-      response(true, 200, { usage: { prompt_tokens: 1 }, choices: [] }),
-    )
+  afterEach(() => {
+    companyPicks.chat = null
+    pinnedEmbedding.model = null
+  })
+
+  it("chat sends the company's chat slot, not the credential's saved free-text model", async () => {
+    mockSequentialDbLimitResults([{ provider: 'openrouter' }], [openRouterRow({ modelChat: 'openrouter/chat-model' })])
+    const fetchMock = vi.fn(async () => response(true, 200, { usage: { prompt_tokens: 1 }, choices: [] }))
     vi.stubGlobal('fetch', fetchMock)
     await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
-    const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as {
-      model: string
-      rule_id?: string
-    }
-    expect(body.model).toBe('openrouter/chat-model')
+    const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as { model: string; rule_id?: string }
+    expect(body.model).toBe('~deepseek/deepseek-flash-latest')
     expect(body.rule_id).toBeUndefined()
     expect(logActivityCallMock).toHaveBeenCalledWith(
       expect.anything(),
@@ -1534,83 +1539,63 @@ describe('llm client OpenRouter routing', () => {
     )
   })
 
-  it('BYOK OpenRouter embedding uses modelEmbedding from DB', async () => {
-    const { isByokBilling } = await import('$lib/server/llm/preferences')
-    vi.mocked(isByokBilling).mockResolvedValue(true)
-    mockSequentialDbLimitResults(
-      [{ provider: 'openrouter' }],
-      [
-        {
-          provider: 'openrouter',
-          baseUrl: 'https://db-openrouter.example/api/v1',
-          apiKey: 'db-key',
-          apiKeyEncrypted: null,
-          ruleChat: null,
-          ruleEmbedding: null,
-          modelChat: null,
-          modelEmbedding: 'openrouter/embed-model',
-        },
-      ],
-    )
-    const fetchMock = vi.fn(async () =>
-      response(true, 200, { usage: { total_tokens: 1 }, data: [] }),
-    )
+  it('chat sends the model the company picked for the slot', async () => {
+    companyPicks.chat = 'openai/gpt-5-mini'
+    mockSequentialDbLimitResults([{ provider: 'openrouter' }], [openRouterRow()])
+    const fetchMock = vi.fn(async () => response(true, 200, { choices: [] }))
     vi.stubGlobal('fetch', fetchMock)
-    await llmCreateEmbeddings({ userId: 'u1', input: 'hello' })
-    const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as {
-      model: string
-    }
-    expect(body.model).toBe('openrouter/embed-model')
-    expect(logActivityCallMock).toHaveBeenCalledWith(
-      expect.anything(),
-      'u1',
-      expect.objectContaining({ provider: 'openrouter', gatewayHost: 'db-openrouter.example' }),
-    )
+    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+    expect((JSON.parse(fetchMockInit(fetchMock, 0).body as string) as { model: string }).model).toBe('openai/gpt-5-mini')
   })
 
-  it('fails when OpenRouter chat model is not configured', async () => {
-    const { isByokBilling } = await import('$lib/server/llm/preferences')
-    vi.mocked(isByokBilling).mockResolvedValue(true)
-    mockSequentialDbLimitResults(
-      [{ provider: 'openrouter' }],
-      [
-        {
-          provider: 'openrouter',
-          baseUrl: 'https://db-openrouter.example/api/v1',
-          apiKey: 'db-key',
-          apiKeyEncrypted: null,
-          ruleChat: null,
-          ruleEmbedding: null,
-          modelChat: null,
-          modelEmbedding: null,
-        },
-      ],
-    )
+  it('a pick that left the pool fails loud instead of running something else', async () => {
+    companyPicks.chat = 'vendor/retired-model'
+    mockSequentialDbLimitResults([{ provider: 'openrouter' }], [openRouterRow()])
     await expect(
       llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
-    ).rejects.toThrow(/No chat model configured for this openrouter credential/)
+    ).rejects.toThrow(/not in the model pool for the chat slot/)
   })
 
-  it('fails when OpenRouter embedding model is not configured', async () => {
-    const { isByokBilling } = await import('$lib/server/llm/preferences')
-    vi.mocked(isByokBilling).mockResolvedValue(true)
+  it('embeddings keep the model the install embedded with so far (pinned once), when it is in the pool', async () => {
     mockSequentialDbLimitResults(
       [{ provider: 'openrouter' }],
-      [
-        {
-          provider: 'openrouter',
-          baseUrl: 'https://db-openrouter.example/api/v1',
-          apiKey: 'db-key',
-          apiKeyEncrypted: null,
-          ruleChat: null,
-          ruleEmbedding: null,
-          modelChat: null,
-          modelEmbedding: null,
-        },
-      ],
+      [openRouterRow({ modelEmbedding: 'openai/text-embedding-3-small' })],
     )
+    const fetchMock = vi.fn(async () => response(true, 200, { usage: { total_tokens: 1 }, data: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await llmCreateEmbeddings({ userId: 'u1', input: 'hello' })
+    const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as { model: string }
+    expect(body.model).toBe('openai/text-embedding-3-small')
+  })
+
+  it('embeddings with no model anywhere pin the pool’s pick', async () => {
+    mockSequentialDbLimitResults([{ provider: 'openrouter' }], [openRouterRow()])
+    const fetchMock = vi.fn(async () => response(true, 200, { usage: { total_tokens: 1 }, data: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await llmCreateEmbeddings({ userId: 'u1', input: 'hello' })
+    expect((JSON.parse(fetchMockInit(fetchMock, 0).body as string) as { model: string }).model).toBe(
+      'qwen/qwen3-embedding-8b',
+    )
+  })
+
+  it('a pinned embedding model wins over whatever the key has saved', async () => {
+    pinnedEmbedding.model = 'qwen/qwen3-embedding-8b'
+    mockSequentialDbLimitResults(
+      [{ provider: 'openrouter' }],
+      [openRouterRow({ modelEmbedding: 'openai/text-embedding-3-small' })],
+    )
+    const fetchMock = vi.fn(async () => response(true, 200, { usage: { total_tokens: 1 }, data: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await llmCreateEmbeddings({ userId: 'u1', input: 'hello' })
+    expect((JSON.parse(fetchMockInit(fetchMock, 0).body as string) as { model: string }).model).toBe(
+      'qwen/qwen3-embedding-8b',
+    )
+  })
+
+  it('an embedding model outside the pool fails loud on the first resolution (no silent re-embedding)', async () => {
+    mockSequentialDbLimitResults([{ provider: 'openrouter' }], [openRouterRow({ modelEmbedding: 'openrouter/embed-model' })])
     await expect(llmCreateEmbeddings({ userId: 'u1', input: 'hello' })).rejects.toThrow(
-      /No embedding model configured for this openrouter credential/,
+      /not in the model pool for the embedding slot/,
     )
   })
 })
@@ -1894,7 +1879,6 @@ describe('llm client timeout and rate limit defaults', () => {
     )
     await llmCreateTranscription({
       userId: 'u1',
-      model: 'qwen/qwen3-asr-flash-2026-02-10',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
     expect(logSpy).toHaveBeenCalledWith('[llm.stt] response attempt 1: (empty response)')
@@ -2266,7 +2250,6 @@ describe('memory content stays out of logs, the AI usage log and PostHog', () =>
 
     await llmCreateTranscription({
       userId: 'u1',
-      model: 'qwen/qwen3-asr-flash-2026-02-10',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
       contentOrigin: 'memory',
     })
@@ -2278,7 +2261,7 @@ describe('memory content stays out of logs, the AI usage log and PostHog', () =>
       'u1',
       expect.objectContaining({
         baseCostUsd: 0.003,
-        context: 'stt:qwen/qwen3-asr-flash-2026-02-10',
+        context: 'stt:qwen/qwen3-asr-1.7b',
       }),
     )
   })

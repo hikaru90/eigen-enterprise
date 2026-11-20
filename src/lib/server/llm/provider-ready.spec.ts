@@ -35,59 +35,59 @@ describe('isUserProviderReady', () => {
     vi.clearAllMocks()
     for (const key of Object.keys(mockEnv)) delete mockEnv[key]
     hasSavedByokLlmCredentialsMock.mockResolvedValue(false)
-    mockSequentialDbLimitResults([], [])
+    mockSequentialDbLimitResults([])
   })
 
-  it('is true when the user has saved BYOK credentials on byok billing (no env needed)', async () => {
-    mockSequentialDbLimitResults([{ billingMode: 'byok' }], [])
+  it('own key: true when the account has saved credentials (no env needed)', async () => {
+    mockSequentialDbLimitResults([])
     hasSavedByokLlmCredentialsMock.mockResolvedValue(true)
-    await expect(isUserProviderReady('u1')).resolves.toBe(true)
+    await expect(isUserProviderReady('u1', 'byok')).resolves.toBe(true)
   })
 
-  it('ignores saved BYOK credentials while billing is platform_credits (platform path wins)', async () => {
+  it('ignores saved credentials while the company is on eigenInference', async () => {
     hasSavedByokLlmCredentialsMock.mockResolvedValue(true)
-    await expect(isUserProviderReady('u1')).resolves.toBe(false)
+    await expect(isUserProviderReady('u1', 'eigeninference')).resolves.toBe(false)
   })
 
   it('is true on platform credits with the EUrouter service account configured', async () => {
     mockEnv.LLM_BASE_URL = 'https://gw.example.test/v1'
     mockEnv.SERVICE_API_KEY_EUROUTER = 'service-key'
-    await expect(isUserProviderReady('u1')).resolves.toBe(true)
+    await expect(isUserProviderReady('u1', 'eigeninference')).resolves.toBe(true)
   })
 
   it('is false on platform credits without any gateway env', async () => {
-    await expect(isUserProviderReady('u1')).resolves.toBe(false)
+    await expect(isUserProviderReady('u1', 'eigeninference')).resolves.toBe(false)
   })
 
   it('checks the OpenRouter service account when the active provider is openrouter', async () => {
-    mockSequentialDbLimitResults([], [{ provider: 'openrouter' }])
+    mockSequentialDbLimitResults([{ provider: 'openrouter' }])
     mockEnv.OPENROUTER_BASE_URL = 'https://openrouter.example/api/v1'
     mockEnv.SERVICE_API_KEY_OPENROUTER = 'service-key'
-    await expect(isUserProviderReady('u1')).resolves.toBe(true)
+    await expect(isUserProviderReady('u1', 'eigeninference')).resolves.toBe(true)
   })
 
   it('is false when the openrouter active provider lacks its service key', async () => {
-    mockSequentialDbLimitResults([], [{ provider: 'openrouter' }])
+    mockSequentialDbLimitResults([{ provider: 'openrouter' }])
     mockEnv.OPENROUTER_BASE_URL = 'https://openrouter.example/api/v1'
-    await expect(isUserProviderReady('u1')).resolves.toBe(false)
+    await expect(isUserProviderReady('u1', 'eigeninference')).resolves.toBe(false)
   })
 
   it('in byok billing without saved creds, falls back to the BYOK env pair', async () => {
-    mockSequentialDbLimitResults([{ billingMode: 'byok' }], [])
+    mockSequentialDbLimitResults([])
     mockEnv.LLM_BASE_URL = 'https://gw.example.test/v1'
     mockEnv.LLM_API_KEY = 'user-env-key'
-    await expect(isUserProviderReady('u1')).resolves.toBe(true)
+    await expect(isUserProviderReady('u1', 'byok')).resolves.toBe(true)
   })
 
   it('in byok billing without saved creds or env, is false even when platform keys exist', async () => {
-    mockSequentialDbLimitResults([{ billingMode: 'byok' }], [])
+    mockSequentialDbLimitResults([])
     mockEnv.LLM_BASE_URL = 'https://gw.example.test/v1'
     mockEnv.SERVICE_API_KEY_EUROUTER = 'service-key'
-    await expect(isUserProviderReady('u1')).resolves.toBe(false)
+    await expect(isUserProviderReady('u1', 'byok')).resolves.toBe(false)
   })
 
   it('never throws on an empty database', async () => {
-    await expect(isUserProviderReady('u1')).resolves.toBe(false)
+    await expect(isUserProviderReady('u1', 'eigeninference')).resolves.toBe(false)
   })
 
   describe('platform AI from hosting (PLATFORM_LLM_*)', () => {
@@ -97,25 +97,25 @@ describe('isUserProviderReady', () => {
 
     it('is true on platform credits with only the platform AI set (a hosted box: no service keys)', async () => {
       setPlatformAi()
-      await expect(isUserProviderReady('u1')).resolves.toBe(true)
+      await expect(isUserProviderReady('u1', 'eigeninference')).resolves.toBe(true)
     })
 
     it('is true even when the active-provider row says openrouter (the platform AI is the platform path)', async () => {
-      mockSequentialDbLimitResults([], [{ provider: 'openrouter' }])
+      mockSequentialDbLimitResults([{ provider: 'openrouter' }])
       setPlatformAi()
-      await expect(isUserProviderReady('u1')).resolves.toBe(true)
+      await expect(isUserProviderReady('u1', 'eigeninference')).resolves.toBe(true)
     })
 
     it('a user who chose BYOK still needs their own key: platform AI does not make them ready', async () => {
-      mockSequentialDbLimitResults([{ billingMode: 'byok' }], [])
+      mockSequentialDbLimitResults([])
       setPlatformAi()
-      await expect(isUserProviderReady('u1')).resolves.toBe(false)
+      await expect(isUserProviderReady('u1', 'byok')).resolves.toBe(false)
     })
 
     it('a partial platform AI fails loud, naming what is missing', async () => {
       setPlatformAi()
       delete mockEnv.PLATFORM_LLM_API_KEY
-      await expect(isUserProviderReady('u1')).rejects.toThrow(/PLATFORM_LLM_API_KEY is not set/)
+      await expect(isUserProviderReady('u1', 'eigeninference')).rejects.toThrow(/PLATFORM_LLM_API_KEY is not set/)
     })
   })
 })
@@ -128,22 +128,23 @@ const PLATFORM_AI = {
 }
 
 describe('isCompanyProviderReady', () => {
-  it('asks about the company provider (the owner’s account), not the member’s own settings', async () => {
+  it('asks about the company source (the Settings → AI switch) with the owner’s account, not the member’s own settings', async () => {
     const { isCompanyProviderReady } = await import('./provider-ready')
     const asked: string[] = []
     const ready = await isCompanyProviderReady({
       companyAccountId: async () => 'owner-1',
+      companySource: async () => 'byok',
       withDbUser: async (userId, fn) => {
         asked.push(`db:${userId}`)
         return fn()
       },
-      isUserProviderReady: async (userId) => {
-        asked.push(`ready:${userId}`)
+      isUserProviderReady: async (userId, source) => {
+        asked.push(`ready:${userId}:${source}`)
         return userId === 'owner-1'
       },
     })
     expect(ready).toBe(true)
-    expect(asked).toEqual(['db:owner-1', 'ready:owner-1'])
+    expect(asked).toEqual(['db:owner-1', 'ready:owner-1:byok'])
   })
 
   it('a hosted box with the platform AI env is ready (the onboarding skips the provider step)', async () => {
@@ -151,9 +152,10 @@ describe('isCompanyProviderReady', () => {
     for (const key of Object.keys(mockEnv)) delete mockEnv[key]
     Object.assign(mockEnv, PLATFORM_AI)
     hasSavedByokLlmCredentialsMock.mockResolvedValue(false)
-    mockSequentialDbLimitResults([], [])
+    mockSequentialDbLimitResults([])
     const ready = await isCompanyProviderReady({
       companyAccountId: async () => 'owner-1',
+      companySource: async () => 'eigeninference',
       withDbUser: async (_userId, fn) => fn(),
       isUserProviderReady,
     })
@@ -165,6 +167,9 @@ describe('isCompanyProviderReady', () => {
     const { isCompanyProviderReady } = await import('./provider-ready')
     const ready = await isCompanyProviderReady({
       companyAccountId: async () => null,
+      companySource: async () => {
+        throw new Error('must not read the company source')
+      },
       withDbUser: async () => {
         throw new Error('must not read any account')
       },

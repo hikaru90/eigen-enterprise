@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { parseSttTranscript, STT_MODEL, transcribeAudio } from './stt-client'
+import { parseSttTranscript, transcribeAudio } from './stt-client'
 
 const { llmCreateTranscriptionMock } = vi.hoisted(() => ({
   llmCreateTranscriptionMock: vi.fn(),
@@ -39,11 +39,7 @@ describe('transcribeAudio', () => {
     llmCreateTranscriptionMock.mockReset()
   })
 
-  it('pins qwen3-asr-1.7b, one model for every transcript in the app (owner, 2026-11-19)', () => {
-    expect(STT_MODEL).toBe('qwen/qwen3-asr-1.7b')
-  })
-
-  it('calls the gateway with the pinned STT model, whatever the env says', async () => {
+  it('calls the gateway without a model: the company speech-to-text slot decides it (CB1)', async () => {
     llmCreateTranscriptionMock.mockResolvedValue({ text: 'typed speech' })
     const out = await transcribeAudio({
       userId: 'u1',
@@ -52,7 +48,6 @@ describe('transcribeAudio', () => {
     expect(out).toBe('typed speech')
     expect(llmCreateTranscriptionMock).toHaveBeenCalledWith({
       userId: 'u1',
-      model: 'qwen/qwen3-asr-1.7b',
       audio: { bytes: new Uint8Array([1, 2, 3]), format: 'webm', language: 'en' },
     })
   })

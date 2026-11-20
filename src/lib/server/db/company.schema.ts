@@ -1,4 +1,4 @@
-import { doublePrecision, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+import { boolean, doublePrecision, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
 import { CROPPABLE_LOGO_TYPES, LOGO_TYPES } from '$lib/company/identity'
 
 /**
@@ -21,6 +21,25 @@ export const companyProfile = pgTable('company_profile', {
   logoCropLeft: doublePrecision('logo_crop_left'),
   logoCropTop: doublePrecision('logo_crop_top'),
   logoCropSize: doublePrecision('logo_crop_size'),
+  updatedBy: text('updated_by').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+/**
+ * eigenInference and the model slots (migration 0160, plan/phase-company-brain.md §6): one row
+ * ('company'). `useEigenInference` is the Settings → AI switch; the four choosable slots hold a
+ * model from the pool (`src/lib/server/llm/model-pool.ts`), null = the pool's pick. The
+ * embedding model is fixed per install: set once on first resolution, never through Settings.
+ * Company-level table (no RLS).
+ */
+export const companyAi = pgTable('company_ai', {
+  id: text('id').primaryKey().default('company'),
+  useEigenInference: boolean('use_eigen_inference').notNull(),
+  chatModel: text('chat_model'),
+  sttModel: text('stt_model'),
+  ttsModel: text('tts_model'),
+  decisionModel: text('decision_model'),
+  embeddingModel: text('embedding_model'),
   updatedBy: text('updated_by').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })

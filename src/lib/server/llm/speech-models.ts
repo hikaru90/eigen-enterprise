@@ -1,8 +1,7 @@
-import type { SpeechFeature, SpeechModelStatus } from '$lib/voice/dictation-readiness'
 import { env } from '$lib/server/env/private-env'
-import { STT_MODEL } from './stt-client'
+import type { SpeechFeature, SpeechModelStatus } from '$lib/voice/dictation-readiness'
+import { poolFor } from './model-pool'
 import { readPlatformAiConfig } from './platform-ai'
-import { ttsModelId } from './tts-client'
 
 export type { SpeechFeature, SpeechModelStatus } from '$lib/voice/dictation-readiness'
 
@@ -15,11 +14,21 @@ export type { SpeechFeature, SpeechModelStatus } from '$lib/voice/dictation-read
  */
 export type SpeechModel = { feature: SpeechFeature; model: string }
 
-/** dictation = speech to text (`stt-client.ts`); voice = the assistant speaking (`tts-client.ts`). */
-export function speechModels(): SpeechModel[] {
+/**
+ * dictation = speech to text (`stt-client.ts`); voice = the assistant speaking (`tts-client.ts`).
+ * The company's picks (Settings → AI), or with none given every speech model in the pool (the
+ * boot check: a pool model whose endpoints are gone shows on deploy).
+ */
+export function speechModels(picks?: { stt: string; tts: string }): SpeechModel[] {
+  if (picks) {
+    return [
+      { feature: 'dictation', model: picks.stt },
+      { feature: 'voice', model: picks.tts },
+    ]
+  }
   return [
-    { feature: 'dictation', model: STT_MODEL },
-    { feature: 'voice', model: ttsModelId() },
+    ...poolFor('stt').map((m) => ({ feature: 'dictation' as const, model: m.id })),
+    ...poolFor('tts').map((m) => ({ feature: 'voice' as const, model: m.id })),
   ]
 }
 

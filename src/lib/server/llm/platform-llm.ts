@@ -17,11 +17,12 @@ export function platformAiFromEnv(): PlatformAiConfig | null {
 }
 
 /**
- * Platform-managed gateway credentials. Used when billing_mode is platform_credits.
- * The platform AI from hosting (a hosted box) first; otherwise the self-hosted
- * service account: EUrouter by default, OpenRouter when the active row says so.
+ * The eigenInference credential for chat and embeddings (Settings → AI, "Use eigenInference"
+ * on). The platform AI from hosting (a hosted box) first; otherwise, until its announced
+ * removal (CB1), the self-hosted service account: EUrouter by default, OpenRouter when the
+ * owner's active provider row says so (`ownerId` null = no owner yet = EUrouter).
  */
-export async function loadPlatformLlmConfig(userId: string): Promise<ResolvedLlmConfig> {
+export async function loadPlatformLlmConfig(ownerId: string | null): Promise<ResolvedLlmConfig> {
   const platformAi = platformAiFromEnv()
   if (platformAi) {
     return {
@@ -35,9 +36,11 @@ export async function loadPlatformLlmConfig(userId: string): Promise<ResolvedLlm
     }
   }
 
-  const [activeRow] = await withBillingUserDbRead(userId, (db) =>
-    db.select().from(llmActiveProvider).where(eq(llmActiveProvider.userId, userId)).limit(1),
-  )
+  const [activeRow] = ownerId
+    ? await withBillingUserDbRead(ownerId, (db) =>
+        db.select().from(llmActiveProvider).where(eq(llmActiveProvider.userId, ownerId)).limit(1),
+      )
+    : []
   const provider = (activeRow?.provider ?? 'eurouter') as LlmProviderKind
 
   if (provider === 'openrouter') {
