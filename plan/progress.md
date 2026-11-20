@@ -29,6 +29,9 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
     - the company runs on its own OpenRouter key.
   - **20 thoughts still `failed`**, Ony's 5 and the owner's 15. Each person can re-run theirs with Retry (`/api/capture/enrich-retry`), or they can be requeued in bulk after the owner's OK (a write to the prod DB).
 - **ee-one:** upgrades once the owner sets the /ops target to 0.5.30.
+- **Requeued (owner: "Yes, requeue them"):** the 20 failed thoughts were set back to `pending` with the error cleared, the same update `requeueEnrichThought` makes (14:00 CET).
+  - They index the next time each person opens Memory. The enrich worker is only scheduled from a request (`/api/capture/recent` → `syncAndScheduleCaptureEnrichQueue`); no background sweep drains pending rows after a restart.
+  - That gap belongs to CB15 (background work).
 - **Not yet done:** Contribute 19cf0d97 isn't marked on the board until Ony's thoughts index.
 
 ## 2026-11-20 — Company brain stage 0 + 1 (CB0, CB1, CB3, CB4) merged into main (owner: "Yes, start them"; released as v0.5.30)
