@@ -90,6 +90,10 @@ describe('bootApp — production wiring', () => {
     expect(before.filter((n) => !member.includes(n))).toEqual([...MEMBER_LOSES_VIA_BRAIN].sort())
     // Admins lose nothing.
     expect(before.filter((n) => !admin.includes(n))).toEqual([])
+    // Offered is not allowed: an owner/admin tool still refuses a member when it runs.
+    await expect(
+      boot.kernel.registry.execute('repos.set_copy_mode', { repoId: 1, mode: 'docs' }, { principal: { id: 'member-1', kind: 'human', roles: ['member'] }, requestId: 'r' }),
+    ).rejects.toMatchObject({ code: 'permission_denied' })
   })
 })
 
@@ -228,6 +232,7 @@ const MEMBER_LOSES_VIA_BRAIN = [
   'repo.worktree_create',
   'repo.write_file',
   'repos.list',
+  'repos.set_copy_mode',
   'repos.sync_now',
   'roadmap.add_item',
   'roadmap.list_items',
