@@ -2,6 +2,22 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-20 — Drive e2e journeys green again: three root causes (owner: "Yes, diagnose e2e")
+
+- **Result:** `drive.e2e.ts` and the new `drive-office.e2e.ts` both pass at `00ad3192` in an isolated checkout (2 passed, 32s).
+- **Root causes:**
+  1. **Real UI bug, older than the office work (it also failed at `2dba79d3`).** In the Drive list, at a 1280px window, the list is only ~808px wide beside the nav. The fixed Owner/Modified/From/Size/Actions columns (768px) squeezed the Name column to 8px, so file names (the open links) had no width.
+     - Fix `00ad3192`: the optional columns now follow the list's own width (container queries `@xl`/`@2xl`/`@4xl`/`@5xl`), so the name keeps ≥ ~14rem. At ~800px, Owner and From are hidden.
+     - Component specs run without Tailwind by design, so the e2e journey is the regression test.
+  2. **e2e race, in the tests only:** clicks right after a full `goto` reached the page before hydration, with no handlers yet (signup posted the bare form; Share and upload did nothing).
+     - New helper `gotoHydrated` waits for `body[data-eigen-hydrated]`. `registerUser` and both Drive journeys use it.
+  3. **Environment:** the `/drive` 500 (`getDb() was called outside an active request`) was the CB1 regression the other session fixed in `997197a8`, plus a test DB missing migration `0160_company_ai`.
+     - Run `npm run db:migrate` before invoking Playwright directly. `npm run test:e2e` does it.
+- **Lesson:** an e2e run in the main checkout while another session commits gets Vite full reloads mid-test (elements detached, repeated navigations).
+  - For a stable result, run the journeys from a separate checkout of the commit: `git worktree add` outside `.claude/`, symlink `node_modules` and `.env`, then `npx svelte-kit sync` so the `$lib` alias resolves.
+  - Playwright finds no tests under `.claude/worktrees/` (the hidden folder).
+- **Still open:** pushing and releasing office milestone 1 to the box (waiting on the owner's go-ahead).
+
 ## 2026-11-20 — Company brain stage 0 + 1 (CB0, CB1, CB3, CB4) merged into main (owner: "Yes, start them"; not pushed, not released)
 
 - **Merges:**
@@ -98,7 +114,7 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - **Clean room:** implementers worked from the plan and ISO 32000 / ECMA-376 only. None of the three reference projects' code was read, installed or copied.
 - **Gate:** `npm run ci:local` is green on main after all three merges (7944 unit tests, 627 component tests, 0 type errors).
 - **What broke / open:**
-  - The new journey `src/routes/e2e/drive-office.e2e.ts` hasn't passed yet. On current main both it and the existing `drive.e2e.ts` fail before reaching any office code: signup never shows the code step, `/drive` returns 500, and the error page's root layout hits `getDb() was called outside an active request`. This is not caused by the office work, but it isn't diagnosed yet.
+  - The new journey `src/routes/e2e/drive-office.e2e.ts` failed before reaching office code. It was diagnosed and fixed in the entry above; it now passes.
   - Worktrees under `.claude/worktrees/` fail `npm run check`: svelte-check's `--incremental` skips paths containing `/.`. All three streams hit this, so worktree streams can't run the gate in place.
 - **Known gaps (milestone 1 is view-only):**
   - **PDF:** no clickable links, no tagged-PDF reading order.
