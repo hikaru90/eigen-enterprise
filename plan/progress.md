@@ -2,6 +2,62 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-20 — GitHub full mirror M1–M3 reviewed, blockers fixed, merged into main (owner: "Yes, fix blockers"; not pushed, not on the box)
+
+- **What:** connected repos now copy every file of the default branch into Drive, under `GitHub/<owner>/<repo>/<branch>/` (plan/github-drive-full-mirror.md).
+  - M1: tarball client + streaming tar reader.
+  - M2: Drive source writer for bytes and batches.
+  - M3: the sync, render and `repos.set_copy_mode`.
+  - M4 (settings UI control + e2e journey) is **not built yet**.
+- **Review → fixes:** three independent reviews of zcode's branches found blockers. Each was fixed test-first on its branch.
+  - **M1** (`dca52f72`, `f59f228f`):
+    - the reader skips unwanted entries without buffering them and closes the file on every exit
+    - the download has its own timeout and a byte cap (`too_large`)
+    - pax/EOF/gzip-CRC checks, unsafe paths refused
+    - `sweepTarballs`
+  - **M2** (`3fbc2c7f`…`2cd0b3c7`):
+    - `IN` lists chunked (a 70k-item remove works)
+    - one-transaction remove with batched grant drops
+    - stale mappings cleaned again (main's behaviour, which the branch had broken)
+    - no inline blob deletes (hourly sweep with a 1 h grace)
+    - prefix index `0162`
+    - a 2 MB cap on every text preview and on `drive.read`
+  - **M3** (`c897dc55`):
+    - `0161` keeps `doc_shas` (expand/contract, D15; the drop ships a release later)
+    - paths GitHub's archive leaves out or changes (`.gitattributes`) are fetched per blob, up to 2,000 per sync, the rest listed as `archive_filtered`
+    - names checked like Drive's `checkName`; the branch folder replaces `/` with `-`
+    - MIME types by extension
+    - no whole-source listing per sync
+    - file rows written per flushed batch
+    - the fakes made honest
+- **Integration** (`full-mirror`: `c408de1d`, `ab0f3814`, `d72e7c92`, `a85f3334`, `42879437`):
+  - **Adapter override:** the automatic merge had left main's M0 placeholder stubs *after* the real `upsertBytes`/`upsertMany` in the Drive port adapter. The later key wins, so every write would have thrown. The adapter is rewritten and `list` uses the writer's own prefix filter.
+  - **Download config:** the app now passes the tarball dir (`<drive storage>/github-tarballs`, resolved lazily, created on first download), an 8-min download timeout and a 2 GiB cap.
+  - **Fresh-box deadlock:** a sweep before any download returned ENOENT and failed every tick, so no sync could ever run. It now finds nothing to sweep.
+  - **Blob sweep:** runs hourly from the job-queue tick (Drive is a system module, so it runs plugin or not).
+  - **`repos.set_copy_mode`:** offered through the brain like the other admin tools; a new test proves a member is refused when it runs.
+- **Gates:**
+  - unit 8,330 passed / 1 failed before the last fix (that boot-wiring pin is now fixed and green); 451 targeted re-run green
+  - Postgres specs 16/16, with migrations 0161 + 0162 applied on a scratch DB
+  - lint clean
+  - `npm run check` clean apart from four `ui/alert`·`ui/badge` errors that show in *any* fresh worktree with a symlinked `node_modules`, main included (main's own checkout: 0 errors)
+  - e2e not run
+- **Decisions (owner may veto):**
+  1. tarball download timeout 8 min, below the 10-min sync claim, so no second process takes the same repo mid-download
+  2. download cap 2 GiB (over → plain error asking to switch the repo to docs only)
+  3. up to 2,000 per-blob recoveries per sync for archive-filtered paths
+  4. a branch name with `/` shows with `-` as the folder name (the key stays stable)
+- **Announced changes (no silent removals):**
+  - **Docs folder:** the `Docs/` folder goes away; docs move to their real paths under `<branch>/`.
+  - **Big text files:** Markdown/CSV files over 2 MB show a "too large to preview, download" notice and are no longer editable in place.
+- **Known, not fixed:**
+  - **Long first syncs:** a tick is cut off after 5 min (`JOB_QUEUE_TICK_TIMEOUT_MS`), so a long first sync logs a tick timeout while the download goes on under its claim.
+  - **Grant drops:** they share the drive transaction's callback but not the same database transaction (`access_grant` uses its own connection).
+  - **People's purge:** it still deletes blobs inline (`modules/drive/service.ts`).
+- **Next:**
+  - M4 (the copy-mode control on the repos settings page + an e2e journey), then push, release and check on the box
+  - a later release drops `repo_sources.doc_shas`
+
 ## 2026-11-20 — Released: office editing + durable ee state writes on the box (owner: "Push and release")
 
 - **Pushed** `778947e8` through the local CI gate (683 component tests green).
