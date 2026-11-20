@@ -50,6 +50,7 @@
     "eval:smoke": "vite-node --config evals/vite.config.ts evals/run.ts",
     "eval:all": "vite-node --config evals/vite.config.ts evals/run.ts -- --mode all",
     "eval:reset-fixture": "vite-node --config evals/vite.config.ts evals/reset-fixture.ts",
+    "eval:brain": "vite-node --config vitest.config.ts --options.transformMode.ssr='.*' evals/brain/run.ts --",
     "eval:longmemeval": "vite-node --config evals/vite.config.ts evals/longmemeval/run.ts",
     "graph-scale": "vite-node --config evals/vite.config.ts evals/graph-scale/run.ts",
     "graph-scale:bench": "vite-node --config evals/vite.config.ts evals/graph-scale/run.ts -- --sizes 50,100 --tracks capture,qa",
