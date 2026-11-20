@@ -24,7 +24,21 @@ export type CaddyInput = {
   internal?: Array<{ port: number; workload: string }>
   /** Managed box paused by the control plane: every public route answers PAUSED_PAGE (503). */
   suspended?: boolean
+  /** Active Drive app previews (previews.ts): in ee's memory only, never in the company repo. */
+  previews?: PreviewRoute[]
 }
+
+/**
+ * One preview host. upstream null: installing or starting (Caddy answers
+ * PREVIEW_STARTING_PAGE and already gets the host's certificate); set: running.
+ */
+export type PreviewRoute = { host: string; upstream: { dial: string; port: number } | null }
+
+/** What a preview host shows until its dev server listens. */
+export const PREVIEW_STARTING_PAGE =
+  '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Starting</title></head>' +
+  '<body style="font-family:system-ui,sans-serif;max-width:32rem;margin:20vh auto;padding:0 1rem;color:#333"><h1 style="font-size:1.4rem">This app is starting</h1>' +
+  '<p>Its dependencies are installing. Reload in a moment.</p></body></html>'
 
 /** What every public host shows while a managed company is suspended (plan/phase-managed-box.md D5). */
 export const PAUSED_PAGE =
@@ -82,8 +96,20 @@ export function renderCaddyConfig(input: CaddyInput): Json {
     })
   }
 
+  for (const p of input.previews ?? []) {
+    let handler: Json
+    if (input.suspended) handler = pausedHandler
+    else if (p.upstream === null) {
+      handler = { handler: 'static_response', status_code: 503, headers: { 'Content-Type': ['text/html; charset=utf-8'], 'Retry-After': ['5'] }, body: PREVIEW_STARTING_PAGE }
+    } else {
+      // Dev servers check Host (Vite allowedHosts): they see localhost. Websockets (hot reload) pass through reverse_proxy.
+      handler = { handler: 'reverse_proxy', upstreams: [{ dial: p.upstream.dial }], headers: { request: { set: { Host: [`localhost:${p.upstream.port}`] } } } }
+    }
+    routes.push({ match: [{ host: [p.host] }], handle: [handler], terminal: true })
+  }
+
   const acme: Json = input.acmeEmail ? { module: 'acme', email: input.acmeEmail } : { module: 'acme' }
-  const hosts = input.routes.map((r) => r.host)
+  const hosts = [...input.routes.map((r) => r.host), ...(input.previews ?? []).map((p) => p.host)]
   const local = hosts.filter(isReservedHost)
   const publicHosts = hosts.filter((h) => !isReservedHost(h))
   const policies: Json[] = []

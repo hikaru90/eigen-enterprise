@@ -9,6 +9,7 @@ import {
   renderDriveMarkdown,
   requestActor,
 } from '$lib/server/drive'
+import { driveViewUrl } from '$lib/server/drive-view'
 
 /** CSV previews show at most this many rows (the full file downloads). */
 const CSV_PREVIEW_ROWS = 500
@@ -19,7 +20,9 @@ const TEXT_PREVIEW_CHARS = 200_000
  * Open a file (/drive/file/[id]). People who may edit a Markdown/CSV file
  * get the in-place editor (D2: `content` is its text); everyone else the
  * preview: Markdown rendered and sanitized server side, CSV parsed into a
- * table, images and PDF from the content endpoint, else a download.
+ * table, HTML as the page itself (a sandboxed frame from /api/drive/view,
+ * its source text alongside), images and PDF from the content endpoint,
+ * else a download.
  * Revisions for Markdown/CSV are listed with their authors.
  */
 export const load: PageServerLoad = async (event) => {
@@ -32,7 +35,11 @@ export const load: PageServerLoad = async (event) => {
     let text: string | null = null
     let table: { rows: string[][]; truncated: boolean } | null = null
     let content: string | null = null
-    if (kind === 'markdown' || kind === 'csv' || kind === 'text') {
+    let viewUrl: string | null = null
+    if (kind === 'html' && actor.kind === 'user') {
+      viewUrl = driveViewUrl({ userId: actor.userId, folderId: info.file.parentId ?? null, fileId: info.file.id, fileName: info.file.name })
+    }
+    if (kind === 'markdown' || kind === 'csv' || kind === 'html' || kind === 'text') {
       content = (await drive.readText(actor, event.params.id)).content
       if (kind === 'markdown') html = renderDriveMarkdown(content)
       else if (kind === 'csv') {
@@ -55,6 +62,7 @@ export const load: PageServerLoad = async (event) => {
       html,
       text,
       table,
+      viewUrl,
       revisions,
       authors,
       editable,

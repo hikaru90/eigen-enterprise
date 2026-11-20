@@ -2,6 +2,59 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-20 — Office files milestone 1 merged: our own PDF, Word and PowerPoint viewers in the Drive (plan/phase-office-files.md)
+
+- **Shipped (merged into main, not pushed, not on the box):**
+  - **PDF P1** (`1bbd3676`, gate `7b3b63cb`):
+    - pdf.js in a worker, continuous pages that only render near the screen
+    - thumbnails, bookmarks, page labels, zoom (fit, steps, ⌘+wheel, pinch), find with highlights, a text layer, dark pages, a password prompt
+    - `drive.read` → Markdown per page.
+  - **DOCX D1** (`0e3d61e7`):
+    - our own WordprocessingML model: styles, numbering, sections, tables, images, fields, notes
+    - a paginated viewer: true page size, headers/footers, line and row splitting, keep-with-next, footnotes
+    - `drive.read` → Markdown with headings from outline levels.
+  - **PPTX S1** (`d6e37cae`):
+    - a deck model with master → layout → slide inheritance, a colour-transform engine, 37 hand-written preset geometries
+    - SVG rendering, a thumbnail rail, notes, presenter mode
+    - `drive.read` → Markdown per slide with notes.
+  - **Shared** (`c880c4c5`): broken XML now raises OpcError; the browser gate pre-bundles xmldom.
+- **Announced replacement (§6):** a PDF in the Drive now opens in the Drive's own viewer instead of the browser's built-in one; `drive.e2e.ts` was updated to match. Word and PowerPoint files, which used to show only a download, now open in viewers. Download stays available for every format.
+- **Dependencies:** pdfjs-dist 6.5 (Apache-2.0; bundled data under BSD/OFL/MIT), pdf-lib 1.17 (MIT, test fixtures only), @xmldom/xmldom 0.9 (MIT). No GPL.
+- **Clean room:** implementers worked from the plan and ISO 32000 / ECMA-376 only. None of the three reference projects' code was read, installed or copied.
+- **Gate:** `npm run ci:local` is green on main after all three merges (7944 unit tests, 627 component tests, 0 type errors).
+- **What broke / open:**
+  - The new journey `src/routes/e2e/drive-office.e2e.ts` hasn't passed yet. On current main both it and the existing `drive.e2e.ts` fail before reaching any office code: signup never shows the code step, `/drive` returns 500, and the error page's root layout hits `getDb() was called outside an active request`. This is not caused by the office work, but it isn't diagnosed yet.
+  - Worktrees under `.claude/worktrees/` fail `npm run check`: svelte-check's `--incremental` skips paths containing `/.`. All three streams hit this, so worktree streams can't run the gate in place.
+- **Known gaps (milestone 1 is view-only):**
+  - **PDF:** no clickable links, no tagged-PDF reading order.
+  - **DOCX:** floating objects are placed in line; charts, equations and EMF are shown as placeholders; multi-column sections render as one column; comments aren't shown.
+  - **PPTX:** charts, SmartArt, effects and video are shown as placeholders.
+  - In every case a visible note says what isn't shown.
+- **Next:**
+  - Fix the e2e harness regression and make both Drive journeys green.
+  - Push and release to the box.
+  - Then the milestone 2 streams: P2 page organisation plus agent PDF tools, D2 Word editing (ProseMirror, lossless), S2 slide editing.
+
+## 2026-11-20 — Drive: HTML files render as pages; plan for running web app folders (owner: "HTML currently gets rendered as text … there should be an option for seeing HTML files as … rendered HTML files in the drive … a simple way to do npm run dev")
+
+- **Built (not committed yet):** `.html`/`.htm` files open as the page itself, with a **Page | Source** switch and **Open in new tab**.
+  - The page loads from `GET /api/drive/view/<token>/<path>`, so its relative styles, scripts and images resolve inside the folder the HTML sits in. A top-level file loads only itself.
+  - Code: `modules/drive/view-token.ts`, `service.readAtPath`, `src/lib/server/drive-view.ts`, the hook step in `src/hooks.server.ts`, and the file page.
+  - Tests: unit (preview kind, path walk, token), component (file page), and e2e `src/routes/e2e/drive-html.e2e.ts` (CSS and JS load, origin is `null`, storage is blocked, `../` is refused).
+- **Decision: rendered HTML runs sandboxed with an opaque origin.**
+  - The frame is `sandbox="allow-scripts"` and the CSP header also sandboxes it. Same-origin access, forms, popups, top navigation and frames are off, and only the Drive may frame it.
+  - `fetch`/XHR can reach only the page's own folder. Scripts, styles, images and fonts may load over https (CDN libraries).
+  - **Residual risk:** a page with scripts can read the files in its own folder that the viewer can open. It could leak them through an https image or script URL. We accept that so pages with CDN libraries work; tighten it if HTML from outside (email attachments) becomes common.
+- **Decision: a signed view token signs the page's requests in.** A sandboxed frame can't rely on the session cookie.
+  - The token is an HMAC over who / folder / file, keyed from `TENANT_MASTER_KEY` via HKDF (both slots accept it), and it lasts 1 hour.
+  - The hook turns it into `locals.user` on `/api/drive/view/` only, like API keys on their routes. Every file still goes through Drive's access check as that person.
+  - `Referrer-Policy: no-referrer` keeps the token from leaking to CDNs.
+- **Unchanged:** `drive.read` still reads HTML as text, because `isTextFile` includes the new `html` kind. `/api/drive/files/[id]/content` still serves HTML as sandboxed `text/plain`.
+- **Web app folders (`npm run dev` in the Drive):** drafted as `plan/phase-drive-app-preview.md` and **waiting for approval**.
+  - It runs on the box through ee: snapshot → `npm ci` in the capped build unit → the `dev` script in a sandboxed preview unit → its own origin `<id>.preview.<console host>` → a frame on the folder page.
+  - Two owner questions are open: who may press Run, and the wildcard DNS for preview hosts.
+- **Next:** commit and release the HTML view to the box. Then build P1–P2 of the app preview once it's approved.
+
 ## 2026-11-20 — Office files in the Drive: foundation landed, PDF/DOCX/PPTX streams started (owner: "clean room versions … as the file handler for certain file types in the drive … start sub agents")
 
 - **Plan:** `plan/phase-office-files.md`. It covers our own viewers and editors for PDF, Word and PowerPoint.

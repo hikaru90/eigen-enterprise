@@ -27,6 +27,14 @@ export const PATHS = {
   upgradeState: '/var/lib/ee/upgrade.json',
   /** Root-only scratch for one backup/restore run (emptied after). */
   backupTmp: '/var/lib/ee/backup-tmp',
+  /**
+   * Drive app previews (previews.ts): incoming/ holds ee's root-only copies of
+   * the kernel's snapshots; <id>-<ms>/ is one run's working dir (owned by
+   * ee-preview). Wiped on every ee start: previews are never restored.
+   */
+  previews: '/var/lib/ee/previews',
+  /** npm / corepack / pnpm / yarn caches the preview installs share (owned by ee-preview; kept across runs). */
+  previewCache: '/var/lib/ee/preview-cache',
   /** The os workload's persistent state (Drive under drive/, the agent under agent/). */
   osState: '/var/lib/ee-state/os',
 } as const

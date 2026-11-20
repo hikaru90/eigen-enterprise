@@ -9,6 +9,7 @@ import { paraglideMiddleware } from '$lib/paraglide/server'
 import { captureServerException } from '$lib/server/analytics/posthog-server'
 import { hashApiKey } from '$lib/server/api-keys/api-key-utils'
 import { isApiKeyRoute, parseBearerApiKey } from '$lib/server/api-keys/bearer-routes'
+import { DRIVE_VIEW_PREFIX, driveViewUser } from '$lib/server/drive-view'
 import { auth } from '$lib/server/auth'
 import { bootApp } from '$lib/server/boot'
 import {
@@ -161,6 +162,25 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
           image: null,
         } satisfies AppUser
       }
+    }
+  }
+
+  // A rendered Drive HTML page runs in a sandboxed frame (opaque origin), so
+  // its requests for its own files may come without the session cookie. The
+  // view token in the path signs it in as the person who opened it, on that
+  // route only (src/routes/api/drive/view).
+  if (!event.locals.user && event.url.pathname.startsWith(DRIVE_VIEW_PREFIX)) {
+    const userId = driveViewUser(event.url.pathname)
+    if (userId) {
+      event.locals.user = {
+        id: userId,
+        email: '',
+        name: '',
+        emailVerified: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        image: null,
+      } satisfies AppUser
     }
   }
 

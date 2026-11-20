@@ -100,3 +100,41 @@ describe('drive file page: when the file is from', () => {
     await expect.element(page.getByTestId('drive-file-dated')).toHaveTextContent('uploaded')
   })
 })
+
+describe('drive file page: HTML files render as pages', () => {
+  const html = (overrides: Record<string, unknown> = {}) =>
+    data({
+      file: { ...data().file, id: 'h1', name: 'report.html', mime: 'text/html', dated: null },
+      kind: 'html',
+      text: '<h1>Quarterly</h1>',
+      viewUrl: '/api/drive/view/tok.sig/report.html',
+      ...overrides,
+    })
+
+  it('shows the page itself in a sandboxed frame by default (scripts, no same origin)', async () => {
+    render(FilePage, props(html()))
+    const frame = page.getByTestId('drive-html')
+    await expect.element(frame).toHaveAttribute('src', '/api/drive/view/tok.sig/report.html')
+    await expect.element(frame).toHaveAttribute('sandbox', 'allow-scripts')
+    await expect.element(frame).toHaveAttribute('referrerpolicy', 'no-referrer')
+    await expect.element(page.getByRole('button', { name: 'Page' })).toHaveAttribute('aria-pressed', 'true')
+    await expect.element(page.getByTestId('drive-html-source')).not.toBeInTheDocument()
+  })
+
+  it('switches to the source text and back', async () => {
+    render(FilePage, props(html()))
+    await page.getByRole('button', { name: 'Source' }).click()
+    await expect.element(page.getByTestId('drive-html-source')).toHaveTextContent('<h1>Quarterly</h1>')
+    await expect.element(page.getByTestId('drive-html')).not.toBeInTheDocument()
+    await page.getByRole('button', { name: 'Page' }).click()
+    await expect.element(page.getByTestId('drive-html')).toBeInTheDocument()
+  })
+
+  it('opens the page on its own in a new tab', async () => {
+    render(FilePage, props(html()))
+    const open = page.getByTestId('drive-html-open')
+    await expect.element(open).toHaveAttribute('href', '/api/drive/view/tok.sig/report.html')
+    await expect.element(open).toHaveAttribute('target', '_blank')
+    await expect.element(open).toHaveAttribute('rel', 'noopener noreferrer')
+  })
+})

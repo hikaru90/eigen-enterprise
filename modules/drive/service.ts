@@ -726,6 +726,32 @@ export function createDriveService(deps: DriveDeps) {
       return { file, bytes: await blobs.get(file.sha256) }
     },
 
+    /**
+     * A file by its path below a folder (names, one per level), for a
+     * rendered HTML page's own styles, scripts and images. No `.`/`..`, so a
+     * path never leaves the folder; two items with the asked-for name fail
+     * loud instead of picking one. Needs view access, like opening the file.
+     */
+    async readAtPath(actor: Actor, folderId: string, segments: readonly string[]): Promise<{ file: DriveFile; bytes: Uint8Array }> {
+      if (segments.length === 0) throw new DriveError('not_found', 'No such file.')
+      const bad = segments.find((s) => s === '' || s === '.' || s === '..')
+      if (bad !== undefined) throw new DriveError('invalid', `“${bad}” is not allowed in a Drive path.`)
+      let folder = await requireFolder(actor, folderId, 'view')
+      for (const [i, name] of segments.entries()) {
+        const kids = await store.children(folder.id)
+        const last = i === segments.length - 1
+        const hits = (last ? kids.files : kids.folders).filter((k) => k.name === name && !k.trashedAt)
+        if (hits.length === 0) throw new DriveError('not_found', `No “${segments.slice(0, i + 1).join('/')}” here.`)
+        if (hits.length > 1) throw new DriveError('invalid', `There are ${hits.length} items named "${name}" here; rename one so the path is clear.`)
+        if (last) {
+          const file = await requireFile(actor, hits[0]!.id, 'view')
+          return { file, bytes: await blobs.get(file.sha256) }
+        }
+        folder = await requireFolder(actor, hits[0]!.id, 'view')
+      }
+      throw new Error('unreachable: the loop returns on the last segment')
+    },
+
     async readText(actor: Actor, id: string): Promise<{ file: ItemView; content: string }> {
       const file = await requireFile(actor, id, 'view')
       const office = officeKind(file.name, file.mime)

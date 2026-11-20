@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { renderCaddyConfig, type Upstream } from './caddy.ts'
+import { renderCaddyConfig, type CaddyInput, type Upstream } from './caddy.ts'
 import type { CompanyRepo, DesiredState } from './company-repo.ts'
 import { saveJournal, workloadEntry, type EeEvent, type Journal } from './journal.ts'
 import { DeployRun, secretValues } from './deploys.ts'
@@ -35,6 +35,11 @@ export type ReconcileContext = {
   healthTimeoutMs?: number
   /** Collects deploys that failed while an older release kept serving (reported, not fatal to the edge). */
   deployFailures?: string[]
+  /**
+   * Loads the edge rendered from desired state. The daemon passes its own, which
+   * adds the active Drive app previews (in memory, never in the repo); default: applyEdge.
+   */
+  edge?: (input: CaddyInput) => Promise<void>
 }
 
 /** Lazily started deploy record for one workload in one pass (a no-op pass records nothing). */
@@ -463,6 +468,19 @@ export function allowRetry(journal: Journal, name: string): void {
   if (entry) entry.failedFingerprint = null
 }
 
+/** Render the complete edge and load it into Caddy when it changed (the journal remembers what is loaded). */
+export async function applyEdge(sys: System, journal: Journal, input: CaddyInput): Promise<void> {
+  const caddy = renderCaddyConfig(input)
+  const fingerprint = sha(JSON.stringify(caddy))
+  if (journal.caddyFingerprint === fingerprint) return
+  await sys.caddyLoad(caddy)
+  // Read by Caddy at boot as user caddy; holds only hosts and loopback ports, never secrets.
+  await sys.writeFile(PATHS.caddyConfig, JSON.stringify(caddy, null, 2) + '\n', 0o644)
+  journal.caddyFingerprint = fingerprint
+  const hosts = [...input.routes.map((r) => r.host), ...(input.previews ?? []).map((p) => p.host)]
+  emit(journal, sys, 'edge.updated', null, `edge serves ${hosts.join(', ') || 'no hosts'}`)
+}
+
 export async function reconcile(ctx: ReconcileContext): Promise<DesiredState> {
   const { sys, journal } = ctx
   const desired = await ctx.repo.read()
@@ -528,7 +546,7 @@ export async function reconcile(ctx: ReconcileContext): Promise<DesiredState> {
     errors.push(`route ${r.host}: ${r.workload} has nothing live`)
     return false
   })
-  const caddy = renderCaddyConfig({
+  const edgeInput: CaddyInput = {
     routes: routable,
     upstreams,
     acmeEmail: desired.settings.acmeEmail,
@@ -538,15 +556,8 @@ export async function reconcile(ctx: ReconcileContext): Promise<DesiredState> {
       { port: OS_INTERNAL_PORT, workload: 'os' },
       ...(desired.workloads.some((w) => w.name === LIVEKIT_WORKLOAD) ? [{ port: LIVEKIT_INTERNAL_PORT, workload: LIVEKIT_WORKLOAD }] : []),
     ],
-  })
-  const fingerprint = sha(JSON.stringify(caddy))
-  if (journal.caddyFingerprint !== fingerprint) {
-    await sys.caddyLoad(caddy)
-    // Read by Caddy at boot as user caddy; holds only hosts and loopback ports, never secrets.
-    await sys.writeFile(PATHS.caddyConfig, JSON.stringify(caddy, null, 2) + '\n', 0o644)
-    journal.caddyFingerprint = fingerprint
-    emit(journal, sys, 'edge.updated', null, `edge serves ${routable.map((r) => r.host).join(', ') || 'no hosts'}`)
   }
+  await (ctx.edge ?? ((input) => applyEdge(sys, journal, input)))(edgeInput)
 
   // Only now — after the edge points at the new slots — drain the old ones.
   for (const w of desired.workloads) {

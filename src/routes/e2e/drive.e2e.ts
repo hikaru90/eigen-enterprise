@@ -227,7 +227,8 @@ test('Drive: two members — create, upload, share view → edit, preview, renam
 
   await b.goBack()
   await row(b, 'brief.pdf').getByTestId('drive-open').click()
-  await expect(b.getByTestId('drive-pdf')).toBeVisible()
+  // The Drive's own PDF viewer (plan/phase-office-files.md P1) replaced the browser's built-in one.
+  await expect(b.getByTestId('pdf-viewer')).toHaveAttribute('data-status', 'ready')
   const pdfRes = await b.request.get(`/api/drive/files/${b.url().split('/').pop()}/content`)
   expect(pdfRes.status()).toBe(200)
   expect(pdfRes.headers()['content-type']).toBe('application/pdf')

@@ -262,6 +262,8 @@ async function main(argv: string[]): Promise<void> {
     case 'daemon': {
       const ee = new Ee(sys, await SecretStore.open(sys))
       await ee.load()
+      // Previews are never restored: whatever ran before this start is stopped and wiped.
+      await ee.previews.wipe()
       await startControlServer(ee)
       console.log(`ee daemon listening on ${PATHS.controlSocket}`)
       const tick = async () => {
@@ -273,6 +275,9 @@ async function main(argv: string[]): Promise<void> {
       }
       await tick()
       setInterval(tick, 60_000)
+      setInterval(() => {
+        ee.previews.sweep().catch((err: unknown) => console.error(`preview idle stop: ${(err as Error).message}`))
+      }, 60_000)
       ee.fleet.start()
       return
     }

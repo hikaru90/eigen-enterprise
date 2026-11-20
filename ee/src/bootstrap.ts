@@ -13,6 +13,7 @@ import { contributeHubEnv, resolveContributeHub, type ContributeHub } from './co
 import { withCallsHost } from './domains.ts'
 import { LIVEKIT_SECRETS, LIVEKIT_WORKLOAD, generateLivekitKeys, livekitWorkload } from './livekit.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
+import { PREVIEW_USER } from './previews.ts'
 import { OS_INTERNAL_PORT } from './reconcile.ts'
 import { SecretStore } from './secret-store.ts'
 import { generateSecret } from './secrets.ts'
@@ -257,12 +258,20 @@ async function configurePostgres(sys: System): Promise<void> {
   throw new Error('Postgres did not become ready within 30s (journalctl -u postgresql@16-main)')
 }
 
+/** The unprivileged users ee's sandboxed units run as. */
+export const SANDBOX_USERS = ['ee-build', PREVIEW_USER] as const
+
+/** A system user with no home and no shell; idempotent (a bootstrap re-run keeps an existing one). */
+export async function ensureSystemUser(sys: System, user: string): Promise<void> {
+  if ((await sys.run('id', ['-u', user])).code === 0) return
+  await mustRun(sys, 'useradd', ['--system', '--no-create-home', '--shell', '/usr/sbin/nologin', user])
+}
+
 async function usersAndDirs(sys: System): Promise<void> {
   step('creating ee users, groups and directories')
   await mustRun(sys, 'groupadd', ['-f', '--system', CONTROL_GROUP])
-  if ((await sys.run('id', ['-u', 'ee-build'])).code !== 0) {
-    await mustRun(sys, 'useradd', ['--system', '--no-create-home', '--shell', '/usr/sbin/nologin', 'ee-build'])
-  }
+  // ee-build runs release builds; ee-preview runs Drive app previews (previews.ts). Re-runs (upgrades) add missing ones.
+  for (const user of SANDBOX_USERS) await ensureSystemUser(sys, user)
   for (const d of [PATHS.root, PATHS.releases, PATHS.workloads, '/etc/ee']) await sys.mkdirp(d, 0o700)
   await mustRun(sys, 'chmod', ['711', PATHS.root, PATHS.workloads])
   if ((await sys.readFile(PATHS.masterKey)) === null) {

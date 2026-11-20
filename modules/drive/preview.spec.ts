@@ -9,6 +9,9 @@ describe('previewKind', () => {
     ['logo.png', 'image/png', 'image'],
     ['photo', 'image/jpeg', 'image'],
     ['readme.txt', 'text/plain', 'text'],
+    ['index.html', 'text/html', 'html'],
+    ['Report.HTM', '', 'html'],
+    ['page', 'text/html', 'html'],
     ['deck.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'pptx'],
     ['Deck.PPTX', '', 'pptx'],
     ['letter.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'docx'],
@@ -29,6 +32,8 @@ describe('previewKind', () => {
     expect(isTextDocument('a.pdf')).toBe(false)
     expect(isTextFile('a.txt', 'text/plain')).toBe(true)
     expect(isTextFile('a.pdf', 'application/pdf')).toBe(false)
+    // HTML renders as a page but stays readable as text for the agent (drive.read).
+    expect(isTextFile('index.html', 'text/html')).toBe(true)
   })
   it('officeKind names the office format, else null', () => {
     expect(officeKind('a.pdf', '')).toBe('pdf')
