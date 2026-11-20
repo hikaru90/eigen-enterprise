@@ -100,6 +100,7 @@
       await tick()
       await document.fonts?.ready
       if (signal.aborted || !host) return
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity -- a plain lookup cache for object URLs, never rendered
       const cache = new Map<string, string | null>()
       const env: Omit<RenderEnv, 'pageField'> = {
         doc,
