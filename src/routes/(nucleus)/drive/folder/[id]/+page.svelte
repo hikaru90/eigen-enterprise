@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types'
   import { resolve } from '$app/paths'
+  import AppPreview from '$lib/components/drive/app-preview.svelte'
   import ArchiveBanner from '$lib/components/drive/archive-banner.svelte'
   import DriveBrowser from '$lib/components/drive/drive-browser.svelte'
   import { Button } from '$lib/components/ui/button'
@@ -33,6 +34,9 @@
 {/if}
 
 {#key data.listing.folder?.id}
+  {#if data.listing.folder}
+    <AppPreview folderId={data.listing.folder.id} canRun={data.shell?.capabilities['drive.run_apps'] ?? false} />
+  {/if}
   <DriveBrowser
     folderId={data.listing.folder?.id ?? null}
     path={data.listing.path}

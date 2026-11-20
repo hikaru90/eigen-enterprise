@@ -56,13 +56,39 @@ export type Revision = {
 /** Where a Drive path starts ("My drive", "Shared with me", "Messages"). */
 export type PathRoot = { label: string; href: string }
 
-/** A failed Drive call: the server's sentence, its code, and (for `locked`) who holds the edit lock. */
+/** An app preview as ee reports it (plan/phase-drive-app-preview.md). */
+export type PreviewState = 'installing' | 'starting' | 'running' | 'failed' | 'stopped'
+export type AppPreview = {
+  id: string
+  folderName: string
+  state: PreviewState
+  host: string
+  url: string
+  script: 'dev' | 'start' | null
+  startedAt: string
+  lastSeenAt: string
+  error: string | null
+  log: string[]
+}
+export type WebApp = { script: 'dev' | 'start'; lockfile: string | null }
+/** A folder's web app facts and its preview; managed false: this server runs no apps (reason says why). */
+export type AppStatus = {
+  folder: { id: string; name: string }
+  webApp: WebApp | null
+  previewId: string
+  managed: boolean
+  reason: string | null
+  preview: AppPreview | null
+}
+
+/** A failed Drive call: the server's sentence, its code, (for `locked`) who holds the edit lock, (for `busy`) the app that is running. */
 export class DriveApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
     readonly code: string | null,
     readonly holder: LockHolder | null,
+    readonly running: AppPreview | null = null,
   ) {
     super(message)
   }
@@ -70,8 +96,8 @@ export class DriveApiError extends Error {
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init)
-  const body = (await res.json().catch(() => null)) as (T & { error?: string; code?: string; holder?: LockHolder }) | null
-  if (!res.ok) throw new DriveApiError(body?.error ?? `Drive request failed (${res.status}).`, res.status, body?.code ?? null, body?.holder ?? null)
+  const body = (await res.json().catch(() => null)) as (T & { error?: string; code?: string; holder?: LockHolder; running?: AppPreview }) | null
+  if (!res.ok) throw new DriveApiError(body?.error ?? `Drive request failed (${res.status}).`, res.status, body?.code ?? null, body?.holder ?? null, body?.running ?? null)
   return body as T
 }
 const send = (method: string, body: unknown): RequestInit => ({ method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
@@ -133,6 +159,13 @@ export const driveApi = {
   lockStatus: (fileId: string) => call<LockView>(`/api/drive/files/${fileId}/lock`),
   acquireLock: (fileId: string, session: string, takeover = false) => call<LockView>(`/api/drive/files/${fileId}/lock`, send('POST', { session, takeover })),
   heartbeatLock: (fileId: string, session: string) => call<LockView>(`/api/drive/files/${fileId}/lock`, send('PUT', { session })),
+  /** A folder's web app and its preview (marks a running preview seen). */
+  appStatus: (folderId: string) => call<AppStatus>(`/api/drive/folders/${folderId}/app`),
+  /** Run (or restart) the folder's app from a fresh copy; `busy` → DriveApiError with `running`. */
+  runApp: (folderId: string) => call<{ preview: AppPreview }>(`/api/drive/folders/${folderId}/app`, { method: 'POST' }),
+  stopApp: (folderId: string) => call<{ preview: AppPreview }>(`/api/drive/folders/${folderId}/app`, { method: 'DELETE' }),
+  /** Stop another folder's app by its preview id ("Another app is running"). */
+  stopPreview: (previewId: string) => call<{ preview: AppPreview }>(`/api/drive/apps/${previewId}`, { method: 'DELETE' }),
   /** Fire-and-forget on page exit (keepalive survives the unload). */
   releaseLock: (fileId: string, session: string) =>
     fetch(`/api/drive/files/${fileId}/lock?session=${encodeURIComponent(session)}`, { method: 'DELETE', keepalive: true }).then(() => undefined),
