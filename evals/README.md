@@ -85,6 +85,26 @@ Each QA run expands to: **captures** → **check** (deterministic) → optional 
 | Improve over time             | qa_ontology_growth, retrieval learning flags                                |
 | Dense operative detail recall | `qa_surgical_*` (tag `surgical_memory`) — numeric/landmark/device specifics |
 
+## North-star eval: the company brain (`evals/brain/`, CB0)
+
+How far the company brain is from `plan/phase-company-brain.md` §9, re-measured at every CB milestone.
+
+- **Fixture** (`fixture/company.ts`): Fjordlight Studio — 4 members (owner, admin, 2 members), a Sales group, #general and private #sales, two DMs, a shared `sales@` mailbox with one Acme mail, the Acme pricing call with transcript (+ a guest), Drive (handbook, brand guide, `Pitch deck v3.pptx`, a shared-with-some proposal, two private docs), calendar (incl. one private event), contacts (one unshared), Memory thoughts for two members (one sensitive). Every item carries a unique **marker** in its text: seeing it in a tool result or answer is provenance, not a reading of meaning.
+- **Seeding** (`fixture/seed.ts`) goes through the module services; direct writes only where no service can run here (users, the mail domain, received mail via the inbox store, the call + transcript via the calls stores) — listed in the file.
+- **Database**: its own, `ee_eval_brain` on the local test Postgres, dropped, recreated and bootstrapped like a box on every run (≈3 s). Refuses any non-local `DATABASE_URL`.
+- **Suites** (`suites/`): Knows 22 (cited answers), Does 13 (graded on the rows left behind), Keeps 14 leak + 6 judgment. Each item is tagged with its concept layer (act / happen / understand / initiate).
+- **Grading**: structure where structure answers (state rows, markers); a closed-set JSON judge through the gateway otherwise (`judge.ts`, moves to Jev in CB2).
+
+```bash
+npm run db:up
+npm run eval:brain                                    # static: no model — every member's read tools crawled (tool-level Keeps, Knows reachability)
+npm run eval:brain -- --mode chat --provider mock       # the real /api/chat path against the e2e mock gateway (runner check; judge parts not graded)
+npm run eval:brain -- --mode chat --provider platform   # real model, once per release: needs PLATFORM_LLM_BASE_URL/_API_KEY/_MODEL_CHAT/_MODEL_EMBEDDING
+npm run eval:brain -- --mode chat --provider platform --only K01,L03
+```
+
+Reports: `evals/reports/brain/<date>-<sha>-<mode>.json` + `.md` (gitignored). The unit gate runs the static half (`static.pg.spec.ts`, needs `DATABASE_URL` like every `*.pg.spec.ts`) against the ratchet in `baseline.ts`: a new leak fails, and so does a fixed one until it is struck from the list.
+
 ## Graph-scale cost benchmark
 
 Operator-owned economics harness (not QA pass/fail). Measures gateway USD and latency vs corpus size using **atomic single-thought captures** (`evals/graph-scale/datasets/single-thought-corpus.yaml`) — not `evals/datasets/corpus.yaml` or LongMemEval.
