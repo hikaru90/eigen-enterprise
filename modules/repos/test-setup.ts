@@ -3,7 +3,7 @@ import type { ReposSyncedPayload, SyncDeps } from './sync'
 import { tokenSealKey } from './seal'
 import { createReposService } from './service'
 import { InMemoryReposStore } from './store'
-import { FakeDrivePort, FakeGitHub, sampleRepo } from './testing'
+import { FakeDrivePort, FakeGitHub, FakeTarReader, sampleRepo } from './testing'
 
 /** A wired plugin over the fakes: one fine-grained token that sees kindred/shop. */
 export const TOKEN = 'github_pat_11AAAAAAA0secretSECRETsecret9z9z'
@@ -24,10 +24,19 @@ export function setup(start = '2026-11-12T14:00:00Z') {
     next: { status: 'written', summary: 'Cart work is nearly done. Checkout shipped.', highlights: [{ kind: 'pr', text: 'Cart totals is a draft', ref: '#7' }] } as SummaryResult | Error,
   }
   const events: ReposSyncedPayload[] = []
+  const tar = new FakeTarReader()
+  /** Every sweepTarballs call the tick made. */
+  const sweeps: Array<{ dir: string; olderThanMs: number; now: Date }> = []
   const deps: SyncDeps = {
     store,
     drive,
     client: (t) => gh.client(t),
+    readTarball: tar.read, // M1's reader contract (want), over the fake's real gzipped archive
+    tarballDir: '/fake/drive/tmp',
+    tarballMaxBytes: 4 * 1024 ** 3,
+    sweepTarballs: async (dir, olderThanMs, now) => {
+      sweeps.push({ dir, olderThanMs, now })
+    },
     key: () => tokenSealKey(MASTER),
     now: () => clock.now,
     owner: 'test-slot',
@@ -51,5 +60,5 @@ export function setup(start = '2026-11-12T14:00:00Z') {
     await service.setRepo(id, data.repo.id, true)
     return id
   }
-  return { gh, data, store, drive, logs, clock, deps, service, advance, connect, summaries, events }
+  return { gh, data, store, drive, logs, clock, deps, service, advance, connect, summaries, events, tar, sweeps }
 }

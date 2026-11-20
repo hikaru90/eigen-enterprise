@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`render (pure snapshot → Drive files) > puts the assistant's summary on top of Overview, labelled with its time > Overview.md with summary 1`] = `
+exports[`render (pure snapshot → the generated pages) > puts the assistant's summary on top of Overview, labelled with its time > Overview.md with summary 1`] = `
 "# kindred/shop
 
 ## What's going on
@@ -27,17 +27,21 @@ The online shop.
 | \`main\` | 2 | default branch | [a100000](https://github.com/kindred/shop/commit/a100000000000000000000000000000000000000) Release 1.2 — ada, 2026-11-11 |
 | \`feature/cart\` | 2 | 1 ahead, 1 behind | [b200000](https://github.com/kindred/shop/commit/b200000000000000000000000000000000000000) Cart totals — grace, 2026-11-10 |
 
-## Docs
+## Files
 
-2 Markdown files from \`main\` @ \`a100000\`, in the Docs folder.
+7 files, 301 KB from \`main\` @ \`a100000\`, in the main folder.
 
-### Not copied (size limit)
+### Not copied
 
-- \`docs/huge.md\` — 300 KB, over 256 KB
+- \`assets/video.mp4\` — 1 KB, a Git LFS pointer
+- \`docs/top.md\` — 1 KB, a symlink
+- \`docs/weird\\name.md\` — 1 KB, a path Drive can't hold
+- \`media/iso.bin\` — 21.0 MB, over 20 MB
+- \`vendor/lib\` → \`5ub5h45\` — submodule
 "
 `;
 
-exports[`render (pure snapshot → Drive files) > renders the generated pages (snapshots) > Activity.md 1`] = `
+exports[`render (pure snapshot → the generated pages) > renders the generated pages (snapshots) > Activity.md 1`] = `
 "# Activity in kindred/shop
 
 The last 30 days, newest first.
@@ -62,7 +66,7 @@ The last 30 days, newest first.
 "
 `;
 
-exports[`render (pure snapshot → Drive files) > renders the generated pages (snapshots) > Branches.md 1`] = `
+exports[`render (pure snapshot → the generated pages) > renders the generated pages (snapshots) > Branches.md 1`] = `
 "# Branches of kindred/shop
 
 3 branches. The default branch is \`main\`.
@@ -82,7 +86,7 @@ No commit in the last 90 days.
 "
 `;
 
-exports[`render (pure snapshot → Drive files) > renders the generated pages (snapshots) > Overview.md 1`] = `
+exports[`render (pure snapshot → the generated pages) > renders the generated pages (snapshots) > Overview.md 1`] = `
 "# kindred/shop
 
 ## What's going on
@@ -105,17 +109,21 @@ The online shop.
 | \`main\` | 2 | default branch | [a100000](https://github.com/kindred/shop/commit/a100000000000000000000000000000000000000) Release 1.2 — ada, 2026-11-11 |
 | \`feature/cart\` | 2 | 1 ahead, 1 behind | [b200000](https://github.com/kindred/shop/commit/b200000000000000000000000000000000000000) Cart totals — grace, 2026-11-10 |
 
-## Docs
+## Files
 
-2 Markdown files from \`main\` @ \`a100000\`, in the Docs folder.
+7 files, 301 KB from \`main\` @ \`a100000\`, in the main folder.
 
-### Not copied (size limit)
+### Not copied
 
-- \`docs/huge.md\` — 300 KB, over 256 KB
+- \`assets/video.mp4\` — 1 KB, a Git LFS pointer
+- \`docs/top.md\` — 1 KB, a symlink
+- \`docs/weird\\name.md\` — 1 KB, a path Drive can't hold
+- \`media/iso.bin\` — 21.0 MB, over 20 MB
+- \`vendor/lib\` → \`5ub5h45\` — submodule
 "
 `;
 
-exports[`render (pure snapshot → Drive files) > renders the generated pages (snapshots) > Pull requests.md 1`] = `
+exports[`render (pure snapshot → the generated pages) > renders the generated pages (snapshots) > Pull requests.md 1`] = `
 "# Pull requests of kindred/shop
 
 ## Open (1)
@@ -137,7 +145,7 @@ exports[`render (pure snapshot → Drive files) > renders the generated pages (s
 "
 `;
 
-exports[`render (pure snapshot → Drive files) > says why the summary is missing or out of date (no model selected, a failed update) > missing: failed 1`] = `
+exports[`render (pure snapshot → the generated pages) > says why the summary is missing or out of date (no model selected, a failed update) > missing: failed 1`] = `
 "# kindred/shop
 
 ## What's going on
@@ -147,7 +155,7 @@ _No summary yet: writing it failed at 2026-11-12 14:02 UTC. The AI provider refu
 "
 `;
 
-exports[`render (pure snapshot → Drive files) > says why the summary is missing or out of date (no model selected, a failed update) > missing: no model 1`] = `
+exports[`render (pure snapshot → the generated pages) > says why the summary is missing or out of date (no model selected, a failed update) > missing: no model 1`] = `
 "# kindred/shop
 
 ## What's going on
@@ -157,7 +165,7 @@ _No summary. No model is selected for summaries. The owner selects one under Set
 "
 `;
 
-exports[`render (pure snapshot → Drive files) > says why the summary is missing or out of date (no model selected, a failed update) > stale: no model 1`] = `
+exports[`render (pure snapshot → the generated pages) > says why the summary is missing or out of date (no model selected, a failed update) > stale: no model 1`] = `
 "# kindred/shop
 
 ## What's going on

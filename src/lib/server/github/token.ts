@@ -35,7 +35,11 @@ import type {
   TokenPull,
   TokenRepo,
   TokenTree,
+  TokenTreeEntry,
 } from './token-client'
+import { randomUUID } from 'node:crypto'
+import { open, readdir, rm, stat } from 'node:fs/promises'
+import { join } from 'node:path'
 
 const API = 'https://api.github.com'
 const PER_PAGE = 100
@@ -47,7 +51,14 @@ const DEFAULT_BACKOFF_MS = 60_000
 export type GitHubTokenConfig = {
   token: string
   fetch: typeof fetch
+  /** Every api.github.com request, including the tarball's redirecting one. */
   timeoutMs: number
+  /** The Drive storage temp directory `tarball` streams archives into. */
+  tarballDir: string
+  /** The whole codeload download (response and stream) must finish within this. */
+  tarballTimeoutMs: number
+  /** A download past this many bytes is aborted and its partial file removed. */
+  tarballMaxBytes: number
 }
 
 class TokenRequestError extends Error implements GitHubTokenError {
@@ -165,82 +176,50 @@ function resolve(path: string): { url: string; path: string } {
   throw new Error(`refusing to send the GitHub token outside ${API}: ${path.split('?')[0]}`)
 }
 
-/**
- * The one place a request is made. GET only: any other method throws
- * `write_refused` before anything is sent.
- */
-export async function tokenRequest(
-  config: GitHubTokenConfig,
-  method: string,
-  pathOrUrl: string,
-  etag: string | null,
-  onBudget?: (b: RateBudget) => void,
-  permission: TokenPermission | null = null,
-): Promise<RawResponse> {
-  const { url, path } = resolve(pathOrUrl)
-  if (method !== 'GET') {
-    throw new TokenRequestError(
-      'write_refused',
-      null,
-      path,
-      null,
-      `GitHub ${method} ${path} refused: the token client only reads`,
-    )
-  }
+/** The headers every api.github.com request carries. */
+function authHeaders(token: string, etag: string | null): Record<string, string> {
   const headers: Record<string, string> = {
     accept: 'application/vnd.github+json',
     'x-github-api-version': '2022-11-28',
     'user-agent': 'eigenEnterprise',
-    authorization: `Bearer ${config.token}`,
+    authorization: `Bearer ${token}`,
   }
   if (etag !== null) headers['if-none-match'] = etag
+  return headers
+}
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), config.timeoutMs)
-  let res: Response
-  let text: string
-  try {
-    res = await config.fetch(url, { method: 'GET', headers, signal: controller.signal })
-    text = res.status === 304 ? '' : await res.text()
-  } catch (err) {
-    const timedOut = controller.signal.aborted
-    throw new TokenRequestError(
-      'unavailable',
-      null,
-      path,
-      null,
-      timedOut
-        ? `GitHub ${path} did not answer within ${config.timeoutMs} ms`
-        : `GitHub ${path} could not be reached`,
-      safeCause(err instanceof Error ? `${err.name}: ${err.message}` : String(err), config.token),
-    )
-  } finally {
-    clearTimeout(timer)
-  }
+/** The error thrown when the request never produced a response. */
+function networkFailure(
+  path: string,
+  timeoutMs: number,
+  timedOut: boolean,
+  err: unknown,
+  token: string,
+): TokenRequestError {
+  return new TokenRequestError(
+    'unavailable',
+    null,
+    path,
+    null,
+    timedOut ? `GitHub ${path} did not answer within ${timeoutMs} ms` : `GitHub ${path} could not be reached`,
+    safeCause(err instanceof Error ? `${err.name}: ${err.message}` : String(err), token),
+  )
+}
 
-  const budget = budgetFrom(res.headers)
-  if (budget) onBudget?.(budget)
-
-  let json: unknown = null
-  if (text) {
-    try {
-      json = JSON.parse(text)
-    } catch {
-      json = null
-    }
-  }
-
-  if (res.status === 304) return { status: 304, headers: res.headers, json: null, path }
-  if (res.status >= 200 && res.status < 300) {
-    if (json === null) throw new Error(`GitHub ${path} → ${res.status} sent no JSON body`)
-    return { status: res.status, headers: res.headers, json, path }
-  }
-
+/** Maps a non-2xx, non-304 API response to the error it throws. */
+function failWith(
+  res: Response,
+  text: string,
+  json: unknown,
+  path: string,
+  token: string,
+  permission: TokenPermission | null,
+): never {
   const githubMessage =
     typeof (json as { message?: unknown } | null)?.message === 'string'
       ? (json as { message: string }).message
       : text.slice(0, 300)
-  const cause = safeCause(`GitHub said: ${githubMessage}`, config.token)
+  const cause = safeCause(`GitHub said: ${githubMessage}`, token)
   const resumeAt = rateLimitResume(res.status, res.headers, json)
   if (resumeAt) {
     throw new TokenRequestError(
@@ -276,6 +255,64 @@ export async function tokenRequest(
     cause,
     permission,
   )
+}
+
+/**
+ * The one place a request is made. GET only: any other method throws
+ * `write_refused` before anything is sent.
+ */
+export async function tokenRequest(
+  config: Pick<GitHubTokenConfig, 'token' | 'fetch' | 'timeoutMs'>,
+  method: string,
+  pathOrUrl: string,
+  etag: string | null,
+  onBudget?: (b: RateBudget) => void,
+  permission: TokenPermission | null = null,
+): Promise<RawResponse> {
+  const { url, path } = resolve(pathOrUrl)
+  if (method !== 'GET') {
+    throw new TokenRequestError(
+      'write_refused',
+      null,
+      path,
+      null,
+      `GitHub ${method} ${path} refused: the token client only reads`,
+    )
+  }
+  const headers = authHeaders(config.token, etag)
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), config.timeoutMs)
+  let res: Response
+  let text: string
+  try {
+    res = await config.fetch(url, { method: 'GET', headers, signal: controller.signal })
+    text = res.status === 304 ? '' : await res.text()
+  } catch (err) {
+    throw networkFailure(path, config.timeoutMs, controller.signal.aborted, err, config.token)
+  } finally {
+    clearTimeout(timer)
+  }
+
+  const budget = budgetFrom(res.headers)
+  if (budget) onBudget?.(budget)
+
+  let json: unknown = null
+  if (text) {
+    try {
+      json = JSON.parse(text)
+    } catch {
+      json = null
+    }
+  }
+
+  if (res.status === 304) return { status: 304, headers: res.headers, json: null, path }
+  if (res.status >= 200 && res.status < 300) {
+    if (json === null) throw new Error(`GitHub ${path} → ${res.status} sent no JSON body`)
+    return { status: res.status, headers: res.headers, json, path }
+  }
+
+  failWith(res, text, json, path, config.token, permission)
 }
 
 /** The `rel="next"` URL of a `Link` header, or null on the last page. */
@@ -418,19 +455,19 @@ function toPull(p: GhPull): TokenPull {
 export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenClient {
   if (!config.token) throw new Error('createGitHubTokenClient needs a token')
   if (!(config.timeoutMs > 0)) throw new Error('createGitHubTokenClient needs a positive timeoutMs')
+  if (!config.tarballDir)
+    throw new Error('createGitHubTokenClient needs tarballDir (the Drive storage temp directory)')
+  if (!(config.tarballTimeoutMs > 0))
+    throw new Error('createGitHubTokenClient needs a positive tarballTimeoutMs (the codeload download limit)')
+  if (!(config.tarballMaxBytes > 0))
+    throw new Error('createGitHubTokenClient needs a positive tarballMaxBytes (the codeload download size cap)')
 
   let budget: RateBudget | null = null
+  const budgetSeen = (b: RateBudget) => {
+    budget = b
+  }
   const get = (path: string, etag: string | null = null, permission: TokenPermission | null = null) =>
-    tokenRequest(
-      config,
-      'GET',
-      path,
-      etag,
-      (b) => {
-        budget = b
-      },
-      permission,
-    )
+    tokenRequest(config, 'GET', path, etag, budgetSeen, permission)
 
   /**
    * Pages through `Link: rel="next"`. `keep` decides per item whether to go on
@@ -586,17 +623,27 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
       const { base } = splitFullName(fullName)
       const res = await get(`${base}/git/trees/${encodeURIComponent(commitSha)}?recursive=1`, null, 'contents')
       const body = res.json as {
-        tree: Array<{ path: string; type: string; sha: string; size?: number }>
+        tree: Array<{ path: string; mode: string; type: string; sha: string; size?: number }>
         truncated: boolean
       }
       return {
-        entries: body.tree
-          .filter((e) => e.type === 'blob')
-          .map((e) => {
-            if (typeof e.size !== 'number')
-              throw new Error(`GitHub tree blob ${e.path} has no size`)
-            return { path: e.path, sha: e.sha, size: e.size }
-          }),
+        entries: body.tree.flatMap((e): TokenTreeEntry[] => {
+          if (e.type === 'tree') return []
+          if (e.type === 'blob') {
+            if (e.mode !== '100644' && e.mode !== '100755' && e.mode !== '120000') {
+              throw new Error(`GitHub tree blob ${e.path} has mode ${e.mode}, not 100644/100755/120000`)
+            }
+            if (typeof e.size !== 'number') throw new Error(`GitHub tree blob ${e.path} has no size`)
+            return [{ path: e.path, mode: e.mode, sha: e.sha, size: e.size }]
+          }
+          if (e.type === 'commit') {
+            if (e.mode !== '160000') {
+              throw new Error(`GitHub tree commit ${e.path} has mode ${e.mode}, not 160000`)
+            }
+            return [{ path: e.path, mode: '160000', sha: e.sha, size: null }]
+          }
+          throw new Error(`GitHub tree entry ${e.path} has type ${e.type}; expected blob, tree or commit`)
+        }),
         truncated: body.truncated === true,
       }
     },
@@ -616,17 +663,35 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
       }
     },
 
-    // Full-mirror M0 contracts (plan/github-drive-full-mirror.md): the M2
-    // stream implements these; calling them fails loud until then.
-    async blobBytes(): Promise<Uint8Array> {
-      throw new Error(
-        'GitHub blobBytes is not implemented yet (full mirror M2, plan/github-drive-full-mirror.md)',
-      )
+    async blobBytes(fullName, blobSha): Promise<Uint8Array> {
+      const { base } = splitFullName(fullName)
+      const res = await get(`${base}/git/blobs/${encodeURIComponent(blobSha)}`, null, 'contents')
+      const body = res.json as { content: string; encoding: string; size?: number }
+      if (body.encoding !== 'base64') {
+        throw new Error(`GitHub blob ${blobSha} came as ${body.encoding}, expected base64`)
+      }
+      const compact = body.content.replace(/\s+/g, '')
+      if (!/^[A-Za-z0-9+/]*={0,2}$/.test(compact) || compact.length % 4 !== 0) {
+        throw new Error(`GitHub blob ${blobSha} is not base64 data`)
+      }
+      const buffer = Buffer.from(compact, 'base64')
+      if (typeof body.size === 'number' && body.size !== buffer.byteLength) {
+        throw new Error(
+          `GitHub blob ${blobSha} says ${body.size} bytes but its base64 decodes to ${buffer.byteLength}`,
+        )
+      }
+      return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
     },
-    async tarball(): Promise<string> {
-      throw new Error(
-        'GitHub tarball is not implemented yet (full mirror M2, plan/github-drive-full-mirror.md)',
-      )
+
+    async tarball(fullName, commitSha): Promise<string> {
+      const { base } = splitFullName(fullName)
+      const path = `${base}/tarball/${encodeURIComponent(commitSha)}`
+      // One logical request, two physical ones: the API call is made here
+      // (not through tokenRequest) because its 302 body is not JSON and the
+      // codeload download must never see the token or touch the budget —
+      // only the api.github.com response counts against it.
+      const target = await tarballRedirect(config, path, budgetSeen)
+      return downloadTarball(config, path, target)
     },
 
     async checkAccess(fullName): Promise<TokenPermission[]> {
@@ -652,4 +717,221 @@ export function createGitHubTokenClient(config: GitHubTokenConfig): GitHubTokenC
 
     lastBudget: () => budget,
   }
+}
+
+const TARBALL_FILE = /^github-tarball-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tar\.gz$/
+
+/**
+ * The API half of `tarball`: GET /tarball/{sha} under `timeoutMs`, expecting a
+ * 302/307 to codeload.github.com. Returns the codeload URL; anything else
+ * throws the error the API response maps to.
+ */
+async function tarballRedirect(
+  config: GitHubTokenConfig,
+  path: string,
+  budgetSeen: (b: RateBudget) => void,
+): Promise<URL> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), config.timeoutMs)
+  try {
+    let res: Response
+    try {
+      res = await config.fetch(`${API}${path}`, {
+        method: 'GET',
+        redirect: 'manual',
+        headers: authHeaders(config.token, null),
+        signal: controller.signal,
+      })
+    } catch (err) {
+      throw networkFailure(path, config.timeoutMs, controller.signal.aborted, err, config.token)
+    }
+    const budget = budgetFrom(res.headers)
+    // The codeload response that follows is not a second logical API
+    // request: its headers are never read, so they cannot poison this.
+    if (budget) budgetSeen(budget)
+
+    if (res.status === 302 || res.status === 307) {
+      void res.body?.cancel().catch(() => {})
+      const location = res.headers.get('location')
+      let target: URL
+      try {
+        if (location === null) throw new Error('no Location')
+        target = new URL(location)
+      } catch {
+        throw new TokenRequestError(
+          'unavailable',
+          res.status,
+          path,
+          null,
+          `GitHub ${path} → ${res.status} without a parsable Location header`,
+        )
+      }
+      if (target.origin !== 'https://codeload.github.com') {
+        throw new TokenRequestError(
+          'unavailable',
+          res.status,
+          path,
+          null,
+          `GitHub ${path} redirects to ${target.origin}, not https://codeload.github.com; refusing to follow`,
+        )
+      }
+      return target
+    }
+    if (res.status >= 200 && res.status < 300) {
+      void res.body?.cancel().catch(() => {})
+      throw new TokenRequestError(
+        'unavailable',
+        res.status,
+        path,
+        null,
+        `GitHub ${path} → ${res.status}: expected a redirect to codeload.github.com`,
+      )
+    }
+    let text: string
+    try {
+      text = res.status === 304 ? '' : await res.text()
+    } catch (err) {
+      throw networkFailure(path, config.timeoutMs, controller.signal.aborted, err, config.token)
+    }
+    let json: unknown = null
+    if (text) {
+      try {
+        json = JSON.parse(text)
+      } catch {
+        json = null
+      }
+    }
+    failWith(res, text, json, path, config.token, 'contents')
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * The codeload half of `tarball`: no credentials, no redirects followed, one
+ * `tarballTimeoutMs` timer over the response and the whole stream, and a
+ * `tarballMaxBytes` cap. Any failure removes the partial file.
+ */
+async function downloadTarball(config: GitHubTokenConfig, path: string, target: URL): Promise<string> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), config.tarballTimeoutMs)
+  const timedOut = (received: number) =>
+    new TokenRequestError(
+      'unavailable',
+      null,
+      path,
+      null,
+      `the codeload download for ${path} did not finish within ${config.tarballTimeoutMs} ms (${received} bytes so far)`,
+    )
+  const tooLarge = (bytes: number, exact: boolean) =>
+    new TokenRequestError(
+      'too_large',
+      null,
+      path,
+      null,
+      `the codeload download for ${path} is over the ${config.tarballMaxBytes}-byte limit (${exact ? '' : 'at least '}${bytes} bytes)`,
+    )
+  try {
+    let dl: Response
+    try {
+      dl = await config.fetch(target.href, {
+        method: 'GET',
+        redirect: 'manual',
+        headers: { accept: 'application/x-gzip', 'user-agent': 'eigenEnterprise' },
+        signal: controller.signal,
+      })
+    } catch (err) {
+      if (controller.signal.aborted) throw timedOut(0)
+      throw networkFailure(path, config.tarballTimeoutMs, false, err, config.token)
+    }
+    if (dl.status !== 200) {
+      const text = await dl.text().catch(() => '')
+      throw new TokenRequestError(
+        'unavailable',
+        dl.status,
+        path,
+        null,
+        `the codeload download for ${path} answered ${dl.status}`,
+        safeCause(text.slice(0, 300), config.token),
+      )
+    }
+    if (!dl.body) {
+      throw new TokenRequestError('unavailable', 200, path, null, `the codeload download for ${path} sent no body`)
+    }
+    const declared = dl.headers.get('content-length')
+    if (declared !== null && Number(declared) > config.tarballMaxBytes) {
+      void dl.body.cancel().catch(() => {})
+      throw tooLarge(Number(declared), true)
+    }
+
+    const reader = dl.body.getReader()
+    // A body that ignores the abort signal must still stop: cancel it ourselves.
+    const onAbort = () => void reader.cancel().catch(() => {})
+    controller.signal.addEventListener('abort', onAbort, { once: true })
+    const file = join(config.tarballDir, `github-tarball-${randomUUID()}.tar.gz`)
+    const handle = await open(file, 'wx', 0o600)
+    let received = 0
+    try {
+      for (;;) {
+        let chunk: ReadableStreamReadResult<Uint8Array>
+        try {
+          chunk = await reader.read()
+        } catch (err) {
+          if (controller.signal.aborted) throw timedOut(received)
+          throw new TokenRequestError(
+            'unavailable',
+            null,
+            path,
+            null,
+            `the codeload download for ${path} failed after ${received} bytes`,
+            safeCause(err instanceof Error ? `${err.name}: ${err.message}` : String(err), config.token),
+          )
+        }
+        // A cancelled read resolves as done: that is the timeout, not the end.
+        if (controller.signal.aborted) throw timedOut(received)
+        if (chunk.done) break
+        received += chunk.value.byteLength
+        if (received > config.tarballMaxBytes) {
+          void reader.cancel().catch(() => {})
+          throw tooLarge(received, false)
+        }
+        await handle.write(chunk.value)
+      }
+      await handle.close()
+    } catch (err) {
+      await handle.close().catch(() => {})
+      await rm(file, { force: true })
+      throw err
+    } finally {
+      controller.signal.removeEventListener('abort', onAbort)
+    }
+    return file
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Deletes leftover `github-tarball-<uuid>.tar.gz` files in `dir` last
+ * modified more than `olderThanMs` before `now` (a crash between download
+ * and cleanup leaves them behind). Other files are never touched. Returns
+ * the removed paths.
+ */
+export async function sweepTarballs(dir: string, olderThanMs: number, now: Date): Promise<string[]> {
+  if (!(olderThanMs >= 0)) throw new Error(`sweepTarballs needs a non-negative olderThanMs, got ${olderThanMs}`)
+  const cutoff = now.getTime() - olderThanMs
+  const removed: string[] = []
+  for (const name of await readdir(dir)) {
+    if (!TARBALL_FILE.test(name)) continue
+    const file = join(dir, name)
+    const info = await stat(file).catch((err: NodeJS.ErrnoException) => {
+      // Removed concurrently (the sync finished with it): nothing to sweep.
+      if (err.code === 'ENOENT') return null
+      throw err
+    })
+    if (info === null || !info.isFile() || info.mtimeMs >= cutoff) continue
+    await rm(file, { force: true })
+    removed.push(file)
+  }
+  return removed
 }

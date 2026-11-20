@@ -82,10 +82,23 @@ export type TokenPull = {
   htmlUrl: string
 }
 
-export type TokenTreeEntry = { path: string; sha: string; size: number }
+/**
+ * Git file mode as GitHub reports it: regular file, executable, symlink or
+ * submodule. How each mode is treated (copy, list as skipped) is the sync's
+ * decision, not the client's.
+ */
+export type TokenTreeMode = '100644' | '100755' | '120000' | '160000'
+
+export type TokenTreeEntry = {
+  path: string
+  mode: TokenTreeMode
+  sha: string
+  /** Blob size in bytes; null for submodule entries (`mode: '160000'`). */
+  size: number | null
+}
 
 export type TokenTree = {
-  /** Blob entries only. */
+  /** File, executable, symlink and submodule entries; directories are dropped. */
   entries: TokenTreeEntry[]
   /** GitHub cut the recursive tree short. */
   truncated: boolean
@@ -108,6 +121,8 @@ export type GitHubTokenErrorKind =
   | 'unavailable'
   /** A non-GET method was attempted (a bug, never sent). */
   | 'write_refused'
+  /** A tarball download went past the configured size cap and was aborted. */
+  | 'too_large'
 
 /** Repository permissions of a fine-grained token that our reads need. */
 export type TokenPermission = 'metadata' | 'contents' | 'pull_requests'
@@ -145,7 +160,9 @@ export type GitHubTokenClient = {
   /**
    * Streams a commit archive to a new temporary file under the configured
    * Drive storage temp directory and returns its path. The caller removes it.
-   * The codeload redirect is part of this one logical request.
+   * The codeload redirect is part of this one logical request. The download
+   * is bounded by the configured `tarballTimeoutMs` and `tarballMaxBytes`
+   * (over the cap: `too_large`); a failure leaves no file behind.
    */
   tarball(fullName: string, commitSha: string): Promise<string>
   /**

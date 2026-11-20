@@ -12,6 +12,7 @@ import {
   SUMMARY_LOG_CONTEXT,
   SUMMARY_MAX_ATTEMPTS,
 } from './summary'
+import { setup } from './test-setup'
 import { FakeGitHub, commit, pull, sampleRepo, type FakeRepoData } from './testing'
 
 const TOKEN = 'github_pat_summary'
@@ -20,8 +21,17 @@ async function snap(d: FakeRepoData, at: string, prev: RepoSnapshot | null = nul
   const gh = new FakeGitHub()
   gh.identities.set(TOKEN, { login: 'ada', expiresAt: null, classic: false })
   gh.addRepo(d, [TOKEN])
-  const r = await takeSnapshot(gh.client(TOKEN), { fullName: d.repo.fullName, etags: {}, branchHeads: {}, docShas: {}, snapshot: prev }, new Date(at))
-  return r.snapshot
+  const r = await takeSnapshot(
+    gh.client(TOKEN),
+    { fullName: d.repo.fullName, etags: {}, branchHeads: {}, copyMode: 'all', storedFiles: [], snapshot: prev },
+    new Date(at),
+  )
+  // The tree section is finalised by the sync; for these delta/message tests the
+  // planned counts stand in (nothing in the summary reads the tree).
+  const tree = r.tree
+  const treeSnap = r.snapshot.tree ?? (tree ? { commitSha: tree.commitSha, mode: tree.mode, count: tree.picked.length, bytes: 0, notCopied: tree.notCopied, truncated: tree.truncated } : null)
+  if (!treeSnap) throw new Error('expected a tree')
+  return { ...r.snapshot, tree: treeSnap }
 }
 
 const answer = (content: unknown) => ({ choices: [{ message: { content: typeof content === 'string' ? content : JSON.stringify(content) } }] })
@@ -143,5 +153,22 @@ describe('the summarizer (one gateway call, cost attributed to repos)', () => {
     })
     await expect(createSummarizer({ chat: refused, account: async () => 'o' })(await input())).rejects.toThrow(LlmHttpError)
     expect(refused).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the summary input carries no file contents (plan §4)', () => {
+  it('a full-mirror sync with code, a PNG and docs sends none of their bytes or text to the model', async () => {
+    const t = setup()
+    await t.connect()
+    await t.service.tick()
+    expect(t.summaries.calls).toHaveLength(1)
+    const call = t.summaries.calls[0]!
+    const seen = JSON.stringify({ input: call, messages: buildSummaryMessages(call) })
+    expect(seen).not.toContain('export const shop')
+    expect(seen).not.toContain('# Shop')
+    expect(seen).not.toContain('"name":"shop","version"')
+    expect(seen).not.toContain('package.json')
+    expect(seen).not.toContain('src/index.ts')
+    expect(seen).toContain('kindred/shop') // repo facts are there; file contents are not
   })
 })

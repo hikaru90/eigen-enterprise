@@ -11,13 +11,19 @@ export class ReposError extends Error {
 export const CLASSIC_TOKEN_MESSAGE =
   'This is a classic token, which can change every repo you can. Create a fine-grained token with read-only access instead.'
 
-const KINDS: ReadonlySet<string> = new Set<GitHubTokenErrorKind>(['unauthorized', 'no_access', 'missing_permission', 'rate_limited', 'unavailable', 'write_refused'])
+const KINDS: ReadonlySet<string> = new Set<GitHubTokenErrorKind>(['unauthorized', 'no_access', 'missing_permission', 'rate_limited', 'unavailable', 'write_refused', 'too_large'])
 
 /** Structural check for the token client's errors (the contract is a type, not a class). */
 export function isGitHubTokenError(err: unknown): err is GitHubTokenError {
   if (!(err instanceof Error)) return false
   const kind: unknown = (err as Error & { kind?: unknown }).kind
   return typeof kind === 'string' && KINDS.has(kind)
+}
+
+/** Whole gigabytes as a plain number ("4"), one decimal otherwise ("1.5"). */
+const gigabytes = (bytes: number) => {
+  const gb = bytes / 1024 ** 3
+  return Number.isInteger(gb) ? String(gb) : gb.toFixed(1)
 }
 
 const dateLabel = (d: Date) => d.toISOString().slice(0, 10)
@@ -42,4 +48,6 @@ export const tokenMessages = {
     `The token can see ${repo} but is missing ${listLabels(ps)}. On GitHub, edit the token and add ${ps.length === 1 ? 'it' : 'them'} (it stays the same token), then ${then === 'sync' ? 'Sync now' : 'tick the repo again'}.`,
   unavailable: 'GitHub did not answer. The next sync tries again.',
   failed: 'The sync failed. The next sync tries again.',
+  /** The tarball download hit the client's size cap (GitHubTokenConfig.tarballMaxBytes). */
+  tooLarge: (maxBytes: number) => `This repo's archive is over ${gigabytes(maxBytes)} GB. Switch it to docs only, or ask for a higher limit.`,
 } as const

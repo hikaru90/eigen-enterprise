@@ -1,3 +1,4 @@
+import type { CopyMode } from './snapshot-types'
 import type { SourceRow, TokenRow } from './store'
 import { randomUUID } from 'node:crypto'
 import type { TokenIdentity, TokenRepo } from '$lib/server/github/token-client'
@@ -24,6 +25,8 @@ export type SourceView = {
   repoId: number
   fullName: string
   defaultBranch: string
+  /** Which files the repo copies from its default branch ('all' or 'docs'). */
+  copyMode: CopyMode
   lastSyncedAt: Date | null
   nextDueAt: Date
   lastError: string | null
@@ -80,6 +83,12 @@ export type ReposService = {
   removeToken(tokenId: string): Promise<{ removedRepos: number }>
   /** Tick (sync it) or untick (stop and delete its Drive folder) a repo the token can see. */
   setRepo(tokenId: string, repoId: number, syncing: boolean): Promise<{ fullName: string }>
+  /**
+   * Sets which files the repo copies ('all' or 'docs') and makes it due now
+   * (plan/github-drive-full-mirror.md §6): the next tick applies the change —
+   * switching to "docs only" removes the non-doc files on that sync.
+   */
+  setCopyMode(repoId: number, mode: CopyMode): Promise<{ fullName: string; copyMode: CopyMode }>
   /** Makes the repo due now and syncs it right away unless another process holds it. */
   syncNow(ref: { sourceId: string } | { repo: string }): Promise<{ fullName: string; outcome: SyncOutcome | { status: 'queued' } }>
   /** Connected repos and their status (for repos.list). */
@@ -127,6 +136,7 @@ export function createReposService(deps: SyncDeps): ReposService {
       repoId: s.repoId,
       fullName: s.fullName,
       defaultBranch: s.defaultBranch,
+      copyMode: s.copyMode,
       lastSyncedAt: s.lastSyncedAt,
       nextDueAt: s.dueAt,
       lastError: s.lastError,
@@ -221,7 +231,8 @@ export function createReposService(deps: SyncDeps): ReposService {
     async removeToken(tokenId) {
       const token = await requireToken(tokenId)
       const mine = (await store.sources()).filter((s) => s.tokenId === token.id)
-      for (const s of mine) await removeRepoFolder(drive, s.repoId)
+      const leaving = new Set(mine.map((s) => s.id))
+      for (const s of mine) await removeRepoFolder({ drive, store }, s, leaving)
       await store.deleteToken(token.id)
       return { removedRepos: mine.filter((s) => s.enabled).length }
     },
@@ -235,7 +246,7 @@ export function createReposService(deps: SyncDeps): ReposService {
       }
       if (!syncing) {
         if (!existing || !existing.enabled) throw new ReposError('That repo is not synced.')
-        await removeRepoFolder(drive, repoId)
+        await removeRepoFolder({ drive, store }, existing)
         await store.updateSource(existing.id, { ...FRESH_STATE, enabled: false })
         return { fullName: existing.fullName }
       }
@@ -255,6 +266,17 @@ export function createReposService(deps: SyncDeps): ReposService {
       if (missing.length > 0) throw new ReposError(tokenMessages.missingPermissions(repo.fullName, missing, 'tick'))
       await store.enableSource({ tokenId: token.id, repoId: repo.id, fullName: repo.fullName, defaultBranch: repo.defaultBranch, dueAt: deps.now() })
       return { fullName: repo.fullName }
+    },
+
+    async setCopyMode(repoId, mode) {
+      const s = (await store.sources()).find((x) => x.repoId === repoId && x.enabled)
+      if (!s) throw new ReposError('That repo is not connected. repos.list shows the connected ones.')
+      const token = await store.token(s.tokenId)
+      if (token?.lastError) throw new ReposError(token.lastError)
+      await store.setCopyMode(s.id, mode)
+      // Due now, like Sync now: the next tick applies the new file set.
+      await store.updateSource(s.id, { dueAt: deps.now() })
+      return { fullName: s.fullName, copyMode: mode }
     },
 
     async syncNow(ref) {

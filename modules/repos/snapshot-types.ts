@@ -1,8 +1,9 @@
 /**
- * What one sync learned about a repo (plan/github-drive.md §3). Plain JSON
- * (dates as ISO strings) so it can be stored in `repo_sources.snapshot` and
- * rendered again when GitHub answers 304. Doc texts are never stored: they
- * ride along only for the run that fetched them.
+ * What one sync learned about a repo (plan/github-drive.md §3,
+ * plan/github-drive-full-mirror.md §3). Plain JSON (dates as ISO strings) so it
+ * can be stored in `repo_sources.snapshot` and rendered again when GitHub
+ * answers 304. File contents never ride along: the copied file list lives in
+ * `repo_source_files`, and bytes only exist inside the run that fetched them.
  */
 
 export type CommitLite = {
@@ -45,15 +46,63 @@ export type PullSnap = {
   htmlUrl: string
 }
 
-export type DocSnap = {
+/** Which files a repo copies from its default branch (the per-repo setting, §1). */
+export type CopyMode = 'all' | 'docs'
+
+/** One file of the default branch the sync copies: path, git blob sha and size. */
+export type FileSnap = {
   path: string
   sha: string
   size: number
-  /** The text, only when it was fetched in this run (its sha changed). */
-  text?: string
 }
 
-export type NotCopied = { path: string; size: number; reason: 'file_size' | 'file_count' | 'total_size' }
+export type NotCopiedReason =
+  | 'file_size'
+  | 'file_count'
+  | 'total_size'
+  /** A path segment Drive can't hold (Drive's checkName: empty, edge whitespace, `/` or `\`, over 255, `.` or `..`). */
+  | 'name'
+  /**
+   * GitHub's archive lacks the file or serves other bytes (.gitattributes
+   * export-ignore / export-subst / eol filters), and the per-sync cap on
+   * one-by-one fetches was reached. Retried on the next sync.
+   */
+  | 'archive_filtered'
+  /** A gitlink (tree entry of type commit); `sha` is the pinned commit. */
+  | 'submodule'
+  /** Tree entry mode 120000. */
+  | 'symlink'
+  /** A Git LFS pointer file, detected by the pointer format's fixed first line. */
+  | 'lfs'
+
+export type NotCopied = {
+  path: string
+  size: number
+  reason: NotCopiedReason
+  /**
+   * The pinned commit for submodule entries (shown as `path → <sha>`), or the
+   * pointer blob's sha for Git LFS skips, so the next sync recognises them
+   * again without refetching.
+   */
+  sha?: string
+}
+
+/**
+ * What the snapshot keeps about the copied tree: counts and the not-copied
+ * list, never the file list (that is `repo_source_files`).
+ */
+export type TreeSnap = {
+  /** The default-branch commit the files were read at. */
+  commitSha: string | null
+  mode: CopyMode
+  /** How many files were copied. */
+  count: number
+  /** Total size of the copied files. */
+  bytes: number
+  notCopied: NotCopied[]
+  /** GitHub cut the recursive tree short; the tarball's own listing stood in. */
+  truncated: boolean
+}
 
 export type RepoSnapshot = {
   /** When the snapshot was taken: the 30/90-day windows are measured from here. */
@@ -72,13 +121,34 @@ export type RepoSnapshot = {
   }
   branches: BranchSnap[]
   pulls: PullSnap[]
-  docs: {
-    /** The default-branch commit the docs were read at. */
-    commitSha: string | null
-    copied: DocSnap[]
-    notCopied: NotCopied[]
-    truncated: boolean
-  }
+  tree: TreeSnap
+}
+
+/**
+ * A snapshot whose tree section is not final yet: the counts are only known
+ * after the file fetch (a Git LFS pointer is only recognisable from its
+ * bytes). `tree` is null when there is nothing to do for it.
+ */
+export type PendingSnapshot = Omit<RepoSnapshot, 'tree'> & { tree: TreeSnap | null }
+
+/**
+ * What the sync has to do for the tree after a snapshot: which files the pick
+ * kept, which must be fetched (their stored sha differs or they are new),
+ * which stored paths are gone, and whether the bytes come from per-blob
+ * fetches or the tarball (many changes, a first sync, or a truncated tree).
+ */
+export type TreePlan = {
+  commitSha: string
+  mode: CopyMode
+  /** The picked entries, limits and static skips applied. */
+  picked: FileSnap[]
+  /** Picked entries whose stored sha differs or is missing: fetch their bytes. */
+  changed: FileSnap[]
+  /** Stored paths the pick no longer contains: delete from Drive and repo_source_files. */
+  gone: string[]
+  notCopied: NotCopied[]
+  truncated: boolean
+  viaTarball: boolean
 }
 
 export const HIGHLIGHT_KINDS = ['branch', 'pr', 'commit', 'release', 'other'] as const

@@ -100,7 +100,9 @@ New flow when the default head moved (everything else in the run stays as it is)
   - new table `repo_source_files(source_id, path, sha, size, primary key (source_id, path))`
     replaces the `doc_shas` jsonb. 50k paths don't belong in one jsonb row.
   - `repo_sources.copy_mode text not null default 'all' check (copy_mode in ('all','docs'))`
-  - drop `doc_shas`
+  - keep `doc_shas` in 0161 (expand/contract, `plan/phase-substrate.md` D15): defaulted and
+    unused by the new code, so the old blue-green slot keeps working. **The drop ships one
+    release later**, in its own migration.
 - `RepoSnapshot.docs` becomes `RepoSnapshot.tree`, with the same shape plus `bytes` and
   `skipped` (submodule/symlink/lfs). Only counts and the not-copied list are stored in the
   snapshot, never the file list (that's in the table).

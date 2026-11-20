@@ -1,4 +1,5 @@
 import type { GitHubTokenError } from './token-client'
+import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { GitHubApiError } from './api'
 import {
@@ -17,7 +18,7 @@ async function tokenError(
   const { impl } = fakeGitHub({
     'GET /repos/octo-org/repo-1': { status, body: { message: 'x' }, headers },
   })
-  const gh = createGitHubTokenClient({ token: 'github_pat_x', fetch: impl, timeoutMs: 1000 })
+  const gh = createGitHubTokenClient({ token: 'github_pat_x', fetch: impl, timeoutMs: 1000, tarballDir: tmpdir(), tarballTimeoutMs: 1000, tarballMaxBytes: 1000 })
   return (await gh.repo('octo-org/repo-1', null).catch((e: unknown) => e)) as GitHubTokenError
 }
 
@@ -46,6 +47,20 @@ describe('plain words for token errors', () => {
     ).catch((e: unknown) => e)) as GitHubTokenError
     expect(plainGitHubTokenMessage(refused, 'that')).toBe(
       'eigenEnterprise only reads from GitHub. This change was stopped before it reached GitHub.',
+    )
+  })
+
+  it('a repo archive over the size cap says so in plain words', async () => {
+    const sha = 'a'.repeat(40)
+    const fetch = (async (input: string | URL | Request) =>
+      String(input).startsWith('https://api.github.com/')
+        ? new Response(null, { status: 302, headers: { location: `https://codeload.github.com/o/r/legacy.tar.gz/${sha}` } })
+        : new Response('xxxxxxxxxx', { status: 200, headers: { 'content-length': '10' } })) as typeof globalThis.fetch
+    const gh = createGitHubTokenClient({ token: 't', fetch, timeoutMs: 1000, tarballDir: tmpdir(), tarballTimeoutMs: 1000, tarballMaxBytes: 5 })
+    const err = (await gh.tarball('octo-org/repo-1', sha).catch((e: unknown) => e)) as GitHubTokenError
+    expect(err.kind).toBe('too_large')
+    expect(plainGitHubTokenMessage(err, 'octo-org/repo-1')).toBe(
+      'octo-org/repo-1 is too large to copy from GitHub in one download. Syncing stops here; ask in the chat to raise the limit.',
     )
   })
 
