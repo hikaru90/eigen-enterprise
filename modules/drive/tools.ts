@@ -74,6 +74,21 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
       },
     },
     {
+      // The Drive rail's "Shared with me" as a registry action (CB3: the brain
+      // reads Drive as the person, whose top level holds only their own items).
+      name: 'drive.shared_with_me',
+      module: DRIVE_MODULE_ID,
+      summary:
+        'List what other people shared with you in Drive (the top-most shared folders and files: ids, names, owners, types). Open a shared folder with drive.list (folder_id), a file with drive.read.',
+      auditClass: 'read',
+      inputSchema: emptyInput,
+      permission: { roles: DRIVE_ROLES },
+      handler: async (ctx, input) => {
+        emptyInput.parse(input)
+        return { items: await (await service()).sharedWithMe(actorOf(ctx)) }
+      },
+    },
+    {
       name: 'drive.read',
       module: DRIVE_MODULE_ID,
       summary: 'Read a file from Drive as text by file_id: Markdown, CSV and plain text as they are; PDF, Word (.docx) and PowerPoint (.pptx) as their extracted text (an error says when a format cannot be read yet).',

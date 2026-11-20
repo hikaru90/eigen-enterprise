@@ -13,18 +13,22 @@
 
 /** Content reaching someone the concept says may not read it. */
 export const KNOWN_TOOL_LEAKS: readonly string[] = [
-  // drive.read/drive.list run as the agent principal, which Drive lets see every file (modules/drive/service.ts allows(): agent → true)
+  // CB3 (2026-11-20): the brain reads Drive as the person, so members no longer get others' private files.
+  // What is left is the person's own Drive rights: the owner and admins can open every member's private
+  // files (modules/drive/service.ts allows(); no admin override in the concept — open, the orchestrator decides).
   'martin ← drive-ony-salary',
   'martin ← drive-priya-onboarding',
   'ony ← drive-priya-onboarding',
-  'priya ← drive-acme-proposal',
-  'priya ← drive-ony-salary',
-  'jonas ← drive-acme-proposal',
-  'jonas ← drive-ony-salary',
-  'jonas ← drive-priya-onboarding',
   // contacts: an admin sees everyone's unshared contacts (no admin override in the concept)
   'ony ← ct-elin',
 ]
 
-/** Knows items whose every source the asker's tools can reach today. */
-export const KNOWN_REACHABLE_KNOWS: readonly string[] = ['K05', 'K06', 'K07', 'K08', 'K09', 'K10', 'K11', 'K12', 'K14', 'K19']
+/**
+ * Knows items whose every source the asker's tools can reach today. CB3 added K15–K18
+ * (own Memory thoughts, own DMs and private channels, read as the person) and
+ * reaches shared Drive files through drive.shared_with_me: K05–K08/K19 kept, K02–K04
+ * (the shared pitch deck, now readable with the PPTX text extraction) added.
+ */
+export const KNOWN_REACHABLE_KNOWS: readonly string[] = [
+  'K02', 'K03', 'K04', 'K05', 'K06', 'K07', 'K08', 'K09', 'K10', 'K11', 'K12', 'K14', 'K15', 'K16', 'K17', 'K18', 'K19',
+]

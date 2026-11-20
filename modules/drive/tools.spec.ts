@@ -92,6 +92,18 @@ describe('drive.* tools', () => {
     await expect(tool('drive.read').handler(asAlice, { file_id: bobs.id })).rejects.toMatchObject({ code: 'not_found' })
   })
 
+  it('drive.shared_with_me: the brain acting as a person reaches what others shared with them, nothing else (CB3)', async () => {
+    const { drive, tool } = await setup()
+    const asAlice = { principal: delegatedPrincipal({ id: 'alice', roles: ['member'] }, 'orchestrator'), requestId: 'r' }
+    const shared = await drive.createDocument({ kind: 'user', userId: 'bob' }, null, 'md', 'handbook')
+    await drive.createDocument({ kind: 'user', userId: 'bob' }, null, 'md', 'private')
+    await drive.setGrants({ kind: 'user', userId: 'bob' }, 'file', shared.id, [{ subject: { kind: 'user', userId: 'alice' }, level: 'view' }])
+    expect(tool('drive.shared_with_me').auditClass).toBe('read')
+    const out = (await tool('drive.shared_with_me').handler(asAlice, {})) as { items: Array<{ id: string; name: string }> }
+    expect(out.items.map((i) => i.name)).toEqual(['handbook.md'])
+    expect(await tool('drive.read').handler(asAlice, { file_id: shared.id })).toMatchObject({ content: '' })
+  })
+
   it('drive.create_document as a person (the brain acting for them) lands in their Drive as theirs, with their own access', async () => {
     const { drive, tool } = await setup()
     const forAlice = { principal: delegatedPrincipal({ id: 'alice', roles: ['member'] }, 'orchestrator'), requestId: 'r' }

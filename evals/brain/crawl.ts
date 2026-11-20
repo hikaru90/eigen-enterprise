@@ -23,6 +23,7 @@ export const CRAWLED_TOOLS = [
   'messages.list_channels',
   'messages.read',
   'drive.list',
+  'drive.shared_with_me',
   'drive.read',
   'drive.list_archived',
   'memory.retrieve_thoughts',
@@ -87,6 +88,19 @@ export async function crawlAsMember(exec: ToolExec, surface: readonly string[], 
     }
   }
   await walk(null)
+  // What others shared with the member (CB3: their top level holds only their own items).
+  const shared = await call('drive.shared_with_me', {})
+  for (const item of rowsOf(shared, 'items')) {
+    const id = idOf(item)
+    if (!id) continue
+    if (item.type === 'folder') {
+      if (seenFolders.has(id)) continue
+      seenFolders.add(id)
+      await walk(id)
+    } else {
+      await call('drive.read', { file_id: id })
+    }
+  }
   await call('drive.list_archived', {})
 
   await call('memory.retrieve_thoughts', { order: 'created_at', top_k: 100, detail: 'full', author: 'all' })

@@ -120,6 +120,7 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   'drive.list',
   'drive.list_archived',
   'drive.read',
+  'drive.shared_with_me',
   'drive.suggest_archive',
   'drive.unarchive',
   'drive.write_text',

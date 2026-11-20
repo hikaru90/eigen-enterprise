@@ -2,6 +2,28 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-20 — CB3: the company brain acts as the person (branch `worktree-agent-a82ae8fa8eb134a67`; not merged, not released)
+
+- **Shipped (commits `2fecf88a` [kernel], `1e249557` [brain], then the CB0 merge + eval ratchet on the branch):**
+  - **Delegated principal** (`src/lib/kernel/principals.ts`): the person's id + kernel roles, kind `human`, `via: 'brain'` + the brain's agent id. The registry checks permission with the person's roles, runs each person's handler in THAT person's RLS session (`principalScope`, live in `bootstrapKernel`), puts `via`/`agentId` on `tool.executed` and `approval.auto_approved`, commits as `<id> via brain:<agent>`. `ToolContext.actingUserId` is gone.
+  - **Every dispatch names its person** (`no_person` otherwise): `/api/chat` (side panel, ⌘K) as the signed-in member (`personFor`, 403 for non-members); Telegram as the member an allowlist entry links to; background runs carry `personId` and run with the person's current roles (`createPersonToolExecutor`). `ORCHESTRATOR_PRINCIPAL` and `rolesFor` are removed; there is no admin agent identity.
+  - **Telegram linking:** an allowlist entry links a Telegram user to a member id; `allowlist_add` refuses non-member ids; unlinked senders, and links to non-members, get one clear reply ("not linked to a member…") and a `gateway.telegram.denied` event with the reason. One durable conversation per chat **and** person.
+  - **Modules:** the principal is the person — Memory, tasks, Drive, calendar, contacts, messages, calls, Contribute, brand social posts, groups and `kernel.whoami` grant the new kernel role `member`; `tenantUserAsyncLocal`/`actingUserId`/`creatorOf` special cases removed. New read tool `drive.shared_with_me` (the rail's "Shared with me" as a registry action — a person's Drive top level holds only their own items).
+  - **Concurrency:** the durable harness refuses to continue a conversation of another person; two dispatches at once never cross principals (runtime + harness tests).
+  - **Briefings** name tools that exist (`calendar.list`, `memory.list_projects`, `memory.get_project_timeline`, `tasks.list`, `memory.retrieve_thoughts`; pinned by `briefing-tools.spec.ts`).
+  - **Eval (CB0):** `npm run eval:brain` static — every member-level Drive leak is gone (8 → 0); own thoughts, own DMs/private channels now reachable: Knows 10 → 17 of 22. Ratchet updated in `evals/brain/baseline.ts`.
+- **Announced changes (no silent removals):**
+  - **Non-admin members lose, through the brain, every admin tool the old `orchestrator` identity (admin + agent) gave them** — 109 tools, pinned as `MEMBER_LOSES_VIA_BRAIN` in `src/lib/server/boot.wiring.spec.ts`: all of `website.*`, `substrate.*`, `github.*`, `email.*` + `owlery.status`, `brand.*` except social posts, `repo.*`, `roadmap.*`, `repos.*`, `contribute_hub.*`, `members.list/invite/set_role/group_create/group_update/group_delete`, `kernel.module_list/module_activate/module_deactivate/approvals_list/approvals_decide`, `settings.get/update`, `agent.list`; plus `recap.run_now` and `chat-gateway.status` when those modules are on. Members keep 47 tools (`MEMBER_KEEPS_VIA_BRAIN`). Admins and the owner lose nothing.
+  - The brain now **reads the asking person's own Memory** (it read nothing before); the Memory privacy note says so.
+  - Approvals are **per person**: an approval one person's brain call got no longer lets the same tool through for anyone else (before, everything was keyed to `orchestrator`).
+  - The founding wizard and journey artifacts run as the person: a member cannot found the website (403); the tone-of-voice document lands in the founder's own Drive; activity lines, social posts etc. made through the brain record the person (provenance `via: brain`).
+  - Telegram conversations restart once (new key per chat + person); unlinked senders now get a reply instead of silence.
+- **Decisions:**
+  - Kernel roles of a person: member → `['member']`, owner/admin → `['admin','member']`. The kernel `owner` role stays off the brain (as on MCP/routes): owner-only tools (Telegram links, agent on/off) stay the owner's own clicks.
+  - Delegated principals are kind `human`; "the person's own click" guards (G8 brand, D11 server changes, the always-ask wall, re-enabling a switched-off plugin, the website internal-document classifier) use `isDirectHuman` and refuse the brain.
+- **Open (orchestrator):** Drive and contacts still let the owner/admins open members' private items (eval leaks `martin/ony ← drive-…`, `ony ← ct-elin`) — the person's own rights, left as is. `humanContext` (dashboard cards) still gives members no kernel role.
+- **Next:** review + merge (conflict-prone: `modules/orchestrator/brain.ts`, `modules/index.ts`, `src/lib/server/boot.ts`, tool permission lines in module `tools.ts`), e2e chat journeys on merge, release.
+
 ## 2026-11-20 — Office files milestone 1 merged: our own PDF, Word and PowerPoint viewers in the Drive (plan/phase-office-files.md)
 
 - **Shipped (merged into main, not pushed, not on the box):**
