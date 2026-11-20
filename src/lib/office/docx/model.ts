@@ -88,6 +88,8 @@ export type FieldInline = {
   switches: Record<string, string | true>
   /** The cached result (what Word last showed); for a field spanning paragraphs, this paragraph's share. */
   children: Inline[]
+  /** The formatting of the field's own run (for a result we compute, like PAGE). */
+  run: RunProps
   source: Element
 }
 export type BookmarkInline = { type: 'bookmark'; name: string; source: Element }
@@ -209,7 +211,7 @@ type Story = {
   pendingBookmarks: BookmarkInline[]
 }
 
-type OpenField = { instruction: string; phase: 'instr' | 'result'; children: Inline[]; source: Element }
+type OpenField = { instruction: string; phase: 'instr' | 'result'; children: Inline[]; run: RunProps; source: Element }
 
 type Ctx = {
   pkg: OpcPackage
@@ -297,7 +299,7 @@ export function parseFieldInstruction(instruction: string): Pick<FieldInline, 'c
 }
 
 function makeField(open: OpenField): FieldInline {
-  return { type: 'field', instruction: open.instruction, ...parseFieldInstruction(open.instruction), children: open.children, source: open.source }
+  return { type: 'field', instruction: open.instruction, ...parseFieldInstruction(open.instruction), children: open.children, run: open.run, source: open.source }
 }
 
 // ---------------------------------------------------------------- inline parsing
@@ -370,7 +372,7 @@ class ParagraphReader {
           break
         }
         case 'fldSimple': {
-          const f: FieldInline = { type: 'field', instruction: wa(c, 'instr') ?? '', ...parseFieldInstruction(wa(c, 'instr') ?? ''), children: [], source: c }
+          const f: FieldInline = { type: 'field', instruction: wa(c, 'instr') ?? '', ...parseFieldInstruction(wa(c, 'instr') ?? ''), children: [], run: this.runBase, source: c }
           this.emit(sink, f)
           this.nested(c, f.children, deleted)
           break
@@ -456,7 +458,7 @@ class ParagraphReader {
       case 'fldChar': {
         const t = wa(c, 'fldCharType')
         if (t === 'begin') {
-          this.story.fields.push({ instruction: '', phase: 'instr', children: [], source: c })
+          this.story.fields.push({ instruction: '', phase: 'instr', children: [], run, source: c })
         } else if (t === 'separate') {
           const top = this.story.fields.at(-1)
           if (top) top.phase = 'result'
