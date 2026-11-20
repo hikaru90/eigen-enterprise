@@ -1,5 +1,3 @@
-import { resolveColor, type ColorContext, type ColorSpec, type Rgba } from './color'
-import { buildGeometry, GeometryError, type BuiltGeometry, type GeomDef } from './geometry'
 import type {
   Background,
   Deck,
@@ -12,7 +10,6 @@ import type {
   ListStyle,
   Master,
   MatrixRef,
-  Paragraph,
   ParaProps,
   PicNode,
   Placeholder,
@@ -20,7 +17,6 @@ import type {
   ShapeNode,
   ShapeStyle,
   Slide,
-  SpNode,
   Spacing,
   Table,
   TableStylePart,
@@ -28,6 +24,8 @@ import type {
   Theme,
   Xfrm,
 } from './model'
+import { resolveColor, type ColorContext, type ColorSpec, type Rgba } from './color'
+import { buildGeometry, GeometryError, type BuiltGeometry, type GeomDef } from './geometry'
 import { walkShapes } from './model'
 import { presetGeometry } from './presets'
 
@@ -523,7 +521,12 @@ const ROMAN: Array<[number, string]> = [
 ]
 const roman = (n: number) => {
   let out = ''
-  for (const [v, s] of ROMAN) while (n >= v) ((out += s), (n -= v))
+  for (const [v, s] of ROMAN) {
+    while (n >= v) {
+      out += s
+      n -= v
+    }
+  }
   return out
 }
 const alpha = (n: number) => {

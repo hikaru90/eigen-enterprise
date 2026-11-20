@@ -1,7 +1,7 @@
-import { toCss, type Rgba } from './color'
 import type { BuiltGeometry, BuiltPath } from './geometry'
 import type { ImageRef, LineEnd } from './model'
 import type { Frame, RCell, RFill, RLine, RNode, RParagraph, RRun, RSlide, RTable, RText } from './resolve'
+import { toCss, type Rgba } from './color'
 
 /**
  * Draws a resolved slide (./resolve.ts) as one SVG document, in CSS pixels

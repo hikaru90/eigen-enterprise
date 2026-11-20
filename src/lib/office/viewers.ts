@@ -26,4 +26,6 @@ export type OfficeViewerModule = { default: Component<OfficeViewerProps> }
  * the file page keeps its old preview (the browser's PDF viewer; Word and
  * PowerPoint download).
  */
-export const OFFICE_VIEWERS: Partial<Record<OfficeKind, () => Promise<OfficeViewerModule>>> = {}
+export const OFFICE_VIEWERS: Partial<Record<OfficeKind, () => Promise<OfficeViewerModule>>> = {
+  pptx: () => import('./pptx/pptx-viewer.svelte'),
+}

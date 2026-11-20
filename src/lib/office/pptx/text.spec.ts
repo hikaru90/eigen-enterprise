@@ -1,8 +1,8 @@
 import { strToU8 } from 'fflate'
 import { describe, expect, it } from 'vitest'
 import { extractOfficeText } from '../text'
-import { extractText } from './text'
 import { buildPptx, graphicFrame, para, ph, pic, PNG_1PX, sp, TABLE_URI, xfrm } from './test-utils/build-pptx'
+import { extractText } from './text'
 
 describe('pptx extractText (Markdown for agents)', () => {
   it('one section per slide: title, body as nested lists, tables, notes', async () => {
