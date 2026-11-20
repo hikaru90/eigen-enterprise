@@ -5,8 +5,27 @@ import { page, userEvent } from 'vitest/browser'
 import DocxViewer from './docx-viewer.svelte'
 import { buildDocx, inlineImage, p, PNG_1PX, r, sectPr } from './test-utils/builder'
 
-const { readBytes } = vi.hoisted(() => ({ readBytes: vi.fn<(id: string) => Promise<Uint8Array>>() }))
-vi.mock('$lib/drive/api', () => ({ driveApi: { readBytes } }))
+const api = vi.hoisted(() => ({
+  readBytes: vi.fn<(id: string) => Promise<Uint8Array>>(),
+  acquireLock: vi.fn(),
+  heartbeatLock: vi.fn(),
+  releaseLock: vi.fn(),
+  writeBytes: vi.fn(),
+}))
+// The viewer's edit session pulls these in too (it never calls them in this spec: canEdit is false).
+vi.mock('$lib/drive/api', () => {
+  class DriveApiError extends Error {
+    constructor(
+      message: string,
+      readonly status: number,
+      readonly code: string | null,
+      readonly holder: unknown,
+    ) {
+      super(message)
+    }
+  }
+  return { driveApi: api, DriveApiError }
+})
 
 const props = { fileId: 'f1', name: 'report.docx', canEdit: false, heartbeatMs: 10_000 }
 const A4 = '<w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/>'
@@ -23,14 +42,14 @@ const bodyText = (el: HTMLElement) => el.querySelector('.docx-body')?.textConten
 
 describe('DocxViewer', () => {
   beforeEach(() => {
-    readBytes.mockReset()
+    for (const f of Object.values(api)) f.mockReset()
   })
 
   it('renders a page at its true size with its margins', async () => {
-    readBytes.mockResolvedValue(buildDocx({ body: p(r('Hello Word')) + sectPr(A4) }))
+    api.readBytes.mockResolvedValue(buildDocx({ body: p(r('Hello Word')) + sectPr(A4) }))
     render(DocxViewer, props)
     const [first] = await laidOut()
-    expect(readBytes).toHaveBeenCalledWith('f1')
+    expect(api.readBytes).toHaveBeenCalledWith('f1')
     // A4 in twips → points → CSS pixels, unscaled layout size.
     expect(first!.offsetWidth).toBeCloseTo((11906 / 20) * (96 / 72), 0)
     expect(first!.offsetHeight).toBeCloseTo((16838 / 20) * (96 / 72), 0)
@@ -44,7 +63,7 @@ describe('DocxViewer', () => {
     const fld = (code: string) =>
       `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> ${code} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>${r('1')}<w:r><w:fldChar w:fldCharType="end"/></w:r>`
     const body = Array.from({ length: 60 }, (_, i) => p(r(`[${i + 1}] ${LOREM}`))).join('')
-    readBytes.mockResolvedValue(
+    api.readBytes.mockResolvedValue(
       buildDocx({
         headers: { rIdH: p(r('Kindred report')) },
         footers: { rIdF: p(r('Page ') + fld('PAGE') + r(' of ') + fld('NUMPAGES')) },
@@ -72,7 +91,7 @@ describe('DocxViewer', () => {
   })
 
   it('splits a long paragraph at a line boundary across pages', async () => {
-    readBytes.mockResolvedValue(buildDocx({ body: p(r(LOREM.repeat(60).trim())) + sectPr(A4) }))
+    api.readBytes.mockResolvedValue(buildDocx({ body: p(r(LOREM.repeat(60).trim())) + sectPr(A4) }))
     render(DocxViewer, props)
     const all = await laidOut(2)
     const parts = all.map((pg) => pg.querySelector('.docx-p')!)
@@ -87,7 +106,7 @@ describe('DocxViewer', () => {
     const filler = Array.from({ length: 34 }, (_, i) => p(r(`Filler ${i + 1}`), exact(20))).join('')
     const heading = p(r('Results'), `<w:keepNext/><w:outlineLvl w:val="0"/>${exact(15)}`)
     const kept = p(r('Line one') + '<w:r><w:br/></w:r>' + r('Line two') + '<w:r><w:br/></w:r>' + r('Line three'), `<w:keepLines/>${exact(20)}`)
-    readBytes.mockResolvedValue(buildDocx({ body: filler + heading + kept + sectPr(A4) }))
+    api.readBytes.mockResolvedValue(buildDocx({ body: filler + heading + kept + sectPr(A4) }))
     render(DocxViewer, props)
     const all = await laidOut(2)
     expect(all[0]!.querySelectorAll('.docx-p')).toHaveLength(34)
@@ -99,7 +118,7 @@ describe('DocxViewer', () => {
   it('splits a table at a row boundary and repeats its header row', async () => {
     const row = (a: string, header = false) =>
       `<w:tr>${header ? '<w:trPr><w:tblHeader/></w:trPr>' : ''}<w:tc>${p(r(a))}</w:tc><w:tc>${p(r(`${a} detail`))}</w:tc></w:tr>`
-    readBytes.mockResolvedValue(
+    api.readBytes.mockResolvedValue(
       buildDocx({
         body:
           `<w:tbl><w:tblPr><w:tblBorders><w:insideH w:val="single" w:sz="4"/></w:tblBorders></w:tblPr><w:tblGrid><w:gridCol w:w="4000"/><w:gridCol w:w="5000"/></w:tblGrid>${row('Item', true)}${Array.from({ length: 70 }, (_, i) => row(`Row ${i + 1}`)).join('')}</w:tbl>` +
@@ -116,7 +135,7 @@ describe('DocxViewer', () => {
   })
 
   it('shows inline pictures from the package with their alt text; floating ones carry a visible note', async () => {
-    readBytes.mockResolvedValue(
+    api.readBytes.mockResolvedValue(
       buildDocx({
         media: { rIdImg: { name: 'logo.png', bytes: PNG_1PX } },
         body: p(inlineImage('rIdImg', 914400, 457200, 'Company logo')) + p(inlineImage('rIdImg', 914400, 914400, 'Map').replace(/wp:inline/g, 'wp:anchor')) + sectPr(A4),
@@ -134,7 +153,7 @@ describe('DocxViewer', () => {
   })
 
   it('shows what it does not render yet as a visible placeholder', async () => {
-    readBytes.mockResolvedValue(
+    api.readBytes.mockResolvedValue(
       buildDocx({
         body:
           p(
@@ -149,7 +168,7 @@ describe('DocxViewer', () => {
   })
 
   it('lays out right-to-left paragraphs and CJK text', async () => {
-    readBytes.mockResolvedValue(
+    api.readBytes.mockResolvedValue(
       buildDocx({
         body: p(r('مرحبا بالعالم', '<w:rtl/>'), '<w:bidi/><w:jc w:val="left"/>') + p(r('日本語のテキスト', '<w:rFonts w:eastAsia="MS Mincho"/><w:lang w:eastAsia="ja-JP"/>')) + sectPr(A4),
       }),
@@ -164,7 +183,7 @@ describe('DocxViewer', () => {
   })
 
   it('keeps the text selectable and zooms between fit width and 100%', async () => {
-    readBytes.mockResolvedValue(buildDocx({ body: p(r('Select me')) + sectPr(A4) }))
+    api.readBytes.mockResolvedValue(buildDocx({ body: p(r('Select me')) + sectPr(A4) }))
     render(DocxViewer, props)
     const [first] = await laidOut()
     expect(getComputedStyle(first!).userSelect).not.toBe('none')
@@ -178,13 +197,13 @@ describe('DocxViewer', () => {
   })
 
   it('says clearly when the file is broken', async () => {
-    readBytes.mockResolvedValue(strToU8('this is not a docx'))
+    api.readBytes.mockResolvedValue(strToU8('this is not a docx'))
     render(DocxViewer, props)
     await expect.element(page.getByRole('alert')).toHaveTextContent(/This Word document could not be opened: Not a ZIP package/)
   })
 
   it('says clearly when the file cannot be loaded', async () => {
-    readBytes.mockRejectedValue(new Error('Loading the file failed (500).'))
+    api.readBytes.mockRejectedValue(new Error('Loading the file failed (500).'))
     render(DocxViewer, props)
     await expect.element(page.getByRole('alert')).toHaveTextContent('This Word document could not be opened: Loading the file failed (500).')
   })

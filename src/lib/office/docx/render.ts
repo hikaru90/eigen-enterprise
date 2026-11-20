@@ -1,5 +1,5 @@
 import type { Block, DocxDocument, Inline, Paragraph, PlaceholderInline, Table, TableCell } from './model'
-import type { Border, EdgeBorders, RunProps } from './properties'
+import type { Border, EdgeBorders, ParagraphProps, RunProps } from './properties'
 import { fontStack } from './fonts'
 import { symbolChar, symbolText } from './symbols'
 
@@ -15,7 +15,7 @@ export const PX_PER_PT = 96 / 72
 /** Word's single line height relative to the font size (font ascent + descent + gap, typical of Office fonts). */
 const SINGLE_LINE = 1.15
 /** Auto spacing (w:beforeAutospacing / w:afterAutospacing): what Word applies, 14pt. */
-const AUTO_SPACING_PT = 14
+export const AUTO_SPACING_PT = 14
 /** Word's default font size when nothing sets one (w:sz default, §17.3.2.38). */
 const DEFAULT_SIZE_PT = 10
 
@@ -28,7 +28,7 @@ export type RenderEnv = {
   pageField(code: string): string | null
 }
 
-const HIGHLIGHT: Record<string, string> = {
+export const HIGHLIGHT: Record<string, string> = {
   black: '#000000',
   blue: '#0000ff',
   cyan: '#00ffff',
@@ -56,7 +56,7 @@ function el<K extends keyof HTMLElementTagNameMap>(env: RenderEnv, tag: K, class
 // ---------------------------------------------------------------- runs
 
 /** ST_Underline → CSS line style and weight. */
-const UNDERLINE: Record<string, { style: string; heavy: boolean }> = {
+export const UNDERLINE: Record<string, { style: string; heavy: boolean }> = {
   single: { style: 'solid', heavy: false },
   words: { style: 'solid', heavy: false },
   double: { style: 'double', heavy: false },
@@ -78,7 +78,7 @@ const UNDERLINE: Record<string, { style: string; heavy: boolean }> = {
 
 const isCs = (r: RunProps) => r.rtl === true || r.cs === true
 
-export function runCss(r: RunProps, env: RenderEnv): string {
+export function runCss(r: RunProps, env: Pick<RenderEnv, 'doc'>): string {
   const cs = isCs(r)
   const css: string[] = []
   const fonts = r.fonts ?? {}
@@ -117,7 +117,7 @@ export function runCss(r: RunProps, env: RenderEnv): string {
   return css.join(';')
 }
 
-function markCss(r: RunProps, env: RenderEnv): string {
+function markCss(r: RunProps, env: Pick<RenderEnv, 'doc'>): string {
   const fonts = r.fonts ?? {}
   const cs = isCs(r)
   const size = (cs ? (r.sizeCsPt ?? r.sizePt) : r.sizePt) ?? DEFAULT_SIZE_PT
@@ -415,47 +415,40 @@ export type ParagraphFragment = {
 
 const sameStyle = (a: Block | null | undefined, b: Paragraph) => a?.type === 'paragraph' && a.props.styleId === b.props.styleId
 
-function lineHeight(p: Paragraph): string {
-  const line = p.props.spacing?.line
+function lineHeight(props: ParagraphProps): string {
+  const line = props.spacing?.line
   if (!line) return String(SINGLE_LINE)
   if (line.rule === 'auto') return String(line.multiple * SINGLE_LINE)
   if (line.rule === 'exact') return `${line.pt}pt`
   return `max(${SINGLE_LINE}em, ${line.pt}pt)`
 }
 
-const PARAGRAPH_OF = new WeakMap<HTMLElement, Paragraph>()
-
-/** The model paragraph a rendered paragraph element shows. */
-export const paragraphOf = (e: HTMLElement) => PARAGRAPH_OF.get(e)
-
-export function renderParagraph(p: Paragraph, env: RenderEnv, frag: ParagraphFragment = {}): HTMLElement {
-  const first = frag.first ?? true
-  const last = frag.last ?? true
-  const props = p.props
-  const e = el(env, 'p', 'docx-p')
-  PARAGRAPH_OF.set(e, p)
+/**
+ * A paragraph's own box as CSS (spacing, indents, alignment, line height,
+ * direction, shading, borders and the paragraph mark's strut). Shared by the
+ * paginated view and the editor's continuous layout.
+ */
+export function paragraphCss(
+  props: ParagraphProps,
+  markRun: RunProps,
+  env: Pick<RenderEnv, 'doc'>,
+  box: { beforePt: number; afterPt: number; firstLine: boolean },
+): string {
   const ind = props.indent ?? {}
-  const sp = props.spacing ?? {}
-  let before = sp.beforeAuto ? AUTO_SPACING_PT : (sp.beforePt ?? 0)
-  let after = sp.afterAuto ? AUTO_SPACING_PT : (sp.afterPt ?? 0)
-  if (props.contextualSpacing && sameStyle(frag.prev, p)) before = 0
-  if (props.contextualSpacing && sameStyle(frag.next, p)) after = 0
-  if (!first) before = 0
-  if (!last) after = 0
   const align = props.align ?? 'start'
   const css = [
     'margin:0',
-    `margin-top:${before}pt`,
-    `margin-bottom:${after}pt`,
+    `margin-top:${box.beforePt}pt`,
+    `margin-bottom:${box.afterPt}pt`,
     `margin-inline-start:${ind.startPt ?? 0}pt`,
     `margin-inline-end:${ind.endPt ?? 0}pt`,
-    `text-indent:${first ? (ind.firstLinePt ?? 0) : 0}pt`,
+    `text-indent:${box.firstLine ? (ind.firstLinePt ?? 0) : 0}pt`,
     `text-align:${align === 'distribute' ? 'justify' : align}`,
     align === 'distribute' ? 'text-align-last:justify' : '',
-    `line-height:${lineHeight(p)}`,
+    `line-height:${lineHeight(props)}`,
     `direction:${props.bidi ? 'rtl' : 'ltr'}`,
     // The paragraph mark sets the line's strut (and an empty paragraph's height); everything else stays on runs.
-    markCss(p.markRun, env),
+    markCss(markRun, env),
     'white-space:pre-wrap',
     'overflow-wrap:break-word',
   ]
@@ -472,7 +465,28 @@ export function renderParagraph(p: Paragraph, env: RenderEnv, frag: ParagraphFra
       if (border && border.style !== 'none') css.push(`border-${side}:${borderCss(border)}`, `padding-${side}:${border.spacePt}pt`)
     }
   }
-  e.style.cssText = css.filter(Boolean).join(';')
+  return css.filter(Boolean).join(';')
+}
+
+const PARAGRAPH_OF = new WeakMap<HTMLElement, Paragraph>()
+
+/** The model paragraph a rendered paragraph element shows. */
+export const paragraphOf = (e: HTMLElement) => PARAGRAPH_OF.get(e)
+
+export function renderParagraph(p: Paragraph, env: RenderEnv, frag: ParagraphFragment = {}): HTMLElement {
+  const first = frag.first ?? true
+  const last = frag.last ?? true
+  const props = p.props
+  const e = el(env, 'p', 'docx-p')
+  PARAGRAPH_OF.set(e, p)
+  const sp = props.spacing ?? {}
+  let before = sp.beforeAuto ? AUTO_SPACING_PT : (sp.beforePt ?? 0)
+  let after = sp.afterAuto ? AUTO_SPACING_PT : (sp.afterPt ?? 0)
+  if (props.contextualSpacing && sameStyle(frag.prev, p)) before = 0
+  if (props.contextualSpacing && sameStyle(frag.next, p)) after = 0
+  if (!first) before = 0
+  if (!last) after = 0
+  e.style.cssText = paragraphCss(props, p.markRun, env, { beforePt: before, afterPt: after, firstLine: first })
   if (props.outlineLevel !== undefined && props.outlineLevel >= 0 && props.outlineLevel <= 8) {
     e.setAttribute('role', 'heading')
     e.setAttribute('aria-level', String(props.outlineLevel + 1))
@@ -583,7 +597,7 @@ function segmentWidth(tab: HTMLElement, next: HTMLElement | null, decimal: boole
 
 // ---------------------------------------------------------------- tables
 
-function cellCss(c: TableCell, borders: EdgeBorders): string {
+export function cellCss(c: TableCell, borders: EdgeBorders): string {
   const m = c.margins
   const css = [
     `border-top:${borderCss(borders.top)}`,
