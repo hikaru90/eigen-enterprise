@@ -2,6 +2,15 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-20 — Released: office editing + durable ee state writes on the box (owner: "Push and release")
+
+- **Pushed** `778947e8` through the local CI gate (683 component tests green).
+- **Released** `eigenenterprise-0.5.30-778947e8753c-linux-arm64` and installed it with `ee/e2e/box.sh install os.ee.localhost`.
+  - The box serves (302 to sign-in), `ee.service` is active and the journal is non-empty.
+  - The installed `/opt/ee/ee.mjs` contains the durable write (`002ae04b`).
+- **Shipped to the box:** office milestone 2 (PDF organise + `drive.pdf_*` tools, Word editing, PowerPoint editing), office revision history (`09d8693f`), and the crash-safe ee state writes.
+- **Next:** milestone 3 (PDF annotate & forms, Word comments & tracked changes, PowerPoint comments, PDF export, co-editing) waits for the owner's go-ahead.
+
 ## 2026-11-20 — Box was down ~1h: ee crash-looped on a 0-byte journal.json; repaired, and ee's state writes made durable (owner: "Yes, fix the box")
 
 - **What broke:**
