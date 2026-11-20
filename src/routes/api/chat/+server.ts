@@ -3,7 +3,7 @@ import { error } from '@sveltejs/kit'
 import { KERNEL_EVENT_SOURCE } from '$lib/kernel/cloudevents'
 import { emitKernelEvent } from '$lib/kernel/events'
 import { approvalContinuationMessage, findApprovalAsOwner } from '$lib/server/approvals/owner-decision'
-import { isUserAdmin } from '$lib/server/auth/user-role'
+import { isUserAdmin, personFor } from '$lib/server/auth/user-role'
 import { bootApp } from '$lib/server/boot'
 import {
   BRIEFING_BOOTSTRAP_MESSAGES,
@@ -14,13 +14,14 @@ import { redactForLog } from '$lib/server/observability/redact-for-log'
 import { ORCHESTRATOR_AGENT_ID } from '../../../../modules/orchestrator/brain'
 
 /**
- * The nucleus chatbox speaks through the harness proper (plan/phase-1b):
- * one path — AgentRuntime.dispatch for the orchestrator agent. Role gate:
- * ANY authenticated user may talk to the orchestrator (checked in
- * handleAgentChatPost); the orchestrator principal carries 'admin' + 'agent'
- * for its kernel tool surface (runtime rolesFor, set at bootstrap). The boot
- * is resolved exactly like src/lib/server/boot.ts — memoized, single kernel,
- * never a second composition.
+ * The nucleus chatbox (and the side panel / ⌘K, which post here) speaks
+ * through the harness proper (plan/phase-1b): one path — AgentRuntime.dispatch
+ * for the company brain, AS THE SIGNED-IN MEMBER (CB3,
+ * plan/phase-company-brain.md §7). Every member may talk to the brain; it acts
+ * with exactly their id and roles (personFor), never more — its tool surface,
+ * permissions, Memory, approvals and audit are theirs. There is no admin agent
+ * identity on a member's turn. The boot is resolved exactly like
+ * src/lib/server/boot.ts — memoized, single kernel, never a second composition.
  */
 export const POST: RequestHandler = async (event) => {
   let body: unknown
@@ -61,6 +62,12 @@ export const POST: RequestHandler = async (event) => {
     error(400, 'Invalid briefingPeriod')
   }
 
+  // The person the brain acts as: the signed-in member, read now (their current role).
+  const signedIn = event.locals.user
+  if (!signedIn) error(401, 'Unauthorized')
+  const person = await personFor(signedIn.id)
+  if (!person) error(403, 'Only members of this company talk to its brain.')
+
   const boot = await bootApp()
 
   let continuationMessage: string | null = null
@@ -77,18 +84,19 @@ export const POST: RequestHandler = async (event) => {
   return handleAgentChatPost(event, b, {
     sessionMode: 'default',
     logTag: 'api/chat',
-    dispatch: (sessionId, message, sinks, userId) =>
-      onboardingHandoff
-        ? boot.orchestrator.runtime.dispatchOnboardingHandoff(sessionId, sinks, { llmUserId: userId })
-        : boot.orchestrator.runtime.dispatch(ORCHESTRATOR_AGENT_ID, sessionId, message, sinks, {
-            llmUserId: userId,
-          }),
+    dispatch: (sessionId, message, sinks, userId) => {
+      // The chat session is the signed-in member's (handleAgentChatPost keys it by them).
+      if (userId !== person.id) throw new Error('chat dispatch for a session of another person')
+      return onboardingHandoff
+        ? boot.orchestrator.runtime.dispatchOnboardingHandoff(sessionId, sinks, { person })
+        : boot.orchestrator.runtime.dispatch(ORCHESTRATOR_AGENT_ID, sessionId, message, sinks, { person })
+    },
     // Harness/LLM failures end the turn with a fixed human message; the real
     // error lands here — the operator-visible kernel event log (redacted).
     recordFailure: async (record) => {
       await emitKernelEvent(boot.kernel.eventSink, {
         type: 'harness.turn_failed',
-        principalId: ORCHESTRATOR_AGENT_ID,
+        principalId: person.id,
         source: KERNEL_EVENT_SOURCE,
         payload: redactForLog(record),
       })

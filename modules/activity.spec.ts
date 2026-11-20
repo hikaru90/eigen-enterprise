@@ -28,7 +28,7 @@ async function allRegisteredTools(): Promise<ToolDescriptor[]> {
   return [
     ...kernel.registry.list(),
     ...createAgentAdminTools({ runtime: {} as AgentRuntime }),
-    ...createAllowlistAdminTools({} as AllowlistStore),
+    ...createAllowlistAdminTools({} as AllowlistStore, { personFor: async () => null }),
     createRecapRunNowTool({} as RecapDeps),
   ]
 }

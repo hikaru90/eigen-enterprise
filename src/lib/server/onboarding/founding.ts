@@ -3,15 +3,12 @@ import { emitKernelEvent, type EventSink } from '$lib/kernel/events'
 import {
   cloneJourneyState,
   initialJourneyState,
+  type JourneyArtifactPrincipal,
   type JourneyRow,
   type JourneyStore,
 } from '$lib/kernel/playbook'
 import type { KernelRegistry } from '$lib/kernel/registry'
-import {
-  executeStepArtifacts,
-  ORCHESTRATOR_AGENT_ID,
-  WEBSITE_FOUNDING_JOURNEY,
-} from '../../../../modules/orchestrator/brain'
+import { executeStepArtifacts, WEBSITE_FOUNDING_JOURNEY } from '../../../../modules/orchestrator/brain'
 
 /**
  * Opens the website-founding journey EMPTY — the phase-2e handoff: onboarding
@@ -40,8 +37,9 @@ export async function openWebsiteFoundingJourney(deps: {
  * leak into the nucleus chat (modules/orchestrator/brain.ts persona). Here the
  * answers become the website-founding journey (fully captured — onboarding IS
  * the interview) and the journey artifacts execute through the kernel registry
- * under ORCHESTRATOR_PRINCIPAL: permissions, audit, and the approval gate all
- * apply for real. Pending publishes stay 'approval_pending' and retry on later
+ * as the PERSON who submitted the wizard (their own click, their roles — CB3:
+ * there is no admin agent identity): permissions, audit, and the approval gate
+ * all apply for real. Pending publishes stay 'approval_pending' and retry on later
  * submissions or chat turns — the same deterministic control flow as the chat
  * journey driver, via the shared executeStepArtifacts().
  */
@@ -71,6 +69,8 @@ export type FoundingInterviewDeps = {
   eventSink: EventSink
   /** Traceability only (journeys are per kind): e.g. `onboarding:<userId>`. */
   sessionId: string
+  /** Who the artifacts run as: the person submitting the wizard (a direct human principal). */
+  principal: JourneyArtifactPrincipal
 }
 
 export type FoundingInterviewCall = FoundingInterviewDeps & {
@@ -80,7 +80,7 @@ export type FoundingInterviewCall = FoundingInterviewDeps & {
 export async function recordFoundingInterview(
   call: FoundingInterviewCall,
 ): Promise<FoundingRecordResult> {
-  const { answers, registry, journeys, eventSink, sessionId } = call
+  const { answers, registry, journeys, eventSink, sessionId, principal } = call
   const tone = answers.tone?.trim() ?? ''
   const companyName = answers.companyName?.trim() ?? ''
   const positioning = answers.positioning?.trim() ?? ''
@@ -108,6 +108,7 @@ export async function recordFoundingInterview(
     registry,
     spec: WEBSITE_FOUNDING_JOURNEY,
     state,
+    principal,
   })
   // The wizard endpoint has no agent turn to hand failures to: fail loud.
   const failure = failures[0]
@@ -122,7 +123,7 @@ export async function recordFoundingInterview(
     await journeys.updateState(row.id, state, 'completed')
     await emitKernelEvent(eventSink, {
       type: 'journey.completed',
-      principalId: ORCHESTRATOR_AGENT_ID,
+      principalId: principal.id,
       source: KERNEL_EVENT_SOURCE,
       payload: { journeyId: row.id, kind: row.kind },
     })

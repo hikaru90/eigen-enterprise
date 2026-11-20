@@ -41,11 +41,15 @@ export function parseChatNdjson(text: string): ParsedTurn {
   return { reply: reply ?? deltas, sessionId, error, approvals, previews }
 }
 
-type Executes = { execute: (tool: string, input: unknown, ctx: { actingUserId?: string }) => Promise<unknown> }
+type Executes = { execute: (tool: string, input: unknown, ctx: { principal: { id: string } }) => Promise<unknown> }
 
-export type ToolTap = { take(actingUserId: string): CrawlCall[] }
+export type ToolTap = { take(userId: string): CrawlCall[] }
 
-/** Wraps `registry.execute` to record every call per acting user; behaviour is unchanged. */
+/**
+ * Wraps `registry.execute` to record every call per person (CB3: the brain's
+ * calls run as the member, so the principal id IS the person); behaviour is
+ * unchanged.
+ */
 export function tapToolCalls(registry: Executes): ToolTap {
   const byUser = new Map<string, CrawlCall[]>()
   const original = registry.execute.bind(registry)
@@ -57,10 +61,10 @@ export function tapToolCalls(registry: Executes): ToolTap {
     const args = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
     try {
       const out = await original(tool, input, ctx)
-      record(ctx.actingUserId, { tool, input: args, ok: true, output: JSON.stringify(out) ?? 'undefined' })
+      record(ctx.principal.id, { tool, input: args, ok: true, output: JSON.stringify(out) ?? 'undefined' })
       return out
     } catch (err) {
-      record(ctx.actingUserId, { tool, input: args, ok: false, output: err instanceof Error ? `${err.name}: ${err.message}` : String(err) })
+      record(ctx.principal.id, { tool, input: args, ok: false, output: err instanceof Error ? `${err.name}: ${err.message}` : String(err) })
       throw err
     }
   }

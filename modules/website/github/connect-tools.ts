@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { principalRef as kernelPrincipalRef } from '$lib/kernel/principals'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { EeClient, SubstrateError, SubstrateUnavailableError } from '$lib/server/ee/client'
 import { requireHuman } from '$lib/server/ee/human'
@@ -128,7 +129,7 @@ function displayName(raw: string): string {
   return parsed.ok ? `${parsed.owner}/${parsed.repo}` : raw.trim()
 }
 
-const principalRef = (ctx: ToolContext) => `${ctx.principal.kind}:${ctx.principal.id}`
+const principalRef = (ctx: ToolContext) => kernelPrincipalRef(ctx.principal)
 
 const githubPage = (fullName: string) => `https://github.com/${fullName}`
 const removeKeyUrl = (fullName: string) => `${githubPage(fullName)}/settings/keys`

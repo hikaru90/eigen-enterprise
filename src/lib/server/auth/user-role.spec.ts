@@ -4,7 +4,7 @@ const { authDbMock } = vi.hoisted(() => ({ authDbMock: { select: vi.fn() } }))
 
 vi.mock('$lib/server/db/auth-db', () => ({ authDb: authDbMock }))
 
-import { getUserRole, isUserAdmin } from './user-role'
+import { getUserRole, isUserAdmin, personFor } from './user-role'
 
 function chainSelect(rows: unknown[]) {
   return { from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn(async () => rows) })) })) }
@@ -25,5 +25,26 @@ describe('user-role', () => {
     await expect(getUserRole('u1')).resolves.toBeNull()
     authDbMock.select.mockReturnValue(chainSelect([]))
     await expect(isUserAdmin('u1')).resolves.toBe(false)
+  })
+})
+
+describe('personFor — the person the company brain acts as (CB3)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('a member holds member rights only; owner and admins also run the company', async () => {
+    for (const [role, roles] of [
+      ['member', ['member']],
+      ['admin', ['admin', 'member']],
+      ['owner', ['admin', 'member']],
+    ] as const) {
+      authDbMock.select.mockReturnValue(chainSelect([{ role }]))
+      await expect(personFor('u1')).resolves.toEqual({ id: 'u1', roles })
+    }
+  })
+
+  it('no member, no person: the brain never acts for someone who is not in the company', async () => {
+    authDbMock.select.mockReturnValue(chainSelect([]))
+    await expect(personFor('stranger')).resolves.toBeNull()
+    await expect(personFor('')).resolves.toBeNull()
   })
 })

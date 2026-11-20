@@ -11,7 +11,8 @@ describe('MemoryPrivacyNote', () => {
     await expect.element(note()).toBeVisible()
     await expect.element(note()).toHaveTextContent(/only you/i)
     await expect.element(note()).toHaveTextContent(/other members, admins and the owner can.t/i)
-    await expect.element(note()).toHaveTextContent(/assistant doesn.t read it/i)
+    await expect.element(note()).toHaveTextContent(/company brain reads it only as you/i)
+    await expect.element(note()).toHaveTextContent(/never anyone else.s, and nobody else.s questions reach yours/i)
     await expect
       .element(note())
       .toHaveTextContent(/when you ask, it adds thoughts and notes to your Memory/i)

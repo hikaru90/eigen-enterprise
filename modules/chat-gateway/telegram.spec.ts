@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { InMemoryEventSink } from '$lib/kernel/events'
 import type { Brain, TelegramSessionRef } from '$lib/kernel/gateway'
+import type { PersonRef } from '$lib/kernel/principals'
 import { InMemoryAllowlistStore, InMemorySessionStore } from './stores'
 import {
   HttpTelegramClient,
+  TELEGRAM_NOT_LINKED_REPLY,
   TELEGRAM_PLATFORM,
   TelegramGateway,
   nextOffset,
@@ -44,10 +46,20 @@ class FakeTelegramClient implements TelegramClient {
   }
 }
 
+/** The company's members as the brain resolves them (member id → person). */
+const MEMBERS: Record<string, PersonRef> = {
+  'principal-1': { id: 'principal-1', roles: ['member'] },
+  'principal-7': { id: 'principal-7', roles: ['admin', 'member'] },
+}
+
 class FakeBrain implements Brain {
   readonly calls: Array<{ session: TelegramSessionRef; text: string }> = []
 
   constructor(private readonly reply: string = 'done') {}
+
+  async personFor(memberId: string): Promise<PersonRef | null> {
+    return MEMBERS[memberId] ?? null
+  }
 
   async respond(session: TelegramSessionRef, text: string): Promise<string> {
     this.calls.push({ session, text })
@@ -120,6 +132,8 @@ describe('TelegramGateway.processUpdates — allowed path', () => {
       platform: TELEGRAM_PLATFORM,
       externalChatId: '42',
       principalId: 'principal-7',
+      // The brain answers AS the linked member: their id and their roles.
+      person: { id: 'principal-7', roles: ['admin', 'member'] },
     })
   })
 
@@ -159,8 +173,8 @@ describe('TelegramGateway.processUpdates — allowed path', () => {
   })
 })
 
-describe('TelegramGateway.processUpdates — denied path', () => {
-  it('emits gateway.telegram.denied and silently skips', async () => {
+describe('TelegramGateway.processUpdates — refused path (CB3: no link, no answer)', () => {
+  it('an unlinked sender is refused with a clear message; the brain never runs', async () => {
     const fx = makeFixture([textUpdate(9, 'knock knock', 999)])
 
     const offset = await fx.gateway.processUpdates([textUpdate(9, 'knock knock', 999)])
@@ -172,11 +186,37 @@ describe('TelegramGateway.processUpdates — denied path', () => {
       platform: TELEGRAM_PLATFORM,
       externalUserId: '999',
       externalChatId: '100',
+      reason: 'not_linked',
     })
     expect(fx.brain.calls).toHaveLength(0)
-    expect(fx.client.sent).toHaveLength(0)
+    expect(fx.client.sent).toEqual([{ chatId: '100', text: TELEGRAM_NOT_LINKED_REPLY }])
+    expect(TELEGRAM_NOT_LINKED_REPLY).toMatch(/not linked to a member/)
     expect(await fx.sessions.get(TELEGRAM_PLATFORM, '100')).toBeNull()
     expect(JSON.stringify(fx.sink.events)).not.toContain('knock knock')
+  })
+
+  it('a link to someone who is not (or no longer) a member is refused the same way — no fallback identity', async () => {
+    const fx = makeFixture()
+    await fx.allowlist.add(TELEGRAM_PLATFORM, '5', 'orchestrator')
+
+    await fx.gateway.processUpdates([textUpdate(1, 'hello', 5)])
+
+    expect(fx.brain.calls).toHaveLength(0)
+    expect(fx.client.sent).toEqual([{ chatId: '100', text: TELEGRAM_NOT_LINKED_REPLY }])
+    const denied = fx.sink.events.find((e) => e.type === 'gateway.telegram.denied')
+    expect(denied?.payload).toMatchObject({ externalUserId: '5', reason: 'not_a_member' })
+    expect(await fx.sessions.get(TELEGRAM_PLATFORM, '100')).toBeNull()
+  })
+
+  it('a linked member is answered as that member', async () => {
+    const fx = makeFixture()
+    await fx.allowlist.add(TELEGRAM_PLATFORM, '1', 'principal-1')
+
+    await fx.gateway.processUpdates([textUpdate(1, 'what is on my list?', 1)])
+
+    expect(fx.brain.calls).toHaveLength(1)
+    expect(fx.brain.calls[0]!.session.person).toEqual({ id: 'principal-1', roles: ['member'] })
+    expect(fx.client.sent).toEqual([{ chatId: '100', text: 'done' }])
   })
 })
 

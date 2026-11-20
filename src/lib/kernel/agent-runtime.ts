@@ -1,12 +1,12 @@
 import type { AgentConfig, LoopEngineId } from './agent'
 import type { EngineContext, EngineStreamSinks, EngineToolListing, LoopEngine } from './engine'
 import type { KernelRegistry } from './registry'
-import type { ToolContext } from './types'
 import { randomUUID } from 'node:crypto'
 import { KERNEL_EVENT_SOURCE } from './cloudevents'
 import { KernelError } from './errors'
 import { emitKernelEvent, type EventSink, type KernelEvent } from './events'
 import { toolInputJsonSchema } from './openapi'
+import { BRAIN_VIA, delegatedPrincipal, requirePerson, type PersonRef } from './principals'
 import { selectToolSurface } from './tool-surface'
 
 /**
@@ -17,10 +17,17 @@ import { selectToolSurface } from './tool-surface'
  * to the configured LoopEngine. All collaborators are constructor-injected.
  */
 
-/** Per-dispatch options beyond sinks — attribution of the run's LLM calls. */
+/**
+ * Per-dispatch options beyond sinks. Every dispatch names its PERSON: the
+ * company brain always acts as a specific person (plan/phase-company-brain.md
+ * §7, CB3) — in chat the person asking, in the background the person the event
+ * concerns. Their id and roles become the run's delegated principal (permission,
+ * tool surface, row-level security, approvals, audit) and their gateway
+ * identity pays for the run's model calls. No person, no run.
+ */
 export type DispatchOptions = {
-  /** The conversing human's id: their BYOK provider config pays, their spend accrues. */
-  llmUserId?: string
+  /** The person this turn acts as (src/lib/server/auth/people.ts personFor). Required. */
+  person: PersonRef
   /**
    * Engine for THIS dispatch, overriding agent.loopEngine — set by a caller
    * that made an explicit, recorded choice (the orchestrator's per-provider
@@ -50,13 +57,10 @@ export type AgentRuntimeOptions = {
    * no per-principal cost query exists in src/lib/server/llm today.
    */
   spendFn?: (agentId: string) => number
-  /**
-   * Principal roles for an agent principal (AgentConfig carries no roles).
-   * Defaults to ['agent']; wire ORCHESTRATOR_PRINCIPAL.roles where an agent
-   * must hold them.
-   */
-  rolesFor?: (agent: AgentConfig) => string[]
 }
+
+/** Provenance on harness events: the person is principalId, the brain carried the turn. */
+const VIA_BRAIN = { via: BRAIN_VIA } as const
 
 /**
  * Harness events: agent.dispatched / agent.replied / agent.stopped /
@@ -70,7 +74,6 @@ export class AgentRuntime {
   private readonly eventSink: EventSink
   private readonly engines: Map<LoopEngineId, LoopEngine>
   private readonly spendFn: ((agentId: string) => number) | undefined
-  private readonly rolesFor: (agent: AgentConfig) => string[]
   private readonly agents = new Map<string, AgentConfig>()
   /** Default spend accumulator (used when no spendFn is injected). */
   private readonly spendUsdByAgent = new Map<string, number>()
@@ -81,7 +84,6 @@ export class AgentRuntime {
     this.eventSink = options.eventSink
     this.engines = options.engines ?? new Map()
     this.spendFn = options.spendFn
-    this.rolesFor = options.rolesFor ?? (() => ['agent'])
   }
 
   /** Register an agent config; duplicate ids fail loud. */
@@ -116,25 +118,26 @@ export class AgentRuntime {
   }
 
   /**
-   * Run one user turn against an agent. Fails loud on unknown/disabled agent,
-   * unregistered engine, or exhausted spend cap — never silently degrades.
-   * `sinks` (optional) are per-request surface sinks passed through to the
-   * engine context; the runtime itself never consumes them. `options.llmUserId`
-   * (optional) attributes the run's LLM calls to the conversing human — their
-   * BYOK provider config and spend — instead of the agent principal.
+   * Run one user turn against an agent, as `options.person`. Fails loud on a
+   * missing person, unknown/disabled agent, unregistered engine, or exhausted
+   * spend cap — never silently degrades. `sinks` are per-request surface sinks
+   * passed through to the engine context; the runtime itself never consumes
+   * them.
    */
   async dispatch(
     agentId: string,
     sessionId: string,
     input: string,
-    sinks?: EngineStreamSinks,
-    options?: DispatchOptions,
+    sinks: EngineStreamSinks | undefined,
+    options: DispatchOptions,
   ): Promise<string> {
+    requirePerson(options?.person)
+    const person = options.person
     const agent = this.requireAgent(agentId)
     if (!agent.enabled) {
       throw new KernelError('agent_disabled', `agent ${agentId} is disabled`)
     }
-    const engineId = options?.loopEngine ?? agent.loopEngine
+    const engineId = options.loopEngine ?? agent.loopEngine
     const engine = this.engines.get(engineId)
     if (!engine) {
       throw new KernelError(
@@ -145,11 +148,12 @@ export class AgentRuntime {
 
     const spendUsd = this.spendFor(agentId)
     if (agent.spendCapUsd !== undefined && spendUsd >= agent.spendCapUsd) {
-      await this.emitAgentEvent(agent.id, 'agent.budget_exceeded', {
+      await this.emitAgentEvent(person.id, 'agent.budget_exceeded', {
         agentId,
         sessionId,
         spendUsd,
         spendCapUsd: agent.spendCapUsd,
+        ...VIA_BRAIN,
       })
       throw new KernelError(
         'budget_exceeded',
@@ -157,15 +161,16 @@ export class AgentRuntime {
       )
     }
 
-    await this.emitAgentEvent(agent.id, 'agent.dispatched', { agentId, sessionId })
+    await this.emitAgentEvent(person.id, 'agent.dispatched', { agentId, sessionId, ...VIA_BRAIN })
 
-    const ctx = await this.buildContext(agent, sinks, options)
+    const ctx = await this.buildContext(agent, person, sinks, options)
     const reply = await engine.run(sessionId, input, ctx)
 
-    await this.emitAgentEvent(agent.id, 'agent.replied', {
+    await this.emitAgentEvent(person.id, 'agent.replied', {
       agentId,
       sessionId,
       replyLength: reply.length,
+      ...VIA_BRAIN,
     })
     return reply
   }
@@ -187,23 +192,23 @@ export class AgentRuntime {
     this.spendUsdByAgent.set(agentId, (this.spendUsdByAgent.get(agentId) ?? 0) + usd)
   }
 
-  /** The fail-closed tool surface an agent would be offered right now. */
-  async listAgentTools(agentId: string): Promise<EngineToolListing[]> {
+  /** The fail-closed tool surface an agent would offer `person` right now (their roles, never more). */
+  async listAgentTools(agentId: string, person: PersonRef): Promise<EngineToolListing[]> {
+    requirePerson(person)
     const agent = this.requireAgent(agentId)
-    const ctx = await this.buildContext(agent)
+    const ctx = await this.buildContext(agent, person)
     return ctx.listTools()
   }
 
   private async buildContext(
     agent: AgentConfig,
+    person: PersonRef,
     sinks?: EngineStreamSinks,
     options?: DispatchOptions,
   ): Promise<EngineContext> {
-    const principal: ToolContext['principal'] = {
-      id: agent.id,
-      kind: 'agent',
-      roles: this.rolesFor(agent),
-    }
+    // The run's ONLY identity: the person, via this agent. Its tool surface is
+    // what the person's roles reach; every call executes as them.
+    const principal = delegatedPrincipal(person, agent.id)
     // One requestId per dispatch: every tool call of this turn shares it.
     const requestId = randomUUID()
     const descriptors = await selectToolSurface(this.registry.list(), {
@@ -220,23 +225,19 @@ export class AgentRuntime {
     return {
       agent,
       principal,
-      executeTool: (name, input) =>
-        this.registry.execute(name, input, {
-          principal,
-          requestId,
-          ...(options?.llmUserId ? { actingUserId: options.llmUserId } : {}),
-        }),
+      executeTool: (name, input) => this.registry.execute(name, input, { principal, requestId }),
       listTools: () => listings,
       emit: async (event) => {
         await emitKernelEvent(this.eventSink, {
           type: event.type,
-          principalId: event.principalId ?? agent.id,
+          principalId: event.principalId ?? person.id,
           source: event.source ?? KERNEL_EVENT_SOURCE,
           payload: event.payload,
         })
       },
       spendUsd: () => this.spendFor(agent.id),
-      ...(options?.llmUserId ? { llmUserId: options.llmUserId } : {}),
+      // The person's gateway identity pays for (and is attributed) the run's model calls.
+      llmUserId: person.id,
       ...(options?.ownerText !== undefined ? { ownerText: options.ownerText } : {}),
       ...(sinks?.stream ? { stream: sinks.stream } : {}),
       ...(sinks?.surfaceEvent ? { surfaceEvent: sinks.surfaceEvent } : {}),
@@ -255,13 +256,13 @@ export class AgentRuntime {
   }
 
   private emitAgentEvent(
-    agentId: string,
+    principalId: string,
     type: string,
     payload: Record<string, unknown>,
   ): Promise<KernelEvent> {
     return emitKernelEvent(this.eventSink, {
       type,
-      principalId: agentId,
+      principalId,
       source: KERNEL_EVENT_SOURCE,
       payload,
     })

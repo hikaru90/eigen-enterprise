@@ -9,6 +9,15 @@ import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 const { bootAppMock } = vi.hoisted(() => ({ bootAppMock: vi.fn() }))
 
 vi.mock('$lib/server/boot', () => ({ bootApp: bootAppMock }))
+/** u1 is the owner (an admin); m1 a member without admin rights (CB3: the wizard runs as the person). */
+const people = vi.hoisted(() => ({
+  u1: { id: 'u1', roles: ['admin', 'member'] },
+  m1: { id: 'm1', roles: ['member'] },
+}))
+vi.mock('$lib/server/auth/user-role', () => ({
+  personFor: async (id: string) => people[id as keyof typeof people] ?? null,
+  isUserAdmin: async (id: string) => people[id as keyof typeof people]?.roles.includes('admin') ?? false,
+}))
 
 import { POST as POST_FOUNDING } from './+server'
 
@@ -104,9 +113,9 @@ function fixture() {
   return { pages, journeys, approvals }
 }
 
-function event(body: unknown, signedIn = true) {
+function event(body: unknown, signedIn = true, userId = 'u1') {
   return {
-    locals: signedIn ? { user: { id: 'u1' } } : {},
+    locals: signedIn ? { user: { id: userId } } : {},
     request: {
       json: async () => body,
     },
@@ -121,6 +130,14 @@ describe('POST /api/onboarding/founding', () => {
   it('requires a signed-in user', async () => {
     const res = await POST_FOUNDING(event({ tone: 'warm' }, false))
     expect(res.status).toBe(401)
+  })
+
+  it('runs as the signed-in person: a member without admin rights does not found the website (CB3)', async () => {
+    const fx = fixture()
+    const res = await POST_FOUNDING(event({ tone: 'warm', companyName: 'Kindred' }, true, 'm1'))
+    expect(res.status).toBe(403)
+    expect(fx.pages.size).toBe(0)
+    expect(await fx.journeys.getActive('website_founding')).toBeNull()
   })
 
   it('rejects invalid JSON and non-string answers (fail loud, no coercion)', async () => {

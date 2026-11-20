@@ -5,10 +5,11 @@ import { InMemoryApprovalStore } from '$lib/kernel/approvals'
 import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryActivationStore, ModuleRegistry } from '$lib/kernel/modules'
 import { KernelRegistry } from '$lib/kernel/registry'
+import * as brain from './brain'
 import {
+  ORCHESTRATOR_AGENT_ID,
   ORCHESTRATOR_JOURNEY_PROMPT,
   ORCHESTRATOR_PERSONA_PROMPT,
-  ORCHESTRATOR_PRINCIPAL,
   orchestratorAgentConfig,
 } from './brain'
 
@@ -76,7 +77,7 @@ describe('orchestrator persona prompt', () => {
     expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('Settings → Plugins')
   })
 
-  it('the orchestrator principal can see and run the module admin tools (admin role)', async () => {
+  it('the brain acting for an admin sees the module admin tools; acting for a member it does not (CB3)', async () => {
     const activations = new InMemoryActivationStore()
     const modules = new ModuleRegistry(activations)
     const registry = new KernelRegistry({ activationStore: activations })
@@ -88,11 +89,17 @@ describe('orchestrator persona prompt', () => {
       registry,
       isToolActive: (name) => modules.isToolActive(name),
       eventSink: new InMemoryEventSink(),
-      rolesFor: () => ORCHESTRATOR_PRINCIPAL.roles,
     })
     runtime.registerAgent(orchestratorAgentConfig())
-    const names = (await runtime.listAgentTools(ORCHESTRATOR_PRINCIPAL.id)).map((t) => t.name)
-    expect(names).toEqual(expect.arrayContaining(['kernel.module_list', 'kernel.module_activate']))
+    const forAdmin = (await runtime.listAgentTools(ORCHESTRATOR_AGENT_ID, { id: 'a', roles: ['admin', 'member'] })).map((t) => t.name)
+    expect(forAdmin).toEqual(expect.arrayContaining(['kernel.module_list', 'kernel.module_activate']))
+    const forMember = (await runtime.listAgentTools(ORCHESTRATOR_AGENT_ID, { id: 'm', roles: ['member'] })).map((t) => t.name)
+    expect(forMember).toEqual([])
+  })
+
+  it('there is no admin agent principal any more: the brain only acts as a person (CB3)', () => {
+    expect('ORCHESTRATOR_PRINCIPAL' in brain).toBe(false)
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/YOU ACT AS THE PERSON/)
   })
 
   it('never opens the onboarding journey from chat (onboarding owns the interview)', () => {

@@ -390,7 +390,7 @@ describe('bootstrapKernel singleton', () => {
 })
 
 describe('bootstrapChatGateway (composition root — gateway boot stage)', () => {
-  const stubBrain: Brain = { respond: async () => 'ok' }
+  const stubBrain: Brain = { personFor: async () => null, respond: async () => 'ok' }
 
   it('returns null while the module is inactive and needs no bot token', async () => {
     const { kernel } = makeInMemoryKernel()
@@ -449,7 +449,11 @@ describe('bootstrapChatGateway (composition root — gateway boot stage)', () =>
           env: { TELEGRAM_BOT_TOKEN: 'test-token' },
           db: {} as AppDatabase,
         }),
-      { startLoop: false, engines: [['durable', { run: async (_s, input) => `durable:${input}` }]] },
+      {
+        startLoop: false,
+        engines: [['durable', { run: async (_s, input) => `durable:${input}` }]],
+        people: { personById: async () => null },
+      },
     )
 
     expect(boot.status()).toEqual({ chatGateway: 'active', loopRunning: false })
@@ -458,9 +462,9 @@ describe('bootstrapChatGateway (composition root — gateway boot stage)', () =>
     expect(boot.loop).not.toBeNull()
 
     // The brain offers memory tools (memory module active) and never gateway
-    // owner tools — the gateway surface is owner-only by design.
-    const brain = boot.brain as unknown as { offeredTools(): Promise<Array<{ name: string }>> }
-    const offered = await brain.offeredTools()
+    // owner tools — the gateway surface is owner-only by design (CB3: the owner
+    // holds no kernel 'owner' role through the brain).
+    const offered = await boot.brain.offeredTools({ id: 'owner-1', roles: ['admin', 'member'] })
     expect(offered.map((t) => t.name)).toContain('memory.retrieve_thoughts')
     expect(offered.map((t) => t.name)).not.toContain('chat-gateway.allowlist_add')
 

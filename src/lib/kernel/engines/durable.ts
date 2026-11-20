@@ -1,8 +1,8 @@
 import type { EngineContext, EngineToolListing, LoopEngine } from '../engine'
-import type { PrincipalStore } from '../principals'
 import type { KernelRegistry } from '../registry'
 import { randomUUID } from 'node:crypto'
 import { KernelError } from '../errors'
+import { delegatedPrincipal, type PersonDirectory } from '../principals'
 import { approvalIdFromError, approvalPendingResult, toolErrorResult } from './tool-error'
 
 /**
@@ -62,17 +62,17 @@ export type DurableEngineConversation = {
 /**
  * A background run (plan/phase-software-factory.md §3.1): an ownerless durable
  * conversation with no request attached. Nobody awaits it; the harness drives
- * it to settle (and resumes it after a restart). Its tools execute through the
- * kernel registry as `principalId`, recorded in the conversation index.
+ * it to settle (and resumes it after a restart). Like every brain run it acts
+ * as a PERSON (CB3: no background run without a person) — the person the
+ * event concerns, recorded in the conversation index; its tools execute
+ * through the kernel registry as that person via the brain.
  */
 export type BackgroundRunInput = {
   /** Unique conversation key (e.g. `factory:<itemId>`); a key already indexed fails loud. */
   conversationKey: string
   agentId: string
-  /** The principal every tool call of this run executes as (recorded, survives restarts). */
-  principalId: string
-  /** Gateway billing identity of the run's model calls. */
-  llmUserId: string
+  /** The member id of the person every tool call of this run acts as (recorded, survives restarts); they pay for its model calls. */
+  personId: string
   /** The run's system prompt (persona + discipline). */
   instructions: string
   /** The initial user input that starts the run. */
@@ -89,18 +89,18 @@ export type BackgroundRunHandle = {
   submissionId: string
 }
 
-/** One tool call of a background run, routed to the recorded principal. */
+/** One tool call of a background run, routed to the recorded person. */
 export type BackgroundToolCall = {
-  principalId: string
+  personId: string
   agentId: string
   tool: string
   args: Record<string, unknown>
 }
 
 /**
- * Executes a background run's tool call as its recorded principal. Resolves
- * to the model-visible result (structured tool errors included), never throws
- * for a tool-side failure.
+ * Executes a background run's tool call as its recorded person (via the
+ * brain). Resolves to the model-visible result (structured tool errors
+ * included), never throws for a tool-side failure.
  */
 export type BackgroundToolExecutor = (call: BackgroundToolCall) => Promise<unknown>
 
@@ -138,12 +138,6 @@ export type DurableLoopEngineOptions = {
   harness: DurableEngineHarness
   /** Persona preamble handed to the durable run as the agent's instructions. */
   instructions: string
-  /**
-   * Gateway billing/config identity for LLM calls. Used when the dispatch
-   * carries no llmUserId; the agent principal id is the last resort (same
-   * chain as before).
-   */
-  llmUserId?: string
 }
 
 /** The durable run ended without an answer (pi-durable unanswered reason). */
@@ -213,32 +207,34 @@ function bridgeExecute(
 }
 
 /**
- * The production BackgroundToolExecutor: resolve the recorded principal from
- * the principal store and execute through KernelRegistry.execute as it — the
- * same permission / approval / audit / vcs path a live dispatch takes. A
- * principal that no longer exists is a structured `unknown_principal` tool
- * error naming it: the call never runs as anyone else.
+ * The production BackgroundToolExecutor: resolve the recorded person from the
+ * member directory NOW (their current roles — a person demoted since the run
+ * started has only what they have today) and execute through
+ * KernelRegistry.execute as that person via the brain — the same permission /
+ * approval / audit / vcs path a live dispatch takes. A person who is no
+ * longer a member is a structured `unknown_principal` tool error naming them:
+ * the call never runs as anyone else.
  */
-export function createPrincipalToolExecutor(deps: {
+export function createPersonToolExecutor(deps: {
   registry: KernelRegistry
-  principals: PrincipalStore
+  people: PersonDirectory
 }): BackgroundToolExecutor {
   return async (call) => {
-    const principal = await deps.principals.getById(call.principalId)
-    if (!principal) {
+    const person = await deps.people.personById(call.personId)
+    if (!person) {
       return toolErrorResult(
         call.tool,
         new KernelError(
           'unknown_principal',
-          `background run principal ${call.principalId} (agent ${call.agentId}) no longer exists — tool ${call.tool} was not run`,
-          { principalId: call.principalId },
+          `background run person ${call.personId} (agent ${call.agentId}) is no longer a member — tool ${call.tool} was not run`,
+          { principalId: call.personId },
         ),
       )
     }
     const requestId = randomUUID()
     return kernelToolOutcome(call.tool, () =>
       deps.registry.execute(call.tool, call.args, {
-        principal: { id: principal.id, kind: principal.kind, roles: principal.roles },
+        principal: delegatedPrincipal(person, call.agentId),
         requestId,
       }),
     )
@@ -253,7 +249,6 @@ export function createPrincipalToolExecutor(deps: {
 export class DurableLoopEngine implements LoopEngine {
   private readonly harness: DurableEngineHarness
   private readonly instructions: string
-  private readonly llmUserId: string | undefined
 
   constructor(options: DurableLoopEngineOptions) {
     if (!options.harness) {
@@ -270,7 +265,6 @@ export class DurableLoopEngine implements LoopEngine {
     }
     this.harness = options.harness
     this.instructions = options.instructions
-    this.llmUserId = options.llmUserId
   }
 
   async run(sessionId: string, input: string, ctx: EngineContext): Promise<string> {
@@ -284,7 +278,8 @@ export class DurableLoopEngine implements LoopEngine {
     const conversation = await this.harness.conversation({
       conversationKey: durableConversationKey(ctx.agent.id, sessionId),
       agentId: ctx.agent.id,
-      llmUserId: ctx.llmUserId ?? this.llmUserId ?? ctx.agent.id,
+      // The person the run acts as pays for it — no agent-identity fallback (CB3).
+      llmUserId: ctx.llmUserId,
       instructions: this.instructions,
       tools,
     })

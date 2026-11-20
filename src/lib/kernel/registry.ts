@@ -1,4 +1,4 @@
-import type { AuditClass, ToolContext, ToolDescriptor } from './types'
+import type { AuditClass, ToolContext, ToolDescriptor, ToolPrincipal } from './types'
 import type { VcsCommitter } from './vcs'
 import type { ZodType } from 'zod'
 import { randomUUID } from 'node:crypto'
@@ -13,6 +13,16 @@ import { moduleSource } from './cloudevents'
 import { KernelError } from './errors'
 import { emitKernelEvent, InMemoryEventSink, type EventSink } from './events'
 import { moduleInactiveError, type ActivationStore } from './modules'
+import { assertWellFormedPrincipal, attributionOf, provenanceOf } from './principals'
+
+/**
+ * Runs one tool handler inside its principal's scope — for a person (their own
+ * call, or the brain acting as them) the row-level-security session of THAT
+ * person, whatever the surrounding request carries (a Telegram poll has none;
+ * a web turn has the signed-in person's). Injected by the composition root
+ * (src/lib/server/kernel/principal-scope.ts); the registry does no IO itself.
+ */
+export type PrincipalScope = <T>(principal: ToolPrincipal, run: () => Promise<T>) => Promise<T>
 
 export type KernelRegistryOptions = {
   eventSink?: EventSink
@@ -25,6 +35,8 @@ export type KernelRegistryOptions = {
   approvalPolicy?: ApprovalPolicy
   approvalStore?: ApprovalStore
   vcsCommitter?: VcsCommitter | null
+  /** Handler scope per principal (row-level security). Absent (bare in-memory usage, unit tests): handlers run as called. */
+  principalScope?: PrincipalScope
 }
 
 export type KernelToolFilter = {
@@ -63,6 +75,7 @@ export class KernelRegistry {
   private readonly approvalPolicy: ApprovalPolicy
   private readonly approvalStore: ApprovalStore
   private readonly vcsCommitter: VcsCommitter | null
+  private readonly principalScope: PrincipalScope | undefined
 
   constructor(options: KernelRegistryOptions = {}) {
     this.eventSink = options.eventSink ?? new InMemoryEventSink()
@@ -70,6 +83,7 @@ export class KernelRegistry {
     this.approvalPolicy = options.approvalPolicy ?? new StaticApprovalPolicy(new Set())
     this.approvalStore = options.approvalStore ?? new InMemoryApprovalStore()
     this.vcsCommitter = options.vcsCommitter === undefined ? null : options.vcsCommitter
+    this.principalScope = options.principalScope
   }
 
   register(descriptor: ToolDescriptor): void {
@@ -116,6 +130,8 @@ export class KernelRegistry {
   async execute(name: string, input: unknown, ctx: ToolContext): Promise<unknown> {
     const descriptor = this.tools.get(name)
     if (!descriptor) throw new KernelError('unknown_tool', `unknown tool: ${name}`)
+    // A delegated principal is the person via the brain — nothing else may carry `via`.
+    assertWellFormedPrincipal(ctx.principal)
 
     // (a) module activation gate: fail closed when a store is wired.
     if (this.activationStore) {
@@ -148,7 +164,7 @@ export class KernelRegistry {
         type: 'approval.auto_approved',
         principalId: ctx.principal.id,
         source: moduleSource(descriptor.module),
-        payload: { tool: name, approvalRisk: descriptor.approvalRisk },
+        payload: { tool: name, approvalRisk: descriptor.approvalRisk, ...provenanceOf(ctx.principal) },
       })
     }
     if (decision === 'require') {
@@ -182,7 +198,9 @@ export class KernelRegistry {
     let error: string | undefined
     let result: unknown
     try {
-      result = await descriptor.handler(ctx, parsed)
+      result = this.principalScope
+        ? await this.principalScope(ctx.principal, () => descriptor.handler(ctx, parsed))
+        : await descriptor.handler(ctx, parsed)
       // validated before audit so a contract breach is recorded as ok:false.
       if (descriptor.outputSchema) result = parseOutput(descriptor.outputSchema, result, name)
     } catch (err) {
@@ -197,7 +215,7 @@ export class KernelRegistry {
 
     // (f) mutate tools that succeeded get a vcs commit.
     if (descriptor.auditClass === 'mutate' && this.vcsCommitter) {
-      await this.vcsCommitter.commit(`tool ${name} by ${ctx.principal.id}`)
+      await this.vcsCommitter.commit(`tool ${name} by ${attributionOf(ctx.principal)}`)
     }
 
     return result
@@ -271,6 +289,8 @@ export class KernelRegistry {
         ...(activity === undefined ? {} : { activity }),
         ...(activityError === undefined ? {} : { activityError }),
         durationMs,
+        // Provenance: the actor is the person (principalId); `via` says the brain carried the call.
+        ...provenanceOf(ctx.principal),
       },
     })
   }

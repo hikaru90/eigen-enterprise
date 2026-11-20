@@ -26,15 +26,15 @@ describe('the /api/chat NDJSON stream, as the eval reads it', () => {
 describe('tapping the registry: every tool call of a turn, with its output', () => {
   it('records calls per acting user and still returns / throws exactly what the registry did', async () => {
     const registry = {
-      execute: async (tool: string, input: unknown, _ctx: { actingUserId?: string }) => {
+      execute: async (tool: string, input: unknown, _ctx: { principal: { id: string } }) => {
         if (tool === 'bad') throw new Error('nope')
         return { echo: input }
       },
     }
     const tap = tapToolCalls(registry)
-    await expect(registry.execute('a', { x: 1 }, { actingUserId: 'u1' })).resolves.toEqual({ echo: { x: 1 } })
-    await expect(registry.execute('bad', {}, { actingUserId: 'u1' })).rejects.toThrow('nope')
-    await registry.execute('a', {}, { actingUserId: 'u2' })
+    await expect(registry.execute('a', { x: 1 }, { principal: { id: 'u1' } })).resolves.toEqual({ echo: { x: 1 } })
+    await expect(registry.execute('bad', {}, { principal: { id: 'u1' } })).rejects.toThrow('nope')
+    await registry.execute('a', {}, { principal: { id: 'u2' } })
     expect(tap.take('u1')).toEqual([
       { tool: 'a', input: { x: 1 }, ok: true, output: '{"echo":{"x":1}}' },
       { tool: 'bad', input: {}, ok: false, output: 'Error: nope' },

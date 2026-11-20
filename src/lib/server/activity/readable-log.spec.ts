@@ -37,6 +37,29 @@ describe('toLogEntry', () => {
     })
   })
 
+  it('the brain acting as a person (principal = the person, via brain) is still the agent on the log (CB3)', () => {
+    const viaBrain = toLogEntry(
+      ev({
+        type: 'tool.executed',
+        principalId: 'ann',
+        source: 'urn:eigenenterprise:module:memory',
+        payload: { tool: 'memory.retrieve_thoughts', ok: true, via: 'brain', agentId: 'orchestrator' },
+      }),
+      AGENTS,
+    )
+    expect(viaBrain.actor).toBe('Agent')
+    const own = toLogEntry(
+      ev({
+        type: 'tool.executed',
+        principalId: 'ann',
+        source: 'urn:eigenenterprise:module:memory',
+        payload: { tool: 'memory.retrieve_thoughts', ok: true },
+      }),
+      AGENTS,
+    )
+    expect(own.actor).toBe('A team member')
+  })
+
   it('names the owning module for every tool namespace, never an internal id', () => {
     const namespaces = toolNamespaceLabels([
       { name: 'Website', toolNamespaces: ['website', 'substrate', 'github'] },

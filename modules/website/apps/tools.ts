@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
+import { isViaBrain, principalRef } from '$lib/kernel/principals'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import {
   EeClient,
@@ -281,6 +282,8 @@ export type DeployResult = {
 
 /** Human, or the agent past the approval gate (APP_AGENT_GATED_TOOLS). Never a service. */
 function deployer(ctx: ToolContext, tool: string): string {
+  // The brain acting for a person: that person, via the brain (CB3).
+  if (isViaBrain(ctx.principal)) return principalRef(ctx.principal)
   if (ctx.principal.kind === 'human') return `human:${ctx.principal.id}`
   if (ctx.principal.kind === 'agent') return `agent:${ctx.principal.id}`
   throw new KernelError(

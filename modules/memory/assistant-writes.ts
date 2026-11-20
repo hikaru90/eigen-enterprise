@@ -1,20 +1,22 @@
 import { KernelError } from '$lib/kernel/errors'
+import { isViaBrain } from '$lib/kernel/principals'
 import type { ToolContext } from '$lib/kernel/types'
 
 /**
- * Who a memory.* write lands with (owner report f8477602, 2026-11-17):
- * - `self` — the principal IS a person (signed-in session, or an MCP API key
- *   that belongs to one): it writes as that person, as before;
- * - `assistant` — the company assistant (an agent principal that is no person,
- *   e.g. 'orchestrator') working for the signed-in person it is answering: it
- *   writes into THAT person's Memory. Thoughts it saves are the person's own
- *   (they asked; `capture_source: 'agent'` records it came through the
- *   assistant); notes it writes are marked as the assistant's (author 'agent',
- *   label ASSISTANT_AUTHOR_LABEL), and it may change only those.
- * - null — an agent working for no one: writes fail loud (WORKS_FOR_NO_ONE),
- *   never as the agent's own id (that id is no user: the insert broke on RLS).
- * Reads stay as the principal (the assistant still doesn't read a person's
- * Memory); what assistant writes hand back carries ids and titles, never text.
+ * Who a memory.* write lands with (owner report f8477602, 2026-11-17; CB3):
+ * - `self` — the person themselves (signed-in session, or an MCP API key that
+ *   belongs to one): it writes as that person;
+ * - `assistant` — the company brain acting as the person (a delegated
+ *   principal: the principal IS the person, `via: 'brain'`): it writes into
+ *   THAT person's Memory. Thoughts it saves are the person's own (they asked;
+ *   `capture_source: 'agent'` records it came through the brain); notes it
+ *   writes are marked as the assistant's (author 'agent', label
+ *   ASSISTANT_AUTHOR_LABEL), and it may change only those.
+ * - null — an agent principal that is no person: writes fail loud
+ *   (WORKS_FOR_NO_ONE), never as the agent's own id (that id is no user).
+ * Reads run as the principal — for the brain, the person: their own Memory,
+ * under row-level security, never anyone else's. What assistant writes hand
+ * back carries ids and titles, never text.
  */
 export type MemoryWriter = { kind: 'self' | 'assistant'; userId: string }
 
@@ -24,12 +26,11 @@ export const WORKS_FOR_NO_ONE =
   'The assistant can write to Memory only while it works for a person (answering them in chat). This run works for no one, so nothing was saved.'
 
 export async function liveMemoryWriterOf(ctx: ToolContext): Promise<MemoryWriter | null> {
+  if (isViaBrain(ctx.principal)) return { kind: 'assistant', userId: ctx.principal.id }
   if (ctx.principal.kind === 'human') return { kind: 'self', userId: ctx.principal.id }
+  // An agent principal that IS a person (their MCP API key) writes as them.
   const { getUserRole } = await import('$lib/server/auth/user-role')
-  if (await getUserRole(ctx.principal.id)) return { kind: 'self', userId: ctx.principal.id }
-  const { tenantUserAsyncLocal } = await import('$lib/server/db/tenant-context')
-  const signedIn = tenantUserAsyncLocal.getStore()
-  return signedIn ? { kind: 'assistant', userId: signedIn } : null
+  return (await getUserRole(ctx.principal.id)) ? { kind: 'self', userId: ctx.principal.id } : null
 }
 
 export function requireWriter(writer: MemoryWriter | null): MemoryWriter {

@@ -50,7 +50,8 @@ export function createTaskTools(opts: TaskToolDeps = {}): ToolDescriptor[] {
     const w = requireWriter(await writerOf(ctx))
     return { userId: w.userId, via: w.kind === 'assistant' ? 'assistant' : 'person' }
   }
-  const base: Pick<ToolDescriptor, 'module' | 'permission'> = { module: 'memory', permission: { roles: ['admin', 'agent'] } }
+  // Every member's own tasks (CB3: the brain reaches them as the member).
+  const base: Pick<ToolDescriptor, 'module' | 'permission'> = { module: 'memory', permission: { roles: ['admin', 'member', 'agent'] } }
 
   return [
     {

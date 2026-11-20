@@ -109,7 +109,8 @@ export function createMembersTools(opts: MembersToolDeps = {}): ToolDescriptor[]
       summary: "List the company's groups (departments such as Sales or Dev) with their member ids.",
       auditClass: 'read',
       inputSchema: listInput,
-      permission: { roles: ['admin', 'agent'] },
+      // Every member sees the company's groups (the service asks only membership).
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx) => (await groups()).listGroups(await actor(ctx), await groupDeps()),
     },
     {

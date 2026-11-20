@@ -7,19 +7,20 @@ import { CALENDAR_LIMITS } from './types'
 /**
  * calendar.* kernel tools (read-only): the agent's view of calendars. Every
  * call runs through the calendar service's visibility rules:
- * - a person calls as themselves;
- * - the agent working for a person (the signed-in person it is answering, or
- *   an agent key that belongs to a person) is that person: their own
- *   calendar in full, colleagues only as availability;
- * - the agent on its own has no calendar; it sees availability like any
- *   colleague (no private titles — the owner and admins get no more either).
+ * - a person calls as themselves — also when the company brain acts for them
+ *   (CB3: the principal IS the person), or through an agent key that belongs
+ *   to them: their own calendar in full, colleagues only as availability;
+ * - an agent principal that is no person has no calendar; it sees
+ *   availability like any colleague (no private titles — the owner and
+ *   admins get no more either).
+ * Every member reaches these tools (role 'member').
  * Proposing an event (`calendar.propose_event`, approval-gated) is a later slice.
  */
 
 export type CalendarToolDeps = {
   deps?: () => Promise<CalendarDeps>
-  /** The person the agent works for, if any (live: the request's signed-in user, or a principal that is a person). */
-  onBehalfOf?: (ctx: ToolContext) => Promise<string | null>
+  /** For an agent principal: the member it IS (an API key of a person), or null (live: a member lookup). */
+  agentPerson?: (ctx: ToolContext) => Promise<string | null>
   now?: () => Date
 }
 
@@ -46,22 +47,21 @@ async function liveDeps(): Promise<CalendarDeps> {
   return calendarDeps()
 }
 
-async function liveOnBehalfOf(ctx: ToolContext): Promise<string | null> {
-  const { tenantUserAsyncLocal } = await import('$lib/server/db/tenant-context')
-  const signedIn = tenantUserAsyncLocal.getStore()
-  if (signedIn) return signedIn
+/** An agent principal that IS a person (their API key): that member's id, else null. */
+async function liveAgentPerson(ctx: ToolContext): Promise<string | null> {
   const { getUserRole } = await import('$lib/server/auth/user-role')
   return (await getUserRole(ctx.principal.id)) ? ctx.principal.id : null
 }
 
 export function createCalendarTools(opts: CalendarToolDeps = {}): ToolDescriptor[] {
   const deps = opts.deps ?? liveDeps
-  const onBehalfOf = opts.onBehalfOf ?? liveOnBehalfOf
+  const agentPerson = opts.agentPerson ?? liveAgentPerson
   const clock = opts.now ?? (() => new Date())
 
   async function actorOf(ctx: ToolContext): Promise<Actor> {
+    // A person — themselves, or the brain acting as them (CB3: the principal IS the person).
     if (ctx.principal.kind === 'human') return { kind: 'user', userId: ctx.principal.id }
-    const person = await onBehalfOf(ctx)
+    const person = await agentPerson(ctx)
     return person ? { kind: 'user', userId: person } : { kind: 'agent', id: ctx.principal.id }
   }
 
@@ -81,7 +81,7 @@ export function createCalendarTools(opts: CalendarToolDeps = {}): ToolDescriptor
         'The calendar of the person you work for: their events and the ones they are invited to, one entry per occurrence (recurring series expanded), with title, time, time zone, location, guests and visibility. Not other people’s calendars — use calendar.free_busy for colleagues.',
       auditClass: 'read',
       inputSchema: listInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) => {
         const range = rangeOf(listInput.parse(input))
         return { ...range, occurrences: await listCalendar(await deps(), await actorOf(ctx), range) }
@@ -94,7 +94,7 @@ export function createCalendarTools(opts: CalendarToolDeps = {}): ToolDescriptor
         'When colleagues are busy: per person, the blocks their events take — "busy" (with the title only for a company-visible event) or "out_of_office" (a private event). Use it to find a time that suits everyone.',
       auditClass: 'read',
       inputSchema: freeBusyInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) => {
         const i = freeBusyInput.parse(input)
         const range = rangeOf(i)

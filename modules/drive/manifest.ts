@@ -4,6 +4,7 @@ export const DRIVE_MODULE_ID = 'drive'
 
 export const DRIVE_TOOL_NAMES = [
   'drive.list',
+  'drive.shared_with_me',
   'drive.read',
   'drive.write_text',
   'drive.create_document',

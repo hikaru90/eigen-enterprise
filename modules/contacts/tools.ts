@@ -27,19 +27,19 @@ import {
  * contacts.* kernel tools: the agent's hands on the people tracker (in-app
  * assistant, `ee contacts.list`). Every call runs through the Contacts
  * service's access checks:
- * - a person calls as themselves;
- * - the agent working for a person (the signed-in person it is answering, or
- *   an agent key that belongs to a person) is that person: it sees what they
- *   see, and what it adds is their private contact;
- * - the agent on its own acts with admin rights, like Drive's agent.
+ * - a person calls as themselves — also when the company brain acts for them
+ *   (CB3: the principal IS the person), or through an agent key that belongs
+ *   to them: it sees what they see, and what it adds is their private contact;
+ * - an agent principal that is no person acts with admin rights, like Drive's agent.
+ * Every member reaches these tools (role 'member').
  * Writes are mutate-class and wait on the company's approval mode. Sharing
  * and deleting are not tools: who can see a contact is a person's decision.
  */
 
 export type ContactsToolDeps = {
   deps?: () => Promise<ContactsDeps>
-  /** The person the agent works for, if any (live: the request's signed-in user, or a principal that is a person). */
-  onBehalfOf?: (ctx: ToolContext) => Promise<string | null>
+  /** For an agent principal: the member it IS (an API key of a person), or null (live: a member lookup). */
+  agentPerson?: (ctx: ToolContext) => Promise<string | null>
   /** Today as `YYYY-MM-DD` (live: the UTC date). */
   today?: () => string
 }
@@ -144,10 +144,8 @@ async function liveDeps(): Promise<ContactsDeps> {
   return contactsDeps()
 }
 
-async function liveOnBehalfOf(ctx: ToolContext): Promise<string | null> {
-  const { tenantUserAsyncLocal } = await import('$lib/server/db/tenant-context')
-  const signedIn = tenantUserAsyncLocal.getStore()
-  if (signedIn) return signedIn
+/** An agent principal that IS a person (their API key): that member's id, else null. */
+async function liveAgentPerson(ctx: ToolContext): Promise<string | null> {
   const { getUserRole } = await import('$lib/server/auth/user-role')
   return (await getUserRole(ctx.principal.id)) ? ctx.principal.id : null
 }
@@ -156,12 +154,13 @@ const utcToday = () => new Date().toISOString().slice(0, 10)
 
 export function createContactsTools(opts: ContactsToolDeps = {}): ToolDescriptor[] {
   const deps = opts.deps ?? liveDeps
-  const onBehalfOf = opts.onBehalfOf ?? liveOnBehalfOf
+  const agentPerson = opts.agentPerson ?? liveAgentPerson
   const today = opts.today ?? utcToday
 
   async function actorOf(ctx: ToolContext): Promise<Actor> {
+    // A person — themselves, or the brain acting as them (CB3: the principal IS the person).
     if (ctx.principal.kind === 'human') return { kind: 'user', userId: ctx.principal.id }
-    const person = await onBehalfOf(ctx)
+    const person = await agentPerson(ctx)
     return person ? { kind: 'user', userId: person } : { kind: 'agent', id: ctx.principal.id }
   }
 
@@ -173,7 +172,7 @@ export function createContactsTools(opts: ContactsToolDeps = {}): ToolDescriptor
         'List the people in Contacts you may see (by name): organisation, role, channels (email, phone, LinkedIn, website), where you met, why they matter, tags, last contacted, next follow-up. Filter by one tag and/or search name and organisation. Also returns the tags in use.',
       auditClass: 'read',
       inputSchema: listInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) => {
         const i = listInput.parse(input)
         return listContacts(await deps(), await actorOf(ctx), { tag: i.tag, query: i.query })
@@ -185,7 +184,7 @@ export function createContactsTools(opts: ContactsToolDeps = {}): ToolDescriptor
       summary: 'Read one contact by id.',
       auditClass: 'read',
       inputSchema: getInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) => getContact(await deps(), await actorOf(ctx), getInput.parse(input).id),
     },
     {
@@ -194,7 +193,7 @@ export function createContactsTools(opts: ContactsToolDeps = {}): ToolDescriptor
       summary: `Who to write to next: contacts whose follow-up is due (overdue or today) or comes up within ${FOLLOW_UP_WINDOW_DAYS} days, soonest first, each with its next step.`,
       auditClass: 'read',
       inputSchema: followUpsInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) => {
         const day = followUpsInput.parse(input).today ?? today()
         return { today: day, windowDays: FOLLOW_UP_WINDOW_DAYS, followUps: await followUps(await deps(), await actorOf(ctx), day) }
@@ -206,7 +205,7 @@ export function createContactsTools(opts: ContactsToolDeps = {}): ToolDescriptor
       summary: `The contact pipeline, Getting Things Done style: every contact you may see in its list — next (our move: a next step we own), waiting (on their reply, since when), keep_in_touch (tickler: check in on next_follow_up_on), inbox (not contacted yet) — each with who on our side holds it, how we are in touch, latest status, next step and its day. The weekly review flags what to look at: days that have passed, replies waited on longer than ${WAITING_REVIEW_DAYS} days, our moves with no next step, and the inbox. Also lists the people who can hold a contact (their ids for owner_id). Move a contact with contacts.update (stage) or contacts.log_contact.`,
       auditClass: 'read',
       inputSchema: pipelineInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) => {
         const i = pipelineInput.parse(input)
         const out = await pipeline(await deps(), await actorOf(ctx), i.today ?? today())
@@ -222,7 +221,7 @@ export function createContactsTools(opts: ContactsToolDeps = {}): ToolDescriptor
       approvalRisk: 'internal',
       activity: () => 'Added a contact',
       inputSchema: createInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) =>
         createContact(await deps(), await actorOf(ctx), contactInput(createInput.parse(input)), { today: today() }),
     },
@@ -235,7 +234,7 @@ export function createContactsTools(opts: ContactsToolDeps = {}): ToolDescriptor
       approvalRisk: 'internal',
       activity: () => 'Updated a contact',
       inputSchema: updateInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) => {
         const { id: contactId, ...rest } = updateInput.parse(input)
         return updateContact(await deps(), await actorOf(ctx), contactId, contactInput(rest), { today: today() })
@@ -250,7 +249,7 @@ export function createContactsTools(opts: ContactsToolDeps = {}): ToolDescriptor
       approvalRisk: 'internal',
       activity: () => 'Logged being in touch with a contact',
       inputSchema: logInput,
-      permission: { roles: ['admin', 'agent'] },
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) => {
         const i = logInput.parse(input)
         return logContact(await deps(), await actorOf(ctx), i.id, {

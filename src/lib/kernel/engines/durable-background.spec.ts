@@ -1,27 +1,26 @@
-import type { Principal, PrincipalStore } from '../principals'
+import type { PersonDirectory, PersonRef } from '../principals'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { StaticApprovalPolicy } from '../approvals'
 import { InMemoryEventSink } from '../events'
 import { KernelRegistry } from '../registry'
 import {
-  createPrincipalToolExecutor,
+  createPersonToolExecutor,
   durableConversationKey,
   sessionIdOfConversationKey,
 } from './durable'
 
 /**
- * Background runs (plan/phase-software-factory.md §3.1): a background run's
- * tools execute through the kernel registry as the run's RECORDED principal —
- * the same permission / approval / audit path a live dispatch takes — and a
- * principal that no longer exists fails loud instead of running as anyone else.
+ * Background runs (plan/phase-software-factory.md §3.1; CB3: no background run
+ * without a person): a background run's tools execute through the kernel
+ * registry as the run's RECORDED PERSON via the brain — with their CURRENT
+ * roles, the same permission / approval / audit path a live dispatch takes —
+ * and a person who is no longer a member fails loud instead of running as
+ * anyone else.
  */
 
-function principalStore(principals: Principal[]): PrincipalStore {
-  return {
-    getById: async (id) => principals.find((p) => p.id === id) ?? null,
-    getByApiKey: async () => null,
-  }
+function directory(people: PersonRef[]): PersonDirectory {
+  return { personById: async (id) => people.find((p) => p.id === id) ?? null }
 }
 
 function registryWithEcho(options: { requireApproval?: boolean } = {}) {
@@ -39,9 +38,9 @@ function registryWithEcho(options: { requireApproval?: boolean } = {}) {
     summary: 'read',
     auditClass: 'read',
     inputSchema: z.object({ path: z.string() }),
-    permission: { roles: ['agent'] },
+    permission: { roles: ['member'] },
     handler: async (ctx, input) => {
-      seen.push(`${ctx.principal.id}:${(input as { path: string }).path}`)
+      seen.push(`${ctx.principal.id}:${ctx.principal.via}:${(input as { path: string }).path}`)
       return { content: 'x', as: ctx.principal.id }
     },
   })
@@ -52,78 +51,57 @@ function registryWithEcho(options: { requireApproval?: boolean } = {}) {
     auditClass: 'mutate',
     activity: () => 'wrote',
     inputSchema: z.object({ path: z.string() }),
-    permission: { roles: ['agent'] },
+    permission: { roles: ['member'] },
     handler: async () => ({ ok: true }),
   })
   registry.register({
     name: 'admin.danger',
     module: 'admin',
-    summary: 'owner only',
+    summary: 'admins only',
     auditClass: 'read',
     inputSchema: z.object({}),
-    permission: { roles: ['owner'] },
+    permission: { roles: ['admin'] },
     handler: async () => ({ ran: true }),
   })
   return { registry, seen, eventSink }
 }
 
-const factory: Principal = { id: 'agent:factory', kind: 'agent', roles: ['agent'] }
+const ann: PersonRef = { id: 'ann', roles: ['member'] }
 
-describe('createPrincipalToolExecutor (background runs execute as the recorded principal)', () => {
-  it('runs the tool through the registry as the recorded principal', async () => {
-    const { registry, seen } = registryWithEcho()
-    const execute = createPrincipalToolExecutor({ registry, principals: principalStore([factory]) })
-    const result = await execute({
-      principalId: 'agent:factory',
-      agentId: 'factory',
-      tool: 'repo.read_file',
-      args: { path: 'README.md' },
-    })
-    expect(result).toEqual({ content: 'x', as: 'agent:factory' })
-    expect(seen).toEqual(['agent:factory:README.md'])
+describe('createPersonToolExecutor (background runs execute as the recorded person, via the brain)', () => {
+  it('runs the tool through the registry as the recorded person, marked via the brain', async () => {
+    const { registry, seen, eventSink } = registryWithEcho()
+    const execute = createPersonToolExecutor({ registry, people: directory([ann]) })
+    const result = await execute({ personId: 'ann', agentId: 'factory', tool: 'repo.read_file', args: { path: 'README.md' } })
+    expect(result).toEqual({ content: 'x', as: 'ann' })
+    expect(seen).toEqual(['ann:brain:README.md'])
+    const executed = eventSink.events.find((e) => e.type === 'tool.executed')!
+    expect(executed.principalId).toBe('ann')
+    expect(executed.payload).toMatchObject({ via: 'brain', agentId: 'factory' })
   })
 
-  it('a principal that no longer exists fails loud as a tool error naming it — nothing runs', async () => {
+  it('a person who is no longer a member fails loud as a tool error naming them — nothing runs', async () => {
     const { registry, seen } = registryWithEcho()
-    const execute = createPrincipalToolExecutor({ registry, principals: principalStore([]) })
-    const result = await execute({
-      principalId: 'agent:gone',
-      agentId: 'factory',
-      tool: 'repo.read_file',
-      args: { path: 'README.md' },
-    })
-    expect(result).toMatchObject({
-      status: 'error',
-      tool: 'repo.read_file',
-      code: 'unknown_principal',
-    })
-    expect(JSON.stringify(result)).toContain('agent:gone')
+    const execute = createPersonToolExecutor({ registry, people: directory([]) })
+    const result = await execute({ personId: 'gone', agentId: 'factory', tool: 'repo.read_file', args: { path: 'README.md' } })
+    expect(result).toMatchObject({ status: 'error', tool: 'repo.read_file', code: 'unknown_principal' })
+    expect(JSON.stringify(result)).toContain('gone')
     expect(seen).toEqual([])
   })
 
-  it('inherits the permission gate: the recorded principal cannot exceed its roles', async () => {
+  it('inherits the permission gate: the person’s current roles, never more', async () => {
     const { registry } = registryWithEcho()
-    const execute = createPrincipalToolExecutor({ registry, principals: principalStore([factory]) })
-    const result = await execute({
-      principalId: 'agent:factory',
-      agentId: 'factory',
-      tool: 'admin.danger',
-      args: {},
-    })
+    const execute = createPersonToolExecutor({ registry, people: directory([ann]) })
+    const result = await execute({ personId: 'ann', agentId: 'factory', tool: 'admin.danger', args: {} })
     expect(result).toMatchObject({ status: 'error', code: 'permission_denied' })
   })
 
-  it('inherits the approval gate: a gated tool reports approval_pending', async () => {
+  it('inherits the approval gate: a gated tool reports approval_pending, asked by the person', async () => {
     const { registry } = registryWithEcho({ requireApproval: true })
-    const execute = createPrincipalToolExecutor({ registry, principals: principalStore([factory]) })
-    const result = await execute({
-      principalId: 'agent:factory',
-      agentId: 'factory',
-      tool: 'repo.write_file',
-      args: { path: 'a' },
-    })
+    const execute = createPersonToolExecutor({ registry, people: directory([ann]) })
+    const result = await execute({ personId: 'ann', agentId: 'factory', tool: 'repo.write_file', args: { path: 'a' } })
     expect(JSON.stringify(result)).toContain('approval_pending')
-    const pending = await registry.getApprovalStore().latestFor('repo.write_file', 'agent:factory')
+    const pending = await registry.getApprovalStore().latestFor('repo.write_file', 'ann')
     expect(pending?.status).toBe('pending')
   })
 })

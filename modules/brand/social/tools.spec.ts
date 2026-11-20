@@ -3,16 +3,17 @@ import { describe, expect, it } from 'vitest'
 import { InMemoryApprovalStore } from '$lib/kernel/approvals'
 import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
+import { delegatedPrincipal } from '$lib/kernel/principals'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext } from '$lib/kernel/types'
 import { InMemoryBrandStore } from '../store'
 import { InMemorySocialPostStore } from './store'
 import { createBrandSocialTools } from './tools'
 
+/** The company brain acting as Ana (CB3: the principal IS the person). */
 const agentCtx: ToolContext = {
-  principal: { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] },
+  principal: delegatedPrincipal({ id: 'ana', roles: ['admin', 'member'] }, 'orchestrator'),
   requestId: 'req-1',
-  actingUserId: 'ana',
 }
 
 const draft = {
@@ -52,14 +53,15 @@ describe('brand social tools', () => {
     for (const name of ['brand.social_post_create', 'brand.social_post_update']) {
       expect(by[name]).toMatchObject({ auditClass: 'mutate', approvalRisk: 'internal' })
     }
-    for (const t of tools) expect(t.permission.roles).toEqual(['admin', 'agent'])
+    for (const t of tools) expect(t.permission.roles).toEqual(['admin', 'member', 'agent'])
     expect(by['brand.social_post_create'].summary).toMatch(/Nothing is posted/)
   })
 
   it('the assistant drafts a graphic post, edits it and lists it, through the kernel', async () => {
     const { posts, registry, events } = await wired()
     const created = (await registry.execute('brand.social_post_create', draft, agentCtx)) as { id: string; href: string; createdByKind: string }
-    expect(created).toMatchObject({ createdByKind: 'agent', href: `/brand/social?post=${created.id}` })
+    // CB3: the actor is the person the brain acts as (provenance via the brain is in the audit event).
+    expect(created).toMatchObject({ createdByKind: 'user', href: `/brand/social?post=${created.id}` })
     await registry.execute('brand.social_post_update', { postId: created.id, captions: { instagram: 'Soon.' }, status: 'ready' }, agentCtx)
     await expect(posts.get(created.id)).resolves.toMatchObject({ status: 'ready', captions: { instagram: 'Soon.' } })
     const listed = (await registry.execute('brand.social_post_list', { status: 'ready' }, agentCtx)) as { posts: Array<{ id: string }> }

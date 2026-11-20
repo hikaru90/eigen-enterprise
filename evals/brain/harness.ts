@@ -23,8 +23,10 @@ export type EvalCompany = {
   stateDir: string
   /** Run a registry tool exactly as a chat turn of this member would (see execAsMember). */
   exec: (member: MemberKey, tool: string, input: Record<string, unknown>) => Promise<unknown>
-  /** The read/write tool names the brain is offered. */
+  /** The read/write tool names the brain is offered to anyone (the union over members). */
   surface: string[]
+  /** What the brain is offered acting as each member (CB3: their roles, never more). */
+  surfaces: Record<MemberKey, string[]>
   /** Closes the app's pools, removes the state dir and — with `dropDatabase` — the eval database. */
   tearDown(opts: { dropDatabase: boolean }): Promise<void>
 }
@@ -53,7 +55,11 @@ export async function setUpEvalCompany(
   const { seedCompany } = await import('./fixture/seed')
   const seeded = await seedCompany(f, { anchor: opts.anchor, enrichThoughts: opts.enrichThoughts })
   const { ORCHESTRATOR_AGENT_ID } = await import('../../modules/orchestrator/brain')
-  const surface = (await boot.orchestrator.runtime.listAgentTools(ORCHESTRATOR_AGENT_ID)).map((t) => t.name)
+  const surfaces = {} as Record<MemberKey, string[]>
+  for (const [key, userId] of Object.entries(seeded.member) as Array<[MemberKey, string]>) {
+    surfaces[key] = (await boot.orchestrator.runtime.listAgentTools(ORCHESTRATOR_AGENT_ID, await requirePerson(userId))).map((t) => t.name)
+  }
+  const surface = [...new Set(Object.values(surfaces).flat())]
   const exec = async (member: MemberKey, tool: string, input: Record<string, unknown>) => execAsMember(boot, seeded.member[member], tool, input)
   const tearDown = async ({ dropDatabase }: { dropDatabase: boolean }) => {
     const { closeAppDbPool } = await import('$lib/server/db')
@@ -62,7 +68,7 @@ export async function setUpEvalCompany(
     await rm(stateDir, { recursive: true, force: true })
     if (dropDatabase) await dropEvalBrainDatabase(testUrl, opts.databaseName)
   }
-  return { boot, seeded, anchor: opts.anchor, stateDir, exec, surface, tearDown }
+  return { boot, seeded, anchor: opts.anchor, stateDir, exec, surface, surfaces, tearDown }
 }
 
 /**
@@ -79,20 +85,29 @@ async function pointAppEnv(values: Record<string, string>): Promise<void> {
   }
 }
 
+/** The member as the person the brain acts for (their current kernel roles); fails loud for a non-member. */
+async function requirePerson(userId: string) {
+  const { personFor } = await import('$lib/server/auth/user-role')
+  const person = await personFor(userId)
+  if (!person) throw new Error(`eval member ${userId} is not a member of the seeded company`)
+  return person
+}
+
 /**
- * The tool-call context of a chat turn (handleAgentChatPost + AgentRuntime):
- * the member's RLS session and tenant scope, the orchestrator principal with
- * its runtime roles, the member as acting user.
+ * The tool-call context of a chat turn (handleAgentChatPost + AgentRuntime,
+ * CB3): the member's RLS session and tenant scope, and the brain acting AS
+ * the member — their delegated principal (their id and roles, via the brain).
  */
 export async function execAsMember(boot: AppBoot, userId: string, tool: string, input: Record<string, unknown>): Promise<unknown> {
   const { randomUUID } = await import('node:crypto')
   const { withEvalDb } = await import('../harness/eval-context')
-  const { ORCHESTRATOR_PRINCIPAL } = await import('../../modules/orchestrator/brain')
+  const { delegatedPrincipal } = await import('$lib/kernel/principals')
+  const { ORCHESTRATOR_AGENT_ID } = await import('../../modules/orchestrator/brain')
+  const person = await requirePerson(userId)
   return withEvalDb(userId, () =>
     boot.kernel.registry.execute(tool, input, {
-      principal: { id: ORCHESTRATOR_PRINCIPAL.id, kind: 'agent', roles: [...ORCHESTRATOR_PRINCIPAL.roles] },
+      principal: delegatedPrincipal(person, ORCHESTRATOR_AGENT_ID),
       requestId: randomUUID(),
-      actingUserId: userId,
     }),
   )
 }

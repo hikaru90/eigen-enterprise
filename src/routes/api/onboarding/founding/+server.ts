@@ -1,9 +1,11 @@
 import type { RequestHandler } from './$types'
 import { randomUUID } from 'node:crypto'
 import { error, json } from '@sveltejs/kit'
+import { KernelError } from '$lib/kernel/errors'
+import { isUserAdmin, personFor } from '$lib/server/auth/user-role'
 import { bootApp } from '$lib/server/boot'
 import { recordFoundingInterview } from '$lib/server/onboarding/founding'
-import { ORCHESTRATOR_PRINCIPAL, WEBSITE_FOUNDING_JOURNEY } from '../../../../../modules/orchestrator/brain'
+import { WEBSITE_FOUNDING_JOURNEY } from '../../../../../modules/orchestrator/brain'
 
 /**
  * The welcome wizard's founding interview (tone of voice, company name,
@@ -14,6 +16,10 @@ import { ORCHESTRATOR_PRINCIPAL, WEBSITE_FOUNDING_JOURNEY } from '../../../../..
  * Contract: all answers optional; every answer blank → { skipped: true };
  * an already-founded company (pages exist, no active journey) → 409 with an
  * explicit message — the founding artifacts execute exactly once.
+ *
+ * The artifacts run as the signed-in person (their own click, their kernel
+ * roles — CB3: no admin agent identity): a member who may not change the
+ * website gets 403.
  */
 
 const FOUNDING_SLUGS = ['brand-tone-of-voice', 'home', 'about', 'contact']
@@ -45,19 +51,22 @@ export const POST: RequestHandler = async (event) => {
     positioning: optionalString(raw.positioning),
   }
 
+  const person = await personFor(event.locals.user.id)
+  // The website is the owner's and admins' (website.manage): a member's wizard does not found it.
+  if (!person || !(await isUserAdmin(person.id))) {
+    return json({ error: 'Only the owner or an admin founds the company website.' }, { status: 403 })
+  }
+  const principal = { id: person.id, kind: 'human' as const, roles: person.roles }
+
   const boot = await bootApp()
 
-  const active = await boot.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
-  if (!active) {
-    // Deterministic already-founded check (no error-message sniffing): the
-    // founding slugs exist and no journey is open → the artifacts ran once.
-    const listed = (await boot.kernel.registry.execute(
-      'website.list_pages',
-      {},
-      { principal: ORCHESTRATOR_PRINCIPAL, requestId: randomUUID() },
-    )) as Array<{ slug: string }>
-    const founded = listed.filter((p) => FOUNDING_SLUGS.includes(p.slug))
-    if (founded.length > 0) {
+  try {
+    return json(await found(boot, principal, `onboarding:${event.locals.user.id}`, answers))
+  } catch (err) {
+    if (err instanceof KernelError && err.code === 'permission_denied') {
+      return json({ error: 'Only the owner or an admin founds the company website.' }, { status: 403 })
+    }
+    if (err instanceof AlreadyFounded) {
       return json(
         {
           error:
@@ -66,15 +75,37 @@ export const POST: RequestHandler = async (event) => {
         { status: 409 },
       )
     }
+    throw err
+  }
+}
+
+class AlreadyFounded extends Error {}
+
+async function found(
+  boot: Awaited<ReturnType<typeof bootApp>>,
+  principal: { id: string; kind: 'human'; roles: string[] },
+  sessionId: string,
+  answers: { tone?: string; companyName?: string; positioning?: string },
+) {
+  const active = await boot.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
+  if (!active) {
+    // Deterministic already-founded check (no error-message sniffing): the
+    // founding slugs exist and no journey is open → the artifacts ran once.
+    const listed = (await boot.kernel.registry.execute(
+      'website.list_pages',
+      {},
+      { principal, requestId: randomUUID() },
+    )) as Array<{ slug: string }>
+    const founded = listed.filter((p) => FOUNDING_SLUGS.includes(p.slug))
+    if (founded.length > 0) throw new AlreadyFounded()
   }
 
-  const result = await recordFoundingInterview({
+  return recordFoundingInterview({
     registry: boot.kernel.registry,
     journeys: boot.journeys,
     eventSink: boot.kernel.eventSink,
-    sessionId: `onboarding:${event.locals.user.id}`,
+    sessionId,
+    principal,
     answers,
   })
-
-  return json(result)
 }

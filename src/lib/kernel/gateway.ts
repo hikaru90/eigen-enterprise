@@ -8,6 +8,8 @@
  * orchestrator depends only on this port.
  */
 
+import type { PersonRef } from './principals'
+
 export const CHAT_GATEWAY_MODULE_ID = 'chat-gateway'
 
 /**
@@ -54,9 +56,19 @@ export type TelegramSessionRef = {
   sessionId: string
   platform: string
   externalChatId: string
+  /** The member id the sender's allowlist entry links to. */
   principalId: string
+  /** That member, resolved by the gateway through Brain.personFor: the person the brain answers as. */
+  person: PersonRef
 }
 
+/**
+ * The company brain as the gateway sees it. A chat message is answered AS THE
+ * MEMBER the sender is linked to (CB3) — the gateway resolves that member
+ * first and refuses anyone unlinked or no longer a member.
+ */
 export type Brain = {
+  /** The member a link names, as the person the brain would act as; null when not a member. */
+  personFor(memberId: string): Promise<PersonRef | null>
   respond(session: TelegramSessionRef, text: string): Promise<string>
 }

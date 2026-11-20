@@ -41,7 +41,10 @@ export type EngineStreamSinks = {
  */
 export type EngineContext = EngineStreamSinks & {
   agent: AgentConfig
-  /** { id: agent.id, kind: 'agent', roles } — permissions/audit/approvals see this identity. */
+  /**
+   * The person this run acts as, via the agent (principals.ts
+   * delegatedPrincipal): permissions, approvals and audit see the person.
+   */
   principal: ToolContext['principal']
   /** Execute a kernel tool; throws KernelError on any failure (loud, never swallowed). */
   executeTool(name: string, input: unknown): Promise<unknown>
@@ -55,12 +58,10 @@ export type EngineContext = EngineStreamSinks & {
   /** Accumulated USD spend for this agent (injected accumulator; gateway-cost wiring is a follow-up). */
   spendUsd(): number
   /**
-   * The human in whose name this run's LLM calls resolve (their BYOK provider
-   * config, their spend). Set by the surface from the authenticated session
-   * (web) or the allowlist principal (Telegram). Absent → engines fall back
-   * to their own llmUserId, then the agent id.
+   * The person in whose name this run's LLM calls resolve (their provider
+   * config, their spend) — always the person the run acts as (principal.id).
    */
-  llmUserId?: string
+  llmUserId: string
   /**
    * The owner's own words of this turn when `input` was composed with
    * injected context (DispatchOptions.ownerText). Engines that record the

@@ -1,8 +1,9 @@
 import type { ChatGatewayBoot, RecapBoot } from '../../../modules/index'
 import { building } from '$app/environment'
 import { registerAdminTools } from '$lib/kernel/admin-bootstrap'
-import { createPrincipalToolExecutor, type BackgroundRunHandle, type BackgroundRunInput } from '$lib/kernel/engines/durable'
+import { createPersonToolExecutor, type BackgroundRunHandle, type BackgroundRunInput } from '$lib/kernel/engines/durable'
 import { DbJourneyStore, type JourneyStore } from '$lib/kernel/playbook'
+import type { PersonDirectory } from '$lib/kernel/principals'
 import type { WiredKernel } from '$lib/kernel/wiring'
 import { createDurableEngine } from '$lib/server/agent/durable-engine'
 import {
@@ -83,13 +84,21 @@ export type AppBoot = {
   journeys: JourneyStore
   /**
    * Start a durable background run (software-factory §3.1): its tools execute
-   * as `principalId` through this kernel's registry, also after a restart.
+   * as its person (`personId`, via the brain) through this kernel's registry, also after a restart.
    */
   startBackgroundRun(input: BackgroundRunInput): Promise<BackgroundRunHandle>
   status(): AppBootStatus
 }
 
 let bootPromise: Promise<AppBoot> | null = null
+
+/**
+ * The member directory the brain resolves its people through (background runs,
+ * Telegram): lazy, so composing the boot touches no database.
+ */
+const lazyMemberDirectory: PersonDirectory = {
+  personById: async (id) => (await import('$lib/server/auth/user-role')).personFor(id),
+}
 
 /** Lazy pooled-handle pattern of the kernel stores (request-scoped when inside ALS, pooled otherwise). */
 async function kernelDbHandle() {
@@ -162,21 +171,22 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
 
   // The durable engine is the orchestrator's only engine: the harness opens at
   // boot so turns a restart interrupted resume now.
-  // Background runs execute their tools as their RECORDED principal through
+  // Background runs execute their tools as their RECORDED person (via the brain) through
   // this kernel's registry (permission / approval / audit inherited).
   const durable = createDurableEngine({
     env,
     instructions: ORCHESTRATOR_PERSONA_PROMPT,
-    runAsPrincipal: createPrincipalToolExecutor({ registry: kernel.registry, principals: kernel.principals }),
+    runAsPrincipal: createPersonToolExecutor({ registry: kernel.registry, people: lazyMemberDirectory }),
   })
   const orchestrator = await orchestratorFn(kernel, wireGateway, {
     env,
+    people: lazyMemberDirectory,
     engines: [['durable', durable.engine]],
     journeys,
     // Assisted onboarding facts (lazy DB import, like the journey store: boot
     // itself stays DB-free).
-    onboardingFacts: async (llmUserId) =>
-      (await import('$lib/server/onboarding/assisted')).onboardingFactsFor(llmUserId),
+    onboardingFacts: async (personId) =>
+      (await import('$lib/server/onboarding/assisted')).onboardingFactsFor(personId),
   })
   // Warm-up (crash-resume): open the harness now, not on the first chat turn.
   if (!building) {

@@ -28,7 +28,8 @@ export async function crawlCompany(company: EvalCompany, f: CompanyFixture): Pro
   }
   const crawls: Crawls = {}
   for (const m of f.members) {
-    crawls[m.key] = await crawlAsMember((tool, input) => company.exec(m.key, tool, input), company.surface, range)
+    // Each member's own surface: the brain is offered only what their roles reach (CB3).
+    crawls[m.key] = await crawlAsMember((tool, input) => company.exec(m.key, tool, input), company.surfaces[m.key], range)
   }
   return crawls
 }

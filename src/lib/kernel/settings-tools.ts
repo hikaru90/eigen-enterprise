@@ -2,6 +2,7 @@ import type { ApprovalModeStore } from './approvals'
 import type { ToolContext, ToolDescriptor } from './types'
 import { z } from 'zod'
 import { APPROVAL_MODES } from './approvals'
+import { isViaBrain } from './principals'
 
 /**
  * The agent's reach beyond modules (Contribute d80e155d): who and what it is
@@ -129,7 +130,12 @@ const getOutputSchema = settingsViewSchema.extend({
 })
 
 const whoamiOutputSchema = z.object({
-  you: z.object({ principalId: z.string(), kind: z.enum(['human', 'agent', 'service']) }),
+  you: z.object({
+    principalId: z.string(),
+    kind: z.enum(['human', 'agent', 'service']),
+    via: z.literal('brain').optional(),
+    agentId: z.string().optional(),
+  }),
   model: modelInUseSchema,
   modelNote: z.string(),
   company: z.object({ name: z.string().nullable() }),
@@ -151,14 +157,14 @@ export type SettingsToolDeps = {
   approvalMode: ApprovalModeStore
 }
 
-/** The identity a turn's model calls resolve under: its person, else the principal (the engine's own fallback). */
+/** The identity the call's model calls resolve under: the principal — for the brain, the person it acts as (CB3). */
 function modelIdentity(ctx: ToolContext): string {
-  return ctx.actingUserId ?? ctx.principal.id
+  return ctx.principal.id
 }
 
-/** The person behind the call: the turn's person, or the human principal itself. */
+/** The person behind the call: a person principal (themselves, or the brain acting as them), else none. */
 function personOf(ctx: ToolContext): string | null {
-  return ctx.actingUserId ?? (ctx.principal.kind === 'human' ? ctx.principal.id : null)
+  return ctx.principal.kind === 'human' ? ctx.principal.id : null
 }
 
 function changeSentence(change: SettingChange): string {
@@ -195,7 +201,8 @@ export function createSettingsTools(deps: SettingsToolDeps): ToolDescriptor[] {
       auditClass: 'read',
       inputSchema: z.object({}),
       outputSchema: whoamiOutputSchema,
-      permission: { roles: ['admin', 'agent'] },
+      // Every member may ask the brain who and what it runs as.
+      permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx) => {
         const person = personOf(ctx)
         const [model, settings, actingUser] = await Promise.all([
@@ -204,7 +211,12 @@ export function createSettingsTools(deps: SettingsToolDeps): ToolDescriptor[] {
           person === null ? Promise.resolve(null) : deps.port.person(person),
         ])
         return {
-          you: { principalId: ctx.principal.id, kind: ctx.principal.kind },
+          you: {
+            principalId: ctx.principal.id,
+            kind: ctx.principal.kind,
+            // Provenance: answering through the company brain, as this person.
+            ...(isViaBrain(ctx.principal) ? { via: ctx.principal.via, agentId: ctx.principal.agentId } : {}),
+          },
           model,
           modelNote:
             'Resolved now through the company’s AI provider, exactly as your model calls are. It changes when the owner changes the provider or model in Settings → AI provider.',
@@ -238,7 +250,7 @@ export function createSettingsTools(deps: SettingsToolDeps): ToolDescriptor[] {
       permission: { roles: ['admin', 'agent'] },
       handler: async (ctx, input) => {
         const change = settingChangeSchema.parse(input)
-        await deps.port.apply(change, ctx.actingUserId ?? ctx.principal.id)
+        await deps.port.apply(change, ctx.principal.id)
         return readAll()
       },
     },
