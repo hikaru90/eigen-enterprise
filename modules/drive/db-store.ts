@@ -9,7 +9,23 @@ import { driveDb } from './db'
 
 const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`)
 
-type DriveDatabase = Pick<AppDatabase, 'select' | 'insert' | 'update' | 'delete' | 'execute' | 'transaction'>
+/** Ids per IN (…) statement: Postgres binds at most 65,535 parameters per statement. */
+export const IN_CHUNK = 5_000
+
+function chunks<T>(values: readonly T[]): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < values.length; i += IN_CHUNK) out.push(values.slice(i, i + IN_CHUNK))
+  return out
+}
+
+/** Runs one query per chunk, one after the other (on a transaction they share its connection). */
+async function perChunk<T, R>(values: readonly T[], run: (chunk: T[]) => Promise<R[]>): Promise<R[]> {
+  const out: R[] = []
+  for (const chunk of chunks(values)) out.push(...(await run(chunk)))
+  return out
+}
+
+type DriveDatabase = Pick<AppDatabase, 'select' | 'selectDistinct' | 'insert' | 'update' | 'delete' | 'execute' | 'transaction'>
 
 /**
  * Drive's Postgres store over a resolved handle (the app pool in production;
@@ -28,16 +44,16 @@ export function makeDbDriveStore(resolveDb: () => Promise<DriveDatabase> | Drive
       return (row as DriveFolder | undefined) ?? null
     },
     async getFolders(ids) {
-      if (ids.length === 0) return []
-      return (await (await resolveDb()).select().from(driveFolder).where(inArray(driveFolder.id, ids))) as DriveFolder[]
+      const db = await resolveDb()
+      return perChunk(ids, async (chunk) => (await db.select().from(driveFolder).where(inArray(driveFolder.id, chunk))) as DriveFolder[])
     },
     async getFile(id) {
       const [row] = await (await resolveDb()).select().from(driveFile).where(eq(driveFile.id, id)).limit(1)
       return (row as DriveFile | undefined) ?? null
     },
     async getFiles(ids) {
-      if (ids.length === 0) return []
-      return (await (await resolveDb()).select().from(driveFile).where(inArray(driveFile.id, ids))) as DriveFile[]
+      const db = await resolveDb()
+      return perChunk(ids, async (chunk) => (await db.select().from(driveFile).where(inArray(driveFile.id, chunk))) as DriveFile[])
     },
     async children(folderId) {
       const db = await resolveDb()
@@ -48,13 +64,10 @@ export function makeDbDriveStore(resolveDb: () => Promise<DriveDatabase> | Drive
       return { folders: folders as DriveFolder[], files: files as DriveFile[] }
     },
     async childrenOfFolders(folderIds) {
-      if (folderIds.length === 0) return { folders: [], files: [] }
       const db = await resolveDb()
-      const [folders, files] = await Promise.all([
-        db.select().from(driveFolder).where(inArray(driveFolder.parentId, folderIds)),
-        db.select().from(driveFile).where(inArray(driveFile.folderId, folderIds)),
-      ])
-      return { folders: folders as DriveFolder[], files: files as DriveFile[] }
+      const folders = await perChunk(folderIds, async (chunk) => (await db.select().from(driveFolder).where(inArray(driveFolder.parentId, chunk))) as DriveFolder[])
+      const files = await perChunk(folderIds, async (chunk) => (await db.select().from(driveFile).where(inArray(driveFile.folderId, chunk))) as DriveFile[])
+      return { folders, files }
     },
     async findByName(query) {
       const db = await resolveDb()
@@ -104,7 +117,8 @@ export function makeDbDriveStore(resolveDb: () => Promise<DriveDatabase> | Drive
       await (await resolveDb()).delete(driveFolder).where(eq(driveFolder.id, id))
     },
     async deleteFolders(ids) {
-      if (ids.length > 0) await (await resolveDb()).delete(driveFolder).where(inArray(driveFolder.id, ids))
+      const db = await resolveDb()
+      for (const chunk of chunks(ids)) await db.delete(driveFolder).where(inArray(driveFolder.id, chunk))
     },
     async deleteFile(id) {
       // drive_revision rows go with it (ON DELETE CASCADE).
@@ -112,7 +126,8 @@ export function makeDbDriveStore(resolveDb: () => Promise<DriveDatabase> | Drive
     },
     async deleteFiles(ids) {
       // drive_revision rows go with them (ON DELETE CASCADE).
-      if (ids.length > 0) await (await resolveDb()).delete(driveFile).where(inArray(driveFile.id, ids))
+      const db = await resolveDb()
+      for (const chunk of chunks(ids)) await db.delete(driveFile).where(inArray(driveFile.id, chunk))
     },
     async insertRevision(rev) {
       await (await resolveDb()).insert(driveRevision).values(rev)
@@ -139,13 +154,12 @@ export function makeDbDriveStore(resolveDb: () => Promise<DriveDatabase> | Drive
       return !!r
     },
     async usedBlobShas(shas) {
-      if (shas.length === 0) return []
       const db = await resolveDb()
-      const [files, revisions] = await Promise.all([
-        db.select({ sha: driveFile.sha256 }).from(driveFile).where(inArray(driveFile.sha256, shas)),
-        db.select({ sha: driveRevision.sha256 }).from(driveRevision).where(inArray(driveRevision.sha256, shas)),
+      const used = await perChunk(shas, async (chunk) => [
+        ...(await db.selectDistinct({ sha: driveFile.sha256 }).from(driveFile).where(inArray(driveFile.sha256, chunk))),
+        ...(await db.selectDistinct({ sha: driveRevision.sha256 }).from(driveRevision).where(inArray(driveRevision.sha256, chunk))),
       ])
-      return [...new Set([...files, ...revisions].map((row) => row.sha))]
+      return [...new Set(used.map((row) => row.sha))]
     },
     async storageBytes() {
       const db = await resolveDb()
@@ -170,12 +184,14 @@ export function makeDbDriveStore(resolveDb: () => Promise<DriveDatabase> | Drive
       return (row as DriveSourceRow | undefined) ?? null
     },
     async getSourceItems(source, externalKeys) {
-      if (externalKeys.length === 0) return []
-      return (await (await resolveDb())
-        .select()
-        .from(driveSourceItems)
-        .where(and(eq(driveSourceItems.source, source), inArray(driveSourceItems.externalKey, externalKeys)))
-        .orderBy(asc(driveSourceItems.externalKey))) as DriveSourceRow[]
+      const db = await resolveDb()
+      const rows = await perChunk(externalKeys, async (chunk) =>
+        (await db
+          .select()
+          .from(driveSourceItems)
+          .where(and(eq(driveSourceItems.source, source), inArray(driveSourceItems.externalKey, chunk)))) as DriveSourceRow[],
+      )
+      return rows.sort((a, b) => (a.externalKey < b.externalKey ? -1 : a.externalKey > b.externalKey ? 1 : 0))
     },
     async putSourceItem(row) {
       await (await resolveDb())
@@ -222,10 +238,8 @@ export function makeDbDriveStore(resolveDb: () => Promise<DriveDatabase> | Drive
       await (await resolveDb()).delete(driveSourceItems).where(and(eq(driveSourceItems.source, source), eq(driveSourceItems.externalKey, externalKey)))
     },
     async deleteSourceItems(source, externalKeys) {
-      if (externalKeys.length > 0)
-        await (await resolveDb())
-          .delete(driveSourceItems)
-          .where(and(eq(driveSourceItems.source, source), inArray(driveSourceItems.externalKey, externalKeys)))
+      const db = await resolveDb()
+      for (const chunk of chunks(externalKeys)) await db.delete(driveSourceItems).where(and(eq(driveSourceItems.source, source), inArray(driveSourceItems.externalKey, chunk)))
     },
   }
 }
