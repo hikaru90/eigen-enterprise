@@ -74,6 +74,6 @@ export async function isCompanyProviderReady(
 ): Promise<boolean> {
   const account = await deps.companyAccountId()
   if (!account) return false
-  const source = await deps.companySource()
-  return deps.withDbUser(account, () => deps.isUserProviderReady(account, source))
+  // Both reads inside the owner's session: this runs outside a request too (background ticks).
+  return deps.withDbUser(account, async () => deps.isUserProviderReady(account, await deps.companySource()))
 }

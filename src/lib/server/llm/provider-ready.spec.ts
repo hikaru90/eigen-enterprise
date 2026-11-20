@@ -136,6 +136,28 @@ describe('isCompanyProviderReady', () => {
     expect(asked).toEqual(['db:owner-1', 'ready:owner-1:byok'])
   })
 
+  it('reads the company source inside the owner’s DB session (works outside a request, e.g. a background tick)', async () => {
+    const { isCompanyProviderReady } = await import('./provider-ready')
+    let inSession = false
+    const ready = await isCompanyProviderReady({
+      companyAccountId: async () => 'owner-1',
+      companySource: async () => {
+        if (!inSession) throw new Error('getDb() was called outside an active request (missing app DB context)')
+        return 'byok'
+      },
+      withDbUser: async (_userId, fn) => {
+        inSession = true
+        try {
+          return await fn()
+        } finally {
+          inSession = false
+        }
+      },
+      isUserProviderReady: async () => true,
+    })
+    expect(ready).toBe(true)
+  })
+
   it('a hosted box with the platform AI env is ready (the onboarding skips the provider step)', async () => {
     const { isCompanyProviderReady } = await import('./provider-ready')
     for (const key of Object.keys(mockEnv)) delete mockEnv[key]
