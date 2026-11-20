@@ -110,6 +110,29 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - Push and release to the box.
   - Then the milestone 2 streams: P2 page organisation plus agent PDF tools, D2 Word editing (ProseMirror, lossless), S2 slide editing.
 
+## 2026-11-20 — Drive app previews are cut off from the box's own network (owner: "Do this task here: Isolate Drive app previews from box loopback")
+
+- **Shipped `bdd88e14` + `546afef9`:** `ee/src/preview-net.ts`.
+  - The install unit, the dev unit and a new forwarder unit all run in network namespace `ee-preview`. It is joined to the box by veth `ee-pv0` ↔ `ee-pv1` (10.237.0.1 ↔ .2/30).
+  - nftables table `inet ee_preview`:
+    - From the link to the box itself: replies only.
+    - Forwarded traffic: DNS to the box's own resolvers, then private, link-local, CGNAT and loopback ranges dropped, then the IPv4 internet through masquerade.
+  - Caddy dials `10.237.0.2:<port>` when the dev server listens on all addresses. A loopback-only dev server (Vite's default) gets the forwarder (`node -e`, plain TCP pipe, so HMR passes) on `10.237.0.2:8080`.
+  - Port watch and free-port lookups run `ss` inside the namespace (`nsenter --net=…`).
+  - The units see their own `resolv.conf`, holding the box's upstream resolvers; systemd-resolved's list is used when `/etc/resolv.conf` is the 127.0.0.53 stub. They get no DNS server → the preview fails loud.
+  - `/run/postgresql`, `/run/caddy`, `/run/dbus` and `/run/credentials` are hidden too, because unix sockets ignore network namespaces.
+  - Bootstrap installs `iproute2` and `nftables`; existing boxes get them on their next update.
+- **Decisions:**
+  - **One shared namespace** (one preview at a time), set up idempotently before each install. A preview never falls back to the host network: a setup failure fails the preview.
+  - **ee turns on `net.ipv4.ip_forward=1`** for the box, with the table's forward chain `policy drop` so nothing but the preview link is routed. ee boxes run no Docker or other router; a box that does would need its forwarding rules added to this table.
+  - **IPv6 egress isn't offered** in the namespace (IPv4 only), so dev servers fall back to IPv4.
+- **Verified on the local box** (rebuilt ee hot-swapped onto the release from `bdd88e14`):
+  - The Vite folder installs through NAT, runs, serves through Caddy, and HMR upgrades (101). Port 5173 doesn't appear on the host network.
+  - A probe running as `ee-preview` in the namespace is refused or times out on the box's 127.0.0.1:443, the gateway 10.237.0.1, its eth0 address, the Postgres, Caddy-admin and ee control sockets, and 169.254.169.254. It reaches registry.npmjs.org (200).
+  - Stop leaves no `ee-preview*` units. ee unit tests: 449 passed.
+- **Box finding:** this `nft` rejects `-f -` from a pipe, so the ruleset is written to `/var/lib/ee/preview-net/ruleset.nft` first.
+- **Not verified:** a Debian 13 or Ubuntu VPS with systemd-resolved and a public interface (only the Docker box), and a full release built from `546afef9` (the box runs that commit's ee bundle on top of the `bdd88e14` release).
+
 ## 2026-11-20 — Drive: run a web app folder and see it live (owner: "Yes, build it")
 
 - **Plan:** `plan/phase-drive-app-preview.md`, approved. Run is admins only, and previews use wildcard DNS `*.preview.<console host>`. The contract (`7a87de4b`) was fixed before the two streams branched.
@@ -140,7 +163,7 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - The Drive UI on the box, end to end: the in-app browser doesn't trust the box's local CA, and no Playwright e2e with a fake ee was written. The kernel side is covered by unit and component tests only.
   - pnpm/yarn through corepack. Yarn 1 may reject `--immutable`.
   - A real wildcard DNS name on a public box.
-- **Known gap (needs a decision later):** a preview can reach other loopback services on the box, including Caddy's internal os listener. systemd `IPAddressDeny=localhost` would also drop Caddy's proxied connections into the preview, so the fix is a network namespace per preview. That's a follow-up, not a switch.
+- **Known gap, closed the same day (`bdd88e14`, `546afef9`):** previews now run in their own network namespace (see the next entry).
 - **Next:** push, release to production boxes, then P3 (Make it an app → Website module).
 
 ## 2026-11-20 — Drive: HTML files render as pages; plan for running web app folders (owner: "HTML currently gets rendered as text … there should be an option for seeing HTML files as … rendered HTML files in the drive … a simple way to do npm run dev")
