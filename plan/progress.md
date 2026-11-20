@@ -2,7 +2,7 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-11-20 — CB1: eigenInference and the model slots (branch `worktree-agent-a56ccc90d22068640`, not merged, not on the box)
+## 2026-11-20 — CB1: eigenInference and the model slots (merged `0a5c9e67`, not pushed, not on the box)
 
 - **Ony's ingest bug (Contribute 19cf0d97), root cause.** A member's enrich worker makes its first gateway call under her id: `enrich-queued-thought.ts:100` `createThoughtEmbedding` → `llmCreateEmbeddings` → `loadLlmConfig(her id)`. That read *her* billing mode (default `platform_credits`, she never touched AI settings) → `loadPlatformLlmConfig` → no `PLATFORM_LLM_*` → no service account → `platform-llm.ts:68` "Platform EUrouter not configured: set LLM_BASE_URL". Production read-only on 2026-11-20: 5 failed thoughts by the admin (Ony), and 15 by the owner from October with the next error in line ("No embedding model configured for this openrouter credential"); the box has no AI env at all and 0 vectors. Only callers wrapped in `onCompanyProvider` ever reached the company key. The acceptance spec `member-ingest-company-slots.spec.ts` failed with exactly that error on the old gateway and passes now.
 - **Shipped on the branch:**
