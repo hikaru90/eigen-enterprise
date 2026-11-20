@@ -38,6 +38,21 @@ export type DriveSourceItem = {
   contentSha: string | null
 }
 
+type DriveSourceItemLocation = {
+  key: string
+  /** The parent's key; null for items directly under the root. */
+  parentKey: string | null
+  name: string
+}
+
+/** One item in an atomic source-writer batch. Parents precede their children. */
+export type DriveSourceBatchItem = DriveSourceItemLocation &
+  (
+    | { kind: 'folder' }
+    | { kind: 'text'; content: string }
+    | { kind: 'bytes'; bytes: Uint8Array; mime: string }
+  )
+
 export type DriveSourcePort = {
   /**
    * Creates the source's root folder on first use (with the company-wide
@@ -67,12 +82,36 @@ export type DriveSourcePort = {
   ): Promise<{ fileId: string; changed: boolean }>
 
   /**
+   * Creates or updates a binary or text file with an explicit MIME type (no
+   * Drive revisions). Content, names and parents change idempotently, exactly
+   * as for upsertText.
+   */
+  upsertBytes(
+    source: DriveSourceId,
+    key: string,
+    parentKey: string | null,
+    name: string,
+    bytes: Uint8Array,
+    mime: string,
+  ): Promise<{ fileId: string; changed: boolean }>
+
+  /**
+   * Creates or updates a batch in one transaction (about 500 items per sync
+   * batch). Items are applied in order, so parents precede their children.
+   * Any failure rolls back the whole batch.
+   */
+  upsertMany(source: DriveSourceId, items: DriveSourceBatchItem[]): Promise<void>
+
+  /**
    * Deletes for good every item whose key equals `keyPrefix` or starts with
    * `keyPrefix + '/'` (derived data: nothing goes to the trash). Returns how
    * many items were removed.
    */
   remove(source: DriveSourceId, keyPrefix: string): Promise<number>
 
-  /** Every item of the source (the root excluded), for reconciling a sync. */
-  list(source: DriveSourceId): Promise<DriveSourceItem[]>
+  /**
+   * Items of the source (the root excluded), optionally only the item at
+   * `keyPrefix` and its descendants. Used to reconcile one repo at a time.
+   */
+  list(source: DriveSourceId, keyPrefix?: string): Promise<DriveSourceItem[]>
 }

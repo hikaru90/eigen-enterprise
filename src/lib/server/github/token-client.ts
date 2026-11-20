@@ -138,8 +138,16 @@ export type GitHubTokenClient = {
    */
   openPulls(fullName: string, etag: string | null): Promise<Conditional<TokenPull[]>>
   tree(fullName: string, commitSha: string): Promise<TokenTree>
-  /** A blob's bytes decoded as UTF-8. */
+  /** A blob's bytes decoded as UTF-8 (legacy Markdown-only sync path). */
   blobText(fullName: string, blobSha: string): Promise<string>
+  /** A blob's unmodified bytes (GET /git/blobs/{sha}). */
+  blobBytes(fullName: string, blobSha: string): Promise<Uint8Array>
+  /**
+   * Streams a commit archive to a new temporary file under the configured
+   * Drive storage temp directory and returns its path. The caller removes it.
+   * The codeload redirect is part of this one logical request.
+   */
+  tarball(fullName: string, commitSha: string): Promise<string>
   /**
    * The permissions the sync needs that the token lacks on this repo (one
    * small read each: metadata, contents, pull requests). Throws `no_access`
