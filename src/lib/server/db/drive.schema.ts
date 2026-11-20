@@ -93,6 +93,8 @@ export const driveSourceItems = pgTable(
   (t) => [
     primaryKey({ name: 'drive_source_items_pk', columns: [t.source, t.externalKey] }),
     uniqueIndex('drive_source_items_item_uq').on(t.kind, t.itemId),
+    // Prefix lookups (LIKE 'repo:1/%', migration 0162).
+    index('drive_source_items_key_prefix_idx').on(t.source, t.externalKey.op('text_pattern_ops')),
     check('drive_source_items_kind_check', sql`${t.kind} in ('folder', 'file')`),
   ],
 )

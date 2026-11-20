@@ -239,6 +239,8 @@ function reposDrivePort(): DriveSourcePort {
     ensureRoot: async (...a) => (await driveSourceWriter()).ensureRoot(...a),
     upsertFolder: async (...a) => (await driveSourceWriter()).upsertFolder(...a),
     upsertText: async (...a) => (await driveSourceWriter()).upsertText(...a),
+    upsertBytes: async (...a) => (await driveSourceWriter()).upsertBytes(...a),
+    upsertMany: async (...a) => (await driveSourceWriter()).upsertMany(...a),
     remove: async (...a) => (await driveSourceWriter()).remove(...a),
     // The writer has no prefix filter yet (full mirror M1,
     // plan/github-drive-full-mirror.md); filtering its list is exact either way.

@@ -15,6 +15,9 @@ import { driveViewUrl } from '$lib/server/drive-view'
 const CSV_PREVIEW_ROWS = 500
 /** Text previews show at most this many characters. */
 const TEXT_PREVIEW_CHARS = 200_000
+/** Text previews (Markdown, CSV, HTML source, plain text) and the editor never load more than 2 MB; the original stays downloadable. */
+export const TEXT_PREVIEW_MAX_BYTES = 2 * 1024 * 1024
+const TEXT_PREVIEW_TOO_LARGE = 'This file is too large to preview, download it instead.'
 
 /**
  * Open a file (/drive/file/[id]). People who may edit a Markdown/CSV file
@@ -33,13 +36,18 @@ export const load: PageServerLoad = async (event) => {
     const kind = previewKind(info.file.name, info.file.mime ?? '')
     let html: string | null = null
     let text: string | null = null
+    let textError: string | null = null
     let table: { rows: string[][]; truncated: boolean } | null = null
     let content: string | null = null
     let viewUrl: string | null = null
     if (kind === 'html' && actor.kind === 'user') {
       viewUrl = driveViewUrl({ userId: actor.userId, folderId: info.file.parentId ?? null, fileId: info.file.id, fileName: info.file.name })
     }
-    if (kind === 'markdown' || kind === 'csv' || kind === 'html' || kind === 'text') {
+    const previewsText = kind === 'markdown' || kind === 'csv' || kind === 'html' || kind === 'text'
+    if (previewsText && info.file.size === undefined) throw new Error(`drive file ${info.file.id} has no size, so its text preview can't be capped`)
+    if (previewsText && info.file.size! > TEXT_PREVIEW_MAX_BYTES) {
+      textError = TEXT_PREVIEW_TOO_LARGE
+    } else if (previewsText) {
       content = (await drive.readText(actor, event.params.id)).content
       if (kind === 'markdown') html = renderDriveMarkdown(content)
       else if (kind === 'csv') {
@@ -52,8 +60,9 @@ export const load: PageServerLoad = async (event) => {
       : []
     const people = isRevisioned(info.file.name) ? (await drive.shareTargets()).people : []
     const authors = Object.fromEntries(people.map((p) => [p.id, p.name || p.email]))
+    // Too large to load is too large to edit in place.
     const editable =
-      info.canEdit && isRevisioned(info.file.name) && (kind === 'markdown' || kind === 'csv')
+      info.canEdit && textError === null && isRevisioned(info.file.name) && (kind === 'markdown' || kind === 'csv')
     // The side panel's owner and sharing state (same rules as the listings).
     const described = (await drive.describeItems(actor, [info.file]))[`file:${info.file.id}`]!
     return {
@@ -61,6 +70,7 @@ export const load: PageServerLoad = async (event) => {
       kind,
       html,
       text,
+      textError,
       table,
       viewUrl,
       revisions,

@@ -91,6 +91,8 @@
   } = $props()
 
   const VIEW_KEY = 'drive-view'
+  /** Large source folders stay responsive: render one page, not thousands of rows. */
+  const PAGE_SIZE = 200
   type View = 'list' | 'grid'
   type Listed = DriveItem & { canEdit?: boolean; canManage?: boolean }
   /** The type a Drive row's drag carries (moves within Drive, never an upload). */
@@ -117,8 +119,15 @@
   let failures = $state<UploadFailure[]>([])
   let search = $state(query)
   let view = $state<View>('list')
+  /** The page asked for, and the listing it was asked for in: new results (or a new folder) start at page 1. */
+  let paging = $state.raw<{ of: Listed[] | null; page: number }>({ of: null, page: 1 })
 
   const shown = $derived(results ?? items)
+  const pageCount = $derived(Math.max(1, Math.ceil(shown.length / PAGE_SIZE)))
+  const requestedPage = $derived(paging.of === shown ? paging.page : 1)
+  const currentPage = $derived(Math.min(requestedPage, pageCount))
+  const firstShown = $derived((currentPage - 1) * PAGE_SIZE)
+  const visible = $derived(shown.slice(firstShown, firstShown + PAGE_SIZE))
   const dropEnabled = $derived(canEdit && !trashView)
   const dragging = $derived(dragDepth > 0)
   const here = $derived(path.length > 0 ? path[path.length - 1]!.name : root.label)
@@ -143,6 +152,14 @@
     } catch {
       // Storage blocked: the choice lasts for this page only.
     }
+  }
+
+  function previousPage() {
+    paging = { of: shown, page: Math.max(1, currentPage - 1) }
+  }
+
+  function nextPage() {
+    paging = { of: shown, page: Math.min(pageCount, currentPage + 1) }
   }
 
   const folderHref = (id: string) => resolve(`/drive/folder/${id}`)
@@ -318,6 +335,7 @@
 
   function submitSearch(event: SubmitEvent) {
     event.preventDefault()
+    paging = { of: null, page: 1 }
     const q = search.trim()
     void goto(q ? `${hereHref()}?q=${encodeURIComponent(q)}` : hereHref(), { keepFocus: true })
   }
@@ -706,7 +724,7 @@
             </tr>
           </thead>
           <tbody>
-            {#each shown as item (item.type + item.id)}
+            {#each visible as item (item.type + item.id)}
               {@const kind = driveItemKind(item)}
               {@const Icon = ICONS[kind]}
               {@const desc = descOf(item)}
@@ -822,7 +840,7 @@
         class="grid grid-cols-2 gap-3 pt-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6"
         data-testid="drive-grid"
       >
-        {#each shown as item (item.type + item.id)}
+        {#each visible as item (item.type + item.id)}
           {@const kind = driveItemKind(item)}
           {@const Icon = ICONS[kind]}
           {@const desc = descOf(item)}
@@ -918,6 +936,32 @@
       </ul>
     {/if}
   </div>
+
+  {#if pageCount > 1}
+    <nav
+      class="flex flex-wrap items-center justify-center gap-3 border-t border-border px-4 py-2 text-sm"
+      aria-label="Drive listing pages"
+      data-testid="drive-pages"
+    >
+      <button
+        type="button"
+        class="rounded-md border border-border px-2.5 py-1 hover:bg-muted disabled:opacity-50"
+        disabled={currentPage === 1}
+        onclick={previousPage}
+        data-testid="drive-page-previous">Previous</button
+      >
+      <span class="text-muted-foreground tabular-nums" data-testid="drive-page-summary"
+        >{(firstShown + 1).toLocaleString('en-US')}–{Math.min(firstShown + PAGE_SIZE, shown.length).toLocaleString('en-US')} of {shown.length.toLocaleString('en-US')}</span
+      >
+      <button
+        type="button"
+        class="rounded-md border border-border px-2.5 py-1 hover:bg-muted disabled:opacity-50"
+        disabled={currentPage === pageCount}
+        onclick={nextPage}
+        data-testid="drive-page-next">Next</button
+      >
+    </nav>
+  {/if}
 
   {#if dragging && !draggedItem}
     <div

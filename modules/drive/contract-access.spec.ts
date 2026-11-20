@@ -100,4 +100,27 @@ describe('drive over the real access contract', () => {
     await drive.setGrants(u('o'), 'folder', root.folderId, [])
     await expect(drive.readText(u('b'), page.fileId)).rejects.toMatchObject({ code: 'not_found' })
   })
+
+  it('removing a source prefix drops the grants of all doomed items in one lookup, audited as the source', async () => {
+    const { drive, audit, store, writer } = await setup()
+    await writer.ensureRoot('repos', 'GitHub')
+    const repo = await writer.upsertFolder('repos', 'repo:1', null, 'acme')
+    const docs = await writer.upsertFolder('repos', 'repo:1/docs', 'repo:1', 'docs')
+    const page = await writer.upsertText('repos', 'repo:1/docs/a.md', 'repo:1/docs', 'a.md', 'a')
+    await drive.setGrants(u('o'), 'folder', docs, [{ subject: { kind: 'user', userId: 'b' }, level: 'view' }])
+    await drive.setGrants(u('o'), 'file', page.fileId, [{ subject: { kind: 'group', groupId: 'design' }, level: 'view' }])
+    audit.mockClear()
+    const grantsOn = vi.spyOn(store, 'grantsOn')
+
+    expect(await writer.remove('repos', 'repo:1')).toBe(3)
+    expect(grantsOn).toHaveBeenCalledTimes(1)
+    for (const [type, id] of [['folder', repo], ['folder', docs], ['file', page.fileId]] as const)
+      expect(await store.grantsOn([{ resourceType: type, resourceId: id }])).toEqual([])
+    expect(audit).toHaveBeenCalledTimes(2)
+    expect(audit).toHaveBeenCalledWith({
+      type: 'access.grants_set',
+      principalId: 'repos',
+      payload: { resourceType: 'folder', resourceId: docs, before: [{ subject: 'user:b', level: 'view' }], after: [] },
+    })
+  })
 })

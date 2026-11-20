@@ -815,20 +815,27 @@ export function createDriveService(deps: DriveDeps) {
       return { folder: folderView(root), files, bytes }
     },
 
-    async readText(actor: Actor, id: string): Promise<{ file: ItemView; content: string }> {
+    /** `maxBytes` caps the text returned (a text file by its size, before reading; an office file by its extracted text). */
+    async readText(actor: Actor, id: string, opts: { maxBytes?: number } = {}): Promise<{ file: ItemView; content: string }> {
       const file = await requireFile(actor, id, 'view')
+      const tooLarge = () =>
+        new DriveError('too_large', `“${file.name}” is too large to read as text (more than ${formatBytes(opts.maxBytes!)}); download it instead.`)
       const office = officeKind(file.name, file.mime)
       if (office) {
         const bytes = await blobs.get(file.sha256)
+        let content: string
         try {
-          return { file: fileView(file), content: await extractOfficeText(office, bytes) }
+          content = await extractOfficeText(office, bytes)
         } catch (err) {
           if (err instanceof OfficeNotSupportedError) throw new DriveError('invalid', err.message, undefined, { cause: err })
           const why = err instanceof Error ? err.message : String(err)
           throw new DriveError('invalid', `“${file.name}” could not be read: ${why}`, undefined, { cause: err })
         }
+        if (opts.maxBytes !== undefined && new TextEncoder().encode(content).byteLength > opts.maxBytes) throw tooLarge()
+        return { file: fileView(file), content }
       }
       if (!isTextFile(file.name, file.mime)) throw new DriveError('invalid', `“${file.name}” is not a text file.`)
+      if (opts.maxBytes !== undefined && file.size > opts.maxBytes) throw tooLarge()
       return { file: fileView(file), content: new TextDecoder().decode(await blobs.get(file.sha256)) }
     },
 

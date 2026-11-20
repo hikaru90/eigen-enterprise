@@ -38,6 +38,7 @@ function data(overrides: Record<string, unknown> = {}) {
     kind: 'image',
     html: null,
     text: null,
+    textError: null,
     table: null,
     revisions: [],
     authors: {},
@@ -101,6 +102,41 @@ describe('drive file page: when the file is from', () => {
   })
 })
 
+describe('drive file page: text preview limits', () => {
+  it('explains when text is too large and keeps the download action', async () => {
+    const d = data()
+    render(
+      FilePage,
+      props(
+        data({
+          file: { ...d.file, name: 'huge.ts', mime: 'text/plain', size: 2 * 1024 * 1024 + 1, dated: null },
+          kind: 'text',
+          textError: 'This file is too large to preview, download it instead.',
+        }),
+      ),
+    )
+    await expect.element(page.getByTestId('drive-text-too-large')).toHaveTextContent('too large to preview, download')
+    await expect.element(page.getByTestId('drive-file-download')).toHaveAttribute('href', '/api/drive/files/p1/content?download=1')
+    await expect.element(page.getByTestId('drive-text')).not.toBeInTheDocument()
+  })
+
+  it('says the same for a Markdown file over the cap, instead of an empty document', async () => {
+    const d = data()
+    render(
+      FilePage,
+      props(
+        data({
+          file: { ...d.file, name: 'huge.md', mime: 'text/markdown', size: 2 * 1024 * 1024 + 1, dated: null },
+          kind: 'markdown',
+          textError: 'This file is too large to preview, download it instead.',
+        }),
+      ),
+    )
+    await expect.element(page.getByTestId('drive-text-too-large')).toHaveTextContent('too large to preview, download')
+    await expect.element(page.getByText('This document is empty.')).not.toBeInTheDocument()
+  })
+})
+
 describe('drive file page: HTML files render as pages', () => {
   const html = (overrides: Record<string, unknown> = {}) =>
     data({
@@ -119,6 +155,22 @@ describe('drive file page: HTML files render as pages', () => {
     await expect.element(frame).toHaveAttribute('referrerpolicy', 'no-referrer')
     await expect.element(page.getByRole('button', { name: 'Page' })).toHaveAttribute('aria-pressed', 'true')
     await expect.element(page.getByTestId('drive-html-source')).not.toBeInTheDocument()
+  })
+
+  it('gives a read-only GitHub HTML source the same scripts-without-same-origin sandbox', async () => {
+    render(
+      FilePage,
+      props(
+        html({
+          canManage: true,
+          described: { ownerName: 'GitHub', shared: false, readOnlyFrom: 'GitHub' },
+        }),
+      ),
+    )
+    const frame = page.getByTestId('drive-html')
+    await expect.element(frame).toHaveAttribute('sandbox', 'allow-scripts')
+    expect(frame.element().getAttribute('sandbox')).not.toContain('allow-same-origin')
+    await expect.element(page.getByTestId('drive-readonly-badge')).toHaveTextContent('GitHub · read-only')
   })
 
   it('switches to the source text and back', async () => {

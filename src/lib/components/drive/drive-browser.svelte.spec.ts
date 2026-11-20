@@ -85,6 +85,51 @@ describe('drive-browser: the full-width listing', () => {
     expect(page.getByTestId('drive-shared-badge').elements()).toHaveLength(1)
   })
 
+  it('pages a source folder with 2,000 files and keeps the last file reachable', async () => {
+    const files = Array.from({ length: 2_000 }, (_, i) => ({
+      ...image,
+      id: `source-${i}`,
+      name: `file-${String(i).padStart(4, '0')}.txt`,
+      mime: 'text/plain',
+    }))
+    render(DriveBrowser, {
+      props: {
+        folderId: 'source-root',
+        root: { label: 'GitHub', href: '/drive/folder/source-root' },
+        items: files,
+        canEdit: false,
+      },
+    })
+    const rows = page.getByTestId('drive-row')
+    await expect.element(rows.last()).toHaveAttribute('data-name', 'file-0199.txt')
+    expect(rows.elements()).toHaveLength(200)
+    await expect.element(page.getByTestId('drive-page-summary')).toHaveTextContent('1–200 of 2,000')
+    await expect.element(page.getByTestId('drive-page-previous')).toBeDisabled()
+    for (let i = 0; i < 9; i++) await page.getByTestId('drive-page-next').click()
+    await expect.element(page.getByTestId('drive-page-summary')).toHaveTextContent('1,801–2,000 of 2,000')
+    await expect.element(page.getByTestId('drive-page-next')).toBeDisabled()
+    await expect.element(rows.first()).toHaveAttribute('data-name', 'file-1800.txt')
+    await expect.element(rows.last()).toHaveAttribute('data-name', 'file-1999.txt')
+    expect(rows.elements()).toHaveLength(200)
+    // exact: the row's Download action is a link whose label also contains the name.
+    await expect
+      .element(page.getByRole('link', { name: 'file-1999.txt', exact: true }))
+      .toHaveAttribute('href', '/drive/file/source-1999')
+  }, 15_000)
+
+  it('new search results start again at their first page', async () => {
+    const many = (prefix: string, n: number) =>
+      Array.from({ length: n }, (_, i) => ({ ...image, id: `${prefix}-${i}`, name: `${prefix}-${String(i).padStart(4, '0')}.txt`, mime: 'text/plain' }))
+    const base = { folderId: 'source-root', root: { label: 'GitHub', href: '/drive/folder/source-root' }, items: [], canEdit: false }
+    const { rerender } = render(DriveBrowser, { props: { ...base, query: 'a', results: many('a', 450) } })
+    await page.getByTestId('drive-page-next').click()
+    await page.getByTestId('drive-page-next').click()
+    await expect.element(page.getByTestId('drive-page-summary')).toHaveTextContent('401–450 of 450')
+    await rerender({ ...base, query: 'b', results: many('b', 900) })
+    await expect.element(page.getByTestId('drive-page-summary')).toHaveTextContent('1–200 of 900')
+    await expect.element(page.getByTestId('drive-row').first()).toHaveAttribute('data-name', 'b-0000.txt')
+  })
+
   it('shows the month and year each file is from, and what kind of date it is', async () => {
     const photo = { ...image, id: 'i2', name: 'harbour.jpg', dated: { at: '2019-03-14T09:30:00.000Z', kind: 'taken' as const } }
     const upload = { ...image, id: 'i3', name: 'notes.png', dated: { at: '2026-11-04T10:00:00.000Z', kind: 'uploaded' as const } }

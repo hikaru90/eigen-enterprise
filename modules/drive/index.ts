@@ -1,15 +1,17 @@
+import { hkdfSync } from 'node:crypto'
 import { liveDriveAccess } from './access-port'
+import { BLOB_GC_GRACE_MS, sweepUnreferencedBlobs } from './blob-gc'
 import { dbDriveStore, dbEditLockStore } from './db-store'
 import { createDriveService, resolveMaxUploadBytes, type DriveService } from './service'
 import { createDriveSourceWriter, type DriveSourceWriter } from './source-writer'
 import { diskBlobStore, resolveDriveStorageDir } from './storage'
-import { hkdfSync } from 'node:crypto'
 
 export * from './service'
 export type { DriveSourceId, DriveSourceItem, DriveSourceRoot, DriveSourceWriter } from './source-writer'
 export { LOCK_HEARTBEAT_MS, LOCK_TTL_MS } from './locks'
 export { mintViewToken, readViewToken, VIEW_TOKEN_TTL_MS, type ViewScope } from './view-token'
 export { viewMimeFor } from './preview'
+export { BLOB_GC_GRACE_MS } from './blob-gc'
 
 let live: DriveService | null = null
 
@@ -40,6 +42,15 @@ export async function driveSourceWriter(env: Record<string, string | undefined> 
   if (liveWriter) return liveWriter
   liveWriter = createDriveSourceWriter({ store: dbDriveStore, blobs: diskBlobStore(resolveDriveStorageDir(env)), access: await liveDriveAccess() })
   return liveWriter
+}
+
+/**
+ * Removes Drive blobs nothing references that have gone untouched for the
+ * grace period (blob-gc.ts). Writers never delete bytes inline, so this must
+ * run periodically; nothing schedules it yet.
+ */
+export async function sweepDriveBlobs(env: Record<string, string | undefined> = process.env, now: Date = new Date()): Promise<{ removed: number }> {
+  return sweepUnreferencedBlobs({ store: dbDriveStore, blobs: diskBlobStore(resolveDriveStorageDir(env)) }, new Date(now.getTime() - BLOB_GC_GRACE_MS))
 }
 
 /**

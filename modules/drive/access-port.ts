@@ -43,7 +43,16 @@ export type DriveAccessPort = {
    * the whole-company subject is accepted (a sync never names people).
    */
   systemGrants(principalId: string, resourceType: 'folder' | 'file', resourceId: string, grants: Grant[]): Promise<void>
+  /**
+   * The system writer drops every direct grant on many items it is about to
+   * delete (a source prefix): one batched lookup, then a cleared and audited
+   * grant set (as `principalId`) for each item that had any.
+   */
+  dropSystemGrants(principalId: string, resources: ReadonlyArray<{ resourceType: 'folder' | 'file'; resourceId: string }>): Promise<void>
 }
+
+/** Resources per batched grant lookup (the contract store ORs one (type, id) pair per resource). */
+const GRANT_LOOKUP_CHUNK = 1_000
 
 /** systemGrants accepts the whole company only: a source never decides about people or groups. */
 export function assertCompanyOnly(grants: readonly Grant[]): void {
@@ -69,6 +78,7 @@ const inputs = (grants: Grant[]) => grants.map((g) => ({ subject: g.subject, lev
 /** The port over the real access module: Drive passes the folder chain (nearest parent first); the contract decides. */
 export function contractDriveAccess(deps: ContractDeps): DriveAccessPort {
   const direct = (type: 'folder' | 'file', id: string) => deps.store.grantsOn([{ resourceType: type, resourceId: id }])
+  const keys = (gs: Grant[]) => gs.map((g) => ({ subject: subjectKey(g.subject), level: g.level }))
   return {
     canAccess: (userId, ref, level) => deps.access.canAccess(userId, ref.resourceType, ref.resourceId, level, { ancestors: ref.folderChain }),
     listGrants: direct,
@@ -87,8 +97,23 @@ export function contractDriveAccess(deps: ContractDeps): DriveAccessPort {
       assertCompanyOnly(grants)
       const before = await direct(type, id)
       await deps.store.replaceGrants(type, id, grants, principalId)
-      const keys = (gs: Grant[]) => gs.map((g) => ({ subject: subjectKey(g.subject), level: g.level }))
       await deps.audit({ type: 'access.grants_set', principalId, payload: { resourceType: type, resourceId: id, before: keys(before), after: keys(grants) } })
+    },
+    async dropSystemGrants(principalId, resources) {
+      const found: Grant[] = []
+      for (let i = 0; i < resources.length; i += GRANT_LOOKUP_CHUNK) found.push(...(await deps.store.grantsOn(resources.slice(i, i + GRANT_LOOKUP_CHUNK))))
+      const byResource = new Map<string, { type: 'folder' | 'file'; id: string; before: Grant[] }>()
+      for (const g of found) {
+        if (g.resourceType === 'channel') throw new Error(`drive grant lookup returned a channel grant for ${g.resourceId}`)
+        const key = `${g.resourceType}:${g.resourceId}`
+        const entry = byResource.get(key) ?? { type: g.resourceType, id: g.resourceId, before: [] }
+        entry.before.push(g)
+        byResource.set(key, entry)
+      }
+      for (const { type, id, before } of byResource.values()) {
+        await deps.store.replaceGrants(type, id, [], principalId)
+        await deps.audit({ type: 'access.grants_set', principalId, payload: { resourceType: type, resourceId: id, before: keys(before), after: [] } })
+      }
     },
   }
 }
