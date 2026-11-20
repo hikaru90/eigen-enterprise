@@ -330,7 +330,9 @@ function finishLine(line: Line, phClr: ColorSpec | null, ctx: Ctx, groupFill: RF
   if (fill.kind === 'none') return null
   const cap = line.cap === 'rnd' ? 'round' : line.cap === 'sq' ? 'square' : 'butt'
   const join = line.join === 'round' ? 'round' : line.join === 'bevel' ? 'bevel' : 'miter'
-  return { width: px(line.width ?? 9525), fill, dash: line.dash ?? 'solid', custDash: line.custDash, cap, join, head: line.head, tail: line.tail }
+  // No width: 0.75 pt. Width 0 is the thinnest line the device draws (a hairline), not an invisible one.
+  const width = line.width === null ? px(9525) : line.width === 0 ? 1 : px(line.width)
+  return { width, fill, dash: line.dash ?? 'solid', custDash: line.custDash, cap, join, head: line.head, tail: line.tail }
 }
 
 export function resolveLine(ctx: Ctx, chain: ShapeNode[], groupFill: RFill | null): RLine | null {

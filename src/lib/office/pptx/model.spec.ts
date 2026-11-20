@@ -232,6 +232,11 @@ describe('shapes, fills, lines', () => {
     expect(n.line).toMatchObject({ width: 4, dash: 'dash', cap: 'round', join: 'round', head: { type: 'triangle', w: 'lg', len: 'sm' }, tail: { type: 'stealth', w: 'med', len: 'med' } })
   })
 
+  it('a zero-width line is a hairline, not invisible', () => {
+    const s = slide0({ slides: [{ shapes: sp({ id: 4, name: 'H', xfrm: xfrm(0, 0, 952500, 0), geom: 'line', spPr: '<a:ln w="0"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln>' }) }] })
+    expect((named(s.nodes, 'H') as Extract<RNode, { kind: 'shape' }>).line?.width).toBe(1)
+  })
+
   it('composes group transforms (child space → slide), including flips', () => {
     const child = sp({ id: 6, name: 'Child', xfrm: xfrm(500000, 0, 500000, 500000), geom: 'rect' })
     const grp = (extra: string) =>
