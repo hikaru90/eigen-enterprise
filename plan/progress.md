@@ -2,6 +2,24 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-20 — Box was down ~1h: ee crash-looped on a 0-byte journal.json; repaired, and ee's state writes made durable (owner: "Yes, fix the box")
+
+- **What broke:**
+  - `ee.service` on the local box restarted about 1,190 times (every 3 s) with `Unexpected end of JSON input`, and https://os.ee.localhost answered 502.
+  - `/var/lib/ee/journal.json` had been 0 bytes since 13:21 (container time), during the Drive app-preview network work.
+  - **Root cause:** `RealSystem.writeFile` wrote a temp file and renamed it, but never fsynced. After an abrupt stop, the rename reached the disk but the data didn't.
+- **Fix `002ae04b`:**
+  - `durableWrite` writes the temp file, fsyncs it, renames, then fsyncs the directory.
+  - Tests in `ee/src/system.spec.ts`: the operation order is checked, a failed write leaves the old file untouched and fails loud, and a real-disk round trip works.
+  - Every write through ee's System seam uses it, which includes the journal and the upgrade state. Release downloads (`upgrade.ts`) are written directly, then checked against their signature.
+  - `loadJournal` still refuses a corrupt journal on purpose (no fallback). This fix stops the file being produced in the first place.
+- **Box repair:**
+  - The empty file was kept as `/var/lib/ee/journal.json.empty-20261120-161617`. ee started from an empty journal, which by design costs a redeploy, never data.
+  - Both workloads came back health-gated on slot `a` with no errors, and the box serves again (302 to sign-in).
+  - The box still runs the *old* ee binary. The durable write reaches it with the next `box.sh install`.
+- **Noticed, not fixed:** `cd ee && npx tsc --noEmit` reports 3 older type errors in `ee/src/daemon.spec.ts` (`r.data` is `unknown`). The ee test suite is green (452 passed).
+- **Next:** the owner decides push + release. The box doesn't yet have office milestone 2 (editing) or this ee fix.
+
 ## 2026-11-20 — Office files are editable: P2/D2/S2 merged (PDF organise, Word editing, PowerPoint editing)
 
 - **What shipped** — milestone 2 of all three office streams ([`plan/phase-office-files.md`](phase-office-files.md) §4), per the handoff in `plan/office-files-handoff.md`:
