@@ -1,10 +1,11 @@
 import { sql } from 'drizzle-orm'
-import { bigint, boolean, index, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { bigint, boolean, index, jsonb, pgTable, primaryKey, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 
 /**
- * GitHub repos in Drive (migrations 0134, 0135, plan/github-drive.md). Not wired into
- * schema.ts; consumed only by modules/repos. The token lives sealed in one
- * column (AAD = the row id) and is never selected outside the poller.
+ * GitHub repos in Drive (migrations 0134, 0135, 0161, plan/github-drive.md and
+ * plan/github-drive-full-mirror.md). Not wired into schema.ts; consumed only by
+ * modules/repos. The token lives sealed in one column (AAD = the row id) and is
+ * never selected outside the poller.
  */
 export const repoSourceTokens = pgTable('repo_source_tokens', {
   id: uuid('id').primaryKey(),
@@ -33,7 +34,8 @@ export const repoSources = pgTable(
     claimedUntil: timestamp('claimed_until', { withTimezone: true }),
     etags: jsonb('etags').$type<Record<string, string>>().notNull().default({}),
     branchHeads: jsonb('branch_heads').$type<Record<string, string>>().notNull().default({}),
-    docShas: jsonb('doc_shas').$type<Record<string, string>>().notNull().default({}),
+    /** Migration 0161: 'all' (every file of the default branch) or 'docs' (Markdown only). */
+    copyMode: text('copy_mode').notNull().default('all'),
     /** The last fetched state (dates as ISO strings), rendered again on a 304. */
     snapshot: jsonb('snapshot').$type<unknown>(),
     lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
@@ -52,4 +54,22 @@ export const repoSources = pgTable(
     index('repo_sources_due_idx').on(t.dueAt).where(sql`${t.enabled}`),
     index('repo_sources_token_idx').on(t.tokenId),
   ],
+)
+
+/**
+ * One row per copied file of a repo's default branch (migration 0161): the
+ * path's git blob sha and size as of the last sync. Replaces the doc_shas
+ * jsonb — 50,000 paths don't belong in one row. Cascades with its repo.
+ */
+export const repoSourceFiles = pgTable(
+  'repo_source_files',
+  {
+    sourceId: uuid('source_id')
+      .notNull()
+      .references(() => repoSources.id, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+    sha: text('sha').notNull(),
+    size: bigint('size', { mode: 'number' }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.sourceId, t.path] })],
 )
