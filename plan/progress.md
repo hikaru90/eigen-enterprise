@@ -2,6 +2,26 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-20 — Drive: HTML files render as pages; plan for running web app folders (owner: "HTML currently gets rendered as text … there should be an option for seeing HTML files as … rendered HTML files in the drive … a simple way to do npm run dev")
+
+- **Built (not committed yet):** `.html`/`.htm` files open as the page itself, with a **Page | Source** switch and **Open in new tab**.
+  - The page loads from `GET /api/drive/view/<token>/<path>`, so its relative styles, scripts and images resolve inside the folder the HTML sits in. A top-level file loads only itself.
+  - Code: `modules/drive/view-token.ts`, `service.readAtPath`, `src/lib/server/drive-view.ts`, the hook step in `src/hooks.server.ts`, and the file page.
+  - Tests: unit (preview kind, path walk, token), component (file page), and e2e `src/routes/e2e/drive-html.e2e.ts` (CSS and JS load, origin is `null`, storage is blocked, `../` is refused).
+- **Decision: rendered HTML runs sandboxed with an opaque origin.**
+  - The frame is `sandbox="allow-scripts"` and the CSP header also sandboxes it. Same-origin access, forms, popups, top navigation and frames are off, and only the Drive may frame it.
+  - `fetch`/XHR can reach only the page's own folder. Scripts, styles, images and fonts may load over https (CDN libraries).
+  - **Residual risk:** a page with scripts can read the files in its own folder that the viewer can open. It could leak them through an https image or script URL. We accept that so pages with CDN libraries work; tighten it if HTML from outside (email attachments) becomes common.
+- **Decision: a signed view token signs the page's requests in.** A sandboxed frame can't rely on the session cookie.
+  - The token is an HMAC over who / folder / file, keyed from `TENANT_MASTER_KEY` via HKDF (both slots accept it), and it lasts 1 hour.
+  - The hook turns it into `locals.user` on `/api/drive/view/` only, like API keys on their routes. Every file still goes through Drive's access check as that person.
+  - `Referrer-Policy: no-referrer` keeps the token from leaking to CDNs.
+- **Unchanged:** `drive.read` still reads HTML as text, because `isTextFile` includes the new `html` kind. `/api/drive/files/[id]/content` still serves HTML as sandboxed `text/plain`.
+- **Web app folders (`npm run dev` in the Drive):** drafted as `plan/phase-drive-app-preview.md` and **waiting for approval**.
+  - It runs on the box through ee: snapshot → `npm ci` in the capped build unit → the `dev` script in a sandboxed preview unit → its own origin `<id>.preview.<console host>` → a frame on the folder page.
+  - Two owner questions are open: who may press Run, and the wildcard DNS for preview hosts.
+- **Next:** commit and release the HTML view to the box. Then build P1–P2 of the app preview once it's approved.
+
 ## 2026-11-20 — Office files in the Drive: foundation landed, PDF/DOCX/PPTX streams started (owner: "clean room versions … as the file handler for certain file types in the drive … start sub agents")
 
 - **Plan:** `plan/phase-office-files.md`. It covers our own viewers and editors for PDF, Word and PowerPoint.

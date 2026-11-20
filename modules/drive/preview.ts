@@ -7,7 +7,7 @@
 
 import { OFFICE_MIME, type OfficeKind } from '$lib/office/kinds'
 
-export type PreviewKind = 'markdown' | 'csv' | 'image' | 'text' | 'other' | OfficeKind
+export type PreviewKind = 'markdown' | 'csv' | 'html' | 'image' | 'text' | 'other' | OfficeKind
 
 const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif', 'bmp'])
 const TEXT_EXT = new Set(['txt', 'log', 'json', 'yaml', 'yml', 'xml', 'tsv', 'ini', 'toml'])
@@ -17,6 +17,8 @@ const MIME_BY_EXT: Record<string, string> = {
   csv: 'text/csv',
   txt: 'text/plain',
   json: 'application/json',
+  html: 'text/html',
+  htm: 'text/html',
   pdf: OFFICE_MIME.pdf,
   docx: OFFICE_MIME.docx,
   pptx: OFFICE_MIME.pptx,
@@ -37,6 +39,7 @@ export function previewKind(name: string, mime: string): PreviewKind {
   const ext = extensionOf(name)
   if (ext === 'md' || ext === 'markdown') return 'markdown'
   if (ext === 'csv') return 'csv'
+  if (ext === 'html' || ext === 'htm' || mime === 'text/html') return 'html'
   const office = officeKind(name, mime)
   if (office) return office
   if (IMAGE_EXT.has(ext) || mime.startsWith('image/')) return 'image'
@@ -67,7 +70,43 @@ export function isRevisioned(name: string): boolean {
 /** Files the agent may read as text (drive.read) and write (drive.write_text: revisioned only). */
 export function isTextFile(name: string, mime: string): boolean {
   const kind = previewKind(name, mime)
-  return kind === 'markdown' || kind === 'csv' || kind === 'text'
+  return kind === 'markdown' || kind === 'csv' || kind === 'html' || kind === 'text'
+}
+
+/**
+ * The type a file is served with inside a rendered HTML page (/drive-view):
+ * the page itself, its styles, scripts, images, fonts and data, by file
+ * extension. Anything else goes out as bytes the browser won't run.
+ */
+const VIEW_MIME_BY_EXT: Record<string, string> = {
+  html: 'text/html; charset=utf-8',
+  htm: 'text/html; charset=utf-8',
+  css: 'text/css; charset=utf-8',
+  js: 'text/javascript; charset=utf-8',
+  mjs: 'text/javascript; charset=utf-8',
+  json: 'application/json',
+  map: 'application/json',
+  txt: 'text/plain; charset=utf-8',
+  svg: 'image/svg+xml',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  avif: 'image/avif',
+  ico: 'image/x-icon',
+  woff: 'font/woff',
+  woff2: 'font/woff2',
+  ttf: 'font/ttf',
+  otf: 'font/otf',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mp3: 'audio/mpeg',
+  wasm: 'application/wasm',
+}
+
+export function viewMimeFor(name: string): string {
+  return VIEW_MIME_BY_EXT[extensionOf(name)] ?? 'application/octet-stream'
 }
 
 /** The MIME type a file is stored and served with: the browser's when given, else from the extension. */

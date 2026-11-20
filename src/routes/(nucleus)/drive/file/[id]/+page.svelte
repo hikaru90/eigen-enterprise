@@ -4,6 +4,7 @@
   import type { PageData } from './$types'
   import ArchiveIcon from '@lucide/svelte/icons/archive'
   import DownloadIcon from '@lucide/svelte/icons/download'
+  import ExternalLinkIcon from '@lucide/svelte/icons/external-link'
   import FileIcon from '@lucide/svelte/icons/file'
   import LockIcon from '@lucide/svelte/icons/lock'
   import Share2Icon from '@lucide/svelte/icons/share-2'
@@ -64,6 +65,12 @@
   const kindLabel = $derived(KIND_LABEL[driveItemKind(data.file)])
   const dated = $derived(data.file.dated ? datedLabel(data.file.dated) : null)
   let sharing = $state(false)
+  /** HTML files: the rendered page or its source text (view state only). */
+  let htmlView = $state<'page' | 'source'>('page')
+  const HTML_VIEWS = [
+    ['page', 'Page'],
+    ['source', 'Source'],
+  ] as const
 
   /** Closing the viewer goes back to the folder the file is in (or the path's root at the top level). */
   const back = $derived.by(() => {
@@ -313,6 +320,45 @@
               {#if data.table.truncated}<p class="px-3 py-2 text-xs text-muted-foreground">
                   Showing the first rows; download for the whole table.
                 </p>{/if}
+            {/if}
+          {:else if data.kind === 'html'}
+            <div class="flex items-center justify-between gap-2 border-b px-3 py-2">
+              <div class="inline-flex rounded-md border p-0.5 text-sm" role="group" aria-label="Show as">
+                {#each HTML_VIEWS as [value, label] (value)}
+                  <button
+                    type="button"
+                    class="rounded px-2.5 py-1 {htmlView === value
+                      ? 'bg-muted font-medium text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'}"
+                    aria-pressed={htmlView === value}
+                    onclick={() => (htmlView = value)}>{label}</button
+                  >
+                {/each}
+              </div>
+              {#if data.viewUrl}
+                <a
+                  href={data.viewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+                  data-testid="drive-html-open"
+                  ><ExternalLinkIcon class="size-4" aria-hidden="true" /> Open in new tab</a
+                >
+              {/if}
+            </div>
+            {#if htmlView === 'page' && data.viewUrl}
+              <iframe
+                src={data.viewUrl}
+                title={data.file.name}
+                sandbox="allow-scripts"
+                referrerpolicy="no-referrer"
+                class="min-h-[75vh] w-full flex-1 bg-white"
+                data-testid="drive-html"
+              ></iframe>
+            {:else}
+              <pre
+                class="flex-1 overflow-auto px-6 py-5 text-sm whitespace-pre-wrap"
+                data-testid="drive-html-source">{data.text}</pre>
             {/if}
           {:else if data.kind === 'image'}
             <div class="flex flex-1 items-center justify-center bg-muted/30 p-4">

@@ -368,3 +368,50 @@ describe('drive service: when a file is from (Contribute 0c945439)', () => {
     expect(listed?.dated).toEqual({ at: new Date('1987-05-12T09:30:00.000Z'), kind: 'created' })
   })
 })
+
+describe('drive service: reading a file by its path inside a folder (rendered HTML)', () => {
+  async function site() {
+    const s = await setup()
+    const root = await s.drive.createFolder(alice, null, 'Site')
+    const css = await s.drive.createFolder(alice, root.id, 'css')
+    await s.drive.upload(alice, root.id, { name: 'index.html', bytes: text('<h1>Hi</h1>'), mime: 'text/html' })
+    await s.drive.upload(alice, css.id, { name: 'site.css', bytes: text('h1{color:red}'), mime: 'text/css' })
+    return { ...s, root, css }
+  }
+
+  it('walks folder names down to the file and returns its bytes', async () => {
+    const { drive, root } = await site()
+    const out = await drive.readAtPath(alice, root.id, ['css', 'site.css'])
+    expect(out.file.name).toBe('site.css')
+    expect(new TextDecoder().decode(out.bytes)).toBe('h1{color:red}')
+  })
+
+  it('refuses dot segments and empty names, so a path cannot climb out of its folder', async () => {
+    const { drive, root } = await site()
+    await expectCode(drive.readAtPath(alice, root.id, ['..', 'index.html']), 'invalid')
+    await expectCode(drive.readAtPath(alice, root.id, ['.', 'index.html']), 'invalid')
+    await expectCode(drive.readAtPath(alice, root.id, ['', 'index.html']), 'invalid')
+    await expectCode(drive.readAtPath(alice, root.id, []), 'not_found')
+  })
+
+  it('says not found for a missing name, a folder where a file is wanted, and trashed files', async () => {
+    const { drive, root } = await site()
+    await expectCode(drive.readAtPath(alice, root.id, ['missing.js']), 'not_found')
+    await expectCode(drive.readAtPath(alice, root.id, ['css']), 'not_found')
+    const page = (await drive.listFolder(alice, root.id)).items.find((i) => i.name === 'index.html')!
+    await drive.moveToTrash(alice, 'file', page.id)
+    await expectCode(drive.readAtPath(alice, root.id, ['index.html']), 'not_found')
+  })
+
+  it('fails loud when two files share the name the path asks for', async () => {
+    const { drive, root } = await site()
+    await drive.upload(alice, root.id, { name: 'dup.js', bytes: text('1'), mime: null })
+    await drive.upload(alice, root.id, { name: 'dup.js', bytes: text('2'), mime: null })
+    await expect(drive.readAtPath(alice, root.id, ['dup.js'])).rejects.toMatchObject({ code: 'invalid', message: expect.stringMatching(/2 items named "dup.js"/) })
+  })
+
+  it('needs view access, like opening the file', async () => {
+    const { drive, root } = await site()
+    await expectCode(drive.readAtPath(bob, root.id, ['index.html']), 'not_found')
+  })
+})
