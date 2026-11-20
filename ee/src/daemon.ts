@@ -6,7 +6,9 @@ import { z } from 'zod'
 import { CompanyRepo, type DesiredState } from './company-repo.ts'
 import { loadJournal, saveJournal, type Journal } from './journal.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
-import { allowRetry, emit, OS_INTERNAL_PORT, reconcile } from './reconcile.ts'
+import { allowRetry, applyEdge, emit, OS_INTERNAL_PORT, reconcile } from './reconcile.ts'
+import type { CaddyInput } from './caddy.ts'
+import { previewRoute, PreviewService, type PreviewDeps } from './previews.ts'
 import { SecretStore } from './secret-store.ts'
 import { appContractSchema, assertInCatalog, CATALOG, CatalogGapError, gitSource, NAME, routeSchema, workloadSchema, type Route, type Workload } from './spec.ts'
 import { mustRun, type System } from './system.ts'
@@ -42,6 +44,11 @@ export class Ee {
   readonly fleet: FleetAgent
   /** Settings → Updates (upgrade-job.ts). */
   readonly upgrades: UpgradeService
+  /** Drive app previews (previews.ts): in memory only, wiped on every start. */
+  readonly previews: PreviewService
+  /** The edge as the last reconcile rendered it from desired state (previews are added on load). */
+  private edgeBase: CaddyInput | null = null
+  private edgeQueue: Promise<unknown> = Promise.resolve()
 
   constructor(
     readonly sys: System,
@@ -49,6 +56,7 @@ export class Ee {
     backupDeps: Partial<BackupDeps> = {},
     restoreDeps: Partial<RestoreDeps> = {},
     upgradeDeps: Partial<UpgradeServiceDeps> = {},
+    previewDeps: Partial<PreviewDeps> = {},
   ) {
     this.repo = new CompanyRepo(sys, PATHS.company)
     this.backups = new BackupService({
@@ -121,6 +129,40 @@ export class Ee {
       },
       ...upgradeDeps,
     })
+    this.previews = new PreviewService({
+      sys,
+      consoleHost: async () => (await this.repo.read()).settings.consoleHost,
+      emit: async (type, message, data) => {
+        emit(this.journal, sys, type, null, message, data)
+        await saveJournal(sys, this.journal)
+      },
+      edgeChanged: () => this.previewsChanged(),
+      ...previewDeps,
+    })
+  }
+
+  /**
+   * Load the edge: desired state's routes plus the active previews, one load at a
+   * time so an older render never lands after a newer one.
+   */
+  private loadEdge(base: CaddyInput): Promise<void> {
+    this.edgeBase = base
+    const next = this.edgeQueue.then(() => applyEdge(this.sys, this.journal, { ...base, previews: this.previews.routes() }))
+    this.edgeQueue = next.catch(() => undefined)
+    return next
+  }
+
+  /** A preview started, came up or stopped: re-render the edge without a full reconcile. */
+  async previewsChanged(): Promise<void> {
+    if (!this.edgeBase) {
+      // Nothing rendered by this process yet: a reconcile renders the edge (previews included).
+      // Its own workload errors are not the preview's; only a missing edge is.
+      await this.reconcile().catch(() => undefined)
+      if (!this.edgeBase) throw new Error(`the edge was not rendered: ${this.lastReconcileError ?? 'reconcile did not reach Caddy'}`)
+      return
+    }
+    await this.loadEdge(this.edgeBase)
+    await saveJournal(this.sys, this.journal)
   }
 
   async load(): Promise<void> {
@@ -141,7 +183,7 @@ export class Ee {
   reconcile(): Promise<DesiredState> {
     return this.exclusive(async () => {
       try {
-        const d = await reconcile({ sys: this.sys, repo: this.repo, journal: this.journal, secrets: this.secrets })
+        const d = await reconcile({ sys: this.sys, repo: this.repo, journal: this.journal, secrets: this.secrets, edge: (input) => this.loadEdge(input) })
         this.lastReconcileError = null
         return d
       } catch (err) {
@@ -279,6 +321,10 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
       if (url.pathname.startsWith('/v1/backups')) {
         const b = (await restoreRoute(ee.restore, route, () => body(req))) ?? (await backupRoute(ee.backups, route, () => body(req)))
         if (b) return send(res, b.status, b.data)
+      }
+      if (url.pathname.startsWith('/v1/previews')) {
+        const p = await previewRoute(ee.previews, route, () => body(req))
+        if (p) return send(res, p.status, p.data)
       }
       if (url.pathname.startsWith('/v1/upgrade')) {
         const u = await upgradeRoute(ee.upgrades, route, () => body(req))
