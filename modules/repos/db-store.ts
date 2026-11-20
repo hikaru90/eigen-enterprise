@@ -1,7 +1,7 @@
-import type { RepoSnapshot, RepoSummary } from './snapshot-types'
+import type { CopyMode, FileSnap, RepoSnapshot, RepoSummary } from './snapshot-types'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { AppDatabase } from '$lib/server/db/context'
-import { repoSources, repoSourceTokens } from '$lib/server/db/repos.schema'
+import { repoSourceFiles, repoSources, repoSourceTokens } from '$lib/server/db/repos.schema'
 import { FRESH_STATE, type NewSource, type ReposStore, type SourcePatch, type SourceRow, type TokenPatch, type TokenRow } from './store'
 
 /** The repos tables carry no RLS (company-level data): the request-scoped handle when there is one, the pooled app handle otherwise. */
@@ -13,12 +13,17 @@ export async function reposDb(): Promise<AppDatabase> {
 type SourceDbRow = typeof repoSources.$inferSelect
 
 const SUMMARY_ERROR_KINDS = new Set(['no_model', 'failed'])
+const COPY_MODES = new Set<CopyMode>(['all', 'docs'])
+/** File rows per statement; repo_source_files writes go in chunks of this size. */
+const FILE_BATCH = 500
 
 const toSource = (r: SourceDbRow): SourceRow => {
   if (r.summaryErrorKind !== null && !SUMMARY_ERROR_KINDS.has(r.summaryErrorKind))
     throw new Error(`repo_sources ${r.id} has an unknown summary_error_kind ${r.summaryErrorKind}`)
+  if (!COPY_MODES.has(r.copyMode as CopyMode)) throw new Error(`repo_sources ${r.id} has an unknown copy_mode ${r.copyMode}`)
   return {
     ...r,
+    copyMode: r.copyMode as CopyMode,
     snapshot: (r.snapshot ?? null) as RepoSnapshot | null,
     summary: (r.summary ?? null) as RepoSummary | null,
     summaryErrorKind: r.summaryErrorKind as SourceRow['summaryErrorKind'],
@@ -66,6 +71,8 @@ export class DbReposStore implements ReposStore {
       .onConflictDoUpdate({ target: repoSources.repoId, set: fresh, where: eq(repoSources.tokenId, n.tokenId) })
       .returning()
     if (!r) throw new Error(`repo ${n.repoId} belongs to another token`)
+    // A fresh state re-reads every file: the copied file rows go with it.
+    await db.delete(repoSourceFiles).where(eq(repoSourceFiles.sourceId, r.id))
     return toSource(r)
   }
   async updateSource(id: string, patch: SourcePatch) {
@@ -74,6 +81,37 @@ export class DbReposStore implements ReposStore {
   }
   async updateSourcesOfToken(tokenId: string, patch: SourcePatch) {
     await (await this.db()).update(repoSources).set(patch).where(eq(repoSources.tokenId, tokenId))
+  }
+
+  async sourceFiles(sourceId: string) {
+    const rows = await (await this.db())
+      .select({ path: repoSourceFiles.path, sha: repoSourceFiles.sha, size: repoSourceFiles.size })
+      .from(repoSourceFiles)
+      .where(eq(repoSourceFiles.sourceId, sourceId))
+      .orderBy(asc(repoSourceFiles.path))
+    return rows as FileSnap[]
+  }
+  async upsertSourceFiles(sourceId: string, rows: FileSnap[]) {
+    const db = await this.db()
+    for (let i = 0; i < rows.length; i += FILE_BATCH) {
+      const chunk = rows.slice(i, i + FILE_BATCH).map((r) => ({ sourceId, ...r }))
+      if (chunk.length === 0) continue
+      await db
+        .insert(repoSourceFiles)
+        .values(chunk)
+        .onConflictDoUpdate({ target: [repoSourceFiles.sourceId, repoSourceFiles.path], set: { sha: sql`excluded.sha`, size: sql`excluded.size` } })
+    }
+  }
+  async deleteSourceFiles(sourceId: string, paths: string[]) {
+    const db = await this.db()
+    for (let i = 0; i < paths.length; i += FILE_BATCH) {
+      const chunk = paths.slice(i, i + FILE_BATCH)
+      if (chunk.length === 0) continue
+      await db.delete(repoSourceFiles).where(and(eq(repoSourceFiles.sourceId, sourceId), inArray(repoSourceFiles.path, chunk)))
+    }
+  }
+  async setCopyMode(sourceId: string, mode: CopyMode) {
+    await this.updateSource(sourceId, { copyMode: mode })
   }
 
   /**

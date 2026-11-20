@@ -1,30 +1,39 @@
 import type { BranchSnap, CommitLite, NotCopied, PullSnap, RepoSnapshot, SummaryState } from './snapshot-types'
 
 /**
- * Snapshot → the Markdown files of one repo's Drive folder
- * (plan/github-drive.md §4). Pure: the same snapshot renders the same bytes,
- * so the Drive writer only rewrites what really changed. Nothing here reads
- * the clock — every window is measured from `snapshot.takenAt`.
+ * Snapshot → the generated Markdown pages of one repo's Drive folder
+ * (plan/github-drive.md §4, plan/github-drive-full-mirror.md §4). Pure: the
+ * same snapshot renders the same bytes, so the Drive writer only rewrites what
+ * really changed. Nothing here reads the clock — every window is measured from
+ * `snapshot.takenAt`.
  *
  * Layout: GitHub / <owner> / <repo> / Overview.md · Branches.md ·
- * Pull requests.md · Activity.md · Docs/<repo path>.
+ * Pull requests.md · Activity.md, plus the copied tree under the folder named
+ * after the default branch (`main/`, stable key `repo:<id>/tree`). The copied
+ * files themselves are written by the sync straight from GitHub's bytes, not
+ * rendered here.
  */
 
 export type RenderedItem =
   | { kind: 'folder'; key: string; parentKey: string | null; name: string }
-  /** `content: null` = a doc whose blob did not change: keep the Drive copy as it is. */
-  | { kind: 'file'; key: string; parentKey: string | null; name: string; content: string | null }
+  | { kind: 'file'; key: string; parentKey: string | null; name: string; content: string }
 
 export const ownerKey = (owner: string) => `owner:${owner.toLowerCase()}`
 export const repoKey = (repoId: number) => `repo:${repoId}`
+/** The copied tree folder: named after the default branch, keyed stably so a rename moves nothing else. */
+export const treeFolderKey = (repoId: number) => `${repoKey(repoId)}/tree`
 
 export const GENERATED_FILES = ['Overview.md', 'Branches.md', 'Pull requests.md', 'Activity.md'] as const
-export const DOCS_FOLDER = 'Docs'
+
+/** The keys of the generated pages (what writeRepo keeps in place while reconciling the tree). */
+export const generatedKeys = (repoId: number): string[] => GENERATED_FILES.map((f) => `${repoKey(repoId)}/${f}`)
 
 const DAY_MS = 86_400_000
 export const ACTIVE_DAYS = 30
 export const QUIET_DAYS = 90
 export const PR_BODY_MAX = 1500
+/** Overview lists at most this many not-copied lines, then "and N more". */
+export const NOT_COPIED_MAX_LINES = 200
 
 const when = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`
 const day = (iso: string) => iso.slice(0, 10)
@@ -32,13 +41,18 @@ const short = (sha: string) => sha.slice(0, 7)
 /** One table cell: no pipes or line breaks. */
 const cell = (s: string) => s.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|')
 const kb = (bytes: number) => `${Math.ceil(bytes / 1024)} KB`
+const mb = (bytes: number) => (bytes < 1024 * 1024 ? kb(bytes) : `${(bytes / (1024 * 1024)).toFixed(1)} MB`)
 const commitLink = (c: CommitLite) => `[${short(c.sha)}](${c.htmlUrl})`
 const author = (c: CommitLite) => c.authorLogin ?? c.authorName
 
 const NOT_COPIED_REASON: Record<NotCopied['reason'], string> = {
-  file_size: 'over 256 KB',
-  file_count: 'over the 300 file limit',
-  total_size: 'over the 10 MB limit for the repo',
+  file_size: 'over 20 MB',
+  file_count: 'over the 50,000 file limit',
+  total_size: 'over the 2 GB limit for the repo',
+  name: "a path Drive can't hold",
+  submodule: 'a submodule',
+  symlink: 'a symlink',
+  lfs: 'a Git LFS pointer',
 }
 
 function cutoff(s: RepoSnapshot, days: number): string {
@@ -94,6 +108,29 @@ function whatsGoingOn(state: SummaryState): string[] {
   return out
 }
 
+const notCopiedLine = (n: NotCopied): string =>
+  n.reason === 'submodule'
+    ? `- \`${n.path}\` → \`${n.sha ? short(n.sha) : 'unknown'}\` — submodule`
+    : `- \`${n.path}\` — ${mb(n.size)}, ${NOT_COPIED_REASON[n.reason]}`
+
+function filesSection(s: RepoSnapshot): string[] {
+  const t = s.tree
+  const what = t.mode === 'docs' ? 'Markdown file' : 'file'
+  const out: string[] = ['', '## Files', '']
+  if (t.commitSha === null || t.count === 0) out.push(`No ${what}s on \`${s.repo.defaultBranch}\`.`)
+  else
+    out.push(
+      `${t.count} ${what}${t.count === 1 ? '' : 's'}, ${mb(t.bytes)} from \`${s.repo.defaultBranch}\` @ \`${short(t.commitSha)}\`, in the ${s.repo.defaultBranch} folder.`,
+    )
+  if (t.notCopied.length > 0) {
+    out.push('', '### Not copied', '')
+    const sorted = [...t.notCopied].sort((a, b) => a.path.localeCompare(b.path))
+    for (const n of sorted.slice(0, NOT_COPIED_MAX_LINES)) out.push(notCopiedLine(n))
+    if (sorted.length > NOT_COPIED_MAX_LINES) out.push(`- and ${sorted.length - NOT_COPIED_MAX_LINES} more`)
+  }
+  return out
+}
+
 function overview(s: RepoSnapshot, summary: SummaryState): string {
   const out: string[] = [`# ${s.repo.fullName}`, '', "## What's going on", '', ...whatsGoingOn(summary)]
   out.push('', '## About', '')
@@ -115,17 +152,7 @@ function overview(s: RepoSnapshot, summary: SummaryState): string {
     for (const b of active) out.push(`| \`${cell(b.name)}\` | ${recentCount(b, since)} | ${aheadBehind(s, b)} | ${lastCommitCell(b.lastCommit)} |`)
   }
 
-  out.push('', '## Docs', '')
-  out.push(
-    s.docs.copied.length === 0
-      ? `No Markdown files on \`${s.repo.defaultBranch}\`.`
-      : `${s.docs.copied.length} Markdown file${s.docs.copied.length === 1 ? '' : 's'} from \`${s.repo.defaultBranch}\`${s.docs.commitSha ? ` @ \`${short(s.docs.commitSha)}\`` : ''}, in the Docs folder.`,
-  )
-  if (s.docs.truncated) out.push('', '_GitHub cut the file list of this repo short, so only part of the docs were copied._')
-  if (s.docs.notCopied.length > 0) {
-    out.push('', '### Not copied (size limit)', '')
-    for (const n of [...s.docs.notCopied].sort((a, b) => a.path.localeCompare(b.path))) out.push(`- \`${n.path}\` — ${kb(n.size)}, ${NOT_COPIED_REASON[n.reason]}`)
-  }
+  out.push(...filesSection(s))
   return `${out.join('\n')}\n`
 }
 
@@ -215,11 +242,12 @@ function activityFile(s: RepoSnapshot): string {
   return `${out.join('\n')}\n`
 }
 
+/** The generated pages. The copied tree files are written by the sync, not rendered. */
 export function render(snapshot: RepoSnapshot, summary: SummaryState): RenderedItem[] {
   const s = snapshot
   const owner = ownerKey(s.repo.owner)
   const repo = repoKey(s.repo.id)
-  const items: RenderedItem[] = [
+  return [
     { kind: 'folder', key: owner, parentKey: null, name: s.repo.owner },
     { kind: 'folder', key: repo, parentKey: owner, name: s.repo.name },
     { kind: 'file', key: `${repo}/Overview.md`, parentKey: repo, name: 'Overview.md', content: overview(s, summary) },
@@ -227,22 +255,4 @@ export function render(snapshot: RepoSnapshot, summary: SummaryState): RenderedI
     { kind: 'file', key: `${repo}/Pull requests.md`, parentKey: repo, name: 'Pull requests.md', content: pullsFile(s) },
     { kind: 'file', key: `${repo}/Activity.md`, parentKey: repo, name: 'Activity.md', content: activityFile(s) },
   ]
-  if (s.docs.copied.length === 0) return items
-  const docsKey = `${repo}/${DOCS_FOLDER}`
-  items.push({ kind: 'folder', key: docsKey, parentKey: repo, name: DOCS_FOLDER })
-  const folders = new Set<string>()
-  for (const doc of [...s.docs.copied].sort((a, b) => a.path.localeCompare(b.path))) {
-    const segments = doc.path.split('/')
-    let parent = docsKey
-    for (const seg of segments.slice(0, -1)) {
-      const key = `${parent}/${seg}`
-      if (!folders.has(key)) {
-        folders.add(key)
-        items.push({ kind: 'folder', key, parentKey: parent, name: seg })
-      }
-      parent = key
-    }
-    items.push({ kind: 'file', key: `${docsKey}/${doc.path}`, parentKey: parent, name: segments.at(-1)!, content: doc.text ?? null })
-  }
-  return items
 }

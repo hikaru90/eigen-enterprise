@@ -2,6 +2,7 @@ import type { DriveSourcePort } from './drive-port'
 import type { ReposSyncedPayload, SyncLog, TickResult, TokenClientFactory } from './sync'
 import { hostname } from 'node:os'
 import { env } from '$lib/server/env/private-env'
+import { readTarGz } from '$lib/server/github/tar'
 import { redactForLog } from '$lib/server/observability/redact-for-log'
 import { dbReposStore } from './db-store'
 import { REPOS_MODULE_ID } from './manifest'
@@ -47,6 +48,9 @@ export function reposService(): ReposService {
     store: dbReposStore(),
     drive: ports.drive,
     client: ports.client,
+    // The streaming tar reader (src/lib/server/github/tar.ts, M1): the sync's
+    // only way to consume a downloaded tarball.
+    readTarball: readTarGz,
     key: () => tokenSealKey(env.TENANT_MASTER_KEY),
     now: () => new Date(),
     owner: `${hostname()}:${process.pid}`,

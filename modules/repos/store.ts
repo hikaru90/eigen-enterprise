@@ -1,10 +1,11 @@
-import type { RepoSnapshot, RepoSummary } from './snapshot-types'
+import type { CopyMode, FileSnap, RepoSnapshot, RepoSummary } from './snapshot-types'
 
 /**
- * Persistence for the GitHub repos plugin (migration 0134): the sealed tokens
- * and the repos they keep in sync. The memory store backs unit tests; the
- * Postgres store (`db-store.ts`) is the live one and claims due repos with
- * `FOR UPDATE SKIP LOCKED`, because both blue-green slots tick.
+ * Persistence for the GitHub repos plugin (migrations 0134, 0161): the sealed
+ * tokens, the repos they keep in sync and the copied file rows. The memory
+ * store backs unit tests; the Postgres store (`db-store.ts`) is the live one
+ * and claims due repos with `FOR UPDATE SKIP LOCKED`, because both blue-green
+ * slots tick.
  */
 
 export type TokenRow = {
@@ -32,7 +33,13 @@ export type SourceRow = {
   claimedUntil: Date | null
   etags: Record<string, string>
   branchHeads: Record<string, string>
-  docShas: Record<string, string>
+  /** Migration 0161: which files the repo copies from its default branch. */
+  copyMode: CopyMode
+  /**
+   * The last fetched state (dates as ISO strings), rendered again on a 304.
+   * A snapshot from before migration 0161 still carries `docs` instead of
+   * `tree` — readers must treat that as "no tree" (see treeOf).
+   */
   snapshot: RepoSnapshot | null
   lastSyncedAt: Date | null
   lastError: string | null
@@ -67,6 +74,15 @@ export type ReposStore = {
   updateSource(id: string, patch: SourcePatch): Promise<void>
   updateSourcesOfToken(tokenId: string, patch: SourcePatch): Promise<void>
 
+  /** The copied file rows of a repo (repo_source_files): path → git blob sha and size. */
+  sourceFiles(sourceId: string): Promise<FileSnap[]>
+  /** Upserts file rows (batched); the caller passes only rows that changed. */
+  upsertSourceFiles(sourceId: string, rows: FileSnap[]): Promise<void>
+  /** Deletes file rows of paths the tree no longer has (batched). */
+  deleteSourceFiles(sourceId: string, paths: string[]): Promise<void>
+  /** Sets which files a repo copies; the caller makes the repo due. */
+  setCopyMode(sourceId: string, mode: CopyMode): Promise<void>
+
   /**
    * Claims up to `limit` enabled repos that are due, not paused, not claimed
    * by a live lease and whose token works, for `leaseMs`. With `onlyId`, just
@@ -75,11 +91,10 @@ export type ReposStore = {
   claimDue(opts: { owner: string; limit: number; now: Date; leaseMs: number; onlyId?: string }): Promise<SourceRow[]>
 }
 
-/** A clean sync state: the next run fetches everything again. */
+/** A clean sync state: the next run fetches everything again. The copy mode stays (it is the owner's choice). */
 export const FRESH_STATE = {
   etags: {},
   branchHeads: {},
-  docShas: {},
   snapshot: null,
   lastSyncedAt: null,
   lastError: null,
@@ -98,6 +113,8 @@ const clone = <T>(v: T): T => structuredClone(v)
 export class InMemoryReposStore implements ReposStore {
   readonly tokenRows = new Map<string, TokenRow>()
   readonly sourceRows = new Map<string, SourceRow>()
+  /** sourceId → path → {sha, size}: the repo_source_files rows. */
+  readonly fileRows = new Map<string, Map<string, FileSnap>>()
   private seq = 0
 
   async insertToken(row: TokenRow) {
@@ -118,7 +135,11 @@ export class InMemoryReposStore implements ReposStore {
   }
   async deleteToken(id: string) {
     this.tokenRows.delete(id)
-    for (const [sid, s] of this.sourceRows) if (s.tokenId === id) this.sourceRows.delete(sid)
+    for (const [sid, s] of this.sourceRows)
+      if (s.tokenId === id) {
+        this.sourceRows.delete(sid)
+        this.fileRows.delete(sid)
+      }
   }
 
   async sources() {
@@ -138,6 +159,7 @@ export class InMemoryReposStore implements ReposStore {
       if (existing.tokenId !== n.tokenId) throw new Error(`repo ${n.repoId} belongs to another token`)
       const next = { ...existing, ...FRESH_STATE, fullName: n.fullName, defaultBranch: n.defaultBranch, enabled: true, dueAt: n.dueAt }
       this.sourceRows.set(existing.id, next)
+      this.fileRows.delete(existing.id)
       return clone(next)
     }
     this.seq += 1
@@ -145,6 +167,7 @@ export class InMemoryReposStore implements ReposStore {
       id: `00000000-0000-4000-8000-${String(this.seq).padStart(12, '0')}`,
       ...n,
       enabled: true,
+      copyMode: 'all',
       ...FRESH_STATE,
       createdAt: new Date(n.dueAt),
     }
@@ -158,6 +181,25 @@ export class InMemoryReposStore implements ReposStore {
   }
   async updateSourcesOfToken(tokenId: string, patch: SourcePatch) {
     for (const [id, s] of this.sourceRows) if (s.tokenId === tokenId) this.sourceRows.set(id, { ...s, ...clone(patch) })
+  }
+
+  async sourceFiles(sourceId: string) {
+    const rows = this.fileRows.get(sourceId)
+    return rows ? [...rows.values()].sort((a, b) => a.path.localeCompare(b.path)).map(clone) : []
+  }
+  async upsertSourceFiles(sourceId: string, rows: FileSnap[]) {
+    if (!this.sourceRows.has(sourceId)) throw new Error(`repo_sources ${sourceId} not found`)
+    const files = this.fileRows.get(sourceId) ?? new Map<string, FileSnap>()
+    for (const r of rows) files.set(r.path, clone(r))
+    this.fileRows.set(sourceId, files)
+  }
+  async deleteSourceFiles(sourceId: string, paths: string[]) {
+    const files = this.fileRows.get(sourceId)
+    if (!files) return
+    for (const p of paths) files.delete(p)
+  }
+  async setCopyMode(sourceId: string, mode: CopyMode) {
+    await this.updateSource(sourceId, { copyMode: mode })
   }
 
   async claimDue(opts: { owner: string; limit: number; now: Date; leaseMs: number; onlyId?: string }) {
