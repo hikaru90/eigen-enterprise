@@ -18,7 +18,20 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - Playwright finds no tests under `.claude/worktrees/` (the hidden folder).
 - **Still open:** pushing and releasing office milestone 1 to the box (waiting on the owner's go-ahead).
 
-## 2026-11-20 — Company brain stage 0 + 1 (CB0, CB1, CB3, CB4) merged into main (owner: "Yes, start them"; not pushed, not released)
+## 2026-11-20 — v0.5.30 released: company brain stage 0 + 1 live (owner: "Yes, push and release")
+
+- **Released:** `[release] v0.5.30` `06ddb940`, tag `v0.5.30`, release run 44739405002 green. It also carries the Office files / Drive work that the other session had already merged and pushed.
+- **Local box:** built from a clean worktree at the tag, because `release.sh` packs untracked files and the main checkout held another session's unfinished Drive changes. Installed; `/api/health` 200.
+- **os.cerberusblue.com:** `ee upgrade --expect eigenenterprise-0.5.30-06ddb940e763`, safety copy in `/var/lib/ee/upgrades/2026-11-20T12-55-30Z`, `/api/health` 200.
+  - Read-only check:
+    - `company_ai`: eigenInference off;
+    - embedding pinned to `qwen/qwen3-embedding-8b` by migration 0160;
+    - the company runs on its own OpenRouter key.
+  - **20 thoughts still `failed`**, Ony's 5 and the owner's 15. Each person can re-run theirs with Retry (`/api/capture/enrich-retry`), or they can be requeued in bulk after the owner's OK (a write to the prod DB).
+- **ee-one:** upgrades once the owner sets the /ops target to 0.5.30.
+- **Not yet done:** Contribute 19cf0d97 isn't marked on the board until Ony's thoughts index.
+
+## 2026-11-20 — Company brain stage 0 + 1 (CB0, CB1, CB3, CB4) merged into main (owner: "Yes, start them"; released as v0.5.30)
 
 - **Merges:**
   - CB4 `registry-first gate` (merge after `a92225c5`);
