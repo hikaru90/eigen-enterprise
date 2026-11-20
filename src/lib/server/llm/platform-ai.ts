@@ -1,14 +1,30 @@
 /**
- * The platform AI from hosting: a hosted box runs on inference eigenEnterprise provides.
+ * eigenInference on a hosted box (plan/phase-company-brain.md §6, CB1): the inference
+ * eigenEnterprise rents to the company, through one service-account key per company.
  * ee sets these os secrets from the fleet's desired `platformAi` (ee/src/fleet/agent.ts,
  * PLATFORM_AI_SECRETS); all four or none. A partial set fails loud at start.
  *
- * An OpenAI-compatible endpoint that routes by model name, with a per-company key. It is
- * its own declared provider kind ({@link PLATFORM_AI_PROVIDER}): what sits behind the URL is
- * the hosting's business and is never inferred from it. The contract includes OpenRouter's
- * `/audio/transcriptions` (JSON `input_audio`): speech on platform credits runs here too. It is the gateway's platform path
- * (billing mode `platform_credits`, the default); a BYOK choice in Settings overrides it.
- * Never read as the self-hosted BYOK pair (LLM_BASE_URL + LLM_API_KEY).
+ * The contract (what the endpoint must serve, with that one key):
+ * - an OpenAI-compatible API that routes by model name, for EVERY model in the pool
+ *   (`model-pool.ts`, OpenRouter's namespace): `/chat/completions` (chat slot, tool calls),
+ *   `/embeddings` (embedding slot, `dimensions: 1536`), OpenRouter's `/audio/transcriptions`
+ *   (JSON `input_audio`, speech-to-text slot), `/audio/speech` (text-to-speech slot), and the
+ *   decision slot's model (Jev, `typesafe/jev-1.13`; called from CB2 on);
+ * - per-call cost in the response (`usage.cost`), shown per call in Activity.
+ *
+ * What each secret does since CB1:
+ * - `PLATFORM_LLM_BASE_URL` + `PLATFORM_LLM_API_KEY`: the eigenInference credential every
+ *   slot runs on while "Use eigenInference" is on.
+ * - `PLATFORM_LLM_MODEL_EMBEDDING`: the embedding model the hosting provisioned the install
+ *   with; it is pinned as the install's fixed embedding model on the first embedding (it must
+ *   be a pool embedding model, or that first embedding fails loud). Once pinned it is not read.
+ * - `PLATFORM_LLM_MODEL_CHAT`: no longer read — the company's chat slot decides the chat model
+ *   (the pool's pick until an owner or admin picks another in Settings). Still required in the
+ *   set so the fleet protocol (v1, four fields) and boxes upgraded from it keep starting.
+ *
+ * It is its own declared provider kind ({@link PLATFORM_AI_PROVIDER}): what sits behind the URL
+ * is the hosting's business and is never inferred from it. Never read as the self-hosted BYOK
+ * pair (LLM_BASE_URL + LLM_API_KEY).
  */
 
 /** The provider kind a platform-AI config resolves to (gateway, activity log, analytics). */
