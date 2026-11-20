@@ -43,7 +43,7 @@ Stand: 2026-07-08
 
 | #    | Check                                                                                           | Owner | Status |
 | ---- | ----------------------------------------------------------------------------------------------- | ----- | ------ |
-| 3.1  | **Platform Credits:** EUrouter `SERVICE_API_KEY_EUROUTER` + `LLM_BASE_URL` + Rule-UUIDs gesetzt | —     | ☐      |
+| 3.1  | **eigenInference:** `PLATFORM_LLM_*` vom Hosting gesetzt (oder eigener Key unter Settings → AI provider → Advanced) | —     | ☐      |
 | 3.2  | **PayPal:** `PAYPAL_API_BASE`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` gesetzt               | —     | ☐      |
 | 3.3  | **BYOK:** Env-Fallbacks (`LLM_BASE_URL`, `LLM_API_KEY`) gesetzt (oder bewusst weggelassen)      | —     | ☐      |
 | 3.4  | Wallet-Top-Up über PayPal funktioniert (1.000 Credits Minimum)                                  | —     | ☐      |

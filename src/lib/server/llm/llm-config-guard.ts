@@ -29,20 +29,20 @@ function placeholderRuleDetail(ruleId: string | null | undefined): string | null
 
 /**
  * Rejects Docker build-time placeholder gateway config before any HTTP call to example.com.
+ * Only a company's own EUrouter key reaches here (the platform EUrouter service account is gone
+ * since CB1).
  */
 export function assertEurouterGatewayConfigured(opts: {
   baseUrl: string
   ruleChat?: string | null
   ruleEmbedding?: string | null
-  /** Shapes the error hint (platform env vs BYOK env/UI). */
-  context: 'platform' | 'byok'
+  /** Where the config came from (the company's own key: Settings or the BYOK env pair). */
+  context: 'byok'
 }): void {
   const baseUrl = opts.baseUrl.trim()
   if (isDockerPlaceholderLlmBaseUrl(baseUrl)) {
     const hint =
-      opts.context === 'platform'
-        ? 'Set LLM_BASE_URL (e.g. https://api.eurouter.ai/v1), SERVICE_API_KEY_EUROUTER, LLM_RULE_CHAT, and LLM_RULE_EMBEDDING in the deployment environment.'
-        : 'Set LLM_BASE_URL and EUrouter rule UUIDs in the deployment environment, or save credentials under Settings → LLM → BYOK.'
+      'Set LLM_BASE_URL and EUrouter rule UUIDs in the deployment environment, or save the key under Settings → AI provider → Advanced.'
     throw new LlmNotConfiguredError(
       `EUrouter is not configured for production: LLM_BASE_URL is the Docker placeholder (${DOCKER_PLACEHOLDER_LLM_BASE_URL}). ${hint}`,
     )
@@ -56,9 +56,7 @@ export function assertEurouterGatewayConfigured(opts: {
       badEmbed ? `LLM_RULE_EMBEDDING=${badEmbed}` : null,
     ].filter(Boolean)
     const hint =
-      opts.context === 'platform'
-        ? 'Replace Docker placeholder rule UUIDs with your EUrouter routing rule IDs in the deployment environment.'
-        : 'Use your real EUrouter routing rule IDs in environment variables or Settings → LLM → BYOK.'
+      'Use your real EUrouter routing rule IDs in environment variables or Settings → AI provider → Advanced.'
     throw new LlmNotConfiguredError(
       `EUrouter routing rules are not configured for production (${parts.join(', ')} are Docker placeholders). ${hint}`,
     )
@@ -74,8 +72,8 @@ export function routingRuleLookupErrorMessage(opts: {
   if (isDockerPlaceholderLlmBaseUrl(opts.baseUrl) || /Example Domain/i.test(opts.bodyPreview)) {
     return (
       'EUrouter routing rule lookup failed because LLM_BASE_URL still points at example.com ' +
-      '(Docker build placeholder). Set LLM_BASE_URL to your EUrouter API origin, plus SERVICE_API_KEY_EUROUTER ' +
-      'and LLM_RULE_CHAT / LLM_RULE_EMBEDDING, in the server environment.'
+      '(Docker build placeholder). Set LLM_BASE_URL to your EUrouter API origin, plus LLM_API_KEY ' +
+      'and LLM_RULE_CHAT / LLM_RULE_EMBEDDING, in the server environment, or save the key under Settings → AI provider → Advanced.'
     )
   }
   return `Routing rule lookup failed (${opts.ruleId}) HTTP ${opts.status}: ${opts.bodyPreview.slice(0, 500)}`

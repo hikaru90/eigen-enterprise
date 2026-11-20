@@ -189,17 +189,13 @@ const RELEASE_ENV_CHECKS: Array<{ label: string; isSet: () => boolean }> = [
     label: 'PAYPAL_SANDBOX_BUYER_PASSWORD',
     isSet: () => Boolean(process.env.PAYPAL_SANDBOX_BUYER_PASSWORD?.trim()),
   },
+  // eigenInference (CB1): the platform path is PLATFORM_LLM_* (no self-hosted service account).
+  { label: 'PLATFORM_LLM_BASE_URL', isSet: () => Boolean(process.env.PLATFORM_LLM_BASE_URL?.trim()) },
+  { label: 'PLATFORM_LLM_API_KEY', isSet: () => Boolean(process.env.PLATFORM_LLM_API_KEY?.trim()) },
+  { label: 'PLATFORM_LLM_MODEL_CHAT', isSet: () => Boolean(process.env.PLATFORM_LLM_MODEL_CHAT?.trim()) },
   {
-    label: 'SERVICE_API_KEY_EUROUTER',
-    isSet: () => Boolean(process.env.SERVICE_API_KEY_EUROUTER?.trim()),
-  },
-  { label: 'LLM_BASE_URL', isSet: () => Boolean(process.env.LLM_BASE_URL?.trim()) },
-  { label: 'LLM_RULE_CHAT', isSet: () => Boolean(process.env.LLM_RULE_CHAT?.trim()) },
-  { label: 'LLM_RULE_EMBEDDING', isSet: () => Boolean(process.env.LLM_RULE_EMBEDDING?.trim()) },
-  { label: 'OPENROUTER_BASE_URL', isSet: () => Boolean(process.env.OPENROUTER_BASE_URL?.trim()) },
-  {
-    label: 'SERVICE_API_KEY_OPENROUTER',
-    isSet: () => Boolean(process.env.SERVICE_API_KEY_OPENROUTER?.trim()),
+    label: 'PLATFORM_LLM_MODEL_EMBEDDING',
+    isSet: () => Boolean(process.env.PLATFORM_LLM_MODEL_EMBEDDING?.trim()),
   },
 ]
 

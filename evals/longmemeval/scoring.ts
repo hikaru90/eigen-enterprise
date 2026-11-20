@@ -44,7 +44,6 @@ export function buildJudgeEnv(root = resolveLongMemEvalRoot()): NodeJS.ProcessEn
   const openrouterKey =
     process.env.OPENROUTER_API_KEY?.trim() ||
     longmemevalEnv.OPENROUTER_API_KEY?.trim() ||
-    process.env.SERVICE_API_KEY_OPENROUTER?.trim() ||
     ''
   const openrouterBase =
     process.env.OPENROUTER_BASE_URL?.trim() ||
@@ -131,7 +130,7 @@ export function assertScoringReady(preflight: ScoringPreflight, evalMetricModel:
   }
   if (!preflight.openrouterKey) {
     throw new Error(
-      'OPENROUTER_API_KEY is required for LongMemEval scoring. Set it in longmemeval/.env, eigen .env (OPENROUTER_API_KEY or SERVICE_API_KEY_OPENROUTER), or export it before running.',
+      'OPENROUTER_API_KEY is required for LongMemEval scoring. Set it in longmemeval/.env, eigen .env (OPENROUTER_API_KEY), or export it before running.',
     )
   }
 }

@@ -12,16 +12,11 @@ function hasEnv(...names: Array<string | undefined>): boolean {
 }
 
 /**
- * eigenInference: mirrors loadPlatformLlmConfig's env requirements — the platform AI from
- * hosting (PLATFORM_LLM_*) first, else (until its announced removal) the self-hosted service
- * account: EUrouter by default, OpenRouter when the owner's active row says so. A partial
- * platform AI throws (it fails loud at start too).
+ * eigenInference: mirrors loadEigenInferenceConfig — the hosting's PLATFORM_LLM_*, nothing
+ * else. A partial platform AI throws (it fails loud at start too).
  */
-function eigenInferenceConfigured(provider: LlmProviderKind): boolean {
-  if (readPlatformAiConfig(env as Record<string, string | undefined>)) return true
-  return provider === 'openrouter'
-    ? hasEnv(env.OPENROUTER_BASE_URL, env.SERVICE_API_KEY_OPENROUTER)
-    : hasEnv(env.LLM_BASE_URL, env.SERVICE_API_KEY_EUROUTER)
+function eigenInferenceConfigured(): boolean {
+  return readPlatformAiConfig(env as Record<string, string | undefined>) !== null
 }
 
 /**
@@ -41,6 +36,7 @@ function byokEnvConfigured(provider: LlmProviderKind): boolean {
  * execution gate: the gateway still fails loud with LlmNotConfiguredError when config is missing.
  */
 export async function isUserProviderReady(userId: string, source: SlotSource): Promise<boolean> {
+  if (source === 'eigeninference') return eigenInferenceConfigured()
   const [activeRow] = await getDb()
     .select({ provider: llmActiveProvider.provider })
     .from(llmActiveProvider)
@@ -48,11 +44,8 @@ export async function isUserProviderReady(userId: string, source: SlotSource): P
     .limit(1)
   const provider = (activeRow?.provider ?? 'eurouter') as LlmProviderKind
 
-  if (source === 'byok') {
-    if (await hasSavedByokLlmCredentials(userId)) return true
-    return byokEnvConfigured(provider)
-  }
-  return eigenInferenceConfigured(provider)
+  if (await hasSavedByokLlmCredentials(userId)) return true
+  return byokEnvConfigured(provider)
 }
 
 export type CompanyProviderReadyDeps = {

@@ -853,13 +853,26 @@ describe('llmChatCompletion attachments (files the model reads)', () => {
 })
 
 describe('llmCreateTranscription', () => {
+  const platformEnv = mockEnv as Record<string, string | undefined>
   beforeEach(() => {
     vi.clearAllMocks()
     mockEnv.LLM_REQUEST_TIMEOUT_MS = ''
     mockEnv.LLM_MIN_REQUEST_INTERVAL_MS = '0'
     mockEnv.OPENROUTER_BASE_URL = 'https://openrouter.example/api/v1'
     mockEnv.OPENROUTER_API_KEY = 'openrouter-key'
-    mockEnv.SERVICE_API_KEY_OPENROUTER = 'service-openrouter-key'
+    // eigenInference on this server: the hosting's endpoint and per-company key
+    Object.assign(platformEnv, {
+      PLATFORM_LLM_BASE_URL: 'https://openrouter.example/api/v1',
+      PLATFORM_LLM_API_KEY: 'service-openrouter-key',
+      PLATFORM_LLM_MODEL_CHAT: 'openai/gpt-5-mini',
+      PLATFORM_LLM_MODEL_EMBEDDING: 'qwen/qwen3-embedding-8b',
+    })
+  })
+
+  afterEach(() => {
+    for (const name of ['PLATFORM_LLM_BASE_URL', 'PLATFORM_LLM_API_KEY', 'PLATFORM_LLM_MODEL_CHAT', 'PLATFORM_LLM_MODEL_EMBEDDING']) {
+      delete platformEnv[name]
+    }
   })
 
   it('BYOK uses saved OpenRouter credentials for speech-to-text', async () => {
@@ -917,7 +930,7 @@ describe('llmCreateTranscription', () => {
     )
   })
 
-  it('platform credits uses SERVICE_API_KEY_OPENROUTER for speech-to-text', async () => {
+  it('eigenInference speech-to-text runs on the platform AI key', async () => {
     const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(false)
     const fetchMock = vi.fn(async () =>
@@ -982,7 +995,7 @@ describe('llmCreateTranscription', () => {
     expect(body).not.toHaveProperty('provider')
   })
 
-  it('logs OpenRouter STT cost from usage.cost in activity', async () => {
+  it('logs STT cost from usage.cost in activity (eigenInference: provider platform)', async () => {
     const fetchMock = vi.fn(async () =>
       response(true, 200, { text: 'hello', usage: { cost: 0.0035 } }),
     )
@@ -995,7 +1008,7 @@ describe('llmCreateTranscription', () => {
       expect.anything(),
       'u1',
       expect.objectContaining({
-        provider: 'openrouter',
+        provider: 'platform',
         operation: expect.stringContaining('llm.stt.success'),
         baseCostUsd: 0.0035,
         gatewayHost: 'openrouter.example',
@@ -1151,16 +1164,20 @@ describe('llmCreateTranscription', () => {
     ).rejects.toThrow(/OPENROUTER_API_KEY/)
   })
 
-  it('platform STT fails when SERVICE_API_KEY_OPENROUTER is missing', async () => {
+  it('eigenInference STT without PLATFORM_LLM_* fails loud; a leftover SERVICE_API_KEY_OPENROUTER is never read', async () => {
     const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(false)
-    mockEnv.SERVICE_API_KEY_OPENROUTER = ''
+    delete platformEnv.PLATFORM_LLM_BASE_URL
+    delete platformEnv.PLATFORM_LLM_API_KEY
+    delete platformEnv.PLATFORM_LLM_MODEL_CHAT
+    delete platformEnv.PLATFORM_LLM_MODEL_EMBEDDING
+    mockEnv.SERVICE_API_KEY_OPENROUTER = 'service-openrouter-key'
     await expect(
       llmCreateTranscription({
         userId: 'u1',
         audio: { bytes: new Uint8Array([1]), format: 'webm' },
       }),
-    ).rejects.toThrow(/SERVICE_API_KEY_OPENROUTER/)
+    ).rejects.toThrow(/eigenInference is not connected on this server/)
   })
 
   it('STT aborts when LLM_REQUEST_TIMEOUT_MS elapses', async () => {
@@ -1176,57 +1193,37 @@ describe('llmCreateTranscription', () => {
   })
 })
 
-describe('llm client platform gateway credentials', () => {
-  beforeEach(() => {
+describe('llm client: no self-hosted service account (removed in CB1)', () => {
+  beforeEach(async () => {
     vi.clearAllMocks()
     mockEnv.LLM_BASE_URL = 'https://example.test'
     mockEnv.LLM_RULE_CHAT = 'rule-chat'
-    mockEnv.LLM_RULE_EMBEDDING = 'rule-embed'
-    mockEnv.LLM_MODEL_CHAT = 'gpt-test'
-    mockEnv.LLM_MODEL_EMBEDDING = 'text-embedding-3-small'
     mockEnv.LLM_MIN_REQUEST_INTERVAL_MS = '0'
     mockEnv.LLM_REQUEST_TIMEOUT_MS = ''
-    mockEnv.LLM_API_KEY = 'key-1'
+    // the removed pairs, still set on an old server: never read
     mockEnv.SERVICE_API_KEY_EUROUTER = 'service-eurouter-key'
     mockEnv.SERVICE_API_KEY_OPENROUTER = 'service-openrouter-key'
     mockEnv.OPENROUTER_BASE_URL = 'https://openrouter.example/api/v1'
-  })
-
-  it('uses platform EUrouter credentials when user is not BYOK', async () => {
     const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(false)
-    const fetchMock = vi.fn(async () =>
-      response(true, 200, { usage: { prompt_tokens: 1 }, choices: [] }),
-    )
+  })
+
+  it('eigenInference without PLATFORM_LLM_* fails loud, telling the owner what to do, and sends nothing', async () => {
+    const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
-    const auth = fetchMockInit(fetchMock, 0)?.headers as Record<string, string>
-    expect(auth.Authorization).toBe('Bearer service-eurouter-key')
+    const chat = llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+    await expect(chat).rejects.toBeInstanceOf(LlmNotConfiguredError)
+    await expect(
+      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
+    ).rejects.toThrow(/eigenInference is not connected on this server/)
+    await expect(llmCreateEmbeddings({ userId: 'u1', input: 'x' })).rejects.toThrow(/eigenInference is not connected/)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('platform OpenRouter chat uses SERVICE_API_KEY_OPENROUTER', async () => {
-    const { isByokBilling } = await import('$lib/server/llm/preferences')
-    vi.mocked(isByokBilling).mockResolvedValue(false)
+  it('the message never names the removed env pairs ("Platform EUrouter not configured" is gone by design)', async () => {
     mockSequentialDbLimitResults([{ provider: 'openrouter' }])
-    const fetchMock = vi.fn(async () =>
-      response(true, 200, { usage: { prompt_tokens: 1 }, choices: [] }),
-    )
-    vi.stubGlobal('fetch', fetchMock)
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
-    const auth = fetchMockInit(fetchMock, 0)?.headers as Record<string, string>
-    expect(auth.Authorization).toBe('Bearer service-openrouter-key')
-  })
-
-  it('platform EUrouter fails when SERVICE_API_KEY_EUROUTER is missing', async () => {
-    const { isByokBilling } = await import('$lib/server/llm/preferences')
-    vi.mocked(isByokBilling).mockResolvedValue(false)
-    mockEnv.SERVICE_API_KEY_EUROUTER = ''
-    await expect(
-      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
-    ).rejects.toBeInstanceOf(LlmNotConfiguredError)
-    await expect(
-      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
-    ).rejects.toThrow(/SERVICE_API_KEY_EUROUTER/)
+    const err = await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }).catch((e: unknown) => e)
+    expect(String(err)).not.toMatch(/SERVICE_API_KEY|LLM_BASE_URL|OPENROUTER_BASE_URL|Platform EUrouter/)
   })
 })
 
@@ -2242,7 +2239,7 @@ describe('memory content stays out of logs, the AI usage log and PostHog', () =>
 
   it('a memory voice note keeps its cost but logs no transcript', async () => {
     const { isByokBilling } = await import('$lib/server/llm/preferences')
-    vi.mocked(isByokBilling).mockResolvedValue(false)
+    vi.mocked(isByokBilling).mockResolvedValue(true)
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => response(true, 200, { text: WORRY, usage: { cost: 0.003 } })),

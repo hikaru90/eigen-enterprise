@@ -7,7 +7,7 @@ import { companyOwnerId } from './company-provider'
 import { LlmNotConfiguredError } from './errors'
 import { assertPoolModel, recommendedModel, type ModelSlot } from './model-pool'
 import { PLATFORM_AI_PROVIDER } from './platform-ai'
-import { loadPlatformLlmConfig, loadPlatformOpenRouterSttConfig } from './platform-llm'
+import { loadEigenInferenceConfig } from './platform-llm'
 import { isByokBilling } from './preferences'
 
 /**
@@ -50,14 +50,11 @@ export function routesByPoolModel(provider: LlmProviderKind): boolean {
   return POOL_NAMESPACE.has(provider)
 }
 
-export const EIGEN_INFERENCE_NOT_CONNECTED =
-  'eigenInference is not connected on this server. An owner or admin turns off "Use eigenInference" and adds the company\'s own key under Settings → AI → Advanced.'
-
 export type SlotDeps = {
   readCompanyAi: () => Promise<CompanyAiSettings>
   pinEmbeddingModel: (model: string) => Promise<string>
-  /** The eigenInference credential for text (chat, embeddings) or for audio and Jev, or throws LlmNotConfiguredError. */
-  eigenInference: (kind: 'text' | 'openrouter', ownerId: string | null) => Promise<ResolvedLlmConfig>
+  /** The eigenInference credential (one key for every slot), or throws LlmNotConfiguredError. */
+  eigenInference: () => Promise<ResolvedLlmConfig>
   companyOwnerId: () => Promise<string | null>
   /** The account's active bring-your-own-key provider config (chat, embeddings). */
   byokActive: (accountId: string) => Promise<ResolvedLlmConfig>
@@ -71,8 +68,7 @@ export type SlotDeps = {
 export const liveSlotDeps: SlotDeps = {
   readCompanyAi: () => companyAiStore().read(),
   pinEmbeddingModel: (model) => companyAiStore().pinEmbeddingModel(model),
-  eigenInference: (kind, ownerId) =>
-    kind === 'text' ? loadPlatformLlmConfig(ownerId) : loadPlatformOpenRouterSttConfig(),
+  eigenInference: async () => loadEigenInferenceConfig(),
   companyOwnerId: () => companyOwnerId(),
   byokActive: (accountId) => resolveActiveProviderLlmConfig(accountId),
   byokProvider: (accountId, provider) => loadLlmProviderConfig(accountId, provider),
@@ -105,11 +101,8 @@ async function slotConfig(
   callerId: string | null,
   deps: SlotDeps,
 ): Promise<ResolvedLlmConfig> {
+  if (source === 'eigeninference') return deps.eigenInference()
   const audioOrJev = OPENROUTER_ONLY_SLOTS.has(slot)
-  if (source === 'eigeninference') {
-    const owner = deps.harnessAccount(callerId) ?? (await deps.companyOwnerId())
-    return deps.eigenInference(audioOrJev ? 'openrouter' : 'text', owner)
-  }
   const account = await byokAccount(callerId, deps)
   // Speech and Jev run on OpenRouter whatever provider chat uses: the company's OpenRouter key.
   return audioOrJev ? deps.byokProvider(account, 'openrouter') : deps.byokActive(account)

@@ -56,19 +56,24 @@ async function checkOne(fetchFn: FetchFn, baseUrl: string, m: SpeechModel): Prom
   }
 }
 
-/** Where this box's speech runs: the platform AI on a hosted box, else OPENROUTER_BASE_URL. */
-export function speechEndpointBaseUrl(): string | undefined {
+/** OpenRouter's public API: the pool's namespace, whose model endpoint lists need no key. */
+export const OPENROUTER_PUBLIC_API = 'https://openrouter.ai/api/v1'
+
+/**
+ * Where the speech models are checked: the eigenInference endpoint on a hosted box (where its
+ * speech runs), else OpenRouter's public catalog (a company's own OpenRouter key serves the
+ * same pool ids). No env of its own: `OPENROUTER_BASE_URL` is not read here since CB1.
+ */
+export function speechEndpointBaseUrl(): string {
   const platformAi = readPlatformAiConfig(env as Record<string, string | undefined>)
-  if (platformAi) return platformAi.baseUrl
-  return env.OPENROUTER_BASE_URL?.trim().replace(/\/$/, '') || undefined
+  return platformAi ? platformAi.baseUrl : OPENROUTER_PUBLIC_API
 }
 
 export async function checkSpeechModelEndpoints(
-  opts: { fetchFn?: FetchFn; baseUrl?: string | undefined; models?: SpeechModel[] } = {},
+  opts: { fetchFn?: FetchFn; baseUrl?: string; models?: SpeechModel[] } = {},
 ): Promise<SpeechModelStatus[]> {
   const models = opts.models ?? speechModels()
-  const baseUrl = ('baseUrl' in opts ? opts.baseUrl : speechEndpointBaseUrl())?.trim().replace(/\/$/, '')
-  if (!baseUrl) return models.map((m) => ({ ...m, error: 'OPENROUTER_BASE_URL is not set' }))
+  const baseUrl = (opts.baseUrl ?? speechEndpointBaseUrl()).trim().replace(/\/$/, '')
 
   const key = `${baseUrl}|${models.map((m) => m.model).join(',')}`
   if (cached && cached.key === key && Date.now() - cached.at < CACHE_MS) return cached.statuses

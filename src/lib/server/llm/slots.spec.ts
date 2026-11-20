@@ -59,15 +59,14 @@ describe('resolveSlot: one resolution for every model call, for the company', ()
     }
   })
 
-  it('asks eigenInference for its text credential for chat/embeddings and its OpenRouter one for audio and Jev', async () => {
+  it('eigenInference is one credential for every slot, whoever the owner is', async () => {
     const eigenInference = vi.fn(async () => config('platform'))
-    const d = deps({ eigenInference })
+    const companyOwnerId = vi.fn(async () => 'owner-olga')
+    const d = deps({ eigenInference, companyOwnerId })
     await resolveSlot('chat', 'u', d)
     await resolveSlot('decision', 'u', d)
-    expect(eigenInference.mock.calls).toEqual([
-      ['text', 'owner-olga'],
-      ['openrouter', 'owner-olga'],
-    ])
+    expect(eigenInference).toHaveBeenCalledTimes(2)
+    expect(companyOwnerId).not.toHaveBeenCalled()
   })
 
   it("own key: the owner's provider, whoever triggered the call (a member's settings never count)", async () => {

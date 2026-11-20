@@ -41,7 +41,7 @@ const EURouters: CatalogProvider = {
   id: 'eurouter',
   name: 'EUrouter',
   baseUrl: 'https://api.eurouter.ai/v1',
-  envVar: 'SERVICE_API_KEY_EUROUTER',
+  envVar: 'LLM_API_KEY',
   docUrl: null,
   chatModels: [],
   embeddingModels: [],

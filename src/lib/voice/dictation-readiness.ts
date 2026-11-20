@@ -1,9 +1,10 @@
 /**
  * What dictation is missing before it can work (shared by the server check and every mic).
- * Speech-to-text always runs on OpenRouter, whatever chat provider the company picked:
- * - `openrouter_key`: the company brings its own keys, and the owner has no OpenRouter key.
- * - `platform_key`: the company runs on platform credits, and this server has no
- *   `SERVICE_API_KEY_OPENROUTER` / `OPENROUTER_BASE_URL`.
+ * Speech-to-text runs on the company's speech-to-text slot (an OpenRouter-namespace endpoint),
+ * whatever chat provider the company picked:
+ * - `openrouter_key`: the company uses its own keys, and the owner has no OpenRouter key.
+ * - `platform_key`: "Use eigenInference" is on, and this server has no eigenInference
+ *   (`PLATFORM_LLM_*`).
  */
 export type SpeechMissing = 'openrouter_key' | 'platform_key'
 export type SpeechReadiness = { ready: true } | { ready: false; missing: SpeechMissing }
@@ -12,7 +13,8 @@ export type SpeechReadiness = { ready: true } | { ready: false; missing: SpeechM
 export const DICTATION_MISSING_MESSAGE: Record<SpeechMissing, string> = {
   openrouter_key:
     'Dictation needs an OpenRouter key. The company owner adds one in Settings → AI provider.',
-  platform_key: 'Dictation isn’t set up on this server yet (no platform OpenRouter key).',
+  platform_key:
+    'Dictation isn’t set up on this server yet: eigenInference is not connected. An owner or admin can use the company’s own key under Settings → AI provider → Advanced.',
 }
 
 /**

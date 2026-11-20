@@ -14,8 +14,8 @@ test.describe('Voice capture @release', () => {
     baseURL,
   }) => {
     test.skip(
-      !process.env.SERVICE_API_KEY_OPENROUTER?.trim() || !process.env.OPENROUTER_BASE_URL?.trim(),
-      'OpenRouter STT env required',
+      !process.env.PLATFORM_LLM_BASE_URL?.trim() || !process.env.PLATFORM_LLM_API_KEY?.trim(),
+      'eigenInference (PLATFORM_LLM_*) required for real speech to text',
     )
     test.skip(
       !process.env.PAYPAL_SANDBOX_BUYER_EMAIL?.trim() ||

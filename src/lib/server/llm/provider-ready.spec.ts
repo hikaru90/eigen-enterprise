@@ -49,26 +49,16 @@ describe('isUserProviderReady', () => {
     await expect(isUserProviderReady('u1', 'eigeninference')).resolves.toBe(false)
   })
 
-  it('is true on platform credits with the EUrouter service account configured', async () => {
+  it('the removed self-hosted service accounts no longer make eigenInference ready (CB1)', async () => {
     mockEnv.LLM_BASE_URL = 'https://gw.example.test/v1'
     mockEnv.SERVICE_API_KEY_EUROUTER = 'service-key'
-    await expect(isUserProviderReady('u1', 'eigeninference')).resolves.toBe(true)
-  })
-
-  it('is false on platform credits without any gateway env', async () => {
+    mockEnv.OPENROUTER_BASE_URL = 'https://openrouter.example/api/v1'
+    mockEnv.SERVICE_API_KEY_OPENROUTER = 'service-key'
+    mockSequentialDbLimitResults([{ provider: 'openrouter' }])
     await expect(isUserProviderReady('u1', 'eigeninference')).resolves.toBe(false)
   })
 
-  it('checks the OpenRouter service account when the active provider is openrouter', async () => {
-    mockSequentialDbLimitResults([{ provider: 'openrouter' }])
-    mockEnv.OPENROUTER_BASE_URL = 'https://openrouter.example/api/v1'
-    mockEnv.SERVICE_API_KEY_OPENROUTER = 'service-key'
-    await expect(isUserProviderReady('u1', 'eigeninference')).resolves.toBe(true)
-  })
-
-  it('is false when the openrouter active provider lacks its service key', async () => {
-    mockSequentialDbLimitResults([{ provider: 'openrouter' }])
-    mockEnv.OPENROUTER_BASE_URL = 'https://openrouter.example/api/v1'
+  it('is false on eigenInference without any gateway env', async () => {
     await expect(isUserProviderReady('u1', 'eigeninference')).resolves.toBe(false)
   })
 
@@ -79,10 +69,9 @@ describe('isUserProviderReady', () => {
     await expect(isUserProviderReady('u1', 'byok')).resolves.toBe(true)
   })
 
-  it('in byok billing without saved creds or env, is false even when platform keys exist', async () => {
+  it('own key without saved creds or env, is false even when the platform AI exists', async () => {
     mockSequentialDbLimitResults([])
-    mockEnv.LLM_BASE_URL = 'https://gw.example.test/v1'
-    mockEnv.SERVICE_API_KEY_EUROUTER = 'service-key'
+    Object.assign(mockEnv, PLATFORM_AI)
     await expect(isUserProviderReady('u1', 'byok')).resolves.toBe(false)
   })
 
