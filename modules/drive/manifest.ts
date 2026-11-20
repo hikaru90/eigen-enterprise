@@ -2,6 +2,16 @@ import type { ModuleManifest } from '$lib/kernel/modules'
 
 export const DRIVE_MODULE_ID = 'drive'
 
+/** PDF page organisation (plan/phase-office-files.md P2, ./pdf-tools.ts): every one writes, so each waits on the approval mode. */
+export const DRIVE_PDF_TOOL_NAMES = [
+  'drive.pdf_rotate',
+  'drive.pdf_delete_pages',
+  'drive.pdf_reorder',
+  'drive.pdf_extract_pages',
+  'drive.pdf_split',
+  'drive.pdf_merge',
+] as const
+
 export const DRIVE_TOOL_NAMES = [
   'drive.list',
   'drive.shared_with_me',
@@ -15,6 +25,7 @@ export const DRIVE_TOOL_NAMES = [
   'drive.app_status',
   'drive.app_run',
   'drive.app_stop',
+  ...DRIVE_PDF_TOOL_NAMES,
 ] as const
 
 /**

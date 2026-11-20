@@ -151,14 +151,19 @@ export class PageView {
   }
 }
 
-/** Draws a page's thumbnail `width` CSS pixels wide into a new canvas. */
+/**
+ * Draws a page's thumbnail `width` CSS pixels wide into a new canvas,
+ * turned `turn` degrees clockwise on top of the page's own rotation.
+ */
 export async function drawThumbnail(
   page: PdfPage,
   width: number,
   devicePixelRatio: number,
+  turn = 0,
 ): Promise<HTMLCanvasElement> {
-  const base = page.getViewport({ scale: 1 })
-  const viewport = page.getViewport({ scale: (width / base.width) * devicePixelRatio })
+  const rotation = (page.rotate + turn) % 360
+  const base = page.getViewport({ scale: 1, rotation })
+  const viewport = page.getViewport({ scale: (width / base.width) * devicePixelRatio, rotation })
   const canvas = document.createElement('canvas')
   canvas.width = Math.floor(viewport.width)
   canvas.height = Math.floor(viewport.height)

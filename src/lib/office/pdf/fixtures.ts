@@ -33,6 +33,12 @@ export type FixtureOptions = {
   }>
   /** Bookmarks: title → 0-based page index; `children` nest. */
   outline?: FixtureBookmark[]
+  /** Link annotations: on page `from`, going to page `to` (0-based); `named`: through a named destination. */
+  links?: Array<{ from: number; to: number; named?: string }>
+  /** Text form fields, each with one widget on `page` (0-based). */
+  fields?: Array<{ name: string; page: number; value?: string }>
+  /** Sticky notes (text annotations) on pages. */
+  notes?: Array<{ page: number; text: string }>
 }
 
 export type FixtureBookmark = { title: string; page: number; children?: FixtureBookmark[] }
@@ -69,10 +75,61 @@ export async function makePdf(
     }
     doc.catalog.set(PDFName.of('PageLabels'), doc.context.obj({ Nums: nums as never }))
   }
+  const refs = doc.getPages().map((p) => p.ref)
+  const named: unknown[] = []
+  for (const l of opts.links ?? []) {
+    const to = refs[l.to]
+    const from = doc.getPages()[l.from]
+    if (!to || !from)
+      throw new Error(`The link ${l.from} → ${l.to} names a page the fixture lacks.`)
+    const dest = [to, PDFName.of('Fit')]
+    if (l.named) named.push(PDFString.of(l.named), doc.context.obj(dest as never))
+    const annot = doc.context.register(
+      doc.context.obj({
+        Type: 'Annot',
+        Subtype: 'Link',
+        Rect: [MARGIN, 40, MARGIN + 100, 56],
+        Border: [0, 0, 0],
+        Dest: l.named ? PDFString.of(l.named) : (dest as never),
+      } as never),
+    )
+    from.node.addAnnot(annot)
+  }
+  if (named.length)
+    doc.catalog.set(
+      PDFName.of('Names'),
+      doc.context.obj({ Dests: doc.context.obj({ Names: named as never }) } as never),
+    )
+  for (const n of opts.notes ?? []) {
+    const page = doc.getPages()[n.page]
+    if (!page)
+      throw new Error(`The note “${n.text}” names page ${n.page}, which the fixture lacks.`)
+    page.node.addAnnot(
+      doc.context.register(
+        doc.context.obj({
+          Type: 'Annot',
+          Subtype: 'Text',
+          Rect: [400, 700, 420, 720],
+          Contents: PDFString.of(n.text),
+          P: page.ref,
+        } as never),
+      ),
+    )
+  }
+  if (opts.fields?.length) {
+    const form = doc.getForm()
+    for (const f of opts.fields) {
+      const page = doc.getPages()[f.page]
+      if (!page)
+        throw new Error(`The field “${f.name}” names page ${f.page}, which the fixture lacks.`)
+      const field = form.createTextField(f.name)
+      if (f.value) field.setText(f.value)
+      field.addToPage(page, { x: MARGIN, y: 100, width: 200, height: 20, font })
+    }
+  }
   if (opts.outline?.length) {
-    const pageRefs = doc.getPages().map((p) => p.ref)
     const root = doc.context.nextRef()
-    const count = writeOutline(doc, root, opts.outline, pageRefs)
+    const count = writeOutline(doc, root, opts.outline, refs)
     doc.context.assign(
       root,
       doc.context.obj({
