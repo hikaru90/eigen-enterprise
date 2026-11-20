@@ -1,10 +1,13 @@
 /**
  * How a Drive file is shown: decided by its file extension and stored MIME
  * type (a format fact, not meaning). Markdown and CSV are the company's
- * editable text formats (W-1) and keep revisions.
+ * editable text formats (W-1); they and the office files (PDF, Word,
+ * PowerPoint: plan/phase-office-files.md) keep revisions.
  */
 
-export type PreviewKind = 'markdown' | 'csv' | 'image' | 'pdf' | 'text' | 'other'
+import { OFFICE_MIME, type OfficeKind } from '$lib/office/kinds'
+
+export type PreviewKind = 'markdown' | 'csv' | 'image' | 'text' | 'other' | OfficeKind
 
 const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif', 'bmp'])
 const TEXT_EXT = new Set(['txt', 'log', 'json', 'yaml', 'yml', 'xml', 'tsv', 'ini', 'toml'])
@@ -14,7 +17,9 @@ const MIME_BY_EXT: Record<string, string> = {
   csv: 'text/csv',
   txt: 'text/plain',
   json: 'application/json',
-  pdf: 'application/pdf',
+  pdf: OFFICE_MIME.pdf,
+  docx: OFFICE_MIME.docx,
+  pptx: OFFICE_MIME.pptx,
   png: 'image/png',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
@@ -32,16 +37,31 @@ export function previewKind(name: string, mime: string): PreviewKind {
   const ext = extensionOf(name)
   if (ext === 'md' || ext === 'markdown') return 'markdown'
   if (ext === 'csv') return 'csv'
-  if (ext === 'pdf' || mime === 'application/pdf') return 'pdf'
+  const office = officeKind(name, mime)
+  if (office) return office
   if (IMAGE_EXT.has(ext) || mime.startsWith('image/')) return 'image'
   if (TEXT_EXT.has(ext) || mime.startsWith('text/')) return 'text'
   return 'other'
 }
 
-/** Markdown and CSV: text documents that keep a revision on every write. */
-export function isRevisioned(name: string): boolean {
+/** The office format of a file (PDF, Word .docx, PowerPoint .pptx), else null. */
+export function officeKind(name: string, mime: string): OfficeKind | null {
+  const ext = extensionOf(name)
+  if (ext === 'pdf' || mime === OFFICE_MIME.pdf) return 'pdf'
+  if (ext === 'docx' || mime === OFFICE_MIME.docx) return 'docx'
+  if (ext === 'pptx' || mime === OFFICE_MIME.pptx) return 'pptx'
+  return null
+}
+
+/** Markdown and CSV: the documents written as text (drive.write_text, the in-place editors). */
+export function isTextDocument(name: string): boolean {
   const ext = extensionOf(name)
   return ext === 'md' || ext === 'markdown' || ext === 'csv'
+}
+
+/** Files that keep a revision on every write: the text documents and the office files. */
+export function isRevisioned(name: string): boolean {
+  return isTextDocument(name) || officeKind(name, '') !== null
 }
 
 /** Files the agent may read as text (drive.read) and write (drive.write_text: revisioned only). */

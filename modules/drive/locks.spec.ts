@@ -124,10 +124,12 @@ describe('drive edit locks', () => {
     await expect(drive.acquireLock(viewer, id, 'tab-v', { takeover: true })).rejects.toMatchObject({ code: 'forbidden' })
   })
 
-  it('only Markdown/CSV files are locked for editing', async () => {
+  it('only editable files (Markdown/CSV and the office files) are locked for editing', async () => {
     const { drive } = await setup()
-    const pdf = await drive.upload(ada, null, { name: 'a.pdf', bytes: new TextEncoder().encode('%PDF'), mime: 'application/pdf' })
-    await expect(drive.acquireLock(ada, pdf.id, 'tab-a')).rejects.toMatchObject({ code: 'invalid' })
+    const png = await drive.upload(ada, null, { name: 'a.png', bytes: new Uint8Array([0x89, 0x50]), mime: 'image/png' })
+    await expect(drive.acquireLock(ada, png.id, 'tab-a')).rejects.toMatchObject({ code: 'invalid' })
+    const pdf = await drive.upload(ada, null, { name: 'a.pdf', bytes: new TextEncoder().encode('%PDF-1.7'), mime: 'application/pdf' })
+    await expect(drive.acquireLock(ada, pdf.id, 'tab-a')).resolves.toMatchObject({ state: 'held' })
   })
 
   it('reads one revision’s text; restore with the lock is a new revision', async () => {

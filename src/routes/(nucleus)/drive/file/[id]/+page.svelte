@@ -18,6 +18,7 @@
   import { Button } from '$lib/components/ui/button'
   import { driveApi, formatSize } from '$lib/drive/api'
   import { datedLabel, driveItemKind, initialsOf } from '$lib/drive/display'
+  import { OFFICE_VIEWERS } from '$lib/office/viewers'
   import { docTitle } from '$lib/shell/title'
 
   /**
@@ -31,6 +32,12 @@
   const fmt = (d: string | Date) =>
     new Date(d).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
   const revisioned = $derived(data.kind === 'markdown' || data.kind === 'csv')
+  /** The format's own viewer for PDF/Word/PowerPoint once it has one (plan/phase-office-files.md), else the old preview. */
+  const officeViewer = $derived(
+    data.kind === 'pdf' || data.kind === 'docx' || data.kind === 'pptx'
+      ? (OFFICE_VIEWERS[data.kind] ?? null)
+      : null,
+  )
   /** Size and changed time as of the latest save (the load's copy goes stale while editing). */
   let saved = $state<{ id: string; size?: number; updatedAt: string | Date } | null>(null)
   const meta = $derived(saved && saved.id === data.file.id ? saved : data.file)
@@ -50,6 +57,8 @@
     table: 'Table',
     image: 'Image',
     pdf: 'PDF',
+    word: 'Word',
+    slides: 'Slides',
     file: 'File',
   } as const
   const kindLabel = $derived(KIND_LABEL[driveItemKind(data.file)])
@@ -314,6 +323,29 @@
                 data-testid="drive-image"
               />
             </div>
+          {:else if officeViewer}
+            {#key data.file.id}
+              {#await officeViewer()}
+                <div
+                  class="flex flex-1 items-center justify-center text-sm text-muted-foreground"
+                  data-testid="drive-office-loading"
+                >
+                  Opening {data.file.name}…
+                </div>
+              {:then viewer}
+                <viewer.default
+                  fileId={data.file.id}
+                  name={data.file.name}
+                  canEdit={data.canEdit && !data.file.archivedAt}
+                  heartbeatMs={data.heartbeatMs}
+                  onsaved={(f) => (saved = f)}
+                />
+              {:catch err}
+                <p class="m-6 text-sm text-destructive" role="alert" data-testid="drive-office-error">
+                  The viewer could not be loaded: {err instanceof Error ? err.message : String(err)}
+                </p>
+              {/await}
+            {/key}
           {:else if data.kind === 'pdf'}
             <iframe
               src={contentUrl}

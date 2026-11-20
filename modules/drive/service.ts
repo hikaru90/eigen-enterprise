@@ -2,9 +2,11 @@ import type { AccessLevel, DriveAccessPort, Grant, GrantSubject } from './access
 import type { BlobStore } from './storage'
 import type { DriveFile, DriveFolder, DriveRevision, DriveStore } from './store'
 import { randomUUID } from 'node:crypto'
+import { hasOfficeSignature, OFFICE_LABEL, OfficeNotSupportedError } from '$lib/office/kinds'
+import { extractOfficeText } from '$lib/office/text'
 import { contentDateOf } from './content-date'
 import { holderOf, isLive, LOCK_TTL_MS, type EditLockStore, type LockHolder } from './locks'
-import { isRevisioned, isTextFile, mimeFor } from './preview'
+import { isRevisioned, isTextDocument, isTextFile, mimeFor, officeKind } from './preview'
 
 /**
  * Drive: folders and files, sharing, trash and text revisions. Every read and
@@ -222,8 +224,33 @@ export function createDriveService(deps: DriveDeps) {
 
   async function requireEditable(actor: Actor, id: string): Promise<DriveFile> {
     const file = await requireFile(actor, id, 'edit')
-    if (!isRevisioned(file.name)) throw new DriveError('invalid', `Only Markdown (.md) and table (.csv) files are edited in place; “${file.name}” is not one.`)
+    if (!isRevisioned(file.name)) throw new DriveError('invalid', `Only documents, tables, PDF, Word and PowerPoint files are edited in place; “${file.name}” is not one.`)
     return file
+  }
+
+  /**
+   * Stores `bytes` as the file's content and its newest revision. One
+   * revision per editing session: saves under the same edit lock fold into
+   * the revision that session started (a take-over, a new session after the
+   * lock was let go, or a restore starts a new one).
+   */
+  async function saveContent(actor: Actor, file: DriveFile, bytes: Uint8Array, sessionId: string | undefined): Promise<{ file: ItemView; revision: DriveRevision }> {
+    await requireWriteTurn(actor, file.id, sessionId)
+    if (bytes.byteLength > deps.maxUploadBytes) throw new DriveError('too_large', `That is ${formatBytes(bytes.byteLength)}; files can be at most ${formatBytes(deps.maxUploadBytes)}.`)
+    // A file from before its format kept history: its current content becomes the first revision, so the save can be undone.
+    if (file.size > 0 && (await store.listRevisions(file.id)).length === 0) {
+      await store.insertRevision({ id: randomUUID(), fileId: file.id, sha256: file.sha256, size: file.size, authorId: file.ownerId, createdAt: file.updatedAt })
+    }
+    const blob = await blobs.put(bytes)
+    const at = now()
+    await store.updateFile(file.id, { sha256: blob.sha256, size: blob.size, updatedAt: at })
+    const ongoing = sessionId ? await sessionRevision(actor, file.id, sessionId) : null
+    let revision: DriveRevision
+    if (ongoing) {
+      await store.updateRevision(ongoing.id, { sha256: blob.sha256, size: blob.size, createdAt: at })
+      revision = { ...ongoing, sha256: blob.sha256, size: blob.size, createdAt: at }
+    } else revision = await storeRevision(file.id, blob.sha256, blob.size, actor, at)
+    return { file: await view('file', file.id), revision }
   }
 
   /**
@@ -701,32 +728,39 @@ export function createDriveService(deps: DriveDeps) {
 
     async readText(actor: Actor, id: string): Promise<{ file: ItemView; content: string }> {
       const file = await requireFile(actor, id, 'view')
+      const office = officeKind(file.name, file.mime)
+      if (office) {
+        const bytes = await blobs.get(file.sha256)
+        try {
+          return { file: fileView(file), content: await extractOfficeText(office, bytes) }
+        } catch (err) {
+          if (err instanceof OfficeNotSupportedError) throw new DriveError('invalid', err.message, undefined, { cause: err })
+          const why = err instanceof Error ? err.message : String(err)
+          throw new DriveError('invalid', `“${file.name}” could not be read: ${why}`, undefined, { cause: err })
+        }
+      }
       if (!isTextFile(file.name, file.mime)) throw new DriveError('invalid', `“${file.name}” is not a text file.`)
       return { file: fileView(file), content: new TextDecoder().decode(await blobs.get(file.sha256)) }
     },
 
-    /**
-     * Saves new text into a Markdown/CSV file. One revision per editing
-     * session: saves under the same edit lock fold into the revision that
-     * session started (a take-over, a new session after the lock was let go,
-     * or a restore starts a new one).
-     */
+    /** Saves new text into a Markdown/CSV file (one revision per editing session, see saveContent). */
     async writeText(actor: Actor, id: string, content: string, sessionId?: string): Promise<{ file: ItemView; revision: DriveRevision }> {
       const file = await requireFile(actor, id, 'edit')
-      if (!isRevisioned(file.name)) throw new DriveError('invalid', `Only Markdown (.md) and table (.csv) files are written as text; “${file.name}” is not one.`)
-      await requireWriteTurn(actor, id, sessionId)
-      const bytes = new TextEncoder().encode(content)
-      if (bytes.byteLength > deps.maxUploadBytes) throw new DriveError('too_large', `That text is ${formatBytes(bytes.byteLength)}; files can be at most ${formatBytes(deps.maxUploadBytes)}.`)
-      const blob = await blobs.put(bytes)
-      const at = now()
-      await store.updateFile(id, { sha256: blob.sha256, size: blob.size, updatedAt: at })
-      const ongoing = sessionId ? await sessionRevision(actor, id, sessionId) : null
-      let revision: DriveRevision
-      if (ongoing) {
-        await store.updateRevision(ongoing.id, { sha256: blob.sha256, size: blob.size, createdAt: at })
-        revision = { ...ongoing, sha256: blob.sha256, size: blob.size, createdAt: at }
-      } else revision = await storeRevision(id, blob.sha256, blob.size, actor, at)
-      return { file: await view('file', id), revision }
+      if (!isTextDocument(file.name)) throw new DriveError('invalid', `Only Markdown (.md) and table (.csv) files are written as text; “${file.name}” is not one.`)
+      return saveContent(actor, file, new TextEncoder().encode(content), sessionId)
+    },
+
+    /**
+     * Saves new bytes into a PDF, Word or PowerPoint file — what its viewer
+     * or an office tool produced (one revision per editing session, see
+     * saveContent). The bytes must be of the file's own format.
+     */
+    async writeBytes(actor: Actor, id: string, bytes: Uint8Array, sessionId?: string): Promise<{ file: ItemView; revision: DriveRevision }> {
+      const file = await requireFile(actor, id, 'edit')
+      const kind = officeKind(file.name, file.mime)
+      if (!kind) throw new DriveError('invalid', `Only PDF, Word (.docx) and PowerPoint (.pptx) files are saved as bytes; “${file.name}” is not one.`)
+      if (!hasOfficeSignature(kind, bytes)) throw new DriveError('invalid', `That content is not a ${OFFICE_LABEL[kind]}, so it was not saved into “${file.name}”.`)
+      return saveContent(actor, file, bytes, sessionId)
     },
 
     async listRevisions(actor: Actor, id: string): Promise<ListedRevision[]> {

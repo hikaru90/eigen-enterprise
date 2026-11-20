@@ -11,6 +11,7 @@
   import ListIcon from '@lucide/svelte/icons/list'
   import LockIcon from '@lucide/svelte/icons/lock'
   import PlusIcon from '@lucide/svelte/icons/plus'
+  import PresentationIcon from '@lucide/svelte/icons/presentation'
   import SearchIcon from '@lucide/svelte/icons/search'
   import SheetIcon from '@lucide/svelte/icons/sheet'
   import UploadIcon from '@lucide/svelte/icons/upload'
@@ -327,6 +328,8 @@
     table: SheetIcon,
     image: ImageIcon,
     pdf: FileTextIcon,
+    word: FileTextIcon,
+    slides: PresentationIcon,
     file: FileIcon,
   }
   /** Kind tiles in the brand palette (docs/brand-palette.md): tinted square, foreground icon. */
@@ -336,6 +339,8 @@
     table: 'bg-[#B8E9D0]/70 text-foreground/80',
     image: 'bg-[#FE86B1]/30 text-foreground/80',
     pdf: 'bg-[#FF4632]/15 text-foreground/80',
+    word: 'bg-[#A3D8F4]/45 text-foreground/80',
+    slides: 'bg-[#FFC107]/25 text-foreground/80',
     file: 'bg-muted text-muted-foreground',
   }
   const KIND_LABEL: Record<DriveItemKind, string> = {
@@ -344,6 +349,8 @@
     table: 'Table',
     image: 'Image',
     pdf: 'PDF',
+    word: 'Word',
+    slides: 'Slides',
     file: 'File',
   }
 

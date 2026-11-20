@@ -9,6 +9,8 @@ describe('driveItemKind', () => {
     expect(driveItemKind({ type: 'file', name: 'budget.csv', mime: 'text/csv' })).toBe('table')
     expect(driveItemKind({ type: 'file', name: 'mood.png', mime: 'image/png' })).toBe('image')
     expect(driveItemKind({ type: 'file', name: 'brief.pdf', mime: 'application/pdf' })).toBe('pdf')
+    expect(driveItemKind({ type: 'file', name: 'Letter.DOCX', mime: 'application/octet-stream' })).toBe('word')
+    expect(driveItemKind({ type: 'file', name: 'pitch.pptx' })).toBe('slides')
     expect(
       driveItemKind({ type: 'file', name: 'data.bin', mime: 'application/octet-stream' }),
     ).toBe('file')

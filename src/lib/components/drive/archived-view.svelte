@@ -7,6 +7,7 @@
   import FileTextIcon from '@lucide/svelte/icons/file-text'
   import FolderIcon from '@lucide/svelte/icons/folder'
   import ImageIcon from '@lucide/svelte/icons/image'
+  import PresentationIcon from '@lucide/svelte/icons/presentation'
   import SheetIcon from '@lucide/svelte/icons/sheet'
   import SparklesIcon from '@lucide/svelte/icons/sparkles'
   import { invalidateAll } from '$app/navigation'
@@ -68,6 +69,8 @@
     table: SheetIcon,
     image: ImageIcon,
     pdf: FileTextIcon,
+    word: FileTextIcon,
+    slides: PresentationIcon,
     file: FileIcon,
   }
   const btn =

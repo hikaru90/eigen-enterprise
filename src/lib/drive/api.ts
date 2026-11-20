@@ -117,6 +117,19 @@ export const driveApi = {
   /** A last save while the page goes away (keepalive outlives the unload); its result is not waited for. */
   writeTextOnExit: (fileId: string, content: string, session: string) =>
     fetch(`/api/drive/files/${fileId}/text`, { ...send('PUT', { content, session }), keepalive: true }).then(() => undefined),
+  /** The file's bytes (what an office viewer opens). */
+  readBytes: async (fileId: string): Promise<Uint8Array> => {
+    const res = await fetch(`/api/drive/files/${fileId}/content`)
+    if (!res.ok) throw new DriveApiError((await res.text()) || `Loading the file failed (${res.status}).`, res.status, null, null)
+    return new Uint8Array(await res.arrayBuffer())
+  },
+  /** Saves new bytes into a PDF/Word/PowerPoint file as a revision (`session`: the editor holding the edit lock). */
+  writeBytes: (fileId: string, bytes: Uint8Array, session: string) =>
+    call<{ file: DriveItem }>(`/api/drive/files/${fileId}/content?session=${encodeURIComponent(session)}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/octet-stream' },
+      body: bytes.slice().buffer as ArrayBuffer,
+    }),
   lockStatus: (fileId: string) => call<LockView>(`/api/drive/files/${fileId}/lock`),
   acquireLock: (fileId: string, session: string, takeover = false) => call<LockView>(`/api/drive/files/${fileId}/lock`, send('POST', { session, takeover })),
   heartbeatLock: (fileId: string, session: string) => call<LockView>(`/api/drive/files/${fileId}/lock`, send('PUT', { session })),

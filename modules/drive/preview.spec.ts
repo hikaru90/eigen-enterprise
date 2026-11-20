@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isRevisioned, isTextFile, mimeFor, parseCsv, previewKind } from './preview'
+import { isRevisioned, isTextDocument, isTextFile, mimeFor, officeKind, parseCsv, previewKind } from './preview'
 
 describe('previewKind', () => {
   it.each([
@@ -9,16 +9,37 @@ describe('previewKind', () => {
     ['logo.png', 'image/png', 'image'],
     ['photo', 'image/jpeg', 'image'],
     ['readme.txt', 'text/plain', 'text'],
-    ['deck.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'other'],
+    ['deck.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'pptx'],
+    ['Deck.PPTX', '', 'pptx'],
+    ['letter.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'docx'],
+    ['letter.doc', 'application/msword', 'other'],
+    ['archive.zip', 'application/zip', 'other'],
   ])('%s → %s', (name, mime, kind) => {
     expect(previewKind(name, mime)).toBe(kind)
   })
-  it('revisions only for markdown and csv; text files are readable', () => {
+  it('revisions for markdown, csv and the office files; only markdown and csv are written as text', () => {
     expect(isRevisioned('a.md')).toBe(true)
     expect(isRevisioned('a.csv')).toBe(true)
+    expect(isRevisioned('a.pdf')).toBe(true)
+    expect(isRevisioned('a.docx')).toBe(true)
+    expect(isRevisioned('a.pptx')).toBe(true)
     expect(isRevisioned('a.txt')).toBe(false)
+    expect(isTextDocument('a.md')).toBe(true)
+    expect(isTextDocument('a.csv')).toBe(true)
+    expect(isTextDocument('a.pdf')).toBe(false)
     expect(isTextFile('a.txt', 'text/plain')).toBe(true)
     expect(isTextFile('a.pdf', 'application/pdf')).toBe(false)
+  })
+  it('officeKind names the office format, else null', () => {
+    expect(officeKind('a.pdf', '')).toBe('pdf')
+    expect(officeKind('scan', 'application/pdf')).toBe('pdf')
+    expect(officeKind('a.docx', '')).toBe('docx')
+    expect(officeKind('a.pptx', '')).toBe('pptx')
+    expect(officeKind('a.md', 'text/markdown')).toBeNull()
+  })
+  it('mimeFor fills the office types from the extension', () => {
+    expect(mimeFor('a.docx', null)).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    expect(mimeFor('a.pptx', 'application/octet-stream')).toBe('application/vnd.openxmlformats-officedocument.presentationml.presentation')
   })
   it('mimeFor keeps the browser type and fills it from the extension', () => {
     expect(mimeFor('a.pdf', 'application/pdf')).toBe('application/pdf')

@@ -1,7 +1,8 @@
 import type { DriveItem } from './api'
+import { OFFICE_MIME } from '$lib/office/kinds'
 
-/** How a Drive row looks: folder, document (.md/.txt), table (.csv), image, PDF, or any other file. */
-export type DriveItemKind = 'folder' | 'document' | 'table' | 'image' | 'pdf' | 'file'
+/** How a Drive row looks: folder, document (.md/.txt), table (.csv), image, PDF, Word (.docx), slides (.pptx), or any other file. */
+export type DriveItemKind = 'folder' | 'document' | 'table' | 'image' | 'pdf' | 'word' | 'slides' | 'file'
 
 /** The item's kind from its type, file extension and MIME type (same rules as the old row icons). */
 export function driveItemKind(item: Pick<DriveItem, 'type' | 'name' | 'mime'>): DriveItemKind {
@@ -10,7 +11,9 @@ export function driveItemKind(item: Pick<DriveItem, 'type' | 'name' | 'mime'>): 
   if (n.endsWith('.md') || n.endsWith('.txt')) return 'document'
   if (n.endsWith('.csv')) return 'table'
   if (item.mime?.startsWith('image/')) return 'image'
-  if (item.mime === 'application/pdf' || n.endsWith('.pdf')) return 'pdf'
+  if (item.mime === OFFICE_MIME.pdf || n.endsWith('.pdf')) return 'pdf'
+  if (item.mime === OFFICE_MIME.docx || n.endsWith('.docx')) return 'word'
+  if (item.mime === OFFICE_MIME.pptx || n.endsWith('.pptx')) return 'slides'
   return 'file'
 }
 

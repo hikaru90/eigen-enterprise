@@ -1,8 +1,13 @@
 import type { RequestHandler } from './$types'
 import { error } from '@sveltejs/kit'
-import { DriveError, driveService, previewKind, requestActor } from '$lib/server/drive'
+import { z } from 'zod'
+import { DriveError, driveJson, driveService, previewKind, requestActor } from '$lib/server/drive'
 
 /**
+ * GET the file's bytes; PUT new bytes into a PDF, Word or PowerPoint file
+ * (the raw body, ?session= the editor session holding the edit lock, W-6;
+ * without it the file must not be locked). Saved as a revision.
+ *
  * The file's bytes: inline for the preview (images, PDF in the browser's
  * viewer), as an attachment with ?download=1. Markdown/HTML/SVG are never
  * served inline as active content: nosniff + a sandboxing CSP (except
@@ -33,3 +38,15 @@ export const GET: RequestHandler = async (event) => {
     throw err
   }
 }
+
+const session = z.string().min(8).max(100)
+
+export const PUT: RequestHandler = (event) =>
+  driveJson(async () => {
+    const actor = requestActor(event)
+    const raw = event.url.searchParams.get('session')
+    const s = raw === null ? undefined : session.safeParse(raw)
+    if (s && !s.success) throw new DriveError('invalid', 'session: the editor session id is 8–100 characters.')
+    const bytes = new Uint8Array(await event.request.arrayBuffer())
+    return (await driveService()).writeBytes(actor, event.params.id, bytes, s?.data)
+  })

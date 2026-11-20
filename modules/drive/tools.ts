@@ -80,7 +80,7 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
     {
       name: 'drive.read',
       module: DRIVE_MODULE_ID,
-      summary: 'Read a text file from Drive (Markdown, CSV, plain text) by file_id.',
+      summary: 'Read a file from Drive as text by file_id: Markdown, CSV and plain text as they are; PDF, Word (.docx) and PowerPoint (.pptx) as their extracted text (an error says when a format cannot be read yet).',
       auditClass: 'read',
       inputSchema: readInput,
       permission: { roles: ['admin', 'agent'] },
