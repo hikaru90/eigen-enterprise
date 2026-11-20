@@ -22,6 +22,8 @@ const EXPECTED: Record<KernelErrorCode, { status: number; title: string }> = {
   module_switched_off: { status: 409, title: 'Switched off by a person' },
   human_decision_required: { status: 403, title: 'Only a person can decide this' },
   not_configured: { status: 409, title: 'Not set up' },
+  no_person: { status: 400, title: 'No person to act as' },
+  invalid_principal: { status: 400, title: 'Malformed principal' },
 }
 
 const CODES = Object.keys(EXPECTED) as KernelErrorCode[]

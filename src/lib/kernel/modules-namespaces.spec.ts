@@ -1,9 +1,9 @@
+import type { ToolDescriptor } from './types'
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import { InMemoryActivationStore, ModuleRegistry } from './modules'
 import { KernelRegistry } from './registry'
 import { registerModuleTools } from './wiring'
-import type { ToolDescriptor } from './types'
-import { z } from 'zod'
 
 /** Platform step 1: one module may own several tool namespaces (merged modules). */
 function merged() {

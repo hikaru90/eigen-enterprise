@@ -301,7 +301,7 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
    * principal (index row), live or resumed after a restart — never through a
    * chat request's closures.
    */
-  const backgroundRuns = new Map<string, { principalId: string; agentId: string; tools: Set<string> }>()
+  const backgroundRuns = new Map<string, { personId: string; agentId: string; tools: Set<string> }>()
 
   function notRun(why: string) {
     return {
@@ -323,7 +323,7 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
             return notRun(`tool ${spec.name} is not in this background run's tool surface`)
           }
           const result = await deps.runAsPrincipal({
-            principalId: background.principalId,
+            personId: background.personId,
             agentId: background.agentId,
             tool: spec.name,
             args: args as Record<string, unknown>,
@@ -408,6 +408,14 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
 
     const existing = await index.resolveByConversationKey(input.conversationKey)
     if (existing) {
+      // A conversation belongs to one person (CB3: sessions are per person and
+      // per conversation). Another person's dispatch never continues it — its
+      // history, and the person its model calls bill to, are not theirs.
+      if (existing.llmUserId !== input.llmUserId) {
+        throw new Error(
+          `durable conversation ${input.conversationKey} belongs to another person — a dispatch as ${input.llmUserId} cannot continue it`,
+        )
+      }
       const conversation = await harness.conversation(
         asConversationId(existing.piConversationId),
         BACKGROUND_CONTEXT,
@@ -443,7 +451,7 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
     llmUserId: string
     instructions: string
     registrations: ToolRegistration[]
-    background?: { principalId: string; tools: DurableToolSurfaceEntry[] }
+    background?: { personId: string; tools: DurableToolSurfaceEntry[] }
   }) {
     const conversation = await harness.createConversation(
       {
@@ -472,15 +480,15 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
       piConversationId: String(conversation.id),
       providerSessionId,
       ...(input.background
-        ? { runPrincipalId: input.background.principalId, runTools: input.background.tools }
+        ? { runPrincipalId: input.background.personId, runTools: input.background.tools }
         : {}),
     })
     return { conversation, row }
   }
 
-  function trackBackgroundRun(piConversationId: string, run: { principalId: string; agentId: string; tools: DurableToolSurfaceEntry[] }) {
+  function trackBackgroundRun(piConversationId: string, run: { personId: string; agentId: string; tools: DurableToolSurfaceEntry[] }) {
     backgroundRuns.set(piConversationId, {
-      principalId: run.principalId,
+      personId: run.personId,
       agentId: run.agentId,
       tools: new Set(run.tools.map((t) => t.name)),
     })
@@ -502,10 +510,11 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
     const { conversation, row } = await createIndexedConversation({
       conversationKey: input.conversationKey,
       agentId: input.agentId,
-      llmUserId: input.llmUserId,
+      // The person the run acts as pays for it (CB3: the run's one identity).
+      llmUserId: input.personId,
       instructions: input.instructions,
       registrations,
-      background: { principalId: input.principalId, tools: input.tools },
+      background: { personId: input.personId, tools: input.tools },
     })
     if (row.piConversationId !== String(conversation.id)) {
       throw new Error(
@@ -637,7 +646,7 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
     }
     installToolBridge(row.runTools)
     trackBackgroundRun(row.piConversationId, {
-      principalId: row.runPrincipalId,
+      personId: row.runPrincipalId,
       agentId: row.agentId,
       tools: row.runTools,
     })

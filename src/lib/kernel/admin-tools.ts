@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { approvalActionLabel } from '$lib/chat/approval-copy'
 import { KernelError } from './errors'
 import { moduleSwitchedOff, type ActivationStore, type ModuleManifest, type ModuleRegistry } from './modules'
+import { isDirectHuman } from './principals'
 import { KERNEL_SETTINGS_TOOL_NAMES } from './settings-tools'
 
 /**
@@ -128,7 +129,8 @@ export function createAdminTools(deps: AdminToolDeps): ToolDescriptor[] {
         // Owner, 2026-11-12: a plugin a person switched off is switched back on
         // by a person only — an agent (or service) may switch on what was never
         // switched on, so there is no approval-free way around the switch.
-        if (ctx.principal.kind !== 'human' && (await moduleSwitchedOff(deps.activations, manifest.id))) {
+        // A person's own click — the brain acting for them (CB3) is not one.
+        if (!isDirectHuman(ctx.principal) && (await moduleSwitchedOff(deps.activations, manifest.id))) {
           throw new KernelError(
             'module_switched_off',
             `${manifest.name} was switched off by a person. Only the owner or an admin can switch it back on, in Settings → Plugins.`,
@@ -212,8 +214,9 @@ export function createAdminTools(deps: AdminToolDeps): ToolDescriptor[] {
       permission: { roles: ['owner', 'admin', 'agent'] },
       handler: async (ctx, input) => {
         const parsed = approvalsDecideInput.parse(input)
-        if (ctx.principal.kind !== 'human') {
-          // The always-on approval wall: an agent never decides its own way past it.
+        if (!isDirectHuman(ctx.principal)) {
+          // The always-on approval wall: an agent — or the brain acting for a
+          // person (CB3) — never decides its own way past it.
           const request = (await deps.approvals.list()).find((r) => r.id === parsed.approval_id)
           if (request && deps.tool(request.toolName)?.approvalAlways === true) {
             throw new KernelError(

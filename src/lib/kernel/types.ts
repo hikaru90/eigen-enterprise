@@ -12,21 +12,26 @@ export type AuditClass = 'read' | 'mutate' | 'external'
  */
 export type ApprovalRisk = 'internal' | 'public' | 'external' | 'destructive'
 
+/**
+ * Who a tool call runs as. When the company brain acts for a person, this is
+ * that person's DELEGATED principal (principals.ts delegatedPrincipal): their
+ * id and roles, kind 'human', plus `via: 'brain'` and the brain's agent id —
+ * the actor is the person, the brain is only how the call arrived. There is
+ * no separate "acting user": the principal IS the person.
+ */
+export type ToolPrincipal = {
+  id: string
+  kind: PrincipalKind
+  roles: string[]
+  /** Set only when the company brain acts as this person (provenance; never a permission). */
+  via?: 'brain'
+  /** The brain's agent id; present exactly when `via` is. */
+  agentId?: string
+}
+
 export type ToolContext = {
-  principal: {
-    id: string
-    kind: PrincipalKind
-    roles: string[]
-  }
+  principal: ToolPrincipal
   requestId: string
-  /**
-   * The signed-in person an agent turn acts for (web session user, Telegram
-   * allowlist principal) — the gateway identity its model calls resolve
-   * under. Set by the agent runtime from the dispatch; absent for direct
-   * human calls (the principal IS the person) and ownerless runs. Identity
-   * only: it never grants a permission (permissions stay on `principal`).
-   */
-  actingUserId?: string
 }
 
 export type ToolDescriptor = {

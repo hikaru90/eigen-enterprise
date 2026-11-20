@@ -1,5 +1,6 @@
 import type { AgentConfig } from './agent'
 import type { EngineContext, LoopEngine } from './engine'
+import type { PersonRef } from './principals'
 import type { ToolDescriptor, ToolContext } from './types'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
@@ -9,6 +10,10 @@ import { KernelError } from './errors'
 import { InMemoryEventSink } from './events'
 import { InMemoryActivationStore, ModuleRegistry, type ModuleManifest } from './modules'
 import { KernelRegistry } from './registry'
+
+/** The person a dispatch acts as (CB3: every dispatch names one). */
+const ann: PersonRef = { id: 'ann', roles: ['member'] }
+const asAnn = { person: ann }
 
 function agentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {
@@ -64,7 +69,6 @@ function makeFixture(options: {
   tools?: ToolDescriptor[]
   manifests?: ModuleManifest[]
   spendFn?: (agentId: string) => number
-  roles?: string[]
   engineRun?: LoopEngine['run']
 } = {}): Fixture {
   const activations = new InMemoryActivationStore()
@@ -86,7 +90,6 @@ function makeFixture(options: {
     isToolActive: (name) => modules.isToolActive(name),
     eventSink: sink,
     ...(options.spendFn ? { spendFn: options.spendFn } : {}),
-    rolesFor: () => options.roles ?? ['agent'],
   })
   runtime.registerEngine('durable', engine)
 
@@ -156,25 +159,26 @@ describe('AgentRuntime — dispatch', () => {
     const fx = makeFixture({ engineRun: async () => 'a very long reply' })
     fx.runtime.registerAgent(agentConfig())
 
-    const reply = await fx.runtime.dispatch('agent-1', 'session-9', 'hello')
+    const reply = await fx.runtime.dispatch('agent-1', 'session-9', 'hello', undefined, asAnn)
 
     expect(reply).toBe('a very long reply')
     const types = fx.sink.events.map((e) => e.type)
     expect(types).toContain('agent.dispatched')
     expect(types).toContain('agent.replied')
 
+    // Provenance: the person is the principal; the brain (agent-1) carried the turn.
     const dispatched = fx.sink.events.find((e) => e.type === 'agent.dispatched')!
-    expect(dispatched.payload).toEqual({ agentId: 'agent-1', sessionId: 'session-9' })
-    expect(dispatched.principalId).toBe('agent-1')
+    expect(dispatched.payload).toEqual({ agentId: 'agent-1', sessionId: 'session-9', via: 'brain' })
+    expect(dispatched.principalId).toBe('ann')
 
     const replied = fx.sink.events.find((e) => e.type === 'agent.replied')!
     // No reply content in payloads — ever.
-    expect(replied.payload).toEqual({ agentId: 'agent-1', sessionId: 'session-9', replyLength: 17 })
+    expect(replied.payload).toEqual({ agentId: 'agent-1', sessionId: 'session-9', replyLength: 17, via: 'brain' })
     expect(JSON.stringify(fx.sink.events)).not.toContain('a very long reply')
     expect(JSON.stringify(fx.sink.events)).not.toContain('hello')
   })
 
-  it('threads dispatch options.llmUserId into the engine context (BYOK attribution)', async () => {
+  it('the person pays: their id is the run\'s gateway identity (llmUserId)', async () => {
     let seen: string | undefined
     const fx = makeFixture({
       engineRun: async (_sessionId, _input, ctx) => {
@@ -184,18 +188,27 @@ describe('AgentRuntime — dispatch', () => {
     })
     fx.runtime.registerAgent(agentConfig())
 
-    await fx.runtime.dispatch('agent-1', 's', 'hi', undefined, { llmUserId: 'user-7' })
+    await fx.runtime.dispatch('agent-1', 's', 'hi', undefined, { person: { id: 'user-7', roles: ['member'] } })
     expect(seen).toBe('user-7')
+  })
 
-    await fx.runtime.dispatch('agent-1', 's', 'hi')
-    expect(seen).toBeUndefined()
+  it('no person, no run: a dispatch without one fails loud before the engine runs (CB3)', async () => {
+    const fx = makeFixture()
+    fx.runtime.registerAgent(agentConfig())
+    for (const options of [undefined, {}, { person: { id: '', roles: [] } }]) {
+      await expect(
+        fx.runtime.dispatch('agent-1', 's', 'hi', undefined, options as never),
+      ).rejects.toMatchObject({ code: 'no_person' })
+    }
+    expect(fx.run).not.toHaveBeenCalled()
+    expect(fx.sink.events).toEqual([])
   })
 
   it('rejects disabled agents with agent_disabled', async () => {
     const fx = makeFixture()
     fx.runtime.registerAgent(agentConfig({ enabled: false }))
 
-    await expect(fx.runtime.dispatch('agent-1', 's', 'hi')).rejects.toMatchObject({
+    await expect(fx.runtime.dispatch('agent-1', 's', 'hi', undefined, asAnn)).rejects.toMatchObject({
       code: 'agent_disabled',
     })
     expect(fx.run).not.toHaveBeenCalled()
@@ -203,7 +216,7 @@ describe('AgentRuntime — dispatch', () => {
 
   it('rejects unknown agents with unknown_agent', async () => {
     const fx = makeFixture()
-    await expect(fx.runtime.dispatch('ghost', 's', 'hi')).rejects.toMatchObject({
+    await expect(fx.runtime.dispatch('ghost', 's', 'hi', undefined, asAnn)).rejects.toMatchObject({
       code: 'unknown_agent',
     })
   })
@@ -212,7 +225,7 @@ describe('AgentRuntime — dispatch', () => {
     const fx = makeFixture()
     fx.runtime.registerAgent(agentConfig({ loopEngine: 'pi' }))
 
-    await expect(fx.runtime.dispatch('agent-1', 's', 'hi')).rejects.toMatchObject({
+    await expect(fx.runtime.dispatch('agent-1', 's', 'hi', undefined, asAnn)).rejects.toMatchObject({
       code: 'unknown_engine',
     })
     expect(fx.run).not.toHaveBeenCalled()
@@ -224,7 +237,7 @@ describe('AgentRuntime — budget', () => {
     const fx = makeFixture({ spendFn: () => 5 })
     fx.runtime.registerAgent(agentConfig({ spendCapUsd: 5 }))
 
-    await expect(fx.runtime.dispatch('agent-1', 's', 'hi')).rejects.toMatchObject({
+    await expect(fx.runtime.dispatch('agent-1', 's', 'hi', undefined, asAnn)).rejects.toMatchObject({
       code: 'budget_exceeded',
     })
     expect(fx.run).not.toHaveBeenCalled()
@@ -236,14 +249,16 @@ describe('AgentRuntime — budget', () => {
       sessionId: 's',
       spendUsd: 5,
       spendCapUsd: 5,
+      via: 'brain',
     })
+    expect(event!.principalId).toBe('ann')
   })
 
   it('runs uncapped agents and agents below the cap', async () => {
     const fx = makeFixture({ spendFn: () => 1 })
     fx.runtime.registerAgent(agentConfig({ spendCapUsd: 2 }))
 
-    await expect(fx.runtime.dispatch('agent-1', 's', 'hi')).resolves.toBe('engine reply')
+    await expect(fx.runtime.dispatch('agent-1', 's', 'hi', undefined, asAnn)).resolves.toBe('engine reply')
   })
 
   it('recordSpend accumulates on the default in-memory accumulator and reaches the engine', async () => {
@@ -258,24 +273,24 @@ describe('AgentRuntime — budget', () => {
     fx.runtime.recordSpend('agent-1', 0.25)
     fx.runtime.recordSpend('agent-1', 0.75)
 
-    await fx.runtime.dispatch('agent-1', 's', 'hi')
+    await fx.runtime.dispatch('agent-1', 's', 'hi', undefined, asAnn)
     expect(observed).toBe(1)
   })
 })
 
-describe('AgentRuntime — tool surface + execution path', () => {
-  const memoryTool = tool('memory.echo', 'memory', ['agent'])
+describe('AgentRuntime — tool surface + execution path (the person\'s rights, never more)', () => {
+  const memoryTool = tool('memory.echo', 'memory', ['admin', 'member', 'agent'])
   const ownerTool = tool('email.send_mail', 'email', ['owner'])
-  const adminTool = tool('kernel.module_list', 'kernel', ['admin'])
-  it("toolScope 'all' exposes active-module tools whose roles the agent holds", async () => {
+  const adminTool = tool('website.publish_page', 'website', ['admin', 'agent'])
+
+  it("toolScope 'all' exposes active-module tools whose roles the PERSON holds — a member gets no admin tool", async () => {
     const fx = makeFixture({
       tools: [memoryTool, ownerTool, adminTool],
-      manifests: [modOn('memory'), modOn('email'), modOn('kernel')],
-      roles: ['agent'],
+      manifests: [modOn('memory'), modOn('email'), modOn('website')],
     })
     await fx.activations.set('memory', true)
     await fx.activations.set('email', true)
-    await fx.activations.set('kernel', true)
+    await fx.activations.set('website', true)
     fx.runtime.registerAgent(agentConfig())
 
     let listed: string[] = []
@@ -284,15 +299,18 @@ describe('AgentRuntime — tool surface + execution path', () => {
       return 'ok'
     })
 
-    await fx.runtime.dispatch('agent-1', 's', 'hi')
+    await fx.runtime.dispatch('agent-1', 's', 'hi', undefined, asAnn)
     expect(listed).toEqual(['memory.echo'])
+    // The same brain for an admin offers the admin tool too (their rights).
+    await fx.runtime.dispatch('agent-1', 's', 'hi', undefined, { person: { id: 'boss', roles: ['admin', 'member'] } })
+    expect(listed).toEqual(['memory.echo', 'website.publish_page'])
+    expect(await fx.runtime.listAgentTools('agent-1', ann)).toEqual([expect.objectContaining({ name: 'memory.echo' })])
   })
 
   it('toolScope module allowlist restricts the surface even for active, permitted tools', async () => {
     const fx = makeFixture({
       tools: [memoryTool, ownerTool],
       manifests: [modOn('memory'), modOn('email')],
-      roles: ['owner', 'agent'],
     })
     await fx.activations.set('memory', true)
     await fx.activations.set('email', true)
@@ -304,7 +322,7 @@ describe('AgentRuntime — tool surface + execution path', () => {
       return 'ok'
     })
 
-    await fx.runtime.dispatch('agent-1', 's', 'hi')
+    await fx.runtime.dispatch('agent-1', 's', 'hi', undefined, { person: { id: 'own', roles: ['owner', 'member'] } })
     expect(listed).toEqual(['memory.echo'])
   })
 
@@ -312,7 +330,6 @@ describe('AgentRuntime — tool surface + execution path', () => {
     const fx = makeFixture({
       tools: [memoryTool],
       manifests: [modOn('memory')],
-      roles: ['agent'],
     })
     // memory intentionally left inactive.
     fx.runtime.registerAgent(agentConfig())
@@ -323,69 +340,93 @@ describe('AgentRuntime — tool surface + execution path', () => {
       return 'ok'
     })
 
-    await fx.runtime.dispatch('agent-1', 's', 'hi')
+    await fx.runtime.dispatch('agent-1', 's', 'hi', undefined, asAnn)
     expect(listed).toEqual([])
   })
 
-  it('hands the agent principal (id = agent id) and routes executeTool through the kernel', async () => {
+  it('every tool call executes as the person via the brain (delegated principal) through the kernel', async () => {
     const seen: ToolContext[] = []
     const fx = makeFixture({
       tools: [
-        tool('memory.echo', 'memory', ['agent'], async (ctx, input) => {
+        tool('memory.echo', 'memory', ['member'], async (ctx, input) => {
           seen.push(ctx)
           return { echoed: input }
         }),
       ],
       manifests: [modOn('memory')],
-      roles: ['agent'],
     })
     await fx.activations.set('memory', true)
     fx.runtime.registerAgent(agentConfig())
 
-    const responses = ['{"tool":"memory.echo","arguments":{"x":1}}', '{"answer":"done"}']
     fx.run.mockImplementation(async (_sid, _input, ctx: EngineContext) => {
-      // Simulate the durable engine: one tool call, then answer.
+      expect(ctx.principal).toEqual({ id: 'ann', kind: 'human', roles: ['member'], via: 'brain', agentId: 'agent-1' })
       await ctx.executeTool('memory.echo', { x: 1 })
-      const listing = ctx.listTools()
-      expect(listing.map((t) => t.name)).toEqual(['memory.echo'])
-      return responses[1]
+      return 'done'
     })
 
-    await fx.runtime.dispatch('agent-1', 's', 'hi')
+    await fx.runtime.dispatch('agent-1', 's', 'hi', undefined, asAnn)
 
     expect(seen).toHaveLength(1)
-    expect(seen[0].principal).toEqual({ id: 'agent-1', kind: 'agent', roles: ['agent'] })
-    expect(typeof seen[0].requestId).toBe('string')
-    // No person on this dispatch: no acting user is invented.
-    expect(seen[0].actingUserId).toBeUndefined()
+    expect(seen[0]!.principal).toEqual({ id: 'ann', kind: 'human', roles: ['member'], via: 'brain', agentId: 'agent-1' })
+    expect(typeof seen[0]!.requestId).toBe('string')
   })
 
-  it('tool calls carry the person the turn acts for (dispatch llmUserId) as actingUserId', async () => {
-    const seen: ToolContext[] = []
+  it('a non-admin cannot execute an admin tool through the brain, even by naming it', async () => {
+    let ran = false
     const fx = makeFixture({
       tools: [
-        tool('memory.echo', 'memory', ['agent'], async (ctx) => {
-          seen.push(ctx)
+        tool('website.publish_page', 'website', ['admin', 'agent'], async () => {
+          ran = true
+          return {}
+        }),
+      ],
+      manifests: [modOn('website')],
+    })
+    await fx.activations.set('website', true)
+    fx.runtime.registerAgent(agentConfig())
+    let refusal: unknown
+    fx.run.mockImplementation(async (_sid, _input, ctx: EngineContext) => {
+      expect(ctx.listTools()).toEqual([])
+      refusal = await ctx.executeTool('website.publish_page', {}).catch((err: unknown) => err)
+      return 'done'
+    })
+    await fx.runtime.dispatch('agent-1', 's', 'hi', undefined, asAnn)
+    expect(refusal).toMatchObject({ code: 'permission_denied' })
+    expect(ran).toBe(false)
+  })
+
+  it('two people dispatching at once never cross principals', async () => {
+    const seen: string[] = []
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const fx = makeFixture({
+      tools: [
+        tool('memory.echo', 'memory', ['member'], async (ctx, input) => {
+          seen.push(`${ctx.principal.id}:${(input as { who: string }).who}`)
           return {}
         }),
       ],
       manifests: [modOn('memory')],
-      roles: ['agent'],
     })
     await fx.activations.set('memory', true)
     fx.runtime.registerAgent(agentConfig())
-    fx.run.mockImplementation(async (_sid, _input, ctx: EngineContext) => {
-      await ctx.executeTool('memory.echo', {})
-      return 'done'
+    fx.run.mockImplementation(async (sid: string, _input, ctx: EngineContext) => {
+      // Both turns are in flight before either calls its tool.
+      if (sid === 'ann-chat') await gate
+      else release()
+      await ctx.executeTool('memory.echo', { who: sid })
+      return `${ctx.principal.id} done`
     })
 
-    await fx.runtime.dispatch('agent-1', 's', 'hi', undefined, { llmUserId: 'user-7' })
-
-    expect(seen[0].actingUserId).toBe('user-7')
-    expect(seen[0].principal.id).toBe('agent-1')
+    const [a, b] = await Promise.all([
+      fx.runtime.dispatch('agent-1', 'ann-chat', 'hi', undefined, asAnn),
+      fx.runtime.dispatch('agent-1', 'ben-chat', 'hi', undefined, { person: { id: 'ben', roles: ['member'] } }),
+    ])
+    expect([a, b]).toEqual(['ann done', 'ben done'])
+    expect(seen.sort()).toEqual(['ann:ann-chat', 'ben:ben-chat'])
   })
 
-  it('EngineContext.emit defaults principal + kernel source and reaches the sink', async () => {
+  it('EngineContext.emit defaults the principal to the person + kernel source and reaches the sink', async () => {
     const fx = makeFixture()
     fx.runtime.registerAgent(agentConfig())
 
@@ -394,11 +435,11 @@ describe('AgentRuntime — tool surface + execution path', () => {
       return 'ok'
     })
 
-    await fx.runtime.dispatch('agent-1', 's', 'hi')
+    await fx.runtime.dispatch('agent-1', 's', 'hi', undefined, asAnn)
 
     const event = fx.sink.events.find((e) => e.type === 'custom.engine_event')
     expect(event).toBeDefined()
-    expect(event!.principalId).toBe('agent-1')
+    expect(event!.principalId).toBe('ann')
     expect(event!.source).toBe('urn:eigenenterprise:kernel')
   })
 })
@@ -416,7 +457,7 @@ describe('AgentRuntime — stream sink pass-through', () => {
       return 'ok'
     })
 
-    await fx.runtime.dispatch('agent-1', 's', 'hi', { stream, surfaceEvent })
+    await fx.runtime.dispatch('agent-1', 's', 'hi', { stream, surfaceEvent }, asAnn)
 
     expect(seen?.stream).toBe(stream)
     expect(seen?.surfaceEvent).toBe(surfaceEvent)
@@ -432,7 +473,7 @@ describe('AgentRuntime — stream sink pass-through', () => {
       return 'ok'
     })
 
-    await fx.runtime.dispatch('agent-1', 's', 'hi')
+    await fx.runtime.dispatch('agent-1', 's', 'hi', undefined, asAnn)
 
     expect(seen?.stream).toBeUndefined()
     expect(seen?.surfaceEvent).toBeUndefined()

@@ -2,6 +2,7 @@ import type { ToolContext } from './types'
 import { describe, expect, it } from 'vitest'
 import { InMemoryApprovalModeStore, InMemoryApprovalStore, ModeAwareApprovalPolicy } from './approvals'
 import { InMemoryEventSink } from './events'
+import { delegatedPrincipal } from './principals'
 import { KernelRegistry } from './registry'
 import {
   createSettingsTools,
@@ -11,11 +12,13 @@ import {
   type SettingsView,
 } from './settings-tools'
 
+/** The company brain acting as the owner (CB3: the principal IS the person, via the brain). */
 const agent: ToolContext = {
-  principal: { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] },
+  principal: delegatedPrincipal({ id: 'u-owner', roles: ['admin', 'member'] }, 'orchestrator'),
   requestId: 'r1',
-  actingUserId: 'u-owner',
 }
+/** An agent principal that is no person. */
+const bareAgent: ToolContext = { principal: { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] }, requestId: 'r2' }
 
 function view(overrides: Partial<SettingsView> = {}): SettingsView {
   return {
@@ -98,7 +101,7 @@ describe('kernel.whoami', () => {
     const out = (await registry.execute('kernel.whoami', {}, agent)) as Record<string, unknown>
     expect(modelCalls).toEqual(['u-owner'])
     expect(out).toMatchObject({
-      you: { principalId: 'orchestrator', kind: 'agent' },
+      you: { principalId: 'u-owner', kind: 'human', via: 'brain', agentId: 'orchestrator' },
       model: { provider: 'openrouter', model: 'anthropic/claude-x', billing: 'byok' },
       company: { name: 'Kindred Digital Labs' },
       actingUser: { id: 'u-owner', name: 'Ada Owner', role: 'owner' },
@@ -106,13 +109,9 @@ describe('kernel.whoami', () => {
     expect(JSON.stringify(out)).not.toContain('sk-secret')
   })
 
-  it('without a person on the turn, resolves under the principal (as the engine does) and names nobody', async () => {
+  it('an agent principal that is no person resolves under itself and names nobody', async () => {
     const { registry, modelCalls } = makeRegistry()
-    const out = (await registry.execute(
-      'kernel.whoami',
-      {},
-      { principal: agent.principal, requestId: 'r2' },
-    )) as Record<string, unknown>
+    const out = (await registry.execute('kernel.whoami', {}, bareAgent)) as Record<string, unknown>
     expect(modelCalls).toEqual(['orchestrator'])
     expect(out.actingUser).toBeNull()
   })

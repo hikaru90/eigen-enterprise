@@ -21,6 +21,8 @@ export type KernelErrorCode =
   | 'module_switched_off'
   | 'human_decision_required'
   | 'not_configured'
+  | 'no_person'
+  | 'invalid_principal'
 
 const KNOWN_CODES: readonly KernelErrorCode[] = [
   'permission_denied',
@@ -45,6 +47,8 @@ const KNOWN_CODES: readonly KernelErrorCode[] = [
   'module_switched_off',
   'human_decision_required',
   'not_configured',
+  'no_person',
+  'invalid_principal',
 ]
 
 /** Exhaustive per code — adding a KernelErrorCode without a title is a type error. */
@@ -71,6 +75,8 @@ const PROBLEM_TITLES: Record<KernelErrorCode, string> = {
   module_switched_off: 'Switched off by a person',
   human_decision_required: 'Only a person can decide this',
   not_configured: 'Not set up',
+  no_person: 'No person to act as',
+  invalid_principal: 'Malformed principal',
 }
 
 const PROBLEM_STATUS: Partial<Record<KernelErrorCode, number>> = {
@@ -99,6 +105,9 @@ const PROBLEM_STATUS: Partial<Record<KernelErrorCode, number>> = {
   human_decision_required: 403,
   // The company has not set this up yet (no owner, a feature off on this deployment).
   not_configured: 409,
+  // The company brain acts only as a person (CB3): a run that names none does not run.
+  no_person: 400,
+  invalid_principal: 400,
 }
 
 /** RFC 9457 problem-details object as produced by `KernelError.toProblemJson`. */

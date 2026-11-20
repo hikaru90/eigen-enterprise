@@ -31,11 +31,9 @@ export type DurableEngineFactoryOptions = {
   complete?: GatewayCompleteFn
   /** The agent persona prompt handed to durable runs as instructions. Required. */
   instructions: string
-  /** Default gateway billing identity when a dispatch carries no llmUserId. */
-  llmUserId?: string
   /**
-   * Executes background-run tool calls as their recorded principal (boot:
-   * createPrincipalToolExecutor over the kernel registry). Required.
+   * Executes background-run tool calls as their recorded person, via the brain (boot:
+   * createPersonToolExecutor over the kernel registry). Required.
    */
   runAsPrincipal: BackgroundToolExecutor
   /** D9 chat mirror of resumed turns; defaults to the chat_message writer. */
@@ -87,7 +85,6 @@ export function createDurableEngine(options: DurableEngineFactoryOptions): {
       startBackgroundRun,
     },
     instructions: options.instructions,
-    ...(options.llmUserId === undefined ? {} : { llmUserId: options.llmUserId }),
   })
   const warmUp = async () => {
     // The lock wait inside getDurableHarness already outlasts a normal handover;

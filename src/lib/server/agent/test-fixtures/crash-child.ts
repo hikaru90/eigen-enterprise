@@ -32,8 +32,8 @@ if (mode === 'background') {
   await box.engineHarness.startBackgroundRun({
     conversationKey: 'factory:ticket-7',
     agentId: 'factory',
-    principalId: 'agent:factory',
-    llmUserId: 'factory-billing',
+    // The person the run acts as (CB3) — they pay for it too.
+    personId: 'factory-person',
     instructions: 'You are the factory.',
     prompt: 'build ticket 7',
     tools: [

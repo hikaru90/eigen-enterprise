@@ -290,6 +290,17 @@ describe('kernel.module_activate / kernel.module_deactivate handlers', () => {
     },
   )
 
+  it('refuses the brain acting for an admin too: switching a plugin back on is the person’s own click (CB3)', async () => {
+    const { activations, activate, deactivate } = await pluginsAndCore()
+    await deactivate.handler(makeCtx(), { module_id: 'calls' })
+    await expect(
+      activate.handler(makeCtx({ id: 'admin-1', kind: 'human', roles: ['admin', 'member'], via: 'brain', agentId: 'orchestrator' }), {
+        module_id: 'calls',
+      }),
+    ).rejects.toMatchObject({ code: 'module_switched_off' })
+    expect(await activations.get('calls')).toBe(false)
+  })
+
   it('lets an agent switch on a plugin that was never set up (no activation record)', async () => {
     const activations = new InMemoryActivationStore()
     const modules = makeModules(activations, [makeManifest('memory')])
@@ -427,6 +438,15 @@ describe('kernel.approvals_decide handler', () => {
           }),
         ).rejects.toMatchObject({ code: 'human_decision_required' })
       }
+    })
+
+    it('refuses the brain acting for an admin: the always-ask wall is the person’s own click (CB3)', async () => {
+      await expect(
+        decideTool().handler(
+          makeCtx({ id: 'admin-1', kind: 'human', roles: ['admin', 'member'], via: 'brain', agentId: 'orchestrator' }),
+          { approval_id: 'req-10', decision: 'approved' },
+        ),
+      ).rejects.toMatchObject({ code: 'human_decision_required' })
     })
 
     it('lets the signed-in person decide it', async () => {

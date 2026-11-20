@@ -9,7 +9,7 @@ import { createAdminTools, kernelManifest } from '$lib/kernel/admin-tools'
 import { InMemoryApprovalStore } from '$lib/kernel/approvals'
 import type { EngineContext } from '$lib/kernel/engine'
 import {
-  createPrincipalToolExecutor,
+  createPersonToolExecutor,
   DurableLoopEngine,
   type BackgroundToolCall,
   type BackgroundToolExecutor,
@@ -92,8 +92,8 @@ afterEach(() => {
 /** Records background tool calls; answers as the recorded principal. */
 function recordingExecutor(executed: string[]): BackgroundToolExecutor {
   return async (call: BackgroundToolCall) => {
-    executed.push(`${call.principalId}:${call.tool}:${JSON.stringify(call.args)}`)
-    return { echoed: call.args.text, as: call.principalId }
+    executed.push(`${call.personId}:${call.tool}:${JSON.stringify(call.args)}`)
+    return { echoed: call.args.text, as: call.personId }
   }
 }
 
@@ -374,6 +374,15 @@ describe('durable engine over real pi-durable', () => {
     expect(history).toContain('one')
     expect(history).toContain('first')
   })
+
+  it('a conversation belongs to one person: another person’s dispatch on its key is refused, history untouched (CB3)', async () => {
+    const { complete, seen } = scriptedGateway({ alice: [{ text: 'for alice' }], bob: [{ text: 'never' }] })
+    const { engine } = engineFor(complete)
+    await engine.run('s1', 'alice private words', engineCtx('alice', 'alice', []))
+    await expect(engine.run('s1', 'let me in', engineCtx('bob', 'bob', []))).rejects.toThrow(/belongs to another person/)
+    // Bob's model never ran, so Alice's history never reached him.
+    expect(seen.map((call) => call.userId)).toEqual(['alice'])
+  })
 })
 
 describe('crash-resume (the point of durability)', () => {
@@ -418,17 +427,17 @@ describe('crash-resume (the point of durability)', () => {
 
     const executed: string[] = []
     const { complete, seen } = scriptedGateway({
-      'factory-billing': [{ call: { name: 'memory.echo', args: { text: 'after restart' } } }, { text: 'built it' }],
+      'factory-person': [{ call: { name: 'memory.echo', args: { text: 'after restart' } } }, { text: 'built it' }],
     })
     const index = new FileIndex(join(dir, 'index.json'))
     const box = await getDurableHarness(harnessDeps(complete, { index, runAsPrincipal: recordingExecutor(executed) }))
     await box.harness.waitForIdle(BACKGROUND_CONTEXT)
 
-    expect(executed).toEqual(['agent:factory:memory.echo:{"text":"after restart"}'])
+    expect(executed).toEqual(['factory-person:memory.echo:{"text":"after restart"}'])
     expect(JSON.stringify(seen[0]?.messages)).toContain('build ticket 7') // the interrupted run resumed
-    expect(JSON.stringify(seen[1]?.messages)).toContain('agent:factory') // the model saw the tool result
+    expect(JSON.stringify(seen[1]?.messages)).toContain('factory-person') // the model saw the tool result
     const row = await index.resolveByConversationKey('factory:ticket-7')
-    expect(row).toMatchObject({ runPrincipalId: 'agent:factory', agentId: 'factory', llmUserId: 'factory-billing' })
+    expect(row).toMatchObject({ runPrincipalId: 'factory-person', agentId: 'factory', llmUserId: 'factory-person' })
   }, 120_000)
 
   it('a CHAT tool call issued after a restart reports our structured not_run (never tool_unavailable)', async () => {
@@ -484,7 +493,7 @@ async function waitInFlight(child: ReturnType<typeof spawnCrashChild>): Promise<
 }
 
 describe('background runs (software-factory S0)', () => {
-  it('records the run principal + surface in the index and drives the run to settle, tools as the principal', async () => {
+  it('records the run person + surface in the index and drives the run to settle, tools as the person (who pays)', async () => {
     const executed: string[] = []
     const { complete, seen } = scriptedGateway({
       bill: [{ call: { name: 'memory.echo', args: { text: 'hi' } } }, { text: 'background done' }],
@@ -494,8 +503,7 @@ describe('background runs (software-factory S0)', () => {
     const handle = await box.engineHarness.startBackgroundRun({
       conversationKey: 'factory:item-1',
       agentId: 'factory',
-      principalId: 'agent:factory',
-      llmUserId: 'bill',
+      personId: 'bill',
       instructions: 'You are the factory.',
       prompt: 'build item 1',
       tools: ECHO_SURFACE,
@@ -504,13 +512,13 @@ describe('background runs (software-factory S0)', () => {
 
     const settled = await box.waitForSubmission(handle.submissionId)
     expect(settled).toEqual({ status: 'done', reply: 'background done' })
-    expect(executed).toEqual(['agent:factory:memory.echo:{"text":"hi"}'])
+    expect(executed).toEqual(['bill:memory.echo:{"text":"hi"}'])
     expect(seen.every((call) => call.userId === 'bill')).toBe(true)
     expect(JSON.stringify(seen[0]?.messages)).toContain('build item 1')
     expect(await index.resolveByConversationKey('factory:item-1')).toMatchObject({
       agentId: 'factory',
       llmUserId: 'bill',
-      runPrincipalId: 'agent:factory',
+      runPrincipalId: 'bill',
       piConversationId: handle.conversationId,
       runTools: ECHO_SURFACE,
     })
@@ -522,8 +530,7 @@ describe('background runs (software-factory S0)', () => {
     const input = {
       conversationKey: 'factory:dup',
       agentId: 'factory',
-      principalId: 'agent:factory',
-      llmUserId: 'bill',
+      personId: 'bill',
       instructions: 'You are the factory.',
       prompt: 'go',
       tools: [],
@@ -532,9 +539,9 @@ describe('background runs (software-factory S0)', () => {
     await expect(box.engineHarness.startBackgroundRun(input)).rejects.toThrow(/already indexed/)
   })
 
-  it('a recorded principal that no longer exists: the tool fails loud naming it, nothing runs as anyone else', async () => {
+  it('a recorded person who is no longer a member: the tool fails loud naming them, nothing runs as anyone else', async () => {
     const { complete, seen } = scriptedGateway({
-      bill: [{ call: { name: 'memory.echo', args: { text: 'x' } } }, { text: 'could not' }],
+      gone: [{ call: { name: 'memory.echo', args: { text: 'x' } } }, { text: 'could not' }],
     })
     const registry = new KernelRegistry()
     const ran: string[] = []
@@ -544,19 +551,15 @@ describe('background runs (software-factory S0)', () => {
       summary: 'echo',
       auditClass: 'read',
       inputSchema: z.object({ text: z.string() }),
-      permission: { roles: ['agent'] },
+      permission: { roles: ['member'] },
       handler: async (ctx) => ran.push(ctx.principal.id),
     })
-    const runAsPrincipal = createPrincipalToolExecutor({
-      registry,
-      principals: { getById: async () => null, getByApiKey: async () => null },
-    })
+    const runAsPrincipal = createPersonToolExecutor({ registry, people: { personById: async () => null } })
     const box = await getDurableHarness(harnessDeps(complete, { runAsPrincipal }))
     const handle = await box.engineHarness.startBackgroundRun({
       conversationKey: 'factory:orphan',
       agentId: 'factory',
-      principalId: 'agent:gone',
-      llmUserId: 'bill',
+      personId: 'gone',
       instructions: 'You are the factory.',
       prompt: 'go',
       tools: ECHO_SURFACE,
@@ -565,7 +568,7 @@ describe('background runs (software-factory S0)', () => {
     expect(ran).toEqual([])
     const toolResult = JSON.stringify(seen[1]?.messages)
     expect(toolResult).toContain('unknown_principal')
-    expect(toolResult).toContain('agent:gone')
+    expect(toolResult).toContain('gone')
   })
 
   it('a CHAT conversation keeps the rule: a tool call with no live request reports not_run', async () => {
