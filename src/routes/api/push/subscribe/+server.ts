@@ -1,12 +1,12 @@
 import type { RequestHandler } from './$types'
 import { error, json } from '@sveltejs/kit'
+import { parseReplacedEndpoint } from '$lib/server/push/device'
 import {
   deletePushSubscriptionByEndpoint,
   parsePushSubscriptionBody,
   PUSH_SUBSCRIBE_USER_ERROR,
   upsertPushSubscription,
 } from '$lib/server/push/subscription'
-import { parseReplacedEndpoint } from '$lib/server/push/device'
 
 export const POST: RequestHandler = async (event) => {
   const user = event.locals.user

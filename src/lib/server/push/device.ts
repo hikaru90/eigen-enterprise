@@ -1,5 +1,5 @@
-import type { PushSubscription } from '$lib/server/db/schema'
 import { endpointHash } from '$lib/push/endpoint-hash'
+import type { PushSubscription } from '$lib/server/db/schema'
 
 /** Pure views of a stored push subscription (no DB: unit-tested in subscription.spec.ts). */
 

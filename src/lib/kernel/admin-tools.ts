@@ -4,8 +4,8 @@ import { z } from 'zod'
 import { approvalActionLabel } from '$lib/chat/approval-copy'
 import { KernelError } from './errors'
 import { moduleSwitchedOff, type ActivationStore, type ModuleManifest, type ModuleRegistry } from './modules'
-import { isDirectHuman } from './principals'
 import { KERNEL_NOTIFICATION_TOOL_NAMES } from './notification-tools'
+import { isDirectHuman } from './principals'
 import { KERNEL_SETTINGS_TOOL_NAMES } from './settings-tools'
 
 /**

@@ -24,6 +24,7 @@
   import type { AuthorLayerMeta } from '$lib/graph/graph-author-layers'
   import { getLocale, setLocale } from '$lib/paraglide/runtime'
   import { startPushNavigationFromServiceWorker } from '$lib/push/navigation-from-sw'
+  import { syncPushSubscriptionOnStart } from '$lib/push/sync'
   import { registerServiceWorker } from '$lib/pwa/register'
   import { initCurrentUserViewStore } from '$lib/stores/current-user-view.svelte'
   import { startThoughtSync } from '$lib/stores/thought-sync'
@@ -91,7 +92,10 @@
     const stopPushNavigation = startPushNavigationFromServiceWorker()
 
     if ((page.data as { user?: { id: string } | null }).user) {
+      // Re-validate this device's push subscription with the server on every start (src/lib/push/sync.ts).
       void registerServiceWorker()
+        .then(() => syncPushSubscriptionOnStart())
+        .catch((err) => console.error('[push] re-validating this device’s subscription failed', err))
       startCaptureQueueRunner()
       startThoughtSync()
     }

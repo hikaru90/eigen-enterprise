@@ -5,6 +5,7 @@ import {
   notificationTarget,
   OFFLINE_HTML,
   parsePushPayload,
+  renewedSubscriptionBody,
   UNREADABLE_PUSH,
 } from './sw-core'
 
@@ -93,5 +94,24 @@ describe('OFFLINE_HTML', () => {
   it('tells the person they are offline and lets them retry', () => {
     expect(OFFLINE_HTML).toContain('offline')
     expect(OFFLINE_HTML).toContain('location.reload()')
+  })
+})
+
+describe('renewedSubscriptionBody (pushsubscriptionchange)', () => {
+  const next = { endpoint: 'https://push.example/new', keys: { p256dh: 'p', auth: 'a' } }
+
+  it('posts the new subscription and the endpoint it replaces', () => {
+    expect(renewedSubscriptionBody(next, 'https://push.example/old')).toEqual({
+      ...next,
+      replacesEndpoint: 'https://push.example/old',
+    })
+  })
+
+  it('posts only the new one when the browser no longer knows the old', () => {
+    expect(renewedSubscriptionBody(next, null)).toEqual(next)
+  })
+
+  it('fails loud on a subscription without keys', () => {
+    expect(() => renewedSubscriptionBody({ endpoint: 'https://push.example/new' }, null)).toThrow(/keys/)
   })
 })

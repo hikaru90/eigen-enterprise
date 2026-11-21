@@ -63,7 +63,24 @@ export function notificationTarget(data: unknown, origin: string): { href: strin
   return { href: target.href, path: `${target.pathname}${target.search}${target.hash}` }
 }
 
-export type FetchStrategy = 'cache' | 'network-or-offline' | 'passthrough'
+/**
+ * The browser renewed this device's push subscription (`pushsubscriptionchange`,
+ * e.g. the push service rotated it): the worker posts the new one to
+ * /api/push/subscribe with the endpoint it replaces, so the server stops
+ * pushing to the dead one and this device keeps getting notifications.
+ */
+export function renewedSubscriptionBody(
+  next: PushSubscriptionJSON,
+  oldEndpoint: string | null,
+): PushSubscriptionJSON & { replacesEndpoint?: string } {
+  if (!next.endpoint || !next.keys?.p256dh || !next.keys?.auth) {
+    throw new Error('Renewed push subscription is missing its endpoint or keys')
+  }
+  const body = { endpoint: next.endpoint, keys: { p256dh: next.keys.p256dh, auth: next.keys.auth } }
+  return oldEndpoint && oldEndpoint !== next.endpoint ? { ...body, replacesEndpoint: oldEndpoint } : body
+}
+
+export type FetchStrategy ='cache' | 'network-or-offline' | 'passthrough'
 
 /**
  * Only the hashed app shell is served from cache (instant launch); page loads

@@ -30,14 +30,30 @@ export function pushPromptState(env: PushEnvironment): PushPromptState {
   return 'ask'
 }
 
+/**
+ * Where a "Not now" is remembered. The installed app keeps its own: on
+ * Android the browser and the installed app share storage, so a "Not now" in
+ * a browser tab must not hide the prompt in the app, which may need its own
+ * permission (bug 87f5b9f8). The browser key is unchanged from before.
+ */
+export function pushPromptDismissKey(state: PushPromptState, standalone: boolean): string {
+  return `eigenenterprise:push-banner-dismissed:${standalone ? 'app:' : ''}${state}`
+}
+
+/** Running as the installed app (display-mode standalone / iOS navigator.standalone). */
+export function isStandalone(): boolean {
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  )
+}
+
 /** Reads the live browser into a PushEnvironment. */
 export async function readPushEnvironment(): Promise<PushEnvironment> {
   const serviceWorker = 'serviceWorker' in navigator
   const pushManager = 'PushManager' in window
   const notification = 'Notification' in window
-  const standalone =
-    window.matchMedia('(display-mode: standalone)').matches ||
-    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  const standalone = isStandalone()
   let subscribed = false
   if (serviceWorker && pushManager) {
     const registration = await navigator.serviceWorker.getRegistration()

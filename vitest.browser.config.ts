@@ -91,6 +91,8 @@ export default defineConfig({
       'src/lib/components/home-settings-menu.svelte.spec.ts',
       'src/lib/components/audio-devices-settings.svelte.spec.ts',
       'src/lib/pwa/install-app-dialog.svelte.spec.ts',
+      'src/lib/pwa/notifications-banner.svelte.spec.ts',
+      'src/lib/pwa/push-devices.svelte.spec.ts',
       'src/lib/components/approval-card.svelte.spec.ts',
       'src/lib/components/approval-mode-select.svelte.spec.ts',
       'src/lib/components/overview-module.svelte.spec.ts',

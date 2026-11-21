@@ -10,6 +10,7 @@
   import ProfileEditor from '$lib/components/profile-editor.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
+  import PushDevices from '$lib/pwa/push-devices.svelte'
   import { docTitle } from '$lib/shell/title'
 
   /**
@@ -64,6 +65,8 @@
     </div>
     <ProfileEditor profile={data.profile} submitLabel="Save profile" onsaved={() => invalidateAll()} onpicture={() => invalidateAll()} />
   </section>
+
+  <PushDevices devices={data.pushDevices} onchanged={() => invalidateAll()} />
 
   <form
     method="post"

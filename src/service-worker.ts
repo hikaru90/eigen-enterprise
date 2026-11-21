@@ -3,7 +3,15 @@
 /// <reference lib="webworker" />
 /// <reference types="@sveltejs/kit" />
 import { build, files, version } from '$service-worker'
-import { fetchStrategy, notificationFor, notificationTarget, OFFLINE_HTML, parsePushPayload } from '$lib/pwa/sw-core'
+import { base64UrlToBytes } from '$lib/push/keys'
+import {
+  fetchStrategy,
+  notificationFor,
+  notificationTarget,
+  OFFLINE_HTML,
+  parsePushPayload,
+  renewedSubscriptionBody,
+} from '$lib/pwa/sw-core'
 
 /**
  * The installed app's worker (registered by src/lib/pwa/register.ts):
@@ -109,6 +117,51 @@ async function openTarget(target: { href: string; path: string }): Promise<void>
     open.postMessage({ type: 'PUSH_NAVIGATE', url: target.path })
   }
 }
+
+/** `pushsubscriptionchange` is not in TypeScript's worker lib yet. */
+type PushSubscriptionChange = ExtendableEvent & {
+  oldSubscription?: PushSubscription | null
+  newSubscription?: PushSubscription | null
+}
+
+async function vapidPublicKey(): Promise<string> {
+  const res = await fetch('/api/push/vapid-public-key', { credentials: 'same-origin' })
+  if (!res.ok) throw new Error(`VAPID public key unavailable (${res.status})`)
+  const { publicKey } = (await res.json()) as { publicKey?: unknown }
+  if (typeof publicKey !== 'string' || !publicKey) throw new Error('Invalid VAPID public key response')
+  return publicKey
+}
+
+/**
+ * The browser renewed (or dropped) this device's subscription: subscribe again
+ * when it did not hand over a new one, and tell the server which endpoint it
+ * replaces (sw-core renewedSubscriptionBody). Without this the server keeps
+ * pushing to the dead endpoint and the device goes quiet. A failure is logged;
+ * the next app start re-validates (src/lib/push/sync.ts).
+ */
+async function renewSubscription(event: PushSubscriptionChange): Promise<void> {
+  const old = event.oldSubscription ?? null
+  const next =
+    event.newSubscription ??
+    (await sw.registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: old?.options.applicationServerKey ?? base64UrlToBytes(await vapidPublicKey()),
+    }))
+  const res = await fetch('/api/push/subscribe', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(renewedSubscriptionBody(next.toJSON(), old?.endpoint ?? null)),
+  })
+  if (!res.ok) throw new Error(`Saving the renewed push subscription failed (${res.status})`)
+}
+
+sw.addEventListener('pushsubscriptionchange', (event: Event) => {
+  const change = event as PushSubscriptionChange
+  change.waitUntil(
+    renewSubscription(change).catch((err) => console.error('[sw] push subscription renewal failed', err)),
+  )
+})
 
 sw.addEventListener('notificationclick', (event) => {
   event.notification.close()
