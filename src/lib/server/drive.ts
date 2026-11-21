@@ -3,5 +3,5 @@ export { driveService, driveViewSecret, mintViewToken, readViewToken, viewMimeFo
 export { archiveBody, driveJson, drivePage, grantsBody, itemType, parseBody, requestActor, suggestBody } from '../../../modules/drive/http'
 export { liveSuggestChat, SUGGEST_DEFAULT_DAYS, suggestArchive } from '../../../modules/drive/archive-suggest'
 export { renderDriveMarkdown } from '../../../modules/drive/markdown'
-export { parseCsv, previewKind, isRevisioned, type PreviewKind } from '../../../modules/drive/preview'
+export { parseCsv, previewKind, isRevisioned, TEXT_PREVIEW_MAX_BYTES, type PreviewKind } from '../../../modules/drive/preview'
 export { DRIVE_MODULE_ID } from '../../../modules/drive/manifest'

@@ -8,6 +8,7 @@ import {
   previewKind,
   renderDriveMarkdown,
   requestActor,
+  TEXT_PREVIEW_MAX_BYTES,
 } from '$lib/server/drive'
 import { driveViewUrl } from '$lib/server/drive-view'
 
@@ -15,8 +16,6 @@ import { driveViewUrl } from '$lib/server/drive-view'
 const CSV_PREVIEW_ROWS = 500
 /** Text previews show at most this many characters. */
 const TEXT_PREVIEW_CHARS = 200_000
-/** Text previews (Markdown, CSV, HTML source, plain text) and the editor never load more than 2 MB; the original stays downloadable. */
-export const TEXT_PREVIEW_MAX_BYTES = 2 * 1024 * 1024
 const TEXT_PREVIEW_TOO_LARGE = 'This file is too large to preview, download it instead.'
 
 /**

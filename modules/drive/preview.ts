@@ -151,3 +151,6 @@ export function parseCsv(text: string): string[][] {
   }
   return rows
 }
+
+/** Text previews (Markdown, CSV, HTML source, plain text) and the editor never load more than 2 MB; the original stays downloadable. */
+export const TEXT_PREVIEW_MAX_BYTES = 2 * 1024 * 1024

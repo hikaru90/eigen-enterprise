@@ -8,7 +8,8 @@ vi.mock('$lib/server/drive', async (importOriginal) => {
 
 vi.mock('$lib/server/drive-view', () => ({ driveViewUrl: () => '/api/drive/view/token/site.html' }))
 
-const { load, TEXT_PREVIEW_MAX_BYTES } = await import('./+page.server')
+const { load } = await import('./+page.server')
+const { TEXT_PREVIEW_MAX_BYTES } = await import('$lib/server/drive')
 
 const file = (size: number | undefined, name = 'index.ts', mime = 'text/plain; charset=utf-8') => ({
   type: 'file',
