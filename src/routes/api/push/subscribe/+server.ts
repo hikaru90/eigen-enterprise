@@ -1,6 +1,8 @@
 import type { RequestHandler } from './$types'
 import { error, json } from '@sveltejs/kit'
+import { parseReplacedEndpoint } from '$lib/server/push/device'
 import {
+  deletePushSubscriptionByEndpoint,
   parsePushSubscriptionBody,
   PUSH_SUBSCRIBE_USER_ERROR,
   upsertPushSubscription,
@@ -18,8 +20,10 @@ export const POST: RequestHandler = async (event) => {
   }
 
   let input
+  let replaces: string | null
   try {
     input = parsePushSubscriptionBody(body)
+    replaces = parseReplacedEndpoint(body, input.endpoint)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     error(400, msg)
@@ -29,6 +33,8 @@ export const POST: RequestHandler = async (event) => {
 
   try {
     const row = await upsertPushSubscription(user.id, input, userAgent)
+    // The service worker renewed this device's subscription: the old endpoint is dead (RLS: only this person's row).
+    if (replaces) await deletePushSubscriptionByEndpoint(replaces)
     return json({ ok: true as const, id: row.id })
   } catch (e) {
     console.error('[push/subscribe] persist failed', {

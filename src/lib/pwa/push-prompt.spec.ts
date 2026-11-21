@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pushPromptState, type PushEnvironment } from './push-prompt'
+import { pushPromptDismissKey, pushPromptState, type PushEnvironment } from './push-prompt'
 
 const env = (over: Partial<PushEnvironment> = {}): PushEnvironment => ({
   serviceWorker: true,
@@ -30,8 +30,20 @@ describe('pushPromptState', () => {
     expect(pushPromptState(env({ pushManager: false, notification: false }))).toBe('install-first')
   })
 
+  it('asks in the installed app even when the browser tab has notifications on (iPhone: its own permission and subscription)', () => {
+    // The home-screen app starts without permission and without a subscription.
+    expect(pushPromptState(env({ standalone: true, permission: 'default', subscribed: false }))).toBe('ask')
+  })
+
   it('is unsupported where even the installed app has no push', () => {
     expect(pushPromptState(env({ pushManager: false, standalone: true }))).toBe('unsupported')
     expect(pushPromptState(env({ serviceWorker: false }))).toBe('unsupported')
+  })
+})
+
+describe('pushPromptDismissKey', () => {
+  it('keeps a "Not now" in the browser apart from the installed app (Android shares storage between them)', () => {
+    expect(pushPromptDismissKey('ask', false)).toBe('eigenenterprise:push-banner-dismissed:ask')
+    expect(pushPromptDismissKey('ask', true)).toBe('eigenenterprise:push-banner-dismissed:app:ask')
   })
 })

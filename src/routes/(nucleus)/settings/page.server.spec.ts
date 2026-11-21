@@ -4,6 +4,18 @@ import { actions, load } from './+page.server'
 vi.mock('$lib/server/auth', () => ({
   auth: { api: { changeEmail: vi.fn() } },
 }))
+vi.mock('$lib/server/push/subscription', () => ({
+  listPushDevicesForUser: vi.fn(async (userId: string) => [
+    {
+      id: 'd1',
+      endpointHash: 'h',
+      service: 'web.push.apple.com',
+      userAgent: `ua of ${userId}`,
+      since: '2026-11-01T08:00:00.000Z',
+      lastSeen: '2026-11-20T08:00:00.000Z',
+    },
+  ]),
+}))
 vi.mock('$lib/server/profile/service', () => ({
   getProfile: vi.fn(async () => ({
     firstName: 'Ada',
@@ -21,7 +33,7 @@ describe('/settings — the Account section', () => {
     await expect(load({ locals: { user: null } } as never)).rejects.toMatchObject({ status: 302 })
   })
 
-  it('loads the account and its profile — nothing else (the other sections are their own pages)', async () => {
+  it('loads the account, its profile and the person’s notification devices — nothing else (the other sections are their own pages)', async () => {
     const result = await load({ locals: { user: { id: 'u1', email: 'a@b.c' } } } as never)
     expect(result).toEqual({
       user: { id: 'u1', email: 'a@b.c' },
@@ -33,6 +45,16 @@ describe('/settings — the Account section', () => {
         image: '/api/people/avatar/' + 'a'.repeat(64),
         complete: true,
       },
+      pushDevices: [
+        {
+          id: 'd1',
+          endpointHash: 'h',
+          service: 'web.push.apple.com',
+          userAgent: 'ua of u1',
+          since: '2026-11-01T08:00:00.000Z',
+          lastSeen: '2026-11-20T08:00:00.000Z',
+        },
+      ],
     })
   })
 

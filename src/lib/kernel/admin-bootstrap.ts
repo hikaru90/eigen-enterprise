@@ -11,6 +11,7 @@ import {
   KERNEL_ADMIN_TOOL_NAMES,
   KERNEL_MODULE_ID,
 } from './admin-tools'
+import { createNotificationTools, KERNEL_NOTIFICATION_TOOL_NAMES, type NotificationsPort } from './notification-tools'
 import { createSettingsTools, KERNEL_SETTINGS_TOOL_NAMES, type SettingsPort } from './settings-tools'
 import { registerModuleTools } from './wiring'
 
@@ -33,6 +34,8 @@ export type RegisterAdminToolsOptions = {
   db?: DbHandle
   /** Overrides the live company-settings port (tests inject fakes; the live one imports the server lazily). */
   settings?: SettingsPort
+  /** Overrides the live notification-devices port (tests inject fakes). */
+  notifications?: NotificationsPort
 }
 
 /**
@@ -53,7 +56,7 @@ export async function registerAdminTools(
   // a no-op, partial registration stays loud.
   const alreadyRegistered =
     kernel.modules.get(KERNEL_MODULE_ID) !== undefined &&
-    [...KERNEL_ADMIN_TOOL_NAMES, ...KERNEL_SETTINGS_TOOL_NAMES].every(
+    [...KERNEL_ADMIN_TOOL_NAMES, ...KERNEL_SETTINGS_TOOL_NAMES, ...KERNEL_NOTIFICATION_TOOL_NAMES].every(
       (name) => kernel.registry.get(name) !== undefined,
     )
   if (alreadyRegistered) return
@@ -72,6 +75,7 @@ export async function registerAdminTools(
       port: options.settings ?? liveSettingsPort(),
       approvalMode: kernel.approvalMode,
     }),
+    ...createNotificationTools({ port: options.notifications ?? liveNotificationsPort() }),
   )
   registerModuleTools(kernel.registry, kernel.modules, tools)
 }
@@ -84,6 +88,15 @@ function liveSettingsPort(): SettingsPort {
     person: async (id) => (await live()).person(id),
     read: async () => (await live()).read(),
     apply: async (change, actor) => (await live()).apply(change, actor),
+  }
+}
+
+/** The live notification-devices port, loaded on first use (like the settings port). */
+function liveNotificationsPort(): NotificationsPort {
+  const live = async () => (await import('$lib/server/push/test-notification')).liveNotificationsPort
+  return {
+    devices: async (userId) => (await live()).devices(userId),
+    sendTest: async (userId, deviceId) => (await live()).sendTest(userId, deviceId),
   }
 }
 

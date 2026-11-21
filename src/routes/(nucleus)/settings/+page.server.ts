@@ -3,10 +3,12 @@ import { fail, redirect } from '@sveltejs/kit'
 import { APIError } from 'better-auth/api'
 import { auth } from '$lib/server/auth'
 import { getProfile } from '$lib/server/profile/service'
+import { listPushDevicesForUser } from '$lib/server/push/subscription'
 
 /**
  * Settings → Account: the signed-in person's profile (names + picture, the
- * same editor as the profile step), email and sign-out. Sign-in is
+ * same editor as the profile step), email, their devices with notifications
+ * on (read in their own RLS scope: the request's) and sign-out. Sign-in is
  * passwordless (code + passkey), so there is no password to change. The other
  * company-wide sections (company name and logo, members, AI provider,
  * passkeys, API keys, approval mode, backups) are their own pages under the
@@ -27,10 +29,14 @@ export const load: PageServerLoad = async (event) => {
   if (!event.locals.user) {
     throw redirect(302, '/login')
   }
-  const p = await getProfile(event.locals.user.id)
+  const [p, pushDevices] = await Promise.all([
+    getProfile(event.locals.user.id),
+    listPushDevicesForUser(event.locals.user.id),
+  ])
   return {
     user: event.locals.user,
     profile: { firstName: p.firstName, lastName: p.lastName, name: p.name, email: p.email, image: p.image, complete: p.complete },
+    pushDevices,
   }
 }
 

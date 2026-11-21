@@ -1,5 +1,7 @@
 /** Browser helpers for Web Push subscription lifecycle. */
 
+import { base64UrlToBytes } from './keys'
+
 const SW_READY_TIMEOUT_MS = 20_000
 
 function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
@@ -85,15 +87,6 @@ export async function fetchVapidPublicKey(): Promise<string> {
   return data.publicKey.trim()
 }
 
-function urlBase64ToUint8Array(base64String: string): BufferSource {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
-  const raw = atob(base64)
-  const out = new Uint8Array(raw.length)
-  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i)
-  return out
-}
-
 export async function subscribeToPush(): Promise<PushSubscriptionJSON> {
   const support = getPushSupportState()
   if (!support.supported) throw new Error(support.reason)
@@ -107,7 +100,7 @@ export async function subscribeToPush(): Promise<PushSubscriptionJSON> {
   const vapidPublicKey = await fetchVapidPublicKey()
   const subscription = await registration.pushManager.subscribe({
     userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+    applicationServerKey: base64UrlToBytes(vapidPublicKey),
   })
 
   const json = subscription.toJSON()
@@ -133,11 +126,15 @@ export async function unsubscribeFromPush(): Promise<string | null> {
   return endpoint
 }
 
-export async function postSubscribe(subscription: PushSubscriptionJSON): Promise<void> {
+/** Stores this device's subscription; `replacesEndpoint`: the subscription it renews (that row is removed). */
+export async function postSubscribe(
+  subscription: PushSubscriptionJSON,
+  options: { replacesEndpoint?: string } = {},
+): Promise<void> {
   const res = await fetch('/api/push/subscribe', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(subscription),
+    body: JSON.stringify({ ...subscription, ...options }),
   })
   if (!res.ok) {
     const body = await res.json().catch(() => null)
@@ -170,8 +167,13 @@ export async function postUnsubscribe(endpoint: string): Promise<void> {
   }
 }
 
-export async function postTestPush(): Promise<{ sent: number; failed: number; removed: number }> {
-  const res = await fetch('/api/push/test', { method: 'POST' })
+/** A test notification to all of this person's devices, or the one with `deviceId`. */
+export async function postTestPush(deviceId?: string): Promise<{ sent: number; failed: number; removed: number }> {
+  const res = await fetch('/api/push/test', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(deviceId === undefined ? {} : { deviceId }),
+  })
   const body = await res.json().catch(() => null)
   if (!res.ok) {
     const msg =

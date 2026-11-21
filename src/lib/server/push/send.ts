@@ -23,11 +23,17 @@ export type SendPushResult = {
 export async function sendPushToUser(
   userId: string,
   payload: PushNotificationPayload,
+  options: { deviceId?: string } = {},
 ): Promise<SendPushResult> {
   configureWebPush()
-  const subs = await listPushSubscriptionsForUser(userId)
-  if (subs.length === 0) {
+  const all = await listPushSubscriptionsForUser(userId)
+  if (all.length === 0) {
     throw new Error('No push subscriptions registered for this account')
+  }
+  // One device (Settings → Account → "Send test" on that device), or all of them.
+  const subs = options.deviceId === undefined ? all : all.filter((s) => s.id === options.deviceId)
+  if (subs.length === 0) {
+    throw new Error(`No push subscription with id ${options.deviceId} for this account`)
   }
 
   const body = JSON.stringify({

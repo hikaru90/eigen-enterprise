@@ -4,25 +4,57 @@
   import { onMount } from 'svelte'
   import { Button } from '$lib/components/ui/button'
   import { postSubscribe, subscribeToPush } from '$lib/push/client'
-  import { pushPromptState, readPushEnvironment, type PushPromptState } from './push-prompt'
+  import {
+    pushPromptDismissKey,
+    pushPromptState,
+    readPushEnvironment,
+    type PushEnvironment,
+    type PushPromptState,
+  } from './push-prompt'
 
   /**
-   * "Notifications on this device" for Messages: turn push on here, or — in an
+   * "Turn on notifications on this device": turn push on here, or — in an
    * iPhone browser tab, where push only exists for the installed app — how to
    * install it. Hidden once on, where unsupported, or after "Not now" (per
-   * device and per state, so a later state still shows).
+   * device, per state, and apart for the installed app — see
+   * pushPromptDismissKey — so a later state still shows).
+   *
+   * - sidebar: in Messages (the installed app opens there)
+   * - floating: everywhere else in the app shell, with standaloneOnly — the
+   *   home-screen app has its own permission and subscription on iPhone/iPad,
+   *   so it must offer this itself (bug 87f5b9f8)
+   * - inline: Settings → Account → Notifications, no "Not now"
+   *
+   * The permission prompt only ever comes from the person's tap on "Turn on"
+   * (iOS refuses it otherwise): `enable` asks for it before anything else.
    */
+  type Props = {
+    variant?: 'sidebar' | 'floating' | 'inline'
+    /** Only in the installed app (display-mode standalone). */
+    standaloneOnly?: boolean
+    readEnv?: () => Promise<PushEnvironment>
+    enable?: () => Promise<void>
+    onenabled?: () => void
+  }
+
+  let {
+    variant = 'sidebar',
+    standaloneOnly = false,
+    readEnv = readPushEnvironment,
+    enable = async () => postSubscribe(await subscribeToPush()),
+    onenabled,
+  }: Props = $props()
 
   let promptState = $state<PushPromptState | null>(null)
+  let standalone = $state(false)
   let busy = $state(false)
   let error = $state<string | null>(null)
   let dismissed = $state(false)
 
-  const dismissKey = (s: PushPromptState) => `eigenenterprise:push-banner-dismissed:${s}`
-
   function readDismissed(s: PushPromptState): boolean {
+    if (variant === 'inline') return false
     try {
-      return localStorage.getItem(dismissKey(s)) === '1'
+      return localStorage.getItem(pushPromptDismissKey(s, standalone)) === '1'
     } catch {
       return false
     }
@@ -32,49 +64,70 @@
     dismissed = true
     if (!promptState) return
     try {
-      localStorage.setItem(dismissKey(promptState), '1')
+      localStorage.setItem(pushPromptDismissKey(promptState, standalone), '1')
     } catch (err) {
       console.error('[pwa] could not remember the dismissed banner', err)
     }
+  }
+
+  async function refresh() {
+    const env = await readEnv()
+    standalone = env.standalone
+    promptState = pushPromptState(env)
   }
 
   async function turnOn() {
     busy = true
     error = null
     try {
-      await postSubscribe(await subscribeToPush())
+      await enable()
       promptState = 'on'
+      onenabled?.()
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
-      promptState = pushPromptState(await readPushEnvironment())
+      await refresh().catch((e) => console.error('[pwa] could not re-read the notification state', e))
     } finally {
       busy = false
     }
   }
 
   onMount(() => {
-    void readPushEnvironment().then((env) => {
-      promptState = pushPromptState(env)
-      dismissed = readDismissed(promptState)
-    })
+    refresh()
+      .then(() => {
+        if (promptState) dismissed = readDismissed(promptState)
+      })
+      .catch((err) => console.error('[pwa] could not read the notification state', err))
   })
 
   const visible = $derived(
-    !dismissed && (promptState === 'ask' || promptState === 'install-first' || promptState === 'denied'),
+    !dismissed &&
+      (!standaloneOnly || standalone) &&
+      (promptState === 'ask' || promptState === 'install-first' || promptState === 'denied'),
   )
 </script>
 
 {#if visible}
   <div
-    class="mx-2 mt-3 flex gap-2.5 rounded-lg border border-border bg-background p-3 text-[13px] shadow-xs"
+    class={[
+      'flex gap-2.5 rounded-lg border border-border bg-background p-3 text-[13px]',
+      variant === 'sidebar' && 'mx-2 mt-3 shadow-xs',
+      variant === 'floating' &&
+        'fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-50 mx-auto max-w-sm shadow-lg',
+    ]}
+    role={variant === 'floating' ? 'region' : undefined}
+    aria-label={variant === 'floating' ? 'Notifications on this device' : undefined}
     data-testid="push-banner"
     data-state={promptState}
   >
     <BellRing class="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
     <div class="min-w-0 flex-1">
       {#if promptState === 'ask'}
-        <p class="font-medium">Get notified on this device</p>
-        <p class="mt-0.5 text-muted-foreground">Direct messages, @mentions and replies to your threads.</p>
+        <p class="font-medium">Turn on notifications on this device</p>
+        <p class="mt-0.5 text-muted-foreground">
+          {variant === 'sidebar'
+            ? 'Direct messages, @mentions and replies to your threads.'
+            : 'Messages, reminders and tasks reach this device once notifications are on here.'}
+        </p>
         <Button size="sm" class="mt-2" disabled={busy} onclick={turnOn} data-testid="push-banner-enable">
           {busy ? 'Turning on…' : 'Turn on notifications'}
         </Button>
@@ -82,21 +135,27 @@
         <p class="font-medium">Install the app for notifications</p>
         <p class="mt-0.5 text-muted-foreground">
           On iPhone and iPad, tap Share, then <span class="font-medium text-foreground">Add to Home Screen</span>, and
-          open Messages from there.
+          open the app from there.
         </p>
       {:else if promptState === 'denied'}
         <p class="font-medium">Notifications are blocked</p>
-        <p class="mt-0.5 text-muted-foreground">Allow notifications for this site in your browser's settings to get messages here.</p>
+        <p class="mt-0.5 text-muted-foreground">
+          {standalone
+            ? 'Allow notifications for this app in your phone’s settings to get messages here.'
+            : 'Allow notifications for this site in your browser’s settings to get messages here.'}
+        </p>
       {/if}
       {#if error}<p class="mt-2 text-destructive" role="alert" data-testid="push-banner-error">{error}</p>{/if}
     </div>
-    <button
-      type="button"
-      class="-mt-1 -mr-1 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:text-foreground"
-      aria-label="Not now"
-      title="Not now"
-      data-testid="push-banner-dismiss"
-      onclick={dismiss}><X class="size-3.5" aria-hidden="true" /></button
-    >
+    {#if variant !== 'inline'}
+      <button
+        type="button"
+        class="-mt-1 -mr-1 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:text-foreground"
+        aria-label="Not now"
+        title="Not now"
+        data-testid="push-banner-dismiss"
+        onclick={dismiss}><X class="size-3.5" aria-hidden="true" /></button
+      >
+    {/if}
   </div>
 {/if}

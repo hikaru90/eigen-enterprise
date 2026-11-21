@@ -8,6 +8,7 @@
   import AppShell from '$lib/components/app-shell.svelte'
   import { PresenceHeartbeat } from '$lib/messages/presence'
   import { SelfPresence, setSelfPresence } from '$lib/messages/self-presence.svelte'
+  import NotificationsBanner from '$lib/pwa/notifications-banner.svelte'
   import { shellVisible } from '$lib/shell/nav'
 
   let { data, children } = $props()
@@ -108,6 +109,10 @@
     </AppShell>
   {:else}
     {@render children()}
+  {/if}
+  {#if data.user && withShell && !page.url.pathname.startsWith('/messages')}
+    <!-- The installed app's own "Turn on notifications on this device" (bug 87f5b9f8); Messages has it in its sidebar. -->
+    <NotificationsBanner variant="floating" standaloneOnly />
   {/if}
   {#if data.user}
     <IncomingCallToast live={liveCalls} client={calls} inCall={callPresence.current?.id ?? null} />

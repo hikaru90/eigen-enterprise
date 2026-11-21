@@ -200,7 +200,7 @@ describe('runCli: happy paths through the full registry pipeline', () => {
         internal: true,
         version: '0.2.0',
         description:
-          'Module activation, approval decisions, who the agent runs as (whoami) and the company settings (read; changes always wait for a person).',
+          'Module activation, approval decisions, who the agent runs as (whoami), the company settings (read; changes always wait for a person) and a person’s own notification devices.',
         tools: [
           'kernel.module_list',
           'kernel.module_activate',
@@ -210,6 +210,8 @@ describe('runCli: happy paths through the full registry pipeline', () => {
           'kernel.whoami',
           'settings.get',
           'settings.update',
+          'notifications.devices',
+          'notifications.test',
         ],
         active: true,
         core: true,
