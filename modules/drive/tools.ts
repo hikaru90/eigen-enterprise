@@ -10,6 +10,7 @@ import { appStatus, PREVIEW_ID, runApp, stopApp, type AppPreviewDeps } from './a
 import { liveSuggestChat, SUGGEST_DEFAULT_DAYS, SUGGEST_MAX_DAYS, SUGGEST_MIN_DAYS, suggestArchive, type SuggestChat } from './archive-suggest'
 import { DRIVE_MODULE_ID } from './manifest'
 import { createDrivePdfTools } from './pdf-tools'
+import { createDrivePdfAnnotateTools } from './pdf-tools-annotate'
 
 /**
  * drive.* kernel tools: list a folder, read a text file, write a Markdown/CSV
@@ -300,5 +301,6 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
       },
     },
     ...createDrivePdfTools({ service }),
+    ...createDrivePdfAnnotateTools({ service }),
   ]
 }
