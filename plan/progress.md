@@ -2,7 +2,7 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-11-21 — v0.5.33: deploy forms name the rejected field, several domains per new app (owner: "something is wrong when trying to deploy the website repo" · "the domain field should accept multiple entries, comma separated" · "Commit and release")
+## 2026-11-21 — v0.5.33 released: deploy forms name the rejected field, several domains per new app (owner: "something is wrong when trying to deploy the website repo" · "the domain field should accept multiple entries, comma separated" · "Commit and release")
 
 - **Cause on ee-one:** deploying `hikaru90/eigen-enterprise-website` failed instantly with "Some of what was entered is not valid". The kernel's input schema refused the deploy, so no app record and no deploy attempt exist. The exact field wasn't readable from here (SSH to ee-one was declined). Reproduced locally with a domain typed as `https://shop.example.com/`.
 - **Field-named errors:** the registry's `invalid_input` now carries `details: { tool, issues: [{ path, message }] }`. `plainAppMessage` maps (tool, field) to a sentence, e.g. "Check the domains: host names separated by commas … (no https:// and no /)". Fields without a hint keep the generic sentence.
@@ -12,6 +12,10 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - **Behavior change:** a domain that another app, the console or the company site already serves is now refused before anything is fetched. Before, the deploy went on and silently skipped that route.
 - **Decision:** the domain field stays strict. A pasted URL is not rewritten into a host.
 - **Built from a clean worktree.** The error-messages session's uncommitted edits in the main checkout overlap these files and stay out of this release. That session has to rebase onto this commit.
+- **Released:** `c2f84464` fix plus `[release] v0.5.33` `44f2f243` and tag `v0.5.33`, pushed through the local gate (unit 8,617, components 808). Release run 44945121408 green.
+  - **Gate note:** the first gate run in the fresh worktree failed `svelte-check` on 7 env-type errors, because the worktree had no `.env`, so `$env` types were empty. I linked the main checkout's `.env` in (it is gitignored) and the rerun was green.
+- **Local box:** arm64 bundle copied into the box's `dist/release` mount; `box.sh install os.ee.localhost` ✓, `/api/health` 200.
+- **ee-one:** not upgraded from here. The owner sets its /ops target to 0.5.33; the website deploy works there after that. **os.cerberusblue.com:** not upgraded in this round.
 - **Owner direction in progress, not in this release:** every error written for the person, with a "Copy agent instructions" button. It is being built in its own session.
 
 ## 2026-11-21 — v0.5.32 released: shared projects + notes, voice everywhere, the brain's `ee` tool are live (owner: "Push and release")
