@@ -432,7 +432,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/admin/tick-job-queue POST': transport(CRON),
   '/api/log/error POST': transport(CLIENT_LOG),
   '/api/push/subscribe POST': transport(PUSH),
-  '/api/push/test POST': transport(PUSH),
+  '/api/push/test POST': tool('notifications.test'),
   '/api/push/unsubscribe POST': transport(PUSH),
 
   // ─── Onboarding ───────────────────────────────────────────────────────────

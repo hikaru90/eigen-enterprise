@@ -141,14 +141,20 @@ export function messagesHub(): Promise<MessagesHub> {
   return hubPromise
 }
 
+/**
+ * The recipient's devices are read (and pruned) in the recipient's own RLS
+ * scope: this runs inside the author's request, where push_subscription shows
+ * only the author's rows — reading it there found no device and no message
+ * push was ever sent (bug 87f5b9f8).
+ */
 const livePush: PushPort = {
   async hasSubscription(userId) {
-    const { listPushSubscriptionsForUser } = await import('$lib/server/push/subscription')
-    return (await listPushSubscriptionsForUser(userId)).length > 0
+    const { personHasPush } = await import('$lib/server/push/person')
+    return personHasPush(userId)
   },
   async send(userId, payload) {
-    const { sendPushToUser } = await import('$lib/server/push/send')
-    await sendPushToUser(userId, payload)
+    const { pushToPerson } = await import('$lib/server/push/person')
+    await pushToPerson(userId, payload)
   },
 }
 

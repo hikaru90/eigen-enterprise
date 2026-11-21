@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import { getDb } from '$lib/server/db'
 import { pushSubscription } from '$lib/server/db/schema'
 import { createAdminSql } from '$lib/server/job-queue/admin-db'
+import { pushDeviceView, type PushDevice } from './device'
 
 export type PushSubscriptionInput = {
   endpoint: string
@@ -162,6 +163,13 @@ export async function deletePushSubscriptionByEndpoint(endpoint: string): Promis
 
 export async function listPushSubscriptionsForUser(userId: string) {
   return getDb().select().from(pushSubscription).where(eq(pushSubscription.userId, userId))
+}
+
+/** This person's devices with notifications on, most recently seen first (read in the caller's RLS scope). */
+export async function listPushDevicesForUser(userId: string): Promise<PushDevice[]> {
+  const rows = await listPushSubscriptionsForUser(userId)
+  rows.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+  return Promise.all(rows.map(pushDeviceView))
 }
 
 export async function deletePushSubscriptionById(id: string): Promise<void> {

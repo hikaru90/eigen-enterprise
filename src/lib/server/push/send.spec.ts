@@ -85,4 +85,27 @@ describe('sendPushToUser', () => {
     expect(result.removed).toBe(1)
     expect(deletePushSubscriptionByIdMock).toHaveBeenCalledWith('gone')
   })
+
+  it('sends to one device only when a device is named', async () => {
+    listPushSubscriptionsForUserMock.mockResolvedValue([
+      { id: 's1', endpoint: 'https://a', p256dh: 'p', auth: 'a', userId: 'u1' },
+      { id: 's2', endpoint: 'https://b', p256dh: 'p2', auth: 'a2', userId: 'u1' },
+    ])
+    sendNotificationMock.mockResolvedValue(undefined)
+
+    const result = await sendPushToUser('u1', { title: 't', body: 'b' }, { deviceId: 's2' })
+    expect(result.sent).toBe(1)
+    expect(sendNotificationMock).toHaveBeenCalledTimes(1)
+    expect(sendNotificationMock.mock.calls[0][0]).toEqual({ endpoint: 'https://b', keys: { p256dh: 'p2', auth: 'a2' } })
+  })
+
+  it('fails loud when the named device is not one of this person’s', async () => {
+    listPushSubscriptionsForUserMock.mockResolvedValue([
+      { id: 's1', endpoint: 'https://a', p256dh: 'p', auth: 'a', userId: 'u1' },
+    ])
+    await expect(sendPushToUser('u1', { title: 't', body: 'b' }, { deviceId: 'other' })).rejects.toThrow(
+      /No push subscription with id other/,
+    )
+    expect(sendNotificationMock).not.toHaveBeenCalled()
+  })
 })
