@@ -2,6 +2,28 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-21 — GitHub full mirror M4: the copy-mode control + the end-to-end journey (owner: "Build M4"; merged into main, not pushed, not on the box)
+
+- **Control** (`c5ee0f26`): each repo row on Drive → GitHub has a "Copies: All files / Docs only" select.
+  - Docs only asks first (every non-Markdown file leaves the repo's Drive folder on the next sync). Going back to all files removes nothing, so it doesn't ask.
+  - The row says where the files land (GitHub / owner/repo / branch).
+  - Action `setCopyMode` is mapped to `repos.set_copy_mode` in `ui-parity.ts`.
+  - Tests: page.server spec (switching both ways, bad input, non-admin 403) and a component spec (5 tests, real browser).
+- **E2e seam** (`be7d8b22`, built by a subagent):
+  - The GitHub token client takes `apiBase` / `codeloadOrigin` from `GITHUB_TOKEN_API_BASE_URL` / `GITHUB_CODELOAD_BASE_URL`. Unset means the real GitHub, following the `OAUTH_GITHUB_API_BASE_URL` precedent.
+  - The tarball redirect stays exact-origin.
+- **Mock GitHub and journey** (`bfb8de84`):
+  - `scripts/mock-github*.ts`: the API and codeload on separate ports; repo `kindred/shop` with real blob shas and a real tarball.
+  - `src/routes/e2e/github-repos.e2e.ts`: token → tick → Sync now (tarball path) → `main/src/index.ts` opens as text, `assets/logo.png` as an image, Overview says 5 files → switch to docs only → after a sync, code is gone and docs remain.
+- **Bug found and fixed** (`13bb5edd`): M2 exported `TEXT_PREVIEW_MAX_BYTES` from `drive/file/[id]/+page.server.ts`. SvelteKit refuses that, so **every Drive file page answered 500** in the app; unit tests can't see it. The constant moved to `modules/drive/preview.ts`, and the new `src/routes/route-exports.spec.ts` checks every route module's exports.
+- **Gates:**
+  - typecheck 0 errors; lint clean
+  - 236 targeted unit tests; component specs for the page
+  - the journey: **1 flake in 2 runs**. Run 1 failed in Drive when a navigation went back from `main/` to `shop/`; run 2 passed. Likely cause: Vite re-optimizing deps on a cold cache (the class `d5dd7275` fixed for the office viewers). Not proven: the first run's full log wasn't kept.
+- **Next:**
+  - push (the CI gate runs unit + components) and release, then check on the box
+  - a later release drops `repo_sources.doc_shas`
+
 ## 2026-11-20 — GitHub full mirror M1–M3 reviewed, blockers fixed, merged into main (owner: "Yes, fix blockers"; not pushed, not on the box)
 
 - **What:** connected repos now copy every file of the default branch into Drive, under `GitHub/<owner>/<repo>/<branch>/` (plan/github-drive-full-mirror.md).

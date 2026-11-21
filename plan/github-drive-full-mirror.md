@@ -3,7 +3,7 @@
 Owner, 2026-11-20: "why does my connected github repo in eigen enterprise only show docs? it
 should show all folders and all code in the repo" → "Plan full mirror".
 
-**Status: proposed, ready for an agent to pick up.** It builds on `plan/github-drive.md`
+**Status (2026-11-21): M0–M4 built and merged on main; not pushed, not on the box.** It builds on `plan/github-drive.md`
 (approved 2026-11-12, S0–S4 shipped) and changes one owner decision there:
 "README and the Markdown docs … No code files" becomes **every file of the default branch**.
 
