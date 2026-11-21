@@ -5,7 +5,8 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 ## 2026-11-21 — Office milestone 3 merged: PDF annotations & forms, Word comments & tracked changes, PowerPoint comments (owner: "go")
 
 - **Scope** (`90a3d705`, plan §4b): P3, D3 and S3 are in. Export to PDF and co-editing are the next wave, each with its own plan, because both need shared server or realtime infrastructure. P4 (redaction, passwords, signatures, OCR) still needs its own approval.
-- **Shipped (merged into main, not pushed, not on the box):**
+- **Shipped** (owner: "Push and release"): pushed at `b62a8933` (local CI gate green) and released to the box as release `ca9eb1d6ab1cb01c`; `ee.service` active, `ee-os-b` running, https://os.ee.localhost answers, `journal.json` intact (9 KB).
+- **What it contains:**
   - **PDF P3** (`dc48fcfd`):
     - Real annotation dictionaries with appearance streams, so other readers show them: highlight, underline, strike, squiggly, notes, ink, text boxes, rectangles, ellipses, lines/arrows. Each has author, dates, replies and review state. The file's own annotations can be edited and deleted, keeping keys an edit doesn't touch.
     - AcroForm filling with flags enforced. Flattening is explicit, with a warning. XFA-only forms are refused, clearly.
