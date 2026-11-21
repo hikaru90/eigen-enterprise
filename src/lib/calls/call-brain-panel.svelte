@@ -4,6 +4,8 @@
   import Send from '@lucide/svelte/icons/send'
   import Share2 from '@lucide/svelte/icons/share-2'
   import X from '@lucide/svelte/icons/x'
+  import { dictateInto } from '$lib/voice/dictation-insert'
+  import VoiceDictation from '$lib/voice/voice-dictation.svelte'
 
   /**
    * The call's Company Brain panel (modules/calls/brain.ts). Off until
@@ -11,13 +13,27 @@
    * way it answers — to me alone (it may use my own Memory) — and I may
    * share an answer with my colleagues in the call. Shared answers show for
    * everyone here, from the Company Brain, asked by whom.
+   *
+   * The question takes dictation like every field (the Contribute mic, left of Ask): the
+   * words go in at the cursor; asking stays the person's tap.
    */
   let { brain, onclose }: { brain: CallBrain; onclose: () => void } = $props()
 
   let question = $state('')
+  let questionEl = $state<HTMLTextAreaElement | undefined>(undefined)
+  /** The voice bar holds the ask row (recording, transcribing or saying why it can't). */
+  let voiceActive = $state(false)
+  let cursorPlaced = false
+
+  function ontranscript(text: string): void {
+    if (!questionEl) throw new Error('call brain: the transcript arrived after the question field went away')
+    dictateInto(questionEl, text, cursorPlaced)
+    cursorPlaced = true
+  }
 
   async function submit(event: SubmitEvent) {
     event.preventDefault()
+    if (voiceActive) return
     if (await brain.ask(question)) question = ''
   }
 </script>
@@ -103,21 +119,35 @@
   <form class="flex items-end gap-2 border-t border-white/10 p-3" onsubmit={submit} data-testid="call-brain-ask">
     <label class="sr-only" for="call-brain-question">Ask the Brain</label>
     <textarea
+      bind:this={questionEl}
+      onfocus={() => (cursorPlaced = true)}
       id="call-brain-question"
       rows="2"
       maxlength="1000"
-      class="min-h-10 flex-1 resize-none rounded-md border border-white/15 bg-neutral-950 px-3 py-2 text-sm placeholder:text-neutral-500 focus:border-white/40 focus:outline-none disabled:opacity-50"
+      class={['min-h-10 min-w-0 flex-1 resize-none rounded-md border border-white/15 bg-neutral-950 px-3 py-2 text-sm placeholder:text-neutral-500 focus:border-white/40 focus:outline-none disabled:opacity-50', voiceActive && 'hidden']}
       placeholder={brain.listening ? 'Ask the Brain — only you see the answer' : 'Switch the Brain on to ask it'}
       disabled={!brain.listening || brain.asking}
       bind:value={question}
       data-testid="call-brain-question"
     ></textarea>
-    <button
-      type="submit"
-      class="grid size-10 shrink-0 place-items-center rounded-md bg-white text-neutral-900 hover:bg-white/90 disabled:opacity-50"
-      aria-label="Ask"
-      disabled={!brain.listening || brain.asking || question.trim() === ''}
-      data-testid="call-brain-send"><Send class="size-4" /></button
-    >
+    <!-- the call stage is dark in both themes: the mic takes the dark tokens -->
+    <div class={['dark flex items-center self-stretch', voiceActive && 'min-w-0 flex-1']}>
+      <VoiceDictation
+        bind:active={voiceActive}
+        disabled={!brain.listening || brain.asking}
+        testid="call-brain-voice"
+        {ontranscript}
+        onclose={() => questionEl?.focus({ preventScroll: true })}
+      />
+    </div>
+    {#if !voiceActive}
+      <button
+        type="submit"
+        class="grid size-10 shrink-0 place-items-center rounded-md bg-white text-neutral-900 hover:bg-white/90 disabled:opacity-50"
+        aria-label="Ask"
+        disabled={!brain.listening || brain.asking || question.trim() === ''}
+        data-testid="call-brain-send"><Send class="size-4" /></button
+      >
+    {/if}
   </form>
 </aside>

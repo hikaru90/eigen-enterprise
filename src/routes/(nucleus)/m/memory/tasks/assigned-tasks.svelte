@@ -2,6 +2,7 @@
   import { enhance } from '$app/forms'
   import { metaLine, updateLine } from '$lib/memory/assigned-task-format'
   import type { AssignedTaskView, TaskLists } from '$lib/server/memory/assigned-tasks/service'
+  import DictationField from '$lib/voice/dictation-field.svelte'
 
   /**
    * Memory › Tasks: the tasks assigned between members — to this person, and
@@ -32,6 +33,8 @@
 
   const pill =
     'inline-flex h-8 shrink-0 items-center rounded-full px-3.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
+  /** Each task's comment field, for dictation. */
+  const commentEls = $state<Record<string, HTMLInputElement>>({})
 </script>
 
 {#snippet card(task: AssignedTaskView)}
@@ -76,14 +79,17 @@
     <form method="POST" action="{action}?/comment" use:enhance class="flex min-w-0 items-center gap-1.5">
       <input type="hidden" name="task_id" value={task.id} />
       <label class="sr-only" for="comment-{task.id}">Comment on {task.title}</label>
-      <input
-        id="comment-{task.id}"
-        name="body"
-        required
-        maxlength="4000"
-        placeholder="Add a comment"
-        class="h-8 min-w-0 flex-1 rounded-full border border-input bg-background px-3.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      />
+      <DictationField field={commentEls[task.id] ?? null} kind="input" testid="comment-{task.id}-voice" class="flex-1">
+        <input
+          bind:this={commentEls[task.id]}
+          id="comment-{task.id}"
+          name="body"
+          required
+          maxlength="4000"
+          placeholder="Add a comment"
+          class="h-8 w-full min-w-0 rounded-full border border-input bg-background pr-9 pl-3.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      </DictationField>
       <button type="submit" class="{pill} bg-muted text-foreground hover:bg-muted/70">Comment</button>
     </form>
     {#if formMessage?.taskId === task.id}

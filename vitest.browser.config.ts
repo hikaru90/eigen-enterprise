@@ -164,6 +164,7 @@ export default defineConfig({
       'src/lib/components/contribute/contribute-views.svelte.spec.ts',
       'src/lib/components/contribute/share-settings-card.svelte.spec.ts',
       'src/lib/voice/voice-dictation.svelte.spec.ts',
+      'src/lib/voice/dictation-field.svelte.spec.ts',
       'src/lib/components/voice-input-button.svelte.spec.ts',
       'src/lib/components/assistant/voice-output-toggle.svelte.spec.ts',
       'src/lib/components/assistant/brain-knows.svelte.spec.ts',

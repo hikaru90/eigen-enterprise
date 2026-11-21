@@ -177,7 +177,7 @@
         onsubmit={applyLink}
         data-testid="drive-md-link-form"
       >
-        <Input
+        <Input dictation={false}
           class="h-8 max-w-md"
           placeholder="https://… (empty removes the link)"
           bind:value={linkHref}

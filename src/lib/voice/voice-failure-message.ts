@@ -1,5 +1,5 @@
-import { chosenMicrophoneMessage } from './microphone'
 import type { VoiceFailure } from './voice-message'
+import { chosenMicrophoneMessage } from './microphone'
 
 export const VOICE_FAILURE_TEXT = {
   permission: 'Microphone permission denied',

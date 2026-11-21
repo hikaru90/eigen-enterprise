@@ -210,7 +210,7 @@
     {#if people.length > 0}
       <div class="flex flex-col gap-1.5">
         <Label for="new-call-people-filter">Colleagues (optional)</Label>
-        <Input id="new-call-people-filter" bind:value={filter} placeholder="Search people" />
+        <Input dictation={false} id="new-call-people-filter" bind:value={filter} placeholder="Search people" />
         <div class="flex max-h-36 flex-col gap-0.5 overflow-y-auto rounded-md border border-border p-1.5" data-testid="new-call-people">
           {#if candidates.length === 0}<p class="p-1 text-xs text-muted-foreground">No one found.</p>{/if}
           {#each candidates as p (p.id)}

@@ -66,6 +66,7 @@
     viewToListApiParams,
     type CurrentUserView,
   } from '$lib/memory/current-user-view'
+  import { docTitle } from '$lib/shell/title'
   import {
     getCurrentUserView,
     subscribeCurrentUserView,
@@ -73,7 +74,6 @@
   import { pageInputDrafts } from '$lib/stores/page-input-drafts.svelte'
   import { unlinkTextFileFromThought } from '$lib/text-files/api'
   import { postTimelineQuickAction } from '../../../../timeline/timeline-item-actions'
-  import { docTitle } from '$lib/shell/title'
 
   let { data }: { data: PageData } = $props()
 
@@ -953,6 +953,7 @@
         <Label for="thought" class="sr-only">Thought</Label>
         <Textarea
           id="thought"
+          dictation={false}
           bind:value={raw}
           oninput={() => {
             pageInputDrafts.capture = raw

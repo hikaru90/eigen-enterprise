@@ -293,7 +293,7 @@
                 <Dialog.Title>Invite a teammate</Dialog.Title>
                 <Dialog.Description>They get access to every active module.</Dialog.Description>
               </Dialog.Header>
-              <Input placeholder="name@company.com" aria-label="Email" />
+              <Input dictation={false} placeholder="name@company.com" aria-label="Email" />
               <Dialog.Footer>
                 <Button variant="outline">Cancel</Button>
                 <Button>Send invite</Button>

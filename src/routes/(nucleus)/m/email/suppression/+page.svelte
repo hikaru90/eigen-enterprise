@@ -54,7 +54,7 @@
   </p>{/if}
 
 <form method="GET" action={base} class="mt-6 flex items-center gap-2">
-  <Input name="q" value={data.q} placeholder="Search addresses" class="h-9 w-64" />
+  <Input dictation={false} name="q" value={data.q} placeholder="Search addresses" class="h-9 w-64" />
   <Button type="submit" size="sm" variant="ghost">Search</Button>
 </form>
 

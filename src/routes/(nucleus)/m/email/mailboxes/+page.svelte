@@ -107,7 +107,7 @@
         </div>
         <div class="grid gap-1.5">
           <Label for="assign-local">Address</Label>
-          <Input id="assign-local" name="localPart" required placeholder="firstname.lastname" bind:value={localPart} disabled={busy} />
+          <Input dictation={false} id="assign-local" name="localPart" required placeholder="firstname.lastname" bind:value={localPart} disabled={busy} />
         </div>
         <div class="grid gap-1.5">
           <Label for="assign-domain">Domain</Label>
@@ -140,7 +140,7 @@
       >
         <div class="grid gap-1.5">
           <Label for="shared-local">Address</Label>
-          <Input id="shared-local" name="localPart" required placeholder="info" disabled={busy} />
+          <Input dictation={false} id="shared-local" name="localPart" required placeholder="info" disabled={busy} />
         </div>
         <div class="grid gap-1.5">
           <Label for="shared-domain">Domain</Label>
@@ -205,7 +205,7 @@
           {/if}
           <form method="POST" action="?/alias" class="flex flex-wrap items-end gap-2" use:enhance={submitting}>
             <input type="hidden" name="mailboxId" value={b.id} />
-            <Input name="localPart" required placeholder="another address" class="h-8 w-44" aria-label={`New alias for ${b.address}`} disabled={busy} />
+            <Input dictation={false} name="localPart" required placeholder="another address" class="h-8 w-44" aria-label={`New alias for ${b.address}`} disabled={busy} />
             <select name="domainId" class="h-8 rounded-md border border-input bg-background px-2 text-xs" aria-label="Domain" disabled={busy}>
               {#each data.admin.domains as d (d.id)}<option value={d.id}>@{d.name}</option>{/each}
             </select>

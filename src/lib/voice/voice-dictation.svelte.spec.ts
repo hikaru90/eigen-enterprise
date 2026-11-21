@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
 import { page as appPage } from '$app/state'
-import { FakeMediaRecorder, installVoiceDoubles } from '$lib/test/voice-doubles'
+import ContributeComposer from '$lib/components/contribute/contribute-composer.svelte'
 import MessageComposer from '$lib/messages/message-composer.svelte'
 import MessageEdit from '$lib/messages/message-edit.svelte'
-import ContributeComposer from '$lib/components/contribute/contribute-composer.svelte'
-import { DICTATION_MISSING_MESSAGE } from './dictation-readiness'
+import { FakeMediaRecorder, installVoiceDoubles } from '$lib/test/voice-doubles'
+import { DICTATION_MISSING_MESSAGE, DICTATION_UNSUPPORTED_MESSAGE } from './dictation-readiness'
 import { VOICE_TRANSCRIBE_URL } from './transcribe-voice-clip'
-import { VOICE_FAILURE_TEXT } from './voice-failure-message'
 import VoiceDictation from './voice-dictation.svelte'
+import { VOICE_FAILURE_TEXT } from './voice-failure-message'
 
 const ok = (transcript: string) => new Response(JSON.stringify({ transcript }), { status: 200 })
 const fail = (status: number, error: string) => new Response(JSON.stringify({ error }), { status })
@@ -33,9 +33,31 @@ describe('voice-dictation.svelte', () => {
     appPage.data = { shell: { dictation: { ready: false, missing: 'openrouter_key' } } }
     render(VoiceDictation, { ontranscript: vi.fn() })
     const mic = page.getByTestId('voice-mic')
-    await expect.element(mic).toBeDisabled()
+    await expect.element(mic).toHaveAttribute('aria-disabled', 'true')
     await expect.element(mic).toHaveAttribute('title', DICTATION_MISSING_MESSAGE.openrouter_key)
+    // a tap says it on screen (not only in a tooltip), and records nothing
+    await mic.click({ force: true }) // aria-disabled: still tappable, it explains itself
+    await expect.element(page.getByTestId('voice-error')).toHaveTextContent(DICTATION_MISSING_MESSAGE.openrouter_key)
+    await expect.element(page.getByRole('alert')).toBeVisible()
     expect(doubles.getUserMedia).not.toHaveBeenCalled()
+    await page.getByTestId('voice-discard').click()
+    await expect.element(mic).toBeInTheDocument()
+  })
+
+  it('a browser that cannot record says so on a tap', async () => {
+    doubles.restore()
+    const recorder = Object.getOwnPropertyDescriptor(globalThis, 'MediaRecorder')
+    Reflect.deleteProperty(globalThis, 'MediaRecorder')
+    try {
+      render(VoiceDictation, { ontranscript: vi.fn() })
+      const mic = page.getByTestId('voice-mic')
+      await expect.element(mic).toHaveAttribute('aria-disabled', 'true')
+      await mic.click({ force: true }) // aria-disabled: still tappable, it explains itself
+      await expect.element(page.getByTestId('voice-error')).toHaveTextContent(DICTATION_UNSUPPORTED_MESSAGE)
+    } finally {
+      if (recorder) Object.defineProperty(globalThis, 'MediaRecorder', recorder)
+      doubles = installVoiceDoubles()
+    }
   })
 
   it('names the server’s missing key on platform credits', async () => {

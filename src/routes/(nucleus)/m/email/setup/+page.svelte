@@ -116,7 +116,7 @@
     }}
   >
     <label class="sr-only" for={`domain-name-${where}`}>Domain</label>
-    <Input
+    <Input dictation={false}
       id={`domain-name-${where}`}
       name="name"
       required

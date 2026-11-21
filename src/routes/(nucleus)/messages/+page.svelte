@@ -1371,7 +1371,7 @@
         <Dialog.Title>New message</Dialog.Title>
         <Dialog.Description>Pick one person, or a few for a small group.</Dialog.Description>
       </Dialog.Header>
-      <Input bind:value={dmFilter} placeholder="Search people" aria-label="Search people" />
+      <Input dictation={false} bind:value={dmFilter} placeholder="Search people" aria-label="Search people" />
       <div class="flex max-h-60 flex-col gap-0.5 overflow-y-auto rounded-md border border-border p-1.5" data-testid="dm-people">
         {#if dmCandidates.length === 0}<p class="p-1 text-xs text-muted-foreground">No one found.</p>{/if}
         {#each dmCandidates as p (p.id)}

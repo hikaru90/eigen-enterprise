@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEVICES_KEY, type DeviceInfo } from '$lib/calls/devices'
 import {
   FakeAudioContext,
   FakeMediaRecorder,
   fakeStream,
   micSignal,
 } from '$lib/test/voice-doubles'
-import { DEVICES_KEY, type DeviceInfo } from '$lib/calls/devices'
 import { CLIP_DECODE_SAMPLE_RATE, type DecodedClip } from './clip-speech'
 import { TranscribeRequestError } from './transcribe-voice-clip'
 import {

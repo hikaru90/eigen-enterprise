@@ -61,7 +61,7 @@
         <input type="hidden" name="manifest" value={manifest.json} />
         <Label class="min-w-48 flex-1" for="github-org">
           GitHub organization (leave empty for your personal account)
-          <Input
+          <Input dictation={false}
             id="github-org"
             bind:value={githubOrg}
             name="org"

@@ -210,7 +210,7 @@
               <option value={type}>{CHANNEL_LABELS[type]}</option>
             {/each}
           </select>
-          <Input
+          <Input dictation={false}
             class="min-w-48 flex-1"
             name="channelValue"
             aria-label={`Channel ${i + 1}`}

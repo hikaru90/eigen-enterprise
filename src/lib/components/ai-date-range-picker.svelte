@@ -4,6 +4,7 @@
   import { Button } from '$lib/components/ui/button'
   import * as Popover from '$lib/components/ui/popover'
   import { parseNLDateRange, formatDateParam, formatDateRange } from '$lib/utils/date-utils'
+  import DictationField from '$lib/voice/dictation-field.svelte'
 
   let {
     from,
@@ -14,6 +15,7 @@
 
   let open = $state(false)
   let query = $state('')
+  let queryEl = $state<HTMLInputElement | null>(null)
   let parseError = $state('')
 
   const rangeLabel = $derived(formatDateRange(from, to))
@@ -52,15 +54,19 @@
   <Popover.Content align="end" class="w-64 p-3">
     <div class="flex flex-col gap-2">
       <div class="relative">
-        <input
-          type="text"
-          bind:value={query}
-          placeholder="e.g. last monday to today"
-          class="w-full rounded border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-blue-500"
-          onkeydown={(e) => {
-            if (e.key === 'Enter') handleSubmit()
-          }}
-        />
+        <DictationField field={queryEl} kind="input" testid="date-range-voice">
+          <input
+            bind:this={queryEl}
+            type="text"
+            bind:value={query}
+            placeholder="e.g. last monday to today"
+            aria-label="Date range in your words"
+            class="w-full rounded border border-border bg-background py-1.5 pr-9 pl-2 text-xs outline-none focus:border-blue-500"
+            onkeydown={(e) => {
+              if (e.key === 'Enter') handleSubmit()
+            }}
+          />
+        </DictationField>
         {#if parseError}
           <p class="mt-1 text-xs text-red-500">{parseError}</p>
         {/if}

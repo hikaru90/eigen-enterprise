@@ -770,7 +770,7 @@
       >
         <Label class="min-w-64 flex-1" for="repo-link">
           Repository link
-          <Input
+          <Input dictation={false}
             id="repo-link"
             name="repo"
             bind:value={repoUrl}
@@ -924,7 +924,7 @@
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="flex flex-col gap-1">
             <Label for="app-name">App name</Label>
-            <Input
+            <Input dictation={false}
               id="app-name"
               name="name"
               value={name}
@@ -935,7 +935,7 @@
           </div>
           <div class="flex flex-col gap-1">
             <Label for="app-host">Domain {kind === 'web' ? '' : '(optional)'}</Label>
-            <Input
+            <Input dictation={false}
               id="app-host"
               name="host"
               value={host}

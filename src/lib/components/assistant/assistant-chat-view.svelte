@@ -13,7 +13,8 @@
   import ApprovalModeSelect from '$lib/components/approval-mode-select.svelte'
   import ChatMarkdown from '$lib/components/chat-markdown.svelte'
   import { Button } from '$lib/components/ui/button'
-  import VoiceInputButton from '$lib/components/voice-input-button.svelte'
+  import { dictateInto } from '$lib/voice/dictation-insert'
+  import VoiceDictation from '$lib/voice/voice-dictation.svelte'
   import AttachmentChip from './attachment-chip.svelte'
   import { ASSISTANT_ATTACHMENT_ACCEPT, ASSISTANT_ATTACHMENT_LIMITS_TEXT } from './attachments'
   import VoiceOutputToggle from './voice-output-toggle.svelte'
@@ -23,6 +24,9 @@
    * transcript (markdown, quiet tool lines, approval cards) and the composer:
    * attach · message · microphone · send/stop, the microphone directly left of send
    * (Contribute: improve voice input), and "Read replies aloud" labelled under it.
+   * The mic is the one dictation control (`$lib/voice/voice-dictation.svelte`, as in
+   * Contribute): while it records its bar takes the composer row; Done puts the words in at
+   * the cursor for the person to read and send. It never sends by itself.
    */
   let { assistant }: { assistant: AssistantController } = $props()
 
@@ -34,14 +38,10 @@
   )
   let inputEl = $state<HTMLInputElement | undefined>(undefined)
   let transcriptEl = $state<HTMLDivElement | undefined>(undefined)
-  let voiceStopFn = $state<(() => void) | undefined>(undefined)
-  /** Why the last voice input failed, shown under the composer until the next try. */
-  let voiceError = $state<string | null>(null)
-
-  const micSupported =
-    typeof navigator !== 'undefined' &&
-    !!navigator.mediaDevices?.getUserMedia &&
-    typeof MediaRecorder !== 'undefined'
+  /** The voice bar holds the composer row (recording, transcribing or saying why it can't). */
+  let voiceActive = $state(false)
+  /** The person put the cursor in the message (dictation goes there, else after the text). */
+  let cursorPlaced = false
 
   function scrollToBottom(): void {
     const el = transcriptEl
@@ -61,8 +61,8 @@
 
   function send(): void {
     if (!canSend || chat.busy) return
+    if (voiceActive) return
     const text = assistant.draft.trim()
-    voiceStopFn?.()
     assistant.draft = ''
     assistant.submitComposer(text, attachments.take())
   }
@@ -88,8 +88,9 @@
   function handleVoiceTranscript(text: string): void {
     // Transcript fills the input (not auto-send): the user reviews the ASR
     // result and sends deliberately.
-    const draft = assistant.draft
-    assistant.draft = draft.trim() ? `${draft.trimEnd()} ${text}` : text
+    if (!inputEl) throw new Error('assistant composer: the transcript arrived after the field went away')
+    dictateInto(inputEl, text, cursorPlaced)
+    cursorPlaced = true
   }
 </script>
 
@@ -295,7 +296,10 @@
       />
       <button
         type="button"
-        class="grid w-9 shrink-0 cursor-pointer place-items-center rounded-sm text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        class={[
+          'grid w-9 shrink-0 cursor-pointer place-items-center rounded-sm text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50',
+          voiceActive && 'hidden',
+        ]}
         aria-label="Attach files"
         title={`Attach files: ${ASSISTANT_ATTACHMENT_LIMITS_TEXT}`}
         data-testid="assistant-attach"
@@ -311,22 +315,20 @@
         placeholder="What do you need?"
         aria-label="Message"
         data-testid="assistant-composer-input"
-        class="min-w-0 flex-1 border-0 bg-transparent px-1.5 text-sm text-foreground shadow-none outline-none placeholder:text-muted-foreground"
+        class={[
+          'min-w-0 flex-1 border-0 bg-transparent px-1.5 text-sm text-foreground shadow-none outline-none placeholder:text-muted-foreground',
+          voiceActive && 'hidden',
+        ]}
         disabled={chat.busy}
+        onfocus={() => (cursorPlaced = true)}
       />
-      <div
-        title={micSupported ? 'Speak your message' : 'Voice input is not available in this browser'}
-        data-testid="assistant-mic"
-      >
-        <VoiceInputButton
+      <div class={['flex items-center', voiceActive && 'min-w-0 flex-1']} data-testid="assistant-mic">
+        <VoiceDictation
+          bind:active={voiceActive}
           disabled={chat.busy}
-          bind:stopRef={voiceStopFn}
+          testid="assistant-voice"
           ontranscript={handleVoiceTranscript}
-          onstart={() => (voiceError = null)}
-          onerror={(message) => {
-            console.error('[assistant] voice input failed', message)
-            voiceError = message
-          }}
+          onclose={() => inputEl?.focus({ preventScroll: true })}
         />
       </div>
       <Button
@@ -335,7 +337,7 @@
         disabled={!chat.busy && !canSend}
         aria-label={chat.busy ? 'Stop' : 'Send'}
         data-testid="assistant-send"
-        class="rounded-sm bg-primary px-3 text-primary-foreground hover:bg-primary/90"
+        class={['rounded-sm bg-primary px-3 text-primary-foreground hover:bg-primary/90', voiceActive && 'hidden']}
       >
         {#if chat.busy}
           <Square class="size-4 shrink-0" strokeWidth={1.75} />
@@ -353,9 +355,6 @@
         {message}
       </p>
     {/each}
-    {#if voiceError}
-      <p class="mt-1.5 px-1 text-xs text-destructive" role="alert" data-testid="assistant-voice-error">{voiceError}</p>
-    {/if}
     <div class="mt-1 flex items-center px-0.5">
       <VoiceOutputToggle />
     </div>

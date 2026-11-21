@@ -8,6 +8,7 @@
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
   import { docTitle } from '$lib/shell/title'
+  import DictationField from '$lib/voice/dictation-field.svelte'
   import { templateVariables } from '../../../../../../../modules/email/platform/templates/variables'
 
   let { data, form }: PageProps = $props()
@@ -18,6 +19,7 @@
   let format = $state<string>(initial.format)
   let body = $state(initial.body)
   let textBody = $state(initial.textBody ?? '')
+  let textBodyEl = $state<HTMLTextAreaElement | null>(null)
   let sample = $state<Record<string, string>>({ ...initial.sampleVariables })
 
   const layout = $derived(data.layouts.find((l) => l.id === layoutId) ?? null)
@@ -217,13 +219,17 @@
       </div>
       <details class="rounded-md border border-border px-3 py-2">
         <summary class="cursor-pointer text-sm">Plain-text version (optional)</summary>
-        <textarea
-          name="textBody"
-          rows="5"
-          class="mt-2 w-full {inputClass}"
-          bind:value={textBody}
-          oninput={edited}
-          placeholder="Leave empty to build it from the HTML."></textarea>
+        <!-- the plain-text version is prose: it takes dictation (the HTML/MJML source does not) -->
+        <DictationField field={textBodyEl} kind="textarea" testid="tpl-text-body-voice" class="mt-2">
+          <textarea
+            bind:this={textBodyEl}
+            name="textBody"
+            rows="5"
+            class="w-full {inputClass} pr-10"
+            bind:value={textBody}
+            oninput={edited}
+            placeholder="Leave empty to build it from the HTML."></textarea>
+        </DictationField>
       </details>
 
       <section

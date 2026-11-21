@@ -2,6 +2,7 @@
   import type { PdfProperties, PropertiesPatch } from './properties'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
+  import DictationField from '$lib/voice/dictation-field.svelte'
 
   /**
    * The PDF's document properties (P3): title, author, subject and keywords
@@ -36,6 +37,8 @@
     { key: 'subject', label: 'Subject' },
     { key: 'keywords', label: 'Keywords' },
   ] as const
+  /** Each field's input, for dictation. */
+  const propEls = $state<Partial<Record<(typeof fields)[number]['key'], HTMLInputElement>>>({})
 
   const date = (iso: string | null) =>
     iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—'
@@ -67,12 +70,16 @@
       {#each fields as f (f.key)}
         <label class="flex flex-col gap-1 text-sm">
           <span class="text-muted-foreground">{f.label}</span>
-          <input
-            class="h-8 rounded-md border bg-background px-2 text-sm"
-            bind:value={draft[f.key]}
-            disabled={!canStage}
-            data-testid={`pdf-prop-${f.key}`}
-          />
+          <DictationField field={propEls[f.key] ?? null} kind="input" disabled={!canStage} testid={`pdf-prop-${f.key}-voice`}>
+            <input
+              bind:this={propEls[f.key]}
+              aria-label={f.label}
+              class="h-8 w-full rounded-md border bg-background pr-9 pl-2 text-sm"
+              bind:value={draft[f.key]}
+              disabled={!canStage}
+              data-testid={`pdf-prop-${f.key}`}
+            />
+          </DictationField>
         </label>
       {/each}
       <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-muted-foreground">

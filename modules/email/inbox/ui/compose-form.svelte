@@ -111,12 +111,12 @@
 
     <div class={fieldClass}>
       <label for="compose-to" class={labelClass}>To</label>
-      <Input id="compose-to" name="to" bind:ref={toInput} bind:value={to} autocomplete="off" class="h-8" data-testid="compose-to" />
+      <Input dictation={false} id="compose-to" name="to" bind:ref={toInput} bind:value={to} autocomplete="off" class="h-8" data-testid="compose-to" />
     </div>
     <div class={fieldClass}>
       <label for="compose-cc" class={labelClass}>Cc</label>
       <div class="flex min-w-0 items-center gap-2">
-        <Input id="compose-cc" name="cc" bind:value={cc} autocomplete="off" class="h-8" data-testid="compose-cc" />
+        <Input dictation={false} id="compose-cc" name="cc" bind:value={cc} autocomplete="off" class="h-8" data-testid="compose-cc" />
         {#if !showBcc}
           <Button type="button" size="sm" variant="ghost" onclick={revealBcc} aria-controls="compose-bcc-row" aria-expanded="false" data-testid="compose-show-bcc">Bcc</Button>
         {/if}
@@ -125,7 +125,7 @@
     {#if showBcc}
       <div class={fieldClass} id="compose-bcc-row">
         <label for="compose-bcc" class={labelClass}>Bcc</label>
-        <Input id="compose-bcc" name="bcc" bind:ref={bccInput} bind:value={bcc} autocomplete="off" class="h-8" data-testid="compose-bcc" />
+        <Input dictation={false} id="compose-bcc" name="bcc" bind:ref={bccInput} bind:value={bcc} autocomplete="off" class="h-8" data-testid="compose-bcc" />
       </div>
     {:else}
       <input type="hidden" name="bcc" value={bcc} />
