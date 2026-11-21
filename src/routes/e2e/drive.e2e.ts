@@ -187,9 +187,10 @@ test('Drive: two members — create, upload, share view → edit, preview, renam
   await gotoHydrated(a, '/drive')
   await row(a, 'Projects').getByTestId('drive-share').click()
   await expect(a.getByTestId('drive-share-dialog')).toBeVisible()
-  await a.getByTestId('drive-share-pick').selectOption(`user:${memberB.id}`)
   await a.getByTestId('drive-share-pick-level').selectOption('view')
-  await a.getByTestId('drive-share-add').click()
+  await a.getByTestId('drive-share-pick').fill(memberB.email)
+  // Picking adds them to the share; Save applies it (no separate Add step).
+  await a.getByTestId('drive-share-candidate').filter({ hasText: memberB.email }).click()
   // The creator's own manage grant (initializeGrants on create) + B.
   await expect(a.getByTestId('drive-share-row')).toHaveCount(2)
   await a.screenshot({ path: `${SHOTS}/03-owner-share-dialog.png` })
