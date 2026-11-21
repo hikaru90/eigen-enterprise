@@ -398,6 +398,15 @@ CREATE POLICY thought_neighbor_isolation ON thought_neighbor
   USING (user_id = current_setting('app.current_user_id', true))
   WITH CHECK (user_id = current_setting('app.current_user_id', true));
 
+-- A person's own recurring reminders (migration 0163).
+ALTER TABLE reminders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reminders FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS reminders_isolation ON reminders;
+CREATE POLICY reminders_isolation ON reminders
+  FOR ALL
+  USING (user_id = current_setting('app.current_user_id', true))
+  WITH CHECK (user_id = current_setting('app.current_user_id', true));
+
 ALTER TABLE entity_top_thoughts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE entity_top_thoughts FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS entity_top_thoughts_isolation ON entity_top_thoughts;

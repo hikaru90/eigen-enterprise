@@ -9,6 +9,7 @@ import {
   type MemoryWriter,
 } from './assistant-writes'
 import { MEMORY_TOOL_NAMES } from './manifest'
+import { createReminderTools, type ReminderToolDeps } from './reminder-tools'
 import { createTaskTools, type TaskToolDeps } from './task-tools'
 
 /**
@@ -29,6 +30,8 @@ export type MemoryToolDeps = {
   writerOf?: (ctx: ToolContext) => Promise<MemoryWriter | null>
   /** The tasks.* tools (task-tools.ts); they share writerOf unless given their own. */
   tasks?: TaskToolDeps
+  /** The reminders.* tools (reminder-tools.ts); they share writerOf unless given their own. */
+  reminders?: ReminderToolDeps
 }
 
 /** Every member's own Memory: members, admins, and agent principals that are a person (MCP keys). */
@@ -89,7 +92,7 @@ async function runAssistantWrite(
   throw new Error(`${name} is not a memory write`)
 }
 
-/** Kernel descriptors for the read-oriented memory surface plus capture and notes, and the tasks.* tools. */
+/** Kernel descriptors for the read-oriented memory surface plus capture and notes, the tasks.* and the reminders.* tools. */
 export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
   const writerOf = opts.writerOf ?? liveMemoryWriterOf
 
@@ -220,5 +223,6 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
       }),
     ),
     ...createTaskTools({ writerOf: opts.writerOf, ...opts.tasks }),
+    ...createReminderTools({ writerOf: opts.writerOf, ...opts.reminders }),
   ]
 }
