@@ -2,6 +2,14 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-21 — v0.5.31 released: the 11-21 contribute round is live (owner: "Push and release")
+
+- **Pushed** `b62a8933..6bd22935` + tag `v0.5.31` through the local CI gate. The first gate run was red: the composer's "More emoji" component test pressed Enter before the lazily loaded emoji search showed its match. Both picker specs now wait for the match (`2b8bac9f`, rerun green). `[release] v0.5.31` `6bd22935`, release run 44922690595 green (arm64 + x64).
+- **Local box:** built from a clean worktree at the tag and copied over `dist/release` (the box's mount). `box.sh install os.ee.localhost` passed: `/api/health` 200, `ee` + `ee-os-a` active, `reminders` table present (migration 0163).
+- **os.cerberusblue.com:** `ee upgrade --expect eigenenterprise-0.5.31-6bd2293556c2`, safety copy in `/var/lib/ee/upgrades/2026-11-21T16-09-41Z`. `/api/health` 200, `reminders` present, `lastReconcileError` null.
+- **Board:** 2c414719 (reminders) and a950ef11 (assistant edit) are now `shipped` with a note. The 7 ee-one items are marked by ee-one, which upgrades once the owner sets the /ops target to 0.5.31.
+- **Not verified on production:** the new flows in a real browser, and a real phone push.
+
 ## 2026-11-21 — Contribute round: 9 new proposals built in 7 parallel worktrees (owner: "get newest contributions from all companies over the cerberus mcp and integrate them. ill be away, you are on your own"; merged into main, not pushed, not on the box)
 
 Triage and calls: `plan/contribute-round-2026-11-21.md` (`ae7c0652`).
