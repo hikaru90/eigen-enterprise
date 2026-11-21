@@ -56,7 +56,7 @@ describe('docx flow: page numbers and header choice', () => {
       }),
     )
     const s = doc.sections[0]!
-    const pick = (i: number, n: number, evenOdd: boolean) => headerFooterFor(s, i, n, { defaultTabStopPt: 36, evenAndOddHeaders: evenOdd }).header
+    const pick = (i: number, n: number, evenOdd: boolean) => headerFooterFor(s, i, n, { defaultTabStopPt: 36, evenAndOddHeaders: evenOdd, trackRevisions: false }).header
     expect(pick(0, 1, true)).toBe('/word/header-b.xml')
     expect(pick(1, 2, true)).toBe('/word/header-c.xml')
     expect(pick(2, 3, true)).toBe('/word/header-a.xml')

@@ -1,6 +1,8 @@
 import type { Block, DocxDocument, Inline, Paragraph, PlaceholderInline, Table, TableCell } from './model'
 import type { Border, EdgeBorders, ParagraphProps, RunProps } from './properties'
 import { fontStack } from './fonts'
+import { authorColor } from './review-colors'
+import { descendants, NS, wa, wc } from './xml'
 import { symbolChar, symbolText } from './symbols'
 
 /**
@@ -285,8 +287,20 @@ function renderInlines(list: readonly Inline[], into: HTMLElement, env: RenderEn
         }
         const s = runSpan(i.run, env)
         s.textContent = i.text
+        const ids = env.doc.commentAnchors.get(i.source)
+        if (ids) {
+          s.classList.add('docx-comment')
+          s.dataset.comments = ids.join(' ')
+        }
+        // Formatting changed while tracking (w:rPrChange in the run's properties).
+        const change = wc(wc(i.source.parentNode as Element | null, 'rPr'), 'rPrChange')
+        if (change) {
+          s.classList.add('docx-format-change')
+          s.style.outline = `1px dotted ${authorColor(wa(change, 'author'))}`
+          s.title = `Formatting changed by ${wa(change, 'author') ?? 'an unknown author'}`
+        }
         into.append(s)
-        last = { run: i.run, span: s }
+        last = ids || change ? null : { run: i.run, span: s }
         break
       }
       case 'tab': {
@@ -365,9 +379,10 @@ function renderInlines(list: readonly Inline[], into: HTMLElement, env: RenderEn
         break
       }
       case 'change': {
-        const c = el(env, i.kind === 'insert' ? 'ins' : 'del', 'docx-change')
-        c.style.cssText = `color:#1d4ed8;text-decoration:${i.kind === 'insert' ? 'underline' : 'line-through'}`
-        if (i.author) c.title = `${i.kind === 'insert' ? 'Inserted' : 'Deleted'} by ${i.author}`
+        const c = el(env, i.kind === 'insert' ? 'ins' : 'del', `docx-change docx-change-${i.kind}`)
+        c.style.cssText = `color:${authorColor(i.author)};text-decoration-line:${i.kind === 'insert' ? 'underline' : 'line-through'}${i.move ? ';text-decoration-style:double' : ''}`
+        const what = i.move ? (i.kind === 'insert' ? 'Moved here' : 'Moved away') : i.kind === 'insert' ? 'Inserted' : 'Deleted'
+        c.title = `${what} by ${i.author ?? 'an unknown author'}${i.date ? `, ${i.date}` : ''}`
         renderInlines(i.children, c, env)
         into.append(c)
         break
@@ -515,11 +530,20 @@ export function renderParagraph(p: Paragraph, env: RenderEnv, frag: ParagraphFra
     } else if (p.list.level.suffix === 'space') e.append(' ')
   }
   renderInlines(frag.inlines ?? p.inlines, e, env)
+  // The change bar in the margin (drawn by the viewer's styles).
+  if (hasTrackedChange(p.source)) e.classList.add('docx-changed')
   if (!hasVisibleContent(e)) {
     // An empty paragraph still takes a line at its mark's size.
     e.append(el(env, 'br'))
   }
   return e
+}
+
+const CHANGE_ELEMENTS = ['ins', 'del', 'moveFrom', 'moveTo', 'rPrChange', 'pPrChange']
+
+/** Whether a paragraph holds a tracked change of any kind (text, formatting, its properties or its mark). */
+export function hasTrackedChange(p: Element): boolean {
+  return CHANGE_ELEMENTS.some((n) => descendants(p, NS.w, n).length > 0)
 }
 
 function hasVisibleContent(e: HTMLElement): boolean {

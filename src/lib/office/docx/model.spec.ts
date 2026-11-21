@@ -231,7 +231,7 @@ describe('docx model: sections, headers and footers (§17.6, §17.10)', () => {
           ),
       }),
     )
-    expect(doc.settings).toEqual({ defaultTabStopPt: 35.4, evenAndOddHeaders: true })
+    expect(doc.settings).toEqual({ defaultTabStopPt: 35.4, evenAndOddHeaders: true, trackRevisions: false })
     expect(doc.sections).toHaveLength(2)
     const [s1, s2] = doc.sections
     expect(paras(s1!.blocks).map(paragraphText)).toEqual(['one', 'end of 1'])
@@ -405,14 +405,36 @@ describe('docx model: images, links, bookmarks, fields, notes', () => {
     ])
   })
 
-  it('marks tracked changes and comments in the notices', () => {
+  it('reads tracked changes (author, date, moves) and comments with their anchors and threads', () => {
+    const W14 = 'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"'
     const doc = parseDocx(
-      buildDocx({ comments: '<w:comment w:id="0"><w:p/></w:comment>', body: p(`<w:ins w:author="A">${r('new')}</w:ins><w:del w:author="B"><w:r><w:delText>old</w:delText></w:r></w:del>`) + sectPr() }),
+      buildDocx({
+        comments: `<w:comment w:id="0" w:author="Ann Lee" w:date="2026-11-20T09:00:00Z"><w:p w14:paraId="0000000A" ${W14}>${r('Why?')}</w:p></w:comment>`,
+        settings: '<w:trackRevisions/>',
+        body:
+          p(
+            `<w:ins w:id="1" w:author="A" w:date="2026-11-01T00:00:00Z">${r('new')}</w:ins><w:del w:id="2" w:author="B"><w:r><w:delText>old</w:delText></w:r></w:del>` +
+              `<w:commentRangeStart w:id="0"/><w:moveTo w:id="3" w:author="C">${r('moved')}</w:moveTo><w:commentRangeEnd w:id="0"/><w:r><w:commentReference w:id="0"/></w:r>`,
+          ) + sectPr(),
+      }),
     )
     const para = paras(doc.sections[0]!.blocks)[0]!
-    expect(para.inlines.map((i) => (i.type === 'change' ? i.kind : i.type))).toEqual(['insert', 'delete'])
-    expect(paragraphText(para)).toBe('new')
-    expect(doc.notices).toHaveLength(2)
+    const changes = para.inlines.filter((i) => i.type === 'change')
+    expect(changes.map((c) => [c.kind, c.move, c.id, c.author, c.date])).toEqual([
+      ['insert', false, '1', 'A', '2026-11-01T00:00:00Z'],
+      ['delete', false, '2', 'B', null],
+      ['insert', true, '3', 'C', null],
+    ])
+    expect(paragraphText(para)).toBe('newmoved')
+    expect(doc.hasChanges).toBe(true)
+    expect(doc.settings.trackRevisions).toBe(true)
+    expect(doc.comments).toEqual([
+      { id: '0', author: 'Ann Lee', initials: 'AL', date: '2026-11-20T09:00:00Z', text: 'Why?', parentId: null, done: false, paraId: '0000000A', durableId: null },
+    ])
+    const moved = changes[2]!.children[0]!
+    expect(moved.type === 'text' && doc.commentAnchors.get(moved.source)).toEqual(['0'])
+    // Both are shown now: no "not shown" notice.
+    expect(doc.notices).toEqual([])
   })
 
   it('shows unknown content as a visible placeholder rather than dropping it', () => {

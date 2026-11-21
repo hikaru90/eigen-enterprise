@@ -1,3 +1,4 @@
+import type { CommentData } from './comments'
 import { parseDocx, type Block, type DocxDocument, type Inline, type Note, type Paragraph, type Table } from './model'
 import { symbolChar } from './symbols'
 
@@ -5,8 +6,12 @@ import { symbolChar } from './symbols'
  * The document's text as Markdown for agents and the Brain (`drive.read`,
  * see ../text.ts): headings from outline levels, nested lists, tables as
  * Markdown tables, images as `![alt](image)`, footnotes and endnotes
- * appended. Headers and footers are left out; deleted and hidden text too.
- * Runs in Node and the browser.
+ * appended. Headers and footers are left out, and hidden text too.
+ *
+ * Review markup stays readable: tracked insertions as `{+text+}`, deletions
+ * as `{-text-}` (with a note at the top that the file has changes nobody
+ * accepted yet), and comments appended as `> Comment (author): text`,
+ * replies indented under them. Runs in Node and the browser.
  */
 export async function extractText(bytes: Uint8Array): Promise<string> {
   return toMarkdown(parseDocx(bytes))
@@ -14,8 +19,12 @@ export async function extractText(bytes: Uint8Array): Promise<string> {
 
 type Line = { text: string; list: boolean }
 
+export const CHANGES_NOTE =
+  '> Note: this document has tracked changes that are not accepted yet. Inserted text is shown as {+text+}, deleted text as {-text-}.'
+
 export function toMarkdown(doc: DocxDocument): string {
   const out: Line[] = []
+  if (hasTextChanges(doc)) out.push({ text: CHANGES_NOTE, list: false })
   for (const s of doc.sections) blocks(s.blocks, out)
   const notes = (list: Note[], prefix: string) =>
     list.map((n) => ({ text: `[^${prefix}${n.mark || n.id}]: ${noteText(n)}`, list: true }))
@@ -24,7 +33,36 @@ export function toMarkdown(doc: DocxDocument): string {
     out.push({ text: '', list: false })
     out.push(...appended)
   }
+  const comments = commentLines(doc.comments)
+  if (comments.length) {
+    out.push({ text: '', list: false })
+    out.push(...comments.map((text) => ({ text, list: true })))
+  }
   return join(out)
+}
+
+/** Threads in file order: each top-level comment, then its replies (one level deeper per reply). */
+function commentLines(list: readonly CommentData[]): string[] {
+  const ids = new Set(list.map((c) => c.id))
+  const repliesOf = new Map<string, CommentData[]>()
+  for (const c of list) if (c.parentId && ids.has(c.parentId)) repliesOf.set(c.parentId, [...(repliesOf.get(c.parentId) ?? []), c])
+  const out: string[] = []
+  const add = (c: CommentData, depth: number) => {
+    const who = `${c.author || 'Unknown author'}${c.done ? ', resolved' : ''}`
+    out.push(`${'>'.repeat(depth + 1)} ${depth === 0 ? 'Comment' : 'Reply'} (${who}): ${c.text.replace(/\s*\n\s*/g, ' ').trim()}`)
+    for (const r of repliesOf.get(c.id) ?? []) add(r, depth + 1)
+  }
+  for (const c of list) if (!c.parentId || !ids.has(c.parentId)) add(c, 0)
+  return out
+}
+
+/** Whether the body has inserted or deleted text not yet accepted (format-only changes don't change the text). */
+function hasTextChanges(doc: DocxDocument): boolean {
+  const inInlines = (list: readonly Inline[]): boolean =>
+    list.some((i) => i.type === 'change' || ((i.type === 'link' || i.type === 'field') && inInlines(i.children)))
+  const inBlocks = (list: readonly Block[]): boolean =>
+    list.some((b) => (b.type === 'paragraph' ? inInlines(b.inlines) : b.type === 'table' ? b.rows.some((r) => r.cells.some((c) => inBlocks(c.blocks))) : false))
+  return doc.sections.some((s) => inBlocks(s.blocks))
 }
 
 /** Blank lines between blocks; list items (and notes) stay on consecutive lines. */
@@ -130,9 +168,11 @@ function inline(list: readonly Inline[]): string {
         s += href && text.trim() ? `[${text}](${href})` : text
         break
       }
-      case 'change':
-        if (i.kind === 'insert') s += inline(i.children)
+      case 'change': {
+        const text = inline(i.children)
+        if (text) s += i.kind === 'insert' ? `{+${text}+}` : `{-${text}-}`
         break
+      }
       case 'ruby':
         s += inline(i.base)
         break
