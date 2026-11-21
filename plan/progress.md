@@ -2,6 +2,18 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-21 — v0.5.32 released: shared projects + notes, voice everywhere, the brain's `ee` tool are live (owner: "Push and release")
+
+- **Released from a clean worktree** (another session's uncommitted website edits stay in the main checkout, out of the build and the gate).
+  - **Gate fix 1** (`d630fc8c`): a cold incremental `svelte-check` reported 4 false errors in every fresh checkout. It couldn't see `alertVariants`/`badgeVariants` exported from a `.svelte` module script; the main checkout only passed because of its warm cache. Both now live in `*-variants.ts` like `button-variants.ts`.
+  - **Gate fix 2:** the a11y contract now reads `badge-variants.ts`.
+  - Gate green: unit 8,612, components 808. `[release] v0.5.32` `a12f4090`, tag `v0.5.32`, release run 44942348044 green.
+- **Local box:** installed; `/api/health` 200.
+- **os.cerberusblue.com:** `ee upgrade --expect eigenenterprise-0.5.32-a12f40909743`, safety copy in `/var/lib/ee/upgrades/2026-11-21T19-45-40Z`. `/api/health` 200, `lastReconcileError` null, `company_data_key` created, no errors.
+  - Startup re-key ran for the owner (15 thoughts, 1 note).
+  - Production had 1 project and 1 note; **both are now shared with the company**.
+- **ee-one:** still on 0.5.30 until the owner sets its /ops target (0.5.32 carries 0.5.31). Its board: cdb96072 (voice everywhere) is now `in_progress`, "kommt mit v0.5.32".
+
 ## 2026-11-21 — Shared projects and notes, voice input on every field, the brain on every tool via `ee` (owner: "projects … shared … default should be sharing … toggle … absolutely private" · "all input fields should have … speech to text … especially ask the company brain" · "connected to all tools … using eigen CLI" · "you're on your own, plan for it, use subagents, and then execute"; merged into main, not pushed, not released)
 
 Plan + design: `plan/shared-memory-voice-agent-tools.md` (`e02f7643`). Three worktrees, merged by the orchestrator.
