@@ -47,8 +47,12 @@ export type KernelToolFilter = {
 function parseInput(schema: ZodType, input: unknown, toolName: string): unknown {
   const result = schema.safeParse(input)
   if (!result.success) {
-    const detail = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
-    throw new KernelError('invalid_input', `invalid input for tool ${toolName}: ${detail}`)
+    const issues = result.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message }))
+    const detail = issues.map((i) => `${i.path}: ${i.message}`).join('; ')
+    throw new KernelError('invalid_input', `invalid input for tool ${toolName}: ${detail}`, {
+      tool: toolName,
+      issues,
+    })
   }
   return result.data
 }
@@ -97,10 +101,14 @@ export class KernelRegistry {
     }
     if (descriptor.approvalAlways === true) {
       if (descriptor.auditClass === 'read') {
-        throw new Error(`tool ${descriptor.name} is a read tool; only a tool that changes something can be always-ask (approvalAlways)`)
+        throw new Error(
+          `tool ${descriptor.name} is a read tool; only a tool that changes something can be always-ask (approvalAlways)`,
+        )
       }
       if (descriptor.approvalRisk === undefined) {
-        throw new Error(`always-ask tool ${descriptor.name} declares no approvalRisk; every gated tool must declare one`)
+        throw new Error(
+          `always-ask tool ${descriptor.name} declares no approvalRisk; every gated tool must declare one`,
+        )
       }
     }
     this.approvalPolicy.validateTool?.(descriptor)
@@ -164,7 +172,11 @@ export class KernelRegistry {
         type: 'approval.auto_approved',
         principalId: ctx.principal.id,
         source: moduleSource(descriptor.module),
-        payload: { tool: name, approvalRisk: descriptor.approvalRisk, ...provenanceOf(ctx.principal) },
+        payload: {
+          tool: name,
+          approvalRisk: descriptor.approvalRisk,
+          ...provenanceOf(ctx.principal),
+        },
       })
     }
     if (decision === 'require') {

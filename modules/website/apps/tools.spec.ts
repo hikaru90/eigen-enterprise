@@ -277,6 +277,51 @@ describe('website.app_deploy builds the right ee calls', () => {
     expect(out.url).toBe('https://shop.kindred.dev')
   })
 
+  it('several domains: every one is routed to the app; the first is its main address', async () => {
+    const { ee, run } = await setup()
+    ee.consoleHost = 'os.kindred.dev'
+    const out = (await run('website.app_deploy', {
+      repo: 'kindred/shop',
+      branch: 'main',
+      name: 'shop',
+      kind: 'web',
+      contract: form,
+      hosts: ['shop.kindred.dev', 'www.shop.kindred.dev'],
+    })) as { url: string }
+    expect(out.url).toBe('https://shop.kindred.dev')
+    expect(ee.calls.filter((c) => c.verb === 'addDomain').map((c) => c.input)).toEqual([
+      expect.objectContaining({ host: 'shop.kindred.dev', workload: 'shop' }),
+      expect.objectContaining({ host: 'www.shop.kindred.dev', workload: 'shop' }),
+    ])
+  })
+
+  it('a domain another app serves is refused before anything is fetched or deployed', async () => {
+    const { ee, run } = await setup()
+    ee.consoleHost = 'os.kindred.dev'
+    ee.routes = [...ee.routes, { host: 'www.kindred.dev', workload: 'blog' }]
+    await expect(
+      run('website.app_deploy', {
+        repo: 'kindred/shop',
+        branch: 'main',
+        name: 'shop',
+        kind: 'web',
+        contract: form,
+        hosts: ['shop.kindred.dev', 'www.kindred.dev'],
+      }),
+    ).rejects.toThrow('www.kindred.dev already serves the app blog. Pick another address for shop.')
+    expect(verbs(ee)).toEqual([])
+  })
+
+  it('host and hosts together are refused as input', async () => {
+    const { tool } = await setup()
+    const parsed = tool('website.app_deploy').inputSchema.safeParse({
+      name: 'shop',
+      host: 'a.kindred.dev',
+      hosts: ['b.kindred.dev'],
+    })
+    expect(parsed.success).toBe(false)
+  })
+
   it('a missing runtime is a catalog gap in plain words; nothing is deployed', async () => {
     const { ee, run } = await setup()
     await expect(
@@ -614,7 +659,9 @@ describe('"Allow this app to send email" (website.app_mail_enable / app_mail_dis
     expect((await services.get('shop'))!.mailKeyId).toBe('key-1')
     expect(out).toEqual({ name: 'shop', enabled: true, applied: true })
     expect(JSON.stringify(out)).not.toContain('eigen_raw')
-    const detail = (await run('website.app_get', { name: 'shop' })) as { mail: { enabled: boolean } }
+    const detail = (await run('website.app_get', { name: 'shop' })) as {
+      mail: { enabled: boolean }
+    }
     expect(detail.mail).toEqual({ enabled: true })
   })
 
@@ -650,7 +697,9 @@ describe('"Allow this app to send email" (website.app_mail_enable / app_mail_dis
     expect(mailKeys.revoked).toEqual(['key-1'])
     expect((await services.get('shop'))!.mailKeyId).toBeNull()
     expect(ee.calls.length).toBe(before)
-    const detail = (await run('website.app_get', { name: 'shop' })) as { mail: { enabled: boolean } }
+    const detail = (await run('website.app_get', { name: 'shop' })) as {
+      mail: { enabled: boolean }
+    }
     expect(detail.mail).toEqual({ enabled: false })
   })
 

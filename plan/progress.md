@@ -2,6 +2,18 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-21 — v0.5.33: deploy forms name the rejected field, several domains per new app (owner: "something is wrong when trying to deploy the website repo" · "the domain field should accept multiple entries, comma separated" · "Commit and release")
+
+- **Cause on ee-one:** deploying `hikaru90/eigen-enterprise-website` failed instantly with "Some of what was entered is not valid". The kernel's input schema refused the deploy, so no app record and no deploy attempt exist. The exact field wasn't readable from here (SSH to ee-one was declined). Reproduced locally with a domain typed as `https://shop.example.com/`.
+- **Field-named errors:** the registry's `invalid_input` now carries `details: { tool, issues: [{ path, message }] }`. `plainAppMessage` maps (tool, field) to a sentence, e.g. "Check the domains: host names separated by commas … (no https:// and no /)". Fields without a hint keep the generic sentence.
+- **Several domains:**
+  - The new-app field is now "Domains" and is split on commas. The first domain is the main address, and every one is routed to the app.
+  - `website.app_deploy` keeps `host` and gains `hosts` (1–20); giving both is refused.
+  - **Behavior change:** a domain that another app, the console or the company site already serves is now refused before anything is fetched. Before, the deploy went on and silently skipped that route.
+- **Decision:** the domain field stays strict. A pasted URL is not rewritten into a host.
+- **Built from a clean worktree.** The error-messages session's uncommitted edits in the main checkout overlap these files and stay out of this release. That session has to rebase onto this commit.
+- **Owner direction in progress, not in this release:** every error written for the person, with a "Copy agent instructions" button. It is being built in its own session.
+
 ## 2026-11-21 — v0.5.32 released: shared projects + notes, voice everywhere, the brain's `ee` tool are live (owner: "Push and release")
 
 - **Released from a clean worktree** (another session's uncommitted website edits stay in the main checkout, out of the build and the gate).

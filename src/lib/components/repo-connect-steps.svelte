@@ -770,7 +770,8 @@
       >
         <Label class="min-w-64 flex-1" for="repo-link">
           Repository link
-          <Input dictation={false}
+          <Input
+            dictation={false}
             id="repo-link"
             name="repo"
             bind:value={repoUrl}
@@ -912,9 +913,7 @@
           {connected.repo} is connected. To build and run this app, this stack needs a server installed
           with ee. Your repository is saved; you can return to deploy it when the server is ready.
         </p>
-        <a class="mt-3 inline-block text-sm underline" href={resolve('/m/website')}
-          >Back to apps</a
-        >
+        <a class="mt-3 inline-block text-sm underline" href={resolve('/m/website')}>Back to apps</a>
       </div>
     {/if}
     <form method="POST" action="?/deploy" use:enhance={deploySubmit} class="flex flex-col gap-4">
@@ -924,7 +923,8 @@
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="flex flex-col gap-1">
             <Label for="app-name">App name</Label>
-            <Input dictation={false}
+            <Input
+              dictation={false}
               id="app-name"
               name="name"
               value={name}
@@ -934,21 +934,22 @@
             />
           </div>
           <div class="flex flex-col gap-1">
-            <Label for="app-host">Domain {kind === 'web' ? '' : '(optional)'}</Label>
-            <Input dictation={false}
+            <Label for="app-host">Domains {kind === 'web' ? '' : '(optional)'}</Label>
+            <Input
+              dictation={false}
               id="app-host"
               name="host"
               value={host}
               oninput={(e) => onHostInput(e.currentTarget.value)}
               placeholder={data.consoleHost
                 ? 'chosen from this server’s address'
-                : 'for example app.example.com'}
+                : 'for example app.example.com, www.app.example.com'}
               required={kind === 'web'}
               autocomplete="off"
             />
             <p class="text-xs text-muted-foreground">
               {kind === 'web'
-                ? 'Where the app will be served. Leave what is suggested unless you own the domain.'
+                ? 'Where the app will be served. Several domains: separate them with commas; the first is the main address. Leave what is suggested unless you own the domain.'
                 : 'A back-end service has no public address.'}
             </p>
           </div>

@@ -136,10 +136,16 @@ const deployInput = z
     contract: contractFormSchema.optional(),
     /** Web apps on the owner's own domain; otherwise derived from this server's host. */
     host: HOST.optional(),
+    /** Several domains at once (instead of `host`): all are routed to the app, the first is its main address. */
+    hosts: z.array(HOST).min(1).max(20).optional(),
     /** Push-to-deploy (GitHub App repos only). */
     autoDeploy: z.boolean().optional(),
   })
   .strict()
+  .refine((i) => !(i.host && i.hosts), {
+    message: 'give either host or hosts, not both',
+    path: ['hosts'],
+  })
 const nameInput = z.object({ name: NAME }).strict()
 const deployStatusInput = z.object({ name: NAME, after: z.string().datetime().optional() }).strict()
 const diagnoseInput = z.object({ name: NAME, deployId: z.string().uuid() }).strict()
@@ -361,6 +367,13 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
   }
 
   /** Fetch → contract → app → route → health. Records the outcome on the service row. */
+  /** Whose host is this, in plain words (the console, the company site, another app). */
+  function hostOwnerName(host: string, workload: string, status: EeStatus): string {
+    if (host === status.settings.consoleHost) return 'this console'
+    if (host === status.settings.publicHost) return 'the company site'
+    return workload === 'os' ? 'Eigen Enterprise itself' : `the app ${workload}`
+  }
+
   async function deploy(i: z.infer<typeof deployInput>, author: string): Promise<DeployResult> {
     const startedAt = now()
     const existing = await services.get(i.name)
@@ -394,9 +407,18 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
     if (workload && !existing)
       throw new AppUserError(`An app named ${i.name} already runs here. Pick another name.`)
 
+    // The given domains (deduplicated, order kept); the first is the app's main address.
+    const given = [...new Set(i.hosts ?? (i.host ? [i.host] : []))]
+    for (const h of given) {
+      const route = status.routes.find((r) => r.host === h)
+      if (route && route.workload !== i.name)
+        throw new AppUserError(
+          `${h} already serves ${hostOwnerName(h, route.workload, status)}. Pick another address for ${i.name}.`,
+        )
+    }
     let host: string | null = null
     if (kind === 'web') {
-      host = i.host ?? existing?.host ?? appHost(status.settings.consoleHost, i.name)
+      host = given[0] ?? existing?.host ?? appHost(status.settings.consoleHost, i.name)
       if (!host) {
         throw new AppUserError(
           `This server has no automatic address for apps. Give ${i.name} a domain (for example ${i.name}.yourdomain.com) and point its DNS at this server.`,
@@ -472,8 +494,9 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
         ...(resolved.source === 'form' ? { contract: resolved.contract } : {}),
         author,
       })
-      if (host && !status.routes.some((r) => r.host === host)) {
-        await ee.addDomain({ host, workload: i.name, role: 'app', author })
+      for (const h of host ? [...new Set([host, ...given])] : []) {
+        if (!status.routes.some((r) => r.host === h))
+          await ee.addDomain({ host: h, workload: i.name, role: 'app', author })
       }
     } catch (err) {
       const plain =

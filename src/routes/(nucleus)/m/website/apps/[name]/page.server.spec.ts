@@ -302,7 +302,7 @@ describe('/m/website/apps/[name]', () => {
       expect(eeHttp).not.toContain('POST /v1/secrets')
     })
 
-    it('a bad name is a plain sentence, not a raw zod error', async () => {
+    it('a bad variable name is a plain sentence naming the field, not a raw zod error', async () => {
       await setup()
       const out = (await actions.secretSet(
         event({
@@ -311,7 +311,7 @@ describe('/m/website/apps/[name]', () => {
         }),
       )) as { status: number; data: { action: string; error: string } }
       expect(out.status).toBe(400)
-      expect(out.data.error).toBe('Some of what was entered is not valid. Check it and try again.')
+      expect(out.data.error).toBe('Check the variable name: CAPITALS, digits and _, like API_KEY.')
     })
   })
 

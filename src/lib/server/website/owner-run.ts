@@ -33,13 +33,47 @@ export async function ownerRun<T>(user: { id: string }, tool: string, input: unk
   }
 }
 
+const APP_NAME = 'Check the app name: lowercase letters, digits and dashes, 2 to 31 long.'
+const DOMAIN =
+  'Check the domain: enter just the host name, like shop.example.com (no https:// and no /).'
+const ENV_NAME = 'Check the variable name: CAPITALS, digits and _, like API_KEY.'
+
+/** Per tool, the owner's sentence for each rejected field (keyed by the input's top-level key). */
+const FIELD_HINTS: Record<string, Record<string, string>> = {
+  'website.app_deploy': {
+    name: APP_NAME,
+    repo: 'Check the repository: owner/name, like kindred/site.',
+    branch: 'Check the branch name.',
+    host: DOMAIN,
+    hosts:
+      'Check the domains: host names separated by commas, like shop.example.com, www.shop.example.com (no https:// and no /).',
+    contract: 'Check the build form.',
+  },
+  'website.app_domain_set': { name: APP_NAME, host: DOMAIN },
+  'website.app_env_set': {
+    name: APP_NAME,
+    key: ENV_NAME,
+    value: 'Check the value: 1 to 16384 characters.',
+  },
+  'substrate.secret_set': { name: ENV_NAME, value: 'Check the secret value.' },
+}
+
+/** The first rejected field, named — never "some of what was entered" when the field is known. */
+function invalidInputMessage(err: KernelError): string {
+  const tool = err.details?.tool
+  const issues = err.details?.issues
+  const first = Array.isArray(issues) ? (issues[0] as { path?: unknown }) : null
+  const key = typeof first?.path === 'string' ? first.path.split('.')[0]! : null
+  const hint = typeof tool === 'string' && key ? FIELD_HINTS[tool]?.[key] : undefined
+  return hint ?? 'Some of what was entered is not valid. Check it and try again.'
+}
+
 /** code ↔ harness ↔ user: a plain sentence for the page; details go to the server log. */
 export function plainAppMessage(err: unknown): string {
   if (err instanceof AppUserError) return err.message
   if (err instanceof KernelError) {
     if (err.code === 'permission_denied') return 'Only an admin can do this.'
-    if (err.code === 'invalid_input')
-      return 'Some of what was entered is not valid. Check it and try again.'
+    if (err.code === 'invalid_input') return invalidInputMessage(err)
     if (err.code === 'approval_required') return 'This is waiting for your approval in the chat.'
   }
   return 'Something went wrong while deploying. Try again; if it keeps happening, ask in the chat.'

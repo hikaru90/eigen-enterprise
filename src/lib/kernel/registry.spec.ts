@@ -101,9 +101,10 @@ describe('KernelRegistry.execute permission + validation', () => {
     const registry = new KernelRegistry({ eventSink: sink })
     const handlerCalls: unknown[] = []
     registry.register(makeTool({ handler: async (c, i) => handlerCalls.push([c, i]) }))
-    await expect(
-      registry.execute('memory.echo', { value: 42 }, makeCtx()),
-    ).rejects.toMatchObject({ code: 'invalid_input' })
+    await expect(registry.execute('memory.echo', { value: 42 }, makeCtx())).rejects.toMatchObject({
+      code: 'invalid_input',
+      details: { tool: 'memory.echo', issues: [{ path: 'value', message: expect.any(String) }] },
+    })
     expect(handlerCalls).toHaveLength(0)
     expect(sink.events).toHaveLength(0)
   })
@@ -280,12 +281,16 @@ describe('KernelRegistry.execute read flow', () => {
     const registry = new KernelRegistry({ eventSink: sink, vcsCommitter: spy })
     registry.register(makeTool())
 
-    await expect(
-      registry.execute('memory.echo', { value: 'hi' }, makeCtx()),
-    ).resolves.toEqual({ echoed: { value: 'hi' } })
+    await expect(registry.execute('memory.echo', { value: 'hi' }, makeCtx())).resolves.toEqual({
+      echoed: { value: 'hi' },
+    })
     expect(messages).toHaveLength(0)
     expect(sink.events).toHaveLength(1)
-    expect(sink.events[0].payload).toMatchObject({ tool: 'memory.echo', auditClass: 'read', ok: true })
+    expect(sink.events[0].payload).toMatchObject({
+      tool: 'memory.echo',
+      auditClass: 'read',
+      ok: true,
+    })
   })
 
   it('stamps the audit event with the owning module source URN', async () => {
@@ -306,9 +311,9 @@ describe('KernelRegistry.execute module activation gating', () => {
   it('is skipped when no activation store is injected (bare in-memory usage)', async () => {
     const registry = new KernelRegistry()
     registry.register(makeTool())
-    await expect(
-      registry.execute('memory.echo', { value: 'x' }, makeCtx()),
-    ).resolves.toEqual({ echoed: { value: 'x' } })
+    await expect(registry.execute('memory.echo', { value: 'x' }, makeCtx())).resolves.toEqual({
+      echoed: { value: 'x' },
+    })
   })
 
   it('throws module_inactive (fail closed) for inactive modules and skips handler + audit', async () => {
@@ -318,9 +323,9 @@ describe('KernelRegistry.execute module activation gating', () => {
     const handlerCalls: unknown[] = []
     registry.register(makeTool({ handler: async (c, i) => handlerCalls.push([c, i]) }))
 
-    await expect(
-      registry.execute('memory.echo', { value: 'x' }, makeCtx()),
-    ).rejects.toSatisfy((err: unknown) => err instanceof KernelError && err.code === 'module_inactive')
+    await expect(registry.execute('memory.echo', { value: 'x' }, makeCtx())).rejects.toSatisfy(
+      (err: unknown) => err instanceof KernelError && err.code === 'module_inactive',
+    )
     expect(handlerCalls).toHaveLength(0)
     expect(sink.events).toHaveLength(0)
   })
@@ -331,14 +336,14 @@ describe('KernelRegistry.execute module activation gating', () => {
     registry.register(makeTool())
 
     await activations.set('memory', true)
-    await expect(
-      registry.execute('memory.echo', { value: 'x' }, makeCtx()),
-    ).resolves.toEqual({ echoed: { value: 'x' } })
+    await expect(registry.execute('memory.echo', { value: 'x' }, makeCtx())).resolves.toEqual({
+      echoed: { value: 'x' },
+    })
 
     await activations.set('memory', false)
-    await expect(
-      registry.execute('memory.echo', { value: 'x' }, makeCtx()),
-    ).rejects.toSatisfy((err: unknown) => err instanceof KernelError && err.code === 'module_inactive')
+    await expect(registry.execute('memory.echo', { value: 'x' }, makeCtx())).rejects.toSatisfy(
+      (err: unknown) => err instanceof KernelError && err.code === 'module_inactive',
+    )
   })
 
   it('gates per module: activating another module does not unlock this tool', async () => {
@@ -348,12 +353,12 @@ describe('KernelRegistry.execute module activation gating', () => {
     registry.register(makeTool({ name: 'mail.send', module: 'mail', auditClass: 'mutate' }))
 
     await activations.set('mail', true)
-    await expect(
-      registry.execute('memory.echo', { value: 'x' }, makeCtx()),
-    ).rejects.toSatisfy((err: unknown) => err instanceof KernelError && err.code === 'module_inactive')
-    await expect(
-      registry.execute('mail.send', { value: 'x' }, makeCtx()),
-    ).resolves.toEqual({ echoed: { value: 'x' } })
+    await expect(registry.execute('memory.echo', { value: 'x' }, makeCtx())).rejects.toSatisfy(
+      (err: unknown) => err instanceof KernelError && err.code === 'module_inactive',
+    )
+    await expect(registry.execute('mail.send', { value: 'x' }, makeCtx())).resolves.toEqual({
+      echoed: { value: 'x' },
+    })
   })
 
   it('says whether the module was switched off on purpose (record false) or never switched on (no record)', async () => {
@@ -382,7 +387,9 @@ describe('KernelRegistry.execute module activation gating', () => {
 
     await expect(
       registry.execute('memory.echo', { value: 'x' }, makeCtx({ roles: ['viewer'] })),
-    ).rejects.toSatisfy((err: unknown) => err instanceof KernelError && err.code === 'module_inactive')
+    ).rejects.toSatisfy(
+      (err: unknown) => err instanceof KernelError && err.code === 'module_inactive',
+    )
   })
 })
 
@@ -397,9 +404,9 @@ describe('KernelRegistry.execute output schema', () => {
       }),
     )
 
-    await expect(
-      registry.execute('memory.echo', { value: 'hi' }, makeCtx()),
-    ).resolves.toEqual({ echoed: { value: 'hi' } })
+    await expect(registry.execute('memory.echo', { value: 'hi' }, makeCtx())).resolves.toEqual({
+      echoed: { value: 'hi' },
+    })
     expect(sink.events[0].payload).toMatchObject({ tool: 'memory.echo', ok: true })
   })
 
@@ -429,9 +436,9 @@ describe('KernelRegistry.execute output schema', () => {
       }),
     )
 
-    await expect(
-      registry.execute('memory.echo', { value: 'x' }, makeCtx()),
-    ).rejects.toMatchObject({ code: 'invalid_output' })
+    await expect(registry.execute('memory.echo', { value: 'x' }, makeCtx())).rejects.toMatchObject({
+      code: 'invalid_output',
+    })
     expect(messages).toHaveLength(0)
     expect(sink.events).toHaveLength(1)
     expect(sink.events[0].payload).toMatchObject({
@@ -457,8 +464,15 @@ describe('KernelRegistry with the owner-chosen approval mode', () => {
   function setup(mode: 'ask' | 'reasonable' | 'allow_all') {
     const sink = new InMemoryEventSink()
     const store = new InMemoryApprovalStore()
-    const policy = new ModeAwareApprovalPolicy(new Set([toolName]), new InMemoryApprovalModeStore(mode))
-    const registry = new KernelRegistry({ eventSink: sink, approvalPolicy: policy, approvalStore: store })
+    const policy = new ModeAwareApprovalPolicy(
+      new Set([toolName]),
+      new InMemoryApprovalModeStore(mode),
+    )
+    const registry = new KernelRegistry({
+      eventSink: sink,
+      approvalPolicy: policy,
+      approvalStore: store,
+    })
     let calls = 0
     registry.register(
       makeTool({
@@ -494,7 +508,10 @@ describe('KernelRegistry with the owner-chosen approval mode', () => {
   })
 
   it('registering a gated tool without approvalRisk fails at load time', () => {
-    const policy = new ModeAwareApprovalPolicy(new Set([toolName]), new InMemoryApprovalModeStore('ask'))
+    const policy = new ModeAwareApprovalPolicy(
+      new Set([toolName]),
+      new InMemoryApprovalModeStore('ask'),
+    )
     const registry = new KernelRegistry({ approvalPolicy: policy })
     expect(() =>
       registry.register(makeTool({ name: toolName, module: 'email', auditClass: 'external' })),
@@ -509,7 +526,9 @@ describe('KernelRegistry activity (plain words for the owner)', () => {
     const registry = new KernelRegistry()
     for (const auditClass of ['mutate', 'external'] as const) {
       expect(() =>
-        registry.register(makeTool({ name: `memory.${auditClass}`, auditClass, activity: undefined })),
+        registry.register(
+          makeTool({ name: `memory.${auditClass}`, auditClass, activity: undefined }),
+        ),
       ).toThrow(/declares no activity/)
     }
     expect(registry.list()).toHaveLength(0)
@@ -554,7 +573,11 @@ describe('KernelRegistry activity (plain words for the owner)', () => {
     )
     await expect(registry.execute('memory.echo', { value: 'x' }, makeCtx())).rejects.toThrow('boom')
     expect(seen).toEqual([undefined])
-    expect(events.events[0].payload).toMatchObject({ ok: false, error: 'boom', activity: 'Saved x' })
+    expect(events.events[0].payload).toMatchObject({
+      ok: false,
+      error: 'boom',
+      activity: 'Saved x',
+    })
   })
 
   it('records a throwing activity as an audit error without touching the result', async () => {
@@ -569,7 +592,9 @@ describe('KernelRegistry activity (plain words for the owner)', () => {
         },
       }),
     )
-    await expect(registry.execute('memory.echo', { value: 'x' }, makeCtx())).resolves.toEqual({ done: true })
+    await expect(registry.execute('memory.echo', { value: 'x' }, makeCtx())).resolves.toEqual({
+      done: true,
+    })
     const payload = events.events[0].payload as Record<string, unknown>
     expect(payload.ok).toBe(true)
     expect(payload.activity).toBeUndefined()
@@ -585,7 +610,11 @@ describe('KernelRegistry: always-ask tools (approvalAlways)', () => {
     const store = new InMemoryApprovalStore()
     // Not in the gated list on purpose: approvalAlways alone is the wall.
     const policy = new ModeAwareApprovalPolicy(new Set(), new InMemoryApprovalModeStore(mode))
-    const registry = new KernelRegistry({ eventSink: sink, approvalPolicy: policy, approvalStore: store })
+    const registry = new KernelRegistry({
+      eventSink: sink,
+      approvalPolicy: policy,
+      approvalStore: store,
+    })
     const ran: unknown[] = []
     registry.register(
       makeTool({
@@ -664,11 +693,13 @@ describe('KernelRegistry: always-ask tools (approvalAlways)', () => {
 
   it('refuses to register an always-ask read tool or one without approvalRisk', () => {
     const registry = new KernelRegistry()
-    expect(() => registry.register(makeTool({ name: 'settings.get', approvalAlways: true }))).toThrow(
-      /read tool/,
-    )
     expect(() =>
-      registry.register(makeTool({ name: 'settings.update', auditClass: 'mutate', approvalAlways: true })),
+      registry.register(makeTool({ name: 'settings.get', approvalAlways: true })),
+    ).toThrow(/read tool/)
+    expect(() =>
+      registry.register(
+        makeTool({ name: 'settings.update', auditClass: 'mutate', approvalAlways: true }),
+      ),
     ).toThrow(/approvalRisk/)
   })
 })

@@ -147,7 +147,6 @@ export const load: PageServerLoad = async (event) => {
 }
 
 const field = (f: FormData, name: string) => String(f.get(name) ?? '').trim()
-const optional = (v: string) => (v === '' ? undefined : v)
 
 type DeployKeyPending = { repo: string; keyId: string; publicKey: string; addKeyUrl: string }
 
@@ -320,13 +319,18 @@ export const actions: Actions = {
         })
       }
     }
+    // The domain field takes several domains, comma separated; the first is the main address.
+    const hosts = field(f, 'host')
+      .split(',')
+      .map((h) => h.trim())
+      .filter(Boolean)
     const input = {
       name,
       repo,
       branch,
       kind: field(f, 'kind') === 'backend' ? 'backend' : 'web',
       ...(contract ? { contract } : {}),
-      ...(optional(field(f, 'host')) ? { host: field(f, 'host') } : {}),
+      ...(hosts.length ? { hosts } : {}),
       ...(field(f, 'autoDeploy') === 'on' ? { autoDeploy: true } : {}),
     }
     // In the background: the page follows the job (stage + log) instead of one long request.

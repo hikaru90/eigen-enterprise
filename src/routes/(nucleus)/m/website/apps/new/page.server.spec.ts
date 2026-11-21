@@ -481,6 +481,43 @@ describe('/m/website/apps/new: deploy', () => {
     expect(typeof out.data.jobId).toBe('string')
   })
 
+  it('the domain field takes several domains, comma separated', async () => {
+    await expect(
+      actions.deploy(
+        event({
+          repo: 'kindred/site',
+          branch: 'main',
+          name: 'multi',
+          kind: 'web',
+          host: 'Multi.example.com, www.multi.example.com ,',
+          ...contract,
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 303, location: '/m/website/apps/multi' })
+    expect(ee.calls.filter((c) => c.verb === 'addDomain').map((c) => c.input)).toEqual([
+      expect.objectContaining({ host: 'multi.example.com' }),
+      expect.objectContaining({ host: 'www.multi.example.com' }),
+    ])
+  })
+
+  it('a bad domain is refused naming the field, not "some of what was entered"', async () => {
+    const out = (await actions.deploy(
+      event({
+        repo: 'kindred/site',
+        branch: 'main',
+        name: 'baddomain',
+        kind: 'web',
+        host: 'https://shop.example.com/',
+        ...contract,
+      }),
+    )) as { status: number; data: { action: string; error: string } }
+    expect(out.status).toBe(400)
+    expect(out.data.error).toBe(
+      'Check the domains: host names separated by commas, like shop.example.com, www.shop.example.com (no https:// and no /).',
+    )
+    expect(ee.calls).toEqual([])
+  })
+
   it('a broken build form is refused before anything runs, with the schema’s words', async () => {
     const out = (await actions.deploy(
       event({
