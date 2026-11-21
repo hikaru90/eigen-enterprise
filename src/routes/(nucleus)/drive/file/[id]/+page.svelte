@@ -7,9 +7,14 @@
   import ExternalLinkIcon from '@lucide/svelte/icons/external-link'
   import FileIcon from '@lucide/svelte/icons/file'
   import LockIcon from '@lucide/svelte/icons/lock'
+  import Maximize2Icon from '@lucide/svelte/icons/maximize-2'
+  import Minimize2Icon from '@lucide/svelte/icons/minimize-2'
+  import PanelRightCloseIcon from '@lucide/svelte/icons/panel-right-close'
+  import PanelRightOpenIcon from '@lucide/svelte/icons/panel-right-open'
   import Share2Icon from '@lucide/svelte/icons/share-2'
   import UsersIcon from '@lucide/svelte/icons/users'
   import XIcon from '@lucide/svelte/icons/x'
+  import { onMount } from 'svelte'
   import { goto, invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
   import ArchiveBanner from '$lib/components/drive/archive-banner.svelte'
@@ -26,7 +31,10 @@
    * Open a file, full width (P-3): the path and the file's name across the
    * top; the in-place editor for Markdown/CSV when the viewer may edit (D2),
    * else the preview, filling the space; beside it a panel with the details,
-   * sharing and — for Markdown/CSV — the revisions.
+   * sharing and — for Markdown/CSV — the revisions. The panel can be put away
+   * (remembered in this browser), and Full view gives the viewer the whole
+   * screen: the browser's full screen when it allows it, else the file view
+   * maximised in the window; Esc leaves it.
    */
   let { data }: { data: PageData } = $props()
   const contentUrl = $derived(`/api/drive/files/${data.file.id}/content`)
@@ -80,7 +88,54 @@
       : { href: data.root.href, label: data.root.label }
   })
 
-  /** Escape closes the viewer — unless it belongs to a dialog, a field being typed in, or someone else took it. */
+  /** The details panel beside the viewer: shown unless put away (remembered per browser). */
+  const SIDE_KEY = 'ee.drive.file-details'
+  let sideOpen = $state(true)
+  /** Full view: off, the browser's full screen ('screen'), or maximised in the window when full screen is refused ('window'). */
+  let fullView = $state<'off' | 'screen' | 'window'>('off')
+  const sideShown = $derived(sideOpen && fullView === 'off')
+
+  onMount(() => {
+    sideOpen = window.localStorage.getItem(SIDE_KEY) !== 'hidden'
+  })
+
+  function toggleSide() {
+    sideOpen = !sideOpen
+    window.localStorage.setItem(SIDE_KEY, sideOpen ? 'shown' : 'hidden')
+  }
+
+  async function enterFullView() {
+    // The whole document goes full screen, so dialogs a viewer opens (portalled to <body>) stay visible.
+    const root = document.documentElement
+    if (!root.requestFullscreen) {
+      fullView = 'window'
+      return
+    }
+    try {
+      await root.requestFullscreen()
+      fullView = 'screen'
+    } catch {
+      // The browser refused (policy, no user gesture): maximise in the window instead, and say so.
+      fullView = 'window'
+    }
+  }
+
+  async function exitFullView() {
+    const was = fullView
+    fullView = 'off'
+    if (was === 'screen' && document.fullscreenElement) await document.exitFullscreen()
+  }
+
+  function toggleFullView() {
+    void (fullView === 'off' ? enterFullView() : exitFullView())
+  }
+
+  /** Leaving the browser's full screen by its own means (Esc, F11) ends full view too. */
+  function onFullscreenChange() {
+    if (fullView === 'screen' && !document.fullscreenElement) fullView = 'off'
+  }
+
+  /** Escape leaves full view first, else closes the viewer — unless it belongs to a dialog, a field being typed in, or someone else took it. */
   function onKeydown(event: KeyboardEvent) {
     if (event.key !== 'Escape' || event.defaultPrevented || sharing) return
     const target = event.target
@@ -94,6 +149,10 @@
       ) {
         return
       }
+    }
+    if (fullView !== 'off') {
+      void exitFullView()
+      return
     }
     void goto(back.href)
   }
@@ -122,6 +181,7 @@
 <svelte:head><title>{docTitle(data.file.name, 'Drive')}</title></svelte:head>
 
 <svelte:window onkeydown={onKeydown} />
+<svelte:document onfullscreenchange={onFullscreenChange} />
 
 {#snippet tooLarge(message: string)}
   <div
@@ -194,7 +254,13 @@
   </section>
 {/snippet}
 
-<div class="flex min-h-0 flex-1 flex-col" data-testid="drive-file">
+<div
+  class={fullView === 'off'
+    ? 'flex min-h-0 flex-1 flex-col'
+    : 'fixed inset-0 z-40 flex flex-col overflow-auto bg-background'}
+  data-testid="drive-file"
+  data-full-view={fullView}
+>
   <header
     class="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3 sm:px-6"
   >
@@ -248,7 +314,48 @@
         </p>
       </div>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex flex-wrap items-center gap-2">
+      {#if fullView === 'window'}
+        <span
+          class="text-xs text-muted-foreground"
+          role="status"
+          data-testid="drive-file-full-view-note"
+          >Full screen is not available here — maximised in the window. Esc leaves it.</span
+        >
+      {/if}
+      <Button
+        variant="outline"
+        size="icon"
+        onclick={toggleFullView}
+        aria-label={fullView === 'off' ? 'Full view' : 'Exit full view'}
+        aria-pressed={fullView !== 'off'}
+        title={fullView === 'off' ? 'Full view' : 'Exit full view (Esc)'}
+        data-testid="drive-file-full-view"
+      >
+        {#if fullView === 'off'}
+          <Maximize2Icon class="size-4" aria-hidden="true" />
+        {:else}
+          <Minimize2Icon class="size-4" aria-hidden="true" />
+        {/if}
+      </Button>
+      {#if fullView === 'off'}
+        <Button
+          variant="outline"
+          size="icon"
+          onclick={toggleSide}
+          aria-label={sideOpen ? 'Hide details' : 'Show details'}
+          aria-expanded={sideOpen}
+          aria-controls="drive-file-side"
+          title={sideOpen ? 'Hide details' : 'Show details'}
+          data-testid="drive-file-side-toggle"
+        >
+          {#if sideOpen}
+            <PanelRightCloseIcon class="size-4" aria-hidden="true" />
+          {:else}
+            <PanelRightOpenIcon class="size-4" aria-hidden="true" />
+          {/if}
+        </Button>
+      {/if}
       {#if data.canEdit && !data.file.archivedAt}
         <Button
           variant="outline"
@@ -288,10 +395,13 @@
           heartbeatMs={data.heartbeatMs}
           onsaved={(f) => (saved = f)}
           side={details}
+          {sideShown}
         />
       {/key}
     {:else}
-      <div class="grid min-h-0 flex-1 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div
+        class="grid min-h-0 flex-1 gap-6 {sideShown ? 'lg:grid-cols-[minmax(0,1fr)_20rem]' : ''}"
+      >
         <div
           class="flex min-h-[60vh] min-w-0 flex-col overflow-hidden rounded-lg border bg-card"
           data-testid="drive-preview"
@@ -444,7 +554,13 @@
             </div>
           {/if}
         </div>
-        <aside class="flex min-w-0 flex-col gap-6" data-testid="drive-file-side">
+        <aside
+          id="drive-file-side"
+          class="flex min-w-0 flex-col gap-6"
+          hidden={!sideShown}
+          aria-label="Details"
+          data-testid="drive-file-side"
+        >
           {@render details()}
           {#if revisioned}
             <RevisionsPanel
