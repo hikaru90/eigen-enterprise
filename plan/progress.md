@@ -2,6 +2,55 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-21 — Office milestone 3 merged: PDF annotations & forms, Word comments & tracked changes, PowerPoint comments (owner: "go")
+
+- **Scope** (`90a3d705`, plan §4b): P3, D3 and S3 are in. Export to PDF and co-editing are the next wave, each with its own plan, because both need shared server or realtime infrastructure. P4 (redaction, passwords, signatures, OCR) still needs its own approval.
+- **Shipped (merged into main, not pushed, not on the box):**
+  - **PDF P3** (`dc48fcfd`):
+    - Real annotation dictionaries with appearance streams, so other readers show them: highlight, underline, strike, squiggly, notes, ink, text boxes, rectangles, ellipses, lines/arrows. Each has author, dates, replies and review state. The file's own annotations can be edited and deleted, keeping keys an edit doesn't touch.
+    - AcroForm filling with flags enforced. Flattening is explicit, with a warning. XFA-only forms are refused, clearly.
+    - Properties: Info and XMP kept in sync.
+    - One save path (`edit.ts`) for the UI and the tools.
+    - New agent tools: `drive.pdf_list_annotations`, `pdf_add_note`, `pdf_reply`, `pdf_edit_annotations`, `pdf_list_form_fields`, `pdf_fill_form`, `pdf_set_properties`. They are registered, in member reach, and access-checked through the Drive service. `pdf_edit_annotations` was added so every UI edit has a registry tool.
+  - **Word D3** (`8ab499f1`), clean-room from ECMA-376 only:
+    - Comments: threads, resolve/reopen, edit/delete your own, anchored highlights. Untouched comments are byte-identical.
+    - Tracked changes:
+      - existing changes render with a change bar
+      - the Track toggle (written to `settings.xml`) makes edits record `w:ins`, `w:del` and `w:rPrChange`
+      - accept/reject one or all, and next/previous change
+    - Agent text: `{+…+}`/`{-…-}` plus appended comments.
+  - **PowerPoint S3** (`4e48a98c`):
+    - Modern threaded comments: on the slide, a shape or a point, with replies and resolve. Legacy comments are read-only, with a note; when a slide has both, the modern ones win and that is shown.
+    - Markers on slides, counts on thumbnails, and a panel.
+    - Ops with exact undo. Only comment parts change (plus one slide reference entry on a slide's first comment).
+  - **Drive wiring** (`05145b79`): viewers get `author` (the signed-in member). Without it, commenting, tracking and annotating stay off, visibly; nothing is ever written anonymously.
+  - **e2e** (`9d059926`): a PDF note, a Word comment and a PowerPoint comment each save, reopen, and appear in the agent text.
+- **Fixed while verifying** (`91923313`):
+  - **Dev pre-bundle list:** the hand-kept `optimizeDeps.include` missed the M3 editors' icons, and the dev server reloaded mid-journey, the second time this failure class appeared. The list is now derived from the office imports by `scripts/office-prebundle.mjs`, with a spec.
+  - **PDF agent text:** it didn't list annotations. It now lists notes, markups and drawings per page, with author and review state, replies nested.
+- **Product rules decided (logged, owner may veto):**
+  - PowerPoint: only the author can edit or delete their own comment or reply; anyone with edit access can resolve or reopen. Resolved threads leave the slide and stay in the panel.
+  - PDF: a comment's "reviewed" checkbox sets the Review state "Completed".
+- **Tests:**
+  - Full gate `npm run ci:local` green after the three merges: 8,412 unit and 725 component tests, 0 type and 0 lint errors.
+  - After the fixes: the scanner, PDF and script specs are green, and `npm run check` shows 0 errors.
+  - e2e in an isolated checkout at `91923313`: all four Drive/office journeys passed (56.8 s).
+- **Known gaps:**
+  - **PowerPoint:** interop is untested against real PowerPoint. The slide reference entry's id and EMU comment positions were written from knowledge of the schema; verify with a file round-tripped through PowerPoint. Comments can't be anchored to a text range yet.
+  - **Word:**
+    - Paragraph-mark revisions (Enter/join) and `w:pPrChange` aren't recorded while tracking; existing ones work.
+    - Comments are added only in the Edit layout.
+    - Table row/cell revisions are kept but not shown.
+    - `people.xml` isn't written.
+  - **PDF:**
+    - Text boxes use Helvetica only.
+    - Replies have no popup annotation.
+    - Agent positions ignore page rotation.
+    - Password-protected PDFs can't be annotated.
+- **Next:**
+  - The owner decides push + release.
+  - Then the next-wave plans: export to PDF, co-editing.
+
 ## 2026-11-21 — Released: GitHub full mirror on the box (owner: "Push and release")
 
 - **Pushed** `cadf10e9..2ef7adc5` through the local CI gate.
