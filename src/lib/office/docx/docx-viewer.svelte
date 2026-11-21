@@ -688,7 +688,7 @@
     {#if linkOpen}
       <form class="flex flex-wrap items-center gap-2 border-b px-3 py-1.5 text-sm" onsubmit={applyLink} data-testid="docx-link-form">
         <label class="text-xs text-muted-foreground" for="docx-link-target">Link to</label>
-        <Input id="docx-link-target" class="h-7 max-w-md flex-1 text-xs" placeholder="https://… or #bookmark" bind:value={linkValue} data-testid="docx-link-input" />
+        <Input dictation={false} id="docx-link-target" class="h-7 max-w-md flex-1 text-xs" placeholder="https://… or #bookmark" bind:value={linkValue} data-testid="docx-link-input" />
         <Button size="sm" class="h-7 text-xs" type="submit" data-testid="docx-link-apply">Apply</Button>
         {#if pmState && linkAt(pmState)}
           <Button size="sm" variant="outline" class="h-7 text-xs" type="button" onclick={removeLink} data-testid="docx-link-remove">Remove link</Button>

@@ -9,6 +9,7 @@
   import MessageSquarePlusIcon from '@lucide/svelte/icons/message-square-plus'
   import XIcon from '@lucide/svelte/icons/x'
   import { Button } from '$lib/components/ui/button'
+  import DictationField from '$lib/voice/dictation-field.svelte'
   import { anchorName } from './comment-view'
   import { isMember, type CommentPerson, type SlideComment } from './comments'
 
@@ -74,6 +75,10 @@
   /** What is being edited: "comment" or "comment/reply". */
   let editing = $state<string | null>(null)
   let editText = $state('')
+  /** The open composers' fields (one of each kind at a time), for dictation. */
+  let draftEl = $state<HTMLTextAreaElement | null>(null)
+  let replyEl = $state<HTMLTextAreaElement | null>(null)
+  let editEl = $state<HTMLTextAreaElement | null>(null)
   let busy = $state(false)
 
   const here = $derived(slides[current] ?? null)
@@ -174,7 +179,7 @@
       {#if legacy}<span class="rounded-full border border-amber-400 px-1.5 text-amber-800 dark:text-amber-300" data-testid="pptx-thread-legacy">Older-format comment, read-only</span>{/if}
     </div>
     {#if editing === t.id}
-      <textarea class="mt-1.5 block min-h-14 w-full rounded-md border bg-background px-2 py-1 text-sm" aria-label="Edit comment" bind:value={editText} onkeydown={(e) => onComposerKey(e, () => saveEdit(slide, t, null))} data-testid="pptx-comment-edit-text"></textarea>
+      <DictationField field={editEl} kind="textarea" testid="pptx-comment-edit-text-voice" class="mt-1.5"><textarea bind:this={editEl} class="block min-h-14 w-full rounded-md border bg-background px-2 py-1 text-sm pr-10" aria-label="Edit comment" bind:value={editText} onkeydown={(e) => onComposerKey(e, () => saveEdit(slide, t, null))} data-testid="pptx-comment-edit-text"></textarea></DictationField>
       <div class="mt-1 flex gap-1.5">
         <Button size="sm" class="h-7" disabled={busy || !editText.trim()} onclick={() => saveEdit(slide, t, null)} data-testid="pptx-comment-save">Save</Button>
         <Button size="sm" variant="ghost" class="h-7" onclick={() => (editing = null)}>Cancel</Button>
@@ -191,7 +196,7 @@
               <span class="text-xs text-muted-foreground">{when(r.created)}</span>
             </div>
             {#if editing === `${t.id}/${r.id}`}
-              <textarea class="mt-1 block min-h-12 w-full rounded-md border bg-background px-2 py-1 text-sm" aria-label="Edit reply" bind:value={editText} onkeydown={(e) => onComposerKey(e, () => saveEdit(slide, t, r.id))} data-testid="pptx-comment-edit-text"></textarea>
+              <DictationField field={editEl} kind="textarea" testid="pptx-comment-edit-text-voice" class="mt-1"><textarea bind:this={editEl} class="block min-h-12 w-full rounded-md border bg-background px-2 py-1 text-sm pr-10" aria-label="Edit reply" bind:value={editText} onkeydown={(e) => onComposerKey(e, () => saveEdit(slide, t, r.id))} data-testid="pptx-comment-edit-text"></textarea></DictationField>
               <div class="mt-1 flex gap-1.5">
                 <Button size="sm" class="h-7" disabled={busy || !editText.trim()} onclick={() => saveEdit(slide, t, r.id)} data-testid="pptx-comment-save">Save</Button>
                 <Button size="sm" variant="ghost" class="h-7" onclick={() => (editing = null)}>Cancel</Button>
@@ -217,7 +222,7 @@
         data-testid="pptx-thread-jump">Go to slide {index + 1}</button>
     {:else if canComment && !legacy}
       {#if replyFor === t.id}
-        <textarea class="mt-2 block min-h-12 w-full rounded-md border bg-background px-2 py-1 text-sm" aria-label="Reply" placeholder="Reply" bind:value={replyText} onkeydown={(e) => onComposerKey(e, () => sendReply(slide, t))} data-testid="pptx-reply-text-input"></textarea>
+        <DictationField field={replyEl} kind="textarea" testid="pptx-reply-text-input-voice" class="mt-2"><textarea bind:this={replyEl} class="block min-h-12 w-full rounded-md border bg-background px-2 py-1 text-sm pr-10" aria-label="Reply" placeholder="Reply" bind:value={replyText} onkeydown={(e) => onComposerKey(e, () => sendReply(slide, t))} data-testid="pptx-reply-text-input"></textarea></DictationField>
         <div class="mt-1 flex gap-1.5">
           <Button size="sm" class="h-7" disabled={busy || !replyText.trim()} onclick={() => sendReply(slide, t)} data-testid="pptx-reply-send">Reply</Button>
           <Button size="sm" variant="ghost" class="h-7" onclick={() => (replyFor = null)}>Cancel</Button>
@@ -274,7 +279,7 @@
           <div class="rounded-md border border-primary p-2" data-testid="pptx-comment-composer">
             <p class="mb-1 text-xs text-muted-foreground" data-testid="pptx-comment-where">{pending.label}</p>
             <!-- svelte-ignore a11y_autofocus -->
-            <textarea class="block min-h-16 w-full rounded-md border bg-background px-2 py-1 text-sm" aria-label="New comment" placeholder="Write a comment" autofocus bind:value={draft} onkeydown={(e) => onComposerKey(e, post)} data-testid="pptx-comment-text"></textarea>
+            <DictationField field={draftEl} kind="textarea" testid="pptx-comment-text-voice"><textarea bind:this={draftEl} class="block min-h-16 w-full rounded-md border bg-background px-2 py-1 text-sm pr-10" aria-label="New comment" placeholder="Write a comment" autofocus bind:value={draft} onkeydown={(e) => onComposerKey(e, post)} data-testid="pptx-comment-text"></textarea></DictationField>
             <div class="mt-1 flex gap-1.5">
               <Button size="sm" class="h-7" disabled={busy || !draft.trim()} onclick={post} data-testid="pptx-comment-post">Comment</Button>
               <Button size="sm" variant="ghost" class="h-7" onclick={cancelPending} data-testid="pptx-comment-cancel">Cancel</Button>

@@ -193,7 +193,7 @@
           <Label for="memory-delete-all-confirm">
             Type <span class="font-mono">{data.deleteAllConfirmation}</span> to confirm
           </Label>
-          <Input
+          <Input dictation={false}
             id="memory-delete-all-confirm"
             name="confirmation"
             autocomplete="off"

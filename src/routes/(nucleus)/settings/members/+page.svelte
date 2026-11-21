@@ -3,6 +3,7 @@
   import { enhance } from '$app/forms'
   import UserAvatar from '$lib/components/user-avatar.svelte'
   import { docTitle } from '$lib/shell/title'
+  import DictationField from '$lib/voice/dictation-field.svelte'
 
   /**
    * Settings → Members: who belongs to the company, their roles (explained in
@@ -37,6 +38,8 @@
         ? { error: true, text: form.error }
         : { error: false, text: 'Done.' }
       : null
+  /** The groups' name and description fields (by id; 'new' = the create form), for dictation. */
+  const groupEls = $state<Record<string, HTMLInputElement>>({})
 </script>
 
 <svelte:head>
@@ -226,22 +229,28 @@
               <form method="post" action="?/updateGroup" use:enhance class="mt-3 space-y-2">
                 <input type="hidden" name="groupId" value={g.id} />
                 <label class="block text-xs" for="group-name-{g.id}">Name</label>
-                <input
-                  id="group-name-{g.id}"
-                  name="name"
-                  value={g.name}
-                  required
-                  maxlength="80"
-                  class="border-input bg-card h-8 w-full border px-2 text-xs"
-                />
+                <DictationField field={groupEls[`name-${g.id}`] ?? null} kind="input" testid="group-name-{g.id}-voice">
+                  <input
+                    bind:this={groupEls[`name-${g.id}`]}
+                    id="group-name-{g.id}"
+                    name="name"
+                    value={g.name}
+                    required
+                    maxlength="80"
+                    class="border-input bg-card h-8 w-full border pr-9 pl-2 text-xs"
+                  />
+                </DictationField>
                 <label class="block text-xs" for="group-desc-{g.id}">Description</label>
-                <input
-                  id="group-desc-{g.id}"
-                  name="description"
-                  value={g.description}
-                  maxlength="500"
-                  class="border-input bg-card h-8 w-full border px-2 text-xs"
-                />
+                <DictationField field={groupEls[`desc-${g.id}`] ?? null} kind="input" testid="group-desc-{g.id}-voice">
+                  <input
+                    bind:this={groupEls[`desc-${g.id}`]}
+                    id="group-desc-{g.id}"
+                    name="description"
+                    value={g.description}
+                    maxlength="500"
+                    class="border-input bg-card h-8 w-full border pr-9 pl-2 text-xs"
+                  />
+                </DictationField>
                 <fieldset class="space-y-1">
                   <legend class="text-xs">Members</legend>
                   {#each data.members as m (m.id)}
@@ -289,23 +298,29 @@
       <div class="flex flex-wrap gap-2">
         <div class="min-w-0 flex-1 space-y-1">
           <label class="text-xs" for="new-group-name">Name</label>
-          <input
-            id="new-group-name"
-            name="name"
-            required
-            maxlength="80"
-            placeholder="Sales"
-            class="border-input bg-card h-9 w-full border px-2.5 text-xs"
-          />
+          <DictationField field={groupEls['name-new'] ?? null} kind="input" testid="new-group-name-voice">
+            <input
+              bind:this={groupEls['name-new']}
+              id="new-group-name"
+              name="name"
+              required
+              maxlength="80"
+              placeholder="Sales"
+              class="border-input bg-card h-9 w-full border pr-9 pl-2.5 text-xs"
+            />
+          </DictationField>
         </div>
         <div class="min-w-0 flex-[2] space-y-1">
           <label class="text-xs" for="new-group-desc">Description (optional)</label>
-          <input
-            id="new-group-desc"
-            name="description"
-            maxlength="500"
-            class="border-input bg-card h-9 w-full border px-2.5 text-xs"
-          />
+          <DictationField field={groupEls['desc-new'] ?? null} kind="input" testid="new-group-desc-voice">
+            <input
+              bind:this={groupEls['desc-new']}
+              id="new-group-desc"
+              name="description"
+              maxlength="500"
+              class="border-input bg-card h-9 w-full border pr-9 pl-2.5 text-xs"
+            />
+          </DictationField>
         </div>
       </div>
       <fieldset class="space-y-1">

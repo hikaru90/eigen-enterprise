@@ -208,7 +208,7 @@
           <input type="hidden" name="provider" value="eurouter" />
           <div class="space-y-1.5">
             <Label for="ruleChat">Chat routing rule</Label>
-            <Input
+            <Input dictation={false}
               id="ruleChat"
               type="text"
               name="ruleChat"
@@ -219,7 +219,7 @@
           </div>
           <div class="space-y-1.5">
             <Label for="ruleEmbedding">Search routing rule</Label>
-            <Input
+            <Input dictation={false}
               id="ruleEmbedding"
               type="text"
               name="ruleEmbedding"

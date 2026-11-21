@@ -1,9 +1,10 @@
 <script lang="ts">
   import type { PageData } from './$types'
   import { resolve } from '$app/paths'
+  import { docTitle } from '$lib/shell/title'
+  import DictationField from '$lib/voice/dictation-field.svelte'
   import SourceOptions from './source-options.svelte'
   import SpecimenMini from './specimen-mini.svelte'
-  import { docTitle } from '$lib/shell/title'
 
   type Candidate = { label: string; cssVars?: Record<string, string>; error?: string }
   type GuideMeta = { filename: string; mime: string; sizeBytes: number }
@@ -21,6 +22,8 @@
 
   let name = $state('')
   let note = $state('')
+  let noteEl = $state<HTMLTextAreaElement | null>(null)
+  let nameEl = $state<HTMLInputElement | null>(null)
   let sessionId = $state(data.initial?.session.id ?? '')
   let sessionUrl = $state(data.initial?.session.url ?? '')
   let sessionTitle = $state(data.initial?.session.title ?? '')
@@ -251,13 +254,16 @@
             <label class="text-sm font-medium" for="reject-note">
               None of these — retry with a corrective note (optional)
             </label>
-            <textarea
-              id="reject-note"
-              class="w-full rounded border p-2 text-sm"
-              rows="2"
-              bind:value={note}
-              placeholder="e.g. too corporate, warmer neutrals, keep the rounded corners"
-            ></textarea>
+            <DictationField field={noteEl} kind="textarea" testid="reject-note-voice">
+              <textarea
+                bind:this={noteEl}
+                id="reject-note"
+                class="w-full rounded border p-2 pr-10 text-sm"
+                rows="2"
+                bind:value={note}
+                placeholder="e.g. too corporate, warmer neutrals, keep the rounded corners"
+              ></textarea>
+            </DictationField>
             <button
               type="button"
               class="self-start rounded border px-3 py-2 text-sm disabled:opacity-50"
@@ -294,13 +300,16 @@
           {/if}
           <div class="flex flex-col gap-2">
             <label class="text-sm font-medium" for="corpus-name">Corpus item name</label>
-            <input
-              id="corpus-name"
-              class="w-full max-w-sm rounded border px-3 py-2 text-sm"
-              type="text"
-              placeholder="e.g. Kindred web"
-              bind:value={name}
-            />
+            <DictationField field={nameEl} kind="input" testid="corpus-name-voice" class="max-w-sm">
+              <input
+                bind:this={nameEl}
+                id="corpus-name"
+                class="w-full rounded border py-2 pr-9 pl-3 text-sm"
+                type="text"
+                placeholder="e.g. Kindred web"
+                bind:value={name}
+              />
+            </DictationField>
             <button
               type="button"
               class="self-start rounded bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"

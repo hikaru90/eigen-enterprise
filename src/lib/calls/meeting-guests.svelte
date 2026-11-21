@@ -95,7 +95,7 @@
     <form class="flex flex-col gap-1.5" onsubmit={invite}>
       <Label for="meeting-guests-more">Invite more (email)</Label>
       <div class="flex gap-2">
-        <Input id="meeting-guests-more" bind:value={more} placeholder="name@partner.com" />
+        <Input dictation={false} id="meeting-guests-more" bind:value={more} placeholder="name@partner.com" />
         <Button type="submit" disabled={busy || more.trim() === ''}>Invite</Button>
       </div>
     </form>

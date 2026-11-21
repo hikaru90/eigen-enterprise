@@ -40,7 +40,7 @@
     ontranscript,
     disabled = false,
     // $bindable() sets up the parent binding; ESLint cannot see the parent read the assignments.
-    // eslint-disable-next-line no-useless-assignment -- Svelte bindable prop
+     
     active = $bindable(false),
     testid = 'voice',
     size = 'default',

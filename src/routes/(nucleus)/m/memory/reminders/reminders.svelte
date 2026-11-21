@@ -3,6 +3,7 @@
   import { enhance } from '$app/forms'
   import { dueLine, nextLine, rhythmLine, WEEKDAY_LABELS } from '$lib/memory/reminder-format'
   import type { ReminderView } from '$lib/server/memory/reminders/service'
+  import DictationField from '$lib/voice/dictation-field.svelte'
 
   /**
    * Memory › Reminders: the person's own recurring reminders (Contribute
@@ -44,6 +45,13 @@
   const soft = `${pill} bg-muted text-foreground hover:bg-muted/70`
   const field =
     'h-8 min-w-0 rounded-full border border-input bg-background px-3.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring'
+  /** A free-text field with the dictation mic docked inside it. */
+  const textField = `${field} w-full pr-9`
+  /** The new form's fields, and the open edit form's (one at a time), for dictation. */
+  let newTitleEl = $state<HTMLInputElement | null>(null)
+  let newNoteEl = $state<HTMLInputElement | null>(null)
+  let editTitleEl = $state<HTMLInputElement | null>(null)
+  let editNoteEl = $state<HTMLInputElement | null>(null)
 </script>
 
 {#snippet dayPicker(selected: readonly string[], prefix: string)}
@@ -74,9 +82,13 @@
       <p class="text-sm text-muted-foreground">Comes back every week and waits under Needs you until you tick it off. Times are in {timeZone}.</p>
     </div>
     <label class="sr-only" for="reminder-title">Title</label>
-    <input id="reminder-title" name="title" required maxlength="200" placeholder="Prepare, check or send LinkedIn posts" class={field} />
+    <DictationField field={newTitleEl} kind="input" testid="reminder-title-voice">
+      <input bind:this={newTitleEl} id="reminder-title" name="title" required maxlength="200" placeholder="Prepare, check or send LinkedIn posts" class={textField} />
+    </DictationField>
     <label class="sr-only" for="reminder-note">Note</label>
-    <input id="reminder-note" name="note" maxlength="2000" placeholder="Note (optional)" class={field} />
+    <DictationField field={newNoteEl} kind="input" testid="reminder-note-voice">
+      <input bind:this={newNoteEl} id="reminder-note" name="note" maxlength="2000" placeholder="Note (optional)" class={textField} />
+    </DictationField>
     <div class="flex min-w-0 flex-wrap items-center gap-3">
       {@render dayPicker([], 'new')}
       <label class="sr-only" for="reminder-time">Time</label>
@@ -96,9 +108,13 @@
             <form method="POST" action="?/update" use:enhance={closeOnSuccess} class="flex min-w-0 flex-col gap-3" data-testid="reminder-edit">
               <input type="hidden" name="reminder_id" value={r.id} />
               <label class="sr-only" for="title-{r.id}">Title</label>
-              <input id="title-{r.id}" name="title" required maxlength="200" value={r.title} class={field} />
+              <DictationField field={editTitleEl} kind="input" testid="title-{r.id}-voice">
+                <input bind:this={editTitleEl} id="title-{r.id}" name="title" required maxlength="200" value={r.title} class={textField} />
+              </DictationField>
               <label class="sr-only" for="note-{r.id}">Note</label>
-              <input id="note-{r.id}" name="note" maxlength="2000" value={r.note} placeholder="Note (optional)" class={field} />
+              <DictationField field={editNoteEl} kind="input" testid="note-{r.id}-voice">
+                <input bind:this={editNoteEl} id="note-{r.id}" name="note" maxlength="2000" value={r.note} placeholder="Note (optional)" class={textField} />
+              </DictationField>
               <div class="flex min-w-0 flex-wrap items-center gap-3">
                 {@render dayPicker(r.weekdays, `edit-${r.id}`)}
                 <label class="sr-only" for="time-{r.id}">Time</label>

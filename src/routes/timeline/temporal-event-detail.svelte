@@ -163,6 +163,7 @@
           bind:value={instruction}
           placeholder={m.graph_temporal_instruction_placeholder()}
           class="h-8 flex-1 text-sm"
+          containerClass="flex-1"
           disabled={busy}
         />
         <Button

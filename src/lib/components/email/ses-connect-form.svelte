@@ -122,7 +122,7 @@
       </div>
       <div class="grid gap-1.5">
         <Label for="ses-key-id">Access key ID</Label>
-        <Input id="ses-key-id" required autocomplete="off" bind:value={accessKeyId} disabled={saving} />
+        <Input dictation={false} id="ses-key-id" required autocomplete="off" bind:value={accessKeyId} disabled={saving} />
       </div>
       <div class="grid gap-1.5">
         <Label for="ses-secret">Secret access key</Label>

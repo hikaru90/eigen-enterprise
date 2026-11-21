@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
+import { FakeMediaRecorder, installVoiceDoubles } from '$lib/test/voice-doubles'
 import { ActiveCall } from './active-call.svelte'
 import BrainRecap from './brain-recap.svelte'
 import { CallBrain } from './call-brain.svelte'
@@ -133,6 +134,28 @@ describe('call-view.svelte: Company Brain', () => {
     await expect.element(mine).toHaveAttribute('data-shared', 'true')
     await expect.element(page.getByTestId('call-brain-shared-label')).toHaveTextContent('Company Brain · asked by Ann Example')
     await expect.element(page.getByTestId('call-brain-shared')).toHaveTextContent('Ann sagte: morgen.')
+  })
+
+  it('Ask the Brain takes dictation: the words land in the question, focused, and nothing is asked until I tap Ask', async () => {
+    const doubles = installVoiceDoubles()
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ transcript: 'wann geht das Angebot raus' })))
+    try {
+      const { brainApi } = setup({ call: live(ON) })
+      await connected()
+      await page.getByTestId('call-brain-button').click()
+      await page.getByTestId('call-brain-voice-mic').click()
+      await expect.element(page.getByTestId('call-brain-voice-bar')).toBeInTheDocument()
+      await expect.element(page.getByTestId('call-brain-send')).not.toBeInTheDocument()
+      FakeMediaRecorder.instances.at(-1)!.emitChunk([1, 2, 3])
+      await page.getByTestId('call-brain-voice-send').click()
+      await expect.element(page.getByTestId('call-brain-question')).toHaveValue('wann geht das Angebot raus')
+      await expect.element(page.getByTestId('call-brain-question')).toHaveFocus()
+      await expect.element(page.getByTestId('call-brain-send')).toBeEnabled()
+      expect(brainApi.askBrain).not.toHaveBeenCalled()
+    } finally {
+      doubles.restore()
+      vi.unstubAllGlobals()
+    }
   })
 
   it('a refused ask says why, in the server’s words, and keeps my question', async () => {

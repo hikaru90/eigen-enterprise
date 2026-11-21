@@ -13,10 +13,10 @@
   import ApprovalModeSelect from '$lib/components/approval-mode-select.svelte'
   import ChatMarkdown from '$lib/components/chat-markdown.svelte'
   import { Button } from '$lib/components/ui/button'
-  import AttachmentChip from './attachment-chip.svelte'
-  import { ASSISTANT_ATTACHMENT_ACCEPT, ASSISTANT_ATTACHMENT_LIMITS_TEXT } from './attachments'
   import { dictateInto } from '$lib/voice/dictation-insert'
   import VoiceDictation from '$lib/voice/voice-dictation.svelte'
+  import AttachmentChip from './attachment-chip.svelte'
+  import { ASSISTANT_ATTACHMENT_ACCEPT, ASSISTANT_ATTACHMENT_LIMITS_TEXT } from './attachments'
   import VoiceOutputToggle from './voice-output-toggle.svelte'
 
   /**

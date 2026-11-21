@@ -2,8 +2,8 @@
   import type { HTMLInputAttributes, HTMLInputTypeAttribute } from 'svelte/elements'
   import { page } from '$app/state'
   import { cn, type WithElementRef } from '$lib/utils.js'
-  import { inputTakesDictation } from '$lib/voice/dictation-insert'
   import DictationField from '$lib/voice/dictation-field.svelte'
+  import { inputTakesDictation } from '$lib/voice/dictation-insert'
 
   type InputType = Exclude<HTMLInputTypeAttribute, 'file'>
 
@@ -19,7 +19,8 @@
         dictation?: boolean
         /** Classes for the wrapper a dictating field sits in (its `flex-1`, a fixed width). */
         containerClass?: string
-      }
+      },
+    HTMLInputElement
   >
 
   let {

@@ -238,7 +238,7 @@
                       class="flex items-center gap-2"
                     >
                       <input type="hidden" name="replace" value={d} />
-                      <Input
+                      <Input dictation={false}
                         name="host"
                         required
                         placeholder="new.example.com"
@@ -297,7 +297,7 @@
         >
           <div class="flex min-w-0 flex-1 flex-col gap-1.5">
             <Label for="add-domain">Add a domain</Label>
-            <Input
+            <Input dictation={false}
               id="add-domain"
               name="host"
               required
@@ -383,7 +383,7 @@
           class="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row"
           autocomplete="off"
         >
-          <Input
+          <Input dictation={false}
             name="key"
             required
             placeholder="NAME"

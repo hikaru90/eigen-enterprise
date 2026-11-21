@@ -2,6 +2,7 @@
   import CircleCheckIcon from '@lucide/svelte/icons/circle-check'
   import Trash2Icon from '@lucide/svelte/icons/trash-2'
   import { Button } from '$lib/components/ui/button'
+  import DictationField from '$lib/voice/dictation-field.svelte'
   import { kindLabel, rgbHex, type PdfAnnotation } from './annotate-model'
 
   /**
@@ -34,6 +35,8 @@
   let replyText = $state('')
   let editing = $state<string | null>(null)
   let editText = $state('')
+  let editEl = $state<HTMLTextAreaElement | null>(null)
+  let replyEl = $state<HTMLTextAreaElement | null>(null)
 
   const date = (iso: string | null) =>
     iso
@@ -95,10 +98,13 @@
           {a.author ?? 'Unknown author'} · {date(a.modified ?? a.created)}
         </p>
         {#if editing === a.id}
-          <textarea
-            class="mt-1 h-16 w-full rounded border bg-background p-1 text-sm"
-            aria-label="Comment text"
-            bind:value={editText}></textarea>
+          <DictationField field={editEl} kind="textarea" testid="pdf-comment-edit-voice" class="mt-1">
+            <textarea
+              bind:this={editEl}
+              class="h-16 w-full rounded border bg-background p-1 pr-10 text-sm"
+              aria-label="Comment text"
+              bind:value={editText}></textarea>
+          </DictationField>
           <div class="flex justify-end gap-1">
             <Button size="sm" variant="ghost" onclick={() => (editing = null)}>Cancel</Button>
             <Button
@@ -131,11 +137,14 @@
                 sendReply(a.id)
               }}
             >
-              <textarea
-                class="h-14 w-full rounded border bg-background p-1 text-sm"
-                aria-label="Reply"
-                placeholder="Reply…"
-                bind:value={replyText}></textarea>
+              <DictationField field={replyEl} kind="textarea" testid="pdf-comment-reply-voice">
+                <textarea
+                  bind:this={replyEl}
+                  class="h-14 w-full rounded border bg-background p-1 pr-10 text-sm"
+                  aria-label="Reply"
+                  placeholder="Reply…"
+                  bind:value={replyText}></textarea>
+              </DictationField>
               <div class="flex justify-end gap-1">
                 <Button size="sm" variant="ghost" onclick={() => (replying = null)}>Cancel</Button>
                 <Button

@@ -368,7 +368,7 @@
         use:enhance={createSubmit}
       >
         <label class="sr-only" for="inbox-mine-local">Address before the @</label>
-        <Input id="inbox-mine-local" name="localPart" required value={data.start.suggested ?? ''} class="h-8 w-48" autocomplete="off" />
+        <Input dictation={false} id="inbox-mine-local" name="localPart" required value={data.start.suggested ?? ''} class="h-8 w-48" autocomplete="off" />
         <span class="text-sm text-muted-foreground">@</span>
         <label class="sr-only" for="inbox-mine-domain">Domain</label>
         <select id="inbox-mine-domain" name="domainId" class={selectClass}>

@@ -15,6 +15,7 @@
   import type { FieldValue, PdfFormField } from './forms'
   import { onMount } from 'svelte'
   import { Button } from '$lib/components/ui/button'
+  import DictationField from '$lib/voice/dictation-field.svelte'
   import {
     appearanceOf,
     kindLabel,
@@ -101,6 +102,7 @@
   /** A note or text box waiting for its text. */
   let draft = $state.raw<{ shape: AnnotationShape } | null>(null)
   let draftText = $state('')
+  let draftEl = $state<HTMLTextAreaElement | null>(null)
   /** Moving the selection: the offset so far, PDF space. */
   let drag = $state.raw<{ id: string; from: [number, number]; dx: number; dy: number } | null>(null)
 
@@ -587,8 +589,10 @@
         addDraft()
       }}
     >
+      <DictationField field={draftEl} kind="textarea" testid="pdf-edit-draft-voice" class="w-56">
       <textarea
-        class="h-20 w-56 rounded border bg-background p-1 text-sm"
+        bind:this={draftEl}
+        class="h-20 w-full rounded border bg-background p-1 pr-10 text-sm"
         aria-label={draft.shape.kind === 'Text' ? 'Note text' : 'Text box text'}
         placeholder={draft.shape.kind === 'Text' ? 'Write a note…' : 'Text for the box…'}
         bind:value={draftText}
@@ -602,6 +606,7 @@
             draft = null
           }
         }}></textarea>
+      </DictationField>
       <div class="mt-1 flex justify-end gap-1">
         <Button type="button" size="sm" variant="ghost" onclick={() => (draft = null)}
           >Cancel</Button

@@ -12,7 +12,7 @@
     dictation = true,
     containerClass,
     ...restProps
-  }: WithoutChildren<WithElementRef<HTMLTextareaAttributes>> & {
+  }: WithoutChildren<WithElementRef<HTMLTextareaAttributes, HTMLTextAreaElement>> & {
     /**
      * Voice input (plan/shared-memory-voice-agent-tools.md §2): the dictation mic in the
      * bottom-right corner. `false` opts this field out (source code, data to paste);

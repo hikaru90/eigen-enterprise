@@ -127,6 +127,7 @@
       <div class="flex gap-1.5">
         <Input
           class="h-8 flex-1 font-mono text-xs"
+          containerClass="flex-1"
           placeholder="e.g. last 2 weeks"
           bind:value={phrase}
           disabled={submitting}

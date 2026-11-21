@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
 import { page as appPage } from '$app/state'
-import { FakeMediaRecorder, installVoiceDoubles } from '$lib/test/voice-doubles'
+import ContributeComposer from '$lib/components/contribute/contribute-composer.svelte'
 import MessageComposer from '$lib/messages/message-composer.svelte'
 import MessageEdit from '$lib/messages/message-edit.svelte'
-import ContributeComposer from '$lib/components/contribute/contribute-composer.svelte'
+import { FakeMediaRecorder, installVoiceDoubles } from '$lib/test/voice-doubles'
 import { DICTATION_MISSING_MESSAGE, DICTATION_UNSUPPORTED_MESSAGE } from './dictation-readiness'
 import { VOICE_TRANSCRIBE_URL } from './transcribe-voice-clip'
-import { VOICE_FAILURE_TEXT } from './voice-failure-message'
 import VoiceDictation from './voice-dictation.svelte'
+import { VOICE_FAILURE_TEXT } from './voice-failure-message'
 
 const ok = (transcript: string) => new Response(JSON.stringify({ transcript }), { status: 200 })
 const fail = (status: number, error: string) => new Response(JSON.stringify({ error }), { status })
