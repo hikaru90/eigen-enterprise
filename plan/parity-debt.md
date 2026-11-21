@@ -9,12 +9,12 @@ action first, so the `ee` CLI, MCP and the agent get it too. Every mutating entr
 fails on an unmapped one, and the debt below can only shrink (`DEBT_CEILING`). Each stage-3
 milestone (CB8–CB13) clears its module’s section.
 
-Mutating entry points: **330** — tool 88, human-only 46, transport 49, no effect 16, **debt 131**.
+Mutating entry points: **330** — tool 90, human-only 46, transport 49, no effect 16, **debt 129**.
 
 | Module | Debt |
 |---|---|
 | email | 41 |
-| memory | 33 |
+| memory | 31 |
 | drive | 9 |
 | kernel | 9 |
 | messages | 9 |
@@ -72,9 +72,8 @@ Mutating entry points: **330** — tool 88, human-only 46, transport 49, no effe
 - `/(nucleus)/m/email/templates/[id] ?/test` — Save the draft template and send myself a test.
 - `/api/onboarding/sender POST` — Make an address on a company domain the default sender (managed box).
 
-## memory (33)
+## memory (31)
 
-- `/(nucleus)/m/memory ?/deleteTask` — Delete a task (the thought it is) for good.
 - `/(nucleus)/m/memory/settings ?/deleteArchived` — Delete archived thoughts for good.
 - `/(nucleus)/m/memory/tasks ?/seen` — Mark an assigned task seen.
 - `/api/agents/[id]/assign POST` — Hand a thought to a connected external agent.
@@ -92,7 +91,6 @@ Mutating entry points: **330** — tool 88, human-only 46, transport 49, no effe
 - `/api/scheduled-tasks/[taskId] PATCH` — Pause or resume a scheduled task.
 - `/api/scheduled-tasks/[taskId] POST` — Run a scheduled task now.
 - `/api/scheduled-tasks/[taskId]/retry POST` — Retry a failed scheduled task.
-- `/api/temporal-events/[id] DELETE` — Delete a timeline item (its thought) for good.
 - `/api/temporal-events/[id]/action POST` — Reschedule, snooze or complete a timeline item.
 - `/api/text-files/[fileId] DELETE` — Delete a note.
 - `/api/thoughts/[thoughtId] DELETE` — Delete a thought.

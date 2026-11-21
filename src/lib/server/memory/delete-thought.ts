@@ -178,12 +178,17 @@ export async function deleteTimelineItemForUser(
   userId: string,
   itemId: string,
 ): Promise<DeleteThoughtResult> {
-  const thoughtId = await thoughtIdBehindTimelineItem(userId, itemId.trim())
+  const thoughtId = await thoughtIdOfTimelineItem(userId, itemId)
   if (!thoughtId) return { ok: false, reason: 'not_found' }
   return deleteThoughtForUser(userId, thoughtId)
 }
 
-async function thoughtIdBehindTimelineItem(userId: string, itemId: string): Promise<string | null> {
+/**
+ * The person's thought behind a Tasks / project row (`task:<thoughtId>` or a temporal_event id),
+ * or null when the row is not theirs — or not an id at all.
+ */
+export async function thoughtIdOfTimelineItem(userId: string, rawItemId: string): Promise<string | null> {
+  const itemId = rawItemId.trim()
   const taskThoughtId = thoughtIdFromTaskItemId(itemId)
   if (taskThoughtId !== null) return isUuidV4(taskThoughtId) ? taskThoughtId : null
   if (!isUuidV4(itemId)) return null

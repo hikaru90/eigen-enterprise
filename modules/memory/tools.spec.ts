@@ -16,7 +16,7 @@ vi.mock('$lib/server/mcp/tools', () => ({
 }))
 
 import type { ToolContext } from '$lib/kernel/types'
-import { MEMORY_TOOL_NAMES, memoryManifest, TASK_TOOL_NAMES } from './manifest'
+import { MEMORY_TOOL_NAMES, memoryManifest, OWN_TASK_TOOL_NAMES, TASK_TOOL_NAMES } from './manifest'
 import { createMemoryTools } from './tools'
 
 const ctx: ToolContext = {
@@ -27,14 +27,16 @@ const ctx: ToolContext = {
 describe('memoryManifest', () => {
   it('owns the namespaced memory tool names', () => {
     expect(memoryManifest.id).toBe('memory')
-    expect(memoryManifest.tools).toEqual([...MEMORY_TOOL_NAMES, ...TASK_TOOL_NAMES])
-    expect(MEMORY_TOOL_NAMES.every((name) => name.startsWith('memory.'))).toBe(true)
+    expect(memoryManifest.tools).toEqual([...MEMORY_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES, ...TASK_TOOL_NAMES])
+    expect([...MEMORY_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES].every((name) => name.startsWith('memory.'))).toBe(true)
     expect(TASK_TOOL_NAMES.every((name) => name.startsWith('tasks.'))).toBe(true)
   })
 })
 
 describe('createMemoryTools', () => {
-  const tools = createMemoryTools().filter((t) => t.name.startsWith('memory.'))
+  const ownTasks = new Set<string>(OWN_TASK_TOOL_NAMES)
+  // The own-task tools are pinned in own-task-tools.spec.ts.
+  const tools = createMemoryTools().filter((t) => t.name.startsWith('memory.') && !ownTasks.has(t.name))
 
   it('builds one descriptor per manifest tool name', () => {
     expect(createMemoryTools().map((t) => t.name).sort()).toEqual([...memoryManifest.tools].sort())

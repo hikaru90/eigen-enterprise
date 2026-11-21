@@ -16,6 +16,15 @@ export const MEMORY_TOOL_NAMES = [
 /** Memory is a system module (always on): see SYSTEM_MODULE_IDS. */
 export const MEMORY_MODULE_ID = 'memory'
 
+/** The person's own Memory › Tasks (own-task-tools.ts): list, add, change, complete, delete. */
+export const OWN_TASK_TOOL_NAMES = [
+  'memory.list_tasks',
+  'memory.create_task',
+  'memory.update_task',
+  'memory.complete_task',
+  'memory.delete_task',
+] as const
+
 /** Tasks assigned between members (task-tools.ts): the `tasks` namespace belongs to Memory. */
 export const TASK_TOOL_NAMES = ['tasks.assignees', 'tasks.assign', 'tasks.list', 'tasks.complete', 'tasks.comment'] as const
 
@@ -26,6 +35,6 @@ export const memoryManifest: ModuleManifest = {
   description:
     'Thought capture, hybrid retrieval, and GTD project/text-note tools over the eigen memory system.',
   toolNamespaces: [MEMORY_MODULE_ID, 'tasks'],
-  tools: [...MEMORY_TOOL_NAMES, ...TASK_TOOL_NAMES],
+  tools: [...MEMORY_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES, ...TASK_TOOL_NAMES],
   permissions: { roles: ['admin', 'agent'] },
 }

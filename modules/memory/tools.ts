@@ -9,6 +9,7 @@ import {
   type MemoryWriter,
 } from './assistant-writes'
 import { MEMORY_TOOL_NAMES } from './manifest'
+import { createOwnTaskTools, type OwnTaskToolDeps } from './own-task-tools'
 import { createTaskTools, type TaskToolDeps } from './task-tools'
 
 /**
@@ -29,6 +30,8 @@ export type MemoryToolDeps = {
   writerOf?: (ctx: ToolContext) => Promise<MemoryWriter | null>
   /** The tasks.* tools (task-tools.ts); they share writerOf unless given their own. */
   tasks?: TaskToolDeps
+  /** The person's own Memory › Tasks tools (own-task-tools.ts); they share writerOf unless given their own. */
+  ownTasks?: OwnTaskToolDeps
 }
 
 /** Every member's own Memory: members, admins, and agent principals that are a person (MCP keys). */
@@ -89,7 +92,7 @@ async function runAssistantWrite(
   throw new Error(`${name} is not a memory write`)
 }
 
-/** Kernel descriptors for the read-oriented memory surface plus capture and notes, and the tasks.* tools. */
+/** Kernel descriptors for the read-oriented memory surface plus capture and notes, the person's own tasks, and the tasks.* tools. */
 export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
   const writerOf = opts.writerOf ?? liveMemoryWriterOf
 
@@ -219,6 +222,7 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
         include_agent: z.boolean().optional(),
       }),
     ),
+    ...createOwnTaskTools({ writerOf: opts.writerOf, ...opts.ownTasks }),
     ...createTaskTools({ writerOf: opts.writerOf, ...opts.tasks }),
   ]
 }
