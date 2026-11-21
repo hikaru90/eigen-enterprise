@@ -377,5 +377,19 @@
   "llm_project_review_system": "You review an existing GTD project and propose confirmable tidy-up changes. thoughtId and order entries must use only catalog uuids. Suggest new tasks only for real gaps. Return only valid JSON.",
   "llm_temporal_extraction_system": "You extract dates, deadlines, and temporal mentions from personal notes.",
   "llm_relation_extraction_system": "You extract relations between thoughts.",
-  "llm_cue_generation_system": "You generate search cues for personal memory notes."
+  "llm_cue_generation_system": "You generate search cues for personal memory notes.",
+  "memory_private_label": "Private",
+  "memory_private_note_on_hint": "Only you can read it — no admin, not even the owner.",
+  "memory_private_note_off_hint": "Everyone in the company can read it. Only you change it.",
+  "memory_private_project_on_hint": "Only you see it and its tasks — no admin, not even the owner.",
+  "memory_private_project_off_hint": "Everyone in the company sees it, its tasks and progress. Only you change it.",
+  "memory_private_failed": "Couldn’t change who sees it:",
+  "memory_owner_by": "By {name}",
+  "memory_read_only": "Read-only",
+  "memory_read_only_hint": "Shared by {name}. Only they change it.",
+  "memory_scope_aria": "Whose",
+  "memory_scope_mine": "Mine",
+  "memory_scope_team": "Team",
+  "memory_team_projects_empty": "No colleague shares a project yet.",
+  "memory_team_notes_empty": "No colleague shares a note yet."
 }

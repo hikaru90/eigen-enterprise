@@ -112,7 +112,9 @@ describe('PATCH /api/text-files/[fileId]', () => {
       body: undefined,
     })
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ textFile: { id: 'file-1', title: 'New title' } })
+    expect(await res.json()).toEqual({
+      textFile: { id: 'file-1', title: 'New title', owner: { id: 'u1', name: 'Me' } },
+    })
   })
 
   it('returns 400 when update fails', async () => {

@@ -366,6 +366,12 @@ describe('formatTextFilesForPrompt', () => {
     expect(formatTextFilesForPrompt([])).toBe('')
   })
 
+  it('marks a colleague\'s shared note as theirs, the asker\'s own notes not', () => {
+    const hit = { id: 'f2', title: 'Launch', preview: 'DNS', lexicalScore: 0.1, updatedAt: '2026-11-20T00:00:00.000Z' }
+    expect(formatTextFilesForPrompt([{ ...hit, editable: false } as never])).toContain('a colleague’s shared note')
+    expect(formatTextFilesForPrompt([{ ...hit, editable: true } as never])).not.toContain('colleague')
+  })
+
   it('formats file id, title, and preview', () => {
     const block = formatTextFilesForPrompt([
       {

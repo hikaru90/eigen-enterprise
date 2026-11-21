@@ -45,8 +45,9 @@ export const PATCH: RequestHandler = async (event) => {
   }
 
   try {
-    const textFile = await updateTextFile(user.id, fileId, { title, body: rawBody })
-    if (!textFile) error(404, 'Text file not found')
+    const updated = await updateTextFile(user.id, fileId, { title, body: rawBody })
+    if (!updated) error(404, 'Text file not found')
+    const [textFile] = await withOwners([updated])
     return json({ textFile })
   } catch (e) {
     if (isHttpError(e)) throw e

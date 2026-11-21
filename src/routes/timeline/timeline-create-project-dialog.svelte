@@ -3,6 +3,7 @@
   import FolderKanbanIcon from '@lucide/svelte/icons/folder-kanban'
   import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle'
   import PlusIcon from '@lucide/svelte/icons/plus'
+  import MemoryPrivateSwitch from '$lib/components/memory-private-switch.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
   import { Input } from '$lib/components/ui/input'
@@ -20,6 +21,8 @@
 
   let label = $state('')
   let status = $state<ProjectStatus>('active')
+  /** Shared with everyone by default; Private = only the person (plan/shared-memory-voice-agent-tools.md §1). */
+  let isPrivate = $state(false)
   let busy = $state(false)
   let error = $state<string | null>(null)
 
@@ -31,6 +34,7 @@
   function resetForm() {
     label = ''
     status = 'active'
+    isPrivate = false
     error = null
   }
 
@@ -47,6 +51,7 @@
         body: JSON.stringify({
           label: trimmedLabel,
           status,
+          private: isPrivate,
         }),
       })
       if (!res.ok) {
@@ -133,6 +138,14 @@
           {/each}
         </div>
       </div>
+
+      <MemoryPrivateSwitch
+        id="create-project-private"
+        kind="project"
+        checked={isPrivate}
+        disabled={busy}
+        onchange={(next) => (isPrivate = next)}
+      />
 
       {#if error}
         <p class="text-destructive text-xs">{error}</p>

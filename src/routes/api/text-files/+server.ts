@@ -95,11 +95,12 @@ export const POST: RequestHandler = async (event) => {
   if (isPrivate !== undefined && typeof isPrivate !== 'boolean') error(400, 'private must be true or false')
 
   try {
-    const textFile = await createTextFile(user.id, {
+    const created = await createTextFile(user.id, {
       title,
       body: rawBody,
       visibility: isPrivate === true ? 'private' : 'company',
     })
+    const [textFile] = await withOwners([created])
     return json({ textFileId: textFile.id, textFile }, { status: 201 })
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
