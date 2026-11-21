@@ -11,6 +11,7 @@
   import EyeOffIcon from '@lucide/svelte/icons/eye-off'
   import LoaderIcon from '@lucide/svelte/icons/loader-circle'
   import LockIcon from '@lucide/svelte/icons/lock'
+  import MessageSquareIcon from '@lucide/svelte/icons/message-square'
   import NotebookTextIcon from '@lucide/svelte/icons/notebook-text'
   import PencilIcon from '@lucide/svelte/icons/pencil'
   import PlusIcon from '@lucide/svelte/icons/plus'
@@ -22,13 +23,15 @@
   import { driveApi, type LockHolder } from '$lib/drive/api'
   import { createAutosave, LockLostError, type Autosave, type AutosaveState } from '$lib/drive/autosave'
   import { createOfficeEditSession } from '../edit-session'
+  import CommentsPanel, { type PendingComment } from './comments-panel.svelte'
+  import { markerSpots, openCount } from './comment-view'
   import { OFFICE_MIME } from '../kinds'
   import { readPackage } from '../ooxml/package'
   import { frameOf, moveFrame, patchOf } from './edit-geometry'
   import EditToolbar, { type ToolbarState } from './edit-toolbar.svelte'
   import { createDeckEditor, type DeckEditor } from './editor'
   import { createMediaSource } from './media'
-  import { effectiveXfrm, type Align, type DeckOp, type OpResult, type RunFormat, type TextRange } from './ops'
+  import { effectiveXfrm, type Align, type DeckOp, type NewCommentAnchor, type OpResult, type RunFormat, type TextRange } from './ops'
   import { renderSlideSvg, type MediaSource } from './render'
   import { resolveSlide, type RParagraph, type RRun } from './resolve'
   import SlideOverlay, { type FrameChange, type OverlayItem } from './slide-overlay.svelte'
@@ -53,8 +56,16 @@
    * Take over), changes save after a pause, the lock is let go after
    * `idleMs` without a change, and when someone takes over the work stays on
    * screen (with a download of it) and says who did. Leaving saves first.
+   *
+   * Comments (S3): markers on the slide for open threads, counts on the
+   * thumbnails, and a comments panel (this slide / all slides) with threads,
+   * replies, resolve/reopen, and editing or deleting your own. New comments
+   * go on the slide, the selected shape, or a point clicked on the slide.
+   * `author` (the signed-in member) is who writes them; without it, or
+   * without edit access, commenting is off and the panel says why. A comment
+   * is a change like any other: it takes the lock, saves, and undoes.
    */
-  let { fileId, name, canEdit, heartbeatMs, onsaved, saveDelayMs = 1200, idleMs = 60_000 }: OfficeViewerProps & { saveDelayMs?: number; idleMs?: number } = $props()
+  let { fileId, name, canEdit, heartbeatMs, author, onsaved, saveDelayMs = 1200, idleMs = 60_000 }: OfficeViewerProps & { saveDelayMs?: number; idleMs?: number } = $props()
 
   type View = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; deck: Deck }
   // Raw: the deck is plain data with source links keyed by object identity; no deep proxy.
@@ -99,6 +110,13 @@
   let layoutMenu = $state<'rail' | number | null>(null)
   let dragFrom = $state<number | null>(null)
   let dropAt = $state<number | null>(null)
+  let showComments = $state(false)
+  /** The thread picked (a marker, a jump from "All slides", one just written). */
+  let focusedComment = $state<string | null>(null)
+  /** A new comment waiting for its text: where it goes. */
+  let pending = $state<(PendingComment & { anchor: NewCommentAnchor; pos: { x: number; y: number } | null }) | null>(null)
+  /** Waiting for a click on the slide, where a new comment goes. */
+  let placing = $state(false)
 
   let editor: DeckEditor | null = null
   /** The file's bytes as the server has them (last loaded or saved). */
@@ -335,7 +353,11 @@
   async function go(index: number) {
     if (!deck || count === 0) return
     commitPending()
-    current = Math.max(0, Math.min(count - 1, index))
+    if (index !== current) {
+      pending = null
+      placing = false
+    }
+    current =Math.max(0, Math.min(count - 1, index))
     selected = []
     menuFor = null
     await tick()
@@ -444,6 +466,10 @@
         void go(Number(link.getAttribute('data-slide-link')))
         break
       case 'Escape':
+        if (placing) {
+          placing = false
+          break
+        }
         if (menuFor !== null || layoutMenu !== null) {
           menuFor = null
           layoutMenu = null
@@ -1045,6 +1071,84 @@
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Comments
+
+  const markers = $derived(deck && slide ? markerSpots(deck, slide) : [])
+  const commentsOff = $derived.by<string | null>(() => {
+    if (!author) return 'Commenting is off here: who is signed in is not known to this viewer.'
+    if (!canEdit) return 'You can read the comments. Adding them needs edit access to this file.'
+    if (mode.kind === 'watching') return `${mode.holder.name} is editing. You can comment once they are done, or after taking over.`
+    if (mode.kind === 'lost') return 'Someone else took over editing, so comments are read-only in your copy.'
+    return null
+  })
+  const canComment = $derived(commentsOff === null)
+  const selectedShape = $derived.by(() => {
+    if (selected.length !== 1) return null
+    const item = items.find((i) => i.id === selected[0])
+    return item ? { id: item.id, name: item.name } : null
+  })
+  const guid = () => `{${crypto.randomUUID().toUpperCase()}}`
+
+  /** A comment change: editing starts if it has not, then it is a change like any other. */
+  async function commentChange(op: DeckOp): Promise<boolean> {
+    if (!canComment) return false
+    if (mode.kind === 'viewing') startEditing()
+    commitPending()
+    return (await change(op)) !== null
+  }
+
+  function startComment(where: 'slide' | 'shape' | 'point') {
+    focusedComment = null
+    if (where === 'point') {
+      pending = null
+      placing = true
+      return
+    }
+    placing = false
+    if (where === 'shape' && selectedShape) pending = { anchor: { kind: 'shape', shape: selectedShape.id }, pos: null, label: `On “${selectedShape.name}”` }
+    else pending = { anchor: { kind: 'slide' }, pos: null, label: 'On this slide' }
+  }
+
+  function placeAt(e: MouseEvent) {
+    if (!deck || !slideEl) return
+    e.preventDefault()
+    e.stopPropagation()
+    const box = slideEl.getBoundingClientRect()
+    const x = Math.round(((e.clientX - box.left) / box.width) * deck.size.cx)
+    const y = Math.round(((e.clientY - box.top) / box.height) * deck.size.cy)
+    placing = false
+    pending = { anchor: { kind: 'slide' }, pos: { x, y }, label: 'At the marked point on the slide' }
+  }
+
+  async function postComment(text: string): Promise<boolean> {
+    if (!slide || !pending || !author) return false
+    const id = guid()
+    const ok = await commentChange({ kind: 'addComment', slide: slide.part, id, author, created: new Date().toISOString(), text, anchor: pending.anchor, pos: pending.pos })
+    if (ok) {
+      pending = null
+      focusedComment = id
+    }
+    return ok
+  }
+
+  const noAuthor = () => Promise.resolve(false)
+  const replyComment = (part: string, comment: string, text: string) =>
+    author ? commentChange({ kind: 'replyComment', slide: part, comment, id: guid(), author, created: new Date().toISOString(), text }) : noAuthor()
+  const editComment = (part: string, comment: string, reply: string | null, text: string) => (author ? commentChange({ kind: 'editComment', slide: part, comment, reply, author, text }) : noAuthor())
+  const commentStatus = (part: string, comment: string, status: 'active' | 'resolved') => commentChange({ kind: 'setCommentStatus', slide: part, comment, status })
+  const deleteComment = (part: string, comment: string, reply: string | null) => (author ? commentChange({ kind: 'deleteComment', slide: part, comment, reply, author }) : noAuthor())
+
+  function openThread(id: string) {
+    showComments = true
+    focusedComment = id
+  }
+
+  async function jumpTo(index: number, id: string) {
+    await go(index)
+    focusedComment = id
+  }
+
   const fmtTime = (d: Date) => d.toLocaleTimeString(undefined, { timeStyle: 'short' })
 </script>
 
@@ -1138,6 +1242,9 @@
         {:else if canEdit && mode.kind === 'viewing'}
           <Button variant="outline" size="sm" onclick={startEditing} data-testid="pptx-edit"><PencilIcon class="size-4" aria-hidden="true" /> Edit</Button>
         {/if}
+        <Button variant="outline" size="sm" aria-pressed={showComments} onclick={() => (showComments = !showComments)} data-testid="pptx-comments-toggle">
+          <MessageSquareIcon class="size-4" aria-hidden="true" /> Comments{#if slide && slide.comments.threads.length}<span class="tabular-nums" data-testid="pptx-comments-count">({slide.comments.threads.length})</span>{/if}
+        </Button>
         <Button variant="outline" size="sm" aria-pressed={showNotes} onclick={() => (showNotes = !showNotes)} data-testid="pptx-notes-toggle">
           <NotebookTextIcon class="size-4" aria-hidden="true" /> Notes
         </Button>
@@ -1185,7 +1292,7 @@
                 type="button"
                 class={`block w-full overflow-hidden rounded-sm border bg-white outline-none focus-visible:ring-2 focus-visible:ring-ring ${i === current ? 'border-primary ring-2 ring-primary' : 'border-border hover:border-foreground/40'} ${s.hidden ? 'opacity-50' : ''} ${dragFrom === i ? 'opacity-40' : ''}`}
                 style={`aspect-ratio:${aspect}`}
-                aria-label={`Slide ${i + 1}${s.hidden ? ' (hidden)' : ''}`}
+                aria-label={`Slide ${i + 1}${s.hidden ? ' (hidden)' : ''}${openCount(s) ? `, ${openCount(s)} open comment${openCount(s) === 1 ? '' : 's'}` : ''}`}
                 aria-current={i === current ? 'true' : undefined}
                 draggable={editing}
                 ondragstart={(e) => onDragStart(e, i)}
@@ -1207,6 +1314,11 @@
                   {#if thumbsShown[s.part]}{@render slideBox(i, 'thumb')}{/if}
                 </span>
               </button>
+              {#if openCount(s)}
+                <span class="pointer-events-none absolute right-1 bottom-1 inline-flex items-center gap-0.5 rounded-full bg-amber-300 px-1.5 text-xs font-semibold text-amber-950 tabular-nums" aria-hidden="true" data-testid="pptx-thumb-comments">
+                  <MessageSquareIcon class="size-2.5" aria-hidden="true" />{openCount(s)}
+                </span>
+              {/if}
               {#if editing}
                 <button
                   type="button"
@@ -1271,6 +1383,31 @@
             {#if editing}
               <SlideOverlay width={slideW} height={slideH} {items} {selected} {typing} target={shapeEl} onselect={select} oncommit={commitFrames} onedittext={(id) => void beginText(id, 'end')} />
             {/if}
+            {#each markers as m (m.id)}
+              <button
+                type="button"
+                class={`absolute z-10 inline-flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full rounded-bl-none text-xs font-semibold shadow ring-1 ring-black/20 ${focusedComment === m.id ? 'bg-primary text-primary-foreground' : 'bg-amber-300 text-amber-950'}`}
+                style={`left:${m.x * 100}%;top:${m.y * 100}%`}
+                aria-label={`Comment ${m.n}${m.legacy ? ' (older format)' : ''}`}
+                onclick={(e) => {
+                  e.stopPropagation()
+                  openThread(m.id)
+                }}
+                data-testid="pptx-comment-marker"
+                data-id={m.id}>{m.n}</button
+              >
+            {/each}
+            {#if pending?.pos && deck}
+              <span
+                class="pointer-events-none absolute z-10 size-6 -translate-x-1/2 -translate-y-1/2 rounded-full rounded-bl-none border-2 border-dashed border-primary bg-primary/20"
+                style={`left:${(pending.pos.x / deck.size.cx) * 100}%;top:${(pending.pos.y / deck.size.cy) * 100}%`}
+                aria-hidden="true"
+                data-testid="pptx-comment-pending"
+              ></span>
+            {/if}
+            {#if placing}
+              <button type="button" class="absolute inset-0 z-20 cursor-crosshair bg-primary/5" aria-label="Place the comment here" onclick={placeAt} data-testid="pptx-comment-place"></button>
+            {/if}
           </div>
         </div>
         {#if showNotes}
@@ -1296,6 +1433,32 @@
           </section>
         {/if}
       </div>
+      {#if showComments}
+        <CommentsPanel
+          slides={deck!.slides}
+          {current}
+          me={author?.id ?? null}
+          {canComment}
+          offReason={commentsOff}
+          {selectedShape}
+          {pending}
+          focused={focusedComment}
+          {placing}
+          deckError={deck!.commentsError}
+          onstart={startComment}
+          onpost={postComment}
+          oncancel={() => {
+            pending = null
+            placing = false
+          }}
+          onreply={replyComment}
+          onedit={editComment}
+          onstatus={commentStatus}
+          ondelete={deleteComment}
+          onjump={(i, id) => void jumpTo(i, id)}
+          onclose={() => (showComments = false)}
+        />
+      {/if}
     </div>
   {/if}
 
