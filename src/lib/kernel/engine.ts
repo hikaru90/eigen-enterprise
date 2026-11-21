@@ -68,6 +68,11 @@ export type EngineContext = EngineStreamSinks & {
    * input for display record this instead of the composed text.
    */
   ownerText?: string
+  /**
+   * The member turn this run belongs to (DispatchOptions.turnId): every input
+   * of one turn carries it, so the turn can later be superseded as a whole.
+   */
+  turnId?: string
 }
 
 /**
@@ -79,4 +84,13 @@ export type EngineContext = EngineStreamSinks & {
 export type LoopEngine = {
   /** Run one user turn to completion; returns the agent's reply text. */
   run(sessionId: string, input: string, ctx: EngineContext): Promise<string>
+  /**
+   * Edit-and-resend (board a950ef11): take the member turn `turnId` and
+   * everything after it out of what the model sees — stopping it first if it
+   * is still running — so the edited request `replacementTurnId` runs on the
+   * conversation as it was before. History keeps the superseded turn. A turn
+   * the conversation does not carry fails with KernelError 'turn_not_editable'.
+   * Optional: an engine without it cannot edit turns (the runtime fails loud).
+   */
+  supersedeTurn?(sessionId: string, turnId: string, replacementTurnId: string, ctx: EngineContext): Promise<void>
 }

@@ -17,6 +17,11 @@ export type ChatStreamEvent =
   | { type: 'message_delta'; content: string }
   | { type: 'tool.preview'; tool: string; inputSummary: string | null }
   | { type: 'approval.required'; tool: string; approvalId: string }
+  /**
+   * First line of a member turn: the stored message and its session, so the
+   * surface can name the message (Edit) even if the person stops the reply.
+   */
+  | { type: 'turn.accepted'; sessionId: string; messageId: string }
   | {
       type: 'done'
       response: string
@@ -33,6 +38,14 @@ export type ChatStreamEvent =
       phase?: 'precheck' | 'settle'
       creditsPerUsd?: number
     }
+
+/**
+ * What the person reads when an edited message cannot replace its turn (it is
+ * no longer the latest, an approval followed it, or it predates edits). Fixed
+ * words, shared by POST /api/chat (409) and the assistant panel.
+ */
+export const TURN_NOT_EDITABLE_MESSAGE =
+  'This message can no longer be edited. Send a new message instead.'
 
 /** In-tool step labels streamed while a tool handler is still running. */
 export const CHAT_TOOL_PROGRESS_LABELS: Record<string, Record<string, string>> = {

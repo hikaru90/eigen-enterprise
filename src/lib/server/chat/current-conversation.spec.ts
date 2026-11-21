@@ -32,16 +32,29 @@ describe('loadCurrentConversation', () => {
 
   it("returns the user's latest default session with its messages in order", async () => {
     const rows = [
-      { role: 'assistant', content: 'Welcome — let us build your website.', metadata: null },
-      { role: 'user', content: 'yes please', metadata: null },
-      { role: 'assistant', content: '', metadata: { variant: 'tool_preview', tool: 'site.create' } },
-      { role: 'assistant', content: 'Done.', metadata: null },
+      { id: 'm1', role: 'assistant', content: 'Welcome — let us build your website.', metadata: null },
+      { id: 'm2', role: 'user', content: 'yes please', metadata: null },
+      { id: 'm3', role: 'assistant', content: '', metadata: { variant: 'tool_preview', tool: 'site.create' } },
+      { id: 'm4', role: 'assistant', content: 'Done.', metadata: null },
     ]
     const db = fakeDb([[{ id: 's-1' }], rows])
     expect(await loadCurrentConversation(db as never, 'u1')).toEqual({
       sessionId: 's-1',
       messages: rows,
     })
+  })
+
+  it('an edited turn shows as the edit: the superseded message and its reply stay in storage only', async () => {
+    const rows = [
+      { id: 'm1', role: 'user', content: 'old words', metadata: { supersededBy: 'm3' } },
+      { id: 'm2', role: 'assistant', content: 'Stopped reply', metadata: { turnOf: 'm1', supersededBy: 'm3' } },
+      { id: 'm3', role: 'user', content: 'new words', metadata: { replaces: 'm1' } },
+      { id: 'm4', role: 'assistant', content: 'late reply to the old words', metadata: { turnOf: 'm1' } },
+      { id: 'm5', role: 'assistant', content: 'the answer', metadata: { turnOf: 'm3' } },
+    ]
+    const db = fakeDb([[{ id: 's-1' }], rows])
+    const { messages } = await loadCurrentConversation(db as never, 'u1')
+    expect(messages.map((m) => m.id)).toEqual(['m3', 'm5'])
   })
 
   it('looks up the current kernel status of the approval cards in the transcript', async () => {

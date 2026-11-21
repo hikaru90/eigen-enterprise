@@ -53,7 +53,9 @@ export async function consumeChatNdjsonStream(
   }
 
   signal?.addEventListener('abort', () => {
-    void reader.cancel()
+    // An aborted fetch has already errored its body with the AbortError, so
+    // cancel() rejects with it; the read loop below reports the abort.
+    reader.cancel().catch(() => undefined)
   })
 
   const decoder = new TextDecoder()

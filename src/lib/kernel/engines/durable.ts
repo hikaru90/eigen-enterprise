@@ -48,9 +48,17 @@ export type DurableEngineConversation = {
   /**
    * Submit one user input and wait for the durable run to settle. `ownerText`
    * (when the input was composed with injected context) is recorded with the
-   * input entry for run feeds; the model still sees `content`.
+   * input entry for run feeds; the model still sees `content`. `turnId` tags
+   * the input with the member turn it belongs to (edit-and-resend).
    */
-  submitAndSettle(content: string, ownerText?: string): Promise<SettledDurableTurn>
+  submitAndSettle(content: string, input?: { ownerText?: string; turnId?: string }): Promise<SettledDurableTurn>
+  /**
+   * Stop whatever still runs, then omit the turn's inputs (from its first
+   * input tagged `turnId`) and every later entry from the model context with
+   * one recorded marker entry. Storage keeps them. Not found: KernelError
+   * 'turn_not_editable'.
+   */
+  supersedeTurn(turnId: string, replacementTurnId: string): Promise<void>
 }
 
 /**
@@ -267,15 +275,15 @@ export class DurableLoopEngine implements LoopEngine {
     this.instructions = options.instructions
   }
 
-  async run(sessionId: string, input: string, ctx: EngineContext): Promise<string> {
+  /** The person's conversation for (agent, session), configured with this dispatch's tool bridge. */
+  private openConversation(sessionId: string, ctx: EngineContext): Promise<DurableEngineConversation> {
     const tools: DurableBridgeToolSpec[] = ctx.listTools().map((listing: EngineToolListing) => ({
       name: listing.name,
       description: listing.summary,
       parametersJsonSchema: listing.inputJsonSchema as Record<string, unknown>,
       execute: bridgeExecute(listing.name, ctx),
     }))
-
-    const conversation = await this.harness.conversation({
+    return this.harness.conversation({
       conversationKey: durableConversationKey(ctx.agent.id, sessionId),
       agentId: ctx.agent.id,
       // The person the run acts as pays for it — no agent-identity fallback (CB3).
@@ -283,8 +291,15 @@ export class DurableLoopEngine implements LoopEngine {
       instructions: this.instructions,
       tools,
     })
+  }
 
-    const settled = await conversation.submitAndSettle(input, ctx.ownerText)
+  async run(sessionId: string, input: string, ctx: EngineContext): Promise<string> {
+    const conversation = await this.openConversation(sessionId, ctx)
+
+    const settled = await conversation.submitAndSettle(input, {
+      ...(ctx.ownerText !== undefined ? { ownerText: ctx.ownerText } : {}),
+      ...(ctx.turnId !== undefined ? { turnId: ctx.turnId } : {}),
+    })
     if (settled.status === 'unanswered') {
       throw new DurableRunError(settled.reason, settled.detail)
     }
@@ -299,5 +314,23 @@ export class DurableLoopEngine implements LoopEngine {
       }
     }
     return settled.reply
+  }
+
+  async supersedeTurn(
+    sessionId: string,
+    turnId: string,
+    replacementTurnId: string,
+    ctx: EngineContext,
+  ): Promise<void> {
+    if (!turnId || !replacementTurnId || turnId === replacementTurnId) {
+      throw new KernelError(
+        'invalid_input',
+        `supersedeTurn needs two different turn ids (got ${JSON.stringify(turnId)} → ${JSON.stringify(replacementTurnId)})`,
+      )
+    }
+    // The conversation as the person's own dispatch opens it (CB3: another
+    // person's key is refused there).
+    const conversation = await this.openConversation(sessionId, ctx)
+    await conversation.supersedeTurn(turnId, replacementTurnId)
   }
 }

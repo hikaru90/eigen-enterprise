@@ -24,6 +24,17 @@ const { bootAppMock, runtimeDispatchMock, handoffDispatchMock, getDbMock, appSql
   }))
 
 vi.mock('$lib/server/boot', () => ({ bootApp: bootAppMock }))
+const { findEditableTurnMock, replaceChatTurnMock, runtimeSupersedeMock } = vi.hoisted(() => ({
+  findEditableTurnMock: vi.fn(),
+  replaceChatTurnMock: vi.fn(),
+  runtimeSupersedeMock: vi.fn(),
+}))
+// The chat_message side of an edit runs on real Postgres in turn-edit.integration.spec.ts.
+vi.mock('$lib/server/chat/turn-edit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('$lib/server/chat/turn-edit')>()),
+  findEditableTurn: findEditableTurnMock,
+  replaceChatTurn: replaceChatTurnMock,
+}))
 const isUserAdminMock = vi.hoisted(() => vi.fn(async () => false))
 /** The company's members (CB3): u1 and u2 are members without admin rights, owner-1 runs the company; anyone else is no member. */
 const personForMock = vi.hoisted(() =>
@@ -144,6 +155,9 @@ describe('POST /api/chat — harness dispatch', () => {
     kernelEvents = new InMemoryEventSink()
     runtimeDispatchMock.mockReset()
     handoffDispatchMock.mockReset()
+    runtimeSupersedeMock.mockReset()
+    findEditableTurnMock.mockReset()
+    replaceChatTurnMock.mockReset()
     bootAppMock.mockReset()
     getDbMock.mockReset()
     appSqlMock.reserve.mockReset()
@@ -151,7 +165,11 @@ describe('POST /api/chat — harness dispatch', () => {
     bootAppMock.mockResolvedValue({
       kernel: { eventSink: kernelEvents },
       orchestrator: {
-        runtime: { dispatch: runtimeDispatchMock, dispatchOnboardingHandoff: handoffDispatchMock },
+        runtime: {
+          dispatch: runtimeDispatchMock,
+          dispatchOnboardingHandoff: handoffDispatchMock,
+          supersedeTurn: runtimeSupersedeMock,
+        },
       },
     })
     getDbMock.mockReturnValue(buildMainDb())
@@ -353,7 +371,8 @@ describe('POST /api/chat — harness dispatch', () => {
     expect(typeof sinks.stream).toBe('function')
     expect(typeof sinks.surfaceEvent).toBe('function')
     // CB3: the person the brain acts as — a member's own roles, no 'admin', no agent identity.
-    expect(dispatchOptions).toEqual({ person: { id: 'u1', roles: ['member'] } })
+    // The turn is tagged with the stored user message (edit-and-resend finds it by that).
+    expect(dispatchOptions).toEqual({ person: { id: 'u1', roles: ['member'] }, turnId: expect.any(String) })
   })
 
   it('refuses a signed-in account that is not a member: the brain never runs (no fallback identity)', async () => {
@@ -451,6 +470,7 @@ describe('POST /api/chat — harness dispatch', () => {
       variant: 'approval_required',
       tool: 'email.send_mail',
       approvalId: 'apr-1',
+      turnOf: expect.any(String),
     })
     const last = lines[lines.length - 1]
     expect(last.type).toBe('done')
@@ -747,6 +767,128 @@ describe('POST /api/chat — harness dispatch', () => {
       ).rejects.toMatchObject({ status: 400 })
       expect(runtimeDispatchMock).not.toHaveBeenCalled()
       expect(handoffDispatchMock).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('edit-and-resend (board a950ef11: edit the message after stopping, send it again)', () => {
+    const OLD_ID = 'msg-old'
+
+    function editRequest(body: Record<string, unknown> = {}) {
+      return ndjsonRequest({ message: 'the edited words', sessionId: SESSION_ID, replacesMessageId: OLD_ID, ...body })
+    }
+
+    it('every member turn announces its stored message first, and its rows belong to that turn', async () => {
+      const { POST } = await import('./+server')
+      runtimeDispatchMock.mockResolvedValue('Reply.')
+      const streamDb = buildStreamDb()
+      createScopedDrizzleMock.mockReturnValue(streamDb)
+      const db = buildMainDb()
+      getDbMock.mockReturnValue(db)
+
+      const res = await POST({ locals: { user: { id: 'u1' } }, request: ndjsonRequest({ message: 'hello' }) } as never)
+      const lines = await readNdjsonLines(res)
+
+      const userRow = (db.insert.mock.results[1]!.value as { values: ReturnType<typeof vi.fn> }).values.mock
+        .calls[1]![0] as { id: string; role: string }
+      expect(userRow.role).toBe('user')
+      expect(lines[0]).toEqual({ type: 'turn.accepted', sessionId: SESSION_ID, messageId: userRow.id })
+      expect(runtimeDispatchMock.mock.calls[0]![4]).toMatchObject({ turnId: userRow.id })
+      const values = (streamDb.insert.mock.results[0]!.value as { values: ReturnType<typeof vi.fn> }).values
+      const answer = values.mock.calls.at(-1)![0] as { metadata?: unknown }
+      expect(answer.metadata).toEqual({ turnOf: userRow.id })
+    })
+
+    it('replaces the latest turn: the model side first, then the transcript, then the edited request runs', async () => {
+      const { POST } = await import('./+server')
+      const order: string[] = []
+      findEditableTurnMock.mockImplementation(async () => {
+        order.push('check')
+        return { messageId: OLD_ID, isFirst: false }
+      })
+      runtimeSupersedeMock.mockImplementation(async () => void order.push('supersede'))
+      replaceChatTurnMock.mockImplementation(async () => {
+        order.push('replace')
+      })
+      runtimeDispatchMock.mockImplementation(async () => {
+        order.push('dispatch')
+        return 'Better answer.'
+      })
+
+      const res = await POST({ locals: { user: { id: 'u1' } }, request: editRequest() } as never)
+      const lines = await readNdjsonLines(res)
+
+      expect(order).toEqual(['check', 'supersede', 'replace', 'dispatch'])
+      expect(findEditableTurnMock.mock.calls[0]![1]).toEqual({ sessionId: SESSION_ID, userId: 'u1', messageId: OLD_ID })
+      const [agentId, sessionId, turnId, replacementTurnId, options] = runtimeSupersedeMock.mock.calls[0]!
+      expect([agentId, sessionId, turnId]).toEqual(['orchestrator', SESSION_ID, OLD_ID])
+      expect(options).toEqual({ person: { id: 'u1', roles: ['member'] } })
+      expect(replaceChatTurnMock.mock.calls[0]![1]).toEqual({
+        sessionId: SESSION_ID,
+        userId: 'u1',
+        replacesMessageId: OLD_ID,
+        replacementId: replacementTurnId,
+        content: 'the edited words',
+        metadata: null,
+      })
+      expect(runtimeDispatchMock.mock.calls[0]![2]).toBe('the edited words')
+      expect(runtimeDispatchMock.mock.calls[0]![4]).toMatchObject({ turnId: replacementTurnId })
+      expect(lines[0]).toEqual({ type: 'turn.accepted', sessionId: SESSION_ID, messageId: replacementTurnId })
+      expect(lines.at(-1)).toMatchObject({ type: 'done', response: 'Better answer.' })
+    })
+
+    it('a message that is no longer editable is refused before anything changes (409, fixed words)', async () => {
+      const { POST } = await import('./+server')
+      const { TurnNotEditableError } = await import('$lib/server/chat/turn-edit')
+      findEditableTurnMock.mockRejectedValue(new TurnNotEditableError('not the latest message'))
+      await expect(POST({ locals: { user: { id: 'u1' } }, request: editRequest() } as never)).rejects.toMatchObject({
+        status: 409,
+        body: { message: 'This message can no longer be edited. Send a new message instead.' },
+      })
+      expect(runtimeSupersedeMock).not.toHaveBeenCalled()
+      expect(replaceChatTurnMock).not.toHaveBeenCalled()
+      expect(runtimeDispatchMock).not.toHaveBeenCalled()
+    })
+
+    it('a turn the model transcript does not carry (sent before edits existed) is refused, the transcript untouched', async () => {
+      const { POST } = await import('./+server')
+      const { KernelError } = await import('$lib/kernel/errors')
+      findEditableTurnMock.mockResolvedValue({ messageId: OLD_ID, isFirst: false })
+      runtimeSupersedeMock.mockRejectedValue(new KernelError('turn_not_editable', 'not in the model context'))
+      await expect(POST({ locals: { user: { id: 'u1' } }, request: editRequest() } as never)).rejects.toMatchObject({
+        status: 409,
+      })
+      expect(replaceChatTurnMock).not.toHaveBeenCalled()
+      expect(runtimeDispatchMock).not.toHaveBeenCalled()
+    })
+
+    it('an edit names a stored message of a stored session, and is never an app-made turn', async () => {
+      const { POST } = await import('./+server')
+      for (const body of [
+        { message: 'x', replacesMessageId: OLD_ID },
+        { message: 'x', sessionId: SESSION_ID, replacesMessageId: '' },
+        { bootstrap: true, onboardingHandoff: true, sessionId: SESSION_ID, replacesMessageId: OLD_ID },
+      ]) {
+        await expect(
+          POST({ locals: { user: { id: 'u1' } }, request: ndjsonRequest(body) } as never),
+          JSON.stringify(body),
+        ).rejects.toMatchObject({ status: 400 })
+      }
+      expect(runtimeSupersedeMock).not.toHaveBeenCalled()
+      expect(runtimeDispatchMock).not.toHaveBeenCalled()
+    })
+
+    it('editing the first message re-titles the conversation with the edited words', async () => {
+      const { POST } = await import('./+server')
+      findEditableTurnMock.mockResolvedValue({ messageId: OLD_ID, isFirst: true })
+      runtimeSupersedeMock.mockResolvedValue(undefined)
+      replaceChatTurnMock.mockResolvedValue(undefined)
+      runtimeDispatchMock.mockResolvedValue('ok')
+      const streamDb = buildStreamDb()
+      createScopedDrizzleMock.mockReturnValue(streamDb)
+      const res = await POST({ locals: { user: { id: 'u1' } }, request: editRequest() } as never)
+      await res.text()
+      const set = (streamDb.update.mock.results[0]!.value as { set: ReturnType<typeof vi.fn> }).set
+      expect(set).toHaveBeenCalledWith({ title: 'the edited words' })
     })
   })
 })

@@ -90,4 +90,20 @@ describe('agent run feed reducer', () => {
     // The technical reason stays available behind the "details" toggle.
     expect(snap.lines[1].detail).toBe('model_error: gateway 502')
   })
+
+  it('an edited turn: a marker line says the request above was replaced (history keeps it)', () => {
+    const feed = feedFromSnapshot({
+      running: false,
+      items: [
+        { kind: 'user_input', text: 'old' },
+        { kind: 'turn_superseded' },
+        { kind: 'user_input', text: 'new' },
+      ],
+    })
+    expect(feed.lines.map((l) => [l.kind, l.text])).toEqual([
+      ['user', 'old'],
+      ['run', 'Edited and sent again: the agent no longer sees the request above'],
+      ['user', 'new'],
+    ])
+  })
 })

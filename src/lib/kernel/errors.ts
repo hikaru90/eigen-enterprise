@@ -23,6 +23,7 @@ export type KernelErrorCode =
   | 'not_configured'
   | 'no_person'
   | 'invalid_principal'
+  | 'turn_not_editable'
 
 const KNOWN_CODES: readonly KernelErrorCode[] = [
   'permission_denied',
@@ -49,6 +50,7 @@ const KNOWN_CODES: readonly KernelErrorCode[] = [
   'not_configured',
   'no_person',
   'invalid_principal',
+  'turn_not_editable',
 ]
 
 /** Exhaustive per code — adding a KernelErrorCode without a title is a type error. */
@@ -77,6 +79,7 @@ const PROBLEM_TITLES: Record<KernelErrorCode, string> = {
   not_configured: 'Not set up',
   no_person: 'No person to act as',
   invalid_principal: 'Malformed principal',
+  turn_not_editable: 'Message cannot be edited',
 }
 
 const PROBLEM_STATUS: Partial<Record<KernelErrorCode, number>> = {
@@ -108,6 +111,8 @@ const PROBLEM_STATUS: Partial<Record<KernelErrorCode, number>> = {
   // The company brain acts only as a person (CB3): a run that names none does not run.
   no_person: 400,
   invalid_principal: 400,
+  // Edit-and-resend names a turn the conversation no longer carries (or never tagged).
+  turn_not_editable: 409,
 }
 
 /** RFC 9457 problem-details object as produced by `KernelError.toProblemJson`. */

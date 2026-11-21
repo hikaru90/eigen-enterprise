@@ -84,12 +84,23 @@ export const POST: RequestHandler = async (event) => {
   return handleAgentChatPost(event, b, {
     sessionMode: 'default',
     logTag: 'api/chat',
-    dispatch: (sessionId, message, sinks, userId) => {
+    dispatch: (sessionId, message, sinks, userId, turn) => {
       // The chat session is the signed-in member's (handleAgentChatPost keys it by them).
       if (userId !== person.id) throw new Error('chat dispatch for a session of another person')
       return onboardingHandoff
         ? boot.orchestrator.runtime.dispatchOnboardingHandoff(sessionId, sinks, { person })
-        : boot.orchestrator.runtime.dispatch(ORCHESTRATOR_AGENT_ID, sessionId, message, sinks, { person })
+        : boot.orchestrator.runtime.dispatch(ORCHESTRATOR_AGENT_ID, sessionId, message, sinks, {
+            person,
+            ...turn,
+          })
+    },
+    // Edit-and-resend (board a950ef11): the replaced turn leaves the brain's
+    // context first (stopped if it still runs), as the same member.
+    supersedeTurn: (sessionId, turnId, replacementTurnId, userId) => {
+      if (userId !== person.id) throw new Error('chat edit for a session of another person')
+      return boot.orchestrator.runtime.supersedeTurn(ORCHESTRATOR_AGENT_ID, sessionId, turnId, replacementTurnId, {
+        person,
+      })
     },
     // Harness/LLM failures end the turn with a fixed human message; the real
     // error lands here — the operator-visible kernel event log (redacted).

@@ -106,6 +106,10 @@ describe('nucleus-chat status line', () => {
       }),
     ).toBeNull()
     expect(statusLabelForProgressEvent({ type: 'message_delta', content: 'Hel' })).toBeNull()
+    // The stored message id (edit-and-resend) is bookkeeping, never a status or a turn.
+    const accepted = { type: 'turn.accepted', sessionId: 's', messageId: 'm' } as const
+    expect(statusLabelForProgressEvent(accepted)).toBeNull()
+    expect(nucleusTurnForProgressEvent(accepted)).toBeNull()
   })
 })
 
@@ -196,6 +200,13 @@ describe('nucleus-chat harness turns', () => {
 })
 
 describe('nucleusTurnsFromPersisted', () => {
+  it('a saved user turn carries its message id (the Edit action names it)', () => {
+    expect(
+      nucleusTurnsFromPersisted([{ id: 'm-1', role: 'user', content: 'hello', metadata: null }], {}),
+    ).toEqual([{ role: 'user', content: 'hello', messageId: 'm-1' }])
+    expect(userTurn('hi', [], 'm-2')).toEqual({ role: 'user', content: 'hi', messageId: 'm-2' })
+  })
+
   it('a user turn keeps its attached files (chips) — name, kind and size', () => {
     const attachments = [{ name: 'q3.pdf', kind: 'pdf' as const, sizeBytes: 4096 }]
     expect(

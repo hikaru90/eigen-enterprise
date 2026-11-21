@@ -593,3 +593,98 @@ describe('background runs (software-factory S0)', () => {
     expect(JSON.stringify(seen[2]?.messages)).toContain('not_run')
   })
 })
+
+describe('editing the latest turn (board a950ef11: edit a message after stopping, send it again)', () => {
+  const turnCtx = (turnId: string, extra: Partial<EngineContext> = {}) =>
+    ({ ...engineCtx('alice', 'alice', []), turnId, ...extra }) as EngineContext
+
+  it('the superseded request and its reply leave the model context; the edited request runs on the rest', async () => {
+    const { complete, seen } = scriptedGateway({
+      alice: [{ text: 'first answer' }, { text: 'second answer' }, { text: 'edited answer' }],
+    })
+    const { engine } = engineFor(complete)
+    await engine.run('s1', 'question one', turnCtx('t1'))
+    await engine.run('s1', 'question two', turnCtx('t2'))
+    await engine.supersedeTurn('s1', 't2', 't3', turnCtx('t3'))
+    expect(await engine.run('s1', 'question two, better', turnCtx('t3'))).toBe('edited answer')
+    const context = JSON.stringify(seen[2]?.messages)
+    expect(context).toContain('question one')
+    expect(context).toContain('first answer')
+    expect(context).toContain('question two, better')
+    expect(context).not.toContain('"question two"')
+    expect(context).not.toContain('second answer')
+  })
+
+  it('a turn the person stopped is still running on the server: the edit aborts it first', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const { complete: scripted, seen } = scriptedGateway({ alice: [{ text: 'edited answer' }] })
+    let entered = false
+    const complete: GatewayCompleteFn = async (input) => {
+      if (!entered) {
+        entered = true
+        await gate // the stopped turn's model call does not finish on its own
+        throw new Error('the aborted call is never answered')
+      }
+      return scripted(input)
+    }
+    const { engine } = engineFor(complete)
+    const stopped = engine.run('s1', 'slow question', turnCtx('t1'))
+    const stoppedOutcome = stopped.catch((err: unknown) => err)
+    await vi.waitFor(() => expect(entered).toBe(true))
+    await engine.supersedeTurn('s1', 't1', 't2', turnCtx('t2'))
+    expect(await stoppedOutcome).toBeInstanceOf(Error)
+    release()
+    expect(await engine.run('s1', 'better question', turnCtx('t2'))).toBe('edited answer')
+    const context = JSON.stringify(seen[0]?.messages)
+    expect(context).toContain('better question')
+    expect(context).not.toContain('slow question')
+  })
+
+  it('every input of the turn goes (an app-made follow-up included), never the turns before it', async () => {
+    const { complete, seen } = scriptedGateway({
+      alice: [{ text: 'kept answer' }, { text: 'reply' }, { text: 'follow-up reply' }, { text: 'edited answer' }],
+    })
+    const { engine } = engineFor(complete)
+    await engine.run('s1', 'kept question', turnCtx('t1'))
+    await engine.run('s1', 'asked', turnCtx('t2'))
+    await engine.run('s1', '[observation: a step failed]', turnCtx('t2', { ownerText: '' }))
+    await engine.supersedeTurn('s1', 't2', 't3', turnCtx('t3'))
+    await engine.run('s1', 'asked again', turnCtx('t3'))
+    const context = JSON.stringify(seen[3]?.messages)
+    expect(context).toContain('kept question')
+    expect(context).toContain('kept answer')
+    expect(context).toContain('asked again')
+    expect(context).not.toContain('follow-up reply')
+    expect(context).not.toContain('[observation: a step failed]')
+    expect(context).not.toContain('"asked"')
+  })
+
+  it('a turn the transcript does not carry (sent before edits existed, or unknown) is refused loud', async () => {
+    const { complete } = scriptedGateway({ alice: [{ text: 'answer' }] })
+    const { engine } = engineFor(complete)
+    await engine.run('s1', 'untagged question', engineCtx('alice', 'alice', []))
+    await expect(engine.supersedeTurn('s1', 'nope', 't2', turnCtx('t2'))).rejects.toMatchObject({
+      code: 'turn_not_editable',
+    })
+  })
+
+  it('history keeps the superseded turn: the run feed shows it, then the edit marker, then the new request', async () => {
+    const { complete } = scriptedGateway({ alice: [{ text: 'old answer' }, { text: 'new answer' }] })
+    const { engine, index } = engineFor(complete)
+    await engine.run('s1', 'old question', turnCtx('t1'))
+    await engine.supersedeTurn('s1', 't1', 't2', turnCtx('t2'))
+    await engine.run('s1', 'new question', turnCtx('t2'))
+    const row = await index.resolveByConversationKey('orchestrator:s1')
+    const box = await getDurableHarness(harnessDeps(complete))
+    const stream = await box.events(Number(row!.piConversationId))
+    const items = projectSnapshot(stream.snapshot).items
+    await stream.stop()
+    const shown = items.filter((i) => i.kind === 'user_input' || i.kind === 'turn_superseded')
+    expect(shown).toEqual([
+      { kind: 'user_input', text: 'old question' },
+      { kind: 'turn_superseded' },
+      { kind: 'user_input', text: 'new question' },
+    ])
+  })
+})

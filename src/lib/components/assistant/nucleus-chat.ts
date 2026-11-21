@@ -17,6 +17,8 @@ export type NucleusConversationTurn = {
   providerSetup?: true
   /** A member turn's attached files (chips: name, kind, size — the text went to the model). */
   attachments?: AssistantAttachmentMeta[]
+  /** A member turn's stored message id (chat_message) — what Edit names; absent until the server accepted it. */
+  messageId?: string
 }
 
 export type NucleusToolPreviewTurn = {
@@ -49,10 +51,14 @@ export type NucleusChatEntry = NucleusTurn & { key: string }
 export function userTurn(
   text: string,
   attachments: AssistantAttachmentMeta[] = [],
+  messageId?: string,
 ): NucleusConversationTurn {
-  return attachments.length > 0
-    ? { role: 'user', content: text, attachments }
-    : { role: 'user', content: text }
+  return {
+    role: 'user',
+    content: text,
+    ...(attachments.length > 0 ? { attachments } : {}),
+    ...(messageId ? { messageId } : {}),
+  }
 }
 
 /**
@@ -159,7 +165,7 @@ export function nucleusTurnsFromPersisted(
   const out: NucleusTurn[] = []
   for (const m of messages) {
     if (m.role === 'user') {
-      out.push(userTurn(m.content, storedAttachmentMetas(m.metadata)))
+      out.push(userTurn(m.content, storedAttachmentMetas(m.metadata), m.id))
       continue
     }
     if (m.role !== 'assistant') continue
@@ -204,6 +210,8 @@ export function statusLabelForProgressEvent(event: ChatProgressEvent): string | 
     case 'tool.preview':
       return null
     case 'approval.required':
+      return null
+    case 'turn.accepted':
       return null
     case 'agent_progress':
       return event.label

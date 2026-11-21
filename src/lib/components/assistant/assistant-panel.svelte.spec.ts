@@ -21,6 +21,8 @@ const children = createRawSnippet(() => ({ render: () => '<p>Page body</p>' }))
 type Call = { url: string; body: unknown }
 let calls: Call[] = []
 let conversation: Record<string, unknown>
+/** Scripted /api/chat replies, one per request (empty: the echo reply below). */
+let chatReplies: Array<(signal: AbortSignal | null | undefined) => Response> = []
 
 function ndjson(lines: unknown[]): Response {
   return new Response(lines.map((l) => JSON.stringify(l)).join('\n') + '\n', {
@@ -54,6 +56,8 @@ function stubFetch(): void {
         })
       }
       if (url === '/api/chat') {
+        const scripted = chatReplies.shift()
+        if (scripted) return scripted(init?.signal)
         const body = JSON.parse(String(init?.body)) as { message?: string }
         return ndjson([
           { type: 'done', response: `You said: ${body.message ?? 'hello'}`, sessionId: 's-new' },
@@ -115,6 +119,7 @@ const spotlightBackdrop = () => page.getByTestId('assistant-spotlight-backdrop')
 
 beforeEach(() => {
   calls = []
+  chatReplies = []
   conversation = {
     sessionId: 's-1',
     turns: [{ role: 'assistant', content: 'Welcome back — your website next?' }],
@@ -468,6 +473,185 @@ describe('assistant panel', () => {
       const chip = page.getByTestId('assistant-message-attachment')
       await expect.element(chip).toHaveTextContent('q3.pdf')
       await expect.element(chip).toHaveTextContent('1.2 MB')
+    })
+  })
+
+  describe('editing the latest message (board a950ef11: edit after Stop, send it again)', () => {
+    const composer = () => page.getByTestId('assistant-composer-input')
+    const transcript = () => page.getByTestId('nucleus-transcript')
+    const editButtons = () => page.getByRole('button', { name: 'Edit message' })
+
+    /** A turn the server accepted (its message id first) whose reply never comes: the person stops it. */
+    function hangingTurn(messageId: string) {
+      return (signal: AbortSignal | null | undefined) =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  JSON.stringify({ type: 'turn.accepted', sessionId: 's-1', messageId }) + '\n',
+                ),
+              )
+              signal?.addEventListener('abort', () => controller.error(new DOMException('aborted', 'AbortError')))
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/x-ndjson' } },
+        )
+    }
+
+    function answeredTurn(messageId: string, response: string) {
+      return () =>
+        ndjson([
+          { type: 'turn.accepted', sessionId: 's-1', messageId },
+          { type: 'done', response, sessionId: 's-1', messageId: `${messageId}-reply` },
+        ])
+    }
+
+    const chatBodies = () => calls.filter((c) => c.url === '/api/chat').map((c) => c.body)
+
+    it('after Stop, Edit puts the words back; sending again replaces the stopped turn', async () => {
+      chatReplies = [hangingTurn('m-1'), answeredTurn('m-2', 'The better answer.')]
+      await openPanel()
+      await composer().fill('Write the bakery homepag')
+      await page.getByTestId('assistant-send').click()
+      await expect.element(page.getByRole('button', { name: 'Stop' })).toBeInTheDocument()
+      // While the reply runs there is nothing to edit yet.
+      expect(editButtons().elements()).toHaveLength(0)
+      await page.getByRole('button', { name: 'Stop' }).click()
+      await expect.element(page.getByText('Stopped.')).toBeInTheDocument()
+
+      await editButtons().click()
+      await expect.element(composer()).toHaveValue('Write the bakery homepag')
+      await expect.element(composer()).toHaveFocus()
+      await expect.element(page.getByTestId('assistant-editing')).toHaveTextContent('Editing your message')
+
+      await composer().fill('Write the bakery homepage')
+      await page.getByTestId('assistant-send').click()
+
+      await expect.element(page.getByText('The better answer.')).toBeInTheDocument()
+      expect(chatBodies().at(-1)).toEqual({
+        message: 'Write the bakery homepage',
+        sessionId: 's-1',
+        replacesMessageId: 'm-1',
+      })
+      // The stopped turn is gone from the conversation, as it is from the model's.
+      await expect.element(page.getByText('Stopped.')).not.toBeInTheDocument()
+      await expect.element(transcript()).not.toHaveTextContent('Write the bakery homepag ')
+      await expect.element(page.getByText('Write the bakery homepage', { exact: true })).toBeInTheDocument()
+      await expect.element(page.getByTestId('assistant-editing')).not.toBeInTheDocument()
+    })
+
+    it('also after a finished reply, only on the latest message; Cancel gives the composer back', async () => {
+      conversation = {
+        ...conversation,
+        turns: [
+          { role: 'user', content: 'Older question', messageId: 'm-0' },
+          { role: 'assistant', content: 'Older answer' },
+          { role: 'user', content: 'Latest question', messageId: 'm-1' },
+          { role: 'assistant', content: 'Latest answer' },
+        ],
+      }
+      await openPanel()
+      await expect.element(page.getByText('Latest answer')).toBeInTheDocument()
+      await expect.poll(() => editButtons().elements().length).toBe(1)
+
+      await composer().fill('half a thought')
+      await editButtons().click()
+      await expect.element(composer()).toHaveValue('Latest question')
+      await page.getByRole('button', { name: 'Cancel editing' }).click()
+      await expect.element(composer()).toHaveValue('half a thought')
+      await expect.element(page.getByTestId('assistant-editing')).not.toBeInTheDocument()
+      // Nothing was sent; the conversation is as it was.
+      expect(chatBodies()).toEqual([])
+      await expect.element(page.getByText('Latest answer')).toBeInTheDocument()
+    })
+
+    it('no Edit once an approval card follows the message', async () => {
+      conversation = {
+        ...conversation,
+        turns: [
+          { role: 'user', content: 'Send the newsletter', messageId: 'm-1' },
+          { role: 'approval', tool: 'email.send_mail', approvalId: 'ap-1', status: 'pending', action: 'send an email' },
+        ],
+      }
+      await openPanel()
+      await expect.element(page.getByText('Send the newsletter')).toBeInTheDocument()
+      expect(editButtons().elements()).toHaveLength(0)
+    })
+
+    it('the files of a message come back with the edit and go with the resend', async () => {
+      chatReplies = [answeredTurn('m-1', 'Summary one.'), answeredTurn('m-2', 'Summary two.')]
+      await openPanel()
+      const input = page.getByTestId('assistant-attach-input').element() as HTMLInputElement
+      const transfer = new DataTransfer()
+      transfer.items.add(new File(['Ship the bakery site.'], 'notes.md', { type: 'text/markdown' }))
+      input.files = transfer.files
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+      await expect.element(page.getByTestId('assistant-composer-attachment')).toHaveTextContent('notes.md')
+      await composer().fill('Summarise this.')
+      await page.getByTestId('assistant-send').click()
+      await expect.element(page.getByText('Summary one.')).toBeInTheDocument()
+
+      await editButtons().click()
+      await expect.element(page.getByTestId('assistant-composer-attachment')).toHaveTextContent('notes.md')
+      await composer().fill('Summarise this in one line.')
+      await page.getByTestId('assistant-send').click()
+      await expect.element(page.getByText('Summary two.')).toBeInTheDocument()
+      expect(chatBodies().at(-1)).toEqual({
+        message: 'Summarise this in one line.',
+        attachments: [{ name: 'notes.md', kind: 'text', sizeBytes: 21, text: 'Ship the bakery site.' }],
+        sessionId: 's-1',
+        replacesMessageId: 'm-1',
+      })
+      await expect.element(page.getByText('Summary one.')).not.toBeInTheDocument()
+    })
+
+    it('a saved message whose files were not kept says so: the words come back, the files must be attached again', async () => {
+      conversation = {
+        ...conversation,
+        turns: [
+          {
+            role: 'user',
+            content: 'Summarise this.',
+            messageId: 'm-1',
+            attachments: [{ name: 'q3.pdf', kind: 'pdf', sizeBytes: 1_258_291 }],
+          },
+          { role: 'assistant', content: 'Done.' },
+        ],
+      }
+      await openPanel()
+      await editButtons().click()
+      await expect.element(composer()).toHaveValue('Summarise this.')
+      await expect
+        .element(page.getByTestId('assistant-editing'))
+        .toHaveTextContent('Attach q3.pdf again if the edited message still needs it.')
+    })
+
+    it('when the server refuses the edit, the conversation stays as it was and the words stay in the composer', async () => {
+      conversation = {
+        ...conversation,
+        turns: [
+          { role: 'user', content: 'Latest question', messageId: 'm-1' },
+          { role: 'assistant', content: 'Latest answer' },
+        ],
+      }
+      chatReplies = [
+        () =>
+          Response.json(
+            { message: 'This message can no longer be edited. Send a new message instead.' },
+            { status: 409 },
+          ),
+      ]
+      await openPanel()
+      await editButtons().click()
+      await composer().fill('Latest question, edited')
+      await page.getByTestId('assistant-send').click()
+      await expect
+        .element(page.getByText('This message can no longer be edited. Send a new message instead.'))
+        .toBeInTheDocument()
+      await expect.element(page.getByText('Latest answer')).toBeInTheDocument()
+      await expect.element(page.getByText('Latest question', { exact: true })).toBeInTheDocument()
+      await expect.element(composer()).toHaveValue('Latest question, edited')
     })
   })
 

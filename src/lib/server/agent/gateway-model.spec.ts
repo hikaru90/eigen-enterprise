@@ -1,7 +1,25 @@
 import { describe, expect, it } from 'vitest'
-import { assistantMessageFromGatewayResponse, gatewayModelDescriptor } from './gateway-model'
+import {
+  assistantMessageFromGatewayResponse,
+  createGatewayProviderApi,
+  gatewayModelDescriptor,
+} from './gateway-model'
 
 const model = gatewayModelDescriptor()
+
+describe('the gateway provider stream', () => {
+  it('an aborted request (the conversation was stopped) ends at once as aborted, without waiting for the gateway', async () => {
+    const api = createGatewayProviderApi({
+      complete: () => new Promise(() => {}), // the gateway never answers
+      resolveUserId: async () => 'alice',
+    })
+    const ac = new AbortController()
+    const events = api.stream(model, { messages: [] } as never, { sessionId: 's', signal: ac.signal } as never)
+    ac.abort()
+    const message = await events.result()
+    expect(message.stopReason).toBe('aborted')
+  })
+})
 
 describe('assistantMessageFromGatewayResponse', () => {
   it('maps text + usage', () => {

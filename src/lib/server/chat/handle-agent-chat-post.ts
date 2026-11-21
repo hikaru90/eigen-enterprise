@@ -4,6 +4,8 @@ import { and, eq, sql } from 'drizzle-orm'
 import { formatToolResultForDisplay, sanitizeFinalAnswerText } from '$lib/chat/chat-stream-types'
 import { compactChatIntermediateSteps } from '$lib/chat/normalize-messages'
 import type { EngineSurfaceEvent } from '$lib/kernel/engine'
+import { DurableRunError } from '$lib/kernel/engines/durable'
+import { KernelError } from '$lib/kernel/errors'
 import { runWithTrace } from '$lib/server/activity/trace-context'
 import {
   AssistantAttachmentError,
@@ -23,6 +25,13 @@ import { chatSession, chatMessage, type ChatSessionMode } from '$lib/server/db/b
 import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { isLlmNotConfiguredError } from '$lib/server/llm/errors'
 import { redactForLog } from '$lib/server/observability/redact-for-log'
+import {
+  findEditableTurn,
+  replaceChatTurn,
+  TURN_NOT_EDITABLE_MESSAGE,
+  TurnNotEditableError,
+  type EditableTurn,
+} from './turn-edit'
 
 function collectErrorMessages(input: unknown): string[] {
   const parts: string[] = []
@@ -68,6 +77,18 @@ export const CHAT_LLM_NOT_CONFIGURED_MESSAGE =
 /** Fixed message when the turn stopped without an answer (stream closed early). */
 export const CHAT_TURN_INCOMPLETE_MESSAGE =
   'The answer was cut off before it finished. Please try again.'
+
+/** Fixed message when the turn was stopped (the person edited it and sent it again). */
+export const CHAT_TURN_STOPPED_MESSAGE = 'This reply was stopped.'
+
+/**
+ * The durable run was aborted: the only abort is edit-and-resend stopping the
+ * turn it replaces (AgentRuntime.supersedeTurn) — the person's choice, not a
+ * failure for the operator. pi-durable's structured reason, never message text.
+ */
+function stoppedByEdit(err: unknown): boolean {
+  return err instanceof DurableRunError && err.reason === 'aborted'
+}
 
 /** Operator record of a turn that ended without the agent (kernel event in production). */
 export type ChatTurnFailureRecord = {
@@ -191,15 +212,18 @@ export async function persistStreamedAssistantTurn(input: {
   userId: string
   responseText: string
   intermediateSteps: Array<{ content: string; metadata: Record<string, unknown> }>
+  /** The member message this reply answers (turn-edit.ts `turnOf`); absent for app-made turns. */
+  turnOf?: string
 }): Promise<{ messageId: string; storedStepCount: number }> {
   const storedSteps = compactChatIntermediateSteps(input.intermediateSteps)
+  const turnOf = input.turnOf ? { turnOf: input.turnOf } : null
   for (const step of storedSteps) {
     await input.db.insert(chatMessage).values({
       sessionId: input.sessionId,
       userId: input.userId,
       role: 'assistant',
       content: step.content,
-      metadata: step.metadata,
+      metadata: { ...step.metadata, ...turnOf },
     })
   }
   const messageId = await persistAssistantMessage(
@@ -207,6 +231,7 @@ export async function persistStreamedAssistantTurn(input: {
     input.sessionId,
     input.userId,
     input.responseText,
+    turnOf,
   )
   return { messageId, storedStepCount: storedSteps.length }
 }
@@ -227,6 +252,12 @@ export type AgentChatPostBody = {
    * their text goes into the agent's input, their name/kind/size onto the stored turn.
    */
   attachments?: unknown
+  /**
+   * Edit-and-resend (board a950ef11): the id of the person's latest message in
+   * `sessionId`, which this message replaces. The old turn leaves the model's
+   * context and the chat (kept as history); then this message runs.
+   */
+  replacesMessageId?: unknown
 }
 
 /**
@@ -243,13 +274,28 @@ export type AgentChatDispatch = (
     surfaceEvent: (event: EngineSurfaceEvent) => void
   },
   userId: string,
+  /** The stored member message this turn answers (absent for app-made turns). */
+  turn: { turnId?: string },
 ) => Promise<string>
+
+/**
+ * Edit-and-resend on the model side: AgentRuntime.supersedeTurn for this
+ * endpoint's agent, as `userId`. Refuses with KernelError 'turn_not_editable'.
+ */
+export type AgentChatSupersede = (
+  sessionId: string,
+  turnId: string,
+  replacementTurnId: string,
+  userId: string,
+) => Promise<void>
 
 export type HandleAgentChatPostOptions = {
   /** Fixed session mode for this endpoint. */
   sessionMode: ChatSessionMode
   /** The harness dispatch (AgentRuntime.dispatch for the orchestrator agent). */
   dispatch: AgentChatDispatch
+  /** Edit-and-resend's model side (AgentRuntime.supersedeTurn for the same agent). */
+  supersedeTurn: AgentChatSupersede
   /** Resolve the user message sent to the agent (bootstrap or typed). */
   resolveAgentUserMessage: (input: {
     bootstrap: boolean
@@ -295,6 +341,18 @@ export async function handleAgentChatPost(
     error(400, 'message is required')
   }
 
+  const sessionKey =
+    typeof body.sessionId === 'string' && body.sessionId.trim() ? body.sessionId.trim() : null
+  let replacesMessageId: string | null = null
+  if (body.replacesMessageId !== undefined) {
+    if (typeof body.replacesMessageId !== 'string' || !body.replacesMessageId.trim()) {
+      error(400, 'replacesMessageId must name a message')
+    }
+    if (bootstrap) error(400, 'replacesMessageId comes only with a member message')
+    if (!sessionKey) error(400, 'replacesMessageId needs the sessionId of its conversation')
+    replacesMessageId = body.replacesMessageId.trim()
+  }
+
   const agentUserMessage = composeAgentMessage(
     options.resolveAgentUserMessage({ bootstrap, message, briefingPeriod }),
     attachments,
@@ -302,26 +360,42 @@ export async function handleAgentChatPost(
   const userMessageMetadata = attachmentMetadata(attachments)
 
   const db = getDb()
-  const sessionKey =
-    typeof body.sessionId === 'string' && body.sessionId.trim() ? body.sessionId.trim() : null
   // Mode mismatch still fails loud (400) inside getOrCreateSession.
   const { sessionId } = await getOrCreateSession(db, user.id, sessionKey, options.sessionMode)
 
-  if (!bootstrap) {
-    await db.insert(chatMessage).values({
-      sessionId,
-      userId: user.id,
-      role: 'user',
-      content: message,
-      ...(userMessageMetadata ? { metadata: userMessageMetadata } : {}),
-    })
+  // The stored member message this turn answers: its id tags the turn on the
+  // model side and every row it writes here (edit-and-resend finds it by it).
+  const userMessageId = bootstrap ? null : crypto.randomUUID()
+  let isFirstMessage: boolean
+  if (replacesMessageId && userMessageId) {
+    isFirstMessage = (
+      await replaceTurn(db, options, {
+        sessionId,
+        userId: user.id,
+        replacesMessageId,
+        replacementId: userMessageId,
+        content: message,
+        metadata: userMessageMetadata ?? null,
+      })
+    ).isFirst
+  } else {
+    if (userMessageId) {
+      await db.insert(chatMessage).values({
+        id: userMessageId,
+        sessionId,
+        userId: user.id,
+        role: 'user',
+        content: message,
+        ...(userMessageMetadata ? { metadata: userMessageMetadata } : {}),
+      })
+    }
+    const countResult = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(chatMessage)
+      .where(eq(chatMessage.sessionId, sessionId))
+    isFirstMessage = bootstrap || countResult[0]?.count === 1
   }
-
-  const countResult = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(chatMessage)
-    .where(eq(chatMessage.sessionId, sessionId))
-  const isFirstMessage = bootstrap || countResult[0]?.count === 1
+  const turn = userMessageId ? { turnId: userMessageId } : {}
 
   const accept = event.request.headers?.get('accept') ?? ''
   const streamNdjson = accept.includes('application/x-ndjson')
@@ -363,6 +437,10 @@ export async function handleAgentChatPost(
       streamClosed = true
       void writer.abort(new Error('client disconnected')).catch(() => {})
     })
+
+    // First line: the stored message and its session, so the surface can name
+    // the message (edit it) even when the person stops before the reply.
+    if (userMessageId) writeLine({ type: 'turn.accepted', sessionId, messageId: userMessageId })
 
     const intermediateSteps: Array<{ content: string; metadata: Record<string, unknown> }> = []
 
@@ -453,7 +531,7 @@ export async function handleAgentChatPost(
                   }
                   recordIntermediateStep(evt)
                 },
-              }, user.id),
+              }, user.id, turn),
             ),
           ),
         )
@@ -467,6 +545,7 @@ export async function handleAgentChatPost(
           userId: user.id,
           responseText,
           intermediateSteps,
+          ...(userMessageId ? { turnOf: userMessageId } : {}),
         })
         sendTerminal({
           type: 'done',
@@ -480,8 +559,15 @@ export async function handleAgentChatPost(
           await scopedDb.update(chatSession).set({ title }).where(eq(chatSession.id, sessionId))
         }
       } catch (err) {
-        await reportTurnFailure(options, { err, sessionId, userId: user.id })
-        sendTerminal(chatErrorTerminalPayload(err))
+        if (stoppedByEdit(err)) {
+          console.info(`[${options.logTag ?? 'api/chat'}] turn stopped: the person edited it and sent it again`, {
+            sessionId,
+          })
+          sendTerminal({ type: 'error', error: CHAT_TURN_STOPPED_MESSAGE })
+        } else {
+          await reportTurnFailure(options, { err, sessionId, userId: user.id })
+          sendTerminal(chatErrorTerminalPayload(err))
+        }
       } finally {
         if (reserved) {
           await deactivateTenantDbSession(reserved).catch(() => {})
@@ -512,13 +598,19 @@ export async function handleAgentChatPost(
       options.dispatch(sessionId, agentUserMessage, {
         stream: () => {},
         surfaceEvent: () => {},
-      }, user.id),
+      }, user.id, turn),
     )
 
     const responseText = sanitizeFinalAnswerText(
       reply.trim().length > 0 ? reply : 'The assistant did not produce a response.',
     )
-    const messageId = await persistAssistantMessage(db, sessionId, user.id, responseText)
+    const messageId = await persistAssistantMessage(
+      db,
+      sessionId,
+      user.id,
+      responseText,
+      userMessageId ? { turnOf: userMessageId } : null,
+    )
 
     if (isFirstMessage && !bootstrap && message.length > 0) {
       const title = message.length > 80 ? message.slice(0, 77) + '...' : message
@@ -544,4 +636,42 @@ export async function handleAgentChatPost(
       { status: 500 },
     )
   }
+}
+
+/**
+ * Edit-and-resend: check the chat side (only the latest live message), take
+ * the old turn out of the model's context (stopping it if it still runs),
+ * then record the replacement in chat_message. Nothing changes when either
+ * check refuses: 409 with fixed words.
+ */
+async function replaceTurn(
+  db: ReturnType<typeof getDb>,
+  options: HandleAgentChatPostOptions,
+  input: {
+    sessionId: string
+    userId: string
+    replacesMessageId: string
+    replacementId: string
+    content: string
+    metadata: Record<string, unknown> | null
+  },
+): Promise<EditableTurn> {
+  const logTag = options.logTag ?? 'api/chat'
+  let editable: EditableTurn
+  try {
+    editable = await findEditableTurn(db, {
+      sessionId: input.sessionId,
+      userId: input.userId,
+      messageId: input.replacesMessageId,
+    })
+    await options.supersedeTurn(input.sessionId, input.replacesMessageId, input.replacementId, input.userId)
+  } catch (err) {
+    const refused =
+      err instanceof TurnNotEditableError || (err instanceof KernelError && err.code === 'turn_not_editable')
+    if (!refused) throw err
+    console.warn(`[${logTag}] edit refused`, { sessionId: input.sessionId, reason: (err as Error).message })
+    error(409, TURN_NOT_EDITABLE_MESSAGE)
+  }
+  await replaceChatTurn(db, input)
+  return editable
 }
