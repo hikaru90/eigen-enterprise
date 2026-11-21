@@ -5,7 +5,7 @@
   import X from '@lucide/svelte/icons/x'
   import { onDestroy, onMount } from 'svelte'
   import { page } from '$app/state'
-  import { DICTATION_MISSING_MESSAGE, type SpeechReadiness } from './dictation-readiness'
+  import { DICTATION_MISSING_MESSAGE, DICTATION_UNSUPPORTED_MESSAGE, type SpeechReadiness } from './dictation-readiness'
   import { transcribeVoiceClip } from './transcribe-voice-clip'
   import { voiceFailureMessage } from './voice-failure-message'
   import {
@@ -30,6 +30,11 @@
    * Place it in the box's action row: idle it is one icon button, active it grows to fill the
    * row (`flex-1`); `active` tells the box to hide its other row controls meanwhile.
    * The session (`./voice-message`) owns every decision; this only renders its views.
+   *
+   * When dictation cannot work here (no speech-to-text set up, a browser without recording),
+   * the mic stays where it is, marked unavailable, and a tap says why in the bar — never a
+   * silent hide (plan/shared-memory-voice-agent-tools.md §2). `onclose` fires when the bar
+   * gives the row back (transcript in, discarded, dismissed), so the box can take focus back.
    */
   let {
     ontranscript,
@@ -38,6 +43,8 @@
     // eslint-disable-next-line no-useless-assignment -- Svelte bindable prop
     active = $bindable(false),
     testid = 'voice',
+    size = 'default',
+    onclose,
     class: className = '',
   }: {
     /** The transcript, and the recording it was heard from (kept by boxes that play it back). */
@@ -47,12 +54,30 @@
     active?: boolean
     /** Prefix for the `data-testid`s (`<testid>-mic`, `<testid>-bar`, …). */
     testid?: string
+    /** `compact` (28px controls) sits inside a field (`./dictation-field.svelte`). */
+    size?: 'default' | 'compact'
+    /** The bar closed and the row is the box's again (not called when the box unmounts). */
+    onclose?: () => void
     class?: string
   } = $props()
 
   let view = $state.raw<VoiceMessageView>(IDLE_VOICE_VIEW)
   let supported = $state(false)
+  /** Why dictation can't start here, shown in the bar after a tap on the unavailable mic. */
+  let notice = $state<string | null>(null)
   let session: VoiceMessageSession | null = null
+
+  function phaseActive(phase: VoiceMessageView['phase']): boolean {
+    return phase === 'recording' || phase === 'transcribing' || phase === 'failed'
+  }
+
+  /** Tells the box whether the bar holds the row; a bar that closes hands the row back. */
+  function syncActive(): void {
+    const next = notice !== null || phaseActive(view.phase)
+    const closed = active && !next
+    active = next
+    if (closed) onclose?.()
+  }
 
   onMount(() => {
     supported = isVoiceRecordingSupported()
@@ -60,7 +85,7 @@
       transcribe: (clip, signal) => transcribeVoiceClip(clip, { signal }),
       onchange: (next) => {
         view = next
-        active = next.phase === 'recording' || next.phase === 'transcribing' || next.phase === 'failed'
+        syncActive()
       },
       ontranscript: (text, recording) => ontranscript(text, recording),
       onerror: (failure) => console.warn('[voice] message failed', failure.reason, failure.status ?? ''),
@@ -75,12 +100,23 @@
   /** The shell says what dictation lacks (no OpenRouter key): the mic says so, before any recording. */
   const dictation = $derived((page.data.shell as { dictation?: SpeechReadiness } | null | undefined)?.dictation)
   const missingMessage = $derived(dictation?.ready === false ? DICTATION_MISSING_MESSAGE[dictation.missing] : null)
+  const unavailable = $derived(missingMessage ?? (supported ? null : DICTATION_UNSUPPORTED_MESSAGE))
   const failure = $derived(view.phase === 'failed' ? view.failure : null)
-  const showBar = $derived(view.phase === 'recording' || view.phase === 'transcribing' || view.phase === 'failed')
+  const showBar = $derived(notice !== null || phaseActive(view.phase))
 
   function startTap(): void {
+    if (unavailable) {
+      notice = unavailable
+      syncActive()
+      return
+    }
     // the session makes its AudioContext synchronously inside this tap (iOS requires it)
     void session?.start()
+  }
+
+  function dismissNotice(): void {
+    notice = null
+    syncActive()
   }
 
   /** A quiet bar is still a visible line: levels map onto 12–100% of the bar's height. */
@@ -93,8 +129,10 @@
     if (enabled) node.focus({ preventScroll: true })
   }
 
-  const iconButton =
-    'grid size-8 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40'
+  const box = $derived(size === 'compact' ? 'size-7' : 'size-8')
+  const iconButton = $derived(
+    `grid ${box} shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 aria-disabled:cursor-not-allowed aria-disabled:opacity-40`,
+  )
 </script>
 
 {#snippet waveform(dim: boolean)}
@@ -117,9 +155,10 @@
   <button
     type="button"
     class="{iconButton} {className}"
-    disabled={disabled || !supported || missingMessage !== null || view.phase === 'starting'}
+    disabled={disabled || view.phase === 'starting'}
+    aria-disabled={unavailable ? 'true' : undefined}
     aria-label="Dictate"
-    title={missingMessage ?? (supported ? 'Dictate (speech to text)' : 'Voice input is not available in this browser')}
+    title={unavailable ?? 'Dictate (speech to text)'}
     data-testid="{testid}-mic"
     onclick={startTap}
   >
@@ -131,7 +170,20 @@
   </button>
 {:else}
   <div class="flex min-w-0 flex-1 items-center gap-2 {className}" role="group" aria-label="Voice message" data-testid="{testid}-bar">
-    {#if view.phase === 'recording'}
+    {#if notice}
+      <p class="m-0 min-w-0 flex-1 pl-1 text-xs leading-5 text-destructive" role="alert" data-testid="{testid}-error">{notice}</p>
+      <button
+        type="button"
+        use:focusOnMount
+        class={iconButton}
+        aria-label="Dismiss"
+        title="Dismiss"
+        data-testid="{testid}-discard"
+        onclick={dismissNotice}
+      >
+        <X class="size-4" aria-hidden="true" />
+      </button>
+    {:else if view.phase === 'recording'}
       <button type="button" class={iconButton} aria-label="Discard recording" title="Discard recording" data-testid="{testid}-discard" onclick={() => session?.discard()}>
         <X class="size-4" aria-hidden="true" />
       </button>
@@ -143,7 +195,7 @@
       <button
         type="button"
         use:focusOnMount
-        class="grid size-8 shrink-0 cursor-pointer place-items-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
+        class="grid {box} shrink-0 cursor-pointer place-items-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
         aria-label="Done — transcribe"
         title="Done — transcribe"
         data-testid="{testid}-send"

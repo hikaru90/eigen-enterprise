@@ -17,6 +17,9 @@ export const DICTATION_MISSING_MESSAGE: Record<SpeechMissing, string> = {
     'Dictation isn’t set up on this server yet: eigenInference is not connected. An owner or admin can use the company’s own key under Settings → AI provider → Advanced.',
 }
 
+/** What the mic says in a browser that cannot record audio. */
+export const DICTATION_UNSUPPORTED_MESSAGE = 'Voice input is not available in this browser'
+
 /**
  * dictation = speech to text (one model, live previews included); voice = the assistant speaking.
  */
