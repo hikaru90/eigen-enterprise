@@ -1,8 +1,11 @@
 <script lang="ts">
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
+  import type { ShownError } from '$lib/errors/agent-report'
   import { appendVoiceTranscript } from '$lib/voice/transcribe-voice-clip'
   import VoiceDictation from '$lib/voice/voice-dictation.svelte'
+  import { ContactsRequestError } from '../client'
   import { DESCRIBE_TEXT_MAX } from '../types'
 
   /**
@@ -34,7 +37,7 @@
 
   let text = $state('')
   let working = $state(false)
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
   let voiceActive = $state(false)
 
   const trimmed = $derived(text.trim())
@@ -48,7 +51,10 @@
     try {
       await onread(trimmed)
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = {
+        error: err instanceof Error ? err.message : String(err),
+        agent: err instanceof ContactsRequestError ? err.agent : null,
+      }
     } finally {
       working = false
     }
@@ -81,16 +87,34 @@
       {placeholder}
       disabled={working}
       class="min-h-20 w-full resize-y rounded-md border border-input bg-card px-2.5 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:opacity-60 aria-invalid:border-destructive"
-      data-testid="{testid}-text"
-    ></textarea>
+      data-testid="{testid}-text"></textarea>
     {#if tooLong}
-      <p class="text-xs text-destructive">At most {DESCRIBE_TEXT_MAX} characters ({trimmed.length} now).</p>
+      <p class="text-xs text-destructive">
+        At most {DESCRIBE_TEXT_MAX} characters ({trimmed.length} now).
+      </p>
     {/if}
-    {#if error}<p class="text-xs leading-relaxed text-destructive" role="alert" data-testid="{testid}-error">{error}</p>{/if}
+    {#if error}<ErrorNotice
+        {...error}
+        attempted="Reading a free description into the form with AI"
+        class="text-xs leading-relaxed"
+        testid="{testid}-error"
+      />{/if}
     <div class="flex items-center gap-1.5">
-      <VoiceDictation bind:active={voiceActive} disabled={working} testid="{testid}-voice" {ontranscript} />
+      <VoiceDictation
+        bind:active={voiceActive}
+        disabled={working}
+        testid="{testid}-voice"
+        {ontranscript}
+      />
       {#if !voiceActive}
-        <Button type="button" size="sm" variant="outline" disabled={!readable} onclick={() => void read()} data-testid="{testid}-fill">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={!readable}
+          onclick={() => void read()}
+          data-testid="{testid}-fill"
+        >
           {#if working}
             <LoaderCircle class="size-3.5 animate-spin" aria-hidden="true" />
             Reading…

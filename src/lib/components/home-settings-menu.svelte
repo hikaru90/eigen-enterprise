@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import AudioLines from '@lucide/svelte/icons/audio-lines'
   import ChevronDown from '@lucide/svelte/icons/chevron-down'
   import Download from '@lucide/svelte/icons/download'
@@ -170,7 +171,10 @@
     >
       <AudioLines class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
       <span class="flex-1">Audio devices</span>
-      <ChevronDown class="size-3.5 shrink-0 opacity-60 transition-transform {devicesOpen ? 'rotate-180' : ''}" strokeWidth={1.75} />
+      <ChevronDown
+        class="size-3.5 shrink-0 opacity-60 transition-transform {devicesOpen ? 'rotate-180' : ''}"
+        strokeWidth={1.75}
+      />
     </button>
     {#if devicesOpen}
       <AudioDevicesSettings />
@@ -205,18 +209,33 @@
       Sign out
     </button>
     {#if lockout}
-      <div class="mt-1 space-y-1.5 px-2 text-xs leading-relaxed" role="alert" data-testid="sign-out-lockout">
+      <div
+        class="mt-1 space-y-1.5 px-2 text-xs leading-relaxed"
+        role="alert"
+        data-testid="sign-out-lockout"
+      >
         <p class="text-destructive">{lockout}</p>
         <p class="flex gap-3">
-          <a href={resolve('/settings/passkeys')} class="underline underline-offset-4" onclick={() => (menuOpen = false)}>Add a passkey</a>
-          <button type="button" class="underline underline-offset-4" onclick={() => void signOut(true)} data-testid="sign-out-anyway">Sign out anyway</button>
+          <a
+            href={resolve('/settings/passkeys')}
+            class="underline underline-offset-4"
+            onclick={() => (menuOpen = false)}>Add a passkey</a
+          >
+          <button
+            type="button"
+            class="underline underline-offset-4"
+            onclick={() => void signOut(true)}
+            data-testid="sign-out-anyway">Sign out anyway</button
+          >
         </p>
       </div>
     {/if}
     {#if error}
-      <p class="text-destructive mt-1 px-2 text-xs leading-relaxed" role="alert">
+      <ErrorNotice
+        class="mt-1 px-2 text-xs leading-relaxed"
         {error}
-      </p>
+        attempted="Signing out or restarting the app from the settings menu"
+      />
     {/if}
   </Popover.Content>
 </Popover.Root>

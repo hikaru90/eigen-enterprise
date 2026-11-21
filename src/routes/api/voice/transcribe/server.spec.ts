@@ -13,7 +13,9 @@ const m = vi.hoisted(() => ({
 }))
 
 vi.mock('$lib/server/llm/stt-client', () => ({ transcribeAudio: m.transcribeAudio }))
-vi.mock('$lib/server/llm/stt-vocabulary', () => ({ loadTranscriptionPrompt: m.loadTranscriptionPrompt }))
+vi.mock('$lib/server/llm/stt-vocabulary', () => ({
+  loadTranscriptionPrompt: m.loadTranscriptionPrompt,
+}))
 vi.mock('$lib/server/llm/stt-writing-samples', () => ({ loadWritingSamples: m.loadWritingSamples }))
 vi.mock('$lib/server/llm/llm-client', () => ({ llmChatCompletion: m.llmChatCompletion }))
 vi.mock('$lib/server/llm/company-provider', () => ({ onCompanyProvider: m.onCompanyProvider }))
@@ -35,7 +37,9 @@ describe('POST /api/voice/transcribe', () => {
     for (const fn of Object.values(m)) fn.mockReset()
     m.onCompanyProvider.mockImplementation((fn: () => Promise<unknown>) => fn())
     m.loadWritingSamples.mockResolvedValue(['hallo'])
-    m.loadTranscriptionPrompt.mockResolvedValue('Dictation in the workspace of Acme. Names that may come up: Ony.')
+    m.loadTranscriptionPrompt.mockResolvedValue(
+      'Dictation in the workspace of Acme. Names that may come up: Ony.',
+    )
   })
 
   it('401s without a user', async () => {
@@ -43,7 +47,9 @@ describe('POST /api/voice/transcribe', () => {
   })
 
   it('400s an unsupported audio type before any provider call', async () => {
-    await expect(call(new Blob([new Uint8Array(4)], { type: 'text/plain' }))).rejects.toMatchObject({ status: 400 })
+    await expect(call(new Blob([new Uint8Array(4)], { type: 'text/plain' }))).rejects.toMatchObject(
+      { status: 400 },
+    )
     expect(m.transcribeAudio).not.toHaveBeenCalled()
   })
 
@@ -56,7 +62,10 @@ describe('POST /api/voice/transcribe', () => {
     expect(m.onCompanyProvider).toHaveBeenCalledTimes(1)
     expect(m.transcribeAudio).toHaveBeenCalledWith({
       userId: 'u1',
-      audio: expect.objectContaining({ format: 'webm', prompt: 'Dictation in the workspace of Acme. Names that may come up: Ony.' }),
+      audio: expect.objectContaining({
+        format: 'webm',
+        prompt: 'Dictation in the workspace of Acme. Names that may come up: Ony.',
+      }),
     })
     // no forced language: the model hears which one is spoken
     expect(m.transcribeAudio.mock.calls[0]![0].audio).not.toHaveProperty('language')
@@ -67,7 +76,7 @@ describe('POST /api/voice/transcribe', () => {
     })
   })
 
-  it('reads the judge\'s evidence while the model listens, not after it', async () => {
+  it("reads the judge's evidence while the model listens, not after it", async () => {
     let heardDone = false
     m.loadWritingSamples.mockImplementation(async () => {
       expect(heardDone).toBe(false)
@@ -101,13 +110,24 @@ describe('POST /api/voice/transcribe', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const res = await call(clip())
     expect(res.status).toBe(502)
-    expect(await res.json()).toEqual({ error: TRANSCRIBE_FAILED_MESSAGE })
+    expect(await res.json()).toMatchObject({
+      error: TRANSCRIBE_FAILED_MESSAGE,
+      agent: { attempted: 'Transcribing a voice message (POST /api/voice/transcribe)' },
+    })
   })
 
   it('503s with the setup message when the company has no AI provider', async () => {
-    m.onCompanyProvider.mockRejectedValue(new LlmNotConfiguredError('The owner sets it up under Settings → AI provider.'))
+    m.onCompanyProvider.mockRejectedValue(
+      new LlmNotConfiguredError('The owner sets it up under Settings → AI provider.'),
+    )
     const res = await call(clip())
     expect(res.status).toBe(503)
-    expect(await res.json()).toEqual({ error: 'The owner sets it up under Settings → AI provider.' })
+    expect(await res.json()).toMatchObject({
+      error: 'The owner sets it up under Settings → AI provider.',
+      agent: {
+        attempted: 'Transcribing a voice message (POST /api/voice/transcribe)',
+        code: 'LlmNotConfiguredError',
+      },
+    })
   })
 })

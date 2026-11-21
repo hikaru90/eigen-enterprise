@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { shownErrorOf } from '$lib/errors/agent-report'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { PageProps } from './$types'
   import { onMount, untrack } from 'svelte'
   import { enhance } from '$app/forms'
@@ -17,7 +19,9 @@
     id.replace(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/, '$1-$2-$3T$4:$5:$6Z')
 
   // The job as last heard from ee — seeded from the load, then from polling.
-  let job = $state<RestoreJob | null>(untrack(() => (data.restore.managed ? data.restore.job : null)))
+  let job = $state<RestoreJob | null>(
+    untrack(() => (data.restore.managed ? data.restore.job : null)),
+  )
   /** live: ee answers; offline: the company is restarting (reconnecting); signed-out: back, but this sign-in is gone. */
   let conn = $state<'live' | 'offline' | 'signed-out'>('live')
   /** The owner chose to start over after a finished restore of this backup. */
@@ -37,7 +41,7 @@
   const nameOk = $derived(
     info.managed && info.companyName !== null && confirmName.trim() === info.companyName.trim(),
   )
-  const error = $derived(form && 'error' in form ? (form.error as string) : null)
+  const error = $derived(shownErrorOf(form))
 
   const STEPS: Array<{ label: string; steps: RestoreStep[] }> = [
     { label: 'Download the backup and check every file', steps: ['verifying'] },
@@ -112,35 +116,54 @@
   <title>{docTitle('Restore a backup', 'Settings')}</title>
 </svelte:head>
 
-<a href={resolve('/(nucleus)/settings/backups')} class="text-xs text-foreground/60 hover:text-foreground">← Backups</a>
+<a
+  href={resolve('/(nucleus)/settings/backups')}
+  class="text-xs text-foreground/60 hover:text-foreground">← Backups</a
+>
 <h2 class="mt-2 text-base font-semibold tracking-tight">Restore a backup</h2>
 
 {#if !info.managed}
-  <p class="mt-8 rounded-lg border border-border px-4 py-3 text-sm text-foreground/60" data-testid="restore-unmanaged">
+  <p
+    class="mt-8 rounded-lg border border-border px-4 py-3 text-sm text-foreground/60"
+    data-testid="restore-unmanaged"
+  >
     Backups are run by the server this company is installed on. This copy of eigenEnterprise is not
     running on such a server, so there is nothing to restore here.
   </p>
 {:else if showProgress && job}
-  <section class="mt-6 space-y-4" data-testid="restore-progress" data-status={job.status} data-step={job.step}>
+  <section
+    class="mt-6 space-y-4"
+    data-testid="restore-progress"
+    data-status={job.status}
+    data-step={job.step}
+  >
     {#if job.status === 'running'}
       <p class="text-sm">
-        Restoring the backup from <strong>{when(snapshotTime(job.snapshotId))}</strong>. Keep this page open — the
-        company goes offline for a few minutes while it restarts, and this page reconnects by itself.
+        Restoring the backup from <strong>{when(snapshotTime(job.snapshotId))}</strong>. Keep this
+        page open — the company goes offline for a few minutes while it restarts, and this page
+        reconnects by itself.
       </p>
     {:else if job.status === 'succeeded'}
       <div class="rounded-lg border border-eigen-green/60 px-4 py-3" data-testid="restore-done">
         <p class="text-sm font-medium">Restored.</p>
         <p class="mt-1 text-xs text-foreground/70">
-          The company is back as it was on {when(snapshotTime(job.snapshotId))}. Everything after that moment is gone.
+          The company is back as it was on {when(snapshotTime(job.snapshotId))}. Everything after
+          that moment is gone.
         </p>
         <a href={resolve('/')} data-sveltekit-reload class="{secondary} mt-3">Open the company</a>
       </div>
     {:else}
-      <div class="rounded-lg border border-red-700/60 px-4 py-3" data-testid="restore-failed">
-        <p class="text-sm font-medium text-red-700">The restore did not finish.</p>
-        <p class="mt-1 text-xs text-foreground/70">{job.error}</p>
-        <button type="button" class="{secondary} mt-3" onclick={() => (dismissed = true)}>Start over</button>
-      </div>
+      <ErrorNotice
+        class="rounded-lg border border-red-700/60 px-4 py-3"
+        testid="restore-failed"
+        title="The restore did not finish."
+        error={job.error ?? 'ee did not say why.'}
+        attempted={`Restoring the backup ${job.snapshotId} (ee restore job ${job.id})`}
+      >
+        <button type="button" class="{secondary} mt-2" onclick={() => (dismissed = true)}
+          >Start over</button
+        >
+      </ErrorNotice>
     {/if}
 
     {#if conn === 'offline' && job.status === 'running'}
@@ -151,8 +174,8 @@
       <div class="rounded-lg border border-border px-4 py-3" data-testid="restore-signed-out">
         <p class="text-sm">The company is back.</p>
         <p class="mt-1 text-xs text-foreground/70">
-          Your sign-in is newer than the backup, so the restored company doesn't know it. Sign in again
-          to continue; the result of the restore is shown in Settings → Backups.
+          Your sign-in is newer than the backup, so the restored company doesn't know it. Sign in
+          again to continue; the result of the restore is shown in Settings → Backups.
         </p>
         <a href={resolve('/login')} data-sveltekit-reload class="{secondary} mt-3">Sign in</a>
       </div>
@@ -161,10 +184,17 @@
     <ol class="space-y-1.5 text-xs" data-testid="restore-steps">
       {#each STEPS as s, i (s.label)}
         {@const st =
-          i < current ? 'done' : i === current ? (job.status === 'failed' ? 'failed' : 'now') : 'todo'}
+          i < current
+            ? 'done'
+            : i === current
+              ? job.status === 'failed'
+                ? 'failed'
+                : 'now'
+              : 'todo'}
         <li class="flex items-center gap-2" data-state={st}>
           <span
-            class="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-xs {st === 'done'
+            class="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-xs {st ===
+            'done'
               ? 'border-eigen-green bg-eigen-green text-white'
               : st === 'now'
                 ? 'border-primary text-primary'
@@ -182,57 +212,74 @@
 
     {#if job.checked}
       <p class="text-xs text-foreground/60">
-        Checked: {job.checked.files.length} file(s) and {job.checked.blobs} Drive file(s) decrypt and match
-        the backup.
+        Checked: {job.checked.files.length} file(s) and {job.checked.blobs} Drive file(s) decrypt and
+        match the backup.
       </p>
     {/if}
     {#if job.log.length > 0}
       <details class="text-xs text-foreground/60">
         <summary class="cursor-pointer">Details</summary>
-        <pre class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded border border-border p-2 font-mono">{job.log.join('\n')}</pre>
+        <pre
+          class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded border border-border p-2 font-mono">{job.log.join(
+            '\n',
+          )}</pre>
       </details>
     {/if}
   </section>
 {:else if !info.configured}
   <p class="mt-8 rounded-lg border border-border px-4 py-3 text-sm text-foreground/60">
-    Backups are not set up on this server, so there is nothing to restore. <a href={resolve('/(nucleus)/settings/backups')} class="underline">Set them up</a>.
+    Backups are not set up on this server, so there is nothing to restore. <a
+      href={resolve('/(nucleus)/settings/backups')}
+      class="underline">Set them up</a
+    >.
   </p>
 {:else}
   <section class="mt-6 space-y-4" data-testid="restore-confirm">
     <div class="space-y-2 rounded-lg border-2 border-red-700/60 p-4">
-      <h3 class="text-sm font-semibold">This replaces the whole company with the backup from {when(info.takenAt)}</h3>
+      <h3 class="text-sm font-semibold">
+        This replaces the whole company with the backup from {when(info.takenAt)}
+      </h3>
       <ul class="list-disc space-y-1 pl-5 text-xs text-foreground/75">
         <li>
           <strong>Everything since that moment is lost</strong>: messages, Drive files and their
           revisions, members and invitations, settings, and what the agent learned.
         </li>
         <li>
-          Restoring is <strong>whole-company only</strong>: the database, Drive, the agent's memory and the
-          server's own settings all go back together. You can't pick single files or messages.
+          Restoring is <strong>whole-company only</strong>: the database, Drive, the agent's memory
+          and the server's own settings all go back together. You can't pick single files or
+          messages.
         </li>
         <li>
-          First the server downloads the whole backup and checks every file. If anything doesn't match,
-          nothing on this server is changed.
+          First the server downloads the whole backup and checks every file. If anything doesn't
+          match, nothing on this server is changed.
         </li>
         <li>
-          Then the company goes offline for a few minutes and starts again. Anyone signed in after the
-          backup was taken has to sign in again.
+          Then the company goes offline for a few minutes and starts again. Anyone signed in after
+          the backup was taken has to sign in again.
         </li>
       </ul>
       <p class="text-xs text-foreground/60">
-        Might you want today's state back later? <a href={resolve('/(nucleus)/settings/backups')} class="underline">Back up now</a> first.
+        Might you want today's state back later? <a
+          href={resolve('/(nucleus)/settings/backups')}
+          class="underline">Back up now</a
+        > first.
       </p>
     </div>
 
     {#if job && job.kind === 'restore' && job.status !== 'running'}
       <p class="text-xs text-foreground/60" data-testid="restore-last">
-        Last restore: backup {job.snapshotId}, {job.status === 'succeeded' ? 'restored' : `failed — ${job.error}`}.
+        Last restore: backup {job.snapshotId}, {job.status === 'succeeded'
+          ? 'restored'
+          : `failed — ${job.error}`}.
       </p>
     {/if}
 
     {#if info.companyName === null}
       <p class="text-xs text-red-700">
-        This company has no name yet. <a href={resolve('/(nucleus)/settings/company')} class="underline">Name it in Settings → Company</a>
+        This company has no name yet. <a
+          href={resolve('/(nucleus)/settings/company')}
+          class="underline">Name it in Settings → Company</a
+        >
         first — restoring asks you to type it.
       </p>
     {:else}
@@ -274,11 +321,14 @@
             >
           </div>
           <p class="text-xs text-muted-foreground">
-            The code you stored when backups were set up. It opens the backup; it is not saved anywhere.
+            The code you stored when backups were set up. It opens the backup; it is not saved
+            anywhere.
           </p>
         </div>
         <div class="space-y-1">
-          <label class="text-xs" for="r-name">Type <strong>{info.companyName}</strong> to confirm</label>
+          <label class="text-xs" for="r-name"
+            >Type <strong>{info.companyName}</strong> to confirm</label
+          >
           <input
             id="r-name"
             name="confirmName"
@@ -296,7 +346,13 @@
           data-testid="restore-submit">{busy ? 'Starting…' : 'Restore this backup'}</button
         >
         {#if error}
-          <p class="text-xs text-red-700" data-testid="restore-error">{error}</p>
+          <ErrorNotice
+            class="text-xs"
+            testid="restore-error"
+            error={error.error}
+            agent={error.agent}
+            attempted="Starting the restore of this backup"
+          />
         {/if}
       </form>
     {/if}

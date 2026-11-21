@@ -164,6 +164,9 @@ describe('GET /m/website/apps/[name]/deploy-progress', () => {
     expect(res.status).toBe(404)
     expect(await body(res)).toEqual({
       error: expect.stringMatching(/not running on this server/),
+      agent: expect.objectContaining({
+        attempted: expect.stringMatching(/^Following the deploy of/),
+      }),
     })
   })
 
@@ -174,6 +177,9 @@ describe('GET /m/website/apps/[name]/deploy-progress', () => {
     expect(res.status).toBe(404)
     expect(await body(res)).toEqual({
       error: expect.stringMatching(/not running on this server/),
+      agent: expect.objectContaining({
+        attempted: expect.stringMatching(/^Following the deploy of/),
+      }),
     })
     await deployJobs.get(jobId)!.done
   })

@@ -107,3 +107,30 @@ describe('handleError — unexpected server errors reach the server log', () => 
     expect(captureServerException).not.toHaveBeenCalled()
   })
 })
+
+describe('handleError — the error page gets the one error shape', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('returns a plain sentence and an agent report with the cause for a signed-in member', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const out = (await handleError(
+      input(new Error('outer', { cause: new Error('inner') }), 500),
+    )) as {
+      message: string
+      agent: { attempted: string; cause?: string; nextSteps: string[] }
+    }
+    expect(out.message).toContain('copy the agent instructions')
+    expect(out.agent.attempted).toBe('GET /settings/passkeys (route /(nucleus)/settings/passkeys)')
+    expect(out.agent.cause).toBe('outer ← inner')
+    expect(JSON.stringify(out)).not.toContain(SECRET_QUERY)
+  })
+
+  it('hands a signed-out visitor no cause', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const i = input(new Error('db password wrong'), 500)
+    ;(i.event.locals as { user: unknown }).user = null
+    const out = (await handleError(i)) as { agent: Record<string, unknown> }
+    expect(out.agent.cause).toBeUndefined()
+    expect(JSON.stringify(out)).not.toContain('db password wrong')
+  })
+})

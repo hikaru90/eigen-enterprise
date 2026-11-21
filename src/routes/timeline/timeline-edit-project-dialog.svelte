@@ -3,10 +3,13 @@
   import FolderKanbanIcon from '@lucide/svelte/icons/folder-kanban'
   import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle'
   import PencilIcon from '@lucide/svelte/icons/pencil'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import type { ShownError } from '$lib/errors/agent-report'
+  import { requestErrorOf, shownOf } from '$lib/memory/request-error'
   import { m } from '$lib/paraglide/messages.js'
 
   type Props = {
@@ -20,7 +23,7 @@
 
   let label = $state('')
   let busy = $state(false)
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
 
   function resetForm() {
     if (project) {
@@ -43,17 +46,14 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ label: trimmedLabel }),
       })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `Request failed (${res.status})`)
-      }
+      if (!res.ok) throw await requestErrorOf(res)
       const body = (await res.json()) as UpdateProjectResponse
       onUpdated(body)
       open = false
       onClose()
       resetForm()
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = shownOf(err)
     } finally {
       busy = false
     }
@@ -105,7 +105,12 @@
       </div>
 
       {#if error}
-        <p class="text-destructive text-xs">{error}</p>
+        <ErrorNotice
+          class="text-xs"
+          error={error.error}
+          agent={error.agent}
+          attempted="Renaming a project from the timeline"
+        />
       {/if}
 
       <div class="mt-auto flex gap-2 pt-2">

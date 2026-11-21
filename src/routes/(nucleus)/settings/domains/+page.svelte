@@ -6,6 +6,7 @@
   import DomainConnect from '$lib/components/domains/domain-connect.svelte'
   import DomainProgress from '$lib/components/domains/domain-progress.svelte'
   import DnsStatus from '$lib/components/email/dns-status.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { STATE_LABEL } from '$lib/domains/contract'
   import { EMPTY_REGISTRANT } from '$lib/domains/registrant-defaults'
@@ -47,7 +48,7 @@
 </p>
 
 {#if data.boughtError}
-  <p class="mt-4 text-sm text-destructive" role="alert">{data.boughtError}</p>
+  <ErrorNotice class="mt-4" {...data.boughtError} />
 {/if}
 
 <div class="mt-8 rounded-lg border border-border" data-testid="settings-domains">
@@ -56,25 +57,36 @@
   {:else}
     <ul class="divide-y divide-border">
       {#each data.rows as row (row.name)}
-        <li class="flex flex-wrap items-start justify-between gap-3 px-4 py-3" data-testid="domain-row">
+        <li
+          class="flex flex-wrap items-start justify-between gap-3 px-4 py-3"
+          data-testid="domain-row"
+        >
           <div class="min-w-0">
             <p class="truncate text-sm font-medium">{row.name}</p>
             <p class="mt-0.5 text-xs text-muted-foreground">
               {#if row.source === 'bought'}
                 Bought through eigenEnterprise
                 {#if row.renewsAt}
-                  · {row.autoRenew ? `Renews ${date(row.renewsAt)}` : `Runs out ${date(row.renewsAt)} (renewal off)`}
+                  · {row.autoRenew
+                    ? `Renews ${date(row.renewsAt)}`
+                    : `Runs out ${date(row.renewsAt)} (renewal off)`}
                 {/if}
               {:else}
                 In your own DNS
               {/if}
             </p>
-            {#if row.error}<p class="mt-1 text-xs text-destructive">{row.error}</p>{/if}
+            {#if row.error}<ErrorNotice
+                class="mt-1 text-xs"
+                error={row.error}
+                attempted={`Registering the bought domain ${row.name} (the control plane reported it failed)`}
+              />{/if}
             {#if row.mailNote}<p class="mt-1 text-xs text-muted-foreground">{row.mailNote}</p>{/if}
           </div>
           <div class="flex shrink-0 items-center gap-3">
             {#if row.state}
-              <span class="text-xs text-muted-foreground" data-testid="domain-state">{STATE_LABEL[row.state]}</span>
+              <span class="text-xs text-muted-foreground" data-testid="domain-state"
+                >{STATE_LABEL[row.state]}</span
+              >
             {/if}
             {#if row.mail}
               <DnsStatus status={row.mail.status} />

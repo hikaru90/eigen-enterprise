@@ -2,7 +2,9 @@
   import type { ContactVisibility, ImportPreview } from '../types'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
+  import type { AgentReport } from '$lib/errors/agent-report'
   import { CHANNEL_LABELS } from '../types'
   import VisibilityChoice from './visibility-choice.svelte'
 
@@ -17,12 +19,15 @@
     visibility,
     action = '?/import',
     error = null,
+    agent = null,
   }: {
     preview: ImportPreview
     /** The importer's default for new contacts: what the import uses unless they change it here. */
     visibility: ContactVisibility
     action?: string
     error?: string | null
+    /** The server's agent report for `error` ("Copy agent instructions"). */
+    agent?: AgentReport | null
   } = $props()
 
   /** New rows you unticked. */
@@ -39,7 +44,8 @@
 
 <div class="grid max-w-3xl gap-4" data-testid="import-preview">
   <p class="text-sm" role="status" data-testid="import-counts">
-    {preview.counts.new} new · {preview.counts.duplicate} already in your contacts · {preview.counts.invalid} can’t be imported
+    {preview.counts.new} new · {preview.counts.duplicate} already in your contacts · {preview.counts
+      .invalid} can’t be imported
   </p>
 
   {#if newRows.length > 0}
@@ -57,15 +63,23 @@
             <label for={`import-row-${r.index}`} class="grid min-w-0 gap-0.5">
               <span class="font-medium">{r.contact.name}</span>
               {#if r.contact.organisation || r.contact.title}
-                <span class="text-xs text-muted-foreground">{[r.contact.title, r.contact.organisation].filter(Boolean).join(' · ')}</span>
+                <span class="text-xs text-muted-foreground"
+                  >{[r.contact.title, r.contact.organisation].filter(Boolean).join(' · ')}</span
+                >
               {/if}
               {#if r.contact.channels.length > 0}
                 <span class="truncate text-xs text-muted-foreground"
-                  >{r.contact.channels.map((c) => `${CHANNEL_LABELS[c.type]}: ${c.value}`).join(' · ')}</span
+                  >{r.contact.channels
+                    .map((c) => `${CHANNEL_LABELS[c.type]}: ${c.value}`)
+                    .join(' · ')}</span
                 >
               {/if}
-              {#if r.contact.tags.length > 0}<span class="text-xs text-muted-foreground">Tags: {r.contact.tags.join(', ')}</span>{/if}
-              {#if r.contact.whyRelevant}<span class="line-clamp-2 text-xs text-muted-foreground">Why they matter: {r.contact.whyRelevant}</span>{/if}
+              {#if r.contact.tags.length > 0}<span class="text-xs text-muted-foreground"
+                  >Tags: {r.contact.tags.join(', ')}</span
+                >{/if}
+              {#if r.contact.whyRelevant}<span class="line-clamp-2 text-xs text-muted-foreground"
+                  >Why they matter: {r.contact.whyRelevant}</span
+                >{/if}
             </label>
           </li>
         {/if}
@@ -82,7 +96,10 @@
             <span class="text-muted-foreground">
               — {r.email} is already
               {#if r.existing}
-                in your contacts as <a class="underline" href={resolve(`/m/email/people/${r.existing.id}`)}>{r.existing.name}</a>. Not imported; that contact stays as it is.
+                in your contacts as <a
+                  class="underline"
+                  href={resolve(`/m/email/people/${r.existing.id}`)}>{r.existing.name}</a
+                >. Not imported; that contact stays as it is.
               {:else}
                 in an earlier row of this file. Not imported twice.
               {/if}
@@ -97,9 +114,14 @@
   {/if}
 
   <form method="POST" {action} use:enhance class="grid gap-3" data-testid="import-confirm-form">
-    <input type="hidden" name="candidates" value={JSON.stringify(chosen.map((r) => r.contact))} data-testid="import-chosen" />
+    <input
+      type="hidden"
+      name="candidates"
+      value={JSON.stringify(chosen.map((r) => r.contact))}
+      data-testid="import-chosen"
+    />
     <VisibilityChoice initial={visibility} plural testid="import-visibility" />
-    {#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+    {#if error}<ErrorNotice {error} {agent} attempted="Importing contacts" />{/if}
     <div class="flex flex-wrap gap-2">
       <Button type="submit" disabled={chosen.length === 0} data-testid="import-confirm"
         >Import {chosen.length} {chosen.length === 1 ? 'contact' : 'contacts'}</Button

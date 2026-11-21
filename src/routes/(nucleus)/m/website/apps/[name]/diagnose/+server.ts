@@ -2,7 +2,7 @@ import type { DiagnoseResult } from '../../../../../../../../modules/website/app
 import type { RequestHandler } from './$types'
 import { json } from '@sveltejs/kit'
 import { requireAdmin } from '$lib/server/auth/require-admin'
-import { logAppFailure, ownerRun, plainAppMessage } from '$lib/server/website/owner-run'
+import { appErrorReport, logAppFailure, ownerRun } from '$lib/server/website/owner-run'
 
 /** POST { deployId }: "Ask AI what went wrong" — website.app_diagnose (LLM gateway, JSON schema). */
 export const POST: RequestHandler = async (event) => {
@@ -16,6 +16,13 @@ export const POST: RequestHandler = async (event) => {
     return json(out)
   } catch (err) {
     logAppFailure('website.app_diagnose', err)
-    return json({ error: plainAppMessage(err) }, { status: 400 })
+    return json(
+      appErrorReport(err, {
+        attempted: `Asking the AI what went wrong with the deploy of ${event.params.name}`,
+        tool: 'website.app_diagnose',
+        input: { name: event.params.name, deployId: body.deployId },
+      }),
+      { status: 400 },
+    )
   }
 }

@@ -28,7 +28,11 @@ const row = (id: string, status: string) => ({
 
 describe('Email › Marketing mail › Sent (what the flows sent to the lists: pending + sent; owner and admins)', () => {
   it('is for the owner and admins only: members get the admin refusal and nothing is read', async () => {
-    requireAdminMock.mockRejectedValueOnce(Object.assign(new Error('Only the owner or an admin can change email settings.'), { status: 403 }))
+    requireAdminMock.mockRejectedValueOnce(
+      Object.assign(new Error('Only the owner or an admin can change email settings.'), {
+        status: 403,
+      }),
+    )
     await expect(run()).rejects.toMatchObject({ status: 403 })
     expect(settingsMock).not.toHaveBeenCalled()
     expect(listMock).not.toHaveBeenCalled()
@@ -51,8 +55,16 @@ describe('Email › Marketing mail › Sent (what the flows sent to the lists: p
       f.statuses ? [row('p1', 'scheduled')] : [row('s1', 'delivered')],
     )
     const out = await run()
-    expect(listMock).toHaveBeenCalledWith({ statuses: ['scheduled', 'queued'], sources: ['flow'], limit: 10 })
-    expect(listMock).toHaveBeenCalledWith({ excludeStatuses: ['scheduled', 'queued'], sources: ['flow'], limit: 10 })
+    expect(listMock).toHaveBeenCalledWith({
+      statuses: ['scheduled', 'queued'],
+      sources: ['flow'],
+      limit: 10,
+    })
+    expect(listMock).toHaveBeenCalledWith({
+      excludeStatuses: ['scheduled', 'queued'],
+      sources: ['flow'],
+      limit: 10,
+    })
     expect(out).toEqual({
       connected: true,
       pending: [

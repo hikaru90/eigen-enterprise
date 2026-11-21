@@ -34,7 +34,7 @@ function postEvent(overrides: { user?: { id: string } | null; body?: unknown } =
 
 describe('GET /api/timeline/projects', () => {
   it('returns 401 when unauthenticated', async () => {
-    await expect(GET(getEvent({ user: null }))).rejects.toMatchObject({ status: 401 })
+    expect((await GET(getEvent({ user: null }))).status).toBe(401)
   })
 
   it('defaults author scope to user', async () => {
@@ -54,24 +54,26 @@ describe('GET /api/timeline/projects', () => {
 
 describe('POST /api/timeline/projects', () => {
   it('returns 401 when unauthenticated', async () => {
-    await expect(POST(postEvent({ user: null }))).rejects.toMatchObject({ status: 401 })
+    expect((await POST(postEvent({ user: null }))).status).toBe(401)
   })
 
   it('returns 400 for invalid JSON body', async () => {
-    await expect(
-      POST({
-        locals: { user: { id: 'u1' } },
-        request: new Request('http://localhost', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: 'not-json',
-        }),
-      } as Parameters<typeof POST>[0]),
-    ).rejects.toMatchObject({ status: 400 })
+    expect(
+      (
+        await POST({
+          locals: { user: { id: 'u1' } },
+          request: new Request('http://localhost', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: 'not-json',
+          }),
+        } as Parameters<typeof POST>[0])
+      ).status,
+    ).toBe(400)
   })
 
   it('returns 400 when label is missing', async () => {
-    await expect(POST(postEvent({ body: {} }))).rejects.toMatchObject({ status: 400 })
+    expect((await POST(postEvent({ body: {} }))).status).toBe(400)
   })
 
   it('creates a user-declared project', async () => {
@@ -106,16 +108,26 @@ describe('POST /api/timeline/projects', () => {
   })
 
   it('creates a Private project when asked', async () => {
-    createUserDeclaredProjectMock.mockResolvedValue({ entityId: 'ent-2', label: 'Job search', status: 'active', visibility: 'private' })
+    createUserDeclaredProjectMock.mockResolvedValue({
+      entityId: 'ent-2',
+      label: 'Job search',
+      status: 'active',
+      visibility: 'private',
+    })
     await POST(postEvent({ body: { label: 'Job search', private: true } }))
-    expect(createUserDeclaredProjectMock).toHaveBeenCalledWith(expect.objectContaining({ visibility: 'private' }))
-    await expect(POST(postEvent({ body: { label: 'x', private: 'yes' } }))).rejects.toMatchObject({ status: 400 })
+    expect(createUserDeclaredProjectMock).toHaveBeenCalledWith(
+      expect.objectContaining({ visibility: 'private' }),
+    )
+    expect((await POST(postEvent({ body: { label: 'x', private: 'yes' } }))).status).toBe(400)
   })
 
   it('returns 400 when service rejects', async () => {
     createUserDeclaredProjectMock.mockRejectedValue(new Error('boom'))
-    await expect(POST(postEvent({ body: { label: 'x' } }))).rejects.toMatchObject({
-      status: 400,
+    const res = await POST(postEvent({ body: { label: 'x' } }))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({
+      error: 'boom',
+      agent: { attempted: 'Creating a project from the timeline', cause: 'boom' },
     })
   })
 })

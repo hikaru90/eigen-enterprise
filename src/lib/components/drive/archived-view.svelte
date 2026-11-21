@@ -12,9 +12,12 @@
   import SparklesIcon from '@lucide/svelte/icons/sparkles'
   import { invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { driveApi, formatSize, type ArchiveGroup, type DriveItem } from '$lib/drive/api'
   import { driveItemKind, shortWhen, type DriveItemKind } from '$lib/drive/display'
+  import { driveShownError } from '$lib/drive/shown-error'
+  import type { ShownError } from '$lib/errors/agent-report'
   import ArchiveSuggestions from './archive-suggestions.svelte'
 
   /**
@@ -35,12 +38,13 @@
 
   type Row = ArchiveGroup['items'][number]
 
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
   let notice = $state<string | null>(null)
   let busy = $state(false)
   let suggesting = $state(false)
 
-  const placeOf = (g: ArchiveGroup) => g.folder?.name ?? g.path[g.path.length - 1]?.name ?? g.root.label
+  const placeOf = (g: ArchiveGroup) =>
+    g.folder?.name ?? g.path[g.path.length - 1]?.name ?? g.root.label
   const openHref = (item: DriveItem) =>
     item.type === 'folder' ? resolve(`/drive/folder/${item.id}`) : resolve(`/drive/file/${item.id}`)
   const fullWhen = (d: string | Date) =>
@@ -57,7 +61,7 @@
         : `“${item.name}” is back in ${placeOf(group)}.`
       await invalidateAll()
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = driveShownError(err)
     } finally {
       busy = false
     }
@@ -100,13 +104,13 @@
       their sharing — they just leave the everyday view. Unarchive brings one back.
     </p>
     {#if error}
-      <p
-        class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        role="alert"
-        data-testid="drive-error"
-      >
-        {error}
-      </p>
+      <ErrorNotice
+        class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2"
+        testid="drive-error"
+        error={error.error}
+        agent={error.agent}
+        attempted="Unarchiving an item in Drive’s archive"
+      />
     {/if}
     {#if notice}
       <p
@@ -191,8 +195,9 @@
                     </span>
                   </td>
                   <td class="hidden px-3 py-2 text-muted-foreground sm:table-cell">
-                    <time datetime={new Date(item.updatedAt).toISOString()} title={fullWhen(item.updatedAt)}
-                      >{shortWhen(item.updatedAt)}</time
+                    <time
+                      datetime={new Date(item.updatedAt).toISOString()}
+                      title={fullWhen(item.updatedAt)}>{shortWhen(item.updatedAt)}</time
                     >
                   </td>
                   <td class="hidden px-3 py-2 text-muted-foreground md:table-cell">

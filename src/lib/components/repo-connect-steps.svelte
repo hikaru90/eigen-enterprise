@@ -1,4 +1,5 @@
 <script lang="ts" module>
+  import type { ErrorReport } from '$lib/errors/agent-report'
   export type GitHubStatusView = {
     connected: boolean
     installed: boolean
@@ -36,11 +37,11 @@
     githubManifest: { json: string; state: string } | null
     repos: RepoRowView[]
     available: AvailableRepoView[] | null
-    availableError: string | null
+    availableError: ErrorReport | null
     /** App names already in use, so a suggested name can be free. */
     takenNames: string[]
     catalog: { runtimes: { node: string[] } } | null
-    appsError: string | null
+    appsError: ErrorReport | null
     managed: boolean
     consoleHost: string | null
     managedReason: string | null
@@ -64,6 +65,7 @@
   import { resolve } from '$app/paths'
   import AppBuildForm from '$lib/components/app-build-form.svelte'
   import AppDeployProgress from '$lib/components/app-deploy-progress.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
@@ -71,6 +73,7 @@
   import { RadioGroup, RadioGroupItem } from '$lib/components/ui/radio-group'
   import * as Select from '$lib/components/ui/select'
   import { Switch } from '$lib/components/ui/switch'
+  import { shownErrorOf, type ShownError } from '$lib/errors/agent-report'
   import { appHost, appSlug, freeName } from '../../../modules/website/apps/host'
   import { parseGitHubRepo } from '../../../modules/website/github/repo-url'
   import GitHubAppConnect from './github-app-connect.svelte'
@@ -82,7 +85,7 @@
     nativeResult = null,
   }: {
     data: RepoConnectData
-    nativeError?: string | null
+    nativeError?: ShownError | null
     nativeResult?: Record<string, unknown> | null
   } = $props()
 
@@ -119,7 +122,7 @@
 
   // Seeded once from a native-submit form result; then owned by the handlers.
   // svelte-ignore state_referenced_locally
-  let stepError = $state<string | null>(nativeError ?? null)
+  let stepError = $state<ShownError | null>(nativeError ?? null)
   let storageError = $state<string | null>(null)
   let notice = $state<string | null>(null)
   let noticeLink = $state<{ href: string; label: string } | null>(null)
@@ -155,8 +158,7 @@
       ? (result.data as ActionPayload)
       : null
   }
-  const errorOf = (d: ActionPayload): string | null =>
-    typeof d.error === 'string' ? d.error : null
+  const errorOf = (d: ActionPayload): ShownError | null => shownErrorOf(d)
   const linkOf = (d: ActionPayload): { href: string; label: string } | null => {
     if (!d.link || typeof d.link !== 'object') return null
     const l = d.link as { href?: unknown; label?: unknown }
@@ -402,8 +404,11 @@
         resumePending(key, false)
         savePending(key)
       } else {
-        stepError =
-          'The server did not return a valid deploy-key setup. No key was shown; check the server before creating another.'
+        stepError = {
+          error:
+            'The server did not return a valid deploy-key setup. No key was shown; check the server before creating another.',
+          agent: null,
+        }
       }
     }
   }
@@ -541,8 +546,8 @@
       if (typeof d.jobId === 'string' && typeof d.name === 'string') {
         // The deploy runs in the background: follow it from here (no $effect).
         void panel?.follow(d.jobId, d.name)
-      } else if (typeof d.error === 'string') {
-        stepError = d.error
+      } else {
+        stepError = errorOf(d)
       }
     }
   }
@@ -654,7 +659,7 @@
 {/snippet}
 
 {#if data.appsError}
-  <p class="text-sm text-red-600" role="alert">{data.appsError}</p>
+  <ErrorNotice {...data.appsError} />
 {/if}
 
 <ol class="flex flex-wrap gap-x-4 gap-y-1 text-xs" aria-label="Steps" data-testid="step-header">
@@ -669,10 +674,20 @@
 </ol>
 
 {#if storageError}
-  <p class="mt-3 text-sm text-red-600" role="alert">{storageError}</p>
+  <ErrorNotice
+    class="mt-3"
+    error={storageError}
+    attempted="Saving the deploy-key setup in the browser (sessionStorage)"
+  />
 {/if}
 {#if stepError}
-  <p class="mt-3 text-sm text-red-600" role="alert" data-testid="step-error">{stepError}</p>
+  <ErrorNotice
+    class="mt-3"
+    testid="step-error"
+    error={stepError.error}
+    agent={stepError.agent}
+    attempted="Connecting a GitHub repository on /m/website/apps/new"
+  />
 {/if}
 {#if notice}
   <p class="mt-3 text-sm" role="status" data-testid="step-notice">
@@ -822,7 +837,7 @@
             <GitHubAppConnect github={data.github} manifest={data.githubManifest} />
           </div>
         {:else if data.availableError}
-          <p class="mt-1 text-sm text-red-600" role="alert">{data.availableError}</p>
+          <ErrorNotice class="mt-1" {...data.availableError} />
         {:else if data.available && data.available.length === 0}
           <p class="mt-1 text-sm text-muted-foreground">The app cannot see any repositories yet.</p>
         {:else if data.available}

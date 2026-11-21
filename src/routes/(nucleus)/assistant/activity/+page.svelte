@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   /* eslint-disable svelte/no-navigation-without-resolve -- the module filter is resolve() + a query string */
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
@@ -393,7 +394,11 @@
 {#if isLoading}
   <p class="text-muted-foreground py-8 text-center text-xs">Loading activity…</p>
 {:else if loadError}
-  <p class="py-8 text-center text-xs text-red-500">{loadError}</p>
+  <ErrorNotice
+    class="items-center py-8 text-center text-xs"
+    error={loadError}
+    attempted="Loading the assistant activity (POST /api/activity)"
+  />
 {:else}
   {#if showOverall && spendSeries}
     <ActivitySpendChart
@@ -462,8 +467,7 @@
                   >
                 {/if}
                 {#if hasMultipleCalls}
-                  <span class="text-xs text-muted-foreground">({group.calls.length} calls)</span
-                  >
+                  <span class="text-xs text-muted-foreground">({group.calls.length} calls)</span>
                 {/if}
               </td>
               <td class="p-2 font-mono text-xs text-muted-nowrap">{formatDuration(dur)}</td>

@@ -65,6 +65,5 @@
       <h2 id="settings-heading" class="mb-2 text-[13px] font-medium">Settings</h2>
       <ModuleSettingsSection {slot} />
     </section>
-
   {/if}
 </PageFrame>

@@ -1,27 +1,30 @@
 import type { RequestHandler } from './$types'
-import { error, json } from '@sveltejs/kit'
+import { json } from '@sveltejs/kit'
+import { errorReport } from '$lib/server/errors/report'
 import {
   isParseDateRangeGatewayFailure,
   PARSE_DATE_RANGE_GATEWAY_USER_ERROR,
   parseDateRangePhrase,
 } from '$lib/server/memory/parse-date-range'
+import { failed, refuse } from '$lib/server/memory/route-errors'
 import { getUserPreferredTimezone } from '$lib/server/memory/user-timezone'
 import { parseDateRangeRequestSchema } from '$lib/validation/api-bodies'
 
 export const POST: RequestHandler = async (event) => {
+  const ctx = { attempted: 'Parsing a typed date range for the timeline filter' }
   const user = event.locals.user
-  if (!user) error(401, 'Unauthorized')
+  if (!user) return refuse(401, 'Unauthorized', ctx)
 
   let body: unknown
   try {
     body = await event.request.json()
   } catch {
-    error(400, 'Invalid JSON body')
+    return refuse(400, 'Invalid JSON body', ctx)
   }
 
   const parsed = parseDateRangeRequestSchema.safeParse(body)
   if (!parsed.success) {
-    error(400, parsed.error.issues[0]?.message ?? 'Invalid body')
+    return refuse(400, parsed.error.issues[0]?.message ?? 'Invalid body', ctx)
   }
 
   const timeZone = parsed.data.timeZone ?? (await getUserPreferredTimezone(user.id))
@@ -46,8 +49,10 @@ export const POST: RequestHandler = async (event) => {
       stack: err instanceof Error ? err.stack : undefined,
     })
     if (isParseDateRangeGatewayFailure(message)) {
-      return json({ error: PARSE_DATE_RANGE_GATEWAY_USER_ERROR }, { status: 502 })
+      return json(errorReport(err, { ...ctx, plain: () => PARSE_DATE_RANGE_GATEWAY_USER_ERROR }), {
+        status: 502,
+      })
     }
-    return json({ error: message }, { status: 500 })
+    return failed(500, err, ctx)
   }
 }

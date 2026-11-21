@@ -1,14 +1,17 @@
 <script lang="ts">
   import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle'
   import SparklesIcon from '@lucide/svelte/icons/sparkles'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Checkbox } from '$lib/components/ui/checkbox'
   import * as Dialog from '$lib/components/ui/dialog'
+  import type { ShownError } from '$lib/errors/agent-report'
   import type {
     ApplyProjectReviewResponse,
     ProjectReviewSuggestion,
     ReviewProjectResponse,
   } from '$lib/memory/project-review-types'
+  import { requestErrorOf, shownOf } from '$lib/memory/request-error'
   import { m } from '$lib/paraglide/messages.js'
 
   type Props = {
@@ -19,16 +22,10 @@
     onApplied: (result: ApplyProjectReviewResponse) => void
   }
 
-  let {
-    open = $bindable(false),
-    projectEntityId,
-    review,
-    onClose,
-    onApplied,
-  }: Props = $props()
+  let { open = $bindable(false), projectEntityId, review, onClose, onApplied }: Props = $props()
 
   let busy = $state(false)
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
   let deadlineChecked = $state(true)
   // Parent remounts this dialog per open; missing keys default to checked via `!== false`.
   let taskChecked = $state<Record<string, boolean>>({})
@@ -140,16 +137,13 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
       })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `Request failed (${res.status})`)
-      }
+      if (!res.ok) throw await requestErrorOf(res)
       const result = (await res.json()) as ApplyProjectReviewResponse
       onApplied(result)
       open = false
       onClose()
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = shownOf(err)
     } finally {
       busy = false
     }
@@ -281,7 +275,12 @@
       {/if}
 
       {#if error}
-        <p class="text-destructive text-xs">{error}</p>
+        <ErrorNotice
+          class="text-xs"
+          error={error.error}
+          agent={error.agent}
+          attempted="Applying a project review"
+        />
       {/if}
 
       <div class="mt-auto flex gap-2 pt-2">

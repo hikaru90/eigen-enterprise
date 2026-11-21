@@ -11,14 +11,17 @@
   import { goto, invalidate } from '$app/navigation'
   import { resolve } from '$app/paths'
   import { page } from '$app/state'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import MemoryOwnerLabel from '$lib/components/memory-owner-label.svelte'
   import MemoryPrivateSwitch from '$lib/components/memory-private-switch.svelte'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
   import { Button } from '$lib/components/ui/button'
+  import type { ShownError } from '$lib/errors/agent-report'
   import type { ReviewProjectResponse } from '$lib/memory/project-review-types'
   import type { ProjectTaskStatusFilter } from '$lib/memory/project-task-status-filter'
   import type { ProjectViewMode } from '$lib/memory/project-view-mode'
   import { parseProjectViewMode } from '$lib/memory/project-view-mode'
+  import { requestErrorOf, shownOf } from '$lib/memory/request-error'
   import { m } from '$lib/paraglide/messages.js'
   import { docTitle } from '$lib/shell/title'
   import ProjectGanttView from '../../../../../timeline/project-gantt-view.svelte'
@@ -56,13 +59,13 @@
   let editOpen = $state(false)
   let dismissOpen = $state(false)
   let reviewing = $state(false)
-  let reviewError = $state<string | null>(null)
+  let reviewError = $state<ShownError | null>(null)
   let reviewOpen = $state(false)
   let reviewPayload = $state<ReviewProjectResponse | null>(null)
   let projectLabelOverride = $state<string | null>(null)
   let privateOverride = $state<boolean | null>(null)
   let visibilityBusy = $state(false)
-  let visibilityError = $state<string | null>(null)
+  let visibilityError = $state<ShownError | null>(null)
   const isPrivate = $derived(privateOverride ?? project.visibility === 'private')
 
   const displayLabel = $derived(projectLabelOverride ?? project.label)
@@ -199,13 +202,11 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({}),
       })
-      if (!res.ok) {
-        throw new Error((await res.text()) || `Request failed (${res.status})`)
-      }
+      if (!res.ok) throw await requestErrorOf(res)
       reviewPayload = (await res.json()) as ReviewProjectResponse
       reviewOpen = true
     } catch (err) {
-      reviewError = err instanceof Error ? err.message : String(err)
+      reviewError = shownOf(err)
     } finally {
       reviewing = false
     }
@@ -221,11 +222,12 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ private: next }),
       })
-      if (!res.ok) throw new Error((await res.text()) || `Request failed (${res.status})`)
+      if (!res.ok) throw await requestErrorOf(res)
       const body = (await res.json()) as { visibility: 'private' | 'company' }
       privateOverride = body.visibility === 'private'
     } catch (err) {
-      visibilityError = `${m.memory_private_failed()} ${err instanceof Error ? err.message : String(err)}`
+      const shown = shownOf(err)
+      visibilityError = { error: `${m.memory_private_failed()} ${shown.error}`, agent: shown.agent }
     } finally {
       visibilityBusy = false
     }
@@ -243,10 +245,8 @@
     await goto(resolve('/m/memory/projects'))
   }
 
-  const ghostIconClass =
-    'h-auto rounded-md p-1.5 text-foreground hover:text-foreground/70'
-  const filledPillClass =
-    'h-auto shrink-0 rounded-md px-3 py-1 text-xs font-medium'
+  const ghostIconClass = 'h-auto rounded-md p-1.5 text-foreground hover:text-foreground/70'
+  const filledPillClass = 'h-auto shrink-0 rounded-md px-3 py-1 text-xs font-medium'
   const viewPillClass = (active: boolean) =>
     active
       ? 'rounded-md bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground'
@@ -380,7 +380,12 @@
         onchange={(next) => void changeVisibility(next)}
       />
       {#if visibilityError}
-        <p class="text-destructive text-xs" role="alert">{visibilityError}</p>
+        <ErrorNotice
+          class="text-xs"
+          error={visibilityError.error}
+          agent={visibilityError.agent}
+          attempted="Switching a project between private and shared"
+        />
       {/if}
     {/if}
 
@@ -410,7 +415,12 @@
     </div>
 
     {#if reviewError}
-      <p class="text-destructive text-xs">{reviewError}</p>
+      <ErrorNotice
+        class="text-xs"
+        error={reviewError.error}
+        agent={reviewError.agent}
+        attempted="Reviewing a project with the AI"
+      />
     {/if}
   </header>
 

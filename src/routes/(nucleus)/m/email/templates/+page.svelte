@@ -2,13 +2,16 @@
   import type { PageProps } from './$types'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
 
   let { data, form }: PageProps = $props()
+  const createError = $derived(form?.action === 'create' ? shownErrorOf(form) : null)
   const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' })
 </script>
 
@@ -50,12 +53,7 @@
         > first — it puts your brand's header and footer around every template.
       </p>
     {/if}
-    {#if form?.action === 'create' && 'error' in form}<p
-        class="text-sm text-destructive sm:col-span-3"
-        role="alert"
-      >
-        {form.error}
-      </p>{/if}
+    {#if createError}<ErrorNotice {...createError} class="sm:col-span-3" />{/if}
   </form>
 {/if}
 

@@ -1,19 +1,27 @@
 <script lang="ts">
   import FolderIcon from '@lucide/svelte/icons/folder'
   import { onMount } from 'svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
   import { driveApi, type DriveItem } from '$lib/drive/api'
+  import { driveShownError } from '$lib/drive/shown-error'
+  import type { ShownError } from '$lib/errors/agent-report'
 
   /** Pick a target folder: walk My drive's folders, move here. */
-  let { item, submit, onclose }: { item: DriveItem; submit: (folderId: string | null) => Promise<void>; onclose: () => void } = $props()
+  let {
+    item,
+    submit,
+    onclose,
+  }: { item: DriveItem; submit: (folderId: string | null) => Promise<void>; onclose: () => void } =
+    $props()
 
   let open = $state(true)
   let at = $state<string | null>(null)
   let path = $state<Array<{ id: string; name: string }>>([])
   let folders = $state<DriveItem[]>([])
   let canEdit = $state(true)
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
 
   async function go(id: string | null) {
     error = null
@@ -22,9 +30,11 @@
       at = id
       path = out.path
       canEdit = out.canEdit
-      folders = out.items.filter((i) => i.type === 'folder' && !(item.type === 'folder' && i.id === item.id))
+      folders = out.items.filter(
+        (i) => i.type === 'folder' && !(item.type === 'folder' && i.id === item.id),
+      )
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = driveShownError(err)
     }
   }
   onMount(() => {
@@ -49,7 +59,9 @@
       <Dialog.Description>Choose the folder to move it into.</Dialog.Description>
     </Dialog.Header>
     <nav class="flex flex-wrap gap-1 text-sm" aria-label="Target folder path">
-      <button class="text-muted-foreground hover:text-foreground" onclick={() => go(null)}>My drive</button>
+      <button class="text-muted-foreground hover:text-foreground" onclick={() => go(null)}
+        >My drive</button
+      >
       {#each path as c (c.id)}
         <span class="text-muted-foreground">/</span>
         <button class="hover:text-foreground" onclick={() => go(c.id)}>{c.name}</button>
@@ -58,7 +70,11 @@
     <ul class="max-h-64 overflow-y-auto rounded-md border text-sm">
       {#each folders as f (f.id)}
         <li>
-          <button class="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted" onclick={() => go(f.id)} data-testid="drive-move-folder">
+          <button
+            class="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted"
+            onclick={() => go(f.id)}
+            data-testid="drive-move-folder"
+          >
             <FolderIcon class="size-4 text-muted-foreground" />{f.name}
           </button>
         </li>
@@ -66,7 +82,11 @@
         <li class="px-3 py-4 text-muted-foreground">No folders here.</li>
       {/each}
     </ul>
-    {#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+    {#if error}<ErrorNotice
+        error={error.error}
+        agent={error.agent}
+        attempted="Moving a Drive item to another folder"
+      />{/if}
     <Dialog.Footer>
       <Button variant="outline" onclick={close}>Cancel</Button>
       <Button

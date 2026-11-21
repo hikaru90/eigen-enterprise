@@ -3,6 +3,7 @@ import { error, json } from '@sveltejs/kit'
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
 import { appKernel } from '$lib/server/boot'
+import { errorReport, refusalReport } from '$lib/server/errors/report'
 
 /**
  * Route-side executor for the brand selection wizard tools (phase-2d M4).
@@ -24,14 +25,33 @@ export async function executeBrandTool(
     })
     return json(result)
   } catch (err) {
+    const ctx = {
+      attempted: `Changing the brand from the brand pages (${name})`,
+      tool: name,
+      input,
+    }
     if (err instanceof z.ZodError) {
       const issue = err.issues[0]
       const field = issue?.path.join('.')
-      error(400, field ? `${field}: ${issue.message}` : (issue?.message ?? 'Invalid input'))
+      const sentence = field ? `${field}: ${issue.message}` : (issue?.message ?? 'Invalid input')
+      return json(
+        {
+          message: sentence,
+          ...refusalReport(sentence, {
+            ...ctx,
+            cause: err.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+          }),
+        },
+        { status: 400 },
+      )
     }
     if (err instanceof KernelError) {
+      // The problem JSON stays (type/title/status/detail); `error` + `agent` are the one error shape.
       const problem = err.toProblemJson()
-      return json(problem, { status: problem.status })
+      return json(
+        { ...problem, ...errorReport(err, { ...ctx, plain: () => err.message }) },
+        { status: problem.status },
+      )
     }
     throw err
   }

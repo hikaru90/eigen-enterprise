@@ -19,6 +19,7 @@
   import { onMount } from 'svelte'
   import { goto, invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { driveApi, formatSize, type DriveItem, type ItemDescription } from '$lib/drive/api'
   import {
@@ -28,6 +29,7 @@
     shortWhen,
     type DriveItemKind,
   } from '$lib/drive/display'
+  import { driveShownError } from '$lib/drive/shown-error'
   import {
     collectDropped,
     droppedSources,
@@ -38,6 +40,7 @@
     type UploadPlan,
     type UploadProgress,
   } from '$lib/drive/upload'
+  import type { ShownError } from '$lib/errors/agent-report'
   import DriveItemActions from './drive-item-actions.svelte'
   import NameDialog from './name-dialog.svelte'
 
@@ -98,7 +101,7 @@
   /** The type a Drive row's drag carries (moves within Drive, never an upload). */
   const ITEM_DRAG = 'application/x-ee-drive-item'
 
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
   let notice = $state<string | null>(null)
   let busy = $state(false)
   let dragDepth = $state(0)
@@ -179,7 +182,7 @@
       if (ok) notice = typeof ok === 'function' ? ok(out) : ok
       await invalidateAll()
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = driveShownError(err)
     } finally {
       busy = false
     }
@@ -201,7 +204,7 @@
         (p) => (progress = p),
       )
       failures = out.failures
-      if (out.stopped) error = `The upload stopped: ${out.stopped}`
+      if (out.stopped) error = { error: `The upload stopped: ${out.stopped}`, agent: null }
       const landed: string[] = []
       if (out.uploaded > 0) landed.push(`${out.uploaded} file${out.uploaded === 1 ? '' : 's'}`)
       if (out.folders > 0)
@@ -212,7 +215,7 @@
         notice = `Uploaded ${landed.join(' ')}${target ? ` to ${target.name}` : ''}.`
       await invalidateAll()
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = driveShownError(err)
     } finally {
       busy = false
       progress = null
@@ -282,7 +285,7 @@
     }
     if (!event.dataTransfer || !carriesFiles(event)) return
     if (busy) {
-      error = 'Wait for the current upload to finish, then drop again.'
+      error = { error: 'Wait for the current upload to finish, then drop again.', agent: null }
       return
     }
     // Read the items now: the browser empties them once this handler returns.
@@ -290,7 +293,10 @@
     void collectDropped(sources).then(
       (plan) => upload(plan, target),
       (err: unknown) =>
-        (error = `Couldn’t read what was dropped: ${err instanceof Error ? err.message : String(err)}`),
+        (error = {
+          error: `Couldn’t read what was dropped: ${err instanceof Error ? err.message : String(err)}`,
+          agent: null,
+        }),
     )
   }
 
@@ -327,7 +333,7 @@
           const file = await driveApi.createDocument(folderId, kind, name)
           await goto(fileHref(file.id))
         } catch (err) {
-          error = err instanceof Error ? err.message : String(err)
+          error = driveShownError(err)
         }
       },
     }
@@ -587,13 +593,13 @@
       <p class="text-sm text-muted-foreground" data-testid="drive-note">{note}</p>
     {/if}
     {#if error}
-      <p
-        class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        role="alert"
-        data-testid="drive-error"
-      >
-        {error}
-      </p>
+      <ErrorNotice
+        class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2"
+        testid="drive-error"
+        error={error.error}
+        agent={error.agent}
+        attempted={`Working in Drive (${folderId ? `folder ${folderId}` : 'the top of the drive'})`}
+      />
     {/if}
     {#if progress}
       <div
@@ -617,22 +623,20 @@
       </div>
     {/if}
     {#if failures.length > 0}
-      <div
-        class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        role="alert"
-        data-testid="drive-upload-failures"
+      <ErrorNotice
+        class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2"
+        testid="drive-upload-failures"
+        error={`${failures.length === 1 ? '1 item wasn’t' : `${failures.length} items weren’t`} uploaded:`}
+        attempted={`Uploading files to Drive (${folderId ? `folder ${folderId}` : 'the top of the drive'}); each item below says why it was refused`}
       >
-        <p class="font-medium">
-          {failures.length === 1 ? '1 item wasn’t' : `${failures.length} items weren’t`} uploaded:
-        </p>
-        <ul class="mt-1 max-h-48 list-disc overflow-y-auto pl-5">
+        <ul class="max-h-48 list-disc overflow-y-auto pl-5 text-red-600">
           {#each failures as failure, i (i)}
             <li data-testid="drive-upload-failure">
               <span class="font-medium">{failure.path}</span> — {failure.reason}
             </li>
           {/each}
         </ul>
-      </div>
+      </ErrorNotice>
     {/if}
     {#if notice}
       <p
@@ -951,7 +955,10 @@
         data-testid="drive-page-previous">Previous</button
       >
       <span class="text-muted-foreground tabular-nums" data-testid="drive-page-summary"
-        >{(firstShown + 1).toLocaleString('en-US')}–{Math.min(firstShown + PAGE_SIZE, shown.length).toLocaleString('en-US')} of {shown.length.toLocaleString('en-US')}</span
+        >{(firstShown + 1).toLocaleString('en-US')}–{Math.min(
+          firstShown + PAGE_SIZE,
+          shown.length,
+        ).toLocaleString('en-US')} of {shown.length.toLocaleString('en-US')}</span
       >
       <button
         type="button"

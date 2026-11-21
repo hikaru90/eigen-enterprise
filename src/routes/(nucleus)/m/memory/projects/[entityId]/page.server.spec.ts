@@ -51,7 +51,10 @@ describe('/m/memory/projects/[entityId]', () => {
       owner: { id: 'u2', name: 'Ana' },
       editable: false,
     })
-    const data = (await load(event('7f1c2a9e-3b4d-4c5e-8f6a-1b2c3d4e5f62'))) as Record<string, unknown>
+    const data = (await load(event('7f1c2a9e-3b4d-4c5e-8f6a-1b2c3d4e5f62'))) as Record<
+      string,
+      unknown
+    >
     expect(data).toMatchObject({ owner: { id: 'u2', name: 'Ana' }, editable: false })
   })
 })

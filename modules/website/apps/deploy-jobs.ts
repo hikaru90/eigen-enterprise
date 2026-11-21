@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { AgentReport, ErrorReport } from '$lib/errors/agent-report'
 import type { EeDeploy, EeDeployStage } from '$lib/server/ee/client'
 
 /**
@@ -15,6 +16,8 @@ export type DeployJob = {
   state: 'running' | 'done' | 'failed'
   /** The plain sentence the deploy ended with on failure. */
   error: string | null
+  /** The agent half of the failure (ErrorReport.agent). */
+  agent: AgentReport | null
   done: Promise<void>
 }
 
@@ -23,7 +26,11 @@ export class DeployJobs {
 
   constructor(private readonly now: () => Date = () => new Date()) {}
 
-  start(name: string, run: () => Promise<unknown>, plain: (err: unknown) => string): DeployJob {
+  start(
+    name: string,
+    run: () => Promise<unknown>,
+    report: (err: unknown) => ErrorReport,
+  ): DeployJob {
     const running = [...this.jobs.values()].find((j) => j.name === name && j.state === 'running')
     if (running) return running
     const job: DeployJob = {
@@ -32,6 +39,7 @@ export class DeployJobs {
       startedAt: this.now(),
       state: 'running',
       error: null,
+      agent: null,
       done: Promise.resolve(),
     }
     job.done = run().then(
@@ -40,7 +48,9 @@ export class DeployJobs {
       },
       (err: unknown) => {
         job.state = 'failed'
-        job.error = plain(err)
+        const r = report(err)
+        job.error = r.error
+        job.agent = r.agent
       },
     )
     this.jobs.set(job.id, job)
@@ -70,6 +80,8 @@ export type DeployProgress = {
   failedStage: EeDeployStage | null
   /** The plain one-line cause (ee's when it recorded one). */
   error: string | null
+  /** The agent half of the failure (ErrorReport.agent). */
+  agent: AgentReport | null
   deployId: string | null
   lines: string[]
 }
@@ -88,6 +100,24 @@ export const sentence = (s: string) => (/[.!?]$/.test(s.trim()) ? s.trim() : `${
 /** "<app> failed while <stage>: <ee's plain cause>." */
 export function failureSentence(name: string, d: EeDeploy): string {
   return `${name} failed while ${STAGE_WORDS[failedStageOf(d)]}: ${sentence(d.error ?? 'no cause was recorded')}`
+}
+
+/** The agent half of a deploy ee recorded as failed: where it stopped and how to read why. */
+export function deployFailureAgent(name: string, d: EeDeploy): AgentReport {
+  const input = { name }
+  return {
+    attempted: `Deploying the app ${name}`,
+    tool: 'website.app_deploy',
+    input,
+    code: `deploy_failed_while_${failedStageOf(d)}`,
+    details: { deployId: d.id, stages: d.stages },
+    ...(d.error ? { cause: d.error } : {}),
+    nextSteps: [
+      `Read the deploy log: \`ee tool run website.app_deploy_status --input '${JSON.stringify(input)}'\` (and \`website.app_logs\` for the running app).`,
+      `Ask for a diagnosis: \`ee tool run website.app_diagnose --input '${JSON.stringify({ name, deployId: d.id })}'\`.`,
+      "Fix the cause in the app's repository (build, start command, health check) or its build form, then deploy again.",
+    ],
+  }
 }
 
 /** The stage before `failed` (ee records the path it took). */
@@ -118,10 +148,11 @@ export function deployProgress(
       stage: mine?.stage ?? 'fetching',
       failedStage: null,
       error: null,
+      agent: null,
     }
   }
   if (job.state === 'done') {
-    return { ...base, state: 'live', stage: 'live', failedStage: null, error: null }
+    return { ...base, state: 'live', stage: 'live', failedStage: null, error: null, agent: null }
   }
   return {
     ...base,
@@ -129,5 +160,6 @@ export function deployProgress(
     stage: 'failed',
     failedStage: mine ? failedStageOf(mine) : 'fetching',
     error: job.error,
+    agent: job.agent ?? (mine ? deployFailureAgent(job.name, mine) : null),
   }
 }

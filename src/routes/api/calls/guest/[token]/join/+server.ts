@@ -1,5 +1,6 @@
 import type { RequestHandler } from './$types'
-import { guestRoute, readJson } from '../../../../../../../modules/calls/http'
+import { readJson } from '../../../../../../../modules/calls/http'
+import { guestRoute } from '../../../calls-route'
 
 /** Overridable in tests. */
 export const _deps = {
@@ -12,4 +13,6 @@ export const _deps = {
  * guest grants — only inside the link's window.
  */
 export const POST: RequestHandler = ({ params, request }) =>
-  guestRoute(_deps.service, async (s) => s.guestJoin(params.token, (await readJson(request)).name))
+  guestRoute('A guest joining a call from their link', _deps.service, async (s) =>
+    s.guestJoin(params.token, (await readJson(request)).name),
+  )

@@ -8,6 +8,7 @@ import type {
   SharedBrainAnswerDto,
   TranscriptSegmentDto,
 } from '../../../modules/calls/service'
+import type { ShownError } from '$lib/errors/agent-report'
 import { problemFromResponse, type CallProblem } from './call-state'
 
 /**
@@ -17,7 +18,16 @@ import { problemFromResponse, type CallProblem } from './call-state'
  * server", shown as the server says it).
  */
 
-export type { BrainAnswerDto, CallBrainDto, CallDto, CallTokenDto, GuestJoinDto, ScheduleResult, SharedBrainAnswerDto, TranscriptSegmentDto }
+export type {
+  BrainAnswerDto,
+  CallBrainDto,
+  CallDto,
+  CallTokenDto,
+  GuestJoinDto,
+  ScheduleResult,
+  SharedBrainAnswerDto,
+  TranscriptSegmentDto,
+}
 
 /** The New call dialog's request (POST /api/calls/meetings). */
 export type ScheduleCall = {
@@ -75,29 +85,51 @@ export type BrainClient = {
 export function brainClient(): BrainClient {
   return {
     setBrain: (id, on) => call(`${at(id)}/brain`, { method: 'POST', body: JSON.stringify({ on }) }),
-    askBrain: async (id, question) => (await request<{ answer: BrainAnswerDto }>(`${at(id)}/brain/ask`, { method: 'POST', body: JSON.stringify({ question }) })).answer,
-    myBrainAnswers: async (id) => (await request<{ answers: BrainAnswerDto[] }>(`${at(id)}/brain`)).answers,
-    shareBrainAnswer: (id, answerId) => call(`${at(id)}/brain/answers/${encodeURIComponent(answerId)}/share`, { method: 'POST' }),
-    brainRecap: async (id) => (await request<{ recap: string }>(`${at(id)}/brain/recap`, { method: 'POST' })).recap,
+    askBrain: async (id, question) =>
+      (
+        await request<{ answer: BrainAnswerDto }>(`${at(id)}/brain/ask`, {
+          method: 'POST',
+          body: JSON.stringify({ question }),
+        })
+      ).answer,
+    myBrainAnswers: async (id) =>
+      (await request<{ answers: BrainAnswerDto[] }>(`${at(id)}/brain`)).answers,
+    shareBrainAnswer: (id, answerId) =>
+      call(`${at(id)}/brain/answers/${encodeURIComponent(answerId)}/share`, { method: 'POST' }),
+    brainRecap: async (id) =>
+      (await request<{ recap: string }>(`${at(id)}/brain/recap`, { method: 'POST' })).recap,
   }
 }
 
 /** The calls the live call (ActiveCall + CallTranscription) needs; a member's or a guest's. */
-export type LiveCallClient = Pick<CallsClient, 'accept' | 'token' | 'hangup' | 'get' | 'transcribe' | 'setTranscription'>
+export type LiveCallClient = Pick<
+  CallsClient,
+  'accept' | 'token' | 'hangup' | 'get' | 'transcribe' | 'setTranscription'
+>
 
 /** A chunk goes as its raw audio (exempt from the CSRF origin check, like dictation) with its length in a header. */
 const chunkInit = (chunk: Blob, durationMs: number): RequestInit => ({
   method: 'POST',
   body: chunk,
-  headers: { 'content-type': chunk.type || 'application/octet-stream', 'x-chunk-duration-ms': String(Math.round(durationMs)) },
+  headers: {
+    'content-type': chunk.type || 'application/octet-stream',
+    'x-chunk-duration-ms': String(Math.round(durationMs)),
+  },
 })
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   let res: Response
   try {
-    res = await fetch(path, { ...init, headers: { 'content-type': 'application/json', ...(init.headers ?? {}) } })
+    res = await fetch(path, {
+      ...init,
+      headers: { 'content-type': 'application/json', ...(init.headers ?? {}) },
+    })
   } catch (err) {
-    throw new CallRequestError({ kind: 'failed', message: `could not reach the server (${err instanceof Error ? err.message : String(err)})` })
+    throw new CallRequestError({
+      kind: 'failed',
+      message: `could not reach the server (${err instanceof Error ? err.message : String(err)})`,
+      agent: null,
+    })
   }
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>
   if (!res.ok) throw new CallRequestError(problemFromResponse(res.status, body))
@@ -106,7 +138,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 const at = (id: string) => `/api/calls/${encodeURIComponent(id)}`
 
-const call = async (path: string, init?: RequestInit) => (await request<{ call: CallDto }>(path, init)).call
+const call = async (path: string, init?: RequestInit) =>
+  (await request<{ call: CallDto }>(path, init)).call
 
 export function callsClient(): CallsClient {
   return {
@@ -114,13 +147,30 @@ export function callsClient(): CallsClient {
     get: (id) => call(at(id)),
     accept: (id) => call(`${at(id)}/accept`, { method: 'POST' }),
     decline: (id) => call(`${at(id)}/decline`, { method: 'POST' }),
-    hangup: (id, opts) => call(`${at(id)}/hangup`, { method: 'POST', keepalive: opts?.keepalive === true }),
+    hangup: (id, opts) =>
+      call(`${at(id)}/hangup`, { method: 'POST', keepalive: opts?.keepalive === true }),
     token: (id) => request<CallTokenDto>(`${at(id)}/token`),
-    schedule: (input) => request<ScheduleResult>('/api/calls/meetings', { method: 'POST', body: JSON.stringify(input) }),
-    inviteGuests: (id, guests, timeZone) => request<ScheduleResult>(`${at(id)}/guests`, { method: 'POST', body: JSON.stringify({ guests, timeZone }) }),
-    revokeGuest: (id, guestId) => call(`${at(id)}/guests/${encodeURIComponent(guestId)}`, { method: 'DELETE' }),
-    transcribe: async (id, chunk, durationMs) => (await request<{ segment: TranscriptSegmentDto | null }>(`${at(id)}/transcript`, chunkInit(chunk, durationMs))).segment,
-    setTranscription: (id, on) => call(`${at(id)}/transcription`, { method: 'POST', body: JSON.stringify({ on }) }),
+    schedule: (input) =>
+      request<ScheduleResult>('/api/calls/meetings', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    inviteGuests: (id, guests, timeZone) =>
+      request<ScheduleResult>(`${at(id)}/guests`, {
+        method: 'POST',
+        body: JSON.stringify({ guests, timeZone }),
+      }),
+    revokeGuest: (id, guestId) =>
+      call(`${at(id)}/guests/${encodeURIComponent(guestId)}`, { method: 'DELETE' }),
+    transcribe: async (id, chunk, durationMs) =>
+      (
+        await request<{ segment: TranscriptSegmentDto | null }>(
+          `${at(id)}/transcript`,
+          chunkInit(chunk, durationMs),
+        )
+      ).segment,
+    setTranscription: (id, on) =>
+      call(`${at(id)}/transcription`, { method: 'POST', body: JSON.stringify({ on }) }),
   }
 }
 
@@ -132,7 +182,11 @@ export function callsClient(): CallsClient {
 export function guestCallsClient(linkToken: string, name: () => string): LiveCallClient {
   const base = `/api/calls/guest/${encodeURIComponent(linkToken)}`
   let joined: GuestJoinDto | null = null
-  const join = async () => (joined = await request<GuestJoinDto>(`${base}/join`, { method: 'POST', body: JSON.stringify({ name: name() }) }))
+  const join = async () =>
+    (joined = await request<GuestJoinDto>(`${base}/join`, {
+      method: 'POST',
+      body: JSON.stringify({ name: name() }),
+    }))
   return {
     accept: async () => (await join()).call,
     // Every (re)join asks for a fresh token: the last one may be used up or close to expiry.
@@ -141,13 +195,29 @@ export function guestCallsClient(linkToken: string, name: () => string): LiveCal
       joined = null
       return t
     },
-    hangup: (_id, opts) => call(`${base}/leave`, { method: 'POST', keepalive: opts?.keepalive === true }),
+    hangup: (_id, opts) =>
+      call(`${base}/leave`, { method: 'POST', keepalive: opts?.keepalive === true }),
     get: () => call(base),
-    transcribe: async (_id, chunk, durationMs) => (await request<{ segment: TranscriptSegmentDto | null }>(`${base}/transcript`, chunkInit(chunk, durationMs))).segment,
-    setTranscription: (_id, on) => call(`${base}/transcription`, { method: 'POST', body: JSON.stringify({ on }) }),
+    transcribe: async (_id, chunk, durationMs) =>
+      (
+        await request<{ segment: TranscriptSegmentDto | null }>(
+          `${base}/transcript`,
+          chunkInit(chunk, durationMs),
+        )
+      ).segment,
+    setTranscription: (_id, on) =>
+      call(`${base}/transcription`, { method: 'POST', body: JSON.stringify({ on }) }),
   }
 }
 
 /** The error a person reads for any refused calls request. */
 export const problemOf = (err: unknown): CallProblem =>
-  err instanceof CallRequestError ? err.problem : { kind: 'failed', message: err instanceof Error ? err.message : String(err) }
+  err instanceof CallRequestError
+    ? err.problem
+    : { kind: 'failed', message: err instanceof Error ? err.message : String(err), agent: null }
+
+/** A refused calls request as a page shows it: the sentence (optionally prefixed) and the server's agent report. */
+export const shownProblemOf = (err: unknown, prefix = ''): ShownError => {
+  const p = problemOf(err)
+  return { error: `${prefix}${p.message}`, agent: p.agent }
+}

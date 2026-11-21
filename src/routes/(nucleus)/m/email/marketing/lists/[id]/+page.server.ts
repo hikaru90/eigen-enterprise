@@ -43,7 +43,7 @@ export const actions: Actions = {
   add: async ({ locals, params, request }) => {
     await requireAdmin(locals)
     const form = await request.formData()
-    return act('add', async () => {
+    return act('add', 'Adding a contact to a list', async () => {
       const out = await emailPlatform().audience.addContact(params.id, {
         email: field(form, 'email'),
         firstName: field(form, 'firstName') || null,
@@ -55,12 +55,14 @@ export const actions: Actions = {
   import: async ({ locals, params, request }) => {
     await requireAdmin(locals)
     const csv = String((await request.formData()).get('csv') ?? '')
-    return act('import', async () => emailPlatform().audience.importContacts(params.id, csv))
+    return act('import', 'Importing contacts into a list', async () =>
+      emailPlatform().audience.importContacts(params.id, csv),
+    )
   },
   remove: async ({ locals, request }) => {
     await requireAdmin(locals)
     const id = field(await request.formData(), 'id')
-    return act('remove', async () => {
+    return act('remove', 'Removing a contact from a list', async () => {
       await emailPlatform().audience.removeContact(id)
       return {}
     })
@@ -68,7 +70,7 @@ export const actions: Actions = {
   settings: async ({ locals, params, request }) => {
     await requireAdmin(locals)
     const form = await request.formData()
-    return act('settings', async () => {
+    return act('settings', 'Saving a contact list’s settings', async () => {
       await emailPlatform().audience.updateList(params.id, {
         name: field(form, 'name'),
         description: field(form, 'description') || null,

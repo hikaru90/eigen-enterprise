@@ -84,7 +84,12 @@ describe('PATCH /api/agent/runs/[id]', () => {
 
   it('passes the owner check through: another member gets 403, unknown runs 404', async () => {
     renameMock.mockResolvedValueOnce({ ok: false, status: 403, error: 'Only the member…' })
-    expect((await patch({ id: 'u2' }, { title: 'mine now' })).status).toBe(403)
+    const refused = await patch({ id: 'u2' }, { title: 'mine now' })
+    expect(refused.status).toBe(403)
+    expect(await refused.json()).toMatchObject({
+      error: 'Only the member…',
+      agent: { attempted: 'Renaming the conversation (agent run 7)', input: { runId: '7' } },
+    })
     renameMock.mockResolvedValueOnce({ ok: false, status: 404, error: 'unknown run 7' })
     expect((await patch({ id: 'u2' }, { title: 'x' })).status).toBe(404)
   })

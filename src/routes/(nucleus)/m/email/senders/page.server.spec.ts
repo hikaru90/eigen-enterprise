@@ -48,12 +48,26 @@ describe('Email › Senders opens as soon as mail is connected, not once a defau
   it('lists the senders with the default marked', async () => {
     settingsMock.mockResolvedValue({ mode: 'own', emailFrom: 'hello@acme.test' })
     listSendersMock.mockResolvedValue([
-      { id: 's1', address: 'hello@acme.test', displayName: 'Acme', domainName: 'acme.test', isDefault: true },
+      {
+        id: 's1',
+        address: 'hello@acme.test',
+        displayName: 'Acme',
+        domainName: 'acme.test',
+        isDefault: true,
+      },
     ])
     listDomainsMock.mockResolvedValue([{ name: 'acme.test', sendable: true }])
     expect(await run()).toEqual({
       connected: true,
-      senders: [{ id: 's1', address: 'hello@acme.test', displayName: 'Acme', domainName: 'acme.test', isDefault: true }],
+      senders: [
+        {
+          id: 's1',
+          address: 'hello@acme.test',
+          displayName: 'Acme',
+          domainName: 'acme.test',
+          isDefault: true,
+        },
+      ],
       domains: ['acme.test'],
     })
   })

@@ -1,6 +1,7 @@
 import type { Actions, PageServerLoad } from './$types'
 import { error, fail, redirect } from '@sveltejs/kit'
 import { KernelError } from '$lib/kernel/errors'
+import { errorReport } from '$lib/server/errors/report'
 import { isUserAdmin } from '$lib/server/auth/user-role'
 import { defaultBrandStore } from '../../../../modules/brand/store'
 import { grayscaleTint } from '../../../../modules/brand/style-format/tint'
@@ -74,11 +75,17 @@ export const actions: Actions = {
       console.error(
         `[website/page] delete ${slug} failed: ${err instanceof Error ? err.message : String(err)}`,
       )
-      if (err instanceof KernelError && err.code === 'permission_denied') {
-        return fail(403, { error: 'Only an admin can delete a page.' })
-      }
-      return fail(400, {
-        error: 'The page could not be deleted. Try again; if it keeps happening, ask in the chat.',
+      const denied = err instanceof KernelError && err.code === 'permission_denied'
+      return fail(denied ? 403 : 400, {
+        ...errorReport(err, {
+          attempted: `Deleting the website page /s/${slug}`,
+          tool: 'website.delete_page',
+          input: { slug },
+          plain: () =>
+            denied
+              ? 'Only an admin can delete a page.'
+              : 'The page could not be deleted. Try again; if it keeps happening, ask in the chat.',
+        }),
       })
     }
     redirect(303, '/s')

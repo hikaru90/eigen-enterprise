@@ -1,8 +1,17 @@
 import type { Actions, PageServerLoad } from './$types'
 import { CalendarError } from '../../../../../modules/calendar/errors'
 import { eventFormInput, todayIn } from '../../../../../modules/calendar/form'
-import { calendarAction, calendarLoad, liveCalendarDeps, personActor } from '../../../../../modules/calendar/http'
-import { acceptProposal, dismissProposal, openProposals } from '../../../../../modules/calendar/proposals'
+import {
+  calendarAction,
+  calendarLoad,
+  liveCalendarDeps,
+  personActor,
+} from '../../../../../modules/calendar/http'
+import {
+  acceptProposal,
+  dismissProposal,
+  openProposals,
+} from '../../../../../modules/calendar/proposals'
 import {
   createEvent,
   defaultVisibility,
@@ -15,7 +24,12 @@ import {
   updateEvent,
 } from '../../../../../modules/calendar/service'
 import { parseDay } from '../../../../../modules/calendar/time'
-import { parseView, viewDays, viewHeading, viewRange } from '../../../../../modules/calendar/ui/layout'
+import {
+  parseView,
+  viewDays,
+  viewHeading,
+  viewRange,
+} from '../../../../../modules/calendar/ui/layout'
 
 /**
  * /m/calendar (plan/calendar.md K2): the person's own calendar by day, week
@@ -31,11 +45,12 @@ async function liveProposalDeps() {
   return proposalDeps()
 }
 
-const zoneList = (): string[] => [...Intl.supportedValuesOf('timeZone'), 'UTC'].filter((z, i, all) => all.indexOf(z) === i)
+const zoneList = (): string[] =>
+  [...Intl.supportedValuesOf('timeZone'), 'UTC'].filter((z, i, all) => all.indexOf(z) === i)
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   const actor = personActor(locals.user)
-  return calendarLoad(async () => {
+  return calendarLoad('Opening the calendar', async () => {
     const d = await liveCalendarDeps()
     const { timeZoneFor } = await import('../../../../../modules/calendar/live')
     const timeZone = await timeZoneFor(actor.userId)
@@ -47,7 +62,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     }
     const today = todayIn(timeZone)
     const rawDate = url.searchParams.get('date')
-    if (rawDate !== null && !parseDay(rawDate)) throw new CalendarError('invalid', `date must be a day (YYYY-MM-DD), got ${JSON.stringify(rawDate)}`)
+    if (rawDate !== null && !parseDay(rawDate))
+      throw new CalendarError(
+        'invalid',
+        `date must be a day (YYYY-MM-DD), got ${JSON.stringify(rawDate)}`,
+      )
     const date = rawDate ?? today
     const range = viewRange(view, date, timeZone)
     // Availability: the day, or the week (a month view shows the week of its date).
@@ -62,7 +81,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       showWeekNumbers(d, actor),
       selected.length === 0
         ? Promise.resolve([])
-        : freeBusy(d, actor, { memberIds: selected, from: availabilityRange.from.toISOString(), to: availabilityRange.to.toISOString() }),
+        : freeBusy(d, actor, {
+            memberIds: selected,
+            from: availabilityRange.from.toISOString(),
+            to: availabilityRange.to.toISOString(),
+          }),
     ])
     return {
       view,
@@ -72,7 +95,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       days: range.days,
       timeZone,
       occurrences,
-      members: members.filter((m) => m.id !== actor.userId).map((m) => ({ id: m.id, name: m.name || m.email })),
+      members: members
+        .filter((m) => m.id !== actor.userId)
+        .map((m) => ({ id: m.id, name: m.name || m.email })),
       defaultVisibility: visibility,
       weekNumbers,
       timeZones: zoneList(),
@@ -86,7 +111,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 /** ?proposal=<id> (Edit from the mail): one of the person's open proposals, else 404. */
 function editProposalOf(proposals: Array<{ id: string }>, id: string | null): string | null {
   if (id === null) return null
-  if (!proposals.some((p) => p.id === id)) throw new CalendarError('not_found', 'This appointment is no longer open: it was accepted or dismissed.')
+  if (!proposals.some((p) => p.id === id))
+    throw new CalendarError(
+      'not_found',
+      'This appointment is no longer open: it was accepted or dismissed.',
+    )
   return id
 }
 
@@ -100,7 +129,7 @@ export const actions: Actions = {
   save: async ({ locals, request }) => {
     const actor = personActor(locals.user)
     const form = await request.formData()
-    return calendarAction('save', async () => {
+    return calendarAction('save', 'Saving an event in the calendar', async () => {
       const { id, occurrenceStart, proposalId, input } = eventFormInput(form)
       // An appointment from mail, edited: Save accepts it (the event + the invitation).
       if (proposalId !== null) {
@@ -117,9 +146,14 @@ export const actions: Actions = {
   delete: async ({ locals, request }) => {
     const actor = personActor(locals.user)
     const form = await request.formData()
-    return calendarAction('delete', async () => {
+    return calendarAction('delete', 'Deleting an event in the calendar', async () => {
       const occurrenceStart = text(form, 'occurrenceStart')
-      await deleteEvent(await liveCalendarDeps(), actor, text(form, 'id'), occurrenceStart ? { occurrenceStart } : {})
+      await deleteEvent(
+        await liveCalendarDeps(),
+        actor,
+        text(form, 'id'),
+        occurrenceStart ? { occurrenceStart } : {},
+      )
       return { action: 'delete' as const, ok: true }
     })
   },
@@ -127,33 +161,45 @@ export const actions: Actions = {
   acceptProposal: async ({ locals, request }) => {
     const actor = personActor(locals.user)
     const form = await request.formData()
-    return calendarAction('acceptProposal', async () => {
-      const out = await acceptProposal(await liveProposalDeps(), actor, text(form, 'proposalId'))
-      return { action: 'acceptProposal' as const, ok: true, invited: out.invited }
-    })
+    return calendarAction(
+      'acceptProposal',
+      'Accepting an appointment found in a mail',
+      async () => {
+        const out = await acceptProposal(await liveProposalDeps(), actor, text(form, 'proposalId'))
+        return { action: 'acceptProposal' as const, ok: true, invited: out.invited }
+      },
+    )
   },
   dismissProposal: async ({ locals, request }) => {
     const actor = personActor(locals.user)
     const form = await request.formData()
-    return calendarAction('dismissProposal', async () => {
-      await dismissProposal(await liveProposalDeps(), actor, text(form, 'proposalId'))
-      return { action: 'dismissProposal' as const, ok: true }
-    })
+    return calendarAction(
+      'dismissProposal',
+      'Dismissing an appointment found in a mail',
+      async () => {
+        await dismissProposal(await liveProposalDeps(), actor, text(form, 'proposalId'))
+        return { action: 'dismissProposal' as const, ok: true }
+      },
+    )
   },
   /** What colleagues see of a new event by default. */
   preferences: async ({ locals, request }) => {
     const actor = personActor(locals.user)
     const form = await request.formData()
-    return calendarAction('preferences', async () => {
-      await setDefaultVisibility(await liveCalendarDeps(), actor, text(form, 'defaultVisibility'))
-      return { action: 'preferences' as const, ok: true }
-    })
+    return calendarAction(
+      'preferences',
+      'Saving the default visibility of new events',
+      async () => {
+        await setDefaultVisibility(await liveCalendarDeps(), actor, text(form, 'defaultVisibility'))
+        return { action: 'preferences' as const, ok: true }
+      },
+    )
   },
   /** The "Week numbers" switch by the view picker (Contribute 9ae58a4e): on or off. */
   weekNumbers: async ({ locals, request }) => {
     const actor = personActor(locals.user)
     const form = await request.formData()
-    return calendarAction('weekNumbers', async () => {
+    return calendarAction('weekNumbers', 'Switching week numbers in the calendar', async () => {
       await setShowWeekNumbers(await liveCalendarDeps(), actor, text(form, 'weekNumbers'))
       return { action: 'weekNumbers' as const, ok: true }
     })

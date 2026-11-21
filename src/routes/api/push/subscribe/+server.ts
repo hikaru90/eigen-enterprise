@@ -1,5 +1,7 @@
 import type { RequestHandler } from './$types'
 import { error, json } from '@sveltejs/kit'
+import type { ErrorReport } from '$lib/errors/agent-report'
+import { errorReport, refusalReport } from '$lib/server/errors/report'
 import { parseReplacedEndpoint } from '$lib/server/push/device'
 import {
   deletePushSubscriptionByEndpoint,
@@ -8,15 +10,21 @@ import {
   upsertPushSubscription,
 } from '$lib/server/push/subscription'
 
+const ATTEMPTED = 'Turning on notifications on this device (POST /api/push/subscribe)'
+/** The one error shape on SvelteKit's error body: `message` is the sentence, `agent` the report. */
+function fail(status: number, r: ErrorReport): never {
+  error(status, { message: r.error, agent: r.agent })
+}
+
 export const POST: RequestHandler = async (event) => {
   const user = event.locals.user
-  if (!user) error(401, 'Unauthorized')
+  if (!user) fail(401, refusalReport('Unauthorized', { attempted: ATTEMPTED }))
 
   let body: unknown
   try {
     body = await event.request.json()
   } catch {
-    error(400, 'Expected JSON body')
+    fail(400, refusalReport('Expected JSON body', { attempted: ATTEMPTED }))
   }
 
   let input
@@ -26,7 +34,7 @@ export const POST: RequestHandler = async (event) => {
     replaces = parseReplacedEndpoint(body, input.endpoint)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    error(400, msg)
+    fail(400, errorReport(e, { attempted: ATTEMPTED, plain: () => msg }))
   }
 
   const userAgent = event.request.headers.get('user-agent')
@@ -41,6 +49,6 @@ export const POST: RequestHandler = async (event) => {
       userId: user.id,
       message: e instanceof Error ? e.message : String(e),
     })
-    error(500, PUSH_SUBSCRIBE_USER_ERROR)
+    fail(500, errorReport(e, { attempted: ATTEMPTED, plain: () => PUSH_SUBSCRIBE_USER_ERROR }))
   }
 }

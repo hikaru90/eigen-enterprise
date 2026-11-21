@@ -3,6 +3,7 @@
   import Trash2 from '@lucide/svelte/icons/trash-2'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
   import { Button } from '$lib/components/ui/button'
   import { docTitle } from '$lib/shell/title'
@@ -21,10 +22,14 @@
 <div class="w-full px-4 pt-8 pb-16 sm:px-8">
   <section aria-labelledby="memory-tasks-heading" data-testid="memory-task-list">
     <h2 id="memory-tasks-heading" class="sr-only">Tasks</h2>
-    {#if form?.message}
-      <p class="mb-3 text-sm text-destructive" role="alert" data-testid="memory-task-error">
-        {form.message}
-      </p>
+    {#if form?.error}
+      <ErrorNotice
+        class="mb-3"
+        testid="memory-task-error"
+        error={form.error}
+        agent={form.agent}
+        attempted="Deleting a task on /m/memory"
+      />
     {/if}
     {#if data.tasks.length === 0}
       <p class="text-sm text-muted-foreground" data-testid="memory-task-list-empty">

@@ -1,6 +1,7 @@
 import type { RequestHandler } from './$types'
-import { error, json } from '@sveltejs/kit'
+import { json } from '@sveltejs/kit'
 import { assignThoughtToProject } from '$lib/server/memory/assign-thought-project'
+import { failed, refuse } from '$lib/server/memory/route-errors'
 
 export type AssignProjectRequest = {
   thoughtId: string
@@ -17,26 +18,27 @@ export type AssignProjectResponse = {
 }
 
 export const POST: RequestHandler = async (event) => {
+  const ctx = { attempted: 'Assigning a task to a project' }
   const user = event.locals.user
-  if (!user) error(401, 'Unauthorized')
+  if (!user) return refuse(401, 'Unauthorized', ctx)
 
   let body: AssignProjectRequest
   try {
     body = (await event.request.json()) as AssignProjectRequest
   } catch {
-    error(400, 'Invalid JSON body')
+    return refuse(400, 'Invalid JSON body', ctx)
   }
 
   const thoughtId = body.thoughtId?.trim()
-  if (!thoughtId) error(400, 'thoughtId is required')
+  if (!thoughtId) return refuse(400, 'thoughtId is required', ctx)
 
   const projectEntityId = body.projectEntityId?.trim()
   const projectLabel = body.projectLabel?.trim()
   if (projectEntityId && projectLabel) {
-    error(400, 'Provide projectEntityId or projectLabel, not both')
+    return refuse(400, 'Provide projectEntityId or projectLabel, not both', ctx)
   }
   if (!projectEntityId && !projectLabel) {
-    error(400, 'projectEntityId or projectLabel is required')
+    return refuse(400, 'projectEntityId or projectLabel is required', ctx)
   }
 
   try {
@@ -47,7 +49,6 @@ export const POST: RequestHandler = async (event) => {
     )
     return json(result satisfies AssignProjectResponse)
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    error(400, message)
+    return failed(400, err, ctx)
   }
 }

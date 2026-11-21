@@ -16,16 +16,27 @@
 
   export function browserAudioDevicesEnv(): AudioDevicesEnv {
     return {
-      media: typeof navigator !== 'undefined' && navigator.mediaDevices ? navigator.mediaDevices : null,
+      media:
+        typeof navigator !== 'undefined' && navigator.mediaDevices ? navigator.mediaDevices : null,
       storage: window.localStorage,
-      canChooseSpeaker: typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype,
+      canChooseSpeaker:
+        typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype,
     }
   }
 </script>
 
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { onDestroy, onMount } from 'svelte'
-  import { deviceOptions, emptyDeviceLists, forget, readRemembered, remember, type DeviceLists, type Remembered } from '$lib/calls/devices'
+  import {
+    deviceOptions,
+    emptyDeviceLists,
+    forget,
+    readRemembered,
+    remember,
+    type DeviceLists,
+    type Remembered,
+  } from '$lib/calls/devices'
 
   /**
    * Microphone + speaker for this browser, outside calls (settings menu → Audio devices).
@@ -52,7 +63,9 @@
     try {
       const infos = await media.enumerateDevices()
       lists = deviceOptions(infos)
-      unlabelled = !infos.some((d) => (d.kind === 'audioinput' || d.kind === 'audiooutput') && d.label)
+      unlabelled = !infos.some(
+        (d) => (d.kind === 'audioinput' || d.kind === 'audiooutput') && d.label,
+      )
       remembered = readRemembered(env.storage)
     } catch (err) {
       console.error('[devices] listing audio devices failed', err)
@@ -106,8 +119,10 @@
 
   /** The chosen device is remembered but not plugged in now. */
   const missing = $derived({
-    audioinput: !!remembered.audioinput && !lists.audioinput.some((d) => d.id === remembered.audioinput),
-    audiooutput: !!remembered.audiooutput && !lists.audiooutput.some((d) => d.id === remembered.audiooutput),
+    audioinput:
+      !!remembered.audioinput && !lists.audioinput.some((d) => d.id === remembered.audioinput),
+    audiooutput:
+      !!remembered.audiooutput && !lists.audiooutput.some((d) => d.id === remembered.audiooutput),
   })
 
   const ROWS = [
@@ -120,9 +135,16 @@
   const noteClass = 'text-muted-foreground text-xs leading-relaxed'
 </script>
 
-<div class="flex flex-col gap-2.5 px-2 pt-1 pb-1.5" role="group" aria-label="Audio devices" data-testid="audio-devices">
+<div
+  class="flex flex-col gap-2.5 px-2 pt-1 pb-1.5"
+  role="group"
+  aria-label="Audio devices"
+  data-testid="audio-devices"
+>
   {#if !env.media}
-    <p class={noteClass} data-testid="audio-devices-unavailable">This browser offers no device choice here.</p>
+    <p class={noteClass} data-testid="audio-devices-unavailable">
+      This browser offers no device choice here.
+    </p>
   {:else}
     {#if loaded && unlabelled}
       <div class="flex flex-col gap-1.5">
@@ -140,10 +162,13 @@
     {/if}
     {#each ROWS as row (row.kind)}
       <div class="flex flex-col gap-1">
-        <label for="audio-device-{row.kind}" class="text-muted-foreground text-xs font-medium">{row.label}</label>
+        <label for="audio-device-{row.kind}" class="text-muted-foreground text-xs font-medium"
+          >{row.label}</label
+        >
         {#if row.kind === 'audiooutput' && !env.canChooseSpeaker}
           <p class={noteClass} data-testid="audio-speaker-unsupported">
-            This browser cannot choose the speaker. Sound plays on your device's current output; change it in your system's sound settings.
+            This browser cannot choose the speaker. Sound plays on your device's current output;
+            change it in your system's sound settings.
           </p>
         {:else}
           <select
@@ -171,6 +196,11 @@
     {/each}
   {/if}
   {#if problem}
-    <p class="text-destructive text-xs leading-relaxed" role="alert" data-testid="audio-devices-problem">{problem}</p>
+    <ErrorNotice
+      class="text-xs leading-relaxed"
+      testid="audio-devices-problem"
+      error={problem}
+      attempted="Listing, testing or remembering the audio devices in Settings (browser media devices API)"
+    />
   {/if}
 </div>

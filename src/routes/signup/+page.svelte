@@ -7,6 +7,7 @@
   import { resolve } from '$app/paths'
   import { signupPlanSubtitle } from '$lib/auth/signup-plan'
   import AuthSocialButtons from '$lib/components/auth-social-buttons.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
   import { Label } from '$lib/components/ui/label'
@@ -58,6 +59,7 @@
           email={form.email}
           message={'notice' in form ? form.notice : undefined}
           error={'message' in form ? form.message : undefined}
+          agent={'agent' in form ? form.agent : null}
         />
       {:else}
         <form
@@ -156,7 +158,12 @@
           <p class="text-muted-foreground text-xs">No password: we email you a 6-digit code.</p>
           <Button type="submit" class="w-full rounded-[4px]">Create account</Button>
           {#if form && 'message' in form && form.message}
-            <p class="text-destructive text-xs">{form.message}</p>
+            <ErrorNotice
+              class="text-xs"
+              error={form.message}
+              agent={'agent' in form ? form.agent : null}
+              attempted="Sending a sign-up code by email"
+            />
           {/if}
         </form>
 

@@ -64,10 +64,16 @@ describe('POST /api/brand/extract/guide', () => {
       request: upload(formWith(new File(['GIF89a......'], 'anim.gif', { type: 'image/gif' }))),
     } as never)
     expect(response.status).toBe(415)
-    await expect(response.json()).resolves.toEqual({
-      message:
-        "“anim.gif” isn't a PDF, PNG, JPEG or WebP file. Upload your brand guide in one of those formats.",
+    const sentence =
+      "“anim.gif” isn't a PDF, PNG, JPEG or WebP file. Upload your brand guide in one of those formats."
+    await expect(response.json()).resolves.toMatchObject({
+      message: sentence,
       code: 'unsupported_type',
+      error: sentence,
+      agent: {
+        attempted: 'Uploading a brand guide to extract a style from',
+        input: { filename: 'anim.gif' },
+      },
     })
     expect(executeMock).not.toHaveBeenCalled()
   })

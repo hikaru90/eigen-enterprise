@@ -3,7 +3,9 @@
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
   import MessageStatus from '$lib/components/email/message-status.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
   import {
     SOURCE_LABEL,
@@ -13,6 +15,7 @@
 
   let { data, form }: PageProps = $props()
   const m = $derived(data.message)
+  const cancelError = $derived(form?.action === 'cancel' ? shownErrorOf(form) : null)
   let view = $state<'html' | 'text'>('html')
   const when = (iso: string) =>
     new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'medium' })
@@ -59,16 +62,14 @@
         {/if}
       {/each}
     </dl>
-    {#if m.error}<p class="mt-3 text-sm text-destructive" role="alert">{m.error}</p>{/if}
+    {#if data.mailError}<ErrorNotice {...data.mailError} class="mt-3" />{/if}
 
     {#if m.status === 'scheduled' && data.email.isAdmin}
       <form method="POST" action="?/cancel" class="mt-4" use:enhance>
         <Button type="submit" variant="outline" size="sm" data-testid="log-cancel"
           >Cancel this send</Button
         >
-        {#if form?.action === 'cancel' && 'error' in form}<p class="mt-2 text-sm text-destructive">
-            {form.error}
-          </p>{/if}
+        {#if cancelError}<ErrorNotice {...cancelError} class="mt-2" />{/if}
       </form>
     {/if}
 

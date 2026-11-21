@@ -10,9 +10,11 @@
   import { untrack } from 'svelte'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
 
   let { data, form }: PageProps = $props()
@@ -41,6 +43,8 @@
 
   const feedback = (action: string) =>
     form && form.action === action ? (form as { ok?: boolean; error?: string }) : null
+  const statusError = $derived(shownErrorOf(feedback('status')))
+  const saveError = $derived(shownErrorOf(feedback('save')))
   const STATUS: Record<string, string> = {
     draft: 'Draft — not running',
     active: 'Running',
@@ -94,9 +98,7 @@
       </form>
     {/if}
   </div>
-  {#if feedback('status')?.error}<p class="mt-2 text-sm text-destructive" role="alert">
-      {feedback('status')?.error}
-    </p>{/if}
+  {#if statusError}<ErrorNotice {...statusError} class="mt-2" />{/if}
 </div>
 
 <div class="mt-6 grid gap-10 xl:grid-cols-[minmax(0,40rem)_minmax(0,1fr)]">
@@ -266,9 +268,7 @@
       {#if feedback('save')?.ok}<p class="text-sm" role="status" data-testid="flow-saved">
           Saved.
         </p>{/if}
-      {#if feedback('save')?.error}<p class="text-sm text-destructive" role="alert">
-          {feedback('save')?.error}
-        </p>{/if}
+      {#if saveError}<ErrorNotice {...saveError} />{/if}
     {/if}
   </form>
 

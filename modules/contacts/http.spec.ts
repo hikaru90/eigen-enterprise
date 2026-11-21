@@ -39,11 +39,26 @@ describe('contacts forms', () => {
   })
 
   it('refuses channel types and values that do not pair up', () => {
-    expect(() => formContactInput(form([['name', 'A'], ['channelType', 'email']]))).toThrow(ContactsError)
+    expect(() =>
+      formContactInput(
+        form([
+          ['name', 'A'],
+          ['channelType', 'email'],
+        ]),
+      ),
+    ).toThrow(ContactsError)
   })
 
   it('reads the log form', () => {
-    expect(formLogInput(form([['on', '2026-11-12'], ['note', 'Good talk'], ['nextStep', 'Call']]))).toEqual({
+    expect(
+      formLogInput(
+        form([
+          ['on', '2026-11-12'],
+          ['note', 'Good talk'],
+          ['nextStep', 'Call'],
+        ]),
+      ),
+    ).toEqual({
       on: '2026-11-12',
       note: 'Good talk',
       nextFollowUpOn: '',
@@ -54,7 +69,9 @@ describe('contacts forms', () => {
 
 describe('contacts page seam', () => {
   it('sends signed-out visitors to /login', () => {
-    expect(() => personActor(null)).toThrow(expect.objectContaining({ status: 302, location: '/login' }))
+    expect(() => personActor(null)).toThrow(
+      expect.objectContaining({ status: 302, location: '/login' }),
+    )
     expect(personActor({ id: 'ana' })).toEqual({ kind: 'user', userId: 'ana' })
   })
 
@@ -62,10 +79,27 @@ describe('contacts page seam', () => {
     const out = await contactsAction('save', async () => {
       throw new ContactsError('invalid', 'Give the contact a name.')
     })
-    expect(out).toMatchObject({ status: 400, data: { action: 'save', id: null, error: 'Give the contact a name.' } })
-    const logged = await contactsAction('log', async () => Promise.reject(new ContactsError('invalid', 'bad day')), 'c1')
-    expect(logged).toMatchObject({ status: 400, data: { action: 'log', id: 'c1', error: 'bad day' } })
-    await expect(contactsAction('save', async () => Promise.reject(new Error('db down')))).rejects.toThrow('db down')
+    expect(out).toMatchObject({
+      status: 400,
+      data: {
+        action: 'save',
+        id: null,
+        error: 'Give the contact a name.',
+        agent: { code: 'ContactsError', cause: 'Give the contact a name.' },
+      },
+    })
+    const logged = await contactsAction(
+      'log',
+      async () => Promise.reject(new ContactsError('invalid', 'bad day')),
+      'c1',
+    )
+    expect(logged).toMatchObject({
+      status: 400,
+      data: { action: 'log', id: 'c1', error: 'bad day' },
+    })
+    await expect(
+      contactsAction('save', async () => Promise.reject(new Error('db down'))),
+    ).rejects.toThrow('db down')
   })
 
   it('a contact you cannot see is a 404 page', async () => {

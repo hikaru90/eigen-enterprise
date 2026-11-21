@@ -6,6 +6,7 @@
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
   import { changeSharing } from '../../../../../../modules/contacts/client'
   import ContactList from '../../../../../../modules/contacts/ui/contact-list.svelte'
@@ -19,14 +20,17 @@
   const filtered = $derived(data.filter.tag !== '' || data.filter.q.trim() !== '')
   const logError = $derived(
     form && 'error' in form && typeof form.error === 'string' && form.action === 'log' && form.id
-      ? { id: form.id, message: form.error }
+      ? { id: form.id, message: form.error, agent: shownErrorOf(form)?.agent ?? null }
       : null,
   )
 
   /** The list filtered by this tag (null = every tag), keeping the search. */
   function tagHref(tag: string | null): string {
     const q = data.filter.q.trim()
-    const query = [tag ? `tag=${encodeURIComponent(tag)}` : null, q ? `q=${encodeURIComponent(q)}` : null].filter(Boolean)
+    const query = [
+      tag ? `tag=${encodeURIComponent(tag)}` : null,
+      q ? `q=${encodeURIComponent(q)}` : null,
+    ].filter(Boolean)
     return query.length > 0 ? `${base}?${query.join('&')}` : base
   }
 </script>
@@ -36,9 +40,15 @@
 <SectionHeader title="Contacts" testid="contacts-header">
   {#snippet info()}<ContactsPrivacyNote />{/snippet}
   {#snippet actions()}
-    <Button variant="ghost" href="/m/email/people/settings" data-testid="contact-settings">Settings</Button>
-    <Button variant="outline" href="/m/email/people/pipeline" data-testid="contact-pipeline">Pipeline</Button>
-    <Button variant="outline" href="/m/email/people/import" data-testid="contact-import">Import</Button>
+    <Button variant="ghost" href="/m/email/people/settings" data-testid="contact-settings"
+      >Settings</Button
+    >
+    <Button variant="outline" href="/m/email/people/pipeline" data-testid="contact-pipeline"
+      >Pipeline</Button
+    >
+    <Button variant="outline" href="/m/email/people/import" data-testid="contact-import"
+      >Import</Button
+    >
     <Button href="/m/email/people/new" data-testid="contact-add">Add a contact</Button>
   {/snippet}
 </SectionHeader>
@@ -51,7 +61,13 @@
   testid="contacts-section"
 />
 <div class="mt-3 grid gap-3">
-  <form method="GET" action={base} class="flex max-w-2xl flex-wrap items-center gap-2" role="search" data-testid="contacts-search">
+  <form
+    method="GET"
+    action={base}
+    class="flex max-w-2xl flex-wrap items-center gap-2"
+    role="search"
+    data-testid="contacts-search"
+  >
     {#if data.filter.tag}<input type="hidden" name="tag" value={data.filter.tag} />{/if}
     <Input
       class="min-w-56 flex-1"

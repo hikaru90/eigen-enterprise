@@ -1,8 +1,11 @@
 <script lang="ts">
   import type { PageData } from './$types'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
+  import { shownErrorOf, type ShownError } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
   import DictationField from '$lib/voice/dictation-field.svelte'
+  import { BrandRequestError, brandRequestError, brandShownError } from '../brand-errors'
   import SourceOptions from './source-options.svelte'
   import SpecimenMini from './specimen-mini.svelte'
 
@@ -10,10 +13,10 @@
   type GuideMeta = { filename: string; mime: string; sizeBytes: number }
 
   /** A typed failure the server answered in plain words ({ message, code }), e.g. no browser for capture. */
-  class PlainError extends Error {
+  class PlainError extends BrandRequestError {
     readonly code: string
-    constructor(message: string, code: string) {
-      super(message)
+    constructor(shown: ShownError, code: string) {
+      super(shown)
       this.code = code
     }
   }
@@ -29,8 +32,8 @@
   let sessionTitle = $state(data.initial?.session.title ?? '')
   let screenshotB64 = $state(data.initial?.screenshotB64 ?? '')
   let guide = $state<GuideMeta | null>(data.initial?.guide ?? null)
-  let captureError = $state('')
-  let uploadError = $state('')
+  let captureError = $state<ShownError | null>(null)
+  let uploadError = $state<ShownError | null>(null)
   let currentRound = $state<number | null>(data.initial?.latestRound?.round ?? null)
   let candidates = $state<Candidate[]>(data.initial?.latestRound?.candidates ?? [])
   let roundJudged = $state<boolean>((data.initial?.latestRound?.verdict ?? null) !== null)
@@ -39,7 +42,7 @@
   )
   let acceptedItem = $state<unknown>(null)
   let busy = $state(false)
-  let error = $state('')
+  let error = $state<ShownError | null>(null)
 
   const candidateCount = $derived(candidates.filter((c) => !c.error).length)
   const canAccept = $derived(sessionId !== '' && !busy && judged !== null && name.trim().length > 0)
@@ -49,9 +52,9 @@
     if (!response.ok) {
       const body = parsedObject(text)
       if (typeof body?.message === 'string' && typeof body.code === 'string') {
-        throw new PlainError(body.message, body.code)
+        throw new PlainError(shownErrorOf(body) ?? { error: body.message, agent: null }, body.code)
       }
-      throw new Error(`${path} failed (${response.status}): ${text.slice(0, 400)}`)
+      throw brandRequestError(response.status, text, path)
     }
     return JSON.parse(text) as Record<string, unknown>
   }
@@ -76,7 +79,8 @@
 
   async function loadSession(id: string): Promise<void> {
     const response = await fetch(`/api/brand/extract/session/${id}`)
-    if (!response.ok) throw new Error(`session fetch failed (${response.status})`)
+    if (!response.ok)
+      throw brandRequestError(response.status, await response.text(), 'session fetch')
     const result = (await response.json()) as {
       session: { url: string | null; title: string | null }
       guide: GuideMeta | null
@@ -91,12 +95,12 @@
   /** Opens the session, then asks for the first round of three looks. */
   async function begin(
     open: () => Promise<Record<string, unknown>>,
-    onPlainError: (message: string) => void,
+    onPlainError: (shown: ShownError) => void,
   ): Promise<void> {
     busy = true
-    error = ''
-    captureError = ''
-    uploadError = ''
+    error = null
+    captureError = null
+    uploadError = null
     try {
       const result = await open()
       sessionId = String(result.sessionId)
@@ -104,8 +108,8 @@
       await loadSession(sessionId)
       await propose()
     } catch (err) {
-      if (err instanceof PlainError && sessionId === '') onPlainError(err.message)
-      else error = err instanceof Error ? err.message : String(err)
+      if (err instanceof PlainError && sessionId === '') onPlainError(err.shown)
+      else error = brandShownError(err)
     } finally {
       busy = false
     }
@@ -114,7 +118,7 @@
   function startFromUrl(url: string): Promise<void> {
     return begin(
       () => post('/api/brand/extract/start', { url }),
-      (message) => (captureError = message),
+      (shown) => (captureError = shown),
     )
   }
 
@@ -127,7 +131,7 @@
           '/api/brand/extract/guide',
           await fetch('/api/brand/extract/guide', { method: 'POST', body: form }),
         ),
-      (message) => (uploadError = message),
+      (shown) => (uploadError = shown),
     )
   }
 
@@ -140,12 +144,12 @@
 
   async function retryPropose(): Promise<void> {
     busy = true
-    error = ''
+    error = null
     try {
       await propose()
       note = ''
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = brandShownError(err)
     } finally {
       busy = false
     }
@@ -154,7 +158,7 @@
   async function judge(chosen: number | null): Promise<void> {
     if (currentRound === null) return
     busy = true
-    error = ''
+    error = null
     try {
       await post('/api/brand/extract/judge', {
         sessionId,
@@ -168,7 +172,7 @@
       await propose()
       note = ''
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = brandShownError(err)
     } finally {
       busy = false
     }
@@ -176,12 +180,12 @@
 
   async function accept(): Promise<void> {
     busy = true
-    error = ''
+    error = null
     try {
       const result = await post('/api/brand/extract/accept', { sessionId, name: name.trim() })
       acceptedItem = result.corpusItem
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = brandShownError(err)
     } finally {
       busy = false
     }
@@ -202,8 +206,14 @@
   </header>
 
   {#if error}
-    <pre
-      class="whitespace-pre-wrap rounded border border-red-400 bg-red-50 p-3 text-xs text-red-800">{error}</pre>
+    <ErrorNotice
+      class="whitespace-pre-wrap rounded border border-red-400 bg-red-50 p-3 text-xs"
+      error={error.error}
+      agent={error.agent}
+      attempted={sessionId
+        ? `Extracting a brand style (session ${sessionId})`
+        : 'Starting a brand style extraction'}
+    />
   {/if}
 
   {#if acceptedItem}
@@ -353,7 +363,10 @@
       {/if}
 
       {#if candidateCount === 0 && candidates.length > 0 && !roundJudged}
-        <p class="text-sm text-red-700">All three candidates this round were invalid.</p>
+        <ErrorNotice
+          error="All three candidates this round were invalid."
+          attempted={`Proposing three brand styles (brand.extract_propose, session ${sessionId}, round ${currentRound}): the model's candidates all failed validation`}
+        />
       {/if}
     {/if}
   {/if}

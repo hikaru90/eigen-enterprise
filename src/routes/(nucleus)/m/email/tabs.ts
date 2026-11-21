@@ -23,7 +23,12 @@ export const EMAIL_SETUP_TABS: readonly AreaTab[] = [
  * /m/email/contacts), the flows that mail them (was Setup › Flows at /m/email/flows) and what those flows sent.
  */
 export const EMAIL_MARKETING_TABS: readonly AreaTab[] = [
-  { id: 'lists', label: 'Lists', href: '/m/email/marketing/lists', match: ['/m/email/marketing/lists'] },
+  {
+    id: 'lists',
+    label: 'Lists',
+    href: '/m/email/marketing/lists',
+    match: ['/m/email/marketing/lists'],
+  },
   { id: 'flows', label: 'Flows', href: '/m/email/marketing/flows' },
   { id: 'sent', label: 'Sent', href: '/m/email/marketing/sent' },
 ]
@@ -42,7 +47,12 @@ export const EMAIL_MARKETING_TABS: readonly AreaTab[] = [
 export const EMAIL_TABS: readonly AreaTab[] = [
   { id: 'inbox', label: 'Personal mail', href: '/m/email/inbox', match: ['/m/email/inbox'] },
   { id: 'transactional', label: 'Transactional mail', href: '/m/email/transactional' },
-  { id: 'marketing', label: 'Marketing mail', href: '/m/email/marketing/lists', match: ['/m/email/marketing'] },
+  {
+    id: 'marketing',
+    label: 'Marketing mail',
+    href: '/m/email/marketing/lists',
+    match: ['/m/email/marketing'],
+  },
   { id: 'people', label: 'Contacts', href: '/m/email/people' },
   {
     id: 'setup',

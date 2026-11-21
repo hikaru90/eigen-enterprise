@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { roleMock } = vi.hoisted(() => ({ roleMock: vi.fn(async (): Promise<string | null> => 'owner') }))
+const { roleMock } = vi.hoisted(() => ({
+  roleMock: vi.fn(async (): Promise<string | null> => 'owner'),
+}))
 vi.mock('$lib/server/auth/user-role', () => ({ getUserRole: roleMock }))
 
 import { EeClient, SubstrateUnavailableError, type EeTransport } from '$lib/server/ee/client'
@@ -11,10 +13,36 @@ import { actions, load } from './+page.server'
 const SNAP = '20261101T031700Z'
 const CODE = 'EE1-AAAAA-BBBBB-CCCCC'
 const KEY = 'K'.repeat(43) + '='
-const status = { configured: true, target: null, schedule: null, retentionDays: null, configuredAt: null, keyCreatedAt: null, health: { state: 'ok', lastSuccessAt: 't' }, runs: [] }
-const job = { id: 'job-1', kind: 'restore', snapshotId: SNAP, author: 'human:u-owner', status: 'running', step: 'verifying', startedAt: 't', updatedAt: 't', endedAt: null, checked: null, error: null, log: [], announced: false }
+const status = {
+  configured: true,
+  target: null,
+  schedule: null,
+  retentionDays: null,
+  configuredAt: null,
+  keyCreatedAt: null,
+  health: { state: 'ok', lastSuccessAt: 't' },
+  runs: [],
+}
+const job = {
+  id: 'job-1',
+  kind: 'restore',
+  snapshotId: SNAP,
+  author: 'human:u-owner',
+  status: 'running',
+  step: 'verifying',
+  startedAt: 't',
+  updatedAt: 't',
+  endedAt: null,
+  checked: null,
+  error: null,
+  log: [],
+  announced: false,
+}
 
-function wire(answers: Record<string, { status: number; data: unknown }>, name: string | null = 'Acme GmbH') {
+function wire(
+  answers: Record<string, { status: number; data: unknown }>,
+  name: string | null = 'Acme GmbH',
+) {
   const calls: Array<{ method: string; path: string; body?: unknown }> = []
   const transport: EeTransport = async (method, path, body) => {
     calls.push({ method, path, body })
@@ -37,7 +65,10 @@ const ev = (form?: Record<string, string>, snapshot = SNAP) =>
   ({
     locals: { user: { id: 'u-owner' } },
     params: { snapshot },
-    request: new Request(`http://x/settings/backups/restore/${snapshot}`, { method: 'POST', body: new URLSearchParams(form ?? {}) }),
+    request: new Request(`http://x/settings/backups/restore/${snapshot}`, {
+      method: 'POST',
+      body: new URLSearchParams(form ?? {}),
+    }),
   }) as never
 
 const good = { confirmName: 'Acme GmbH', recoveryCode: CODE }
@@ -54,9 +85,19 @@ describe('Settings → Backups → Restore (owner only, D11; ee restores, the co
   })
 
   it('load: the backup, the company name to type, and the last job (progress survives a reload)', async () => {
-    wire({ 'GET /v1/backups': { status: 200, data: status }, 'GET /v1/backups/restore': { status: 200, data: { job } } })
+    wire({
+      'GET /v1/backups': { status: 200, data: status },
+      'GET /v1/backups/restore': { status: 200, data: { job } },
+    })
     expect(await load(ev() as never)).toEqual({
-      restore: { managed: true, configured: true, snapshotId: SNAP, takenAt: '2026-11-01T03:17:00.000Z', companyName: 'Acme GmbH', job },
+      restore: {
+        managed: true,
+        configured: true,
+        snapshotId: SNAP,
+        takenAt: '2026-11-01T03:17:00.000Z',
+        companyName: 'Acme GmbH',
+        job,
+      },
     })
   })
 
@@ -73,27 +114,64 @@ describe('Settings → Backups → Restore (owner only, D11; ee restores, the co
   it('restore: typed company name + recovery code → ee gets the snapshot and the DERIVED key, never the code', async () => {
     const { calls } = wire({ 'POST /v1/backups/restore': { status: 202, data: { job } } })
     expect(await actions.restore!(ev(good))).toEqual({ action: 'restore', ok: true, job })
-    expect(calls).toEqual([{ method: 'POST', path: '/v1/backups/restore', body: { snapshotId: SNAP, backupKey: KEY, author: 'human:u-owner' } }])
+    expect(calls).toEqual([
+      {
+        method: 'POST',
+        path: '/v1/backups/restore',
+        body: { snapshotId: SNAP, backupKey: KEY, author: 'human:u-owner' },
+      },
+    ])
     expect(JSON.stringify(calls)).not.toContain(CODE)
   })
 
   it('refused before ee: wrong or missing company name, no name at all, missing or mistyped code — and the code is never echoed', async () => {
     const { calls } = wire({})
     const wrong = await actions.restore!(ev({ ...good, confirmName: 'acme' }))
-    expect(wrong).toMatchObject({ status: 400, data: { error: expect.stringMatching(/exactly as shown \(Acme GmbH\)/) } })
-    expect(await actions.restore!(ev({ ...good, recoveryCode: '' }))).toMatchObject({ status: 400, data: { error: expect.stringMatching(/recovery code/) } })
+    expect(wrong).toMatchObject({
+      status: 400,
+      data: { error: expect.stringMatching(/exactly as shown \(Acme GmbH\)/) },
+    })
+    expect(await actions.restore!(ev({ ...good, recoveryCode: '' }))).toMatchObject({
+      status: 400,
+      data: { error: expect.stringMatching(/recovery code/) },
+    })
     const typo = await actions.restore!(ev({ ...good, recoveryCode: 'EE1-AAAAA-BBBBB-CCCCD' }))
-    expect(typo).toMatchObject({ status: 400, data: { error: expect.stringMatching(/not right.*typo/) } })
+    expect(typo).toMatchObject({
+      status: 400,
+      data: {
+        error: expect.stringMatching(/not right.*typo/),
+        agent: { code: 'CompanyKeyError', input: { snapshotId: SNAP } },
+      },
+    })
     expect(JSON.stringify(typo)).not.toContain('EE1-AAAAA')
     wire({}, null)
-    expect(await actions.restore!(ev(good))).toMatchObject({ status: 409, data: { error: expect.stringMatching(/Settings → Company/) } })
+    expect(await actions.restore!(ev(good))).toMatchObject({
+      status: 409,
+      data: { error: expect.stringMatching(/Settings → Company/) },
+    })
     expect(calls).toEqual([])
   })
 
   it("ee's refusals show plainly: another company's code, a backup or restore already running", async () => {
-    wire({ 'POST /v1/backups/restore': { status: 422, data: { detail: "this recovery code does not open this company's backups" } } })
-    expect(await actions.restore!(ev(good))).toMatchObject({ status: 422, data: { action: 'restore', error: expect.stringMatching(/does not open/) } })
-    wire({ 'POST /v1/backups/restore': { status: 409, data: { detail: 'a backup is running; wait for it to finish' } } })
-    expect(await actions.restore!(ev(good))).toMatchObject({ status: 409, data: { error: expect.stringMatching(/backup is running/) } })
+    wire({
+      'POST /v1/backups/restore': {
+        status: 422,
+        data: { detail: "this recovery code does not open this company's backups" },
+      },
+    })
+    expect(await actions.restore!(ev(good))).toMatchObject({
+      status: 422,
+      data: { action: 'restore', error: expect.stringMatching(/does not open/) },
+    })
+    wire({
+      'POST /v1/backups/restore': {
+        status: 409,
+        data: { detail: 'a backup is running; wait for it to finish' },
+      },
+    })
+    expect(await actions.restore!(ev(good))).toMatchObject({
+      status: 409,
+      data: { error: expect.stringMatching(/backup is running/) },
+    })
   })
 })

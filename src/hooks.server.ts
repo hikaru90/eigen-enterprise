@@ -24,6 +24,7 @@ import { authSql } from '$lib/server/db/auth-db'
 import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { domainsFromEnv } from '$lib/server/domains/env'
 import { DRIVE_VIEW_PREFIX, driveViewUser } from '$lib/server/drive-view'
+import { errorReport, GENERIC_SENTENCE } from '$lib/server/errors/report'
 import { startJobQueueTicker } from '$lib/server/job-queue/ticker'
 import { platformAiFromEnv } from '$lib/server/llm/platform-llm'
 import { reportSpeechModelsAtStartup } from '$lib/server/llm/speech-models'
@@ -40,7 +41,9 @@ if (!building) {
   // Fail loud at boot on a bad MAIL_TRANSPORT (unknown value, or `fake` in
   // production without MAIL_TRANSPORT_FAKE_IN_PRODUCTION=1).
   if (configuredMailTransport() === 'fake') {
-    console.warn('[mail] MAIL_TRANSPORT=fake: no email leaves this server; mails are captured in mail_fake_sent')
+    console.warn(
+      '[mail] MAIL_TRANSPORT=fake: no email leaves this server; mails are captured in mail_fake_sent',
+    )
   }
   // eigenEnterprise Mail: all ten EE_MAIL_* or none; a partial set throws here.
   configuredManagedMail()
@@ -266,7 +269,9 @@ export const init: ServerInit = () => {
  * $lib/server/plugins/gate. Runs after sign-in is known (handleBetterAuth),
  * inside the request's DB session; the activation set is cached in-process.
  */
-const handlePlugins: Handle = building ? ({ event, resolve }) => resolve(event) : pluginHandle(livePluginGateDeps)
+const handlePlugins: Handle = building
+  ? ({ event, resolve }) => resolve(event)
+  : pluginHandle(livePluginGateDeps)
 
 export const handle: Handle = sequence(
   handleCsrf,
@@ -302,7 +307,7 @@ function describeServerError(error: unknown): string {
  * the method, path (never the query string), route and status; request
  * headers, cookies and bodies are never logged.
  */
-export const handleError: HandleServerError = ({ error, status, event }) => {
+export const handleError: HandleServerError = ({ error, status, event, message }) => {
   if (status !== 404) {
     console.error(
       `[server error] ${status} ${event.request.method} ${event.url.pathname} (route ${event.route?.id ?? 'none'})\n${describeServerError(error)}`,
@@ -313,4 +318,19 @@ export const handleError: HandleServerError = ({ error, status, event }) => {
       route_id: event.route?.id ?? null,
     })
   }
+  // The one error shape: the page shows the plain sentence and offers "Copy agent
+  // instructions". The cause chain is only handed to a signed-in member of the
+  // company; a visitor's copy names the route, method and status only.
+  const route = event.route?.id ?? 'none'
+  const report = errorReport(error, {
+    attempted: `${event.request.method} ${event.url.pathname} (route ${route})`,
+    nextSteps: [
+      `An unexpected error escaped the route handler for ${route}: find the \`[server error] ${status}\` line for this path in the server journal at the time above; it carries the stack.`,
+      'Turn the cause into a handled failure: catch it where it is raised and return an ErrorReport (src/lib/server/errors/report.ts) with a plain sentence.',
+    ],
+  })
+  const agent = event.locals.user
+    ? report.agent
+    : { attempted: report.agent.attempted, nextSteps: report.agent.nextSteps }
+  return { message: status === 404 ? message : GENERIC_SENTENCE, agent }
 }

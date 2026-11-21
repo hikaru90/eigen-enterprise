@@ -5,6 +5,7 @@
   import { resolve } from '$app/paths'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
   import NextUpStrip from '../../../../../../../modules/contacts/ui/next-up-strip.svelte'
   import PipelineBoard from '../../../../../../../modules/contacts/ui/pipeline-board.svelte'
@@ -13,7 +14,9 @@
   let { data, form }: PageProps = $props()
 
   const logError = $derived(
-    form && 'error' in form && typeof form.error === 'string' && form.action === 'log' && form.id ? { id: form.id, message: form.error } : null,
+    form && 'error' in form && typeof form.error === 'string' && form.action === 'log' && form.id
+      ? { id: form.id, message: form.error, agent: shownErrorOf(form)?.agent ?? null }
+      : null,
   )
 
   /** Post one inline change to ?/update; the page data refreshes on success. */
@@ -21,13 +24,20 @@
     const body = new FormData()
     body.set('id', id)
     for (const [k, v] of Object.entries(patch)) body.set(k, v)
-    const res = await fetch('?/update', { method: 'POST', body, headers: { 'x-sveltekit-action': 'true' } })
+    const res = await fetch('?/update', {
+      method: 'POST',
+      body,
+      headers: { 'x-sveltekit-action': 'true' },
+    })
     const result = deserialize(await res.text())
     if (result.type === 'failure') {
       const err = (result.data as { error?: unknown } | undefined)?.error
       return typeof err === 'string' ? err : `Couldn’t save that (HTTP ${result.status}).`
     }
-    if (result.type === 'error') return result.error instanceof Error ? result.error.message : `Couldn’t save that (HTTP ${result.status ?? res.status}).`
+    if (result.type === 'error')
+      return result.error instanceof Error
+        ? result.error.message
+        : `Couldn’t save that (HTTP ${result.status ?? res.status}).`
     await invalidateAll()
     return null
   }

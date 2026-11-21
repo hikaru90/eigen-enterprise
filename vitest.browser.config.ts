@@ -101,6 +101,7 @@ export default defineConfig({
       'src/lib/components/assistant/assistant-history.svelte.spec.ts',
       'src/lib/components/module-card.svelte.spec.ts',
       'src/lib/components/error-panel.svelte.spec.ts',
+      'src/lib/components/error-notice.svelte.spec.ts',
       'src/routes/(nucleus)/settings/company/company-page.svelte.spec.ts',
       'src/routes/(nucleus)/settings/llm/ai-page.svelte.spec.ts',
       'src/routes/(nucleus)/settings/domains/domains-page.svelte.spec.ts',

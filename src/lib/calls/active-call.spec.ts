@@ -4,7 +4,9 @@ import { CallRequestError } from './client'
 import { DEVICES_KEY } from './devices'
 import { FakeRoom, fakeCall, fakeEnv, fakeToken, memoryStorage, remotePerson } from './fake-room'
 
-function setup(opts: { room?: FakeRoom; env?: Partial<CallEnv>; token?: () => Promise<typeof fakeToken> } = {}) {
+function setup(
+  opts: { room?: FakeRoom; env?: Partial<CallEnv>; token?: () => Promise<typeof fakeToken> } = {},
+) {
   const room = opts.room ?? new FakeRoom()
   const env = fakeEnv(opts.env)
   const client = {
@@ -18,7 +20,8 @@ function setup(opts: { room?: FakeRoom; env?: Partial<CallEnv>; token?: () => Pr
   return { active, room, env, client, createRoom }
 }
 
-const connected = (active: ActiveCall) => vi.waitFor(() => expect(active.state.phase).toBe('connected'))
+const connected = (active: ActiveCall) =>
+  vi.waitFor(() => expect(active.state.phase).toBe('connected'))
 const settled = (active: ActiveCall) => vi.waitFor(() => expect(active.state.camera).toBe(true))
 
 describe('ActiveCall: one live call above the pages', () => {
@@ -88,7 +91,9 @@ describe('ActiveCall: one live call above the pages', () => {
     active.open(fakeCall(), 'ann')
     await settled(active)
     env.win.pagehide()
-    await vi.waitFor(() => expect(client.hangup).toHaveBeenCalledExactlyOnceWith('call-1', { keepalive: true }))
+    await vi.waitFor(() =>
+      expect(client.hangup).toHaveBeenCalledExactlyOnceWith('call-1', { keepalive: true }),
+    )
     expect(room.disconnects).toBe(1)
   })
 
@@ -97,7 +102,9 @@ describe('ActiveCall: one live call above the pages', () => {
     active.open(fakeCall(), 'ann')
     await settled(active)
     active.close()
-    await vi.waitFor(() => expect(client.hangup).toHaveBeenCalledExactlyOnceWith('call-1', { keepalive: true }))
+    await vi.waitFor(() =>
+      expect(client.hangup).toHaveBeenCalledExactlyOnceWith('call-1', { keepalive: true }),
+    )
   })
 
   it('hanging up while still connecting never ends up in the room', async () => {
@@ -154,7 +161,11 @@ describe('ActiveCall: one live call above the pages', () => {
   it('calls not set up: the problem, no room', async () => {
     const { active, createRoom } = setup({
       token: async () => {
-        throw new CallRequestError({ kind: 'not_configured', message: 'Calls are not set up on this server' })
+        throw new CallRequestError({
+          kind: 'not_configured',
+          message: 'Calls are not set up on this server',
+          agent: null,
+        })
       },
     })
     active.open(fakeCall(), 'ann')
@@ -210,12 +221,26 @@ describe('ActiveCall: choosing devices', () => {
       ['videoinput', 'cam-2'],
       ['audiooutput', 'spk-usb'],
     ])
-    expect(active.selected).toEqual({ audioinput: 'mic-usb', videoinput: 'cam-2', audiooutput: 'spk-usb' })
-    expect(JSON.parse(storage.data[DEVICES_KEY])).toEqual({ audioinput: 'mic-usb', videoinput: 'cam-2', audiooutput: 'spk-usb' })
+    expect(active.selected).toEqual({
+      audioinput: 'mic-usb',
+      videoinput: 'cam-2',
+      audiooutput: 'spk-usb',
+    })
+    expect(JSON.parse(storage.data[DEVICES_KEY])).toEqual({
+      audioinput: 'mic-usb',
+      videoinput: 'cam-2',
+      audiooutput: 'spk-usb',
+    })
   })
 
   it('the next call starts on the remembered devices (switched before mic and camera turn on)', async () => {
-    const storage = memoryStorage({ [DEVICES_KEY]: JSON.stringify({ audioinput: 'mic-usb', videoinput: 'cam-2', audiooutput: 'spk-usb' }) })
+    const storage = memoryStorage({
+      [DEVICES_KEY]: JSON.stringify({
+        audioinput: 'mic-usb',
+        videoinput: 'cam-2',
+        audiooutput: 'spk-usb',
+      }),
+    })
     const room = new FakeRoom()
     const order: string[] = []
     const switchDevice = room.switchDevice.bind(room)
@@ -231,8 +256,18 @@ describe('ActiveCall: choosing devices', () => {
     const { active } = setup({ room, env: { storage } })
     active.open(fakeCall(), 'ann')
     await settled(active)
-    expect(order).toEqual(['switch audioinput', 'switch audiooutput', 'switch videoinput', 'microphone true', 'camera true'])
-    expect(active.selected).toEqual({ audioinput: 'mic-usb', videoinput: 'cam-2', audiooutput: 'spk-usb' })
+    expect(order).toEqual([
+      'switch audioinput',
+      'switch audiooutput',
+      'switch videoinput',
+      'microphone true',
+      'camera true',
+    ])
+    expect(active.selected).toEqual({
+      audioinput: 'mic-usb',
+      videoinput: 'cam-2',
+      audiooutput: 'spk-usb',
+    })
   })
 
   it('a remembered device that is not plugged in is not used', async () => {
@@ -287,7 +322,9 @@ describe('ActiveCall: the call as the server sees it now (clock, transcription s
     const { active, client } = setup()
     active.open(fakeCall(), 'ann')
     await settled(active)
-    client.get.mockResolvedValueOnce(fakeCall({ state: 'active', answeredAt: '2026-11-11T09:00:07.000Z' }))
+    client.get.mockResolvedValueOnce(
+      fakeCall({ state: 'active', answeredAt: '2026-11-11T09:00:07.000Z' }),
+    )
     await active.refresh()
     expect(client.get).toHaveBeenCalledWith('call-1')
     expect(active.call?.answeredAt).toBe('2026-11-11T09:00:07.000Z')

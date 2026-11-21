@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ApprovalDecision } from '$lib/chat/approvals-client'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
 
   type Props = {
     /** The gated action in plain words. */
@@ -28,9 +29,7 @@
   class="my-2 rounded-sm border-2 border-black bg-white px-3 py-3 text-black"
   data-testid="approval-card"
 >
-  <p class="text-xs font-medium tracking-[0.2em] text-black/60 uppercase">
-    Needs your approval
-  </p>
+  <p class="text-xs font-medium tracking-[0.2em] text-black/60 uppercase">Needs your approval</p>
   <p class="mt-1 text-sm font-medium wrap-break-word">{action}</p>
   <p class="text-xs text-black/50 wrap-break-word">{tool} · has not run yet</p>
 
@@ -64,6 +63,10 @@
   {/if}
 
   {#if error}
-    <p class="text-destructive mt-2 text-xs" role="alert">{error}</p>
+    <ErrorNotice
+      class="mt-2 text-xs"
+      {error}
+      attempted={`Deciding the approval for the tool ${tool} in the chat`}
+    />
   {/if}
 </div>

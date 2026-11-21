@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
+  import type { ShownError } from '$lib/errors/agent-report'
   import { GUIDE_ACCEPT, GUIDE_LIMITS_TEXT } from '../../../../../modules/brand/extract/guide'
 
   /**
@@ -15,10 +17,10 @@
     onupload,
   }: {
     busy: boolean
-    /** Why capturing the site failed (e.g. no browser on this server); empty when it didn't. */
-    captureError: string
-    /** Why the upload was refused (format, size); empty when it wasn't. */
-    uploadError: string
+    /** Why capturing the site failed (e.g. no browser on this server); null when it didn't. */
+    captureError: ShownError | null
+    /** Why the upload was refused (format, size); null when it wasn't. */
+    uploadError: ShownError | null
     oncapture: (url: string) => void
     onupload: (file: File) => void
   } = $props()
@@ -53,7 +55,12 @@
       </button>
     </div>
     {#if captureError}
-      <p class="text-sm text-red-800" role="alert" data-testid="capture-error">{captureError}</p>
+      <ErrorNotice
+        testid="capture-error"
+        error={captureError.error}
+        agent={captureError.agent}
+        attempted="Capturing the company website to extract a brand style"
+      />
     {/if}
   </section>
 
@@ -81,7 +88,12 @@
     </div>
     <p class="text-xs text-muted-foreground">{GUIDE_LIMITS_TEXT}</p>
     {#if uploadError}
-      <p class="text-sm text-red-800" role="alert" data-testid="upload-error">{uploadError}</p>
+      <ErrorNotice
+        testid="upload-error"
+        error={uploadError.error}
+        agent={uploadError.agent}
+        attempted="Uploading a brand guide to extract a brand style"
+      />
     {/if}
   </section>
 </div>

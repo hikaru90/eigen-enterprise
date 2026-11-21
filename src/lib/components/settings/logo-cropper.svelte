@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { onMount } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
   import {
@@ -230,7 +231,11 @@
     </div>
   </div>
   {#if loadError}
-    <p class="text-xs text-destructive" role="alert">This image could not be shown for cropping.</p>
+    <ErrorNotice
+      class="text-xs"
+      error="This image could not be shown for cropping."
+      attempted="Showing the chosen logo image in the crop frame (the browser could not decode it)"
+    />
   {/if}
   <label class="flex max-w-60 items-center gap-2 text-xs text-muted-foreground">
     <span>Zoom</span>

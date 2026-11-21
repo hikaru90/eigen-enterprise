@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { POST } from './+server'
 
-const { parsePushSubscriptionBodyMock, upsertPushSubscriptionMock, deleteByEndpointMock } = vi.hoisted(() => ({
-  parsePushSubscriptionBodyMock: vi.fn(),
-  upsertPushSubscriptionMock: vi.fn(),
-  deleteByEndpointMock: vi.fn(),
-}))
+const { parsePushSubscriptionBodyMock, upsertPushSubscriptionMock, deleteByEndpointMock } =
+  vi.hoisted(() => ({
+    parsePushSubscriptionBodyMock: vi.fn(),
+    upsertPushSubscriptionMock: vi.fn(),
+    deleteByEndpointMock: vi.fn(),
+  }))
 
 vi.mock('$lib/server/push/subscription', () => ({
   parsePushSubscriptionBody: parsePushSubscriptionBodyMock,
@@ -101,12 +102,19 @@ describe('POST /api/push/subscribe', () => {
       body: {
         message:
           'Could not save notification settings for this device. Try again, or enable later in Settings.',
+        agent: {
+          attempted: 'Turning on notifications on this device (POST /api/push/subscribe)',
+          cause: expect.stringContaining('Failed query'),
+        },
       },
     })
   })
 
   it('a renewed subscription (pushsubscriptionchange) removes the endpoint it replaces', async () => {
-    parsePushSubscriptionBodyMock.mockReturnValue({ endpoint: 'https://push.example/new', keys: { p256dh: 'p', auth: 'a' } })
+    parsePushSubscriptionBodyMock.mockReturnValue({
+      endpoint: 'https://push.example/new',
+      keys: { p256dh: 'p', auth: 'a' },
+    })
     upsertPushSubscriptionMock.mockResolvedValue({ id: 'sub-2' })
     deleteByEndpointMock.mockResolvedValue(true)
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import XIcon from '@lucide/svelte/icons/x'
   import { Button } from '$lib/components/ui/button'
   import { Textarea } from '$lib/components/ui/textarea'
@@ -132,7 +133,10 @@
     <p class="text-muted-foreground text-sm">{savedLabel}</p>
   {:else if isRelevance}
     {#if err}
-      <p class="text-destructive text-sm">{err}</p>
+      <ErrorNotice
+        error={err}
+        attempted="Answering whether a grounding question is still relevant"
+      />
     {/if}
     <div class="flex flex-wrap justify-end gap-2">
       <Button
@@ -173,7 +177,7 @@
       disabled={loading}
     />
     {#if err}
-      <p class="text-destructive text-sm">{err}</p>
+      <ErrorNotice error={err} attempted="Answering or dismissing a grounding question" />
     {/if}
     <div class="flex justify-end gap-2">
       <Button

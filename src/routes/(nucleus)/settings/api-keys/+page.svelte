@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { PageData } from './$types'
   import Check from '@lucide/svelte/icons/check'
   import CopyIcon from '@lucide/svelte/icons/copy'
@@ -302,7 +303,11 @@
   </Card.Root>
 
   {#if error}
-    <p class="text-destructive text-xs text-center">{error}</p>
+    <ErrorNotice
+      class="items-center text-xs text-center"
+      {error}
+      attempted="Changing or revoking an API key in Settings → API keys"
+    />
   {/if}
 </div>
 
@@ -337,7 +342,11 @@
           Can send mail (POST /api/mail/send, sends at once, no approval)
         </label>
         {#if error}
-          <p class="text-destructive text-xs">{error}</p>
+          <ErrorNotice
+            class="text-xs"
+            {error}
+            attempted="Creating an API key in Settings → API keys"
+          />
         {/if}
       </div>
 

@@ -15,8 +15,10 @@
  * browser in unit tests. The writer turns its views into UI; nothing here knows about Svelte.
  */
 import type { DeviceInfo, DeviceStorage } from '$lib/calls/devices'
+import type { AgentReport } from '$lib/errors/agent-report'
 import { clipHasSpeechLevelSound, decodeClip, type DecodedClip } from './clip-speech'
 import { browserDeviceStorage, ChosenMicrophoneUnavailable, openMicrophone } from './microphone'
+import { TranscribeRequestError } from './transcribe-voice-clip'
 
 /** VM-8: a clip is sent automatically at this length. */
 export const VOICE_MESSAGE_MAX_MS = 5 * 60 * 1000
@@ -67,6 +69,8 @@ export type VoiceFailure = {
   status?: number
   /** The clip is still in memory: Retry uploads it again. */
   retryable: boolean
+  /** The server's agent report for a failed request ("Copy agent instructions"), when it sent one. */
+  agent?: AgentReport | null
 }
 
 /** A finished clip as the recorder made it (never transcoded), and how long it is. */
@@ -363,7 +367,10 @@ export function createVoiceMessageSession(options: VoiceMessageOptions): VoiceMe
     try {
       return clipHasSpeechLevelSound(await deps.decodeClip(blob))
     } catch (err) {
-      console.warn('voice clip could not be decoded for the audio check; uploading it unchecked', err)
+      console.warn(
+        'voice clip could not be decoded for the audio check; uploading it unchecked',
+        err,
+      )
       return true
     }
   }
@@ -413,6 +420,7 @@ export function createVoiceMessageSession(options: VoiceMessageOptions): VoiceMe
         ...(status === undefined ? {} : { status }),
         detail: err instanceof Error ? err.message : String(err),
         retryable: true,
+        agent: err instanceof TranscribeRequestError ? err.agent : null,
       })
       return
     }
@@ -450,7 +458,11 @@ export function createVoiceMessageSession(options: VoiceMessageOptions): VoiceMe
     } catch (err) {
       if (mine !== epoch) return
       if (err instanceof ChosenMicrophoneUnavailable) {
-        fail({ reason: 'chosen-microphone', ...(err.label ? { detail: err.label } : {}), retryable: false })
+        fail({
+          reason: 'chosen-microphone',
+          ...(err.label ? { detail: err.label } : {}),
+          retryable: false,
+        })
         return
       }
       const name = err !== null && typeof err === 'object' && 'name' in err ? String(err.name) : ''

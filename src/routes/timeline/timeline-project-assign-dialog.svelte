@@ -5,9 +5,12 @@
   import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical'
   import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle'
   import { onMount } from 'svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
   import { Input } from '$lib/components/ui/input'
+  import type { ShownError } from '$lib/errors/agent-report'
+  import { requestErrorOf, shownOf } from '$lib/memory/request-error'
   import { m } from '$lib/paraglide/messages.js'
   import type { ProjectListItem } from '$lib/server/memory/project-list'
 
@@ -24,7 +27,7 @@
   let projectsLoading = $state(false)
   let query = $state('')
   let busy = $state(false)
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
   let dragOverEntityId = $state<string | null>(null)
 
   async function loadProjects() {
@@ -32,14 +35,11 @@
     error = null
     try {
       const res = await fetch('/api/timeline/projects')
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `Request failed (${res.status})`)
-      }
+      if (!res.ok) throw await requestErrorOf(res)
       const body = (await res.json()) as { projects: ProjectListItem[] }
       projects = body.projects
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = shownOf(err)
       projects = []
     } finally {
       projectsLoading = false
@@ -87,16 +87,13 @@
             : { projectLabel: target.projectLabel }),
         }),
       })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `Request failed (${res.status})`)
-      }
+      if (!res.ok) throw await requestErrorOf(res)
       const body = (await res.json()) as AssignProjectResponse
       onAssigned({ thoughtId: item.thoughtId, ...body })
       open = false
       onClose()
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = shownOf(err)
     } finally {
       busy = false
       dragOverEntityId = null
@@ -173,7 +170,12 @@
           <span class="text-muted-foreground text-xs">{m.graph_temporal_loading()}</span>
         </div>
       {:else if error && projects.length === 0}
-        <p class="text-destructive px-2 py-4 text-center text-xs">{error}</p>
+        <ErrorNotice
+          class="items-center px-2 py-4 text-center text-xs"
+          error={error.error}
+          agent={error.agent}
+          attempted="Loading the projects to assign a task to"
+        />
       {:else}
         {#if showCreateOption}
           <button
@@ -233,7 +235,12 @@
       {/if}
 
       {#if error && projects.length > 0}
-        <p class="text-destructive px-3 pt-2 text-xs">{error}</p>
+        <ErrorNotice
+          class="px-3 pt-2 text-xs"
+          error={error.error}
+          agent={error.agent}
+          attempted="Assigning a task to a project from the timeline"
+        />
       {/if}
     </div>
 

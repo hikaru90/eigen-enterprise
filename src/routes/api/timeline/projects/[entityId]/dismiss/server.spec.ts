@@ -18,11 +18,11 @@ function event(overrides: { user?: { id: string } | null; entityId?: string } = 
 
 describe('POST /api/timeline/projects/[entityId]/dismiss', () => {
   it('returns 401 when unauthenticated', async () => {
-    await expect(POST(event({ user: null }))).rejects.toMatchObject({ status: 401 })
+    expect((await POST(event({ user: null }))).status).toBe(401)
   })
 
   it('returns 400 when entityId is missing', async () => {
-    await expect(POST(event({ entityId: ' ' }))).rejects.toMatchObject({ status: 400 })
+    expect((await POST(event({ entityId: ' ' }))).status).toBe(400)
   })
 
   it('dismisses the project', async () => {
@@ -35,6 +35,6 @@ describe('POST /api/timeline/projects/[entityId]/dismiss', () => {
 
   it('returns 400 when service rejects', async () => {
     dismissProjectMock.mockRejectedValue(new Error('boom'))
-    await expect(POST(event())).rejects.toMatchObject({ status: 400 })
+    expect((await POST(event())).status).toBe(400)
   })
 })

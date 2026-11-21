@@ -5,6 +5,7 @@ export class ContributeError extends Error {
     message: string,
   ) {
     super(message)
+    this.name = 'ContributeError'
   }
 }
 

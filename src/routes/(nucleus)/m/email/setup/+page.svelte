@@ -8,9 +8,11 @@
   import ManagedMailCard from '$lib/components/email/managed-mail-card.svelte'
   import MessageStatus from '$lib/components/email/message-status.svelte'
   import SesConnectForm from '$lib/components/email/ses-connect-form.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
 
   let { data, form }: PageProps = $props()
@@ -22,6 +24,10 @@
     form && form.action === action
       ? (form as { ok?: boolean; error?: string; sentTo?: string })
       : null
+  const addDomainError = $derived(shownErrorOf(feedback('addDomain')))
+  const testError = $derived(shownErrorOf(feedback('test')))
+  const eventsError = $derived(shownErrorOf(feedback('events')))
+  const receivingError = $derived(shownErrorOf(feedback('receiving')))
   let busy = $state<string | null>(null)
   let changingKeys = $state(false)
 
@@ -116,7 +122,8 @@
     }}
   >
     <label class="sr-only" for={`domain-name-${where}`}>Domain</label>
-    <Input dictation={false}
+    <Input
+      dictation={false}
       id={`domain-name-${where}`}
       name="name"
       required
@@ -132,10 +139,14 @@
       variant={where === 'step' ? 'default' : 'outline'}
       disabled={busy === 'addDomain'}
       data-testid={where === 'step' ? 'email-step-add-domain' : undefined}
-      >{busy === 'addDomain' ? 'Adding…' : where === 'step' ? 'Add domain' : 'Add another domain'}</Button
+      >{busy === 'addDomain'
+        ? 'Adding…'
+        : where === 'step'
+          ? 'Add domain'
+          : 'Add another domain'}</Button
     >
-    {#if feedback('addDomain')?.error}
-      <p class="w-full text-sm text-destructive" role="alert">{feedback('addDomain')?.error}</p>
+    {#if addDomainError}
+      <ErrorNotice {...addDomainError} class="w-full" />
     {/if}
   </form>
 {/snippet}
@@ -261,8 +272,8 @@
                     >See it in Logs</a
                   >
                 </p>
-              {:else if feedback('test')?.error}
-                <p class="mt-2 text-sm text-destructive" role="alert">{feedback('test')?.error}</p>
+              {:else if testError}
+                <ErrorNotice {...testError} class="mt-2" />
               {/if}
             {/if}
           </div>
@@ -323,7 +334,8 @@
           region={account.region}
           sender={account.sender}
           paused={account.managed.paused}
-          error={account.accountError}
+          error={account.accountError?.error ?? null}
+          agent={account.accountError?.agent ?? null}
         />
       {:else if account}
         <dl
@@ -361,9 +373,10 @@
                 > to mail anyone.
               </p>
             {/if}
-            {#if account.accountError}<p class="mt-1.5 text-xs text-destructive">
-                {account.accountError}
-              </p>{/if}
+            {#if account.accountError}<ErrorNotice
+                {...account.accountError}
+                class="mt-1.5 text-xs"
+              />{/if}
           </div>
         </dl>
 
@@ -374,12 +387,8 @@
         >
           <h3 class="font-medium">Delivery tracking</h3>
           <p class="mt-1 text-muted-foreground">{eventsCopy[account.events.status]}</p>
-          {#if account.events.error}<p class="mt-1 text-destructive" role="alert">
-              {account.events.error}
-            </p>{/if}
-          {#if feedback('events')?.error}<p class="mt-1 text-destructive" role="alert">
-              {feedback('events')?.error}
-            </p>{/if}
+          {#if account.events.error}<ErrorNotice {...account.events.error} class="mt-1" />{/if}
+          {#if eventsError}<ErrorNotice {...eventsError} class="mt-1" />{/if}
           {#if isAdmin && account.events.status !== 'ready'}
             <form method="POST" action="?/events" class="mt-2" use:enhance>
               <Button type="submit" size="sm" variant="outline">Set up again</Button>
@@ -395,16 +404,12 @@
           >
             <h3 class="font-medium">Receiving</h3>
             <p class="mt-1 text-muted-foreground">{receivingCopy[r.status]}</p>
-            {#if r.error}<p
-                class="mt-1 text-destructive"
-                role="alert"
-                data-testid="email-receiving-error"
-              >
-                {r.error}
-              </p>{/if}
-            {#if feedback('receiving')?.error}<p class="mt-1 text-destructive" role="alert">
-                {feedback('receiving')?.error}
-              </p>{/if}
+            {#if r.error}<ErrorNotice
+                {...r.error}
+                class="mt-1"
+                testid="email-receiving-error"
+              />{/if}
+            {#if receivingError}<ErrorNotice {...receivingError} class="mt-1" />{/if}
             {#if r.domains.length > 0}
               <ul class="mt-2 divide-y divide-border rounded-md border border-border">
                 {#each r.domains as d (d.id)}

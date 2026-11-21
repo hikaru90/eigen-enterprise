@@ -1,4 +1,25 @@
 import type { DraftFor, ExtractMode, NextUp, ShareTargets, SharingResult } from './types'
+import { shownErrorOf, type AgentReport } from '$lib/errors/agent-report'
+
+/**
+ * A contacts request the server refused: the plain sentence (`message`) and,
+ * when the server sent one, its agent report (for "Copy agent instructions").
+ */
+export class ContactsRequestError extends Error {
+  constructor(
+    message: string,
+    readonly agent: AgentReport | null = null,
+  ) {
+    super(message)
+    this.name = 'ContactsRequestError'
+  }
+}
+
+/** The server's `{ error, agent }`, or the status sentence when it sent none. */
+function refused(body: unknown, statusSentence: string): ContactsRequestError {
+  const shown = shownErrorOf(body)
+  return new ContactsRequestError(shown?.error ?? statusSentence, shown?.agent ?? null)
+}
 
 /** "Tell me about them" from the browser: the AI's reading of a description. Saves nothing. */
 
@@ -20,8 +41,9 @@ export const readDescription: ReadDescription = async (mode, text) => {
   } catch {
     throw new Error(`Contacts couldn’t read that (HTTP ${res.status}).`)
   }
-  if (!res.ok) throw new Error(typeof body?.error === 'string' ? body.error : `Contacts couldn’t read that (HTTP ${res.status}).`)
-  if (!body?.draft || typeof body.draft !== 'object') throw new Error('Contacts answered without a draft.')
+  if (!res.ok) throw refused(body, `Contacts couldn’t read that (HTTP ${res.status}).`)
+  if (!body?.draft || typeof body.draft !== 'object')
+    throw new Error('Contacts answered without a draft.')
   return body.draft as DraftFor<typeof mode>
 }
 
@@ -30,7 +52,9 @@ export const readDescription: ReadDescription = async (mode, text) => {
 export const CONTACTS_NEXT_UP_URL = '/api/contacts/next-up'
 
 /** The assistant's pick, or why there is none: `unavailable` = no AI provider set up (said plainly, no list). */
-export type NextUpResult = { ok: true; nextUp: NextUp } | { ok: false; unavailable: boolean; message: string }
+export type NextUpResult =
+  | { ok: true; nextUp: NextUp }
+  | { ok: false; unavailable: boolean; message: string; agent?: AgentReport | null }
 
 export type LoadNextUp = (refresh: boolean) => Promise<NextUpResult>
 
@@ -42,13 +66,23 @@ export const loadNextUp: LoadNextUp = async (refresh) => {
   try {
     body = JSON.parse(raw) as { nextUp?: NextUp; error?: unknown; code?: unknown }
   } catch {
-    return { ok: false, unavailable: false, message: `Couldn’t load suggestions (HTTP ${res.status}).` }
+    return {
+      ok: false,
+      unavailable: false,
+      message: `Couldn’t load suggestions (HTTP ${res.status}).`,
+    }
   }
   if (!res.ok) {
-    const message = typeof body?.error === 'string' ? body.error : `Couldn’t load suggestions (HTTP ${res.status}).`
-    return { ok: false, unavailable: body?.code === 'unavailable', message }
+    const why = refused(body, `Couldn’t load suggestions (HTTP ${res.status}).`)
+    return {
+      ok: false,
+      unavailable: body?.code === 'unavailable',
+      message: why.message,
+      agent: why.agent,
+    }
   }
-  if (!body?.nextUp || !Array.isArray(body.nextUp.items)) return { ok: false, unavailable: false, message: 'Contacts answered without suggestions.' }
+  if (!body?.nextUp || !Array.isArray(body.nextUp.items))
+    return { ok: false, unavailable: false, message: 'Contacts answered without suggestions.' }
   return { ok: true, nextUp: body.nextUp }
 }
 
@@ -56,7 +90,8 @@ export const loadNextUp: LoadNextUp = async (refresh) => {
 
 export const CONTACTS_SHARING_URL = '/api/contacts/sharing'
 
-export type SharingRequest = { action: 'share'; ids: string[]; targets: ShareTargets } | { action: 'private'; ids: string[] }
+export type SharingRequest =
+  { action: 'share'; ids: string[]; targets: ShareTargets } | { action: 'private'; ids: string[] }
 
 export type ChangeSharing = (request: SharingRequest) => Promise<SharingResult>
 
@@ -74,7 +109,8 @@ export const changeSharing: ChangeSharing = async (request) => {
   } catch {
     throw new Error(`Couldn’t change who sees them (HTTP ${res.status}).`)
   }
-  if (!res.ok) throw new Error(typeof body?.error === 'string' ? body.error : `Couldn’t change who sees them (HTTP ${res.status}).`)
-  if (!Array.isArray(body?.changed) || !Array.isArray(body?.skipped)) throw new Error('Contacts answered without a result.')
+  if (!res.ok) throw refused(body, `Couldn’t change who sees them (HTTP ${res.status}).`)
+  if (!Array.isArray(body?.changed) || !Array.isArray(body?.skipped))
+    throw new Error('Contacts answered without a result.')
   return { changed: body.changed, skipped: body.skipped }
 }

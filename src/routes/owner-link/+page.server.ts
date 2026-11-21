@@ -3,17 +3,29 @@ import { fail, redirect, type RequestEvent } from '@sveltejs/kit'
 import { asc, eq } from 'drizzle-orm'
 import { auth } from '$lib/server/auth'
 import { getSafeErrorMessage } from '$lib/server/auth-form-errors'
-import { ownerLinkConfigFromEnv, ownerLinkMessage, ownerLinkStatus, OwnerLinkError, signInWithOwnerLink } from '$lib/server/auth/owner-link'
+import {
+  ownerLinkConfigFromEnv,
+  ownerLinkMessage,
+  ownerLinkStatus,
+  OwnerLinkError,
+  signInWithOwnerLink,
+} from '$lib/server/auth/owner-link'
 import { signInHeaders } from '$lib/server/auth/sign-in-headers'
 import { authDb } from '$lib/server/db/auth-db'
 import { claimConsumed, user } from '$lib/server/db/auth.schema'
 import { env } from '$lib/server/env/private-env'
 import { foundingCompanyName } from '$lib/server/overview/sources'
+import { publicErrorReport } from '$lib/server/auth/public-error-report'
 
 /** Back in as the owner with the link `ee owner-link` printed (see $lib/server/auth/owner-link). */
 
 async function ownerEmail(): Promise<string | null> {
-  const [row] = await authDb.select({ email: user.email }).from(user).where(eq(user.role, 'owner')).orderBy(asc(user.createdAt)).limit(1)
+  const [row] = await authDb
+    .select({ email: user.email })
+    .from(user)
+    .where(eq(user.role, 'owner'))
+    .orderBy(asc(user.createdAt))
+    .limit(1)
   return row?.email ?? null
 }
 
@@ -21,17 +33,41 @@ const deps = (event?: Pick<RequestEvent, 'request' | 'getClientAddress'>) => ({
   config: ownerLinkConfigFromEnv(env),
   ownerEmail,
   isConsumed: async (tokenHash: string) =>
-    (await authDb.select({ h: claimConsumed.tokenHash }).from(claimConsumed).where(eq(claimConsumed.tokenHash, tokenHash)).limit(1)).length > 0,
+    (
+      await authDb
+        .select({ h: claimConsumed.tokenHash })
+        .from(claimConsumed)
+        .where(eq(claimConsumed.tokenHash, tokenHash))
+        .limit(1)
+    ).length > 0,
   consume: async (tokenHash: string) =>
-    (await authDb.insert(claimConsumed).values({ tokenHash }).onConflictDoNothing().returning({ h: claimConsumed.tokenHash })).length === 1,
-  createCode: async (email: string) => auth.api.createVerificationOTP({ body: { email, type: 'sign-in' } }),
-  signIn: async (email: string, code: string) => auth.api.signInEmailOTP({ body: { email, otp: code }, ...(event ? { headers: signInHeaders(event) } : {}) }),
+    (
+      await authDb
+        .insert(claimConsumed)
+        .values({ tokenHash })
+        .onConflictDoNothing()
+        .returning({ h: claimConsumed.tokenHash })
+    ).length === 1,
+  createCode: async (email: string) =>
+    auth.api.createVerificationOTP({ body: { email, type: 'sign-in' } }),
+  signIn: async (email: string, code: string) =>
+    auth.api.signInEmailOTP({
+      body: { email, otp: code },
+      ...(event ? { headers: signInHeaders(event) } : {}),
+    }),
 })
 
 export const load: PageServerLoad = async (event) => {
   // Signed in again: a passkey now, so the next sign-out doesn't need this link again.
   if (event.locals.user && event.url.searchParams.get('step') === 'passkey') {
-    return { step: 'passkey' as const, token: '', ok: true, message: null, email: event.locals.user.email, companyName: await foundingCompanyName() }
+    return {
+      step: 'passkey' as const,
+      token: '',
+      ok: true,
+      message: null,
+      email: event.locals.user.email,
+      companyName: await foundingCompanyName(),
+    }
   }
   const token = event.url.searchParams.get('token') ?? ''
   const d = deps()
@@ -53,7 +89,19 @@ export const actions: Actions = {
     try {
       await signInWithOwnerLink(token, deps(event))
     } catch (err) {
-      return fail(400, { message: err instanceof OwnerLinkError ? err.message : getSafeErrorMessage(err, 'Signing in failed') })
+      const message =
+        err instanceof OwnerLinkError ? err.message : getSafeErrorMessage(err, 'Signing in failed')
+      if (!(err instanceof OwnerLinkError))
+        console.error('[owner-link] signing in with the owner link failed', err)
+      // Signed-out surface: the agent half never carries the link token or the owner's email.
+      const { agent } = publicErrorReport(message, {
+        attempted: 'Signing in as the owner with the `ee owner-link` link (/owner-link)',
+        err,
+        nextSteps: [
+          'signInWithOwnerLink (src/lib/server/auth/owner-link.ts) refused or failed. An OwnerLinkError is a plain refusal (link used or expired): print a new one with `ee owner-link` on the server. Anything else is in the server journal.',
+        ],
+      })
+      return fail(400, { message, agent })
     }
     throw redirect(303, '/owner-link?step=passkey')
   },

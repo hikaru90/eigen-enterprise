@@ -134,7 +134,10 @@ describe('/m/memory ?/deleteTask', () => {
     })
     expect(await post({ id: 'u1' }, 'tR')).toMatchObject({
       status: 409,
-      data: { message: expect.stringContaining('Roadmap') },
+      data: {
+        error: expect.stringContaining('Roadmap'),
+        agent: { attempted: 'Deleting a task on /m/memory', input: { thoughtId: 'tR' } },
+      },
     })
   })
 })

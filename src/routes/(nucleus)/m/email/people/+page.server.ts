@@ -6,7 +6,12 @@ import {
   liveContactsDeps,
   personActor,
 } from '../../../../../../modules/contacts/http'
-import { listContacts, logContact, normaliseTag, shareChoices } from '../../../../../../modules/contacts/service'
+import {
+  listContacts,
+  logContact,
+  normaliseTag,
+  shareChoices,
+} from '../../../../../../modules/contacts/service'
 
 /**
  * /m/email/people: the people you know — every contact you may see, filtered

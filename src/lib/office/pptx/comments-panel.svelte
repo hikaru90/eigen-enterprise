@@ -8,6 +8,7 @@
   import MapPinIcon from '@lucide/svelte/icons/map-pin'
   import MessageSquarePlusIcon from '@lucide/svelte/icons/message-square-plus'
   import XIcon from '@lucide/svelte/icons/x'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import DictationField from '$lib/voice/dictation-field.svelte'
   import { anchorName } from './comment-view'
@@ -90,7 +91,9 @@
   function when(iso: string | null): string {
     if (!iso) return ''
     const d = new Date(iso)
-    return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+    return Number.isNaN(d.getTime())
+      ? iso
+      : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
   }
 
   async function run(fn: () => Promise<boolean>, after: () => void) {
@@ -167,22 +170,55 @@
     {@attach focused === t.id ? reveal : undefined}
   >
     <div class="flex items-baseline gap-1.5">
-      <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-amber-300 text-xs font-semibold text-amber-950" aria-hidden="true">{n}</span>
+      <span
+        class="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-amber-300 text-xs font-semibold text-amber-950"
+        aria-hidden="true">{n}</span
+      >
       <span class="font-medium" data-testid="pptx-thread-author">{who(t.author)}</span>
       <span class="text-xs text-muted-foreground">{when(t.created)}</span>
     </div>
     <div class="mt-1 flex flex-wrap gap-1 text-xs text-muted-foreground">
-      {#if t.status === 'resolved'}<span class="rounded-full border px-1.5" data-testid="pptx-thread-resolved">Resolved</span>{/if}
+      {#if t.status === 'resolved'}<span
+          class="rounded-full border px-1.5"
+          data-testid="pptx-thread-resolved">Resolved</span
+        >{/if}
       {#if t.status === 'closed'}<span class="rounded-full border px-1.5">Closed</span>{/if}
-      {#if t.anchor.kind === 'shape'}<span class="rounded-full border px-1.5">On {on ? `“${on}”` : `shape ${t.anchor.shape} (no longer on the slide)`}</span>{/if}
-      {#if t.anchor.kind === 'text'}<span class="rounded-full border px-1.5">On text in {on ? `“${on}”` : `shape ${t.anchor.shape} (no longer on the slide)`}</span>{/if}
-      {#if legacy}<span class="rounded-full border border-amber-400 px-1.5 text-amber-800 dark:text-amber-300" data-testid="pptx-thread-legacy">Older-format comment, read-only</span>{/if}
+      {#if t.anchor.kind === 'shape'}<span class="rounded-full border px-1.5"
+          >On {on ? `“${on}”` : `shape ${t.anchor.shape} (no longer on the slide)`}</span
+        >{/if}
+      {#if t.anchor.kind === 'text'}<span class="rounded-full border px-1.5"
+          >On text in {on ? `“${on}”` : `shape ${t.anchor.shape} (no longer on the slide)`}</span
+        >{/if}
+      {#if legacy}<span
+          class="rounded-full border border-amber-400 px-1.5 text-amber-800 dark:text-amber-300"
+          data-testid="pptx-thread-legacy">Older-format comment, read-only</span
+        >{/if}
     </div>
     {#if editing === t.id}
-      <DictationField field={editEl} kind="textarea" testid="pptx-comment-edit-text-voice" class="mt-1.5"><textarea bind:this={editEl} class="block min-h-14 w-full rounded-md border bg-background px-2 py-1 text-sm pr-10" aria-label="Edit comment" bind:value={editText} onkeydown={(e) => onComposerKey(e, () => saveEdit(slide, t, null))} data-testid="pptx-comment-edit-text"></textarea></DictationField>
+      <DictationField
+        field={editEl}
+        kind="textarea"
+        testid="pptx-comment-edit-text-voice"
+        class="mt-1.5"
+        ><textarea
+          bind:this={editEl}
+          class="block min-h-14 w-full rounded-md border bg-background px-2 py-1 text-sm pr-10"
+          aria-label="Edit comment"
+          bind:value={editText}
+          onkeydown={(e) => onComposerKey(e, () => saveEdit(slide, t, null))}
+          data-testid="pptx-comment-edit-text"></textarea></DictationField
+      >
       <div class="mt-1 flex gap-1.5">
-        <Button size="sm" class="h-7" disabled={busy || !editText.trim()} onclick={() => saveEdit(slide, t, null)} data-testid="pptx-comment-save">Save</Button>
-        <Button size="sm" variant="ghost" class="h-7" onclick={() => (editing = null)}>Cancel</Button>
+        <Button
+          size="sm"
+          class="h-7"
+          disabled={busy || !editText.trim()}
+          onclick={() => saveEdit(slide, t, null)}
+          data-testid="pptx-comment-save">Save</Button
+        >
+        <Button size="sm" variant="ghost" class="h-7" onclick={() => (editing = null)}
+          >Cancel</Button
+        >
       </div>
     {:else}
       <p class="mt-1 whitespace-pre-wrap" data-testid="pptx-thread-text">{t.text}</p>
@@ -196,17 +232,52 @@
               <span class="text-xs text-muted-foreground">{when(r.created)}</span>
             </div>
             {#if editing === `${t.id}/${r.id}`}
-              <DictationField field={editEl} kind="textarea" testid="pptx-comment-edit-text-voice" class="mt-1"><textarea bind:this={editEl} class="block min-h-12 w-full rounded-md border bg-background px-2 py-1 text-sm pr-10" aria-label="Edit reply" bind:value={editText} onkeydown={(e) => onComposerKey(e, () => saveEdit(slide, t, r.id))} data-testid="pptx-comment-edit-text"></textarea></DictationField>
+              <DictationField
+                field={editEl}
+                kind="textarea"
+                testid="pptx-comment-edit-text-voice"
+                class="mt-1"
+                ><textarea
+                  bind:this={editEl}
+                  class="block min-h-12 w-full rounded-md border bg-background px-2 py-1 text-sm pr-10"
+                  aria-label="Edit reply"
+                  bind:value={editText}
+                  onkeydown={(e) => onComposerKey(e, () => saveEdit(slide, t, r.id))}
+                  data-testid="pptx-comment-edit-text"></textarea></DictationField
+              >
               <div class="mt-1 flex gap-1.5">
-                <Button size="sm" class="h-7" disabled={busy || !editText.trim()} onclick={() => saveEdit(slide, t, r.id)} data-testid="pptx-comment-save">Save</Button>
-                <Button size="sm" variant="ghost" class="h-7" onclick={() => (editing = null)}>Cancel</Button>
+                <Button
+                  size="sm"
+                  class="h-7"
+                  disabled={busy || !editText.trim()}
+                  onclick={() => saveEdit(slide, t, r.id)}
+                  data-testid="pptx-comment-save">Save</Button
+                >
+                <Button size="sm" variant="ghost" class="h-7" onclick={() => (editing = null)}
+                  >Cancel</Button
+                >
               </div>
             {:else}
               <p class="text-sm whitespace-pre-wrap" data-testid="pptx-reply-text">{r.text}</p>
               {#if canComment && !legacy && mine(r.author)}
                 <div class="flex gap-2 text-xs">
-                  <button type="button" class="text-muted-foreground hover:text-foreground" onclick={() => startEdit(`${t.id}/${r.id}`, r.text)} data-testid="pptx-reply-edit">Edit</button>
-                  <button type="button" class="text-destructive hover:underline" disabled={busy} onclick={() => void run(() => ondelete(slide.part, t.id, r.id), () => {})} data-testid="pptx-reply-delete">Delete</button>
+                  <button
+                    type="button"
+                    class="text-muted-foreground hover:text-foreground"
+                    onclick={() => startEdit(`${t.id}/${r.id}`, r.text)}
+                    data-testid="pptx-reply-edit">Edit</button
+                  >
+                  <button
+                    type="button"
+                    class="text-destructive hover:underline"
+                    disabled={busy}
+                    onclick={() =>
+                      void run(
+                        () => ondelete(slide.part, t.id, r.id),
+                        () => {},
+                      )}
+                    data-testid="pptx-reply-delete">Delete</button
+                  >
                 </div>
               {/if}
             {/if}
@@ -215,29 +286,94 @@
       </ol>
     {/if}
     {#if scope === 'all'}
-      <button type="button" class="mt-1.5 text-xs text-primary hover:underline" onclick={() => {
+      <button
+        type="button"
+        class="mt-1.5 text-xs text-primary hover:underline"
+        onclick={() => {
           scope = 'slide'
           onjump(index, t.id)
         }}
-        data-testid="pptx-thread-jump">Go to slide {index + 1}</button>
+        data-testid="pptx-thread-jump">Go to slide {index + 1}</button
+      >
     {:else if canComment && !legacy}
       {#if replyFor === t.id}
-        <DictationField field={replyEl} kind="textarea" testid="pptx-reply-text-input-voice" class="mt-2"><textarea bind:this={replyEl} class="block min-h-12 w-full rounded-md border bg-background px-2 py-1 text-sm pr-10" aria-label="Reply" placeholder="Reply" bind:value={replyText} onkeydown={(e) => onComposerKey(e, () => sendReply(slide, t))} data-testid="pptx-reply-text-input"></textarea></DictationField>
+        <DictationField
+          field={replyEl}
+          kind="textarea"
+          testid="pptx-reply-text-input-voice"
+          class="mt-2"
+          ><textarea
+            bind:this={replyEl}
+            class="block min-h-12 w-full rounded-md border bg-background px-2 py-1 text-sm pr-10"
+            aria-label="Reply"
+            placeholder="Reply"
+            bind:value={replyText}
+            onkeydown={(e) => onComposerKey(e, () => sendReply(slide, t))}
+            data-testid="pptx-reply-text-input"></textarea></DictationField
+        >
         <div class="mt-1 flex gap-1.5">
-          <Button size="sm" class="h-7" disabled={busy || !replyText.trim()} onclick={() => sendReply(slide, t)} data-testid="pptx-reply-send">Reply</Button>
-          <Button size="sm" variant="ghost" class="h-7" onclick={() => (replyFor = null)}>Cancel</Button>
+          <Button
+            size="sm"
+            class="h-7"
+            disabled={busy || !replyText.trim()}
+            onclick={() => sendReply(slide, t)}
+            data-testid="pptx-reply-send">Reply</Button
+          >
+          <Button size="sm" variant="ghost" class="h-7" onclick={() => (replyFor = null)}
+            >Cancel</Button
+          >
         </div>
       {:else}
         <div class="mt-2 flex flex-wrap gap-3 text-xs">
-          <button type="button" class="text-muted-foreground hover:text-foreground" onclick={() => startReply(t.id)} data-testid="pptx-thread-reply">Reply</button>
+          <button
+            type="button"
+            class="text-muted-foreground hover:text-foreground"
+            onclick={() => startReply(t.id)}
+            data-testid="pptx-thread-reply">Reply</button
+          >
           {#if t.status === 'resolved'}
-            <button type="button" class="text-muted-foreground hover:text-foreground" disabled={busy} onclick={() => void run(() => onstatus(slide.part, t.id, 'active'), () => {})} data-testid="pptx-thread-reopen">Reopen</button>
+            <button
+              type="button"
+              class="text-muted-foreground hover:text-foreground"
+              disabled={busy}
+              onclick={() =>
+                void run(
+                  () => onstatus(slide.part, t.id, 'active'),
+                  () => {},
+                )}
+              data-testid="pptx-thread-reopen">Reopen</button
+            >
           {:else}
-            <button type="button" class="text-muted-foreground hover:text-foreground" disabled={busy} onclick={() => void run(() => onstatus(slide.part, t.id, 'resolved'), () => {})} data-testid="pptx-thread-resolve">Resolve</button>
+            <button
+              type="button"
+              class="text-muted-foreground hover:text-foreground"
+              disabled={busy}
+              onclick={() =>
+                void run(
+                  () => onstatus(slide.part, t.id, 'resolved'),
+                  () => {},
+                )}
+              data-testid="pptx-thread-resolve">Resolve</button
+            >
           {/if}
           {#if mine(t.author)}
-            <button type="button" class="text-muted-foreground hover:text-foreground" onclick={() => startEdit(t.id, t.text)} data-testid="pptx-thread-edit">Edit</button>
-            <button type="button" class="text-destructive hover:underline" disabled={busy} onclick={() => void run(() => ondelete(slide.part, t.id, null), () => {})} data-testid="pptx-thread-delete">Delete</button>
+            <button
+              type="button"
+              class="text-muted-foreground hover:text-foreground"
+              onclick={() => startEdit(t.id, t.text)}
+              data-testid="pptx-thread-edit">Edit</button
+            >
+            <button
+              type="button"
+              class="text-destructive hover:underline"
+              disabled={busy}
+              onclick={() =>
+                void run(
+                  () => ondelete(slide.part, t.id, null),
+                  () => {},
+                )}
+              data-testid="pptx-thread-delete">Delete</button
+            >
           {/if}
         </div>
       {/if}
@@ -247,27 +383,71 @@
 
 {#snippet notes(slide: Slide)}
   {#if slide.comments.legacyIgnored}
-    <p class="rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200" data-testid="pptx-legacy-ignored">
-      This slide also has {slide.comments.legacyIgnored} older-format comment{slide.comments.legacyIgnored === 1 ? '' : 's'}. Its threaded comments replace them, as in PowerPoint, so they are kept in the file but not shown.
+    <p
+      class="rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+      data-testid="pptx-legacy-ignored"
+    >
+      This slide also has {slide.comments.legacyIgnored} older-format comment{slide.comments
+        .legacyIgnored === 1
+        ? ''
+        : 's'}. Its threaded comments replace them, as in PowerPoint, so they are kept in the file
+      but not shown.
     </p>
   {/if}
   {#if slide.comments.error && slide.comments.error !== deckError}
-    <p class="text-xs text-destructive" role="alert" data-testid="pptx-comments-error">{slide.comments.error}</p>
+    <ErrorNotice
+      class="text-xs"
+      testid="pptx-comments-error"
+      error={slide.comments.error}
+      attempted="Reading this slide’s comments from the presentation file in the browser"
+    />
   {/if}
 {/snippet}
 
-<aside class="flex w-72 shrink-0 flex-col border-l" aria-label="Comments" data-testid="pptx-comments">
+<aside
+  class="flex w-72 shrink-0 flex-col border-l"
+  aria-label="Comments"
+  data-testid="pptx-comments"
+>
   <div class="flex items-center gap-1 border-b px-2 py-1.5">
-    <div class="flex gap-0.5 rounded-md bg-muted p-0.5 text-xs" role="tablist" aria-label="Which comments">
-      <button type="button" role="tab" aria-selected={scope === 'slide'} class={`rounded px-2 py-0.5 ${scope === 'slide' ? 'bg-background shadow-sm' : ''}`} onclick={() => (scope = 'slide')} data-testid="pptx-comments-slide">This slide</button>
-      <button type="button" role="tab" aria-selected={scope === 'all'} class={`rounded px-2 py-0.5 ${scope === 'all' ? 'bg-background shadow-sm' : ''}`} onclick={() => (scope = 'all')} data-testid="pptx-comments-all">All slides ({total})</button>
+    <div
+      class="flex gap-0.5 rounded-md bg-muted p-0.5 text-xs"
+      role="tablist"
+      aria-label="Which comments"
+    >
+      <button
+        type="button"
+        role="tab"
+        aria-selected={scope === 'slide'}
+        class={`rounded px-2 py-0.5 ${scope === 'slide' ? 'bg-background shadow-sm' : ''}`}
+        onclick={() => (scope = 'slide')}
+        data-testid="pptx-comments-slide">This slide</button
+      >
+      <button
+        type="button"
+        role="tab"
+        aria-selected={scope === 'all'}
+        class={`rounded px-2 py-0.5 ${scope === 'all' ? 'bg-background shadow-sm' : ''}`}
+        onclick={() => (scope = 'all')}
+        data-testid="pptx-comments-all">All slides ({total})</button
+      >
     </div>
-    <button type="button" class="ml-auto rounded p-1 text-muted-foreground hover:text-foreground" aria-label="Close comments" onclick={onclose}><XIcon class="size-3.5" aria-hidden="true" /></button>
+    <button
+      type="button"
+      class="ml-auto rounded p-1 text-muted-foreground hover:text-foreground"
+      aria-label="Close comments"
+      onclick={onclose}><XIcon class="size-3.5" aria-hidden="true" /></button
+    >
   </div>
 
   <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
     {#if deckError}
-      <p class="text-xs text-destructive" role="alert" data-testid="pptx-comments-error">{deckError}</p>
+      <ErrorNotice
+        class="text-xs"
+        testid="pptx-comments-error"
+        error={deckError}
+        attempted="Reading or changing the presentation’s comments"
+      />
     {/if}
     {#if offReason}
       <p class="text-xs text-muted-foreground" data-testid="pptx-comments-off">{offReason}</p>
@@ -277,43 +457,107 @@
       {#if canComment}
         {#if pending}
           <div class="rounded-md border border-primary p-2" data-testid="pptx-comment-composer">
-            <p class="mb-1 text-xs text-muted-foreground" data-testid="pptx-comment-where">{pending.label}</p>
+            <p class="mb-1 text-xs text-muted-foreground" data-testid="pptx-comment-where">
+              {pending.label}
+            </p>
             <!-- svelte-ignore a11y_autofocus -->
-            <DictationField field={draftEl} kind="textarea" testid="pptx-comment-text-voice"><textarea bind:this={draftEl} class="block min-h-16 w-full rounded-md border bg-background px-2 py-1 text-sm pr-10" aria-label="New comment" placeholder="Write a comment" autofocus bind:value={draft} onkeydown={(e) => onComposerKey(e, post)} data-testid="pptx-comment-text"></textarea></DictationField>
+            <DictationField field={draftEl} kind="textarea" testid="pptx-comment-text-voice"
+              ><textarea
+                bind:this={draftEl}
+                class="block min-h-16 w-full rounded-md border bg-background px-2 py-1 text-sm pr-10"
+                aria-label="New comment"
+                placeholder="Write a comment"
+                autofocus
+                bind:value={draft}
+                onkeydown={(e) => onComposerKey(e, post)}
+                data-testid="pptx-comment-text"></textarea></DictationField
+            >
             <div class="mt-1 flex gap-1.5">
-              <Button size="sm" class="h-7" disabled={busy || !draft.trim()} onclick={post} data-testid="pptx-comment-post">Comment</Button>
-              <Button size="sm" variant="ghost" class="h-7" onclick={cancelPending} data-testid="pptx-comment-cancel">Cancel</Button>
+              <Button
+                size="sm"
+                class="h-7"
+                disabled={busy || !draft.trim()}
+                onclick={post}
+                data-testid="pptx-comment-post">Comment</Button
+              >
+              <Button
+                size="sm"
+                variant="ghost"
+                class="h-7"
+                onclick={cancelPending}
+                data-testid="pptx-comment-cancel">Cancel</Button
+              >
             </div>
           </div>
         {:else if placing}
-          <p class="rounded-md border border-dashed px-2 py-1.5 text-xs" data-testid="pptx-comment-placing">
-            Click the slide where the comment goes. <button type="button" class="text-primary hover:underline" onclick={oncancel}>Cancel</button>
+          <p
+            class="rounded-md border border-dashed px-2 py-1.5 text-xs"
+            data-testid="pptx-comment-placing"
+          >
+            Click the slide where the comment goes. <button
+              type="button"
+              class="text-primary hover:underline"
+              onclick={oncancel}>Cancel</button
+            >
           </p>
         {:else}
           <div class="flex flex-wrap gap-1.5">
-            <Button size="sm" variant="outline" class="h-7 text-xs" onclick={() => onstart('slide')} data-testid="pptx-comment-new"><MessageSquarePlusIcon class="size-3.5" aria-hidden="true" /> Comment on slide</Button>
-            <Button size="sm" variant="outline" class="h-7 text-xs" onclick={() => onstart('point')} data-testid="pptx-comment-point"><MapPinIcon class="size-3.5" aria-hidden="true" /> At a point</Button>
+            <Button
+              size="sm"
+              variant="outline"
+              class="h-7 text-xs"
+              onclick={() => onstart('slide')}
+              data-testid="pptx-comment-new"
+              ><MessageSquarePlusIcon class="size-3.5" aria-hidden="true" /> Comment on slide</Button
+            >
+            <Button
+              size="sm"
+              variant="outline"
+              class="h-7 text-xs"
+              onclick={() => onstart('point')}
+              data-testid="pptx-comment-point"
+              ><MapPinIcon class="size-3.5" aria-hidden="true" /> At a point</Button
+            >
             {#if selectedShape}
-              <Button size="sm" variant="outline" class="h-7 text-xs" onclick={() => onstart('shape')} data-testid="pptx-comment-shape">On “{selectedShape.name}”</Button>
+              <Button
+                size="sm"
+                variant="outline"
+                class="h-7 text-xs"
+                onclick={() => onstart('shape')}
+                data-testid="pptx-comment-shape">On “{selectedShape.name}”</Button
+              >
             {/if}
           </div>
         {/if}
       {/if}
       {@render notes(here)}
       {#if here.comments.threads.length === 0}
-        <p class="text-xs text-muted-foreground" data-testid="pptx-comments-none">No comments on this slide.</p>
+        <p class="text-xs text-muted-foreground" data-testid="pptx-comments-none">
+          No comments on this slide.
+        </p>
       {:else}
         <ol class="flex flex-col gap-2" aria-label={`Comments on slide ${current + 1}`}>
-          {#each here.comments.threads as t, n (t.id)}{@render thread(here, current, t, n + 1)}{/each}
+          {#each here.comments.threads as t, n (t.id)}{@render thread(
+              here,
+              current,
+              t,
+              n + 1,
+            )}{/each}
         </ol>
       {/if}
     {:else if scope === 'all'}
       {#if total === 0}
-        <p class="text-xs text-muted-foreground" data-testid="pptx-comments-none">No comments in this presentation.</p>
+        <p class="text-xs text-muted-foreground" data-testid="pptx-comments-none">
+          No comments in this presentation.
+        </p>
       {/if}
       {#each slides as s, i (s.part)}
         {#if s.comments.threads.length || s.comments.legacyIgnored || (s.comments.error && s.comments.error !== deckError)}
-          <section class="flex flex-col gap-2" aria-label={`Slide ${i + 1}`} data-testid="pptx-comments-group">
+          <section
+            class="flex flex-col gap-2"
+            aria-label={`Slide ${i + 1}`}
+            data-testid="pptx-comments-group"
+          >
             <h3 class="text-xs font-medium text-muted-foreground">Slide {i + 1}</h3>
             {@render notes(s)}
             <ol class="flex flex-col gap-2">

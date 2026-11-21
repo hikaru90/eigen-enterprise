@@ -9,11 +9,7 @@ vi.mock('$lib/server/memory/project-review', () => ({
   applyProjectReview: applyProjectReviewMock,
 }))
 
-function makeEvent(input: {
-  userId?: string | null
-  entityId?: string
-  body?: unknown
-}) {
+function makeEvent(input: { userId?: string | null; entityId?: string; body?: unknown }) {
   return {
     locals: { user: input.userId ? { id: input.userId } : null },
     params: { entityId: input.entityId ?? 'p1' },
@@ -29,7 +25,7 @@ describe('POST /api/timeline/projects/[entityId]/review/apply', () => {
   })
 
   it('returns 401 when unauthenticated', async () => {
-    await expect(POST(makeEvent({ userId: null }))).rejects.toMatchObject({ status: 401 })
+    expect((await POST(makeEvent({ userId: null }))).status).toBe(401)
   })
 
   it('applies the confirmed subset', async () => {

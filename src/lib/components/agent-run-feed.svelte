@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { FeedLine, FeedState, RunConnection } from '$lib/agent-runs/feed'
   import { Badge } from '$lib/components/ui/badge'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
 
   /** The D8 live feed of one durable run (pure render of the folded feed state). */
   let { feed, connection }: { feed: FeedState; connection: RunConnection } = $props()
@@ -61,19 +62,25 @@
           {line.text}
         </li>
       {:else if line.kind === 'error'}
-        <li class="px-4 py-2.5 text-sm text-destructive" data-testid="run-feed-error">
-          <span class="mr-2 text-xs">Error</span>
-          <span class="break-words whitespace-pre-wrap">{line.text}</span>
-          {#if line.detail}
-            <details
-              class="mt-1 text-xs text-muted-foreground"
-              data-testid="run-feed-error-details"
-            >
-              <summary class="cursor-pointer">Details</summary>
-              <code class="mt-1 block font-mono break-words whitespace-pre-wrap">{line.detail}</code
-              >
-            </details>
-          {/if}
+        <li class="px-4 py-2.5" data-testid="run-feed-error">
+          <ErrorNotice
+            class="break-words whitespace-pre-wrap"
+            error={line.text}
+            agent={{
+              attempted: 'Running an agent (the live run feed)',
+              ...(line.detail ? { cause: line.detail } : {}),
+              nextSteps: [],
+            }}
+          >
+            {#if line.detail}
+              <details class="text-xs text-muted-foreground" data-testid="run-feed-error-details">
+                <summary class="cursor-pointer">Details</summary>
+                <code class="mt-1 block font-mono break-words whitespace-pre-wrap"
+                  >{line.detail}</code
+                >
+              </details>
+            {/if}
+          </ErrorNotice>
         </li>
       {:else if line.kind === 'user'}
         <li class="px-4 py-2.5 text-sm" data-testid="run-feed-user">

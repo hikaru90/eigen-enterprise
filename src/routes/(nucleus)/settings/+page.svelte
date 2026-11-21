@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { PageProps } from './$types'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import LogOut from '@lucide/svelte/icons/log-out'
@@ -61,9 +62,16 @@
   <section class="space-y-4 rounded-lg border border-border p-4" data-testid="settings-profile">
     <div>
       <h3 class="text-sm font-medium">Profile</h3>
-      <p class="text-xs text-foreground/60">Your name and picture, as everyone in the company sees them.</p>
+      <p class="text-xs text-foreground/60">
+        Your name and picture, as everyone in the company sees them.
+      </p>
     </div>
-    <ProfileEditor profile={data.profile} submitLabel="Save profile" onsaved={() => invalidateAll()} onpicture={() => invalidateAll()} />
+    <ProfileEditor
+      profile={data.profile}
+      submitLabel="Save profile"
+      onsaved={() => invalidateAll()}
+      onpicture={() => invalidateAll()}
+    />
   </section>
 
   <PushDevices devices={data.pushDevices} onchanged={() => invalidateAll()} />
@@ -110,13 +118,24 @@
       <div class="w-full space-y-1.5 text-xs" role="alert" data-testid="sign-out-lockout">
         <p class="text-destructive">{lockout}</p>
         <p class="flex gap-3">
-          <a href={resolve('/settings/passkeys')} class="underline underline-offset-4">Add a passkey</a>
-          <button type="button" class="underline underline-offset-4" onclick={() => void signOut(true)} data-testid="sign-out-anyway">Sign out anyway</button>
+          <a href={resolve('/settings/passkeys')} class="underline underline-offset-4"
+            >Add a passkey</a
+          >
+          <button
+            type="button"
+            class="underline underline-offset-4"
+            onclick={() => void signOut(true)}
+            data-testid="sign-out-anyway">Sign out anyway</button
+          >
         </p>
       </div>
     {/if}
     {#if signOutError}
-      <p class="w-full text-xs text-destructive" role="alert">{signOutError}</p>
+      <ErrorNotice
+        class="w-full text-xs"
+        error={signOutError}
+        attempted="Signing out from Settings (POST /api/session/sign-out)"
+      />
     {/if}
   </div>
 </div>

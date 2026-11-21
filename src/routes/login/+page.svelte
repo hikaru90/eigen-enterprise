@@ -8,6 +8,7 @@
   import { authClient } from '$lib/auth-client'
   import AuthCodeStep from '$lib/components/auth-code-step.svelte'
   import AuthSocialButtons from '$lib/components/auth-social-buttons.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
   import { Label } from '$lib/components/ui/label'
@@ -63,12 +64,17 @@
           email={form.email}
           message={'notice' in form ? form.notice : undefined}
           error={'message' in form ? form.message : undefined}
+          agent={'agent' in form ? form.agent : null}
         />
       {:else}
         {#if data.socialProviders.length > 0}
           <AuthSocialButtons providers={data.socialProviders} />
           {#if data.oauthError}
-            <p class="text-destructive text-xs">{data.oauthError}</p>
+            <ErrorNotice
+              class="text-xs"
+              error={data.oauthError}
+              attempted="Signing in with Google or GitHub (the provider sent the visitor back with an error)"
+            />
           {/if}
           <div class="relative py-1">
             <div class="border-t border-black/10" aria-hidden="true"></div>
@@ -105,7 +111,12 @@
           </div>
           <Button type="submit" class="w-full rounded-[4px]">Send code</Button>
           {#if form && 'message' in form && form.message}
-            <p class="text-destructive text-xs">{form.message}</p>
+            <ErrorNotice
+              class="text-xs"
+              error={form.message}
+              agent={'agent' in form ? form.agent : null}
+              attempted="Sending a sign-in code by email"
+            />
           {/if}
         </form>
 
@@ -119,7 +130,11 @@
           {passkeyBusy ? 'Waiting for your passkey…' : 'Sign in with a passkey'}
         </Button>
         {#if passkeyError}
-          <p class="text-destructive text-xs">{passkeyError}</p>
+          <ErrorNotice
+            class="text-xs"
+            error={passkeyError}
+            attempted="Signing in with a passkey (browser WebAuthn prompt)"
+          />
         {/if}
 
         {#if data.signupOpen}

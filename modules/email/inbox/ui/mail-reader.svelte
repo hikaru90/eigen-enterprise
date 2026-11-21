@@ -10,7 +10,9 @@
   import ReplyAll from '@lucide/svelte/icons/reply-all'
   import Star from '@lucide/svelte/icons/star'
   import { enhance } from '$app/forms'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
+  import type { AgentReport } from '$lib/errors/agent-report'
   import { FOLDER_LABELS } from '../view'
   import { fileSize, fullWhen, moveActions, personFull, personLabel } from './display'
 
@@ -28,6 +30,7 @@
     submit,
     busy = false,
     error = null,
+    agent = null,
     compose = null,
     extra,
   }: {
@@ -37,6 +40,8 @@
     submit: SubmitFunction
     busy?: boolean
     error?: string | null
+    /** The server's agent report for `error` ("Copy agent instructions"). */
+    agent?: AgentReport | null
     /** Reply / Reply all / Forward of the opened mail (S5); null when nothing can be sent from here. */
     compose?: { reply: string; replyAll: string; forward: string } | null
     /** More actions after the built-in ones (the page's label picker). */
@@ -60,13 +65,21 @@
   <form method="POST" action={`?/${action}`} use:enhance={submit}>
     <input type="hidden" name="messageId" value={reader.id} />
     <Button type="submit" size="sm" variant="outline" disabled={busy} data-testid={testid}>
-      {#if icon}<Star class={action === 'unstar' ? 'fill-current text-amber-500' : ''} aria-hidden="true" />{/if}
+      {#if icon}<Star
+          class={action === 'unstar' ? 'fill-current text-amber-500' : ''}
+          aria-hidden="true"
+        />{/if}
       {label}
     </Button>
   </form>
 {/snippet}
 
-<article class="flex min-w-0 flex-col" aria-labelledby="inbox-reader-heading" data-testid="inbox-reader" data-message-id={reader.id}>
+<article
+  class="flex min-w-0 flex-col"
+  aria-labelledby="inbox-reader-heading"
+  data-testid="inbox-reader"
+  data-message-id={reader.id}
+>
   <div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
     <a
       href={backHref}
@@ -75,15 +88,27 @@
     >
     <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Actions for this mail">
       {#if compose}
-        <a href={compose.reply} class={linkClass} data-testid="inbox-reply"><Reply class="size-4" aria-hidden="true" />Reply</a>
-        <a href={compose.replyAll} class={linkClass} data-testid="inbox-reply-all"><ReplyAll class="size-4" aria-hidden="true" />Reply all</a>
-        <a href={compose.forward} class={linkClass} data-testid="inbox-forward"><Forward class="size-4" aria-hidden="true" />Forward</a>
+        <a href={compose.reply} class={linkClass} data-testid="inbox-reply"
+          ><Reply class="size-4" aria-hidden="true" />Reply</a
+        >
+        <a href={compose.replyAll} class={linkClass} data-testid="inbox-reply-all"
+          ><ReplyAll class="size-4" aria-hidden="true" />Reply all</a
+        >
+        <a href={compose.forward} class={linkClass} data-testid="inbox-forward"
+          ><Forward class="size-4" aria-hidden="true" />Forward</a
+        >
       {/if}
       {#each moves as move (move.folder)}
         <form method="POST" action="?/move" use:enhance={submit}>
           <input type="hidden" name="messageId" value={reader.id} />
           <input type="hidden" name="folder" value={move.folder} />
-          <Button type="submit" size="sm" variant="outline" disabled={busy} data-testid={`inbox-move-${move.folder}`}>{move.label}</Button>
+          <Button
+            type="submit"
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            data-testid={`inbox-move-${move.folder}`}>{move.label}</Button
+          >
         </form>
       {/each}
       {#if reader.unread}
@@ -100,35 +125,71 @@
     </div>
   </div>
 
-  {#if error}<p class="px-4 pt-3 text-sm text-destructive" role="alert" data-testid="inbox-reader-error">{error}</p>{/if}
+  {#if error}<ErrorNotice
+      {error}
+      {agent}
+      attempted="Changing the open mail in the inbox"
+      class="px-4 pt-3"
+      testid="inbox-reader-error"
+    />{/if}
 
   <div class="px-4 pt-4">
-    <h3 id="inbox-reader-heading" bind:this={heading} tabindex="-1" class="text-base font-semibold tracking-tight outline-none">
+    <h3
+      id="inbox-reader-heading"
+      bind:this={heading}
+      tabindex="-1"
+      class="text-base font-semibold tracking-tight outline-none"
+    >
       {reader.subject || '(no subject)'}
     </h3>
-    <p class="mt-0.5 text-xs text-muted-foreground">In {FOLDER_LABELS[reader.folder]}{reader.messages.length > 1 ? ` · ${reader.messages.length} mails in this conversation` : ''}</p>
+    <p class="mt-0.5 text-xs text-muted-foreground">
+      In {FOLDER_LABELS[reader.folder]}{reader.messages.length > 1
+        ? ` · ${reader.messages.length} mails in this conversation`
+        : ''}
+    </p>
   </div>
 
   {#if reader.remoteImagesBlocked}
-    <div class="mx-4 mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-border px-3 py-2 text-[13px]" data-testid="inbox-images-blocked">
-      <span class="text-muted-foreground">Remote images are blocked, so the sender can't see that you opened this mail.</span>
-      <Button href={imagesHref} size="sm" variant="outline" data-testid="inbox-show-images">Show images</Button>
+    <div
+      class="mx-4 mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-border px-3 py-2 text-[13px]"
+      data-testid="inbox-images-blocked"
+    >
+      <span class="text-muted-foreground"
+        >Remote images are blocked, so the sender can't see that you opened this mail.</span
+      >
+      <Button href={imagesHref} size="sm" variant="outline" data-testid="inbox-show-images"
+        >Show images</Button
+      >
     </div>
   {/if}
 
   <ol class="flex flex-col gap-4 px-4 py-4" aria-label="Mails in this conversation">
     {#each reader.messages as m (m.id)}
-      <li class="rounded-lg border border-border" data-testid={`inbox-thread-${m.id}`} aria-current={m.id === reader.id ? 'true' : undefined}>
-        <header class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b border-border px-4 py-2.5">
+      <li
+        class="rounded-lg border border-border"
+        data-testid={`inbox-thread-${m.id}`}
+        aria-current={m.id === reader.id ? 'true' : undefined}
+      >
+        <header
+          class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b border-border px-4 py-2.5"
+        >
           <span class="min-w-0">
-            <span class="block truncate text-sm font-medium" title={personFull(m.from)}>{personLabel(m.from)}
+            <span class="block truncate text-sm font-medium" title={personFull(m.from)}
+              >{personLabel(m.from)}
               <span class="font-normal text-muted-foreground">&lt;{m.from.address}&gt;</span></span
             >
-            {#if recipients(m)}<span class="block truncate text-xs text-muted-foreground">To {recipients(m)}</span>{/if}
-            {#if m.bcc.length > 0}<span class="block truncate text-xs text-muted-foreground" data-testid="inbox-bcc">Bcc {m.bcc.map(personFull).join(', ')}</span>{/if}
+            {#if recipients(m)}<span class="block truncate text-xs text-muted-foreground"
+                >To {recipients(m)}</span
+              >{/if}
+            {#if m.bcc.length > 0}<span
+                class="block truncate text-xs text-muted-foreground"
+                data-testid="inbox-bcc">Bcc {m.bcc.map(personFull).join(', ')}</span
+              >{/if}
           </span>
           <span class="flex items-center gap-2 text-xs text-muted-foreground">
-            {#if m.id !== reader.id && m.folder !== reader.folder}<span class="rounded-full border border-border px-1.5">{FOLDER_LABELS[m.folder]}</span>{/if}
+            {#if m.id !== reader.id && m.folder !== reader.folder}<span
+                class="rounded-full border border-border px-1.5">{FOLDER_LABELS[m.folder]}</span
+              >{/if}
             <time datetime={m.receivedAt}>{fullWhen(m.receivedAt)}</time>
           </span>
         </header>
@@ -142,17 +203,27 @@
             data-testid="inbox-html-body"
           ></iframe>
         {:else if m.body.kind === 'text'}
-          <pre class="overflow-x-auto px-4 py-3 font-sans text-sm break-words whitespace-pre-wrap" data-testid="inbox-text-body">{m.body.text}</pre>
+          <pre
+            class="overflow-x-auto px-4 py-3 font-sans text-sm break-words whitespace-pre-wrap"
+            data-testid="inbox-text-body">{m.body.text}</pre>
         {:else}
           <p class="px-4 py-3 text-sm text-muted-foreground">This mail has no text.</p>
         {/if}
         {#if m.attachments.length > 0}
-          <ul class="flex flex-wrap gap-2 border-t border-border px-4 py-2.5" aria-label="Attachments" data-testid="inbox-attachments">
+          <ul
+            class="flex flex-wrap gap-2 border-t border-border px-4 py-2.5"
+            aria-label="Attachments"
+            data-testid="inbox-attachments"
+          >
             {#each m.attachments as a (a.id)}
               <li>
                 {#if a.blocked}
-                  <span class="inline-flex items-center gap-1.5 rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive" data-testid={`inbox-attachment-blocked-${a.id}`}>
-                    <Paperclip class="size-3.5" aria-hidden="true" />{a.filename} · Blocked: Amazon found a virus
+                  <span
+                    class="inline-flex items-center gap-1.5 rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive"
+                    data-testid={`inbox-attachment-blocked-${a.id}`}
+                  >
+                    <Paperclip class="size-3.5" aria-hidden="true" />{a.filename} · Blocked: Amazon found
+                    a virus
                   </span>
                 {:else if !a.kept}
                   <span

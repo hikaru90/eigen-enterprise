@@ -1,7 +1,8 @@
 import type { RequestHandler } from './$types'
-import { error, json } from '@sveltejs/kit'
+import { json } from '@sveltejs/kit'
 import type { ReviewProjectResponse } from '$lib/memory/project-review-types'
 import { reviewProject } from '$lib/server/memory/project-review'
+import { failed, refuse } from '$lib/server/memory/route-errors'
 
 export type { ReviewProjectResponse }
 
@@ -10,11 +11,12 @@ export type ReviewProjectRequest = {
 }
 
 export const POST: RequestHandler = async (event) => {
+  const ctx = { attempted: 'Reviewing a project with the AI' }
   const user = event.locals.user
-  if (!user) error(401, 'Unauthorized')
+  if (!user) return refuse(401, 'Unauthorized', ctx)
 
   const entityId = event.params.entityId?.trim()
-  if (!entityId) error(400, 'Entity id is required')
+  if (!entityId) return refuse(400, 'Entity id is required', ctx)
 
   let body: ReviewProjectRequest = {}
   try {
@@ -23,7 +25,7 @@ export const POST: RequestHandler = async (event) => {
       body = JSON.parse(text) as ReviewProjectRequest
     }
   } catch {
-    error(400, 'Invalid JSON body')
+    return refuse(400, 'Invalid JSON body', ctx)
   }
 
   try {
@@ -35,7 +37,7 @@ export const POST: RequestHandler = async (event) => {
     return json(result satisfies ReviewProjectResponse)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    if (/not found/i.test(message)) error(404, message)
-    error(400, message)
+    if (/not found/i.test(message)) return failed(404, err, ctx)
+    return failed(400, err, ctx)
   }
 }

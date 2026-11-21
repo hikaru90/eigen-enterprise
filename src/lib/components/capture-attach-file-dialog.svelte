@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { onMount } from 'svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
@@ -144,11 +145,7 @@
       <div class="space-y-3">
         <div class="space-y-1.5">
           <Label for="attach-title">Title (optional)</Label>
-          <Input
-            id="attach-title"
-            bind:value={newTitle}
-            placeholder="Note title"
-          />
+          <Input id="attach-title" bind:value={newTitle} placeholder="Note title" />
         </div>
         <div class="space-y-1.5">
           <Label for="attach-body">Body</Label>
@@ -170,7 +167,10 @@
     {/if}
 
     {#if err}
-      <p class="text-sm text-destructive">{err}</p>
+      <ErrorNotice
+        error={err}
+        attempted="Attaching a note to a thought (listing, creating or linking text files)"
+      />
     {/if}
   </Dialog.Content>
 </Dialog.Root>

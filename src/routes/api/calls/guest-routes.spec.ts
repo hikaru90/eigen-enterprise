@@ -12,32 +12,57 @@ import * as meetingsRoute from './meetings/+server'
 function wire() {
   const f = fixture()
   const service = async () => f.service
-  for (const r of [meetingsRoute, inviteRoute, revokeRoute, guestRoute, joinRoute, leaveRoute]) r._deps.service = service
+  for (const r of [meetingsRoute, inviteRoute, revokeRoute, guestRoute, joinRoute, leaveRoute])
+    r._deps.service = service
   return f
 }
 
 const ev = (over: Record<string, unknown>) => over as never
 const body = (b: unknown, method = 'POST') =>
-  new Request('http://os.test/api/calls/meetings', { method, body: JSON.stringify(b), headers: { 'content-type': 'application/json' } })
-const as = (id: string | null, extra: Record<string, unknown> = {}) => ({ locals: { user: id ? { id } : null }, params: {}, ...extra })
+  new Request('http://os.test/api/calls/meetings', {
+    method,
+    body: JSON.stringify(b),
+    headers: { 'content-type': 'application/json' },
+  })
+const as = (id: string | null, extra: Record<string, unknown> = {}) => ({
+  locals: { user: id ? { id } : null },
+  params: {},
+  ...extra,
+})
 const tokenOf = (url: string) => decodeURIComponent(url.split('/join/')[1]!)
 
 async function schedule(f: ReturnType<typeof wire>, input: Record<string, unknown>) {
-  const res = await meetingsRoute.POST(ev(as('ann', { request: body({ timeZone: 'Europe/Berlin', ...input }) })))
-  return { res, out: (await res.json()) as { call: { id: string; guests: { id: string }[] }; invitations: { url: string; emailed: boolean }[]; mailConfigured: boolean } }
+  const res = await meetingsRoute.POST(
+    ev(as('ann', { request: body({ timeZone: 'Europe/Berlin', ...input }) })),
+  )
+  return {
+    res,
+    out: (await res.json()) as {
+      call: { id: string; guests: { id: string }[] }
+      invitations: { url: string; emailed: boolean }[]
+      mailConfigured: boolean
+    },
+  }
 }
 
 describe('/api/calls/meetings', () => {
   it('signed in only', async () => {
     wire()
-    const res = await meetingsRoute.POST(ev(as(null, { request: body({ guests: ['a@b.de'], timeZone: 'UTC' }) })))
+    const res = await meetingsRoute.POST(
+      ev(as(null, { request: body({ guests: ['a@b.de'], timeZone: 'UTC' }) })),
+    )
     expect(res.status).toBe(401)
   })
 
   it('schedules with guests and returns each link once', async () => {
     const f = wire()
     const startsAt = new Date(f.clock.now().getTime() + 3_600_000).toISOString()
-    const { res, out } = await schedule(f, { guests: ['kunde@example.org'], startsAt, durationMinutes: 45, title: 'Kick-off' })
+    const { res, out } = await schedule(f, {
+      guests: ['kunde@example.org'],
+      startsAt,
+      durationMinutes: 45,
+      title: 'Kick-off',
+    })
     expect(res.status).toBe(200)
     expect(out.invitations[0]!.url).toMatch(/\/join\//)
     expect(out.mailConfigured).toBe(true)
@@ -73,16 +98,32 @@ describe('/api/calls/[id]/guests', () => {
     const f = wire()
     const { out } = await schedule(f, { userIds: ['ben'], guests: ['kunde@example.org'] })
     const params = { id: out.call.id }
-    const more = await inviteRoute.POST(ev(as('ann', { params, request: body({ guests: ['partner@example.org'], timeZone: 'UTC' }) })))
+    const more = await inviteRoute.POST(
+      ev(
+        as('ann', { params, request: body({ guests: ['partner@example.org'], timeZone: 'UTC' }) }),
+      ),
+    )
     expect(more.status).toBe(200)
     expect(((await more.json()) as { invitations: unknown[] }).invitations).toHaveLength(1)
-    expect((await inviteRoute.POST(ev(as('ben', { params, request: body({ guests: ['x@example.org'], timeZone: 'UTC' }) })))).status).toBe(403)
+    expect(
+      (
+        await inviteRoute.POST(
+          ev(as('ben', { params, request: body({ guests: ['x@example.org'], timeZone: 'UTC' }) })),
+        )
+      ).status,
+    ).toBe(403)
     const guestId = out.call.guests[0]!.id
-    expect((await revokeRoute.DELETE(ev(as('ben', { params: { ...params, guestId } })))).status).toBe(403)
-    expect((await revokeRoute.DELETE(ev(as('cat', { params: { ...params, guestId } })))).status).toBe(404)
+    expect(
+      (await revokeRoute.DELETE(ev(as('ben', { params: { ...params, guestId } })))).status,
+    ).toBe(403)
+    expect(
+      (await revokeRoute.DELETE(ev(as('cat', { params: { ...params, guestId } })))).status,
+    ).toBe(404)
     const revoked = await revokeRoute.DELETE(ev(as('ann', { params: { ...params, guestId } })))
     expect(revoked.status).toBe(200)
-    expect(await revoked.json()).toMatchObject({ call: { guests: [{ id: guestId, revoked: true }, { revoked: false }] } })
+    expect(await revoked.json()).toMatchObject({
+      call: { guests: [{ id: guestId, revoked: true }, { revoked: false }] },
+    })
   })
 })
 
@@ -91,12 +132,19 @@ describe('/api/calls/guest/[token] (public: the token is the proof)', () => {
     const f = wire()
     const { out } = await schedule(f, { guests: ['kunde@example.org'] })
     const token = tokenOf(out.invitations[0]!.url)
-    expect((await guestRoute.GET(ev(as(null, { params: { token: 'x'.repeat(43) } })))).status).toBe(404)
+    expect((await guestRoute.GET(ev(as(null, { params: { token: 'x'.repeat(43) } })))).status).toBe(
+      404,
+    )
     const view = await guestRoute.GET(ev(as(null, { params: { token } })))
     expect(view.status).toBe(200)
     expect(view.headers.get('cache-control')).toBe('no-store')
-    expect((await joinRoute.POST(ev(as(null, { params: { token }, request: body({ name: '  ' }) })))).status).toBe(400)
-    const joined = await joinRoute.POST(ev(as(null, { params: { token }, request: body({ name: 'Ony Kunde' }) })))
+    expect(
+      (await joinRoute.POST(ev(as(null, { params: { token }, request: body({ name: '  ' }) }))))
+        .status,
+    ).toBe(400)
+    const joined = await joinRoute.POST(
+      ev(as(null, { params: { token }, request: body({ name: 'Ony Kunde' }) })),
+    )
     expect(joined.status).toBe(200)
     expect(joined.headers.get('cache-control')).toBe('no-store')
     const j = (await joined.json()) as { identity: string; token: { token: string; room: string } }
@@ -111,10 +159,20 @@ describe('/api/calls/guest/[token] (public: the token is the proof)', () => {
     const { out } = await schedule(f, { guests: ['kunde@example.org'] })
     const token = tokenOf(out.invitations[0]!.url)
     f.clock.tick(76 * 60_000)
-    const res = await joinRoute.POST(ev(as(null, { params: { token }, request: body({ name: 'Ony' }) })))
+    const res = await joinRoute.POST(
+      ev(as(null, { params: { token }, request: body({ name: 'Ony' }) })),
+    )
     expect(res.status).toBe(409)
-    expect(await res.json()).toMatchObject({ code: 'conflict', error: 'this guest link has expired' })
-    const form = new Request('http://os.test/api/calls/guest/t/join', { method: 'POST', body: 'name=x', headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://evil.test' } })
+    expect(await res.json()).toMatchObject({
+      code: 'conflict',
+      error: 'this guest link has expired',
+      agent: { attempted: 'A guest joining a call from their link' },
+    })
+    const form = new Request('http://os.test/api/calls/guest/t/join', {
+      method: 'POST',
+      body: 'name=x',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://evil.test' },
+    })
     expect(isForbiddenCrossSiteForm(form, new URL(form.url))).toBe(true)
   })
 })

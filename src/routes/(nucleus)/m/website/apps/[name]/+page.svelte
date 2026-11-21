@@ -7,7 +7,7 @@
   import AppBuildForm from '$lib/components/app-build-form.svelte'
   import AppDeployProgress from '$lib/components/app-deploy-progress.svelte'
   import AppStatusDot from '$lib/components/app-status-dot.svelte'
-  import * as Alert from '$lib/components/ui/alert'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
   import { Badge } from '$lib/components/ui/badge'
   import { Button, buttonVariants } from '$lib/components/ui/button'
@@ -15,10 +15,12 @@
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
   import * as Table from '$lib/components/ui/table'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
   import { deployModeText } from './deploy-mode'
 
   let { data, form }: { data: PageData; form: ActionData } = $props()
+  const formError = $derived(shownErrorOf(form))
 
   type Busy =
     'domainSet' | 'domainRemove' | 'env' | 'secretSet' | 'remove' | 'mailEnable' | 'mailDisable'
@@ -106,13 +108,20 @@
       >
     {/if}
     {#if data.app.lastError}
-      <Alert.Root variant="destructive">
-        <Alert.Title>The last deploy failed</Alert.Title>
-        <Alert.Description>{data.app.lastError}</Alert.Description>
-      </Alert.Root>
+      <ErrorNotice
+        class="rounded-lg border px-2.5 py-2"
+        title="The last deploy failed"
+        error={data.app.lastError}
+        agent={data.lastDeploy?.agent ?? null}
+        attempted={`Deploying the app ${data.app.name}`}
+      />
     {/if}
-    {#if form && 'error' in form && form.error}
-      <p class="text-sm text-red-600" role="alert">{form.error}</p>
+    {#if formError}
+      <ErrorNotice
+        error={formError.error}
+        agent={formError.agent}
+        attempted={`Changing the app ${data.app.name}`}
+      />
     {:else if form && 'message' in form}
       <p class="text-sm text-foreground/70" role="status">{form.message}</p>
     {/if}
@@ -188,7 +197,7 @@
     </Card.Header>
     <Card.Content>
       {#if data.logsError}
-        <p class="text-sm text-muted-foreground">{data.logsError}</p>
+        <ErrorNotice {...data.logsError} />
       {:else}
         <pre
           data-testid="app-logs"
@@ -238,7 +247,8 @@
                       class="flex items-center gap-2"
                     >
                       <input type="hidden" name="replace" value={d} />
-                      <Input dictation={false}
+                      <Input
+                        dictation={false}
                         name="host"
                         required
                         placeholder="new.example.com"
@@ -297,7 +307,8 @@
         >
           <div class="flex min-w-0 flex-1 flex-col gap-1.5">
             <Label for="add-domain">Add a domain</Label>
-            <Input dictation={false}
+            <Input
+              dictation={false}
               id="add-domain"
               name="host"
               required
@@ -383,7 +394,8 @@
           class="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row"
           autocomplete="off"
         >
-          <Input dictation={false}
+          <Input
+            dictation={false}
             name="key"
             required
             placeholder="NAME"
@@ -442,8 +454,12 @@
           {/if}
         </div>
         {#if form && (form.action === 'mailEnable' || form.action === 'mailDisable')}
-          {#if 'error' in form}
-            <p class="text-sm text-destructive">{form.error}</p>
+          {#if formError}
+            <ErrorNotice
+              error={formError.error}
+              agent={formError.agent}
+              attempted={`Changing email for ${data.app.name}`}
+            />
           {:else}
             <p class="text-sm">{form.message}</p>
           {/if}

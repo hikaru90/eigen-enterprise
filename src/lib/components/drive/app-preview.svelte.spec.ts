@@ -53,7 +53,9 @@ describe('app-preview: Run a web app folder on its page', () => {
   it('without a lockfile, says Run will fail (Run stays offered, not hidden)', async () => {
     api.appStatus.mockResolvedValue(status({ webApp: { script: 'start', lockfile: null } }))
     render(AppPreviewPanel, { props: { folderId: 'f1', canRun: true } })
-    await expect.element(page.getByTestId('drive-app-no-lockfile')).toHaveTextContent(/Run will fail until one is added/)
+    await expect
+      .element(page.getByTestId('drive-app-no-lockfile'))
+      .toHaveTextContent(/Run will fail until one is added/)
     await expect.element(page.getByTestId('drive-app-run')).toBeInTheDocument()
   })
 
@@ -76,7 +78,9 @@ describe('app-preview: Run a web app folder on its page', () => {
     api.runApp.mockResolvedValue({ preview: preview() })
     render(AppPreviewPanel, { props: { folderId: 'f1', canRun: true } })
     await page.getByTestId('drive-app-run').click()
-    await expect.element(page.getByTestId('drive-app-state')).toHaveTextContent('Installing dependencies…')
+    await expect
+      .element(page.getByTestId('drive-app-state'))
+      .toHaveTextContent('Installing dependencies…')
     await expect.element(page.getByTestId('drive-app-log')).toHaveTextContent('VITE ready')
     expect(api.runApp).toHaveBeenCalledWith('f1')
     api.appStatus.mockResolvedValue(status({ preview: preview({ state: 'running' }) }))
@@ -98,12 +102,18 @@ describe('app-preview: Run a web app folder on its page', () => {
     render(AppPreviewPanel, { props: { folderId: 'f1', canRun: true } })
     const frame = page.getByTestId('drive-app-frame')
     await expect.element(frame).toHaveAttribute('src', 'https://pv3f9a0c12be47.preview.os.test/')
-    await expect.element(frame).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups')
-    await expect.element(page.getByTestId('drive-app-open')).toHaveAttribute('href', 'https://pv3f9a0c12be47.preview.os.test/')
+    await expect
+      .element(frame)
+      .toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups')
+    await expect
+      .element(page.getByTestId('drive-app-open'))
+      .toHaveAttribute('href', 'https://pv3f9a0c12be47.preview.os.test/')
     await expect.element(page.getByTestId('drive-app-open')).toHaveAttribute('target', '_blank')
     await page.getByTestId('drive-app-restart').click()
     expect(api.runApp).toHaveBeenCalledWith('f1')
-    await expect.element(page.getByTestId('drive-app-state')).toHaveTextContent('Installing dependencies…')
+    await expect
+      .element(page.getByTestId('drive-app-state'))
+      .toHaveTextContent('Installing dependencies…')
     await page.getByTestId('drive-app-stop').click()
     expect(api.stopApp).toHaveBeenCalledWith('f1')
     await expect.element(page.getByTestId('drive-app-run')).toBeInTheDocument()
@@ -111,7 +121,14 @@ describe('app-preview: Run a web app folder on its page', () => {
   })
 
   it('a failed start shows why and its log, with Restart', async () => {
-    api.appStatus.mockResolvedValue(status({ preview: preview({ state: 'failed', error: 'add a lockfile (package-lock.json, pnpm-lock.yaml or yarn.lock)' }) }))
+    api.appStatus.mockResolvedValue(
+      status({
+        preview: preview({
+          state: 'failed',
+          error: 'add a lockfile (package-lock.json, pnpm-lock.yaml or yarn.lock)',
+        }),
+      }),
+    )
     render(AppPreviewPanel, { props: { folderId: 'f1', canRun: true } })
     await expect.element(page.getByTestId('drive-app-failed')).toHaveTextContent('add a lockfile')
     await expect.element(page.getByTestId('drive-app-restart')).toBeInTheDocument()
@@ -121,11 +138,15 @@ describe('app-preview: Run a web app folder on its page', () => {
   it('another app running: names it and offers to stop it', async () => {
     api.appStatus.mockResolvedValue(status())
     const blog = preview({ id: 'pv000000000001', folderName: 'blog', state: 'running' })
-    api.runApp.mockRejectedValueOnce(new DriveApiError('Another app is running: blog', 409, 'busy', null, blog))
+    api.runApp.mockRejectedValueOnce(
+      new DriveApiError('Another app is running: blog', 409, 'busy', null, blog),
+    )
     api.stopPreview.mockResolvedValue({ preview: { ...blog, state: 'stopped' } })
     render(AppPreviewPanel, { props: { folderId: 'f1', canRun: true } })
     await page.getByTestId('drive-app-run').click()
-    await expect.element(page.getByTestId('drive-app-busy')).toHaveTextContent('Another app is running: blog')
+    await expect
+      .element(page.getByTestId('drive-app-busy'))
+      .toHaveTextContent('Another app is running: blog')
     await page.getByTestId('drive-app-stop-other').click()
     expect(api.stopPreview).toHaveBeenCalledWith('pv000000000001')
     await expect.poll(() => page.getByTestId('drive-app-busy').elements().length).toBe(0)
@@ -139,5 +160,12 @@ describe('app-preview: Run a web app folder on its page', () => {
     await expect.element(page.getByTestId('drive-app-unmanaged')).toHaveTextContent(sentence)
     await page.getByTestId('drive-app-run').click()
     await expect.element(page.getByTestId('drive-app-error')).toHaveTextContent(sentence)
+    await expect
+      .element(
+        page
+          .getByTestId('drive-app-error')
+          .getByRole('button', { name: 'Copy agent instructions' }),
+      )
+      .toBeInTheDocument()
   })
 })

@@ -17,6 +17,7 @@
   import TableIcon from '@lucide/svelte/icons/table'
   import Undo2Icon from '@lucide/svelte/icons/undo-2'
   import { onMount, untrack } from 'svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import {
@@ -135,7 +136,13 @@
 
 <!-- Mod-K (link) is handled for the whole editor here; the keys reach it from the toolbar and the editable area inside. -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<div class="flex flex-col" role="group" aria-label="Markdown editor" {onkeydown} data-testid="drive-md">
+<div
+  class="flex flex-col"
+  role="group"
+  aria-label="Markdown editor"
+  {onkeydown}
+  data-testid="drive-md"
+>
   {#if isEditable}
     <div
       class="sticky top-0 z-10 flex flex-wrap items-center gap-0.5 border-b bg-background/95 px-2 py-1 backdrop-blur"
@@ -177,7 +184,8 @@
         onsubmit={applyLink}
         data-testid="drive-md-link-form"
       >
-        <Input dictation={false}
+        <Input
+          dictation={false}
           class="h-8 max-w-md"
           placeholder="https://… (empty removes the link)"
           bind:value={linkHref}
@@ -191,9 +199,11 @@
       </form>
     {/if}
   {/if}
-  {#if failed}<p class="px-6 py-4 text-sm text-destructive" role="alert">
-      The editor could not start: {failed}
-    </p>{/if}
+  {#if failed}<ErrorNotice
+      class="px-6 py-4"
+      error={`The editor could not start: ${failed}`}
+      attempted="Starting the Markdown editor in the browser"
+    />{/if}
   <div
     bind:this={root}
     class="drive-markdown max-w-3xl px-6 py-5 text-sm leading-relaxed"

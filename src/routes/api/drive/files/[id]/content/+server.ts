@@ -68,7 +68,7 @@ function versionFileName(name: string, at: Date): string {
 const session = z.string().min(8).max(100)
 
 export const PUT: RequestHandler = (event) =>
-  driveJson(async () => {
+  driveJson(event, async () => {
     const actor = requestActor(event)
     const raw = event.url.searchParams.get('session')
     const s = raw === null ? undefined : session.safeParse(raw)

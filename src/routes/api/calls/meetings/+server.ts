@@ -1,5 +1,6 @@
 import type { RequestHandler } from './$types'
-import { callsRoute, readJson, scheduleInputOf } from '../../../../../modules/calls/http'
+import { readJson, scheduleInputOf } from '../../../../../modules/calls/http'
+import { callsRoute } from '../calls-route'
 
 /** Overridable in tests. */
 export const _deps = {
@@ -13,7 +14,17 @@ export const _deps = {
  * copy) and whether company email is set up.
  */
 export const POST: RequestHandler = ({ locals, request }) =>
-  callsRoute(locals.user, _deps.service, async (userId, s) => {
-    const out = await s.schedule({ kind: 'user', userId }, scheduleInputOf(await readJson(request)))
-    return new Response(JSON.stringify(out), { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } })
-  })
+  callsRoute(
+    'Scheduling a call from the New call dialog',
+    locals.user,
+    _deps.service,
+    async (userId, s) => {
+      const out = await s.schedule(
+        { kind: 'user', userId },
+        scheduleInputOf(await readJson(request)),
+      )
+      return new Response(JSON.stringify(out), {
+        headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+      })
+    },
+  )

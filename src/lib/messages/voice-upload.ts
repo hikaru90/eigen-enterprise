@@ -1,4 +1,4 @@
-import type { AttachmentView } from './view'
+import { MessagesRequestError, type AttachmentView } from './view'
 
 /**
  * A dictated recording, uploaded into the conversation's Drive folder exactly as the
@@ -28,12 +28,23 @@ export function voiceFileName(mime: string, at: Date): string {
 }
 
 /** Uploads one recording; the uploaded file, or an Error in the server's words. */
-export async function uploadVoiceRecording(conversationId: string, clip: Blob, at = new Date()): Promise<AttachmentView> {
+export async function uploadVoiceRecording(
+  conversationId: string,
+  clip: Blob,
+  at = new Date(),
+): Promise<AttachmentView> {
   const form = new FormData()
   form.append('file', new File([clip], voiceFileName(clip.type, at), { type: clip.type }))
-  const res = await fetch(`/api/messages/conversations/${encodeURIComponent(conversationId)}/attachments`, { method: 'POST', body: form })
-  const body = (await res.json().catch(() => ({}))) as { uploaded?: AttachmentView[]; errors?: string[]; error?: string }
-  if (!res.ok) throw new Error(body.error ?? `upload failed (${res.status})`)
+  const res = await fetch(
+    `/api/messages/conversations/${encodeURIComponent(conversationId)}/attachments`,
+    { method: 'POST', body: form },
+  )
+  const body = (await res.json().catch(() => ({}))) as {
+    uploaded?: AttachmentView[]
+    errors?: string[]
+    error?: string
+  }
+  if (!res.ok) throw new MessagesRequestError(body, `upload failed (${res.status})`)
   const [file] = body.uploaded ?? []
   if (!file) throw new Error(body.errors?.join(' ') || 'the recording was not uploaded')
   return file

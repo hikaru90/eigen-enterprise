@@ -10,6 +10,8 @@
 </script>
 
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
+  import { shownErrorOf, type ShownError } from '$lib/errors/agent-report'
   import Camera from '@lucide/svelte/icons/camera'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import { tick } from 'svelte'
@@ -52,7 +54,7 @@
   // svelte-ignore state_referenced_locally
   let image = $state<string | null>(profile.image)
   let saving = $state(false)
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
   let notice = $state<string | null>(null)
 
   // ── cropping ──────────────────────────────────────────────────────────
@@ -68,7 +70,9 @@
 
   const displayName = $derived(`${firstName.trim()} ${lastName.trim()}`.trim() || profile.email)
   const namesReady = $derived(firstName.trim().length > 0 && lastName.trim().length > 0)
-  const canSubmit = $derived(!saving && !uploading && !source && namesReady && (!requireComplete || Boolean(image)))
+  const canSubmit = $derived(
+    !saving && !uploading && !source && namesReady && (!requireComplete || Boolean(image)),
+  )
 
   function draw() {
     const ctx = canvasEl?.getContext('2d')
@@ -94,7 +98,10 @@
     error = null
     notice = null
     if (!file.type.startsWith('image/')) {
-      error = `“${file.name}” isn’t a picture. Choose a JPEG, PNG, WebP or GIF.`
+      error = {
+        error: `“${file.name}” isn’t a picture. Choose a JPEG, PNG, WebP or GIF.`,
+        agent: null,
+      }
       return
     }
     discardSource()
@@ -109,7 +116,10 @@
     }
     img.onerror = () => {
       URL.revokeObjectURL(url)
-      error = `This browser can’t open “${file.name}”. Choose a JPEG, PNG, WebP or GIF.`
+      error = {
+        error: `This browser can’t open “${file.name}”. Choose a JPEG, PNG, WebP or GIF.`,
+        agent: null,
+      }
     }
     img.src = url
   }
@@ -122,7 +132,14 @@
 
   function onPointerMove(e: PointerEvent) {
     if (!drag || drag.id !== e.pointerId || !source || !crop) return
-    crop = panBy(source.naturalWidth, source.naturalHeight, crop, e.clientX - drag.x, e.clientY - drag.y, VIEW)
+    crop = panBy(
+      source.naturalWidth,
+      source.naturalHeight,
+      crop,
+      e.clientX - drag.x,
+      e.clientY - drag.y,
+      VIEW,
+    )
     drag = { ...drag, x: e.clientX, y: e.clientY }
     draw()
   }
@@ -133,7 +150,12 @@
 
   function onZoom(e: Event) {
     if (!source || !crop) return
-    crop = zoomTo(source.naturalWidth, source.naturalHeight, crop, Number((e.currentTarget as HTMLInputElement).value))
+    crop = zoomTo(
+      source.naturalWidth,
+      source.naturalHeight,
+      crop,
+      Number((e.currentTarget as HTMLInputElement).value),
+    )
     draw()
   }
 
@@ -169,7 +191,11 @@
         (blob) => {
           if (!blob) return reject(new Error('The picture could not be made.'))
           if (blob.type !== 'image/webp') {
-            return reject(new Error('This browser can’t save WebP pictures. Try a current Chrome, Edge, Firefox or Safari.'))
+            return reject(
+              new Error(
+                'This browser can’t save WebP pictures. Try a current Chrome, Edge, Firefox or Safari.',
+              ),
+            )
           }
           resolve(blob)
         },
@@ -185,15 +211,22 @@
     uploading = true
     try {
       const blob = await renderWebp()
-      const res = await fetch('/api/profile/avatar', { method: 'POST', headers: { 'content-type': 'image/webp' }, body: blob })
-      const body = (await res.json().catch(() => ({}))) as { profile?: EditableProfile; error?: string }
-      if (!res.ok || !body.profile) throw new Error(body.error ?? `Upload failed (${res.status}).`)
+      const res = await fetch('/api/profile/avatar', {
+        method: 'POST',
+        headers: { 'content-type': 'image/webp' },
+        body: blob,
+      })
+      const body = (await res.json().catch(() => ({}))) as { profile?: EditableProfile }
+      if (!res.ok || !body.profile) {
+        error = shownErrorOf(body) ?? { error: `Upload failed (${res.status}).`, agent: null }
+        return
+      }
       image = body.profile.image
       discardSource()
       notice = 'Picture saved.'
       await onpicture?.(body.profile)
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = { error: err instanceof Error ? err.message : String(err), agent: null }
     } finally {
       uploading = false
     }
@@ -211,15 +244,18 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ firstName, lastName }),
       })
-      const body = (await res.json().catch(() => ({}))) as { profile?: EditableProfile; error?: string }
-      if (!res.ok || !body.profile) throw new Error(body.error ?? `Saving failed (${res.status}).`)
+      const body = (await res.json().catch(() => ({}))) as { profile?: EditableProfile }
+      if (!res.ok || !body.profile) {
+        error = shownErrorOf(body) ?? { error: `Saving failed (${res.status}).`, agent: null }
+        return
+      }
       firstName = body.profile.firstName
       lastName = body.profile.lastName
       image = body.profile.image
       notice = 'Profile saved.'
       await onsaved?.(body.profile)
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = { error: err instanceof Error ? err.message : String(err), agent: null }
     } finally {
       saving = false
     }
@@ -265,7 +301,8 @@
     <div class="min-w-0 space-y-2">
       <p class="text-sm font-medium">Profile picture</p>
       <p class="text-xs text-muted-foreground">
-        {#if source}Drag to frame your face, then use it.{:else}A photo people recognise you by — square, it’s cropped here.{/if}
+        {#if source}Drag to frame your face, then use it.{:else}A photo people recognise you by —
+          square, it’s cropped here.{/if}
       </p>
       <input
         bind:this={fileInput}
@@ -277,11 +314,23 @@
       />
       <div class="flex flex-wrap gap-2">
         {#if source}
-          <Button type="button" size="sm" onclick={usePicture} disabled={uploading} data-testid="profile-crop-apply">
+          <Button
+            type="button"
+            size="sm"
+            onclick={usePicture}
+            disabled={uploading}
+            data-testid="profile-crop-apply"
+          >
             {#if uploading}<LoaderCircle class="size-4 animate-spin" />{/if}
             Use this picture
           </Button>
-          <Button type="button" size="sm" variant="outline" onclick={discardSource} disabled={uploading}>Cancel</Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onclick={discardSource}
+            disabled={uploading}>Cancel</Button
+          >
         {:else}
           <Button
             type="button"
@@ -324,7 +373,12 @@
   </div>
 
   {#if error}
-    <p class="text-sm text-destructive" role="alert" data-testid="profile-error">{error}</p>
+    <ErrorNotice
+      testid="profile-error"
+      error={error.error}
+      agent={error.agent}
+      attempted="Saving your profile (name or picture)"
+    />
   {:else if notice}
     <p class="text-sm text-muted-foreground" role="status" data-testid="profile-notice">{notice}</p>
   {/if}

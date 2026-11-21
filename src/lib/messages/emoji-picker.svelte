@@ -1,7 +1,13 @@
 <script lang="ts">
   import Clock from '@lucide/svelte/icons/clock'
   import { onMount, tick } from 'svelte'
-  import { loadEmojiCatalog, searchEmoji, type CatalogEmoji, type EmojiCatalog } from './emoji-catalog'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
+  import {
+    loadEmojiCatalog,
+    searchEmoji,
+    type CatalogEmoji,
+    type EmojiCatalog,
+  } from './emoji-catalog'
   import { readRecentEmoji, rememberRecentEmoji } from './emoji-recent'
 
   /**
@@ -37,14 +43,21 @@
   let searchEl = $state<HTMLInputElement | null>(null)
   let listEl = $state<HTMLDivElement | null>(null)
 
-  const byEmoji = $derived(new Map((catalog?.groups ?? []).flatMap((g) => g.emoji.map((e) => [e.emoji, e] as const))))
+  const byEmoji = $derived(
+    new Map((catalog?.groups ?? []).flatMap((g) => g.emoji.map((e) => [e.emoji, e] as const))),
+  )
   const searching = $derived(query.trim().length > 0)
   const results = $derived(catalog && searching ? searchEmoji(catalog, query) : [])
   const sections = $derived.by((): Section[] => {
     if (!catalog) return []
     if (searching) return [{ key: 'results', label: 'Search results', emoji: results }]
     const recentEmoji = recent.map((e) => byEmoji.get(e) ?? { emoji: e, label: e, tags: [] })
-    return [...(recentEmoji.length > 0 ? [{ key: RECENT_KEY, label: 'Recently used', emoji: recentEmoji }] : []), ...catalog.groups]
+    return [
+      ...(recentEmoji.length > 0
+        ? [{ key: RECENT_KEY, label: 'Recently used', emoji: recentEmoji }]
+        : []),
+      ...catalog.groups,
+    ]
   })
   const tabStop = $derived(activeId ?? (sections[0]?.emoji.length ? `${sections[0].key}:0` : null))
 
@@ -88,7 +101,9 @@
     current = at
   }
 
-  const buttons = () => [...(listEl?.querySelectorAll<HTMLButtonElement>('[data-testid="emoji-picker-emoji"]') ?? [])]
+  const buttons = () => [
+    ...(listEl?.querySelectorAll<HTMLButtonElement>('[data-testid="emoji-picker-emoji"]') ?? []),
+  ]
 
   function focusButton(b: HTMLButtonElement | undefined) {
     if (!b) return
@@ -116,10 +131,15 @@
         if (!down) searchEl?.focus()
         return
       }
-      const rowTop = down ? Math.min(...rows.map((b) => b.getBoundingClientRect().top)) : Math.max(...rows.map((b) => b.getBoundingClientRect().top))
+      const rowTop = down
+        ? Math.min(...rows.map((b) => b.getBoundingClientRect().top))
+        : Math.max(...rows.map((b) => b.getBoundingClientRect().top))
       const row = rows.filter((b) => Math.abs(b.getBoundingClientRect().top - rowTop) < 1)
       const nearest = row.reduce((best, b) =>
-        Math.abs(b.getBoundingClientRect().left - from.left) < Math.abs(best.getBoundingClientRect().left - from.left) ? b : best,
+        Math.abs(b.getBoundingClientRect().left - from.left) <
+        Math.abs(best.getBoundingClientRect().left - from.left)
+          ? b
+          : best,
       )
       focusButton(nearest)
     }
@@ -169,11 +189,18 @@
   </div>
 
   {#if loadError}
-    <p class="px-3 py-6 text-center text-sm text-destructive" role="alert">Couldn’t load the emoji list: {loadError}</p>
+    <ErrorNotice
+      class="items-center px-3 py-6 text-center"
+      error="Couldn’t load the emoji list: {loadError}"
+      attempted="Loading the emoji list for the emoji picker"
+    />
   {:else if !catalog}
     <p class="px-3 py-6 text-center text-sm text-muted-foreground" role="status">Loading emoji…</p>
   {:else}
-    <nav class="flex items-center gap-px border-b border-border px-1.5 pb-1" aria-label="Emoji categories">
+    <nav
+      class="flex items-center gap-px border-b border-border px-1.5 pb-1"
+      aria-label="Emoji categories"
+    >
       {#if recent.length > 0}
         {@render categoryButton(RECENT_KEY, 'Recently used', null)}
       {/if}
@@ -183,14 +210,31 @@
     </nav>
 
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div bind:this={listEl} class="relative h-64 overflow-y-auto overscroll-contain px-1.5 pb-2" onscroll={onListScroll} onkeydown={onGridKey}>
+    <div
+      bind:this={listEl}
+      class="relative h-64 overflow-y-auto overscroll-contain px-1.5 pb-2"
+      onscroll={onListScroll}
+      onkeydown={onGridKey}
+    >
       {#if searching && results.length === 0}
-        <p class="px-2 py-6 text-center text-sm text-muted-foreground">No emoji match “{query.trim()}”.</p>
+        <p class="px-2 py-6 text-center text-sm text-muted-foreground">
+          No emoji match “{query.trim()}”.
+        </p>
       {/if}
       {#each sections as s (s.key)}
         {#if s.emoji.length > 0}
-          <h3 id="emoji-section-{s.key}" class="px-1 pt-2 pb-1 text-xs font-medium text-muted-foreground" data-section={s.key}>{s.label}</h3>
-          <div class="grid grid-cols-8 gap-0.5" role="group" aria-labelledby="emoji-section-{s.key}">
+          <h3
+            id="emoji-section-{s.key}"
+            class="px-1 pt-2 pb-1 text-xs font-medium text-muted-foreground"
+            data-section={s.key}
+          >
+            {s.label}
+          </h3>
+          <div
+            class="grid grid-cols-8 gap-0.5"
+            role="group"
+            aria-labelledby="emoji-section-{s.key}"
+          >
             {#each s.emoji as e, i (e.emoji)}
               {@const id = `${s.key}:${i}`}
               <button
@@ -226,6 +270,9 @@
     aria-current={current === key && !searching ? 'true' : undefined}
     onclick={() => jumpTo(key)}
   >
-    {#if icon}<span aria-hidden="true">{icon}</span>{:else}<Clock class="size-4 text-muted-foreground" aria-hidden="true" />{/if}
+    {#if icon}<span aria-hidden="true">{icon}</span>{:else}<Clock
+        class="size-4 text-muted-foreground"
+        aria-hidden="true"
+      />{/if}
   </button>
 {/snippet}

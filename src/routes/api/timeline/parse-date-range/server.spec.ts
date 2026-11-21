@@ -25,9 +25,7 @@ function mockEvent(user: { id: string } | null, body: unknown) {
 
 describe('POST /api/timeline/parse-date-range', () => {
   it('returns 401 when unauthenticated', async () => {
-    await expect(POST(mockEvent(null, { phrase: 'last week' }))).rejects.toMatchObject({
-      status: 401,
-    })
+    expect((await POST(mockEvent(null, { phrase: 'last week' }))).status).toBe(401)
   })
 
   it('returns parsed range for a phrase', async () => {
@@ -62,9 +60,7 @@ describe('POST /api/timeline/parse-date-range', () => {
   })
 
   it('rejects empty phrase', async () => {
-    await expect(POST(mockEvent({ id: 'u1' }, { phrase: '  ' }))).rejects.toMatchObject({
-      status: 400,
-    })
+    expect((await POST(mockEvent({ id: 'u1' }, { phrase: '  ' }))).status).toBe(400)
   })
 
   it('returns JSON 502 when the shared LLM gateway fails (not an uncaught throw)', async () => {
@@ -77,8 +73,12 @@ describe('POST /api/timeline/parse-date-range', () => {
       ),
     )
     expect(res.status).toBe(502)
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       error: 'Date parsing is temporarily unavailable. Try Last week / Last month, or try again.',
+      agent: {
+        attempted: 'Parsing a typed date range for the timeline filter',
+        cause: 'LLM HTTP 502: bad gateway',
+      },
     })
   })
 
@@ -92,8 +92,9 @@ describe('POST /api/timeline/parse-date-range', () => {
       ),
     )
     expect(res.status).toBe(500)
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       error: 'Invalid date range LLM response: x',
+      agent: { attempted: 'Parsing a typed date range for the timeline filter' },
     })
   })
 })

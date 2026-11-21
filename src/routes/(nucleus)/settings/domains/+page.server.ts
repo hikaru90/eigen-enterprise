@@ -1,10 +1,12 @@
 import type { PageServerLoad } from './$types'
 import type { BoughtDomain } from '$lib/domains/contract'
 import { domainRows } from '$lib/domains/rows'
+import type { ErrorReport } from '$lib/errors/agent-report'
 import { requireCapability } from '$lib/server/auth/require-capability'
 import { DomainsApiError, domainsClient } from '$lib/server/domains/client'
 import { domainsFromEnv } from '$lib/server/domains/env'
 import { registrantDefaults } from '$lib/server/domains/registrant-defaults'
+import { errorReport } from '$lib/server/errors/report'
 import { emailPlatform } from '../../../../../modules/email/platform/service'
 
 /**
@@ -22,13 +24,19 @@ export const load: PageServerLoad = async ({ locals }) => {
   const config = domainsFromEnv()
   const platform = emailPlatform()
   let bought: BoughtDomain[] = []
-  let boughtError: string | null = null
+  let boughtError: ErrorReport | null = null
   if (config) {
     try {
       bought = await domainsClient(config).list()
     } catch (err) {
       if (!(err instanceof DomainsApiError)) throw err
-      boughtError = err.message
+      boughtError = errorReport(err, {
+        attempted: 'Listing the domains bought through eigenEnterprise (Settings › Domains)',
+        plain: () => err.message,
+        nextSteps: [
+          'The list comes from the control plane (EE_DOMAINS_API_BASE); check its health and its logs for this box’s token at the time above.',
+        ],
+      })
     }
   }
   const [mail, mode] = await Promise.all([platform.listDomains(), platform.owlery.mode()])
@@ -37,7 +45,13 @@ export const load: PageServerLoad = async ({ locals }) => {
     boughtError,
     rows: domainRows(
       bought,
-      mail.map((d) => ({ id: d.id, name: d.name, status: d.status, sendable: d.sendable, receiving: d.receiving })),
+      mail.map((d) => ({
+        id: d.id,
+        name: d.name,
+        status: d.status,
+        sendable: d.sendable,
+        receiving: d.receiving,
+      })),
       mode,
     ),
     registrant: config ? await registrantDefaults(user) : null,

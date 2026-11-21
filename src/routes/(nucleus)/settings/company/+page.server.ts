@@ -4,9 +4,15 @@ import { isCroppableLogoType } from '$lib/company/identity'
 import { requireCapability } from '$lib/server/auth/require-capability'
 import { companyStorage } from '$lib/server/company/live'
 import { checkLogo, cropLogo } from '$lib/server/company/logo'
-import { readCompanyLogoOriginal, removeCompanyLogo, saveCompanyLogo, saveCompanyName } from '$lib/server/company/service'
+import {
+  readCompanyLogoOriginal,
+  removeCompanyLogo,
+  saveCompanyLogo,
+  saveCompanyName,
+} from '$lib/server/company/service'
 import { companyProfileStore } from '$lib/server/company/store'
 import { companyIdentity } from '$lib/server/overview/sources'
+import { errorReport, refusalReport } from '$lib/server/errors/report'
 import { ContributeError } from '../../../../../modules/contribute/errors'
 import { setSharing, shareStatus } from '../../../../../modules/contribute/share/service'
 
@@ -39,7 +45,39 @@ function parseCrop(raw: FormDataEntryValue | null): unknown {
   }
 }
 
-const shareDeps = async () => (await import('../../../../../modules/contribute/share/live')).shareDeps()
+type CompanyAction = 'saveName' | 'uploadLogo' | 'recropLogo' | 'setSharing'
+
+const ATTEMPTED: Record<CompanyAction, string> = {
+  saveName: 'Saving the company name in Settings → Company',
+  uploadLogo: 'Uploading the company logo in Settings → Company',
+  recropLogo: 'Cropping the company logo again in Settings → Company',
+  setSharing:
+    'Turning sharing of Contribute proposals with the makers on or off (Settings → Company)',
+}
+
+const WHERE: Record<CompanyAction, string> = {
+  saveName: 'saveCompanyName (src/lib/server/company/service.ts)',
+  uploadLogo: 'checkLogo / cropLogo (src/lib/server/company/logo.ts)',
+  recropLogo: 'readCompanyLogoOriginal / cropLogo (src/lib/server/company/service.ts, logo.ts)',
+  setSharing: 'setSharing (modules/contribute/share/service.ts)',
+}
+
+/** A refusal (not an exception): the person's sentence unchanged + the agent half. */
+function refuse(status: number, action: CompanyAction, sentence: string, input?: unknown) {
+  return fail(status, {
+    action,
+    ...refusalReport(sentence, {
+      attempted: ATTEMPTED[action],
+      ...(input !== undefined ? { input } : {}),
+      nextSteps: [
+        `${WHERE[action]} refused the request before anything was saved; the sentence says why.`,
+      ],
+    }),
+  })
+}
+
+const shareDeps = async () =>
+  (await import('../../../../../modules/contribute/share/live')).shareDeps()
 
 export const load: PageServerLoad = async ({ locals }) => {
   const { role } = await requireCapability(locals, 'company.manage', REASON)
@@ -51,7 +89,9 @@ export const load: PageServerLoad = async ({ locals }) => {
         ? {
             url: identity.logo.url,
             mime: identity.logo.mime,
-            original: identity.logo.original ? { url: identity.logo.original.url, crop: identity.logo.original.crop } : null,
+            original: identity.logo.original
+              ? { url: identity.logo.original.url, crop: identity.logo.original.crop }
+              : null,
           }
         : null,
     },
@@ -65,7 +105,7 @@ export const actions: Actions = {
     const { user } = await requireCapability(locals, 'company.manage', REASON)
     const form = await request.formData()
     const saved = await saveCompanyName(form.get('name'), user.id, { store: companyProfileStore() })
-    if (!saved.ok) return fail(400, { action: 'saveName', error: saved.error })
+    if (!saved.ok) return refuse(400, 'saveName', saved.error, { name: form.get('name') })
     return { action: 'saveName', ok: true }
   },
   uploadLogo: async ({ locals, request }) => {
@@ -73,20 +113,28 @@ export const actions: Actions = {
     const form = await request.formData()
     const file = form.get('logo')
     if (!(file instanceof File) || file.size === 0) {
-      return fail(400, { action: 'uploadLogo', error: 'Choose an image file to upload.' })
+      return refuse(400, 'uploadLogo', 'Choose an image file to upload.')
     }
     const check = await checkLogo(new Uint8Array(await file.arrayBuffer()), file.type)
-    if (!check.ok) return fail(check.status, { action: 'uploadLogo', error: check.error })
+    const fileInput = { name: file.name, type: file.type, size: file.size }
+    if (!check.ok) return refuse(check.status, 'uploadLogo', check.error, { file: fileInput })
     if (!isCroppableLogoType(check.mime)) {
       await saveCompanyLogo({ bytes: check.bytes, mime: check.mime }, user.id, companyStorage())
       return { action: 'uploadLogo', ok: true }
     }
     const crop = parseCrop(form.get('crop'))
-    if (crop === undefined) return fail(400, { action: 'uploadLogo', error: 'Position the logo in the frame, then save.' })
+    if (crop === undefined)
+      return refuse(400, 'uploadLogo', 'Position the logo in the frame, then save.', {
+        file: fileInput,
+      })
     const cut = await cropLogo(check.bytes, crop)
-    if (!cut.ok) return fail(cut.status, { action: 'uploadLogo', error: cut.error })
+    if (!cut.ok) return refuse(cut.status, 'uploadLogo', cut.error, { file: fileInput, crop })
     await saveCompanyLogo(
-      { bytes: cut.bytes, mime: cut.mime, original: { bytes: check.bytes, mime: check.mime, crop: cut.crop } },
+      {
+        bytes: cut.bytes,
+        mime: cut.mime,
+        original: { bytes: check.bytes, mime: check.mime, crop: cut.crop },
+      },
       user.id,
       companyStorage(),
     )
@@ -95,26 +143,51 @@ export const actions: Actions = {
   recropLogo: async ({ locals, request }) => {
     const { user } = await requireCapability(locals, 'company.manage', REASON)
     const crop = parseCrop((await request.formData()).get('crop'))
-    if (crop === undefined) return fail(400, { action: 'recropLogo', error: 'Position the logo in the frame, then save.' })
+    if (crop === undefined)
+      return refuse(400, 'recropLogo', 'Position the logo in the frame, then save.')
     const storage = companyStorage()
     const original = await readCompanyLogoOriginal(storage)
     if (!original) {
-      return fail(400, { action: 'recropLogo', error: 'This logo has no kept original to crop again; upload it again.' })
+      return refuse(
+        400,
+        'recropLogo',
+        'This logo has no kept original to crop again; upload it again.',
+        { crop },
+      )
     }
     const cut = await cropLogo(original.bytes, crop)
-    if (!cut.ok) return fail(cut.status, { action: 'recropLogo', error: cut.error })
-    await saveCompanyLogo({ bytes: cut.bytes, mime: cut.mime, original: { ...original, crop: cut.crop } }, user.id, storage)
+    if (!cut.ok) return refuse(cut.status, 'recropLogo', cut.error, { crop })
+    await saveCompanyLogo(
+      { bytes: cut.bytes, mime: cut.mime, original: { ...original, crop: cut.crop } },
+      user.id,
+      storage,
+    )
     return { action: 'recropLogo', ok: true }
   },
   setSharing: async ({ locals, request }) => {
     const { user, role } = await requireCapability(locals, 'company.manage', REASON)
     const form = await request.formData()
     const enabled = form.get('enabled')
-    if (enabled !== 'on' && enabled !== 'off') return fail(400, { action: 'setSharing', error: 'Choose on or off.' })
+    if (enabled !== 'on' && enabled !== 'off')
+      return refuse(400, 'setSharing', 'Choose on or off.', { enabled })
+    const input = { enabled: enabled === 'on', withdraw: form.get('withdraw') === 'on' }
     try {
-      await setSharing(await shareDeps(), { id: user.id, isOwner: role === 'owner' }, { enabled: enabled === 'on', withdraw: form.get('withdraw') === 'on' })
+      await setSharing(await shareDeps(), { id: user.id, isOwner: role === 'owner' }, input)
     } catch (err) {
-      if (err instanceof ContributeError) return fail(err.code === 'forbidden' ? 403 : err.code === 'invalid' ? 400 : 502, { action: 'setSharing', error: err.message })
+      if (err instanceof ContributeError) {
+        console.error('[settings/company] setSharing failed', err)
+        return fail(err.code === 'forbidden' ? 403 : err.code === 'invalid' ? 400 : 502, {
+          action: 'setSharing',
+          ...errorReport(err, {
+            attempted: ATTEMPTED.setSharing,
+            input,
+            plain: () => err.message,
+            nextSteps: [
+              `${WHERE.setSharing} failed with ContributeError code "${err.code}" (forbidden: not the owner; invalid: bad input; anything else: the central board did not answer as expected).`,
+            ],
+          }),
+        })
+      }
       throw err
     }
     return { action: 'setSharing', ok: true }

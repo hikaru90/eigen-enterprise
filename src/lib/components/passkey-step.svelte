@@ -2,6 +2,7 @@
   import { resolve } from '$app/paths'
   import { authClient } from '$lib/auth-client'
   import { Button } from '$lib/components/ui/button'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
 
   /**
    * "Create your passkey" right after an account is made from a link (invite, claim): the way back
@@ -37,7 +38,8 @@
       const res = await authClient.passkey.addPasskey({ name: passkeyName })
       if (res?.error) {
         error =
-          ('code' in res.error && res.error.code === 'canceled') || /cancel/i.test(res.error.message ?? '')
+          ('code' in res.error && res.error.code === 'canceled') ||
+          /cancel/i.test(res.error.message ?? '')
             ? 'The passkey prompt was cancelled. Try again.'
             : res.error.message || 'The passkey could not be created.'
         return
@@ -53,23 +55,47 @@
 
 <div class="space-y-4" data-testid="{testId}-passkey-step">
   <p class="text-xs">
-    Your device saves the passkey and unlocks it with your fingerprint, face or device PIN. No password, no
-    code by email. Signed in as <strong>{email}</strong>.
+    Your device saves the passkey and unlocks it with your fingerprint, face or device PIN. No
+    password, no code by email. Signed in as <strong>{email}</strong>.
   </p>
-  <Button type="button" class="w-full rounded-[4px]" onclick={createPasskey} disabled={busy} data-testid="{testId}-create-passkey">
+  <Button
+    type="button"
+    class="w-full rounded-[4px]"
+    onclick={createPasskey}
+    disabled={busy}
+    data-testid="{testId}-create-passkey"
+  >
     {busy ? 'Waiting for your device…' : 'Create a passkey'}
   </Button>
   {#if error}
-    <p class="text-destructive text-xs" role="alert" data-testid="{testId}-passkey-error">{error}</p>
+    <ErrorNotice
+      class="text-xs"
+      testid="{testId}-passkey-error"
+      {error}
+      attempted="Creating a passkey right after joining (browser WebAuthn prompt)"
+    />
   {/if}
   {#if confirmSkip}
-    <div class="space-y-2 rounded-[4px] border border-destructive/40 bg-destructive/5 p-3 text-xs" role="alert" data-testid="{testId}-skip-warning">
+    <div
+      class="space-y-2 rounded-[4px] border border-destructive/40 bg-destructive/5 p-3 text-xs"
+      role="alert"
+      data-testid="{testId}-skip-warning"
+    >
       <p>{skipWarning}</p>
-      <a href={resolve(doneHref)} class="underline underline-offset-4" data-testid="{testId}-skip-confirm">Continue without a passkey</a>
+      <a
+        href={resolve(doneHref)}
+        class="underline underline-offset-4"
+        data-testid="{testId}-skip-confirm">Continue without a passkey</a
+      >
     </div>
   {:else}
     <p class="text-muted-foreground text-xs">
-      <button type="button" class="underline underline-offset-4" onclick={() => (confirmSkip = true)} data-testid="{testId}-skip-passkey">Skip for now</button>
+      <button
+        type="button"
+        class="underline underline-offset-4"
+        onclick={() => (confirmSkip = true)}
+        data-testid="{testId}-skip-passkey">Skip for now</button
+      >
     </p>
   {/if}
 </div>

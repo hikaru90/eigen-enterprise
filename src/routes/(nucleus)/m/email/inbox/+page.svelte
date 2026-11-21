@@ -12,8 +12,10 @@
   import { afterNavigate, goto, invalidate } from '$app/navigation'
   import { resolve } from '$app/paths'
   import { navigating } from '$app/state'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
+  import { shownErrorOf, type ShownError } from '$lib/errors/agent-report'
   import { ResumableStream } from '$lib/messages/resumable-stream'
   import { docTitle } from '$lib/shell/title'
   import ProposalCard from '../../../../../../modules/calendar/ui/proposal-card.svelte'
@@ -37,11 +39,11 @@
 
   const base = resolve('/m/email/inbox')
   let busy = $state(false)
-  let actionError = $state<string | null>(null)
+  let actionError = $state<ShownError | null>(null)
   let live = $state<'connecting' | 'live' | 'reconnecting'>('connecting')
   let reader: ReturnType<typeof MailReader> | undefined = $state()
   let sending = $state(false)
-  let sendError = $state<string | null>(null)
+  let sendError = $state<ShownError | null>(null)
 
   const inbox = $derived(data.inbox)
   /** Where the list is: a folder, Starred, or a label (with its search, filter and sort). */
@@ -56,9 +58,17 @@
         }
       : {},
   )
-  const here = $derived<Partial<InboxState>>(inbox ? { ...place, q: inbox.q, filter: inbox.filter } : {})
+  const here = $derived<Partial<InboxState>>(
+    inbox ? { ...place, q: inbox.q, filter: inbox.filter } : {},
+  )
   const folderLabel = $derived(
-    !inbox ? '' : inbox.label ? inbox.label.name : inbox.view === 'starred' ? 'Starred' : FOLDER_LABELS[inbox.folder ?? 'inbox'],
+    !inbox
+      ? ''
+      : inbox.label
+        ? inbox.label.name
+        : inbox.view === 'starred'
+          ? 'Starred'
+          : FOLDER_LABELS[inbox.folder ?? 'inbox'],
   )
   const listHref = $derived(inboxHref(base, here))
   const filterLabel = $derived(inbox?.filter === 'unread' ? 'unread ' : '')
@@ -87,30 +97,51 @@
           : ({ kind: 'folder', folder: inbox.folder ?? 'inbox' } as const),
   )
 
-  const folderHref = (folder: Folder) => inboxHref(base, { box: inbox?.box.id, folder, sort: inbox?.sort })
-  const starredHref = $derived(inboxHref(base, { box: inbox?.box.id, view: 'starred', sort: inbox?.sort }))
-  const labelHref = (id: string) => inboxHref(base, { box: inbox?.box.id, label: id, sort: inbox?.sort })
-  const filterHref = (filter: 'unread' | 'attachments' | null) => inboxHref(base, { ...place, q: inbox?.q, filter })
+  const folderHref = (folder: Folder) =>
+    inboxHref(base, { box: inbox?.box.id, folder, sort: inbox?.sort })
+  const starredHref = $derived(
+    inboxHref(base, { box: inbox?.box.id, view: 'starred', sort: inbox?.sort }),
+  )
+  const labelHref = (id: string) =>
+    inboxHref(base, { box: inbox?.box.id, label: id, sort: inbox?.sort })
+  const filterHref = (filter: 'unread' | 'attachments' | null) =>
+    inboxHref(base, { ...place, q: inbox?.q, filter })
   const sortHref = (sort: 'oldest' | null) => inboxHref(base, { ...here, sort })
-  const readerLabels = $derived(inbox ? inbox.labels.filter((l) => inbox.readerLabelIds.includes(l.id)) : [])
+  const readerLabels = $derived(
+    inbox ? inbox.labels.filter((l) => inbox.readerLabelIds.includes(l.id)) : [],
+  )
   /** Places for the phone-width picker (the sidebar is hidden there). */
   const places = $derived(
     inbox
       ? [
           ...inbox.folders
             .filter((f) => f.folder === 'inbox')
-            .map((f) => ({ href: folderHref(f.folder), label: f.unread > 0 ? `${f.label} (${f.unread})` : f.label, here: currentPlace.kind === 'folder' && currentPlace.folder === f.folder })),
+            .map((f) => ({
+              href: folderHref(f.folder),
+              label: f.unread > 0 ? `${f.label} (${f.unread})` : f.label,
+              here: currentPlace.kind === 'folder' && currentPlace.folder === f.folder,
+            })),
           { href: starredHref, label: 'Starred', here: currentPlace.kind === 'starred' },
           ...inbox.folders
             .filter((f) => f.folder !== 'inbox')
-            .map((f) => ({ href: folderHref(f.folder), label: f.label, here: currentPlace.kind === 'folder' && currentPlace.folder === f.folder })),
-          ...inbox.labels.map((l) => ({ href: labelHref(l.id), label: `Label: ${l.name}`, here: currentPlace.kind === 'label' && currentPlace.labelId === l.id })),
+            .map((f) => ({
+              href: folderHref(f.folder),
+              label: f.label,
+              here: currentPlace.kind === 'folder' && currentPlace.folder === f.folder,
+            })),
+          ...inbox.labels.map((l) => ({
+            href: labelHref(l.id),
+            label: `Label: ${l.name}`,
+            here: currentPlace.kind === 'label' && currentPlace.labelId === l.id,
+          })),
         ]
       : [],
   )
   const newMailHref = $derived(inboxHref(base, { ...here, compose: 'new' }))
   /** Where Discard goes: the opened mail (a reply or forward), else the list. */
-  const discardHref = $derived(inbox?.reader ? inboxHref(base, { ...here, m: inbox.reader.id }) : listHref)
+  const discardHref = $derived(
+    inbox?.reader ? inboxHref(base, { ...here, m: inbox.reader.id }) : listHref,
+  )
   const composeLinks = $derived(
     inbox?.reader && !inbox.box.disabled
       ? {
@@ -121,7 +152,9 @@
       : null,
   )
   /** One compose form per draft: a new mode or parent starts a fresh form; reloads of the same one keep what was typed. */
-  const composeKey = $derived(inbox?.compose ? `${inbox.compose.mode}:${inbox.compose.parentId ?? ''}:${inbox.box.id}` : '')
+  const composeKey = $derived(
+    inbox?.compose ? `${inbox.compose.mode}:${inbox.compose.parentId ?? ''}:${inbox.box.id}` : '',
+  )
   const messageHref = (id: string) => inboxHref(base, { ...here, m: id })
   /** Calendar K7: the appointment's day in Calendar, and its dialog there (Edit). */
   const calendarBase = resolve('/m/calendar')
@@ -134,15 +167,29 @@
       : null,
   )
 
+  /** A form action's refusal: its sentence and agent report (the server's `{ error, agent }`). */
+  function failureOf(data: unknown): ShownError {
+    return (
+      shownErrorOf(data) ?? {
+        error: String((data as { error?: unknown } | undefined)?.error),
+        agent: null,
+      }
+    )
+  }
+
   /** A form action called from code (not a form): same endpoint and result shape as use:enhance. */
-  async function post(action: 'read', messageId: string): Promise<string | null> {
+  async function post(action: 'read', messageId: string): Promise<ShownError | null> {
     const body = new FormData()
     body.set('messageId', messageId)
-    const res = await fetch(`${base}?/${action}`, { method: 'POST', body, headers: { 'x-sveltekit-action': 'true' } })
+    const res = await fetch(`${base}?/${action}`, {
+      method: 'POST',
+      body,
+      headers: { 'x-sveltekit-action': 'true' },
+    })
     const result = deserialize(await res.text())
     if (result.type === 'success') return null
-    if (result.type === 'failure') return String((result.data as { error?: unknown } | undefined)?.error)
-    return `Could not mark the mail read (HTTP ${res.status}).`
+    if (result.type === 'failure') return failureOf(result.data)
+    return { error: `Could not mark the mail read (HTTP ${res.status}).`, agent: null }
   }
 
   async function open(item: MessageListItem, event: MouseEvent) {
@@ -161,7 +208,7 @@
     return async ({ result, update }) => {
       busy = false
       if (result.type === 'failure') {
-        actionError = String((result.data as { error?: unknown } | undefined)?.error)
+        actionError = failureOf(result.data)
         return
       }
       // A moved mail leaves this folder: back to the list.
@@ -179,20 +226,29 @@
       if (result.type === 'success') {
         const sent = (result.data as { sent?: { id: string; mailboxId: string } } | undefined)?.sent
         if (!sent) {
-          sendError = 'The mail was sent, but the page could not open it. Look in Sent.'
+          sendError = {
+            error: 'The mail was sent, but the page could not open it. Look in Sent.',
+            agent: null,
+          }
           return
         }
-        await goto(inboxHref(base, { box: sent.mailboxId, folder: 'sent', m: sent.id, sent: true }), { invalidateAll: true })
+        await goto(
+          inboxHref(base, { box: sent.mailboxId, folder: 'sent', m: sent.id, sent: true }),
+          { invalidateAll: true },
+        )
         await tick()
         document.getElementById('inbox-sent-confirmation')?.focus()
         return
       }
       if (result.type === 'failure') {
-        sendError = String((result.data as { error?: unknown } | undefined)?.error)
+        sendError = failureOf(result.data)
         return
       }
       if (result.type === 'error') {
-        sendError = 'The mail could not be sent. Nothing went out; try again in a moment.'
+        sendError = {
+          error: 'The mail could not be sent. Nothing went out; try again in a moment.',
+          agent: null,
+        }
         return
       }
       // A redirect (signed out): follow it.
@@ -215,7 +271,7 @@
     actionError = null
     return async ({ result, update }) => {
       if (result.type === 'failure') {
-        actionError = String((result.data as { error?: unknown } | undefined)?.error)
+        actionError = failureOf(result.data)
         return
       }
       await update({ reset: true })
@@ -223,14 +279,14 @@
   }
 
   let creating = $state(false)
-  let createError = $state<string | null>(null)
+  let createError = $state<ShownError | null>(null)
   const createSubmit: SubmitFunction = () => {
     creating = true
     createError = null
     return async ({ result, update }) => {
       creating = false
       if (result.type === 'failure') {
-        createError = String((result.data as { error?: unknown } | undefined)?.error)
+        createError = failureOf(result.data)
         return
       }
       await update()
@@ -276,7 +332,13 @@
 
   onMount(() => {
     if (!data.inbox) return
-    stream = new ResumableStream({ url: () => '/api/mail/inbox/stream', initialCursor: 0, events: ['mailbox'], onEvent, onStatus })
+    stream = new ResumableStream({
+      url: () => '/api/mail/inbox/stream',
+      initialCursor: 0,
+      events: ['mailbox'],
+      onEvent,
+      onStatus,
+    })
     stream.connect()
     document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener('online', onOnline)
@@ -301,18 +363,27 @@
   const selectClass = 'h-8 rounded-md border border-input bg-background px-2.5 text-sm'
 </script>
 
-<svelte:head><title>{docTitle(inbox ? `${folderLabel} · ${inbox.box.address}` : 'Inbox', 'Email')}</title></svelte:head>
+<svelte:head
+  ><title>{docTitle(inbox ? `${folderLabel} · ${inbox.box.address}` : 'Inbox', 'Email')}</title
+  ></svelte:head
+>
 
 {#snippet labelPicker()}
   {#if inbox?.reader}
     <details class="relative" data-testid="inbox-label-picker">
       <summary
         class="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-md border border-border px-3 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/60 [&::-webkit-details-marker]:hidden"
-        ><Tag class="size-4" aria-hidden="true" />Label{readerLabels.length > 0 ? ` (${readerLabels.length})` : ''}</summary
+        ><Tag class="size-4" aria-hidden="true" />Label{readerLabels.length > 0
+          ? ` (${readerLabels.length})`
+          : ''}</summary
       >
-      <div class="absolute top-9 right-0 z-20 w-56 rounded-lg border border-border bg-popover p-1 shadow-md">
+      <div
+        class="absolute top-9 right-0 z-20 w-56 rounded-lg border border-border bg-popover p-1 shadow-md"
+      >
         {#if inbox.labels.length === 0}
-          <p class="px-2 py-1.5 text-xs text-muted-foreground">No labels yet. Make one with + next to Labels.</p>
+          <p class="px-2 py-1.5 text-xs text-muted-foreground">
+            No labels yet. Make one with + next to Labels.
+          </p>
         {/if}
         {#each inbox.labels as l (l.id)}
           {@const isOn = inbox.readerLabelIds.includes(l.id)}
@@ -327,7 +398,11 @@
               class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] outline-none hover:bg-muted focus-visible:bg-muted"
               data-testid={`inbox-label-toggle-${l.id}`}
             >
-              <span class="size-2.5 shrink-0 rounded-full" style:background={labelDot(l.color)} aria-hidden="true"></span>
+              <span
+                class="size-2.5 shrink-0 rounded-full"
+                style:background={labelDot(l.color)}
+                aria-hidden="true"
+              ></span>
               <span class="min-w-0 flex-1 truncate">{l.name}</span>
               {#if isOn}<Check class="size-3.5" aria-hidden="true" />{/if}
             </button>
@@ -336,29 +411,43 @@
       </div>
     </details>
     {#each readerLabels as l (l.id)}
-      <span class="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs" data-testid="inbox-reader-label"
-        ><span class="size-1.5 rounded-full" style:background={labelDot(l.color)} aria-hidden="true"></span>{l.name}</span
+      <span
+        class="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs"
+        data-testid="inbox-reader-label"
+        ><span class="size-1.5 rounded-full" style:background={labelDot(l.color)} aria-hidden="true"
+        ></span>{l.name}</span
       >
     {/each}
   {/if}
 {/snippet}
 
 {#if data.start}
-  <section class="mt-2 max-w-2xl rounded-lg border border-border p-5" data-testid="inbox-no-mailbox" aria-labelledby="inbox-start-heading">
+  <section
+    class="mt-2 max-w-2xl rounded-lg border border-border p-5"
+    data-testid="inbox-no-mailbox"
+    aria-labelledby="inbox-start-heading"
+  >
     <h2 id="inbox-start-heading" class="text-base font-medium">Set up your inbox</h2>
     {#if !data.start.canCreate}
       <p class="mt-1 text-sm text-muted-foreground">
-        You have no mailbox yet. The owner or an admin gives you one under Setup › Mailboxes; your mail shows here once they do.
+        You have no mailbox yet. The owner or an admin gives you one under Setup › Mailboxes; your
+        mail shows here once they do.
       </p>
     {:else if data.start.domains.length === 0}
       <p class="mt-1 text-sm text-muted-foreground">
-        A mailbox lives on a verified domain, and there is none yet. Add your domain under Setup › Account; if it is already set up in
-        Amazon SES, ee uses it as it is.
+        A mailbox lives on a verified domain, and there is none yet. Add your domain under Setup ›
+        Account; if it is already set up in Amazon SES, ee uses it as it is.
       </p>
-      <Button class="mt-4" size="sm" href={resolve('/m/email/setup')} data-testid="inbox-start-domain">Go to Setup › Account</Button>
+      <Button
+        class="mt-4"
+        size="sm"
+        href={resolve('/m/email/setup')}
+        data-testid="inbox-start-domain">Go to Setup › Account</Button
+      >
     {:else}
       <p class="mt-1 text-sm text-muted-foreground">
-        Pick your address. You can send from it right away; mail to it arrives here once receiving is on for its domain.
+        Pick your address. You can send from it right away; mail to it arrives here once receiving
+        is on for its domain.
       </p>
       <form
         method="POST"
@@ -368,20 +457,37 @@
         use:enhance={createSubmit}
       >
         <label class="sr-only" for="inbox-mine-local">Address before the @</label>
-        <Input dictation={false} id="inbox-mine-local" name="localPart" required value={data.start.suggested ?? ''} class="h-8 w-48" autocomplete="off" />
+        <Input
+          dictation={false}
+          id="inbox-mine-local"
+          name="localPart"
+          required
+          value={data.start.suggested ?? ''}
+          class="h-8 w-48"
+          autocomplete="off"
+        />
         <span class="text-sm text-muted-foreground">@</span>
         <label class="sr-only" for="inbox-mine-domain">Domain</label>
         <select id="inbox-mine-domain" name="domainId" class={selectClass}>
           {#each data.start.domains as d (d.id)}<option value={d.id}>{d.name}</option>{/each}
         </select>
-        <Button type="submit" size="sm" disabled={creating}>{creating ? 'Creating…' : 'Create my mailbox'}</Button>
-        {#if createError}<p class="w-full text-sm text-destructive" role="alert">{createError}</p>{/if}
+        <Button type="submit" size="sm" disabled={creating}
+          >{creating ? 'Creating…' : 'Create my mailbox'}</Button
+        >
+        {#if createError}<ErrorNotice {...createError} class="w-full" />{/if}
       </form>
-      <p class="mt-3 text-xs text-muted-foreground">Shared addresses (info@, sales@) and mailboxes for others are under Setup › Mailboxes.</p>
+      <p class="mt-3 text-xs text-muted-foreground">
+        Shared addresses (info@, sales@) and mailboxes for others are under Setup › Mailboxes.
+      </p>
     {/if}
   </section>
 {:else if inbox}
-  <div class="mt-2 flex flex-col gap-3" data-testid="inbox" data-live={live} data-mailbox={inbox.box.id}>
+  <div
+    class="mt-2 flex flex-col gap-3"
+    data-testid="inbox"
+    data-live={live}
+    data-mailbox={inbox.box.id}
+  >
     {#if inbox.sent && !inbox.compose}
       <p
         id="inbox-sent-confirmation"
@@ -394,25 +500,54 @@
       </p>
     {/if}
     {#if inbox.box.disabled}
-      <p class="text-[13px] text-muted-foreground" data-testid="inbox-disabled">This address receives no new mail. What it holds stays here.</p>
+      <p class="text-[13px] text-muted-foreground" data-testid="inbox-disabled">
+        This address receives no new mail. What it holds stays here.
+      </p>
     {/if}
     {#if inbox.receivingOff}
-      <p class="rounded-lg border border-border px-3 py-2 text-[13px] text-muted-foreground" data-testid="inbox-receiving-off">
+      <p
+        class="rounded-lg border border-border px-3 py-2 text-[13px] text-muted-foreground"
+        data-testid="inbox-receiving-off"
+      >
         Sending from {inbox.box.address} works. To receive mail here, turn on receiving for
-        <a class="text-foreground underline underline-offset-4" href={resolve(`/m/email/domains/${inbox.receivingOff.domainId}`)}>{inbox.receivingOff.domain}</a>
+        <a
+          class="text-foreground underline underline-offset-4"
+          href={resolve(`/m/email/domains/${inbox.receivingOff.domainId}`)}
+          >{inbox.receivingOff.domain}</a
+        >
         (it changes where mail for the domain is delivered).
       </p>
     {/if}
-    {#if inbox.searchError}<p class="text-sm text-destructive" role="alert">{inbox.searchError}</p>{/if}
-    {#if actionError && !inbox.reader}<p class="text-sm text-destructive" role="alert">{actionError}</p>{/if}
+    {#if inbox.searchError}<ErrorNotice {...inbox.searchError} />{/if}
+    {#if actionError && !inbox.reader}<ErrorNotice
+        {...actionError}
+        attempted="Changing a mail in the inbox"
+      />{/if}
 
     <div class="grid gap-4 lg:grid-cols-[12.5rem_minmax(0,1fr)]">
       <aside class="hidden flex-col gap-4 lg:flex" aria-label="Mailbox">
-        <Button href={newMailHref} class="w-full justify-start" data-testid="inbox-new-mail"><PenLine aria-hidden="true" />New mail</Button>
+        <Button href={newMailHref} class="w-full justify-start" data-testid="inbox-new-mail"
+          ><PenLine aria-hidden="true" />New mail</Button
+        >
         {#if inbox.boxes.length > 1}
-          <form method="GET" action={base} class="flex flex-col gap-1" data-testid="inbox-mailbox-switcher">
-            <label for="inbox-box" class="px-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Mailbox</label>
-            <select id="inbox-box" name="box" class={selectClass} value={inbox.box.id} onchange={pickMailbox}>
+          <form
+            method="GET"
+            action={base}
+            class="flex flex-col gap-1"
+            data-testid="inbox-mailbox-switcher"
+          >
+            <label
+              for="inbox-box"
+              class="px-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase"
+              >Mailbox</label
+            >
+            <select
+              id="inbox-box"
+              name="box"
+              class={selectClass}
+              value={inbox.box.id}
+              onchange={pickMailbox}
+            >
               {#each inbox.boxes as b (b.id)}
                 <option value={b.id}>{b.address}{b.kind === 'shared' ? ' (shared)' : ''}</option>
               {/each}
@@ -420,7 +555,13 @@
             <noscript><Button type="submit" size="sm" variant="outline">Open</Button></noscript>
           </form>
         {:else}
-          <p class="truncate px-1 text-[13px] text-muted-foreground" data-testid="inbox-address" title={inbox.box.address}>{inbox.box.address}</p>
+          <p
+            class="truncate px-1 text-[13px] text-muted-foreground"
+            data-testid="inbox-address"
+            title={inbox.box.address}
+          >
+            {inbox.box.address}
+          </p>
         {/if}
         <FolderNav
           folders={inbox.folders}
@@ -439,43 +580,88 @@
           {#if inbox.boxes.length > 1}
             <form method="GET" action={base}>
               <label class="sr-only" for="inbox-box-narrow">Mailbox</label>
-              <select id="inbox-box-narrow" name="box" class={selectClass} value={inbox.box.id} onchange={pickMailbox}>
-                {#each inbox.boxes as b (b.id)}<option value={b.id}>{b.address}{b.kind === 'shared' ? ' (shared)' : ''}</option>{/each}
+              <select
+                id="inbox-box-narrow"
+                name="box"
+                class={selectClass}
+                value={inbox.box.id}
+                onchange={pickMailbox}
+              >
+                {#each inbox.boxes as b (b.id)}<option value={b.id}
+                    >{b.address}{b.kind === 'shared' ? ' (shared)' : ''}</option
+                  >{/each}
               </select>
             </form>
           {/if}
           <label class="sr-only" for="inbox-place">Folder or label</label>
-          <select id="inbox-place" class={selectClass} onchange={pickPlace} data-testid="inbox-place-picker">
-            {#each places as p (p.href)}<option value={p.href} selected={p.here}>{p.label}</option>{/each}
+          <select
+            id="inbox-place"
+            class={selectClass}
+            onchange={pickPlace}
+            data-testid="inbox-place-picker"
+          >
+            {#each places as p (p.href)}<option value={p.href} selected={p.here}>{p.label}</option
+              >{/each}
           </select>
-          <Button href={newMailHref} size="sm" class="ml-auto"><PenLine aria-hidden="true" />New mail</Button>
+          <Button href={newMailHref} size="sm" class="ml-auto"
+            ><PenLine aria-hidden="true" />New mail</Button
+          >
         </div>
 
         <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
           <h2 class="text-base font-medium" data-testid="inbox-place">{folderLabel}</h2>
-          <form method="GET" action={base} role="search" class="flex min-w-0 flex-1 items-center gap-2 sm:max-w-sm" data-testid="inbox-search">
+          <form
+            method="GET"
+            action={base}
+            role="search"
+            class="flex min-w-0 flex-1 items-center gap-2 sm:max-w-sm"
+            data-testid="inbox-search"
+          >
             <input type="hidden" name="box" value={inbox.box.id} />
-            {#if inbox.folder && !inbox.view && !inbox.label}<input type="hidden" name="folder" value={inbox.folder} />{/if}
+            {#if inbox.folder && !inbox.view && !inbox.label}<input
+                type="hidden"
+                name="folder"
+                value={inbox.folder}
+              />{/if}
             {#if inbox.view}<input type="hidden" name="view" value={inbox.view} />{/if}
             {#if inbox.label}<input type="hidden" name="label" value={inbox.label.id} />{/if}
             {#if inbox.filter}<input type="hidden" name="filter" value={inbox.filter} />{/if}
             {#if inbox.sort}<input type="hidden" name="sort" value={inbox.sort} />{/if}
-            <Input name="q" type="search" value={inbox.q ?? ''} placeholder={`Search ${folderLabel}`} aria-label={`Search ${folderLabel}`} class="h-8" />
+            <Input
+              name="q"
+              type="search"
+              value={inbox.q ?? ''}
+              placeholder={`Search ${folderLabel}`}
+              aria-label={`Search ${folderLabel}`}
+              class="h-8"
+            />
             <Button type="submit" size="sm" variant="outline">Search</Button>
           </form>
-          {#if live === 'reconnecting'}<span class="text-xs text-muted-foreground" role="status">Reconnecting…</span>{/if}
+          {#if live === 'reconnecting'}<span class="text-xs text-muted-foreground" role="status"
+              >Reconnecting…</span
+            >{/if}
         </div>
 
-        <div class="grid min-h-[28rem] overflow-hidden rounded-lg border border-border md:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)]">
-          <section class="min-w-0 border-border md:border-r {inbox.reader || inbox.compose ? 'hidden md:block' : ''}" aria-label={`${folderLabel} list`}>
-            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <div
+          class="grid min-h-[28rem] overflow-hidden rounded-lg border border-border md:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)]"
+        >
+          <section
+            class="min-w-0 border-border md:border-r {inbox.reader || inbox.compose
+              ? 'hidden md:block'
+              : ''}"
+            aria-label={`${folderLabel} list`}
+          >
+            <div
+              class="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2"
+            >
               <nav class="flex gap-0.5" aria-label="Filter" data-testid="inbox-filters">
                 {#each [{ id: null, label: 'All' }, { id: 'unread', label: 'Unread' }, { id: 'attachments', label: 'Attachments' }] as const as f (f.label)}
                   <a
                     href={filterHref(f.id)}
                     aria-current={inbox.filter === f.id ? 'true' : undefined}
                     data-testid={`inbox-filter-${f.id ?? 'all'}`}
-                    class="rounded-md px-2 py-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/60 {inbox.filter === f.id
+                    class="rounded-md px-2 py-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/60 {inbox.filter ===
+                    f.id
                       ? 'bg-muted font-medium text-foreground'
                       : 'text-muted-foreground hover:text-foreground'}">{f.label}</a
                   >
@@ -485,14 +671,21 @@
                 href={sortHref(inbox.sort === 'oldest' ? null : 'oldest')}
                 class="text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
                 data-testid="inbox-sort"
-                aria-label={inbox.sort === 'oldest' ? 'Sorted oldest first. Sort newest first' : 'Sorted newest first. Sort oldest first'}
+                aria-label={inbox.sort === 'oldest'
+                  ? 'Sorted oldest first. Sort newest first'
+                  : 'Sorted newest first. Sort oldest first'}
                 >{inbox.sort === 'oldest' ? 'Oldest first' : 'Newest first'} ↕</a
               >
             </div>
             {#if inbox.q}
-              <p class="flex items-center justify-between gap-2 border-b border-border px-4 py-2 text-xs text-muted-foreground">
+              <p
+                class="flex items-center justify-between gap-2 border-b border-border px-4 py-2 text-xs text-muted-foreground"
+              >
                 <span class="truncate">Results for “{inbox.q}”</span>
-                <a class="underline-offset-4 hover:underline" href={inboxHref(base, { ...place, filter: inbox.filter })}>Clear</a>
+                <a
+                  class="underline-offset-4 hover:underline"
+                  href={inboxHref(base, { ...place, filter: inbox.filter })}>Clear</a
+                >
               </p>
             {/if}
             <MessageList
@@ -506,17 +699,30 @@
             />
           </section>
           <section
-            class="min-w-0 {inbox.reader || inbox.compose ? '' : 'hidden md:flex md:items-center md:justify-center'}"
+            class="min-w-0 {inbox.reader || inbox.compose
+              ? ''
+              : 'hidden md:flex md:items-center md:justify-center'}"
             aria-label={inbox.compose ? 'Compose' : 'Reading pane'}
           >
             {#if inbox.compose}
               {#key composeKey}
-                <ComposeForm draft={inbox.compose} submit={sendSubmit} {discardHref} busy={sending} error={sendError} />
+                <ComposeForm
+                  draft={inbox.compose}
+                  submit={sendSubmit}
+                  {discardHref}
+                  busy={sending}
+                  error={sendError?.error ?? null}
+                  agent={sendError?.agent ?? null}
+                />
               {/key}
             {:else if inbox.reader}
               {#if inbox.proposal && proposalLinks}
                 <div class="border-b border-border p-3">
-                  <ProposalCard proposal={inbox.proposal} editHref={proposalLinks.edit} calendarHref={proposalLinks.day} />
+                  <ProposalCard
+                    proposal={inbox.proposal}
+                    editHref={proposalLinks.edit}
+                    calendarHref={proposalLinks.day}
+                  />
                 </div>
               {/if}
               {#key inbox.reader.id}
@@ -527,7 +733,8 @@
                   imagesHref={inboxHref(base, { ...here, m: inbox.reader.id, images: true })}
                   {submit}
                   {busy}
-                  error={actionError}
+                  error={actionError?.error ?? null}
+                  agent={actionError?.agent ?? null}
                   compose={composeLinks}
                   extra={labelPicker}
                 />

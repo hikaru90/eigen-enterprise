@@ -2,9 +2,15 @@ import type { ComposeDraft, Upload } from '../../../../../../modules/email/inbox
 import type { MoveTarget } from '../../../../../../modules/email/inbox/types'
 import type { Actions, PageServerLoad } from './$types'
 import { error } from '@sveltejs/kit'
+import type { ErrorReport } from '$lib/errors/agent-report'
+import { errorReport } from '$lib/server/errors/report'
 import { CalendarError } from '../../../../../../modules/calendar/errors'
 import { calendarAction } from '../../../../../../modules/calendar/http'
-import { acceptProposal, dismissProposal, proposalForMail } from '../../../../../../modules/calendar/proposals'
+import {
+  acceptProposal,
+  dismissProposal,
+  proposalForMail,
+} from '../../../../../../modules/calendar/proposals'
 import { InboxError } from '../../../../../../modules/email/inbox/errors'
 import { inboxDeps, sendDeps } from '../../../../../../modules/email/inbox/live'
 import { composeDraft, sendMail } from '../../../../../../modules/email/inbox/send'
@@ -26,10 +32,15 @@ import {
 } from '../../../../../../modules/email/inbox/service'
 import { COMPOSE_MODES, type ComposeMode } from '../../../../../../modules/email/inbox/types'
 import { isUuid, parseInboxQuery } from '../../../../../../modules/email/inbox/url'
-import { folderViews, labelView, listItem, readerView } from '../../../../../../modules/email/inbox/view'
+import {
+  folderViews,
+  labelView,
+  listItem,
+  readerView,
+} from '../../../../../../modules/email/inbox/view'
 import { syncMailReceiving } from '../../../../../../modules/email/platform/receiving-sync'
 import { emailPlatform } from '../../../../../../modules/email/platform/service'
-import { act, field, requireMember } from '../access.server'
+import { act, field, receivingReport, requireMember } from '../access.server'
 import { INBOX_DEPENDENCY } from './dependency'
 
 /**
@@ -81,7 +92,7 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const label = state.label ? labels.find((l) => l.id === state.label) : null
   if (state.label && !label) error(404, 'No such label.')
 
-  let searchError: string | null = null
+  let searchError: ErrorReport | null = null
   let messages: Awaited<ReturnType<typeof listFolder>> = []
   try {
     messages = await listFolder(deps, me.userId, {
@@ -95,13 +106,24 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
     })
   } catch (err) {
     if (!(err instanceof InboxError && err.code === 'invalid')) throw err
-    searchError = err.message
+    searchError = errorReport(err, {
+      attempted: 'Searching and filtering a mailbox in the inbox',
+      input: { q: state.q, filter: state.filter, sort: state.sort },
+      plain: () => err.message,
+      nextSteps: [
+        'The inbox refused the search or filter (InboxError "invalid", modules/email/inbox/service.ts listFolder); the input shows what the address bar asked for.',
+      ],
+    })
   }
 
   let compose: ComposeDraft | null = null
   if (state.compose) {
     try {
-      compose = await composeDraft(deps, me.userId, { mailboxId: box.id, mode: state.compose, parentId: thread?.message.id ?? null })
+      compose = await composeDraft(deps, me.userId, {
+        mailboxId: box.id,
+        mode: state.compose,
+        parentId: thread?.message.id ?? null,
+      })
     } catch (err) {
       if (err instanceof InboxError && err.code === 'not_found') error(404, 'No such mail.')
       throw err
@@ -111,13 +133,24 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   let proposal: Awaited<ReturnType<typeof proposalForMail>> = null
   if (thread && box.kind === 'personal') {
     const side = await proposalSide()
-    if (await side.calendarOn()) proposal = await proposalForMail(await side.proposalDeps(), { kind: 'user', userId: me.userId }, thread.message.id)
+    if (await side.calendarOn())
+      proposal = await proposalForMail(
+        await side.proposalDeps(),
+        { kind: 'user', userId: me.userId },
+        thread.message.id,
+      )
   }
 
   return {
     start: null,
     inbox: {
-      boxes: boxes.map((b) => ({ id: b.id, address: b.address, displayName: b.displayName, kind: b.kind, disabled: b.disabled })),
+      boxes: boxes.map((b) => ({
+        id: b.id,
+        address: b.address,
+        displayName: b.displayName,
+        kind: b.kind,
+        disabled: b.disabled,
+      })),
       box: { id: box.id, address: box.address, kind: box.kind, disabled: box.disabled },
       folder,
       view: state.view,
@@ -155,7 +188,9 @@ async function startState(me: { userId: string; isAdmin: boolean }) {
 }
 
 /** For the owner and admins: the mailbox's domain doesn't receive mail yet (sending already works). */
-async function receivingOffFor(address: string): Promise<{ domainId: string; domain: string } | null> {
+async function receivingOffFor(
+  address: string,
+): Promise<{ domainId: string; domain: string } | null> {
   const domainName = address.slice(address.lastIndexOf('@') + 1)
   const d = (await emailPlatform().listDomains()).find((x) => x.name === domainName)
   return d && !d.receiving ? { domainId: d.id, domain: d.name } : null
@@ -166,22 +201,40 @@ const proposalAction = (name: 'acceptProposal' | 'dismissProposal') =>
   (async ({ locals, request }) => {
     const me = await requireMember(locals)
     const form = await request.formData()
-    return calendarAction(name, async () => {
-      const side = await proposalSide()
-      if (!(await side.calendarOn())) throw new CalendarError('forbidden', 'Calendar is switched off, so appointments from mail can’t be accepted or dismissed.')
-      const actor = { kind: 'user' as const, userId: me.userId }
-      const d = await side.proposalDeps()
-      if (name === 'acceptProposal') return { action: name, ok: true, invited: (await acceptProposal(d, actor, field(form, 'proposalId'))).invited }
-      await dismissProposal(d, actor, field(form, 'proposalId'))
-      return { action: name, ok: true }
-    })
+    return calendarAction(
+      name,
+      name === 'acceptProposal'
+        ? 'Accepting an appointment found in a mail, from the inbox'
+        : 'Dismissing an appointment found in a mail, from the inbox',
+      async () => {
+        const side = await proposalSide()
+        if (!(await side.calendarOn()))
+          throw new CalendarError(
+            'forbidden',
+            'Calendar is switched off, so appointments from mail can’t be accepted or dismissed.',
+          )
+        const actor = { kind: 'user' as const, userId: me.userId }
+        const d = await side.proposalDeps()
+        if (name === 'acceptProposal')
+          return {
+            action: name,
+            ok: true,
+            invited: (await acceptProposal(d, actor, field(form, 'proposalId'))).invited,
+          }
+        await dismissProposal(d, actor, field(form, 'proposalId'))
+        return { action: name, ok: true }
+      },
+    )
   }) satisfies Actions[string]
 
-const messageAction = (name: string, run: (userId: string, messageId: string, form: FormData) => Promise<void>) =>
+const messageAction = (
+  name: string,
+  run: (userId: string, messageId: string, form: FormData) => Promise<void>,
+) =>
   (async ({ locals, request }) => {
     const me = await requireMember(locals)
     const form = await request.formData()
-    return act(name, async () => {
+    return act(name, `Changing a mail in the inbox (${name})`, async () => {
       const messageId = field(form, 'messageId')
       if (!isUuid(messageId)) throw new InboxError('not_found', 'No such mail.')
       await run(me.userId, messageId, form)
@@ -194,7 +247,11 @@ async function uploadsOf(form: FormData): Promise<Upload[]> {
   const out: Upload[] = []
   for (const v of form.getAll('attachments')) {
     if (typeof v === 'string' || (v.size === 0 && v.name === '')) continue
-    out.push({ filename: v.name, contentType: v.type, bytes: new Uint8Array(await v.arrayBuffer()) })
+    out.push({
+      filename: v.name,
+      contentType: v.type,
+      bytes: new Uint8Array(await v.arrayBuffer()),
+    })
   }
   return out
 }
@@ -203,11 +260,12 @@ export const actions: Actions = {
   send: async ({ locals, request }) => {
     const me = await requireMember(locals)
     const form = await request.formData()
-    return act('send', async () => {
+    return act('send', 'Sending a mail from the inbox', async () => {
       const mailboxId = field(form, 'mailboxId')
       if (!isUuid(mailboxId)) throw new InboxError('not_found', 'No such mailbox.')
       const mode = field(form, 'mode')
-      if (!(COMPOSE_MODES as readonly string[]).includes(mode)) throw new InboxError('invalid', 'This form doesn’t say what to send.')
+      if (!(COMPOSE_MODES as readonly string[]).includes(mode))
+        throw new InboxError('invalid', 'This form doesn’t say what to send.')
       const parent = field(form, 'parentId')
       if (parent !== '' && !isUuid(parent)) throw new InboxError('not_found', 'No such mail.')
       // The body keeps its own spacing: field() would trim it.
@@ -230,30 +288,37 @@ export const actions: Actions = {
   createMine: async ({ locals, request }) => {
     const me = await requireMember(locals)
     const form = await request.formData()
-    return act('createMine', async () => {
+    return act('createMine', 'Creating my own mailbox from the empty inbox', async () => {
       const box = await assignPersonalMailbox(await inboxDeps(), me.userId, {
         memberId: me.userId,
         localPart: field(form, 'localPart'),
         domainId: field(form, 'domainId'),
       })
-      const receivingError = await syncMailReceiving()
+      const receivingError = receivingReport(
+        await syncMailReceiving(),
+        'Syncing the Amazon SES receipt rules after creating my mailbox',
+      )
       return { address: box.address, ...(receivingError ? { receivingError } : {}) }
     })
   },
   createLabel: async ({ locals, request }) => {
     const me = await requireMember(locals)
     const form = await request.formData()
-    return act('createLabel', async () => {
+    return act('createLabel', 'Creating a label in the inbox', async () => {
       const mailboxId = field(form, 'mailboxId')
       if (!isUuid(mailboxId)) throw new InboxError('not_found', 'No such mailbox.')
-      const label = await createLabel(await inboxDeps(), me.userId, { mailboxId, name: field(form, 'name'), color: field(form, 'color') })
+      const label = await createLabel(await inboxDeps(), me.userId, {
+        mailboxId,
+        name: field(form, 'name'),
+        color: field(form, 'color'),
+      })
       return { labelId: label.id }
     })
   },
   deleteLabel: async ({ locals, request }) => {
     const me = await requireMember(locals)
     const form = await request.formData()
-    return act('deleteLabel', async () => {
+    return act('deleteLabel', 'Deleting a label in the inbox', async () => {
       const labelId = field(form, 'labelId')
       if (!isUuid(labelId)) throw new InboxError('not_found', 'No such label.')
       await deleteLabel(await inboxDeps(), me.userId, { labelId })
@@ -263,15 +328,30 @@ export const actions: Actions = {
   label: messageAction('label', async (userId, messageId, form) => {
     const labelId = field(form, 'labelId')
     if (!isUuid(labelId)) throw new InboxError('not_found', 'No such label.')
-    await setMessageLabel(await inboxDeps(), userId, { messageId, labelId, on: field(form, 'on') === '1' })
+    await setMessageLabel(await inboxDeps(), userId, {
+      messageId,
+      labelId,
+      on: field(form, 'on') === '1',
+    })
   }),
   acceptProposal: proposalAction('acceptProposal'),
   dismissProposal: proposalAction('dismissProposal'),
-  read: messageAction('read', async (userId, messageId) => setRead(await inboxDeps(), userId, { messageId, read: true })),
-  unread: messageAction('unread', async (userId, messageId) => setRead(await inboxDeps(), userId, { messageId, read: false })),
-  star: messageAction('star', async (userId, messageId) => setStarred(await inboxDeps(), userId, { messageId, starred: true })),
-  unstar: messageAction('unstar', async (userId, messageId) => setStarred(await inboxDeps(), userId, { messageId, starred: false })),
+  read: messageAction('read', async (userId, messageId) =>
+    setRead(await inboxDeps(), userId, { messageId, read: true }),
+  ),
+  unread: messageAction('unread', async (userId, messageId) =>
+    setRead(await inboxDeps(), userId, { messageId, read: false }),
+  ),
+  star: messageAction('star', async (userId, messageId) =>
+    setStarred(await inboxDeps(), userId, { messageId, starred: true }),
+  ),
+  unstar: messageAction('unstar', async (userId, messageId) =>
+    setStarred(await inboxDeps(), userId, { messageId, starred: false }),
+  ),
   move: messageAction('move', async (userId, messageId, form) =>
-    moveMessage(await inboxDeps(), userId, { messageId, folder: field(form, 'folder') as MoveTarget }),
+    moveMessage(await inboxDeps(), userId, {
+      messageId,
+      folder: field(form, 'folder') as MoveTarget,
+    }),
   ),
 }

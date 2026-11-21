@@ -27,13 +27,21 @@ describe('presence-dot.svelte', () => {
       const { unmount } = render(PresenceDot, { presence: view({ status }), now: NOW })
       const dot = page.getByTestId('presence-dot')
       await expect.element(dot).toHaveAttribute('data-status', status)
-      await expect.element(dot).toHaveAttribute('data-glyph', { in_call: 'phone', dnd: 'bar', away: 'clock', online: 'none', offline: 'ring' }[status])
+      await expect
+        .element(dot)
+        .toHaveAttribute(
+          'data-glyph',
+          { in_call: 'phone', dnd: 'bar', away: 'clock', online: 'none', offline: 'ring' }[status],
+        )
       unmount()
     }
   })
 
   it('offline people say when they were last active', async () => {
-    render(PresenceDot, { presence: view({ status: 'offline', lastSeenAt: '2026-11-12T10:00:00.000Z' }), now: NOW })
+    render(PresenceDot, {
+      presence: view({ status: 'offline', lastSeenAt: '2026-11-12T10:00:00.000Z' }),
+      now: NOW,
+    })
     await expect.element(page.getByRole('img', { name: 'Active 2 h ago' })).toBeInTheDocument()
   })
 })
@@ -41,7 +49,15 @@ describe('presence-dot.svelte', () => {
 describe('presence-self.svelte', () => {
   it('shows my status and a Do not disturb switch that asks to turn it on', async () => {
     const ontoggle = vi.fn()
-    render(PresenceSelf, { name: 'Bea Member', image: null, presence: view(), now: NOW, saving: false, error: null, ontoggle })
+    render(PresenceSelf, {
+      name: 'Bea Member',
+      image: null,
+      presence: view(),
+      now: NOW,
+      saving: false,
+      error: null,
+      ontoggle,
+    })
     await expect.element(page.getByTestId('presence-self-label')).toHaveTextContent('Online')
     const toggle = page.getByRole('switch', { name: 'Do not disturb' })
     await expect.element(toggle).toHaveAttribute('aria-checked', 'false')
@@ -60,7 +76,9 @@ describe('presence-self.svelte', () => {
       error: null,
       ontoggle,
     })
-    await expect.element(page.getByTestId('presence-self-label')).toHaveTextContent('Do not disturb')
+    await expect
+      .element(page.getByTestId('presence-self-label'))
+      .toHaveTextContent('Do not disturb')
     const toggle = page.getByRole('switch', { name: 'Do not disturb' })
     await expect.element(toggle).toHaveAttribute('aria-checked', 'true')
     await toggle.click()
@@ -74,10 +92,13 @@ describe('presence-self.svelte', () => {
       presence: view(),
       now: NOW,
       saving: true,
-      error: 'Status is unavailable right now; reload to try again.',
+      error: { error: 'Status is unavailable right now; reload to try again.', agent: null },
       ontoggle: vi.fn(),
     })
     await expect.element(page.getByRole('switch', { name: 'Do not disturb' })).toBeDisabled()
     await expect.element(page.getByRole('alert')).toHaveTextContent('Status is unavailable')
+    await expect
+      .element(page.getByRole('button', { name: 'Copy agent instructions' }))
+      .toBeInTheDocument()
   })
 })

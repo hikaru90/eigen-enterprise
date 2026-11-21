@@ -27,7 +27,13 @@ describe('notifications-banner.svelte — "Turn on notifications on this device"
       current = env({ permission: 'granted', subscribed: true })
     })
     const onenabled = vi.fn()
-    render(NotificationsBanner, { variant: 'floating', standaloneOnly: true, readEnv: async () => current, enable, onenabled })
+    render(NotificationsBanner, {
+      variant: 'floating',
+      standaloneOnly: true,
+      readEnv: async () => current,
+      enable,
+      onenabled,
+    })
 
     const banner = page.getByTestId('push-banner')
     await expect.element(banner).toHaveAttribute('data-state', 'ask')
@@ -45,16 +51,31 @@ describe('notifications-banner.svelte — "Turn on notifications on this device"
     const enable = vi.fn(async () => {
       throw new Error('Notification permission was not granted')
     })
-    render(NotificationsBanner, { variant: 'floating', standaloneOnly: true, readEnv: async () => env(), enable })
+    render(NotificationsBanner, {
+      variant: 'floating',
+      standaloneOnly: true,
+      readEnv: async () => env(),
+      enable,
+    })
 
     await page.getByTestId('push-banner-enable').click()
-    await expect.element(page.getByTestId('push-banner-error')).toHaveTextContent('Notification permission was not granted')
+    await expect
+      .element(page.getByTestId('push-banner-error'))
+      .toHaveTextContent('Notification permission was not granted')
+    await expect
+      .element(page.getByRole('button', { name: 'Copy agent instructions' }))
+      .toBeInTheDocument()
     await expect.element(page.getByTestId('push-banner')).toHaveAttribute('data-state', 'ask')
   })
 
   it('standaloneOnly: stays hidden in a browser tab', async () => {
     const readEnv = vi.fn(async () => env({ standalone: false }))
-    render(NotificationsBanner, { variant: 'floating', standaloneOnly: true, readEnv, enable: vi.fn() })
+    render(NotificationsBanner, {
+      variant: 'floating',
+      standaloneOnly: true,
+      readEnv,
+      enable: vi.fn(),
+    })
     await vi.waitFor(() => expect(readEnv).toHaveBeenCalled())
     await expect.element(page.getByTestId('push-banner')).not.toBeInTheDocument()
   })

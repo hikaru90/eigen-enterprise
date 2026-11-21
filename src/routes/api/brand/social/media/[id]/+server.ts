@@ -1,14 +1,17 @@
 import type { RequestHandler } from './$types'
-import { liveSocial } from '$lib/server/brand/social'
-import { personActor, socialJson } from '../../../../../../../modules/brand/social/http'
+import { liveSocial, socialJson } from '$lib/server/brand/social'
+import { personActor } from '../../../../../../../modules/brand/social/http'
 
 /** GET: an uploaded post's file (inline; ?download=1 saves it under its name). */
 export const GET: RequestHandler = async ({ locals, params, url }) => {
   personActor(locals.user)
   let file: { media: { mime: string; name: string }; bytes: Uint8Array } | undefined
-  const failed = await socialJson(async () => {
-    file = await liveSocial().media().readMedia(params.id)
-  })
+  const failed = await socialJson(
+    `Loading the media ${params.id} of a social post (Brand › Social)`,
+    async () => {
+      file = await liveSocial().media().readMedia(params.id)
+    },
+  )
   if (!file) return failed
   const disposition = url.searchParams.get('download') === '1' ? 'attachment' : 'inline'
   return new Response(file.bytes as unknown as BodyInit, {

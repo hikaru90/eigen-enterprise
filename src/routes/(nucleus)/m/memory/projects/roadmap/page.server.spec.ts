@@ -80,7 +80,13 @@ describe('/m/memory/projects/roadmap', () => {
 
   it('members cannot edit', async () => {
     state.admin = false
-    expect(await actions.add(form({ title: 'Nope' }) as never)).toMatchObject({ status: 403 })
+    expect(await actions.add(form({ title: 'Nope' }) as never)).toMatchObject({
+      status: 403,
+      data: {
+        error: 'Only the owner and admins can change the roadmap.',
+        agent: { attempted: 'Adding a roadmap item on /m/memory/projects/roadmap' },
+      },
+    })
     expect(await store.list()).toHaveLength(0)
   })
 })

@@ -1,14 +1,17 @@
 <script lang="ts">
   import CalendarRangeIcon from '@lucide/svelte/icons/calendar-range'
   import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import * as Popover from '$lib/components/ui/popover'
+  import type { ShownError } from '$lib/errors/agent-report'
   import {
     GRAPH_FILTER_GLASS_POPOVER,
     GRAPH_FILTER_POPOVER_WIDTH,
     graphFilterTriggerClass,
   } from '$lib/graph/graph-filter-chrome'
+  import { agentIn, RequestError, shownOf } from '$lib/memory/request-error'
   import {
     computePresetAbsoluteRange,
     formatParseDateRangeHttpError,
@@ -43,7 +46,7 @@
   let open = $state(false)
   let phrase = $state('')
   let submitting = $state(false)
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
 
   const presets: { id: TimelineDatePresetId; label: string }[] = [
     { id: 'last-week', label: 'Last week' },
@@ -76,7 +79,11 @@
         }),
       })
       if (!res.ok) {
-        throw new Error(formatParseDateRangeHttpError(res.status, await res.text()))
+        const text = await res.text()
+        throw new RequestError({
+          error: formatParseDateRangeHttpError(res.status, text),
+          agent: agentIn(text),
+        })
       }
       const body = (await res.json()) as TimelineDateRangeValue
       applyLocalRange({
@@ -86,7 +93,7 @@
         label: body.label,
       })
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = shownOf(err)
     } finally {
       submitting = false
     }
@@ -150,7 +157,12 @@
         </Button>
       </div>
       {#if error}
-        <p class="text-destructive text-xs leading-snug">{error}</p>
+        <ErrorNotice
+          class="text-xs leading-snug"
+          error={error.error}
+          agent={error.agent}
+          attempted="Parsing a typed date range for the timeline filter"
+        />
       {/if}
       <div class="flex flex-col gap-1">
         {#each presets as preset (preset.id)}

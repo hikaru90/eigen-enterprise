@@ -9,7 +9,14 @@ import { DEVICES_KEY } from './devices'
 import { FakeRoom, fakeCall, fakeEnv, fakeToken, memoryStorage, remotePerson } from './fake-room'
 
 /** The live call as the call page holds it, over a fake room (no server). */
-function liveCall(opts: { room?: FakeRoom; env?: Partial<CallEnv>; token?: () => Promise<CallTokenDto>; accept?: () => Promise<CallDto> } = {}) {
+function liveCall(
+  opts: {
+    room?: FakeRoom
+    env?: Partial<CallEnv>
+    token?: () => Promise<CallTokenDto>
+    accept?: () => Promise<CallDto>
+  } = {},
+) {
   const room = opts.room ?? new FakeRoom()
   const env = fakeEnv(opts.env)
   const client = {
@@ -27,7 +34,15 @@ function view(active: ActiveCall, call: CallDto = fakeCall()) {
   const onleave = vi.fn()
   const onhungup = vi.fn()
   const onopen = vi.fn()
-  const r = render(CallView, { active, call, me: 'ann', leaveLabel: 'Close', onleave, onhungup, onopen })
+  const r = render(CallView, {
+    active,
+    call,
+    me: 'ann',
+    leaveLabel: 'Close',
+    onleave,
+    onhungup,
+    onopen,
+  })
   return { onleave, onhungup, onopen, r }
 }
 
@@ -36,8 +51,12 @@ function setup(opts: Parameters<typeof liveCall>[0] & { call?: CallDto } = {}) {
   return { ...l, ...view(l.active, opts.call) }
 }
 
-const connected = () => expect.element(page.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
-const tile = (identity: string, kind = 'camera') => page.getByTestId('call-grid').locator(`[data-testid="call-tile"][data-identity="${identity}"][data-kind="${kind}"]`)
+const connected = () =>
+  expect.element(page.getByTestId('call-view')).toHaveAttribute('data-phase', 'connected')
+const tile = (identity: string, kind = 'camera') =>
+  page
+    .getByTestId('call-grid')
+    .locator(`[data-testid="call-tile"][data-identity="${identity}"][data-kind="${kind}"]`)
 
 describe('call-view.svelte', () => {
   it('accepts when I have not, fetches a token, joins the room, turns mic + camera on', async () => {
@@ -50,7 +69,9 @@ describe('call-view.svelte', () => {
     await expect.element(page.getByTestId('call-camera')).toHaveAttribute('data-on', 'true')
     await expect.element(tile('ann')).toHaveAttribute('data-local', 'true')
     await expect.element(tile('ann')).toHaveAttribute('data-video', 'true')
-    await expect.element(page.getByTestId('call-status')).toHaveTextContent('Waiting for others to join…')
+    await expect
+      .element(page.getByTestId('call-status'))
+      .toHaveTextContent('Waiting for others to join…')
   })
 
   it('does not accept again when I already did', async () => {
@@ -72,13 +93,18 @@ describe('call-view.svelte', () => {
     await expect.element(page.getByTestId('call-status')).toHaveTextContent('2 in the call')
     const video = ben.getByTestId('call-video').element() as HTMLVideoElement
     expect(video.srcObject).toBe(room.remote[0].camera)
-    await expect.element(tile('ann').getByTestId('call-tile-name')).toHaveTextContent('Ann Example (you)')
+    await expect
+      .element(tile('ann').getByTestId('call-tile-name'))
+      .toHaveTextContent('Ann Example (you)')
   })
 
   it('three or more: a grid, the active speaker emphasised', async () => {
     const { room } = setup()
     await connected()
-    room.remote = [remotePerson(), remotePerson({ identity: 'cy', name: 'Cy Example', speaking: true })]
+    room.remote = [
+      remotePerson(),
+      remotePerson({ identity: 'cy', name: 'Cy Example', speaking: true }),
+    ]
     room.emit({ type: 'participants' })
     await expect.element(page.getByTestId('call-view')).toHaveAttribute('data-mode', 'grid')
     await expect.element(tile('cy')).toHaveAttribute('data-speaker', 'true')
@@ -89,12 +115,19 @@ describe('call-view.svelte', () => {
   it('a screen share takes the big area, everyone else goes into the strip', async () => {
     const { room } = setup()
     await connected()
-    room.remote = [remotePerson({ screen: new MediaStream() }), remotePerson({ identity: 'cy', name: 'Cy Example' })]
+    room.remote = [
+      remotePerson({ screen: new MediaStream() }),
+      remotePerson({ identity: 'cy', name: 'Cy Example' }),
+    ]
     room.emit({ type: 'participants' })
     await expect.element(page.getByTestId('call-view')).toHaveAttribute('data-mode', 'focus')
     await expect.element(tile('ben', 'screen')).toBeInTheDocument()
     const strip = page.getByTestId('call-strip').getByTestId('call-tile')
-    expect(strip.elements().map((e) => (e as HTMLElement).dataset.identity)).toEqual(['ann', 'ben', 'cy'])
+    expect(strip.elements().map((e) => (e as HTMLElement).dataset.identity)).toEqual([
+      'ann',
+      'ben',
+      'cy',
+    ])
   })
 
   it('mute, camera off and screen share drive the room', async () => {
@@ -156,7 +189,9 @@ describe('call-view.svelte', () => {
     await vi.waitFor(() => expect(active.state.phase).toBe('connected'))
     const { onopen } = view(active, fakeCall({ id: 'call-2', title: 'Design review' }))
     const busy = page.getByTestId('call-busy')
-    await expect.element(busy.getByRole('alert')).toHaveTextContent("You're already in a call: Ann Example, Ben Example.")
+    await expect
+      .element(busy.getByRole('alert'))
+      .toHaveTextContent("You're already in a call: Ann Example, Ben Example.")
     await expect.element(busy).toHaveTextContent('Hang up that call first to join this one.')
     expect(page.getByTestId('call-controls').elements()).toHaveLength(0)
     await page.getByTestId('call-busy-back').click()
@@ -168,12 +203,21 @@ describe('call-view.svelte', () => {
   it('calls not set up: says so plainly, creates no room', async () => {
     const { createRoom } = setup({
       token: async () => {
-        throw new CallRequestError({ kind: 'not_configured', message: 'Calls are not set up on this server' })
+        throw new CallRequestError({
+          kind: 'not_configured',
+          message: 'Calls are not set up on this server',
+          agent: null,
+        })
       },
     })
     const problem = page.getByTestId('call-problem')
     await expect.element(problem).toHaveAttribute('data-kind', 'not_configured')
-    await expect.element(problem.getByRole('alert')).toHaveTextContent('Calls are not set up on this server')
+    await expect
+      .element(problem.getByRole('alert'))
+      .toHaveTextContent('Calls are not set up on this server')
+    await expect
+      .element(problem.getByRole('button', { name: 'Copy agent instructions' }))
+      .toBeInTheDocument()
     expect(createRoom).not.toHaveBeenCalled()
     expect(page.getByTestId('call-controls').elements()).toHaveLength(0)
   })
@@ -190,7 +234,7 @@ describe('call-view.svelte', () => {
     await expect.element(page.getByTestId('call-camera')).toHaveAttribute('data-on', 'false')
   })
 
-  it('the call closing on the server ends the view with how it ended; the leave button is the page\'s', async () => {
+  it("the call closing on the server ends the view with how it ended; the leave button is the page's", async () => {
     const { room, client, onleave, onhungup } = setup()
     await connected()
     room.emit({ type: 'disconnected', reason: 'call_over' })
@@ -208,7 +252,7 @@ describe('call-view.svelte', () => {
     const { client, createRoom } = setup({
       call: fakeCall({}, 'none'),
       accept: async () => {
-        throw new CallRequestError({ kind: 'over', message: 'this call is over' })
+        throw new CallRequestError({ kind: 'over', message: 'this call is over', agent: null })
       },
     })
     const problem = page.getByTestId('call-problem')
@@ -241,7 +285,11 @@ describe('device picker in the call controls', () => {
     await page.getByTestId('call-device-videoinput').selectOptions('cam-2')
     await page.getByTestId('call-device-audiooutput').selectOptions('spk-usb')
     await vi.waitFor(() => expect(room.switches).toHaveLength(3))
-    expect(JSON.parse(storage.data[DEVICES_KEY])).toEqual({ audioinput: 'mic-usb', videoinput: 'cam-2', audiooutput: 'spk-usb' })
+    expect(JSON.parse(storage.data[DEVICES_KEY])).toEqual({
+      audioinput: 'mic-usb',
+      videoinput: 'cam-2',
+      audiooutput: 'spk-usb',
+    })
     await expect.element(page.getByTestId('call-device-videoinput')).toHaveValue('cam-2')
   })
 
@@ -249,7 +297,9 @@ describe('device picker in the call controls', () => {
     setup({ env: { canChooseSpeaker: false } })
     await connected()
     await page.getByTestId('call-devices-toggle').click()
-    await expect.element(page.getByTestId('call-speaker-unsupported')).toHaveTextContent('This browser cannot choose the speaker for calls.')
+    await expect
+      .element(page.getByTestId('call-speaker-unsupported'))
+      .toHaveTextContent('This browser cannot choose the speaker for calls.')
     expect(page.getByTestId('call-device-audiooutput').elements()).toHaveLength(0)
     await expect.element(page.getByTestId('call-device-audioinput')).toBeInTheDocument()
   })
@@ -261,7 +311,9 @@ describe('device picker in the call controls', () => {
     await connected()
     await page.getByTestId('call-devices-toggle').click()
     await page.getByTestId('call-device-videoinput').selectOptions('cam-2')
-    await expect.element(page.getByTestId('call-device-problem')).toHaveTextContent(/Desk camera.*Could not start video source/)
+    await expect
+      .element(page.getByTestId('call-device-problem'))
+      .toHaveTextContent(/Desk camera.*Could not start video source/)
     await expect.element(page.getByTestId('call-device-videoinput')).toHaveValue('cam-1')
   })
 
@@ -269,8 +321,15 @@ describe('device picker in the call controls', () => {
     const { env } = setup()
     await connected()
     await page.getByTestId('call-devices-toggle').click()
-    env.media.change([...env.media.list, { kind: 'audioinput', deviceId: 'mic-new', label: 'Conference mic' }])
-    await vi.waitFor(() => expect((page.getByTestId('call-device-audioinput').element() as HTMLSelectElement).options).toHaveLength(3))
+    env.media.change([
+      ...env.media.list,
+      { kind: 'audioinput', deviceId: 'mic-new', label: 'Conference mic' },
+    ])
+    await vi.waitFor(() =>
+      expect(
+        (page.getByTestId('call-device-audioinput').element() as HTMLSelectElement).options,
+      ).toHaveLength(3),
+    )
   })
 })
 
@@ -284,7 +343,9 @@ describe('call-view.svelte: how long the call has been going', () => {
     // The call feed brings the answer time (the same for everyone, kept on a rejoin).
     active.update(fakeCall({ state: 'active', answeredAt: ago(65_000) }))
     await expect.element(page.getByTestId('call-clock')).toHaveTextContent(/^01:0[56]$/)
-    await expect.element(page.getByTestId('call-clock')).toHaveAttribute('aria-label', expect.stringMatching(/^Call time 01:0[56]$/))
+    await expect
+      .element(page.getByTestId('call-clock'))
+      .toHaveAttribute('aria-label', expect.stringMatching(/^Call time 01:0[56]$/))
   })
 
   it('it keeps ticking, and from an hour on reads h:mm:ss', async () => {
@@ -292,7 +353,10 @@ describe('call-view.svelte: how long the call has been going', () => {
     await connected()
     await expect.element(page.getByTestId('call-clock')).toHaveTextContent(/^1:02:0[5-7]$/)
     const first = page.getByTestId('call-clock').element().textContent
-    await vi.waitFor(() => expect(page.getByTestId('call-clock').element().textContent).not.toBe(first), { timeout: 2500 })
+    await vi.waitFor(
+      () => expect(page.getByTestId('call-clock').element().textContent).not.toBe(first),
+      { timeout: 2500 },
+    )
   })
 })
 
@@ -308,7 +372,9 @@ describe('call-view.svelte: transcription indicator and my switch', () => {
       transcribe: vi.fn(async () => null),
       setTranscription: vi.fn(async (_id: string, on: boolean) => ({
         ...call,
-        participants: call.participants.map((p) => (p.userId === 'ann' ? { ...p, transcribing: on } : p)),
+        participants: call.participants.map((p) =>
+          p.userId === 'ann' ? { ...p, transcribing: on } : p,
+        ),
       })),
     }
     const active = new ActiveCall({ client, createRoom: async () => room, env: () => env })
@@ -317,7 +383,10 @@ describe('call-view.svelte: transcription indicator and my switch', () => {
       active,
       me: 'ann',
       client,
-      record: (track) => (recorded.push(track), { stop: async () => new Blob(['x'], { type: 'audio/webm' }) }),
+      record: (track) => (
+        recorded.push(track),
+        { stop: async () => new Blob(['x'], { type: 'audio/webm' }) }
+      ),
       hasSpeech: async () => true,
       chunkMs: 30_000,
       now: () => Date.now(),
@@ -326,7 +395,16 @@ describe('call-view.svelte: transcription indicator and my switch', () => {
     })
     // The call page owns it, like the ActiveCall: connected on mount.
     transcription.connect()
-    render(CallView, { active, call, me: 'ann', leaveLabel: 'Close', onleave: vi.fn(), onhungup: vi.fn(), onopen: vi.fn(), transcription })
+    render(CallView, {
+      active,
+      call,
+      me: 'ann',
+      leaveLabel: 'Close',
+      onleave: vi.fn(),
+      onhungup: vi.fn(),
+      onopen: vi.fn(),
+      transcription,
+    })
     return { client, transcription, recorded, room }
   }
 
@@ -335,8 +413,26 @@ describe('call-view.svelte: transcription indicator and my switch', () => {
       state: 'active',
       answeredAt: new Date().toISOString(),
       participants: [
-        { userId: 'ben', name: 'Ben Example', guest: false, response: 'accepted', joinedAt: new Date().toISOString(), leftAt: null, inRoom: true, transcribing: benOn },
-        { userId: 'ann', name: 'Ann Example', guest: false, response: 'accepted', joinedAt: new Date().toISOString(), leftAt: null, inRoom: true, transcribing: true },
+        {
+          userId: 'ben',
+          name: 'Ben Example',
+          guest: false,
+          response: 'accepted',
+          joinedAt: new Date().toISOString(),
+          leftAt: null,
+          inRoom: true,
+          transcribing: benOn,
+        },
+        {
+          userId: 'ann',
+          name: 'Ann Example',
+          guest: false,
+          response: 'accepted',
+          joinedAt: new Date().toISOString(),
+          leftAt: null,
+          inRoom: true,
+          transcribing: true,
+        },
       ],
     })
 
@@ -345,9 +441,15 @@ describe('call-view.svelte: transcription indicator and my switch', () => {
     await connected()
     const indicator = page.getByTestId('call-transcript-indicator')
     await expect.element(indicator).toHaveTextContent('Transcript on')
-    await expect.element(indicator).toHaveAttribute('title', 'Transcribed: Ben Example, Ann Example')
-    await expect.element(page.getByTestId('call-transcribe')).toHaveAttribute('aria-pressed', 'true')
-    await expect.element(page.getByTestId('call-transcribe')).toHaveAccessibleName('Stop transcribing my microphone')
+    await expect
+      .element(indicator)
+      .toHaveAttribute('title', 'Transcribed: Ben Example, Ann Example')
+    await expect
+      .element(page.getByTestId('call-transcribe'))
+      .toHaveAttribute('aria-pressed', 'true')
+    await expect
+      .element(page.getByTestId('call-transcribe'))
+      .toHaveAccessibleName('Stop transcribing my microphone')
     await vi.waitFor(() => expect(recorded).toHaveLength(1))
   })
 
@@ -356,15 +458,23 @@ describe('call-view.svelte: transcription indicator and my switch', () => {
     await connected()
     await page.getByRole('button', { name: 'Stop transcribing my microphone' }).click()
     expect(client.setTranscription).toHaveBeenCalledWith('call-1', false)
-    await expect.element(page.getByTestId('call-transcribe')).toHaveAttribute('aria-pressed', 'false')
-    await expect.element(page.getByTestId('call-transcribe')).toHaveAccessibleName('Transcribe my microphone')
-    await expect.element(page.getByTestId('call-transcript-indicator')).toHaveAttribute('title', 'Transcribed: Ben Example')
+    await expect
+      .element(page.getByTestId('call-transcribe'))
+      .toHaveAttribute('aria-pressed', 'false')
+    await expect
+      .element(page.getByTestId('call-transcribe'))
+      .toHaveAccessibleName('Transcribe my microphone')
+    await expect
+      .element(page.getByTestId('call-transcript-indicator'))
+      .toHaveAttribute('title', 'Transcribed: Ben Example')
   })
 
   it('nobody transcribed (Ben is off, then I turn mine off): no indicator', async () => {
     const { transcription } = withTranscription(both(false))
     await connected()
-    await expect.element(page.getByTestId('call-transcript-indicator')).toHaveAttribute('title', 'Transcribed: Ann Example')
+    await expect
+      .element(page.getByTestId('call-transcript-indicator'))
+      .toHaveAttribute('title', 'Transcribed: Ann Example')
     await page.getByRole('button', { name: 'Stop transcribing my microphone' }).click()
     await expect.element(page.getByTestId('call-transcript-indicator')).not.toBeInTheDocument()
     expect(transcription.on).toBe(false)
@@ -372,13 +482,19 @@ describe('call-view.svelte: transcription indicator and my switch', () => {
 
   it('a transcription problem is shown in the server’s words and can be dismissed', async () => {
     const { client } = withTranscription(both(true))
-    client.setTranscription.mockRejectedValueOnce(new CallRequestError({ kind: 'failed', message: 'could not reach the server' }))
+    client.setTranscription.mockRejectedValueOnce(
+      new CallRequestError({ kind: 'failed', message: 'could not reach the server', agent: null }),
+    )
     await connected()
     await page.getByRole('button', { name: 'Stop transcribing my microphone' }).click()
     const problem = page.getByTestId('call-transcript-problem')
-    await expect.element(problem).toHaveTextContent('Your transcription could not be turned off: could not reach the server')
+    await expect
+      .element(problem)
+      .toHaveTextContent('Your transcription could not be turned off: could not reach the server')
     // Nothing changed on the server: still on.
-    await expect.element(page.getByTestId('call-transcribe')).toHaveAttribute('aria-pressed', 'true')
+    await expect
+      .element(page.getByTestId('call-transcribe'))
+      .toHaveAttribute('aria-pressed', 'true')
     await problem.getByRole('button', { name: 'Dismiss' }).click()
     await expect.element(problem).not.toBeInTheDocument()
   })

@@ -8,6 +8,7 @@
   import { docTitle } from '$lib/shell/title'
   import PublicFrame from '$lib/components/page/public-frame.svelte'
   import PasskeyStep from '$lib/components/passkey-step.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
 
   /** Claim this server: the installer's private link → your email → you own the company → a passkey. */
   let { data, form }: { data: PageData; form: ActionData } = $props()
@@ -55,7 +56,13 @@
           </div>
           <Button type="submit" class="w-full rounded-[4px]">Claim</Button>
           {#if form?.message}
-            <p class="text-destructive text-xs" data-testid="claim-error">{form.message}</p>
+            <ErrorNotice
+              class="text-xs"
+              testid="claim-error"
+              error={form.message}
+              agent={form.agent}
+              attempted="Claiming the company"
+            />
           {/if}
         </form>
       {:else}

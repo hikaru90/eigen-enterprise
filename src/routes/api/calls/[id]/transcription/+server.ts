@@ -1,5 +1,6 @@
 import type { RequestHandler } from './$types'
-import { callsRoute, readJson } from '../../../../../../modules/calls/http'
+import { readJson } from '../../../../../../modules/calls/http'
+import { callsRoute } from '../../calls-route'
 
 /** Overridable in tests. */
 export const _deps = {
@@ -8,7 +9,12 @@ export const _deps = {
 
 /** POST `{ on }`: turn the transcription of my own microphone on or off; everyone in the call sees it. */
 export const POST: RequestHandler = ({ locals, params, request }) =>
-  callsRoute(locals.user, _deps.service, async (userId, s) => {
-    const { on } = await readJson(request)
-    return { call: await s.setTranscription(userId, params.id, on as boolean) }
-  })
+  callsRoute(
+    'Turning my call transcription on or off',
+    locals.user,
+    _deps.service,
+    async (userId, s) => {
+      const { on } = await readJson(request)
+      return { call: await s.setTranscription(userId, params.id, on as boolean) }
+    },
+  )

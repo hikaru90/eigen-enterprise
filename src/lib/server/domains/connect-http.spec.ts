@@ -21,7 +21,11 @@ const view = {
 function deps(over: Partial<ConnectHttpDeps['platform']> = {}, role: 'owner' | 'member' = 'owner') {
   return {
     role: vi.fn(async () => role),
-    platform: { addDomain: vi.fn(async () => view), recheckDomain: vi.fn(async () => view), ...over },
+    platform: {
+      addDomain: vi.fn(async () => view),
+      recheckDomain: vi.fn(async () => view),
+      ...over,
+    },
     explained: (err: unknown): err is Error => err instanceof Explained,
   } satisfies ConnectHttpDeps
 }
@@ -31,7 +35,10 @@ function ev(body?: unknown) {
   return {
     locals: { user: { id: 'u1', email: 'ada@acme.test' } } as App.Locals,
     url,
-    request: new Request(url, { method: 'POST', ...(body === undefined ? {} : { body: JSON.stringify(body) }) }),
+    request: new Request(url, {
+      method: 'POST',
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }),
   }
 }
 
@@ -56,10 +63,17 @@ describe('connected domains routes', () => {
   })
 
   it('an explained refusal is a 400 in its words; an empty name never reaches the platform', async () => {
-    const d = deps({ addDomain: vi.fn(async () => Promise.reject(new Explained('acme.test is already added.'))) })
+    const d = deps({
+      addDomain: vi.fn(async () => Promise.reject(new Explained('acme.test is already added.'))),
+    })
     const res = await connectRoutes(d).add(ev({ name: 'acme.test' }))
     expect(res.status).toBe(400)
-    expect(await res.json()).toEqual({ error: 'acme.test is already added.' })
+    const body = await res.json()
+    expect(body.error).toBe('acme.test is already added.')
+    expect(body.agent).toMatchObject({
+      attempted: 'Adding the domain',
+      cause: 'acme.test is already added.',
+    })
     expect((await connectRoutes(d).add(ev({ name: ' ' }))).status).toBe(400)
     expect(d.platform.addDomain).toHaveBeenCalledOnce()
   })

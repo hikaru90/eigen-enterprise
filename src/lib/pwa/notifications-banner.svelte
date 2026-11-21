@@ -2,8 +2,10 @@
   import BellRing from '@lucide/svelte/icons/bell-ring'
   import X from '@lucide/svelte/icons/x'
   import { onMount } from 'svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
-  import { postSubscribe, subscribeToPush } from '$lib/push/client'
+  import type { ShownError } from '$lib/errors/agent-report'
+  import { postSubscribe, shownPushFailure, subscribeToPush } from '$lib/push/client'
   import {
     pushPromptDismissKey,
     pushPromptState,
@@ -48,7 +50,7 @@
   let promptState = $state<PushPromptState | null>(null)
   let standalone = $state(false)
   let busy = $state(false)
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
   let dismissed = $state(false)
 
   function readDismissed(s: PushPromptState): boolean {
@@ -84,8 +86,10 @@
       promptState = 'on'
       onenabled?.()
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
-      await refresh().catch((e) => console.error('[pwa] could not re-read the notification state', e))
+      error = shownPushFailure(err)
+      await refresh().catch((e) =>
+        console.error('[pwa] could not re-read the notification state', e),
+      )
     } finally {
       busy = false
     }
@@ -128,14 +132,21 @@
             ? 'Direct messages, @mentions and replies to your threads.'
             : 'Messages, reminders and tasks reach this device once notifications are on here.'}
         </p>
-        <Button size="sm" class="mt-2" disabled={busy} onclick={turnOn} data-testid="push-banner-enable">
+        <Button
+          size="sm"
+          class="mt-2"
+          disabled={busy}
+          onclick={turnOn}
+          data-testid="push-banner-enable"
+        >
           {busy ? 'Turning on…' : 'Turn on notifications'}
         </Button>
       {:else if promptState === 'install-first'}
         <p class="font-medium">Install the app for notifications</p>
         <p class="mt-0.5 text-muted-foreground">
-          On iPhone and iPad, tap Share, then <span class="font-medium text-foreground">Add to Home Screen</span>, and
-          open the app from there.
+          On iPhone and iPad, tap Share, then <span class="font-medium text-foreground"
+            >Add to Home Screen</span
+          >, and open the app from there.
         </p>
       {:else if promptState === 'denied'}
         <p class="font-medium">Notifications are blocked</p>
@@ -145,7 +156,15 @@
             : 'Allow notifications for this site in your browser’s settings to get messages here.'}
         </p>
       {/if}
-      {#if error}<p class="mt-2 text-destructive" role="alert" data-testid="push-banner-error">{error}</p>{/if}
+      {#if error}
+        <ErrorNotice
+          class="mt-2"
+          testid="push-banner-error"
+          error={error.error}
+          agent={error.agent}
+          attempted="Turning on notifications on this device"
+        />
+      {/if}
     </div>
     {#if variant !== 'inline'}
       <button

@@ -4,7 +4,9 @@
   import type { SubmitFunction } from '@sveltejs/kit'
   import CalendarPlus from '@lucide/svelte/icons/calendar-plus'
   import { enhance } from '$app/forms'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
+  import { shownErrorOf, type ShownError } from '$lib/errors/agent-report'
   import { longDay } from './layout'
 
   /**
@@ -36,7 +38,7 @@
   } = $props()
 
   let busy = $state(false)
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
 
   const when = $derived(
     proposal.localStart.slice(0, 10) === proposal.localEnd.slice(0, 10)
@@ -52,11 +54,17 @@
     return async ({ result, update }) => {
       busy = false
       if (result.type === 'failure') {
-        error = String((result.data as { error?: unknown } | undefined)?.error)
+        error = shownErrorOf(result.data) ?? {
+          error: String((result.data as { error?: unknown } | undefined)?.error),
+          agent: null,
+        }
         return
       }
       if (result.type === 'error') {
-        error = 'That didn’t work. Nothing was added or sent; try again in a moment.'
+        error = {
+          error: 'That didn’t work. Nothing was added or sent; try again in a moment.',
+          agent: null,
+        }
         return
       }
       await update()
@@ -65,21 +73,44 @@
 </script>
 
 {#if proposal.state !== 'dismissed'}
-  <section class="grid gap-2 rounded-lg border border-border bg-card px-3 py-3 text-sm" aria-labelledby={headingId} data-testid="calendar-proposal">
+  <section
+    class="grid gap-2 rounded-lg border border-border bg-card px-3 py-3 text-sm"
+    aria-labelledby={headingId}
+    data-testid="calendar-proposal"
+  >
     <h3 id={headingId} class="flex items-center gap-2 font-medium">
       <CalendarPlus class="size-4 shrink-0" aria-hidden="true" />
       {heading}
     </h3>
     <dl class="grid gap-1">
-      <div><dt class="sr-only">Title</dt><dd class="font-medium">{proposal.title}</dd></div>
-      <div><dt class="sr-only">When</dt><dd>{when} <span class="text-muted-foreground">({proposal.timeZone})</span></dd></div>
-      {#if proposal.location}<div class="flex gap-1"><dt class="text-muted-foreground">Where:</dt><dd class="min-w-0 break-words">{proposal.location}</dd></div>{/if}
-      {#if proposal.call}<div class="flex gap-1"><dt class="text-muted-foreground">Call:</dt><dd class="min-w-0 break-all">{proposal.call}</dd></div>{/if}
-      <div class="flex gap-1"><dt class="text-muted-foreground">With:</dt><dd class="min-w-0 break-words">{guests.join(', ')}</dd></div>
+      <div>
+        <dt class="sr-only">Title</dt>
+        <dd class="font-medium">{proposal.title}</dd>
+      </div>
+      <div>
+        <dt class="sr-only">When</dt>
+        <dd>{when} <span class="text-muted-foreground">({proposal.timeZone})</span></dd>
+      </div>
+      {#if proposal.location}<div class="flex gap-1">
+          <dt class="text-muted-foreground">Where:</dt>
+          <dd class="min-w-0 break-words">{proposal.location}</dd>
+        </div>{/if}
+      {#if proposal.call}<div class="flex gap-1">
+          <dt class="text-muted-foreground">Call:</dt>
+          <dd class="min-w-0 break-all">{proposal.call}</dd>
+        </div>{/if}
+      <div class="flex gap-1">
+        <dt class="text-muted-foreground">With:</dt>
+        <dd class="min-w-0 break-words">{guests.join(', ')}</dd>
+      </div>
       {#if mailHref}
         <div class="flex gap-1">
           <dt class="text-muted-foreground">From the mail:</dt>
-          <dd class="min-w-0 truncate"><a class="underline underline-offset-4" href={mailHref}>{proposal.mail.subject || '(no subject)'}</a></dd>
+          <dd class="min-w-0 truncate">
+            <a class="underline underline-offset-4" href={mailHref}
+              >{proposal.mail.subject || '(no subject)'}</a
+            >
+          </dd>
         </div>
       {/if}
     </dl>
@@ -87,18 +118,31 @@
     {#if proposal.state === 'accepted'}
       <p class="text-[13px]" role="status" data-testid="calendar-proposal-accepted">
         Added to your calendar. The invitation went to {guests.join(', ')}.
-        {#if calendarHref}<a class="underline underline-offset-4" href={calendarHref}>Open in Calendar</a>{/if}
+        {#if calendarHref}<a class="underline underline-offset-4" href={calendarHref}
+            >Open in Calendar</a
+          >{/if}
       </p>
     {:else}
-      <p class="text-[13px] text-muted-foreground">Nothing is on your calendar yet. Accept adds it and sends an invitation to {guests.join(', ')} from your address.</p>
-      {#if error}<p class="text-[13px] text-destructive" role="alert" data-testid="calendar-proposal-error">{error}</p>{/if}
+      <p class="text-[13px] text-muted-foreground">
+        Nothing is on your calendar yet. Accept adds it and sends an invitation to {guests.join(
+          ', ',
+        )} from your address.
+      </p>
+      {#if error}<ErrorNotice
+          {...error}
+          attempted="Accepting or dismissing an appointment found in a mail"
+          class="text-[13px]"
+          testid="calendar-proposal-error"
+        />{/if}
       <div class="flex flex-wrap items-center gap-2">
         <form method="POST" action="?/acceptProposal" use:enhance={decide}>
           <input type="hidden" name="proposalId" value={proposal.id} />
           <Button type="submit" size="sm" disabled={busy}>Accept</Button>
         </form>
         {#if onedit}
-          <Button type="button" size="sm" variant="outline" disabled={busy} onclick={onedit}>Edit</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onclick={onedit}
+            >Edit</Button
+          >
         {:else if editHref}
           <Button href={editHref} size="sm" variant="outline">Edit</Button>
         {/if}

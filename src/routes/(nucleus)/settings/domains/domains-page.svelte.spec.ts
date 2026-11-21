@@ -6,7 +6,12 @@ import DomainsPage from './+page.svelte'
 vi.mock('$app/navigation', () => ({ invalidateAll: vi.fn() }))
 vi.mock('$app/paths', () => ({ base: '', resolve: (path: string) => path }))
 
-const REGISTRANT = { firstName: 'Ada', lastName: 'Lovelace', organization: 'Acme GmbH', email: 'ada@acme.test' }
+const REGISTRANT = {
+  firstName: 'Ada',
+  lastName: 'Lovelace',
+  organization: 'Acme GmbH',
+  email: 'ada@acme.test',
+}
 
 const rows = [
   {
@@ -37,7 +42,9 @@ describe('Settings › Domains', () => {
   it('lists bought and connected domains with state, renewal and their DNS records', async () => {
     render(DomainsPage, props({ canBuy: true, boughtError: null, rows, registrant: REGISTRANT }))
     await expect.element(page.getByText('acme.eu')).toBeInTheDocument()
-    await expect.element(page.getByText(/Bought through eigenEnterprise · Renews/)).toBeInTheDocument()
+    await expect
+      .element(page.getByText(/Bought through eigenEnterprise · Renews/))
+      .toBeInTheDocument()
     await expect.element(page.getByTestId('domain-state')).toHaveTextContent('Ready')
     await expect.element(page.getByText('In your own DNS')).toBeInTheDocument()
     await expect
@@ -49,10 +56,15 @@ describe('Settings › Domains', () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
       status: 200,
-      json: async () => ({ results: [{ name: 'acme.eu', available: true, priceCents: 1200, currency: 'EUR' }] }),
+      json: async () => ({
+        results: [{ name: 'acme.eu', available: true, priceCents: 1200, currency: 'EUR' }],
+      }),
     }))
     vi.stubGlobal('fetch', fetchMock)
-    render(DomainsPage, props({ canBuy: true, boughtError: null, rows: [], registrant: REGISTRANT }))
+    render(
+      DomainsPage,
+      props({ canBuy: true, boughtError: null, rows: [], registrant: REGISTRANT }),
+    )
     await page.getByTestId('domains-buy').click()
     await page.getByRole('textbox', { name: 'The name you want' }).fill('acme')
     await page.getByRole('button', { name: 'Search' }).click()
@@ -62,10 +74,31 @@ describe('Settings › Domains', () => {
   })
 
   it('self-hosted: no buying, only connecting; a control plane outage shows in plain words', async () => {
-    render(DomainsPage, props({ canBuy: false, boughtError: 'The domain service failed (HTTP 503).', rows: [], registrant: null }))
+    render(
+      DomainsPage,
+      props({
+        canBuy: false,
+        boughtError: {
+          error: 'The domain service failed (HTTP 503).',
+          agent: {
+            attempted: 'Listing the domains bought through eigenEnterprise',
+            nextSteps: ['Check the control plane.'],
+          },
+        },
+        rows: [],
+        registrant: null,
+      }),
+    )
     await expect.element(page.getByTestId('domains-buy')).not.toBeInTheDocument()
     await expect.element(page.getByTestId('domains-connect')).toBeInTheDocument()
-    await expect.element(page.getByText('Buying a domain works on servers hosted by eigenEnterprise.')).toBeInTheDocument()
-    await expect.element(page.getByText('The domain service failed (HTTP 503).')).toBeInTheDocument()
+    await expect
+      .element(page.getByText('Buying a domain works on servers hosted by eigenEnterprise.'))
+      .toBeInTheDocument()
+    await expect
+      .element(page.getByRole('alert'))
+      .toHaveTextContent('The domain service failed (HTTP 503).')
+    await expect
+      .element(page.getByRole('button', { name: 'Copy agent instructions' }))
+      .toBeInTheDocument()
   })
 })

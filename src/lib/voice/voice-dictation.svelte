@@ -5,7 +5,12 @@
   import X from '@lucide/svelte/icons/x'
   import { onDestroy, onMount } from 'svelte'
   import { page } from '$app/state'
-  import { DICTATION_MISSING_MESSAGE, DICTATION_UNSUPPORTED_MESSAGE, type SpeechReadiness } from './dictation-readiness'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
+  import {
+    DICTATION_MISSING_MESSAGE,
+    DICTATION_UNSUPPORTED_MESSAGE,
+    type SpeechReadiness,
+  } from './dictation-readiness'
   import { transcribeVoiceClip } from './transcribe-voice-clip'
   import { voiceFailureMessage } from './voice-failure-message'
   import {
@@ -40,7 +45,7 @@
     ontranscript,
     disabled = false,
     // $bindable() sets up the parent binding; ESLint cannot see the parent read the assignments.
-     
+
     active = $bindable(false),
     testid = 'voice',
     size = 'default',
@@ -88,7 +93,8 @@
         syncActive()
       },
       ontranscript: (text, recording) => ontranscript(text, recording),
-      onerror: (failure) => console.warn('[voice] message failed', failure.reason, failure.status ?? ''),
+      onerror: (failure) =>
+        console.warn('[voice] message failed', failure.reason, failure.status ?? ''),
     })
   })
   onDestroy(() => {
@@ -98,8 +104,12 @@
   })
 
   /** The shell says what dictation lacks (no OpenRouter key): the mic says so, before any recording. */
-  const dictation = $derived((page.data.shell as { dictation?: SpeechReadiness } | null | undefined)?.dictation)
-  const missingMessage = $derived(dictation?.ready === false ? DICTATION_MISSING_MESSAGE[dictation.missing] : null)
+  const dictation = $derived(
+    (page.data.shell as { dictation?: SpeechReadiness } | null | undefined)?.dictation,
+  )
+  const missingMessage = $derived(
+    dictation?.ready === false ? DICTATION_MISSING_MESSAGE[dictation.missing] : null,
+  )
   const unavailable = $derived(missingMessage ?? (supported ? null : DICTATION_UNSUPPORTED_MESSAGE))
   const failure = $derived(view.phase === 'failed' ? view.failure : null)
   const showBar = $derived(notice !== null || phaseActive(view.phase))
@@ -138,7 +148,10 @@
 {#snippet waveform(dim: boolean)}
   <!-- display only: one bar per mic reading, the newest on the right; the oldest scroll out on the left -->
   <div
-    class={['flex h-6 min-w-0 flex-1 items-center justify-end gap-[2px] overflow-hidden transition-opacity', dim && 'opacity-40']}
+    class={[
+      'flex h-6 min-w-0 flex-1 items-center justify-end gap-[2px] overflow-hidden transition-opacity',
+      dim && 'opacity-40',
+    ]}
     data-testid="{testid}-waveform"
     aria-hidden="true"
   >
@@ -169,9 +182,19 @@
     {/if}
   </button>
 {:else}
-  <div class="flex min-w-0 flex-1 items-center gap-2 {className}" role="group" aria-label="Voice message" data-testid="{testid}-bar">
+  <div
+    class="flex min-w-0 flex-1 items-center gap-2 {className}"
+    role="group"
+    aria-label="Voice message"
+    data-testid="{testid}-bar"
+  >
     {#if notice}
-      <p class="m-0 min-w-0 flex-1 pl-1 text-xs leading-5 text-destructive" role="alert" data-testid="{testid}-error">{notice}</p>
+      <ErrorNotice
+        class="min-w-0 flex-1 pl-1 text-xs leading-5"
+        testid="{testid}-error"
+        error={notice}
+        attempted="Starting dictation (voice input) in a text box"
+      />
       <button
         type="button"
         use:focusOnMount
@@ -184,13 +207,28 @@
         <X class="size-4" aria-hidden="true" />
       </button>
     {:else if view.phase === 'recording'}
-      <button type="button" class={iconButton} aria-label="Discard recording" title="Discard recording" data-testid="{testid}-discard" onclick={() => session?.discard()}>
+      <button
+        type="button"
+        class={iconButton}
+        aria-label="Discard recording"
+        title="Discard recording"
+        data-testid="{testid}-discard"
+        onclick={() => session?.discard()}
+      >
         <X class="size-4" aria-hidden="true" />
       </button>
       {@render waveform(false)}
-      <span class="size-1.5 shrink-0 animate-pulse rounded-full bg-destructive motion-reduce:animate-none" aria-hidden="true"></span>
-      <span class="shrink-0 text-xs tabular-nums text-foreground" role="timer" aria-label="Recording time" data-testid="{testid}-timer"
-        >{formatVoiceTimer(view.elapsedMs)} <span class="text-muted-foreground">/ {formatVoiceTimer(VOICE_MESSAGE_MAX_MS)}</span></span
+      <span
+        class="size-1.5 shrink-0 animate-pulse rounded-full bg-destructive motion-reduce:animate-none"
+        aria-hidden="true"
+      ></span>
+      <span
+        class="shrink-0 text-xs tabular-nums text-foreground"
+        role="timer"
+        aria-label="Recording time"
+        data-testid="{testid}-timer"
+        >{formatVoiceTimer(view.elapsedMs)}
+        <span class="text-muted-foreground">/ {formatVoiceTimer(VOICE_MESSAGE_MAX_MS)}</span></span
       >
       <button
         type="button"
@@ -204,18 +242,38 @@
         <Check class="size-4" aria-hidden="true" />
       </button>
     {:else if view.phase === 'transcribing'}
-      <div class="flex shrink-0 items-center gap-2 pl-1 text-xs text-muted-foreground" role="status" aria-live="polite" data-testid="{testid}-status">
+      <div
+        class="flex shrink-0 items-center gap-2 pl-1 text-xs text-muted-foreground"
+        role="status"
+        aria-live="polite"
+        data-testid="{testid}-status"
+      >
         <LoaderCircle class="size-4 animate-spin" aria-hidden="true" />
-        <span>Transcribing… <span class="tabular-nums">{formatVoiceTimer(view.transcribingElapsedMs)}</span></span>
+        <span
+          >Transcribing… <span class="tabular-nums"
+            >{formatVoiceTimer(view.transcribingElapsedMs)}</span
+          ></span
+        >
       </div>
       {@render waveform(true)}
-      <button type="button" class={iconButton} aria-label="Cancel transcription" title="Cancel transcription" data-testid="{testid}-cancel" onclick={() => session?.discard()}>
+      <button
+        type="button"
+        class={iconButton}
+        aria-label="Cancel transcription"
+        title="Cancel transcription"
+        data-testid="{testid}-cancel"
+        onclick={() => session?.discard()}
+      >
         <X class="size-4" aria-hidden="true" />
       </button>
     {:else if failure}
-      <p class="m-0 min-w-0 flex-1 pl-1 text-xs leading-5 text-destructive" role="alert" data-testid="{testid}-error">
-        {voiceFailureMessage(failure)}
-      </p>
+      <ErrorNotice
+        class="min-w-0 flex-1 pl-1 text-xs leading-5"
+        testid="{testid}-error"
+        error={voiceFailureMessage(failure)}
+        agent={failure.agent ?? null}
+        attempted="Recording and transcribing a voice message (dictation, POST /api/voice/transcribe)"
+      />
       {#if failure.retryable}
         <button
           type="button"

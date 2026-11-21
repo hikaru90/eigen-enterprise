@@ -7,16 +7,24 @@
   import { enhance } from '$app/forms'
   import { goto } from '$app/navigation'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import PageFrame from '$lib/components/page/page-frame.svelte'
   import PageHeader from '$lib/components/page/page-header.svelte'
   import { Button } from '$lib/components/ui/button'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
   import { editDraft, newDraft, proposalDraft } from '../../../../../modules/calendar/form'
   import { VISIBILITIES, VISIBILITY_COPY } from '../../../../../modules/calendar/types'
   import AvailabilityPanel from '../../../../../modules/calendar/ui/availability-panel.svelte'
   import CalendarViews from '../../../../../modules/calendar/ui/calendar-views.svelte'
   import EventDialog from '../../../../../modules/calendar/ui/event-dialog.svelte'
-  import { isoWeek, shiftDate, VIEW_LABELS, VIEWS, type View } from '../../../../../modules/calendar/ui/layout'
+  import {
+    isoWeek,
+    shiftDate,
+    VIEW_LABELS,
+    VIEWS,
+    type View,
+  } from '../../../../../modules/calendar/ui/layout'
   import ProposalCard from '../../../../../modules/calendar/ui/proposal-card.svelte'
   import WeekNumbersToggle from '../../../../../modules/calendar/ui/week-numbers-toggle.svelte'
   import { inboxHref } from '../../../../../modules/email/inbox/url'
@@ -32,7 +40,11 @@
 
   /** The address for a view and day, keeping the people picked for availability. */
   function href(view: View, date: string): string {
-    const q = [`view=${view}`, `date=${date}`, ...data.availability.selected.map((id) => `with=${encodeURIComponent(id)}`)]
+    const q = [
+      `view=${view}`,
+      `date=${date}`,
+      ...data.availability.selected.map((id) => `with=${encodeURIComponent(id)}`),
+    ]
     return `${base}?${q.join('&')}`
   }
 
@@ -62,13 +74,30 @@
     if (data.editProposal) editProposal(data.editProposal)
   })
   const oncreate = (day: string, time: string | null) =>
-    show(newDraft({ day, time, timeZone: data.timeZone, visibility: data.defaultVisibility as Visibility }))
+    show(
+      newDraft({
+        day,
+        time,
+        timeZone: data.timeZone,
+        visibility: data.defaultVisibility as Visibility,
+      }),
+    )
 
   const dialogError = $derived(
-    dialogOpen && form !== formAtOpen && form && 'error' in form && typeof form.error === 'string' && (form.action === 'save' || form.action === 'delete') ? form.error : null,
+    dialogOpen &&
+      form !== formAtOpen &&
+      form &&
+      'action' in form &&
+      (form.action === 'save' || form.action === 'delete')
+      ? shownErrorOf(form)
+      : null,
   )
-  const prefsError = $derived(form && 'error' in form && form.action === 'preferences' && typeof form.error === 'string' ? form.error : null)
-  const weekNumbersError = $derived(form && 'error' in form && form.action === 'weekNumbers' && typeof form.error === 'string' ? form.error : null)
+  const prefsError = $derived(
+    form && 'action' in form && form.action === 'preferences' ? shownErrorOf(form) : null,
+  )
+  const weekNumbersError = $derived(
+    form && 'action' in form && form.action === 'weekNumbers' ? shownErrorOf(form) : null,
+  )
   const selectClass = 'border-input bg-background h-8 rounded-md border px-2 text-xs'
 </script>
 
@@ -77,47 +106,74 @@
 <PageFrame testid="calendar-area">
   <PageHeader title="Calendar" part="calendar">
     {#snippet info()}
-      <p>Your appointments, and when colleagues are free. Colleagues see only what you choose per event.</p>
+      <p>
+        Your appointments, and when colleagues are free. Colleagues see only what you choose per
+        event.
+      </p>
     {/snippet}
     {#snippet actions()}
-      <Button onclick={() => oncreate(data.date, null)} data-testid="calendar-new">New event</Button>
+      <Button onclick={() => oncreate(data.date, null)} data-testid="calendar-new">New event</Button
+      >
     {/snippet}
   </PageHeader>
 
   <div class="mt-5 flex flex-wrap items-center justify-between gap-3">
     <div class="flex items-center gap-1">
-      <Button href={href(data.view, shiftDate(data.view, data.date, -1))} variant="outline" size="sm" aria-label="Previous {data.view}">‹</Button>
+      <Button
+        href={href(data.view, shiftDate(data.view, data.date, -1))}
+        variant="outline"
+        size="sm"
+        aria-label="Previous {data.view}">‹</Button
+      >
       <Button href={href(data.view, data.today)} variant="outline" size="sm">Today</Button>
-      <Button href={href(data.view, shiftDate(data.view, data.date, 1))} variant="outline" size="sm" aria-label="Next {data.view}">›</Button>
+      <Button
+        href={href(data.view, shiftDate(data.view, data.date, 1))}
+        variant="outline"
+        size="sm"
+        aria-label="Next {data.view}">›</Button
+      >
       <h2 class="ml-2 text-sm font-semibold" data-testid="calendar-heading">
         {data.heading}
         {#if data.weekNumbers && data.view !== 'month'}
-          <span class="ml-1.5 rounded border border-border px-1.5 py-0.5 text-[13px] font-normal text-muted-foreground tabular-nums" data-testid="calendar-week-number"
-            >Week {isoWeek(data.days[0])}</span
+          <span
+            class="ml-1.5 rounded border border-border px-1.5 py-0.5 text-[13px] font-normal text-muted-foreground tabular-nums"
+            data-testid="calendar-week-number">Week {isoWeek(data.days[0])}</span
           >
         {/if}
       </h2>
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      <form method="POST" action="?/weekNumbers" use:enhance={() => async ({ update }) => update({ reset: false })}>
+      <form
+        method="POST"
+        action="?/weekNumbers"
+        use:enhance={() =>
+          async ({ update }) =>
+            update({ reset: false })}
+      >
         <WeekNumbersToggle on={data.weekNumbers} />
       </form>
       <nav class="flex rounded-md border border-border p-0.5" aria-label="Calendar view">
-      {#each VIEWS as v (v)}
-        <a
-          href={href(v, data.date)}
-          aria-current={data.view === v ? 'page' : undefined}
-          class="rounded px-3 py-1 text-xs {data.view === v ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}"
-          data-testid="calendar-view-{v}">{VIEW_LABELS[v]}</a
-        >
-      {/each}
+        {#each VIEWS as v (v)}
+          <a
+            href={href(v, data.date)}
+            aria-current={data.view === v ? 'page' : undefined}
+            class="rounded px-3 py-1 text-xs {data.view === v
+              ? 'bg-muted font-medium text-foreground'
+              : 'text-muted-foreground hover:text-foreground'}"
+            data-testid="calendar-view-{v}">{VIEW_LABELS[v]}</a
+          >
+        {/each}
       </nav>
     </div>
   </div>
-  {#if weekNumbersError}<p class="mt-2 text-[13px] text-destructive" role="alert">{weekNumbersError}</p>{/if}
+  {#if weekNumbersError}<ErrorNotice {...weekNumbersError} class="mt-2 text-[13px]" />{/if}
 
   {#if data.proposals.length > 0}
-    <section class="mt-5 grid gap-2" aria-labelledby="calendar-proposals-heading" data-testid="calendar-proposals">
+    <section
+      class="mt-5 grid gap-2"
+      aria-labelledby="calendar-proposals-heading"
+      data-testid="calendar-proposals"
+    >
       <h2 id="calendar-proposals-heading" class="text-sm font-semibold">From your mail</h2>
       <div class="grid gap-2 md:grid-cols-2">
         {#each data.proposals as p (p.id)}
@@ -150,7 +206,9 @@
           columnsKey={data.user ? `ee.calendar.week-columns.${data.user.id}` : undefined}
         />
       {/key}
-      <p class="mt-2 text-xs text-muted-foreground">Times in {data.timeZone.replaceAll('_', ' ')}.</p>
+      <p class="mt-2 text-xs text-muted-foreground">
+        Times in {data.timeZone.replaceAll('_', ' ')}.
+      </p>
     </div>
 
     <aside class="grid content-start gap-6">
@@ -163,16 +221,34 @@
         hidden={{ view: data.view, date: data.date }}
       />
 
-      <form method="POST" action="?/preferences" class="grid gap-2" use:enhance={() => async ({ update }) => update({ reset: false })} data-testid="calendar-preferences">
-        <label for="calendar-default-visibility" class="text-sm font-semibold">New events by default</label>
+      <form
+        method="POST"
+        action="?/preferences"
+        class="grid gap-2"
+        use:enhance={() =>
+          async ({ update }) =>
+            update({ reset: false })}
+        data-testid="calendar-preferences"
+      >
+        <label for="calendar-default-visibility" class="text-sm font-semibold"
+          >New events by default</label
+        >
         <div class="flex flex-wrap items-center gap-2">
-          <select id="calendar-default-visibility" name="defaultVisibility" class={selectClass} value={data.defaultVisibility}>
-            {#each VISIBILITIES as v (v)}<option value={v}>{VISIBILITY_COPY[v].label}</option>{/each}
+          <select
+            id="calendar-default-visibility"
+            name="defaultVisibility"
+            class={selectClass}
+            value={data.defaultVisibility}
+          >
+            {#each VISIBILITIES as v (v)}<option value={v}>{VISIBILITY_COPY[v].label}</option
+              >{/each}
           </select>
           <Button type="submit" variant="outline" size="sm">Save</Button>
         </div>
-        <p class="text-xs text-muted-foreground">{VISIBILITY_COPY[data.defaultVisibility as Visibility].colleagues}</p>
-        {#if prefsError}<p class="text-xs text-destructive" role="alert">{prefsError}</p>{/if}
+        <p class="text-xs text-muted-foreground">
+          {VISIBILITY_COPY[data.defaultVisibility as Visibility].colleagues}
+        </p>
+        {#if prefsError}<ErrorNotice {...prefsError} class="text-xs" />{/if}
       </form>
     </aside>
   </div>
@@ -180,6 +256,13 @@
 
 {#if draft}
   {#key opened}
-    <EventDialog bind:open={dialogOpen} {draft} members={data.members} timeZones={data.timeZones} error={dialogError} />
+    <EventDialog
+      bind:open={dialogOpen}
+      {draft}
+      members={data.members}
+      timeZones={data.timeZones}
+      error={dialogError?.error ?? null}
+      agent={dialogError?.agent ?? null}
+    />
   {/key}
 {/if}

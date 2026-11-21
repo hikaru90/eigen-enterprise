@@ -1,6 +1,7 @@
 import type { ActiveCall } from './active-call.svelte'
+import type { ShownError } from '$lib/errors/agent-report'
 import { clipHasSpeechLevelSound, decodeClip } from '$lib/voice/clip-speech'
-import { CallRequestError, type LiveCallClient } from './client'
+import { problemOf, shownProblemOf, type LiveCallClient } from './client'
 
 /**
  * Call transcripts, my side (direction agreed 2026-11-19, option A): this
@@ -27,7 +28,10 @@ import { CallRequestError, type LiveCallClient } from './client'
 /** One recording, started when made; stop() ends it and gives the clip. */
 export type ChunkRecorder = { stop(): Promise<Blob> }
 
-export type TranscribedCall = Pick<ActiveCall, 'call' | 'state' | 'subscribe' | 'microphoneTrack' | 'update'>
+export type TranscribedCall = Pick<
+  ActiveCall,
+  'call' | 'state' | 'subscribe' | 'microphoneTrack' | 'update'
+>
 
 export type CallTranscriptionDeps = {
   active: TranscribedCall
@@ -51,7 +55,7 @@ export class CallTranscription {
   #pending = $state<boolean | null>(null)
   #recording = $state(false)
   #unavailable = $state(false)
-  #problem = $state<string | null>(null)
+  #problem = $state<ShownError | null>(null)
 
   readonly #d: CallTranscriptionDeps
   #chunk: Chunk | null = null
@@ -65,7 +69,9 @@ export class CallTranscription {
   /** My microphone is transcribed (my switch). */
   get on(): boolean {
     if (this.#pending !== null) return this.#pending
-    return this.#d.active.call?.participants.find((p) => p.userId === this.#d.me)?.transcribing === true
+    return (
+      this.#d.active.call?.participants.find((p) => p.userId === this.#d.me)?.transcribing === true
+    )
   }
 
   /** Recording right now. */
@@ -78,7 +84,9 @@ export class CallTranscription {
     const call = this.#d.active.call
     if (!call) return []
     return call.participants
-      .filter((p) => (p.userId === this.#d.me ? this.on && !this.#unavailable : p.transcribing && p.inRoom))
+      .filter((p) =>
+        p.userId === this.#d.me ? this.on && !this.#unavailable : p.transcribing && p.inRoom,
+      )
       .map((p) => p.name)
   }
 
@@ -93,7 +101,7 @@ export class CallTranscription {
   }
 
   /** What went wrong, in words; null while fine. */
-  get problem(): string | null {
+  get problem(): ShownError | null {
     return this.#problem
   }
 
@@ -125,7 +133,10 @@ export class CallTranscription {
     try {
       this.#d.active.update(await this.#d.client.setTranscription(call.id, on))
     } catch (err) {
-      this.#problem = `Your transcription could not be turned ${on ? 'on' : 'off'}: ${err instanceof Error ? err.message : String(err)}`
+      this.#problem = shownProblemOf(
+        err,
+        `Your transcription could not be turned ${on ? 'on' : 'off'}: `,
+      )
     } finally {
       this.#pending = null
       this.#reconcile()
@@ -134,7 +145,14 @@ export class CallTranscription {
 
   #wanted(): boolean {
     const { active } = this.#d
-    return this.#unsubscribe !== null && !this.#unavailable && active.call !== null && active.state.phase === 'connected' && active.state.mic && this.on
+    return (
+      this.#unsubscribe !== null &&
+      !this.#unavailable &&
+      active.call !== null &&
+      active.state.phase === 'connected' &&
+      active.state.mic &&
+      this.on
+    )
   }
 
   #reconcile(): void {
@@ -166,7 +184,10 @@ export class CallTranscription {
     this.#timer = null
     const done = this.#take()
     if (!done) return
-    if (drop) done.clip.catch((err: unknown) => console.error('[calls] stopping a dropped transcript chunk failed', err))
+    if (drop)
+      done.clip.catch((err: unknown) =>
+        console.error('[calls] stopping a dropped transcript chunk failed', err),
+      )
     else void this.#send(done.chunk, done.clip, done.durationMs)
   }
 
@@ -183,23 +204,29 @@ export class CallTranscription {
     try {
       clip = await clipping
     } catch (err) {
-      this.#problem = `A part of your transcript was not recorded: ${err instanceof Error ? err.message : String(err)}`
+      this.#problem = {
+        error: `A part of your transcript was not recorded: ${err instanceof Error ? err.message : String(err)}`,
+        agent: null,
+      }
       return
     }
     if (clip.size === 0 || durationMs <= 0 || !(await this.#d.hasSpeech(clip))) return
     try {
       await this.#d.client.transcribe(chunk.callId, clip, durationMs)
     } catch (err) {
-      const problem = err instanceof CallRequestError ? err.problem : { kind: 'failed' as const, message: err instanceof Error ? err.message : String(err) }
+      const problem = problemOf(err)
       if (problem.kind === 'unavailable') {
         this.#unavailable = true
-        this.#problem = problem.message
+        this.#problem = { error: problem.message, agent: problem.agent }
         this.#reconcile()
       } else if (problem.kind === 'over') {
         // The call ended (or my transcription went off) while this chunk was on its way: nothing to keep.
         console.warn('[calls] a transcript chunk arrived after it could be used:', problem.message)
       } else {
-        this.#problem = `A part of your transcript was not saved: ${problem.message}`
+        this.#problem = {
+          error: `A part of your transcript was not saved: ${problem.message}`,
+          agent: problem.agent,
+        }
       }
     }
   }
@@ -212,7 +239,10 @@ const AUDIO_BITS_PER_SECOND = 32_000
 /** One MediaRecorder per chunk on the call's microphone track (each chunk a whole, decodable file). */
 export function mediaRecorderChunk(track: MediaStreamTrack): ChunkRecorder {
   const mimeType = PREFERRED_MIME_TYPES.find((t) => MediaRecorder.isTypeSupported(t))
-  const recorder = new MediaRecorder(new MediaStream([track]), { audioBitsPerSecond: AUDIO_BITS_PER_SECOND, ...(mimeType ? { mimeType } : {}) })
+  const recorder = new MediaRecorder(new MediaStream([track]), {
+    audioBitsPerSecond: AUDIO_BITS_PER_SECOND,
+    ...(mimeType ? { mimeType } : {}),
+  })
   const parts: Blob[] = []
   recorder.addEventListener('dataavailable', (e) => {
     if (e.data.size > 0) parts.push(e.data)
@@ -221,10 +251,16 @@ export function mediaRecorderChunk(track: MediaStreamTrack): ChunkRecorder {
   return {
     stop: () =>
       new Promise<Blob>((resolve, reject) => {
-        const done = () => resolve(new Blob(parts, { type: recorder.mimeType || parts[0]?.type || 'audio/webm' }))
+        const done = () =>
+          resolve(new Blob(parts, { type: recorder.mimeType || parts[0]?.type || 'audio/webm' }))
         if (recorder.state === 'inactive') return done()
         recorder.addEventListener('stop', done, { once: true })
-        recorder.addEventListener('error', (e) => reject(new Error(`the recorder failed (${(e as ErrorEvent).message ?? 'unknown'})`)), { once: true })
+        recorder.addEventListener(
+          'error',
+          (e) =>
+            reject(new Error(`the recorder failed (${(e as ErrorEvent).message ?? 'unknown'})`)),
+          { once: true },
+        )
         recorder.stop()
       }),
   }
@@ -238,13 +274,21 @@ export async function chunkHasSpeech(clip: Blob): Promise<boolean> {
   try {
     return clipHasSpeechLevelSound(await decodeClip(clip))
   } catch (err) {
-    console.warn('[calls] a transcript chunk could not be decoded for the audio check; sending it unchecked', err)
+    console.warn(
+      '[calls] a transcript chunk could not be decoded for the audio check; sending it unchecked',
+      err,
+    )
     return true
   }
 }
 
 /** The live wiring for the call page and the guest page. */
-export function browserCallTranscription(active: TranscribedCall, me: string, client: Pick<LiveCallClient, 'transcribe' | 'setTranscription'>, chunkMs: number) {
+export function browserCallTranscription(
+  active: TranscribedCall,
+  me: string,
+  client: Pick<LiveCallClient, 'transcribe' | 'setTranscription'>,
+  chunkMs: number,
+) {
   return new CallTranscription({
     active,
     me,

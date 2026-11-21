@@ -4,9 +4,12 @@
   import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle'
   import XIcon from '@lucide/svelte/icons/x'
   import { onMount } from 'svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import MemorySurfaceDrawer from '$lib/components/memory-surface-drawer.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Drawer from '$lib/components/ui/drawer'
+  import type { ShownError } from '$lib/errors/agent-report'
+  import { requestErrorOf, shownOf } from '$lib/memory/request-error'
   import { m } from '$lib/paraglide/messages.js'
 
   type ConnectedAgentListItem = {
@@ -37,18 +40,18 @@
   let agents = $state<ConnectedAgentListItem[]>([])
   let loading = $state(false)
   let busy = $state(false)
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
 
   async function loadAgents() {
     loading = true
     error = null
     try {
       const res = await fetch('/api/agents')
-      if (!res.ok) throw new Error(`Request failed (${res.status})`)
+      if (!res.ok) throw await requestErrorOf(res)
       const body = (await res.json()) as { agents: ConnectedAgentListItem[] }
       agents = body.agents.filter((a) => a.enabled)
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = shownOf(err)
       agents = []
     } finally {
       loading = false
@@ -69,16 +72,13 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ thoughtId: item.thoughtId }),
       })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error(body.error ?? `Request failed (${res.status})`)
-      }
+      if (!res.ok) throw await requestErrorOf(res)
       const body = (await res.json()) as AssignAgentResponse
       onAssigned(body)
       open = false
       onClose()
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = shownOf(err)
     } finally {
       busy = false
     }
@@ -152,7 +152,12 @@
         </ul>
       {/if}
       {#if error}
-        <p class="text-destructive pt-2 text-xs">{error}</p>
+        <ErrorNotice
+          class="pt-2 text-xs"
+          error={error.error}
+          agent={error.agent}
+          attempted="Assigning a task to an agent from the timeline"
+        />
       {/if}
     </div>
 

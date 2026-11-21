@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types'
-import { callsRoute } from '../../../../../../modules/calls/http'
+import { callsRoute } from '../../calls-route'
 
 /** Overridable in tests. */
 export const _deps = {
@@ -8,4 +8,6 @@ export const _deps = {
 
 /** Leave the call (the caller hanging up a call that is still ringing cancels it: missed). */
 export const POST: RequestHandler = ({ locals, params }) =>
-  callsRoute(locals.user, _deps.service, async (userId, s) => ({ call: await s.hangup(userId, params.id) }))
+  callsRoute('Hanging up a call', locals.user, _deps.service, async (userId, s) => ({
+    call: await s.hangup(userId, params.id),
+  }))

@@ -2,6 +2,8 @@
   import type { Snippet } from 'svelte'
   import type { RunSummary } from '$lib/agent-runs/feed'
   import { RUN_TITLE_MAX, renameRunBody } from '$lib/agent-runs/rename'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
+  import { shownErrorOf, type ShownError } from '$lib/errors/agent-report'
 
   /**
    * Inline rename for one conversation (Contribute 495e40bb). The caller draws
@@ -31,7 +33,7 @@
   let editing = $state(false)
   let draft = $state('')
   let saving = $state(false)
-  let problem = $state<string | null>(null)
+  let problem = $state<ShownError | null>(null)
 
   function start(): void {
     if (!renamable) return
@@ -49,7 +51,7 @@
     if (!editing || saving) return
     const parsed = renameRunBody.safeParse({ title: draft })
     if (!parsed.success) {
-      problem = parsed.error.issues.map((issue) => issue.message).join(' ')
+      problem = { error: parsed.error.issues.map((issue) => issue.message).join(' '), agent: null }
       return
     }
     if (parsed.data.title === title) {
@@ -64,16 +66,19 @@
         headers: { 'content-type': 'application/json', accept: 'application/json' },
         body: JSON.stringify(parsed.data),
       })
-      const body = (await res.json()) as { run: RunSummary } | { error: string }
+      const body = (await res.json()) as { run: RunSummary } | Record<string, unknown>
       if (!res.ok || !('run' in body)) {
-        problem = 'error' in body ? body.error : `The name was not saved (HTTP ${res.status}).`
+        problem = shownErrorOf(body) ?? {
+          error: `The name was not saved (HTTP ${res.status}).`,
+          agent: null,
+        }
         return
       }
       editing = false
-      onrenamed(body.run)
+      onrenamed(body.run as RunSummary)
     } catch (err) {
       console.error('[assistant] rename failed', err)
-      problem = 'The name was not saved.'
+      problem = { error: 'The name was not saved.', agent: null }
     } finally {
       saving = false
     }
@@ -113,7 +118,13 @@
       use:focusAndSelect
     />
     {#if problem}
-      <p class="text-xs text-destructive" role="alert" data-testid="run-title-problem">{problem}</p>
+      <ErrorNotice
+        class="text-xs"
+        testid="run-title-problem"
+        error={problem.error}
+        agent={problem.agent}
+        attempted="Renaming the conversation"
+      />
     {/if}
   </div>
 {:else}

@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types'
-import { callsRoute } from '../../../../../../modules/calls/http'
+import { callsRoute } from '../../calls-route'
 
 /** Overridable in tests. */
 export const _deps = {
@@ -11,9 +11,14 @@ export const _deps = {
  * ~10 minutes) and the wss:// URL to connect to. Only for people who accepted.
  */
 export const GET: RequestHandler = ({ locals, params }) =>
-  callsRoute(locals.user, _deps.service, async (userId, s) => {
-    const token = await s.token(userId, params.id)
-    return new Response(JSON.stringify(token), {
-      headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
-    })
-  })
+  callsRoute(
+    "Getting a join token for a call's room",
+    locals.user,
+    _deps.service,
+    async (userId, s) => {
+      const token = await s.token(userId, params.id)
+      return new Response(JSON.stringify(token), {
+        headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+      })
+    },
+  )

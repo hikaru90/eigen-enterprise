@@ -20,7 +20,9 @@
 
 <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-28" data-testid="team-projects">
   {#if projects.length === 0}
-    <p class="text-muted-foreground px-1 py-8 text-center text-sm">{m.memory_team_projects_empty()}</p>
+    <p class="text-muted-foreground px-1 py-8 text-center text-sm">
+      {m.memory_team_projects_empty()}
+    </p>
   {:else}
     <ul class="flex flex-col gap-2">
       {#each projects as project (project.entityId)}
@@ -44,7 +46,9 @@
             </div>
             <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
               <MemoryOwnerLabel name={project.owner.name} />
-              <span class="text-xs leading-[1.2] text-foreground">{statusLabel(project.status)}</span>
+              <span class="text-xs leading-[1.2] text-foreground"
+                >{statusLabel(project.status)}</span
+              >
             </div>
             {#if project.nextAction}
               <div class="flex items-start gap-x-[11px]">
@@ -57,7 +61,9 @@
             {#if visibleTasks.length > 0}
               <ol class="flex flex-col gap-0.5">
                 {#each visibleTasks as task (task.itemId)}
-                  <li class="text-xs leading-[1.2] text-muted-foreground">{task.rank}. {task.summary}</li>
+                  <li class="text-xs leading-[1.2] text-muted-foreground">
+                    {task.rank}. {task.summary}
+                  </li>
                 {/each}
               </ol>
             {/if}

@@ -8,7 +8,7 @@ import { readVoiceClip } from '../../../../../../../../modules/messages/service'
  * with byte ranges (the player seeks), never sniffed as anything else, never cached.
  */
 export const GET: RequestHandler = ({ locals, params, request }) =>
-  messagesRoute(locals.user, async (userId, d) => {
+  messagesRoute(locals.user, 'Playing a voice clip (/api/messages)', async (userId, d) => {
     const { mime, bytes } = await readVoiceClip(d, userId, params.id, params.fileId)
     return rangedResponse(request, bytes, {
       'content-type': mime,

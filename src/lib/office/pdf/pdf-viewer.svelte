@@ -2,6 +2,9 @@
   import type PdfEditor from './pdf-editor.svelte'
   import type PdfOrganiser from './pdf-organiser.svelte'
   import type { ComponentProps } from 'svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
+  import { driveShownError } from '$lib/drive/shown-error'
+  import type { AgentReport } from '$lib/errors/agent-report'
 
   type OrganiserProps = ComponentProps<typeof PdfOrganiser>
   type EditorProps = ComponentProps<typeof PdfEditor>
@@ -12,7 +15,6 @@
   import type { TextContent } from 'pdfjs-dist/types/src/display/api'
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down'
   import ChevronUpIcon from '@lucide/svelte/icons/chevron-up'
-  import CircleAlertIcon from '@lucide/svelte/icons/circle-alert'
   import LayoutGridIcon from '@lucide/svelte/icons/layout-grid'
   import ListTreeIcon from '@lucide/svelte/icons/list-tree'
   import LockIcon from '@lucide/svelte/icons/lock'
@@ -85,7 +87,7 @@
   type Status =
     | { kind: 'loading' }
     | { kind: 'password'; incorrect: boolean }
-    | { kind: 'error'; message: string; detail: string | null }
+    | { kind: 'error'; message: string; detail: string | null; agent: AgentReport | null }
     | { kind: 'ready' }
 
   const THUMB_WIDTH = 112
@@ -322,7 +324,12 @@
 
   function fail(message: string, err: unknown) {
     if (destroyed) return
-    status = { kind: 'error', message, detail: err instanceof Error ? err.message : String(err) }
+    status = {
+      kind: 'error',
+      message,
+      detail: err instanceof Error ? err.message : String(err),
+      agent: driveShownError(err).agent,
+    }
   }
 
   function onPasswordSubmit(event: SubmitEvent) {
@@ -1006,17 +1013,20 @@
       {/if}
     </div>
   </div>
-  {#if !hidden && (organiseError || savedNotice)}
+  {#if !hidden && organiseError}
+    <ErrorNotice
+      class="border-b border-destructive/40 bg-destructive/10 px-3 py-1.5"
+      testid="pdf-organise-notice"
+      error={organiseError}
+      attempted="Opening the PDF organiser or annotator in the browser"
+    />
+  {:else if !hidden && savedNotice}
     <div
-      class="border-b px-3 py-1.5 text-sm {organiseError
-        ? 'border-destructive/40 bg-destructive/10 text-destructive'
-        : 'bg-muted/40'}"
-      role={organiseError ? 'alert' : 'status'}
+      class="border-b bg-muted/40 px-3 py-1.5 text-sm"
+      role="status"
       data-testid="pdf-organise-notice"
     >
-      {#if organiseError}
-        {organiseError}
-      {:else if savedNotice}
+      {#if savedNotice}
         <p class="flex items-center gap-2">
           <span class="flex-1">{savedNotice.text}</span>
           <Button
@@ -1035,13 +1045,12 @@
     </div>
   {/if}
   {#if !hidden && (pageError || navError)}
-    <p
-      class="border-b border-destructive/40 bg-destructive/10 px-3 py-1.5 text-sm text-destructive"
-      role="alert"
-      data-testid="pdf-nav-error"
-    >
-      {pageError ?? navError}
-    </p>
+    <ErrorNotice
+      class="border-b border-destructive/40 bg-destructive/10 px-3 py-1.5"
+      testid="pdf-nav-error"
+      error={pageError ?? navError ?? ''}
+      attempted="Going to a page or bookmark in the PDF viewer"
+    />
   {/if}
 
   <div class="pdf-body" style:display={hidden ? 'none' : undefined}>
@@ -1151,9 +1160,11 @@
               />
             </label>
             {#if status.incorrect}
-              <p class="text-sm text-destructive" role="alert" data-testid="pdf-password-wrong">
-                That password is not right. Try again.
-              </p>
+              <ErrorNotice
+                testid="pdf-password-wrong"
+                error="That password is not right. Try again."
+                attempted="Opening a password-protected PDF in the browser (the typed password was refused; it is never copied)"
+              />
             {/if}
             <Button
               type="submit"
@@ -1164,20 +1175,23 @@
           </form>
         </div>
       {:else if status.kind === 'error'}
-        <div
-          class="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center"
-          role="alert"
-          data-testid="pdf-error"
+        <ErrorNotice
+          class="absolute inset-0 items-center justify-center gap-2 p-6 text-center font-medium"
+          testid="pdf-error"
+          error={status.message}
+          agent={status.agent}
+          attempted="Opening a PDF in the browser viewer"
         >
-          <CircleAlertIcon class="size-8 text-destructive" />
-          <p class="font-medium">{status.message}</p>
           {#if status.detail}
-            <p class="max-w-md text-xs text-muted-foreground" data-testid="pdf-error-detail">
+            <p
+              class="max-w-md text-xs font-normal text-muted-foreground"
+              data-testid="pdf-error-detail"
+            >
               {status.detail}
             </p>
           {/if}
-          <p class="text-sm text-muted-foreground">You can still download the file.</p>
-        </div>
+          <p class="text-sm font-normal text-muted-foreground">You can still download the file.</p>
+        </ErrorNotice>
       {/if}
     </div>
   </div>

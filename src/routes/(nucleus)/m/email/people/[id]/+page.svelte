@@ -2,8 +2,10 @@
   import type { PageProps } from './$types'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
   import { relativeDays, visibilityText } from '../../../../../../../modules/contacts/types'
   import ChannelLinks from '../../../../../../../modules/contacts/ui/channel-links.svelte'
@@ -14,16 +16,30 @@
   /** /m/email/people/[id]: one person — who can see them, log a contact, their history, edit, share, delete. */
   let { data, form }: PageProps = $props()
   const c = $derived(data.contact)
-  const errorFor = (action: string) => (form && 'error' in form && form.action === action ? form.error : null)
+  const errorFor = (action: string) =>
+    form && 'error' in form && form.action === action ? form.error : null
+  /** The action's refusal with its agent report ("Copy agent instructions"). */
+  const shownFor = (action: string) =>
+    form && 'action' in form && form.action === action ? shownErrorOf(form) : null
+  const shareError = $derived(shownFor('share'))
+  const deleteError = $derived(shownFor('delete'))
   const saved = $derived(form && !('error' in form) && form.action === 'save')
-  const days = (day: string) => Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${data.today}T00:00:00Z`)) / 86_400_000)
+  const days = (day: string) =>
+    Math.round(
+      (Date.parse(`${day}T00:00:00Z`) - Date.parse(`${data.today}T00:00:00Z`)) / 86_400_000,
+    )
 </script>
 
 <svelte:head><title>{docTitle(c.name, 'Contacts')}</title></svelte:head>
 
-<a class="text-sm text-muted-foreground hover:text-foreground" href={resolve('/m/email/people')}>← All contacts</a>
+<a class="text-sm text-muted-foreground hover:text-foreground" href={resolve('/m/email/people')}
+  >← All contacts</a
+>
 <div class="mt-3">
-  <SectionHeader title={c.name} description={[c.title, c.organisation].filter(Boolean).join(' · ') || null} />
+  <SectionHeader
+    title={c.name}
+    description={[c.title, c.organisation].filter(Boolean).join(' · ') || null}
+  />
 </div>
 
 <div class="mt-5 grid max-w-2xl gap-4">
@@ -35,25 +51,31 @@
   >
     <p>
       {visibilityText(c)}
-      {#if !c.own}<span class="block text-xs text-muted-foreground">Added by {c.createdByName}.</span>{/if}
+      {#if !c.own}<span class="block text-xs text-muted-foreground"
+          >Added by {c.createdByName}.</span
+        >{/if}
     </p>
     {#if c.canManage}
       <div class="flex flex-wrap gap-2">
         {#if !c.shared}
           <form method="POST" action="?/share" use:enhance>
             <input type="hidden" name="shared" value="true" />
-            <Button type="submit" variant="outline" size="sm" data-testid="contact-share-toggle">Share with the whole team</Button>
+            <Button type="submit" variant="outline" size="sm" data-testid="contact-share-toggle"
+              >Share with the whole team</Button
+            >
           </form>
         {/if}
         {#if c.shared || c.sharedWith.length > 0}
           <form method="POST" action="?/share" use:enhance>
             <input type="hidden" name="shared" value="false" />
-            <Button type="submit" variant="outline" size="sm" data-testid="contact-make-private">Make private</Button>
+            <Button type="submit" variant="outline" size="sm" data-testid="contact-make-private"
+              >Make private</Button
+            >
           </form>
         {/if}
       </div>
     {/if}
-    {#if errorFor('share')}<p class="w-full text-sm text-destructive" role="alert">{errorFor('share')}</p>{/if}
+    {#if shareError}<ErrorNotice {...shareError} class="w-full" />{/if}
   </aside>
 
   <ChannelLinks channels={c.channels} />
@@ -62,7 +84,9 @@
     {#if c.tags.length > 0}
       <dt class="text-muted-foreground">Tags</dt>
       <dd class="flex flex-wrap gap-1.5">
-        {#each c.tags as tag (tag)}<span class="rounded-full border border-border px-2 py-0.5 text-[11px]">{tag}</span>{/each}
+        {#each c.tags as tag (tag)}<span
+            class="rounded-full border border-border px-2 py-0.5 text-[11px]">{tag}</span
+          >{/each}
       </dd>
     {/if}
     {#if c.whyRelevant}
@@ -74,7 +98,11 @@
       <dd class="whitespace-pre-line">{c.metHow}</dd>
     {/if}
     <dt class="text-muted-foreground">Last in touch</dt>
-    <dd>{c.lastContactedOn ? `${c.lastContactedOn} (${relativeDays(days(c.lastContactedOn))})` : 'Not logged yet'}</dd>
+    <dd>
+      {c.lastContactedOn
+        ? `${c.lastContactedOn} (${relativeDays(days(c.lastContactedOn))})`
+        : 'Not logged yet'}
+    </dd>
     <dt class="text-muted-foreground">Next follow-up</dt>
     <dd data-testid="contact-next">
       {#if c.nextFollowUpOn}
@@ -86,10 +114,19 @@
   </dl>
 </div>
 
-<SectionHeader title="Log a contact" description="You were in touch: say when, and what comes next (or nothing)." />
+<SectionHeader
+  title="Log a contact"
+  description="You were in touch: say when, and what comes next (or nothing)."
+/>
 <div class="mt-3 max-w-2xl">
   {#key c.updatedAt}
-    <LogContactForm contactId={c.id} name={c.name} today={data.today} error={errorFor('log')} />
+    <LogContactForm
+      contactId={c.id}
+      name={c.name}
+      today={data.today}
+      error={errorFor('log')}
+      agent={shownFor('log')?.agent ?? null}
+    />
   {/key}
 </div>
 
@@ -99,20 +136,34 @@
   testid="contact-history-section"
 />
 <div class="mt-3 max-w-2xl">
-  <ContactHistory items={data.history} today={data.today} hasEmail={c.channels.some((ch) => ch.type === 'email')} />
+  <ContactHistory
+    items={data.history}
+    today={data.today}
+    hasEmail={c.channels.some((ch) => ch.type === 'email')}
+  />
 </div>
 
 <SectionHeader title="Details" testid="contact-edit-section" />
 <div class="mt-3">
   <!-- Re-rendered from what is stored after every change (a failed save keeps what you typed). -->
   {#key c.updatedAt}
-    <ContactForm contact={c} suggestedTags={data.tags} action="?/save" submitLabel="Save" error={errorFor('save')} />
+    <ContactForm
+      contact={c}
+      suggestedTags={data.tags}
+      action="?/save"
+      submitLabel="Save"
+      error={errorFor('save')}
+      agent={shownFor('save')?.agent ?? null}
+    />
   {/key}
   {#if saved}<p class="mt-2 text-sm text-muted-foreground" role="status">Saved.</p>{/if}
 </div>
 
 {#if c.canManage}
-  <SectionHeader title="Delete" description="Removes this contact for everyone who can see it. This can’t be undone." />
+  <SectionHeader
+    title="Delete"
+    description="Removes this contact for everyone who can see it. This can’t be undone."
+  />
   <form
     method="POST"
     action="?/delete"
@@ -122,6 +173,6 @@
     }}
   >
     <Button type="submit" variant="destructive" data-testid="contact-delete">Delete contact</Button>
-    {#if errorFor('delete')}<p class="mt-2 text-sm text-destructive" role="alert">{errorFor('delete')}</p>{/if}
+    {#if deleteError}<ErrorNotice {...deleteError} class="mt-2" />{/if}
   </form>
 {/if}

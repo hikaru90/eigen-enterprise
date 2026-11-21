@@ -3,13 +3,16 @@
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
   import BrandTokens from '$lib/components/email/brand-tokens.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
 
   let { data, form }: PageProps = $props()
+  const createError = $derived(form?.action === 'create' ? shownErrorOf(form) : null)
 </script>
 
 <svelte:head><title>{docTitle('Layouts', 'Email')}</title></svelte:head>
@@ -34,12 +37,7 @@
           <Input id="layout-name" name="name" placeholder="e.g. Brand" />
         </div>
         <Button type="submit">Create layout</Button>
-        {#if form?.action === 'create' && 'error' in form}<p
-            class="w-full text-sm text-destructive"
-            role="alert"
-          >
-            {form.error}
-          </p>{/if}
+        {#if createError}<ErrorNotice {...createError} class="w-full" />{/if}
       </form>
     {/if}
     {#if data.layouts.length === 0}

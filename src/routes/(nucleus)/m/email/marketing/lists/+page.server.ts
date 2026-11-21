@@ -23,7 +23,7 @@ export const actions: Actions = {
   create: async ({ locals, request }) => {
     const me = await requireAdmin(locals)
     const form = await request.formData()
-    const out = await act('create', async () => {
+    const out = await act('create', 'Creating a contact list', async () => {
       const l = await emailPlatform().audience.createList(
         { name: field(form, 'name'), doubleOptIn: field(form, 'doubleOptIn') === 'on' },
         me.userId,

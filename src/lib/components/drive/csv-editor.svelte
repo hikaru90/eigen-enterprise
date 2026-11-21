@@ -7,6 +7,7 @@
   import BetweenVerticalStartIcon from '@lucide/svelte/icons/between-vertical-start'
   import Trash2Icon from '@lucide/svelte/icons/trash-2'
   import { tick, untrack } from 'svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import {
     emptyGrid,
@@ -193,9 +194,12 @@
 </script>
 
 {#if error}
-  <p class="px-6 py-8 text-sm text-destructive" role="alert" data-testid="drive-csv-error">
-    {error} Download the file to fix it.
-  </p>
+  <ErrorNotice
+    class="px-6 py-8"
+    testid="drive-csv-error"
+    error={`${error} Download the file to fix it.`}
+    attempted="Reading a CSV file in the browser to show it as a table"
+  />
 {:else}
   <div class="flex flex-col" data-testid="drive-csv-editor">
     {#if isEditable}
@@ -255,7 +259,8 @@
               >
               {#each row as cell, c (c)}
                 <td
-                  class="border-r border-b p-0 align-top focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-primary {r === 0
+                  class="border-r border-b p-0 align-top focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-primary {r ===
+                  0
                     ? 'bg-muted/40'
                     : ''} {active.r === r && active.c === c
                     ? 'outline-2 -outline-offset-2 outline-primary'

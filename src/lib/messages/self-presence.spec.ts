@@ -25,7 +25,9 @@ describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef
   })
 
   it('a heartbeat posts to the presence route and takes the answer as my status', async () => {
-    const fetch = vi.fn<SelfPresenceFetch>(async () => answer(200, { presence: view({ status: 'dnd', doNotDisturb: true }) }))
+    const fetch = vi.fn<SelfPresenceFetch>(async () =>
+      answer(200, { presence: view({ status: 'dnd', doNotDisturb: true }) }),
+    )
     const self = new SelfPresence({ fetch })
     self.beat({ clientId: 'tab-0123456789', state: 'active' })
     await settle()
@@ -40,20 +42,24 @@ describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef
 
   it('a refused heartbeat is shown as an error, never hidden', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const self = new SelfPresence({ fetch: async () => answer(403, { error: 'only members of the company have a presence' }) })
+    const self = new SelfPresence({
+      fetch: async () => answer(403, { error: 'only members of the company have a presence' }),
+    })
     self.beat({ clientId: 'tab-0123456789', state: 'active' })
     await settle()
-    expect(self.error).toBe('only members of the company have a presence')
+    expect(self.error?.error).toBe('only members of the company have a presence')
     expect(err).toHaveBeenCalled()
     err.mockRestore()
   })
 
   it('a heartbeat that cannot reach the server is shown as an error', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const self = new SelfPresence({ fetch: async () => Promise.reject(new TypeError('Failed to fetch')) })
+    const self = new SelfPresence({
+      fetch: async () => Promise.reject(new TypeError('Failed to fetch')),
+    })
     self.beat({ clientId: 'tab-0123456789', state: 'active' })
     await settle()
-    expect(self.error).toBe('Status could not be updated: Failed to fetch')
+    expect(self.error?.error).toBe('Status could not be updated: Failed to fetch')
     err.mockRestore()
   })
 
@@ -75,11 +81,17 @@ describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef
   })
 
   it('a failed save keeps the old status and says why', async () => {
-    const self = new SelfPresence({ fetch: async () => answer(500, { error: 'tracker down' }) })
+    const agent = {
+      attempted: 'Switching Do not disturb (/api/messages)',
+      nextSteps: ['Read the journal.'],
+    }
+    const self = new SelfPresence({
+      fetch: async () => answer(500, { error: 'tracker down', agent }),
+    })
     self.receive(view())
     await self.setDoNotDisturb(true)
     expect(self.view?.status).toBe('online')
-    expect(self.error).toBe('tracker down')
+    expect(self.error).toEqual({ error: 'tracker down', agent })
     expect(self.saving).toBe(false)
   })
 

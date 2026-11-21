@@ -9,7 +9,7 @@ import { MessagesError, uploadAttachments } from '../../../../../../../modules/m
  * { uploaded, errors } — then post the message with the uploaded fileIds.
  */
 export const POST: RequestHandler = ({ locals, params, request }) =>
-  messagesRoute(locals.user, async (userId, d) => {
+  messagesRoute(locals.user, 'Uploading attachments (/api/messages)', async (userId, d) => {
     let form: FormData
     try {
       form = await request.formData()
@@ -21,6 +21,12 @@ export const POST: RequestHandler = ({ locals, params, request }) =>
       d,
       userId,
       params.id,
-      await Promise.all(files.map(async (f) => ({ name: f.name, mime: f.type || null, bytes: new Uint8Array(await f.arrayBuffer()) }))),
+      await Promise.all(
+        files.map(async (f) => ({
+          name: f.name,
+          mime: f.type || null,
+          bytes: new Uint8Array(await f.arrayBuffer()),
+        })),
+      ),
     )
   })

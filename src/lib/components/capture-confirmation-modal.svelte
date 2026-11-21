@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { CapturePreviewBundle } from '$lib/capture/confirmation-types'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
@@ -82,7 +83,6 @@
           <span class="font-medium text-foreground">{preview.category.key}</span>
           <span class="ml-1">({categoryPercent}%)</span>
         </span>
-
       </div>
 
       {#if preview.entities.length > 0}
@@ -101,7 +101,7 @@
       </p>
 
       {#if error}
-        <p class="text-destructive text-sm">{error}</p>
+        <ErrorNotice {error} attempted="Confirming a capture" />
       {/if}
     </div>
 
@@ -109,14 +109,7 @@
       <Button type="button" disabled={loading} onclick={confirm}>
         {loading ? 'Working…' : 'Confirm'}
       </Button>
-      <Button
-        type="button"
-        variant="outline"
-        disabled={loading}
-        onclick={dismiss}
-      >
-        Dismiss
-      </Button>
+      <Button type="button" variant="outline" disabled={loading} onclick={dismiss}>Dismiss</Button>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>

@@ -2,6 +2,7 @@
   import type { PageProps } from './$types'
   import { resolve } from '$app/paths'
   import SectionHeader from '$lib/components/page/section-header.svelte'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
   import ContactForm from '../../../../../../../modules/contacts/ui/contact-form.svelte'
 
@@ -11,7 +12,9 @@
 
 <svelte:head><title>{docTitle('Add a contact', 'Contacts')}</title></svelte:head>
 
-<a class="text-sm text-muted-foreground hover:text-foreground" href={resolve('/m/email/people')}>← All contacts</a>
+<a class="text-sm text-muted-foreground hover:text-foreground" href={resolve('/m/email/people')}
+  >← All contacts</a
+>
 <div class="mt-3">
   <SectionHeader
     title="Add a contact"
@@ -25,5 +28,6 @@
     newVisibility={data.visibility}
     describeOpen
     error={form && 'error' in form ? form.error : null}
+    agent={shownErrorOf(form)?.agent ?? null}
   />
 </div>

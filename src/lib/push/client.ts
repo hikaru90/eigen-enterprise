@@ -1,6 +1,31 @@
 /** Browser helpers for Web Push subscription lifecycle. */
 
+import { shownErrorOf, type ShownError } from '$lib/errors/agent-report'
 import { base64UrlToBytes } from './keys'
+
+/**
+ * A refused /api/push request: SvelteKit's error body (`{ message, agent }`)
+ * as the one error shape, so a page shows the sentence and "Copy agent
+ * instructions" with the server's report.
+ */
+export class PushRequestError extends Error {
+  readonly shown: ShownError
+  constructor(sentence: string, body: unknown) {
+    super(sentence)
+    this.name = 'PushRequestError'
+    const agent =
+      body && typeof body === 'object'
+        ? shownErrorOf({ error: sentence, agent: (body as { agent?: unknown }).agent })?.agent
+        : null
+    this.shown = { error: sentence, agent: agent ?? null }
+  }
+}
+
+/** What a page shows for a push failure: a refused request's report, or a browser failure's words. */
+export function shownPushFailure(err: unknown): ShownError {
+  if (err instanceof PushRequestError) return err.shown
+  return { error: err instanceof Error ? err.message : String(err), agent: null }
+}
 
 const SW_READY_TIMEOUT_MS = 20_000
 
@@ -21,7 +46,9 @@ export async function getPushServiceWorkerRegistration(): Promise<ServiceWorkerR
 
   const registration = await navigator.serviceWorker.getRegistration()
   if (!registration) {
-    throw new Error('Service worker is not available. Reload the page, then try enabling push again.')
+    throw new Error(
+      'Service worker is not available. Reload the page, then try enabling push again.',
+    )
   }
 
   if (registration.active) return registration
@@ -78,7 +105,7 @@ export async function fetchVapidPublicKey(): Promise<string> {
       body && typeof body === 'object' && 'message' in body && typeof body.message === 'string'
         ? body.message
         : `Failed to load VAPID public key (${res.status})`
-    throw new Error(msg)
+    throw new PushRequestError(msg, body)
   }
   const data = (await res.json()) as { publicKey?: unknown }
   if (typeof data.publicKey !== 'string' || !data.publicKey.trim()) {
@@ -143,11 +170,12 @@ export async function postSubscribe(
         ? body.message
         : `Subscribe failed (${res.status})`
     if (msg.includes('Failed query:') || msg.includes('push_subscription')) {
-      throw new Error(
+      throw new PushRequestError(
         'Could not save notification settings for this device. Try again, or enable later in Settings.',
+        body,
       )
     }
-    throw new Error(msg)
+    throw new PushRequestError(msg, body)
   }
 }
 
@@ -168,7 +196,9 @@ export async function postUnsubscribe(endpoint: string): Promise<void> {
 }
 
 /** A test notification to all of this person's devices, or the one with `deviceId`. */
-export async function postTestPush(deviceId?: string): Promise<{ sent: number; failed: number; removed: number }> {
+export async function postTestPush(
+  deviceId?: string,
+): Promise<{ sent: number; failed: number; removed: number }> {
   const res = await fetch('/api/push/test', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -180,7 +210,7 @@ export async function postTestPush(deviceId?: string): Promise<{ sent: number; f
       body && typeof body === 'object' && 'message' in body && typeof body.message === 'string'
         ? body.message
         : `Test push failed (${res.status})`
-    throw new Error(msg)
+    throw new PushRequestError(msg, body)
   }
   return body as { sent: number; failed: number; removed: number }
 }

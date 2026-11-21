@@ -2,9 +2,12 @@
   import SparklesIcon from '@lucide/svelte/icons/sparkles'
   import { invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { driveApi, formatSize, type ArchiveSuggestions } from '$lib/drive/api'
   import { shortWhen } from '$lib/drive/display'
+  import { driveShownError } from '$lib/drive/shown-error'
+  import type { ShownError } from '$lib/errors/agent-report'
 
   /**
    * "Suggest what to archive": the person picks how long a file must have
@@ -37,7 +40,7 @@
   let age = $state(String(days))
   let asking = $state(false)
   let archiving = $state(false)
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
   let result = $state<ArchiveSuggestions | null>(null)
   let ticked = $state<Record<string, boolean>>({})
 
@@ -66,7 +69,7 @@
       ticked = Object.fromEntries(out.suggestions.map((s) => [s.file.id, true]))
       result = out
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = driveShownError(err)
     } finally {
       asking = false
     }
@@ -82,7 +85,7 @@
       const failed = out.errors.map((e) => e.error).join(' ')
       ondone(`Archived ${files(out.archived.length)}.${failed ? ` ${failed}` : ''}`)
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = driveShownError(err)
     } finally {
       archiving = false
     }
@@ -96,7 +99,9 @@
 >
   <div class="flex flex-wrap items-center gap-2 text-sm">
     <SparklesIcon class="size-4 text-primary" aria-hidden="true" />
-    <label for="drive-suggest-age" class="font-medium">Look at files I can edit, unchanged for</label>
+    <label for="drive-suggest-age" class="font-medium"
+      >Look at files I can edit, unchanged for</label
+    >
     <select
       id="drive-suggest-age"
       class="h-8 rounded-md border border-input bg-background px-2 text-sm"
@@ -111,7 +116,9 @@
     <Button size="sm" onclick={ask} disabled={asking || archiving} data-testid="drive-suggest-run">
       {asking ? 'Looking…' : result ? 'Ask again' : 'Suggest'}
     </Button>
-    <Button size="sm" variant="ghost" onclick={onclose} data-testid="drive-suggest-close">Close</Button>
+    <Button size="sm" variant="ghost" onclick={onclose} data-testid="drive-suggest-close"
+      >Close</Button
+    >
   </div>
   <p class="text-xs text-muted-foreground">
     The AI sees each file’s name, folder, type, size and dates — not its content. It only suggests:
@@ -119,13 +126,15 @@
   </p>
 
   {#if error}
-    <p
-      class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-      role="alert"
-      data-testid="drive-suggest-error"
-    >
-      {error}
-    </p>
+    <ErrorNotice
+      class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2"
+      testid="drive-suggest-error"
+      error={error.error}
+      agent={error.agent}
+      attempted={result
+        ? 'Archiving the files the AI suggested'
+        : 'Asking the AI which Drive files to archive'}
+    />
   {/if}
 
   {#if result}
@@ -149,7 +158,9 @@
                   rel="noopener noreferrer">{s.file.name}</a
                 >
                 <span class="text-xs text-muted-foreground"
-                  >{where(s)} · changed {shortWhen(s.file.updatedAt)} · {formatSize(s.file.size)}</span
+                  >{where(s)} · changed {shortWhen(s.file.updatedAt)} · {formatSize(
+                    s.file.size,
+                  )}</span
                 >
               </span>
               <span class="text-muted-foreground">{s.reason}</span>

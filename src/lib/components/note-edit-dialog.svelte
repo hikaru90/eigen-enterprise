@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle'
   import { onMount } from 'svelte'
   import { Button } from '$lib/components/ui/button'
@@ -106,7 +107,7 @@
           />
         </div>
         {#if error}
-          <p class="text-xs text-destructive">{error}</p>
+          <ErrorNotice class="text-xs" {error} attempted="Opening or saving a note (text file)" />
         {/if}
         {#if saved}
           <p class="text-xs text-muted-foreground">{m.notes_saved()}</p>

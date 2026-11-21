@@ -6,12 +6,12 @@ const tracker = async () => (await import('$lib/server/presence')).presence()
 
 /** Heartbeat { clientId, state: active | idle | gone } from one of the person's tabs; answers their presence. */
 export const POST: RequestHandler = ({ locals, request }) =>
-  messagesRoute(locals.user, async (userId, d) => ({
+  messagesRoute(locals.user, 'Sending a presence heartbeat (/api/messages)', async (userId, d) => ({
     presence: await reportPresence(d, await tracker(), userId, await readJson(request)),
   }))
 
 /** { doNotDisturb: boolean } — the person's own toggle; answers their presence. */
 export const PUT: RequestHandler = ({ locals, request }) =>
-  messagesRoute(locals.user, async (userId, d) => ({
+  messagesRoute(locals.user, 'Switching Do not disturb (/api/messages)', async (userId, d) => ({
     presence: await setDoNotDisturb(d, await tracker(), userId, await readJson(request)),
   }))

@@ -8,6 +8,7 @@
   import { docTitle } from '$lib/shell/title'
   import PublicFrame from '$lib/components/page/public-frame.svelte'
   import PasskeyStep from '$lib/components/passkey-step.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
 
   /**
    * Accept an invite (owner decision W-4): the link is the proof. Step 1 —
@@ -17,11 +18,18 @@
   let { data, form }: { data: PageData; form: ActionData } = $props()
 
   const company = $derived(data.companyName ?? 'your company')
-
 </script>
 
 <svelte:head>
-  <title>{docTitle(data.step === 'passkey' ? 'Create your passkey' : data.ok ? `Join ${company}` : 'Join your company')}</title>
+  <title
+    >{docTitle(
+      data.step === 'passkey'
+        ? 'Create your passkey'
+        : data.ok
+          ? `Join ${company}`
+          : 'Join your company',
+    )}</title
+  >
 </svelte:head>
 
 <PublicFrame
@@ -54,7 +62,13 @@
           data-testid="invite-sign-in">Sign in</a
         >
       {:else}
-        <form method="post" action="?/join" use:enhance class="space-y-4" data-testid="invite-start">
+        <form
+          method="post"
+          action="?/join"
+          use:enhance
+          class="space-y-4"
+          data-testid="invite-start"
+        >
           <input type="hidden" name="token" value={data.token} />
           <p class="text-xs">Your account: <strong>{data.email}</strong></p>
           <div class="space-y-1">
@@ -71,7 +85,13 @@
           </div>
           <Button type="submit" class="w-full rounded-[4px]" data-testid="invite-join">Join</Button>
           {#if form?.message}
-            <p class="text-destructive text-xs" data-testid="invite-error">{form.message}</p>
+            <ErrorNotice
+              class="text-xs"
+              testid="invite-error"
+              error={form.message}
+              agent={form.agent}
+              attempted="Joining the company with an invite link"
+            />
           {/if}
         </form>
       {/if}

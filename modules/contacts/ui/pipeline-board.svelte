@@ -1,8 +1,17 @@
 <script lang="ts">
   import type { Pipeline, PipelineItem, PipelineStage } from '../types'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
-  import { CONTACT_LIMITS, PIPELINE_STAGES, STAGE_INFO, VIA_LABELS, VIA_TYPES, relativeDays } from '../types'
+  import type { AgentReport } from '$lib/errors/agent-report'
+  import {
+    CONTACT_LIMITS,
+    PIPELINE_STAGES,
+    STAGE_INFO,
+    VIA_LABELS,
+    VIA_TYPES,
+    relativeDays,
+  } from '../types'
   import LogContactForm from './log-contact-form.svelte'
 
   /**
@@ -26,7 +35,7 @@
     /** Save one change; resolves to the error to show on that row, or null. */
     onsave: (id: string, patch: Record<string, string>) => Promise<string | null>
     /** A "Log contact" that failed, for the row it came from. */
-    logError?: { id: string; message: string } | null
+    logError?: { id: string; message: string; agent?: AgentReport | null } | null
   } = $props()
 
   let reviewOnly = $state(false)
@@ -38,7 +47,8 @@
   const logOpen = $derived(logOpenId === undefined ? (logError?.id ?? null) : logOpenId)
 
   const total = $derived(pipeline.groups.reduce((n, g) => n + g.items.length, 0))
-  const shown = (items: readonly PipelineItem[]) => (reviewOnly ? items.filter((i) => i.review.needsReview) : items)
+  const shown = (items: readonly PipelineItem[]) =>
+    reviewOnly ? items.filter((i) => i.review.needsReview) : items
 
   async function save(id: string, patch: Record<string, string>): Promise<void> {
     saving = id
@@ -52,7 +62,8 @@
   }
 
   function onfield(id: string, key: string) {
-    return (e: Event) => save(id, { [key]: (e.currentTarget as HTMLInputElement | HTMLSelectElement).value })
+    return (e: Event) =>
+      save(id, { [key]: (e.currentTarget as HTMLInputElement | HTMLSelectElement).value })
   }
 
   function ondragstart(e: DragEvent, id: string): void {
@@ -68,13 +79,18 @@
     if (item && item.stage !== stage) void save(item.id, { stage })
   }
 
-  const daysSince = (day: string) => Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${pipeline.today}T00:00:00Z`)) / 86_400_000)
+  const daysSince = (day: string) =>
+    Math.round(
+      (Date.parse(`${day}T00:00:00Z`) - Date.parse(`${pipeline.today}T00:00:00Z`)) / 86_400_000,
+    )
 
   /** What the weekly review notices on this row, in words. */
   function flags(i: PipelineItem): string[] {
     const out: string[] = []
-    if (i.review.staleWaiting && i.review.daysWaiting !== null) out.push(`Waiting ${i.review.daysWaiting} days`)
-    if (i.review.overdue && i.review.daysFromToday !== null) out.push(`${STAGE_INFO[i.stage].dateLabel} ${relativeDays(i.review.daysFromToday)}`)
+    if (i.review.staleWaiting && i.review.daysWaiting !== null)
+      out.push(`Waiting ${i.review.daysWaiting} days`)
+    if (i.review.overdue && i.review.daysFromToday !== null)
+      out.push(`${STAGE_INFO[i.stage].dateLabel} ${relativeDays(i.review.daysFromToday)}`)
     if (i.review.missingNextStep) out.push('No next step')
     return out
   }
@@ -83,7 +99,11 @@
   const control = 'border-input bg-card h-8 w-full min-w-28 rounded-md border px-2 text-sm'
 </script>
 
-<section class="grid gap-2 rounded-lg border border-border p-4" aria-labelledby="pipeline-review-title" data-testid="pipeline-review">
+<section
+  class="grid gap-2 rounded-lg border border-border p-4"
+  aria-labelledby="pipeline-review-title"
+  data-testid="pipeline-review"
+>
   <div class="flex flex-wrap items-baseline justify-between gap-2">
     <h3 id="pipeline-review-title" class="text-sm font-medium">Weekly review</h3>
     <Button
@@ -92,30 +112,39 @@
       variant={reviewOnly ? 'default' : 'outline'}
       aria-pressed={reviewOnly}
       onclick={() => (reviewOnly = !reviewOnly)}
-      data-testid="pipeline-review-toggle">{reviewOnly ? 'Show everyone' : 'Show only what needs a look'}</Button
+      data-testid="pipeline-review-toggle"
+      >{reviewOnly ? 'Show everyone' : 'Show only what needs a look'}</Button
     >
   </div>
   <ul class="flex flex-wrap gap-x-6 gap-y-1 text-sm" data-testid="pipeline-review-counts">
     <li class={pipeline.review.waitingTooLong > 0 ? 'text-destructive' : 'text-muted-foreground'}>
       {pipeline.review.waitingTooLong} waiting longer than {pipeline.review.waitingDays} days
     </li>
-    <li class={pipeline.review.overdue > 0 ? 'text-destructive' : 'text-muted-foreground'}>{pipeline.review.overdue} past their day</li>
+    <li class={pipeline.review.overdue > 0 ? 'text-destructive' : 'text-muted-foreground'}>
+      {pipeline.review.overdue} past their day
+    </li>
     <li class={pipeline.review.nextWithoutStep > 0 ? 'text-foreground' : 'text-muted-foreground'}>
       {pipeline.review.nextWithoutStep} of our moves without a next step
     </li>
-    <li class={pipeline.review.inbox > 0 ? 'text-foreground' : 'text-muted-foreground'}>{pipeline.review.inbox} in the inbox to process</li>
+    <li class={pipeline.review.inbox > 0 ? 'text-foreground' : 'text-muted-foreground'}>
+      {pipeline.review.inbox} in the inbox to process
+    </li>
   </ul>
 </section>
 
 {#if total === 0}
-  <p class="mt-4 text-sm text-muted-foreground" data-testid="pipeline-empty">No contacts yet. Add the people you know and they start in the inbox.</p>
+  <p class="mt-4 text-sm text-muted-foreground" data-testid="pipeline-empty">
+    No contacts yet. Add the people you know and they start in the inbox.
+  </p>
 {/if}
 
 {#each pipeline.groups as group, n (group.stage)}
   {@const info = STAGE_INFO[group.stage]}
   {@const items = shown(group.items)}
   <section
-    class="mt-6 rounded-lg border {dragOver === group.stage ? 'border-foreground bg-muted/40' : 'border-border'}"
+    class="mt-6 rounded-lg border {dragOver === group.stage
+      ? 'border-foreground bg-muted/40'
+      : 'border-border'}"
     aria-labelledby={`pipeline-${group.stage}-title`}
     data-testid={`pipeline-group-${group.stage}`}
     ondragover={(e) => {
@@ -125,17 +154,23 @@
     ondragleave={() => (dragOver = null)}
     ondrop={(e) => ondrop(e, group.stage)}
   >
-    <header class="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-3">
+    <header
+      class="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-3"
+    >
       <div class="min-w-0">
         <h3 id={`pipeline-${group.stage}-title`} class="text-sm font-medium">
           {n + 1} · {info.label} <span class="font-normal text-muted-foreground">— {info.gtd}</span>
         </h3>
         <p class="text-xs text-muted-foreground">{info.hint}</p>
       </div>
-      <span class="text-xs text-muted-foreground" data-testid="pipeline-group-count">{group.items.length}</span>
+      <span class="text-xs text-muted-foreground" data-testid="pipeline-group-count"
+        >{group.items.length}</span
+      >
     </header>
     {#if items.length === 0}
-      <p class="px-4 py-3 text-xs text-muted-foreground">{reviewOnly && group.items.length > 0 ? 'Nothing here needs a look.' : 'Nobody here.'}</p>
+      <p class="px-4 py-3 text-xs text-muted-foreground">
+        {reviewOnly && group.items.length > 0 ? 'Nothing here needs a look.' : 'Nobody here.'}
+      </p>
     {:else}
       <div class="overflow-x-auto">
         <table class="w-full min-w-[960px] text-sm">
@@ -164,35 +199,61 @@
                 data-review={i.review.needsReview ? 'true' : 'false'}
               >
                 <td class="{cell} pl-4">
-                  <a class="font-medium hover:underline" href={resolve(`/m/email/people/${i.id}`)}>{i.name}</a>
-                  {#if i.organisation}<div class="text-xs text-muted-foreground">{i.organisation}</div>{/if}
+                  <a class="font-medium hover:underline" href={resolve(`/m/email/people/${i.id}`)}
+                    >{i.name}</a
+                  >
+                  {#if i.organisation}<div class="text-xs text-muted-foreground">
+                      {i.organisation}
+                    </div>{/if}
                   {#if i.stage === 'waiting' && i.review.daysWaiting !== null && !i.review.staleWaiting}
-                    <div class="text-xs text-muted-foreground">Waiting {i.review.daysWaiting} days</div>
+                    <div class="text-xs text-muted-foreground">
+                      Waiting {i.review.daysWaiting} days
+                    </div>
                   {/if}
                   {#if rowFlags.length > 0}
-                    <div class="text-xs font-medium text-destructive" data-testid="pipeline-flags">{rowFlags.join(' · ')}</div>
+                    <div class="text-xs font-medium text-destructive" data-testid="pipeline-flags">
+                      {rowFlags.join(' · ')}
+                    </div>
                   {/if}
-                  {#if errors[i.id]}<div class="text-xs text-destructive" role="alert">{errors[i.id]}</div>{/if}
+                  {#if errors[i.id]}<ErrorNotice
+                      error={errors[i.id]!}
+                      attempted={`Saving a change to ${i.name} on the pipeline`}
+                      class="text-xs"
+                    />{/if}
                 </td>
                 <td class="{cell} whitespace-nowrap text-xs text-muted-foreground">
                   {i.lastContactedOn ? relativeDays(daysSince(i.lastContactedOn)) : 'Not yet'}
                   {#if logOpen !== i.id}
                     <div>
-                      <button type="button" class="underline underline-offset-2 hover:text-foreground" onclick={() => (logOpenId = i.id)}
-                        >Log contact</button
+                      <button
+                        type="button"
+                        class="underline underline-offset-2 hover:text-foreground"
+                        onclick={() => (logOpenId = i.id)}>Log contact</button
                       >
                     </div>
                   {/if}
                 </td>
                 <td class={cell}>
-                  <select class={control} aria-label={`Who holds ${i.name}`} value={i.ownerId ?? ''} onchange={onfield(i.id, 'ownerId')}>
+                  <select
+                    class={control}
+                    aria-label={`Who holds ${i.name}`}
+                    value={i.ownerId ?? ''}
+                    onchange={onfield(i.id, 'ownerId')}
+                  >
                     <option value="">Nobody yet</option>
                     {#each pipeline.people as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
-                    {#if i.ownerId && !pipeline.people.some((p) => p.id === i.ownerId)}<option value={i.ownerId}>{i.ownerName}</option>{/if}
+                    {#if i.ownerId && !pipeline.people.some((p) => p.id === i.ownerId)}<option
+                        value={i.ownerId}>{i.ownerName}</option
+                      >{/if}
                   </select>
                 </td>
                 <td class={cell}>
-                  <select class={control} aria-label={`How we are in touch with ${i.name}`} value={i.via ?? ''} onchange={onfield(i.id, 'via')}>
+                  <select
+                    class={control}
+                    aria-label={`How we are in touch with ${i.name}`}
+                    value={i.via ?? ''}
+                    onchange={onfield(i.id, 'via')}
+                  >
                     <option value="">—</option>
                     {#each VIA_TYPES as v (v)}<option value={v}>{VIA_LABELS[v]}</option>{/each}
                   </select>
@@ -227,8 +288,14 @@
                   />
                 </td>
                 <td class="{cell} pr-4">
-                  <select class={control} aria-label={`List for ${i.name}`} value={i.stage} onchange={onfield(i.id, 'stage')}>
-                    {#each PIPELINE_STAGES as s (s)}<option value={s}>{STAGE_INFO[s].label}</option>{/each}
+                  <select
+                    class={control}
+                    aria-label={`List for ${i.name}`}
+                    value={i.stage}
+                    onchange={onfield(i.id, 'stage')}
+                  >
+                    {#each PIPELINE_STAGES as s (s)}<option value={s}>{STAGE_INFO[s].label}</option
+                      >{/each}
                   </select>
                 </td>
               </tr>
@@ -241,6 +308,7 @@
                       today={pipeline.today}
                       askStage
                       error={logError && logError.id === i.id ? logError.message : null}
+                      agent={logError && logError.id === i.id ? (logError.agent ?? null) : null}
                       oncancel={() => (logOpenId = null)}
                       ondone={() => (logOpenId = null)}
                     />

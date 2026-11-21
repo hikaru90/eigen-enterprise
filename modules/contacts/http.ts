@@ -1,6 +1,7 @@
 import type { NextUpPorts } from './next-up'
 import type { Actor, ContactInput, ContactsDeps } from './service'
 import { error, fail, json, redirect } from '@sveltejs/kit'
+import { errorReport } from '$lib/server/errors/report'
 import { ContactsError, ERROR_STATUS } from './errors'
 import { contactTags, makeContactsPrivate, shareContacts } from './service'
 import { EXTRACT_MODES } from './types'
@@ -31,7 +32,8 @@ const text = (form: FormData, key: string): string => {
 export function formContactInput(form: FormData): ContactInput {
   const types = form.getAll('channelType')
   const values = form.getAll('channelValue')
-  if (types.length !== values.length) throw new ContactsError('invalid', 'Every channel needs a type and a value.')
+  if (types.length !== values.length)
+    throw new ContactsError('invalid', 'Every channel needs a type and a value.')
   const channels = types
     .map((type, i) => ({ type, value: values[i] }))
     // The editor always offers one empty row: a row with no value is not a channel.
@@ -67,7 +69,13 @@ export function formShared(form: FormData): boolean | undefined {
 }
 
 /** The "Log a contact" form ("Where they are now" only when the form asks it; blank = leave as it is). */
-export function formLogInput(form: FormData): { on: string; note: string; nextFollowUpOn: string; nextStep: string; stage?: string } {
+export function formLogInput(form: FormData): {
+  on: string
+  note: string
+  nextFollowUpOn: string
+  nextStep: string
+  stage?: string
+} {
   return {
     on: text(form, 'on'),
     note: text(form, 'note'),
@@ -78,7 +86,15 @@ export function formLogInput(form: FormData): { on: string; note: string; nextFo
 }
 
 /** The pipeline's inline edits: only the fields the request sends (blank clears an optional one). */
-export const PIPELINE_FORM_FIELDS = ['stage', 'ownerId', 'via', 'latestStatus', 'nextStep', 'nextFollowUpOn', 'waitingSince'] as const
+export const PIPELINE_FORM_FIELDS = [
+  'stage',
+  'ownerId',
+  'via',
+  'latestStatus',
+  'nextStep',
+  'nextFollowUpOn',
+  'waitingSince',
+] as const
 
 export function formPipelineInput(form: FormData): ContactInput {
   const out: Record<string, string> = {}
@@ -86,12 +102,43 @@ export function formPipelineInput(form: FormData): ContactInput {
   return out
 }
 
-/** A form action: a ContactsError comes back to the form as `{ action, id, error }` with its status. */
-export async function contactsAction<T>(action: string, run: () => Promise<T>, id: string | null = null) {
+/**
+ * The one error shape ($lib/errors/agent-report) for a ContactsError: its own
+ * sentence for the person, the agent half with its code and status.
+ */
+export function contactsErrorReport(err: ContactsError, attempted: string) {
+  return errorReport(err, {
+    attempted,
+    plain: () => err.message,
+    nextSteps: [
+      `The contacts service (modules/contacts/) refused with ContactsError code "${err.code}" (HTTP ${ERROR_STATUS[err.code]}).`,
+    ],
+  })
+}
+
+/** An unexpected failure in a contacts JSON route: the same sentence as before, plus the agent half. */
+function unexpectedReport(err: unknown, attempted: string) {
+  return errorReport(err, { attempted, plain: (e) => (e instanceof Error ? e.message : String(e)) })
+}
+
+/** A form action: a ContactsError comes back to the form as `{ action, id, error, agent }` with its status. */
+export async function contactsAction<T>(
+  action: string,
+  run: () => Promise<T>,
+  id: string | null = null,
+) {
   try {
     return await run()
   } catch (err) {
-    if (err instanceof ContactsError) return fail(ERROR_STATUS[err.code], { action, id, error: err.message })
+    if (err instanceof ContactsError)
+      return fail(ERROR_STATUS[err.code], {
+        action,
+        id,
+        ...contactsErrorReport(
+          err,
+          `The contacts form “${action}”${id ? ` on contact ${id}` : ''} (/m/email/people)`,
+        ),
+      })
     throw err
   }
 }
@@ -102,7 +149,10 @@ export async function contactsAction<T>(action: string, run: () => Promise<T>, i
  * Saves nothing. Signed-in people in the company only; ContactsError → its
  * status with `{ error, code }`; anything else is logged and a 500.
  */
-export async function contactsExtractResponse(user: { id: string } | null | undefined, request: Request): Promise<Response> {
+export async function contactsExtractResponse(
+  user: { id: string } | null | undefined,
+  request: Request,
+): Promise<Response> {
   if (!user) return json({ error: 'sign in first' }, { status: 401 })
   try {
     let body: unknown
@@ -111,7 +161,10 @@ export async function contactsExtractResponse(user: { id: string } | null | unde
     } catch {
       throw new ContactsError('invalid', 'expected a JSON object body')
     }
-    const { mode, text } = (body && typeof body === 'object' ? body : {}) as { mode?: unknown; text?: unknown }
+    const { mode, text } = (body && typeof body === 'object' ? body : {}) as {
+      mode?: unknown
+      text?: unknown
+    }
     if (typeof mode !== 'string' || !(EXTRACT_MODES as readonly string[]).includes(mode)) {
       throw new ContactsError('invalid', `mode must be one of ${EXTRACT_MODES.join(', ')}`)
     }
@@ -127,9 +180,15 @@ export async function contactsExtractResponse(user: { id: string } | null | unde
         : await extractLogDraft(liveExtractChat, { userId: actor.userId, text, today })
     return json({ draft })
   } catch (err) {
-    if (err instanceof ContactsError) return json({ error: err.message, code: err.code }, { status: ERROR_STATUS[err.code] })
+    const attempted =
+      'Reading a free description into the contact form with AI (POST /api/contacts/extract)'
+    if (err instanceof ContactsError)
+      return json(
+        { ...contactsErrorReport(err, attempted), code: err.code },
+        { status: ERROR_STATUS[err.code] },
+      )
     console.error('[contacts.extract] request failed', err)
-    return json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    return json(unexpectedReport(err, attempted), { status: 500 })
   }
 }
 
@@ -161,12 +220,21 @@ export async function contactsNextUpResponse(
   try {
     const actor = personActor(user)
     const { nextUp } = await import('./next-up')
-    const [d, ports, today] = await Promise.all([wiring.deps(), wiring.ports(), wiring.today(actor.userId)])
+    const [d, ports, today] = await Promise.all([
+      wiring.deps(),
+      wiring.ports(),
+      wiring.today(actor.userId),
+    ])
     return json({ nextUp: await nextUp(d, ports, actor, { today, refresh: opts.refresh }) })
   } catch (err) {
-    if (err instanceof ContactsError) return json({ error: err.message, code: err.code }, { status: ERROR_STATUS[err.code] })
+    const attempted = 'Picking who to contact next (/api/contacts/next-up)'
+    if (err instanceof ContactsError)
+      return json(
+        { ...contactsErrorReport(err, attempted), code: err.code },
+        { status: ERROR_STATUS[err.code] },
+      )
     console.error('[contacts.next-up] request failed', err)
-    return json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    return json(unexpectedReport(err, attempted), { status: 500 })
   }
 }
 
@@ -175,7 +243,11 @@ export async function contactsLoad<T>(run: () => Promise<T>): Promise<T> {
   try {
     return await run()
   } catch (err) {
-    if (err instanceof ContactsError) error(ERROR_STATUS[err.code], err.code === 'not_found' ? 'No such contact' : err.message)
+    if (err instanceof ContactsError)
+      error(ERROR_STATUS[err.code], {
+        message: err.code === 'not_found' ? 'No such contact' : err.message,
+        agent: contactsErrorReport(err, 'Opening a contacts page (/m/email/people)').agent,
+      })
     throw err
   }
 }
@@ -210,8 +282,13 @@ export async function contactsSharingResponse(
     if (action === 'private') return json(await makeContactsPrivate(await deps(), actor, ids))
     throw new ContactsError('invalid', 'action must be share or private')
   } catch (err) {
-    if (err instanceof ContactsError) return json({ error: err.message, code: err.code }, { status: ERROR_STATUS[err.code] })
+    const attempted = 'Sharing contacts or making them private (POST /api/contacts/sharing)'
+    if (err instanceof ContactsError)
+      return json(
+        { ...contactsErrorReport(err, attempted), code: err.code },
+        { status: ERROR_STATUS[err.code] },
+      )
     console.error('[contacts.sharing] request failed', err)
-    return json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    return json(unexpectedReport(err, attempted), { status: 500 })
   }
 }

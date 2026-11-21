@@ -91,7 +91,11 @@ describe('POST /m/website/apps/suggest', () => {
     const res = await call('owner', input)
     expect(res.status).toBe(400)
     const body = await res.json()
-    expect(body).toEqual({ error: expect.stringMatching(/couldn't read the repo well enough/) })
+    // The sentence is plain; the raw cause rides only in the agent half (Copy agent instructions).
+    expect(body).toEqual({
+      error: expect.stringMatching(/couldn't read the repo well enough/),
+      agent: expect.objectContaining({ tool: 'website.app_suggest_contract' }),
+    })
 
     const bad = await call('owner', { name: 'Not A Name' })
     expect(bad.status).toBe(400)

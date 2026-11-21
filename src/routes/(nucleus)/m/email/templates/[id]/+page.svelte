@@ -4,9 +4,11 @@
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
   import CopyButton from '$lib/components/email/copy-button.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
   import DictationField from '$lib/voice/dictation-field.svelte'
   import { templateVariables } from '../../../../../../../modules/email/platform/templates/variables'
@@ -42,8 +44,10 @@
     missing?: string[]
     problems?: string[]
     error?: string
+    agent?: unknown
   }
   let preview = $state<Preview>({})
+  const previewError = $derived(shownErrorOf(preview))
   let view = $state<'html' | 'text'>('html')
   let busy = $state<string | null>(null)
   let timer: ReturnType<typeof setTimeout> | null = null
@@ -220,7 +224,12 @@
       <details class="rounded-md border border-border px-3 py-2">
         <summary class="cursor-pointer text-sm">Plain-text version (optional)</summary>
         <!-- the plain-text version is prose: it takes dictation (the HTML/MJML source does not) -->
-        <DictationField field={textBodyEl} kind="textarea" testid="tpl-text-body-voice" class="mt-2">
+        <DictationField
+          field={textBodyEl}
+          kind="textarea"
+          testid="tpl-text-body-voice"
+          class="mt-2"
+        >
           <textarea
             bind:this={textBodyEl}
             name="textBody"
@@ -292,13 +301,13 @@
           </p>
         {/if}
         {#each ['save', 'test'] as a (a)}
-          {#if feedback(a)?.error}
-            <div class="text-sm text-destructive" role="alert">
-              {feedback(a)?.error}
-              {#each feedback(a)?.problems ?? [] as p (p)}<p class="font-mono text-xs">
+          {@const shown = shownErrorOf(feedback(a))}
+          {#if shown}
+            <ErrorNotice {...shown}>
+              {#each feedback(a)?.problems ?? [] as p (p)}<p class="font-mono text-xs text-red-600">
                   {p}
                 </p>{/each}
-            </div>
+            </ErrorNotice>
           {/if}
         {/each}
       {/if}
@@ -324,8 +333,8 @@
           >
         </div>
       </div>
-      {#if preview.error}
-        <p class="text-sm text-destructive" role="alert">{preview.error}</p>
+      {#if previewError}
+        <ErrorNotice {...previewError} attempted="Rendering the template preview" />
       {:else}
         <p class="truncate text-sm" data-testid="tpl-preview-subject">
           <span class="text-muted-foreground">Subject:</span>

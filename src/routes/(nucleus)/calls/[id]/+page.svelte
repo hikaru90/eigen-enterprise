@@ -10,8 +10,10 @@
   import { callTabName, leaveDecision, openCallTab } from '$lib/calls/call-tab'
   import { browserCallTranscription } from '$lib/calls/call-transcription.svelte'
   import CallView from '$lib/calls/call-view.svelte'
-  import { brainClient, callsClient, problemOf } from '$lib/calls/client'
+  import { brainClient, callsClient, shownProblemOf } from '$lib/calls/client'
   import { getLiveCalls } from '$lib/calls/live-calls.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
+  import type { ShownError } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
   import { TRANSCRIPT_CHUNK_MS } from '../../../../../modules/calls/transcript'
 
@@ -48,6 +50,8 @@
   /** The app opened this tab (window.open), so it may close it again. */
   let closable = $state(false)
   let notice = $state<string | null>(null)
+  /** Opening the other call's tab failed (e.g. the browser blocked it). */
+  let openError = $state<ShownError | null>(null)
   let untrack = () => {}
   let unfeed = () => {}
 
@@ -98,7 +102,7 @@
     try {
       openCallTab(callId)
     } catch (err) {
-      notice = problemOf(err).message
+      openError = shownProblemOf(err)
     }
   }
 </script>
@@ -113,7 +117,31 @@
       data-testid="call-tab-notice"
     >
       <p class="min-w-0 flex-1">{notice}</p>
-      <button type="button" class="text-neutral-400 hover:text-white" aria-label="Dismiss" onclick={() => (notice = null)}><X class="size-4" /></button>
+      <button
+        type="button"
+        class="text-neutral-400 hover:text-white"
+        aria-label="Dismiss"
+        onclick={() => (notice = null)}><X class="size-4" /></button
+      >
+    </div>
+  {/if}
+  {#if openError}
+    <div
+      class="absolute inset-x-2 top-16 z-30 mx-auto flex max-w-md items-start gap-2 rounded-lg border border-amber-400/30 bg-neutral-900/95 p-3 text-sm text-neutral-50 shadow-lg"
+      data-testid="call-tab-open-error"
+    >
+      <ErrorNotice
+        class="min-w-0 flex-1"
+        error={openError.error}
+        agent={openError.agent}
+        attempted="Opening another call's tab from a call"
+      />
+      <button
+        type="button"
+        class="text-neutral-400 hover:text-white"
+        aria-label="Dismiss"
+        onclick={() => (openError = null)}><X class="size-4" /></button
+      >
     </div>
   {/if}
   {#key data.call.id}

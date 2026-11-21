@@ -29,7 +29,7 @@ export const actions: Actions = {
   add: async ({ locals, request }) => {
     const me = await requireAdmin(locals)
     const form = await request.formData()
-    return act('add', async () => {
+    return act('add', 'Adding a sender address', async () => {
       const s = await emailPlatform().addSender(
         { address: field(form, 'address'), displayName: field(form, 'displayName') || null },
         me.userId,
@@ -40,7 +40,7 @@ export const actions: Actions = {
   makeDefault: async ({ locals, request }) => {
     const me = await requireAdmin(locals)
     const id = field(await request.formData(), 'id')
-    return act('makeDefault', async () => {
+    return act('makeDefault', 'Making a sender the default', async () => {
       await emailPlatform().setDefaultSender(id, me.userId)
       return {}
     })
@@ -48,7 +48,7 @@ export const actions: Actions = {
   remove: async ({ locals, request }) => {
     await requireAdmin(locals)
     const id = field(await request.formData(), 'id')
-    return act('remove', async () => {
+    return act('remove', 'Removing a sender address', async () => {
       await emailPlatform().deleteSender(id)
       return {}
     })

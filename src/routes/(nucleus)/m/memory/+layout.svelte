@@ -1,18 +1,20 @@
 <script lang="ts">
   import type { LayoutData } from './$types'
-  import { onMount, type Snippet } from 'svelte'
-  import { page } from '$app/state'
-  import { resolve } from '$app/paths'
   import Settings from '@lucide/svelte/icons/settings'
+  import { onMount, type Snippet } from 'svelte'
+  import { resolve } from '$app/paths'
+  import { page } from '$app/state'
+  import { enterPrivateAnalyticsSurface } from '$lib/analytics/posthog-client'
   import PageHeader from '$lib/components/page/page-header.svelte'
   import { activeMemorySurfaceTab, MEMORY_TABS } from '$lib/memory/memory-surface-nav'
-  import { enterPrivateAnalyticsSurface } from '$lib/analytics/posthog-client'
   import MemoryPrivacyNote from './memory-privacy-note.svelte'
 
   let { data, children }: { data: LayoutData; children: Snippet } = $props()
   const current = $derived(activeMemorySurfaceTab(page.url.pathname))
   const tabs = MEMORY_TABS.map((t) => ({ id: t.id, label: t.label, href: t.href }))
-  const currentDescription = $derived(MEMORY_TABS.find((t) => t.id === current)?.description ?? null)
+  const currentDescription = $derived(
+    MEMORY_TABS.find((t) => t.id === current)?.description ?? null,
+  )
 
   // Memory shows a person's private text: while it is open, product analytics gets nothing read
   // off the page (no autocaptured element text, no session-replay snapshots) — posthog-client.ts.
@@ -53,7 +55,10 @@
       {/snippet}
     </PageHeader>
     {#if currentDescription}
-      <p class="mt-3 max-w-[65ch] text-sm text-muted-foreground" data-testid="memory-tab-description">
+      <p
+        class="mt-3 max-w-[65ch] text-sm text-muted-foreground"
+        data-testid="memory-tab-description"
+      >
         {currentDescription}
       </p>
     {/if}

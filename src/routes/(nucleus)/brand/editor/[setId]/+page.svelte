@@ -3,12 +3,15 @@
   import type { PageData } from './$types'
   import { converter, formatHex, parse } from 'culori'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
+  import type { ShownError } from '$lib/errors/agent-report'
+  import { docTitle } from '$lib/shell/title'
   import Specimen from '../../../../../../modules/brand/specimen/Specimen.svelte'
   import {
     SECTION_DRIVERS,
     type SpecimenSectionId,
   } from '../../../../../../modules/brand/style-format/drivers'
-  import { docTitle } from '$lib/shell/title'
+  import { brandRequestError, brandShownError } from '../../brand-errors'
 
   /**
    * Visual editor (phase-2d M6, V8): draft specimen canvas + token panel.
@@ -35,7 +38,7 @@
   let dark = $state(false)
   let selectedSection = $state<SpecimenSectionId | null>(null)
   let busy = $state(false)
-  let error = $state('')
+  let error = $state<ShownError | null>(null)
 
   // Core resolved roles edited directly (each write pins the value, V3).
   const RESOLVED_COLOR_ROLES = [
@@ -109,21 +112,19 @@
       body: JSON.stringify(body),
     })
     const text = await response.text()
-    if (!response.ok) {
-      throw new Error(`${path} failed (${response.status}): ${text.slice(0, 400)}`)
-    }
+    if (!response.ok) throw brandRequestError(response.status, text, path)
     return JSON.parse(text) as Record<string, unknown>
   }
 
   async function send(body: Record<string, unknown>): Promise<void> {
     busy = true
-    error = ''
+    error = null
     try {
       const result = (await post(`/api/brand/visual-sets/${set.id}/update`, body)) as VisualSet
       set = result
       if (set.seeds) seedForm = structuredClone(set.seeds)
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = brandShownError(err)
     } finally {
       busy = false
     }
@@ -188,8 +189,12 @@
   </header>
 
   {#if error}
-    <pre
-      class="whitespace-pre-wrap rounded border border-red-400 bg-red-50 p-3 text-xs text-red-800">{error}</pre>
+    <ErrorNotice
+      class="whitespace-pre-wrap rounded border border-red-400 bg-red-50 p-3 text-xs"
+      error={error.error}
+      agent={error.agent}
+      attempted={`Editing the visual set ${set.id} in the brand editor`}
+    />
   {/if}
 
   <div class="flex min-h-0 flex-1">

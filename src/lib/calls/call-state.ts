@@ -10,6 +10,8 @@
  *   ended/error ─retry→ connecting
  */
 
+import { shownErrorOf, type AgentReport } from '$lib/errors/agent-report'
+
 export type CallPhase = 'connecting' | 'connected' | 'reconnecting' | 'ended' | 'error'
 /** joined_elsewhere: the same person joined from another tab or device. */
 export type EndReason = 'hung_up' | 'call_over' | 'connection_lost' | 'joined_elsewhere'
@@ -19,7 +21,12 @@ export type MediaFailure = 'permission_denied' | 'not_found' | 'in_use' | 'other
 
 /** What stops the call page from joining (fatal until retried). */
 /** unavailable: a part of the call the server has not set up (speech to text for transcripts); the call itself works. */
-export type CallProblem = { kind: 'not_configured' | 'unavailable' | 'over' | 'failed'; message: string }
+/** `agent`: the server's report for a coding or ops agent (null for a browser-side failure). */
+export type CallProblem = {
+  kind: 'not_configured' | 'unavailable' | 'over' | 'failed'
+  message: string
+  agent: AgentReport | null
+}
 
 export type MediaNotice = { device: Device; failure: MediaFailure; message: string }
 
@@ -60,7 +67,8 @@ const FLAG = { microphone: 'mic', camera: 'camera', screen: 'screen' } as const
 /** What the person reads when a device did not turn on — and what to do about it. */
 export function noticeText(device: Device, failure: MediaFailure, detail?: string): string {
   if (device === 'screen') {
-    if (failure === 'permission_denied') return 'Screen sharing did not start: it was cancelled, or your browser blocks it for this site.'
+    if (failure === 'permission_denied')
+      return 'Screen sharing did not start: it was cancelled, or your browser blocks it for this site.'
     return `Screen sharing did not start${detail ? `: ${detail}` : '.'}`
   }
   switch (failure) {
@@ -75,7 +83,8 @@ export function noticeText(device: Device, failure: MediaFailure, detail?: strin
   }
 }
 
-const withoutNotice = (notices: MediaNotice[], device: Device) => notices.filter((n) => n.device !== device)
+const withoutNotice = (notices: MediaNotice[], device: Device) =>
+  notices.filter((n) => n.device !== device)
 
 export function callReducer(s: CallViewState, e: CallEvent): CallViewState {
   if (e.type === 'retry') return s.phase === 'ended' || s.phase === 'error' ? initialCallState : s
@@ -100,7 +109,14 @@ export function callReducer(s: CallViewState, e: CallEvent): CallViewState {
       return {
         ...s,
         [FLAG[e.device]]: false,
-        notices: [...withoutNotice(s.notices, e.device), { device: e.device, failure: e.failure, message: noticeText(e.device, e.failure, e.detail) }],
+        notices: [
+          ...withoutNotice(s.notices, e.device),
+          {
+            device: e.device,
+            failure: e.failure,
+            message: noticeText(e.device, e.failure, e.detail),
+          },
+        ],
       }
     case 'dismiss_notice':
       return { ...s, notices: withoutNotice(s.notices, e.device) }
@@ -112,12 +128,17 @@ export function callReducer(s: CallViewState, e: CallEvent): CallViewState {
  * server's error `code` (CallsError), never by its wording; the wording is
  * shown as it is (e.g. "Calls are not set up on this server").
  */
-export function problemFromResponse(status: number, body: { code?: unknown; error?: unknown }): CallProblem {
-  const message = typeof body.error === 'string' && body.error ? body.error : `request failed (${status})`
-  if (body.code === 'not_configured') return { kind: 'not_configured', message }
-  if (body.code === 'unavailable') return { kind: 'unavailable', message }
-  if (body.code === 'conflict' || body.code === 'not_found') return { kind: 'over', message }
-  return { kind: 'failed', message }
+export function problemFromResponse(
+  status: number,
+  body: { code?: unknown; error?: unknown; agent?: unknown },
+): CallProblem {
+  const message =
+    typeof body.error === 'string' && body.error ? body.error : `request failed (${status})`
+  const agent = shownErrorOf(body)?.agent ?? null
+  if (body.code === 'not_configured') return { kind: 'not_configured', message, agent }
+  if (body.code === 'unavailable') return { kind: 'unavailable', message, agent }
+  if (body.code === 'conflict' || body.code === 'not_found') return { kind: 'over', message, agent }
+  return { kind: 'failed', message, agent }
 }
 
 /** One person in the room as the call page sees them (the room adapter's snapshot). */
@@ -150,7 +171,9 @@ export type CallTile = {
 
 /** The grid: screen shares first, then you, then everyone else by name. */
 export function tilesOf(participants: readonly CallParticipant[]): CallTile[] {
-  const people = [...participants].sort((a, b) => Number(b.isLocal) - Number(a.isLocal) || a.name.localeCompare(b.name))
+  const people = [...participants].sort(
+    (a, b) => Number(b.isLocal) - Number(a.isLocal) || a.name.localeCompare(b.name),
+  )
   const tile = (p: CallParticipant, kind: 'camera' | 'screen'): CallTile => ({
     key: `${p.identity}:${kind}`,
     kind,
@@ -162,5 +185,8 @@ export function tilesOf(participants: readonly CallParticipant[]): CallTile[] {
     speaking: kind === 'camera' && p.speaking,
     stream: kind === 'camera' ? (p.cameraOn ? p.camera : null) : p.screen,
   })
-  return [...people.filter((p) => p.screen).map((p) => tile(p, 'screen')), ...people.map((p) => tile(p, 'camera'))]
+  return [
+    ...people.filter((p) => p.screen).map((p) => tile(p, 'screen')),
+    ...people.map((p) => tile(p, 'camera')),
+  ]
 }

@@ -3,6 +3,7 @@
   import GitBranch from '@lucide/svelte/icons/git-branch'
   import { resolve } from '$app/paths'
   import AppCard from '$lib/components/app-card.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import WebsiteActivityPanel from '$lib/components/website-activity-panel.svelte'
   import { docTitle } from '$lib/shell/title'
@@ -61,15 +62,15 @@
 {/if}
 
 {#if data.appsError}
-  <p class="mt-6 rounded-lg border border-red-500/25 p-4 text-sm text-red-600" role="alert">
-    {data.appsError}
-  </p>
+  <ErrorNotice class="mt-6 rounded-lg border border-red-500/25 p-4" {...data.appsError} />
 {/if}
 
 {#if data.repositoriesError}
-  <p class="mt-3 rounded-lg border border-red-500/25 p-4 text-sm text-red-600" role="alert">
-    Repositories could not be loaded. {data.repositoriesError}
-  </p>
+  <ErrorNotice
+    class="mt-3 rounded-lg border border-red-500/25 p-4"
+    title="Repositories could not be loaded."
+    {...data.repositoriesError}
+  />
 {/if}
 
 <div class="mt-6 grid min-w-0 grid-cols-1 gap-10 xl:grid-cols-[minmax(0,1fr)_280px]">

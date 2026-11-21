@@ -1,14 +1,19 @@
 import type { DownloadDeps } from '../../../../../../../../modules/email/inbox/attachments'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ingestReceived, parseReceipt } from '../../../../../../../../modules/email/inbox/ingest'
-import { PDF_BYTES, WITH_ATTACHMENT } from '../../../../../../../../modules/email/inbox/mime-fixtures'
+import {
+  PDF_BYTES,
+  WITH_ATTACHMENT,
+} from '../../../../../../../../modules/email/inbox/mime-fixtures'
 import { fakeRawMailSource } from '../../../../../../../../modules/email/inbox/raw-source'
 import { BUCKET, received } from '../../../../../../../../modules/email/inbox/receipt-fixtures'
 import { assignPersonalMailbox } from '../../../../../../../../modules/email/inbox/service'
 import { fixture } from '../../../../../../../../modules/email/inbox/test-fixtures'
 
 let deps: DownloadDeps
-vi.mock('../../../../../../../../modules/email/inbox/live', () => ({ downloadDeps: async () => deps }))
+vi.mock('../../../../../../../../modules/email/inbox/live', () => ({
+  downloadDeps: async () => deps,
+}))
 
 const { GET } = await import('./+server')
 
@@ -16,18 +21,30 @@ let f: ReturnType<typeof fixture>
 
 async function ingest(virus = 'PASS') {
   f = fixture()
-  await assignPersonalMailbox(f.deps, 'olga', { memberId: 'ana', localPart: 'ana.lind', domainId: 'd-1' })
+  await assignPersonalMailbox(f.deps, 'olga', {
+    memberId: 'ana',
+    localPart: 'ana.lind',
+    domainId: 'd-1',
+  })
   const raw = fakeRawMailSource()
   raw.objects.set(`${BUCKET}/ses-msg-1`, Buffer.from(WITH_ATTACHMENT))
   const parsed = parseReceipt(received({ verdicts: { virus } }))
   if (parsed.kind !== 'received') throw new Error('fixture')
-  await ingestReceived({ store: f.store, raw, log: () => {}, received: async () => {} }, parsed.notification, BUCKET)
+  await ingestReceived(
+    { store: f.store, raw, log: () => {}, received: async () => {} },
+    parsed.notification,
+    BUCKET,
+  )
   deps = { inbox: f.deps, raw, bucket: async () => BUCKET }
   return [...f.store.attachments.values()].find((a) => a.contentType === 'application/pdf')!
 }
 
 const get = (user: string | null, id: string, query = '') =>
-  GET({ locals: { user: user ? { id: user } : null }, params: { id }, url: new URL(`http://x/m/email/inbox/attachments/${id}${query}`) } as never) as Promise<Response>
+  GET({
+    locals: { user: user ? { id: user } : null },
+    params: { id },
+    url: new URL(`http://x/m/email/inbox/attachments/${id}${query}`),
+  } as never) as Promise<Response>
 
 describe('GET /m/email/inbox/attachments/[id]', () => {
   beforeEach(() => vi.clearAllMocks())

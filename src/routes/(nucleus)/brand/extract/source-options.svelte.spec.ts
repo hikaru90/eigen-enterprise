@@ -5,13 +5,19 @@ import { BROWSER_UNAVAILABLE_MESSAGE } from '../../../../../modules/brand/extrac
 import { GUIDE_ACCEPT, GUIDE_LIMITS_TEXT } from '../../../../../modules/brand/extract/guide'
 import SourceOptions from './source-options.svelte'
 
+const AGENT = {
+  attempted: 'Starting a brand extraction',
+  tool: 'brand.extract_start',
+  nextSteps: ['Install the browser.'],
+}
+
 function setup(over: { captureError?: string; uploadError?: string; busy?: boolean } = {}) {
   const oncapture = vi.fn()
   const onupload = vi.fn()
   render(SourceOptions, {
     busy: over.busy ?? false,
-    captureError: over.captureError ?? '',
-    uploadError: over.uploadError ?? '',
+    captureError: over.captureError ? { error: over.captureError, agent: AGENT } : null,
+    uploadError: over.uploadError ? { error: over.uploadError, agent: AGENT } : null,
     oncapture,
     onupload,
   })
@@ -56,7 +62,10 @@ describe('brand extract: source options', () => {
     setup({ captureError: BROWSER_UNAVAILABLE_MESSAGE })
     const message = page.getByTestId('capture-error')
     await expect.element(message).toHaveTextContent(BROWSER_UNAVAILABLE_MESSAGE)
-    await expect.element(message).toHaveAttribute('role', 'alert')
+    await expect.element(message.getByRole('alert')).toHaveTextContent(BROWSER_UNAVAILABLE_MESSAGE)
+    await expect
+      .element(message.getByRole('button', { name: 'Copy agent instructions' }))
+      .toBeVisible()
     expect(page.getByTestId('extract-from-url').element().contains(message.element())).toBe(true)
     await expect.element(page.getByRole('button', { name: 'Upload & propose' })).toBeVisible()
   })

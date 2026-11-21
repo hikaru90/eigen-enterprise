@@ -73,7 +73,12 @@ describe('a colleague’s project page lists its tasks read-only', () => {
 describe('a new project', () => {
   it('is shared unless the person switches it to Private, and the choice is sent with it', async () => {
     const fetchMock = vi.fn(async () =>
-      Response.json({ entityId: 'p9', label: 'Job search', status: 'active', visibility: 'private' }),
+      Response.json({
+        entityId: 'p9',
+        label: 'Job search',
+        status: 'active',
+        visibility: 'private',
+      }),
     )
     vi.stubGlobal('fetch', fetchMock)
     render(TimelineCreateProjectDialog, { open: true, onClose: () => {}, onCreated: () => {} })
@@ -81,7 +86,10 @@ describe('a new project', () => {
     await expect.element(toggle).not.toBeChecked()
     await page.getByRole('textbox').fill('Job search')
     await toggle.click()
-    await page.getByRole('button', { name: /create|add/i }).last().click()
+    await page
+      .getByRole('button', { name: /create|add/i })
+      .last()
+      .click()
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(JSON.parse(String(init.body))).toMatchObject({ label: 'Job search', private: true })

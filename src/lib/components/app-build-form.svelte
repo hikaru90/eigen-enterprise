@@ -10,6 +10,8 @@
    * edits freely before deploying.
    */
   import type { ContractSuggestion, SuggestedFields } from '../../../modules/website/apps/suggest'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
+  import { shownErrorOf, type ShownError } from '$lib/errors/agent-report'
 
   type Fields = Omit<SuggestedFields, 'runtime'> & { runtime: string }
   type Target = { name: string; repo?: string; branch?: string }
@@ -47,14 +49,14 @@
   let aiSet = $state<Partial<Record<keyof Fields, true>>>({})
   let phase = $state<'idle' | 'reading' | 'done' | 'failed'>('idle')
   let result = $state<ContractSuggestion | null>(null)
-  let failure = $state('')
+  let failure = $state<ShownError>({ error: '', agent: null })
 
   const FAILED = "The AI couldn't fill this in right now. Try again, or fill the form in yourself."
 
   async function suggest() {
     if (!target) return
     phase = 'reading'
-    failure = ''
+    failure = { error: '', agent: null }
     try {
       const res = await fetch('/m/website/apps/suggest', {
         method: 'POST',
@@ -66,13 +68,16 @@
         error?: string
       } | null
       if (!res.ok || !body?.suggestion) {
-        failure = typeof body?.error === 'string' ? body.error : FAILED
+        failure = shownErrorOf(body) ?? {
+          error: FAILED,
+          agent: null,
+        }
         phase = 'failed'
         return
       }
       apply(body.suggestion)
     } catch {
-      failure = FAILED
+      failure = { error: FAILED, agent: null }
       phase = 'failed'
     }
   }
@@ -130,7 +135,11 @@
     {/if}
   </div>
   {#if phase === 'failed'}
-    <p class="text-sm text-red-600" role="alert">{failure}</p>
+    <ErrorNotice
+      error={failure.error}
+      agent={failure.agent}
+      attempted="Letting the AI fill in the build form"
+    />
   {/if}
   {#if phase === 'done' && result}
     <div class="flex flex-col gap-1 rounded-md bg-muted/40 p-3 text-xs">

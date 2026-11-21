@@ -14,7 +14,9 @@ const post = (user: { id: string } | null, body?: unknown) =>
     locals: { user },
     request: new Request('http://localhost/api/push/test', {
       method: 'POST',
-      ...(body === undefined ? {} : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+      ...(body === undefined
+        ? {}
+        : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
     }),
   } as never)
 
@@ -41,14 +43,27 @@ describe('POST /api/push/test', () => {
   })
 
   it('returns 400 when the user has no subscriptions (or not that device)', async () => {
-    sendTestNotificationMock.mockRejectedValue(new Error('No push subscriptions registered for this account'))
+    sendTestNotificationMock.mockRejectedValue(
+      new Error('No push subscriptions registered for this account'),
+    )
     await expect(post({ id: 'u1' })).rejects.toMatchObject({ status: 400 })
-    sendTestNotificationMock.mockRejectedValue(new Error('No push subscription with id d9 for this account'))
+    sendTestNotificationMock.mockRejectedValue(
+      new Error('No push subscription with id d9 for this account'),
+    )
     await expect(post({ id: 'u1' }, { deviceId: 'd9' })).rejects.toMatchObject({ status: 400 })
   })
 
   it('returns 503 when VAPID is not configured', async () => {
     sendTestNotificationMock.mockRejectedValue(new Error('VAPID_PUBLIC_KEY is required'))
-    await expect(post({ id: 'u1' })).rejects.toMatchObject({ status: 503 })
+    await expect(post({ id: 'u1' })).rejects.toMatchObject({
+      status: 503,
+      body: {
+        message: 'VAPID_PUBLIC_KEY is required',
+        agent: {
+          attempted: 'Sending a test notification (POST /api/push/test)',
+          cause: 'VAPID_PUBLIC_KEY is required',
+        },
+      },
+    })
   })
 })

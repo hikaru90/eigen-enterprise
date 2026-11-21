@@ -4,9 +4,11 @@
   import PhoneOff from '@lucide/svelte/icons/phone-off'
   import X from '@lucide/svelte/icons/x'
   import { onDestroy, onMount } from 'svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import UserAvatar from '$lib/components/user-avatar.svelte'
+  import type { ShownError } from '$lib/errors/agent-report'
   import { openCallTab, type OpenWindow } from './call-tab'
-  import { problemOf, type CallDto, type CallsClient } from './client'
+  import { shownProblemOf, type CallDto, type CallsClient } from './client'
   import { webAudioRinger, type Ringer } from './ringtone'
 
   /**
@@ -39,7 +41,7 @@
 
   let busy = $state<Record<string, 'decline'>>({})
   /** A refused decline or a blocked tab stays visible until dismissed, even after the call stops ringing. */
-  let failed = $state<Array<{ call: CallDto; message: string }>>([])
+  let failed = $state<Array<{ call: CallDto; problem: ShownError }>>([])
 
   const ringing = $derived(live.ringing)
 
@@ -59,12 +61,20 @@
   })
 
   const caller = (c: CallDto) => c.startedByName
-  const where = (c: CallDto) => (c.contextKind === 'dm' ? 'Video call' : c.contextKind === 'channel' ? `Call in ${c.title}` : c.title)
+  const where = (c: CallDto) =>
+    c.contextKind === 'dm'
+      ? 'Video call'
+      : c.contextKind === 'channel'
+        ? `Call in ${c.title}`
+        : c.title
 
   const blocked = (c: CallDto) => inCall !== null && inCall !== c.id
 
   const fail = (c: CallDto, err: unknown) =>
-    (failed = [...failed.filter((f) => f.call.id !== c.id), { call: c, message: problemOf(err).message }])
+    (failed = [
+      ...failed.filter((f) => f.call.id !== c.id),
+      { call: c, problem: shownProblemOf(err) },
+    ])
 
   /** Synchronous on purpose: the tab must open within the click. */
   function accept(c: CallDto) {
@@ -112,15 +122,23 @@
       >
         <span class="relative shrink-0">
           <UserAvatar name={caller(c)} size="lg" round />
-          <span class="absolute -right-0.5 -bottom-0.5 grid size-5 place-items-center rounded-full bg-emerald-600 text-white ring-2 ring-popover">
+          <span
+            class="absolute -right-0.5 -bottom-0.5 grid size-5 place-items-center rounded-full bg-emerald-600 text-white ring-2 ring-popover"
+          >
             <Phone class="size-3 animate-pulse" aria-hidden="true" />
           </span>
         </span>
         <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-semibold" data-testid="incoming-call-caller">{caller(c)}</p>
-          <p class="truncate text-xs text-muted-foreground" data-testid="incoming-call-where">{where(c)}</p>
+          <p class="truncate text-sm font-semibold" data-testid="incoming-call-caller">
+            {caller(c)}
+          </p>
+          <p class="truncate text-xs text-muted-foreground" data-testid="incoming-call-where">
+            {where(c)}
+          </p>
           {#if blocked(c)}
-            <p class="text-xs font-medium text-foreground" data-testid="incoming-call-busy">You're already in a call. Hang up to answer this one.</p>
+            <p class="text-xs font-medium text-foreground" data-testid="incoming-call-busy">
+              You're already in a call. Hang up to answer this one.
+            </p>
           {/if}
         </div>
         <button
@@ -146,18 +164,23 @@
     {#each failed as f (f.call.id)}
       <div
         class="pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl border border-destructive/40 bg-popover p-3 text-popover-foreground shadow-lg"
-        role="alert"
         data-testid="incoming-call-error"
       >
         <div class="min-w-0 flex-1">
           <p class="truncate text-sm font-semibold">Call from {caller(f.call)}</p>
-          <p class="text-xs text-destructive">{f.message}</p>
+          <ErrorNotice
+            class="text-xs"
+            error={f.problem.error}
+            agent={f.problem.agent}
+            attempted="Answering an incoming call"
+          />
         </div>
         <button
           type="button"
           class="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
           aria-label="Dismiss"
-          onclick={() => (failed = failed.filter((x) => x.call.id !== f.call.id))}><X class="size-4" /></button
+          onclick={() => (failed = failed.filter((x) => x.call.id !== f.call.id))}
+          ><X class="size-4" /></button
         >
       </div>
     {/each}

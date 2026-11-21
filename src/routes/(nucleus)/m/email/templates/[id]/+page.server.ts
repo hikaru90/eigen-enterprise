@@ -52,7 +52,7 @@ export const actions: Actions = {
   save: async ({ locals, params, request }) => {
     await requireAdmin(locals)
     const form = await request.formData()
-    return act('save', async () => {
+    return act('save', 'Saving an email template', async () => {
       await emailPlatform().templates.updateTemplate(params.id, draftFrom(form))
       return {}
     })
@@ -61,7 +61,7 @@ export const actions: Actions = {
   test: async ({ locals, params, request }) => {
     const me = await requireAdmin(locals)
     const form = await request.formData()
-    return act('test', async () => {
+    return act('test', 'Sending a test of an email template', async () => {
       const t = emailPlatform().templates
       await t.updateTemplate(params.id, draftFrom(form))
       const out = await t.sendTest(params.id, me.email)

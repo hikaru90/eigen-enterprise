@@ -26,10 +26,16 @@
     current === 'setup'
       ? { tabs: EMAIL_SETUP_TABS, label: 'Email setup sections', id: 'setup' }
       : current === 'marketing'
-        ? { tabs: emailMarketingTabs(data.email), label: 'Marketing mail sections', id: 'marketing' }
+        ? {
+            tabs: emailMarketingTabs(data.email),
+            label: 'Marketing mail sections',
+            id: 'marketing',
+          }
         : null,
   )
-  const sectionCurrent = $derived(sections ? currentAreaTab(sections.tabs, page.url.pathname) : null)
+  const sectionCurrent = $derived(
+    sections ? currentAreaTab(sections.tabs, page.url.pathname) : null,
+  )
   // The module pill is the activation, like every module page; the SES connection lives under Setup › Account.
   const status = $derived({
     label: data.email.active ? 'Active' : 'Not active',

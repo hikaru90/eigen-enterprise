@@ -4,6 +4,7 @@
   import { resolve } from '$app/paths'
   import PublicFrame from '$lib/components/page/public-frame.svelte'
   import PasskeyStep from '$lib/components/passkey-step.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
   import { docTitle } from '$lib/shell/title'
@@ -13,7 +14,8 @@
 </script>
 
 <svelte:head>
-  <title>{docTitle(data.step === 'passkey' ? 'Create your passkey' : 'Sign in as the owner')}</title>
+  <title>{docTitle(data.step === 'passkey' ? 'Create your passkey' : 'Sign in as the owner')}</title
+  >
 </svelte:head>
 
 <PublicFrame
@@ -36,16 +38,26 @@
         <form method="post" use:enhance class="space-y-4" data-testid="owner-link-form">
           <input type="hidden" name="token" value={data.token} />
           <p class="text-xs">
-            This link from the server signs in the company's owner, <strong>{data.email}</strong>. It works once.
+            This link from the server signs in the company's owner, <strong>{data.email}</strong>.
+            It works once.
           </p>
           <Button type="submit" class="w-full rounded-[4px]">Sign in as {data.email}</Button>
           {#if form?.message}
-            <p class="text-destructive text-xs" role="alert" data-testid="owner-link-error">{form.message}</p>
+            <ErrorNotice
+              class="text-xs"
+              testid="owner-link-error"
+              error={form.message}
+              agent={form.agent}
+              attempted="Signing in as the owner with the owner link"
+            />
           {/if}
         </form>
       {:else}
         <p class="text-xs" data-testid="owner-link-unavailable">{data.message}</p>
-        <a href={resolve('/login')} class="inline-block text-xs font-medium underline underline-offset-4">Sign in</a>
+        <a
+          href={resolve('/login')}
+          class="inline-block text-xs font-medium underline underline-offset-4">Sign in</a
+        >
       {/if}
     </Card.Content>
   </Card.Root>

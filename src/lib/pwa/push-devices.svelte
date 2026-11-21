@@ -1,9 +1,11 @@
 <script lang="ts">
   import type { PushEnvironment } from './push-prompt'
   import { onMount } from 'svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
+  import type { ShownError } from '$lib/errors/agent-report'
   import type { NotificationDevice } from '$lib/kernel/notification-tools'
-  import { getExistingPushSubscription, postTestPush } from '$lib/push/client'
+  import { getExistingPushSubscription, postTestPush, shownPushFailure } from '$lib/push/client'
   import { endpointHash } from '$lib/push/endpoint-hash'
   import NotificationsBanner from './notifications-banner.svelte'
 
@@ -40,7 +42,9 @@
 
   let current = $state<string | null>(null)
   let testing = $state<string | null>(null)
-  let results = $state<Record<string, { ok: boolean; text: string }>>({})
+  let results = $state<Record<string, { ok: true; text: string } | ({ ok: false } & ShownError)>>(
+    {},
+  )
 
   onMount(() => {
     currentEndpointHash()
@@ -62,9 +66,12 @@
     testing = id
     try {
       const r = await sendTest(id)
-      results = { ...results, [id]: { ok: true, text: r.sent > 0 ? 'Sent — check that device.' : 'Not delivered.' } }
+      results = {
+        ...results,
+        [id]: { ok: true, text: r.sent > 0 ? 'Sent — check that device.' : 'Not delivered.' },
+      }
     } catch (err) {
-      results = { ...results, [id]: { ok: false, text: err instanceof Error ? err.message : String(err) } }
+      results = { ...results, [id]: { ok: false, ...shownPushFailure(err) } }
     } finally {
       testing = null
     }
@@ -75,32 +82,46 @@
   <div>
     <h3 class="text-sm font-medium">Notifications</h3>
     <p class="text-xs text-foreground/60">
-      The devices that get your notifications. On iPhone and iPad, the app on your home screen is its own device:
-      turn notifications on in it.
+      The devices that get your notifications. On iPhone and iPad, the app on your home screen is
+      its own device: turn notifications on in it.
     </p>
   </div>
 
   {#if devices.length === 0}
-    <p class="text-xs text-foreground/60" data-testid="push-devices-empty">No device has notifications on yet.</p>
+    <p class="text-xs text-foreground/60" data-testid="push-devices-empty">
+      No device has notifications on yet.
+    </p>
   {:else}
     <ul class="divide-y divide-border rounded-md border border-border">
       {#each devices as d (d.id)}
-        <li class="flex flex-wrap items-center justify-between gap-2 p-3" data-testid={`push-device-${d.id}`}>
+        <li
+          class="flex flex-wrap items-center justify-between gap-2 p-3"
+          data-testid={`push-device-${d.id}`}
+        >
           <div class="min-w-0">
             <p class="truncate text-sm">
               {platformOf(d.userAgent)}
               {#if current === d.endpointHash}
-                <span class="ml-1 rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">This device</span>
+                <span class="ml-1 rounded bg-muted px-1.5 py-0.5 text-xs text-foreground"
+                  >This device</span
+                >
               {/if}
             </p>
-            <p class="text-xs text-foreground/60">On since {day(d.since)} · last seen {day(d.lastSeen)} · {d.service}</p>
+            <p class="text-xs text-foreground/60">
+              On since {day(d.since)} · last seen {day(d.lastSeen)} · {d.service}
+            </p>
             {#if results[d.id]}
-              <p
-                class={['mt-1 text-xs', results[d.id].ok ? 'text-foreground/70' : 'text-destructive']}
-                role={results[d.id].ok ? 'status' : 'alert'}
-              >
-                {results[d.id].text}
-              </p>
+              {@const result = results[d.id]}
+              {#if result.ok}
+                <p class="mt-1 text-xs text-foreground/70" role="status">{result.text}</p>
+              {:else}
+                <ErrorNotice
+                  class="mt-1 text-xs"
+                  error={result.error}
+                  agent={result.agent}
+                  attempted="Sending a test notification to one device (Settings → Account → Notifications)"
+                />
+              {/if}
             {/if}
           </div>
           <Button

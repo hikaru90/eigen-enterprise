@@ -53,7 +53,7 @@ export const actions: Actions = {
   save: async ({ locals, params, request }) => {
     await requireAdmin(locals)
     const form = await request.formData()
-    return act('save', async () => {
+    return act('save', 'Saving a marketing flow', async () => {
       let steps: unknown
       try {
         steps = JSON.parse(field(form, 'steps') || '[]')
@@ -71,7 +71,7 @@ export const actions: Actions = {
   status: async ({ locals, params, request }) => {
     await requireAdmin(locals)
     const status = field(await request.formData(), 'status')
-    return act('status', async () => {
+    return act('status', 'Changing a marketing flow’s status', async () => {
       if (status !== 'active' && status !== 'paused') throw new AudienceError('Unknown status.')
       return { status: (await emailPlatform().audience.setFlowStatus(params.id, status)).status }
     })

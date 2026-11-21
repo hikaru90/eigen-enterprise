@@ -2,6 +2,7 @@ import type { Actions, PageServerLoad } from './$types'
 import { fail, redirect } from '@sveltejs/kit'
 import { z } from 'zod'
 import { isUserAdmin } from '$lib/server/auth/user-role'
+import { refusalReport } from '$lib/server/errors/report'
 import { defaultRoadmapStore } from '../../../../../../../modules/orchestrator/roadmap/store'
 
 /**
@@ -49,32 +50,37 @@ function fields(form: FormData, names: readonly string[]): Record<string, string
   return out
 }
 
-async function guard(locals: App.Locals) {
+async function guard(locals: App.Locals, attempted: string) {
   if (!locals.user) throw redirect(302, '/login')
   if (!(await isUserAdmin(locals.user.id))) {
-    return fail(403, { error: 'Only the owner and admins can change the roadmap.' })
+    return fail(
+      403,
+      refusalReport('Only the owner and admins can change the roadmap.', { attempted }),
+    )
   }
   return null
 }
 
 export const actions: Actions = {
   add: async ({ locals, request }) => {
-    const denied = await guard(locals)
+    const attempted = 'Adding a roadmap item on /m/memory/projects/roadmap'
+    const denied = await guard(locals, attempted)
     if (denied) return denied
-    const parsed = addInput.safeParse(
-      fields(await request.formData(), ['title', 'detail', 'kind', 'status']),
-    )
-    if (!parsed.success) return fail(400, { error: parsed.error.issues[0].message })
+    const input = fields(await request.formData(), ['title', 'detail', 'kind', 'status'])
+    const parsed = addInput.safeParse(input)
+    if (!parsed.success)
+      return fail(400, refusalReport(parsed.error.issues[0].message, { attempted, input }))
     await defaultRoadmapStore().create(parsed.data)
     return { ok: true }
   },
   update: async ({ locals, request }) => {
-    const denied = await guard(locals)
+    const attempted = 'Changing a roadmap item on /m/memory/projects/roadmap'
+    const denied = await guard(locals, attempted)
     if (denied) return denied
-    const parsed = updateInput.safeParse(
-      fields(await request.formData(), ['id', 'title', 'detail', 'kind', 'status']),
-    )
-    if (!parsed.success) return fail(400, { error: parsed.error.issues[0].message })
+    const input = fields(await request.formData(), ['id', 'title', 'detail', 'kind', 'status'])
+    const parsed = updateInput.safeParse(input)
+    if (!parsed.success)
+      return fail(400, refusalReport(parsed.error.issues[0].message, { attempted, input }))
     const { id, ...patch } = parsed.data
     await defaultRoadmapStore().update(id, patch)
     return { ok: true }

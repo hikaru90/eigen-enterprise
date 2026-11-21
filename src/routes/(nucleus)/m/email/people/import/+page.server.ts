@@ -1,7 +1,18 @@
 import type { Actions, PageServerLoad } from './$types'
 import { ContactsError } from '../../../../../../../modules/contacts/errors'
-import { contactsAction, contactsLoad, formShared, liveContactsDeps, personActor } from '../../../../../../../modules/contacts/http'
-import { contactTags, importContacts, previewImport, visibilityDefaults } from '../../../../../../../modules/contacts/service'
+import {
+  contactsAction,
+  contactsLoad,
+  formShared,
+  liveContactsDeps,
+  personActor,
+} from '../../../../../../../modules/contacts/http'
+import {
+  contactTags,
+  importContacts,
+  previewImport,
+  visibilityDefaults,
+} from '../../../../../../../modules/contacts/service'
 
 /**
  * /m/email/people/import: contacts from a vCard (.vcf) or CSV file. The file
@@ -14,7 +25,10 @@ export const load: PageServerLoad = async ({ locals }) => {
   // Only people in the company (contactTags checks); the visibility the import will use unless changed.
   return contactsLoad(async () => {
     const d = await liveContactsDeps()
-    const [tags, defaults] = await Promise.all([contactTags(d, actor), visibilityDefaults(d, actor)])
+    const [tags, defaults] = await Promise.all([
+      contactTags(d, actor),
+      visibilityDefaults(d, actor),
+    ])
     return { tags, visibility: defaults.effective }
   })
 }
@@ -44,7 +58,12 @@ export const actions: Actions = {
     const form = await request.formData()
     return contactsAction('import', async () => {
       const shared = formShared(form)
-      const out = await importContacts(await liveContactsDeps(), actor, candidatesField(form), shared === undefined ? {} : { shared })
+      const out = await importContacts(
+        await liveContactsDeps(),
+        actor,
+        candidatesField(form),
+        shared === undefined ? {} : { shared },
+      )
       return {
         action: 'import' as const,
         imported: out.created.map((c) => ({ id: c.id, name: c.name })),

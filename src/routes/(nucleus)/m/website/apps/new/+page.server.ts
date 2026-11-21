@@ -7,11 +7,13 @@ import type {
 import type { Actions, PageServerLoad } from './$types'
 import { randomBytes } from 'node:crypto'
 import { fail, redirect } from '@sveltejs/kit'
+import type { ErrorReport } from '$lib/errors/agent-report'
 import { requireAdmin } from '$lib/server/auth/require-admin'
 import type { Catalog } from '$lib/server/ee/client'
-import { plainMessage } from '$lib/server/github/plain-errors'
+import { refusalReport } from '$lib/server/errors/report'
+import { githubErrorReport } from '$lib/server/github/plain-errors'
 import { settleBriefly, startOwnerDeploy } from '$lib/server/website/deploy-runner'
-import { logAppFailure, ownerRun, plainAppMessage } from '$lib/server/website/owner-run'
+import { appErrorReport, logAppFailure, ownerRun } from '$lib/server/website/owner-run'
 import { contractFormSchema } from '../../../../../../../modules/website/apps/contract'
 import { appSlug, freeName } from '../../../../../../../modules/website/apps/host'
 import { RepoNotVisibleError } from '../../../../../../../modules/website/github/connect-tools'
@@ -63,7 +65,7 @@ export const load: PageServerLoad = async (event) => {
   )
   let services: ServiceView[] = []
   let catalog: Catalog | null = null
-  let appsError: string | null = null
+  let appsError: ErrorReport | null = null
   try {
     // When ee is unreachable app_list does not throw: it returns the services from
     // the database with `catalog: null`; the not-managed state is read below.
@@ -76,20 +78,28 @@ export const load: PageServerLoad = async (event) => {
     catalog = out.catalog
   } catch (err) {
     logAppFailure('website.app_list', err)
-    appsError = plainAppMessage(err)
+    appsError = appErrorReport(err, {
+      attempted: 'Listing the apps',
+      tool: 'website.app_list',
+      input: {},
+    })
   }
   // ee unreachable is the explicit not-managed state (never a fallback): the
   // page keeps working for repo connecting and says plainly why deploy is off.
   const status = await ownerRun<SubstrateStatus>(user, 'substrate.status', {})
 
   let available: AvailableRepoRow[] | null = null
-  let availableError: string | null = null
+  let availableError: ErrorReport | null = null
   if (listed.github.installed) {
     try {
       available = await ownerRun<AvailableRepoRow[]>(user, 'website.github_available_repos', {})
     } catch (err) {
       logAppFailure('website.github_available_repos', err)
-      availableError = plainMessage(err)
+      availableError = githubErrorReport(err, {
+        attempted: 'Listing the repositories the GitHub App can see',
+        tool: 'website.github_available_repos',
+        input: {},
+      })
     }
   }
 
@@ -187,7 +197,11 @@ export const actions: Actions = {
         action: 'inspect' as const,
         repo,
         ...(keyPath ? { keyPath: true as const } : {}),
-        error: plainMessage(err),
+        ...githubErrorReport(err, {
+          attempted: `Reading the repository ${repo}`,
+          tool: 'website.github_inspect_repo',
+          input: { repo },
+        }),
       })
     }
   },
@@ -203,7 +217,15 @@ export const actions: Actions = {
       return { action: 'deploy_key' as const, ...key }
     } catch (err) {
       logAppFailure('website.github_deploy_key_create', err)
-      return fail(400, { action: 'deploy_key' as const, repo, error: plainMessage(err) })
+      return fail(400, {
+        action: 'deploy_key' as const,
+        repo,
+        ...githubErrorReport(err, {
+          attempted: `Creating a deploy key for ${repo}`,
+          tool: 'website.github_deploy_key_create',
+          input: { repo },
+        }),
+      })
     }
   },
 
@@ -216,14 +238,33 @@ export const actions: Actions = {
         { ok: true; branches: string[] } | { ok: false; message: string }
       >(user, 'website.github_deploy_key_check', { repo: pending.repo, keyId: pending.keyId })
       if (!checked.ok) {
-        return fail(400, { action: 'deploy_key' as const, ...pending, error: checked.message })
+        return fail(400, {
+          action: 'deploy_key' as const,
+          ...pending,
+          ...refusalReport(checked.message, {
+            attempted: `Checking that GitHub accepts the deploy key for ${pending.repo}`,
+            tool: 'website.github_deploy_key_check',
+            input: { repo: pending.repo, keyId: pending.keyId },
+            nextSteps: [
+              'The tool answered ok:false: GitHub did not accept the read-only key (yet). Check that the public key was added under the repo’s Settings → Deploy keys, then check again.',
+            ],
+          }),
+        })
       }
       // Preselect only; the owner picks the branch.
       const branch = checked.branches.includes('main') ? 'main' : (checked.branches[0] ?? '')
       return { action: 'deploy_key' as const, ...pending, branches: checked.branches, branch }
     } catch (err) {
       logAppFailure('website.github_deploy_key_check', err)
-      return fail(400, { action: 'deploy_key' as const, ...pending, error: plainMessage(err) })
+      return fail(400, {
+        action: 'deploy_key' as const,
+        ...pending,
+        ...githubErrorReport(err, {
+          attempted: `Checking the deploy key for ${pending.repo}`,
+          tool: 'website.github_deploy_key_check',
+          input: { repo: pending.repo, keyId: pending.keyId },
+        }),
+      })
     }
   },
 
@@ -244,7 +285,15 @@ export const actions: Actions = {
       }
     } catch (err) {
       logAppFailure('website.github_deploy_key_delete', err)
-      return fail(400, { action: 'deploy_key' as const, ...pending, error: plainMessage(err) })
+      return fail(400, {
+        action: 'deploy_key' as const,
+        ...pending,
+        ...githubErrorReport(err, {
+          attempted: `Deleting the unused deploy key for ${pending.repo}`,
+          tool: 'website.github_deploy_key_delete',
+          input: { repo: pending.repo, keyId: pending.keyId },
+        }),
+      })
     }
   },
 
@@ -271,7 +320,15 @@ export const actions: Actions = {
       }
     } catch (err) {
       logAppFailure('website.github_connect_repo', err)
-      return fail(400, { action: 'connect' as const, repo, error: plainMessage(err) })
+      return fail(400, {
+        action: 'connect' as const,
+        repo,
+        ...githubErrorReport(err, {
+          attempted: `Connecting ${repo} (${branch})`,
+          tool: 'website.github_connect_repo',
+          input: { repo, branch, ...(keyId ? { auth: { kind: 'deploy_key', keyId } } : {}) },
+        }),
+      })
     }
   },
 
@@ -297,7 +354,15 @@ export const actions: Actions = {
         : { action: 'disconnect' as const, ok: true, message: `Disconnected ${repo} (${branch}).` }
     } catch (err) {
       logAppFailure('website.github_disconnect_repo', err)
-      return fail(400, { action: 'disconnect' as const, repo, error: plainMessage(err) })
+      return fail(400, {
+        action: 'disconnect' as const,
+        repo,
+        ...githubErrorReport(err, {
+          attempted: `Disconnecting ${repo} (${branch})`,
+          tool: 'website.github_disconnect_repo',
+          input: { repo, branch },
+        }),
+      })
     }
   },
 
@@ -315,7 +380,14 @@ export const actions: Actions = {
         return fail(400, {
           action: 'deploy' as const,
           name,
-          error: checked.error.issues[0]?.message ?? 'Check the build form.',
+          ...refusalReport(checked.error.issues[0]?.message ?? 'Check the build form.', {
+            attempted: `Deploying ${repo} (${branch}) as ${name}`,
+            input: { contract },
+            cause: checked.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+            nextSteps: [
+              'The build form was refused by contractFormSchema (modules/website/apps/contract.ts) before anything ran; the cause lists each field.',
+            ],
+          }),
         })
       }
     }
@@ -339,7 +411,13 @@ export const actions: Actions = {
     if (job.state === 'failed') {
       // An instant refusal (form, repo, name) goes straight back to the form; the page
       // still follows the job, so a recorded attempt shows its log and "Ask AI".
-      return fail(400, { action: 'deploy' as const, name, error: job.error ?? '', jobId: job.id })
+      return fail(400, {
+        action: 'deploy' as const,
+        name,
+        error: job.error ?? '',
+        agent: job.agent,
+        jobId: job.id,
+      })
     }
     if (job.state === 'done') redirect(303, `/m/website/apps/${name}`)
     return { action: 'deploy' as const, name, jobId: job.id }

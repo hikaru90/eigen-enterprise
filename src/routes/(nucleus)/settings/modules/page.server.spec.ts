@@ -31,7 +31,11 @@ class ListableApprovals extends InMemoryApprovalStore {
   }
   override async decide(id: string, status: 'approved' | 'denied', decidedBy: string) {
     const decided = await super.decide(id, status, decidedBy)
-    this.all.splice(this.all.findIndex((r) => r.id === id), 1, decided)
+    this.all.splice(
+      this.all.findIndex((r) => r.id === id),
+      1,
+      decided,
+    )
     return decided
   }
   async list(status?: ApprovalStatus) {
@@ -84,7 +88,9 @@ type Data = { plugins: Plugin[]; core: { id: string; name: string }[] }
 const loaded = async () => (await load(ev() as never)) as unknown as Data
 const plugin = (data: Data, id: string) => data.plugins.find((p) => p.id === id)!
 const toolRuns = (name: string) =>
-  eventSink.events.filter((e) => e.type === 'tool.executed' && (e.payload as { tool?: string }).tool === name)
+  eventSink.events.filter(
+    (e) => e.type === 'tool.executed' && (e.payload as { tool?: string }).tool === name,
+  )
 
 describe('Settings → Plugins (owner and admins)', () => {
   beforeEach(async () => {
@@ -93,25 +99,55 @@ describe('Settings → Plugins (owner and admins)', () => {
   })
 
   it('sends signed-out visitors to sign in', async () => {
-    await expect(load(ev({}, null) as never)).rejects.toMatchObject({ status: 302, location: '/login' })
+    await expect(load(ev({}, null) as never)).rejects.toMatchObject({
+      status: 302,
+      location: '/login',
+    })
   })
 
-  it.each(['member', null])('a %s gets 403 — the page and both switches, changing nothing', async (role) => {
-    roleMock.mockResolvedValue(role)
-    await expect(load(ev() as never)).rejects.toMatchObject({ status: 403 })
-    await expect(actions.deactivate!(ev({ module_id: 'email' }))).rejects.toMatchObject({ status: 403 })
-    await expect(actions.activate!(ev({ module_id: 'email' }))).rejects.toMatchObject({ status: 403 })
-    expect(await activations.get('email')).toBe(true)
-  })
+  it.each(['member', null])(
+    'a %s gets 403 — the page and both switches, changing nothing',
+    async (role) => {
+      roleMock.mockResolvedValue(role)
+      await expect(load(ev() as never)).rejects.toMatchObject({ status: 403 })
+      await expect(actions.deactivate!(ev({ module_id: 'email' }))).rejects.toMatchObject({
+        status: 403,
+      })
+      await expect(actions.activate!(ev({ module_id: 'email' }))).rejects.toMatchObject({
+        status: 403,
+      })
+      expect(await activations.get('email')).toBe(true)
+    },
+  )
 
-  it.each(['owner', 'admin'])('an %s sees every plugin (each sidebar entry and the Assistant), and the core as one line', async (role) => {
-    roleMock.mockResolvedValue(role)
-    const data = await loaded()
-    expect(data.plugins.map((p) => p.id).sort()).toEqual(
-      ['assistant', 'brand', 'calendar', 'calls', 'contacts', 'drive', 'email', 'memory', 'messages', 'repos', 'website'].sort(),
-    )
-    expect(data.core.map((c) => c.id).sort()).toEqual(['contribute', 'kernel', 'members', 'orchestrator'])
-  })
+  it.each(['owner', 'admin'])(
+    'an %s sees every plugin (each sidebar entry and the Assistant), and the core as one line',
+    async (role) => {
+      roleMock.mockResolvedValue(role)
+      const data = await loaded()
+      expect(data.plugins.map((p) => p.id).sort()).toEqual(
+        [
+          'assistant',
+          'brand',
+          'calendar',
+          'calls',
+          'contacts',
+          'drive',
+          'email',
+          'memory',
+          'messages',
+          'repos',
+          'website',
+        ].sort(),
+      )
+      expect(data.core.map((c) => c.id).sort()).toEqual([
+        'contribute',
+        'kernel',
+        'members',
+        'orchestrator',
+      ])
+    },
+  )
 
   it('the central Contribute board is in the core line only where the owner switched it on', async () => {
     roleMock.mockResolvedValue('owner')
@@ -131,8 +167,12 @@ describe('Settings → Plugins (owner and admins)', () => {
     })
     expect(plugin(data, 'email').description).toMatch(/email/i)
     expect(plugin(data, 'email').tools).toContain('email.send_mail')
-    expect(plugin(data, 'calls').requires).toEqual([{ id: 'messages', name: 'Messages', active: true }])
-    expect(plugin(data, 'messages').requiredBy).toEqual([{ id: 'calls', name: 'Calls', active: true }])
+    expect(plugin(data, 'calls').requires).toEqual([
+      { id: 'messages', name: 'Messages', active: true },
+    ])
+    expect(plugin(data, 'messages').requiredBy).toEqual([
+      { id: 'calls', name: 'Calls', active: true },
+    ])
   })
 
   it('lists the Assistant as an official plugin with its owner-facing line and no tools; it switches off and on', async () => {
@@ -180,7 +220,11 @@ describe('Settings → Plugins (owner and admins)', () => {
     const result = await actions.deactivate!(ev({ module_id: 'messages' }))
     expect(result).toMatchObject({
       status: 409,
-      data: { action: 'deactivate', moduleId: 'messages', error: 'Calls needs Messages: switch off Calls first.' },
+      data: {
+        action: 'deactivate',
+        moduleId: 'messages',
+        error: 'Calls needs Messages: switch off Calls first.',
+      },
     })
     expect(await activations.get('messages')).toBe(true)
   })
@@ -191,7 +235,11 @@ describe('Settings → Plugins (owner and admins)', () => {
     const result = await actions.activate!(ev({ module_id: 'calls' }))
     expect(result).toMatchObject({
       status: 409,
-      data: { action: 'activate', moduleId: 'calls', error: 'Calls needs Messages: switch on Messages first.' },
+      data: {
+        action: 'activate',
+        moduleId: 'calls',
+        error: 'Calls needs Messages: switch on Messages first.',
+      },
     })
     expect(await activations.get('calls')).toBe(false)
   })
@@ -200,7 +248,10 @@ describe('Settings → Plugins (owner and admins)', () => {
     const result = await actions.deactivate!(ev({ module_id: 'members' }))
     expect(result).toMatchObject({
       status: 409,
-      data: { moduleId: 'members', error: 'Members is part of the eigenEnterprise core and cannot be switched off.' },
+      data: {
+        moduleId: 'members',
+        error: 'Members is part of the eigenEnterprise core and cannot be switched off.',
+      },
     })
     expect(await activations.get('members')).toBe(true)
   })
@@ -208,7 +259,15 @@ describe('Settings → Plugins (owner and admins)', () => {
   it('shows an unknown module or a missing id as the error it is', async () => {
     expect(await actions.deactivate!(ev({ module_id: 'ghost' }))).toMatchObject({
       status: 404,
-      data: { moduleId: 'ghost', error: 'unknown module: ghost' },
+      data: {
+        moduleId: 'ghost',
+        error: 'unknown module: ghost',
+        agent: {
+          tool: 'kernel.module_deactivate',
+          input: { module_id: 'ghost' },
+          code: 'unknown_module',
+        },
+      },
     })
     expect(await actions.activate!(ev({}))).toMatchObject({
       status: 400,

@@ -3,10 +3,38 @@
  * conversation list's reaction to live frames. Shared by the page and its tests.
  */
 
+import { shownErrorOf, type ShownError } from '$lib/errors/agent-report'
 import { attachmentMarker, quoteSnippet, type ReplyQuote } from './quote'
 
+/**
+ * A refused /api/messages request, carrying what the page shows: the server's
+ * sentence and its agent report (`{ error, agent }`), or `fallback` (the
+ * status line) when the answer carried no sentence.
+ */
+export class MessagesRequestError extends Error {
+  readonly shown: ShownError
+  constructor(body: unknown, fallback: string) {
+    const shown = shownErrorOf(body) ?? { error: fallback, agent: null }
+    super(shown.error)
+    this.name = 'MessagesRequestError'
+    this.shown = shown
+  }
+}
+
+/** What a page shows for any failure: a refused request's report, or a browser failure's words. */
+export function shownFailure(err: unknown): ShownError {
+  if (err instanceof MessagesRequestError) return err.shown
+  return { error: err instanceof Error ? err.message : String(err), agent: null }
+}
+
 export type ReactionView = { emoji: string; userIds: string[]; names: string[] }
-export type AttachmentView = { fileId: string; name: string; mime: string; size: number; image: boolean }
+export type AttachmentView = {
+  fileId: string
+  name: string
+  mime: string
+  size: number
+  image: boolean
+}
 /** A voice message's kept recording (played above its transcript). */
 export type VoiceClipView = { fileId: string; mime: string; size: number; durationMs: number }
 
@@ -35,7 +63,11 @@ export type MessageView = {
 }
 
 /** A call line's structured data (rendered as "Call, 4 min" / "Missed call"). */
-export type CallLineView = { callId: string; outcome: 'ended' | 'missed' | 'declined'; durationSeconds: number | null }
+export type CallLineView = {
+  callId: string
+  outcome: 'ended' | 'missed' | 'declined'
+  durationSeconds: number | null
+}
 
 /** A live message frame from /api/messages/stream. */
 export type MessageFrame = {
@@ -60,11 +92,13 @@ export function applyFrame(
   let replies = thread ? [...thread.replies] : null
   if (m.parentId === null) {
     // Top-level: upsert only if new (created) or already shown (paged-out history stays out).
-    if (f.action === 'created' || nextLog.some((x) => x.id === m.id)) nextLog = mergeMessages(nextLog, [m])
+    if (f.action === 'created' || nextLog.some((x) => x.id === m.id))
+      nextLog = mergeMessages(nextLog, [m])
   } else {
     if (thread && thread.parentId === m.parentId) replies = mergeMessages(replies ?? [], [m])
     const parent = f.parent
-    if (parent && nextLog.some((x) => x.id === parent.id)) nextLog = mergeMessages(nextLog, [parent])
+    if (parent && nextLog.some((x) => x.id === parent.id))
+      nextLog = mergeMessages(nextLog, [parent])
   }
   if (f.action === 'edited' || f.action === 'deleted') {
     nextLog = refreshQuotes(nextLog, m)
@@ -80,7 +114,17 @@ export function voiceClipUrl(messageId: string, fileId: string): string {
 
 /** The quote of `m` as the service builds it (the composer's preview; refreshed quotes after an edit/delete). */
 export function quoteOf(m: MessageView): ReplyQuote {
-  if (m.deleted) return { id: m.id, parentId: m.parentId, deleted: true, authorId: null, authorName: null, snippet: '', attachment: null, call: false }
+  if (m.deleted)
+    return {
+      id: m.id,
+      parentId: m.parentId,
+      deleted: true,
+      authorId: null,
+      authorName: null,
+      snippet: '',
+      attachment: null,
+      call: false,
+    }
   return {
     id: m.id,
     parentId: m.parentId,
@@ -89,7 +133,10 @@ export function quoteOf(m: MessageView): ReplyQuote {
     authorName: m.authorName,
     snippet: quoteSnippet(m.body),
     // the recording first, as the service stores it: a dictated message is quoted as a voice message
-    attachment: attachmentMarker([...m.voice.map((v) => ({ name: 'Voice message', mime: v.mime })), ...m.attachments]),
+    attachment: attachmentMarker([
+      ...m.voice.map((v) => ({ name: 'Voice message', mime: v.mime })),
+      ...m.attachments,
+    ]),
     call: m.call !== null,
   }
 }
@@ -107,7 +154,10 @@ export const reactedBy = (r: ReactionView, me: string) => r.userIds.includes(me)
 /** "Bea, Carl and 2 others" — the hover text for a reaction chip. */
 export function reactionTitle(r: ReactionView): string {
   const names = r.names
-  if (names.length <= 3) return names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
+  if (names.length <= 3)
+    return names.length <= 1
+      ? (names[0] ?? '')
+      : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
   return `${names.slice(0, 3).join(', ')} and ${names.length - 3} other${names.length - 3 === 1 ? '' : 's'}`
 }
 
@@ -134,10 +184,15 @@ export type ConversationView = {
 }
 
 /** Upserts by id and keeps time order (oldest first). */
-export function mergeMessages(current: readonly MessageView[], incoming: readonly MessageView[]): MessageView[] {
+export function mergeMessages(
+  current: readonly MessageView[],
+  incoming: readonly MessageView[],
+): MessageView[] {
   const byId = new Map(current.map((m) => [m.id, m]))
   for (const m of incoming) byId.set(m.id, m)
-  return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+  return [...byId.values()].sort(
+    (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
+  )
 }
 
 export type DayGroup = { key: string; label: string; messages: MessageView[] }
@@ -152,7 +207,12 @@ export function groupByDay(messages: readonly MessageView[], now: Date = new Dat
   const y = new Date(now)
   y.setDate(y.getDate() - 1)
   const yesterday = dayKey(y)
-  const fmt = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+  const fmt = new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  })
   const groups: DayGroup[] = []
   for (const m of messages) {
     const at = new Date(m.createdAt)
@@ -184,7 +244,10 @@ export type MessageRow = { message: MessageView; grouped: boolean }
 export function messageRows(messages: readonly MessageView[]): MessageRow[] {
   return messages.map((m, i) => {
     const prev = messages[i - 1]
-    return { message: m, grouped: continuesRun(prev, m) && m.replyCount === 0 && (prev?.replyCount ?? 0) === 0 }
+    return {
+      message: m,
+      grouped: continuesRun(prev, m) && m.replyCount === 0 && (prev?.replyCount ?? 0) === 0,
+    }
   })
 }
 
@@ -202,21 +265,35 @@ export function relativeTime(iso: string, now: Date = new Date()): string {
 }
 
 /** "3 replies · last reply 2h ago" — the thread summary under a message. */
-export function threadSummary(m: Pick<MessageView, 'replyCount' | 'lastReplyAt'>, now: Date = new Date()): string {
+export function threadSummary(
+  m: Pick<MessageView, 'replyCount' | 'lastReplyAt'>,
+  now: Date = new Date(),
+): string {
   const count = `${m.replyCount} ${m.replyCount === 1 ? 'reply' : 'replies'}`
   return m.lastReplyAt ? `${count} · last reply ${relativeTime(m.lastReplyAt, now)}` : count
 }
 
 /** Inserts or replaces a conversation, channels first (by name), then DMs. */
-export function upsertConversation(list: readonly ConversationView[], c: ConversationView): ConversationView[] {
+export function upsertConversation(
+  list: readonly ConversationView[],
+  c: ConversationView,
+): ConversationView[] {
   const rest = list.filter((x) => x.id !== c.id)
-  const channels = [...rest.filter((x) => x.kind === 'channel'), ...(c.kind === 'channel' ? [c] : [])].sort((a, b) =>
-    a.title.localeCompare(b.title),
-  )
-  const dms = c.kind === 'dm' ? [c, ...rest.filter((x) => x.kind === 'dm')] : rest.filter((x) => x.kind === 'dm')
+  const channels = [
+    ...rest.filter((x) => x.kind === 'channel'),
+    ...(c.kind === 'channel' ? [c] : []),
+  ].sort((a, b) => a.title.localeCompare(b.title))
+  const dms =
+    c.kind === 'dm'
+      ? [c, ...rest.filter((x) => x.kind === 'dm')]
+      : rest.filter((x) => x.kind === 'dm')
   return [...channels, ...dms]
 }
 
-export function setUnread(list: readonly ConversationView[], id: string, unread: number): ConversationView[] {
+export function setUnread(
+  list: readonly ConversationView[],
+  id: string,
+  unread: number,
+): ConversationView[] {
   return list.map((c) => (c.id === id ? { ...c, unread } : c))
 }

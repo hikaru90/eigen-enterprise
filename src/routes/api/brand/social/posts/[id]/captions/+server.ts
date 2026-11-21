@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types'
 import { z } from 'zod'
-import { liveSocial } from '$lib/server/brand/social'
-import { personActor, readJson, socialJson } from '../../../../../../../../modules/brand/social/http'
+import { liveSocial, socialJson } from '$lib/server/brand/social'
+import { personActor, readJson } from '../../../../../../../../modules/brand/social/http'
 import { socialNetworkSchema } from '../../../../../../../../modules/brand/social/types'
 
 const body = z
@@ -18,7 +18,7 @@ const body = z
  * the provider failing → 502.
  */
 export const POST: RequestHandler = ({ locals, params, request }) =>
-  socialJson(async () => {
+  socialJson(`Suggesting captions for the social post ${params.id} (Brand › Social)`, async () => {
     const actor = personActor(locals.user)
     const b = body.parse(await readJson(request))
     return liveSocial().suggest({ postId: params.id, userId: actor.userId, ...b })

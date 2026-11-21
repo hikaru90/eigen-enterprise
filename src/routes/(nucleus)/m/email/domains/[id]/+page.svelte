@@ -5,7 +5,9 @@
   import { resolve } from '$app/paths'
   import DnsRecordsTable from '$lib/components/email/dns-records-table.svelte'
   import DnsStatus from '$lib/components/email/dns-status.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
+  import { shownErrorOf, type ErrorReport } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
 
   let { data, form }: PageProps = $props()
@@ -22,9 +24,13 @@
           ok?: boolean
           error?: string
           receiving?: boolean
-          receivingError?: string | null
+          receivingError?: ErrorReport | null
         })
       : null
+  const recheckError = $derived(shownErrorOf(feedback('recheck')))
+  const receivingFormError = $derived(shownErrorOf(feedback('receiving')))
+  const receivingSetupError = $derived(feedback('receiving')?.receivingError ?? null)
+  const deleteError = $derived(shownErrorOf(feedback('delete')))
   const receiving = $derived(data.receiving)
   const mxList = $derived(receiving.currentMx.map((r) => `${r.priority} ${r.exchange}`).join(', '))
   const enhanced = (name: string) => () => {
@@ -63,13 +69,11 @@
       these records are already at your DNS provider, there is nothing to add.
     </p>
   {/if}
-  {#if d.errorMessage}<p
-      class="mt-2 text-sm text-destructive"
-      role="alert"
-      data-testid="domain-error"
-    >
-      {d.errorMessage}
-    </p>{/if}
+  {#if data.domainError}<ErrorNotice
+      {...data.domainError}
+      class="mt-2"
+      testid="domain-error"
+    />{/if}
 </div>
 
 <div class="mt-6">
@@ -89,9 +93,7 @@
       >
         <RefreshCw class="size-4 {busy === 'recheck' ? 'animate-spin' : ''}" /> Re-check now
       </Button>
-      {#if feedback('recheck')?.error}<p class="mt-2 text-sm text-destructive" role="alert">
-          {feedback('recheck')?.error}
-        </p>{/if}
+      {#if recheckError}<ErrorNotice {...recheckError} class="mt-2" />{/if}
     </form>
 
     <form
@@ -161,7 +163,7 @@
         </label>
         {#if !receiving.on}
           {#if receiving.mxError}
-            <p class="mt-2 text-sm text-destructive" role="alert">{receiving.mxError}</p>
+            <ErrorNotice {...receiving.mxError} class="mt-2" />
           {:else if receiving.currentMx.length > 0}
             <div
               class="mt-3 rounded-md border border-destructive/40 px-3 py-2 text-sm"
@@ -188,20 +190,17 @@
             </p>
           {/if}
         {/if}
-        {#if feedback('receiving')?.error}<p class="mt-2 text-sm text-destructive" role="alert">
-            {feedback('receiving')?.error}
-          </p>{/if}
-        {#if feedback('receiving')?.receivingError}<p
-            class="mt-2 text-sm text-destructive"
-            role="alert"
-            data-testid="domain-receiving-error"
+        {#if receivingFormError}<ErrorNotice {...receivingFormError} class="mt-2" />{/if}
+        {#if receivingSetupError}<ErrorNotice
+            error={`Receiving is switched on, but Amazon refused part of the setup: ${receivingSetupError.error}`}
+            agent={receivingSetupError.agent}
+            class="mt-2"
+            testid="domain-receiving-error"
           >
-            Receiving is switched on, but Amazon refused part of the setup: {feedback('receiving')
-              ?.receivingError}
             <a class="underline underline-offset-4" href={resolve('/m/email/setup')}
               >Retry under Setup › Account</a
-            >.
-          </p>{/if}
+            >
+          </ErrorNotice>{/if}
         {#if feedback('receiving')?.ok && feedback('receiving')?.receiving === false}<p
             class="mt-2 text-sm"
             role="status"
@@ -233,9 +232,7 @@
       <Button type="submit" variant="outline" class="text-destructive" disabled={busy === 'delete'}
         >Remove domain</Button
       >
-      {#if feedback('delete')?.error}<p class="mt-2 text-sm text-destructive" role="alert">
-          {feedback('delete')?.error}
-        </p>{/if}
+      {#if deleteError}<ErrorNotice {...deleteError} class="mt-2" />{/if}
     </form>
   </div>
 {/if}

@@ -4,11 +4,18 @@ import { count, eq } from 'drizzle-orm'
 import { auth } from '$lib/server/auth'
 import { signInHeaders } from '$lib/server/auth/sign-in-headers'
 import { getSafeErrorMessage } from '$lib/server/auth-form-errors'
-import { claimCompany, claimConfigFromEnv, claimMessage, claimStatus, ClaimError } from '$lib/server/auth/claim'
+import {
+  claimCompany,
+  claimConfigFromEnv,
+  claimMessage,
+  claimStatus,
+  ClaimError,
+} from '$lib/server/auth/claim'
 import { authDb } from '$lib/server/db/auth-db'
 import { claimConsumed, user } from '$lib/server/db/auth.schema'
 import { env } from '$lib/server/env/private-env'
 import { foundingCompanyName } from '$lib/server/overview/sources'
+import { publicErrorReport } from '$lib/server/auth/public-error-report'
 
 /** First-run handover: the installer's private link makes its holder the owner (see $lib/server/auth/claim). */
 
@@ -21,22 +28,53 @@ const deps = (event?: Pick<RequestEvent, 'request' | 'getClientAddress'>) => ({
   config: claimConfigFromEnv(env),
   countUsers,
   isConsumed: async (tokenHash: string) =>
-    (await authDb.select({ h: claimConsumed.tokenHash }).from(claimConsumed).where(eq(claimConsumed.tokenHash, tokenHash)).limit(1)).length > 0,
+    (
+      await authDb
+        .select({ h: claimConsumed.tokenHash })
+        .from(claimConsumed)
+        .where(eq(claimConsumed.tokenHash, tokenHash))
+        .limit(1)
+    ).length > 0,
   consume: async (tokenHash: string) =>
-    (await authDb.insert(claimConsumed).values({ tokenHash }).onConflictDoNothing().returning({ h: claimConsumed.tokenHash })).length === 1,
-  createCode: async (email: string) => auth.api.createVerificationOTP({ body: { email, type: 'sign-in' } }),
-  signIn: async (email: string, code: string) => auth.api.signInEmailOTP({ body: { email, otp: code }, ...(event ? { headers: signInHeaders(event) } : {}) }),
+    (
+      await authDb
+        .insert(claimConsumed)
+        .values({ tokenHash })
+        .onConflictDoNothing()
+        .returning({ h: claimConsumed.tokenHash })
+    ).length === 1,
+  createCode: async (email: string) =>
+    auth.api.createVerificationOTP({ body: { email, type: 'sign-in' } }),
+  signIn: async (email: string, code: string) =>
+    auth.api.signInEmailOTP({
+      body: { email, otp: code },
+      ...(event ? { headers: signInHeaders(event) } : {}),
+    }),
 })
 
 export const load: PageServerLoad = async (event) => {
   // Step 2, signed in as the new owner: a passkey, the way back in before email is set up.
   if (event.locals.user && event.url.searchParams.get('step') === 'passkey') {
-    return { step: 'passkey' as const, token: '', ok: true, message: null, email: event.locals.user.email, companyName: await foundingCompanyName() }
+    return {
+      step: 'passkey' as const,
+      token: '',
+      ok: true,
+      message: null,
+      email: event.locals.user.email,
+      companyName: await foundingCompanyName(),
+    }
   }
   const token = event.url.searchParams.get('token') ?? ''
   const status = await claimStatus(token, deps())
   if (status === 'already_claimed' && event.locals.user) throw redirect(302, '/')
-  return { step: 'claim' as const, token, ok: status === 'ok', message: status === 'ok' ? null : claimMessage(status), email: null, companyName: null }
+  return {
+    step: 'claim' as const,
+    token,
+    ok: status === 'ok',
+    message: status === 'ok' ? null : claimMessage(status),
+    email: null,
+    companyName: null,
+  }
 }
 
 export const actions: Actions = {
@@ -47,8 +85,18 @@ export const actions: Actions = {
     try {
       await claimCompany({ email, token }, deps(event))
     } catch (err) {
-      const message = err instanceof ClaimError ? err.message : getSafeErrorMessage(err, 'Claiming failed')
-      return fail(400, { email, message })
+      const message =
+        err instanceof ClaimError ? err.message : getSafeErrorMessage(err, 'Claiming failed')
+      if (!(err instanceof ClaimError)) console.error('[claim] claiming the company failed', err)
+      // Signed-out surface: the agent half never carries the claim token or the email.
+      const { agent } = publicErrorReport(message, {
+        attempted: 'Claiming the company with the installer link (/claim)',
+        err,
+        nextSteps: [
+          'claimCompany (src/lib/server/auth/claim.ts) refused or failed. A ClaimError is a plain refusal (link used, expired, already claimed): the owner asks the installer for a new link. Anything else is in the server journal.',
+        ],
+      })
+      return fail(400, { email, message, agent })
     }
     // Signed in as the owner. Sign-in codes go out by email, which isn't set up yet: a passkey first,
     // so the end of this session doesn't lock the owner out. Then the onboarding takes it from here.

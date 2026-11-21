@@ -1,5 +1,6 @@
 import type { Actions, PageServerLoad } from './$types'
 import { error, fail } from '@sveltejs/kit'
+import { errorReport, refusalReport } from '$lib/server/errors/report'
 import { createMemoryRateLimiter } from '$lib/server/mail/api-send'
 import { AudienceError } from '../../../../../modules/email/platform/flows/service'
 import { emailPlatform } from '../../../../../modules/email/platform/service'
@@ -36,12 +37,30 @@ export const actions: Actions = {
     const form = await request.formData()
     const email = String(form.get('email') ?? '').trim()
     const firstName = String(form.get('firstName') ?? '').trim()
-    if (!limiter.take(getClientAddress()).ok) return fail(429, { error: 'Too many sign-ups from here. Try again in an hour.' })
+    const attempted = 'Signing up on the public sign-up page of a list'
+    if (!limiter.take(getClientAddress()).ok)
+      return fail(
+        429,
+        refusalReport('Too many sign-ups from here. Try again in an hour.', {
+          attempted,
+          input: { listId: list.id },
+          nextSteps: [
+            'The per-visitor rate limit (5 sign-ups an hour, src/routes/mail/subscribe/[listId]/+page.server.ts) refused this address; it resets by itself.',
+          ],
+        }),
+      )
     try {
-      const { contact } = await emailPlatform().audience.addContact(list.id, { email, firstName: firstName || null })
+      const { contact } = await emailPlatform().audience.addContact(list.id, {
+        email,
+        firstName: firstName || null,
+      })
       return { done: true, pending: contact.status === 'pending' }
     } catch (err) {
-      if (err instanceof AudienceError) return fail(400, { error: err.message })
+      if (err instanceof AudienceError)
+        return fail(
+          400,
+          errorReport(err, { attempted, input: { listId: list.id }, plain: () => err.message }),
+        )
       throw err
     }
   },

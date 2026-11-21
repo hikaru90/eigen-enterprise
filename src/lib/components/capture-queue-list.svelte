@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import XIcon from '@lucide/svelte/icons/x'
   import type { ProgressEvent } from '$lib/capture/consume-capture-ndjson'
   import type { CaptureIngestPhase } from '$lib/capture/ingest-phases'
@@ -29,8 +30,7 @@
     ),
   )
 
-  const cardClass =
-    'rounded-xl bg-card border border-border shadow-sm px-4 py-3'
+  const cardClass = 'rounded-xl bg-card border border-border shadow-sm px-4 py-3'
 </script>
 
 {#if visibleItems.length > 0}
@@ -44,10 +44,14 @@
             </p>
             <p class="text-xs text-muted-foreground mt-0.5">
               {captureQueueStatusLabel(item.status)}
-              {#if item.status === 'failed' && item.lastError}
-                <span class="text-destructive"> — {item.lastError}</span>
-              {/if}
             </p>
+            {#if item.status === 'failed' && item.lastError}
+              <ErrorNotice
+                class="mt-0.5 text-xs"
+                error={item.lastError}
+                attempted="Saving a queued capture (the capture queue retries it in the background)"
+              />
+            {/if}
           </div>
           <Button
             type="button"

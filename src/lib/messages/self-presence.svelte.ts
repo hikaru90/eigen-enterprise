@@ -1,5 +1,6 @@
 import type { HeartbeatState, PresenceView } from './presence'
 import { getContext, setContext } from 'svelte'
+import { shownErrorOf, type ShownError } from '$lib/errors/agent-report'
 
 /**
  * My own status on every nucleus page (Contribute e4ef6be1): shown at the
@@ -14,16 +15,21 @@ export type SelfPresenceFetch = (input: string, init: RequestInit) => Promise<Re
 
 const ROUTE = '/api/messages/presence'
 
-async function refusal(res: Response): Promise<string> {
-  const body = (await res.json().catch(() => null)) as { error?: unknown } | null
-  return typeof body?.error === 'string' ? body.error : `Status could not be updated (HTTP ${res.status}).`
+async function refusal(res: Response): Promise<ShownError> {
+  const body = (await res.json().catch(() => null)) as unknown
+  return (
+    shownErrorOf(body) ?? {
+      error: `Status could not be updated (HTTP ${res.status}).`,
+      agent: null,
+    }
+  )
 }
 
 const reason = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 export class SelfPresence {
   #view = $state<PresenceView | null>(null)
-  #error = $state<string | null>(null)
+  #error = $state<ShownError | null>(null)
   #saving = $state(false)
 
   constructor(private readonly env: { fetch: SelfPresenceFetch }) {}
@@ -34,7 +40,7 @@ export class SelfPresence {
   }
 
   /** The status could not be loaded or saved (shown, never hidden). */
-  get error(): string | null {
+  get error(): ShownError | null {
     return this.#error
   }
 
@@ -63,10 +69,10 @@ export class SelfPresence {
           return
         }
         this.#error = await refusal(res)
-        console.error('[presence] heartbeat refused', res.status, this.#error)
+        console.error('[presence] heartbeat refused', res.status, this.#error.error)
       })
       .catch((err: unknown) => {
-        this.#error = `Status could not be updated: ${reason(err)}`
+        this.#error = { error: `Status could not be updated: ${reason(err)}`, agent: null }
         console.error('[presence] heartbeat failed', err)
       })
   }
@@ -86,7 +92,7 @@ export class SelfPresence {
       }
       this.receive(((await res.json()) as { presence: PresenceView }).presence)
     } catch (err) {
-      this.#error = `Status could not be saved: ${reason(err)}`
+      this.#error = { error: `Status could not be saved: ${reason(err)}`, agent: null }
     } finally {
       this.#saving = false
     }
@@ -102,6 +108,9 @@ export function setSelfPresence(self: SelfPresence | null): SelfPresence | null 
 /** My status keeper, or null while Messages (which owns presence) is off. */
 export function getSelfPresence(): SelfPresence | null {
   const self = getContext<SelfPresence | null | undefined>(KEY)
-  if (self === undefined) throw new Error('presence: no status keeper — getSelfPresence() works only under the nucleus layout')
+  if (self === undefined)
+    throw new Error(
+      'presence: no status keeper — getSelfPresence() works only under the nucleus layout',
+    )
   return self
 }

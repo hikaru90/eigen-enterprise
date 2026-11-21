@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit'
 import type { ConnectedDomain } from '$lib/domains/connected'
 import type { MemberRole } from '$lib/server/auth/roles'
+import { errorReport, refusalReport } from '$lib/server/errors/report'
 import { domainsGuard, type DomainsEvent } from './http'
 
 /**
@@ -46,9 +47,20 @@ export function connectRoutes(deps: ConnectHttpDeps) {
     try {
       return json({ domain: connectedView(await fn()) })
     } catch (err) {
-      if (deps.explained(err)) return json({ error: err.message }, { status: 400 })
-      console.error(`[domains] ${what} failed`, { error: err instanceof Error ? err.message : String(err) })
-      return json({ error: `${what} failed unexpectedly. Try again in a moment.` }, { status: 500 })
+      if (deps.explained(err))
+        return json(errorReport(err, { attempted: what, plain: () => err.message }), {
+          status: 400,
+        })
+      console.error(`[domains] ${what} failed`, {
+        error: err instanceof Error ? err.message : String(err),
+      })
+      return json(
+        errorReport(err, {
+          attempted: what,
+          plain: () => `${what} failed unexpectedly. Try again in a moment.`,
+        }),
+        { status: 500 },
+      )
     }
   }
 
@@ -61,9 +73,23 @@ export function connectRoutes(deps: ConnectHttpDeps) {
         const body = (await event.request.json()) as { name?: unknown }
         name = typeof body?.name === 'string' ? body.name : ''
       } catch {
-        return json({ error: 'Request body must be JSON.' }, { status: 400 })
+        return json(
+          refusalReport('Request body must be JSON.', {
+            attempted: 'Adding the domain',
+            cause:
+              'POST /api/domains/connected got a body that is not JSON: a bug in the page that sent it.',
+          }),
+          { status: 400 },
+        )
       }
-      if (name.trim() === '') return json({ error: 'Enter your domain, like yourcompany.com.' }, { status: 400 })
+      if (name.trim() === '')
+        return json(
+          refusalReport('Enter your domain, like yourcompany.com.', {
+            attempted: 'Adding the domain',
+            cause: 'The domain name was empty.',
+          }),
+          { status: 400 },
+        )
       return run('Adding the domain', () => deps.platform.addDomain(name, who.userId))
     },
 

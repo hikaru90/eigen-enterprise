@@ -1,5 +1,7 @@
 import type { GitHubTokenError } from './token-client'
+import type { ErrorReport } from '$lib/errors/agent-report'
 import { KernelError } from '$lib/kernel/errors'
+import { errorReport } from '$lib/server/errors/report'
 import { GitHubApiError } from './api'
 import { isGitHubTokenError } from './token'
 
@@ -78,4 +80,22 @@ export function plainMessage(err: unknown): string {
     if (err.code === 'approval_required') return 'This is waiting for your approval in the chat.'
   }
   return 'Something went wrong while talking to GitHub. Try again; if it keeps happening, ask in the chat.'
+}
+
+/** The one error shape for a GitHub failure: `plainMessage`'s sentence plus the agent report. */
+export function githubErrorReport(
+  err: unknown,
+  ctx: { attempted: string; tool?: string; input?: unknown },
+): ErrorReport {
+  return errorReport(err, {
+    ...ctx,
+    plain: plainMessage,
+    ...(err instanceof GitHubApiError || isGitHubTokenError(err)
+      ? {
+          nextSteps: [
+            'GitHub refused or failed the call; `details.status` / `details.kind` says how. Check the GitHub App installation or token access for the repo before changing code.',
+          ],
+        }
+      : {}),
+  })
 }

@@ -4,9 +4,11 @@
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
   import CopyButton from '$lib/components/email/copy-button.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
 
   let { data, form }: PageProps = $props()
@@ -25,6 +27,8 @@
           invalid?: string[]
         })
       : null
+  const addError = $derived(shownErrorOf(feedback('add')))
+  const settingsError = $derived(shownErrorOf(feedback('settings')))
   const STATUS: Record<string, string> = {
     subscribed: 'Subscribed',
     pending: 'Waiting to confirm',
@@ -87,9 +91,7 @@
               : `${feedback('add')?.email} was already on the list; details updated.`}
           </p>
         {/if}
-        {#if feedback('add')?.error}<p class="text-sm text-destructive sm:col-span-4" role="alert">
-            {feedback('add')?.error}
-          </p>{/if}
+        {#if addError}<ErrorNotice {...addError} class="sm:col-span-4" />{/if}
       </form>
     {/if}
 
@@ -173,9 +175,7 @@
           </p>
         {/if}
         <Button type="submit" size="sm" variant="outline">Save settings</Button>
-        {#if feedback('settings')?.error}<p class="text-sm text-destructive">
-            {feedback('settings')?.error}
-          </p>{/if}
+        {#if settingsError}<ErrorNotice {...settingsError} />{/if}
       </form>
 
       <form

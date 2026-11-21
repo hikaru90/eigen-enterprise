@@ -4,4 +4,6 @@ import { listConversations } from '../../../../../modules/messages/service'
 
 /** The conversations the signed-in person may see, with unread counts. */
 export const GET: RequestHandler = ({ locals }) =>
-  messagesRoute(locals.user, async (userId, d) => ({ conversations: await listConversations(d, userId) }))
+  messagesRoute(locals.user, 'Listing conversations (/api/messages)', async (userId, d) => ({
+    conversations: await listConversations(d, userId),
+  }))

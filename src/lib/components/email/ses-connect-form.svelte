@@ -2,9 +2,11 @@
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import { untrack } from 'svelte'
   import { invalidateAll } from '$app/navigation'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { shownErrorOf, type ShownError } from '$lib/errors/agent-report'
 
   /**
    * Connect Amazon SES from the Email page. Posts to the same endpoint as the
@@ -40,7 +42,7 @@
   let secretAccessKey = $state('')
   let emailFrom = $state(untrack(() => initialSender))
   let saving = $state(false)
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
   let verifyAddress = $state<string | null>(null)
   let sentTo = $state<string | null>(null)
 
@@ -53,20 +55,38 @@
       const res = await fetch('/api/onboarding/mail', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ region, accessKeyId: accessKeyId.trim(), secretAccessKey, emailFrom: emailFrom.trim() }),
+        body: JSON.stringify({
+          region,
+          accessKeyId: accessKeyId.trim(),
+          secretAccessKey,
+          emailFrom: emailFrom.trim(),
+        }),
       })
-      const body = (await res.json().catch(() => null)) as { error?: string; needs?: string; emailFrom?: string; testSentTo?: string } | null
+      const body = (await res.json().catch(() => null)) as {
+        error?: string
+        agent?: unknown
+        needs?: string
+        emailFrom?: string
+        testSentTo?: string
+      } | null
       if (res.status === 409 && body?.needs === 'verify_sender' && body.emailFrom) {
         verifyAddress = body.emailFrom
         return
       }
-      if (!res.ok) throw new Error(body?.error ?? `Connecting Amazon SES failed (HTTP ${res.status}).`)
+      if (!res.ok) {
+        // The server's sentence (and agent report, when it sends one); else the status.
+        error = shownErrorOf(body) ?? {
+          error: `Connecting Amazon SES failed (HTTP ${res.status}).`,
+          agent: null,
+        }
+        return
+      }
       verifyAddress = null
       sentTo = body?.testSentTo ?? null
       secretAccessKey = ''
       await invalidateAll()
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = { error: err instanceof Error ? err.message : String(err), agent: null }
     } finally {
       saving = false
     }
@@ -84,8 +104,11 @@
       <ol class="mt-3 list-decimal space-y-1.5 pl-5 text-muted-foreground">
         <li>
           Sign in to Amazon Web Services and open the
-          <a class="text-foreground underline underline-offset-4" href="https://console.aws.amazon.com/ses/" target="_blank" rel="noopener noreferrer"
-            >Amazon SES console</a
+          <a
+            class="text-foreground underline underline-offset-4"
+            href="https://console.aws.amazon.com/ses/"
+            target="_blank"
+            rel="noopener noreferrer">Amazon SES console</a
           >. Note the region shown top right.
         </li>
         <li>
@@ -96,11 +119,17 @@
             target="_blank"
             rel="noopener noreferrer">AWS user page</a
           >, create a user named “email-sender”, choose “Attach policies directly” and tick
-          <strong>AmazonSESFullAccess</strong> and <strong>AmazonSNSFullAccess</strong> (SNS tells ee when
-          mail is delivered, bounces or is opened).
+          <strong>AmazonSESFullAccess</strong> and <strong>AmazonSNSFullAccess</strong> (SNS tells ee
+          when mail is delivered, bounces or is opened).
         </li>
-        <li>Open the user → “Security credentials” → “Create access key” → “Application running outside AWS”.</li>
-        <li>Copy both values below. The send-from address must be one Amazon can verify — it emails you a link the first time.</li>
+        <li>
+          Open the user → “Security credentials” → “Create access key” → “Application running
+          outside AWS”.
+        </li>
+        <li>
+          Copy both values below. The send-from address must be one Amazon can verify — it emails
+          you a link the first time.
+        </li>
       </ol>
     </details>
 
@@ -118,22 +147,48 @@
       </div>
       <div class="grid gap-1.5">
         <Label for="ses-from">Send-from address</Label>
-        <Input id="ses-from" type="email" required placeholder="hello@yourcompany.com" bind:value={emailFrom} disabled={saving} />
+        <Input
+          id="ses-from"
+          type="email"
+          required
+          placeholder="hello@yourcompany.com"
+          bind:value={emailFrom}
+          disabled={saving}
+        />
       </div>
       <div class="grid gap-1.5">
         <Label for="ses-key-id">Access key ID</Label>
-        <Input dictation={false} id="ses-key-id" required autocomplete="off" bind:value={accessKeyId} disabled={saving} />
+        <Input
+          dictation={false}
+          id="ses-key-id"
+          required
+          autocomplete="off"
+          bind:value={accessKeyId}
+          disabled={saving}
+        />
       </div>
       <div class="grid gap-1.5">
         <Label for="ses-secret">Secret access key</Label>
-        <Input id="ses-secret" type="password" required autocomplete="off" bind:value={secretAccessKey} disabled={saving} />
+        <Input
+          id="ses-secret"
+          type="password"
+          required
+          autocomplete="off"
+          bind:value={secretAccessKey}
+          disabled={saving}
+        />
       </div>
       {#if verifyAddress}
         <p class="text-sm sm:col-span-2" role="status" data-testid="ses-verify-sender">
-          Amazon sent a verification email to <strong>{verifyAddress}</strong>. Click the link in it, then press Try again.
+          Amazon sent a verification email to <strong>{verifyAddress}</strong>. Click the link in
+          it, then press Try again.
         </p>
       {/if}
-      {#if error}<p class="text-sm text-destructive sm:col-span-2" role="alert">{error}</p>{/if}
+      {#if error}<ErrorNotice
+          {...error}
+          attempted="Connecting Amazon SES from the Email page (POST /api/onboarding/mail)"
+          class="sm:col-span-2"
+        />{/if}
       <div class="sm:col-span-2">
         <Button type="submit" disabled={saving} data-testid="ses-connect-submit">
           {#if saving}<LoaderCircle class="size-4 animate-spin" />{/if}

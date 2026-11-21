@@ -1,4 +1,6 @@
+import type { ShownError } from '$lib/errors/agent-report'
 import type { CurrentUserView } from '$lib/memory/current-user-view'
+import { RequestError, requestErrorOf, shownOf } from '$lib/memory/request-error'
 import type { ProjectListItem } from '$lib/server/memory/project-list'
 import type { TemporalEventListItem } from '$lib/server/memory/temporal-event-list'
 import { getCurrentUserView } from '$lib/stores/current-user-view.svelte'
@@ -54,9 +56,7 @@ export type CreateTimelineDataOptions = {
 export function createTimelineData(options: CreateTimelineDataOptions = {}) {
   const userTimeZone =
     options.userTimeZone ??
-    (typeof Intl !== 'undefined'
-      ? Intl.DateTimeFormat().resolvedOptions().timeZone
-      : 'UTC')
+    (typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC')
 
   let dateRange = $state<TimelineDateRangeFilter>({ ...INITIAL_RANGE })
   let orderBy = $state<'ingest' | 'todo'>(
@@ -73,7 +73,7 @@ export function createTimelineData(options: CreateTimelineDataOptions = {}) {
 
   let phase = $state<TimelinePhase>(options.initialSource ? 'ready' : 'idle')
   let source = $state<TimelineUnifiedSourceState | null>(options.initialSource ?? null)
-  let errorMessage = $state<string | null>(null)
+  let loadError = $state<ShownError | null>(null)
   let loadGeneration = 0
 
   const openItems = $derived(
@@ -101,7 +101,7 @@ export function createTimelineData(options: CreateTimelineDataOptions = {}) {
     const generation = ++loadGeneration
     if (!silent) {
       phase = 'loading'
-      errorMessage = null
+      loadError = null
     }
     try {
       const res = await fetch(
@@ -113,16 +113,17 @@ export function createTimelineData(options: CreateTimelineDataOptions = {}) {
         }),
       )
       if (!res.ok) {
-        throw new Error(`${res.status}: ${(await res.text()) || 'unknown'}`)
+        const refused = (await requestErrorOf(res)).shown
+        throw new RequestError({ ...refused, error: `${res.status}: ${refused.error}` })
       }
       const body = (await res.json()) as TimelineUnifiedSourceState
       if (generation !== loadGeneration) return
       source = { items: body.items, projects: body.projects }
       phase = 'ready'
-      errorMessage = null
+      loadError = null
     } catch (err) {
       if (generation !== loadGeneration) return
-      errorMessage = err instanceof Error ? err.message : String(err)
+      loadError = shownOf(err)
       phase = 'error'
       if (!silent) {
         source = null
@@ -151,7 +152,7 @@ export function createTimelineData(options: CreateTimelineDataOptions = {}) {
   function seedSource(next: TimelineUnifiedSourceState) {
     source = next
     phase = 'ready'
-    errorMessage = null
+    loadError = null
   }
 
   return {
@@ -173,8 +174,9 @@ export function createTimelineData(options: CreateTimelineDataOptions = {}) {
     get source() {
       return source
     },
-    get errorMessage() {
-      return errorMessage
+    /** Why the timeline could not load: the sentence and the server's agent report. */
+    get loadError() {
+      return loadError
     },
     get openItems() {
       return openItems

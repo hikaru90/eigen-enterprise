@@ -6,6 +6,7 @@ export class CalendarError extends Error {
     options?: { cause?: unknown },
   ) {
     super(message, options)
+    this.name = 'CalendarError'
   }
 }
 

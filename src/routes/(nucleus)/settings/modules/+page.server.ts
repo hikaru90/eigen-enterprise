@@ -2,6 +2,7 @@ import type { Actions, PageServerLoad } from './$types'
 import { randomUUID } from 'node:crypto'
 import { fail } from '@sveltejs/kit'
 import { KernelError } from '$lib/kernel/errors'
+import { errorReport, refusalReport } from '$lib/server/errors/report'
 import type { ToolContext } from '$lib/kernel/types'
 import { requireCapability } from '$lib/server/auth/require-capability'
 import { appKernel } from '$lib/server/boot'
@@ -75,10 +76,18 @@ function personCtx(user: { id: string }): ToolContext {
 export const load: PageServerLoad = async ({ locals }): Promise<PluginsData> => {
   const { user } = await requireCapability(locals, 'modules.manage', REASON)
   const kernel = await appKernel()
-  const listed = (await kernel.registry.execute('kernel.module_list', {}, personCtx(user))) as ListedModule[]
+  const listed = (await kernel.registry.execute(
+    'kernel.module_list',
+    {},
+    personCtx(user),
+  )) as ListedModule[]
   const byId = new Map(listed.map((m) => [m.id, m]))
   // A required module the kernel has not registered (a boot stage that is off) is named by its id, and off.
-  const ref = (id: string): PluginRef => ({ id, name: byId.get(id)?.name ?? id, active: byId.get(id)?.active === true })
+  const ref = (id: string): PluginRef => ({
+    id,
+    name: byId.get(id)?.name ?? id,
+    active: byId.get(id)?.active === true,
+  })
   return {
     plugins: listed
       .filter((m) => !m.core)
@@ -112,14 +121,32 @@ async function flip(action: SwitchAction, { locals, request }: Parameters<Action
   const { user } = await requireCapability(locals, 'modules.manage', REASON)
   const moduleId = (await request.formData()).get('module_id')
   if (typeof moduleId !== 'string' || moduleId === '') {
-    return fail(400, { action, moduleId: null, error: 'Choose a plugin.' })
+    return fail(400, {
+      action,
+      moduleId: null,
+      ...refusalReport('Choose a plugin.', {
+        attempted: `Switching a plugin ${action === 'activate' ? 'on' : 'off'} (Settings → Plugins)`,
+        nextSteps: [
+          'The form sent no module_id: a bug in the Settings → Plugins form (src/routes/(nucleus)/settings/modules/+page.svelte).',
+        ],
+      }),
+    })
   }
   try {
     await ownerRun(user, TOOLS[action], { module_id: moduleId })
     return { action, moduleId, ok: true as const }
   } catch (err) {
     if (err instanceof KernelError) {
-      return fail(err.toProblemJson().status, { action, moduleId, error: err.message })
+      return fail(err.toProblemJson().status, {
+        action,
+        moduleId,
+        ...errorReport(err, {
+          attempted: `Switching the plugin ${moduleId} ${action === 'activate' ? 'on' : 'off'} (Settings → Plugins)`,
+          tool: TOOLS[action],
+          input: { module_id: moduleId },
+          plain: (e) => (e as Error).message,
+        }),
+      })
     }
     throw err
   }

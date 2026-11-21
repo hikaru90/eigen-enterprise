@@ -2,6 +2,8 @@
   import { enhance } from '$app/forms'
   import { Button } from '$lib/components/ui/button'
   import { Label } from '$lib/components/ui/label'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
+  import type { AgentReport } from '$lib/errors/agent-report'
 
   /**
    * Passwordless step 2 (shared by /signup and /login): enter the 6-digit code
@@ -11,13 +13,26 @@
     email,
     message,
     error,
-  }: { email: string; message?: string | undefined; error?: string | undefined } = $props()
+    agent = null,
+  }: {
+    email: string
+    message?: string | undefined
+    error?: string | undefined
+    /** The server's signed-out agent half (no email, no code). */
+    agent?: AgentReport | null
+  } = $props()
 
   /** A literal `{6}` in markup would be read as a Svelte expression. */
   const CODE_PATTERN = '[0-9]{6}'
 </script>
 
-<form method="post" action="?/verifyCode" use:enhance class="space-y-4" data-testid="auth-code-step">
+<form
+  method="post"
+  action="?/verifyCode"
+  use:enhance
+  class="space-y-4"
+  data-testid="auth-code-step"
+>
   <input type="hidden" name="email" value={email} />
   {#if message}
     <p class="text-foreground text-xs">{message}</p>
@@ -37,7 +52,13 @@
   </div>
   <Button type="submit" class="w-full rounded-[4px]">Continue</Button>
   {#if error}
-    <p class="text-destructive text-xs" data-testid="auth-code-error">{error}</p>
+    <ErrorNotice
+      class="text-xs"
+      testid="auth-code-error"
+      {error}
+      {agent}
+      attempted="Checking the emailed sign-in code"
+    />
   {/if}
 </form>
 <form method="post" action="?/sendCode" use:enhance class="text-center">

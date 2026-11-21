@@ -3,4 +3,6 @@ import { messagesRoute } from '../../../../../../../modules/messages/http'
 import { markRead } from '../../../../../../../modules/messages/service'
 
 export const POST: RequestHandler = ({ locals, params }) =>
-  messagesRoute(locals.user, (userId, d) => markRead(d, userId, params.id))
+  messagesRoute(locals.user, 'Marking a conversation read (/api/messages)', (userId, d) =>
+    markRead(d, userId, params.id),
+  )

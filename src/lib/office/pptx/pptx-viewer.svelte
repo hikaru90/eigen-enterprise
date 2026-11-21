@@ -19,9 +19,17 @@
   import XIcon from '@lucide/svelte/icons/x'
   import { onDestroy, onMount, tick, untrack } from 'svelte'
   import { beforeNavigate, goto } from '$app/navigation'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { driveApi, type LockHolder } from '$lib/drive/api'
-  import { createAutosave, LockLostError, type Autosave, type AutosaveState } from '$lib/drive/autosave'
+  import {
+    createAutosave,
+    LockLostError,
+    type Autosave,
+    type AutosaveState,
+  } from '$lib/drive/autosave'
+  import { driveShownError } from '$lib/drive/shown-error'
+  import type { ShownError } from '$lib/errors/agent-report'
   import { createOfficeEditSession } from '../edit-session'
   import { OFFICE_MIME } from '../kinds'
   import { readPackage } from '../ooxml/package'
@@ -31,11 +39,26 @@
   import EditToolbar, { type ToolbarState } from './edit-toolbar.svelte'
   import { createDeckEditor, type DeckEditor } from './editor'
   import { createMediaSource } from './media'
-  import { effectiveXfrm, type Align, type DeckOp, type NewCommentAnchor, type OpResult, type RunFormat, type TextRange } from './ops'
+  import {
+    effectiveXfrm,
+    type Align,
+    type DeckOp,
+    type NewCommentAnchor,
+    type OpResult,
+    type RunFormat,
+    type TextRange,
+  } from './ops'
   import { renderSlideSvg, type MediaSource } from './render'
   import { resolveSlide, type RParagraph, type RRun } from './resolve'
   import SlideOverlay, { type FrameChange, type OverlayItem } from './slide-overlay.svelte'
-  import { readParagraphs, runPosOf, selectChars, selectionIn, textContainer, type CharPos } from './text-edit'
+  import {
+    readParagraphs,
+    runPosOf,
+    selectChars,
+    selectionIn,
+    textContainer,
+    type CharPos,
+  } from './text-edit'
 
   /**
    * PowerPoint viewer and editor (plan/phase-office-files.md, S1 + S2).
@@ -65,9 +88,19 @@
    * without edit access, commenting is off and the panel says why. A comment
    * is a change like any other: it takes the lock, saves, and undoes.
    */
-  let { fileId, name, canEdit, heartbeatMs, author, onsaved, saveDelayMs = 1200, idleMs = 60_000 }: OfficeViewerProps & { saveDelayMs?: number; idleMs?: number } = $props()
+  let {
+    fileId,
+    name,
+    canEdit,
+    heartbeatMs,
+    author,
+    onsaved,
+    saveDelayMs = 1200,
+    idleMs = 60_000,
+  }: OfficeViewerProps & { saveDelayMs?: number; idleMs?: number } = $props()
 
-  type View = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; deck: Deck }
+  type View =
+    { status: 'loading' } | ({ status: 'error' } & ShownError) | { status: 'ready'; deck: Deck }
   // Raw: the deck is plain data with source links keyed by object identity; no deep proxy.
   let view = $state.raw<View>({ status: 'loading' })
   let current = $state(0)
@@ -93,12 +126,18 @@
   // -------------------------------------------------------------------------
   // Editing state
 
-  type Mode = { kind: 'viewing' } | { kind: 'editing' } | { kind: 'watching'; holder: LockHolder } | { kind: 'lost'; holder: LockHolder | null }
+  type Mode =
+    | { kind: 'viewing' }
+    | { kind: 'editing' }
+    | { kind: 'watching'; holder: LockHolder }
+    | { kind: 'lost'; holder: LockHolder | null }
   let mode = $state<Mode>({ kind: 'viewing' })
   let locking = $state(false)
   let held = $state(false)
   let save = $state<AutosaveState>({ status: 'saved', error: null, savedAt: null })
   let notice = $state<string | null>(null)
+  /** A failure while editing (the notice line above is for what is not one). */
+  let failure = $state<ShownError | null>(null)
   /** Bumped on every change: what history buttons and the toolbar read. */
   let rev = $state(0)
   let selected = $state<string[]>([])
@@ -114,7 +153,9 @@
   /** The thread picked (a marker, a jump from "All slides", one just written). */
   let focusedComment = $state<string | null>(null)
   /** A new comment waiting for its text: where it goes. */
-  let pending = $state<(PendingComment & { anchor: NewCommentAnchor; pos: { x: number; y: number } | null }) | null>(null)
+  let pending = $state<
+    (PendingComment & { anchor: NewCommentAnchor; pos: { x: number; y: number } | null }) | null
+  >(null)
   /** Waiting for a click on the slide, where a new comment goes. */
   let placing = $state(false)
 
@@ -128,7 +169,11 @@
   /** The text selection when typing ended because a toolbar field took the focus (size, colour). */
   let afterBlur: { id: string; sel: { start: CharPos; end: CharPos } | null } | null = null
 
-  const session = createOfficeEditSession({ fileId: untrack(() => fileId), heartbeatMs: untrack(() => heartbeatMs), onLost: (holder) => lose(holder) })
+  const session = createOfficeEditSession({
+    fileId: untrack(() => fileId),
+    heartbeatMs: untrack(() => heartbeatMs),
+    onLost: (holder) => lose(holder),
+  })
   let autosave: Autosave = makeAutosave()
 
   function makeAutosave(): Autosave {
@@ -161,7 +206,13 @@
     (slide?.notes?.paragraphs ?? [])
       .map((p) =>
         p.runs
-          .map((r) => (r.kind === 'break' ? '\n' : r.kind === 'field' && r.type === 'slidenum' ? String(slide!.number) : r.text))
+          .map((r) =>
+            r.kind === 'break'
+              ? '\n'
+              : r.kind === 'field' && r.type === 'slidenum'
+                ? String(slide!.number)
+                : r.text,
+          )
           .join(''),
       )
       .join('\n'),
@@ -179,9 +230,31 @@
       const x = effectiveXfrm(deck, slide, s)
       if (!x) return []
       const text = s.kind === 'sp' && !s.connector && s.text !== null
-      const empty = text && s.ph !== null && (s as SpNode).text!.paragraphs.every((p) => p.runs.every((r) => r.kind !== 'break' && r.text === ''))
-      const what = s.kind === 'pic' ? 'Picture' : s.kind === 'group' ? 'Group' : s.kind === 'frame' ? 'Frame' : 'Shape'
-      return [{ id: s.id, name: s.name || what, frame: frameOf(x), text, empty, resizable: !(s.kind === 'frame' && s.content.kind === 'table'), rotatable: s.kind !== 'frame' }]
+      const empty =
+        text &&
+        s.ph !== null &&
+        (s as SpNode).text!.paragraphs.every((p) =>
+          p.runs.every((r) => r.kind !== 'break' && r.text === ''),
+        )
+      const what =
+        s.kind === 'pic'
+          ? 'Picture'
+          : s.kind === 'group'
+            ? 'Group'
+            : s.kind === 'frame'
+              ? 'Frame'
+              : 'Shape'
+      return [
+        {
+          id: s.id,
+          name: s.name || what,
+          frame: frameOf(x),
+          text,
+          empty,
+          resizable: !(s.kind === 'frame' && s.content.kind === 'table'),
+          rotatable: s.kind !== 'frame',
+        },
+      ]
     })
   })
   const history = $derived.by(() => {
@@ -218,24 +291,36 @@
       }
     }
     const every = (f: (r: RRun) => boolean) => runs.length > 0 && runs.every(f)
-    const one = <T,>(vals: T[]): T | null => (vals.length && vals.every((v) => v === vals[0]) ? vals[0]! : null)
+    const one = <T,>(vals: T[]): T | null =>
+      vals.length && vals.every((v) => v === vals[0]) ? vals[0]! : null
     return {
       bold: every((r) => r.bold),
       italic: every((r) => r.italic),
       underline: every((r) => r.underline !== null),
       size: one(runs.map((r) => Math.round(r.size * 0.75 * 2) / 2)),
       color: one(runs.map((r) => (r.fill.kind === 'solid' ? hex(r.fill.color) : null))),
-      align: one(paras.map((p) => (['l', 'ctr', 'r', 'just'].includes(p.align) ? (p.align as Align) : null))),
-      bullets: paras.length > 0 && paras.filter((p) => p.runs.some((r) => r.text)).every((p) => p.bullet !== null) && paras.some((p) => p.runs.some((r) => r.text)),
+      align: one(
+        paras.map((p) => (['l', 'ctr', 'r', 'just'].includes(p.align) ? (p.align as Align) : null)),
+      ),
+      bullets:
+        paras.length > 0 &&
+        paras.filter((p) => p.runs.some((r) => r.text)).every((p) => p.bullet !== null) &&
+        paras.some((p) => p.runs.some((r) => r.text)),
     }
   })
 
   function hex(c: { r: number; g: number; b: number }): string {
-    return [c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase()
+    return [c.r, c.g, c.b]
+      .map((v) => v.toString(16).padStart(2, '0'))
+      .join('')
+      .toUpperCase()
   }
 
   /** The paragraphs and runs a character selection touches (a caret: the run before it). */
-  function runsIn(ps: RParagraph[], sel: { start: CharPos; end: CharPos }): { paras: RParagraph[]; runs: RRun[] } {
+  function runsIn(
+    ps: RParagraph[],
+    sel: { start: CharPos; end: CharPos },
+  ): { paras: RParagraph[]; runs: RRun[] } {
     const paras = ps.slice(sel.start.p, sel.end.p + 1)
     const runs: RRun[] = []
     const collapsed = sel.start.p === sel.end.p && sel.start.c === sel.end.c
@@ -294,7 +379,11 @@
     leaving = true
     void autosave.flush().then(async () => {
       try {
-        if (save.status === 'error' && !confirm('Your latest changes could not be saved. Leave anyway and lose them?')) return
+        if (
+          save.status === 'error' &&
+          !confirm('Your latest changes could not be saved. Leave anyway and lose them?')
+        )
+          return
         // The navigation the person already started (an app URL SvelteKit resolved).
         // eslint-disable-next-line svelte/no-navigation-without-resolve
         await goto(to.href, { invalidateAll: true })
@@ -309,7 +398,7 @@
       open(await driveApi.readBytes(fileId))
       rootEl?.focus({ preventScroll: true })
     } catch (err) {
-      view = { status: 'error', message: err instanceof Error ? err.message : String(err) }
+      view = { status: 'error', ...driveShownError(err) }
     }
   }
 
@@ -334,7 +423,10 @@
   }
 
   /** One slide's SVG for a place on the page (main, thumbnail, presenter), drawn once per version. */
-  function draw(index: number, place: 'main' | 'thumb' | 'show'): { svg: string } | { error: string } {
+  function draw(
+    index: number,
+    place: 'main' | 'thumb' | 'show',
+  ): { svg: string } | { error: string } {
     const s = deck!.slides[index]!
     const forEdit = place === 'main' && editing
     const key = `${place}:${s.part}:${index}:${partRev[s.part] ?? 0}:${forEdit ? 'e' : ''}`
@@ -342,7 +434,13 @@
     if (hit) return hit
     let out: { svg: string } | { error: string }
     try {
-      out = { svg: renderSlideSvg(resolveSlide(deck!, index, { editing: forEdit }), { idPrefix: `pptx-${place}-${index}`, media, links: place !== 'thumb' && !forEdit }) }
+      out = {
+        svg: renderSlideSvg(resolveSlide(deck!, index, { editing: forEdit }), {
+          idPrefix: `pptx-${place}-${index}`,
+          media,
+          links: place !== 'thumb' && !forEdit,
+        }),
+      }
     } catch (err) {
       out = { error: err instanceof Error ? err.message : String(err) }
     }
@@ -357,7 +455,7 @@
       pending = null
       placing = false
     }
-    current =Math.max(0, Math.min(count - 1, index))
+    current = Math.max(0, Math.min(count - 1, index))
     selected = []
     menuFor = null
     await tick()
@@ -380,7 +478,11 @@
     if (i !== undefined) void go(i)
   }
 
-  const isTypingTarget = (t: EventTarget | null) => t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement || (t instanceof HTMLElement && t.isContentEditable)
+  const isTypingTarget = (t: EventTarget | null) =>
+    t instanceof HTMLInputElement ||
+    t instanceof HTMLTextAreaElement ||
+    t instanceof HTMLSelectElement ||
+    (t instanceof HTMLElement && t.isContentEditable)
 
   function onEditKeys(event: KeyboardEvent): boolean {
     const mod = event.metaKey || event.ctrlKey
@@ -563,8 +665,6 @@
   // -------------------------------------------------------------------------
   // The edit lock and saving
 
-  const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
-
   function sameBytes(x: Uint8Array, y: Uint8Array) {
     if (x.length !== y.length) return false
     for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return false
@@ -573,6 +673,7 @@
 
   function startEditing() {
     notice = null
+    failure = null
     mode = { kind: 'editing' }
   }
 
@@ -590,7 +691,9 @@
           const now = await driveApi.readBytes(fileId)
           if (base && !sameBytes(now, base)) {
             open(now)
-            notice = 'Someone saved a newer version of this presentation, so it was reloaded. Make your change again.'
+            failure = null
+            notice =
+              'Someone saved a newer version of this presentation, so it was reloaded. Make your change again.'
             return false
           }
           return true
@@ -601,10 +704,13 @@
           mode = { kind: 'watching', holder: view.holder }
           return false
         }
-        notice = 'The presentation could not be opened for editing. Try again.'
+        failure = {
+          error: 'The presentation could not be opened for editing. Try again.',
+          agent: null,
+        }
         return false
       } catch (err) {
-        notice = message(err)
+        failure = driveShownError(err)
         return false
       } finally {
         locking = false
@@ -623,7 +729,12 @@
     autosave.stop()
     if (typing && textRoot && editor) {
       // Keep what was typed in the copy on screen (and in the download).
-      const r = applyLocal({ kind: 'setText', slide: slide!.part, shape: typing, paragraphs: readParagraphs(textRoot) })
+      const r = applyLocal({
+        kind: 'setText',
+        slide: slide!.part,
+        shape: typing,
+        paragraphs: readParagraphs(textRoot),
+      })
       if (r) changed(r, false)
     }
     typing = null
@@ -635,11 +746,15 @@
   /** Take over (someone else edits) or take it back (after losing it): the newest saved copy, then editing. */
   async function takeOver() {
     notice = null
+    failure = null
     locking = true
     try {
       const view = await session.start({ takeover: true })
       if (view.state !== 'held') {
-        notice = 'The presentation could not be opened for editing. Try again.'
+        failure = {
+          error: 'The presentation could not be opened for editing. Try again.',
+          agent: null,
+        }
         return
       }
       held = true
@@ -650,7 +765,7 @@
       mode = { kind: 'editing' }
       touchIdle()
     } catch (err) {
-      notice = message(err)
+      failure = driveShownError(err)
     } finally {
       locking = false
     }
@@ -662,7 +777,10 @@
     clearIdle()
     await autosave.flush()
     if (save.status === 'error') {
-      notice = 'Your latest changes could not be saved yet. Retry, or keep editing.'
+      failure = {
+        error: 'Your latest changes could not be saved yet. Retry, or keep editing.',
+        agent: null,
+      }
       return
     }
     if (mode.kind !== 'editing') return
@@ -686,14 +804,17 @@
     if (mode.kind !== 'editing' || !session.held()) return
     if (typing) return touchIdle()
     await autosave.flush()
-    if (mode.kind !== 'editing' || autosave.unsaved() !== null || save.status !== 'saved') return touchIdle()
+    if (mode.kind !== 'editing' || autosave.unsaved() !== null || save.status !== 'saved')
+      return touchIdle()
     held = false
     await session.stop()
   }
 
   function downloadCopy() {
     if (!editor) return
-    const url = URL.createObjectURL(new Blob([editor.toBytes().slice().buffer as ArrayBuffer], { type: OFFICE_MIME.pptx }))
+    const url = URL.createObjectURL(
+      new Blob([editor.toBytes().slice().buffer as ArrayBuffer], { type: OFFICE_MIME.pptx }),
+    )
     const link = document.createElement('a')
     link.href = url
     link.download = name
@@ -709,7 +830,7 @@
     try {
       return editor.apply(op)
     } catch (err) {
-      notice = message(err)
+      failure = driveShownError(err)
       return null
     }
   }
@@ -736,6 +857,7 @@
   async function change(op: DeckOp): Promise<OpResult | null> {
     if (!(await ensureLock())) return null
     notice = null
+    failure = null
     const r = applyLocal(op)
     if (r) changed(r)
     return r
@@ -757,7 +879,7 @@
     try {
       return fn()
     } catch (err) {
-      notice = message(err)
+      failure = driveShownError(err)
       return null
     }
   }
@@ -791,7 +913,9 @@
   async function remove() {
     if (!slide || !selected.length) return
     const part = slide.part
-    const r = await change(batch(selected.map((id): DeckOp => ({ kind: 'deleteShape', slide: part, shape: id }))))
+    const r = await change(
+      batch(selected.map((id): DeckOp => ({ kind: 'deleteShape', slide: part, shape: id }))),
+    )
     if (r) selected = []
   }
 
@@ -799,8 +923,13 @@
     if (!slide || !selected.length) return
     const part = slide.part
     const before = new Set(slide.shapes.map((s) => s.id))
-    const r = await change(batch(selected.map((id): DeckOp => ({ kind: 'duplicateShape', slide: part, shape: id }))))
-    if (r) selected = (deck?.slides[current]?.shapes ?? []).filter((s) => !before.has(s.id)).map((s) => s.id)
+    const r = await change(
+      batch(selected.map((id): DeckOp => ({ kind: 'duplicateShape', slide: part, shape: id }))),
+    )
+    if (r)
+      selected = (deck?.slides[current]?.shapes ?? [])
+        .filter((s) => !before.has(s.id))
+        .map((s) => s.id)
   }
 
   async function arrange(dir: 'forward' | 'backward') {
@@ -809,14 +938,26 @@
     const order = slide.shapes.map((s) => s.id).filter((id) => selected.includes(id))
     // Moving forward, the frontmost goes first (so the selection keeps its own order).
     if (dir === 'forward') order.reverse()
-    await change(batch(order.map((id): DeckOp => ({ kind: 'arrange', slide: part, shape: id, dir }))))
+    await change(
+      batch(order.map((id): DeckOp => ({ kind: 'arrange', slide: part, shape: id, dir }))),
+    )
   }
 
   async function insertText() {
     if (!deck || !slide) return
     const cx = Math.round(deck.size.cx * 0.4)
     const cy = Math.round(deck.size.cy * 0.12)
-    const r = await change({ kind: 'insertTextBox', slide: slide.part, box: { x: Math.round((deck.size.cx - cx) / 2), y: Math.round((deck.size.cy - cy) / 2), cx, cy }, text: 'Text' })
+    const r = await change({
+      kind: 'insertTextBox',
+      slide: slide.part,
+      box: {
+        x: Math.round((deck.size.cx - cx) / 2),
+        y: Math.round((deck.size.cy - cy) / 2),
+        cx,
+        cy,
+      },
+      text: 'Text',
+    })
     const id = r?.created?.shape
     if (id) {
       selected = [id]
@@ -828,7 +969,13 @@
     if (!slide) return
     const part = slide.part
     const bytes = new Uint8Array(await file.arrayBuffer())
-    const r = await change({ kind: 'insertPicture', slide: part, bytes, contentType: file.type, name: file.name.replace(/\.[^.]+$/, '') })
+    const r = await change({
+      kind: 'insertPicture',
+      slide: part,
+      bytes,
+      contentType: file.type,
+      name: file.name.replace(/\.[^.]+$/, ''),
+    })
     if (r?.created?.shape) selected = [r.created.shape]
   }
 
@@ -848,6 +995,7 @@
     const box = shapeEl(id)?.querySelector('.pptx-text')
     const root = box ? textContainer(box) : null
     if (!root) {
+      failure = null
       notice = 'This shape has no text to edit.'
       return
     }
@@ -857,7 +1005,10 @@
     root.spellcheck = true
     root.setAttribute('role', 'textbox')
     root.setAttribute('aria-multiline', 'true')
-    root.setAttribute('aria-label', `Text of ${items.find((i) => i.id === id)?.name ?? 'the shape'}`)
+    root.setAttribute(
+      'aria-label',
+      `Text of ${items.find((i) => i.id === id)?.name ?? 'the shape'}`,
+    )
     root.dataset.testid = 'pptx-text-editor'
     root.style.outline = 'none'
     root.style.cursor = 'text'
@@ -868,7 +1019,10 @@
     root.addEventListener('blur', onTextBlur)
     root.focus()
     const ps = readParagraphs(root)
-    const endPos = { p: ps.length - 1, c: ps.at(-1)!.runs.reduce((n, r) => n + (r.kind === 'break' ? 1 : r.text.length), 0) }
+    const endPos = {
+      p: ps.length - 1,
+      c: ps.at(-1)!.runs.reduce((n, r) => n + (r.kind === 'break' ? 1 : r.text.length), 0),
+    }
     if (select === 'all') selectChars(root, { p: 0, c: 0 }, endPos)
     else if (select === 'end') selectChars(root, endPos, endPos)
     else selectChars(root, select.start, select.end)
@@ -886,7 +1040,12 @@
   /** Commits what was typed (an operation), without ending the typing. */
   function commitText() {
     if (!typing || !textRoot || !slide || !session.held()) return
-    const r = applyLocal({ kind: 'setText', slide: slide.part, shape: typing, paragraphs: readParagraphs(textRoot) })
+    const r = applyLocal({
+      kind: 'setText',
+      slide: slide.part,
+      shape: typing,
+      paragraphs: readParagraphs(textRoot),
+    })
     if (r) changed(r)
   }
 
@@ -950,7 +1109,8 @@
     return null
   }
 
-  const collapsed = (s: { start: CharPos; end: CharPos } | null) => !s || (s.start.p === s.end.p && s.start.c === s.end.c)
+  const collapsed = (s: { start: CharPos; end: CharPos } | null) =>
+    !s || (s.start.p === s.end.p && s.start.c === s.end.c)
 
   async function format(f: RunFormat) {
     if (!slide) return
@@ -960,13 +1120,29 @@
       const node = deck!.slides[current]!.shapes.find((s) => s.id === t.id) as SpNode | undefined
       const ps = node?.text?.paragraphs ?? []
       // A caret (no selection) formats the whole text, like the selected shape.
-      const range: TextRange | null = collapsed(t.sel) ? null : { start: runPosOf(ps, t.sel!.start, slide.number), end: runPosOf(ps, t.sel!.end, slide.number) }
+      const range: TextRange | null = collapsed(t.sel)
+        ? null
+        : {
+            start: runPosOf(ps, t.sel!.start, slide.number),
+            end: runPosOf(ps, t.sel!.end, slide.number),
+          }
       await change({ kind: 'formatRuns', slide: slide.part, shape: t.id, range, format: f })
       await beginText(t.id, t.sel ?? 'end')
       return
     }
     const part = slide.part
-    if (textIds.length) await change(batch(textIds.map((id): DeckOp => ({ kind: 'formatRuns', slide: part, shape: id, range: null, format: f }))))
+    if (textIds.length)
+      await change(
+        batch(
+          textIds.map((id): DeckOp => ({
+            kind: 'formatRuns',
+            slide: part,
+            shape: id,
+            range: null,
+            format: f,
+          })),
+        ),
+      )
   }
 
   async function paragraphs(patch: { align?: Align; bullets?: boolean }) {
@@ -975,12 +1151,31 @@
     const t = textTarget()
     if (t) {
       if (typing) endText()
-      const picked = t.sel ? Array.from({ length: t.sel.end.p - t.sel.start.p + 1 }, (_, i) => t.sel!.start.p + i) : null
-      await change({ kind: 'formatParagraphs', slide: part, shape: t.id, paragraphs: picked, ...patch })
+      const picked = t.sel
+        ? Array.from({ length: t.sel.end.p - t.sel.start.p + 1 }, (_, i) => t.sel!.start.p + i)
+        : null
+      await change({
+        kind: 'formatParagraphs',
+        slide: part,
+        shape: t.id,
+        paragraphs: picked,
+        ...patch,
+      })
       await beginText(t.id, t.sel ?? 'end')
       return
     }
-    if (textIds.length) await change(batch(textIds.map((id): DeckOp => ({ kind: 'formatParagraphs', slide: part, shape: id, paragraphs: null, ...patch }))))
+    if (textIds.length)
+      await change(
+        batch(
+          textIds.map((id): DeckOp => ({
+            kind: 'formatParagraphs',
+            slide: part,
+            shape: id,
+            paragraphs: null,
+            ...patch,
+          })),
+        ),
+      )
   }
 
   // -------------------------------------------------------------------------
@@ -1003,7 +1198,10 @@
     if (!deck) return []
     const layout = deck.layouts[slide?.layout ?? deck.slides[0]?.layout ?? '']
     const master = layout ? deck.masters[layout.master] : Object.values(deck.masters)[0]
-    return (master?.layouts ?? []).map((part) => ({ part, name: deck.layouts[part]?.name || 'Layout' }))
+    return (master?.layouts ?? []).map((part) => ({
+      part,
+      name: deck.layouts[part]?.name || 'Layout',
+    }))
   })
 
   async function addSlide(layout: string, at: number) {
@@ -1078,8 +1276,10 @@
   const commentsOff = $derived.by<string | null>(() => {
     if (!author) return 'Commenting is off here: who is signed in is not known to this viewer.'
     if (!canEdit) return 'You can read the comments. Adding them needs edit access to this file.'
-    if (mode.kind === 'watching') return `${mode.holder.name} is editing. You can comment once they are done, or after taking over.`
-    if (mode.kind === 'lost') return 'Someone else took over editing, so comments are read-only in your copy.'
+    if (mode.kind === 'watching')
+      return `${mode.holder.name} is editing. You can comment once they are done, or after taking over.`
+    if (mode.kind === 'lost')
+      return 'Someone else took over editing, so comments are read-only in your copy.'
     return null
   })
   const canComment = $derived(commentsOff === null)
@@ -1106,7 +1306,12 @@
       return
     }
     placing = false
-    if (where === 'shape' && selectedShape) pending = { anchor: { kind: 'shape', shape: selectedShape.id }, pos: null, label: `On “${selectedShape.name}”` }
+    if (where === 'shape' && selectedShape)
+      pending = {
+        anchor: { kind: 'shape', shape: selectedShape.id },
+        pos: null,
+        label: `On “${selectedShape.name}”`,
+      }
     else pending = { anchor: { kind: 'slide' }, pos: null, label: 'On this slide' }
   }
 
@@ -1118,13 +1323,26 @@
     const x = Math.round(((e.clientX - box.left) / box.width) * deck.size.cx)
     const y = Math.round(((e.clientY - box.top) / box.height) * deck.size.cy)
     placing = false
-    pending = { anchor: { kind: 'slide' }, pos: { x, y }, label: 'At the marked point on the slide' }
+    pending = {
+      anchor: { kind: 'slide' },
+      pos: { x, y },
+      label: 'At the marked point on the slide',
+    }
   }
 
   async function postComment(text: string): Promise<boolean> {
     if (!slide || !pending || !author) return false
     const id = guid()
-    const ok = await commentChange({ kind: 'addComment', slide: slide.part, id, author, created: new Date().toISOString(), text, anchor: pending.anchor, pos: pending.pos })
+    const ok = await commentChange({
+      kind: 'addComment',
+      slide: slide.part,
+      id,
+      author,
+      created: new Date().toISOString(),
+      text,
+      anchor: pending.anchor,
+      pos: pending.pos,
+    })
     if (ok) {
       pending = null
       focusedComment = id
@@ -1134,10 +1352,27 @@
 
   const noAuthor = () => Promise.resolve(false)
   const replyComment = (part: string, comment: string, text: string) =>
-    author ? commentChange({ kind: 'replyComment', slide: part, comment, id: guid(), author, created: new Date().toISOString(), text }) : noAuthor()
-  const editComment = (part: string, comment: string, reply: string | null, text: string) => (author ? commentChange({ kind: 'editComment', slide: part, comment, reply, author, text }) : noAuthor())
-  const commentStatus = (part: string, comment: string, status: 'active' | 'resolved') => commentChange({ kind: 'setCommentStatus', slide: part, comment, status })
-  const deleteComment = (part: string, comment: string, reply: string | null) => (author ? commentChange({ kind: 'deleteComment', slide: part, comment, reply, author }) : noAuthor())
+    author
+      ? commentChange({
+          kind: 'replyComment',
+          slide: part,
+          comment,
+          id: guid(),
+          author,
+          created: new Date().toISOString(),
+          text,
+        })
+      : noAuthor()
+  const editComment = (part: string, comment: string, reply: string | null, text: string) =>
+    author
+      ? commentChange({ kind: 'editComment', slide: part, comment, reply, author, text })
+      : noAuthor()
+  const commentStatus = (part: string, comment: string, status: 'active' | 'resolved') =>
+    commentChange({ kind: 'setCommentStatus', slide: part, comment, status })
+  const deleteComment = (part: string, comment: string, reply: string | null) =>
+    author
+      ? commentChange({ kind: 'deleteComment', slide: part, comment, reply, author })
+      : noAuthor()
 
   function openThread(id: string) {
     showComments = true
@@ -1156,17 +1391,34 @@
   {@const out = draw(index, place)}
   {#if 'svg' in out}
     {@html out.svg}
-  {:else}
-    <div class="flex h-full w-full items-center justify-center bg-white p-4 text-center text-sm text-destructive" role="alert" data-testid="pptx-slide-error">
+  {:else if place === 'thumb'}
+    <!-- A thumbnail sits inside its own button (inert): no second button in it; the main slide shows the notice. -->
+    <div
+      class="flex h-full w-full items-center justify-center bg-white p-4 text-center text-sm text-destructive"
+      data-testid="pptx-slide-error"
+    >
       Slide {index + 1} could not be drawn: {out.error}
     </div>
+  {:else}
+    <ErrorNotice
+      class="h-full w-full items-center justify-center bg-white p-4 text-center"
+      testid="pptx-slide-error"
+      error={`Slide ${index + 1} could not be drawn: ${out.error}`}
+      attempted={`Drawing slide ${index + 1} of ${name} in the browser`}
+    />
   {/if}
 {/snippet}
 
 {#snippet layoutList(at: number)}
   <div class="flex flex-col py-1" role="menu" aria-label="Layouts" data-testid="pptx-layouts">
     {#each layoutsHere as l (l.part)}
-      <button type="button" role="menuitem" class="px-3 py-1.5 text-left text-xs hover:bg-muted focus-visible:bg-muted focus-visible:outline-none" onclick={() => void addSlide(l.part, at)} data-testid="pptx-layout">{l.name}</button>
+      <button
+        type="button"
+        role="menuitem"
+        class="px-3 py-1.5 text-left text-xs hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+        onclick={() => void addSlide(l.part, at)}
+        data-testid="pptx-layout">{l.name}</button
+      >
     {/each}
   </div>
 {/snippet}
@@ -1183,46 +1435,114 @@
   data-testid="pptx-viewer"
 >
   {#if view.status === 'loading'}
-    <div class="flex flex-1 items-center justify-center text-sm text-muted-foreground" data-testid="pptx-loading">Opening {name}…</div>
-  {:else if view.status === 'error'}
-    <div class="m-6 flex flex-col gap-1 text-sm" role="alert" data-testid="pptx-error">
-      <p class="font-medium text-destructive">This presentation could not be opened.</p>
-      <p class="text-muted-foreground">{view.message}</p>
+    <div
+      class="flex flex-1 items-center justify-center text-sm text-muted-foreground"
+      data-testid="pptx-loading"
+    >
+      Opening {name}…
     </div>
+  {:else if view.status === 'error'}
+    <ErrorNotice
+      class="m-6"
+      testid="pptx-error"
+      title="This presentation could not be opened."
+      error={view.error}
+      agent={view.agent}
+      attempted={`Opening the presentation ${name} in the browser viewer`}
+    />
   {:else if count === 0}
-    <p class="m-6 text-sm text-muted-foreground" data-testid="pptx-empty">This presentation has no slides.</p>
+    <p class="m-6 text-sm text-muted-foreground" data-testid="pptx-empty">
+      This presentation has no slides.
+    </p>
   {:else}
     {#if mode.kind === 'watching'}
-      <div class="flex flex-wrap items-center gap-3 border-b bg-muted/40 px-4 py-2 text-sm" role="status" data-testid="pptx-lock-banner">
+      <div
+        class="flex flex-wrap items-center gap-3 border-b bg-muted/40 px-4 py-2 text-sm"
+        role="status"
+        data-testid="pptx-lock-banner"
+      >
         <LockIcon class="size-4 text-muted-foreground" aria-hidden="true" />
-        <span class="flex-1"><strong data-testid="pptx-lock-holder">{mode.holder.name}</strong> is editing. You see the last saved version, read-only.</span>
-        <Button size="sm" variant="outline" disabled={locking} onclick={() => void takeOver()} data-testid="pptx-takeover">Take over</Button>
+        <span class="flex-1"
+          ><strong data-testid="pptx-lock-holder">{mode.holder.name}</strong> is editing. You see the
+          last saved version, read-only.</span
+        >
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={locking}
+          onclick={() => void takeOver()}
+          data-testid="pptx-takeover">Take over</Button
+        >
       </div>
     {:else if mode.kind === 'lost'}
-      <div class="flex flex-wrap items-center gap-3 border-b border-destructive/40 bg-destructive/5 px-4 py-2 text-sm" role="alert" data-testid="pptx-lost-banner">
+      <div
+        class="flex flex-wrap items-center gap-3 border-b border-destructive/40 bg-destructive/5 px-4 py-2 text-sm"
+        role="alert"
+        data-testid="pptx-lost-banner"
+      >
         <CircleAlertIcon class="size-4 text-destructive" aria-hidden="true" />
-        <span class="flex-1"><strong data-testid="pptx-lost-holder">{mode.holder?.name ?? 'Someone'}</strong> took over editing. Your copy stays here, read-only; changes not saved yet are only in it.</span>
-        <Button size="sm" variant="outline" onclick={downloadCopy} data-testid="pptx-download-copy"><DownloadIcon class="size-4" aria-hidden="true" /> Download my copy</Button>
-        <Button size="sm" variant="outline" disabled={locking} onclick={() => void takeOver()} data-testid="pptx-takeover">Take it back</Button>
+        <span class="flex-1"
+          ><strong data-testid="pptx-lost-holder">{mode.holder?.name ?? 'Someone'}</strong> took over
+          editing. Your copy stays here, read-only; changes not saved yet are only in it.</span
+        >
+        <Button size="sm" variant="outline" onclick={downloadCopy} data-testid="pptx-download-copy"
+          ><DownloadIcon class="size-4" aria-hidden="true" /> Download my copy</Button
+        >
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={locking}
+          onclick={() => void takeOver()}
+          data-testid="pptx-takeover">Take it back</Button
+        >
       </div>
     {/if}
 
     <div class="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-      <Button variant="ghost" size="icon-sm" aria-label="Previous slide" title="Previous slide (←)" disabled={current === 0} onclick={() => step(-1)} data-testid="pptx-prev">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Previous slide"
+        title="Previous slide (←)"
+        disabled={current === 0}
+        onclick={() => step(-1)}
+        data-testid="pptx-prev"
+      >
         <ChevronLeftIcon class="size-4" aria-hidden="true" />
       </Button>
-      <span class="min-w-24 text-center text-sm tabular-nums" aria-live="polite" data-testid="pptx-counter">Slide {current + 1} of {count}</span>
-      <Button variant="ghost" size="icon-sm" aria-label="Next slide" title="Next slide (→)" disabled={current === count - 1} onclick={() => step(1)} data-testid="pptx-next">
+      <span
+        class="min-w-24 text-center text-sm tabular-nums"
+        aria-live="polite"
+        data-testid="pptx-counter">Slide {current + 1} of {count}</span
+      >
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Next slide"
+        title="Next slide (→)"
+        disabled={current === count - 1}
+        onclick={() => step(1)}
+        data-testid="pptx-next"
+      >
         <ChevronRightIcon class="size-4" aria-hidden="true" />
       </Button>
       {#if slide?.hidden}
-        <span class="inline-flex items-center gap-1 rounded-full border px-2 py-px text-xs text-muted-foreground" data-testid="pptx-hidden-badge">
+        <span
+          class="inline-flex items-center gap-1 rounded-full border px-2 py-px text-xs text-muted-foreground"
+          data-testid="pptx-hidden-badge"
+        >
           <EyeOffIcon class="size-3" aria-hidden="true" /> Hidden in the slide show
         </span>
       {/if}
       <div class="ml-auto flex items-center gap-2">
         {#if editing}
-          <span class="flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="pptx-save-state" data-status={save.status} data-held={held ? 'true' : 'false'} aria-live="polite">
+          <span
+            class="flex items-center gap-1.5 text-xs text-muted-foreground"
+            data-testid="pptx-save-state"
+            data-status={save.status}
+            data-held={held ? 'true' : 'false'}
+            aria-live="polite"
+          >
             {#if locking}
               <LoaderIcon class="size-3.5 animate-spin" aria-hidden="true" /> Opening for editing…
             {:else if save.status === 'saving'}
@@ -1230,25 +1550,61 @@
             {:else if save.status === 'dirty'}
               Unsaved changes
             {:else if save.status === 'error'}
-              <CircleAlertIcon class="size-3.5 text-destructive" aria-hidden="true" /><span class="text-destructive" title={save.error ?? ''}>Couldn’t save</span>
-              <Button size="sm" variant="outline" class="h-6 px-2 text-xs" onclick={() => void autosave.retry()} data-testid="pptx-save-retry">Retry</Button>
+              <CircleAlertIcon class="size-3.5 text-destructive" aria-hidden="true" /><span
+                class="text-destructive"
+                title={save.error ?? ''}>Couldn’t save</span
+              >
+              <Button
+                size="sm"
+                variant="outline"
+                class="h-6 px-2 text-xs"
+                onclick={() => void autosave.retry()}
+                data-testid="pptx-save-retry">Retry</Button
+              >
             {:else if save.savedAt}
               <CheckIcon class="size-3.5" aria-hidden="true" /> Saved {fmtTime(save.savedAt)}
             {:else}
               Editing — changes save automatically
             {/if}
           </span>
-          <Button variant="outline" size="sm" onclick={() => void stopEditing()} data-testid="pptx-done">Done</Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={() => void stopEditing()}
+            data-testid="pptx-done">Done</Button
+          >
         {:else if canEdit && mode.kind === 'viewing'}
-          <Button variant="outline" size="sm" onclick={startEditing} data-testid="pptx-edit"><PencilIcon class="size-4" aria-hidden="true" /> Edit</Button>
+          <Button variant="outline" size="sm" onclick={startEditing} data-testid="pptx-edit"
+            ><PencilIcon class="size-4" aria-hidden="true" /> Edit</Button
+          >
         {/if}
-        <Button variant="outline" size="sm" aria-pressed={showComments} onclick={() => (showComments = !showComments)} data-testid="pptx-comments-toggle">
-          <MessageSquareIcon class="size-4" aria-hidden="true" /> Comments{#if slide && slide.comments.threads.length}<span class="tabular-nums" data-testid="pptx-comments-count">({slide.comments.threads.length})</span>{/if}
+        <Button
+          variant="outline"
+          size="sm"
+          aria-pressed={showComments}
+          onclick={() => (showComments = !showComments)}
+          data-testid="pptx-comments-toggle"
+        >
+          <MessageSquareIcon class="size-4" aria-hidden="true" /> Comments{#if slide && slide.comments.threads.length}<span
+              class="tabular-nums"
+              data-testid="pptx-comments-count">({slide.comments.threads.length})</span
+            >{/if}
         </Button>
-        <Button variant="outline" size="sm" aria-pressed={showNotes} onclick={() => (showNotes = !showNotes)} data-testid="pptx-notes-toggle">
+        <Button
+          variant="outline"
+          size="sm"
+          aria-pressed={showNotes}
+          onclick={() => (showNotes = !showNotes)}
+          data-testid="pptx-notes-toggle"
+        >
           <NotebookTextIcon class="size-4" aria-hidden="true" /> Notes
         </Button>
-        <Button size="sm" onclick={() => void present()} title="Present full screen (Esc to stop)" data-testid="pptx-present">
+        <Button
+          size="sm"
+          onclick={() => void present()}
+          title="Present full screen (Esc to stop)"
+          data-testid="pptx-present"
+        >
           <PresentationIcon class="size-4" aria-hidden="true" /> Present
         </Button>
       </div>
@@ -1273,21 +1629,67 @@
         onredo={() => void redo()}
       />
     {/if}
-    {#if notice}
-      <div class="flex items-center gap-2 border-b bg-amber-50 px-4 py-1.5 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200" role="alert" data-testid="pptx-notice">
+    {#if failure}
+      <ErrorNotice
+        class="flex-row flex-wrap items-center gap-2 border-b px-4 py-1.5"
+        testid="pptx-notice"
+        error={failure.error}
+        agent={failure.agent}
+        attempted={`Editing the presentation ${name}`}
+      >
+        <button
+          type="button"
+          class="ml-auto rounded p-0.5 hover:bg-black/5"
+          aria-label="Dismiss"
+          onclick={() => (failure = null)}><XIcon class="size-3.5" aria-hidden="true" /></button
+        >
+      </ErrorNotice>
+    {:else if notice}
+      <div
+        class="flex items-center gap-2 border-b bg-amber-50 px-4 py-1.5 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+        role="alert"
+        data-testid="pptx-notice"
+      >
         <span class="flex-1">{notice}</span>
-        <button type="button" class="rounded p-0.5 hover:bg-black/5" aria-label="Dismiss" onclick={() => (notice = null)}><XIcon class="size-3.5" aria-hidden="true" /></button>
+        <button
+          type="button"
+          class="rounded p-0.5 hover:bg-black/5"
+          aria-label="Dismiss"
+          onclick={() => (notice = null)}><XIcon class="size-3.5" aria-hidden="true" /></button
+        >
       </div>
     {/if}
 
     <div class="flex min-h-0 flex-1">
       <div class="hidden w-44 shrink-0 flex-col border-r sm:flex">
-        <ol bind:this={railEl} class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3" aria-label="Slides" data-testid="pptx-rail">
+        <ol
+          bind:this={railEl}
+          class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3"
+          aria-label="Slides"
+          data-testid="pptx-rail"
+        >
           {#each deck!.slides as s, i (s.part)}
-            <li class="relative flex items-start gap-2" data-thumb={i} ondragover={(e) => onDragOver(e, i)} ondrop={(e) => void onDrop(e)} onfocusout={closeMenuOutside}>
-              {#if dropAt === i}<span class="absolute -top-2 right-0 left-7 h-0.5 rounded bg-primary" aria-hidden="true" data-testid="pptx-drop-marker"></span>{/if}
-              {#if dropAt === count && i === count - 1}<span class="absolute right-0 -bottom-2 left-7 h-0.5 rounded bg-primary" aria-hidden="true" data-testid="pptx-drop-marker"></span>{/if}
-              <span class="w-5 shrink-0 pt-0.5 text-right text-xs text-muted-foreground tabular-nums" aria-hidden="true">{i + 1}</span>
+            <li
+              class="relative flex items-start gap-2"
+              data-thumb={i}
+              ondragover={(e) => onDragOver(e, i)}
+              ondrop={(e) => void onDrop(e)}
+              onfocusout={closeMenuOutside}
+            >
+              {#if dropAt === i}<span
+                  class="absolute -top-2 right-0 left-7 h-0.5 rounded bg-primary"
+                  aria-hidden="true"
+                  data-testid="pptx-drop-marker"
+                ></span>{/if}
+              {#if dropAt === count && i === count - 1}<span
+                  class="absolute right-0 -bottom-2 left-7 h-0.5 rounded bg-primary"
+                  aria-hidden="true"
+                  data-testid="pptx-drop-marker"
+                ></span>{/if}
+              <span
+                class="w-5 shrink-0 pt-0.5 text-right text-xs text-muted-foreground tabular-nums"
+                aria-hidden="true">{i + 1}</span
+              >
               <button
                 type="button"
                 class={`block w-full overflow-hidden rounded-sm border bg-white outline-none focus-visible:ring-2 focus-visible:ring-ring ${i === current ? 'border-primary ring-2 ring-primary' : 'border-border hover:border-foreground/40'} ${s.hidden ? 'opacity-50' : ''} ${dragFrom === i ? 'opacity-40' : ''}`}
@@ -1315,7 +1717,11 @@
                 </span>
               </button>
               {#if openCount(s)}
-                <span class="pointer-events-none absolute right-1 bottom-1 inline-flex items-center gap-0.5 rounded-full bg-amber-300 px-1.5 text-xs font-semibold text-amber-950 tabular-nums" aria-hidden="true" data-testid="pptx-thumb-comments">
+                <span
+                  class="pointer-events-none absolute right-1 bottom-1 inline-flex items-center gap-0.5 rounded-full bg-amber-300 px-1.5 text-xs font-semibold text-amber-950 tabular-nums"
+                  aria-hidden="true"
+                  data-testid="pptx-thumb-comments"
+                >
                   <MessageSquareIcon class="size-2.5" aria-hidden="true" />{openCount(s)}
                 </span>
               {/if}
@@ -1336,17 +1742,61 @@
                 </button>
               {/if}
               {#if menuFor === i}
-                <div class="absolute top-7 right-0 z-20 w-44 rounded-md border bg-popover text-popover-foreground shadow-md" data-testid="pptx-slide-menu">
+                <div
+                  class="absolute top-7 right-0 z-20 w-44 rounded-md border bg-popover text-popover-foreground shadow-md"
+                  data-testid="pptx-slide-menu"
+                >
                   {#if layoutMenu === i}
                     {@render layoutList(i + 1)}
                   {:else}
                     <div class="flex flex-col py-1" role="menu" aria-label={`Slide ${i + 1}`}>
-                      <button type="button" role="menuitem" class="px-3 py-1.5 text-left text-xs hover:bg-muted" onclick={() => (layoutMenu = i)} data-testid="pptx-slide-add">New slide after…</button>
-                      <button type="button" role="menuitem" class="px-3 py-1.5 text-left text-xs hover:bg-muted" onclick={() => void slideAction(i, 'duplicate')} data-testid="pptx-slide-duplicate">Duplicate</button>
-                      <button type="button" role="menuitem" class="px-3 py-1.5 text-left text-xs hover:bg-muted" onclick={() => void slideAction(i, 'hide')} data-testid="pptx-slide-hide">{s.hidden ? 'Show in slide show' : 'Hide in slide show'}</button>
-                      <button type="button" role="menuitem" class="px-3 py-1.5 text-left text-xs hover:bg-muted disabled:opacity-50" disabled={i === 0} onclick={() => void slideAction(i, 'up')} data-testid="pptx-slide-up">Move up</button>
-                      <button type="button" role="menuitem" class="px-3 py-1.5 text-left text-xs hover:bg-muted disabled:opacity-50" disabled={i === count - 1} onclick={() => void slideAction(i, 'down')} data-testid="pptx-slide-down">Move down</button>
-                      <button type="button" role="menuitem" class="px-3 py-1.5 text-left text-xs text-destructive hover:bg-muted disabled:opacity-50" disabled={count === 1} title={count === 1 ? 'A presentation keeps at least one slide' : undefined} onclick={() => void slideAction(i, 'delete')} data-testid="pptx-slide-delete">Delete</button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="px-3 py-1.5 text-left text-xs hover:bg-muted"
+                        onclick={() => (layoutMenu = i)}
+                        data-testid="pptx-slide-add">New slide after…</button
+                      >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="px-3 py-1.5 text-left text-xs hover:bg-muted"
+                        onclick={() => void slideAction(i, 'duplicate')}
+                        data-testid="pptx-slide-duplicate">Duplicate</button
+                      >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="px-3 py-1.5 text-left text-xs hover:bg-muted"
+                        onclick={() => void slideAction(i, 'hide')}
+                        data-testid="pptx-slide-hide"
+                        >{s.hidden ? 'Show in slide show' : 'Hide in slide show'}</button
+                      >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="px-3 py-1.5 text-left text-xs hover:bg-muted disabled:opacity-50"
+                        disabled={i === 0}
+                        onclick={() => void slideAction(i, 'up')}
+                        data-testid="pptx-slide-up">Move up</button
+                      >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="px-3 py-1.5 text-left text-xs hover:bg-muted disabled:opacity-50"
+                        disabled={i === count - 1}
+                        onclick={() => void slideAction(i, 'down')}
+                        data-testid="pptx-slide-down">Move down</button
+                      >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="px-3 py-1.5 text-left text-xs text-destructive hover:bg-muted disabled:opacity-50"
+                        disabled={count === 1}
+                        title={count === 1 ? 'A presentation keeps at least one slide' : undefined}
+                        onclick={() => void slideAction(i, 'delete')}
+                        data-testid="pptx-slide-delete">Delete</button
+                      >
                     </div>
                   {/if}
                 </div>
@@ -1356,11 +1806,21 @@
         </ol>
         {#if editing}
           <div class="relative border-t p-2" onfocusout={closeMenuOutside}>
-            <Button variant="outline" size="sm" class="w-full" aria-haspopup="menu" aria-expanded={layoutMenu === 'rail'} onclick={() => (layoutMenu = layoutMenu === 'rail' ? null : 'rail')} data-testid="pptx-new-slide">
+            <Button
+              variant="outline"
+              size="sm"
+              class="w-full"
+              aria-haspopup="menu"
+              aria-expanded={layoutMenu === 'rail'}
+              onclick={() => (layoutMenu = layoutMenu === 'rail' ? null : 'rail')}
+              data-testid="pptx-new-slide"
+            >
               <PlusIcon class="size-4" aria-hidden="true" /> New slide
             </Button>
             {#if layoutMenu === 'rail'}
-              <div class="absolute right-2 bottom-full left-2 z-20 mb-1 rounded-md border bg-popover text-popover-foreground shadow-md">
+              <div
+                class="absolute right-2 bottom-full left-2 z-20 mb-1 rounded-md border bg-popover text-popover-foreground shadow-md"
+              >
                 {@render layoutList(current + 1)}
               </div>
             {/if}
@@ -1381,7 +1841,17 @@
           >
             {#key current}{@render slideBox(current, 'main')}{/key}
             {#if editing}
-              <SlideOverlay width={slideW} height={slideH} {items} {selected} {typing} target={shapeEl} onselect={select} oncommit={commitFrames} onedittext={(id) => void beginText(id, 'end')} />
+              <SlideOverlay
+                width={slideW}
+                height={slideH}
+                {items}
+                {selected}
+                {typing}
+                target={shapeEl}
+                onselect={select}
+                oncommit={commitFrames}
+                onedittext={(id) => void beginText(id, 'end')}
+              />
             {/if}
             {#each markers as m (m.id)}
               <button
@@ -1406,12 +1876,22 @@
               ></span>
             {/if}
             {#if placing}
-              <button type="button" class="absolute inset-0 z-20 cursor-crosshair bg-primary/5" aria-label="Place the comment here" onclick={placeAt} data-testid="pptx-comment-place"></button>
+              <button
+                type="button"
+                class="absolute inset-0 z-20 cursor-crosshair bg-primary/5"
+                aria-label="Place the comment here"
+                onclick={placeAt}
+                data-testid="pptx-comment-place"
+              ></button>
             {/if}
           </div>
         </div>
         {#if showNotes}
-          <section class="max-h-48 shrink-0 overflow-y-auto border-t px-4 py-3 text-sm" aria-label="Speaker notes" data-testid="pptx-notes">
+          <section
+            class="max-h-48 shrink-0 overflow-y-auto border-t px-4 py-3 text-sm"
+            aria-label="Speaker notes"
+            data-testid="pptx-notes"
+          >
             {#if editing}
               <textarea
                 bind:this={notesEl}
@@ -1421,8 +1901,7 @@
                 value={notesText}
                 onfocus={() => void onNotesFocus()}
                 onchange={(e) => commitNotes(e.currentTarget.value)}
-                data-testid="pptx-notes-editor"
-              ></textarea>
+                data-testid="pptx-notes-editor"></textarea>
             {:else if notes.length === 0}
               <p class="text-muted-foreground">No speaker notes on this slide.</p>
             {:else}
@@ -1475,13 +1954,25 @@
       onclick={onPresenterClick}
       data-testid="pptx-presenter"
     >
-      <div class="overflow-hidden bg-white" style={`aspect-ratio:${aspect};width:min(100vw, calc(100vh * ${aspect}))`} data-testid="pptx-presenter-slide">
+      <div
+        class="overflow-hidden bg-white"
+        style={`aspect-ratio:${aspect};width:min(100vw, calc(100vh * ${aspect}))`}
+        data-testid="pptx-presenter-slide"
+      >
         {#key current}{@render slideBox(current, 'show')}{/key}
       </div>
       <div class="absolute top-3 right-3 flex items-center gap-2 text-xs text-white/70">
-        {#if fullscreenRefused}<span data-testid="pptx-no-fullscreen">Full screen is not available here — presenting in the window.</span>{/if}
+        {#if fullscreenRefused}<span data-testid="pptx-no-fullscreen"
+            >Full screen is not available here — presenting in the window.</span
+          >{/if}
         <span class="tabular-nums">{current + 1} / {count}</span>
-        <button type="button" class="rounded p-1 hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none" aria-label="Stop presenting (Esc)" onclick={() => void stopPresenting()} data-testid="pptx-presenter-close">
+        <button
+          type="button"
+          class="rounded p-1 hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
+          aria-label="Stop presenting (Esc)"
+          onclick={() => void stopPresenting()}
+          data-testid="pptx-presenter-close"
+        >
           <XIcon class="size-4" aria-hidden="true" />
         </button>
       </div>

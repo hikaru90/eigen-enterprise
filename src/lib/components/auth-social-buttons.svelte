@@ -1,6 +1,7 @@
 <script lang="ts">
   import { authClient } from '$lib/auth-client'
   import { Button } from '$lib/components/ui/button'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { SocialProviderId } from '$lib/server/auth-social'
 
   let {
@@ -76,7 +77,11 @@
       </Button>
     {/each}
     {#if errorMessage}
-      <p class="text-destructive text-xs">{errorMessage}</p>
+      <ErrorNotice
+        class="text-xs"
+        error={errorMessage}
+        attempted="Starting sign-in with Google or GitHub (Better Auth social sign-in)"
+      />
     {/if}
   </div>
 {/if}

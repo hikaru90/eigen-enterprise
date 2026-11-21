@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types'
-import { callsRoute } from '../../../../../../modules/calls/http'
+import { callsRoute } from '../../calls-route'
 
 /** Overridable in tests. */
 export const _deps = {
@@ -8,4 +8,6 @@ export const _deps = {
 
 /** Answer the call (then fetch a token to join the room). */
 export const POST: RequestHandler = ({ locals, params }) =>
-  callsRoute(locals.user, _deps.service, async (userId, s) => ({ call: await s.accept(userId, params.id) }))
+  callsRoute('Accepting a call', locals.user, _deps.service, async (userId, s) => ({
+    call: await s.accept(userId, params.id),
+  }))

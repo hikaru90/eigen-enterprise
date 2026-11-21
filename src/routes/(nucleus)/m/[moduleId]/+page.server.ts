@@ -1,8 +1,10 @@
 import type { ActivityResult } from '../../../../../modules/website/activity-tools'
 import type { PageServerLoad } from './$types'
 import { error, redirect } from '@sveltejs/kit'
+import type { ErrorReport } from '$lib/errors/agent-report'
 import { isUserAdmin } from '$lib/server/auth/user-role'
 import { appKernel } from '$lib/server/boot'
+import { errorReport } from '$lib/server/errors/report'
 import { moduleOverview } from '$lib/server/overview/overview'
 import { humanContext, overviewResultSources } from '$lib/server/overview/sources'
 import { AppUserError } from '../../../../../modules/website/apps/contract'
@@ -44,7 +46,7 @@ export const load: PageServerLoad = async (event) => {
   })
 
   let activity: ActivityResult | null = null
-  let activityError: string | null = null
+  let activityError: ErrorReport | null = null
   if (manifest.id === 'website' && active && isAdmin) {
     try {
       activity = (await kernel.registry.execute(
@@ -58,10 +60,15 @@ export const load: PageServerLoad = async (event) => {
         console.error(
           `[website/activity] load failed: ${err instanceof Error ? err.message : String(err)}`,
         )
-      activityError =
-        err instanceof AppUserError
-          ? err.message
-          : 'Activity could not be loaded. Try again; if it keeps happening, ask in the chat.'
+      activityError = errorReport(err, {
+        attempted: 'Reading the website activity',
+        tool: WEBSITE_ACTIVITY_TOOL,
+        input: { limit: ACTIVITY_ITEMS },
+        plain: (e) =>
+          e instanceof AppUserError
+            ? e.message
+            : 'Activity could not be loaded. Try again; if it keeps happening, ask in the chat.',
+      })
     }
   }
 

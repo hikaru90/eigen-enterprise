@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { SentView, ShareItemView } from '../../../../modules/contribute/share/service'
   import type { ContributionDto, ContributionStatus } from '../../../../modules/contribute/types'
   import ChevronDown from '@lucide/svelte/icons/chevron-down'
@@ -51,13 +52,21 @@
   const counts = $derived(tabCounts(shown))
   const rows = $derived(inTab(shown, tab))
 
-  const TAB_LABEL: Record<BoardTab, string> = { requested: 'Requested', in_progress: 'In progress', shipped: 'Shipped' }
+  const TAB_LABEL: Record<BoardTab, string> = {
+    requested: 'Requested',
+    in_progress: 'In progress',
+    shipped: 'Shipped',
+  }
   const EMPTY: Record<BoardTab, string> = {
     requested: 'Nothing requested yet. Use Contribute at the top right to propose an improvement.',
     in_progress: 'Nothing in progress right now.',
     shipped: 'Nothing shipped from the board yet.',
   }
-  const dateFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+  const dateFmt = new Intl.DateTimeFormat(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
 
   async function run(id: string, act: () => Promise<ContributionDto>): Promise<void> {
     busy = id
@@ -140,7 +149,10 @@
   </div>
 
   {#if error}
-    <p class="text-sm text-destructive" role="alert">{error}</p>
+    <ErrorNotice
+      {error}
+      attempted="Voting on, updating, or withdrawing a contribution on the Contribute board"
+    />
   {/if}
 
   {#if rows.length === 0}
@@ -154,7 +166,10 @@
           <div class="flex w-9 shrink-0 flex-col items-center" aria-label="Votes">
             <button
               type="button"
-              class="flex size-7 cursor-pointer items-center justify-center rounded-md hover:bg-primary/[0.06] disabled:cursor-default disabled:opacity-40 {p.myVote === 1 ? 'text-primary' : 'text-muted-foreground'}"
+              class="flex size-7 cursor-pointer items-center justify-center rounded-md hover:bg-primary/[0.06] disabled:cursor-default disabled:opacity-40 {p.myVote ===
+              1
+                ? 'text-primary'
+                : 'text-muted-foreground'}"
               aria-label="Vote up"
               aria-pressed={p.myVote === 1}
               disabled={closed || busy === p.id}
@@ -162,10 +177,15 @@
             >
               <ChevronUp class="size-4" aria-hidden="true" />
             </button>
-            <span class="text-sm font-medium tabular-nums" data-testid="contribute-score">{p.score}</span>
+            <span class="text-sm font-medium tabular-nums" data-testid="contribute-score"
+              >{p.score}</span
+            >
             <button
               type="button"
-              class="flex size-7 cursor-pointer items-center justify-center rounded-md hover:bg-primary/[0.06] disabled:cursor-default disabled:opacity-40 {p.myVote === -1 ? 'text-primary' : 'text-muted-foreground'}"
+              class="flex size-7 cursor-pointer items-center justify-center rounded-md hover:bg-primary/[0.06] disabled:cursor-default disabled:opacity-40 {p.myVote ===
+              -1
+                ? 'text-primary'
+                : 'text-muted-foreground'}"
               aria-label="Vote down"
               aria-pressed={p.myVote === -1}
               disabled={closed || busy === p.id}
@@ -178,7 +198,9 @@
           <div class="min-w-0 flex-1">
             <p class="text-sm whitespace-pre-line [overflow-wrap:anywhere]">{p.title}</p>
             <p class="mt-1 text-xs text-muted-foreground">
-              {KIND_LABEL[p.kind]} · {AREA_LABEL[p.area]} · {p.own ? 'you' : p.authorName} · {dateFmt.format(new Date(p.createdAt))}
+              {KIND_LABEL[p.kind]} · {AREA_LABEL[p.area]} · {p.own ? 'you' : p.authorName} · {dateFmt.format(
+                new Date(p.createdAt),
+              )}
               {#if p.shippedAt}· shipped {dateFmt.format(new Date(p.shippedAt))}{/if}
             </p>
             {#if editingNote?.id === p.id}
@@ -189,12 +211,19 @@
                   rows="2"
                   maxlength="1000"
                   class="w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-xs outline-none focus-visible:border-ring"
-                  bind:value={editingNote.text}
-                ></textarea>
+                  bind:value={editingNote.text}></textarea>
                 <div class="flex items-center gap-3">
                   {#if !noteVoiceActive}
-                    <button type="button" class="cursor-pointer text-xs font-medium text-primary" onclick={() => saveNote(p)}>Save note</button>
-                    <button type="button" class="cursor-pointer text-xs text-foreground/60" onclick={() => (editingNote = null)}>Cancel</button>
+                    <button
+                      type="button"
+                      class="cursor-pointer text-xs font-medium text-primary"
+                      onclick={() => saveNote(p)}>Save note</button
+                    >
+                    <button
+                      type="button"
+                      class="cursor-pointer text-xs text-foreground/60"
+                      onclick={() => (editingNote = null)}>Cancel</button
+                    >
                   {/if}
                   <VoiceDictation
                     bind:active={noteVoiceActive}
@@ -207,27 +236,39 @@
                 </div>
               </div>
             {:else if p.note}
-              <p class="mt-2 rounded-md bg-primary/[0.04] px-2.5 py-1.5 text-xs text-foreground/80" data-testid="contribute-note">
+              <p
+                class="mt-2 rounded-md bg-primary/[0.04] px-2.5 py-1.5 text-xs text-foreground/80"
+                data-testid="contribute-note"
+              >
                 {p.note}
               </p>
             {/if}
             {#if share}
-              <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-testid="contribute-sharing">
+              <div
+                class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"
+                data-testid="contribute-sharing"
+              >
                 <span
                   class="rounded-full px-2 py-0.5 text-[13px] {share.state === 'failed'
                     ? 'bg-destructive/10 text-destructive'
                     : 'bg-primary/[0.06] text-foreground/70'}"
                   data-testid="contribute-share-state"
-                  >{SHARE_STATE_LABEL[share.state]}{share.withdrawing ? ' · being withdrawn' : ''}</span
+                  >{SHARE_STATE_LABEL[share.state]}{share.withdrawing
+                    ? ' · being withdrawn'
+                    : ''}</span
                 >
                 {#if share.error}
-                  <span class="text-foreground/60 [overflow-wrap:anywhere]" data-testid="contribute-share-error">{share.error}</span>
+                  <span
+                    class="text-foreground/60 [overflow-wrap:anywhere]"
+                    data-testid="contribute-share-error">{share.error}</span
+                  >
                 {/if}
                 <button
                   type="button"
                   class="cursor-pointer text-muted-foreground hover:text-foreground"
                   disabled={busy === p.id}
-                  onclick={() => void toggleSent(p.id)}>{sentOpen[p.id] ? 'Hide what was sent' : 'Show what was sent'}</button
+                  onclick={() => void toggleSent(p.id)}
+                  >{sentOpen[p.id] ? 'Hide what was sent' : 'Show what was sent'}</button
                 >
                 {#if share.state !== 'not_shared'}
                   <button
@@ -240,7 +281,10 @@
               </div>
               {#if sentOpen[p.id]}
                 {@const sent = sentOpen[p.id]}
-                <div class="mt-2 rounded-md border border-border p-2 text-xs" data-testid="contribute-sent">
+                <div
+                  class="mt-2 rounded-md border border-border p-2 text-xs"
+                  data-testid="contribute-sent"
+                >
                   {#if sent.payload}
                     <p class="text-foreground/60">
                       {sent.isOnHub
@@ -249,9 +293,15 @@
                     </p>
                     <pre
                       class="mt-1 overflow-x-auto text-[13px] whitespace-pre-wrap [overflow-wrap:anywhere]"
-                      data-testid="contribute-sent-payload">{JSON.stringify(sent.payload, null, 2)}</pre>
+                      data-testid="contribute-sent-payload">{JSON.stringify(
+                        sent.payload,
+                        null,
+                        2,
+                      )}</pre>
                   {:else}
-                    <p class="text-foreground/60">Nothing has been prepared or sent for this proposal.</p>
+                    <p class="text-foreground/60">
+                      Nothing has been prepared or sent for this proposal.
+                    </p>
                   {/if}
                 </div>
               {/if}
@@ -260,7 +310,8 @@
               <button
                 type="button"
                 class="mt-1.5 cursor-pointer text-xs text-muted-foreground hover:text-foreground"
-                onclick={() => (editingNote = { id: p.id, text: p.note ?? '' })}>{p.note ? 'Edit note' : 'Add a note'}</button
+                onclick={() => (editingNote = { id: p.id, text: p.note ?? '' })}
+                >{p.note ? 'Edit note' : 'Add a note'}</button
               >
             {/if}
           </div>
@@ -273,13 +324,18 @@
                 class="h-8 rounded-md border border-input bg-background px-2 text-xs"
                 value={p.status}
                 disabled={busy === p.id}
-                onchange={(e) => setStatus(p, (e.currentTarget as HTMLSelectElement).value as ContributionStatus)}
+                onchange={(e) =>
+                  setStatus(p, (e.currentTarget as HTMLSelectElement).value as ContributionStatus)}
               >
-                {#each CONTRIBUTION_STATUSES as s (s)}<option value={s}>{STATUS_LABEL[s]}</option>{/each}
+                {#each CONTRIBUTION_STATUSES as s (s)}<option value={s}>{STATUS_LABEL[s]}</option
+                  >{/each}
               </select>
             </div>
           {:else}
-            <span class="shrink-0 self-start rounded-full bg-primary/[0.06] px-2 py-0.5 text-xs text-foreground/70">{STATUS_LABEL[p.status]}</span>
+            <span
+              class="shrink-0 self-start rounded-full bg-primary/[0.06] px-2 py-0.5 text-xs text-foreground/70"
+              >{STATUS_LABEL[p.status]}</span
+            >
           {/if}
         </li>
       {/each}

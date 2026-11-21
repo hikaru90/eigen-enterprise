@@ -7,6 +7,7 @@ import {
   type RestoreJob,
 } from '$lib/server/ee/client'
 import { CompanyKeyError } from '$lib/server/gitstore/keys'
+import { errorReport, refusalReport } from '$lib/server/errors/report'
 import { _backupsDeps, _requireOwner } from '../../+page.server'
 
 /**
@@ -42,7 +43,10 @@ function snapshotParam(raw: string): string {
   return raw
 }
 
-export const load: PageServerLoad = async ({ locals, params }): Promise<{ restore: RestorePageData }> => {
+export const load: PageServerLoad = async ({
+  locals,
+  params,
+}): Promise<{ restore: RestorePageData }> => {
   await _requireOwner(locals)
   const snapshotId = snapshotParam(params.snapshot)
   try {
@@ -60,7 +64,8 @@ export const load: PageServerLoad = async ({ locals, params }): Promise<{ restor
       },
     }
   } catch (err) {
-    if (err instanceof SubstrateUnavailableError) return { restore: { managed: false, reason: err.message } }
+    if (err instanceof SubstrateUnavailableError)
+      return { restore: { managed: false, reason: err.message } }
     throw err
   }
 }
@@ -73,26 +78,73 @@ export const actions: Actions = {
     const confirmName = (form.get('confirmName') ?? '').toString().trim()
     const code = (form.get('recoveryCode') ?? '').toString().trim()
     const companyName = (await _backupsDeps.companyName())?.trim() ?? null
+    // The agent half never carries the recovery code or the backup key: only which backup.
+    const attempted = `Restoring the backup ${snapshotId} (Settings → Backups → Restore)`
+    const input = { snapshotId }
+    const refuse = (status: number, sentence: string, step: string) =>
+      fail(status, {
+        action: 'restore',
+        ...refusalReport(sentence, { attempted, input, nextSteps: [step] }),
+      })
+    const FORM_STEP =
+      'The restore form was refused before ee was asked (src/routes/(nucleus)/settings/backups/restore/[snapshot]/+page.server.ts); nothing was touched. The sentence says what the person has to fix.'
     if (!companyName) {
-      return fail(409, { action: 'restore', error: 'This company has no name yet. Name it in Settings → Company first — restoring asks you to type it.' })
+      return refuse(
+        409,
+        'This company has no name yet. Name it in Settings → Company first — restoring asks you to type it.',
+        FORM_STEP,
+      )
     }
     if (confirmName !== companyName) {
-      return fail(400, { action: 'restore', error: `Type the company name exactly as shown (${companyName}) to confirm.` })
+      return refuse(
+        400,
+        `Type the company name exactly as shown (${companyName}) to confirm.`,
+        FORM_STEP,
+      )
     }
-    if (!code) return fail(400, { action: 'restore', error: 'Enter the company recovery code (EE1-…).' })
+    if (!code) return refuse(400, 'Enter the company recovery code (EE1-…).', FORM_STEP)
     let backupKey: string
     try {
       backupKey = await _backupsDeps.backupKeyFromCode(code)
     } catch (err) {
-      if (err instanceof CompanyKeyError) return fail(400, { action: 'restore', error: `That recovery code is not right: ${err.message}.` })
+      if (err instanceof CompanyKeyError) {
+        const refused = refuse(
+          400,
+          `That recovery code is not right: ${err.message}.`,
+          'backupKeyFromRecoveryCode refused the code (CompanyKeyError). Only the owner holds the code; an agent never asks for it or types it.',
+        )
+        refused.data.agent.code = 'CompanyKeyError'
+        return refused
+      }
       throw err
     }
     try {
       const { job } = await _backupsDeps.client().restoreBackup({ snapshotId, backupKey, author })
       return { action: 'restore', ok: true as const, job }
     } catch (err) {
-      if (err instanceof SubstrateUnavailableError) return fail(503, { action: 'restore', error: err.message })
-      if (err instanceof SubstrateError) return fail(err.status >= 500 ? 502 : err.status, { action: 'restore', error: err.message })
+      const report = (step: string) =>
+        errorReport(err, {
+          attempted,
+          input,
+          plain: (e) => (e as Error).message,
+          nextSteps: [step],
+        })
+      if (err instanceof SubstrateUnavailableError) {
+        return fail(503, {
+          action: 'restore',
+          ...report(
+            'ee is not reachable from the console. Check `systemctl status ee` and its journal on the server.',
+          ),
+        })
+      }
+      if (err instanceof SubstrateError) {
+        return fail(err.status >= 500 ? 502 : err.status, {
+          action: 'restore',
+          ...report(
+            'ee refused or failed the restore (SubstrateError, `details.status` is its HTTP status). Read the ee journal on the server at the time above; nothing is touched unless every file checked out.',
+          ),
+        })
+      }
       throw err
     }
   },

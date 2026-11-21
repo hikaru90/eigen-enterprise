@@ -13,10 +13,12 @@ const acquire = z.object({ session, takeover: z.boolean().optional() }).strict()
 const beat = z.object({ session }).strict()
 
 export const GET: RequestHandler = (event) =>
-  driveJson(async () => (await driveService()).lockStatus(requestActor(event), event.params.id))
+  driveJson(event, async () =>
+    (await driveService()).lockStatus(requestActor(event), event.params.id),
+  )
 
 export const POST: RequestHandler = (event) =>
-  driveJson(async () => {
+  driveJson(event, async () => {
     const actor = requestActor(event)
     const b = await parseBody(event.request, acquire)
     return (await driveService()).acquireLock(actor, event.params.id, b.session, {
@@ -25,14 +27,14 @@ export const POST: RequestHandler = (event) =>
   })
 
 export const PUT: RequestHandler = (event) =>
-  driveJson(async () => {
+  driveJson(event, async () => {
     const actor = requestActor(event)
     const b = await parseBody(event.request, beat)
     return (await driveService()).heartbeatLock(actor, event.params.id, b.session)
   })
 
 export const DELETE: RequestHandler = (event) =>
-  driveJson(async () => {
+  driveJson(event, async () => {
     const actor = requestActor(event)
     const s = session.safeParse(event.url.searchParams.get('session'))
     if (!s.success)

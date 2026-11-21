@@ -1,26 +1,60 @@
 import { describe, expect, it } from 'vitest'
-import { callReducer, initialCallState, problemFromResponse, tilesOf, type CallParticipant } from './call-state'
+import {
+  callReducer,
+  initialCallState,
+  problemFromResponse,
+  tilesOf,
+  type CallParticipant,
+} from './call-state'
 
-const run = (...events: Parameters<typeof callReducer>[1][]) => events.reduce(callReducer, initialCallState)
+const run = (...events: Parameters<typeof callReducer>[1][]) =>
+  events.reduce(callReducer, initialCallState)
 
 describe('callReducer', () => {
   it('starts connecting with everything off', () => {
-    expect(initialCallState).toEqual({ phase: 'connecting', problem: null, ended: null, mic: false, camera: false, screen: false, notices: [] })
+    expect(initialCallState).toEqual({
+      phase: 'connecting',
+      problem: null,
+      ended: null,
+      mic: false,
+      camera: false,
+      screen: false,
+      notices: [],
+    })
   })
 
   it('connecting → connected → reconnecting → connected', () => {
     expect(run({ type: 'connected' }).phase).toBe('connected')
     expect(run({ type: 'connected' }, { type: 'reconnecting' }).phase).toBe('reconnecting')
-    expect(run({ type: 'connected' }, { type: 'reconnecting' }, { type: 'reconnected' }).phase).toBe('connected')
+    expect(
+      run({ type: 'connected' }, { type: 'reconnecting' }, { type: 'reconnected' }).phase,
+    ).toBe('connected')
   })
 
   it('a disconnect ends the call view with its reason; media flags go off', () => {
-    const s = run({ type: 'connected' }, { type: 'media', device: 'microphone', on: true }, { type: 'disconnected', reason: 'call_over' })
-    expect(s).toMatchObject({ phase: 'ended', ended: 'call_over', mic: false, camera: false, screen: false })
+    const s = run(
+      { type: 'connected' },
+      { type: 'media', device: 'microphone', on: true },
+      { type: 'disconnected', reason: 'call_over' },
+    )
+    expect(s).toMatchObject({
+      phase: 'ended',
+      ended: 'call_over',
+      mic: false,
+      camera: false,
+      screen: false,
+    })
   })
 
   it('a failure is an error with its problem; retry goes back to connecting', () => {
-    const s = run({ type: 'failed', problem: { kind: 'not_configured', message: 'Calls are not set up on this server' } })
+    const s = run({
+      type: 'failed',
+      problem: {
+        kind: 'not_configured',
+        message: 'Calls are not set up on this server',
+        agent: null,
+      },
+    })
     expect(s).toMatchObject({ phase: 'error', problem: { kind: 'not_configured' } })
     expect(callReducer(s, { type: 'retry' })).toEqual(initialCallState)
   })
@@ -43,11 +77,18 @@ describe('callReducer', () => {
   })
 
   it('a blocked camera is a notice that says what to do; the call stays connected; turning it on again clears it', () => {
-    const s = run({ type: 'connected' }, { type: 'media_failed', device: 'camera', failure: 'permission_denied' })
+    const s = run(
+      { type: 'connected' },
+      { type: 'media_failed', device: 'camera', failure: 'permission_denied' },
+    )
     expect(s.phase).toBe('connected')
     expect(s.camera).toBe(false)
     expect(s.notices).toEqual([
-      { device: 'camera', failure: 'permission_denied', message: expect.stringMatching(/blocked the camera.*Allow camera access/s) },
+      {
+        device: 'camera',
+        failure: 'permission_denied',
+        message: expect.stringMatching(/blocked the camera.*Allow camera access/s),
+      },
     ])
     expect(callReducer(s, { type: 'media', device: 'camera', on: true }).notices).toEqual([])
     expect(callReducer(s, { type: 'dismiss_notice', device: 'camera' }).notices).toEqual([])
@@ -70,18 +111,63 @@ describe('callReducer', () => {
 
 describe('problemFromResponse', () => {
   it('maps the server’s error code, never its wording', () => {
-    expect(problemFromResponse(503, { code: 'not_configured', error: 'Calls are not set up on this server (missing LIVEKIT_URL)' })).toEqual({
+    expect(
+      problemFromResponse(503, {
+        code: 'not_configured',
+        error: 'Calls are not set up on this server (missing LIVEKIT_URL)',
+      }),
+    ).toEqual({
       kind: 'not_configured',
       message: 'Calls are not set up on this server (missing LIVEKIT_URL)',
+      agent: null,
     })
-    expect(problemFromResponse(409, { code: 'conflict', error: 'this call is over' })).toEqual({ kind: 'over', message: 'this call is over' })
-    expect(problemFromResponse(404, { code: 'not_found', error: 'call not found' })).toEqual({ kind: 'over', message: 'call not found' })
-    expect(problemFromResponse(500, { error: 'boom' })).toEqual({ kind: 'failed', message: 'boom' })
-    expect(problemFromResponse(502, {})).toEqual({ kind: 'failed', message: 'request failed (502)' })
+    expect(problemFromResponse(409, { code: 'conflict', error: 'this call is over' })).toEqual({
+      kind: 'over',
+      message: 'this call is over',
+      agent: null,
+    })
+    expect(problemFromResponse(404, { code: 'not_found', error: 'call not found' })).toEqual({
+      kind: 'over',
+      message: 'call not found',
+      agent: null,
+    })
+    expect(problemFromResponse(500, { error: 'boom' })).toEqual({
+      kind: 'failed',
+      message: 'boom',
+      agent: null,
+    })
+    expect(problemFromResponse(502, {})).toEqual({
+      kind: 'failed',
+      message: 'request failed (502)',
+      agent: null,
+    })
+  })
+
+  it('carries the server’s agent report (the one error shape) with the problem', () => {
+    const agent = {
+      attempted: 'Starting a call',
+      code: 'CallsError',
+      nextSteps: ['Read the server journal.'],
+    }
+    expect(
+      problemFromResponse(503, {
+        code: 'not_configured',
+        error: 'Calls are not set up on this server',
+        agent,
+      }),
+    ).toEqual({
+      kind: 'not_configured',
+      message: 'Calls are not set up on this server',
+      agent,
+    })
   })
 
   it('a part of the call the server has not set up (speech to text for transcripts): unavailable', () => {
-    expect(problemFromResponse(503, { code: 'unavailable', error: 'No speech to text' })).toEqual({ kind: 'unavailable', message: 'No speech to text' })
+    expect(problemFromResponse(503, { code: 'unavailable', error: 'No speech to text' })).toEqual({
+      kind: 'unavailable',
+      message: 'No speech to text',
+      agent: null,
+    })
   })
 })
 

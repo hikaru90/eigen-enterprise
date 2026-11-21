@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { sessionPlace } from '$lib/auth/session-label'
   import type { PageProps } from './$types'
   import { invalidateAll } from '$app/navigation'
@@ -56,7 +57,11 @@
   </div>
 
   {#if error}
-    <p class="text-xs text-destructive" role="alert">{error}</p>
+    <ErrorNotice
+      class="text-xs"
+      {error}
+      attempted="Registering a passkey for this machine (browser WebAuthn prompt, Settings → Passkeys)"
+    />
   {/if}
 
   {#if data.passkeys.length}

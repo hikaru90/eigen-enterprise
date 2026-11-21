@@ -8,6 +8,7 @@
   import Video from '@lucide/svelte/icons/video'
   import VideoOff from '@lucide/svelte/icons/video-off'
   import { onDestroy } from 'svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import PublicFrame from '$lib/components/page/public-frame.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
@@ -95,7 +96,9 @@
     try {
       preview = await getMedia({ video: true, audio: true })
     } catch (err) {
-      const denied = err instanceof DOMException && (err.name === 'NotAllowedError' || err.name === 'SecurityError')
+      const denied =
+        err instanceof DOMException &&
+        (err.name === 'NotAllowedError' || err.name === 'SecurityError')
       mediaProblem = denied
         ? 'Your browser blocked the camera and microphone. Allow them for this page (the icon in the address bar), or join without them.'
         : `Your camera or microphone did not start (${err instanceof Error ? err.message : String(err)}). You can join without them.`
@@ -107,7 +110,8 @@
   function toggle(kind: 'audio' | 'video') {
     if (kind === 'audio') micOn = !micOn
     else camOn = !camOn
-    for (const t of preview?.getTracks() ?? []) if (t.kind === kind) t.enabled = kind === 'audio' ? micOn : camOn
+    for (const t of preview?.getTracks() ?? [])
+      if (t.kind === kind) t.enabled = kind === 'audio' ? micOn : camOn
   }
 
   function join() {
@@ -119,7 +123,10 @@
     active = a
     transcription = t
     refresher = setInterval(() => {
-      if (a.inCall) a.refresh().catch((err: unknown) => console.error('[calls] refreshing the guest call failed', err))
+      if (a.inCall)
+        a.refresh().catch((err: unknown) =>
+          console.error('[calls] refreshing the guest call failed', err),
+        )
     }, REFRESH_MS)
     step = 'call'
   }
@@ -153,93 +160,158 @@
 </script>
 
 <div class="contents" data-testid="guest-page">
-{#if step === 'call' && active && call && view}
-  <div class="flex h-dvh flex-col" data-testid="guest-call">
-    <CallView
-      {active}
-      {call}
-      me={view.identity}
-      leaveLabel="Back"
-      onleave={back}
-      onhungup={() => {}}
-      onopen={() => {}}
-      startWith={{ microphone: micOn, camera: camOn }}
-      {transcription}
-    />
-  </div>
-{:else}
-  <PublicFrame
-    title={headline}
-    subtitle={view && view.status === 'ok' ? `${view.hostName}${company} invited you to a video call.` : null}
-  >
-    <div data-testid="guest-state" data-status={view ? view.status : 'not_found'} class="text-center text-sm text-muted-foreground">
-      {#if !view}
-        <p>Check that you opened the whole link from your invitation, or ask the person who invited you for a new one.</p>
-      {:else if view.status === 'too_early'}
-        <p>
-          <strong class="text-foreground">{view.title}</strong> starts {dayFmt.format(new Date(view.scheduledStart))}. The call opens at
-          {timeFmt.format(new Date(view.opensAt))} — come back then with the same link.
-        </p>
-      {:else if view.status === 'expired'}
-        <p>It worked until {dayFmt.format(new Date(view.closesAt))}. Ask {view.hostName} for a new invitation.</p>
-      {:else if view.status === 'over'}
-        <p>{view.hostName} ended <strong class="text-foreground">{view.title}</strong>.</p>
-      {:else if view.status === 'revoked'}
-        <p>{view.hostName} withdrew your invitation to <strong class="text-foreground">{view.title}</strong>.</p>
-      {:else}
-        <p>{dayFmt.format(new Date(view.scheduledStart))} – {timeFmt.format(new Date(view.scheduledEnd))}</p>
-      {/if}
+  {#if step === 'call' && active && call && view}
+    <div class="flex h-dvh flex-col" data-testid="guest-call">
+      <CallView
+        {active}
+        {call}
+        me={view.identity}
+        leaveLabel="Back"
+        onleave={back}
+        onhungup={() => {}}
+        onopen={() => {}}
+        startWith={{ microphone: micOn, camera: camOn }}
+        {transcription}
+      />
     </div>
-
-    {#if view && view.status === 'ok'}
-      {#if step === 'name'}
-        <form class="mt-6 flex flex-col gap-3" onsubmit={next} novalidate>
-          <div class="flex flex-col gap-1.5">
-            <Label for="guest-name">Your name</Label>
-            <Input id="guest-name" bind:value={name} maxlength={80} autocomplete="name" data-testid="guest-name" />
-          </div>
-          {#if error}<p class="text-sm text-destructive" role="alert" data-testid="guest-error">{error}</p>{/if}
-          <Button type="submit" data-testid="guest-continue">Continue</Button>
-          <p class="text-center text-xs text-muted-foreground">No account, no install — the call runs in this browser. You join as a guest.</p>
-        </form>
-      {:else}
-        <div class="mt-6 flex flex-col gap-3" data-testid="guest-preview">
-          <div class="relative aspect-video overflow-hidden rounded-xl bg-neutral-900">
-            {#if preview && camOn}
-              <video use:attach={preview} autoplay playsinline muted class="size-full -scale-x-100 object-cover" data-testid="guest-preview-video"></video>
-            {:else}
-              <div class="grid size-full place-items-center text-sm text-neutral-400">Camera off</div>
-            {/if}
-            <span class="absolute bottom-2 left-2 rounded-md bg-black/60 px-2 py-1 text-xs font-medium text-white">{name.trim()}</span>
-          </div>
-          <div class="flex justify-center gap-2">
-            <button
-              type="button"
-              class={['grid size-11 place-items-center rounded-full', micOn ? 'bg-foreground/[0.08]' : 'bg-foreground text-background']}
-              aria-label={micOn ? 'Mute' : 'Unmute'}
-              aria-pressed={!micOn}
-              disabled={!preview}
-              onclick={() => toggle('audio')}>{#if micOn}<Mic class="size-5" />{:else}<MicOff class="size-5" />{/if}</button
-            >
-            <button
-              type="button"
-              class={['grid size-11 place-items-center rounded-full', camOn ? 'bg-foreground/[0.08]' : 'bg-foreground text-background']}
-              aria-label={camOn ? 'Turn camera off' : 'Turn camera on'}
-              aria-pressed={!camOn}
-              disabled={!preview}
-              onclick={() => toggle('video')}>{#if camOn}<Video class="size-5" />{:else}<VideoOff class="size-5" />{/if}</button
-            >
-          </div>
-          {#if mediaProblem}<p class="text-sm text-muted-foreground" role="status" data-testid="guest-media-problem">{mediaProblem}</p>{/if}
-          <p class="text-center text-xs text-muted-foreground" data-testid="guest-transcript-notice">
-            This call is transcribed: what you say is written down for the people in the call. You can turn it off for your
-            microphone in the call.
+  {:else}
+    <PublicFrame
+      title={headline}
+      subtitle={view && view.status === 'ok'
+        ? `${view.hostName}${company} invited you to a video call.`
+        : null}
+    >
+      <div
+        data-testid="guest-state"
+        data-status={view ? view.status : 'not_found'}
+        class="text-center text-sm text-muted-foreground"
+      >
+        {#if !view}
+          <p>
+            Check that you opened the whole link from your invitation, or ask the person who invited
+            you for a new one.
           </p>
-          <Button type="button" onclick={join} data-testid="guest-join">Join the call</Button>
-          <button type="button" class="text-xs text-muted-foreground hover:text-foreground" onclick={() => (stopPreview(), (step = 'name'))}>Change name</button>
-        </div>
+        {:else if view.status === 'too_early'}
+          <p>
+            <strong class="text-foreground">{view.title}</strong> starts {dayFmt.format(
+              new Date(view.scheduledStart),
+            )}. The call opens at
+            {timeFmt.format(new Date(view.opensAt))} — come back then with the same link.
+          </p>
+        {:else if view.status === 'expired'}
+          <p>
+            It worked until {dayFmt.format(new Date(view.closesAt))}. Ask {view.hostName} for a new invitation.
+          </p>
+        {:else if view.status === 'over'}
+          <p>{view.hostName} ended <strong class="text-foreground">{view.title}</strong>.</p>
+        {:else if view.status === 'revoked'}
+          <p>
+            {view.hostName} withdrew your invitation to
+            <strong class="text-foreground">{view.title}</strong>.
+          </p>
+        {:else}
+          <p>
+            {dayFmt.format(new Date(view.scheduledStart))} – {timeFmt.format(
+              new Date(view.scheduledEnd),
+            )}
+          </p>
+        {/if}
+      </div>
+
+      {#if view && view.status === 'ok'}
+        {#if step === 'name'}
+          <form class="mt-6 flex flex-col gap-3" onsubmit={next} novalidate>
+            <div class="flex flex-col gap-1.5">
+              <Label for="guest-name">Your name</Label>
+              <Input
+                id="guest-name"
+                bind:value={name}
+                maxlength={80}
+                autocomplete="name"
+                data-testid="guest-name"
+              />
+            </div>
+            {#if error}<ErrorNotice
+                testid="guest-error"
+                {error}
+                attempted="A guest joining a call from their link"
+              />{/if}
+            <Button type="submit" data-testid="guest-continue">Continue</Button>
+            <p class="text-center text-xs text-muted-foreground">
+              No account, no install — the call runs in this browser. You join as a guest.
+            </p>
+          </form>
+        {:else}
+          <div class="mt-6 flex flex-col gap-3" data-testid="guest-preview">
+            <div class="relative aspect-video overflow-hidden rounded-xl bg-neutral-900">
+              {#if preview && camOn}
+                <video
+                  use:attach={preview}
+                  autoplay
+                  playsinline
+                  muted
+                  class="size-full -scale-x-100 object-cover"
+                  data-testid="guest-preview-video"
+                ></video>
+              {:else}
+                <div class="grid size-full place-items-center text-sm text-neutral-400">
+                  Camera off
+                </div>
+              {/if}
+              <span
+                class="absolute bottom-2 left-2 rounded-md bg-black/60 px-2 py-1 text-xs font-medium text-white"
+                >{name.trim()}</span
+              >
+            </div>
+            <div class="flex justify-center gap-2">
+              <button
+                type="button"
+                class={[
+                  'grid size-11 place-items-center rounded-full',
+                  micOn ? 'bg-foreground/[0.08]' : 'bg-foreground text-background',
+                ]}
+                aria-label={micOn ? 'Mute' : 'Unmute'}
+                aria-pressed={!micOn}
+                disabled={!preview}
+                onclick={() => toggle('audio')}
+                >{#if micOn}<Mic class="size-5" />{:else}<MicOff class="size-5" />{/if}</button
+              >
+              <button
+                type="button"
+                class={[
+                  'grid size-11 place-items-center rounded-full',
+                  camOn ? 'bg-foreground/[0.08]' : 'bg-foreground text-background',
+                ]}
+                aria-label={camOn ? 'Turn camera off' : 'Turn camera on'}
+                aria-pressed={!camOn}
+                disabled={!preview}
+                onclick={() => toggle('video')}
+                >{#if camOn}<Video class="size-5" />{:else}<VideoOff class="size-5" />{/if}</button
+              >
+            </div>
+            {#if mediaProblem}<p
+                class="text-sm text-muted-foreground"
+                role="status"
+                data-testid="guest-media-problem"
+              >
+                {mediaProblem}
+              </p>{/if}
+            <p
+              class="text-center text-xs text-muted-foreground"
+              data-testid="guest-transcript-notice"
+            >
+              This call is transcribed: what you say is written down for the people in the call. You
+              can turn it off for your microphone in the call.
+            </p>
+            <Button type="button" onclick={join} data-testid="guest-join">Join the call</Button>
+            <button
+              type="button"
+              class="text-xs text-muted-foreground hover:text-foreground"
+              onclick={() => (stopPreview(), (step = 'name'))}>Change name</button
+            >
+          </div>
+        {/if}
       {/if}
-    {/if}
-  </PublicFrame>
-{/if}
+    </PublicFrame>
+  {/if}
 </div>

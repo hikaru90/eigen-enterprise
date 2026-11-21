@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import { onMount } from 'svelte'
   import { invalidateAll } from '$app/navigation'
@@ -88,9 +89,10 @@
     catalogError = null
     try {
       const res = await fetch('/api/onboarding/catalog')
-      const body = (await res.json().catch(() => null)) as
-        | { providers?: CatalogProvider[]; error?: string }
-        | null
+      const body = (await res.json().catch(() => null)) as {
+        providers?: CatalogProvider[]
+        error?: string
+      } | null
       if (!res.ok || !body?.providers) {
         throw new Error(body?.error ?? `Provider catalog failed (${res.status})`)
       }
@@ -150,9 +152,11 @@
     subEmbeddingModels = []
     try {
       const res = await fetch(`/api/onboarding/catalog/models?provider=${catalogId}`)
-      const body = (await res.json().catch(() => null)) as
-        | { chatModels?: CatalogModel[]; embeddingModels?: CatalogModel[]; error?: string }
-        | null
+      const body = (await res.json().catch(() => null)) as {
+        chatModels?: CatalogModel[]
+        embeddingModels?: CatalogModel[]
+        error?: string
+      } | null
       if (!res.ok || !body?.chatModels) {
         throw new Error(body?.error ?? `Model list failed (${res.status})`)
       }
@@ -185,7 +189,10 @@
               modelEmbedding: chosenEmbeddingModel.trim(),
             }),
           })
-          const body = (await res.json().catch(() => null)) as { url?: string; error?: string } | null
+          const body = (await res.json().catch(() => null)) as {
+            url?: string
+            error?: string
+          } | null
           if (!res.ok || !body?.url) {
             throw new Error(body?.error ?? `Sign-in could not start (${res.status})`)
           }
@@ -209,15 +216,13 @@
     phase = 'connecting'
     try {
       const res = await fetch('/api/onboarding/copilot/start', { method: 'POST' })
-      const body = (await res.json().catch(() => null)) as
-        | {
-            deviceCode?: string
-            userCode?: string
-            verificationUri?: string
-            intervalSeconds?: number
-            error?: string
-          }
-        | null
+      const body = (await res.json().catch(() => null)) as {
+        deviceCode?: string
+        userCode?: string
+        verificationUri?: string
+        intervalSeconds?: number
+        error?: string
+      } | null
       if (!res.ok || !body?.deviceCode || !body.userCode || !body.verificationUri) {
         throw new Error(body?.error ?? `Sign-in could not start (${res.status})`)
       }
@@ -241,9 +246,12 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ deviceCode, modelChat: chosenChatModel.trim() }),
       })
-      const body = (await res.json().catch(() => null)) as
-        | { status?: string; error?: string; models?: string[]; baseUrl?: string }
-        | null
+      const body = (await res.json().catch(() => null)) as {
+        status?: string
+        error?: string
+        models?: string[]
+        baseUrl?: string
+      } | null
       if (body?.status === 'pending') return
       if (pollTimer) clearInterval(pollTimer)
       pollTimer = null
@@ -322,7 +330,11 @@
   }
 </script>
 
-<div class={embedded ? 'flex w-full flex-col items-center justify-center' : 'flex min-h-dvh flex-col items-center justify-center px-4'}>
+<div
+  class={embedded
+    ? 'flex w-full flex-col items-center justify-center'
+    : 'flex min-h-dvh flex-col items-center justify-center px-4'}
+>
   <div class={embedded ? 'w-full' : 'w-full max-w-md'}>
     {#if !embedded}
       <p class="text-center text-sm font-semibold tracking-tight text-muted-foreground">
@@ -330,20 +342,24 @@
       </p>
     {/if}
 
-    <h1 class={embedded ? 'text-center text-xl font-medium tracking-tight text-balance' : 'mt-8 text-center text-xl font-medium tracking-tight text-balance'}>
+    <h1
+      class={embedded
+        ? 'text-center text-xl font-medium tracking-tight text-balance'
+        : 'mt-8 text-center text-xl font-medium tracking-tight text-balance'}
+    >
       Connect your AI provider.
     </h1>
     <p class="text-muted-foreground mt-2 text-center text-sm leading-relaxed">
-      Your agent runs on credentials you own. Sign in with a subscription you already have, or
-      bring an API key.
+      Your agent runs on credentials you own. Sign in with a subscription you already have, or bring
+      an API key.
     </p>
 
     {#if !byokUiEnabled}
       <div class="mt-8 border border-black/15 p-4">
         <p class="text-sm leading-relaxed">
-          This deployment manages AI provider credentials centrally. The operator of this
-          deployment configures them on the server (provider environment variables) — once they
-          do, the workspace opens by itself.
+          This deployment manages AI provider credentials centrally. The operator of this deployment
+          configures them on the server (provider environment variables) — once they do, the
+          workspace opens by itself.
         </p>
       </div>
     {:else if step === 'connected'}
@@ -400,7 +416,11 @@
             </span>
           </button>
           {#if error}
-            <p class="text-destructive text-xs leading-relaxed">{error}</p>
+            <ErrorNotice
+              class="text-xs leading-relaxed"
+              {error}
+              attempted="Starting sign-in with an AI provider (OpenRouter or GitHub Copilot) during onboarding"
+            />
           {/if}
         </div>
       {:else}
@@ -423,7 +443,11 @@
           </p>
         {:else if catalogError}
           <div class="mt-6">
-            <p class="text-destructive text-xs leading-relaxed">{catalogError}</p>
+            <ErrorNotice
+              class="text-xs leading-relaxed"
+              error={catalogError}
+              attempted="Loading the AI provider list (GET /api/onboarding/catalog)"
+            />
             <button
               type="button"
               class="mt-3 h-9 border-2 border-black px-4 text-xs font-medium"
@@ -459,7 +483,11 @@
               {/each}
             </div>
             {#if error}
-              <p class="text-destructive mt-3 text-xs leading-relaxed">{error}</p>
+              <ErrorNotice
+                class="mt-3 text-xs leading-relaxed"
+                {error}
+                attempted="Choosing an AI provider during onboarding"
+              />
             {/if}
           </div>
         {/if}
@@ -475,7 +503,11 @@
             Loading models…
           </p>
         {:else if subModelsError}
-          <p class="text-destructive text-xs leading-relaxed">{subModelsError}</p>
+          <ErrorNotice
+            class="text-xs leading-relaxed"
+            error={subModelsError}
+            attempted="Loading the provider's models (GET /api/onboarding/catalog/models)"
+          />
           <button
             type="button"
             class="h-9 border-2 border-black px-4 text-xs font-medium"
@@ -525,9 +557,7 @@
                   <option value={model.id}>{model.name}</option>
                 {/each}
               </datalist>
-              <p class="text-muted-foreground mt-1 text-xs">
-                Needed for memory features.
-              </p>
+              <p class="text-muted-foreground mt-1 text-xs">Needed for memory features.</p>
             </div>
           {:else}
             <p class="text-muted-foreground text-xs leading-relaxed">
@@ -544,7 +574,11 @@
             Continue
           </button>
           {#if error}
-            <p class="text-destructive text-xs leading-relaxed">{error}</p>
+            <ErrorNotice
+              class="text-xs leading-relaxed"
+              {error}
+              attempted="Choosing the chat model during onboarding"
+            />
           {/if}
           {#if connecting && subscriptionFlow === 'openrouter-signin'}
             <p class="text-muted-foreground flex items-center gap-2 text-xs">
@@ -679,7 +713,11 @@
           </div>
         {/if}
         {#if error}
-          <p class="text-destructive text-xs leading-relaxed">{error}</p>
+          <ErrorNotice
+            class="text-xs leading-relaxed"
+            {error}
+            attempted="Connecting the AI provider with its API key and testing it during onboarding"
+          />
         {/if}
         <button
           type="button"
@@ -728,7 +766,11 @@
           </p>
         {/if}
         {#if error}
-          <p class="text-destructive text-xs leading-relaxed">{error}</p>
+          <ErrorNotice
+            class="text-xs leading-relaxed"
+            {error}
+            attempted="Signing in to GitHub Copilot (device code) during onboarding"
+          />
         {/if}
       </div>
     {/if}

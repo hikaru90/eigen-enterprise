@@ -25,29 +25,31 @@ function event(
 
 describe('PUT /api/timeline/projects/[entityId]/update', () => {
   it('returns 401 when unauthenticated', async () => {
-    await expect(PUT(event({ user: null }))).rejects.toMatchObject({ status: 401 })
+    expect((await PUT(event({ user: null }))).status).toBe(401)
   })
 
   it('returns 400 when entityId is missing', async () => {
-    await expect(PUT(event({ entityId: ' ' }))).rejects.toMatchObject({ status: 400 })
+    expect((await PUT(event({ entityId: ' ' }))).status).toBe(400)
   })
 
   it('returns 400 for invalid JSON body', async () => {
-    await expect(
-      PUT({
-        locals: { user: { id: 'u1' } },
-        params: { entityId: 'ent-1' },
-        request: new Request('http://localhost', {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: 'not-json',
-        }),
-      } as Parameters<typeof PUT>[0]),
-    ).rejects.toMatchObject({ status: 400 })
+    expect(
+      (
+        await PUT({
+          locals: { user: { id: 'u1' } },
+          params: { entityId: 'ent-1' },
+          request: new Request('http://localhost', {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: 'not-json',
+          }),
+        } as Parameters<typeof PUT>[0])
+      ).status,
+    ).toBe(400)
   })
 
   it('returns 400 when label is empty', async () => {
-    await expect(PUT(event({ body: { label: '  ' } }))).rejects.toMatchObject({ status: 400 })
+    expect((await PUT(event({ body: { label: '  ' } }))).status).toBe(400)
   })
 
   it('updates the project label', async () => {
@@ -60,6 +62,6 @@ describe('PUT /api/timeline/projects/[entityId]/update', () => {
 
   it('returns 400 when service rejects', async () => {
     updateProjectLabelMock.mockRejectedValue(new Error('not found'))
-    await expect(PUT(event({ body: { label: 'x' } }))).rejects.toMatchObject({ status: 400 })
+    expect((await PUT(event({ body: { label: 'x' } }))).status).toBe(400)
   })
 })

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { APPROVAL_MODE_OPTIONS, type ApprovalMode } from '$lib/chat/approvals-client'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
 
   type Props = {
     /** The stored mode, or null when it could not be loaded. */
@@ -50,9 +51,17 @@
       {/each}
     </select>
   {:else}
-    <p class="text-destructive">Approval mode could not be loaded.</p>
+    <ErrorNotice
+      class="text-xs"
+      error="Approval mode could not be loaded."
+      attempted="Loading the chat approval mode (GET /api/approvals/mode)"
+    />
   {/if}
   {#if error}
-    <p class="text-destructive" role="alert">{error}</p>
+    <ErrorNotice
+      class="text-xs"
+      {error}
+      attempted="Changing the chat approval mode (PUT /api/approvals/mode)"
+    />
   {/if}
 </div>

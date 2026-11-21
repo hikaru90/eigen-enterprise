@@ -17,7 +17,8 @@ const location = (fn: () => unknown) => {
   }
   throw new Error('expected a redirect')
 }
-const at = (rest: string, search = '') => ({ params: { rest }, url: new URL(`https://os.test/x${search}`) }) as never
+const at = (rest: string, search = '') =>
+  ({ params: { rest }, url: new URL(`https://os.test/x${search}`) }) as never
 
 describe('moved Email pages', () => {
   it.each([
@@ -27,9 +28,15 @@ describe('moved Email pages', () => {
     [flows, '', '', '/m/email/marketing/flows'],
     [flows, 'f1', '', '/m/email/marketing/flows/f1'],
   ] as const)('%# %s%s → %s', (mod, rest, search, want) => {
-    expect(location(() => mod.load(at(rest, search)))).toMatchObject({ status: 308, location: want })
+    expect(location(() => mod.load(at(rest, search)))).toMatchObject({
+      status: 308,
+      location: want,
+    })
   })
   it('/m/email/marketing opens its lists', () => {
-    expect(location(() => marketing.load(at('', '?x=1')))).toMatchObject({ status: 307, location: '/m/email/marketing/lists?x=1' })
+    expect(location(() => marketing.load(at('', '?x=1')))).toMatchObject({
+      status: 307,
+      location: '/m/email/marketing/lists?x=1',
+    })
   })
 })

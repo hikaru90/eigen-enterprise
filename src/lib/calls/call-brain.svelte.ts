@@ -1,6 +1,7 @@
 import type { ActiveCall } from './active-call.svelte'
 import type { BrainAnswerDto, BrainClient, CallDto, SharedBrainAnswerDto } from './client'
-import { problemOf } from './client'
+import type { ShownError } from '$lib/errors/agent-report'
+import { shownProblemOf } from './client'
 
 /**
  * The Company Brain in a call, my side (modules/calls/brain.ts): its switch
@@ -27,7 +28,7 @@ export class CallBrain {
   #pending = $state<boolean | null>(null)
   #answers = $state<BrainAnswerDto[]>([])
   #asking = $state(false)
-  #problem = $state<string | null>(null)
+  #problem = $state<ShownError | null>(null)
   readonly #d: CallBrainDeps
 
   constructor(deps: CallBrainDeps) {
@@ -62,7 +63,7 @@ export class CallBrain {
     return this.#asking
   }
 
-  get problem(): string | null {
+  get problem(): ShownError | null {
     return this.#problem
   }
 
@@ -77,7 +78,7 @@ export class CallBrain {
     try {
       this.#answers = await this.#d.client.myBrainAnswers(call.id)
     } catch (err) {
-      this.#problem = `Your earlier answers could not be loaded: ${problemOf(err).message}`
+      this.#problem = shownProblemOf(err, 'Your earlier answers could not be loaded: ')
     }
   }
 
@@ -90,7 +91,10 @@ export class CallBrain {
     try {
       this.#d.active.update(await this.#d.client.setBrain(call.id, on))
     } catch (err) {
-      this.#problem = `The Company Brain could not be switched ${on ? 'on' : 'off'}: ${problemOf(err).message}`
+      this.#problem = shownProblemOf(
+        err,
+        `The Company Brain could not be switched ${on ? 'on' : 'off'}: `,
+      )
     } finally {
       this.#pending = null
     }
@@ -107,7 +111,7 @@ export class CallBrain {
       this.#answers = [...this.#answers, await this.#d.client.askBrain(call.id, q)]
       return true
     } catch (err) {
-      this.#problem = problemOf(err).message
+      this.#problem = shownProblemOf(err)
       return false
     } finally {
       this.#asking = false
@@ -122,7 +126,7 @@ export class CallBrain {
       this.#d.active.update(await this.#d.client.shareBrainAnswer(call.id, answerId))
       this.#answers = this.#answers.map((a) => (a.id === answerId ? { ...a, shared: true } : a))
     } catch (err) {
-      this.#problem = `The answer could not be shared: ${problemOf(err).message}`
+      this.#problem = shownProblemOf(err, 'The answer could not be shared: ')
     }
   }
 }

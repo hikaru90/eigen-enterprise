@@ -1,8 +1,12 @@
 import type { RequestHandler } from './$types'
 import { json } from '@sveltejs/kit'
 import { z } from 'zod'
+import { errorReport, refusalReport } from '$lib/server/errors/report'
 import { emailPlatform } from '../../../../../../modules/email/platform/service'
-import { TemplateError, TemplateRenderError } from '../../../../../../modules/email/platform/templates/service'
+import {
+  TemplateError,
+  TemplateRenderError,
+} from '../../../../../../modules/email/platform/templates/service'
 
 /**
  * POST /api/mail/templates/preview — the editors' live preview (signed-in
@@ -30,17 +34,39 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   try {
     const asLayout = layout.safeParse(body)
     if (asLayout.success) {
-      const out = await templates.previewLayout(asLayout.data.layout.format, asLayout.data.layout.body)
+      const out = await templates.previewLayout(
+        asLayout.data.layout.format,
+        asLayout.data.layout.body,
+      )
       return json({ html: out.html, problems: out.problems, missing: out.missing })
     }
     const parsed = draft.safeParse(body)
-    if (!parsed.success) return json({ error: 'Send { template, variables } or { layout }.' }, { status: 400 })
+    if (!parsed.success)
+      return json(
+        refusalReport('Send { template, variables } or { layout }.', {
+          attempted: 'Rendering the live preview of an email template or layout',
+          cause: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+          nextSteps: [
+            'The editor posted a body matching neither shape of POST /api/mail/templates/preview (src/routes/api/mail/templates/preview/+server.ts); fix the page that builds it.',
+          ],
+        }),
+        { status: 400 },
+      )
     const { template, variables } = parsed.data
     const out = await templates.preview({ ...template, sampleVariables: variables }, variables)
     return json(out)
   } catch (err) {
     if (err instanceof TemplateError || err instanceof TemplateRenderError) {
-      return json({ error: err.message, problems: err instanceof TemplateRenderError ? err.problems : [] }, { status: 422 })
+      return json(
+        {
+          ...errorReport(err, {
+            attempted: 'Rendering the live preview of an email template or layout',
+            plain: () => err.message,
+          }),
+          problems: err instanceof TemplateRenderError ? err.problems : [],
+        },
+        { status: 422 },
+      )
     }
     throw err
   }

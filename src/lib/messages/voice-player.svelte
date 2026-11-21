@@ -6,6 +6,7 @@
 <script lang="ts">
   import Pause from '@lucide/svelte/icons/pause'
   import Play from '@lucide/svelte/icons/play'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { formatVoiceTimer } from '$lib/voice/voice-message'
 
   /**
@@ -36,7 +37,11 @@
   const total = $derived(Math.max(0, durationMs) / 1000)
   const shown = $derived(Math.min(position, total))
   // at rest the player says how long the recording is; once started, where it is
-  const timeLabel = $derived(playerState === 'idle' && position === 0 ? formatVoiceTimer(durationMs) : formatVoiceTimer(shown * 1000))
+  const timeLabel = $derived(
+    playerState === 'idle' && position === 0
+      ? formatVoiceTimer(durationMs)
+      : formatVoiceTimer(shown * 1000),
+  )
   const playing = $derived(playerState === 'playing')
 
   function toggle(): void {
@@ -132,7 +137,9 @@
       data-testid="{testid}-seek"
       oninput={seek}
     />
-    <span class="shrink-0 text-xs text-muted-foreground tabular-nums" data-testid="{testid}-time">{timeLabel}</span>
+    <span class="shrink-0 text-xs text-muted-foreground tabular-nums" data-testid="{testid}-time"
+      >{timeLabel}</span
+    >
     <audio
       bind:this={audio}
       {src}
@@ -147,6 +154,11 @@
     ></audio>
   </div>
   {#if playerState === 'error'}
-    <p class="m-0 pl-3 text-xs text-destructive" role="alert" data-testid="{testid}-error">Recording unavailable</p>
+    <ErrorNotice
+      class="pl-3 text-xs"
+      testid="{testid}-error"
+      error="Recording unavailable"
+      attempted="Playing a voice recording in Messages (the browser could not load the audio)"
+    />
   {/if}
 </div>

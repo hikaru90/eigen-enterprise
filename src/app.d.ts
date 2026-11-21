@@ -26,6 +26,8 @@ declare global {
       message: string
       /** The switched-off page (the plugin gate): which plugin, and whether this person may switch it on. */
       pluginOff?: import('$lib/plugins/routes').PluginOff
+      /** The agent half of the one error shape ($lib/errors/agent-report): "Copy agent instructions". */
+      agent?: import('$lib/errors/agent-report').AgentReport
     }
     // interface PageData {}
     // interface PageState {}

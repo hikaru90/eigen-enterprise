@@ -5,9 +5,12 @@
   import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw'
   import { onMount } from 'svelte'
   import { submitCaptureRaw } from '$lib/capture/queue/submit-capture'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import MorphSearchControl from '$lib/components/morph-search-control.svelte'
   import { Button } from '$lib/components/ui/button'
+  import type { ShownError } from '$lib/errors/agent-report'
   import type { CurrentUserView } from '$lib/memory/current-user-view'
+  import { requestErrorOf, shownOf } from '$lib/memory/request-error'
   import { m } from '$lib/paraglide/messages.js'
   import { subscribeCurrentUserView } from '$lib/stores/current-user-view.svelte'
   import {
@@ -74,7 +77,7 @@
   let nowSegment = $state<NowSegment>('todo')
   let updatingEventId = $state<string | null>(null)
   let actionBusy = $state(false)
-  let actionError = $state<string | null>(null)
+  let actionError = $state<ShownError | null>(null)
   let lastActionSummary = $state<string | null>(null)
   let assignProjectOpen = $state(false)
   let assignProjectItem = $state<TemporalEventListItem | null>(null)
@@ -235,10 +238,7 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
       })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `Request failed (${res.status})`)
-      }
+      if (!res.ok) throw await requestErrorOf(res)
       const result = (await res.json()) as { item: TemporalEventListItem; summary: string }
       await withThoughtSyncReloadSuppressedAsync(async () => {
         await data.load({ silent: true })
@@ -248,7 +248,7 @@
       })
       lastActionSummary = result.summary
     } catch (err) {
-      actionError = err instanceof Error ? err.message : String(err)
+      actionError = shownOf(err)
     } finally {
       actionBusy = false
       updatingEventId = null
@@ -270,7 +270,7 @@
       })
       lastActionSummary = result.summary
     } catch (err) {
-      actionError = err instanceof Error ? err.message : String(err)
+      actionError = shownOf(err)
     } finally {
       actionBusy = false
       updatingEventId = null
@@ -294,16 +294,13 @@
     actionBusy = true
     try {
       const res = await fetch(`/api/temporal-events/${eventId}`, { method: 'DELETE' })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `Request failed (${res.status})`)
-      }
+      if (!res.ok) throw await requestErrorOf(res)
       const result = (await res.json()) as { summary: string }
       if (activeSelectedItemId === eventId) deselectItem()
       await data.load({ silent: true })
       lastActionSummary = result.summary
     } catch (err) {
-      actionError = err instanceof Error ? err.message : String(err)
+      actionError = shownOf(err)
     } finally {
       actionBusy = false
     }
@@ -455,8 +452,15 @@
     </div>
   {:else if data.phase === 'error'}
     <div class="flex flex-1 flex-col items-center justify-center gap-2 px-6">
-      <p class="text-destructive text-sm font-medium">{m.graph_temporal_load_error()}</p>
-      <p class="text-muted-foreground text-center text-xs">{data.errorMessage}</p>
+      {#if data.loadError}
+        <ErrorNotice
+          class="items-center text-center"
+          title={m.graph_temporal_load_error()}
+          error={data.loadError.error}
+          agent={data.loadError.agent}
+          attempted="Loading the timeline"
+        />
+      {/if}
     </div>
   {:else if showGlobalEmpty}
     <div class="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
@@ -509,9 +513,12 @@
     </div>
 
     {#if actionError}
-      <p class="text-destructive border-border shrink-0 border-t px-4 py-2 text-xs">
-        {actionError}
-      </p>
+      <ErrorNotice
+        class="border-border shrink-0 border-t px-4 py-2 text-xs"
+        error={actionError.error}
+        agent={actionError.agent}
+        attempted="Changing a timeline item"
+      />
     {/if}
   {/if}
 

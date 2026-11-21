@@ -7,7 +7,7 @@ import { DriveError, driveJson, driveService, requestActor, type ItemView } from
  * plain sentence ("“x.zip” is 120 MB; files can be at most 100 MB.").
  */
 export const POST: RequestHandler = (event) =>
-  driveJson(async () => {
+  driveJson(event, async () => {
     const actor = requestActor(event)
     let form: FormData
     try {
@@ -23,10 +23,17 @@ export const POST: RequestHandler = (event) =>
     const errors: string[] = []
     for (const file of files) {
       try {
-        uploaded.push(await drive.upload(actor, folderId, { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()), mime: file.type }))
+        uploaded.push(
+          await drive.upload(actor, folderId, {
+            name: file.name,
+            bytes: new Uint8Array(await file.arrayBuffer()),
+            mime: file.type,
+          }),
+        )
       } catch (err) {
         // Access refusals stop the whole request (fail closed); size/name problems are per file.
-        if (err instanceof DriveError && (err.code === 'too_large' || err.code === 'invalid')) errors.push(err.message)
+        if (err instanceof DriveError && (err.code === 'too_large' || err.code === 'invalid'))
+          errors.push(err.message)
         else throw err
       }
     }

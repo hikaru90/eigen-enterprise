@@ -43,7 +43,8 @@
   class="mt-5 flex flex-wrap items-center gap-2"
   data-testid="logs-filter"
 >
-  <Input dictation={false}
+  <Input
+    dictation={false}
     name="q"
     value={data.filter.q}
     placeholder="Search recipient or subject"

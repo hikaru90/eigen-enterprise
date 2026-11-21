@@ -4,9 +4,14 @@ import { MessagesError, setViewing } from '../../../../../modules/messages/servi
 
 /** Heartbeat { conversationId | null }: suppresses push while the person is looking at it. */
 export const POST: RequestHandler = ({ locals, request }) =>
-  messagesRoute(locals.user, async (userId, d) => {
-    const b = await readJson(request)
-    const id = b.conversationId
-    if (id !== null && typeof id !== 'string') throw new MessagesError('invalid', 'conversationId must be an id or null')
-    await setViewing(d, userId, id)
-  })
+  messagesRoute(
+    locals.user,
+    'Telling the server which conversation is open (/api/messages)',
+    async (userId, d) => {
+      const b = await readJson(request)
+      const id = b.conversationId
+      if (id !== null && typeof id !== 'string')
+        throw new MessagesError('invalid', 'conversationId must be an id or null')
+      await setViewing(d, userId, id)
+    },
+  )

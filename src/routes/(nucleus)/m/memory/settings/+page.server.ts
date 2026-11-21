@@ -4,6 +4,7 @@ import {
   DELETE_ALL_MEMORIES_CONFIRMATION,
   isDeleteAllMemoriesConfirmation,
 } from '$lib/memory/delete-confirmation'
+import { errorReport, refusalReport } from '$lib/server/errors/report'
 import { deleteAllMemoriesForUser } from '$lib/server/memory/delete-all-memories'
 import {
   countArchivedThoughts,
@@ -28,7 +29,8 @@ export const load: PageServerLoad = async (event) => {
 
 export const actions: Actions = {
   settings: async (event) => {
-    if (!event.locals.user) return fail(401, { message: 'Sign in again to save.' })
+    const attempted = 'Saving the notification settings on /m/memory/settings'
+    if (!event.locals.user) return fail(401, refusalReport('Sign in again to save.', { attempted }))
     const form = await event.request.formData()
     let input
     try {
@@ -40,7 +42,13 @@ export const actions: Actions = {
         dailySummaryTimeLocal: String(form.get('dailySummaryTimeLocal') ?? ''),
       })
     } catch (e) {
-      return fail(400, { message: e instanceof Error ? e.message : String(e) })
+      return fail(
+        400,
+        errorReport(e, {
+          attempted,
+          plain: (err) => (err instanceof Error ? err.message : String(err)),
+        }),
+      )
     }
     const saved = await saveNotificationSettings(event.locals.user.id, input)
     return { saved: true as const, message: saved.message }
@@ -48,18 +56,28 @@ export const actions: Actions = {
 
   /** Archived thoughts are hidden but stored; this deletes them for good. */
   deleteArchived: async (event) => {
-    if (!event.locals.user) return fail(401, { dataMessage: 'Sign in again to delete.' })
+    if (!event.locals.user)
+      return fail(401, {
+        dataError: refusalReport('Sign in again to delete.', {
+          attempted: 'Deleting archived thoughts on /m/memory/settings',
+        }),
+      })
     const { deleted } = await deleteArchivedThoughtsForUser(event.locals.user.id)
     return { archivedDeleted: deleted }
   },
 
   /** Everything the person put in Memory, behind a typed confirmation. */
   deleteAll: async (event) => {
-    if (!event.locals.user) return fail(401, { dataMessage: 'Sign in again to delete.' })
+    const attempted = 'Deleting everything in Memory on /m/memory/settings'
+    if (!event.locals.user)
+      return fail(401, { dataError: refusalReport('Sign in again to delete.', { attempted }) })
     const confirmation = String((await event.request.formData()).get('confirmation') ?? '')
     if (!isDeleteAllMemoriesConfirmation(confirmation)) {
       return fail(400, {
-        dataMessage: `Type ${DELETE_ALL_MEMORIES_CONFIRMATION} exactly to delete everything.`,
+        dataError: refusalReport(
+          `Type ${DELETE_ALL_MEMORIES_CONFIRMATION} exactly to delete everything.`,
+          { attempted },
+        ),
       })
     }
     return { deletedAll: await deleteAllMemoriesForUser(event.locals.user.id) }

@@ -38,25 +38,27 @@ describe('POST /api/temporal-events/[id]/action', () => {
   })
 
   it('returns 401 when unauthenticated', async () => {
-    await expect(POST(event({ user: null }))).rejects.toMatchObject({ status: 401 })
+    expect((await POST(event({ user: null }))).status).toBe(401)
   })
 
   it('returns 400 when event id is missing', async () => {
-    await expect(POST(event({ id: '  ' }))).rejects.toMatchObject({ status: 400 })
+    expect((await POST(event({ id: '  ' }))).status).toBe(400)
   })
 
   it('returns 400 for invalid JSON body', async () => {
-    await expect(
-      POST({
-        locals: { user: { id: 'u1' } },
-        params: { id: 'ev-1' },
-        request: new Request('http://localhost', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: 'not-json',
-        }),
-      } as Parameters<typeof POST>[0]),
-    ).rejects.toMatchObject({ status: 400 })
+    expect(
+      (
+        await POST({
+          locals: { user: { id: 'u1' } },
+          params: { id: 'ev-1' },
+          request: new Request('http://localhost', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: 'not-json',
+          }),
+        } as Parameters<typeof POST>[0])
+      ).status,
+    ).toBe(400)
   })
 
   it('reschedules the event', async () => {
@@ -72,16 +74,15 @@ describe('POST /api/temporal-events/[id]/action', () => {
   })
 
   it('requires startAt for reschedule', async () => {
-    await expect(POST(event({ body: { action: 'reschedule' } }))).rejects.toMatchObject({
-      status: 400,
-    })
+    expect((await POST(event({ body: { action: 'reschedule' } }))).status).toBe(400)
   })
 
   it('returns 404 when reschedule target not found', async () => {
     applyStructuredRescheduleActionMock.mockRejectedValue(new Error('Event not found'))
-    await expect(
-      POST(event({ body: { action: 'reschedule', startAt: '2026-06-01T00:00:00.000Z' } })),
-    ).rejects.toMatchObject({ status: 404 })
+    expect(
+      (await POST(event({ body: { action: 'reschedule', startAt: '2026-06-01T00:00:00.000Z' } })))
+        .status,
+    ).toBe(404)
   })
 
   it('snoozes the event', async () => {
@@ -98,9 +99,7 @@ describe('POST /api/temporal-events/[id]/action', () => {
   })
 
   it('requires snoozedUntil for snooze', async () => {
-    await expect(POST(event({ body: { action: 'snooze' } }))).rejects.toMatchObject({
-      status: 400,
-    })
+    expect((await POST(event({ body: { action: 'snooze' } }))).status).toBe(400)
   })
 
   it('applies a quick action', async () => {
@@ -112,9 +111,7 @@ describe('POST /api/temporal-events/[id]/action', () => {
 
   it('returns 404 when quick action target not found', async () => {
     applyQuickTemporalEventActionMock.mockRejectedValue(new Error('not found'))
-    await expect(POST(event({ body: { action: 'archive' } }))).rejects.toMatchObject({
-      status: 404,
-    })
+    expect((await POST(event({ body: { action: 'archive' } }))).status).toBe(404)
   })
 
   it('applies a natural-language instruction', async () => {
@@ -125,6 +122,6 @@ describe('POST /api/temporal-events/[id]/action', () => {
   })
 
   it('returns 400 when neither action nor instruction is provided', async () => {
-    await expect(POST(event({ body: {} }))).rejects.toMatchObject({ status: 400 })
+    expect((await POST(event({ body: {} }))).status).toBe(400)
   })
 })

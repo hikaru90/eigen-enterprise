@@ -2,8 +2,11 @@
   import ArchiveIcon from '@lucide/svelte/icons/archive'
   import { invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { driveApi, type Crumb, type DriveItem } from '$lib/drive/api'
+  import { driveShownError } from '$lib/drive/shown-error'
+  import type { ShownError } from '$lib/errors/agent-report'
 
   /**
    * On an opened file or folder: says when it is archived (or sits inside an
@@ -21,9 +24,10 @@
     canEdit: boolean
   } = $props()
 
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
   let busy = $state(false)
-  const when = (d: string | Date) => new Date(d).toLocaleDateString(undefined, { dateStyle: 'medium' })
+  const when = (d: string | Date) =>
+    new Date(d).toLocaleDateString(undefined, { dateStyle: 'medium' })
 
   async function unarchive() {
     error = null
@@ -32,7 +36,7 @@
       await driveApi.unarchive(item)
       await invalidateAll()
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = driveShownError(err)
     } finally {
       busy = false
     }
@@ -51,20 +55,31 @@
         >Archived on {when(item.archivedAt)}. It opens as usual but stays out of the everyday view.</span
       >
       {#if canEdit}
-        <Button size="sm" variant="outline" class="h-7" onclick={unarchive} disabled={busy} data-testid="drive-banner-unarchive"
-          >Unarchive</Button
+        <Button
+          size="sm"
+          variant="outline"
+          class="h-7"
+          onclick={unarchive}
+          disabled={busy}
+          data-testid="drive-banner-unarchive">Unarchive</Button
         >
       {/if}
     {:else if archivedIn}
       <span class="min-w-0 flex-1"
         >This {item.type} is inside
-        <a class="underline-offset-2 hover:underline" href={resolve(`/drive/folder/${archivedIn.id}`)}
-          >“{archivedIn.name}”</a
+        <a
+          class="underline-offset-2 hover:underline"
+          href={resolve(`/drive/folder/${archivedIn.id}`)}>“{archivedIn.name}”</a
         >, which is archived.</span
       >
     {/if}
     {#if error}
-      <span class="w-full text-destructive" role="alert">{error}</span>
+      <ErrorNotice
+        class="w-full"
+        error={error.error}
+        agent={error.agent}
+        attempted={`Unarchiving the ${item.type} ${item.name}`}
+      />
     {/if}
   </div>
 {/if}

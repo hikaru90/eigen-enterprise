@@ -51,6 +51,7 @@
   import CaptureOnboardingOverlay from '$lib/components/capture-onboarding-overlay.svelte'
   import CaptureQueueList from '$lib/components/capture-queue-list.svelte'
   import CaptureRecentThoughts from '$lib/components/capture-recent-thoughts.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import FirstCaptureNudge from '$lib/components/first-capture-nudge.svelte'
   import GroundingQuestionCard from '$lib/components/grounding-question-card.svelte'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
@@ -1041,9 +1042,11 @@
   <div class="relative z-0 flex min-h-0 flex-1 flex-col overflow-hidden px-5 pt-6">
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
       {#if recentSyncError}
-        <p class="text-destructive mb-3 text-sm" role="alert">
-          Couldn't refresh your recent thoughts, so indexing status may be out of date: {recentSyncError}
-        </p>
+        <ErrorNotice
+          class="mb-3"
+          error={`Couldn't refresh your recent thoughts, so indexing status may be out of date: ${recentSyncError}`}
+          attempted="Refreshing the recent thoughts on /m/memory/capture"
+        />
       {/if}
       <CaptureRecentThoughts
         thoughts={recentThoughts}
@@ -1093,7 +1096,10 @@
           {/if}
         {/if}
         {#if err}
-          <p class="text-destructive text-sm">{err}</p>
+          <ErrorNotice
+            error={err}
+            attempted="Capturing, editing or deleting a thought on /m/memory/capture"
+          />
         {/if}
       </div>
     {/if}
@@ -1118,9 +1124,7 @@
       </AlertDialog.Description>
     </AlertDialog.Header>
     <AlertDialog.Footer>
-      <AlertDialog.Cancel disabled={deletingThoughtId !== null}>
-        Cancel
-      </AlertDialog.Cancel>
+      <AlertDialog.Cancel disabled={deletingThoughtId !== null}>Cancel</AlertDialog.Cancel>
       <Button
         type="button"
         variant="destructive"

@@ -1,7 +1,10 @@
 <script lang="ts">
   import type { ChangeSharing, SharingRequest } from '../client'
   import type { ShareChoices, SharingResult } from '../types'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
+  import type { ShownError } from '$lib/errors/agent-report'
+  import { ContactsRequestError } from '../client'
 
   /**
    * The action bar for the selected contacts (Contribute 9d28020a): how many
@@ -30,7 +33,7 @@
   let userIds = $state<string[]>([])
   let groupIds = $state<string[]>([])
   let busy = $state(false)
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
 
   const nothingPicked = $derived(!team && userIds.length === 0 && groupIds.length === 0)
   const count = $derived(ids.length)
@@ -55,7 +58,10 @@
       groupIds = []
       ondone(result)
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = {
+        error: err instanceof Error ? err.message : String(err),
+        agent: err instanceof ContactsRequestError ? err.agent : null,
+      }
     } finally {
       busy = false
     }
@@ -81,7 +87,8 @@
       <label class="flex items-start gap-2 text-sm">
         <input type="checkbox" class="mt-1" bind:checked={team} data-testid="share-team" />
         <span
-          >Whole team <span class="block text-xs text-muted-foreground">Everyone in the company, including people who join later.</span
+          >Whole team <span class="block text-xs text-muted-foreground"
+            >Everyone in the company, including people who join later.</span
           ></span
         >
       </label>
@@ -94,7 +101,12 @@
                 <input
                   type="checkbox"
                   checked={groupIds.includes(g.id)}
-                  onchange={(e) => (groupIds = toggle(groupIds, g.id, (e.currentTarget as HTMLInputElement).checked))}
+                  onchange={(e) =>
+                    (groupIds = toggle(
+                      groupIds,
+                      g.id,
+                      (e.currentTarget as HTMLInputElement).checked,
+                    ))}
                 />
                 {g.name}
               </label>
@@ -110,7 +122,8 @@
               <input
                 type="checkbox"
                 checked={userIds.includes(p.id)}
-                onchange={(e) => (userIds = toggle(userIds, p.id, (e.currentTarget as HTMLInputElement).checked))}
+                onchange={(e) =>
+                  (userIds = toggle(userIds, p.id, (e.currentTarget as HTMLInputElement).checked))}
               />
               {p.name}
             </label>
@@ -118,8 +131,11 @@
         </div>
       </fieldset>
       <div class="flex flex-wrap items-center gap-2">
-        <Button size="sm" disabled={busy || nothingPicked} onclick={share} data-testid="share-confirm"
-          >Share {count} {count === 1 ? 'contact' : 'contacts'}</Button
+        <Button
+          size="sm"
+          disabled={busy || nothingPicked}
+          onclick={share}
+          data-testid="share-confirm">Share {count} {count === 1 ? 'contact' : 'contacts'}</Button
         >
         <Button size="sm" variant="ghost" onclick={() => (picking = false)}>Cancel</Button>
       </div>
@@ -137,9 +153,15 @@
         aria-expanded={picking}
         data-testid="contacts-share-with">Share with…</Button
       >
-      <Button size="sm" variant="outline" disabled={busy} onclick={makePrivate} data-testid="contacts-make-private">Make private</Button>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={busy}
+        onclick={makePrivate}
+        data-testid="contacts-make-private">Make private</Button
+      >
       <Button size="sm" variant="ghost" disabled={busy} onclick={onclear}>Clear</Button>
     </div>
   </div>
-  {#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+  {#if error}<ErrorNotice {...error} attempted="Changing who sees the chosen contacts" />{/if}
 </div>

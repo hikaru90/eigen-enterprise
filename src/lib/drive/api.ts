@@ -1,4 +1,5 @@
-/** Browser client for /api/drive/*: every call throws the server's plain error sentence on failure. */
+/** Browser client for /api/drive/*: every call throws the server's plain error sentence (and its agent report) on failure. */
+import { shownErrorOf, type AgentReport } from '$lib/errors/agent-report'
 
 export type DriveItem = {
   type: 'folder' | 'file'
@@ -25,10 +26,17 @@ export type ArchiveGroup = {
   folder: Crumb | null
   root: PathRoot
   path: Crumb[]
-  items: Array<DriveItem & { canEdit?: boolean; canManage?: boolean; archivedByName: string | null }>
+  items: Array<
+    DriveItem & { canEdit?: boolean; canManage?: boolean; archivedByName: string | null }
+  >
 }
 export type ArchiveSuggestion = { file: DriveItem; root: PathRoot; path: Crumb[]; reason: string }
-export type ArchiveSuggestions = { olderThanDays: number; considered: number; more: boolean; suggestions: ArchiveSuggestion[] }
+export type ArchiveSuggestions = {
+  olderThanDays: number
+  considered: number
+  more: boolean
+  suggestions: ArchiveSuggestion[]
+}
 export type ItemRef = Pick<DriveItem, 'type' | 'id'>
 export type Unarchived = { item: DriveItem; stillIn: Crumb | null }
 /**
@@ -36,14 +44,23 @@ export type Unarchived = { item: DriveItem; stillIn: Crumb | null }
  * — you don't manage it); `readOnlyFrom` names the source a read-only copy
  * comes from (e.g. "GitHub"), else null.
  */
-export type ItemDescription = { ownerName: string | null; shared: boolean | null; readOnlyFrom: string | null }
+export type ItemDescription = {
+  ownerName: string | null
+  shared: boolean | null
+  readOnlyFrom: string | null
+}
 export type AccessLevel = 'view' | 'edit' | 'manage'
-export type GrantSubject = { kind: 'user'; userId: string } | { kind: 'group'; groupId: string } | { kind: 'company' }
+export type GrantSubject =
+  { kind: 'user'; userId: string } | { kind: 'group'; groupId: string } | { kind: 'company' }
 export type GrantEntry = { subject: GrantSubject; level: AccessLevel }
-export type ShareTargets = { people: Array<{ id: string; name: string; email: string }>; groups: Array<{ id: string; name: string }> }
+export type ShareTargets = {
+  people: Array<{ id: string; name: string; email: string }>
+  groups: Array<{ id: string; name: string }>
+}
 
 export type LockHolder = { userId: string; sessionId: string; since: string; name: string }
-export type LockView = { state: 'held'; since: string } | { state: 'locked'; holder: LockHolder } | { state: 'free' }
+export type LockView =
+  { state: 'held'; since: string } | { state: 'locked'; holder: LockHolder } | { state: 'free' }
 export type Revision = {
   id: string
   fileId: string
@@ -89,6 +106,8 @@ export class DriveApiError extends Error {
     readonly code: string | null,
     readonly holder: LockHolder | null,
     readonly running: AppPreview | null = null,
+    /** The server's agent report (`{ error, agent }`), when it sent one. */
+    readonly agent: AgentReport | null = null,
   ) {
     super(message)
   }
@@ -96,79 +115,145 @@ export class DriveApiError extends Error {
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init)
-  const body = (await res.json().catch(() => null)) as (T & { error?: string; code?: string; holder?: LockHolder; running?: AppPreview }) | null
-  if (!res.ok) throw new DriveApiError(body?.error ?? `Drive request failed (${res.status}).`, res.status, body?.code ?? null, body?.holder ?? null, body?.running ?? null)
+  const body = (await res.json().catch(() => null)) as
+    (T & { error?: string; code?: string; holder?: LockHolder; running?: AppPreview }) | null
+  if (!res.ok) {
+    const shown = shownErrorOf(body)
+    throw new DriveApiError(
+      shown?.error ?? `Drive request failed (${res.status}).`,
+      res.status,
+      body?.code ?? null,
+      body?.holder ?? null,
+      body?.running ?? null,
+      shown?.agent ?? null,
+    )
+  }
   return body as T
 }
-const send = (method: string, body: unknown): RequestInit => ({ method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+const send = (method: string, body: unknown): RequestInit => ({
+  method,
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(body),
+})
 
 export const driveApi = {
   listFolder: (parentId: string | null) =>
-    call<{ folder: DriveItem | null; path: Array<{ id: string; name: string }>; items: DriveItem[]; canEdit: boolean }>(
-      `/api/drive/folders?parent=${encodeURIComponent(parentId ?? '')}`,
-    ),
-  createFolder: (parentId: string | null, name: string) => call<DriveItem>('/api/drive/folders', send('POST', { parentId, name })),
+    call<{
+      folder: DriveItem | null
+      path: Array<{ id: string; name: string }>
+      items: DriveItem[]
+      canEdit: boolean
+    }>(`/api/drive/folders?parent=${encodeURIComponent(parentId ?? '')}`),
+  createFolder: (parentId: string | null, name: string) =>
+    call<DriveItem>('/api/drive/folders', send('POST', { parentId, name })),
   createDocument: (folderId: string | null, kind: 'md' | 'csv', name?: string) =>
-    call<DriveItem>('/api/drive/documents', send('POST', { folderId, kind, ...(name ? { name } : {}) })),
+    call<DriveItem>(
+      '/api/drive/documents',
+      send('POST', { folderId, kind, ...(name ? { name } : {}) }),
+    ),
   upload: (folderId: string | null, files: File[]) => {
     const form = new FormData()
     if (folderId) form.set('folderId', folderId)
     for (const f of files) form.append('file', f)
-    return call<{ uploaded: DriveItem[]; errors: string[] }>('/api/drive/upload', { method: 'POST', body: form })
+    return call<{ uploaded: DriveItem[]; errors: string[] }>('/api/drive/upload', {
+      method: 'POST',
+      body: form,
+    })
   },
-  rename: (item: Pick<DriveItem, 'type' | 'id'>, name: string) => call<DriveItem>(`/api/drive/items/${item.type}/${item.id}`, send('PATCH', { name })),
+  rename: (item: Pick<DriveItem, 'type' | 'id'>, name: string) =>
+    call<DriveItem>(`/api/drive/items/${item.type}/${item.id}`, send('PATCH', { name })),
   move: (item: Pick<DriveItem, 'type' | 'id'>, folderId: string | null) =>
     call<DriveItem>(`/api/drive/items/${item.type}/${item.id}`, send('PATCH', { folderId })),
-  trash: (item: Pick<DriveItem, 'type' | 'id'>) => call<{ ok: true }>(`/api/drive/items/${item.type}/${item.id}`, { method: 'DELETE' }),
-  deleteForever: (item: Pick<DriveItem, 'type' | 'id'>) => call<{ ok: true }>(`/api/drive/items/${item.type}/${item.id}?forever=1`, { method: 'DELETE' }),
-  restore: (item: Pick<DriveItem, 'type' | 'id'>) => call<DriveItem>(`/api/drive/items/${item.type}/${item.id}/restore`, { method: 'POST' }),
-  archive: (item: ItemRef) => call<DriveItem>(`/api/drive/items/${item.type}/${item.id}/archive`, { method: 'POST' }),
-  unarchive: (item: ItemRef) => call<Unarchived>(`/api/drive/items/${item.type}/${item.id}/archive`, { method: 'DELETE' }),
+  trash: (item: Pick<DriveItem, 'type' | 'id'>) =>
+    call<{ ok: true }>(`/api/drive/items/${item.type}/${item.id}`, { method: 'DELETE' }),
+  deleteForever: (item: Pick<DriveItem, 'type' | 'id'>) =>
+    call<{ ok: true }>(`/api/drive/items/${item.type}/${item.id}?forever=1`, { method: 'DELETE' }),
+  restore: (item: Pick<DriveItem, 'type' | 'id'>) =>
+    call<DriveItem>(`/api/drive/items/${item.type}/${item.id}/restore`, { method: 'POST' }),
+  archive: (item: ItemRef) =>
+    call<DriveItem>(`/api/drive/items/${item.type}/${item.id}/archive`, { method: 'POST' }),
+  unarchive: (item: ItemRef) =>
+    call<Unarchived>(`/api/drive/items/${item.type}/${item.id}/archive`, { method: 'DELETE' }),
   /** Archives several items in one go; `errors` says which couldn't be and why. */
   archiveMany: (items: ItemRef[]) =>
-    call<{ archived: DriveItem[]; errors: Array<ItemRef & { error: string }> }>('/api/drive/archive', send('POST', { items })),
+    call<{ archived: DriveItem[]; errors: Array<ItemRef & { error: string }> }>(
+      '/api/drive/archive',
+      send('POST', { items }),
+    ),
   /** The AI's suggestions among files unchanged for `olderThanDays` (archives nothing). */
-  suggestArchive: (olderThanDays: number) => call<ArchiveSuggestions>('/api/drive/archive/suggestions', send('POST', { olderThanDays })),
-  grants: (item: Pick<DriveItem, 'type' | 'id'>) => call<{ grants: GrantEntry[] }>(`/api/drive/items/${item.type}/${item.id}/grants`),
+  suggestArchive: (olderThanDays: number) =>
+    call<ArchiveSuggestions>('/api/drive/archive/suggestions', send('POST', { olderThanDays })),
+  grants: (item: Pick<DriveItem, 'type' | 'id'>) =>
+    call<{ grants: GrantEntry[] }>(`/api/drive/items/${item.type}/${item.id}/grants`),
   setGrants: (item: Pick<DriveItem, 'type' | 'id'>, grants: GrantEntry[]) =>
-    call<{ grants: GrantEntry[] }>(`/api/drive/items/${item.type}/${item.id}/grants`, send('PUT', { grants })),
+    call<{ grants: GrantEntry[] }>(
+      `/api/drive/items/${item.type}/${item.id}/grants`,
+      send('PUT', { grants }),
+    ),
   shareTargets: () => call<ShareTargets>('/api/drive/share-targets'),
   restoreRevision: (fileId: string, revisionId: string, session?: string) =>
-    call<{ file: DriveItem }>(`/api/drive/files/${fileId}/revisions`, send('POST', { restore: revisionId, ...(session ? { session } : {}) })),
-  revisions: (fileId: string) => call<{ revisions: Revision[] }>(`/api/drive/files/${fileId}/revisions`),
-  revisionText: (fileId: string, revisionId: string) => call<{ revision: Revision; content: string }>(`/api/drive/files/${fileId}/revisions/${revisionId}`),
+    call<{ file: DriveItem }>(
+      `/api/drive/files/${fileId}/revisions`,
+      send('POST', { restore: revisionId, ...(session ? { session } : {}) }),
+    ),
+  revisions: (fileId: string) =>
+    call<{ revisions: Revision[] }>(`/api/drive/files/${fileId}/revisions`),
+  revisionText: (fileId: string, revisionId: string) =>
+    call<{ revision: Revision; content: string }>(
+      `/api/drive/files/${fileId}/revisions/${revisionId}`,
+    ),
   readText: (fileId: string) => call<{ content: string }>(`/api/drive/files/${fileId}/text`),
   writeText: (fileId: string, content: string, session: string) =>
     call<{ file: DriveItem }>(`/api/drive/files/${fileId}/text`, send('PUT', { content, session })),
   /** A last save while the page goes away (keepalive outlives the unload); its result is not waited for. */
   writeTextOnExit: (fileId: string, content: string, session: string) =>
-    fetch(`/api/drive/files/${fileId}/text`, { ...send('PUT', { content, session }), keepalive: true }).then(() => undefined),
+    fetch(`/api/drive/files/${fileId}/text`, {
+      ...send('PUT', { content, session }),
+      keepalive: true,
+    }).then(() => undefined),
   /** The file's bytes (what an office viewer opens). */
   readBytes: async (fileId: string): Promise<Uint8Array> => {
     const res = await fetch(`/api/drive/files/${fileId}/content`)
-    if (!res.ok) throw new DriveApiError((await res.text()) || `Loading the file failed (${res.status}).`, res.status, null, null)
+    if (!res.ok)
+      throw new DriveApiError(
+        (await res.text()) || `Loading the file failed (${res.status}).`,
+        res.status,
+        null,
+        null,
+      )
     return new Uint8Array(await res.arrayBuffer())
   },
   /** Saves new bytes into a PDF/Word/PowerPoint file as a revision (`session`: the editor holding the edit lock). */
   writeBytes: (fileId: string, bytes: Uint8Array, session: string) =>
-    call<{ file: DriveItem }>(`/api/drive/files/${fileId}/content?session=${encodeURIComponent(session)}`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/octet-stream' },
-      body: bytes.slice().buffer as ArrayBuffer,
-    }),
+    call<{ file: DriveItem }>(
+      `/api/drive/files/${fileId}/content?session=${encodeURIComponent(session)}`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/octet-stream' },
+        body: bytes.slice().buffer as ArrayBuffer,
+      },
+    ),
   lockStatus: (fileId: string) => call<LockView>(`/api/drive/files/${fileId}/lock`),
-  acquireLock: (fileId: string, session: string, takeover = false) => call<LockView>(`/api/drive/files/${fileId}/lock`, send('POST', { session, takeover })),
-  heartbeatLock: (fileId: string, session: string) => call<LockView>(`/api/drive/files/${fileId}/lock`, send('PUT', { session })),
+  acquireLock: (fileId: string, session: string, takeover = false) =>
+    call<LockView>(`/api/drive/files/${fileId}/lock`, send('POST', { session, takeover })),
+  heartbeatLock: (fileId: string, session: string) =>
+    call<LockView>(`/api/drive/files/${fileId}/lock`, send('PUT', { session })),
   /** A folder's web app and its preview (marks a running preview seen). */
   appStatus: (folderId: string) => call<AppStatus>(`/api/drive/folders/${folderId}/app`),
   /** Run (or restart) the folder's app from a fresh copy; `busy` → DriveApiError with `running`. */
-  runApp: (folderId: string) => call<{ preview: AppPreview }>(`/api/drive/folders/${folderId}/app`, { method: 'POST' }),
-  stopApp: (folderId: string) => call<{ preview: AppPreview }>(`/api/drive/folders/${folderId}/app`, { method: 'DELETE' }),
+  runApp: (folderId: string) =>
+    call<{ preview: AppPreview }>(`/api/drive/folders/${folderId}/app`, { method: 'POST' }),
+  stopApp: (folderId: string) =>
+    call<{ preview: AppPreview }>(`/api/drive/folders/${folderId}/app`, { method: 'DELETE' }),
   /** Stop another folder's app by its preview id ("Another app is running"). */
-  stopPreview: (previewId: string) => call<{ preview: AppPreview }>(`/api/drive/apps/${previewId}`, { method: 'DELETE' }),
+  stopPreview: (previewId: string) =>
+    call<{ preview: AppPreview }>(`/api/drive/apps/${previewId}`, { method: 'DELETE' }),
   /** Fire-and-forget on page exit (keepalive survives the unload). */
   releaseLock: (fileId: string, session: string) =>
-    fetch(`/api/drive/files/${fileId}/lock?session=${encodeURIComponent(session)}`, { method: 'DELETE', keepalive: true }).then(() => undefined),
+    fetch(`/api/drive/files/${fileId}/lock?session=${encodeURIComponent(session)}`, {
+      method: 'DELETE',
+      keepalive: true,
+    }).then(() => undefined),
 }
 
 export function formatSize(n: number | undefined): string {

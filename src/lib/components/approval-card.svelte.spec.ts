@@ -32,7 +32,12 @@ describe('approval-card.svelte', () => {
     })
     await expect.element(page.getByRole('button', { name: 'Approve' })).toBeDisabled()
     await expect.element(page.getByRole('button', { name: 'Deny' })).toBeDisabled()
-    await expect.element(page.getByText('That did not go through. Try again.')).toBeInTheDocument()
+    await expect
+      .element(page.getByRole('alert'))
+      .toHaveTextContent('That did not go through. Try again.')
+    await expect
+      .element(page.getByRole('button', { name: 'Copy agent instructions' }))
+      .toBeInTheDocument()
   })
 
   it('a decided card shows the decision and no buttons', async () => {

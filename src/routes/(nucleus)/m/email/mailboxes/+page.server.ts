@@ -1,4 +1,5 @@
 import type { Actions, PageServerLoad } from './$types'
+import type { ErrorReport } from '$lib/errors/agent-report'
 import { inboxDeps } from '../../../../../../modules/email/inbox/live'
 import {
   addAlias,
@@ -10,15 +11,20 @@ import {
   setMailboxDisabled,
 } from '../../../../../../modules/email/inbox/service'
 import { syncMailReceiving } from '../../../../../../modules/email/platform/receiving-sync'
-import { act, field, requireAdmin, requireMember } from '../access.server'
+import { act, field, receivingReport, requireAdmin, requireMember } from '../access.server'
 
 /**
  * After every successful change the SES receipt rules follow the mailboxes. A
  * failed sync keeps the change; the admin sees Amazon's reason (it is also
  * stored on the receiving state, shown under Setup › Account).
  */
-async function synced<T extends Record<string, unknown>>(out: T): Promise<T & { receivingError?: string }> {
-  const receivingError = await syncMailReceiving()
+async function synced<T extends Record<string, unknown>>(
+  out: T,
+): Promise<T & { receivingError?: ErrorReport }> {
+  const receivingError = receivingReport(
+    await syncMailReceiving(),
+    'Syncing the Amazon SES receipt rules after a mailbox change',
+  )
   return receivingError ? { ...out, receivingError } : out
 }
 
@@ -45,7 +51,7 @@ export const actions: Actions = {
   assign: async ({ locals, request }) => {
     const me = await requireAdmin(locals)
     const form = await request.formData()
-    return act('assign', async () => {
+    return act('assign', 'Assigning a personal mailbox', async () => {
       const box = await assignPersonalMailbox(await inboxDeps(), me.userId, {
         memberId: field(form, 'memberId'),
         localPart: field(form, 'localPart'),
@@ -58,7 +64,7 @@ export const actions: Actions = {
   shared: async ({ locals, request }) => {
     const me = await requireAdmin(locals)
     const form = await request.formData()
-    return act('shared', async () => {
+    return act('shared', 'Creating a shared mailbox', async () => {
       const box = await createSharedMailbox(await inboxDeps(), me.userId, {
         groupId: field(form, 'groupId'),
         localPart: field(form, 'localPart'),
@@ -71,7 +77,7 @@ export const actions: Actions = {
   alias: async ({ locals, request }) => {
     const me = await requireAdmin(locals)
     const form = await request.formData()
-    return act('alias', async () => {
+    return act('alias', 'Adding an alias to a mailbox', async () => {
       await addAlias(await inboxDeps(), me.userId, {
         mailboxId: field(form, 'mailboxId'),
         localPart: field(form, 'localPart'),
@@ -83,7 +89,7 @@ export const actions: Actions = {
   removeAlias: async ({ locals, request }) => {
     const me = await requireAdmin(locals)
     const form = await request.formData()
-    return act('removeAlias', async () => {
+    return act('removeAlias', 'Removing an alias from a mailbox', async () => {
       await removeAlias(await inboxDeps(), me.userId, { address: field(form, 'address') })
       return synced({})
     })
@@ -91,16 +97,22 @@ export const actions: Actions = {
   disable: async ({ locals, request }) => {
     const me = await requireAdmin(locals)
     const form = await request.formData()
-    return act('disable', async () => {
-      await setMailboxDisabled(await inboxDeps(), me.userId, { mailboxId: field(form, 'mailboxId'), disabled: true })
+    return act('disable', 'Disabling a mailbox', async () => {
+      await setMailboxDisabled(await inboxDeps(), me.userId, {
+        mailboxId: field(form, 'mailboxId'),
+        disabled: true,
+      })
       return synced({})
     })
   },
   enable: async ({ locals, request }) => {
     const me = await requireAdmin(locals)
     const form = await request.formData()
-    return act('enable', async () => {
-      await setMailboxDisabled(await inboxDeps(), me.userId, { mailboxId: field(form, 'mailboxId'), disabled: false })
+    return act('enable', 'Enabling a mailbox', async () => {
+      await setMailboxDisabled(await inboxDeps(), me.userId, {
+        mailboxId: field(form, 'mailboxId'),
+        disabled: false,
+      })
       return synced({})
     })
   },

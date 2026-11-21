@@ -2,6 +2,8 @@ import type { Actions, PageServerLoad } from './$types'
 import { fail } from '@sveltejs/kit'
 import { env } from '$env/dynamic/private'
 import { requireCapability } from '$lib/server/auth/require-capability'
+import { errorReport } from '$lib/server/errors/report'
+import type { ErrorReport } from '$lib/errors/agent-report'
 import {
   backupKeyFromRecoveryCode,
   companyBackupKey,
@@ -32,7 +34,7 @@ import {
  */
 
 /** The bucket listing: ee lists it live, so a bucket error is shown, not hidden. */
-export type SnapshotList = { ok: true; snapshots: BackupSnapshot[] } | { ok: false; error: string }
+export type SnapshotList = { ok: true; snapshots: BackupSnapshot[] } | ({ ok: false } & ErrorReport)
 
 export type BackupsPageData =
   | { managed: true; status: BackupStatus; snapshots: SnapshotList | null; job: RestoreJob | null }
@@ -60,11 +62,21 @@ export async function _requireOwner(locals: App.Locals): Promise<string> {
 }
 
 async function requireOwner(locals: App.Locals): Promise<string> {
-  const { user } = await requireCapability(locals, 'backups.manage', 'Only the owner can manage backups.')
+  const { user } = await requireCapability(
+    locals,
+    'backups.manage',
+    'Only the owner can manage backups.',
+  )
   return `human:${user.id}`
 }
 
-export const load: PageServerLoad = async ({ locals }): Promise<{ backups: BackupsPageData; pendingRecoveryCode?: string | null; hostingKeepsKey: boolean }> => {
+export const load: PageServerLoad = async ({
+  locals,
+}): Promise<{
+  backups: BackupsPageData
+  pendingRecoveryCode?: string | null
+  hostingKeepsKey: boolean
+}> => {
   await requireOwner(locals)
   const backups = await loadBackups()
   // Shown once: a managed box got its backup key from os before the owner ever set backups up.
@@ -86,7 +98,17 @@ async function loadBackups(): Promise<BackupsPageData> {
         snapshots = { ok: true, snapshots: (await client.backupSnapshots()).snapshots }
       } catch (err) {
         if (!(err instanceof SubstrateError)) throw err
-        snapshots = { ok: false, error: err.message }
+        snapshots = {
+          ok: false,
+          ...errorReport(err, {
+            attempted:
+              'Listing the backups in the bucket (Settings → Backups, ee GET /v1/backups/snapshots)',
+            plain: () => err.message,
+            nextSteps: [
+              'ee could not list the backup bucket. Check the bucket settings and credentials on this page and `ee backup status` / the ee journal on the server.',
+            ],
+          }),
+        }
       }
     }
     return { managed: true, status, snapshots, job }
@@ -102,7 +124,8 @@ function readTarget(form: FormData): TargetInput {
   const str = (k: string) => (form.get(k) ?? '').toString().trim()
   const secret = str('secretAccessKey')
   const addressing = str('addressing')
-  if (addressing !== 'path' && addressing !== 'virtual') throw new FormError('Choose path-style or virtual-host addressing.')
+  if (addressing !== 'path' && addressing !== 'virtual')
+    throw new FormError('Choose path-style or virtual-host addressing.')
   return {
     endpoint: str('endpoint'),
     region: str('region'),
@@ -118,17 +141,60 @@ class FormError extends Error {}
 
 function int(form: FormData, k: string, min: number, max: number, label: string): number {
   const n = Number((form.get(k) ?? '').toString())
-  if (!Number.isInteger(n) || n < min || n > max) throw new FormError(`${label} must be a whole number from ${min} to ${max}.`)
+  if (!Number.isInteger(n) || n < min || n > max)
+    throw new FormError(`${label} must be a whole number from ${min} to ${max}.`)
   return n
 }
 
-async function act<T extends Record<string, unknown>>(action: string, run: () => Promise<T>) {
+type BackupAction = 'test' | 'save' | 'run' | 'check'
+
+const ATTEMPTED: Record<BackupAction, string> = {
+  test: 'Testing the backup bucket connection (Settings → Backups, ee POST /v1/backups/test)',
+  save: 'Saving the backup settings (Settings → Backups, ee configureBackups)',
+  run: 'Starting a backup now (Settings → Backups, ee runBackup)',
+  check: 'Checking one backup in the bucket (Settings → Backups, ee checkBackup)',
+}
+
+const STEPS = {
+  form: 'The form was refused before ee was asked (readTarget / int in src/routes/(nucleus)/settings/backups/+page.server.ts); the sentence names the field.',
+  unavailable:
+    'ee is not reachable from the console (SubstrateUnavailableError). Check that ee runs on the server (`systemctl status ee`) and its journal.',
+  substrate:
+    'ee refused or failed (SubstrateError, `details.status` is its HTTP status). Read `ee backup status` and the ee journal on the server at the time above.',
+}
+
+/** The target fields for the agent half: never the secret. */
+function targetInput(form: FormData) {
+  const str = (k: string) => (form.get(k) ?? '').toString().trim()
+  return {
+    endpoint: str('endpoint'),
+    region: str('region'),
+    bucket: str('bucket'),
+    prefix: str('prefix'),
+    addressing: str('addressing'),
+  }
+}
+
+async function act<T extends Record<string, unknown>>(
+  action: BackupAction,
+  run: () => Promise<T>,
+  input?: unknown,
+) {
   try {
     return { action, ok: true as const, ...(await run()) }
   } catch (err) {
-    if (err instanceof FormError) return fail(400, { action, error: err.message })
-    if (err instanceof SubstrateUnavailableError) return fail(503, { action, error: err.message })
-    if (err instanceof SubstrateError) return fail(err.status >= 500 ? 502 : err.status, { action, error: err.message })
+    const report = (step: string) =>
+      errorReport(err, {
+        attempted: ATTEMPTED[action],
+        ...(input !== undefined ? { input } : {}),
+        plain: (e) => (e as Error).message,
+        nextSteps: [step],
+      })
+    if (err instanceof FormError) return fail(400, { action, ...report(STEPS.form) })
+    if (err instanceof SubstrateUnavailableError)
+      return fail(503, { action, ...report(STEPS.unavailable) })
+    if (err instanceof SubstrateError)
+      return fail(err.status >= 500 ? 502 : err.status, { action, ...report(STEPS.substrate) })
     throw err
   }
 }
@@ -137,28 +203,42 @@ export const actions: Actions = {
   test: async ({ locals, request }) => {
     await requireOwner(locals)
     const form = await request.formData()
-    return act('test', async () => {
-      const r = await _backupsDeps.client().testBackupTarget(readTarget(form))
-      if (!r.ok) throw new FormError(`Connection failed: ${r.error}`)
-      return {}
-    })
+    return act(
+      'test',
+      async () => {
+        const r = await _backupsDeps.client().testBackupTarget(readTarget(form))
+        if (!r.ok) throw new FormError(`Connection failed: ${r.error}`)
+        return {}
+      },
+      targetInput(form),
+    )
   },
   save: async ({ locals, request }) => {
     const author = await requireOwner(locals)
     const form = await request.formData()
-    return act('save', async () => {
-      const target = readTarget(form)
-      const schedule = { hour: int(form, 'hour', 0, 23, 'The hour') }
-      const retentionDays = int(form, 'retentionDays', 1, 3650, 'Keep backups for')
-      const client = _backupsDeps.client()
-      const firstSetup = !(await client.backups()).configured
-      // The backup key is derived from the company root key: one recovery code for everything.
-      const key = await _backupsDeps.companyKey()
-      await client.configureBackups({ target, schedule, retentionDays, backupKey: key.backupKey, author })
-      // On first setup the owner confirms the company recovery code here (the same EE1-… code,
-      // never a second one); it is in this one response only.
-      return { recoveryCode: firstSetup ? key.recoveryCode : null }
-    })
+    return act(
+      'save',
+      async () => {
+        const target = readTarget(form)
+        const schedule = { hour: int(form, 'hour', 0, 23, 'The hour') }
+        const retentionDays = int(form, 'retentionDays', 1, 3650, 'Keep backups for')
+        const client = _backupsDeps.client()
+        const firstSetup = !(await client.backups()).configured
+        // The backup key is derived from the company root key: one recovery code for everything.
+        const key = await _backupsDeps.companyKey()
+        await client.configureBackups({
+          target,
+          schedule,
+          retentionDays,
+          backupKey: key.backupKey,
+          author,
+        })
+        // On first setup the owner confirms the company recovery code here (the same EE1-… code,
+        // never a second one); it is in this one response only.
+        return { recoveryCode: firstSetup ? key.recoveryCode : null }
+      },
+      { ...targetInput(form), hour: form.get('hour'), retentionDays: form.get('retentionDays') },
+    )
   },
   run: async ({ locals }) => {
     const author = await requireOwner(locals)
@@ -171,11 +251,15 @@ export const actions: Actions = {
   check: async ({ locals, request }) => {
     const author = await requireOwner(locals)
     const form = await request.formData()
-    return act('check', async () => {
-      const snapshotId = (form.get('snapshotId') ?? '').toString()
-      if (!BACKUP_SNAPSHOT_ID.test(snapshotId)) throw new FormError('Choose a backup to check.')
-      const { job } = await _backupsDeps.client().checkBackup({ snapshotId, author })
-      return { jobId: job.id, snapshotId }
-    })
+    return act(
+      'check',
+      async () => {
+        const snapshotId = (form.get('snapshotId') ?? '').toString()
+        if (!BACKUP_SNAPSHOT_ID.test(snapshotId)) throw new FormError('Choose a backup to check.')
+        const { job } = await _backupsDeps.client().checkBackup({ snapshotId, author })
+        return { jobId: job.id, snapshotId }
+      },
+      { snapshotId: (form.get('snapshotId') ?? '').toString() },
+    )
   },
 }

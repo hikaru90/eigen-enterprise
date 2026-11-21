@@ -1,7 +1,10 @@
 <script lang="ts">
   import PlusIcon from '@lucide/svelte/icons/plus'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
+  import type { ShownError } from '$lib/errors/agent-report'
+  import { shownOf } from '$lib/memory/request-error'
   import { m } from '$lib/paraglide/messages.js'
 
   /**
@@ -17,7 +20,7 @@
   let { addTask }: Props = $props()
   let text = $state('')
   let busy = $state(false)
-  let failure = $state<string | null>(null)
+  let failure = $state<ShownError | null>(null)
   let field = $state<HTMLInputElement | null>(null)
 
   const canAdd = $derived(text.trim().length > 0 && !busy)
@@ -32,9 +35,11 @@
       await addTask(task)
       text = ''
     } catch (err) {
-      failure = m.graph_timeline_add_task_failed({
-        message: err instanceof Error ? err.message : String(err),
-      })
+      const shown = shownOf(err)
+      failure = {
+        error: m.graph_timeline_add_task_failed({ message: shown.error }),
+        agent: shown.agent,
+      }
     } finally {
       busy = false
       field?.focus()
@@ -66,6 +71,11 @@
     </Button>
   </div>
   {#if failure}
-    <p role="alert" class="text-destructive mt-1 text-xs">{failure}</p>
+    <ErrorNotice
+      class="mt-1 text-xs"
+      error={failure.error}
+      agent={failure.agent}
+      attempted="Adding a task from the timeline"
+    />
   {/if}
 </form>

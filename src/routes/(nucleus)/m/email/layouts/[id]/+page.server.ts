@@ -24,7 +24,7 @@ export const actions: Actions = {
   save: async ({ locals, params, request }) => {
     await requireAdmin(locals)
     const form = await request.formData()
-    return act('save', async () => {
+    return act('save', 'Saving an email layout', async () => {
       await emailPlatform().templates.updateLayout(params.id, {
         name: field(form, 'name'),
         format: field(form, 'format'),
@@ -35,7 +35,7 @@ export const actions: Actions = {
   },
   delete: async ({ locals, params }) => {
     await requireAdmin(locals)
-    const out = await act('delete', async () => {
+    const out = await act('delete', 'Deleting an email layout', async () => {
       await emailPlatform().templates.deleteLayout(params.id)
       return {}
     })

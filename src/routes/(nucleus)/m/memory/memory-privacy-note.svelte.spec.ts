@@ -9,12 +9,24 @@ describe('MemoryPrivacyNote', () => {
   it('states who can read it (shared by default, Private = yours alone), what the assistant and keys can do, what leaves the server, and delete', async () => {
     render(MemoryPrivacyNote, { analyticsSeesAi: false })
     await expect.element(note()).toBeVisible()
-    await expect.element(note()).toHaveTextContent(/projects and notes are shared with everyone in the company/i)
+    await expect
+      .element(note())
+      .toHaveTextContent(/projects and notes are shared with everyone in the company/i)
     await expect.element(note()).toHaveTextContent(/only you change them/i)
-    await expect.element(note()).toHaveTextContent(/private and only you can see it: no admin, not even the owner/i)
-    await expect.element(note()).toHaveTextContent(/your thoughts, what you capture and tasks outside a shared project are yours alone/i)
+    await expect
+      .element(note())
+      .toHaveTextContent(/private and only you can see it: no admin, not even the owner/i)
+    await expect
+      .element(note())
+      .toHaveTextContent(
+        /your thoughts, what you capture and tasks outside a shared project are yours alone/i,
+      )
     await expect.element(note()).toHaveTextContent(/company brain reads it only as you/i)
-    await expect.element(note()).toHaveTextContent(/never their private things; a colleague.s question reaches only what you share/i)
+    await expect
+      .element(note())
+      .toHaveTextContent(
+        /never their private things; a colleague.s question reaches only what you share/i,
+      )
     await expect.element(note()).toHaveTextContent(/make things private for you, never share them/i)
     await expect
       .element(note())

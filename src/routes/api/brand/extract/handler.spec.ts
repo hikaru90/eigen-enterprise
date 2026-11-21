@@ -40,9 +40,11 @@ describe('executeBrandExtractTool', () => {
       { id: 'owner-1' },
     )
     expect(response.status).toBe(503)
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       message: BROWSER_UNAVAILABLE_MESSAGE,
       code: 'browser_unavailable',
+      error: BROWSER_UNAVAILABLE_MESSAGE,
+      agent: { tool: 'brand.extract_start', input: { url: 'https://example.com' } },
     })
   })
 
@@ -56,9 +58,11 @@ describe('executeBrandExtractTool', () => {
       { id: 'owner-1' },
     )
     expect(response.status).toBe(413)
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       message: '“guide.pdf” is 12.0 MB; PDFs can be at most 10 MB.',
       code: 'too_large',
+      error: '“guide.pdf” is 12.0 MB; PDFs can be at most 10 MB.',
+      agent: { tool: 'brand.extract_guide_start' },
     })
   })
 

@@ -27,14 +27,15 @@ export const actions: Actions = {
   create: async ({ locals, request }) => {
     const me = await requireAdmin(locals)
     const form = await request.formData()
-    const out = await act('create', async () => {
+    const out = await act('create', 'Creating a marketing flow', async () => {
       const f = await emailPlatform().audience.createFlow(
         { name: field(form, 'name'), triggerListId: field(form, 'listId') || null },
         me.userId,
       )
       return { id: f.id }
     })
-    if ('id' in out && typeof out.id === 'string') throw redirect(303, `/m/email/marketing/flows/${out.id}`)
+    if ('id' in out && typeof out.id === 'string')
+      throw redirect(303, `/m/email/marketing/flows/${out.id}`)
     return out
   },
 }

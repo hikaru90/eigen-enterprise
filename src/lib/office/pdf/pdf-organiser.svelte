@@ -1,5 +1,8 @@
 <script lang="ts" module>
   import type { PdfPage } from './pdfjs'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
+  import { driveShownError } from '$lib/drive/shown-error'
+  import type { AgentReport, ShownError } from '$lib/errors/agent-report'
 
   /** A PDF whose pages can be placed: the open file (index 0) and the ones inserted from the Drive. */
   export type OrganiserSource = { bytes: Uint8Array; name: string; pages: PdfPage[] }
@@ -80,12 +83,14 @@
     | { kind: 'locked'; holder: LockHolder }
     | { kind: 'lost'; holder: LockHolder | null }
     | { kind: 'stale' }
-    | { kind: 'error'; message: string }
+    | ({ kind: 'error' } & ShownError)
   type Notice = {
     kind: 'ok' | 'error'
     text: string
     link?: { href: string; label: string }
     warnings?: string[]
+    /** For an error: the server's agent report, when the failure came from the server. */
+    agent?: AgentReport | null
   }
 
   const THUMB = 128
@@ -179,7 +184,7 @@
         return
       }
       if (view.state !== 'held') {
-        lock = { kind: 'error', message: 'The file could not be opened for editing.' }
+        lock = { kind: 'error', error: 'The file could not be opened for editing.', agent: null }
         return
       }
       const now = await driveApi.readBytes(fileId)
@@ -192,7 +197,7 @@
       }
       lock = { kind: 'held' }
     } catch (err) {
-      if (!destroyed) lock = { kind: 'error', message: messageOf(err) }
+      if (!destroyed) lock = { kind: 'error', ...driveShownError(err) }
     }
   }
 
@@ -289,6 +294,7 @@
       notice = {
         kind: 'error',
         text: `Pages of “${file.name}” could not be added: ${messageOf(err)}`,
+        agent: driveShownError(err).agent,
       }
     } finally {
       busy = null
@@ -435,7 +441,11 @@
           el.dataset.drawn = 'true'
         })
         .catch((err) => {
-          notice = { kind: 'error', text: `A page could not be drawn: ${messageOf(err)}` }
+          notice = {
+            kind: 'error',
+            text: `A page could not be drawn: ${messageOf(err)}`,
+            agent: driveShownError(err).agent,
+          }
         })
     }
   }
@@ -455,7 +465,12 @@
     } catch (err) {
       if (err instanceof LockLostError) {
         if ((lock as Lock).kind !== 'lost') lock = { kind: 'lost', holder: null }
-      } else notice = { kind: 'error', text: `The changes could not be saved: ${messageOf(err)}` }
+      } else
+        notice = {
+          kind: 'error',
+          text: `The changes could not be saved: ${messageOf(err)}`,
+          agent: driveShownError(err).agent,
+        }
     } finally {
       busy = null
     }
@@ -489,7 +504,11 @@
         warnings: out.warnings,
       }
     } catch (err) {
-      notice = { kind: 'error', text: `The pages could not be extracted: ${messageOf(err)}` }
+      notice = {
+        kind: 'error',
+        text: `The pages could not be extracted: ${messageOf(err)}`,
+        agent: driveShownError(err).agent,
+      }
     } finally {
       busy = null
     }
@@ -541,7 +560,11 @@
         ),
       }
     } catch (err) {
-      notice = { kind: 'error', text: `The pages could not be split off: ${messageOf(err)}` }
+      notice = {
+        kind: 'error',
+        text: `The pages could not be split off: ${messageOf(err)}`,
+        agent: driveShownError(err).agent,
+      }
     } finally {
       busy = null
     }
@@ -721,23 +744,25 @@
       the pages you need, or discard to see the new version.
     </p>
   {:else if lock.kind === 'error'}
-    <p
-      class="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive"
-      role="alert"
-      data-testid="pdf-org-lock-error"
-    >
-      {lock.message}
-    </p>
+    <ErrorNotice
+      class="border-b border-destructive/40 bg-destructive/10 px-4 py-2"
+      testid="pdf-org-lock-error"
+      error={lock.error}
+      agent={lock.agent}
+      attempted="Taking the edit lock on this PDF to organise its pages"
+    />
   {/if}
 
-  {#if notice}
-    <div
-      class="border-b px-4 py-2 text-sm {notice.kind === 'error'
-        ? 'border-destructive/40 bg-destructive/10 text-destructive'
-        : 'bg-muted/40'}"
-      role={notice.kind === 'error' ? 'alert' : 'status'}
-      data-testid="pdf-org-notice"
-    >
+  {#if notice?.kind === 'error'}
+    <ErrorNotice
+      class="border-b border-destructive/40 bg-destructive/10 px-4 py-2"
+      testid="pdf-org-notice"
+      error={notice.text}
+      agent={notice.agent ?? null}
+      attempted="Organising this PDF’s pages (adding, drawing, saving, extracting or splitting)"
+    />
+  {:else if notice}
+    <div class="border-b bg-muted/40 px-4 py-2 text-sm" role="status" data-testid="pdf-org-notice">
       <p>
         {notice.text}
         {#if notice.link}<a class="underline" href={notice.link.href}>{notice.link.label}</a>{/if}

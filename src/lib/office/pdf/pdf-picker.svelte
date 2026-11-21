@@ -2,10 +2,13 @@
   import FileTextIcon from '@lucide/svelte/icons/file-text'
   import FolderIcon from '@lucide/svelte/icons/folder'
   import { onMount } from 'svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
   import { driveApi, type DriveItem } from '$lib/drive/api'
   import { driveItemKind } from '$lib/drive/display'
+  import { driveShownError } from '$lib/drive/shown-error'
+  import type { ShownError } from '$lib/errors/agent-report'
 
   /**
    * Choose a PDF from the Drive (Organise → Insert from a PDF): walk the
@@ -22,7 +25,7 @@
   let folders = $state<DriveItem[]>([])
   let pdfs = $state<DriveItem[]>([])
   let loading = $state(true)
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
 
   async function go(id: string | null) {
     error = null
@@ -33,7 +36,7 @@
       folders = out.items.filter((i) => i.type === 'folder')
       pdfs = out.items.filter((i) => driveItemKind(i) === 'pdf' && i.id !== exclude)
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = driveShownError(err)
     } finally {
       loading = false
     }
@@ -104,7 +107,11 @@
         <li class="px-3 py-4 text-muted-foreground">No PDFs or folders here.</li>
       {/if}
     </ul>
-    {#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+    {#if error}<ErrorNotice
+        error={error.error}
+        agent={error.agent}
+        attempted="Listing Drive folders to pick a PDF from"
+      />{/if}
     <Dialog.Footer>
       <Button variant="outline" onclick={close}>Cancel</Button>
     </Dialog.Footer>

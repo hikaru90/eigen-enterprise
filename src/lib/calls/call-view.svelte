@@ -17,6 +17,7 @@
   import Volume2 from '@lucide/svelte/icons/volume-2'
   import X from '@lucide/svelte/icons/x'
   import { onDestroy, onMount } from 'svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import BrainRecap from './brain-recap.svelte'
   import CallBrainPanel from './call-brain-panel.svelte'
   import CallTile from './call-tile.svelte'
@@ -104,7 +105,11 @@
   const participants = $derived(active.participants)
   const stage = $derived(stageOf(participants, active.speaker))
   const others = $derived(participants.filter((p) => !p.isLocal))
-  const grid = $derived(stage.mode === 'grid' ? gridLayout({ width: stageW, height: stageH, count: stage.tiles.length, gap: GAP }) : null)
+  const grid = $derived(
+    stage.mode === 'grid'
+      ? gridLayout({ width: stageW, height: stageH, count: stage.tiles.length, gap: GAP })
+      : null,
+  )
   /** The focus strip sits at the side on a wide stage, under the shared screen on a narrow one. */
   const wide = $derived(stageW >= 640 && stageW > stageH * 1.2)
   const portrait = $derived(stageH > stageW)
@@ -125,15 +130,26 @@
   })
 
   /** The call as the server last told us (the feed / refreshes update it): its answer time starts the clock. */
-  const answeredAt = $derived(mine ? active.call?.answeredAt ?? null : null)
-  const clock = $derived(answeredAt && (s.phase === 'connected' || s.phase === 'reconnecting') ? callClock(answeredAt, nowMs) : null)
-  const transcribed = $derived(transcription && mine && active.inCall ? transcription.transcribed : [])
+  const answeredAt = $derived(mine ? (active.call?.answeredAt ?? null) : null)
+  const clock = $derived(
+    answeredAt && (s.phase === 'connected' || s.phase === 'reconnecting')
+      ? callClock(answeredAt, nowMs)
+      : null,
+  )
+  const transcribed = $derived(
+    transcription && mine && active.inCall ? transcription.transcribed : [],
+  )
   /** The indicator everyone in the call sees (my own switch shows at once). */
-  const brainListening = $derived(mine && active.inCall && (brain ? brain.listening : active.call?.brain.listening === true))
+  const brainListening = $derived(
+    mine && active.inCall && (brain ? brain.listening : active.call?.brain.listening === true),
+  )
   const brainBy = $derived(mine ? (active.call?.brain.byName ?? null) : null)
   /** I am out of the call and switched the Brain on in it: offer the recap (the server says so if the call still goes on). */
   const recapOffered = $derived(
-    brainRecap !== null && mine && (s.ended === 'call_over' || s.ended === 'hung_up') && (active.call?.brain.turnedOnBy.includes(me) ?? false),
+    brainRecap !== null &&
+      mine &&
+      (s.ended === 'call_over' || s.ended === 'hung_up') &&
+      (active.call?.brain.turnedOnBy.includes(me) ?? false),
   )
 
   async function hangUp() {
@@ -150,18 +166,18 @@
     !opened
       ? 'Connecting…'
       : !mine
-      ? ''
-      : s.phase === 'connecting'
-        ? 'Connecting…'
-        : s.phase === 'reconnecting'
-          ? 'Reconnecting…'
-          : s.phase === 'connected'
-            ? others.length === 0
-              ? 'Waiting for others to join…'
-              : `${participants.length} in the call`
-            : s.phase === 'ended'
-              ? 'Call ended'
-              : 'Not connected',
+        ? ''
+        : s.phase === 'connecting'
+          ? 'Connecting…'
+          : s.phase === 'reconnecting'
+            ? 'Reconnecting…'
+            : s.phase === 'connected'
+              ? others.length === 0
+                ? 'Waiting for others to join…'
+                : `${participants.length} in the call`
+              : s.phase === 'ended'
+                ? 'Call ended'
+                : 'Not connected',
   )
 
   const endedText = $derived.by(() => {
@@ -184,12 +200,20 @@
   })
 </script>
 
-{#snippet control(label: string, pressed: boolean, testid: string, on: boolean, onclick: () => void)}
+{#snippet control(
+  label: string,
+  pressed: boolean,
+  testid: string,
+  on: boolean,
+  onclick: () => void,
+)}
   <button
     type="button"
     class={[
       'grid size-12 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-50',
-      pressed ? 'bg-white text-neutral-900 hover:bg-white/90' : 'bg-white/15 text-white hover:bg-white/25',
+      pressed
+        ? 'bg-white text-neutral-900 hover:bg-white/90'
+        : 'bg-white/15 text-white hover:bg-white/25',
     ]}
     aria-label={label}
     title={label}
@@ -200,7 +224,9 @@
     {onclick}
   >
     {#if testid === 'call-mic'}{#if on}<Mic class="size-5" />{:else}<MicOff class="size-5" />{/if}
-    {:else if testid === 'call-camera'}{#if on}<Video class="size-5" />{:else}<VideoOff class="size-5" />{/if}
+    {:else if testid === 'call-camera'}{#if on}<Video class="size-5" />{:else}<VideoOff
+          class="size-5"
+        />{/if}
     {:else if on}<ScreenShareOff class="size-5" />{:else}<ScreenShare class="size-5" />{/if}
   </button>
 {/snippet}
@@ -233,21 +259,33 @@
           ? `${brainBy} switched the Company Brain on. It only listens and answers only when someone asks it.`
           : 'The Company Brain is listening. It only listens and answers only when someone asks it.'}
         data-testid="call-brain-indicator"
-        ><span class="size-1.5 rounded-full bg-amber-300" aria-hidden="true"></span>Company Brain listening</span
+        ><span class="size-1.5 rounded-full bg-amber-300" aria-hidden="true"></span>Company Brain
+        listening</span
       >
     {/if}
     {#if clock}
-      <span class="shrink-0 font-mono text-sm tabular-nums text-neutral-300" aria-label={`Call time ${clock}`} data-testid="call-clock">{clock}</span>
+      <span
+        class="shrink-0 font-mono text-sm tabular-nums text-neutral-300"
+        aria-label={`Call time ${clock}`}
+        data-testid="call-clock">{clock}</span
+      >
     {/if}
   </header>
 
   {#if !opened}
-    <div class="grid flex-1 place-items-center text-sm text-neutral-400" data-testid="call-connecting">Connecting…</div>
+    <div
+      class="grid flex-1 place-items-center text-sm text-neutral-400"
+      data-testid="call-connecting"
+    >
+      Connecting…
+    </div>
   {:else if !mine}
     <div class="grid flex-1 place-items-center p-6 text-center" data-testid="call-busy">
       <div class="max-w-sm">
         {#if busy && active.call}
-          <p class="text-base font-semibold" role="alert">You're already in a call: {active.call.title}.</p>
+          <p class="text-base font-semibold" role="alert">
+            You're already in a call: {active.call.title}.
+          </p>
           <p class="mt-2 text-sm text-neutral-400">Hang up that call first to join this one.</p>
           <div class="mt-5 flex flex-wrap justify-center gap-2">
             <button
@@ -256,8 +294,11 @@
               data-testid="call-busy-back"
               onclick={() => active.call && onopen(active.call.id)}>Back to your call</button
             >
-            <button type="button" class="h-9 rounded-md border border-white/20 px-4 text-sm font-semibold hover:bg-white/10" data-testid="call-back" onclick={onleave}
-              >{leaveLabel}</button
+            <button
+              type="button"
+              class="h-9 rounded-md border border-white/20 px-4 text-sm font-semibold hover:bg-white/10"
+              data-testid="call-back"
+              onclick={onleave}>{leaveLabel}</button
             >
           </div>
         {:else}
@@ -274,11 +315,23 @@
       </div>
     </div>
   {:else if s.phase === 'error' && s.problem}
-    <div class="grid flex-1 place-items-center p-6 text-center" data-testid="call-problem" data-kind={s.problem.kind}>
+    <div
+      class="grid flex-1 place-items-center p-6 text-center"
+      data-testid="call-problem"
+      data-kind={s.problem.kind}
+    >
       <div class="max-w-sm">
-        <p class="text-base font-semibold" role="alert">{s.problem.message}</p>
+        <ErrorNotice
+          class="items-center text-base font-semibold"
+          error={s.problem.message}
+          agent={s.problem.agent}
+          attempted="Joining a video call"
+        />
         {#if s.problem.kind === 'not_configured'}
-          <p class="mt-2 text-sm text-neutral-400">Video calls need the company's call server. An owner or admin can turn it on for this server.</p>
+          <p class="mt-2 text-sm text-neutral-400">
+            Video calls need the company's call server. An owner or admin can turn it on for this
+            server.
+          </p>
         {/if}
         <div class="mt-5 flex justify-center gap-2">
           {#if s.problem.kind === 'failed'}
@@ -289,26 +342,37 @@
               onclick={() => active.rejoin()}>Try again</button
             >
           {/if}
-          <button type="button" class="h-9 rounded-md border border-white/20 px-4 text-sm font-semibold hover:bg-white/10" data-testid="call-back" onclick={onleave}
-            >{leaveLabel}</button
+          <button
+            type="button"
+            class="h-9 rounded-md border border-white/20 px-4 text-sm font-semibold hover:bg-white/10"
+            data-testid="call-back"
+            onclick={onleave}>{leaveLabel}</button
           >
         </div>
       </div>
     </div>
   {:else if s.phase === 'ended'}
-    <div class="grid flex-1 place-items-center p-6 text-center" data-testid="call-ended" data-reason={s.ended}>
+    <div
+      class="grid flex-1 place-items-center p-6 text-center"
+      data-testid="call-ended"
+      data-reason={s.ended}
+    >
       <div class="max-w-sm">
         <p class="text-base font-semibold">{endedText}</p>
         {#if recapOffered && brainRecap && active.call}
-          <div class="mt-5"><BrainRecap callId={active.call.id} client={brainRecap} tone="dark" /></div>
+          <div class="mt-5">
+            <BrainRecap callId={active.call.id} client={brainRecap} tone="dark" />
+          </div>
         {/if}
         <div class="mt-5 flex flex-wrap justify-center gap-2">
           {#if transcriptHref && (s.ended === 'hung_up' || s.ended === 'call_over')}
-            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the page passes it through resolve() -->
-            <a href={transcriptHref}
+            <!-- eslint-disable svelte/no-navigation-without-resolve -- the page passes it through resolve() -->
+            <a
+              href={transcriptHref}
               class="inline-flex h-9 items-center rounded-md border border-white/20 px-4 text-sm font-semibold hover:bg-white/10"
               data-testid="call-transcript-link">Transcript</a
             >
+            <!-- eslint-enable svelte/no-navigation-without-resolve -->
           {/if}
           {#if s.ended === 'connection_lost' || s.ended === 'joined_elsewhere'}
             <button
@@ -318,104 +382,160 @@
               onclick={() => active.rejoin()}>Rejoin</button
             >
           {/if}
-          <button type="button" class="h-9 rounded-md border border-white/20 px-4 text-sm font-semibold hover:bg-white/10" data-testid="call-back" onclick={onleave}
-            >{leaveLabel}</button
+          <button
+            type="button"
+            class="h-9 rounded-md border border-white/20 px-4 text-sm font-semibold hover:bg-white/10"
+            data-testid="call-back"
+            onclick={onleave}>{leaveLabel}</button
           >
         </div>
       </div>
     </div>
   {:else}
     <div class="relative flex min-h-0 flex-1">
-    <div class="relative flex min-h-0 min-w-0 flex-1 flex-col p-2 sm:p-3">
-      {#if s.notices.length > 0 || active.audioBlocked || transcription?.problem}
-        <div class="absolute inset-x-2 top-2 z-10 mx-auto flex max-w-2xl flex-col gap-2 sm:inset-x-3 sm:top-3">
-          {#each s.notices as n (n.device)}
-            <div
-              class="flex items-start gap-2 rounded-lg border border-amber-400/30 bg-neutral-900/95 p-3 text-sm"
-              role="alert"
-              data-testid="call-notice"
-              data-device={n.device}
-              data-failure={n.failure}
-            >
-              <p class="min-w-0 flex-1">{n.message}</p>
-              <button type="button" class="text-neutral-400 hover:text-white" aria-label="Dismiss" onclick={() => active.dismissNotice(n.device)}
-                ><X class="size-4" /></button
+      <div class="relative flex min-h-0 min-w-0 flex-1 flex-col p-2 sm:p-3">
+        {#if s.notices.length > 0 || active.audioBlocked || transcription?.problem}
+          <div
+            class="absolute inset-x-2 top-2 z-10 mx-auto flex max-w-2xl flex-col gap-2 sm:inset-x-3 sm:top-3"
+          >
+            {#each s.notices as n (n.device)}
+              <div
+                class="flex items-start gap-2 rounded-lg border border-amber-400/30 bg-neutral-900/95 p-3 text-sm"
+                role="alert"
+                data-testid="call-notice"
+                data-device={n.device}
+                data-failure={n.failure}
               >
-            </div>
-          {/each}
-          {#if transcription?.problem}
-            <div
-              class="flex items-start gap-2 rounded-lg border border-amber-400/30 bg-neutral-900/95 p-3 text-sm"
-              role="alert"
-              data-testid="call-transcript-problem"
-            >
-              <p class="min-w-0 flex-1">{transcription.problem}</p>
-              {#if !transcription.unavailable}
-                <button type="button" class="text-neutral-400 hover:text-white" aria-label="Dismiss" onclick={() => transcription?.dismissProblem()}
-                  ><X class="size-4" /></button
+                <p class="min-w-0 flex-1">{n.message}</p>
+                <button
+                  type="button"
+                  class="text-neutral-400 hover:text-white"
+                  aria-label="Dismiss"
+                  onclick={() => active.dismissNotice(n.device)}><X class="size-4" /></button
                 >
-              {/if}
-            </div>
-          {/if}
-          {#if active.audioBlocked}
-            <button
-              type="button"
-              class="flex items-center justify-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-neutral-900 hover:bg-white/90"
-              data-testid="call-start-audio"
-              onclick={() => active.startAudio()}><Volume2 class="size-4" aria-hidden="true" /> Your browser paused the sound. Click to hear the call.</button
-            >
-          {/if}
-        </div>
-      {/if}
-
-      <div class="relative min-h-0 flex-1" bind:clientWidth={stageW} bind:clientHeight={stageH} data-testid="call-stage">
-        {#if s.phase === 'connecting'}
-          <div class="grid h-full place-items-center text-sm text-neutral-400" data-testid="call-connecting">Connecting…</div>
-        {:else if stage.mode === 'grid' && grid}
-          <div class="flex size-full flex-wrap content-center items-center justify-center" style="gap:{GAP}px" data-testid="call-grid" data-columns={grid.columns}>
-            {#each stage.tiles as t (t.key)}
-              <CallTile tile={t} emphasised={stage.tiles.length > 2 && t.identity === stage.speaker} style="width:{grid.tileWidth}px;height:{grid.tileHeight}px" />
+              </div>
             {/each}
-          </div>
-        {:else if stage.mode === 'pair'}
-          <div class="relative size-full" data-testid="call-grid">
-            <CallTile tile={stage.main} fit={portrait ? 'cover' : 'contain'} class="size-full" />
-            <!-- The self view floats over the other person's corner. -->
-            <div class="absolute right-2 bottom-2 z-[1] aspect-[3/4] w-24 sm:right-3 sm:bottom-3 sm:aspect-video sm:w-56">
-              <CallTile tile={stage.self} size="small" class="size-full shadow-lg" />
-            </div>
-          </div>
-        {:else if stage.mode === 'focus'}
-          <div class={['flex size-full', wide ? 'flex-row' : 'flex-col']} style="gap:{GAP}px" data-testid="call-grid">
-            <div class="min-h-0 min-w-0 flex-1">
-              <CallTile tile={stage.main} fit="contain" class="size-full" />
-            </div>
-            <div
-              class={['flex shrink-0', wide ? 'w-52 flex-col overflow-y-auto' : 'h-24 flex-row overflow-x-auto']}
-              style="gap:{GAP}px"
-              data-testid="call-strip"
-            >
-              {#each stage.strip as t (t.key)}
-                <CallTile tile={t} size="small" emphasised={t.identity === stage.speaker && t.kind === 'camera'} class={['shrink-0', wide ? 'aspect-video w-full' : 'h-full aspect-video'].join(' ')} />
-              {/each}
-            </div>
+            {#if transcription?.problem}
+              <div
+                class="flex items-start gap-2 rounded-lg border border-amber-400/30 bg-neutral-900/95 p-3 text-sm"
+                data-testid="call-transcript-problem"
+              >
+                <ErrorNotice
+                  class="min-w-0 flex-1"
+                  error={transcription.problem.error}
+                  agent={transcription.problem.agent}
+                  attempted="Transcribing my microphone in a call"
+                />
+                {#if !transcription.unavailable}
+                  <button
+                    type="button"
+                    class="text-neutral-400 hover:text-white"
+                    aria-label="Dismiss"
+                    onclick={() => transcription?.dismissProblem()}><X class="size-4" /></button
+                  >
+                {/if}
+              </div>
+            {/if}
+            {#if active.audioBlocked}
+              <button
+                type="button"
+                class="flex items-center justify-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-neutral-900 hover:bg-white/90"
+                data-testid="call-start-audio"
+                onclick={() => active.startAudio()}
+                ><Volume2 class="size-4" aria-hidden="true" /> Your browser paused the sound. Click to
+                hear the call.</button
+              >
+            {/if}
           </div>
         {/if}
+
+        <div
+          class="relative min-h-0 flex-1"
+          bind:clientWidth={stageW}
+          bind:clientHeight={stageH}
+          data-testid="call-stage"
+        >
+          {#if s.phase === 'connecting'}
+            <div
+              class="grid h-full place-items-center text-sm text-neutral-400"
+              data-testid="call-connecting"
+            >
+              Connecting…
+            </div>
+          {:else if stage.mode === 'grid' && grid}
+            <div
+              class="flex size-full flex-wrap content-center items-center justify-center"
+              style="gap:{GAP}px"
+              data-testid="call-grid"
+              data-columns={grid.columns}
+            >
+              {#each stage.tiles as t (t.key)}
+                <CallTile
+                  tile={t}
+                  emphasised={stage.tiles.length > 2 && t.identity === stage.speaker}
+                  style="width:{grid.tileWidth}px;height:{grid.tileHeight}px"
+                />
+              {/each}
+            </div>
+          {:else if stage.mode === 'pair'}
+            <div class="relative size-full" data-testid="call-grid">
+              <CallTile tile={stage.main} fit={portrait ? 'cover' : 'contain'} class="size-full" />
+              <!-- The self view floats over the other person's corner. -->
+              <div
+                class="absolute right-2 bottom-2 z-[1] aspect-[3/4] w-24 sm:right-3 sm:bottom-3 sm:aspect-video sm:w-56"
+              >
+                <CallTile tile={stage.self} size="small" class="size-full shadow-lg" />
+              </div>
+            </div>
+          {:else if stage.mode === 'focus'}
+            <div
+              class={['flex size-full', wide ? 'flex-row' : 'flex-col']}
+              style="gap:{GAP}px"
+              data-testid="call-grid"
+            >
+              <div class="min-h-0 min-w-0 flex-1">
+                <CallTile tile={stage.main} fit="contain" class="size-full" />
+              </div>
+              <div
+                class={[
+                  'flex shrink-0',
+                  wide ? 'w-52 flex-col overflow-y-auto' : 'h-24 flex-row overflow-x-auto',
+                ]}
+                style="gap:{GAP}px"
+                data-testid="call-strip"
+              >
+                {#each stage.strip as t (t.key)}
+                  <CallTile
+                    tile={t}
+                    size="small"
+                    emphasised={t.identity === stage.speaker && t.kind === 'camera'}
+                    class={['shrink-0', wide ? 'aspect-video w-full' : 'h-full aspect-video'].join(
+                      ' ',
+                    )}
+                  />
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
       </div>
-    </div>
-    {#if brain && brainOpen && active.inCall}
-      <!-- Beside the stage on a wide screen; over it on a phone. -->
-      <div class="absolute inset-0 z-20 sm:static sm:z-auto sm:w-80 sm:shrink-0 sm:border-l sm:border-white/10">
-        <CallBrainPanel {brain} onclose={() => (brainOpen = false)} />
-      </div>
-    {/if}
+      {#if brain && brainOpen && active.inCall}
+        <!-- Beside the stage on a wide screen; over it on a phone. -->
+        <div
+          class="absolute inset-0 z-20 sm:static sm:z-auto sm:w-80 sm:shrink-0 sm:border-l sm:border-white/10"
+        >
+          <CallBrainPanel {brain} onclose={() => (brainOpen = false)} />
+        </div>
+      {/if}
     </div>
   {/if}
 
   {#if mine && active.inCall}
     <div class="relative shrink-0">
       {#if devicesOpen}
-        <div class="absolute inset-x-2 bottom-full z-20 mb-2 sm:inset-x-auto sm:right-1/2 sm:w-80 sm:translate-x-1/2">
+        <div
+          class="absolute inset-x-2 bottom-full z-20 mb-2 sm:inset-x-auto sm:right-1/2 sm:w-80 sm:translate-x-1/2"
+        >
           <DevicePicker {active} onclose={() => (devicesOpen = false)} />
         </div>
       {/if}
@@ -423,25 +543,47 @@
         class="flex items-center justify-center gap-2 border-t border-white/10 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:gap-3"
         data-testid="call-controls"
       >
-        {@render control(s.mic ? 'Mute' : 'Unmute', !s.mic, 'call-mic', s.mic, () => active.turn('microphone', !s.mic))}
-        {@render control(s.camera ? 'Turn camera off' : 'Turn camera on', !s.camera, 'call-camera', s.camera, () => active.turn('camera', !s.camera))}
+        {@render control(s.mic ? 'Mute' : 'Unmute', !s.mic, 'call-mic', s.mic, () =>
+          active.turn('microphone', !s.mic),
+        )}
+        {@render control(
+          s.camera ? 'Turn camera off' : 'Turn camera on',
+          !s.camera,
+          'call-camera',
+          s.camera,
+          () => active.turn('camera', !s.camera),
+        )}
         {#if active.canShareScreen}
-          {@render control(s.screen ? 'Stop sharing' : 'Share screen', s.screen, 'call-screen', s.screen, () => active.turn('screen', !s.screen))}
+          {@render control(
+            s.screen ? 'Stop sharing' : 'Share screen',
+            s.screen,
+            'call-screen',
+            s.screen,
+            () => active.turn('screen', !s.screen),
+          )}
         {/if}
         {#if transcription && !transcription.unavailable}
           <button
             type="button"
             class={[
               'grid size-12 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-50',
-              transcription.on ? 'bg-white/15 text-white hover:bg-white/25' : 'bg-white text-neutral-900 hover:bg-white/90',
+              transcription.on
+                ? 'bg-white/15 text-white hover:bg-white/25'
+                : 'bg-white text-neutral-900 hover:bg-white/90',
             ]}
-            aria-label={transcription.on ? 'Stop transcribing my microphone' : 'Transcribe my microphone'}
-            title={transcription.on ? 'Your microphone is transcribed — click to stop' : 'Your microphone is not transcribed — click to turn it on'}
+            aria-label={transcription.on
+              ? 'Stop transcribing my microphone'
+              : 'Transcribe my microphone'}
+            title={transcription.on
+              ? 'Your microphone is transcribed — click to stop'
+              : 'Your microphone is not transcribed — click to turn it on'}
             aria-pressed={transcription.on}
             disabled={s.phase !== 'connected'}
             data-testid="call-transcribe"
             onclick={() => transcription?.toggle()}
-            >{#if transcription.on}<Captions class="size-5" />{:else}<CaptionsOff class="size-5" />{/if}</button
+            >{#if transcription.on}<Captions class="size-5" />{:else}<CaptionsOff
+                class="size-5"
+              />{/if}</button
           >
         {/if}
         {#if brain}
@@ -449,10 +591,14 @@
             type="button"
             class={[
               'relative grid size-12 shrink-0 place-items-center rounded-full transition-colors',
-              brainOpen ? 'bg-white text-neutral-900 hover:bg-white/90' : 'bg-white/15 text-white hover:bg-white/25',
+              brainOpen
+                ? 'bg-white text-neutral-900 hover:bg-white/90'
+                : 'bg-white/15 text-white hover:bg-white/25',
             ]}
             aria-label="Company Brain"
-            title={brain.listening ? 'Company Brain: listening — ask it, or switch it off' : 'Company Brain: off — bring it into this call'}
+            title={brain.listening
+              ? 'Company Brain: listening — ask it, or switch it off'
+              : 'Company Brain: off — bring it into this call'}
             aria-expanded={brainOpen}
             data-testid="call-brain-button"
             onclick={toggleBrainPanel}
@@ -466,7 +612,9 @@
           type="button"
           class={[
             'grid size-12 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-50',
-            devicesOpen ? 'bg-white text-neutral-900 hover:bg-white/90' : 'bg-white/15 text-white hover:bg-white/25',
+            devicesOpen
+              ? 'bg-white text-neutral-900 hover:bg-white/90'
+              : 'bg-white/15 text-white hover:bg-white/25',
           ]}
           aria-label="Devices"
           title="Microphone, speaker and camera"

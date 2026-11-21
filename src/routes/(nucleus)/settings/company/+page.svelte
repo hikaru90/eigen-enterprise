@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { PageProps } from './$types'
   import { applyAction, deserialize, enhance } from '$app/forms'
   import { invalidateAll } from '$app/navigation'
@@ -206,7 +207,12 @@
     </label>
     <Button type="submit" size="sm" data-testid="company-name-save">Save name</Button>
     {#if nameResult?.error}
-      <p class="text-xs text-destructive" role="alert">{nameResult.error}</p>
+      <ErrorNotice
+        class="text-xs"
+        error={nameResult.error}
+        agent={'agent' in nameResult ? nameResult.agent : null}
+        attempted="Saving the company name"
+      />
     {:else if nameResult?.ok}
       <p class="text-xs text-foreground/60" role="status">Saved.</p>
     {/if}
@@ -317,9 +323,18 @@
         {logoLocal.label}
       </p>
     {:else if logoLocal?.kind === 'refused'}
-      <p class="text-xs text-destructive" role="alert">{logoLocal.error}</p>
+      <ErrorNotice
+        class="text-xs"
+        error={logoLocal.error}
+        attempted="Uploading the company logo (checked in the browser before sending)"
+      />
     {:else if logoResult?.error}
-      <p class="text-xs text-destructive" role="alert">{logoResult.error}</p>
+      <ErrorNotice
+        class="text-xs"
+        error={logoResult.error}
+        agent={'agent' in logoResult ? logoResult.agent : null}
+        attempted="Uploading or cropping the company logo"
+      />
     {:else if logoResult?.ok}
       <p class="text-xs text-foreground/60" role="status">
         {logoResult.action === 'removeLogo' ? 'Logo removed.' : 'Logo saved.'}

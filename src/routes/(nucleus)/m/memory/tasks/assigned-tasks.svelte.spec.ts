@@ -27,8 +27,12 @@ describe('Memory › Tasks: assigned between members', () => {
     const group = page.getByTestId('assigned-tasks-to-me')
     await expect.element(group).toHaveTextContent(/Assigned to you/)
     await expect.element(page.getByText('Send the Q4 deck', { exact: true })).toBeInTheDocument()
-    await expect.element(page.getByTestId('assigned-task-meta')).toHaveTextContent('From Alex · via the assistant · due 21 Nov 2026')
-    await expect.element(page.getByTestId('assigned-task-context')).toHaveTextContent('The client wants it before the call.')
+    await expect
+      .element(page.getByTestId('assigned-task-meta'))
+      .toHaveTextContent('From Alex · via the assistant · due 21 Nov 2026')
+    await expect
+      .element(page.getByTestId('assigned-task-context'))
+      .toHaveTextContent('The client wants it before the call.')
     await expect.element(page.getByTestId('assigned-task-done')).toBeInTheDocument()
     await expect.element(page.getByTestId('assigned-tasks-by-me')).not.toBeInTheDocument()
   })
@@ -43,24 +47,47 @@ describe('Memory › Tasks: assigned between members', () => {
             status: 'done',
             completedAt: '2026-11-19T11:00:00.000Z',
             update: { kind: 'completed', at: '2026-11-19T11:00:00.000Z' },
-            comments: [{ id: 'c1', author: { id: 'ony', name: 'Ony' }, body: 'Sent with pricing.', at: '2026-11-19T10:00:00.000Z' }],
+            comments: [
+              {
+                id: 'c1',
+                author: { id: 'ony', name: 'Ony' },
+                body: 'Sent with pricing.',
+                at: '2026-11-19T10:00:00.000Z',
+              },
+            ],
           }),
         ],
       },
-      formMessage: { taskId: 't1', message: "'Send the Q4 deck' is already done." },
+      formError: { taskId: 't1', error: "'Send the Q4 deck' is already done.", agent: null },
     })
-    await expect.element(page.getByTestId('assigned-tasks-by-me')).toHaveTextContent(/Assigned by you/)
-    await expect.element(page.getByTestId('assigned-task-meta')).toHaveTextContent('To Ony · via the assistant · due 21 Nov 2026 · done')
-    await expect.element(page.getByTestId('assigned-task-update')).toHaveTextContent("Ony completed 'Send the Q4 deck'")
-    await expect.element(page.getByTestId('assigned-task-comment')).toHaveTextContent(/Ony.*Sent with pricing\./)
+    await expect
+      .element(page.getByTestId('assigned-tasks-by-me'))
+      .toHaveTextContent(/Assigned by you/)
+    await expect
+      .element(page.getByTestId('assigned-task-meta'))
+      .toHaveTextContent('To Ony · via the assistant · due 21 Nov 2026 · done')
+    await expect
+      .element(page.getByTestId('assigned-task-update'))
+      .toHaveTextContent("Ony completed 'Send the Q4 deck'")
+    await expect
+      .element(page.getByTestId('assigned-task-comment'))
+      .toHaveTextContent(/Ony.*Sent with pricing\./)
     await expect.element(page.getByTestId('assigned-task-seen')).toBeInTheDocument()
     await expect.element(page.getByTestId('assigned-task-done')).not.toBeInTheDocument()
     await expect.element(page.getByRole('alert')).toHaveTextContent('already done')
+    await expect
+      .element(page.getByRole('button', { name: 'Copy agent instructions' }))
+      .toBeInTheDocument()
   })
 
   it('forms post to the given page actions; nothing renders without assigned tasks', async () => {
-    const screen = render(AssignedTasks, { assigned: { assignedToMe: [task({ update: null })], assignedByMe: [] }, action: '/m/memory/tasks' })
-    const forms = [...screen.container.querySelectorAll('form')].map((f) => f.getAttribute('action'))
+    const screen = render(AssignedTasks, {
+      assigned: { assignedToMe: [task({ update: null })], assignedByMe: [] },
+      action: '/m/memory/tasks',
+    })
+    const forms = [...screen.container.querySelectorAll('form')].map((f) =>
+      f.getAttribute('action'),
+    )
     expect(forms).toEqual(['/m/memory/tasks?/complete', '/m/memory/tasks?/comment'])
     await expect.element(page.getByTestId('assigned-task-seen')).not.toBeInTheDocument()
     screen.unmount()

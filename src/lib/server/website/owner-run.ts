@@ -1,8 +1,10 @@
-import { appKernel } from '$lib/server/boot'
 import { randomUUID } from 'node:crypto'
+import type { ErrorReport } from '$lib/errors/agent-report'
 import { KernelError } from '$lib/kernel/errors'
 import type { ToolContext } from '$lib/kernel/types'
 import { decideApprovalAsOwner } from '$lib/server/approvals/owner-decision'
+import { appKernel } from '$lib/server/boot'
+import { errorReport } from '$lib/server/errors/report'
 import { ensureSystemModulesActive } from '../../../../modules/index'
 import { AppUserError } from '../../../../modules/website/apps/contract'
 
@@ -77,6 +79,17 @@ export function plainAppMessage(err: unknown): string {
     if (err.code === 'approval_required') return 'This is waiting for your approval in the chat.'
   }
   return 'Something went wrong while deploying. Try again; if it keeps happening, ask in the chat.'
+}
+
+/**
+ * The one error shape for a website/apps failure: `plainAppMessage`'s sentence
+ * for the owner plus the agent report (tool, redacted input, code, details).
+ */
+export function appErrorReport(
+  err: unknown,
+  ctx: { attempted: string; tool: string; input?: unknown },
+): ErrorReport {
+  return errorReport(err, { ...ctx, plain: plainAppMessage })
 }
 
 export function logAppFailure(tool: string, err: unknown): void {

@@ -26,15 +26,15 @@ describe('DELETE /api/temporal-events/[id]', () => {
   })
 
   it('rejects unauthenticated requests', async () => {
-    await expect(
-      DELETE({ locals: { user: null }, params: { id: 'e1' } } as never),
-    ).rejects.toMatchObject({ status: 401 })
+    expect((await DELETE({ locals: { user: null }, params: { id: 'e1' } } as never)).status).toBe(
+      401,
+    )
   })
 
   it('rejects missing event id', async () => {
-    await expect(
-      DELETE({ locals: { user: { id: 'u1' } }, params: { id: '  ' } } as never),
-    ).rejects.toMatchObject({ status: 400 })
+    expect(
+      (await DELETE({ locals: { user: { id: 'u1' } }, params: { id: '  ' } } as never)).status,
+    ).toBe(400)
   })
 
   it('deletes the thought behind the row for good, never archives it', async () => {
@@ -50,9 +50,9 @@ describe('DELETE /api/temporal-events/[id]', () => {
 
   it('maps a row that is not the person’s to 404', async () => {
     deleteMock.mockResolvedValue({ ok: false, reason: 'not_found' })
-    await expect(
-      DELETE({ locals: { user: { id: 'u1' } }, params: { id: 'e1' } } as never),
-    ).rejects.toMatchObject({ status: 404 })
+    expect(
+      (await DELETE({ locals: { user: { id: 'u1' } }, params: { id: 'e1' } } as never)).status,
+    ).toBe(404)
   })
 
   it('refuses a task of a company system project with 409', async () => {
@@ -61,8 +61,14 @@ describe('DELETE /api/temporal-events/[id]', () => {
       reason: 'system_project_task',
       projectLabel: 'Roadmap',
     })
-    await expect(
-      DELETE({ locals: { user: { id: 'u1' } }, params: { id: 'task:t1' } } as never),
-    ).rejects.toMatchObject({ status: 409, body: { message: expect.stringMatching(/Roadmap/) } })
+    const res = await DELETE({
+      locals: { user: { id: 'u1' } },
+      params: { id: 'task:t1' },
+    } as never)
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({
+      error: expect.stringMatching(/Roadmap/),
+      agent: { attempted: 'Deleting a task for good' },
+    })
   })
 })

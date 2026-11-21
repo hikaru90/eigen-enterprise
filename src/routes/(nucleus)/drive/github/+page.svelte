@@ -3,12 +3,14 @@
   import type { SubmitFunction } from '@sveltejs/kit'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import PageFrame from '$lib/components/page/page-frame.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import StatusPill from '$lib/components/page/status-pill.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
 
   /** GitHub repos: paste a read-only token, pick repos, see how each sync went. Admin only. */
@@ -25,6 +27,8 @@
   }
   const feedback = (action: string): Feedback | null =>
     form && (form as Feedback).action === action ? (form as Feedback) : null
+  /** An action's failure as { error, agent } (the server built the agent report). */
+  const failure = (action: string) => shownErrorOf(feedback(action))
 
   const date = (iso: string | null) =>
     iso ? new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—'
@@ -165,7 +169,9 @@
       <span class="font-medium">No model is selected for summaries.</span>
       <span class="text-muted-foreground">
         The repos still sync into Drive; only the assistant's "What's going on" summary is missing.
-        The owner selects a model under <a class="underline" href={resolve('/settings/llm')}>Settings → AI provider</a>.
+        The owner selects a model under <a class="underline" href={resolve('/settings/llm')}
+          >Settings → AI provider</a
+        >.
       </span>
     </p>
   {/if}
@@ -173,8 +179,8 @@
   {#if feedback('removeToken')?.ok}
     <p class="mt-4 text-sm text-muted-foreground" role="status">The token was removed.</p>
   {/if}
-  {#if feedback('removeToken')?.error}
-    <p class="mt-4 text-sm text-destructive" role="alert">{feedback('removeToken')?.error}</p>
+  {#if failure('removeToken')}
+    <ErrorNotice class="mt-4" {...failure('removeToken')!} />
   {/if}
 
   {#each data.tokens as t (t.id)}
@@ -202,11 +208,17 @@
       </div>
 
       {#if t.lastError}
-        <p class="mt-3 text-sm text-destructive" role="alert">{t.lastError}</p>
+        <ErrorNotice
+          class="mt-3"
+          error={t.lastError}
+          attempted={`Syncing the GitHub repos of the token of ${t.login} (the last use of the token failed)`}
+        />
       {:else if t.expired}
-        <p class="mt-3 text-sm text-destructive" role="alert">
-          This token expired on {date(t.expiresAt)}. Create a new one and paste it below.
-        </p>
+        <ErrorNotice
+          class="mt-3"
+          error={`This token expired on ${date(t.expiresAt)}. Create a new one and paste it below.`}
+          attempted={`Syncing the GitHub repos of the token of ${t.login} (the token has expired; only a person can paste a new one)`}
+        />
       {:else if t.expiresSoon}
         <p class="mt-3 text-sm text-amber-600 dark:text-amber-400" role="status">
           This token expires on {date(t.expiresAt)}. Create a new one on GitHub and replace it
@@ -231,9 +243,15 @@
                   · next {time(r.nextDueAt)}
                 {/if}
               </span>
-              <form method="POST" action="?/setCopyMode" use:enhance class="flex items-center gap-2">
+              <form
+                method="POST"
+                action="?/setCopyMode"
+                use:enhance
+                class="flex items-center gap-2"
+              >
                 <input type="hidden" name="repoId" value={r.repoId} />
-                <label for={`copy-mode-${r.id}`} class="text-xs text-muted-foreground">Copies</label>
+                <label for={`copy-mode-${r.id}`} class="text-xs text-muted-foreground">Copies</label
+                >
                 <select
                   id={`copy-mode-${r.id}`}
                   name="mode"
@@ -256,39 +274,52 @@
                   : 'every file'} of {r.defaultBranch}.
               </p>
               {#if r.lastError}
-                <p class="w-full text-xs text-destructive">{r.lastError}</p>
+                <ErrorNotice
+                  class="w-full text-xs"
+                  error={r.lastError}
+                  attempted={`Syncing the GitHub repo ${r.fullName} into Drive (the last sync failed)`}
+                />
               {/if}
-              <p class="w-full text-xs text-muted-foreground" data-testid="repos-summary-status">
-                {#if r.summary.problem?.kind === 'failed'}
-                  <span class="text-destructive"
-                    >Summary {r.summary.writtenAt ? 'out of date' : 'missing'}: updating it failed {time(
-                      r.summary.problem.at,
-                    )}. {r.summary.problem.message}</span
-                  >
-                {:else if r.summary.problem?.kind === 'no_model'}
-                  Summary {r.summary.writtenAt ? `from ${time(r.summary.writtenAt)}, out of date` : 'missing'}:
-                  no model is selected for summaries.
-                {:else if r.summary.writtenAt}
-                  Summary written by the assistant {time(r.summary.writtenAt)}.
-                {:else}
-                  No summary yet: the assistant writes one after a sync that finds changes.
-                {/if}
-              </p>
+              {#if r.summary.problem?.kind === 'failed'}
+                <ErrorNotice
+                  class="w-full text-xs"
+                  testid="repos-summary-status"
+                  error={`Summary ${r.summary.writtenAt ? 'out of date' : 'missing'}: updating it failed ${time(r.summary.problem.at)}. ${r.summary.problem.message}`}
+                  attempted={`Writing the assistant's summary of the GitHub repo ${r.fullName} after a sync`}
+                />
+              {:else}
+                <p class="w-full text-xs text-muted-foreground" data-testid="repos-summary-status">
+                  {#if r.summary.problem?.kind === 'no_model'}
+                    Summary {r.summary.writtenAt
+                      ? `from ${time(r.summary.writtenAt)}, out of date`
+                      : 'missing'}: no model is selected for summaries.
+                  {:else if r.summary.writtenAt}
+                    Summary written by the assistant {time(r.summary.writtenAt)}.
+                  {:else}
+                    No summary yet: the assistant writes one after a sync that finds changes.
+                  {/if}
+                </p>
+              {/if}
             </li>
           {/each}
         </ul>
       {/if}
-      {#if feedback('setCopyMode')?.error}
-        <p class="mt-2 text-sm text-destructive" role="alert">{feedback('setCopyMode')?.error}</p>
+      {#if failure('setCopyMode')}
+        <ErrorNotice class="mt-2" {...failure('setCopyMode')!} />
       {:else if feedback('setCopyMode')?.ok}
-        <p class="mt-2 text-sm text-muted-foreground" role="status" data-testid="repos-copy-mode-status">
-          {feedback('setCopyMode')?.fullName} now copies {feedback('setCopyMode')?.copyMode === 'docs'
+        <p
+          class="mt-2 text-sm text-muted-foreground"
+          role="status"
+          data-testid="repos-copy-mode-status"
+        >
+          {feedback('setCopyMode')?.fullName} now copies {feedback('setCopyMode')?.copyMode ===
+          'docs'
             ? 'only the Markdown docs'
             : 'all files'}; the next sync applies it.
         </p>
       {/if}
-      {#if feedback('syncNow')?.error}
-        <p class="mt-2 text-sm text-destructive" role="alert">{feedback('syncNow')?.error}</p>
+      {#if failure('syncNow')}
+        <ErrorNotice class="mt-2" {...failure('syncNow')!} />
       {:else if feedback('syncNow')?.ok}
         <p class="mt-2 text-sm text-muted-foreground" role="status">
           {feedback('syncNow')?.status === 'queued'
@@ -300,13 +331,13 @@
       {#if !t.lastError && !t.expired}
         <h3 class="mt-5 text-sm font-medium">Repos this token can see</h3>
         {#if t.visibleError}
-          <p class="mt-2 text-sm text-destructive" role="alert">{t.visibleError}</p>
+          <ErrorNotice class="mt-2" {...t.visibleError} />
         {:else if t.visible.length === 0}
           <p class="mt-2 max-w-2xl text-sm text-muted-foreground" data-testid="repos-none-visible">
             This token can't see any repo yet. If an organisation owns the repos, it may have to
             approve fine-grained tokens first: an owner of the organisation approves it on GitHub
-            under the organisation's Settings → Personal access tokens → Pending requests. Check
-            too that you selected the repos when you created the token.
+            under the organisation's Settings → Personal access tokens → Pending requests. Check too
+            that you selected the repos when you created the token.
           </p>
         {:else}
           <p class="mt-1 text-xs text-muted-foreground">
@@ -346,8 +377,8 @@
           </ul>
         {/if}
       {/if}
-      {#if feedback('setRepo')?.error}
-        <p class="mt-2 text-sm text-destructive" role="alert">{feedback('setRepo')?.error}</p>
+      {#if failure('setRepo')}
+        <ErrorNotice class="mt-2" {...failure('setRepo')!} />
       {/if}
 
       <details class="mt-5">
@@ -357,10 +388,8 @@
         </p>
         {@render steps()}
         {@render pasteForm('replaceToken', t.id, 'Replace token')}
-        {#if feedback('replaceToken')?.error}
-          <p class="mt-2 text-sm text-destructive" role="alert">
-            {feedback('replaceToken')?.error}
-          </p>
+        {#if failure('replaceToken')}
+          <ErrorNotice class="mt-2" {...failure('replaceToken')!} />
         {/if}
       </details>
     </section>
@@ -373,8 +402,8 @@
     />
     {@render steps()}
     {@render pasteForm('addToken', null, 'Check and save')}
-    {#if feedback('addToken')?.error}
-      <p class="mt-2 text-sm text-destructive" role="alert">{feedback('addToken')?.error}</p>
+    {#if failure('addToken')}
+      <ErrorNotice class="mt-2" {...failure('addToken')!} />
     {:else if feedback('addToken')?.ok}
       <p class="mt-2 text-sm text-muted-foreground" role="status">
         Connected the token of {feedback('addToken')?.login}. Tick the repos to sync.

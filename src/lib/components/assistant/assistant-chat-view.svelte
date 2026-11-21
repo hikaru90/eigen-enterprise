@@ -12,6 +12,7 @@
   import ApprovalCard from '$lib/components/approval-card.svelte'
   import ApprovalModeSelect from '$lib/components/approval-mode-select.svelte'
   import ChatMarkdown from '$lib/components/chat-markdown.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { dictateInto } from '$lib/voice/dictation-insert'
   import VoiceDictation from '$lib/voice/voice-dictation.svelte'
@@ -88,7 +89,8 @@
   function handleVoiceTranscript(text: string): void {
     // Transcript fills the input (not auto-send): the user reviews the ASR
     // result and sends deliberately.
-    if (!inputEl) throw new Error('assistant composer: the transcript arrived after the field went away')
+    if (!inputEl)
+      throw new Error('assistant composer: the transcript arrived after the field went away')
     dictateInto(inputEl, text, cursorPlaced)
     cursorPlaced = true
   }
@@ -117,13 +119,14 @@
   {/if}
 
   {#if chat.load === 'failed'}
-    <div
-      class="mx-3 mt-3 flex items-center justify-between gap-2 rounded-md border border-destructive/40 px-3 py-2 text-sm text-destructive"
-      data-testid="assistant-load-failed"
+    <ErrorNotice
+      class="mx-3 mt-3 rounded-md border border-destructive/40 px-3 py-2"
+      testid="assistant-load-failed"
+      error="The conversation did not load."
+      attempted="Loading the assistant conversation"
     >
-      <span>The conversation did not load.</span>
       <Button size="sm" variant="outline" onclick={() => void chat.reload()}>Try again</Button>
-    </div>
+    </ErrorNotice>
   {/if}
 
   {#if chat.entries.length === 0 && !chat.busy}
@@ -187,10 +190,11 @@
           </div>
         {:else if entry.role === 'assistant'}
           {#if entry.failed}
-            <div class="py-1.5">
-              <p class="text-sm leading-relaxed wrap-break-word text-destructive">
-                {entry.content}
-              </p>
+            <ErrorNotice
+              class="py-1.5 leading-relaxed wrap-break-word"
+              error={entry.content}
+              attempted="Answering a message in the assistant chat"
+            >
               {#if entry.providerSetup}
                 <a
                   href={resolve('/settings/llm')}
@@ -199,7 +203,7 @@
                   Set up your AI provider →
                 </a>
               {/if}
-            </div>
+            </ErrorNotice>
           {:else}
             <div class="min-w-0 py-1.5 wrap-break-word">
               <ChatMarkdown content={entry.content} />
@@ -322,7 +326,10 @@
         disabled={chat.busy}
         onfocus={() => (cursorPlaced = true)}
       />
-      <div class={['flex items-center', voiceActive && 'min-w-0 flex-1']} data-testid="assistant-mic">
+      <div
+        class={['flex items-center', voiceActive && 'min-w-0 flex-1']}
+        data-testid="assistant-mic"
+      >
         <VoiceDictation
           bind:active={voiceActive}
           disabled={chat.busy}
@@ -337,7 +344,10 @@
         disabled={!chat.busy && !canSend}
         aria-label={chat.busy ? 'Stop' : 'Send'}
         data-testid="assistant-send"
-        class={['rounded-sm bg-primary px-3 text-primary-foreground hover:bg-primary/90', voiceActive && 'hidden']}
+        class={[
+          'rounded-sm bg-primary px-3 text-primary-foreground hover:bg-primary/90',
+          voiceActive && 'hidden',
+        ]}
       >
         {#if chat.busy}
           <Square class="size-4 shrink-0" strokeWidth={1.75} />
@@ -347,13 +357,12 @@
       </Button>
     </div>
     {#each attachments.errors as message, i (i)}
-      <p
-        class="mt-1.5 px-1 text-xs text-destructive"
-        role="alert"
-        data-testid="assistant-attachment-error"
-      >
-        {message}
-      </p>
+      <ErrorNotice
+        class="mt-1.5 px-1 text-xs"
+        testid="assistant-attachment-error"
+        error={message}
+        attempted="Attaching a file to an assistant message"
+      />
     {/each}
     <div class="mt-1 flex items-center px-0.5">
       <VoiceOutputToggle />

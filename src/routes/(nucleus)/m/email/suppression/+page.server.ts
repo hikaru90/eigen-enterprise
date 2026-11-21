@@ -22,14 +22,14 @@ export const actions: Actions = {
   add: async ({ locals, request }) => {
     const me = await requireAdmin(locals)
     const email = field(await request.formData(), 'email')
-    return act('add', async () => ({
+    return act('add', 'Adding an address to the suppression list', async () => ({
       email: (await emailPlatform().suppress(email, me.userId)).email,
     }))
   },
   remove: async ({ locals, request }) => {
     await requireAdmin(locals)
     const email = field(await request.formData(), 'email')
-    return act('remove', async () => {
+    return act('remove', 'Removing an address from the suppression list', async () => {
       await emailPlatform().unsuppress(email)
       return { email }
     })

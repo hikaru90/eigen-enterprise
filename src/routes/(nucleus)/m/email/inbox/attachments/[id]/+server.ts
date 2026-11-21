@@ -1,5 +1,8 @@
 import type { RequestHandler } from './$types'
-import { attachmentHeaders, downloadAttachment } from '../../../../../../../../modules/email/inbox/attachments'
+import {
+  attachmentHeaders,
+  downloadAttachment,
+} from '../../../../../../../../modules/email/inbox/attachments'
 import { InboxError } from '../../../../../../../../modules/email/inbox/errors'
 import { isUuid } from '../../../../../../../../modules/email/inbox/url'
 
@@ -14,7 +17,9 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
   if (!isUuid(params.id)) return text(404, 'No such attachment.')
   const { downloadDeps } = await import('../../../../../../../../modules/email/inbox/live')
   try {
-    const file = await downloadAttachment(await downloadDeps(), locals.user.id, params.id, { inline: url.searchParams.get('inline') === '1' })
+    const file = await downloadAttachment(await downloadDeps(), locals.user.id, params.id, {
+      inline: url.searchParams.get('inline') === '1',
+    })
     return new Response(file.bytes, { headers: attachmentHeaders(file) })
   } catch (err) {
     if (err instanceof InboxError && err.code === 'not_found') return text(404, err.message)
@@ -25,5 +30,8 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
 }
 
 function text(status: number, body: string): Response {
-  return new Response(body, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff' } })
+  return new Response(body, {
+    status,
+    headers: { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff' },
+  })
 }

@@ -1,7 +1,10 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
   import { driveApi, formatSize, type Revision } from '$lib/drive/api'
+  import { driveShownError } from '$lib/drive/shown-error'
+  import type { ShownError } from '$lib/errors/agent-report'
   import CsvEditor from './csv-editor.svelte'
   import MarkdownEditor from './markdown-editor.svelte'
 
@@ -26,7 +29,7 @@
     onrestore: (revisionId: string) => Promise<void>
   } = $props()
 
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
   let busy = $state<string | null>(null)
   let viewing = $state<{ revision: Revision; content: string; index: number } | null>(null)
   let open = $state(false)
@@ -43,7 +46,7 @@
       viewing = { revision: r.revision, content: r.content, index }
       open = true
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = driveShownError(err)
     }
   }
 
@@ -54,7 +57,7 @@
       await onrestore(id)
       open = false
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = driveShownError(err)
     } finally {
       busy = null
     }
@@ -63,7 +66,11 @@
 
 <section class="flex flex-col gap-2" data-testid="drive-revisions">
   <h2 class="text-base font-semibold">Revisions</h2>
-  {#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+  {#if error}<ErrorNotice
+      error={error.error}
+      agent={error.agent}
+      attempted="Listing or restoring this file’s earlier versions"
+    />{/if}
   {#if revisions.length === 0}
     <p class="text-sm text-muted-foreground">No revisions yet.</p>
   {:else}

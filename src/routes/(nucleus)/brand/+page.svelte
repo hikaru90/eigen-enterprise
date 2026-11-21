@@ -8,7 +8,10 @@
   import PickerBreadcrumb from '$lib/components/brand-picker/picker-breadcrumb.svelte'
   import PickerGrid from '$lib/components/brand-picker/picker-grid.svelte'
   import { pickerQuery, type PreviewMode } from '$lib/components/brand-picker/types'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
+  import type { ShownError } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
+  import { brandRequestError, brandShownError } from './brand-errors'
 
   /**
    * The brand picker (plan/phase-brand-picker.md §3.3, owner direction
@@ -21,7 +24,7 @@
 
   let mode = $state<PreviewMode>('light')
   let choosing = $state(false)
-  let chooseError = $state('')
+  let chooseError = $state<ShownError | null>(null)
 
   const levelTitle = $derived(
     data.current === null
@@ -41,7 +44,7 @@
 
   async function choose(nodeId: string): Promise<void> {
     choosing = true
-    chooseError = ''
+    chooseError = null
     try {
       const response = await fetch('/api/brand/picker/choose', {
         method: 'POST',
@@ -49,12 +52,11 @@
         body: JSON.stringify({ nodeId }),
       })
       if (!response.ok) {
-        const text = await response.text()
-        throw new Error(`Choosing failed (${response.status}): ${text.slice(0, 400)}`)
+        throw brandRequestError(response.status, await response.text(), 'Choosing')
       }
       await invalidateAll()
     } catch (err) {
-      chooseError = err instanceof Error ? err.message : String(err)
+      chooseError = brandShownError(err)
     } finally {
       choosing = false
     }
@@ -152,8 +154,12 @@
               </p>
             {/if}
             {#if chooseError}
-              <pre
-                class="border-destructive text-destructive rounded border p-3 text-xs whitespace-pre-wrap">{chooseError}</pre>
+              <ErrorNotice
+                class="border-destructive rounded border p-3 text-xs whitespace-pre-wrap"
+                error={chooseError.error}
+                agent={chooseError.agent}
+                attempted="Choosing the company style in the brand picker"
+              />
             {/if}
           </div>
         </section>

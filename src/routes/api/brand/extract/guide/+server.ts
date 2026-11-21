@@ -29,7 +29,11 @@ export const POST: RequestHandler = async (event) => {
   try {
     checkGuideUpload({ filename: file.name, bytes })
   } catch (err) {
-    if (err instanceof GuideUploadError) return guideUploadErrorResponse(err)
+    if (err instanceof GuideUploadError)
+      return guideUploadErrorResponse(err, {
+        attempted: 'Uploading a brand guide to extract a style from',
+        input: { filename: file.name },
+      })
     throw err
   }
   return executeBrandExtractTool(

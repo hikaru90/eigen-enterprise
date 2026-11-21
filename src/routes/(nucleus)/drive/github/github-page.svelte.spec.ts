@@ -44,13 +44,16 @@ function data(copyMode: 'all' | 'docs' = 'all') {
   }
 }
 
-const props = (copyMode: 'all' | 'docs' = 'all', form: unknown = null) => ({ data: data(copyMode), form, params: {} }) as never
+const props = (copyMode: 'all' | 'docs' = 'all', form: unknown = null) =>
+  ({ data: data(copyMode), form, params: {} }) as never
 
 describe('/drive/github: which files a repo copies', () => {
   let submitted: HTMLFormElement[]
   beforeEach(() => {
     submitted = []
-    vi.spyOn(HTMLFormElement.prototype, 'requestSubmit').mockImplementation(function (this: HTMLFormElement) {
+    vi.spyOn(HTMLFormElement.prototype, 'requestSubmit').mockImplementation(function (
+      this: HTMLFormElement,
+    ) {
       submitted.push(this)
     })
   })
@@ -60,7 +63,9 @@ describe('/drive/github: which files a repo copies', () => {
     render(GitHubPage, props('all'))
     const select = page.getByTestId('repos-copy-mode-kindred/shop')
     await expect.element(select).toHaveValue('all')
-    await expect.element(page.getByTestId('repos-status-kindred/shop')).toHaveTextContent('GitHub / kindred/shop / main')
+    await expect
+      .element(page.getByTestId('repos-status-kindred/shop'))
+      .toHaveTextContent('GitHub / kindred/shop / main')
   })
 
   it('switching to docs only asks first: cancel keeps all files and posts nothing', async () => {
@@ -94,9 +99,33 @@ describe('/drive/github: which files a repo copies', () => {
   })
 
   it('says what changed after the post, or why it failed', async () => {
-    const { rerender } = render(GitHubPage, props('docs', { action: 'setCopyMode', ok: true, fullName: 'kindred/shop', copyMode: 'docs' }))
-    await expect.element(page.getByTestId('repos-copy-mode-status')).toHaveTextContent('kindred/shop now copies only the Markdown docs')
-    await rerender(props('all', { action: 'setCopyMode', error: 'Choose all files or docs only.' }))
-    await expect.element(page.getByRole('alert')).toHaveTextContent('Choose all files or docs only.')
+    const { rerender } = render(
+      GitHubPage,
+      props('docs', {
+        action: 'setCopyMode',
+        ok: true,
+        fullName: 'kindred/shop',
+        copyMode: 'docs',
+      }),
+    )
+    await expect
+      .element(page.getByTestId('repos-copy-mode-status'))
+      .toHaveTextContent('kindred/shop now copies only the Markdown docs')
+    await rerender(
+      props('all', {
+        action: 'setCopyMode',
+        error: 'Choose all files or docs only.',
+        agent: {
+          attempted: 'Choosing what a synced GitHub repo copies into Drive',
+          nextSteps: ['Check the mode.'],
+        },
+      }),
+    )
+    await expect
+      .element(page.getByRole('alert'))
+      .toHaveTextContent('Choose all files or docs only.')
+    await expect
+      .element(page.getByRole('button', { name: 'Copy agent instructions' }))
+      .toBeInTheDocument()
   })
 })

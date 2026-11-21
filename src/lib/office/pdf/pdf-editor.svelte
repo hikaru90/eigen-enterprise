@@ -22,9 +22,12 @@
   import ZoomInIcon from '@lucide/svelte/icons/zoom-in'
   import ZoomOutIcon from '@lucide/svelte/icons/zoom-out'
   import { onMount, tick, type Component } from 'svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { driveApi, type DriveItem, type LockHolder } from '$lib/drive/api'
   import { LockLostError } from '$lib/drive/autosave'
+  import { driveShownError } from '$lib/drive/shown-error'
+  import type { ShownError } from '$lib/errors/agent-report'
   import { createOfficeEditSession } from '../edit-session'
   import {
     foldEdits,
@@ -89,7 +92,7 @@
     | { kind: 'locked'; holder: LockHolder }
     | { kind: 'lost'; holder: LockHolder | null }
     | { kind: 'stale' }
-    | { kind: 'error'; message: string }
+    | ({ kind: 'error' } & ShownError)
 
   const EMPTY: Staged = { edits: [], fields: {}, flatten: false, properties: {} }
   const COLOURS = ['#ffd400', '#ff5c5c', '#3b82f6', '#22c55e', '#a855f7', '#000000']
@@ -109,7 +112,7 @@
 
   let contents = $state.raw<PdfContents | null>(null)
   let measure = $state.raw<Measure>(() => 0)
-  let loadError = $state<string | null>(null)
+  let loadError = $state<ShownError | null>(null)
   let staged = $state.raw<Staged>(EMPTY)
   let undoStack = $state.raw<Staged[]>([])
   let redoStack = $state.raw<Staged[]>([])
@@ -125,7 +128,7 @@
   let zoom = $state(1)
   let lock = $state<Lock>({ kind: 'starting' })
   let busy = $state<'saving' | null>(null)
-  let notice = $state<string | null>(null)
+  let notice = $state<ShownError | null>(null)
   let propertiesOpen = $state(false)
   let PropertiesDialog = $state.raw<Component<{
     properties: import('./properties').PdfProperties
@@ -196,7 +199,7 @@
       await tick()
       fitWidth()
     } catch (err) {
-      if (!destroyed) loadError = messageOf(err)
+      if (!destroyed) loadError = driveShownError(err)
     }
   }
 
@@ -233,7 +236,7 @@
         return
       }
       if (view.state !== 'held') {
-        lock = { kind: 'error', message: 'The file could not be opened for editing.' }
+        lock = { kind: 'error', error: 'The file could not be opened for editing.', agent: null }
         return
       }
       const now = await driveApi.readBytes(fileId)
@@ -246,7 +249,7 @@
       }
       lock = { kind: 'held' }
     } catch (err) {
-      if (!destroyed) lock = { kind: 'error', message: messageOf(err) }
+      if (!destroyed) lock = { kind: 'error', ...driveShownError(err) }
     }
   }
 
@@ -260,7 +263,7 @@
       foldEdits(contents.annotations, next.edits, editContext())
     } catch (err) {
       if (err instanceof PdfEditError) {
-        notice = err.message
+        notice = { error: err.message, agent: null }
         return
       }
       throw err
@@ -354,7 +357,7 @@
       PropertiesDialog ??= (await import('./pdf-properties-dialog.svelte')).default
       propertiesOpen = true
     } catch (err) {
-      notice = `The properties could not be opened: ${messageOf(err)}`
+      notice = { error: `The properties could not be opened: ${messageOf(err)}`, agent: null }
     }
   }
 
@@ -379,7 +382,11 @@
     } catch (err) {
       if (err instanceof LockLostError) {
         if ((lock as Lock).kind !== 'lost') lock = { kind: 'lost', holder: null }
-      } else notice = `The changes could not be saved: ${messageOf(err)}`
+      } else
+        notice = {
+          ...driveShownError(err),
+          error: `The changes could not be saved: ${messageOf(err)}`,
+        }
     } finally {
       busy = null
     }
@@ -661,31 +668,31 @@
       the new version.
     </p>
   {:else if lock.kind === 'error'}
-    <p
-      class="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive"
-      role="alert"
-      data-testid="pdf-edit-lock-error"
-    >
-      {lock.message}
-    </p>
+    <ErrorNotice
+      class="border-b border-destructive/40 bg-destructive/10 px-4 py-2"
+      testid="pdf-edit-lock-error"
+      error={lock.error}
+      agent={lock.agent}
+      attempted="Taking the edit lock on this PDF"
+    />
   {/if}
   {#if loadError}
-    <p
-      class="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive"
-      role="alert"
-      data-testid="pdf-edit-load-error"
-    >
-      {loadError}
-    </p>
+    <ErrorNotice
+      class="border-b border-destructive/40 bg-destructive/10 px-4 py-2"
+      testid="pdf-edit-load-error"
+      error={loadError.error}
+      agent={loadError.agent}
+      attempted="Reading this PDF’s annotations and form in the browser editor"
+    />
   {/if}
   {#if notice}
-    <p
-      class="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive"
-      role="alert"
-      data-testid="pdf-edit-notice"
-    >
-      {notice}
-    </p>
+    <ErrorNotice
+      class="border-b border-destructive/40 bg-destructive/10 px-4 py-2"
+      testid="pdf-edit-notice"
+      error={notice.error}
+      agent={notice.agent}
+      attempted="Editing this PDF (staging, saving or opening its properties)"
+    />
   {/if}
   {#if contents && mode === 'form'}
     {#if contents.form.kind === 'xfa-only'}
@@ -749,7 +756,7 @@
               onselect={onSelectAnnotation}
               {onmove}
               {onfield}
-              onerror={(m) => (notice = m)}
+              onerror={(m) => (notice = { error: m, agent: null })}
             />
           {/each}
         </div>

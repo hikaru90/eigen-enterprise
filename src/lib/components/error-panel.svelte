@@ -1,7 +1,9 @@
 <script lang="ts">
   import { resolve } from '$app/paths'
+  import CopyAgentInstructions from '$lib/components/copy-agent-instructions.svelte'
   import Wordmark from '$lib/components/page/wordmark.svelte'
   import { Button } from '$lib/components/ui/button'
+  import type { AgentReport } from '$lib/errors/agent-report'
   import { pluginOffMessage, type PluginOff } from '$lib/plugins/routes'
   import { docTitle } from '$lib/shell/title'
 
@@ -18,11 +20,14 @@
     message,
     signedIn,
     pluginOff = null,
+    agent = null,
   }: {
     status: number
     message: string | null | undefined
     signedIn: boolean
     pluginOff?: PluginOff | null
+    /** The server's agent report (App.Error.agent), for "Copy agent instructions". */
+    agent?: AgentReport | null
   } = $props()
 
   const isNotFound = $derived(status === 404 && !pluginOff)
@@ -62,8 +67,11 @@
       {/if}
     </p>
     {#if pluginOff.canManage}
-      <Button href={resolve('/settings/modules')} class="mt-8" size="lg" data-testid="plugin-off-switch"
-        >Open Settings → Plugins</Button
+      <Button
+        href={resolve('/settings/modules')}
+        class="mt-8"
+        size="lg"
+        data-testid="plugin-off-switch">Open Settings → Plugins</Button
       >
     {/if}
   {:else if isNotFound}
@@ -74,6 +82,15 @@
     </p>
   {:else if message}
     <p class="mt-2 text-xs text-foreground/60">{message}</p>
+  {/if}
+  {#if !pluginOff}
+    <div class="mt-4 flex w-full flex-col items-center gap-2">
+      <CopyAgentInstructions
+        error={`${heading} (error ${status})${message ? `: ${message}` : ''}`}
+        {agent}
+        attempted={`Opening this page (HTTP ${status})`}
+      />
+    </div>
   {/if}
   {#if signedIn}
     <Button

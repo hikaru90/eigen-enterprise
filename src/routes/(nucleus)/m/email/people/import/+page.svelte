@@ -3,6 +3,7 @@
   import { resolve } from '$app/paths'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
   import ImportFile from '../../../../../../../modules/contacts/ui/import-file.svelte'
   import ImportPreview from '../../../../../../../modules/contacts/ui/import-preview.svelte'
@@ -13,7 +14,10 @@
    * confirm.
    */
   let { data, form }: PageProps = $props()
-  const errorFor = (action: string) => (form && 'error' in form && form.action === action ? form.error : null)
+  const errorFor = (action: string) =>
+    form && 'error' in form && form.action === action ? form.error : null
+  const agentFor = (action: string) =>
+    form && 'action' in form && form.action === action ? (shownErrorOf(form)?.agent ?? null) : null
   const preview = $derived(form && 'preview' in form ? form.preview : null)
   const done = $derived(
     form && 'imported' in form && form.imported !== undefined && form.skipped !== undefined
@@ -24,7 +28,9 @@
 
 <svelte:head><title>{docTitle('Import contacts', 'Contacts')}</title></svelte:head>
 
-<a class="text-sm text-muted-foreground hover:text-foreground" href={resolve('/m/email/people')}>← All contacts</a>
+<a class="text-sm text-muted-foreground hover:text-foreground" href={resolve('/m/email/people')}
+  >← All contacts</a
+>
 <div class="mt-3">
   <SectionHeader
     title="Import contacts"
@@ -39,16 +45,24 @@
       <p class="text-sm">
         Imported {done.imported.length}
         {done.imported.length === 1 ? 'contact' : 'contacts'}.{#if done.skipped > 0}
-          {done.skipped} already in your contacts {done.skipped === 1 ? 'was' : 'were'} skipped and left as {done.skipped === 1 ? 'it was' : 'they were'}.{/if}
+          {done.skipped} already in your contacts {done.skipped === 1 ? 'was' : 'were'} skipped and left
+          as {done.skipped === 1 ? 'it was' : 'they were'}.{/if}
       </p>
       <div class="flex flex-wrap gap-2">
         <Button href={resolve('/m/email/people')}>See your contacts</Button>
-        <Button variant="outline" href={resolve('/m/email/people/import')}>Import another file</Button>
+        <Button variant="outline" href={resolve('/m/email/people/import')}
+          >Import another file</Button
+        >
       </div>
     </div>
   {:else if preview}
-    <ImportPreview {preview} visibility={data.visibility} error={errorFor('import')} />
+    <ImportPreview
+      {preview}
+      visibility={data.visibility}
+      error={errorFor('import')}
+      agent={agentFor('import')}
+    />
   {:else}
-    <ImportFile error={errorFor('preview')} />
+    <ImportFile error={errorFor('preview')} agent={agentFor('preview')} />
   {/if}
 </div>

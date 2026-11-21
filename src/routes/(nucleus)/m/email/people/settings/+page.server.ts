@@ -1,6 +1,15 @@
 import type { Actions, PageServerLoad } from './$types'
-import { contactsAction, contactsLoad, liveContactsDeps, personActor } from '../../../../../../../modules/contacts/http'
-import { contactSettings, setCompanyDefaultVisibility, setMyDefaultVisibility } from '../../../../../../../modules/contacts/service'
+import {
+  contactsAction,
+  contactsLoad,
+  liveContactsDeps,
+  personActor,
+} from '../../../../../../../modules/contacts/http'
+import {
+  contactSettings,
+  setCompanyDefaultVisibility,
+  setMyDefaultVisibility,
+} from '../../../../../../../modules/contacts/service'
 
 /**
  * /m/email/people/settings (Contribute 9d28020a): who sees a new contact by

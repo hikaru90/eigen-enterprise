@@ -4,6 +4,7 @@ import { fail, redirect } from '@sveltejs/kit'
 import { KernelError } from '$lib/kernel/errors'
 import { getUserRole, kernelRolesFor } from '$lib/server/auth/user-role'
 import { appKernel } from '$lib/server/boot'
+import { errorReport, refusalReport } from '$lib/server/errors/report'
 import { reminderDeps } from '$lib/server/memory/reminders/live'
 import { listReminders, ReminderError } from '$lib/server/memory/reminders/service'
 
@@ -38,16 +39,45 @@ const filled = (form: FormData, key: string) => {
 }
 const idOf = (form: FormData) => text(form, 'reminder_id') ?? ''
 
-async function run(userId: string, reminderId: string, tool: string, input: Record<string, unknown>) {
+async function run(
+  userId: string,
+  reminderId: string,
+  tool: string,
+  input: Record<string, unknown>,
+) {
+  const attempted = `Running ${tool} from /m/memory/reminders`
   const role = await getUserRole(userId)
-  if (!role) return fail(403, { reminderId, message: 'Only a member of this company keeps reminders here.' })
+  if (!role)
+    return fail(403, {
+      reminderId,
+      ...refusalReport('Only a member of this company keeps reminders here.', {
+        attempted,
+        tool,
+        input,
+      }),
+    })
   try {
     const kernel = await appKernel()
-    await kernel.registry.execute(tool, input, { principal: { id: userId, kind: 'human', roles: kernelRolesFor(role) }, requestId: randomUUID() })
+    await kernel.registry.execute(tool, input, {
+      principal: { id: userId, kind: 'human', roles: kernelRolesFor(role) },
+      requestId: randomUUID(),
+    })
     return { reminderId, ok: true as const }
   } catch (err) {
-    if (err instanceof ReminderError) return fail(err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 400, { reminderId, message: err.message })
-    if (err instanceof KernelError && err.code === 'invalid_input') return fail(400, { reminderId, message: err.message })
+    const report = () =>
+      errorReport(err, {
+        attempted,
+        tool,
+        input,
+        plain: (e) => (e instanceof Error ? e.message : String(e)),
+      })
+    if (err instanceof ReminderError)
+      return fail(err.code === 'not_found' ? 404 : err.code === 'conflict' ? 409 : 400, {
+        reminderId,
+        ...report(),
+      })
+    if (err instanceof KernelError && err.code === 'invalid_input')
+      return fail(400, { reminderId, ...report() })
     throw err
   }
 }
@@ -92,11 +122,17 @@ export const actions: Actions = {
   complete: async ({ locals, request }) => {
     const form = await request.formData()
     const id = idOf(form)
-    return run(signedIn(locals), id, 'reminders.complete', { reminder_id: id, ...(text(form, 'all') === '1' ? { all: true } : {}) })
+    return run(signedIn(locals), id, 'reminders.complete', {
+      reminder_id: id,
+      ...(text(form, 'all') === '1' ? { all: true } : {}),
+    })
   },
   snooze: async ({ locals, request }) => {
     const form = await request.formData()
     const id = idOf(form)
-    return run(signedIn(locals), id, 'reminders.snooze', { reminder_id: id, minutes: Number(text(form, 'minutes')) })
+    return run(signedIn(locals), id, 'reminders.snooze', {
+      reminder_id: id,
+      minutes: Number(text(form, 'minutes')),
+    })
   },
 }

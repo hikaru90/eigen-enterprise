@@ -35,7 +35,10 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       timeZoneFor(actor.userId),
     ])
     const { liveContactMail } = await import('../contact-mail.server')
-    const history = await contactHistory(d, actor, contact.id, { timeZone, mailWith: liveContactMail })
+    const history = await contactHistory(d, actor, contact.id, {
+      timeZone,
+      mailWith: liveContactMail,
+    })
     return { contact, tags, today, history }
   })
 }
@@ -72,7 +75,12 @@ export const actions: Actions = {
     return contactsAction(
       'share',
       async () => {
-        await setShared(await liveContactsDeps(), actor, params.id, value === 'true' ? true : value === 'false' ? false : value)
+        await setShared(
+          await liveContactsDeps(),
+          actor,
+          params.id,
+          value === 'true' ? true : value === 'false' ? false : value,
+        )
         return { action: 'share' as const, id: params.id }
       },
       params.id,

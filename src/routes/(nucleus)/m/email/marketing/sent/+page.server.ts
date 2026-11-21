@@ -3,4 +3,5 @@ import { MARKETING_SOURCES } from '../../../../../../../modules/email/platform/s
 import { loadOutbox } from '../../outbox.server'
 
 /** Email › Marketing mail › Sent: what the flows have waiting for, and sent to, people on the lists. Owner and admins only. */
-export const load: PageServerLoad = ({ locals }) => loadOutbox(locals, { sources: MARKETING_SOURCES })
+export const load: PageServerLoad = ({ locals }) =>
+  loadOutbox(locals, { sources: MARKETING_SOURCES })

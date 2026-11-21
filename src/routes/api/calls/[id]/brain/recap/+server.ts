@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types'
-import { callsRoute } from '../../../../../../../modules/calls/http'
+import { callsRoute } from '../../../calls-route'
 
 /** Overridable in tests. */
 export const _deps = {
@@ -7,4 +7,7 @@ export const _deps = {
 }
 
 /** POST: after the call, a recap of what the Company Brain heard — for whoever switched it on, generated on this request, posted nowhere. */
-export const POST: RequestHandler = ({ locals, params }) => callsRoute(locals.user, _deps.service, (userId, s) => s.brainRecap(userId, params.id))
+export const POST: RequestHandler = ({ locals, params }) =>
+  callsRoute('Writing the Company Brain recap of a call', locals.user, _deps.service, (userId, s) =>
+    s.brainRecap(userId, params.id),
+  )

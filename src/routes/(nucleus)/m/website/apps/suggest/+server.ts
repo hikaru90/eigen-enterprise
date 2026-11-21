@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types'
 import { json } from '@sveltejs/kit'
 import { KernelError } from '$lib/kernel/errors'
 import { requireAdmin } from '$lib/server/auth/require-admin'
+import { errorReport, refusalReport } from '$lib/server/errors/report'
 import { logAppFailure, ownerRun } from '$lib/server/website/owner-run'
 import { AppUserError } from '../../../../../../../modules/website/apps/contract'
 
@@ -30,7 +31,16 @@ export const POST: RequestHandler = async (event) => {
   try {
     input = await event.request.json()
   } catch {
-    return json({ error: 'Pick the repo and a valid app name first.' }, { status: 400 })
+    return json(
+      refusalReport('Pick the repo and a valid app name first.', {
+        attempted: 'Letting the AI fill in the build form',
+        cause: 'The request body was not JSON.',
+        nextSteps: [
+          'The page posted a body that is not JSON: fix the caller in app-build-form.svelte.',
+        ],
+      }),
+      { status: 400 },
+    )
   }
   try {
     const suggestion = await ownerRun<ContractSuggestion>(
@@ -41,6 +51,14 @@ export const POST: RequestHandler = async (event) => {
     return json({ suggestion })
   } catch (err) {
     logAppFailure('website.app_suggest_contract', err)
-    return json({ error: plainSuggestMessage(err) }, { status: 400 })
+    return json(
+      errorReport(err, {
+        attempted: 'Letting the AI fill in the build form',
+        tool: 'website.app_suggest_contract',
+        input,
+        plain: plainSuggestMessage,
+      }),
+      { status: 400 },
+    )
   }
 }

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
 import type { NotificationDevice } from '$lib/kernel/notification-tools'
+import { PushRequestError } from '$lib/push/client'
 import PushDevices from './push-devices.svelte'
 
 const iphone: NotificationDevice = {
@@ -62,7 +63,13 @@ describe('push-devices.svelte — Settings → Account → Notifications', () =>
 
   it('shows the push service’s refusal instead of "Sent"', async () => {
     const sendTest = vi.fn(async () => {
-      throw new Error('Push delivery failed: 403 BadJwtToken')
+      throw new PushRequestError('Push delivery failed: 403 BadJwtToken', {
+        message: 'Push delivery failed: 403 BadJwtToken',
+        agent: {
+          attempted: 'Sending a test notification (POST /api/push/test)',
+          nextSteps: ['Read the journal.'],
+        },
+      })
     })
     render(PushDevices, {
       devices: [iphone],
@@ -73,6 +80,12 @@ describe('push-devices.svelte — Settings → Account → Notifications', () =>
     })
     await page.getByTestId('push-device-test-d1').click()
     await expect.element(page.getByTestId('push-device-d1')).toHaveTextContent('403 BadJwtToken')
+    await expect
+      .element(page.getByRole('alert'))
+      .toHaveTextContent('Push delivery failed: 403 BadJwtToken')
+    await expect
+      .element(page.getByRole('button', { name: 'Copy agent instructions' }))
+      .toBeInTheDocument()
   })
 
   it('offers to turn notifications on when this device is not listed', async () => {

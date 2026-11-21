@@ -1,9 +1,19 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { invalidateAll } from '$app/navigation'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
-  import { driveApi, type AccessLevel, type DriveItem, type GrantEntry, type GrantSubject, type ShareTargets } from '$lib/drive/api'
+  import {
+    driveApi,
+    type AccessLevel,
+    type DriveItem,
+    type GrantEntry,
+    type GrantSubject,
+    type ShareTargets,
+  } from '$lib/drive/api'
+  import { driveShownError } from '$lib/drive/shown-error'
+  import type { ShownError } from '$lib/errors/agent-report'
 
   /**
    * Share a folder or file with people, groups or everyone in the company, at
@@ -24,16 +34,18 @@
   let query = $state('')
   /** The access level people get when picked; each row can change its own afterwards. */
   let pickLevel = $state<AccessLevel>('view')
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
   let announce = $state('')
   let loading = $state(true)
   let saving = $state(false)
   let search = $state<HTMLInputElement | null>(null)
 
-  const keyOf = (s: GrantSubject) => (s.kind === 'user' ? `user:${s.userId}` : s.kind === 'group' ? `group:${s.groupId}` : 'company')
+  const keyOf = (s: GrantSubject) =>
+    s.kind === 'user' ? `user:${s.userId}` : s.kind === 'group' ? `group:${s.groupId}` : 'company'
   function labelOf(s: GrantSubject): string {
     if (s.kind === 'company') return 'Everyone in the company'
-    if (s.kind === 'group') return `Group: ${targets.groups.find((g) => g.id === s.groupId)?.name ?? 'unknown group'}`
+    if (s.kind === 'group')
+      return `Group: ${targets.groups.find((g) => g.id === s.groupId)?.name ?? 'unknown group'}`
     const p = targets.people.find((x) => x.id === s.userId)
     return p ? `${p.name || p.email} (${p.email})` : 'Unknown person'
   }
@@ -56,7 +68,7 @@
       grants = g.grants.map((x) => ({ subject: x.subject, level: x.level }))
       targets = t
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = driveShownError(err)
     } finally {
       loading = false
     }
@@ -83,7 +95,10 @@
     error = null
     // Text left in the search was never picked: say so rather than saving without it.
     if (query.trim()) {
-      error = `“${query.trim()}” is typed but not picked. Pick them from the list, or clear the search.`
+      error = {
+        error: `“${query.trim()}” is typed but not picked. Pick them from the list, or clear the search.`,
+        agent: null,
+      }
       search?.focus()
       return
     }
@@ -94,7 +109,7 @@
       open = false
       onclose()
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = driveShownError(err)
     } finally {
       saving = false
     }
@@ -111,7 +126,9 @@
     <Dialog.Header>
       <Dialog.Title>Share “{item.name}”</Dialog.Title>
       <Dialog.Description>
-        {item.type === 'folder' ? 'Everything inside this folder is shared the same way.' : 'Who can open this file.'} The owner and admins can always manage.
+        {item.type === 'folder'
+          ? 'Everything inside this folder is shared the same way.'
+          : 'Who can open this file.'} The owner and admins can always manage.
       </Dialog.Description>
     </Dialog.Header>
 
@@ -122,13 +139,25 @@
         {#each grants as g, i (keyOf(g.subject))}
           <li class="flex items-center gap-2 px-3 py-2" data-testid="drive-share-row">
             <span class="min-w-0 flex-1 truncate">{labelOf(g.subject)}</span>
-            <select class="h-8 rounded-md border bg-background px-2" bind:value={grants[i]!.level} aria-label={`Access for ${labelOf(g.subject)}`} data-testid="drive-share-level">
+            <select
+              class="h-8 rounded-md border bg-background px-2"
+              bind:value={grants[i]!.level}
+              aria-label={`Access for ${labelOf(g.subject)}`}
+              data-testid="drive-share-level"
+            >
               {#each LEVELS as l (l.id)}<option value={l.id}>{l.label}</option>{/each}
             </select>
-            <button class="text-muted-foreground hover:text-foreground" onclick={() => (grants = grants.filter((_, j) => j !== i))} aria-label={`Remove ${labelOf(g.subject)}`}>Remove</button>
+            <button
+              class="text-muted-foreground hover:text-foreground"
+              onclick={() => (grants = grants.filter((_, j) => j !== i))}
+              aria-label={`Remove ${labelOf(g.subject)}`}>Remove</button
+            >
           </li>
         {:else}
-          <li class="px-3 py-3 text-muted-foreground">Only you{item.type === 'folder' ? ', people with access to folders above,' : ''} and admins can open it.</li>
+          <li class="px-3 py-3 text-muted-foreground">
+            Only you{item.type === 'folder' ? ', people with access to folders above,' : ''} and admins
+            can open it.
+          </li>
         {/each}
       </ul>
 
@@ -145,12 +174,23 @@
             onkeydown={onSearchKeydown}
             data-testid="drive-share-pick"
           />
-          <select class="h-9 rounded-md border bg-background px-2 text-sm" bind:value={pickLevel} aria-label="Access for people you pick" data-testid="drive-share-pick-level">
+          <select
+            class="h-9 rounded-md border bg-background px-2 text-sm"
+            bind:value={pickLevel}
+            aria-label="Access for people you pick"
+            data-testid="drive-share-pick-level"
+          >
             {#each LEVELS as l (l.id)}<option value={l.id}>{l.label}</option>{/each}
           </select>
         </div>
-        <p id="drive-share-pick-help" class="text-xs text-muted-foreground">Pick someone to add them; Save applies the changes.</p>
-        <ul class="flex max-h-48 flex-col overflow-y-auto rounded-md border text-sm" aria-label="People and groups to share with" data-testid="drive-share-candidates">
+        <p id="drive-share-pick-help" class="text-xs text-muted-foreground">
+          Pick someone to add them; Save applies the changes.
+        </p>
+        <ul
+          class="flex max-h-48 flex-col overflow-y-auto rounded-md border text-sm"
+          aria-label="People and groups to share with"
+          data-testid="drive-share-candidates"
+        >
           {#each candidates as c (keyOf(c))}
             <li>
               <button
@@ -162,8 +202,13 @@
               >
             </li>
           {:else}
-            <li class="px-3 py-2 text-muted-foreground" data-testid={query.trim() ? 'drive-share-no-match' : undefined}>
-              {query.trim() ? `No one matches “${query.trim()}”.` : 'Everyone is in the share already.'}
+            <li
+              class="px-3 py-2 text-muted-foreground"
+              data-testid={query.trim() ? 'drive-share-no-match' : undefined}
+            >
+              {query.trim()
+                ? `No one matches “${query.trim()}”.`
+                : 'Everyone is in the share already.'}
             </li>
           {/each}
         </ul>
@@ -171,7 +216,12 @@
       </div>
     {/if}
 
-    {#if error}<p class="text-sm text-destructive" role="alert" data-testid="drive-share-error">{error}</p>{/if}
+    {#if error}<ErrorNotice
+        testid="drive-share-error"
+        error={error.error}
+        agent={error.agent}
+        attempted="Sharing a Drive item (reading or saving who has access)"
+      />{/if}
     <Dialog.Footer>
       <Button
         variant="outline"
@@ -180,7 +230,9 @@
           onclose()
         }}>Cancel</Button
       >
-      <Button onclick={save} disabled={saving || loading} data-testid="drive-share-save">Save</Button>
+      <Button onclick={save} disabled={saving || loading} data-testid="drive-share-save"
+        >Save</Button
+      >
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>

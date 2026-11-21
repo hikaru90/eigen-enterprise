@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   /* eslint-disable svelte/no-navigation-without-resolve -- boardHref is resolved by the caller (resolve('/contribute')) */
   import type { ContributionCheck, ContributionDto } from '../../../../modules/contribute/types'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
@@ -29,7 +30,8 @@
 
   let { client, boardHref, onnavigate, onchanged, text = $bindable('') }: Props = $props()
 
-  type Done = { kind: 'shared'; proposal: ContributionDto } | { kind: 'voted'; proposal: ContributionDto }
+  type Done =
+    { kind: 'shared'; proposal: ContributionDto } | { kind: 'voted'; proposal: ContributionDto }
 
   /** The judge's answer for exactly this draft. */
   let checked = $state<{ title: string; result: ContributionCheck } | null>(null)
@@ -133,18 +135,23 @@
       </p>
       <p class="text-xs text-foreground/60 [overflow-wrap:anywhere]">
         {#if done.kind === 'shared'}
-          Sounds like {KIND_PHRASE[done.proposal.kind]} in {AREA_LABEL[done.proposal.area]}. An agent picks
-          proposals up from the board; you’ll see it move to In progress and Shipped there.
+          Sounds like {KIND_PHRASE[done.proposal.kind]} in {AREA_LABEL[done.proposal.area]}. An
+          agent picks proposals up from the board; you’ll see it move to In progress and Shipped
+          there.
         {:else}
           “{done.proposal.title}” · {votesLabel(done.proposal.score)}
         {/if}
       </p>
       <div class="flex items-center gap-4 pt-1">
-        <a href={boardHref} class="text-xs font-medium text-primary hover:underline" onclick={() => onnavigate?.()}
-          >See the board</a
+        <a
+          href={boardHref}
+          class="text-xs font-medium text-primary hover:underline"
+          onclick={() => onnavigate?.()}>See the board</a
         >
-        <button type="button" class="cursor-pointer text-xs text-foreground/60 hover:text-foreground" onclick={another}
-          >Propose another</button
+        <button
+          type="button"
+          class="cursor-pointer text-xs text-foreground/60 hover:text-foreground"
+          onclick={another}>Propose another</button
         >
       </div>
     </div>
@@ -155,13 +162,16 @@
         An idea, a bug, something that feels rough — everyone in the company can see and vote on it.
       </p>
       <p class="mt-1 text-[13px] text-muted-foreground" data-testid="contribute-shared-note">
-        Proposals are also shared with the eigenEnterprise makers, without names, unless the owner turned this off in
-        Settings → Company.
+        Proposals are also shared with the eigenEnterprise makers, without names, unless the owner
+        turned this off in Settings → Company.
       </p>
     </div>
 
     {#if duplicate}
-      <div class="rounded-md border border-border bg-primary/[0.04] p-3" data-testid="contribute-duplicate">
+      <div
+        class="rounded-md border border-border bg-primary/[0.04] p-3"
+        data-testid="contribute-duplicate"
+      >
         <p class="text-xs text-foreground/60">Someone already asked for this</p>
         <p class="mt-1 text-sm font-medium [overflow-wrap:anywhere]">{duplicate.title}</p>
         <p class="mt-0.5 text-xs text-foreground/60">
@@ -174,7 +184,9 @@
             disabled={working !== null}
             onclick={() => void voteInstead()}
           >
-            {duplicate.myVote === 1 || duplicate.own ? 'You already voted for it' : 'Vote for it instead'}
+            {duplicate.myVote === 1 || duplicate.own
+              ? 'You already voted for it'
+              : 'Vote for it instead'}
           </button>
           <button
             type="button"
@@ -198,45 +210,52 @@
       aria-invalid={tooLong}
       disabled={working !== null}
       class="min-h-24 w-full resize-y rounded-md border border-input bg-transparent px-2.5 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 -ring disabled:opacity-60 aria-invalid:border-destructive"
-      data-testid="contribute-input"
-    ></textarea>
+      data-testid="contribute-input"></textarea>
 
     {#if tooLong}
-      <p class="text-xs text-destructive">At most {CONTRIBUTION_MAX_LENGTH} characters ({trimmed.length} now).</p>
+      <p class="text-xs text-destructive">
+        At most {CONTRIBUTION_MAX_LENGTH} characters ({trimmed.length} now).
+      </p>
     {/if}
     {#if error}
-      <p class="text-xs leading-relaxed text-destructive" role="alert">{error}</p>
+      <ErrorNotice
+        class="text-xs leading-relaxed"
+        {error}
+        attempted="Checking, sharing or voting on a proposal from the Contribute composer"
+      />
     {/if}
 
     <div class="flex items-center justify-between gap-3">
       {#if !voiceActive}
-        <a href={boardHref} class="text-xs text-foreground/60 hover:text-foreground" onclick={() => onnavigate?.()}
-          >See the board</a
+        <a
+          href={boardHref}
+          class="text-xs text-foreground/60 hover:text-foreground"
+          onclick={() => onnavigate?.()}>See the board</a
         >
       {/if}
       <div class={['flex items-center gap-1.5', voiceActive && 'min-w-0 flex-1']}>
-      <VoiceDictation
-        bind:active={voiceActive}
-        disabled={working !== null}
-        testid="contribute-voice"
-        ontranscript={(t) => (text = appendVoiceTranscript(text, t))}
-      />
-      {#if !voiceActive}
-      <button
-        type="button"
-        class="flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-        disabled={!sendable}
-        onclick={() => void send()}
-        data-testid="contribute-send"
-      >
-        {#if working === 'checking' || working === 'sharing'}
-          <LoaderCircle class="size-3.5 animate-spin" aria-hidden="true" />
-          {working === 'checking' ? 'Checking…' : 'Sharing…'}
-        {:else}
-          Send
+        <VoiceDictation
+          bind:active={voiceActive}
+          disabled={working !== null}
+          testid="contribute-voice"
+          ontranscript={(t) => (text = appendVoiceTranscript(text, t))}
+        />
+        {#if !voiceActive}
+          <button
+            type="button"
+            class="flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!sendable}
+            onclick={() => void send()}
+            data-testid="contribute-send"
+          >
+            {#if working === 'checking' || working === 'sharing'}
+              <LoaderCircle class="size-3.5 animate-spin" aria-hidden="true" />
+              {working === 'checking' ? 'Checking…' : 'Sharing…'}
+            {:else}
+              Send
+            {/if}
+          </button>
         {/if}
-      </button>
-      {/if}
       </div>
     </div>
   {/if}

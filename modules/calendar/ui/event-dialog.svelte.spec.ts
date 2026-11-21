@@ -159,4 +159,17 @@ describe('event-dialog.svelte', () => {
     await page.getByRole('button', { name: 'Remove' }).click()
     await expect.element(page.getByRole('button', { name: 'Save', exact: true })).toBeInTheDocument()
   })
+
+  it('a failed save shows the plain sentence with agent instructions', async () => {
+    render(EventDialog, {
+      open: true,
+      draft: newDraft({ day: '2026-11-16', time: '14:00', timeZone: 'Europe/Berlin', visibility: 'busy' }),
+      members,
+      timeZones,
+      error: 'An event must end after it starts.',
+      agent: { attempted: 'Saving an event in the calendar', code: 'CalendarError', nextSteps: [] },
+    })
+    await expect.element(page.getByTestId('event-error').getByRole('alert')).toHaveTextContent('An event must end after it starts.')
+    await expect.element(page.getByRole('button', { name: 'Copy agent instructions' })).toBeVisible()
+  })
 })

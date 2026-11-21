@@ -1,8 +1,9 @@
 import type { RequestHandler } from './$types'
-import { error, json } from '@sveltejs/kit'
+import { json } from '@sveltejs/kit'
 import type { MemoryAuthor, MemoryVisibility, ProjectStatus } from '$lib/server/db/schema'
 import { createUserDeclaredProject } from '$lib/server/memory/create-user-project'
 import { listProjectsForUser, type ProjectListItem } from '$lib/server/memory/project-list'
+import { failed, refuse } from '$lib/server/memory/route-errors'
 
 export type TimelineProjectsResponse = {
   projects: ProjectListItem[]
@@ -31,8 +32,9 @@ function parseProjectStatus(value: unknown): ProjectStatus | undefined {
 }
 
 export const GET: RequestHandler = async (event) => {
+  const ctx = { attempted: 'Listing projects for the timeline' }
   const user = event.locals.user
-  if (!user) error(401, 'Unauthorized')
+  if (!user) return refuse(401, 'Unauthorized', ctx)
 
   const authorParam = event.url.searchParams.get('author')
   const authorScope: MemoryAuthor | 'all' = authorParam === 'all' ? 'all' : 'user'
@@ -42,22 +44,23 @@ export const GET: RequestHandler = async (event) => {
 }
 
 export const POST: RequestHandler = async (event) => {
+  const ctx = { attempted: 'Creating a project from the timeline' }
   const user = event.locals.user
-  if (!user) error(401, 'Unauthorized')
+  if (!user) return refuse(401, 'Unauthorized', ctx)
 
   let body: CreateProjectRequest
   try {
     body = (await event.request.json()) as CreateProjectRequest
   } catch {
-    error(400, 'Invalid JSON body')
+    return refuse(400, 'Invalid JSON body', ctx)
   }
 
   const label = body.label?.trim()
-  if (!label) error(400, 'label is required')
+  if (!label) return refuse(400, 'label is required', ctx)
 
   const status = parseProjectStatus(body.status)
   if (body.private !== undefined && typeof body.private !== 'boolean') {
-    error(400, 'private must be true or false')
+    return refuse(400, 'private must be true or false', ctx)
   }
 
   try {
@@ -69,7 +72,6 @@ export const POST: RequestHandler = async (event) => {
     })
     return json(result satisfies CreateProjectResponse)
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    error(400, message)
+    return failed(400, err, ctx)
   }
 }

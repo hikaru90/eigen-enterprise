@@ -2,8 +2,9 @@ import type { ActivityResult } from '../../../../../modules/website/activity-too
 import type { AppListRepository, AppListResult } from '../../../../../modules/website/apps/tools'
 import type { ConnectedRepoView } from '../../../../../modules/website/github/connect-tools'
 import type { PageServerLoad } from './$types'
+import type { ErrorReport } from '$lib/errors/agent-report'
 import { requireAdmin } from '$lib/server/auth/require-admin'
-import { logAppFailure, ownerRun, plainAppMessage } from '$lib/server/website/owner-run'
+import { appErrorReport, logAppFailure, ownerRun } from '$lib/server/website/owner-run'
 
 /** How many activity rows the right rail shows. */
 const ACTIVITY_ITEMS = 10
@@ -17,14 +18,18 @@ const ACTIVITY_ITEMS = 10
 export const load: PageServerLoad = async (event) => {
   const user = await requireAdmin(event.locals.user)
   let apps: AppListResult | null = null
-  let appsError: string | null = null
+  let appsError: ErrorReport | null = null
   let savedRepositories: Omit<AppListRepository, 'apps'>[] = []
-  let repositoriesError: string | null = null
+  let repositoriesError: ErrorReport | null = null
   try {
     apps = await ownerRun<AppListResult>(user, 'website.app_list', {})
   } catch (err) {
     logAppFailure('website.app_list', err)
-    appsError = plainAppMessage(err)
+    appsError = appErrorReport(err, {
+      attempted: 'Listing the apps',
+      tool: 'website.app_list',
+      input: {},
+    })
     // Repository inventory is a separate capability from deployment status.
     // Keep the server failure visible while reading the saved repository records.
     try {
@@ -42,18 +47,26 @@ export const load: PageServerLoad = async (event) => {
       }))
     } catch (repoErr) {
       logAppFailure('website.github_list_repos', repoErr)
-      repositoriesError = plainAppMessage(repoErr)
+      repositoriesError = appErrorReport(repoErr, {
+        attempted: 'Listing the connected repositories',
+        tool: 'website.github_list_repos',
+        input: {},
+      })
     }
   }
   let activity: ActivityResult | null = null
-  let activityError: string | null = null
+  let activityError: ErrorReport | null = null
   try {
     activity = await ownerRun<ActivityResult>(user, 'website.activity', { limit: ACTIVITY_ITEMS })
   } catch (err) {
     // The page stays up; the rail states what went wrong, in plain words.
     if (!(err instanceof Error && err.name === 'AppUserError'))
       logAppFailure('website.activity', err)
-    activityError = plainAppMessage(err)
+    activityError = appErrorReport(err, {
+      attempted: 'Reading the website activity',
+      tool: 'website.activity',
+      input: { limit: ACTIVITY_ITEMS },
+    })
   }
   return { apps, appsError, savedRepositories, repositoriesError, activity, activityError }
 }

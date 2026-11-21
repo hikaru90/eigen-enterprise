@@ -93,7 +93,10 @@ describe('/m/memory/settings page', () => {
     } as never)
     expect(result).toMatchObject({
       status: 400,
-      data: { message: 'Reminder lead time must be at least 1 minute.' },
+      data: {
+        error: 'Reminder lead time must be at least 1 minute.',
+        agent: { attempted: 'Saving the notification settings on /m/memory/settings' },
+      },
     })
   })
 
@@ -113,7 +116,12 @@ describe('/m/memory/settings: your data', () => {
   it('deletes everything only with the exact typed confirmation', async () => {
     expect(await post('deleteAll', { confirmation: 'delete' })).toMatchObject({
       status: 400,
-      data: { dataMessage: expect.stringContaining('DELETE ALL MY MEMORIES') },
+      data: {
+        dataError: {
+          error: expect.stringContaining('DELETE ALL MY MEMORIES'),
+          agent: { attempted: 'Deleting everything in Memory on /m/memory/settings' },
+        },
+      },
     })
     expect(deleteAll).not.toHaveBeenCalled()
 

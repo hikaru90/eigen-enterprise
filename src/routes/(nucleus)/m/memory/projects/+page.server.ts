@@ -13,7 +13,8 @@ import { loadTimelinePageData } from '../../../../timeline/timeline-page-load'
 export const load: PageServerLoad = async (event) => {
   const timeline = await loadTimelinePageData(event)
   event.depends('memory:roadmap')
-  const scope = event.url.searchParams.get('scope') === 'team' ? ('team' as const) : ('mine' as const)
+  const scope =
+    event.url.searchParams.get('scope') === 'team' ? ('team' as const) : ('mine' as const)
   const teamProjects = scope === 'team' ? await listTeamProjects(timeline.user.id) : []
   return {
     ...timeline,

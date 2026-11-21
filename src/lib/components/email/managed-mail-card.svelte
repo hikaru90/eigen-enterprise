@@ -1,4 +1,7 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
+  import type { AgentReport } from '$lib/errors/agent-report'
+
   /**
    * eigenEnterprise Mail's account card (plan/managed-mail.md, D8): no keys,
    * no sandbox, no IAM policy — the control plane runs the SES side.
@@ -10,8 +13,10 @@
     paused: boolean
     /** GetTenant failed: Amazon's reason in plain words. */
     error?: string | null
+    /** The server's agent report for that failure ("Copy agent instructions"). */
+    agent?: AgentReport | null
   }
-  let { region, sender, paused, error = null }: Props = $props()
+  let { region, sender, paused, error = null, agent = null }: Props = $props()
 </script>
 
 <dl
@@ -44,6 +49,12 @@
         Sending is paused because too many mails bounced or were marked as spam. Contact support.
       </p>
     {/if}
-    {#if error}<p class="mt-1.5 text-xs text-destructive">{error}</p>{/if}
+    {#if error}<ErrorNotice
+        {error}
+        {agent}
+        attempted="Reading the eigenEnterprise Mail account"
+        class="mt-1.5 text-xs"
+        testid="email-managed-error"
+      />{/if}
   </div>
 </dl>

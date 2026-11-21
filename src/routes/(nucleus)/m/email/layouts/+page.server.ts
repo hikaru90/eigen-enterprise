@@ -27,7 +27,7 @@ export const actions: Actions = {
   create: async ({ locals, request }) => {
     const me = await requireAdmin(locals)
     const name = field(await request.formData(), 'name')
-    const out = await act('create', async () => ({
+    const out = await act('create', 'Creating an email layout', async () => ({
       id: (await emailPlatform().templates.createLayout(name, me.userId)).id,
     }))
     if ('id' in out && typeof out.id === 'string') throw redirect(303, `/m/email/layouts/${out.id}`)

@@ -37,7 +37,9 @@ describe('voice-dictation.svelte', () => {
     await expect.element(mic).toHaveAttribute('title', DICTATION_MISSING_MESSAGE.openrouter_key)
     // a tap says it on screen (not only in a tooltip), and records nothing
     await mic.click({ force: true }) // aria-disabled: still tappable, it explains itself
-    await expect.element(page.getByTestId('voice-error')).toHaveTextContent(DICTATION_MISSING_MESSAGE.openrouter_key)
+    await expect
+      .element(page.getByTestId('voice-error'))
+      .toHaveTextContent(DICTATION_MISSING_MESSAGE.openrouter_key)
     await expect.element(page.getByRole('alert')).toBeVisible()
     expect(doubles.getUserMedia).not.toHaveBeenCalled()
     await page.getByTestId('voice-discard').click()
@@ -53,7 +55,9 @@ describe('voice-dictation.svelte', () => {
       const mic = page.getByTestId('voice-mic')
       await expect.element(mic).toHaveAttribute('aria-disabled', 'true')
       await mic.click({ force: true }) // aria-disabled: still tappable, it explains itself
-      await expect.element(page.getByTestId('voice-error')).toHaveTextContent(DICTATION_UNSUPPORTED_MESSAGE)
+      await expect
+        .element(page.getByTestId('voice-error'))
+        .toHaveTextContent(DICTATION_UNSUPPORTED_MESSAGE)
     } finally {
       if (recorder) Object.defineProperty(globalThis, 'MediaRecorder', recorder)
       doubles = installVoiceDoubles()
@@ -72,7 +76,9 @@ describe('voice-dictation.svelte', () => {
     appPage.data = { shell: { dictation: { ready: true } } }
     render(VoiceDictation, { ontranscript: vi.fn() })
     await expect.element(page.getByTestId('voice-mic')).toBeEnabled()
-    await expect.element(page.getByTestId('voice-mic')).toHaveAttribute('title', 'Dictate (speech to text)')
+    await expect
+      .element(page.getByTestId('voice-mic'))
+      .toHaveAttribute('title', 'Dictate (speech to text)')
   })
 
   async function record(testid = 'voice') {
@@ -113,15 +119,25 @@ describe('voice-dictation.svelte', () => {
   })
 
   it('a failed upload shows the plain error with Retry, which sends the same clip again', async () => {
-    fetchMock.mockResolvedValueOnce(fail(502, 'Transcription failed')).mockResolvedValueOnce(ok('second try'))
+    fetchMock
+      .mockResolvedValueOnce(fail(502, 'Transcription failed'))
+      .mockResolvedValueOnce(ok('second try'))
     const ontranscript = vi.fn()
     render(VoiceDictation, { ontranscript })
     await record()
     await page.getByTestId('voice-send').click()
-    await expect.element(page.getByTestId('voice-error')).toHaveTextContent(VOICE_FAILURE_TEXT.transcribe)
+    await expect
+      .element(page.getByTestId('voice-error'))
+      .toHaveTextContent(VOICE_FAILURE_TEXT.transcribe)
+    await expect
+      .element(page.getByRole('button', { name: 'Copy agent instructions' }))
+      .toBeInTheDocument()
     await page.getByTestId('voice-retry').click()
     await expect.poll(() => ontranscript.mock.calls.length).toBe(1)
-    expect(ontranscript).toHaveBeenCalledWith('second try', expect.objectContaining({ clip: expect.any(Blob) }))
+    expect(ontranscript).toHaveBeenCalledWith(
+      'second try',
+      expect.objectContaining({ clip: expect.any(Blob) }),
+    )
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(fetchMock.mock.calls[1]![1].body).toBe(fetchMock.mock.calls[0]![1].body)
   })
@@ -132,7 +148,9 @@ describe('voice-dictation.svelte', () => {
     render(VoiceDictation, { ontranscript })
     await record()
     await page.getByTestId('voice-send').click()
-    await expect.element(page.getByTestId('voice-error')).toHaveTextContent(VOICE_FAILURE_TEXT.empty)
+    await expect
+      .element(page.getByTestId('voice-error'))
+      .toHaveTextContent(VOICE_FAILURE_TEXT.empty)
     expect(ontranscript).not.toHaveBeenCalled()
   })
 
@@ -141,14 +159,20 @@ describe('voice-dictation.svelte', () => {
     render(VoiceDictation, { ontranscript: vi.fn() })
     await record()
     await page.getByTestId('voice-send').click()
-    await expect.element(page.getByTestId('voice-error')).toHaveTextContent('Settings → AI provider')
+    await expect
+      .element(page.getByTestId('voice-error'))
+      .toHaveTextContent('Settings → AI provider')
   })
 
   it('a denied microphone says so and offers no retry', async () => {
-    doubles.getUserMedia.mockRejectedValueOnce(Object.assign(new Error('denied'), { name: 'NotAllowedError' }))
+    doubles.getUserMedia.mockRejectedValueOnce(
+      Object.assign(new Error('denied'), { name: 'NotAllowedError' }),
+    )
     render(VoiceDictation, { ontranscript: vi.fn() })
     await page.getByTestId('voice-mic').click()
-    await expect.element(page.getByTestId('voice-error')).toHaveTextContent(VOICE_FAILURE_TEXT.permission)
+    await expect
+      .element(page.getByTestId('voice-error'))
+      .toHaveTextContent(VOICE_FAILURE_TEXT.permission)
     await expect.element(page.getByTestId('voice-retry')).not.toBeInTheDocument()
   })
 
@@ -197,7 +221,9 @@ describe('dictation in the text boxes', () => {
     await expect.element(page.getByTestId('composer-emoji')).not.toBeInTheDocument()
     FakeMediaRecorder.instances.at(-1)!.emitChunk([1])
     await page.getByTestId('composer-voice-send').click()
-    await expect.element(page.getByTestId('composer')).toHaveValue('Fix the login and the dashboard')
+    await expect
+      .element(page.getByTestId('composer'))
+      .toHaveValue('Fix the login and the dashboard')
     await expect.element(page.getByTestId('composer-send')).toBeInTheDocument()
   })
 
@@ -226,7 +252,9 @@ describe('dictation in the text boxes', () => {
     const onsave = vi.fn()
     render(MessageEdit, { body: 'Moved the meeting', onsave, oncancel: vi.fn() })
     await dictate('messages-edit-voice')
-    await expect.element(page.getByTestId('messages-edit-input')).toHaveValue('Moved the meeting and the dashboard')
+    await expect
+      .element(page.getByTestId('messages-edit-input'))
+      .toHaveValue('Moved the meeting and the dashboard')
     await page.getByTestId('messages-edit-save').click()
     expect(onsave).toHaveBeenCalledWith('Moved the meeting and the dashboard')
   })

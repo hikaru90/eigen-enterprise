@@ -1,12 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { roleMock } = vi.hoisted(() => ({ roleMock: vi.fn(async (): Promise<string | null> => 'owner') }))
+const { roleMock } = vi.hoisted(() => ({
+  roleMock: vi.fn(async (): Promise<string | null> => 'owner'),
+}))
 vi.mock('$lib/server/auth/user-role', () => ({ getUserRole: roleMock }))
 
 import { EeClient, SubstrateUnavailableError, type EeTransport } from '$lib/server/ee/client'
 import { actions, _backupsDeps, load } from './+page.server'
 
-const status = { configured: false, target: null, schedule: null, retentionDays: null, configuredAt: null, keyCreatedAt: null, health: { state: 'unconfigured' }, runs: [] }
+const status = {
+  configured: false,
+  target: null,
+  schedule: null,
+  retentionDays: null,
+  configuredAt: null,
+  keyCreatedAt: null,
+  health: { state: 'unconfigured' },
+  runs: [],
+}
 
 function wire(answers: Record<string, { status: number; data: unknown }>) {
   const calls: Array<{ method: string; path: string; body?: unknown }> = []
@@ -17,7 +28,11 @@ function wire(answers: Record<string, { status: number; data: unknown }>) {
     return a
   }
   _backupsDeps.client = () => new EeClient(transport)
-  _backupsDeps.companyKey = async () => ({ backupKey: 'K'.repeat(43) + '=', recoveryCode: 'EE1-AAAAA-…', created: false })
+  _backupsDeps.companyKey = async () => ({
+    backupKey: 'K'.repeat(43) + '=',
+    recoveryCode: 'EE1-AAAAA-…',
+    created: false,
+  })
   _backupsDeps.takePendingRecoveryCode = async () => null
   _backupsDeps.hostingKeepsKey = () => false
   return calls
@@ -27,7 +42,10 @@ const user = { id: 'u-owner' }
 const ev = (form?: Record<string, string>) =>
   ({
     locals: { user },
-    request: new Request('http://x/settings/backups', { method: 'POST', body: new URLSearchParams(form ?? {}) }),
+    request: new Request('http://x/settings/backups', {
+      method: 'POST',
+      body: new URLSearchParams(form ?? {}),
+    }),
   }) as never
 
 const fields = {
@@ -52,13 +70,22 @@ describe('Settings → Backups (owner only, D11)', () => {
     await expect(actions.save!(ev(fields))).rejects.toMatchObject({ status: 403 })
     await expect(actions.run!(ev())).rejects.toMatchObject({ status: 403 })
     await expect(actions.test!(ev(fields))).rejects.toMatchObject({ status: 403 })
-    await expect(actions.check!(ev({ snapshotId: '20261101T031700Z' }))).rejects.toMatchObject({ status: 403 })
+    await expect(actions.check!(ev({ snapshotId: '20261101T031700Z' }))).rejects.toMatchObject({
+      status: 403,
+    })
     expect(calls).toEqual([])
   })
 
   it('load: ee status, or the plain not-managed state off an ee box', async () => {
-    wire({ 'GET /v1/backups': { status: 200, data: status }, 'GET /v1/backups/restore': { status: 200, data: { job: null } } })
-    expect(await load(ev() as never)).toEqual({ backups: { managed: true, status, snapshots: null, job: null }, pendingRecoveryCode: null, hostingKeepsKey: false })
+    wire({
+      'GET /v1/backups': { status: 200, data: status },
+      'GET /v1/backups/restore': { status: 200, data: { job: null } },
+    })
+    expect(await load(ev() as never)).toEqual({
+      backups: { managed: true, status, snapshots: null, job: null },
+      pendingRecoveryCode: null,
+      hostingKeepsKey: false,
+    })
     _backupsDeps.client = () =>
       new EeClient(async () => {
         throw new SubstrateUnavailableError('ENOENT')
@@ -67,7 +94,10 @@ describe('Settings → Backups (owner only, D11)', () => {
   })
 
   it('load: a recovery code still pending (the box got its key from the fleet) is shown to the owner once', async () => {
-    wire({ 'GET /v1/backups': { status: 200, data: status }, 'GET /v1/backups/restore': { status: 200, data: { job: null } } })
+    wire({
+      'GET /v1/backups': { status: 200, data: status },
+      'GET /v1/backups/restore': { status: 200, data: { job: null } },
+    })
     let pending: string | null = 'EE1-PENDING'
     const take = vi.fn(async () => {
       const code = pending
@@ -81,7 +111,10 @@ describe('Settings → Backups (owner only, D11)', () => {
   })
 
   it('load: on a managed box (hosting holds a copy of the backup key) the page is told so', async () => {
-    wire({ 'GET /v1/backups': { status: 200, data: status }, 'GET /v1/backups/restore': { status: 200, data: { job: null } } })
+    wire({
+      'GET /v1/backups': { status: 200, data: status },
+      'GET /v1/backups/restore': { status: 200, data: { job: null } },
+    })
     _backupsDeps.hostingKeepsKey = () => true
     expect(await load(ev() as never)).toMatchObject({ hostingKeepsKey: true })
   })
@@ -96,33 +129,89 @@ describe('Settings → Backups (owner only, D11)', () => {
   })
 
   it('test connection: sends the target (prefix trimmed), surfaces the plain failure', async () => {
-    const calls = wire({ 'POST /v1/backups/test': { status: 200, data: { ok: false, error: 'S3 PUT failed: 403 InvalidAccessKeyId' } } })
+    const calls = wire({
+      'POST /v1/backups/test': {
+        status: 200,
+        data: { ok: false, error: 'S3 PUT failed: 403 InvalidAccessKeyId' },
+      },
+    })
     const r = await actions.test!(ev(fields))
-    expect(r).toMatchObject({ status: 400, data: { action: 'test', error: 'Connection failed: S3 PUT failed: 403 InvalidAccessKeyId' } })
+    expect(r).toMatchObject({
+      status: 400,
+      data: {
+        action: 'test',
+        error: 'Connection failed: S3 PUT failed: 403 InvalidAccessKeyId',
+        agent: {
+          attempted: expect.stringContaining('Testing the backup bucket'),
+          input: expect.objectContaining({ bucket: expect.any(String) }),
+        },
+      },
+    })
+    // The secret never reaches the agent half.
+    expect(JSON.stringify((r as { data: { agent: unknown } }).data.agent)).not.toContain('"SK"')
     expect(calls[0]!.body).toEqual({
-      target: { endpoint: 'http://127.0.0.1:9311', region: 'us-east-1', bucket: 'acme-backups', prefix: 'nightly', addressing: 'path', accessKeyId: 'AK', secretAccessKey: 'SK' },
+      target: {
+        endpoint: 'http://127.0.0.1:9311',
+        region: 'us-east-1',
+        bucket: 'acme-backups',
+        prefix: 'nightly',
+        addressing: 'path',
+        accessKeyId: 'AK',
+        secretAccessKey: 'SK',
+      },
     })
   })
 
   const st = (configured: boolean) => ({ status: 200, data: { ...status, configured } })
 
   it('first save: sends the backup key derived from the company root key and shows the SAME company recovery code once', async () => {
-    const calls = wire({ 'GET /v1/backups': st(false), 'POST /v1/backups/config': { status: 200, data: { config: status } } })
-    expect(await actions.save!(ev(fields))).toEqual({ action: 'save', ok: true, recoveryCode: 'EE1-AAAAA-…' })
-    expect(calls[1]!.body).toMatchObject({ schedule: { hour: 2 }, retentionDays: 30, backupKey: 'K'.repeat(43) + '=', author: 'human:u-owner' })
+    const calls = wire({
+      'GET /v1/backups': st(false),
+      'POST /v1/backups/config': { status: 200, data: { config: status } },
+    })
+    expect(await actions.save!(ev(fields))).toEqual({
+      action: 'save',
+      ok: true,
+      recoveryCode: 'EE1-AAAAA-…',
+    })
+    expect(calls[1]!.body).toMatchObject({
+      schedule: { hour: 2 },
+      retentionDays: 30,
+      backupKey: 'K'.repeat(43) + '=',
+      author: 'human:u-owner',
+    })
   })
 
   it('later saves never show the code again; an empty secret is left out; bad numbers are refused before ee', async () => {
-    const calls = wire({ 'GET /v1/backups': st(true), 'POST /v1/backups/config': { status: 200, data: { config: status } } })
-    expect(await actions.save!(ev({ ...fields, secretAccessKey: '' }))).toEqual({ action: 'save', ok: true, recoveryCode: null })
+    const calls = wire({
+      'GET /v1/backups': st(true),
+      'POST /v1/backups/config': { status: 200, data: { config: status } },
+    })
+    expect(await actions.save!(ev({ ...fields, secretAccessKey: '' }))).toEqual({
+      action: 'save',
+      ok: true,
+      recoveryCode: null,
+    })
     expect((calls[1]!.body as { target: object }).target).not.toHaveProperty('secretAccessKey')
-    expect(await actions.save!(ev({ ...fields, retentionDays: '0' }))).toMatchObject({ status: 400, data: { error: expect.stringMatching(/Keep backups for/) } })
+    expect(await actions.save!(ev({ ...fields, retentionDays: '0' }))).toMatchObject({
+      status: 400,
+      data: { error: expect.stringMatching(/Keep backups for/) },
+    })
     expect(calls).toHaveLength(2)
   })
 
-  it('a refused save shows ee\'s reason', async () => {
-    wire({ 'GET /v1/backups': st(false), 'POST /v1/backups/config': { status: 422, data: { detail: 'connection test failed, nothing saved: S3 PUT failed: 404 NoSuchBucket' } } })
-    expect(await actions.save!(ev(fields))).toMatchObject({ status: 422, data: { error: expect.stringMatching(/NoSuchBucket/) } })
+  it("a refused save shows ee's reason", async () => {
+    wire({
+      'GET /v1/backups': st(false),
+      'POST /v1/backups/config': {
+        status: 422,
+        data: { detail: 'connection test failed, nothing saved: S3 PUT failed: 404 NoSuchBucket' },
+      },
+    })
+    expect(await actions.save!(ev(fields))).toMatchObject({
+      status: 422,
+      data: { error: expect.stringMatching(/NoSuchBucket/) },
+    })
   })
 
   it('back up now: a manual run authored by the owner', async () => {
@@ -131,30 +220,77 @@ describe('Settings → Backups (owner only, D11)', () => {
     expect(calls[0]!.body).toEqual({ author: 'human:u-owner', trigger: 'manual', wait: false })
   })
 
-  const job = { id: 'job-1', kind: 'check', snapshotId: '20261101T031700Z', author: 'human:u-owner', status: 'running', step: 'verifying', startedAt: 't', updatedAt: 't', endedAt: null, checked: null, error: null, log: [], announced: false }
+  const job = {
+    id: 'job-1',
+    kind: 'check',
+    snapshotId: '20261101T031700Z',
+    author: 'human:u-owner',
+    status: 'running',
+    step: 'verifying',
+    startedAt: 't',
+    updatedAt: 't',
+    endedAt: null,
+    checked: null,
+    error: null,
+    log: [],
+    announced: false,
+  }
 
   it('load (set up): the backups in the bucket and the last check/restore', async () => {
     const snaps = [{ id: '20261102T031700Z', takenAt: '2026-11-02T03:17:00.000Z' }]
-    wire({ 'GET /v1/backups': st(true), 'GET /v1/backups/restore': { status: 200, data: { job } }, 'GET /v1/backups/snapshots': { status: 200, data: { snapshots: snaps } } })
-    expect(await load(ev() as never)).toMatchObject({ backups: { managed: true, snapshots: { ok: true, snapshots: snaps }, job } })
+    wire({
+      'GET /v1/backups': st(true),
+      'GET /v1/backups/restore': { status: 200, data: { job } },
+      'GET /v1/backups/snapshots': { status: 200, data: { snapshots: snaps } },
+    })
+    expect(await load(ev() as never)).toMatchObject({
+      backups: { managed: true, snapshots: { ok: true, snapshots: snaps }, job },
+    })
   })
 
   it('load: a bucket that cannot be listed is shown as such, the page still loads', async () => {
     wire({
       'GET /v1/backups': st(true),
       'GET /v1/backups/restore': { status: 200, data: { job: null } },
-      'GET /v1/backups/snapshots': { status: 502, data: { detail: 'could not list the backups in the bucket: S3 GET failed: 403 AccessDenied' } },
+      'GET /v1/backups/snapshots': {
+        status: 502,
+        data: {
+          detail: 'could not list the backups in the bucket: S3 GET failed: 403 AccessDenied',
+        },
+      },
     })
-    expect(await load(ev() as never)).toMatchObject({ backups: { managed: true, snapshots: { ok: false, error: expect.stringMatching(/AccessDenied/) } } })
+    expect(await load(ev() as never)).toMatchObject({
+      backups: {
+        managed: true,
+        snapshots: {
+          ok: false,
+          error: expect.stringMatching(/AccessDenied/),
+          agent: { attempted: expect.stringContaining('Listing the backups') },
+        },
+      },
+    })
   })
 
-  it('check: asks ee to check that one backup (writes nothing); refusals show ee\'s reason', async () => {
+  it("check: asks ee to check that one backup (writes nothing); refusals show ee's reason", async () => {
     const calls = wire({ 'POST /v1/backups/check': { status: 202, data: { job } } })
-    expect(await actions.check!(ev({ snapshotId: '20261101T031700Z' }))).toEqual({ action: 'check', ok: true, jobId: 'job-1', snapshotId: '20261101T031700Z' })
+    expect(await actions.check!(ev({ snapshotId: '20261101T031700Z' }))).toEqual({
+      action: 'check',
+      ok: true,
+      jobId: 'job-1',
+      snapshotId: '20261101T031700Z',
+    })
     expect(calls[0]!.body).toEqual({ snapshotId: '20261101T031700Z', author: 'human:u-owner' })
     expect(await actions.check!(ev({ snapshotId: '../../etc' }))).toMatchObject({ status: 400 })
     expect(calls).toHaveLength(1)
-    wire({ 'POST /v1/backups/check': { status: 409, data: { detail: 'a backup is running; wait for it to finish' } } })
-    expect(await actions.check!(ev({ snapshotId: '20261101T031700Z' }))).toMatchObject({ status: 409, data: { action: 'check', error: expect.stringMatching(/backup is running/) } })
+    wire({
+      'POST /v1/backups/check': {
+        status: 409,
+        data: { detail: 'a backup is running; wait for it to finish' },
+      },
+    })
+    expect(await actions.check!(ev({ snapshotId: '20261101T031700Z' }))).toMatchObject({
+      status: 409,
+      data: { action: 'check', error: expect.stringMatching(/backup is running/) },
+    })
   })
 })

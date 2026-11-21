@@ -3,8 +3,10 @@
      from the website.activity tool (/m/website/apps/<workload>); the panel is
      a dumb view and never builds routes itself. */
   import type { ActivityKind, ActivityResult } from '../../../modules/website/activity-tools'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Badge } from '$lib/components/ui/badge'
   import * as Card from '$lib/components/ui/card'
+  import type { ErrorReport } from '$lib/errors/agent-report'
 
   /**
    * Recent activity on the Website module page (plan/phase-website-apps-ux.md
@@ -17,8 +19,8 @@
     error = null,
   }: {
     activity: ActivityResult | null
-    /** A plain sentence when the activity could not be loaded at all. */
-    error?: string | null
+    /** The error report when the activity could not be loaded at all. */
+    error?: ErrorReport | null
   } = $props()
 
   const kindLabel: Record<ActivityKind, string> = {
@@ -51,7 +53,7 @@
   </Card.Header>
   <Card.Content>
     {#if error}
-      <p class="text-sm text-destructive" data-testid="activity-error">{error}</p>
+      <ErrorNotice testid="activity-error" {...error} />
     {:else if !activity || activity.items.length === 0}
       <p class="text-sm text-muted-foreground" data-testid="activity-empty">Nothing yet.</p>
     {:else}

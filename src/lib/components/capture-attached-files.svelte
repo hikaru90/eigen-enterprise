@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { resolve } from '$app/paths'
   import type { CaptureAttachedFile } from '$lib/capture/capture-result-types'
   import NoteEditDialog from '$lib/components/note-edit-dialog.svelte'
@@ -110,7 +111,11 @@
       {/each}
     </ul>
     {#if loadError}
-      <p class="text-xs text-destructive">{loadError}</p>
+      <ErrorNotice
+        class="text-xs"
+        error={loadError}
+        attempted="Opening a note attached to a thought"
+      />
     {/if}
   </div>
 {/if}

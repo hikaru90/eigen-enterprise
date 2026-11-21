@@ -2,12 +2,21 @@
   import type { ChannelType, ContactDto, ContactDraft, ContactVisibility } from '../types'
   import { untrack } from 'svelte'
   import { enhance } from '$app/forms'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
   import { Textarea } from '$lib/components/ui/textarea'
+  import type { AgentReport } from '$lib/errors/agent-report'
   import { readDescription, type ReadDescription } from '../client'
-  import { CONTACT_FIELDS, newChannels, newTags, planFields, type Change, type ContactFieldKey } from '../prefill'
+  import {
+    CONTACT_FIELDS,
+    newChannels,
+    newTags,
+    planFields,
+    type Change,
+    type ContactFieldKey,
+  } from '../prefill'
   import { CHANNEL_LABELS, CHANNEL_TYPES, CONTACT_LIMITS, DEFAULT_TAGS } from '../types'
   import DescribeThem from './describe-them.svelte'
   import VisibilityChoice from './visibility-choice.svelte'
@@ -28,6 +37,7 @@
     action,
     submitLabel,
     error = null,
+    agent = null,
     newVisibility = null,
     describeOpen = false,
     read = readDescription,
@@ -39,6 +49,8 @@
     action?: string
     submitLabel: string
     error?: string | null
+    /** The server's agent report for `error` ("Copy agent instructions"). */
+    agent?: AgentReport | null
     /** The create form: who sees it, starting at the person's default (Private / Whole team). */
     newVisibility?: ContactVisibility | null
     /** Start with "Tell me about them" unfolded (the create form). */
@@ -52,7 +64,9 @@
   const row = (type: ChannelType, value: string): Row => ({ key: nextKey++, type, value })
   const start = untrack(() => contact)
   const initial = start?.channels ?? []
-  let rows = $state<Row[]>(initial.length > 0 ? initial.map((c) => row(c.type, c.value)) : [row('email', '')])
+  let rows = $state<Row[]>(
+    initial.length > 0 ? initial.map((c) => row(c.type, c.value)) : [row('email', '')],
+  )
 
   let fields = $state<Record<ContactFieldKey, string>>({
     name: start?.name ?? '',
@@ -66,7 +80,9 @@
   })
   let checked = $state<string[]>([...(start?.tags ?? [])])
 
-  const tagChoices = $derived([...new Set([...DEFAULT_TAGS, ...suggestedTags, ...(contact?.tags ?? []), ...checked])])
+  const tagChoices = $derived([
+    ...new Set([...DEFAULT_TAGS, ...suggestedTags, ...(contact?.tags ?? []), ...checked]),
+  ])
 
   /** What the last reading did, and the changes still to decide on. */
   let prefilled = $state<string | null>(null)
@@ -86,19 +102,31 @@
     const plan = planFields(CONTACT_FIELDS, fields, draft)
     for (const f of plan.filled) fields[f.key] = f.value
     const channels = newChannels(rows, draft.channels)
-    if (channels.length > 0) rows = [...rows.filter((r) => r.value.trim() !== ''), ...channels.map((c) => row(c.type, c.value))]
+    if (channels.length > 0)
+      rows = [
+        ...rows.filter((r) => r.value.trim() !== ''),
+        ...channels.map((c) => row(c.type, c.value)),
+      ]
     const tags = newTags(checked, draft.tags)
     checked = [...checked, ...tags]
     changes = plan.changes
 
     const done = [
       ...plan.filled.map((f) => f.label),
-      ...(channels.length > 0 ? [plural(channels.length, 'way to reach them', 'ways to reach them')] : []),
+      ...(channels.length > 0
+        ? [plural(channels.length, 'way to reach them', 'ways to reach them')]
+        : []),
       ...(tags.length > 0 ? [`${tags.length === 1 ? 'tag' : 'tags'} ${tags.join(', ')}`] : []),
     ]
     const parts = [
-      done.length > 0 ? `Filled in: ${done.join(', ')}.` : changes.length > 0 ? '' : 'Nothing new to fill in from that.',
-      changes.length > 0 ? `${plural(changes.length, 'field already holds', 'fields already hold')} something else — see below.` : '',
+      done.length > 0
+        ? `Filled in: ${done.join(', ')}.`
+        : changes.length > 0
+          ? ''
+          : 'Nothing new to fill in from that.',
+      changes.length > 0
+        ? `${plural(changes.length, 'field already holds', 'fields already hold')} something else — see below.`
+        : '',
       `Check the form; nothing is saved until you press ${submitLabel}.`,
     ]
     prefilled = parts.filter(Boolean).join(' ')
@@ -132,7 +160,9 @@
   />
 
   {#if prefilled}
-    <p class="text-sm text-muted-foreground" role="status" data-testid="contact-prefilled">{prefilled}</p>
+    <p class="text-sm text-muted-foreground" role="status" data-testid="contact-prefilled">
+      {prefilled}
+    </p>
   {/if}
   {#if changes.length > 0}
     <section
@@ -140,10 +170,15 @@
       aria-label="Changes from what you said"
       data-testid="contact-changes"
     >
-      <p class="text-sm font-medium">These fields already hold something else. Use what you said?</p>
+      <p class="text-sm font-medium">
+        These fields already hold something else. Use what you said?
+      </p>
       <ul class="grid gap-2">
         {#each changes as c (c.key)}
-          <li class="grid gap-1 text-sm sm:grid-cols-[10rem_1fr_auto] sm:items-center" data-testid="contact-change">
+          <li
+            class="grid gap-1 text-sm sm:grid-cols-[10rem_1fr_auto] sm:items-center"
+            data-testid="contact-change"
+          >
             <span class="text-muted-foreground">{c.label}</span>
             <span class="min-w-0 [overflow-wrap:anywhere]">
               <del class="text-muted-foreground">{c.from}</del>
@@ -151,18 +186,30 @@
               <ins class="no-underline">{c.to}</ins>
             </span>
             <span class="flex gap-1">
-              <Button type="button" size="sm" variant="outline" aria-label={`Use the new ${c.label.toLowerCase()}`} onclick={() => accept(c)}
-                >Use new</Button
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                aria-label={`Use the new ${c.label.toLowerCase()}`}
+                onclick={() => accept(c)}>Use new</Button
               >
-              <Button type="button" size="sm" variant="ghost" aria-label={`Keep the current ${c.label.toLowerCase()}`} onclick={() => keep(c)}
-                >Keep</Button
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                aria-label={`Keep the current ${c.label.toLowerCase()}`}
+                onclick={() => keep(c)}>Keep</Button
               >
             </span>
           </li>
         {/each}
       </ul>
       {#if changes.length > 1}
-        <div><Button type="button" size="sm" variant="outline" onclick={acceptAll}>Use all new values</Button></div>
+        <div>
+          <Button type="button" size="sm" variant="outline" onclick={acceptAll}
+            >Use all new values</Button
+          >
+        </div>
       {/if}
     </section>
   {/if}
@@ -179,7 +226,13 @@
     <div class="grid gap-4 sm:grid-cols-2">
       <div class="grid gap-1.5 sm:col-span-2">
         <Label for="contact-name">Name</Label>
-        <Input id="contact-name" name="name" required maxlength={CONTACT_LIMITS.name} bind:value={fields.name} />
+        <Input
+          id="contact-name"
+          name="name"
+          required
+          maxlength={CONTACT_LIMITS.name}
+          bind:value={fields.name}
+        />
       </div>
       <div class="grid gap-1.5">
         <Label for="contact-organisation">Organisation</Label>
@@ -192,7 +245,12 @@
       </div>
       <div class="grid gap-1.5">
         <Label for="contact-title">Role or title</Label>
-        <Input id="contact-title" name="title" maxlength={CONTACT_LIMITS.title} bind:value={fields.title} />
+        <Input
+          id="contact-title"
+          name="title"
+          maxlength={CONTACT_LIMITS.title}
+          bind:value={fields.title}
+        />
       </div>
     </div>
 
@@ -210,7 +268,8 @@
               <option value={type}>{CHANNEL_LABELS[type]}</option>
             {/each}
           </select>
-          <Input dictation={false}
+          <Input
+            dictation={false}
             class="min-w-48 flex-1"
             name="channelValue"
             aria-label={`Channel ${i + 1}`}
@@ -226,7 +285,13 @@
                     : 'Signal, a postal address, …'}
             bind:value={r.value}
           />
-          <Button type="button" variant="ghost" size="sm" onclick={() => removeRow(r.key)} aria-label={`Remove channel ${i + 1}`}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onclick={() => removeRow(r.key)}
+            aria-label={`Remove channel ${i + 1}`}
+          >
             Remove
           </Button>
         </div>
@@ -281,11 +346,21 @@
     <div class="grid gap-4 sm:grid-cols-3">
       <div class="grid gap-1.5">
         <Label for="contact-last">Last in touch</Label>
-        <Input id="contact-last" name="lastContactedOn" type="date" bind:value={fields.lastContactedOn} />
+        <Input
+          id="contact-last"
+          name="lastContactedOn"
+          type="date"
+          bind:value={fields.lastContactedOn}
+        />
       </div>
       <div class="grid gap-1.5">
         <Label for="contact-next">Next follow-up</Label>
-        <Input id="contact-next" name="nextFollowUpOn" type="date" bind:value={fields.nextFollowUpOn} />
+        <Input
+          id="contact-next"
+          name="nextFollowUpOn"
+          type="date"
+          bind:value={fields.nextFollowUpOn}
+        />
       </div>
       <div class="grid gap-1.5">
         <Label for="contact-step">Next step</Label>
@@ -303,7 +378,7 @@
       <VisibilityChoice initial={newVisibility} />
     {/if}
 
-    {#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+    {#if error}<ErrorNotice {error} {agent} attempted="Saving a contact" />{/if}
     <div>
       <Button type="submit" data-testid="contact-submit">{submitLabel}</Button>
     </div>

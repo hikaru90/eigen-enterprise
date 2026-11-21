@@ -125,7 +125,9 @@ describe('/m/[moduleId] load', () => {
       description: ownerModuleBlurb('email', 'Company email.'),
       active: true,
       resultsTitle: 'Sender',
-      results: [{ label: 'hi@k.test', detail: 'Set up · sender not verified yet', href: '/m/email' }],
+      results: [
+        { label: 'hi@k.test', detail: 'Set up · sender not verified yet', href: '/m/email' },
+      ],
       counts: [],
       note: null,
     })
@@ -159,7 +161,7 @@ describe('/m/[moduleId]: the Website module page also carries recent activity (W
     const data = (await load(event('website'))) as {
       module: { id: string }
       activity: { managed: boolean; items: Array<{ text: string }> } | null
-      activityError: string | null
+      activityError: unknown
     }
     expect(data.module.id).toBe('website')
     expect(data.activity).toEqual({
@@ -210,12 +212,13 @@ describe('/m/[moduleId]: the Website module page also carries recent activity (W
     })
     const data = (await load(event('website'))) as {
       activity: unknown
-      activityError: string | null
+      activityError: { error: string; agent: { tool?: string } } | null
     }
     expect(data.activity).toBeNull()
-    expect(data.activityError).toBe(
+    expect(data.activityError?.error).toBe(
       "The server's deploy agent could not read the server status. Try again; if it keeps happening, ask in the chat.",
     )
+    expect(data.activityError?.agent.tool).toBe('website.activity')
   })
 
   it('an unexpected activity failure becomes an explicit sentence, never a broken page', async () => {
@@ -225,10 +228,13 @@ describe('/m/[moduleId]: the Website module page also carries recent activity (W
       if (tool === 'website.activity') throw new Error('boom')
       return { configured: true, sender: 'hi@k.test', senderVerified: false }
     })
-    const data = (await load(event('website'))) as { activityError: string | null }
-    expect(data.activityError).toBe(
+    const data = (await load(event('website'))) as {
+      activityError: { error: string; agent: { cause?: string } } | null
+    }
+    expect(data.activityError?.error).toBe(
       'Activity could not be loaded. Try again; if it keeps happening, ask in the chat.',
     )
+    expect(data.activityError?.agent.cause).toBe('boom')
   })
 
   it('another module never triggers an activity read', async () => {

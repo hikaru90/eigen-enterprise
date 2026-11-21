@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { PageProps } from './$types'
   import type { PluginRef, PluginRow } from './+page.server'
   import { enhance } from '$app/forms'
@@ -46,7 +47,8 @@
 
   const names = (refs: PluginRef[]) => refs.map((r) => r.name).join(', ')
   const activeNames = (refs: PluginRef[]) => names(refs.filter((r) => r.active))
-  const resultFor = (id: string) => (form && 'moduleId' in form && form.moduleId === id ? form : null)
+  const resultFor = (id: string) =>
+    form && 'moduleId' in form && form.moduleId === id ? form : null
 </script>
 
 <svelte:head>
@@ -55,8 +57,8 @@
 
 <h2 class="text-base font-semibold tracking-tight">Plugins</h2>
 <p class="mt-1 text-sm text-foreground/60">
-  Everything in the sidebar is a plugin. Switch off what your company doesn't use — nothing it has stored is
-  deleted, and you can switch it back on any time.
+  Everything in the sidebar is a plugin. Switch off what your company doesn't use — nothing it has
+  stored is deleted, and you can switch it back on any time.
 </p>
 
 {#snippet pluginItem(plugin: PluginRow)}
@@ -68,13 +70,11 @@
           <h4 class="text-sm font-medium">{plugin.name}</h4>
           <span
             class="rounded-md border border-border px-1.5 py-0.5 text-[11px] font-medium text-foreground/70"
-            data-testid="plugin-origin">{plugin.origin === 'official' ? 'Official' : 'Company'}</span
+            data-testid="plugin-origin"
+            >{plugin.origin === 'official' ? 'Official' : 'Company'}</span
           >
           <span
-            class={[
-              'text-xs',
-              plugin.active ? 'text-foreground/70' : 'text-foreground/50',
-            ]}
+            class={['text-xs', plugin.active ? 'text-foreground/70' : 'text-foreground/50']}
             data-testid="plugin-state">{plugin.active ? 'On' : 'Off'}</span
           >
         </div>
@@ -135,15 +135,24 @@
           </ul>
           <input type="hidden" name="module_id" value={plugin.id} />
           <div class="flex gap-2 pt-1">
-            <Button type="submit" size="sm" variant="destructive" disabled={pending !== null}>Switch off</Button>
-            <Button type="button" size="sm" variant="ghost" onclick={() => (confirming = null)}>Cancel</Button>
+            <Button type="submit" size="sm" variant="destructive" disabled={pending !== null}
+              >Switch off</Button
+            >
+            <Button type="button" size="sm" variant="ghost" onclick={() => (confirming = null)}
+              >Cancel</Button
+            >
           </div>
         </div>
       </form>
     {/if}
 
     {#if result?.error}
-      <p class="mt-3 text-xs text-destructive" role="alert">{result.error}</p>
+      <ErrorNotice
+        class="mt-3 text-xs"
+        error={result.error}
+        agent={'agent' in result ? result.agent : null}
+        attempted={`Switching the plugin ${plugin.id} on or off`}
+      />
     {:else if result && 'ok' in result && result.ok}
       <p class="mt-3 text-xs text-foreground/60" role="status">
         {result.action === 'activate' ? 'Switched on.' : 'Switched off.'}
@@ -155,7 +164,9 @@
 <div class="mt-8 space-y-8" data-testid="settings-plugins">
   <section class="space-y-3">
     <h3 class="text-sm font-medium">Official plugins</h3>
-    <p class="text-xs text-foreground/60">Shipped with eigenEnterprise. They are only switched on or off.</p>
+    <p class="text-xs text-foreground/60">
+      Shipped with eigenEnterprise. They are only switched on or off.
+    </p>
     <ul class="space-y-3">
       {#each official as plugin (plugin.id)}
         {@render pluginItem(plugin)}
@@ -175,8 +186,12 @@
     </section>
   {/if}
 
-  <p class="rounded-lg border border-dashed border-border p-4 text-xs text-foreground/60" data-testid="plugins-core">
+  <p
+    class="rounded-lg border border-dashed border-border p-4 text-xs text-foreground/60"
+    data-testid="plugins-core"
+  >
     <span class="font-medium text-foreground/80">Core:</span>
-    {data.core.map((c) => c.name).join(', ')}. It runs eigenEnterprise itself and cannot be switched off.
+    {data.core.map((c) => c.name).join(', ')}. It runs eigenEnterprise itself and cannot be switched
+    off.
   </p>
 </div>

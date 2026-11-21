@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { ActionData, PageData } from './$types'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
@@ -20,10 +21,15 @@
     chat: { label: 'Chat', hint: 'Writes: answers, drafts, summaries.' },
     stt: { label: 'Speech to text', hint: 'Every transcript: dictation, voice notes, calls.' },
     tts: { label: 'Text to speech', hint: "The assistant's voice." },
-    decision: { label: 'Decisions', hint: 'Answers from a fixed set of choices (yes/no, one of several).' },
+    decision: {
+      label: 'Decisions',
+      hint: 'Answers from a fixed set of choices (yes/no, one of several).',
+    },
   }
 
-  const eigenInferenceMissing = $derived(data.ai.useEigenInference && !data.ai.eigenInferenceAvailable)
+  const eigenInferenceMissing = $derived(
+    data.ai.useEigenInference && !data.ai.eigenInferenceAvailable,
+  )
 
   /** A dropdown saves as soon as a model is picked: the change submits its own form. */
   function submitOnChange(event: Event & { currentTarget: HTMLSelectElement }) {
@@ -54,8 +60,8 @@
         <h3 class="text-sm font-semibold" id="eigen-inference-label">Use eigenInference</h3>
         <p class="mt-1 text-sm text-muted-foreground">
           {#if data.ai.useEigenInference}
-            Every model call runs on eigenEnterprise's inference, billed per call in Activity. No keys
-            to manage.
+            Every model call runs on eigenEnterprise's inference, billed per call in Activity. No
+            keys to manage.
           {:else}
             Off: every model call runs on the company's own key (under Advanced).
           {/if}
@@ -73,18 +79,19 @@
           : 'bg-input'}"
       >
         <span
-          class="pointer-events-none block size-4 rounded-full bg-background transition-transform {data.ai
-            .useEigenInference
+          class="pointer-events-none block size-4 rounded-full bg-background transition-transform {data
+            .ai.useEigenInference
             ? 'translate-x-[14px]'
             : 'translate-x-0'}"
         ></span>
       </button>
     </form>
     {#if eigenInferenceMissing}
-      <p class="text-sm text-destructive" role="alert" data-testid="eigen-inference-missing">
-        eigenInference is not connected on this server yet, so model calls fail. Turn it off and add
-        the company's own key under Advanced.
-      </p>
+      <ErrorNotice
+        testid="eigen-inference-missing"
+        error="eigenInference is not connected on this server yet, so model calls fail. Turn it off and add the company's own key under Advanced."
+        attempted="Using eigenInference for model calls (Settings → AI provider); the server has no eigenInference connection configured"
+      />
     {/if}
     {#if form?.aiMessage}
       <p class="text-sm text-muted-foreground" role="status">{form.aiMessage}</p>
@@ -105,7 +112,12 @@
         {@const meta = SLOT_LABEL[slot.slot]}
         {@const current = slot.options.find((o) => o.id === slot.model)}
         <li class="px-4 py-3">
-          <form method="post" action="?/setSlot" use:enhance class="grid gap-1.5 sm:grid-cols-[12rem_1fr] sm:items-center">
+          <form
+            method="post"
+            action="?/setSlot"
+            use:enhance
+            class="grid gap-1.5 sm:grid-cols-[12rem_1fr] sm:items-center"
+          >
             <input type="hidden" name="slot" value={slot.slot} />
             <div>
               <Label for="slot-{slot.slot}">{meta?.label ?? slot.slot}</Label>
@@ -121,7 +133,9 @@
                 class="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm text-foreground outline-none focus-visible:ring-2 -ring disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {#each slot.options as option (option.id)}
-                  <option value={option.id}>{option.id}{option.recommended ? ' (recommended)' : ''}</option>
+                  <option value={option.id}
+                    >{option.id}{option.recommended ? ' (recommended)' : ''}</option
+                  >
                 {/each}
               </select>
               {#if current}
@@ -131,7 +145,10 @@
           </form>
         </li>
       {/each}
-      <li class="grid gap-1.5 px-4 py-3 sm:grid-cols-[12rem_1fr] sm:items-center" data-testid="embedding-slot">
+      <li
+        class="grid gap-1.5 px-4 py-3 sm:grid-cols-[12rem_1fr] sm:items-center"
+        data-testid="embedding-slot"
+      >
         <div>
           <p class="text-sm font-medium leading-none">Search</p>
           <p class="text-xs text-muted-foreground">Finds related memories (an embedding model).</p>
@@ -190,8 +207,8 @@
         <div>
           <h3 class="text-sm font-semibold">EUrouter routing rules</h3>
           <p class="mt-1 text-sm text-muted-foreground">
-            Only for an EUrouter key: EUrouter picks its models by routing rule. Every other key runs
-            on the models chosen above.
+            Only for an EUrouter key: EUrouter picks its models by routing rule. Every other key
+            runs on the models chosen above.
           </p>
         </div>
 
@@ -208,7 +225,8 @@
           <input type="hidden" name="provider" value="eurouter" />
           <div class="space-y-1.5">
             <Label for="ruleChat">Chat routing rule</Label>
-            <Input dictation={false}
+            <Input
+              dictation={false}
               id="ruleChat"
               type="text"
               name="ruleChat"
@@ -219,7 +237,8 @@
           </div>
           <div class="space-y-1.5">
             <Label for="ruleEmbedding">Search routing rule</Label>
-            <Input dictation={false}
+            <Input
+              dictation={false}
               id="ruleEmbedding"
               type="text"
               name="ruleEmbedding"

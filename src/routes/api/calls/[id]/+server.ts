@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types'
-import { callsRoute } from '../../../../../modules/calls/http'
+import { callsRoute } from '../calls-route'
 
 /** Overridable in tests. */
 export const _deps = {
@@ -8,4 +8,6 @@ export const _deps = {
 
 /** One call, as the signed-in person may see it. */
 export const GET: RequestHandler = ({ locals, params }) =>
-  callsRoute(locals.user, _deps.service, async (userId, s) => ({ call: await s.get(userId, params.id) }))
+  callsRoute('Loading a call', locals.user, _deps.service, async (userId, s) => ({
+    call: await s.get(userId, params.id),
+  }))

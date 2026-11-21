@@ -1,5 +1,9 @@
 import type { ContactMail } from '../../../../../../modules/contacts/service'
-import { companyMailTo, contactMailPort, mailboxMailWith } from '../../../../../../modules/contacts/mail-history'
+import {
+  companyMailTo,
+  contactMailPort,
+  mailboxMailWith,
+} from '../../../../../../modules/contacts/mail-history'
 import { inboxHref } from '../../../../../../modules/email/inbox/url'
 
 /**
@@ -12,18 +16,21 @@ import { inboxHref } from '../../../../../../modules/email/inbox/url'
  * which check access again.
  */
 export async function liveContactMail(userId: string, addresses: string[]): Promise<ContactMail[]> {
-  const [{ inboxDeps }, { readableMailboxes }, { isUserAdmin }, { appSql, createScopedDrizzle }] = await Promise.all([
-    import('../../../../../../modules/email/inbox/live'),
-    import('../../../../../../modules/email/inbox/service'),
-    import('$lib/server/auth/user-role'),
-    import('$lib/server/db'),
-  ])
+  const [{ inboxDeps }, { readableMailboxes }, { isUserAdmin }, { appSql, createScopedDrizzle }] =
+    await Promise.all([
+      import('../../../../../../modules/email/inbox/live'),
+      import('../../../../../../modules/email/inbox/service'),
+      import('$lib/server/auth/user-role'),
+      import('$lib/server/db'),
+    ])
   const db = createScopedDrizzle(appSql)
   return contactMailPort({
     readableMailboxes: async (id) => readableMailboxes(await inboxDeps(), id),
     readsCompanyMail: isUserAdmin,
     mailbox: (boxes, list) =>
-      mailboxMailWith(db, boxes, list, (m) => inboxHref('/m/email/inbox', { box: m.mailboxId, folder: m.folder, m: m.id })),
+      mailboxMailWith(db, boxes, list, (m) =>
+        inboxHref('/m/email/inbox', { box: m.mailboxId, folder: m.folder, m: m.id }),
+      ),
     company: (list) => companyMailTo(db, list),
   })(userId, addresses)
 }

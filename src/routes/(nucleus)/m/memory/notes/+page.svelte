@@ -4,6 +4,7 @@
   import Plus from '@lucide/svelte/icons/plus'
   import { onMount } from 'svelte'
   import { page } from '$app/state'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import MemoryAuthorBadge from '$lib/components/memory-author-badge.svelte'
   import MemoryOwnerLabel from '$lib/components/memory-owner-label.svelte'
   import MemoryPrivateSwitch from '$lib/components/memory-private-switch.svelte'
@@ -15,10 +16,7 @@
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
   import { Textarea } from '$lib/components/ui/textarea'
-  import {
-    matchesCurrentUserView,
-    type CurrentUserView,
-  } from '$lib/memory/current-user-view'
+  import { matchesCurrentUserView, type CurrentUserView } from '$lib/memory/current-user-view'
   import { m } from '$lib/paraglide/messages.js'
   import { docTitle } from '$lib/shell/title'
   import {
@@ -317,7 +315,9 @@
 
 <svelte:head><title>{docTitle('Notes', 'Memory')}</title></svelte:head>
 
-<div class="flex min-h-[70dvh] w-full flex-1 flex-col overflow-hidden overscroll-none px-4 pt-6 pb-4 sm:px-8">
+<div
+  class="flex min-h-[70dvh] w-full flex-1 flex-col overflow-hidden overscroll-none px-4 pt-6 pb-4 sm:px-8"
+>
   <header class="mb-4 flex shrink-0 items-center justify-between gap-3">
     <h2 class="text-base font-semibold text-foreground">{m.notes_title()}</h2>
     <Button
@@ -347,7 +347,10 @@
     {#if loading}
       <p class="text-sm text-muted-foreground">{m.notes_loading()}</p>
     {:else if loadError}
-      <p class="text-sm text-destructive">{m.notes_load_error()} {loadError}</p>
+      <ErrorNotice
+        error={`${m.notes_load_error()} ${loadError}`}
+        attempted="Loading the notes on /m/memory/notes"
+      />
     {:else if visibleListItems.length === 0}
       {#if scope === 'team'}
         <p class="text-sm text-muted-foreground">{m.memory_team_notes_empty()}</p>
@@ -374,7 +377,9 @@
                     {#if !item.editable}
                       <MemoryOwnerLabel name={item.ownerName} />
                     {:else if item.visibility === 'private'}
-                      <span class="text-[11px] text-muted-foreground">{m.memory_private_label()}</span>
+                      <span class="text-[11px] text-muted-foreground"
+                        >{m.memory_private_label()}</span
+                      >
                     {/if}
                   </div>
                   <p class="mt-1 line-clamp-2 whitespace-pre-wrap text-xs text-muted-foreground">
@@ -425,13 +430,15 @@
         {/if}
       </div>
       <Drawer.Description class="text-xs">
-        {editEditable ? m.notes_edit_description() : m.memory_read_only_hint({ name: editOwnerName })}
+        {editEditable
+          ? m.notes_edit_description()
+          : m.memory_read_only_hint({ name: editOwnerName })}
       </Drawer.Description>
     </Drawer.Header>
     {#if detailLoading}
       <p class="text-sm text-muted-foreground">{m.notes_loading()}</p>
     {:else if detailError && !editBody}
-      <p class="text-sm text-destructive">{detailError}</p>
+      <ErrorNotice error={detailError} attempted="Opening a note on /m/memory/notes" />
     {:else if !editEditable}
       <!-- A colleague's shared note: read-only, their words as they wrote them. -->
       <article class="space-y-2" data-testid="note-read-only">
@@ -442,19 +449,11 @@
       <div class="space-y-3">
         <div class="space-y-1">
           <Label for="note-title">{m.notes_title_label()}</Label>
-          <Input
-            id="note-title"
-            bind:value={editTitle}
-            placeholder={m.notes_untitled()}
-          />
+          <Input id="note-title" bind:value={editTitle} placeholder={m.notes_untitled()} />
         </div>
         <div class="space-y-1">
           <Label for="note-body">{m.notes_body_label()}</Label>
-          <Textarea
-            id="note-body"
-            bind:value={editBody}
-            class="min-h-48 font-mono text-sm"
-          />
+          <Textarea id="note-body" bind:value={editBody} class="min-h-48 font-mono text-sm" />
         </div>
         <MemoryPrivateSwitch
           id="note-private"
@@ -464,17 +463,17 @@
           onchange={(isPrivate) => void changeVisibility(isPrivate)}
         />
         {#if detailError}
-          <p class="text-xs text-destructive">{detailError}</p>
+          <ErrorNotice
+            class="text-xs"
+            error={detailError}
+            attempted="Saving, sharing or deleting a note on /m/memory/notes"
+          />
         {/if}
         {#if savedFlash}
           <p class="text-xs text-muted-foreground">{m.notes_saved()}</p>
         {/if}
         <div class="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            disabled={saving || deleting}
-            onclick={() => void saveNote()}
-          >
+          <Button type="button" disabled={saving || deleting} onclick={() => void saveNote()}>
             {#if saving}
               <LoaderCircleIcon class="mr-1 size-3.5 animate-spin" aria-hidden="true" />
             {/if}
@@ -534,7 +533,11 @@
         onchange={(isPrivate) => (createPrivate = isPrivate)}
       />
       {#if createError}
-        <p class="text-xs text-destructive">{createError}</p>
+        <ErrorNotice
+          class="text-xs"
+          error={createError}
+          attempted="Creating a note on /m/memory/notes"
+        />
       {/if}
     </div>
     <Dialog.Footer>

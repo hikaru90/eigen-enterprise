@@ -4,4 +4,6 @@ import { conversationMembers } from '../../../../../../../modules/messages/servi
 
 /** Who is in the conversation (the header's member count and avatars). */
 export const GET: RequestHandler = ({ locals, params }) =>
-  messagesRoute(locals.user, async (userId, d) => ({ members: await conversationMembers(d, userId, params.id) }))
+  messagesRoute(locals.user, 'Loading conversation members (/api/messages)', async (userId, d) => ({
+    members: await conversationMembers(d, userId, params.id),
+  }))

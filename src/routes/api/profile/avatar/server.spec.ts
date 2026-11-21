@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from 'vitest'
 
 const { saveAvatar, getProfile } = vi.hoisted(() => ({
   saveAvatar: vi.fn(async () => ({ image: '/api/people/avatar/x', sha256: 'x' })),
-  getProfile: vi.fn(async () => ({ firstName: 'Ada', lastName: 'L', image: '/api/people/avatar/x', complete: true })),
+  getProfile: vi.fn(async () => ({
+    firstName: 'Ada',
+    lastName: 'L',
+    image: '/api/people/avatar/x',
+    complete: true,
+  })),
 }))
 vi.mock('$lib/server/profile/service', () => ({ saveAvatar, getProfile }))
 
@@ -20,9 +25,17 @@ function webp256(): Uint8Array {
   return b
 }
 
-const call = (init: { user?: { id: string } | null; body?: Uint8Array; type?: string; apiKey?: boolean }) =>
+const call = (init: {
+  user?: { id: string } | null
+  body?: Uint8Array
+  type?: string
+  apiKey?: boolean
+}) =>
   POST({
-    locals: { user: init.user === undefined ? { id: 'u1' } : init.user, apiKeyAuth: init.apiKey ? { id: 'k', name: 'k' } : undefined },
+    locals: {
+      user: init.user === undefined ? { id: 'u1' } : init.user,
+      apiKeyAuth: init.apiKey ? { id: 'k', name: 'k' } : undefined,
+    },
     request: new Request('http://localhost/api/profile/avatar', {
       method: 'POST',
       headers: init.type ? { 'content-type': init.type } : {},
@@ -49,7 +62,13 @@ describe('POST /api/profile/avatar', () => {
     expect(png.status).toBe(415)
     const fake = await call({ type: 'image/webp', body: new Uint8Array(80).fill(1) })
     expect(fake.status).toBe(400)
-    expect(await fake.json()).toEqual({ error: 'The picture is not a WebP image.' })
+    expect(await fake.json()).toEqual({
+      error: 'The picture is not a WebP image.',
+      agent: expect.objectContaining({
+        attempted: 'Uploading your profile picture (POST /api/profile/avatar)',
+        input: expect.objectContaining({ contentType: expect.any(String) }),
+      }),
+    })
     expect(saveAvatar).not.toHaveBeenCalled()
   })
 

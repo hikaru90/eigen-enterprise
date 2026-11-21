@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
+  import type { AgentReport } from '$lib/errors/agent-report'
   import type { ShareStatusView } from '../../../../modules/contribute/share/service'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
@@ -15,7 +17,7 @@
   type Props = {
     status: ShareStatusView
     /** The setSharing action's answer, if this was the last action. */
-    result: { error?: string; ok?: boolean } | null
+    result: { error?: string; agent?: AgentReport; ok?: boolean } | null
   }
   let { status, result }: Props = $props()
 
@@ -31,8 +33,8 @@
     <div>
       <h3 class="text-sm font-medium">Share proposals with the eigenEnterprise makers</h3>
       <p class="mt-0.5 text-xs text-foreground/60">
-        Each new proposal on the Contribute board is also sent, without names, to the central board the makers read, so
-        they see what every company asks for. Your own board stays as it is.
+        Each new proposal on the Contribute board is also sent, without names, to the central board
+        the makers read, so they see what every company asks for. Your own board stays as it is.
       </p>
     </div>
     <span
@@ -56,8 +58,8 @@
         {#each NEVER_SHARED as line (line)}<li>{line}</li>{/each}
       </ul>
       <p class="mt-2 text-foreground/60">
-        On the <a class="underline" href={resolve('/contribute')}>Contribute board</a> you see each proposal's sharing, what was sent,
-        and can stop one from being shared.
+        On the <a class="underline" href={resolve('/contribute')}>Contribute board</a> you see each proposal's
+        sharing, what was sent, and can stop one from being shared.
       </p>
     </div>
   </div>
@@ -76,7 +78,8 @@
     {#if status.enabled && !status.providerReady}
       <p class="text-destructive" data-testid="share-no-provider">
         No AI provider is connected, so proposals can't be prepared without names. Connect one under
-        <a class="underline" href={resolve('/settings/llm')}>Settings → AI provider</a>; waiting proposals are shared then.
+        <a class="underline" href={resolve('/settings/llm')}>Settings → AI provider</a>; waiting
+        proposals are shared then.
       </p>
     {/if}
     <p class="text-foreground/70" data-testid="share-counts">
@@ -107,15 +110,35 @@
     <input type="hidden" name="enabled" value={status.enabled ? 'off' : 'on'} />
     {#if status.enabled}
       <label class="flex items-center gap-2 text-xs">
-        <input type="checkbox" name="withdraw" bind:checked={withdraw} data-testid="share-withdraw" />
+        <input
+          type="checkbox"
+          name="withdraw"
+          bind:checked={withdraw}
+          data-testid="share-withdraw"
+        />
         Also delete everything already sent from the central board
       </label>
     {/if}
-    <Button type="submit" size="sm" variant={status.enabled ? 'outline' : 'default'} disabled={busy} data-testid="share-toggle">
-      {status.enabled ? (withdraw ? 'Turn off and delete what was sent' : 'Turn sharing off') : 'Turn sharing on'}
+    <Button
+      type="submit"
+      size="sm"
+      variant={status.enabled ? 'outline' : 'default'}
+      disabled={busy}
+      data-testid="share-toggle"
+    >
+      {status.enabled
+        ? withdraw
+          ? 'Turn off and delete what was sent'
+          : 'Turn sharing off'
+        : 'Turn sharing on'}
     </Button>
     {#if result?.error}
-      <p class="text-xs text-destructive" role="alert">{result.error}</p>
+      <ErrorNotice
+        class="text-xs"
+        error={result.error}
+        agent={result.agent ?? null}
+        attempted="Turning sharing of Contribute proposals with the makers on or off"
+      />
     {:else if result?.ok}
       <p class="text-xs text-foreground/60" role="status">Saved.</p>
     {/if}

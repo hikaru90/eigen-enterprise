@@ -1,5 +1,6 @@
 import type { Actions, PageServerLoad } from './$types'
 import { error } from '@sveltejs/kit'
+import { refusalReport } from '$lib/server/errors/report'
 import { emailPlatform } from '../../../../../../../modules/email/platform/service'
 import { act, requireAdmin, requireMember } from '../../access.server'
 
@@ -11,6 +12,17 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   if (!m) error(404, 'No such mail')
   const events = await store.events(m.id)
   return {
+    // Why sending failed, as stored on the mail (Amazon's or the sender's reason).
+    mailError: m.error
+      ? refusalReport(m.error, {
+          attempted: `Sending the mail “${m.subject}” to ${m.toAddress}`,
+          input: { id: m.id, status: m.status, source: m.source, sesMessageId: m.sesMessageId },
+          cause: m.error,
+          nextSteps: [
+            'This is the failure stored on the mail row (modules/email/platform/, the send path and the delivery-event handler write it); the status timeline on the page shows when it happened.',
+          ],
+        })
+      : null,
     message: {
       id: m.id,
       to: m.toAddress,
@@ -41,7 +53,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 export const actions: Actions = {
   cancel: async ({ locals, params }) => {
     await requireAdmin(locals)
-    return act('cancel', async () => {
+    return act('cancel', 'Cancelling a scheduled mail', async () => {
       await emailPlatform().cancelScheduled(params.id)
       return {}
     })

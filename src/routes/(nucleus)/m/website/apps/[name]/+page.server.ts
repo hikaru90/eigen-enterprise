@@ -2,10 +2,17 @@ import type { DeployProgress } from '../../../../../../../modules/website/apps/d
 import type { DeployStatus, ServiceView } from '../../../../../../../modules/website/apps/tools'
 import type { Actions, PageServerLoad } from './$types'
 import { error, fail, redirect } from '@sveltejs/kit'
+import type { ErrorReport } from '$lib/errors/agent-report'
 import { requireAdmin } from '$lib/server/auth/require-admin'
 import type { EeStatus } from '$lib/server/ee/client'
+import { refusalReport } from '$lib/server/errors/report'
 import { lastAttempt, startOwnerDeploy } from '$lib/server/website/deploy-runner'
-import { logAppFailure, ownerRun, plainAppMessage } from '$lib/server/website/owner-run'
+import {
+  appErrorReport,
+  logAppFailure,
+  ownerRun,
+  plainAppMessage,
+} from '$lib/server/website/owner-run'
 import {
   contractFormSchema,
   type AppContract,
@@ -43,14 +50,25 @@ export const load: PageServerLoad = async (event) => {
     app = await ownerRun<AppDetail>(user, 'website.app_get', { name })
   } catch (err) {
     logAppFailure('website.app_get', err)
-    error(404, plainAppMessage(err))
+    error(404, {
+      message: plainAppMessage(err),
+      agent: appErrorReport(err, {
+        attempted: `Opening the app ${name}`,
+        tool: 'website.app_get',
+        input: { name },
+      }).agent,
+    })
   }
   let logs: string[] = []
-  let logsError: string | null = null
+  let logsError: ErrorReport | null = null
   try {
     logs = (await ownerRun<{ lines: string[] }>(user, 'website.app_logs', { name })).lines
   } catch (err) {
-    logsError = plainAppMessage(err)
+    logsError = appErrorReport(err, {
+      attempted: `Reading the logs of ${name}`,
+      tool: 'website.app_logs',
+      input: { name },
+    })
   }
   // The last attempt (stage, plain cause, log): a failure stays visible with "Ask AI" after a reload.
   let lastDeploy: DeployProgress | null = null
@@ -95,7 +113,14 @@ export const actions: Actions = {
       if (!checked.success) {
         return fail(400, {
           action: 'deploy' as const,
-          error: checked.error.issues[0]?.message ?? 'Check the build form.',
+          ...refusalReport(checked.error.issues[0]?.message ?? 'Check the build form.', {
+            attempted: `Redeploying ${event.params.name} with an edited build form`,
+            input: { contract },
+            cause: checked.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+            nextSteps: [
+              'The build form was refused by contractFormSchema (modules/website/apps/contract.ts) before anything ran; the cause lists each field.',
+            ],
+          }),
         })
       }
     }
@@ -130,7 +155,14 @@ export const actions: Actions = {
       }
     } catch (err) {
       logAppFailure('website.app_domain_set', err)
-      return fail(400, { action: 'domainSet' as const, error: plainAppMessage(err) })
+      return fail(400, {
+        action: 'domainSet' as const,
+        ...appErrorReport(err, {
+          attempted: `Pointing ${host} at ${event.params.name}`,
+          tool: 'website.app_domain_set',
+          input: { name: event.params.name, host, ...(replace ? { replace } : {}) },
+        }),
+      })
     }
   },
   domainRemove: async (event) => {
@@ -148,7 +180,14 @@ export const actions: Actions = {
       }
     } catch (err) {
       logAppFailure('website.app_domain_remove', err)
-      return fail(400, { action: 'domainRemove' as const, error: plainAppMessage(err) })
+      return fail(400, {
+        action: 'domainRemove' as const,
+        ...appErrorReport(err, {
+          attempted: `Removing ${host} from ${event.params.name}`,
+          tool: 'website.app_domain_remove',
+          input: { name: event.params.name, host },
+        }),
+      })
     }
   },
   env: async (event) => {
@@ -170,7 +209,14 @@ export const actions: Actions = {
       }
     } catch (err) {
       logAppFailure('website.app_env_set', err)
-      return fail(400, { action: 'env' as const, error: plainAppMessage(err) })
+      return fail(400, {
+        action: 'env' as const,
+        ...appErrorReport(err, {
+          attempted: `Saving the variable ${key} for ${event.params.name}`,
+          tool: 'website.app_env_set',
+          input: { name: event.params.name, key, value: String(f.get('value') ?? '') },
+        }),
+      })
     }
   },
   secretSet: async (event) => {
@@ -190,7 +236,14 @@ export const actions: Actions = {
       }
     } catch (err) {
       logAppFailure('substrate.secret_set', err)
-      return fail(400, { action: 'secretSet' as const, error: plainAppMessage(err) })
+      return fail(400, {
+        action: 'secretSet' as const,
+        ...appErrorReport(err, {
+          attempted: `Saving the secret ${name} for ${event.params.name}`,
+          tool: 'substrate.secret_set',
+          input: { workload: event.params.name, name, value: String(f.get('value') ?? '') },
+        }),
+      })
     }
   },
   remove: async (event) => {
@@ -199,7 +252,14 @@ export const actions: Actions = {
       await ownerRun(user, 'website.app_remove', { name: event.params.name })
     } catch (err) {
       logAppFailure('website.app_remove', err)
-      return fail(400, { action: 'remove' as const, error: plainAppMessage(err) })
+      return fail(400, {
+        action: 'remove' as const,
+        ...appErrorReport(err, {
+          attempted: `Removing the app ${event.params.name}`,
+          tool: 'website.app_remove',
+          input: { name: event.params.name },
+        }),
+      })
     }
     redirect(303, '/m/website')
   },
@@ -218,7 +278,14 @@ export const actions: Actions = {
       }
     } catch (err) {
       logAppFailure('website.app_mail_enable', err)
-      return fail(400, { action: 'mailEnable' as const, error: plainAppMessage(err) })
+      return fail(400, {
+        action: 'mailEnable' as const,
+        ...appErrorReport(err, {
+          attempted: `Allowing ${event.params.name} to send email`,
+          tool: 'website.app_mail_enable',
+          input: { name: event.params.name },
+        }),
+      })
     }
   },
   mailDisable: async (event) => {
@@ -232,7 +299,14 @@ export const actions: Actions = {
       }
     } catch (err) {
       logAppFailure('website.app_mail_disable', err)
-      return fail(400, { action: 'mailDisable' as const, error: plainAppMessage(err) })
+      return fail(400, {
+        action: 'mailDisable' as const,
+        ...appErrorReport(err, {
+          attempted: `Stopping ${event.params.name} from sending email`,
+          tool: 'website.app_mail_disable',
+          input: { name: event.params.name },
+        }),
+      })
     }
   },
 }

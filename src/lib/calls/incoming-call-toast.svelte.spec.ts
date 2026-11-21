@@ -77,8 +77,13 @@ describe('incoming-call-toast.svelte', () => {
 
   it('Decline declines and hides the toast; it never opens the call', async () => {
     const { live, client, open } = setup()
-    live.apply('call.ringing', ringing({ contextKind: 'channel', contextId: 'ch-1', title: '#general' }))
-    await expect.element(page.getByTestId('incoming-call-where')).toHaveTextContent('Call in #general')
+    live.apply(
+      'call.ringing',
+      ringing({ contextKind: 'channel', contextId: 'ch-1', title: '#general' }),
+    )
+    await expect
+      .element(page.getByTestId('incoming-call-where'))
+      .toHaveTextContent('Call in #general')
     await page.getByTestId('incoming-call-decline').click()
     expect(client.decline).toHaveBeenCalledExactlyOnceWith('call-1')
     await expect.element(page.getByTestId('incoming-call')).not.toBeInTheDocument()
@@ -99,24 +104,32 @@ describe('incoming-call-toast.svelte', () => {
     const { live } = setup(null, null)
     live.apply('call.ringing', ringing())
     await page.getByTestId('incoming-call-accept').click()
-    await expect.element(page.getByTestId('incoming-call-error')).toHaveTextContent(CALL_TAB_BLOCKED)
+    await expect
+      .element(page.getByTestId('incoming-call-error'))
+      .toHaveTextContent(CALL_TAB_BLOCKED)
     await expect.element(page.getByTestId('incoming-call')).toBeInTheDocument()
     await expect.element(page.getByTestId('incoming-call-accept')).toBeEnabled()
   })
 
   it('a refused decline says why', async () => {
     const { live, client } = setup()
-    client.decline.mockRejectedValueOnce(new CallRequestError({ kind: 'over', message: 'this call is over' }))
+    client.decline.mockRejectedValueOnce(
+      new CallRequestError({ kind: 'over', message: 'this call is over', agent: null }),
+    )
     live.apply('call.ringing', ringing())
     await page.getByTestId('incoming-call-decline').click()
-    await expect.element(page.getByTestId('incoming-call-error')).toHaveTextContent('this call is over')
+    await expect
+      .element(page.getByTestId('incoming-call-error'))
+      .toHaveTextContent('this call is over')
   })
 
   it('already in another call (in any tab): says so plainly, Accept is off, Decline still works', async () => {
     const { live, client, open } = setup('call-current')
     live.apply('call.ringing', ringing({ id: 'call-2' }))
     const toast = page.getByTestId('incoming-call')
-    await expect.element(toast.getByTestId('incoming-call-busy')).toHaveTextContent("You're already in a call. Hang up to answer this one.")
+    await expect
+      .element(toast.getByTestId('incoming-call-busy'))
+      .toHaveTextContent("You're already in a call. Hang up to answer this one.")
     await expect.element(toast.getByTestId('incoming-call-accept')).toBeDisabled()
     await toast.getByTestId('incoming-call-decline').click()
     expect(client.decline).toHaveBeenCalledExactlyOnceWith('call-2')

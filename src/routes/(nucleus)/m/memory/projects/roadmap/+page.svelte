@@ -5,6 +5,7 @@
   import PlusIcon from '@lucide/svelte/icons/plus'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Badge } from '$lib/components/ui/badge'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
@@ -102,7 +103,12 @@
   </header>
 
   {#if form && 'error' in form && form.error}
-    <p class="mt-4 text-sm text-destructive" role="alert">{form.error}</p>
+    <ErrorNotice
+      class="mt-4"
+      error={form.error}
+      agent={form.agent}
+      attempted="Changing the roadmap on /m/memory/projects/roadmap"
+    />
   {/if}
 
   {#if data.canEdit && adding}

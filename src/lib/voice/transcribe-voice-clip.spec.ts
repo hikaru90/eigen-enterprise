@@ -19,16 +19,31 @@ describe('appendVoiceTranscript', () => {
 
 describe('parseTranscribeErrorResponse', () => {
   it('reads the json error, else the text, else a status line', async () => {
-    await expect(parseTranscribeErrorResponse(new Response(JSON.stringify({ error: 'down' }), { status: 502 }))).resolves.toBe('down')
-    await expect(parseTranscribeErrorResponse(new Response(JSON.stringify({ message: 'too big' }), { status: 400 }))).resolves.toBe('too big')
-    await expect(parseTranscribeErrorResponse(new Response('bad gateway', { status: 502 }))).resolves.toBe('bad gateway')
-    await expect(parseTranscribeErrorResponse(new Response('', { status: 503 }))).resolves.toBe('Transcription failed (503)')
+    await expect(
+      parseTranscribeErrorResponse(
+        new Response(JSON.stringify({ error: 'down' }), { status: 502 }),
+      ),
+    ).resolves.toBe('down')
+    await expect(
+      parseTranscribeErrorResponse(
+        new Response(JSON.stringify({ message: 'too big' }), { status: 400 }),
+      ),
+    ).resolves.toBe('too big')
+    await expect(
+      parseTranscribeErrorResponse(new Response('bad gateway', { status: 502 })),
+    ).resolves.toBe('bad gateway')
+    await expect(parseTranscribeErrorResponse(new Response('', { status: 503 }))).resolves.toBe(
+      'Transcription failed (503)',
+    )
   })
 })
 
 describe('transcribeVoiceClip', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ transcript: ' hello there ' }))))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ transcript: ' hello there ' }))),
+    )
   })
   afterEach(() => vi.unstubAllGlobals())
 
@@ -47,24 +62,54 @@ describe('transcribeVoiceClip', () => {
 
   it('passes the abort signal on', async () => {
     const controller = new AbortController()
-    await transcribeVoiceClip(new Blob(['x'], { type: 'audio/webm' }), { signal: controller.signal })
+    await transcribeVoiceClip(new Blob(['x'], { type: 'audio/webm' }), {
+      signal: controller.signal,
+    })
     expect(lastInit().signal).toBe(controller.signal)
   })
 
   it('throws TranscribeRequestError with the status and the server message', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'no provider' }), { status: 503 })))
-    const err = await transcribeVoiceClip(new Blob(['x'], { type: 'audio/webm' })).catch((e: unknown) => e)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ error: 'no provider' }), { status: 503 })),
+    )
+    const err = await transcribeVoiceClip(new Blob(['x'], { type: 'audio/webm' })).catch(
+      (e: unknown) => e,
+    )
     expect(err).toBeInstanceOf(TranscribeRequestError)
-    expect(err).toMatchObject({ status: 503, message: 'no provider' })
+    expect(err).toMatchObject({ status: 503, message: 'no provider', agent: null })
+  })
+
+  it('keeps the server’s agent report on the error', async () => {
+    const agent = {
+      attempted: 'Transcribing a voice message (POST /api/voice/transcribe)',
+      nextSteps: ['Read the journal.'],
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ error: 'down', agent }), { status: 502 })),
+    )
+    const err = await transcribeVoiceClip(new Blob(['x'], { type: 'audio/webm' })).catch(
+      (e: unknown) => e,
+    )
+    expect(err).toMatchObject({ status: 502, message: 'down', agent })
   })
 
   it('throws when the transcript field is missing', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({}))))
-    await expect(transcribeVoiceClip(new Blob(['x'], { type: 'audio/webm' }))).rejects.toThrow(/missing transcript/i)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({}))),
+    )
+    await expect(transcribeVoiceClip(new Blob(['x'], { type: 'audio/webm' }))).rejects.toThrow(
+      /missing transcript/i,
+    )
   })
 
   it('returns "" for a blank transcript: no speech is a valid answer', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ transcript: '  ' }))))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ transcript: '  ' }))),
+    )
     await expect(transcribeVoiceClip(new Blob(['x'], { type: 'audio/webm' }))).resolves.toBe('')
   })
 })

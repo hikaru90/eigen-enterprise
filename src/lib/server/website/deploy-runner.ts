@@ -1,5 +1,6 @@
 import type { DeployStatus } from '../../../../modules/website/apps/tools'
 import {
+  deployFailureAgent,
   deployJobs,
   deployProgress,
   failedStageOf,
@@ -7,7 +8,7 @@ import {
   type DeployJob,
   type DeployProgress,
 } from '../../../../modules/website/apps/deploy-jobs'
-import { logAppFailure, ownerRun, plainAppMessage } from './owner-run'
+import { appErrorReport, logAppFailure, ownerRun } from './owner-run'
 
 /**
  * The owner's Deploy click runs `website.app_deploy` in the background (it can
@@ -23,7 +24,11 @@ export function startOwnerDeploy(
     () => ownerRun(user, 'website.app_deploy', input),
     (err) => {
       logAppFailure('website.app_deploy', err)
-      return plainAppMessage(err)
+      return appErrorReport(err, {
+        attempted: `Deploying the app ${input.name}`,
+        tool: 'website.app_deploy',
+        input,
+      })
     },
   )
 }
@@ -55,6 +60,7 @@ export function lastAttempt(name: string, status: DeployStatus): DeployProgress 
     stages: d.stages,
     failedStage: d.status === 'failed' ? failedStageOf(d) : null,
     error: d.status === 'failed' ? failureSentence(name, d) : null,
+    agent: d.status === 'failed' ? deployFailureAgent(name, d) : null,
     deployId: d.id,
     lines: status.lines,
   }

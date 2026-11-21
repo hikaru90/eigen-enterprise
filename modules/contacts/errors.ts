@@ -6,6 +6,7 @@ export class ContactsError extends Error {
     options?: { cause?: unknown },
   ) {
     super(message, options)
+    this.name = 'ContactsError'
   }
 }
 

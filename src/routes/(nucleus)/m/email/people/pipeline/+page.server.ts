@@ -23,7 +23,8 @@ export const load: PageServerLoad = async ({ locals }) => {
   })
 }
 
-const idOf = (form: FormData) => (typeof form.get('id') === 'string' ? (form.get('id') as string) : '')
+const idOf = (form: FormData) =>
+  typeof form.get('id') === 'string' ? (form.get('id') as string) : ''
 
 export const actions: Actions = {
   /** One inline change (list, who holds it, via, status, next step, day): only the fields sent. */
@@ -35,7 +36,9 @@ export const actions: Actions = {
       'update',
       async () => {
         const { todayFor } = await import('../../../../../../../modules/contacts/live')
-        await updateContact(await liveContactsDeps(), actor, id, formPipelineInput(form), { today: await todayFor(actor.userId) })
+        await updateContact(await liveContactsDeps(), actor, id, formPipelineInput(form), {
+          today: await todayFor(actor.userId),
+        })
         return { action: 'update' as const, id }
       },
       id,

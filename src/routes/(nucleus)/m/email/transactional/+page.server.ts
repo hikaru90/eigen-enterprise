@@ -7,4 +7,5 @@ import { loadOutbox } from '../outbox.server'
  * automatic mail the company sends — system, assistant, API, template, test and opt-in confirmation mail — waiting
  * to go out and sent. Flow mail to lists is marketing mail (Marketing mail › Sent). Owner and admins only.
  */
-export const load: PageServerLoad = ({ locals }) => loadOutbox(locals, { excludeSources: MARKETING_SOURCES })
+export const load: PageServerLoad = ({ locals }) =>
+  loadOutbox(locals, { excludeSources: MARKETING_SOURCES })

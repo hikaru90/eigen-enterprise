@@ -4,10 +4,11 @@ import { createChannel, MessagesError } from '../../../../../modules/messages/se
 
 /** New channel: { name, topic?, private, userIds?, groupIds? }. */
 export const POST: RequestHandler = ({ locals, request }) =>
-  messagesRoute(locals.user, async (userId, d) => {
+  messagesRoute(locals.user, 'Creating a channel (/api/messages)', async (userId, d) => {
     const b = await readJson(request)
     if (typeof b.name !== 'string') throw new MessagesError('invalid', 'name is required')
-    if (typeof b.private !== 'boolean') throw new MessagesError('invalid', 'private must be true or false')
+    if (typeof b.private !== 'boolean')
+      throw new MessagesError('invalid', 'private must be true or false')
     const conversation = await createChannel(d, userId, {
       name: b.name,
       topic: typeof b.topic === 'string' ? b.topic : '',

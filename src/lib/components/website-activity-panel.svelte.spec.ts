@@ -135,12 +135,18 @@ describe('website-activity-panel: the quiet states', () => {
     render(WebsiteActivityPanel, {
       props: {
         activity: null,
-        error: "The server's deploy agent could not read the server status.",
+        error: {
+          error: "The server's deploy agent could not read the server status.",
+          agent: { attempted: 'Reading the website activity', nextSteps: [] },
+        },
       },
     })
     await expect
       .element(page.getByTestId('activity-error'))
       .toHaveTextContent("The server's deploy agent could not read the server status.")
+    await expect
+      .element(page.getByRole('button', { name: 'Copy agent instructions' }))
+      .toBeVisible()
     expect((await page.getByTestId('activity-item').elements()).length).toBe(0)
     expect((await page.getByTestId('activity-unmanaged').elements()).length).toBe(0)
   })

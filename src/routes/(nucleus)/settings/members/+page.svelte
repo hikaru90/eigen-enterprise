@@ -1,8 +1,10 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { PageProps } from './$types'
   import { enhance } from '$app/forms'
   import UserAvatar from '$lib/components/user-avatar.svelte'
   import { docTitle } from '$lib/shell/title'
+  import { shownErrorOf, type AgentReport } from '$lib/errors/agent-report'
   import DictationField from '$lib/voice/dictation-field.svelte'
 
   /**
@@ -32,12 +34,18 @@
 
   const roleLabel = (role: string) =>
     role === 'owner' ? 'Owner' : role === 'admin' ? 'Admin' : 'Member'
-  const feedback = (action: string) =>
-    form && form.action === action
-      ? 'error' in form && form.error
-        ? { error: true, text: form.error }
-        : { error: false, text: 'Done.' }
-      : null
+  const feedback = (
+    action: string,
+  ):
+    | { error: true; text: string; agent: AgentReport | null }
+    | { error: false; text: string }
+    | null => {
+    if (!form || form.action !== action) return null
+    const shown = shownErrorOf(form)
+    return shown
+      ? { error: true, text: shown.error, agent: shown.agent }
+      : { error: false, text: 'Done.' }
+  }
   /** The groups' name and description fields (by id; 'new' = the create form), for dictation. */
   const groupEls = $state<Record<string, HTMLInputElement>>({})
 </script>
@@ -67,15 +75,15 @@
       <div>
         <dt class="font-medium">Admin</dt>
         <dd class="text-muted-foreground">
-          Helps run the company: invites and removes people, changes roles, manages groups, and
-          can open and share every channel and folder. Can't change the owner.
+          Helps run the company: invites and removes people, changes roles, manages groups, and can
+          open and share every channel and folder. Can't change the owner.
         </dd>
       </div>
       <div>
         <dt class="font-medium">Member</dt>
         <dd class="text-muted-foreground">
-          Uses the company: sees what is shared with them, everyone in the company, or one of
-          their groups. Can't change people, roles or settings.
+          Uses the company: sees what is shared with them, everyone in the company, or one of their
+          groups. Can't change people, roles or settings.
         </dd>
       </div>
     </dl>
@@ -129,7 +137,14 @@
     </ul>
     {#each ['setRole', 'remove'] as a (a)}
       {@const f = feedback(a)}
-      {#if f}<p class="text-xs {f.error ? 'text-red-700' : 'text-muted-foreground'}">
+      {#if f?.error}
+        <ErrorNotice
+          class="text-xs"
+          error={f.text}
+          agent={f.agent}
+          attempted="Changing or removing a member"
+        />
+      {:else if f}<p class="text-xs text-muted-foreground">
           {f.text}
         </p>{/if}
     {/each}
@@ -168,8 +183,8 @@
       {@const url = invited.inviteUrl}
       <div class="space-y-2 border border-border p-3" data-testid="invite-link">
         <p class="text-xs">
-          Send this link to <strong>{invited.inviteEmail}</strong> in a message. It works once, for 7
-          days. They open it, enter their name and create a passkey — no email needed.
+          Send this link to <strong>{invited.inviteEmail}</strong> in a message. It works once, for
+          7 days. They open it, enter their name and create a passkey — no email needed.
           {#if invited.emailed}We also emailed it to them.{/if}
         </p>
         <div class="flex gap-2">
@@ -190,7 +205,16 @@
         </div>
       </div>
     {:else if feedback('invite')?.error}
-      <p class="text-xs text-red-700" data-testid="invite-feedback">{feedback('invite')!.text}</p>
+      {@const f = feedback('invite')}
+      {#if f?.error}
+        <ErrorNotice
+          class="text-xs"
+          testid="invite-feedback"
+          error={f.text}
+          agent={f.agent}
+          attempted="Inviting someone"
+        />
+      {/if}
     {/if}
     {#if data.invites.length > 0}
       <h3 class="text-muted-foreground pt-2 text-xs font-medium">Waiting to accept</h3>
@@ -218,9 +242,7 @@
               <summary class="flex cursor-pointer flex-wrap items-baseline justify-between gap-2">
                 <span class="text-xs font-medium" data-testid="group-name">{g.name}</span>
                 <span class="text-muted-foreground text-xs" data-testid="group-members">
-                  {g.memberIds.length === 0
-                    ? 'No members yet'
-                    : g.memberIds.map(nameOf).join(', ')}
+                  {g.memberIds.length === 0 ? 'No members yet' : g.memberIds.map(nameOf).join(', ')}
                 </span>
               </summary>
               {#if g.description}<p class="text-muted-foreground mt-1 text-xs">
@@ -229,7 +251,11 @@
               <form method="post" action="?/updateGroup" use:enhance class="mt-3 space-y-2">
                 <input type="hidden" name="groupId" value={g.id} />
                 <label class="block text-xs" for="group-name-{g.id}">Name</label>
-                <DictationField field={groupEls[`name-${g.id}`] ?? null} kind="input" testid="group-name-{g.id}-voice">
+                <DictationField
+                  field={groupEls[`name-${g.id}`] ?? null}
+                  kind="input"
+                  testid="group-name-{g.id}-voice"
+                >
                   <input
                     bind:this={groupEls[`name-${g.id}`]}
                     id="group-name-{g.id}"
@@ -241,7 +267,11 @@
                   />
                 </DictationField>
                 <label class="block text-xs" for="group-desc-{g.id}">Description</label>
-                <DictationField field={groupEls[`desc-${g.id}`] ?? null} kind="input" testid="group-desc-{g.id}-voice">
+                <DictationField
+                  field={groupEls[`desc-${g.id}`] ?? null}
+                  kind="input"
+                  testid="group-desc-{g.id}-voice"
+                >
                   <input
                     bind:this={groupEls[`desc-${g.id}`]}
                     id="group-desc-{g.id}"
@@ -298,7 +328,11 @@
       <div class="flex flex-wrap gap-2">
         <div class="min-w-0 flex-1 space-y-1">
           <label class="text-xs" for="new-group-name">Name</label>
-          <DictationField field={groupEls['name-new'] ?? null} kind="input" testid="new-group-name-voice">
+          <DictationField
+            field={groupEls['name-new'] ?? null}
+            kind="input"
+            testid="new-group-name-voice"
+          >
             <input
               bind:this={groupEls['name-new']}
               id="new-group-name"
@@ -312,7 +346,11 @@
         </div>
         <div class="min-w-0 flex-[2] space-y-1">
           <label class="text-xs" for="new-group-desc">Description (optional)</label>
-          <DictationField field={groupEls['desc-new'] ?? null} kind="input" testid="new-group-desc-voice">
+          <DictationField
+            field={groupEls['desc-new'] ?? null}
+            kind="input"
+            testid="new-group-desc-voice"
+          >
             <input
               bind:this={groupEls['desc-new']}
               id="new-group-desc"
@@ -340,10 +378,15 @@
     </form>
     {#each ['createGroup', 'updateGroup', 'deleteGroup'] as a (a)}
       {@const f = feedback(a)}
-      {#if f}<p
-          class="text-xs {f.error ? 'text-red-700' : 'text-muted-foreground'}"
-          data-testid="group-feedback"
-        >
+      {#if f?.error}
+        <ErrorNotice
+          class="text-xs"
+          testid="group-feedback"
+          error={f.text}
+          agent={f.agent}
+          attempted="Creating, changing or deleting a group"
+        />
+      {:else if f}<p class="text-xs text-muted-foreground" data-testid="group-feedback">
           {f.text}
         </p>{/if}
     {/each}

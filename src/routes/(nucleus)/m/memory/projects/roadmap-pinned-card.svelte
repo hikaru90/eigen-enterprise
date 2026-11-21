@@ -26,7 +26,9 @@
         >Pinned · System project</span
       >
     </div>
-    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground tabular-nums">
+    <div
+      class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground tabular-nums"
+    >
       <span>{roadmap.planned} planned</span>
       <span>{roadmap.inProgress} in progress</span>
       <span>{roadmap.shipped} shipped</span>

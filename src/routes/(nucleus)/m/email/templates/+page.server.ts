@@ -26,7 +26,7 @@ export const actions: Actions = {
   create: async ({ locals, request }) => {
     const me = await requireAdmin(locals)
     const form = await request.formData()
-    const out = await act('create', async () => {
+    const out = await act('create', 'Creating an email template', async () => {
       const t = await emailPlatform().templates.createTemplate(
         { name: field(form, 'name'), layoutId: field(form, 'layoutId') || null },
         me.userId,

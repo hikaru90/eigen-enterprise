@@ -7,6 +7,7 @@ import { InviteError, joinWithInvite, type AcceptDeps } from '$lib/server/member
 import { dbMemberStore } from '$lib/server/members/db-store'
 import { inviteMessage, inviteStatus } from '$lib/server/members/service'
 import { foundingCompanyName } from '$lib/server/overview/sources'
+import { publicErrorReport } from '$lib/server/auth/public-error-report'
 
 /**
  * Accept a member invite (owner decision W-4): the link is the proof. Joining
@@ -19,21 +20,47 @@ import { foundingCompanyName } from '$lib/server/overview/sources'
 const deps = (event: Pick<RequestEvent, 'request' | 'getClientAddress'>): AcceptDeps => ({
   store: dbMemberStore,
   createCode: async (email) => auth.api.createVerificationOTP({ body: { email, type: 'sign-in' } }),
-  signIn: (email, code, name) => auth.api.signInEmailOTP({ body: { email, otp: code, name }, headers: signInHeaders(event) }),
+  signIn: (email, code, name) =>
+    auth.api.signInEmailOTP({ body: { email, otp: code, name }, headers: signInHeaders(event) }),
 })
 
 export const load: PageServerLoad = async (event) => {
   const companyName = await foundingCompanyName()
   if (event.locals.user) {
     if (event.url.searchParams.get('step') === 'passkey') {
-      return { step: 'passkey' as const, token: '', ok: true as const, message: null, companyName, email: event.locals.user.email, role: null }
+      return {
+        step: 'passkey' as const,
+        token: '',
+        ok: true as const,
+        message: null,
+        companyName,
+        email: event.locals.user.email,
+        role: null,
+      }
     }
     throw redirect(302, '/messages')
   }
   const token = event.url.searchParams.get('token') ?? ''
   const st = await inviteStatus(token, { store: dbMemberStore })
-  if (!st.ok) return { step: 'join' as const, token, ok: false as const, message: inviteMessage(st.reason), companyName, email: null, role: null }
-  return { step: 'join' as const, token, ok: true as const, message: null, companyName, email: st.invite.email, role: st.invite.role }
+  if (!st.ok)
+    return {
+      step: 'join' as const,
+      token,
+      ok: false as const,
+      message: inviteMessage(st.reason),
+      companyName,
+      email: null,
+      role: null,
+    }
+  return {
+    step: 'join' as const,
+    token,
+    ok: true as const,
+    message: null,
+    companyName,
+    email: st.invite.email,
+    role: st.invite.role,
+  }
 }
 
 export const actions: Actions = {
@@ -44,8 +71,19 @@ export const actions: Actions = {
     try {
       await joinWithInvite(token, { name }, deps(event))
     } catch (err) {
-      const message = err instanceof InviteError ? err.message : getSafeErrorMessage(err, 'Joining did not work')
-      return fail(400, { name, message })
+      const message =
+        err instanceof InviteError ? err.message : getSafeErrorMessage(err, 'Joining did not work')
+      if (!(err instanceof InviteError))
+        console.error('[invite] joining with an invite failed', err)
+      // Signed-out surface: the agent half never carries the invite token or the email.
+      const { agent } = publicErrorReport(message, {
+        attempted: 'Joining the company with an invite link (/invite)',
+        err,
+        nextSteps: [
+          'joinWithInvite (src/lib/server/members/accept.ts) refused or failed. An InviteError is a plain refusal (link not valid, used or expired): the owner sends a new invite from Settings → Members. Anything else is in the server journal.',
+        ],
+      })
+      return fail(400, { name, message, agent })
     }
     throw redirect(303, '/invite?step=passkey')
   },

@@ -17,16 +17,26 @@
   import ZoomOutIcon from '@lucide/svelte/icons/zoom-out'
   import { onMount, tick, untrack } from 'svelte'
   import { beforeNavigate, goto } from '$app/navigation'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { driveApi, type LockHolder } from '$lib/drive/api'
   import { createAutosave, type Autosave, type AutosaveState } from '$lib/drive/autosave'
+  import { driveShownError } from '$lib/drive/shown-error'
+  import type { ShownError } from '$lib/errors/agent-report'
   import { createOfficeEditSession } from '../edit-session'
   import CommentsPanel from './comments-panel.svelte'
   import EditToolbar from './edit-toolbar.svelte'
   import { insertImage, linkAt, setLink } from './edit/commands'
   import { createDocxEditor, type DocxEditorView } from './edit/editor'
-  import { addComment, deleteComment, editComment, replyToComment, reviewerOf, setCommentDone } from './edit/review'
+  import {
+    addComment,
+    deleteComment,
+    editComment,
+    replyToComment,
+    reviewerOf,
+    setCommentDone,
+  } from './edit/review'
   import { IMAGE_TYPES, openForEditing, type DocxEditSession } from './edit/session'
   import { parseDocx } from './model'
   import { LayoutAborted, paginate } from './paginate'
@@ -68,7 +78,7 @@
 
   type Phase = 'loading' | 'layout' | 'ready' | 'error'
   let phase = $state<Phase>('loading')
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
   let notices = $state<string[]>([])
   let pageCount = $state(0)
   let pageLabels = $state<string[]>([])
@@ -84,15 +94,29 @@
   const percent = $derived(Math.round(scale * 100))
 
   /** Picture types a browser shows in <img>; others (EMF, WMF, TIFF) get a placeholder. */
-  const SHOWN = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/bmp', 'image/webp', 'image/svg+xml', 'image/x-icon', 'image/avif'])
+  const SHOWN = new Set([
+    'image/png',
+    'image/jpeg',
+    'image/jpg',
+    'image/gif',
+    'image/bmp',
+    'image/webp',
+    'image/svg+xml',
+    'image/x-icon',
+    'image/avif',
+  ])
 
   // ---------------------------------------------------------------- editing state
 
-  type Lock = { kind: 'idle' } | { kind: 'starting' } | { kind: 'editing' } | { kind: 'locked'; holder: LockHolder | null; tookOver: boolean }
+  type Lock =
+    | { kind: 'idle' }
+    | { kind: 'starting' }
+    | { kind: 'editing' }
+    | { kind: 'locked'; holder: LockHolder | null; tookOver: boolean }
   let layout = $state<'print' | 'edit'>('print')
   let lock = $state<Lock>({ kind: 'idle' })
   let save = $state<AutosaveState>({ status: 'saved', error: null, savedAt: null })
-  let lockError = $state<string | null>(null)
+  let lockError = $state<ShownError | null>(null)
   let pmState = $state.raw<EditorState | null>(null)
   let session = $state.raw<DocxEditSession | null>(null)
   let editor = $state.raw<DocxEditorView | null>(null)
@@ -101,7 +125,7 @@
   let linkOpen = $state(false)
   let linkValue = $state('')
   let linkError = $state<string | null>(null)
-  let imageError = $state<string | null>(null)
+  let imageError = $state<ShownError | null>(null)
   let fileInput = $state<HTMLInputElement>()
   /** Whether this copy has changes the server doesn't have. */
   let dirty = $state(false)
@@ -234,7 +258,11 @@
       .then(() => autosave.flush())
       .then(async () => {
         try {
-          if (save.status === 'error' && !confirm('Your latest changes could not be saved. Leave anyway and lose them?')) return
+          if (
+            save.status === 'error' &&
+            !confirm('Your latest changes could not be saved. Leave anyway and lose them?')
+          )
+            return
           // eslint-disable-next-line svelte/no-navigation-without-resolve -- the navigation the person already started
           await goto(to.href, { invalidateAll: true })
         } finally {
@@ -249,7 +277,7 @@
       await renderPages(bytes)
     } catch (err) {
       if (err instanceof LayoutAborted) return
-      error = err instanceof Error ? err.message : String(err)
+      error = driveShownError(err)
       phase = 'error'
     }
   }
@@ -330,7 +358,13 @@
     made = openForEditing(source, { imageUrl: imageUrlFor(() => made) })
     session = made
     const first = made.docx.sections[0]!.props
-    sheet = { widthPt: first.pageWidthPt, top: first.margin.topPt, right: first.margin.rightPt, bottom: first.margin.bottomPt, left: first.margin.leftPt }
+    sheet = {
+      widthPt: first.pageWidthPt,
+      top: first.margin.topPt,
+      right: first.margin.rightPt,
+      bottom: first.margin.bottomPt,
+      left: first.margin.leftPt,
+    }
     savedDoc = made.initial
     snapshots.clear()
     version = 0
@@ -359,7 +393,10 @@
       await tick()
       editor?.view.focus()
     } catch (err) {
-      lockError = `This document can't be edited here: ${err instanceof Error ? err.message : String(err)}`
+      lockError = {
+        ...driveShownError(err),
+        error: `This document can't be edited here: ${err instanceof Error ? err.message : String(err)}`,
+      }
       layout = 'print'
     }
   }
@@ -376,12 +413,15 @@
     }
     layout = 'print'
     if (session && editor) {
-      const shown = editor.view.state.doc.eq(session.initial) && bytes ? bytes : session.serialize(editor.view.state.doc)
+      const shown =
+        editor.view.state.doc.eq(session.initial) && bytes
+          ? bytes
+          : session.serialize(editor.view.state.doc)
       await tick()
       try {
         await renderPages(shown)
       } catch (err) {
-        error = err instanceof Error ? err.message : String(err)
+        error = driveShownError(err)
         phase = 'error'
       }
     }
@@ -434,7 +474,7 @@
       } else lock = was.kind === 'starting' ? { kind: 'idle' } : was
     } catch (err) {
       lock = was.kind === 'starting' ? { kind: 'idle' } : was
-      lockError = err instanceof Error ? err.message : String(err)
+      lockError = driveShownError(err)
     }
   }
 
@@ -474,7 +514,9 @@
 
   function downloadDraft() {
     if (!session || !editor) return
-    const blob = new Blob([session.serialize(editor.view.state.doc).slice()], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+    const blob = new Blob([session.serialize(editor.view.state.doc).slice()], {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -488,7 +530,10 @@
   function openLink() {
     if (!pmState) return
     const link = linkAt(pmState)
-    linkValue = link ? ((link.attrs.href as string | null) ?? (link.attrs.anchor ? `#${link.attrs.anchor as string}` : '')) : ''
+    linkValue = link
+      ? ((link.attrs.href as string | null) ??
+        (link.attrs.anchor ? `#${link.attrs.anchor as string}` : ''))
+      : ''
     linkError = null
     linkOpen = true
   }
@@ -500,7 +545,8 @@
     event.preventDefault()
     const value = linkValue.trim()
     if (!LINK_TARGET.test(value)) {
-      linkError = 'Use a web address (https://…), an email (mailto:…), a phone number (tel:…) or #bookmark.'
+      linkError =
+        'Use a web address (https://…), an email (mailto:…), a phone number (tel:…) or #bookmark.'
       return
     }
     editor?.run(setLink(value))
@@ -519,7 +565,7 @@
     input.value = ''
     if (!file || !session || !editor) return
     if (!IMAGE_TYPES[file.type]) {
-      imageError = `${file.name} is not a PNG, JPEG or GIF picture.`
+      imageError = { error: `${file.name} is not a PNG, JPEG or GIF picture.`, agent: null }
       return
     }
     try {
@@ -527,15 +573,22 @@
       const bitmap = await createImageBitmap(file)
       const size = { widthPt: bitmap.width * 0.75, heightPt: bitmap.height * 0.75 }
       bitmap.close()
-      editor.run(insertImage(session, { bytes: data, contentType: file.type, ...size, name: file.name }))
+      editor.run(
+        insertImage(session, { bytes: data, contentType: file.type, ...size, name: file.name }),
+      )
     } catch (err) {
-      imageError = `${file.name} could not be added: ${err instanceof Error ? err.message : String(err)}`
+      imageError = {
+        ...driveShownError(err),
+        error: `${file.name} could not be added: ${err instanceof Error ? err.message : String(err)}`,
+      }
     }
   }
 
   // ---------------------------------------------------------------- comments
 
-  const shownComments = $derived(layout === 'edit' && session && pmState ? session.liveComments(pmState.doc) : printComments)
+  const shownComments = $derived(
+    layout === 'edit' && session && pmState ? session.liveComments(pmState.doc) : printComments,
+  )
 
   /** Shows a comment: its thread marked in the margin, its text highlighted and scrolled to. */
   function selectComment(id: string) {
@@ -548,14 +601,20 @@
       return
     }
     if (!host) return
-    for (const el of host.querySelectorAll('.docx-comment-active')) el.classList.remove('docx-comment-active')
+    for (const el of host.querySelectorAll('.docx-comment-active'))
+      el.classList.remove('docx-comment-active')
     const spans = host.querySelectorAll(sel)
     for (const el of spans) el.classList.add('docx-comment-active')
     spans[0]?.scrollIntoView({ block: 'nearest' })
   }
 
   /** Runs a comment command as the signed-in member (the panel offers them only then). */
-  function onComment(make: (who: NonNullable<typeof reviewer>, s: DocxEditSession) => Parameters<DocxEditorView['run']>[0]) {
+  function onComment(
+    make: (
+      who: NonNullable<typeof reviewer>,
+      s: DocxEditSession,
+    ) => Parameters<DocxEditorView['run']>[0],
+  ) {
     if (!reviewer || !session || !editor) return
     editor.run(make(reviewer, session))
   }
@@ -565,11 +624,22 @@
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col" data-testid="docx-viewer" data-layout={layout}>
-  <div class="flex flex-wrap items-center gap-2 border-b px-3 py-2 text-sm" role="toolbar" aria-label="Document view">
+  <div
+    class="flex flex-wrap items-center gap-2 border-b px-3 py-2 text-sm"
+    role="toolbar"
+    aria-label="Document view"
+  >
     {#if layout === 'print'}
-      <span class="tabular-nums text-muted-foreground" data-testid="docx-page-indicator" aria-live="polite">
+      <span
+        class="tabular-nums text-muted-foreground"
+        data-testid="docx-page-indicator"
+        aria-live="polite"
+      >
         {#if phase === 'ready'}
-          Page {current} of {pageCount}{pageLabels[current - 1] && pageLabels[current - 1] !== String(current) ? ` (numbered ${pageLabels[current - 1]})` : ''}
+          Page {current} of {pageCount}{pageLabels[current - 1] &&
+          pageLabels[current - 1] !== String(current)
+            ? ` (numbered ${pageLabels[current - 1]})`
+            : ''}
         {:else if phase === 'layout'}
           Laying out pages… {pageCount > 0 ? pageCount : ''}
         {:else if phase === 'loading'}
@@ -578,17 +648,37 @@
       </span>
     {:else}
       <span class="text-muted-foreground" data-testid="docx-edit-mode" data-mode={lock.kind}>
-        {lock.kind === 'editing' ? 'Editing' : lock.kind === 'starting' ? 'Starting to edit…' : lock.kind === 'locked' ? 'Read-only' : 'Edit layout — start typing to edit'}
+        {lock.kind === 'editing'
+          ? 'Editing'
+          : lock.kind === 'starting'
+            ? 'Starting to edit…'
+            : lock.kind === 'locked'
+              ? 'Read-only'
+              : 'Edit layout — start typing to edit'}
       </span>
       {#if lock.kind === 'editing' || lock.kind === 'locked' || save.status !== 'saved' || save.savedAt}
-        <span class="flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="docx-save-state" data-status={save.status} aria-live="polite">
+        <span
+          class="flex items-center gap-1.5 text-xs text-muted-foreground"
+          data-testid="docx-save-state"
+          data-status={save.status}
+          aria-live="polite"
+        >
           {#if save.status === 'saving'}
             <LoaderIcon class="size-3.5 animate-spin" /> Saving…
           {:else if save.status === 'dirty'}
             Unsaved changes
           {:else if save.status === 'error'}
-            <CircleAlertIcon class="size-3.5 text-destructive" /><span class="text-destructive" title={save.error ?? ''}>Couldn’t save</span>
-            <Button size="sm" variant="outline" class="h-6 px-2 text-xs" onclick={() => autosave.retry()} data-testid="docx-save-retry">Retry</Button>
+            <CircleAlertIcon class="size-3.5 text-destructive" /><span
+              class="text-destructive"
+              title={save.error ?? ''}>Couldn’t save</span
+            >
+            <Button
+              size="sm"
+              variant="outline"
+              class="h-6 px-2 text-xs"
+              onclick={() => autosave.retry()}
+              data-testid="docx-save-retry">Retry</Button
+            >
           {:else if save.status === 'lost'}
             Not saved — taken over
           {:else if save.savedAt}
@@ -610,11 +700,25 @@
         Comments{shownComments.length ? ` (${shownComments.length})` : ''}
       </Button>
       {#if layout === 'print'}
-        <Button variant="ghost" size="icon-sm" aria-label="Zoom out" onclick={() => zoomBy(-0.1)} disabled={phase === 'error'}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Zoom out"
+          onclick={() => zoomBy(-0.1)}
+          disabled={phase === 'error'}
+        >
           <ZoomOutIcon />
         </Button>
-        <span class="w-12 text-center tabular-nums text-muted-foreground" data-testid="docx-zoom">{percent}%</span>
-        <Button variant="ghost" size="icon-sm" aria-label="Zoom in" onclick={() => zoomBy(0.1)} disabled={phase === 'error'}>
+        <span class="w-12 text-center tabular-nums text-muted-foreground" data-testid="docx-zoom"
+          >{percent}%</span
+        >
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Zoom in"
+          onclick={() => zoomBy(0.1)}
+          disabled={phase === 'error'}
+        >
           <ZoomInIcon />
         </Button>
         <Button
@@ -631,124 +735,236 @@
           <MoveHorizontalIcon />
           Fit width
         </Button>
-        <Button variant={zoom === 1 ? 'secondary' : 'ghost'} size="sm" aria-pressed={zoom === 1} onclick={() => (zoom = 1)} disabled={phase === 'error'} data-testid="docx-zoom-actual">
+        <Button
+          variant={zoom === 1 ? 'secondary' : 'ghost'}
+          size="sm"
+          aria-pressed={zoom === 1}
+          onclick={() => (zoom = 1)}
+          disabled={phase === 'error'}
+          data-testid="docx-zoom-actual"
+        >
           100%
         </Button>
         {#if canEdit}
-          <Button variant="outline" size="sm" onclick={startEdit} disabled={phase !== 'ready'} data-testid="docx-edit">
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={startEdit}
+            disabled={phase !== 'ready'}
+            data-testid="docx-edit"
+          >
             <PencilIcon />
             Edit
           </Button>
         {/if}
       {:else}
-        <Button variant="outline" size="sm" onclick={finishEdit} disabled={lock.kind === 'starting'} data-testid="docx-done">Done</Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onclick={finishEdit}
+          disabled={lock.kind === 'starting'}
+          data-testid="docx-done">Done</Button
+        >
       {/if}
     </div>
   </div>
   {#if lock.kind === 'locked'}
-    <div class="flex flex-col gap-2 border-b border-destructive/40 bg-destructive/5 px-4 py-3 text-sm" role="alert" data-testid="docx-lock-banner">
+    <div
+      class="flex flex-col gap-2 border-b border-destructive/40 bg-destructive/5 px-4 py-3 text-sm"
+      role="alert"
+      data-testid="docx-lock-banner"
+    >
       <div class="flex flex-wrap items-center gap-3">
-        {#if lock.tookOver}<CircleAlertIcon class="size-4 text-destructive" />{:else}<LockIcon class="size-4 text-muted-foreground" />{/if}
+        {#if lock.tookOver}<CircleAlertIcon class="size-4 text-destructive" />{:else}<LockIcon
+            class="size-4 text-muted-foreground"
+          />{/if}
         <span class="flex-1">
           {#if lock.tookOver}
-            <strong data-testid="docx-lock-holder">{lock.holder?.name ?? 'Someone'}</strong> took over editing. This copy is read-only now.
+            <strong data-testid="docx-lock-holder">{lock.holder?.name ?? 'Someone'}</strong> took over
+            editing. This copy is read-only now.
           {:else}
-            <strong data-testid="docx-lock-holder">{lock.holder?.name ?? 'Someone'}</strong> is editing this document. This copy is read-only.
+            <strong data-testid="docx-lock-holder">{lock.holder?.name ?? 'Someone'}</strong> is editing
+            this document. This copy is read-only.
           {/if}
         </span>
-        <Button size="sm" variant="outline" onclick={() => startEditing(true)} data-testid="docx-takeover">{lock.tookOver ? 'Take it back' : 'Take over'}</Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onclick={() => startEditing(true)}
+          data-testid="docx-takeover">{lock.tookOver ? 'Take it back' : 'Take over'}</Button
+        >
       </div>
       {#if dirty}
         <div class="flex flex-wrap items-center gap-3">
-          <span class="flex-1">Your changes were not saved. They stay on screen below; download them to keep them — taking over loads the saved version.</span>
-          <Button size="sm" variant="outline" onclick={downloadDraft} data-testid="docx-download-draft"><DownloadIcon />Download my changes</Button>
+          <span class="flex-1"
+            >Your changes were not saved. They stay on screen below; download them to keep them —
+            taking over loads the saved version.</span
+          >
+          <Button
+            size="sm"
+            variant="outline"
+            onclick={downloadDraft}
+            data-testid="docx-download-draft"><DownloadIcon />Download my changes</Button
+          >
         </div>
       {/if}
     </div>
   {/if}
-  {#if lockError}<p class="border-b px-3 py-2 text-sm text-destructive" role="alert" data-testid="docx-lock-error">{lockError}</p>{/if}
+  {#if lockError}<ErrorNotice
+      class="border-b px-3 py-2"
+      testid="docx-lock-error"
+      error={lockError.error}
+      agent={lockError.agent}
+      attempted="Starting, keeping or finishing an edit session on this Word document"
+    />{/if}
   {#if notices.length > 0 && layout === 'print'}
-    <ul class="flex flex-col gap-1 border-b bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground" data-testid="docx-notices">
+    <ul
+      class="flex flex-col gap-1 border-b bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground"
+      data-testid="docx-notices"
+    >
       {#each notices as notice (notice)}
         <li class="flex items-center gap-1.5"><InfoIcon class="size-3.5 shrink-0" />{notice}</li>
       {/each}
     </ul>
   {/if}
   {#if phase === 'error'}
-    <p class="m-6 text-sm text-destructive" role="alert" data-testid="docx-error">
-      This Word document could not be opened: {error}
-    </p>
-  {/if}
-  {#if layout === 'edit' && session && editor && pmState}
-    <EditToolbar {session} {editor} {pmState} disabled={readOnly} onlink={openLink} onimage={() => fileInput?.click()} />
-    <ReviewBar {session} {editor} {pmState} {reviewer} disabled={readOnly} />
-    {#if refused && pmState.doc.attrs.trackRevisions && !reviewer}
-      <p class="border-b px-3 py-1.5 text-xs text-destructive" role="alert" data-testid="docx-track-refused">This document tracks changes, but your name isn’t known here, so your edit wasn’t made.</p>
-    {/if}
-    {#if linkOpen}
-      <form class="flex flex-wrap items-center gap-2 border-b px-3 py-1.5 text-sm" onsubmit={applyLink} data-testid="docx-link-form">
-        <label class="text-xs text-muted-foreground" for="docx-link-target">Link to</label>
-        <Input dictation={false} id="docx-link-target" class="h-7 max-w-md flex-1 text-xs" placeholder="https://… or #bookmark" bind:value={linkValue} data-testid="docx-link-input" />
-        <Button size="sm" class="h-7 text-xs" type="submit" data-testid="docx-link-apply">Apply</Button>
-        {#if pmState && linkAt(pmState)}
-          <Button size="sm" variant="outline" class="h-7 text-xs" type="button" onclick={removeLink} data-testid="docx-link-remove">Remove link</Button>
-        {/if}
-        <Button size="sm" variant="ghost" class="h-7 text-xs" type="button" onclick={() => (linkOpen = false)}>Cancel</Button>
-        {#if linkError}<span class="w-full text-xs text-destructive" role="alert">{linkError}</span>{/if}
-      </form>
-    {/if}
-    {#if imageError}<p class="border-b px-3 py-1.5 text-xs text-destructive" role="alert" data-testid="docx-image-error">{imageError}</p>{/if}
-  {/if}
-  <input bind:this={fileInput} type="file" accept="image/png,image/jpeg,image/gif" class="hidden" onchange={onPicture} data-testid="docx-image-input" />
-  <div class="flex min-h-0 flex-1">
-  <div class="flex min-w-0 flex-1 flex-col">
-  <div
-    bind:this={scroller}
-    class="relative min-h-[75vh] flex-1 overflow-auto bg-muted/60"
-    class:hidden={phase === 'error' || layout !== 'print'}
-    onscroll={onScroll}
-    data-testid="docx-scroller"
-  >
-    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions (delegated: the links inside the pages are the interactive elements) -->
-    <div
-      bind:this={host}
-      class="docx-pages flex w-max min-w-full flex-col gap-4 p-4"
-      style:--docx-scale={scale}
-      role="document"
-      aria-label={name}
-      aria-busy={phase !== 'ready'}
-      onclick={onClick}
-    ></div>
-  </div>
-  <div class="relative min-h-[75vh] flex-1 overflow-auto bg-muted/60 p-4" class:hidden={layout !== 'edit'} data-testid="docx-edit-scroller">
-    <div
-      class="docx-edit-page mx-auto bg-white text-black shadow-sm"
-      class:opacity-90={readOnly}
-      style:width="{sheet.widthPt}pt"
-      style:max-width="100%"
-      style:padding="{sheet.top}pt {sheet.right}pt {sheet.bottom}pt {sheet.left}pt"
-      style:box-sizing="border-box"
-      bind:this={editHost}
-      data-testid="docx-edit-page"
-    ></div>
-  </div>
-  </div>
-  {#if showComments && phase !== 'error'}
-    <CommentsPanel
-      comments={shownComments}
-      me={reviewer?.name ?? null}
-      editable={layout === 'edit' && !readOnly && !!editor}
-      canAdd={!!pmState && !pmState.selection.empty}
-      active={activeComment}
-      hint={canEdit ? 'Choose Edit to add, answer or resolve comments.' : null}
-      onselect={selectComment}
-      onadd={(text) => onComment((who, s) => addComment(s, who, text))}
-      onreply={(id, text) => onComment((who, s) => replyToComment(s, who, id, text))}
-      onedit={(id, text) => onComment((who) => editComment(who, id, text))}
-      ondone={(id, done) => onComment((_, s) => setCommentDone(s, id, done))}
-      ondelete={(id) => onComment(() => deleteComment(id))}
+    <ErrorNotice
+      class="m-6"
+      testid="docx-error"
+      error={`This Word document could not be opened: ${error?.error ?? ''}`}
+      agent={error?.agent ?? null}
+      attempted="Opening a Word document in the browser viewer"
     />
   {/if}
+  {#if layout === 'edit' && session && editor && pmState}
+    <EditToolbar
+      {session}
+      {editor}
+      {pmState}
+      disabled={readOnly}
+      onlink={openLink}
+      onimage={() => fileInput?.click()}
+    />
+    <ReviewBar {session} {editor} {pmState} {reviewer} disabled={readOnly} />
+    {#if refused && pmState.doc.attrs.trackRevisions && !reviewer}
+      <ErrorNotice
+        class="border-b px-3 py-1.5 text-xs"
+        testid="docx-track-refused"
+        error="This document tracks changes, but your name isn’t known here, so your edit wasn’t made."
+        attempted="Editing a Word document that tracks changes without a known reviewer name"
+      />
+    {/if}
+    {#if linkOpen}
+      <form
+        class="flex flex-wrap items-center gap-2 border-b px-3 py-1.5 text-sm"
+        onsubmit={applyLink}
+        data-testid="docx-link-form"
+      >
+        <label class="text-xs text-muted-foreground" for="docx-link-target">Link to</label>
+        <Input
+          dictation={false}
+          id="docx-link-target"
+          class="h-7 max-w-md flex-1 text-xs"
+          placeholder="https://… or #bookmark"
+          bind:value={linkValue}
+          data-testid="docx-link-input"
+        />
+        <Button size="sm" class="h-7 text-xs" type="submit" data-testid="docx-link-apply"
+          >Apply</Button
+        >
+        {#if pmState && linkAt(pmState)}
+          <Button
+            size="sm"
+            variant="outline"
+            class="h-7 text-xs"
+            type="button"
+            onclick={removeLink}
+            data-testid="docx-link-remove">Remove link</Button
+          >
+        {/if}
+        <Button
+          size="sm"
+          variant="ghost"
+          class="h-7 text-xs"
+          type="button"
+          onclick={() => (linkOpen = false)}>Cancel</Button
+        >
+        {#if linkError}<ErrorNotice
+            class="w-full text-xs"
+            error={linkError}
+            attempted="Adding a link in a Word document"
+          />{/if}
+      </form>
+    {/if}
+    {#if imageError}<ErrorNotice
+        class="border-b px-3 py-1.5 text-xs"
+        testid="docx-image-error"
+        error={imageError.error}
+        agent={imageError.agent}
+        attempted="Adding a picture to a Word document"
+      />{/if}
+  {/if}
+  <input
+    bind:this={fileInput}
+    type="file"
+    accept="image/png,image/jpeg,image/gif"
+    class="hidden"
+    onchange={onPicture}
+    data-testid="docx-image-input"
+  />
+  <div class="flex min-h-0 flex-1">
+    <div class="flex min-w-0 flex-1 flex-col">
+      <div
+        bind:this={scroller}
+        class="relative min-h-[75vh] flex-1 overflow-auto bg-muted/60"
+        class:hidden={phase === 'error' || layout !== 'print'}
+        onscroll={onScroll}
+        data-testid="docx-scroller"
+      >
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions (delegated: the links inside the pages are the interactive elements) -->
+        <div
+          bind:this={host}
+          class="docx-pages flex w-max min-w-full flex-col gap-4 p-4"
+          style:--docx-scale={scale}
+          role="document"
+          aria-label={name}
+          aria-busy={phase !== 'ready'}
+          onclick={onClick}
+        ></div>
+      </div>
+      <div
+        class="relative min-h-[75vh] flex-1 overflow-auto bg-muted/60 p-4"
+        class:hidden={layout !== 'edit'}
+        data-testid="docx-edit-scroller"
+      >
+        <div
+          class="docx-edit-page mx-auto bg-white text-black shadow-sm"
+          class:opacity-90={readOnly}
+          style:width="{sheet.widthPt}pt"
+          style:max-width="100%"
+          style:padding="{sheet.top}pt {sheet.right}pt {sheet.bottom}pt {sheet.left}pt"
+          style:box-sizing="border-box"
+          bind:this={editHost}
+          data-testid="docx-edit-page"
+        ></div>
+      </div>
+    </div>
+    {#if showComments && phase !== 'error'}
+      <CommentsPanel
+        comments={shownComments}
+        me={reviewer?.name ?? null}
+        editable={layout === 'edit' && !readOnly && !!editor}
+        canAdd={!!pmState && !pmState.selection.empty}
+        active={activeComment}
+        hint={canEdit ? 'Choose Edit to add, answer or resolve comments.' : null}
+        onselect={selectComment}
+        onadd={(text) => onComment((who, s) => addComment(s, who, text))}
+        onreply={(id, text) => onComment((who, s) => replyToComment(s, who, id, text))}
+        onedit={(id, text) => onComment((who) => editComment(who, id, text))}
+        ondone={(id, done) => onComment((_, s) => setCommentDone(s, id, done))}
+        ondelete={(id) => onComment(() => deleteComment(id))}
+      />
+    {/if}
   </div>
 </div>
 
@@ -817,7 +1033,9 @@
     color: #374151;
     border-radius: 3pt;
     padding: 0 3pt;
-    font: 8.5pt/1.5 system-ui, sans-serif;
+    font:
+      8.5pt/1.5 system-ui,
+      sans-serif;
     text-indent: 0;
     user-select: none;
   }
@@ -836,7 +1054,9 @@
     margin: 6pt 0;
     border-top: 1px dashed #9ca3af;
     color: #6b7280;
-    font: 8pt/1.6 system-ui, sans-serif;
+    font:
+      8pt/1.6 system-ui,
+      sans-serif;
     text-align: center;
     text-indent: 0;
     user-select: none;

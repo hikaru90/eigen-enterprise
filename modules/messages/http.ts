@@ -1,34 +1,49 @@
 import { json } from '@sveltejs/kit'
+import { errorReport, refusalReport } from '$lib/server/errors/report'
 import { MessagesError, type MessagesDeps, type VoiceClipInput } from './service'
 
 /**
  * Shared plumbing for /api/messages/*: signed-in only, the live deps, and
  * MessagesError → HTTP status (not_found 404, forbidden 403, invalid 400,
- * conflict 409). Anything else is a 500 with its message, logged.
+ * conflict 409). Anything else is a 500 with its message, logged. Every
+ * error answer is the one error shape (`{ error, agent }`, plus `code` for a
+ * MessagesError): `attempted` says what the request was for, in words.
  */
 
-const STATUS: Record<MessagesError['code'], number> = { not_found: 404, forbidden: 403, invalid: 400, conflict: 409 }
+const STATUS: Record<MessagesError['code'], number> = {
+  not_found: 404,
+  forbidden: 403,
+  invalid: 400,
+  conflict: 409,
+}
 
 export async function messagesRoute(
   user: { id: string } | null | undefined,
+  attempted: string,
   run: (userId: string, deps: MessagesDeps) => Promise<unknown>,
 ): Promise<Response> {
-  if (!user) return json({ error: 'sign in first' }, { status: 401 })
+  if (!user) return json(refusalReport('sign in first', { attempted }), { status: 401 })
   try {
     const { messagesDeps } = await import('./live')
     const out = await run(user.id, await messagesDeps())
     return out instanceof Response ? out : json(out ?? { ok: true })
   } catch (err) {
-    if (err instanceof MessagesError) return json({ error: err.message, code: err.code }, { status: STATUS[err.code] })
+    const report = errorReport(err, {
+      attempted,
+      plain: (e) => (e instanceof Error ? e.message : String(e)),
+    })
+    if (err instanceof MessagesError)
+      return json({ ...report, code: err.code }, { status: STATUS[err.code] })
     console.error('[messages] request failed', err)
-    return json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    return json(report, { status: 500 })
   }
 }
 
 export async function readJson(request: Request): Promise<Record<string, unknown>> {
   try {
     const body = (await request.json()) as unknown
-    if (body && typeof body === 'object' && !Array.isArray(body)) return body as Record<string, unknown>
+    if (body && typeof body === 'object' && !Array.isArray(body))
+      return body as Record<string, unknown>
   } catch {
     // fall through
   }
@@ -62,11 +77,18 @@ export function voiceClipList(v: unknown): VoiceClipInput[] {
  * seek and stream by range. A range outside the bytes answers 416; anything else not a
  * single byte range (several ranges, another unit) gets the whole body, as HTTP allows.
  */
-export function rangedResponse(request: Request, bytes: Uint8Array, headers: Record<string, string>): Response {
+export function rangedResponse(
+  request: Request,
+  bytes: Uint8Array,
+  headers: Record<string, string>,
+): Response {
   const size = bytes.byteLength
   const common = { ...headers, 'accept-ranges': 'bytes' }
   const whole = () =>
-    new Response(bytes.slice().buffer as ArrayBuffer, { status: 200, headers: { ...common, 'content-length': String(size) } })
+    new Response(bytes.slice().buffer as ArrayBuffer, {
+      status: 200,
+      headers: { ...common, 'content-length': String(size) },
+    })
   const m = /^bytes=(\d*)-(\d*)$/.exec(request.headers.get('range')?.trim() ?? '')
   if (!m || (m[1] === '' && m[2] === '')) return whole()
   let start: number
@@ -79,11 +101,18 @@ export function rangedResponse(request: Request, bytes: Uint8Array, headers: Rec
     end = m[2] === '' ? size - 1 : Math.min(Number(m[2]), size - 1)
   }
   if (start >= size || start > end || (m[1] === '' && Number(m[2]) === 0)) {
-    return new Response(null, { status: 416, headers: { ...common, 'content-range': `bytes */${size}` } })
+    return new Response(null, {
+      status: 416,
+      headers: { ...common, 'content-range': `bytes */${size}` },
+    })
   }
   const part = bytes.slice(start, end + 1)
   return new Response(part.buffer as ArrayBuffer, {
     status: 206,
-    headers: { ...common, 'content-length': String(part.byteLength), 'content-range': `bytes ${start}-${end}/${size}` },
+    headers: {
+      ...common,
+      'content-length': String(part.byteLength),
+      'content-range': `bytes ${start}-${end}/${size}`,
+    },
   })
 }

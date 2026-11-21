@@ -518,6 +518,34 @@ describe('/m/website/apps/new: deploy', () => {
     expect(ee.calls).toEqual([])
   })
 
+  it('the refusal carries agent instructions: tool, rejected field, redacted input, reproduce step', async () => {
+    const out = (await actions.deploy(
+      event({
+        repo: 'kindred/site',
+        branch: 'main',
+        name: 'baddomain',
+        kind: 'web',
+        host: 'https://shop.example.com/',
+        ...contract,
+      }),
+    )) as {
+      data: {
+        agent: {
+          tool: string
+          code: string
+          details: { issues: Array<{ path: string }> }
+          input: { hosts: string[] }
+          nextSteps: string[]
+        }
+      }
+    }
+    expect(out.data.agent.tool).toBe('website.app_deploy')
+    expect(out.data.agent.code).toBe('invalid_input')
+    expect(out.data.agent.details.issues[0]!.path).toMatch(/^hosts/)
+    expect(out.data.agent.input.hosts).toEqual(['https://shop.example.com/'])
+    expect(out.data.agent.nextSteps.join('\n')).toContain('ee tool run website.app_deploy')
+  })
+
   it('a broken build form is refused before anything runs, with the schema’s words', async () => {
     const out = (await actions.deploy(
       event({

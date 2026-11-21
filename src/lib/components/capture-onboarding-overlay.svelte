@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { SubmitFunction } from '@sveltejs/kit'
   import { onMount } from 'svelte'
   import { enhance } from '$app/forms'
@@ -53,11 +54,7 @@
     resetOnOpen()
   })
 
-  const titles = [
-    'Your memory, not theirs.',
-    'Just drop it in.',
-    'Stay in the loop',
-  ] as const
+  const titles = ['Your memory, not theirs.', 'Just drop it in.', 'Stay in the loop'] as const
   const title = $derived(titles[step] ?? titles[0])
 
   async function maybeScheduleWelcomePush(): Promise<void> {
@@ -148,13 +145,13 @@
       <Card.Content class="space-y-3 text-sm text-card-foreground">
         {#if step === 0}
           <p class="text-xs leading-relaxed">
-            Your memory shouldn't live inside one chat vendor or hyperscaler. Eigen Enterprise is yours —
-            portable across every AI tool you use, not locked to theirs.
+            Your memory shouldn't live inside one chat vendor or hyperscaler. Eigen Enterprise is
+            yours — portable across every AI tool you use, not locked to theirs.
           </p>
         {:else if step === 1}
           <p class="text-xs leading-relaxed">
-            Eigen Enterprise captures what's on your mind and keeps it organized and searchable. Nothing
-            to file, nothing to tag.
+            Eigen Enterprise captures what's on your mind and keeps it organized and searchable.
+            Nothing to file, nothing to tag.
           </p>
           <p class="text-xs leading-relaxed">
             Type it or say it. It files it away and remembers it for you — so next time you ask, it
@@ -162,8 +159,8 @@
           </p>
         {:else}
           <p class="text-xs leading-relaxed">
-            Enable notifications so Eigen Enterprise can nudge you with a quick question after setup — and
-            later for reminders and memory check-ins.
+            Enable notifications so Eigen Enterprise can nudge you with a quick question after setup
+            — and later for reminders and memory check-ins.
           </p>
           {#if pushDone}
             <p class="text-xs leading-relaxed text-foreground/80">
@@ -176,7 +173,11 @@
             </p>
           {:else}
             {#if pushError}
-              <p class="text-destructive text-xs">{pushError}</p>
+              <ErrorNotice
+                class="text-xs"
+                error={pushError}
+                attempted="Enabling push notifications for this device during onboarding"
+              />
             {/if}
             <div class="flex flex-col gap-2 pt-1">
               <Button
@@ -237,11 +238,7 @@
             >Next</Button
           >
         {:else if pushDone || pushUnsupportedReason}
-          <form
-            method="post"
-            action="?/completeOnboarding"
-            use:enhance={completeOnboardingEnhance}
-          >
+          <form method="post" action="?/completeOnboarding" use:enhance={completeOnboardingEnhance}>
             <Button type="submit" class="rounded-[4px] text-xs">Start capturing →</Button>
           </form>
         {/if}

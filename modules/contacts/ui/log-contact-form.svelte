@@ -1,10 +1,12 @@
 <script lang="ts">
   import { untrack } from 'svelte'
   import { enhance } from '$app/forms'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
   import { Textarea } from '$lib/components/ui/textarea'
+  import type { AgentReport } from '$lib/errors/agent-report'
   import { readDescription, type ReadDescription } from '../client'
   import { LOG_FIELDS, planFields, type Change, type LogFieldKey } from '../prefill'
   import { CONTACT_LIMITS, PIPELINE_STAGES, STAGE_INFO } from '../types'
@@ -24,6 +26,7 @@
     today,
     action = '?/log',
     error = null,
+    agent = null,
     oncancel,
     ondone,
     read = readDescription,
@@ -34,6 +37,8 @@
     today: string
     action?: string
     error?: string | null
+    /** The server's agent report for `error` ("Copy agent instructions"). */
+    agent?: AgentReport | null
     oncancel?: () => void
     /** After a successful log (the page data is already refreshed). */
     ondone?: () => void
@@ -44,7 +49,12 @@
   } = $props()
 
   const startDay = untrack(() => today)
-  let fields = $state<Record<LogFieldKey, string>>({ on: startDay, note: '', nextFollowUpOn: '', nextStep: '' })
+  let fields = $state<Record<LogFieldKey, string>>({
+    on: startDay,
+    note: '',
+    nextFollowUpOn: '',
+    nextStep: '',
+  })
   let prefilled = $state<string | null>(null)
   let changes = $state<Change<LogFieldKey>[]>([])
 
@@ -55,7 +65,11 @@
     for (const f of plan.filled) fields[f.key] = f.value
     changes = plan.changes
     prefilled = [
-      plan.filled.length > 0 ? `Filled in: ${plan.filled.map((f) => f.label).join(', ')}.` : changes.length > 0 ? '' : 'Nothing new to fill in from that.',
+      plan.filled.length > 0
+        ? `Filled in: ${plan.filled.map((f) => f.label).join(', ')}.`
+        : changes.length > 0
+          ? ''
+          : 'Nothing new to fill in from that.',
       'Nothing is logged until you press “Log it”.',
     ]
       .filter(Boolean)
@@ -79,15 +93,38 @@
     testid={`log-describe-${contactId}`}
     {onread}
   />
-  {#if prefilled}<p class="text-xs text-muted-foreground" role="status" data-testid="log-prefilled">{prefilled}</p>{/if}
+  {#if prefilled}<p class="text-xs text-muted-foreground" role="status" data-testid="log-prefilled">
+      {prefilled}
+    </p>{/if}
   {#if changes.length > 0}
-    <ul class="grid gap-1.5 text-sm" aria-label="Changes from what you said" data-testid="log-changes">
+    <ul
+      class="grid gap-1.5 text-sm"
+      aria-label="Changes from what you said"
+      data-testid="log-changes"
+    >
       {#each changes as c (c.key)}
         <li class="flex flex-wrap items-center gap-2" data-testid="log-change">
           <span class="text-muted-foreground">{c.label}</span>
-          <span><del class="text-muted-foreground">{c.from}</del><span aria-hidden="true"> → </span><span class="sr-only"> would become </span><ins class="no-underline">{c.to}</ins></span>
-          <Button type="button" size="sm" variant="outline" aria-label={`Use the new ${c.label.toLowerCase()}`} onclick={() => accept(c)}>Use new</Button>
-          <Button type="button" size="sm" variant="ghost" aria-label={`Keep the current ${c.label.toLowerCase()}`} onclick={() => keep(c)}>Keep</Button>
+          <span
+            ><del class="text-muted-foreground">{c.from}</del><span aria-hidden="true">
+              →
+            </span><span class="sr-only"> would become </span><ins class="no-underline">{c.to}</ins
+            ></span
+          >
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            aria-label={`Use the new ${c.label.toLowerCase()}`}
+            onclick={() => accept(c)}>Use new</Button
+          >
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            aria-label={`Keep the current ${c.label.toLowerCase()}`}
+            onclick={() => keep(c)}>Keep</Button
+          >
         </li>
       {/each}
     </ul>
@@ -107,7 +144,14 @@
     <input type="hidden" name="id" value={contactId} />
     <div class="grid gap-1.5">
       <Label for={`log-on-${contactId}`}>In touch on</Label>
-      <Input id={`log-on-${contactId}`} name="on" type="date" required bind:value={fields.on} max={today} />
+      <Input
+        id={`log-on-${contactId}`}
+        name="on"
+        type="date"
+        required
+        bind:value={fields.on}
+        max={today}
+      />
     </div>
     <div class="grid gap-1.5 sm:col-span-3">
       <Label for={`log-note-${contactId}`}>How it went</Label>
@@ -122,7 +166,12 @@
     </div>
     <div class="grid gap-1.5">
       <Label for={`log-next-${contactId}`}>Next follow-up</Label>
-      <Input id={`log-next-${contactId}`} name="nextFollowUpOn" type="date" bind:value={fields.nextFollowUpOn} />
+      <Input
+        id={`log-next-${contactId}`}
+        name="nextFollowUpOn"
+        type="date"
+        bind:value={fields.nextFollowUpOn}
+      />
     </div>
     <div class="grid gap-1.5">
       <Label for={`log-step-${contactId}`}>Next step</Label>
@@ -147,10 +196,17 @@
         </select>
       </div>
     {/if}
-    {#if error}<p class="text-sm text-destructive sm:col-span-3" role="alert">{error}</p>{/if}
+    {#if error}<ErrorNotice
+        {error}
+        {agent}
+        attempted="Logging a contact"
+        class="sm:col-span-3"
+      />{/if}
     <div class="flex gap-2 sm:col-span-3">
       <Button type="submit" size="sm" data-testid="log-contact-submit">Log it</Button>
-      {#if oncancel}<Button type="button" size="sm" variant="ghost" onclick={oncancel}>Cancel</Button>{/if}
+      {#if oncancel}<Button type="button" size="sm" variant="ghost" onclick={oncancel}
+          >Cancel</Button
+        >{/if}
     </div>
   </form>
 </div>

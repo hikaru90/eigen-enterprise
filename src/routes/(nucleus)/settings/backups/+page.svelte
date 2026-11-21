@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { PageProps } from './$types'
   import { onMount, untrack } from 'svelte'
   import { enhance } from '$app/forms'
@@ -6,6 +7,7 @@
   import { resolve } from '$app/paths'
   import type { BackupRun } from '$lib/server/ee/client'
   import { docTitle } from '$lib/shell/title'
+  import type { AgentReport } from '$lib/errors/agent-report'
 
   let { data, form }: PageProps = $props()
 
@@ -49,7 +51,9 @@
   let copied = $state(false)
 
   const feedback = (action: string) =>
-    form && form.action === action ? (form as { ok?: boolean; error?: string }) : null
+    form && form.action === action
+      ? (form as { ok?: boolean; error?: string; agent?: AgentReport })
+      : null
 
   const running = $derived(status?.health.state === 'running')
   let polling = false
@@ -156,16 +160,16 @@
         <p class="text-xs text-foreground/70" data-testid="backups-recovery-code-hosted">
           It is the one recovery code of your company: the same code also unlocks the company's
           encrypted data, and it restores the company from its backups on any server. Your hosting
-          provider also keeps an encrypted copy of the backup key, so it can restore the company after a
-          server failure; your recovery code still restores it too, with or without the provider. It is
-          shown <strong>only this once</strong> here: put it in your password manager or print it and keep
-          it somewhere safe.
+          provider also keeps an encrypted copy of the backup key, so it can restore the company
+          after a server failure; your recovery code still restores it too, with or without the
+          provider. It is shown <strong>only this once</strong> here: put it in your password manager
+          or print it and keep it somewhere safe.
         </p>
       {:else}
         <p class="text-xs text-foreground/70">
-          Without it, your backups can't be read — not by you, not by us, not by anyone. It is the one
-          recovery code of your company: the same code also unlocks the company's encrypted data. If
-          this server is ever lost, you will need it to bring the company back. It is shown <strong
+          Without it, your backups can't be read — not by you, not by us, not by anyone. It is the
+          one recovery code of your company: the same code also unlocks the company's encrypted
+          data. If this server is ever lost, you will need it to bring the company back. It is shown <strong
             >only this once</strong
           > here: put it in your password manager or print it and keep it somewhere safe.
         </p>
@@ -184,7 +188,11 @@
         >
       </div>
       <label class="flex items-center gap-2 text-xs">
-        <input type="checkbox" bind:checked={codeStored} data-testid="backups-recovery-code-stored" />
+        <input
+          type="checkbox"
+          bind:checked={codeStored}
+          data-testid="backups-recovery-code-stored"
+        />
         I have stored the recovery code somewhere safe
       </label>
       <button
@@ -199,7 +207,9 @@
     <!-- Status -->
     <section class="mt-8 space-y-3" data-testid="backups-status">
       <h3 class="text-sm font-semibold">Status</h3>
-      <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-4 py-3">
+      <div
+        class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-4 py-3"
+      >
         <p class="text-sm" data-testid="backups-health" data-state={status.health.state}>
           {#if status.health.state === 'unconfigured'}
             Backups are not set up yet. Until they are, a broken server means lost data.
@@ -236,7 +246,12 @@
         {/if}
       </div>
       {#if feedback('run')?.error}
-        <p class="text-xs text-red-700">{feedback('run')?.error}</p>
+        <ErrorNotice
+          class="text-xs"
+          error={feedback('run')?.error ?? ''}
+          agent={feedback('run')?.agent ?? null}
+          attempted="Starting a backup now"
+        />
       {/if}
       {#if status.schedule}
         <p class="text-xs text-foreground/60">
@@ -267,7 +282,8 @@
                   <td class="px-3 py-2 whitespace-nowrap">{when(r.startedAt)}</td>
                   <td class="px-3 py-2">
                     <span class={r.status === 'failed' ? 'text-red-700' : ''}>{result(r)}</span>
-                    {#if r.error}<span class="block text-xs text-foreground/60">{r.error}</span>{/if}
+                    {#if r.error}<span class="block text-xs text-foreground/60">{r.error}</span
+                      >{/if}
                   </td>
                   <td class="px-3 py-2 tabular-nums">{size(r.bytesUploaded)}</td>
                   <td class="px-3 py-2 tabular-nums">{duration(r.durationMs)}</td>
@@ -285,22 +301,33 @@
       <section class="mt-10 space-y-3" data-testid="backups-snapshots">
         <h3 class="text-sm font-semibold">Backups you can restore</h3>
         {#if restoring && job}
-          <p class="rounded-lg border border-amber-500/70 px-4 py-3 text-xs" data-testid="backups-restoring">
+          <p
+            class="rounded-lg border border-amber-500/70 px-4 py-3 text-xs"
+            data-testid="backups-restoring"
+          >
             A restore of the backup from {snapshotWhen(job.startedAt)} is running.
-            <a href={resolve('/(nucleus)/settings/backups/restore/[snapshot]', { snapshot: job.snapshotId })} class="underline">See its progress</a>.
+            <a
+              href={resolve('/(nucleus)/settings/backups/restore/[snapshot]', {
+                snapshot: job.snapshotId,
+              })}
+              class="underline">See its progress</a
+            >.
           </p>
         {/if}
         {#if !snapshots.ok}
-          <p class="text-xs text-red-700" data-testid="backups-snapshots-error">
-            The bucket could not be read, so the backups in it can't be shown: {snapshots.error}
-          </p>
+          <ErrorNotice
+            class="text-xs"
+            testid="backups-snapshots-error"
+            error={`The bucket could not be read, so the backups in it can't be shown: ${snapshots.error}`}
+            agent={snapshots.agent}
+          />
         {:else if snapshots.snapshots.length === 0}
           <p class="text-xs text-foreground/60">There are no finished backups in the bucket yet.</p>
         {:else}
           <p class="text-xs text-foreground/60">
-            <strong>Check</strong> downloads a backup and makes sure every file in it can be read and is
-            unchanged — nothing on this server is touched. <strong>Restore</strong> replaces the whole
-            company with that backup.
+            <strong>Check</strong> downloads a backup and makes sure every file in it can be read
+            and is unchanged — nothing on this server is touched. <strong>Restore</strong> replaces the
+            whole company with that backup.
           </p>
           <div class="overflow-x-auto rounded-lg border border-border">
             <table class="w-full text-left text-xs">
@@ -316,18 +343,24 @@
                   {@const mine = job?.kind === 'check' && job.snapshotId === snap.id ? job : null}
                   <tr data-testid="backups-snapshot" data-id={snap.id}>
                     <td class="px-3 py-2 whitespace-nowrap">{snapshotWhen(snap.takenAt)}</td>
-                    <td class="px-3 py-2" data-testid="backups-check-result" data-status={mine?.status ?? 'none'}>
+                    <td
+                      class="px-3 py-2"
+                      data-testid="backups-check-result"
+                      data-status={mine?.status ?? 'none'}
+                    >
                       {#if !mine}
                         <span class="text-muted-foreground">—</span>
                       {:else if mine.status === 'running'}
                         Checking…
                       {:else if mine.status === 'succeeded' && mine.checked}
                         <span class="text-eigen-green">OK</span>:
-                        {mine.checked.files.length} file(s) and {mine.checked.blobs} Drive file(s)
-                        ({size(mine.checked.files.reduce((n, f) => n + f.size, 0) + mine.checked.blobBytes)})
-                        decrypt and match.
+                        {mine.checked.files.length} file(s) and {mine.checked.blobs} Drive file(s) ({size(
+                          mine.checked.files.reduce((n, f) => n + f.size, 0) +
+                            mine.checked.blobBytes,
+                        )}) decrypt and match.
                       {:else}
-                        <span class="text-red-700">Failed:</span> <span class="text-foreground/70">{mine.error}</span>
+                        <span class="text-red-700">Failed:</span>
+                        <span class="text-foreground/70">{mine.error}</span>
                       {/if}
                     </td>
                     <td class="px-3 py-2">
@@ -353,7 +386,9 @@
                           >
                         </form>
                         <a
-                          href={resolve('/(nucleus)/settings/backups/restore/[snapshot]', { snapshot: snap.id })}
+                          href={resolve('/(nucleus)/settings/backups/restore/[snapshot]', {
+                            snapshot: snap.id,
+                          })}
                           class="inline-flex h-8 items-center border border-border px-2.5 text-xs hover:border-red-700"
                           data-testid="backups-restore">Restore…</a
                         >
@@ -365,7 +400,13 @@
             </table>
           </div>
           {#if feedback('check')?.error}
-            <p class="text-xs text-red-700" data-testid="backups-check-error">{feedback('check')?.error}</p>
+            <ErrorNotice
+              class="text-xs"
+              testid="backups-check-error"
+              error={feedback('check')?.error ?? ''}
+              agent={feedback('check')?.agent ?? null}
+              attempted="Checking one backup"
+            />
           {/if}
         {/if}
       </section>
@@ -373,10 +414,12 @@
 
     <!-- Setup -->
     <section class="mt-10 space-y-3" data-testid="backups-setup">
-      <h3 class="text-sm font-semibold">{status.configured ? 'Storage bucket' : 'Set up backups'}</h3>
+      <h3 class="text-sm font-semibold">
+        {status.configured ? 'Storage bucket' : 'Set up backups'}
+      </h3>
       <p class="text-xs text-foreground/60">
-        Any S3-compatible storage works: Amazon S3, Hetzner Object Storage, Backblaze B2, MinIO. Create
-        a bucket and an access key for it with your provider, then enter them here.
+        Any S3-compatible storage works: Amazon S3, Hetzner Object Storage, Backblaze B2, MinIO.
+        Create a bucket and an access key for it with your provider, then enter them here.
       </p>
       <form
         method="post"
@@ -401,12 +444,26 @@
       >
         <div class="space-y-1">
           <label class="text-xs" for="b-endpoint">Endpoint</label>
-          <input id="b-endpoint" name="endpoint" class={input} required placeholder="https://fsn1.your-objectstorage.com" bind:value={endpoint} />
+          <input
+            id="b-endpoint"
+            name="endpoint"
+            class={input}
+            required
+            placeholder="https://fsn1.your-objectstorage.com"
+            bind:value={endpoint}
+          />
         </div>
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div class="space-y-1">
             <label class="text-xs" for="b-region">Region</label>
-            <input id="b-region" name="region" class={input} required placeholder="eu-central-1" bind:value={region} />
+            <input
+              id="b-region"
+              name="region"
+              class={input}
+              required
+              placeholder="eu-central-1"
+              bind:value={region}
+            />
           </div>
           <div class="space-y-1">
             <label class="text-xs" for="b-bucket">Bucket</label>
@@ -414,18 +471,36 @@
           </div>
           <div class="space-y-1">
             <label class="text-xs" for="b-prefix">Folder in the bucket (optional)</label>
-            <input id="b-prefix" name="prefix" class={input} placeholder="company-backups" bind:value={prefix} />
+            <input
+              id="b-prefix"
+              name="prefix"
+              class={input}
+              placeholder="company-backups"
+              bind:value={prefix}
+            />
           </div>
           <div class="space-y-1">
             <label class="text-xs" for="b-addressing">Addressing</label>
-            <select id="b-addressing" name="addressing" class="border-input bg-card h-9 w-full border px-2 text-xs" bind:value={addressing}>
+            <select
+              id="b-addressing"
+              name="addressing"
+              class="border-input bg-card h-9 w-full border px-2 text-xs"
+              bind:value={addressing}
+            >
               <option value="path">Path-style (MinIO, most providers)</option>
               <option value="virtual">Virtual-host (Amazon S3)</option>
             </select>
           </div>
           <div class="space-y-1">
             <label class="text-xs" for="b-access">Access key</label>
-            <input id="b-access" name="accessKeyId" class={input} required autocomplete="off" bind:value={accessKeyId} />
+            <input
+              id="b-access"
+              name="accessKeyId"
+              class={input}
+              required
+              autocomplete="off"
+              bind:value={accessKeyId}
+            />
           </div>
           <div class="space-y-1">
             <label class="text-xs" for="b-secret">Secret key</label>
@@ -444,7 +519,12 @@
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div class="space-y-1">
             <label class="text-xs" for="b-hour">Back up every night at</label>
-            <select id="b-hour" name="hour" class="border-input bg-card h-9 w-full border px-2 text-xs" bind:value={hour}>
+            <select
+              id="b-hour"
+              name="hour"
+              class="border-input bg-card h-9 w-full border px-2 text-xs"
+              bind:value={hour}
+            >
               {#each Array.from({ length: 24 }, (_, h) => h) as h (h)}
                 <option value={h}>{pad(h)}:xx UTC</option>
               {/each}
@@ -452,30 +532,69 @@
           </div>
           <div class="space-y-1">
             <label class="text-xs" for="b-retention">Keep backups for (days)</label>
-            <input id="b-retention" name="retentionDays" type="number" min="1" max="3650" class={input} required bind:value={retentionDays} />
+            <input
+              id="b-retention"
+              name="retentionDays"
+              type="number"
+              min="1"
+              max="3650"
+              class={input}
+              required
+              bind:value={retentionDays}
+            />
           </div>
         </div>
         <p class="text-xs text-muted-foreground">
-          The exact minute is picked at random, so not every company hits its storage at the same moment.
+          The exact minute is picked at random, so not every company hits its storage at the same
+          moment.
         </p>
         <div class="flex flex-wrap items-center gap-2">
-          <button type="submit" formaction="?/test" class={secondary} disabled={busy !== null} data-testid="backups-test">
+          <button
+            type="submit"
+            formaction="?/test"
+            class={secondary}
+            disabled={busy !== null}
+            data-testid="backups-test"
+          >
             {busy === 'test' ? 'Testing…' : 'Test connection'}
           </button>
-          <button type="submit" class={primary} disabled={!tested || busy !== null} data-testid="backups-save">
-            {busy === 'save' ? 'Saving…' : status.configured ? 'Save changes' : 'Save and turn on backups'}
+          <button
+            type="submit"
+            class={primary}
+            disabled={!tested || busy !== null}
+            data-testid="backups-save"
+          >
+            {busy === 'save'
+              ? 'Saving…'
+              : status.configured
+                ? 'Save changes'
+                : 'Save and turn on backups'}
           </button>
           {#if !tested}
             <span class="text-xs text-muted-foreground">Test the connection first.</span>
           {/if}
         </div>
         {#if feedback('test')?.ok && tested}
-          <p class="text-xs text-eigen-green" data-testid="backups-test-ok">Connection works: ee wrote, read back and deleted a test file.</p>
+          <p class="text-xs text-eigen-green" data-testid="backups-test-ok">
+            Connection works: ee wrote, read back and deleted a test file.
+          </p>
         {:else if feedback('test')?.error}
-          <p class="text-xs text-red-700" data-testid="backups-test-error">{feedback('test')?.error}</p>
+          <ErrorNotice
+            class="text-xs"
+            testid="backups-test-error"
+            error={feedback('test')?.error ?? ''}
+            agent={feedback('test')?.agent ?? null}
+            attempted="Testing the backup bucket connection"
+          />
         {/if}
         {#if feedback('save')?.error}
-          <p class="text-xs text-red-700" data-testid="backups-save-error">{feedback('save')?.error}</p>
+          <ErrorNotice
+            class="text-xs"
+            testid="backups-save-error"
+            error={feedback('save')?.error ?? ''}
+            agent={feedback('save')?.agent ?? null}
+            attempted="Saving the backup settings"
+          />
         {:else if feedback('save')?.ok && !recoveryCode}
           <p class="text-xs text-foreground/60" data-testid="backups-saved">Saved.</p>
         {/if}
@@ -491,24 +610,33 @@
       </p>
       {#if data.hostingKeepsKey}
         <p class="text-xs text-foreground/70" data-testid="backups-restore-help-hosted">
-          Your hosting provider keeps an encrypted copy of the backup key and can restore the company for
-          you after a server failure. You can also do it yourself with your recovery code:
+          Your hosting provider keeps an encrypted copy of the backup key and can restore the
+          company for you after a server failure. You can also do it yourself with your recovery
+          code:
         </p>
       {/if}
       <p class="text-xs text-foreground/70">If this server is lost:</p>
       <ol class="list-decimal space-y-1.5 pl-5 text-xs text-foreground/70">
-        <li>Get a fresh server and install eigenEnterprise on it, the same way as the first time.</li>
         <li>
-          On the new server, run <code class="font-mono">ee restore --snapshot latest</code> with your bucket's
-          details (<code class="font-mono">--endpoint --region --bucket --prefix --access-key-id</code>). It asks
-          for the secret key and then for your company recovery code (<code class="font-mono">EE1-…</code>).
+          Get a fresh server and install eigenEnterprise on it, the same way as the first time.
         </li>
         <li>
-          The server downloads the backup, checks every file, and puts back the database, Drive, the agent's
-          memory and its own settings. Then it starts the company again — the same people, messages and files.
+          On the new server, run <code class="font-mono">ee restore --snapshot latest</code> with
+          your bucket's details (<code class="font-mono"
+            >--endpoint --region --bucket --prefix --access-key-id</code
+          >). It asks for the secret key and then for your company recovery code (<code
+            class="font-mono">EE1-…</code
+          >).
         </li>
         <li>
-          To check a backup without restoring anything, run <code class="font-mono">ee restore --verify</code>.
+          The server downloads the backup, checks every file, and puts back the database, Drive, the
+          agent's memory and its own settings. Then it starts the company again — the same people,
+          messages and files.
+        </li>
+        <li>
+          To check a backup without restoring anything, run <code class="font-mono"
+            >ee restore --verify</code
+          >.
         </li>
       </ol>
     </section>

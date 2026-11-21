@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { HostingData } from '../../routes/(nucleus)/m/website/settings/settings-data.server'
   import ExternalLink from '@lucide/svelte/icons/external-link'
   import { resolve } from '$app/paths'
@@ -58,10 +59,13 @@
   {:else}
     <div class="mt-6 space-y-6">
       {#if data.server.lastReconcileError}
-        <Alert.Root variant="destructive" data-testid="hosting-reconcile-error">
-          <Alert.Title>The server could not apply its latest change</Alert.Title>
-          <Alert.Description>{data.server.lastReconcileError}</Alert.Description>
-        </Alert.Root>
+        <ErrorNotice
+          class="rounded-lg border border-destructive/40 px-4 py-3"
+          testid="hosting-reconcile-error"
+          title="The server could not apply its latest change"
+          error={data.server.lastReconcileError}
+          attempted="ee applying the server's latest desired state (reconcile), shown in Website → Settings; `ee status` and the ee journal on the server have the full error"
+        />
       {/if}
 
       <Card.Root data-testid="hosting-server">

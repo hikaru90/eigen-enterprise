@@ -22,42 +22,42 @@ function event(overrides: { user?: { id: string } | null; body?: unknown } = {})
 
 describe('POST /api/timeline/projects/assign', () => {
   it('returns 401 when unauthenticated', async () => {
-    await expect(POST(event({ user: null }))).rejects.toMatchObject({ status: 401 })
+    expect((await POST(event({ user: null }))).status).toBe(401)
   })
 
   it('returns 400 for invalid JSON body', async () => {
-    await expect(
-      POST({
-        locals: { user: { id: 'u1' } },
-        request: new Request('http://localhost', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: 'not-json',
-        }),
-      } as Parameters<typeof POST>[0]),
-    ).rejects.toMatchObject({ status: 400 })
+    expect(
+      (
+        await POST({
+          locals: { user: { id: 'u1' } },
+          request: new Request('http://localhost', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: 'not-json',
+          }),
+        } as Parameters<typeof POST>[0])
+      ).status,
+    ).toBe(400)
   })
 
   it('returns 400 when thoughtId is missing', async () => {
-    await expect(POST(event({ body: { projectEntityId: 'ent-1' } }))).rejects.toMatchObject({
-      status: 400,
-    })
+    expect((await POST(event({ body: { projectEntityId: 'ent-1' } }))).status).toBe(400)
   })
 
   it('returns 400 when both projectEntityId and projectLabel are provided', async () => {
-    await expect(
-      POST(
-        event({
-          body: { thoughtId: 't1', projectEntityId: 'ent-1', projectLabel: 'Label' },
-        }),
-      ),
-    ).rejects.toMatchObject({ status: 400 })
+    expect(
+      (
+        await POST(
+          event({
+            body: { thoughtId: 't1', projectEntityId: 'ent-1', projectLabel: 'Label' },
+          }),
+        )
+      ).status,
+    ).toBe(400)
   })
 
   it('returns 400 when neither projectEntityId nor projectLabel is provided', async () => {
-    await expect(POST(event({ body: { thoughtId: 't1' } }))).rejects.toMatchObject({
-      status: 400,
-    })
+    expect((await POST(event({ body: { thoughtId: 't1' } }))).status).toBe(400)
   })
 
   it('assigns a thought to an existing project by entity id', async () => {
@@ -94,8 +94,11 @@ describe('POST /api/timeline/projects/assign', () => {
 
   it('returns 400 when service rejects', async () => {
     assignThoughtToProjectMock.mockRejectedValue(new Error('thought not found'))
-    await expect(
-      POST(event({ body: { thoughtId: 't1', projectEntityId: 'ent-1' } })),
-    ).rejects.toMatchObject({ status: 400 })
+    const res = await POST(event({ body: { thoughtId: 't1', projectEntityId: 'ent-1' } }))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({
+      error: 'thought not found',
+      agent: { attempted: 'Assigning a task to a project' },
+    })
   })
 })

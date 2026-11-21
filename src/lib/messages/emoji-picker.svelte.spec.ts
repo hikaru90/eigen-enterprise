@@ -41,7 +41,9 @@ describe('emoji-picker.svelte', () => {
   it('loads the real Unicode dataset lazily: every category, thousands of emoji', async () => {
     render(EmojiPicker, { label: 'Pick a reaction', onpick: vi.fn() })
     const picker = page.getByRole('dialog', { name: 'Pick a reaction' })
-    await expect.element(picker.getByRole('button', { name: 'giraffe', exact: true })).toBeInTheDocument()
+    await expect
+      .element(picker.getByRole('button', { name: 'giraffe', exact: true }))
+      .toBeInTheDocument()
     const nav = picker.getByRole('navigation', { name: 'Emoji categories' })
     for (const name of ['Smileys & emotion', 'People & body', 'Animals & nature', 'Flags']) {
       await expect.element(nav.getByRole('button', { name })).toBeInTheDocument()
@@ -56,7 +58,12 @@ describe('emoji-picker.svelte', () => {
     await expect.element(search).toHaveFocus()
     await userEvent.keyboard('face')
     await expect.element(page.getByRole('group', { name: 'Search results' })).toBeInTheDocument()
-    expect(page.getByTestId('emoji-picker-emoji').elements().map((e) => e.getAttribute('data-emoji'))).toEqual(['😀', '😂', '🐵'])
+    expect(
+      page
+        .getByTestId('emoji-picker-emoji')
+        .elements()
+        .map((e) => e.getAttribute('data-emoji')),
+    ).toEqual(['😀', '😂', '🐵'])
     await page.getByRole('button', { name: 'monkey face' }).click()
     expect(onpick).toHaveBeenCalledWith('🐵')
     expect(readRecentEmoji()).toEqual(['🐵'])
@@ -75,13 +82,26 @@ describe('emoji-picker.svelte', () => {
     render(EmojiPicker, props())
     const recent = page.getByRole('group', { name: 'Recently used' })
     await expect.element(recent).toBeInTheDocument()
-    expect(recent.getByTestId('emoji-picker-emoji').elements().map((e) => e.getAttribute('data-emoji'))).toEqual(['❤️', '🦒'])
-    await expect.element(page.getByRole('navigation', { name: 'Emoji categories' }).getByRole('button', { name: 'Recently used' })).toBeInTheDocument()
+    expect(
+      recent
+        .getByTestId('emoji-picker-emoji')
+        .elements()
+        .map((e) => e.getAttribute('data-emoji')),
+    ).toEqual(['❤️', '🦒'])
+    await expect
+      .element(
+        page
+          .getByRole('navigation', { name: 'Emoji categories' })
+          .getByRole('button', { name: 'Recently used' }),
+      )
+      .toBeInTheDocument()
   })
 
   it('a category button jumps to its section and marks it current', async () => {
     render(EmojiPicker, props())
-    const tab = page.getByRole('navigation', { name: 'Emoji categories' }).getByRole('button', { name: 'Animals & nature' })
+    const tab = page
+      .getByRole('navigation', { name: 'Emoji categories' })
+      .getByRole('button', { name: 'Animals & nature' })
     await tab.click()
     await expect.element(tab).toHaveAttribute('aria-current', 'true')
   })
@@ -110,6 +130,11 @@ describe('emoji-picker.svelte', () => {
 
   it('a dataset that fails to load says so', async () => {
     render(EmojiPicker, props({ load: () => Promise.reject(new Error('offline')) }))
-    await expect.element(page.getByRole('alert')).toHaveTextContent('Couldn’t load the emoji list: offline')
+    await expect
+      .element(page.getByRole('alert'))
+      .toHaveTextContent('Couldn’t load the emoji list: offline')
+    await expect
+      .element(page.getByRole('button', { name: 'Copy agent instructions' }))
+      .toBeInTheDocument()
   })
 })

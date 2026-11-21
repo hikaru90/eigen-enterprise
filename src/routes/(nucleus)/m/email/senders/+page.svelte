@@ -2,10 +2,12 @@
   import type { PageProps } from './$types'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
 
   let { data, form }: PageProps = $props()
@@ -14,6 +16,10 @@
     form && form.action === action
       ? (form as { ok?: boolean; error?: string; address?: string })
       : null
+  const addError = $derived(shownErrorOf(feedback('add')))
+  const rowError = $derived(
+    shownErrorOf(feedback('makeDefault')) ?? shownErrorOf(feedback('remove')),
+  )
 </script>
 
 <svelte:head><title>{docTitle('Senders', 'Email')}</title></svelte:head>
@@ -25,8 +31,9 @@
 
 {#if !data.connected}
   <p class="mt-4 text-sm text-muted-foreground">
-    Connect Amazon SES first — <a class="underline underline-offset-4" href={resolve('/m/email/setup')}
-      >under Setup › Account</a
+    Connect Amazon SES first — <a
+      class="underline underline-offset-4"
+      href={resolve('/m/email/setup')}>under Setup › Account</a
     >.
   </p>
 {:else}
@@ -68,9 +75,7 @@
           <Input id="sender-name" name="displayName" placeholder="Your Company" disabled={busy} />
         </div>
         <Button type="submit" disabled={busy}>Add sender</Button>
-        {#if feedback('add')?.error}<p class="text-sm text-destructive sm:col-span-3" role="alert">
-            {feedback('add')?.error}
-          </p>{/if}
+        {#if addError}<ErrorNotice {...addError} class="sm:col-span-3" />{/if}
         <p class="text-xs text-muted-foreground sm:col-span-3">
           Verified domains: {data.domains.join(', ')}.
         </p>
@@ -78,10 +83,8 @@
     {/if}
   {/if}
 
-  {#if feedback('makeDefault')?.error || feedback('remove')?.error}
-    <p class="mt-4 text-sm text-destructive" role="alert">
-      {feedback('makeDefault')?.error ?? feedback('remove')?.error}
-    </p>
+  {#if rowError}
+    <ErrorNotice {...rowError} class="mt-4" />
   {/if}
 
   <ul

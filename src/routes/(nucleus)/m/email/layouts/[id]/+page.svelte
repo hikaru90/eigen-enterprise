@@ -4,9 +4,11 @@
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
   import BrandTokens from '$lib/components/email/brand-tokens.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
 
   let { data, form }: PageProps = $props()
@@ -14,9 +16,14 @@
   let name = $state(initial.name)
   let format = $state<string>(initial.format)
   let body = $state(initial.body)
-  let preview = $state<{ html?: string; problems?: string[]; missing?: string[]; error?: string }>(
-    {},
-  )
+  let preview = $state<{
+    html?: string
+    problems?: string[]
+    missing?: string[]
+    error?: string
+    agent?: unknown
+  }>({})
+  const previewError = $derived(shownErrorOf(preview))
   let busy = $state(false)
   let timer: ReturnType<typeof setTimeout> | null = null
 
@@ -43,6 +50,7 @@
   })
   const feedback = (action: string) =>
     form && form.action === action ? (form as { ok?: boolean; error?: string }) : null
+  const saveError = $derived(shownErrorOf(feedback('save')) ?? shownErrorOf(feedback('delete')))
 </script>
 
 <svelte:head><title>{docTitle('Layouts', 'Email')}</title></svelte:head>
@@ -129,17 +137,18 @@
       {#if feedback('save')?.ok}<p class="text-sm" role="status" data-testid="layout-saved">
           Saved.
         </p>{/if}
-      {#if feedback('save')?.error || feedback('delete')?.error}
-        <p class="text-sm text-destructive" role="alert">
-          {feedback('save')?.error ?? feedback('delete')?.error}
-        </p>
+      {#if saveError}
+        <ErrorNotice {...saveError} />
       {/if}
     {/if}
   </div>
 
   <div class="flex min-w-0 flex-col gap-4">
     <h3 class="text-sm font-medium">Preview</h3>
-    {#if preview.error}<p class="text-sm text-destructive" role="alert">{preview.error}</p>{/if}
+    {#if previewError}<ErrorNotice
+        {...previewError}
+        attempted="Rendering the layout preview"
+      />{/if}
     {#each preview.problems ?? [] as p (p)}<p class="font-mono text-xs text-destructive">
         {p}
       </p>{/each}

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ActionData, PageData } from './$types'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import WaterFlow from '../../../../modules/brand/water-flow.svelte'
   import { renderWebsiteMarkdown } from '../../../../modules/website/markdown'
 
@@ -52,7 +53,11 @@
           <button type="button" onclick={() => (confirmingDelete = true)}>Delete page</button>
         {/if}
         {#if form?.error}
-          <p role="alert">{form.error}</p>
+          <ErrorNotice
+            error={form.error}
+            agent={form.agent}
+            attempted="Deleting this website page"
+          />
         {/if}
       </div>
     {/if}
@@ -154,8 +159,12 @@
     color: #f0a0a0;
   }
 
-  .website-owner-actions p {
+  /* The error notice keeps this page's dark-backdrop colours. */
+  .website-owner-actions :global([data-slot='error-notice']) {
     margin: 0.5rem 0 0;
+  }
+
+  .website-owner-actions :global([data-slot='error-notice'] [role='alert']) {
     color: #f0a0a0;
   }
 </style>

@@ -21,9 +21,12 @@
   import DocEditor from '$lib/components/drive/doc-editor.svelte'
   import RevisionsPanel from '$lib/components/drive/revisions-panel.svelte'
   import ShareDialog from '$lib/components/drive/share-dialog.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { driveApi, formatSize } from '$lib/drive/api'
   import { datedLabel, driveItemKind, initialsOf } from '$lib/drive/display'
+  import { driveShownError } from '$lib/drive/shown-error'
+  import type { ShownError } from '$lib/errors/agent-report'
   import { OFFICE_VIEWERS } from '$lib/office/viewers'
   import { docTitle } from '$lib/shell/title'
 
@@ -163,7 +166,7 @@
   }
 
   let archiving = $state(false)
-  let archiveError = $state<string | null>(null)
+  let archiveError = $state<ShownError | null>(null)
   async function archive() {
     archiveError = null
     archiving = true
@@ -171,7 +174,7 @@
       await driveApi.archive(data.file)
       await invalidateAll()
     } catch (err) {
-      archiveError = err instanceof Error ? err.message : String(err)
+      archiveError = driveShownError(err)
     } finally {
       archiving = false
     }
@@ -374,12 +377,12 @@
     </div>
   </header>
   {#if archiveError}
-    <p
-      class="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive sm:px-6"
-      role="alert"
-    >
-      {archiveError}
-    </p>
+    <ErrorNotice
+      class="border-b border-destructive/40 bg-destructive/10 px-4 py-2 sm:px-6"
+      error={archiveError.error}
+      agent={archiveError.agent}
+      attempted={`Archiving the file ${data.file.name}`}
+    />
   {/if}
   <ArchiveBanner item={data.file} archivedIn={data.archivedIn} canEdit={data.canEdit} />
 
@@ -521,13 +524,12 @@
                   onsaved={(f) => (saved = f)}
                 />
               {:catch err}
-                <p
-                  class="m-6 text-sm text-destructive"
-                  role="alert"
-                  data-testid="drive-office-error"
-                >
-                  The viewer could not be loaded: {err instanceof Error ? err.message : String(err)}
-                </p>
+                <ErrorNotice
+                  class="m-6"
+                  testid="drive-office-error"
+                  error={`The viewer could not be loaded: ${err instanceof Error ? err.message : String(err)}`}
+                  attempted={`Loading the office viewer for ${data.file.name} in the browser`}
+                />
               {/await}
             {/key}
           {:else if data.kind === 'pdf'}

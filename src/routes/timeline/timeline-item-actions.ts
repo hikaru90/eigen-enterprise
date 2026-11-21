@@ -8,6 +8,7 @@
  */
 
 import type { TemporalEventListItem } from '../api/temporal-events/+server'
+import { requestErrorOf } from '$lib/memory/request-error'
 
 export type TimelineQuickAction = 'mark_done' | 'reopen' | 'archive'
 
@@ -43,6 +44,7 @@ export function timelineQuickActionRequestBody(action: TimelineQuickAction): {
 /**
  * Mark done / reopen / archive for any timeline row id (`task:…` or event uuid).
  * Call this from every UI surface — do not fork PATCH /api/thoughts by view.
+ * A refusal throws a `RequestError` (its `shown` carries the agent report).
  */
 export async function postTimelineQuickAction(
   itemId: string,
@@ -54,9 +56,6 @@ export async function postTimelineQuickAction(
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(timelineQuickActionRequestBody(action)),
   })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(text || `Request failed (${res.status})`)
-  }
+  if (!res.ok) throw await requestErrorOf(res)
   return (await res.json()) as TimelineQuickActionResult
 }

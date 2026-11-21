@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import { onMount } from 'svelte'
   import { fade, fly } from 'svelte/transition'
@@ -187,7 +188,8 @@
     if (next === 'hello') speak(greeting)
     else if (next === 'name') speak('What should I call you?')
     else if (next === 'lines') speak(lines[0].text)
-    else if (next === 'domain') speak(managedMail || canBuy ? DOMAIN_HEADING : 'First: you need your own domain.')
+    else if (next === 'domain')
+      speak(managedMail || canBuy ? DOMAIN_HEADING : 'First: you need your own domain.')
     else if (next === 'mail') speak(managedMail ? SENDER_HEADING : MAIL_HEADING)
     else if (next === 'mind') speak(MIND_HEADING)
   }
@@ -308,10 +310,16 @@
   async function resumePurchase(): Promise<void> {
     try {
       const res = await fetch('/api/domains')
-      const body = (await res.json().catch(() => null)) as { domains?: BoughtDomain[]; error?: string } | null
-      if (!res.ok) throw new Error(body?.error ?? `Reading the company’s domains failed (HTTP ${res.status}).`)
+      const body = (await res.json().catch(() => null)) as {
+        domains?: BoughtDomain[]
+        error?: string
+      } | null
+      if (!res.ok)
+        throw new Error(body?.error ?? `Reading the company’s domains failed (HTTP ${res.status}).`)
       if (!Array.isArray(body?.domains)) throw new Error('The domain list came back empty-handed.')
-      const open = body.domains.find((d) => d.state === 'active') ?? body.domains.find((d) => d.state !== 'failed')
+      const open =
+        body.domains.find((d) => d.state === 'active') ??
+        body.domains.find((d) => d.state !== 'failed')
       if (open && !bought) bought = { name: open.name }
     } catch (err) {
       domainError = err instanceof Error ? err.message : String(err)
@@ -360,10 +368,13 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ address: `${senderLocal.trim()}@${domainName}` }),
       })
-      const body = (await res.json().catch(() => null)) as
-        | { address?: string; ready?: boolean; error?: string }
-        | null
-      if (!res.ok) throw new Error(body?.error ?? `Saving the sender address failed (HTTP ${res.status}).`)
+      const body = (await res.json().catch(() => null)) as {
+        address?: string
+        ready?: boolean
+        error?: string
+      } | null
+      if (!res.ok)
+        throw new Error(body?.error ?? `Saving the sender address failed (HTTP ${res.status}).`)
       if (!body?.address) throw new Error('The server did not say which address it saved.')
       senderSet = { address: body.address, ready: body.ready === true }
       if (isSoundEnabled()) playConnectChime()
@@ -529,9 +540,11 @@
           </button>
         </form>
         {#if nameError}
-          <p class="text-destructive mt-4 text-center text-sm leading-relaxed" role="alert">
-            {nameError}
-          </p>
+          <ErrorNotice
+            class="mt-4 items-center text-center leading-relaxed"
+            error={nameError}
+            attempted="Saving your name in the welcome tour (POST /api/onboarding/name)"
+          />
         {/if}
       </div>
     {:else if act === 'lines'}
@@ -578,8 +591,9 @@
             First: you need your own domain.
           </h1>
           <p class="text-muted-foreground mt-4 text-sm text-balance">
-            Email is sent from an address at your own domain — like hello@yourcompany.com. Amazon only
-            sends for a domain you prove is yours, and you prove it by adding a few DNS records.
+            Email is sent from an address at your own domain — like hello@yourcompany.com. Amazon
+            only sends for a domain you prove is yours, and you prove it by adding a few DNS
+            records.
           </p>
           <p class="text-muted-foreground mt-3 text-sm text-balance">
             So you need two things: a domain you own, and access to its DNS settings — usually where
@@ -594,7 +608,9 @@
             I have a domain and DNS access
           </button>
         {:else if bought}
-          <h1 class="text-2xl font-light tracking-tight text-balance sm:text-3xl">{DOMAIN_HEADING}</h1>
+          <h1 class="text-2xl font-light tracking-tight text-balance sm:text-3xl">
+            {DOMAIN_HEADING}
+          </h1>
           <div class="mt-8">
             {#key bought.name}
               <DomainProgress
@@ -629,7 +645,9 @@
             </button>
           {/if}
         {:else if domainChoice === 'buy'}
-          <h1 class="text-2xl font-light tracking-tight text-balance sm:text-3xl">Find your name.</h1>
+          <h1 class="text-2xl font-light tracking-tight text-balance sm:text-3xl">
+            Find your name.
+          </h1>
           <div class="mt-8">
             <DomainBuy registrant={setup?.registrant ?? EMPTY_REGISTRANT} onbought={onBought} />
           </div>
@@ -653,7 +671,9 @@
             </button>
           {/if}
         {:else}
-          <h1 class="text-2xl font-light tracking-tight text-balance sm:text-3xl">{DOMAIN_HEADING}</h1>
+          <h1 class="text-2xl font-light tracking-tight text-balance sm:text-3xl">
+            {DOMAIN_HEADING}
+          </h1>
           <p class="text-muted-foreground mt-4 text-sm text-balance">
             Your email, your sign-in codes and later your website live on your own domain — like
             yourcompany.com.
@@ -681,7 +701,11 @@
             </button>
           </div>
           {#if domainError}
-            <p class="text-destructive mt-4 text-sm leading-relaxed" role="alert">{domainError}</p>
+            <ErrorNotice
+              class="mt-4 leading-relaxed"
+              error={domainError}
+              attempted="Reading the company's domains in the welcome tour (GET /api/domains)"
+            />
           {/if}
         {/if}
         {#if !bought}
@@ -708,8 +732,8 @@
         </h1>
         <p class="text-muted-foreground mt-4 text-sm text-balance">
           Email goes out from an address at your own domain, so this step needs one. Go back to
-          {canBuy ? 'buy or connect' : 'add'} a domain — or continue without email for now and set it up
-          later in Settings.
+          {canBuy ? 'buy or connect' : 'add'} a domain — or continue without email for now and set it
+          up later in Settings.
         </p>
         <button
           type="button"
@@ -760,8 +784,8 @@
           </div>
         {:else}
           <p class="text-muted-foreground mt-3 text-center text-sm text-balance">
-            Sign-in codes and the company’s mail go out from this address. eigenEnterprise Mail sends
-            it — there are no keys to set up.
+            Sign-in codes and the company’s mail go out from this address. eigenEnterprise Mail
+            sends it — there are no keys to set up.
           </p>
           <form
             class="mt-8 flex flex-col gap-5"
@@ -800,9 +824,11 @@
             </button>
           </form>
           {#if senderError}
-            <p class="text-destructive mt-4 text-center text-sm leading-relaxed" role="alert">
-              {senderError}
-            </p>
+            <ErrorNotice
+              class="mt-4 items-center text-center leading-relaxed"
+              error={senderError}
+              attempted="Saving the sender address in the welcome tour (POST /api/onboarding/sender)"
+            />
           {/if}
         {/if}
       </div>
@@ -947,9 +973,11 @@
             </button>
           </form>
           {#if mailError}
-            <p class="text-destructive mt-4 text-center text-sm leading-relaxed" role="alert">
-              {mailError}
-            </p>
+            <ErrorNotice
+              class="mt-4 items-center text-center leading-relaxed"
+              error={mailError}
+              attempted="Setting up company email with Amazon SES in the welcome tour (POST /api/onboarding/mail)"
+            />
           {/if}
         {/if}
       </div>
@@ -966,9 +994,11 @@
   </div>
 
   {#if error}
-    <p class="text-destructive mt-6 text-center text-sm leading-relaxed" role="alert">
+    <ErrorNotice
+      class="mt-6 items-center text-center leading-relaxed"
       {error}
-    </p>
+      attempted="Finishing the welcome tour (POST /api/onboarding/welcome)"
+    />
   {/if}
 
   <div class="mt-12 flex items-center gap-6">

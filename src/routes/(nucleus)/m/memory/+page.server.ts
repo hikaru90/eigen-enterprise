@@ -1,5 +1,6 @@
 import type { Actions, PageServerLoad } from './$types'
 import { fail, redirect } from '@sveltejs/kit'
+import { refusalReport } from '$lib/server/errors/report'
 import { deleteThoughtForUser } from '$lib/server/memory/delete-thought'
 import { isTaskListItem, listTemporalEventsForUser } from '$lib/server/memory/temporal-event-list'
 
@@ -39,17 +40,21 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   /** Delete a task for good: the thought it is, with everything derived from it. */
   deleteTask: async (event) => {
-    if (!event.locals.user) return fail(401, { message: 'Sign in again to delete.' })
+    const refuse = (status: number, sentence: string, input?: { thoughtId: string }) =>
+      fail(status, refusalReport(sentence, { attempted: 'Deleting a task on /m/memory', input }))
+    if (!event.locals.user) return refuse(401, 'Sign in again to delete.')
     const thoughtId = String((await event.request.formData()).get('thoughtId') ?? '').trim()
-    if (!thoughtId) return fail(400, { message: 'Which task? None was given.' })
+    if (!thoughtId) return refuse(400, 'Which task? None was given.')
     const result = await deleteThoughtForUser(event.locals.user.id, thoughtId)
     if (!result.ok) {
       if (result.reason === 'system_project_task') {
-        return fail(409, {
-          message: `This task belongs to the company’s “${result.projectLabel}” project: change it there.`,
-        })
+        return refuse(
+          409,
+          `This task belongs to the company’s “${result.projectLabel}” project: change it there.`,
+          { thoughtId },
+        )
       }
-      return fail(404, { message: 'That task is not in your Memory (anymore).' })
+      return refuse(404, 'That task is not in your Memory (anymore).', { thoughtId })
     }
     return { deleted: true as const }
   },

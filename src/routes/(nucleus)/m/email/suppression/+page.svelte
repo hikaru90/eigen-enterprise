@@ -2,10 +2,12 @@
   import type { PageProps } from './$types'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
   import { SUPPRESSION_REASON_LABEL } from '../../../../../../modules/email/platform/suppression'
 
@@ -14,6 +16,8 @@
     form && form.action === action
       ? (form as { ok?: boolean; error?: string; email?: string })
       : null
+  const addError = $derived(shownErrorOf(feedback('add')))
+  const removeError = $derived(shownErrorOf(feedback('remove')))
   const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' })
   const base = resolve('/m/email/suppression')
 </script>
@@ -44,17 +48,19 @@
       />
     </div>
     <Button type="submit" variant="outline">Suppress</Button>
-    {#if feedback('add')?.error}<p class="w-full text-sm text-destructive" role="alert">
-        {feedback('add')?.error}
-      </p>{/if}
+    {#if addError}<ErrorNotice {...addError} class="w-full" />{/if}
   </form>
 {/if}
-{#if feedback('remove')?.error}<p class="mt-3 text-sm text-destructive" role="alert">
-    {feedback('remove')?.error}
-  </p>{/if}
+{#if removeError}<ErrorNotice {...removeError} class="mt-3" />{/if}
 
 <form method="GET" action={base} class="mt-6 flex items-center gap-2">
-  <Input dictation={false} name="q" value={data.q} placeholder="Search addresses" class="h-9 w-64" />
+  <Input
+    dictation={false}
+    name="q"
+    value={data.q}
+    placeholder="Search addresses"
+    class="h-9 w-64"
+  />
   <Button type="submit" size="sm" variant="ghost">Search</Button>
 </form>
 

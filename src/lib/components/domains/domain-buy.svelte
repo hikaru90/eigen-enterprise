@@ -1,5 +1,6 @@
 <script lang="ts">
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import {
     formatEur,
     registryPhone,
@@ -9,6 +10,7 @@
   } from '$lib/domains/contract'
   import { countries } from '$lib/domains/countries'
   import type { RegistrantDefaults } from '$lib/domains/registrant-defaults'
+  import { shownErrorOf, type ShownError } from '$lib/errors/agent-report'
 
   /**
    * Buying a domain (plan/managed-domains.md, the Domain act a): search a name
@@ -33,7 +35,9 @@
   let searching = $state(false)
   let results = $state<DomainSearchResult[] | null>(null)
   let chosen = $state<DomainSearchResult | null>(null)
-  let error = $state<string | null>(null)
+  let error = $state<ShownError | null>(null)
+  /** The price changed while confirming: a question at the new price, not an error. */
+  let priceNotice = $state<string | null>(null)
   let buying = $state(false)
 
   // The prefill is taken once: the person's edits are theirs.
@@ -55,24 +59,36 @@
   const COUNTRIES = countries()
   const price = $derived(chosen?.priceCents != null ? formatEur(chosen.priceCents) : '')
 
-  async function readError(res: Response, fallback: string): Promise<string> {
-    const body = (await res.json().catch(() => null)) as { error?: string } | null
-    return body?.error ?? `${fallback} (HTTP ${res.status}).`
+  /** The server's { error, agent }, or what the page saw when it sent none. */
+  async function readError(res: Response, fallback: string): Promise<ShownError> {
+    const body: unknown = await res.json().catch(() => null)
+    return shownErrorOf(body) ?? { error: `${fallback} (HTTP ${res.status}).`, agent: null }
   }
+
+  /** A failure the browser itself saw (no server report). */
+  const seen = (err: unknown): ShownError => ({
+    error: err instanceof Error ? err.message : String(err),
+    agent: null,
+  })
 
   async function search(): Promise<void> {
     if (searching) return
     searching = true
     error = null
+    priceNotice = null
     try {
       const res = await fetch(`/api/domains/search?q=${encodeURIComponent(query.trim())}`)
-      if (!res.ok) throw new Error(await readError(res, 'The search failed'))
+      if (!res.ok) {
+        results = null
+        error = await readError(res, 'The search failed')
+        return
+      }
       const body = (await res.json()) as { results?: DomainSearchResult[] }
       if (!Array.isArray(body.results)) throw new Error('The search answered without results.')
       results = body.results
     } catch (err) {
       results = null
-      error = err instanceof Error ? err.message : String(err)
+      error = seen(err)
     } finally {
       searching = false
     }
@@ -81,11 +97,13 @@
   function choose(r: DomainSearchResult): void {
     chosen = r
     error = null
+    priceNotice = null
     stage = 'registrant'
   }
 
   function toConfirm(): void {
     error = null
+    priceNotice = null
     stage = 'confirm'
   }
 
@@ -93,6 +111,7 @@
     if (buying || !chosen || chosen.priceCents == null) return
     buying = true
     error = null
+    priceNotice = null
     try {
       const res = await fetch('/api/domains/purchases', {
         method: 'POST',
@@ -117,27 +136,38 @@
       })
       if (res.status === 409) {
         // Branch on the reason field, never on the words.
-        const conflict = (await res.json().catch(() => null)) as PurchaseConflict | null
+        const raw: unknown = await res.json().catch(() => null)
+        const conflict = raw as PurchaseConflict | null
         if (conflict?.reason === 'price_changed' && conflict.priceCents != null) {
           // Ask again at the new price: the confirmation now names it.
           chosen = { ...chosen, priceCents: conflict.priceCents }
           stage = 'confirm'
-          error = `The price of ${chosen.name} changed to ${formatEur(conflict.priceCents)} a year. Buy it at the new price?`
+          priceNotice = `The price of ${chosen.name} changed to ${formatEur(conflict.priceCents)} a year. Buy it at the new price?`
           return
         }
-        if (conflict?.reason !== 'taken') throw new Error(conflict?.error ?? 'The domain could not be bought (HTTP 409).')
+        const refused = shownErrorOf(raw) ?? {
+          error: 'The domain could not be bought (HTTP 409).',
+          agent: null,
+        }
+        if (conflict?.reason !== 'taken') {
+          error = refused
+          return
+        }
         // Taken meanwhile: back to fresh results.
         stage = 'search'
         chosen = null
         await search()
-        error = conflict.error
+        error = refused
         return
       }
-      if (res.status !== 202) throw new Error(await readError(res, 'Buying the domain failed'))
+      if (res.status !== 202) {
+        error = await readError(res, 'Buying the domain failed')
+        return
+      }
       const body = (await res.json()) as PurchaseResponse
       onbought({ ...body, priceCents: chosen.priceCents })
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
+      error = seen(err)
     } finally {
       buying = false
     }
@@ -173,7 +203,10 @@
         />
       </label>
       <button type="submit" class={primary} disabled={searching}>
-        {#if searching}<LoaderCircle class="mx-auto size-4 animate-spin" strokeWidth={1.75} />{:else}Search{/if}
+        {#if searching}<LoaderCircle
+            class="mx-auto size-4 animate-spin"
+            strokeWidth={1.75}
+          />{:else}Search{/if}
       </button>
     </form>
     {#if results}
@@ -188,7 +221,9 @@
               <span class="min-w-0 truncate text-sm font-medium">{r.name}</span>
               {#if r.available && r.priceCents != null}
                 <span class="flex items-center gap-4">
-                  <span class="text-sm tabular-nums text-muted-foreground">{formatEur(r.priceCents)} / year</span>
+                  <span class="text-sm tabular-nums text-muted-foreground"
+                    >{formatEur(r.priceCents)} / year</span
+                  >
                   <button
                     type="button"
                     class="text-sm font-medium underline-offset-4 hover:underline"
@@ -199,7 +234,9 @@
                   </button>
                 </span>
               {:else}
-                <span class="text-sm text-muted-foreground">{r.available ? 'Not offered' : 'Taken'}</span>
+                <span class="text-sm text-muted-foreground"
+                  >{r.available ? 'Not offered' : 'Taken'}</span
+                >
               {/if}
             </li>
           {/each}
@@ -208,8 +245,8 @@
     {/if}
   {:else if stage === 'registrant' && chosen}
     <p class="text-sm">
-      <span class="font-medium">{chosen.name}</span> is registered to the company. Registries need a
-      contact for it; privacy protection keeps these details out of public lookups.
+      <span class="font-medium">{chosen.name}</span> is registered to the company. Registries need a contact
+      for it; privacy protection keeps these details out of public lookups.
     </p>
     <form
       class="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2"
@@ -287,7 +324,9 @@
         <input bind:value={region} autocomplete="address-level1" class={inputClass} />
       </label>
       <div class="flex items-center justify-between gap-4 sm:col-span-2">
-        <button type="button" class={quiet} onclick={() => (stage = 'search')}>← Another name</button>
+        <button type="button" class={quiet} onclick={() => (stage = 'search')}
+          >← Another name</button
+        >
         <button type="submit" class={primary}>Continue</button>
       </div>
     </form>
@@ -299,20 +338,43 @@
       <ul class="mt-4 list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
         <li>{price} is charged now to the company’s card.</li>
         <li>It renews every year at {price}, charged to the same card.</li>
-        <li>A registration can’t be refunded. If the registration itself fails, the charge is refunded in full.</li>
+        <li>
+          A registration can’t be refunded. If the registration itself fails, the charge is refunded
+          in full.
+        </li>
         <li>It is registered to {organization.trim()}; the company owns it.</li>
       </ul>
       <div class="mt-8 flex items-center justify-between gap-4">
-        <button type="button" class={quiet} disabled={buying} onclick={() => (stage = 'registrant')}>
+        <button
+          type="button"
+          class={quiet}
+          disabled={buying}
+          onclick={() => (stage = 'registrant')}
+        >
           ← Change details
         </button>
         <button type="button" class={primary} disabled={buying} onclick={() => void buy()}>
-          {#if buying}<LoaderCircle class="mx-auto size-4 animate-spin" strokeWidth={1.75} />{:else}Buy for {price} / year{/if}
+          {#if buying}<LoaderCircle
+              class="mx-auto size-4 animate-spin"
+              strokeWidth={1.75}
+            />{:else}Buy for {price} / year{/if}
         </button>
       </div>
     </div>
   {/if}
+  {#if priceNotice}
+    <p class="mt-4 text-sm leading-relaxed" role="status" data-testid="domain-price-changed">
+      {priceNotice}
+    </p>
+  {/if}
   {#if error}
-    <p class="text-destructive mt-4 text-sm leading-relaxed" role="alert">{error}</p>
+    <ErrorNotice
+      class="mt-4 leading-relaxed"
+      error={error.error}
+      agent={error.agent}
+      attempted={stage === 'search'
+        ? 'Searching for a domain to buy'
+        : `Buying the domain ${chosen?.name ?? ''}`}
+    />
   {/if}
 </div>

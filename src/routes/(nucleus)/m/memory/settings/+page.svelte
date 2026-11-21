@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ActionData, PageData } from './$types'
   import { enhance } from '$app/forms'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
@@ -103,14 +104,21 @@
 
       <div class="flex flex-wrap items-center gap-3">
         <Button type="submit" size="sm" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
-        {#if form?.message}
+        {#if form && 'saved' in form && form.message}
           <p
-            class="text-sm {form && 'saved' in form ? 'text-muted-foreground' : 'text-destructive'}"
+            class="text-sm text-muted-foreground"
             role="status"
             data-testid="memory-settings-message"
           >
             {form.message}
           </p>
+        {:else if form && 'error' in form && form.error}
+          <ErrorNotice
+            testid="memory-settings-message"
+            error={form.error}
+            agent={form.agent}
+            attempted="Saving the notification settings on /m/memory/settings"
+          />
         {/if}
       </div>
     </form>
@@ -193,7 +201,8 @@
           <Label for="memory-delete-all-confirm">
             Type <span class="font-mono">{data.deleteAllConfirmation}</span> to confirm
           </Label>
-          <Input dictation={false}
+          <Input
+            dictation={false}
             id="memory-delete-all-confirm"
             name="confirmation"
             autocomplete="off"
@@ -210,8 +219,8 @@
               Deleted {form.deletedAll.thoughtsDeleted} thoughts and tasks, {form.deletedAll
                 .notesDeleted} notes and {form.deletedAll.entitiesDeleted} people, places and projects.
             </p>
-          {:else if form && 'dataMessage' in form}
-            <p class="text-sm text-destructive" role="alert">{form.dataMessage}</p>
+          {:else if form && 'dataError' in form && form.dataError}
+            <ErrorNotice {...form.dataError} />
           {/if}
         </div>
       </form>

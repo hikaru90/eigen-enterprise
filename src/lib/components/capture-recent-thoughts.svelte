@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import Check from '@lucide/svelte/icons/check'
   import ChevronDown from '@lucide/svelte/icons/chevron-down'
   import ChevronRight from '@lucide/svelte/icons/chevron-right'
@@ -143,10 +144,8 @@
     return captureIndexingRetryEligible(detail, enrichStatus)
   }
 
-  const tabEntryClass =
-    'flex flex-col overflow-visible bg-card p-0.5'
-  const tabTriggerClass =
-    'rounded-full px-3 py-2 text-foreground'
+  const tabEntryClass = 'flex flex-col overflow-visible bg-card p-0.5'
+  const tabTriggerClass = 'rounded-full px-3 py-2 text-foreground'
 
   let categoryFilter = $state<string>('all')
 
@@ -264,7 +263,11 @@
                           {enrichStatus.label}
                         </span>
                         {#if enrichStatus.failed && detail?.queueError}
-                          <span class="text-destructive">{detail.queueError}</span>
+                          <ErrorNotice
+                            class="text-xs"
+                            error={detail.queueError}
+                            attempted="Indexing a captured thought (background enrichment job)"
+                          />
                         {/if}
                       {/if}
                       <span class="ml-auto">{formatWhen(snippet.createdAt)}</span>
@@ -366,9 +369,7 @@
 
                   {#if editingId === snippet.id}
                     {#if editLoading}
-                      <div
-                        class="-mx-3 border-t border-border bg-muted/30 px-3 py-3"
-                      >
+                      <div class="-mx-3 border-t border-border bg-muted/30 px-3 py-3">
                         <CaptureQueueStatus
                           processing={true}
                           pendingCount={0}

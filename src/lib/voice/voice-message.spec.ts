@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEVICES_KEY, type DeviceInfo } from '$lib/calls/devices'
-import {
-  FakeAudioContext,
-  FakeMediaRecorder,
-  fakeStream,
-  micSignal,
-} from '$lib/test/voice-doubles'
+import { FakeAudioContext, FakeMediaRecorder, fakeStream, micSignal } from '$lib/test/voice-doubles'
 import { CLIP_DECODE_SAMPLE_RATE, type DecodedClip } from './clip-speech'
 import { TranscribeRequestError } from './transcribe-voice-clip'
 import {
@@ -70,7 +65,8 @@ function setup(options?: {
       decodeClip,
       now: () => Date.now(),
       deviceStorage: {
-        getItem: (k: string) => (k === DEVICES_KEY && options?.remembered ? JSON.stringify(options.remembered) : null),
+        getItem: (k: string) =>
+          k === DEVICES_KEY && options?.remembered ? JSON.stringify(options.remembered) : null,
         setItem: () => {},
       },
       enumerateDevices: async () => options?.devices ?? [],
@@ -187,9 +183,7 @@ describe('voice message session', () => {
         phase: 'failed',
         failure: { reason: 'permission', retryable: false },
       })
-      expect(events.onerror).toHaveBeenCalledWith(
-        expect.objectContaining({ reason: 'permission' }),
-      )
+      expect(events.onerror).toHaveBeenCalledWith(expect.objectContaining({ reason: 'permission' }))
       expect(events.onstart).not.toHaveBeenCalled()
       expect(FakeMediaRecorder.instances).toHaveLength(0)
       expect(FakeAudioContext.instances[0]!.close).toHaveBeenCalled()
@@ -217,11 +211,19 @@ describe('voice message session', () => {
         remembered: { audioinput: 'mic-2' },
         devices: [{ kind: 'audioinput', deviceId: 'mic-2', label: 'USB Headset' }],
       })
-      getUserMedia.mockRejectedValueOnce(Object.assign(new Error('x'), { name: 'OverconstrainedError' }))
+      getUserMedia.mockRejectedValueOnce(
+        Object.assign(new Error('x'), { name: 'OverconstrainedError' }),
+      )
       await session.start()
       expect(getUserMedia).toHaveBeenCalledTimes(1)
-      expect(session.view().failure).toEqual({ reason: 'chosen-microphone', detail: 'USB Headset', retryable: false })
-      expect(events.onerror).toHaveBeenCalledWith(expect.objectContaining({ reason: 'chosen-microphone' }))
+      expect(session.view().failure).toEqual({
+        reason: 'chosen-microphone',
+        detail: 'USB Headset',
+        retryable: false,
+      })
+      expect(events.onerror).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'chosen-microphone' }),
+      )
       expect(FakeMediaRecorder.instances).toHaveLength(0)
     })
 
@@ -321,7 +323,10 @@ describe('voice message session', () => {
 
       expect(events.ontranscript).toHaveBeenCalledTimes(1)
       // the transcript comes with the recording itself: the very clip that was transcribed
-      expect(events.ontranscript).toHaveBeenCalledWith('hello world', { clip, durationMs: expect.any(Number) })
+      expect(events.ontranscript).toHaveBeenCalledWith('hello world', {
+        clip,
+        durationMs: expect.any(Number),
+      })
       expect(session.view().phase).toBe('idle')
       for (const track of stream.tracks) expect(track.stop).toHaveBeenCalled()
       expect(events.onstop).toHaveBeenCalledTimes(1)
@@ -351,7 +356,10 @@ describe('voice message session', () => {
       expect(recorder().state).toBe('inactive')
       finish('done')
       await sending
-      expect(events.ontranscript).toHaveBeenCalledWith('done', expect.objectContaining({ clip: expect.any(Blob) }))
+      expect(events.ontranscript).toHaveBeenCalledWith(
+        'done',
+        expect.objectContaining({ clip: expect.any(Blob) }),
+      )
     })
 
     it('hands over the recording with its length as recorded (WebM from a recorder carries none)', async () => {
@@ -371,7 +379,10 @@ describe('voice message session', () => {
       await session.start()
       recorder().emitChunk([1])
       await session.send()
-      expect(events.ontranscript).toHaveBeenCalledWith('spoken words', expect.objectContaining({ clip: expect.any(Blob) }))
+      expect(events.ontranscript).toHaveBeenCalledWith(
+        'spoken words',
+        expect.objectContaining({ clip: expect.any(Blob) }),
+      )
     })
 
     it('sends only once: a second send while transcribing or idle is ignored', async () => {
@@ -493,6 +504,7 @@ describe('voice message session', () => {
         status: 502,
         detail: 'Transcription failed',
         retryable: true,
+        agent: null,
       })
       expect(events.onerror).toHaveBeenCalledTimes(1)
       expect(events.ontranscript).not.toHaveBeenCalled()
@@ -505,7 +517,10 @@ describe('voice message session', () => {
       expect(transcribe.mock.calls[1]![0]).toBe(transcribe.mock.calls[0]![0])
       expect(FakeMediaRecorder.instances).toHaveLength(1)
       expect(events.ontranscript).toHaveBeenCalledTimes(1)
-      expect(events.ontranscript).toHaveBeenCalledWith('second try', { clip: transcribe.mock.calls[0]![0], durationMs: expect.any(Number) })
+      expect(events.ontranscript).toHaveBeenCalledWith('second try', {
+        clip: transcribe.mock.calls[0]![0],
+        durationMs: expect.any(Number),
+      })
       expect(session.view().phase).toBe('idle')
     })
 
@@ -619,7 +634,10 @@ describe('voice message session', () => {
       expect(transcribe).not.toHaveBeenCalled()
       await vi.advanceTimersByTimeAsync(1)
       expect(transcribe).toHaveBeenCalledTimes(1)
-      expect(events.ontranscript).toHaveBeenCalledWith('hello world', expect.objectContaining({ clip: expect.any(Blob) }))
+      expect(events.ontranscript).toHaveBeenCalledWith(
+        'hello world',
+        expect.objectContaining({ clip: expect.any(Blob) }),
+      )
     })
 
     it('a message sent by hand cancels the cap (no second send later)', async () => {
@@ -768,7 +786,10 @@ describe('silence never becomes text — Layer 1, the audio check before upload'
     const s = setup({ decodeClip: async () => decoded(frames(1000, 0.05)) })
     await recordAndSend(s)
     expect(s.transcribe).toHaveBeenCalledTimes(1)
-    expect(s.events.ontranscript).toHaveBeenCalledWith('hello world', expect.objectContaining({ clip: expect.any(Blob) }))
+    expect(s.events.ontranscript).toHaveBeenCalledWith(
+      'hello world',
+      expect.objectContaining({ clip: expect.any(Blob) }),
+    )
   })
 
   it('judges the finished clip itself: the decoder gets the assembled blob', async () => {
@@ -805,7 +826,10 @@ describe('silence never becomes text — Layer 1, the audio check before upload'
     await recordAndSend(s)
     expect(s.transcribe).toHaveBeenCalledTimes(1)
     expect(warn).toHaveBeenCalled()
-    expect(s.events.ontranscript).toHaveBeenCalledWith('hello world', expect.objectContaining({ clip: expect.any(Blob) }))
+    expect(s.events.ontranscript).toHaveBeenCalledWith(
+      'hello world',
+      expect.objectContaining({ clip: expect.any(Blob) }),
+    )
   })
 
   it('shows the transcribing state while the clip is being checked, and Cancel stops it', async () => {

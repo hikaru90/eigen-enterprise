@@ -1,4 +1,5 @@
 <script lang="ts" module>
+  import type { AgentReport } from '$lib/errors/agent-report'
   export type DeployStage = 'fetching' | 'building' | 'starting' | 'health' | 'live' | 'failed'
 
   /** What the deploy-progress route returns (modules/website/apps/deploy-jobs.ts). */
@@ -10,6 +11,8 @@
     stages: Array<{ stage: DeployStage; at: string }>
     failedStage: DeployStage | null
     error: string | null
+    /** The agent half of the failure (ErrorReport.agent). */
+    agent?: AgentReport | null
     deployId: string | null
     lines: string[]
   }
@@ -46,6 +49,8 @@
 </script>
 
 <script lang="ts">
+  import ErrorNotice from '$lib/components/error-notice.svelte'
+  import { shownErrorOf, type ShownError } from '$lib/errors/agent-report'
   /**
    * A deploy in progress (spinner, current stage, live log), and on failure
    * the plain cause, the log tail and "Ask AI what went wrong". Polling is
@@ -66,10 +71,10 @@
   let progress = $state<DeployProgressView | null>(initial)
   // svelte-ignore state_referenced_locally
   let appName = $state(name)
-  let pollError = $state<string | null>(null)
+  let pollError = $state<ShownError | null>(null)
   let diagnosing = $state(false)
   let diagnosis = $state<Diagnosis | null>(null)
-  let diagnoseError = $state<string | null>(null)
+  let diagnoseError = $state<ShownError | null>(null)
   let applying = $state(false)
   let loop = 0
 
@@ -100,7 +105,7 @@
         const body = (await res.json()) as DeployProgressView | { error: string }
         if (mine !== loop) return
         if ('error' in body && !('state' in body)) {
-          pollError = body.error
+          pollError = shownErrorOf(body)
           return
         }
         progress = body as DeployProgressView
@@ -110,8 +115,11 @@
         }
         if (progress.state === 'failed') return
       } catch {
-        pollError =
-          'Lost contact with this server while following the deploy. Reload the page to see where it is.'
+        pollError = {
+          error:
+            'Lost contact with this server while following the deploy. Reload the page to see where it is.',
+          agent: null,
+        }
         return
       }
       await sleep(POLL_MS)
@@ -130,7 +138,7 @@
       })
       const body = (await res.json()) as { jobId?: string; error?: string }
       if (!res.ok || !body.jobId) {
-        pollError = body.error ?? 'The deploy could not be started.'
+        pollError = shownErrorOf(body) ?? { error: 'The deploy could not be started.', agent: null }
         return
       }
       void follow(body.jobId, appName)
@@ -150,10 +158,10 @@
         body: JSON.stringify({ deployId }),
       })
       const body = (await res.json()) as Diagnosis | { error: string }
-      if ('error' in body) diagnoseError = body.error
+      if ('error' in body) diagnoseError = shownErrorOf(body)
       else diagnosis = body
     } catch {
-      diagnoseError = 'Lost contact with this server. Try again.'
+      diagnoseError = { error: 'Lost contact with this server. Try again.', agent: null }
     } finally {
       diagnosing = false
     }
@@ -209,10 +217,18 @@
     </ol>
 
     {#if progress.state === 'failed' && progress.error}
-      <p class="text-sm text-red-600" role="alert">{progress.error}</p>
+      <ErrorNotice
+        error={progress.error}
+        agent={progress.agent ?? null}
+        attempted={`Deploying the app ${progress.name}`}
+      />
     {/if}
     {#if pollError}
-      <p class="text-sm text-red-600" role="alert">{pollError}</p>
+      <ErrorNotice
+        error={pollError.error}
+        agent={pollError.agent}
+        attempted={`Following the deploy of ${appName}`}
+      />
     {/if}
 
     {#if progress.lines.length > 0}
@@ -239,7 +255,11 @@
           </button>
         </div>
         {#if diagnoseError}
-          <p class="text-sm text-red-600" role="alert">{diagnoseError}</p>
+          <ErrorNotice
+            error={diagnoseError.error}
+            agent={diagnoseError.agent}
+            attempted={`Asking the AI to diagnose the failed deploy of ${appName}`}
+          />
         {/if}
         {#if diagnosis}
           <div

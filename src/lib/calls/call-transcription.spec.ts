@@ -19,12 +19,32 @@ const callWith = (opts: { meOn?: boolean; benOn?: boolean; benIn?: boolean } = {
     state: 'active',
     answeredAt: '2026-11-11T09:00:05.000Z',
     participants: [
-      { userId: 'ben', name: 'Ben Example', guest: false, response: 'accepted', joinedAt: '2026-11-11T09:00:00.000Z', leftAt: null, inRoom: opts.benIn ?? true, transcribing: opts.benOn ?? true },
-      { userId: 'ann', name: 'Ann Example', guest: false, response: 'accepted', joinedAt: '2026-11-11T09:00:05.000Z', leftAt: null, inRoom: true, transcribing: opts.meOn ?? true },
+      {
+        userId: 'ben',
+        name: 'Ben Example',
+        guest: false,
+        response: 'accepted',
+        joinedAt: '2026-11-11T09:00:00.000Z',
+        leftAt: null,
+        inRoom: opts.benIn ?? true,
+        transcribing: opts.benOn ?? true,
+      },
+      {
+        userId: 'ann',
+        name: 'Ann Example',
+        guest: false,
+        response: 'accepted',
+        joinedAt: '2026-11-11T09:00:05.000Z',
+        leftAt: null,
+        inRoom: true,
+        transcribing: opts.meOn ?? true,
+      },
     ],
   })
 
-function setup(opts: { call?: CallDto; speech?: (clip: Blob) => boolean; transcribe?: () => Promise<null> } = {}) {
+function setup(
+  opts: { call?: CallDto; speech?: (clip: Blob) => boolean; transcribe?: () => Promise<null> } = {},
+) {
   const room = new FakeRoom()
   const call = opts.call ?? callWith()
   let t = 1_000_000
@@ -45,7 +65,11 @@ function setup(opts: { call?: CallDto; speech?: (clip: Blob) => boolean; transcr
   }
   const recorders: { track: MediaStreamTrack; stopped: boolean; clip: Blob }[] = []
   const record = (track: MediaStreamTrack): ChunkRecorder => {
-    const r = { track, stopped: false, clip: new Blob([`chunk-${recorders.length + 1}`], { type: 'audio/webm' }) }
+    const r = {
+      track,
+      stopped: false,
+      clip: new Blob([`chunk-${recorders.length + 1}`], { type: 'audio/webm' }),
+    }
     recorders.push(r)
     return {
       async stop() {
@@ -62,7 +86,9 @@ function setup(opts: { call?: CallDto; speech?: (clip: Blob) => boolean; transcr
     transcribe: vi.fn(opts.transcribe ?? (async () => null)),
     setTranscription: vi.fn(async (_id: string, on: boolean) => ({
       ...call,
-      participants: call.participants.map((p) => (p.userId === 'ann' ? { ...p, transcribing: on } : p)),
+      participants: call.participants.map((p) =>
+        p.userId === 'ann' ? { ...p, transcribing: on } : p,
+      ),
     })),
   }
   const active = new ActiveCall({ client, createRoom: async () => room, env: () => fakeEnv() })
@@ -96,7 +122,8 @@ async function inCall(s: ReturnType<typeof setup>) {
   await flush()
 }
 
-const sentText = async (s: ReturnType<typeof setup>) => Promise.all(s.client.transcribe.mock.calls.map(async ([, clip, ms]) => [await clip.text(), ms]))
+const sentText = async (s: ReturnType<typeof setup>) =>
+  Promise.all(s.client.transcribe.mock.calls.map(async ([, clip, ms]) => [await clip.text(), ms]))
 
 describe('CallTranscription', () => {
   it('records my microphone once I am in with the mic on; every 30 s one chunk goes up with its length', async () => {
@@ -178,13 +205,20 @@ describe('CallTranscription', () => {
   it('no speech to text on this server: says so once and stops recording (the call goes on)', async () => {
     const s = setup({
       transcribe: async () => {
-        throw new CallRequestError({ kind: 'unavailable', message: 'The owner sets up an OpenRouter key for speech' })
+        throw new CallRequestError({
+          kind: 'unavailable',
+          message: 'The owner sets up an OpenRouter key for speech',
+          agent: null,
+        })
       },
     })
     await inCall(s)
     await s.clock.tick(CHUNK)
     await vi.waitFor(() => expect(s.transcription.unavailable).toBe(true))
-    expect(s.transcription.problem).toBe('The owner sets up an OpenRouter key for speech')
+    expect(s.transcription.problem).toEqual({
+      error: 'The owner sets up an OpenRouter key for speech',
+      agent: null,
+    })
     expect(s.transcription.recording).toBe(false)
     const made = s.recorders.length
     await s.clock.tick(CHUNK)
@@ -195,12 +229,18 @@ describe('CallTranscription', () => {
   it('a chunk that failed to upload is reported; recording goes on', async () => {
     const s = setup({
       transcribe: async () => {
-        throw new CallRequestError({ kind: 'failed', message: 'speech to text failed: 502' })
+        throw new CallRequestError({
+          kind: 'failed',
+          message: 'speech to text failed: 502',
+          agent: null,
+        })
       },
     })
     await inCall(s)
     await s.clock.tick(CHUNK)
-    await vi.waitFor(() => expect(s.transcription.problem).toMatch(/speech to text failed: 502/))
+    await vi.waitFor(() =>
+      expect(s.transcription.problem?.error).toMatch(/speech to text failed: 502/),
+    )
     expect(s.transcription.recording).toBe(true)
     s.transcription.dismissProblem()
     expect(s.transcription.problem).toBeNull()

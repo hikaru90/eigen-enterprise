@@ -7,6 +7,22 @@ vi.mock('$app/paths', () => ({ base: '', resolve: (path: string) => path }))
 import ErrorPanel from './error-panel.svelte'
 
 describe('error-panel.svelte', () => {
+  it('an unexpected error offers "Copy agent instructions" with the server report', async () => {
+    const writeText = vi.fn(async () => {})
+    vi.spyOn(navigator, 'clipboard', 'get').mockReturnValue({ writeText } as unknown as Clipboard)
+    render(ErrorPanel, {
+      status: 500,
+      message: 'Something went wrong.',
+      signedIn: true,
+      agent: { attempted: 'GET /drive (route /(nucleus)/drive)', cause: 'boom', nextSteps: ['Read the journal.'] },
+    })
+    await page.getByRole('button', { name: 'Copy agent instructions' }).click()
+    const text = writeText.mock.calls[0]![0] as string
+    expect(text).toContain('Attempted: GET /drive (route /(nucleus)/drive)')
+    expect(text).toContain('Cause: boom')
+    vi.restoreAllMocks()
+  })
+
   it('a 403 is a human "no access" page with the way back — never "Something went wrong / Forbidden"', async () => {
     render(ErrorPanel, { status: 403, message: 'Forbidden', signedIn: true })
     await expect.element(page.getByRole('heading', { level: 1 })).toHaveTextContent("You don't have access to this page")

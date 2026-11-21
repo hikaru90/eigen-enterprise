@@ -1,5 +1,6 @@
 import type { RequestHandler } from './$types'
 import { error, json } from '@sveltejs/kit'
+import { errorReport, refusalReport } from '$lib/server/errors/report'
 import { onCompanyProvider } from '$lib/server/llm/company-provider'
 import { isLlmNotConfiguredError } from '$lib/server/llm/errors'
 import { llmChatCompletion } from '$lib/server/llm/llm-client'
@@ -10,6 +11,8 @@ import { loadTranscriptionPrompt } from '$lib/server/llm/stt-vocabulary'
 import { loadWritingSamples } from '$lib/server/llm/stt-writing-samples'
 import { readAudioUpload } from '../../capture/audio-upload'
 import { TRANSCRIBE_FAILED_MESSAGE } from './messages'
+
+const ATTEMPTED = 'Transcribing a voice message (POST /api/voice/transcribe)'
 
 /**
  * Transcribes one voice message (ported from eigen's voice messages): the whole clip
@@ -31,11 +34,20 @@ import { TRANSCRIBE_FAILED_MESSAGE } from './messages'
  */
 export const POST: RequestHandler = async (event) => {
   const user = event.locals.user
-  if (!user) error(401, 'Unauthorized')
+  if (!user) {
+    const r = refusalReport('Unauthorized', { attempted: ATTEMPTED })
+    error(401, { message: r.error, agent: r.agent })
+  }
 
   const audio = await readAudioUpload(event.request, STT_CLIP_MAX_AUDIO_BYTES, sttFormatFromMime)
   const format = sttFormatFromMime(audio.mimeType)
-  if (!format) error(400, `unsupported audio type: ${audio.mimeType || 'unknown'}`)
+  if (!format) {
+    const r = refusalReport(`unsupported audio type: ${audio.mimeType || 'unknown'}`, {
+      attempted: ATTEMPTED,
+      input: { mimeType: audio.mimeType },
+    })
+    error(400, { message: r.error, agent: r.agent })
+  }
 
   try {
     const transcript = await onCompanyProvider(async () => {
@@ -58,8 +70,19 @@ export const POST: RequestHandler = async (event) => {
     return json({ transcript })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown error'
-    if (isLlmNotConfiguredError(err)) return json({ error: message }, { status: 503 })
+    if (isLlmNotConfiguredError(err)) {
+      return json(errorReport(err, { attempted: ATTEMPTED, plain: () => message }), { status: 503 })
+    }
     console.error('voice transcribe failed', { userId: user.id, message })
-    return json({ error: TRANSCRIBE_FAILED_MESSAGE }, { status: 502 })
+    // The provider's cause stays in the log (above), not on the wire: the report points there.
+    return json(
+      refusalReport(TRANSCRIBE_FAILED_MESSAGE, {
+        attempted: ATTEMPTED,
+        nextSteps: [
+          'The speech-to-text provider failed after the gateway’s retries: the cause is in the server journal ("voice transcribe failed").',
+        ],
+      }),
+      { status: 502 },
+    )
   }
 }

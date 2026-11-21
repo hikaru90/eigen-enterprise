@@ -5,6 +5,7 @@
   import LockIcon from '@lucide/svelte/icons/lock'
   import { onMount, untrack, type Snippet } from 'svelte'
   import { beforeNavigate, goto } from '$app/navigation'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Textarea } from '$lib/components/ui/textarea'
   import {
@@ -15,6 +16,8 @@
     type Revision,
   } from '$lib/drive/api'
   import { createAutosave, LockLostError, type AutosaveState } from '$lib/drive/autosave'
+  import { driveShownError } from '$lib/drive/shown-error'
+  import type { ShownError } from '$lib/errors/agent-report'
   import CsvEditor from './csv-editor.svelte'
   import MarkdownEditor from './markdown-editor.svelte'
   import RevisionsPanel from './revisions-panel.svelte'
@@ -73,7 +76,7 @@
   let mode = $state<Mode>({ kind: 'opening' })
   let save = $state<AutosaveState>({ status: 'saved', error: null, savedAt: null })
   let revs = $state<Revision[]>([])
-  let lockError = $state<string | null>(null)
+  let lockError = $state<ShownError | null>(null)
   let editor = $state<{
     load(text: string): void
     setEditable(next: boolean): void
@@ -204,7 +207,7 @@
         editor?.setEditable(true)
       }
     } catch (err) {
-      lockError = err instanceof Error ? err.message : String(err)
+      lockError = driveShownError(err)
     }
   }
 
@@ -246,7 +249,7 @@
       } else mode = was
     } catch (err) {
       mode = was
-      lockError = err instanceof Error ? err.message : String(err)
+      lockError = driveShownError(err)
     }
   }
 
@@ -303,7 +306,7 @@
         }
       }
     } catch (err) {
-      lockError = err instanceof Error ? err.message : String(err)
+      lockError = driveShownError(err)
     }
   }
 
@@ -334,7 +337,7 @@
     try {
       revs = (await driveApi.revisions(fileId)).revisions
     } catch (err) {
-      lockError = err instanceof Error ? err.message : String(err)
+      lockError = driveShownError(err)
     }
   }
 
@@ -377,161 +380,163 @@
 </script>
 
 <div class="grid min-h-0 flex-1 gap-6 {sideShown ? 'lg:grid-cols-[minmax(0,1fr)_20rem]' : ''}">
-<div class="flex min-w-0 flex-col gap-4">
-  {#if mode.kind === 'watching'}
-    <div
-      class="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 px-4 py-3 text-sm"
-      role="status"
-      data-testid="drive-lock-banner"
-    >
-      <LockIcon class="size-4 text-muted-foreground" />
-      <span class="flex-1"
-        ><strong data-testid="drive-lock-holder">{mode.holder.name}</strong> is editing. You see their
-        last saved version, read-only.</span
+  <div class="flex min-w-0 flex-col gap-4">
+    {#if mode.kind === 'watching'}
+      <div
+        class="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 px-4 py-3 text-sm"
+        role="status"
+        data-testid="drive-lock-banner"
       >
-      <Button
-        size="sm"
-        variant="outline"
-        onclick={() => startEditing(true)}
-        data-testid="drive-takeover">Take over</Button
-      >
-    </div>
-  {:else if mode.kind === 'lost'}
-    <div
-      class="flex flex-col gap-3 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm"
-      role="alert"
-      data-testid="drive-lost-banner"
-    >
-      <div class="flex flex-wrap items-center gap-3">
-        <CircleAlertIcon class="size-4 text-destructive" />
+        <LockIcon class="size-4 text-muted-foreground" />
         <span class="flex-1"
-          ><strong>{mode.holder?.name ?? 'Someone'}</strong> took over editing. This copy is read-only
-          now.</span
+          ><strong data-testid="drive-lock-holder">{mode.holder.name}</strong> is editing. You see their
+          last saved version, read-only.</span
         >
         <Button
           size="sm"
           variant="outline"
           onclick={() => startEditing(true)}
-          data-testid="drive-takeover">Take it back</Button
+          data-testid="drive-takeover">Take over</Button
         >
       </div>
-      {#if mode.draft}
-        <p>
-          Your last changes were not saved. They are kept here (and in this browser) so you can copy
-          them:
-        </p>
-        <Textarea
-          class="h-32 font-mono text-xs"
-          readonly
-          value={mode.draft}
-          data-testid="drive-lost-draft"
-        />
-        <div>
+    {:else if mode.kind === 'lost'}
+      <div
+        class="flex flex-col gap-3 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm"
+        role="alert"
+        data-testid="drive-lost-banner"
+      >
+        <div class="flex flex-wrap items-center gap-3">
+          <CircleAlertIcon class="size-4 text-destructive" />
+          <span class="flex-1"
+            ><strong>{mode.holder?.name ?? 'Someone'}</strong> took over editing. This copy is read-only
+            now.</span
+          >
           <Button
             size="sm"
             variant="outline"
-            onclick={() => copyDraft(mode.kind === 'lost' ? mode.draft : '')}
-            >Copy my changes</Button
+            onclick={() => startEditing(true)}
+            data-testid="drive-takeover">Take it back</Button
           >
         </div>
-      {/if}
-    </div>
-  {/if}
-  {#if lockError}<p class="text-sm text-destructive" role="alert" data-testid="drive-lock-error">
-      {lockError}
-    </p>{/if}
-
-  <div
-    class="flex min-h-[60vh] flex-1 flex-col overflow-hidden rounded-lg border bg-card"
-    data-testid="drive-preview"
-    data-kind={kind}
-  >
-    <div
-      class="flex items-center gap-2 border-b bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground"
-      data-testid="drive-editor-status-bar"
-    >
-      <span class="flex-1" data-testid="drive-editor-mode" data-mode={mode.kind}
-        >{mode.kind === 'editing'
-          ? 'Editing'
-          : mode.kind === 'opening'
-            ? 'Opening…'
-            : mode.kind === 'starting'
-              ? 'Starting to edit…'
-              : mode.kind === 'reading'
-                ? 'Viewing — start typing to edit'
-                : 'Read-only'}</span
-      >
-      {#if mode.kind === 'reading'}
-        <Button
-          size="sm"
-          variant="outline"
-          class="h-6 px-2 text-xs"
-          onclick={() => startEditing(false)}
-          data-testid="drive-start-editing">Edit</Button
-        >
-      {:else if mode.kind === 'editing'}
-        <Button
-          size="sm"
-          variant="ghost"
-          class="h-6 px-2 text-xs"
-          onclick={() => stopEditing()}
-          data-testid="drive-stop-editing">Done</Button
-        >
-      {/if}
-      {#if mode.kind === 'editing' || mode.kind === 'lost'}
-        <span
-          class="flex items-center gap-1.5"
-          data-testid="drive-save-state"
-          data-status={save.status}
-          aria-live="polite"
-        >
-          {#if save.status === 'saving'}
-            <LoaderIcon class="size-3.5 animate-spin" /> Saving…
-          {:else if save.status === 'dirty'}
-            Unsaved changes
-          {:else if save.status === 'error'}
-            <CircleAlertIcon class="size-3.5 text-destructive" /><span
-              class="text-destructive"
-              title={save.error ?? ''}>Couldn’t save</span
-            >
+        {#if mode.draft}
+          <p>
+            Your last changes were not saved. They are kept here (and in this browser) so you can
+            copy them:
+          </p>
+          <Textarea
+            class="h-32 font-mono text-xs"
+            readonly
+            value={mode.draft}
+            data-testid="drive-lost-draft"
+          />
+          <div>
             <Button
               size="sm"
               variant="outline"
-              class="h-6 px-2 text-xs"
-              onclick={() => autosave.retry()}
-              data-testid="drive-save-retry">Retry</Button
+              onclick={() => copyDraft(mode.kind === 'lost' ? mode.draft : '')}
+              >Copy my changes</Button
             >
-          {:else if save.status === 'lost'}
-            Not saved — taken over
-          {:else}
-            <CheckIcon class="size-3.5" /> Saved{save.savedAt ? ` ${fmtTime(save.savedAt)}` : ''}
-          {/if}
-        </span>
+          </div>
+        {/if}
+      </div>
+    {/if}
+    {#if lockError}<ErrorNotice
+        testid="drive-lock-error"
+        error={lockError.error}
+        agent={lockError.agent}
+        attempted="Taking, keeping or releasing the edit lock on this document"
+      />{/if}
+
+    <div
+      class="flex min-h-[60vh] flex-1 flex-col overflow-hidden rounded-lg border bg-card"
+      data-testid="drive-preview"
+      data-kind={kind}
+    >
+      <div
+        class="flex items-center gap-2 border-b bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground"
+        data-testid="drive-editor-status-bar"
+      >
+        <span class="flex-1" data-testid="drive-editor-mode" data-mode={mode.kind}
+          >{mode.kind === 'editing'
+            ? 'Editing'
+            : mode.kind === 'opening'
+              ? 'Opening…'
+              : mode.kind === 'starting'
+                ? 'Starting to edit…'
+                : mode.kind === 'reading'
+                  ? 'Viewing — start typing to edit'
+                  : 'Read-only'}</span
+        >
+        {#if mode.kind === 'reading'}
+          <Button
+            size="sm"
+            variant="outline"
+            class="h-6 px-2 text-xs"
+            onclick={() => startEditing(false)}
+            data-testid="drive-start-editing">Edit</Button
+          >
+        {:else if mode.kind === 'editing'}
+          <Button
+            size="sm"
+            variant="ghost"
+            class="h-6 px-2 text-xs"
+            onclick={() => stopEditing()}
+            data-testid="drive-stop-editing">Done</Button
+          >
+        {/if}
+        {#if mode.kind === 'editing' || mode.kind === 'lost'}
+          <span
+            class="flex items-center gap-1.5"
+            data-testid="drive-save-state"
+            data-status={save.status}
+            aria-live="polite"
+          >
+            {#if save.status === 'saving'}
+              <LoaderIcon class="size-3.5 animate-spin" /> Saving…
+            {:else if save.status === 'dirty'}
+              Unsaved changes
+            {:else if save.status === 'error'}
+              <CircleAlertIcon class="size-3.5 text-destructive" /><span
+                class="text-destructive"
+                title={save.error ?? ''}>Couldn’t save</span
+              >
+              <Button
+                size="sm"
+                variant="outline"
+                class="h-6 px-2 text-xs"
+                onclick={() => autosave.retry()}
+                data-testid="drive-save-retry">Retry</Button
+              >
+            {:else if save.status === 'lost'}
+              Not saved — taken over
+            {:else}
+              <CheckIcon class="size-3.5" /> Saved{save.savedAt ? ` ${fmtTime(save.savedAt)}` : ''}
+            {/if}
+          </span>
+        {/if}
+      </div>
+      {#if kind === 'markdown'}
+        <MarkdownEditor bind:this={editor} {content} editable={false} {onchange} />
+      {:else}
+        <CsvEditor bind:this={editor} {content} editable={false} {onchange} />
       {/if}
     </div>
-    {#if kind === 'markdown'}
-      <MarkdownEditor bind:this={editor} {content} editable={false} {onchange} />
-    {:else}
-      <CsvEditor bind:this={editor} {content} editable={false} {onchange} />
-    {/if}
   </div>
-
-</div>
-<aside
-  id="drive-file-side"
-  class="flex min-w-0 flex-col gap-6"
-  hidden={!sideShown}
-  aria-label="Details"
-  data-testid="drive-file-side"
->
-  {@render side?.()}
-  <RevisionsPanel
-    {fileId}
-    {kind}
-    revisions={revs}
-    {authors}
-    canRestore={mode.kind === 'editing' || mode.kind === 'reading'}
-    onrestore={restore}
-  />
-</aside>
+  <aside
+    id="drive-file-side"
+    class="flex min-w-0 flex-col gap-6"
+    hidden={!sideShown}
+    aria-label="Details"
+    data-testid="drive-file-side"
+  >
+    {@render side?.()}
+    <RevisionsPanel
+      {fileId}
+      {kind}
+      revisions={revs}
+      {authors}
+      canRestore={mode.kind === 'editing' || mode.kind === 'reading'}
+      onrestore={restore}
+    />
+  </aside>
 </div>

@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types'
-import { guestRoute } from '../../../../../../../modules/calls/http'
+import { guestRoute } from '../../../calls-route'
 import { readTranscriptChunk } from '../../../transcript-chunk'
 
 /** Overridable in tests. */
@@ -13,5 +13,7 @@ export const _deps = {
  */
 export const POST: RequestHandler = async ({ params, request }) => {
   const chunk = await readTranscriptChunk(request)
-  return guestRoute(_deps.service, (s) => s.guestTranscribeChunk(params.token, chunk))
+  return guestRoute("Transcribing a chunk of a guest's microphone", _deps.service, (s) =>
+    s.guestTranscribeChunk(params.token, chunk),
+  )
 }
