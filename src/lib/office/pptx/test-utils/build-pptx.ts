@@ -42,6 +42,8 @@ export type DeckSpec = {
   parts?: Record<string, { bytes: Uint8Array; type: string }>
   tableStyles?: string
   defaultTextStyle?: string
+  /** Extra relationships of presentation.xml (comment authors …). */
+  presRels?: RelSpec[]
 }
 
 export const xfrm = (x: number, y: number, cx: number, cy: number, extra = '') =>
@@ -177,6 +179,7 @@ export function buildPptx(spec: DeckSpec): Uint8Array {
   spec.slides.forEach((_, i) => presRels.push({ id: `rId${i + 10}`, type: 'slide', target: `slides/slide${i + 1}.xml` }))
   presRels.push({ id: 'rId2', type: 'theme', target: 'theme/theme1.xml' })
   if (spec.tableStyles) presRels.push({ id: 'rId3', type: 'tableStyles', target: 'tableStyles.xml' })
+  presRels.push(...(spec.presRels ?? []))
 
   put(
     'ppt/presentation.xml',

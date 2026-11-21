@@ -15,7 +15,7 @@ async function readPlaywrightConfig(env: Record<string, string>) {
     const result = await loadConfigFromFile({ command: 'serve', mode: 'development' }, 'playwright.config.ts');
     const c = result.config;
     console.log(JSON.stringify({
-      webServer: (c.webServer ?? []).map((s) => ({ command: s.command, url: s.url, reuseExistingServer: s.reuseExistingServer, env: s.env && { ORIGIN: s.env.ORIGIN, LIVEKIT_CONFIG: s.env.LIVEKIT_CONFIG, LIVEKIT_URL: s.env.LIVEKIT_URL, LIVEKIT_API_URL: s.env.LIVEKIT_API_URL, LIVEKIT_API_KEY: s.env.LIVEKIT_API_KEY, LIVEKIT_API_SECRET: s.env.LIVEKIT_API_SECRET, CONTRIBUTE_HUB_URL: s.env.CONTRIBUTE_HUB_URL } })),
+      webServer: (c.webServer ?? []).map((s) => ({ command: s.command, url: s.url, reuseExistingServer: s.reuseExistingServer, env: s.env && { ORIGIN: s.env.ORIGIN, LIVEKIT_CONFIG: s.env.LIVEKIT_CONFIG, LIVEKIT_URL: s.env.LIVEKIT_URL, LIVEKIT_API_URL: s.env.LIVEKIT_API_URL, LIVEKIT_API_KEY: s.env.LIVEKIT_API_KEY, LIVEKIT_API_SECRET: s.env.LIVEKIT_API_SECRET, CONTRIBUTE_HUB_URL: s.env.CONTRIBUTE_HUB_URL, GITHUB_TOKEN_API_BASE_URL: s.env.GITHUB_TOKEN_API_BASE_URL, GITHUB_CODELOAD_BASE_URL: s.env.GITHUB_CODELOAD_BASE_URL } })),
       baseUrl: c.use?.baseURL,
     }));
   `
@@ -28,7 +28,7 @@ async function readPlaywrightConfig(env: Record<string, string>) {
 }
 
 // No dev server (owner decision 2026-10-23): the ee box is the only install.
-// Browser e2e runs its own throwaway harness (Vite + mock gateway + mock Contribute hub + livekit-server), started and
+// Browser e2e runs its own throwaway harness (Vite + mock gateway + mock Contribute hub + mock GitHub + livekit-server), started and
 // stopped by Playwright — never an already-running server.
 describe('no dev server', () => {
   it('has no `npm run dev` script', async () => {
@@ -39,7 +39,7 @@ describe('no dev server', () => {
   for (const ci of ['', '1']) {
     it(`e2e starts its own harness and never reuses a running server (CI=${ci || 'unset'})`, async () => {
       const config = await readPlaywrightConfig({ CI: ci })
-      expect(config.webServer.length).toBe(4)
+      expect(config.webServer.length).toBe(5)
       for (const server of config.webServer) expect(server.reuseExistingServer).toBe(false)
       const app = config.webServer.find((s) => s.command.includes('vite'))
       expect(app?.command).toContain('--strictPort')
@@ -64,6 +64,12 @@ describe('no dev server', () => {
       const hub = config.webServer.find((s) => s.command.includes('scripts/mock-hub.ts'))
       expect(hub?.url).toBe(`${app?.env?.CONTRIBUTE_HUB_URL}/__mock-hub/requests`)
       expect(app?.env?.CONTRIBUTE_HUB_URL).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+      // GitHub repos: the app reads the throwaway mock GitHub (API and codeload on their own loopback origins), never github.com.
+      const github = config.webServer.find((s) => s.command.includes('scripts/mock-github.ts'))
+      expect(github?.url).toBe(`${app?.env?.GITHUB_TOKEN_API_BASE_URL}/__mock-github/health`)
+      expect(app?.env?.GITHUB_TOKEN_API_BASE_URL).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+      expect(app?.env?.GITHUB_CODELOAD_BASE_URL).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+      expect(app?.env?.GITHUB_CODELOAD_BASE_URL).not.toBe(app?.env?.GITHUB_TOKEN_API_BASE_URL)
     }, 30_000)
   }
 })

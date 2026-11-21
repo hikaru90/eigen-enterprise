@@ -1,5 +1,6 @@
 import { OpcError, readPackage, REL_OFFICE_DOCUMENT, type OpcPackage, type Relationship } from '../ooxml/package'
 import { colorIn, type ColorSpec } from './color'
+import { legacyCommentPart, modernCommentPart, readAuthors, readSlideComments, type CommentAuthors, type SlideComments } from './comments'
 import { readAvLst, readCustGeom, type GeomDef } from './geometry'
 import { a, attr, boolAttr, children, intAttr, kids, NS, NS_STRICT_P, p, path, pctAttr, REL_TYPE, relAttr } from './xml'
 
@@ -258,6 +259,8 @@ export type Slide = {
   hidden: boolean
   /** The speaker notes (the notes slide's body placeholder), or null. */
   notes: TextBody | null
+  /** The slide's comments (./comments.ts). */
+  comments: SlideComments
 }
 
 export type Deck = {
@@ -268,6 +271,8 @@ export type Deck = {
   themes: Record<string, Theme>
   defaultTextStyle: ListStyle
   tableStyles: Record<string, TableStyle>
+  /** The comment author lists could not be read: why (comments are then not shown). */
+  commentsError: string | null
 }
 
 /** The file is not a PowerPoint deck this reader can open: the message says why. */
@@ -977,6 +982,14 @@ export function readDeck(pkg: OpcPackage): Deck {
     if (rel?.part && pkg.has(rel.part)) master(rel.part)
   }
 
+  let authors: CommentAuthors = { modern: {}, legacy: {} }
+  let commentsError: string | null = null
+  try {
+    authors = readAuthors(pkg, presPart)
+  } catch (err) {
+    commentsError = `The comment authors could not be read, so comments are not shown: ${err instanceof Error ? err.message : String(err)}`
+  }
+
   const slides: Slide[] = []
   for (const id of children(p(pres, 'sldIdLst'), NS.p, 'sldId')) {
     const rId = relAttr(id, 'id') ?? ''
@@ -1009,6 +1022,7 @@ export function readDeck(pkg: OpcPackage): Deck {
           showMasterSp: boolAttr(root, 'showMasterSp') ?? true,
           hidden: boolAttr(root, 'show') === false,
           notes,
+          comments: !commentsError ? readSlideComments(pkg, part, authors) : { threads: [], legacyIgnored: 0, error: modernCommentPart(pkg, part) || legacyCommentPart(pkg, part) ? commentsError : null },
         },
         part,
         root,
@@ -1026,6 +1040,7 @@ export function readDeck(pkg: OpcPackage): Deck {
       themes,
       defaultTextStyle: parseListStyle(pctx, p(pres, 'defaultTextStyle')),
       tableStyles: tsPart ? parseTableStyles(pkg, tsPart) : {},
+      commentsError,
     },
     presPart,
     pres,
