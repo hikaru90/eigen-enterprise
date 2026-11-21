@@ -297,9 +297,9 @@ describe('PDF Organise mode', () => {
       const doc = await PDFDocument.load(new Uint8Array(await f.arrayBuffer()))
       expect(doc.getPageCount()).toBe(f === files[0] ? 2 : 1)
     }
-    expect(
-      page.getByRole('link', { name: 'Open the folder' }).element().getAttribute('href'),
-    ).toBe('/drive/folder/folder-1')
+    expect(page.getByRole('link', { name: 'Open the folder' }).element().getAttribute('href')).toBe(
+      '/drive/folder/folder-1',
+    )
     // Splitting changes nothing in this file.
     expect(api.writeBytes).not.toHaveBeenCalled()
   })

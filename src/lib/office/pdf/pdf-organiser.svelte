@@ -663,7 +663,7 @@
             : busy === 'inserting'
               ? 'Adding pages…'
               : statusLine}</span
-      >
+    >
     <div class="ml-auto flex items-center gap-1">
       <Button variant="outline" size="sm" onclick={discard} data-testid="pdf-org-discard"
         >{dirty ? 'Discard' : 'Done'}</Button

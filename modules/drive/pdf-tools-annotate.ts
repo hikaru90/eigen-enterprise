@@ -327,7 +327,7 @@ function toEdits(
         shape,
         color: lib.hexRgb(a.color),
         opacity: a.opacity ?? 1,
-        contents: a.text ?? '',
+        contents: ('text' in a ? a.text : undefined) ?? '',
       },
     }
   })
