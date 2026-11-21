@@ -178,6 +178,71 @@ function writeOutline(
   return { first: refs[0]!, last: refs[refs.length - 1]!, total }
 }
 
+/**
+ * A one-page form with every kind of field: name (text, required, at most
+ * 20 characters), notes (multi-line), agree (checkbox), size (radio S/M/L),
+ * country (dropdown), toppings (multi-select list), locked (read-only text)
+ * and sign (an empty signature field). `xfa`: the AcroForm also carries an
+ * XFA packet; `xfaOnly`: only XFA, no AcroForm fields.
+ */
+export async function makeFormPdf(
+  opts: { xfa?: boolean; xfaOnly?: boolean } = {},
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.create()
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  const page = doc.addPage([612, 792])
+  page.drawText('Order form', { x: MARGIN, y: 720, size: 18, font })
+  const form = doc.getForm()
+  const xfa = () =>
+    form.acroForm.dict.set(
+      PDFName.of('XFA'),
+      doc.context.register(doc.context.stream('<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/"/>')),
+    )
+  if (opts.xfaOnly) {
+    xfa()
+    return doc.save({ useObjectStreams: false, updateFieldAppearances: false })
+  }
+  const name = form.createTextField('name')
+  name.setMaxLength(20)
+  name.enableRequired()
+  name.addToPage(page, { x: MARGIN, y: 660, width: 200, height: 20, font })
+  const notes = form.createTextField('notes')
+  notes.enableMultiline()
+  notes.addToPage(page, { x: MARGIN, y: 560, width: 300, height: 80, font })
+  form.createCheckBox('agree').addToPage(page, { x: MARGIN, y: 520, width: 14, height: 14 })
+  const size = form.createRadioGroup('size')
+  for (const [i, o] of ['S', 'M', 'L'].entries())
+    size.addOptionToPage(o, page, { x: MARGIN + i * 40, y: 480, width: 14, height: 14 })
+  const country = form.createDropdown('country')
+  country.addOptions(['Austria', 'Germany', 'Switzerland'])
+  country.addToPage(page, { x: MARGIN, y: 440, width: 150, height: 20, font })
+  const toppings = form.createOptionList('toppings')
+  toppings.addOptions(['Cheese', 'Ham', 'Olives'])
+  toppings.enableMultiselect()
+  toppings.addToPage(page, { x: MARGIN, y: 360, width: 150, height: 60, font })
+  const locked = form.createTextField('locked')
+  locked.setText('Fixed')
+  locked.enableReadOnly()
+  locked.addToPage(page, { x: MARGIN, y: 320, width: 150, height: 20, font })
+  // A signature field: pdf-lib can't make one, so its dictionary is written by hand (§12.7.5.5).
+  const sig = doc.context.register(
+    doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Widget',
+      FT: 'Sig',
+      T: PDFString.of('sign'),
+      Rect: [MARGIN, 260, MARGIN + 200, 300],
+      F: 4,
+      P: page.ref,
+    } as never),
+  )
+  page.node.addAnnot(sig)
+  form.acroForm.addField(sig)
+  if (opts.xfa) xfa()
+  // Not updateFieldAppearances: pdf-lib would drop the XFA packet while doing it.
+  return doc.save({ useObjectStreams: false, updateFieldAppearances: false })
+}
+
 /** Bytes that start like a PDF and then aren't one. */
 export function brokenPdf(): Uint8Array {
   return new TextEncoder().encode(

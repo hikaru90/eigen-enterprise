@@ -1,8 +1,10 @@
 <script lang="ts" module>
+  import type PdfEditor from './pdf-editor.svelte'
   import type PdfOrganiser from './pdf-organiser.svelte'
   import type { ComponentProps } from 'svelte'
 
   type OrganiserProps = ComponentProps<typeof PdfOrganiser>
+  type EditorProps = ComponentProps<typeof PdfEditor>
 </script>
 
 <script lang="ts">
@@ -18,6 +20,7 @@
   import MoonIcon from '@lucide/svelte/icons/moon'
   import MoveHorizontalIcon from '@lucide/svelte/icons/move-horizontal'
   import PanelLeftIcon from '@lucide/svelte/icons/panel-left'
+  import PencilLineIcon from '@lucide/svelte/icons/pencil-line'
   import SearchIcon from '@lucide/svelte/icons/search'
   import XIcon from '@lucide/svelte/icons/x'
   import ZoomInIcon from '@lucide/svelte/icons/zoom-in'
@@ -64,9 +67,12 @@
    * ⌘/Ctrl+wheel, pinch) that keeps the reading position; find as you type;
    * selectable text. With edit access, "Organise pages" (P2,
    * ./pdf-organiser.svelte) rotates, deletes, reorders, inserts, extracts and
-   * splits pages and saves them as a new revision.
+   * splits pages and saves them as a new revision. "Annotate & fill" (P3,
+   * ./pdf-editor.svelte) adds notes, markups, drawings and shapes, fills the
+   * form and sets the properties, saved as one new revision.
    */
-  let { fileId, name, canEdit, heartbeatMs, onsaved, folderId }: OfficeViewerProps = $props()
+  let { fileId, name, canEdit, heartbeatMs, onsaved, folderId, author }: OfficeViewerProps =
+    $props()
 
   type OutlineNode = {
     title: string
@@ -105,8 +111,11 @@
   let organiser = $state.raw<Component<OrganiserProps> | null>(null)
   let organising = $state(false)
   let organiseError = $state<string | null>(null)
-  /** After a save: what the new revision could not keep. */
-  let savedNotice = $state.raw<{ warnings: string[] } | null>(null)
+  /** Annotate & fill: the editor replaces the reading view (loaded on first use). */
+  let editor = $state.raw<Component<EditorProps> | null>(null)
+  let editing = $state<'annotate' | 'form' | null>(null)
+  /** After a save: what the new revision could not keep (or should know). */
+  let savedNotice = $state.raw<{ text: string; warnings: string[] } | null>(null)
   let needsPassword = $state(false)
 
   const count = $derived(sizes.length)
@@ -130,6 +139,8 @@
         : `${selectedIndex + 1} of ${matches.length}${searching ? '…' : ''}`,
   )
   const zoomLabel = $derived(`${Math.round(zoom * 100)}%`)
+  /** Organise or Annotate & fill covers the reading view. */
+  const hidden = $derived(organising || editing !== null)
 
   let root: HTMLDivElement
   let scroller: HTMLDivElement
@@ -138,7 +149,7 @@
   let passwordInput: HTMLInputElement | null = $state(null)
 
   // The open document and what is on screen: plain fields, not view state.
-  let lib: PdfJs | null = null
+  let lib = $state.raw<PdfJs | null>(null)
   let task: PdfLoadingTask | null = null
   let doc: PdfDocument | null = null
   let pages = $state.raw<PdfPage[]>([])
@@ -264,9 +275,40 @@
     }
   }
 
+  async function startEditing() {
+    organiseError = null
+    savedNotice = null
+    try {
+      editor ??= (await import('./pdf-editor.svelte')).default
+      editing = 'annotate'
+    } catch (err) {
+      organiseError = `Annotate could not be opened: ${err instanceof Error ? err.message : String(err)}`
+    }
+  }
+
+  function onEdited(file: DriveItem, bytes: Uint8Array, warnings: string[]) {
+    editing = null
+    savedNotice = {
+      text: `Saved the changes as a new version${warnings.length ? '. Note:' : '.'}`,
+      warnings,
+    }
+    onsaved?.(file)
+    void reopen(bytes)
+  }
+
+  function onEditChangedMeanwhile(bytes: Uint8Array) {
+    editing = null
+    void reopen(bytes).then(() => {
+      if (status.kind === 'ready') void startEditing()
+    })
+  }
+
   function onOrganised(file: DriveItem, bytes: Uint8Array, warnings: string[]) {
     organising = false
-    savedNotice = { warnings }
+    savedNotice = {
+      text: `Saved the pages as a new version${warnings.length ? '. Not everything could be kept:' : '.'}`,
+      warnings,
+    }
     onsaved?.(file)
     void reopen(bytes)
   }
@@ -472,7 +514,7 @@
   }
 
   function onResize() {
-    if (destroyed || !scroller || status.kind !== 'ready' || organising) return
+    if (destroyed || !scroller || status.kind !== 'ready' || hidden) return
     if (zoomMode !== 'custom') applyFit(zoomMode)
     updateVisible()
   }
@@ -681,7 +723,7 @@
   // --- keys --------------------------------------------------------------
 
   function onKeydown(event: KeyboardEvent) {
-    if (status.kind !== 'ready' || event.defaultPrevented || organising) return
+    if (status.kind !== 'ready' || event.defaultPrevented || hidden) return
     const mod = event.metaKey || event.ctrlKey
     const target = event.target
     if (target instanceof Element && target.closest('[role="dialog"], [role="alertdialog"]')) return
@@ -761,6 +803,21 @@
   data-status={status.kind}
   data-zoom={zoom}
 >
+  {#if editing && editor && sourceBytes && lib}
+    {@const Editor = editor}
+    <Editor
+      {fileId}
+      {name}
+      {heartbeatMs}
+      {author}
+      {lib}
+      base={{ bytes: sourceBytes, pages }}
+      startIn={editing}
+      onsaved={onEdited}
+      onchanged={onEditChangedMeanwhile}
+      onclose={() => (editing = null)}
+    />
+  {/if}
   {#if organising && organiser && sourceBytes}
     {@const Organiser = organiser}
     <Organiser
@@ -778,7 +835,7 @@
     class="flex flex-wrap items-center gap-1 border-b bg-muted/30 px-2 py-1.5 text-sm"
     role="toolbar"
     aria-label="PDF tools"
-    style:display={organising ? 'none' : undefined}
+    style:display={hidden ? 'none' : undefined}
   >
     <Button
       variant="ghost"
@@ -880,6 +937,16 @@
         onclick={startOrganising}
         data-testid="pdf-organise"><LayoutGridIcon class="size-4" /> Organise pages</Button
       >
+      <Button
+        variant="ghost"
+        size="sm"
+        title={needsPassword
+          ? 'Password-protected PDFs can’t be annotated yet'
+          : 'Notes, highlights, drawings, the form and the properties'}
+        disabled={status.kind !== 'ready' || needsPassword}
+        onclick={startEditing}
+        data-testid="pdf-annotate"><PencilLineIcon class="size-4" /> Annotate &amp; fill</Button
+      >
     {/if}
     <Button
       variant="ghost"
@@ -939,7 +1006,7 @@
       {/if}
     </div>
   </div>
-  {#if !organising && (organiseError || savedNotice)}
+  {#if !hidden && (organiseError || savedNotice)}
     <div
       class="border-b px-3 py-1.5 text-sm {organiseError
         ? 'border-destructive/40 bg-destructive/10 text-destructive'
@@ -951,11 +1018,7 @@
         {organiseError}
       {:else if savedNotice}
         <p class="flex items-center gap-2">
-          <span class="flex-1"
-            >Saved the pages as a new version{savedNotice.warnings.length
-              ? '. Not everything could be kept:'
-              : '.'}</span
-          >
+          <span class="flex-1">{savedNotice.text}</span>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -971,7 +1034,7 @@
       {/if}
     </div>
   {/if}
-  {#if !organising && (pageError || navError)}
+  {#if !hidden && (pageError || navError)}
     <p
       class="border-b border-destructive/40 bg-destructive/10 px-3 py-1.5 text-sm text-destructive"
       role="alert"
@@ -981,7 +1044,7 @@
     </p>
   {/if}
 
-  <div class="pdf-body" style:display={organising ? 'none' : undefined}>
+  <div class="pdf-body" style:display={hidden ? 'none' : undefined}>
     {#if sidebar && status.kind === 'ready'}
       <nav
         bind:this={sidebarEl}

@@ -12,6 +12,17 @@ export const DRIVE_PDF_TOOL_NAMES = [
   'drive.pdf_merge',
 ] as const
 
+/** PDF annotations, forms and properties (plan/phase-office-files.md P3, ./pdf-tools-annotate.ts): two reads, five writes. */
+export const DRIVE_PDF_ANNOTATE_TOOL_NAMES = [
+  'drive.pdf_list_annotations',
+  'drive.pdf_add_note',
+  'drive.pdf_reply',
+  'drive.pdf_edit_annotations',
+  'drive.pdf_list_form_fields',
+  'drive.pdf_fill_form',
+  'drive.pdf_set_properties',
+] as const
+
 export const DRIVE_TOOL_NAMES = [
   'drive.list',
   'drive.shared_with_me',
@@ -26,6 +37,7 @@ export const DRIVE_TOOL_NAMES = [
   'drive.app_run',
   'drive.app_stop',
   ...DRIVE_PDF_TOOL_NAMES,
+  ...DRIVE_PDF_ANNOTATE_TOOL_NAMES,
 ] as const
 
 /**
