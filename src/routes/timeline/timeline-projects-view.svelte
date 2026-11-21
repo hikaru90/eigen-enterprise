@@ -5,21 +5,17 @@
   import type { TimelineProjectCard } from './timeline-data-derive'
   import PlusIcon from '@lucide/svelte/icons/plus'
   import { resolve } from '$app/paths'
-  import MemoryAuthorBadge from '$lib/components/memory-author-badge.svelte'
   import { Button } from '$lib/components/ui/button'
   import { m } from '$lib/paraglide/messages.js'
   import type { ProjectListItem } from '$lib/server/memory/project-list'
-  import TemporalEventStatusButton from './temporal-event-status-button.svelte'
   import {
     findTemporalListItemByRef,
     isTemporalEventCompleted,
-    completedEventSummaryClass,
     filterOpenTimelineItemsForProject,
-    formatWhen,
-    formatCreatedDate,
   } from './temporal-events-utils'
   import TimelineCreateProjectDialog from './timeline-create-project-dialog.svelte'
   import TimelineProjectAssignDialog from './timeline-project-assign-dialog.svelte'
+  import TimelineUnassignedTasks from './timeline-unassigned-tasks.svelte'
 
   type Props = {
     projectCards: TimelineProjectCard[]
@@ -208,67 +204,16 @@
           {/each}
 
           {#if unassignedTasks.length > 0}
-            <div class="mt-2 pt-3">
-              <h3 class="px-2 py-1.5 text-xs leading-[1.2] text-muted-foreground">
-                {m.graph_timeline_project_no_project()} ({unassignedTasks.length})
-              </h3>
-              <div class="flex flex-col">
-                {#each unassignedTasks as task (task.id)}
-                  {@const taskCompleted = isTemporalEventCompleted(task)}
-                  <div
-                    class="border-border flex items-start gap-4 border-b py-2 pl-2 pr-3 last:border-b-0"
-                  >
-                    <TemporalEventStatusButton
-                      item={task}
-                      compact
-                      {updatingEventId}
-                      {onQuickAction}
-                    />
-                    <button
-                      type="button"
-                      class="flex min-w-0 flex-1 flex-col gap-1 text-left"
-                      onclick={() => onGoToTask(task.id)}
-                    >
-                      <div class="flex min-w-0 flex-wrap items-center gap-1.5">
-                        <span
-                          class="text-foreground text-sm leading-snug {completedEventSummaryClass(
-                            taskCompleted,
-                          )}"
-                        >
-                          {task.semanticSummary}
-                        </span>
-                        <MemoryAuthorBadge
-                          author={task.author}
-                          authorLabel={task.authorLabel}
-                          size="sm"
-                        />
-                      </div>
-                      <div class="flex flex-col gap-0.5">
-                        {#if task.startAt}
-                          <span class="text-foreground/60 font-mono text-xs leading-tight"
-                            >{m.graph_temporal_when()} {formatWhen(task)}</span
-                          >
-                        {/if}
-                        <span class="text-muted-foreground font-mono text-xs leading-tight"
-                          >Created {formatCreatedDate(task)}</span
-                        >
-                      </div>
-                    </button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      class="h-auto shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-foreground hover:text-foreground/70"
-                      onclick={() => {
-                        assignProjectItem = task
-                        assignProjectOpen = true
-                      }}
-                    >
-                      Assign
-                    </Button>
-                  </div>
-                {/each}
-              </div>
-            </div>
+            <TimelineUnassignedTasks
+              tasks={unassignedTasks}
+              {updatingEventId}
+              {onQuickAction}
+              {onGoToTask}
+              onAssign={(task) => {
+                assignProjectItem = task
+                assignProjectOpen = true
+              }}
+            />
           {/if}
         </div>
       {/if}

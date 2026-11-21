@@ -6,6 +6,13 @@
   import { m } from '$lib/paraglide/messages.js'
   import { isTemporalEventCompleted } from './temporal-events-utils'
 
+  /**
+   * Mark a task done / reopen it. The compact form sits at the start of a task
+   * row: a round completion control (a to-do circle that fills with a check),
+   * never a square that reads as "select this row" (Contribute d5e61e1f). Its
+   * accessible name carries the task — "Mark done: Order the flyers" — so a
+   * screen reader hears what it completes, not a bare verb per row.
+   */
   type Props = {
     item: TemporalEventListItem
     updatingEventId?: string | null
@@ -18,6 +25,11 @@
   const completed = $derived(isTemporalEventCompleted(item))
   const busy = $derived(updatingEventId === item.id)
   const actionLabel = $derived(completed ? m.graph_temporal_reopen() : m.graph_temporal_mark_done())
+  const itemLabel = $derived(
+    completed
+      ? m.graph_temporal_reopen_item({ title: item.semanticSummary })
+      : m.graph_temporal_mark_done_item({ title: item.semanticSummary }),
+  )
 
   function handleClick(event: MouseEvent) {
     event.stopPropagation()
@@ -29,23 +41,29 @@
 </script>
 
 {#if compact}
+  <!-- 24px hit target (WCAG 2.5.8) around a 18px circle. -->
   <button
     type="button"
-    class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-sm border border-input bg-background transition-colors disabled:opacity-50 {completed
-      ? 'text-foreground'
-      : 'text-transparent hover:bg-muted'}"
+    class="group/done -m-0.5 flex size-6 shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
     title={actionLabel}
-    aria-label={actionLabel}
+    aria-label={itemLabel}
+    data-shape="round"
+    data-state={completed ? 'done' : 'open'}
     disabled={busy}
     onclick={handleClick}
   >
-    {#if busy}
-      <LoaderCircleIcon class="text-foreground size-3 animate-spin" aria-hidden="true" />
-    {:else if completed}
-      <CheckIcon class="size-3" strokeWidth={2.5} aria-hidden="true" />
-    {:else}
-      <span class="sr-only">{actionLabel}</span>
-    {/if}
+    <span
+      class="flex size-[18px] items-center justify-center rounded-full border transition-colors {completed
+        ? 'border-foreground/70 bg-foreground/70 text-background'
+        : 'border-muted-foreground/70 bg-background text-transparent group-hover/done:border-foreground group-hover/done:text-muted-foreground'}"
+      aria-hidden="true"
+    >
+      {#if busy}
+        <LoaderCircleIcon class="text-foreground size-3 animate-spin" />
+      {:else}
+        <CheckIcon class="size-3" strokeWidth={2.5} />
+      {/if}
+    </span>
   </button>
 {:else}
   <button
