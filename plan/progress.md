@@ -2,6 +2,34 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-21 — Shared projects and notes, voice input on every field, the brain on every tool via `ee` (owner: "projects … shared … default should be sharing … toggle … absolutely private" · "all input fields should have … speech to text … especially ask the company brain" · "connected to all tools … using eigen CLI" · "you're on your own, plan for it, use subagents, and then execute"; merged into main, not pushed, not released)
+
+Plan + design: `plan/shared-memory-voice-agent-tools.md` (`e02f7643`). Three worktrees, merged by the orchestrator.
+
+- **Shared Memory** (`ae43cb3c` `6ff7df85` `09a05a62`, merge `06d4d278`).
+  - **Decision (owner):** projects and notes start **shared with everyone in the company**, amending `plan/phase-company-brain.md` §4 ("authored work starts private") for these two kinds. The Private switch means owner only, with no admin or owner override.
+  - **What is shared:** tasks inside a shared project are shared with it. Tasks outside a project, raw thoughts and Capture stay private (§4: thoughts are never readable on demand). That's my reading of "memories"; the owner may widen it.
+  - **Migration 0164** (`memory_sharing`): `visibility` on `canonical_entity` and `text_file` (default `company`), a `company_data_key` table, and colleague `FOR SELECT` policies (also in `enable_rls.sql`). Writes stay owner-only. `project_task_sequence` and `project_milestone` had no RLS at all; they now have the owner policy plus shared read.
+  - **Keys:** shared rows are sealed with a company key (envelope `"k":"company"`). Every Private toggle re-keys the row both ways. Each person's items are also re-keyed once at server start, as the backfill.
+  - **Registry tools:** new `memory.set_project_visibility` and `memory.set_text_file_visibility`, owner only. The assistant may make an item private but never share it. List, get, search and timeline now include colleagues' shared items, each marked with its `owner` and whether it's `editable`.
+  - **UI:** Mine / Team on Projects and Notes; colleagues' items are read-only and show their author; a Private switch on own items.
+  - **⚠ Existing data, announced:** when 0164 runs, **every existing project and note becomes visible to every member**, with the tasks in those projects. Neither table had a private marker, so nothing stays private. This happens on production and ee-one at the next release, until people switch items to Private.
+- **Voice input everywhere** (`a985f2b1` `45b5d3c6` `d36e7c59`, merge `5079cbbe`).
+  - **Where:** one dictation control (`src/lib/voice/dictation-field.svelte`) in the shared Input and Textarea (about 60 fields) and the custom composers. "Ask the company brain" has it in the top bar, the spotlight, the panel (left of Send) and the call side panel.
+  - **Exclusions:** password, email, number, url, tel, date, search, OTP, read-only fields and 28 identifier fields. A coverage spec fails on any new raw free-text field that has neither a mic nor a stated reason.
+  - **Changed behaviour, announced:** an unavailable mic (no STT configured, or the browser can't record) no longer shows greyed out with only a tooltip. It stays visible, and a tap shows the reason.
+  - **Gaps:** PowerPoint speaker notes and contacts pipeline cells have no mic: they save on `change`, which a dictated insert doesn't fire. Dictation ignores `maxlength`, and Ctrl+Z doesn't undo it.
+- **The brain on every tool** (`d6fd3948` `7cd9303c`, merge `303c7095`).
+  - **Finding:** since CB3 the brain was already offered every active tool its roles allow. What stays unreachable is on purpose: owner-only tools (`agent.enable`/`disable`, `brand.picker_choose`), service-only webhooks, and tools of modules that are switched off.
+  - **New `ee` tool** for the brain: `tool namespaces`, then `tool list --namespace`, then `tool help <name>` (that tool's schema), then `tool run`. Every run goes through the same registry as the person (roles, RLS, approvals, audit). `--principal` and `openapi` are refused. The persona prompt now says to search `ee` before saying it can't do something.
+  - **Nothing removed:** the direct tools stay. The unreachable tools are pinned as `NO_BRAIN_REACH`.
+  - **Risk:** an admin's brain gets about 178 direct tools plus `ee` per request. Some OpenAI-style APIs cap a request at 128 tools. The pool models aren't checked yet. If the cap bites, the fix is a small direct core with the rest through `ee`, which would be an announced change.
+- **Gates** (clean worktree at `06d4d278`, because another session's uncommitted website edits are in the main checkout): lint 0 errors, svelte-check 0 errors, unit 8,612, components 808.
+  - **e2e:** assistant-area, messages-depth, pwa, drive and memory-roadmap pass.
+  - memory-roadmap first failed with a 500. The shared test DB held a `company_data_key` sealed with a different master key, from the agent's manual integration runs (`TENANT_MASTER_KEY=e2e-throwaway…`). Production has one master key, so this is test-only. I deleted that test-DB row, and the rerun passed.
+- **Not verified:** a real microphone; a real model using `ee`; the startup re-key against real existing data; 0164 on a real box.
+- **Next:** the owner decides push and release, especially the "existing projects become shared" effect on production and ee-one.
+
 ## 2026-11-21 — v0.5.31 released: the 11-21 contribute round is live (owner: "Push and release")
 
 - **Pushed** `b62a8933..6bd22935` + tag `v0.5.31` through the local CI gate. The first gate run was red: the composer's "More emoji" component test pressed Enter before the lazily loaded emoji search showed its match. Both picker specs now wait for the match (`2b8bac9f`, rerun green). `[release] v0.5.31` `6bd22935`, release run 44922690595 green (arm64 + x64).
