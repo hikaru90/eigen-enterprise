@@ -3,7 +3,7 @@ import { KernelError } from '$lib/kernel/errors'
 import type { ActivationStore } from '$lib/kernel/modules'
 import { generateOpenApi, strictToolSchema, toolInputJsonSchema } from '$lib/kernel/openapi'
 import type { KernelRegistry } from '$lib/kernel/registry'
-import type { ToolContext } from '$lib/kernel/types'
+import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { listMcpTools } from '$lib/server/mcp/server'
 import { CliArgsError, usageText } from './args'
 
@@ -14,11 +14,29 @@ import { CliArgsError, usageText } from './args'
  * printing and exit codes.
  */
 
+/** The registry surface the commands use (the brain's ee tool hands in a scope-guarded view). */
+export type CliRegistry = Pick<KernelRegistry, 'execute' | 'list' | 'get' | 'getApprovalStore'>
+
+/**
+ * Who may see what in discovery (`tool list`, `tool namespaces`, `tool help`).
+ * Absent (the terminal CLI): every registered tool, listings filtered by
+ * module activation only — the MCP tools/list mirror. The company brain's ee
+ * tool passes the person's reach (their roles ∩ the agent's tool scope) and
+ * asks for compact listings (no schemas: `tool help` carries the schema).
+ * Discovery only — execution is always the registry's own permission check.
+ */
+export type CliDiscovery = {
+  mayRun: (tool: ToolDescriptor) => boolean
+  /** Include each tool's input schema in `tool list` (terminal default: true). */
+  listSchemas: boolean
+}
+
 export type CliCommandContext = {
-  registry: KernelRegistry
+  registry: CliRegistry
   activations: Pick<ActivationStore, 'get'>
   principal: ToolContext['principal']
   requestId: string
+  discovery?: CliDiscovery
 }
 
 export type CommandError = { code: string; message: string; approvalId?: string }
@@ -50,7 +68,11 @@ export function validateParsedCommand(args: ParsedCliArgs): void {
         requireValidJson(args)
         return
       }
-      if (args.action === 'list') return
+      if (args.action === 'help') {
+        requirePositional(args, 'tool name')
+        return
+      }
+      if (args.action === 'list' || args.action === 'namespaces') return
       throw usageError(actionMessage(args))
     case 'module':
       if (args.action === 'activate' || args.action === 'deactivate') {
@@ -89,6 +111,17 @@ export async function dispatchCommand(
   }
 }
 
+/**
+ * Run a validated command and return its data; failures THROW (KernelError
+ * from the registry, CliUsageError for a malformed command) — for in-process
+ * callers that map errors themselves (the brain's ee tool: the engine turns a
+ * thrown KernelError into the same structured tool error / approval card a
+ * direct tool call gets). dispatchCommand is the exit-code-mapped variant.
+ */
+export async function executeCommand(ctx: CliCommandContext, args: ParsedCliArgs): Promise<unknown> {
+  return runCommand(ctx, args)
+}
+
 async function runCommand(ctx: CliCommandContext, args: ParsedCliArgs): Promise<unknown> {
   const toolCtx = (): ToolContext => ({ principal: ctx.principal, requestId: ctx.requestId })
   const registry = ctx.registry
@@ -105,6 +138,8 @@ async function runCommand(ctx: CliCommandContext, args: ParsedCliArgs): Promise<
     }
     case 'tool':
       if (args.action === 'list') return toolList(ctx, args)
+      if (args.action === 'namespaces') return toolNamespaces(ctx)
+      if (args.action === 'help') return toolHelp(ctx, requirePositional(args, 'tool name'))
       return registry.execute(
         requirePositional(args, 'tool name'),
         requireJsonInput(args),
@@ -141,18 +176,68 @@ async function runCommand(ctx: CliCommandContext, args: ParsedCliArgs): Promise<
  */
 async function toolList(ctx: CliCommandContext, args: ParsedCliArgs): Promise<unknown> {
   const module = typeof args.flags.module === 'string' ? args.flags.module : undefined
-  const listings = await listMcpTools(ctx.registry, ctx.activations)
-  const listed = new Set(listings.map((l) => l.name))
-  return ctx.registry
-    .list(module === undefined ? undefined : { module })
-    .filter((tool) => listed.has(tool.name))
+  const namespace = typeof args.flags.namespace === 'string' ? args.flags.namespace : undefined
+  const listSchemas = ctx.discovery?.listSchemas ?? true
+  return (await listedTools(ctx, module))
+    .filter((tool) => namespace === undefined || namespaceOf(tool.name) === namespace)
     .map((tool) => ({
       name: tool.name,
       description: tool.summary,
       // Same strict-subset projection the MCP listing serves — this listing
       // mirrors what MCP clients see.
-      inputSchema: strictToolSchema(toolInputJsonSchema(tool.inputSchema)),
+      ...(listSchemas ? { inputSchema: strictToolSchema(toolInputJsonSchema(tool.inputSchema)) } : {}),
     }))
+}
+
+/** Active-module tools (the MCP tools/list filter — no duplicate of it) within the caller's discovery reach. */
+async function listedTools(ctx: CliCommandContext, module?: string): Promise<ToolDescriptor[]> {
+  const listings = await listMcpTools(ctx.registry, ctx.activations)
+  const listed = new Set(listings.map((l) => l.name))
+  const mayRun = ctx.discovery?.mayRun ?? (() => true)
+  return ctx.registry
+    .list(module === undefined ? undefined : { module })
+    .filter((tool) => listed.has(tool.name) && mayRun(tool))
+}
+
+/** The tool-name namespace: the prefix before the first "." (`reminders.list` → `reminders`). */
+function namespaceOf(name: string): string {
+  const dot = name.indexOf('.')
+  return dot <= 0 ? name : name.slice(0, dot)
+}
+
+/** `ee tool namespaces`: the namespaces `tool list` would show, with tool counts (the smallest map of the surface). */
+async function toolNamespaces(ctx: CliCommandContext): Promise<Array<{ namespace: string; tools: number }>> {
+  const counts = new Map<string, number>()
+  for (const tool of await listedTools(ctx)) {
+    const ns = namespaceOf(tool.name)
+    counts.set(ns, (counts.get(ns) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([namespace, tools]) => ({ namespace, tools }))
+}
+
+/**
+ * `ee tool help <name>`: one tool's description and input schema (the same
+ * strict projection MCP serves), its audit class, whether it can ask for
+ * approval, and whether its module is active. A tool outside the caller's
+ * discovery reach is refused like a run would be; an unknown one is unknown.
+ */
+async function toolHelp(ctx: CliCommandContext, name: string): Promise<unknown> {
+  const tool = ctx.registry.get(name)
+  if (!tool) throw new KernelError('unknown_tool', `unknown tool: ${name} (ee tool list shows the tools there are)`)
+  if (ctx.discovery && !ctx.discovery.mayRun(tool)) {
+    throw new KernelError('permission_denied', `${name} is not within your reach: the person you act for may not run it`)
+  }
+  return {
+    name: tool.name,
+    description: tool.summary,
+    module: tool.module,
+    auditClass: tool.auditClass,
+    ...(tool.approvalAlways === true ? { approval: 'always' } : tool.auditClass === 'read' ? {} : { approval: 'by approval mode' }),
+    active: await ctx.activations.get(tool.module),
+    inputSchema: strictToolSchema(toolInputJsonSchema(tool.inputSchema)),
+  }
 }
 
 async function outcomeFromError(

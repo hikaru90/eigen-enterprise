@@ -102,6 +102,9 @@ describe('validateParsedCommand', () => {
     for (const argv of [
       ['status'],
       ['tool', 'list'],
+      ['tool', 'list', '--namespace', 'memory'],
+      ['tool', 'namespaces'],
+      ['tool', 'help', 'memory.echo'],
       ['tool', 'run', 'memory.echo', '--input', '{}'],
       ['module', 'list'],
       ['module', 'activate', 'memory'],
@@ -193,6 +196,46 @@ describe('ee tool list', () => {
     const outcome = await dispatch(['tool', 'list', '--module', 'b'], kernel)
 
     expect((outcome.data as Array<{ name: string }>).map((t) => t.name)).toEqual(['b.y'])
+  })
+
+  it('filters by --namespace (the tool-name prefix) and keeps each schema for the terminal', async () => {
+    const kernel = makeFakeKernel({
+      tools: [makeTool('memory.a', 'memory'), makeTool('reminders.b', 'memory'), makeTool('email.c', 'email')],
+    })
+    const outcome = await dispatch(['tool', 'list', '--namespace', 'reminders'], kernel)
+    expect(outcome.data).toEqual([{ name: 'reminders.b', description: 'reminders.b summary', inputSchema: expect.objectContaining({ type: 'object' }) }])
+  })
+})
+
+describe('ee tool namespaces / tool help', () => {
+  it('namespaces counts the active tools per name prefix', async () => {
+    const kernel = makeFakeKernel({
+      tools: [makeTool('memory.a', 'memory'), makeTool('memory.b', 'memory'), makeTool('reminders.c', 'memory'), makeTool('email.d', 'email')],
+      activeModules: ['memory'],
+    })
+    const outcome = await dispatch(['tool', 'namespaces'], kernel)
+    expect(outcome).toEqual({ exitCode: 0, data: [{ namespace: 'memory', tools: 2 }, { namespace: 'reminders', tools: 1 }] })
+  })
+
+  it('help returns one tool’s description, input schema and whether its module is active', async () => {
+    const kernel = makeFakeKernel({ activeModules: ['email'] })
+    const outcome = await dispatch(['tool', 'help', 'memory.echo'], kernel)
+    expect(outcome).toEqual({
+      exitCode: 0,
+      data: {
+        name: 'memory.echo',
+        description: 'memory.echo summary',
+        module: 'memory',
+        auditClass: 'read',
+        active: false,
+        inputSchema: expect.objectContaining({ type: 'object' }),
+      },
+    })
+  })
+
+  it('help of an unknown tool exits 1 with unknown_tool; help needs a tool name', async () => {
+    expect(await dispatch(['tool', 'help', 'nope.x'])).toMatchObject({ exitCode: 1, error: { code: 'unknown_tool' } })
+    expect(() => validateParsedCommand(parseCliArgs(['tool', 'help']))).toThrowError(/missing tool name/)
   })
 })
 

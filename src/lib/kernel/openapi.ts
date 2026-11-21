@@ -308,7 +308,7 @@ export type GenerateOpenApiOptions = {
  * activation gating is enforced at the HTTP layer, not in the document.
  */
 export function generateOpenApi(
-  registry: KernelRegistry,
+  registry: Pick<KernelRegistry, 'list'>,
   options: GenerateOpenApiOptions,
 ): OpenApiDocument {
   const paths: OpenApiDocument['paths'] = {}
