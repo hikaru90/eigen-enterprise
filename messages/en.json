@@ -299,7 +299,7 @@
   "graph_timeline_project_status_someday": "Someday",
   "graph_timeline_project_status_completed": "Done",
   "graph_timeline_project_no_project": "No project",
-  "graph_timeline_project_no_project_hint": "Tasks that are not in a project yet. Assign files one under a project.",
+  "graph_timeline_project_no_project_hint": "Tasks that are not in a project yet. Use Assign to put one in a project.",
   "graph_timeline_project_deadline": "Due {date}",
   "graph_timeline_project_waterfall": "Waterfall",
   "graph_timeline_project_milestones": "Milestones",
