@@ -7,7 +7,11 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - **Pushed** `b62a8933..6bd22935` + tag `v0.5.31` through the local CI gate. The first gate run was red: the composer's "More emoji" component test pressed Enter before the lazily loaded emoji search showed its match. Both picker specs now wait for the match (`2b8bac9f`, rerun green). `[release] v0.5.31` `6bd22935`, release run 44922690595 green (arm64 + x64).
 - **Local box:** built from a clean worktree at the tag and copied over `dist/release` (the box's mount). `box.sh install os.ee.localhost` passed: `/api/health` 200, `ee` + `ee-os-a` active, `reminders` table present (migration 0163).
 - **os.cerberusblue.com:** `ee upgrade --expect eigenenterprise-0.5.31-6bd2293556c2`, safety copy in `/var/lib/ee/upgrades/2026-11-21T16-09-41Z`. `/api/health` 200, `reminders` present, `lastReconcileError` null.
-- **Board:** 2c414719 (reminders) and a950ef11 (assistant edit) are now `shipped` with a note. The 7 ee-one items are marked by ee-one, which upgrades once the owner sets the /ops target to 0.5.31.
+- **Board:** 2c414719 (reminders) and a950ef11 (assistant edit) are now `shipped` with a note.
+- **ee-one's own board** (owner: "did you mark them as done?"; through the local `eigen` MCP, which is one.eigenenterprise.app):
+  - The 11-19 items live in v0.5.30 are now `shipped`: 6ea81bc5, 5ef181df, e5f38b2c, 604b1375, cf5b7f1d, 47141f10.
+  - This round's 7 are `in_progress` with "kommt mit v0.5.31" until ee-one upgrades (the owner sets /ops to 0.5.31): 87f5b9f8, 6b5eda9f, d5e61e1f, e9490497, 89815b8d, d6264dd1, b94496fe.
+  - Left as requested (owner's call / later): bcd930e2, 11f05e24, 3668d181, cdb96072, 7478dbe4, plus the owner's own "test" 6950f7a7.
 - **Not verified on production:** the new flows in a real browser, and a real phone push.
 
 ## 2026-11-21 — Contribute round: 9 new proposals built in 7 parallel worktrees (owner: "get newest contributions from all companies over the cerberus mcp and integrate them. ill be away, you are on your own"; merged into main, not pushed, not on the box)
