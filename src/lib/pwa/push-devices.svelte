@@ -90,7 +90,7 @@
             <p class="truncate text-sm">
               {platformOf(d.userAgent)}
               {#if current === d.endpointHash}
-                <span class="ml-1 rounded bg-muted px-1.5 py-0.5 text-[11px] text-foreground/70">This device</span>
+                <span class="ml-1 rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">This device</span>
               {/if}
             </p>
             <p class="text-xs text-foreground/60">On since {day(d.since)} · last seen {day(d.lastSeen)} · {d.service}</p>
