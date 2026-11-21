@@ -51,8 +51,10 @@ describe('message-composer.svelte', () => {
     await page.getByRole('menuitem', { name: 'More emoji' }).click()
     const picker = page.getByRole('dialog', { name: 'Insert emoji' })
     await picker.getByRole('searchbox', { name: 'Search emoji' }).fill('giraffe')
+    // The dataset loads lazily: wait for the match before Enter picks it.
+    await expect.element(picker.getByRole('button', { name: /giraffe/i })).toBeVisible()
     await userEvent.keyboard('{Enter}')
-    expect(ondraft).toHaveBeenLastCalledWith('hi 🦒')
+    await expect.poll(() => ondraft.mock.lastCall?.[0]).toBe('hi 🦒')
     expect(page.getByRole('dialog', { name: 'Insert emoji' }).elements()).toHaveLength(0)
     await expect.element(page.getByTestId('composer')).toHaveFocus()
   })

@@ -100,8 +100,9 @@ describe('emoji-picker.svelte', () => {
     expect(onpick).toHaveBeenLastCalledWith('😂')
 
     await page.getByRole('searchbox', { name: 'Search emoji' }).fill('giraffe')
+    await expect.element(page.getByRole('button', { name: /giraffe/i })).toBeVisible()
     await userEvent.keyboard('{Enter}')
-    expect(onpick).toHaveBeenLastCalledWith('🦒')
+    await expect.poll(() => onpick.mock.lastCall?.[0]).toBe('🦒')
 
     await userEvent.keyboard('{Escape}')
     expect(onclose).toHaveBeenCalledOnce()
