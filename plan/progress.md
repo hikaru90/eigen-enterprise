@@ -2,6 +2,18 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-21 — Released: GitHub full mirror on the box (owner: "Push and release")
+
+- **Pushed** `cadf10e9..2ef7adc5` through the local CI gate.
+  - The first gate run was red: the e2e harness pin in `scripts/vite-config.spec.ts` still expected 4 servers. Fixed in `2ef7adc5`: 5 servers, and the app reads GitHub only from the loopback mocks.
+  - The push also carried two commits of the office session, by owner decision ("Ship all of main"): `90a3d705` (milestone 3 plan) and `05145b79` (office viewers get the signed-in member as author).
+- **Released** `eigenenterprise-0.5.30-2ef7adc53d67-linux-arm64` (built from a clean worktree at `2ef7adc5`, signed SHA256SUMS) and installed it with `ee/e2e/box.sh install os.ee.localhost`.
+  - `/api/health` 200; `ee.service` and `ee-os-a` active.
+  - Migrations 0161/0162 are on the box (`repo_sources.copy_mode`, `repo_source_files`; `doc_shas` kept, D15).
+  - The running release dir holds this build.
+- **Not verified on the box:** a real repo sync. No GitHub repo is connected there; it needs the owner's fine-grained token pasted in Drive → GitHub. The flow is covered by the e2e journey against the mock GitHub.
+- **Not done:** no version bump or public tag, so os.cerberusblue.com is unchanged. That follows the last local-box release (2026-11-20), and needs the owner's go-ahead.
+
 ## 2026-11-21 — GitHub full mirror M4: the copy-mode control + the end-to-end journey (owner: "Build M4"; merged into main, not pushed, not on the box)
 
 - **Control** (`c5ee0f26`): each repo row on Drive → GitHub has a "Copies: All files / Docs only" select.

@@ -1,3 +1,4 @@
+import type { CommentPerson, SlideComment } from './comments'
 import { openDeck, type Paragraph, type ShapeNode, type Slide, type Table, type TextBody } from './model'
 
 /**
@@ -5,7 +6,9 @@ import { openDeck, type Paragraph, type ShapeNode, type Slide, type Table, type 
  * one `## Slide N: <title>` section per slide (the title or centre-title
  * placeholder), the other text as lists nested by paragraph level, tables as
  * Markdown tables, picture descriptions, a note for what has no readable text
- * yet (charts, SmartArt), and `> Notes:` with the speaker notes. Runs in Node
+ * yet (charts, SmartArt), `> Notes:` with the speaker notes, then the slide's
+ * comments as `> Comment (author, resolved): text` with replies indented
+ * under them (./comments.ts). Runs in Node
  * and the browser; a broken file throws (OpcError/PptxError) with the reason.
  */
 export async function extractText(bytes: Uint8Array): Promise<string> {
@@ -96,5 +99,18 @@ function slideMarkdown(slide: Slide): string {
   blocks(slide.shapes, slide, out)
   const notes = (slide.notes?.paragraphs ?? []).map((p) => paragraphText(p, slide)).filter(Boolean)
   if (notes.length) out.push([`> Notes: ${notes[0]}`, ...notes.slice(1).map((n) => `> ${n}`)].join('\n'))
+  const c = slide.comments
+  if (c.threads.length) out.push(c.threads.flatMap(comment).join('\n'))
+  if (c.legacyIgnored) out.push(`_(${c.legacyIgnored} older-format comment${c.legacyIgnored === 1 ? '' : 's'} on this slide ${c.legacyIgnored === 1 ? 'is' : 'are'} not shown: its threaded comments replace them.)_`)
+  if (c.error) out.push(`_(${c.error})_`)
   return `${out.join('\n\n')}\n`
+}
+
+const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim()
+const who = (p: CommentPerson | null) => p?.name || 'Unknown author'
+
+/** `> Comment (author, resolved): text`, its replies indented under it. */
+function comment(t: SlideComment): string[] {
+  const flags = [who(t.author), ...(t.status === 'resolved' ? ['resolved'] : t.status === 'closed' ? ['closed'] : [])]
+  return [`> Comment (${flags.join(', ')}): ${oneLine(t.text)}`, ...t.replies.map((r) => `  > Reply (${who(r.author)}): ${oneLine(r.text)}`)]
 }
