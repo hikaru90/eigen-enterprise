@@ -407,6 +407,7 @@
                   canEdit={data.canEdit && !data.file.archivedAt}
                   heartbeatMs={data.heartbeatMs}
                   folderId={data.file.parentId}
+                  author={data.viewer ?? undefined}
                   onsaved={(f) => (saved = f)}
                 />
               {:catch err}

@@ -20,6 +20,12 @@ export type OfficeViewerProps = {
    * (unknown): then such actions stay off rather than guess.
    */
   folderId?: string | null
+  /**
+   * The signed-in member: the author written into comments, replies and
+   * tracked changes. Omitted (unknown): commenting and tracking stay off
+   * rather than write an anonymous author.
+   */
+  author?: { id: string; name: string }
   /** After a save: the file as the server has it now (size, changed time). */
   onsaved?: (file: DriveItem) => void
 }

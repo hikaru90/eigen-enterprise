@@ -77,6 +77,8 @@ export const load: PageServerLoad = async (event) => {
       editable,
       content: editable ? content : null,
       heartbeatMs: LOCK_HEARTBEAT_MS,
+      /** Who is looking: the author of comments and tracked changes an office viewer writes. */
+      viewer: event.locals.user ? { id: event.locals.user.id, name: event.locals.user.name || event.locals.user.email } : null,
       described,
     }
   })
